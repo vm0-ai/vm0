@@ -98,6 +98,7 @@ fi
 
 if [ "$#" -eq 2 ] && [[ "$2" == *"published_tmp"* ]]; then
   cmp - "$EXPECTED_SUPPORT_WORKER"
+  printf '%s\n' "$2" > "$FAKE_SSH_STATE_DIR/support-stage-command"
   support_stage_attempt=$(increment support-stage-attempt-count)
   if [ "$support_stage_attempt" -eq 1 ]; then
     exit 255
@@ -360,6 +361,9 @@ run_driver_case() {
 
   if [ -n "$expected_support_worker" ]; then
     assert_value "$case_dir/support-stage-attempt-count" "2"
+    assert_contains "$case_dir/support-stage-command" "sha256sum"
+    assert_contains "$case_dir/support-stage-command" "sudo mktemp"
+    assert_contains "$case_dir/support-stage-command" "sudo mv --"
     assert_contains "$case_dir/stderr" \
       "Transient SSH failure while staging Agent-ready benchmark worker"
   else

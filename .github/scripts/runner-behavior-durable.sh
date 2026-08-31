@@ -8,6 +8,8 @@ fi
 
 TEST_NAME=$1
 REMOTE_WORKER=$2
+# The optional argument is visible in transient unit process metadata. Callers
+# must keep secrets in their short configuration boundary instead.
 REMOTE_WORKER_ARGUMENTS=()
 if [ "$#" -eq 3 ]; then
   REMOTE_WORKER_ARGUMENTS=("$3")
