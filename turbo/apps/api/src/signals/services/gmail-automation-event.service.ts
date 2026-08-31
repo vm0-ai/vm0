@@ -2146,6 +2146,7 @@ async function updateResolvedGmailLabelId(
     readonly automation: GmailEventAutomationRow & {
       readonly config: GmailLabelAppliedEventConfig;
     };
+    readonly connectorId: string;
     readonly labelId: string;
   },
   signal: AbortSignal,
@@ -2163,7 +2164,12 @@ async function updateResolvedGmailLabelId(
       },
       updatedAt: nowDate(),
     })
-    .where(eq(workflowAutomations.id, args.automation.automation.id));
+    .where(
+      and(
+        eq(workflowAutomations.id, args.automation.automation.id),
+        eq(workflowAutomations.eventConnectorId, args.connectorId),
+      ),
+    );
   signal.throwIfAborted();
 }
 
@@ -2171,6 +2177,7 @@ async function labelAppliedAutomationMatchesEvent(
   args: {
     readonly db: Db;
     readonly accessToken: string;
+    readonly connectorId: string;
     readonly automation: GmailEventAutomationRow & {
       readonly config: GmailLabelAppliedEventConfig;
     };
@@ -2216,6 +2223,7 @@ async function labelAppliedAutomationMatchesEvent(
     {
       db: args.db,
       automation: args.automation,
+      connectorId: args.connectorId,
       labelId: label.labelId,
     },
     signal,
@@ -2332,6 +2340,7 @@ async function dispatchGmailLabelAppliedHistoryEvent(
           {
             db: args.db,
             accessToken: args.accessToken,
+            connectorId: args.state.connectorId,
             automation,
             event: args.event,
             labelCache: args.labelCache,

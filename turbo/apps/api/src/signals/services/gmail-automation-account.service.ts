@@ -1,3 +1,4 @@
+import { gmailLabelAppliedEventConfigSchema } from "@okouai/api-contracts/contracts/workflows";
 import { chatThreadConnectorSelections } from "@okouai/db/schema/chat-thread-connector-selection";
 import { connectors } from "@okouai/db/schema/connector";
 import {
@@ -69,6 +70,8 @@ export async function reprojectGmailAutomationsForOwner(
     .select({
       id: workflowAutomations.id,
       workflowId: workflowAutomations.workflowId,
+      eventType: workflowAutomations.eventType,
+      eventConfig: workflowAutomations.eventConfig,
       eventConnectorId: workflowAutomations.eventConnectorId,
     })
     .from(workflowAutomations)
@@ -89,9 +92,20 @@ export async function reprojectGmailAutomationsForOwner(
     if (automation.eventConnectorId === eventConnectorId) {
       continue;
     }
+    let eventConfig = automation.eventConfig;
+    if (automation.eventType === "gmail-label-applied") {
+      const config = gmailLabelAppliedEventConfigSchema.parse(
+        automation.eventConfig,
+      );
+      eventConfig = {
+        provider: config.provider,
+        event: config.event,
+        labelName: config.labelName,
+      };
+    }
     await db
       .update(workflowAutomations)
-      .set({ eventConnectorId })
+      .set({ eventConnectorId, eventConfig })
       .where(eq(workflowAutomations.id, automation.id));
   }
 }

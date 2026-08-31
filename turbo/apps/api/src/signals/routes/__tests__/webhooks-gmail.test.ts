@@ -1164,6 +1164,20 @@ describe("POST /api/webhooks/gmail", () => {
       ),
     );
     configureGmailMessageMocks(secondEmail, "gmail-second-access-token");
+    server.use(
+      http.get(
+        "https://gmail.googleapis.com/gmail/v1/users/me/labels",
+        ({ request }) => {
+          const authorization = request.headers.get("authorization");
+          return HttpResponse.json({
+            labels:
+              authorization === "Bearer gmail-access-token"
+                ? [{ id: "Label_collision", name: "Account scoped" }]
+                : [{ id: "Label_collision", name: "Different label" }],
+          });
+        },
+      ),
+    );
 
     const { actor, agentId, workflowId } = await setupFixture();
     const runnerGroup = runsApi.configureRunnerGroup();
@@ -1204,6 +1218,34 @@ describe("POST /api/webhooks/gmail", () => {
     );
     const chatThreadId = requireAutomationChatThreadId(created.body);
     await configureAutomationThreadModel(actor, chatThreadId);
+    const accountScopedLabelAutomation = await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-label-applied",
+          eventConfig: {
+            provider: "gmail",
+            event: "label_applied",
+            labelName: "Account scoped",
+          },
+        },
+      }),
+      [201],
+    );
+    if (
+      accountScopedLabelAutomation.body.kind !== "event" ||
+      accountScopedLabelAutomation.body.eventType !== "gmail-label-applied"
+    ) {
+      throw new Error("Expected an account-scoped Gmail label automation");
+    }
+    expect(accountScopedLabelAutomation.body.eventConfig).toStrictEqual({
+      provider: "gmail",
+      event: "label_applied",
+      labelName: "Account scoped",
+      resolvedLabelId: "Label_collision",
+    });
     expect(firstConnectorId).not.toBe(secondConnectorId);
     expect(watchedTokens).toStrictEqual(["Bearer gmail-access-token"]);
 
@@ -1223,6 +1265,26 @@ describe("POST /api/webhooks/gmail", () => {
       "Bearer gmail-second-access-token",
     ]);
     expect(stopCalls).toBe(1);
+    const reprojectedLabelAutomation = await readAutomation(
+      actor,
+      accountScopedLabelAutomation.body.id,
+    );
+    if (
+      reprojectedLabelAutomation.kind !== "event" ||
+      reprojectedLabelAutomation.eventType !== "gmail-label-applied"
+    ) {
+      throw new Error("Expected a reprojected Gmail label automation");
+    }
+    expect(reprojectedLabelAutomation).toMatchObject({
+      eventConfig: {
+        provider: "gmail",
+        event: "label_applied",
+        labelName: "Account scoped",
+      },
+    });
+    expect(reprojectedLabelAutomation.eventConfig).not.toHaveProperty(
+      "resolvedLabelId",
+    );
 
     const labelAuthorizations: (string | null)[] = [];
     server.use(
