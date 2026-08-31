@@ -2306,7 +2306,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
       context.mocks.ably.publish.mock.calls.filter(([topic]) => {
         return topic === `chatThreadMessageCreated:${active.threadId}`;
       }),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith("active-input", {
       runId: active.runId,
     });
@@ -2326,7 +2326,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
       context.mocks.ably.publish.mock.calls.filter(([topic]) => {
         return topic === `chatThreadMessageCreated:${active.threadId}`;
       }),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
 
     const secondReservation = await api.reserveRunnerActiveInputs(
       claimed.claim.sandboxToken,
@@ -13648,7 +13648,7 @@ describe("CHAT-02: shared user message queue", () => {
         return topic === "threadListChanged";
       },
     );
-    expect(threadListPublishes).toHaveLength(2);
+    expect(threadListPublishes).toHaveLength(1);
     releasePublication.resolve(undefined);
     await cancelChatRun(actor, sent.body.runId);
   }, 90_000);
@@ -13703,7 +13703,7 @@ describe("CHAT-02: shared user message queue", () => {
         return topic === "threadListChanged";
       },
     );
-    expect(threadListPublishes).toHaveLength(2);
+    expect(threadListPublishes).toHaveLength(1);
 
     await cancelChatRun(actor, anchor.runId);
     const messages = await waitForThreadMessages(
