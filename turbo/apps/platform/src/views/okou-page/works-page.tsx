@@ -898,7 +898,6 @@ export function WorksPage() {
   const { t } = useTranslation();
   const assistantName = useGet(assistantName$);
   const features = useGet(featureSwitch$);
-  const teamsEnabled = features[FeatureSwitchKey.TeamsIntegration] ?? false;
   const feishuEnabled = features[FeatureSwitchKey.FeishuIntegration] ?? false;
   const strapiEnabled = features[FeatureSwitchKey.StrapiIntegration] ?? false;
   const displayNameLoadable = useLoadable(currentChatAgentDisplayName$);
@@ -933,7 +932,7 @@ export function WorksPage() {
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-3 pb-8">
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
           <SlackCard displayName={displayName} />
-          {teamsEnabled ? <TeamsCard displayName={displayName} /> : null}
+          <TeamsCard displayName={displayName} />
           <GithubCard />
           {feishuEnabled ? <FeishuCard /> : null}
           {strapiEnabled ? <StrapiCard /> : null}
