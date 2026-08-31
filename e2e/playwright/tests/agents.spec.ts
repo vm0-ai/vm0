@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { resolveApiBackendUrl } from "../api-backend-url";
 import { expect, test } from "../fixtures";
+import { waitForActiveAgentId } from "../lib/active-agent";
 import type {
   SharedWorkerRouteRegistration,
   SharedWorkerRoutes,
@@ -127,17 +128,18 @@ async function mockPinnedAgentGrid(
 async function mockUnreadThread(
   page: Page,
   sharedWorkerRoutes: SharedWorkerRoutes,
-  defaultAgentId: string,
+  defaultAgentId: Promise<string>,
 ): Promise<UnreadThreadMocks> {
   const snapshot = sharedWorkerRoutes.route(
     (url) => url.pathname === "/api/chat-threads/snapshot",
     async (route) => {
+      const agentId = await defaultAgentId;
       await route.fulfill({
         json: {
           chatThreads: [
             {
               id: unreadThreadStory.id,
-              agentId: defaultAgentId,
+              agentId,
               title: unreadThreadStory.title,
               sortAt: unreadThreadStory.createdAt,
               createdAt: unreadThreadStory.createdAt,
@@ -162,9 +164,10 @@ async function mockUnreadThread(
     },
   );
   await page.route("**/api/indicators", async (route) => {
+    const agentId = await defaultAgentId;
     await route.fulfill({
       json: {
-        agents: { [defaultAgentId]: "unread" },
+        agents: { [agentId]: "unread" },
         threads: { [unreadThreadStory.id]: "unread" },
       },
     });
@@ -355,23 +358,18 @@ test("three-column rail and unread indicators preserve their visual hierarchy", 
     localStorage.setItem("theme", "light");
     localStorage.setItem("colorTheme", "blue-horizon");
   });
-  await page.goto(appUrl);
-  await page.waitForURL(/\/agents\/[^/]+\/chat\/?$/, { timeout: 30_000 });
-  await sharedWorkerRoutes.waitForWorker();
-  const defaultAgentId = new URL(page.url()).pathname.match(
-    /^\/agents\/([^/]+)\/chat\/?$/,
-  )?.[1];
-  if (!defaultAgentId) {
-    throw new Error("Could not resolve the default agent from the sidebar");
-  }
-
-  const { setGradientColorThemes, setPinnedAgents } = await mockPinnedAgentGrid(
-    page,
-    defaultAgentId,
-  );
+  const defaultAgentIdPromise = waitForActiveAgentId(page);
   const unreadThreadMocks = await mockUnreadThread(
     page,
     sharedWorkerRoutes,
+    defaultAgentIdPromise,
+  );
+  await page.goto(appUrl);
+  const defaultAgentId = await defaultAgentIdPromise;
+  await sharedWorkerRoutes.waitForWorker();
+
+  const { setGradientColorThemes, setPinnedAgents } = await mockPinnedAgentGrid(
+    page,
     defaultAgentId,
   );
   await Promise.all([

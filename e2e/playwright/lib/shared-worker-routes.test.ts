@@ -51,11 +51,11 @@ test("routes requests from a real SharedWorker and cleans up", async (context) =
 
             await page.goto(fixture.origin);
             const port = await connectSharedWorker(page, "success");
+            const result = fetchFromSharedWorker(port);
             await routes.waitForWorker();
-            const result = await fetchFromSharedWorker(port);
             await registration.handled;
 
-            assert.deepEqual(result, {
+            assert.deepEqual(await result, {
               mocked: { source: "worker-route" },
               passthrough: { source: "network-passthrough" },
             });

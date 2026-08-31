@@ -1,5 +1,8 @@
 import type { Browser, CDPSession, Page } from "@playwright/test";
 
+const WORKER_ROUTES_READY_EVENT = "vm0-shared-worker-routes-ready";
+const WORKER_ROUTES_READY_STORAGE_KEY = "vm0.sharedWorkerRoutes.ready";
+
 interface PendingChildCommand {
   readonly sessionId: string;
   readonly resolve: () => void;
@@ -105,6 +108,7 @@ export class SharedWorkerRoutes {
 
   private constructor(
     private readonly session: CDPSession,
+    private readonly page: Page,
     private readonly apiPattern: string,
     private readonly browserContextId: string,
   ) {
@@ -146,6 +150,67 @@ export class SharedWorkerRoutes {
     page: Page,
     apiOrigin: string,
   ): Promise<SharedWorkerRoutes> {
+    // Production sends its heartbeat as soon as the worker connects. Hold
+    // page-to-worker messages until Fetch interception is active so the first
+    // API request cannot escape before the target session attaches.
+    await page.addInitScript(
+      ({ readyEvent, readyStorageKey }) => {
+        const NativeSharedWorker = globalThis.SharedWorker;
+        let released = sessionStorage.getItem(readyStorageKey) === "true";
+        const pendingMessages: Array<() => void> = [];
+        globalThis.addEventListener(
+          readyEvent,
+          () => {
+            released = true;
+            sessionStorage.setItem(readyStorageKey, "true");
+            for (const send of pendingMessages.splice(0)) {
+              send();
+            }
+          },
+          { once: true },
+        );
+
+        const GatedSharedWorker = function (
+          scriptURL: string | URL,
+          options?: string | WorkerOptions,
+        ): SharedWorker {
+          const worker =
+            typeof options === "string"
+              ? new NativeSharedWorker(scriptURL, options)
+              : new NativeSharedWorker(scriptURL, options);
+          const postMessage = worker.port.postMessage.bind(worker.port);
+          worker.port.postMessage = (
+            message: unknown,
+            transferOrOptions?: Transferable[] | StructuredSerializeOptions,
+          ): void => {
+            const send = (): void => {
+              if (Array.isArray(transferOrOptions)) {
+                postMessage(message, transferOrOptions);
+              } else {
+                postMessage(message, transferOrOptions);
+              }
+            };
+            if (released) {
+              send();
+            } else {
+              pendingMessages.push(send);
+            }
+          };
+          return worker;
+        };
+        Object.setPrototypeOf(GatedSharedWorker, NativeSharedWorker);
+        GatedSharedWorker.prototype = NativeSharedWorker.prototype;
+        Object.defineProperty(globalThis, "SharedWorker", {
+          configurable: true,
+          value: GatedSharedWorker,
+          writable: true,
+        });
+      },
+      {
+        readyEvent: WORKER_ROUTES_READY_EVENT,
+        readyStorageKey: WORKER_ROUTES_READY_STORAGE_KEY,
+      },
+    );
     const pageSession = await page.context().newCDPSession(page);
     let browserContextId: string;
     try {
@@ -160,6 +225,7 @@ export class SharedWorkerRoutes {
     const session = await browser.newBrowserCDPSession();
     const routes = new SharedWorkerRoutes(
       session,
+      page,
       `${new URL(apiOrigin).origin}/api/*`,
       browserContextId,
     );
@@ -177,6 +243,9 @@ export class SharedWorkerRoutes {
     if (this.workerReadyError) {
       throw this.workerReadyError;
     }
+    await this.page.evaluate((readyEvent) => {
+      globalThis.dispatchEvent(new Event(readyEvent));
+    }, WORKER_ROUTES_READY_EVENT);
   }
 
   route(
