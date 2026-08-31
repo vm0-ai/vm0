@@ -3108,6 +3108,33 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       registration_method: "dcr",
       dcr_client_secret_present: true,
     });
+
+    const cimdConnectorId = randomUUID();
+    const cimdAccountId = randomUUID();
+    await seedAutomaticOAuthBindingState(context, {
+      orgId: requiredOrgId(admin),
+      userId: admin.userId,
+      customConnectorId: cimdConnectorId,
+      connectorAccountId: cimdAccountId,
+      issuer: "https://cimd.example.test",
+      resource: "https://cimd-mcp.example.test/server",
+      resourceMetadataUrl: null,
+      tokenEndpoint: "https://cimd.example.test/token",
+      clientId: "https://app.vm0.test/.well-known/oauth-client",
+      registration: {
+        method: "cimd",
+        tokenEndpointAuthMethod: "none",
+      },
+    });
+    await expect(
+      readAutomaticOAuthBindingState(context, cimdAccountId),
+    ).resolves.toStrictEqual({
+      exists: true,
+      valid: true,
+      registration_method: "cimd",
+    });
+    await connectorsApi.deleteCustomConnector(admin, cimdConnectorId);
+
     await setCustomConnectorCredentialStorageState(context, {
       orgId: requiredOrgId(admin),
       userId: admin.userId,
