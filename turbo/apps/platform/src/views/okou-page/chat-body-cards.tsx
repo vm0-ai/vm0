@@ -44,7 +44,7 @@ import {
   type FirewallPolicyValue,
 } from "@okouai/connectors/firewall-contracts";
 import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
-import { Skeleton, cn } from "@okouai/ui";
+import { Button, Skeleton, cn } from "@okouai/ui";
 import {
   useGet,
   useLastLoadable,
@@ -589,6 +589,13 @@ function ComputerUseAuthorizationCard({
 
 function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
   const { t } = useTranslation();
+  const pageSignal = useGet(pageSignal$);
+  const open = useSet(signals.open$);
+
+  const handleClick = () => {
+    detach(open(pageSignal), Reason.DomCallback);
+  };
+
   return (
     <div
       data-testid="plan-upgrade-card"
@@ -611,17 +618,15 @@ function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
           </div>
         </div>
       </div>
-      <a
-        href={signals.href}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-state-hover sm:w-auto"
+      <Button
+        type="button"
+        onClick={handleClick}
+        className="w-full shrink-0 sm:w-auto"
       >
         {t(($) => {
           return $.chat.billing.comparePlans;
         })}
-        <ArrowUpRight size={15} />
-      </a>
+      </Button>
     </div>
   );
 }

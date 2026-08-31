@@ -4,8 +4,6 @@ import {
   resolveAssistantNameForHostname,
   resolveBrandNameForHostname,
 } from "../signals/branding.ts";
-import { logger } from "../signals/log.ts";
-import { tapError } from "../signals/utils.ts";
 import {
   DEFAULT_LOCALE,
   DEFAULT_NAMESPACE,
@@ -14,8 +12,6 @@ import {
   type LocaleResources,
   type SupportedLocale,
 } from "./resources.ts";
-
-const L = logger("I18n");
 
 export const i18n = createInstance().use(initReactI18next);
 
@@ -41,23 +37,7 @@ export async function loadInitialLocaleResources(
     };
   }
 
-  // App presentation fallback for the locale-asset rollout. Remove after
-  // vm0-ai/vm0#29610 reaches its 30-day zero-error Sentry gate.
-  const localizedResources = await tapError(
-    loadLocaleResources(locale, signal),
-    (error) => {
-      L.error(
-        `Failed to load ${locale} locale resources; falling back to ${DEFAULT_LOCALE}`,
-        error,
-      );
-    },
-  );
-  if (localizedResources === undefined) {
-    return {
-      locale: DEFAULT_LOCALE,
-      resources: { [DEFAULT_LOCALE]: fallbackResources },
-    };
-  }
+  const localizedResources = await loadLocaleResources(locale, signal);
   return {
     locale,
     resources: {
