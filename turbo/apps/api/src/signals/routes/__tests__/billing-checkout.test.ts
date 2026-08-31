@@ -2023,7 +2023,7 @@ describe("POST /api/billing/checkout", () => {
       readOrgAcquisitionAttributionFixture(fixture.orgId),
     ).resolves.toMatchObject({
       acquisitionSourceType: "paid",
-      acquisitionVm0Source: "presentation",
+      acquisitionFirstPartySource: "presentation",
       acquisitionCampaignId: "1234567890",
       acquisitionAdGroupId: "9876543210",
       acquisitionCampaign: "presentation_search_en",
@@ -3004,6 +3004,7 @@ describe("POST /api/billing/usage-pack-checkout", () => {
           body: {
             tier,
             memberUsagePacks: [{ memberId: fixture.userId, usagePackUsd: 20 }],
+            adAttribution: { vm0_source: "presentation" },
             successUrl: `${APP_ORIGIN}/billing?billing=success`,
             cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
           },
@@ -3020,6 +3021,9 @@ describe("POST /api/billing/usage-pack-checkout", () => {
         context.mocks.stripe.checkout.sessions.create,
       ).toHaveBeenCalledWith(
         expect.objectContaining({
+          metadata: expect.objectContaining({
+            vm0_source: "presentation",
+          }),
           line_items: [
             {
               price:
@@ -3049,6 +3053,7 @@ describe("POST /api/billing/usage-pack-checkout", () => {
           body: {
             tier,
             memberUsagePacks: [{ memberId: fixture.userId, usagePackUsd: 20 }],
+            adAttribution: { vm0_source: "presentation" },
             successUrl: `${APP_ORIGIN}/billing?billing=success`,
             cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
           },
@@ -3086,6 +3091,7 @@ describe("POST /api/billing/usage-pack-checkout", () => {
           body: {
             tier,
             memberUsagePacks: [{ memberId: fixture.userId, usagePackUsd: 50 }],
+            adAttribution: { vm0_source: "marketing" },
             successUrl: `${APP_ORIGIN}/billing?billing=success`,
             cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
           },
@@ -3126,6 +3132,11 @@ describe("POST /api/billing/usage-pack-checkout", () => {
       if (!firstUsagePackSubscriptionId || !replacementSubscriptionId) {
         throw new Error("Checkout did not create usage pack subscriptions");
       }
+      await expect(
+        readOrgAcquisitionAttributionFixture(fixture.orgId),
+      ).resolves.toMatchObject({
+        acquisitionFirstPartySource: "presentation",
+      });
       await usagePackStateAction({
         action: "cleanup",
         orgId: fixture.orgId,
