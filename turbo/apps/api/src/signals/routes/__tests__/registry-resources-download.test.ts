@@ -33,47 +33,68 @@ function client() {
 describe("registry resource download", () => {
   const CURRENT_PRESENTATION_SHA256 =
     "e37fd617e744c2e89765ec0b24a30977ad89a876a30176e0bacf8e32209f5394";
-  const PREVIOUS_PRESENTATION_SHA256 =
-    "44e95a44ac37174b6dec3e2a2b21c0fe7d6d9f83c254d86cff1779030d5b11ad";
 
-  it("resolves the presentation archive for the current registry digest", () => {
-    expect(
-      resolvePrivateRegistryResourceArchive(
-        "template:html-ppt-schoolhouse-runbook",
-        CURRENT_PRESENTATION_SHA256,
-        CURRENT_PRESENTATION_SHA256,
-      ),
-    ).toStrictEqual({
-      storageName: "registry-resource@template:html-ppt-schoolhouse-runbook",
-      versionId:
-        "81e7f95dd13cec5f08f54ac965c51b62f87d9c7f8d29370c027aeeed3758571c",
+  it("downloads the presentation archive for the current registry digest", async () => {
+    const id = "template:html-ppt-schoolhouse-runbook";
+    const versionId =
+      "81e7f95dd13cec5f08f54ac965c51b62f87d9c7f8d29370c027aeeed3758571c";
+    const s3Key = "registry-fixture/schoolhouse-runbook/version";
+    const fixture = await seedPrivateRegistryResourceVersionFixture({
+      storageName: `registry-resource@${id}`,
+      versionId,
+      s3Key,
+      size: 4321,
+      archiveSize: 1234,
+      fileCount: 12,
+    });
+    onTestFinished(fixture.cleanup);
+
+    mockEnv("R2_USER_STORAGES_BUCKET_NAME", "registry-resource-test");
+    context.mocks.s3.getSignedUrl.mockResolvedValue(
+      "https://r2.example.com/registry/schoolhouse-runbook.tar.gz",
+    );
+
+    const response = await accept(
+      client().download({
+        headers: authHeaders(),
+        query: { id, expectedSha256: CURRENT_PRESENTATION_SHA256 },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://r2.example.com/registry/schoolhouse-runbook.tar.gz",
+      id,
+      type: "tar.gz",
       sha256: CURRENT_PRESENTATION_SHA256,
+      expiresInSeconds: 900,
+      versionId,
+      fileCount: 12,
+      size: 4321,
+    });
+    const signedCommand = context.mocks.s3.getSignedUrl.mock.calls.at(-1)?.[1];
+    expect(signedCommand).toMatchObject({
+      input: {
+        Bucket: "registry-resource-test",
+        Key: `${s3Key}/archive.tar.gz`,
+      },
     });
   });
 
-  it("still serves the pre-cutover presentation digest a drained run context asks for", () => {
-    expect(
-      resolvePrivateRegistryResourceArchive(
-        "template:html-ppt-schoolhouse-runbook",
-        PREVIOUS_PRESENTATION_SHA256,
-        CURRENT_PRESENTATION_SHA256,
-      ),
-    ).toStrictEqual({
-      storageName: "registry-resource@template:html-ppt-schoolhouse-runbook",
-      versionId:
-        "c063961c29369b15b8ae7a3cb285105bc29dbae84cccc36d458b666a5ca75e06",
-      sha256: PREVIOUS_PRESENTATION_SHA256,
-    });
-  });
+  it("rejects an unpublished presentation registry digest through the route", async () => {
+    const response = await accept(
+      client().download({
+        headers: authHeaders(),
+        query: {
+          id: "template:html-ppt-schoolhouse-runbook",
+          expectedSha256:
+            "9bd19af256dfb6f17073ec9af52ed0163a5f432a3d143eb82f1fa67aaf8b015e",
+        },
+      }),
+      [404],
+    );
 
-  it("rejects a registry digest that differs from the current registry", () => {
-    expect(
-      resolvePrivateRegistryResourceArchive(
-        "template:html-ppt-schoolhouse-runbook",
-        "9bd19af256dfb6f17073ec9af52ed0163a5f432a3d143eb82f1fa67aaf8b015e",
-        CURRENT_PRESENTATION_SHA256,
-      ),
-    ).toBeUndefined();
+    expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
   it("downloads a manually published image style archive through the route", async () => {

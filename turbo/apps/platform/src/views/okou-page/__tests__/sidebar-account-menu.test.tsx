@@ -238,7 +238,7 @@ async function openAccountMenu(): Promise<HTMLElement> {
   return screen.findByRole("menu");
 }
 
-function setupAuthV2AddAccountPage(): void {
+function setupAddAccountPage(): void {
   prepareDefaultAgent();
   detachedSetupPage({
     context,
@@ -248,7 +248,6 @@ function setupAuthV2AddAccountPage(): void {
       fullName: "Alex Rivera",
       email: "alex.rivera@example.test",
     },
-    featureSwitches: { [FeatureSwitchKey.AuthV2AddAccount]: true },
   });
 }
 
@@ -1464,11 +1463,18 @@ describe("zero sidebar account menu", () => {
     });
 
     click(screen.getByText("Add account"));
+    const addAccountDialog = await screen.findByTestId(
+      "auth-v2-add-account-dialog",
+    );
+    await expect(
+      within(addAccountDialog).findByLabelText("Email address"),
+    ).resolves.toBeVisible();
+    expect(mockedClerk.openSignIn).not.toHaveBeenCalled();
+    click(buttonByLabel("Close", addAccountDialog));
     await waitFor(() => {
-      expect(mockedClerk.openSignIn).toHaveBeenCalledWith({
-        fallbackRedirectUrl: "/",
-        forceRedirectUrl: "/",
-      });
+      expect(
+        screen.queryByTestId("auth-v2-add-account-dialog"),
+      ).not.toBeInTheDocument();
     });
 
     menu = await openAccountMenu();
@@ -1495,7 +1501,7 @@ describe("zero sidebar account menu", () => {
   });
 
   it("opens the custom v2 add-account dialog at identifier entry", async () => {
-    setupAuthV2AddAccountPage();
+    setupAddAccountPage();
     const originalUrl = window.location.href;
     const dialog = await openAuthV2AddAccountDialog();
     expect(dialog).toHaveAttribute("role", "dialog");
@@ -1516,7 +1522,7 @@ describe("zero sidebar account menu", () => {
   });
 
   it("keeps add-account organization continuation and restart in the dialog", async () => {
-    setupAuthV2AddAccountPage();
+    setupAddAccountPage();
     const originalUrl = window.location.href;
     const dialog = await openAuthV2AddAccountDialog();
     const organizationMembership = {
@@ -1593,7 +1599,7 @@ describe("zero sidebar account menu", () => {
   });
 
   it("cancels an in-flight add-account attempt when the dialog closes", async () => {
-    setupAuthV2AddAccountPage();
+    setupAddAccountPage();
     const originalUrl = window.location.href;
     const dialog = await openAuthV2AddAccountDialog();
 

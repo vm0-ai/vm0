@@ -13,25 +13,16 @@ import { setTheme$, theme$ } from "../../signals/theme.ts";
 interface AuthShellProps {
   readonly authBrand: AuthBrandContext;
   readonly children: ReactNode;
-  readonly variant?: "legacy" | "v2";
 }
 
-export function AuthShell({
-  authBrand,
-  children,
-  variant = "legacy",
-}: AuthShellProps) {
+export function AuthShell({ authBrand, children }: AuthShellProps) {
   const { t } = useTranslation();
   const theme = useGet(theme$);
   const setTheme = useSet(setTheme$);
-  const v2 = variant === "v2";
 
   return (
     <div
-      className={cn(
-        "relative flex h-full min-h-0 overflow-x-hidden overflow-y-auto bg-background",
-        v2 ? "zero-app p-6" : "p-6",
-      )}
+      className="zero-app relative flex h-full min-h-0 overflow-x-hidden overflow-y-auto bg-background p-6"
       data-testid="app-auth-layout"
     >
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--primary)/0.06)_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--primary)/0.06)_1px,transparent_1px)] bg-[size:3rem_3rem]" />
@@ -108,12 +99,7 @@ export function AuthShell({
         )}
       </a>
 
-      <main
-        className={cn(
-          "relative z-10 m-auto flex w-full min-w-0 justify-center",
-          v2 && "py-14 sm:py-16",
-        )}
-      >
+      <main className="relative z-10 m-auto flex w-full min-w-0 justify-center py-14 sm:py-16">
         {children}
       </main>
     </div>

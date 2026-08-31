@@ -35,6 +35,7 @@ import {
   submitFalImageQueueGeneration,
   type ImageOptions,
   type ImagePricing,
+  type ImageProviderReferences,
 } from "../services/image-generation.service";
 import {
   builtInGenerationRequestWithInternal,
@@ -51,6 +52,7 @@ import {
   startRunBuiltInAdmission$,
   type RunBuiltInAdmission,
 } from "../services/run-built-in-admission.service";
+import { resolveProviderReferenceUrls$ } from "../services/provider-reference-url.service";
 
 const L = logger("ImageGeneration");
 const imageBody$ = bodyResultOf(imageIoGenerateContract.post);
@@ -168,6 +170,31 @@ function acceptedImageResponse(
   };
 }
 
+const resolveImageProviderReferences$ = command(
+  async (
+    { set },
+    args: Pick<ImageJobArgs, "orgId" | "userId" | "options">,
+    signal: AbortSignal,
+  ): Promise<ImageProviderReferences> => {
+    const sourceCount = args.options.sourceImageUrls.length;
+    const urls = [
+      ...args.options.sourceImageUrls,
+      ...(args.options.maskImageUrl ? [args.options.maskImageUrl] : []),
+    ];
+    const resolved = await set(
+      resolveProviderReferenceUrls$,
+      { orgId: args.orgId, userId: args.userId, urls },
+      signal,
+    );
+    return {
+      sourceImageUrls: resolved.slice(0, sourceCount),
+      maskImageUrl: args.options.maskImageUrl
+        ? resolved[sourceCount]
+        : undefined,
+    };
+  },
+);
+
 const submitImageProviderWebhookJob$ = command(
   async (
     { set },
@@ -183,8 +210,10 @@ const submitImageProviderWebhookJob$ = command(
         "NOT_CONFIGURED",
       );
     }
+    const references = await set(resolveImageProviderReferences$, args, signal);
     const handle = await submitFalImageQueueGeneration(
       args.options,
+      references,
       falKey,
       falBuiltInGenerationWebhookUrl({ generationId: args.generationId }),
       signal,
@@ -240,8 +269,10 @@ const executeBytePlusImageProviderJob$ = command(
       return;
     }
 
+    const references = await set(resolveImageProviderReferences$, args, signal);
     const generation = await generateBytePlusImage(
       args.options,
+      references,
       apiKey,
       signal,
     );

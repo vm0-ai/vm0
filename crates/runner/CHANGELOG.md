@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.179.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.14...runner-rs-v0.179.0) (2026-08-31)
+
+
+### Features
+
+* **runner:** report operator environment alias states ([#30428](https://github.com/vm0-ai/vm0/issues/30428)) ([e2ea6c3](https://github.com/vm0-ai/vm0/commit/e2ea6c38eaab2a9eb67d2f61ee4b674ffa4a8d38))
+
+## [0.178.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.13...runner-rs-v0.178.14) (2026-08-31)
+
+
+### Bug Fixes
+
+* **runner:** report only fail-closed response encoding risk ([#30385](https://github.com/vm0-ai/vm0/issues/30385)) ([de3e772](https://github.com/vm0-ai/vm0/commit/de3e7722b447ff4f0f9831ac43cb9dd6582c6cc6))
+
+## [0.178.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.12...runner-rs-v0.178.13) (2026-08-31)
+
+
+### Performance Improvements
+
+* **python:** avoid omitted connector union allocation ([#30371](https://github.com/vm0-ai/vm0/issues/30371)) ([1e4a29d](https://github.com/vm0-ai/vm0/commit/1e4a29dc1433797553a968e4b4a2526a154b41c9))
+
 ## [0.178.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.11...runner-rs-v0.178.12) (2026-08-30)
 
 ## [0.178.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.10...runner-rs-v0.178.11) (2026-08-30)

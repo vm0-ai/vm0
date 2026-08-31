@@ -111,20 +111,9 @@ async function setupUnknownContinuation(path: string): Promise<void> {
 }
 
 describe("auth v2 route diagnostics", () => {
-  it.each(["/sign-in", "/sign-up"])(
-    "does not emit auth v2 diagnostics from the v1 route %s",
-    async (path) => {
-      context.mocks.browser.url(`https://app.vm0.ai${path}`);
-
-      await setupPage({ context, path, withoutRender: true });
-
-      expect(diagnosticCalls()).toStrictEqual([]);
-    },
-  );
-
   it.each([
-    ["sign-in", "/v2/sign-in/tasks/ticket_private_15c9"],
-    ["sign-up", "/v2/sign-up/tasks/ticket_private_15c9"],
+    ["sign-in", "/sign-in/tasks/ticket_private_15c9"],
+    ["sign-up", "/sign-up/tasks/ticket_private_15c9"],
   ] as const)(
     "attributes a nested %s continuation to its owning v2 flow",
     async (flow, route) => {
@@ -237,7 +226,7 @@ describe("auth v2 callback privacy", () => {
     const privateProviderCode = "private_sign_up_oauth_callback_code";
     const privateProviderMessage = "Private sign-up OAuth callback detail";
     const path =
-      "/v2/sign-up/sso-callback?ticket=ticket_private_sign_up_2fb1" +
+      "/sign-up/sso-callback?ticket=ticket_private_sign_up_2fb1" +
       "&redirect_url=https%3A%2F%2Fprivate.example%2Ffinish%3Fcode%3Dcallback_private_sign_up_5c12" +
       "#token=hash_private_sign_up_902e";
     context.mocks.browser.url(`https://app.vm0.ai${path}`);

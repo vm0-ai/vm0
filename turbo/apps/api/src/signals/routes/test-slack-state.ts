@@ -15,6 +15,7 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 import { orgCache } from "@okouai/db/schema/org-cache";
+import { orgMetadataLegacyWrites } from "@okouai/db/operations/org-metadata-legacy-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { secrets } from "@okouai/db/schema/secret";
 import { slackChatIngress } from "@okouai/db/schema/slack-chat-ingress";
@@ -198,10 +199,10 @@ async function seedDefaultAgent(
   await db.transaction(async (tx) => {
     await ensureStarterCreditGrant(tx, input.orgId);
     await tx
-      .insert(orgMetadata)
+      .insert(orgMetadataLegacyWrites)
       .values({ orgId: input.orgId, defaultAgentId: agent.id })
       .onConflictDoUpdate({
-        target: orgMetadata.orgId,
+        target: orgMetadataLegacyWrites.orgId,
         set: { defaultAgentId: agent.id, updatedAt: nowDate() },
       });
   });
@@ -288,7 +289,7 @@ async function ensureStarterCreditGrant(
   }
 
   await tx
-    .insert(orgMetadata)
+    .insert(orgMetadataLegacyWrites)
     .values({
       orgId,
       credits: STARTER_GRANT_AMOUNT,
@@ -297,7 +298,7 @@ async function ensureStarterCreditGrant(
       updatedAt: sql`now()`,
     })
     .onConflictDoUpdate({
-      target: orgMetadata.orgId,
+      target: orgMetadataLegacyWrites.orgId,
       set: {
         credits: sql`${orgMetadata.credits} + ${STARTER_GRANT_AMOUNT}`,
         tier: "free",

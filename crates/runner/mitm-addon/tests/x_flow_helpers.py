@@ -157,10 +157,12 @@ def make_x_stream_pipeline_flow(
     *,
     sandbox_value: str = "test-token",
 ) -> http.HTTPFlow:
-    return make_x_pipeline_flow(
+    flow = make_x_pipeline_flow(
         real_flow,
         tmp_path,
         path="/2/tweets/search/stream",
         sandbox_value=sandbox_value,
         rule="GET /2/tweets/search/stream",
     )
+    flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] = "already_stream_decodable"
+    return flow

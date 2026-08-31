@@ -45,6 +45,7 @@ REQUEST_HEADERS_PROBE_METADATA_KEYS = (
     metadata_keys.CLI_AGENT_TYPE,
     metadata_keys.BROWSER_USER_AGENT,
     metadata_keys.WEBSOCKET_UPGRADE_REQUEST,
+    metadata_keys.RESPONSE_ENCODING_NEGOTIATION,
     metadata_keys.ORIGINAL_URL,
     metadata_keys.TRUSTED_AUTHORITY_HOST,
     metadata_keys.NETWORK_LOG_TARGET,
@@ -474,8 +475,8 @@ def _classify_request(
         client_ip,
         frozenset(),
     )
-    if intent.status == "present" and intent.value in (
-        omitted_builtin_firewalls | omitted_custom_connector_ids
+    if intent.status == "present" and (
+        intent.value in omitted_builtin_firewalls or intent.value in omitted_custom_connector_ids
     ):
         return Allow(
             sandbox_info=sandbox_info,

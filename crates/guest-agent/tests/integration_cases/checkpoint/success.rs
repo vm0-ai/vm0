@@ -44,6 +44,69 @@ fn assert_session_history_prune_operation(
 }
 
 #[tokio::test]
+async fn pi_checkpoint_reports_full_combined_completion_payload() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let mut runtime = runtime_from_process_env().unwrap();
+    runtime.config.framework = guest_agent::env::Framework::Pi;
+    runtime.config.workspace_reuse_result = "sandboxReused".to_string();
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    guest_agent::paths::write_private(session_id_file(), session_id).unwrap();
+    let active_input_delivery_ids = vec!["11111111-1111-4111-8111-111111111111".to_string()];
+
+    let standalone_checkpoint = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/checkpoints");
+        then.status(200);
+    });
+    let complete = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/complete")
+            .json_body_includes(
+                json!({
+                    "runId": "test-run-001",
+                    "exitCode": 0,
+                    "lastEventSequence": 42,
+                    "sandboxId": "00000000-0000-4000-8000-000000000abc",
+                    "sandboxReuseResult": "reused",
+                    "workspaceReuseResult": "sandboxReused",
+                    "activeInputDeliveryIds": ["11111111-1111-4111-8111-111111111111"],
+                    "checkpoint": {
+                        "cliAgentType": "pi",
+                        "cliAgentSessionId": session_id,
+                        "cliAgentSessionHistoryDisposition": "unavailable"
+                    }
+                })
+                .to_string(),
+            );
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"success": true, "status": "completed"}));
+    });
+
+    let session_metadata =
+        guest_agent::session_metadata::CapturedSessionMetadata::for_test(session_id, None);
+    let checkpoint =
+        guest_agent::checkpoint::prepare_checkpoint_for_runtime(&runtime, &session_metadata)
+            .await
+            .unwrap();
+    guest_agent::complete::report_checkpoint_for_run(
+        &runtime,
+        0,
+        None,
+        Some(42),
+        &active_input_delivery_ids,
+        checkpoint,
+    )
+    .await
+    .unwrap();
+
+    standalone_checkpoint.assert_calls_async(0).await;
+    complete.assert_calls_async(1).await;
+}
+
+#[tokio::test]
 async fn success_checkpoint_preserves_small_codex_history() {
     let api = SharedApiMock::new().await;
     let server = api.server();
@@ -68,26 +131,29 @@ async fn success_checkpoint_preserves_small_codex_history() {
             .header("Content-Type", "application/json")
             .json_body(json!({"existing": true}));
     });
-    let checkpoint_mock = server.mock(|when, then| {
+    let complete_mock = server.mock(|when, then| {
         when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
+            .path("/api/webhooks/agent/complete")
             .json_body_includes(format!(
-                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
+                r#"{{"checkpoint":{{"cliAgentSessionHistoryHash":"{history_hash}"}}}}"#
             ));
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-unpruned-codex", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
+            .json_body(json!({"success": true, "status": "completed"}));
     });
 
-    guest_agent::checkpoint::create_checkpoint_for_runtime(
+    let checkpoint = guest_agent::checkpoint::prepare_checkpoint_for_runtime(
         &runtime,
         &checkpoint_session_metadata(&runtime),
     )
     .await
     .unwrap();
+    report_prepared_checkpoint(&runtime, 0, checkpoint)
+        .await
+        .unwrap();
 
     prepare_mock.assert_calls_async(1).await;
-    checkpoint_mock.assert_calls_async(1).await;
+    complete_mock.assert_calls_async(1).await;
     assert_eq!(std::fs::read(&history_path).unwrap(), history);
     assert_session_history_prune_operation(
         &runtime,
@@ -128,28 +194,26 @@ async fn checkpoint_rejects_mistyped_prepare_response_before_upload() {
         when.method(PUT).path(upload_path);
         then.status(200);
     });
-    let checkpoint_mock = server.mock(|when, then| {
-        when.method(POST).path("/api/webhooks/agent/checkpoints");
-        then.status(200).json_body(json!({
-            "checkpointId": "unreachable",
-            "agentSessionId": "test-agent-session",
-            "conversationId": "test-conversation",
-        }));
+    let complete_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/complete");
+        then.status(200)
+            .json_body(json!({"success": true, "status": "completed"}));
     });
 
-    let error = guest_agent::checkpoint::create_checkpoint_for_runtime(
+    let error = guest_agent::checkpoint::prepare_checkpoint_for_runtime(
         &runtime,
         &checkpoint_session_metadata(&runtime),
     )
     .await
-    .unwrap_err();
+    .err()
+    .expect("mistyped prepare response should fail checkpoint preparation");
 
     let message = error.to_string();
     assert!(message.contains("Invalid prepare-history response"));
     assert!(!message.contains(sensitive_response_value));
     prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(0).await;
-    checkpoint_mock.assert_calls_async(0).await;
+    complete_mock.assert_calls_async(0).await;
 }
 
 #[tokio::test]
@@ -179,21 +243,19 @@ async fn checkpoint_rejects_prepare_response_without_upload_url() {
         when.method(PUT);
         then.status(200);
     });
-    let checkpoint_mock = server.mock(|when, then| {
-        when.method(POST).path("/api/webhooks/agent/checkpoints");
-        then.status(200).json_body(json!({
-            "checkpointId": "unreachable",
-            "agentSessionId": "test-agent-session",
-            "conversationId": "test-conversation",
-        }));
+    let complete_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/complete");
+        then.status(200)
+            .json_body(json!({"success": true, "status": "completed"}));
     });
 
-    let error = guest_agent::checkpoint::create_checkpoint_for_runtime(
+    let error = guest_agent::checkpoint::prepare_checkpoint_for_runtime(
         &runtime,
         &checkpoint_session_metadata(&runtime),
     )
     .await
-    .unwrap_err();
+    .err()
+    .expect("missing upload URL should fail checkpoint preparation");
 
     assert!(
         error
@@ -202,7 +264,7 @@ async fn checkpoint_rejects_prepare_response_without_upload_url() {
     );
     prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(0).await;
-    checkpoint_mock.assert_calls_async(0).await;
+    complete_mock.assert_calls_async(0).await;
 }
 
 #[tokio::test]
@@ -228,15 +290,17 @@ async fn success_checkpoint_discards_oversized_claude_history_without_compact_bo
         then.status(500);
     });
     let expected_session_id = session_id.to_string();
-    let checkpoint_mock = server.mock(move |when, then| {
-        when.method(POST).path("/api/webhooks/agent/checkpoints");
+    let complete_mock = server.mock(move |when, then| {
+        when.method(POST).path("/api/webhooks/agent/complete");
         then.respond_with(move |request| {
             let body = serde_json::from_slice::<Value>(request.body_ref()).unwrap();
-            if body["cliAgentSessionId"] == expected_session_id
-                && body["cliAgentSessionHistoryDisposition"] == "discarded_oversized"
-                && body.get("cliAgentSessionHistoryHash").is_none()
+            if body["checkpoint"]["cliAgentSessionId"] == expected_session_id
+                && body["checkpoint"]["cliAgentSessionHistoryDisposition"] == "discarded_oversized"
+                && body["checkpoint"]
+                    .get("cliAgentSessionHistoryHash")
+                    .is_none()
             {
-                json_http_response(200, json!({"checkpointId": "checkpoint-discarded-claude", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}))
+                json_http_response(200, json!({"success": true, "status": "completed"}))
             } else {
                 http_status(400)
             }
@@ -246,7 +310,7 @@ async fn success_checkpoint_discards_oversized_claude_history_without_compact_bo
     create_bounded_checkpoint(&runtime).await.unwrap();
 
     prepare_mock.assert_calls_async(0).await;
-    checkpoint_mock.assert_calls_async(1).await;
+    complete_mock.assert_calls_async(1).await;
     assert_eq!(std::fs::read(history_path).unwrap(), history);
     assert_session_history_prune_operation(
         &runtime,
@@ -277,20 +341,22 @@ async fn success_checkpoint_discards_codex_history_that_jumps_past_hard_limit() 
             .path("/api/webhooks/agent/checkpoints/prepare-history");
         then.status(500);
     });
-    let checkpoint_mock = server.mock(|when, then| {
+    let complete_mock = server.mock(|when, then| {
         when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
-            .json_body_includes(r#"{"cliAgentType":"codex"}"#)
-            .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"discarded_oversized"}"#);
+            .path("/api/webhooks/agent/complete")
+            .json_body_includes(r#"{"checkpoint":{"cliAgentType":"codex"}}"#)
+            .json_body_includes(
+                r#"{"checkpoint":{"cliAgentSessionHistoryDisposition":"discarded_oversized"}}"#,
+            );
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-discarded-codex", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
+            .json_body(json!({"success": true, "status": "completed"}));
     });
 
     create_bounded_checkpoint(&runtime).await.unwrap();
 
     prepare_mock.assert_calls_async(0).await;
-    checkpoint_mock.assert_calls_async(1).await;
+    complete_mock.assert_calls_async(1).await;
     assert_eq!(std::fs::read(history_path).unwrap(), history);
     assert_session_history_prune_operation(
         &runtime,
@@ -324,19 +390,21 @@ async fn success_checkpoint_discards_codex_history_with_oversized_canonical_cand
             .path("/api/webhooks/agent/checkpoints/prepare-history");
         then.status(500);
     });
-    let checkpoint_mock = server.mock(|when, then| {
+    let complete_mock = server.mock(|when, then| {
         when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
-            .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"discarded_oversized"}"#);
+            .path("/api/webhooks/agent/complete")
+            .json_body_includes(
+                r#"{"checkpoint":{"cliAgentSessionHistoryDisposition":"discarded_oversized"}}"#,
+            );
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-discarded-candidate", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
+            .json_body(json!({"success": true, "status": "completed"}));
     });
 
     create_bounded_checkpoint(&runtime).await.unwrap();
 
     prepare_mock.assert_calls_async(0).await;
-    checkpoint_mock.assert_calls_async(1).await;
+    complete_mock.assert_calls_async(1).await;
     assert_eq!(std::fs::read(history_path).unwrap(), history);
     assert_session_history_prune_operation(
         &runtime,
@@ -358,18 +426,20 @@ async fn checkpoint_continues_when_codex_history_is_missing() {
     let home = tempfile::tempdir().unwrap();
     use_test_codex_home(&mut runtime, home.path());
     guest_agent::paths::write_private(session_id_file(), session_id).unwrap();
-    let checkpoint_mock = server.mock(|when, then| {
+    let complete_mock = server.mock(|when, then| {
         when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
-            .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"unavailable"}"#);
+            .path("/api/webhooks/agent/complete")
+            .json_body_includes(
+                r#"{"checkpoint":{"cliAgentSessionHistoryDisposition":"unavailable"}}"#,
+            );
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-history-unavailable", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
+            .json_body(json!({"success": true, "status": "completed"}));
     });
 
     create_bounded_checkpoint(&runtime).await.unwrap();
 
-    checkpoint_mock.assert_calls_async(1).await;
+    complete_mock.assert_calls_async(1).await;
     let operations = std::fs::read_to_string(runtime.paths.sandbox_ops_file()).unwrap();
     assert!(operations.lines().any(|line| {
         let operation: Value = serde_json::from_str(line).unwrap();
@@ -379,7 +449,7 @@ async fn checkpoint_continues_when_codex_history_is_missing() {
 }
 
 #[tokio::test]
-async fn checkpoint_rejects_create_response_missing_required_identity() {
+async fn combined_checkpoint_accepts_terminal_acknowledgement_without_checkpoint_identity() {
     let api = SharedApiMock::new().await;
     let server = api.server();
     let mut runtime = runtime_from_process_env().unwrap();
@@ -389,26 +459,19 @@ async fn checkpoint_rejects_create_response_missing_required_identity() {
     let home = tempfile::tempdir().unwrap();
     use_test_codex_home(&mut runtime, home.path());
     guest_agent::paths::write_private(session_id_file(), session_id).unwrap();
-    let checkpoint_mock = server.mock(|when, then| {
+    let complete_mock = server.mock(|when, then| {
         when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
-            .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"unavailable"}"#);
+            .path("/api/webhooks/agent/complete")
+            .json_body_includes(
+                r#"{"checkpoint":{"cliAgentSessionHistoryDisposition":"unavailable"}}"#,
+            );
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({
-                "checkpointId": "checkpoint-invalid-response",
-                "conversationId": "test-conversation",
-            }));
+            .json_body(json!({"success": true, "status": "completed"}));
     });
 
-    let error = create_bounded_checkpoint(&runtime).await.unwrap_err();
-
-    assert!(
-        error
-            .to_string()
-            .contains("Invalid checkpoint API response")
-    );
-    checkpoint_mock.assert_calls_async(1).await;
+    create_bounded_checkpoint(&runtime).await.unwrap();
+    complete_mock.assert_calls_async(1).await;
 }
 
 #[tokio::test]
@@ -423,13 +486,15 @@ async fn success_checkpoint_reports_invalid_local_history_as_unavailable() {
             .path("/api/webhooks/agent/checkpoints/prepare-history");
         then.status(400);
     });
-    let checkpoint_mock = server.mock(|when, then| {
+    let complete_mock = server.mock(|when, then| {
         when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
-            .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"unavailable"}"#);
+            .path("/api/webhooks/agent/complete")
+            .json_body_includes(
+                r#"{"checkpoint":{"cliAgentSessionHistoryDisposition":"unavailable"}}"#,
+            );
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-invalid-local-history", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
+            .json_body(json!({"success": true, "status": "completed"}));
     });
 
     let cases: [(&str, &[u8]); 2] = [
@@ -454,7 +519,7 @@ async fn success_checkpoint_reports_invalid_local_history_as_unavailable() {
     }
 
     prepare_mock.assert_calls_async(0).await;
-    checkpoint_mock.assert_calls_async(2).await;
+    complete_mock.assert_calls_async(2).await;
 }
 
 #[tokio::test]
@@ -482,19 +547,21 @@ async fn success_checkpoint_reports_invalid_reused_zstd_history_as_unavailable()
             .path("/api/webhooks/agent/checkpoints/prepare-history");
         then.status(400);
     });
-    let checkpoint_mock = server.mock(|when, then| {
+    let complete_mock = server.mock(|when, then| {
         when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
-            .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"unavailable"}"#);
+            .path("/api/webhooks/agent/complete")
+            .json_body_includes(
+                r#"{"checkpoint":{"cliAgentSessionHistoryDisposition":"unavailable"}}"#,
+            );
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-invalid-zstd-history", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
+            .json_body(json!({"success": true, "status": "completed"}));
     });
 
     create_bounded_checkpoint(&runtime).await.unwrap();
 
     prepare_mock.assert_calls_async(0).await;
-    checkpoint_mock.assert_calls_async(1).await;
+    complete_mock.assert_calls_async(1).await;
     assert!(!std::path::Path::new(runtime.paths.final_session_history_identity_file()).exists());
 }
 
@@ -546,18 +613,20 @@ async fn success_checkpoint_reconciles_claude_compact_generation_after_commit() 
         then.respond_with(move |req| upload_validation_response(req, &upload_body, &upload_len));
     });
     let checkpoint_history_path = history_path.clone();
-    let checkpoint_mock = server.mock(|when, then| {
+    let complete_mock = server.mock(|when, then| {
         when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
-            .json_body_includes(format!(r#"{{"cliAgentSessionId":"{session_id}"}}"#))
+            .path("/api/webhooks/agent/complete")
             .json_body_includes(format!(
-                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
+                r#"{{"checkpoint":{{"cliAgentSessionId":"{session_id}"}}}}"#
+            ))
+            .json_body_includes(format!(
+                r#"{{"checkpoint":{{"cliAgentSessionHistoryHash":"{history_hash}"}}}}"#
             ));
         then.respond_with(move |_| {
             if std::fs::metadata(&checkpoint_history_path)
                 .is_ok_and(|metadata| metadata.len() == source_size)
             {
-                json_http_response(200, json!({"checkpointId": "checkpoint-pruned-claude", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}))
+                json_http_response(200, json!({"success": true, "status": "completed"}))
             } else {
                 http_status(500)
             }
@@ -568,7 +637,7 @@ async fn success_checkpoint_reconciles_claude_compact_generation_after_commit() 
 
     prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(1).await;
-    checkpoint_mock.assert_calls_async(1).await;
+    complete_mock.assert_calls_async(1).await;
     assert_eq!(std::fs::read(&history_path).unwrap(), candidate);
 
     let identity_bytes =
@@ -637,19 +706,21 @@ async fn success_checkpoint_reconciles_codex_compact_generation_after_commit() {
         });
     });
     let checkpoint_history_path = history_path.clone();
-    let checkpoint_mock = server.mock(|when, then| {
+    let complete_mock = server.mock(|when, then| {
         when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
-            .json_body_includes(format!(r#"{{"cliAgentSessionId":"{session_id}"}}"#))
-            .json_body_includes(r#"{"cliAgentType":"codex"}"#)
+            .path("/api/webhooks/agent/complete")
             .json_body_includes(format!(
-                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
+                r#"{{"checkpoint":{{"cliAgentSessionId":"{session_id}"}}}}"#
+            ))
+            .json_body_includes(r#"{"checkpoint":{"cliAgentType":"codex"}}"#)
+            .json_body_includes(format!(
+                r#"{{"checkpoint":{{"cliAgentSessionHistoryHash":"{history_hash}"}}}}"#
             ));
         then.respond_with(move |_| {
             if std::fs::metadata(&checkpoint_history_path)
                 .is_ok_and(|metadata| metadata.len() == source_size)
             {
-                json_http_response(200, json!({"checkpointId": "checkpoint-pruned-codex", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}))
+                json_http_response(200, json!({"success": true, "status": "completed"}))
             } else {
                 http_status(500)
             }
@@ -660,7 +731,7 @@ async fn success_checkpoint_reconciles_codex_compact_generation_after_commit() {
 
     prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(1).await;
-    checkpoint_mock.assert_calls_async(1).await;
+    complete_mock.assert_calls_async(1).await;
     assert_eq!(std::fs::read(&history_path).unwrap(), candidate);
 
     let identity_bytes =
@@ -705,11 +776,11 @@ async fn success_checkpoint_omits_identity_when_live_history_replacement_fails()
     });
     let replacement_history_path = history_path.clone();
     let replacement_moved_dir = moved_history_dir.clone();
-    let checkpoint_mock = server.mock(|when, then| {
+    let complete_mock = server.mock(|when, then| {
         when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
+            .path("/api/webhooks/agent/complete")
             .json_body_includes(format!(
-                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
+                r#"{{"checkpoint":{{"cliAgentSessionHistoryHash":"{history_hash}"}}}}"#
             ));
         then.respond_with(move |_| {
             let history_parent = replacement_history_path.parent().unwrap();
@@ -720,17 +791,14 @@ async fn success_checkpoint_omits_identity_when_live_history_replacement_fails()
                 &replacement_history_path,
             )
             .unwrap();
-            json_http_response(
-                200,
-                json!({"checkpointId": "checkpoint-pruned-unreconciled", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}),
-            )
+            json_http_response(200, json!({"success": true, "status": "completed"}))
         });
     });
 
     create_bounded_checkpoint(&runtime).await.unwrap();
 
     prepare_mock.assert_calls_async(1).await;
-    checkpoint_mock.assert_calls_async(1).await;
+    complete_mock.assert_calls_async(1).await;
     assert_eq!(std::fs::metadata(&history_path).unwrap().len(), source_size);
     assert!(!std::path::Path::new(runtime.paths.final_session_history_identity_file()).exists());
     std::fs::remove_dir_all(moved_history_dir).unwrap();
@@ -757,24 +825,20 @@ async fn success_checkpoint_keeps_live_history_when_compact_commit_fails() {
             .header("Content-Type", "application/json")
             .json_body(json!({"existing": true}));
     });
-    let checkpoint_mock = server.mock(|when, then| {
+    let complete_mock = server.mock(|when, then| {
         when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
+            .path("/api/webhooks/agent/complete")
             .json_body_includes(format!(
-                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
+                r#"{{"checkpoint":{{"cliAgentSessionHistoryHash":"{history_hash}"}}}}"#
             ));
-        then.status(200).header("Content-Type", "application/json");
+        then.status(500).header("Content-Type", "application/json");
     });
 
     let error = create_bounded_checkpoint(&runtime).await.unwrap_err();
 
-    assert!(
-        error
-            .to_string()
-            .contains("Invalid checkpoint API response")
-    );
+    assert!(error.to_string().contains("POST failed after 3 attempts"));
     prepare_mock.assert_calls_async(1).await;
-    checkpoint_mock.assert_calls_async(1).await;
+    complete_mock.assert_calls_async(3).await;
     assert_eq!(std::fs::metadata(&history_path).unwrap().len(), source_size);
     assert!(!std::path::Path::new(runtime.paths.final_session_history_identity_file()).exists());
 }
@@ -818,28 +882,29 @@ async fn success_checkpoint_writes_large_final_identity_metadata()
             .header("Content-Type", "application/octet-stream");
         then.respond_with(move |req| upload_zstd_validation_response(req, &upload_body));
     });
-    let checkpoint_mock = server.mock(|when, then| {
+    let complete_mock = server.mock(|when, then| {
         when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
-            .json_body_includes(r#"{"cliAgentSessionId":"success-large-session"}"#)
+            .path("/api/webhooks/agent/complete")
+            .json_body_includes(r#"{"checkpoint":{"cliAgentSessionId":"success-large-session"}}"#)
             .json_body_includes(format!(
-                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
+                r#"{{"checkpoint":{{"cliAgentSessionHistoryHash":"{history_hash}"}}}}"#
             ));
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-success-large", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
+            .json_body(json!({"success": true, "status": "completed"}));
     });
 
-    let result = guest_agent::checkpoint::create_checkpoint_for_runtime(
+    let result = guest_agent::checkpoint::prepare_checkpoint_for_runtime(
         &runtime,
         &checkpoint_session_metadata(&runtime),
     )
     .await;
 
-    assert!(result.is_ok());
+    let checkpoint = result.unwrap();
+    report_prepared_checkpoint(&runtime, 0, checkpoint).await?;
     prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(1).await;
-    checkpoint_mock.assert_calls_async(1).await;
+    complete_mock.assert_calls_async(1).await;
 
     let identity_bytes =
         std::fs::read(runtime.paths.final_session_history_identity_file()).unwrap();
@@ -898,20 +963,22 @@ async fn success_checkpoint_propagates_zstd_prepare_bad_request()
         when.method(PUT);
         then.status(200);
     });
-    let checkpoint_mock = server.mock(|when, then| {
-        when.method(POST).path("/api/webhooks/agent/checkpoints");
+    let complete_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/complete");
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "unexpected", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
+            .json_body(json!({"success": true, "status": "completed"}));
     });
 
-    let result = guest_agent::checkpoint::create_checkpoint_for_runtime(
+    let result = guest_agent::checkpoint::prepare_checkpoint_for_runtime(
         &runtime,
         &checkpoint_session_metadata(&runtime),
     )
     .await;
 
-    let err = result.unwrap_err();
+    let err = result
+        .err()
+        .expect("mismatched existing blob should fail checkpoint preparation");
     assert!(
         err.to_string()
             .contains("Session history encoded size does not match the existing blob"),
@@ -919,7 +986,7 @@ async fn success_checkpoint_propagates_zstd_prepare_bad_request()
     );
     zstd_prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(0).await;
-    checkpoint_mock.assert_calls_async(0).await;
+    complete_mock.assert_calls_async(0).await;
     Ok(())
 }
 
@@ -957,20 +1024,22 @@ async fn success_checkpoint_rejects_missing_zstd_encoding_acknowledgement()
         when.method(PUT).path("/test/zstd-unack-history-upload");
         then.status(200);
     });
-    let checkpoint_mock = server.mock(|when, then| {
-        when.method(POST).path("/api/webhooks/agent/checkpoints");
+    let complete_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/complete");
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "unexpected", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
+            .json_body(json!({"success": true, "status": "completed"}));
     });
 
-    let result = guest_agent::checkpoint::create_checkpoint_for_runtime(
+    let result = guest_agent::checkpoint::prepare_checkpoint_for_runtime(
         &runtime,
         &checkpoint_session_metadata(&runtime),
     )
     .await;
 
-    let err = result.unwrap_err();
+    let err = result
+        .err()
+        .expect("missing zstd acknowledgement should fail checkpoint preparation");
     assert!(
         err.to_string()
             .contains("Prepare-history response did not acknowledge zstd"),
@@ -978,7 +1047,7 @@ async fn success_checkpoint_rejects_missing_zstd_encoding_acknowledgement()
     );
     zstd_prepare_mock.assert_calls_async(1).await;
     zstd_upload_mock.assert_calls_async(0).await;
-    checkpoint_mock.assert_calls_async(0).await;
+    complete_mock.assert_calls_async(0).await;
     Ok(())
 }
 
@@ -1019,20 +1088,22 @@ async fn success_checkpoint_rejects_new_zstd_with_mismatched_encoding_acknowledg
             .path("/test/zstd-new-mismatched-ack-upload");
         then.status(200);
     });
-    let checkpoint_mock = server.mock(|when, then| {
-        when.method(POST).path("/api/webhooks/agent/checkpoints");
+    let complete_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/complete");
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "unexpected", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
+            .json_body(json!({"success": true, "status": "completed"}));
     });
 
-    let result = guest_agent::checkpoint::create_checkpoint_for_runtime(
+    let result = guest_agent::checkpoint::prepare_checkpoint_for_runtime(
         &runtime,
         &checkpoint_session_metadata(&runtime),
     )
     .await;
 
-    let err = result.unwrap_err();
+    let err = result
+        .err()
+        .expect("mismatched zstd acknowledgement should fail checkpoint preparation");
     assert!(
         err.to_string()
             .contains("Prepare-history response did not acknowledge zstd"),
@@ -1040,7 +1111,7 @@ async fn success_checkpoint_rejects_new_zstd_with_mismatched_encoding_acknowledg
     );
     zstd_prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(0).await;
-    checkpoint_mock.assert_calls_async(0).await;
+    complete_mock.assert_calls_async(0).await;
     Ok(())
 }
 
@@ -1079,28 +1150,31 @@ async fn success_checkpoint_accepts_existing_gzip_for_zstd_history()
         when.method(PUT);
         then.status(200);
     });
-    let checkpoint_mock = server.mock(|when, then| {
+    let complete_mock = server.mock(|when, then| {
         when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
-            .json_body_includes(r#"{"cliAgentSessionId":"zstd-existing-gzip-session"}"#)
+            .path("/api/webhooks/agent/complete")
+            .json_body_includes(
+                r#"{"checkpoint":{"cliAgentSessionId":"zstd-existing-gzip-session"}}"#,
+            )
             .json_body_includes(format!(
-                r#"{{"cliAgentSessionHistoryHash":"{history_hash}"}}"#
+                r#"{{"checkpoint":{{"cliAgentSessionHistoryHash":"{history_hash}"}}}}"#
             ));
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-existing-gzip", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
+            .json_body(json!({"success": true, "status": "completed"}));
     });
 
-    let result = guest_agent::checkpoint::create_checkpoint_for_runtime(
+    let result = guest_agent::checkpoint::prepare_checkpoint_for_runtime(
         &runtime,
         &checkpoint_session_metadata(&runtime),
     )
     .await;
 
-    assert!(result.is_ok());
+    let checkpoint = result.unwrap();
+    report_prepared_checkpoint(&runtime, 0, checkpoint).await?;
     prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(0).await;
-    checkpoint_mock.assert_calls_async(1).await;
+    complete_mock.assert_calls_async(1).await;
     Ok(())
 }
 
@@ -1139,20 +1213,22 @@ async fn success_checkpoint_propagates_zstd_auth_failure() -> Result<(), Box<dyn
         when.method(PUT);
         then.status(200);
     });
-    let checkpoint_mock = server.mock(|when, then| {
-        when.method(POST).path("/api/webhooks/agent/checkpoints");
+    let complete_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/complete");
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "unexpected", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
+            .json_body(json!({"success": true, "status": "completed"}));
     });
 
-    let result = guest_agent::checkpoint::create_checkpoint_for_runtime(
+    let result = guest_agent::checkpoint::prepare_checkpoint_for_runtime(
         &runtime,
         &checkpoint_session_metadata(&runtime),
     )
     .await;
 
-    let err = result.unwrap_err();
+    let err = result
+        .err()
+        .expect("authorization failure should fail checkpoint preparation");
     assert!(
         err.to_string()
             .contains("unauthorized checkpoint history prepare"),
@@ -1160,7 +1236,7 @@ async fn success_checkpoint_propagates_zstd_auth_failure() -> Result<(), Box<dyn
     );
     zstd_prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(0).await;
-    checkpoint_mock.assert_calls_async(0).await;
+    complete_mock.assert_calls_async(0).await;
     Ok(())
 }
 
@@ -1241,27 +1317,30 @@ async fn success_checkpoint_uses_explicit_runtime_after_process_env_changes() {
             .body(history.as_str());
         then.status(200);
     });
-    let checkpoint_mock = server.mock(|when, then| {
+    let complete_mock = server.mock(|when, then| {
         when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
+            .path("/api/webhooks/agent/complete")
             .json_body_includes(r#"{"runId":"captured-run"}"#)
-            .json_body_includes(r#"{"cliAgentType":"claude-code"}"#)
-            .json_body_includes(r#"{"cliAgentSessionId":"captured-session"}"#);
+            .json_body_includes(r#"{"checkpoint":{"cliAgentType":"claude-code"}}"#)
+            .json_body_includes(r#"{"checkpoint":{"cliAgentSessionId":"captured-session"}}"#);
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-explicit-runtime", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
+            .json_body(json!({"success": true, "status": "completed"}));
     });
 
-    let result = guest_agent::checkpoint::create_checkpoint_for_runtime(
+    let result = guest_agent::checkpoint::prepare_checkpoint_for_runtime(
         &runtime,
         &checkpoint_session_metadata(&runtime),
     )
     .await;
 
-    assert!(result.is_ok());
+    let checkpoint = result.unwrap();
+    report_prepared_checkpoint(&runtime, 0, checkpoint)
+        .await
+        .unwrap();
     prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(1).await;
-    checkpoint_mock.assert_calls_async(1).await;
+    complete_mock.assert_calls_async(1).await;
     assert!(
         std::path::Path::new(&final_identity_file).exists(),
         "final identity should be written under explicit runtime paths"

@@ -403,6 +403,16 @@ export function mockChatLifecycle(
   let runUserEventId = "msg-user-sent";
   let runUserMessage: UserMessageDocument | undefined;
   let runAssociated = false;
+  const initialDynamicSeqId = Math.max(
+    (historyEvents.length + chatEvents.length + 1) * 4,
+    ...[...historyEvents, ...chatEvents].flatMap((event) => {
+      return event.seqId === undefined ? [] : [event.seqId];
+    }),
+  );
+  let nextDynamicSeqId = initialDynamicSeqId;
+  let runUserSeqId: number | undefined;
+  let assistantSeqId: number | undefined;
+  let completedMarkerSeqId: number | undefined;
   let threadTitle: string | null = options?.threadTitle ?? null;
   let selectedModel: string | null = options?.selectedModel ?? null;
   let codexServiceTier: CodexServiceTier | null =
@@ -413,10 +423,11 @@ export function mockChatLifecycle(
   let latestThreadEventSeqId: number | null = null;
   const queuedEvents: MockChatEvent[] = [];
   const optionActiveRunIds = options?.activeRunIds ?? [];
-  // Version counter: bumped whenever the run reaches a terminal state so
-  // subsequent polls discover a "new" assistant event row (simulating the
-  // real server inserting event-backed rows on run completion).
-  let assistantVersion = 0;
+
+  const allocateDynamicSeqId = (): number => {
+    nextDynamicSeqId++;
+    return nextDynamicSeqId;
+  };
 
   const rememberRunUserEventId = (clientEventId: string | undefined) => {
     if (clientEventId !== undefined) {
@@ -430,7 +441,7 @@ export function mockChatLifecycle(
     }
     runStatus = "cancelled";
     runError = "Run cancelled";
-    assistantVersion++;
+    assistantSeqId = allocateDynamicSeqId();
     createChatEvent(threadId);
   };
 
@@ -450,6 +461,7 @@ export function mockChatLifecycle(
       role: "user" as const,
       content: null,
       revokesEventId: body.revokesEventId,
+      seqId: allocateDynamicSeqId(),
       createdAt: now,
     });
     return { runId: null, threadId: body.threadId, createdAt: now };
@@ -471,6 +483,7 @@ export function mockChatLifecycle(
       role: "user" as const,
       content: null,
       interruptsRunId: body.interruptsRunId,
+      seqId: allocateDynamicSeqId(),
       createdAt: now,
     });
     markRunCancelled();
@@ -557,6 +570,7 @@ export function mockChatLifecycle(
         content: runPrompt ?? "Hello",
         ...(runUserMessage ? { userMessage: runUserMessage } : {}),
         runId: MOCK_RUN_ID,
+        seqId: runUserSeqId,
         createdAt: "2026-03-10T00:00:01Z",
       });
       pagedEvents.push({
@@ -569,6 +583,7 @@ export function mockChatLifecycle(
           runStatus === "failed" || runStatus === "cancelled"
             ? runStatus
             : undefined,
+        seqId: assistantSeqId,
         createdAt: "2026-03-10T00:00:02Z",
       });
       if (runStatus === "completed") {
@@ -578,18 +593,19 @@ export function mockChatLifecycle(
           content: null,
           runId: MOCK_RUN_ID,
           runLifecycleEvent: "completed",
+          seqId: completedMarkerSeqId,
           createdAt: "2026-03-10T00:00:03Z",
         });
       }
     }
 
-    return pagedEvents.map((event, index) => {
-      const versionOffset =
-        event.id === assistantId || event.id === "msg-assistant-run-marker"
-          ? assistantVersion
-          : 0;
-      return { ...event, seqId: index + 1 + versionOffset };
-    });
+    return pagedEvents
+      .map((event, index) => {
+        return { ...event, seqId: event.seqId ?? index + 1 };
+      })
+      .sort((left, right) => {
+        return left.seqId - right.seqId;
+      });
   };
 
   const appendQueuedUserMessage = async (body: {
@@ -619,6 +635,7 @@ export function mockChatLifecycle(
       role: "user" as const,
       content: body.prompt ?? "",
       ...(body.userMessage ? { userMessage: body.userMessage } : {}),
+      seqId: allocateDynamicSeqId(),
       createdAt: now,
     });
     return { runId: null, threadId, createdAt: now };
@@ -658,6 +675,9 @@ export function mockChatLifecycle(
     selectedModel = modelSelection?.selectedModel ?? selectedModel;
     codexServiceTier = body.runOptions?.codexServiceTier ?? null;
     runAssociated = true;
+    runUserSeqId = allocateDynamicSeqId();
+    assistantSeqId = allocateDynamicSeqId();
+    completedMarkerSeqId = undefined;
     createChatEvent(threadId);
     return {
       runId: MOCK_RUN_ID,
@@ -876,7 +896,7 @@ export function mockChatLifecycle(
     },
     setRunOutput: (content) => {
       resultContent = content;
-      assistantVersion++;
+      assistantSeqId = allocateDynamicSeqId();
       createChatEvent(threadId);
     },
     setThreadList: (list) => {
@@ -891,13 +911,14 @@ export function mockChatLifecycle(
       runStatus = "completed";
       resultContent = content ?? "";
       threadTitle = threadTitle ?? runPrompt;
-      assistantVersion++;
+      assistantSeqId = allocateDynamicSeqId();
+      completedMarkerSeqId = allocateDynamicSeqId();
       createChatEvent(threadId);
     },
     failRun: (error: string) => {
       runStatus = "failed";
       runError = error;
-      assistantVersion++;
+      assistantSeqId = allocateDynamicSeqId();
       createChatEvent(threadId);
     },
     cancelRun: () => {

@@ -16,6 +16,7 @@
  */
 import { orgTierSchema } from "@okouai/api-contracts/contracts/orgs";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
+import { orgMetadataLegacyWrites } from "@okouai/db/operations/org-metadata-legacy-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { createStore } from "ccstate";
 import { eq, sql } from "drizzle-orm";
@@ -33,10 +34,10 @@ export async function upsertOrgMetadataFixture(values: {
     .set(writeDb$)
     .transaction(async (tx) => {
       await tx
-        .insert(orgMetadata)
+        .insert(orgMetadataLegacyWrites)
         .values(values)
         .onConflictDoUpdate({
-          target: orgMetadata.orgId,
+          target: orgMetadataLegacyWrites.orgId,
           set: {
             tier: values.tier,
             credits: values.credits,

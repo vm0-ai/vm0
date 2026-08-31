@@ -1,18 +1,19 @@
-//! Checkpoint creation — reads session history and calls checkpoint API.
+//! Checkpoint preparation and post-completion local reconciliation.
 
 mod artifact;
 mod session_history;
 
-use crate::constants;
 use crate::env;
 use crate::error::AgentError;
 use crate::http::HttpClient;
 use crate::run_context::GuestRuntime;
 use crate::session_metadata::CapturedSessionMetadata;
-use api_contracts::generated::types::webhooks::agent::checkpoints;
+use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
+use api_contracts::generated::types::webhooks::agent::{checkpoints, complete};
+use guest_common::log_info;
 use guest_common::telemetry::record_sandbox_op;
-use guest_common::{log_error, log_info, log_warn};
 use std::borrow::Cow;
+use std::time::{Duration, Instant};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
@@ -42,28 +43,6 @@ impl CheckpointMode {
     }
 }
 
-/// Log the message, record a failed `sandbox_op`, and build a matching
-/// `Checkpoint` error. Success-path checkpoint failures are run-fatal and
-/// logged as errors; recovery checkpoint skips are best-effort and stay warn.
-fn fail(
-    mode: CheckpointMode,
-    op: &str,
-    start: std::time::Instant,
-    msg: impl Into<String>,
-) -> AgentError {
-    let msg = msg.into();
-    record_failure(mode, op, start, &msg);
-    AgentError::Checkpoint(msg)
-}
-
-fn record_failure(mode: CheckpointMode, op: &str, start: std::time::Instant, msg: &str) {
-    match mode {
-        CheckpointMode::Success => log_error!(LOG_TAG, "{msg}"),
-        CheckpointMode::Recovery => log_warn!(LOG_TAG, "{msg}"),
-    }
-    record_sandbox_op(op, start.elapsed(), false, Some(msg));
-}
-
 struct CheckpointInputs<'a> {
     run_id: &'a str,
     framework: env::Framework,
@@ -91,97 +70,197 @@ impl<'a> CheckpointInputs<'a> {
     }
 }
 
-/// Create a checkpoint after a successful run using the explicit runtime snapshot.
-pub async fn create_checkpoint_for_runtime(
-    runtime: &GuestRuntime,
-    session_metadata: &CapturedSessionMetadata,
-) -> Result<(), AgentError> {
-    let inputs = CheckpointInputs::from_runtime(runtime, session_metadata);
-    create_checkpoint_with_inputs(&runtime.http, &inputs).await
+/// Checkpoint metadata and local state awaiting atomic completion acknowledgement.
+pub struct PreparedCheckpoint {
+    request: complete::RequestCheckpoint,
+    mode: CheckpointMode,
+    uploaded_history: Option<session_history::UploadedCheckpointSessionHistory>,
+    framework: env::Framework,
+    final_session_history_identity_file: String,
+    total_started_at: Instant,
 }
 
-/// Create a checkpoint with bounded session-history limits for integration tests.
+impl PreparedCheckpoint {
+    pub(crate) fn request(&self) -> &complete::RequestCheckpoint {
+        &self.request
+    }
+
+    pub(crate) fn acknowledge(self, api_elapsed: Duration) {
+        record_sandbox_op("checkpoint_api_call", api_elapsed, true, None);
+        if let Some(uploaded_history) = self.uploaded_history
+            && session_history::reconcile_live_history_after_checkpoint(
+                uploaded_history.live_history,
+            )
+        {
+            session_history::write_final_session_history_identity(
+                self.mode,
+                &uploaded_history.cli_agent_session_id,
+                &uploaded_history.history_hash,
+                uploaded_history.history_size,
+                &uploaded_history.history_source,
+                self.framework,
+                &self.final_session_history_identity_file,
+            );
+        }
+        log_info!(LOG_TAG, "{} persisted successfully", self.mode.log_label());
+        record_sandbox_op(
+            self.mode.total_op(),
+            self.total_started_at.elapsed(),
+            true,
+            None,
+        );
+    }
+
+    pub(crate) fn record_persistence_failure(self, api_elapsed: Duration) {
+        record_sandbox_op("checkpoint_api_call", api_elapsed, false, None);
+        record_sandbox_op(
+            self.mode.total_op(),
+            self.total_started_at.elapsed(),
+            false,
+            None,
+        );
+    }
+}
+
+/// Prepare a checkpoint after a successful run using the explicit runtime snapshot.
+pub async fn prepare_checkpoint_for_runtime(
+    runtime: &GuestRuntime,
+    session_metadata: &CapturedSessionMetadata,
+) -> Result<PreparedCheckpoint, AgentError> {
+    let inputs = CheckpointInputs::from_runtime(runtime, session_metadata);
+    prepare_checkpoint_with_inputs(&runtime.http, &inputs).await
+}
+
+/// Prepare a checkpoint with bounded session-history limits for integration tests.
 #[doc(hidden)]
-pub async fn create_checkpoint_for_runtime_with_history_limits_for_test(
+pub async fn prepare_checkpoint_for_runtime_with_history_limits_for_test(
     runtime: &GuestRuntime,
     session_metadata: &CapturedSessionMetadata,
     candidate_max_bytes: u64,
     checkpoint_max_bytes: u64,
-) -> Result<(), AgentError> {
+) -> Result<PreparedCheckpoint, AgentError> {
     let mut inputs = CheckpointInputs::from_runtime(runtime, session_metadata);
     inputs.session_history_limits =
         session_history::CheckpointSessionHistoryLimits::BoundedForTest {
             candidate_max_bytes,
             checkpoint_max_bytes,
         };
-    create_checkpoint_with_inputs(&runtime.http, &inputs).await
+    prepare_checkpoint_with_inputs(&runtime.http, &inputs).await
 }
 
-/// Create a best-effort recovery checkpoint using the explicit runtime snapshot.
-pub async fn create_recovery_checkpoint_for_runtime(
+/// Prepare a best-effort recovery checkpoint using the explicit runtime snapshot.
+pub async fn prepare_recovery_checkpoint_for_runtime(
     runtime: &GuestRuntime,
     session_metadata: &CapturedSessionMetadata,
-) -> Result<(), AgentError> {
+) -> Result<PreparedCheckpoint, AgentError> {
     let inputs = CheckpointInputs::from_runtime(runtime, session_metadata);
-    create_recovery_checkpoint_with_inputs(&runtime.http, &inputs).await
+    prepare_recovery_checkpoint_with_inputs(&runtime.http, &inputs).await
 }
 
-/// Create a recovery checkpoint with bounded session-history limits for integration tests.
+/// Prepare a recovery checkpoint with bounded session-history limits for integration tests.
 #[doc(hidden)]
-pub async fn create_recovery_checkpoint_for_runtime_with_history_limits_for_test(
+pub async fn prepare_recovery_checkpoint_for_runtime_with_history_limits_for_test(
     runtime: &GuestRuntime,
     session_metadata: &CapturedSessionMetadata,
     candidate_max_bytes: u64,
     checkpoint_max_bytes: u64,
-) -> Result<(), AgentError> {
+) -> Result<PreparedCheckpoint, AgentError> {
     let mut inputs = CheckpointInputs::from_runtime(runtime, session_metadata);
     inputs.session_history_limits =
         session_history::CheckpointSessionHistoryLimits::BoundedForTest {
             candidate_max_bytes,
             checkpoint_max_bytes,
         };
-    create_recovery_checkpoint_with_inputs(&runtime.http, &inputs).await
+    prepare_recovery_checkpoint_with_inputs(&runtime.http, &inputs).await
 }
 
-async fn create_checkpoint_with_inputs(
+async fn prepare_checkpoint_with_inputs(
     http: &HttpClient,
     inputs: &CheckpointInputs<'_>,
-) -> Result<(), AgentError> {
-    let start = std::time::Instant::now();
-    let result = create_checkpoint_impl(http, CheckpointMode::Success, inputs).await;
-    record_sandbox_op(
-        CheckpointMode::Success.total_op(),
-        start.elapsed(),
-        result.is_ok(),
-        None,
-    );
-    result
+) -> Result<PreparedCheckpoint, AgentError> {
+    prepare_checkpoint_for_mode(http, CheckpointMode::Success, inputs).await
 }
 
-async fn create_recovery_checkpoint_with_inputs(
+async fn prepare_recovery_checkpoint_with_inputs(
     http: &HttpClient,
     inputs: &CheckpointInputs<'_>,
-) -> Result<(), AgentError> {
-    let start = std::time::Instant::now();
-    let result = create_checkpoint_impl(http, CheckpointMode::Recovery, inputs).await;
-    record_sandbox_op(
-        CheckpointMode::Recovery.total_op(),
-        start.elapsed(),
-        result.is_ok(),
-        None,
-    );
-    result
+) -> Result<PreparedCheckpoint, AgentError> {
+    prepare_checkpoint_for_mode(http, CheckpointMode::Recovery, inputs).await
 }
 
-async fn create_checkpoint_impl(
+async fn prepare_checkpoint_for_mode(
     http: &HttpClient,
     mode: CheckpointMode,
     inputs: &CheckpointInputs<'_>,
-) -> Result<(), AgentError> {
-    log_info!(LOG_TAG, "Creating {}...", mode.log_label());
+) -> Result<PreparedCheckpoint, AgentError> {
+    let total_started_at = Instant::now();
+    let result = prepare_checkpoint_impl(http, mode, inputs).await;
+    if result.is_err() {
+        record_sandbox_op(mode.total_op(), total_started_at.elapsed(), false, None);
+    }
+    result.map(|prepared| PreparedCheckpoint {
+        request: prepared.request,
+        mode,
+        uploaded_history: prepared.uploaded_history,
+        framework: inputs.framework,
+        final_session_history_identity_file: inputs.final_session_history_identity_file.to_string(),
+        total_started_at,
+    })
+}
+
+struct PreparedCheckpointParts {
+    request: complete::RequestCheckpoint,
+    uploaded_history: Option<session_history::UploadedCheckpointSessionHistory>,
+}
+
+fn completion_history_disposition(
+    disposition: checkpoints::RequestCliAgentSessionHistoryDisposition,
+) -> complete::RequestCheckpointCliAgentSessionHistoryDisposition {
+    match disposition {
+        checkpoints::RequestCliAgentSessionHistoryDisposition::DiscardedOversized => {
+            complete::RequestCheckpointCliAgentSessionHistoryDisposition::DiscardedOversized
+        }
+        checkpoints::RequestCliAgentSessionHistoryDisposition::Unavailable => {
+            complete::RequestCheckpointCliAgentSessionHistoryDisposition::Unavailable
+        }
+    }
+}
+
+fn completion_missing_root_policy(
+    policy: ArtifactEntryMissingRootPolicy,
+) -> complete::RequestCheckpointArtifactSnapshotMissingRootPolicy {
+    match policy {
+        ArtifactEntryMissingRootPolicy::Fail => {
+            complete::RequestCheckpointArtifactSnapshotMissingRootPolicy::Fail
+        }
+        ArtifactEntryMissingRootPolicy::PreserveParentVersion => {
+            complete::RequestCheckpointArtifactSnapshotMissingRootPolicy::PreserveParentVersion
+        }
+    }
+}
+
+fn completion_artifact_snapshot(
+    snapshot: checkpoints::ArtifactSnapshot,
+) -> complete::RequestCheckpointArtifactSnapshot {
+    complete::RequestCheckpointArtifactSnapshot {
+        name: snapshot.name,
+        version: snapshot.version,
+        mount_path: snapshot.mount_path,
+        missing_root_policy: snapshot
+            .missing_root_policy
+            .map(completion_missing_root_policy),
+    }
+}
+
+async fn prepare_checkpoint_impl(
+    http: &HttpClient,
+    mode: CheckpointMode,
+    inputs: &CheckpointInputs<'_>,
+) -> Result<PreparedCheckpointParts, AgentError> {
+    log_info!(LOG_TAG, "Preparing {}...", mode.log_label());
 
     // History upload and artifact snapshots are independent pre-requisites
-    // of the final checkpoint API call, so run them concurrently. The history
+    // of the final combined completion, so run them concurrently. The history
     // path performs blocking local preparation before web API work; the
     // artifact path performs blocking file preparation before VAS work. Wait
     // for both results even after one fails so a started blocking operation is
@@ -196,105 +275,55 @@ async fn create_checkpoint_impl(
     let artifact_snapshots = artifact_snapshots?;
 
     let cli_agent_type = inputs.framework.agent_type();
-    let (payload, uploaded_history) = match checkpoint_history {
+    let (
+        cli_agent_session_id,
+        cli_agent_session_history_hash,
+        cli_agent_session_history_disposition,
+        uploaded_history,
+    ) = match checkpoint_history {
         session_history::CheckpointSessionHistory::Uploaded(history) => {
-            let payload = checkpoints::Request {
-                run_id: inputs.run_id.to_string(),
-                cli_agent_type: cli_agent_type.to_string(),
-                cli_agent_session_id: history.cli_agent_session_id.clone(),
-                cli_agent_session_history_hash: Some(history.history_hash.clone()),
-                cli_agent_session_history_disposition: None,
-                artifact_snapshots,
-                volume_versions_snapshot: None,
-            };
-            (payload, Some(history))
+            let session_id = history.cli_agent_session_id.clone();
+            let history_hash = history.history_hash.clone();
+            (session_id, Some(history_hash), None, Some(history))
         }
         session_history::CheckpointSessionHistory::DiscardedOversized {
             cli_agent_session_id,
-        } => {
-            let payload = checkpoints::Request {
-                run_id: inputs.run_id.to_string(),
-                cli_agent_type: cli_agent_type.to_string(),
-                cli_agent_session_id,
-                cli_agent_session_history_hash: None,
-                cli_agent_session_history_disposition: Some(
-                    checkpoints::RequestCliAgentSessionHistoryDisposition::DiscardedOversized,
-                ),
-                artifact_snapshots,
-                volume_versions_snapshot: None,
-            };
-            (payload, None)
-        }
+        } => (
+            cli_agent_session_id,
+            None,
+            Some(completion_history_disposition(
+                checkpoints::RequestCliAgentSessionHistoryDisposition::DiscardedOversized,
+            )),
+            None,
+        ),
         session_history::CheckpointSessionHistory::Unavailable {
             cli_agent_session_id,
-        } => {
-            let payload = checkpoints::Request {
-                run_id: inputs.run_id.to_string(),
-                cli_agent_type: cli_agent_type.to_string(),
-                cli_agent_session_id,
-                cli_agent_session_history_hash: None,
-                cli_agent_session_history_disposition: Some(
-                    checkpoints::RequestCliAgentSessionHistoryDisposition::Unavailable,
-                ),
-                artifact_snapshots,
-                volume_versions_snapshot: None,
-            };
-            (payload, None)
-        }
+        } => (
+            cli_agent_session_id,
+            None,
+            Some(completion_history_disposition(
+                checkpoints::RequestCliAgentSessionHistoryDisposition::Unavailable,
+            )),
+            None,
+        ),
     };
-
-    log_info!(LOG_TAG, "Calling checkpoint API...");
-    let api_start = std::time::Instant::now();
-    let url = http.checkpoint_url()?;
-    let result = match http
-        .post_json(url, &payload, constants::HTTP_MAX_ATTEMPTS)
-        .await
-    {
-        Ok(v) => v,
-        Err(e) => {
-            record_sandbox_op("checkpoint_api_call", api_start.elapsed(), false, None);
-            return Err(e);
-        }
+    let request = complete::RequestCheckpoint {
+        cli_agent_type: cli_agent_type.to_string(),
+        cli_agent_session_id,
+        cli_agent_session_history_hash,
+        cli_agent_session_history_disposition,
+        artifact_snapshots: artifact_snapshots.map(|snapshots| {
+            snapshots
+                .into_iter()
+                .map(completion_artifact_snapshot)
+                .collect()
+        }),
+        volume_versions_snapshot: None,
     };
-
-    let response = result.ok_or_else(|| {
-        fail(
-            mode,
-            "checkpoint_api_call",
-            api_start,
-            "Invalid checkpoint API response",
-        )
-    })?;
-    let response = serde_json::from_value::<checkpoints::Response>(response).map_err(|_| {
-        fail(
-            mode,
-            "checkpoint_api_call",
-            api_start,
-            "Invalid checkpoint API response",
-        )
-    })?;
-
-    if let Some(uploaded_history) = uploaded_history
-        && session_history::reconcile_live_history_after_checkpoint(uploaded_history.live_history)
-    {
-        session_history::write_final_session_history_identity(
-            mode,
-            &uploaded_history.cli_agent_session_id,
-            &uploaded_history.history_hash,
-            uploaded_history.history_size,
-            &uploaded_history.history_source,
-            inputs.framework,
-            inputs.final_session_history_identity_file.as_ref(),
-        );
-    }
-    log_info!(
-        LOG_TAG,
-        "{} created successfully: {}",
-        mode.log_label(),
-        response.checkpoint_id
-    );
-    record_sandbox_op("checkpoint_api_call", api_start.elapsed(), true, None);
-    Ok(())
+    Ok(PreparedCheckpointParts {
+        request,
+        uploaded_history,
+    })
 }
 
 #[cfg(test)]
@@ -353,7 +382,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn checkpoint_missing_mount_fails_before_final_checkpoint_api_call() {
+    async fn checkpoint_missing_mount_fails_before_final_completion() {
         let server = MockServer::start();
         let dir = tempfile::tempdir().unwrap();
         let guest_paths = crate::paths::GuestPaths::from_runtime_dir(dir.path().join("runtime"));
@@ -373,11 +402,6 @@ mod tests {
             when.method(POST)
                 .path("/api/webhooks/agent/storages/commit");
             then.status(200).json_body(json!({"unreachable": true}));
-        });
-        let checkpoint = server.mock(|when, then| {
-            when.method(POST).path("/api/webhooks/agent/checkpoints");
-            then.status(200)
-                .json_body(json!({"checkpointId": "unreachable", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
         });
         let http = HttpClient::with_api_config(
             server.base_url(),
@@ -409,9 +433,10 @@ mod tests {
                 .into(),
         };
 
-        let err = create_checkpoint_impl(&http, CheckpointMode::Success, &inputs)
+        let err = prepare_checkpoint_impl(&http, CheckpointMode::Success, &inputs)
             .await
-            .unwrap_err();
+            .err()
+            .expect("missing artifact mount should fail checkpoint preparation");
 
         assert!(
             err.to_string().contains("Failed to walk artifact files"),
@@ -419,7 +444,6 @@ mod tests {
         );
         prepare.assert_calls(0);
         commit.assert_calls(0);
-        checkpoint.assert_calls(0);
     }
 
     #[tokio::test]
@@ -468,18 +492,6 @@ mod tests {
             when.method(PUT).path("/test/session-history-upload");
             then.respond_with(move |req| session_history_upload_response(req, &expected_upload));
         });
-        let checkpoint = server.mock(|when, then| {
-            when.method(POST)
-                .path("/api/webhooks/agent/checkpoints")
-                .json_body(json!({
-                    "runId": "checkpoint-codex-zstd-reuse",
-                    "cliAgentType": "codex",
-                    "cliAgentSessionId": thread_id,
-                    "cliAgentSessionHistoryHash": history_hash,
-                }));
-            then.status(200)
-                .json_body(json!({"checkpointId": "checkpoint-codex-zstd", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
-        });
         let http = HttpClient::with_api_config(
             server.base_url(),
             "test-token",
@@ -512,12 +524,17 @@ mod tests {
                 .into(),
         };
 
-        create_checkpoint_impl(&http, CheckpointMode::Success, &inputs)
+        let prepared = prepare_checkpoint_impl(&http, CheckpointMode::Success, &inputs)
             .await
             .unwrap();
 
         prepare.assert_calls(1);
         upload.assert_calls(1);
-        checkpoint.assert_calls(1);
+        assert_eq!(prepared.request.cli_agent_type, "codex");
+        assert_eq!(prepared.request.cli_agent_session_id, thread_id);
+        assert_eq!(
+            prepared.request.cli_agent_session_history_hash.as_deref(),
+            Some(history_hash.as_str())
+        );
     }
 }
