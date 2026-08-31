@@ -223,7 +223,6 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
 async function enableFeatureSwitch(
   page: Page,
   key:
-    | "chatForward"
     | "composerImageAnnotation"
     | "imageModelSelection"
     | "responsiveFollowupCards",
@@ -249,10 +248,6 @@ async function enableFeatureSwitch(
 
 async function enableResponsiveFollowupCards(page: Page): Promise<void> {
   await enableFeatureSwitch(page, "responsiveFollowupCards");
-}
-
-async function enableChatForward(page: Page): Promise<void> {
-  await enableFeatureSwitch(page, "chatForward");
 }
 
 async function mockUnrestrictedModelBilling(page: Page): Promise<void> {
@@ -1760,7 +1755,6 @@ test("chat composer keeps standard tool icons and Send inside on narrow screens"
 test("forward composer stays inside the modal on narrow screens", async ({
   page,
 }) => {
-  await enableChatForward(page);
   await page.setViewportSize({ width: 360, height: 780 });
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });

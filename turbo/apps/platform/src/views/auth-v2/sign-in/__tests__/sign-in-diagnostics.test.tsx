@@ -157,7 +157,7 @@ describe("auth v2 password recovery diagnostics", () => {
         );
       }
 
-      const path = "/v2/sign-in";
+      const path = "/sign-in";
       context.mocks.browser.url(`https://app.vm0.ai${path}`);
       mockSignInResource({ status: "needs_identifier" });
       detachedSetupPage({

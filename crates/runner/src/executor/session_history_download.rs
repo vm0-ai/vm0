@@ -1251,7 +1251,7 @@ mod tests {
 
     fn http_client() -> HttpClient {
         HttpClient::new(HttpClientConfig {
-            api_url: "http://api.test".to_string(),
+            api_url: "http://localhost".to_string(),
             vercel_bypass: None,
             client_session_id: "runner-session-test".to_string(),
         })

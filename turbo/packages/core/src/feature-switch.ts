@@ -192,13 +192,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.AuthV2AddAccount]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Use the custom Auth v2 sign-in flow when adding another account.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.NotionWorkflowAutomations]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -333,12 +326,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // Scoped to the maintainer rather than the whole staff org while the
     // flatten and two-file send are still unexercised outside tests.
     enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
-  },
-  [FeatureSwitchKey.ChatForward]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the Forward action in the assistant text-selection pill.",
-    enabled: true,
   },
   [FeatureSwitchKey.EmojiPickerCategoryRail]: {
     maintainer: "tongx@vm0.ai",

@@ -38,6 +38,7 @@ import {
   isRunBuiltInAdmissionError,
   startRunBuiltInAdmission$,
 } from "../services/run-built-in-admission.service";
+import { resolveProviderReferenceUrls$ } from "../services/provider-reference-url.service";
 
 const generateBody$ = bodyResultOf(avatarVideoContract.generate);
 const avatarsQuery$ = queryOf(avatarVideoContract.avatars);
@@ -78,6 +79,8 @@ const submitAvatarVideoJob$ = command(
     { set },
     args: {
       readonly generationId: string;
+      readonly orgId: string;
+      readonly userId: string;
       readonly options: AvatarVideoOptions;
     },
     signal: AbortSignal,
@@ -96,7 +99,27 @@ const submitAvatarVideoJob$ = command(
       return response;
     }
 
-    const handle = await submitJoggAiAvatarVideo(args.options, apiKey, signal);
+    const providerOptions = args.options.audioUrl
+      ? {
+          ...args.options,
+          audioUrl: (
+            await set(
+              resolveProviderReferenceUrls$,
+              {
+                orgId: args.orgId,
+                userId: args.userId,
+                urls: [args.options.audioUrl],
+              },
+              signal,
+            )
+          )[0],
+        }
+      : args.options;
+    const handle = await submitJoggAiAvatarVideo(
+      providerOptions,
+      apiKey,
+      signal,
+    );
     signal.throwIfAborted();
     if (isAvatarVideoErrorResponse(handle)) {
       await set(
@@ -202,7 +225,12 @@ const postGenerateInner$ = command(
     );
     const submitError = await set(
       submitAvatarVideoJob$,
-      { generationId, options },
+      {
+        generationId,
+        orgId: auth.orgId,
+        userId: auth.userId,
+        options,
+      },
       signal,
     );
     signal.throwIfAborted();
