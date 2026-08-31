@@ -178,6 +178,9 @@ function apiRequestError(
   error: ApiRequestError,
   workflow: WorkflowSummary,
 ): ConnectorDoctorError {
+  // A commit-addressed CLI can reach an API version from before #30491.
+  // Remove this branch after #30491 is deployed and those API rollback targets
+  // are retired; cleanup is tracked by the parent Connector Doctor EPIC #30469.
   if (workflow.official && error.status === 409) {
     return {
       code: "OFFICIAL_WORKFLOW_UNSUPPORTED",
