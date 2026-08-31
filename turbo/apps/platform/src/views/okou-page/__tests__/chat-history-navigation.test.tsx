@@ -1090,7 +1090,10 @@ describe("chat lifecycle", () => {
       },
     );
 
-    await setupPageAndWaitForContent({
+    // Thread detail never responds in this scenario, so page bootstrap has no
+    // settled completion to await. Readiness comes from the rendered thread
+    // instead, per the `detachedSetupPage` contract.
+    detachedSetupPage({
       context,
       path: `/chats/${EVENT_SOURCED_RENAME_THREAD_ID}`,
       sharedWorkerTestTransport: "message-port",
@@ -1124,6 +1127,15 @@ describe("chat lifecycle", () => {
     });
 
     expect(document.title).toBe(`${originalTitle} | VM0`);
+    // A publish on an unsubscribed channel is dropped silently, so wait for the
+    // shared database subscription before triggering the thread list refresh.
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
+    });
     context.mocks.ably.triggerOnChannel(
       SHARED_DATABASE_REALTIME_CHANNEL,
       "threadListChanged",
