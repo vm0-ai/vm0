@@ -77,10 +77,14 @@ import {
   type ConnectorRuntimeMethod,
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
-import { cleanupGmailWatchesForConnector } from "./gmail-automation-event.service";
+import {
+  cleanupGmailWatchesForConnector,
+  reconcileGmailWatchesForUser,
+} from "./gmail-automation-event.service";
 import { cleanupGoogleCalendarWatchesForConnector } from "./google-calendar-automation-event.service";
 import { cleanupGoogleFormsWatchesForConnector } from "./google-forms-automation-event.service";
 import { reconcileConnectorAccountState } from "./connector-account-state.service";
+import { reprojectGmailAutomationsForOwner } from "./gmail-automation-account.service";
 import { prepareConnectorAccountDeletion } from "./connector-account-lifecycle.service";
 import { resolveConnectorAccount } from "./connector-account-resolution.service";
 import {
@@ -1052,6 +1056,15 @@ export const deleteConnectorLocalState$ = command(
       },
       signal,
     );
+    if (args.connectorSlug === "gmail") {
+      await bestEffort(
+        reconcileGmailWatchesForUser(
+          { db: writeDb, orgId: args.orgId, userId: args.userId },
+          signal,
+        ),
+        signal,
+      );
+    }
     signal.throwIfAborted();
 
     return completedConnectorDeletionResult(
@@ -2085,6 +2098,12 @@ async function commitConnectorTokenConnection(
     },
     signal,
   );
+  if (args.runtimeMethod.connectorSlug === "gmail") {
+    await reprojectGmailAutomationsForOwner(args.db, {
+      orgId: args.orgId,
+      userId: args.userId,
+    });
+  }
 
   return {
     status: "connected",
@@ -2198,6 +2217,15 @@ export const upsertConnectorTokenConnection$ = command(
       },
       signal,
     );
+    if (args.runtimeMethod.connectorSlug === "gmail") {
+      await bestEffort(
+        reconcileGmailWatchesForUser(
+          { db: writeDb, orgId: args.orgId, userId: args.userId },
+          signal,
+        ),
+        signal,
+      );
+    }
     signal.throwIfAborted();
 
     return {

@@ -92,6 +92,7 @@ import {
   hasEnabledGmailConsumer,
   resolveGmailLabelForUser,
 } from "./gmail-automation-event.service";
+import { resolveGmailAutomationConnectorId } from "./gmail-automation-account.service";
 import {
   ensureGoogleCalendarWatchForUser,
   hasEnabledGoogleCalendarConsumer,
@@ -116,6 +117,7 @@ import {
   validateStripeInvoicePaidAutomationBinding,
 } from "./stripe-invoice-paid-workflow-automation.service";
 import { stripeInvoicePaidWorkflowAutomationEnabledForOwner } from "./stripe-invoice-paid-workflow-automation-feature-switch.service";
+import { lockConnectorAccountTarget } from "./auth-state-lock.service";
 import { lockWorkflowWebhookAutomationTierEligibleForOrg } from "./workflow-webhook-automation-entitlement.service";
 import {
   buildWorkflowWebhookSummaryFields,
@@ -1641,6 +1643,13 @@ async function insertEventAutomation(
   },
 ): Promise<WorkflowAutomationSummary> {
   return await db.transaction(async (tx) => {
+    if (automationCreateInputIsGmail(args.input)) {
+      await lockConnectorAccountTarget(tx, {
+        orgId: args.input.orgId,
+        userId: args.input.member.userId,
+        target: { kind: "builtin", connectorSlug: "gmail" },
+      });
+    }
     const chatThreadId = await ensureWorkflowUserAutomationThread(tx, {
       orgId: args.input.orgId,
       userId: args.input.member.userId,
@@ -1649,6 +1658,13 @@ async function insertEventAutomation(
       workflowTitle: args.workflowTitle,
       currentTime: args.currentTime,
     });
+    const eventConnectorId = automationCreateInputIsGmail(args.input)
+      ? await resolveGmailAutomationConnectorId(tx, {
+          orgId: args.input.orgId,
+          userId: args.input.member.userId,
+          workflowId: args.workflowId,
+        })
+      : null;
 
     const row = await insertWorkflowAutomation(tx, {
       id: args.automationId,
@@ -1658,6 +1674,7 @@ async function insertEventAutomation(
       kind: "event",
       eventType: args.input.eventType,
       eventConfig: args.input.eventConfig,
+      eventConnectorId,
       scheduleType: null,
       cronExpression: null,
       intervalSeconds: null,
@@ -1768,6 +1785,7 @@ async function prepareGmailEventConfigForPersist(
   args: {
     readonly orgId: string;
     readonly userId: string;
+    readonly connectorId: string;
     readonly eventType: WorkflowAutomationEventType;
     readonly eventConfig: GmailAutomationEventConfig;
   },
@@ -1798,6 +1816,7 @@ async function prepareGmailEventConfigForPersist(
       db,
       orgId: args.orgId,
       userId: args.userId,
+      connectorId: args.connectorId,
       labelName: args.eventConfig.labelName,
     },
     signal,
@@ -1824,11 +1843,27 @@ async function createGmailEventAutomationForWorkflow(
   },
   signal: AbortSignal,
 ): Promise<AutomationResult> {
+  const eventConnectorId = await resolveGmailAutomationConnectorId(
+    args.context.db,
+    {
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      workflowId: args.context.workflowId,
+    },
+  );
+  signal.throwIfAborted();
+  if (eventConnectorId === null) {
+    return {
+      kind: "bad-request",
+      message: "Connect Gmail before adding a Gmail event automation",
+    };
+  }
   const preparedConfig = await prepareGmailEventConfigForPersist(
     args.context.db,
     {
       orgId: args.input.orgId,
       userId: args.input.member.userId,
+      connectorId: eventConnectorId,
       eventType: args.input.eventType,
       eventConfig: args.input.eventConfig,
     },
@@ -1845,6 +1880,7 @@ async function createGmailEventAutomationForWorkflow(
           db: args.context.db,
           orgId: args.input.orgId,
           userId: args.input.member.userId,
+          connectorId: eventConnectorId,
         },
         signal,
       )
@@ -1857,6 +1893,30 @@ async function createGmailEventAutomationForWorkflow(
     automationId: args.context.automationId,
     currentTime: nowDate(),
   });
+  const [persistedAccount] = await args.context.db
+    .select({ connectorId: workflowAutomations.eventConnectorId })
+    .from(workflowAutomations)
+    .where(eq(workflowAutomations.id, summary.id))
+    .limit(1);
+  const persistedConnectorId = persistedAccount?.connectorId ?? null;
+  if (persistedConnectorId === null) {
+    await args.context.db
+      .delete(workflowAutomations)
+      .where(eq(workflowAutomations.id, summary.id));
+    return {
+      kind: "bad-request",
+      message: "Connect Gmail before adding a Gmail event automation",
+    };
+  }
+  if (persistedConnectorId !== eventConnectorId) {
+    await args.context.db
+      .delete(workflowAutomations)
+      .where(eq(workflowAutomations.id, summary.id));
+    return {
+      kind: "bad-request",
+      message: "Gmail account selection changed; retry adding the automation",
+    };
+  }
   if (!args.input.enabled) {
     signal.throwIfAborted();
     return { kind: "ok", summary };
@@ -1869,6 +1929,7 @@ async function createGmailEventAutomationForWorkflow(
         db: args.context.db,
         orgId: args.input.orgId,
         userId: args.input.member.userId,
+        connectorId: persistedConnectorId,
         forceRefresh: !hadConsumer,
       },
       signal,
@@ -1896,6 +1957,7 @@ async function createGmailEventAutomationForWorkflow(
           ownerUserId: args.input.member.userId,
           eventType: args.input.eventType,
           eventConfig: preparedConfig.eventConfig,
+          eventConnectorId: persistedConnectorId,
         },
       ],
     },
@@ -3391,11 +3453,24 @@ async function prepareOfficialGmailEvent(
   input: CreateGmailEventAutomationInput,
   signal: AbortSignal,
 ): Promise<OfficialAutomationEventPreparationResult> {
+  const eventConnectorId = await resolveGmailAutomationConnectorId(db, {
+    orgId: input.orgId,
+    userId: input.member.userId,
+    workflowId: input.workflowId,
+  });
+  signal.throwIfAborted();
+  if (eventConnectorId === null) {
+    return {
+      kind: "bad-request",
+      message: "Connect Gmail before adding a Gmail event automation",
+    };
+  }
   const prepared = await prepareGmailEventConfigForPersist(
     db,
     {
       orgId: input.orgId,
       userId: input.member.userId,
+      connectorId: eventConnectorId,
       eventType: input.eventType,
       eventConfig: input.eventConfig,
     },
@@ -3704,6 +3779,7 @@ async function updateAutomationEventConfig(
     readonly eventConfig:
       | GmailAutomationEventConfig
       | GithubAutomationEventConfig;
+    readonly eventConnectorId?: string;
   },
   signal: AbortSignal,
 ): Promise<WorkflowAutomationSummary> {
@@ -3711,6 +3787,9 @@ async function updateAutomationEventConfig(
     .update(workflowAutomations)
     .set({
       eventConfig: args.eventConfig,
+      ...(args.eventConnectorId === undefined
+        ? {}
+        : { eventConnectorId: args.eventConnectorId }),
       updatedAt: nowDate(),
     })
     .where(eq(workflowAutomations.id, args.automationId))
@@ -3789,6 +3868,89 @@ async function prepareGithubAutomationEventConfig(
   });
 }
 
+async function updateGmailEventAutomationForWorkflow(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly member: WorkflowMember;
+    readonly automation: AutomationRow & {
+      readonly eventType: GmailAutomationEventType;
+    };
+    readonly eventConfig:
+      | GmailAutomationEventConfig
+      | GithubAutomationEventConfig;
+  },
+  signal: AbortSignal,
+): Promise<AutomationResult> {
+  const parsedConfig =
+    args.automation.eventType === "gmail-label-applied"
+      ? gmailLabelAppliedEventConfigSchema.safeParse(args.eventConfig)
+      : gmailNewMessageEventConfigSchema.safeParse(args.eventConfig);
+  if (!parsedConfig.success) {
+    return {
+      kind: "bad-request",
+      message: "eventConfig must be a Gmail event config",
+    };
+  }
+  const eventConnectorId = await resolveGmailAutomationConnectorId(args.db, {
+    orgId: args.orgId,
+    userId: args.member.userId,
+    workflowId: args.automation.workflowId,
+  });
+  signal.throwIfAborted();
+  if (eventConnectorId === null) {
+    return {
+      kind: "bad-request",
+      message: "Connect Gmail before using Gmail event automations",
+    };
+  }
+  const preparedConfig = await prepareGmailEventConfigForPersist(
+    args.db,
+    {
+      orgId: args.orgId,
+      userId: args.member.userId,
+      connectorId: eventConnectorId,
+      eventType: args.automation.eventType,
+      eventConfig: parsedConfig.data,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  if (preparedConfig.kind !== "ok") {
+    return preparedConfig;
+  }
+  const summary = await args.db.transaction(async (tx) => {
+    await lockConnectorAccountTarget(tx, {
+      orgId: args.orgId,
+      userId: args.member.userId,
+      target: { kind: "builtin", connectorSlug: "gmail" },
+    });
+    const persistedConnectorId = await resolveGmailAutomationConnectorId(tx, {
+      orgId: args.orgId,
+      userId: args.member.userId,
+      workflowId: args.automation.workflowId,
+    });
+    if (persistedConnectorId !== eventConnectorId) {
+      return null;
+    }
+    return await updateAutomationEventConfig(
+      tx,
+      {
+        automationId: args.automation.id,
+        eventConfig: preparedConfig.eventConfig,
+        eventConnectorId: persistedConnectorId,
+      },
+      signal,
+    );
+  });
+  return summary === null
+    ? {
+        kind: "bad-request",
+        message: "Gmail account selection changed; retry the update",
+      }
+    : { kind: "ok", summary };
+}
+
 const updateEventAutomationForWorkflow$ = command(
   async (
     _,
@@ -3865,41 +4027,17 @@ const updateEventAutomationForWorkflow$ = command(
     if (!supportedGmailEventType(args.automation.eventType)) {
       return { kind: "not-found" };
     }
-    const parsedConfig =
-      args.automation.eventType === "gmail-label-applied"
-        ? gmailLabelAppliedEventConfigSchema.safeParse(args.eventConfig)
-        : gmailNewMessageEventConfigSchema.safeParse(args.eventConfig);
-    if (!parsedConfig.success) {
-      return {
-        kind: "bad-request",
-        message: "eventConfig must be a Gmail event config",
-      };
-    }
-    const preparedConfig = await prepareGmailEventConfigForPersist(
-      args.db,
+    return await updateGmailEventAutomationForWorkflow(
       {
-        orgId: args.orgId,
-        userId: args.member.userId,
-        eventType: args.automation.eventType,
-        eventConfig: parsedConfig.data,
+        ...args,
+        automation: {
+          ...args.automation,
+          eventType: args.automation.eventType,
+        },
+        eventConfig: args.eventConfig,
       },
       signal,
     );
-    signal.throwIfAborted();
-    if (preparedConfig.kind !== "ok") {
-      return preparedConfig;
-    }
-    return {
-      kind: "ok",
-      summary: await updateAutomationEventConfig(
-        args.db,
-        {
-          automationId: args.automation.id,
-          eventConfig: preparedConfig.eventConfig,
-        },
-        signal,
-      ),
-    };
   },
 );
 
@@ -4237,11 +4375,15 @@ async function enabledWatchHadConsumer(
   signal: AbortSignal,
 ): Promise<boolean> {
   if (supportedGmailEventType(args.automation.eventType)) {
+    if (args.automation.eventConnectorId === null) {
+      return false;
+    }
     return await hasEnabledGmailConsumer(
       {
         db: args.db,
         orgId: args.automation.orgId,
         userId: args.automation.ownerUserId,
+        connectorId: args.automation.eventConnectorId,
       },
       signal,
     );
@@ -4286,11 +4428,18 @@ async function ensureEnabledAutomationEventWatch(
   signal: AbortSignal,
 ): Promise<AutomationActionFailure | null> {
   if (supportedGmailEventType(args.automation.eventType)) {
+    if (args.automation.eventConnectorId === null) {
+      return {
+        kind: "bad-request",
+        message: "Connect Gmail before using Gmail event automations",
+      };
+    }
     const result = await ensureGmailWatchForUser(
       {
         db: args.db,
         orgId: args.automation.orgId,
         userId: args.automation.ownerUserId,
+        connectorId: args.automation.eventConnectorId,
         forceRefresh: !args.hadConsumer,
       },
       signal,
@@ -4561,9 +4710,26 @@ async function persistEnabledWorkflowAutomation(
 ): Promise<
   | { readonly status: "team-required" }
   | { readonly status: "conflict" }
+  | { readonly status: "gmail-unavailable" }
   | { readonly status: "ok"; readonly row: AutomationRow | undefined }
 > {
   return await db.transaction(async (tx) => {
+    let eventConnectorId = args.automation.eventConnectorId;
+    if (supportedGmailEventType(args.automation.eventType)) {
+      await lockConnectorAccountTarget(tx, {
+        orgId: args.automation.orgId,
+        userId: args.automation.ownerUserId,
+        target: { kind: "builtin", connectorSlug: "gmail" },
+      });
+      eventConnectorId = await resolveGmailAutomationConnectorId(tx, {
+        orgId: args.automation.orgId,
+        userId: args.automation.ownerUserId,
+        workflowId: args.automation.workflowId,
+      });
+      if (eventConnectorId === null) {
+        return { status: "gmail-unavailable" };
+      }
+    }
     if (
       args.automation.kind === "event" &&
       args.automation.eventType === "webhook-received"
@@ -4585,6 +4751,9 @@ async function persistEnabledWorkflowAutomation(
       .update(workflowAutomations)
       .set({
         enabled: true,
+        ...(supportedGmailEventType(args.automation.eventType)
+          ? { eventConnectorId }
+          : {}),
         nextRunAt: args.nextRunAt,
         consecutiveFailures: 0,
         updatedAt: args.now,
@@ -4629,14 +4798,32 @@ async function persistAndReconcileEnabledWorkflowAutomation(
   },
   signal: AbortSignal,
 ): Promise<AutomationResult> {
+  const eventConnectorId = supportedGmailEventType(args.automation.eventType)
+    ? await resolveGmailAutomationConnectorId(db, {
+        orgId: args.automation.orgId,
+        userId: args.automation.ownerUserId,
+        workflowId: args.automation.workflowId,
+      })
+    : args.automation.eventConnectorId;
+  signal.throwIfAborted();
+  if (
+    supportedGmailEventType(args.automation.eventType) &&
+    eventConnectorId === null
+  ) {
+    return {
+      kind: "bad-request",
+      message: "Connect Gmail before using Gmail event automations",
+    };
+  }
+  const automation = { ...args.automation, eventConnectorId };
   const watchHadConsumer = await enabledWatchHadConsumer(
-    { db, automation: args.automation },
+    { db, automation },
     signal,
   );
   const enabled = await persistEnabledWorkflowAutomation(
     db,
     {
-      automation: args.automation,
+      automation,
       orgId: args.orgId,
       nextRunAt: args.nextRunAt,
       now: args.now,
@@ -4653,6 +4840,13 @@ async function persistAndReconcileEnabledWorkflowAutomation(
     return {
       kind: "conflict",
       message: OFFICIAL_WORKFLOW_RECONFIGURATION_IN_PROGRESS_MESSAGE,
+    };
+  }
+  if (enabled.status === "gmail-unavailable") {
+    signal.throwIfAborted();
+    return {
+      kind: "bad-request",
+      message: "Connect Gmail before using Gmail event automations",
     };
   }
   if (!enabled.row) {

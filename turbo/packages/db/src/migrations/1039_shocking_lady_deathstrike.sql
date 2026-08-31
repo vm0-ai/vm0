@@ -1,0 +1,3 @@
+ALTER TABLE "workflow_automations" ADD COLUMN "event_connector_id" uuid;--> statement-breakpoint
+ALTER TABLE "workflow_automations" ADD CONSTRAINT "workflow_automations_event_connector_id_connectors_id_fk" FOREIGN KEY ("event_connector_id") REFERENCES "public"."connectors"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "idx_workflow_automations_event_connector" ON "workflow_automations" USING btree ("event_connector_id");

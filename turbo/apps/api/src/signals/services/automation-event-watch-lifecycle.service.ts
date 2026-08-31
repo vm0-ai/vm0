@@ -27,6 +27,7 @@ interface AutomationEventWatchAutomation {
   readonly ownerUserId: string;
   readonly eventType: string | null;
   readonly eventConfig: unknown;
+  readonly eventConnectorId?: string | null;
 }
 
 type AutomationEventWatchTarget =
@@ -34,6 +35,7 @@ type AutomationEventWatchTarget =
       readonly provider: "gmail";
       readonly orgId: string;
       readonly userId: string;
+      readonly connectorId: string | null;
     }
   | {
       readonly provider: "google_calendar";
@@ -84,6 +86,7 @@ function automationEventWatchTarget(
       provider: "gmail",
       orgId: automation.orgId,
       userId: automation.ownerUserId,
+      connectorId: automation.eventConnectorId ?? null,
     };
   }
   if (automation.eventType === "google-forms-response-submitted") {
@@ -252,16 +255,22 @@ async function ensureNonFormsTarget(
 ): Promise<AutomationEventWatchReconfigurationResult> {
   const result =
     target.provider === "gmail"
-      ? await ensureGmailWatchForUser(
-          {
-            db,
-            orgId: target.orgId,
-            userId: target.userId,
-            forceRefresh: false,
-            allowStagedOfficialTarget,
-          },
-          signal,
-        )
+      ? target.connectorId === null
+        ? {
+            kind: "bad_request" as const,
+            message: "Connect Gmail before using Gmail event automations",
+          }
+        : await ensureGmailWatchForUser(
+            {
+              db,
+              orgId: target.orgId,
+              userId: target.userId,
+              connectorId: target.connectorId,
+              forceRefresh: false,
+              allowStagedOfficialTarget,
+            },
+            signal,
+          )
       : await ensureGoogleCalendarWatchForUser(
           {
             db,

@@ -1618,6 +1618,13 @@
       "when": 1788231052832,
       "tag": "1038_contract_legacy_vm0_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 1039,
+      "version": "7",
+      "when": 1788237410573,
+      "tag": "1039_shocking_lady_deathstrike",
+      "breakpoints": true
     }
   ]
 }

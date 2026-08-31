@@ -44,6 +44,8 @@ import type { AutomationRow } from "./workflow-automation-launch.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { workflowAutomationCanFire } from "./workflow-automation-access.service";
 import { ensureWorkflowUserAutomationThread } from "./workflow-user-automation-thread.service";
+import { reprojectGmailAutomationsForOwner } from "./gmail-automation-account.service";
+import { lockConnectorAccountTarget } from "./auth-state-lock.service";
 
 const log = logger("api:gmail-automation-event");
 
@@ -509,6 +511,7 @@ export async function resolveGmailLabelForUser(
     readonly db: Db;
     readonly orgId: string;
     readonly userId: string;
+    readonly connectorId: string;
     readonly labelName: string;
   },
   signal: AbortSignal,
@@ -591,6 +594,7 @@ export async function hasEnabledGmailConsumer(
     readonly db: Db;
     readonly orgId: string;
     readonly userId: string;
+    readonly connectorId: string;
   },
   signal: AbortSignal,
 ): Promise<boolean> {
@@ -603,6 +607,7 @@ export async function hasEnabledGmailConsumer(
         eq(workflowAutomations.ownerUserId, args.userId),
         eq(workflowAutomations.enabled, true),
         eq(workflowAutomations.kind, "event"),
+        eq(workflowAutomations.eventConnectorId, args.connectorId),
         inArray(workflowAutomations.eventType, [...GMAIL_EVENT_TYPES]),
       ),
     )
@@ -657,6 +662,7 @@ async function partitionGmailStatesByConsumer(
           db: args.db,
           orgId: state.orgId,
           userId: state.userId,
+          connectorId: state.connectorId,
         },
         signal,
       ));
@@ -776,6 +782,7 @@ async function ensureGmailWatchWithResolvedAccess(
           db: tx,
           orgId: args.orgId,
           userId: args.userId,
+          connectorId: args.access.connectorId,
         },
         signal,
       ))
@@ -855,6 +862,7 @@ export async function ensureGmailWatchForUser(
     readonly db: Db;
     readonly orgId: string;
     readonly userId: string;
+    readonly connectorId: string;
     readonly forceRefresh?: boolean;
     readonly allowStagedOfficialTarget?: boolean;
   },
@@ -1225,6 +1233,40 @@ async function renewGmailPhysicalScopes(
   return { renewed, failed };
 }
 
+async function loadEnabledGmailConnectorIds(
+  db: Db,
+  args: { readonly orgId: string; readonly userId: string },
+): Promise<readonly string[]> {
+  const consumers = await db
+    .selectDistinct({ connectorId: workflowAutomations.eventConnectorId })
+    .from(workflowAutomations)
+    .where(
+      and(
+        eq(workflowAutomations.orgId, args.orgId),
+        eq(workflowAutomations.ownerUserId, args.userId),
+        eq(workflowAutomations.enabled, true),
+        eq(workflowAutomations.kind, "event"),
+        inArray(workflowAutomations.eventType, [...GMAIL_EVENT_TYPES]),
+      ),
+    );
+  return consumers.flatMap((consumer) => {
+    return consumer.connectorId === null ? [] : [consumer.connectorId];
+  });
+}
+
+async function repairGmailAutomationProjections(
+  db: Db,
+  args: { readonly orgId: string; readonly userId: string },
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await lockConnectorAccountTarget(tx, {
+      ...args,
+      target: { kind: "builtin", connectorSlug: "gmail" },
+    });
+    await reprojectGmailAutomationsForOwner(tx, args);
+  });
+}
+
 export async function reconcileGmailWatchesForUser(
   args: {
     readonly db: Db;
@@ -1233,6 +1275,25 @@ export async function reconcileGmailWatchesForUser(
   },
   signal: AbortSignal,
 ): Promise<boolean> {
+  await repairGmailAutomationProjections(args.db, args);
+  signal.throwIfAborted();
+  const connectorIds = await loadEnabledGmailConnectorIds(args.db, args);
+  signal.throwIfAborted();
+  let succeeded = true;
+  for (const connectorId of connectorIds) {
+    const ensured = await ensureGmailWatchForUser(
+      {
+        db: args.db,
+        orgId: args.orgId,
+        userId: args.userId,
+        connectorId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    succeeded &&= ensured.kind === "ok";
+  }
+
   const states = await args.db
     .select()
     .from(gmailWatchStates)
@@ -1243,7 +1304,6 @@ export async function reconcileGmailWatchesForUser(
       ),
     );
   signal.throwIfAborted();
-  let succeeded = true;
   for (const scope of gmailPhysicalScopes(states)) {
     const preferredConnectorId = states.find((state) => {
       return (
@@ -1744,6 +1804,7 @@ async function loadGmailEventAutomations(
         eq(workflowAutomations.ownerUserId, args.state.userId),
         eq(workflowAutomations.enabled, true),
         eq(workflowAutomations.kind, "event"),
+        eq(workflowAutomations.eventConnectorId, args.state.connectorId),
         inArray(workflowAutomations.eventType, [
           "gmail-new-message",
           "gmail-label-applied",
@@ -2321,6 +2382,7 @@ async function dispatchGmailWatchState(
           db: args.db,
           orgId: args.state.orgId,
           userId: args.state.userId,
+          connectorId: args.state.connectorId,
         },
         signal,
       );
@@ -2377,6 +2439,7 @@ async function dispatchGmailWatchState(
         db: args.db,
         orgId: args.state.orgId,
         userId: args.state.userId,
+        connectorId: args.state.connectorId,
         forceRefresh: true,
       },
       signal,
@@ -2600,16 +2663,85 @@ export const dispatchGmailPubSubPush$ = command(
 export const renewGmailWatches$ = command(
   async ({ set }, signal: AbortSignal) => {
     const db = set(writeDb$);
+    const [automationOwners, stateOwners] = await Promise.all([
+      db
+        .selectDistinct({
+          orgId: workflowAutomations.orgId,
+          userId: workflowAutomations.ownerUserId,
+        })
+        .from(workflowAutomations)
+        .where(
+          and(
+            eq(workflowAutomations.kind, "event"),
+            eq(workflowAutomations.enabled, true),
+            inArray(workflowAutomations.eventType, [...GMAIL_EVENT_TYPES]),
+          ),
+        ),
+      db
+        .selectDistinct({
+          orgId: gmailWatchStates.orgId,
+          userId: gmailWatchStates.userId,
+        })
+        .from(gmailWatchStates),
+    ]);
+    signal.throwIfAborted();
+    const owners = new Map<
+      string,
+      { readonly orgId: string; readonly userId: string }
+    >();
+    for (const owner of [...automationOwners, ...stateOwners]) {
+      owners.set(`${owner.orgId}\n${owner.userId}`, owner);
+    }
+
+    let repairFailures = 0;
+    for (const owner of owners.values()) {
+      await repairGmailAutomationProjections(db, owner);
+      signal.throwIfAborted();
+      const [connectorIds, states] = await Promise.all([
+        loadEnabledGmailConnectorIds(db, owner),
+        db
+          .select({ connectorId: gmailWatchStates.connectorId })
+          .from(gmailWatchStates)
+          .where(
+            and(
+              eq(gmailWatchStates.orgId, owner.orgId),
+              eq(gmailWatchStates.userId, owner.userId),
+            ),
+          ),
+      ]);
+      signal.throwIfAborted();
+      const watchedConnectorIds = new Set(
+        states.map((state) => {
+          return state.connectorId;
+        }),
+      );
+      for (const connectorId of connectorIds) {
+        if (watchedConnectorIds.has(connectorId)) {
+          continue;
+        }
+        const result = await ensureGmailWatchForUser(
+          { db, ...owner, connectorId },
+          signal,
+        );
+        signal.throwIfAborted();
+        repairFailures += result.kind === "ok" ? 0 : 1;
+      }
+    }
+
     const currentTime = nowDate();
     const renewBefore = new Date(
       currentTime.getTime() + WATCH_RENEWAL_WINDOW_MS,
     );
     const states = await db.select().from(gmailWatchStates);
     signal.throwIfAborted();
-    return await renewGmailPhysicalScopes(
+    const renewed = await renewGmailPhysicalScopes(
       { db, scopes: gmailPhysicalScopes(states), renewBefore },
       signal,
     );
+    return {
+      renewed: renewed.renewed,
+      failed: renewed.failed + repairFailures,
+    };
   },
 );
 

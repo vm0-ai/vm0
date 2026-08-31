@@ -9,12 +9,14 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { db$, writeDb$ } from "../external/db";
 import { publishChatThreadDetailChangedSafely } from "../external/realtime";
+import { bestEffort } from "../utils";
 import {
   clearChatThreadConnectorSelection,
   listChatThreadConnectorSelections,
   updateChatThreadConnectorSelection,
 } from "../services/chat-thread-connector-selection.service";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
+import { reconcileGmailWatchesForUser } from "../services/gmail-automation-event.service";
 import type { RouteEntry } from "../route-entry";
 
 const connectorAccountsEnabled$ = computed(async (get) => {
@@ -62,7 +64,8 @@ const updateSelectionInner$ = command(
     if (!body.ok) {
       return body.response;
     }
-    const result = await updateChatThreadConnectorSelection(set(writeDb$), {
+    const writeDb = set(writeDb$);
+    const result = await updateChatThreadConnectorSelection(writeDb, {
       orgId: auth.orgId,
       userId: auth.userId,
       chatThreadId: params.id,
@@ -74,6 +77,18 @@ const updateSelectionInner$ = command(
     }
     if (result.kind === "invalid") {
       return badRequestMessage(result.message);
+    }
+    if (
+      body.data.target.kind === "builtin" &&
+      body.data.target.connectorSlug === "gmail"
+    ) {
+      await bestEffort(
+        reconcileGmailWatchesForUser(
+          { db: writeDb, orgId: auth.orgId, userId: auth.userId },
+          signal,
+        ),
+        signal,
+      );
     }
     await publishChatThreadDetailChangedSafely(auth.userId, params.id);
     signal.throwIfAborted();
@@ -97,7 +112,8 @@ const clearSelectionInner$ = command(
     if (!body.ok) {
       return body.response;
     }
-    const result = await clearChatThreadConnectorSelection(set(writeDb$), {
+    const writeDb = set(writeDb$);
+    const result = await clearChatThreadConnectorSelection(writeDb, {
       orgId: auth.orgId,
       userId: auth.userId,
       chatThreadId: params.id,
@@ -106,6 +122,15 @@ const clearSelectionInner$ = command(
     signal.throwIfAborted();
     if (result.kind === "not_found") {
       return notFound("Chat thread not found");
+    }
+    if (body.data.kind === "builtin" && body.data.connectorSlug === "gmail") {
+      await bestEffort(
+        reconcileGmailWatchesForUser(
+          { db: writeDb, orgId: auth.orgId, userId: auth.userId },
+          signal,
+        ),
+        signal,
+      );
     }
     await publishChatThreadDetailChangedSafely(auth.userId, params.id);
     signal.throwIfAborted();
