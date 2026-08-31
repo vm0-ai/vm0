@@ -373,6 +373,15 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // Ming only for the first pass; widen once the system mapping settles.
     enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
   },
+  [FeatureSwitchKey.InlineHostedSiteReferenceImages]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Send hosted-site reference images to BytePlus as inline bytes instead of a URL the provider is blocked from fetching.",
+    // On by default: without it every hosted-site reference image fails, so the
+    // switch exists to stop the bleeding without a release, not to stage a
+    // rollout.
+    enabled: true,
+  },
   [FeatureSwitchKey.ConnectorCatalogCount]: {
     maintainer: "ethan@vm0.ai",
     description: "Show the exact effective connector catalog size.",

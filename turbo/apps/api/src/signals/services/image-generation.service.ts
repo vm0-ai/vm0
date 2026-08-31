@@ -35,6 +35,8 @@ const FAL_IMAGE_QUEUE_URL_PREFIX = "https://queue.fal.run";
 const FAL_BILLABLE_UNITS_HEADER = "x-fal-billable-units";
 const BYTEPLUS_IMAGE_GENERATIONS_URL =
   "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations";
+/** BytePlus caps a single reference image at 30 MB, inline or by URL. */
+const BYTEPLUS_REFERENCE_IMAGE_MAX_BYTES = 30 * 1024 * 1024;
 const IMAGE_IO_MAX_PROMPT_LENGTH = 32_000;
 const IMAGE_IO_MIN_PIXELS = 655_360;
 const IMAGE_IO_MAX_PIXELS = 8_294_400;
@@ -665,6 +667,14 @@ interface BytePlusImageFile {
 
 interface BytePlusImageResult {
   readonly image: BytePlusImageFile;
+}
+
+interface InlinedSourceImage {
+  readonly dataUrl: string;
+}
+
+interface ResolvedSourceImages {
+  readonly images: readonly string[];
 }
 
 interface FalImageQueueHandle {
@@ -1857,15 +1867,106 @@ function bytePlusImageSize(options: ImageOptions): string {
   return options.size === "auto" ? "2K" : options.size;
 }
 
-function bytePlusImageInput(options: ImageOptions): Record<string, unknown> {
+/**
+ * Hosted sites sit behind a stricter Cloudflare policy than the artifact CDN:
+ * artifact-preview.service.ts has to carry a WAF bypass cookie just to
+ * screenshot one. An image provider fetching a reference image has no such
+ * escape hatch, so BytePlus receives 403 and the whole generation fails.
+ */
+function isHostedSiteImageUrl(value: string): boolean {
+  if (!URL.canParse(value)) {
+    return false;
+  }
+  const url = new URL(value);
+  if (url.protocol !== "https:") {
+    return false;
+  }
+  return [env("ZERO_HOST_DOMAIN"), env("OKOU_PUBLIC_HOST_DOMAIN")].some(
+    (hostDomain) => url.hostname.endsWith(`.${hostDomain}`),
+  );
+}
+
+async function inlineHostedSiteImage(
+  url: string,
+  signal: AbortSignal,
+): Promise<InlinedSourceImage | ErrorResponse> {
+  const response = await fetch(url, { method: "GET", signal });
+  if (!response.ok) {
+    return badGateway(
+      `Could not read reference image ${url} (HTTP ${response.status})`,
+      "REFERENCE_IMAGE_DOWNLOAD_FAILED",
+    );
+  }
+  const contentType = response.headers
+    .get("content-type")
+    ?.split(";")[0]
+    ?.trim()
+    .toLowerCase();
+  if (!contentType?.startsWith("image/")) {
+    return badGateway(
+      `Reference image ${url} is not an image`,
+      "REFERENCE_IMAGE_NOT_AN_IMAGE",
+    );
+  }
+  // Reject on the declared length first: a cap that only runs after buffering
+  // would not keep an oversized object out of memory. A missing header parses
+  // to 0 here and falls through to the check below.
+  if (
+    Number(response.headers.get("content-length")) >
+    BYTEPLUS_REFERENCE_IMAGE_MAX_BYTES
+  ) {
+    return badGateway(
+      `Reference image ${url} declares more than the ${BYTEPLUS_REFERENCE_IMAGE_MAX_BYTES} byte provider limit`,
+      "REFERENCE_IMAGE_TOO_LARGE",
+    );
+  }
+  const bytes = Buffer.from(await response.arrayBuffer());
+  signal.throwIfAborted();
+  if (bytes.byteLength > BYTEPLUS_REFERENCE_IMAGE_MAX_BYTES) {
+    return badGateway(
+      `Reference image ${url} exceeds the ${BYTEPLUS_REFERENCE_IMAGE_MAX_BYTES} byte provider limit`,
+      "REFERENCE_IMAGE_TOO_LARGE",
+    );
+  }
+  return { dataUrl: `data:${contentType};base64,${bytes.toString("base64")}` };
+}
+
+/**
+ * BytePlus accepts each reference image as either a URL it fetches itself or an
+ * inline `data:` payload. Only hosted-site URLs are swapped for bytes; every
+ * other URL is still handed over as-is, which keeps the provider's own fetch
+ * path in use and avoids turning arbitrary caller input into a server-side
+ * fetch.
+ */
+async function resolveBytePlusSourceImages(
+  sourceImageUrls: readonly string[],
+  signal: AbortSignal,
+): Promise<ResolvedSourceImages | ErrorResponse> {
+  const images: string[] = [];
+  for (const url of sourceImageUrls) {
+    if (!isHostedSiteImageUrl(url)) {
+      images.push(url);
+      continue;
+    }
+    const inlined = await inlineHostedSiteImage(url, signal);
+    if ("status" in inlined) {
+      return inlined;
+    }
+    images.push(inlined.dataUrl);
+  }
+  return { images };
+}
+
+function bytePlusImageInput(
+  options: ImageOptions,
+  sourceImageUrls: readonly string[],
+): Record<string, unknown> {
   const sourceImages =
-    options.sourceImageUrls.length === 1
-      ? options.sourceImageUrls[0]
-      : options.sourceImageUrls;
+    sourceImageUrls.length === 1 ? sourceImageUrls[0] : sourceImageUrls;
   return {
     model: options.model,
     prompt: options.prompt,
-    ...(options.sourceImageUrls.length > 0 ? { image: sourceImages } : {}),
+    ...(sourceImageUrls.length > 0 ? { image: sourceImages } : {}),
     size: bytePlusImageSize(options),
     output_format: options.outputFormat,
     response_format: "url",
@@ -1909,12 +2010,20 @@ function parseBytePlusImageResult(
 export async function generateBytePlusImage(
   options: ImageOptions,
   apiKey: string,
+  inlineHostedSiteReferenceImages: boolean,
   signal: AbortSignal,
 ): Promise<ParsedImageGeneration | ErrorResponse> {
+  const sourceImages = inlineHostedSiteReferenceImages
+    ? await resolveBytePlusSourceImages(options.sourceImageUrls, signal)
+    : { images: options.sourceImageUrls };
+  if ("status" in sourceImages) {
+    return sourceImages;
+  }
+  signal.throwIfAborted();
   const response = await fetch(BYTEPLUS_IMAGE_GENERATIONS_URL, {
     method: "POST",
     headers: bytePlusHeaders(apiKey),
-    body: JSON.stringify(bytePlusImageInput(options)),
+    body: JSON.stringify(bytePlusImageInput(options, sourceImages.images)),
     signal,
   });
   if (!response.ok) {

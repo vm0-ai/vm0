@@ -5,6 +5,8 @@ import { imageIoGenerateContract } from "@okouai/api-contracts/contracts/image-i
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
 import { isImageModelId } from "@okouai/api-contracts/contracts/image-models";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import {
   DEFAULT_IMAGE_MODEL,
   type ImageModel,
@@ -22,6 +24,7 @@ import { logger } from "../../lib/log";
 import type { RouteEntry } from "../route-entry";
 import { env } from "../../lib/env";
 import { db$, type ReadonlyDb } from "../external/db";
+import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
 import {
   checkImageCredits$,
@@ -217,7 +220,11 @@ const submitImageProviderWebhookJob$ = command(
 );
 
 const executeBytePlusImageProviderJob$ = command(
-  async ({ set }, args: ImageJobArgs, signal: AbortSignal): Promise<void> => {
+  async (
+    { get, set },
+    args: ImageJobArgs,
+    signal: AbortSignal,
+  ): Promise<void> => {
     await set(markBuiltInGenerationRunning$, args.generationId, signal);
     signal.throwIfAborted();
     const apiKey = env("BYTEPLUS_API_KEY");
@@ -240,9 +247,19 @@ const executeBytePlusImageProviderJob$ = command(
       return;
     }
 
+    const featureSwitches = await loadUserFeatureSwitchContext(
+      get(db$),
+      args.orgId,
+      args.userId,
+    );
+    signal.throwIfAborted();
     const generation = await generateBytePlusImage(
       args.options,
       apiKey,
+      isFeatureEnabled(
+        FeatureSwitchKey.InlineHostedSiteReferenceImages,
+        featureSwitches,
+      ),
       signal,
     );
     signal.throwIfAborted();

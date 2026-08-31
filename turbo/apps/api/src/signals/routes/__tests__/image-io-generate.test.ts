@@ -1561,6 +1561,184 @@ describe("POST /api/image-io/generate", () => {
     await expect(orgCredits(fixture)).resolves.toBe(1000);
   });
 
+  it("sends a hosted-site reference image to BytePlus as inline bytes", async () => {
+    const fixture = await seedImageFixture({ credits: 1000 });
+    const pricingFixture = await createScopedImagePricing({
+      configured: SEEDREAM_5_PRO_IMAGE_PRICING,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const hostedSiteImageUrl = "https://refs.sites.example.com/img4.jpeg";
+    let hostedSiteFetches = 0;
+    let observedBody: Record<string, unknown> | null = null;
+    server.use(
+      http.get(hostedSiteImageUrl, () => {
+        hostedSiteFetches += 1;
+        return new HttpResponse(IMAGE_BYTES, {
+          headers: { "Content-Type": "image/jpeg" },
+        });
+      }),
+      http.post(BYTEPLUS_IMAGE_GENERATIONS_URL, async ({ request }) => {
+        observedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
+          created: 1_700_000_000,
+          model: "dola-seedream-5-0-pro-260628",
+          data: [
+            {
+              url: BYTEPLUS_SEEDREAM_5_PRO_HIGH_MEDIA_URL,
+              size: "2048x2048",
+              output_format: "jpeg",
+            },
+          ],
+        });
+      }),
+      http.get(BYTEPLUS_SEEDREAM_5_PRO_HIGH_MEDIA_URL, () => {
+        return new HttpResponse(IMAGE_BYTES, {
+          headers: { "Content-Type": "image/jpeg" },
+        });
+      }),
+    );
+
+    const app = createImageIoTestApp(pricingFixture.resolution);
+    const response = await app.request("/api/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "restyle this reference",
+        model: "seedream5-pro",
+        size: "2K",
+        outputFormat: "jpeg",
+        imageUrls: [hostedSiteImageUrl],
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    readAcceptedGenerationId(await response.json(), "image", fixture.userId);
+    await flushWaitUntilForTest();
+
+    expect(hostedSiteFetches).toBe(1);
+    expect(observedBody).toMatchObject({
+      image: `data:image/jpeg;base64,${IMAGE_BYTES.toString("base64")}`,
+    });
+  });
+
+  it("hands a non-hosted reference image URL to BytePlus unchanged", async () => {
+    const fixture = await seedImageFixture({ credits: 1000 });
+    const pricingFixture = await createScopedImagePricing({
+      configured: SEEDREAM_5_PRO_IMAGE_PRICING,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    let mockupFetches = 0;
+    let observedBody: Record<string, unknown> | null = null;
+    server.use(
+      http.get(MOCKUP_IMAGE_URL, () => {
+        mockupFetches += 1;
+        return new HttpResponse(IMAGE_BYTES, {
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+      http.post(BYTEPLUS_IMAGE_GENERATIONS_URL, async ({ request }) => {
+        observedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
+          created: 1_700_000_000,
+          model: "dola-seedream-5-0-pro-260628",
+          data: [
+            {
+              url: BYTEPLUS_SEEDREAM_5_PRO_HIGH_MEDIA_URL,
+              size: "2048x2048",
+              output_format: "jpeg",
+            },
+          ],
+        });
+      }),
+      http.get(BYTEPLUS_SEEDREAM_5_PRO_HIGH_MEDIA_URL, () => {
+        return new HttpResponse(IMAGE_BYTES, {
+          headers: { "Content-Type": "image/jpeg" },
+        });
+      }),
+    );
+
+    const app = createImageIoTestApp(pricingFixture.resolution);
+    const response = await app.request("/api/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "restyle this reference",
+        model: "seedream5-pro",
+        size: "2K",
+        outputFormat: "jpeg",
+        imageUrls: [MOCKUP_IMAGE_URL],
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    readAcceptedGenerationId(await response.json(), "image", fixture.userId);
+    await flushWaitUntilForTest();
+
+    // The provider still does its own fetch, so the API must not pull the
+    // bytes down on its behalf.
+    expect(mockupFetches).toBe(0);
+    expect(observedBody).toMatchObject({ image: MOCKUP_IMAGE_URL });
+  });
+
+  it("fails with the reference image detail when a hosted-site image is unreadable", async () => {
+    const fixture = await seedImageFixture({ credits: 1000 });
+    const pricingFixture = await createScopedImagePricing({
+      configured: SEEDREAM_5_PRO_IMAGE_PRICING,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const hostedSiteImageUrl = "https://refs.sites.example.com/missing.jpeg";
+    let bytePlusCalls = 0;
+    server.use(
+      http.get(hostedSiteImageUrl, () => {
+        return new HttpResponse("Not found", { status: 404 });
+      }),
+      http.post(BYTEPLUS_IMAGE_GENERATIONS_URL, () => {
+        bytePlusCalls += 1;
+        return HttpResponse.json({});
+      }),
+    );
+
+    const app = createImageIoTestApp(pricingFixture.resolution);
+    const response = await app.request("/api/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "restyle this reference",
+        model: "seedream5-pro",
+        size: "2K",
+        imageUrls: [hostedSiteImageUrl],
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "image",
+      fixture.userId,
+    );
+    await flushWaitUntilForTest();
+
+    const statusResponse = await app.request(
+      `/api/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    await expect(statusResponse.json()).resolves.toMatchObject({
+      generationId,
+      type: "image",
+      status: "failed",
+      error: {
+        message: `Could not read reference image ${hostedSiteImageUrl} (HTTP 404)`,
+        code: "REFERENCE_IMAGE_DOWNLOAD_FAILED",
+      },
+    });
+    expect(bytePlusCalls).toBe(0);
+    await expect(orgCredits(fixture)).resolves.toBe(1000);
+  });
+
   it("rejects a Qwen Image 3 size above the provider's pixel cap", async () => {
     const fixture = await seedImageFixture({ credits: 1000 });
     mocks.clerk.session(fixture.userId, fixture.orgId);
