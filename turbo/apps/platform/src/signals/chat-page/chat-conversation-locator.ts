@@ -20,13 +20,16 @@ import {
 } from "ccstate";
 import { animationFrame, timeout } from "signal-timers";
 import {
-  chatEventCompatibilityRole,
-  isChatEventContentTextType,
-} from "@okouai/api-contracts/contracts/chat-events";
+  applyCompletedWorkExpansion,
+  buildCompletedWorkFolding,
+  chatEventDisplayError,
+  completedWorkExpandedKeys$,
+  completedWorkExpandedKeysForScrollTarget,
+  isRenderableAssistantEvent,
+} from "./completed-work-folding.ts";
 import { logger } from "../log.ts";
 import { messageDocumentToDisplayText } from "../okou-page/user-message-document-codec.ts";
 import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
-import { hasChatEventBodyContent } from "./chat-event-body-blocks.ts";
 import type { ChatEventGroup, EnrichedChatEvent } from "./chat-event.ts";
 import {
   buildRunGroupFolding,
@@ -273,30 +276,8 @@ function userPreviewText(event: EnrichedChatEvent): string {
   return normalizePreviewText(event.content);
 }
 
-function assistantErrorForLocator(
-  event: EnrichedChatEvent,
-): string | undefined {
-  if (
-    event.eventType === "output.error" ||
-    event.eventType === "run.failed" ||
-    event.eventType === "run.cancelled"
-  ) {
-    return event.error;
-  }
-  return undefined;
-}
-
-function rendersAssistantTurn(event: EnrichedChatEvent): boolean {
-  return (
-    chatEventCompatibilityRole(event.eventType) === "assistant" &&
-    ((isChatEventContentTextType(event.eventType) && Boolean(event.content)) ||
-      Boolean(assistantErrorForLocator(event)) ||
-      hasChatEventBodyContent(event))
-  );
-}
-
 function assistantPreviewText(event: EnrichedChatEvent): string {
-  return normalizePreviewText(assistantErrorForLocator(event) ?? event.content);
+  return normalizePreviewText(chatEventDisplayError(event) ?? event.content);
 }
 
 function activeGroupsForLocator(
@@ -332,7 +313,7 @@ function turnsFromGroups(groups: readonly ChatEventGroup[]): LocatorTurn[] {
             ];
       });
     }
-    const event = group.events.find(rendersAssistantTurn);
+    const event = group.events.find(isRenderableAssistantEvent);
     return event === undefined
       ? []
       : [
@@ -340,7 +321,10 @@ function turnsFromGroups(groups: readonly ChatEventGroup[]): LocatorTurn[] {
             eventId: event.id,
             role: "assistant" as const,
             text: assistantPreviewText(event),
-            createdAt: group.events[0]?.createdAt,
+            createdAt:
+              group.events.find((candidate) => {
+                return candidate.id === group.beginEventId;
+              })?.createdAt ?? group.events[0]?.createdAt,
           },
         ];
   });
@@ -352,12 +336,29 @@ function createVisibleTurns(
 ): Computed<readonly LocatorTurn[]> {
   return computed((get): readonly LocatorTurn[] => {
     const activeGroups = activeGroupsForLocator(get(allChatGroups$));
-    const folding = buildRunGroupFolding(
+    const targetEventId = get(threadScrollPosition$)?.targetEventId ?? null;
+    const runGroupFolding = buildRunGroupFolding(
       activeGroups,
       get(runGroupExpansionOverrides$),
-      get(threadScrollPosition$)?.targetEventId ?? null,
+      targetEventId,
     );
-    return turnsFromGroups(folding?.visibleGroups ?? activeGroups);
+    const runGroupVisibleGroups =
+      runGroupFolding?.visibleGroups ?? activeGroups;
+    const completedWorkFolding = buildCompletedWorkFolding(
+      runGroupVisibleGroups,
+    );
+    const completedWorkExpandedKeys = completedWorkExpandedKeysForScrollTarget(
+      completedWorkFolding,
+      get(completedWorkExpandedKeys$),
+      targetEventId,
+    );
+    return turnsFromGroups(
+      applyCompletedWorkExpansion(
+        runGroupVisibleGroups,
+        completedWorkFolding,
+        completedWorkExpandedKeys,
+      ),
+    );
   });
 }
 

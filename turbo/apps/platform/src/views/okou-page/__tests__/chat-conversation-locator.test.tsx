@@ -13,6 +13,7 @@ const THREAD_ID = "b0000000-0000-4000-a000-000000000806";
 const GEOMETRY_THREAD_ID = "b0000000-0000-4000-a000-000000000807";
 const VIRTUAL_THREAD_ID = "b0000000-0000-4000-a000-000000000808";
 const GOAL_THREAD_ID = "b0000000-0000-4000-a000-000000000809";
+const COMPLETED_WORK_THREAD_ID = "b0000000-0000-4000-a000-000000000810";
 
 const VIEWPORT_PX = 600;
 const RAIL_PX = 600;
@@ -257,6 +258,60 @@ function goalConversation(): MockChatEventInput[] {
       runGroupId,
       runLifecycleEvent: "completed",
       createdAt: "2026-06-09T13:12:30Z",
+    },
+  ];
+}
+
+function completedWorkConversation(): MockChatEventInput[] {
+  const prefix = Array.from({ length: 5 }, (_unused, index) => {
+    const minute = String(index).padStart(2, "0");
+    const runId = `run-locator-work-prefix-${index}`;
+    return [
+      {
+        id: `locator-work-prefix-user-${index}`,
+        eventType: "input.prompt" as const,
+        role: "user" as const,
+        content: `Work prefix question ${index}`,
+        runId,
+        createdAt: `2026-06-09T14:${minute}:00Z`,
+      },
+      {
+        id: `locator-work-prefix-assistant-${index}`,
+        eventType: "output.message" as const,
+        role: "assistant" as const,
+        content: `Work prefix answer ${index}`,
+        runId,
+        createdAt: `2026-06-09T14:${minute}:30Z`,
+      },
+    ];
+  }).flat();
+  const runId = "run-locator-completed-work";
+  return [
+    ...prefix,
+    {
+      id: "locator-work-user",
+      eventType: "input.prompt",
+      role: "user",
+      content: "Summarize completed work",
+      runId,
+      createdAt: "2026-06-09T14:10:00Z",
+    },
+    {
+      id: "locator-work-hidden-assistant",
+      eventType: "output.message",
+      role: "assistant",
+      content: "Checking completed work in the locator",
+      runId,
+      createdAt: "2026-06-09T14:10:30Z",
+    },
+    {
+      id: "locator-work-final-assistant",
+      eventType: "output.message",
+      role: "assistant",
+      content: "Completed work is summarized in the locator",
+      runId,
+      runLifecycleEvent: "completed",
+      createdAt: "2026-06-09T14:11:00Z",
     },
   ];
 }
@@ -676,6 +731,68 @@ describe("chat conversation locator", () => {
       const landed = anchor?.closest<HTMLElement>('[data-role="assistant"]');
       expect(landed).not.toBeNull();
       expect(landed).toHaveAttribute("data-locator-landed");
+    });
+  });
+
+  it("tracks the visible assistant event in folded completed work", async () => {
+    const { rail, resize } = await renderMeasuredThread({
+      threadId: COMPLETED_WORK_THREAD_ID,
+      threadTitle: "Completed work locator turns",
+      chatEvents: completedWorkConversation(),
+      renderedText: "Completed work is summarized in the locator",
+    });
+
+    expect(
+      screen.queryByText("Checking completed work in the locator"),
+    ).toBeNull();
+    expect(ticksOf(rail)).toHaveLength(12);
+
+    pointerAt(rail, 0, "pointerenter");
+    let assistantTick = ticksOf(rail).find((tick) => {
+      return tick.dataset.turnIndex === "11";
+    });
+    expect(assistantTick).toBeDefined();
+    pointerAt(rail, Number.parseFloat(assistantTick!.style.top), "pointermove");
+    await waitFor(() => {
+      expect(locatorPreview()).toHaveTextContent(
+        "Completed work is summarized in the locator",
+      );
+    });
+    rail.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await waitFor(() => {
+      const anchor = document.querySelector<HTMLElement>(
+        '[data-chat-scroll-anchor-event-id="locator-work-final-assistant"]',
+      );
+      expect(anchor?.closest('[data-role="assistant"]')).toHaveAttribute(
+        "data-locator-landed",
+      );
+    });
+
+    fireEvent.click(screen.getByLabelText("Expand work history"));
+    await screen.findByText("Checking completed work in the locator");
+    resize.automationAll();
+    await waitFor(() => {
+      expect(ticksOf(rail)).toHaveLength(12);
+    });
+
+    assistantTick = ticksOf(rail).find((tick) => {
+      return tick.dataset.turnIndex === "11";
+    });
+    expect(assistantTick).toBeDefined();
+    pointerAt(rail, Number.parseFloat(assistantTick!.style.top), "pointermove");
+    await waitFor(() => {
+      expect(locatorPreview()).toHaveTextContent(
+        "Checking completed work in the locator",
+      );
+    });
+    rail.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await waitFor(() => {
+      const anchor = document.querySelector<HTMLElement>(
+        '[data-chat-scroll-anchor-event-id="locator-work-hidden-assistant"]',
+      );
+      expect(anchor?.closest('[data-role="assistant"]')).toHaveAttribute(
+        "data-locator-landed",
+      );
     });
   });
 
