@@ -417,6 +417,74 @@ describe("chat start cards", () => {
     });
   });
 
+  it("keeps visual balance out of the no-avatar intro video prompt", async () => {
+    const user = userEvent.setup({ delay: null });
+    let sentPrompt: string | undefined;
+    mockChatLifecycle(context, {
+      onSendRequest: ({ prompt }) => {
+        sentPrompt = prompt;
+      },
+      onRunCreate: ({ prompt }) => {
+        sentPrompt = prompt;
+      },
+    });
+    context.mocks.upload.success({
+      id: "intro-video-source",
+      filename: "launch.pdf",
+      contentType: "application/pdf",
+      size: 4,
+      url: "https://example.com/launch.pdf",
+    });
+
+    setupChatStartCards();
+
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+    click(screen.getByTestId("intro-video-start-card"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Create an intro video",
+    });
+    const fileInput = dialog.querySelector<HTMLInputElement>(
+      '[data-intro-video-document-input=""]',
+    );
+    if (!fileInput) {
+      throw new Error("Expected intro video document input");
+    }
+    await user.upload(
+      fileInput,
+      new File(["deck"], "launch.pdf", { type: "application/pdf" }),
+    );
+
+    await expect(
+      screen.findByText("Your source is ready"),
+    ).resolves.toBeInTheDocument();
+    click(buttonWithText("Next", dialog));
+    await expect(
+      screen.findByText("Choose an avatar"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByText("How would you like the visual balance?"),
+    ).toBeNull();
+
+    click(buttonWithText("Next", dialog));
+    await expect(
+      screen.findByText("Choose a voice"),
+    ).resolves.toBeInTheDocument();
+    click(buttonWithText("No voiceover", dialog, false));
+    click(buttonWithText("Next", dialog));
+    await expect(
+      screen.findByText("Review your intro video"),
+    ).resolves.toBeInTheDocument();
+    await user.click(buttonWithText("Create in chat", dialog));
+
+    await waitFor(() => {
+      expect(sentPrompt).toContain("- Avatar: No avatar");
+      expect(sentPrompt).not.toContain("- Visual balance:");
+    });
+  });
+
   it("reattaches the source when chat creation is retried", async () => {
     const user = userEvent.setup({ delay: null });
     const downloads = context.mocks.browser.blobDownload();
