@@ -474,8 +474,8 @@ def _classify_request(
         client_ip,
         frozenset(),
     )
-    if intent.status == "present" and intent.value in (
-        omitted_builtin_firewalls | omitted_custom_connector_ids
+    if intent.status == "present" and (
+        intent.value in omitted_builtin_firewalls or intent.value in omitted_custom_connector_ids
     ):
         return Allow(
             sandbox_info=sandbox_info,
