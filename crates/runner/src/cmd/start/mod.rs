@@ -80,7 +80,7 @@ use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
 use crate::runner_process_identity::RunnerProcessIdentity;
-use crate::status::{StatusTracker, remove_stale_status_file};
+use crate::status::{StatusResult, StatusTracker, remove_stale_status_file};
 use crate::workspace_image_cache::{
     WorkspaceCacheChange, WorkspaceCacheWatcher, WorkspaceImageCache,
 };
@@ -237,6 +237,19 @@ fn workspace_cache_gc_future(cache: WorkspaceImageCache) -> WorkspaceCacheGcFutu
 async fn next_workspace_cache_gc(
     future: &mut Option<WorkspaceCacheGcFuture>,
 ) -> RunnerResult<Option<u64>> {
+    match future {
+        Some(future) => future.await,
+        None => std::future::pending().await,
+    }
+}
+
+type StatusRetryFuture = BoxFuture<'static, StatusResult<()>>;
+
+fn status_retry_future(status: Arc<StatusTracker>) -> StatusRetryFuture {
+    Box::pin(async move { status.retry_unpublished_snapshot().await })
+}
+
+async fn next_status_retry(future: &mut Option<StatusRetryFuture>) -> StatusResult<()> {
     match future {
         Some(future) => future.await,
         None => std::future::pending().await,
@@ -1957,6 +1970,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     workspace_cache_reconciliation_tick
         .set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut workspace_cache_gc_fut = None;
+    let mut status_retry_fut = None;
     let mut draining_idle_pool_drained = false;
     let mut pending_finalizing_candidate = None;
     let mut terminal_error = None;
@@ -2187,6 +2201,12 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     ),
                 }
             }
+            result = next_status_retry(&mut status_retry_fut) => {
+                status_retry_fut = None;
+                if let Err(error) = result {
+                    warn!(%error, "failed to retry unpublished runner status");
+                }
+            }
             _ = workspace_cache_gc_tick.tick() => {
                 if workspace_cache_gc_fut.is_none()
                     && let Some(cache) = exec_config.workspace_cache.clone()
@@ -2287,6 +2307,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             _ = heartbeat_tick.tick() => {
                 let live_mode = *mode_rx.borrow();
                 heartbeat.request(live_mode)?;
+                if status_retry_fut.is_none() {
+                    status_retry_fut = Some(status_retry_future(Arc::clone(&shared.status)));
+                }
                 #[cfg(test)]
                 test_hooks
                     .test_observer
@@ -2380,6 +2403,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
     let phase = teardown.phase_start("heartbeat_drain");
     heartbeat.drain().await;
+    if let Some(retry) = status_retry_fut.take()
+        && let Err(error) = retry.await
+    {
+        warn!(%error, "failed to finish runner status retry during teardown");
+    }
     let final_heartbeat_sequence = heartbeat.into_next_snapshot_sequence();
     teardown.phase_complete("heartbeat_drain", phase);
 
@@ -2477,6 +2505,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         )
         .await;
         teardown.phase_complete("orphan_reap_shutdown_final", phase);
+    }
+    if let Err(error) = shared.status.retry_unpublished_snapshot().await {
+        warn!(%error, "failed to publish final runner status snapshot");
     }
     // Wait for any in-flight destroy tasks (from capacity or profile-mismatch
     // eviction) so their factory Arcs are dropped before the
