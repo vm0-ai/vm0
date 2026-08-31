@@ -10,7 +10,7 @@
 # by the Playwright suite and have been removed from this file.
 #
 # Required env vars:
-#   VM0_API_BACKEND_URL - API URL and local fallback for the auth URL
+#   OKOU_API_BACKEND_URL - API URL and local fallback for the auth URL
 #   CLERK_SECRET_KEY    - Backend key used to clean the exact test account
 #
 # Optional env vars:
@@ -36,7 +36,7 @@ setup_file() {
   export SIGN_UP_COMPLETE_FILE
 
   echo "# Clerk UI E2E (sign-up and sign-in)" >&3
-  echo "#   Auth URL: ${OKOU_AUTH_URL:-${VM0_API_BACKEND_URL:-}}" >&3
+  echo "#   Auth URL: ${OKOU_AUTH_URL:-${E2E_API_BACKEND_URL}}" >&3
   echo "#   Auth domain: ${OKOU_AUTH_DOMAIN:-<default>}" >&3
   echo "#   Auth redirect URL: ${OKOU_AUTH_REDIRECT_URL:-<default>}" >&3
   echo "#   Email: $E2E_ACCOUNT" >&3
@@ -51,7 +51,7 @@ teardown_file() {
 
 auth_url() {
   local path="$1"
-  local base="${OKOU_AUTH_URL:-${VM0_API_BACKEND_URL:-}}"
+  local base="${OKOU_AUTH_URL:-${E2E_API_BACKEND_URL}}"
   local url="${base%/}${path}"
 
   if [[ -n "${OKOU_AUTH_REDIRECT_URL:-}" ]]; then

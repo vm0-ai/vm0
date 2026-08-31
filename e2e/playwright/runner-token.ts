@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { clerkSetup } from "@clerk/testing/playwright";
 import { chromium, type Browser, type Page } from "@playwright/test";
 
+import { resolveApiBackendUrl } from "./api-backend-url";
 import {
   refreshClerkSessionToken,
   signInWithLoadedClerkTestingHelper,
@@ -41,7 +42,7 @@ interface ProvisionRunnerCredentialOptions {
 
 async function main(): Promise<void> {
   requiredEnvironmentVariable("JOB_REF");
-  const apiUrl = requiredEnvironmentVariable("VM0_API_BACKEND_URL");
+  const apiUrl = resolveApiBackendUrl();
   const appUrl = requiredEnvironmentVariable("OKOU_APP_URL");
   const outputDirectory = process.argv[2];
   if (!outputDirectory) {

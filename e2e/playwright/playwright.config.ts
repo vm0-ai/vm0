@@ -2,12 +2,11 @@ import dotenv from "dotenv";
 import { defineConfig, devices } from "@playwright/test";
 import path from "node:path";
 
+import { resolveApiBackendUrl } from "./api-backend-url";
+
 dotenv.config({ path: path.join(__dirname, "../.env.local") });
 
-const apiUrl = process.env.VM0_API_BACKEND_URL;
-if (!apiUrl) {
-  throw new Error("VM0_API_BACKEND_URL environment variable is required");
-}
+const apiUrl = resolveApiBackendUrl();
 
 type PublicService = "api" | "app" | "www";
 
