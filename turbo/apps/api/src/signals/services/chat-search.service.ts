@@ -260,8 +260,8 @@ export function chatSearch(args: {
           matchedMessage.content,
           args.keyword,
         ),
-        // Keep the empty fields until pre-change browser and commit-addressed
-        // CLI clients have drained; current clients only render matchedMessage.
+        // #30468 removes these response-only fields after old web/app builds
+        // and commit-addressed CLI execution contexts have drained.
         contextBefore: [],
         contextAfter: [],
       };

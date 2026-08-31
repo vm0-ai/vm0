@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { cronProjectChatEventSearchResponseSchema } from "@okouai/api-contracts/contracts/cron";
 import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import type { z } from "zod";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -60,17 +60,6 @@ async function createSearchThread(
   return { agentId: agent.agentId, threadId: thread.id };
 }
 
-async function deleteThreadWithoutSearchCleanup(
-  threadId: string,
-): Promise<void> {
-  const heldDeletion = await holdChatThreadDeleteTransactionFixture({
-    threadId,
-    signal: context.signal,
-  });
-  heldDeletion.release();
-  await heldDeletion.done;
-}
-
 describe("GET /api/chat/search durable reader", () => {
   it("serves matched message identity after source events are deleted", async () => {
     const owner = bdd.user();
@@ -101,10 +90,7 @@ describe("GET /api/chat/search durable reader", () => {
       removeChatSearchSourceEventsFixture([source.threadId]),
     ).resolves.toBeGreaterThan(0);
 
-    const search = await chat.searchChat(owner, keyword, {
-      before: 10,
-      after: 10,
-    });
+    const search = await chat.searchChat(owner, keyword);
     expect(search).toMatchObject({ hasMore: false });
     expect(search.results).toHaveLength(1);
     const result = search.results[0];
@@ -213,10 +199,38 @@ describe("GET /api/chat/search durable reader", () => {
       });
     }
 
+    // Each DELETE has already fired the compatibility trigger but remains
+    // uncommitted while the lock-free projector reads the old MVCC row. The
+    // projector can therefore write after the trigger and leave the expected
+    // eventual-consistency orphan for reader filtering and cron repair.
+    const heldDeletions = await Promise.all(
+      orphanThreadIds.map(async (threadId) => {
+        return await holdChatThreadDeleteTransactionFixture({
+          threadId,
+          signal: context.signal,
+        });
+      }),
+    );
+    onTestFinished(async () => {
+      for (const heldDeletion of heldDeletions) {
+        heldDeletion.release();
+      }
+      await Promise.all(
+        heldDeletions.map((heldDeletion) => {
+          return heldDeletion.done;
+        }),
+      );
+    });
+
     await projectChatSearchMessages([visible.threadId, ...orphanThreadIds]);
-    for (const threadId of orphanThreadIds) {
-      await deleteThreadWithoutSearchCleanup(threadId);
+    for (const heldDeletion of heldDeletions) {
+      heldDeletion.release();
     }
+    await Promise.all(
+      heldDeletions.map((heldDeletion) => {
+        return heldDeletion.done;
+      }),
+    );
 
     const search = await chat.searchChat(owner, keyword, { limit: 1 });
     expect(search.results).toHaveLength(1);

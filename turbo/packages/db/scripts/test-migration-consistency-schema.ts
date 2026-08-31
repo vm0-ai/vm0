@@ -42,6 +42,11 @@ import {
 import { NON_TRANSACTIONAL_MIGRATION_MARKER } from "./migration-runner";
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
 import { validateAgentDraftsCompatibilityRelation } from "./test-agent-drafts-compatibility-relation";
+import {
+  CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_FUNCTION,
+  CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_TRIGGER,
+  validateChatSearchDeleteCompatibility,
+} from "./test-chat-search-delete-compatibility";
 import { validateAgentRunMetadataStage2Index } from "./test-agent-run-metadata-stage-2-index";
 import {
   validateAgentRunMetadataStage2Final,
@@ -2344,6 +2349,9 @@ type PermanentFunction = {
 // Exported from a database built by the existing migration chain. Extension-owned
 // pgcrypto and vector functions are deliberately absent from the function list.
 const EXPECTED_PERMANENT_TRIGGERS = [
+  // Temporary #30453 old-API/new-DB delete bridge. Remove with #30468 after
+  // the pre-#30453 API artifact is no longer eligible for rollback.
+  CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_TRIGGER,
   {
     definition:
       "CREATE TRIGGER chat_events_reject_update BEFORE UPDATE ON public.chat_events FOR EACH ROW EXECUTE FUNCTION reject_chat_event_source_update()",
@@ -2555,6 +2563,8 @@ const EXPECTED_PERMANENT_TRIGGERS = [
 ] as const satisfies readonly PermanentTrigger[];
 
 const EXPECTED_PERMANENT_FUNCTIONS = [
+  // Same temporary #30453 bridge and #30468 removal gate as its trigger.
+  CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_FUNCTION,
   // Same temporary #30264 bridge and phase-B removal gate as the triggers.
   {
     bodyHash: "44930ae5bfb57cee2cb3645f16abc8fb",
@@ -10869,6 +10879,7 @@ async function main(): Promise<void> {
     await validateOkouDebugFeatureSwitchKeyRename();
     await validateSlackOfficialBrandMigration();
     await validateAgentDraftsCompatibilityRelation();
+    await validateChatSearchDeleteCompatibility(dbUrl.toString());
     await validateWorkflowCompatibilityViews();
     await validateBuiltInProviderDiscriminatorMigration(dbUrl.toString());
     await validateOrgMetadataAcquisitionFirstPartySourceExpansion(

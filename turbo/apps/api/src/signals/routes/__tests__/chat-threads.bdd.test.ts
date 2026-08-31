@@ -40,6 +40,7 @@ import {
   insertChatEventTransactionFixture,
   insertOutputEventWithConflictingLegacyPayloadFixture,
 } from "../../../test-fixtures/chat-events";
+import { insertSearchablePromptFixture } from "../../../test-fixtures/chat-event-search";
 import {
   holdChatThreadEventInsertTransactionFixture,
   insertChatThreadEventTransactionFixture,
@@ -2747,14 +2748,24 @@ describe("CHAT-01 chat search", () => {
     expect(crossOrg.results[0]?.chatThreadId).toBe(ownerThreadA);
 
     // The since filter keeps only messages at or after the boundary.
-    await sendNoCreditMessage(owner, {
-      agentId: agentA.agentId,
-      prompt: "ancient quokka spotted",
-    });
     const sinceBoundary = now();
-    await sendNoCreditMessage(owner, {
+    const ancientThread = await chat.createThread(owner, {
       agentId: agentA.agentId,
-      prompt: "recent quokka spotted",
+      title: `Ancient quokka ${randomUUID()}`,
+    });
+    await insertSearchablePromptFixture({
+      chatThreadId: ancientThread.id,
+      text: "ancient quokka spotted",
+      createdAt: new Date(sinceBoundary - 1),
+    });
+    const recentThread = await chat.createThread(owner, {
+      agentId: agentA.agentId,
+      title: `Recent quokka ${randomUUID()}`,
+    });
+    await insertSearchablePromptFixture({
+      chatThreadId: recentThread.id,
+      text: "recent quokka spotted",
+      createdAt: new Date(sinceBoundary),
     });
     await projectChatEventSearch();
     const since = await chat.searchChat(owner, "quokka", {
@@ -2801,10 +2812,7 @@ describe("CHAT-01 chat search", () => {
       prompt: "context round three",
     });
     await projectChatEventSearch();
-    const contextual = await chat.searchChat(owner, "okapi", {
-      before: 2,
-      after: 2,
-    });
+    const contextual = await chat.searchChat(owner, "okapi");
     expect(contextual.results).toHaveLength(1);
     const match = contextual.results[0];
     if (!match) {
@@ -2865,8 +2873,6 @@ describe("CHAT-01 chat search", () => {
     await projectChatEventSearch();
     const contextual = await chat.searchChat(owner, `${marker} needle`, {
       limit: 3,
-      before: 2,
-      after: 2,
     });
     expect(contextual.hasMore).toBeFalsy();
     expect(
@@ -3110,22 +3116,44 @@ describe("CHAT-01 chat search index", () => {
       displayName: "Index filter agent B",
     });
 
-    await sendNoCreditMessage(owner, {
-      agentId: agentA.agentId,
-      prompt: "旧的水豚记录一",
-    });
-    await sendNoCreditMessage(owner, {
-      agentId: agentA.agentId,
-      prompt: "旧的水豚记录二",
-    });
     const sinceBoundary = now();
-    const recentThreadA = await sendNoCreditMessage(owner, {
+    const oldThreadA = await chat.createThread(owner, {
       agentId: agentA.agentId,
-      prompt: "新的水豚记录",
+      title: `Old capybara A ${randomUUID()}`,
     });
-    const threadB = await sendNoCreditMessage(owner, {
+    await insertSearchablePromptFixture({
+      chatThreadId: oldThreadA.id,
+      text: "旧的水豚记录一",
+      createdAt: new Date(sinceBoundary - 2),
+    });
+    const oldThreadB = await chat.createThread(owner, {
+      agentId: agentA.agentId,
+      title: `Old capybara B ${randomUUID()}`,
+    });
+    await insertSearchablePromptFixture({
+      chatThreadId: oldThreadB.id,
+      text: "旧的水豚记录二",
+      createdAt: new Date(sinceBoundary - 1),
+    });
+    const recentThread = await chat.createThread(owner, {
+      agentId: agentA.agentId,
+      title: `Recent capybara ${randomUUID()}`,
+    });
+    const recentThreadA = recentThread.id;
+    await insertSearchablePromptFixture({
+      chatThreadId: recentThreadA,
+      text: "新的水豚记录",
+      createdAt: new Date(sinceBoundary),
+    });
+    const otherAgentThread = await chat.createThread(owner, {
       agentId: agentB.agentId,
-      prompt: "另一个水豚记录",
+      title: `Other capybara ${randomUUID()}`,
+    });
+    const threadB = otherAgentThread.id;
+    await insertSearchablePromptFixture({
+      chatThreadId: threadB,
+      text: "另一个水豚记录",
+      createdAt: new Date(sinceBoundary + 1),
     });
     const tick = await projectChatEventSearch();
     expect(tick.success).toBeTruthy();

@@ -143,28 +143,6 @@ describe("okou search --source chat", () => {
     expect(logs).toContain("--since 30d");
   });
 
-  it("passes the keyword without context parameters", async () => {
-    let capturedUrl: URL | undefined;
-    server.use(
-      http.get("http://localhost:3000/api/chat/search", ({ request }) => {
-        capturedUrl = new URL(request.url);
-        return HttpResponse.json({ results: [], hasMore: false });
-      }),
-    );
-
-    await searchCommand.parseAsync([
-      "node",
-      "cli",
-      "error",
-      "--source",
-      "chat",
-    ]);
-
-    expect(capturedUrl?.searchParams.get("keyword")).toBe("error");
-    expect(capturedUrl?.searchParams.has("before")).toBeFalsy();
-    expect(capturedUrl?.searchParams.has("after")).toBeFalsy();
-  });
-
   it("passes epoch --since to API instead of the default search window", async () => {
     let capturedUrl: URL | undefined;
     server.use(

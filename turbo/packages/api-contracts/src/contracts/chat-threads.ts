@@ -1741,8 +1741,10 @@ const chatSearchResultSchema = z.object({
   matchedMessage: chatSearchMessageSchema,
   matchedRanges: z.array(chatSearchMatchRangeSchema),
   /**
-   * Deprecated rollout compatibility; always empty. Remove only after old
-   * browser builds and commit-addressed CLI execution contexts have drained.
+   * Deprecated rollout compatibility; always empty. Remove with #30468 after
+   * old web/app builds (up to two days) and pre-change commit-addressed CLI
+   * contexts (up to two hours queued plus two hours executing and bounded
+   * finalization) have drained.
    */
   contextBefore: z.array(chatSearchMessageSchema),
   /** @see contextBefore */
@@ -1777,9 +1779,6 @@ export const chatSearchContract = c.router({
       agentId: z.string().uuid().optional(),
       since: z.coerce.number().optional(),
       limit: z.coerce.number().min(1).max(50).default(20),
-      // Deprecated request compatibility; the backend ignores both values.
-      before: z.coerce.number().min(0).max(10).default(0),
-      after: z.coerce.number().min(0).max(10).default(0),
     }),
     responses: {
       200: chatSearchResponseSchema,
