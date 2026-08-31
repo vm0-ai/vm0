@@ -819,6 +819,167 @@ describe("sandbox Pi agent loop", () => {
     }
   }, 20_000);
 
+  it("lets sandbox-first AgentSession compact H0 before the original prompt", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vm0-pi-compaction-rpc-"));
+    const priorPrompt = "prior context that requires official compaction";
+    const prompt = "run this original prompt after official compaction";
+    const compactionSummary = "official compacted context summary";
+    const finalAnswer = "sandbox answer after compaction";
+    const provider = await ProviderHarness.start();
+    const session = MemoryPiSession.create({ cwd: root, id: SESSION_ID });
+    prepareDeepSeekModel(session, provider.baseUrl);
+    session.appendMessage({ role: "user", content: priorPrompt, timestamp: 1 });
+    session.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "earlier answer to summarize" }],
+      api: "openai-responses",
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      usage: {
+        input: 5,
+        output: 3,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 8,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason: "stop",
+      timestamp: 2,
+    });
+    session.appendMessage({
+      role: "user",
+      content: "recent context ".repeat(8_000),
+      timestamp: 3,
+    });
+    session.appendMessage({
+      role: "assistant",
+      content: [
+        { type: "text", text: "recent answer retained after compaction" },
+      ],
+      api: "openai-responses",
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      usage: {
+        input: 983_617,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 983_617,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason: "stop",
+      timestamp: 4,
+    });
+    let host: RpcHost | undefined;
+    let handoffServer: Server | undefined;
+
+    try {
+      const h0 = session.toJsonl();
+      const started = await startOwnershipTransferHost({
+        root,
+        jsonl: h0,
+        mode: "sandbox-first",
+        baseSessionSha256: createHash("sha256").update(h0).digest("hex"),
+        providerBaseUrl: provider.baseUrl,
+      });
+      host = started.host;
+      handoffServer = started.handoffServer;
+
+      const state = await host.state("compaction-state");
+      host.send({ id: "compaction", type: "prompt", message: prompt });
+
+      const compactionRequest = await provider.nextRequest();
+      const compactionBody = JSON.stringify(compactionRequest.body);
+      expect(compactionBody).toContain(priorPrompt);
+      expect(compactionBody).not.toContain(prompt);
+      compactionRequest.respond(compactionSummary);
+
+      const promptRequest = await provider.nextRequest();
+      expect(occurrences(JSON.stringify(promptRequest.body), prompt)).toBe(1);
+      promptRequest.respond(finalAnswer);
+      await host.waitFor((record) => {
+        return record.type === "agent_settled";
+      });
+      const rpcRecords = [...host.records];
+      await host.close();
+      host = undefined;
+
+      expect(provider.requests).toHaveLength(2);
+      const persisted = await readFile(String(state.sessionFile), "utf8");
+      expect(occurrences(persisted, prompt)).toBe(1);
+      const entries = persisted
+        .trimEnd()
+        .split("\n")
+        .map((line) => {
+          return JSON.parse(line) as {
+            type?: string;
+            message?: {
+              role?: string;
+              content?: unknown;
+              usage?: unknown;
+            };
+            summary?: string;
+            usage?: unknown;
+          };
+        });
+      const compactions = entries.filter((entry) => {
+        return entry.type === "compaction";
+      });
+      expect(compactions).toHaveLength(1);
+      expect(compactions[0]).toMatchObject({
+        summary: compactionSummary,
+        usage: {
+          input: 5,
+          output: 3,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 8,
+        },
+      });
+      const lastAssistant = [...entries].reverse().find((entry) => {
+        return entry.type === "message" && entry.message?.role === "assistant";
+      });
+      expect(lastAssistant?.message).toMatchObject({
+        content: [{ type: "text", text: finalAnswer }],
+        usage: {
+          input: 5,
+          output: 3,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 8,
+        },
+      });
+      expect(
+        rpcRecords
+          .filter((record) => {
+            return String(record.type).startsWith("message_");
+          })
+          .some((record) => {
+            return JSON.stringify(record).includes(compactionSummary);
+          }),
+      ).toBeFalsy();
+    } finally {
+      await host?.terminate();
+      if (handoffServer) {
+        await closeServer(handoffServer);
+      }
+      await provider.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 20_000);
+
   it("acknowledges a settled transfer without replaying its original prompt", async () => {
     const root = await mkdtemp(join(tmpdir(), "vm0-pi-settled-rpc-"));
     const originalPrompt = "the API already completed this prompt";

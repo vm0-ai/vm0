@@ -6634,6 +6634,178 @@ describe("CHAT-02: model-first provider policies", () => {
     ).resolves.toMatchObject({ conversation_run_id: fallback.runId });
   }, 90_000);
 
+  it("transfers compaction-required H0 before provider transport", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected entitled chat actor to have an org");
+    }
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+    const runnerIdentity = {
+      runnerId: randomUUID(),
+      heartbeatGeneration: 1,
+    };
+    await api.requestHeartbeatRunner(true, [200], {
+      runnerId: runnerIdentity.runnerId,
+      group: runnerGroup,
+    });
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "hold capacity for the compaction transfer",
+      model: "claude-sonnet-5",
+    });
+    await flushWaitUntilForTest();
+    const anchorState = await api.readRun(actor, anchor.runId);
+    if (anchorState.status !== "pending") {
+      throw new Error(
+        `Expected pending compaction anchor: ${JSON.stringify(anchorState)}`,
+      );
+    }
+    const anchorClaim = await api.claimRunnerJob(anchor.runId, {
+      runnerIdentity,
+    });
+    const anchorSandboxHeaders = {
+      authorization: `Bearer ${anchorClaim.sandboxToken}`,
+    };
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "2");
+
+    await configureBuiltInPiModel(actor, "deepseek-v4-flash");
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.PiLoop]: true },
+    );
+    mockPiResourceArchiveDownloads();
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.deepseek.com/responses", () => {
+        modelCalls += 1;
+        return new HttpResponse(
+          piResponsesTextSse("seed the compaction checkpoint", modelCalls),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }),
+    );
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "create a settled Pi checkpoint",
+      model: "deepseek-v4-flash",
+    });
+    await waitForRunStatus(actor, first.runId, "completed");
+    await flushWaitUntilForTest();
+    expect(modelCalls).toBe(1);
+
+    const firstSessionBytes = checkpointObjects.get(
+      [...checkpointObjects.keys()].find((key) => {
+        return key.includes("/blobs/");
+      }) ?? "missing-compaction-pi-blob",
+    );
+    if (!firstSessionBytes) {
+      throw new Error("Expected the first Pi run to persist native H1");
+    }
+    const h0Entries = firstSessionBytes
+      .toString("utf8")
+      .trimEnd()
+      .split("\n")
+      .map((line) => {
+        return JSON.parse(line) as {
+          type?: string;
+          message?: {
+            role?: string;
+            usage?: Record<string, unknown>;
+          };
+        };
+      });
+    const lastAssistant = [...h0Entries].reverse().find((entry) => {
+      return entry.type === "message" && entry.message?.role === "assistant";
+    });
+    if (!lastAssistant?.message?.usage) {
+      throw new Error("Expected a settled assistant usage checkpoint");
+    }
+    Object.assign(lastAssistant.message.usage, {
+      input: 983_617,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 983_617,
+    });
+    const compactionH0 = `${h0Entries
+      .map((entry) => {
+        return JSON.stringify(entry);
+      })
+      .join("\n")}\n`;
+    const h0Hash = await replacePiSessionHistoryJsonlFixture({
+      runId: first.runId,
+      jsonl: compactionH0,
+    });
+    checkpointObjects.set(
+      `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${h0Hash}.blob`,
+      Buffer.from(compactionH0, "utf8"),
+    );
+
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+    const prompt = "preserve this original prompt for official compaction";
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt,
+      model: "deepseek-v4-flash",
+    });
+    await waitForRunStatus(actor, second.runId, "queued");
+    await enableQueuedPiOwnershipTransferFixture(context, second.runId);
+    context.mocks.axiomLogging.debug.mockClear();
+    await completeChatRunOk(anchor.runId, anchorSandboxHeaders);
+
+    const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${second.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.get(manifestKey);
+      })
+      .toBeInstanceOf(Buffer);
+    expect(modelCalls).toBe(1);
+    const manifest = piApiFirstTurnManifestV3Schema.parse(
+      JSON.parse(checkpointObjects.get(manifestKey)?.toString("utf8") ?? "{}"),
+    );
+    expect(manifest).toMatchObject({
+      schemaVersion: 3,
+      outcome: "ownership-transfer",
+      mode: "sandbox-first",
+      baseSession: { sessionId: first.threadId, sha256: h0Hash },
+      session: {
+        sessionId: first.threadId,
+        sha256: h0Hash,
+        rawSize: Buffer.byteLength(compactionH0),
+      },
+      sandboxEventSequenceStart: 1,
+    });
+    const transferredH0 =
+      checkpointObjects
+        .get(
+          `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${second.runId}/session.jsonl`,
+        )
+        ?.toString("utf8") ?? "";
+    expect(transferredH0).toBe(compactionH0);
+    const claim = await api.claimRunnerJob(second.runId, { runnerIdentity });
+    const sandboxHeaders = {
+      authorization: `Bearer ${claim.sandboxToken}`,
+    };
+    expect(claim).toMatchObject({
+      cliAgentType: "pi",
+      piSessionId: first.threadId,
+      prompt,
+    });
+    expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
+      "Pi API first-turn outcome",
+      expect.objectContaining({
+        runId: second.runId,
+        outcome: "ownership_transfer",
+        reason: "compaction_preflight",
+        ownershipStage: "pre-provider",
+      }),
+    );
+    await cancelChatRun(actor, second.runId, sandboxHeaders);
+  }, 90_000);
+
   it("fails a corrupt Pi H0 before a second model call and preserves H0", async () => {
     const { actor, agentId } = await entitledChatActor();
     if (!actor.orgId) {

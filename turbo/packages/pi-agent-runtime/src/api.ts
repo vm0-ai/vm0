@@ -15,6 +15,7 @@ import type {
   RunPiApiFirstTurn,
 } from "./api-types";
 import {
+  PiApiFirstTurnCompactionRequiredError,
   UnsupportedPiResourceSnapshotError,
   UnsupportedPiSessionVersionError,
 } from "./errors";
@@ -23,7 +24,11 @@ import type {
   PiApiFirstTurnOwnership,
   PiApiFirstTurnOwnershipStage,
 } from "./provider-ownership";
-export { UnsupportedPiResourceSnapshotError, UnsupportedPiSessionVersionError };
+export {
+  PiApiFirstTurnCompactionRequiredError,
+  UnsupportedPiResourceSnapshotError,
+  UnsupportedPiSessionVersionError,
+};
 export { createPiApiFirstTurnOwnership };
 export type {
   PiApiAssistantContent,

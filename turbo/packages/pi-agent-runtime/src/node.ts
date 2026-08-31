@@ -7,6 +7,7 @@ export {
 } from "./api";
 export { MemoryPiSession } from "./session-memory";
 export {
+  PiApiFirstTurnCompactionRequiredError,
   UnsupportedPiResourceSnapshotError,
   UnsupportedPiSessionVersionError,
 } from "./errors";
