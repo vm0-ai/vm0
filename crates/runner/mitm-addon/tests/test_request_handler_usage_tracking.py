@@ -822,7 +822,7 @@ async def test_billable_model_provider_rejects_uninspectable_response_and_drains
         sandbox_fields={"modelUsageProvider": "claude-sonnet-4-6"},
     )
     flow = _model_provider_tracking_flow(real_flow)
-    flow.request.headers["Accept-Encoding"] = "br, identity;q=0"
+    flow.request.headers["Accept-Encoding"] = "zstd, identity;q=0"
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url=usage_webhook_server.api_url),
@@ -830,7 +830,7 @@ async def test_billable_model_provider_rejects_uninspectable_response_and_drains
     ):
         await mitm_addon.request(flow)
 
-        assert flow.request.headers["Accept-Encoding"] == "br, identity;q=0"
+        assert flow.request.headers["Accept-Encoding"] == "zstd, identity;q=0"
         assert (
             flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION]
             == "preserved_client_constraints"
@@ -849,7 +849,7 @@ async def test_billable_model_provider_rejects_uninspectable_response_and_drains
             b"",
             {
                 "Content-Type": "text/event-stream",
-                "Content-Encoding": "br",
+                "Content-Encoding": "zstd",
             },
         )
         mitm_addon.responseheaders(flow)

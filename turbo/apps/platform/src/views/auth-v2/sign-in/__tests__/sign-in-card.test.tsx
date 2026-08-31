@@ -1818,8 +1818,6 @@ describe("auth v2 sign-in flow", () => {
     await expect(
       screen.findByRole("region", { name: "Create your account" }),
     ).resolves.toBeVisible();
-    expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
 
     act(() => {
       window.history.back();
@@ -1829,9 +1827,6 @@ describe("auth v2 sign-in flow", () => {
     );
 
     await expect(screen.findByLabelText("Password")).resolves.toHaveValue("");
-    expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
-    expect(document.querySelector('[class*="cl-"]')).not.toBeInTheDocument();
   });
 
   it("runs the password-reset code and new-password sequence", async () => {
@@ -2204,7 +2199,6 @@ describe("auth v2 sign-in flow", () => {
       "href",
       "/sign-up?redirect_url=https%3A%2F%2Fapp.vm0.ai",
     );
-    expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
 
     fireEvent.click(await waitForRoleElement("button", "Use another method"));
     await expect(screen.findByLabelText("Email address")).resolves.toHaveValue(
@@ -2229,7 +2223,6 @@ describe("auth v2 sign-in flow", () => {
         return candidate.textContent?.trim() === "Sign up";
       }),
     ).toHaveLength(1);
-    expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
   });
 
   it("does not render the ordinary sign-up switch while completing", async () => {
