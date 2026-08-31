@@ -1,0 +1,24 @@
+{
+  "name": "@okouai/chrome-recorder",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsup && node scripts/copy-static.mjs",
+    "check-types": "tsc --noEmit",
+    "lint": "oxlint src --deny-warnings",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@okouai/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@okouai/typescript-config": "workspace:*",
+    "@types/chrome": "^0.1.6",
+    "happy-dom": "^20.11.1",
+    "oxlint": "^1.75.0",
+    "tsup": "^8.5.1",
+    "typescript": "6.0.3",
+    "vitest": "^4.1.10"
+  }
+}

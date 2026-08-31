@@ -61,6 +61,19 @@
       "ignoreDependencies": ["eslint", "oxlint", "wrangler"],
       "ignoreBinaries": ["eslint", "oxlint", "wrangler"]
     },
+    "apps/chrome-recorder": {
+      "entry": [
+        "src/content.ts",
+        "src/handoff.ts",
+        "src/offscreen.ts",
+        "src/service-worker.ts",
+        "src/**/*.{test,spec}.ts",
+        "scripts/copy-static.mjs"
+      ],
+      "project": ["src/**/*.ts", "scripts/*.mjs", "*.config.ts"],
+      "ignoreDependencies": ["oxlint"],
+      "ignoreBinaries": ["oxlint"]
+    },
     "apps/desktop": {
       "entry": [
         "forge.config.js",

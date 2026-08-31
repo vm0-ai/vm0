@@ -1,0 +1,10 @@
+{
+  "extends": "@okouai/typescript-config/base.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "types": ["chrome", "vitest/globals"]
+  },
+  "include": ["src/**/*", "vitest.config.ts", "tsup.config.ts"],
+  "exclude": ["dist", "node_modules"]
+}

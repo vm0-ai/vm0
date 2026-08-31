@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Okou Screen Recorder",
+  "description": "Record a Chrome tab with on-page countdown, controls, and private element blur, then continue in Okou.",
+  "version": "0.1.0",
+  "minimum_chrome_version": "116",
+  "permissions": ["cookies", "offscreen", "storage", "tabs"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "action": {
+    "default_icon": "icon-192.png",
+    "default_title": "Start an Okou recording"
+  },
+  "icons": {
+    "192": "icon-192.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["handoff.html"],
+      "matches": [
+        "https://app.okou.ai/*",
+        "https://app.vm0.ai/*",
+        "https://staging-app.vm7.ai/*",
+        "https://*.vm6.ai/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}
