@@ -976,11 +976,12 @@ describe("chat lifecycle", () => {
     otherThreadMessagesGate.resolve(undefined);
     await waitFor(() => {
       expect(screen.getByText("Other thread context")).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeDisabled();
     });
     const otherTextarea = screen.getByPlaceholderText(
       PLACEHOLDER,
     ) as HTMLTextAreaElement;
-    await user.type(otherTextarea, "Fresh draft for other thread");
+    await user.type(otherTextarea, "F");
     await waitFor(() => {
       expect(screen.getByLabelText("Send")).toBeEnabled();
     });
