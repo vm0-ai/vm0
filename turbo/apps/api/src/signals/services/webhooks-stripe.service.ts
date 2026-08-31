@@ -2,7 +2,7 @@ import type { OrgTier } from "@okouai/api-contracts/contracts/orgs";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 import { orgConcurrencyEntitlements } from "@okouai/db/schema/org-concurrency-entitlement";
 import { orgConcurrencySubscriptions } from "@okouai/db/schema/org-concurrency-subscription";
-import { orgMetadataLegacyWrites } from "@okouai/db/operations/org-metadata-legacy-write";
+import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-canonical-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import { usagePackSubscriptions } from "@okouai/db/schema/usage-pack-subscription";
@@ -1425,7 +1425,7 @@ async function grantOrgCredits(
   amount: number,
 ): Promise<void> {
   await tx
-    .insert(orgMetadataLegacyWrites)
+    .insert(orgMetadataCanonicalWrites)
     .values({
       orgId,
       credits: amount,
@@ -1433,7 +1433,7 @@ async function grantOrgCredits(
       updatedAt: sql`now()`,
     })
     .onConflictDoUpdate({
-      target: orgMetadataLegacyWrites.orgId,
+      target: orgMetadataCanonicalWrites.orgId,
       set: {
         credits: sql`${orgMetadata.credits} + ${amount}`,
         updatedAt: sql`now()`,
@@ -1824,12 +1824,12 @@ async function processAtomPlanGrantInvoicePaid(
 ): Promise<boolean> {
   return await db.transaction(async (tx) => {
     await tx
-      .insert(orgMetadataLegacyWrites)
+      .insert(orgMetadataCanonicalWrites)
       .values({
         orgId: details.orgId,
         ...(details.customerId ? { stripeCustomerId: details.customerId } : {}),
       })
-      .onConflictDoNothing({ target: orgMetadataLegacyWrites.orgId });
+      .onConflictDoNothing({ target: orgMetadataCanonicalWrites.orgId });
 
     const lockedOrg = await lockInvoicePaidOrg(tx, details.orgId);
     if (!lockedOrg) {
@@ -2673,10 +2673,10 @@ async function insertStripeCustomerForClerkOrg(
   }
 
   const rows = await db
-    .insert(orgMetadataLegacyWrites)
+    .insert(orgMetadataCanonicalWrites)
     .values({ orgId: args.orgId, stripeCustomerId: args.customerId })
-    .onConflictDoNothing({ target: orgMetadataLegacyWrites.orgId })
-    .returning({ orgId: orgMetadataLegacyWrites.orgId });
+    .onConflictDoNothing({ target: orgMetadataCanonicalWrites.orgId })
+    .returning({ orgId: orgMetadataCanonicalWrites.orgId });
 
   if (rows.length > 0) {
     L.debug("inserted org metadata from Stripe customer metadata", {

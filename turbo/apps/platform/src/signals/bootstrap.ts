@@ -4,12 +4,21 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   initAuthRecovery$,
   initClerkRuntime$,
-  setupClerk$,
   watchOrgSwitch$,
 } from "./auth.ts";
+import {
+  type AuthenticatedDaemonOwner,
+  runAuthenticatedDaemons$,
+  setupAuthenticatedBootstrapData$,
+  setupAuthenticatedDaemons$,
+} from "./authenticated-daemons.ts";
 import { initTheme$, syncThemePreferences$ } from "./theme.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
 import { setRootSignal$ } from "./root-signal.ts";
+import { setApiClientRuntime$ } from "./api-client-runtime.ts";
+import { setAuthenticatedServicesReady$ } from "./auth-context.ts";
+import { resolveApiBaseForTarget, resolveOAuthApiBase } from "./api-base.ts";
+import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import {
   initRoutes$,
   detachedNavigateTo$,
@@ -449,6 +458,22 @@ const setupRoutes$ = command(async ({ set }, signal: AbortSignal) => {
   await set(initRoutes$, ROUTE_CONFIG, signal);
 });
 
+const setupAuthenticatedBootstrap$ = command(
+  async (
+    { set },
+    ownDaemon: AuthenticatedDaemonOwner,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const servicesReady = set(setupAuthenticatedDaemons$, ownDaemon, signal);
+    set(setAuthenticatedServicesReady$, servicesReady);
+    await servicesReady;
+    signal.throwIfAborted();
+    ownDaemon(set(runAuthenticatedDaemons$, signal));
+    await set(setupAuthenticatedBootstrapData$, signal);
+    signal.throwIfAborted();
+  },
+);
+
 const setupFeatureSwitches$ = command(async ({ set }, signal: AbortSignal) => {
   await set(reloadFeatureSwitch$, signal);
   await set(syncLocalePreference$, signal);
@@ -494,7 +519,12 @@ const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
 });
 
 export const bootstrap$ = command(
-  async ({ get, set }, render: () => void, signal: AbortSignal) => {
+  async (
+    { get, set },
+    render: () => void,
+    ownDaemon: AuthenticatedDaemonOwner,
+    signal: AbortSignal,
+  ): Promise<void> => {
     set(initBootstrapPhaseTiming$, signal);
     set(captureInvitationRedirect$);
     set(markBootstrapLocaleInitStarted$);
@@ -503,6 +533,15 @@ export const bootstrap$ = command(
     set(markBootstrapLocaleInitCompleted$);
     set(initTheme$);
     set(setRootSignal$, signal);
+    const apiBaseUrl = resolveApiBaseForTarget("api");
+    const vercelProtectionBypass =
+      getCapturedPreviewBypassForTarget(apiBaseUrl);
+    set(setApiClientRuntime$, {
+      environment: "app",
+      apiBaseUrl,
+      oauthApiBaseUrl: resolveOAuthApiBase(),
+      ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
+    });
     set(initClerkRuntime$, signal);
     set(initAuthRecovery$, signal);
     set(initBootstrapSkeleton$);
@@ -510,8 +549,8 @@ export const bootstrap$ = command(
     set(setupLoggers$);
 
     // The cached effective switches already drive the first rendered frame.
-    // Install capture from that same snapshot before setupRouter starts the
-    // authenticated daemons, so their initial Clerk and Ably waits are kept
+    // Install capture from that same snapshot before bootstrap starts the
+    // authenticated services, so their initial Clerk and Ably waits are kept
     // even while remote feature-switch hydration is still pending.
     set(setupConnectionDiagnostics$, signal);
     set(writeConnectionDiagnostic$, {
@@ -524,6 +563,7 @@ export const bootstrap$ = command(
     set(handleSlackRedirect$);
 
     await Promise.all([
+      set(setupAuthenticatedBootstrap$, ownDaemon, signal),
       set(setupRoutes$, signal),
       set(startSkeletonCycling$, signal),
       set(setupGlobalMethod$, signal),
@@ -531,7 +571,6 @@ export const bootstrap$ = command(
       set(setupNotificationListener$, signal),
 
       set(setupGlobalKeyboardShortcuts$, signal),
-      set(setupClerk$, signal),
       set(watchOrgSwitch$, signal),
       set(setupFeatureSwitches$, signal),
     ]);

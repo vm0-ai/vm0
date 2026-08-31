@@ -45,7 +45,7 @@ describe("chat event search projection schema", () => {
       "chat_event_search_messages_user_org_agent_id_created_idx",
       "chat_event_search_messages_tsv_idx",
     ]);
-    expect(config.foreignKeys[0]?.onDelete).toBe("cascade");
+    expect(config.foreignKeys).toStrictEqual([]);
   });
 
   it("keeps an independent per-thread durable watermark", () => {
@@ -60,6 +60,6 @@ describe("chat event search projection schema", () => {
       }),
     ).toStrictEqual(["chat_thread_id", "indexed_seq_id"]);
     expect(chatEventSearchMessageWatermarks.chatThreadId.primary).toBeTruthy();
-    expect(config.foreignKeys[0]?.onDelete).toBe("cascade");
+    expect(config.foreignKeys).toStrictEqual([]);
   });
 });

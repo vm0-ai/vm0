@@ -1,7 +1,7 @@
 import { z } from "zod";
 import {
+  chatThreadIndicatorsSchema,
   sharedDatabaseDataKeySchema,
-  sharedDatabaseIdentitySchema,
   sharedDatabaseQuerySchema,
 } from "./data-key.ts";
 
@@ -25,7 +25,7 @@ const heartbeatRequestSchema = z
   .object({
     type: z.literal("heartbeat"),
     requestId: requestIdSchema,
-    identity: sharedDatabaseIdentitySchema,
+    token: z.string().min(1),
     apiBaseUrl: z.string().url(),
     vercelProtectionBypass: z.string().min(1).optional(),
   })
@@ -55,15 +55,15 @@ const unsubscribeRequestSchema = z
   })
   .strict();
 
-const cancelRequestSchema = z
+const indicatorsRequestSchema = z
   .object({
-    type: z.literal("cancel"),
+    type: z.literal("get-indicators"),
     requestId: requestIdSchema,
   })
   .strict();
 
-const disconnectRequestSchema = z
-  .object({ type: z.literal("disconnect") })
+const reloadIndicatorsRequestSchema = z
+  .object({ type: z.literal("reload-indicators") })
   .strict();
 
 export const sharedDatabaseClientMessageSchema = z.discriminatedUnion("type", [
@@ -71,8 +71,8 @@ export const sharedDatabaseClientMessageSchema = z.discriminatedUnion("type", [
   queryRequestSchema,
   subscribeRequestSchema,
   unsubscribeRequestSchema,
-  cancelRequestSchema,
-  disconnectRequestSchema,
+  indicatorsRequestSchema,
+  reloadIndicatorsRequestSchema,
 ]);
 
 export type SharedDatabaseClientMessage = z.infer<
@@ -158,6 +158,8 @@ export const sharedDatabaseWorkerMessageSchema = z.discriminatedUnion("type", [
   indicatorsInvalidatedMessageSchema,
   statusMessageSchema,
 ]);
+
+export { chatThreadIndicatorsSchema };
 
 export type SharedDatabaseWorkerMessage = z.infer<
   typeof sharedDatabaseWorkerMessageSchema

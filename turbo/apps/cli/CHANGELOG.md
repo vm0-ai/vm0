@@ -1,5 +1,27 @@
 # Changelog
 
+## [9.299.0](https://github.com/vm0-ai/vm0/compare/cli-v9.298.6...cli-v9.299.0) (2026-08-31)
+
+
+### Features
+
+* **pi:** add versioned sandbox ownership transfers ([#30607](https://github.com/vm0-ai/vm0/issues/30607)) ([dbc4e02](https://github.com/vm0-ai/vm0/commit/dbc4e02e9360749162d2bcf3fd1726f12a8e521f))
+* **pi:** support terra runtime contract ([#30606](https://github.com/vm0-ai/vm0/issues/30606)) ([c92fe87](https://github.com/vm0-ai/vm0/commit/c92fe8706d66dd88f28f253010008d158e6893a0))
+
+
+### Bug Fixes
+
+* **chat-search:** avoid thread deletion lock contention ([#30453](https://github.com/vm0-ai/vm0/issues/30453)) ([b5676e7](https://github.com/vm0-ai/vm0/commit/b5676e768129c4bc63bdbba59c05e434a771b336))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.383.0
+    * @okouai/core bumped to 8.605.2
+    * @okouai/pi-agent-runtime bumped to 1.7.0
+
 ## [9.298.6](https://github.com/vm0-ai/vm0/compare/cli-v9.298.5...cli-v9.298.6) (2026-08-31)
 
 

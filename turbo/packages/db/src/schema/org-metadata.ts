@@ -12,11 +12,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { agents } from "./agent";
 
-/**
- * Legacy org-metadata projection kept free of expand-only columns while the
- * immediately pre-expand database remains a supported deployment target.
- */
-export function orgMetadataLegacyColumns() {
+function orgMetadataColumnsBeforeFirstPartySource() {
   return {
     orgId: text("org_id").primaryKey(),
     // Credits are granted explicitly through Stripe invoices, one-time purchases,
@@ -42,7 +38,19 @@ export function orgMetadataLegacyColumns() {
     // First-touch acquisition attribution. These fields are immutable after
     // capture and give billing/reporting a durable join to Google Ads IDs.
     acquisitionSourceType: text("acquisition_source_type"),
-    acquisitionVm0Source: text("acquisition_vm0_source"),
+  };
+}
+
+function legacyFirstPartySourceColumn() {
+  return text("acquisition_vm0_source");
+}
+
+function canonicalFirstPartySourceColumn() {
+  return text("acquisition_first_party_source");
+}
+
+function orgMetadataColumnsAfterFirstPartySource() {
+  return {
     acquisitionCampaignId: text("acquisition_campaign_id"),
     acquisitionAdGroupId: text("acquisition_ad_group_id"),
     acquisitionCampaign: text("acquisition_campaign"),
@@ -73,6 +81,34 @@ export function orgMetadataLegacyColumns() {
 }
 
 /**
+ * Previous-release insert projection used by mixed-version statement tests.
+ *
+ * Active application writers use the canonical projection below. This legacy
+ * shape remains available only to prove that rollback statements stay valid.
+ */
+export function orgMetadataLegacyColumns() {
+  return {
+    ...orgMetadataColumnsBeforeFirstPartySource(),
+    acquisitionVm0Source: legacyFirstPartySourceColumn(),
+    ...orgMetadataColumnsAfterFirstPartySource(),
+  };
+}
+
+/**
+ * Canonical insert projection for org metadata.
+ *
+ * Drizzle emits every mapped column in an INSERT target list, so active writes
+ * use this projection to exclude the legacy compatibility column.
+ */
+export function orgMetadataCanonicalColumns() {
+  return {
+    ...orgMetadataColumnsBeforeFirstPartySource(),
+    acquisitionFirstPartySource: canonicalFirstPartySourceColumn(),
+    ...orgMetadataColumnsAfterFirstPartySource(),
+  };
+}
+
+/**
  * org_metadata — stores per-org data that is owned by the platform (not Clerk).
  * Holds credit balance, tier, default agent configuration, and Stripe billing fields.
  * Clerk remains source of truth for slug and membership only.
@@ -80,9 +116,10 @@ export function orgMetadataLegacyColumns() {
 export const orgMetadata = pgTable(
   "org_metadata",
   {
-    ...orgMetadataLegacyColumns(),
-    // Expand-only mapping; active application contracts remain legacy.
-    acquisitionFirstPartySource: text("acquisition_first_party_source"),
+    ...orgMetadataColumnsBeforeFirstPartySource(),
+    acquisitionVm0Source: legacyFirstPartySourceColumn(),
+    ...orgMetadataColumnsAfterFirstPartySource(),
+    acquisitionFirstPartySource: canonicalFirstPartySourceColumn(),
   },
   (table) => {
     return [

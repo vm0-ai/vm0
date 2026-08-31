@@ -118,7 +118,7 @@ dependencies = [
 
 [[package]]
 name = "api-contracts"
-version = "0.23.3"
+version = "0.24.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1255,7 +1255,7 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
 name = "guest-agent"
-version = "0.82.27"
+version = "0.83.0"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1347,7 +1347,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.21.108"
+version = "0.21.109"
 dependencies = [
  "api-contracts",
  "guest-contracts",
@@ -1359,7 +1359,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-codex"
-version = "0.9.20"
+version = "0.10.0"
 dependencies = [
  "chrono",
  "clap",
@@ -2608,7 +2608,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.180.0"
+version = "0.181.0"
 dependencies = [
  "ably-subscriber",
  "api-contracts",

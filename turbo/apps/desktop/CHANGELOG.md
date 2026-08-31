@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.39.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.39.1...desktop-v0.39.2) (2026-08-31)
+
+
+### Refactoring
+
+* **desktop:** retire notarization keychain aliases ([#30610](https://github.com/vm0-ai/vm0/issues/30610)) ([ce1e812](https://github.com/vm0-ai/vm0/commit/ce1e812f5331e2560db6b70de83c417dbb55220c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.383.0
+
 ## [0.39.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.39.0...desktop-v0.39.1) (2026-08-31)
 
 

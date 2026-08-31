@@ -167,8 +167,6 @@ export const agentListDialogChatMessages$ = computed(
         query: {
           keyword: query,
           limit: MAX_AGENT_LIST_DIALOG_RESULTS,
-          before: 0,
-          after: 0,
         },
       }),
       [200],

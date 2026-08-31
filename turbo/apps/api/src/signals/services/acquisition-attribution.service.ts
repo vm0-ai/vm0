@@ -2,7 +2,7 @@ import {
   adAttributionMetadataSchema,
   type AdAttributionMetadata,
 } from "@okouai/api-contracts/contracts/acquisition-attribution";
-import { orgMetadataLegacyWrites } from "@okouai/db/operations/org-metadata-legacy-write";
+import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-canonical-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { and, eq, isNull } from "drizzle-orm";
 import { command } from "ccstate";
@@ -12,7 +12,7 @@ import { writeDb$ } from "../external/db";
 
 const ORG_ATTRIBUTION_FIELDS = [
   ["source_type", "acquisitionSourceType"],
-  ["vm0_source", "acquisitionVm0Source"],
+  ["vm0_source", "acquisitionFirstPartySource"],
   ["vm0_campaign_id", "acquisitionCampaignId"],
   ["vm0_ad_group_id", "acquisitionAdGroupId"],
   ["utm_campaign", "acquisitionCampaign"],
@@ -102,7 +102,7 @@ export const persistOrgAcquisitionAttribution$ = command(
     // metadata row exists, then only fill the attribution columns once. The
     // timestamp is the immutable first-touch guard under concurrent checkouts.
     const [inserted] = await db
-      .insert(orgMetadataLegacyWrites)
+      .insert(orgMetadataCanonicalWrites)
       .values({
         orgId: args.orgId,
         credits: 0,
@@ -110,8 +110,8 @@ export const persistOrgAcquisitionAttribution$ = command(
         acquisitionRecordedAt: recordedAt,
         updatedAt: recordedAt,
       })
-      .onConflictDoNothing({ target: orgMetadataLegacyWrites.orgId })
-      .returning({ orgId: orgMetadataLegacyWrites.orgId });
+      .onConflictDoNothing({ target: orgMetadataCanonicalWrites.orgId })
+      .returning({ orgId: orgMetadataCanonicalWrites.orgId });
     signal.throwIfAborted();
     if (inserted) {
       return true;

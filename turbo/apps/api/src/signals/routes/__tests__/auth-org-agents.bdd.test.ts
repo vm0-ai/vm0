@@ -86,7 +86,11 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
     api.mockClerkOrg(admin, { slug: orgSlug, name: "BDD Chain Org" });
 
     const me = await api.readMe(admin);
-    expect(me).toStrictEqual({ userId: admin.userId, email: admin.email });
+    expect(me).toStrictEqual({
+      userId: admin.userId,
+      email: admin.email,
+      orgId: admin.orgId,
+    });
 
     const org = await api.readOrg(admin);
     expect(org).toMatchObject({

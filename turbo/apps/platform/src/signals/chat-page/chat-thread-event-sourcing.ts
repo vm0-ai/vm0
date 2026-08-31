@@ -12,7 +12,6 @@ import {
   type ChatThreadMetadataShortcutOutcome,
 } from "../../lib/posthog.ts";
 import { activeRoute$ } from "../active-route.ts";
-import { authenticatedIdentity$ } from "../auth.ts";
 import { apiClient$ } from "../api-client.ts";
 import { foregroundReady$ } from "../auth-retry.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
@@ -112,6 +111,7 @@ const bootstrapThreadMetaState$ = state<
   ReadonlyMap<string, BootstrapThreadMetaEntry>
 >(new Map());
 const chatThreadEventSyncVersion$ = state(0);
+const sharedChatThreadEventInvalidationPending$ = state(false);
 
 const clearBootstrapThreadMeta$ = command(({ get, set }) => {
   set(bootstrapThreadMetaState$, new Map());
@@ -215,12 +215,9 @@ function filterUnsettledOptimisticChatThreadEvents(
   });
 }
 
-const sharedChatThreadEventDataKey$ = computed(
-  async (get): Promise<ChatThreadEventDataKey> => {
-    const { userId, orgId } = await get(authenticatedIdentity$);
-    return { kind: "chat-thread-event", userId, orgId };
-  },
-);
+const sharedChatThreadEventDataKey$ = computed((): ChatThreadEventDataKey => {
+  return { kind: "chat-thread-event" };
+});
 
 const applySharedChatThreadEventResult$ = command(
   (
@@ -257,6 +254,7 @@ const applySharedChatThreadEventResult$ = command(
       return;
     }
     set(clearBootstrapThreadMeta$);
+    set(sharedChatThreadEventInvalidationPending$, false);
     const synced = get(initialRemoteChatThreadEventsSyncedDeferred$);
     if (!synced.settled()) {
       synced.resolve();
@@ -313,7 +311,13 @@ const subscribeSharedEventDrivenChatThreads$ = command(
     await set(
       onSharedDatabase$,
       dataKey,
-      () => {
+      (kind) => {
+        if (kind === "invalidate") {
+          set(sharedChatThreadEventInvalidationPending$, true);
+        } else if (get(sharedChatThreadEventInvalidationPending$)) {
+          set(sharedChatThreadEventInvalidationPending$, false);
+          return;
+        }
         set(markChatThreadEventSyncPending$);
         set(enqueueSharedDatabaseInvalidation$, dataKey);
       },

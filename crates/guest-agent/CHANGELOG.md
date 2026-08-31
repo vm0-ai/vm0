@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.83.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.27...guest-agent-v0.83.0) (2026-08-31)
+
+
+### Features
+
+* **codex:** preserve thread item semantics ([#30579](https://github.com/vm0-ai/vm0/issues/30579)) ([31b1be9](https://github.com/vm0-ai/vm0/commit/31b1be9fd870504252b4277e3480442170963426))
+* **pi:** add versioned sandbox ownership transfers ([#30607](https://github.com/vm0-ai/vm0/issues/30607)) ([dbc4e02](https://github.com/vm0-ai/vm0/commit/dbc4e02e9360749162d2bcf3fd1726f12a8e521f))
+
 ## [0.82.27](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.26...guest-agent-v0.82.27) (2026-08-31)
 
 

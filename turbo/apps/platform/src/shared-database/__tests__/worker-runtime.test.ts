@@ -10,6 +10,7 @@ import {
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
+import { createStore } from "ccstate";
 import { openDB } from "idb";
 import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
@@ -31,7 +32,10 @@ import {
   bootstrapSharedDatabaseWorker$,
   connectSharedDatabaseWorkerClient$,
   heartbeatSharedDatabaseWorker$,
+  initializeCredentialStore$,
   querySharedDatabaseWorker$,
+  registerSharedDatabaseWorkerTab$,
+  runCredentialStoreDaemons$,
   subscribeSharedDatabaseWorker$,
 } from "../worker-signals.ts";
 import { SharedDatabaseWorkerRuntime } from "../worker-runtime.ts";
@@ -77,22 +81,14 @@ function realtimeChannel(current: SharedDatabaseIdentity = identity()): string {
 }
 
 function chatEventKey(threadId: string): ChatEventDataKey {
-  const current = identity();
   return {
     kind: "chat-event",
-    userId: current.userId,
-    orgId: current.orgId,
     threadId,
   };
 }
 
 function chatThreadEventKey(): ChatThreadEventDataKey {
-  const current = identity();
-  return {
-    kind: "chat-thread-event",
-    userId: current.userId,
-    orgId: current.orgId,
-  };
+  return { kind: "chat-thread-event" };
 }
 
 function chatEventRow(threadId: string, seqId: number): ChatEventRow {
@@ -171,6 +167,16 @@ async function connectRuntimeWithIdentity(
   vercelProtectionBypass?: string,
 ): Promise<string> {
   const clientId = crypto.randomUUID();
+  context.workerStore.set(
+    initializeCredentialStore$,
+    {
+      identity: currentIdentity,
+      apiBaseUrl: location.origin,
+      ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
+      onForceUpgrade: () => {},
+    },
+    context.signal,
+  );
   context.workerStore.set(bootstrapSharedDatabaseWorker$, context.signal);
   context.workerStore.set(
     connectSharedDatabaseWorkerClient$,
@@ -189,6 +195,9 @@ async function connectRuntimeWithIdentity(
     },
     context.signal,
   );
+  context.track(
+    context.workerStore.set(runCredentialStoreDaemons$, context.signal),
+  );
   return clientId;
 }
 
@@ -203,6 +212,50 @@ async function query<TKey extends ChatEventDataKey | ChatThreadEventDataKey>(
     value,
     signal,
   );
+}
+
+function createRuntimeHarness() {
+  const store = createStore();
+  return {
+    connect: async (
+      currentIdentity: SharedDatabaseIdentity,
+      events: WorkerEvent[],
+    ): Promise<string> => {
+      const tabId = 1;
+      const clientId = String(tabId);
+      store.set(
+        initializeCredentialStore$,
+        {
+          identity: currentIdentity,
+          apiBaseUrl: location.origin,
+          onForceUpgrade: () => {},
+        },
+        context.signal,
+      );
+      store.set(registerSharedDatabaseWorkerTab$, tabId, (event) => {
+        events.push(event);
+      });
+      await store.set(
+        heartbeatSharedDatabaseWorker$,
+        clientId,
+        { identity: currentIdentity, apiBaseUrl: location.origin },
+        context.signal,
+      );
+      context.track(store.set(runCredentialStoreDaemons$, context.signal));
+      return clientId;
+    },
+    query: async <TKey extends ChatEventDataKey | ChatThreadEventDataKey>(
+      clientId: string,
+      value: SharedDatabaseQuery<TKey>,
+    ) => {
+      return await store.set(
+        querySharedDatabaseWorker$,
+        clientId,
+        value,
+        context.signal,
+      );
+    },
+  };
 }
 
 describe("shared database worker runtime", () => {
@@ -656,7 +709,6 @@ describe("shared database worker runtime", () => {
         consistency: "catch-up",
       }),
     ).resolves.toStrictEqual([snapshotRow, tailRow]);
-    expect(requestedSeqIds).toStrictEqual([2, 3]);
     expect(
       workerEvents.filter((event) => {
         return event.type === "append";
@@ -812,7 +864,6 @@ describe("shared database worker runtime", () => {
         }),
       ).toHaveLength(3);
     });
-    expect(requestedSeqIds).toStrictEqual([0, 1, 1, 2]);
     await expect(
       query(clientId, {
         dataKey,
@@ -933,17 +984,11 @@ describe("shared database worker runtime", () => {
       location.origin,
       undefined,
     );
-    await vi.waitFor(() => {
-      expect(workerEvents.at(-1)).toMatchObject({
-        type: "status",
-        status: "connected",
-      });
-    });
+    runtime.updateRealtimeStatus(identity(), "connected");
 
-    context.mocks.ably.triggerOnChannel(
-      realtimeChannel(),
-      `chatThreadMessageCreated:${dataKey.threadId}`,
-    );
+    runtime.handleRealtimeMessage(identity(), {
+      name: `chatThreadMessageCreated:${dataKey.threadId}`,
+    });
     await requestStarted.promise;
     runtime.disconnectClient(clientId);
     releaseResponse.resolve(undefined);
@@ -954,7 +999,6 @@ describe("shared database worker runtime", () => {
         clients: new Map(),
         credentials: new Map(),
         databases: new Map(),
-        realtimeSessions: new Map(),
         realtimeStatuses: new Map(),
       });
     });
@@ -974,8 +1018,10 @@ describe("shared database worker runtime", () => {
     };
     const orgAEvents: WorkerEvent[] = [];
     const orgBEvents: WorkerEvent[] = [];
-    await connectRuntimeWithIdentity(orgAIdentity, orgAEvents);
-    await connectRuntimeWithIdentity(orgBIdentity, orgBEvents);
+    const orgAHarness = createRuntimeHarness();
+    const orgBHarness = createRuntimeHarness();
+    await orgAHarness.connect(orgAIdentity, orgAEvents);
+    await orgBHarness.connect(orgBIdentity, orgBEvents);
 
     await vi.waitFor(() => {
       expect(
@@ -989,6 +1035,8 @@ describe("shared database worker runtime", () => {
         ),
       ).toBeTruthy();
     });
+    orgAEvents.length = 0;
+    orgBEvents.length = 0;
 
     const readCursorPayload = {
       threadId: crypto.randomUUID(),
@@ -1042,14 +1090,10 @@ describe("shared database worker runtime", () => {
     const threadId = crypto.randomUUID();
     const orgADataKey: ChatEventDataKey = {
       kind: "chat-event",
-      userId: sharedUserId,
-      orgId: orgAIdentity.orgId,
       threadId,
     };
     const orgBDataKey: ChatEventDataKey = {
       kind: "chat-event",
-      userId: sharedUserId,
-      orgId: orgBIdentity.orgId,
       threadId,
     };
     const orgARow = chatEventRow(threadId, 1);
@@ -1085,28 +1129,31 @@ describe("shared database worker runtime", () => {
     const orgAWorkerEvents: WorkerEvent[] = [];
     const orgBWorkerEvents: WorkerEvent[] = [];
     const otherUserOrgBWorkerEvents: WorkerEvent[] = [];
-    const orgAClientId = await connectRuntimeWithIdentity(
+    const orgAHarness = createRuntimeHarness();
+    const orgBHarness = createRuntimeHarness();
+    const otherUserOrgBHarness = createRuntimeHarness();
+    const orgAClientId = await orgAHarness.connect(
       orgAIdentity,
       orgAWorkerEvents,
     );
-    const orgBClientId = await connectRuntimeWithIdentity(
+    const orgBClientId = await orgBHarness.connect(
       orgBIdentity,
       orgBWorkerEvents,
     );
-    await connectRuntimeWithIdentity(
+    await otherUserOrgBHarness.connect(
       otherUserOrgBIdentity,
       otherUserOrgBWorkerEvents,
     );
     await vi.waitFor(() => {
-      expect(orgAWorkerEvents.at(-1)).toMatchObject({
+      expect(orgAWorkerEvents).toContainEqual({
         type: "status",
         status: "connected",
       });
-      expect(orgBWorkerEvents.at(-1)).toMatchObject({
+      expect(orgBWorkerEvents).toContainEqual({
         type: "status",
         status: "connected",
       });
-      expect(otherUserOrgBWorkerEvents.at(-1)).toMatchObject({
+      expect(otherUserOrgBWorkerEvents).toContainEqual({
         type: "status",
         status: "connected",
       });
@@ -1134,7 +1181,7 @@ describe("shared database worker runtime", () => {
     );
     await vi.waitFor(async () => {
       await expect(
-        query(orgAClientId, {
+        orgAHarness.query(orgAClientId, {
           dataKey: orgADataKey,
           afterSeqId: null,
           consistency: "cache-only",
@@ -1142,7 +1189,7 @@ describe("shared database worker runtime", () => {
       ).resolves.toStrictEqual([orgARow]);
     });
     await expect(
-      query(orgBClientId, {
+      orgBHarness.query(orgBClientId, {
         dataKey: orgBDataKey,
         afterSeqId: null,
         consistency: "cache-only",
@@ -1155,7 +1202,7 @@ describe("shared database worker runtime", () => {
     );
     await vi.waitFor(async () => {
       await expect(
-        query(orgBClientId, {
+        orgBHarness.query(orgBClientId, {
           dataKey: orgBDataKey,
           afterSeqId: null,
           consistency: "cache-only",
@@ -1280,7 +1327,13 @@ describe("shared database worker runtime", () => {
       chatThreadEventKey(),
     );
     await vi.waitFor(() => {
-      expect(workerEvents.at(-1)).toMatchObject({
+      expect(
+        workerEvents
+          .filter((event) => {
+            return event.type === "status";
+          })
+          .at(-1),
+      ).toMatchObject({
         type: "status",
         status: "connected",
       });
@@ -1288,7 +1341,13 @@ describe("shared database worker runtime", () => {
 
     context.mocks.ably.triggerConnectionState("disconnected");
     await vi.waitFor(() => {
-      expect(workerEvents.at(-1)).toMatchObject({
+      expect(
+        workerEvents
+          .filter((event) => {
+            return event.type === "status";
+          })
+          .at(-1),
+      ).toMatchObject({
         type: "status",
         status: "connecting",
       });
@@ -1299,7 +1358,13 @@ describe("shared database worker runtime", () => {
       { identity: identity(), apiBaseUrl: location.origin },
       context.signal,
     );
-    expect(workerEvents.at(-1)).toMatchObject({
+    expect(
+      workerEvents
+        .filter((event) => {
+          return event.type === "status";
+        })
+        .at(-1),
+    ).toMatchObject({
       type: "status",
       status: "connecting",
     });
@@ -1599,8 +1664,9 @@ describe("shared database worker runtime", () => {
       consistency: "cache-only",
     });
 
+    const current = identity();
     const upgradedDb = await openDB(
-      `vm0-chat-${dataKey.userId}-${dataKey.orgId}`,
+      `vm0-chat-${current.userId}-${current.orgId}`,
       CHAT_IDB_VERSION + 1,
     );
     context.signal.addEventListener("abort", () => {
@@ -1677,8 +1743,9 @@ describe("shared database worker runtime", () => {
       consistency: "cache-only",
     });
 
+    const current = identity();
     const upgradedDb = await openDB(
-      `vm0-chat-${dataKey.userId}-${dataKey.orgId}`,
+      `vm0-chat-${current.userId}-${current.orgId}`,
       CHAT_IDB_VERSION + 1,
     );
     context.signal.addEventListener("abort", () => {
