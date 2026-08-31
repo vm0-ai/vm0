@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.814.1](https://github.com/vm0-ai/vm0/compare/app-v0.814.0...app-v0.814.1) (2026-08-31)
+
+
+### Refactoring
+
+* **app:** own client version per runtime ([#30618](https://github.com/vm0-ai/vm0/issues/30618)) ([1c5ddee](https://github.com/vm0-ai/vm0/commit/1c5ddee15bb11d6a2f3c3cbcb099c8b4a2b74798))
+* remove legacy morning brief pipeline ([#30438](https://github.com/vm0-ai/vm0/issues/30438)) ([9c59bfe](https://github.com/vm0-ai/vm0/commit/9c59bfe9ad3575244584924c1408839e8aa5d500))
+
+
+### Performance Improvements
+
+* **platform:** overlap clerk and onboarding bootstrap ([#30442](https://github.com/vm0-ai/vm0/issues/30442)) ([dd211f3](https://github.com/vm0-ai/vm0/commit/dd211f372d5824ff3e7aa86057f11e42fe57f79a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.384.0
+    * @okouai/core bumped to 8.605.3
+
 ## [0.814.0](https://github.com/vm0-ai/vm0/compare/app-v0.813.5...app-v0.814.0) (2026-08-31)
 
 
