@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.813.4](https://github.com/vm0-ai/vm0/compare/app-v0.813.3...app-v0.813.4) (2026-08-31)
+
+
+### Bug Fixes
+
+* continue chat with current model ([#30520](https://github.com/vm0-ai/vm0/issues/30520)) ([0850f78](https://github.com/vm0-ai/vm0/commit/0850f7833d24fc393c05065f7f9877d5f1a5d1a7))
+* **platform:** route chat realtime through user-org channels ([#30358](https://github.com/vm0-ai/vm0/issues/30358)) ([5cd95cf](https://github.com/vm0-ai/vm0/commit/5cd95cfbd3c7ebe2dd207135de80dc0b5cbe913e))
+* **platform:** route locked video templates to plans ([#30567](https://github.com/vm0-ai/vm0/issues/30567)) ([ddc223a](https://github.com/vm0-ai/vm0/commit/ddc223ac07b00cc3e76b3ee1f1c1d7af87eccb20))
+* **platform:** stop connector account pagination at the last page ([#30580](https://github.com/vm0-ai/vm0/issues/30580)) ([d511bc3](https://github.com/vm0-ai/vm0/commit/d511bc3c43574ce2f5e25a3291e4a14e3d93e633))
+
+
+### Performance Improvements
+
+* **platform:** render skeleton before app startup ([#30484](https://github.com/vm0-ai/vm0/issues/30484)) ([fcf8fc4](https://github.com/vm0-ai/vm0/commit/fcf8fc4e0a03e1e27fd015ad76dfe682c00503aa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.382.0
+    * @okouai/connectors bumped to 3.1.0
+    * @okouai/core bumped to 8.605.1
+
 ## [0.813.3](https://github.com/vm0-ai/vm0/compare/app-v0.813.2...app-v0.813.3) (2026-08-31)
 
 
