@@ -17,6 +17,7 @@ interface PlatformRuntimeConfig {
   readonly publicStaticAssetsBaseUrl: string;
   readonly zeroHostDomain: "sites.vm0.io" | "sites.vm7.io";
   readonly plausibleScriptUrl: string | null;
+  readonly postHogHost: string | null;
   readonly postHogKey: string | null;
   readonly sentryDsn: string | null;
   readonly vapidPublicKey: string | null;
@@ -203,6 +204,7 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
       plausibleScriptUrl: optionalBuildValue(
         import.meta.env.VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION,
       ),
+      postHogHost: "https://j.okou.io",
       postHogKey: optionalBuildValue(import.meta.env.VITE_POSTHOG_KEY),
       sentryDsn: optionalBuildValue(import.meta.env.VITE_SENTRY_DSN_PROD),
       vapidPublicKey: optionalBuildValue(
@@ -225,6 +227,7 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
       environment === "preview"
         ? optionalBuildValue(import.meta.env.VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW)
         : null,
+    postHogHost: null,
     postHogKey: null,
     sentryDsn: null,
     vapidPublicKey: optionalBuildValue(
