@@ -13,6 +13,7 @@ import {
   type DesktopTrayMenuItem,
 } from "./desktop-tray-menu";
 import { latestWinsGuard } from "./desktop-async-control";
+import type { DesktopRecorderState } from "./desktop-recorder-types";
 
 interface DesktopTrayControllerOptions {
   readonly brandName: "Zero" | "Okou";
@@ -34,6 +35,9 @@ interface DesktopTrayControllerOptions {
   readonly openAccessibilitySettings: () => void;
   readonly openScreenRecordingSettings: () => void;
   readonly setKeepAwakeEnabled: (enabled: boolean) => Promise<void>;
+  readonly getRecorderState: () => DesktopRecorderState;
+  readonly startScreenRecording: () => Promise<void>;
+  readonly stopScreenRecording: () => Promise<void>;
   readonly quit: () => void;
 }
 
@@ -162,6 +166,7 @@ export class DesktopTrayController {
         auth: this.authState,
         authLoading: this.authLoading,
         authError: this.authError,
+        recorder: this.options.getRecorderState(),
       },
       actions,
     );
@@ -377,6 +382,12 @@ export class DesktopTrayController {
           return this.options.setKeepAwakeEnabled(enabled);
         })();
       },
+      startScreenRecording: this.runAction("start screen recording", () => {
+        return this.options.startScreenRecording();
+      }),
+      stopScreenRecording: this.runAction("stop screen recording", () => {
+        return this.options.stopScreenRecording();
+      }),
       quit: () => {
         this.options.quit();
       },

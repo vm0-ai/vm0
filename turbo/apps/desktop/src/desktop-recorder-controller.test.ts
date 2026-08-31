@@ -111,6 +111,51 @@ describe("DesktopRecorderController", () => {
     });
   });
 
+  it("prepares and starts the main display in one step", async () => {
+    const { controller, backend } = createController();
+    controller.setFeatureEnabled(true);
+
+    await controller.startMainDisplayRecording();
+
+    expect(backend.prepare).toHaveBeenCalledWith({
+      sourceId: "display:1",
+      sourceKind: "display",
+      systemAudio: true,
+    });
+    expect(controller.getState().status).toBe("recording");
+  });
+
+  it("ignores windows when picking the main display", async () => {
+    const backend = createBackendFake({
+      listSources: vi.fn(async () => [
+        { id: "window:42", kind: "window" as const, title: "Safari" },
+        { id: "display:7", kind: "display" as const, title: "Studio Display" },
+      ]),
+    });
+    const { controller } = createController(backend);
+    controller.setFeatureEnabled(true);
+
+    await controller.startMainDisplayRecording();
+
+    expect(backend.prepare).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceId: "display:7" }),
+    );
+  });
+
+  it("reports when there is no display to record", async () => {
+    const backend = createBackendFake({
+      listSources: vi.fn(async () => []),
+    });
+    const { controller } = createController(backend);
+    controller.setFeatureEnabled(true);
+
+    await expect(controller.startMainDisplayRecording()).rejects.toThrow(
+      "No display is available to record",
+    );
+    expect(backend.prepare).not.toHaveBeenCalled();
+    expect(controller.getState().status).toBe("idle");
+  });
+
   it("rejects starting before a session is prepared", async () => {
     const { controller } = createController();
     controller.setFeatureEnabled(true);
