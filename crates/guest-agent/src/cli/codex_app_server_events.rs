@@ -13,14 +13,15 @@
 //! duplicate partial content. Other configured opt-out methods likewise do not
 //! emit, and unknown methods are ignored for forward compatibility.
 //!
-//! Item starts are deliberately asymmetric. Command execution starts become
-//! JSONL `item.started` events, while reasoning and agent-message starts are
-//! captured separately as first-output timing metadata. Other item starts are
-//! ignored. Completed items with known types receive strict, type-specific
-//! normalization. Unknown completed types use a bounded, shallow, and lossy
-//! projection: names become snake case, scalar values and scalar members of
-//! shallow collections are retained, deeper collections are dropped, and
-//! top-level fields and collections beyond fixed limits are omitted.
+//! Item starts are deliberately asymmetric. Command execution, collaboration,
+//! and context-compaction starts become JSONL `item.started` events, while
+//! reasoning and agent-message starts are captured separately as first-output
+//! timing metadata. Other item starts are ignored. Completed items with known
+//! types receive strict, type-specific normalization. Unknown completed types
+//! use a bounded, shallow, and lossy projection: names become snake case,
+//! scalar values and scalar members of shallow collections are retained, deeper
+//! collections are dropped, and top-level fields and collections beyond fixed
+//! limits are omitted.
 //!
 //! Statuses, file-change patch kinds, and error fields are normalized into the
 //! legacy JSONL and failure-diagnostic shapes rather than preserving their raw
@@ -207,6 +208,98 @@ enum ItemStatus {
     Completed,
     Failed,
     Declined,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CollabAgentTool {
+    SpawnAgent,
+    SendInput,
+    ResumeAgent,
+    Wait,
+    CloseAgent,
+    SendMessage,
+    FollowupTask,
+    InterruptAgent,
+    ListAgents,
+}
+
+impl CollabAgentTool {
+    fn normalized(self) -> &'static str {
+        match self {
+            Self::SpawnAgent => "spawn_agent",
+            Self::SendInput => "send_input",
+            Self::ResumeAgent => "resume_agent",
+            Self::Wait => "wait",
+            Self::CloseAgent => "close_agent",
+            Self::SendMessage => "send_message",
+            Self::FollowupTask => "followup_task",
+            Self::InterruptAgent => "interrupt_agent",
+            Self::ListAgents => "list_agents",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CollabAgentToolCallStatus {
+    InProgress,
+    Completed,
+    Failed,
+    Interrupted,
+}
+
+impl CollabAgentToolCallStatus {
+    fn normalized(self) -> &'static str {
+        match self {
+            Self::InProgress => "in_progress",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Interrupted => "interrupted",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SubAgentActivityKind {
+    Started,
+    Interacted,
+    Interrupted,
+    Completed,
+}
+
+impl SubAgentActivityKind {
+    fn normalized(self) -> &'static str {
+        match self {
+            Self::Started => "started",
+            Self::Interacted => "interacted",
+            Self::Interrupted => "interrupted",
+            Self::Completed => "completed",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CollabAgentStatus {
+    PendingInit,
+    Running,
+    Interrupted,
+    Completed,
+    Errored,
+    Shutdown,
+    NotFound,
+}
+
+impl CollabAgentStatus {
+    fn normalized(self) -> &'static str {
+        match self {
+            Self::PendingInit => "pending_init",
+            Self::Running => "running",
+            Self::Interrupted => "interrupted",
+            Self::Completed => "completed",
+            Self::Errored => "errored",
+            Self::Shutdown => "shutdown",
+            Self::NotFound => "not_found",
+        }
+    }
 }
 
 impl ItemStatus {
@@ -615,6 +708,12 @@ fn normalize_item(
     let item_type = required_non_empty_string_key(item, method, "type", "item.type")?;
     match (method, item_type) {
         ("item/started", "commandExecution") => normalize_command_execution(item, method).map(Some),
+        ("item/started", "collabAgentToolCall") => {
+            normalize_collab_agent_tool_call(item, method).map(Some)
+        }
+        ("item/started", "contextCompaction") => {
+            normalize_context_compaction(item, method).map(Some)
+        }
         ("item/started", _) => Ok(None),
         ("item/completed", "agentMessage") => normalize_agent_message(item, method).map(Some),
         ("item/completed", "plan") => normalize_plan(item, method).map(Some),
@@ -626,6 +725,15 @@ fn normalize_item(
             normalize_command_execution(item, method).map(Some)
         }
         ("item/completed", "fileChange") => normalize_file_change(item, method).map(Some),
+        ("item/completed", "collabAgentToolCall") => {
+            normalize_collab_agent_tool_call(item, method).map(Some)
+        }
+        ("item/completed", "subAgentActivity") => {
+            normalize_sub_agent_activity(item, method).map(Some)
+        }
+        ("item/completed", "contextCompaction") => {
+            normalize_context_compaction(item, method).map(Some)
+        }
         ("item/completed", _) => normalize_generic_completed_item(item, method).map(Some),
         _ => Ok(None),
     }
@@ -739,6 +847,128 @@ fn normalize_file_change(
         .map(|change| normalize_file_update_change(change, method))
         .collect::<Result<Vec<_>, _>>()?;
     normalized.insert("changes".to_string(), Value::Array(changes));
+    Ok(Value::Object(normalized))
+}
+
+fn normalize_collab_agent_tool_call(
+    item: &Map<String, Value>,
+    method: &str,
+) -> Result<Value, CodexAppServerEventError> {
+    let mut normalized = base_item(item, method, "collab_agent_tool_call")?;
+    let tool = required_collab_agent_tool_key(item, method, "tool", "item.tool")?;
+    let status = required_collab_agent_tool_call_status_key(item, method, "status", "item.status")?;
+    validate_collab_agent_tool_call_status_for_method(method, status)?;
+    let sender_thread_id =
+        required_non_empty_string_key(item, method, "senderThreadId", "item.senderThreadId")?;
+    let receiver_thread_ids = required_non_empty_string_array_key(
+        item,
+        method,
+        "receiverThreadIds",
+        "item.receiverThreadIds",
+    )?;
+    let prompt = required_nullable_string_key(item, method, "prompt", "item.prompt")?;
+    let model = required_nullable_string_key(item, method, "model", "item.model")?;
+    let reasoning_effort =
+        required_nullable_string_key(item, method, "reasoningEffort", "item.reasoningEffort")?;
+    if reasoning_effort.is_some_and(|value| value.is_empty()) {
+        return Err(invalid_field_for_method(method, "item.reasoningEffort"));
+    }
+    let agents_states = required_object_key(item, method, "agentsStates", "item.agentsStates")?;
+
+    normalized.insert(
+        "tool".to_string(),
+        Value::String(tool.normalized().to_string()),
+    );
+    normalized.insert(
+        "status".to_string(),
+        Value::String(status.normalized().to_string()),
+    );
+    normalized.insert(
+        "sender_thread_id".to_string(),
+        Value::String(sender_thread_id.to_string()),
+    );
+    normalized.insert(
+        "receiver_thread_ids".to_string(),
+        Value::Array(receiver_thread_ids),
+    );
+    normalized.insert(
+        "prompt".to_string(),
+        prompt.map_or(Value::Null, |value| Value::String(value.to_string())),
+    );
+    normalized.insert(
+        "model".to_string(),
+        model.map_or(Value::Null, |value| Value::String(value.to_string())),
+    );
+    normalized.insert(
+        "reasoning_effort".to_string(),
+        reasoning_effort.map_or(Value::Null, |value| Value::String(value.to_string())),
+    );
+    normalized.insert(
+        "agents_states".to_string(),
+        normalize_collab_agent_states(agents_states, method)?,
+    );
+    Ok(Value::Object(normalized))
+}
+
+fn normalize_sub_agent_activity(
+    item: &Map<String, Value>,
+    method: &str,
+) -> Result<Value, CodexAppServerEventError> {
+    let mut normalized = base_item(item, method, "sub_agent_activity")?;
+    let kind = required_sub_agent_activity_kind_key(item, method, "kind", "item.kind")?;
+    let agent_thread_id =
+        required_non_empty_string_key(item, method, "agentThreadId", "item.agentThreadId")?;
+    let agent_path = required_non_empty_string_key(item, method, "agentPath", "item.agentPath")?;
+    normalized.insert(
+        "kind".to_string(),
+        Value::String(kind.normalized().to_string()),
+    );
+    normalized.insert(
+        "agent_thread_id".to_string(),
+        Value::String(agent_thread_id.to_string()),
+    );
+    normalized.insert(
+        "agent_path".to_string(),
+        Value::String(agent_path.to_string()),
+    );
+    Ok(Value::Object(normalized))
+}
+
+fn normalize_context_compaction(
+    item: &Map<String, Value>,
+    method: &str,
+) -> Result<Value, CodexAppServerEventError> {
+    base_item(item, method, "context_compaction").map(Value::Object)
+}
+
+fn normalize_collab_agent_states(
+    states: &Map<String, Value>,
+    method: &str,
+) -> Result<Value, CodexAppServerEventError> {
+    let mut normalized = Map::new();
+    for (thread_id, state) in states {
+        if thread_id.trim().is_empty() {
+            return Err(invalid_field_for_method(method, "item.agentsStates"));
+        }
+        let state = state
+            .as_object()
+            .ok_or_else(|| invalid_field_for_method(method, "item.agentsStates[]"))?;
+        let status = required_collab_agent_status_key(
+            state,
+            method,
+            "status",
+            "item.agentsStates[].status",
+        )?;
+        let message =
+            required_nullable_string_key(state, method, "message", "item.agentsStates[].message")?;
+        normalized.insert(
+            thread_id.to_string(),
+            json!({
+                "status": status.normalized(),
+                "message": message,
+            }),
+        );
+    }
     Ok(Value::Object(normalized))
 }
 
@@ -1047,6 +1277,43 @@ fn optional_nullable_string_key<'a>(
         .ok_or_else(|| invalid_field_for_method(method, field))
 }
 
+fn required_nullable_string_key<'a>(
+    object: &'a Map<String, Value>,
+    method: &str,
+    key: &str,
+    field: &'static str,
+) -> Result<Option<&'a str>, CodexAppServerEventError> {
+    let value = object
+        .get(key)
+        .ok_or_else(|| missing_field(method, field))?;
+    if value.is_null() {
+        return Ok(None);
+    }
+    value
+        .as_str()
+        .map(Some)
+        .ok_or_else(|| invalid_field_for_method(method, field))
+}
+
+fn required_non_empty_string_array_key(
+    object: &Map<String, Value>,
+    method: &str,
+    key: &str,
+    field: &'static str,
+) -> Result<Vec<Value>, CodexAppServerEventError> {
+    required_array_key(object, method, key, field)?
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| Value::String(value.to_string()))
+                .ok_or_else(|| invalid_field_for_method(method, field))
+        })
+        .collect()
+}
+
 fn optional_nullable_non_empty_string_key<'a>(
     object: &'a Map<String, Value>,
     method: &str,
@@ -1132,8 +1399,95 @@ fn required_item_status_key(
     parse_item_status(status).ok_or_else(|| invalid_field_for_method(method, field))
 }
 
+fn required_collab_agent_tool_key(
+    object: &Map<String, Value>,
+    method: &str,
+    key: &str,
+    field: &'static str,
+) -> Result<CollabAgentTool, CodexAppServerEventError> {
+    match required_string_key(object, method, key, field)? {
+        "spawnAgent" => Ok(CollabAgentTool::SpawnAgent),
+        "sendInput" => Ok(CollabAgentTool::SendInput),
+        "resumeAgent" => Ok(CollabAgentTool::ResumeAgent),
+        "wait" => Ok(CollabAgentTool::Wait),
+        "closeAgent" => Ok(CollabAgentTool::CloseAgent),
+        "sendMessage" => Ok(CollabAgentTool::SendMessage),
+        "followupTask" => Ok(CollabAgentTool::FollowupTask),
+        "interruptAgent" => Ok(CollabAgentTool::InterruptAgent),
+        "listAgents" => Ok(CollabAgentTool::ListAgents),
+        _ => Err(invalid_field_for_method(method, field)),
+    }
+}
+
+fn required_collab_agent_tool_call_status_key(
+    object: &Map<String, Value>,
+    method: &str,
+    key: &str,
+    field: &'static str,
+) -> Result<CollabAgentToolCallStatus, CodexAppServerEventError> {
+    match required_string_key(object, method, key, field)? {
+        "inProgress" => Ok(CollabAgentToolCallStatus::InProgress),
+        "completed" => Ok(CollabAgentToolCallStatus::Completed),
+        "failed" => Ok(CollabAgentToolCallStatus::Failed),
+        "interrupted" => Ok(CollabAgentToolCallStatus::Interrupted),
+        _ => Err(invalid_field_for_method(method, field)),
+    }
+}
+
+fn required_sub_agent_activity_kind_key(
+    object: &Map<String, Value>,
+    method: &str,
+    key: &str,
+    field: &'static str,
+) -> Result<SubAgentActivityKind, CodexAppServerEventError> {
+    match required_string_key(object, method, key, field)? {
+        "started" => Ok(SubAgentActivityKind::Started),
+        "interacted" => Ok(SubAgentActivityKind::Interacted),
+        "interrupted" => Ok(SubAgentActivityKind::Interrupted),
+        "completed" => Ok(SubAgentActivityKind::Completed),
+        _ => Err(invalid_field_for_method(method, field)),
+    }
+}
+
+fn required_collab_agent_status_key(
+    object: &Map<String, Value>,
+    method: &str,
+    key: &str,
+    field: &'static str,
+) -> Result<CollabAgentStatus, CodexAppServerEventError> {
+    match required_string_key(object, method, key, field)? {
+        "pendingInit" => Ok(CollabAgentStatus::PendingInit),
+        "running" => Ok(CollabAgentStatus::Running),
+        "interrupted" => Ok(CollabAgentStatus::Interrupted),
+        "completed" => Ok(CollabAgentStatus::Completed),
+        "errored" => Ok(CollabAgentStatus::Errored),
+        "shutdown" => Ok(CollabAgentStatus::Shutdown),
+        "notFound" => Ok(CollabAgentStatus::NotFound),
+        _ => Err(invalid_field_for_method(method, field)),
+    }
+}
+
 fn optional_item_status_key(object: &Map<String, Value>, key: &str) -> Option<ItemStatus> {
     object.get(key)?.as_str().and_then(parse_item_status)
+}
+
+fn validate_collab_agent_tool_call_status_for_method(
+    method: &str,
+    status: CollabAgentToolCallStatus,
+) -> Result<(), CodexAppServerEventError> {
+    match (method, status) {
+        ("item/started", CollabAgentToolCallStatus::InProgress) => Ok(()),
+        (
+            "item/completed",
+            CollabAgentToolCallStatus::Completed
+            | CollabAgentToolCallStatus::Failed
+            | CollabAgentToolCallStatus::Interrupted,
+        ) => Ok(()),
+        ("item/started" | "item/completed", _) => {
+            Err(invalid_field_for_method(method, "item.status"))
+        }
+        _ => Ok(()),
+    }
 }
 
 fn parse_item_status(status: &str) -> Option<ItemStatus> {
