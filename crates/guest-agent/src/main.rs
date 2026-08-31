@@ -1539,7 +1539,17 @@ mod tests {
             .enable_all()
             .build()
             .unwrap()
-            .block_on(complete_execution_creates_recovery_checkpoint_after_cli_failure_inner());
+            .block_on(complete_execution_after_cli_failure_inner(200, 1));
+    }
+
+    #[test]
+    fn complete_execution_keeps_cli_failure_when_recovery_report_fails() {
+        let _test_state_guard = lock_test_state();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(complete_execution_after_cli_failure_inner(500, 3));
     }
 
     #[test]
@@ -1931,7 +1941,10 @@ mod tests {
         }
     }
 
-    async fn complete_execution_creates_recovery_checkpoint_after_cli_failure_inner() {
+    async fn complete_execution_after_cli_failure_inner(
+        completion_status: u16,
+        expected_completion_calls: usize,
+    ) {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         let _env_guard = unsafe { set_test_env(server, Some("plain prompt")) };
@@ -1986,7 +1999,7 @@ mod tests {
                 .json_body_includes(
                     r#"{"exitCode":1,"error":"You've hit your usage limit.","checkpoint":{"cliAgentSessionId":"recovery-session-from-main"}}"#,
                 );
-            then.status(200)
+            then.status(completion_status)
                 .header("Content-Type", "application/json")
                 .json_body(json!({"success": true, "status": "failed"}));
         });
@@ -2039,7 +2052,9 @@ mod tests {
         assert_eq!(diagnostic, failure_diagnostic);
         prepare_mock.assert_calls_async(1).await;
         upload_mock.assert_calls_async(1).await;
-        complete_mock.assert_calls_async(1).await;
+        complete_mock
+            .assert_calls_async(expected_completion_calls)
+            .await;
 
         for path in cleanup_paths {
             let _ = std::fs::remove_file(path);

@@ -24,6 +24,7 @@ fn checkpoint_request_has_artifact_snapshot(
     req: &HttpMockRequest,
     expected_version: &str,
     expected_mount_path: &str,
+    expected_missing_mount_path: &str,
 ) -> bool {
     let Ok(body) = serde_json::from_slice::<serde_json::Value>(req.body_ref()) else {
         return false;
@@ -36,12 +37,28 @@ fn checkpoint_request_has_artifact_snapshot(
         return false;
     };
 
-    snapshots.iter().any(|snapshot| {
+    let unchanged_snapshot_matches = snapshots.iter().any(|snapshot| {
         snapshot.get("name").and_then(|value| value.as_str()) == Some("workspace")
             && snapshot.get("version").and_then(|value| value.as_str()) == Some(expected_version)
             && snapshot.get("mountPath").and_then(|value| value.as_str())
                 == Some(expected_mount_path)
-    })
+            && snapshot
+                .get("missingRootPolicy")
+                .and_then(|value| value.as_str())
+                == Some("fail")
+    });
+    let preserved_snapshot_matches = snapshots.iter().any(|snapshot| {
+        snapshot.get("name").and_then(|value| value.as_str()) == Some("memory")
+            && snapshot.get("version").and_then(|value| value.as_str())
+                == Some("preserved-memory-version")
+            && snapshot.get("mountPath").and_then(|value| value.as_str())
+                == Some(expected_missing_mount_path)
+            && snapshot
+                .get("missingRootPolicy")
+                .and_then(|value| value.as_str())
+                == Some("preserveParentVersion")
+    });
+    unchanged_snapshot_matches && preserved_snapshot_matches
 }
 
 struct SandboxOpsOverrideGuard;
@@ -77,6 +94,7 @@ fn test_runtime(
     api_url: &str,
 ) -> Result<GuestRuntime, Box<dyn std::error::Error>> {
     let runtime_dir = temp_dir.join("runtime");
+    let missing_mount_path = temp_dir.join("missing-memory");
     let paths = GuestPaths::from_runtime_dir(&runtime_dir);
     let run_payload_file = write_run_payload(
         &runtime_dir,
@@ -87,6 +105,14 @@ fn test_runtime(
                     "mountPath": mount_path.to_string_lossy(),
                     "storageId": STORAGE_ID,
                     "versionId": version_id,
+                    "missingRootPolicy": "fail",
+                },
+                {
+                    "name": "memory",
+                    "mountPath": missing_mount_path.to_string_lossy(),
+                    "storageId": "memory-storage-id",
+                    "versionId": "preserved-memory-version",
+                    "missingRootPolicy": "preserveParentVersion",
                 }
             ])
             .to_string(),
@@ -170,6 +196,11 @@ async fn unchanged_artifact_checkpoint_records_content_hash_timing()
     });
     let expected_version = version_id.clone();
     let expected_mount_path = mount_path.to_string_lossy().into_owned();
+    let expected_missing_mount_path = temp_dir
+        .path()
+        .join("missing-memory")
+        .to_string_lossy()
+        .into_owned();
     let complete = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/complete")
@@ -178,6 +209,7 @@ async fn unchanged_artifact_checkpoint_records_content_hash_timing()
                     req,
                     &expected_version,
                     &expected_mount_path,
+                    &expected_missing_mount_path,
                 )
             });
         then.status(200)
