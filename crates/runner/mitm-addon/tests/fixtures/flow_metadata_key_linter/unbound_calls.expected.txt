@@ -20,3 +20,13 @@ unbound_calls.py:23: use metadata_keys.FIREWALL_ACTION for flow.metadata access
 unbound_calls.py:24: use metadata_keys.FIREWALL_ERROR for flow.metadata access
 unbound_calls.py:25: use metadata_keys.FIREWALL_BASE for flow.metadata access
 unbound_calls.py:26: use metadata_keys.FIREWALL_PERMISSION for flow.metadata access
+unbound_calls.py:61: use metadata_keys.SANDBOX_RUN_ID for flow.metadata access
+unbound_calls.py:62: use metadata_keys.FIREWALL_NAME for flow.metadata access
+unbound_calls.py:63: use metadata_keys.FIREWALL_ACTION for flow.metadata access
+unbound_calls.py:64: use metadata_keys.FIREWALL_ERROR for flow.metadata access
+unbound_calls.py:65: use metadata_keys.FIREWALL_BASE for flow.metadata access
+unbound_calls.py:66: use metadata_keys.FIREWALL_PERMISSION for flow.metadata access
+unbound_calls.py:66: use metadata_keys.AUTH_CACHE_HIT for flow.metadata access
+unbound_calls.py:67: use metadata_keys.NETWORK_LOG_TARGET for flow.metadata access
+unbound_calls.py:68: use metadata_keys.SANDBOX_PROXY_LOG_PATH for flow.metadata access
+unbound_calls.py:69: use metadata_keys.SANDBOX_NETWORK_LOG_PATH for flow.metadata access
