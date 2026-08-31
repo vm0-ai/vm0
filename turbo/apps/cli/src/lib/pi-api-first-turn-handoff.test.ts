@@ -7,6 +7,7 @@ import {
   PI_API_FIRST_TURN_SESSION_MAX_BYTES,
   type PiApiFirstTurnConfig,
   type PiApiFirstTurnManifest,
+  type PiApiFirstTurnOwnershipTransferMode,
 } from "@okouai/api-contracts/contracts/runners";
 import { MAX_EVENT_SEQUENCE_NUMBER } from "@okouai/api-contracts/contracts/runs";
 import { MemoryPiSession } from "@okouai/pi-agent-runtime/node";
@@ -62,6 +63,10 @@ function sessionJsonl(sessionId = SESSION_ID, pendingTool = true): string {
 
 const HANDOFF_SESSION_JSONL = sessionJsonl();
 const SETTLED_SESSION_JSONL = sessionJsonl(SESSION_ID, false);
+const EMPTY_SESSION_JSONL = MemoryPiSession.create({
+  cwd: "/home/user/workspace",
+  id: SESSION_ID,
+}).toJsonl();
 type PiApiFirstTurnManifestV1 = Extract<
   PiApiFirstTurnManifest,
   { readonly schemaVersion: 1 }
@@ -96,9 +101,32 @@ function manifestV2(
   };
 }
 
+function manifestV3(
+  jsonl: string,
+  mode: PiApiFirstTurnOwnershipTransferMode,
+  sandboxEventSequenceStart: number,
+  baseSessionSha256: string | null = H0_HASH,
+): PiApiFirstTurnManifest {
+  const bytes = Buffer.from(jsonl);
+  return {
+    schemaVersion: 3,
+    outcome: "ownership-transfer",
+    mode,
+    baseSession: { sessionId: SESSION_ID, sha256: baseSessionSha256 },
+    session: {
+      sessionId: SESSION_ID,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      rawSize: bytes.length,
+    },
+    sandboxEventSequenceStart,
+  };
+}
+
 function config(
   deadlineAt: number,
   sandboxEventSequenceStart = 1,
+  ownershipTransfer = false,
+  baseSessionSha256: string | null = H0_HASH,
 ): PiApiFirstTurnConfig {
   return {
     schemaVersion: 1,
@@ -106,8 +134,11 @@ function config(
     manifestUrl: "https://handoff.example/manifest.json",
     sessionUrl: "https://handoff.example/session.jsonl",
     deadlineAt,
-    baseSession: { sessionId: SESSION_ID, sha256: H0_HASH },
+    baseSession: { sessionId: SESSION_ID, sha256: baseSessionSha256 },
     sandboxEventSequenceStart,
+    ...(ownershipTransfer
+      ? { ownershipTransfer: { schemaVersion: 1 as const } }
+      : {}),
   };
 }
 
@@ -170,7 +201,11 @@ describe("Pi API first-turn handoff loader", () => {
       `api-first-turn-${SESSION_ID}.jsonl`,
     );
     expect(await readFile(restored.sessionFile, "utf8")).toBe(jsonl);
-    expect(restored.sandboxEventSequenceStart).toBe(1);
+    expect(restored.boundaryControl).toStrictEqual({
+      schemaVersion: 1,
+      sandboxEventSequenceStart: 1,
+    });
+    expect(restored.ownershipTransferMode).toBe("pending-tool-continuation");
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -192,8 +227,146 @@ describe("Pi API first-turn handoff loader", () => {
       runtime: fixedRuntime(fetchMock as typeof fetch),
     });
 
-    expect(restored.sandboxEventSequenceStart).toBe(sandboxEventSequenceStart);
+    expect(restored.boundaryControl).toStrictEqual({
+      schemaVersion: 1,
+      sandboxEventSequenceStart,
+    });
+    expect(restored.ownershipTransferMode).toBe("pending-tool-continuation");
     expect(await readFile(restored.sessionFile, "utf8")).toBe(jsonl);
+  });
+
+  it.each([
+    {
+      mode: "sandbox-first" as const,
+      jsonl: EMPTY_SESSION_JSONL,
+      baseSessionSha256: null,
+    },
+    {
+      mode: "pending-tool-continuation" as const,
+      jsonl: HANDOFF_SESSION_JSONL,
+      baseSessionSha256: H0_HASH,
+    },
+    {
+      mode: "settled-session-continuation" as const,
+      jsonl: SETTLED_SESSION_JSONL,
+      baseSessionSha256: H0_HASH,
+    },
+  ])("restores and types a V3 $mode", async (fixture) => {
+    const sessionDir = await mkdtemp(join(tmpdir(), "pi-handoff-loader-"));
+    temporaryDirectories.push(sessionDir);
+    const sandboxEventSequenceStart = 4;
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      return String(input).endsWith("manifest.json")
+        ? Response.json(
+            manifestV3(
+              fixture.jsonl,
+              fixture.mode,
+              sandboxEventSequenceStart,
+              fixture.baseSessionSha256,
+            ),
+          )
+        : new Response(fixture.jsonl);
+    });
+
+    const restored = await resolvePiApiFirstTurnHandoff({
+      config: config(5_000, 1, true, fixture.baseSessionSha256),
+      sessionDir,
+      sessionId: SESSION_ID,
+      runtime: fixedRuntime(fetchMock as typeof fetch),
+    });
+
+    expect(restored.boundaryControl).toStrictEqual({
+      schemaVersion: 2,
+      sandboxEventSequenceStart,
+      ownershipTransferMode: fixture.mode,
+    });
+    expect(restored.ownershipTransferMode).toBe(fixture.mode);
+    expect(await readFile(restored.sessionFile, "utf8")).toBe(fixture.jsonl);
+  });
+
+  it("rejects V3 before downloading a session when the launch lacks capability proof", async () => {
+    const fetchMock = vi.fn(async () => {
+      return Response.json(
+        manifestV3(SETTLED_SESSION_JSONL, "settled-session-continuation", 4),
+      );
+    });
+
+    await expect(
+      resolvePiApiFirstTurnHandoff({
+        config: config(5_000),
+        sessionDir: "/unused",
+        sessionId: SESSION_ID,
+        runtime: fixedRuntime(fetchMock as typeof fetch),
+      }),
+    ).rejects.toMatchObject({ code: "PI_HANDOFF_MANIFEST_UNSUPPORTED" });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    {
+      mode: "sandbox-first" as const,
+      jsonl: SETTLED_SESSION_JSONL,
+      baseSessionSha256: null,
+    },
+    {
+      mode: "pending-tool-continuation" as const,
+      jsonl: SETTLED_SESSION_JSONL,
+      baseSessionSha256: H0_HASH,
+    },
+    {
+      mode: "settled-session-continuation" as const,
+      jsonl: HANDOFF_SESSION_JSONL,
+      baseSessionSha256: H0_HASH,
+    },
+  ])("rejects session state that contradicts $mode", async (fixture) => {
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      return String(input).endsWith("manifest.json")
+        ? Response.json(
+            manifestV3(
+              fixture.jsonl,
+              fixture.mode,
+              4,
+              fixture.baseSessionSha256,
+            ),
+          )
+        : new Response(fixture.jsonl);
+    });
+
+    await expect(
+      resolvePiApiFirstTurnHandoff({
+        config: config(5_000, 1, true, fixture.baseSessionSha256),
+        sessionDir: "/unused",
+        sessionId: SESSION_ID,
+        runtime: fixedRuntime(fetchMock as typeof fetch),
+      }),
+    ).rejects.toMatchObject({ code: "PI_HANDOFF_H1_INVALID" });
+  });
+
+  it("rejects a settled transfer that merely relabels H0", async () => {
+    const settledHash = createHash("sha256")
+      .update(SETTLED_SESSION_JSONL)
+      .digest("hex");
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      return String(input).endsWith("manifest.json")
+        ? Response.json(
+            manifestV3(
+              SETTLED_SESSION_JSONL,
+              "settled-session-continuation",
+              4,
+              settledHash,
+            ),
+          )
+        : new Response(SETTLED_SESSION_JSONL);
+    });
+
+    await expect(
+      resolvePiApiFirstTurnHandoff({
+        config: config(5_000, 1, true, settledHash),
+        sessionDir: "/unused",
+        sessionId: SESSION_ID,
+        runtime: fixedRuntime(fetchMock as typeof fetch),
+      }),
+    ).rejects.toMatchObject({ code: "PI_HANDOFF_H1_INVALID" });
   });
 
   it("fails closed for a v1 manifest with a dynamic launch boundary", async () => {

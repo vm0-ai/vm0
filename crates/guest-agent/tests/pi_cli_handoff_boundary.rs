@@ -40,6 +40,21 @@ async fn guest_fails_closed_for_invalid_missing_conflicting_and_late_pi_boundari
             expected_code: "PI_HANDOFF_BOUNDARY_INVALID",
         },
         BoundaryCase {
+            name: "v2-missing-mode",
+            script: r#"printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":2,"sandboxEventSequenceStart":4}'"#,
+            expected_code: "PI_HANDOFF_BOUNDARY_INVALID",
+        },
+        BoundaryCase {
+            name: "v2-unknown-mode",
+            script: r#"printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":2,"sandboxEventSequenceStart":4,"ownershipTransferMode":"future-mode"}'"#,
+            expected_code: "PI_HANDOFF_BOUNDARY_INVALID",
+        },
+        BoundaryCase {
+            name: "future-schema",
+            script: r#"printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":3,"sandboxEventSequenceStart":4,"ownershipTransferMode":"pending-tool-continuation"}'"#,
+            expected_code: "PI_HANDOFF_BOUNDARY_INVALID",
+        },
+        BoundaryCase {
             name: "conflicting",
             script: r#"
 printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":1,"sandboxEventSequenceStart":4}'

@@ -104,33 +104,6 @@ describe("test-oauth provider URLs", () => {
     expect(authorizationUrl.origin).toBe("https://pr-12962-api.vm6.ai");
   });
 
-  it("ignores the retired API URL input with or without canonical config", () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://legacy-api.example.test");
-
-    const fallbackAuthorizationUrl = new URL(
-      buildTestOAuthAuthorizationUrl(
-        authCodeGrant(),
-        "test-client",
-        "https://app.vm0.ai/callback",
-        "state-123",
-      ),
-    );
-    expect(fallbackAuthorizationUrl.origin).toBe("http://localhost:3000");
-
-    vi.stubEnv("OKOU_API_BACKEND_URL", "https://canonical-api.example.test");
-    const canonicalAuthorizationUrl = new URL(
-      buildTestOAuthAuthorizationUrl(
-        authCodeGrant(),
-        "test-client",
-        "https://app.vm0.ai/callback",
-        "state-123",
-      ),
-    );
-    expect(canonicalAuthorizationUrl.origin).toBe(
-      "https://canonical-api.example.test",
-    );
-  });
-
   it("uses the canonical Web URL before the APP_URL fallback", () => {
     vi.stubEnv("OKOU_WEB_URL", "https://pr-12962-www.vm6.ai/");
     vi.stubEnv("APP_URL", "https://app-fallback.example.test");

@@ -33,6 +33,7 @@ interface CodexNormalizedEvent {
 }
 
 const MAX_FORMATTED_ARRAY_ITEMS = 6;
+const MAX_FORMATTED_ARRAY_INSPECTED_ITEMS = 16;
 const MAX_FORMATTED_ARRAY_DEPTH = 4;
 const MAX_FORMATTED_OBJECT_FIELDS = 8;
 const MAX_FORMATTED_OBJECT_INSPECTED_FIELDS = 16;
@@ -40,6 +41,7 @@ const MAX_FORMATTED_TEXT_LENGTH = 240;
 const MAX_ERROR_SIGNAL_DEPTH = 8;
 const MAX_FORMATTED_PLAN_STEPS = 20;
 const MAX_FORMATTED_FILE_CHANGES = 20;
+const MAX_FORMATTED_AGENT_STATES = 6;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -107,6 +109,29 @@ function getFirstNumber(
     }
   }
   return undefined;
+}
+
+function getStringArray(
+  record: Record<string, unknown>,
+  keys: readonly string[],
+): string[] {
+  for (const key of keys) {
+    const value = record[key];
+    if (!Array.isArray(value)) {
+      continue;
+    }
+    const items: string[] = [];
+    for (const item of value.slice(0, MAX_FORMATTED_ARRAY_INSPECTED_ITEMS)) {
+      if (typeof item === "string" && item.trim().length > 0) {
+        items.push(truncate(item.trim()));
+      }
+      if (items.length >= MAX_FORMATTED_AGENT_STATES) {
+        break;
+      }
+    }
+    return items;
+  }
+  return [];
 }
 
 function truncate(text: string): string {
@@ -709,8 +734,26 @@ function makeCodexToolResultEvent(params: {
   content: string;
   isError?: boolean;
   durationMs?: number;
+  fallbackToolName?: string;
+  fallbackInput?: Record<string, unknown>;
 }): AgentEvent {
-  const { event, itemId, content, isError = false, durationMs } = params;
+  const {
+    event,
+    itemId,
+    content,
+    isError = false,
+    durationMs,
+    fallbackToolName,
+    fallbackInput,
+  } = params;
+  const toolResultMeta =
+    durationMs !== undefined || fallbackToolName !== undefined
+      ? {
+          durationMs,
+          fallbackToolName,
+          fallbackInput,
+        }
+      : undefined;
   return {
     ...event,
     eventType: "user",
@@ -725,7 +768,23 @@ function makeCodexToolResultEvent(params: {
           },
         ],
       },
-      tool_use_result: durationMs !== undefined ? { durationMs } : undefined,
+      tool_use_result: toolResultMeta,
+    },
+  };
+}
+
+function makeCodexActivitySystemEvent(
+  event: AgentEvent,
+  subtype: "codex_sub_agent_activity" | "codex_context_compaction",
+  data: Record<string, unknown>,
+): AgentEvent {
+  return {
+    ...event,
+    eventType: "system",
+    eventData: {
+      subtype,
+      framework: "codex",
+      ...data,
     },
   };
 }
@@ -1358,6 +1417,197 @@ function normalizeGenericCodexItemEvent(
   );
 }
 
+function codexCollabToolName(tool: string): string {
+  switch (tool.replaceAll("_", "").toLowerCase()) {
+    case "spawnagent": {
+      return "SpawnAgent";
+    }
+    case "sendinput": {
+      return "SendInput";
+    }
+    case "resumeagent": {
+      return "ResumeAgent";
+    }
+    case "wait": {
+      return "Wait";
+    }
+    case "closeagent": {
+      return "CloseAgent";
+    }
+    case "sendmessage": {
+      return "SendMessage";
+    }
+    case "followuptask": {
+      return "FollowupTask";
+    }
+    case "interruptagent": {
+      return "InterruptAgent";
+    }
+    case "listagents": {
+      return "ListAgents";
+    }
+    default: {
+      return "CollabAgent";
+    }
+  }
+}
+
+function codexCollabInput(
+  item: Record<string, unknown>,
+): Record<string, unknown> {
+  const input: Record<string, unknown> = {};
+  const receiverThreadIds = getStringArray(item, [
+    "receiver_thread_ids",
+    "receiverThreadIds",
+  ]);
+  const prompt = getFirstNonBlankString(item, ["prompt"]);
+  const model = getFirstString(item, ["model"]);
+  const reasoningEffort = getFirstString(item, [
+    "reasoning_effort",
+    "reasoningEffort",
+  ]);
+  if (receiverThreadIds.length > 0) {
+    input.receiver_thread_ids = receiverThreadIds;
+  }
+  if (prompt) {
+    input.prompt = truncate(prompt);
+  }
+  if (model) {
+    input.model = truncate(model);
+  }
+  if (reasoningEffort) {
+    input.reasoning_effort = truncate(reasoningEffort);
+  }
+  return input;
+}
+
+function formatCodexCollabResult(item: Record<string, unknown>): string {
+  const status = getItemStatus(item);
+  const statesValue = item.agents_states ?? item.agentsStates;
+  const lines: string[] = [];
+  if (isRecord(statesValue)) {
+    let inspectedStates = 0;
+    for (const threadId in statesValue) {
+      if (!hasOwnKey(statesValue, threadId)) {
+        continue;
+      }
+      if (
+        lines.length >= MAX_FORMATTED_AGENT_STATES ||
+        inspectedStates >= MAX_FORMATTED_OBJECT_INSPECTED_FIELDS
+      ) {
+        lines.push("...");
+        break;
+      }
+      inspectedStates += 1;
+      const rawState = statesValue[threadId];
+      if (!isRecord(rawState)) {
+        continue;
+      }
+      const agentStatus = getFirstString(rawState, ["status"]);
+      const message = getFirstNonBlankString(rawState, ["message"]);
+      const details = [agentStatus, message]
+        .filter((value): value is string => {
+          return value !== undefined;
+        })
+        .map(truncate);
+      const displayThreadId = truncate(threadId);
+      lines.push(
+        details.length > 0
+          ? `${displayThreadId}: ${details.join(" — ")}`
+          : displayThreadId,
+      );
+    }
+  }
+  if (lines.length > 0) {
+    return lines.join("\n");
+  }
+  return status
+    ? i18n.t(
+        ($) => {
+          return $.activity.codex.status;
+        },
+        { status },
+      )
+    : "";
+}
+
+function normalizeCodexCollabAgentToolCall(
+  event: AgentEvent,
+  codexType: string,
+  item: Record<string, unknown>,
+): AgentEvent | null {
+  const itemId = getItemId(item);
+  const tool = getFirstString(item, ["tool"]);
+  if (!itemId || !tool) {
+    return normalizeGenericCodexItemEvent(event, codexType, item);
+  }
+  const toolName = codexCollabToolName(tool);
+  const input = codexCollabInput(item);
+  if (codexType === "item.started") {
+    return makeCodexToolUseEvent({ event, itemId, toolName, input });
+  }
+  if (codexType === "item.completed") {
+    const status = getItemStatus(item);
+    return makeCodexToolResultEvent({
+      event,
+      itemId,
+      content: formatCodexCollabResult(item),
+      isError: isFailedStatus(status),
+      fallbackToolName: toolName,
+      fallbackInput: input,
+    });
+  }
+  return null;
+}
+
+function normalizeCodexSubAgentActivity(
+  event: AgentEvent,
+  codexType: string,
+  item: Record<string, unknown>,
+): AgentEvent | null {
+  if (codexType !== "item.completed") {
+    return null;
+  }
+  const itemId = getItemId(item);
+  const kind = getFirstString(item, ["kind"]);
+  const agentThreadId = getFirstString(item, [
+    "agent_thread_id",
+    "agentThreadId",
+  ]);
+  const agentPath = getFirstString(item, ["agent_path", "agentPath"]);
+  if (
+    !itemId ||
+    !kind ||
+    !["started", "interacted", "interrupted", "completed"].includes(kind) ||
+    (!agentThreadId && !agentPath)
+  ) {
+    return normalizeGenericCodexItemEvent(event, codexType, item);
+  }
+  return makeCodexActivitySystemEvent(event, "codex_sub_agent_activity", {
+    item_id: itemId,
+    activity_kind: kind,
+    agent_thread_id: agentThreadId ? truncate(agentThreadId) : undefined,
+    agent_path: agentPath ? truncate(agentPath) : undefined,
+  });
+}
+
+function normalizeCodexContextCompaction(
+  event: AgentEvent,
+  codexType: string,
+  item: Record<string, unknown>,
+): AgentEvent | null {
+  if (codexType !== "item.completed") {
+    return null;
+  }
+  const itemId = getItemId(item);
+  if (!itemId) {
+    return normalizeGenericCodexItemEvent(event, codexType, item);
+  }
+  return makeCodexActivitySystemEvent(event, "codex_context_compaction", {
+    item_id: itemId,
+  });
+}
+
 function normalizeCodexItemAgentEvent(
   event: AgentEvent,
   codexType: string,
@@ -1404,6 +1654,15 @@ function normalizeCodexItemAgentEvent(
     }
     case "file_change": {
       return normalizeCodexFileChangeEvent(event, codexType, item);
+    }
+    case "collab_agent_tool_call": {
+      return normalizeCodexCollabAgentToolCall(event, codexType, item);
+    }
+    case "sub_agent_activity": {
+      return normalizeCodexSubAgentActivity(event, codexType, item);
+    }
+    case "context_compaction": {
+      return normalizeCodexContextCompaction(event, codexType, item);
     }
     default: {
       return normalizeGenericCodexItemEvent(event, codexType, item);

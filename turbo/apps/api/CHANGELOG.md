@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.516.0](https://github.com/vm0-ai/vm0/compare/api-v1.515.0...api-v1.516.0) (2026-08-31)
+
+
+### Features
+
+* **api:** publish connector doctor official workflow ([#30600](https://github.com/vm0-ai/vm0/issues/30600)) ([8b71e53](https://github.com/vm0-ai/vm0/commit/8b71e536916f05cdfbd1cf015547d3842472f87c))
+
+
+### Bug Fixes
+
+* **api:** bound pi resume to harness generations ([#30590](https://github.com/vm0-ai/vm0/issues/30590)) ([dd104c7](https://github.com/vm0-ai/vm0/commit/dd104c73c15db4be1a05b22ea162fa6697d51c25))
+
 ## [1.515.0](https://github.com/vm0-ai/vm0/compare/api-v1.514.0...api-v1.515.0) (2026-08-31)
 
 

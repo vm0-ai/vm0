@@ -5,6 +5,7 @@ import {
   PI_AGENT_DIR,
   PI_API_FIRST_TURN_SESSION_MAX_BYTES,
   type PiApiFirstTurnManifest,
+  type PiApiFirstTurnOwnershipTransferMode,
   type PiResourceSnapshot,
   type StoredExecutionContext,
 } from "@okouai/api-contracts/contracts/runners";
@@ -562,6 +563,7 @@ interface PreparedApiFirstTurn {
   readonly sessionId: string;
   readonly startedAt: number;
   readonly turn: PiApiFirstTurnResult;
+  readonly ownershipTransferCapability: ApiFirstTurnLaunchConfig["ownershipTransfer"];
 }
 
 type ApiFirstTurnExecutionContext =
@@ -831,6 +833,42 @@ function validateApiFirstTurnH1(
   return { sessionBytes, sessionHash: sha256(sessionBytes) };
 }
 
+function ownershipTransferManifest(args: {
+  readonly capability: ApiFirstTurnLaunchConfig["ownershipTransfer"];
+  readonly mode: PiApiFirstTurnOwnershipTransferMode;
+  readonly baseSession: PiApiFirstTurnManifest["baseSession"];
+  readonly session: {
+    readonly sessionId: string;
+    readonly sha256: string;
+    readonly rawSize: number;
+  };
+  readonly sandboxEventSequenceStart: number;
+}): PiApiFirstTurnManifest {
+  if (args.capability?.schemaVersion === 1) {
+    return {
+      schemaVersion: 3,
+      outcome: "ownership-transfer",
+      mode: args.mode,
+      baseSession: args.baseSession,
+      session: args.session,
+      sandboxEventSequenceStart: args.sandboxEventSequenceStart,
+    };
+  }
+  if (args.mode !== "pending-tool-continuation") {
+    throw piApiFirstTurnError(
+      "PI_LAUNCH_CONFIG_INVALID",
+      "Pi ownership transfer is not supported by the selected Sandbox",
+    );
+  }
+  return {
+    schemaVersion: 2,
+    outcome: "handoff",
+    baseSession: args.baseSession,
+    session: args.session,
+    sandboxEventSequenceStart: args.sandboxEventSequenceStart,
+  };
+}
+
 const prepareApiFirstTurn$ = command(async function prepareApiFirstTurn(
   { set },
   args: ApiFirstTurnContext,
@@ -901,6 +939,7 @@ const prepareApiFirstTurn$ = command(async function prepareApiFirstTurn(
     sessionId,
     startedAt,
     turn,
+    ownershipTransferCapability: launchConfig.ownershipTransfer,
   };
 });
 
@@ -1020,9 +1059,9 @@ const commitApiFirstTurn$ = command(async function commitApiFirstTurn(
       ];
   await set(publishEvents$, { auth: prepared.auth, events }, signal);
   if (prepared.turn.handoffRequired) {
-    const manifest: PiApiFirstTurnManifest = {
-      schemaVersion: 2,
-      outcome: "handoff",
+    const manifest = ownershipTransferManifest({
+      capability: prepared.ownershipTransferCapability,
+      mode: "pending-tool-continuation",
       baseSession: prepared.baseSession,
       session: {
         sessionId: prepared.sessionId,
@@ -1030,7 +1069,7 @@ const commitApiFirstTurn$ = command(async function commitApiFirstTurn(
         rawSize: prepared.sessionBytes.length,
       },
       sandboxEventSequenceStart: nextSequenceNumber,
-    };
+    });
     await set(
       writeManifest$,
       { runId: args.activation.runId, manifest },
