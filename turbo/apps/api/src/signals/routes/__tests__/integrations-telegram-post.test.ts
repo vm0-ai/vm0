@@ -512,18 +512,16 @@ async function completeCanonicalChatRun(args: {
     headers,
     [200],
   );
-  await webhooksApi.requestAgentCheckpoint(
+  await webhooksApi.requestAgentComplete(
     {
       runId: args.runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId,
-      cliAgentSessionHistoryHash,
+      exitCode: 0,
+      checkpoint: {
+        cliAgentType: "claude-code",
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash,
+      },
     },
-    headers,
-    [200],
-  );
-  await webhooksApi.requestAgentComplete(
-    { runId: args.runId, exitCode: 0 },
     headers,
     [200],
   );

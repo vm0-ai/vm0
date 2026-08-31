@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Errore Codex",
       "commandStatus": "Comando {{status}}",
+      "contextCompaction": "Contesto compattato",
       "error": "Errore: {{error}}",
       "fileChangeKind": "modifica",
       "fileOperationCompleted": "Operazione sul file completata",
@@ -29,6 +30,12 @@
       },
       "status": "Stato: {{status}}",
       "statusDetail": "stato: {{status}}",
+      "subAgentActivity": {
+        "completed": "Subagente completato",
+        "interacted": "Interazione con il subagente",
+        "interrupted": "Subagente interrotto",
+        "started": "Subagente avviato"
+      },
       "turnFailed": "Turno non riuscito",
       "turnStatus": "Turno {{status}}",
       "warning": "[avviso] {{message}}",
@@ -674,6 +681,7 @@
       "importedSlides_many": "{{count}} diapositive",
       "importedSlides_other": "{{count}} diapositive",
       "multiAccent": "Multiaccento",
+      "needPro": "Richiede Pro",
       "nextSlide": "Anteprima della diapositiva successiva",
       "noMatches": "Nessuna corrispondenza",
       "placeholder": "{{title}} segnaposto anteprima sito web",
@@ -726,6 +734,7 @@
       "tryDifferentSearch": "Prova una ricerca diversa.",
       "use": "Utilizzare",
       "useThisTemplate": "Usa questo modello",
+      "viewVideoPlans": "Visualizza i piani per il modello video {{title}}",
       "visibility": {
         "change": "Modifica",
         "changeLabel": "Modifica la visibilità del modello",
@@ -2001,6 +2010,7 @@
         "capacityTitle": "Il modello {{framework}} è occupato",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "Continua",
         "resetAndTryAgain": "Reimposta e riprova",
         "resetsAt": "Ripristino alle {{time}}",
         "selectModel": "Cambia modello",
@@ -6224,7 +6234,7 @@
       "browse": "Sfoglia gli ufficiali",
       "chooseValue": "Scegli un valore",
       "copySucceededUninstallFailed": "La copia è pronta, ma non è stato possibile disinstallare il workflow ufficiale originale.",
-      "description": "Installa workflow gestiti e mantenuti da vm0.",
+      "description": "Installa workflow gestiti e mantenuti dall’Okou Official Team.",
       "empty": "Non sono disponibili workflow ufficiali.",
       "includedAutomations": "Automazioni incluse",
       "install": "Installa",

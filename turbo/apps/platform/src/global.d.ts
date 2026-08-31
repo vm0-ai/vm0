@@ -71,6 +71,7 @@ declare global {
     __vm0BrowserSupported?: boolean;
     __vm0ClerkBootstrap?: VM0ClerkBootstrap;
     __vm0BrowserUpgrade?: VM0BrowserUpgradeCopy & { actionUrl: string };
+    __vm0AfterFirstPaint?: (callback: () => void) => void;
     __vm0PreBundleCopy?: VM0PreBundleCopy;
     /**
      * Set inline in `index.html` at the start of `<head>` parsing. Used by
@@ -78,6 +79,8 @@ declare global {
      * the first time the app skeleton is dismissed.
      */
     __appBootstrapStart?: number;
+    /** Upper bound recorded immediately after the first visible paint. */
+    __appBootstrapFirstPaintUpperBound?: number;
     /** Set when the entry module graph has finished evaluating. */
     __appBootstrapModuleReady?: number;
   }

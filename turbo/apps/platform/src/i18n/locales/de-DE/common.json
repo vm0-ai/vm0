@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Codex-Fehler",
       "commandStatus": "Befehl {{status}}",
+      "contextCompaction": "Kontext komprimiert",
       "error": "Fehler: {{error}}",
       "fileChangeKind": "ändern",
       "fileOperationCompleted": "Dateivorgang abgeschlossen",
@@ -27,6 +28,12 @@
       },
       "status": "Status: {{status}}",
       "statusDetail": "status: {{status}}",
+      "subAgentActivity": {
+        "completed": "Subagent abgeschlossen",
+        "interacted": "Mit Subagent interagiert",
+        "interrupted": "Subagent unterbrochen",
+        "started": "Subagent gestartet"
+      },
       "turnFailed": "Der Zug ist fehlgeschlagen",
       "turnStatus": "Wende {{status}}",
       "warning": "[Warnung] {{message}}",
@@ -655,6 +662,7 @@
       "importedSlides_one": "{{count}} Folie",
       "importedSlides_other": "{{count}} Folien",
       "multiAccent": "Multi-Akzent",
+      "needPro": "Pro erforderlich",
       "nextSlide": "Vorschau der nächsten Folie",
       "noMatches": "Keine Übereinstimmungen",
       "placeholder": "{{title}} Platzhalter für die Website-Vorschau",
@@ -707,6 +715,7 @@
       "tryDifferentSearch": "Versuchen Sie es mit einer anderen Suche.",
       "use": "Verwenden",
       "useThisTemplate": "Verwenden Sie diese Vorlage",
+      "viewVideoPlans": "Tarife für die Videovorlage {{title}} anzeigen",
       "visibility": {
         "change": "Ändern",
         "changeLabel": "Sichtbarkeit der Vorlage ändern",
@@ -1970,6 +1979,7 @@
         "capacityTitle": "{{framework}}-Modell ist ausgelastet",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "Fortfahren",
         "resetAndTryAgain": "Zurücksetzen und erneut versuchen",
         "resetsAt": "Wird um {{time}} zurückgesetzt",
         "selectModel": "Modell wechseln",
@@ -6158,7 +6168,7 @@
       "browse": "Offizielle durchsuchen",
       "chooseValue": "Wert auswählen",
       "copySucceededUninstallFailed": "Die Kopie ist bereit, aber der ursprüngliche offizielle Workflow konnte nicht deinstalliert werden.",
-      "description": "Installiere verwaltete Workflows, die von vm0 gepflegt werden.",
+      "description": "Installiere verwaltete Workflows, die vom Okou Official Team gepflegt werden.",
       "empty": "Keine offiziellen Workflows verfügbar.",
       "includedAutomations": "Enthaltene Automatisierungen",
       "install": "Installieren",

@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Error de Codex",
       "commandStatus": "Comando {{status}}",
+      "contextCompaction": "Contexto compactado",
       "error": "Error: {{error}}",
       "fileChangeKind": "Cambio",
       "fileOperationCompleted": "Operación de archivo completada",
@@ -29,6 +30,12 @@
       },
       "status": "Estado: {{status}}",
       "statusDetail": "Estado: {{status}}",
+      "subAgentActivity": {
+        "completed": "Subagente completado",
+        "interacted": "Interacción con el subagente",
+        "interrupted": "Subagente interrumpido",
+        "started": "Subagente iniciado"
+      },
       "turnFailed": "Turno fallido",
       "turnStatus": "Turno {{status}}",
       "warning": "[advertencia] {{message}}",
@@ -674,6 +681,7 @@
       "importedSlides_many": "{{count}} diapositivas",
       "importedSlides_other": "{{count}} diapositivas",
       "multiAccent": "Multiacentos",
+      "needPro": "Necesitas Pro",
       "nextSlide": "Vista previa de la diapositiva siguiente",
       "noMatches": "Sin coincidencias",
       "placeholder": "Vista previa del sitio web {{title}}",
@@ -726,6 +734,7 @@
       "tryDifferentSearch": "Prueba con otra búsqueda.",
       "use": "Usar",
       "useThisTemplate": "Usa esta plantilla",
+      "viewVideoPlans": "Ver planes para la plantilla de vídeo {{title}}",
       "visibility": {
         "change": "Cambiar",
         "changeLabel": "Cambiar la visibilidad de la plantilla",
@@ -2001,6 +2010,7 @@
         "capacityTitle": "El modelo de {{framework}} está ocupado",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "Continuar",
         "resetAndTryAgain": "Restablecer e intentar de nuevo",
         "resetsAt": "Se restablece {{time}}",
         "selectModel": "Cambiar de modelo",
@@ -6224,7 +6234,7 @@
       "browse": "Explorar oficiales",
       "chooseValue": "Elige un valor",
       "copySucceededUninstallFailed": "La copia está lista, pero no se pudo desinstalar el flujo de trabajo oficial original.",
-      "description": "Instala flujos de trabajo administrados y mantenidos por vm0.",
+      "description": "Instala flujos de trabajo administrados y mantenidos por el Okou Official Team.",
       "empty": "No hay flujos de trabajo oficiales disponibles.",
       "includedAutomations": "Automatizaciones incluidas",
       "install": "Instalar",

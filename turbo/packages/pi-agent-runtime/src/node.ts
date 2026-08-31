@@ -1,4 +1,5 @@
 export { resumePiApiFirstTurn, runPiOfficialRpcMode } from "./rpc";
+export type { PiSandboxOwnershipTransferMode } from "./rpc";
 export { runPiApiFirstTurn } from "./api";
 export { MemoryPiSession } from "./session-memory";
 export {

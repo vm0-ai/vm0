@@ -113,6 +113,7 @@ import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
 import { createGithubBddApi } from "./helpers/api-bdd-github";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
+import { cleanupTimedOutRun } from "./helpers/api-bdd-run-timeout";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readAgentRunState$ } from "./helpers/agent-run-callback";
@@ -848,12 +849,16 @@ async function waitForRunStatus(
     | "pending"
     | "running"
     | "timeout",
+  timeout = 1000,
 ): Promise<void> {
   await expect
-    .poll(async () => {
-      const run = await api.readRun(actor, runId);
-      return run.status;
-    })
+    .poll(
+      async () => {
+        const run = await api.readRun(actor, runId);
+        return run.status;
+      },
+      { timeout },
+    )
     .toBe(status);
 }
 
@@ -922,20 +927,15 @@ async function completeChatRunOk(
   }
   const history = `bdd chat session history ${runId}`;
   const historyHash = createHash("sha256").update(history).digest("hex");
-  await webhooks.requestAgentCheckpoint(
-    {
-      runId,
-      cliAgentType: options.cliAgentType ?? "claude-code",
-      cliAgentSessionId: `bdd-cli-${runId}`,
-      cliAgentSessionHistoryHash: historyHash,
-    },
-    sandboxHeaders,
-    [200],
-  );
   await webhooks.requestAgentComplete(
     {
       runId,
       exitCode: 0,
+      checkpoint: {
+        cliAgentType: options.cliAgentType ?? "claude-code",
+        cliAgentSessionId: `bdd-cli-${runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
       ...(options.activeInputDeliveryIds === undefined
         ? {}
         : { activeInputDeliveryIds: [...options.activeInputDeliveryIds] }),
@@ -2322,7 +2322,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
       context.mocks.ably.publish.mock.calls.filter(([topic]) => {
         return topic === `chatThreadMessageCreated:${active.threadId}`;
       }),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith("active-input", {
       runId: active.runId,
     });
@@ -2342,7 +2342,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
       context.mocks.ably.publish.mock.calls.filter(([topic]) => {
         return topic === `chatThreadMessageCreated:${active.threadId}`;
       }),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
 
     const secondReservation = await api.reserveRunnerActiveInputs(
       claimed.claim.sandboxToken,
@@ -2370,7 +2370,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
       context.mocks.ably.publish.mock.calls.filter(([topic]) => {
         return topic === `chatThreadMessageCreated:${active.threadId}`;
       }),
-    ).toHaveLength(4);
+    ).toHaveLength(2);
     await expect(
       api.reserveRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
     ).resolves.toStrictEqual({ outcome: "empty" });
@@ -2419,37 +2419,6 @@ describe("CHAT-02: queueing and recalling messages", () => {
     }
 
     const history = `bdd chat session history ${active.runId}`;
-    await webhooks.requestAgentCheckpoint(
-      {
-        runId: active.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-cli-${active.runId}`,
-        cliAgentSessionHistoryHash: createHash("sha256")
-          .update(history)
-          .digest("hex"),
-      },
-      claimed.sandboxHeaders,
-      [200],
-    );
-    const checkpointGate = await holdCheckpointReadsFixture({
-      signal: context.signal,
-    });
-    onTestFinished(async () => {
-      checkpointGate.release();
-      await checkpointGate.done;
-    });
-    const completion = webhooks.requestAgentComplete(
-      {
-        runId: active.runId,
-        exitCode: 0,
-        activeInputDeliveryIds: [reserved.deliveryId],
-      },
-      claimed.sandboxHeaders,
-      [200],
-    );
-    await expect
-      .poll(checkpointGate.blockedWaiterCount)
-      .toBeGreaterThanOrEqual(1);
     await expect(
       api.recordRunnerActiveInputDelivery(
         claimed.claim.sandboxToken,
@@ -2457,9 +2426,23 @@ describe("CHAT-02: queueing and recalling messages", () => {
         reserved.deliveryId,
       ),
     ).resolves.toStrictEqual({ outcome: "delivered" });
-    checkpointGate.release();
-    await checkpointGate.done;
-    await expect(completion).resolves.toMatchObject({
+    const completion = await webhooks.requestAgentComplete(
+      {
+        runId: active.runId,
+        exitCode: 0,
+        activeInputDeliveryIds: [reserved.deliveryId],
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-cli-${active.runId}`,
+          cliAgentSessionHistoryHash: createHash("sha256")
+            .update(history)
+            .digest("hex"),
+        },
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    expect(completion).toMatchObject({
       body: { success: true, status: "completed" },
     });
     await flushWaitUntilForTest();
@@ -2842,9 +2825,12 @@ describe("CHAT-02: queueing and recalling messages", () => {
     await cancelChatRun(actor, successor, successorClaim.sandboxHeaders);
   }, 90_000);
 
-  it("keeps timed-out delivery input held until Runner completion", async () => {
+  it("settles timed-out delivery input when stopping the Runner fails", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped chat actor");
+    }
 
     const active = await sendChatRun(actor, {
       agentId,
@@ -2869,31 +2855,25 @@ describe("CHAT-02: queueing and recalling messages", () => {
     if (reserved.outcome !== "reserved") {
       throw new Error("Expected timeout input to be reserved");
     }
-    await timeoutRunWithoutCallbacksFixture({ runId: active.runId });
+    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.publish.mockRejectedValueOnce(
+      new DOMException("timeout cancel unavailable", "AbortError"),
+    );
+    mockNow(now() + 3 * 60 * 1000);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const cleanup = await cleanupTimedOutRun(context, {
+      runId: active.runId,
+      chatThreadId: active.threadId,
+      orgId: actor.orgId,
+    });
+    expect(cleanup.body).toMatchObject({ cleaned: 1, errors: 0 });
     await waitForRunStatus(actor, active.runId, "timeout");
-
-    const laterEventId = randomUUID();
-    const later = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        threadId: active.threadId,
-        prompt: "wait behind the timed-out delivery",
-        clientEventId: laterEventId,
-      },
-      [201],
-    );
-    if (later.status !== 201) {
-      throw new Error("Expected post-timeout input to remain queued");
-    }
-    expect(later.body.runId).toBeNull();
-
-    await failChatRun(
-      active.runId,
-      claimed.sandboxHeaders,
-      "Runner observed timed-out process exit",
-    );
-    await flushWaitUntilForTest();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
+      runId: active.runId,
+      mode: "hard",
+    });
     await expect(
       api.recordRunnerActiveInputDelivery(
         claimed.claim.sandboxToken,
@@ -2921,8 +2901,26 @@ describe("CHAT-02: queueing and recalling messages", () => {
     if (!successor) {
       throw new Error("Expected timed-out delivery input to be released");
     }
+
+    const laterEventId = randomUUID();
+    const later = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "wait behind the timeout successor",
+        clientEventId: laterEventId,
+      },
+      [201],
+    );
+    if (later.status !== 201) {
+      throw new Error("Expected post-timeout input to remain queued");
+    }
+    expect(later.body.runId).toBeNull();
     expect(
-      userMessages(messages.events).filter((message) => {
+      userMessages(
+        (await chat.listThreadEvents(actor, active.threadId)).events,
+      ).filter((message) => {
         return message.revokesEventId === laterEventId;
       }),
     ).toHaveLength(0);
@@ -5028,6 +5026,447 @@ describe("CHAT-02: model-first provider policies", () => {
     90_000,
   );
 
+  it("bounds Pi resume history to each cross-harness generation", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected entitled chat actor to have an org");
+    }
+    const piModel = "deepseek-v4-flash";
+    const codexModel = "gpt-5.6-luna";
+    await seedVm0BuiltInModelKey(piModel);
+    await misc.upsertPersonalModelProvider(
+      actor,
+      {
+        type: "codex-oauth-token",
+        authMethod: "auth_json",
+        secrets: { CODEX_AUTH_JSON: codexAuthJson() },
+      },
+      [200, 201],
+    );
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: piModel,
+        isDefault: true,
+        defaultProviderType: "built-in",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+      {
+        model: codexModel,
+        isDefault: false,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+    ]);
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      { [FeatureSwitchKey.PiLoop]: true },
+    );
+    mockPiResourceArchiveDownloads();
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    const firstPiAnswer = "first Pi generation answer";
+    const returnedPiAnswer = "returned Pi generation answer";
+    const interruptedPiAnswer = "Pi follow-up before Sandbox handoff";
+    const repeatedPiAnswer = "repeated Pi generation answer";
+    const modelRequests: unknown[] = [];
+    server.use(
+      http.post("https://api.deepseek.com/responses", async ({ request }) => {
+        const requestIndex = modelRequests.length;
+        modelRequests.push(await request.json());
+        const body =
+          requestIndex === 2
+            ? piResponsesContentSse({
+                blocks: [
+                  { type: "text", text: interruptedPiAnswer },
+                  {
+                    type: "toolCall",
+                    callId: "call_generation_boundary",
+                    name: "read",
+                    arguments: { path: "/home/user/workspace/AGENTS.md" },
+                  },
+                ],
+                sequence: requestIndex,
+              })
+            : piResponsesTextSse(
+                [firstPiAnswer, returnedPiAnswer, undefined, repeatedPiAnswer][
+                  requestIndex
+                ] ?? "unexpected duplicate Pi model request",
+                requestIndex,
+              );
+        return new HttpResponse(body, {
+          headers: { "content-type": "text/event-stream" },
+        });
+      }),
+    );
+
+    const firstPiPrompt = "start the first Pi generation";
+    const firstPi = await sendChatRun(actor, {
+      agentId,
+      prompt: firstPiPrompt,
+      model: piModel,
+    });
+    await waitForRunStatus(actor, firstPi.runId, "completed", 10_000);
+    await flushWaitUntilForTest();
+    expect(modelRequests).toHaveLength(1);
+    const firstPiBinding = await readThreadSessionBinding(
+      context,
+      firstPi.threadId,
+    );
+    if (!firstPiBinding.agent_session_id) {
+      throw new Error("Expected the first Pi run to bind a canonical session");
+    }
+    await expect(
+      readThreadSessionConversation(context, firstPi.threadId),
+    ).resolves.toMatchObject({ conversation_run_id: firstPi.runId });
+
+    const firstCodexPrompt = "continue through Codex between Pi generations";
+    const firstCodexAnswer = "Codex answer between Pi generations";
+    const firstCodex = await sendChatRun(actor, {
+      agentId,
+      threadId: firstPi.threadId,
+      prompt: firstCodexPrompt,
+      model: codexModel,
+    });
+    const firstCodexBinding = await readThreadSessionBinding(
+      context,
+      firstPi.threadId,
+    );
+    expect(firstCodexBinding.agent_session_id).not.toBe(
+      firstPiBinding.agent_session_id,
+    );
+    const firstCodexRun = await api.readRun(actor, firstCodex.runId);
+    expect(firstCodexRun.appendSystemPrompt).toContain(
+      "# Web Chat Run Context",
+    );
+    expect(firstCodexRun.appendSystemPrompt).toContain(firstPiPrompt);
+    expect(firstCodexRun.appendSystemPrompt).toContain(firstPiAnswer);
+    const firstCodexClaim = await claimChatRun(runnerGroup, firstCodex.runId);
+    expect(firstCodexClaim.claim.cliAgentType).toBe("codex");
+    expect(firstCodexClaim.claim.resumeSession).toBeNull();
+    chatCallbacks.mockChatOutputEvents([assistantEvent(0, firstCodexAnswer)]);
+    await completeChatRunOk(firstCodex.runId, firstCodexClaim.sandboxHeaders, {
+      cliAgentType: "codex",
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
+    const returnedPiPrompt = "return to Pi with every visible prior turn";
+    const returnedPi = await sendChatRun(actor, {
+      agentId,
+      threadId: firstPi.threadId,
+      prompt: returnedPiPrompt,
+      model: piModel,
+    });
+    await waitForRunStatus(actor, returnedPi.runId, "completed", 10_000);
+    await flushWaitUntilForTest();
+    expect(modelRequests).toHaveLength(2);
+    const returnedPiBinding = await readThreadSessionBinding(
+      context,
+      firstPi.threadId,
+    );
+    if (!returnedPiBinding.agent_session_id) {
+      throw new Error("Expected the returned Pi run to bind a new session");
+    }
+    expect(returnedPiBinding.agent_session_id).not.toBe(
+      firstCodexBinding.agent_session_id,
+    );
+    expect(returnedPiBinding.agent_session_id).not.toBe(
+      firstPiBinding.agent_session_id,
+    );
+    const returnedPiRun = await api.readRun(actor, returnedPi.runId);
+    const returnedPiAppend = returnedPiRun.appendSystemPrompt ?? "";
+    expect(returnedPiAppend).toContain("# Web Chat Run Context");
+    for (const prior of [
+      firstPiPrompt,
+      firstPiAnswer,
+      firstCodexPrompt,
+      firstCodexAnswer,
+    ]) {
+      expect(occurrences(returnedPiAppend, prior)).toBe(1);
+    }
+    const returnedPiInput = JSON.stringify(modelRequests[1]);
+    for (const turn of [
+      firstPiPrompt,
+      firstPiAnswer,
+      firstCodexPrompt,
+      firstCodexAnswer,
+      returnedPiPrompt,
+    ]) {
+      expect(occurrences(returnedPiInput, turn)).toBe(1);
+    }
+    await expect(
+      readThreadSessionConversation(context, firstPi.threadId),
+    ).resolves.toMatchObject({
+      agent_session_id: returnedPiBinding.agent_session_id,
+      conversation_run_id: returnedPi.runId,
+    });
+
+    const piFollowUpPrompt = "resume the returned Pi generation once";
+    const piFollowUp = await sendChatRun(actor, {
+      agentId,
+      threadId: firstPi.threadId,
+      prompt: piFollowUpPrompt,
+      model: piModel,
+    });
+    const piFollowUpManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${piFollowUp.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.has(piFollowUpManifestKey);
+      })
+      .toBe(true);
+    expect(modelRequests).toHaveLength(3);
+    const piFollowUpRun = await api.readRun(actor, piFollowUp.runId);
+    const piFollowUpAppend = piFollowUpRun.appendSystemPrompt ?? "";
+    expect(piFollowUpAppend).not.toContain("# Web Chat Run Context");
+    expect(piFollowUpAppend).not.toContain(firstPiPrompt);
+    expect(piFollowUpAppend).not.toContain(firstCodexPrompt);
+    const piFollowUpInput = JSON.stringify(modelRequests[2]);
+    expect(occurrences(piFollowUpInput, returnedPiPrompt)).toBe(1);
+    expect(occurrences(piFollowUpInput, returnedPiAnswer)).toBe(1);
+    expect(occurrences(piFollowUpInput, piFollowUpPrompt)).toBe(1);
+    expect(piFollowUpInput).not.toContain(firstPiPrompt);
+    expect(piFollowUpInput).not.toContain(firstCodexPrompt);
+    const piFollowUpBinding = await readThreadSessionBinding(
+      context,
+      firstPi.threadId,
+    );
+    expect(piFollowUpBinding.agent_session_id).toBe(
+      returnedPiBinding.agent_session_id,
+    );
+    const piFollowUpClaim = await claimChatRun(runnerGroup, piFollowUp.runId);
+    const resumedPiSession = piFollowUpClaim.claim.resumeSession;
+    if (!resumedPiSession || !("historyRef" in resumedPiSession)) {
+      throw new Error("Expected the Pi follow-up to resume a blob checkpoint");
+    }
+    expect(resumedPiSession).toMatchObject({
+      sessionId: firstPi.threadId,
+      historyRef: {
+        kind: "blob",
+        hash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      },
+    });
+    expect(piFollowUpClaim.claim.piSessionId).toBe(firstPi.threadId);
+    expect(piFollowUpClaim.claim.piLaunchConfig).toMatchObject({
+      apiFirstTurn: {
+        baseSession: {
+          sessionId: firstPi.threadId,
+          sha256: resumedPiSession.historyRef.hash,
+        },
+      },
+    });
+    const piFollowUpManifest = JSON.parse(
+      checkpointObjects.get(piFollowUpManifestKey)?.toString("utf8") ?? "{}",
+    ) as {
+      readonly baseSession?: {
+        readonly sessionId?: unknown;
+        readonly sha256?: unknown;
+      };
+    };
+    expect(piFollowUpManifest.baseSession).toStrictEqual({
+      sessionId: firstPi.threadId,
+      sha256: resumedPiSession.historyRef.hash,
+    });
+    await cancelChatRun(
+      actor,
+      piFollowUp.runId,
+      piFollowUpClaim.sandboxHeaders,
+    );
+    await expect(
+      readThreadSessionConversation(context, firstPi.threadId),
+    ).resolves.toMatchObject({ conversation_run_id: returnedPi.runId });
+
+    const repeatedCodexPrompt = "cross Codex before returning to Pi again";
+    const repeatedCodexAnswer = "second intervening Codex answer";
+    const repeatedCodex = await sendChatRun(actor, {
+      agentId,
+      threadId: firstPi.threadId,
+      prompt: repeatedCodexPrompt,
+      model: codexModel,
+    });
+    const repeatedCodexBinding = await readThreadSessionBinding(
+      context,
+      firstPi.threadId,
+    );
+    expect(repeatedCodexBinding.agent_session_id).not.toBe(
+      returnedPiBinding.agent_session_id,
+    );
+    const repeatedCodexClaim = await claimChatRun(
+      runnerGroup,
+      repeatedCodex.runId,
+    );
+    expect(repeatedCodexClaim.claim.cliAgentType).toBe("codex");
+    expect(repeatedCodexClaim.claim.resumeSession).toBeNull();
+    const repeatedCodexRun = await api.readRun(actor, repeatedCodex.runId);
+    expect(repeatedCodexRun.appendSystemPrompt).toContain(piFollowUpPrompt);
+    expect(repeatedCodexRun.appendSystemPrompt).toContain("Run cancelled");
+    expect(repeatedCodexRun.appendSystemPrompt).not.toContain(
+      interruptedPiAnswer,
+    );
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, repeatedCodexAnswer),
+    ]);
+    await completeChatRunOk(
+      repeatedCodex.runId,
+      repeatedCodexClaim.sandboxHeaders,
+      { cliAgentType: "codex", lastEventSequence: 0 },
+    );
+    await flushWaitUntilForTest();
+
+    const repeatedPiPrompt = "return to a third Pi generation";
+    const repeatedPi = await sendChatRun(actor, {
+      agentId,
+      threadId: firstPi.threadId,
+      prompt: repeatedPiPrompt,
+      model: piModel,
+    });
+    await waitForRunStatus(actor, repeatedPi.runId, "completed", 10_000);
+    await flushWaitUntilForTest();
+    expect(modelRequests).toHaveLength(4);
+    const repeatedPiBinding = await readThreadSessionBinding(
+      context,
+      firstPi.threadId,
+    );
+    expect(repeatedPiBinding.agent_session_id).not.toBe(
+      repeatedCodexBinding.agent_session_id,
+    );
+    expect(repeatedPiBinding.agent_session_id).not.toBe(
+      returnedPiBinding.agent_session_id,
+    );
+    const repeatedPiRun = await api.readRun(actor, repeatedPi.runId);
+    const repeatedPiAppend = repeatedPiRun.appendSystemPrompt ?? "";
+    expect(repeatedPiAppend).toContain("# Web Chat Run Context");
+    for (const prior of [
+      firstPiPrompt,
+      firstPiAnswer,
+      firstCodexPrompt,
+      firstCodexAnswer,
+      returnedPiPrompt,
+      returnedPiAnswer,
+      piFollowUpPrompt,
+      "Run cancelled",
+      repeatedCodexPrompt,
+      repeatedCodexAnswer,
+    ]) {
+      expect(occurrences(repeatedPiAppend, prior)).toBe(1);
+    }
+    expect(repeatedPiAppend).not.toContain(interruptedPiAnswer);
+    const repeatedPiInput = JSON.stringify(modelRequests[3]);
+    for (const turn of [
+      firstPiPrompt,
+      firstPiAnswer,
+      firstCodexPrompt,
+      firstCodexAnswer,
+      returnedPiPrompt,
+      returnedPiAnswer,
+      piFollowUpPrompt,
+      "Run cancelled",
+      repeatedCodexPrompt,
+      repeatedCodexAnswer,
+      repeatedPiPrompt,
+    ]) {
+      expect(occurrences(repeatedPiInput, turn)).toBe(1);
+    }
+    expect(repeatedPiInput).not.toContain(interruptedPiAnswer);
+    await expect(
+      readThreadSessionConversation(context, firstPi.threadId),
+    ).resolves.toMatchObject({
+      agent_session_id: repeatedPiBinding.agent_session_id,
+      conversation_run_id: repeatedPi.runId,
+    });
+
+    const visibleTurns = [
+      { runId: firstPi.runId, prompt: firstPiPrompt, answer: firstPiAnswer },
+      {
+        runId: firstCodex.runId,
+        prompt: firstCodexPrompt,
+        answer: firstCodexAnswer,
+      },
+      {
+        runId: returnedPi.runId,
+        prompt: returnedPiPrompt,
+        answer: returnedPiAnswer,
+      },
+      {
+        runId: piFollowUp.runId,
+        prompt: piFollowUpPrompt,
+        answer: interruptedPiAnswer,
+      },
+      {
+        runId: repeatedCodex.runId,
+        prompt: repeatedCodexPrompt,
+        answer: repeatedCodexAnswer,
+      },
+      {
+        runId: repeatedPi.runId,
+        prompt: repeatedPiPrompt,
+        answer: repeatedPiAnswer,
+      },
+    ];
+    const finalEvents = await waitForThreadMessages(
+      actor,
+      firstPi.threadId,
+      (events) => {
+        return eventBackedContents(events, repeatedPi.runId).some((event) => {
+          return event.content === repeatedPiAnswer;
+        });
+      },
+    );
+    const allRunIds = new Set(
+      visibleTurns.map((turn) => {
+        return turn.runId;
+      }),
+    );
+    expect(
+      finalEvents.events
+        .filter((event) => {
+          return (
+            event.runId !== undefined &&
+            event.runId !== null &&
+            allRunIds.has(event.runId) &&
+            (event.eventType === "input.prompt" ||
+              event.eventType === "output.message")
+          );
+        })
+        .map((event) => {
+          return {
+            runId: event.runId,
+            eventType: event.eventType,
+            content: chatEventDisplayText(event),
+          };
+        }),
+    ).toStrictEqual(
+      visibleTurns.flatMap((turn) => {
+        return [
+          {
+            runId: turn.runId,
+            eventType: "input.prompt",
+            content: turn.prompt,
+          },
+          {
+            runId: turn.runId,
+            eventType: "output.message",
+            content: turn.answer,
+          },
+        ];
+      }),
+    );
+    await expect(api.readRun(actor, firstPi.runId)).resolves.toMatchObject({
+      status: "completed",
+    });
+    await expect(api.readRun(actor, firstCodex.runId)).resolves.toMatchObject({
+      status: "completed",
+    });
+    await expect(api.readRun(actor, returnedPi.runId)).resolves.toMatchObject({
+      status: "completed",
+    });
+    await expect(api.readRun(actor, piFollowUp.runId)).resolves.toMatchObject({
+      status: "cancelled",
+    });
+  }, 90_000);
+
   it("projects complete API-first text blocks in source order and completes at N", async () => {
     const { actor, agentId } = await entitledChatActor();
     if (!actor.orgId) {
@@ -5390,6 +5829,9 @@ describe("CHAT-02: model-first provider policies", () => {
         sandboxEventSequenceStart: 1,
       },
     });
+    expect(claimed.claim.piLaunchConfig?.apiFirstTurn).not.toHaveProperty(
+      "ownershipTransfer",
+    );
     expect(claimed.claim.prompt).toBe(prompt);
     const h1 =
       checkpointObjects
@@ -5852,7 +6294,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const racedHandoff = await sendChatRun(actor, {
       agentId,
       threadId: run.threadId,
-      prompt: "serialize H2 against an early successful completion",
+      prompt: "reject standalone H2 during an early successful completion",
     });
     const racedManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${racedHandoff.runId}/manifest.json`;
     await expect
@@ -5893,7 +6335,7 @@ describe("CHAT-02: model-first provider policies", () => {
     });
     const racedCheckpointResponse = await racedCheckpoint;
     expect(JSON.stringify(racedCheckpointResponse.body)).toContain(
-      "[PI_H2_RUN_TERMINAL]",
+      "[CHECKPOINT_RUN_NOT_SETTLED]",
     );
     await waitForRunStatus(actor, racedHandoff.runId, "failed");
     await flushWaitUntilForTest();
@@ -5951,7 +6393,7 @@ describe("CHAT-02: model-first provider policies", () => {
       success: true,
       status: "failed",
     });
-    await waitForRunStatus(actor, retry.runId, "failed");
+    await waitForRunStatus(actor, retry.runId, "timeout");
     await expect(
       readThreadSessionConversation(context, run.threadId),
     ).resolves.toStrictEqual(canonicalConversation);
@@ -8455,21 +8897,16 @@ describe("CHAT-02: run-level model overrides", () => {
       firstClaim.sandboxHeaders,
       [200],
     );
-    await webhooks.requestAgentCheckpoint(
-      {
-        runId: first.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `discarded-cli-${first.runId}`,
-        cliAgentSessionHistoryDisposition: "discarded_oversized",
-      },
-      firstClaim.sandboxHeaders,
-      [200],
-    );
     await webhooks.requestAgentComplete(
       {
         runId: first.runId,
         exitCode: 0,
         lastEventSequence: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `discarded-cli-${first.runId}`,
+          cliAgentSessionHistoryDisposition: "discarded_oversized",
+        },
       },
       firstClaim.sandboxHeaders,
       [200],
@@ -13644,7 +14081,7 @@ describe("CHAT-02: shared user message queue", () => {
         return topic === "threadListChanged";
       },
     );
-    expect(threadListPublishes).toHaveLength(2);
+    expect(threadListPublishes).toHaveLength(1);
     releasePublication.resolve(undefined);
     await cancelChatRun(actor, sent.body.runId);
   }, 90_000);
@@ -13699,7 +14136,7 @@ describe("CHAT-02: shared user message queue", () => {
         return topic === "threadListChanged";
       },
     );
-    expect(threadListPublishes).toHaveLength(2);
+    expect(threadListPublishes).toHaveLength(1);
 
     await cancelChatRun(actor, anchor.runId);
     const messages = await waitForThreadMessages(

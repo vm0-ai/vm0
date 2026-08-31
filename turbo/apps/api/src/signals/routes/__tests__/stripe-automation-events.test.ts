@@ -809,7 +809,7 @@ describe("Stripe automation event webhook", () => {
       userId: scenario.actor.userId,
       connectorId: scenario.connector.id,
       needsReconnect: false,
-      storageVersion: 2,
+      storageVersion: 3,
     });
     const defaultEventId = "evt_connector_priority_default";
     await postStripeAutomationEvent(
@@ -845,7 +845,7 @@ describe("Stripe automation event webhook", () => {
       userId: scenario.actor.userId,
       connectorId: scenario.connector.id,
       needsReconnect: false,
-      storageVersion: 2,
+      storageVersion: 3,
     });
     const unavailableEventId = "evt_connector_priority_unavailable";
     await postStripeAutomationEvent(

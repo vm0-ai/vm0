@@ -6,9 +6,10 @@ import {
   chatThreadEventsContract,
   type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import { browserContract } from "@okouai/api-contracts/contracts/browser";
 import { IMAGE_RECOGNITION_MAX_FILE_BYTES } from "@okouai/api-contracts/contracts/image-recognition";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
-import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
+import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import {
   fillComposer,
   mockChatLifecycle,
@@ -254,6 +255,72 @@ function threadIsolationList() {
       updatedAt: "2026-03-10T00:00:00Z",
     },
   ];
+}
+
+interface CrossThreadPendingSubmissionSetup {
+  readonly threadContainer: HTMLElement;
+  readonly releaseDestinationEvents: () => void;
+}
+
+async function setupCrossThreadPendingSubmission(): Promise<CrossThreadPendingSubmissionSetup> {
+  const user = userEvent.setup({ delay: null });
+  const sendGate = context.mocks.deferred<void>();
+  const destinationInitialGate = context.mocks.deferred<void>();
+  const sourceEvents = threadIsolationSourceEvents();
+  const destinationEvents = threadIsolationDestinationEvents();
+  context.mocks.api(browserContract.get, ({ respond }) => {
+    return respond(404, {
+      error: { code: "BROWSER_NOT_FOUND", message: "Browser not found" },
+    });
+  });
+  const lifecycle = mockChatLifecycle(context, {
+    threadId: THREAD_ISOLATION_SOURCE_ID,
+    threadTitle: "Long thread",
+    sendGate: sendGate.promise,
+    chatEvents: sourceEvents,
+  });
+  lifecycle.setThreadList(threadIsolationList());
+  mockThreadEventRows({
+    destinationThreadId: THREAD_ISOLATION_DESTINATION_ID,
+    sourceEvents,
+    destinationEvents,
+    destinationInitialGate: destinationInitialGate.promise,
+  });
+
+  detachedSetupPage({
+    context,
+    path: `/chats/${THREAD_ISOLATION_SOURCE_ID}`,
+  });
+
+  await expect(
+    screen.findByText("Existing context"),
+  ).resolves.toBeInTheDocument();
+  const textarea = screen.getByPlaceholderText(
+    PLACEHOLDER,
+  ) as HTMLTextAreaElement;
+  await sendMessageInUI(user, textarea, "Pending follow-up");
+  await waitFor(() => {
+    expect(screen.getByText("Pending follow-up")).toBeInTheDocument();
+    expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+  });
+  const threadContainer = document.querySelector(
+    `[data-chat-thread-container-id="${THREAD_ISOLATION_SOURCE_ID}"]`,
+  );
+  if (!(threadContainer instanceof HTMLElement)) {
+    throw new Error("Chat thread container not found");
+  }
+  expectTextBefore(
+    document.body,
+    "Existing assistant answer",
+    "Pending follow-up",
+  );
+
+  return {
+    threadContainer,
+    releaseDestinationEvents: () => {
+      destinationInitialGate.resolve(undefined);
+    },
+  };
 }
 
 describe("chat lifecycle", () => {
@@ -1007,55 +1074,11 @@ describe("chat lifecycle", () => {
   });
 
   it("keeps active submission state scoped to its thread", async () => {
-    const user = userEvent.setup({ delay: null });
-    const sendGate = context.mocks.deferred<void>();
-    const sourceEvents = threadIsolationSourceEvents();
-    const destinationEvents = threadIsolationDestinationEvents();
-    const lifecycle = mockChatLifecycle(context, {
-      threadId: THREAD_ISOLATION_SOURCE_ID,
-      threadTitle: "Long thread",
-      sendGate: sendGate.promise,
-      chatEvents: sourceEvents,
-    });
-    lifecycle.setThreadList(threadIsolationList());
-    mockThreadEventRows({
-      destinationThreadId: THREAD_ISOLATION_DESTINATION_ID,
-      sourceEvents,
-      destinationEvents,
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ISOLATION_SOURCE_ID}`,
-    });
-
-    await expect(
-      screen.findByText("Existing context"),
-    ).resolves.toBeInTheDocument();
-    const textarea = screen.getByPlaceholderText(
-      PLACEHOLDER,
-    ) as HTMLTextAreaElement;
-    await sendMessageInUI(user, textarea, "Pending follow-up");
-    await waitFor(() => {
-      expect(screen.getByText("Pending follow-up")).toBeInTheDocument();
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-    });
-    const threadContainer = document.querySelector(
-      `[data-chat-thread-container-id="${THREAD_ISOLATION_SOURCE_ID}"]`,
-    );
-    if (!(threadContainer instanceof HTMLElement)) {
-      throw new Error("Chat thread container not found");
-    }
-    expectTextBefore(
-      document.body,
-      "Existing assistant answer",
-      "Pending follow-up",
-    );
-
-    await user.click(linkByText("Other thread"));
+    const { threadContainer, releaseDestinationEvents } =
+      await setupCrossThreadPendingSubmission();
+    click(linkByText("Other thread"));
     await waitFor(() => {
       expect(document.title).toBe("Other thread | VM0");
-      expect(screen.getByText("Other thread context")).toBeInTheDocument();
       expect(screen.queryByText("Pending follow-up")).not.toBeInTheDocument();
       expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
       expect(
@@ -1063,6 +1086,13 @@ describe("chat lifecycle", () => {
           `[data-chat-thread-container-id="${THREAD_ISOLATION_DESTINATION_ID}"]`,
         ),
       ).toBe(threadContainer);
+      expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
+    });
+
+    releaseDestinationEvents();
+    await waitFor(() => {
+      expect(screen.getByText("Other thread context")).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeDisabled();
     });
     const otherTextarea = screen.getByPlaceholderText(
       PLACEHOLDER,
@@ -1071,8 +1101,28 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Send")).toBeEnabled();
     });
+  });
 
-    await user.click(linkByText("Long thread"));
+  it("restores pending submission state when returning to its thread", async () => {
+    const { threadContainer, releaseDestinationEvents } =
+      await setupCrossThreadPendingSubmission();
+    click(linkByText("Other thread"));
+    await waitFor(() => {
+      expect(document.title).toBe("Other thread | VM0");
+      expect(screen.queryByText("Pending follow-up")).not.toBeInTheDocument();
+      expect(
+        document.querySelector(
+          `[data-chat-thread-container-id="${THREAD_ISOLATION_DESTINATION_ID}"]`,
+        ),
+      ).toBe(threadContainer);
+      expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
+    });
+    releaseDestinationEvents();
+    await expect(
+      screen.findByText("Other thread context"),
+    ).resolves.toBeInTheDocument();
+
+    click(linkByText("Long thread"));
     await waitFor(() => {
       expect(document.title).toBe("Long thread | VM0");
       expect(screen.getByText("Pending follow-up")).toBeInTheDocument();

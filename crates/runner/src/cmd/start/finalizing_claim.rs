@@ -1,4 +1,45 @@
-//! Owned claimed-job waiting before a finalizing predecessor publishes reuse.
+//! A claimed finalizing successor waits for the exact sandbox its predecessor may publish.
+//!
+//! A finalizing successor is claimed before the predecessor has finished finalizing and is
+//! allowed to wait for a direct handoff without reserving fresh capacity. The predecessor's
+//! `ActiveRunReuseState` drives the wait:
+//!
+//! - `Pending` means that publication or handoff is still possible.
+//! - `ExactSandboxPublished` means that the successor may reserve the exact idle entry.
+//! - `ExactSandboxHandedOff` means that the exact entry was handed off. A live request for this
+//!   successor receives its candidate before fallback; otherwise the successor uses fallback
+//!   resources.
+//! - `NoExactSandbox` and `Released` mean that no exact predecessor resource will be published,
+//!   so the successor must use fallback resources.
+//!
+//! While the predecessor is `Pending`, the successor requests one direct handoff. Handoff
+//! acceptance is allowed until the later of the predecessor preference deadline and the claim's
+//! return time plus `FINALIZING_HANDOFF_ACCEPTANCE_GRACE`. An accepted handoff, including a
+//! candidate that was already delivered, wins a deadline race. Cancellation is checked with
+//! priority; if a candidate was delivered before the receiver was closed, the handoff request
+//! recovers it so this module can destroy it rather than lose ownership.
+//!
+//! Every exact resource is reserved for the claimed successor's reuse key, profile, device
+//! limits, and history-generation run ID. A handed-off candidate is checked against the
+//! successor and history-generation identities before activation. Reserved candidates are
+//! rolled back on cancellation, while identity mismatches, activation failures, preparation
+//! errors, and panics destroy or recover the candidate through the activation guards before the
+//! claimed job is completed without a sandbox. Finalizing handoff outcomes are recorded even
+//! when there is no executor to emit ordinary job telemetry.
+//!
+//! When no direct or published exact resource is available, fallback first retries matching idle
+//! exact reuse, then consumes retiring idle capacity, and finally uses fresh budget capacity.
+//! Retiring leases are retained while the loop waits for capacity. The wait observes both budget
+//! availability and idle-pool changes: either can make the next exact or fresh-resource attempt
+//! viable, while cancellation exits through the same no-sandbox completion path. The admission
+//! timing and ownership contract is exercised by `tests/main_loop/admission.rs`, including
+//! `finalizing_handoff_grace_starts_when_claim_returns`,
+//! `finalizing_immediate_handoff_reuses_matching_sandbox_past_preference_deadline`, and
+//! `competing_finalizing_successors_reserve_exact_generation_once`. The no-executor and
+//! activation-failure telemetry paths are covered by `tests/main_loop/telemetry.rs`, including
+//! `cancelled_finalizing_handoff_flushes_outcome_without_executor`,
+//! `finalizing_handoff_activation_failure_is_not_reported_as_accepted`, and
+//! `published_exact_activation_failure_is_reported_as_activation_failed`.
 
 use std::panic::AssertUnwindSafe;
 use std::time::{Duration, Instant};
@@ -529,6 +570,14 @@ async fn prepare_finalizing_resource(
     }
 }
 
+/// Wait for a direct predecessor handoff, a published exact reservation, or the fallback point.
+///
+/// The handoff request is one-shot and is created before observing the predecessor state so a
+/// successor that was claimed early can race publication safely. The claim-relative grace period
+/// extends the predecessor preference deadline, but only an unaccepted request expires there; an
+/// accepted handoff is still received. A cancellation can recover a candidate already sent over
+/// the request, and the caller owns destroying that candidate or rolling back an exact
+/// reservation returned through `reserved_exact`.
 async fn wait_for_finalizing_resource(
     request: FinalizingWait<'_>,
     reserved_exact: &mut Option<ReservedIdleActivation>,
@@ -667,6 +716,11 @@ async fn wait_for_finalizing_resource(
     }
 }
 
+/// Receive a delivered candidate while preserving ownership when cancellation races delivery.
+///
+/// The returned handoff candidate is not activated yet. If cancellation wins after the sender
+/// has delivered it, this returns it as `Cancelled` so the caller destroys it; a successful return
+/// transfers the candidate to the activation path for identity validation and reservation.
 async fn receive_finalizing_handoff(
     request: &mut ActiveRunHandoffRequest,
     run_id: RunId,
@@ -695,6 +749,14 @@ async fn receive_finalizing_handoff(
     FinalizingWaitOutcome::Handoff(candidate)
 }
 
+/// Acquire capacity after the predecessor can no longer provide an exact direct handoff.
+///
+/// Each loop first reserves a matching exact idle entry, then tries retained retiring leases and
+/// rechecks exact reuse before accepting fresh budget capacity. Idle entries selected for pressure
+/// are either returned as exact reservations or converted into retiring leases; they are never
+/// counted twice. When neither source can make progress, the loop waits for cancellation, budget
+/// availability, or an idle-pool change and retries. A cancellation or other failure returns
+/// without a resource so the outer claim path can complete the job and release retained leases.
 async fn acquire_fallback_resource(
     request: FinalizingFallback<'_>,
 ) -> Result<FinalizingResource, Box<ExecutionFailure>> {
@@ -850,6 +912,12 @@ async fn accept_fallback_exact(
     Ok(reservation)
 }
 
+/// Complete a claimed finalizing successor without activating a sandbox.
+///
+/// This path is used for cancellation, preparation and activation failures, identity mismatches,
+/// and recovered panics after their resource cleanup has run. It always completes with no sandbox
+/// and flushes the supplied finalizing handoff outcome directly because no executor is running to
+/// emit that telemetry.
 async fn complete_claimed_without_sandbox(
     claimed: ClaimedJob,
     cancellation: RunCancellationRegistration,

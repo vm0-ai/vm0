@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Codex エラー",
       "commandStatus": "コマンド {{status}}",
+      "contextCompaction": "コンテキストを圧縮しました",
       "error": "エラー: {{error}}",
       "fileChangeKind": "変更",
       "fileOperationCompleted": "ファイル操作が完了しました",
@@ -27,6 +28,12 @@
       },
       "status": "ステータス: {{status}}",
       "statusDetail": "ステータス: {{status}}",
+      "subAgentActivity": {
+        "completed": "サブエージェントが完了しました",
+        "interacted": "サブエージェントと対話しました",
+        "interrupted": "サブエージェントを中断しました",
+        "started": "サブエージェントを開始しました"
+      },
       "turnFailed": "ターンに失敗しました",
       "turnStatus": "ターン: {{status}}",
       "warning": "[警告] {{message}}",
@@ -654,6 +661,7 @@
       "importedSlides_one": "{{count}} 枚",
       "importedSlides_other": "{{count}} 枚",
       "multiAccent": "マルチアクセント",
+      "needPro": "Pro が必要",
       "nextSlide": "次のスライドをプレビューする",
       "noMatches": "一致しません",
       "placeholder": "{{title}} Web サイトのプレビュー プレースホルダー",
@@ -706,6 +714,7 @@
       "tryDifferentSearch": "別の検索を試してください。",
       "use": "使用する",
       "useThisTemplate": "このテンプレートを使用してください",
+      "viewVideoPlans": "動画テンプレート {{title}} のプランを表示",
       "visibility": {
         "change": "変更",
         "changeLabel": "テンプレートの公開範囲を変更",
@@ -1967,6 +1976,7 @@
         "capacityTitle": "{{framework}} モデルは混雑しています",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "続ける",
         "resetAndTryAgain": "リセットして再試行",
         "resetsAt": "{{time}} にリセット",
         "selectModel": "モデルを切り替える",
@@ -6150,7 +6160,7 @@
       "browse": "公式を探す",
       "chooseValue": "値を選択",
       "copySucceededUninstallFailed": "コピーは準備できましたが、元の公式ワークフローをアンインストールできませんでした。",
-      "description": "vm0 が管理・保守するワークフローをインストールします。",
+      "description": "Okou Official Team が管理・保守するワークフローをインストールします。",
       "empty": "利用可能な公式ワークフローはありません。",
       "includedAutomations": "含まれる自動化",
       "install": "インストール",

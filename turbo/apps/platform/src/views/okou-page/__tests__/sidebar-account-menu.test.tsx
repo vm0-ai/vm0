@@ -35,7 +35,10 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { foregroundReady$ } from "../../../signals/auth-retry.ts";
 import { subscribeRealtimeReadyCatchUp$ } from "../../../signals/realtime.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { changeChatThreadList } from "../../../mocks/mock-helpers.ts";
+import {
+  changeChatThreadList,
+  changeChatThreadReadCursor,
+} from "../../../mocks/mock-helpers.ts";
 
 const context = testContext();
 
@@ -698,7 +701,7 @@ describe("zero sidebar account menu", () => {
       ).toBeTruthy();
       expect(
         context.mocks.ably.hasSubscription("chatThreadReadCursorUpdated"),
-      ).toBeTruthy();
+      ).toBeFalsy();
       expect(billingRequests).toBeGreaterThan(0);
       expect(indicatorRequests).toBeGreaterThan(0);
     });
@@ -709,7 +712,7 @@ describe("zero sidebar account menu", () => {
       expect(indicatorRequests).toBe(previousIndicatorRequests + 1);
     });
     previousIndicatorRequests = indicatorRequests;
-    context.mocks.ably.trigger("chatThreadReadCursorUpdated");
+    changeChatThreadReadCursor();
     await waitFor(() => {
       expect(indicatorRequests).toBe(previousIndicatorRequests + 1);
     });

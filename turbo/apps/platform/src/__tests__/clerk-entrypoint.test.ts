@@ -128,7 +128,19 @@ function executeClerkBootstrap(html: string): void {
     "location",
     `${clerkBootstrapSource(html)}\n//# sourceURL=platform-clerk-bootstrap-test.js`,
   ) as ClerkBootstrapScript;
-  executeEntrypointScript(window, document, location);
+  const previousAfterFirstPaint = window.__vm0AfterFirstPaint;
+  window.__vm0AfterFirstPaint ??= (callback) => {
+    callback();
+  };
+  try {
+    executeEntrypointScript(window, document, location);
+  } finally {
+    if (previousAfterFirstPaint === undefined) {
+      Reflect.deleteProperty(window, "__vm0AfterFirstPaint");
+    } else {
+      window.__vm0AfterFirstPaint = previousAfterFirstPaint;
+    }
+  }
 }
 
 function captureClerkBootstrapScript(
@@ -142,6 +154,7 @@ function captureClerkBootstrapScript(
   if (options.cookie !== undefined) {
     context.mocks.browser.cookie(options.cookie);
   }
+  window.__vm0BrowserSupported = true;
   context.signal.addEventListener(
     "abort",
     () => {
@@ -168,6 +181,7 @@ function captureClerkBootstrapScript(
 
   executeClerkBootstrap(builtIndexHtml());
   appendSpy.mockRestore();
+  Reflect.deleteProperty(window, "__vm0BrowserSupported");
   if (!clerkScript) {
     throw new Error("Clerk bootstrap did not create the core script");
   }
@@ -297,25 +311,146 @@ async function completeEarlyClerkScript(
 }
 
 describe("platform Clerk entrypoint", () => {
-  it("declares the Clerk bootstrap before the app module", () => {
+  it("discovers the paintable skeleton before Clerk and the app module", () => {
     const html = builtIndexHtml();
     const parsedDocument = new DOMParser().parseFromString(html, "text/html");
+    const skeleton = parsedDocument.getElementById("app-bootstrap-skeleton");
     const bootstrap = parsedDocument.querySelector(CLERK_BOOTSTRAP_SELECTOR);
+    const fontStylesheet = parsedDocument.querySelector(
+      "link[data-vm0-font-stylesheet]",
+    );
+    const paintScheduler = [...parsedDocument.querySelectorAll("script")].find(
+      (script) => {
+        return script.textContent.includes(
+          "__appBootstrapFirstPaintUpperBound",
+        );
+      },
+    );
+    const avatarBootstrap = parsedDocument.querySelector(
+      "script[data-vm0-avatar-bootstrap]",
+    );
+    const postSkeletonStyles = parsedDocument.querySelector(
+      "style[data-vm0-post-skeleton-styles]",
+    );
     const mainScript = parsedDocument.querySelector(
       'script[type="module"][src="/src/main.ts"]',
     );
+    const externalSkeletonImages = skeleton?.querySelectorAll("img[src]");
+    const avatarLayers = skeleton?.querySelectorAll(
+      "[data-app-bootstrap-avatar-layer]",
+    );
+    if (!(skeleton instanceof HTMLDivElement)) {
+      throw new Error("Built index.html does not contain the app skeleton");
+    }
     if (!(bootstrap instanceof HTMLScriptElement)) {
       throw new Error("Built index.html does not contain the Clerk bootstrap");
+    }
+    if (!(fontStylesheet instanceof HTMLLinkElement)) {
+      throw new Error("Built index.html does not contain the font stylesheet");
+    }
+    if (!(paintScheduler instanceof HTMLScriptElement)) {
+      throw new Error("Built index.html does not contain the paint scheduler");
+    }
+    if (!(avatarBootstrap instanceof HTMLScriptElement)) {
+      throw new Error("Built index.html does not contain the avatar bootstrap");
+    }
+    if (!(postSkeletonStyles instanceof HTMLStyleElement)) {
+      throw new Error("Built index.html does not contain post-skeleton styles");
     }
     if (!(mainScript instanceof HTMLScriptElement)) {
       throw new Error("Built index.html does not contain the app module");
     }
 
-    expect(bootstrap.compareDocumentPosition(mainScript)).toBe(
+    expect(skeleton.compareDocumentPosition(mainScript)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
     expect(html).not.toContain("__VM0_");
+    expect(skeleton.compareDocumentPosition(bootstrap)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(bootstrap.compareDocumentPosition(fontStylesheet)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(paintScheduler.textContent).toContain("first-contentful-paint");
+    expect(skeleton.compareDocumentPosition(paintScheduler)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(skeleton.compareDocumentPosition(avatarBootstrap)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(avatarBootstrap.compareDocumentPosition(paintScheduler)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(avatarBootstrap.textContent).toContain(
+      "avatarLayers[i].src = avatarSources[i]",
+    );
+    expect(skeleton.compareDocumentPosition(postSkeletonStyles)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(postSkeletonStyles.textContent).toContain(".browser-upgrade");
+    expect(postSkeletonStyles.textContent).toContain(
+      "@keyframes app-bootstrap-skeleton-type",
+    );
+    expect(externalSkeletonImages).toHaveLength(0);
+    expect(avatarLayers).toHaveLength(3);
+    for (const avatarLayer of avatarLayers ?? []) {
+      expect(avatarLayer.getAttribute("decoding")).toBe("async");
+      expect(avatarLayer.getAttribute("fetchpriority")).toBe("low");
+    }
+    expect(skeleton.querySelector("svg")).toBeNull();
+    expect(fontStylesheet.hasAttribute("rel")).toBeFalsy();
+    expect(fontStylesheet.hasAttribute("as")).toBeFalsy();
+    expect(html.indexOf("data-vm0-clerk-bootstrap")).toBeLessThan(
+      html.indexOf("var appEntry ="),
+    );
     expect(html).not.toContain("@clerk/ui");
+  });
+
+  it("preconnects immediately and starts the Clerk core after first paint", () => {
+    context.mocks.browser.url("https://app.vm0.ai/");
+    window.__vm0BrowserSupported = true;
+    let afterFirstPaint: (() => void) | undefined;
+    window.__vm0AfterFirstPaint = (callback) => {
+      afterFirstPaint = callback;
+    };
+    const appendedNodes: Node[] = [];
+    const appendSpy = vi
+      .spyOn(document.head, "appendChild")
+      .mockImplementation(<T extends Node>(node: T): T => {
+        appendedNodes.push(node);
+        return node;
+      });
+
+    try {
+      executeClerkBootstrap(builtIndexHtml());
+      expect(
+        appendedNodes.filter((node) => {
+          return node instanceof HTMLLinkElement && node.rel === "preconnect";
+        }),
+      ).toHaveLength(1);
+      expect(
+        appendedNodes.filter((node) => {
+          return node instanceof HTMLScriptElement;
+        }),
+      ).toHaveLength(0);
+      if (afterFirstPaint === undefined) {
+        throw new Error("Clerk bootstrap did not register its paint callback");
+      }
+
+      afterFirstPaint();
+
+      const clerkScripts = appendedNodes.filter((node) => {
+        return (
+          node instanceof HTMLScriptElement &&
+          node.dataset.clerkJsScript !== undefined
+        );
+      });
+      expect(clerkScripts).toHaveLength(1);
+    } finally {
+      appendSpy.mockRestore();
+      Reflect.deleteProperty(window, "__vm0AfterFirstPaint");
+      Reflect.deleteProperty(window, "__vm0BrowserSupported");
+    }
   });
 
   it.each([

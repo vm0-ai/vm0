@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Codex error",
       "commandStatus": "Command {{status}}",
+      "contextCompaction": "Compacted context",
       "error": "Error: {{error}}",
       "fileChangeKind": "change",
       "fileOperationCompleted": "File operation completed",
@@ -27,6 +28,12 @@
       },
       "status": "Status: {{status}}",
       "statusDetail": "status: {{status}}",
+      "subAgentActivity": {
+        "completed": "Completed subagent",
+        "interacted": "Interacted with subagent",
+        "interrupted": "Interrupted subagent",
+        "started": "Started subagent"
+      },
       "turnFailed": "Turn failed",
       "turnStatus": "Turn {{status}}",
       "warning": "[warning] {{message}}",
@@ -655,6 +662,7 @@
       "importedSlides_one": "{{count}} slide",
       "importedSlides_other": "{{count}} slides",
       "multiAccent": "Multi-accent",
+      "needPro": "Need Pro",
       "nextSlide": "Preview next slide",
       "noMatches": "No matches",
       "placeholder": "{{title}} website preview placeholder",
@@ -707,6 +715,7 @@
       "tryDifferentSearch": "Try a different search.",
       "use": "Use",
       "useThisTemplate": "Use this template",
+      "viewVideoPlans": "View plans for video template {{title}}",
       "visibility": {
         "change": "Change",
         "changeLabel": "Change template visibility",
@@ -1970,6 +1979,7 @@
         "capacityTitle": "{{framework}} model is busy",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "Continue",
         "resetAndTryAgain": "Reset and try again",
         "resetsAt": "Resets {{time}}",
         "selectModel": "Switch model",
@@ -6150,7 +6160,7 @@
       "browse": "Browse Official",
       "chooseValue": "Choose a value",
       "copySucceededUninstallFailed": "The copy is ready, but the original Official Workflow could not be uninstalled.",
-      "description": "Install managed workflows maintained by vm0.",
+      "description": "Install managed workflows maintained by the Okou Official Team.",
       "empty": "No Official Workflows are available.",
       "includedAutomations": "Included automations",
       "install": "Install",

@@ -281,6 +281,7 @@ describe("activity paged events", () => {
   });
 
   it("polls safely while waiting for the first indexed event", async () => {
+    const indexedEventRequestStarted = context.mocks.deferred<void>();
     let requestCount = 0;
     const requestedSequences: (number | undefined)[] = [];
 
@@ -300,6 +301,9 @@ describe("activity paged events", () => {
             lastEventSequence: null,
           } satisfies AgentEventsResponse);
         }
+        if (requestCount === 2) {
+          indexedEventRequestStarted.resolve();
+        }
         return respond(200, {
           events: [makeAssistantEvent(0, "First indexed event")],
           hasMore: false,
@@ -314,6 +318,7 @@ describe("activity paged events", () => {
       path: "/activities/a0000000-0000-4000-a000-000000000099",
     });
 
+    await indexedEventRequestStarted.promise;
     await expect(
       screen.findByText("First indexed event"),
     ).resolves.toBeInTheDocument();

@@ -171,6 +171,38 @@ assert_machine_secret_canonical_only() {
   assert_env_key_count "$env_file" VM0_MACHINE_SECRET_KEY 0
 }
 
+assert_machine_secret_aliases_absent() {
+  local env_file="$1"
+  assert_env_key_absent "$env_file" OKOU_MACHINE_SECRET_KEY
+  assert_env_key_absent "$env_file" VM0_MACHINE_SECRET_KEY
+}
+
+assert_machine_secret_source_state() {
+  local output="$1"
+  local state="$2"
+  local expected
+  local source_lines
+  expected="::notice::API machine secret source canonical_key=OKOU_MACHINE_SECRET_KEY legacy_key=VM0_MACHINE_SECRET_KEY state=${state}"
+  source_lines="$(grep -F "API machine secret source" <<< "$output" || true)"
+  if [[ "$source_lines" != "$expected" ]]; then
+    fail "unexpected API machine secret source evidence for ${state}"
+  fi
+}
+
+assert_machine_secret_source_evidence_absent() {
+  local output="$1"
+  assert_not_contains "$output" "API machine secret source"
+}
+
+assert_machine_secret_values_absent_from_output() {
+  local output="$1"
+  shift
+  local value
+  for value in "$@"; do
+    assert_not_contains "$output" "$value"
+  done
+}
+
 assert_web_url_canonical_only() {
   local env_file="$1"
   local expected="$2"
@@ -325,9 +357,6 @@ build_doppler_secrets_json() {
     fi
     json="$(jq -c --arg key "$key" --arg value "doppler-${key}" '. + {($key): $value}' <<< "$json")"
   done <<< "$(oauth_client_config_keys)"
-  if [[ "$omit_key" != "STRIPE_OAUTH_CLIENT_ID" ]]; then
-    json="$(jq -c --arg value "doppler-STRIPE_OAUTH_CLIENT_ID" '. + {STRIPE_OAUTH_CLIENT_ID: $value}' <<< "$json")"
-  fi
   json="$(
     jq -c '
       . + {
@@ -351,6 +380,7 @@ run_action() {
   local input_job_ref="${9-pr-123}"
   local input_api_backend_url="${10-https://pr-123-api-backend.vm0.test}"
   local api_backend_repo_vars_json="${11:-}"
+  local machine_secret_repo_secrets_json="${12:-}"
   local action_script="${test_dir}/web-api-env-action.sh"
   local github_output="${test_dir}/github-output"
   local repo_vars_json
@@ -380,6 +410,14 @@ run_action() {
   fi
   repo_vars_json="$(jq -c --argjson github_app_vars "$github_app_vars_json" '. + $github_app_vars' <<< "$repo_vars_json")"
   repo_secrets_json="$(jq -c --argjson github_app_secrets "$github_app_secrets_json" '. + $github_app_secrets' <<< "$repo_secrets_json")"
+  if [[ -n "$machine_secret_repo_secrets_json" ]]; then
+    repo_secrets_json="$(
+      jq -c \
+        --argjson machine_secret_sources "$machine_secret_repo_secrets_json" \
+        'del(.OKOU_MACHINE_SECRET_KEY, .VM0_MACHINE_SECRET_KEY) + $machine_secret_sources' \
+        <<< "$repo_secrets_json"
+    )"
+  fi
 
   extract_action_script > "$action_script"
 
@@ -432,6 +470,44 @@ run_api_backend_url_action() {
     pr-123 \
     "$input_api_backend_url" \
     "$repo_vars_json"
+}
+
+run_machine_secret_action() {
+  local test_dir="$1"
+  local input_app="$2"
+  local input_environment="$3"
+  local repo_secrets_json="$4"
+  run_action \
+    "$(build_doppler_secrets_json)" \
+    "$test_dir" \
+    "$input_app" \
+    "$input_environment" \
+    "https://static.vm0.io/okou-cli/test-sha/package.tgz" \
+    canonical \
+    "" \
+    "" \
+    pr-123 \
+    "https://pr-123-api-backend.vm0.test" \
+    "" \
+    "$repo_secrets_json"
+}
+
+assert_machine_secret_source_case() {
+  local state="$1"
+  local input_environment="$2"
+  local repo_secrets_json="$3"
+  local expected="$4"
+  local test_dir
+  local output
+  local env_file
+  test_dir="$(mktemp -d)"
+  TEMP_DIRS+=("$test_dir")
+  output="$(run_machine_secret_action "$test_dir" api "$input_environment" "$repo_secrets_json" 2>&1)"
+  env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${test_dir}/github-output")"
+  assert_contains "$output" "Rendered"
+  assert_machine_secret_source_state "$output" "$state"
+  assert_machine_secret_values_absent_from_output "$output" "$expected"
+  assert_machine_secret_canonical_only "$env_file" "$expected"
 }
 
 assert_api_backend_url_fallback_case() {
@@ -537,6 +613,72 @@ assert_no_fixture_secret_values "$github_app_secret_conflict_output"
 assert_file_absent "${github_app_secret_conflict_dir}/github-output"
 assert_file_absent "${github_app_secret_conflict_dir}/web-api-api-preview.env"
 
+assert_machine_secret_source_case \
+  canonical-only \
+  preview \
+  '{"OKOU_MACHINE_SECRET_KEY":" preview-canonical-machine-secret=bytes "}' \
+  " preview-canonical-machine-secret=bytes "
+assert_machine_secret_source_case \
+  canonical-only \
+  production \
+  '{"OKOU_MACHINE_SECRET_KEY":" production-canonical-machine-secret=bytes "}' \
+  " production-canonical-machine-secret=bytes "
+assert_machine_secret_source_case \
+  dual \
+  preview \
+  '{"OKOU_MACHINE_SECRET_KEY":" equal-dual-machine-secret=bytes ","VM0_MACHINE_SECRET_KEY":" equal-dual-machine-secret=bytes "}' \
+  " equal-dual-machine-secret=bytes "
+
+machine_secret_absent_dir="$(mktemp -d)"
+TEMP_DIRS+=("$machine_secret_absent_dir")
+machine_secret_absent_output="$(run_machine_secret_action "$machine_secret_absent_dir" api preview '{}' 2>&1)"
+machine_secret_absent_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${machine_secret_absent_dir}/github-output")"
+assert_contains "$machine_secret_absent_output" "Rendered"
+assert_machine_secret_source_evidence_absent "$machine_secret_absent_output"
+assert_machine_secret_aliases_absent "$machine_secret_absent_env_file"
+
+machine_secret_conflict_dir="$(mktemp -d)"
+TEMP_DIRS+=("$machine_secret_conflict_dir")
+status=0
+machine_secret_conflict_output="$(
+  run_machine_secret_action \
+    "$machine_secret_conflict_dir" \
+    api \
+    preview \
+    '{"OKOU_MACHINE_SECRET_KEY":" canonical-conflict-machine-secret ","VM0_MACHINE_SECRET_KEY":" legacy-conflict-machine-secret "}' \
+    2>&1
+)" || status=$?
+if [[ "$status" -eq 0 ]]; then
+  fail "expected conflicting API machine secret aliases to fail"
+fi
+expected_machine_secret_conflict="::error::API machine secret source conflict canonical_key=OKOU_MACHINE_SECRET_KEY legacy_key=VM0_MACHINE_SECRET_KEY state=conflict"
+machine_secret_conflict_lines="$(grep -F "API machine secret source" <<< "$machine_secret_conflict_output" || true)"
+if [[ "$machine_secret_conflict_lines" != "$expected_machine_secret_conflict" ]]; then
+  fail "unexpected API machine secret conflict evidence"
+fi
+assert_machine_secret_values_absent_from_output \
+  "$machine_secret_conflict_output" \
+  " canonical-conflict-machine-secret " \
+  " legacy-conflict-machine-secret "
+assert_file_absent "${machine_secret_conflict_dir}/github-output"
+assert_file_absent "${machine_secret_conflict_dir}/web-api-api-preview.env"
+
+machine_secret_web_dir="$(mktemp -d)"
+TEMP_DIRS+=("$machine_secret_web_dir")
+machine_secret_web_output="$(
+  run_machine_secret_action \
+    "$machine_secret_web_dir" \
+    web \
+    preview \
+    '{"OKOU_MACHINE_SECRET_KEY":" web-isolated-machine-secret "}' \
+    2>&1
+)"
+machine_secret_web_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${machine_secret_web_dir}/github-output")"
+assert_contains "$machine_secret_web_output" "Rendered"
+assert_machine_secret_source_state "$machine_secret_web_output" canonical-only
+assert_machine_secret_values_absent_from_output "$machine_secret_web_output" " web-isolated-machine-secret "
+assert_machine_secret_aliases_absent "$machine_secret_web_env_file"
+
 assert_api_backend_url_fallback_case \
   canonical-only \
   '{"OKOU_API_BACKEND_URL":"https://canonical-api.example.test"}' \
@@ -611,6 +753,8 @@ success_output="$(run_action "$(build_doppler_secrets_json)" "$success_dir" 2>&1
 success_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${success_dir}/github-output")"
 assert_contains "$success_output" "Rendered"
 assert_no_fixture_secret_values "$success_output"
+assert_machine_secret_source_state "$success_output" legacy-only
+assert_machine_secret_values_absent_from_output "$success_output" "github-atom-machine-secret"
 assert_zero_keys_with_live_readers_absent "$success_env_file"
 assert_env_key_absent "$success_env_file" VM0_DEFAULT_AGENT
 assert_debug_canonical_only "$success_env_file"
@@ -679,6 +823,7 @@ assert_env_value "$success_env_file" GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME "
 assert_env_value "$success_env_file" GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_AUDIENCE "https://api.github.test/api/webhooks/google-workspace-events"
 assert_env_value "$success_env_file" GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL "workspace-events-push@github.test"
 assert_env_value "$success_env_file" STRIPE_OAUTH_CLIENT_ID "doppler-STRIPE_OAUTH_CLIENT_ID"
+assert_env_value "$success_env_file" STRIPE_OAUTH_CLIENT_SECRET "doppler-STRIPE_OAUTH_CLIENT_SECRET"
 assert_env_value "$success_env_file" STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID "bpc_test_concurrency"
 assert_env_absent_value "$success_env_file" "github-gh-client-id"
 assert_env_absent_value "$success_env_file" "github-gh-client-secret"
@@ -693,6 +838,9 @@ TEMP_DIRS+=("$preview_web_dir")
 preview_web_output="$(run_action "$(build_doppler_secrets_json)" "$preview_web_dir" web preview 2>&1)"
 preview_web_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${preview_web_dir}/github-output")"
 assert_contains "$preview_web_output" "Rendered"
+assert_no_fixture_secret_values "$preview_web_output"
+assert_machine_secret_source_state "$preview_web_output" legacy-only
+assert_machine_secret_values_absent_from_output "$preview_web_output" "github-atom-machine-secret"
 assert_preview_job_ref_aliases_absent "$preview_web_env_file"
 assert_env_key_absent "$preview_web_env_file" VM0_DEFAULT_AGENT
 assert_debug_canonical_only "$preview_web_env_file"
@@ -735,6 +883,8 @@ production_web_output="$(run_action "$(build_doppler_secrets_json)" "$production
 production_web_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${production_web_dir}/github-output")"
 assert_contains "$production_web_output" "Rendered"
 assert_no_fixture_secret_values "$production_web_output"
+assert_machine_secret_source_state "$production_web_output" legacy-only
+assert_machine_secret_values_absent_from_output "$production_web_output" "github-atom-machine-secret"
 assert_zero_keys_with_live_readers_absent "$production_web_env_file"
 assert_env_key_absent "$production_web_env_file" VM0_DEFAULT_AGENT
 assert_debug_aliases_absent "$production_web_env_file"
@@ -765,6 +915,8 @@ production_api_output="$(run_action "$(build_doppler_secrets_json)" "$production
 production_api_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${production_api_dir}/github-output")"
 assert_contains "$production_api_output" "Rendered"
 assert_no_fixture_secret_values "$production_api_output"
+assert_machine_secret_source_state "$production_api_output" legacy-only
+assert_machine_secret_values_absent_from_output "$production_api_output" "github-atom-machine-secret"
 assert_zero_keys_with_live_readers_absent "$production_api_env_file"
 assert_env_key_absent "$production_api_env_file" VM0_DEFAULT_AGENT
 assert_debug_aliases_absent "$production_api_env_file"
@@ -813,6 +965,15 @@ if [[ "$status" -eq 0 ]]; then
   fail "expected missing Stripe Doppler OAuth client id to fail"
 fi
 assert_contains "$missing_stripe_output" "::error::STRIPE_OAUTH_CLIENT_ID is missing from Doppler OAuth config"
+
+missing_stripe_secret_dir="$(mktemp -d)"
+TEMP_DIRS+=("$missing_stripe_secret_dir")
+status=0
+missing_stripe_secret_output="$(run_action "$(build_doppler_secrets_json STRIPE_OAUTH_CLIENT_SECRET)" "$missing_stripe_secret_dir" 2>&1)" || status=$?
+if [[ "$status" -eq 0 ]]; then
+  fail "expected missing Stripe Doppler OAuth client secret to fail"
+fi
+assert_contains "$missing_stripe_secret_output" "::error::STRIPE_OAUTH_CLIENT_SECRET is missing from Doppler OAuth config"
 
 missing_cli_pkg_dir="$(mktemp -d)"
 TEMP_DIRS+=("$missing_cli_pkg_dir")

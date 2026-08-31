@@ -1,6 +1,6 @@
 {
   "name": "api",
-  "version": "1.513.1",
+  "version": "1.516.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -30,6 +30,7 @@
     "@clerk/backend": "^3.13.1",
     "@hono/node-server": "^2.0.10",
     "@hono/otel": "^1.1.2",
+    "@modelcontextprotocol/client": "^2.0.0",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/exporter-trace-otlp-http": "^0.215.0",
     "@opentelemetry/semantic-conventions": "^1.43.0",

@@ -81,7 +81,7 @@ function apiPreviewAliasFromWebUrl(
 
 function runtimeBaseUrl(): string {
   const configuredWebUrl = process.env.OKOU_WEB_URL;
-  const configuredApiUrl = process.env.VM0_API_BACKEND_URL;
+  const configuredApiUrl = process.env.OKOU_API_BACKEND_URL;
   if (configuredApiUrl && !isPreviewPlaceholder(configuredApiUrl)) {
     return (
       apiPreviewAliasFromWebUrl(configuredApiUrl) ?? "http://localhost:3000"

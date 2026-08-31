@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Galat Codex",
       "commandStatus": "Perintah {{status}}",
+      "contextCompaction": "Konteks dipadatkan",
       "error": "Galat: {{error}}",
       "fileChangeKind": "ubah",
       "fileOperationCompleted": "Operasi file selesai",
@@ -27,6 +28,12 @@
       },
       "status": "Status: {{status}}",
       "statusDetail": "status: {{status}}",
+      "subAgentActivity": {
+        "completed": "Subagen selesai",
+        "interacted": "Berinteraksi dengan subagen",
+        "interrupted": "Subagen dihentikan",
+        "started": "Subagen dimulai"
+      },
       "turnFailed": "Giliran gagal",
       "turnStatus": "Giliran {{status}}",
       "warning": "[warning] {{message}}",
@@ -654,6 +661,7 @@
       "importedSlides_one": "{{count}} slide",
       "importedSlides_other": "{{count}} slide",
       "multiAccent": "Multi-aksen",
+      "needPro": "Perlu Pro",
       "nextSlide": "Pratinjau slide berikutnya",
       "noMatches": "Tidak ada hasil",
       "placeholder": "placeholder pratinjau website {{title}}",
@@ -706,6 +714,7 @@
       "tryDifferentSearch": "Coba pencarian lain.",
       "use": "Gunakan",
       "useThisTemplate": "Gunakan template ini",
+      "viewVideoPlans": "Lihat paket untuk template video {{title}}",
       "visibility": {
         "change": "Ubah",
         "changeLabel": "Ubah visibilitas templat",
@@ -1967,6 +1976,7 @@
         "capacityTitle": "Model {{framework}} sedang sibuk",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "Lanjutkan",
         "resetAndTryAgain": "Atur ulang dan coba lagi",
         "resetsAt": "Direset pada {{time}}",
         "selectModel": "Ganti model",
@@ -6150,7 +6160,7 @@
       "browse": "Jelajahi yang Resmi",
       "chooseValue": "Pilih nilai",
       "copySucceededUninstallFailed": "Salinan sudah siap, tetapi Workflow Resmi asli tidak dapat dihapus instalasinya.",
-      "description": "Instal workflow terkelola yang dipelihara oleh vm0.",
+      "description": "Instal workflow terkelola yang dipelihara oleh Okou Official Team.",
       "empty": "Tidak ada Workflow Resmi yang tersedia.",
       "includedAutomations": "Automasi yang disertakan",
       "install": "Instal",

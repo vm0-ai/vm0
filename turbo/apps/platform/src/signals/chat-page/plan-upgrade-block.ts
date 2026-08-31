@@ -2,13 +2,16 @@ import {
   createCardSignalsRegistry,
   type CardSignalsRegistry,
 } from "./card-signal-map.ts";
+import { openSettingsBillingPlansDialog$ } from "../okou-page/settings/settings-dialog.ts";
 import { parseTrustedPlatformActionUrl } from "./platform-action-url.ts";
 
 export interface PlanUpgradeDescriptor {
   readonly href: string;
 }
 
-export type PlanUpgradeSignals = PlanUpgradeDescriptor;
+export interface PlanUpgradeSignals extends PlanUpgradeDescriptor {
+  readonly open$: typeof openSettingsBillingPlansDialog$;
+}
 
 type PlanUpgradeCardSignalsRegistry = CardSignalsRegistry<
   PlanUpgradeDescriptor,
@@ -39,7 +42,10 @@ export function createPlanUpgradeCardSignalsRegistry(): PlanUpgradeCardSignalsRe
       return descriptor.href;
     },
     (descriptor) => {
-      return descriptor;
+      return {
+        ...descriptor,
+        open$: openSettingsBillingPlansDialog$,
+      };
     },
   );
 }

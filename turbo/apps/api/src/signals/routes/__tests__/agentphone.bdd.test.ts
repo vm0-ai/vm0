@@ -142,25 +142,21 @@ async function completeSandboxRun(
       [200],
     );
   }
-  if (exitCode === 0) {
-    // Successful completion requires a checkpoint, like a real sandbox.
-    await webhooks.requestAgentCheckpoint(
-      {
-        runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: agentPhoneCliAgentSessionIdForRun(runId),
-        cliAgentSessionHistoryHash: createHash("sha256")
-          .update(`bdd agentphone history ${runId}`)
-          .digest("hex"),
-      },
-      sandboxHeaders,
-      [200],
-    );
-  }
   await webhooks.requestAgentComplete(
     {
       runId,
       exitCode,
+      ...(exitCode === 0
+        ? {
+            checkpoint: {
+              cliAgentType: "claude-code" as const,
+              cliAgentSessionId: agentPhoneCliAgentSessionIdForRun(runId),
+              cliAgentSessionHistoryHash: createHash("sha256")
+                .update(`bdd agentphone history ${runId}`)
+                .digest("hex"),
+            },
+          }
+        : {}),
       ...(options.error === undefined ? {} : { error: options.error }),
       ...(options.resultText === undefined ? {} : { lastEventSequence: 0 }),
     },

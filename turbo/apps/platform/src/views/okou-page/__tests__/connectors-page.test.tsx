@@ -1773,12 +1773,28 @@ describe("connectors page", () => {
   });
 
   it("paginates a feature-on account manager", async () => {
-    const accounts = mockGitHubConnectorAccounts(101);
+    const accounts = mockGitHubConnectorAccounts(8);
+    // The server projects rows away before slicing, so a page can hold fewer
+    // connections than the requested limit and still report a next cursor.
+    // Serving short pages walks the same three-page cursor chain the client
+    // follows for a full connector, without rendering hundreds of rows.
+    const serverPageSize = 3;
+    const accountQueries: {
+      readonly limit: number;
+      readonly cursor: string | null;
+    }[] = [];
     context.mocks.api(
       connectorAccountsContract.connections,
       ({ query, respond }) => {
+        accountQueries.push({
+          limit: query.limit,
+          cursor: query.cursor ?? null,
+        });
         const start = query.cursor ? Number(query.cursor) : 0;
-        const page = accounts.slice(start, start + query.limit);
+        const page = accounts.slice(
+          start,
+          start + Math.min(query.limit, serverPageSize),
+        );
         const next = start + page.length;
         return respond(200, {
           connections: page,
@@ -1794,17 +1810,39 @@ describe("connectors page", () => {
 
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
     const dialog = await screen.findByRole("dialog", { name: "GitHub" });
-    expect(within(dialog).queryByText("Work 50")).toBeNull();
+    expect(within(dialog).getByText("Work 7")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Work 4")).toBeNull();
     click(buttonByText("Load more", dialog));
     await waitFor(() => {
-      expect(within(dialog).getByText("Work 50")).toBeInTheDocument();
+      expect(within(dialog).getByText("Work 4")).toBeInTheDocument();
     });
+    expect(within(dialog).getByText("Work 7")).toBeInTheDocument();
     click(buttonByText("Load more", dialog));
+    // The last page carries an account of its own, so waiting for that account
+    // pins the assertions below to the render that consumed it. Waiting on the
+    // "Load more" label instead would pass mid-request, while the button still
+    // reads "Loading more".
     await waitFor(() => {
-      expect(queryButtonByText("Load more", dialog)).toBeNull();
       expect(within(dialog).getByText("Work 1")).toBeInTheDocument();
-      expect(within(dialog).getAllByText("Account #00000000")).toHaveLength(1);
     });
+    expect(queryButtonByText("Load more", dialog)).toBeNull();
+    expect(within(dialog).getByText("Work 7")).toBeInTheDocument();
+    expect(within(dialog).getByText("Work 4")).toBeInTheDocument();
+    expect(within(dialog).getAllByText("Account #00000000")).toHaveLength(1);
+    const requestedLimits = new Set(
+      accountQueries.map((query) => {
+        return query.limit;
+      }),
+    );
+    expect(
+      accountQueries.map((query) => {
+        return query.cursor;
+      }),
+    ).toStrictEqual([null, "3", "6"]);
+    // One bounded limit per request, wider than the whole fixture: every extra
+    // page came from following the server cursor, not from a client-side slice.
+    expect([...requestedLimits]).toHaveLength(1);
+    expect([...requestedLimits][0]).toBeGreaterThan(accounts.length);
   });
 
   it("debounces feature-on account manager searches", async () => {
@@ -3234,6 +3272,7 @@ describe("connectors page", () => {
     ["outlook-mail", "Outlook Mail"],
     ["sentry", "Sentry"],
     ["server-authored-oauth", "Server-authored OAuth"],
+    ["slack", "Slack"],
     ["strava", "Strava"],
     ["todoist", "Todoist"],
     ["vercel", "Vercel"],
@@ -3283,49 +3322,6 @@ describe("connectors page", () => {
       });
     },
   );
-
-  it("keeps denylisted OAuth connectors on their legacy callback", async () => {
-    mockConnectors([]);
-    mockPublicConnectorStatus([
-      publicStatusItem({
-        connectorSlug: "slack",
-        label: "Slack",
-        authMethods: [
-          {
-            id: "oauth",
-            label: "OAuth",
-            description: null,
-            grantKind: "auth-code",
-            manualFields: [],
-            startOptions: [],
-          },
-        ],
-        singleAuthCodeAuthMethodId: "oauth",
-      }),
-    ]);
-    const authWindow = createMockAuthWindow();
-    context.mocks.browser.open(authWindow);
-    context.mocks.api(
-      connectorOauthStartContract.start,
-      ({ body, params, respond }) => {
-        expect(params.connectorSlug).toBe("slack");
-        expect(body.callbackTarget).toBeUndefined();
-        return respond(200, {
-          authorizationUrl: "https://oauth.test/slack/authorize",
-        });
-      },
-    );
-
-    detachedSetupPage({ context, path: "/connectors" });
-
-    click(await screen.findByLabelText("Connect Slack"));
-
-    await waitFor(() => {
-      expect(authWindow.location.href).toBe(
-        "https://oauth.test/slack/authorize",
-      );
-    });
-  });
 
   it("routes a feature-on OpenID account addition from catalog metadata", async () => {
     const connectorSlug = "server-authored-steam";

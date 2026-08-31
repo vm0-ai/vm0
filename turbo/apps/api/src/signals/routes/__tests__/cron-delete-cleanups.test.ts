@@ -1,14 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { cronTelegramCleanupContract } from "@okouai/api-contracts/contracts/cron";
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  onTestFinished,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { stubTestTimezone } from "../../../__tests__/env-stub";
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -27,7 +20,9 @@ import { cronTelegramCleanupRoutes } from "../cron-telegram-cleanup";
 const context = testContext();
 const CRON_SECRET = "test-delete-cleanups-secret";
 const CONNECTOR_EXPIRED_COUNT = 11;
-const TELEGRAM_EXPIRED_COUNT = 10_001;
+// One more than the test delete batch size, so the cleanup loop runs a full
+// batch followed by a short batch exactly as the production batch size does.
+const TELEGRAM_EXPIRED_COUNT = 3;
 const CUTOFF_MS = Date.parse("1950-01-31T00:00:00.000Z");
 const TELEGRAM_CUTOFF_MS = Date.parse("1950-04-20T00:00:00.000Z");
 const TELEGRAM_NOW_MS = Date.parse("1950-05-20T00:00:00.000Z");
@@ -46,15 +41,6 @@ async function requestFixture(
     [200],
   );
   return response.body;
-}
-
-function registerFixtureCleanup(
-  action: "delete-telegram",
-  marker: string,
-): void {
-  onTestFinished(async () => {
-    await requestFixture({ action, marker });
-  });
 }
 
 async function seedConnectorFixture(expiredCount: number) {
@@ -85,16 +71,32 @@ async function seedConnectorFixture(expiredCount: number) {
   };
 }
 
-async function seedTelegramFixture(expiredCount: number): Promise<string> {
+async function seedTelegramFixture(expiredCount: number) {
   const marker = `telegram-cleanup-${randomUUID()}`;
-  registerFixtureCleanup("delete-telegram", marker);
-  await requestFixture({
-    action: "seed-telegram",
-    marker,
-    cutoff: new Date(TELEGRAM_CUTOFF_MS).toISOString(),
-    expiredCount,
+  const owner = createFixtureOperationOwner(async () => {
+    await requestFixture({ action: "delete-telegram", marker });
   });
-  return marker;
+  await owner.run(async () => {
+    await requestFixture({
+      action: "seed-telegram",
+      marker,
+      cutoff: new Date(TELEGRAM_CUTOFF_MS).toISOString(),
+      expiredCount,
+    });
+  });
+  return {
+    marker,
+    cleanup: async () => {
+      return await owner.run(async () => {
+        return await requestFixture({ action: "cleanup-telegram", marker });
+      });
+    },
+    read: async () => {
+      return await owner.run(async () => {
+        return await requestFixture({ action: "read-telegram", marker });
+      });
+    },
+  };
 }
 
 function cronHeaders() {
@@ -161,31 +163,27 @@ describe("complete delete cleanup crons", () => {
   it("runs full and short telegram batches across a non-UTC daylight-saving boundary", async () => {
     stubTestTimezone("America/New_York");
     mockNow(TELEGRAM_NOW_MS);
-    const marker = await seedTelegramFixture(TELEGRAM_EXPIRED_COUNT);
+    const fixture = await seedTelegramFixture(TELEGRAM_EXPIRED_COUNT);
 
-    const cleanup = await cleanupTelegramMessages();
-    expect(cleanup.body.deleted).toBe(TELEGRAM_EXPIRED_COUNT);
-    await expect(
-      requestFixture({ action: "read-telegram", marker }),
-    ).resolves.toStrictEqual({
+    const cleanup = await fixture.cleanup();
+    expect(cleanup.deleted).toBe(TELEGRAM_EXPIRED_COUNT);
+    await expect(fixture.read()).resolves.toStrictEqual({
       ok: true,
       remaining: ["equal", "future"],
     });
 
-    const empty = await cleanupTelegramMessages();
-    expect(empty.body.deleted).toBe(0);
+    const empty = await fixture.cleanup();
+    expect(empty.deleted).toBe(0);
   });
 
   it("preserves the strict telegram cutoff in UTC", async () => {
     stubTestTimezone("UTC");
     mockNow(TELEGRAM_NOW_MS);
-    const marker = await seedTelegramFixture(1);
+    const fixture = await seedTelegramFixture(1);
 
     const cleanup = await cleanupTelegramMessages();
     expect(cleanup.body.deleted).toBe(1);
-    await expect(
-      requestFixture({ action: "read-telegram", marker }),
-    ).resolves.toStrictEqual({
+    await expect(fixture.read()).resolves.toStrictEqual({
       ok: true,
       remaining: ["equal", "future"],
     });

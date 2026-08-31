@@ -1,5 +1,80 @@
 # Changelog
 
+## [1.516.0](https://github.com/vm0-ai/vm0/compare/api-v1.515.0...api-v1.516.0) (2026-08-31)
+
+
+### Features
+
+* **api:** publish connector doctor official workflow ([#30600](https://github.com/vm0-ai/vm0/issues/30600)) ([8b71e53](https://github.com/vm0-ai/vm0/commit/8b71e536916f05cdfbd1cf015547d3842472f87c))
+
+
+### Bug Fixes
+
+* **api:** bound pi resume to harness generations ([#30590](https://github.com/vm0-ai/vm0/issues/30590)) ([dd104c7](https://github.com/vm0-ai/vm0/commit/dd104c73c15db4be1a05b22ea162fa6697d51c25))
+
+## [1.515.0](https://github.com/vm0-ai/vm0/compare/api-v1.514.0...api-v1.515.0) (2026-08-31)
+
+
+### Features
+
+* **api:** add secure mcp oauth foundations ([#30559](https://github.com/vm0-ai/vm0/issues/30559)) ([6bd719b](https://github.com/vm0-ai/vm0/commit/6bd719b4e29b49ead8078197f5bb8f28a794e6d1))
+* **connectors:** pre-stage direct okou callbacks for twenty gated oauth connectors ([#30582](https://github.com/vm0-ai/vm0/issues/30582)) ([ecc6e82](https://github.com/vm0-ai/vm0/commit/ecc6e82ab07a354d996c89c0fdaf958913dfb10b)), closes [#28381](https://github.com/vm0-ai/vm0/issues/28381)
+
+
+### Bug Fixes
+
+* **api:** make timeout an immutable active-input boundary ([#30534](https://github.com/vm0-ai/vm0/issues/30534)) ([b8cb505](https://github.com/vm0-ai/vm0/commit/b8cb505f2dd358b89ce01949eeca2c49471b327b))
+* **platform:** route chat realtime through user-org channels ([#30358](https://github.com/vm0-ai/vm0/issues/30358)) ([5cd95cf](https://github.com/vm0-ai/vm0/commit/5cd95cfbd3c7ebe2dd207135de80dc0b5cbe913e))
+
+
+### Refactoring
+
+* **connectors:** retire test-oauth legacy api url reader ([#30407](https://github.com/vm0-ai/vm0/issues/30407)) ([bcb475a](https://github.com/vm0-ai/vm0/commit/bcb475abd3f1abd13c272f48984609735a10ca5e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.382.0
+    * @okouai/connectors bumped to 3.1.0
+    * @okouai/core bumped to 8.605.1
+    * @okouai/db bumped to 1.228.26
+
+## [1.514.0](https://github.com/vm0-ai/vm0/compare/api-v1.513.1...api-v1.514.0) (2026-08-31)
+
+
+### Features
+
+* **api:** support official workflow connector readiness ([#30513](https://github.com/vm0-ai/vm0/issues/30513)) ([ee0b374](https://github.com/vm0-ai/vm0/commit/ee0b374445029c0c51a06452af840d085b176cb7))
+
+
+### Bug Fixes
+
+* **api:** limit Pi execution to built-in providers ([#30523](https://github.com/vm0-ai/vm0/issues/30523)) ([b95a6f4](https://github.com/vm0-ai/vm0/commit/b95a6f4f6db6d0b46369be8a9df238bd12b516a7))
+
+
+### Refactoring
+
+* **connectors:** enable the direct okou oauth callback for the slack connector ([#30555](https://github.com/vm0-ai/vm0/issues/30555)) ([6e45142](https://github.com/vm0-ai/vm0/commit/6e45142a9f4f7471348b886efba5655f8c8420fc)), closes [#30550](https://github.com/vm0-ai/vm0/issues/30550)
+* remove presentation image search api ([#30426](https://github.com/vm0-ai/vm0/issues/30426)) ([0ae3eb1](https://github.com/vm0-ai/vm0/commit/0ae3eb111f8dc5bcb43828137d926eed02cb993d))
+* **slack:** point the install callback at the neutral path and drop the zero alias ([#30551](https://github.com/vm0-ai/vm0/issues/30551)) ([99ee48a](https://github.com/vm0-ai/vm0/commit/99ee48a0127a2ba08bff9161db1f24037498b5ae))
+
+
+### Performance Improvements
+
+* **api:** align chat search ordering with index ([#30552](https://github.com/vm0-ai/vm0/issues/30552)) ([f7cd7b0](https://github.com/vm0-ai/vm0/commit/f7cd7b04d77f8204b3532e1541e9525e6dd3f587))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.16
+    * @okouai/connectors bumped to 3.0.2
+    * @okouai/core bumped to 8.605.0
+    * @okouai/db bumped to 1.228.25
+
 ## [1.513.1](https://github.com/vm0-ai/vm0/compare/api-v1.513.0...api-v1.513.1) (2026-08-31)
 
 

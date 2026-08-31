@@ -120,21 +120,10 @@ async function publishChatDatabaseSignalNow(
   topic: string,
   payload: unknown,
 ): Promise<void> {
-  // Version-migration fallback: already-loaded App clients can keep the
-  // pre-SharedWorker user-channel subscription for up to two days. Remove the
-  // duplicate publish after the replacement App is live and the client-version
-  // floor excludes pre-#30272 builds; follow-up #30334.
-  const channelNames = [
-    getUserOrgChannelName(target.userId, target.orgId),
-    getUserChannelName(target.userId),
-  ];
+  const channelName = getUserOrgChannelName(target.userId, target.orgId);
   const client = ablyClient();
-  await Promise.all(
-    channelNames.map(async (channelName) => {
-      await client.channels.get(channelName).publish(topic, payload);
-    }),
-  );
-  L.debug(`Published "${topic}" to ${channelNames.join(", ")}`);
+  await client.channels.get(channelName).publish(topic, payload);
+  L.debug(`Published "${topic}" to ${channelName}`);
 }
 
 function publishChatDatabaseSignal(
@@ -190,6 +179,33 @@ export async function publishThreadListChangedSafely(target: {
   readonly orgId: string;
 }): Promise<void> {
   await publishThreadListChanged(target);
+}
+
+type ChatThreadReadCursorUpdatedPayload =
+  | {
+      readonly agentId: string;
+      readonly threadId: string;
+      readonly lastReadAt: string | null;
+    }
+  | {
+      readonly agentId: string;
+      readonly threadIds: readonly string[];
+    };
+
+/**
+ * Notify every tab for one user-org that authoritative chat read state changed.
+ * The SharedWorker forwards the payload so tabs can clear matching optimistic
+ * read marks before reloading their indicator snapshots.
+ */
+export async function publishChatThreadReadCursorUpdatedSafely(
+  target: { readonly userId: string; readonly orgId: string },
+  payload: ChatThreadReadCursorUpdatedPayload,
+): Promise<void> {
+  await publishChatDatabaseSignal(
+    target,
+    "chatThreadReadCursorUpdated",
+    payload,
+  );
 }
 
 /**

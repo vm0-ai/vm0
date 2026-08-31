@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Codex 오류",
       "commandStatus": "명령 {{status}}",
+      "contextCompaction": "컨텍스트 압축 완료",
       "error": "오류: {{error}}",
       "fileChangeKind": "변경",
       "fileOperationCompleted": "파일 작업 완료",
@@ -27,6 +28,12 @@
       },
       "status": "상태: {{status}}",
       "statusDetail": "상태: {{status}}",
+      "subAgentActivity": {
+        "completed": "하위 에이전트 완료",
+        "interacted": "하위 에이전트와 상호 작용",
+        "interrupted": "하위 에이전트 중단",
+        "started": "하위 에이전트 시작"
+      },
       "turnFailed": "턴 실패",
       "turnStatus": "턴 {{status}}",
       "warning": "[경고] {{message}}",
@@ -654,6 +661,7 @@
       "importedSlides_one": "{{count}}장",
       "importedSlides_other": "{{count}}장",
       "multiAccent": "다중 악센트",
+      "needPro": "Pro 필요",
       "nextSlide": "다음 슬라이드 미리보기",
       "noMatches": "일치하는 항목 없음",
       "placeholder": "{{title}} 웹사이트 미리보기 자리 표시자",
@@ -706,6 +714,7 @@
       "tryDifferentSearch": "다른 검색어를 시도해 보세요.",
       "use": "사용",
       "useThisTemplate": "이 템플릿 사용",
+      "viewVideoPlans": "동영상 템플릿 {{title}}의 요금제 보기",
       "visibility": {
         "change": "변경",
         "changeLabel": "템플릿 공개 범위 변경",
@@ -1967,6 +1976,7 @@
         "capacityTitle": "{{framework}} 모델이 혼잡합니다",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "계속",
         "resetAndTryAgain": "재설정하고 다시 시도",
         "resetsAt": "{{time}}에 재설정",
         "selectModel": "모델 전환",
@@ -6150,7 +6160,7 @@
       "browse": "공식 워크플로 둘러보기",
       "chooseValue": "값 선택",
       "copySucceededUninstallFailed": "복사본은 준비되었지만 원본 공식 워크플로를 제거하지 못했습니다.",
-      "description": "vm0에서 관리하고 유지하는 워크플로를 설치합니다.",
+      "description": "Okou Official Team에서 관리하고 유지하는 워크플로를 설치합니다.",
       "empty": "사용 가능한 공식 워크플로가 없습니다.",
       "includedAutomations": "포함된 자동화",
       "install": "설치",

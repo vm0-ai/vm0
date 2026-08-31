@@ -9,6 +9,12 @@ const POSTHOG_KEY = RUNTIME_CONFIG.postHogKey;
 
 export const AUTH_V2_DIAGNOSTIC_EVENT = "auth_v2_diagnostic";
 const AUTH_V2_DIAGNOSTIC_DISTINCT_ID = "auth-v2";
+export const APP_FIRST_SKELETON_PAINT_EVENT = "app_first_skeleton_paint";
+const APP_FIRST_SKELETON_PAINT_DISTINCT_ID = "app-bootstrap";
+
+type FirstSkeletonPaintMetric =
+  | "after-first-paint-upper-bound"
+  | "first-contentful-paint";
 
 export type AuthV2DiagnosticFlow = "sign-in" | "sign-up" | "unknown";
 
@@ -162,13 +168,54 @@ function authV2DiagnosticErrorCategory(
   }
 }
 
+function finiteNonNegativeNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+function firstSkeletonPaintMetric(value: unknown): FirstSkeletonPaintMetric {
+  return value === "first-contentful-paint"
+    ? value
+    : "after-first-paint-upper-bound";
+}
+
 function sanitizePostHogCaptureResult(
   captureResult: CaptureResult | null,
 ): CaptureResult | null {
-  if (
-    captureResult === null ||
-    captureResult.event !== AUTH_V2_DIAGNOSTIC_EVENT
-  ) {
+  if (captureResult === null) {
+    return null;
+  }
+  if (captureResult.event === APP_FIRST_SKELETON_PAINT_EVENT) {
+    const properties = captureResult.properties;
+    const sanitizedProperties: Record<string, boolean | number | string> = {
+      $process_person_profile: false,
+      distinct_id: APP_FIRST_SKELETON_PAINT_DISTINCT_ID,
+      paint_metric: firstSkeletonPaintMetric(properties.paint_metric),
+      public_brand: RUNTIME_CONFIG.publicBrand,
+      token: POSTHOG_KEY ?? "",
+    };
+    for (const name of [
+      "navigation_response_end_ms",
+      "navigation_response_start_ms",
+      "response_end_to_skeleton_paint_ms",
+      "skeleton_paint_ms",
+    ]) {
+      const value = finiteNonNegativeNumber(properties[name]);
+      if (value !== undefined) {
+        sanitizedProperties[name] = value;
+      }
+    }
+    return {
+      event: APP_FIRST_SKELETON_PAINT_EVENT,
+      properties: sanitizedProperties,
+      ...(captureResult.timestamp
+        ? { timestamp: captureResult.timestamp }
+        : {}),
+      uuid: captureResult.uuid,
+    };
+  }
+  if (captureResult.event !== AUTH_V2_DIAGNOSTIC_EVENT) {
     return captureResult;
   }
   const properties = captureResult.properties;
@@ -222,6 +269,68 @@ export function initPostHog(): void {
         }
         return { ...properties, public_brand: RUNTIME_CONFIG.publicBrand };
       },
+    });
+  });
+}
+
+function navigationTimingEntry(): PerformanceNavigationTiming | undefined {
+  return performance
+    .getEntriesByType("navigation")
+    .find((entry): entry is PerformanceNavigationTiming => {
+      return (
+        entry.entryType === "navigation" &&
+        "responseStart" in entry &&
+        "responseEnd" in entry
+      );
+    });
+}
+
+function firstContentfulPaintTime(): number | undefined {
+  return performance.getEntriesByType("paint").find((entry) => {
+    return entry.name === "first-contentful-paint";
+  })?.startTime;
+}
+
+/**
+ * Capture an anonymous, allowlisted measurement of the navigation response and
+ * the first frame that can contain the inline bootstrap skeleton.
+ */
+export function captureFirstSkeletonPaint(): void {
+  const navigation = navigationTimingEntry();
+  if (!navigation) {
+    return;
+  }
+  const responseStart = finiteNonNegativeNumber(navigation.responseStart);
+  const responseEnd = finiteNonNegativeNumber(navigation.responseEnd);
+  const firstContentfulPaint = finiteNonNegativeNumber(
+    firstContentfulPaintTime(),
+  );
+  const firstPaintUpperBound = finiteNonNegativeNumber(
+    window.__appBootstrapFirstPaintUpperBound,
+  );
+  const skeletonPaint = firstContentfulPaint ?? firstPaintUpperBound;
+  if (
+    responseStart === undefined ||
+    responseEnd === undefined ||
+    skeletonPaint === undefined ||
+    responseEnd < responseStart ||
+    skeletonPaint < responseEnd
+  ) {
+    return;
+  }
+
+  runPostHog(() => {
+    posthog.capture(APP_FIRST_SKELETON_PAINT_EVENT, {
+      navigation_response_end_ms: Math.round(responseEnd),
+      navigation_response_start_ms: Math.round(responseStart),
+      paint_metric:
+        firstContentfulPaint === undefined
+          ? "after-first-paint-upper-bound"
+          : "first-contentful-paint",
+      response_end_to_skeleton_paint_ms: Math.round(
+        skeletonPaint - responseEnd,
+      ),
+      skeleton_paint_ms: Math.round(skeletonPaint),
     });
   });
 }

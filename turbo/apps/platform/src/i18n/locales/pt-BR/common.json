@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Erro do Codex",
       "commandStatus": "Comando {{status}}",
+      "contextCompaction": "Contexto compactado",
       "error": "Erro: {{error}}",
       "fileChangeKind": "alteração",
       "fileOperationCompleted": "Operação de arquivo concluída",
@@ -29,6 +30,12 @@
       },
       "status": "Status: {{status}}",
       "statusDetail": "status: {{status}}",
+      "subAgentActivity": {
+        "completed": "Subagente concluído",
+        "interacted": "Interação com o subagente",
+        "interrupted": "Subagente interrompido",
+        "started": "Subagente iniciado"
+      },
       "turnFailed": "A interação falhou",
       "turnStatus": "Interação {{status}}",
       "warning": "[aviso] {{message}}",
@@ -674,6 +681,7 @@
       "importedSlides_many": "{{count}} slides",
       "importedSlides_other": "{{count}} slides",
       "multiAccent": "Várias cores de destaque",
+      "needPro": "Requer Pro",
       "nextSlide": "Visualizar próximo slide",
       "noMatches": "Nenhum resultado",
       "placeholder": "Espaço reservado para visualização do site {{title}}",
@@ -726,6 +734,7 @@
       "tryDifferentSearch": "Tente outra busca.",
       "use": "Usar",
       "useThisTemplate": "Usar este modelo",
+      "viewVideoPlans": "Ver planos para o modelo de vídeo {{title}}",
       "visibility": {
         "change": "Alterar",
         "changeLabel": "Alterar a visibilidade do modelo",
@@ -2001,6 +2010,7 @@
         "capacityTitle": "O modelo {{framework}} está ocupado",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "Continuar",
         "resetAndTryAgain": "Redefinir e tentar novamente",
         "resetsAt": "Redefine {{time}}",
         "selectModel": "Trocar modelo",
@@ -6224,7 +6234,7 @@
       "browse": "Explorar oficiais",
       "chooseValue": "Escolha um valor",
       "copySucceededUninstallFailed": "A cópia está pronta, mas não foi possível desinstalar o fluxo de trabalho oficial original.",
-      "description": "Instale fluxos de trabalho gerenciados e mantidos pela vm0.",
+      "description": "Instale fluxos de trabalho gerenciados e mantidos pela Okou Official Team.",
       "empty": "Nenhum fluxo de trabalho oficial está disponível.",
       "includedAutomations": "Automações incluídas",
       "install": "Instalar",

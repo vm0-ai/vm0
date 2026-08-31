@@ -2,11 +2,11 @@ import { z } from "zod";
 
 import type { ConnectorAuthCodeGrantConfig } from "@okouai/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
-import { effectiveOAuthScopes, reportedOAuthScopes } from "../../oauth/scope";
 
-const STRIPE_TOKEN_URL = "https://connect.stripe.com/oauth/token";
+const STRIPE_TOKEN_URL = "https://api.stripe.com/v1/oauth/token";
 
-const STRIPE_AUTHORIZATION_URL = "https://connect.stripe.com/oauth/authorize";
+const STRIPE_AUTHORIZATION_URL =
+  "https://marketplace.stripe.com/oauth/v2/authorize";
 
 const STRIPE_ACCOUNT_URL = "https://api.stripe.com/v1/account";
 
@@ -18,6 +18,7 @@ interface StripeUserInfo {
 
 interface StripeTokenResult {
   accessToken: string;
+  expiresIn?: number;
   livemode: boolean;
   refreshToken: string | null;
   scopes: string[];
@@ -32,11 +33,12 @@ interface StripeRefreshResult {
 }
 
 /**
- * Build Stripe Connect OAuth authorization URL.
- * Uses the Stripe Connect OAuth flow for Standard accounts.
+ * Build a Stripe Marketplace OAuth authorization URL.
+ * App permissions are declared in the Stripe App manifest, so this URL does
+ * not include the legacy Connect response_type or scope parameters.
  */
 export function buildStripeAuthorizationUrl(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  _authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
@@ -44,8 +46,6 @@ export function buildStripeAuthorizationUrl(
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
-    response_type: "code",
-    scope: authCodeGrant.scopes.join(" "),
     state,
   });
 
@@ -53,8 +53,9 @@ export function buildStripeAuthorizationUrl(
 }
 
 /**
- * Exchange authorization code for access token and user info.
- * Stripe Connect returns stripe_user_id and access token in the response.
+ * Exchange a Stripe Marketplace authorization code for tokens and user info.
+ * Stripe authenticates this request with the app's secret API key via HTTP
+ * Basic auth rather than a client_secret form field.
  */
 export async function exchangeStripeCode(
   authCodeGrant: ConnectorAuthCodeGrantConfig,
@@ -65,10 +66,10 @@ export async function exchangeStripeCode(
   const response = await fetch(STRIPE_TOKEN_URL, {
     method: "POST",
     headers: {
+      Authorization: `Basic ${btoa(`${clientSecret}:`)}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: new URLSearchParams({
-      client_secret: clientSecret,
       code,
       grant_type: "authorization_code",
     }),
@@ -81,10 +82,10 @@ export async function exchangeStripeCode(
   const data = z
     .object({
       access_token: z.string().optional(),
+      expires_in: z.number().optional(),
       livemode: z.boolean(),
       refresh_token: z.string().nullable().optional(),
       stripe_user_id: z.string().optional(),
-      scope: z.string().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -108,16 +109,21 @@ export async function exchangeStripeCode(
 
   return {
     accessToken: data.access_token,
+    expiresIn: data.expires_in,
     livemode: data.livemode,
     refreshToken: data.refresh_token ?? null,
-    scopes: effectiveOAuthScopes(data.scope, authCodeGrant.scopes, " "),
+    // Stripe reports the protocol-level scope `stripe_apps` here. The actual
+    // resource permissions live in the app manifest and are declared by the
+    // connector grant, so preserve those permission names on the connection.
+    scopes: [...authCodeGrant.scopes],
     userInfo,
   };
 }
 
 /**
- * Refresh a Stripe access token using the refresh token.
- * Access token expires_in: 3600s (1 hour). Ref: https://docs.stripe.com/stripe-apps/api-authentication/oauth
+ * Refresh a Stripe Marketplace access token using its rolling refresh token.
+ * Access tokens expire after one hour. Ref:
+ * https://docs.stripe.com/stripe-apps/api-authentication/oauth
  */
 export async function refreshStripeToken(
   _clientId: string,
@@ -129,10 +135,10 @@ export async function refreshStripeToken(
     signal,
     method: "POST",
     headers: {
+      Authorization: `Basic ${btoa(`${clientSecret}:`)}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: new URLSearchParams({
-      client_secret: clientSecret,
       grant_type: "refresh_token",
       refresh_token: refreshToken,
     }),
@@ -147,7 +153,6 @@ export async function refreshStripeToken(
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
       expires_in: z.number().optional(),
-      scope: z.string().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -165,7 +170,9 @@ export async function refreshStripeToken(
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresIn: data.expires_in,
-    scopes: reportedOAuthScopes(data.scope, " "),
+    // Refresh responses report only `stripe_apps`, not manifest permissions.
+    // Omit scopes so the platform retains the permissions stored at grant.
+    scopes: null,
   };
 }
 

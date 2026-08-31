@@ -1095,20 +1095,19 @@ async function completeSuccessfulRun(
     headers,
     [200],
   );
-  await webhooks.requestAgentCheckpoint(
+  await webhooks.requestAgentComplete(
     {
       runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId: `official-result-email-${runId}`,
-      cliAgentSessionHistoryHash: createHash("sha256")
-        .update(`official result email history ${runId}`)
-        .digest("hex"),
+      exitCode: 0,
+      lastEventSequence: 0,
+      checkpoint: {
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `official-result-email-${runId}`,
+        cliAgentSessionHistoryHash: createHash("sha256")
+          .update(`official result email history ${runId}`)
+          .digest("hex"),
+      },
     },
-    headers,
-    [200],
-  );
-  await webhooks.requestAgentComplete(
-    { runId, exitCode: 0, lastEventSequence: 0 },
     headers,
     [200],
   );
@@ -1278,7 +1277,7 @@ beforeEach(async () => {
 });
 
 describe.sequential("Official Workflow installations", () => {
-  it("materializes the deployed Morning Brief through generic installation state", async () => {
+  it("materializes the deployed Official Workflows through generic installation state", async () => {
     installCatalogStorageFixture();
     const synced = await syncDeployedCatalog();
     expect(synced.body).toMatchObject({ outcome: "accepted", diagnostics: [] });
@@ -1299,14 +1298,22 @@ describe.sequential("Official Workflow installations", () => {
     await setOfficialWorkflowsEnabled(actor, true);
 
     const discovered = await accept(officialClient().list({ headers }), [200]);
-    expect(discovered.body).toMatchObject([
+    expect(
+      discovered.body.map(({ name, displayName }) => {
+        return { name, displayName };
+      }),
+    ).toStrictEqual([
+      {
+        name: "connector-doctor",
+        displayName: "Connector Doctor",
+      },
       {
         name: "morning-brief",
         displayName: "Morning Brief",
       },
     ]);
 
-    const installed = await accept(
+    const installedMorningBrief = await accept(
       officialClient().install({
         headers,
         params: { definitionName: "morning-brief" },
@@ -1317,12 +1324,12 @@ describe.sequential("Official Workflow installations", () => {
       }),
       [201],
     );
-    expect(installed.body.definition).toMatchObject({
+    expect(installedMorningBrief.body.definition).toMatchObject({
       name: "morning-brief",
       lifecycle: "active",
       blueprints: [{ key: "daily-delivery" }],
     });
-    expect(installed.body.workflow).toMatchObject({
+    expect(installedMorningBrief.body.workflow).toMatchObject({
       name: "morning-brief",
       displayName: "Morning Brief",
       agentId,
@@ -1333,11 +1340,13 @@ describe.sequential("Official Workflow installations", () => {
         readOnly: true,
       },
     });
-    expect(installed.body.workflow.automations).toHaveLength(1);
-    const automation = installed.body.workflow.automations[0];
-    expect(automation).toMatchObject({
+    expect(installedMorningBrief.body.workflow.automations).toHaveLength(1);
+    const morningBriefAutomation =
+      installedMorningBrief.body.workflow.automations[0];
+    expect(morningBriefAutomation).toMatchObject({
       kind: "schedule",
       enabled: true,
+      chatThreadId: expect.any(String),
       schedule: {
         type: "cron",
         cronExpression: "0 7 * * *",
@@ -1350,16 +1359,94 @@ describe.sequential("Official Workflow installations", () => {
         parameterBindings: [{ key: "timezone", value: "Asia/Shanghai" }],
       },
     });
-    if (!automation) {
+    if (!morningBriefAutomation) {
       throw new Error("Expected the Morning Brief Automation");
     }
     await expect(
-      readWorkflowAutomationAutonomyFixture(context, automation.id),
+      readWorkflowAutomationAutonomyFixture(context, morningBriefAutomation.id),
     ).resolves.toMatchObject({
       autonomyBudget: 10,
       enabled: true,
       officialBlueprintKey: "daily-delivery",
       officialResultEmailEnabled: true,
+    });
+
+    const installedConnectorDoctor = await accept(
+      officialClient().install({
+        headers,
+        params: { definitionName: "connector-doctor" },
+        body: {
+          agentId,
+          blueprints: [{ blueprintKey: "weekly-check", bindings: [] }],
+        },
+      }),
+      [201],
+    );
+    expect(installedConnectorDoctor.body.definition).toMatchObject({
+      name: "connector-doctor",
+      lifecycle: "active",
+      blueprints: [{ key: "weekly-check" }],
+    });
+    expect(installedConnectorDoctor.body.workflow).toMatchObject({
+      name: "connector-doctor",
+      displayName: "Connector Doctor",
+      agentId,
+      official: {
+        definitionName: "connector-doctor",
+        installationState: "installed",
+        definitionLifecycle: "active",
+        readOnly: true,
+      },
+    });
+    expect(installedConnectorDoctor.body.workflow.automations).toHaveLength(1);
+    const connectorDoctorAutomation =
+      installedConnectorDoctor.body.workflow.automations[0];
+    expect(connectorDoctorAutomation).toMatchObject({
+      kind: "schedule",
+      enabled: true,
+      chatThreadId: expect.any(String),
+      schedule: {
+        type: "cron",
+        cronExpression: "0 9 * * 1",
+        timezone: "Asia/Shanghai",
+      },
+      official: {
+        blueprintKey: "weekly-check",
+        reconciliationStatus: "current",
+        intendedEnabled: true,
+        parameterBindings: [{ key: "timezone", value: "Asia/Shanghai" }],
+      },
+    });
+    if (!connectorDoctorAutomation?.chatThreadId) {
+      throw new Error("Expected the Connector Doctor shared automation thread");
+    }
+    expect(connectorDoctorAutomation.chatThreadId).not.toBe(
+      morningBriefAutomation.chatThreadId,
+    );
+    const persistedConnectorDoctor = await accept(
+      installationClient().get({
+        headers,
+        params: { workflowId: installedConnectorDoctor.body.workflow.id },
+      }),
+      [200],
+    );
+    expect(persistedConnectorDoctor.body.workflow.automations).toHaveLength(1);
+    expect(persistedConnectorDoctor.body.workflow.automations).toMatchObject([
+      {
+        id: connectorDoctorAutomation.id,
+        chatThreadId: connectorDoctorAutomation.chatThreadId,
+      },
+    ]);
+    await expect(
+      readWorkflowAutomationAutonomyFixture(
+        context,
+        connectorDoctorAutomation.id,
+      ),
+    ).resolves.toMatchObject({
+      autonomyBudget: 10,
+      enabled: true,
+      officialBlueprintKey: "weekly-check",
+      officialResultEmailEnabled: false,
     });
   });
 
