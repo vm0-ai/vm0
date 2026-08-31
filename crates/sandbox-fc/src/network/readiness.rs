@@ -457,6 +457,7 @@ fn read_dns_name<'a>(
     let mut labels = Vec::new();
     let mut position = *cursor;
     let mut encoded_end = None;
+    let mut pointer_limit = position;
     let mut expanded_len = 1_usize;
 
     loop {
@@ -467,12 +468,12 @@ fn read_dns_name<'a>(
             return Ok(labels);
         }
         if length & 0xc0 == 0xc0 {
-            let pointer_position = position;
             let pointer = read_u16(response, &mut position)?;
             let target = usize::from(pointer & 0x3fff);
-            if target >= pointer_position {
+            if target >= pointer_limit {
                 return Err(invalid_response());
             }
+            pointer_limit = target;
             if encoded_end.is_none() {
                 encoded_end = Some(position);
             }
@@ -729,6 +730,12 @@ mod tests {
             let response = response_for_query_with_owner(&query, &owner, DNS_READINESS_IPV4);
             assert!(validate_readiness_response(&response).is_err());
         }
+
+        let answer_offset = query.len();
+        let mut label_cycle = vec![1, b'a'];
+        label_cycle.extend_from_slice(&pointer_to(answer_offset));
+        let response = response_for_query_with_owner(&query, &label_cycle, DNS_READINESS_IPV4);
+        assert!(validate_readiness_response(&response).is_err());
 
         let mut truncated_pointer = response_for_query(&query, DNS_READINESS_IPV4);
         truncated_pointer.truncate(query.len() + 1);
