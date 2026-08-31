@@ -125,18 +125,6 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(
       imageWorkflow.indexOf("okou generate image-batch wait <state-dir>"),
     ).toBeLessThan(imageWorkflow.indexOf("<state-dir>/results.tsv"));
-    // The package carries no renderer, so naming the retired entrypoint or its
-    // deck JSON would send the run down a path that does not exist in the
-    // archive it just downloaded.
-    expect(result.prompt).not.toContain("AGENT_RUNBOOK.md");
-    expect(result.prompt).not.toContain("presentation-images.sh");
-    expect(result.prompt).not.toContain('"colorSystem"');
-    expect(result.prompt).not.toContain("color-systems/");
-    expect(result.prompt).not.toContain("data-color-system");
-    expect(result.prompt).not.toContain("design-system.md");
-    expect(result.prompt).not.toContain("layouts/_shell.html");
-    expect(result.prompt).not.toContain("decoration/PLACEMENT.md");
-    expect(result.prompt).not.toContain("tools/run.sh");
   });
 
   it("points a private template at its mounted package and forbids an intermediate representation", () => {

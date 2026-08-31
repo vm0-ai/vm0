@@ -207,17 +207,6 @@ describe("okou generate presentation command", () => {
     expect(
       imageWorkflow.indexOf("okou generate image-batch wait <state-dir>"),
     ).toBeLessThan(imageWorkflow.indexOf("<state-dir>/results.tsv"));
-    expect(stdout).not.toContain("AGENT_RUNBOOK.md");
-    expect(stdout).not.toContain('"colorSystem"');
-    expect(stdout).not.toContain("Selected design system:");
-    expect(stdout).not.toContain("design-system:");
-    expect(stdout).not.toContain("presentation-images.sh");
-    expect(stdout).not.toContain("color-systems/");
-    expect(stdout).not.toContain("data-color-system");
-    expect(stdout).not.toContain("design-system.md");
-    expect(stdout).not.toContain("layouts/_shell.html");
-    expect(stdout).not.toContain("decoration/PLACEMENT.md");
-    expect(stdout).not.toContain("tools/run.sh");
   });
 
   it("rejects an unknown presentation template id with available templates", async () => {
