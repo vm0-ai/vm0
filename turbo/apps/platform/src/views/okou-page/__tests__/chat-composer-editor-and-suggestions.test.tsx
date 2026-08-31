@@ -703,6 +703,7 @@ describe("chat composer models", () => {
   it("reloads workflow suggestions and highlights without remounting the composer", async () => {
     const user = userEvent.setup({ delay: null });
     const reloadWorkflowsRequested = context.mocks.deferred<void>();
+    const reloadBarrierRequested = context.mocks.deferred<void>();
     const releaseReloadWorkflows = context.mocks.deferred<void>();
     const reloadedWorkflow = workflowSummary({
       name: "new-chat-workflow",
@@ -711,6 +712,7 @@ describe("chat composer models", () => {
       agentId: AGENT_ID,
     });
     let workflowPhase: "initial" | "reloaded" = "initial";
+    let reloadRequestCount = 0;
     mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
@@ -718,8 +720,11 @@ describe("chat composer models", () => {
       if (workflowPhase === "initial") {
         return respond(200, []);
       }
-      if (!reloadWorkflowsRequested.settled()) {
+      reloadRequestCount += 1;
+      if (reloadRequestCount === 1) {
         reloadWorkflowsRequested.resolve();
+      } else if (reloadRequestCount === 2) {
+        reloadBarrierRequested.resolve();
       }
       await releaseReloadWorkflows.promise;
       return respond(200, [reloadedWorkflow]);
@@ -754,7 +759,14 @@ describe("chat composer models", () => {
       );
     });
     await reloadWorkflowsRequested.promise;
-    releaseReloadWorkflows.resolve();
+    act(() => {
+      releaseReloadWorkflows.resolve();
+      context.mocks.ably.trigger(
+        `chatThreadWorkflowsChanged:${THREAD_ID}`,
+        null,
+      );
+    });
+    await reloadBarrierRequested.promise;
 
     await expect(findComposerEditor()).resolves.toBe(initialEditor);
     await user.click(initialEditor);
