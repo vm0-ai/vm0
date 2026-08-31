@@ -112,29 +112,29 @@ export function extractAfterFirstPaintBootstrap(
       return `<link crossorigin href="${AFTER_FIRST_PAINT_ENTRY_PLACEHOLDER}" ${AFTER_FIRST_PAINT_ENTRY_ATTRIBUTE}="">
     <script data-vm0-after-first-paint-loader="">
       window.__vm0AfterFirstPaint(function () {
-        if (window.__vm0BrowserSupported !== true) return;
+        if (window.__vm0BrowserSupported === true) {
+          var modulePreloads = document.querySelectorAll(
+            'link[${APP_ENTRY_ATTRIBUTE}=""], link[${APP_MODULE_PRELOAD_ATTRIBUTE}=""]',
+          );
+          for (var index = 0; index < modulePreloads.length; index += 1) {
+            modulePreloads[index].rel = "modulepreload";
+          }
 
-        var modulePreloads = document.querySelectorAll(
-          'link[${APP_ENTRY_ATTRIBUTE}=""], link[${APP_MODULE_PRELOAD_ATTRIBUTE}=""]',
-        );
-        for (var index = 0; index < modulePreloads.length; index += 1) {
-          modulePreloads[index].rel = "modulepreload";
-        }
+          var appStylesheet = document.querySelector(
+            'link[${APP_STYLESHEET_ATTRIBUTE}=""]',
+          );
+          if (appStylesheet) {
+            appStylesheet.rel = "preload";
+            appStylesheet.as = "style";
+          }
 
-        var appStylesheet = document.querySelector(
-          'link[${APP_STYLESHEET_ATTRIBUTE}=""]',
-        );
-        if (appStylesheet) {
-          appStylesheet.rel = "preload";
-          appStylesheet.as = "style";
-        }
-
-        var fontStylesheet = document.querySelector(
-          'link[data-vm0-font-stylesheet=""]',
-        );
-        if (fontStylesheet) {
-          fontStylesheet.rel = "preload";
-          fontStylesheet.as = "style";
+          var fontStylesheet = document.querySelector(
+            'link[data-vm0-font-stylesheet=""]',
+          );
+          if (fontStylesheet) {
+            fontStylesheet.rel = "preload";
+            fontStylesheet.as = "style";
+          }
         }
 
         var entry = document.querySelector(

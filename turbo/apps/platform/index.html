@@ -1321,6 +1321,8 @@
     <script>
       window.__vm0AfterFirstPaint(function () {
         (function () {
+          if (window.__vm0BrowserSupported !== true) return;
+
           var hostname = window.location.hostname;
           var isProductionHost =
             hostname === "vm0.ai" ||
@@ -1620,6 +1622,8 @@
     <script>
       window.__vm0AfterFirstPaint(function () {
         (function () {
+          if (window.__vm0BrowserSupported !== true) return;
+
           var hostname = window.location.hostname.toLowerCase();
           if (hostname !== "app.vm0.ai" && hostname !== "app.okou.ai") return;
 

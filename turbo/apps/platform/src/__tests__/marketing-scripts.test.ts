@@ -49,7 +49,10 @@ function marketingEntrypointSource(): string {
   return source;
 }
 
-function executeMarketingEntrypoint(hostname: string): MarketingHarness {
+function executeMarketingEntrypoint(
+  hostname: string,
+  browserSupported = true,
+): MarketingHarness {
   const marketingWindow = window as MarketingWindow;
   context.mocks.browser.url(`https://${hostname}/`);
   vi.stubGlobal("dataLayer", undefined);
@@ -115,8 +118,18 @@ function executeMarketingEntrypoint(hostname: string): MarketingHarness {
       return fallback?.delay;
     },
     flushFirstPaint: () => {
-      for (const callback of afterFirstPaintCallbacks.splice(0)) {
-        callback();
+      const previousBrowserSupported = window.__vm0BrowserSupported;
+      window.__vm0BrowserSupported = browserSupported;
+      try {
+        for (const callback of afterFirstPaintCallbacks.splice(0)) {
+          callback();
+        }
+      } finally {
+        if (previousBrowserSupported === undefined) {
+          Reflect.deleteProperty(window, "__vm0BrowserSupported");
+        } else {
+          window.__vm0BrowserSupported = previousBrowserSupported;
+        }
       }
       fallback = scheduledTimeouts.find(({ delay }) => {
         return delay === MARKETING_FALLBACK_DELAY_MS;
@@ -204,6 +217,16 @@ describe("platform marketing scripts", () => {
 
     window.dispatchEvent(new Event(APP_FIRST_CONTENT_VISIBLE_EVENT));
     harness.flushIdleCallbacks();
+  });
+
+  it("does not initialize on an unsupported browser", () => {
+    const harness = executeMarketingEntrypoint("app.vm0.ai", false);
+    harness.flushFirstPaint();
+
+    expect(harness.fallbackDelay).toBeUndefined();
+    expect(harness.marketingWindow.dataLayer).toBeUndefined();
+    expect(harness.marketingWindow.gtag).toBeUndefined();
+    expect(harness.requestedScriptUrls).toStrictEqual([]);
   });
 
   it.each(["localhost", "pr-29576-app.vm6.ai", "app.vm0.ai.example.com"])(
