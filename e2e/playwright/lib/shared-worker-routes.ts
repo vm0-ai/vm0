@@ -155,6 +155,9 @@ export class SharedWorkerRoutes {
     // API request cannot escape before the target session attaches.
     await page.addInitScript(
       ({ readyEvent, readyStorageKey }) => {
+        if (window.frameElement !== null) {
+          return;
+        }
         const NativeSharedWorker = globalThis.SharedWorker;
         let released = sessionStorage.getItem(readyStorageKey) === "true";
         const pendingMessages: Array<() => void> = [];
