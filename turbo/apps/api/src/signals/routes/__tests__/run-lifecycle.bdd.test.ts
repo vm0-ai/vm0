@@ -85,7 +85,10 @@ import {
   setRunModelProviderFixture,
   setRunModelRuntimeRouteFixture,
 } from "../../../test-fixtures/agent-runs";
-import { timeoutRunWithoutCallbacksFixture } from "../../../test-fixtures/chat-events";
+import {
+  holdCheckpointReadsFixture,
+  timeoutRunWithoutCallbacksFixture,
+} from "../../../test-fixtures/chat-events";
 import {
   createBddApi,
   expectApiError,
@@ -103,6 +106,7 @@ import {
 } from "./helpers/api-bdd-connectors";
 import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
+import { cleanupTimedOutRun } from "./helpers/api-bdd-run-timeout";
 import {
   createRunsApi,
   expectCanonicalStorageManifest,
@@ -1520,18 +1524,17 @@ async function setupSameThreadReuseScenario(sourceRunnerIdentity?: {
   const history = `bdd reuse history ${first.runId}`;
   const historyHash = createHash("sha256").update(history).digest("hex");
   mockSessionHistoryBlob(historyHash, history);
-  await webhooks.requestAgentCheckpoint(
+  await webhooks.requestAgentComplete(
     {
       runId: first.runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId,
-      cliAgentSessionHistoryHash: historyHash,
+      exitCode: 0,
+      lastEventSequence: 0,
+      checkpoint: {
+        cliAgentType: "claude-code",
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: historyHash,
+      },
     },
-    { authorization: `Bearer ${firstClaim.sandboxToken}` },
-    [200],
-  );
-  await webhooks.requestAgentComplete(
-    { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
     { authorization: `Bearer ${firstClaim.sandboxToken}` },
     [200],
   );
@@ -4111,59 +4114,59 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       versionId: preparedMemory.versionId,
       files: [memoryFile],
     });
-    const checkpoint = await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: initialRun.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-storage-cli-${initialRun.runId}`,
-        cliAgentSessionHistoryDisposition: "discarded_oversized",
-        artifactSnapshots: [
-          {
-            name: initialMemory.name,
-            version: preparedMemory.versionId,
-            mountPath: initialMemory.mountPath,
-            ...(initialMemory.missingRootPolicy === undefined
-              ? {}
-              : { missingRootPolicy: initialMemory.missingRootPolicy }),
-          },
-          {
-            name: initialCustomArtifact.name,
-            version: initialCustomArtifact.versionId,
-            mountPath: initialCustomArtifact.mountPath,
-            ...(initialCustomArtifact.missingRootPolicy === undefined
-              ? {}
-              : {
-                  missingRootPolicy: initialCustomArtifact.missingRootPolicy,
-                }),
-          },
-          {
-            name: initialPinnedArtifact.name,
-            version: initialPinnedArtifact.versionId,
-            mountPath: initialPinnedArtifact.mountPath,
-            ...(initialPinnedArtifact.missingRootPolicy === undefined
-              ? {}
-              : {
-                  missingRootPolicy: initialPinnedArtifact.missingRootPolicy,
-                }),
-          },
-        ],
+        exitCode: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-storage-cli-${initialRun.runId}`,
+          cliAgentSessionHistoryDisposition: "discarded_oversized",
+          artifactSnapshots: [
+            {
+              name: initialMemory.name,
+              version: preparedMemory.versionId,
+              mountPath: initialMemory.mountPath,
+              ...(initialMemory.missingRootPolicy === undefined
+                ? {}
+                : { missingRootPolicy: initialMemory.missingRootPolicy }),
+            },
+            {
+              name: initialCustomArtifact.name,
+              version: initialCustomArtifact.versionId,
+              mountPath: initialCustomArtifact.mountPath,
+              ...(initialCustomArtifact.missingRootPolicy === undefined
+                ? {}
+                : {
+                    missingRootPolicy: initialCustomArtifact.missingRootPolicy,
+                  }),
+            },
+            {
+              name: initialPinnedArtifact.name,
+              version: initialPinnedArtifact.versionId,
+              mountPath: initialPinnedArtifact.mountPath,
+              ...(initialPinnedArtifact.missingRootPolicy === undefined
+                ? {}
+                : {
+                    missingRootPolicy: initialPinnedArtifact.missingRootPolicy,
+                  }),
+            },
+          ],
+        },
       },
       { authorization: `Bearer ${initialClaim.sandboxToken}` },
       [200],
     );
-    if (checkpoint.status !== 200) {
-      throw new Error("Expected the canonical checkpoint to succeed");
+    const completedInitialRun = await api.readRun(actor, initialRun.runId);
+    const checkpointId = completedInitialRun.result?.checkpointId;
+    if (!checkpointId) {
+      throw new Error("Expected the canonical checkpoint to persist");
     }
-    await webhooks.requestAgentComplete(
-      { runId: initialRun.runId, exitCode: 0 },
-      { authorization: `Bearer ${initialClaim.sandboxToken}` },
-      [200],
-    );
     await expect(
       readStoragePersistenceState(context, {
         runId: initialRun.runId,
         sessionId: initialRun.sessionId,
-        checkpointId: checkpoint.body.checkpointId,
+        checkpointId,
       }),
     ).resolves.toStrictEqual({
       run_canonical: true,
@@ -4293,14 +4296,17 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     await removeRunCanonicalStorageState(context, invalidPersistenceRun.runId);
 
-    const rejectedCheckpoint = await webhooks.requestAgentCheckpoint(
+    const rejectedCheckpoint = await webhooks.requestAgentComplete(
       {
         runId: invalidPersistenceRun.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-canonical-required-${invalidPersistenceRun.runId}`,
-        cliAgentSessionHistoryHash: createHash("sha256")
-          .update(`canonical required ${invalidPersistenceRun.runId}`)
-          .digest("hex"),
+        exitCode: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-canonical-required-${invalidPersistenceRun.runId}`,
+          cliAgentSessionHistoryHash: createHash("sha256")
+            .update(`canonical required ${invalidPersistenceRun.runId}`)
+            .digest("hex"),
+        },
       },
       { authorization: `Bearer ${canonicalClaim.sandboxToken}` },
       [500],
@@ -4583,18 +4589,17 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const historyHash = createHash("sha256").update(history).digest("hex");
     mockSessionHistoryBlob(historyHash, history);
 
-    await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: first.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-timing-cli-${first.runId}`,
-        cliAgentSessionHistoryHash: historyHash,
+        exitCode: 0,
+        lastEventSequence: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-timing-cli-${first.runId}`,
+          cliAgentSessionHistoryHash: historyHash,
+        },
       },
-      { authorization: `Bearer ${claim.sandboxToken}` },
-      [200],
-    );
-    await webhooks.requestAgentComplete(
-      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
       { authorization: `Bearer ${claim.sandboxToken}` },
       [200],
     );
@@ -4738,19 +4743,17 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const historyHash = createHash("sha256")
       .update(`bdd session history ${created.runId}`)
       .digest("hex");
-    await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: created.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-cli-${created.runId}`,
-        cliAgentSessionHistoryHash: historyHash,
+        exitCode: 0,
+        lastEventSequence: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-cli-${created.runId}`,
+          cliAgentSessionHistoryHash: historyHash,
+        },
       },
-      sandboxHeaders,
-      [200],
-    );
-
-    await webhooks.requestAgentComplete(
-      { runId: created.runId, exitCode: 0, lastEventSequence: 0 },
       sandboxHeaders,
       [200],
     );
@@ -5370,18 +5373,17 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const history = `bdd no-thread history ${first.runId}`;
     const historyHash = createHash("sha256").update(history).digest("hex");
     mockSessionHistoryBlob(historyHash, history);
-    await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: first.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId,
-        cliAgentSessionHistoryHash: historyHash,
+        exitCode: 0,
+        lastEventSequence: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId,
+          cliAgentSessionHistoryHash: historyHash,
+        },
       },
-      { authorization: `Bearer ${firstClaim.sandboxToken}` },
-      [200],
-    );
-    await webhooks.requestAgentComplete(
-      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
       { authorization: `Bearer ${firstClaim.sandboxToken}` },
       [200],
     );
@@ -5438,18 +5440,17 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       .update(resumedHistory)
       .digest("hex");
     mockSessionHistoryBlob(resumedHistoryHash, resumedHistory);
-    await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: resumed.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId,
-        cliAgentSessionHistoryHash: resumedHistoryHash,
+        exitCode: 0,
+        lastEventSequence: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId,
+          cliAgentSessionHistoryHash: resumedHistoryHash,
+        },
       },
-      { authorization: `Bearer ${resumedClaim.sandboxToken}` },
-      [200],
-    );
-    await webhooks.requestAgentComplete(
-      { runId: resumed.runId, exitCode: 0, lastEventSequence: 0 },
       { authorization: `Bearer ${resumedClaim.sandboxToken}` },
       [200],
     );
@@ -5482,18 +5483,17 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       .update(firstHistory)
       .digest("hex");
     mockSessionHistoryBlob(firstHistoryHash, firstHistory);
-    await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: first.runId,
-        cliAgentType: firstClaim.cliAgentType,
-        cliAgentSessionId,
-        cliAgentSessionHistoryHash: firstHistoryHash,
+        exitCode: 0,
+        lastEventSequence: 0,
+        checkpoint: {
+          cliAgentType: firstClaim.cliAgentType,
+          cliAgentSessionId,
+          cliAgentSessionHistoryHash: firstHistoryHash,
+        },
       },
-      { authorization: `Bearer ${firstClaim.sandboxToken}` },
-      [200],
-    );
-    await webhooks.requestAgentComplete(
-      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
       { authorization: `Bearer ${firstClaim.sandboxToken}` },
       [200],
     );
@@ -5535,18 +5535,17 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       .update(resumedHistory)
       .digest("hex");
     mockSessionHistoryBlob(resumedHistoryHash, resumedHistory);
-    await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: resumed.runId,
-        cliAgentType: resumedClaim.cliAgentType,
-        cliAgentSessionId,
-        cliAgentSessionHistoryHash: resumedHistoryHash,
+        exitCode: 0,
+        lastEventSequence: 0,
+        checkpoint: {
+          cliAgentType: resumedClaim.cliAgentType,
+          cliAgentSessionId,
+          cliAgentSessionHistoryHash: resumedHistoryHash,
+        },
       },
-      { authorization: `Bearer ${resumedClaim.sandboxToken}` },
-      [200],
-    );
-    await webhooks.requestAgentComplete(
-      { runId: resumed.runId, exitCode: 0, lastEventSequence: 0 },
       { authorization: `Bearer ${resumedClaim.sandboxToken}` },
       [200],
     );
@@ -6592,18 +6591,17 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const history = `bdd heartbeat order history ${first.runId}`;
     const historyHash = createHash("sha256").update(history).digest("hex");
     mockSessionHistoryBlob(historyHash, history);
-    await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: first.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId,
-        cliAgentSessionHistoryHash: historyHash,
+        exitCode: 0,
+        lastEventSequence: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId,
+          cliAgentSessionHistoryHash: historyHash,
+        },
       },
-      { authorization: `Bearer ${firstClaim.sandboxToken}` },
-      [200],
-    );
-    await webhooks.requestAgentComplete(
-      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
       { authorization: `Bearer ${firstClaim.sandboxToken}` },
       [200],
     );
@@ -6761,18 +6759,17 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const history = `bdd reusable priority history ${first.runId}`;
     const historyHash = createHash("sha256").update(history).digest("hex");
     mockSessionHistoryBlob(historyHash, history);
-    await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: first.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId,
-        cliAgentSessionHistoryHash: historyHash,
+        exitCode: 0,
+        lastEventSequence: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId,
+          cliAgentSessionHistoryHash: historyHash,
+        },
       },
-      { authorization: `Bearer ${firstClaim.sandboxToken}` },
-      [200],
-    );
-    await webhooks.requestAgentComplete(
-      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
       { authorization: `Bearer ${firstClaim.sandboxToken}` },
       [200],
     );
@@ -6924,18 +6921,17 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const history = `bdd workspace priority history ${first.runId}`;
     const historyHash = createHash("sha256").update(history).digest("hex");
     mockSessionHistoryBlob(historyHash, history);
-    await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: first.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId,
-        cliAgentSessionHistoryHash: historyHash,
+        exitCode: 0,
+        lastEventSequence: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId,
+          cliAgentSessionHistoryHash: historyHash,
+        },
       },
-      { authorization: `Bearer ${firstClaim.sandboxToken}` },
-      [200],
-    );
-    await webhooks.requestAgentComplete(
-      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
       { authorization: `Bearer ${firstClaim.sandboxToken}` },
       [200],
     );
@@ -11180,18 +11176,17 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const history = `bounded MCP awareness history ${claudeRun.runId}`;
     const historyHash = createHash("sha256").update(history).digest("hex");
     mockSessionHistoryBlob(historyHash, history);
-    await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: claudeRun.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-mcp-awareness-${claudeRun.runId}`,
-        cliAgentSessionHistoryHash: historyHash,
+        exitCode: 0,
+        lastEventSequence: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-mcp-awareness-${claudeRun.runId}`,
+          cliAgentSessionHistoryHash: historyHash,
+        },
       },
-      { authorization: `Bearer ${claudeClaim.sandboxToken}` },
-      [200],
-    );
-    await webhooks.requestAgentComplete(
-      { runId: claudeRun.runId, exitCode: 0, lastEventSequence: 0 },
       { authorization: `Bearer ${claudeClaim.sandboxToken}` },
       [200],
     );
@@ -13891,18 +13886,17 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const sandboxHeaders = {
       authorization: `Bearer ${claim.sandboxToken}`,
     };
-    await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: run.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `terminal-refresh-${run.runId}`,
-        cliAgentSessionHistoryHash: historyHash,
+        exitCode: 0,
+        lastEventSequence: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `terminal-refresh-${run.runId}`,
+          cliAgentSessionHistoryHash: historyHash,
+        },
       },
-      sandboxHeaders,
-      [200],
-    );
-    await webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
       sandboxHeaders,
       [200],
     );
@@ -14027,18 +14021,17 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const history = `bdd combined claim history ${first.runId}`;
     const historyHash = createHash("sha256").update(history).digest("hex");
     mockSessionHistoryBlob(historyHash, history);
-    await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: first.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-combined-cli-${first.runId}`,
-        cliAgentSessionHistoryHash: historyHash,
+        exitCode: 0,
+        lastEventSequence: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-combined-cli-${first.runId}`,
+          cliAgentSessionHistoryHash: historyHash,
+        },
       },
-      { authorization: `Bearer ${firstClaim.sandboxToken}` },
-      [200],
-    );
-    await webhooks.requestAgentComplete(
-      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
       { authorization: `Bearer ${firstClaim.sandboxToken}` },
       [200],
     );
@@ -15222,18 +15215,17 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     const historyHash = createHash("sha256")
       .update(`missing claim history ${source.runId}`)
       .digest("hex");
-    await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: source.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-failed-claim-${source.runId}`,
-        cliAgentSessionHistoryHash: historyHash,
+        exitCode: 0,
+        lastEventSequence: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-failed-claim-${source.runId}`,
+          cliAgentSessionHistoryHash: historyHash,
+        },
       },
-      { authorization: `Bearer ${sourceClaim.sandboxToken}` },
-      [200],
-    );
-    await webhooks.requestAgentComplete(
-      { runId: source.runId, exitCode: 0, lastEventSequence: 0 },
       { authorization: `Bearer ${sourceClaim.sandboxToken}` },
       [200],
     );
@@ -16502,18 +16494,17 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     const historyHash = createHash("sha256")
       .update(`bdd cleanup-first session history ${runId}`)
       .digest("hex");
-    await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-cleanup-first-${runId}`,
-        cliAgentSessionHistoryHash: historyHash,
+        exitCode: 0,
+        lastEventSequence: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-cleanup-first-${runId}`,
+          cliAgentSessionHistoryHash: historyHash,
+        },
       },
-      sandboxHeaders,
-      [200],
-    );
-    await webhooks.requestAgentComplete(
-      { runId, exitCode: 0, lastEventSequence: 0 },
       sandboxHeaders,
       [200],
     );
@@ -18365,7 +18356,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     await api.requestCancelRun(actor, continued.runId, [200]);
   });
 
-  it("rejects a combined checkpoint after timeout without partial persistence", async () => {
+  it("acknowledges completion after timeout without partial persistence", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId } = await entitledRunActor();
@@ -18375,16 +18366,20 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       modelProvider: "anthropic-api-key",
     });
     const claim = await api.claimRunnerJob(run.runId);
-    const history = `bdd timed out combined history ${run.runId}`;
-    const historyHash = createHash("sha256").update(history).digest("hex");
-    mockSessionHistoryBlob(historyHash, history);
+    const historyHash = createHash("sha256")
+      .update(`bdd timed out combined history ${run.runId}`)
+      .digest("hex");
     const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
     await timeoutRunWithoutCallbacksFixture({ runId: run.runId });
+    const timedOut = await api.readRun(actor, run.runId);
+    const runnerMetadata = await api.requestRunRunner(actor, run.runId, [200]);
 
-    const rejected = await webhooks.requestAgentComplete(
+    const completion = await webhooks.requestAgentComplete(
       {
         runId: run.runId,
         exitCode: 0,
+        sandboxReuseResult: "poolMiss",
+        workspaceReuseResult: "diskPressure",
         checkpoint: {
           cliAgentType: "claude-code",
           cliAgentSessionId: `bdd-timeout-combined-${run.runId}`,
@@ -18392,13 +18387,15 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
         },
       },
       sandboxHeaders,
-      [400],
+      [200],
     );
-    expectApiError(rejected.body);
-    expect(rejected.body.error.message).toContain("run status is timeout");
-    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
-      status: "timeout",
-    });
+    expect(completion.body).toStrictEqual({ success: true, status: "failed" });
+    await expect(api.readRun(actor, run.runId)).resolves.toStrictEqual(
+      timedOut,
+    );
+    await expect(
+      api.requestRunRunner(actor, run.runId, [200]),
+    ).resolves.toStrictEqual(runnerMetadata);
 
     const fallback = await webhooks.requestAgentComplete(
       { runId: run.runId, exitCode: 0 },
@@ -18406,8 +18403,72 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       [200],
     );
     expect(fallback.body).toStrictEqual({ success: true, status: "failed" });
-    const failed = await api.readRun(actor, run.runId);
-    expect(failed.error).toBe("Checkpoint for run not found");
+    await expect(api.readRun(actor, run.runId)).resolves.toStrictEqual(
+      timedOut,
+    );
+  });
+
+  it("serializes timeout cleanup behind checkpointed completion", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const startedAt = now();
+    mockNow(startedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "complete while timeout cleanup waits",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+    const checkpointGate = await holdCheckpointReadsFixture({
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      checkpointGate.release();
+      await checkpointGate.done;
+    });
+    const completion = webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-timeout-race-${run.runId}`,
+          cliAgentSessionHistoryDisposition: "unavailable",
+        },
+      },
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      [200],
+    );
+    await expect
+      .poll(checkpointGate.blockedWaiterCount)
+      .toBeGreaterThanOrEqual(1);
+
+    mockNow(startedAt + 3 * 60 * 1000);
+    const cleanup = cleanupTimedOutRun(context, {
+      runId: run.runId,
+      chatThreadId: randomUUID(),
+      orgId: actor.orgId,
+    });
+    checkpointGate.release();
+    await checkpointGate.done;
+
+    await expect(completion).resolves.toMatchObject({
+      body: { success: true, status: "completed" },
+    });
+    await expect(cleanup).resolves.toMatchObject({
+      body: { cleaned: 0, errors: 0, results: [] },
+    });
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "completed",
+      result: { checkpointId: expect.any(String) },
+    });
   });
 
   it("keeps claim auth valid through timeout completion and final telemetry", async () => {
@@ -18653,20 +18714,19 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     const historyHash = createHash("sha256")
       .update(`bdd cancelled checkpoint ${run.runId}`)
       .digest("hex");
-    await webhooks.requestAgentCheckpoint(
-      {
-        runId: run.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-cancelled-cli-${run.runId}`,
-        cliAgentSessionHistoryHash: historyHash,
-      },
-      sandboxHeaders,
-      [200],
-    );
     await api.requestCancelRun(actor, run.runId, [200]);
 
     const late = await webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+      {
+        runId: run.runId,
+        exitCode: 0,
+        lastEventSequence: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-cancelled-cli-${run.runId}`,
+          cliAgentSessionHistoryHash: historyHash,
+        },
+      },
       sandboxHeaders,
       [200],
     );
@@ -18714,7 +18774,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     const historyHash = createHash("sha256")
       .update(`bdd null vars checkpoint ${run.runId}`)
       .digest("hex");
-    const checkpoint = await webhooks.requestAgentCheckpoint(
+    const rejectedCheckpoint = await webhooks.requestAgentCheckpoint(
       {
         runId: run.runId,
         cliAgentType: "claude-code",
@@ -18722,16 +18782,24 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
         cliAgentSessionHistoryHash: historyHash,
       },
       sandboxHeaders,
-      [200],
+      [400],
     );
-    if (checkpoint.status !== 200) {
-      throw new Error("Expected the null-vars checkpoint to succeed");
-    }
-    expect(checkpoint.body.artifacts).toBeUndefined();
-    expect(checkpoint.body.volumes).toBeUndefined();
+    expectApiError(rejectedCheckpoint.body);
+    expect(rejectedCheckpoint.body.error.message).toContain(
+      "Standalone checkpoint cannot persist while the run status is pending",
+    );
 
     await webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+      {
+        runId: run.runId,
+        exitCode: 0,
+        lastEventSequence: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-null-vars-cli-${run.runId}`,
+          cliAgentSessionHistoryHash: historyHash,
+        },
+      },
       sandboxHeaders,
       [200],
     );

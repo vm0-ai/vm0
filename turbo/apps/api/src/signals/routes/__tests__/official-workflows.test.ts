@@ -1095,20 +1095,19 @@ async function completeSuccessfulRun(
     headers,
     [200],
   );
-  await webhooks.requestAgentCheckpoint(
+  await webhooks.requestAgentComplete(
     {
       runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId: `official-result-email-${runId}`,
-      cliAgentSessionHistoryHash: createHash("sha256")
-        .update(`official result email history ${runId}`)
-        .digest("hex"),
+      exitCode: 0,
+      lastEventSequence: 0,
+      checkpoint: {
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `official-result-email-${runId}`,
+        cliAgentSessionHistoryHash: createHash("sha256")
+          .update(`official result email history ${runId}`)
+          .digest("hex"),
+      },
     },
-    headers,
-    [200],
-  );
-  await webhooks.requestAgentComplete(
-    { runId, exitCode: 0, lastEventSequence: 0 },
     headers,
     [200],
   );

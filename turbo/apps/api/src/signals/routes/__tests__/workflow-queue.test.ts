@@ -390,22 +390,17 @@ async function requestRunCompletionThroughSandbox(
       [200],
     );
   }
-  await webhooksApi.requestAgentCheckpoint(
-    {
-      runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId: `workflow-queue-cli-${runId}`,
-      cliAgentSessionHistoryHash: createHash("sha256")
-        .update(`workflow automation history ${runId}`)
-        .digest("hex"),
-    },
-    sandboxHeaders,
-    [200],
-  );
   await webhooksApi.requestAgentComplete(
     {
       runId,
       exitCode: 0,
+      checkpoint: {
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `workflow-queue-cli-${runId}`,
+        cliAgentSessionHistoryHash: createHash("sha256")
+          .update(`workflow automation history ${runId}`)
+          .digest("hex"),
+      },
       ...(stagedOutputEvents.length === 0
         ? {}
         : {
@@ -1128,19 +1123,6 @@ describe("workflow queue", () => {
     const sandboxHeaders = {
       authorization: `Bearer ${firstClaim.sandboxToken}`,
     };
-    await webhooksApi.requestAgentCheckpoint(
-      {
-        runId: firstRunId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `workflow-queue-cli-${firstRunId}`,
-        cliAgentSessionHistoryHash: createHash("sha256")
-          .update(`workflow automation history ${firstRunId}`)
-          .digest("hex"),
-      },
-      sandboxHeaders,
-      [200],
-    );
-
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
     const admissionLock = await holdOrgAdmissionLockFixture({
       orgId: scenario.orgId,
@@ -1152,7 +1134,17 @@ describe("workflow queue", () => {
     });
     const routeSignal = new AbortController();
     const completion = webhooksApi.requestAgentComplete(
-      { runId: firstRunId, exitCode: 0 },
+      {
+        runId: firstRunId,
+        exitCode: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `workflow-queue-cli-${firstRunId}`,
+          cliAgentSessionHistoryHash: createHash("sha256")
+            .update(`workflow automation history ${firstRunId}`)
+            .digest("hex"),
+        },
+      },
       sandboxHeaders,
       [200],
       routeSignal.signal,

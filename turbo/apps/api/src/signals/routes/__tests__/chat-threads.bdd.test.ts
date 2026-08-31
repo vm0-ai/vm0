@@ -297,20 +297,15 @@ async function completeChatRunOk(
   const historyHash = createHash("sha256")
     .update(`bdd chat thread history ${runId}`)
     .digest("hex");
-  await webhooks.requestAgentCheckpoint(
-    {
-      runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId: `bdd-cli-${runId}`,
-      cliAgentSessionHistoryHash: historyHash,
-    },
-    sandboxHeaders,
-    [200],
-  );
   await webhooks.requestAgentComplete(
     {
       runId,
       exitCode: 0,
+      checkpoint: {
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cli-${runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
       ...(stagedOutputEvents.length === 0
         ? {}
         : {
