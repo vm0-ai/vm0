@@ -181,8 +181,6 @@ describe("okou search --source slack", () => {
         "100",
         "--since",
         "30d",
-        "-C",
-        "3",
       ]);
 
       expect(mockExit).not.toHaveBeenCalled();
