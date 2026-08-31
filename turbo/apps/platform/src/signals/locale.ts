@@ -43,7 +43,7 @@ export const availableLocalePreferences$ = computed(async (get) => {
 });
 
 export const initLocale$ = command(
-  async ({ set }, signal: AbortSignal): Promise<SupportedLocale | null> => {
+  async ({ set }, signal: AbortSignal): Promise<void> => {
     const requestedLocale = resolveDocumentLocale();
     const [initial, clerkLocalization] = await Promise.all([
       loadInitialLocaleResources(requestedLocale, signal),
@@ -56,7 +56,6 @@ export const initLocale$ = command(
     applyDocumentLocaleCopy();
     set(internalLocale$, locale);
     document.documentElement.lang = locale;
-    return locale === requestedLocale ? null : requestedLocale;
   },
 );
 
@@ -91,11 +90,7 @@ const applyLocalePreference$ = command(
 );
 
 export const syncLocalePreference$ = command(
-  async (
-    { get, set },
-    initialLocaleLoadFailure: SupportedLocale | null,
-    signal: AbortSignal,
-  ) => {
+  async ({ get, set }, signal: AbortSignal) => {
     const clerk = await get(clerk$);
     signal.throwIfAborted();
     if (!clerk.user || !clerk.organization) {
@@ -105,20 +100,11 @@ export const syncLocalePreference$ = command(
     const preferences = await get(userPreferences$);
     signal.throwIfAborted();
     const supportedLocales = preferences.supportedLocales;
-    const preferredLocale =
-      preferences.locale ?? initialLocaleLoadFailure ?? resolveDocumentLocale();
+    const preferredLocale = preferences.locale ?? resolveDocumentLocale();
     const locale = supportedLocales.includes(preferredLocale)
       ? preferredLocale
       : DEFAULT_LOCALE;
 
-    // This completes the cold-start presentation fallback in
-    // loadInitialLocaleResources. Retrying the same failed asset pair here
-    // would reject bootstrap after English was already selected. Keep the
-    // preference intact so a later entrance or explicit switch can retry.
-    // Remove with vm0-ai/vm0#29610 after its zero-error Sentry gate is met.
-    if (locale === initialLocaleLoadFailure) {
-      return;
-    }
     await set(applyLocalePreference$, clerk.organization.id, locale, signal);
 
     if (preferences.locale === null) {
