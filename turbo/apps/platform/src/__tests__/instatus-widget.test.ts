@@ -52,7 +52,19 @@ function loadInstatusScripts(hostname: string): HTMLScriptElement[] {
     `${getInstatusLoaderSource()}\n//# sourceURL=platform-instatus-widget-test.js`,
   ) as EntrypointScript;
 
-  executeEntrypointScript(window, document);
+  const previousAfterFirstPaint = window.__vm0AfterFirstPaint;
+  window.__vm0AfterFirstPaint = (callback) => {
+    callback();
+  };
+  try {
+    executeEntrypointScript(window, document);
+  } finally {
+    if (previousAfterFirstPaint === undefined) {
+      Reflect.deleteProperty(window, "__vm0AfterFirstPaint");
+    } else {
+      window.__vm0AfterFirstPaint = previousAfterFirstPaint;
+    }
+  }
   return appendedScripts;
 }
 
