@@ -165,12 +165,14 @@ export const initializeCredentialStore$ = command(
       broadcast,
     );
     const runtime = new SharedDatabaseWorkerRuntime(
-      options.identity,
-      options.apiBaseUrl,
-      options.vercelProtectionBypass,
+      {
+        identity: options.identity,
+        apiBaseUrl: options.apiBaseUrl,
+        vercelProtectionBypass: options.vercelProtectionBypass,
+        emit: broadcast,
+        createContractClient: get(sharedDatabaseClientFactory$),
+      },
       signal,
-      broadcast,
-      get(sharedDatabaseClientFactory$),
     );
     set(
       installCredentialStore$,

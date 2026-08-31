@@ -124,6 +124,14 @@ interface ChatThreadEventCache {
   readonly degraded: boolean;
 }
 
+interface SharedDatabaseWorkerRuntimeOptions {
+  readonly identity: SharedDatabaseIdentity;
+  readonly apiBaseUrl: string;
+  readonly vercelProtectionBypass: string | undefined;
+  readonly emit: (message: WorkerRuntimeEvent) => void;
+  readonly createContractClient: SharedDatabaseContractClientFactory;
+}
+
 class SharedDatabaseAuthBlockedError extends Error {
   constructor() {
     super(
@@ -222,15 +230,24 @@ function chatThreadEventCursor(
 export class SharedDatabaseWorkerRuntime {
   private readonly credential: CredentialState;
   private databaseEntry: ChatDatabaseEntry | null = null;
+  private readonly rootSignal: AbortSignal;
+  private readonly emit: (message: WorkerRuntimeEvent) => void;
+  private readonly createContractClient: SharedDatabaseContractClientFactory;
 
   constructor(
-    identity: SharedDatabaseIdentity,
-    apiBaseUrl: string,
-    vercelProtectionBypass: string | undefined,
-    private readonly rootSignal: AbortSignal,
-    private readonly emit: (message: WorkerRuntimeEvent) => void,
-    private readonly createContractClient: SharedDatabaseContractClientFactory,
+    options: SharedDatabaseWorkerRuntimeOptions,
+    rootSignal: AbortSignal,
   ) {
+    const {
+      identity,
+      apiBaseUrl,
+      vercelProtectionBypass,
+      emit,
+      createContractClient,
+    } = options;
+    this.rootSignal = rootSignal;
+    this.emit = emit;
+    this.createContractClient = createContractClient;
     this.credential = {
       userId: identity.userId,
       orgId: identity.orgId,

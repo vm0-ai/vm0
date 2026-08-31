@@ -172,14 +172,17 @@ function startRuntime(
 ): RuntimeFixture {
   const events: WorkerBroadcastMessage[] = [];
   const runtime = new SharedDatabaseWorkerRuntime(
-    currentIdentity,
-    location.origin,
-    vercelProtectionBypass,
-    context.signal,
-    (event) => {
-      events.push(event);
+    {
+      identity: currentIdentity,
+      apiBaseUrl: location.origin,
+      vercelProtectionBypass,
+      emit: (event) => {
+        events.push(event);
+      },
+      createContractClient:
+        createSharedDatabaseContractClientFactory(WORKER_APP_VERSION),
     },
-    createSharedDatabaseContractClientFactory(WORKER_APP_VERSION),
+    context.signal,
   );
   runtime.heartbeat(currentIdentity, location.origin, vercelProtectionBypass);
   return { events, runtime };
