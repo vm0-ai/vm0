@@ -454,7 +454,6 @@ function shouldTouchThreadSortFromNormalSend(
 
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
-  readonly latestPresentationTemplatesEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
   /**
    * Carried whole so downstream checks can read it without reloading the
@@ -1083,10 +1082,6 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.CodexFastMode,
       context,
     ),
-    latestPresentationTemplatesEnabled: isFeatureEnabled(
-      FeatureSwitchKey.LatestPresentationTemplates,
-      context,
-    ),
     presentationTemplatesEnabled: isFeatureEnabled(
       FeatureSwitchKey.PresentationTemplates,
       context,
@@ -1115,8 +1110,6 @@ function resolveSelectedTemplateContext(
   const resolved = resolveThreadGenerationTemplatePrompt({
     explicit: runtimeBody.primaryTemplate,
     explicitTemplates: runtimeBody.templates,
-    latestPresentationTemplatesEnabled:
-      featureSwitches.latestPresentationTemplatesEnabled,
     presentationTemplatesEnabled: featureSwitches.presentationTemplatesEnabled,
     mountedUserPresentationTemplateIds,
   });
@@ -1152,8 +1145,6 @@ async function validateGenerationTemplatePrompt(
   const selectedIds = selectedUserPresentationTemplateIds(generationTemplates);
   for (const template of generationTemplates) {
     const validation = buildGenerationTemplatePrompt(template, {
-      latestPresentationTemplatesEnabled:
-        featureSwitches.latestPresentationTemplatesEnabled,
       presentationTemplatesEnabled:
         featureSwitches.presentationTemplatesEnabled,
       mountedUserPresentationTemplateIds: selectedIds,

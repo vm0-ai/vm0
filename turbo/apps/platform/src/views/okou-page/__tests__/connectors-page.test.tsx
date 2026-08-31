@@ -876,11 +876,7 @@ describe("connectors page", () => {
       return respond(200, []);
     });
 
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
-    });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await expect(
       screen.findByRole("heading", { name: "Conectores" }),
@@ -1328,11 +1324,7 @@ describe("connectors page", () => {
       },
     );
 
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
-    });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       const card = connectorCardByLabel("Meta Ads");
@@ -2807,16 +2799,18 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: false },
+      featureSwitches: { [FeatureSwitchKey.MailchimpConnector]: false },
     });
 
     const searchInput = await screen.findByPlaceholderText("Find connectors");
-    await fill(searchInput, "meta");
+    await fill(searchInput, "mailchimp");
 
     await expect(
       screen.findByText(/No connectors matching/),
     ).resolves.toBeInTheDocument();
-    expect(screen.queryByLabelText("Connect Meta Ads")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Connect Mailchimp"),
+    ).not.toBeInTheDocument();
   });
 
   it("refreshes connector discovery when connector feature switches change", async () => {
@@ -2825,11 +2819,11 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: false },
+      featureSwitches: { [FeatureSwitchKey.MailchimpConnector]: false },
     });
 
     const searchInput = await screen.findByPlaceholderText("Find connectors");
-    await fill(searchInput, "meta");
+    await fill(searchInput, "mailchimp");
 
     await expect(
       screen.findByText(/No connectors matching/),
@@ -2837,18 +2831,18 @@ describe("connectors page", () => {
 
     context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
       return respond(200, {
-        switches: { [FeatureSwitchKey.MetaAdsConnector]: true },
-        effectiveSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
+        switches: { [FeatureSwitchKey.MailchimpConnector]: true },
+        effectiveSwitches: { [FeatureSwitchKey.MailchimpConnector]: true },
       });
     });
     await context.store.set(
       setFeatureSwitch$,
-      { [FeatureSwitchKey.MetaAdsConnector]: true },
+      { [FeatureSwitchKey.MailchimpConnector]: true },
       context.signal,
     );
 
     await expect(
-      screen.findByLabelText("Connect Meta Ads"),
+      screen.findByLabelText("Connect Mailchimp"),
     ).resolves.toBeInTheDocument();
   });
 
@@ -3206,11 +3200,7 @@ describe("connectors page", () => {
       },
     );
 
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
-    });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await fill(await screen.findByPlaceholderText("Find connectors"), "meta");
     click(await screen.findByLabelText("Connect Meta Ads"));

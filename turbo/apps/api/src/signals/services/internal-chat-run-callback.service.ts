@@ -3062,7 +3062,6 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
   readonly userMessageProjection:
     | ReturnType<typeof projectUserMessage>
     | undefined;
-  readonly latestPresentationTemplatesEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
   readonly mountedUserPresentationTemplateIds: readonly string[];
 }) {
@@ -3074,8 +3073,6 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
       return resolveThreadGenerationTemplatePrompt({
         explicit: args.userMessageProjection?.primaryTemplate,
         explicitTemplates: args.userMessageProjection?.templates,
-        latestPresentationTemplatesEnabled:
-          args.latestPresentationTemplatesEnabled,
         presentationTemplatesEnabled: args.presentationTemplatesEnabled,
         mountedUserPresentationTemplateIds:
           args.mountedUserPresentationTemplateIds,
@@ -3121,10 +3118,6 @@ async function resolveQueuedMessageTemplateContext(args: {
     await resolveQueuedMessageGenerationTemplatePrompt({
       input: args.input,
       userMessageProjection: args.userMessageProjection,
-      latestPresentationTemplatesEnabled: isFeatureEnabled(
-        FeatureSwitchKey.LatestPresentationTemplates,
-        args.featureSwitchContext,
-      ),
       presentationTemplatesEnabled: isFeatureEnabled(
         FeatureSwitchKey.PresentationTemplates,
         args.featureSwitchContext,
