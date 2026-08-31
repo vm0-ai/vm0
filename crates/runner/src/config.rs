@@ -55,6 +55,7 @@ use guest_contracts::process_containment::{
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::{HomePaths, RootfsPaths, SnapshotPaths};
 use crate::profile;
+use crate::rootfs_lock::{self, RootfsLockGuard};
 
 /// 0 means auto-detect from host CPU and memory at startup.
 pub(crate) const DEFAULT_MAX_CONCURRENT: usize = 0;
@@ -428,7 +429,7 @@ async fn validate_profile_snapshot_artifacts(
 }
 
 pub(crate) struct LockedProfileImageArtifacts {
-    _rootfs_locks: Vec<Flock<File>>,
+    _rootfs_locks: Vec<RootfsLockGuard>,
     _snapshot_locks: Vec<Flock<File>>,
     snapshot_paths: SnapshotPaths,
 }
@@ -455,7 +456,7 @@ impl LockedProfileImageArtifactPaths {
 }
 
 pub(crate) struct LockedRunnerImageArtifacts {
-    _rootfs_locks: Vec<Flock<File>>,
+    _rootfs_locks: Vec<RootfsLockGuard>,
     _snapshot_locks: Vec<Flock<File>>,
     profile_paths: BTreeMap<String, LockedProfileImageArtifactPaths>,
 }
@@ -514,7 +515,7 @@ pub(crate) async fn lock_and_validate_runner_image_artifacts(
 
     let mut rootfs_locks = Vec::with_capacity(rootfs_hashes.len());
     for hash in rootfs_hashes {
-        rootfs_locks.push(crate::lock::acquire_shared(home.rootfs_lock(hash)).await?);
+        rootfs_locks.push(rootfs_lock::acquire_shared(home, hash).await?);
     }
 
     let mut rootfs_paths = BTreeMap::new();
