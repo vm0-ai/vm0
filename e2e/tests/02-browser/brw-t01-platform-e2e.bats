@@ -1,9 +1,9 @@
 #!/usr/bin/env bats
-# brw-t01-platform-e2e.bats — Clerk UI sign-up and sign-in with a single test account
+# brw-t01-platform-e2e.bats — Auth v2 sign-up and sign-in with a single test account
 #
-# These two tests specifically exercise the third-party Clerk form UI via
-# agent-browser, which Playwright tests intentionally bypass:
-#   1. Sign up a new test account via Clerk
+# These two tests exercise the deployed platform-owned Auth v2 forms via
+# agent-browser:
+#   1. Sign up a new test account through Clerk-backed Auth v2
 #   2. Sign out, then sign in with the same account
 #
 # Tests 3-11 (token sign-in, onboarding, chat, team, automation) are covered
@@ -35,7 +35,7 @@ setup_file() {
   SIGN_UP_COMPLETE_FILE="${BATS_FILE_TMPDIR}/sign-up-complete"
   export SIGN_UP_COMPLETE_FILE
 
-  echo "# Clerk UI E2E (sign-up and sign-in)" >&3
+  echo "# Auth v2 E2E (sign-up and sign-in)" >&3
   echo "#   Auth URL: ${OKOU_AUTH_URL:-${E2E_API_BACKEND_URL}}" >&3
   echo "#   Auth domain: ${OKOU_AUTH_DOMAIN:-<default>}" >&3
   echo "#   Auth redirect URL: ${OKOU_AUTH_REDIRECT_URL:-<default>}" >&3
@@ -188,14 +188,14 @@ open_auth_form() {
   echo "# Navigating to $sign_up_url" >&3
   open_auth_form "$sign_up_url" \
     "Boolean(
-      document.querySelector('input[name=\"emailAddress\"]')
+      document.querySelector('input[name=\"email-address\"]')
       && document.querySelector('input[name=\"password\"]')
     )"
   dismiss_cookie_banner
 
   # Fill sign-up form
   echo "# Filling sign-up form with $E2E_ACCOUNT" >&3
-  agent_browser_on_page fill 'input[name="emailAddress"]' "$E2E_ACCOUNT"
+  agent_browser_on_page fill 'input[name="email-address"]' "$E2E_ACCOUNT"
   agent_browser_on_page fill 'input[name="password"]' "$SIGNUP_PASSWORD"
   accept_legal_consent
   click_continue

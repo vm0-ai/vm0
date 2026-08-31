@@ -424,12 +424,14 @@ wait_for_sign_in_email_code_ready() {
 }
 
 # ---------------------------------------------------------------------------
-# accept_legal_consent — Check legal consent checkbox if present
-# Clerk renders this when legal_consent_enabled is on. Safe to call always.
+# accept_legal_consent — Accept legal consent when the auth form requires it
+# Supports both Clerk's native input and the platform-owned Auth v2 control.
 # ---------------------------------------------------------------------------
 accept_legal_consent() {
   if [[ "$(agent_browser_on_page get count 'input[name="legalAccepted"]')" -gt 0 ]]; then
     agent_browser_on_page check 'input[name="legalAccepted"]'
+  elif [[ "$(agent_browser_on_page get count '[role="checkbox"]')" -gt 0 ]]; then
+    agent_browser_on_page find role checkbox click
   fi
 }
 
