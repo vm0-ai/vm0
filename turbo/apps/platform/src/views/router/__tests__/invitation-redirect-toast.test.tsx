@@ -1,7 +1,7 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { search } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
@@ -101,9 +101,17 @@ describe("organization invitation redirect toast", () => {
       "Invitation accepted for another account",
     );
     expect(mismatchTitle).toBeInTheDocument();
-    expect(
-      screen.getByText("Switch account", { selector: "button[data-action]" }),
-    ).toBeInTheDocument();
+    click(
+      screen.getByText("Switch account", {
+        selector: "button[data-action]",
+      }),
+    );
+
+    const dialog = await screen.findByTestId("auth-v2-add-account-dialog");
+    expect(within(dialog).getByTestId("app-auth-v2")).toBeVisible();
+    await expect(
+      within(dialog).findByLabelText("Email address"),
+    ).resolves.toBeVisible();
   });
 
   it("leaves unfinished Clerk invitation redirects untouched", async () => {
