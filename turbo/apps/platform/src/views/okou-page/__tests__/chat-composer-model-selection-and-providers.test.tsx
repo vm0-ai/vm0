@@ -92,8 +92,6 @@ import {
   findComposerEditor,
 } from "./chat-composer-test-helpers.ts";
 
-const SHARED_DATABASE_REALTIME_CHANNEL = "user-org:test-user-123:org_default";
-
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
 });
@@ -935,9 +933,7 @@ describe("chat composer models", () => {
     const reconciledTitle = "Reconciled Fast thread";
     const reconciledSelectedModel = createdBody?.model ?? null;
     const reconciledServiceTier = createdBody?.serviceTier ?? null;
-    let reconciliationEventRequests = 0;
     context.mocks.api(chatThreadsContract.events, ({ query, respond }) => {
-      reconciliationEventRequests++;
       return respond(200, {
         events: [
           {
@@ -957,16 +953,8 @@ describe("chat composer models", () => {
         hasMore: false,
       });
     });
+    changeChatThreadList();
     await waitFor(() => {
-      expect(
-        context.mocks.ably.hasChannelSubscriptionOnChannel(
-          SHARED_DATABASE_REALTIME_CHANNEL,
-        ),
-      ).toBeTruthy();
-    });
-    triggerAblyEvent("threadListChanged");
-    await waitFor(() => {
-      expect(reconciliationEventRequests).toBeGreaterThan(0);
       expect(document.title).toBe(`${reconciledTitle} | VM0`);
     });
     await expectComposerModel("GPT 5.6 Sol Fast");
@@ -1585,13 +1573,6 @@ describe("chat composer models", () => {
     await expectComposerModel("GPT 5.6 Sol Fast");
 
     lifecycle.setCodexServiceTier(null);
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasChannelSubscriptionOnChannel(
-          SHARED_DATABASE_REALTIME_CHANNEL,
-        ),
-      ).toBeTruthy();
-    });
     act(() => {
       changeChatThreadList();
     });
@@ -3555,13 +3536,6 @@ describe("chat composer models", () => {
       computerUseHostId: null,
       createdAt: "2026-07-22T09:00:00.000Z",
     };
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasChannelSubscriptionOnChannel(
-          SHARED_DATABASE_REALTIME_CHANNEL,
-        ),
-      ).toBeTruthy();
-    });
     changeChatThreadList();
     await waitFor(() => {
       expect(

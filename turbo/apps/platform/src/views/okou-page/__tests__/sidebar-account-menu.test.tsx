@@ -24,6 +24,7 @@ import {
   click,
   detachedSetupPage,
   queryAllByRoleFast,
+  setupPageAndWaitForContent,
 } from "../../../__tests__/page-helper.ts";
 import {
   mockedClerk,
@@ -38,8 +39,6 @@ import { createDeferredPromise } from "../../../signals/utils.ts";
 const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
-const SHARED_DATABASE_REALTIME_CHANNEL = "user-org:test-user-123:org_default";
-
 function connectedPersonalCodexProvider(
   overrides: Partial<ModelProviderResponse> = {},
 ): ModelProviderResponse {
@@ -374,9 +373,10 @@ describe("zero sidebar account menu", () => {
   it("shows realtime recovery status beside the expanded account only in debug mode", async () => {
     prepareDefaultAgent();
 
-    detachedSetupPage({
+    await setupPageAndWaitForContent({
       context,
       path: `/agents/${AGENT_ID}/chat`,
+      sharedWorkerTestTransport: "message-port",
       user: {
         id: "test-user-123",
         fullName: "Alex Rivera",
@@ -391,11 +391,6 @@ describe("zero sidebar account menu", () => {
       throw new Error("Account menu trigger not found");
     }
     await waitFor(() => {
-      expect(
-        context.mocks.ably.hasChannelSubscriptionOnChannel(
-          SHARED_DATABASE_REALTIME_CHANNEL,
-        ),
-      ).toBeTruthy();
       expect(within(accountButton).queryByRole("status")).toBeNull();
     });
 
@@ -449,13 +444,7 @@ describe("zero sidebar account menu", () => {
     if (!accountButton) {
       throw new Error("Account menu trigger not found");
     }
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasChannelSubscriptionOnChannel(
-          SHARED_DATABASE_REALTIME_CHANNEL,
-        ),
-      ).toBeTruthy();
-    });
+    expect(within(accountButton).queryByRole("status")).toBeNull();
 
     act(() => {
       context.mocks.ably.triggerConnectionState("disconnected", {

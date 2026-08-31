@@ -25,6 +25,10 @@ import {
 } from "./data-key.ts";
 import { MessagePortSharedDatabaseBridge } from "./message-port-client.ts";
 import { SharedDatabaseMessagePortServer } from "./message-port-server.ts";
+import {
+  subscribeChatDatabaseEvents,
+  subscribeChatDatabaseRecovery,
+} from "../mocks/ably.ts";
 import type {
   SharedDatabaseHeartbeatResult,
   SharedDatabaseWorkerMessage,
@@ -32,7 +36,9 @@ import type {
 import type { TabId } from "./worker-context.ts";
 import {
   bootstrapSharedDatabaseWorker$,
+  catchUpSharedDatabaseAfterRealtimeRecovery$,
   connectSharedDatabaseWorkerClient$,
+  handleSharedDatabaseRealtimeMessage$,
   heartbeatSharedDatabaseWorker$,
   initializeCredentialStore$,
   querySharedDatabaseWorker$,
@@ -275,6 +281,7 @@ export const setupSharedWorkerTestBootstrap$ = command(
     signal: AbortSignal,
   ): void => {
     const directIdentity = options.identity;
+    let directRealtimeForwardingInstalled = false;
     const maps = {
       credentialStores: new Map<string, Store>(),
       credentialAbortControllers: new Map<string, AbortController>(),
@@ -297,6 +304,22 @@ export const setupSharedWorkerTestBootstrap$ = command(
             throw new Error("Authenticated test identity is required");
           }
           options.workerStore.set(bootstrapSharedDatabaseWorker$, signal);
+          if (!directRealtimeForwardingInstalled) {
+            subscribeChatDatabaseEvents((message) => {
+              options.workerStore.set(
+                handleSharedDatabaseRealtimeMessage$,
+                message,
+                signal,
+              );
+            }, signal);
+            subscribeChatDatabaseRecovery(() => {
+              options.workerStore.set(
+                catchUpSharedDatabaseAfterRealtimeRecovery$,
+                signal,
+              );
+            }, signal);
+            directRealtimeForwardingInstalled = true;
+          }
           bridge = new DirectSharedDatabaseBridge(
             options.workerStore,
             directIdentity,

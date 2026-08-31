@@ -33,7 +33,6 @@ const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000901";
-const SHARED_DATABASE_REALTIME_CHANNEL = "user-org:test-user-123:org_default";
 const CHAT_PATH = `/chats/${THREAD_ID}`;
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 const CANCELLATION_RECOVERY_COPY =
@@ -710,13 +709,6 @@ describe("chat run queue", () => {
         ],
         hasMore: false,
       });
-    });
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasChannelSubscriptionOnChannel(
-          SHARED_DATABASE_REALTIME_CHANNEL,
-        ),
-      ).toBeTruthy();
     });
     changeChatThreadList();
     await waitFor(() => {

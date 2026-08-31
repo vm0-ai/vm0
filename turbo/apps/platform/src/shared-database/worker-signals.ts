@@ -100,7 +100,7 @@ const updateSharedDatabaseRealtimeStatus$ = command(
   },
 );
 
-const handleSharedDatabaseRealtimeMessage$ = command(
+export const handleSharedDatabaseRealtimeMessage$ = command(
   ({ get }, payload: unknown, signal: AbortSignal): boolean => {
     signal.throwIfAborted();
     if (!isInboundMessage(payload)) {
@@ -114,7 +114,7 @@ const handleSharedDatabaseRealtimeMessage$ = command(
   },
 );
 
-const catchUpSharedDatabaseAfterRealtimeRecovery$ = command(
+export const catchUpSharedDatabaseAfterRealtimeRecovery$ = command(
   ({ get }, signal: AbortSignal): boolean => {
     signal.throwIfAborted();
     requireRuntime(get(workerRuntimeState$)).catchUpAfterRealtimeRecovery(
