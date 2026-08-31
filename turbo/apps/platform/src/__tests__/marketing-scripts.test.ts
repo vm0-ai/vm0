@@ -7,19 +7,11 @@ const APP_SKELETON_VISIBLE_EVENT = "vm0:app-skeleton-visible";
 const APP_FIRST_CONTENT_VISIBLE_EVENT = "vm0:app-first-content-visible";
 const GOOGLE_TAG_SCRIPT_URL =
   "https://www.googletagmanager.com/gtag/js?id=AW-18144854014";
-const LINKEDIN_SCRIPT_URL =
-  "https://snap.licdn.com/li.lms-analytics/insight.min.js";
 const MARKETING_FALLBACK_DELAY_MS = 30_000;
-
-type LinkedInTracker = ((first: unknown, second: unknown) => void) & {
-  q: [unknown, unknown][];
-};
 
 type MarketingWindow = Window & {
   dataLayer?: IArguments[];
   gtag?: (...args: unknown[]) => void;
-  _linkedin_data_partner_ids?: string[];
-  lintrk?: LinkedInTracker;
 };
 
 type MarketingEntrypointScript = (
@@ -61,25 +53,9 @@ function executeMarketingEntrypoint(hostname: string): MarketingHarness {
   context.mocks.browser.url(`https://${hostname}/`);
   vi.stubGlobal("dataLayer", undefined);
   vi.stubGlobal("gtag", undefined);
-  vi.stubGlobal("_linkedin_data_partner_ids", undefined);
-  vi.stubGlobal("lintrk", undefined);
-
-  const insertionPoint = document.createElement("script");
-  document.head.appendChild(insertionPoint);
-  context.signal.addEventListener("abort", () => {
-    insertionPoint.remove();
-  });
   const requestedScriptUrls: string[] = [];
   vi.spyOn(document.head, "appendChild").mockImplementation(
     <T extends Node>(node: T): T => {
-      if (node instanceof HTMLScriptElement) {
-        requestedScriptUrls.push(node.src);
-      }
-      return node;
-    },
-  );
-  vi.spyOn(document.head, "insertBefore").mockImplementation(
-    <T extends Node>(node: T, _child: Node | null): T => {
       if (node instanceof HTMLScriptElement) {
         requestedScriptUrls.push(node.src);
       }
@@ -145,7 +121,7 @@ function executeMarketingEntrypoint(hostname: string): MarketingHarness {
 }
 
 describe("platform marketing scripts", () => {
-  it("loads Google Ads and LinkedIn after first app content", () => {
+  it("loads Google Ads after first app content", () => {
     const harness = executeMarketingEntrypoint("app.vm0.ai");
 
     expect(
@@ -161,15 +137,7 @@ describe("platform marketing scripts", () => {
     window.dispatchEvent(new Event(APP_FIRST_CONTENT_VISIBLE_EVENT));
     harness.flushIdleCallbacks();
 
-    expect(harness.requestedScriptUrls).toStrictEqual([
-      GOOGLE_TAG_SCRIPT_URL,
-      LINKEDIN_SCRIPT_URL,
-    ]);
-    expect(harness.marketingWindow._linkedin_data_partner_ids).toStrictEqual([
-      "9378804",
-    ]);
-    expect(typeof harness.marketingWindow.lintrk).toBe("function");
-    expect(harness.marketingWindow.lintrk?.q).toStrictEqual([]);
+    expect(harness.requestedScriptUrls).toStrictEqual([GOOGLE_TAG_SCRIPT_URL]);
   });
 
   it("waits 30 seconds before falling back when content never becomes ready", () => {
@@ -180,15 +148,12 @@ describe("platform marketing scripts", () => {
     harness.runFallback();
     harness.flushIdleCallbacks();
 
-    expect(harness.requestedScriptUrls).toStrictEqual([
-      GOOGLE_TAG_SCRIPT_URL,
-      LINKEDIN_SCRIPT_URL,
-    ]);
+    expect(harness.requestedScriptUrls).toStrictEqual([GOOGLE_TAG_SCRIPT_URL]);
 
     window.dispatchEvent(new Event(APP_FIRST_CONTENT_VISIBLE_EVENT));
   });
 
-  it("loads each script once across duplicate readiness and fallback signals", () => {
+  it("loads Google Ads once across duplicate readiness and fallback signals", () => {
     const harness = executeMarketingEntrypoint("app.vm0.ai");
 
     window.dispatchEvent(new Event(APP_FIRST_CONTENT_VISIBLE_EVENT));
@@ -196,10 +161,7 @@ describe("platform marketing scripts", () => {
     harness.runFallback();
     harness.flushIdleCallbacks();
 
-    expect(harness.requestedScriptUrls).toStrictEqual([
-      GOOGLE_TAG_SCRIPT_URL,
-      LINKEDIN_SCRIPT_URL,
-    ]);
+    expect(harness.requestedScriptUrls).toStrictEqual([GOOGLE_TAG_SCRIPT_URL]);
   });
 
   it("does not request scripts when only the app skeleton is visible", () => {
@@ -226,10 +188,6 @@ describe("platform marketing scripts", () => {
       expect(harness.fallbackDelay).toBeUndefined();
       expect(harness.marketingWindow.dataLayer).toBeUndefined();
       expect(harness.marketingWindow.gtag).toBeUndefined();
-      expect(
-        harness.marketingWindow._linkedin_data_partner_ids,
-      ).toBeUndefined();
-      expect(harness.marketingWindow.lintrk).toBeUndefined();
       expect(harness.requestedScriptUrls).toStrictEqual([]);
     },
   );

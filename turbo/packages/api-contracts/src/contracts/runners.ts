@@ -1,4 +1,5 @@
 import { z } from "zod";
+
 import { authHeadersSchema, initContract } from "./base";
 import {
   executionFirewallInlineEntrySchema,
@@ -21,6 +22,8 @@ import {
   runnerHostnameSchema,
 } from "./runner-primitives";
 import { eventSequenceNumberSchema } from "./runs";
+
+export { BUILTIN_FIREWALL_CATALOG_MAX_BYTES } from "@okouai/connectors/connector-catalog/contracts";
 
 export {
   CANONICAL_GUEST_HOME_DIR,
@@ -74,7 +77,6 @@ export const RUNNER_CANCELLATION_RECOVERY_GRACE_MS = 90_000;
 export const CANCELLATION_RECOVERY_STALE_AFTER_MS =
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS + 30_000;
 export const BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION = 1;
-export const BUILTIN_FIREWALL_CATALOG_MAX_BYTES = 16 * 1024 * 1024;
 export const RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX = 512;
 export const sessionHistoryEncodingSchema = z.enum([
   SESSION_HISTORY_ENCODING_IDENTITY,

@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 
-import { CONNECTOR_CATALOG_MAX_RAW_BYTES } from "@okouai/api-contracts/contracts/connector-catalog";
-import type { ConnectorCatalogSyncFailureCode } from "@okouai/api-contracts/contracts/connector-catalog-diagnostics";
 import { z } from "zod";
 
+import {
+  CONNECTOR_CATALOG_MAX_RAW_BYTES,
+  type ConnectorCatalogValidationFailureCode,
+} from "../contracts";
 import { attempt, parseJson } from "../safe";
 import {
   CONNECTOR_CATALOG_ACTIVE_KEY,
@@ -83,7 +85,7 @@ export interface ConnectorCatalogArtifactReader {
 }
 
 class ConnectorCatalogArtifactError extends Error {
-  constructor(readonly code: ConnectorCatalogSyncFailureCode) {
+  constructor(readonly code: ConnectorCatalogValidationFailureCode) {
     super(code);
     this.name = "ConnectorCatalogArtifactError";
   }
@@ -91,13 +93,13 @@ class ConnectorCatalogArtifactError extends Error {
 
 export function connectorCatalogArtifactFailureCode(
   value: unknown,
-): ConnectorCatalogSyncFailureCode | undefined {
+): ConnectorCatalogValidationFailureCode | undefined {
   return value instanceof ConnectorCatalogArtifactError
     ? value.code
     : undefined;
 }
 
-function fail(code: ConnectorCatalogSyncFailureCode): never {
+function fail(code: ConnectorCatalogValidationFailureCode): never {
   throw new ConnectorCatalogArtifactError(code);
 }
 
@@ -144,7 +146,7 @@ function decodedJson(bytes: Uint8Array): unknown {
 function parseStrict<T>(
   value: unknown,
   schema: z.ZodType<T>,
-  code: ConnectorCatalogSyncFailureCode,
+  code: ConnectorCatalogValidationFailureCode,
 ): T {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {

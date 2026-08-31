@@ -32,6 +32,17 @@ pub struct DecodedGuestStorageManifestRequest<'a> {
 }
 
 /// Encode a fixed guest storage-manifest request payload.
+///
+/// # Errors
+///
+/// Returns [`ProtocolError`] if `timeout_ms` is zero, `run_id` is empty,
+/// contains a NUL byte, or exceeds [`GUEST_STORAGE_MANIFEST_MAX_RUN_ID_BYTES`]
+/// bytes; if `runtime_dir` is empty, is not absolute, contains a NUL byte, or
+/// exceeds [`GUEST_STORAGE_MANIFEST_MAX_RUNTIME_DIR_BYTES`] bytes; if
+/// `manifest_json` exceeds [`MAX_EXEC_STDIN_BYTES`] bytes; if an encoded field
+/// does not fit its wire length field; or if the encoded payload exceeds the
+/// maximum protocol message size. String limits are measured in UTF-8 bytes,
+/// not characters.
 pub fn encode_guest_storage_manifest_request(
     timeout_ms: u32,
     run_id: &str,
@@ -53,6 +64,22 @@ pub fn encode_guest_storage_manifest_request(
 }
 
 /// Encode a full fixed guest storage-manifest request frame into `frame`.
+///
+/// # Errors
+///
+/// Returns [`ProtocolError`] if `timeout_ms` is zero, `run_id` is empty,
+/// contains a NUL byte, or exceeds [`GUEST_STORAGE_MANIFEST_MAX_RUN_ID_BYTES`]
+/// bytes; if `runtime_dir` is empty, is not absolute, contains a NUL byte, or
+/// exceeds [`GUEST_STORAGE_MANIFEST_MAX_RUNTIME_DIR_BYTES`] bytes; if
+/// `manifest_json` exceeds [`MAX_EXEC_STDIN_BYTES`] bytes; if an encoded field
+/// does not fit its wire length field; or if the encoded payload exceeds the
+/// maximum protocol message size. String limits are measured in UTF-8 bytes,
+/// not characters.
+///
+/// Request validation runs before the shared frame encoder clears `frame`, so
+/// validation errors leave the destination unchanged. After validation
+/// succeeds, the shared frame encoder clears `frame` before checking the frame
+/// size and writing the encoded bytes.
 pub fn encode_guest_storage_manifest_request_frame_into(
     frame: &mut Vec<u8>,
     seq: u32,

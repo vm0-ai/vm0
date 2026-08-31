@@ -9,7 +9,7 @@ import { settle } from "../utils";
 import type {
   ConnectorCatalogArtifact,
   ConnectorCatalogArtifactConnector,
-} from "@okouai/connector-catalog-validation/artifacts/artifacts";
+} from "@okouai/connectors/connector-catalog/artifacts/artifacts";
 import {
   registerPreparedStorageVersions,
   storageVersionMatches,
