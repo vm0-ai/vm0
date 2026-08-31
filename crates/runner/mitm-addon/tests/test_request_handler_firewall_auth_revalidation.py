@@ -534,6 +534,9 @@ async def test_unrelated_same_run_policy_change_keeps_equivalent_authorization(
     assert flow.request.headers["Authorization"] == _RESOLVED_AUTHORIZATION
     assert flow.request.query["managed"] == "resolved-for-old-authorization"
     assert flow.metadata[metadata_keys.SANDBOX_RUN_ID] == _ORIGINAL_RUN_ID
+    assert (
+        flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] == "rewritten_stream_decodable"
+    )
 
 
 async def test_different_same_run_allow_decision_fails_closed_without_old_credentials(
