@@ -21,13 +21,8 @@ import {
 } from "../../i18n/resources.ts";
 import { changeI18nLanguage, i18n, initializeI18n } from "../../i18n/index.ts";
 import { locale$, setLocale$ } from "../locale.ts";
-import { localStorageSignals } from "../external/local-storage.ts";
-import { sessionStorageSignals } from "../external/session-storage.ts";
 import { resetSignal } from "../utils.ts";
 import { testContext } from "./test-helpers.ts";
-
-const ACTIVE_ORG_STORAGE_KEY = "clerk-active-org-id";
-const TEST_ORG_ID = "org_initial_locale";
 
 const context = testContext();
 
@@ -229,23 +224,7 @@ describe("bootstrap locale", () => {
     expect(context.store.get(locale$)).toBe(DEFAULT_LOCALE);
   });
 
-  it("does not initialize locale from Web Storage", async () => {
-    context.mocks.browser.language("ja-JP");
-    context.store.set(
-      sessionStorageSignals(ACTIVE_ORG_STORAGE_KEY).set$,
-      TEST_ORG_ID,
-    );
-    context.store.set(
-      localStorageSignals(`vm0:locale:${TEST_ORG_ID}`).set$,
-      "fr-FR",
-    );
-
-    await setupPage({ context, path: "/error", withoutRender: true });
-
-    expect(context.store.get(locale$)).toBe(DEFAULT_LOCALE);
-  });
-
-  it("keeps metadata English and locale logic out of the inline skeleton", () => {
+  it("keeps metadata English and the inline skeleton free of copy", () => {
     const parsedDocument = new DOMParser().parseFromString(
       indexHtml,
       "text/html",
@@ -260,8 +239,5 @@ describe("bootstrap locale", () => {
       expect.stringContaining("your trustworthy AI teammate"),
     );
     expect(skeleton).toHaveTextContent("");
-    expect(indexHtml).not.toContain("copyByLocale");
-    expect(indexHtml).not.toContain("__vm0PreBundleCopy");
-    expect(indexHtml).not.toContain("navigator.language");
   });
 });

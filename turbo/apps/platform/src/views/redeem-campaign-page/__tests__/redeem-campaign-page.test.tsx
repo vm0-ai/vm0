@@ -19,7 +19,7 @@ function usePortugueseLocale(): void {
 }
 
 describe("redeem campaign page", () => {
-  it("renders a ready campaign in Brazilian Portuguese", async () => {
+  it("renders Portuguese app copy with English document metadata", async () => {
     usePortugueseLocale();
     const checkoutUrl = "https://checkout.stripe.com/test/session-pt-br";
     context.mocks.data.redeemResponse({ status: "ready", checkoutUrl });
@@ -38,7 +38,7 @@ describe("redeem campaign page", () => {
       "href",
       checkoutUrl,
     );
-    expect(document.title).toBe("Resgatar seus créditos | VM0");
+    expect(document.title).toBe("Claim your credits | VM0");
   });
 
   it("lets a user redeem a ready campaign through Stripe checkout", async () => {

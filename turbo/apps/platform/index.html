@@ -696,24 +696,28 @@
         }
         window.addEventListener("pagehide", abortOnFinalPageHide);
 
-        window.__vm0AfterFirstPaint(function () {
-          var script = document.createElement("script");
-          script.async = false;
-          script.defer = true;
-          script.crossOrigin = "anonymous";
-          script.dataset.clerkJsScript = "";
-          script.dataset.clerkPublishableKey = publishableKey;
-          if (satellite) {
-            script.dataset.clerkDomain = PRODUCTION_SATELLITE_DOMAIN;
-          }
-          script.onerror = function () {
-            script.remove();
-          };
-          script.onload = startClerk;
-          script.src = scriptUrl;
-          script.type = "text/javascript";
-          document.head.appendChild(script);
-        });
+        window.addEventListener(
+          "vm0:app-supported",
+          function () {
+            var script = document.createElement("script");
+            script.async = false;
+            script.defer = true;
+            script.crossOrigin = "anonymous";
+            script.dataset.clerkJsScript = "";
+            script.dataset.clerkPublishableKey = publishableKey;
+            if (satellite) {
+              script.dataset.clerkDomain = PRODUCTION_SATELLITE_DOMAIN;
+            }
+            script.onerror = function () {
+              script.remove();
+            };
+            script.onload = startClerk;
+            script.src = scriptUrl;
+            script.type = "text/javascript";
+            document.head.appendChild(script);
+          },
+          { once: true },
+        );
       })();
     </script>
     <link
@@ -721,59 +725,63 @@
       href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
     />
     <script>
-      window.__vm0AfterFirstPaint(function () {
-        (function () {
-          var hostname = window.location.hostname;
-          var isProductionHost =
-            hostname === "vm0.ai" ||
-            hostname.endsWith(".vm0.ai") ||
-            hostname === "okou.ai" ||
-            hostname.endsWith(".okou.ai");
-          if (!isProductionHost) return;
+      window.addEventListener(
+        "vm0:app-supported",
+        function () {
+          (function () {
+            var hostname = window.location.hostname;
+            var isProductionHost =
+              hostname === "vm0.ai" ||
+              hostname.endsWith(".vm0.ai") ||
+              hostname === "okou.ai" ||
+              hostname.endsWith(".okou.ai");
+            if (!isProductionHost) return;
 
-          window.dataLayer = window.dataLayer || [];
-          window.gtag = function () {
-            window.dataLayer.push(arguments);
-          };
-          window.gtag("js", new Date());
-          window.gtag("config", "AW-18144854014");
-          window.gtag("config", "AW-18407336975");
+            window.dataLayer = window.dataLayer || [];
+            window.gtag = function () {
+              window.dataLayer.push(arguments);
+            };
+            window.gtag("js", new Date());
+            window.gtag("config", "AW-18144854014");
+            window.gtag("config", "AW-18407336975");
 
-          var initialized = false;
+            var initialized = false;
 
-          function loadMarketingScripts() {
-            var gtagScript = document.createElement("script");
-            gtagScript.async = true;
-            gtagScript.src =
-              "https://www.googletagmanager.com/gtag/js?id=AW-18144854014";
-            document.head.appendChild(gtagScript);
-          }
-
-          function scheduleMarketingScripts() {
-            if (initialized) return;
-            initialized = true;
-
-            if (typeof window.requestIdleCallback === "function") {
-              window.requestIdleCallback(loadMarketingScripts, {
-                timeout: 1500,
-              });
-              return;
+            function loadMarketingScripts() {
+              var gtagScript = document.createElement("script");
+              gtagScript.async = true;
+              gtagScript.src =
+                "https://www.googletagmanager.com/gtag/js?id=AW-18144854014";
+              document.head.appendChild(gtagScript);
             }
 
-            window.setTimeout(loadMarketingScripts, 0);
-          }
+            function scheduleMarketingScripts() {
+              if (initialized) return;
+              initialized = true;
 
-          // Keep vendor work outside the first-content critical path. The
-          // 30-second guard exceeds the observed mobile P90 startup window and
-          // still bounds bootstraps that never reach real app content.
-          window.addEventListener(
-            "vm0:app-first-content-visible",
-            scheduleMarketingScripts,
-            { once: true },
-          );
-          window.setTimeout(scheduleMarketingScripts, 30000);
-        })();
-      });
+              if (typeof window.requestIdleCallback === "function") {
+                window.requestIdleCallback(loadMarketingScripts, {
+                  timeout: 1500,
+                });
+                return;
+              }
+
+              window.setTimeout(loadMarketingScripts, 0);
+            }
+
+            // Keep vendor work outside the first-content critical path. The
+            // 30-second guard exceeds the observed mobile P90 startup window and
+            // still bounds bootstraps that never reach real app content.
+            window.addEventListener(
+              "vm0:app-first-content-visible",
+              scheduleMarketingScripts,
+              { once: true },
+            );
+            window.setTimeout(scheduleMarketingScripts, 30000);
+          })();
+        },
+        { once: true },
+      );
     </script>
     <script>
       window.__vm0AfterFirstPaint(function () {
@@ -833,21 +841,25 @@
       });
     </script>
     <script>
-      window.__vm0AfterFirstPaint(function () {
-        (function () {
-          var hostname = window.location.hostname.toLowerCase();
-          if (hostname !== "app.vm0.ai" && hostname !== "app.okou.ai") return;
+      window.addEventListener(
+        "vm0:app-supported",
+        function () {
+          (function () {
+            var hostname = window.location.hostname.toLowerCase();
+            if (hostname !== "app.vm0.ai" && hostname !== "app.okou.ai") return;
 
-          var instatusScript = document.createElement("script");
-          instatusScript.src =
-            "https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en";
-          instatusScript.integrity =
-            "sha384-ZW3eZwADOMdlg2fdvESPD7jguK16IC/edxNFakKs81D2lkNdi3BXRmx/g331lkD3";
-          instatusScript.crossOrigin = "anonymous";
-          instatusScript.defer = true;
-          document.body.appendChild(instatusScript);
-        })();
-      });
+            var instatusScript = document.createElement("script");
+            instatusScript.src =
+              "https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en";
+            instatusScript.integrity =
+              "sha384-ZW3eZwADOMdlg2fdvESPD7jguK16IC/edxNFakKs81D2lkNdi3BXRmx/g331lkD3";
+            instatusScript.crossOrigin = "anonymous";
+            instatusScript.defer = true;
+            document.body.appendChild(instatusScript);
+          })();
+        },
+        { once: true },
+      );
     </script>
   </body>
 </html>

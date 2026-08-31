@@ -121,7 +121,6 @@ describe("app skeleton", () => {
     const skeletons = await screen.findAllByRole("status", { name: "Loading" });
     expect(skeletons.length).toBeGreaterThan(0);
     expect(skeletons[0]).toHaveTextContent("");
-    expect(skeletons[0]?.firstElementChild).toHaveClass("animate-pulse");
     expect(skeletons[0]?.querySelectorAll("img")).toHaveLength(3);
     expect(skeletons[0]?.querySelectorAll("img")[0]).toHaveAttribute(
       "src",

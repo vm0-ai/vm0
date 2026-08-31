@@ -27,6 +27,7 @@ const CLERK_SCRIPT_SELECTOR = "script[data-clerk-js-script]";
 const TEST_APP_VERSION = "0.812.5-test";
 const CLERK_LOAD_COMPLETED_MARK = "vm0:bootstrap:clerk-load-completed";
 const CLERK_LOAD_STARTED_MARK = "vm0:bootstrap:clerk-load-started";
+const APP_SUPPORTED_EVENT = "vm0:app-supported";
 
 const PREFETCHED_ONBOARDING_STATUS: OnboardingStatusResponse = {
   defaultAgentId: "c0000000-0000-4000-a000-000000000101",
@@ -129,19 +130,7 @@ function executeClerkBootstrap(html: string): void {
     "location",
     `${clerkBootstrapSource(html)}\n//# sourceURL=platform-clerk-bootstrap-test.js`,
   ) as ClerkBootstrapScript;
-  const previousAfterFirstPaint = window.__vm0AfterFirstPaint;
-  window.__vm0AfterFirstPaint ??= (callback) => {
-    callback();
-  };
-  try {
-    executeEntrypointScript(window, document, location);
-  } finally {
-    if (previousAfterFirstPaint === undefined) {
-      Reflect.deleteProperty(window, "__vm0AfterFirstPaint");
-    } else {
-      window.__vm0AfterFirstPaint = previousAfterFirstPaint;
-    }
-  }
+  executeEntrypointScript(window, document, location);
 }
 
 function captureClerkBootstrapScript(
@@ -180,6 +169,7 @@ function captureClerkBootstrapScript(
     });
 
   executeClerkBootstrap(builtIndexHtml());
+  window.dispatchEvent(new Event(APP_SUPPORTED_EVENT));
   appendSpy.mockRestore();
   if (!clerkScript) {
     throw new Error("Clerk bootstrap did not create the core script");
@@ -245,6 +235,7 @@ function startClerkPage(
         });
 
       executeClerkBootstrap(builtIndexHtml());
+      window.dispatchEvent(new Event(APP_SUPPORTED_EVENT));
       if (!earlyScript) {
         throw new Error("Clerk bootstrap did not run synchronously");
       }
@@ -389,8 +380,6 @@ describe("platform Clerk entrypoint", () => {
     expect(html.indexOf("data-vm0-clerk-bootstrap")).toBeLessThan(
       html.indexOf("var appEntry ="),
     );
-    expect(html).not.toContain("copyByLocale");
-    expect(html).not.toContain("browser-upgrade");
     expect(html).not.toContain("@clerk/ui");
   });
 
@@ -408,12 +397,8 @@ describe("platform Clerk entrypoint", () => {
     expect(() => clerkBootstrapSource(html)).not.toThrow();
   });
 
-  it("preconnects immediately and starts the Clerk core after first paint", () => {
+  it("preconnects immediately and starts Clerk after app support is confirmed", () => {
     context.mocks.browser.url("https://app.vm0.ai/");
-    let afterFirstPaint: (() => void) | undefined;
-    window.__vm0AfterFirstPaint = (callback) => {
-      afterFirstPaint = callback;
-    };
     const appendedNodes: Node[] = [];
     const appendSpy = vi
       .spyOn(document.head, "appendChild")
@@ -434,11 +419,7 @@ describe("platform Clerk entrypoint", () => {
           return node instanceof HTMLScriptElement;
         }),
       ).toHaveLength(0);
-      if (afterFirstPaint === undefined) {
-        throw new Error("Clerk bootstrap did not register its paint callback");
-      }
-
-      afterFirstPaint();
+      window.dispatchEvent(new Event(APP_SUPPORTED_EVENT));
 
       const clerkScripts = appendedNodes.filter((node) => {
         return (
@@ -449,7 +430,6 @@ describe("platform Clerk entrypoint", () => {
       expect(clerkScripts).toHaveLength(1);
     } finally {
       appendSpy.mockRestore();
-      Reflect.deleteProperty(window, "__vm0AfterFirstPaint");
     }
   });
 

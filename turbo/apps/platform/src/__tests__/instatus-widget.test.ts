@@ -9,6 +9,7 @@ const INSTATUS_SCRIPT_URL =
   "https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en";
 const INSTATUS_SCRIPT_INTEGRITY =
   "sha384-ZW3eZwADOMdlg2fdvESPD7jguK16IC/edxNFakKs81D2lkNdi3BXRmx/g331lkD3";
+const APP_SUPPORTED_EVENT = "vm0:app-supported";
 
 type EntrypointScript = (
   windowObject: Window,
@@ -52,19 +53,8 @@ function loadInstatusScripts(hostname: string): HTMLScriptElement[] {
     `${getInstatusLoaderSource()}\n//# sourceURL=platform-instatus-widget-test.js`,
   ) as EntrypointScript;
 
-  const previousAfterFirstPaint = window.__vm0AfterFirstPaint;
-  window.__vm0AfterFirstPaint = (callback) => {
-    callback();
-  };
-  try {
-    executeEntrypointScript(window, document);
-  } finally {
-    if (previousAfterFirstPaint === undefined) {
-      Reflect.deleteProperty(window, "__vm0AfterFirstPaint");
-    } else {
-      window.__vm0AfterFirstPaint = previousAfterFirstPaint;
-    }
-  }
+  executeEntrypointScript(window, document);
+  window.dispatchEvent(new Event(APP_SUPPORTED_EVENT));
   return appendedScripts;
 }
 

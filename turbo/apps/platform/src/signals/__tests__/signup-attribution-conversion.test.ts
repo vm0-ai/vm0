@@ -21,6 +21,7 @@ const context = testContext();
 const STORED_AD_ATTRIBUTION_KEY = "vm0.adAttribution";
 const SIGNUP_SEND_TO = "AW-18144854014/OlLBCNXGgqwcEP7_kcxD";
 const ADSMARCH_SIGNUP_SEND_TO = "AW-18407336975/8mCZCLORrOccEI_YpslE";
+const APP_SUPPORTED_EVENT = "vm0:app-supported";
 const storedAdAttributionStorage = sessionStorageSignals(
   STORED_AD_ATTRIBUTION_KEY,
 );
@@ -84,19 +85,8 @@ function executeMarketingEntrypoint(): WindowWithMarketingQueue {
     "document",
     `${marketingEntrypointSource()}\n//# sourceURL=platform-marketing-entrypoint-test.js`,
   ) as MarketingEntrypointScript;
-  const previousAfterFirstPaint = window.__vm0AfterFirstPaint;
-  window.__vm0AfterFirstPaint = (callback) => {
-    callback();
-  };
-  try {
-    executeEntrypointScript(window, document);
-  } finally {
-    if (previousAfterFirstPaint === undefined) {
-      Reflect.deleteProperty(window, "__vm0AfterFirstPaint");
-    } else {
-      window.__vm0AfterFirstPaint = previousAfterFirstPaint;
-    }
-  }
+  executeEntrypointScript(window, document);
+  window.dispatchEvent(new Event(APP_SUPPORTED_EVENT));
   // The marketing entrypoint has already attempted to schedule its external
   // script load. Restore real timers before bootstrapping Clerk and routes.
   timeout.mockRestore();

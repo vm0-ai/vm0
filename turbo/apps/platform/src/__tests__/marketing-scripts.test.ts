@@ -5,6 +5,7 @@ import { testContext } from "../signals/__tests__/test-helpers.ts";
 
 const APP_SKELETON_VISIBLE_EVENT = "vm0:app-skeleton-visible";
 const APP_FIRST_CONTENT_VISIBLE_EVENT = "vm0:app-first-content-visible";
+const APP_SUPPORTED_EVENT = "vm0:app-supported";
 const GOOGLE_TAG_SCRIPT_URL =
   "https://www.googletagmanager.com/gtag/js?id=AW-18144854014";
 const MARKETING_FALLBACK_DELAY_MS = 30_000;
@@ -28,9 +29,9 @@ interface MarketingHarness {
   readonly fallbackDelay: number | undefined;
   readonly marketingWindow: MarketingWindow;
   readonly requestedScriptUrls: string[];
-  readonly flushFirstPaint: () => void;
   readonly flushIdleCallbacks: () => void;
   readonly runFallback: () => void;
+  readonly signalAppSupported: () => void;
 }
 
 const context = testContext();
@@ -87,40 +88,18 @@ function executeMarketingEntrypoint(hostname: string): MarketingHarness {
     },
   );
 
-  const afterFirstPaintCallbacks: (() => void)[] = [];
-  const previousAfterFirstPaint = window.__vm0AfterFirstPaint;
-  window.__vm0AfterFirstPaint = (callback) => {
-    afterFirstPaintCallbacks.push(callback);
-  };
-
   const executeEntrypointScript = new Function(
     "window",
     "document",
     `${marketingEntrypointSource()}\n//# sourceURL=platform-marketing-entrypoint-test.js`,
   ) as MarketingEntrypointScript;
-  try {
-    executeEntrypointScript(window, document);
-  } finally {
-    if (previousAfterFirstPaint === undefined) {
-      Reflect.deleteProperty(window, "__vm0AfterFirstPaint");
-    } else {
-      window.__vm0AfterFirstPaint = previousAfterFirstPaint;
-    }
-  }
+  executeEntrypointScript(window, document);
 
   let fallback: ScheduledTimeout | undefined;
 
   return {
     get fallbackDelay() {
       return fallback?.delay;
-    },
-    flushFirstPaint: () => {
-      for (const callback of afterFirstPaintCallbacks.splice(0)) {
-        callback();
-      }
-      fallback = scheduledTimeouts.find(({ delay }) => {
-        return delay === MARKETING_FALLBACK_DELAY_MS;
-      });
     },
     flushIdleCallbacks: () => {
       for (const callback of idleCallbacks.splice(0)) {
@@ -140,6 +119,12 @@ function executeMarketingEntrypoint(hostname: string): MarketingHarness {
       }
       fallback.callback();
     },
+    signalAppSupported: () => {
+      window.dispatchEvent(new Event(APP_SUPPORTED_EVENT));
+      fallback = scheduledTimeouts.find(({ delay }) => {
+        return delay === MARKETING_FALLBACK_DELAY_MS;
+      });
+    },
   };
 }
 
@@ -149,7 +134,7 @@ describe("platform marketing scripts", () => {
 
     expect(harness.marketingWindow.dataLayer).toBeUndefined();
     expect(harness.requestedScriptUrls).toStrictEqual([]);
-    harness.flushFirstPaint();
+    harness.signalAppSupported();
 
     expect(
       harness.marketingWindow.dataLayer?.map((entry) => {
@@ -169,7 +154,7 @@ describe("platform marketing scripts", () => {
 
   it("waits 30 seconds before falling back when content never becomes ready", () => {
     const harness = executeMarketingEntrypoint("app.vm0.ai");
-    harness.flushFirstPaint();
+    harness.signalAppSupported();
 
     expect(harness.fallbackDelay).toBe(MARKETING_FALLBACK_DELAY_MS);
     expect(harness.requestedScriptUrls).toStrictEqual([]);
@@ -183,7 +168,7 @@ describe("platform marketing scripts", () => {
 
   it("loads Google Ads once across duplicate readiness and fallback signals", () => {
     const harness = executeMarketingEntrypoint("app.vm0.ai");
-    harness.flushFirstPaint();
+    harness.signalAppSupported();
 
     window.dispatchEvent(new Event(APP_FIRST_CONTENT_VISIBLE_EVENT));
     window.dispatchEvent(new Event(APP_FIRST_CONTENT_VISIBLE_EVENT));
@@ -195,7 +180,7 @@ describe("platform marketing scripts", () => {
 
   it("does not request scripts when only the app skeleton is visible", () => {
     const harness = executeMarketingEntrypoint("app.vm0.ai");
-    harness.flushFirstPaint();
+    harness.signalAppSupported();
 
     window.dispatchEvent(new Event(APP_SKELETON_VISIBLE_EVENT));
     harness.flushIdleCallbacks();
@@ -210,7 +195,7 @@ describe("platform marketing scripts", () => {
     "does not initialize or request scripts on %s",
     (hostname) => {
       const harness = executeMarketingEntrypoint(hostname);
-      harness.flushFirstPaint();
+      harness.signalAppSupported();
 
       window.dispatchEvent(new Event(APP_SKELETON_VISIBLE_EVENT));
       window.dispatchEvent(new Event(APP_FIRST_CONTENT_VISIBLE_EVENT));
