@@ -2,7 +2,11 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  queryAllByRoleFast,
+  setupPageAndWaitForContent,
+} from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
@@ -53,7 +57,7 @@ describe("chat lifecycle", () => {
       ],
     });
 
-    detachedSetupPage({
+    await setupPageAndWaitForContent({
       context,
       path: "/chats/e7000000-0000-4000-a000-000000000001",
     });

@@ -254,6 +254,56 @@ export function detachedSetupPage(options: Parameters<typeof setupPage>[0]) {
   detach(setupPage(options), Reason.Entrance, "test");
 }
 
+function waitForPageContent(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let skeletonMounted = false;
+    const observer = new MutationObserver(checkPageContent);
+
+    function cleanup(): void {
+      observer.disconnect();
+      signal.removeEventListener("abort", handleAbort);
+    }
+
+    function handleAbort(): void {
+      cleanup();
+      reject(signal.reason);
+    }
+
+    function checkPageContent(): void {
+      const skeleton = document.querySelector('[data-testid="app-skeleton"]');
+      skeletonMounted ||= skeleton !== null;
+      if (
+        skeletonMounted &&
+        (skeleton === null || skeleton.getAttribute("aria-hidden") === "true")
+      ) {
+        cleanup();
+        resolve();
+      }
+    }
+
+    observer.observe(document.body, {
+      attributeFilter: ["aria-hidden"],
+      attributes: true,
+      childList: true,
+      subtree: true,
+    });
+    signal.addEventListener("abort", handleAbort, { once: true });
+    checkPageContent();
+  });
+}
+
+/**
+ * Start the real page bootstrap and resolve when the loading surface gives
+ * way to user-visible page content. Long-running page daemons stay detached.
+ */
+export async function setupPageAndWaitForContent(
+  options: Parameters<typeof setupPage>[0],
+): Promise<void> {
+  const contentReady = waitForPageContent(options.context.signal);
+  detachedSetupPage(options);
+  await contentReady;
+}
+
 // Helper to create a browser history mock that updates mockLocation.
 function createPushStateMock(signal: AbortSignal) {
   interface HistoryEntry {
