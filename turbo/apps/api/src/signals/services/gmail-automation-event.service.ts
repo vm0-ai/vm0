@@ -25,7 +25,7 @@ import { logger } from "../../lib/log";
 import { testOverride } from "../../lib/singleton";
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../../lib/time";
-import { safeJsonParse, tapError } from "../utils";
+import { safeJsonParse, settle, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
@@ -41,6 +41,7 @@ import {
 } from "./automation-event-source-timing.service";
 import { runWorkflowAutomationNow$ } from "./workflow-automation-run.service";
 import type { AutomationRow } from "./workflow-automation-launch.service";
+import type { WorkflowQueueAdmissionTransaction } from "./workflow-chat-event-queue.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { workflowAutomationCanFire } from "./workflow-automation-access.service";
 import { ensureWorkflowUserAutomationThread } from "./workflow-user-automation-thread.service";
@@ -1829,6 +1830,46 @@ const gmailRunStarterOverride = testOverride<
   return undefined;
 });
 
+class GmailAutomationSourceChangedError extends Error {
+  constructor() {
+    super("Gmail automation source changed before durable queue admission");
+    this.name = "GmailAutomationSourceChangedError";
+  }
+}
+
+async function persistCurrentGmailAutomationSource(
+  tx: WorkflowQueueAdmissionTransaction,
+  args: {
+    readonly automationId: string;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorSourceId: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  await lockConnectorAccountTarget(tx, {
+    orgId: args.orgId,
+    userId: args.userId,
+    target: { kind: "builtin", connectorSlug: "gmail" },
+  });
+  const [current] = await tx
+    .select({ id: workflowAutomations.id })
+    .from(workflowAutomations)
+    .where(
+      and(
+        eq(workflowAutomations.id, args.automationId),
+        eq(workflowAutomations.enabled, true),
+        eq(workflowAutomations.eventConnectorId, args.connectorSourceId),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  signal.throwIfAborted();
+  if (!current) {
+    throw new GmailAutomationSourceChangedError();
+  }
+}
+
 type GmailDispatchStateResult =
   | {
       readonly kind: "ok";
@@ -2644,7 +2685,6 @@ const startGmailWorkflowRun$ = command(
     },
     signal: AbortSignal,
   ): Promise<"ok" | "error" | "superseded"> => {
-    const db = set(writeDb$);
     const runInput = await args.timing.measure(
       "api_dispatch_pre_create_zero_automation_event_build_run_input",
       () => {
@@ -2665,28 +2705,8 @@ const startGmailWorkflowRun$ = command(
       },
     );
     signal.throwIfAborted();
-    return await db.transaction(async (tx) => {
-      await lockConnectorAccountTarget(tx, {
-        orgId: args.automation.automation.orgId,
-        userId: args.automation.automation.ownerUserId,
-        target: { kind: "builtin", connectorSlug: "gmail" },
-      });
-      const [current] = await tx
-        .select({ id: workflowAutomations.id })
-        .from(workflowAutomations)
-        .where(
-          and(
-            eq(workflowAutomations.id, args.automation.automation.id),
-            eq(workflowAutomations.enabled, true),
-            eq(workflowAutomations.eventConnectorId, args.connectorSourceId),
-          ),
-        )
-        .limit(1);
-      signal.throwIfAborted();
-      if (!current) {
-        return "superseded";
-      }
-      const result = await set(
+    const started = await settle(
+      set(
         runWorkflowAutomationNow$,
         {
           due: {
@@ -2699,16 +2719,34 @@ const startGmailWorkflowRun$ = command(
           apiStartTime: args.apiStartTime,
           triggerSource: "automation-event",
           triggerBrief: runInput.triggerBrief,
+          persistSourceTransition: async (tx) => {
+            await persistCurrentGmailAutomationSource(
+              tx,
+              {
+                automationId: args.automation.automation.id,
+                orgId: args.automation.automation.orgId,
+                userId: args.automation.automation.ownerUserId,
+                connectorSourceId: args.connectorSourceId,
+              },
+              signal,
+            );
+          },
           dispatchFailedCallbacks: dispatchFailedRunCallbacks,
           timing: args.timing.collectorForRunStart(),
         },
         signal,
-      );
-      signal.throwIfAborted();
-      return result.kind === "ok" || result.kind === "enqueued"
-        ? "ok"
-        : "error";
-    });
+      ),
+      signal,
+    );
+    if (!started.ok) {
+      if (started.error instanceof GmailAutomationSourceChangedError) {
+        return "superseded";
+      }
+      throw started.error;
+    }
+    return started.value.kind === "ok" || started.value.kind === "enqueued"
+      ? "ok"
+      : "error";
   },
 );
 
