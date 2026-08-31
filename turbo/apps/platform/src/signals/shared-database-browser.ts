@@ -1,10 +1,12 @@
 import { command } from "ccstate";
-import SharedDatabaseWorker from "virtual:shared-database-worker";
+import sharedDatabaseWorkerAssetUrl from "virtual:shared-database-worker";
+import { getBuildVersion } from "../lib/build-info.ts";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import { sentryLogContext } from "../lib/sentry-config.ts";
 import { resolveApiBaseForTarget } from "./api-base.ts";
 import { authRecovery$, authenticatedIdentity$ } from "./auth.ts";
 import type { AuthRecovery } from "./auth-retry.ts";
+import { invalidateChatIndicatorsFromRealtime$ } from "./chat-thread-list-reload.ts";
 import { logger } from "./log.ts";
 import {
   createChildAbortController,
@@ -88,6 +90,16 @@ function isJavaScriptResponse(response: Response): boolean {
   );
 }
 
+function sharedDatabaseWorkerUrl(): URL {
+  const version = getBuildVersion();
+  if (version === null) {
+    throw new Error("App version is required for the shared database worker");
+  }
+  const url = new URL(sharedDatabaseWorkerAssetUrl, location.href);
+  url.searchParams.set("okou-app-version", version);
+  return url;
+}
+
 async function waitForWorkerRetry(signal: AbortSignal): Promise<void> {
   const controller = createChildAbortController(signal);
   const ready = createDeferredPromise<void>(controller.signal);
@@ -151,7 +163,10 @@ export const setupSharedDatabaseBridge$ = command(
     const authenticationRequiredTarget = new EventTarget();
     const reconnectingBridge = new ReconnectingSharedDatabaseBridge({
       createBridge: (events) => {
-        const worker = new SharedDatabaseWorker({ name: "okou core service" });
+        const worker = new SharedWorker(sharedDatabaseWorkerUrl(), {
+          name: "okou core service",
+          type: "module",
+        });
         const portBridge = new MessagePortSharedDatabaseBridge(
           worker.port,
           apiBaseUrl,
@@ -195,6 +210,9 @@ export const setupSharedDatabaseBridge$ = command(
           authenticationRequiredTarget.dispatchEvent(
             new Event(AUTHENTICATION_REQUIRED_EVENT),
           );
+        },
+        indicatorsInvalidated: (payload) => {
+          set(invalidateChatIndicatorsFromRealtime$, payload);
         },
         reloadRequired: () => {
           location.reload();

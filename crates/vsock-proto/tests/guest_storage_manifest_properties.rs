@@ -544,6 +544,19 @@ fn result_enforces_capture_contract_for_each_stream() {
         let decoded = decode_guest_storage_manifest_result(&payload).unwrap();
         assert_eq!(decoded.stdout, stdout);
         assert_eq!(decoded.stderr, stderr);
+        let expected_frame = encode(MSG_GUEST_STORAGE_MANIFEST_RESULT, 42, &payload).unwrap();
+        let mut frame = b"stale frame bytes".to_vec();
+        encode_guest_storage_manifest_result_frame_into(
+            &mut frame,
+            42,
+            ExecTermination::Exited { exit_code: 7 },
+            u32::MAX,
+            stdout,
+            stderr,
+            "boundary",
+        )
+        .unwrap();
+        assert_eq!(frame, expected_frame);
 
         let oversized_output = vec![0xA5; GUEST_STORAGE_MANIFEST_OUTPUT_LIMIT_BYTES + 1];
         let selected = ExecCapturedOutput::Captured {
@@ -565,6 +578,24 @@ fn result_enforces_capture_contract_for_each_stream() {
                 if field == stream.name()
                     && size == GUEST_STORAGE_MANIFEST_OUTPUT_LIMIT_BYTES + 1
         ));
+        let mut frame = b"stale frame bytes".to_vec();
+        let frame_error = encode_guest_storage_manifest_result_frame_into(
+            &mut frame,
+            42,
+            ExecTermination::WaitFailed,
+            0,
+            stdout,
+            stderr,
+            "",
+        )
+        .unwrap_err();
+        assert!(matches!(
+            frame_error,
+            ProtocolError::PayloadTooLarge(field, size)
+                if field == stream.name()
+                    && size == GUEST_STORAGE_MANIFEST_OUTPUT_LIMIT_BYTES + 1
+        ));
+        assert_eq!(frame, b"stale frame bytes");
         let generic_payload =
             encode_exec_result(ExecTermination::WaitFailed, 0, stdout, stderr, "").unwrap();
         let decode_error = decode_guest_storage_manifest_result(&generic_payload).unwrap_err();
@@ -582,6 +613,22 @@ fn result_enforces_capture_contract_for_each_stream() {
                 "guest_storage_manifest_result output must be captured"
             ))
         ));
+        let mut frame = b"stale frame bytes".to_vec();
+        assert!(matches!(
+            encode_guest_storage_manifest_result_frame_into(
+                &mut frame,
+                42,
+                ExecTermination::Cancelled,
+                0,
+                stdout,
+                stderr,
+                "",
+            ),
+            Err(ProtocolError::InvalidPayload(
+                "guest_storage_manifest_result output must be captured"
+            ))
+        ));
+        assert_eq!(frame, b"stale frame bytes");
         let generic_payload =
             encode_exec_result(ExecTermination::Cancelled, 0, stdout, stderr, "").unwrap();
         assert!(matches!(
@@ -591,4 +638,57 @@ fn result_enforces_capture_contract_for_each_stream() {
             ))
         ));
     }
+}
+
+#[test]
+fn result_frame_enforces_diagnostic_boundary() {
+    let stdout = ExecCapturedOutput::Captured {
+        bytes: b"stdout",
+        truncated: true,
+    };
+    let stderr = ExecCapturedOutput::Captured {
+        bytes: b"stderr",
+        truncated: false,
+    };
+    let max_diagnostic = "x".repeat(u16::MAX as usize);
+    let payload = encode_guest_storage_manifest_result(
+        ExecTermination::TimedOut,
+        u32::MAX,
+        stdout,
+        stderr,
+        &max_diagnostic,
+    )
+    .unwrap();
+    let expected_frame = encode(MSG_GUEST_STORAGE_MANIFEST_RESULT, 42, &payload).unwrap();
+    let mut frame = b"stale frame bytes".to_vec();
+    encode_guest_storage_manifest_result_frame_into(
+        &mut frame,
+        42,
+        ExecTermination::TimedOut,
+        u32::MAX,
+        stdout,
+        stderr,
+        &max_diagnostic,
+    )
+    .unwrap();
+    assert_eq!(frame, expected_frame);
+
+    let oversized_diagnostic = format!("{max_diagnostic}x");
+    let mut frame = b"stale frame bytes".to_vec();
+    let error = encode_guest_storage_manifest_result_frame_into(
+        &mut frame,
+        42,
+        ExecTermination::TimedOut,
+        u32::MAX,
+        stdout,
+        stderr,
+        &oversized_diagnostic,
+    )
+    .unwrap_err();
+    assert!(matches!(
+        error,
+        ProtocolError::PayloadTooLarge("diagnostic", size)
+            if size == oversized_diagnostic.len()
+    ));
+    assert_eq!(frame, b"stale frame bytes");
 }

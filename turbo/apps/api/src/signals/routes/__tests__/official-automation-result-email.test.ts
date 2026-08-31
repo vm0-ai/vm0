@@ -216,22 +216,17 @@ async function completeRun(
   args: { readonly exitCode: number; readonly output?: string },
 ): Promise<void> {
   const reported = await claimAndReportOutput(scenario, runId, args.output);
-  await webhooks.requestAgentCheckpoint(
-    {
-      runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId: `official-result-email-${runId}`,
-      cliAgentSessionHistoryHash: createHash("sha256")
-        .update(`official result email history ${runId}`)
-        .digest("hex"),
-    },
-    reported.headers,
-    [200],
-  );
   await webhooks.requestAgentComplete(
     {
       runId,
       exitCode: args.exitCode,
+      checkpoint: {
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `official-result-email-${runId}`,
+        cliAgentSessionHistoryHash: createHash("sha256")
+          .update(`official result email history ${runId}`)
+          .digest("hex"),
+      },
       ...(reported.lastEventSequence === undefined
         ? {}
         : { lastEventSequence: reported.lastEventSequence }),

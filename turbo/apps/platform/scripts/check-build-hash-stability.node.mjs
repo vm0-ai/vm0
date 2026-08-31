@@ -12,11 +12,16 @@ import {
   constants as zlibConstants,
   gzipSync,
 } from "node:zlib";
+import { Window } from "happy-dom";
 
 const COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/u;
+const COMMIT_SHA_META_NAME = "okou-app-git-commit-sha";
+const VERSION_META_NAME = "okou-app-version";
 const VENDOR_FILE_PATTERN = /^vendor-[^/]+\.js$/u;
 const RUNTIME_FILE_PATTERN = /^rolldown-runtime-[^/]+\.js$/u;
 const WORKER_FILE_PATTERN = /^shared-database-worker-[^/]+\.js$/u;
+const AFTER_FIRST_PAINT_FILE_PATTERN =
+  /^bootstrap-after-first-paint-[a-f0-9]{12}\.js$/u;
 const MERMAID_LITE_MODULE_PATH =
   "/packages/mermaid-lite/dist/mermaid.esm.min.mjs";
 const BASELINE_COMMIT_SHA = "1111111111111111111111111111111111111111";
@@ -40,7 +45,7 @@ const baselineCommitSha =
   appCommitSha === BASELINE_COMMIT_SHA
     ? ALTERNATE_COMMIT_SHA
     : BASELINE_COMMIT_SHA;
-const alternateVersion = `${appVersion}-bundle-stability`;
+const alternateVersion = `${appVersion}-bundle-stability"><script data-okou-build-metadata-injection></script>`;
 const sourceMaps = process.argv.includes("--sourcemap");
 const temporaryRoot = await mkdtemp(
   path.join(tmpdir(), "okou-app-hash-stability-"),
@@ -119,6 +124,32 @@ async function describeFile(assetsDirectory, fileName) {
   };
 }
 
+async function describeRuntimeMetadata(outputDirectory) {
+  const html = await readFile(path.join(outputDirectory, "index.html"), "utf8");
+  const window = new Window();
+  const document = new window.DOMParser().parseFromString(html, "text/html");
+
+  function exactlyOneMetaContent(name) {
+    const elements = document.querySelectorAll(`meta[name="${name}"]`);
+    assert.equal(elements.length, 1, `Expected exactly one ${name} meta tag`);
+    const content = elements[0]?.getAttribute("content");
+    assert.notEqual(content, null, `${name} meta tag must have content`);
+    return content;
+  }
+
+  const runtimeMetadata = {
+    commitSha: exactlyOneMetaContent(COMMIT_SHA_META_NAME),
+    version: exactlyOneMetaContent(VERSION_META_NAME),
+  };
+  assert.equal(
+    document.querySelector("script[data-okou-build-metadata-injection]"),
+    null,
+    "Runtime metadata must remain escaped inside its meta attribute",
+  );
+  window.close();
+  return runtimeMetadata;
+}
+
 function exactlyOne(files, pattern, label) {
   const matches = files.filter((fileName) => {
     return pattern.test(fileName);
@@ -152,8 +183,15 @@ async function describeBuild(outputDirectory) {
     WORKER_FILE_PATTERN,
     "SharedWorker JavaScript file",
   );
+  const afterFirstPaintFile = exactlyOne(
+    javaScriptFiles,
+    AFTER_FIRST_PAINT_FILE_PATTERN,
+    "after-first-paint bootstrap JavaScript file",
+  );
   const appFiles = javaScriptFiles.filter((fileName) => {
-    return ![vendorFile, runtimeFile, workerFile].includes(fileName);
+    return ![vendorFile, runtimeFile, workerFile, afterFirstPaintFile].includes(
+      fileName,
+    );
   });
   assert.equal(
     appFiles.length,
@@ -163,20 +201,21 @@ async function describeBuild(outputDirectory) {
   const appFile = appFiles[0];
   assert.ok(appFile);
 
-  const result = {
+  const artifacts = {
     app: await describeFile(assetsDirectory, appFile),
+    afterFirstPaint: await describeFile(assetsDirectory, afterFirstPaintFile),
     vendor: await describeFile(assetsDirectory, vendorFile),
     runtime: await describeFile(assetsDirectory, runtimeFile),
     worker: await describeFile(assetsDirectory, workerFile),
   };
   if (sourceMaps) {
     for (const label of ["app", "vendor", "worker"]) {
-      const mapFile = `${result[label].fileName}.map`;
+      const mapFile = `${artifacts[label].fileName}.map`;
       assert.ok(files.includes(mapFile), `Expected source map: ${mapFile}`);
     }
     const vendorSourceMap = JSON.parse(
       await readFile(
-        path.join(assetsDirectory, `${result.vendor.fileName}.map`),
+        path.join(assetsDirectory, `${artifacts.vendor.fileName}.map`),
         "utf8",
       ),
     );
@@ -187,7 +226,10 @@ async function describeBuild(outputDirectory) {
       "Expected the vendor source map to include the generated Mermaid module",
     );
   }
-  return result;
+  return {
+    artifacts,
+    runtimeMetadata: await describeRuntimeMetadata(outputDirectory),
+  };
 }
 
 async function runBuild({
@@ -235,10 +277,10 @@ async function runBuild({
 }
 
 function assertStable(builds, label) {
-  const expected = builds[0][label];
+  const expected = builds[0].artifacts[label];
   for (const build of builds.slice(1)) {
-    assert.equal(build[label].fileName, expected.fileName);
-    assert.equal(build[label].sha256, expected.sha256);
+    assert.equal(build.artifacts[label].fileName, expected.fileName);
+    assert.equal(build.artifacts[label].sha256, expected.sha256);
   }
 }
 
@@ -277,25 +319,57 @@ try {
   });
   const builds = [baseline, versionChange, canonical];
 
-  for (const label of ["vendor", "runtime"]) {
+  for (const label of [
+    "app",
+    "afterFirstPaint",
+    "vendor",
+    "runtime",
+    "worker",
+  ]) {
     assertStable(builds, label);
   }
-  for (const label of ["vendor", "runtime", "worker"]) {
+  assert.deepEqual(baseline.runtimeMetadata, {
+    commitSha: baselineCommitSha,
+    version: appVersion,
+  });
+  assert.deepEqual(versionChange.runtimeMetadata, {
+    commitSha: appCommitSha,
+    version: alternateVersion,
+  });
+  assert.deepEqual(canonical.runtimeMetadata, {
+    commitSha: appCommitSha,
+    version: appVersion,
+  });
+  for (const label of ["afterFirstPaint", "vendor", "runtime", "worker"]) {
     assertStable([canonical, appMutation], label);
   }
-  for (const label of ["runtime", "worker"]) {
+  for (const label of ["afterFirstPaint", "runtime", "worker"]) {
     assertStable([canonical, mermaidMutation], label);
   }
-  assert.notEqual(baseline.app.fileName, canonical.app.fileName);
-  assert.notEqual(baseline.app.sha256, canonical.app.sha256);
-  assert.notEqual(versionChange.app.fileName, canonical.app.fileName);
-  assert.notEqual(versionChange.app.sha256, canonical.app.sha256);
-  assert.notEqual(appMutation.app.fileName, canonical.app.fileName);
-  assert.notEqual(appMutation.app.sha256, canonical.app.sha256);
-  assert.notEqual(mermaidMutation.vendor.fileName, canonical.vendor.fileName);
-  assert.notEqual(mermaidMutation.vendor.sha256, canonical.vendor.sha256);
-  assert.notEqual(mermaidMutation.app.fileName, canonical.app.fileName);
-  assert.notEqual(mermaidMutation.app.sha256, canonical.app.sha256);
+  assert.notEqual(
+    appMutation.artifacts.app.fileName,
+    canonical.artifacts.app.fileName,
+  );
+  assert.notEqual(
+    appMutation.artifacts.app.sha256,
+    canonical.artifacts.app.sha256,
+  );
+  assert.notEqual(
+    mermaidMutation.artifacts.vendor.fileName,
+    canonical.artifacts.vendor.fileName,
+  );
+  assert.notEqual(
+    mermaidMutation.artifacts.vendor.sha256,
+    canonical.artifacts.vendor.sha256,
+  );
+  assert.notEqual(
+    mermaidMutation.artifacts.app.fileName,
+    canonical.artifacts.app.fileName,
+  );
+  assert.notEqual(
+    mermaidMutation.artifacts.app.sha256,
+    canonical.artifacts.app.sha256,
+  );
 
   process.stdout.write(
     `${JSON.stringify(
@@ -304,33 +378,39 @@ try {
           baselineCommit: {
             commitSha: baselineCommitSha,
             version: appVersion,
-            artifacts: baseline,
+            ...baseline,
           },
           canonical: {
             commitSha: appCommitSha,
             version: appVersion,
-            artifacts: canonical,
+            ...canonical,
           },
           appMutation: {
             commitSha: appCommitSha,
             version: appVersion,
-            artifacts: appMutation,
+            ...appMutation,
           },
           mermaidMutation: {
             commitSha: appCommitSha,
             version: appVersion,
-            artifacts: mermaidMutation,
+            ...mermaidMutation,
           },
           versionChange: {
             commitSha: appCommitSha,
             version: alternateVersion,
-            artifacts: versionChange,
+            ...versionChange,
           },
         },
         verifiedStable: {
-          appMutation: ["vendor", "runtime", "worker"],
-          mermaidMutation: ["runtime", "worker"],
-          metadataChanges: ["vendor", "runtime"],
+          appMutation: ["afterFirstPaint", "vendor", "runtime", "worker"],
+          mermaidMutation: ["afterFirstPaint", "runtime", "worker"],
+          metadataChanges: [
+            "app",
+            "afterFirstPaint",
+            "vendor",
+            "runtime",
+            "worker",
+          ],
         },
         verifiedInvalidated: {
           appMutation: ["app"],

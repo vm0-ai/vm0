@@ -169,9 +169,29 @@ pub fn encode_exec_result_frame_into(
     diagnostic: &str,
 ) -> Result<(), ProtocolError> {
     frame.clear();
+    encode_exec_result_frame_into_with_type::<MSG_EXEC_RESULT>(
+        frame,
+        seq,
+        termination,
+        duration_ms,
+        stdout,
+        stderr,
+        diagnostic,
+    )
+}
+
+pub(crate) fn encode_exec_result_frame_into_with_type<const MSG_TYPE: u8>(
+    frame: &mut Vec<u8>,
+    seq: u32,
+    termination: ExecTermination,
+    duration_ms: u32,
+    stdout: ExecCapturedOutput<'_>,
+    stderr: ExecCapturedOutput<'_>,
+    diagnostic: &str,
+) -> Result<(), ProtocolError> {
     let (diagnostic_len, payload_len) =
         validate_exec_result_payload(termination, stdout, stderr, diagnostic)?;
-    encode_into(frame, MSG_EXEC_RESULT, seq, payload_len, |frame| {
+    encode_into(frame, MSG_TYPE, seq, payload_len, |frame| {
         append_exec_result_payload(
             frame,
             termination,

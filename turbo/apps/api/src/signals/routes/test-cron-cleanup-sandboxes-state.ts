@@ -185,6 +185,7 @@ async function seedRunForAction(
       createdAt: readDate(body, "created_at") ?? undefined,
       completedAt: readNullableDate(body, "completed_at"),
       lastHeartbeatAt: readNullableDate(body, "last_heartbeat_at"),
+      runnerGroup: readOptionalString(body, "runner_group"),
       cancellationRecoveryCompleted: readOptionalBoolean(
         body,
         "cancellation_recovery_completed",

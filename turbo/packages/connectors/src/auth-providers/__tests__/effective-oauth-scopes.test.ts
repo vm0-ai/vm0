@@ -75,7 +75,7 @@ async function exchangeWithAuthorizationUrl(
   authorizationUrl: string | null,
   reportedScope?: string,
 ) {
-  vi.stubEnv("VM0_API_BACKEND_URL", "https://provider.example");
+  vi.stubEnv("OKOU_API_BACKEND_URL", "https://provider.example");
   mockTestOAuthProvider(reportedScope);
   return await exchangeConnectorAuthCodeWithMethod({
     connectorSlug: "test-oauth",
@@ -92,7 +92,7 @@ async function exchangeWithAuthorizationUrl(
 }
 
 async function refreshWithReportedScope(reportedScope?: string) {
-  vi.stubEnv("VM0_API_BACKEND_URL", "https://provider.example");
+  vi.stubEnv("OKOU_API_BACKEND_URL", "https://provider.example");
   mockTestOAuthProvider(reportedScope);
   return await refreshConnectorAuthProviderAccessTokenWithMethod(
     {

@@ -67,7 +67,7 @@ interface SubscriptionReset {
   readonly limitWindow: AssistantErrorRecoveryWindow;
 }
 
-const RETRY_PROMPT = "try again";
+const CONTINUE_PROMPT = "continue";
 
 function normalizedProviderMessage(error: string): string {
   return error.replace(/\s+/gu, " ").trim();
@@ -395,15 +395,15 @@ export function createAssistantErrorRecoverySignals(deps: {
     deps.visibleRenderedChatGroups$,
     selectedModel$,
   );
-  const sendRetryMessage$ = command(
+  const sendContinueMessage$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
       const meta = get(threadMeta$);
       if (!meta) {
         return false;
       }
-      const userMessage = textToMessageDocument(RETRY_PROMPT);
+      const userMessage = textToMessageDocument(CONTINUE_PROMPT);
       if (!userMessage) {
-        throw new Error("Failed to serialize retry message");
+        throw new Error("Failed to serialize continue message");
       }
       const modelSelection = isSupportedRunModel(meta.selectedModel)
         ? {
@@ -424,7 +424,7 @@ export function createAssistantErrorRecoverySignals(deps: {
           kind: "input",
           delivery: "run",
           agentId: meta.agentId,
-          prompt: RETRY_PROMPT,
+          prompt: CONTINUE_PROMPT,
           hasTextContent: true,
           userMessage,
           ...(runOptions ? { runOptions } : {}),
@@ -444,7 +444,7 @@ export function createAssistantErrorRecoverySignals(deps: {
       if (!recovery?.actions.tryAgain) {
         return false;
       }
-      return await set(sendRetryMessage$, signal);
+      return await set(sendContinueMessage$, signal);
     },
   );
   const resetCodexSubscriptionAndRetry$ = command(
@@ -459,7 +459,7 @@ export function createAssistantErrorRecoverySignals(deps: {
       if (result.outcome === "noCredit") {
         return false;
       }
-      return await set(sendRetryMessage$, signal);
+      return await set(sendContinueMessage$, signal);
     },
   );
 

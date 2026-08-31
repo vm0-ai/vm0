@@ -3,11 +3,12 @@ import { fileURLToPath } from "node:url";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 
 import { devArtifactFetchProxy } from "./dev-artifact-fetch-proxy.ts";
 import platformPackage from "./package.json";
 import { clerkCoreHtmlPlugin } from "./scripts/clerk-html.ts";
+import { deferredApplicationEntryHtmlPlugin } from "./scripts/deferred-entry-html.ts";
 import {
   VENDOR_MODULE_PATTERN,
   applicationJavaScriptBundlePlugin,
@@ -19,12 +20,29 @@ const APP_ASSET_BASE = "https://static.okou.io/okou-app/";
 const APP_GIT_COMMIT_SHA = process.env.OKOU_APP_GIT_COMMIT_SHA ?? "";
 const APP_VERSION = process.env.OKOU_APP_VERSION ?? platformPackage.version;
 
+const runtimeBuildInfoHtmlPlugin = {
+  name: "platform-runtime-build-info-html",
+  transformIndexHtml() {
+    return [
+      {
+        tag: "meta",
+        attrs: {
+          name: "okou-app-git-commit-sha",
+          content: APP_GIT_COMMIT_SHA,
+        },
+        injectTo: "head-prepend",
+      },
+      {
+        tag: "meta",
+        attrs: { name: "okou-app-version", content: APP_VERSION },
+        injectTo: "head-prepend",
+      },
+    ];
+  },
+} satisfies Plugin;
+
 export default defineConfig(({ command }) => ({
   base: command === "build" ? APP_ASSET_BASE : "/",
-  define: {
-    __OKOU_APP_GIT_COMMIT_SHA__: JSON.stringify(APP_GIT_COMMIT_SHA),
-    __OKOU_APP_VERSION__: JSON.stringify(APP_VERSION),
-  },
   experimental: {
     renderBuiltUrl(filename, { hostType, type }) {
       if (
@@ -42,7 +60,7 @@ export default defineConfig(({ command }) => ({
     alias: {
       "virtual:shared-database-worker": `${fileURLToPath(
         new URL("./src/shared-database-worker.ts", import.meta.url),
-      )}?sharedworker`,
+      )}?sharedworker&url`,
     },
   },
   worker: {
@@ -55,6 +73,8 @@ export default defineConfig(({ command }) => ({
     react(),
     devArtifactFetchProxy(),
     clerkCoreHtmlPlugin(),
+    runtimeBuildInfoHtmlPlugin,
+    deferredApplicationEntryHtmlPlugin(),
     applicationJavaScriptBundlePlugin(),
     // Sentry source map upload (production builds only)
     process.env.SENTRY_AUTH_TOKEN &&

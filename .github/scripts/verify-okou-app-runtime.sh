@@ -9,10 +9,15 @@ fi
 app_url="${1%/}"
 public_assets_url="${2%/}"
 assets_directory="${3%/}"
+canonical_document="$(dirname "$assets_directory")/index.html"
 document_max_attempts="${OKOU_APP_RUNTIME_MAX_ATTEMPTS:-1}"
 
 if [[ ! -d "$assets_directory" ]]; then
   echo "app assets directory does not exist: $assets_directory" >&2
+  exit 1
+fi
+if [[ ! -f "$canonical_document" ]]; then
+  echo "canonical app document does not exist: $canonical_document" >&2
   exit 1
 fi
 if [[ ! "$document_max_attempts" =~ ^[1-9][0-9]*$ ]]; then
@@ -27,6 +32,7 @@ probe_evidence="$(mktemp)"
 trap 'rm -f "$layout_files" "$document_body" "$curl_error" "$probe_evidence"' EXIT
 
 declare -a app_files=()
+declare -a after_first_paint_files=()
 declare -a vendor_files=()
 declare -a runtime_files=()
 declare -a worker_files=()
@@ -34,6 +40,7 @@ find "$assets_directory" -type f -name '*.js' -print0 > "$layout_files"
 while IFS= read -r -d '' source_path; do
   relative_path="${source_path#"$assets_directory"/}"
   case "$relative_path" in
+    bootstrap-after-first-paint-*.js) after_first_paint_files+=("$relative_path") ;;
     vendor-*.js) vendor_files+=("$relative_path") ;;
     rolldown-runtime-*.js) runtime_files+=("$relative_path") ;;
     shared-database-worker-*.js) worker_files+=("$relative_path") ;;
@@ -43,15 +50,17 @@ done < "$layout_files"
 
 if ((
   ${#app_files[@]} != 1 ||
+  ${#after_first_paint_files[@]} != 1 ||
   ${#vendor_files[@]} != 1 ||
   ${#runtime_files[@]} != 1 ||
   ${#worker_files[@]} != 1
 )); then
-  echo "Expected exactly one app, vendor, Rolldown runtime, and SharedWorker JavaScript asset" >&2
+  echo "Expected exactly one app, after-first-paint bootstrap, vendor, Rolldown runtime, and SharedWorker JavaScript asset" >&2
   exit 1
 fi
 
 app_asset_url="${public_assets_url}/${app_files[0]}"
+after_first_paint_asset_url="${public_assets_url}/${after_first_paint_files[0]}"
 vendor_asset_url="${public_assets_url}/${vendor_files[0]}"
 runtime_asset_url="${public_assets_url}/${runtime_files[0]}"
 worker_asset_url="${app_url}/okou-app/assets/${worker_files[0]}"
@@ -78,19 +87,33 @@ for ((attempt = 1; attempt <= document_max_attempts; attempt++)); do
     "$document_url" 2>"$curl_error"; then
     if python3 - \
       "$document_body" \
+      "$canonical_document" \
       "$app_asset_url" \
+      "$after_first_paint_asset_url" \
       "$runtime_asset_url" \
       "$vendor_asset_url" 2>"$probe_evidence" <<'PY'
 from html.parser import HTMLParser
 from pathlib import Path
+import re
 import sys
 
+COMMIT_SHA_META_NAME = "okou-app-git-commit-sha"
+VERSION_META_NAME = "okou-app-version"
+RUNTIME_META_NAMES = {COMMIT_SHA_META_NAME, VERSION_META_NAME}
+COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 
-class EntrypointParser(HTMLParser):
+
+class AppDocumentParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
+        self.app_entry_preloads: list[str] = []
+        self.after_first_paint_preloads: list[str] = []
+        self.active_module_preloads: list[str] = []
         self.module_scripts: list[str] = []
         self.module_preloads: list[str] = []
+        self.runtime_metadata: dict[str, list[str | None]] = {
+            name: [] for name in RUNTIME_META_NAMES
+        }
 
     def handle_starttag(
         self, tag: str, attrs: list[tuple[str, str | None]]
@@ -100,19 +123,83 @@ class EntrypointParser(HTMLParser):
             source = attributes.get("src")
             if source:
                 self.module_scripts.append(source)
-        if tag == "link" and attributes.get("rel") == "modulepreload":
+        if tag == "link":
+            href = attributes.get("href")
+            if href and "data-vm0-app-entry" in attributes:
+                self.app_entry_preloads.append(href)
+            if href and "data-vm0-app-module-preload" in attributes:
+                self.module_preloads.append(href)
+            if href and attributes.get("rel") == "modulepreload":
+                self.active_module_preloads.append(href)
+        if (
+            tag == "link"
+            and "data-vm0-after-first-paint-entry" in attributes
+        ):
             href = attributes.get("href")
             if href:
-                self.module_preloads.append(href)
+                self.after_first_paint_preloads.append(href)
+        if tag == "meta" and attributes.get("name") in RUNTIME_META_NAMES:
+            name = attributes["name"]
+            if name is not None:
+                self.runtime_metadata[name].append(attributes.get("content"))
 
 
-parser = EntrypointParser()
-parser.feed(Path(sys.argv[1]).read_text())
-expected_script = [sys.argv[2]]
-expected_preloads = {sys.argv[3], sys.argv[4]}
-if parser.module_scripts != expected_script:
+def parse_document(path: str) -> AppDocumentParser:
+    parser = AppDocumentParser()
+    parser.feed(Path(path).read_text())
+    return parser
+
+
+def runtime_metadata(parser: AppDocumentParser, label: str) -> dict[str, str]:
+    metadata: dict[str, str] = {}
+    for name in RUNTIME_META_NAMES:
+        values = parser.runtime_metadata[name]
+        if len(values) != 1 or values[0] is None:
+            raise RuntimeError(
+                f"Expected exactly one {label} {name} meta tag with content, got {values}"
+            )
+        metadata[name] = values[0]
+    commit_sha = metadata[COMMIT_SHA_META_NAME]
+    version = metadata[VERSION_META_NAME]
+    if COMMIT_SHA_PATTERN.fullmatch(commit_sha) is None:
+        raise RuntimeError(f"Invalid {label} app commit SHA: {commit_sha}")
+    if not version.strip():
+        raise RuntimeError(f"Invalid {label} app version: {version}")
+    return metadata
+
+
+parser = parse_document(sys.argv[1])
+canonical_parser = parse_document(sys.argv[2])
+expected_metadata = runtime_metadata(canonical_parser, "canonical")
+observed_metadata = runtime_metadata(parser, "served")
+if observed_metadata != expected_metadata:
     raise RuntimeError(
-        f"Expected one CDN app module script {expected_script}, got {parser.module_scripts}"
+        f"Expected runtime build metadata {expected_metadata}, got {observed_metadata}"
+    )
+
+expected_app_entry = [sys.argv[3]]
+expected_after_first_paint_entry = [sys.argv[4]]
+expected_preloads = {sys.argv[5], sys.argv[6]}
+if parser.app_entry_preloads != expected_app_entry:
+    raise RuntimeError(
+        f"Expected one deferred CDN app module preload {expected_app_entry}, "
+        f"got {parser.app_entry_preloads}"
+    )
+if parser.module_scripts:
+    raise RuntimeError(
+        f"Expected deferred app execution without static module scripts, "
+        f"got {parser.module_scripts}"
+    )
+if parser.active_module_preloads:
+    raise RuntimeError(
+        "Expected module resource discovery after first paint, "
+        f"got {parser.active_module_preloads}"
+    )
+if parser.after_first_paint_preloads != expected_after_first_paint_entry:
+    raise RuntimeError(
+        "Expected one deferred after-first-paint script preload "
+        f"{expected_after_first_paint_entry}, "
+        f"got {parser.after_first_paint_preloads}"
     )
 if len(parser.module_preloads) != 2 or set(parser.module_preloads) != expected_preloads:
     raise RuntimeError(
@@ -162,6 +249,7 @@ done
 
 for asset_url in \
   "$app_asset_url" \
+  "$after_first_paint_asset_url" \
   "$vendor_asset_url" \
   "$runtime_asset_url"; do
   curl \
@@ -199,8 +287,9 @@ if [[ "$worker_status" != "206" ]]; then
   exit 1
 fi
 
-printf 'Verified app runtime: app=%s vendor=%s runtime=%s worker=%s\n' \
+printf 'Verified app runtime: app=%s after-first-paint=%s vendor=%s runtime=%s worker=%s\n' \
   "$app_asset_url" \
+  "$after_first_paint_asset_url" \
   "$vendor_asset_url" \
   "$runtime_asset_url" \
   "$worker_asset_url"

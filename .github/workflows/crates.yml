@@ -752,9 +752,9 @@ jobs:
           PROFILE: vm0/default
         run: .github/scripts/wait-runner-image.sh
 
-  # Balance these scenarios by recent CI timings across four concurrent
-  # metal-host users. Keep the balloon scenarios isolated, and run the shorter
-  # process-containment coverage after the existing lane B scenarios.
+  # Balance by recent step medians plus durable polling overhead: lane A is
+  # about 140s, B 129-133s, C 121-129s, and D 192-194s. Keep the two balloon
+  # scenarios in separate lanes; the high-retention 180s proof stays alone.
   runner-behavior-lane-a:
     runs-on: ubuntu-latest
     needs: [runner-build]
@@ -784,6 +784,18 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
         run: .github/scripts/runner-behavior-balloon.sh
 
+      - name: Test workspace cache promotion across runner restart
+        timeout-minutes: 5
+        env:
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+        run: .github/scripts/runner-behavior-workspace-cache-promotion.sh
+
+      - name: Run benchmark
+        timeout-minutes: 8
+        env:
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+        run: .github/scripts/runner-behavior-benchmark.sh
+
   runner-behavior-lane-b:
     runs-on: ubuntu-latest
     needs: [runner-build]
@@ -806,12 +818,6 @@ jobs:
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-
-      - name: Test workspace cache promotion across runner restart
-        timeout-minutes: 5
-        env:
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-        run: .github/scripts/runner-behavior-workspace-cache-promotion.sh
 
       - name: Test runner exec
         timeout-minutes: 5
@@ -871,12 +877,6 @@ jobs:
         env:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
         run: .github/scripts/runner-behavior-keep-alive.sh
-
-      - name: Run benchmark
-        timeout-minutes: 8
-        env:
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-        run: .github/scripts/runner-behavior-benchmark.sh
 
       - name: Run upgrade test
         timeout-minutes: 5

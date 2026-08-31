@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.43](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.42...vsock-proto-v0.18.43) (2026-08-31)
+
+
+### Performance Improvements
+
+* **vsock-proto:** encode storage results directly ([#30553](https://github.com/vm0-ai/vm0/issues/30553)) ([fc1a863](https://github.com/vm0-ai/vm0/commit/fc1a8634de0cd471b6fffca0ab324d420f0a45a3))
+
 ## [0.18.42](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.41...vsock-proto-v0.18.42) (2026-08-31)
 
 

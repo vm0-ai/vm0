@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.514.0](https://github.com/vm0-ai/vm0/compare/api-v1.513.1...api-v1.514.0) (2026-08-31)
+
+
+### Features
+
+* **api:** support official workflow connector readiness ([#30513](https://github.com/vm0-ai/vm0/issues/30513)) ([ee0b374](https://github.com/vm0-ai/vm0/commit/ee0b374445029c0c51a06452af840d085b176cb7))
+
+
+### Bug Fixes
+
+* **api:** limit Pi execution to built-in providers ([#30523](https://github.com/vm0-ai/vm0/issues/30523)) ([b95a6f4](https://github.com/vm0-ai/vm0/commit/b95a6f4f6db6d0b46369be8a9df238bd12b516a7))
+
+
+### Refactoring
+
+* **connectors:** enable the direct okou oauth callback for the slack connector ([#30555](https://github.com/vm0-ai/vm0/issues/30555)) ([6e45142](https://github.com/vm0-ai/vm0/commit/6e45142a9f4f7471348b886efba5655f8c8420fc)), closes [#30550](https://github.com/vm0-ai/vm0/issues/30550)
+* remove presentation image search api ([#30426](https://github.com/vm0-ai/vm0/issues/30426)) ([0ae3eb1](https://github.com/vm0-ai/vm0/commit/0ae3eb111f8dc5bcb43828137d926eed02cb993d))
+* **slack:** point the install callback at the neutral path and drop the zero alias ([#30551](https://github.com/vm0-ai/vm0/issues/30551)) ([99ee48a](https://github.com/vm0-ai/vm0/commit/99ee48a0127a2ba08bff9161db1f24037498b5ae))
+
+
+### Performance Improvements
+
+* **api:** align chat search ordering with index ([#30552](https://github.com/vm0-ai/vm0/issues/30552)) ([f7cd7b0](https://github.com/vm0-ai/vm0/commit/f7cd7b04d77f8204b3532e1541e9525e6dd3f587))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.16
+    * @okouai/connectors bumped to 3.0.2
+    * @okouai/core bumped to 8.605.0
+    * @okouai/db bumped to 1.228.25
+
 ## [1.513.1](https://github.com/vm0-ai/vm0/compare/api-v1.513.0...api-v1.513.1) (2026-08-31)
 
 

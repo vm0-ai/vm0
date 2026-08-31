@@ -28,6 +28,7 @@ interface MarketingHarness {
   readonly fallbackDelay: number | undefined;
   readonly marketingWindow: MarketingWindow;
   readonly requestedScriptUrls: string[];
+  readonly flushFirstPaint: () => void;
   readonly flushIdleCallbacks: () => void;
   readonly runFallback: () => void;
 }
@@ -48,7 +49,10 @@ function marketingEntrypointSource(): string {
   return source;
 }
 
-function executeMarketingEntrypoint(hostname: string): MarketingHarness {
+function executeMarketingEntrypoint(
+  hostname: string,
+  browserSupported = true,
+): MarketingHarness {
   const marketingWindow = window as MarketingWindow;
   context.mocks.browser.url(`https://${hostname}/`);
   vi.stubGlobal("dataLayer", undefined);
@@ -86,19 +90,51 @@ function executeMarketingEntrypoint(hostname: string): MarketingHarness {
     },
   );
 
+  const afterFirstPaintCallbacks: (() => void)[] = [];
+  const previousAfterFirstPaint = window.__vm0AfterFirstPaint;
+  window.__vm0AfterFirstPaint = (callback) => {
+    afterFirstPaintCallbacks.push(callback);
+  };
+
   const executeEntrypointScript = new Function(
     "window",
     "document",
     `${marketingEntrypointSource()}\n//# sourceURL=platform-marketing-entrypoint-test.js`,
   ) as MarketingEntrypointScript;
-  executeEntrypointScript(window, document);
+  try {
+    executeEntrypointScript(window, document);
+  } finally {
+    if (previousAfterFirstPaint === undefined) {
+      Reflect.deleteProperty(window, "__vm0AfterFirstPaint");
+    } else {
+      window.__vm0AfterFirstPaint = previousAfterFirstPaint;
+    }
+  }
 
-  const fallback = scheduledTimeouts.find(({ delay }) => {
-    return delay === MARKETING_FALLBACK_DELAY_MS;
-  });
+  let fallback: ScheduledTimeout | undefined;
 
   return {
-    fallbackDelay: fallback?.delay,
+    get fallbackDelay() {
+      return fallback?.delay;
+    },
+    flushFirstPaint: () => {
+      const previousBrowserSupported = window.__vm0BrowserSupported;
+      window.__vm0BrowserSupported = browserSupported;
+      try {
+        for (const callback of afterFirstPaintCallbacks.splice(0)) {
+          callback();
+        }
+      } finally {
+        if (previousBrowserSupported === undefined) {
+          Reflect.deleteProperty(window, "__vm0BrowserSupported");
+        } else {
+          window.__vm0BrowserSupported = previousBrowserSupported;
+        }
+      }
+      fallback = scheduledTimeouts.find(({ delay }) => {
+        return delay === MARKETING_FALLBACK_DELAY_MS;
+      });
+    },
     flushIdleCallbacks: () => {
       for (const callback of idleCallbacks.splice(0)) {
         callback({
@@ -124,6 +160,10 @@ describe("platform marketing scripts", () => {
   it("loads Google Ads after first app content", () => {
     const harness = executeMarketingEntrypoint("app.vm0.ai");
 
+    expect(harness.marketingWindow.dataLayer).toBeUndefined();
+    expect(harness.requestedScriptUrls).toStrictEqual([]);
+    harness.flushFirstPaint();
+
     expect(
       harness.marketingWindow.dataLayer?.map((entry) => {
         return [...entry];
@@ -142,6 +182,7 @@ describe("platform marketing scripts", () => {
 
   it("waits 30 seconds before falling back when content never becomes ready", () => {
     const harness = executeMarketingEntrypoint("app.vm0.ai");
+    harness.flushFirstPaint();
 
     expect(harness.fallbackDelay).toBe(MARKETING_FALLBACK_DELAY_MS);
     expect(harness.requestedScriptUrls).toStrictEqual([]);
@@ -155,6 +196,7 @@ describe("platform marketing scripts", () => {
 
   it("loads Google Ads once across duplicate readiness and fallback signals", () => {
     const harness = executeMarketingEntrypoint("app.vm0.ai");
+    harness.flushFirstPaint();
 
     window.dispatchEvent(new Event(APP_FIRST_CONTENT_VISIBLE_EVENT));
     window.dispatchEvent(new Event(APP_FIRST_CONTENT_VISIBLE_EVENT));
@@ -166,6 +208,7 @@ describe("platform marketing scripts", () => {
 
   it("does not request scripts when only the app skeleton is visible", () => {
     const harness = executeMarketingEntrypoint("app.vm0.ai");
+    harness.flushFirstPaint();
 
     window.dispatchEvent(new Event(APP_SKELETON_VISIBLE_EVENT));
     harness.flushIdleCallbacks();
@@ -176,10 +219,21 @@ describe("platform marketing scripts", () => {
     harness.flushIdleCallbacks();
   });
 
+  it("does not initialize on an unsupported browser", () => {
+    const harness = executeMarketingEntrypoint("app.vm0.ai", false);
+    harness.flushFirstPaint();
+
+    expect(harness.fallbackDelay).toBeUndefined();
+    expect(harness.marketingWindow.dataLayer).toBeUndefined();
+    expect(harness.marketingWindow.gtag).toBeUndefined();
+    expect(harness.requestedScriptUrls).toStrictEqual([]);
+  });
+
   it.each(["localhost", "pr-29576-app.vm6.ai", "app.vm0.ai.example.com"])(
     "does not initialize or request scripts on %s",
     (hostname) => {
       const harness = executeMarketingEntrypoint(hostname);
+      harness.flushFirstPaint();
 
       window.dispatchEvent(new Event(APP_SKELETON_VISIBLE_EVENT));
       window.dispatchEvent(new Event(APP_FIRST_CONTENT_VISIBLE_EVENT));

@@ -16,3 +16,8 @@ export function createChatEvent(threadId: string, payload?: unknown): void {
 export function changeChatThreadList(): void {
   triggerChatDatabaseEvent("threadListChanged");
 }
+
+/** Simulate authoritative chat read state changing for the active user-org. */
+export function changeChatThreadReadCursor(payload?: unknown): void {
+  triggerChatDatabaseEvent("chatThreadReadCursorUpdated", payload);
+}

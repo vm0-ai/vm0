@@ -32,13 +32,11 @@ interface VM0PreBundleCopy {
 }
 
 declare global {
-  const __OKOU_APP_GIT_COMMIT_SHA__: string;
-  const __OKOU_APP_VERSION__: string;
-
   interface Window {
     _vm0: VM0Global | undefined;
     __vm0BrowserSupported?: boolean;
     __vm0BrowserUpgrade?: VM0BrowserUpgradeCopy & { actionUrl: string };
+    __vm0AfterFirstPaint?: (callback: () => void) => void;
     __vm0PreBundleCopy?: VM0PreBundleCopy;
     /**
      * Set inline in `index.html` at the start of `<head>` parsing. Used by
@@ -46,6 +44,8 @@ declare global {
      * the first time the app skeleton is dismissed.
      */
     __appBootstrapStart?: number;
+    /** Upper bound recorded immediately after the first visible paint. */
+    __appBootstrapFirstPaintUpperBound?: number;
     /** Set when the entry module graph has finished evaluating. */
     __appBootstrapModuleReady?: number;
   }

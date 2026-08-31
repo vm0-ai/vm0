@@ -173,6 +173,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Spotify connector integration",
     enabled: false,
   },
+  [FeatureSwitchKey.StripeMarketplaceOAuthConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Show Stripe Marketplace OAuth as a sign-in option for the Stripe connector.",
+    enabled: false,
+  },
   [FeatureSwitchKey.OkouDebug]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -282,6 +288,15 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show the guided intro video upload, screen recording, avatar, and voice workflow in new chat.",
     enabled: false,
+    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
+  },
+  [FeatureSwitchKey.DesktopScreenRecording]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable Okou Desktop screen recording: native capture, click track, and delivery back into the intro video workflow.",
+    enabled: false,
+    // Scoped to the maintainer while the native capture helper is still
+    // unproven outside CI; widen once it has run on real hardware.
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
   [FeatureSwitchKey.ChatConversationLocator]: {

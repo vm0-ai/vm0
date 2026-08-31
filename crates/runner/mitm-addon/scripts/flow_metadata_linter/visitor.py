@@ -59,6 +59,11 @@ _DIRECT_UNBOUND_METADATA_KEY_CALL_ARGUMENTS = {
     ("operator", "getitem"): (0, 1),
     ("operator", "setitem"): (0, 1),
 }
+_DIRECT_UNBOUND_METADATA_MAPPING_INPUT_CALLS = {
+    ("dict", "__ior__"),
+    ("dict", "update"),
+    ("operator", "ior"),
+}
 
 
 @dataclass
@@ -132,6 +137,21 @@ def _direct_unbound_metadata_key_arguments(node: ast.Call) -> tuple[ast.AST, ast
     ):
         return None
     return node.args[mapping_index], node.args[key_index]
+
+
+def _direct_unbound_metadata_mapping_arguments(
+    node: ast.Call,
+) -> tuple[ast.AST, list[ast.expr], bool] | None:
+    if not isinstance(node.func, ast.Attribute) or not isinstance(node.func.value, ast.Name):
+        return None
+    qualified_call = (node.func.value.id, node.func.attr)
+    if (
+        qualified_call not in _DIRECT_UNBOUND_METADATA_MAPPING_INPUT_CALLS
+        or not node.args
+        or isinstance(node.args[0], ast.Starred)
+    ):
+        return None
+    return node.args[0], node.args[1:], qualified_call == ("dict", "update")
 
 
 class _MetadataKeyVisitor(ast.NodeVisitor):
@@ -341,6 +361,15 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             return
         self._metadata_key_checked_node_ids.add(node_id)
         self._add_violations(violations)
+
+    def _record_metadata_dict_keyword_violations(self, keywords: list[ast.keyword]) -> None:
+        for keyword in keywords:
+            if keyword.arg is None:
+                self._record_metadata_dict_key_violations(keyword.value)
+                continue
+            key_name = _REGISTERED_METADATA_KEYS.get(keyword.arg)
+            if key_name is not None:
+                self._add_violation(_violation(self.path, keyword, key_name))
 
     def _record_metadata_subscript_key_violations(self, node: ast.Subscript) -> None:
         if self._is_metadata_alias_value(node.value):
@@ -887,18 +916,20 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             if node.func.attr in _METADATA_METHODS_WITH_DICT_ARGUMENTS:
                 for update_arg in _static_first_call_argument_nodes(node.args):
                     self._record_metadata_dict_key_violations(update_arg)
-                for keyword in node.keywords:
-                    if keyword.arg is None:
-                        self._record_metadata_dict_key_violations(keyword.value)
-                        continue
-                    key_name = _REGISTERED_METADATA_KEYS.get(keyword.arg)
-                    if key_name is not None:
-                        self._add_violation(_violation(self.path, keyword, key_name))
+                self._record_metadata_dict_keyword_violations(node.keywords)
         direct_unbound_arguments = _direct_unbound_metadata_key_arguments(node)
         if direct_unbound_arguments is not None:
             mapping_arg, key_arg = direct_unbound_arguments
             if self._is_metadata_alias_value(mapping_arg):
                 self._add_violations(_metadata_key_expression_violations(self.path, key_arg))
+        direct_unbound_mapping_arguments = _direct_unbound_metadata_mapping_arguments(node)
+        if direct_unbound_mapping_arguments is not None:
+            mapping_arg, update_args, has_keyword_entries = direct_unbound_mapping_arguments
+            if self._is_metadata_alias_value(mapping_arg):
+                for update_arg in _static_first_call_argument_nodes(update_args):
+                    self._record_metadata_dict_key_violations(update_arg)
+                if has_keyword_entries:
+                    self._record_metadata_dict_keyword_violations(node.keywords)
         self.visit(node.func)
         for argument in node.args:
             self.visit(argument)

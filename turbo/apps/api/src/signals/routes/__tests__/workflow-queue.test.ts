@@ -20,6 +20,7 @@ import {
   drainChatThreadQueueFixture,
   pauseGoalQueueTargetFixture,
   readGoalQueueStateFixture,
+  setGoalQueueEventCreatedAtFixture,
 } from "../../../test-fixtures/goal-queue";
 import {
   admitWorkflowAutomationEventFixture,
@@ -390,22 +391,17 @@ async function requestRunCompletionThroughSandbox(
       [200],
     );
   }
-  await webhooksApi.requestAgentCheckpoint(
-    {
-      runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId: `workflow-queue-cli-${runId}`,
-      cliAgentSessionHistoryHash: createHash("sha256")
-        .update(`workflow automation history ${runId}`)
-        .digest("hex"),
-    },
-    sandboxHeaders,
-    [200],
-  );
   await webhooksApi.requestAgentComplete(
     {
       runId,
       exitCode: 0,
+      checkpoint: {
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `workflow-queue-cli-${runId}`,
+        cliAgentSessionHistoryHash: createHash("sha256")
+          .update(`workflow automation history ${runId}`)
+          .digest("hex"),
+      },
       ...(stagedOutputEvents.length === 0
         ? {}
         : {
@@ -684,6 +680,63 @@ describe("workflow queue", () => {
       throw new Error("Expected the goal continuation to create a run");
     }
     await runsApi.requestCancelRun(scenario.actor, goalRunId, [200]);
+  });
+
+  it("ignores a fresh automation outside the cutoff while selecting a stale goal", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: scenario.orgId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      admissionLock.release();
+      await admissionLock.done;
+    });
+
+    const goal = await createActiveGoalQueueEventFixture({
+      threadId: automation.threadId,
+      orgId: scenario.orgId,
+      userId: scenario.userId,
+      agentId: scenario.agentId,
+      objective: "continue during the stale sweep",
+      objectiveBrief: "Continue during the stale sweep",
+    });
+    await setGoalQueueEventCreatedAtFixture({
+      eventId: goal.eventId,
+      createdAt: new Date("2019-12-31T23:54:00.000Z"),
+    });
+    const freshAutomationEventId = await admitWorkflowAutomationEventFixture({
+      automationId: automation.automationId,
+      chatThreadId: automation.threadId,
+      triggerBrief: "Fresh automation outside the stale sweep",
+    });
+    await setWorkflowQueueEventCreatedAtFixture({
+      eventId: freshAutomationEventId,
+      createdAt: new Date("2020-01-01T00:01:00.000Z"),
+    });
+
+    const goalDrain = drainChatThreadQueueFixture({
+      threadId: automation.threadId,
+      signal: context.signal,
+      queueItemCreatedBefore: new Date("2020-01-01T00:00:00.000Z"),
+    });
+
+    // Reaching the organization lock proves the stale goal passed selection;
+    // the unchanged final queue claim still rejects it while fresh work exists.
+    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
+    admissionLock.release();
+    await goalDrain;
+    await admissionLock.done;
+
+    await expect(
+      readGoalQueueStateFixture(automation.threadId),
+    ).resolves.toMatchObject({ runIds: [], eventIds: [goal.eventId] });
+    expect(
+      (await pendingAutomationEvents(automation.threadId)).map((event) => {
+        return event.id;
+      }),
+    ).toContain(freshAutomationEventId);
   });
 
   it("keeps an automation event ahead of a goal continuation during final queue claim", async () => {
@@ -1128,19 +1181,6 @@ describe("workflow queue", () => {
     const sandboxHeaders = {
       authorization: `Bearer ${firstClaim.sandboxToken}`,
     };
-    await webhooksApi.requestAgentCheckpoint(
-      {
-        runId: firstRunId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `workflow-queue-cli-${firstRunId}`,
-        cliAgentSessionHistoryHash: createHash("sha256")
-          .update(`workflow automation history ${firstRunId}`)
-          .digest("hex"),
-      },
-      sandboxHeaders,
-      [200],
-    );
-
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
     const admissionLock = await holdOrgAdmissionLockFixture({
       orgId: scenario.orgId,
@@ -1152,7 +1192,17 @@ describe("workflow queue", () => {
     });
     const routeSignal = new AbortController();
     const completion = webhooksApi.requestAgentComplete(
-      { runId: firstRunId, exitCode: 0 },
+      {
+        runId: firstRunId,
+        exitCode: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `workflow-queue-cli-${firstRunId}`,
+          cliAgentSessionHistoryHash: createHash("sha256")
+            .update(`workflow automation history ${firstRunId}`)
+            .digest("hex"),
+        },
+      },
       sandboxHeaders,
       [200],
       routeSignal.signal,
