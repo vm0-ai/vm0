@@ -45,6 +45,11 @@ const FORBIDDEN_PRISM_MODULES = [
   },
 ] as const;
 
+const FORBIDDEN_SERVER_CONTRACT_MODULES = [
+  "/packages/api-contracts/src/contracts/runners.ts",
+  "/packages/api-contracts/src/contracts/webhooks.ts",
+] as const;
+
 interface GeneratedChunk {
   readonly code: string;
   readonly dynamicImports?: readonly string[];
@@ -91,6 +96,13 @@ function forbiddenPrismModule(moduleId: string): string | undefined {
   return FORBIDDEN_PRISM_MODULES.find(({ modulePath }) => {
     return normalized.includes(modulePath);
   })?.name;
+}
+
+function forbiddenServerContractModule(moduleId: string): string | undefined {
+  const normalized = normalizeModuleId(moduleId);
+  return FORBIDDEN_SERVER_CONTRACT_MODULES.find((modulePath) => {
+    return normalized.endsWith(modulePath);
+  });
 }
 
 function generatedChunks(
@@ -153,6 +165,18 @@ function chunkViolations(
   if (forbiddenPrismModules.size > 0) {
     violations.push(
       `${chunk.fileName}: forbidden non-common Prism modules reached the bundle: ${[...forbiddenPrismModules].join(", ")}`,
+    );
+  }
+  const forbiddenServerContractModules = new Set(
+    (chunk.moduleIds ?? [])
+      .map(forbiddenServerContractModule)
+      .filter((modulePath): modulePath is string => {
+        return modulePath !== undefined;
+      }),
+  );
+  if (forbiddenServerContractModules.size > 0) {
+    violations.push(
+      `${chunk.fileName}: server-only API contract modules reached the eager platform graph: ${[...forbiddenServerContractModules].join(", ")}`,
     );
   }
   return violations;

@@ -1,9 +1,9 @@
 use super::super::super::*;
 use super::super::support::{
     SpeculativeIdleSeedSpec, context_with_session, mock_run_config, mock_run_config_with_overrides,
-    seed_idle_pool_with_speculative_timezone, shutdown, status_idle_reuse_keys_and_active_runs,
-    test_profiles, test_runner_identity, wait_budget_count, wait_cancel_handle,
-    wait_cancel_token_removed, wait_discover_entered, wait_idle_pool_len,
+    mock_run_config_with_overrides_and_api_url, seed_idle_pool_with_speculative_timezone, shutdown,
+    status_idle_reuse_keys_and_active_runs, test_profiles, test_runner_identity, wait_budget_count,
+    wait_cancel_handle, wait_cancel_token_removed, wait_discover_entered, wait_idle_pool_len,
     wait_idle_pool_reuse_keys,
 };
 use std::sync::Arc;
@@ -11,6 +11,9 @@ use std::sync::Arc;
 use guest_contracts::reuse_preparation::{
     REUSE_PREPARATION_EXIT_CLEANUP_FAILED, ReusePreparationRequest,
 };
+use tracing::Level;
+use tracing_subscriber::prelude::*;
+use tracing_test_support::CapturedEvents;
 
 use crate::guest_timezone::GuestTimezoneIntent;
 use crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher;
@@ -54,7 +57,7 @@ fn timezone_correction_commands(overrides: &sandbox_mock::MockSandboxOverrides) 
     overrides
         .exec_calls()
         .into_iter()
-        .filter(|call| call.cmd.contains("/etc/timezone") && !call.cmd.contains("guest-reseed"))
+        .filter(|call| call.cmd.starts_with("/sbin/guest-reseed --sync-timezone "))
         .map(|call| call.cmd)
         .collect()
 }
@@ -215,7 +218,10 @@ async fn assert_timezone_transition_with(
     match expected_correction_zone {
         Some(zone) => {
             assert_eq!(corrections.len(), 1);
-            assert!(corrections[0].contains(&format!("/usr/share/zoneinfo/{zone}")));
+            assert_eq!(
+                corrections[0],
+                format!("/sbin/guest-reseed --sync-timezone {zone}")
+            );
         }
         None => assert!(corrections.is_empty()),
     }
@@ -266,21 +272,149 @@ async fn exact_reuse_verifies_configured_and_default_timezone_transitions() {
     assert_timezone_transition(GuestTimezoneIntent::Default, None, "UTC", None).await;
 }
 
-#[tokio::test]
-async fn embedded_timezone_correction_failure_remains_best_effort() {
-    assert_timezone_transition_with(
-        GuestTimezoneIntent::Configured("Asia/Shanghai".into()),
-        Some("Europe/London"),
-        "Asia/Shanghai",
-        Some("Europe/London"),
-        |overrides| {
-            overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
-                pattern: "/usr/share/zoneinfo/Europe/London".into(),
-                exit_code: 1,
-                stdout: Vec::new(),
-                stderr: b"simulated timezone setup failure".to_vec(),
-            });
+async fn assert_timezone_correction_failure_remains_best_effort(
+    exit_code: i32,
+    stderr: &[u8],
+    expected_stderr: &str,
+    expected_exit_code: Option<&str>,
+) {
+    use httpmock::prelude::*;
+
+    let server = MockServer::start_async().await;
+    let telemetry_mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/telemetry")
+                .body_matches(
+                    r#""action_type":"runner_exact_reuse_timezone_correction","duration_ms":[0-9]+,"success":false,"error":"speculative_timezone_correction_failed""#,
+                );
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"success":true,"id":"ok"}"#);
+        })
+        .await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+        pattern: "/sbin/guest-reseed --sync-timezone Europe/London".into(),
+        exit_code,
+        stdout: b"timezone stdout".to_vec(),
+        stderr: stderr.to_vec(),
+    });
+    let (config, env) = mock_run_config_with_overrides_and_api_url(
+        test_profiles(),
+        2,
+        4096,
+        1,
+        Arc::clone(&overrides),
+        &server.base_url(),
+    );
+    let budget = Arc::clone(&config.capacity.budget);
+    let reuse_key = RunId::new_v4().to_string();
+    let generation_run_id = RunId::new_v4();
+    let sandbox_id = seed_idle_pool_with_speculative_timezone(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        SpeculativeIdleSeedSpec {
+            reuse_key: &reuse_key,
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
+            history_generation_run_id: generation_run_id,
+            guest_timezone_intent: GuestTimezoneIntent::Configured("Asia/Shanghai".into()),
+            timing: None,
         },
+    )
+    .await;
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider.set_claim_result(
+        run_id,
+        Some(claimed_context(run_id, &reuse_key, Some("Europe/London"))),
+    );
+    env.handle
+        .discover_tx
+        .send(exact_generation_candidate(
+            run_id,
+            &reuse_key,
+            generation_run_id,
+        ))
+        .unwrap();
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(30))
+        .await
+        .expect("timezone correction failure should remain best effort");
+    assert_eq!(completion.sandbox_id, Some(sandbox_id));
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    assert_eq!(overrides.destroy_call_count(), 0);
+
+    shutdown(&env, run_handle).await;
+    telemetry_mock.assert_calls_async(1).await;
+
+    let run_id = run_id.to_string();
+    let events = captured.entries();
+    let event = events
+        .iter()
+        .find(|event| {
+            event.level == Level::WARN
+                && event.fields.get("message").map(String::as_str)
+                    == Some("failed to set guest timezone")
+                && event.fields.get("run_id").map(String::as_str) == Some(run_id.as_str())
+        })
+        .unwrap_or_else(|| panic!("missing timezone warning; events={events:#?}"));
+    assert_eq!(
+        event.fields.get("tz").map(String::as_str),
+        Some("Europe/London")
+    );
+    assert_eq!(
+        event.fields.get("termination").map(String::as_str),
+        Some("exited")
+    );
+    assert_eq!(
+        event.fields.get("exit_code").map(String::as_str),
+        expected_exit_code
+    );
+    assert!(
+        event
+            .fields
+            .get("stderr_excerpt")
+            .is_some_and(|value| value.contains(expected_stderr)),
+        "event={event:#?}"
+    );
+    assert!(
+        event
+            .fields
+            .get("stdout_excerpt")
+            .is_some_and(|value| value.contains("timezone stdout")),
+        "event={event:#?}"
+    );
+}
+
+#[tokio::test]
+async fn unavailable_timezone_correction_remains_best_effort_and_reports_failure() {
+    assert_timezone_correction_failure_remains_best_effort(
+        0,
+        b"guest timezone unavailable",
+        "guest timezone unavailable",
+        None,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn nonzero_timezone_correction_remains_best_effort_and_reports_failure() {
+    assert_timezone_correction_failure_remains_best_effort(
+        2,
+        b"simulated timezone setup failure",
+        "simulated timezone setup failure",
+        Some("2"),
     )
     .await;
 }
@@ -1262,7 +1396,7 @@ async fn timezone_correction_panic_destroys_before_fresh_fallback() {
         Some("Europe/London"),
         |overrides| {
             overrides.add_exec_panic_matcher(
-                "/usr/share/zoneinfo/Europe/London",
+                "/sbin/guest-reseed --sync-timezone Europe/London",
                 "simulated timezone correction panic",
             );
         },
