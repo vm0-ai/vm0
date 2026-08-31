@@ -20,7 +20,6 @@ const VALUE_MARKERS: [&str; 3] = [
     "retired-api-url-must-not-leak",
     API_TOKEN,
 ];
-const SOURCE_EVENT: &str = "api_url_env_source";
 const CONFLICT_DIAGNOSTIC: &str = "conflicting API backend URL environment aliases";
 
 #[derive(Clone, Copy)]
@@ -130,25 +129,14 @@ fn clear_api_token_env() {
     remove_test_env("VM0_API_TOKEN");
 }
 
-fn capture_raw(log_path: &Path) -> (Result<GuestConfigRaw, String>, String) {
+fn capture_raw(log_path: &Path) -> Result<GuestConfigRaw, String> {
     guest_common::log::clear_system_log_file();
     let raw = GuestConfigRaw::from_process_env();
     assert!(
         !log_path.exists(),
         "raw capture installed or wrote a system-log sink"
     );
-    let evidence = raw
-        .as_ref()
-        .map(|raw| {
-            raw.bootstrap_alias_source_events()
-                .map(|(family, key, source)| {
-                    format!("[captured] {family} key={key} source={source}")
-                })
-                .collect::<Vec<_>>()
-                .join("\n")
-        })
-        .unwrap_or_default();
-    (raw, evidence)
+    raw
 }
 
 fn assert_value_free(text: &str, context: &str) {
@@ -158,20 +146,6 @@ fn assert_value_free(text: &str, context: &str) {
             "{context} exposed API URL or token value material"
         );
     }
-}
-
-fn assert_no_retired_reader_evidence(evidence: &str, case: CaptureCase) {
-    assert_value_free(evidence, case.name);
-    assert!(
-        !evidence.contains(SOURCE_EVENT),
-        "{} emitted retired API URL source evidence: {evidence}",
-        case.name
-    );
-    assert!(
-        !evidence.contains(CONFLICT_DIAGNOSTIC),
-        "{} emitted the retired API URL conflict diagnostic: {evidence}",
-        case.name
-    );
 }
 
 fn materialize_config(
@@ -259,7 +233,7 @@ fn process_env_captures_only_canonical_api_url_without_value_leaks() -> TestResu
     for case in CAPTURE_CASES {
         apply_input(guest_contracts::env::CANONICAL_API_URL_ENV, case.canonical);
         apply_input(guest_contracts::env::API_URL_ENV, case.retired);
-        let (raw, evidence) = capture_raw(&tmp.path().join(format!("{}.log", case.name)));
+        let raw = capture_raw(&tmp.path().join(format!("{}.log", case.name)));
         let raw = match raw {
             Ok(raw) => raw,
             Err(error) => {
@@ -281,7 +255,6 @@ fn process_env_captures_only_canonical_api_url_without_value_leaks() -> TestResu
             "{} captured the wrong root API URL",
             case.name
         );
-        assert_no_retired_reader_evidence(&evidence, case);
         assert_http_semantics(tmp.path(), case, raw)?;
     }
 

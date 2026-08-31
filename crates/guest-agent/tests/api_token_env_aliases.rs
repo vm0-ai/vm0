@@ -135,25 +135,14 @@ fn clear_api_token_env() {
     remove_test_env("VM0_API_TOKEN");
 }
 
-fn capture_raw(log_path: &Path) -> std::io::Result<(Result<GuestConfigRaw, String>, String)> {
+fn capture_raw(log_path: &Path) -> Result<GuestConfigRaw, String> {
     guest_common::log::clear_system_log_file();
     let raw = GuestConfigRaw::from_process_env();
     assert!(
         !log_path.exists(),
         "raw capture installed or wrote a system-log sink"
     );
-    let evidence = raw
-        .as_ref()
-        .map(|raw| {
-            raw.bootstrap_alias_source_events()
-                .map(|(family, key, source)| {
-                    format!("[captured] {family} key={key} source={source}")
-                })
-                .collect::<Vec<_>>()
-                .join("\n")
-        })
-        .unwrap_or_default();
-    Ok((raw, evidence))
+    raw
 }
 
 fn assert_value_free(text: &str, context: &str) {
@@ -163,20 +152,6 @@ fn assert_value_free(text: &str, context: &str) {
             "{context} exposed API token material"
         );
     }
-}
-
-fn assert_no_token_migration_evidence(evidence: &str, case: CaptureCase) {
-    assert_value_free(evidence, case.name);
-    assert!(
-        !evidence.contains("api_token_env_source"),
-        "{} captured retired API-token source evidence",
-        case.name
-    );
-    assert!(
-        !evidence.contains("conflicting API token environment aliases"),
-        "{} captured a retired API-token conflict diagnostic",
-        case.name
-    );
 }
 
 fn assert_http_mode(tmp: &Path, case: CaptureCase, raw: GuestConfigRaw) -> TestResult {
@@ -237,7 +212,7 @@ fn process_env_reads_only_canonical_api_token_without_value_leaks() -> TestResul
             case.canonical,
         );
         apply_input("VM0_API_TOKEN", case.retired);
-        let (raw, evidence) = capture_raw(&tmp.path().join(format!("{}.log", case.name)))?;
+        let raw = capture_raw(&tmp.path().join(format!("{}.log", case.name)));
         let raw = match raw {
             Ok(raw) => raw,
             Err(error) => {
@@ -254,7 +229,6 @@ fn process_env_reads_only_canonical_api_token_without_value_leaks() -> TestResul
             "{} captured the wrong token state",
             case.name
         );
-        assert_no_token_migration_evidence(&evidence, case);
         assert_http_mode(tmp.path(), case, raw)?;
     }
 

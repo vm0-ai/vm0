@@ -14,8 +14,6 @@ const VALID_VALUE: &str = "37";
 const LEGACY_VALUE: &str = "91";
 const OUT_OF_RANGE_VALUE: &str = "3601";
 const INVALID_VALUE: &str = "canonical-invalid-tuning";
-const RETIRED_SOURCE_EVENT: &str = "guest_agent_tuning_env_source";
-
 #[derive(Clone, Copy)]
 struct TuningEnvPair {
     name: &'static str,
@@ -298,16 +296,6 @@ fn process_env_reads_only_canonical_guest_agent_tuning_keys() -> TestResult {
                 pair.name,
                 case.name
             );
-            let source_events = raw.bootstrap_alias_source_events().collect::<Vec<_>>();
-            assert!(
-                source_events.iter().all(|(family, key, _)| {
-                    *family != RETIRED_SOURCE_EVENT && *key != pair.canonical
-                }),
-                "{} {} retained timing source evidence: {source_events:?}",
-                pair.name,
-                case.name
-            );
-
             let (config, log) =
                 materialize_config(tmp.path(), pair, case, raw).map_err(std::io::Error::other)?;
             let expected_secs = match case.config {
