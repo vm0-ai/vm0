@@ -22,6 +22,7 @@ import {
 } from "./lib/stripe-checkout";
 
 const RUNNER_CREDENTIAL_CONCURRENCY = 2;
+const VERCEL_PROTECTION_BYPASS_COOKIE = "x-vercel-protection-bypass";
 
 interface RunnerCredentialTarget {
   readonly email: string;
@@ -158,6 +159,11 @@ async function provisionRunnerCredential(
       },
     },
     async (page) => {
+      await installSharedWorkerPreviewBypassCookie(
+        page,
+        appUrl,
+        vercelAutomationBypassSecret,
+      );
       let clerkSessionToken = await signInWithLoadedClerkTestingHelper(
         page,
         target.email,
@@ -192,6 +198,26 @@ async function provisionRunnerCredential(
       });
     },
   );
+}
+
+async function installSharedWorkerPreviewBypassCookie(
+  page: Page,
+  appUrl: string,
+  vercelAutomationBypassSecret: string | undefined,
+): Promise<void> {
+  if (!vercelAutomationBypassSecret) {
+    return;
+  }
+  const appOrigin = new URL(appUrl);
+  await page.context().addCookies([
+    {
+      name: VERCEL_PROTECTION_BYPASS_COOKIE,
+      value: vercelAutomationBypassSecret,
+      url: appOrigin.origin,
+      sameSite: "Lax",
+      secure: appOrigin.protocol === "https:",
+    },
+  ]);
 }
 
 async function completePaidOnboarding(
