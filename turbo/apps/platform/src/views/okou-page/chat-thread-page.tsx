@@ -5057,9 +5057,13 @@ function WaitingForAssistantResponse({
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
 }) {
+  const thinkingIndicatorProps = isQueued
+    ? {}
+    : { "data-thinking-indicator": true };
+
   return (
     <div
-      data-thinking-indicator
+      {...thinkingIndicatorProps}
       data-role="assistant"
       className="zero-thinking-enter flex flex-col gap-1"
     >
@@ -5092,7 +5096,7 @@ function WaitingForAssistantResponse({
 }
 
 function AssistantThinkingStatusRow({
-  running,
+  active,
   blockStyle,
   isQueued,
   thinkingLabel,
@@ -5100,7 +5104,7 @@ function AssistantThinkingStatusRow({
   thread,
   recommendedFollowupSource,
 }: {
-  running: boolean;
+  active: boolean;
   blockStyle: CSSProperties;
   isQueued: boolean;
   thinkingLabel: string;
@@ -5108,9 +5112,8 @@ function AssistantThinkingStatusRow({
   thread: ChatPanelSignals;
   recommendedFollowupSource: RecommendedFollowupSource | null;
 }) {
-  const thinkingIndicatorProps = running
-    ? { "data-thinking-indicator": true }
-    : {};
+  const thinkingIndicatorProps =
+    active && !isQueued ? { "data-thinking-indicator": true } : {};
 
   return (
     <div
@@ -5120,7 +5123,7 @@ function AssistantThinkingStatusRow({
     >
       <div className="hidden @[900px]:block" />
       <div className="min-w-0">
-        {running ? (
+        {active ? (
           <InlineThinkingRow
             blockStyle={blockStyle}
             isQueued={isQueued}
@@ -5135,7 +5138,7 @@ function AssistantThinkingStatusRow({
   );
 }
 
-function thinkingIndicatorRunning(mode: ThinkingIndicatorMode): boolean {
+function runStatusIndicatorActive(mode: ThinkingIndicatorMode): boolean {
   return mode !== null && mode !== "finished";
 }
 
@@ -5174,7 +5177,7 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
       equalityFn: equalRecommendedFollowupSources,
     }) ?? null;
   const thinkingLabel = useGet(thread.thinkingPhrase$);
-  const running = thinkingIndicatorRunning(mode);
+  const active = runStatusIndicatorActive(mode);
   const isQueued = thinkingIndicatorQueued(mode);
   const thinkingEventId = useLastResolved(thread.thinkingEventId$);
   const displayedThinkingText =
@@ -5185,7 +5188,7 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
     thread.setThinkingIndicatorTextRef$,
   );
   const serverThinkingLabel =
-    thinkingText && thinkingEventId && running
+    thinkingText && thinkingEventId && active && !isQueued
       ? {
           displayedText: displayedThinkingText,
           fadingOut: thinkingTextFadingOut,
@@ -5203,7 +5206,7 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
   if (thinkingIndicatorUsesStatusRow(mode)) {
     return (
       <AssistantThinkingStatusRow
-        running={running}
+        active={active}
         blockStyle={blockStyle}
         isQueued={isQueued}
         thinkingLabel={thinkingLabel}

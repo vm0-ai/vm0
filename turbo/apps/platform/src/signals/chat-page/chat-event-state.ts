@@ -1,5 +1,6 @@
 import {
   chatEventCompatibilityRole,
+  foldChatRunStates,
   isBrowserLifecycleEventType,
   isChatGoalMarkerEventType,
   isChatRunTerminalEventType,
@@ -346,53 +347,52 @@ export function lastAssistantCancelledFromGroups(
   return lastEvent ? isCancelledRunEvent(lastEvent) : false;
 }
 
-export type RunIndicatorState = "running" | "queued" | null;
+export type RunIndicatorState = "pending" | "running" | "queued" | null;
+type ActiveRunIndicatorState = "pending" | "running" | null;
+
+interface RunIndicatorContext {
+  readonly terminatedRunIds: ReadonlySet<string>;
+  readonly queuedRunIds: ReadonlySet<string>;
+}
 
 function runActivityIndicatorState(
-  terminatedRunIds: ReadonlySet<string>,
+  context: RunIndicatorContext,
   runId: string,
-): RunIndicatorState | undefined {
-  if (terminatedRunIds.has(runId)) {
+): ActiveRunIndicatorState | undefined {
+  if (context.terminatedRunIds.has(runId) || context.queuedRunIds.has(runId)) {
     return undefined;
   }
   return "running";
 }
 
 function assistantRunIndicatorState(
-  terminatedRunIds: ReadonlySet<string>,
+  context: RunIndicatorContext,
   event: ChatEvent,
-): RunIndicatorState | undefined {
+): ActiveRunIndicatorState | undefined {
   const runId = event.runId;
   if (isQueueMarkerEvent(event)) {
-    if (runId !== undefined && terminatedRunIds.has(runId)) {
-      return undefined;
-    }
-    return "queued";
+    return undefined;
   }
-  if (runId !== undefined && isChatRunTerminalEventType(event.eventType)) {
+  if (isChatRunTerminalEventType(event.eventType)) {
     return null;
   }
   if (runId === undefined) {
     return undefined;
   }
-  return runActivityIndicatorState(terminatedRunIds, runId);
+  return runActivityIndicatorState(context, runId);
 }
 
 function nonAssistantRunIndicatorState(
-  terminatedRunIds: ReadonlySet<string>,
+  context: RunIndicatorContext,
   event: ChatEvent,
-): RunIndicatorState | undefined {
-  if (
-    event.eventType === "input.prompt" &&
-    event.runId === undefined &&
-    event.optimisticUserMessageAssociation === "run"
-  ) {
-    return "running";
+): ActiveRunIndicatorState | undefined {
+  if (event.eventType === "input.prompt" && event.runId === undefined) {
+    return "pending";
   }
   const { runId } = event;
   return runId === undefined
     ? undefined
-    : runActivityIndicatorState(terminatedRunIds, runId);
+    : runActivityIndicatorState(context, runId);
 }
 
 function visibleRunStartIndexByRunId(
@@ -420,10 +420,10 @@ function visibleRunStartIndexByRunId(
 function laterStartedRunIndicatorState(
   events: readonly ChatEvent[],
   terminatedRunId: string,
-  terminatedRunIds: ReadonlySet<string>,
+  context: RunIndicatorContext,
   revokedEventIds: ReadonlySet<string>,
   runStartIndexByRunId: ReadonlyMap<string, number>,
-): RunIndicatorState | undefined {
+): "running" | undefined {
   const terminatedRunStartIndex = runStartIndexByRunId.get(terminatedRunId);
   if (terminatedRunStartIndex === undefined) {
     return undefined;
@@ -443,24 +443,25 @@ function laterStartedRunIndicatorState(
     }
     const state =
       chatEventCompatibilityRole(event.eventType) === "assistant"
-        ? assistantRunIndicatorState(terminatedRunIds, event)
-        : nonAssistantRunIndicatorState(terminatedRunIds, event);
-    if (state === "running" || state === "queued") {
+        ? assistantRunIndicatorState(context, event)
+        : nonAssistantRunIndicatorState(context, event);
+    if (state === "running") {
       return state;
     }
   }
   return undefined;
 }
 
-export function deriveRunIndicatorStateFromChatEvents(
+function activeRunIndicatorStateFromChatEvents(
   events: readonly ChatEvent[],
-): RunIndicatorState {
-  const revokedEventIds = revokedChatEventIds(events);
-  const terminatedRunIds = terminatedChatRunIds(events);
+  revokedEventIds: ReadonlySet<string>,
+  context: RunIndicatorContext,
+): ActiveRunIndicatorState {
   const runStartIndexByRunId = visibleRunStartIndexByRunId(
     events,
     revokedEventIds,
   );
+  let newerPendingState: "pending" | null = null;
 
   for (let index = events.length - 1; index >= 0; index--) {
     const event = events[index]!;
@@ -471,12 +472,12 @@ export function deriveRunIndicatorStateFromChatEvents(
       continue;
     }
     if (chatEventCompatibilityRole(event.eventType) === "assistant") {
-      const state = assistantRunIndicatorState(terminatedRunIds, event);
+      const state = assistantRunIndicatorState(context, event);
       if (state === null && event.runId !== undefined) {
         const laterRunState = laterStartedRunIndicatorState(
           events,
           event.runId,
-          terminatedRunIds,
+          context,
           revokedEventIds,
           runStartIndexByRunId,
         );
@@ -484,17 +485,54 @@ export function deriveRunIndicatorStateFromChatEvents(
           return laterRunState;
         }
       }
-      if (state !== undefined) {
+      if (state === null) {
+        return newerPendingState;
+      }
+      if (state === "running") {
         return state;
+      }
+      if (
+        event.runId === undefined &&
+        (event.eventType === "output.message" ||
+          event.eventType === "output.error")
+      ) {
+        return newerPendingState;
       }
       continue;
     }
-    const state = nonAssistantRunIndicatorState(terminatedRunIds, event);
-    if (state !== undefined) {
+    const state = nonAssistantRunIndicatorState(context, event);
+    if (state === "running") {
       return state;
     }
+    if (state === "pending" && newerPendingState === null) {
+      newerPendingState = state;
+    }
   }
-  return null;
+  return newerPendingState;
+}
+
+export function deriveRunIndicatorStateFromChatEvents(
+  events: readonly ChatEvent[],
+): RunIndicatorState {
+  const revokedEventIds = revokedChatEventIds(events);
+  const terminatedRunIds = terminatedChatRunIds(events);
+  const queuedRunIds = new Set(
+    [...foldChatRunStates(events)].flatMap(([runId, state]) => {
+      return state === "queued" ? [runId] : [];
+    }),
+  );
+  const activeRunState = activeRunIndicatorStateFromChatEvents(
+    events,
+    revokedEventIds,
+    {
+      terminatedRunIds,
+      queuedRunIds,
+    },
+  );
+  if (activeRunState === "running") {
+    return activeRunState;
+  }
+  return queuedRunIds.size > 0 ? "queued" : activeRunState;
 }
 
 export function liveRunIdsFromChatEvents(

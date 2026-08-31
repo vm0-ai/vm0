@@ -708,6 +708,7 @@ describe("chat lifecycle", () => {
         }),
       ).toBeTruthy();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
     });
 
     click(
@@ -726,6 +727,7 @@ describe("chat lifecycle", () => {
         }),
       ).toBeFalsy();
       expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
     });
   });
 
