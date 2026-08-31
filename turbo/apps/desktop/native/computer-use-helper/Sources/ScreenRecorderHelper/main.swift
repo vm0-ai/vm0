@@ -366,8 +366,16 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
                 message: "Screen recording produced no output file"
             )
         }
+        // `finishWriting` has returned, so the file must be readable. Reporting
+        // a fabricated 0 here would hand delivery a plausible wrong number
+        // instead of surfacing the broken output.
         let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
-        let size = (attributes?[.size] as? NSNumber)?.intValue ?? 0
+        guard let size = (attributes?[.size] as? NSNumber)?.intValue else {
+            throw HelperFailure(
+                code: "capture_failed",
+                message: "Screen recording output file is unreadable"
+            )
+        }
         let clickTrackPath = try writeClickTrack(
             besideVideoAt: url,
             timeline: timeline,

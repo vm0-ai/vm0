@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.813.2](https://github.com/vm0-ai/vm0/compare/app-v0.813.1...app-v0.813.2) (2026-08-31)
+
+
+### Performance Improvements
+
+* **platform:** remove server contracts from startup graph ([#30444](https://github.com/vm0-ai/vm0/issues/30444)) ([e9aff31](https://github.com/vm0-ai/vm0/commit/e9aff312223e62e4e451eb68b61864687e08b007))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.15
+    * @okouai/core bumped to 8.604.1
+
 ## [0.813.1](https://github.com/vm0-ai/vm0/compare/app-v0.813.0...app-v0.813.1) (2026-08-31)
 
 

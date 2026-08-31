@@ -17,14 +17,12 @@ import {
 } from "./runs";
 import { modelProviderWriteTypeSchema } from "./model-providers";
 import {
-  sandboxReuseResultSchema,
-  workspaceReuseResultSchema,
-} from "./webhooks";
-import {
   runnerHeartbeatGenerationSchema,
   runnerHostnameSchema,
   runnerVersionSchema,
-} from "./runners";
+  sandboxReuseResultSchema,
+  workspaceReuseResultSchema,
+} from "./runner-primitives";
 
 /**
  * Zero run request schema — subset of unified schema.

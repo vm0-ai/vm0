@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync } from "node:fs";
-import path from "node:path";
+import { resolveNativeHelperPath } from "./native-helper-path";
 import type {
   DesktopRecorderErrorCode,
   DesktopRecorderNativeStatus,
@@ -24,44 +23,6 @@ class DesktopRecorderHelperError extends Error {
     super(message);
     this.name = "DesktopRecorderHelperError";
   }
-}
-
-interface ResolveRecorderHelperPathOptions {
-  readonly appRoot?: string;
-  readonly resourcesPath?: string;
-  readonly exists?: (candidate: string) => boolean;
-}
-
-function helperPathCandidates(
-  options: ResolveRecorderHelperPathOptions,
-): readonly [string, string, string] {
-  const appRoot = options.appRoot ?? path.resolve(__dirname, "..");
-  const resourcesPath =
-    options.resourcesPath ?? process.resourcesPath ?? appRoot;
-  return [
-    path.join(resourcesPath, "native", HELPER_NAME),
-    path.join(appRoot, "native", "dist", "native", HELPER_NAME),
-    path.join(
-      appRoot,
-      "native",
-      "computer-use-helper",
-      ".build",
-      "release",
-      HELPER_NAME,
-    ),
-  ];
-}
-
-function resolveRecorderHelperPath(
-  options: ResolveRecorderHelperPathOptions = {},
-): string {
-  const exists = options.exists ?? existsSync;
-  const candidates = helperPathCandidates(options);
-  return (
-    candidates.find((candidate) => {
-      return exists(candidate);
-    }) ?? candidates[1]
-  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -118,6 +79,31 @@ function sourceKind(value: unknown): DesktopRecorderSourceKind {
     "capture_failed",
     "Screen recorder helper returned an invalid source kind",
   );
+}
+
+/**
+ * Reads one stdout line as a correlated response frame, or `null` when it is
+ * not one.
+ *
+ * Anything the helper writes to stdout that is not a frame — a framework
+ * diagnostic, a partial line left by an abnormal exit — is dropped rather than
+ * thrown. This runs inside the `stdout` data handler, so throwing here would
+ * take down the Electron main process instead of the one request involved, and
+ * every request already has its own timeout to fall back on.
+ */
+function parseResponseLine(
+  line: string,
+): (Record<string, unknown> & { readonly id: string }) | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed) || typeof parsed.id !== "string") {
+    return null;
+  }
+  return { ...parsed, id: parsed.id };
 }
 
 interface PendingRequest {
@@ -264,8 +250,8 @@ class RecorderHelperClient {
   }
 
   private settleLine(line: string): void {
-    const parsed: unknown = JSON.parse(line);
-    if (!isRecord(parsed) || typeof parsed.id !== "string") {
+    const parsed = parseResponseLine(line);
+    if (!parsed) {
       return;
     }
     const pending = this.pending.get(parsed.id);
@@ -379,7 +365,7 @@ export function createRecorderNativeBackend(
   } = {},
 ): RecorderNativeBackend {
   const client = new RecorderHelperClient(
-    options.helperPath ?? resolveRecorderHelperPath(),
+    options.helperPath ?? resolveNativeHelperPath(HELPER_NAME),
     options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
   );
 

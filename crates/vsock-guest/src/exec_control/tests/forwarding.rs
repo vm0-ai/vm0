@@ -1,3 +1,4 @@
+use std::io::Read;
 use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -5,9 +6,14 @@ use std::time::Duration;
 
 use vsock_proto::{ExecControlStatus, MSG_EXEC_CONTROL_RESULT};
 
-use super::super::forward::{forward_control_request, try_forward};
+use crate::threading::test_support::FailingThreadSpawner;
+
+use super::super::forward::{forward_control_request, try_forward, try_forward_with_spawner};
 use super::super::sink::{ControlSinkInner, ControlSinkState};
-use super::super::{EXEC_REQUEST_TIMEOUT_DIAGNOSTIC, MAX_PENDING_CONTROL_REQUESTS};
+use super::super::{
+    EXEC_CONTROL_WORKER_START_ERROR_PREFIX, EXEC_REQUEST_TIMEOUT_DIAGNOSTIC,
+    MAX_PENDING_CONTROL_REQUESTS, THREAD_EXEC_CONTROL_FORWARD,
+};
 use super::support::{
     connected_sink, guest_writer_pair, owned_control_request, read_exec_control_result,
 };
@@ -83,6 +89,35 @@ fn exec_control_queue_full_rejects_without_leaking_pending_slots() {
 
     drop(pending_slots);
     assert_eq!(sink.pending.load(Ordering::Acquire), 0);
+}
+#[test]
+fn exec_control_worker_spawn_failure_releases_slot_without_forwarding_payload() {
+    let (sink, mut peer) = connected_sink();
+    peer.set_nonblocking(true).unwrap();
+    let (writer, _host) = guest_writer_pair();
+
+    let immediate = try_forward_with_spawner(
+        Arc::clone(&sink),
+        owned_control_request(31, 18, 5000, "msg-spawn-fails"),
+        writer,
+        FailingThreadSpawner::fail_once(THREAD_EXEC_CONTROL_FORWARD),
+    )
+    .expect("worker spawn failure should return an immediate result");
+
+    assert_eq!(immediate.0, ExecControlStatus::SinkError);
+    assert_eq!(
+        immediate.1,
+        format!(
+            "{EXEC_CONTROL_WORKER_START_ERROR_PREFIX}: injected thread spawn failure for {THREAD_EXEC_CONTROL_FORWARD}"
+        )
+    );
+    assert_eq!(sink.pending.load(Ordering::Acquire), 0);
+
+    let mut byte = [0u8];
+    let error = peer
+        .read(&mut byte)
+        .expect_err("failed forwarding worker should not send a control request");
+    assert_eq!(error.kind(), std::io::ErrorKind::WouldBlock);
 }
 #[test]
 fn pending_control_slot_holds_existing_slot_until_drop() {
