@@ -1,3 +1,113 @@
+//! Production telemetry emitted while applying a `guest-download` manifest.
+//!
+//! This module owns a fixed-cardinality sandbox-operation contract. The action
+//! names, dimensions, and emission rules are consumed by production dashboards
+//! and queries, so they are compatibility boundaries rather than incidental log
+//! messages. The exact action list is guarded by
+//! `complete_action_schema_is_exact_and_unique` below.
+//!
+//! # Run-level metrics
+//!
+//! `DownloadRunTelemetry` records metrics about the prepared tasks and the
+//! scheduler. The nine count families are:
+//!
+//! - `guest_download_task_count_*`: all prepared download tasks.
+//! - `guest_download_remote_url_count_*`: tasks with an HTTP(S) URL.
+//! - `guest_download_file_url_count_*`: tasks with a `file://` URL.
+//! - `guest_download_skill_child_task_count_*`: tasks mounted below the
+//!   framework skill directories.
+//! - `guest_download_potential_parent_child_overlap_count_*`: matching
+//!   ancestor occurrences among normalized mount paths.
+//! - `guest_download_mount_conflict_deferral_count_*`: all scheduler conflict
+//!   deferral observations.
+//! - `guest_download_instructions_skill_conflict_deferral_count_*`: deferrals
+//!   between the framework home-instructions task and a skill-child task.
+//! - `guest_download_exact_path_conflict_deferral_count_*`: deferrals for equal
+//!   mount paths.
+//! - `guest_download_other_parent_child_conflict_deferral_count_*`: other
+//!   ancestor/descendant mount-path deferrals.
+//!
+//! Every `*_count_*` family uses the same buckets: `0`, `1`, `2`, `3..=4`,
+//! `5..=8`, `9..=16`, and `17+`. The potential-overlap metric walks ancestors
+//! of each normalized path, so equal paths and sibling paths do not contribute
+//! to that metric. It counts matching ancestor occurrences, including repeated
+//! occurrences of an ancestor.
+//!
+//! The scheduler scans the pending queue when looking for a startable task. If
+//! a pending task conflicts with a reservation, it records one deferral
+//! observation against the first blocking reservation found during that scan
+//! and continues scanning. Reservations remain task-scoped during retry
+//! backoff, so repeated scans or repeated observations of the same task can
+//! increment these metrics. These values are therefore not counts of unique
+//! tasks or unique path pairs. Each observation contributes to the total and
+//! exactly one of the three classified conflict families.
+//!
+//! The run also emits
+//! `guest_download_framework_home_instructions_task_{present,absent}`. This is
+//! a successful zero-duration presence flag, not a count bucket.
+//!
+//! # Task totals and dimensions
+//!
+//! Each completed storage task emits `storage_download`, and each completed
+//! artifact task emits `artifact_download`. The task total carries two bounded
+//! dimensions:
+//!
+//! - `outcome` identifies the URL kind and compressed-size classification. A
+//!   remote task uses `remote_*`, a local `file://` task uses `file_*`, and any
+//!   other URL uses `other_unknown`. The size suffixes are `zero`,
+//!   `lt_64_kib`, `64_kib_to_256_kib`, `256_kib_to_1_mib`, `1_mib_to_4_mib`,
+//!   `4_mib_to_16_mib`, `16_mib_to_64_mib`, and `64_mib_plus`; an unavailable
+//!   size is reported as `remote_unknown` or `file_unknown`.
+//! - `reason` identifies the task role: `framework_home_instructions`,
+//!   `framework_skill_child`, or `other`. A task with an instructions target
+//!   has the first role; otherwise a task mounted below
+//!   `/home/user/.codex/skills` or `/home/user/.claude/skills` has the second
+//!   role.
+//!
+//! The size buckets are half-open ranges: zero bytes; 1..65,535 bytes;
+//! 65,536..262,143 bytes; 262,144..1,048,575 bytes; 1,048,576..4,194,303
+//! bytes; 4,194,304..16,777,215 bytes; 16,777,216..67,108,863 bytes; and
+//! 67,108,864 bytes or more. Local size comes from the opened regular file's
+//! metadata. A task total may carry the sanitized failure detail in its
+//! `error` field; the remote attribution rows never carry that detail.
+//!
+//! # Remote attribution
+//!
+//! HTTP(S) storage and artifact tasks additionally emit five remote-attribution
+//! rows. Their action names are prefixed with `storage_download_remote_` or
+//! `artifact_download_remote_` and cover:
+//!
+//! - `request_to_response_headers`: elapsed time for the request through
+//!   receipt of response headers.
+//! - `body_read`: time spent reading the compressed response body.
+//! - `extract_outside_body_read`: extraction wall time not accounted for by
+//!   body reads.
+//! - `compressed_bytes_consumed_*`: compressed bytes read, classified with the
+//!   same eight size buckets as task outcomes.
+//! - `attempt_count_{1,2,3}`: one attempt, two attempts, or three or more
+//!   attempts.
+//!
+//! Header time, body-read time, extraction-outside-body-read time, compressed
+//! bytes, and attempts are accumulated across every attempt of the task. The
+//! task total is emitted first, followed by the remote rows. Every remote row
+//! inherits the final task success value: a task that succeeds after a retry
+//! has successful rows containing all attempts, while a task that finally fails
+//! has failed rows containing the work observed before failure. Only the task
+//! total carries failure detail. `file://` tasks do not allocate remote metrics
+//! and never emit remote-attribution rows.
+//!
+//! # Compatibility boundary
+//!
+//! `complete_action_schema_is_exact_and_unique` constructs the complete list of
+//! 95 action names, checks its order, and checks uniqueness. The binary
+//! attribution tests in
+//! `tests/integration/binary_logging/attribution.rs` cover action ordering,
+//! successful and failed downloads, local-versus-remote emission, retry
+//! aggregation, timing separation, size buckets, framework task roles, and
+//! redaction. Changes to an action name, bucket, dimension, or emission point
+//! change this production contract and must update the schema and attribution
+//! evidence together.
+
 use crate::source;
 use guest_common::telemetry::{
     SandboxOpDimensions, record_sandbox_op, record_sandbox_op_with_dimensions,
