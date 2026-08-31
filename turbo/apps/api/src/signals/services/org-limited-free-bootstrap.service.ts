@@ -4,6 +4,7 @@ import { command } from "ccstate";
 import { LIMITED_FREE1_DEFAULT_RUN_MODEL } from "@okouai/api-contracts/contracts/model-providers";
 import { SEED_INSTRUCTIONS } from "@okouai/core/seed-instructions";
 import { agents } from "@okouai/db/schema/agent";
+import { orgMetadataLegacyWrites } from "@okouai/db/operations/org-metadata-legacy-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
@@ -208,7 +209,7 @@ async function finalizeBootstrap(
   await writeOrgMetadataWithPlanEntitlements(tx, {
     writeOrgMetadata: async (writeTx) => {
       return await writeTx
-        .insert(orgMetadata)
+        .insert(orgMetadataLegacyWrites)
         .values({
           orgId: args.orgId,
           defaultAgentId: agentRow.id,
@@ -218,7 +219,7 @@ async function finalizeBootstrap(
           updatedAt: nowDate(),
         })
         .onConflictDoUpdate({
-          target: orgMetadata.orgId,
+          target: orgMetadataLegacyWrites.orgId,
           set: {
             defaultAgentId: agentRow.id,
             tier: "limited-free-1",

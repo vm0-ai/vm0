@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { billingCreditCheckoutContract } from "@okouai/api-contracts/contracts/billing";
+import { orgMetadataLegacyWrites } from "@okouai/db/operations/org-metadata-legacy-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 
@@ -89,9 +90,9 @@ const creditCheckoutAuthed$ = command(
       }
       const db = set(writeDb$);
       await db
-        .insert(orgMetadata)
+        .insert(orgMetadataLegacyWrites)
         .values({ orgId: auth.orgId })
-        .onConflictDoNothing({ target: orgMetadata.orgId });
+        .onConflictDoNothing({ target: orgMetadataLegacyWrites.orgId });
       signal.throwIfAborted();
       const updateResult = await set(
         updateAutoRechargeConfig$,
