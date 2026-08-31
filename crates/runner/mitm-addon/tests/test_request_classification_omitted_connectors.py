@@ -155,10 +155,11 @@ def test_omitted_connector_lookup_allocation_does_not_scale_with_target_count(
             )
             assert isinstance(warm_classification, request_classification.Allow)
 
+            measured_flow = new_flow()
             tracemalloc.start()
             try:
                 classification = request_classification.classify_request(
-                    new_flow(),
+                    measured_flow,
                     registry_path=str(registry_path),
                     api_url=_API_URL,
                     tls_admission=None,
