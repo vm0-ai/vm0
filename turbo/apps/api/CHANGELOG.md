@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.512.1](https://github.com/vm0-ai/vm0/compare/api-v1.512.0...api-v1.512.1) (2026-08-31)
+
+
+### Refactoring
+
+* remove latest presentation templates switch ([#30335](https://github.com/vm0-ai/vm0/issues/30335)) ([8bfe687](https://github.com/vm0-ai/vm0/commit/8bfe68776bed2e55405192a0d7e0636039561b0a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/connector-catalog-validation bumped to 2.0.16
+    * @okouai/core bumped to 8.603.5
+    * @okouai/db bumped to 1.228.21
+
 ## [1.512.0](https://github.com/vm0-ai/vm0/compare/api-v1.511.8...api-v1.512.0) (2026-08-30)
 
 

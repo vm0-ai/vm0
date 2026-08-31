@@ -16,14 +16,12 @@ import {
   findTemplate,
   findVideoTemplate,
   findWebsiteTemplateResource,
-  type PresentationRunbookArchiveVersion,
   type RegistryEntry,
   type VideoTemplateRegistryEntry,
 } from "@okouai/core/resource-registry";
 
 import { getRegistryResourceDownload } from "../../lib/api/domains/registry-resources";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
-import { presentationRunbookArchiveVersionFromEnvironment } from "../shared/presentation-runbook-archive-version";
 
 type PullableRegistryEntry = RegistryEntry | VideoTemplateRegistryEntry;
 
@@ -47,7 +45,6 @@ function candidateIds(id: string): readonly string[] {
 
 export function findRegistryResourceForPull(
   id: string,
-  presentationRunbookArchiveVersion: PresentationRunbookArchiveVersion = "latest",
 ): PullableRegistryEntry | undefined {
   for (const candidate of candidateIds(id)) {
     const entry =
@@ -58,10 +55,7 @@ export function findRegistryResourceForPull(
       findImageStyle(candidate) ??
       findVideoTemplate(candidate) ??
       findPresentationReverseTemplateResource(candidate) ??
-      findPresentationRunbookResource(
-        candidate,
-        presentationRunbookArchiveVersion,
-      ) ??
+      findPresentationRunbookResource(candidate) ??
       findWebsiteTemplateResource(candidate);
     if (entry) {
       return entry;
@@ -115,10 +109,7 @@ export const resourceCommand = new Command()
       )
       .action(
         withErrorHandler(async (id: string, options: PullOptions) => {
-          const entry = findRegistryResourceForPull(
-            id,
-            presentationRunbookArchiveVersionFromEnvironment(),
-          );
+          const entry = findRegistryResourceForPull(id);
           if (!entry) {
             throw new Error(`Unknown registry resource: ${id}`);
           }
