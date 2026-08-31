@@ -167,6 +167,7 @@ import {
   type AgentReferenceSignalsRegistry,
 } from "./agent-reference-signals.ts";
 import { createConnectorCardSignalsRegistry } from "./connector-action-block.ts";
+import { createConnectorAccountActionCardSignalsRegistry } from "./connector-account-action-block.ts";
 import { createPermissionCardSignalsRegistry } from "./permission-card-signals.ts";
 import { createBankingCardSignalsRegistry } from "./banking-action-block.ts";
 import { createComputerUseAuthorizationCardSignalsRegistry } from "./computer-use-authorization-block.ts";
@@ -240,6 +241,7 @@ import {
 } from "./user-message-files.ts";
 import type { ChatForwardContext } from "./chat-forward.ts";
 import { createComposerConnectorSignals } from "../okou-page/connectors.ts";
+import type { ComposerConnectorAccountSignals } from "../okou-page/composer-connector-accounts.ts";
 
 const L = logger("ChatThread");
 const noOpComposerDraftSave$ = command(
@@ -1779,6 +1781,9 @@ interface EventTreeRegistries {
   readonly connectorCardSignals: ReturnType<
     typeof createConnectorCardSignalsRegistry
   >;
+  readonly connectorAccountActionCardSignals: ReturnType<
+    typeof createConnectorAccountActionCardSignalsRegistry
+  >;
   readonly permissionCardSignals: ReturnType<
     typeof createPermissionCardSignalsRegistry
   >;
@@ -1803,6 +1808,7 @@ function createCardRefRegistrar({
   chatActionContext,
   artifactCardSignals,
   connectorCardSignals,
+  connectorAccountActionCardSignals,
   permissionCardSignals,
   bankingCardSignals,
   computerUseAuthorizationCardSignals,
@@ -1824,6 +1830,15 @@ function createCardRefRegistrar({
           return {
             kind: descriptor.type,
             signals: set(connectorCardSignals.register$, descriptor.descriptor),
+          };
+        }
+        case "connector-account-action": {
+          return {
+            kind: descriptor.type,
+            signals: set(
+              connectorAccountActionCardSignals.register$,
+              descriptor.descriptor,
+            ),
           };
         }
         case "permission-action": {
@@ -2096,10 +2111,21 @@ function createEventTreeSignals(registries: EventTreeRegistries) {
 }
 
 function createPagedEventResources(
-  chatActionContext: ChatActionContext,
-  chatEvents$: Computed<ChatEvent[]>,
-  previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
-  browserLifecycleOptimisticEvents: BrowserLifecycleOptimisticEvents,
+  {
+    chatActionContext,
+    chatEvents$,
+    previewImageUrlsByUrl$,
+    browserLifecycleOptimisticEvents,
+    connectorAccounts,
+  }: {
+    readonly chatActionContext: ChatActionContext;
+    readonly chatEvents$: Computed<ChatEvent[]>;
+    readonly previewImageUrlsByUrl$: Computed<
+      Promise<ReadonlyMap<string, string>>
+    >;
+    readonly browserLifecycleOptimisticEvents: BrowserLifecycleOptimisticEvents;
+    readonly connectorAccounts: ComposerConnectorAccountSignals;
+  },
   ownerSignal: AbortSignal,
 ) {
   const { threadId } = chatActionContext;
@@ -2115,6 +2141,8 @@ function createPagedEventResources(
   );
   const agentReferenceSignals = createAgentReferenceSignalsRegistry();
   const connectorCardSignals = createConnectorCardSignalsRegistry();
+  const connectorAccountActionCardSignals =
+    createConnectorAccountActionCardSignalsRegistry(connectorAccounts);
   const permissionCardSignals = createPermissionCardSignalsRegistry();
   const bankingCardSignals = createBankingCardSignalsRegistry();
   const computerUseAuthorizationCardSignals =
@@ -2148,6 +2176,7 @@ function createPagedEventResources(
     chatActionContext,
     artifactCardSignals,
     connectorCardSignals,
+    connectorAccountActionCardSignals,
     permissionCardSignals,
     bankingCardSignals,
     computerUseAuthorizationCardSignals,
@@ -2473,10 +2502,12 @@ function createChatThreadMessagePipeline(
     chatActionContext,
     chatEvents,
     previewImageUrlsByUrl$,
+    connectorAccounts,
   }: {
     chatActionContext: ChatActionContext;
     chatEvents: ChatEventSignals;
     previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
+    connectorAccounts: ComposerConnectorAccountSignals;
   },
   ownerSignal: AbortSignal,
 ) {
@@ -2486,10 +2517,13 @@ function createChatThreadMessagePipeline(
   // Position is created before scroll writers are wired to the render window.
   const position = createThreadScrollPositionSignals(threadId);
   const resources = createPagedEventResources(
-    chatActionContext,
-    chatEvents.chatEvents$,
-    previewImageUrlsByUrl$,
-    browserLifecycleOptimisticEvents,
+    {
+      chatActionContext,
+      chatEvents$: chatEvents.chatEvents$,
+      previewImageUrlsByUrl$,
+      browserLifecycleOptimisticEvents,
+      connectorAccounts,
+    },
     ownerSignal,
   );
   const projections = createPagedEventProjections({
@@ -4245,6 +4279,7 @@ function createChatPanelSignalsWithDraft(
       previewImageUrlsByUrl$: createArtifactPreviewImageUrls(
         artifact.artifacts$,
       ),
+      connectorAccounts: composer.connector.accounts,
     },
     signal,
   );

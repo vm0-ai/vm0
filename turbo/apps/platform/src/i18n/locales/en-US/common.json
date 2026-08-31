@@ -1898,6 +1898,22 @@
       "unsupportedIntelMac": "Requires an Apple silicon Mac",
       "yourComputer": "Your computer"
     },
+    "connectorAccountSwitch": {
+      "accountFallback": "Connector account",
+      "actionFailed": "Couldn't confirm this account or continue the chat. Try again.",
+      "continued": "Continuation requested",
+      "continueWithAccount": "Continue with this account",
+      "currentRunUnchanged": "The current run will not change.",
+      "customConnector": "Custom connector",
+      "loadFailed": "Couldn't load this connector account.",
+      "reconnectRequired": "Reconnect required. Later runs may use the existing fallback.",
+      "retry": "Retry",
+      "selected": "Already selected for this chat",
+      "title": "Use {{account}} for future runs?",
+      "unavailableDescription": "This account does not exist or is not available for this connector.",
+      "unavailableTitle": "Account unavailable",
+      "useAndContinue": "Use account and continue"
+    },
     "connectors": {
       "accountForThread": "Account for this chat",
       "add": "Add {{connectorName}}",

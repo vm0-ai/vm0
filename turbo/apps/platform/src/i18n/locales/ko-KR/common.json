@@ -1895,6 +1895,22 @@
       "unsupportedIntelMac": "Apple 실리콘 Mac 필요",
       "yourComputer": "내 컴퓨터"
     },
+    "connectorAccountSwitch": {
+      "accountFallback": "커넥터 계정",
+      "actionFailed": "이 계정을 확인하거나 채팅을 계속할 수 없습니다. 다시 시도하세요.",
+      "continued": "계속 요청됨",
+      "continueWithAccount": "이 계정으로 계속",
+      "currentRunUnchanged": "현재 실행은 변경되지 않습니다.",
+      "customConnector": "사용자 지정 커넥터",
+      "loadFailed": "이 커넥터 계정을 불러올 수 없습니다.",
+      "reconnectRequired": "다시 연결해야 합니다. 이후 실행에서는 기존 대체 계정을 사용할 수 있습니다.",
+      "retry": "다시 시도",
+      "selected": "이 채팅에 이미 선택됨",
+      "title": "향후 실행에 {{account}}을(를) 사용하시겠습니까?",
+      "unavailableDescription": "이 계정은 존재하지 않거나 이 커넥터에서 사용할 수 없습니다.",
+      "unavailableTitle": "계정을 사용할 수 없음",
+      "useAndContinue": "계정을 사용하고 계속"
+    },
     "connectors": {
       "accountForThread": "이 스레드의 계정",
       "add": "{{connectorName}} 추가",

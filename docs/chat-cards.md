@@ -49,6 +49,7 @@ Current link-backed card patterns include:
   `/connectors/:connectorSlug/authorize`
 - `/connectors/custom/proposal?p=...`
 - `/agents/:agentId/permissions?...`
+- `/agents/:agentId/connector-accounts/:connectionId/select?...`
 - `/computer-use/authorize/:requestToken`
 - `/?settings=billing&billingView=plans`
 - `/mail/drafts/:vm0DraftId`
@@ -272,6 +273,39 @@ Permission changes can arrive from another card or another product surface. A
 user-level realtime event invalidates the shared grants source, so mounted
 permission cards refresh without replacing their signals identities.
 
+### Confirmed action: connector account switch
+
+A connector account switch URL matches:
+
+```text
+/agents/:agentId/connector-accounts/:connectionId/select
+  ?kind=builtin
+  &connectorSlug=github
+  &threadId=:threadId
+  &callbackPrompt=:prompt
+```
+
+Custom connectors use `kind=custom` and `customConnectorId` instead of
+`connectorSlug`. The parser requires exactly one well-formed target, the chat's
+server-derived agent ID, and a callback bound to the current thread. These URL
+values are untrusted claims. The card reads the exact account from the API and
+uses only the live account metadata for presentation; a missing, cross-owner,
+or wrong-target account renders an inert unavailable card.
+
+Confirmation writes the exact account selection to the current thread before
+starting the callback round. The selection endpoint resolves the externally
+managed account reference again, so an account that was removed, reconnected,
+or otherwise became invalid after the card loaded fails closed. A failed write
+does not run the callback. A successful write updates only the sparse thread
+override used by future runs; it does not mutate the global default or the run
+that produced the card.
+
+Repeated occurrences of the same action share one signals object. The card also
+reads the composer's shared connector-account preference state, so local
+confirmation and thread-detail realtime events update every mounted occurrence.
+The action is gated by `ConnectorAccounts`; older frontends that do not know the
+card continue to render the emitted Markdown link.
+
 ### Provider-backed resource: Gmail draft
 
 A vm0 mail link matches `/mail/drafts/:vm0DraftId`. The vm0 UUID is the stable
@@ -386,6 +420,7 @@ registry.
 - `turbo/apps/platform/src/signals/chat-page/create-chat-thread.ts`
 - `turbo/apps/platform/src/signals/chat-page/artifact-card-signals.ts`
 - `turbo/apps/platform/src/signals/chat-page/connector-action-block.ts`
+- `turbo/apps/platform/src/signals/chat-page/connector-account-action-block.ts`
 - `turbo/apps/platform/src/signals/chat-page/permission-action-block.ts`
 - `turbo/apps/platform/src/signals/chat-page/permission-card-signals.ts`
 - `turbo/apps/platform/src/signals/chat-page/mail-draft.ts`
@@ -395,5 +430,6 @@ registry.
 - `turbo/apps/platform/src/signals/chat-page/plan-upgrade-block.ts`
 - `turbo/apps/platform/src/views/okou-page/chat-thread-page.tsx`
 - `turbo/apps/platform/src/views/okou-page/browser-session-card.tsx`
+- `turbo/apps/platform/src/views/okou-page/connector-account-action-card.tsx`
 - `turbo/apps/platform/src/views/okou-page/chat-body-cards.tsx`
 - `turbo/apps/platform/src/views/browser-session/browser-session-page.tsx`

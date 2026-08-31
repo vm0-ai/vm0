@@ -1928,6 +1928,22 @@
       "unsupportedIntelMac": "Requiere un Mac Apple Silicon",
       "yourComputer": "Tu ordenador"
     },
+    "connectorAccountSwitch": {
+      "accountFallback": "Cuenta del conector",
+      "actionFailed": "No se pudo confirmar esta cuenta o continuar el chat. Inténtalo de nuevo.",
+      "continued": "Continuación solicitada",
+      "continueWithAccount": "Continuar con esta cuenta",
+      "currentRunUnchanged": "La ejecución actual no cambiará.",
+      "customConnector": "Conector personalizado",
+      "loadFailed": "No se pudo cargar esta cuenta del conector.",
+      "reconnectRequired": "Es necesario volver a conectar. Es posible que las ejecuciones posteriores usen la alternativa existente.",
+      "retry": "Reintentar",
+      "selected": "Ya seleccionada para este chat",
+      "title": "¿Usar {{account}} para futuras ejecuciones?",
+      "unavailableDescription": "Esta cuenta no existe o no está disponible para este conector.",
+      "unavailableTitle": "Cuenta no disponible",
+      "useAndContinue": "Usar cuenta y continuar"
+    },
     "connectors": {
       "accountForThread": "Cuenta para este hilo",
       "add": "Añadir {{connectorName}}",

@@ -1895,6 +1895,22 @@
       "unsupportedIntelMac": "Memerlukan Mac Apple silicon",
       "yourComputer": "Komputer Anda"
     },
+    "connectorAccountSwitch": {
+      "accountFallback": "Akun konektor",
+      "actionFailed": "Akun ini tidak dapat dikonfirmasi atau chat tidak dapat dilanjutkan. Coba lagi.",
+      "continued": "Kelanjutan diminta",
+      "continueWithAccount": "Lanjutkan dengan akun ini",
+      "currentRunUnchanged": "Proses saat ini tidak akan berubah.",
+      "customConnector": "Konektor khusus",
+      "loadFailed": "Akun konektor ini tidak dapat dimuat.",
+      "reconnectRequired": "Perlu menghubungkan kembali. Proses berikutnya mungkin menggunakan cadangan yang ada.",
+      "retry": "Coba lagi",
+      "selected": "Sudah dipilih untuk chat ini",
+      "title": "Gunakan {{account}} untuk proses berikutnya?",
+      "unavailableDescription": "Akun ini tidak ada atau tidak tersedia untuk konektor ini.",
+      "unavailableTitle": "Akun tidak tersedia",
+      "useAndContinue": "Gunakan akun dan lanjutkan"
+    },
     "connectors": {
       "accountForThread": "Akun untuk utas ini",
       "add": "Tambahkan {{connectorName}}",

@@ -1898,6 +1898,22 @@
       "unsupportedIntelMac": "Erfordert einen Apple Silicon Mac",
       "yourComputer": "Ihr Computer"
     },
+    "connectorAccountSwitch": {
+      "accountFallback": "Connector-Konto",
+      "actionFailed": "Dieses Konto konnte nicht bestätigt oder der Chat nicht fortgesetzt werden. Versuchen Sie es erneut.",
+      "continued": "Fortsetzung angefordert",
+      "continueWithAccount": "Mit diesem Konto fortfahren",
+      "currentRunUnchanged": "Der aktuelle Lauf wird nicht geändert.",
+      "customConnector": "Benutzerdefinierter Connector",
+      "loadFailed": "Dieses Connector-Konto konnte nicht geladen werden.",
+      "reconnectRequired": "Erneute Verbindung erforderlich. Spätere Läufe verwenden möglicherweise den vorhandenen Fallback.",
+      "retry": "Erneut versuchen",
+      "selected": "Bereits für diesen Chat ausgewählt",
+      "title": "{{account}} für zukünftige Läufe verwenden?",
+      "unavailableDescription": "Dieses Konto ist nicht vorhanden oder für diesen Connector nicht verfügbar.",
+      "unavailableTitle": "Konto nicht verfügbar",
+      "useAndContinue": "Konto verwenden und fortfahren"
+    },
     "connectors": {
       "accountForThread": "Konto für diesen Thread",
       "add": "{{connectorName}} hinzufügen",

@@ -1895,6 +1895,22 @@
       "unsupportedIntelMac": "AppleシリコンMacが必要です",
       "yourComputer": "あなたのコンピュータ"
     },
+    "connectorAccountSwitch": {
+      "accountFallback": "コネクターアカウント",
+      "actionFailed": "このアカウントを確認できなかったか、チャットを続行できませんでした。もう一度お試しください。",
+      "continued": "続行をリクエストしました",
+      "continueWithAccount": "このアカウントで続行",
+      "currentRunUnchanged": "現在の実行は変更されません。",
+      "customConnector": "カスタムコネクター",
+      "loadFailed": "このコネクターアカウントを読み込めませんでした。",
+      "reconnectRequired": "再接続が必要です。以降の実行では既存のフォールバックが使用される場合があります。",
+      "retry": "再試行",
+      "selected": "このチャットですでに選択されています",
+      "title": "今後の実行に{{account}}を使用しますか？",
+      "unavailableDescription": "このアカウントは存在しないか、このコネクターでは利用できません。",
+      "unavailableTitle": "アカウントを利用できません",
+      "useAndContinue": "アカウントを使用して続行"
+    },
     "connectors": {
       "accountForThread": "このスレッドのアカウント",
       "add": "{{connectorName}} を追加",

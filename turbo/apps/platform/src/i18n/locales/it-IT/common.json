@@ -1928,6 +1928,22 @@
       "unsupportedIntelMac": "Richiede un Mac Apple Silicon",
       "yourComputer": "Il tuo computer"
     },
+    "connectorAccountSwitch": {
+      "accountFallback": "Account del connettore",
+      "actionFailed": "Impossibile confermare questo account o continuare la chat. Riprova.",
+      "continued": "Continuazione richiesta",
+      "continueWithAccount": "Continua con questo account",
+      "currentRunUnchanged": "L'esecuzione corrente non cambierà.",
+      "customConnector": "Connettore personalizzato",
+      "loadFailed": "Impossibile caricare questo account del connettore.",
+      "reconnectRequired": "È necessario riconnettersi. Le esecuzioni successive potrebbero usare l'alternativa esistente.",
+      "retry": "Riprova",
+      "selected": "Già selezionato per questa chat",
+      "title": "Usare {{account}} per le esecuzioni future?",
+      "unavailableDescription": "Questo account non esiste o non è disponibile per questo connettore.",
+      "unavailableTitle": "Account non disponibile",
+      "useAndContinue": "Usa l'account e continua"
+    },
     "connectors": {
       "accountForThread": "Account per questo thread",
       "add": "Aggiungi {{connectorName}}",
