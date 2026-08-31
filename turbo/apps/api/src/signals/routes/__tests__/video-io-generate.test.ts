@@ -13,6 +13,7 @@ import type { OrgTier } from "@okouai/api-contracts/contracts/orgs";
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
+import { buildArtifactKey, buildFileUrlFromKey } from "../../../lib/file-url";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../../lib/time";
@@ -222,6 +223,20 @@ interface VideoFixture {
   readonly orgId: string;
   readonly pricingResolution: UsagePricingFixture["resolution"];
   readonly userId: string;
+}
+
+function ownedArtifactReference(userId: string, filename: string) {
+  const key = buildArtifactKey(userId, randomUUID(), filename);
+  return { key, url: buildFileUrlFromKey(key, "vm0") };
+}
+
+function expectPresignedArtifactReference(value: unknown, key: string): void {
+  if (typeof value !== "string") {
+    throw new Error("Expected a provider reference URL");
+  }
+  const url = new URL(value);
+  expect(url.origin).toBe("https://r2.example.com");
+  expect(url.searchParams.get("object")).toBe(`${TEST_BUCKET}/${key}`);
 }
 
 const VIDEO_PRICING_ROWS = VIDEO_PRICING_DEFAULTS.map((row) => {
@@ -1742,6 +1757,26 @@ describe("POST /api/video-io/generate", () => {
 
   it("submits multimodal Dreamina references and charges with-video pricing", async () => {
     const fixture = await seedVideoFixture({ credits: 10_000 });
+    const firstFrameReference = ownedArtifactReference(
+      fixture.userId,
+      "first.png",
+    );
+    const lastFrameReference = ownedArtifactReference(
+      fixture.userId,
+      "last.png",
+    );
+    const imageReference = ownedArtifactReference(
+      fixture.userId,
+      "reference.png",
+    );
+    const videoReference = ownedArtifactReference(
+      fixture.userId,
+      "reference.mp4",
+    );
+    const audioReference = ownedArtifactReference(
+      fixture.userId,
+      "reference.mp3",
+    );
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -1789,11 +1824,11 @@ describe("POST /api/video-io/generate", () => {
         duration: "6s",
         resolution: "1080p",
         aspectRatio: "16:9",
-        imageUrls: ["https://example.com/reference.png"],
-        videoUrls: ["https://example.com/reference.mp4"],
-        audioUrls: ["https://example.com/reference.mp3"],
-        firstFrameImageUrl: "https://example.com/first.png",
-        lastFrameImageUrl: "https://example.com/last.png",
+        imageUrls: [imageReference.url],
+        videoUrls: [videoReference.url],
+        audioUrls: [audioReference.url],
+        firstFrameImageUrl: firstFrameReference.url,
+        lastFrameImageUrl: lastFrameReference.url,
         seed: 42,
       }),
     });
@@ -1835,31 +1870,55 @@ describe("POST /api/video-io/generate", () => {
         },
         {
           type: "image_url",
-          image_url: { url: "https://example.com/first.png" },
+          image_url: { url: expect.any(String) },
           role: "first_frame",
         },
         {
           type: "image_url",
-          image_url: { url: "https://example.com/last.png" },
+          image_url: { url: expect.any(String) },
           role: "last_frame",
         },
         {
           type: "image_url",
-          image_url: { url: "https://example.com/reference.png" },
+          image_url: { url: expect.any(String) },
           role: "reference_image",
         },
         {
           type: "video_url",
-          video_url: { url: "https://example.com/reference.mp4" },
+          video_url: { url: expect.any(String) },
           role: "reference_video",
         },
         {
           type: "audio_url",
-          audio_url: { url: "https://example.com/reference.mp3" },
+          audio_url: { url: expect.any(String) },
           role: "reference_audio",
         },
       ],
     });
+    const providerContent = asRecord(observedBody).content;
+    if (!Array.isArray(providerContent)) {
+      throw new Error("Expected BytePlus content array");
+    }
+    expectPresignedArtifactReference(
+      asRecord(asRecord(providerContent[1]).image_url).url,
+      firstFrameReference.key,
+    );
+    expectPresignedArtifactReference(
+      asRecord(asRecord(providerContent[2]).image_url).url,
+      lastFrameReference.key,
+    );
+    expectPresignedArtifactReference(
+      asRecord(asRecord(providerContent[3]).image_url).url,
+      imageReference.key,
+    );
+    expectPresignedArtifactReference(
+      asRecord(asRecord(providerContent[4]).video_url).url,
+      videoReference.key,
+    );
+    expectPresignedArtifactReference(
+      asRecord(asRecord(providerContent[5]).audio_url).url,
+      audioReference.key,
+    );
 
     const statusResponse = await app.request(
       `/api/built-in-generations/${generationId}`,
@@ -1882,6 +1941,10 @@ describe("POST /api/video-io/generate", () => {
 
   it("generates MiniMax H3 with full references and charges every billed usage component", async () => {
     const fixture = await seedVideoFixture();
+    const ownedImageReference = ownedArtifactReference(
+      fixture.userId,
+      "minimax-reference.png",
+    );
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -1897,9 +1960,12 @@ describe("POST /api/video-io/generate", () => {
       },
       context.signal,
     );
-    const referenceImageUrls = Array.from({ length: 7 }, (_, index) => {
-      return `https://example.com/reference-${index + 1}.png`;
-    });
+    const referenceImageUrls = [
+      ownedImageReference.url,
+      ...Array.from({ length: 6 }, (_, index) => {
+        return `https://example.com/reference-${index + 2}.png`;
+      }),
+    ];
     const referenceAudioUrls = [
       "https://example.com/reference-1.mp3",
       "https://example.com/reference-2.mp3",
@@ -1985,6 +2051,21 @@ describe("POST /api/video-io/generate", () => {
     expect(completionResponse.status).toBe(200);
 
     expect(observedAuthorization).toBe("Bearer test-minimax-key");
+    const providerContent = asRecord(observedBody).content;
+    if (!Array.isArray(providerContent)) {
+      throw new Error("Expected MiniMax content array");
+    }
+    const signedOwnedImageUrl = asRecord(
+      asRecord(providerContent[1]).image_url,
+    ).url;
+    expectPresignedArtifactReference(
+      signedOwnedImageUrl,
+      ownedImageReference.key,
+    );
+    const providerReferenceImageUrls = [
+      String(signedOwnedImageUrl),
+      ...referenceImageUrls.slice(1),
+    ];
     expect(observedBody).toStrictEqual({
       model: MINIMAX_H3_MODEL,
       content: [
@@ -1992,7 +2073,7 @@ describe("POST /api/video-io/generate", () => {
           type: "text",
           text: "preserve the character and follow the reference soundtrack",
         },
-        ...referenceImageUrls.map((url) => {
+        ...providerReferenceImageUrls.map((url) => {
           return {
             type: "image_url",
             image_url: { url },
