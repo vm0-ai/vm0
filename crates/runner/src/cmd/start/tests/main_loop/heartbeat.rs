@@ -3,8 +3,10 @@ use super::super::support::{
     MockRunEnv, assert_run_exits_within, minimal_context, mock_run_config,
     mock_run_config_with_delay, mock_run_config_with_overrides, push_job, shutdown, test_profiles,
     wait_budget_count, wait_budget_exhausted_reactor, wait_cancel_token, wait_cancel_token_removed,
-    wait_discover_entered, wait_status_mode,
+    wait_discover_entered, wait_status_idle_reuse_keys_and_active_runs, wait_status_mode,
 };
+use crate::status::StatusPersistenceError;
+use sandbox::SandboxId;
 use std::sync::Arc;
 
 async fn wait_for_blocked_routine_heartbeat(env: &MockRunEnv) {
@@ -36,6 +38,50 @@ async fn trigger_routine_heartbeat(
     env.start_observer
         .wait_routine_heartbeat_requested_after(cursor, expected_mode, Duration::from_secs(5))
         .await;
+}
+
+#[tokio::test]
+async fn routine_heartbeat_retries_unpublished_status() {
+    let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let (heartbeat_trigger, heartbeat_trigger_rx) = tokio::sync::mpsc::unbounded_channel();
+    config.test_hooks.manual_routine_heartbeat_rx = Some(heartbeat_trigger_rx);
+    let status_parent = env._temp_dir.path().join("status-state");
+    let unavailable_parent = env._temp_dir.path().join("status-state-unavailable");
+    tokio::fs::create_dir(&status_parent).await.unwrap();
+    let status_path = status_parent.join("status.json");
+    let status = Arc::new(StatusTracker::new(status_path.clone(), 4, None, None));
+    config.shared.status = Arc::clone(&status);
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+    let run_id = RunId::new_v4();
+    let sandbox_id = SandboxId::new_v4();
+    status.add_run(run_id, sandbox_id).await.unwrap();
+    wait_status_idle_reuse_keys_and_active_runs(
+        &status_path,
+        &[],
+        &[run_id.to_string()],
+        Duration::from_secs(5),
+    )
+    .await;
+
+    tokio::fs::rename(&status_parent, &unavailable_parent)
+        .await
+        .unwrap();
+    let error = status
+        .remove_run_if_matching(run_id, sandbox_id)
+        .await
+        .unwrap_err();
+    assert!(matches!(error, StatusPersistenceError::Write { .. }));
+    tokio::fs::rename(&unavailable_parent, &status_parent)
+        .await
+        .unwrap();
+
+    trigger_routine_heartbeat(&heartbeat_trigger, &env, RunnerMode::Running).await;
+    wait_status_idle_reuse_keys_and_active_runs(&status_path, &[], &[], Duration::from_secs(5))
+        .await;
+
+    shutdown(&env, run_handle).await;
 }
 
 // -----------------------------------------------------------------------

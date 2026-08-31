@@ -40,8 +40,8 @@ export const closeAuthV2AddAccountDialog$ = command(({ set }) => {
 });
 
 export const openAuthV2AddAccountDialog$ = command(
-  async ({ get, set }, pageSignal: AbortSignal): Promise<void> => {
-    const dialogSignal = set(resetDialogSignal$, pageSignal);
+  async ({ get, set }, parentSignal: AbortSignal): Promise<void> => {
+    const dialogSignal = set(resetDialogSignal$, parentSignal);
     dialogSignal.addEventListener(
       "abort",
       () => {
@@ -103,11 +103,11 @@ export const openAuthV2AddAccountDialog$ = command(
     });
 
     await set(continuationSignals.initialize$, dialogSignal);
-    pageSignal.throwIfAborted();
+    parentSignal.throwIfAborted();
     dialogSignal.throwIfAborted();
     if (get(continuationSignals.state$).status === "inactive") {
       await set(signInSignals.initialize$, dialogSignal);
-      pageSignal.throwIfAborted();
+      parentSignal.throwIfAborted();
       dialogSignal.throwIfAborted();
     }
   },

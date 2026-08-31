@@ -29,14 +29,27 @@ import {
   runnersJobClaimContract,
   runnersModelUsageObservationsContract,
   runnersPollContract,
+  sandboxReuseResultSchema as runnersSandboxReuseResultSchema,
   storageMountEntrySchema,
   storageManifestSchema,
   storedConnectorPermissionBaselineSchema,
   storedExecutionContextSchema,
   storedResumeSessionSchema,
+  workspaceReuseResultSchema as runnersWorkspaceReuseResultSchema,
 } from "../runners";
+import {
+  runnerHeartbeatGenerationSchema,
+  runnerHostnameSchema,
+  runnerVersionSchema,
+  sandboxReuseResultSchema,
+  workspaceReuseResultSchema,
+} from "../runner-primitives";
 import { runRunnerContract } from "../run-routes";
 import { MAX_EVENT_SEQUENCE_NUMBER } from "../runs";
+import {
+  sandboxReuseResultSchema as webhookSandboxReuseResultSchema,
+  workspaceReuseResultSchema as webhookWorkspaceReuseResultSchema,
+} from "../webhooks";
 
 describe("runner model usage observations contract", () => {
   const event = {
@@ -173,6 +186,36 @@ describe("run runner response compatibility", () => {
     expect(
       runRunnerContract.getRunner.responses[200].parse(currentResponse),
     ).toStrictEqual(currentResponse);
+  });
+
+  it("accepts a ready runner lifecycle snapshot", () => {
+    const readyResponse = {
+      sandboxReuseResult: "reused",
+      workspaceReuseResult: "sandboxReused",
+      runnerHostname: "prod-1.aws.vm3.ai",
+      runnerVersion: "1.381.12",
+      runnerId: "00000000-0000-4000-8000-000000000001",
+      runnerHeartbeatGeneration: 1,
+    } as const;
+
+    expect(
+      runRunnerContract.getRunner.responses[200].parse(readyResponse),
+    ).toStrictEqual(readyResponse);
+  });
+
+  it("rejects invalid runner readiness metadata", () => {
+    expect(runnerHeartbeatGenerationSchema.safeParse(0).success).toBe(false);
+    expect(runnerHostnameSchema.safeParse("").success).toBe(false);
+    expect(runnerVersionSchema.safeParse("").success).toBe(false);
+  });
+});
+
+describe("runner lifecycle schema ownership", () => {
+  it("keeps runner and webhook compatibility exports on one schema instance", () => {
+    expect(runnersSandboxReuseResultSchema).toBe(sandboxReuseResultSchema);
+    expect(webhookSandboxReuseResultSchema).toBe(sandboxReuseResultSchema);
+    expect(runnersWorkspaceReuseResultSchema).toBe(workspaceReuseResultSchema);
+    expect(webhookWorkspaceReuseResultSchema).toBe(workspaceReuseResultSchema);
   });
 });
 

@@ -70,6 +70,93 @@ extension CaptureGeometry {
     }
 }
 
+/// One observed click, in the plain values the tap captured.
+///
+/// Kept free of CoreGraphics types so the projection below can be exercised
+/// without a capture device or an event tap.
+public struct CapturedClick: Equatable, Sendable {
+    public let ticks: UInt64
+    public let screenX: Double
+    public let screenY: Double
+    public let button: String
+    public let clickCount: Int
+    public let modifiers: [String]
+
+    public init(
+        ticks: UInt64,
+        screenX: Double,
+        screenY: Double,
+        button: String,
+        clickCount: Int,
+        modifiers: [String]
+    ) {
+        self.ticks = ticks
+        self.screenX = screenX
+        self.screenY = screenY
+        self.button = button
+        self.clickCount = clickCount
+        self.modifiers = modifiers
+    }
+}
+
+/// A captured click placed on the recording's timeline and geometry.
+public struct ProjectedClick: Equatable, Sendable {
+    public let offsetMs: Int
+    public let button: String
+    public let clickCount: Int
+    public let modifiers: [String]
+    public let point: MappedClickPoint
+}
+
+/// Places captured clicks onto the recording.
+///
+/// The two ways a click can fail to land are deliberately not the same thing:
+///
+/// - A click that predates the first video frame is outside the recording
+///   altogether — the tap starts before `SCStream` delivers its first sample —
+///   so it is dropped without being counted.
+/// - `droppedOutOfFrame` counts only clicks that happened during the recording
+///   but landed outside the captured region. Recording one window and clicking
+///   elsewhere means the click happened in an application the user never agreed
+///   to record, so its position is not ours to keep; the count is what tells
+///   downstream that activity happened at all.
+public func projectClicks(
+    _ clicks: [CapturedClick],
+    timeline: ClickTimeline,
+    geometry: CaptureGeometry,
+    outputSize: OutputSize
+) -> (clicks: [ProjectedClick], droppedOutOfFrame: Int) {
+    var projected: [ProjectedClick] = []
+    var droppedOutOfFrame = 0
+
+    for click in clicks {
+        guard let offsetMs = timeline.offsetMilliseconds(atTicks: click.ticks) else {
+            continue
+        }
+        guard
+            let point = geometry.mapClick(
+                screenX: click.screenX,
+                screenY: click.screenY,
+                outputSize: outputSize
+            )
+        else {
+            droppedOutOfFrame += 1
+            continue
+        }
+        projected.append(
+            ProjectedClick(
+                offsetMs: offsetMs,
+                button: click.button,
+                clickCount: click.clickCount,
+                modifiers: click.modifiers,
+                point: point
+            )
+        )
+    }
+
+    return (projected, droppedOutOfFrame)
+}
+
 /// Converts `CGEvent` timestamps onto the recording's timeline.
 ///
 /// `CGEvent.timestamp` is mach absolute time in raw tick units, which are not

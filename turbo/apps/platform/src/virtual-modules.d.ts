@@ -1,5 +1,5 @@
 declare module "virtual:shared-database-worker" {
-  const SharedDatabaseWorker: new (options?: { name?: string }) => SharedWorker;
+  const SharedDatabaseWorker: string;
 
   export default SharedDatabaseWorker;
 }

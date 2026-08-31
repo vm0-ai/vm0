@@ -2683,6 +2683,8 @@ function usesPi(
 ): boolean {
   return shouldUsePiExecution({
     chatThreadId: thread.threadId,
+    modelProviderType:
+      runConfiguration.providerAdmission.effectiveModelProvider,
     selectedModel: runConfiguration.modelPin.selectedModel ?? undefined,
     triggerSource: normalSendTriggerSource(args.auth),
     featureSwitchContext: featureSwitches.featureSwitchContext,

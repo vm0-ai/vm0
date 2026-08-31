@@ -25,6 +25,7 @@ const DIRECT_OKOU_READY_CONNECTORS = [
   "notion",
   "outlook-calendar",
   "outlook-mail",
+  "slack",
   "tiktok-ads",
   "youtube",
 ] as const;
@@ -56,7 +57,7 @@ describe("direct Okou OAuth callback readiness", () => {
     },
   );
 
-  it.each(["github", "slack", "test-oauth"])(
+  it.each(["github", "test-oauth"])(
     "keeps %s on its existing callback",
     (connectorSlug) => {
       expect(isConnectorDirectOkouOauthCallbackReady(connectorSlug)).toBe(

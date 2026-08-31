@@ -148,3 +148,97 @@ struct ClickTimelineTests {
         #expect(degenerate.offsetMilliseconds(atTicks: 1_000_000) == 1)
     }
 }
+
+struct ClickProjectionTests {
+    private let display = CaptureGeometry(
+        originX: 0,
+        originY: 0,
+        widthPoints: 1000,
+        heightPoints: 500,
+        scale: 2
+    )
+    private let outputSize = OutputSize(width: 1920, height: 960)
+    private let timeline = ClickTimeline(
+        startTicks: 24_000,
+        timebaseNumerator: 1,
+        timebaseDenominator: 1
+    )
+
+    private func click(ticks: UInt64, x: Double, y: Double) -> CapturedClick {
+        return CapturedClick(
+            ticks: ticks,
+            screenX: x,
+            screenY: y,
+            button: "left",
+            clickCount: 1,
+            modifiers: ["command"]
+        )
+    }
+
+    @Test
+    func projectsAClickThatLandedInsideTheRecording() {
+        let projection = projectClicks(
+            [click(ticks: 2_024_000, x: 500, y: 250)],
+            timeline: timeline,
+            geometry: display,
+            outputSize: outputSize
+        )
+
+        #expect(projection.droppedOutOfFrame == 0)
+        #expect(projection.clicks.count == 1)
+        #expect(projection.clicks.first?.offsetMs == 2)
+        #expect(projection.clicks.first?.button == "left")
+        #expect(projection.clicks.first?.clickCount == 1)
+        #expect(projection.clicks.first?.modifiers == ["command"])
+        #expect(projection.clicks.first?.point.frameX == 960)
+        #expect(projection.clicks.first?.point.frameY == 480)
+    }
+
+    /// The tap starts before `SCStream` delivers its first sample, so clicks
+    /// during capture startup are routine. They are outside the recording
+    /// rather than outside the frame, and reporting them as out-of-frame would
+    /// claim the user clicked in an application that was never recorded.
+    @Test
+    func dropsClicksFromBeforeTheFirstFrameWithoutCountingThemOutOfFrame() {
+        let projection = projectClicks(
+            [click(ticks: 1_000, x: 500, y: 250)],
+            timeline: timeline,
+            geometry: display,
+            outputSize: outputSize
+        )
+
+        #expect(projection.clicks.isEmpty)
+        #expect(projection.droppedOutOfFrame == 0)
+    }
+
+    @Test
+    func countsClicksThatLandedOutsideTheCapturedRegion() {
+        let projection = projectClicks(
+            [click(ticks: 2_024_000, x: 1_500, y: 250)],
+            timeline: timeline,
+            geometry: display,
+            outputSize: outputSize
+        )
+
+        #expect(projection.clicks.isEmpty)
+        #expect(projection.droppedOutOfFrame == 1)
+    }
+
+    @Test
+    func separatesTheTwoDropReasonsInOneRecording() {
+        let projection = projectClicks(
+            [
+                click(ticks: 1_000, x: 500, y: 250),
+                click(ticks: 2_024_000, x: 1_500, y: 250),
+                click(ticks: 3_024_000, x: 500, y: 250),
+            ],
+            timeline: timeline,
+            geometry: display,
+            outputSize: outputSize
+        )
+
+        #expect(projection.clicks.count == 1)
+        #expect(projection.clicks.first?.offsetMs == 3)
+        #expect(projection.droppedOutOfFrame == 1)
+    }
+}

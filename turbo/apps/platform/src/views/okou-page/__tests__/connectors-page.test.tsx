@@ -3234,6 +3234,7 @@ describe("connectors page", () => {
     ["outlook-mail", "Outlook Mail"],
     ["sentry", "Sentry"],
     ["server-authored-oauth", "Server-authored OAuth"],
+    ["slack", "Slack"],
     ["strava", "Strava"],
     ["todoist", "Todoist"],
     ["vercel", "Vercel"],
@@ -3283,49 +3284,6 @@ describe("connectors page", () => {
       });
     },
   );
-
-  it("keeps denylisted OAuth connectors on their legacy callback", async () => {
-    mockConnectors([]);
-    mockPublicConnectorStatus([
-      publicStatusItem({
-        connectorSlug: "slack",
-        label: "Slack",
-        authMethods: [
-          {
-            id: "oauth",
-            label: "OAuth",
-            description: null,
-            grantKind: "auth-code",
-            manualFields: [],
-            startOptions: [],
-          },
-        ],
-        singleAuthCodeAuthMethodId: "oauth",
-      }),
-    ]);
-    const authWindow = createMockAuthWindow();
-    context.mocks.browser.open(authWindow);
-    context.mocks.api(
-      connectorOauthStartContract.start,
-      ({ body, params, respond }) => {
-        expect(params.connectorSlug).toBe("slack");
-        expect(body.callbackTarget).toBeUndefined();
-        return respond(200, {
-          authorizationUrl: "https://oauth.test/slack/authorize",
-        });
-      },
-    );
-
-    detachedSetupPage({ context, path: "/connectors" });
-
-    click(await screen.findByLabelText("Connect Slack"));
-
-    await waitFor(() => {
-      expect(authWindow.location.href).toBe(
-        "https://oauth.test/slack/authorize",
-      );
-    });
-  });
 
   it("routes a feature-on OpenID account addition from catalog metadata", async () => {
     const connectorSlug = "server-authored-steam";

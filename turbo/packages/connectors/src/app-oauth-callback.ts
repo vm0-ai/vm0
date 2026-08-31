@@ -1,8 +1,11 @@
-// Keep a connector here until its OAuth app accepts the App callback URL.
 export const CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY =
   "vm0.connector.appOauthCallbackMetadata";
 
-const LEGACY_CALLBACK_CONNECTOR_SLUGS: ReadonlySet<string> = new Set(["slack"]);
+// Keep a connector here until its OAuth app accepts the App callback URL.
+// Intentionally empty: every connector now has the App callback registered with
+// its provider. A connector added before its provider console is updated must be
+// listed here, otherwise it emits a redirect_uri the provider rejects.
+const LEGACY_CALLBACK_CONNECTOR_SLUGS: ReadonlySet<string> = new Set<string>();
 
 // Provider allowlists roll out independently of the API. Until #28381 confirms
 // every provider is ready, unlisted connectors must keep their VM0 App callback.
@@ -29,6 +32,7 @@ const DIRECT_OKOU_OAUTH_CALLBACK_READY_CONNECTOR_SLUGS: ReadonlySet<string> =
     "notion",
     "outlook-calendar",
     "outlook-mail",
+    "slack",
     "tiktok-ads",
     "youtube",
   ]);
