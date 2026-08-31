@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.179.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.179.1...runner-rs-v0.179.2) (2026-08-31)
+
+
+### Bug Fixes
+
+* **runner:** preserve exact-reuse timezone outcomes ([#30470](https://github.com/vm0-ai/vm0/issues/30470)) ([e5a37ee](https://github.com/vm0-ai/vm0/commit/e5a37ee36ae946feb2f606d868b5de64e6e49180))
+* **runner:** reject unrepresentable wait-running timeouts ([#30465](https://github.com/vm0-ai/vm0/issues/30465)) ([3d07b64](https://github.com/vm0-ai/vm0/commit/3d07b64b39dce87f13e6cd774690b72b8b9da28c))
+
 ## [0.179.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.179.0...runner-rs-v0.179.1) (2026-08-31)
 
 
