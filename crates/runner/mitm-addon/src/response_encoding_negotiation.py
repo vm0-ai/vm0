@@ -2,6 +2,7 @@
 
 import re
 from decimal import Decimal, InvalidOperation
+from typing import Literal
 
 from mitmproxy import http
 
@@ -17,8 +18,16 @@ _MAX_Q_VALUE = Decimal(1)
 _Q_VALUE_PATTERN = re.compile(r"(?:0(?:\.[0-9]{0,3})?|1(?:\.0{0,3})?)")
 _HTTP_OWS_CHARS = " \t"
 
+type ResponseEncodingNegotiationOutcome = Literal[
+    "already_stream_decodable",
+    "rewritten_stream_decodable",
+    "preserved_client_constraints",
+]
 
-def normalize_accept_encoding_for_body_inspection(headers: http.Headers) -> None:
+
+def normalize_accept_encoding_for_body_inspection(
+    headers: http.Headers,
+) -> ResponseEncodingNegotiationOutcome:
     """Best-effort restriction of Accept-Encoding for body inspection.
 
     The proxy inspects selected upstream responses for usage/billing.  For those
@@ -29,12 +38,13 @@ def normalize_accept_encoding_for_body_inspection(headers: http.Headers) -> None
     every supported compression coding are rejected, the original header remains
     unchanged and the actual response might not support bounded streaming
     inspection.  Callers must use the response's ``Content-Encoding`` to decide
-    whether incremental body inspection is available.
+    whether incremental body inspection is available. The return value records
+    whether the request was already safe, rewritten, or preserved by constraint.
     """
     values = headers.get_all(_ACCEPT_ENCODING)
     if not values:
         headers[_ACCEPT_ENCODING] = _IDENTITY
-        return
+        return "rewritten_stream_decodable"
 
     accepted_safe: dict[str, str | None] = {}
     rejected_safe: set[str] = set()
@@ -95,13 +105,16 @@ def normalize_accept_encoding_for_body_inspection(headers: http.Headers) -> None
         rewritten = ", ".join(
             _format_coding(name, q_text) for name, q_text in accepted_safe.items()
         )
-        _set_if_changed(headers, values, rewritten)
-        return
+        if _set_if_changed(headers, values, rewritten):
+            return "rewritten_stream_decodable"
+        return "already_stream_decodable"
 
     if identity_rejected:
-        return
+        return "preserved_client_constraints"
 
-    _set_if_changed(headers, values, _IDENTITY)
+    if _set_if_changed(headers, values, _IDENTITY):
+        return "rewritten_stream_decodable"
+    return "already_stream_decodable"
 
 
 def _parse_coding(raw_coding: str) -> tuple[str, Decimal | None]:
@@ -166,7 +179,8 @@ def _add_wildcard_safe_compression_encodings(
             accepted_safe[name] = wildcard_q_text
 
 
-def _set_if_changed(headers: http.Headers, original_values: list[str], value: str) -> None:
+def _set_if_changed(headers: http.Headers, original_values: list[str], value: str) -> bool:
     if len(original_values) == 1 and original_values[0] == value:
-        return
+        return False
     headers[_ACCEPT_ENCODING] = value
+    return True
