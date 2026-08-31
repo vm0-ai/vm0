@@ -7,7 +7,6 @@ import type {
   SlackView,
 } from "../signals/external/slack-block-kit";
 import {
-  OFFICIAL_SLACK_LEGACY_COMMAND,
   OFFICIAL_SLACK_PRIMARY_COMMAND,
   officialSlackBotMention,
 } from "./slack-official-app";
@@ -164,7 +163,7 @@ function appHomeHelpBlocks(options: AppHomeViewOptions): SlackAnyBlock[] {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*Commands*\n\u2022 \`${OFFICIAL_SLACK_PRIMARY_COMMAND} connect\` - Connect to ${assistantName}\n\u2022 \`${OFFICIAL_SLACK_PRIMARY_COMMAND} disconnect\` - Disconnect from ${assistantName}\n\u2022 \`${OFFICIAL_SLACK_LEGACY_COMMAND}\` - Legacy alias`,
+        text: `*Commands*\n\u2022 \`${OFFICIAL_SLACK_PRIMARY_COMMAND} connect\` - Connect to ${assistantName}\n\u2022 \`${OFFICIAL_SLACK_PRIMARY_COMMAND} disconnect\` - Disconnect from ${assistantName}`,
       },
     },
     {
