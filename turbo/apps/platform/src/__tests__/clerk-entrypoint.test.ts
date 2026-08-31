@@ -244,6 +244,9 @@ describe("platform Clerk entrypoint", () => {
         );
       },
     );
+    const avatarBootstrap = parsedDocument.querySelector(
+      "script[data-vm0-avatar-bootstrap]",
+    );
     const postSkeletonStyles = parsedDocument.querySelector(
       "style[data-vm0-post-skeleton-styles]",
     );
@@ -263,6 +266,9 @@ describe("platform Clerk entrypoint", () => {
     if (!(paintScheduler instanceof HTMLScriptElement)) {
       throw new Error("Built index.html does not contain the paint scheduler");
     }
+    if (!(avatarBootstrap instanceof HTMLScriptElement)) {
+      throw new Error("Built index.html does not contain the avatar bootstrap");
+    }
     if (!(postSkeletonStyles instanceof HTMLStyleElement)) {
       throw new Error("Built index.html does not contain post-skeleton styles");
     }
@@ -279,6 +285,15 @@ describe("platform Clerk entrypoint", () => {
     expect(paintScheduler.textContent).toContain("first-contentful-paint");
     expect(skeleton.compareDocumentPosition(paintScheduler)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(skeleton.compareDocumentPosition(avatarBootstrap)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(avatarBootstrap.compareDocumentPosition(paintScheduler)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(avatarBootstrap.textContent).toContain(
+      "avatarLayers[i].src = avatarSources[i]",
     );
     expect(skeleton.compareDocumentPosition(postSkeletonStyles)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,

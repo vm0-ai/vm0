@@ -361,6 +361,70 @@
         </div>
       </div>
     </div>
+    <script data-vm0-avatar-bootstrap="">
+      (function () {
+        if (window.__vm0BrowserSupported !== true) return;
+
+        var skeleton = document.getElementById("app-bootstrap-skeleton");
+        var avatarPresets = [
+          [1, 0, 1, 5, 1, "h"],
+          [2, 1, 3, 3, 1, "m"],
+          [4, 2, 5, 4, 3, "d"],
+          [3, 3, 4, 1, 4, "h"],
+          [5, 4, 2, 2, 5, "m"],
+        ];
+        var avatar =
+          avatarPresets[Math.floor(Math.random() * avatarPresets.length)];
+        var staticAssetBase =
+          document.documentElement.getAttribute("data-app-brand-name") ===
+          "Okou"
+            ? "https://static.okou.io"
+            : "https://static.vm0.io";
+        var avatarAssetBase =
+          staticAssetBase + "/platform/views/zero-page/assets/avatar-svg/";
+        var avatarSources = [
+          avatarAssetBase + "head-r" + avatar[0] + "-s" + avatar[1] + ".svg",
+          avatarAssetBase +
+            "face-r" +
+            avatar[0] +
+            "-f" +
+            avatar[4] +
+            "-" +
+            avatar[5] +
+            ".svg",
+          avatarAssetBase +
+            "hair-r" +
+            avatar[0] +
+            "-h" +
+            avatar[2] +
+            "-c" +
+            avatar[3] +
+            ".svg",
+        ];
+        var avatarLayers = skeleton.querySelectorAll(
+          "[data-app-bootstrap-avatar-layer]",
+        );
+        var loadedAvatarLayers = 0;
+
+        for (var i = 0; i < avatarLayers.length; i += 1) {
+          avatarLayers[i].addEventListener(
+            "load",
+            function () {
+              loadedAvatarLayers += 1;
+              if (loadedAvatarLayers === avatarLayers.length) {
+                skeleton
+                  .querySelector(".app-bootstrap-skeleton__avatar-layers")
+                  .classList.add(
+                    "app-bootstrap-skeleton__avatar-layers--ready",
+                  );
+              }
+            },
+            { once: true },
+          );
+          avatarLayers[i].src = avatarSources[i];
+        }
+      })();
+    </script>
     <script>
       (function () {
         var callbacks = [];
@@ -1468,77 +1532,6 @@
           var loadingCopy = window.__vm0PreBundleCopy.loading;
           var messages = loadingCopy.messages;
           skeleton.setAttribute("aria-label", loadingCopy.ariaLabel);
-          var avatarPresets = [
-            {
-              rotation: 1,
-              skin: 0,
-              hairStyle: 1,
-              hairColor: 5,
-              expression: 1,
-              intensity: "h",
-            },
-            {
-              rotation: 2,
-              skin: 1,
-              hairStyle: 3,
-              hairColor: 3,
-              expression: 1,
-              intensity: "m",
-            },
-            {
-              rotation: 4,
-              skin: 2,
-              hairStyle: 5,
-              hairColor: 4,
-              expression: 3,
-              intensity: "d",
-            },
-            {
-              rotation: 3,
-              skin: 3,
-              hairStyle: 4,
-              hairColor: 1,
-              expression: 4,
-              intensity: "h",
-            },
-            {
-              rotation: 5,
-              skin: 4,
-              hairStyle: 2,
-              hairColor: 2,
-              expression: 5,
-              intensity: "m",
-            },
-          ];
-          var staticAssetBase =
-            document.documentElement.getAttribute("data-app-brand-name") ===
-            "Okou"
-              ? "https://static.okou.io"
-              : "https://static.vm0.io";
-          var avatarAssetBase =
-            staticAssetBase + "/platform/views/zero-page/assets/avatar-svg/";
-          var avatar =
-            avatarPresets[Math.floor(Math.random() * avatarPresets.length)];
-          var avatarLayers = skeleton.querySelectorAll(
-            "[data-app-bootstrap-avatar-layer]",
-          );
-          var loadedAvatarLayers = 0;
-          for (var i = 0; i < avatarLayers.length; i += 1) {
-            avatarLayers[i].addEventListener(
-              "load",
-              function () {
-                loadedAvatarLayers += 1;
-                if (loadedAvatarLayers === avatarLayers.length) {
-                  skeleton
-                    .querySelector(".app-bootstrap-skeleton__avatar-layers")
-                    .classList.add(
-                      "app-bootstrap-skeleton__avatar-layers--ready",
-                    );
-                }
-              },
-              { once: true },
-            );
-          }
           var messageIndex = Math.floor(Math.random() * messages.length);
           var staticMessage = skeleton.querySelector(
             ".app-bootstrap-skeleton__message-static",
@@ -1549,38 +1542,6 @@
           var typewriterMessage = skeleton.querySelector(
             ".app-bootstrap-skeleton__message-typewriter",
           );
-
-          skeleton.querySelector(
-            '[data-app-bootstrap-avatar-layer="head"]',
-          ).src =
-            avatarAssetBase +
-            "head-r" +
-            avatar.rotation +
-            "-s" +
-            avatar.skin +
-            ".svg";
-          skeleton.querySelector(
-            '[data-app-bootstrap-avatar-layer="face"]',
-          ).src =
-            avatarAssetBase +
-            "face-r" +
-            avatar.rotation +
-            "-f" +
-            avatar.expression +
-            "-" +
-            avatar.intensity +
-            ".svg";
-          skeleton.querySelector(
-            '[data-app-bootstrap-avatar-layer="hair"]',
-          ).src =
-            avatarAssetBase +
-            "hair-r" +
-            avatar.rotation +
-            "-h" +
-            avatar.hairStyle +
-            "-c" +
-            avatar.hairColor +
-            ".svg";
 
           function typewriterAnimation(message, delay) {
             return (
