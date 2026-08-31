@@ -55,7 +55,10 @@ export const ROUTES = {
   signInCatchAll: "/sign-in{/*path}",
   signUp: "/sign-up",
   signUpCatchAll: "/sign-up{/*path}",
-  // Backward-compatible aliases for existing deep links and OAuth callbacks.
+  // Old web/app builds and in-flight OAuth callbacks can enter through /v2 for
+  // the approximately two-day client-skew window. Remove after the replacement
+  // app has been live for that window and pre-deploy callbacks have expired;
+  // tracked by #30434.
   signInV2: "/v2/sign-in",
   signInV2CatchAll: "/v2/sign-in{/*path}",
   signUpV2: "/v2/sign-up",
