@@ -135,9 +135,10 @@ function ReadyConnectorAccountActionCard({
 }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
+  const confirmationState = useGet(signals.confirmationState$);
   const [confirmLoadable, confirm] = useLoadableSet(signals.confirm$);
-  const loading = confirmLoadable.state === "loading";
-  const continued = confirmLoadable.state === "hasData";
+  const loading = confirmationState === "loading";
+  const continued = confirmationState === "continued";
   const accountLabel = connectorAccountEffectiveLabel(
     status.account,
     t(($) => {

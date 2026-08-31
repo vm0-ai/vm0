@@ -438,6 +438,9 @@ describe("chat event action cards", () => {
     let selectedConnections: ConnectorAccountConnection[] = [];
     let updateBody: ConnectorAccountSelection | null = null;
     const actionOrder: string[] = [];
+    let resolveSelectionUpdate = (): void => {
+      throw new Error("Selection update did not start");
+    };
 
     context.mocks.api(
       connectorAccountsContract.connection,
@@ -456,9 +459,14 @@ describe("chat event action cards", () => {
     );
     context.mocks.api(
       chatThreadConnectorSelectionContract.update,
-      ({ params, body, respond }) => {
+      async ({ deferred, params, body, respond }) => {
         expect(params.id).toBe(threadId);
         actionOrder.push("selection");
+        const selectionUpdate = deferred<void>();
+        resolveSelectionUpdate = () => {
+          selectionUpdate.resolve();
+        };
+        await selectionUpdate.promise;
         updateBody = body;
         selections = [body];
         selectedConnections = [account];
@@ -508,6 +516,14 @@ describe("chat event action cards", () => {
     await user.click(buttonByText("Use account and continue", firstCard));
 
     await waitFor(() => {
+      expect(actionOrder).toStrictEqual(["selection"]);
+      for (const card of cards) {
+        expect(buttonByText("Use account and continue", card)).toBeDisabled();
+      }
+    });
+    resolveSelectionUpdate();
+
+    await waitFor(() => {
       expect(updateBody).toStrictEqual({
         connectionId: account.id,
         target: account.target,
@@ -515,6 +531,8 @@ describe("chat event action cards", () => {
       expect(actionOrder).toStrictEqual(["selection", "callback"]);
       for (const card of cards) {
         expect(card).toHaveTextContent("Already selected for this chat");
+        expect(card).toHaveTextContent("Continuation requested");
+        expect(buttonByText("Continuation requested", card)).toBeDisabled();
       }
     });
   });

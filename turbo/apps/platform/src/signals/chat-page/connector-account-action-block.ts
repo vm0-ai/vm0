@@ -12,6 +12,7 @@ import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
 import type { ComposerConnectorAccountSignals } from "../okou-page/composer-connector-accounts.ts";
 import { rootSignal$ } from "../root-signal.ts";
+import { withCleanup } from "../utils.ts";
 import {
   chatActionCallbackFromUrl,
   runChatActionCallback$,
@@ -44,8 +45,14 @@ export type ConnectorAccountActionStatus =
       readonly selected: boolean;
     };
 
+export type ConnectorAccountActionConfirmationState =
+  | "idle"
+  | "loading"
+  | "continued";
+
 export interface ConnectorAccountActionSignals extends ConnectorAccountActionDescriptor {
   readonly status$: Computed<Promise<ConnectorAccountActionStatus>>;
+  readonly confirmationState$: Computed<ConnectorAccountActionConfirmationState>;
   readonly refresh$: Command<void, []>;
   readonly confirm$: Command<Promise<void>, [AbortSignal]>;
 }
@@ -153,6 +160,11 @@ function createConnectorAccountActionSignals(
   accounts: ComposerConnectorAccountSignals,
 ): ConnectorAccountActionSignals {
   const reload$ = state(0);
+  const internalConfirmationState$ =
+    state<ConnectorAccountActionConfirmationState>("idle");
+  const confirmationState$ = computed((get) => {
+    return get(internalConfirmationState$);
+  });
   const status$ = computed(
     async (get): Promise<ConnectorAccountActionStatus> => {
       get(reload$);
@@ -189,28 +201,48 @@ function createConnectorAccountActionSignals(
   });
   const confirm$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      await accept(
-        get(apiClient$)(chatThreadConnectorSelectionContract).update({
-          params: { id: descriptor.threadId },
-          body: descriptor.selection,
-          fetchOptions: { signal },
-        }),
-        [200],
-        signal,
-      );
-      set(refresh$);
-      await set(
-        runChatActionCallback$,
-        {
-          threadId: descriptor.threadId,
-          agentId: descriptor.agentId,
-          callbackPrompt: descriptor.callbackPrompt,
+      if (get(internalConfirmationState$) !== "idle") {
+        return;
+      }
+      set(internalConfirmationState$, "loading");
+      await withCleanup(
+        (async () => {
+          await accept(
+            get(apiClient$)(chatThreadConnectorSelectionContract).update({
+              params: { id: descriptor.threadId },
+              body: descriptor.selection,
+              fetchOptions: { signal },
+            }),
+            [200],
+            signal,
+          );
+          set(refresh$);
+          await set(
+            runChatActionCallback$,
+            {
+              threadId: descriptor.threadId,
+              agentId: descriptor.agentId,
+              callbackPrompt: descriptor.callbackPrompt,
+            },
+            signal,
+          );
+          set(internalConfirmationState$, "continued");
+        })(),
+        () => {
+          set(internalConfirmationState$, (current) => {
+            return current === "loading" ? "idle" : current;
+          });
         },
-        signal,
       );
     },
   );
-  return { ...descriptor, status$, refresh$, confirm$ };
+  return {
+    ...descriptor,
+    status$,
+    confirmationState$,
+    refresh$,
+    confirm$,
+  };
 }
 
 export function createConnectorAccountActionCardSignalsRegistry(
