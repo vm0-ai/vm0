@@ -69,9 +69,10 @@ await test("extracts post-paint callbacks behind one preloaded entry", () => {
 
   assert.match(
     extracted.html,
-    /<link rel="preload" as="script" crossorigin href="__VM0_AFTER_FIRST_PAINT_ENTRY_URL__" data-vm0-after-first-paint-entry="">/u,
+    /<link rel="preload" as="script" crossorigin href="__VM0_AFTER_FIRST_PAINT_ENTRY_URL__" integrity="__VM0_AFTER_FIRST_PAINT_ENTRY_INTEGRITY__" data-vm0-after-first-paint-entry="">/u,
   );
   assert.match(extracted.html, /data-vm0-after-first-paint-loader=""/u);
+  assert.match(extracted.html, /script\.integrity = entry\.integrity/u);
   assert.doesNotMatch(extracted.html, /window\.first = true/u);
   assert.doesNotMatch(extracted.html, /window\.second = true/u);
   assert.match(extracted.source, /window\.first = true/u);

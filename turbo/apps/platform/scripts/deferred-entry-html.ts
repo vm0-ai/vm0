@@ -1,17 +1,21 @@
 import { createHash } from "node:crypto";
 
-import type { Plugin, ResolvedConfig } from "vite";
+import { transformWithEsbuild, type Plugin, type ResolvedConfig } from "vite";
 
 const APP_ENTRY_ATTRIBUTE = "data-vm0-app-entry";
 const APP_STYLESHEET_ATTRIBUTE = "data-vm0-app-stylesheet";
 const AFTER_FIRST_PAINT_ENTRY_ATTRIBUTE = "data-vm0-after-first-paint-entry";
 const AFTER_FIRST_PAINT_ENTRY_PLACEHOLDER =
   "__VM0_AFTER_FIRST_PAINT_ENTRY_URL__";
+const AFTER_FIRST_PAINT_INTEGRITY_PLACEHOLDER =
+  "__VM0_AFTER_FIRST_PAINT_ENTRY_INTEGRITY__";
 
 type ExtractedAfterFirstPaintBootstrap = {
   readonly html: string;
   readonly source: string;
 };
+
+type InlineBlockKind = "script" | "style";
 
 function tagAttributes(tag: string): ReadonlyMap<string, string | undefined> {
   const attributes = new Map<string, string | undefined>();
@@ -108,7 +112,7 @@ export function extractAfterFirstPaintBootstrap(
         return "";
       }
       insertedEntrypoint = true;
-      return `<link rel="preload" as="script" crossorigin href="${AFTER_FIRST_PAINT_ENTRY_PLACEHOLDER}" ${AFTER_FIRST_PAINT_ENTRY_ATTRIBUTE}="">
+      return `<link rel="preload" as="script" crossorigin href="${AFTER_FIRST_PAINT_ENTRY_PLACEHOLDER}" integrity="${AFTER_FIRST_PAINT_INTEGRITY_PLACEHOLDER}" ${AFTER_FIRST_PAINT_ENTRY_ATTRIBUTE}="">
     <script data-vm0-after-first-paint-loader="">
       window.__vm0AfterFirstPaint(function () {
         var entry = document.querySelector(
@@ -119,6 +123,7 @@ export function extractAfterFirstPaintBootstrap(
         var script = document.createElement("script");
         script.src = entry.href;
         script.crossOrigin = "anonymous";
+        script.integrity = entry.integrity;
         document.head.appendChild(script);
       });
     </script>`;
@@ -134,6 +139,64 @@ export function extractAfterFirstPaintBootstrap(
   };
 }
 
+async function minifyInlineBlock(
+  kind: InlineBlockKind,
+  attributes: string,
+  source: string,
+): Promise<string> {
+  if (source.trim() === "") {
+    return source;
+  }
+  if (kind === "script") {
+    const sourceTag = `<script${attributes}>`;
+    if (hasAttribute(sourceTag, "src")) {
+      return source;
+    }
+    const type = attributeValue(sourceTag, "type");
+    if (type !== undefined && type !== "module" && type !== "text/javascript") {
+      return source;
+    }
+  }
+  const transformed = await transformWithEsbuild(
+    source,
+    kind === "script" ? "inline-bootstrap.js" : "inline-bootstrap.css",
+    {
+      legalComments: "none",
+      loader: kind === "script" ? "js" : "css",
+      minify: true,
+      target: "es2020",
+    },
+  );
+  return transformed.code.trim();
+}
+
+async function minifyInlineBootstrap(html: string): Promise<string> {
+  const pattern = /<(script|style)([^>]*)>([\s\S]*?)<\/\1>/gu;
+  const parts: string[] = [];
+  let sourceOffset = 0;
+  for (const match of html.matchAll(pattern)) {
+    const fullMatch = match[0];
+    const kind = match[1] as InlineBlockKind | undefined;
+    const attributes = match[2];
+    const source = match[3];
+    if (
+      fullMatch === undefined ||
+      kind === undefined ||
+      attributes === undefined ||
+      source === undefined ||
+      match.index === undefined
+    ) {
+      continue;
+    }
+    parts.push(html.slice(sourceOffset, match.index));
+    const minified = await minifyInlineBlock(kind, attributes, source);
+    parts.push(`<${kind}${attributes}>${minified}</${kind}>`);
+    sourceOffset = match.index + fullMatch.length;
+  }
+  parts.push(html.slice(sourceOffset));
+  return parts.join("");
+}
+
 function assetUrl(config: ResolvedConfig, fileName: string): string {
   return `${config.base.replace(/\/?$/u, "/")}${fileName}`;
 }
@@ -147,26 +210,42 @@ export function deferredApplicationEntryHtmlPlugin(): Plugin {
     },
     transformIndexHtml: {
       order: "post",
-      handler(html) {
+      async handler(html) {
         const deferredHtml = deferApplicationEntryResources(html);
         if (resolvedConfig?.command !== "build") {
           return deferredHtml;
         }
         const extracted = extractAfterFirstPaintBootstrap(deferredHtml);
+        const minifiedSource = (
+          await transformWithEsbuild(
+            extracted.source,
+            "bootstrap-after-first-paint.js",
+            {
+              legalComments: "none",
+              loader: "js",
+              minify: true,
+              target: "es2020",
+            },
+          )
+        ).code.trim();
         const digest = createHash("sha256")
-          .update(extracted.source)
+          .update(minifiedSource)
           .digest("hex")
           .slice(0, 12);
         const fileName = `assets/bootstrap-after-first-paint-${digest}.js`;
+        const integrity = `sha384-${createHash("sha384")
+          .update(minifiedSource)
+          .digest("base64")}`;
         this.emitFile({
           type: "asset",
           fileName,
-          source: extracted.source,
+          source: minifiedSource,
         });
         const entryUrl = assetUrl(resolvedConfig, fileName);
-        return extracted.html.replace(
-          AFTER_FIRST_PAINT_ENTRY_PLACEHOLDER,
-          entryUrl,
+        return await minifyInlineBootstrap(
+          extracted.html
+            .replace(AFTER_FIRST_PAINT_ENTRY_PLACEHOLDER, entryUrl)
+            .replace(AFTER_FIRST_PAINT_INTEGRITY_PLACEHOLDER, integrity),
         );
       },
     },

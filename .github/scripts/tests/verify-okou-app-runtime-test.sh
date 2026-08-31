@@ -35,7 +35,7 @@ cat > "$html_source" <<'HTML'
 <link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/app-AbCd1234.js" data-vm0-app-entry="">
 <link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/rolldown-runtime-IjKl9012.js">
 <link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/vendor-EfGh5678.js">
-<link rel="preload" as="script" crossorigin href="https://static.test/okou-app/assets/bootstrap-after-first-paint-123456789abc.js" data-vm0-after-first-paint-entry="">
+<link rel="preload" as="script" crossorigin href="https://static.test/okou-app/assets/bootstrap-after-first-paint-123456789abc.js" integrity="sha384-dGVzdA==" data-vm0-after-first-paint-entry="">
 HTML
 
 cat > "$old_html_source" <<'HTML'
@@ -45,7 +45,7 @@ cat > "$old_html_source" <<'HTML'
 <link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/app-Old12345.js" data-vm0-app-entry="">
 <link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/rolldown-runtime-Old12345.js">
 <link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/vendor-Old12345.js">
-<link rel="preload" as="script" crossorigin href="https://static.test/okou-app/assets/bootstrap-after-first-paint-Old12345.js" data-vm0-after-first-paint-entry="">
+<link rel="preload" as="script" crossorigin href="https://static.test/okou-app/assets/bootstrap-after-first-paint-Old12345.js" integrity="sha384-dGVzdA==" data-vm0-after-first-paint-entry="">
 HTML
 
 cat > "${fake_bin}/curl" <<'BASH'

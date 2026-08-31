@@ -107,7 +107,7 @@ class AppDocumentParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.app_entry_preloads: list[str] = []
-        self.after_first_paint_preloads: list[str] = []
+        self.after_first_paint_preloads: list[tuple[str, str | None]] = []
         self.module_scripts: list[str] = []
         self.module_preloads: list[str] = []
         self.runtime_metadata: dict[str, list[str | None]] = {
@@ -137,7 +137,9 @@ class AppDocumentParser(HTMLParser):
         ):
             href = attributes.get("href")
             if href:
-                self.after_first_paint_preloads.append(href)
+                self.after_first_paint_preloads.append(
+                    (href, attributes.get("integrity"))
+                )
         if tag == "meta" and attributes.get("name") in RUNTIME_META_NAMES:
             name = attributes["name"]
             if name is not None:
@@ -190,12 +192,21 @@ if parser.module_scripts:
         f"Expected deferred app execution without static module scripts, "
         f"got {parser.module_scripts}"
     )
-if parser.after_first_paint_preloads != expected_after_first_paint_entry:
+observed_after_first_paint_entries = [
+    href for href, _integrity in parser.after_first_paint_preloads
+]
+if observed_after_first_paint_entries != expected_after_first_paint_entry:
     raise RuntimeError(
         "Expected one deferred after-first-paint script preload "
         f"{expected_after_first_paint_entry}, "
-        f"got {parser.after_first_paint_preloads}"
+        f"got {observed_after_first_paint_entries}"
     )
+if not all(
+    integrity is not None
+    and re.fullmatch(r"sha384-[A-Za-z0-9+/]+={0,2}", integrity)
+    for _href, integrity in parser.after_first_paint_preloads
+):
+    raise RuntimeError("Expected SHA-384 integrity on the after-first-paint preload")
 if len(parser.module_preloads) != 2 or set(parser.module_preloads) != expected_preloads:
     raise RuntimeError(
         f"Expected CDN runtime/vendor modulepreloads {sorted(expected_preloads)}, "
