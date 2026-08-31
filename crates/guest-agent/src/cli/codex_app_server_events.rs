@@ -870,6 +870,9 @@ fn normalize_collab_agent_tool_call(
     let model = required_nullable_string_key(item, method, "model", "item.model")?;
     let reasoning_effort =
         required_nullable_string_key(item, method, "reasoningEffort", "item.reasoningEffort")?;
+    if reasoning_effort.is_some_and(|value| value.is_empty()) {
+        return Err(invalid_field_for_method(method, "item.reasoningEffort"));
+    }
     let agents_states = required_object_key(item, method, "agentsStates", "item.agentsStates")?;
 
     normalized.insert(

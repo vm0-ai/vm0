@@ -45,7 +45,7 @@ async fn codex_app_server_backend_rejects_malformed_supported_thread_item()
     let error = result.expect_err("malformed supported item should fail the backend");
     assert_eq!(
         error.to_string(),
-        "execution: codex app-server notification item/completed missing field item.senderThreadId"
+        "execution: codex app-server notification item/completed has invalid field item.reasoningEffort"
     );
 
     let events = read_jsonl(runtime.paths.agent_log_file())?;
