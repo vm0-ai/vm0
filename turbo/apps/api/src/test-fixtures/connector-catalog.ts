@@ -252,15 +252,13 @@ export function clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacement
 }
 
 export function setApiTestConnectorCatalogExternalReaderIdentityReplacements(
-  catalogVersions: readonly string[],
+  catalogVersions: readonly [first: string, second: string],
 ): void {
-  let nextIndex = 0;
+  const [firstCatalogVersion, secondCatalogVersion] = catalogVersions;
+  let nextCatalogVersion = firstCatalogVersion;
   setConnectorCatalogExternalReaderIdentityReadHookForTest(async () => {
-    const catalogVersion = catalogVersions[nextIndex];
-    if (catalogVersion === undefined) {
-      return;
-    }
-    nextIndex += 1;
+    const catalogVersion = nextCatalogVersion;
+    nextCatalogVersion = secondCatalogVersion;
     await installApiTestConnectorCatalog({ catalogVersion });
   });
 }
