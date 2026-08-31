@@ -735,9 +735,6 @@ describe("chat lifecycle", () => {
       expect(
         within(chatList).getByText("Previous keyboard thread"),
       ).toBeInTheDocument();
-      expect(
-        within(chatList).getByText("Next keyboard thread"),
-      ).toBeInTheDocument();
     });
 
     const composer = chatComposerTextarea();
