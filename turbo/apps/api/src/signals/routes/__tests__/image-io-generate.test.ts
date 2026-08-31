@@ -1561,6 +1561,117 @@ describe("POST /api/image-io/generate", () => {
     await expect(orgCredits(fixture)).resolves.toBe(1000);
   });
 
+  it("reports the BytePlus failure detail when a reference image is unreachable", async () => {
+    const fixture = await seedImageFixture({ credits: 1000 });
+    const pricingFixture = await createScopedImagePricing({
+      configured: SEEDREAM_5_PRO_IMAGE_PRICING,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    server.use(
+      http.post(BYTEPLUS_IMAGE_GENERATIONS_URL, () => {
+        return HttpResponse.json(
+          {
+            error: {
+              code: "InvalidParameter",
+              message:
+                "The parameter `image` specified in the request are not valid: Error while downloading: https://refs.sites.vm0.io/img4.jpeg, status code: 403.",
+              param: "image",
+              type: "BadRequest",
+            },
+          },
+          { status: 400 },
+        );
+      }),
+    );
+
+    const app = createImageIoTestApp(pricingFixture.resolution);
+    const response = await app.request("/api/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "restyle this reference",
+        model: "seedream5-pro",
+        size: "2K",
+        imageUrls: ["https://refs.sites.vm0.io/img4.jpeg"],
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "image",
+      fixture.userId,
+    );
+    await flushWaitUntilForTest();
+
+    const statusResponse = await app.request(
+      `/api/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    await expect(statusResponse.json()).resolves.toMatchObject({
+      generationId,
+      type: "image",
+      status: "failed",
+      error: {
+        message:
+          "BytePlus image generation failed: The parameter `image` specified in the request are not valid: Error while downloading: https://refs.sites.vm0.io/img4.jpeg, status code: 403. (image)",
+        code: "BYTEPLUS_INVALID_PARAMETER",
+      },
+    });
+    await expect(orgCredits(fixture)).resolves.toBe(1000);
+  });
+
+  it("falls back to a generic message when BytePlus returns an unparsable error", async () => {
+    const fixture = await seedImageFixture({ credits: 1000 });
+    const pricingFixture = await createScopedImagePricing({
+      configured: SEEDREAM_5_PRO_IMAGE_PRICING,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    server.use(
+      http.post(BYTEPLUS_IMAGE_GENERATIONS_URL, () => {
+        return new HttpResponse("upstream unavailable", { status: 502 });
+      }),
+    );
+
+    const app = createImageIoTestApp(pricingFixture.resolution);
+    const response = await app.request("/api/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "a precise editorial portrait",
+        model: "seedream5-pro",
+        size: "2K",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "image",
+      fixture.userId,
+    );
+    await flushWaitUntilForTest();
+
+    const statusResponse = await app.request(
+      `/api/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    await expect(statusResponse.json()).resolves.toMatchObject({
+      generationId,
+      type: "image",
+      status: "failed",
+      error: {
+        message: "Image generation failed",
+        code: "BYTEPLUS_IMAGE_REQUEST_FAILED",
+      },
+    });
+    await expect(orgCredits(fixture)).resolves.toBe(1000);
+  });
+
   it("rejects a Qwen Image 3 size above the provider's pixel cap", async () => {
     const fixture = await seedImageFixture({ credits: 1000 });
     mocks.clerk.session(fixture.userId, fixture.orgId);

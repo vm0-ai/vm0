@@ -1893,6 +1893,49 @@ function parseBytePlusImageFile(value: unknown): BytePlusImageFile | null {
   };
 }
 
+interface BytePlusImageProviderError {
+  readonly message: string;
+  readonly code: string | undefined;
+}
+
+/**
+ * BytePlus reports actionable failures in a single `error` object: an
+ * unreachable reference image, a rejected prompt, an out-of-range aspect
+ * ratio. Callers can only act on those when the detail reaches the generation
+ * record, so keep the provider message instead of collapsing every failure
+ * into one generic string.
+ */
+function readBytePlusImageProviderError(
+  value: unknown,
+): BytePlusImageProviderError | null {
+  if (!isRecord(value) || !isRecord(value.error)) {
+    return null;
+  }
+  const { message, code, param } = value.error;
+  if (typeof message !== "string" || message.length === 0) {
+    return null;
+  }
+  return {
+    message:
+      typeof param === "string" && param.length > 0
+        ? `${message} (${param})`
+        : message,
+    code: typeof code === "string" ? code : undefined,
+  };
+}
+
+function normalizeBytePlusImageErrorCode(value: string | undefined): string {
+  const normalized = value
+    ?.trim()
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toUpperCase();
+  return normalized
+    ? `BYTEPLUS_${normalized}`
+    : "BYTEPLUS_IMAGE_REQUEST_FAILED";
+}
+
 function parseBytePlusImageResult(
   value: unknown,
 ): BytePlusImageResult | ErrorResponse {
@@ -1924,9 +1967,14 @@ export async function generateBytePlusImage(
       status: response.status,
       body: responseBody,
     });
+    const providerError = readBytePlusImageProviderError(
+      safeJsonParse(responseBody),
+    );
     return badGateway(
-      "Image generation failed",
-      "BYTEPLUS_IMAGE_REQUEST_FAILED",
+      providerError
+        ? `BytePlus image generation failed: ${providerError.message}`
+        : "Image generation failed",
+      normalizeBytePlusImageErrorCode(providerError?.code),
     );
   }
 
