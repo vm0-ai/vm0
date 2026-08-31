@@ -7,8 +7,6 @@ import type {
 import type { DesktopAuthState } from "./desktop-bridge";
 import { DESKTOP_AUTH_CHANNELS } from "./desktop-auth-ipc-channels";
 import { DESKTOP_DEVELOPER_TOOLS_CHANNELS } from "./desktop-developer-tools-ipc-channels";
-import { DESKTOP_ZERO_MIGRATION_CHANNELS } from "./desktop-zero-migration-ipc-channels";
-import type { DesktopZeroMigrationState } from "./desktop-zero-migration-types";
 
 type IpcEvent = {
   readonly senderFrame?: {
@@ -280,32 +278,6 @@ describe("Desktop IPC boundary", () => {
     expect(api.setEnabled).toHaveBeenCalledWith(true);
   });
 
-  it("rejects every Zero migration handler from untrusted sender frames", async () => {
-    const { installDesktopZeroMigrationIpc } =
-      await import("./desktop-zero-migration-electron");
-    const api = createDesktopZeroMigrationApi();
-
-    installDesktopZeroMigrationIpc(api, { rendererUrl });
-
-    for (const channel of [
-      DESKTOP_ZERO_MIGRATION_CHANNELS.getState,
-      DESKTOP_ZERO_MIGRATION_CHANNELS.remindLater,
-      DESKTOP_ZERO_MIGRATION_CHANNELS.beginMigration,
-      DESKTOP_ZERO_MIGRATION_CHANNELS.resumeZero,
-      DESKTOP_ZERO_MIGRATION_CHANNELS.quitZero,
-    ]) {
-      await expect(invokeIpc(channel, blockedAppUrl)).rejects.toThrow(
-        "Zero migration is unavailable on this page",
-      );
-    }
-
-    expect(api.getState).not.toHaveBeenCalled();
-    expect(api.remindLater).not.toHaveBeenCalled();
-    expect(api.beginMigration).not.toHaveBeenCalled();
-    expect(api.resumeZero).not.toHaveBeenCalled();
-    expect(api.quitZero).not.toHaveBeenCalled();
-  });
-
   it("notifies only live windows when computer use state changes", async () => {
     const { notifyDesktopComputerUseChanged } =
       await import("./computer-use-electron");
@@ -347,21 +319,6 @@ describe("Desktop IPC boundary", () => {
 
     expect(liveWindow.webContents.send).toHaveBeenCalledWith(
       DESKTOP_DEVELOPER_TOOLS_CHANNELS.changed,
-    );
-    expect(destroyedWindow.webContents.send).not.toHaveBeenCalled();
-  });
-
-  it("notifies only live windows when Zero migration state changes", async () => {
-    const { notifyDesktopZeroMigrationChanged } =
-      await import("./desktop-zero-migration-electron");
-    const liveWindow = createMockWindow({ destroyed: false });
-    const destroyedWindow = createMockWindow({ destroyed: true });
-    electronMock.windows.push(liveWindow, destroyedWindow);
-
-    notifyDesktopZeroMigrationChanged();
-
-    expect(liveWindow.webContents.send).toHaveBeenCalledWith(
-      DESKTOP_ZERO_MIGRATION_CHANNELS.changed,
     );
     expect(destroyedWindow.webContents.send).not.toHaveBeenCalled();
   });
@@ -479,33 +436,6 @@ function createDesktopDeveloperToolsApi(): {
     setEnabled: vi.fn((enabled) => {
       return { available: true, enabled };
     }),
-  };
-}
-
-function createDesktopZeroMigrationApi(): {
-  readonly getState: ReturnType<typeof vi.fn<() => DesktopZeroMigrationState>>;
-  readonly remindLater: ReturnType<
-    typeof vi.fn<() => DesktopZeroMigrationState>
-  >;
-  readonly beginMigration: ReturnType<
-    typeof vi.fn<() => Promise<DesktopZeroMigrationState>>
-  >;
-  readonly resumeZero: ReturnType<
-    typeof vi.fn<() => Promise<DesktopZeroMigrationState>>
-  >;
-  readonly quitZero: ReturnType<typeof vi.fn<() => DesktopZeroMigrationState>>;
-} {
-  const state: DesktopZeroMigrationState = {
-    mode: "soft_reminder",
-    nextReminderAt: null,
-    errorMessage: null,
-  };
-  return {
-    getState: vi.fn(() => state),
-    remindLater: vi.fn(() => state),
-    beginMigration: vi.fn(async () => state),
-    resumeZero: vi.fn(async () => state),
-    quitZero: vi.fn(() => state),
   };
 }
 
