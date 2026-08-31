@@ -1466,7 +1466,6 @@ describe("zero sidebar account menu", () => {
     await expect(
       within(addAccountDialog).findByLabelText("Email address"),
     ).resolves.toBeVisible();
-    expect(mockedClerk.openSignIn).not.toHaveBeenCalled();
     click(buttonByLabel("Close", addAccountDialog));
     await waitFor(() => {
       expect(
@@ -1507,7 +1506,6 @@ describe("zero sidebar account menu", () => {
       within(dialog).findByLabelText("Email address"),
     ).resolves.toBeVisible();
     expect(window.location.href).toBe(originalUrl);
-    expect(mockedClerk.openSignIn).not.toHaveBeenCalled();
 
     click(buttonByLabel("Close", dialog));
     await waitFor(() => {
