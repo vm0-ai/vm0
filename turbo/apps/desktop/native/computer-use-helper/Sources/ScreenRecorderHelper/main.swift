@@ -1,5 +1,6 @@
 import AVFoundation
 import AppKit
+import CoreGraphics
 import CoreMedia
 import Foundation
 import ScreenCaptureKit
@@ -491,7 +492,10 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
         of type: SCStreamOutputType
     ) {
-        guard sampleBuffer.isValid, CMSampleBufferDataIsReady(sampleBuffer) else {
+        guard
+            CMSampleBufferIsValid(sampleBuffer),
+            CMSampleBufferDataIsReady(sampleBuffer)
+        else {
             return
         }
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)

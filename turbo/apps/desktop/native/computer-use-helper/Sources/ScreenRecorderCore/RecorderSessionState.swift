@@ -16,7 +16,9 @@ public enum RecorderCommand: String, Equatable, Sendable {
     case stop
 }
 
-public struct RecorderTransitionFailure: Equatable, Sendable {
+/// Conforms to `Error` because it is the failure type of the `Result` returned
+/// by `RecorderTransitionPolicy`, which constrains it to `Error`.
+public struct RecorderTransitionFailure: Error, Equatable, Sendable {
     public let code: String
     public let message: String
 
