@@ -1677,7 +1677,7 @@ def test_uninspectable_billable_success_is_not_reported_as_provider_failure(
         response_headers=header_map(
             {
                 "content-type": "text/event-stream",
-                "content-encoding": "br",
+                "content-encoding": "zstd",
             }
         ),
     )
