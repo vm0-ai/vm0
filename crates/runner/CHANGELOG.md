@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.181.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.180.0...runner-rs-v0.181.0) (2026-08-31)
+
+
+### Features
+
+* **pi:** add versioned sandbox ownership transfers ([#30607](https://github.com/vm0-ai/vm0/issues/30607)) ([dbc4e02](https://github.com/vm0-ai/vm0/commit/dbc4e02e9360749162d2bcf3fd1726f12a8e521f))
+
+
+### Performance Improvements
+
+* **runner:** measure session identity reuse verification ([#30619](https://github.com/vm0-ai/vm0/issues/30619)) ([a982b33](https://github.com/vm0-ai/vm0/commit/a982b33938dd7c44a1471006d8e0afadc3f8dd27))
+
 ## [0.180.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.179.2...runner-rs-v0.180.0) (2026-08-31)
 
 
