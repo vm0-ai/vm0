@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 
 type PackageJson = {
   dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
 };
 
 type VersionedPackageJson = PackageJson & {
@@ -38,6 +40,26 @@ function apiRuntimeWorkspaceDependencyPaths(): string[] {
     })
     .map(([name]) => {
       return `turbo/packages/${name.replace("@okouai/", "")}`;
+    });
+}
+
+function releaseManagedWorkspaceDependencyPaths(
+  packageJson: PackageJson,
+  releaseConfig: ReleasePleaseConfig,
+): string[] {
+  return Object.entries({
+    ...packageJson.dependencies,
+    ...packageJson.devDependencies,
+    ...packageJson.optionalDependencies,
+  })
+    .filter(([name, specifier]) => {
+      return name.startsWith("@okouai/") && specifier.startsWith("workspace:");
+    })
+    .map(([name]) => {
+      return `turbo/packages/${name.replace("@okouai/", "")}`;
+    })
+    .filter((packagePath) => {
+      return Object.hasOwn(releaseConfig.packages, packagePath);
     });
 }
 
@@ -112,11 +134,7 @@ describe("release-please API deployment graph", () => {
       connectorsPackage.version,
     );
     expect(
-      Object.values(connectorsPackage.dependencies ?? {}).filter(
-        (specifier) => {
-          return specifier.startsWith("workspace:");
-        },
-      ),
+      releaseManagedWorkspaceDependencyPaths(connectorsPackage, releaseConfig),
     ).toStrictEqual([]);
     expect(releaseConfig.packages).not.toHaveProperty(
       "turbo/packages/connector-catalog-validation",
