@@ -2,7 +2,7 @@
 name = "guest-reseed"
 version = "0.3.7"
 edition.workspace = true
-description = "Inject entropy and force CRNG reseed after Firecracker snapshot restore"
+description = "Repair snapshot-sensitive guest state and apply guest timezones"
 
 [dependencies]
 libc.workspace = true
