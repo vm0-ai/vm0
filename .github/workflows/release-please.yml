@@ -1414,8 +1414,87 @@ jobs:
             rm -rf .vercel/output
             cp -R turbo/apps/api/.vercel/output .vercel/output
           environment-file: ${{ steps.api-production-env.outputs.file }}
+          skip-domain: "true"
           skip-start: "true"
           skip-finish: "true"
+          skip-setup: "true"
+
+      - name: Check staged API health
+        shell: bash
+        env:
+          API_DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          vercel curl /health --deployment "$API_DEPLOYMENT_URL" --token "$VERCEL_TOKEN" -- \
+            --fail \
+            --show-error \
+            --silent \
+            --max-time 20 \
+            --retry 3 \
+            --retry-delay 2 \
+            --retry-all-errors
+
+      - name: Reconcile staged connector catalog
+        shell: bash
+        env:
+          API_DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          response=""
+          for attempt in 1 2 3; do
+            if ! response=$(vercel curl /api/cron/sync-connector-catalog \
+              --deployment "$API_DEPLOYMENT_URL" \
+              --token "$VERCEL_TOKEN" \
+              -- \
+              --fail-with-body \
+              --show-error \
+              --silent \
+              --max-time 120 \
+              --header "Authorization: Bearer ${CRON_SECRET}"); then
+              echo "::warning::Connector catalog reconcile request failed (attempt ${attempt}/3)"
+            elif summary=$(jq -c '{
+              outcome,
+              state,
+              hasActive: (.active != null),
+              lastAttemptOutcome: .lastAttempt.outcome,
+              filtering: {
+                stale: .filtering.stale,
+                filteredAuthMethodCount: (.filtering.filteredAuthMethods | length)
+              }
+            }' <<< "$response"); then
+              echo "Connector catalog reconcile: ${summary}"
+
+              if jq -e '
+                .state == "current"
+                and .active != null
+                and .filtering.stale == false
+              ' <<< "$response" >/dev/null; then
+                exit 0
+              fi
+              echo "::warning::Connector catalog is not ready (attempt ${attempt}/3)"
+            else
+              echo "::warning::Connector catalog reconcile returned invalid JSON (attempt ${attempt}/3)"
+            fi
+
+            if [ "$attempt" -lt 3 ]; then
+              sleep 2
+            fi
+          done
+
+          echo "::error::Connector catalog reconcile did not produce a current accepted snapshot"
+          exit 1
+
+      - name: Promote API Production
+        uses: ./.github/actions/vercel-promote
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_API }}
+          deployment-url: ${{ steps.deploy.outputs.url }}
           skip-setup: "true"
 
       - name: Verify production App and API domains

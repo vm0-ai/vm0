@@ -223,6 +223,81 @@ describe("release-please API deployment graph", () => {
     expect(promoteApiProductionJob).toContain('skip-setup: "true"');
   });
 
+  it("stages and validates the API before production promotion", () => {
+    const workflow = readText(".github/workflows/release-please.yml");
+    const promoteApiProductionJob = workflowJobBlock(
+      workflow,
+      "promote-api-production",
+    );
+    const deployStep = promoteApiProductionJob.indexOf(
+      "- name: Deploy API Production",
+    );
+    const healthStep = promoteApiProductionJob.indexOf(
+      "- name: Check staged API health",
+    );
+    const reconcileStep = promoteApiProductionJob.indexOf(
+      "- name: Reconcile staged connector catalog",
+    );
+    const promoteStep = promoteApiProductionJob.indexOf(
+      "- name: Promote API Production",
+    );
+    const verifyDomainsStep = promoteApiProductionJob.indexOf(
+      "- name: Verify production App and API domains",
+    );
+
+    expect(deployStep).toBeGreaterThan(-1);
+    expect(healthStep).toBeGreaterThan(deployStep);
+    expect(reconcileStep).toBeGreaterThan(healthStep);
+    expect(promoteStep).toBeGreaterThan(reconcileStep);
+    expect(verifyDomainsStep).toBeGreaterThan(promoteStep);
+
+    const deployBlock = promoteApiProductionJob.slice(deployStep, healthStep);
+    expect(deployBlock).toContain('skip-domain: "true"');
+
+    const healthBlock = promoteApiProductionJob.slice(
+      healthStep,
+      reconcileStep,
+    );
+    expect(healthBlock).toContain(
+      `API_DEPLOYMENT_URL: \${{ steps.deploy.outputs.url }}`,
+    );
+    expect(healthBlock).toContain(
+      'vercel curl /health --deployment "$API_DEPLOYMENT_URL"',
+    );
+
+    const reconcileBlock = promoteApiProductionJob.slice(
+      reconcileStep,
+      promoteStep,
+    );
+    expect(reconcileBlock).toContain(
+      `API_DEPLOYMENT_URL: \${{ steps.deploy.outputs.url }}`,
+    );
+    expect(reconcileBlock).toContain(
+      "vercel curl /api/cron/sync-connector-catalog",
+    );
+    expect(reconcileBlock).toContain(
+      `--header "Authorization: Bearer \${CRON_SECRET}"`,
+    );
+    expect(reconcileBlock).toContain("hasActive: (.active != null)");
+    expect(reconcileBlock).toContain(
+      "lastAttemptOutcome: .lastAttempt.outcome",
+    );
+    expect(reconcileBlock).not.toContain("capabilityDigest:");
+    expect(reconcileBlock).toContain('.state == "current"');
+    expect(reconcileBlock).toContain(".active != null");
+    expect(reconcileBlock).toContain(".filtering.stale == false");
+
+    const promoteBlock = promoteApiProductionJob.slice(
+      promoteStep,
+      verifyDomainsStep,
+    );
+    expect(promoteBlock).toContain("uses: ./.github/actions/vercel-promote");
+    expect(promoteBlock).toContain(
+      `deployment-url: \${{ steps.deploy.outputs.url }}`,
+    );
+    expect(promoteBlock).toContain('skip-setup: "true"');
+  });
+
   it("keeps Vercel setup enabled for other deployment callers", () => {
     const action = readText(".github/actions/vercel-deploy/action.yml");
     const skipSetupInputStart = action.indexOf("  skip-setup:\n");
