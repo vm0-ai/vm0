@@ -14,11 +14,13 @@ function createController(
 ) {
   const onChange = vi.fn();
   const setFilesystemPluginFeatureEnabled = vi.fn();
+  const setScreenRecordingFeatureEnabled = vi.fn();
   const logRefreshError = vi.fn();
   const fetchSwitches = vi.fn(fetchFeatureSwitches);
   const controller = new DeveloperToolsController({
     fetchFeatureSwitches: fetchSwitches,
     setFilesystemPluginFeatureEnabled,
+    setScreenRecordingFeatureEnabled,
     onChange,
     logRefreshError,
   });
@@ -27,6 +29,7 @@ function createController(
     fetchSwitches,
     onChange,
     setFilesystemPluginFeatureEnabled,
+    setScreenRecordingFeatureEnabled,
     logRefreshError,
   };
 }
@@ -61,6 +64,47 @@ describe("DeveloperToolsController", () => {
 
     expect(onChange).toHaveBeenCalledOnce();
     expect(setFilesystemPluginFeatureEnabled).toHaveBeenCalledWith(true);
+  });
+
+  it("propagates the screen recording switch independently of developer tools", async () => {
+    const { controller, setScreenRecordingFeatureEnabled } = createController(
+      async () =>
+        jsonResponse({
+          effectiveSwitches: {
+            okouDebug: false,
+            desktopScreenRecording: true,
+          },
+        }),
+    );
+
+    controller.requestRefresh();
+    await vi.waitFor(() => {
+      expect(setScreenRecordingFeatureEnabled).toHaveBeenCalledWith(true);
+    });
+
+    expect(controller.getState().available).toBeFalsy();
+  });
+
+  it("releases screen recording when the session is unauthorized", async () => {
+    const responses = [
+      jsonResponse({
+        effectiveSwitches: { okouDebug: true, desktopScreenRecording: true },
+      }),
+      new Response(null, { status: 401 }),
+    ];
+    const { controller, setScreenRecordingFeatureEnabled } = createController(
+      async () => responses.shift() ?? jsonResponse({}),
+    );
+
+    controller.requestRefresh();
+    await vi.waitFor(() => {
+      expect(setScreenRecordingFeatureEnabled).toHaveBeenLastCalledWith(true);
+    });
+
+    controller.requestRefresh();
+    await vi.waitFor(() => {
+      expect(setScreenRecordingFeatureEnabled).toHaveBeenLastCalledWith(false);
+    });
   });
 
   it("reads the legacy switches shape", async () => {
