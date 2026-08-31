@@ -146,6 +146,11 @@ private func handleSources() throws -> [String: Any] {
     return ["sources": sources]
 }
 
+/// Capture rate for the stream, and the rate the click track reports so a
+/// downstream editor can convert `tMs` into a frame index. One value so the two
+/// cannot drift.
+private let captureFrameRate: CMTimeScale = 30
+
 // MARK: - Capture session
 
 private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput, @unchecked Sendable {
@@ -193,10 +198,16 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
 
     /// Converts a host-clock presentation timestamp back into the raw mach tick
     /// units `CGEvent.timestamp` reports, so clicks and frames share one origin.
-    private func hostTicks(from time: CMTime) -> UInt64 {
+    ///
+    /// Returns `nil` rather than a zero anchor when the timestamp cannot be
+    /// converted: anchoring at tick 0 would place every click at its offset from
+    /// system boot instead of from the recording, which is a confidently wrong
+    /// answer. The caller leaves the timeline unset and the track comes out
+    /// empty.
+    private func hostTicks(from time: CMTime) -> UInt64? {
         let nanoseconds = CMTimeGetSeconds(time) * 1_000_000_000
         guard nanoseconds > 0, timebase.numer > 0 else {
-            return 0
+            return nil
         }
         return UInt64(nanoseconds * Double(timebase.denom) / Double(timebase.numer))
     }
@@ -418,7 +429,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
                 "video": [
                     "width": outputSize.width,
                     "height": outputSize.height,
-                    "frameRate": 30,
+                    "frameRate": Int(captureFrameRate),
                 ],
                 "capture": describedGeometry,
             ],
@@ -524,11 +535,13 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             sessionStartedAt = timestamp
             // Anchor clicks on the very same frame the video starts on rather
             // than on when `start` was called, so the two timelines cannot drift.
-            clickTimeline = ClickTimeline(
-                startTicks: hostTicks(from: timestamp),
-                timebaseNumerator: timebase.numer,
-                timebaseDenominator: timebase.denom
-            )
+            if let startTicks = hostTicks(from: timestamp) {
+                clickTimeline = ClickTimeline(
+                    startTicks: startTicks,
+                    timebaseNumerator: timebase.numer,
+                    timebaseDenominator: timebase.denom
+                )
+            }
         }
         latestSampleAt = timestamp
         let input = type == .screen ? videoInput : audioInput
@@ -640,7 +653,7 @@ private func handlePrepare(_ request: [String: Any]) throws -> [String: Any] {
     let configuration = SCStreamConfiguration()
     configuration.width = outputSize.width
     configuration.height = outputSize.height
-    configuration.minimumFrameInterval = CMTime(value: 1, timescale: 30)
+    configuration.minimumFrameInterval = CMTime(value: 1, timescale: captureFrameRate)
     configuration.showsCursor = true
     configuration.queueDepth = 6
     configuration.capturesAudio = systemAudio

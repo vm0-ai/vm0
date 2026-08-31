@@ -2,15 +2,6 @@ import CoreGraphics
 import Foundation
 import ScreenRecorderCore
 
-struct CapturedClick {
-    let ticks: UInt64
-    let screenX: Double
-    let screenY: Double
-    let button: String
-    let clickCount: Int
-    let modifiers: [String]
-}
-
 private func buttonName(for type: CGEventType) -> String? {
     switch type {
     case .leftMouseDown:
@@ -147,9 +138,8 @@ final class ClickTrackRecorder: @unchecked Sendable {
 
     /// Projects the captured clicks onto the recording's timeline and geometry.
     ///
-    /// Clicks outside the captured region are counted but not described: while
-    /// recording one window, a click elsewhere happened in an application the
-    /// user never agreed to record.
+    /// `projectClicks` owns the two drop rules; this only renders the result as
+    /// JSON.
     func track(
         timeline: ClickTimeline,
         geometry: CaptureGeometry,
@@ -160,30 +150,25 @@ final class ClickTrackRecorder: @unchecked Sendable {
         let capturedWarnings = warnings
         lock.unlock()
 
-        var described: [[String: Any]] = []
-        var dropped = 0
-        for click in captured {
-            guard
-                let offsetMs = timeline.offsetMilliseconds(atTicks: click.ticks),
-                let point = geometry.mapClick(
-                    screenX: click.screenX,
-                    screenY: click.screenY,
-                    outputSize: outputSize
-                )
-            else {
-                dropped += 1
-                continue
-            }
-            described.append([
-                "tMs": offsetMs,
+        let projection = projectClicks(
+            captured,
+            timeline: timeline,
+            geometry: geometry,
+            outputSize: outputSize
+        )
+        let described: [[String: Any]] = projection.clicks.map { click in
+            return [
+                "tMs": click.offsetMs,
                 "button": click.button,
                 "clickCount": click.clickCount,
                 "modifiers": click.modifiers,
-                "screen": ["x": point.screenX, "y": point.screenY],
-                "frame": ["x": point.frameX, "y": point.frameY],
-                "normalized": ["x": point.normalizedX, "y": point.normalizedY],
-            ])
+                "screen": ["x": click.point.screenX, "y": click.point.screenY],
+                "frame": ["x": click.point.frameX, "y": click.point.frameY],
+                "normalized": [
+                    "x": click.point.normalizedX, "y": click.point.normalizedY,
+                ],
+            ] as [String: Any]
         }
-        return (described, dropped, capturedWarnings)
+        return (described, projection.droppedOutOfFrame, capturedWarnings)
     }
 }
