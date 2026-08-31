@@ -2066,6 +2066,30 @@ describe("zero sidebar", () => {
     ).toStrictEqual(["Support Agent", "Research Agent"]);
   });
 
+  it("marks the current thread agent as selected in the pinned agent grid", async () => {
+    prepareAgents();
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [RESEARCH_AGENT_ID],
+    });
+    mockSidebarThreadStory([
+      createThread(RESEARCH_THREAD_ID, "Research kickoff", {
+        agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+      }),
+    ]);
+
+    setupSidebarPage({ context, path: `/chats/${RESEARCH_THREAD_ID}` });
+
+    const currentAgentLink = await waitFor(() => {
+      const link = pinnedAgentLink(sidebar(), "Research Agent");
+      expect(link).toHaveAttribute("aria-current", "page");
+      return link;
+    });
+    expect(currentAgentLink).toHaveClass("bg-state-selected");
+    expect(pinnedAgentLink(sidebar(), "Zero")).not.toHaveAttribute(
+      "aria-current",
+    );
+  });
+
   it("pins an agent from the conversation picker and opens that agent chat", async () => {
     prepareAgents();
     let createRequests = 0;

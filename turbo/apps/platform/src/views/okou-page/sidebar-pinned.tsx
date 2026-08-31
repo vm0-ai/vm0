@@ -329,6 +329,7 @@ function PinnedAgentGridCard({
       options={{ pathParams: { agentId: agent.agentId } }}
       data-testid="pinned-agent-card"
       title={displayName}
+      aria-current={isPrimarySelected ? "page" : undefined}
       draggable={isReorderable}
       onDragStart={(e) => {
         e.dataTransfer.clearData();
@@ -496,8 +497,6 @@ export function PinnedAgentListSection({
   const pathParams = useGet(pathParams$);
   const routeAgentId =
     typeof pathParams?.agentId === "string" ? pathParams.agentId : null;
-  const routeThreadId =
-    typeof pathParams?.threadId === "string" ? pathParams.threadId : null;
   const sidebarAgentId = useLastResolved(currentChatAgentId$) ?? null;
   const pinnedAgentsLoadable = useLastLoadable(pinnedAgents$);
   const displayedPinnedAgentsLoadable = useLastLoadable(displayedPinnedAgents$);
@@ -527,8 +526,7 @@ export function PinnedAgentListSection({
       ? displayedPinnedAgentsLoadable.data
       : pinnedAgents;
 
-  const selectedAgentId =
-    routeAgentId ?? (routeThreadId ? null : sidebarAgentId);
+  const selectedAgentId = routeAgentId ?? sidebarAgentId;
 
   if (layout === "horizontal") {
     const horizontalPinnedAgents =
@@ -695,6 +693,7 @@ export function PinnedAgentListSection({
                   <Link
                     pathname="/agents/:agentId/chat"
                     options={{ pathParams: { agentId: agent.agentId } }}
+                    aria-current={isPrimarySelected ? "page" : undefined}
                     onClick={(e) => {
                       if (e.metaKey || e.ctrlKey || e.shiftKey) {
                         return;
