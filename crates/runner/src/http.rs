@@ -227,7 +227,7 @@ impl HttpClient {
     /// `config.vercel_bypass` is present, that value is attached as
     /// `x-vercel-protection-bypass` on authenticated requests.
     ///
-    /// Returns an error if the underlying HTTP client cannot be built.
+    /// Returns an error if the API URL is invalid or the underlying HTTP client cannot be built.
     pub fn new(config: HttpClientConfig) -> RunnerResult<Self> {
         let HttpClientConfig {
             api_url: raw_api_url,
@@ -484,6 +484,24 @@ mod tests {
             !message.contains("user:pass") && !message.contains("token=secret"),
             "error should not echo sensitive URL components: {message}"
         );
+    }
+
+    #[test]
+    fn new_rejects_cleartext_remote_api_url() {
+        let result = HttpClient::new(HttpClientConfig {
+            api_url: "http://api.vm0.dev".to_string(),
+            vercel_bypass: None,
+            client_session_id: "runner-session-test".to_string(),
+        });
+        let error = match result {
+            Ok(_) => panic!("expected cleartext remote API URL to be rejected"),
+            Err(error) => error,
+        };
+        let message = error.to_string();
+
+        assert!(message.contains("server.url"), "got: {message}");
+        assert!(message.contains("https"), "got: {message}");
+        assert!(!message.contains("api.vm0.dev"), "got: {message}");
     }
 
     #[test]

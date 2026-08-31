@@ -35,8 +35,7 @@ before the diagnostic reaches workflow redaction.
 
 The `auth-v2.spec.ts` project covers:
 
-- base and nested sign-in/sign-up routes, hard refresh, desktop rendering, and
-  v1/v2 route coexistence;
+- base and nested sign-in/sign-up routes, hard refresh, and desktop rendering;
 - all ten supported platform locales, a French mobile viewport, light/dark
   theme switching, keyboard focus, live announcements, and overflow safety;
 - password sign-in through Clerk Device Trust email verification, same-origin
@@ -84,6 +83,6 @@ explicit QA checkpoints on the final PR's exact preview SHA:
    preview deployment SHA before the PR enters the merge queue. This checkpoint
    must not use a prior or sibling preview.
 
-Desktop auth, `/sign-in-token`, legacy `/sign-in` and `/sign-up`, and the
-existing Playwright authentication helper keep their existing ownership and
-behavior; this suite does not replace or mutate them.
+Desktop auth, `/sign-in-token`, and the existing Playwright authentication
+helper keep their existing ownership and behavior; this suite does not replace
+or mutate them.

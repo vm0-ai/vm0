@@ -414,6 +414,10 @@ export default [
       // through the production API. This focused PostgreSQL test proves the
       // exact Agent Draft writer through both rollout targets.
       "src/signals/services/__tests__/agent-draft-write.service.test.ts",
+      // The strict email trust boundary is a deterministic pure renderer. A
+      // focused matrix pins parser-normalized URL policy, inert markup, and
+      // byte-bound fallback behavior that route tests cannot isolate fully.
+      "src/signals/services/__tests__/official-automation-result-email-renderer.test.ts",
       "src/signals/services/__tests__/workflow-automation-context.test.ts",
     ],
     rules: {

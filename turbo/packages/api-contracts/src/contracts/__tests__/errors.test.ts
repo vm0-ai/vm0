@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   CHAT_RUN_TRANSIENT_ERROR_MESSAGE,
   formatRunErrorForExternalSurface,
+  getCodexChatGptAccountUnsupportedModel,
   INSUFFICIENT_CREDITS_ASK_ADMIN_MESSAGE,
   isActionableRunError,
+  isCodexChatGptAccountUnsupportedModelRunError,
   isGenericRunErrorForDisplay,
 } from "../errors";
 
@@ -222,7 +224,53 @@ describe("formatRunErrorForExternalSurface", () => {
       }),
     ).toBe(unsupportedModel);
     expect(isActionableRunError(unsupportedModel)).toBe(true);
+    expect(
+      isCodexChatGptAccountUnsupportedModelRunError(unsupportedModel),
+    ).toBe(true);
+    expect(getCodexChatGptAccountUnsupportedModel(unsupportedModel)).toBe(
+      "gpt-5.6-sol",
+    );
     expect(isGenericRunErrorForDisplay(unsupportedModel)).toBe(false);
+  });
+
+  it("keeps near-miss unsupported-model errors generic", () => {
+    const message =
+      "The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account.";
+    const nearMisses = [
+      message,
+      JSON.stringify({
+        type: "error",
+        status: 401,
+        error: { type: "invalid_request_error", message },
+      }),
+      JSON.stringify({
+        type: "error",
+        status: 400,
+        error: { type: "authentication_error", message },
+      }),
+      JSON.stringify({
+        type: "error",
+        status: 400,
+        error: {
+          type: "invalid_request_error",
+          message: "The 'gpt-5.6-sol' model is not supported by this API key.",
+        },
+      }),
+    ];
+
+    for (const nearMiss of nearMisses) {
+      expect(isCodexChatGptAccountUnsupportedModelRunError(nearMiss)).toBe(
+        false,
+      );
+      expect(getCodexChatGptAccountUnsupportedModel(nearMiss)).toBeUndefined();
+      expect(isActionableRunError(nearMiss)).toBe(false);
+      expect(
+        formatRunErrorForExternalSurface({
+          code: "UNKNOWN",
+          message: nearMiss,
+        }),
+      ).toBe(CHAT_RUN_TRANSIENT_ERROR_MESSAGE);
+    }
   });
 
   it("shows Claude Code subscription reconnect guidance for upstream 401s", () => {

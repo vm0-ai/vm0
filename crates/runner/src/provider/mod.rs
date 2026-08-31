@@ -522,6 +522,7 @@ pub struct ClaimedJob {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct ApiClaimTiming {
     request_elapsed: Duration,
+    request_to_response_headers_elapsed: Duration,
     response_body_read_elapsed: Duration,
     response_decode_elapsed: Duration,
 }
@@ -529,11 +530,13 @@ pub(crate) struct ApiClaimTiming {
 impl ApiClaimTiming {
     pub(crate) const fn new(
         request_elapsed: Duration,
+        request_to_response_headers_elapsed: Duration,
         response_body_read_elapsed: Duration,
         response_decode_elapsed: Duration,
     ) -> Self {
         Self {
             request_elapsed,
+            request_to_response_headers_elapsed,
             response_body_read_elapsed,
             response_decode_elapsed,
         }
@@ -541,6 +544,10 @@ impl ApiClaimTiming {
 
     pub(crate) const fn request_elapsed(self) -> Duration {
         self.request_elapsed
+    }
+
+    pub(crate) const fn request_to_response_headers_elapsed(self) -> Duration {
+        self.request_to_response_headers_elapsed
     }
 
     pub(crate) const fn response_body_read_elapsed(self) -> Duration {
@@ -821,6 +828,7 @@ mod tests {
     fn api_claim_timing() -> ApiClaimTiming {
         ApiClaimTiming::new(
             Duration::from_millis(10),
+            Duration::from_millis(4),
             Duration::from_millis(2),
             Duration::from_millis(3),
         )

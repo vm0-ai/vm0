@@ -150,6 +150,24 @@ The backend must support old runner requests until old runners have fully
 drained. Runner changes that require backend support must be staged so a new
 runner can also survive briefly talking to an old backend.
 
+Rootfs locks have a host-local cross-version transition of their own. Releases
+before the canonical rename coordinate through `image-{hash}.lock`; bridge
+releases acquire that historical identity and then `rootfs-{hash}.lock`; a
+future cleanup release will use only the canonical identity. This ordering lets
+pre-bridge and bridge processes coordinate through the historical lock, while
+bridge and post-cleanup processes coordinate through the canonical lock.
+Pre-bridge and post-cleanup releases must not overlap directly or remain
+simultaneously supported for rollback.
+
+During the bridge, every caller acquires the historical rootfs identity before
+the canonical identity, releases them in reverse order, and acquires all rootfs
+identities before any snapshot identity. Bridge processes legitimately keep
+historical locks held. Remove the historical acquisition only after exact
+production and rollback artifacts are bridge-capable and the rollout gate in
+vm0-ai/vm0#30478 proves that no pre-bridge process remains. Verify zero held
+historical rootfs locks after the canonical-only rollout drains bridge
+processes.
+
 Runner and guest binaries are deployed as one runner artifact. Compatibility is
 not required between a runner binary and a guest binary from a different version.
 

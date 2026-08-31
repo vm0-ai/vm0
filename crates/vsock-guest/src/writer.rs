@@ -259,6 +259,7 @@ fn send_flags() -> libc::c_int {
 mod tests {
     use super::*;
     use std::io::Read;
+    use std::sync::atomic::AtomicUsize;
 
     fn set_send_buffer(stream: &UnixStream, size: libc::c_int) -> io::Result<()> {
         // SAFETY: setsockopt receives a valid socket fd and a pointer to a
@@ -334,6 +335,77 @@ mod tests {
         let mut received = Vec::new();
         peer.read_to_end(&mut received).unwrap();
         assert_eq!(received, b"firstsecond");
+    }
+
+    #[test]
+    fn write_frame_after_lock_unless_cancelled_suppresses_queued_frame() {
+        let (guest, mut peer) = UnixStream::pair().unwrap();
+        let writer = GuestWriter::new(guest);
+        let blocker_writer = writer.clone();
+        let pending_writer = writer.clone();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let pending_cancelled = Arc::clone(&cancelled);
+        let release_count = Arc::new(AtomicUsize::new(0));
+        let pending_release_count = Arc::clone(&release_count);
+        let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+        let (unlock_tx, unlock_rx) = std::sync::mpsc::channel();
+        let (pending_tx, pending_rx) = std::sync::mpsc::channel();
+
+        let blocker = std::thread::spawn(move || {
+            blocker_writer
+                .write_frame_after_lock(b"", || {
+                    locked_tx.send(()).unwrap();
+                    unlock_rx.recv().unwrap();
+                })
+                .unwrap();
+        });
+        locked_rx.recv().unwrap();
+
+        let pending = std::thread::spawn(move || {
+            pending_tx.send(()).unwrap();
+            pending_writer.write_frame_after_lock_unless_cancelled(
+                b"cancelled",
+                &pending_cancelled,
+                || {
+                    pending_release_count.fetch_add(1, Ordering::Relaxed);
+                },
+            )
+        });
+        pending_rx.recv().unwrap();
+
+        cancelled.store(true, Ordering::Release);
+        unlock_tx.send(()).unwrap();
+        blocker.join().unwrap();
+
+        assert!(!pending.join().unwrap().unwrap());
+        assert_eq!(release_count.load(Ordering::Relaxed), 1);
+        drop(writer);
+
+        let mut received = Vec::new();
+        peer.read_to_end(&mut received).unwrap();
+        assert!(received.is_empty());
+    }
+
+    #[test]
+    fn write_frame_after_lock_unless_cancelled_sends_live_frame() {
+        let (guest, mut peer) = UnixStream::pair().unwrap();
+        let writer = GuestWriter::new(guest);
+        let cancelled = AtomicBool::new(false);
+        let release_count = AtomicUsize::new(0);
+
+        let sent = writer
+            .write_frame_after_lock_unless_cancelled(b"live", &cancelled, || {
+                release_count.fetch_add(1, Ordering::Relaxed);
+            })
+            .unwrap();
+
+        assert!(sent);
+        assert_eq!(release_count.load(Ordering::Relaxed), 1);
+        drop(writer);
+
+        let mut received = Vec::new();
+        peer.read_to_end(&mut received).unwrap();
+        assert_eq!(received, b"live");
     }
 
     #[test]

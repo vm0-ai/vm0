@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.82.26](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.25...guest-agent-v0.82.26) (2026-08-31)
+
+## [0.82.25](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.24...guest-agent-v0.82.25) (2026-08-31)
+
+
+### Bug Fixes
+
+* **guest-agent:** atomically persist checkpoint completion ([#30384](https://github.com/vm0-ai/vm0/issues/30384)) ([f54e213](https://github.com/vm0-ai/vm0/commit/f54e213e05c57ae39beecc27fa706b98fc96b791))
+
 ## [0.82.24](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.23...guest-agent-v0.82.24) (2026-08-31)
 
 

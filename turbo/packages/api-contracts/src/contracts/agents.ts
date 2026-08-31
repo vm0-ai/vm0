@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { CANONICAL_WORKING_DIR } from "./runners";
+import { CANONICAL_WORKING_DIR } from "./runner-primitives";
 
 const c = initContract();
 

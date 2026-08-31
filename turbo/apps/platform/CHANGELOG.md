@@ -1,5 +1,75 @@
 # Changelog
 
+## [0.813.2](https://github.com/vm0-ai/vm0/compare/app-v0.813.1...app-v0.813.2) (2026-08-31)
+
+
+### Performance Improvements
+
+* **platform:** remove server contracts from startup graph ([#30444](https://github.com/vm0-ai/vm0/issues/30444)) ([e9aff31](https://github.com/vm0-ai/vm0/commit/e9aff312223e62e4e451eb68b61864687e08b007))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.15
+    * @okouai/core bumped to 8.604.1
+
+## [0.813.1](https://github.com/vm0-ai/vm0/compare/app-v0.813.0...app-v0.813.1) (2026-08-31)
+
+
+### Refactoring
+
+* **auth:** fully roll out auth v2 ([#30406](https://github.com/vm0-ai/vm0/issues/30406)) ([9509186](https://github.com/vm0-ai/vm0/commit/950918630f56ba9019dfc32893dd29e8f5bd5797))
+
+
+### Performance Improvements
+
+* **platform:** load Google Fonts from document head ([#30449](https://github.com/vm0-ai/vm0/issues/30449)) ([882445c](https://github.com/vm0-ai/vm0/commit/882445c0008c52f284db0885cc1ed8e34ff60ea8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.14
+    * @okouai/connectors bumped to 3.0.1
+    * @okouai/core bumped to 8.604.0
+
+## [0.813.0](https://github.com/vm0-ai/vm0/compare/app-v0.812.6...app-v0.813.0) (2026-08-31)
+
+
+### Features
+
+* **platform:** add intro video visual balance ([#30399](https://github.com/vm0-ai/vm0/issues/30399)) ([adf2b69](https://github.com/vm0-ai/vm0/commit/adf2b693c71a29714269e78ca6608c1f1a7e6141))
+
+
+### Bug Fixes
+
+* **chat:** offer recovery for unsupported codex models ([#30420](https://github.com/vm0-ai/vm0/issues/30420)) ([2aab056](https://github.com/vm0-ai/vm0/commit/2aab056fbdb9eb1c48238a8f1a75dd5d97066182))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.13
+    * @okouai/core bumped to 8.603.6
+
+## [0.812.6](https://github.com/vm0-ai/vm0/compare/app-v0.812.5...app-v0.812.6) (2026-08-31)
+
+
+### Refactoring
+
+* remove teams integration feature switch ([#30383](https://github.com/vm0-ai/vm0/issues/30383)) ([21bfe91](https://github.com/vm0-ai/vm0/commit/21bfe915ee1183d2267b62c36fb90773f54192a5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.603.5
+
 ## [0.812.5](https://github.com/vm0-ai/vm0/compare/app-v0.812.4...app-v0.812.5) (2026-08-31)
 
 

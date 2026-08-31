@@ -26,7 +26,7 @@ import {
   CONNECTOR_CATALOG_ACTIVE_KEY,
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
   type ConnectorCatalogArtifact,
-} from "@okouai/connector-catalog-validation/artifacts/artifacts";
+} from "@okouai/connectors/connector-catalog/artifacts/artifacts";
 import {
   CONNECTOR_CATALOG_ACTIVE_MAX_BYTES,
   connectorCatalogArtifactFailureCode,
@@ -36,7 +36,7 @@ import {
   type ConnectorCatalogActivePointer,
   type ConnectorCatalogArtifactReader,
   type ValidatedConnectorCatalogCandidate,
-} from "@okouai/connector-catalog-validation/artifacts/loader";
+} from "@okouai/connectors/connector-catalog/artifacts/loader";
 import {
   connectorCatalogExecutableCapabilityState,
   persistConnectorCatalogCompatibility,

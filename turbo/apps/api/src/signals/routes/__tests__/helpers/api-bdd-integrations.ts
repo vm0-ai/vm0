@@ -252,7 +252,6 @@ interface SlackCommandRequest {
   readonly teamId: string;
   readonly userId: string;
   readonly text: string;
-  readonly command?: "/okou" | "/zero";
   readonly channelId?: string;
   readonly triggerId?: string;
   readonly publicBrand?: PublicBrand;
@@ -287,7 +286,7 @@ function slackCommandRequestBody(args: SlackCommandRequest): string {
     channel_name: "general",
     user_id: args.userId,
     user_name: "bdduser",
-    command: args.command ?? "/okou",
+    command: "/okou",
     text: args.text,
     response_url: "https://hooks.slack.com/commands/bdd/response",
     trigger_id: args.triggerId ?? "trigger-bdd",

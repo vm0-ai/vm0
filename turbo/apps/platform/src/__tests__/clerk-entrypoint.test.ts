@@ -54,10 +54,6 @@ function expectedClerkScriptUrl(host: string): string {
   return `https://${host}/npm/@clerk/clerk-js@${CLERK_JS_VERSION}/dist/clerk.browser.js`;
 }
 
-function expectedClerkUiScriptUrl(host: string): string {
-  return `https://${host}/npm/@clerk/ui@1.26.0/dist/ui.browser.js`;
-}
-
 function builtIndexHtml(): string {
   return transformClerkCoreScriptUrls(
     indexHtml
@@ -129,7 +125,6 @@ function startClerkPage(path = "/error"): ClerkEntrypointHarness {
       context.mocks.browser.url("https://pr-30199-app.omby.ai/");
       window.__vm0BrowserSupported = true;
       Reflect.deleteProperty(globalThis, "Clerk");
-      Reflect.deleteProperty(globalThis, "__internal_ClerkUICtor");
 
       const observeScript = (
         append: typeof document.body.appendChild,
@@ -140,7 +135,6 @@ function startClerkPage(path = "/error"): ClerkEntrypointHarness {
         }
 
         requests.push({ element: node, url: node.src });
-        const isClerkUiRequest = node.src.includes("/npm/@clerk/ui@");
         node.removeAttribute("src");
         const appended = append(node);
         if (
@@ -150,16 +144,8 @@ function startClerkPage(path = "/error"): ClerkEntrypointHarness {
           earlyScript = node;
           return appended;
         }
-        if (isClerkUiRequest) {
-          Reflect.set(
-            globalThis,
-            "__internal_ClerkUICtor",
-            function ClerkUI() {},
-          );
-        } else {
-          retryStarted.resolve(undefined);
-          Reflect.set(globalThis, "Clerk", mockedClerk);
-        }
+        retryStarted.resolve(undefined);
+        Reflect.set(globalThis, "Clerk", mockedClerk);
         node.dispatchEvent(new Event("load"));
         return appended;
       };
@@ -200,7 +186,6 @@ function startClerkPage(path = "/error"): ClerkEntrypointHarness {
             request.element.remove();
           }
           Reflect.deleteProperty(globalThis, "Clerk");
-          Reflect.deleteProperty(globalThis, "__internal_ClerkUICtor");
           Reflect.deleteProperty(window, "__vm0BrowserSupported");
         },
         { once: true },
@@ -318,15 +303,15 @@ describe("platform Clerk entrypoint", () => {
     expect(mockedClerkLoad).toHaveBeenCalledOnce();
   });
 
-  it("loads the matching Clerk UI release only when the auth route requests it", async () => {
+  it("keeps platform-owned auth routes on the Clerk core runtime", async () => {
     const harness = startClerkPage("/sign-in");
 
     await completeEarlyClerkScript(harness);
 
     expect(harness.requests.map(({ url }) => url)).toStrictEqual([
       expectedClerkScriptUrl(PREVIEW_FRONTEND_API_HOST),
-      expectedClerkUiScriptUrl(PREVIEW_FRONTEND_API_HOST),
     ]);
+    expect(document.querySelector("script[data-clerk-ui-script]")).toBeNull();
     expect(mockedClerkLoad).toHaveBeenCalledOnce();
   });
 

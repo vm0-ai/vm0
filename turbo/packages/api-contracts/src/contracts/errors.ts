@@ -214,6 +214,18 @@ const codexOAuthReconnectRequiredRunErrorEnvelopeSchema = z.object({
   }),
 });
 
+const codexChatGptAccountUnsupportedModelRunErrorSchema = z.object({
+  type: z.literal("error"),
+  status: z.literal(400),
+  error: z.object({
+    type: z.literal("invalid_request_error"),
+    message: z.string(),
+  }),
+});
+
+const CODEX_CHATGPT_ACCOUNT_UNSUPPORTED_MODEL_MESSAGE =
+  /^The '([^']+)' model is not supported when using Codex with a ChatGPT account\.$/u;
+
 export const INSUFFICIENT_CREDITS_ASK_ADMIN_MESSAGE =
   "Ask a workspace admin to add credits or upgrade the workspace plan.";
 
@@ -225,7 +237,6 @@ export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
   "Invalid signature in thinking block",
   "Run cancelled",
   "Selected model is at capacity. Please try a different model.",
-  "model is not supported when using Codex with a ChatGPT account",
   // Upstream model usage/quota limits are shown verbatim (the CLI already
   // emits clean, user-friendly copy with reset time and upgrade links).
   // Codex: "You've hit your usage limit …"
@@ -412,6 +423,49 @@ function isCodexOAuthReconnectRequiredRunErrorObject(value: unknown): boolean {
   );
 }
 
+function codexChatGptAccountUnsupportedModelFromObject(
+  value: unknown,
+): string | undefined {
+  const parsed =
+    codexChatGptAccountUnsupportedModelRunErrorSchema.safeParse(value);
+  if (!parsed.success) {
+    return undefined;
+  }
+  return CODEX_CHATGPT_ACCOUNT_UNSUPPORTED_MODEL_MESSAGE.exec(
+    parsed.data.error.message,
+  )?.[1];
+}
+
+export function getCodexChatGptAccountUnsupportedModel(
+  errorMessage: string,
+): string | undefined {
+  if (
+    !errorMessage.includes(
+      "not supported when using Codex with a ChatGPT account",
+    )
+  ) {
+    return undefined;
+  }
+
+  let searchStart = 0;
+  let parsed = parseNextJsonObject(errorMessage, searchStart);
+  while (parsed !== undefined) {
+    const model = codexChatGptAccountUnsupportedModelFromObject(parsed.value);
+    if (model !== undefined) {
+      return model;
+    }
+    searchStart = parsed.endIndex;
+    parsed = parseNextJsonObject(errorMessage, searchStart);
+  }
+  return undefined;
+}
+
+export function isCodexChatGptAccountUnsupportedModelRunError(
+  errorMessage: string,
+): boolean {
+  return getCodexChatGptAccountUnsupportedModel(errorMessage) !== undefined;
+}
+
 function isCodexOAuthReconnectRequiredRunError(errorMessage: string): boolean {
   if (
     !errorMessage.includes("TOKEN_REFRESH_FAILED") ||
@@ -487,6 +541,7 @@ function isClaudeCodeTermsAcceptanceRequiredError(
 export function isActionableRunError(errorMessage: string): boolean {
   return (
     isCodexOAuthReconnectRequiredRunError(errorMessage) ||
+    isCodexChatGptAccountUnsupportedModelRunError(errorMessage) ||
     isClaudeCodeLimitError(errorMessage) ||
     isClaudeCodeTermsAcceptanceRequiredError(errorMessage) ||
     hasActionableRunErrorSnippet(errorMessage)

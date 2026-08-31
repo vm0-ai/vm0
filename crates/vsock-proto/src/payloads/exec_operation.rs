@@ -18,6 +18,7 @@ pub use output::{
     DecodedExecOutput, ExecOutputStream, decode_exec_output, encode_exec_output,
     encode_exec_output_frame_into,
 };
+pub(crate) use result::encode_exec_result_frame_into_with_type;
 pub use result::{
     DecodedExecResult, ExecCapturedOutput, decode_exec_result, encode_exec_result,
     encode_exec_result_frame_into,

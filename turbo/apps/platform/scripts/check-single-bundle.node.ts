@@ -8,6 +8,7 @@ import { build } from "vite";
 
 import {
   RAW_JAVASCRIPT_OUTPUT_LIMIT_BYTES,
+  VENDOR_MODULE_PATTERN,
   applicationBundleViolations,
   applicationJavaScriptBundlePlugin,
   singleWorkerBundleViolations,
@@ -42,6 +43,7 @@ function vendorChunk() {
       "/repo/node_modules/react/index.js",
       "/repo/node_modules/rehype-prism-plus/dist/common.es.js",
       "/repo/node_modules/refractor/lib/common.js",
+      "/repo/packages/mermaid-lite/dist/mermaid.esm.min.mjs",
     ],
     type: "chunk" as const,
   };
@@ -140,6 +142,42 @@ await test("keeps third-party modules only in vendor and rejects extra edges", (
   );
 });
 
+await test("keeps only the generated Mermaid workspace module in vendor", () => {
+  const missingMermaid = applicationBundleViolations([
+    applicationChunk(),
+    {
+      ...vendorChunk(),
+      moduleIds: vendorChunk().moduleIds.filter((moduleId) => {
+        return !moduleId.includes("/packages/mermaid-lite/");
+      }),
+    },
+    runtimeChunk(),
+    workerAsset(),
+  ]);
+  assert.ok(
+    missingMermaid.some((violation) => {
+      return violation.includes("expected exactly one /packages/mermaid-lite/");
+    }),
+  );
+
+  const unrelatedWorkspaceModule =
+    "/repo/packages/core/src/presentation-template-items.ts";
+  assert.deepEqual(
+    applicationBundleViolations([
+      applicationChunk(),
+      {
+        ...vendorChunk(),
+        moduleIds: [...vendorChunk().moduleIds, unrelatedWorkspaceModule],
+      },
+      runtimeChunk(),
+      workerAsset(),
+    ]),
+    [
+      `${VENDOR_FILE}: only node_modules and /packages/mermaid-lite/dist/mermaid.esm.min.mjs may be emitted in the vendor chunk: ${unrelatedWorkspaceModule}`,
+    ],
+  );
+});
+
 await test("allows Prism common and rejects non-common entries", () => {
   assert.deepEqual(applicationBundleViolations(validApplicationOutputs()), []);
 
@@ -161,6 +199,41 @@ await test("allows Prism common and rejects non-common entries", () => {
     ]),
     [
       `${VENDOR_FILE}: forbidden non-common Prism modules reached the bundle: rehype-prism-plus (root entry), rehype-prism-plus/all, rehype-prism-plus/generator, refractor/all`,
+    ],
+  );
+});
+
+await test("rejects server-only contracts from the eager platform graph", () => {
+  assert.deepEqual(
+    applicationBundleViolations([
+      {
+        ...applicationChunk(),
+        moduleIds: [
+          "/repo/apps/platform/src/main.ts",
+          "/repo/packages/api-contracts/src/contracts/runners.ts",
+          "/repo/packages/api-contracts/src/contracts/webhooks.ts",
+        ],
+      },
+      vendorChunk(),
+      runtimeChunk(),
+      workerAsset(),
+    ]),
+    [
+      `${APP_FILE}: server-only API contract modules reached the eager platform graph: /packages/api-contracts/src/contracts/runners.ts, /packages/api-contracts/src/contracts/webhooks.ts`,
+    ],
+  );
+
+  assert.deepEqual(
+    singleWorkerBundleViolations([
+      {
+        code: "worker",
+        fileName: "assets/shared-database-worker.js",
+        moduleIds: ["/repo/packages/api-contracts/src/contracts/runners.ts"],
+        type: "chunk",
+      },
+    ]),
+    [
+      "assets/shared-database-worker.js: server-only API contract modules reached the eager platform graph: /packages/api-contracts/src/contracts/runners.ts",
     ],
   );
 });
@@ -204,17 +277,19 @@ await test("emits the fixed page topology and one external worker", async () => 
   const root = await mkdtemp(path.join(tmpdir(), "okou-app-bundles-"));
   const sourceDirectory = path.join(root, "src");
   const vendorDirectory = path.join(root, "node_modules", "fixture-vendor");
+  const mermaidDirectory = path.join(root, "packages", "mermaid-lite", "dist");
 
   try {
     await mkdir(sourceDirectory, { recursive: true });
     await mkdir(vendorDirectory, { recursive: true });
+    await mkdir(mermaidDirectory, { recursive: true });
     await writeFile(
       path.join(root, "index.html"),
       '<script type="module" src="/src/main.js"></script>',
     );
     await writeFile(
       path.join(sourceDirectory, "main.js"),
-      'import SharedDatabaseWorker from "./shared-database-worker.js?sharedworker"; import localeUrl from "./locale.json?url"; import vendor from "fixture-vendor"; new SharedDatabaseWorker({ name: "test" }); console.log(localeUrl, vendor.value);',
+      'import SharedDatabaseWorker from "./shared-database-worker.js?sharedworker"; import localeUrl from "./locale.json?url"; import mermaid from "../packages/mermaid-lite/dist/mermaid.esm.min.mjs"; import vendor from "fixture-vendor"; new SharedDatabaseWorker({ name: "test" }); console.log(localeUrl, mermaid.value, vendor.value);',
     );
     await writeFile(
       path.join(sourceDirectory, "shared-database-worker.js"),
@@ -232,6 +307,10 @@ await test("emits the fixed page topology and one external worker", async () => 
       path.join(vendorDirectory, "index.cjs"),
       'module.exports = { value: "vendor-static" };',
     );
+    await writeFile(
+      path.join(mermaidDirectory, "mermaid.esm.min.mjs"),
+      'export default { value: "mermaid-static" };',
+    );
 
     const result = await build({
       configFile: false,
@@ -244,7 +323,7 @@ await test("emits the fixed page topology and one external worker", async () => 
         rolldownOptions: {
           output: {
             codeSplitting: {
-              groups: [{ name: "vendor", test: /[\\/]node_modules[\\/]/u }],
+              groups: [{ name: "vendor", test: VENDOR_MODULE_PATTERN }],
             },
           },
         },
@@ -269,6 +348,25 @@ await test("emits the fixed page topology and one external worker", async () => 
         return item.type === "chunk" && item.isEntry;
       }).length,
       1,
+    );
+    const emittedVendorChunk = javaScriptOutputs.find((item) => {
+      return (
+        item.type === "chunk" &&
+        /^assets\/vendor-[^/]+\.js$/u.test(item.fileName)
+      );
+    });
+    assert.ok(emittedVendorChunk?.type === "chunk");
+    assert.ok(
+      emittedVendorChunk.moduleIds.some((moduleId) => {
+        return moduleId.endsWith(
+          "/packages/mermaid-lite/dist/mermaid.esm.min.mjs",
+        );
+      }),
+    );
+    assert.ok(
+      emittedVendorChunk.moduleIds.every((moduleId) => {
+        return !moduleId.endsWith("/src/main.js");
+      }),
     );
     for (const pattern of [
       /^assets\/vendor-[^/]+\.js$/u,

@@ -1,6 +1,6 @@
 {
   "name": "@okouai/db",
-  "version": "1.228.20",
+  "version": "1.228.24",
   "private": true,
   "type": "module",
   "exports": {
@@ -19,6 +19,10 @@
     "./operations/model-provider-built-in-identity": {
       "import": "./src/operations/model-provider-built-in-identity.ts",
       "types": "./src/operations/model-provider-built-in-identity.ts"
+    },
+    "./operations/org-metadata-legacy-write": {
+      "import": "./src/operations/org-metadata-legacy-write.ts",
+      "types": "./src/operations/org-metadata-legacy-write.ts"
     },
     "./operations/org-plan-entitlement-canonical-write": {
       "import": "./src/operations/org-plan-entitlement-canonical-write.ts",

@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ "$#" -lt 3 || "$#" -gt 4 || ("$#" -eq 4 && "$4" != "--require-okou") ]]; then
-  echo "Usage: $0 <artifact-directory> <expected-commit-sha> <expected-desktop-version> [--require-okou]" >&2
+if [[ "$#" -ne 3 ]]; then
+  echo "Usage: $0 <artifact-directory> <expected-commit-sha> <expected-desktop-version>" >&2
   exit 1
 fi
 
 artifact_dir="$1"
 expected_commit_sha="$2"
 expected_desktop_version="$3"
-require_okou="${4:-}"
 manifest_path="$artifact_dir/manifest.json"
 ready_path="$artifact_dir/ready.json"
 
@@ -22,7 +21,7 @@ if [[ ! "$expected_desktop_version" =~ ^[0-9]+[.][0-9]+[.][0-9]+([-+][0-9A-Za-z.
   exit 1
 fi
 
-for artifact_path in "$artifact_dir/app.tar.gz" "$manifest_path" "$ready_path"; do
+for artifact_path in "$artifact_dir/okou-app.tar.gz" "$manifest_path" "$ready_path"; do
   if [[ ! -f "$artifact_path" ]]; then
     echo "Desktop artifact is missing $(basename "$artifact_path")" >&2
     exit 1
@@ -37,10 +36,10 @@ jq -e \
     and .desktopVersion == $desktop_version
     and .platform == "darwin"
     and .arch == "arm64"
-    and .appName == "Zero Computer Use.app"
-    and .archive.path == "app.tar.gz"
-    and (.archive.sha256 | type == "string" and test("^[0-9a-f]{64}$"))
-    and (.archive.size | type == "number" and . > 0)' \
+    and .okouAppName == "Okou.app"
+    and .okouArchive.path == "okou-app.tar.gz"
+    and (.okouArchive.sha256 | type == "string" and test("^[0-9a-f]{64}$"))
+    and (.okouArchive.size | type == "number" and . > 0)' \
   "$manifest_path" >/dev/null
 
 verify_archive() {
@@ -93,26 +92,9 @@ verify_archive() {
 }
 
 verify_archive \
-  "$artifact_dir/app.tar.gz" \
-  "Zero Computer Use.app" \
-  '.archive'
-
-has_okou_archive="$(jq -r 'has("okouAppName") or has("okouArchive")' "$manifest_path")"
-if [[ "$has_okou_archive" == "true" ]]; then
-  jq -e \
-    '.okouAppName == "Okou.app"
-      and .okouArchive.path == "okou-app.tar.gz"
-      and (.okouArchive.sha256 | type == "string" and test("^[0-9a-f]{64}$"))
-      and (.okouArchive.size | type == "number" and . > 0)' \
-    "$manifest_path" >/dev/null
-  verify_archive \
-    "$artifact_dir/okou-app.tar.gz" \
-    "Okou.app" \
-    '.okouArchive'
-elif [[ "$require_okou" == "--require-okou" ]]; then
-  echo "Desktop artifact does not contain the required Okou app archive" >&2
-  exit 1
-fi
+  "$artifact_dir/okou-app.tar.gz" \
+  "Okou.app" \
+  '.okouArchive'
 
 manifest_sha256="$(shasum -a 256 "$manifest_path" | cut -d ' ' -f 1)"
 jq -e \

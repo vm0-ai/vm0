@@ -46,8 +46,6 @@ export function deriveAppUrl(sourceUrl: string): string {
 export const STORAGE_STATE = path.join(__dirname, ".auth/storage-state.json");
 const appUrl = deriveAppUrl(apiUrl);
 const retainBlobReport = process.env.PLAYWRIGHT_PROJECT !== "auth-v2";
-const vercelAutomationBypassSecret =
-  process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
 
 export default defineConfig({
   testDir: "./tests",
@@ -60,9 +58,6 @@ export default defineConfig({
   timeout: 120_000,
   use: {
     baseURL: appUrl,
-    extraHTTPHeaders: vercelAutomationBypassSecret
-      ? { "x-vercel-protection-bypass": vercelAutomationBypassSecret }
-      : undefined,
     ignoreHTTPSErrors: true,
     trace: "on-first-retry",
     ...devices["Desktop Chrome"],

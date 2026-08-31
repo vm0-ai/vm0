@@ -320,7 +320,6 @@ runs:
         add_secret BYTEPLUS_API_KEY BYTEPLUS_API_KEY
         add_secret MINIMAX_API_KEY MINIMAX_API_KEY
         add_secret BYTEPLUS_STT_API_KEY BYTEPLUS_STT_API_KEY
-        add_secret UNSPLASH_ACCESS_KEY UNSPLASH_ACCESS_KEY
         add_var VAPID_PUBLIC_KEY VAPID_PUBLIC_KEY
         add_secret VAPID_PRIVATE_KEY VAPID_PRIVATE_KEY
         add_env CONCURRENT_RUN_LIMIT_CAP "$concurrent_run_limit_cap"
@@ -393,6 +392,7 @@ runs:
           GUMROAD
           MERCURY
           SPOTIFY
+          ZOOM
         )
         for prefix in "${oauth_client_config_prefixes[@]}"; do
           add_oauth_client_config "$prefix"
