@@ -37,7 +37,7 @@ def _openai_responses_sse_flow(
     *,
     model_usage_provider: str = "gpt-5.5",
 ) -> http.HTTPFlow:
-    return model_provider_sse_flow(
+    flow = model_provider_sse_flow(
         tmp_path,
         real_flow,
         host="api.openai.com",
@@ -46,6 +46,8 @@ def _openai_responses_sse_flow(
         cli_agent_type="codex",
         model_usage_provider=model_usage_provider,
     )
+    flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] = "already_stream_decodable"
+    return flow
 
 
 class TestOpenAIResponsesSseUsage:

@@ -133,7 +133,6 @@ class TestResponseEncodingInspectionRisk:
             tmp_path,
             content_encoding="private-encoding-value",
         )
-        flow.metadata.pop(metadata_keys.RESPONSE_ENCODING_NEGOTIATION)
 
         with mitm_ctx():
             mitm_addon.responseheaders(flow)
@@ -141,7 +140,7 @@ class TestResponseEncodingInspectionRisk:
         [entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
         assert "private-encoding-value" not in str(entry)
         assert entry["decode_skip_reason"] == "unsupported content encoding"
-        assert entry["request_encoding_negotiation"] == "not_recorded"
+        assert entry["request_encoding_negotiation"] == "rewritten_stream_decodable"
         assert flow.response is not None
         assert flow.response.status_code == 502
         assert response_stream(flow)(b"unknown-encoding-body") == b""
@@ -267,6 +266,7 @@ class TestResponseEncodingInspectionRisk:
             tmp_path,
             content_encoding="private-encoding-value",
         )
+        flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] = "preserved_client_constraints"
 
         with mitm_ctx():
             mitm_addon.responseheaders(flow)
@@ -276,7 +276,7 @@ class TestResponseEncodingInspectionRisk:
         assert entry["decode_skip_reason"] == "unsupported content encoding"
         assert entry["firewall_billable"] is True
         assert entry["inspection_disposition"] == "fail_closed"
-        assert entry["request_encoding_negotiation"] == "not_recorded"
+        assert entry["request_encoding_negotiation"] == "preserved_client_constraints"
         assert flow.response is not None
         assert flow.response.status_code == 502
         assert response_stream(flow)(b"unknown-connector-encoding") == b""
@@ -298,6 +298,7 @@ class TestResponseEncodingInspectionRisk:
             rule="GET /2/tweets/search/stream",
             content_encoding=content_encoding,
         )
+        flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] = "rewritten_stream_decodable"
 
         with mitm_ctx():
             mitm_addon.responseheaders(flow)
@@ -306,7 +307,7 @@ class TestResponseEncodingInspectionRisk:
         assert entry["reason"] == "response_encoding_not_stream_decodable"
         assert entry["firewall_billable"] is True
         assert entry["inspection_disposition"] == "fail_closed"
-        assert entry["request_encoding_negotiation"] == "not_recorded"
+        assert entry["request_encoding_negotiation"] == "rewritten_stream_decodable"
         assert flow.response is not None
         assert flow.response.status_code == 502
         assert response_stream(flow)(b"compressed-ndjson") == b""

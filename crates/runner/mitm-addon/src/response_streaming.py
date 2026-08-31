@@ -172,10 +172,7 @@ def _log_response_encoding_fail_closed(
         firewall_billable=flow_metadata.is_firewall_billable(flow.metadata),
         status_code=response.status_code,
         inspection_disposition="fail_closed",
-        request_encoding_negotiation=flow.metadata.get(
-            metadata_keys.RESPONSE_ENCODING_NEGOTIATION,
-            "not_recorded",
-        ),
+        request_encoding_negotiation=flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION],
         decode_skip_reason=skip_reason,
     )
 
