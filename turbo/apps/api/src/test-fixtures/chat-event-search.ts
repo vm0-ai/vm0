@@ -10,14 +10,15 @@ import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { asc, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "../lib/db";
+import { chatSearchIndexText } from "../lib/chat-search-bigram";
+import { nowDate } from "../lib/time";
 import {
   insertChatEvent,
   replaceChatEvent,
 } from "../signals/services/chat-event.service";
 import { createUserMessageDocument } from "../signals/services/chat-user-message.service";
 
-interface ChatEventSearchProjectionFixture {
-  readonly lastChatEventSeqId: number;
+interface ChatEventSearchProjectionRowsFixture {
   readonly indexedSeqId: number | null;
   readonly messages: readonly {
     readonly seqId: number;
@@ -27,17 +28,95 @@ interface ChatEventSearchProjectionFixture {
   }[];
 }
 
-export async function readChatEventSearchProjectionFixture(
+interface ChatEventSearchProjectionFixture extends ChatEventSearchProjectionRowsFixture {
+  readonly lastChatEventSeqId: number;
+}
+
+function chatEventSearchMessageFixture(args: {
+  readonly chatThreadId: string;
+  readonly seqId: number;
+  readonly text: string;
+}) {
+  return {
+    chatThreadId: args.chatThreadId,
+    seqId: args.seqId,
+    runId: null,
+    userId: `test-user-${args.chatThreadId}`,
+    orgId: `test-org-${args.chatThreadId}`,
+    agentId: null,
+    role: "user" as const,
+    createdAt: nowDate(),
+    text: args.text,
+    textBigram: chatSearchIndexText(args.text),
+  };
+}
+
+export async function insertOrphanedChatEventSearchProjectionFixture(args: {
+  readonly chatThreadId: string;
+  readonly text: string;
+}): Promise<void> {
+  await db().transaction(async (tx) => {
+    await tx.insert(chatEventSearchMessages).values(
+      chatEventSearchMessageFixture({
+        chatThreadId: args.chatThreadId,
+        seqId: 1,
+        text: args.text,
+      }),
+    );
+    await tx.insert(chatEventSearchMessageWatermarks).values({
+      chatThreadId: args.chatThreadId,
+      indexedSeqId: 1,
+    });
+  });
+}
+
+/**
+ * Performs the projector's message-then-watermark write order in one real
+ * transaction so cleanup tests can place both operations around a row lock.
+ */
+export async function writeChatEventSearchProjectionFixture(args: {
+  readonly chatThreadId: string;
+  readonly text: string;
+}): Promise<void> {
+  await db().transaction(async (tx) => {
+    await tx.insert(chatEventSearchMessages).values(
+      chatEventSearchMessageFixture({
+        chatThreadId: args.chatThreadId,
+        seqId: 2,
+        text: args.text,
+      }),
+    );
+    await tx
+      .insert(chatEventSearchMessageWatermarks)
+      .values({
+        chatThreadId: args.chatThreadId,
+        indexedSeqId: 2,
+      })
+      .onConflictDoUpdate({
+        target: chatEventSearchMessageWatermarks.chatThreadId,
+        set: {
+          indexedSeqId: sql`GREATEST(${chatEventSearchMessageWatermarks.indexedSeqId}, EXCLUDED.indexed_seq_id)`,
+        },
+      });
+  });
+}
+
+export async function removeChatEventSearchProjectionRowsFixture(
   chatThreadId: string,
-): Promise<ChatEventSearchProjectionFixture> {
-  const [thread] = await db()
-    .select({ lastChatEventSeqId: chatThreads.lastChatEventSeqId })
-    .from(chatThreads)
-    .where(eq(chatThreads.id, chatThreadId))
-    .limit(1);
-  if (!thread) {
-    throw new Error("Expected chat search projection fixture thread");
-  }
+): Promise<void> {
+  await db().transaction(async (tx) => {
+    await tx
+      .delete(chatEventSearchMessageWatermarks)
+      .where(eq(chatEventSearchMessageWatermarks.chatThreadId, chatThreadId));
+    await tx
+      .delete(chatEventSearchMessages)
+      .where(eq(chatEventSearchMessages.chatThreadId, chatThreadId));
+  });
+}
+
+export async function readChatEventSearchProjectionRowsFixture(
+  chatThreadId: string,
+): Promise<ChatEventSearchProjectionRowsFixture> {
   const [watermark] = await db()
     .select({ indexedSeqId: chatEventSearchMessageWatermarks.indexedSeqId })
     .from(chatEventSearchMessageWatermarks)
@@ -54,9 +133,27 @@ export async function readChatEventSearchProjectionFixture(
     .where(eq(chatEventSearchMessages.chatThreadId, chatThreadId))
     .orderBy(asc(chatEventSearchMessages.seqId));
   return {
-    lastChatEventSeqId: thread.lastChatEventSeqId,
     indexedSeqId: watermark?.indexedSeqId ?? null,
     messages,
+  };
+}
+
+export async function readChatEventSearchProjectionFixture(
+  chatThreadId: string,
+): Promise<ChatEventSearchProjectionFixture> {
+  const [thread] = await db()
+    .select({ lastChatEventSeqId: chatThreads.lastChatEventSeqId })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, chatThreadId))
+    .limit(1);
+  if (!thread) {
+    throw new Error("Expected chat search projection fixture thread");
+  }
+  const projection =
+    await readChatEventSearchProjectionRowsFixture(chatThreadId);
+  return {
+    lastChatEventSeqId: thread.lastChatEventSeqId,
+    ...projection,
   };
 }
 

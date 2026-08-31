@@ -63,7 +63,8 @@ state that matters to the story.
 Signal bootstrap tests that only need application-level initialization should
 use `setupBootstrap()`, await setup completion, and assert state transitions
 that cannot be observed through a rendered page. This follows the production
-`bootstrap$` path without starting the Router or authenticated page daemons.
+`bootstrap$` path without starting the Router or long-running authenticated
+daemon loops.
 Use `setupPage({ withoutRender: true })` when route or page setup is part of the
 behavior. Both forms should configure API and browser behavior through
 `context.mocks` before setup.

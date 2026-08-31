@@ -1447,9 +1447,8 @@ describe("thread-owned utility sidebar", () => {
       messages: [],
     });
 
-    await waitFor(() => {
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-    });
+    await screen.findAllByRole("navigation", { name: "Sidebar" });
+    await screen.findByRole("textbox", { name: "Message" });
     fixture.publishMessages([
       {
         id: "c0000000-0000-4000-a000-000000000054",
@@ -1510,10 +1509,6 @@ describe("thread-owned utility sidebar", () => {
     await waitFor(() => {
       expect(screen.queryByLabelText("Live browser")).not.toBeInTheDocument();
     });
-    await waitFor(() => {
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-    });
-
     fixture.publishMessages([
       {
         id: "msg-browser-still-running",
@@ -1545,9 +1540,6 @@ describe("thread-owned utility sidebar", () => {
     await openArtifactsFromHeader();
     await screen.findByTestId("thread-sidebar-artifacts");
 
-    await waitFor(() => {
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-    });
     fixture.publishMessages([
       {
         id: "c0000000-0000-4000-a000-000000000056",

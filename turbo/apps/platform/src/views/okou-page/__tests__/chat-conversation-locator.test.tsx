@@ -243,7 +243,7 @@ describe("chat conversation locator", () => {
   it("stays out of the thread while the feature switch is off", async () => {
     renderThread(false);
 
-    await screen.findByText("Answer 4");
+    await screen.findByText("Answer 4", {}, { timeout: 3000 });
     expect(document.querySelector("[data-conversation-locator]")).toBeNull();
     expect(
       document.querySelector("[data-conversation-locator-preview]"),

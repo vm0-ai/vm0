@@ -101,13 +101,14 @@ export const fetch$ = computed((get) => {
   const clientVersion = get(appVersion$);
   return async (url: string | URL | Request, options?: RequestInit) => {
     const authRecovery = await get(authRecovery$);
-    const requestSignal =
+    const inputSignal =
       options?.signal ?? (url instanceof Request ? url.signal : undefined);
-    const initialToken = await authRecovery.getToken(requestSignal);
+    const signal = inputSignal ?? get(rootSignal$);
+    const initialToken = await authRecovery.getToken(signal);
 
     const performFetch = async (
       token: string | null,
-      signal?: AbortSignal,
+      requestSignal: AbortSignal,
     ): Promise<Response> => {
       // Clone Request inputs so the body stream is available for retry.
       const requestInput = url instanceof Request ? url.clone() : url;
@@ -172,23 +173,17 @@ export const fetch$ = computed((get) => {
       const finalHeaders = new Headers(finalInit.headers);
       addCapturedPreviewBypassHeader(finalHeaders, finalUrl);
       finalInit.headers = finalHeaders;
-      if (signal) {
-        finalInit.signal = signal;
-      }
+      finalInit.signal = requestSignal;
 
       return await fetch(finalUrl, finalInit);
     };
 
-    let response = await performFetch(initialToken);
+    let response = await performFetch(initialToken, signal);
 
     if (response.status === 401) {
-      const rootSignal = get(rootSignal$);
-      const recoverySignal = requestSignal
-        ? AbortSignal.any([rootSignal, requestSignal])
-        : rootSignal;
-      const freshToken = await authRecovery.forceRefreshToken(requestSignal);
+      const freshToken = await authRecovery.forceRefreshToken(signal);
       if (freshToken) {
-        response = await performFetch(freshToken, recoverySignal);
+        response = await performFetch(freshToken, signal);
       }
     }
 

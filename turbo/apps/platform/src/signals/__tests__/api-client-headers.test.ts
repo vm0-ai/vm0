@@ -13,10 +13,13 @@ import {
   mockUser,
 } from "../../__tests__/mock-auth.ts";
 import { accept } from "../../lib/accept.ts";
+import { getCapturedPreviewBypassForTarget } from "../../lib/preview-bypass-cookie.ts";
 import { initializeI18n } from "../../i18n/index.ts";
 import { DEFAULT_LOCALE } from "../../i18n/resources.ts";
 import { apiClient$ } from "../api-client.ts";
 import { initializeAppVersion$ } from "../app-version.ts";
+import { setApiClientRuntime$ } from "../api-client-runtime.ts";
+import { resolveApiBaseForTarget, resolveOAuthApiBase } from "../api-base.ts";
 import { initAuthRecovery$, initClerkRuntime$ } from "../auth.ts";
 import { fetch$ } from "../fetch.ts";
 import {
@@ -34,6 +37,7 @@ const EXPECTED_CLIENT_VERSION = "platform-store-version";
 beforeEach(() => {
   context.store.set(initializeAppVersion$, EXPECTED_CLIENT_VERSION);
   context.store.set(setRootSignal$, context.signal);
+  setApiClientRuntimeForTest();
   context.store.set(initClerkRuntime$, context.signal);
   context.store.set(initAuthRecovery$, context.signal);
 });
@@ -70,6 +74,18 @@ function mockSignedInUser(): void {
 
 function setBrowserUrl(url: string): void {
   context.mocks.browser.url(url);
+  setApiClientRuntimeForTest();
+}
+
+function setApiClientRuntimeForTest(): void {
+  const apiBaseUrl = resolveApiBaseForTarget("api");
+  const vercelProtectionBypass = getCapturedPreviewBypassForTarget(apiBaseUrl);
+  context.store.set(setApiClientRuntime$, {
+    environment: "app",
+    apiBaseUrl,
+    oauthApiBaseUrl: resolveOAuthApiBase(),
+    ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
+  });
 }
 
 function getFetchForTest() {

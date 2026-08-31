@@ -13,7 +13,10 @@ import {
 import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 import { modelUsageObservationEventsSchema } from "./model-usage-observations";
-import { modelProviderCodexRuntimeConfigSchema } from "./model-providers";
+import {
+  MODEL_PROVIDER_PI_APIS,
+  modelProviderCodexRuntimeConfigSchema,
+} from "./model-providers";
 import {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
@@ -915,6 +918,13 @@ export const piModelConfigSchema = z
     ]),
     baseUrl: z.url(),
     model: z.string().min(1),
+    // Optional additions keep stored legacy launch contexts readable. When
+    // absent, readers preserve the previous adapter transport and Pi's medium
+    // thinking default.
+    api: z.enum(MODEL_PROVIDER_PI_APIS).optional(),
+    thinkingLevel: z
+      .enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"])
+      .optional(),
     apiKeyEnv: z.enum([
       "ANTHROPIC_AUTH_TOKEN",
       "OPENAI_API_KEY",

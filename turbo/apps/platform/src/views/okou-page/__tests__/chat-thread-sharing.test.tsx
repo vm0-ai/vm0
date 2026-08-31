@@ -87,6 +87,8 @@ describe("chat thread sharing", () => {
       },
     });
 
+    await screen.findAllByRole("navigation", { name: "Sidebar" });
+    await screen.findByRole("textbox", { name: "Message" });
     await screen.findByText("Shareable prompt");
     const startButtons = buttonsByText("Share messages");
     expect(startButtons.length).toBeGreaterThan(0);

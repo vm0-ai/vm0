@@ -11,6 +11,7 @@ import type {
   SharedDatabaseSubscriptionCallback,
 } from "./bridge.ts";
 import type {
+  ChatThreadIndicators,
   SharedDatabaseDataKey,
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
@@ -85,7 +86,7 @@ export class AuthRecoveringSharedDatabaseBridge implements SharedDatabaseBridge 
       throw first.error;
     }
 
-    const retryToken = this.requireHeartbeatRegistration().identity.token;
+    const retryToken = this.requireHeartbeatRegistration().token;
     this.retryingQueries += 1;
     const retry = await withCleanup(
       settle(this.bridge.query(query, signal), signal),
@@ -111,6 +112,14 @@ export class AuthRecoveringSharedDatabaseBridge implements SharedDatabaseBridge 
     signal: AbortSignal,
   ): Promise<void> {
     await this.bridge.on(dataKey, callback, signal);
+  }
+
+  async indicators(signal: AbortSignal): Promise<ChatThreadIndicators> {
+    return await this.bridge.indicators(signal);
+  }
+
+  reloadIndicators(): void {
+    this.bridge.reloadIndicators();
   }
 
   async authenticationRequired(): Promise<void> {
@@ -139,7 +148,7 @@ export class AuthRecoveringSharedDatabaseBridge implements SharedDatabaseBridge 
     if (this.activeRecovery) {
       return this.activeRecovery;
     }
-    if (this.lastRecovery?.rejectedToken === rejectedHeartbeat.identity.token) {
+    if (this.lastRecovery?.rejectedToken === rejectedHeartbeat.token) {
       return this.lastRecovery.work;
     }
 
@@ -157,7 +166,7 @@ export class AuthRecoveringSharedDatabaseBridge implements SharedDatabaseBridge 
     );
     this.activeRecovery = recovery;
     this.lastRecovery = {
-      rejectedToken: rejectedHeartbeat.identity.token,
+      rejectedToken: rejectedHeartbeat.token,
       work: recovery,
     };
     return recovery;
@@ -168,13 +177,13 @@ export class AuthRecoveringSharedDatabaseBridge implements SharedDatabaseBridge 
   ): Promise<boolean> {
     const token = await this.forceRefreshToken(this.rootSignal);
     this.rootSignal.throwIfAborted();
-    if (!token || token === rejectedHeartbeat.identity.token) {
+    if (!token || token === rejectedHeartbeat.token) {
       return false;
     }
     await this.heartbeat(
       {
         ...rejectedHeartbeat,
-        identity: { ...rejectedHeartbeat.identity, token },
+        token,
       },
       this.rootSignal,
     );

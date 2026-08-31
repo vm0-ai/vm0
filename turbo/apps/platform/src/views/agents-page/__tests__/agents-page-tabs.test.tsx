@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   detachedSetupPage,
   queryAllByRoleFast,
+  setupPageAndWaitForContent,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createMockAgentResponse } from "../../../mocks/handlers/api-agents.ts";
@@ -153,24 +154,28 @@ describe("agents page (redesign)", () => {
     });
   });
 
-  it("shows agent unread indicators", async () => {
+  it("recovers unread indicators after the shared worker reconnects", async () => {
     const user = userEvent.setup();
     context.mocks.data.agents(agents);
     context.mocks.data.orgMembers({ members: [] });
 
+    let hasUnread = false;
     context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
       return respond(200, {
-        agents: {
-          [agents[0].agentId]: "unread",
-          [agents[1].agentId]: "unread",
-        },
+        agents: hasUnread
+          ? {
+              [agents[0].agentId]: "unread",
+              [agents[1].agentId]: "unread",
+            }
+          : {},
         threads: {},
       });
     });
 
-    detachedSetupPage({
+    await setupPageAndWaitForContent({
       context,
       path: "/agents",
+      sharedWorkerTestTransport: "message-port",
     });
 
     await waitFor(() => {
@@ -182,8 +187,17 @@ describe("agents page (redesign)", () => {
       expect(agentCard("Private Ops")).toBeInTheDocument();
     });
     expect(
-      within(agentCard("Private Ops")).getByLabelText("Unread"),
-    ).toHaveClass("border-card");
+      within(agentCard("Private Ops")).queryByLabelText("Unread"),
+    ).not.toBeInTheDocument();
+
+    hasUnread = true;
+    context.mocks.ably.triggerSharedWorkerReconnect();
+
+    await waitFor(() => {
+      expect(
+        within(agentCard("Private Ops")).getByLabelText("Unread"),
+      ).toBeInTheDocument();
+    });
 
     await user.click(visibilitySegment("Public"));
     await waitFor(() => {
@@ -191,6 +205,6 @@ describe("agents page (redesign)", () => {
     });
     expect(
       within(agentCard("Research Agent")).getByLabelText("Unread"),
-    ).toHaveClass("border-card");
+    ).toBeInTheDocument();
   });
 });

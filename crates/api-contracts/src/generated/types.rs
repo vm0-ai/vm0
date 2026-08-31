@@ -111,6 +111,46 @@ pub mod runners {
             Codex,
         }
 
+        /// OpenAI-compatible transports supported by Pi.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigApi {
+            /// OpenAI Chat Completions transport.
+            #[serde(rename = "openai-completions")]
+            OpenaiCompletions,
+            /// OpenAI Responses transport.
+            #[serde(rename = "openai-responses")]
+            OpenaiResponses,
+            /// ChatGPT Codex Responses transport.
+            #[serde(rename = "openai-codex-responses")]
+            OpenaiCodexResponses,
+        }
+
+        /// Thinking levels supported by Pi sessions.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigThinkingLevel {
+            /// Disable model thinking.
+            #[serde(rename = "off")]
+            Off,
+            /// Minimal thinking.
+            #[serde(rename = "minimal")]
+            Minimal,
+            /// Low thinking.
+            #[serde(rename = "low")]
+            Low,
+            /// Medium thinking.
+            #[serde(rename = "medium")]
+            Medium,
+            /// High thinking.
+            #[serde(rename = "high")]
+            High,
+            /// Extra-high thinking.
+            #[serde(rename = "xhigh")]
+            Xhigh,
+            /// Maximum thinking.
+            #[serde(rename = "max")]
+            Max,
+        }
+
         /// Environment variables supported for Pi provider credentials.
         #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
         pub enum PiModelConfigApiKeyEnv {
@@ -135,6 +175,12 @@ pub mod runners {
             pub base_url: String,
             /// Provider model identifier.
             pub model: String,
+            /// Explicit Pi transport. Legacy payloads omit this field and retain the previous adapter behavior.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub api: Option<PiModelConfigApi>,
+            /// Explicit Pi thinking level. Legacy payloads omit this field and retain Pi's medium default.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub thinking_level: Option<PiModelConfigThinkingLevel>,
             /// Environment variable containing the provider key.
             pub api_key_env: PiModelConfigApiKeyEnv,
             /// API-owned credential secret backing the environment entry.
