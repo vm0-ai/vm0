@@ -308,13 +308,7 @@ export function makeEvent(
   };
 }
 
-export function mockKeyboardNavigationThreads({
-  currentTitle = "Current keyboard thread",
-  currentDetailTitle = currentTitle,
-}: {
-  currentTitle?: string;
-  currentDetailTitle?: string | null;
-} = {}): void {
+export function mockNoBrowserSession(): void {
   context.mocks.api(browserContract.get, ({ respond }) => {
     return respond(404, {
       error: {
@@ -323,6 +317,23 @@ export function mockKeyboardNavigationThreads({
       },
     });
   });
+}
+
+export function mockChatLifecycleWithoutBrowserSession(
+  options?: Parameters<typeof mockChatLifecycle>[1],
+): ReturnType<typeof mockChatLifecycle> {
+  mockNoBrowserSession();
+  return mockChatLifecycle(context, options);
+}
+
+export function mockKeyboardNavigationThreads({
+  currentTitle = "Current keyboard thread",
+  currentDetailTitle = currentTitle,
+}: {
+  currentTitle?: string;
+  currentDetailTitle?: string | null;
+} = {}): void {
+  mockNoBrowserSession();
   const threadFixtures = [
     {
       id: KEYBOARD_PREV_THREAD_ID,

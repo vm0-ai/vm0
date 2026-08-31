@@ -10,7 +10,7 @@ import {
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { createChatEvent } from "../../../mocks/mock-helpers.ts";
-import { mockChatLifecycle, sendMessageInUI } from "./chat-test-helpers.ts";
+import { sendMessageInUI } from "./chat-test-helpers.ts";
 import {
   mockChatEventRows,
   normalizeMockChatEvents,
@@ -23,6 +23,7 @@ import {
   KEYBOARD_PREV_THREAD_ID,
   chatScrollContainer,
   linkByText,
+  mockChatLifecycleWithoutBrowserSession,
   mockKeyboardNavigationThreads,
 } from "./chat-lifecycle-test-helpers.ts";
 
@@ -443,7 +444,7 @@ function mockLiveThread({
   ).length;
   let appendedEventsPublished = false;
 
-  mockChatLifecycle(context, {
+  mockChatLifecycleWithoutBrowserSession({
     threadId,
     threadTitle: `Scroll position ${threadId}`,
     chatEvents: [...initialEvents],
@@ -653,7 +654,7 @@ function mockKeyboardThreadScrollLayout({
 describe("chat scroll position", () => {
   it("does not scroll an empty thread", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000800";
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Empty scroll thread",
       chatEvents: [],
@@ -1143,7 +1144,7 @@ describe("chat scroll position", () => {
     const initialEvents = simpleUserEvents(threadId, "local-send-tail", 8);
     const sendGate = context.mocks.deferred<void>();
     let sent = false;
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       chatEvents: initialEvents,
       sendGate: sendGate.promise,
@@ -1401,7 +1402,7 @@ describe("chat scroll position", () => {
         seqId: index + 1,
       };
     });
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Prepend anchor",
       chatEvents,
@@ -1819,7 +1820,7 @@ describe("chat scroll position", () => {
     let scrollHeight = 1000;
     let targetTop = 400;
     const resizeObserver = installResizeObserver();
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Resize preserve",
       chatEvents: events,
@@ -1886,7 +1887,7 @@ describe("chat scroll position", () => {
     const events = simpleUserEvents(threadId, "resize-follow", 8);
     let clientHeight = 300;
     const resizeObserver = installResizeObserver();
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Resize follow",
       chatEvents: events,
@@ -1938,7 +1939,7 @@ describe("chat scroll position", () => {
         document.querySelector("[data-chat-share-selectable-group]") !== null
       );
     };
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Sharing transition",
       chatEvents: events,
