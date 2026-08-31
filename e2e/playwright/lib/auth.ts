@@ -7,6 +7,7 @@ import {
   signInMethodButton,
   submitSignInIdentifier,
 } from "./auth-v2-ui";
+import { waitForClerkReadiness } from "./clerk-readiness";
 
 const CLERK_TEST_EMAIL_CODE = "424242";
 
@@ -29,22 +30,32 @@ export async function signInWithClerkEmailCode(
       url.origin === signInUrl.origin && !url.pathname.startsWith("/sign-in"),
     { timeout: 30_000, waitUntil: "domcontentloaded" },
   );
-  await page.waitForFunction(
-    () => Boolean(window.Clerk?.loaded && window.Clerk.session),
-    undefined,
-    { timeout: 30_000 },
+  await waitForClerkReadiness(
+    page,
+    "the Clerk client to load and expose a session on the page reached after email-code sign-in",
+    () =>
+      page.waitForFunction(
+        () => Boolean(window.Clerk?.loaded && window.Clerk.session),
+        undefined,
+        { timeout: 30_000 },
+      ),
   );
   await activateClerkOrganization(page, options.activeOrganizationId);
-  await page.waitForFunction(
-    (organizationId) => {
-      return Boolean(
-        window.Clerk?.loaded &&
-        window.Clerk.session &&
-        window.Clerk.organization?.id === organizationId,
-      );
-    },
-    options.activeOrganizationId,
-    { timeout: 30_000 },
+  await waitForClerkReadiness(
+    page,
+    `Clerk to activate organization ${options.activeOrganizationId}`,
+    () =>
+      page.waitForFunction(
+        (organizationId) => {
+          return Boolean(
+            window.Clerk?.loaded &&
+              window.Clerk.session &&
+              window.Clerk.organization?.id === organizationId,
+          );
+        },
+        options.activeOrganizationId,
+        { timeout: 30_000 },
+      ),
   );
 
   const token = await refreshClerkSessionToken(page, {
@@ -101,14 +112,24 @@ export async function refreshClerkSessionToken(
   page: Page,
   options: { readonly activeOrganizationId?: string } = {},
 ): Promise<string> {
-  await page.waitForFunction(() => Boolean(window.Clerk?.session), undefined, {
-    timeout: 30_000,
-  });
+  await waitForClerkReadiness(
+    page,
+    "a Clerk session before refreshing its token",
+    () =>
+      page.waitForFunction(() => Boolean(window.Clerk?.session), undefined, {
+        timeout: 30_000,
+      }),
+  );
   if (options.activeOrganizationId) {
-    await page.waitForFunction(
-      (organizationId) => window.Clerk?.organization?.id === organizationId,
-      options.activeOrganizationId,
-      { timeout: 30_000 },
+    await waitForClerkReadiness(
+      page,
+      `Clerk to report organization ${options.activeOrganizationId} before refreshing its token`,
+      () =>
+        page.waitForFunction(
+          (organizationId) => window.Clerk?.organization?.id === organizationId,
+          options.activeOrganizationId,
+          { timeout: 30_000 },
+        ),
     );
   }
   const token = await page.evaluate(async () => {
