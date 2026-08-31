@@ -111,19 +111,50 @@ pub(super) async fn gc_entry_is_real_dir(entry: &tokio::fs::DirEntry) -> std::io
     }
 }
 
-/// Compute total disk usage (st_blocks * 512) and last-used time for a directory.
+/// Compute best-effort disk usage (`st_blocks * 512`) and last-used time for
+/// `dir`.
+///
+/// For a directory, the returned size is the sum of the blocks for each
+/// descendant encountered by the walk. It does not include the root
+/// directory's own blocks. Symlink entries contribute their own blocks but
+/// are not followed. If cancellation or a filesystem error prevents the walk
+/// from completing, the size includes only the bytes accumulated before the
+/// interruption.
+/// A non-directory root contributes its own blocks instead.
 ///
 /// Last-used time comes from the root directory's own mtime, which `touch_mtime`
-/// updates on every cache hit and `runner start`.
+/// updates on every cache hit and `runner start`. If the root cannot be
+/// stat'ed, the returned size is zero and the mtime is `UNIX_EPOCH`; the mtime
+/// also falls back to `UNIX_EPOCH` when root metadata is available but its
+/// modified time cannot be read. This tuple does not indicate whether a
+/// directory walk completed; use [`collect_dir_stats`] when completeness
+/// affects a deletion or another safety decision.
 pub(super) async fn dir_stats(dir: &Path) -> (u64, SystemTime) {
     let stats = collect_dir_stats(dir).await;
     (stats.size, stats.mtime)
 }
 
+/// Best-effort size and timestamp information collected for a filesystem path.
+///
+/// For a directory root, `size` is the sum of `st_blocks * 512` for each
+/// encountered descendant. The root directory's own blocks are excluded, and
+/// symlink entries are counted without following their targets. Filesystem
+/// errors or cancellation can leave `size` partial while still returning the
+/// bytes accumulated before the interruption. The root mtime is used for
+/// `mtime`, with `UNIX_EPOCH` as the fallback when it is unavailable.
+///
+/// For directory inputs, `root_metadata.is_some()` is the signal that the full
+/// walk completed. `None` means that the root could not be stat'ed or that the
+/// walk was interrupted by cancellation or a filesystem error. A
+/// non-directory root has `Some` metadata when its root stat succeeds because
+/// no recursive walk is needed. Callers whose deletion or other safety
+/// decision depends on a complete scan should inspect this result rather than
+/// use the lossy [`dir_stats`] tuple.
 pub(super) struct DirStats {
     pub(super) size: u64,
     pub(super) mtime: SystemTime,
-    /// Present only when the full directory walk completed.
+    /// Root metadata when the root stat succeeded and, for a directory root,
+    /// the full walk completed.
     pub(super) root_metadata: Option<std::fs::Metadata>,
 }
 
@@ -174,7 +205,13 @@ impl DirStatsEntryReader {
     }
 }
 
-/// Compute directory stats while retaining the root metadata fetched for the walk.
+/// Compute best-effort directory stats while retaining the root metadata
+/// fetched for the walk.
+///
+/// Unlike [`dir_stats`], this result preserves whether a directory walk
+/// completed: for directory inputs, `root_metadata.is_some()` is the full-walk
+/// completeness signal. Use this completeness-aware API when scan completeness
+/// participates in a deletion or another safety decision.
 pub(super) async fn collect_dir_stats(dir: &Path) -> DirStats {
     collect_dir_stats_with_reader(
         dir,

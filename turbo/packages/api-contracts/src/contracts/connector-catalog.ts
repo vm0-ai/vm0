@@ -9,9 +9,9 @@ import {
 import { connectorReconnectReasonSchema } from "./connector-schemas";
 import { apiErrorSchema } from "./errors";
 
-const c = initContract();
+export { CONNECTOR_CATALOG_MAX_RAW_BYTES } from "@okouai/connectors/connector-catalog/contracts";
 
-export const CONNECTOR_CATALOG_MAX_RAW_BYTES = 32 * 1024 * 1024;
+const c = initContract();
 
 const publicConnectorCatalogAuthMethodSummarySchema = z.object({
   id: connectorAuthMethodIdSchema,
