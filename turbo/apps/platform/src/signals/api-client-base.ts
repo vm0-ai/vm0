@@ -36,10 +36,7 @@ export function createAuthedContractClient<T extends AppRouter>(
     validateResponse: false,
     api: async (args: ApiFetcherArgs) => {
       const authRecovery = await options.getAuthRecovery();
-      const rootSignal = options.getRootSignal();
-      const signal = args.fetchOptions?.signal
-        ? AbortSignal.any([rootSignal, args.fetchOptions.signal])
-        : rootSignal;
+      const signal = args.fetchOptions?.signal ?? options.getRootSignal();
       const initialToken = await authRecovery.getToken(signal);
       const path = options.resolvePath
         ? await options.resolvePath(args.path, { method: args.route.method })

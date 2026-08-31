@@ -98,12 +98,9 @@ function rewriteRequestUrl(
 export const fetch$ = computed((get) => {
   return async (url: string | URL | Request, options?: RequestInit) => {
     const authRecovery = await get(authRecovery$);
-    const rootSignal = get(rootSignal$);
     const inputSignal =
       options?.signal ?? (url instanceof Request ? url.signal : undefined);
-    const signal = inputSignal
-      ? AbortSignal.any([rootSignal, inputSignal])
-      : rootSignal;
+    const signal = inputSignal ?? get(rootSignal$);
     const initialToken = await authRecovery.getToken(signal);
 
     const performFetch = async (
