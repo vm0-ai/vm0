@@ -185,7 +185,7 @@ jobs:
         env:
           CANONICAL_DIST: ${{ steps.app.outputs.canonical_dist }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_ORG: okou
           SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT_APP }}
         working-directory: turbo
         run: pnpm --filter @okouai/app exec sentry-cli sourcemaps upload "$CANONICAL_DIST"

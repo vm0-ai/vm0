@@ -78,6 +78,7 @@ release_api_verification_step = find_step(
     release_api_job, "Verify production App and API domains"
 )
 rollback_step = find_step(rollback_job, "Deploy App to Cloudflare Pages production")
+rollback_sentry_step = find_step(rollback_job, "Upload App source maps to Sentry")
 rollback_verification_step = find_step(
     rollback_verification_job, "Verify production App and API domains"
 )
@@ -157,6 +158,18 @@ if not (
     raise RuntimeError("CDN assets must be verified before production Pages deployment")
 if "publish-okou-app-assets.sh" in str(release_job):
     raise RuntimeError("production promotion must not publish immutable app assets")
+
+for step in (release_sentry_step, rollback_sentry_step):
+    if step.get("env", {}).get("SENTRY_ORG") != "okou":
+        raise RuntimeError(
+            f"App source maps must upload to the Okou Sentry org: {step['name']}"
+        )
+    if step.get("env", {}).get("SENTRY_PROJECT") != (
+        "${{ vars.SENTRY_PROJECT_APP }}"
+    ):
+        raise RuntimeError(
+            f"App source maps must upload to the App Sentry project: {step['name']}"
+        )
 
 require_fragments(
     preview_readiness_step,

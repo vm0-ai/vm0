@@ -1601,7 +1601,7 @@ jobs:
         env:
           CANONICAL_DIST: ${{ steps.pages-production.outputs.canonical-dist }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_ORG: okou
           SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT_APP }}
         working-directory: turbo
         run: |
