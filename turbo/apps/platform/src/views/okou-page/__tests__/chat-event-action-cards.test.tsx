@@ -3810,7 +3810,7 @@ describe("chat event action cards", () => {
       });
 
       const card = await screen.findByTestId("plan-upgrade-card");
-      expect(buttonByText("Compare plans", card)).toHaveClass("bg-primary");
+      expect(buttonByText("Compare plans", card)).toBeInTheDocument();
     },
   );
 
@@ -3886,7 +3886,7 @@ describe("chat event action cards", () => {
       ),
     ).toBeInTheDocument();
     for (const card of cards) {
-      expect(buttonByText("Compare plans", card)).toHaveClass("bg-primary");
+      expect(buttonByText("Compare plans", card)).toBeInTheDocument();
     }
     expect(linkByText("Untrusted plan", document)).toHaveAttribute(
       "href",

@@ -11,15 +11,12 @@ import type {
 } from "../../signals/chat-page/connector-action-block.ts";
 import { contentTypeForBodyPreviewKind } from "../../signals/chat-page/parse-body-blocks.ts";
 import type { PermissionSignals } from "../../signals/chat-page/permission-card-signals.ts";
+import type { PlanUpgradeSignals } from "../../signals/chat-page/plan-upgrade-block.ts";
 import type {
   PlatformConnectorPermissionMetadata,
   PlatformUserPermissionGrant,
 } from "../../signals/connector-domain.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import {
-  openSettingsBillingPlans$,
-  setSettingsDialogOpen$,
-} from "../../signals/okou-page/settings/settings-dialog.ts";
 import {
   applyUserPermissionGrant$,
   findPermissionInMetadata,
@@ -302,7 +299,7 @@ export function MarkdownCardView({ card }: { card: MarkdownCardRef }) {
       return <ComputerUseAuthorizationCard signals={card.signals} />;
     }
     case "plan-upgrade": {
-      return <PlanUpgradeCard />;
+      return <PlanUpgradeCard signals={card.signals} />;
     }
     case "mail-draft": {
       return <MailDraftCard signals={card.signals} />;
@@ -590,15 +587,13 @@ function ComputerUseAuthorizationCard({
   );
 }
 
-function PlanUpgradeCard() {
+function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
-  const openBillingPlans = useSet(openSettingsBillingPlans$);
-  const openSettings = useSet(setSettingsDialogOpen$);
+  const open = useSet(signals.open$);
 
   const handleClick = () => {
-    openBillingPlans();
-    detach(openSettings(true, pageSignal), Reason.DomCallback);
+    detach(open(pageSignal), Reason.DomCallback);
   };
 
   return (
