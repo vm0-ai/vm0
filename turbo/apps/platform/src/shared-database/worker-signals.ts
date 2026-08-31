@@ -1,4 +1,5 @@
-import { command, state } from "ccstate";
+import { command, computed, state } from "ccstate";
+import { appVersion$, initializeAppVersion$ } from "../signals/app-version.ts";
 import type {
   SharedDatabaseDataKey,
   SharedDatabaseQuery,
@@ -10,8 +11,12 @@ import {
   SharedDatabaseWorkerRuntime,
   type WorkerClientEmitter,
 } from "./worker-runtime.ts";
+import { createSharedDatabaseContractClientFactory } from "./worker-client.ts";
 
 const workerRuntimeState$ = state<SharedDatabaseWorkerRuntime | null>(null);
+const sharedDatabaseClientFactory$ = computed((get) => {
+  return createSharedDatabaseContractClientFactory(get(appVersion$));
+});
 
 interface SharedDatabaseWorkerHeartbeat extends SharedDatabaseHeartbeat {
   readonly apiBaseUrl: string;
@@ -28,11 +33,18 @@ function requireRuntime(
 }
 
 export const bootstrapSharedDatabaseWorker$ = command(
-  ({ get, set }, signal: AbortSignal): void => {
+  ({ get, set }, appVersion: string, signal: AbortSignal): void => {
+    set(initializeAppVersion$, appVersion);
     if (get(workerRuntimeState$)) {
       return;
     }
-    set(workerRuntimeState$, new SharedDatabaseWorkerRuntime(signal));
+    set(
+      workerRuntimeState$,
+      new SharedDatabaseWorkerRuntime(
+        signal,
+        get(sharedDatabaseClientFactory$),
+      ),
+    );
   },
 );
 

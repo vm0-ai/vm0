@@ -31,6 +31,8 @@ import { setDebugLoggerLocalStorage$ } from "../signals/bootstrap/loggers";
 import { detach, Reason } from "../signals/utils";
 import { SharedWorkerTestBootstrap } from "../shared-database/test-bridge.ts";
 
+export const TEST_APP_VERSION = "0.540.0";
+
 const {
   set$: setFeatureSwitchCacheLocalStorage$,
   clear$: clearFeatureSwitchCacheLocalStorage$,
@@ -82,6 +84,7 @@ function ensureTestLocalStorage(): void {
 }
 
 export interface SetupBootstrapOptions {
+  appVersion?: string;
   context: TestContext;
   path: string;
   beforeBootstrap?: (signal: AbortSignal) => void;
@@ -112,6 +115,7 @@ export interface SetupBootstrapOptions {
   cachedFeatureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   afterSharedDatabaseWorkerHeartbeat?: () => Promise<void>;
+  sharedWorkerAppVersion?: string;
 }
 
 export interface SetupPageOptions extends SetupBootstrapOptions {
@@ -168,6 +172,7 @@ export async function setupBootstrap(
   new SharedWorkerTestBootstrap(
     options.context.store,
     options.context.workerStore,
+    options.sharedWorkerAppVersion ?? TEST_APP_VERSION,
     options.context.signal,
     options.afterSharedDatabaseWorkerHeartbeat,
   );
@@ -207,7 +212,12 @@ export async function setupBootstrap(
   // Not wrapped in act() — background polling loops would cause act() to
   // hang indefinitely waiting for them to settle. React "not wrapped in
   // act" warnings are suppressed in setup.ts.
-  await options.context.store.set(bootstrap$, render, options.context.signal);
+  await options.context.store.set(
+    bootstrap$,
+    options.appVersion ?? TEST_APP_VERSION,
+    render,
+    options.context.signal,
+  );
 }
 
 export async function setupPage(options: SetupPageOptions): Promise<void> {

@@ -1,5 +1,6 @@
 import { computed } from "ccstate";
 import { addCapturedPreviewBypassHeader } from "../lib/preview-bypass-cookie.ts";
+import { appVersion$ } from "./app-version.ts";
 import { authRecovery$ } from "./auth.ts";
 import { resolveApiBase, resolveOAuthApiBase } from "./api-base.ts";
 import { addClientHeaders } from "./client-headers.ts";
@@ -28,6 +29,7 @@ export const apiBase$ = computed(() => {
 function mergeHeadersWithClientHeaders(
   baseHeaders: Record<string, string>,
   userHeaders: HeadersInit | undefined,
+  clientVersion: string,
 ): Headers {
   const headers = new Headers(baseHeaders);
 
@@ -38,7 +40,7 @@ function mergeHeadersWithClientHeaders(
     }
   }
 
-  addClientHeaders(headers);
+  addClientHeaders(headers, clientVersion);
   return headers;
 }
 
@@ -96,6 +98,7 @@ function rewriteRequestUrl(
 }
 
 export const fetch$ = computed((get) => {
+  const clientVersion = get(appVersion$);
   return async (url: string | URL | Request, options?: RequestInit) => {
     const authRecovery = await get(authRecovery$);
     const requestSignal =
@@ -119,14 +122,22 @@ export const fetch$ = computed((get) => {
         finalInit = {
           credentials: "include",
           ...options,
-          headers: mergeHeadersWithClientHeaders(authHeaders, options?.headers),
+          headers: mergeHeadersWithClientHeaders(
+            authHeaders,
+            options?.headers,
+            clientVersion,
+          ),
         };
       } else {
         finalInit = {
           credentials: "include",
           method: "GET",
           ...options,
-          headers: mergeHeadersWithClientHeaders(authHeaders, options?.headers),
+          headers: mergeHeadersWithClientHeaders(
+            authHeaders,
+            options?.headers,
+            clientVersion,
+          ),
         };
       }
 

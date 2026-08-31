@@ -4,7 +4,7 @@ import { URL } from "node:url";
 
 import { loadConfigFromFile } from "vite";
 
-await test("production build emits one deterministic vendor group with runtime HTML metadata", async () => {
+await test("production build emits one deterministic vendor group with a compiled app version", async () => {
   const loaded = await loadConfigFromFile(
     { command: "build", mode: "production" },
     new URL("../vite.config.ts", import.meta.url).pathname,
@@ -39,7 +39,10 @@ await test("production build emits one deterministic vendor group with runtime H
   );
   assert.equal(vendorGroup.test.test("/repo/src/main.ts"), false);
   assert.equal(loaded.config.define?.__OKOU_APP_GIT_COMMIT_SHA__, undefined);
-  assert.equal(loaded.config.define?.__OKOU_APP_VERSION__, undefined);
+  assert.equal(
+    typeof JSON.parse(loaded.config.define?.__OKOU_APP_VERSION__ ?? "null"),
+    "string",
+  );
   assert.ok(
     loaded.config.plugins?.some((plugin) => {
       return plugin && plugin.name === "platform-runtime-build-info-html";

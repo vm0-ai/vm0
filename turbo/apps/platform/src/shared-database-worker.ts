@@ -37,7 +37,7 @@ function main(): void {
 
   const store = createStore();
   const rootSignal = AbortSignal.any([]);
-  store.set(bootstrapSharedDatabaseWorker$, rootSignal);
+  store.set(bootstrapSharedDatabaseWorker$, __OKOU_APP_VERSION__, rootSignal);
   L.debug("worker.bootstrap");
   workerScope.addEventListener("connect", (event): void => {
     L.debug("worker.connect", { portCount: event.ports.length });

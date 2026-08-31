@@ -4,6 +4,7 @@ import { getAllFeatureStates } from "@okouai/core/feature-switch";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { authRecovery$, clerk$ } from "../auth";
+import { appVersion$ } from "../app-version.ts";
 import { accept } from "../../lib/accept.ts";
 import { resolveApiBaseForTarget } from "../api-base.ts";
 import { createAuthedContractClient } from "../api-client-base.ts";
@@ -66,6 +67,7 @@ function isSameFeatureSwitchIdentity(
 const apiFeatureSwitchClient$ = computed((get) => {
   return createAuthedContractClient(featureSwitchesContract, {
     baseUrl: resolveApiBaseForTarget("api"),
+    clientVersion: get(appVersion$),
     getAuthRecovery: () => {
       return get(authRecovery$);
     },

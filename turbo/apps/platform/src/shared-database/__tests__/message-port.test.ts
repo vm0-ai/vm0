@@ -36,6 +36,7 @@ vi.mock("idb", async () => {
 
 const context = testContext();
 const CREATED_AT = "2026-08-14T09:00:00.000Z";
+const WORKER_APP_VERSION = "message-port-worker-version";
 
 class InMemoryMessagePort implements SharedDatabasePortLike {
   readonly listeners = new Set<(event: MessageEvent<unknown>) => void>();
@@ -144,7 +145,11 @@ function installProtocolBridge(): {
   const platformStore = context.store;
   const workerStore = context.workerStore;
   const [platformPort, workerPort] = messagePortPair();
-  workerStore.set(bootstrapSharedDatabaseWorker$, context.signal);
+  workerStore.set(
+    bootstrapSharedDatabaseWorker$,
+    WORKER_APP_VERSION,
+    context.signal,
+  );
   new SharedDatabaseMessagePortServer(workerStore, workerPort, context.signal);
   const bridge = new MessagePortSharedDatabaseBridge(
     platformPort,
@@ -306,7 +311,11 @@ describe("shared database MessagePort protocol", () => {
 
   it("reconnects a stale pruned tab and restores its subscription", async () => {
     const workerStore = context.workerStore;
-    workerStore.set(bootstrapSharedDatabaseWorker$, context.signal);
+    workerStore.set(
+      bootstrapSharedDatabaseWorker$,
+      WORKER_APP_VERSION,
+      context.signal,
+    );
     const start = Date.parse("2030-01-01T00:00:00.000Z");
     mockNow(start, context.signal);
 
@@ -410,7 +419,11 @@ describe("shared database MessagePort protocol", () => {
 
   it("renews a single expired tab over its existing MessagePort", async () => {
     const workerStore = context.workerStore;
-    workerStore.set(bootstrapSharedDatabaseWorker$, context.signal);
+    workerStore.set(
+      bootstrapSharedDatabaseWorker$,
+      WORKER_APP_VERSION,
+      context.signal,
+    );
     const start = Date.parse("2030-01-01T00:00:00.000Z");
     mockNow(start, context.signal);
     let transports = 0;
@@ -609,7 +622,11 @@ describe("shared database MessagePort protocol", () => {
   it("disconnects a worker port immediately on malformed input", async () => {
     const workerStore = context.workerStore;
     const [platformPort, workerPort] = messagePortPair();
-    workerStore.set(bootstrapSharedDatabaseWorker$, context.signal);
+    workerStore.set(
+      bootstrapSharedDatabaseWorker$,
+      WORKER_APP_VERSION,
+      context.signal,
+    );
     new SharedDatabaseMessagePortServer(
       workerStore,
       workerPort,

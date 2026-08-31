@@ -197,10 +197,11 @@ export class SharedWorkerTestBootstrap {
   constructor(
     private readonly platformStore: Store,
     private readonly workerStore: Store,
+    appVersion: string,
     signal: AbortSignal,
     afterWorkerHeartbeat?: () => Promise<void>,
   ) {
-    this.workerStore.set(bootstrapSharedDatabaseWorker$, signal);
+    this.workerStore.set(bootstrapSharedDatabaseWorker$, appVersion, signal);
     const bridge = new DirectSharedDatabaseBridge(
       this.platformStore,
       this.workerStore,

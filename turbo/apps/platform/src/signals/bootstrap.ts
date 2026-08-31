@@ -8,6 +8,7 @@ import {
   watchOrgSwitch$,
 } from "./auth.ts";
 import { initTheme$, syncThemePreferences$ } from "./theme.ts";
+import { initializeAppVersion$ } from "./app-version.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
 import { setRootSignal$ } from "./root-signal.ts";
 import {
@@ -494,7 +495,13 @@ const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
 });
 
 export const bootstrap$ = command(
-  async ({ get, set }, render: () => void, signal: AbortSignal) => {
+  async (
+    { get, set },
+    appVersion: string,
+    render: () => void,
+    signal: AbortSignal,
+  ) => {
+    set(initializeAppVersion$, appVersion);
     set(initBootstrapPhaseTiming$, signal);
     set(captureInvitationRedirect$);
     set(markBootstrapLocaleInitStarted$);

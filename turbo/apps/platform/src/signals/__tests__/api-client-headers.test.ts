@@ -16,6 +16,7 @@ import { accept } from "../../lib/accept.ts";
 import { initializeI18n } from "../../i18n/index.ts";
 import { DEFAULT_LOCALE } from "../../i18n/resources.ts";
 import { apiClient$ } from "../api-client.ts";
+import { initializeAppVersion$ } from "../app-version.ts";
 import { initAuthRecovery$, initClerkRuntime$ } from "../auth.ts";
 import { fetch$ } from "../fetch.ts";
 import {
@@ -28,8 +29,10 @@ import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
 const resetAuthRecoverySignal$ = resetSignal();
+const EXPECTED_CLIENT_VERSION = "platform-store-version";
 
 beforeEach(() => {
+  context.store.set(initializeAppVersion$, EXPECTED_CLIENT_VERSION);
   context.store.set(setRootSignal$, context.signal);
   context.store.set(initClerkRuntime$, context.signal);
   context.store.set(initAuthRecovery$, context.signal);
@@ -37,8 +40,6 @@ beforeEach(() => {
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
-const EXPECTED_CLIENT_VERSION = "0.540.0";
-
 interface ObservedClientHeaders {
   readonly requestId: string | null;
   readonly sessionId: string | null;
