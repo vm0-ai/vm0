@@ -204,6 +204,7 @@ open_auth_form() {
   sign_up_state="$(wait_for_auth_next_step "sign-up")"
   if [[ "$sign_up_state" == "otp" ]]; then
     enter_otp "$OTP"
+    click_continue
     wait_for_auth_completion "sign-up"
   fi
   touch "$SIGN_UP_COMPLETE_FILE"
@@ -267,6 +268,7 @@ open_auth_form() {
 
   wait_for_sign_in_email_code_ready
   enter_otp "$OTP"
+  click_continue
   wait_for_auth_completion "sign-in"
   echo "# Sign-in successful!" >&3
 }
