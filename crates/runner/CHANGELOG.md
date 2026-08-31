@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.180.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.179.2...runner-rs-v0.180.0) (2026-08-31)
+
+
+### Features
+
+* **runner:** attribute claim response headers ([#30511](https://github.com/vm0-ai/vm0/issues/30511)) ([bdc7c7a](https://github.com/vm0-ai/vm0/commit/bdc7c7a9d6c77008dff6b078087ab2aad9e53ffb))
+
+
+### Bug Fixes
+
+* **python:** lint unbound metadata bulk updates ([#30543](https://github.com/vm0-ai/vm0/issues/30543)) ([fcf0954](https://github.com/vm0-ai/vm0/commit/fcf09545e41688e435edc66feeab9e9501e3dc5d))
+* **python:** lint unbound metadata membership calls ([#30512](https://github.com/vm0-ai/vm0/issues/30512)) ([dfb7dd4](https://github.com/vm0-ai/vm0/commit/dfb7dd4486846bbd96c6b540f9324755be463aa0))
+* **python:** preserve capture fields on connection errors ([#30496](https://github.com/vm0-ai/vm0/issues/30496)) ([a02f39b](https://github.com/vm0-ai/vm0/commit/a02f39b737c84ee1f8d37cf6ea8a1d4c37e862ca))
+* **runner:** retry unpublished status snapshots ([#30500](https://github.com/vm0-ai/vm0/issues/30500)) ([2e4287c](https://github.com/vm0-ai/vm0/commit/2e4287c67325191e37e11dc2563319cac7fa2461))
+
+
+### Refactoring
+
+* **runner:** bridge legacy and canonical rootfs locks ([#30515](https://github.com/vm0-ai/vm0/issues/30515)) ([3fa8c35](https://github.com/vm0-ai/vm0/commit/3fa8c35d0caff25b270b84a1a9e2f250264b990b))
+
 ## [0.179.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.179.1...runner-rs-v0.179.2) (2026-08-31)
 
 
