@@ -93,7 +93,12 @@ export class DesktopRecorderController {
     const backend = this.requireBackend();
     this.requireStatus("idle");
     this.setStatus("preparing");
-    const prepared = await backend.prepare(request);
+    // A rejected prepare — a denied Screen Recording permission is the common
+    // one — must return the machine to `idle`, otherwise every later attempt
+    // fails `requireStatus("idle")` for the lifetime of the process.
+    const prepared = await this.restoreStatusOnFailure("idle", async () => {
+      return await backend.prepare(request);
+    });
     if (!this.featureEnabled) {
       return;
     }
@@ -119,7 +124,15 @@ export class DesktopRecorderController {
     const sessionId = this.requireSession();
     this.requireStatus("recording");
     this.setStatus("finalizing");
-    const recording = await backend.stop(sessionId);
+    // A rejected stop leaves the session in the caller's hands: go back to
+    // `recording` so the stop can be retried, rather than stranding the machine
+    // in `finalizing` where neither stop nor prepare is accepted again.
+    const recording = await this.restoreStatusOnFailure(
+      "recording",
+      async () => {
+        return await backend.stop(sessionId);
+      },
+    );
     if (this.featureEnabled) {
       this.lastRecording = recording;
       this.sessionId = null;
@@ -155,6 +168,25 @@ export class DesktopRecorderController {
     if (native.elapsedMs !== this.elapsedMs) {
       this.elapsedMs = native.elapsedMs;
       this.onChange();
+    }
+  }
+
+  /**
+   * Runs a native call that owns a transient status, putting the status back
+   * when it rejects so the machine stays usable. The rejection itself is
+   * rethrown: the caller made the request and is the one that can react to it.
+   */
+  private async restoreStatusOnFailure<T>(
+    restored: DesktopRecorderStatus,
+    call: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await call();
+    } catch (error) {
+      if (this.featureEnabled) {
+        this.setStatus(restored);
+      }
+      throw error;
     }
   }
 

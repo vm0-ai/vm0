@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { DesktopRecorderController } from "./desktop-recorder-controller";
 import type {
   DesktopRecorderNativeStatus,
+  DesktopRecorderPrepareResult,
   DesktopRecorderRecording,
   RecorderNativeBackend,
 } from "./desktop-recorder-types";
@@ -14,6 +15,19 @@ const RECORDING: DesktopRecorderRecording = {
   height: 1080,
 };
 
+const PREPARED: DesktopRecorderPrepareResult = {
+  sessionId: "session-1",
+  geometry: {
+    originX: 0,
+    originY: 0,
+    widthPoints: 1512,
+    heightPoints: 982,
+    scale: 2,
+  },
+  width: 1920,
+  height: 1080,
+};
+
 function createBackendFake(
   overrides: Partial<RecorderNativeBackend> = {},
 ): RecorderNativeBackend {
@@ -22,18 +36,7 @@ function createBackendFake(
     listSources: vi.fn(async () => [
       { id: "display:1", kind: "display" as const, title: "Built-in Display" },
     ]),
-    prepare: vi.fn(async () => ({
-      sessionId: "session-1",
-      geometry: {
-        originX: 0,
-        originY: 0,
-        widthPoints: 1512,
-        heightPoints: 982,
-        scale: 2,
-      },
-      width: 1920,
-      height: 1080,
-    })),
+    prepare: vi.fn(async () => PREPARED),
     start: vi.fn(async () => {}),
     stop: vi.fn(async () => RECORDING),
     getStatus: vi.fn(
@@ -117,6 +120,53 @@ describe("DesktopRecorderController", () => {
     await expect(controller.start()).rejects.toThrow(
       "No prepared screen recording session",
     );
+  });
+
+  it("stays usable after the capture permission is denied", async () => {
+    const prepare = vi
+      .fn<RecorderNativeBackend["prepare"]>()
+      .mockRejectedValueOnce(new Error("Screen Recording permission required"))
+      .mockResolvedValue(PREPARED);
+    const { controller } = createController(createBackendFake({ prepare }));
+    controller.setFeatureEnabled(true);
+
+    await expect(
+      controller.prepare({
+        sourceId: "display:1",
+        sourceKind: "display",
+        systemAudio: true,
+      }),
+    ).rejects.toThrow("Screen Recording permission required");
+    expect(controller.getState().status).toBe("idle");
+
+    await controller.prepare({
+      sourceId: "display:1",
+      sourceKind: "display",
+      systemAudio: true,
+    });
+    expect(controller.getState().status).toBe("ready");
+  });
+
+  it("keeps the session stoppable after a failed stop", async () => {
+    const stop = vi
+      .fn<RecorderNativeBackend["stop"]>()
+      .mockRejectedValueOnce(new Error("helper timed out"))
+      .mockResolvedValue(RECORDING);
+    const { controller } = createController(createBackendFake({ stop }));
+    await enableAndPrepare(controller);
+    await controller.start();
+
+    await expect(controller.stop()).rejects.toThrow("helper timed out");
+    expect(controller.getState()).toMatchObject({
+      status: "recording",
+      sessionId: "session-1",
+    });
+
+    await expect(controller.stop()).resolves.toEqual(RECORDING);
+    expect(controller.getState()).toMatchObject({
+      status: "idle",
+      lastRecording: RECORDING,
+    });
   });
 
   it("surfaces elapsed time from the native helper while recording", async () => {
