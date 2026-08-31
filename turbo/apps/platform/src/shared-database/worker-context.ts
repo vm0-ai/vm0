@@ -1,27 +1,43 @@
 import { command, computed, state } from "ccstate";
 
-import { createDeferredPromise, withCleanup } from "../signals/utils.ts";
+import { now } from "../lib/time.ts";
+import { rootSignal$ } from "../signals/root-signal.ts";
 import type { AuthRecovery } from "../signals/auth-retry.ts";
+import { createDeferredPromise, withCleanup } from "../signals/utils.ts";
+import type { SharedDatabasePortLike } from "./bridge.ts";
 import type { SharedDatabaseIdentity } from "./data-key.ts";
-import type { WorkerClientEmitter } from "./worker-runtime.ts";
+import type {
+  SharedDatabaseConnectionStatus,
+  SharedDatabaseWorkerMessage,
+} from "./protocol.ts";
 
-export type TabId = number;
+export type ConnectionId = string;
 
-interface TabRegistration {
-  readonly id: TabId;
-  readonly emit: WorkerClientEmitter;
-}
+export type WorkerBroadcastMessage = Extract<
+  SharedDatabaseWorkerMessage,
+  {
+    readonly type:
+      | "authentication-required"
+      | "indicators-invalidated"
+      | "invalidate"
+      | "reconnect"
+      | "reload-required"
+      | "status";
+  }
+>;
 
 interface TokenWaiter {
   readonly rejectedToken: string;
   readonly deferred: ReturnType<typeof createDeferredPromise<string | null>>;
 }
 
-class WorkerAuthRecovery implements AuthRecovery {
+export class WorkerAuthRecovery implements AuthRecovery {
   private readonly waiters = new Set<TokenWaiter>();
-  private tabs: ReadonlyMap<TabId, TabRegistration> = new Map();
 
-  constructor(private token: string) {}
+  constructor(
+    private token: string,
+    private readonly broadcast: (message: WorkerBroadcastMessage) => void,
+  ) {}
 
   getToken(signal: AbortSignal): Promise<string> {
     signal.throwIfAborted();
@@ -30,9 +46,7 @@ class WorkerAuthRecovery implements AuthRecovery {
 
   forceRefreshToken(signal: AbortSignal): Promise<string | null> {
     signal.throwIfAborted();
-    for (const tab of this.tabs.values()) {
-      tab.emit({ type: "authentication-required" });
-    }
+    this.broadcast({ type: "authentication-required" });
     const waiter: TokenWaiter = {
       rejectedToken: this.token,
       deferred: createDeferredPromise<string | null>(signal),
@@ -51,10 +65,6 @@ class WorkerAuthRecovery implements AuthRecovery {
       }
     }
   }
-
-  updateTabs(tabs: ReadonlyMap<TabId, TabRegistration>): void {
-    this.tabs = tabs;
-  }
 }
 
 interface WorkerCredentialContext {
@@ -65,7 +75,18 @@ interface WorkerCredentialContext {
 const internalWorkerCredentialContext$ = state<WorkerCredentialContext | null>(
   null,
 );
-const internalTabs$ = state<ReadonlyMap<TabId, TabRegistration>>(new Map());
+const connectionControllersState$ = state<
+  ReadonlyMap<ConnectionId, AbortController>
+>(new Map());
+const connectionSignalsState$ = state<ReadonlyMap<ConnectionId, AbortSignal>>(
+  new Map(),
+);
+const connectionPortsState$ = state<
+  ReadonlyMap<ConnectionId, SharedDatabasePortLike>
+>(new Map());
+const connectionLastHeartbeatAtState$ = state<
+  ReadonlyMap<ConnectionId, number>
+>(new Map());
 
 function requireWorkerCredentialContext(
   context: WorkerCredentialContext | null,
@@ -76,72 +97,218 @@ function requireWorkerCredentialContext(
   return context;
 }
 
+function deleteMapKey<TKey, TValue>(
+  current: ReadonlyMap<TKey, TValue>,
+  key: TKey,
+): ReadonlyMap<TKey, TValue> {
+  const next = new Map(current);
+  next.delete(key);
+  return next;
+}
+
 export const workerCredentialIdentity$ = computed((get) => {
   return requireWorkerCredentialContext(get(internalWorkerCredentialContext$))
     .identity;
 });
 
+export const workerAuthRecovery$ = computed((get) => {
+  return requireWorkerCredentialContext(get(internalWorkerCredentialContext$))
+    .authRecovery;
+});
+
+export const connectionControllers$ = computed((get) => {
+  return get(connectionControllersState$);
+});
+
+export const connectionSignals$ = computed((get) => {
+  // This Store intentionally exposes connection lifecycle signals for
+  // ownership inspection.
+  // eslint-disable-next-line ccstate/no-get-signal
+  return get(connectionSignalsState$);
+});
+
+export const connectionPorts$ = computed((get) => {
+  return get(connectionPortsState$);
+});
+
+export const credentialStoreConnectionCount$ = computed((get): number => {
+  return get(connectionControllersState$).size;
+});
+
 export const initializeWorkerCredentialContext$ = command(
-  ({ get, set }, identity: SharedDatabaseIdentity): AuthRecovery => {
-    const existing = get(internalWorkerCredentialContext$);
-    if (existing) {
-      if (
-        existing.identity.userId !== identity.userId ||
-        existing.identity.orgId !== identity.orgId
-      ) {
-        throw new Error("Worker credential Store identity cannot change");
-      }
-      existing.authRecovery.updateToken(identity.token);
-      return existing.authRecovery;
+  (
+    { get, set },
+    identity: SharedDatabaseIdentity,
+    authRecovery: WorkerAuthRecovery,
+  ): void => {
+    if (get(internalWorkerCredentialContext$) !== null) {
+      throw new Error("Worker credential context is already initialized");
     }
-    const authRecovery = new WorkerAuthRecovery(identity.token);
     set(internalWorkerCredentialContext$, { identity, authRecovery });
-    return authRecovery;
   },
 );
 
-export const registerTab$ = command(
-  ({ get, set }, tabId: TabId, emit: WorkerClientEmitter): number => {
-    const authRecovery = requireWorkerCredentialContext(
+export const updateWorkerCredentialIdentity$ = command(
+  ({ get, set }, identity: SharedDatabaseIdentity): void => {
+    const context = requireWorkerCredentialContext(
       get(internalWorkerCredentialContext$),
-    ).authRecovery;
-    let size = 0;
-    set(internalTabs$, (tabs) => {
-      const updatedTabs = new Map(tabs);
-      updatedTabs.set(tabId, { id: tabId, emit });
-      authRecovery.updateTabs(updatedTabs);
-      size = updatedTabs.size;
-      return updatedTabs;
+    );
+    if (
+      context.identity.userId !== identity.userId ||
+      context.identity.orgId !== identity.orgId
+    ) {
+      throw new Error("Worker credential Store identity cannot change");
+    }
+    context.authRecovery.updateToken(identity.token);
+    set(internalWorkerCredentialContext$, {
+      identity,
+      authRecovery: context.authRecovery,
     });
-    return size;
   },
 );
 
-export const unregisterTab$ = command(({ get, set }, tabId: TabId): number => {
-  const authRecovery = requireWorkerCredentialContext(
-    get(internalWorkerCredentialContext$),
-  ).authRecovery;
-  let size = 0;
-  set(internalTabs$, (tabs) => {
-    const updatedTabs = new Map(tabs);
-    updatedTabs.delete(tabId);
-    authRecovery.updateTabs(updatedTabs);
-    size = updatedTabs.size;
-    return updatedTabs;
-  });
-  return size;
-});
-
-export const invalidateTabIndicators$ = command(
-  ({ get }, payload: unknown): void => {
-    for (const tab of get(internalTabs$).values()) {
-      tab.emit({ type: "indicators-invalidated", payload });
+export const broadcastSharedDatabaseWorkerMessage$ = command(
+  ({ get }, message: WorkerBroadcastMessage): void => {
+    for (const port of get(connectionPortsState$).values()) {
+      port.postMessage(message);
     }
   },
 );
 
-export const reloadTabs$ = command(({ get }): void => {
-  for (const tab of get(internalTabs$).values()) {
-    tab.emit({ type: "reload-required" });
-  }
+const removeConnection$ = command(
+  ({ get, set }, connectionId: ConnectionId): void => {
+    set(
+      connectionControllersState$,
+      deleteMapKey(get(connectionControllersState$), connectionId),
+    );
+    set(connectionSignalsState$, (current) => {
+      return deleteMapKey(current, connectionId);
+    });
+    set(
+      connectionPortsState$,
+      deleteMapKey(get(connectionPortsState$), connectionId),
+    );
+    set(
+      connectionLastHeartbeatAtState$,
+      deleteMapKey(get(connectionLastHeartbeatAtState$), connectionId),
+    );
+  },
+);
+
+export const registerConnection$ = command(
+  (
+    { get, set },
+    connectionId: ConnectionId,
+    connectionController: AbortController,
+    port: SharedDatabasePortLike,
+    connectionControllerSignal: AbortSignal,
+  ): AbortSignal => {
+    connectionControllerSignal.throwIfAborted();
+    if (get(connectionControllersState$).has(connectionId)) {
+      throw new Error("Shared database connection is already registered");
+    }
+    const signal = AbortSignal.any([
+      get(rootSignal$),
+      connectionControllerSignal,
+    ]);
+    set(
+      connectionControllersState$,
+      new Map(get(connectionControllersState$)).set(
+        connectionId,
+        connectionController,
+      ),
+    );
+    set(connectionSignalsState$, (current) => {
+      return new Map(current).set(connectionId, signal);
+    });
+    set(
+      connectionPortsState$,
+      new Map(get(connectionPortsState$)).set(connectionId, port),
+    );
+    set(
+      connectionLastHeartbeatAtState$,
+      new Map(get(connectionLastHeartbeatAtState$)).set(connectionId, now()),
+    );
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(removeConnection$, connectionId);
+      },
+      { once: true },
+    );
+    return signal;
+  },
+);
+
+export const unregisterConnection$ = command(
+  ({ set }, connectionId: ConnectionId): void => {
+    set(removeConnection$, connectionId);
+  },
+);
+
+export const heartbeatConnection$ = command(
+  (
+    { get, set },
+    connectionId: ConnectionId,
+    signal: AbortSignal,
+    staleAfterMs: number,
+  ): void => {
+    signal.throwIfAborted();
+    if (!get(connectionControllersState$).has(connectionId)) {
+      throw new Error("Shared database connection is not registered");
+    }
+    const heartbeatAt = now();
+    set(
+      connectionLastHeartbeatAtState$,
+      new Map(get(connectionLastHeartbeatAtState$)).set(
+        connectionId,
+        heartbeatAt,
+      ),
+    );
+    for (const [otherConnectionId, lastHeartbeatAt] of get(
+      connectionLastHeartbeatAtState$,
+    )) {
+      if (
+        otherConnectionId !== connectionId &&
+        lastHeartbeatAt < heartbeatAt - staleAfterMs
+      ) {
+        get(connectionControllersState$)
+          .get(otherConnectionId)
+          ?.abort(
+            new DOMException(
+              "Shared database connection heartbeat expired",
+              "AbortError",
+            ),
+          );
+      }
+    }
+  },
+);
+
+export const requireConnectionSignal$ = command(
+  ({ get }, connectionId: ConnectionId, signal: AbortSignal): void => {
+    signal.throwIfAborted();
+    if (!get(connectionControllersState$).has(connectionId)) {
+      throw new Error("Shared database connection is not registered");
+    }
+  },
+);
+
+export const invalidateConnectionIndicators$ = command(
+  ({ set }, payload: unknown): void => {
+    set(broadcastSharedDatabaseWorkerMessage$, {
+      type: "indicators-invalidated",
+      payload,
+    });
+  },
+);
+
+export const reloadConnections$ = command(({ set }): void => {
+  set(broadcastSharedDatabaseWorkerMessage$, { type: "reload-required" });
 });
+
+export const updateRealtimeStatusForConnections$ = command(
+  ({ set }, status: SharedDatabaseConnectionStatus): void => {
+    set(broadcastSharedDatabaseWorkerMessage$, { type: "status", status });
+  },
+);

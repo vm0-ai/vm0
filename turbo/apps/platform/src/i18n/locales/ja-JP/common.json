@@ -3308,7 +3308,8 @@
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "リクエストが失敗しました"
+      "requestFailed": "リクエストが失敗しました",
+      "sharedDatabaseUnavailable": "アプリで問題が発生しました。少し待ってから、ページを更新してもう一度お試しください。"
     },
     "realtime": {
       "degraded": "ライブアップデートで問題が発生しました。ページを更新してください。",

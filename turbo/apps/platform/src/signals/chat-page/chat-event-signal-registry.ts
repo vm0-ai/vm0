@@ -68,3 +68,14 @@ export const syncActiveChatEvents$ = command(
     signal.throwIfAborted();
   },
 );
+
+export const syncAllActiveChatEvents$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    await Promise.all(
+      Array.from(get(activeChatEventSignals$).keys()).map((threadId) => {
+        return set(syncActiveChatEvents$, threadId, signal);
+      }),
+    );
+    signal.throwIfAborted();
+  },
+);
