@@ -1882,7 +1882,9 @@ function isHostedSiteImageUrl(value: string): boolean {
     return false;
   }
   return [env("ZERO_HOST_DOMAIN"), env("OKOU_PUBLIC_HOST_DOMAIN")].some(
-    (hostDomain) => url.hostname.endsWith(`.${hostDomain}`),
+    (hostDomain) => {
+      return url.hostname.endsWith(`.${hostDomain}`);
+    },
   );
 }
 
