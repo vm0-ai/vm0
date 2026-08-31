@@ -85,6 +85,8 @@ const SESSION_HISTORY_DOWNLOAD_PHASE_TELEMETRY_ERROR: &str =
     "session history download phase failed";
 const SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR: &str =
     "session history materialization failed";
+const SESSION_HISTORY_IDENTITY_REUSE_VERIFY_TELEMETRY_ERROR: &str =
+    "session history identity reuse verification failed";
 const WORKSPACE_SESSION_HISTORY_PHASE_TELEMETRY_ERROR: &str =
     "workspace session history phase failed";
 const STORAGE_CACHE_POPULATE_FAILED: &str = "storage-cache-populate-failed";
@@ -1685,7 +1687,18 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     let mut local_session_history_materializer = None;
     let mut session_history_materializer = match session_history_restore_plan {
         SessionHistoryRestorePlan::SkipVerified(identity) => {
-            match verify_restored_session_identity_for_reuse(sandbox, context, identity).await {
+            let verification_started = Instant::now();
+            let verification_result =
+                verify_restored_session_identity_for_reuse(sandbox, context, identity).await;
+            let verification_succeeded = verification_result.is_ok();
+            telemetry.record(
+                "session_history_identity_reuse_verify",
+                verification_started.elapsed(),
+                verification_succeeded,
+                (!verification_succeeded)
+                    .then_some(SESSION_HISTORY_IDENTITY_REUSE_VERIFY_TELEMETRY_ERROR),
+            );
+            match verification_result {
                 Ok(identity) => {
                     telemetry.record(
                         "session_history_identity_reuse_hit",
