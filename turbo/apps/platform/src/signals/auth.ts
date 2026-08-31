@@ -374,21 +374,24 @@ export const initClerkRuntime$ = command(
     markBootstrapClerkLoadStarted();
     set(
       internalClerkRuntime$,
-      startClerkBrowserRuntime({
-        domain: satelliteConfig?.domain,
-        loadOptions: {
-          ...(satelliteConfig
-            ? {
-                isSatellite: true,
-                satelliteAutoSync: satelliteConfig.satelliteAutoSync,
-              }
-            : {}),
-          afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
-          signInUrl: resolveAppAuthUrl("/sign-in"),
-          signUpUrl: resolveAppAuthUrl("/sign-up"),
+      startClerkBrowserRuntime(
+        {
+          domain: satelliteConfig?.domain,
+          loadOptions: {
+            ...(satelliteConfig
+              ? {
+                  isSatellite: true,
+                  satelliteAutoSync: satelliteConfig.satelliteAutoSync,
+                }
+              : {}),
+            afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
+            signInUrl: resolveAppAuthUrl("/sign-in"),
+            signUpUrl: resolveAppAuthUrl("/sign-up"),
+          },
+          publishableKey,
         },
-        publishableKey,
-      }),
+        signal,
+      ),
     );
   },
 );

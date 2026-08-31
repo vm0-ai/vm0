@@ -75,7 +75,7 @@ export default defineConfig(({ command }) => ({
     tailwindcss(),
     react(),
     devArtifactFetchProxy(),
-    clerkCoreHtmlPlugin(),
+    clerkCoreHtmlPlugin(APP_VERSION),
     runtimeBuildInfoHtmlPlugin,
     deferredApplicationEntryHtmlPlugin(),
     applicationJavaScriptBundlePlugin(),
