@@ -313,7 +313,7 @@ impl SessionHistoryRefKind {
 /// Expected final identity fields supplied by runner when verifying a parked
 /// sandbox's checkpointed metadata.
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct SessionHistoryIdentityExpectation {
     /// CLI framework expected by runner.
     pub framework: SessionHistoryFramework,
@@ -731,6 +731,12 @@ mod tests {
 
         let json = json.strip_suffix('}').unwrap().to_string() + ",\"command\":\"sh\"}";
         assert!(serde_json::from_str::<SessionHistoryIdentityVerifyRequest>(&json).is_err());
+
+        let nested_json = serde_json::to_string(&request).unwrap().replace(
+            "\"historySizeBytes\":12",
+            "\"historySizeBytes\":12,\"command\":\"sh\"",
+        );
+        assert!(serde_json::from_str::<SessionHistoryIdentityVerifyRequest>(&nested_json).is_err());
     }
 
     #[test]
