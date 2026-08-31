@@ -112,6 +112,8 @@ export function extractAfterFirstPaintBootstrap(
       return `<link crossorigin href="${AFTER_FIRST_PAINT_ENTRY_PLACEHOLDER}" ${AFTER_FIRST_PAINT_ENTRY_ATTRIBUTE}="">
     <script data-vm0-after-first-paint-loader="">
       window.__vm0AfterFirstPaint(function () {
+        if (window.__vm0BrowserSupported !== true) return;
+
         var modulePreloads = document.querySelectorAll(
           'link[${APP_ENTRY_ATTRIBUTE}=""], link[${APP_MODULE_PRELOAD_ATTRIBUTE}=""]',
         );

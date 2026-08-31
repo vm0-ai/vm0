@@ -72,6 +72,7 @@ await test("extracts post-paint callbacks behind one preloaded entry", () => {
     /<link crossorigin href="__VM0_AFTER_FIRST_PAINT_ENTRY_URL__" data-vm0-after-first-paint-entry="">/u,
   );
   assert.match(extracted.html, /data-vm0-after-first-paint-loader=""/u);
+  assert.match(extracted.html, /window\.__vm0BrowserSupported !== true/u);
   assert.match(
     extracted.html,
     /modulePreloads\[index\]\.rel = "modulepreload"/u,
