@@ -32,7 +32,7 @@ await test("defers app execution and resource discovery until first paint", () =
     <link rel="stylesheet" crossorigin href="/assets/app-AppHash1.css">
     <link rel="stylesheet" href="https://fonts.example/font.css">
     <link rel="modulepreload" crossorigin href="/assets/vendor-Vendor01.js">
-    <script data-vm0-app-entry="" type="module" crossorigin src="/assets/app-AppHash1.js"></script>
+    <SCRIPT data-vm0-app-entry="" type="module" crossorigin src="/assets/app-AppHash1.js"></SCRIPT >
   `);
 
   assert.match(
@@ -62,7 +62,7 @@ await test("fails closed when the deferred app entry is missing", () => {
 
 await test("extracts post-paint callbacks behind one preloaded entry", () => {
   const extracted = extractAfterFirstPaintBootstrap(`
-    <script>window.__vm0AfterFirstPaint(function () { window.first = true; });</script>
+    <SCRIPT>window.__vm0AfterFirstPaint(function () { window.first = true; });</SCRIPT >
     <main>skeleton</main>
     <script>window.__vm0AfterFirstPaint(function () { window.second = true; });</script>
   `);

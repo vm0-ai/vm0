@@ -50,7 +50,7 @@ function inertResourceTag(
 export function deferApplicationEntryResources(html: string): string {
   let applicationEntries = 0;
   const deferredEntryHtml = html.replace(
-    /<script\b[^>]*>\s*<\/script>/gu,
+    /<script\b[^>]*>\s*<\/script\s*>/giu,
     (tag) => {
       const href = attributeValue(tag, "src");
       const isSourceEntry = hasAttribute(tag, APP_ENTRY_ATTRIBUTE);
@@ -99,7 +99,7 @@ export function extractAfterFirstPaintBootstrap(
   const callbacks: string[] = [];
   let insertedEntrypoint = false;
   const extractedHtml = html.replace(
-    /<script>([\s\S]*?)<\/script>/gu,
+    /<script\s*>([\s\S]*?)<\/script\s*>/giu,
     (tag, source: string) => {
       if (!/^\s*window\.__vm0AfterFirstPaint\(function \(\) \{/u.test(source)) {
         return tag;
