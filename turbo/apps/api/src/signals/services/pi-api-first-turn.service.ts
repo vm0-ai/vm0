@@ -16,6 +16,7 @@ import {
   createPiApiFirstTurnOwnership,
   createPiSessionJsonl,
   inspectPiSessionJsonl,
+  PiApiFirstTurnCompactionRequiredError,
   runPiApiFirstTurn,
   type PiApiFirstTurnOwnership,
   type PiApiFirstTurnResult,
@@ -87,6 +88,7 @@ const L = logger("pi-api-first-turn");
 
 type PiApiFirstTurnErrorCode =
   | "PI_API_COMMIT_FAILED"
+  | "PI_API_COMPACTION_PREFLIGHT_REQUIRED"
   | "PI_API_FIRST_TURN_DEADLINE_EXCEEDED"
   | "PI_API_FIRST_TURN_NOT_COMMITTABLE"
   | "PI_API_MODEL_FAILED"
@@ -951,6 +953,13 @@ async function executeApiModelTurn(
         executed.error,
       );
     }
+    if (executed.error instanceof PiApiFirstTurnCompactionRequiredError) {
+      throw piApiFirstTurnError(
+        "PI_API_COMPACTION_PREFLIGHT_REQUIRED",
+        "Pi H0 requires official Sandbox compaction preflight",
+        executed.error,
+      );
+    }
     throw piApiFirstTurnError(
       modelSignal.aborted
         ? "PI_API_FIRST_TURN_DEADLINE_EXCEEDED"
@@ -1054,6 +1063,7 @@ function ownershipTransferManifest(args: {
 }
 
 type PiSandboxFallbackReason =
+  | "PI_API_COMPACTION_PREFLIGHT_REQUIRED"
   | "PI_API_PREHEAT_FAILED"
   | "PI_API_RESOURCE_PREPARATION_FAILED";
 
@@ -1076,6 +1086,7 @@ function eligibleSandboxFallbackReason(
   }
   switch (args.failure.code) {
     case "PI_API_PREHEAT_FAILED":
+    case "PI_API_COMPACTION_PREFLIGHT_REQUIRED":
     case "PI_API_RESOURCE_PREPARATION_FAILED": {
       return args.failure.code;
     }
@@ -1481,17 +1492,16 @@ const commitApiFirstTurn$ = command(async function commitApiFirstTurn(
         { runId: args.activation.runId, manifest },
         signal,
       );
-      if (hasActiveInput) {
-        L.debug("Pi API first-turn outcome", {
-          runId: args.activation.runId,
-          outcome: "ownership_transfer",
-          reason:
-            transferMode === "settled-session-continuation"
-              ? "active_input_settled_session"
-              : "active_input_pending_tool",
-          ownershipStage: "provider-may-have-started",
-        });
-      }
+      L.debug("Pi API first-turn outcome", {
+        runId: args.activation.runId,
+        outcome: "ownership_transfer",
+        reason: hasActiveInput
+          ? transferMode === "settled-session-continuation"
+            ? "active_input_settled_session"
+            : "active_input_pending_tool"
+          : "pending_tool_continuation",
+        ownershipStage: "provider-may-have-started",
+      });
       return undefined;
     }
 
@@ -1504,6 +1514,12 @@ const commitApiFirstTurn$ = command(async function commitApiFirstTurn(
       signal,
     );
     stopPreparedSandbox(args.activation, "completed");
+    L.debug("Pi API first-turn outcome", {
+      runId: args.activation.runId,
+      outcome: "api_completion",
+      reason: "settled_session",
+      ownershipStage: "provider-may-have-started",
+    });
     return sideEffects;
   });
 });
@@ -1708,11 +1724,15 @@ export const runPiApiFirstTurn$ = command(
           outcome:
             sandboxFirstReason === "active_input"
               ? "ownership_transfer"
-              : "sandbox_fallback",
+              : sandboxFirstReason === "PI_API_COMPACTION_PREFLIGHT_REQUIRED"
+                ? "ownership_transfer"
+                : "sandbox_fallback",
           reason:
             sandboxFirstReason === "active_input"
               ? "active_input_sandbox_first"
-              : sandboxFirstReason,
+              : sandboxFirstReason === "PI_API_COMPACTION_PREFLIGHT_REQUIRED"
+                ? "compaction_preflight"
+                : sandboxFirstReason,
           ownershipStage: ownership.stage,
         });
         return undefined;

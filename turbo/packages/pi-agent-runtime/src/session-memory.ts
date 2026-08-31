@@ -224,6 +224,11 @@ export class MemoryPiSession {
     return buildSessionContext(this.#entries, this.#leafId);
   }
 
+  /** Return the canonical active branch used by Pi's public session helpers. */
+  getBranchEntries(): SessionEntry[] {
+    return this.#activeBranch();
+  }
+
   hasPendingToolCalls(): boolean {
     const messages = this.buildSessionContext().messages;
     const resolvedIds = new Set(
