@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.515.0](https://github.com/vm0-ai/vm0/compare/api-v1.514.0...api-v1.515.0) (2026-08-31)
+
+
+### Features
+
+* **api:** add secure mcp oauth foundations ([#30559](https://github.com/vm0-ai/vm0/issues/30559)) ([6bd719b](https://github.com/vm0-ai/vm0/commit/6bd719b4e29b49ead8078197f5bb8f28a794e6d1))
+* **connectors:** pre-stage direct okou callbacks for twenty gated oauth connectors ([#30582](https://github.com/vm0-ai/vm0/issues/30582)) ([ecc6e82](https://github.com/vm0-ai/vm0/commit/ecc6e82ab07a354d996c89c0fdaf958913dfb10b)), closes [#28381](https://github.com/vm0-ai/vm0/issues/28381)
+
+
+### Bug Fixes
+
+* **api:** make timeout an immutable active-input boundary ([#30534](https://github.com/vm0-ai/vm0/issues/30534)) ([b8cb505](https://github.com/vm0-ai/vm0/commit/b8cb505f2dd358b89ce01949eeca2c49471b327b))
+* **platform:** route chat realtime through user-org channels ([#30358](https://github.com/vm0-ai/vm0/issues/30358)) ([5cd95cf](https://github.com/vm0-ai/vm0/commit/5cd95cfbd3c7ebe2dd207135de80dc0b5cbe913e))
+
+
+### Refactoring
+
+* **connectors:** retire test-oauth legacy api url reader ([#30407](https://github.com/vm0-ai/vm0/issues/30407)) ([bcb475a](https://github.com/vm0-ai/vm0/commit/bcb475abd3f1abd13c272f48984609735a10ca5e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.382.0
+    * @okouai/connectors bumped to 3.1.0
+    * @okouai/core bumped to 8.605.1
+    * @okouai/db bumped to 1.228.26
+
 ## [1.514.0](https://github.com/vm0-ai/vm0/compare/api-v1.513.1...api-v1.514.0) (2026-08-31)
 
 

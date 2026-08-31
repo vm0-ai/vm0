@@ -3814,14 +3814,12 @@ describe("chat event action cards", () => {
       });
 
       const card = await screen.findByTestId("plan-upgrade-card");
-      expect(linkByText("Compare plans", card)).toHaveAttribute(
-        "href",
-        "/?settings=billing&billingView=plans",
-      );
+      expect(buttonByText("Compare plans", card)).toBeInTheDocument();
     },
   );
 
-  it("renders trusted plan links as upgrade cards", async () => {
+  it("opens billing plans from trusted plan upgrade cards", async () => {
+    const user = userEvent.setup({ delay: null });
     const absoluteUrl =
       "https://app.vm0.ai/?settings=billing&billingView=plans";
     const relativeUrl = "/?settings=billing&billingView=plans";
@@ -3892,8 +3890,7 @@ describe("chat event action cards", () => {
       ),
     ).toBeInTheDocument();
     for (const card of cards) {
-      const comparePlansLink = linkByText("Compare plans", card);
-      expect(comparePlansLink).toHaveAttribute("href", relativeUrl);
+      expect(buttonByText("Compare plans", card)).toBeInTheDocument();
     }
     expect(linkByText("Untrusted plan", document)).toHaveAttribute(
       "href",
@@ -3915,6 +3912,10 @@ describe("chat event action cards", () => {
       "href",
       creditUrl,
     );
+    await user.click(buttonByText("Compare plans", cards[0]!));
+    await expect(
+      screen.findByRole("dialog", { name: "Choose a plan" }),
+    ).resolves.toBeInTheDocument();
   });
 
   it("does not cancel stale permission loading when a confirmed grant reloads cards", async () => {

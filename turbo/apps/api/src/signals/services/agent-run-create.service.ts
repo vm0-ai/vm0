@@ -5784,6 +5784,7 @@ function resumeSessionFromSnapshot(
 async function resolveLatestPiResumeSession(
   db: Db,
   chatThreadId: string,
+  agentSessionId: string,
 ): Promise<StoredExecutionContext["resumeSession"] | undefined> {
   const [snapshot] = await db
     .select({
@@ -5799,6 +5800,10 @@ async function resolveLatestPiResumeSession(
     .where(
       and(
         eq(agentRuns.chatThreadId, chatThreadId),
+        // Canonical chat-session rotation owns the Pi history generation.
+        // Restrict before ordering so a pre-rotation Pi checkpoint cannot
+        // cross an intervening harness boundary.
+        eq(agentRuns.sessionId, agentSessionId),
         eq(agentRuns.status, "completed"),
         isNotNull(agentRuns.triggerSource),
         eq(conversations.cliAgentType, "pi"),
@@ -6947,6 +6952,7 @@ function storedExecutionContextWithPiResources(
 function preparePiLaunchResources(args: {
   readonly db: Db;
   readonly runId: string;
+  readonly agentSessionId: string;
   readonly apiStartTime: number;
   readonly storageMounts: StoredExecutionContext["storageMounts"];
   readonly piSandbox: PiModelConfig | undefined;
@@ -6972,7 +6978,11 @@ function preparePiLaunchResources(args: {
           "api_dispatch_prepare_pi_launch_resume_session",
           "nested",
           async () => {
-            return await resolveLatestPiResumeSession(args.db, chatThreadId);
+            return await resolveLatestPiResumeSession(
+              args.db,
+              chatThreadId,
+              args.agentSessionId,
+            );
           },
         );
         const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
@@ -7121,6 +7131,7 @@ function buildRunnerJobPayload(
       preparePiLaunchResources({
         db,
         runId: args.run.id,
+        agentSessionId: args.run.sessionId,
         apiStartTime: args.apiStartTime,
         storageMounts: builtContext.context.storageMounts,
         piSandbox: args.piSandbox,
