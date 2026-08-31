@@ -26,6 +26,7 @@ import { env, mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
 import { server } from "../../../../mocks/server";
 import { generateSandboxToken } from "../../../auth/tokens";
+import type { UsagePricingResolution } from "../../../context/usage-pricing-resolution";
 import { mockStripeClient } from "../../../external/stripe-client";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";
@@ -568,6 +569,7 @@ export function createWebhookCallbackApi(context: TestContext) {
       headers: SandboxWebhookHeaders,
       statuses: readonly (200 | 400 | 401 | 404 | 500)[],
       signal?: AbortSignal,
+      usagePricingResolution?: UsagePricingResolution,
     ) {
       const historyHash = body.checkpoint?.cliAgentSessionHistoryHash;
       if (historyHash !== undefined) {
@@ -594,15 +596,14 @@ export function createWebhookCallbackApi(context: TestContext) {
           );
         }
       }
-      const client = signal
-        ? setupAppWithRoutes({
-            context,
-            routes: webhooksAgentCompleteRoutes,
-            signal,
-          })(webhookCompleteContract)
-        : setupApp({ context, routes: webhooksAgentCompleteRoutes })(
-            webhookCompleteContract,
-          );
+      const client = setupAppWithRoutes({
+        context,
+        routes: webhooksAgentCompleteRoutes,
+        ...(signal === undefined ? {} : { signal }),
+        ...(usagePricingResolution === undefined
+          ? {}
+          : { usagePricingResolution }),
+      })(webhookCompleteContract);
       return await accept(
         client.complete({
           headers,
@@ -785,14 +786,16 @@ export function createWebhookCallbackApi(context: TestContext) {
       body: AgentUsageEventBody,
       headers: SandboxWebhookHeaders,
       statuses: readonly (200 | 400 | 401 | 404 | 500)[],
+      usagePricingResolution?: UsagePricingResolution,
     ) {
       return await accept(
-        setupApp({ context, routes: webhooksAgentHealthUsageTelemetryRoutes })(
-          webhookUsageEventContract,
-        ).send({
-          headers,
-          body,
-        }),
+        setupApp({
+          context,
+          routes: webhooksAgentHealthUsageTelemetryRoutes,
+          ...(usagePricingResolution === undefined
+            ? {}
+            : { usagePricingResolution }),
+        })(webhookUsageEventContract).send({ headers, body }),
         statuses,
       );
     },

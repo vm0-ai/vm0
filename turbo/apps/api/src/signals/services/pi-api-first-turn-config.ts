@@ -15,6 +15,7 @@ export interface PiApiFirstTurnActivation {
     StoredExecutionContext,
     | "encryptedSecrets"
     | "environment"
+    | "modelUsageProvider"
     | "resumeSession"
     | "secretConnectorMap"
     | "secretConnectorMetadataMap"
@@ -36,6 +37,7 @@ export function requirePiApiFirstTurnExecutionContext(
     | "apiStartTime"
     | "encryptedSecrets"
     | "environment"
+    | "modelUsageProvider"
     | "piLaunchConfig"
     | "piModelConfig"
     | "piSessionId"
@@ -57,6 +59,7 @@ export function requirePiApiFirstTurnExecutionContext(
     apiStartTime: context.apiStartTime,
     encryptedSecrets: context.encryptedSecrets,
     environment: context.environment,
+    modelUsageProvider: context.modelUsageProvider,
     piLaunchConfig: context.piLaunchConfig,
     piModelConfig: context.piModelConfig,
     piSessionId: context.piSessionId,

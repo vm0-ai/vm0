@@ -284,8 +284,7 @@ async function createClaimedChatRun(
       cloudBrowserEnabled: true,
     },
     [201],
-    undefined,
-    publicBrand,
+    { publicBrand },
   );
   if (sent.status !== 201 || sent.body.runId === null) {
     throw new Error("Expected a chat run");

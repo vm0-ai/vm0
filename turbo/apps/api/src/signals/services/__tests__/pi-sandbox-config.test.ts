@@ -62,17 +62,106 @@ describe("Pi sandbox model configuration", () => {
     ).toBeNull();
   });
 
-  it("does not make Terra eligible for Pi execution", () => {
+  it.each(["web", "agent"] as const)(
+    "makes standard built-in Terra eligible for %s chat",
+    (triggerSource) => {
+      expect(
+        shouldUsePiExecution({
+          chatThreadId: "thread-id",
+          modelProviderType: "built-in",
+          selectedModel: "gpt-5.6-terra",
+          codexServiceTier: undefined,
+          triggerSource,
+          featureSwitchContext: {
+            overrides: { [FeatureSwitchKey.PiLoop]: true },
+          },
+        }),
+      ).toBeTruthy();
+    },
+  );
+
+  it.each([
+    {
+      name: "feature switch off",
+      modelProviderType: "built-in",
+      selectedModel: "gpt-5.6-terra",
+      codexServiceTier: undefined,
+      triggerSource: "web" as const,
+      chatThreadId: "thread-id",
+      enabled: false,
+    },
+    {
+      name: "fast Terra",
+      modelProviderType: "built-in",
+      selectedModel: "gpt-5.6-terra",
+      codexServiceTier: "fast" as const,
+      triggerSource: "web" as const,
+      chatThreadId: "thread-id",
+      enabled: true,
+    },
+    {
+      name: "Terra BYOK",
+      modelProviderType: "openai-api-key",
+      selectedModel: "gpt-5.6-terra",
+      codexServiceTier: undefined,
+      triggerSource: "web" as const,
+      chatThreadId: "thread-id",
+      enabled: true,
+    },
+    {
+      name: "non-Web trigger",
+      modelProviderType: "built-in",
+      selectedModel: "gpt-5.6-terra",
+      codexServiceTier: undefined,
+      triggerSource: "slack" as const,
+      chatThreadId: "thread-id",
+      enabled: true,
+    },
+    {
+      name: "unbound chat thread",
+      modelProviderType: "built-in",
+      selectedModel: "gpt-5.6-terra",
+      codexServiceTier: undefined,
+      triggerSource: "web" as const,
+      chatThreadId: undefined,
+      enabled: true,
+    },
+    {
+      name: "unrelated model",
+      modelProviderType: "built-in",
+      selectedModel: "gpt-5.6-sol",
+      codexServiceTier: undefined,
+      triggerSource: "web" as const,
+      chatThreadId: "thread-id",
+      enabled: true,
+    },
+  ])("keeps $name on Codex", (testCase) => {
+    expect(
+      shouldUsePiExecution({
+        chatThreadId: testCase.chatThreadId,
+        modelProviderType: testCase.modelProviderType,
+        selectedModel: testCase.selectedModel,
+        codexServiceTier: testCase.codexServiceTier,
+        triggerSource: testCase.triggerSource,
+        featureSwitchContext: {
+          overrides: { [FeatureSwitchKey.PiLoop]: testCase.enabled },
+        },
+      }),
+    ).toBeFalsy();
+  });
+
+  it("preserves existing built-in DeepSeek Pi routing", () => {
     expect(
       shouldUsePiExecution({
         chatThreadId: "thread-id",
         modelProviderType: "built-in",
-        selectedModel: "gpt-5.6-terra",
+        selectedModel: "deepseek-v4-flash",
+        codexServiceTier: "fast",
         triggerSource: "web",
         featureSwitchContext: {
           overrides: { [FeatureSwitchKey.PiLoop]: true },
         },
       }),
-    ).toBeFalsy();
+    ).toBeTruthy();
   });
 });

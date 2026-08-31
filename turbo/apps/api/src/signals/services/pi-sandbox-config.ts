@@ -81,18 +81,22 @@ function piCredentialSecretName(
 export function shouldUsePiExecution(args: {
   readonly chatThreadId: string | undefined;
   readonly modelProviderType: string | null | undefined;
-  readonly selectedModel: string | undefined;
+  readonly selectedModel: string | null | undefined;
+  readonly codexServiceTier: "fast" | undefined;
   readonly triggerSource: TriggerSource;
   readonly featureSwitchContext: FeatureSwitchContext;
 }): boolean {
-  const isPiModel =
+  const isExistingPiModel =
     args.selectedModel === "deepseek-v4-flash" ||
     args.selectedModel === "deepseek-v4-pro";
+  const isStandardTerra =
+    args.selectedModel === "gpt-5.6-terra" &&
+    args.codexServiceTier === undefined;
   return (
     args.chatThreadId !== undefined &&
     isWebChatTriggerSource(args.triggerSource) &&
     isBuiltInModelProviderType(args.modelProviderType) &&
-    isPiModel &&
+    (isExistingPiModel || isStandardTerra) &&
     isFeatureEnabled(FeatureSwitchKey.PiLoop, args.featureSwitchContext)
   );
 }
