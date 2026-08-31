@@ -12,6 +12,7 @@ import {
 } from "./lib/auth";
 import { issueCliToken } from "./lib/cli-token";
 import { runnerTestAccounts } from "./lib/clerk-api";
+import { formatErrorReport } from "./lib/error-report";
 import {
   ensureRunnerOrganizationReady,
   startVideoOnboardingCheckout,
@@ -268,6 +269,6 @@ function requiredEnvironmentVariable(name: string): string {
 }
 
 void main().catch((error: unknown) => {
-  console.error(error);
+  console.error(formatErrorReport(error));
   process.exitCode = 1;
 });
