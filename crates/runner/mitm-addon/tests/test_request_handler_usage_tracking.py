@@ -18,6 +18,7 @@ import terminal_usage
 import usage
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
 from tests.flow_helpers import response_stream
+from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.pending_helpers import assert_pending
 from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 from tests.requestheaders_helpers import await_requestheaders_result
@@ -830,6 +831,10 @@ async def test_billable_model_provider_rejects_uninspectable_response_and_drains
         await mitm_addon.request(flow)
 
         assert flow.request.headers["Accept-Encoding"] == "br, identity;q=0"
+        assert (
+            flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION]
+            == "preserved_client_constraints"
+        )
         usage.write_pending_snapshot(flush_request_id="before-response")
         assert_pending(
             usage_pending_path,
@@ -849,12 +854,23 @@ async def test_billable_model_provider_rejects_uninspectable_response_and_drains
         )
         mitm_addon.responseheaders(flow)
 
+        underbilling_entries = [
+            entry
+            for entry in read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+            if entry.get("type") == "usage_underbilling"
+        ]
+        [entry] = underbilling_entries
+        assert entry["reason"] == "response_encoding_not_stream_decodable"
+        assert entry["firewall_billable"] is True
+        assert entry["inspection_disposition"] == "fail_closed"
+        assert entry["request_encoding_negotiation"] == "preserved_client_constraints"
         assert flow.response.status_code == 502
         assert flow.response.content == b""
         stream = response_stream(flow)
         assert stream(b"uninspectable upstream bytes") == b""
         assert stream(b"") == b""
         mitm_addon.response(flow)
+        assert metadata_keys.RESPONSE_ENCODING_NEGOTIATION not in flow.metadata
         assert usage.flush_usage_events(trigger="test") == 0
 
     assert usage_webhook_server.request_count == 0

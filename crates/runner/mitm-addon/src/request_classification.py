@@ -45,6 +45,7 @@ REQUEST_HEADERS_PROBE_METADATA_KEYS = (
     metadata_keys.CLI_AGENT_TYPE,
     metadata_keys.BROWSER_USER_AGENT,
     metadata_keys.WEBSOCKET_UPGRADE_REQUEST,
+    metadata_keys.RESPONSE_ENCODING_NEGOTIATION,
     metadata_keys.ORIGINAL_URL,
     metadata_keys.TRUSTED_AUTHORITY_HOST,
     metadata_keys.NETWORK_LOG_TARGET,
