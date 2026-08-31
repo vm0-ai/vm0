@@ -30,6 +30,9 @@ def track_brotli_decompressor(monkeypatch):
         def is_finished(self) -> bool:
             return self._inner.is_finished()
 
+        def can_accept_more_data(self) -> bool:
+            return self._inner.can_accept_more_data()
+
     monkeypatch.setattr("body_decoding.brotli.Decompressor", CountingDecompressor)
     return stats
 

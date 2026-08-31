@@ -68,7 +68,7 @@ class TestResponseHeadersModelJsonParser:
             "tokens.output": 7,
         }
 
-    def test_brotli_model_json_skips_incremental_parser(self, real_flow, mitm_ctx):
+    def test_brotli_model_json_uses_incremental_parser(self, real_flow, mitm_ctx):
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.response = tutils.tresp(
             status_code=200,
@@ -82,7 +82,7 @@ class TestResponseHeadersModelJsonParser:
             mitm_addon.responseheaders(flow)
 
         assert callable(response_stream(flow))
-        assert "model_json_usage_finish" not in flow.metadata
+        assert "model_json_usage_finish" in flow.metadata
         assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
 
 

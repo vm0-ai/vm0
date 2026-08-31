@@ -5,7 +5,7 @@ import { URL } from "node:url";
 
 import { loadConfigFromFile } from "vite";
 
-await test("production build emits one node_modules vendor group with isolated metadata", async () => {
+await test("production build emits one deterministic vendor group with isolated metadata", async () => {
   const loaded = await loadConfigFromFile(
     { command: "build", mode: "production" },
     new URL("../vite.config.ts", import.meta.url).pathname,
@@ -23,6 +23,20 @@ await test("production build emits one node_modules vendor group with isolated m
   assert.equal(
     vendorGroup.test.test("/repo/node_modules/react/index.js"),
     true,
+  );
+  assert.equal(
+    vendorGroup.test.test(
+      "/repo/packages/mermaid-lite/dist/mermaid.esm.min.mjs",
+    ),
+    true,
+  );
+  assert.equal(
+    vendorGroup.test.test("/repo/packages/mermaid-lite/src/index.ts"),
+    false,
+  );
+  assert.equal(
+    vendorGroup.test.test("/repo/packages/core/src/resource-registry.ts"),
+    false,
   );
   assert.equal(vendorGroup.test.test("/repo/src/main.ts"), false);
   assert.equal(

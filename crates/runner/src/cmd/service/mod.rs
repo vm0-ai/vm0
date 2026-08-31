@@ -644,7 +644,9 @@ async fn wait_running(args: ServiceWaitRunningArgs) -> RunnerResult<()> {
     }
 
     let unit = RunnerServiceUnit::from_suffix(&args.name)?;
-    let deadline = TokioInstant::now() + TokioDuration::from_secs(args.timeout_secs);
+    let deadline = TokioInstant::now()
+        .checked_add(TokioDuration::from_secs(args.timeout_secs))
+        .ok_or_else(|| RunnerError::Internal("--timeout-secs is too large".into()))?;
     let mut last_observation = "not checked".to_string();
     let home = HomePaths::new()?;
     let config_path = match read_unit_config_path_bounded(
@@ -849,6 +851,11 @@ record_identity_and_stall() {
   exec sleep 60
 }
 
+if [ "$OKOU_RUN_SERVICE_WAIT_RUNNING_SCENARIO" = "overflow" ]; then
+  printf '%s\n' 'systemctl must not be called for an unrepresentable timeout' >&2
+  exit 2
+fi
+
 if [ "$OKOU_RUN_SERVICE_WAIT_RUNNING_SCENARIO" = "config-query" ]; then
   record_identity_and_stall
 fi
@@ -915,6 +922,11 @@ exit 2
     }
 
     #[tokio::test]
+    async fn wait_running_rejects_unrepresentable_timeout_before_systemctl() {
+        run_wait_running_timeout_scenario("overflow").await;
+    }
+
+    #[tokio::test]
     async fn wait_running_bounds_initial_systemctl_query() {
         run_wait_running_timeout_scenario("config-query").await;
     }
@@ -973,6 +985,7 @@ exit 2
         }
 
         let timeout_secs = match scenario.as_str() {
+            "overflow" => u64::MAX,
             "config-query" => 1,
             "active-query" => 2,
             unexpected => panic!("unexpected wait-running timeout scenario: {unexpected}"),
@@ -983,6 +996,11 @@ exit 2
             .unwrap_err()
             .to_string();
         let elapsed = started.elapsed();
+
+        if scenario == "overflow" {
+            assert_eq!(error, "internal error: --timeout-secs is too large");
+            return;
+        }
 
         assert!(
             error.contains(&format!(

@@ -15,6 +15,8 @@ use crate::ids::RunId;
 use crate::types::ExecutionContext;
 
 const ENTROPY_SIZE: usize = 256;
+const GUEST_RESEED_PATH: &str = "/sbin/guest-reseed";
+const TIMEZONE_SYNC_MODE_ARG: &str = "--sync-timezone";
 const TIMEZONE_SYNC_FAILED_MARKER: &str = "guest timezone sync failed";
 const TIMEZONE_UNAVAILABLE_MARKER: &str = "guest timezone unavailable";
 
@@ -22,6 +24,14 @@ const TIMEZONE_UNAVAILABLE_MARKER: &str = "guest timezone unavailable";
 enum GuestTimezone<'a> {
     BestEffort { name: &'a str, run_id: RunId },
     Required { name: &'a str },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum GuestTimezoneSyncOutcome {
+    Applied,
+    Unavailable,
+    Failed,
+    NotRequested,
 }
 
 fn helper_exec_exit_code(result: &sandbox::ExecResult) -> Option<i32> {
@@ -54,18 +64,8 @@ pub(crate) fn is_shell_safe_guest_timezone_name(tz: &str) -> bool {
     is_shell_safe_name(tz)
 }
 
-fn timezone_sync_body(tz: &str) -> String {
-    format!(
-        "echo '{tz}' > /etc/timezone && \
-         ln -sf /usr/share/zoneinfo/{tz} /etc/localtime && \
-         sed -i '/^TZ=/d' /etc/environment && \
-         echo 'TZ={tz}' >> /etc/environment"
-    )
-}
-
 fn timezone_sync_command(tz: &str) -> String {
-    let body = timezone_sync_body(tz);
-    format!("if test -f /usr/share/zoneinfo/{tz}; then {body}; fi")
+    format!("{GUEST_RESEED_PATH} {TIMEZONE_SYNC_MODE_ARG} {tz}")
 }
 
 fn stderr_contains_marker(result: &sandbox::ExecResult, marker: &str) -> bool {
@@ -75,25 +75,58 @@ fn stderr_contains_marker(result: &sandbox::ExecResult, marker: &str) -> bool {
         .any(|window| window == marker.as_bytes())
 }
 
-fn log_embedded_timezone_failure(run_id: RunId, tz: &str, result: &sandbox::ExecResult) {
-    if !stderr_contains_marker(result, TIMEZONE_SYNC_FAILED_MARKER)
-        && !stderr_contains_marker(result, TIMEZONE_UNAVAILABLE_MARKER)
+fn classify_timezone_sync_result(result: &sandbox::ExecResult) -> GuestTimezoneSyncOutcome {
+    if !helper_exec_succeeded(result) || stderr_contains_marker(result, TIMEZONE_SYNC_FAILED_MARKER)
     {
+        GuestTimezoneSyncOutcome::Failed
+    } else if stderr_contains_marker(result, TIMEZONE_UNAVAILABLE_MARKER) {
+        GuestTimezoneSyncOutcome::Unavailable
+    } else {
+        GuestTimezoneSyncOutcome::Applied
+    }
+}
+
+fn log_timezone_sync_failure(
+    run_id: RunId,
+    tz: &str,
+    result: &sandbox::ExecResult,
+    outcome: GuestTimezoneSyncOutcome,
+) {
+    if matches!(
+        outcome,
+        GuestTimezoneSyncOutcome::Applied | GuestTimezoneSyncOutcome::NotRequested
+    ) {
         return;
     }
-
     let stderr_excerpt =
         format_command_output_excerpt("stderr", &result.stderr, result.stderr_truncated);
     let stdout_excerpt =
         format_command_output_excerpt("stdout", &result.stdout, result.stdout_truncated);
-    tracing::warn!(
-        run_id = %run_id,
-        tz = %tz,
-        termination = helper_exec_termination_label(result),
-        stderr_excerpt = %stderr_excerpt.as_deref().unwrap_or(""),
-        stdout_excerpt = %stdout_excerpt.as_deref().unwrap_or(""),
-        "failed to set guest timezone"
-    );
+    let exit_code = if helper_exec_succeeded(result) {
+        None
+    } else {
+        helper_exec_exit_code(result)
+    };
+    if let Some(exit_code) = exit_code {
+        tracing::warn!(
+            run_id = %run_id,
+            tz = %tz,
+            termination = helper_exec_termination_label(result),
+            exit_code,
+            stderr_excerpt = %stderr_excerpt.as_deref().unwrap_or(""),
+            stdout_excerpt = %stdout_excerpt.as_deref().unwrap_or(""),
+            "failed to set guest timezone"
+        );
+    } else {
+        tracing::warn!(
+            run_id = %run_id,
+            tz = %tz,
+            termination = helper_exec_termination_label(result),
+            stderr_excerpt = %stderr_excerpt.as_deref().unwrap_or(""),
+            stdout_excerpt = %stdout_excerpt.as_deref().unwrap_or(""),
+            "failed to set guest timezone"
+        );
+    }
 }
 
 /// Restores snapshot-sensitive guest state in one fixed operation before the
@@ -180,7 +213,8 @@ async fn restore_guest_state_inner(
         )));
     }
     if let Some(GuestTimezone::BestEffort { name, run_id }) = timezone {
-        log_embedded_timezone_failure(run_id, name, &result);
+        let outcome = classify_timezone_sync_result(&result);
+        log_timezone_sync_failure(run_id, name, &result, outcome);
     }
 
     Ok(())
@@ -221,13 +255,13 @@ pub(crate) async fn try_sync_guest_timezone_intent(
     sandbox: &dyn Sandbox,
     run_id: RunId,
     intent: &GuestTimezoneIntent,
-) -> RunnerResult<()> {
+) -> RunnerResult<GuestTimezoneSyncOutcome> {
     let Some(tz) = intent.guest_name() else {
-        return Ok(());
+        return Ok(GuestTimezoneSyncOutcome::NotRequested);
     };
     let cmd = timezone_sync_command(tz);
     // Best-effort: don't fail the run if timezone setup fails.
-    match sandbox
+    let result = match sandbox
         .exec_with_diagnostic_label(
             &ExecRequest {
                 cmd: &cmd,
@@ -242,37 +276,13 @@ pub(crate) async fn try_sync_guest_timezone_intent(
         )
         .await
     {
-        Ok(result) if !helper_exec_succeeded(&result) => {
-            let stderr_excerpt =
-                format_command_output_excerpt("stderr", &result.stderr, result.stderr_truncated);
-            let stdout_excerpt =
-                format_command_output_excerpt("stdout", &result.stdout, result.stdout_truncated);
-            if let Some(exit_code) = helper_exec_exit_code(&result) {
-                tracing::warn!(
-                    run_id = %run_id,
-                    tz = %tz,
-                    termination = helper_exec_termination_label(&result),
-                    exit_code,
-                    stderr_excerpt = %stderr_excerpt.as_deref().unwrap_or(""),
-                    stdout_excerpt = %stdout_excerpt.as_deref().unwrap_or(""),
-                    "failed to set guest timezone"
-                );
-            } else {
-                tracing::warn!(
-                    run_id = %run_id,
-                    tz = %tz,
-                    termination = helper_exec_termination_label(&result),
-                    stderr_excerpt = %stderr_excerpt.as_deref().unwrap_or(""),
-                    stdout_excerpt = %stdout_excerpt.as_deref().unwrap_or(""),
-                    "failed to set guest timezone"
-                );
-            }
-        }
-        Ok(_) => {}
+        Ok(result) => result,
         Err(e) => {
             tracing::warn!(run_id = %run_id, tz = %tz, error = %e, "failed to set guest timezone");
             return Err(e.into());
         }
-    }
-    Ok(())
+    };
+    let outcome = classify_timezone_sync_result(&result);
+    log_timezone_sync_failure(run_id, tz, &result, outcome);
+    Ok(outcome)
 }

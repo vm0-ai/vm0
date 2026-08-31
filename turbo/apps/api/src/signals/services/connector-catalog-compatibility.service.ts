@@ -19,14 +19,14 @@ import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import {
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
   type ConnectorCatalogArtifact,
-} from "@okouai/connector-catalog-validation/artifacts/artifacts";
-import { decodeConnectorCatalogSnapshot } from "@okouai/connector-catalog-validation/artifacts/loader";
+} from "@okouai/connectors/connector-catalog/artifacts/artifacts";
+import { decodeConnectorCatalogSnapshot } from "@okouai/connectors/connector-catalog/artifacts/loader";
 import {
   connectorCatalogCompatibilityEvaluationSchema,
   connectorCatalogExecutableCapabilityState as buildConnectorCatalogExecutableCapabilityState,
   evaluateConnectorCatalogCompatibility,
   type ExecutableCapabilityState,
-} from "@okouai/connector-catalog-validation/compatibility";
+} from "@okouai/connectors/connector-catalog/compatibility";
 import { connectorCatalogSource } from "./connector-catalog-source";
 import {
   connectorCatalogValidationAuthorityIsCurrentOrNewer,

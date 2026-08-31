@@ -88,10 +88,6 @@ function expectedClerkScriptUrl(host: string): string {
   return `https://${host}/npm/@clerk/clerk-js@${CLERK_JS_VERSION}/dist/clerk.browser.js`;
 }
 
-function expectedClerkUiScriptUrl(host: string): string {
-  return `https://${host}/npm/@clerk/ui@1.26.0/dist/ui.browser.js`;
-}
-
 function stubClerkBuildEnvironment(): void {
   vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PREVIEW", PREVIEW_PUBLISHABLE_KEY);
   vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PROD", PRODUCTION_PUBLISHABLE_KEY);
@@ -724,15 +720,15 @@ describe("platform Clerk entrypoint", () => {
     },
   );
 
-  it("loads the matching Clerk UI release only when the auth route requests it", async () => {
+  it("keeps platform-owned auth routes on the Clerk core runtime", async () => {
     const harness = startClerkPage({ path: "/sign-in" });
 
     await completeEarlyClerkScript(harness);
 
     expect(harness.requests.map(({ url }) => url)).toStrictEqual([
       expectedClerkScriptUrl(PREVIEW_FRONTEND_API_HOST),
-      expectedClerkUiScriptUrl(PREVIEW_FRONTEND_API_HOST),
     ]);
+    expect(document.querySelector("script[data-clerk-ui-script]")).toBeNull();
     expect(mockedClerkLoad).toHaveBeenCalledOnce();
   });
 

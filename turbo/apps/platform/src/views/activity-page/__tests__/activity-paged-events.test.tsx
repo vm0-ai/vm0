@@ -229,6 +229,7 @@ describe("activity paged events", () => {
   });
 
   it("polls until the terminal event watermark is visible and then stops", async () => {
+    const finalEventRequestStarted = context.mocks.deferred<void>();
     let requestCount = 0;
     const requestedSequences: (number | undefined)[] = [];
 
@@ -256,6 +257,7 @@ describe("activity paged events", () => {
             lastEventSequence: 1,
           } satisfies AgentEventsResponse);
         }
+        finalEventRequestStarted.resolve();
         return respond(200, {
           events: [makeAssistantEvent(1, "Final indexed event")],
           hasMore: false,
@@ -270,6 +272,7 @@ describe("activity paged events", () => {
       path: "/activities/a0000000-0000-4000-a000-000000000099",
     });
 
+    await finalEventRequestStarted.promise;
     const finalEvent = await screen.findByText("Final indexed event");
     expect(finalEvent).toBeInTheDocument();
     expect(screen.getByText("Running event")).toBeInTheDocument();

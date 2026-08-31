@@ -172,7 +172,7 @@ function SignInLink({
     <Link
       className={className}
       options={signInLinkOptions(signInHref)}
-      pathname={ROUTES.signInV2}
+      pathname={ROUTES.signIn}
     >
       {children}
     </Link>

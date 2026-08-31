@@ -12,6 +12,7 @@ import { usagePricing } from "@okouai/db/schema/usage-pricing";
 import { and, eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
+import { redactPresignedUrls } from "../../lib/presigned-url-redaction";
 import {
   resolveUsagePricingProvider,
   usagePricingResolution$,
@@ -334,7 +335,8 @@ function joggAiEnvelopeError(
   if (responseStatus >= 200 && responseStatus < 300 && code === 0) {
     return null;
   }
-  const message = optionalString(body.msg);
+  const rawMessage = optionalString(body.msg);
+  const message = rawMessage ? redactPresignedUrls(rawMessage) : undefined;
   L.warn("JoggAI API request failed", {
     status: responseStatus,
     providerCode: code,

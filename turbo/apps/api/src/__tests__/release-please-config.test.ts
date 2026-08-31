@@ -6,9 +6,11 @@ import { describe, expect, it } from "vitest";
 
 type PackageJson = {
   dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
 };
 
-type VersionedPackageJson = {
+type VersionedPackageJson = PackageJson & {
   version: string;
 };
 
@@ -38,6 +40,26 @@ function apiRuntimeWorkspaceDependencyPaths(): string[] {
     })
     .map(([name]) => {
       return `turbo/packages/${name.replace("@okouai/", "")}`;
+    });
+}
+
+function releaseManagedWorkspaceDependencyPaths(
+  packageJson: PackageJson,
+  releaseConfig: ReleasePleaseConfig,
+): string[] {
+  return Object.entries({
+    ...packageJson.dependencies,
+    ...packageJson.devDependencies,
+    ...packageJson.optionalDependencies,
+  })
+    .filter(([name, specifier]) => {
+      return name.startsWith("@okouai/") && specifier.startsWith("workspace:");
+    })
+    .map(([name]) => {
+      return `turbo/packages/${name.replace("@okouai/", "")}`;
+    })
+    .filter((packagePath) => {
+      return Object.hasOwn(releaseConfig.packages, packagePath);
     });
 }
 
@@ -92,26 +114,35 @@ describe("release-please API deployment graph", () => {
     expect(manifest["turbo/apps/cli"]).toBe(cliPackage.version);
   });
 
-  it("keeps connector catalog validator identity release-managed", () => {
+  it("uses the release-managed connectors version as catalog validator identity", () => {
     const releaseConfig = readJson<ReleasePleaseConfig>(
       "release-please-config.json",
     );
     const manifest = readJson<Record<string, string>>(
       ".release-please-manifest.json",
     );
-    const validatorPackage = readJson<VersionedPackageJson>(
-      "turbo/packages/connector-catalog-validation/package.json",
+    const connectorsPackage = readJson<VersionedPackageJson>(
+      "turbo/packages/connectors/package.json",
     );
+    const releaseWorkflow = readText(".github/workflows/release-please.yml");
 
-    expect(
-      releaseConfig.packages["turbo/packages/connector-catalog-validation"],
-    ).toStrictEqual({
+    expect(releaseConfig.packages["turbo/packages/connectors"]).toStrictEqual({
       "release-type": "node",
       "skip-changelog": true,
     });
-    expect(manifest["turbo/packages/connector-catalog-validation"]).toBe(
-      validatorPackage.version,
+    expect(manifest["turbo/packages/connectors"]).toBe(
+      connectorsPackage.version,
     );
+    expect(
+      releaseManagedWorkspaceDependencyPaths(connectorsPackage, releaseConfig),
+    ).toStrictEqual([]);
+    expect(releaseConfig.packages).not.toHaveProperty(
+      "turbo/packages/connector-catalog-validation",
+    );
+    expect(manifest).not.toHaveProperty(
+      "turbo/packages/connector-catalog-validation",
+    );
+    expect(releaseWorkflow).not.toContain("connector-catalog-validation");
   });
 
   it("tracks every API runtime workspace dependency", () => {
