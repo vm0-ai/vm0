@@ -112,8 +112,10 @@ describe("release-please API deployment graph", () => {
       connectorsPackage.version,
     );
     expect(
-      Object.values(connectorsPackage.dependencies ?? {}).filter((specifier) =>
-        specifier.startsWith("workspace:"),
+      Object.values(connectorsPackage.dependencies ?? {}).filter(
+        (specifier) => {
+          return specifier.startsWith("workspace:");
+        },
       ),
     ).toStrictEqual([]);
     expect(releaseConfig.packages).not.toHaveProperty(

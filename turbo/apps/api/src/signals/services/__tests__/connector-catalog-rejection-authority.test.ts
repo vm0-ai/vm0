@@ -69,14 +69,14 @@ describe("connector catalog validator authority", () => {
   it("orders the connectors authority after the final standalone validator", () => {
     expect(
       connectorCatalogValidationAuthorityIsCurrentOrNewer({
-        authority: acceptedAuthority("2.0.15"),
+        authority: acceptedAuthority("2.0.17"),
         validator: validator(CONNECTOR_CATALOG_VALIDATOR_VERSION),
       }),
     ).toBeFalsy();
     expect(
       connectorCatalogValidationAuthorityIsCurrentOrNewer({
         authority: acceptedAuthority(CONNECTOR_CATALOG_VALIDATOR_VERSION),
-        validator: validator("2.0.15"),
+        validator: validator("2.0.17"),
       }),
     ).toBeTruthy();
   });
