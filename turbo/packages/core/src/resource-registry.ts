@@ -3384,11 +3384,6 @@ export interface PresentationRunbookPackage {
   readonly source: ResourceSourceRef;
 }
 
-export type PresentationRunbookArchiveVersion = "latest" | "previous";
-
-export const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_ENV =
-  "OKOU_PRESENTATION_RUNBOOK_ARCHIVE_VERSION";
-
 // Archive digests for uploaded private R2 presentation runbook packages. Keep
 // these in sync with the private R2 version ids served by the API download route.
 const PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
@@ -3433,67 +3428,10 @@ const PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
   vantage: "a6290319d2b8065ce105949a5f02ba37ed1738cf9c354cd74e4742826b7ee753",
 };
 
-// The disabled side of LatestPresentationTemplates deliberately keeps the
-// runbook package ids on their pre-cutover immutable R2 versions, whose
-// archives carry a deck-JSON renderer instead of the direct-HTML guidance.
-// This is the switch's off branch, not a compatibility fallback: it is the
-// behavior every run has today. Remove it with the switch under
-// vm0-ai/vm0#28672; historical R2 objects stay immutable and must not be
-// deleted.
-const PREVIOUS_PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
-  "playful-launch":
-    "78292a9a5c454e36a5255f22d147ac56f53c69538a4ac0897160239c2ca941e3",
-  bloom: "7f05f31603d2ad3055b23147cc2b41e047c5969b6640502489b34bd33a837d62",
-  "blueprint-academy":
-    "d6f16dff7c2f7830b71a3d6ed3fd228f1de7a29fa7795e2a31afb9fc841a0f72",
-  "botane-organic":
-    "052c937dc4a9c6e7c528265d86210c15488b19710d22437b25fb1710853c8a6f",
-  "business-data":
-    "c3ca2128d7dbfb2e683bb0386d5335505c1f540160481da1c97aae9ff52a15ac",
-  crayon: "1e698ca42b7a36dfa8a1ed6f45c2b25181bf1058c91207b934612a73701fae70",
-  "creative-agency":
-    "7c3b33353bd22b2a6dc0c50c7ed9d3d97b159199ad30aa61b2abeb46a931b6ec",
-  "data-report":
-    "11747371adb6561e25cd4c3095caf62f52840c4ee625d234478f7631b746a9b3",
-  "editorial-magazine":
-    "d1ae6492925d2e9ed7cc0acc1684c33fea6613b6bef34b21aa228f01fc76c5d7",
-  "landing-consulting":
-    "01323dcebc9413781ad518d86f6b6611c3fb39a8bfd6287b2abced7c9432b6c7",
-  lumina: "38ae1652ababd62fbb2dcbc612a7a9458dae0b88283e09b34d113882f94ca063",
-  meridian: "6d31c74008ea8f854da929edb135ecbc8410dc3790e9c5ff8d43681029c1ecff",
-  "mosaic-geometric":
-    "fd036b42ef323011f0a2c771ceb0bbc6cfb6fb29272633f4e187cd672a89d336",
-  "neo-brutalism":
-    "70ca020b00cd79abdb471e3145f2bd706c1a2978fdd5870e372565033f3a4ead",
-  nocturne: "83d26dbd95a839310db7553b3a2e4dfe2cc3d9678d988fa864d4dd61f6941213",
-  "pixel-glitch":
-    "bf3f5312f2281490f592c8d1c02477e57632299ea93b9e3eef65fe1dc2236e29",
-  "playful-pop":
-    "1c84b4a0df81a8ca169ac30a589410b8d846af5900c38d08fb77688b2556a565",
-  prospectus:
-    "0dc2b86b15970312003f6a60a90b03c47729870a38f85ae79c89547cd1cb485d",
-  schoolhouse:
-    "44e95a44ac37174b6dec3e2a2b21c0fe7d6d9f83c254d86cff1779030d5b11ad",
-  "sticker-scrapbook":
-    "cddd7f14573af6aa922b2873658dc81fbcd45dfb42b84da8be9b8e0866874dab",
-  strata: "39ebdffe9de88faebb6427d734927b57ebe69b9b98db5efbee59b5f7ab120cc6",
-  "taped-consulting":
-    "7b05540c82b410abd1f236ef8a42ff53601489a4a8531413983830d42cec614b",
-  vantage: "096678c9f5bc1760b9f2c25bf10949296ddaa98511a2ecae2bc59528bd7969ed",
-};
-
-function presentationRunbookArchiveSha256(
-  slug: string,
-  archiveVersion: PresentationRunbookArchiveVersion,
-): string {
-  const sha256 =
-    archiveVersion === "latest"
-      ? PRESENTATION_RUNBOOK_ARCHIVE_SHA256[slug]
-      : PREVIOUS_PRESENTATION_RUNBOOK_ARCHIVE_SHA256[slug];
+function presentationRunbookArchiveSha256(slug: string): string {
+  const sha256 = PRESENTATION_RUNBOOK_ARCHIVE_SHA256[slug];
   if (!sha256) {
-    throw new Error(
-      `Missing ${archiveVersion} presentation runbook archive sha256 for ${slug}`,
-    );
+    throw new Error(`Missing presentation runbook archive sha256 for ${slug}`);
   }
   return sha256;
 }
@@ -3693,9 +3631,7 @@ const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
   },
 ];
 
-function presentationRunbookPackages(
-  archiveVersion: PresentationRunbookArchiveVersion,
-): readonly PresentationRunbookPackage[] {
+function presentationRunbookPackages(): readonly PresentationRunbookPackage[] {
   return PRESENTATION_RUNBOOK_PACKAGE_DEFS.map((def) => {
     return {
       templateId: def.templateId,
@@ -3706,38 +3642,24 @@ function presentationRunbookPackages(
       description: def.description,
       source: privateR2ArchiveSource(
         def.slug,
-        presentationRunbookArchiveSha256(def.slug, archiveVersion),
+        presentationRunbookArchiveSha256(def.slug),
       ),
     };
   });
 }
 
 const PRESENTATION_RUNBOOK_PACKAGES: readonly PresentationRunbookPackage[] =
-  presentationRunbookPackages("latest");
+  presentationRunbookPackages();
 
-const PREVIOUS_PRESENTATION_RUNBOOK_PACKAGES: readonly PresentationRunbookPackage[] =
-  presentationRunbookPackages("previous");
-
-function presentationRunbookPackagesFor(
-  archiveVersion: PresentationRunbookArchiveVersion,
-): readonly PresentationRunbookPackage[] {
-  return archiveVersion === "latest"
-    ? PRESENTATION_RUNBOOK_PACKAGES
-    : PREVIOUS_PRESENTATION_RUNBOOK_PACKAGES;
-}
-
-export function listPresentationRunbookPackages(
-  archiveVersion: PresentationRunbookArchiveVersion = "latest",
-): readonly PresentationRunbookPackage[] {
-  return presentationRunbookPackagesFor(archiveVersion);
+export function listPresentationRunbookPackages(): readonly PresentationRunbookPackage[] {
+  return PRESENTATION_RUNBOOK_PACKAGES;
 }
 
 /** Resolve the runbook package for a picker template id, if one exists. */
 export function findPresentationRunbookPackage(
   templateId: string,
-  archiveVersion: PresentationRunbookArchiveVersion = "latest",
 ): PresentationRunbookPackage | undefined {
-  return presentationRunbookPackagesFor(archiveVersion).find((pkg) => {
+  return PRESENTATION_RUNBOOK_PACKAGES.find((pkg) => {
     return pkg.templateId === templateId;
   });
 }
@@ -3749,9 +3671,8 @@ export function findPresentationRunbookPackage(
  */
 export function findPresentationRunbookResource(
   resourceId: string,
-  archiveVersion: PresentationRunbookArchiveVersion = "latest",
 ): RegistryEntry | undefined {
-  const pkg = presentationRunbookPackagesFor(archiveVersion).find((entry) => {
+  const pkg = PRESENTATION_RUNBOOK_PACKAGES.find((entry) => {
     return entry.resourceId === resourceId;
   });
   if (!pkg) {
@@ -3951,7 +3872,7 @@ const COLOR_SYSTEM_ID_PREFIX = "color-system:";
 
 /**
  * Map a registry color-system id (`color-system:warm-sand`) to the snake_case
- * token the runbook deck JSON expects (`warm_sand`). Returns undefined when the
+ * token the presentation runbook expects (`warm_sand`). Returns undefined when the
  * id is not a known color system.
  */
 export function presentationColorSystemToken(
@@ -3992,27 +3913,17 @@ export function resolvePresentationRunbookColorToken(
 export function buildPresentationRunbookInstructionLines(args: {
   readonly runbookPackage: PresentationRunbookPackage;
   readonly colorSystemToken: string;
-  readonly archiveVersion?: PresentationRunbookArchiveVersion;
 }): readonly string[] {
   const { runbookPackage: pkg, colorSystemToken } = args;
   const packageDir = `./generated/resources/${pkg.slug}`;
-  // Previous archives use deck JSON; latest archives require direct HTML.
-  const packageLines =
-    args.archiveVersion === "previous"
-      ? [
-          `- Follow ${packageDir}/AGENT_RUNBOOK.md, running its commands from ./generated/resources. Set "colorSystem": "${colorSystemToken}" in the deck JSON.`,
-        ]
-      : [
-          `- Read ${packageDir}/SKILL.md fully and follow its template, authoring, and verification instructions.`,
-          PRESENTATION_IMAGE_BATCH_INSTRUCTION,
-        ];
   return [
     `Selected presentation template: ${pkg.name} (${pkg.templateId})`,
     `Color system token: ${colorSystemToken}`,
     "",
     "To produce the presentation:",
     `- Pull the package: okou resource pull ${pkg.resourceId} --dir ./generated/resources`,
-    ...packageLines,
+    `- Read ${packageDir}/SKILL.md fully and follow its template, authoring, and verification instructions.`,
+    PRESENTATION_IMAGE_BATCH_INSTRUCTION,
     "- Use the requested slide count; default to 8.",
     PRESENTATION_STATIC_HTML_INSTRUCTION,
     "- Host the finished deck: okou host <output-dir> --site <slug> --artifact-kind presentation-html",

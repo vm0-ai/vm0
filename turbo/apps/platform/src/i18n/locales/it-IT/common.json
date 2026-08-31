@@ -2005,6 +2005,8 @@
         "resetsAt": "Ripristino alle {{time}}",
         "selectModel": "Cambia modello",
         "tryAgain": "Riprova",
+        "unavailableDescription": "Questo modello non è supportato dall'account ChatGPT collegato. Passa a un altro modello per continuare.",
+        "unavailableTitle": "Il modello selezionato non è disponibile",
         "usageDescription": "Puoi continuare quando il limite di utilizzo viene reimpostato oppure cambiare modello ora.",
         "usageTitle": "Limite di {{framework}} raggiunto"
       },
@@ -2042,7 +2044,11 @@
       "avatar": {
         "heading": "Scegli un avatar",
         "help": "Scegli un presentatore o continua senza avatar",
-        "none": "Nessun avatar"
+        "none": "Nessun avatar",
+        "visualBalanceAvatarLed": "Incentrato sull'avatar — il narratore resta sullo schermo per la maggior parte del tempo",
+        "visualBalanceBalanced": "Mix equilibrato — stesso tempo per entrambi",
+        "visualBalanceBRollLed": "Incentrato sui contenuti visivi — priorità a slide e immagini",
+        "visualBalanceHeading": "Come preferisci bilanciare gli elementi visivi?"
       },
       "cardDescription": "Trasforma un file o una registrazione dello schermo in un video completo",
       "description": "Aggiungi una fonte, scegli facoltativamente avatar e voce, quindi crea il video in una chat.",
@@ -6218,7 +6224,7 @@
       "browse": "Sfoglia gli ufficiali",
       "chooseValue": "Scegli un valore",
       "copySucceededUninstallFailed": "La copia è pronta, ma non è stato possibile disinstallare il workflow ufficiale originale.",
-      "description": "Installa workflow gestiti e mantenuti da vm0.",
+      "description": "Installa workflow gestiti e mantenuti dall’Okou Official Team.",
       "empty": "Non sono disponibili workflow ufficiali.",
       "includedAutomations": "Automazioni incluse",
       "install": "Installa",

@@ -493,13 +493,13 @@ export const testConnectorCatalogDefinitions = (
       label: "Mailchimp",
       description: "Manage Mailchimp audiences and campaigns.",
       category: "marketing-content-growth",
+      featureSwitch: FeatureSwitchKey.MailchimpConnector,
     }),
     oauthConnector({
       connectorSlug: "meta-ads",
       label: "Meta Ads",
       description: "Manage Meta Ads campaigns and audiences.",
       category: "marketing-content-growth",
-      featureSwitch: FeatureSwitchKey.MetaAdsConnector,
     }),
     oauthConnector({
       connectorSlug: "tiktok-ads",

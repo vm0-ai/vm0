@@ -5,7 +5,6 @@ import {
   findVideoTemplate,
   findWebsiteTemplatePackage,
   resolvePresentationRunbookColorToken,
-  type PresentationRunbookArchiveVersion,
   type PresentationRunbookPackage,
   type WebsiteTemplatePackage,
 } from "@okouai/core/resource-registry";
@@ -118,7 +117,6 @@ function generationTemplateTypeLabel(
  * leave it empty and lose the guidance rather than point at nothing.
  */
 interface GenerationTemplatePromptOptions {
-  readonly latestPresentationTemplatesEnabled?: boolean;
   readonly presentationTemplatesEnabled?: boolean;
   readonly mountedUserPresentationTemplateIds?: readonly string[];
 }
@@ -148,7 +146,6 @@ export function buildGenerationTemplatePrompt(
     generationTemplate,
     options.presentationTemplatesEnabled === true,
     options.mountedUserPresentationTemplateIds ?? [],
-    options.latestPresentationTemplatesEnabled === true ? "latest" : "previous",
   );
 }
 
@@ -228,7 +225,6 @@ function buildPresentationGenerationTemplatePrompt(
   generationTemplate: PresentationGenerationTemplateInput,
   presentationTemplatesEnabled: boolean,
   mountedUserPresentationTemplateIds: readonly string[],
-  archiveVersion: PresentationRunbookArchiveVersion,
 ): GenerationTemplatePromptResult {
   const { templateId } = generationTemplate.selection;
   if (isUserPresentationTemplateId(templateId)) {
@@ -252,18 +248,11 @@ function buildPresentationGenerationTemplatePrompt(
   // Presentation picker selections are valid only when they resolve to a
   // self-contained runbook package. The legacy multi-resource registry flow has
   // been retired, so ids without a runbook package are rejected.
-  const runbookPackage = findPresentationRunbookPackage(
-    templateId,
-    archiveVersion,
-  );
+  const runbookPackage = findPresentationRunbookPackage(templateId);
   if (!runbookPackage) {
     return { status: "invalid", message: "Unknown generation template" };
   }
-  return buildPresentationRunbookPrompt(
-    generationTemplate,
-    runbookPackage,
-    archiveVersion,
-  );
+  return buildPresentationRunbookPrompt(generationTemplate, runbookPackage);
 }
 
 /**
@@ -306,7 +295,6 @@ function buildUserPresentationTemplatePrompt(
 function buildPresentationRunbookPrompt(
   generationTemplate: PresentationGenerationTemplateInput,
   runbookPackage: PresentationRunbookPackage,
-  archiveVersion: PresentationRunbookArchiveVersion,
 ): GenerationTemplatePromptResult {
   const color = resolvePresentationRunbookColorToken(
     runbookPackage,
@@ -326,7 +314,6 @@ function buildPresentationRunbookPrompt(
       ...buildPresentationRunbookInstructionLines({
         runbookPackage,
         colorSystemToken: color.token,
-        archiveVersion,
       }),
     ].join("\n"),
   };

@@ -47,10 +47,6 @@ import {
   mockUploadPending,
   mockUploadSuccess,
 } from "../../mocks/upload-helpers.ts";
-import {
-  resetMockClerkAuthComponentMounted,
-  setMockClerkAuthComponentMounted,
-} from "../../test/mocks/clerk-react.ts";
 import { createDeferredPromise } from "../utils.ts";
 
 interface WindowOpenCall {
@@ -484,17 +480,6 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       hasSubscription,
       hasSubscriptionOnChannel,
       getAuthTokenHistory,
-    },
-    clerk: {
-      deferAuthComponentMount: () => {
-        setMockClerkAuthComponentMounted(false);
-        restoreOnAbort(getSignal(), resetMockClerkAuthComponentMounted);
-        return {
-          mount: () => {
-            setMockClerkAuthComponentMounted(true);
-          },
-        };
-      },
     },
     deferred: <T>() => {
       return createDeferredPromise<T>(getSignal());

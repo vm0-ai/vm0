@@ -29,6 +29,7 @@ import {
   checkOpenRouterUsagePricing$,
   recordOpenRouterUsage$,
 } from "./openrouter-usage.service";
+import { resolveProviderReferenceUrls$ } from "./provider-reference-url.service";
 
 const IMAGE_RECOGNITION_MODEL = "xiaomi/mimo-v2.5";
 const IMAGE_RECOGNITION_OPERATION = "image-recognition";
@@ -198,9 +199,23 @@ export const imageRecognition$ = command(
       return notConfigured("Image recognition pricing is not configured");
     }
 
+    const [providerImageUrl] = await set(
+      resolveProviderReferenceUrls$,
+      {
+        orgId: args.auth.orgId,
+        userId: args.auth.userId,
+        urls: [artifact.url],
+      },
+      requestSignal,
+    );
+    signal.throwIfAborted();
+    requestSignal.throwIfAborted();
+    if (!providerImageUrl) {
+      throw new Error("Expected a resolved image recognition URL");
+    }
     const content: OpenRouterContentPart[] = [
       { type: "text", text: args.body.prompt },
-      { type: "image_url", image_url: { url: artifact.url } },
+      { type: "image_url", image_url: { url: providerImageUrl } },
     ];
     const operationId = randomUUID();
     const generated = await settle(

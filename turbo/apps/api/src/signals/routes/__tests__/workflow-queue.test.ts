@@ -20,6 +20,7 @@ import {
   drainChatThreadQueueFixture,
   pauseGoalQueueTargetFixture,
   readGoalQueueStateFixture,
+  setGoalQueueEventCreatedAtFixture,
 } from "../../../test-fixtures/goal-queue";
 import {
   admitWorkflowAutomationEventFixture,
@@ -684,6 +685,63 @@ describe("workflow queue", () => {
       throw new Error("Expected the goal continuation to create a run");
     }
     await runsApi.requestCancelRun(scenario.actor, goalRunId, [200]);
+  });
+
+  it("ignores a fresh automation outside the cutoff while selecting a stale goal", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: scenario.orgId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      admissionLock.release();
+      await admissionLock.done;
+    });
+
+    const goal = await createActiveGoalQueueEventFixture({
+      threadId: automation.threadId,
+      orgId: scenario.orgId,
+      userId: scenario.userId,
+      agentId: scenario.agentId,
+      objective: "continue during the stale sweep",
+      objectiveBrief: "Continue during the stale sweep",
+    });
+    await setGoalQueueEventCreatedAtFixture({
+      eventId: goal.eventId,
+      createdAt: new Date("2019-12-31T23:54:00.000Z"),
+    });
+    const freshAutomationEventId = await admitWorkflowAutomationEventFixture({
+      automationId: automation.automationId,
+      chatThreadId: automation.threadId,
+      triggerBrief: "Fresh automation outside the stale sweep",
+    });
+    await setWorkflowQueueEventCreatedAtFixture({
+      eventId: freshAutomationEventId,
+      createdAt: new Date("2020-01-01T00:01:00.000Z"),
+    });
+
+    const goalDrain = drainChatThreadQueueFixture({
+      threadId: automation.threadId,
+      signal: context.signal,
+      queueItemCreatedBefore: new Date("2020-01-01T00:00:00.000Z"),
+    });
+
+    // Reaching the organization lock proves the stale goal passed selection;
+    // the unchanged final queue claim still rejects it while fresh work exists.
+    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
+    admissionLock.release();
+    await goalDrain;
+    await admissionLock.done;
+
+    await expect(
+      readGoalQueueStateFixture(automation.threadId),
+    ).resolves.toMatchObject({ runIds: [], eventIds: [goal.eventId] });
+    expect(
+      (await pendingAutomationEvents(automation.threadId)).map((event) => {
+        return event.id;
+      }),
+    ).toContain(freshAutomationEventId);
   });
 
   it("keeps an automation event ahead of a goal continuation during final queue claim", async () => {

@@ -141,6 +141,7 @@ enum ClaimApiError {
 #[cfg_attr(test, derive(Debug))]
 struct SuccessfulClaimResponse {
     context: ExecutionContext,
+    request_to_response_headers_elapsed: Duration,
     response_body_read_elapsed: Duration,
     response_decode_elapsed: Duration,
 }
@@ -658,11 +659,13 @@ impl JobProvider for ApiProvider {
         match claim_result {
             Ok(Some(SuccessfulClaimResponse {
                 context: ctx,
+                request_to_response_headers_elapsed,
                 response_body_read_elapsed,
                 response_decode_elapsed,
             })) => {
                 let api_claim_timing = ApiClaimTiming::new(
                     claim_request_elapsed,
+                    request_to_response_headers_elapsed,
                     response_body_read_elapsed,
                     response_decode_elapsed,
                 );
@@ -1070,20 +1073,20 @@ impl ApiClient {
         let run_id = candidate.run_id();
         let body = claim_request_body(candidate, runner_identity, runner_hostname);
         let run_id = run_id.to_string();
-        let resp = send_api(
-            self.http
-                .request_resolved_route(
-                    routes::runners::jobs::by_id::claim::route(
-                        routes::runners::jobs::by_id::claim::Params {
-                            id: run_id.as_str(),
-                        },
-                    ),
-                    &self.token,
-                )
-                .json(&body),
-            "claim",
-        )
-        .await?;
+        let request = self
+            .http
+            .request_resolved_route(
+                routes::runners::jobs::by_id::claim::route(
+                    routes::runners::jobs::by_id::claim::Params {
+                        id: run_id.as_str(),
+                    },
+                ),
+                &self.token,
+            )
+            .json(&body);
+        let request_to_response_headers_started_at = Instant::now();
+        let resp = send_api(request, "claim").await?;
+        let request_to_response_headers_elapsed = request_to_response_headers_started_at.elapsed();
 
         if resp.status() == StatusCode::NOT_FOUND {
             return Ok(None);
@@ -1102,6 +1105,7 @@ impl ApiClient {
 
         Ok(Some(SuccessfulClaimResponse {
             context,
+            request_to_response_headers_elapsed,
             response_body_read_elapsed,
             response_decode_elapsed,
         }))
@@ -4075,7 +4079,8 @@ mod tests {
             .expect("successful API claim should retain timing");
         assert!(
             claim_timing.request_elapsed()
-                >= claim_timing.response_body_read_elapsed()
+                >= claim_timing.request_to_response_headers_elapsed()
+                    + claim_timing.response_body_read_elapsed()
                     + claim_timing.response_decode_elapsed()
         );
         let context = claimed.context();

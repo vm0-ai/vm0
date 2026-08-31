@@ -3,6 +3,7 @@
 import gzip
 import zlib
 
+import brotli
 import pytest
 
 import flow_metadata_keys as metadata_keys
@@ -116,17 +117,22 @@ class TestNdjsonExtractor:
         assert state["data_count"] == 1
         assert "connector_response_finish" in flow.metadata
 
-    def test_decompresses_gzip_stream_before_parsing(self, real_flow):
+    @pytest.mark.parametrize("content_encoding", ["gzip", "br"])
+    def test_decompresses_stream_before_parsing(self, real_flow, content_encoding):
         ndjson_body = (
             b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n'
             b'{"data":{"id":"2"},"includes":{"users":[{"id":"u2"}]}}\n'
             b'{"data":{"id":"3"},"includes":{"users":[{"id":"u3"}]}}\n'
         )
-        compressed = gzip.compress(ndjson_body)
+        compressed = (
+            gzip.compress(ndjson_body)
+            if content_encoding == "gzip"
+            else brotli.compress(ndjson_body)
+        )
         flow = make_x_response_flow(
             real_flow,
             path="/2/tweets/search/stream",
-            content_encoding="gzip",
+            content_encoding=content_encoding,
         )
 
         mitm_addon.responseheaders(flow)

@@ -56,6 +56,7 @@ import {
   isRunBuiltInAdmissionError,
   startRunBuiltInAdmission$,
 } from "../services/run-built-in-admission.service";
+import { resolveProviderReferenceUrls$ } from "../services/provider-reference-url.service";
 import type { AuthContext } from "../../types/auth";
 
 const videoBody$ = bodyResultOf(videoIoGenerateContract.post);
@@ -165,6 +166,8 @@ interface GenerationErrorResponse {
 
 interface VideoJobArgs {
   readonly generationId: string;
+  readonly orgId: string;
+  readonly userId: string;
   readonly options: VideoOptions;
 }
 
@@ -237,6 +240,45 @@ function acceptedVideoResponse(
   };
 }
 
+const resolveVideoProviderOptions$ = command(
+  async (
+    { set },
+    args: Pick<VideoJobArgs, "orgId" | "userId" | "options">,
+    signal: AbortSignal,
+  ): Promise<VideoOptions> => {
+    const { options } = args;
+    const urls = [
+      ...(options.firstFrameImageUrl ? [options.firstFrameImageUrl] : []),
+      ...(options.lastFrameImageUrl ? [options.lastFrameImageUrl] : []),
+      ...options.referenceImageUrls,
+      ...options.inputVideoUrls,
+      ...options.referenceAudioUrls,
+    ];
+    const resolved = await set(
+      resolveProviderReferenceUrls$,
+      { orgId: args.orgId, userId: args.userId, urls },
+      signal,
+    );
+    let index = 0;
+    const next = (): string => {
+      const value = resolved[index];
+      index += 1;
+      if (!value) {
+        throw new Error("Expected a resolved provider reference URL");
+      }
+      return value;
+    };
+    return {
+      ...options,
+      firstFrameImageUrl: options.firstFrameImageUrl ? next() : undefined,
+      lastFrameImageUrl: options.lastFrameImageUrl ? next() : undefined,
+      referenceImageUrls: options.referenceImageUrls.map(next),
+      inputVideoUrls: options.inputVideoUrls.map(next),
+      referenceAudioUrls: options.referenceAudioUrls.map(next),
+    };
+  },
+);
+
 const submitMiniMaxVideoProviderJob$ = command(
   async (
     { set },
@@ -297,6 +339,11 @@ const submitVideoProviderWebhookJob$ = command(
   ): Promise<GenerationErrorResponse | null> => {
     await set(markBuiltInGenerationRunning$, args.generationId, signal);
     const provider = videoProviderForModel(args.options.model);
+    const providerOptions = await set(
+      resolveVideoProviderOptions$,
+      args,
+      signal,
+    );
     if (provider === "fal") {
       const apiKey = env("FAL_KEY");
       if (!apiKey) {
@@ -312,7 +359,7 @@ const submitVideoProviderWebhookJob$ = command(
         return response;
       }
       const handle = await submitFalVideoGeneration(
-        args.options,
+        providerOptions,
         apiKey,
         signal,
         falBuiltInGenerationWebhookUrl({
@@ -346,7 +393,11 @@ const submitVideoProviderWebhookJob$ = command(
     }
 
     if (provider === "minimax") {
-      return await set(submitMiniMaxVideoProviderJob$, args, signal);
+      return await set(
+        submitMiniMaxVideoProviderJob$,
+        { ...args, options: providerOptions },
+        signal,
+      );
     }
 
     const apiKey = env("BYTEPLUS_API_KEY");
@@ -363,7 +414,7 @@ const submitVideoProviderWebhookJob$ = command(
       return response;
     }
     const handle = await submitBytePlusVideoGeneration(
-      args.options,
+      providerOptions,
       apiKey,
       signal,
       bytePlusBuiltInGenerationWebhookUrl({
@@ -503,6 +554,8 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     submitVideoProviderWebhookJob$,
     {
       generationId,
+      orgId: auth.orgId,
+      userId: auth.userId,
       options,
     },
     signal,

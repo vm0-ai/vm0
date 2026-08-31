@@ -94,10 +94,6 @@
       ],
       "project": ["src/**/*.ts"]
     },
-    "packages/connector-catalog-validation": {
-      "entry": [],
-      "project": ["src/**/*.ts"]
-    },
     "packages/api-contracts": {
       "entry": [
         "src/runtime-api-schema/cli.ts",

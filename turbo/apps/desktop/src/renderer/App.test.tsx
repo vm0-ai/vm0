@@ -23,9 +23,7 @@ import type {
   DesktopComputerUseApi,
   DesktopDeveloperToolsApi,
   DesktopDeveloperToolsState,
-  DesktopZeroMigrationApi,
 } from "../desktop-bridge";
-import type { DesktopZeroMigrationState } from "../desktop-zero-migration-types";
 import { App } from "./App";
 
 const signedInAuthState: DesktopAuthState = {
@@ -49,12 +47,6 @@ const signedOutAuthState: DesktopAuthState = {
 const defaultDeveloperToolsState: DesktopDeveloperToolsState = {
   available: false,
   enabled: false,
-};
-
-const hiddenZeroMigrationState: DesktopZeroMigrationState = {
-  mode: "hidden",
-  nextReminderAt: null,
-  errorMessage: null,
 };
 
 function createComputerUsePluginsState(): DesktopComputerUsePluginsState {
@@ -381,105 +373,29 @@ function createDeveloperToolsBridge(initialState: DesktopDeveloperToolsState): {
   };
 }
 
-function createZeroMigrationBridge(initialState: DesktopZeroMigrationState): {
-  readonly api: DesktopZeroMigrationApi;
-  readonly beginMigration: ReturnType<
-    typeof vi.fn<DesktopZeroMigrationApi["beginMigration"]>
-  >;
-  readonly remindLater: ReturnType<
-    typeof vi.fn<DesktopZeroMigrationApi["remindLater"]>
-  >;
-  readonly resumeZero: ReturnType<
-    typeof vi.fn<DesktopZeroMigrationApi["resumeZero"]>
-  >;
-  readonly quitZero: ReturnType<
-    typeof vi.fn<DesktopZeroMigrationApi["quitZero"]>
-  >;
-} {
-  let currentState = initialState;
-  const subscribers = new Set<() => void>();
-  const getState = vi.fn<DesktopZeroMigrationApi["getState"]>(async () => {
-    return currentState;
-  });
-  const remindLater = vi.fn<DesktopZeroMigrationApi["remindLater"]>(
-    async () => {
-      currentState = hiddenZeroMigrationState;
-      return currentState;
-    },
-  );
-  const beginMigration = vi.fn<DesktopZeroMigrationApi["beginMigration"]>(
-    async () => {
-      currentState = {
-        mode: "paused",
-        nextReminderAt: null,
-        errorMessage: null,
-      };
-      return currentState;
-    },
-  );
-  const resumeZero = vi.fn<DesktopZeroMigrationApi["resumeZero"]>(async () => {
-    currentState = {
-      mode: "soft_reminder",
-      nextReminderAt: null,
-      errorMessage: null,
-    };
-    return currentState;
-  });
-  const quitZero = vi.fn<DesktopZeroMigrationApi["quitZero"]>(async () => {
-    return currentState;
-  });
-  const subscribe = vi.fn<DesktopZeroMigrationApi["subscribe"]>((callback) => {
-    subscribers.add(callback);
-    return () => {
-      subscribers.delete(callback);
-    };
-  });
-
-  return {
-    api: {
-      getState,
-      remindLater,
-      beginMigration,
-      resumeZero,
-      quitZero,
-      subscribe,
-    },
-    beginMigration,
-    remindLater,
-    resumeZero,
-    quitZero,
-  };
-}
-
 function installDesktopBridges({
   authState = signedInAuthState,
   computerUseState = createComputerUseState(),
   developerToolsState = defaultDeveloperToolsState,
-  zeroMigrationState = hiddenZeroMigrationState,
 }: {
   readonly authState?: DesktopAuthState;
   readonly computerUseState?: DesktopComputerUseState;
   readonly developerToolsState?: DesktopDeveloperToolsState;
-  readonly zeroMigrationState?: DesktopZeroMigrationState;
 } = {}): {
   readonly auth: ReturnType<typeof createAuthBridge>;
   readonly computerUse: ReturnType<typeof createComputerUseBridge>;
   readonly developerTools: ReturnType<typeof createDeveloperToolsBridge>;
-  readonly zeroMigration: ReturnType<typeof createZeroMigrationBridge>;
 } {
   const auth = createAuthBridge(authState);
   const computerUse = createComputerUseBridge(computerUseState);
   const developerTools = createDeveloperToolsBridge(developerToolsState);
-  const zeroMigration = createZeroMigrationBridge(zeroMigrationState);
   window.vm0DesktopAuth = auth.api;
   window.vm0DesktopComputerUse = computerUse.api;
   window.vm0DesktopDeveloperTools = developerTools.api;
-  window.vm0DesktopZeroMigration = zeroMigration.api;
   return {
     auth,
     computerUse,
     developerTools,
-    zeroMigration,
   };
 }
 
@@ -504,87 +420,11 @@ afterEach(() => {
   delete window.vm0DesktopAuth;
   delete window.vm0DesktopComputerUse;
   delete window.vm0DesktopDeveloperTools;
-  delete window.vm0DesktopZeroMigration;
   delete window.vm0DesktopIdentity;
   vi.clearAllMocks();
 });
 
 describe("Desktop renderer bridge integration", () => {
-  it("offers the soft Okou migration reminder and supports deferral", async () => {
-    const { zeroMigration } = installDesktopBridges({
-      zeroMigrationState: {
-        mode: "soft_reminder",
-        nextReminderAt: null,
-        errorMessage: null,
-      },
-    });
-
-    renderDesktopApp();
-
-    expect(
-      await screen.findByText("Zero Computer Use is moving to Okou"),
-    ).toBeTruthy();
-    expect(await screen.findByText("Download Okou")).toBeTruthy();
-    fireEvent.click(buttonForText("Remind Me Later"));
-
-    await waitFor(() => {
-      expect(zeroMigration.remindLater).toHaveBeenCalledOnce();
-      expect(
-        screen.queryByText("Zero Computer Use is moving to Okou"),
-      ).toBeNull();
-    });
-  });
-
-  it("supports download retry and explicit Zero recovery", async () => {
-    const { zeroMigration } = installDesktopBridges({
-      zeroMigrationState: {
-        mode: "download_failed",
-        nextReminderAt: null,
-        errorMessage: "Unable to open the Okou download.",
-      },
-    });
-
-    renderDesktopApp();
-
-    expect(
-      await screen.findByText("Zero is paused while you set up Okou"),
-    ).toBeTruthy();
-    expect(
-      await screen.findByText("Unable to open the Okou download."),
-    ).toBeTruthy();
-    fireEvent.click(buttonForText("Try Download Again"));
-
-    await waitFor(() => {
-      expect(zeroMigration.beginMigration).toHaveBeenCalledOnce();
-    });
-    fireEvent.click(buttonForText("Resume Zero"));
-
-    await waitFor(() => {
-      expect(zeroMigration.resumeZero).toHaveBeenCalledOnce();
-    });
-  });
-
-  it("shows only download and quit actions after a remote hard stop", async () => {
-    const { zeroMigration } = installDesktopBridges({
-      zeroMigrationState: {
-        mode: "hard_stop",
-        nextReminderAt: null,
-        errorMessage: null,
-      },
-    });
-
-    renderDesktopApp();
-
-    expect(await screen.findByText("Zero has moved to Okou")).toBeTruthy();
-    expect(screen.queryByText("Remind Me Later")).toBeNull();
-    expect(screen.queryByText("Resume Zero")).toBeNull();
-    fireEvent.click(buttonForText("Quit Zero"));
-
-    await waitFor(() => {
-      expect(zeroMigration.quitZero).toHaveBeenCalledOnce();
-    });
-  });
-
   it("shows Okou identity and fresh permission guidance", async () => {
     window.vm0DesktopIdentity = {
       product: "okou",

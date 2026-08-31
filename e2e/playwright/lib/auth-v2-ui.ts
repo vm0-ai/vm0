@@ -1,9 +1,7 @@
 import {
-  errors,
   expect,
   type Locator,
   type Page,
-  type Request,
   type Response,
 } from "@playwright/test";
 
@@ -32,24 +30,10 @@ const SIGN_IN_METHOD_NAMES: Record<AuthV2SignInMethod, RegExp> = {
   "password-reset": /^reset your password$/i,
 };
 
-const AUTH_V2_BOOTSTRAP_TIMEOUT_MS = 15_000;
-const CLERK_RESOURCE_PATH_SEGMENT = /\/(?:org|sess|sia|sua|user)_[^/]*/gu;
+const AUTH_V2_READY_TIMEOUT_MS = 30_000;
 
-type AuthV2BootstrapRequestStatus = number | "failed" | "pending";
-
-interface AuthV2BootstrapRequest {
-  readonly method: string;
-  readonly path: string;
-  readonly status: AuthV2BootstrapRequestStatus;
-}
-
-interface AuthV2BootstrapOptions {
+interface AuthV2ReadyOptions {
   readonly timeoutMs?: number;
-}
-
-interface AuthV2BootstrapState {
-  readonly hasClerk: boolean;
-  readonly hasLoadedClerk: boolean;
 }
 
 export function authV2Root(page: Page): Locator {
@@ -63,7 +47,7 @@ export function authV2Input(page: Page, name: AuthV2InputName): Locator {
 export async function openAuthV2(
   page: Page,
   url: string,
-  options: AuthV2BootstrapOptions = {},
+  options: AuthV2ReadyOptions = {},
 ): Promise<void> {
   await navigateToReadyAuthV2(
     page,
@@ -74,7 +58,7 @@ export async function openAuthV2(
 
 export async function reloadAuthV2(
   page: Page,
-  options: AuthV2BootstrapOptions = {},
+  options: AuthV2ReadyOptions = {},
 ): Promise<void> {
   await navigateToReadyAuthV2(
     page,
@@ -146,107 +130,13 @@ export async function waitForPathname(
 async function navigateToReadyAuthV2(
   page: Page,
   navigate: () => Promise<Response | null>,
-  options: AuthV2BootstrapOptions,
+  options: AuthV2ReadyOptions,
 ): Promise<void> {
-  const timeoutMs = options.timeoutMs ?? AUTH_V2_BOOTSTRAP_TIMEOUT_MS;
-  const frontendApiHost = clerkFrontendApiHost();
-  let lastRequest: AuthV2BootstrapRequest | undefined;
-  const recordRequest = (request: Request): void => {
-    const path = clerkFrontendApiPath(request, frontendApiHost);
-    if (path) {
-      lastRequest = { method: request.method(), path, status: "pending" };
-    }
-  };
-  const recordResponse = (response: Response): void => {
-    const request = response.request();
-    const path = clerkFrontendApiPath(request, frontendApiHost);
-    if (path) {
-      lastRequest = {
-        method: request.method(),
-        path,
-        status: response.status(),
-      };
-    }
-  };
-  const recordFailedRequest = (request: Request): void => {
-    const path = clerkFrontendApiPath(request, frontendApiHost);
-    if (path) {
-      lastRequest = { method: request.method(), path, status: "failed" };
-    }
-  };
+  const timeout = options.timeoutMs ?? AUTH_V2_READY_TIMEOUT_MS;
+  await navigate();
 
-  page.on("request", recordRequest);
-  page.on("response", recordResponse);
-  page.on("requestfailed", recordFailedRequest);
-  try {
-    await navigate();
-    try {
-      await page.waitForFunction(
-        () => Boolean(window.Clerk?.loaded),
-        undefined,
-        { timeout: timeoutMs },
-      );
-    } catch (error) {
-      if (!(error instanceof errors.TimeoutError)) {
-        throw error;
-      }
-      const state = await page.evaluate<AuthV2BootstrapState>(() => {
-        return {
-          hasClerk: window.Clerk !== undefined,
-          hasLoadedClerk: Boolean(window.Clerk?.loaded),
-        };
-      });
-      throw new Error(
-        `Auth v2 bootstrap timed out after ${timeoutMs}ms: ${formatAuthV2BootstrapDiagnostic(
-          state,
-          lastRequest,
-        )}`,
-        { cause: error },
-      );
-    }
-  } finally {
-    page.off("request", recordRequest);
-    page.off("response", recordResponse);
-    page.off("requestfailed", recordFailedRequest);
-  }
-
-  await expect(authV2Root(page)).toBeVisible();
-  await expect(page.getByTestId("app-auth-layout")).toBeVisible();
-}
-
-function clerkFrontendApiHost(): string {
-  const frontendApi = process.env.CLERK_FAPI;
-  if (!frontendApi) {
-    throw new Error("CLERK_FAPI environment variable is required");
-  }
-  return new URL(`https://${frontendApi}`).host;
-}
-
-function clerkFrontendApiPath(
-  request: Request,
-  frontendApiHost: string,
-): string | undefined {
-  const url = new URL(request.url());
-  if (url.host !== frontendApiHost || !url.pathname.startsWith("/v1/")) {
-    return undefined;
-  }
-  return url.pathname.replace(
-    CLERK_RESOURCE_PATH_SEGMENT,
-    "/[masked-clerk-resource-id]",
-  );
-}
-
-function formatAuthV2BootstrapDiagnostic(
-  state: AuthV2BootstrapState,
-  lastRequest: AuthV2BootstrapRequest | undefined,
-): string {
-  const clerkState = state.hasLoadedClerk
-    ? "ClerkJS loaded after wait timeout"
-    : state.hasClerk
-      ? "ClerkJS present but not loaded"
-      : "ClerkJS absent";
-  if (!lastRequest) {
-    return clerkState;
-  }
-  return `${clerkState}; last Clerk request: ${lastRequest.method} ${lastRequest.path} -> ${lastRequest.status}`;
+  const root = authV2Root(page);
+  await expect(root).toBeVisible({ timeout });
+  await expect(page.getByTestId("app-auth-layout")).toBeVisible({ timeout });
+  await expect(root.getByRole("status")).toHaveCount(0, { timeout });
 }

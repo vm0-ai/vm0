@@ -424,12 +424,11 @@ wait_for_sign_in_email_code_ready() {
 }
 
 # ---------------------------------------------------------------------------
-# accept_legal_consent — Check legal consent checkbox if present
-# Clerk renders this when legal_consent_enabled is on. Safe to call always.
+# accept_legal_consent — Accept legal consent when the auth form requires it
 # ---------------------------------------------------------------------------
 accept_legal_consent() {
-  if [[ "$(agent_browser_on_page get count 'input[name="legalAccepted"]')" -gt 0 ]]; then
-    agent_browser_on_page check 'input[name="legalAccepted"]'
+  if [[ "$(agent_browser_on_page get count '[role="checkbox"]')" -gt 0 ]]; then
+    agent_browser_on_page find role checkbox click
   fi
 }
 
@@ -437,6 +436,10 @@ accept_legal_consent() {
 # click_continue — Click form "Continue" button (not "Continue with Google")
 # ---------------------------------------------------------------------------
 click_continue() {
+  wait_for_browser_target --fn \
+    "Array.from(document.querySelectorAll('button')).some(
+      (button) => button.textContent?.trim() === 'Continue' && !button.disabled
+    )"
   agent_browser_on_page find role button click --name "Continue" --exact
 }
 

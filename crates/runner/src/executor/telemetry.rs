@@ -309,6 +309,12 @@ impl RunnerPreSpawnTiming {
                 None,
             );
             telemetry.record(
+                "runner_claim_request_to_response_headers",
+                timing.request_to_response_headers_elapsed(),
+                true,
+                None,
+            );
+            telemetry.record(
                 "runner_claim_response_body_read",
                 timing.response_body_read_elapsed(),
                 true,

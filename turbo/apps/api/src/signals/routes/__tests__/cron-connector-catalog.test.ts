@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 
+import { EVENT } from "@axiomhq/logging";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { cronConnectorCatalogContract } from "@okouai/api-contracts/contracts/cron";
 import { connectorsSlugCallbackContract } from "@okouai/api-contracts/contracts/connectors-slug-callback";
@@ -50,6 +51,8 @@ import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
   apiTestConnectorCatalogValidationAuthority,
+  clearApiTestConnectorCatalogExternalReaderIdentityReplacements,
+  corruptApiTestConnectorCatalogActiveSnapshotPayload,
   deleteApiTestConnectorCatalogCompatibility,
   deleteApiTestConnectorCatalogCompatibilityEvaluation,
   deleteApiTestConnectorCatalogRuntimeProjectionSet,
@@ -63,6 +66,7 @@ import {
   readApiTestConnectorCatalogRuntimeProjectionAuthority,
   readApiTestConnectorCatalogValidationAuthority,
   replaceApiTestConnectorCatalogStoredBytes,
+  setApiTestConnectorCatalogExternalReaderIdentityReplacements,
   setApiTestConnectorCatalogRuntimeProjectionAuthority,
   setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
@@ -1469,6 +1473,57 @@ function runnerFirewallClient() {
   );
 }
 
+async function expectCatalogUnavailableRequestError(
+  reason: string,
+): Promise<void> {
+  const code = `CONNECTOR_CATALOG_UNAVAILABLE:${reason}`;
+  const response = await accept(
+    runnerFirewallClient().resolve({
+      headers: { authorization: OFFICIAL_RUNNER_AUTHORIZATION },
+      body: {},
+    }),
+    [500],
+  );
+
+  expect(response.body).toStrictEqual({ error: "Internal server error" });
+  const capturedError =
+    context.mocks.sentry.captureException.mock.calls.at(-1)?.[0];
+  expect(capturedError).toMatchObject({
+    name: "ExternalConnectorCatalogUnavailableError",
+    message: "Accepted external connector catalog is unavailable",
+    reason,
+    code,
+  });
+
+  const [message, fields] =
+    context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
+  expect(message).toBe(
+    "Unhandled request error: Accepted external connector catalog is unavailable",
+  );
+  const logFields = fields as Record<PropertyKey, unknown>;
+  expect(logFields).toMatchObject({
+    type: "unhandled_request_error",
+    errorSummary: "Accepted external connector catalog is unavailable",
+    method: "POST",
+    route: "/api/runners/builtin-firewalls/resolve",
+    errorCode: code,
+    error: expect.objectContaining({
+      name: "ExternalConnectorCatalogUnavailableError",
+      message: "Accepted external connector catalog is unavailable",
+      reason,
+      code,
+    }),
+  });
+  expect(logFields[EVENT]).toMatchObject({
+    source: "api",
+    type: "unhandled_request_error",
+    errorSummary: "Accepted external connector catalog is unavailable",
+    method: "POST",
+    route: "/api/runners/builtin-firewalls/resolve",
+    errorCode: code,
+  });
+}
+
 interface VolumeStorageState {
   readonly s3_prefix: string;
   readonly size: number;
@@ -1646,6 +1701,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  clearApiTestConnectorCatalogExternalReaderIdentityReplacements();
   setApiVersion(DEFAULT_API_VERSION);
   clearMockNow();
 });
@@ -1699,6 +1755,53 @@ describe("connector catalog cron authentication and initial state", () => {
       unresolvedBridgeCredentials: 0,
     });
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
+  });
+});
+
+describe("connector catalog unavailable request telemetry", () => {
+  it("classifies a missing current identity", async () => {
+    expect.hasAssertions();
+    configureSource();
+
+    await expectCatalogUnavailableRequestError("missing_current_identity");
+  });
+
+  it("classifies an invalid persisted compatibility evaluation", async () => {
+    expect.hasAssertions();
+    configureSource();
+    await installApiTestConnectorCatalog();
+    await invalidateApiTestConnectorCatalogCompatibility();
+
+    await expectCatalogUnavailableRequestError(
+      "invalid_compatibility_evaluation",
+    );
+  });
+
+  it("classifies a rejected persisted artifact", async () => {
+    expect.hasAssertions();
+    configureSource();
+    await installApiTestConnectorCatalog();
+    await corruptApiTestConnectorCatalogActiveSnapshotPayload();
+
+    await expectCatalogUnavailableRequestError(
+      "invalid_artifact:invalid-compression",
+    );
+  });
+
+  it("classifies a missing active snapshot after the identity retry", async () => {
+    expect.hasAssertions();
+    configureSource();
+    await installApiTestConnectorCatalog({
+      catalogVersion: "2026-08-31.identity-race-initial",
+    });
+    setApiTestConnectorCatalogExternalReaderIdentityReplacements([
+      "2026-08-31.identity-race-first-replacement",
+      "2026-08-31.identity-race-second-replacement",
+    ]);
+
+    await expectCatalogUnavailableRequestError(
+      "missing_active_snapshot_after_retry",
+    );
   });
 });
 

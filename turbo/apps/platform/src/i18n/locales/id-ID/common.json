@@ -1971,6 +1971,8 @@
         "resetsAt": "Direset pada {{time}}",
         "selectModel": "Ganti model",
         "tryAgain": "Coba lagi",
+        "unavailableDescription": "Model ini tidak didukung oleh akun ChatGPT yang terhubung. Ganti ke model lain untuk melanjutkan.",
+        "unavailableTitle": "Model yang dipilih tidak tersedia",
         "usageDescription": "Anda dapat melanjutkan saat batas penggunaan direset, atau ganti model sekarang.",
         "usageTitle": "Batas {{framework}} tercapai"
       },
@@ -2006,7 +2008,11 @@
       "avatar": {
         "heading": "Pilih avatar",
         "help": "Pilih presenter atau lanjutkan tanpa avatar",
-        "none": "Tanpa avatar"
+        "none": "Tanpa avatar",
+        "visualBalanceAvatarLed": "Fokus pada avatar — narator tampil di layar hampir sepanjang waktu",
+        "visualBalanceBalanced": "Campuran seimbang — waktu yang sama untuk keduanya",
+        "visualBalanceBRollLed": "Fokus pada visual — utamakan slide dan materi visual",
+        "visualBalanceHeading": "Bagaimana keseimbangan visual yang Anda inginkan?"
       },
       "cardDescription": "Ubah file atau rekaman layar menjadi video siap pakai",
       "description": "Tambahkan sumber, pilih avatar dan suara bila perlu, lalu buat video di utas chat.",
@@ -6144,7 +6150,7 @@
       "browse": "Jelajahi yang Resmi",
       "chooseValue": "Pilih nilai",
       "copySucceededUninstallFailed": "Salinan sudah siap, tetapi Workflow Resmi asli tidak dapat dihapus instalasinya.",
-      "description": "Instal workflow terkelola yang dipelihara oleh vm0.",
+      "description": "Instal workflow terkelola yang dipelihara oleh Okou Official Team.",
       "empty": "Tidak ada Workflow Resmi yang tersedia.",
       "includedAutomations": "Automasi yang disertakan",
       "install": "Instal",

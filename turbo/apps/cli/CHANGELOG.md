@@ -1,5 +1,50 @@
 # Changelog
 
+## [9.298.4](https://github.com/vm0-ai/vm0/compare/cli-v9.298.3...cli-v9.298.4) (2026-08-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.15
+    * @okouai/core bumped to 8.604.1
+
+## [9.298.3](https://github.com/vm0-ai/vm0/compare/cli-v9.298.2...cli-v9.298.3) (2026-08-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.14
+    * @okouai/connectors bumped to 3.0.1
+    * @okouai/core bumped to 8.604.0
+
+## [9.298.2](https://github.com/vm0-ai/vm0/compare/cli-v9.298.1...cli-v9.298.2) (2026-08-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.13
+    * @okouai/core bumped to 8.603.6
+
+## [9.298.1](https://github.com/vm0-ai/vm0/compare/cli-v9.298.0...cli-v9.298.1) (2026-08-31)
+
+
+### Refactoring
+
+* remove latest presentation templates switch ([#30335](https://github.com/vm0-ai/vm0/issues/30335)) ([8bfe687](https://github.com/vm0-ai/vm0/commit/8bfe68776bed2e55405192a0d7e0636039561b0a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.603.5
+
 ## [9.298.0](https://github.com/vm0-ai/vm0/compare/cli-v9.297.14...cli-v9.298.0) (2026-08-30)
 
 

@@ -1,4 +1,4 @@
-import { CONNECTOR_CATALOG_VALIDATOR_VERSION } from "@okouai/connector-catalog-validation/version";
+import { CONNECTOR_CATALOG_VALIDATOR_VERSION } from "@okouai/connectors/connector-catalog/version";
 import { describe, expect, it } from "vitest";
 
 import { mockEnv } from "../../../lib/env";
@@ -64,6 +64,21 @@ describe("connector catalog validator authority", () => {
       validatorVersion: CONNECTOR_CATALOG_VALIDATOR_VERSION,
       buildCommitSha: commit,
     });
+  });
+
+  it("orders the connectors authority after the final standalone validator", () => {
+    expect(
+      connectorCatalogValidationAuthorityIsCurrentOrNewer({
+        authority: acceptedAuthority("2.0.17"),
+        validator: validator(CONNECTOR_CATALOG_VALIDATOR_VERSION),
+      }),
+    ).toBeFalsy();
+    expect(
+      connectorCatalogValidationAuthorityIsCurrentOrNewer({
+        authority: acceptedAuthority(CONNECTOR_CATALOG_VALIDATOR_VERSION),
+        validator: validator("2.0.17"),
+      }),
+    ).toBeTruthy();
   });
 
   it("fails closed when preview commit authority is unavailable", () => {
