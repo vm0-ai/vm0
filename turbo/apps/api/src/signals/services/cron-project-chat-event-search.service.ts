@@ -497,9 +497,9 @@ async function cleanupOrphanedSearchProjection(
     const chatThreadIds = orphanedWatermarks.map((watermark) => {
       return watermark.chatThreadId;
     });
-    await tx
-      .delete(chatEventSearchMessages)
-      .where(inArray(chatEventSearchMessages.chatThreadId, chatThreadIds));
+    // The watermark is the repair anchor. Remove it first so a racing projector
+    // either commits before the message delete or recreates a discoverable
+    // watermark after this transaction.
     const deletedWatermarks = await tx
       .delete(chatEventSearchMessageWatermarks)
       .where(
@@ -508,6 +508,9 @@ async function cleanupOrphanedSearchProjection(
       .returning({
         chatThreadId: chatEventSearchMessageWatermarks.chatThreadId,
       });
+    await tx
+      .delete(chatEventSearchMessages)
+      .where(inArray(chatEventSearchMessages.chatThreadId, chatThreadIds));
     return deletedWatermarks.length;
   });
 }

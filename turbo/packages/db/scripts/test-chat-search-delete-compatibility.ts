@@ -25,7 +25,7 @@ export const CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_TRIGGER = {
 } as const;
 
 export const CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_FUNCTION = {
-  bodyHash: "e1fbe1ea49b41a5c7326f63a954c7aff",
+  bodyHash: "263a1ad0f35229a74f2ae7950ede23b8",
   functionName: "delete_chat_event_search_projection_1035",
   identityArguments: "",
   kind: "f",
@@ -102,7 +102,7 @@ async function validateMigrationSql(): Promise<void> {
   assert.equal(compatibilityStatements.length, 2);
   assert.match(
     compatibilityStatements[0] ?? "",
-    /CREATE FUNCTION "delete_chat_event_search_projection_1035"\(\).*DELETE FROM "public"\."chat_event_search_messages" WHERE "chat_thread_id" = OLD\."id";.*DELETE FROM "public"\."chat_event_search_message_watermarks" WHERE "chat_thread_id" = OLD\."id";.*RETURN OLD;/u,
+    /CREATE FUNCTION "delete_chat_event_search_projection_1035"\(\).*DELETE FROM "public"\."chat_event_search_message_watermarks" WHERE "chat_thread_id" = OLD\."id";.*DELETE FROM "public"\."chat_event_search_messages" WHERE "chat_thread_id" = OLD\."id";.*RETURN OLD;/u,
   );
   assert.match(
     compatibilityStatements[1] ?? "",

@@ -24,6 +24,7 @@ import { chatTeamsContext } from "@okouai/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@okouai/db/schema/chat-telegram-context";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatEventSearchMessageWatermarks } from "@okouai/db/schema/chat-event-search";
 import { feishuChatIngress } from "@okouai/db/schema/feishu-chat-ingress";
 import { feishuOrgEvents } from "@okouai/db/schema/feishu-org-event";
 import { checkpoints } from "@okouai/db/schema/checkpoint";
@@ -1661,6 +1662,64 @@ function isSharedThreadHotSnapshotRead(query: string): boolean {
 
 function isChatEventPhysicalDeletion(query: string): boolean {
   return query === 'lock table "chat_events" in access exclusive mode';
+}
+
+/**
+ * Holds the derived search watermark so route tests can deterministically
+ * order a projector and orphan cleanup at their shared discoverability anchor.
+ * Product APIs cannot pause while holding this projection-internal row lock.
+ */
+export async function holdChatEventSearchWatermarkRowLockFixture(args: {
+  readonly chatThreadId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const [watermark] = await tx
+      .select({
+        chatThreadId: chatEventSearchMessageWatermarks.chatThreadId,
+      })
+      .from(chatEventSearchMessageWatermarks)
+      .where(
+        eq(chatEventSearchMessageWatermarks.chatThreadId, args.chatThreadId),
+      )
+      .for("update")
+      .limit(1);
+    if (!watermark) {
+      throw new Error("Expected the chat search watermark row");
+    }
+    const pidRows = await executeRawRows(
+      tx,
+      sql`
+        SELECT pg_backend_pid() AS "pid"
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = pidRows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the chat search watermark lock holder pid");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      return await transitiveBlockedWaiterCount(holderPid);
+    },
+  };
 }
 
 async function directBlockedChatEventStatementCounts(owner: {
