@@ -88,18 +88,24 @@ and the post-commit scheduler may create the successor run.
 
 ## Transaction Boundary
 
-Reservation, direct receipt, and completion finalization serialize database
-state in this order:
+Reservation serializes database state in this order:
 
 1. chat thread;
 2. agent run;
 3. delivery and delivery items;
 4. source and revoking chat events.
 
-Completion finalizes the delivery and applies or observes the terminal run
-state in one short transaction. Realtime publication, callbacks, usage work,
-and queue drain run only after commit. A first late finalization drains the
-thread without replaying the run's ordinary terminal callbacks or billing work.
+Completion and heartbeat-timeout finalization take the run's checkpoint
+lifecycle advisory lock before the same thread, run, delivery, and event order.
+They finalize the delivery and apply or observe the terminal run state in one
+short transaction. A direct receipt reads the authenticated run/thread scope,
+then serializes on the delivery, its items, and their source/revoking events;
+the delivery lock decides whether receipt or terminal finalization committed
+first.
+
+Realtime publication, callbacks, usage work, and queue drain run only after
+commit. A first late finalization drains the thread without replaying the run's
+ordinary terminal callbacks or billing work.
 
 ### Final Checkpoint Completion
 
