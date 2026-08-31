@@ -15,6 +15,7 @@ import { reportForceUpgradeResponse } from "./force-upgrade.ts";
 
 interface AuthedClientOptions {
   readonly baseUrl: string;
+  readonly clientVersion: string;
   readonly getAuthRecovery: () => Promise<AuthRecovery>;
   readonly getRootSignal: () => AbortSignal;
   readonly getVercelProtectionBypass: () => string | undefined;
@@ -50,7 +51,7 @@ export function createAuthedContractClient<T extends AppRouter>(
         if (token) {
           headers.set("Authorization", `Bearer ${token}`);
         }
-        addClientHeaders(headers);
+        addClientHeaders(headers, options.clientVersion);
         const vercelProtectionBypass = options.getVercelProtectionBypass();
         if (vercelProtectionBypass) {
           headers.set("X-Vercel-Protection-Bypass", vercelProtectionBypass);

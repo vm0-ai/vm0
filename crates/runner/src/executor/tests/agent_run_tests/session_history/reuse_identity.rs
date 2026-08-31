@@ -23,8 +23,8 @@ use super::{
 };
 use crate::executor::agent_run::{RunControls, RunStart, run_in_sandbox};
 use crate::executor::tests::agent_run_tests::support::{
-    assert_no_action, assert_successful_action_once, claude_history_path, claude_history_source,
-    final_identity_runtime_paths,
+    assert_failed_action_error_once, assert_no_action, assert_successful_action_once,
+    claude_history_path, claude_history_source, final_identity_runtime_paths,
 };
 use crate::executor::tests::support::{
     RUN_IN_SANDBOX_TEST_TIMEOUT, create_overridden_sandbox, minimal_context, sandbox_exec_error,
@@ -41,6 +41,9 @@ use crate::types::{
     ResumeSession, ResumeSessionHistory, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
     ResumeSessionHistoryRefKind, SandboxReuseResult,
 };
+
+const SESSION_HISTORY_IDENTITY_REUSE_VERIFY_ERROR: &str =
+    "session history identity reuse verification failed";
 
 fn context_with_checkpointed_session_identity(
     session_id: &str,
@@ -149,6 +152,11 @@ async fn assert_checkpointed_final_identity_helper_failure_falls_back(
     history_mock.assert_calls_async(1).await;
     assert_eq!(sandbox.exec_calls().len(), 1);
     let ops = telemetry.pending_ops_snapshot();
+    assert_failed_action_error_once(
+        &ops,
+        "session_history_identity_reuse_verify",
+        SESSION_HISTORY_IDENTITY_REUSE_VERIFY_ERROR,
+    );
     assert_successful_action(&ops, expected_reason_action);
     assert_successful_action(&ops, "session_history_restore_fallback_stale_idle_identity");
     assert!(
@@ -274,6 +282,7 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
     }
     history_mock.assert_calls_async(0).await;
     let ops = telemetry.pending_ops_snapshot();
+    assert_successful_action_once(&ops, "session_history_identity_reuse_verify");
     assert!(
         ops.iter()
             .any(|op| op.0 == "session_history_identity_reuse_hit" && op.1),
@@ -538,6 +547,11 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_reports
     assert_eq!(writes[0].path, claude_history_path(session_id));
     assert_eq!(writes[0].content, history);
     let ops = telemetry.pending_ops_snapshot();
+    assert_failed_action_error_once(
+        &ops,
+        "session_history_identity_reuse_verify",
+        SESSION_HISTORY_IDENTITY_REUSE_VERIFY_ERROR,
+    );
     assert_successful_action(
         &ops,
         "session_history_identity_verify_helper_history_mismatch",
@@ -623,6 +637,11 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_exec_er
     history_mock.assert_calls_async(1).await;
     assert_eq!(sandbox.exec_calls().len(), 1);
     let ops = telemetry.pending_ops_snapshot();
+    assert_failed_action_error_once(
+        &ops,
+        "session_history_identity_reuse_verify",
+        SESSION_HISTORY_IDENTITY_REUSE_VERIFY_ERROR,
+    );
     assert_successful_action(&ops, "session_history_identity_verify_helper_exec_error");
     assert_successful_action(&ops, "session_history_restore_fallback_stale_idle_identity");
     assert!(
@@ -740,6 +759,11 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
     );
     assert_eq!(writes[0].content, history);
     let ops = telemetry.pending_ops_snapshot();
+    assert_failed_action_error_once(
+        &ops,
+        "session_history_identity_reuse_verify",
+        SESSION_HISTORY_IDENTITY_REUSE_VERIFY_ERROR,
+    );
     assert_successful_action(&ops, "session_history_identity_verify_request_mismatch");
     assert!(
         ops.iter()

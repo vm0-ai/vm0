@@ -1,6 +1,6 @@
 {
   "name": "@okouai/db",
-  "version": "1.228.26",
+  "version": "1.228.27",
   "private": true,
   "type": "module",
   "exports": {
@@ -20,9 +20,9 @@
       "import": "./src/operations/model-provider-built-in-identity.ts",
       "types": "./src/operations/model-provider-built-in-identity.ts"
     },
-    "./operations/org-metadata-legacy-write": {
-      "import": "./src/operations/org-metadata-legacy-write.ts",
-      "types": "./src/operations/org-metadata-legacy-write.ts"
+    "./operations/org-metadata-canonical-write": {
+      "import": "./src/operations/org-metadata-canonical-write.ts",
+      "types": "./src/operations/org-metadata-canonical-write.ts"
     },
     "./operations/org-plan-entitlement-canonical-write": {
       "import": "./src/operations/org-plan-entitlement-canonical-write.ts",
@@ -42,8 +42,8 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "db:reset": "tsx scripts/reset-db.ts",
-    "test:migration-consistency": "pnpm test:migration-runner && pnpm test:retired-agent-plane-contraction && pnpm test:morning-brief-phase-a-cutover && tsx scripts/test-migration-consistency-schema.ts",
-    "test:morning-brief-phase-a-cutover": "tsx scripts/test-morning-brief-phase-a-cutover.ts",
+    "test:migration-consistency": "pnpm test:migration-runner && pnpm test:retired-agent-plane-contraction && pnpm test:morning-brief-phase-b-cleanup && tsx scripts/test-migration-consistency-schema.ts",
+    "test:morning-brief-phase-b-cleanup": "tsx scripts/test-morning-brief-phase-b-cleanup.ts",
     "test:retired-agent-plane-contraction": "tsx scripts/test-retired-agent-plane-contraction.ts",
     "test:migration-runner": "tsx scripts/test-migration-runner-timeouts.ts",
     "lint:jsonb-contracts": "tsx scripts/check-jsonb-contracts.ts"

@@ -4,6 +4,7 @@ import { getAllFeatureStates } from "@okouai/core/feature-switch";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { authRecovery$, clerk$ } from "../auth";
+import { appVersion$ } from "../app-version.ts";
 import { accept } from "../../lib/accept.ts";
 import { resolveApiBaseForTarget } from "../api-base.ts";
 import { getCapturedPreviewBypassForTarget } from "../../lib/preview-bypass-cookie.ts";
@@ -68,6 +69,7 @@ const apiFeatureSwitchClient$ = computed((get) => {
   const apiBaseUrl = resolveApiBaseForTarget("api");
   return createAuthedContractClient(featureSwitchesContract, {
     baseUrl: apiBaseUrl,
+    clientVersion: get(appVersion$),
     getAuthRecovery: () => {
       return get(authRecovery$);
     },

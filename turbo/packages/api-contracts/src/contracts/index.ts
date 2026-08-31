@@ -250,10 +250,6 @@ export {
   type EmailUnsubscribeResponse,
 } from "./email-unsubscribe";
 export {
-  emailMorningBriefUnsubscribeContract,
-  type EmailMorningBriefUnsubscribeContract,
-} from "./email-morning-brief-unsubscribe";
-export {
   connectorsSlugCallbackContract,
   type ConnectorsSlugCallbackContract,
 } from "./connectors-slug-callback";

@@ -307,10 +307,11 @@ try {
     outputDirectory: path.join(appDirectory, "dist"),
     version: appVersion,
   });
-  const builds = [baseline, versionChange, canonical];
-
   for (const label of ["app", "vendor", "runtime", "worker"]) {
-    assertStable(builds, label);
+    assertStable([baseline, canonical], label);
+  }
+  for (const label of ["vendor", "runtime"]) {
+    assertStable([versionChange, canonical], label);
   }
   assert.deepEqual(baseline.runtimeMetadata, {
     commitSha: baselineCommitSha,
@@ -324,6 +325,16 @@ try {
     commitSha: appCommitSha,
     version: appVersion,
   });
+  for (const label of ["app", "worker"]) {
+    assert.notEqual(
+      versionChange.artifacts[label].fileName,
+      canonical.artifacts[label].fileName,
+    );
+    assert.notEqual(
+      versionChange.artifacts[label].sha256,
+      canonical.artifacts[label].sha256,
+    );
+  }
   for (const label of ["vendor", "runtime", "worker"]) {
     assertStable([canonical, appMutation], label);
   }
@@ -387,12 +398,14 @@ try {
         },
         verifiedStable: {
           appMutation: ["vendor", "runtime", "worker"],
+          commitChange: ["app", "vendor", "runtime", "worker"],
           mermaidMutation: ["runtime", "worker"],
-          metadataChanges: ["app", "vendor", "runtime", "worker"],
+          versionChange: ["vendor", "runtime"],
         },
         verifiedInvalidated: {
           appMutation: ["app"],
           mermaidMutation: ["app", "vendor"],
+          versionChange: ["app", "worker"],
         },
       },
       null,

@@ -53,7 +53,6 @@ import {
   Package,
   Route,
   Search,
-  Sunrise,
   Target,
   X,
   Clock,
@@ -315,29 +314,26 @@ type RecommendedFollowup = ChatRecommendedFollowup;
 
 type UserMessageNonContentPart = Extract<
   UserMessagePart,
-  { readonly type: "source" | "automation" | "goal" | "morning_brief" }
+  { readonly type: "source" | "automation" | "goal" }
 >;
 
 type UserMessageAnnotationRenderPart = Extract<
   UserMessageRenderPart,
-  { readonly type: "source" | "automation" | "goal" | "morning_brief" }
+  { readonly type: "source" | "automation" | "goal" }
 >;
 
 function isUserMessageNonContentPart(
   part: UserMessagePart,
 ): part is UserMessageNonContentPart {
   return (
-    part.type === "source" ||
-    part.type === "automation" ||
-    part.type === "goal" ||
-    part.type === "morning_brief"
+    part.type === "source" || part.type === "automation" || part.type === "goal"
   );
 }
 
 type UserMessageHiddenPart = Extract<
   UserMessagePart,
   {
-    readonly type: "source" | "automation" | "goal" | "morning_brief" | "model";
+    readonly type: "source" | "automation" | "goal" | "model";
   }
 >;
 
@@ -476,8 +472,7 @@ function userMessageAnnotationRenderPart(
       return (
         renderPart.type === "source" ||
         renderPart.type === "automation" ||
-        renderPart.type === "goal" ||
-        renderPart.type === "morning_brief"
+        renderPart.type === "goal"
       );
     },
   );
@@ -6521,23 +6516,6 @@ function MessageAnnotation({
       </div>
     );
   }
-  if (renderPart.type === "morning_brief") {
-    return (
-      <div
-        aria-label={t(($) => {
-          return $.chat.queue.morningBrief;
-        })}
-        className={className}
-      >
-        <Sunrise size={15} className="shrink-0" />
-        <span>
-          {t(($) => {
-            return $.chat.queue.morningBrief;
-          })}
-        </span>
-      </div>
-    );
-  }
   return (
     <SourceMessageAnnotation renderPart={renderPart} className={className} />
   );
@@ -7032,7 +7010,7 @@ function UserMessageFeedbackGroup({
 type UserMessageContentRenderPart = Exclude<
   UserMessageRenderPart,
   {
-    readonly type: "source" | "automation" | "goal" | "morning_brief" | "model";
+    readonly type: "source" | "automation" | "goal" | "model";
   }
 >;
 type UserMessageStandaloneRenderPart = Exclude<
@@ -7414,10 +7392,7 @@ function PagedUserMessage({
 
   const nonContentRenderPart = userMessageAnnotationRenderPart(renderDocument);
   const annotationPart =
-    nonContentRenderPart?.type === "morning_brief" ||
-    nonContentRenderPart?.type === "source"
-      ? nonContentRenderPart
-      : undefined;
+    nonContentRenderPart?.type === "source" ? nonContentRenderPart : undefined;
   return (
     <div
       id={inputPromptRunAnchor(inputEvent)}

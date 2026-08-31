@@ -23,8 +23,6 @@ let mockPreferences: UserPreferencesResponse = {
   sendMode: "enter",
   theme: "system",
   colorTheme: "blue-horizon",
-  morningBriefEnabled: false,
-  morningBriefNextRunAt: null,
   captureNetworkBodiesRemaining: 0,
 };
 
@@ -52,8 +50,6 @@ export function resetMockUserPreferences(): void {
     sendMode: "enter",
     theme: "system",
     colorTheme: "blue-horizon",
-    morningBriefEnabled: false,
-    morningBriefNextRunAt: null,
     captureNetworkBodiesRemaining: 0,
   };
 }
@@ -74,8 +70,6 @@ export const apiUserPreferencesHandlers = [
       ...(body.pinnedAgentIds !== undefined && {
         pinnedAgentIds: normalizePinnedAgentIds(body.pinnedAgentIds),
       }),
-      morningBriefEnabled: false,
-      morningBriefNextRunAt: null,
     });
     return respond(200, mockPreferences);
   }),

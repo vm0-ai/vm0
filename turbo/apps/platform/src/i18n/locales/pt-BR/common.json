@@ -2199,7 +2199,6 @@
       "message_one": "{{count}} mensagem",
       "message_many": "{{count}} mensagens",
       "message_other": "{{count}} mensagens",
-      "morningBrief": "Resumo matinal",
       "openGoalDetails": "Abrir detalhes do objetivo",
       "pendingAutomationEvent": "Evento de automação pendente",
       "queuedMessage": "Mensagem na fila",

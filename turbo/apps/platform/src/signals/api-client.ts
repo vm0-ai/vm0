@@ -10,6 +10,7 @@ import type {
   InitClientArgs,
   InitClientReturn,
 } from "@okouai/api-contracts/contracts/trpc-contract";
+import { appVersion$ } from "./app-version.ts";
 import { authRecovery$ } from "./auth-context.ts";
 import { createAuthedContractClient } from "./api-client-base.ts";
 import { apiClientRuntime$ } from "./api-client-runtime.ts";
@@ -70,9 +71,11 @@ function rebaseApiPath(
  */
 export const apiClient$ = computed((get) => {
   const runtime = get(apiClientRuntime$);
+  const clientVersion = get(appVersion$);
   return <T extends AppRouter>(contract: T, options?: ApiClientOptions) => {
     return createAuthedContractClient(contract, {
       baseUrl: runtime.apiBaseUrl,
+      clientVersion,
       getAuthRecovery: () => {
         return get(authRecovery$);
       },

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.20...guest-mock-codex-v0.10.0) (2026-08-31)
+
+
+### Features
+
+* **codex:** preserve thread item semantics ([#30579](https://github.com/vm0-ai/vm0/issues/30579)) ([31b1be9](https://github.com/vm0-ai/vm0/commit/31b1be9fd870504252b4277e3480442170963426))
+
 ## [0.9.20](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.19...guest-mock-codex-v0.9.20) (2026-08-31)
 
 

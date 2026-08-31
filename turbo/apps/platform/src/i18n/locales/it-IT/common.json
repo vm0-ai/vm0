@@ -2199,7 +2199,6 @@
       "message_one": "{{count}} messaggio",
       "message_many": "{{count}} messaggi",
       "message_other": "{{count}} messaggi",
-      "morningBrief": "Riepilogo mattutino",
       "openGoalDetails": "Apri i dettagli dell'obiettivo",
       "pendingAutomationEvent": "Evento di automazione in sospeso",
       "queuedMessage": "Messaggio in coda",

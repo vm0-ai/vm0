@@ -21,6 +21,8 @@ export interface ClerkBrowserRuntime {
   readonly loaded: Promise<void>;
 }
 
+type EarlyClerkBootstrap = NonNullable<Window["__vm0ClerkBootstrap"]>;
+
 function globalProperty(name: string): unknown {
   return Reflect.get(globalThis, name);
 }
@@ -57,8 +59,62 @@ function patchSharedClerkInstance(clerk: PlatformClerk): void {
   };
 }
 
+function matchesEarlyLoadOptions(
+  early: EarlyClerkBootstrap["loadOptions"],
+  current: ClerkRuntimeLoadOptions,
+): boolean {
+  return (
+    early.afterSignOutUrl === current.afterSignOutUrl &&
+    early.isSatellite === current.isSatellite &&
+    early.satelliteAutoSync === current.satelliteAutoSync &&
+    early.signInUrl === current.signInUrl &&
+    early.signUpUrl === current.signUpUrl
+  );
+}
+
+function adoptEarlyClerkRuntime(
+  clerk: PlatformClerk,
+  options: ClerkRuntimeOptions,
+  signal: AbortSignal,
+): ClerkBrowserRuntime | null {
+  const bootstrap = window.__vm0ClerkBootstrap;
+  if (!bootstrap?.loaded || bootstrap.clerk !== clerk) {
+    return null;
+  }
+  if (
+    bootstrap.publishableKey !== options.publishableKey ||
+    bootstrap.domain !== options.domain ||
+    !matchesEarlyLoadOptions(bootstrap.loadOptions, options.loadOptions)
+  ) {
+    throw new Error("Early Clerk bootstrap configuration mismatch");
+  }
+
+  const abort = (): void => {
+    bootstrap.abortOnboarding();
+  };
+  signal.addEventListener("abort", abort, { once: true });
+
+  return {
+    clerk,
+    loaded: bootstrap.loaded,
+  };
+}
+
+export function takeClerkBootstrapOnboardingStatus(
+  clerk: PlatformClerk,
+): EarlyClerkBootstrap["onboardingStatusPromise"] {
+  const bootstrap = window.__vm0ClerkBootstrap;
+  if (!bootstrap || bootstrap.clerk !== clerk) {
+    return undefined;
+  }
+  const promise = bootstrap.onboardingStatusPromise;
+  bootstrap.onboardingStatusPromise = undefined;
+  return promise;
+}
+
 export function startClerkBrowserRuntime(
   options: ClerkRuntimeOptions,
+  signal: AbortSignal,
 ): Promise<ClerkBrowserRuntime> {
   return (async () => {
     await loadClerkJSScript({
@@ -66,10 +122,16 @@ export function startClerkBrowserRuntime(
       domain: options.domain,
       publishableKey: options.publishableKey,
     });
+    signal.throwIfAborted();
     const clerk = globalProperty("Clerk");
     if (!isBrowserClerk(clerk)) {
       throw new Error("Clerk browser script did not expose a valid runtime");
     }
+    const earlyRuntime = adoptEarlyClerkRuntime(clerk, options, signal);
+    if (earlyRuntime) {
+      return earlyRuntime;
+    }
+
     patchSharedClerkInstance(clerk);
     const loaded = clerk.load(options.loadOptions);
     return { clerk, loaded };

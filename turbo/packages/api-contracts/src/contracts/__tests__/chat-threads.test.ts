@@ -296,24 +296,6 @@ describe("chat thread generation template contract", () => {
         ],
       }),
     ).toMatchObject({ success: true });
-    expect(
-      userMessageDocumentSchema.safeParse({
-        version: 1,
-        parts: [
-          { type: "goal", goalBrief: "Finish the rollout" },
-          { type: "morning_brief", briefDate: "2026-08-05" },
-        ],
-      }),
-    ).toMatchObject({ success: false });
-    expect(
-      userMessageDocumentSchema.safeParse({
-        version: 1,
-        parts: [
-          { type: "text", text: "Generate my Morning Brief" },
-          { type: "morning_brief", briefDate: "2026-08-05" },
-        ],
-      }),
-    ).toMatchObject({ success: true });
   });
 
   it("accepts an internal agent-run source annotation", () => {

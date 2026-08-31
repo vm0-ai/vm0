@@ -846,6 +846,31 @@ export type RunnerPreSpawnConcurrencyBucket = z.infer<
   typeof runnerPreSpawnConcurrencyBucketSchema
 >;
 
+const runnerResourceBudgetUtilizationBucketSchema = z.enum([
+  "0_25",
+  "26_50",
+  "51_75",
+  "76_100",
+  "over_100",
+]);
+
+export type RunnerResourceBudgetUtilizationBucket = z.infer<
+  typeof runnerResourceBudgetUtilizationBucketSchema
+>;
+
+const runnerResourceBudgetLeaseCountBucketSchema = z.enum([
+  "0",
+  "1",
+  "2",
+  "3_4",
+  "5_8",
+  "9_plus",
+]);
+
+export type RunnerResourceBudgetLeaseCountBucket = z.infer<
+  typeof runnerResourceBudgetLeaseCountBucketSchema
+>;
+
 /**
  * Sandbox operation schema for internal sandbox operations (init, storage, cli, checkpoint, cleanup)
  */
@@ -861,6 +886,12 @@ const sandboxOperationSchema = z.object({
   sandbox_reuse_result: sandboxReuseResultSchema.optional(),
   runner_pre_spawn_concurrency_bucket:
     runnerPreSpawnConcurrencyBucketSchema.optional(),
+  runner_resource_budget_vcpu_utilization_bucket:
+    runnerResourceBudgetUtilizationBucketSchema.optional(),
+  runner_resource_budget_memory_utilization_bucket:
+    runnerResourceBudgetUtilizationBucketSchema.optional(),
+  runner_resource_budget_lease_count_bucket:
+    runnerResourceBudgetLeaseCountBucketSchema.optional(),
   encoding: sessionHistoryEncodingSchema.optional(),
   session_history_raw_size_bucket: sessionHistorySizeBucketSchema.optional(),
   session_history_encoded_size_bucket:

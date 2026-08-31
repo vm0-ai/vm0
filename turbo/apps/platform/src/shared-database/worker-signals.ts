@@ -1,5 +1,6 @@
-import { command, state } from "ccstate";
+import { command, computed, state } from "ccstate";
 import type { InboundMessage } from "ably";
+import { appVersion$ } from "../signals/app-version.ts";
 import type {
   ChatThreadIndicators,
   SharedDatabaseDataKey,
@@ -15,6 +16,7 @@ import {
   SharedDatabaseWorkerRuntime,
   type WorkerClientEmitter,
 } from "./worker-runtime.ts";
+import { createSharedDatabaseContractClientFactory } from "./worker-client.ts";
 import { setRootSignal$ } from "../signals/root-signal.ts";
 import { setApiClientRuntime$ } from "../signals/api-client-runtime.ts";
 import {
@@ -46,6 +48,9 @@ import { settle } from "../signals/utils.ts";
 
 const workerRuntimeState$ = state<SharedDatabaseWorkerRuntime | null>(null);
 const credentialStoreDaemonsStarted$ = state(false);
+const sharedDatabaseClientFactory$ = computed((get) => {
+  return createSharedDatabaseContractClientFactory(get(appVersion$));
+});
 
 interface SharedDatabaseWorkerHeartbeat {
   readonly identity: SharedDatabaseIdentity;
@@ -138,7 +143,13 @@ export const bootstrapSharedDatabaseWorker$ = command(
     if (get(workerRuntimeState$)) {
       return;
     }
-    set(workerRuntimeState$, new SharedDatabaseWorkerRuntime(signal));
+    set(
+      workerRuntimeState$,
+      new SharedDatabaseWorkerRuntime(
+        signal,
+        get(sharedDatabaseClientFactory$),
+      ),
+    );
   },
 );
 

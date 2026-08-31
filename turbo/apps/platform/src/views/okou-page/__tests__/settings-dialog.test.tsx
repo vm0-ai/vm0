@@ -72,8 +72,6 @@ function createPreferences(
     sendMode: "enter",
     theme: "system",
     colorTheme: "blue-horizon",
-    morningBriefEnabled: false,
-    morningBriefNextRunAt: null,
     captureNetworkBodiesRemaining: 0,
   };
 }

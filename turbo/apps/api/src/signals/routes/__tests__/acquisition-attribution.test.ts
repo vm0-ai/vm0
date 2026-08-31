@@ -18,6 +18,7 @@ import {
   deleteUsagePricingRows,
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
+import { readOrgAcquisitionAttributionFixture } from "../../../test-fixtures/org-metadata";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
@@ -271,6 +272,74 @@ describe("POST /api/attribution/signup", () => {
 
     expect(response.body).toStrictEqual({ recorded: false });
     expect(context.mocks.clerk.users.updateUserMetadata).not.toHaveBeenCalled();
+  });
+
+  it("persists trimmed org first-touch attribution once", async () => {
+    const fixture = await seedAcquisitionFixture();
+    const actor = actorForFixture(fixture);
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    context.mocks.clerk.users.getUserList
+      .mockResolvedValueOnce({
+        data: [{ id: actor.userId, privateMetadata: {} }],
+      })
+      .mockResolvedValueOnce({
+        data: [
+          {
+            id: actor.userId,
+            privateMetadata: {
+              signup_attribution: {
+                vm0_source: "presentation",
+                utm_source: "google",
+              },
+            },
+          },
+        ],
+      });
+    context.mocks.clerk.users.updateUserMetadata.mockResolvedValue({});
+
+    const first = await accept(
+      client().recordSignup({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          attribution: {
+            vm0_source: " presentation ",
+            utm_source: " google ",
+          },
+        },
+      }),
+      [200],
+    );
+    expect(first.body).toStrictEqual({ recorded: true });
+
+    // There is no public org-attribution read API, so the focused fixture
+    // verifies the persisted first-touch boundary exercised by this route.
+    await expect(
+      readOrgAcquisitionAttributionFixture(fixture.org_id),
+    ).resolves.toMatchObject({
+      acquisitionFirstPartySource: "presentation",
+      acquisitionUtmSource: "google",
+      acquisitionRecordedAt: expect.any(Date),
+    });
+
+    const replay = await accept(
+      client().recordSignup({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          attribution: {
+            vm0_source: "marketing",
+            utm_source: "newsletter",
+          },
+        },
+      }),
+      [200],
+    );
+    expect(replay.body).toStrictEqual({ recorded: false });
+    await expect(
+      readOrgAcquisitionAttributionFixture(fixture.org_id),
+    ).resolves.toMatchObject({
+      acquisitionFirstPartySource: "presentation",
+      acquisitionUtmSource: "google",
+    });
   });
 });
 

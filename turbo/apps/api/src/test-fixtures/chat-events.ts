@@ -18,7 +18,6 @@ import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context
 import { chatAgentphoneContext } from "@okouai/db/schema/chat-agentphone-context";
 import { chatFeishuContext } from "@okouai/db/schema/chat-feishu-context";
 import { chatGithubContext } from "@okouai/db/schema/chat-github-context";
-import { chatMorningBriefContext } from "@okouai/db/schema/chat-morning-brief-context";
 import { chatSlackContext } from "@okouai/db/schema/chat-slack-context";
 import { chatTeamsContext } from "@okouai/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@okouai/db/schema/chat-telegram-context";
@@ -190,9 +189,6 @@ interface ChatEventContextFixture {
   readonly githubMessageText: string | null;
   readonly githubTriggerReactionId: string | null;
   readonly githubTriggerCommentBody: string | null;
-  readonly morningBriefDeliveryId: string | null;
-  readonly morningBriefTimezone: string | null;
-  readonly morningBriefTriggeredAt: Date | null;
 }
 
 export async function readChatEventContextFixture(
@@ -292,9 +288,6 @@ export async function readChatEventContextFixture(
       githubMessageText: chatGithubContext.messageText,
       githubTriggerReactionId: chatGithubContext.triggerReactionId,
       githubTriggerCommentBody: chatGithubContext.triggerCommentBody,
-      morningBriefDeliveryId: chatMorningBriefContext.deliveryId,
-      morningBriefTimezone: chatMorningBriefContext.timezone,
-      morningBriefTriggeredAt: chatMorningBriefContext.triggeredAt,
     })
     .from(chatEvents)
     .leftJoin(chatAutomationContext, eq(chatAutomationContext.id, contextId))
@@ -304,10 +297,6 @@ export async function readChatEventContextFixture(
     .leftJoin(chatAgentphoneContext, eq(chatAgentphoneContext.id, contextId))
     .leftJoin(chatTelegramContext, eq(chatTelegramContext.id, contextId))
     .leftJoin(chatGithubContext, eq(chatGithubContext.id, contextId))
-    .leftJoin(
-      chatMorningBriefContext,
-      eq(chatMorningBriefContext.id, contextId),
-    )
     .where(eq(chatEvents.id, eventId))
     .limit(1);
   return event ?? null;
@@ -872,38 +861,6 @@ export async function insertQueuedSlackMissingContextFixture(args: {
     await tx.delete(chatSlackContext).where(eq(chatSlackContext.id, event.id));
     return event.id;
   });
-}
-
-/** Reproduces a pre-cutover legacy queue head without admitting new runtime state. */
-export async function insertQueuedLegacyMorningBriefFixture(args: {
-  readonly threadId: string;
-  readonly content: string;
-}): Promise<string> {
-  const eventId = randomUUID();
-  await db().transaction(async (tx) => {
-    const [thread] = await tx
-      .update(chatThreads)
-      .set({
-        lastChatEventSeqId: sql`${chatThreads.lastChatEventSeqId} + 1`,
-      })
-      .where(eq(chatThreads.id, args.threadId))
-      .returning({ seqId: chatThreads.lastChatEventSeqId });
-    if (!thread) {
-      throw new Error("Expected the legacy Morning Brief thread");
-    }
-    await tx.insert(chatEvents).values({
-      id: eventId,
-      chatThreadId: args.threadId,
-      contextType: "morning_brief",
-      eventType: "input.prompt",
-      payload: {
-        userMessage: createUserMessageDocument({ text: args.content }),
-      },
-      runId: null,
-      seqId: thread.seqId,
-    });
-  });
-  return eventId;
 }
 
 export async function replayPendingChatInputQueueEventFixture(args: {
@@ -1980,6 +1937,71 @@ export async function holdOrgAdmissionLockFixture(args: {
     const holderPid = rows[0]?.pid;
     if (!holderPid) {
       throw new Error("Expected the admission lock holder pid");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    waiterCount: async () => {
+      const rows = await executeRawRows(
+        db(),
+        sql`
+          SELECT ${count()}::int AS "waiterCount"
+          FROM pg_locks AS waiting
+          WHERE waiting.locktype = 'advisory'
+            AND NOT waiting.granted
+            AND (waiting.classid, waiting.objid, waiting.objsubid) IN (
+              SELECT held.classid, held.objid, held.objsubid
+              FROM pg_locks AS held
+              WHERE held.locktype = 'advisory'
+                AND held.pid = ${holderPid}
+                AND held.granted
+            )
+        `,
+        waiterCountRowSchema,
+      );
+      return rows[0]?.waiterCount ?? 0;
+    },
+  };
+}
+
+/**
+ * Holds the production Pi API-first lifecycle key so BDDs can deterministically
+ * order publication and canonical cancellation without timing sleeps.
+ */
+export async function holdPiApiFirstTurnLifecycleLockFixture(args: {
+  readonly runId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly waiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const rows = await executeRawRows(
+      tx,
+      sql`
+        SELECT
+          pg_backend_pid() AS "pid",
+          pg_advisory_xact_lock(
+            hashtextextended(${`pi_api_first_turn:${args.runId}`}, 0)
+          )
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = rows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the Pi lifecycle lock holder pid");
     }
     started.resolve(holderPid);
     await released.promise;

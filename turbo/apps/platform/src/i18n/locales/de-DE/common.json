@@ -2162,7 +2162,6 @@
       "loadingGoal": "Ziel wird geladen...",
       "message_one": "{{count}} Nachricht",
       "message_other": "{{count}} Nachrichten",
-      "morningBrief": "Morgenbrief",
       "openGoalDetails": "Zieldetails öffnen",
       "pendingAutomationEvent": "Ausstehendes Automatisierungsereignis",
       "queuedMessage": "Nachricht in der Warteschlange",
