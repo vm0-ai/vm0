@@ -30,12 +30,8 @@ test("complete app onboarding to chat page", async ({ browser, page }) => {
   // Save storageState for feature tests (use absolute path to match playwright.config.ts)
   await page.context().storageState({ path: STORAGE_STATE });
 
-  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
   const verificationContext = await browser.newContext({
     storageState: STORAGE_STATE,
-    extraHTTPHeaders: bypassSecret
-      ? { "x-vercel-protection-bypass": bypassSecret }
-      : undefined,
     ignoreHTTPSErrors: true,
   });
   try {

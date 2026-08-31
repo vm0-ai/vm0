@@ -141,11 +141,6 @@ async function provisionRunnerCredential(
   } = options;
   const context = await browser.newContext({
     ignoreHTTPSErrors: true,
-    extraHTTPHeaders: vercelAutomationBypassSecret
-      ? {
-          "x-vercel-protection-bypass": vercelAutomationBypassSecret,
-        }
-      : undefined,
   });
   try {
     const page = await context.newPage();
