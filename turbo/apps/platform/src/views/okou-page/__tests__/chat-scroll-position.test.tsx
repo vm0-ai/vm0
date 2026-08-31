@@ -683,6 +683,51 @@ describe("chat scroll position", () => {
     expect(chatScrollContainer().scrollTop).toBe(0);
   });
 
+  it("opens an event hash instead of following the thread tail", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000817";
+    const events = simpleUserEvents(threadId, "deep-link", 20);
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Event deep link",
+      chatEvents: events,
+    });
+    installChatLayout(
+      new Map([
+        [
+          threadId,
+          {
+            clientHeight: () => {
+              return 300;
+            },
+            scrollHeight: () => {
+              return 2000;
+            },
+            eventRect: (eventId) => {
+              const index = Number(eventId.split("-").at(-1));
+              return Number.isFinite(index)
+                ? { top: index * 100, height: 80 }
+                : undefined;
+            },
+          },
+        ],
+      ]),
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}#event-deep-link-2`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatConversationLocator]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("deep-link message 2")).toBeInTheDocument();
+      expect(chatScrollContainer().scrollTop).toBe(200);
+      expect(viewportOffsetTop("deep-link-2")).toBe(0);
+    });
+  });
+
   it("follows the tail when a new message arrives while at the bottom", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000801";
     const initialEvents = simpleUserEvents(threadId, "tail-follow", 8);

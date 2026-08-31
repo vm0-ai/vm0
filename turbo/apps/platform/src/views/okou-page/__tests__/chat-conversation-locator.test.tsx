@@ -414,6 +414,36 @@ describe("chat conversation locator", () => {
     });
   });
 
+  it("hands the wheel back at the beginning of the locator window", async () => {
+    const { rail } = await renderLongThread();
+
+    const firstIndex = () => {
+      const tick = ticksOf(rail)[0];
+      return Number.parseFloat(tick?.dataset.turnIndex ?? "-1");
+    };
+    pointerAt(rail, 0, "pointerenter");
+
+    rail.dispatchEvent(
+      new WheelEvent("wheel", {
+        bubbles: true,
+        cancelable: true,
+        deltaY: -3000,
+      }),
+    );
+    await waitFor(() => {
+      expect(firstIndex()).toBe(0);
+    });
+
+    const boundaryWheel = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaY: -300,
+    });
+    rail.dispatchEvent(boundaryWheel);
+
+    expect(boundaryWheel.defaultPrevented).toBeFalsy();
+  });
+
   it("marks the turn a click lands on", async () => {
     const { rail } = await renderLongThread();
 

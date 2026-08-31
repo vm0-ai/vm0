@@ -20,7 +20,7 @@ import {
 } from "ccstate";
 import { animationFrame, timeout } from "signal-timers";
 import { logger } from "../log.ts";
-import { onRef, resetSignal } from "../utils.ts";
+import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
 
 const L = logger("ConversationLocator");
 
@@ -37,8 +37,6 @@ const SHOW_MIN_TURNS = 8;
 const SHOW_MIN_SCREENS = 3;
 /** Fraction of the viewport that decides which turn counts as "current". */
 const CURRENT_TURN_VIEWPORT_RATIO = 0.38;
-/** Where a jump parks its target inside the viewport. */
-const JUMP_VIEWPORT_RATIO = 0.28;
 /** Wheel travel that advances the window by one tick. */
 const WHEEL_STEP_PX = 26;
 /** Follow coefficient for the preview card; below 1 it trails the cursor. */
@@ -60,6 +58,7 @@ const TICK_METRICS = {
 } as const;
 
 const GROUP_SELECTOR = '[data-role="user"], [data-role="assistant"]';
+const SCROLL_ANCHOR_SELECTOR = "[data-chat-scroll-anchor-event-id]";
 
 export type LocatorRole = keyof typeof TICK_METRICS;
 
@@ -105,7 +104,7 @@ export interface ChatConversationLocatorSignals {
   readonly preview$: Computed<LocatorPreview | null>;
   /** True while the pointer is over the rail. */
   readonly engaged$: Computed<boolean>;
-  readonly jumpToTurn$: Command<void, [number]>;
+  readonly jumpToTurn$: Command<Promise<void>, [number, AbortSignal]>;
 }
 
 function emptyLayout(): LocatorLayout {
@@ -121,6 +120,7 @@ function emptyLayout(): LocatorLayout {
 
 interface DomTurn {
   readonly element: HTMLElement;
+  readonly eventId: string;
   readonly role: LocatorRole;
   /** ISO timestamp stamped on the turn wrapper, absent on optimistic rows. */
   readonly createdAt: string | undefined;
@@ -188,8 +188,16 @@ function readTurns(container: HTMLElement): DomTurn[] {
     if (rect.height === 0) {
       continue;
     }
+    const anchor = element.matches(SCROLL_ANCHOR_SELECTOR)
+      ? element
+      : element.querySelector<HTMLElement>(SCROLL_ANCHOR_SELECTOR);
+    const eventId = anchor?.dataset.chatScrollAnchorEventId;
+    if (!eventId) {
+      continue;
+    }
     turns.push({
       element,
+      eventId,
       role: roleOf(element),
       createdAt: element.dataset.turnCreatedAt,
       top: rect.top - containerTop + scrollTop,
@@ -508,37 +516,34 @@ function createPaint(store: LocatorStore) {
 function createJump(
   store: LocatorStore,
   threadId: string,
-  scrollContainer$: Computed<HTMLElement | null>,
-  signal: AbortSignal,
+  scrollToEvent$: Command<Promise<void>, [string, AbortSignal]>,
 ) {
   const resetLandedSignal$ = resetSignal();
 
-  return command(({ get, set }, turnIndex: number) => {
-    const container = get(scrollContainer$);
-    const turn = store.turns[turnIndex];
-    if (!container || !turn) {
-      return;
-    }
-    L.debug("jump to turn", { threadId, turnIndex });
-    container.scrollTo({
-      top: Math.max(0, turn.top - container.clientHeight * JUMP_VIEWPORT_RATIO),
-      behavior: "smooth",
-    });
-    const landedSignal = set(resetLandedSignal$, signal);
-    turn.element.dataset.locatorLanded = "";
-    const clearLanded = () => {
-      delete turn.element.dataset.locatorLanded;
-    };
-    landedSignal.addEventListener("abort", clearLanded, { once: true });
-    timeout(
-      () => {
-        landedSignal.removeEventListener("abort", clearLanded);
-        clearLanded();
-      },
-      LANDED_MARK_MS,
-      { signal: landedSignal },
-    );
-  });
+  return command(
+    async ({ set }, turnIndex: number, signal: AbortSignal): Promise<void> => {
+      const turn = store.turns[turnIndex];
+      if (!turn) {
+        return;
+      }
+      L.debug("jump to turn", { threadId, turnIndex, eventId: turn.eventId });
+      const landedSignal = set(resetLandedSignal$, signal);
+      turn.element.dataset.locatorLanded = "";
+      const clearLanded = () => {
+        delete turn.element.dataset.locatorLanded;
+      };
+      landedSignal.addEventListener("abort", clearLanded, { once: true });
+      timeout(
+        () => {
+          landedSignal.removeEventListener("abort", clearLanded);
+          clearLanded();
+        },
+        LANDED_MARK_MS,
+        { signal: landedSignal },
+      );
+      await set(scrollToEvent$, turn.eventId, signal);
+    },
+  );
 }
 
 /**
@@ -607,12 +612,12 @@ function createLeaveRail(
 
 function createClickJump(
   store: LocatorStore,
-  jumpToTurn$: Command<void, [number]>,
+  jumpToTurn$: Command<Promise<void>, [number, AbortSignal]>,
 ) {
-  return command(({ get, set }) => {
+  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
     const preview = get(store.preview$);
     if (preview) {
-      set(jumpToTurn$, preview.turnIndex);
+      await set(jumpToTurn$, preview.turnIndex, signal);
     }
   });
 }
@@ -639,11 +644,15 @@ function createPageWindow(
   });
 }
 
-/** True while the rail owns the wheel instead of the page. */
-function createOwnsWheel(store: LocatorStore) {
-  return command(({ get }) => {
+/** True when the rail can move in this wheel event's direction. */
+function createCanPageWindow(store: LocatorStore) {
+  return command(({ get }, deltaY: number) => {
     const layout = get(store.layout$);
-    return layout.visible && layout.turnCount > MAX_TICKS;
+    if (!layout.visible || layout.turnCount <= MAX_TICKS || deltaY === 0) {
+      return false;
+    }
+    const start = get(store.windowStart$);
+    return deltaY < 0 ? start > 0 : start < layout.turnCount - MAX_TICKS;
   });
 }
 
@@ -651,7 +660,7 @@ interface RailHandlers {
   readonly pointerEnter: () => void;
   readonly pointerMove: (event: PointerEvent) => void;
   readonly pointerLeave: () => void;
-  readonly click: () => void;
+  readonly click: (event: MouseEvent) => void;
   readonly wheel: (event: WheelEvent) => void;
   readonly scroll: () => void;
   readonly contentResize: () => void;
@@ -732,9 +741,9 @@ interface RailCommands {
   readonly paint$: Command<void, [number | null]>;
   readonly followStep$: Command<void, [HTMLElement, RailRuntime]>;
   readonly leaveRail$: Command<void, []>;
-  readonly clickJump$: Command<void, []>;
+  readonly clickJump$: Command<Promise<void>, [AbortSignal]>;
   readonly pageWindow$: Command<boolean, [number]>;
-  readonly ownsWheel$: Command<boolean, []>;
+  readonly canPageWindow$: Command<boolean, [number]>;
 }
 
 function createRailOnRef(
@@ -811,11 +820,12 @@ function createRailOnRef(
           runtime.wheelTravel = 0;
           set(commands.leaveRail$);
         },
-        click: () => {
-          set(commands.clickJump$);
-        },
+        click: onDomEventFn<MouseEvent>(async () => {
+          await set(commands.clickJump$, signal);
+        }),
         wheel: (event) => {
-          if (!set(commands.ownsWheel$)) {
+          if (!set(commands.canPageWindow$, event.deltaY)) {
+            runtime.wheelTravel = 0;
             return;
           }
           event.preventDefault();
@@ -880,20 +890,19 @@ function createPreviewOnRef(store: LocatorStore) {
   );
 }
 
-export function createChatConversationLocatorSignals(
-  {
-    threadId,
-    scrollContainer$,
-  }: {
-    threadId: string;
-    scrollContainer$: Computed<HTMLElement | null>;
-  },
-  signal: AbortSignal,
-): ChatConversationLocatorSignals {
+export function createChatConversationLocatorSignals({
+  threadId,
+  scrollContainer$,
+  scrollToEvent$,
+}: {
+  threadId: string;
+  scrollContainer$: Computed<HTMLElement | null>;
+  scrollToEvent$: Command<Promise<void>, [string, AbortSignal]>;
+}): ChatConversationLocatorSignals {
   const store = createStore();
   const recompute$ = createRecompute(store, scrollContainer$);
   const paint$ = createPaint(store);
-  const jumpToTurn$ = createJump(store, threadId, scrollContainer$, signal);
+  const jumpToTurn$ = createJump(store, threadId, scrollToEvent$);
   const railOnRef$ = createRailOnRef(store, threadId, scrollContainer$, {
     recompute$,
     paint$,
@@ -901,7 +910,7 @@ export function createChatConversationLocatorSignals(
     leaveRail$: createLeaveRail(store, recompute$, paint$),
     clickJump$: createClickJump(store, jumpToTurn$),
     pageWindow$: createPageWindow(store, recompute$),
-    ownsWheel$: createOwnsWheel(store),
+    canPageWindow$: createCanPageWindow(store),
   });
 
   return {

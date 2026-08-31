@@ -1,10 +1,12 @@
 import { command } from "ccstate";
 import { createElement } from "react";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { ChatThreadPage } from "../../views/okou-page/chat-thread-page.tsx";
 import { updatePage$ } from "../react-router.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
-import { searchParams$ } from "../route.ts";
+import { hash$, searchParams$ } from "../route.ts";
 import {
   SIDEBAR_PARAM,
   setupLeftThread$,
@@ -20,8 +22,23 @@ import {
   recordBootstrapThreadMetadataTiming$,
 } from "../../lib/posthog.ts";
 
+const CHAT_EVENT_HASH_PREFIX = "#event-";
+
+function chatEventIdFromHash(hash: string): string | null {
+  if (!hash.startsWith(CHAT_EVENT_HASH_PREFIX)) {
+    return null;
+  }
+  const encodedEventId = hash.slice(CHAT_EVENT_HASH_PREFIX.length);
+  return encodedEventId.length > 0 ? decodeURIComponent(encodedEventId) : null;
+}
+
 const setupResolvedLeftThread$ = command(
-  async ({ set }, threadId: string, signal: AbortSignal): Promise<void> => {
+  async (
+    { set },
+    threadId: string,
+    initialEventId: string | null,
+    signal: AbortSignal,
+  ): Promise<void> => {
     const resolution = await set(resolveThreadMeta$, threadId, signal);
     signal.throwIfAborted();
     set(recordBootstrapThreadMetadataTiming$, {
@@ -31,7 +48,7 @@ const setupResolvedLeftThread$ = command(
     });
     const { meta } = resolution;
     if (meta) {
-      await set(setupLeftThread$, meta, signal);
+      await set(setupLeftThread$, meta, initialEventId, signal);
       return;
     }
     await set(setupLeftThreadNotFound$, threadId, signal);
@@ -63,11 +80,16 @@ const internalSetupChatPage$ = command(
     set(captureNavigationTiming$);
 
     const sidebarThreadId = get(searchParams$).get(SIDEBAR_PARAM);
+    const initialEventId = get(featureSwitch$)[
+      FeatureSwitchKey.ChatConversationLocator
+    ]
+      ? chatEventIdFromHash(get(hash$))
+      : null;
     const rightThreadId =
       sidebarThreadId && sidebarThreadId !== threadId ? sidebarThreadId : null;
 
     await Promise.all([
-      set(setupResolvedLeftThread$, threadId, signal),
+      set(setupResolvedLeftThread$, threadId, initialEventId, signal),
       rightThreadId
         ? set(setupResolvedRightThread$, rightThreadId, signal)
         : set(unloadRightThread$),

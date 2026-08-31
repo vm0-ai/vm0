@@ -4255,13 +4255,11 @@ function createChatPanelSignalsWithDraft(
     ...artifact,
   };
   const sharing = createChatThreadSharingSignals(threadId, messages.scroll);
-  const locator = createChatConversationLocatorSignals(
-    {
-      threadId,
-      scrollContainer$: messages.scroll.scrollContainer$,
-    },
-    signal,
-  );
+  const locator = createChatConversationLocatorSignals({
+    threadId,
+    scrollContainer$: messages.scroll.scrollContainer$,
+    scrollToEvent$: messages.scroll.scrollToEvent$,
+  });
   const runTracking = createRunTracking({
     threadId,
     setupChatEvents$: messages.setup$,
@@ -4287,6 +4285,7 @@ function createChatPanelSignalsWithDraft(
     scrollContainer$: messages.scroll.scrollContainer$,
     threadScrollPosition$: messages.scroll.threadScrollPosition$,
     awayFromBottom$: messages.scroll.awayFromBottom$,
+    scrollToEvent$: messages.scroll.scrollToEvent$,
     scrollTo$: messages.scroll.scrollTo$,
     scrollToTop$: messages.scroll.scrollToTop$,
     scrollToBottom$: messages.scroll.scrollToBottom$,

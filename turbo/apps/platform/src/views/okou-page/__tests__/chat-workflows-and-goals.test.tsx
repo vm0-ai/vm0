@@ -8,6 +8,7 @@ import {
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
 } from "@okouai/core";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import type {
   ChatThreadWorkflowAutomation,
@@ -1133,6 +1134,79 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       expect(screen.queryByText(goalPrompt)).not.toBeInTheDocument();
       expect(screen.getAllByText("Worked for 30s").length).toBeGreaterThan(0);
     });
+  });
+
+  it("expands archived goal history for an event hash", async () => {
+    const threadId = "e9000000-0000-4000-a000-000000000016";
+    const runGroupId = "f0000001-0000-4000-a000-00000000092b";
+    const goalBrief = "Open the archived goal event";
+    const goalPrompt = `${goalBrief}\n\nFull autonomous goal prompt`;
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Goal event deep link",
+      chatEvents: [
+        {
+          id: "msg-goal-deep-link-user-1",
+          role: "user",
+          content: goalPrompt,
+          userMessage: {
+            version: 1,
+            parts: [{ type: "goal", goalBrief }],
+          },
+          runId: "f0000001-0000-4000-a000-00000000092c",
+          runGroupId,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-goal-deep-link-assistant-1",
+          role: "assistant",
+          content: "Archived goal result",
+          runId: "f0000001-0000-4000-a000-00000000092c",
+          runGroupId,
+          createdAt: "2026-06-09T10:00:30Z",
+        },
+        {
+          id: "msg-goal-deep-link-user-2",
+          role: "user",
+          content: goalPrompt,
+          userMessage: {
+            version: 1,
+            parts: [{ type: "goal", goalBrief }],
+          },
+          runId: "f0000001-0000-4000-a000-00000000092d",
+          runGroupId,
+          createdAt: "2026-06-09T10:02:00Z",
+        },
+        {
+          id: "msg-goal-deep-link-assistant-2",
+          role: "assistant",
+          content: "Latest goal result",
+          runId: "f0000001-0000-4000-a000-00000000092d",
+          runGroupId,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:02:30Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}#event-msg-goal-deep-link-assistant-1`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatConversationLocator]: true,
+      },
+    });
+
+    await expect(
+      screen.findByText("Archived goal result"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("Latest goal result")).toBeInTheDocument();
+    expect(
+      document.querySelector(
+        '[data-chat-scroll-anchor-event-id="msg-goal-deep-link-assistant-1"]',
+      ),
+    ).not.toBeNull();
   });
 
   it("keeps archived goal history below a running goal without assistant text", async () => {

@@ -174,14 +174,19 @@ const resolvePaneThread$ = command(
     args: {
       thread: ChatPanelSignals;
       isNew: boolean;
+      initialEventId: string | null;
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    const { thread, isNew } = args;
+    const { thread, isNew, initialEventId } = args;
 
     L.debug("resolvePaneThread$ Promise.all start", {
       threadId: thread.threadId,
     });
+    if (initialEventId) {
+      await set(thread.scrollToEvent$, initialEventId, signal);
+      signal.throwIfAborted();
+    }
     await Promise.all([
       set(loadDraft$, thread, isNew, signal),
       set(thread.subscribeChatThread$, signal),
@@ -217,6 +222,7 @@ const setupPaneThread$ = command(
     { set },
     spec: PaneSpec,
     meta: ThreadMeta,
+    initialEventId: string | null,
     parentSignal: AbortSignal,
   ): Promise<void> => {
     const signal = set(beginPaneSetup$, spec, parentSignal);
@@ -237,6 +243,7 @@ const setupPaneThread$ = command(
       {
         thread,
         isNew,
+        initialEventId,
       },
       signal,
     );
@@ -262,6 +269,7 @@ export const setupLeftThread$ = command(
   async (
     { set },
     meta: ThreadMeta,
+    initialEventId: string | null,
     parentSignal: AbortSignal,
   ): Promise<void> => {
     await Promise.all([
@@ -273,6 +281,7 @@ export const setupLeftThread$ = command(
           resetSetupSignal$: resetLeftSetupSignal$,
         },
         meta,
+        initialEventId,
         parentSignal,
       ),
     ]);
@@ -312,6 +321,7 @@ export const setupRightThread$ = command(
         resetSetupSignal$: resetRightSetupSignal$,
       },
       meta,
+      null,
       parentSignal,
     );
   },

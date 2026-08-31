@@ -50,6 +50,7 @@ export interface ChatThreadScrollSignals {
     Promise<void>,
     [ThreadScrollPosition | null, AbortSignal]
   >;
+  readonly scrollToEvent$: Command<Promise<void>, [string, AbortSignal]>;
   readonly scrollTo$: Command<void, [ThreadScrollPosition]>;
   readonly scrollToTop$: Command<Promise<void>, [AbortSignal]>;
   readonly scrollToBottom$: Command<Promise<void>, [AbortSignal]>;
@@ -313,6 +314,7 @@ function createInternalScrollSignals(
     awayFromBottom$,
     readRenderedThreadScrollPosition$,
     syncThreadScrollPosition$,
+    setThreadScrollPosition$,
     clearThreadScrollPosition$,
     bindScrollContainer$,
     clearScrollContainer$,
@@ -712,6 +714,17 @@ export function createChatThreadScrollSignals(
     runtime,
   );
   const scrollContentOnRef$ = createScrollContentOnRef(threadId, navigation);
+  const scrollToEvent$ = command(
+    async ({ set }, eventId: string, signal: AbortSignal): Promise<void> => {
+      const position: ThreadScrollPosition = {
+        targetEventId: eventId,
+        viewportOffsetTop: 0,
+      };
+      await set(scroll.setThreadScrollPosition$, position, signal);
+      signal.throwIfAborted();
+      await set(render.autoScroll$, position, signal);
+    },
+  );
 
   return {
     scrollContainerOnRef$,
@@ -723,6 +736,7 @@ export function createChatThreadScrollSignals(
     awayFromBottom$: scroll.awayFromBottom$,
     readRenderedThreadScrollPosition$: scroll.readRenderedThreadScrollPosition$,
     autoScroll$: render.autoScroll$,
+    scrollToEvent$,
     scrollTo$: navigation.scrollTo$,
     scrollToTop$: navigation.scrollToTop$,
     scrollToBottom$: navigation.scrollToBottom$,
