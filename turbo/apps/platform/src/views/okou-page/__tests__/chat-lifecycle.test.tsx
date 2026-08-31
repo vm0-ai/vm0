@@ -981,7 +981,9 @@ describe("chat lifecycle", () => {
       PLACEHOLDER,
     ) as HTMLTextAreaElement;
     await user.type(otherTextarea, "Fresh draft for other thread");
-    expect(screen.getByLabelText("Send")).toBeEnabled();
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeEnabled();
+    });
 
     await user.click(linkByText("Long thread"));
     await waitFor(() => {
