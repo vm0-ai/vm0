@@ -210,10 +210,6 @@ working for those builds:
   build never drains on its own; retiring those forms needs the Desktop drain
   gate tracked by #26364.
 
-`docs/zero-desktop-migration-rollout.md` is the runbook for rolling the policy
-back to `soft` or `off`. Rollback republishes the policy value and installed
-Zero re-reads it within five minutes; it does not need a Zero release.
-
 This does not submit or publish the app to the Mac App Store. The App Store
 Connect API key is only used as notarytool authentication for Apple's
 notarization service.
