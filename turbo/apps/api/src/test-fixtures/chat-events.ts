@@ -1974,6 +1974,71 @@ export async function holdOrgAdmissionLockFixture(args: {
 }
 
 /**
+ * Holds the production Pi API-first lifecycle key so BDDs can deterministically
+ * order publication and canonical cancellation without timing sleeps.
+ */
+export async function holdPiApiFirstTurnLifecycleLockFixture(args: {
+  readonly runId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly waiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const rows = await executeRawRows(
+      tx,
+      sql`
+        SELECT
+          pg_backend_pid() AS "pid",
+          pg_advisory_xact_lock(
+            hashtextextended(${`pi_api_first_turn:${args.runId}`}, 0)
+          )
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = rows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the Pi lifecycle lock holder pid");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    waiterCount: async () => {
+      const rows = await executeRawRows(
+        db(),
+        sql`
+          SELECT ${count()}::int AS "waiterCount"
+          FROM pg_locks AS waiting
+          WHERE waiting.locktype = 'advisory'
+            AND NOT waiting.granted
+            AND (waiting.classid, waiting.objid, waiting.objsubid) IN (
+              SELECT held.classid, held.objid, held.objsubid
+              FROM pg_locks AS held
+              WHERE held.locktype = 'advisory'
+                AND held.pid = ${holderPid}
+                AND held.granted
+            )
+        `,
+        waiterCountRowSchema,
+      );
+      return rows[0]?.waiterCount ?? 0;
+    },
+  };
+}
+
+/**
  * Holds the workflow queue admission key so tests can observe concurrent
  * requests waiting on the per-thread lock.
  */

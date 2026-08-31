@@ -153,6 +153,7 @@ import {
   holdChatEventQueueItemFixture,
   holdChatThreadRowLockFixture,
   holdOrgAdmissionLockFixture,
+  holdPiApiFirstTurnLifecycleLockFixture,
   holdThreadSessionBindingClearFixture,
   holdThreadSessionConversationChangesFixture,
   holdThreadSessionConversationClearFixture,
@@ -4655,6 +4656,50 @@ function mockPiResourceArchiveDownloads(unavailable = false): void {
   );
 }
 
+async function queueCapabilityProvenPiRun(args: {
+  readonly actor: ApiTestUser;
+  readonly agentId: string;
+  readonly runnerGroup: string;
+  readonly prompt: string;
+}): Promise<{
+  readonly anchor: { readonly runId: string; readonly threadId: string };
+  readonly anchorClaim: Awaited<ReturnType<typeof claimChatRun>>;
+  readonly run: { readonly runId: string; readonly threadId: string };
+}> {
+  if (!args.actor.orgId) {
+    throw new Error("Expected entitled chat actor to have an org");
+  }
+  mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+  await api.heartbeatRunner(args.runnerGroup);
+  const anchor = await sendChatRun(args.actor, {
+    agentId: args.agentId,
+    prompt: "hold capacity for a capability-proven Pi launch",
+    model: "claude-sonnet-5",
+  });
+  await flushWaitUntilForTest();
+  const anchorState = await api.readRun(args.actor, anchor.runId);
+  if (anchorState.status !== "pending") {
+    throw new Error(
+      `Expected pending capability anchor: ${JSON.stringify(anchorState)}`,
+    );
+  }
+  const anchorClaim = await claimChatRun(args.runnerGroup, anchor.runId);
+  await configureBuiltInPiModel(args.actor, "deepseek-v4-flash");
+  await updateFeatureSwitchesForUser(
+    context,
+    { ...args.actor, orgId: args.actor.orgId },
+    { [FeatureSwitchKey.PiLoop]: true },
+  );
+  const run = await sendChatRun(args.actor, {
+    agentId: args.agentId,
+    prompt: args.prompt,
+    model: "deepseek-v4-flash",
+  });
+  await waitForRunStatus(args.actor, run.runId, "queued");
+  await enableQueuedPiOwnershipTransferFixture(context, run.runId);
+  return { anchor, anchorClaim, run };
+}
+
 function occurrences(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1;
 }
@@ -5568,6 +5613,719 @@ describe("CHAT-02: model-first provider policies", () => {
       { content: "gamma", sequenceNumber: 2, runEventId: "event:2" },
       { content: "delta", sequenceNumber: 3, runEventId: "event:3" },
     ]);
+  }, 90_000);
+
+  it("transfers pre-provider active input through one stable sandbox-first delivery", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const resourceEntered = createDeferredPromise<void>(context.signal);
+    const releaseResource = createDeferredPromise<void>(context.signal);
+    server.use(
+      http.get(PI_RESOURCE_ARCHIVE_DOWNLOAD_URL, async ({ request }) => {
+        if (!resourceEntered.settled()) {
+          resourceEntered.resolve(undefined);
+        }
+        await releaseResource.promise;
+        const objectKey = new URL(request.url).searchParams.get("object");
+        if (!objectKey) {
+          throw new Error("Expected Pi resource archive object identity");
+        }
+        return new HttpResponse(piS3Object(objectKey), {
+          headers: { "content-type": "application/gzip" },
+        });
+      }),
+    );
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.deepseek.com/responses", () => {
+        modelCalls += 1;
+        return new HttpResponse(piResponsesTextSse("unexpected", modelCalls), {
+          headers: { "content-type": "text/event-stream" },
+        });
+      }),
+    );
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    const prompt = "execute the original prompt once in Sandbox";
+    const { anchor, anchorClaim, run } = await queueCapabilityProvenPiRun({
+      actor,
+      agentId,
+      runnerGroup,
+      prompt,
+    });
+
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await resourceEntered.promise;
+    const claimed = await claimChatRun(runnerGroup, run.runId);
+    await waitForRunStatus(actor, run.runId, "running", 5000);
+    const activeInput = "apply this accepted steer once";
+    const activeInputEventId = randomUUID();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: run.threadId,
+        prompt: activeInput,
+        clientEventId: activeInputEventId,
+      },
+      [201],
+    );
+    const sandboxToken = claimed.claim.sandboxToken;
+    const reserved = await api.reserveRunnerActiveInputs(
+      sandboxToken,
+      run.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected pre-provider active input to be reserved");
+    }
+    await expect(
+      api.reserveRunnerActiveInputs(sandboxToken, run.runId),
+    ).resolves.toStrictEqual(reserved);
+
+    releaseResource.resolve(undefined);
+    const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.get(manifestKey);
+      })
+      .toBeInstanceOf(Buffer);
+    expect(modelCalls).toBe(0);
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "running",
+    });
+    const manifest = piApiFirstTurnManifestV3Schema.parse(
+      JSON.parse(checkpointObjects.get(manifestKey)?.toString("utf8") ?? "{}"),
+    );
+    expect(manifest).toMatchObject({
+      schemaVersion: 3,
+      outcome: "ownership-transfer",
+      mode: "sandbox-first",
+      baseSession: { sessionId: run.threadId, sha256: null },
+      sandboxEventSequenceStart: 1,
+    });
+    const h0 =
+      checkpointObjects
+        .get(
+          `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/session.jsonl`,
+        )
+        ?.toString("utf8") ?? "";
+    expect(
+      MemoryPiSession.fromJsonl(h0).buildSessionContext().messages,
+    ).toHaveLength(0);
+    expect(claimed.claim.prompt).toBe(prompt);
+    const receipts = await Promise.all([
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        run.runId,
+        reserved.deliveryId,
+      ),
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        run.runId,
+        reserved.deliveryId,
+      ),
+    ]);
+    expect(receipts).toStrictEqual([
+      { outcome: "delivered" },
+      { outcome: "delivered" },
+    ]);
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        run.runId,
+        reserved.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "delivered" });
+    const events = await chat.listThreadEvents(actor, run.threadId);
+    expect(
+      events.events.filter((event) => {
+        return (
+          event.runId === run.runId &&
+          event.revokesEventId === activeInputEventId
+        );
+      }),
+    ).toHaveLength(1);
+    await cancelChatRun(actor, run.runId, claimed.sandboxHeaders);
+  }, 90_000);
+
+  it("publishes text H1 once and continues one in-flight active input as a new prompt", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockPiResourceArchiveDownloads();
+    const providerEntered = createDeferredPromise<void>(context.signal);
+    const releaseProvider = createDeferredPromise<void>(context.signal);
+    let modelCalls = 0;
+    const apiAnswer = "API H1 settled before the accepted input";
+    server.use(
+      http.post("https://api.deepseek.com/responses", async () => {
+        modelCalls += 1;
+        if (!providerEntered.settled()) {
+          providerEntered.resolve(undefined);
+        }
+        await releaseProvider.promise;
+        return new HttpResponse(piResponsesTextSse(apiAnswer, modelCalls), {
+          headers: { "content-type": "text/event-stream" },
+        });
+      }),
+    );
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    const originalPrompt = "settle this original API prompt once";
+    const { anchor, anchorClaim, run } = await queueCapabilityProvenPiRun({
+      actor,
+      agentId,
+      runnerGroup,
+      prompt: originalPrompt,
+    });
+
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await providerEntered.promise;
+    const claimed = await claimChatRun(runnerGroup, run.runId);
+    const activeInput = "continue H1 with exactly one new prompt";
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: run.threadId,
+        prompt: activeInput,
+        clientEventId: randomUUID(),
+      },
+      [201],
+    );
+    const sandboxToken = claimed.claim.sandboxToken;
+    const reserved = await api.reserveRunnerActiveInputs(
+      sandboxToken,
+      run.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected in-flight active input to be reserved");
+    }
+    releaseProvider.resolve(undefined);
+
+    const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.get(manifestKey);
+      })
+      .toBeInstanceOf(Buffer);
+    expect(modelCalls).toBe(1);
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "running",
+    });
+    const manifest = piApiFirstTurnManifestV3Schema.parse(
+      JSON.parse(checkpointObjects.get(manifestKey)?.toString("utf8") ?? "{}"),
+    );
+    expect(manifest).toMatchObject({
+      schemaVersion: 3,
+      outcome: "ownership-transfer",
+      mode: "settled-session-continuation",
+      sandboxEventSequenceStart: 1,
+    });
+    const apiMessages = eventBackedContents(
+      (await chat.listThreadEvents(actor, run.threadId)).events,
+      run.runId,
+    );
+    expect(
+      apiMessages.filter((message) => {
+        return message.content === apiAnswer;
+      }),
+    ).toHaveLength(1);
+
+    const h1 =
+      checkpointObjects
+        .get(
+          `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/session.jsonl`,
+        )
+        ?.toString("utf8") ?? "";
+    expect(occurrences(h1, originalPrompt)).toBe(1);
+    expect(occurrences(h1, apiAnswer)).toBe(1);
+    expect(occurrences(h1, activeInput)).toBe(0);
+    const h2Session = MemoryPiSession.fromJsonl(h1);
+    h2Session.appendMessage({
+      role: "user",
+      content: activeInput,
+      timestamp: 3,
+    });
+    const sandboxAnswer = "Sandbox answered the accepted prompt once";
+    h2Session.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: sandboxAnswer }],
+      api: "openai-responses",
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: 4,
+    });
+    const h2 = h2Session.toJsonl();
+    expect(occurrences(h2, originalPrompt)).toBe(1);
+    expect(occurrences(h2, activeInput)).toBe(1);
+    const h2Hash = createHash("sha256").update(h2).digest("hex");
+    await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId: run.runId,
+        hash: h2Hash,
+        rawSize: Buffer.byteLength(h2),
+        encodedSize: Buffer.byteLength(h2),
+        encoding: "identity",
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    checkpointObjects.set(
+      `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${h2Hash}.blob`,
+      Buffer.from(h2, "utf8"),
+    );
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        run.runId,
+        reserved.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "delivered" });
+    await webhooks.requestAgentEvents(
+      {
+        runId: run.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 1,
+            message: { content: [{ type: "text", text: sandboxAnswer }] },
+          },
+          {
+            type: "result",
+            sequenceNumber: 2,
+            result: sandboxAnswer,
+          },
+        ],
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    const completion = await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 0,
+        lastEventSequence: 2,
+        activeInputDeliveryIds: [reserved.deliveryId],
+        checkpoint: {
+          cliAgentType: "pi",
+          cliAgentSessionId: run.threadId,
+          cliAgentSessionHistoryHash: h2Hash,
+        },
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    expect(completion.body).toStrictEqual({
+      success: true,
+      status: "completed",
+    });
+    await waitForRunStatus(actor, run.runId, "completed", 5000);
+    expect(modelCalls).toBe(1);
+  }, 90_000);
+
+  it("retains pending-tool continuation while one accepted input remains a steer", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockPiResourceArchiveDownloads();
+    const providerEntered = createDeferredPromise<void>(context.signal);
+    const releaseProvider = createDeferredPromise<void>(context.signal);
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.deepseek.com/responses", async () => {
+        modelCalls += 1;
+        if (!providerEntered.settled()) {
+          providerEntered.resolve(undefined);
+        }
+        await releaseProvider.promise;
+        return new HttpResponse(
+          piResponsesToolSse({
+            callId: "call_active_input_tool",
+            name: "read",
+            arguments: { path: "/home/user/workspace/***/pending.txt" },
+            sequence: modelCalls,
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }),
+    );
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    const originalPrompt = "start one provider request with a pending tool";
+    const { anchor, anchorClaim, run } = await queueCapabilityProvenPiRun({
+      actor,
+      agentId,
+      runnerGroup,
+      prompt: originalPrompt,
+    });
+
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await providerEntered.promise;
+    const claimed = await claimChatRun(runnerGroup, run.runId);
+    const activeInput = "steer once after the pending tool boundary";
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: run.threadId,
+        prompt: activeInput,
+        clientEventId: randomUUID(),
+      },
+      [201],
+    );
+    const sandboxToken = claimed.claim.sandboxToken;
+    const reserved = await api.reserveRunnerActiveInputs(
+      sandboxToken,
+      run.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected pending-tool active input to be reserved");
+    }
+    releaseProvider.resolve(undefined);
+
+    const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.get(manifestKey);
+      })
+      .toBeInstanceOf(Buffer);
+    const manifest = piApiFirstTurnManifestV3Schema.parse(
+      JSON.parse(checkpointObjects.get(manifestKey)?.toString("utf8") ?? "{}"),
+    );
+    expect(manifest).toMatchObject({
+      schemaVersion: 3,
+      outcome: "ownership-transfer",
+      mode: "pending-tool-continuation",
+      sandboxEventSequenceStart: 1,
+    });
+    expect(modelCalls).toBe(1);
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "running",
+    });
+    const h1 =
+      checkpointObjects
+        .get(
+          `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/session.jsonl`,
+        )
+        ?.toString("utf8") ?? "";
+    const h2Session = MemoryPiSession.fromJsonl(h1);
+    expect(h2Session.hasPendingToolCalls()).toBeTruthy();
+    expect(occurrences(h1, originalPrompt)).toBe(1);
+    expect(occurrences(h1, activeInput)).toBe(0);
+    const pendingTool = [...h2Session.buildSessionContext().messages]
+      .reverse()
+      .find((message) => {
+        return message.role === "assistant";
+      });
+    const toolCall =
+      pendingTool?.role === "assistant"
+        ? pendingTool.content.find((content) => {
+            return content.type === "toolCall";
+          })
+        : undefined;
+    if (toolCall?.type !== "toolCall") {
+      throw new Error("Expected one pending Pi tool call");
+    }
+    h2Session.appendMessage({
+      role: "toolResult",
+      toolCallId: toolCall.id,
+      toolName: toolCall.name,
+      content: [{ type: "text", text: "Sandbox resumed the pending tool" }],
+      details: {},
+      isError: false,
+      timestamp: 3,
+    });
+    h2Session.appendMessage({
+      role: "user",
+      content: activeInput,
+      timestamp: 4,
+    });
+    h2Session.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "Sandbox applied the steer once" }],
+      api: "openai-responses",
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: 5,
+    });
+    const h2 = h2Session.toJsonl();
+    expect(occurrences(h2, originalPrompt)).toBe(1);
+    expect(occurrences(h2, activeInput)).toBe(1);
+    expect(MemoryPiSession.fromJsonl(h2).hasPendingToolCalls()).toBeFalsy();
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        run.runId,
+        reserved.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "delivered" });
+    await cancelChatRun(actor, run.runId, claimed.sandboxHeaders);
+    expect(modelCalls).toBe(1);
+  }, 90_000);
+
+  it("lets canonical cancellation win before provider ownership without API artifacts", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const resourceEntered = createDeferredPromise<void>(context.signal);
+    const releaseResource = createDeferredPromise<void>(context.signal);
+    server.use(
+      http.get(PI_RESOURCE_ARCHIVE_DOWNLOAD_URL, async ({ request }) => {
+        if (!resourceEntered.settled()) {
+          resourceEntered.resolve(undefined);
+        }
+        await releaseResource.promise;
+        const objectKey = new URL(request.url).searchParams.get("object");
+        if (!objectKey) {
+          throw new Error("Expected Pi resource archive object identity");
+        }
+        return new HttpResponse(piS3Object(objectKey), {
+          headers: { "content-type": "application/gzip" },
+        });
+      }),
+    );
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.deepseek.com/responses", () => {
+        modelCalls += 1;
+        return new HttpResponse(piResponsesTextSse("late", modelCalls), {
+          headers: { "content-type": "text/event-stream" },
+        });
+      }),
+    );
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    const { anchor, anchorClaim, run } = await queueCapabilityProvenPiRun({
+      actor,
+      agentId,
+      runnerGroup,
+      prompt: "cancel before the provider boundary",
+    });
+
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await resourceEntered.promise;
+    await cancelChatRun(actor, run.runId);
+    releaseResource.resolve(undefined);
+    await flushWaitUntilForTest();
+
+    expect(modelCalls).toBe(0);
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "cancelled",
+    });
+    expect(
+      checkpointObjects.has(
+        `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`,
+      ),
+    ).toBeFalsy();
+    expect(
+      checkpointObjects.has(
+        `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/session.jsonl`,
+      ),
+    ).toBeFalsy();
+    expect(
+      eventBackedContents(
+        (await chat.listThreadEvents(actor, run.threadId)).events,
+        run.runId,
+      ),
+    ).toHaveLength(0);
+    const claim = await api.requestClaimRunnerJob(true, run.runId, [404]);
+    expect(claim.status).toBe(404);
+  }, 90_000);
+
+  it("aborts or disregards one in-flight provider result after canonical cancellation", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockPiResourceArchiveDownloads();
+    const providerEntered = createDeferredPromise<void>(context.signal);
+    const releaseProvider = createDeferredPromise<void>(context.signal);
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.deepseek.com/responses", async () => {
+        modelCalls += 1;
+        if (!providerEntered.settled()) {
+          providerEntered.resolve(undefined);
+        }
+        await releaseProvider.promise;
+        return new HttpResponse(
+          piResponsesTextSse("discard this late provider result", modelCalls),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }),
+    );
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    const { anchor, anchorClaim, run } = await queueCapabilityProvenPiRun({
+      actor,
+      agentId,
+      runnerGroup,
+      prompt: "cancel one in-flight API-first request",
+    });
+
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await providerEntered.promise;
+    await cancelChatRun(actor, run.runId);
+    expect(modelCalls).toBe(1);
+    releaseProvider.resolve(undefined);
+    await flushWaitUntilForTest();
+
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "cancelled",
+    });
+    expect(modelCalls).toBe(1);
+    expect(
+      checkpointObjects.has(
+        `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`,
+      ),
+    ).toBeFalsy();
+    expect(
+      checkpointObjects.has(
+        `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/session.jsonl`,
+      ),
+    ).toBeFalsy();
+    expect(
+      eventBackedContents(
+        (await chat.listThreadEvents(actor, run.threadId)).events,
+        run.runId,
+      ),
+    ).toHaveLength(0);
+    const claim = await api.requestClaimRunnerJob(true, run.runId, [404]);
+    expect(claim.status).toBe(404);
+  }, 90_000);
+
+  it("makes post-provider cancellation the durable winner before publication", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockPiResourceArchiveDownloads();
+    const providerEntered = createDeferredPromise<void>(context.signal);
+    const releaseProvider = createDeferredPromise<void>(context.signal);
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.deepseek.com/responses", async () => {
+        modelCalls += 1;
+        if (!providerEntered.settled()) {
+          providerEntered.resolve(undefined);
+        }
+        await releaseProvider.promise;
+        return new HttpResponse(
+          piResponsesTextSse("result blocked before publication", modelCalls),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }),
+    );
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    const { anchor, anchorClaim, run } = await queueCapabilityProvenPiRun({
+      actor,
+      agentId,
+      runnerGroup,
+      prompt: "let cancellation commit before API publication",
+    });
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await providerEntered.promise;
+    const lifecycleLock = await holdPiApiFirstTurnLifecycleLockFixture({
+      runId: run.runId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      lifecycleLock.release();
+      await lifecycleLock.done;
+    });
+
+    const cancellation = api.requestCancelRun(actor, run.runId, [200]);
+    await expect.poll(lifecycleLock.waiterCount).toBe(1);
+    releaseProvider.resolve(undefined);
+    await expect.poll(lifecycleLock.waiterCount).toBe(2);
+    lifecycleLock.release();
+    await lifecycleLock.done;
+    await cancellation;
+    await flushWaitUntilForTest();
+
+    expect(modelCalls).toBe(1);
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "cancelled",
+    });
+    expect(
+      checkpointObjects.has(
+        `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`,
+      ),
+    ).toBeFalsy();
+    expect(
+      checkpointObjects.has(
+        `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/session.jsonl`,
+      ),
+    ).toBeFalsy();
+    expect(
+      eventBackedContents(
+        (await chat.listThreadEvents(actor, run.threadId)).events,
+        run.runId,
+      ),
+    ).toHaveLength(0);
+  }, 90_000);
+
+  it("keeps API completion terminal when it wins the lifecycle lock before cancellation", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockPiResourceArchiveDownloads();
+    const providerEntered = createDeferredPromise<void>(context.signal);
+    const releaseProvider = createDeferredPromise<void>(context.signal);
+    let modelCalls = 0;
+    const answer = "completion committed before cancellation";
+    server.use(
+      http.post("https://api.deepseek.com/responses", async () => {
+        modelCalls += 1;
+        if (!providerEntered.settled()) {
+          providerEntered.resolve(undefined);
+        }
+        await releaseProvider.promise;
+        return new HttpResponse(piResponsesTextSse(answer, modelCalls), {
+          headers: { "content-type": "text/event-stream" },
+        });
+      }),
+    );
+    mockPiCheckpointObjectStore();
+    const { anchor, anchorClaim, run } = await queueCapabilityProvenPiRun({
+      actor,
+      agentId,
+      runnerGroup,
+      prompt: "let API completion commit first",
+    });
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await providerEntered.promise;
+    const lifecycleLock = await holdPiApiFirstTurnLifecycleLockFixture({
+      runId: run.runId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      lifecycleLock.release();
+      await lifecycleLock.done;
+    });
+
+    releaseProvider.resolve(undefined);
+    await expect.poll(lifecycleLock.waiterCount).toBe(1);
+    const cancellation = api.requestCancelRun(actor, run.runId, [400]);
+    await expect.poll(lifecycleLock.waiterCount).toBe(2);
+    lifecycleLock.release();
+    await lifecycleLock.done;
+    const cancelResponse = await cancellation;
+    expectApiError(cancelResponse.body);
+    expect(cancelResponse.body.error.message).toContain(
+      "Run cannot be cancelled",
+    );
+    await waitForRunStatus(actor, run.runId, "completed", 5000);
+    await flushWaitUntilForTest();
+
+    expect(modelCalls).toBe(1);
+    expect(
+      eventBackedContents(
+        (await chat.listThreadEvents(actor, run.threadId)).events,
+        run.runId,
+      ).filter((message) => {
+        return message.content === answer;
+      }),
+    ).toHaveLength(1);
   }, 90_000);
 
   it.each([

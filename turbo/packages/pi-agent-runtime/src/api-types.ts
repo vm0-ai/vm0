@@ -70,6 +70,13 @@ export interface PiApiFirstTurnArgs {
   readonly model: PiAgentModelConfig;
   readonly resourceSnapshot: PiPreheatedResourceSnapshot;
   readonly ownership: PiApiFirstTurnOwnership;
+  /**
+   * Optional durable gate run immediately before the provider transport.
+   * The gate must invoke the marker while it owns its commit boundary.
+   */
+  readonly providerRequestBoundary?: (
+    markProviderRequestMayHaveStarted: () => void,
+  ) => Promise<void>;
 }
 
 export interface PiApiFirstTurnResult {
