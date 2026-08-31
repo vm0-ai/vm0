@@ -108,6 +108,7 @@ class TestStreamDecodeSession:
         compressed_by_encoding = {
             "gzip": gzip.compress(plaintext),
             "deflate": zlib.compress(plaintext),
+            "br": brotli.compress(plaintext),
         }
 
         for encoding, compressed in compressed_by_encoding.items():
@@ -134,6 +135,17 @@ class TestStreamDecodeSession:
         session.feed(compressed[:-1])
 
         assert b"".join(chunks) == plaintext
+        assert session.finish_error() == "incomplete compressed body"
+
+    def test_brotli_session_reports_truncated_stream(self, headers):
+        plaintext = b'{"model":"claude-sonnet-4-6","usage":{"input_tokens":42}}'
+        compressed = brotli.compress(plaintext)
+        chunks: list[bytes] = []
+        session = create_stream_decode_session(headers(("Content-Encoding", "br")), chunks.append)
+        assert session is not None
+
+        session.feed(compressed[:-1])
+
         assert session.finish_error() == "incomplete compressed body"
 
     @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
@@ -264,6 +276,33 @@ class TestStreamDecodeSession:
         assert len(chunks) > 1
         assert max(len(chunk) for chunk in chunks) <= STREAM_DECODE_CHUNK_LIMIT
         assert session.finish_error() is None
+
+    def test_brotli_high_ratio_output_is_chunked(self, headers):
+        plaintext = b"A" * (STREAM_DECODE_CHUNK_LIMIT * 3 + 123)
+        chunks: list[bytes] = []
+        session = create_stream_decode_session(headers(("Content-Encoding", "br")), chunks.append)
+        assert session is not None
+
+        session.feed(brotli.compress(plaintext))
+
+        assert b"".join(chunks) == plaintext
+        assert len(chunks) > 1
+        assert max(len(chunk) for chunk in chunks) <= STREAM_DECODE_CHUNK_LIMIT
+        assert session.finish_error() is None
+
+    def test_brotli_high_ratio_output_stops_at_expansion_budget(self, headers):
+        plaintext = b"A" * (8 * 1024 * 1024)
+        compressed = brotli.compress(plaintext)
+        assert len(compressed) * STREAM_DECODE_MAX_EXPANSION_RATIO < STREAM_DECODE_EXPANSION_GRACE
+        chunks: list[bytes] = []
+        session = create_stream_decode_session(headers(("Content-Encoding", "br")), chunks.append)
+        assert session is not None
+
+        session.feed(compressed)
+
+        assert b"".join(chunks) == plaintext[:STREAM_DECODE_EXPANSION_GRACE]
+        assert max(len(chunk) for chunk in chunks) <= STREAM_DECODE_CHUNK_LIMIT
+        assert session.finish_error() == "decoded body limit exceeded"
 
     @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
     def test_document_parser_termination_stops_zlib_traversal(self, headers, monkeypatch, encoding):
@@ -437,11 +476,22 @@ class TestStreamDecodeSession:
         assert chunks == []
         assert session.finish_error() == "invalid compressed body"
 
-    def test_brotli_unsafe_encoding_does_not_feed(self, headers):
+    def test_brotli_error_short_circuits(self, headers, monkeypatch):
+        stats = track_brotli_decompressor(monkeypatch)
         chunks: list[bytes] = []
         session = create_stream_decode_session(headers(("Content-Encoding", "br")), chunks.append)
-        assert session is None
+        assert session is not None
+
+        session.feed(b"not brotli at all")
+        calls_after_error = stats["calls"]
+        session.feed(b"more garbage")
+
         assert chunks == []
+        assert stats["calls"] == calls_after_error
+        assert session.finish_error() == "invalid compressed body"
+
+    def test_brotli_can_stream_decode_usage_is_true(self, headers):
+        assert can_stream_decode_usage(headers(("Content-Encoding", "br"))) is True
 
     def test_zstd_unsafe_encoding_does_not_feed(self, headers):
         chunks: list[bytes] = []

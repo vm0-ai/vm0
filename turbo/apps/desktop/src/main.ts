@@ -116,12 +116,6 @@ import {
   isDesktopRendererUrl,
 } from "./desktop-renderer-url";
 import { decideWindowOpen, isAllowedAppNavigation } from "./window-policy";
-import { DesktopZeroMigrationController } from "./desktop-zero-migration";
-import { ZERO_MIGRATION_BRIDGE_CONFIG } from "./desktop-zero-migration-config";
-import {
-  installDesktopZeroMigrationIpc,
-  notifyDesktopZeroMigrationChanged,
-} from "./desktop-zero-migration-electron";
 
 const config = resolveDesktopConfig();
 const desktopApiBaseUrl = resolveComputerUseApiBaseUrl(config.platformUrl);
@@ -158,8 +152,6 @@ let appIsQuitting = false;
 let computerUseNativeBackendDisposed = false;
 let desktopTray: DesktopTrayController | null = null;
 let keepAwakeController: DesktopKeepAwakeController | null = null;
-let zeroMigrationController: DesktopZeroMigrationController | null = null;
-let zeroMigrationPolicyTimer: ReturnType<typeof setInterval> | null = null;
 
 const desktopIdentity: DesktopIdentityInfo = {
   product: config.identity.product,
@@ -254,9 +246,7 @@ function notifyComputerUseChanged(): void {
   );
   notifyDesktopComputerUseChanged();
   refreshDesktopTray();
-  if (!zeroMigrationController?.shouldSuppressAutoStart()) {
-    computerUseAutoStart.restartRecoverableRuntimeState();
-  }
+  computerUseAutoStart.restartRecoverableRuntimeState();
 }
 
 function notifyAuthChanged(): void {
@@ -536,15 +526,6 @@ function createComputerUseHostRuntime(): ComputerUseHostRuntime {
 async function startComputerUseRuntime(
   options: { readonly userInitiated?: boolean } = {},
 ): Promise<DesktopComputerUseState> {
-  if (zeroMigrationController?.allowUserInitiatedStart() === false) {
-    return getComputerUseBridgeState();
-  }
-  if (zeroMigrationController?.shouldSuppressAutoStart()) {
-    if (options.userInitiated !== true) {
-      return getComputerUseBridgeState();
-    }
-    zeroMigrationController.clearForUserInitiatedStart();
-  }
   await computerUseController.start(options);
   return getComputerUseBridgeState();
 }
@@ -662,76 +643,6 @@ function installDesktopDeveloperTools(): void {
     },
     { rendererUrl: localRendererUrl },
   );
-}
-
-function installZeroMigration(): void {
-  zeroMigrationController = new DesktopZeroMigrationController({
-    enabled:
-      config.environment === "production" &&
-      app.isPackaged &&
-      !isDesktopSmokeTestEnabled(process.env),
-    product: config.identity.product,
-    appVersion: app.getVersion(),
-    preferencesPath: desktopPreferencesPath(),
-    drainAndStopZero: async () => {
-      await computerUseController.drainAndStop();
-    },
-    startZero: async () => {
-      await computerUseController.start({ userInitiated: true });
-    },
-    openDownload: async (url) => {
-      await shell.openExternal(url);
-    },
-    fetchPolicy: (signal) => {
-      const headers = new Headers();
-      addDesktopClientHeaders(headers);
-      return fetch(
-        new URL(ZERO_MIGRATION_BRIDGE_CONFIG.policyPath, desktopApiBaseUrl),
-        { headers, signal },
-      );
-    },
-    quitZero: () => {
-      quitConfirmation.allowQuitWithoutConfirmation();
-      app.quit();
-    },
-    onChange: notifyDesktopZeroMigrationChanged,
-    onAttention: () => {
-      void createMainWindow();
-    },
-    logPolicyError: (error) => {
-      console.warn("Unable to refresh Zero migration policy", error);
-    },
-  });
-  const controller = zeroMigrationController;
-  installDesktopZeroMigrationIpc(
-    {
-      getState: () => controller.getState(),
-      remindLater: () => controller.remindLater(),
-      beginMigration: () => controller.beginMigration(),
-      resumeZero: () => controller.resumeZero(),
-      quitZero: () => controller.quitZero(),
-    },
-    { rendererUrl: localRendererUrl },
-  );
-}
-
-function startZeroMigrationPolicyRefresh(): void {
-  const controller = zeroMigrationController;
-  if (!controller || zeroMigrationPolicyTimer) {
-    return;
-  }
-  zeroMigrationPolicyTimer = setInterval(() => {
-    void controller.refreshPolicy();
-  }, ZERO_MIGRATION_BRIDGE_CONFIG.policyRefreshIntervalMs);
-  zeroMigrationPolicyTimer.unref();
-}
-
-function stopZeroMigrationPolicyRefresh(): void {
-  if (!zeroMigrationPolicyTimer) {
-    return;
-  }
-  clearInterval(zeroMigrationPolicyTimer);
-  zeroMigrationPolicyTimer = null;
 }
 
 function refreshComputerUsePermissionsForState(): void {
@@ -1115,7 +1026,6 @@ interface DesktopSmokeBridgeState {
   readonly auth: boolean;
   readonly computerUse: boolean;
   readonly developerTools: boolean;
-  readonly zeroMigration: boolean;
   readonly identity: DesktopIdentityInfo | null;
 }
 
@@ -1144,8 +1054,6 @@ function isDesktopSmokeBridgeState(
     typeof value.computerUse === "boolean" &&
     "developerTools" in value &&
     typeof value.developerTools === "boolean" &&
-    "zeroMigration" in value &&
-    typeof value.zeroMigration === "boolean" &&
     "identity" in value &&
     (value.identity === null || isDesktopIdentityInfo(value.identity))
   );
@@ -1158,7 +1066,6 @@ async function verifyDesktopSmokeBridge(): Promise<void> {
       auth: typeof window.vm0DesktopAuth === "object",
       computerUse: typeof window.vm0DesktopComputerUse === "object",
       developerTools: typeof window.vm0DesktopDeveloperTools === "object",
-      zeroMigration: typeof window.vm0DesktopZeroMigration === "object",
       identity: window.vm0DesktopIdentity ?? null,
     })`,
     true,
@@ -1175,7 +1082,6 @@ async function verifyDesktopSmokeBridge(): Promise<void> {
     !state.auth ||
     !state.computerUse ||
     !state.developerTools ||
-    !state.zeroMigration ||
     !state.identity ||
     state.identity.product !== desktopIdentity.product ||
     state.identity.brandName !== desktopIdentity.brandName ||
@@ -1308,10 +1214,7 @@ async function maybeStartComputerUseAfterAuth(): Promise<void> {
   notifyAuthChanged();
   const permissions = await refreshComputerUsePermissionState();
   notifyComputerUseChanged();
-  if (
-    hasRequiredComputerUsePermissions(permissions) &&
-    !zeroMigrationController?.shouldSuppressAutoStart()
-  ) {
+  if (hasRequiredComputerUsePermissions(permissions)) {
     await computerUseController.start({ userInitiated: true });
   }
 }
@@ -1410,7 +1313,6 @@ if (!hasSingleInstanceLock) {
       return;
     }
 
-    stopZeroMigrationPolicyRefresh();
     appIsQuitting = true;
     releaseKeepAwake();
     if (!computerUseController.quitStopRequired()) {
@@ -1433,11 +1335,8 @@ if (!hasSingleInstanceLock) {
     installKeepAwake();
     installComputerUse();
     installDesktopDeveloperTools();
-    installZeroMigration();
     const desktopAuthSession = getAuthSession();
     installDesktopAuth();
-    await zeroMigrationController?.refreshPolicy();
-    startZeroMigrationPolicyRefresh();
     refreshComputerUsePermissionsForState();
     developerTools.requestRefresh();
     installTray();
@@ -1470,10 +1369,6 @@ if (!hasSingleInstanceLock) {
       logAuthError: logDesktopAuthError,
       logLaunchError: logComputerUseLaunchError,
     });
-
-    if (zeroMigrationController?.shouldOpenWindowOnLaunch()) {
-      await createMainWindow();
-    }
 
     app.on("activate", () => {
       void createMainWindow();

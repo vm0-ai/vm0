@@ -279,6 +279,11 @@ describe("chat start cards", () => {
       size: 4,
       url: "https://example.com/launch.pdf",
     });
+    context.mocks.api(avatarVideoContract.avatars, ({ respond }) => {
+      return respond(200, {
+        avatars: [{ id: 1, name: "Alex" }],
+      });
+    });
     context.mocks.api(avatarVideoContract.voices, ({ respond }) => {
       return respond(200, {
         voices: [
@@ -335,6 +340,30 @@ describe("chat start cards", () => {
       "w-auto",
       "justify-start",
     );
+    click(await screen.findByLabelText("Select template Alex"));
+    expect(
+      screen.getByText("How would you like the visual balance?"),
+    ).toBeInTheDocument();
+    const avatarLed = buttonWithText(
+      "Avatar-led — narrator on screen most of the time",
+      dialog,
+      false,
+    );
+    const bRollLed = buttonWithText(
+      "B-roll-led — focus on slides and visuals",
+      dialog,
+      false,
+    );
+    const balanced = buttonWithText(
+      "Balanced mix — equal time for both",
+      dialog,
+    );
+    expect(avatarLed).toHaveAttribute("aria-pressed", "false");
+    expect(bRollLed).toHaveAttribute("aria-pressed", "false");
+    expect(balanced).toHaveAttribute("aria-pressed", "true");
+    click(avatarLed);
+    expect(avatarLed).toHaveAttribute("aria-pressed", "true");
+    expect(balanced).toHaveAttribute("aria-pressed", "false");
     click(buttonWithText("Next", dialog));
     await expect(
       screen.findByText("Choose a voice"),
@@ -355,6 +384,9 @@ describe("chat start cards", () => {
     await expect(
       screen.findByText("Review your intro video"),
     ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByText("How would you like the visual balance?"),
+    ).toBeNull();
     const createButton = buttonWithText("Create in chat", dialog);
     expect(createButton).toBeInTheDocument();
     expect(createButton).toBeEnabled();
@@ -371,14 +403,85 @@ describe("chat start cards", () => {
         "Create a polished intro video from the attached source.",
       );
       expect(sentPrompt).toContain("- Source: launch.pdf");
-      expect(sentPrompt).toContain("- Avatar: No avatar");
+      expect(sentPrompt).toContain("- Avatar: Alex (1)");
       expect(sentPrompt).toContain("- Voice: No voiceover");
+      expect(sentPrompt).toContain(
+        "- Visual balance: Avatar-led (presenter on screen most of the time)",
+      );
       expect(sentUserMessage?.parts).toContainEqual({
         type: "file",
         fileId: "intro-video-source",
         filenameSnapshot: "launch.pdf",
         contentType: "application/pdf",
       });
+    });
+  });
+
+  it("keeps visual balance out of the no-avatar intro video prompt", async () => {
+    const user = userEvent.setup({ delay: null });
+    let sentPrompt: string | undefined;
+    mockChatLifecycle(context, {
+      onSendRequest: ({ prompt }) => {
+        sentPrompt = prompt;
+      },
+      onRunCreate: ({ prompt }) => {
+        sentPrompt = prompt;
+      },
+    });
+    context.mocks.upload.success({
+      id: "intro-video-source",
+      filename: "launch.pdf",
+      contentType: "application/pdf",
+      size: 4,
+      url: "https://example.com/launch.pdf",
+    });
+
+    setupChatStartCards();
+
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+    click(screen.getByTestId("intro-video-start-card"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Create an intro video",
+    });
+    const fileInput = dialog.querySelector<HTMLInputElement>(
+      '[data-intro-video-document-input=""]',
+    );
+    if (!fileInput) {
+      throw new Error("Expected intro video document input");
+    }
+    await user.upload(
+      fileInput,
+      new File(["deck"], "launch.pdf", { type: "application/pdf" }),
+    );
+
+    await expect(
+      screen.findByText("Your source is ready"),
+    ).resolves.toBeInTheDocument();
+    click(buttonWithText("Next", dialog));
+    await expect(
+      screen.findByText("Choose an avatar"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByText("How would you like the visual balance?"),
+    ).toBeNull();
+
+    click(buttonWithText("Next", dialog));
+    await expect(
+      screen.findByText("Choose a voice"),
+    ).resolves.toBeInTheDocument();
+    click(buttonWithText("No voiceover", dialog, false));
+    click(buttonWithText("Next", dialog));
+    await expect(
+      screen.findByText("Review your intro video"),
+    ).resolves.toBeInTheDocument();
+    await user.click(buttonWithText("Create in chat", dialog));
+
+    await waitFor(() => {
+      expect(sentPrompt).toContain("- Avatar: No avatar");
+      expect(sentPrompt).not.toContain("- Visual balance:");
     });
   });
 

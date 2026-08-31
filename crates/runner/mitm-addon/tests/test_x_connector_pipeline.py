@@ -93,17 +93,40 @@ class TestXConnectorResponsePipeline:
         assert len(events) == len(by_category)
         assert by_category == {"posts.read": 1, "user.read": 1}
 
-    @pytest.mark.parametrize("encoding_case", ["br", "zstd"])
-    def test_full_response_pipeline_unsafe_compressed_x_json_uses_bounded_fallback(
-        self, tmp_path, real_flow, mitm_ctx, encoding_case
+    def test_full_response_pipeline_brotli_x_json_uses_incremental_parser(
+        self, tmp_path, real_flow, mitm_ctx
     ):
-        """Unsafe streaming encodings are skipped, but X JSON fallback remains active."""
-        flow = make_x_pipeline_flow(real_flow, tmp_path, content_encoding=encoding_case)
+        flow = make_x_pipeline_flow(real_flow, tmp_path, content_encoding="br")
+        payload = b'{"data":[{"id":"1"}],"includes":{"users":[{"id":"u1"}]}}'
+        compressed = _compress_body("br", payload)
+
+        with mitm_ctx():
+            mitm_addon.responseheaders(flow)
+        midpoint = len(compressed) // 2
+        response_stream(flow)(compressed[:midpoint])
+        response_stream(flow)(compressed[midpoint:])
+        response_stream(flow)(b"")
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
+
+        with self._usage_webhook_api() as webhook:
+            mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
+
+        events = webhook.usage_events()
+        by_category = {event["category"]: event["quantity"] for event in events}
+        assert len(events) == len(by_category)
+        assert by_category == {"posts.read": 1, "user.read": 1}
+
+    def test_full_response_pipeline_zstd_x_json_uses_bounded_fallback(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        flow = make_x_pipeline_flow(real_flow, tmp_path, content_encoding="zstd")
         payload = b'{"data":[{"id":"1"}],"includes":{"users":[{"id":"u1"}]}}'
 
         with mitm_ctx():
             mitm_addon.responseheaders(flow)
-        response_stream(flow)(_compress_body(encoding_case, payload))
+        response_stream(flow)(_compress_body("zstd", payload))
         assert metadata_keys.STREAM_BUFFER in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE in flow.metadata
 
@@ -115,10 +138,10 @@ class TestXConnectorResponsePipeline:
         assert "connector_response_finish" not in flow.metadata
         assert metadata_keys.X_NDJSON_STATE not in flow.metadata
 
-    @pytest.mark.parametrize("encoding_case", ["br", "zstd"])
     def test_full_response_pipeline_bounds_buffered_x_json_fallback_work(
-        self, tmp_path, real_flow, mitm_ctx, encoding_case
+        self, tmp_path, real_flow, mitm_ctx
     ):
+        encoding_case = "zstd"
         flow = make_x_pipeline_flow(
             real_flow,
             tmp_path,
@@ -193,10 +216,10 @@ class TestXConnectorResponsePipeline:
         assert entry["body_truncated"] is False
         assert entry["parse_error"] == "work limit exceeded"
 
-    @pytest.mark.parametrize("encoding_case", ["br", "zstd"])
     def test_responseheaders_unsafe_compressed_x_stream_does_not_leave_parser_state(
-        self, tmp_path, real_flow, mitm_ctx, encoding_case
+        self, tmp_path, real_flow, mitm_ctx
     ):
+        encoding_case = "zstd"
         flow = make_x_stream_pipeline_flow(real_flow, tmp_path)
         assert flow.response is not None
         flow.response.headers["content-encoding"] = encoding_case

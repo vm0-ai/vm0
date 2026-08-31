@@ -185,27 +185,34 @@ under independent release tags and update manifests.
 
 ### Final Zero bridge release
 
-Production Zero builds at version `0.34.0` or newer show a soft migration
-reminder for Okou. `Remind Me Later` keeps Zero running and defers the reminder
-for seven days. `Download Okou` records the migration handoff before waiting for
-the active Computer Use command, stops the Zero host after that command finishes,
-and then opens the stable signed Okou DMG route:
+The Zero migration bridge shipped, reached its `hard` stop, and has been removed
+from this source tree. It no longer exists in any build produced from `main`.
 
-`https://api.vm0.ai/api/desktop/updates/stable/darwin/arm64/dmg`
+Production Zero builds at version `0.34.0` or newer carry the bridge compiled
+in. They poll `/api/desktop/migration-policy` every five minutes and, on `hard`,
+finish the active Computer Use command, stop the Zero host, and offer only
+`Download Okou` or `Quit Zero`. `hard` went live on 2026-08-31 and Zero Computer
+Use traffic reached zero within about half an hour.
 
-#28278 moved that route off the brand namespace. Builds published before the
-move open `https://api.vm0.ai/api/okou/desktop/updates/stable/darwin/arm64/dmg`
-and reject any other path, so the API keeps serving both branded forms through
-`MIGRATED_BRANDED_PATHS` in `apps/api/src/signals/route-entry.ts`. An installed
-build never drains on its own; retiring those forms needs the Desktop drain gate
-tracked by #26364.
+Because that behaviour lives in already-installed builds rather than here,
+removing the source does not weaken it — but two server-side pieces must keep
+working for those builds:
 
-Once the handoff starts, Zero does not automatically register or relaunch its
-host on restart. The migration notice remains available so the user can retry
-the Okou download or explicitly resume Zero if installation or setup fails.
-This bridge is limited to packaged production Zero builds and does not change
-either product's updater feed. The later remote hard-stop, cohort rollout,
-telemetry thresholds, and Zero retirement remain separate rollout work.
+- **`/api/desktop/migration-policy` must keep answering `hard`.** The installed
+  bridge falls back to `soft` on any request failure, so deleting or breaking
+  the endpoint would silently release users the hard stop is holding.
+- **The Okou DMG route must keep resolving.** `Download Okou` opens
+  `https://api.vm0.ai/api/desktop/updates/stable/darwin/arm64/dmg`. #28278 moved
+  that route off the brand namespace, and builds published before the move open
+  `https://api.vm0.ai/api/okou/desktop/updates/stable/darwin/arm64/dmg` and
+  reject any other path, so the API keeps serving both branded forms through
+  `MIGRATED_BRANDED_PATHS` in `apps/api/src/signals/route-entry.ts`. An installed
+  build never drains on its own; retiring those forms needs the Desktop drain
+  gate tracked by #26364.
+
+`docs/zero-desktop-migration-rollout.md` is the runbook for rolling the policy
+back to `soft` or `off`. Rollback republishes the policy value and installed
+Zero re-reads it within five minutes; it does not need a Zero release.
 
 This does not submit or publish the app to the Mac App Store. The App Store
 Connect API key is only used as notarytool authentication for Apple's

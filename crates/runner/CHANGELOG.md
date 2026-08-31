@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.179.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.179.1...runner-rs-v0.179.2) (2026-08-31)
+
+
+### Bug Fixes
+
+* **runner:** preserve exact-reuse timezone outcomes ([#30470](https://github.com/vm0-ai/vm0/issues/30470)) ([e5a37ee](https://github.com/vm0-ai/vm0/commit/e5a37ee36ae946feb2f606d868b5de64e6e49180))
+* **runner:** reject unrepresentable wait-running timeouts ([#30465](https://github.com/vm0-ai/vm0/issues/30465)) ([3d07b64](https://github.com/vm0-ai/vm0/commit/3d07b64b39dce87f13e6cd774690b72b8b9da28c))
+
+## [0.179.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.179.0...runner-rs-v0.179.1) (2026-08-31)
+
+
+### Bug Fixes
+
+* **runner:** reject cleartext remote api urls ([#30430](https://github.com/vm0-ai/vm0/issues/30430)) ([197a456](https://github.com/vm0-ai/vm0/commit/197a4560f15f274fddaaf53336238dee327385aa))
+
+
+### Documentation
+
+* **python:** update stale model-provider usage integration path ([#30424](https://github.com/vm0-ai/vm0/issues/30424)) ([5e356f8](https://github.com/vm0-ai/vm0/commit/5e356f88a12d1478581793fd655fe69db816fcc6))
+* **runner:** document best-effort GC directory stats ([#30439](https://github.com/vm0-ai/vm0/issues/30439)) ([6da865a](https://github.com/vm0-ai/vm0/commit/6da865a894763042b9d6e043e7f74df70c15622a))
+
+
+### Performance Improvements
+
+* **python:** avoid duplicate metadata contract scan ([#30459](https://github.com/vm0-ai/vm0/issues/30459)) ([ef201e0](https://github.com/vm0-ai/vm0/commit/ef201e07c15a20156a995e6db8080d7e36919ba8))
+
+## [0.179.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.14...runner-rs-v0.179.0) (2026-08-31)
+
+
+### Features
+
+* **runner:** report operator environment alias states ([#30428](https://github.com/vm0-ai/vm0/issues/30428)) ([e2ea6c3](https://github.com/vm0-ai/vm0/commit/e2ea6c38eaab2a9eb67d2f61ee4b674ffa4a8d38))
+
 ## [0.178.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.13...runner-rs-v0.178.14) (2026-08-31)
 
 

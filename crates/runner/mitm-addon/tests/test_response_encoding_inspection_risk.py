@@ -67,14 +67,6 @@ class TestResponseEncodingInspectionRisk:
                 id="model-json-zstd",
             ),
             pytest.param(
-                "br",
-                "text/event-stream",
-                "brotli streaming output cannot be bounded",
-                True,
-                False,
-                id="model-sse-brotli",
-            ),
-            pytest.param(
                 "private-encoding-value",
                 "application/json",
                 "unsupported content encoding",
@@ -147,10 +139,11 @@ class TestResponseEncodingInspectionRisk:
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
+    @pytest.mark.parametrize("content_encoding", ["gzip", "br"])
     def test_stream_safe_model_response_keeps_parser_without_risk(
-        self, real_flow, tmp_path, mitm_ctx
+        self, real_flow, tmp_path, mitm_ctx, content_encoding: str
     ) -> None:
-        flow = self._model_flow(real_flow, tmp_path, content_encoding="gzip")
+        flow = self._model_flow(real_flow, tmp_path, content_encoding=content_encoding)
 
         with mitm_ctx():
             mitm_addon.responseheaders(flow)
@@ -283,20 +276,18 @@ class TestResponseEncodingInspectionRisk:
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
-    @pytest.mark.parametrize("content_encoding", ["br", "zstd"])
     def test_billable_connector_stream_rejects_non_streamable_encoding(
         self,
         real_flow,
         tmp_path,
         mitm_ctx,
-        content_encoding: str,
     ) -> None:
         flow = make_x_pipeline_flow(
             real_flow,
             tmp_path,
             path="/2/tweets/search/stream",
             rule="GET /2/tweets/search/stream",
-            content_encoding=content_encoding,
+            content_encoding="zstd",
         )
         flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] = "rewritten_stream_decodable"
 

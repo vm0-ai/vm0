@@ -1627,6 +1627,63 @@ class TestFirewallAuthAsyncTransport:
         assert connect_probe.active_count == 0
         assert all(sock.fileno() == -1 for sock in connect_probe.sockets)
 
+    async def test_deduplicates_normalized_addresses_before_connection_racing(self, mitm_ctx):
+        requests: list[_RawHttpRequest] = []
+
+        async def handle_client(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            requests.append(await _read_raw_http_request(reader))
+            await _write_success_response(writer)
+
+        loop = asyncio.get_running_loop()
+        connect_probe = _PendingSockConnect(loop.sock_connect)
+        resolver = _OrderedResolver(
+            expected_host="firewall-auth.invalid",
+            addresses=(
+                "192.0.2.1",
+                "192.0.2.1",
+                "2001:0db8::1",
+                "2001:db8::1",
+                "192.0.2.2",
+                "127.0.0.1",
+            ),
+        )
+        async with _run_test_server(handle_client) as port:
+            with (
+                patch.dict(os.environ, _EMPTY_PROXY_ENVIRONMENT),
+                patch.object(auth_client, "_dns_resolver", resolver),
+                patch.object(loop, "sock_connect", new=connect_probe),
+                patch.object(
+                    auth_client,
+                    "_FIREWALL_AUTH_CONNECTION_ATTEMPT_DELAY_SECONDS",
+                    0.0,
+                ),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                mitm_ctx(api_url=f"http://firewall-auth.invalid:{port}"),
+            ):
+                result = await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+        assert result.payload.headers == {}
+        assert len(requests) == 1
+        attempted_hosts = [address[0] for address in connect_probe.attempted_addresses]
+        assert attempted_hosts == [
+            "192.0.2.1",
+            "2001:db8::1",
+            "192.0.2.2",
+            "127.0.0.1",
+        ]
+        assert len(attempted_hosts) == len(set(attempted_hosts))
+        assert {address[0] for address in connect_probe.cancelled_addresses} == {
+            "192.0.2.1",
+            "2001:db8::1",
+            "192.0.2.2",
+        }
+        assert connect_probe.max_active_count == 4
+        assert connect_probe.active_count == 0
+        assert all(sock.fileno() == -1 for sock in connect_probe.sockets)
+
     async def test_bounds_pending_connects_and_reaches_address_beyond_window(self, mitm_ctx):
         requests: list[_RawHttpRequest] = []
 

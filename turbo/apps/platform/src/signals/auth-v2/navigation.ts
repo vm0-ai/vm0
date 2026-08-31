@@ -20,8 +20,8 @@ interface CreateAuthV2NavigationOptions {
 }
 
 const AUTH_V2_ROUTE_BY_MODE = {
-  "sign-in": ROUTES.signInV2,
-  "sign-up": ROUTES.signUpV2,
+  "sign-in": ROUTES.signIn,
+  "sign-up": ROUTES.signUp,
 } as const satisfies Record<AuthV2RouteMode, string>;
 
 function preserveHashWithRedirect(

@@ -14,6 +14,7 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
+import { redactPresignedUrls } from "../../lib/presigned-url-redaction";
 import { safeJsonParse } from "../utils";
 import {
   canonicalUsagePricingProvider,
@@ -1695,10 +1696,18 @@ function falQualityInput(
   return modelConfig.supportsQuality ? { quality: options.quality } : {};
 }
 
-function falImageInput(options: ImageOptions): Record<string, unknown> {
+export interface ImageProviderReferences {
+  readonly sourceImageUrls: readonly string[];
+  readonly maskImageUrl: string | undefined;
+}
+
+function falImageInput(
+  options: ImageOptions,
+  references: ImageProviderReferences,
+): Record<string, unknown> {
   const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
   if (modelConfig.promptless) {
-    return falSourceImageInput(modelConfig, options.sourceImageUrls);
+    return falSourceImageInput(modelConfig, references.sourceImageUrls);
   }
   return {
     prompt: options.prompt,
@@ -1728,10 +1737,10 @@ function falImageInput(options: ImageOptions): Record<string, unknown> {
       ? { enhance_prompt: options.enhancePrompt }
       : {}),
     ...(options.sourceImageUrls.length > 0
-      ? falSourceImageInput(modelConfig, options.sourceImageUrls)
+      ? falSourceImageInput(modelConfig, references.sourceImageUrls)
       : {}),
-    ...(modelConfig.supportsMaskImage && options.maskImageUrl
-      ? { mask_image_url: options.maskImageUrl }
+    ...(modelConfig.supportsMaskImage && references.maskImageUrl
+      ? { mask_image_url: references.maskImageUrl }
       : {}),
     ...(modelConfig.supportsInputFidelity && options.inputFidelity
       ? { input_fidelity: options.inputFidelity }
@@ -1756,11 +1765,12 @@ async function readImageProviderErrorBody(
 ): Promise<string> {
   const body = await response.text();
   signal.throwIfAborted();
-  return body.slice(0, 4000);
+  return redactPresignedUrls(body).slice(0, 4000);
 }
 
 export async function submitFalImageQueueGeneration(
   options: ImageOptions,
+  references: ImageProviderReferences,
   falKey: string,
   webhookUrl: string,
   signal: AbortSignal,
@@ -1771,7 +1781,7 @@ export async function submitFalImageQueueGeneration(
   const response = await fetch(queueUrl, {
     method: "POST",
     headers: falHeaders(falKey),
-    body: JSON.stringify(falImageInput(options)),
+    body: JSON.stringify(falImageInput(options, references)),
     signal,
   });
 
@@ -1857,11 +1867,14 @@ function bytePlusImageSize(options: ImageOptions): string {
   return options.size === "auto" ? "2K" : options.size;
 }
 
-function bytePlusImageInput(options: ImageOptions): Record<string, unknown> {
+function bytePlusImageInput(
+  options: ImageOptions,
+  references: ImageProviderReferences,
+): Record<string, unknown> {
   const sourceImages =
-    options.sourceImageUrls.length === 1
-      ? options.sourceImageUrls[0]
-      : options.sourceImageUrls;
+    references.sourceImageUrls.length === 1
+      ? references.sourceImageUrls[0]
+      : references.sourceImageUrls;
   return {
     model: options.model,
     prompt: options.prompt,
@@ -1908,13 +1921,14 @@ function parseBytePlusImageResult(
 
 export async function generateBytePlusImage(
   options: ImageOptions,
+  references: ImageProviderReferences,
   apiKey: string,
   signal: AbortSignal,
 ): Promise<ParsedImageGeneration | ErrorResponse> {
   const response = await fetch(BYTEPLUS_IMAGE_GENERATIONS_URL, {
     method: "POST",
     headers: bytePlusHeaders(apiKey),
-    body: JSON.stringify(bytePlusImageInput(options)),
+    body: JSON.stringify(bytePlusImageInput(options, references)),
     signal,
   });
   if (!response.ok) {

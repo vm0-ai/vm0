@@ -4,8 +4,8 @@ import {
   createConnectorCatalogValidatorIdentity,
   type ConnectorCatalogValidationAuthority,
   type ConnectorCatalogValidatorIdentity,
-} from "@okouai/connector-catalog-validation/authority";
-import { CONNECTOR_CATALOG_VALIDATOR_VERSION } from "@okouai/connector-catalog-validation/version";
+} from "@okouai/connectors/connector-catalog/authority";
+import { CONNECTOR_CATALOG_VALIDATOR_VERSION } from "@okouai/connectors/connector-catalog/version";
 
 import { getBuildVersion, normalizeBuildCommitSha } from "../../lib/build-info";
 import { env } from "../../lib/env";
