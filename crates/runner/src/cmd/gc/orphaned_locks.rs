@@ -67,6 +67,24 @@ mod tests {
     use crate::lock;
 
     #[tokio::test]
+    async fn gc_orphaned_locks_removes_free_rootfs_bridge_locks() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let historical = home.legacy_rootfs_lock("test-rootfs");
+        let canonical = home.rootfs_lock("test-rootfs");
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+        std::fs::write(&historical, "").unwrap();
+        std::fs::write(&canonical, "").unwrap();
+
+        let report = gc_orphaned_locks(&home, false).await.unwrap();
+
+        assert_eq!(report.activity_count, 2);
+        assert_eq!(report.freed_bytes, 0);
+        assert!(!historical.exists());
+        assert!(!canonical.exists());
+    }
+
+    #[tokio::test]
     async fn gc_orphaned_locks_preserves_only_current_service_locks() {
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
