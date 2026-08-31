@@ -9,6 +9,7 @@ use crate::bounded_command::{
 use crate::error::{RunnerError, RunnerResult};
 use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
+use tracing::warn;
 
 use super::diagnostic::status_field_preview;
 use super::target::RunnerServiceUnit;
@@ -899,17 +900,66 @@ fn service_restart_policy_from_systemctl_show(
     Ok(restart)
 }
 
+/// Strip the leading ANSI escape sequences systemd writes when it colorizes a
+/// log line, so advisory detection does not depend on `SYSTEMD_COLORS`.
+fn strip_leading_ansi(line: &str) -> &str {
+    let mut rest = line;
+    while let Some(after_escape) = rest.strip_prefix('\u{1b}') {
+        let Some(after_bracket) = after_escape.strip_prefix('[') else {
+            break;
+        };
+        let mut chars = after_bracket.char_indices();
+        let Some((idx, terminator)) = chars.find(|(_, c)| !matches!(c, '0'..='9' | ';')) else {
+            break;
+        };
+        rest = &after_bracket[idx + terminator.len_utf8()..];
+    }
+    rest
+}
+
+/// Classify one `systemctl cat` stderr line as systemd's advisory notice.
+///
+/// `systemctl cat` prints this notice with `fprintf(stderr, …)` when the unit
+/// reports `NeedDaemonReload`, and systemd itself documents the block as
+/// informational: the exit status stays 0 and the selected unit content is
+/// still written to stdout. `NeedDaemonReload` is derived from mtime
+/// comparisons over the unit's fragment and drop-in set, so it is routinely
+/// raised without this unit's own content having changed, and a
+/// `daemon-reload` does not reliably clear it — see systemd issues 10974,
+/// 17730 and 35710. Failing a read on it therefore rejects healthy output for
+/// a condition the caller neither owns nor can repair.
+///
+/// systemd only uses the `#` comment form for that notice; real `cat`
+/// diagnostics are plain sentences, so they still fail the read.
+fn is_systemctl_cat_advisory_line(line: &str) -> bool {
+    strip_leading_ansi(line.trim_start())
+        .trim_start()
+        .starts_with('#')
+}
+
 fn unit_content_from_systemctl_cat(svc: &str, output: &Output) -> RunnerResult<String> {
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stderr = stderr.trim();
     if !output.status.success() {
         return Err(systemctl_cat_status_error(svc, &output.status, stderr));
     }
-    if !stderr.is_empty() {
+    let unexpected = stderr
+        .lines()
+        .filter(|line| !line.trim().is_empty() && !is_systemctl_cat_advisory_line(line))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if !unexpected.is_empty() {
         return Err(RunnerError::Internal(format!(
             "systemctl cat {svc} emitted stderr: {:?}",
-            status_field_preview(stderr)
+            status_field_preview(&unexpected)
         )));
+    }
+    if !stderr.is_empty() {
+        warn!(
+            unit = svc,
+            advisory = %status_field_preview(stderr),
+            "systemctl cat reported a pending systemd daemon-reload"
+        );
     }
 
     let stdout = std::str::from_utf8(&output.stdout).map_err(|e| {
@@ -1090,6 +1140,83 @@ mod tests {
         assert!(message.contains("emitted stderr"));
         assert!(message.contains("[truncated]"));
         assert!(message.len() < stderr.len());
+    }
+
+    /// systemd emits this block on stderr while `systemctl cat` still exits 0.
+    /// Reproduced from the `deploy-runner-start` failure in Turbo run
+    /// 33409335059, where the runner had already reported ready.
+    const DAEMON_RELOAD_ADVISORY: &str = concat!(
+        "# Warning: vm0-runner-test.service changed on disk, the version systemd has loaded is outdated.\n",
+        "# This output shows the current version of the unit's original fragment and drop-in files.\n",
+        "# If fragments or drop-ins were added or removed, they are not properly reflected in this output.\n",
+        "# Run 'systemctl daemon-reload' to reload units.",
+    );
+
+    #[test]
+    fn systemctl_cat_accepts_daemon_reload_advisory_stderr() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let output = systemctl_show_output(
+            ExitStatus::from_raw(0),
+            b"[Service]\nExecStart=/usr/bin/runner start --config /data/runner.yaml\n",
+            DAEMON_RELOAD_ADVISORY.as_bytes(),
+        );
+
+        assert_eq!(
+            unit_content_from_systemctl_cat("vm0-runner-test.service", &output).unwrap(),
+            "[Service]\nExecStart=/usr/bin/runner start --config /data/runner.yaml\n"
+        );
+    }
+
+    #[test]
+    fn systemctl_cat_accepts_colorized_daemon_reload_advisory_stderr() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let colorized = DAEMON_RELOAD_ADVISORY
+            .lines()
+            .map(|line| format!("\u{1b}[0;1;31m{line}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let output = systemctl_show_output(
+            ExitStatus::from_raw(0),
+            b"[Service]\n",
+            format!("{colorized}\u{1b}[0m").as_bytes(),
+        );
+
+        assert_eq!(
+            unit_content_from_systemctl_cat("vm0-runner-test.service", &output).unwrap(),
+            "[Service]\n"
+        );
+    }
+
+    #[test]
+    fn systemctl_cat_rejects_failed_exit_with_advisory_only_stderr() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let output = systemctl_show_output(
+            ExitStatus::from_raw(0x100),
+            b"",
+            DAEMON_RELOAD_ADVISORY.as_bytes(),
+        );
+
+        assert!(unit_content_from_systemctl_cat("vm0-runner-test.service", &output).is_err());
+    }
+
+    #[test]
+    fn systemctl_cat_rejects_real_diagnostic_alongside_advisory_stderr() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let stderr =
+            format!("{DAEMON_RELOAD_ADVISORY}\nFailed to get unit file path: No such file");
+        let output =
+            systemctl_show_output(ExitStatus::from_raw(0), b"[Service]\n", stderr.as_bytes());
+        let message = unit_content_from_systemctl_cat("vm0-runner-test.service", &output)
+            .unwrap_err()
+            .to_string();
+
+        assert!(message.contains("emitted stderr"));
+        assert!(message.contains("Failed to get unit file path"));
+        assert!(!message.contains("# Warning:"));
     }
 
     #[test]
