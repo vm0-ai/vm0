@@ -2,12 +2,20 @@ import { setupClerkTestingToken } from "@clerk/testing/playwright";
 import { expect, test as base } from "@playwright/test";
 
 import { resolveApiBackendUrl } from "./api-backend-url";
+import { SharedWorkerRoutes } from "./lib/shared-worker-routes";
+import { deriveAppUrl } from "./playwright.config";
 
 export { expect };
 
 const apiUrl = resolveApiBackendUrl();
+const sharedDatabaseWorkerScript =
+  /\/assets\/shared-database-worker-[^/?]+\.js(?:\?.*)?$/u;
 
-export const test = base.extend({
+interface WorkerRouteFixtures {
+  readonly sharedWorkerRoutes: SharedWorkerRoutes;
+}
+
+export const test = base.extend<WorkerRouteFixtures>({
   context: async ({ context }, use) => {
     // Every page load runs `clerk.load()`, which handshakes with the Clerk
     // Frontend API — including tests that only restore a saved storage
@@ -41,6 +49,19 @@ export const test = base.extend({
       await use(page);
     } finally {
       await page.unrouteAll({ behavior: "ignoreErrors" });
+    }
+  },
+  sharedWorkerRoutes: async ({ context }, use) => {
+    const routes = await SharedWorkerRoutes.install({
+      apiOrigin: apiUrl,
+      bridgeOrigin: deriveAppUrl(apiUrl),
+      context,
+      workerScript: sharedDatabaseWorkerScript,
+    });
+    try {
+      await use(routes);
+    } finally {
+      await routes.close();
     }
   },
 });

@@ -761,6 +761,17 @@ unless gate_script.include?("RUNNER_E2E_SKIP_ALLOWED=\"true\"") &&
     gate_script.include?("needs.prepare.outputs.turbo-runner-consumer-needed")
   raise "CI gate must restore the runner-specific E2E skip policy"
 end
+if gate_script.include?('[ "$result" = "cancelled" ]') ||
+    gate_script.include?("cancelled by concurrency group, allowed")
+  raise "CI gate must reject cancelled required jobs"
+end
+unless gate_script.include?(
+    '&& [ "$result" = "skipped" ]; then',
+  ) && gate_script.include?(
+    'echo "::error::$job: expected success or skipped, got $result"',
+  )
+  raise "CI gate must allow only intentional non-executed skips"
+end
 %w[
   cli-e2e-03-runner-prepare
   cli-e2e-03-runner-bootstrap

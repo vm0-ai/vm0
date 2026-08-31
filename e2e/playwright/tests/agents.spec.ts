@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { resolveApiBackendUrl } from "../api-backend-url";
 import { expect, test } from "../fixtures";
+import type { SharedWorkerRoutes } from "../lib/shared-worker-routes";
 import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(resolveApiBackendUrl());
@@ -118,35 +119,65 @@ async function mockPinnedAgentGrid(
 
 async function mockUnreadThread(
   page: Page,
+  sharedWorkerRoutes: SharedWorkerRoutes,
   defaultAgentId: string,
 ): Promise<void> {
-  await page.route("**/api/chat-threads/snapshot", async (route) => {
-    await route.fulfill({
-      json: {
-        chatThreads: [
-          {
-            id: unreadThreadStory.id,
-            agentId: defaultAgentId,
-            title: unreadThreadStory.title,
-            sortAt: unreadThreadStory.createdAt,
-            createdAt: unreadThreadStory.createdAt,
-            updatedAt: unreadThreadStory.createdAt,
-            pinnedAt: null,
-            renamedAt: null,
-            selectedModel: null,
-            serviceTier: null,
-            computerUseHostId: null,
-          },
-        ],
-        latestEventId: null,
-        latestSeqId: null,
-      },
-    });
-  });
-  await page.route(
+  let createdEventSeqId: number | null = null;
+  await sharedWorkerRoutes.route(
+    "/api/chat-threads/snapshot",
+    async (route) => {
+      await route.fulfill({
+        json: {
+          chatThreads: [
+            {
+              id: unreadThreadStory.id,
+              agentId: defaultAgentId,
+              title: unreadThreadStory.title,
+              sortAt: unreadThreadStory.createdAt,
+              createdAt: unreadThreadStory.createdAt,
+              updatedAt: unreadThreadStory.createdAt,
+              pinnedAt: null,
+              renamedAt: null,
+              selectedModel: null,
+              serviceTier: null,
+              computerUseHostId: null,
+            },
+          ],
+          latestEventId: null,
+          latestSeqId: null,
+        },
+      });
+    },
+  );
+  await sharedWorkerRoutes.route(
     (url) => url.pathname === "/api/chat-threads/events",
     async (route) => {
-      await route.fulfill({ json: { events: [], hasMore: false } });
+      const requestUrl = new URL(route.request().url());
+      const rawSinceSeqId = requestUrl.searchParams.get("sinceSeqId");
+      const sinceSeqId = rawSinceSeqId === null ? 0 : Number(rawSinceSeqId);
+      if (!Number.isSafeInteger(sinceSeqId) || sinceSeqId < 0) {
+        throw new Error("Thread event cursor is invalid");
+      }
+      createdEventSeqId ??= sinceSeqId + 1;
+      const events =
+        sinceSeqId < createdEventSeqId
+          ? [
+              {
+                id: `d${unreadThreadStory.id.slice(1)}`,
+                seqId: createdEventSeqId,
+                kind: "created",
+                chatThreadId: unreadThreadStory.id,
+                agentId: defaultAgentId,
+                title: unreadThreadStory.title,
+                selectedModel: null,
+                serviceTier: null,
+                computerUseHostId: null,
+                cloudBrowserEnabled: false,
+                createdAt: unreadThreadStory.createdAt,
+              },
+            ]
+          : [];
+      await route.fulfill({ json: { events, hasMore: false } });
     },
   );
   await page.route("**/api/indicators", async (route) => {
@@ -333,6 +364,7 @@ test("onboarding workflow preview uses the shared dialog radius", async ({
 
 test("three-column rail and unread indicators preserve their visual hierarchy", async ({
   page,
+  sharedWorkerRoutes,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.addInitScript(() => {
@@ -354,14 +386,14 @@ test("three-column rail and unread indicators preserve their visual hierarchy", 
     page,
     defaultAgentId,
   );
-  await mockUnreadThread(page, defaultAgentId);
+  await mockUnreadThread(page, sharedWorkerRoutes, defaultAgentId);
+  await sharedWorkerRoutes.waitForReady();
   await Promise.all([
     ...[
       "/api/feature-switches",
       "/api/onboarding/status",
       "/api/agents",
       "/api/user-preferences",
-      "/api/chat-threads/snapshot",
       "/api/indicators",
       "/api/chat-thread-unreads",
     ].map((pathname) => {
@@ -372,6 +404,7 @@ test("three-column rail and unread indicators preserve their visual hierarchy", 
         );
       });
     }),
+    sharedWorkerRoutes.waitForResponse("/api/chat-threads/events"),
     page.reload(),
   ]);
 
