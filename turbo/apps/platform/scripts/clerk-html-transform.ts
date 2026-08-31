@@ -27,7 +27,10 @@ export function transformClerkCoreScriptUrls(
   options: ClerkCoreHtmlOptions,
 ): string {
   return html
-    .replaceAll(APP_VERSION_JSON_MARKER, JSON.stringify(options.appVersion))
+    .replaceAll(
+      APP_VERSION_JSON_MARKER,
+      JSON.stringify(options.appVersion).replaceAll("<", String.raw`\u003c`),
+    )
     .replaceAll(
       PREVIEW_SCRIPT_URL_MARKER,
       scriptUrl(options.previewPublishableKey),

@@ -93,7 +93,7 @@ function stubClerkBuildEnvironment(): void {
   vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PROD", PRODUCTION_PUBLISHABLE_KEY);
 }
 
-function builtIndexHtml(): string {
+function builtIndexHtml(appVersion = TEST_APP_VERSION): string {
   return transformClerkCoreScriptUrls(
     indexHtml
       .replaceAll(
@@ -105,7 +105,7 @@ function builtIndexHtml(): string {
         PRODUCTION_PUBLISHABLE_KEY,
       ),
     {
-      appVersion: TEST_APP_VERSION,
+      appVersion,
       previewPublishableKey: PREVIEW_PUBLISHABLE_KEY,
       productionPublishableKey: PRODUCTION_PUBLISHABLE_KEY,
     },
@@ -404,6 +404,20 @@ describe("platform Clerk entrypoint", () => {
       html.indexOf("var appEntry ="),
     );
     expect(html).not.toContain("@clerk/ui");
+  });
+
+  it("keeps app version metadata inside the Clerk bootstrap script", () => {
+    const html = builtIndexHtml(
+      `${TEST_APP_VERSION}-bundle-stability"><script data-okou-build-metadata-injection></script>`,
+    );
+    const parsedDocument = new DOMParser().parseFromString(html, "text/html");
+
+    expect(
+      parsedDocument.querySelector(
+        "script[data-okou-build-metadata-injection]",
+      ),
+    ).toBeNull();
+    expect(() => clerkBootstrapSource(html)).not.toThrow();
   });
 
   it("preconnects immediately and starts the Clerk core after first paint", () => {
