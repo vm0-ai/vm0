@@ -32,6 +32,7 @@ probe_evidence="$(mktemp)"
 trap 'rm -f "$layout_files" "$document_body" "$curl_error" "$probe_evidence"' EXIT
 
 declare -a app_files=()
+declare -a after_first_paint_files=()
 declare -a vendor_files=()
 declare -a runtime_files=()
 declare -a worker_files=()
@@ -39,6 +40,7 @@ find "$assets_directory" -type f -name '*.js' -print0 > "$layout_files"
 while IFS= read -r -d '' source_path; do
   relative_path="${source_path#"$assets_directory"/}"
   case "$relative_path" in
+    bootstrap-after-first-paint-*.js) after_first_paint_files+=("$relative_path") ;;
     vendor-*.js) vendor_files+=("$relative_path") ;;
     rolldown-runtime-*.js) runtime_files+=("$relative_path") ;;
     shared-database-worker-*.js) worker_files+=("$relative_path") ;;
@@ -48,15 +50,17 @@ done < "$layout_files"
 
 if ((
   ${#app_files[@]} != 1 ||
+  ${#after_first_paint_files[@]} != 1 ||
   ${#vendor_files[@]} != 1 ||
   ${#runtime_files[@]} != 1 ||
   ${#worker_files[@]} != 1
 )); then
-  echo "Expected exactly one app, vendor, Rolldown runtime, and SharedWorker JavaScript asset" >&2
+  echo "Expected exactly one app, after-first-paint bootstrap, vendor, Rolldown runtime, and SharedWorker JavaScript asset" >&2
   exit 1
 fi
 
 app_asset_url="${public_assets_url}/${app_files[0]}"
+after_first_paint_asset_url="${public_assets_url}/${after_first_paint_files[0]}"
 vendor_asset_url="${public_assets_url}/${vendor_files[0]}"
 runtime_asset_url="${public_assets_url}/${runtime_files[0]}"
 worker_asset_url="${app_url}/okou-app/assets/${worker_files[0]}"
@@ -85,6 +89,7 @@ for ((attempt = 1; attempt <= document_max_attempts; attempt++)); do
       "$document_body" \
       "$canonical_document" \
       "$app_asset_url" \
+      "$after_first_paint_asset_url" \
       "$runtime_asset_url" \
       "$vendor_asset_url" 2>"$probe_evidence" <<'PY'
 from html.parser import HTMLParser
@@ -102,6 +107,7 @@ class AppDocumentParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.app_entry_preloads: list[str] = []
+        self.after_first_paint_preloads: list[str] = []
         self.module_scripts: list[str] = []
         self.module_preloads: list[str] = []
         self.runtime_metadata: dict[str, list[str | None]] = {
@@ -123,6 +129,15 @@ class AppDocumentParser(HTMLParser):
                     self.app_entry_preloads.append(href)
                 else:
                     self.module_preloads.append(href)
+        if (
+            tag == "link"
+            and attributes.get("rel") == "preload"
+            and attributes.get("as") == "script"
+            and "data-vm0-after-first-paint-entry" in attributes
+        ):
+            href = attributes.get("href")
+            if href:
+                self.after_first_paint_preloads.append(href)
         if tag == "meta" and attributes.get("name") in RUNTIME_META_NAMES:
             name = attributes["name"]
             if name is not None:
@@ -163,7 +178,8 @@ if observed_metadata != expected_metadata:
     )
 
 expected_app_entry = [sys.argv[3]]
-expected_preloads = {sys.argv[4], sys.argv[5]}
+expected_after_first_paint_entry = [sys.argv[4]]
+expected_preloads = {sys.argv[5], sys.argv[6]}
 if parser.app_entry_preloads != expected_app_entry:
     raise RuntimeError(
         f"Expected one deferred CDN app module preload {expected_app_entry}, "
@@ -173,6 +189,12 @@ if parser.module_scripts:
     raise RuntimeError(
         f"Expected deferred app execution without static module scripts, "
         f"got {parser.module_scripts}"
+    )
+if parser.after_first_paint_preloads != expected_after_first_paint_entry:
+    raise RuntimeError(
+        "Expected one deferred after-first-paint script preload "
+        f"{expected_after_first_paint_entry}, "
+        f"got {parser.after_first_paint_preloads}"
     )
 if len(parser.module_preloads) != 2 or set(parser.module_preloads) != expected_preloads:
     raise RuntimeError(
@@ -222,6 +244,7 @@ done
 
 for asset_url in \
   "$app_asset_url" \
+  "$after_first_paint_asset_url" \
   "$vendor_asset_url" \
   "$runtime_asset_url"; do
   curl \
@@ -259,8 +282,9 @@ if [[ "$worker_status" != "206" ]]; then
   exit 1
 fi
 
-printf 'Verified app runtime: app=%s vendor=%s runtime=%s worker=%s\n' \
+printf 'Verified app runtime: app=%s after-first-paint=%s vendor=%s runtime=%s worker=%s\n' \
   "$app_asset_url" \
+  "$after_first_paint_asset_url" \
   "$vendor_asset_url" \
   "$runtime_asset_url" \
   "$worker_asset_url"

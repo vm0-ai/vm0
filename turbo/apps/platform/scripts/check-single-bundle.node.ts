@@ -6,7 +6,10 @@ import test from "node:test";
 
 import { build } from "vite";
 
-import { deferApplicationEntryResources } from "./deferred-entry-html.ts";
+import {
+  deferApplicationEntryResources,
+  extractAfterFirstPaintBootstrap,
+} from "./deferred-entry-html.ts";
 import {
   RAW_JAVASCRIPT_OUTPUT_LIMIT_BYTES,
   VENDOR_MODULE_PATTERN,
@@ -57,6 +60,30 @@ await test("fails closed when the deferred app entry is missing", () => {
   }, /Expected exactly one deferred app entry, found 0/u);
 });
 
+await test("extracts post-paint callbacks behind one preloaded entry", () => {
+  const extracted = extractAfterFirstPaintBootstrap(`
+    <script>window.__vm0AfterFirstPaint(function () { window.first = true; });</script>
+    <main>skeleton</main>
+    <script>window.__vm0AfterFirstPaint(function () { window.second = true; });</script>
+  `);
+
+  assert.match(
+    extracted.html,
+    /<link rel="preload" as="script" crossorigin href="__VM0_AFTER_FIRST_PAINT_ENTRY_URL__" data-vm0-after-first-paint-entry="">/u,
+  );
+  assert.match(extracted.html, /data-vm0-after-first-paint-loader=""/u);
+  assert.doesNotMatch(extracted.html, /window\.first = true/u);
+  assert.doesNotMatch(extracted.html, /window\.second = true/u);
+  assert.match(extracted.source, /window\.first = true/u);
+  assert.match(extracted.source, /window\.second = true/u);
+});
+
+await test("fails closed when post-paint callbacks are missing", () => {
+  assert.throws(() => {
+    extractAfterFirstPaintBootstrap("<main>missing callbacks</main>");
+  }, /Expected deferred after-first-paint bootstrap callbacks/u);
+});
+
 function applicationChunk() {
   return {
     code: "entry",
@@ -100,6 +127,14 @@ function workerAsset() {
   };
 }
 
+function afterFirstPaintBootstrapAsset() {
+  return {
+    fileName: "assets/bootstrap-after-first-paint-123456789abc.js",
+    source: "bootstrap",
+    type: "asset" as const,
+  };
+}
+
 function validApplicationOutputs() {
   return [applicationChunk(), vendorChunk(), runtimeChunk(), workerAsset()];
 }
@@ -107,9 +142,16 @@ function validApplicationOutputs() {
 await test("requires the fixed app, vendor, runtime, and worker layout", () => {
   assert.deepEqual(applicationBundleViolations(validApplicationOutputs()), []);
   assert.deepEqual(
+    applicationBundleViolations([
+      ...validApplicationOutputs(),
+      afterFirstPaintBootstrapAsset(),
+    ]),
+    [],
+  );
+  assert.deepEqual(
     applicationBundleViolations(validApplicationOutputs().slice(0, 3)),
     [
-      `Expected exactly one app entry, one vendor chunk, one Rolldown runtime chunk, and one shared database worker asset, but generated: ${APP_FILE} (chunk), ${VENDOR_FILE} (chunk), ${RUNTIME_FILE} (chunk)`,
+      `Expected exactly one app entry, one vendor chunk, one Rolldown runtime chunk, one shared database worker asset, and at most one after-first-paint bootstrap asset, but generated: ${APP_FILE} (chunk), ${VENDOR_FILE} (chunk), ${RUNTIME_FILE} (chunk)`,
     ],
   );
   assert.deepEqual(
@@ -118,7 +160,7 @@ await test("requires the fixed app, vendor, runtime, and worker layout", () => {
       { code: "lazy", fileName: "assets/lazy-Extra001.js", type: "chunk" },
     ]),
     [
-      `Expected exactly one app entry, one vendor chunk, one Rolldown runtime chunk, and one shared database worker asset, but generated: ${APP_FILE} (chunk), ${VENDOR_FILE} (chunk), ${RUNTIME_FILE} (chunk), assets/shared-database-worker-Worker01.js (asset), assets/lazy-Extra001.js (chunk)`,
+      `Expected exactly one app entry, one vendor chunk, one Rolldown runtime chunk, one shared database worker asset, and at most one after-first-paint bootstrap asset, but generated: ${APP_FILE} (chunk), ${VENDOR_FILE} (chunk), ${RUNTIME_FILE} (chunk), assets/shared-database-worker-Worker01.js (asset), assets/lazy-Extra001.js (chunk)`,
     ],
   );
 });
