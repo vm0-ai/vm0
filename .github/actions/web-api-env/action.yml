@@ -393,6 +393,7 @@ runs:
           GUMROAD
           MERCURY
           SPOTIFY
+          STRIPE
           ZOOM
         )
         for prefix in "${oauth_client_config_prefixes[@]}"; do
@@ -424,7 +425,6 @@ runs:
         add_var VERCEL_INTEGRATION_SLUG VERCEL_INTEGRATION_SLUG
         add_var MERCURY_OAUTH_ENVIRONMENT MERCURY_OAUTH_ENVIRONMENT
         add_var MONDAY_OAUTH_APP_ID MONDAY_OAUTH_APP_ID
-        add_oauth_client_config_key STRIPE_OAUTH_CLIENT_ID
         add_secret STRIPE_SECRET_KEY STRIPE_SECRET_KEY
         add_var STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID
         add_secret STRIPE_WEBHOOK_SECRET STRIPE_WEBHOOK_SECRET

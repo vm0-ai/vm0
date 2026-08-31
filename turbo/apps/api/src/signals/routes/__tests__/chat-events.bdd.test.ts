@@ -113,6 +113,7 @@ import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
 import { createGithubBddApi } from "./helpers/api-bdd-github";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
+import { cleanupTimedOutRun } from "./helpers/api-bdd-run-timeout";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readAgentRunState$ } from "./helpers/agent-run-callback";
@@ -922,20 +923,15 @@ async function completeChatRunOk(
   }
   const history = `bdd chat session history ${runId}`;
   const historyHash = createHash("sha256").update(history).digest("hex");
-  await webhooks.requestAgentCheckpoint(
-    {
-      runId,
-      cliAgentType: options.cliAgentType ?? "claude-code",
-      cliAgentSessionId: `bdd-cli-${runId}`,
-      cliAgentSessionHistoryHash: historyHash,
-    },
-    sandboxHeaders,
-    [200],
-  );
   await webhooks.requestAgentComplete(
     {
       runId,
       exitCode: 0,
+      checkpoint: {
+        cliAgentType: options.cliAgentType ?? "claude-code",
+        cliAgentSessionId: `bdd-cli-${runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
       ...(options.activeInputDeliveryIds === undefined
         ? {}
         : { activeInputDeliveryIds: [...options.activeInputDeliveryIds] }),
@@ -2322,7 +2318,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
       context.mocks.ably.publish.mock.calls.filter(([topic]) => {
         return topic === `chatThreadMessageCreated:${active.threadId}`;
       }),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith("active-input", {
       runId: active.runId,
     });
@@ -2342,7 +2338,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
       context.mocks.ably.publish.mock.calls.filter(([topic]) => {
         return topic === `chatThreadMessageCreated:${active.threadId}`;
       }),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
 
     const secondReservation = await api.reserveRunnerActiveInputs(
       claimed.claim.sandboxToken,
@@ -2370,7 +2366,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
       context.mocks.ably.publish.mock.calls.filter(([topic]) => {
         return topic === `chatThreadMessageCreated:${active.threadId}`;
       }),
-    ).toHaveLength(4);
+    ).toHaveLength(2);
     await expect(
       api.reserveRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
     ).resolves.toStrictEqual({ outcome: "empty" });
@@ -2419,37 +2415,6 @@ describe("CHAT-02: queueing and recalling messages", () => {
     }
 
     const history = `bdd chat session history ${active.runId}`;
-    await webhooks.requestAgentCheckpoint(
-      {
-        runId: active.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-cli-${active.runId}`,
-        cliAgentSessionHistoryHash: createHash("sha256")
-          .update(history)
-          .digest("hex"),
-      },
-      claimed.sandboxHeaders,
-      [200],
-    );
-    const checkpointGate = await holdCheckpointReadsFixture({
-      signal: context.signal,
-    });
-    onTestFinished(async () => {
-      checkpointGate.release();
-      await checkpointGate.done;
-    });
-    const completion = webhooks.requestAgentComplete(
-      {
-        runId: active.runId,
-        exitCode: 0,
-        activeInputDeliveryIds: [reserved.deliveryId],
-      },
-      claimed.sandboxHeaders,
-      [200],
-    );
-    await expect
-      .poll(checkpointGate.blockedWaiterCount)
-      .toBeGreaterThanOrEqual(1);
     await expect(
       api.recordRunnerActiveInputDelivery(
         claimed.claim.sandboxToken,
@@ -2457,9 +2422,23 @@ describe("CHAT-02: queueing and recalling messages", () => {
         reserved.deliveryId,
       ),
     ).resolves.toStrictEqual({ outcome: "delivered" });
-    checkpointGate.release();
-    await checkpointGate.done;
-    await expect(completion).resolves.toMatchObject({
+    const completion = await webhooks.requestAgentComplete(
+      {
+        runId: active.runId,
+        exitCode: 0,
+        activeInputDeliveryIds: [reserved.deliveryId],
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-cli-${active.runId}`,
+          cliAgentSessionHistoryHash: createHash("sha256")
+            .update(history)
+            .digest("hex"),
+        },
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    expect(completion).toMatchObject({
       body: { success: true, status: "completed" },
     });
     await flushWaitUntilForTest();
@@ -2842,9 +2821,12 @@ describe("CHAT-02: queueing and recalling messages", () => {
     await cancelChatRun(actor, successor, successorClaim.sandboxHeaders);
   }, 90_000);
 
-  it("keeps timed-out delivery input held until Runner completion", async () => {
+  it("settles timed-out delivery input when stopping the Runner fails", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped chat actor");
+    }
 
     const active = await sendChatRun(actor, {
       agentId,
@@ -2869,31 +2851,25 @@ describe("CHAT-02: queueing and recalling messages", () => {
     if (reserved.outcome !== "reserved") {
       throw new Error("Expected timeout input to be reserved");
     }
-    await timeoutRunWithoutCallbacksFixture({ runId: active.runId });
+    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.publish.mockRejectedValueOnce(
+      new DOMException("timeout cancel unavailable", "AbortError"),
+    );
+    mockNow(now() + 3 * 60 * 1000);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const cleanup = await cleanupTimedOutRun(context, {
+      runId: active.runId,
+      chatThreadId: active.threadId,
+      orgId: actor.orgId,
+    });
+    expect(cleanup.body).toMatchObject({ cleaned: 1, errors: 0 });
     await waitForRunStatus(actor, active.runId, "timeout");
-
-    const laterEventId = randomUUID();
-    const later = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        threadId: active.threadId,
-        prompt: "wait behind the timed-out delivery",
-        clientEventId: laterEventId,
-      },
-      [201],
-    );
-    if (later.status !== 201) {
-      throw new Error("Expected post-timeout input to remain queued");
-    }
-    expect(later.body.runId).toBeNull();
-
-    await failChatRun(
-      active.runId,
-      claimed.sandboxHeaders,
-      "Runner observed timed-out process exit",
-    );
-    await flushWaitUntilForTest();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
+      runId: active.runId,
+      mode: "hard",
+    });
     await expect(
       api.recordRunnerActiveInputDelivery(
         claimed.claim.sandboxToken,
@@ -2921,8 +2897,26 @@ describe("CHAT-02: queueing and recalling messages", () => {
     if (!successor) {
       throw new Error("Expected timed-out delivery input to be released");
     }
+
+    const laterEventId = randomUUID();
+    const later = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "wait behind the timeout successor",
+        clientEventId: laterEventId,
+      },
+      [201],
+    );
+    if (later.status !== 201) {
+      throw new Error("Expected post-timeout input to remain queued");
+    }
+    expect(later.body.runId).toBeNull();
     expect(
-      userMessages(messages.events).filter((message) => {
+      userMessages(
+        (await chat.listThreadEvents(actor, active.threadId)).events,
+      ).filter((message) => {
         return message.revokesEventId === laterEventId;
       }),
     ).toHaveLength(0);
@@ -5852,7 +5846,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const racedHandoff = await sendChatRun(actor, {
       agentId,
       threadId: run.threadId,
-      prompt: "serialize H2 against an early successful completion",
+      prompt: "reject standalone H2 during an early successful completion",
     });
     const racedManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${racedHandoff.runId}/manifest.json`;
     await expect
@@ -5893,7 +5887,7 @@ describe("CHAT-02: model-first provider policies", () => {
     });
     const racedCheckpointResponse = await racedCheckpoint;
     expect(JSON.stringify(racedCheckpointResponse.body)).toContain(
-      "[PI_H2_RUN_TERMINAL]",
+      "[CHECKPOINT_RUN_NOT_SETTLED]",
     );
     await waitForRunStatus(actor, racedHandoff.runId, "failed");
     await flushWaitUntilForTest();
@@ -5951,7 +5945,7 @@ describe("CHAT-02: model-first provider policies", () => {
       success: true,
       status: "failed",
     });
-    await waitForRunStatus(actor, retry.runId, "failed");
+    await waitForRunStatus(actor, retry.runId, "timeout");
     await expect(
       readThreadSessionConversation(context, run.threadId),
     ).resolves.toStrictEqual(canonicalConversation);
@@ -8455,21 +8449,16 @@ describe("CHAT-02: run-level model overrides", () => {
       firstClaim.sandboxHeaders,
       [200],
     );
-    await webhooks.requestAgentCheckpoint(
-      {
-        runId: first.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `discarded-cli-${first.runId}`,
-        cliAgentSessionHistoryDisposition: "discarded_oversized",
-      },
-      firstClaim.sandboxHeaders,
-      [200],
-    );
     await webhooks.requestAgentComplete(
       {
         runId: first.runId,
         exitCode: 0,
         lastEventSequence: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `discarded-cli-${first.runId}`,
+          cliAgentSessionHistoryDisposition: "discarded_oversized",
+        },
       },
       firstClaim.sandboxHeaders,
       [200],
@@ -13607,7 +13596,7 @@ describe("CHAT-02: shared user message queue", () => {
         return topic === "threadListChanged";
       },
     );
-    expect(threadListPublishes).toHaveLength(2);
+    expect(threadListPublishes).toHaveLength(1);
     releasePublication.resolve(undefined);
     await cancelChatRun(actor, sent.body.runId);
   }, 90_000);
@@ -13662,7 +13651,7 @@ describe("CHAT-02: shared user message queue", () => {
         return topic === "threadListChanged";
       },
     );
-    expect(threadListPublishes).toHaveLength(2);
+    expect(threadListPublishes).toHaveLength(1);
 
     await cancelChatRun(actor, anchor.runId);
     const messages = await waitForThreadMessages(

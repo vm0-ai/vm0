@@ -243,20 +243,18 @@ async function completeRunThroughSandbox(
   await runsApi.heartbeatRunner(scenario.runnerGroup);
   const claim = await runsApi.claimRunnerJob(runId);
   const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
-  await webhooksApi.requestAgentCheckpoint(
+  await webhooksApi.requestAgentComplete(
     {
       runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId: `workflow-automation-cli-${runId}`,
-      cliAgentSessionHistoryHash: createHash("sha256")
-        .update(`workflow automation history ${runId}`)
-        .digest("hex"),
+      exitCode,
+      checkpoint: {
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `workflow-automation-cli-${runId}`,
+        cliAgentSessionHistoryHash: createHash("sha256")
+          .update(`workflow automation history ${runId}`)
+          .digest("hex"),
+      },
     },
-    sandboxHeaders,
-    [200],
-  );
-  await webhooksApi.requestAgentComplete(
-    { runId, exitCode },
     sandboxHeaders,
     [200],
   );

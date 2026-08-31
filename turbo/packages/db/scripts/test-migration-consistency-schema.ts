@@ -68,6 +68,11 @@ import { validateConnectorAuthorizationAccountMutationPresence } from "./test-co
 import { validateCustomGatewayProviderTypes } from "./test-custom-gateway-provider-types";
 import { validateFeishuMemberConnectorReconciliation } from "./test-feishu-member-connector-reconciliation";
 import { validateOkouDebugFeatureSwitchKeyRename } from "./test-okou-debug-feature-switch-key-rename";
+import {
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_BACKFILL_MIGRATION,
+  validateOrgMetadataAcquisitionFirstPartySourceBackfill,
+  validateOrgMetadataAcquisitionFirstPartySourceBackfillOnRegeneratedSchema,
+} from "./test-org-metadata-acquisition-first-party-source-backfill";
 import { validateOrgMetadataAcquisitionFirstPartySourceExpansion } from "./test-org-metadata-acquisition-first-party-source-expansion";
 import {
   installOrgMetadataAcquisitionFirstPartySourceArtifactsOnRegeneratedSchema,
@@ -10801,6 +10806,9 @@ async function main(): Promise<void> {
     await validateOrgMetadataAcquisitionFirstPartySourceExpansion(
       dbUrl.toString(),
     );
+    await validateOrgMetadataAcquisitionFirstPartySourceBackfill(
+      dbUrl.toString(),
+    );
     await validateOrgPlanEntitlementRestrictionExpansion(dbUrl.toString());
     await validateOrgPlanEntitlementRestrictionBackfill(dbUrl.toString());
     await validateOrgPlanEntitlementRestrictionNotNull(dbUrl.toString());
@@ -10853,6 +10861,14 @@ async function main(): Promise<void> {
         ),
         "utf8",
       );
+    const orgMetadataAcquisitionFirstPartySourceBackfillMigrationSql =
+      await fs.readFile(
+        path.join(
+          MIGRATIONS_DIR,
+          `${ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_BACKFILL_MIGRATION}.sql`,
+        ),
+        "utf8",
+      );
     const orgPlanEntitlementRestrictionMigrationSql = await fs.readFile(
       path.join(
         MIGRATIONS_DIR,
@@ -10879,6 +10895,10 @@ async function main(): Promise<void> {
     await installOrgMetadataAcquisitionFirstPartySourceArtifactsOnRegeneratedSchema(
       dbUrl2,
       orgMetadataAcquisitionFirstPartySourceMigrationSql,
+    );
+    await validateOrgMetadataAcquisitionFirstPartySourceBackfillOnRegeneratedSchema(
+      dbUrl2,
+      orgMetadataAcquisitionFirstPartySourceBackfillMigrationSql,
     );
     await installOrgPlanEntitlementRestrictionArtifactsOnRegeneratedSchema(
       dbUrl2,

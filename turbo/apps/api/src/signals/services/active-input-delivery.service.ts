@@ -860,7 +860,7 @@ async function recordActiveInputDeliveryReceiptTransition(
   };
 }
 
-export async function finalizeActiveInputDeliveryForCompletion(
+export async function finalizeActiveInputDelivery(
   tx: ActiveInputDeliveryTransaction,
   args: ActiveInputDeliveryIdentity & {
     readonly deliveredDeliveryIds: ReadonlySet<string>;

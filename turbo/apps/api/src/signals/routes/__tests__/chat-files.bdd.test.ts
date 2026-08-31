@@ -103,11 +103,15 @@ describe("CHAT-01 chat thread lifecycle", () => {
     });
 
     context.mocks.ably.publish.mockClear();
+    context.mocks.ably.channelGet.mockClear();
     const markedUnread = await api.markThreadUnread(actor, created.id);
     expect(markedUnread).toStrictEqual({
       lastReadAt: null,
       unreads: [],
     });
+    expect(context.mocks.ably.channelGet.mock.calls).toStrictEqual([
+      [`user-org:${actor.userId}:${actor.orgId}`],
+    ]);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "chatThreadReadCursorUpdated",
       {

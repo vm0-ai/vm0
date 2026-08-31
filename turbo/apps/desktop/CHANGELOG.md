@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.39.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.129...desktop-v0.39.0) (2026-08-31)
+
+
+### Features
+
+* **desktop:** add screen recording capture core behind a feature switch ([#30504](https://github.com/vm0-ai/vm0/issues/30504)) ([da12e27](https://github.com/vm0-ai/vm0/commit/da12e27baddcf41b5722af8626135f2916825631))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.16
+
 ## [0.38.129](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.128...desktop-v0.38.129) (2026-08-31)
 
 

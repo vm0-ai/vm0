@@ -10,9 +10,9 @@ import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-hel
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
 const previousMigration =
-  "1033_org_metadata_acquisition_first_party_source_expand";
+  "1034_org_metadata_acquisition_first_party_source_backfill";
 export const MORNING_BRIEF_PHASE_B_MIGRATION =
-  "1034_morning_brief_phase_b_cleanup";
+  "1035_morning_brief_phase_b_cleanup";
 const testDatabase = "migration_morning_brief_phase_b_30369";
 
 function databaseUrl(baseUrl: string, database: string): string {

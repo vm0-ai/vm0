@@ -35,7 +35,10 @@ function getInstatusLoaderSource(): string {
   return source;
 }
 
-function loadInstatusScripts(hostname: string): HTMLScriptElement[] {
+function loadInstatusScripts(
+  hostname: string,
+  browserSupported = true,
+): HTMLScriptElement[] {
   context.mocks.browser.url(`https://${hostname}/`);
   const appendedScripts: HTMLScriptElement[] = [];
   vi.spyOn(document.body, "appendChild").mockImplementation(
@@ -52,7 +55,26 @@ function loadInstatusScripts(hostname: string): HTMLScriptElement[] {
     `${getInstatusLoaderSource()}\n//# sourceURL=platform-instatus-widget-test.js`,
   ) as EntrypointScript;
 
-  executeEntrypointScript(window, document);
+  const previousAfterFirstPaint = window.__vm0AfterFirstPaint;
+  const previousBrowserSupported = window.__vm0BrowserSupported;
+  window.__vm0BrowserSupported = browserSupported;
+  window.__vm0AfterFirstPaint = (callback) => {
+    callback();
+  };
+  try {
+    executeEntrypointScript(window, document);
+  } finally {
+    if (previousAfterFirstPaint === undefined) {
+      Reflect.deleteProperty(window, "__vm0AfterFirstPaint");
+    } else {
+      window.__vm0AfterFirstPaint = previousAfterFirstPaint;
+    }
+    if (previousBrowserSupported === undefined) {
+      Reflect.deleteProperty(window, "__vm0BrowserSupported");
+    } else {
+      window.__vm0BrowserSupported = previousBrowserSupported;
+    }
+  }
   return appendedScripts;
 }
 
@@ -78,5 +100,9 @@ describe("platform Instatus widget", () => {
     "app.vm0.ai.evil.example",
   ])("does not load on the non-production hostname %s", (hostname) => {
     expect(loadInstatusScripts(hostname)).toStrictEqual([]);
+  });
+
+  it("does not load on an unsupported browser", () => {
+    expect(loadInstatusScripts("app.vm0.ai", false)).toStrictEqual([]);
   });
 });

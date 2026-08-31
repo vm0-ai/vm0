@@ -70,13 +70,18 @@ delete the workflow, probe, focused validator, and this entry together.
 ## Migration patterns
 
 [`0811_clear_non_goal_run_groups.sql`](./src/migrations/0811_clear_non_goal_run_groups.sql)
-is the only surviving example of an online backfill migration. It demonstrates:
+and
+[`1034_org_metadata_acquisition_first_party_source_backfill.sql`](./src/migrations/1034_org_metadata_acquisition_first_party_source_backfill.sql)
+are the surviving examples of online backfill migrations. They demonstrate:
 
 - the `-- vm0:non-transactional` marker;
-- narrowly relaxing the append-only trigger function and restoring its original
-  body byte-for-byte in the same migration; and
 - batching with `FOR UPDATE ... SKIP LOCKED` and explicit `COMMIT`, without
   taking a `LOCK TABLE`.
+
+Migration 0811 narrowly relaxes the append-only trigger function and restores
+its original body byte-for-byte in the same migration. Migration 1034 keeps its
+accepted mirror bridge byte-identical, fails closed on catalog or data drift,
+and proves exact post-backfill parity.
 
 The following patterns no longer have a surviving migration example, so keep the
 complete SQL here.

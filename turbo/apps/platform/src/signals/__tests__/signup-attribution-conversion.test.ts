@@ -84,7 +84,26 @@ function executeMarketingEntrypoint(): WindowWithMarketingQueue {
     "document",
     `${marketingEntrypointSource()}\n//# sourceURL=platform-marketing-entrypoint-test.js`,
   ) as MarketingEntrypointScript;
-  executeEntrypointScript(window, document);
+  const previousAfterFirstPaint = window.__vm0AfterFirstPaint;
+  const previousBrowserSupported = window.__vm0BrowserSupported;
+  window.__vm0AfterFirstPaint = (callback) => {
+    callback();
+  };
+  window.__vm0BrowserSupported = true;
+  try {
+    executeEntrypointScript(window, document);
+  } finally {
+    if (previousAfterFirstPaint === undefined) {
+      Reflect.deleteProperty(window, "__vm0AfterFirstPaint");
+    } else {
+      window.__vm0AfterFirstPaint = previousAfterFirstPaint;
+    }
+    if (previousBrowserSupported === undefined) {
+      Reflect.deleteProperty(window, "__vm0BrowserSupported");
+    } else {
+      window.__vm0BrowserSupported = previousBrowserSupported;
+    }
+  }
   // The marketing entrypoint has already attempted to schedule its external
   // script load. Restore real timers before bootstrapping Clerk and routes.
   timeout.mockRestore();

@@ -654,6 +654,7 @@
       "importedSlides_one": "{{count}} slide",
       "importedSlides_other": "{{count}} slide",
       "multiAccent": "Multi-aksen",
+      "needPro": "Perlu Pro",
       "nextSlide": "Pratinjau slide berikutnya",
       "noMatches": "Tidak ada hasil",
       "placeholder": "placeholder pratinjau website {{title}}",
@@ -706,6 +707,7 @@
       "tryDifferentSearch": "Coba pencarian lain.",
       "use": "Gunakan",
       "useThisTemplate": "Gunakan template ini",
+      "viewVideoPlans": "Lihat paket untuk template video {{title}}",
       "visibility": {
         "change": "Ubah",
         "changeLabel": "Ubah visibilitas templat",
@@ -1967,6 +1969,7 @@
         "capacityTitle": "Model {{framework}} sedang sibuk",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "Lanjutkan",
         "resetAndTryAgain": "Atur ulang dan coba lagi",
         "resetsAt": "Direset pada {{time}}",
         "selectModel": "Ganti model",

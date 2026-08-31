@@ -297,20 +297,15 @@ async function completeChatRunOk(
   const historyHash = createHash("sha256")
     .update(`bdd chat thread history ${runId}`)
     .digest("hex");
-  await webhooks.requestAgentCheckpoint(
-    {
-      runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId: `bdd-cli-${runId}`,
-      cliAgentSessionHistoryHash: historyHash,
-    },
-    sandboxHeaders,
-    [200],
-  );
   await webhooks.requestAgentComplete(
     {
       runId,
       exitCode: 0,
+      checkpoint: {
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cli-${runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
       ...(stagedOutputEvents.length === 0
         ? {}
         : {
@@ -1628,7 +1623,11 @@ describe("CHAT-01 chat thread read state", () => {
       activeRun.threadId,
     ]);
     context.mocks.ably.publish.mockClear();
+    context.mocks.ably.channelGet.mockClear();
     const firstRead = await chat.markThreadRead(owner, activeRun.threadId);
+    expect(context.mocks.ably.channelGet.mock.calls).toStrictEqual([
+      [`user-org:${owner.userId}:${owner.orgId}`],
+    ]);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "chatThreadReadCursorUpdated",
       {
@@ -1980,7 +1979,11 @@ describe("CHAT-01 chat thread read state", () => {
     );
 
     context.mocks.ably.publish.mockClear();
+    context.mocks.ably.channelGet.mockClear();
     await chat.markAgentThreadsRead(owner, agentA);
+    expect(context.mocks.ably.channelGet.mock.calls).toStrictEqual([
+      [`user-org:${owner.userId}:${owner.orgId}`],
+    ]);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "chatThreadReadCursorUpdated",
       {
