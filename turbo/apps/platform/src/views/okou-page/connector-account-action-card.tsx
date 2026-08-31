@@ -137,7 +137,7 @@ function ReadyConnectorAccountActionCard({
   const pageSignal = useGet(pageSignal$);
   const confirmationState = useGet(signals.confirmationState$);
   const [, confirm] = useLoadableSet(signals.confirm$);
-  const selected = status.selected || confirmationState === "switched";
+  const selected = status.selected;
   const switching = confirmationState === "loading";
   const switchFailed = confirmationState === "error" && !selected;
   const accountLabel = connectorAccountEffectiveLabel(

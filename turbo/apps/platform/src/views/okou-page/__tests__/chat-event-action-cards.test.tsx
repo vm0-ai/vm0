@@ -894,6 +894,8 @@ describe("chat event action cards", () => {
     });
     mockConnectorAccountActionAuthorization(account.target);
     const sentPrompts: string[] = [];
+    let selections: ConnectorAccountSelection[] = [];
+    let selectedConnections: ConnectorAccountConnection[] = [];
     let updateCount = 0;
     context.mocks.api(connectorAccountsContract.connection, ({ respond }) => {
       return respond(200, account);
@@ -901,21 +903,24 @@ describe("chat event action cards", () => {
     context.mocks.api(
       chatThreadConnectorSelectionContract.get,
       ({ respond }) => {
-        return respond(200, { selections: [], selectedConnections: [] });
+        return respond(200, { selections, selectedConnections });
       },
     );
     context.mocks.api(
       chatThreadConnectorSelectionContract.update,
       ({ body, respond }) => {
         updateCount += 1;
-        return updateCount === 1
-          ? respond(400, {
-              error: {
-                code: "BAD_REQUEST",
-                message: "Connector account selection is no longer valid",
-              },
-            })
-          : respond(200, body);
+        if (updateCount === 1) {
+          return respond(400, {
+            error: {
+              code: "BAD_REQUEST",
+              message: "Connector account selection is no longer valid",
+            },
+          });
+        }
+        selections = [body];
+        selectedConnections = [account];
+        return respond(200, body);
       },
     );
     mockChatLifecycle(context, {
@@ -1033,6 +1038,15 @@ describe("chat event action cards", () => {
     await waitFor(() => {
       expect(card).toHaveTextContent("Switched to Work");
       expect(queryAllByRoleFast("button", card)).toStrictEqual([]);
+    });
+
+    selections = [];
+    selectedConnections = [];
+    triggerAblyEvent(`chatThreadDetailChanged:${threadId}`);
+
+    await waitFor(() => {
+      expect(card).toHaveTextContent("Switch to Work?");
+      expect(buttonByText("Switch", card)).toBeEnabled();
     });
   });
 
