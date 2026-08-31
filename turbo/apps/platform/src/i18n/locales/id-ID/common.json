@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Galat Codex",
       "commandStatus": "Perintah {{status}}",
+      "contextCompaction": "Konteks dipadatkan",
       "error": "Galat: {{error}}",
       "fileChangeKind": "ubah",
       "fileOperationCompleted": "Operasi file selesai",
@@ -27,6 +28,12 @@
       },
       "status": "Status: {{status}}",
       "statusDetail": "status: {{status}}",
+      "subAgentActivity": {
+        "completed": "Subagen selesai",
+        "interacted": "Berinteraksi dengan subagen",
+        "interrupted": "Subagen dihentikan",
+        "started": "Subagen dimulai"
+      },
       "turnFailed": "Giliran gagal",
       "turnStatus": "Giliran {{status}}",
       "warning": "[warning] {{message}}",

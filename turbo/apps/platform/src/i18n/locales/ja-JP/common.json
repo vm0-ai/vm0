@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Codex エラー",
       "commandStatus": "コマンド {{status}}",
+      "contextCompaction": "コンテキストを圧縮しました",
       "error": "エラー: {{error}}",
       "fileChangeKind": "変更",
       "fileOperationCompleted": "ファイル操作が完了しました",
@@ -27,6 +28,12 @@
       },
       "status": "ステータス: {{status}}",
       "statusDetail": "ステータス: {{status}}",
+      "subAgentActivity": {
+        "completed": "サブエージェントが完了しました",
+        "interacted": "サブエージェントと対話しました",
+        "interrupted": "サブエージェントを中断しました",
+        "started": "サブエージェントを開始しました"
+      },
       "turnFailed": "ターンに失敗しました",
       "turnStatus": "ターン: {{status}}",
       "warning": "[警告] {{message}}",
