@@ -8246,9 +8246,11 @@ interface FinalizedPreparedRunContext extends PreparedRunContext {
 function isPiSandboxEnabledForRun(
   createArgs: CreateAgentRunArgs,
   featureSwitchContext: FeatureSwitchContext,
+  modelProvider: ResolvedModelProviderEnvironment | null,
 ): boolean {
   return shouldUsePiExecution({
     chatThreadId: createArgs.chatThreadId,
+    modelProviderType: modelProvider?.type,
     selectedModel: createArgs.selectedModelOverride,
     triggerSource: createArgs.body.triggerSource,
     featureSwitchContext,
@@ -8260,7 +8262,13 @@ function resolvePreparedPiModelConfig(args: {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
 }): PiModelConfig | undefined {
-  if (!isPiSandboxEnabledForRun(args.createArgs, args.featureSwitchContext)) {
+  if (
+    !isPiSandboxEnabledForRun(
+      args.createArgs,
+      args.featureSwitchContext,
+      args.modelProvider,
+    )
+  ) {
     return undefined;
   }
   const config = resolvePiSandboxModelConfig(args.modelProvider);

@@ -4,6 +4,7 @@ import {
   getModelProviderPiChatCompletionsUrl,
   getProviderBaseUrl,
   getSecretNameForType,
+  isBuiltInModelProviderType,
   type ModelProviderType,
 } from "@okouai/api-contracts/contracts/model-providers";
 import {
@@ -74,6 +75,7 @@ function piCredentialSecretName(concreteType: string): string | null {
 
 export function shouldUsePiExecution(args: {
   readonly chatThreadId: string | undefined;
+  readonly modelProviderType: string | null | undefined;
   readonly selectedModel: string | undefined;
   readonly triggerSource: TriggerSource;
   readonly featureSwitchContext: FeatureSwitchContext;
@@ -84,6 +86,7 @@ export function shouldUsePiExecution(args: {
   return (
     args.chatThreadId !== undefined &&
     isWebChatTriggerSource(args.triggerSource) &&
+    isBuiltInModelProviderType(args.modelProviderType) &&
     isPiModel &&
     isFeatureEnabled(FeatureSwitchKey.PiLoop, args.featureSwitchContext)
   );
