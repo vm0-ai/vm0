@@ -7,6 +7,12 @@ const SHARED_DATABASE_WORKER_FILE_PATTERN =
 const VENDOR_FILE_PATTERN = /^assets\/vendor-[^/]+\.js$/u;
 const ROLLDOWN_RUNTIME_FILE_PATTERN = /^assets\/rolldown-runtime-[^/]+\.js$/u;
 
+const MERMAID_LITE_MODULE_PATH =
+  "/packages/mermaid-lite/dist/mermaid.esm.min.mjs";
+
+export const VENDOR_MODULE_PATTERN =
+  /(?:[\\/]node_modules[\\/]|[\\/]packages[\\/]mermaid-lite[\\/]dist[\\/]mermaid\.esm\.min\.mjs$)/u;
+
 const FORBIDDEN_BUNDLED_PACKAGES = [
   "@base-org",
   "@clerk/clerk-js",
@@ -39,6 +45,11 @@ const FORBIDDEN_PRISM_MODULES = [
   },
 ] as const;
 
+const FORBIDDEN_SERVER_CONTRACT_MODULES = [
+  "/packages/api-contracts/src/contracts/runners.ts",
+  "/packages/api-contracts/src/contracts/webhooks.ts",
+] as const;
+
 interface GeneratedChunk {
   readonly code: string;
   readonly dynamicImports?: readonly string[];
@@ -65,6 +76,14 @@ function isNodeModule(moduleId: string): boolean {
   return normalizeModuleId(moduleId).includes("/node_modules/");
 }
 
+function isMermaidLiteModule(moduleId: string): boolean {
+  return normalizeModuleId(moduleId).endsWith(MERMAID_LITE_MODULE_PATH);
+}
+
+function isVirtualModule(moduleId: string): boolean {
+  return moduleId.startsWith("\0");
+}
+
 function bundledPackage(moduleId: string): string | undefined {
   const normalized = normalizeModuleId(moduleId);
   return FORBIDDEN_BUNDLED_PACKAGES.find((packageName) => {
@@ -77,6 +96,13 @@ function forbiddenPrismModule(moduleId: string): string | undefined {
   return FORBIDDEN_PRISM_MODULES.find(({ modulePath }) => {
     return normalized.includes(modulePath);
   })?.name;
+}
+
+function forbiddenServerContractModule(moduleId: string): string | undefined {
+  const normalized = normalizeModuleId(moduleId);
+  return FORBIDDEN_SERVER_CONTRACT_MODULES.find((modulePath) => {
+    return normalized.endsWith(modulePath);
+  });
 }
 
 function generatedChunks(
@@ -140,6 +166,59 @@ function chunkViolations(
     violations.push(
       `${chunk.fileName}: forbidden non-common Prism modules reached the bundle: ${[...forbiddenPrismModules].join(", ")}`,
     );
+  }
+  const forbiddenServerContractModules = new Set(
+    (chunk.moduleIds ?? [])
+      .map(forbiddenServerContractModule)
+      .filter((modulePath): modulePath is string => {
+        return modulePath !== undefined;
+      }),
+  );
+  if (forbiddenServerContractModules.size > 0) {
+    violations.push(
+      `${chunk.fileName}: server-only API contract modules reached the eager platform graph: ${[...forbiddenServerContractModules].join(", ")}`,
+    );
+  }
+  return violations;
+}
+
+function mermaidLiteVendorViolations(
+  appChunk: GeneratedChunk,
+  vendorChunk: GeneratedChunk,
+  runtimeChunk: GeneratedChunk,
+): string[] {
+  const violations: string[] = [];
+  const mermaidLiteModules = (vendorChunk.moduleIds ?? []).filter(
+    isMermaidLiteModule,
+  );
+  if (mermaidLiteModules.length !== 1) {
+    violations.push(
+      `${vendorChunk.fileName}: expected exactly one ${MERMAID_LITE_MODULE_PATH} module, found ${mermaidLiteModules.length}`,
+    );
+  }
+  const unrelatedVendorModules = (vendorChunk.moduleIds ?? []).filter(
+    (moduleId) => {
+      return (
+        !isNodeModule(moduleId) &&
+        !isMermaidLiteModule(moduleId) &&
+        !isVirtualModule(moduleId)
+      );
+    },
+  );
+  if (unrelatedVendorModules.length > 0) {
+    violations.push(
+      `${vendorChunk.fileName}: only node_modules and ${MERMAID_LITE_MODULE_PATH} may be emitted in the vendor chunk: ${unrelatedVendorModules.join(", ")}`,
+    );
+  }
+  for (const chunk of [appChunk, runtimeChunk]) {
+    const misplacedMermaidLiteModules = (chunk.moduleIds ?? []).filter(
+      isMermaidLiteModule,
+    );
+    if (misplacedMermaidLiteModules.length > 0) {
+      violations.push(
+        `${chunk.fileName}: ${MERMAID_LITE_MODULE_PATH} must be emitted only in the vendor chunk: ${misplacedMermaidLiteModules.join(", ")}`,
+      );
+    }
   }
   return violations;
 }
@@ -216,6 +295,9 @@ export function applicationBundleViolations(
       `${vendorChunk.fileName}: vendor chunk has no node_modules`,
     );
   }
+  violations.push(
+    ...mermaidLiteVendorViolations(appChunk, vendorChunk, runtimeChunk),
+  );
 
   const rawBytes = javaScriptOutputs.reduce((total, output) => {
     if (output.type === "chunk") {

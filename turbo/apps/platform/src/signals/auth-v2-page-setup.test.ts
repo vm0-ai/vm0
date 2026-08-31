@@ -157,7 +157,7 @@ describe("auth v2 route diagnostics", () => {
 describe("auth v2 callback privacy", () => {
   it("does not forward Clerk callback codes, messages, or payloads", async () => {
     const path =
-      "/v2/sign-in/sso-callback?ticket=ticket_private_2fb1" +
+      "/sign-in/sso-callback?ticket=ticket_private_2fb1" +
       "&redirect_url=https%3A%2F%2Fprivate.example%2Ffinish%3Fcode%3Dcallback_private_5c12" +
       "#token=hash_private_902e";
     context.mocks.browser.url(`https://app.vm0.ai${path}`);

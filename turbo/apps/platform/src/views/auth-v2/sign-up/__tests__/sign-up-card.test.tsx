@@ -1239,7 +1239,6 @@ describe("auth v2 sign-up flow", () => {
         "href",
         expect.stringContaining("redirect_url="),
       );
-      expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
       expect(
         mockedClerk.signUpPrepareEmailAddressVerification,
       ).not.toHaveBeenCalled();

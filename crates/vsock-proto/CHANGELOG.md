@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.42](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.41...vsock-proto-v0.18.42) (2026-08-31)
+
+
+### Documentation
+
+* **vsock-proto:** document guest storage manifest request constraints ([#30456](https://github.com/vm0-ai/vm0/issues/30456)) ([f1a688a](https://github.com/vm0-ai/vm0/commit/f1a688ade7bbe5d7de975147f2521a4676357ee6))
+
 ## [0.18.41](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.40...vsock-proto-v0.18.41) (2026-08-28)
 
 

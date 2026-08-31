@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.115](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.114...vsock-host-v0.17.115) (2026-08-31)
+
+
+### Documentation
+
+* **rust:** explain exec frame write safety invariants ([#30457](https://github.com/vm0-ai/vm0/issues/30457)) ([ace0de2](https://github.com/vm0-ai/vm0/commit/ace0de278885622ea3ac320d2ee583fae01e057c))
+
 ## [0.17.114](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.113...vsock-host-v0.17.114) (2026-08-30)
 
 ## [0.17.113](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.112...vsock-host-v0.17.113) (2026-08-30)

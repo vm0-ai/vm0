@@ -154,7 +154,7 @@ async function openOnboarding(
   const currentUrl = new URL(page.url());
   const canReuseAppPage =
     currentUrl.origin === onboardingUrl.origin &&
-    (currentUrl.pathname === "/" || currentUrl.pathname === "/onboarding");
+    currentUrl.pathname === "/onboarding";
 
   if (!canReuseAppPage) {
     await page.goto(onboardingUrl.toString(), {

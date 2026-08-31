@@ -1,0 +1,365 @@
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { createRecorderNativeBackend } from "./desktop-recorder-native";
+import type { RecorderNativeBackend } from "./desktop-recorder-types";
+
+/**
+ * How the fake helper answers one request kind.
+ *
+ * `prelude` is written to stdout before the response, `silent` never answers,
+ * and `exit` kills the helper mid-request.
+ */
+interface HelperBehavior {
+  readonly result?: Record<string, unknown>;
+  readonly error?: { readonly code: string; readonly message: string };
+  readonly prelude?: string;
+  readonly silent?: boolean;
+  readonly exit?: boolean;
+}
+
+const SOURCES: HelperBehavior = {
+  result: {
+    sources: [
+      { id: "display:1", kind: "display", title: "Built-in Display" },
+      {
+        id: "window:42",
+        kind: "window",
+        title: "Okou",
+        appName: "Okou",
+        bundleId: "ai.vm0.okou",
+      },
+    ],
+  },
+};
+
+const PREPARE: HelperBehavior = {
+  result: {
+    sessionId: "session-1",
+    width: 1920,
+    height: 1080,
+    geometry: {
+      originX: 0,
+      originY: 25,
+      widthPoints: 1512,
+      heightPoints: 982,
+      scale: 2,
+    },
+  },
+};
+
+const STOP: HelperBehavior = {
+  result: {
+    videoPath: "/tmp/screen-recording.mp4",
+    durationMs: 4200,
+    sizeBytes: 8192,
+    width: 1920,
+    height: 1080,
+  },
+};
+
+const createdDirs: string[] = [];
+const openBackends: RecorderNativeBackend[] = [];
+
+afterEach(async () => {
+  for (const backend of openBackends.splice(0)) {
+    backend.dispose();
+  }
+  for (const dir of createdDirs.splice(0)) {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+async function createHelper(
+  behaviors: Readonly<Record<string, HelperBehavior>>,
+): Promise<{ readonly helperPath: string; readonly requestLogPath: string }> {
+  const dir = await mkdtemp(path.join(tmpdir(), "screen-recorder-helper-"));
+  createdDirs.push(dir);
+  const helperPath = path.join(dir, "helper");
+  const requestLogPath = path.join(dir, "requests.ndjson");
+  await writeFile(
+    helperPath,
+    `#!/usr/bin/env node
+const fs = require("node:fs");
+const behaviors = ${JSON.stringify(behaviors)};
+const requestLogPath = ${JSON.stringify(requestLogPath)};
+let buffer = "";
+
+function handleLine(line) {
+  if (line.trim().length === 0) return;
+  const request = JSON.parse(line);
+  fs.appendFileSync(requestLogPath, JSON.stringify(request) + "\\n");
+  const behavior = behaviors[request.kind];
+  if (!behavior) {
+    process.stdout.write(
+      JSON.stringify({
+        id: request.id,
+        status: "failed",
+        error: { code: "capture_failed", message: "Unsupported " + request.kind }
+      }) + "\\n"
+    );
+    return;
+  }
+  if (behavior.prelude) process.stdout.write(behavior.prelude);
+  if (behavior.exit) process.exit(1);
+  if (behavior.silent) return;
+  if (behavior.error) {
+    process.stdout.write(
+      JSON.stringify({ id: request.id, status: "failed", error: behavior.error }) + "\\n"
+    );
+    return;
+  }
+  process.stdout.write(
+    JSON.stringify({
+      id: request.id,
+      status: "succeeded",
+      result: behavior.result ?? {}
+    }) + "\\n"
+  );
+}
+
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => {
+  buffer += chunk;
+  while (buffer.includes("\\n")) {
+    const index = buffer.indexOf("\\n");
+    handleLine(buffer.slice(0, index));
+    buffer = buffer.slice(index + 1);
+  }
+});
+process.stdin.resume();
+`,
+  );
+  await chmod(helperPath, 0o755);
+  return { helperPath, requestLogPath };
+}
+
+function createBackend(
+  helperPath: string,
+  requestTimeoutMs = 5_000,
+): RecorderNativeBackend {
+  const backend = createRecorderNativeBackend({ helperPath, requestTimeoutMs });
+  openBackends.push(backend);
+  return backend;
+}
+
+async function readRequests(
+  requestLogPath: string,
+): Promise<readonly Record<string, unknown>[]> {
+  const contents = await readFile(requestLogPath, "utf8");
+  return contents
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+}
+
+async function rejection(promise: Promise<unknown>): Promise<Error> {
+  try {
+    await promise;
+  } catch (error) {
+    return error as Error;
+  }
+  throw new Error("Expected the request to reject");
+}
+
+describe("createRecorderNativeBackend", () => {
+  it("carries a full capture session over the helper protocol", async () => {
+    const { helperPath, requestLogPath } = await createHelper({
+      "recorder.sources": SOURCES,
+      "recorder.prepare": PREPARE,
+      "recorder.start": {},
+      "recorder.stop": STOP,
+    });
+    const backend = createBackend(helperPath);
+
+    await expect(backend.listSources()).resolves.toEqual([
+      { id: "display:1", kind: "display", title: "Built-in Display" },
+      {
+        id: "window:42",
+        kind: "window",
+        title: "Okou",
+        appName: "Okou",
+        bundleId: "ai.vm0.okou",
+      },
+    ]);
+
+    await expect(
+      backend.prepare({
+        sourceId: "display:1",
+        sourceKind: "display",
+        systemAudio: true,
+      }),
+    ).resolves.toEqual({
+      sessionId: "session-1",
+      width: 1920,
+      height: 1080,
+      geometry: {
+        originX: 0,
+        originY: 25,
+        widthPoints: 1512,
+        heightPoints: 982,
+        scale: 2,
+      },
+    });
+
+    await backend.start("session-1", "/tmp/screen-recording.mp4");
+    await expect(backend.stop("session-1")).resolves.toEqual({
+      videoPath: "/tmp/screen-recording.mp4",
+      durationMs: 4200,
+      sizeBytes: 8192,
+      width: 1920,
+      height: 1080,
+    });
+
+    const requests = await readRequests(requestLogPath);
+    expect(requests.map((request) => request.kind)).toEqual([
+      "recorder.sources",
+      "recorder.prepare",
+      "recorder.start",
+      "recorder.stop",
+    ]);
+    expect(requests[1]?.payload).toEqual({
+      sourceId: "display:1",
+      sourceKind: "display",
+      systemAudio: true,
+    });
+    expect(requests[2]?.payload).toEqual({
+      sessionId: "session-1",
+      outputPath: "/tmp/screen-recording.mp4",
+    });
+  });
+
+  it("preserves the helper's failure code and message", async () => {
+    const { helperPath } = await createHelper({
+      "recorder.prepare": {
+        error: {
+          code: "permission_denied",
+          message: "Screen Recording permission is required",
+        },
+      },
+    });
+    const backend = createBackend(helperPath);
+
+    const error = await rejection(
+      backend.prepare({
+        sourceId: "display:1",
+        sourceKind: "display",
+        systemAudio: false,
+      }),
+    );
+
+    expect(error).toMatchObject({
+      code: "permission_denied",
+      message: "Screen Recording permission is required",
+    });
+  });
+
+  it("falls back to capture_failed for a code the client does not know", async () => {
+    const { helperPath } = await createHelper({
+      "recorder.sources": {
+        error: { code: "moon_phase_wrong", message: "Something went wrong" },
+      },
+    });
+    const backend = createBackend(helperPath);
+
+    expect(await rejection(backend.listSources())).toMatchObject({
+      code: "capture_failed",
+      message: "Something went wrong",
+    });
+  });
+
+  it("ignores stdout the helper writes outside the protocol", async () => {
+    const { helperPath } = await createHelper({
+      "recorder.sources": {
+        ...SOURCES,
+        prelude: 'ScreenCaptureKit: display reconfigured\n{"truncated":\n',
+      },
+    });
+    const backend = createBackend(helperPath);
+
+    await expect(backend.listSources()).resolves.toHaveLength(2);
+  });
+
+  it("rejects a response that is missing a required field", async () => {
+    const { helperPath } = await createHelper({
+      "recorder.stop": { result: { durationMs: 4200, sizeBytes: 8192 } },
+    });
+    const backend = createBackend(helperPath);
+
+    expect(await rejection(backend.stop("session-1"))).toMatchObject({
+      code: "capture_failed",
+      message: "Screen recorder helper returned an invalid videoPath",
+    });
+  });
+
+  it("rejects an unknown session status instead of reporting it", async () => {
+    const { helperPath } = await createHelper({
+      "recorder.state": { result: { status: "wedged", elapsedMs: 1000 } },
+    });
+    const backend = createBackend(helperPath);
+
+    expect(await rejection(backend.getStatus("session-1"))).toMatchObject({
+      code: "capture_failed",
+      message: "Screen recorder helper returned an invalid status",
+    });
+  });
+
+  it("times out a stalled request but leaves the capture process alive", async () => {
+    const { helperPath } = await createHelper({
+      "recorder.state": { silent: true },
+      "recorder.stop": STOP,
+    });
+    // Matches the runtime-timeout budget `computer-use-native.test.ts` uses: a
+    // tighter one would race the follow-up round trip on a contended runner.
+    const backend = createBackend(helperPath, 2_000);
+
+    expect(await rejection(backend.getStatus("session-1"))).toMatchObject({
+      code: "capture_failed",
+      message: "Screen recorder helper timed out running recorder.state",
+    });
+
+    // The helper is deliberately never killed on timeout: it owns the in-flight
+    // capture, so the recording must survive one slow command.
+    await expect(backend.stop("session-1")).resolves.toMatchObject({
+      videoPath: "/tmp/screen-recording.mp4",
+    });
+  });
+
+  it("rejects in-flight requests when the helper exits", async () => {
+    const { helperPath } = await createHelper({
+      "recorder.start": { exit: true },
+    });
+    const backend = createBackend(helperPath);
+
+    expect(
+      await rejection(backend.start("session-1", "/tmp/screen-recording.mp4")),
+    ).toMatchObject({
+      code: "helper_unavailable",
+      message: "Screen recorder helper exited",
+    });
+  });
+
+  it("rejects every request once the backend is disposed", async () => {
+    const { helperPath } = await createHelper({ "recorder.sources": SOURCES });
+    const backend = createBackend(helperPath);
+    await backend.listSources();
+
+    backend.dispose();
+
+    expect(await rejection(backend.listSources())).toMatchObject({
+      code: "helper_unavailable",
+      message: "Screen recorder helper is closed",
+    });
+  });
+
+  it("reports a missing helper executable as unavailable", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "screen-recorder-helper-"));
+    createdDirs.push(dir);
+    const backend = createBackend(path.join(dir, "absent-helper"));
+
+    expect(await rejection(backend.listSources())).toMatchObject({
+      code: "helper_unavailable",
+    });
+  });
+});

@@ -12,6 +12,7 @@ import {
   type ChatThreadEvent,
   type ChatEvent,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import { browserContract } from "@okouai/api-contracts/contracts/browser";
 import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../../signals/okou-page/sidebar-state.ts";
 import { pathname$ } from "../../../signals/route.ts";
 import { click, fill } from "../../../__tests__/page-helper.ts";
@@ -718,7 +719,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("moves between chat threads with keyboard shortcuts", async () => {
+  it("moves to the previous chat with a page shortcut from the composer", async () => {
     mockResizeObserver();
     mockKeyboardNavigationThreads();
 
@@ -735,14 +736,11 @@ describe("chat lifecycle", () => {
       expect(
         within(chatList).getByText("Previous keyboard thread"),
       ).toBeInTheDocument();
-      expect(
-        within(chatList).getByText("Next keyboard thread"),
-      ).toBeInTheDocument();
     });
 
-    const threadRegion = screen.getByLabelText("Chat thread");
-    threadRegion.focus();
-    fireEvent.keyDown(threadRegion, {
+    const composer = chatComposerTextarea();
+    composer.focus();
+    fireEvent.keyDown(composer, {
       key: "ArrowUp",
       ctrlKey: true,
       shiftKey: true,
@@ -756,40 +754,9 @@ describe("chat lifecycle", () => {
     expect(context.store.get(pathname$)).toBe(
       `/chats/${KEYBOARD_PREV_THREAD_ID}`,
     );
-
-    const previousThreadRegion = screen.getByLabelText("Chat thread");
-    previousThreadRegion.focus();
-    fireEvent.keyDown(previousThreadRegion, {
-      key: "ArrowDown",
-      ctrlKey: true,
-      shiftKey: true,
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
-    });
-    expect(context.store.get(pathname$)).toBe(
-      `/chats/${KEYBOARD_CURRENT_THREAD_ID}`,
-    );
-
-    const currentThreadRegion = screen.getByLabelText("Chat thread");
-    currentThreadRegion.focus();
-    fireEvent.keyDown(currentThreadRegion, { key: "?", shiftKey: true });
-
-    await waitFor(() => {
-      expect(screen.getByText("Keyboard Shortcuts")).toBeInTheDocument();
-      expect(screen.getByText("Previous thread")).toBeInTheDocument();
-      expect(screen.getByText("Next thread")).toBeInTheDocument();
-      expect(screen.getByText("Rename chat")).toBeInTheDocument();
-      expect(screen.getByText("Change icon")).toBeInTheDocument();
-      expect(screen.getAllByText("F2")).toHaveLength(2);
-      expect(screen.getAllByText("Shift").length).toBeGreaterThan(0);
-    });
   });
 
-  it("keeps shifted slash editable in the chat composer", async () => {
+  it("keeps shifted slash editable before opening shortcut help outside the composer", async () => {
     mockResizeObserver();
     mockKeyboardNavigationThreads();
 
@@ -809,11 +776,37 @@ describe("chat lifecycle", () => {
     fireEvent.keyDown(composer, { key: "?", shiftKey: true });
 
     expect(screen.queryByText("Keyboard Shortcuts")).not.toBeInTheDocument();
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    fireEvent.keyDown(threadRegion, { key: "?", shiftKey: true });
+
+    await waitFor(() => {
+      expect(screen.getByText("Keyboard Shortcuts")).toBeInTheDocument();
+      expect(screen.getByText("Previous thread")).toBeInTheDocument();
+      expect(screen.getByText("Next thread")).toBeInTheDocument();
+      expect(screen.getByText("Rename chat")).toBeInTheDocument();
+      expect(screen.getByText("Change icon")).toBeInTheDocument();
+      expect(screen.getAllByText("F2")).toHaveLength(2);
+      expect(screen.getAllByText("Shift").length).toBeGreaterThan(0);
+    });
   });
 
-  it("moves between chat threads with page shortcuts from the composer", async () => {
+  it("aligns the next thread shortcut to the sidebar bottom from the composer", async () => {
     mockResizeObserver();
-    mockKeyboardNavigationThreads({ leadingThreadCount: 20 });
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(performance.now());
+      return 1;
+    });
+    mockKeyboardNavigationThreads();
+    context.mocks.api(browserContract.get, ({ respond }) => {
+      return respond(404, {
+        error: { code: "BROWSER_NOT_FOUND", message: "Browser not found" },
+      });
+    });
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      return respond(200, chatEventRowsResponse([], query));
+    });
 
     detachedSetupPage({
       context,
@@ -822,14 +815,11 @@ describe("chat lifecycle", () => {
 
     const chatList = await screen.findByTestId("chat-list-column");
     await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
+      expect(chatComposerTextarea()).toBeInTheDocument();
       expect(
         within(chatList).getByTestId("sidebar-chat-threads-virtual-list"),
       ).toBeInTheDocument();
     });
-
     const sidebarScrollArea = within(chatList).getByTestId(
       "sidebar-scroll-area",
     );
@@ -840,17 +830,17 @@ describe("chat lifecycle", () => {
       },
       scrollHeight: {
         configurable: true,
-        value: CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 24,
+        value: CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 3,
       },
       scrollTop: {
         configurable: true,
-        value: CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 20,
+        value: 0,
         writable: true,
       },
     });
     fireEvent.scroll(sidebarScrollArea);
 
-    let composer = chatComposerTextarea();
+    const composer = chatComposerTextarea();
     composer.focus();
     fireEvent.keyDown(composer, {
       key: "ArrowDown",
@@ -859,26 +849,10 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Next thread launch note")).toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(sidebarScrollArea.scrollTop).toBe(
-        CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 21,
+      expect(context.store.get(pathname$)).toBe(
+        `/chats/${KEYBOARD_NEXT_THREAD_ID}`,
       );
-    });
-
-    composer = chatComposerTextarea();
-    composer.focus();
-    fireEvent.keyDown(composer, {
-      key: "ArrowUp",
-      ctrlKey: true,
-      shiftKey: true,
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
+      expect(sidebarScrollArea.scrollTop).toBe(CHAT_THREAD_VIRTUAL_ROW_HEIGHT);
     });
   });
 

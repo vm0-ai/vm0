@@ -86,9 +86,6 @@ describe("auth v2 continuation recovery", () => {
       isAuthV2ContinuationLocation("/sign-in/tasks/choose-organization", ""),
     ).toBe(true);
     expect(
-      isAuthV2ContinuationLocation("/v2/sign-in/tasks/choose-organization", ""),
-    ).toBe(true);
-    expect(
       isAuthV2ContinuationLocation(
         "/sign-in",
         "#/tasks/choose-organization?attempt=1",

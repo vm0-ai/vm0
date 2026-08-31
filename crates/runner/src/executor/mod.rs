@@ -47,7 +47,7 @@ mod workspace_session_history_materializer;
 pub(crate) use crate::restored_session_identity::RestoredSessionIdentity;
 pub(crate) use cli_framework::effective_cli_framework;
 pub(crate) use guest_state::{
-    is_shell_safe_guest_timezone_name, restore_guest_state_with_intent,
+    GuestTimezoneSyncOutcome, is_shell_safe_guest_timezone_name, restore_guest_state_with_intent,
     restore_guest_state_with_timezone, try_sync_guest_timezone_intent,
 };
 pub(crate) use session_history_cpu::SessionHistoryCpuPool;
