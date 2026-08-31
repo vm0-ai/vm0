@@ -2,23 +2,23 @@ import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { agents } from "@okouai/db/schema/agent";
-import { and, eq, isNull, notExists, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, lt, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { pgTextDecoder } from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 import {
-  listPendingChatQueueEvents,
   loadPendingChatQueueEvent,
   lockChatQueueThread,
+  pendingChatQueueEventCondition,
 } from "./chat-event-queue.service";
 import {
   insertChatEvent,
   revokeChatEvent,
   replaceChatEvent,
 } from "./chat-event.service";
-import { chatThreadAdmissionBlocked } from "./chat-active-run.service";
+import { chatThreadAdmissionAllowedCondition } from "./chat-active-run.service";
 import { chatEventTypeIn } from "./chat-event-type.service";
 import { appendGoalCloseMarker } from "./chat-goal-marker.service";
 import { createUserMessageDocument } from "./chat-user-message.service";
@@ -133,18 +133,6 @@ export async function loadNextGoalQueueEvent(
     if (!(await lockChatQueueThread(tx, chatThreadId))) {
       return null;
     }
-    if (await chatThreadAdmissionBlocked(tx, { threadId: chatThreadId })) {
-      return null;
-    }
-    const pending = await listPendingChatQueueEvents(
-      tx,
-      chatThreadId,
-      queueItemCreatedBefore,
-    );
-    const head = pending[0];
-    if (!head || head.eventType !== "input.goal") {
-      return null;
-    }
 
     const [event] = await tx
       .select({
@@ -158,7 +146,35 @@ export async function loadNextGoalQueueEvent(
       .from(chatEvents)
       .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
       .innerJoin(agents, eq(agents.id, chatThreads.agentId))
-      .where(eq(chatEvents.id, head.id))
+      .where(
+        and(
+          eq(chatEvents.chatThreadId, chatThreadId),
+          pendingChatQueueEventCondition(tx),
+          chatEventTypeIn(["input.goal"]),
+          queueItemCreatedBefore
+            ? lt(chatEvents.createdAt, queueItemCreatedBefore)
+            : undefined,
+          notExists(
+            tx
+              .select({ id: chatEvents.id })
+              .from(chatEvents)
+              .where(
+                and(
+                  eq(chatEvents.chatThreadId, chatThreadId),
+                  pendingChatQueueEventCondition(tx),
+                  chatEventTypeIn(["input.prompt", "input.automation"]),
+                  queueItemCreatedBefore
+                    ? lt(chatEvents.createdAt, queueItemCreatedBefore)
+                    : undefined,
+                ),
+              ),
+          ),
+          chatThreadAdmissionAllowedCondition(tx, {
+            threadId: chatThreadId,
+          }),
+        ),
+      )
+      .orderBy(asc(chatEvents.createdAt), asc(chatEvents.id))
       .limit(1);
     if (!event) {
       return null;
