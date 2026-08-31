@@ -310,7 +310,9 @@ describe("createRecorderNativeBackend", () => {
       "recorder.state": { silent: true },
       "recorder.stop": STOP,
     });
-    const backend = createBackend(helperPath, 100);
+    // Matches the runtime-timeout budget `computer-use-native.test.ts` uses: a
+    // tighter one would race the follow-up round trip on a contended runner.
+    const backend = createBackend(helperPath, 2_000);
 
     expect(await rejection(backend.getStatus("session-1"))).toMatchObject({
       code: "capture_failed",
