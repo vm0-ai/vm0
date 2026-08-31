@@ -101,8 +101,6 @@ COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 class AppDocumentParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
-        self.app_entry_preloads: list[str] = []
-        self.active_module_preloads: list[str] = []
         self.module_scripts: list[str] = []
         self.module_preloads: list[str] = []
         self.runtime_metadata: dict[str, list[str | None]] = {
@@ -117,14 +115,10 @@ class AppDocumentParser(HTMLParser):
             source = attributes.get("src")
             if source:
                 self.module_scripts.append(source)
-        if tag == "link":
+        if tag == "link" and attributes.get("rel") == "modulepreload":
             href = attributes.get("href")
-            if href and "data-vm0-app-entry" in attributes:
-                self.app_entry_preloads.append(href)
-            if href and "data-vm0-app-module-preload" in attributes:
+            if href:
                 self.module_preloads.append(href)
-            if href and attributes.get("rel") == "modulepreload":
-                self.active_module_preloads.append(href)
         if tag == "meta" and attributes.get("name") in RUNTIME_META_NAMES:
             name = attributes["name"]
             if name is not None:
@@ -164,22 +158,11 @@ if observed_metadata != expected_metadata:
         f"Expected runtime build metadata {expected_metadata}, got {observed_metadata}"
     )
 
-expected_app_entry = [sys.argv[3]]
+expected_script = [sys.argv[3]]
 expected_preloads = {sys.argv[4], sys.argv[5]}
-if parser.app_entry_preloads != expected_app_entry:
+if parser.module_scripts != expected_script:
     raise RuntimeError(
-        f"Expected one deferred CDN app module preload {expected_app_entry}, "
-        f"got {parser.app_entry_preloads}"
-    )
-if parser.module_scripts:
-    raise RuntimeError(
-        f"Expected deferred app execution without static module scripts, "
-        f"got {parser.module_scripts}"
-    )
-if parser.active_module_preloads:
-    raise RuntimeError(
-        "Expected module resource discovery after first paint, "
-        f"got {parser.active_module_preloads}"
+        f"Expected one CDN app module script {expected_script}, got {parser.module_scripts}"
     )
 if len(parser.module_preloads) != 2 or set(parser.module_preloads) != expected_preloads:
     raise RuntimeError(

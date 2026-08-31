@@ -9,7 +9,6 @@ const INSTATUS_SCRIPT_URL =
   "https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en";
 const INSTATUS_SCRIPT_INTEGRITY =
   "sha384-ZW3eZwADOMdlg2fdvESPD7jguK16IC/edxNFakKs81D2lkNdi3BXRmx/g331lkD3";
-const APP_SUPPORTED_EVENT = "vm0:app-supported";
 
 type EntrypointScript = (
   windowObject: Window,
@@ -54,7 +53,6 @@ function loadInstatusScripts(hostname: string): HTMLScriptElement[] {
   ) as EntrypointScript;
 
   executeEntrypointScript(window, document);
-  window.dispatchEvent(new Event(APP_SUPPORTED_EVENT));
   return appendedScripts;
 }
 

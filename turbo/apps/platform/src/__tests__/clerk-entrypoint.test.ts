@@ -27,7 +27,6 @@ const CLERK_SCRIPT_SELECTOR = "script[data-clerk-js-script]";
 const TEST_APP_VERSION = "0.812.5-test";
 const CLERK_LOAD_COMPLETED_MARK = "vm0:bootstrap:clerk-load-completed";
 const CLERK_LOAD_STARTED_MARK = "vm0:bootstrap:clerk-load-started";
-const APP_SUPPORTED_EVENT = "vm0:app-supported";
 
 const PREFETCHED_ONBOARDING_STATUS: OnboardingStatusResponse = {
   defaultAgentId: "c0000000-0000-4000-a000-000000000101",
@@ -169,7 +168,6 @@ function captureClerkBootstrapScript(
     });
 
   executeClerkBootstrap(builtIndexHtml());
-  window.dispatchEvent(new Event(APP_SUPPORTED_EVENT));
   appendSpy.mockRestore();
   if (!clerkScript) {
     throw new Error("Clerk bootstrap did not create the core script");
@@ -235,7 +233,6 @@ function startClerkPage(
         });
 
       executeClerkBootstrap(builtIndexHtml());
-      window.dispatchEvent(new Event(APP_SUPPORTED_EVENT));
       if (!earlyScript) {
         throw new Error("Clerk bootstrap did not run synchronously");
       }
@@ -299,20 +296,13 @@ async function completeEarlyClerkScript(
 }
 
 describe("platform Clerk entrypoint", () => {
-  it("discovers the paintable skeleton before Clerk and the app module", () => {
+  it("starts Clerk and app discovery before the skeleton assets", () => {
     const html = builtIndexHtml();
     const parsedDocument = new DOMParser().parseFromString(html, "text/html");
     const skeleton = parsedDocument.getElementById("app-bootstrap-skeleton");
     const bootstrap = parsedDocument.querySelector(CLERK_BOOTSTRAP_SELECTOR);
     const fontStylesheet = parsedDocument.querySelector(
-      "link[data-vm0-font-stylesheet]",
-    );
-    const paintScheduler = [...parsedDocument.querySelectorAll("script")].find(
-      (script) => {
-        return script.textContent.includes(
-          "__appBootstrapFirstPaintUpperBound",
-        );
-      },
+      'link[rel="stylesheet"][href^="https://fonts.googleapis.com/"]',
     );
     const criticalStyles = parsedDocument.querySelector("head style");
     const mainScript = parsedDocument.querySelector(
@@ -331,9 +321,6 @@ describe("platform Clerk entrypoint", () => {
     if (!(fontStylesheet instanceof HTMLLinkElement)) {
       throw new Error("Built index.html does not contain the font stylesheet");
     }
-    if (!(paintScheduler instanceof HTMLScriptElement)) {
-      throw new Error("Built index.html does not contain the paint scheduler");
-    }
     if (!(criticalStyles instanceof HTMLStyleElement)) {
       throw new Error("Built index.html does not contain critical styles");
     }
@@ -341,20 +328,18 @@ describe("platform Clerk entrypoint", () => {
       throw new Error("Built index.html does not contain the app module");
     }
 
-    expect(skeleton.compareDocumentPosition(mainScript)).toBe(
+    expect(bootstrap.compareDocumentPosition(mainScript)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(mainScript.compareDocumentPosition(skeleton)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(skeleton.compareDocumentPosition(fontStylesheet)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
     expect(html).not.toContain("__VM0_");
-    expect(skeleton.compareDocumentPosition(bootstrap)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
-    expect(bootstrap.compareDocumentPosition(fontStylesheet)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
-    expect(paintScheduler.textContent).toContain("first-contentful-paint");
-    expect(skeleton.compareDocumentPosition(paintScheduler)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
+    expect(html).not.toContain("__vm0AfterFirstPaint");
+    expect(html).not.toContain("data-vm0-app-entry");
     expect(criticalStyles.textContent).toContain(
       "@keyframes app-bootstrap-skeleton-avatar-pulse",
     );
@@ -375,10 +360,10 @@ describe("platform Clerk entrypoint", () => {
     );
     expect(skeleton.querySelector("svg")).toBeNull();
     expect(skeleton).toHaveTextContent("");
-    expect(fontStylesheet.hasAttribute("rel")).toBeFalsy();
+    expect(fontStylesheet.rel).toBe("stylesheet");
     expect(fontStylesheet.hasAttribute("as")).toBeFalsy();
     expect(html.indexOf("data-vm0-clerk-bootstrap")).toBeLessThan(
-      html.indexOf("var appEntry ="),
+      html.indexOf('type="module" src="/src/main.ts"'),
     );
     expect(html).not.toContain("@clerk/ui");
   });
@@ -397,7 +382,7 @@ describe("platform Clerk entrypoint", () => {
     expect(() => clerkBootstrapSource(html)).not.toThrow();
   });
 
-  it("preconnects immediately and starts Clerk after app support is confirmed", () => {
+  it("preconnects and starts Clerk immediately", () => {
     context.mocks.browser.url("https://app.vm0.ai/");
     const appendedNodes: Node[] = [];
     const appendSpy = vi
@@ -418,8 +403,7 @@ describe("platform Clerk entrypoint", () => {
         appendedNodes.filter((node) => {
           return node instanceof HTMLScriptElement;
         }),
-      ).toHaveLength(0);
-      window.dispatchEvent(new Event(APP_SUPPORTED_EVENT));
+      ).toHaveLength(1);
 
       const clerkScripts = appendedNodes.filter((node) => {
         return (

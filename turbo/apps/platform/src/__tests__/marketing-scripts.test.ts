@@ -5,7 +5,6 @@ import { testContext } from "../signals/__tests__/test-helpers.ts";
 
 const APP_SKELETON_VISIBLE_EVENT = "vm0:app-skeleton-visible";
 const APP_FIRST_CONTENT_VISIBLE_EVENT = "vm0:app-first-content-visible";
-const APP_SUPPORTED_EVENT = "vm0:app-supported";
 const GOOGLE_TAG_SCRIPT_URL =
   "https://www.googletagmanager.com/gtag/js?id=AW-18144854014";
 const MARKETING_FALLBACK_DELAY_MS = 30_000;
@@ -31,7 +30,6 @@ interface MarketingHarness {
   readonly requestedScriptUrls: string[];
   readonly flushIdleCallbacks: () => void;
   readonly runFallback: () => void;
-  readonly signalAppSupported: () => void;
 }
 
 const context = testContext();
@@ -95,7 +93,9 @@ function executeMarketingEntrypoint(hostname: string): MarketingHarness {
   ) as MarketingEntrypointScript;
   executeEntrypointScript(window, document);
 
-  let fallback: ScheduledTimeout | undefined;
+  const fallback = scheduledTimeouts.find(({ delay }) => {
+    return delay === MARKETING_FALLBACK_DELAY_MS;
+  });
 
   return {
     get fallbackDelay() {
@@ -119,22 +119,12 @@ function executeMarketingEntrypoint(hostname: string): MarketingHarness {
       }
       fallback.callback();
     },
-    signalAppSupported: () => {
-      window.dispatchEvent(new Event(APP_SUPPORTED_EVENT));
-      fallback = scheduledTimeouts.find(({ delay }) => {
-        return delay === MARKETING_FALLBACK_DELAY_MS;
-      });
-    },
   };
 }
 
 describe("platform marketing scripts", () => {
   it("loads Google Ads after first app content", () => {
     const harness = executeMarketingEntrypoint("app.vm0.ai");
-
-    expect(harness.marketingWindow.dataLayer).toBeUndefined();
-    expect(harness.requestedScriptUrls).toStrictEqual([]);
-    harness.signalAppSupported();
 
     expect(
       harness.marketingWindow.dataLayer?.map((entry) => {
@@ -154,7 +144,6 @@ describe("platform marketing scripts", () => {
 
   it("waits 30 seconds before falling back when content never becomes ready", () => {
     const harness = executeMarketingEntrypoint("app.vm0.ai");
-    harness.signalAppSupported();
 
     expect(harness.fallbackDelay).toBe(MARKETING_FALLBACK_DELAY_MS);
     expect(harness.requestedScriptUrls).toStrictEqual([]);
@@ -168,7 +157,6 @@ describe("platform marketing scripts", () => {
 
   it("loads Google Ads once across duplicate readiness and fallback signals", () => {
     const harness = executeMarketingEntrypoint("app.vm0.ai");
-    harness.signalAppSupported();
 
     window.dispatchEvent(new Event(APP_FIRST_CONTENT_VISIBLE_EVENT));
     window.dispatchEvent(new Event(APP_FIRST_CONTENT_VISIBLE_EVENT));
@@ -180,7 +168,6 @@ describe("platform marketing scripts", () => {
 
   it("does not request scripts when only the app skeleton is visible", () => {
     const harness = executeMarketingEntrypoint("app.vm0.ai");
-    harness.signalAppSupported();
 
     window.dispatchEvent(new Event(APP_SKELETON_VISIBLE_EVENT));
     harness.flushIdleCallbacks();
@@ -195,7 +182,6 @@ describe("platform marketing scripts", () => {
     "does not initialize or request scripts on %s",
     (hostname) => {
       const harness = executeMarketingEntrypoint(hostname);
-      harness.signalAppSupported();
 
       window.dispatchEvent(new Event(APP_SKELETON_VISIBLE_EVENT));
       window.dispatchEvent(new Event(APP_FIRST_CONTENT_VISIBLE_EVENT));

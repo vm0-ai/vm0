@@ -199,107 +199,6 @@
     </style>
   </head>
   <body>
-    <div
-      id="app-bootstrap-skeleton"
-      role="status"
-      aria-live="polite"
-      aria-label="Loading"
-    >
-      <div class="app-bootstrap-skeleton__content">
-        <div class="app-bootstrap-skeleton__avatar" aria-hidden="true">
-          <div class="app-bootstrap-skeleton__avatar-layers">
-            <img
-              data-app-bootstrap-avatar-layer="head"
-              alt=""
-              src="https://static.vm0.io/platform/views/zero-page/assets/avatar-svg/head-r1-s0.svg"
-              decoding="async"
-              fetchpriority="low"
-            />
-            <img
-              data-app-bootstrap-avatar-layer="face"
-              alt=""
-              src="https://static.vm0.io/platform/views/zero-page/assets/avatar-svg/face-r1-f1-h.svg"
-              decoding="async"
-              fetchpriority="low"
-            />
-            <img
-              data-app-bootstrap-avatar-layer="hair"
-              alt=""
-              src="https://static.vm0.io/platform/views/zero-page/assets/avatar-svg/hair-r1-h1-c5.svg"
-              decoding="async"
-              fetchpriority="low"
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-    <script>
-      (function () {
-        var callbacks = [];
-        var paintObserver = null;
-        var ready = false;
-
-        window.__vm0AfterFirstPaint = function (callback) {
-          if (ready) {
-            callback();
-            return;
-          }
-          callbacks.push(callback);
-        };
-
-        function flushCallbacks(firstPaintObserved) {
-          if (ready) return;
-          ready = true;
-          if (paintObserver) paintObserver.disconnect();
-          if (firstPaintObserved) {
-            window.__appBootstrapFirstPaintUpperBound = performance.now();
-          }
-          for (var i = 0; i < callbacks.length; i += 1) {
-            callbacks[i]();
-          }
-          callbacks.length = 0;
-        }
-
-        if (document.visibilityState === "visible") {
-          var observingFirstContentfulPaint = false;
-          if (typeof PerformanceObserver === "function") {
-            try {
-              paintObserver = new PerformanceObserver(function (list) {
-                var entries = list.getEntries();
-                for (var i = 0; i < entries.length; i += 1) {
-                  if (entries[i].name === "first-contentful-paint") {
-                    flushCallbacks(true);
-                    return;
-                  }
-                }
-              });
-              paintObserver.observe({ buffered: true, type: "paint" });
-              observingFirstContentfulPaint = true;
-            } catch {
-              paintObserver = null;
-            }
-          }
-
-          window.requestAnimationFrame(function () {
-            window.requestAnimationFrame(function () {
-              if (!observingFirstContentfulPaint) {
-                flushCallbacks(true);
-                return;
-              }
-              window.setTimeout(function () {
-                flushCallbacks(true);
-              }, 250);
-            });
-          });
-          return;
-        }
-
-        window.setTimeout(function () {
-          flushCallbacks(false);
-        }, 100);
-      })();
-    </script>
-    <script data-vm0-app-entry="" type="module" src="/src/main.ts"></script>
     <div id="root"></div>
     <script data-vm0-clerk-bootstrap="">
       (function () {
@@ -696,170 +595,148 @@
         }
         window.addEventListener("pagehide", abortOnFinalPageHide);
 
-        window.addEventListener(
-          "vm0:app-supported",
-          function () {
-            var script = document.createElement("script");
-            script.async = false;
-            script.defer = true;
-            script.crossOrigin = "anonymous";
-            script.dataset.clerkJsScript = "";
-            script.dataset.clerkPublishableKey = publishableKey;
-            if (satellite) {
-              script.dataset.clerkDomain = PRODUCTION_SATELLITE_DOMAIN;
-            }
-            script.onerror = function () {
-              script.remove();
-            };
-            script.onload = startClerk;
-            script.src = scriptUrl;
-            script.type = "text/javascript";
-            document.head.appendChild(script);
-          },
-          { once: true },
-        );
+        var script = document.createElement("script");
+        script.async = false;
+        script.defer = true;
+        script.crossOrigin = "anonymous";
+        script.dataset.clerkJsScript = "";
+        script.dataset.clerkPublishableKey = publishableKey;
+        if (satellite) {
+          script.dataset.clerkDomain = PRODUCTION_SATELLITE_DOMAIN;
+        }
+        script.onerror = function () {
+          script.remove();
+        };
+        script.onload = startClerk;
+        script.src = scriptUrl;
+        script.type = "text/javascript";
+        document.head.appendChild(script);
       })();
     </script>
+    <script type="module" src="/src/main.ts"></script>
+    <div
+      id="app-bootstrap-skeleton"
+      role="status"
+      aria-live="polite"
+      aria-label="Loading"
+    >
+      <div class="app-bootstrap-skeleton__content">
+        <div class="app-bootstrap-skeleton__avatar" aria-hidden="true">
+          <div class="app-bootstrap-skeleton__avatar-layers">
+            <img
+              data-app-bootstrap-avatar-layer="head"
+              alt=""
+              src="https://static.vm0.io/platform/views/zero-page/assets/avatar-svg/head-r1-s0.svg"
+              decoding="async"
+              fetchpriority="low"
+            />
+            <img
+              data-app-bootstrap-avatar-layer="face"
+              alt=""
+              src="https://static.vm0.io/platform/views/zero-page/assets/avatar-svg/face-r1-f1-h.svg"
+              decoding="async"
+              fetchpriority="low"
+            />
+            <img
+              data-app-bootstrap-avatar-layer="hair"
+              alt=""
+              src="https://static.vm0.io/platform/views/zero-page/assets/avatar-svg/hair-r1-h1-c5.svg"
+              decoding="async"
+              fetchpriority="low"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
     <link
-      data-vm0-font-stylesheet=""
+      rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
     />
     <script>
-      window.addEventListener(
-        "vm0:app-supported",
-        function () {
-          (function () {
-            var hostname = window.location.hostname;
-            var isProductionHost =
-              hostname === "vm0.ai" ||
-              hostname.endsWith(".vm0.ai") ||
-              hostname === "okou.ai" ||
-              hostname.endsWith(".okou.ai");
-            if (!isProductionHost) return;
+      (function () {
+        var hostname = window.location.hostname;
+        var isProductionHost =
+          hostname === "vm0.ai" ||
+          hostname.endsWith(".vm0.ai") ||
+          hostname === "okou.ai" ||
+          hostname.endsWith(".okou.ai");
+        if (!isProductionHost) return;
 
-            window.dataLayer = window.dataLayer || [];
-            window.gtag = function () {
-              window.dataLayer.push(arguments);
-            };
-            window.gtag("js", new Date());
-            window.gtag("config", "AW-18144854014");
-            window.gtag("config", "AW-18407336975");
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = function () {
+          window.dataLayer.push(arguments);
+        };
+        window.gtag("js", new Date());
+        window.gtag("config", "AW-18144854014");
+        window.gtag("config", "AW-18407336975");
 
-            var initialized = false;
+        var initialized = false;
 
-            function loadMarketingScripts() {
-              var gtagScript = document.createElement("script");
-              gtagScript.async = true;
-              gtagScript.src =
-                "https://www.googletagmanager.com/gtag/js?id=AW-18144854014";
-              document.head.appendChild(gtagScript);
-            }
-
-            function scheduleMarketingScripts() {
-              if (initialized) return;
-              initialized = true;
-
-              if (typeof window.requestIdleCallback === "function") {
-                window.requestIdleCallback(loadMarketingScripts, {
-                  timeout: 1500,
-                });
-                return;
-              }
-
-              window.setTimeout(loadMarketingScripts, 0);
-            }
-
-            // Keep vendor work outside the first-content critical path. The
-            // 30-second guard exceeds the observed mobile P90 startup window and
-            // still bounds bootstraps that never reach real app content.
-            window.addEventListener(
-              "vm0:app-first-content-visible",
-              scheduleMarketingScripts,
-              { once: true },
-            );
-            window.setTimeout(scheduleMarketingScripts, 30000);
-          })();
-        },
-        { once: true },
-      );
-    </script>
-    <script>
-      window.__vm0AfterFirstPaint(function () {
-        var modulePreloads = document.querySelectorAll(
-          'link[data-vm0-app-entry=""], link[data-vm0-app-module-preload=""]',
-        );
-        for (var index = 0; index < modulePreloads.length; index += 1) {
-          modulePreloads[index].rel = "modulepreload";
+        function loadMarketingScripts() {
+          var gtagScript = document.createElement("script");
+          gtagScript.async = true;
+          gtagScript.src =
+            "https://www.googletagmanager.com/gtag/js?id=AW-18144854014";
+          document.head.appendChild(gtagScript);
         }
 
-        var fontStylesheet = document.querySelector(
-          'link[data-vm0-font-stylesheet=""]',
-        );
-        if (fontStylesheet) {
-          fontStylesheet.rel = "stylesheet";
-          fontStylesheet.removeAttribute("as");
-        }
+        function scheduleMarketingScripts() {
+          if (initialized) return;
+          initialized = true;
 
-        var appStylesheet = document.querySelector(
-          'link[data-vm0-app-stylesheet=""]',
-        );
-        if (appStylesheet) {
-          appStylesheet.rel = "stylesheet";
-          appStylesheet.removeAttribute("as");
-        }
-
-        var appEntry = document.querySelector('link[data-vm0-app-entry=""]');
-        if (!appEntry) return;
-
-        var appScript = document.createElement("script");
-        appScript.type = "module";
-        appScript.src = appEntry.href;
-        if (appEntry.hasAttribute("crossorigin")) {
-          appScript.crossOrigin = appEntry.getAttribute("crossorigin") || "";
-        }
-        appEntry.after(appScript);
-      });
-    </script>
-    <script>
-      window.__vm0AfterFirstPaint(function () {
-        (function () {
-          var skeleton = document.getElementById("app-bootstrap-skeleton");
-          // iOS standalone can expand the fixed containing viewport one frame
-          // after launch. Pin the content to the initially reachable viewport
-          // so that later geometry resolution cannot visibly recenter it.
-          var viewportHeight =
-            window.visualViewport && window.visualViewport.height > 0
-              ? window.visualViewport.height
-              : window.innerHeight;
-          if (viewportHeight > 0) {
-            skeleton.style.setProperty(
-              "--app-bootstrap-skeleton-center-y",
-              viewportHeight / 2 + "px",
-            );
+          if (typeof window.requestIdleCallback === "function") {
+            window.requestIdleCallback(loadMarketingScripts, {
+              timeout: 1500,
+            });
+            return;
           }
-        })();
-      });
+
+          window.setTimeout(loadMarketingScripts, 0);
+        }
+
+        // Keep vendor work outside the first-content critical path. The
+        // 30-second guard exceeds the observed mobile P90 startup window and
+        // still bounds bootstraps that never reach real app content.
+        window.addEventListener(
+          "vm0:app-first-content-visible",
+          scheduleMarketingScripts,
+          { once: true },
+        );
+        window.setTimeout(scheduleMarketingScripts, 30000);
+      })();
     </script>
     <script>
-      window.addEventListener(
-        "vm0:app-supported",
-        function () {
-          (function () {
-            var hostname = window.location.hostname.toLowerCase();
-            if (hostname !== "app.vm0.ai" && hostname !== "app.okou.ai") return;
+      (function () {
+        var skeleton = document.getElementById("app-bootstrap-skeleton");
+        // iOS standalone can expand the fixed containing viewport one frame
+        // after launch. Pin the content to the initially reachable viewport
+        // so that later geometry resolution cannot visibly recenter it.
+        var viewportHeight =
+          window.visualViewport && window.visualViewport.height > 0
+            ? window.visualViewport.height
+            : window.innerHeight;
+        if (viewportHeight > 0) {
+          skeleton.style.setProperty(
+            "--app-bootstrap-skeleton-center-y",
+            viewportHeight / 2 + "px",
+          );
+        }
+      })();
+    </script>
+    <script>
+      (function () {
+        var hostname = window.location.hostname.toLowerCase();
+        if (hostname !== "app.vm0.ai" && hostname !== "app.okou.ai") return;
 
-            var instatusScript = document.createElement("script");
-            instatusScript.src =
-              "https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en";
-            instatusScript.integrity =
-              "sha384-ZW3eZwADOMdlg2fdvESPD7jguK16IC/edxNFakKs81D2lkNdi3BXRmx/g331lkD3";
-            instatusScript.crossOrigin = "anonymous";
-            instatusScript.defer = true;
-            document.body.appendChild(instatusScript);
-          })();
-        },
-        { once: true },
-      );
+        var instatusScript = document.createElement("script");
+        instatusScript.src =
+          "https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en";
+        instatusScript.integrity =
+          "sha384-ZW3eZwADOMdlg2fdvESPD7jguK16IC/edxNFakKs81D2lkNdi3BXRmx/g331lkD3";
+        instatusScript.crossOrigin = "anonymous";
+        instatusScript.defer = true;
+        document.body.appendChild(instatusScript);
+      })();
     </script>
   </body>
 </html>

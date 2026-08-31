@@ -81,6 +81,5 @@ if (browserUpgrade) {
     browserUpgrade,
   );
 } else {
-  window.dispatchEvent(new Event("vm0:app-supported"));
   startApplication();
 }
