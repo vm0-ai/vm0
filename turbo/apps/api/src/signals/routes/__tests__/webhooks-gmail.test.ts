@@ -24,6 +24,7 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { createDeferredPromise } from "../../utils";
 import {
   createBddApi,
   expectApiError,
@@ -1131,6 +1132,8 @@ describe("POST /api/webhooks/gmail", () => {
     configureGmailEnv();
     const watchedTokens: string[] = [];
     let stopCalls = 0;
+    let signalStopStarted: (() => void) | null = null;
+    let waitForStopRelease: Promise<void> | null = null;
     server.use(
       http.post(
         "https://gmail.googleapis.com/gmail/v1/users/me/watch",
@@ -1148,10 +1151,17 @@ describe("POST /api/webhooks/gmail", () => {
           });
         },
       ),
-      http.post("https://gmail.googleapis.com/gmail/v1/users/me/stop", () => {
-        stopCalls += 1;
-        return HttpResponse.json({ error: "retry cleanup" }, { status: 500 });
-      }),
+      http.post(
+        "https://gmail.googleapis.com/gmail/v1/users/me/stop",
+        async () => {
+          stopCalls += 1;
+          signalStopStarted?.();
+          if (waitForStopRelease !== null) {
+            await waitForStopRelease;
+          }
+          return HttpResponse.json({ error: "retry cleanup" }, { status: 500 });
+        },
+      ),
     );
     configureGmailMessageMocks(secondEmail, "gmail-second-access-token");
 
@@ -1362,14 +1372,34 @@ describe("POST /api/webhooks/gmail", () => {
     ]);
     expect(stopCalls).toBe(3);
 
-    const deletedDefault = await accept(
-      connectorAccountsClient().delete({
-        headers: authHeaders(actor),
-        params: { connectionId: secondConnectorId },
-        body: { target: { kind: "builtin", connectorSlug: "gmail" } },
+    const stopStarted = createDeferredPromise<void>(context.signal);
+    const stopRelease = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      if (!stopRelease.settled()) {
+        stopRelease.resolve();
+      }
+    });
+    signalStopStarted = () => {
+      stopStarted.resolve();
+    };
+    waitForStopRelease = stopRelease.promise;
+    const deleteDefaultRequest = connectorAccountsClient().delete({
+      headers: authHeaders(actor),
+      params: { connectionId: secondConnectorId },
+      body: { target: { kind: "builtin", connectorSlug: "gmail" } },
+    });
+    await stopStarted.promise;
+    const accountsWhileProviderStopIsPending =
+      await connectorsApi.listBuiltinConnectorAccounts(actor, "gmail");
+    expect(
+      accountsWhileProviderStopIsPending.map((account) => {
+        return { id: account.id, isDefault: account.isDefault };
       }),
-      [200],
-    );
+    ).toStrictEqual([{ id: firstConnectorId, isDefault: true }]);
+    stopRelease.resolve();
+    signalStopStarted = null;
+    waitForStopRelease = null;
+    const deletedDefault = await accept(deleteDefaultRequest, [200]);
     expect(deletedDefault.body).toStrictEqual({
       deletedConnectionId: secondConnectorId,
       resolvedSelectionCount: 0,

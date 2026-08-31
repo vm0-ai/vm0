@@ -75,7 +75,7 @@ import { and, asc, eq, isNotNull, isNull, or } from "drizzle-orm";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { publishChatThreadAutomationsChangedSafely } from "../external/realtime";
 import { nowDate } from "../../lib/time";
-import { isValidTimeZone, onRejection, safeSync } from "../utils";
+import { bestEffort, isValidTimeZone, onRejection, safeSync } from "../utils";
 import { calculateNextRun } from "./time-automation";
 import {
   insertWorkflowAutomation,
@@ -1836,6 +1836,61 @@ async function prepareGmailEventConfigForPersist(
   };
 }
 
+async function validateCreatedGmailAutomationAccount(
+  args: {
+    readonly db: Db;
+    readonly automationId: string;
+    readonly input: CreateGmailEventAutomationInput;
+    readonly eventConfig: GmailAutomationEventConfig;
+    readonly expectedConnectorId: string;
+  },
+  signal: AbortSignal,
+): Promise<
+  | { readonly kind: "ok"; readonly connectorId: string }
+  | { readonly kind: "bad-request"; readonly message: string }
+> {
+  const [persistedAccount] = await args.db
+    .select({ connectorId: workflowAutomations.eventConnectorId })
+    .from(workflowAutomations)
+    .where(eq(workflowAutomations.id, args.automationId))
+    .limit(1);
+  const connectorId = persistedAccount?.connectorId ?? null;
+  if (connectorId === args.expectedConnectorId) {
+    return { kind: "ok", connectorId };
+  }
+
+  await args.db
+    .delete(workflowAutomations)
+    .where(eq(workflowAutomations.id, args.automationId));
+  await bestEffort(
+    reconcileAutomationEventWatches(
+      {
+        db: args.db,
+        automations: [
+          {
+            orgId: args.input.orgId,
+            ownerUserId: args.input.member.userId,
+            eventType: args.input.eventType,
+            eventConfig: args.eventConfig,
+            eventConnectorId: connectorId,
+          },
+        ],
+      },
+      signal,
+    ),
+    signal,
+  );
+  return connectorId === null
+    ? {
+        kind: "bad-request",
+        message: "Connect Gmail before adding a Gmail event automation",
+      }
+    : {
+        kind: "bad-request",
+        message: "Gmail account selection changed; retry adding the automation",
+      };
+}
+
 async function createGmailEventAutomationForWorkflow(
   args: {
     readonly context: CreateEventAutomationWorkflowContext;
@@ -1893,30 +1948,20 @@ async function createGmailEventAutomationForWorkflow(
     automationId: args.context.automationId,
     currentTime: nowDate(),
   });
-  const [persistedAccount] = await args.context.db
-    .select({ connectorId: workflowAutomations.eventConnectorId })
-    .from(workflowAutomations)
-    .where(eq(workflowAutomations.id, summary.id))
-    .limit(1);
-  const persistedConnectorId = persistedAccount?.connectorId ?? null;
-  if (persistedConnectorId === null) {
-    await args.context.db
-      .delete(workflowAutomations)
-      .where(eq(workflowAutomations.id, summary.id));
-    return {
-      kind: "bad-request",
-      message: "Connect Gmail before adding a Gmail event automation",
-    };
+  const persistedAccount = await validateCreatedGmailAutomationAccount(
+    {
+      db: args.context.db,
+      automationId: summary.id,
+      input: args.input,
+      eventConfig: preparedConfig.eventConfig,
+      expectedConnectorId: eventConnectorId,
+    },
+    signal,
+  );
+  if (persistedAccount.kind !== "ok") {
+    return persistedAccount;
   }
-  if (persistedConnectorId !== eventConnectorId) {
-    await args.context.db
-      .delete(workflowAutomations)
-      .where(eq(workflowAutomations.id, summary.id));
-    return {
-      kind: "bad-request",
-      message: "Gmail account selection changed; retry adding the automation",
-    };
-  }
+  const persistedConnectorId = persistedAccount.connectorId;
   if (!args.input.enabled) {
     signal.throwIfAborted();
     return { kind: "ok", summary };
@@ -2196,6 +2241,7 @@ async function createGoogleCalendarEventAutomationForWorkflow(
             ownerUserId: args.input.member.userId,
             eventType: args.input.eventType,
             eventConfig: preparedConfig,
+            eventConnectorId: null,
           },
         ],
       },
@@ -2306,6 +2352,7 @@ async function createGoogleFormsEventAutomationForWorkflow(
             ownerUserId: args.input.member.userId,
             eventType: args.input.eventType,
             eventConfig: prepared.eventConfig,
+            eventConnectorId: null,
           },
         ],
       },
@@ -3157,6 +3204,7 @@ export const createWorkflowAutomation$ = command(
 
 export interface OfficialAutomationEventPreparation {
   readonly eventConfig: WorkflowAutomationEventConfig;
+  readonly eventConnectorId?: string;
   readonly googleFormsSeedCursor?: string;
   readonly strapiIntegrationId?: string;
 }
@@ -3477,7 +3525,7 @@ async function prepareOfficialGmailEvent(
     signal,
   );
   return prepared.kind === "ok"
-    ? preparedOfficialEvent(prepared.eventConfig)
+    ? preparedOfficialEvent(prepared.eventConfig, { eventConnectorId })
     : prepared;
 }
 
@@ -3943,12 +3991,33 @@ async function updateGmailEventAutomationForWorkflow(
       signal,
     );
   });
-  return summary === null
-    ? {
-        kind: "bad-request",
-        message: "Gmail account selection changed; retry the update",
-      }
-    : { kind: "ok", summary };
+  if (summary === null) {
+    return {
+      kind: "bad-request",
+      message: "Gmail account selection changed; retry the update",
+    };
+  }
+  if (args.automation.enabled) {
+    await bestEffort(
+      reconcileAutomationEventWatches(
+        {
+          db: args.db,
+          automations: [
+            {
+              orgId: args.orgId,
+              ownerUserId: args.member.userId,
+              eventType: args.automation.eventType,
+              eventConfig: preparedConfig.eventConfig,
+              eventConnectorId,
+            },
+          ],
+        },
+        signal,
+      ),
+      signal,
+    );
+  }
+  return { kind: "ok", summary };
 }
 
 const updateEventAutomationForWorkflow$ = command(

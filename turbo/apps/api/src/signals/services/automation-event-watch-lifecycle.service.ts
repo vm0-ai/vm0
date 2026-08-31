@@ -27,7 +27,7 @@ interface AutomationEventWatchAutomation {
   readonly ownerUserId: string;
   readonly eventType: string | null;
   readonly eventConfig: unknown;
-  readonly eventConnectorId?: string | null;
+  readonly eventConnectorId: string | null;
 }
 
 type AutomationEventWatchTarget =
@@ -118,7 +118,7 @@ function automationEventWatchTarget(
 
 function targetKey(target: AutomationEventWatchTarget): string {
   if (target.provider === "gmail") {
-    return `gmail:${target.orgId}:${target.userId}`;
+    return `gmail:${target.orgId}:${target.userId}:${target.connectorId ?? "unavailable"}`;
   }
   if (target.provider === "google_forms") {
     return `google_forms:${target.userId}:${target.formId}`;
