@@ -1,3 +1,55 @@
+//! Ownership-preserving transitions from an active sandbox to idle reuse.
+//!
+//! The transition has two ownership boundaries that must not be conflated:
+//! [`IdleParkRequest`] owns an active sandbox until physical parking and
+//! reuse-preparation validation complete, while a [`ParkedIdleCandidate`] owns
+//! a sandbox that has physically parked but has not yet been accepted by
+//! [`super::IdlePool`]. Only an accepted [`super::entry::IdleEntry`] is
+//! pool-owned.
+//!
+//! The transition contract is:
+//!
+//! 1. **Active-owned.** The request owns the sandbox, factory, budget lease,
+//!    metadata, and any unpublished workspace promotion. A promotion identity
+//!    mismatch is abandoned before returning. A preparation-construction error
+//!    or a returned park error returns the promotion to the active finalization
+//!    cleanup path. A panic makes the park state uncertain, so the promotion is
+//!    abandoned before active ownership is returned. If an active failure is
+//!    instead converted into a speculative rollback destroy job, that path
+//!    abandons the unpublished promotion because it is not active finalization.
+//! 2. **Parked-owned.** Once the sandbox park operation succeeds, validation of
+//!    the reuse-preparation result can still reject admission. That rejection
+//!    is represented by [`IdleParkFailureParts::Parked`]; the finalization
+//!    caller must destroy the rejected parked candidate and must not treat it as
+//!    an active sandbox or insert it into the pool. Its destroy payload keeps
+//!    [`super::entry::WorkspacePromotionPolicy::Promote`], so the parked
+//!    cleanup lifecycle may unpark, prepare, and publish a valid promotion
+//!    before destruction.
+//! 3. **Idle-pool-owned.** A successful ordinary outcome becomes a pool entry
+//!    only after the caller passes its [`ParkedIdleCandidate`] to
+//!    [`super::IdlePool::park`]. A reusable candidate may be admitted; a
+//!    non-reusable result remains caller-owned and is destroyed. An immediate
+//!    handoff candidate must be delivered to the waiting exact successor or
+//!    destroyed.
+//! 4. **Exact handoff.** The finalization caller supplies the optional handoff
+//!    only for the exact-history predecessor/successor path. The transition
+//!    does not independently prove that caller-side relationship. A successful
+//!    handoff changes the result from generic idle publication to a candidate
+//!    bound to that waiting successor; an undelivered candidate remains owned
+//!    by the caller for cleanup.
+//! 5. **Speculative rollback.** A reserved exact-generation entry can be
+//!    unparked for claim-time preparation without becoming committed to a job.
+//!    [`SpeculativeIdleSandbox::repark_for_claim_rollback`] re-runs preparation
+//!    against the entry's original history-generation runtime directory, not
+//!    the rollback operation's diagnostic run directory. A successful repark
+//!    restores the original `parked_at` and metadata. Every other result
+//!    returns an [`IdleDestroyJob`] with the appropriate promotion policy.
+//!
+//! The finalization cleanup and speculative rollback callers consume
+//! [`IdleParkFailureParts`] and [`SpeculativeReparkResult`], respectively. The
+//! focused coverage for these ownership rules lives in
+//! `park_transition_tests.rs`.
+
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 
@@ -29,11 +81,23 @@ use super::entry::{
 
 /// One-shot request to transition an active sandbox into same-reuse-key idle
 /// ownership.
+///
+/// The request remains active-owned until [`Self::park_for_idle_with_observer`]
+/// returns. Its caller must consume either the returned [`IdleParkOutcome`] or
+/// [`IdleParkFailure`]; neither result may be silently dropped because both
+/// encode resources that still need an ownership handoff or cleanup.
 #[must_use = "idle park requests own active sandbox and budget; call a park_for_idle method"]
 pub(crate) struct IdleParkRequest {
     pub(super) parts: IdleParkRequestParts,
 }
 
+/// Resources and metadata supplied while the active job still owns the
+/// sandbox.
+///
+/// The optional `handoff` is a caller-side exact-history capability: the
+/// finalization path supplies it only when a waiting successor is claiming the
+/// predecessor's exact history generation. Speculative rollback deliberately
+/// calls the shared transition without an observer or handoff.
 #[must_use = "idle park request parts own active sandbox and budget"]
 pub(crate) struct IdleParkRequestParts {
     pub(crate) run_id: RunId,
@@ -54,11 +118,23 @@ pub(crate) struct IdleParkRequestParts {
     pub(crate) handoff: Option<SandboxFinalExecParkHandoff>,
 }
 
-/// Result after the sandbox successfully reaches the parked state.
+/// Result after the sandbox successfully reaches the parked state and reuse
+/// preparation validates.
+///
+/// Every candidate remains owned by the caller until it is accepted by
+/// [`super::IdlePool::park`], handed directly to an exact successor, or
+/// converted into an [`IdleDestroyJob`]. `NonReusable` is not an admission
+/// success: it carries a parked candidate plus diagnostics for the caller to
+/// log and destroy.
 #[must_use = "parked outcomes must be admitted for reuse or explicitly destroyed"]
 pub(crate) enum IdleParkOutcome {
+    /// A normally parked candidate that may be inserted into the idle pool.
     Reusable(ParkedIdleCandidate),
+    /// A candidate returned through the exact finalizing handoff path.
     Handoff(ImmediateHandoffCandidate),
+    /// The sandbox parked, but the sandbox reported a state that is unsafe for
+    /// generic reuse. The candidate is still parked-owned and must be cleaned
+    /// up by the caller.
     NonReusable {
         candidate: ParkedIdleCandidate,
         reason: SandboxParkNonReusableReason,
@@ -66,8 +142,13 @@ pub(crate) enum IdleParkOutcome {
     },
 }
 
+/// A successfully parked candidate before the finalization caller transfers
+/// it to the idle pool or another owner.
 pub(crate) enum IdleParkCandidate {
+    /// Ordinary idle-pool candidate, including a candidate later reported as
+    /// non-reusable by the park outcome.
     Ordinary(ParkedIdleCandidate),
+    /// Candidate with a physical handoff point for an exact successor.
     Immediate(ImmediateHandoffCandidate),
 }
 
@@ -91,11 +172,21 @@ impl IdleParkCandidate {
     }
 }
 
+/// Diagnostics attached to a successfully parked candidate that cannot be
+/// admitted for generic reuse.
 pub(crate) struct IdleParkNonReusable {
     pub(crate) reason: SandboxParkNonReusableReason,
     pub(crate) preparation_report: ReusePreparationReport,
 }
 
+/// Failure that preserves the ownership phase in which idle admission failed.
+///
+/// Call [`Self::into_parts`] before cleanup. `Active` means the transition did
+/// not establish a safe parked candidate (or park state became uncertain), so
+/// the finalization caller receives the sandbox, factory, lease, and any
+/// still-publishable promotion. `Parked` means physical parking succeeded but
+/// post-park reuse validation rejected the candidate; its parked destroy path
+/// must be used instead.
 #[must_use = "idle park failures must be explicitly destroyed or otherwise handled"]
 pub(crate) struct IdleParkFailure {
     ownership: IdleParkFailureOwnership,
@@ -114,6 +205,12 @@ enum IdleParkFailureOwnership {
     },
 }
 
+/// Active-owned resources returned by [`IdleParkFailureParts::Active`].
+///
+/// The finalization caller owns the sandbox and lease and must complete active
+/// cleanup. A retained `workspace_promotion` is still unpublished but may be
+/// promoted by that cleanup after a successful stop; mismatch and panic paths
+/// return `None` because the transition has already abandoned it.
 #[must_use = "active idle-park parts still own a sandbox and budget lease"]
 pub(crate) struct IdleParkActiveParts {
     pub(crate) sandbox: Box<dyn Sandbox>,
@@ -122,13 +219,26 @@ pub(crate) struct IdleParkActiveParts {
     pub(crate) workspace_promotion: Option<WorkspaceImagePromotionContext>,
 }
 
+/// Failure parts split by the last proven ownership boundary.
+///
+/// The finalization caller in `sandbox_finalization.rs` must consume both
+/// variants. `Active` returns an active sandbox and its budget lease for the
+/// active stop/destroy path. `Parked` returns a physically parked candidate
+/// that failed reuse validation; the caller must convert it through
+/// [`RejectedParkedIdleCandidate::into_active_destroy_parts`] and destroy it,
+/// rather than handing it back to the active sandbox path or the idle pool.
+/// The parked conversion preserves the `Promote` policy for a valid workspace
+/// image, while speculative active failures use `AbandonUnpublished` when they
+/// are converted to a rollback destroy job.
 #[must_use = "idle park failure parts must be logged and cleaned up"]
 pub(crate) enum IdleParkFailureParts {
+    /// Park was not proven successful, or the transition state is uncertain.
     Active {
         active: IdleParkActiveParts,
         reason: &'static str,
         error: String,
     },
+    /// Park succeeded, but reuse-preparation validation rejected admission.
     Parked {
         rejected: RejectedParkedIdleCandidate,
         reason: &'static str,
@@ -148,8 +258,16 @@ struct IdleParkTransitionInput {
     workspace_image_size_bytes: u64,
 }
 
+/// Result of returning a speculatively activated exact-reuse sandbox to idle
+/// ownership during claim rollback.
+///
+/// `Reparked` preserves the original idle timestamp and metadata. `Destroy`
+/// owns a complete [`IdleDestroyJob`] and must be run when the reserved entry
+/// cannot safely return to the pool.
 pub(crate) enum SpeculativeReparkResult {
+    /// The reserved entry can be restored to the idle pool.
     Reparked(Box<ReservedIdleSandbox>),
+    /// The reserved entry must be destroyed instead of restored.
     Destroy {
         destroy_job: Box<IdleDestroyJob>,
         reason: &'static str,
@@ -159,6 +277,7 @@ pub(crate) enum SpeculativeReparkResult {
 }
 
 impl IdleParkRequest {
+    /// Wrap an active-owned sandbox and its cleanup resources in a park request.
     pub(crate) fn new(parts: IdleParkRequestParts) -> Self {
         Self { parts }
     }
@@ -168,6 +287,14 @@ impl IdleParkRequest {
         self.park_for_idle_with_optional_observer(None).await
     }
 
+    /// Run reuse preparation and physical parking, optionally producing an
+    /// immediate exact-successor handoff.
+    ///
+    /// The returned candidate or failure retains the cleanup obligation for
+    /// the caller. In particular, an observer does not change ownership; it
+    /// only records the finalization stages. The finalization caller is the
+    /// owner that decides whether an ordinary candidate enters the pool, a
+    /// handoff candidate is delivered, or a candidate is destroyed.
     pub(crate) async fn park_for_idle_with_observer(
         self,
         observer: &mut dyn SandboxFinalExecParkObserver,
@@ -232,6 +359,15 @@ impl IdleParkRequest {
     }
 }
 
+/// Perform the shared active-to-parked transition.
+///
+/// This function validates promotion identity before invoking the sandbox,
+/// then validates the reuse-preparation report only after the sandbox confirms
+/// that it parked. That ordering determines whether a failure returns
+/// [`IdleParkFailureParts::Active`] or [`IdleParkFailureParts::Parked`]. The
+/// handoff argument is supplied by the finalization caller for an exact
+/// predecessor; this function does not infer that relationship from the
+/// metadata.
 async fn park_idle_transition(
     input: IdleParkTransitionInput,
     observer: Option<&mut dyn SandboxFinalExecParkObserver>,
@@ -421,6 +557,15 @@ async fn park_idle_transition(
 }
 
 impl SpeculativeIdleSandbox {
+    /// Re-run reuse preparation while rolling back a speculative exact claim.
+    ///
+    /// `operation_run_id` identifies the rollback operation for diagnostics,
+    /// but the current runtime directory comes from the entry's original
+    /// `history_generation_run_id`. This preserves the runtime files needed by
+    /// the exact history generation. A reusable result keeps the entry's
+    /// original `parked_at`; an unexpected handoff, non-reusable result, or
+    /// failure returns an owned [`IdleDestroyJob`] instead of a partially
+    /// restored reservation.
     pub(crate) async fn repark_for_claim_rollback(
         self,
         operation_run_id: RunId,
@@ -508,6 +653,10 @@ impl SpeculativeIdleSandbox {
 }
 
 impl IdleParkOutcome {
+    /// Separate the candidate from the optional non-reusable diagnostic.
+    ///
+    /// The returned candidate remains caller-owned. A `Some` diagnostic means
+    /// the candidate must be destroyed and must not be admitted as reusable.
     pub(crate) fn into_parts(self) -> (IdleParkCandidate, Option<IdleParkNonReusable>) {
         match self {
             Self::Reusable(candidate) => (IdleParkCandidate::Ordinary(candidate), None),
@@ -542,6 +691,13 @@ impl IdleParkOutcome {
 }
 
 impl IdleParkFailure {
+    /// Convert this failure into an owned speculative rollback destroy job.
+    ///
+    /// Active parts use `AbandonUnpublished` because speculative rollback is
+    /// not the active finalization promotion boundary. Parked parts retain a
+    /// rejected parked candidate whose destroy payload uses the parked
+    /// lifecycle's promotion policy. The conversion consumes the failure so
+    /// the resources cannot be cleaned up twice.
     fn into_speculative_destroy_job(
         self,
         reuse_key: String,
@@ -579,6 +735,11 @@ impl IdleParkFailure {
         )
     }
 
+    /// Expose the ownership-bearing failure variant to the cleanup caller.
+    ///
+    /// The caller must use the returned variant as a phase proof: `Active`
+    /// goes through active cleanup, while `Parked` goes through rejected parked
+    /// cleanup. Neither variant is safe to ignore or send back to the pool.
     pub(crate) fn into_parts(self) -> IdleParkFailureParts {
         let Self {
             ownership,
