@@ -12,11 +12,7 @@ import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { settle } from "../utils.ts";
 import { syncGoogleAdsConversionMilestones$ } from "../bootstrap/google-ads-conversion-milestones.ts";
 import type { ChatEventDataKey } from "../../shared-database/data-key.ts";
-import {
-  onSharedDatabase$,
-  queryChatEventSharedDatabase$,
-} from "../shared-database.ts";
-import { enqueueSharedDatabaseInvalidation$ } from "../shared-database-invalidation-queue.ts";
+import { queryChatEventSharedDatabase$ } from "../shared-database.ts";
 import { notifyChatEventsChanged$ } from "./chat-event-change-registry.ts";
 import type { ChatEvent } from "./chat-event-types.ts";
 import {
@@ -130,7 +126,6 @@ function createSharedDatabaseEventSignals({
   const dataKey$ = computed((): ChatEventDataKey => {
     return { kind: "chat-event", threadId };
   });
-  const sharedDatabaseInvalidationPending$ = state(false);
   const load$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       const dataKey = await get(dataKey$);
@@ -182,33 +177,9 @@ function createSharedDatabaseEventSignals({
         signal,
       );
       signal.throwIfAborted();
-      set(sharedDatabaseInvalidationPending$, false);
     },
   );
-  const subscribe$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      const dataKey = await get(dataKey$);
-      signal.throwIfAborted();
-      await set(
-        onSharedDatabase$,
-        dataKey,
-        (kind) => {
-          if (kind === "invalidate") {
-            set(sharedDatabaseInvalidationPending$, true);
-            set(enqueueSharedDatabaseInvalidation$, dataKey);
-            return;
-          }
-          if (get(sharedDatabaseInvalidationPending$)) {
-            set(sharedDatabaseInvalidationPending$, false);
-            return;
-          }
-          set(enqueueSharedDatabaseInvalidation$, dataKey);
-        },
-        signal,
-      );
-    },
-  );
-  return { load$, subscribe$, sync$ };
+  return { load$, sync$ };
 }
 
 export function createChatEventStorageSignals({
@@ -271,8 +242,6 @@ export function createChatEventStorageSignals({
   const syncRemoteEvents$ = sharedDatabase.sync$;
   const initializeIndexedDbEvents$ = command(
     async ({ set }, signal: AbortSignal): Promise<void> => {
-      await set(sharedDatabase.subscribe$, signal);
-      signal.throwIfAborted();
       await set(sharedDatabase.load$, signal);
     },
   );

@@ -3367,7 +3367,8 @@
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "Richiesta non riuscita"
+      "requestFailed": "Richiesta non riuscita",
+      "sharedDatabaseUnavailable": "Si è verificato un problema nell'app. Attendi un momento, quindi aggiorna la pagina per riprovare."
     },
     "realtime": {
       "degraded": "Gli aggiornamenti in tempo reale hanno riscontrato un problema. Aggiorna la pagina.",

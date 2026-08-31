@@ -3316,7 +3316,8 @@
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "अनुरोध विफल रहा"
+      "requestFailed": "अनुरोध विफल रहा",
+      "sharedDatabaseUnavailable": "ऐप में कोई समस्या आ गई है। कृपया कुछ देर प्रतीक्षा करें, फिर दोबारा कोशिश करने के लिए पेज रीफ़्रेश करें।"
     },
     "realtime": {
       "degraded": "लाइव अपडेट में समस्या आई। कृपया पृष्ठ को ताज़ा करें.",

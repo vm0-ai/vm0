@@ -19,7 +19,6 @@ export type SharedDatabaseHeartbeatResult = z.infer<
 >;
 
 const requestIdSchema = z.string().min(1);
-const subscriptionIdSchema = z.string().min(1);
 
 const heartbeatRequestSchema = z
   .object({
@@ -39,22 +38,6 @@ const queryRequestSchema = z
   })
   .strict();
 
-const subscribeRequestSchema = z
-  .object({
-    type: z.literal("subscribe"),
-    requestId: requestIdSchema,
-    subscriptionId: subscriptionIdSchema,
-    dataKey: sharedDatabaseDataKeySchema,
-  })
-  .strict();
-
-const unsubscribeRequestSchema = z
-  .object({
-    type: z.literal("unsubscribe"),
-    subscriptionId: subscriptionIdSchema,
-  })
-  .strict();
-
 const indicatorsRequestSchema = z
   .object({
     type: z.literal("get-indicators"),
@@ -66,13 +49,16 @@ const reloadIndicatorsRequestSchema = z
   .object({ type: z.literal("reload-indicators") })
   .strict();
 
+const disconnectRequestSchema = z
+  .object({ type: z.literal("disconnect") })
+  .strict();
+
 export const sharedDatabaseClientMessageSchema = z.discriminatedUnion("type", [
   heartbeatRequestSchema,
   queryRequestSchema,
-  subscribeRequestSchema,
-  unsubscribeRequestSchema,
   indicatorsRequestSchema,
   reloadIndicatorsRequestSchema,
+  disconnectRequestSchema,
 ]);
 
 export type SharedDatabaseClientMessage = z.infer<
@@ -100,20 +86,15 @@ const errorMessageSchema = z
   })
   .strict();
 
-const appendMessageSchema = z
+const invalidateMessageSchema = z
   .object({
-    type: z.literal("append"),
-    subscriptionId: subscriptionIdSchema,
+    type: z.literal("invalidate"),
     dataKey: sharedDatabaseDataKeySchema,
   })
   .strict();
 
-const invalidateMessageSchema = z
-  .object({
-    type: z.literal("invalidate"),
-    subscriptionId: subscriptionIdSchema,
-    dataKey: sharedDatabaseDataKeySchema,
-  })
+const reconnectMessageSchema = z
+  .object({ type: z.literal("reconnect") })
   .strict();
 
 const reloadRequiredMessageSchema = z
@@ -151,8 +132,8 @@ const statusMessageSchema = z
 export const sharedDatabaseWorkerMessageSchema = z.discriminatedUnion("type", [
   resultMessageSchema,
   errorMessageSchema,
-  appendMessageSchema,
   invalidateMessageSchema,
+  reconnectMessageSchema,
   reloadRequiredMessageSchema,
   authenticationRequiredMessageSchema,
   indicatorsInvalidatedMessageSchema,

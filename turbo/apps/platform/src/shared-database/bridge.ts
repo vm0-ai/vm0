@@ -15,11 +15,6 @@ export interface SharedDatabaseHeartbeat {
   readonly vercelProtectionBypass?: string;
 }
 
-export type SharedDatabaseChangeKind = "append" | "invalidate";
-export type SharedDatabaseSubscriptionCallback = (
-  kind: SharedDatabaseChangeKind,
-) => void;
-
 export interface SharedDatabaseBridge {
   heartbeat(
     heartbeat: SharedDatabaseHeartbeat,
@@ -31,17 +26,16 @@ export interface SharedDatabaseBridge {
     query: SharedDatabaseQuery<TKey>,
     signal: AbortSignal,
   ): Promise<SharedDatabaseQueryResult<TKey>>;
-  on(
-    dataKey: SharedDatabaseDataKey,
-    callback: SharedDatabaseSubscriptionCallback,
-    signal: AbortSignal,
-  ): Promise<void>;
 }
 
 export interface SharedDatabaseBridgeEvents {
   readonly authenticationRequired: () => void;
-  readonly indicatorsInvalidated: (payload: unknown) => void;
+  readonly databaseInvalidated: (
+    dataKey: SharedDatabaseDataKey,
+  ) => void | Promise<void>;
+  readonly databaseReconnected: () => void | Promise<void>;
   readonly reloadRequired: () => void;
+  readonly indicatorsInvalidated: (payload: unknown) => void;
   readonly statusChanged: (status: SharedDatabaseConnectionStatus) => void;
 }
 

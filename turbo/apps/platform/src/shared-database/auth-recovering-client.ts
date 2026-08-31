@@ -8,7 +8,6 @@ import {
 import type {
   SharedDatabaseBridge,
   SharedDatabaseHeartbeat,
-  SharedDatabaseSubscriptionCallback,
 } from "./bridge.ts";
 import type {
   ChatThreadIndicators,
@@ -104,14 +103,6 @@ export class AuthRecoveringSharedDatabaseBridge implements SharedDatabaseBridge 
       };
     }
     throw retry.error;
-  }
-
-  async on(
-    dataKey: SharedDatabaseDataKey,
-    callback: SharedDatabaseSubscriptionCallback,
-    signal: AbortSignal,
-  ): Promise<void> {
-    await this.bridge.on(dataKey, callback, signal);
   }
 
   async indicators(signal: AbortSignal): Promise<ChatThreadIndicators> {
