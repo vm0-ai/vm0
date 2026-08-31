@@ -2,7 +2,6 @@ import { chatEventRowsResponse } from "../../../signals/__tests__/test-helpers.t
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { browserContract } from "@okouai/api-contracts/contracts/browser";
 import {
   chatEventsContract,
   chatThreadByIdContract,
@@ -50,17 +49,6 @@ import {
 
 const SHARED_DATABASE_REALTIME_CHANNEL = "user-org:test-user-123:org_default";
 type RenameRequest = (threadId: string, title: string) => void;
-
-function mockNoBrowserSession(): void {
-  context.mocks.api(browserContract.get, ({ respond }) => {
-    return respond(404, {
-      error: {
-        code: "BROWSER_NOT_FOUND",
-        message: "Managed browser not found",
-      },
-    });
-  });
-}
 
 function mockNoThreadEvents(): void {
   context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
@@ -727,7 +715,6 @@ describe("chat lifecycle", () => {
 
   it("moves to the previous chat with a page shortcut from the composer", async () => {
     mockResizeObserver();
-    mockNoBrowserSession();
     mockKeyboardNavigationThreads();
     mockNoThreadEvents();
 
@@ -758,7 +745,6 @@ describe("chat lifecycle", () => {
 
   it("keeps shifted slash editable before opening shortcut help outside the composer", async () => {
     mockResizeObserver();
-    mockNoBrowserSession();
     mockKeyboardNavigationThreads();
     mockNoThreadEvents();
 
@@ -797,7 +783,6 @@ describe("chat lifecycle", () => {
       callback(performance.now());
       return 1;
     });
-    mockNoBrowserSession();
     mockKeyboardNavigationThreads();
     mockNoThreadEvents();
 
