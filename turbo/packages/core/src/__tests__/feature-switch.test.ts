@@ -11,7 +11,6 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.MetaAdsConnector, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.ChatForward, {})).toBe(true);
   });
 
@@ -130,6 +129,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
     );
+    expect(staffOrgStates[FeatureSwitchKey.CustomConnectorMcp]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ConcurrencyMemberUsage]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ConnectorCatalogCount]).toBe(true);
@@ -158,6 +158,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       false,
     );
+    expect(otherOrgStates[FeatureSwitchKey.CustomConnectorMcp]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ConcurrencyMemberUsage]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ConnectorCatalogCount]).toBe(false);

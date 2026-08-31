@@ -263,6 +263,16 @@ def test_normalize_accept_encoding_for_body_inspection(
             id="unsafe-coding-removed",
         ),
         pytest.param(
+            [("Accept-Encoding", "gzip;q=bogus, br")],
+            "rewritten_stream_decodable",
+            id="malformed-coding-rewritten",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "br, zstd, *;q=0.5, identity;q=0")],
+            "rewritten_stream_decodable",
+            id="wildcard-expanded",
+        ),
+        pytest.param(
             [("Accept-Encoding", "br, identity;q=0")],
             "preserved_client_constraints",
             id="all-safe-representations-rejected",
@@ -808,6 +818,7 @@ async def test_model_provider_websocket_upgrade_injects_auth_and_keeps_accept_en
     assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == ""
     assert flow.request.headers["Authorization"] == "Bearer x"
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
+    assert metadata_keys.RESPONSE_ENCODING_NEGOTIATION not in flow.metadata
 
 
 @pytest.mark.parametrize(
@@ -844,6 +855,7 @@ async def test_response_bodyless_usage_inspected_methods_keep_accept_encoding(
 
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
     assert flow.request.headers["Authorization"] == "Bearer x"
+    assert metadata_keys.RESPONSE_ENCODING_NEGOTIATION not in flow.metadata
 
 
 @pytest.mark.parametrize(
@@ -1076,3 +1088,4 @@ async def test_browser_passthrough_keeps_accept_encoding_for_parser_connector(
 
     auth_fetch.assert_not_called()
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
+    assert metadata_keys.RESPONSE_ENCODING_NEGOTIATION not in flow.metadata
