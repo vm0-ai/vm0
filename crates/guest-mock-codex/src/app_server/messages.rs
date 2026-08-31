@@ -1,3 +1,4 @@
+use super::scenario::TurnFailure;
 use crate::session;
 use guest_contracts::managed_command::render_managed_shell_command;
 use serde_json::{Value, json};
@@ -389,7 +390,21 @@ pub(super) fn turn_interrupted_notification(thread_id: &str, turn_id: &str) -> V
     })
 }
 
-pub(super) fn turn_failed_notification(thread_id: &str, turn_id: &str) -> Value {
+pub(super) fn turn_failed_notification(
+    thread_id: &str,
+    turn_id: &str,
+    failure: TurnFailure,
+) -> Value {
+    let error = match turn_failure_error_info(failure) {
+        Some(codex_error_info) => json!({
+            "message": "mock codex primary failure",
+            "codexErrorInfo": codex_error_info
+        }),
+        None => json!({
+            "message": "mock codex primary failure"
+        }),
+    };
+
     json!({
         "method": "turn/completed",
         "params": {
@@ -399,15 +414,38 @@ pub(super) fn turn_failed_notification(thread_id: &str, turn_id: &str) -> Value 
                 "items": [],
                 "itemsView": "notLoaded",
                 "status": "failed",
-                "error": {
-                    "message": "mock codex primary failure"
-                },
+                "error": error,
                 "startedAt": 1,
                 "completedAt": 3,
                 "durationMs": 2
             }
         }
     })
+}
+
+fn turn_failure_error_info(failure: TurnFailure) -> Option<Value> {
+    match failure {
+        TurnFailure::Generic => None,
+        TurnFailure::ContextWindowExceeded => Some(json!("contextWindowExceeded")),
+        TurnFailure::InternalServerError => Some(json!("internalServerError")),
+        TurnFailure::ResponseStreamConnectionFailed => Some(json!({
+            "responseStreamConnectionFailed": {
+                "httpStatusCode": 502
+            }
+        })),
+        TurnFailure::ResponseStreamDisconnected => Some(json!({
+            "responseStreamDisconnected": {
+                "httpStatusCode": 502
+            }
+        })),
+        TurnFailure::ResponseTooManyFailedAttempts => Some(json!({
+            "responseTooManyFailedAttempts": {
+                "httpStatusCode": 401
+            }
+        })),
+        TurnFailure::Unauthorized => Some(json!("unauthorized")),
+        TurnFailure::Unknown => Some(json!("futureStructuredError")),
+    }
 }
 
 pub(super) fn historical_token_usage_notification(thread_id: &str) -> Value {
