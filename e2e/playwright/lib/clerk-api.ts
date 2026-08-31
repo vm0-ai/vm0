@@ -307,6 +307,48 @@ export async function createOrganization(
   return data.id;
 }
 
+export async function createSignInTokenForEmail(
+  email: string,
+  organizationId: string,
+): Promise<string> {
+  const users = await listClerkUsers(email);
+  const matchingUsers = users.filter((user) => {
+    return user.email_addresses.some((emailAddress) => {
+      return emailAddress.email_address === email;
+    });
+  });
+  if (matchingUsers.length !== 1) {
+    throw new Error(
+      `Expected one Clerk user for sign-in, received ${matchingUsers.length}`,
+    );
+  }
+
+  const user = matchingUsers[0];
+  if (!user) {
+    throw new Error("Clerk sign-in user is unavailable");
+  }
+  const response = await requestClerk(
+    "create Clerk sign-in token",
+    "/sign_in_tokens",
+    {
+      method: "POST",
+      headers: getClerkHeaders(),
+      body: JSON.stringify({
+        expires_in_seconds: 300,
+        org_id: organizationId,
+        user_id: user.id,
+      }),
+    },
+  );
+  const data = await readClerkJson(response, "create Clerk sign-in token");
+  if (!hasStringProperty(data, "token")) {
+    throw new Error(
+      `create Clerk sign-in token returned an unexpected response: ${formatClerkResponseSummary(response)}`,
+    );
+  }
+  return data.token;
+}
+
 async function updateOrganizationMembershipRole(
   organizationId: string,
   userId: string,
