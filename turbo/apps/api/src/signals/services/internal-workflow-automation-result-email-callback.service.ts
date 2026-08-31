@@ -17,6 +17,7 @@ import {
   buildFromAddress,
   buildOneClickUnsubscribeUrl,
   buildUnsubscribeHeaders,
+  EMAIL_PUBLIC_BRAND,
   getUserEmail,
   OFFICIAL_AUTOMATION_RESULT_EMAIL_SUBJECT_MAX_CHARACTERS,
   OFFICIAL_AUTOMATION_RESULT_EMAIL_TEXT_MAX_CHARACTERS,
@@ -166,8 +167,7 @@ export async function handleWorkflowAutomationResultEmailInternalCallback(
   }
 
   const output = await getRunOutputText(db, envelope.runId, signal);
-  const publicBrand = payload.data.publicBrand;
-  const productUrl = appUrlForPublicBrand(env("APP_URL"), publicBrand);
+  const productUrl = appUrlForPublicBrand(env("APP_URL"), EMAIL_PUBLIC_BRAND);
   const manageUrl = await workflowAutomationManageUrl(
     db,
     {
@@ -220,16 +220,11 @@ export async function handleWorkflowAutomationResultEmailInternalCallback(
 
     await tx.insert(emailOutbox).values({
       id: claim.emailOutboxId,
-      fromAddress: buildFromAddress(
-        publicBrand === "okou" ? "okou" : "zero",
-        publicBrand,
-      ),
+      fromAddress: buildFromAddress(),
       toAddresses: userEmail,
       subject: resultEmailSubject(payload.data.workflowName),
-      headers: buildUnsubscribeHeaders(
-        buildOneClickUnsubscribeUrl(run.userId, publicBrand),
-      ),
-      publicBrand,
+      headers: buildUnsubscribeHeaders(buildOneClickUnsubscribeUrl(run.userId)),
+      publicBrand: EMAIL_PUBLIC_BRAND,
       template: {
         template: "official-automation-result",
         props: {

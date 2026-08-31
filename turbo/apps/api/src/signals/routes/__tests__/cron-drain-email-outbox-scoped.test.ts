@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
-import { mockOptionalEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { nowDate } from "../../../lib/time";
 import { createDeferredPromise } from "../../utils";
 import { createEmailOutboxStateApi } from "./helpers/email-outbox-state";
@@ -42,6 +42,7 @@ beforeEach(() => {
     data: { id: `resend-${randomUUID()}` },
     error: null,
   });
+  mockEnv("RESEND_FROM_DOMAIN", "vm0.bot");
   mockOptionalEnv("EMAIL_OUTBOX_DRAIN_DELAY_MS", "0");
 });
 
@@ -67,6 +68,7 @@ describe("scoped email outbox drain", () => {
     expect(context.mocks.resend.send).toHaveBeenCalledTimes(1);
     expect(context.mocks.resend.send).toHaveBeenCalledWith(
       expect.objectContaining({
+        from: "Okou <okou@okou.io>",
         to: dueItem.toAddress,
         subject: dueItem.subject,
       }),
