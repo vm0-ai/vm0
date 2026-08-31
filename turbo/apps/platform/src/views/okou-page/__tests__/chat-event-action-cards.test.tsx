@@ -48,7 +48,7 @@ import {
 } from "@okouai/api-contracts/contracts/user-permission-grants";
 import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-contracts";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
@@ -454,7 +454,6 @@ function selectMailText(element: HTMLElement): void {
 
 describe("chat event action cards", () => {
   it("switches the thread account before continuing from repeated cards", async () => {
-    const user = userEvent.setup({ delay: null });
     const threadId = "e4000000-0000-4000-a000-000000000021";
     const account = connectorAccount();
     mockConnectorAccountActionAuthorization(account.target);
@@ -541,10 +540,14 @@ describe("chat event action cards", () => {
     }
 
     const firstCard = cards[0];
-    if (!firstCard) {
-      throw new Error("Expected the first connector account action card");
+    const secondCard = cards[1];
+    if (!firstCard || !secondCard) {
+      throw new Error("Expected repeated connector account action cards");
     }
-    await user.click(buttonByText("Use account and continue", firstCard));
+    act(() => {
+      buttonByText("Use account and continue", firstCard).click();
+      buttonByText("Use account and continue", secondCard).click();
+    });
 
     await waitFor(() => {
       expect(actionOrder).toStrictEqual(["selection"]);
@@ -752,6 +755,138 @@ describe("chat event action cards", () => {
     expect(accountReadCount).toBe(0);
     expect(updateCount).toBe(0);
     expect(sentPrompts).toStrictEqual([]);
+  });
+
+  it("renders a feature-disabled account switch as unavailable", async () => {
+    const threadId = "e4000000-0000-4000-a000-000000000029";
+    const account = connectorAccount({
+      id: "a1000000-0000-4000-a000-000000000029",
+    });
+    let accountReadCount = 0;
+    mockConnectorAccountActionAuthorization(account.target);
+    context.mocks.api(connectorAccountsContract.connection, ({ respond }) => {
+      accountReadCount += 1;
+      return respond(200, account);
+    });
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.get,
+      ({ respond }) => {
+        return respond(200, { selections: [], selectedConnections: [] });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Feature-disabled connector account",
+      chatEvents: [
+        {
+          id: `${threadId}-message`,
+          role: "assistant",
+          content: connectorAccountActionUrl(threadId, account, "Continue"),
+          runId: `${threadId}-run`,
+          createdAt: "2026-08-31T10:00:00.000Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: false },
+    });
+
+    const card = await screen.findByTestId(
+      "connector-account-action-card-unavailable",
+      undefined,
+      { timeout: 10_000 },
+    );
+    expect(card).toHaveTextContent("Account unavailable");
+    expect(queryAllByRoleFast("button", card)).toStrictEqual([]);
+    expect(accountReadCount).toBe(0);
+  });
+
+  it("retries a failed account read and shows reconnect status", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e4000000-0000-4000-a000-000000000030";
+    const account = connectorAccount({
+      id: "a1000000-0000-4000-a000-000000000030",
+      connectionStatus: "reconnect-required",
+      reconnectReason: "authorization_expired_or_revoked",
+    });
+    let accountReadCount = 0;
+    let accountReadStarted = false;
+    let releaseAccountRead = (): void => {
+      throw new Error("Account read did not start");
+    };
+    mockConnectorAccountActionAuthorization(account.target);
+    context.mocks.api(
+      connectorAccountsContract.connection,
+      async ({ deferred, respond }) => {
+        accountReadCount += 1;
+        if (accountReadCount === 1) {
+          const accountRead = deferred<void>();
+          releaseAccountRead = () => {
+            accountRead.resolve();
+          };
+          accountReadStarted = true;
+          await accountRead.promise;
+          return respond(500, {
+            error: {
+              code: "INTERNAL_SERVER_ERROR",
+              message: "Connector account read failed",
+            },
+          });
+        }
+        return respond(200, account);
+      },
+    );
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.get,
+      ({ respond }) => {
+        return respond(200, { selections: [], selectedConnections: [] });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Reconnect connector account",
+      chatEvents: [
+        {
+          id: `${threadId}-message`,
+          role: "assistant",
+          content: connectorAccountActionUrl(threadId, account, "Continue"),
+          runId: `${threadId}-run`,
+          createdAt: "2026-08-31T10:00:00.000Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    await expect(
+      screen.findByTestId("connector-account-action-card-loading"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(accountReadStarted).toBeTruthy();
+    });
+    releaseAccountRead();
+
+    const errorCard = await screen.findByTestId(
+      "connector-account-action-card-error",
+    );
+    expect(errorCard).toHaveTextContent(
+      "Couldn't load this connector account.",
+    );
+    await user.click(buttonByText("Retry", errorCard));
+
+    const card = await screen.findByTestId("connector-account-action-card");
+    expect(accountReadCount).toBe(2);
+    expect(card).toHaveTextContent("Use Work for future runs?");
+    expect(card).toHaveTextContent(
+      "Reconnect required. Later runs may use the existing fallback.",
+    );
   });
 
   it("retries a rejected selection from another repeated card", async () => {
