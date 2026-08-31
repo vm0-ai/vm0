@@ -20,7 +20,10 @@ import {
   fillStripeCheckout,
 } from "./lib/stripe-checkout";
 
-const RUNNER_CREDENTIAL_CONCURRENCY = 2;
+// Real Clerk ticket redemption can stall when two contexts in the same browser
+// activate fresh sessions concurrently. Keep provisioning serial and let the
+// downstream runner shards provide the test-level parallelism.
+const RUNNER_CREDENTIAL_CONCURRENCY = 1;
 
 interface RunnerCredentialTarget {
   readonly email: string;
