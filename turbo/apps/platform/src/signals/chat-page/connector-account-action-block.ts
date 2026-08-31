@@ -32,7 +32,6 @@ export interface ConnectorAccountActionDescriptor {
   readonly agentId: string;
   readonly selection: ConnectorAccountSelection;
   readonly originalUrl: string;
-  readonly search: string;
   readonly callbackPrompt: string;
   readonly threadId: string;
 }
@@ -65,8 +64,17 @@ type ConnectorAccountActionCardSignalsRegistry = CardSignalsRegistry<
 export function connectorAccountActionResourceKey(
   descriptor: ConnectorAccountActionDescriptor,
 ): string {
-  const path = `/agents/${encodeURIComponent(descriptor.agentId)}/connector-accounts/${encodeURIComponent(descriptor.selection.connectionId)}/select`;
-  return `${path}?${descriptor.search}`;
+  const path = `/agents/${encodeURIComponent(descriptor.agentId.toLowerCase())}/connector-accounts/${encodeURIComponent(descriptor.selection.connectionId.toLowerCase())}/select`;
+  const targetKey = connectorAccountTargetKey(descriptor.selection.target);
+  const params = new URLSearchParams({
+    target:
+      descriptor.selection.target.kind === "custom"
+        ? targetKey.toLowerCase()
+        : targetKey,
+    threadId: descriptor.threadId.toLowerCase(),
+    callbackPrompt: descriptor.callbackPrompt,
+  });
+  return `${path}?${params.toString()}`;
 }
 
 function selectionFromUrl(
@@ -123,7 +131,6 @@ export function parseConnectorAccountActionUrl(
       agentId: context.agentId,
       selection,
       originalUrl: value,
-      search: url.searchParams.toString(),
       callbackPrompt: callback.callbackPrompt,
       threadId: callback.threadId,
     },

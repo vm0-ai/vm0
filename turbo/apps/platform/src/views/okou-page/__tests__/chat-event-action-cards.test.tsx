@@ -434,6 +434,7 @@ describe("chat event action cards", () => {
       account,
       callbackPrompt,
     );
+    const equivalentActionUrl = `${window.location.origin}/agents/${AGENT_ID.toUpperCase()}/connector-accounts/${account.id.toUpperCase()}/select?callbackPrompt=${encodeURIComponent(callbackPrompt)}&threadId=${threadId.toUpperCase()}&connectorSlug=github&kind=builtin&presentation=ignored`;
     let selections: ConnectorAccountSelection[] = [];
     let selectedConnections: ConnectorAccountConnection[] = [];
     let updateBody: ConnectorAccountSelection | null = null;
@@ -480,7 +481,7 @@ describe("chat event action cards", () => {
         {
           id: `${threadId}-message`,
           role: "assistant",
-          content: `${actionUrl}\n\n${actionUrl}`,
+          content: `${actionUrl}\n\n${equivalentActionUrl}`,
           runId: `${threadId}-run`,
           createdAt: "2026-08-31T10:00:00.000Z",
         },
