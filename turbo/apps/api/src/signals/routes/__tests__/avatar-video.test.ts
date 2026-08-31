@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
+import { buildArtifactKey, buildFileUrlFromKey } from "../../../lib/file-url";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
@@ -32,6 +33,7 @@ import { seedCompose$, seedRun$ } from "./helpers/usage-state";
 const context = testContext();
 const store = createStore();
 const mocks = createRouteMocks(context);
+const TEST_BUCKET = "test-user-artifacts";
 
 const JOGGAI_CREATE_URL = "https://api.jogg.ai/v2/create_video_from_avatar";
 const JOGGAI_AVATARS_URL = "https://api.jogg.ai/v2/avatars/public";
@@ -598,6 +600,12 @@ describe("JoggAI built-in avatar video routes", () => {
 
   it("maps audio input without exposing private JoggAI resources", async () => {
     const fixture = await seedAvatarVideoFixture();
+    const audioKey = buildArtifactKey(
+      fixture.userId,
+      randomUUID(),
+      "voice.mp3",
+    );
+    const audioUrl = buildFileUrlFromKey(audioKey, "vm0");
     let observedBody: unknown = null;
     server.use(
       http.post(JOGGAI_CREATE_URL, async ({ request }) => {
@@ -619,7 +627,7 @@ describe("JoggAI built-in avatar video routes", () => {
       body: JSON.stringify({
         avatarId: 82,
         voiceId: "en-US-AvaNeural",
-        audioUrl: "https://example.com/voice.mp3",
+        audioUrl,
       }),
     });
 
@@ -629,11 +637,20 @@ describe("JoggAI built-in avatar video routes", () => {
       voice: {
         type: "audio",
         voice_id: "en-US-AvaNeural",
-        audio_url: "https://example.com/voice.mp3",
+        audio_url: expect.any(String),
       },
       aspect_ratio: "portrait",
       screen_style: 1,
       caption: true,
     });
+    const providerAudioUrl = asRecord(asRecord(observedBody).voice).audio_url;
+    if (typeof providerAudioUrl !== "string") {
+      throw new Error("Expected JoggAI audio URL");
+    }
+    const signedAudioUrl = new URL(providerAudioUrl);
+    expect(signedAudioUrl.origin).toBe("https://r2.example.com");
+    expect(signedAudioUrl.searchParams.get("object")).toBe(
+      `${TEST_BUCKET}/${audioKey}`,
+    );
   });
 });
