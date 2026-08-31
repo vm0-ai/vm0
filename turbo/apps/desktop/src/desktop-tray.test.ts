@@ -169,6 +169,7 @@ function installController(getState: () => DesktopComputerUseState) {
     getRecorderState: () => UNAVAILABLE_RECORDER_STATE,
     startScreenRecording: vi.fn(async () => {}),
     stopScreenRecording: vi.fn(async () => {}),
+    retryScreenRecordingDelivery: vi.fn(async () => {}),
     quit: vi.fn(),
   });
   controller.install();

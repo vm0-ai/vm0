@@ -1,5 +1,5 @@
 import { captureDesktopNativeHelperError } from "./sentry-main";
-import { writeSync } from "node:fs";
+import { openAsBlob, writeSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -49,6 +49,7 @@ import { ComputerUseRuntimeController } from "./computer-use-runtime-controller"
 import { DeveloperToolsController } from "./desktop-developer-tools-controller";
 import { DesktopRecorderController } from "./desktop-recorder-controller";
 import { createRecorderNativeBackend } from "./desktop-recorder-native";
+import { deliverRecording } from "./desktop-recorder-delivery";
 import { STOP_SCREEN_RECORDING_ACCELERATOR } from "./desktop-recorder-types";
 import {
   getComputerUsePermissionState,
@@ -217,6 +218,29 @@ const screenRecorder = new DesktopRecorderController({
       "recordings",
       `screen-recording-${Date.now().toString()}.mp4`,
     ),
+  canDeliver: async () => {
+    const auth = await getAuthSession().getAuthState();
+    return auth.status === "signed_in" && auth.organization !== null;
+  },
+  deliver: async (recording) => {
+    const auth = await getAuthSession().getAuthState();
+    if (auth.status !== "signed_in") {
+      throw new Error("Sign in to Okou to upload the recording");
+    }
+    return await deliverRecording(recording, {
+      apiBaseUrl: desktopApiBaseUrl,
+      appUrl: config.platformUrl.toString(),
+      userId: auth.user.userId,
+      fetchWithSessionAuth: (url, init) =>
+        getAuthSession().fetchWithSessionAuth(url, init),
+      fetchUpload: (url, init) => fetch(url, init),
+      // Streams from disk rather than buffering a whole video in memory.
+      readFile: (filePath) => openAsBlob(filePath),
+    });
+  },
+  openReview: (reviewUrl) => {
+    openExternal(reviewUrl);
+  },
   onChange: notifyScreenRecorderChanged,
   logError: (error) => {
     console.warn("Desktop screen recording teardown failed", error);
@@ -834,6 +858,9 @@ function installTray(): void {
     },
     stopScreenRecording: async () => {
       await screenRecorder.stop();
+    },
+    retryScreenRecordingDelivery: async () => {
+      await screenRecorder.retryDelivery();
     },
     quit: () => {
       requestDesktopQuit();

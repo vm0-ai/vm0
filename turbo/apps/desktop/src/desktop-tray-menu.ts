@@ -54,6 +54,7 @@ export interface DesktopTrayMenuActions {
   readonly setKeepAwakeEnabled: (enabled: boolean) => void;
   readonly startScreenRecording: () => void;
   readonly stopScreenRecording: () => void;
+  readonly retryScreenRecordingDelivery: () => void;
   readonly quit: () => void;
 }
 
@@ -393,6 +394,8 @@ function screenRecordingStatusLabel(recorder: DesktopRecorderState): string {
       return "Starting...";
     case "finalizing":
       return "Saving...";
+    case "delivering":
+      return "Uploading...";
     case "ready":
       return "Ready";
     default:
@@ -425,6 +428,14 @@ function buildScreenRecordingSubmenu(
       separator(),
       disabledLabel(truncateMenuLabel(recorder.error.message)),
     );
+    // The capture succeeded and both files are still on disk, so a failed
+    // upload is worth retrying rather than re-recording.
+    if (recorder.error.code === "delivery_failed" && recorder.lastRecording) {
+      items.push({
+        label: "Retry Delivery",
+        click: actions.retryScreenRecordingDelivery,
+      });
+    }
   }
   if (recorder.lastRecording) {
     items.push(
