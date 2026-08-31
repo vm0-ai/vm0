@@ -291,6 +291,12 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     profile: z.string(),
   }),
   z.object({
+    action: z.literal(
+      "clear-workflow-automation-event-connector-as-previous-api",
+    ),
+    automation_id: z.uuid(),
+  }),
+  z.object({
     action: z.literal("set-custom-connector-auth-template-fixture"),
     connector_id: z.uuid(),
     value_template: z.string(),

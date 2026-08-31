@@ -1716,6 +1716,11 @@ type PreviousApiRunnerJobContextProfileAction = Extract<
   { action: "set-runner-job-context-profile-as-previous-api" }
 >;
 
+type PreviousApiWorkflowAutomationEventConnectorAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "clear-workflow-automation-event-connector-as-previous-api" }
+>;
+
 type PreviousApiBrowserTabSnapshotAction = Extract<
   TestRuntimeStateActionBody,
   { action: "set-browser-tab-snapshot-as-previous-api" }
@@ -1786,6 +1791,24 @@ async function setRunnerJobContextProfileAsPreviousApi(
   return { status: 200 as const, body: { ok: true as const } };
 }
 
+async function clearWorkflowAutomationEventConnectorAsPreviousApi(
+  db: Db,
+  body: PreviousApiWorkflowAutomationEventConnectorAction,
+  signal: AbortSignal,
+) {
+  // The previous API did not populate the additive Gmail account projection.
+  // No current production endpoint can reproduce that mixed-version row.
+  const [updated] = await db
+    .update(workflowAutomations)
+    .set({ eventConnectorId: null })
+    .where(eq(workflowAutomations.id, body.automation_id))
+    .returning({ id: workflowAutomations.id });
+  signal.throwIfAborted();
+  if (!updated) {
+    throw new Error("Expected a Workflow Automation for previous API update");
+  }
+  return { status: 200 as const, body: { ok: true as const } };
+}
 type CompatibilityFixtureAction =
   | AutonomyBudgetFixtureAction
   | LegacyArtifactCatalogFileAction
@@ -1794,6 +1817,7 @@ type CompatibilityFixtureAction =
   | PreviousApiComputerAccessAction
   | PreviousApiBrowserTabSnapshotAction
   | PreviousApiRunnerJobContextProfileAction
+  | PreviousApiWorkflowAutomationEventConnectorAction
   | ConnectorPermissionBaselineMutationAction;
 
 type CustomConnectorAuthTemplateFixtureAction = Extract<
@@ -2053,6 +2077,7 @@ function isCompatibilityFixtureAction(
     "set-computer-use-host-as-previous-api",
     "set-browser-tab-snapshot-as-previous-api",
     "set-runner-job-context-profile-as-previous-api",
+    "clear-workflow-automation-event-connector-as-previous-api",
     "mutate-runner-job-connector-permission-baseline",
   ].includes(body.action);
 }
@@ -2083,6 +2108,13 @@ async function compatibilityFixtureActionResponse(
     }
     case "set-runner-job-context-profile-as-previous-api": {
       return await setRunnerJobContextProfileAsPreviousApi(db, body, signal);
+    }
+    case "clear-workflow-automation-event-connector-as-previous-api": {
+      return await clearWorkflowAutomationEventConnectorAsPreviousApi(
+        db,
+        body,
+        signal,
+      );
     }
     case "mutate-runner-job-connector-permission-baseline": {
       await mutateRunnerJobConnectorPermissionBaseline(db, body, signal);

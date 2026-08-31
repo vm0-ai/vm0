@@ -23,7 +23,6 @@ import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { clearWorkflowAutomationEventConnectorFixture } from "../../../test-fixtures/workflow-automation";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import {
@@ -44,7 +43,10 @@ import {
   chatEventDisplayText,
 } from "./helpers/chat-event";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
-import { seedVm0BuiltInModelKey } from "./helpers/runtime-state";
+import {
+  clearWorkflowAutomationEventConnectorAsPreviousApi,
+  seedVm0BuiltInModelKey,
+} from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
 import { chatThreadRoutes } from "../chat-threads";
 import { connectorAccountRoutes } from "../connector-accounts";
@@ -1319,7 +1321,10 @@ describe("POST /api/webhooks/gmail", () => {
       "Bearer gmail-second-access-token",
     ]);
 
-    await clearWorkflowAutomationEventConnectorFixture(created.body.id);
+    await clearWorkflowAutomationEventConnectorAsPreviousApi(
+      context,
+      created.body.id,
+    );
 
     const oldSource = await postGmailWebhook(
       gmailPushBody({
