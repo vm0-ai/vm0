@@ -54,7 +54,6 @@ MOCK_AWS_LOG="${tmp_dir}/fetch.log" \
 cmp "$source_dir/okou-app.tar.gz" "$destination/okou-app.tar.gz"
 cmp "$source_dir/manifest.json" "$destination/manifest.json"
 cmp "$source_dir/ready.json" "$destination/ready.json"
-test ! -e "$destination/app.tar.gz"
 if (( "$(grep -c 's3 cp' "${tmp_dir}/fetch.log")" != 3 )); then
   echo "Expected exactly three Desktop artifact object copies" >&2
   exit 1
@@ -92,20 +91,19 @@ if (( "$(grep -c 's3 cp' "${tmp_dir}/retry.log")" != 5 )); then
   exit 1
 fi
 
-legacy_source_dir="${tmp_dir}/legacy-source"
-legacy_destination="${tmp_dir}/legacy-destination"
-mkdir -p "$legacy_source_dir" "$legacy_destination"
-printf 'archive\n' > "$legacy_source_dir/app.tar.gz"
-cp "$source_dir/ready.json" "$legacy_source_dir/"
-printf '{"version":1}\n' > "$legacy_source_dir/manifest.json"
-if MOCK_SOURCE_DIR="$legacy_source_dir" \
-  MOCK_AWS_LOG="${tmp_dir}/legacy.log" \
-  bash "$script" "$r2_endpoint" "$artifact_uri" "$legacy_destination" \
+undeclared_source_dir="${tmp_dir}/undeclared-source"
+undeclared_destination="${tmp_dir}/undeclared-destination"
+mkdir -p "$undeclared_source_dir" "$undeclared_destination"
+cp "$source_dir/okou-app.tar.gz" "$source_dir/ready.json" "$undeclared_source_dir/"
+printf '{"version":1}\n' > "$undeclared_source_dir/manifest.json"
+if MOCK_SOURCE_DIR="$undeclared_source_dir" \
+  MOCK_AWS_LOG="${tmp_dir}/undeclared.log" \
+  bash "$script" "$r2_endpoint" "$artifact_uri" "$undeclared_destination" \
     >/dev/null 2>&1; then
-  echo "Expected a legacy Zero-only artifact to fail" >&2
+  echo "Expected a manifest without an Okou archive to fail" >&2
   exit 1
 fi
-test ! -e "$legacy_destination/okou-app.tar.gz"
+test ! -e "$undeclared_destination/okou-app.tar.gz"
 
 if MOCK_AWS_LOG="${tmp_dir}/absent.log" \
   bash "$script" "$r2_endpoint" "$artifact_uri" "${tmp_dir}/absent" \

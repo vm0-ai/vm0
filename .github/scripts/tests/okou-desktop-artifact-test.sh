@@ -10,16 +10,16 @@ trap 'rm -rf "$tmp_dir"' EXIT
 commit_sha="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 desktop_version="1.2.3"
 okou_app_dir="${tmp_dir}/package/Okou.app"
-zero_app_dir="${tmp_dir}/package/Zero Computer Use.app"
+other_app_dir="${tmp_dir}/package/Other.app"
 artifact_dir="${tmp_dir}/artifact"
 mkdir -p \
   "$okou_app_dir/Contents/MacOS" \
   "$okou_app_dir/Contents/Frameworks/Example.framework/Versions/A" \
-  "$zero_app_dir/Contents/MacOS"
+  "$other_app_dir/Contents/MacOS"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$okou_app_dir/Contents/MacOS/Okou"
-printf '#!/usr/bin/env bash\nexit 0\n' > "$zero_app_dir/Contents/MacOS/Zero Computer Use"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$other_app_dir/Contents/MacOS/Other"
 chmod +x "$okou_app_dir/Contents/MacOS/Okou"
-chmod +x "$zero_app_dir/Contents/MacOS/Zero Computer Use"
+chmod +x "$other_app_dir/Contents/MacOS/Other"
 ln -s A "$okou_app_dir/Contents/Frameworks/Example.framework/Versions/Current"
 
 bash "$build_script" \
@@ -34,11 +34,8 @@ jq -e \
   '.commitSha == $commit_sha
     and .desktopVersion == $desktop_version
     and .okouAppName == "Okou.app"
-    and .okouArchive.path == "okou-app.tar.gz"
-    and (has("appName") | not)
-    and (has("archive") | not)' \
+    and .okouArchive.path == "okou-app.tar.gz"' \
   "$artifact_dir/manifest.json" >/dev/null
-test ! -e "$artifact_dir/app.tar.gz"
 
 extracted_dir="${tmp_dir}/extracted"
 mkdir -p "$extracted_dir"
@@ -49,9 +46,9 @@ test -L "$extracted_dir/Okou.app/Contents/Frameworks/Example.framework/Versions/
 if bash "$build_script" \
   "$commit_sha" \
   "$desktop_version" \
-  "$zero_app_dir" \
-  "${tmp_dir}/zero-artifact" >/dev/null 2>&1; then
-  echo "Expected the retired Zero app directory to be rejected" >&2
+  "$other_app_dir" \
+  "${tmp_dir}/other-artifact" >/dev/null 2>&1; then
+  echo "Expected an app directory that is not Okou.app to be rejected" >&2
   exit 1
 fi
 

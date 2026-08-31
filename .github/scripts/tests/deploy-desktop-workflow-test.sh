@@ -86,7 +86,6 @@ ruby -e '
   raise "Desktop promotion must verify the canonical R2 artifact" unless download.include?("verify-okou-desktop-artifact.sh")
   raise "Desktop promotion must address artifacts by release_target" unless download.include?(ARGV[5])
   raise "Desktop promotion must extract the Okou app archive" unless download.include?("okou-app.tar.gz")
-  raise "Desktop promotion must not extract a Zero app archive" if download.include?("Zero Computer Use.app")
 
   promote_text = release_text.split("  promote-desktop-release:\n", 2).fetch(1).split(/\n  [a-zA-Z0-9_-]+:\n/, 2).first
   dollar = 36.chr
@@ -129,15 +128,12 @@ ruby -e '
   raise "Desktop promotion must publish Okou artifacts" unless promote_text.include?("Okou-darwin-arm64-")
   raise "Desktop promotion must smoke-test Okou installation" unless promote_text.include?("okou-install-smoke")
   raise "Desktop promotion must smoke-test Okou updates" unless promote_text.include?("okou-update-smoke")
-  raise "Desktop promotion must not publish the retired Zero release line" if promote_text.include?("RELEASE_TAG: desktop-v")
-  raise "Desktop promotion must not build Zero release artifacts" if promote_text.include?("Zero-darwin-arm64-")
 
   publish = release.fetch("publish-desktop-update-manifest")
   raise "Desktop manifest must wait for promotion" unless Array(publish.fetch("needs")).include?("promote-desktop-release")
   publish_text = publish.fetch("steps").find { |step| step["name"] == "Publish Desktop update manifest" }.fetch("run")
   raise "Desktop manifests must publish the Okou feed" unless publish_text.include?("ai-okou-desktop-update-manifest.json")
   raise "Desktop manifests must publish under the Okou mutable tag" unless publish_text.include?("ai-okou-desktop-updates")
-  raise "Desktop manifests must no longer publish the retired Zero feed" if publish_text.include?("--product zero") || publish_text.include?("manifest_tag=desktop-updates")
 ' \
   "$desktop_workflow" \
   "$release_workflow" \
