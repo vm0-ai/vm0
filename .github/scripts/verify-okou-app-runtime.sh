@@ -107,7 +107,8 @@ class AppDocumentParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.app_entry_preloads: list[str] = []
-        self.after_first_paint_preloads: list[tuple[str, str | None]] = []
+        self.after_first_paint_preloads: list[str] = []
+        self.active_module_preloads: list[str] = []
         self.module_scripts: list[str] = []
         self.module_preloads: list[str] = []
         self.runtime_metadata: dict[str, list[str | None]] = {
@@ -122,24 +123,21 @@ class AppDocumentParser(HTMLParser):
             source = attributes.get("src")
             if source:
                 self.module_scripts.append(source)
-        if tag == "link" and attributes.get("rel") == "modulepreload":
+        if tag == "link":
             href = attributes.get("href")
-            if href:
-                if "data-vm0-app-entry" in attributes:
-                    self.app_entry_preloads.append(href)
-                else:
-                    self.module_preloads.append(href)
+            if href and "data-vm0-app-entry" in attributes:
+                self.app_entry_preloads.append(href)
+            if href and "data-vm0-app-module-preload" in attributes:
+                self.module_preloads.append(href)
+            if href and attributes.get("rel") == "modulepreload":
+                self.active_module_preloads.append(href)
         if (
             tag == "link"
-            and attributes.get("rel") == "preload"
-            and attributes.get("as") == "script"
             and "data-vm0-after-first-paint-entry" in attributes
         ):
             href = attributes.get("href")
             if href:
-                self.after_first_paint_preloads.append(
-                    (href, attributes.get("integrity"))
-                )
+                self.after_first_paint_preloads.append(href)
         if tag == "meta" and attributes.get("name") in RUNTIME_META_NAMES:
             name = attributes["name"]
             if name is not None:
@@ -192,21 +190,17 @@ if parser.module_scripts:
         f"Expected deferred app execution without static module scripts, "
         f"got {parser.module_scripts}"
     )
-observed_after_first_paint_entries = [
-    href for href, _integrity in parser.after_first_paint_preloads
-]
-if observed_after_first_paint_entries != expected_after_first_paint_entry:
+if parser.active_module_preloads:
+    raise RuntimeError(
+        "Expected module resource discovery after first paint, "
+        f"got {parser.active_module_preloads}"
+    )
+if parser.after_first_paint_preloads != expected_after_first_paint_entry:
     raise RuntimeError(
         "Expected one deferred after-first-paint script preload "
         f"{expected_after_first_paint_entry}, "
-        f"got {observed_after_first_paint_entries}"
+        f"got {parser.after_first_paint_preloads}"
     )
-if not all(
-    integrity is not None
-    and re.fullmatch(r"sha384-[A-Za-z0-9+/]+={0,2}", integrity)
-    for _href, integrity in parser.after_first_paint_preloads
-):
-    raise RuntimeError("Expected SHA-384 integrity on the after-first-paint preload")
 if len(parser.module_preloads) != 2 or set(parser.module_preloads) != expected_preloads:
     raise RuntimeError(
         f"Expected CDN runtime/vendor modulepreloads {sorted(expected_preloads)}, "

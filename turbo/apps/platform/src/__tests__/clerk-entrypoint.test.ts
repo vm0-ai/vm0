@@ -275,7 +275,7 @@ describe("platform Clerk entrypoint", () => {
     expect(skeleton.querySelector("svg")).not.toBeNull();
     expect(
       parsedDocument.querySelector(
-        'link[data-vm0-font-stylesheet][rel="preload"][as="style"]',
+        'link[data-vm0-font-stylesheet]:not([rel]):not([as])',
       ),
     ).not.toBeNull();
     expect(html.indexOf("data-vm0-clerk-bootstrap")).toBeLessThan(

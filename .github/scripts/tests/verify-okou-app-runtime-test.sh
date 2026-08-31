@@ -32,20 +32,20 @@ cat > "$html_source" <<'HTML'
 <!doctype html>
 <meta name="okou-app-git-commit-sha" content="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">
 <meta name="okou-app-version" content="0.812.5">
-<link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/app-AbCd1234.js" data-vm0-app-entry="">
-<link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/rolldown-runtime-IjKl9012.js">
-<link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/vendor-EfGh5678.js">
-<link rel="preload" as="script" crossorigin href="https://static.test/okou-app/assets/bootstrap-after-first-paint-123456789abc.js" integrity="sha384-dGVzdA==" data-vm0-after-first-paint-entry="">
+<link crossorigin href="https://static.test/okou-app/assets/app-AbCd1234.js" data-vm0-app-entry="">
+<link crossorigin href="https://static.test/okou-app/assets/rolldown-runtime-IjKl9012.js" data-vm0-app-module-preload="">
+<link crossorigin href="https://static.test/okou-app/assets/vendor-EfGh5678.js" data-vm0-app-module-preload="">
+<link crossorigin href="https://static.test/okou-app/assets/bootstrap-after-first-paint-123456789abc.js" data-vm0-after-first-paint-entry="">
 HTML
 
 cat > "$old_html_source" <<'HTML'
 <!doctype html>
 <meta name="okou-app-git-commit-sha" content="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb">
 <meta name="okou-app-version" content="0.812.4">
-<link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/app-Old12345.js" data-vm0-app-entry="">
-<link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/rolldown-runtime-Old12345.js">
-<link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/vendor-Old12345.js">
-<link rel="preload" as="script" crossorigin href="https://static.test/okou-app/assets/bootstrap-after-first-paint-Old12345.js" integrity="sha384-dGVzdA==" data-vm0-after-first-paint-entry="">
+<link crossorigin href="https://static.test/okou-app/assets/app-Old12345.js" data-vm0-app-entry="">
+<link crossorigin href="https://static.test/okou-app/assets/rolldown-runtime-Old12345.js" data-vm0-app-module-preload="">
+<link crossorigin href="https://static.test/okou-app/assets/vendor-Old12345.js" data-vm0-app-module-preload="">
+<link crossorigin href="https://static.test/okou-app/assets/bootstrap-after-first-paint-Old12345.js" data-vm0-after-first-paint-entry="">
 HTML
 
 cat > "${fake_bin}/curl" <<'BASH'

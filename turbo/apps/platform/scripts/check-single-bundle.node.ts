@@ -27,7 +27,7 @@ const APP_FILE = "assets/index-AppHash1.js";
 const VENDOR_FILE = "assets/vendor-Vendor01.js";
 const RUNTIME_FILE = "assets/rolldown-runtime-Runtime1.js";
 
-await test("defers app execution and styles without delaying resource discovery", () => {
+await test("defers app execution and resource discovery until first paint", () => {
   const html = deferApplicationEntryResources(`
     <link rel="stylesheet" crossorigin href="/assets/app-AppHash1.css">
     <link rel="stylesheet" href="https://fonts.example/font.css">
@@ -37,15 +37,15 @@ await test("defers app execution and styles without delaying resource discovery"
 
   assert.match(
     html,
-    /<link rel="modulepreload" crossorigin href="\/assets\/app-AppHash1\.js" data-vm0-app-entry="">/u,
+    /<link crossorigin href="\/assets\/app-AppHash1\.js" data-vm0-app-entry="">/u,
   );
   assert.match(
     html,
-    /<link rel="preload" as="style" crossorigin href="\/assets\/app-AppHash1\.css" data-vm0-app-stylesheet="">/u,
+    /<link crossorigin href="\/assets\/app-AppHash1\.css" data-vm0-app-stylesheet="">/u,
   );
   assert.match(
     html,
-    /<link rel="modulepreload" crossorigin href="\/assets\/vendor-Vendor01\.js">/u,
+    /<link crossorigin href="\/assets\/vendor-Vendor01\.js" data-vm0-app-module-preload="">/u,
   );
   assert.match(
     html,
@@ -69,10 +69,14 @@ await test("extracts post-paint callbacks behind one preloaded entry", () => {
 
   assert.match(
     extracted.html,
-    /<link rel="preload" as="script" crossorigin href="__VM0_AFTER_FIRST_PAINT_ENTRY_URL__" integrity="__VM0_AFTER_FIRST_PAINT_ENTRY_INTEGRITY__" data-vm0-after-first-paint-entry="">/u,
+    /<link crossorigin href="__VM0_AFTER_FIRST_PAINT_ENTRY_URL__" data-vm0-after-first-paint-entry="">/u,
   );
   assert.match(extracted.html, /data-vm0-after-first-paint-loader=""/u);
-  assert.match(extracted.html, /script\.integrity = entry\.integrity/u);
+  assert.match(
+    extracted.html,
+    /modulePreloads\[index\]\.rel = "modulepreload"/u,
+  );
+  assert.match(extracted.html, /appStylesheet\.rel = "preload"/u);
   assert.doesNotMatch(extracted.html, /window\.first = true/u);
   assert.doesNotMatch(extracted.html, /window\.second = true/u);
   assert.match(extracted.source, /window\.first = true/u);
