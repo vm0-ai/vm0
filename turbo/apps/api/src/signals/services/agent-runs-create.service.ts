@@ -470,7 +470,7 @@ function buildAgentToolsPrompt(args: {
     ...(args.connectorAccountsEnabled
       ? [
           "- Connector accounts: inspect the current account with `okou connector status <slug> --json` and list alternatives with `okou connector account list <slug> --json`. Use only an exact `connectionId` returned by these commands; never invent an ID or reuse one from another connector.",
-          "- Request one account switch in the current web chat with `okou connector account switch-request <slug> --connection-id <uuid> --callback-prompt <prompt>`. This changes only the current thread's override for future runs, not the current run or global default. Share the returned link and end the turn; Okou starts the callback round only after the user confirms and the selection succeeds.",
+          "- Request one account switch in the current web chat with `okou connector account switch-request <slug> --connection-id <uuid> --callback-prompt <prompt>`. This changes only the current thread's override for future runs, not the current run or global default. Keep the callback prompt concise and do not include secrets because it is included in the URL. Share the returned link and end the turn; Okou starts the callback round only after the user confirms and the selection succeeds.",
         ]
       : []),
     "- Custom connectors: when the user wants to add their own custom connector, run `okou connector custom -h` first and follow its guidance.",

@@ -14848,6 +14848,9 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       "only the current thread's override for future runs",
     );
     expect(appendSystemPrompt).toContain(
+      "do not include secrets because it is included in the URL",
+    );
+    expect(appendSystemPrompt).toContain(
       "only after the user confirms and the selection succeeds",
     );
 
