@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.82.27](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.26...guest-agent-v0.82.27) (2026-08-31)
+
+
+### Documentation
+
+* **guest-agent:** explain artifact checkpoint pipeline invariants ([#30497](https://github.com/vm0-ai/vm0/issues/30497)) ([b0a5845](https://github.com/vm0-ai/vm0/commit/b0a5845751afbf1e9a548b7baecb0e6df83cabe2))
+
+
+### Refactoring
+
+* **guest-agent:** remove retired bootstrap alias carrier ([#30517](https://github.com/vm0-ai/vm0/issues/30517)) ([c6df725](https://github.com/vm0-ai/vm0/commit/c6df725f46661ae72db0f4c9ef1d7703b43cc239))
+
 ## [0.82.26](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.25...guest-agent-v0.82.26) (2026-08-31)
 
 ## [0.82.25](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.24...guest-agent-v0.82.25) (2026-08-31)
