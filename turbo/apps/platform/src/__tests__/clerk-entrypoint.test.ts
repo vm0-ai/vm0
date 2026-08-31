@@ -9,6 +9,7 @@ import { resolvePlatformRuntimeConfig } from "../lib/platform-host.ts";
 import { testContext } from "../signals/__tests__/test-helpers.ts";
 import { onboardingStatus$ } from "../signals/okou-page/onboarding.ts";
 import {
+  clearMockedAuthOnAbort,
   mockedClerk,
   mockedClerkLoad,
   mockOrganization,
@@ -575,6 +576,32 @@ describe("platform Clerk entrypoint", () => {
       performance.getEntriesByName(CLERK_LOAD_COMPLETED_MARK, "mark")[0]
         ?.startTime,
     ).toBe(completedAt);
+  });
+
+  it("does not start onboarding after a final pagehide during Clerk.load", async () => {
+    clearMockedAuthOnAbort(context.signal);
+    const loadCanFinish = context.mocks.deferred<void>();
+    mockedClerkLoad.mockReturnValue(loadCanFinish.promise);
+    let requests = 0;
+    context.mocks.http.get("*/api/onboarding/status", () => {
+      requests += 1;
+      return HttpResponse.json(PREFETCHED_ONBOARDING_STATUS);
+    });
+    const script = captureClerkBootstrapScript("https://pr-30199-app.omby.ai/");
+
+    Reflect.set(globalThis, "Clerk", mockedClerk);
+    script.dispatchEvent(new Event("load"));
+    const bootstrap = window.__vm0ClerkBootstrap;
+    if (!bootstrap?.onboardingStatusPromise) {
+      throw new Error("Clerk bootstrap did not start onboarding ownership");
+    }
+
+    window.dispatchEvent(new Event("pagehide"));
+    loadCanFinish.resolve(undefined);
+
+    await expect(bootstrap.onboardingStatusPromise).resolves.toBeNull();
+    expect(mockedClerk.sessionGetToken).not.toHaveBeenCalled();
+    expect(requests).toBe(0);
   });
 
   it("merges the in-flight core script without a second Clerk.load", async () => {

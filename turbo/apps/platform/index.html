@@ -758,14 +758,14 @@
           loadOptions.satelliteAutoSync = true;
         }
 
-        var onboardingController = null;
+        var onboardingController = new AbortController();
         var clientSessionId =
           typeof crypto.randomUUID === "function"
             ? crypto.randomUUID()
             : undefined;
         var bootstrap = {
           abortOnboarding: function () {
-            if (onboardingController) onboardingController.abort();
+            onboardingController.abort();
           },
           clientSessionId: clientSessionId,
           domain: satellite ? PRODUCTION_SATELLITE_DOMAIN : undefined,
@@ -959,11 +959,12 @@
         }
 
         function startOnboardingStatus(clerk) {
+          var signal = onboardingController.signal;
+          if (signal.aborted) return Promise.resolve(null);
+
           var identity = activeIdentity(clerk);
           if (!identity || !clientSessionId) return Promise.resolve(null);
 
-          onboardingController = new AbortController();
-          var signal = onboardingController.signal;
           var unsubscribe = clerk.addListener(function () {
             var session = clerk.session;
             var user = clerk.user;
