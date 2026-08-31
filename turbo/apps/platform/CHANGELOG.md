@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.813.5](https://github.com/vm0-ai/vm0/compare/app-v0.813.4...app-v0.813.5) (2026-08-31)
+
+
+### Bug Fixes
+
+* **app:** open billing plans from upgrade card ([#30575](https://github.com/vm0-ai/vm0/issues/30575)) ([d68b213](https://github.com/vm0-ai/vm0/commit/d68b2136a94f5a65b44cce35b55b476a8c72a09e))
+
+
+### Refactoring
+
+* **platform:** retire locale asset fallback ([#30521](https://github.com/vm0-ai/vm0/issues/30521)) ([594e795](https://github.com/vm0-ai/vm0/commit/594e795908d8e54359fcad41d4efbeaed0b8952d))
+
+
+### Performance Improvements
+
+* **platform:** start Clerk before font loading ([#30588](https://github.com/vm0-ai/vm0/issues/30588)) ([d4f968f](https://github.com/vm0-ai/vm0/commit/d4f968f9777c730805a5fea4089abd7354dc3c65))
+
 ## [0.813.4](https://github.com/vm0-ai/vm0/compare/app-v0.813.3...app-v0.813.4) (2026-08-31)
 
 

@@ -78,6 +78,7 @@ export interface PiApiFirstTurnResult {
 
 export interface PiSessionInspection {
   readonly sessionId: string;
+  readonly messageCount: number;
   readonly hasPendingToolCalls: boolean;
   readonly isSettledCheckpoint: boolean;
 }
