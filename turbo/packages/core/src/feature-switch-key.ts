@@ -59,7 +59,6 @@ export enum FeatureSwitchKey {
   PersonalModelProviderAccounts = "personalModelProviderAccounts",
   ConnectorAccounts = "connectorAccounts",
   ConcurrencyMemberUsage = "concurrencyMemberUsage",
-  TeamsIntegration = "teamsIntegration",
   FeishuIntegration = "feishuIntegration",
   StrapiIntegration = "strapiIntegration",
   WorkflowConnectorReadiness = "workflowConnectorReadiness",

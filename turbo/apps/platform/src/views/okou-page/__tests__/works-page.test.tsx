@@ -117,7 +117,6 @@ function mockFeishuAPI(overrides: Partial<FeishuConnectStatus> = {}): void {
 
 function setupWorksPage(
   options: {
-    teamsEnabled?: boolean;
     feishuEnabled?: boolean;
     strapiEnabled?: boolean;
   } = {},
@@ -126,7 +125,6 @@ function setupWorksPage(
     context,
     path: "/works",
     featureSwitches: {
-      [FeatureSwitchKey.TeamsIntegration]: options.teamsEnabled ?? false,
       [FeatureSwitchKey.FeishuIntegration]: options.feishuEnabled ?? false,
       [FeatureSwitchKey.StrapiIntegration]: options.strapiEnabled ?? false,
     },
@@ -283,7 +281,7 @@ describe("works page", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Slack")).toBeInTheDocument();
-      expect(screen.queryByText("Microsoft Teams")).not.toBeInTheDocument();
+      expect(screen.getByText("Microsoft Teams")).toBeInTheDocument();
       expect(screen.queryByText("Feishu")).not.toBeInTheDocument();
       expect(screen.queryByText("Strapi")).not.toBeInTheDocument();
       expect(screen.getByText("GitHub")).toBeInTheDocument();
@@ -407,7 +405,7 @@ describe("works page", () => {
     });
   });
 
-  it("shows Microsoft Teams status when the Teams integration is enabled", async () => {
+  it("shows Microsoft Teams status", async () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     mockTeamsAPI({
       isConnected: true,
@@ -417,7 +415,7 @@ describe("works page", () => {
       teamName: "Core Team",
     });
 
-    setupWorksPage({ teamsEnabled: true });
+    setupWorksPage();
 
     await waitFor(() => {
       expect(screen.getByText("Microsoft Teams")).toBeInTheDocument();
@@ -1114,7 +1112,7 @@ describe("works page", () => {
       teamName: null,
     });
 
-    setupWorksPage({ teamsEnabled: true });
+    setupWorksPage();
 
     await waitFor(() => {
       expect(screen.getByText("Microsoft Teams")).toBeInTheDocument();
@@ -1130,7 +1128,7 @@ describe("works page", () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     mockTeamsAPI({ isConnected: false, isInstalled: false, isAdmin: true });
 
-    setupWorksPage({ teamsEnabled: true });
+    setupWorksPage();
 
     const installButton = await screen.findByTestId("teams-install-button");
     expect(installButton).toHaveTextContent("Install in Teams");
@@ -1155,7 +1153,7 @@ describe("works page", () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     mockTeamsAPI({ isConnected: false, isInstalled: true, isAdmin: true });
 
-    setupWorksPage({ teamsEnabled: true });
+    setupWorksPage();
 
     const connectButton = await screen.findByTestId("teams-connect-button");
     expect(connectButton).toHaveTextContent("Connect");
@@ -1168,7 +1166,7 @@ describe("works page", () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     mockTeamsAPI({ isConnected: false, isInstalled: true, isAdmin: true });
 
-    setupWorksPage({ teamsEnabled: true });
+    setupWorksPage();
 
     click(await screen.findByLabelText("More Microsoft Teams options"));
     click(await screen.findByLabelText("Uninstall Microsoft Teams"));

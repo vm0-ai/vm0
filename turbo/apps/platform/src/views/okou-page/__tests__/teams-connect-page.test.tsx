@@ -1,5 +1,4 @@
 import { teamsConnectContract } from "@okouai/api-contracts/contracts/teams-connect";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -13,7 +12,6 @@ function setupTeamsPage(path: string): void {
   detachedSetupPage({
     context,
     path,
-    featureSwitches: { [FeatureSwitchKey.TeamsIntegration]: true },
   });
 }
 
