@@ -20,8 +20,10 @@ import {
 } from "../action-url";
 import {
   connectorDiscoveryItems,
+  isConnectorDiscoveryAuthorized,
   type ConnectorDiscoveryItem,
 } from "../discovery";
+import { resolveConnectorDiscoveryAgentContext } from "../agent-context";
 
 interface SwitchConnectorAccountRequestOptions {
   readonly connectionId: string;
@@ -124,10 +126,17 @@ Notes:
           agentId,
         );
 
-        const [{ connectors }, customConnectors] = await Promise.all([
-          listConnectorCatalogStatus(),
-          listCustomConnectors(),
-        ]);
+        const [{ connectors }, customConnectors, agentContext] =
+          await Promise.all([
+            listConnectorCatalogStatus(),
+            listCustomConnectors(),
+            resolveConnectorDiscoveryAgentContext(agentId),
+          ]);
+        if (!agentContext) {
+          throw new Error(
+            "Connector account switches require the current web chat agent",
+          );
+        }
         const discoveredConnectors = connectorDiscoveryItems(
           connectors,
           customConnectors,
@@ -146,6 +155,11 @@ Notes:
                 .join(", ")}`,
             ),
           });
+        }
+        if (!isConnectorDiscoveryAuthorized(connector, agentContext)) {
+          throw new Error(
+            `Connector ${slug} is not authorized for the current web chat agent`,
+          );
         }
 
         const target = accountTarget(connector);

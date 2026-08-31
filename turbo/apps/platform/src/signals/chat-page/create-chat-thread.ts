@@ -240,8 +240,10 @@ import {
   userMessageFileAttachments,
 } from "./user-message-files.ts";
 import type { ChatForwardContext } from "./chat-forward.ts";
-import { createComposerConnectorSignals } from "../okou-page/connectors.ts";
-import type { ComposerConnectorAccountSignals } from "../okou-page/composer-connector-accounts.ts";
+import {
+  createComposerConnectorSignals,
+  type ComposerConnectorSignals,
+} from "../okou-page/connectors.ts";
 
 const L = logger("ChatThread");
 const noOpComposerDraftSave$ = command(
@@ -2116,7 +2118,7 @@ function createPagedEventResources(
     chatEvents$,
     previewImageUrlsByUrl$,
     browserLifecycleOptimisticEvents,
-    connectorAccounts,
+    connector,
   }: {
     readonly chatActionContext: ChatActionContext;
     readonly chatEvents$: Computed<ChatEvent[]>;
@@ -2124,7 +2126,7 @@ function createPagedEventResources(
       Promise<ReadonlyMap<string, string>>
     >;
     readonly browserLifecycleOptimisticEvents: BrowserLifecycleOptimisticEvents;
-    readonly connectorAccounts: ComposerConnectorAccountSignals;
+    readonly connector: ComposerConnectorSignals;
   },
   ownerSignal: AbortSignal,
 ) {
@@ -2142,7 +2144,7 @@ function createPagedEventResources(
   const agentReferenceSignals = createAgentReferenceSignalsRegistry();
   const connectorCardSignals = createConnectorCardSignalsRegistry();
   const connectorAccountActionCardSignals =
-    createConnectorAccountActionCardSignalsRegistry(connectorAccounts);
+    createConnectorAccountActionCardSignalsRegistry(connector);
   const permissionCardSignals = createPermissionCardSignalsRegistry();
   const bankingCardSignals = createBankingCardSignalsRegistry();
   const computerUseAuthorizationCardSignals =
@@ -2502,12 +2504,12 @@ function createChatThreadMessagePipeline(
     chatActionContext,
     chatEvents,
     previewImageUrlsByUrl$,
-    connectorAccounts,
+    connector,
   }: {
     chatActionContext: ChatActionContext;
     chatEvents: ChatEventSignals;
     previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
-    connectorAccounts: ComposerConnectorAccountSignals;
+    connector: ComposerConnectorSignals;
   },
   ownerSignal: AbortSignal,
 ) {
@@ -2522,7 +2524,7 @@ function createChatThreadMessagePipeline(
       chatEvents$: chatEvents.chatEvents$,
       previewImageUrlsByUrl$,
       browserLifecycleOptimisticEvents,
-      connectorAccounts,
+      connector,
     },
     ownerSignal,
   );
@@ -4279,7 +4281,7 @@ function createChatPanelSignalsWithDraft(
       previewImageUrlsByUrl$: createArtifactPreviewImageUrls(
         artifact.artifacts$,
       ),
-      connectorAccounts: composer.connector.accounts,
+      connector: composer.connector,
     },
     signal,
   );

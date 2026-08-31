@@ -4,13 +4,17 @@ import {
   connectorAccountsContract,
   type ConnectorAccountConnection,
   type ConnectorAccountSelection,
+  type ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
 import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { command, computed, state, type Command, type Computed } from "ccstate";
 
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
-import type { ComposerConnectorAccountSignals } from "../okou-page/composer-connector-accounts.ts";
+import type {
+  ComposerConnectorAuthorizationState,
+  ComposerConnectorSignals,
+} from "../okou-page/connectors.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import { withCleanup } from "../utils.ts";
 import {
@@ -162,9 +166,20 @@ function selectionIsCurrent(
   });
 }
 
+function targetIsAuthorized(
+  authorization: ComposerConnectorAuthorizationState,
+  target: ConnectorAccountTarget,
+): boolean {
+  return target.kind === "builtin"
+    ? authorization.enabledConnectorSlugs.includes(target.connectorSlug)
+    : authorization.customConnectorGrants.some((grant) => {
+        return grant.customConnectorId === target.customConnectorId;
+      });
+}
+
 function createConnectorAccountActionSignals(
   descriptor: ConnectorAccountActionDescriptor,
-  accounts: ComposerConnectorAccountSignals,
+  connector: ComposerConnectorSignals,
 ): ConnectorAccountActionSignals {
   const reload$ = state(0);
   const internalConfirmationState$ =
@@ -175,7 +190,11 @@ function createConnectorAccountActionSignals(
   const status$ = computed(
     async (get): Promise<ConnectorAccountActionStatus> => {
       get(reload$);
-      if (!get(accounts.enabled$)) {
+      if (!get(connector.accounts.enabled$)) {
+        return { kind: "unavailable" };
+      }
+      const authorization = await get(connector.connectorAuthorization$);
+      if (!targetIsAuthorized(authorization, descriptor.selection.target)) {
         return { kind: "unavailable" };
       }
       const result = await accept(
@@ -189,7 +208,7 @@ function createConnectorAccountActionSignals(
       if (result.status === 404) {
         return { kind: "unavailable" };
       }
-      const preference = await get(accounts.preferenceState$);
+      const preference = await get(connector.accounts.preferenceState$);
       return {
         kind: "ready",
         account: result.body,
@@ -204,7 +223,7 @@ function createConnectorAccountActionSignals(
     set(reload$, (version) => {
       return version + 1;
     });
-    set(accounts.reload$);
+    set(connector.accounts.reload$);
   });
   const confirm$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
@@ -253,12 +272,12 @@ function createConnectorAccountActionSignals(
 }
 
 export function createConnectorAccountActionCardSignalsRegistry(
-  accounts: ComposerConnectorAccountSignals,
+  connector: ComposerConnectorSignals,
 ): ConnectorAccountActionCardSignalsRegistry {
   return createCardSignalsRegistry(
     connectorAccountActionResourceKey,
     (descriptor) => {
-      return createConnectorAccountActionSignals(descriptor, accounts);
+      return createConnectorAccountActionSignals(descriptor, connector);
     },
   );
 }

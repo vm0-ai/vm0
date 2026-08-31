@@ -13,13 +13,14 @@ import {
 } from "../../../__tests__/helpers/connector-catalog";
 import {
   customConnector,
+  stubAgentCustomConnectors,
   stubCustomConnectors,
 } from "../../../__tests__/helpers/custom-connectors";
 import { switchConnectorAccountRequestCommand } from "../switch-request";
 
 const CONNECTION_ID = "11111111-1111-4111-8111-111111111111";
 const CUSTOM_CONNECTOR_ID = "22222222-2222-4222-8222-222222222222";
-const AGENT_ID = "agent-account-switch";
+const AGENT_ID = "44444444-4444-4444-8444-444444444444";
 const THREAD_ID = "33333333-3333-4333-8333-333333333333";
 
 function availableInspection(
@@ -50,6 +51,34 @@ function stubCatalog(): ReturnType<typeof http.get> {
       authMethods: [authCodeMethod("oauth")],
     }),
   ]);
+}
+
+function stubAgent(): ReturnType<typeof http.get> {
+  return http.get(`http://localhost:3000/api/agents/${AGENT_ID}`, () => {
+    return HttpResponse.json({
+      agentId: AGENT_ID,
+      ownerId: "owner-1",
+      displayName: "Zero",
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
+      visibility: "private",
+    });
+  });
+}
+
+function stubAgentBuiltinConnectors(
+  enabledConnectorSlugs: readonly string[],
+): ReturnType<typeof http.get> {
+  return http.get(
+    `http://localhost:3000/api/agents/${AGENT_ID}/user-connectors`,
+    () => {
+      return HttpResponse.json({ enabledConnectorSlugs });
+    },
+  );
 }
 
 function stubInspection(
@@ -99,6 +128,9 @@ describe("okou connector account switch-request command", () => {
     server.use(
       stubCatalog(),
       stubCustomConnectors([]),
+      stubAgent(),
+      stubAgentBuiltinConnectors(["github"]),
+      stubAgentCustomConnectors([]),
       stubInspection(availableInspection()),
     );
   });
@@ -164,6 +196,9 @@ describe("okou connector account switch-request command", () => {
           slug: "_acme-search",
           displayName: "Acme Search",
         }),
+      ]),
+      stubAgentCustomConnectors([
+        { customConnectorId: CUSTOM_CONNECTOR_ID, permissionNames: [] },
       ]),
       stubInspection(availableInspection(target)),
     );
@@ -232,6 +267,27 @@ describe("okou connector account switch-request command", () => {
 
     expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
       `Connector account ${CONNECTION_ID} is unavailable for github`,
+    );
+    expect(mockConsoleLog).not.toHaveBeenCalled();
+  });
+
+  it("rejects a connector target outside the current agent scope", async () => {
+    server.use(stubAgentBuiltinConnectors([]));
+
+    await expect(
+      switchConnectorAccountRequestCommand.parseAsync([
+        "node",
+        "okou",
+        "github",
+        "--connection-id",
+        CONNECTION_ID,
+        "--callback-prompt",
+        "Continue",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+      "Connector github is not authorized for the current web chat agent",
     );
     expect(mockConsoleLog).not.toHaveBeenCalled();
   });

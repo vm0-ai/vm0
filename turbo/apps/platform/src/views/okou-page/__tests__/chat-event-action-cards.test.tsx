@@ -255,6 +255,31 @@ function mockAgentConnectorAuthorizations(
   });
 }
 
+function mockConnectorAccountActionAuthorization(
+  target: ConnectorAccountConnection["target"],
+  authorized = true,
+): void {
+  context.mocks.api(userConnectorsContract.get, ({ respond }) => {
+    return respond(200, {
+      enabledConnectorSlugs:
+        authorized && target.kind === "builtin" ? [target.connectorSlug] : [],
+    });
+  });
+  context.mocks.api(agentCustomConnectorsContract.get, ({ respond }) => {
+    return respond(200, {
+      grants:
+        authorized && target.kind === "custom"
+          ? [
+              {
+                customConnectorId: target.customConnectorId,
+                permissionNames: [],
+              },
+            ]
+          : [],
+    });
+  });
+}
+
 function customConnector(
   overrides: Partial<CustomConnectorHttpResponse> = {},
 ): CustomConnectorHttpResponse {
@@ -428,6 +453,7 @@ describe("chat event action cards", () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e4000000-0000-4000-a000-000000000021";
     const account = connectorAccount();
+    mockConnectorAccountActionAuthorization(account.target);
     const callbackPrompt = "Continue with the selected GitHub account";
     const actionUrl = connectorAccountActionUrl(
       threadId,
@@ -546,6 +572,7 @@ describe("chat event action cards", () => {
       id: "a1000000-0000-4000-a000-000000000022",
       target: { kind: "custom", customConnectorId },
     });
+    mockConnectorAccountActionAuthorization(account.target);
     const selection = {
       connectionId: account.id,
       target: account.target,
@@ -623,6 +650,7 @@ describe("chat event action cards", () => {
     const account = connectorAccount({
       id: "a1000000-0000-4000-a000-000000000023",
     });
+    mockConnectorAccountActionAuthorization(account.target);
     context.mocks.api(connectorAccountsContract.connection, ({ respond }) => {
       return respond(404, {
         error: {
@@ -666,12 +694,68 @@ describe("chat event action cards", () => {
     expect(queryAllByRoleFast("button", card)).toStrictEqual([]);
   });
 
+  it("renders an account outside the current agent scope as unavailable", async () => {
+    const threadId = "e4000000-0000-4000-a000-000000000026";
+    const account = connectorAccount({
+      id: "a1000000-0000-4000-a000-000000000026",
+    });
+    let accountReadCount = 0;
+    let updateCount = 0;
+    const sentPrompts: string[] = [];
+    mockConnectorAccountActionAuthorization(account.target, false);
+    context.mocks.api(connectorAccountsContract.connection, ({ respond }) => {
+      accountReadCount += 1;
+      return respond(200, account);
+    });
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.update,
+      ({ body, respond }) => {
+        updateCount += 1;
+        return respond(200, body);
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Unauthorized connector account",
+      chatEvents: [
+        {
+          id: `${threadId}-message`,
+          role: "assistant",
+          content: connectorAccountActionUrl(threadId, account, "Continue"),
+          runId: `${threadId}-run`,
+          createdAt: "2026-08-31T10:00:00.000Z",
+        },
+      ],
+      onSendRequest: ({ prompt }) => {
+        sentPrompts.push(prompt);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const card = await screen.findByTestId(
+      "connector-account-action-card-unavailable",
+      undefined,
+      { timeout: 10_000 },
+    );
+    expect(card).toHaveTextContent("Account unavailable");
+    expect(queryAllByRoleFast("button", card)).toStrictEqual([]);
+    expect(accountReadCount).toBe(0);
+    expect(updateCount).toBe(0);
+    expect(sentPrompts).toStrictEqual([]);
+  });
+
   it("retries a rejected selection from another repeated card", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e4000000-0000-4000-a000-000000000024";
     const account = connectorAccount({
       id: "a1000000-0000-4000-a000-000000000024",
     });
+    mockConnectorAccountActionAuthorization(account.target);
     const sentPrompts: string[] = [];
     let updateCount = 0;
     context.mocks.api(connectorAccountsContract.connection, ({ respond }) => {
@@ -759,6 +843,7 @@ describe("chat event action cards", () => {
     const account = connectorAccount({
       id: "a1000000-0000-4000-a000-000000000025",
     });
+    mockConnectorAccountActionAuthorization(account.target);
     let selections: ConnectorAccountSelection[] = [];
     let selectedConnections: ConnectorAccountConnection[] = [];
     context.mocks.api(connectorAccountsContract.connection, ({ respond }) => {
