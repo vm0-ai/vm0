@@ -1971,6 +1971,8 @@
         "resetsAt": "Direset pada {{time}}",
         "selectModel": "Ganti model",
         "tryAgain": "Coba lagi",
+        "unavailableDescription": "Model ini tidak didukung oleh akun ChatGPT yang terhubung. Ganti ke model lain untuk melanjutkan.",
+        "unavailableTitle": "Model yang dipilih tidak tersedia",
         "usageDescription": "Anda dapat melanjutkan saat batas penggunaan direset, atau ganti model sekarang.",
         "usageTitle": "Batas {{framework}} tercapai"
       },

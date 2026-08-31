@@ -1971,6 +1971,8 @@
         "resetsAt": "{{time}}에 재설정",
         "selectModel": "모델 전환",
         "tryAgain": "다시 시도",
+        "unavailableDescription": "이 모델은 연결된 ChatGPT 계정에서 지원되지 않습니다. 계속하려면 다른 모델로 전환하세요.",
+        "unavailableTitle": "선택한 모델을 사용할 수 없습니다",
         "usageDescription": "사용량 한도가 재설정되면 계속하거나 지금 다른 모델로 전환할 수 있습니다.",
         "usageTitle": "{{framework}} 한도에 도달했습니다"
       },
