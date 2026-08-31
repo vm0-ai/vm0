@@ -47,7 +47,7 @@ const { apiOriginMarker, posthog } = vi.hoisted(() => {
   };
 });
 
-vi.mock("posthog-js", () => {
+vi.mock("posthog-js/dist/module.slim", () => {
   return { posthog };
 });
 
@@ -59,6 +59,7 @@ const OTHER_THREAD_ID = "b0000000-0000-4000-a000-000000000002";
 const FIRST_EVENT_ID = "d0000000-0000-4000-a000-000000000001";
 const SECOND_EVENT_ID = "d0000000-0000-4000-a000-000000000002";
 const THIRD_EVENT_ID = "d0000000-0000-4000-a000-000000000003";
+const SHARED_DATABASE_REALTIME_CHANNEL = "user-org:test-user-123:org_default";
 
 beforeEach(() => {
   posthog.capture.mockReset();
@@ -171,6 +172,32 @@ async function expectActiveThread(
 }
 
 describe("chat thread metadata readiness", () => {
+  it("sets a cold thread document title without an intermediate title", async () => {
+    context.mocks.api(chatThreadMetadataContract.get, ({ respond }) => {
+      return respond(200, shellMetadata(THREAD_ID, "Cold thread"));
+    });
+    context.mocks.api(chatThreadsContract.snapshot, ({ never }) => {
+      return never();
+    });
+    const titleSetter = vi.spyOn(document, "title", "set");
+
+    try {
+      setupChatPage();
+
+      await expectActiveThread(THREAD_ID, "Cold thread");
+      await waitFor(() => {
+        expect(document.title).toBe("Cold thread | VM0");
+      });
+      expect(
+        titleSetter.mock.calls.map(([title]) => {
+          return title;
+        }),
+      ).toStrictEqual(["Cold thread | VM0"]);
+    } finally {
+      titleSetter.mockRestore();
+    }
+  });
+
   it("uses in-memory event metadata without another metadata request", async () => {
     const metadataThreadIds: string[] = [];
     context.mocks.api(chatThreadMetadataContract.get, ({ params, respond }) => {
@@ -334,25 +361,38 @@ describe("chat thread metadata readiness", () => {
         latestSeqId: 1,
       });
     });
-    context.mocks.api(chatThreadsContract.events, async ({ respond }) => {
-      if (!catchUp) {
-        return respond(200, { events: [], hasMore: false });
-      }
-      catchUpRequested.resolve();
-      await releaseCatchUp.promise;
-      return respond(200, { events: [created], hasMore: false });
-    });
+    context.mocks.api(
+      chatThreadsContract.events,
+      async ({ query, respond }) => {
+        if (!catchUp) {
+          return respond(200, { events: [], hasMore: false });
+        }
+        if ((query.sinceSeqId ?? 0) >= created.seqId) {
+          return respond(200, { events: [], hasMore: false });
+        }
+        if (!catchUpRequested.settled()) {
+          catchUpRequested.resolve();
+        }
+        await releaseCatchUp.promise;
+        return respond(200, { events: [created], hasMore: false });
+      },
+    );
 
     setupChatPage(`/chats/${OTHER_THREAD_ID}`);
     await expectActiveThread(OTHER_THREAD_ID, "Existing thread");
     await waitFor(() => {
       expect(
-        context.mocks.ably.hasSubscription("threadListChanged"),
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
       ).toBeTruthy();
     });
 
     catchUp = true;
-    context.mocks.ably.trigger("threadListChanged");
+    context.mocks.ably.triggerOnChannel(
+      SHARED_DATABASE_REALTIME_CHANNEL,
+      "threadListChanged",
+    );
     await catchUpRequested.promise;
     context.store.set(navigateToChat$, THREAD_ID);
 
@@ -395,20 +435,30 @@ describe("chat thread metadata readiness", () => {
         latestSeqId: 1,
       });
     });
-    context.mocks.api(chatThreadsContract.events, async ({ respond }) => {
-      if (!reconnecting) {
-        return respond(200, { events: [], hasMore: false });
-      }
-      reconnectRequested.resolve();
-      await releaseReconnect.promise;
-      return respond(200, { events: [created], hasMore: false });
-    });
+    context.mocks.api(
+      chatThreadsContract.events,
+      async ({ query, respond }) => {
+        if (!reconnecting) {
+          return respond(200, { events: [], hasMore: false });
+        }
+        if ((query.sinceSeqId ?? 0) >= created.seqId) {
+          return respond(200, { events: [], hasMore: false });
+        }
+        if (!reconnectRequested.settled()) {
+          reconnectRequested.resolve();
+        }
+        await releaseReconnect.promise;
+        return respond(200, { events: [created], hasMore: false });
+      },
+    );
 
     setupChatPage(`/chats/${OTHER_THREAD_ID}`);
     await expectActiveThread(OTHER_THREAD_ID, "Online thread");
     await waitFor(() => {
       expect(
-        context.mocks.ably.hasSubscription("threadListChanged"),
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
       ).toBeTruthy();
     });
 

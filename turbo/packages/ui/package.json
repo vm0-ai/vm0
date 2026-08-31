@@ -1,6 +1,6 @@
 {
   "name": "@okouai/ui",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "module",
   "private": true,
   "exports": {
@@ -17,7 +17,9 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.1.18",
+    "@okouai/eslint-config": "workspace:*",
+    "@okouai/typescript-config": "workspace:*",
+    "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.7.0",
     "@testing-library/react": "^16.1.0",
@@ -26,9 +28,7 @@
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^6.0.1",
-    "@okouai/eslint-config": "workspace:*",
-    "@okouai/typescript-config": "workspace:*",
-    "autoprefixer": "^10.4.21",
+    "autoprefixer": "^10.5.4",
     "eslint": "^9.34.0",
     "happy-dom": "^20.11.1",
     "oxlint": "^1.75.0",
@@ -42,7 +42,6 @@
     "@base-ui/react": "^1.7.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "cmdk": "^1.1.1",
     "lucide-react": "1.30.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",

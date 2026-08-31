@@ -17,8 +17,8 @@ import {
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../../lib/time";
 import {
+  publishChatThreadMessageCreatedSafely,
   publishThreadListChanged,
-  publishUserSignal,
 } from "../external/realtime";
 import { logger } from "../../lib/log";
 import { activePendingRunPredicate } from "./agent-run-activity.service";
@@ -430,14 +430,19 @@ async function promoteQueuedCandidate(
 }
 
 async function publishPromotedQueueSideEffects(args: {
+  readonly orgId: string;
   readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
 }): Promise<void> {
   if (args.queueMarkerNotification) {
-    await publishUserSignal(
-      [args.queueMarkerNotification.userId],
-      `chatThreadMessageCreated:${args.queueMarkerNotification.chatThreadId}`,
-    );
-    await publishThreadListChanged(args.queueMarkerNotification.userId);
+    await publishChatThreadMessageCreatedSafely({
+      userId: args.queueMarkerNotification.userId,
+      orgId: args.orgId,
+      threadId: args.queueMarkerNotification.chatThreadId,
+    });
+    await publishThreadListChanged({
+      userId: args.queueMarkerNotification.userId,
+      orgId: args.orgId,
+    });
   }
 }
 
@@ -464,6 +469,7 @@ async function promoteQueuedCandidateWithSideEffects(
   }
 
   await publishPromotedQueueSideEffects({
+    orgId: args.orgId,
     queueMarkerNotification: result.queueMarkerNotification,
   });
   const promotionSideEffectsRegisteredAt = now();

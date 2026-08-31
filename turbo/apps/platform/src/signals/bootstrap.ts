@@ -2,8 +2,13 @@ import { command, type Command } from "ccstate";
 import { createElement } from "react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { SupportedLocale } from "../i18n/resources.ts";
-import { setupClerk$, watchOrgSwitch$ } from "./auth.ts";
-import { initTheme$ } from "./theme.ts";
+import {
+  initAuthRecovery$,
+  initClerkRuntime$,
+  setupClerk$,
+  watchOrgSwitch$,
+} from "./auth.ts";
+import { initTheme$, syncThemePreferences$ } from "./theme.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
 import { setRootSignal$ } from "./root-signal.ts";
 import {
@@ -38,6 +43,7 @@ import { setupAgentDetailPage$ } from "./agents-page/agent-detail-page-setup.ts"
 import { setupArtifactsPage$ } from "./artifacts-page/artifacts-page-setup.ts";
 import { setupWorkflowsPage$ } from "./workflows-page/workflows-page-setup.ts";
 import { setupWorkflowDetailPage$ } from "./workflows-page/workflow-detail-page-setup.ts";
+import { setupOfficialWorkflowsPage$ } from "./workflows-page/official-workflows-page-setup.ts";
 import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
 import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
 import { setupAgentChatPage$ } from "./okou-page/agent-chat-page-setup.ts";
@@ -67,8 +73,6 @@ import { setupConnectorCallbackPage$ } from "./connectors-page/connector-callbac
 import { setupBankingConnectReturnPage$ } from "./banking-connect-return-page-setup.ts";
 import { setupEmailUnsubscribePage$ } from "./email-unsubscribe/email-unsubscribe-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
-import { setupMorningBriefUnsubscribePage$ } from "./morning-brief-unsubscribe/morning-brief-unsubscribe-page-setup.ts";
-import { setupSignInPage$, setupSignUpPage$ } from "./auth-page-setup.ts";
 import {
   setupSignInV2Page$,
   setupSignUpV2Page$,
@@ -161,34 +165,18 @@ const ROUTE_CONFIG = [
   },
   {
     path: ROUTES.signIn,
-    setup: setupSignInPage$,
+    setup: setupPageWrapper(setupSignInV2Page$),
   },
   {
     path: ROUTES.signInCatchAll,
-    setup: setupSignInPage$,
+    setup: setupPageWrapper(setupSignInV2Page$),
   },
   {
     path: ROUTES.signUp,
-    setup: setupSignUpPage$,
-  },
-  {
-    path: ROUTES.signUpCatchAll,
-    setup: setupSignUpPage$,
-  },
-  {
-    path: ROUTES.signInV2,
-    setup: setupPageWrapper(setupSignInV2Page$),
-  },
-  {
-    path: ROUTES.signInV2CatchAll,
-    setup: setupPageWrapper(setupSignInV2Page$),
-  },
-  {
-    path: ROUTES.signUpV2,
     setup: setupPageWrapper(setupSignUpV2Page$),
   },
   {
-    path: ROUTES.signUpV2CatchAll,
+    path: ROUTES.signUpCatchAll,
     setup: setupPageWrapper(setupSignUpV2Page$),
   },
 
@@ -268,6 +256,14 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.agentPermissions,
     setup: setupAuthPageWrapper(setupPermissionAllowPage$),
+  },
+  {
+    path: ROUTES.officialWorkflowDetail,
+    setup: setupAuthSidebarPageWrapper(setupOfficialWorkflowsPage$),
+  },
+  {
+    path: ROUTES.officialWorkflows,
+    setup: setupAuthSidebarPageWrapper(setupOfficialWorkflowsPage$),
   },
   {
     path: ROUTES.workflowDetail,
@@ -398,11 +394,6 @@ const ROUTE_CONFIG = [
     setup: setupSignInTokenPage$,
   },
   {
-    // Public route: opened from the Morning Brief email, no auth guard.
-    path: ROUTES.morningBriefUnsubscribe,
-    setup: setupMorningBriefUnsubscribePage$,
-  },
-  {
     path: ROUTES.redeemCampaign,
     setup: setupAuthPageWrapper(setupRedeemCampaignPage$),
   },
@@ -467,20 +458,40 @@ const setupFeatureSwitches$ = command(
   ) => {
     await set(reloadFeatureSwitch$, signal);
     await set(syncLocalePreference$, initialLocaleLoadFailure, signal);
+    await set(syncThemePreferences$, signal);
   },
 );
+
+function notificationChatThreadId(data: unknown): string | null {
+  if (
+    typeof data !== "object" ||
+    data === null ||
+    !("type" in data) ||
+    data.type !== "NOTIFICATION_CLICK" ||
+    !("url" in data) ||
+    typeof data.url !== "string" ||
+    !URL.canParse(data.url, window.location.origin)
+  ) {
+    return null;
+  }
+
+  const url = new URL(data.url, window.location.origin);
+  if (url.origin !== window.location.origin) {
+    return null;
+  }
+
+  return /^\/chats\/([^/]+)$/u.exec(url.pathname)?.[1] ?? null;
+}
 
 const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
   navigator.serviceWorker?.addEventListener(
     "message",
-    onDomEventFn((event: MessageEvent): void => {
-      if (event.data?.type === "NOTIFICATION_CLICK" && event.data.url) {
-        const match = /^\/chats\/(.+)$/.exec(event.data.url as string);
-        if (match) {
-          set(detachedNavigateTo$, "/chats/:threadId", {
-            pathParams: { threadId: match[1] },
-          });
-        }
+    onDomEventFn((event: MessageEvent<unknown>): void => {
+      const threadId = notificationChatThreadId(event.data);
+      if (threadId) {
+        set(detachedNavigateTo$, ROUTES.chat, {
+          pathParams: { threadId },
+        });
       }
     }),
     {
@@ -499,6 +510,8 @@ export const bootstrap$ = command(
     set(markBootstrapLocaleInitCompleted$);
     set(initTheme$);
     set(setRootSignal$, signal);
+    set(initClerkRuntime$, signal);
+    set(initAuthRecovery$, signal);
     set(initBootstrapSkeleton$);
 
     set(setupLoggers$);

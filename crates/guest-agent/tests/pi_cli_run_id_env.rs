@@ -101,13 +101,19 @@ fi
         common::clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var(guest_contracts::env::CLI_AGENT_TYPE_ENV, "pi");
         std::env::set_var(guest_contracts::env::RUN_ID_ENV, run_id);
-        std::env::set_var(guest_contracts::env::API_URL_ENV, &server.base_url);
-        std::env::set_var(guest_contracts::env::API_TOKEN_ENV, "test-token");
         std::env::set_var(
-            guest_contracts::env::SANDBOX_ID_ENV,
+            guest_contracts::env::CANONICAL_API_URL_ENV,
+            &server.base_url,
+        );
+        std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
             "00000000-0000-4000-8000-000000000abc",
         );
-        std::env::set_var(guest_contracts::env::SANDBOX_REUSE_RESULT_ENV, "reused");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+            "reused",
+        );
         std::env::set_var("HOME", tmp.path());
         let mut paths = vec![bin_dir.clone()];
         paths.extend(std::env::split_paths(
@@ -167,8 +173,8 @@ fi
     assert_eq!(result.exit_code, common::CLEAN_EXIT);
     assert_eq!(result.last_event_sequence, Some(15));
     assert_eq!(
-        result.claude_result.map(|summary| summary.status),
-        Some(guest_agent::cli::ClaudeResultStatus::Success)
+        result.jsonl_result.map(|summary| summary.status),
+        Some(guest_agent::cli::JsonlResultStatus::Success)
     );
     let mut delivered_events = Vec::new();
     for request in server.requests()? {

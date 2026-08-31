@@ -3,7 +3,6 @@ import {
   userPreferencesContract,
   type UpdateUserPreferencesRequest,
 } from "@okouai/api-contracts/contracts/user-preferences";
-import { morningBriefContract } from "@okouai/api-contracts/contracts/morning-brief";
 import { apiClient$ } from "../../api-client.ts";
 import { clerk$ } from "../../auth.ts";
 import { accept } from "../../../lib/accept.ts";
@@ -57,20 +56,5 @@ export const updateUserPreference$ = command(
     await clerk.session?.getToken({ skipCache: true });
 
     set(reloadUserPreferences$);
-  },
-);
-
-export const triggerMorningBrief$ = command(
-  async (
-    { get },
-    _signal: AbortSignal,
-  ): Promise<{ runId: string | null; queued: boolean }> => {
-    const createClient = get(apiClient$);
-    const client = createClient(morningBriefContract);
-    const result = await accept(
-      client.trigger({ body: {}, fetchOptions: { signal: _signal } }),
-      [200],
-    );
-    return { runId: result.body.runId, queued: result.body.queued };
   },
 );

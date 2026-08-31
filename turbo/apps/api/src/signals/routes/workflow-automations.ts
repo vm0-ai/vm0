@@ -361,6 +361,8 @@ const runAutomationInner$ = command(
         member: memberFromAuth(auth),
         automationId: params.id,
         ...(auth.tokenType === "agent" ? { sourceRunId: auth.runId } : {}),
+        publicBrand:
+          auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
       },
       signal,
     );

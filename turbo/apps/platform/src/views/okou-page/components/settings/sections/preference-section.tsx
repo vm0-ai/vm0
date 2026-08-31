@@ -8,8 +8,8 @@ import type { SendMode } from "@okouai/api-contracts/contracts/user-preferences"
 import { pageSignal$ } from "../../../../../signals/page-signal.ts";
 import {
   themePreference$,
-  setTheme$,
   type ThemePreference,
+  updateThemePreference$,
 } from "../../../../../signals/theme.ts";
 import { sendMode$ } from "../../../../../signals/send-mode.ts";
 import { detach, Reason } from "../../../../../signals/utils.ts";
@@ -18,7 +18,6 @@ import {
   pendingSendMode$,
 } from "../../../../../signals/okou-page/settings/preferences-page.ts";
 import { TimezoneSettings } from "../timezone-settings.tsx";
-import { MorningBriefSettings } from "../morning-brief-settings.tsx";
 import { SettingsSectionHeading } from "../settings-section-heading.tsx";
 import { AccountSection } from "./account-section.tsx";
 import { LanguageSettings } from "../language-settings.tsx";
@@ -38,7 +37,12 @@ function AppearanceBlock() {
   const prefLoadable = useLoadable(themePreference$);
   const current =
     prefLoadable.state === "hasData" ? prefLoadable.data : "system";
-  const setTheme = useSet(setTheme$);
+  const updateTheme = useSet(updateThemePreference$);
+  const pageSignal = useGet(pageSignal$);
+
+  const handleChange = (value: ThemePreference) => {
+    detach(updateTheme(value, pageSignal), Reason.DomCallback);
+  };
 
   return (
     <div className="flex flex-col gap-3">
@@ -83,7 +87,7 @@ function AppearanceBlock() {
                 type="button"
                 aria-pressed={isActive}
                 onClick={() => {
-                  setTheme(value);
+                  handleChange(value);
                 }}
                 className={cn(
                   "flex items-center gap-2 rounded-lg border border-[0.7px] px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
@@ -239,7 +243,6 @@ export function PreferenceSection() {
           })}
         />
         <TimezoneSettings />
-        <MorningBriefSettings />
       </section>
     </div>
   );

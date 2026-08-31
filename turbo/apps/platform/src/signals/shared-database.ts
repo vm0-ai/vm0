@@ -9,6 +9,7 @@ import type {
 import type {
   SharedDatabaseBridge,
   SharedDatabaseHeartbeat,
+  SharedDatabaseSubscriptionCallback,
 } from "../shared-database/bridge.ts";
 import type { SharedDatabaseConnectionStatus } from "../shared-database/protocol.ts";
 
@@ -93,7 +94,7 @@ export const onSharedDatabase$ = command(
   async (
     { get },
     dataKey: SharedDatabaseDataKey,
-    callback: () => void,
+    callback: SharedDatabaseSubscriptionCallback,
     signal: AbortSignal,
   ): Promise<void> => {
     await requireBridge(get(sharedDatabaseBridgeState$)).on(

@@ -9,9 +9,9 @@ import {
 import { connectorReconnectReasonSchema } from "./connector-schemas";
 import { apiErrorSchema } from "./errors";
 
-const c = initContract();
+export { CONNECTOR_CATALOG_MAX_RAW_BYTES } from "@okouai/connectors/connector-catalog/contracts";
 
-export const CONNECTOR_CATALOG_MAX_RAW_BYTES = 16 * 1024 * 1024;
+const c = initContract();
 
 const publicConnectorCatalogAuthMethodSummarySchema = z.object({
   id: connectorAuthMethodIdSchema,
@@ -117,6 +117,7 @@ const publicConnectorCatalogConnectionStatusSchema = z.enum([
 ]);
 
 const publicConnectorCatalogConnectionSchema = z.object({
+  id: z.uuid().optional(),
   authMethod: connectorAuthMethodIdSchema,
   externalUsername: z.string().nullable(),
   externalEmail: z.string().nullable(),
@@ -280,7 +281,6 @@ export const connectorCatalogContract = c.router({
       200: publicConnectorCatalogDiscoveryResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
-      404: apiErrorSchema,
       503: apiErrorSchema,
     },
     summary: "Browse featured connectors or search by slug and label",

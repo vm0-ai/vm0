@@ -142,12 +142,10 @@ class TestUsageReportingIdempotency:
         requests_by_path = {request.path: request for request in webhook.requests}
         assert set(requests_by_path) == {
             "/api/webhooks/agent/usage-event",
-            "/api/webhooks/agent/model-usage-observation",
+            "/api/runners/model-usage-observations",
         }
         body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
-        observation_body = requests_by_path[
-            "/api/webhooks/agent/model-usage-observation"
-        ].json_body()
+        observation_body = requests_by_path["/api/runners/model-usage-observations"].json_body()
         assert body["events"][0]["quantity"] == 10
         assert observation_body["events"][0]["inputTokens"] == 10
         assert body["events"][0]["provider"] == "claude-sonnet-4-6"
@@ -191,12 +189,10 @@ class TestUsageReportingIdempotency:
         requests_by_path = {request.path: request for request in webhook.requests}
         assert set(requests_by_path) == {
             "/api/webhooks/agent/usage-event",
-            "/api/webhooks/agent/model-usage-observation",
+            "/api/runners/model-usage-observations",
         }
         body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
-        observation_body = requests_by_path[
-            "/api/webhooks/agent/model-usage-observation"
-        ].json_body()
+        observation_body = requests_by_path["/api/runners/model-usage-observations"].json_body()
         assert body["events"][0]["quantity"] == 10
         assert observation_body["events"][0]["inputTokens"] == 10
         assert body["events"][0]["provider"] == "claude-sonnet-4-6"

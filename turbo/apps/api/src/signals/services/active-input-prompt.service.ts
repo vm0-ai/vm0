@@ -9,6 +9,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { resolveThreadGenerationTemplatePrompt } from "../../lib/thread-generation-template";
+import type { GenerationTemplateIdentity } from "@okouai/core/generation-template-identity";
 import { loadAgentPhoneQueuedLaunchMaterial } from "./agentphone-queued-launch-context.service";
 import { loadFeishuQueuedLaunchMaterial } from "./feishu-queued-launch-context.service";
 import { loadSlackQueuedLaunchMaterial } from "./slack-queued-launch-context.service";
@@ -163,13 +164,27 @@ export type PendingActiveInputRow = Awaited<
   ReturnType<typeof pendingActiveInputRows>
 >[number];
 
+/**
+ * One pending active input, rendered for delivery.
+ *
+ * `templateIdentities` travels with the prompt rather than being reported here:
+ * materialization runs again whenever an open delivery is retrieved or a
+ * reservation retries, so reporting at this point would count one steered
+ * prompt several times. The caller reports it once, when the delivery row is
+ * created.
+ */
+export interface MaterializedActiveInputPrompt {
+  readonly prompt: string;
+  readonly templateIdentities: readonly GenerationTemplateIdentity[];
+}
+
 export async function materializePendingActiveInputPrompts(
   db: Db,
   candidates: readonly PendingActiveInputRow[],
   auth: { readonly orgId: string; readonly userId: string },
   signal: AbortSignal,
-): Promise<Map<string, string> | null> {
-  const prompts = new Map<string, string>();
+): Promise<Map<string, MaterializedActiveInputPrompt> | null> {
+  const prompts = new Map<string, MaterializedActiveInputPrompt>();
   const featureSwitchContext = await loadUserFeatureSwitchContext(
     db,
     auth.orgId,
@@ -198,18 +213,6 @@ export async function materializePendingActiveInputPrompts(
         },
         orgId: auth.orgId,
         userId: auth.userId,
-        introVideoTemplatesEnabled: isFeatureEnabled(
-          FeatureSwitchKey.IntroVideoTemplates,
-          featureSwitchContext,
-        ),
-        latestWebsiteTemplatesEnabled: isFeatureEnabled(
-          FeatureSwitchKey.LatestWebsiteTemplates,
-          featureSwitchContext,
-        ),
-        latestPresentationTemplatesEnabled: isFeatureEnabled(
-          FeatureSwitchKey.LatestPresentationTemplates,
-          featureSwitchContext,
-        ),
         presentationTemplatesEnabled: isFeatureEnabled(
           FeatureSwitchKey.PresentationTemplates,
           featureSwitchContext,
@@ -281,12 +284,9 @@ async function materializeActiveInputPrompt(
     readonly event: ActiveInputPromptEvent;
     readonly orgId: string;
     readonly userId: string;
-    readonly introVideoTemplatesEnabled: boolean;
-    readonly latestWebsiteTemplatesEnabled: boolean;
-    readonly latestPresentationTemplatesEnabled: boolean;
     readonly presentationTemplatesEnabled: boolean;
   },
-): Promise<string> {
+): Promise<MaterializedActiveInputPrompt> {
   const userMessage = requiredUserMessageForEvent(
     args.event.eventType,
     args.event.userMessage,
@@ -301,18 +301,16 @@ async function materializeActiveInputPrompt(
       `${args.event.contextType} active input is missing launch material`,
     );
   }
-  const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
+  const generationTemplates = resolveThreadGenerationTemplatePrompt({
     explicit: projection.primaryTemplate,
     explicitTemplates: projection.templates,
-    introVideoTemplatesEnabled: args.introVideoTemplatesEnabled,
-    latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
-    latestPresentationTemplatesEnabled: args.latestPresentationTemplatesEnabled,
     presentationTemplatesEnabled: args.presentationTemplatesEnabled,
     // Steered into a run that is already executing, whose volumes were fixed
     // when it was created. There is no package to point the agent at, so a
     // private template contributes no guidance rather than a dangling path.
     mountedUserPresentationTemplateIds: [],
   });
+  const generationTemplatePrompt = generationTemplates.prompt;
   const prompt = integration?.prompt ?? projection.agentPrompt;
   const parts = [
     integration?.appendSystemPrompt ?? "",
@@ -325,5 +323,8 @@ async function materializeActiveInputPrompt(
   if (materialized.length === 0) {
     throw new Error("Active input event materialized to an empty prompt");
   }
-  return materialized;
+  return {
+    prompt: materialized,
+    templateIdentities: generationTemplates.identities,
+  };
 }

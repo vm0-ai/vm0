@@ -54,6 +54,19 @@ Cancellation is visible immediately, and heartbeat timeout records an unknown
 consumer state, but neither path releases a reservation. Cooperative Guest
 completion and Runner post-exit completion are the existing quiescence signals.
 
+### Post-timeout Webhook Admission
+
+While timeout still represents an uncertain consumer state, runtime mutation
+webhooks stop creating new canonical work for that run. Heartbeat returns `404`,
+event batches retain their existing sequence acknowledgement but are ignored,
+and new checkpoint or checkpoint-history preparation requests return `400`.
+The existing completed Pi checkpoint exact-retry behavior is unchanged.
+
+Usage events and telemetry remain accepted after timeout because they report
+work that may already have happened. Storage and firewall admission, together
+with the atomic timeout-versus-completion boundary, are separate rollout stages;
+timeout alone still does not release an active input delivery.
+
 Codex execution timeout and cancellation first allow an in-flight `turn/steer`
 to settle within the bounded sink window. A successful response still persists
 its receipt. If the response remains pending, Guest drops the non-reusable
@@ -82,6 +95,47 @@ Completion finalizes the delivery and applies or observes the terminal run
 state in one short transaction. Realtime publication, callbacks, usage work,
 and queue drain run only after commit. A first late finalization drains the
 thread without replaying the run's ordinary terminal callbacks or billing work.
+
+### Final Checkpoint Completion
+
+The bundled Guest prepares final checkpoint metadata and sends it in
+`/api/webhooks/agent/complete`. Session history and artifact bytes are uploaded
+before that request; completion carries their validated identities and storage
+snapshots together with the event watermark, active-input delivery IDs, and
+sandbox reuse metadata. The API then persists the checkpoint, promotes the
+eligible canonical AgentSession conversation, settles active-input delivery,
+and applies the terminal run state in the same database transaction.
+
+The nested checkpoint omits `runId`; the completion request's outer `runId` and
+sandbox authorization remain authoritative. Invalid checkpoint metadata rejects
+the combined request without partially finalizing delivery or changing the run
+status. Repeating a committed combined request is idempotent, and a later
+checkpoint-less Runner completion observes the first terminal result.
+
+Successful execution and successful recovery send one combined completion and
+do not post the prepared checkpoint to the standalone route. Combined reporting
+uses the checkpoint retry budget. Mandatory success-path failure produces a
+nonzero Guest result, while recovery remains best-effort. Explicit cancellation
+still sends one checkpoint-less completion when checkpoint preparation or the
+combined request is not acknowledged. Local session-history reconciliation
+happens only after the combined request is acknowledged.
+
+The standalone checkpoint route and checkpoint-less completion remain supported
+for outgoing Guests and the unchanged Runner fallback. Runner completion timing
+and payloads are unchanged. The API release that accepts the combined request
+must reach production, and preceding API handlers must drain, before a Guest
+starts sending it. While combined Guests can execute, that API release is the
+rollback floor.
+
+After the combined Guest/Runner artifact reaches production, record its traffic
+promotion boundary, stop the outgoing Runner target from claiming new work, and
+wait for its existing Guest runs to drain. The later immutable-timeout rollout
+must wait at least 7,200 seconds after that cutover and confirm that no
+pre-cutover `pending` or `running` cohort remains.
+
+This compatibility boundary does not make timeout immutable and does not change
+legacy standalone checkpoint admission. Those changes require the later timeout
+rollout after the old active-run cohort drains.
 
 ## Compatibility
 

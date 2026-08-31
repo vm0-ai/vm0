@@ -28,7 +28,9 @@ import {
   holdChatEventInsertTransactionFixture,
   holdGoalThreadLockFixture,
   holdModelPolicyReadsFixture,
+  holdRunOutputMaterializationRowFixture,
   invalidateChatCallbackPayloadFixture,
+  insertQueuedLegacyMorningBriefFixture,
   insertQueuedSlackMissingContextFixture,
   readChatEventContextFixture,
   removeAcknowledgedCancellationLifecycleFixture,
@@ -1732,7 +1734,6 @@ describe("CHAT-02: completed chat callback", () => {
       "api_dispatch_pre_create_zero_chat_callback_load_terminal",
       "api_dispatch_pre_create_zero_chat_callback_prepare_completed",
       "api_dispatch_pre_create_zero_chat_callback_load_db_output_state",
-      "api_dispatch_pre_create_zero_chat_callback_db_output_complete",
       "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker",
       "api_dispatch_pre_create_zero_chat_callback_load_followup_context",
       "api_dispatch_pre_create_zero_chat_callback_auto_send_load_thread",
@@ -1919,6 +1920,9 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     expect(appendSystemPrompt).toContain(goalBrief);
     expect(appendSystemPrompt).toContain("Autonomy budget: 9");
     expect(appendSystemPrompt).toContain("# How to operate");
+    expect(appendSystemPrompt).toContain(
+      "- Inspect goal state anytime with `okou goal get`.\n- Do not stop to ask the user and wait; act on the best available information.",
+    );
     expect(goalContext.body.sessionId).toBe(
       cliAgentSessionIdForChatRun(first.runId),
     );
@@ -3191,8 +3195,8 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
   }, 90_000);
 });
 
-describe("CHAT-02: chat output extraction and progress callbacks", () => {
-  it("uses DB-complete assistant output for queued auto-send without querying Axiom output", async () => {
+describe("CHAT-02: chat output extraction and terminal callbacks", () => {
+  it("uses durable assistant output for queued auto-send without querying Axiom output", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -3275,7 +3279,6 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
         "api_dispatch_pre_create_zero_chat_callback_load_terminal",
         "api_dispatch_pre_create_zero_chat_callback_prepare_completed",
         "api_dispatch_pre_create_zero_chat_callback_load_db_output_state",
-        "api_dispatch_pre_create_zero_chat_callback_db_output_complete",
         "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker",
         "api_dispatch_pre_create_zero_chat_callback_load_followup_context",
         "api_dispatch_pre_create_zero_chat_callback_auto_send_load_thread",
@@ -3403,6 +3406,76 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     expect(chatOutputAxiomQueryCalls()).toHaveLength(0);
   }, 90_000);
 
+  it("persists assistant-only batches without writing the run-output materialization", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt:
+        "persist assistant output while the callback projection is locked",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    await webhooks.requestAgentEvents(
+      {
+        runId: run.runId,
+        events: [
+          {
+            type: "result",
+            sequenceNumber: 0,
+            result: "Seed the callback projection row",
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    const held = await holdRunOutputMaterializationRowFixture({
+      runId: run.runId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      held.release();
+      await held.done;
+    });
+
+    await webhooks.requestAgentEvents(
+      {
+        runId: run.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 1,
+            message: {
+              id: "msg_bdd_no_output_materialization_write",
+              content: [
+                {
+                  type: "text",
+                  text: "Durable assistant output while the projection row is locked",
+                },
+              ],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+
+    await expect(held.blockedWaiterCount()).resolves.toBe(0);
+    const messages = await chat.listThreadEvents(actor, run.threadId);
+    expect(
+      eventBackedContents(messages.events, run.runId).map((message) => {
+        return message.content;
+      }),
+    ).toStrictEqual([
+      "Durable assistant output while the projection row is locked",
+    ]);
+    await flushWaitUntilForTest();
+    held.release();
+    await held.done;
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await flushWaitUntilForTest();
+  }, 30_000);
+
   it("persists normalized Claude text blocks independently across tool-only sequences", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -3464,8 +3537,6 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       [200],
     );
     context.mocks.axiom.query.mockClear();
-    context.mocks.axiomLogging.warn.mockClear();
-
     await completeChatRunOk(run.runId, sandboxHeaders, {
       lastEventSequence: 3,
     });
@@ -3506,16 +3577,6 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     ).toBe(3);
     expect(chatOutputAxiomQueryCalls()).toHaveLength(0);
     await flushWaitUntilForTest();
-    expect(
-      context.mocks.axiomLogging.warn.mock.calls.some(([message, fields]) => {
-        return (
-          message ===
-            "Run output projection is incomplete at terminal callback" &&
-          isRecord(fields) &&
-          fields.runId === run.runId
-        );
-      }),
-    ).toBeFalsy();
   }, 90_000);
 
   it("returns 503 when the required DB output projection is locked", async () => {
@@ -3658,21 +3719,10 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     const messages = await chat.listThreadEvents(actor, run.threadId);
     expect(eventBackedContents(messages.events, run.runId)).toHaveLength(6);
 
-    context.mocks.axiomLogging.warn.mockClear();
     await completeChatRunOk(run.runId, sandboxHeaders, {
       lastEventSequence: 5,
     });
     await flushWaitUntilForTest();
-    expect(
-      context.mocks.axiomLogging.warn.mock.calls.some(([message, fields]) => {
-        return (
-          message ===
-            "Run output projection is incomplete at terminal callback" &&
-          isRecord(fields) &&
-          fields.runId === run.runId
-        );
-      }),
-    ).toBeFalsy();
   }, 30_000);
 
   it("keeps rejected event reservations as sequence gaps", async () => {
@@ -3786,7 +3836,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     expect(firstAssistantEventsForRun(run.runId)).toHaveLength(1);
   });
 
-  it("uses DB projection for both no-output and result-only runs", async () => {
+  it("completes no-output runs and preserves the newest result-only output across retries", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -3855,8 +3905,36 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
         events: [
           {
             type: "result",
-            sequenceNumber: 0,
+            sequenceNumber: 2,
             result: "DB result fallback answer",
+          },
+        ],
+      },
+      resultOnlyHeaders,
+      [200],
+    );
+    await webhooks.requestAgentEvents(
+      {
+        runId: resultOnly.runId,
+        events: [
+          {
+            type: "result",
+            sequenceNumber: 2,
+            result: "DB result fallback answer",
+          },
+        ],
+      },
+      resultOnlyHeaders,
+      [200],
+    );
+    await webhooks.requestAgentEvents(
+      {
+        runId: resultOnly.runId,
+        events: [
+          {
+            type: "result",
+            sequenceNumber: 1,
+            result: "Older result must not replace the latest output",
           },
         ],
       },
@@ -3866,7 +3944,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     context.mocks.axiom.query.mockClear();
 
     await completeChatRunOk(resultOnly.runId, resultOnlyHeaders, {
-      lastEventSequence: 0,
+      lastEventSequence: 2,
     });
     messages = await waitForThreadMessages(
       actor,
@@ -3887,7 +3965,48 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     expect(firstAssistantEventsForRun(resultOnly.runId)).toHaveLength(1);
   }, 90_000);
 
-  it("completes with DB-only output when the projection is incomplete", async () => {
+  it("excludes stored result output above the terminal event boundary", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "exclude future result output",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    await webhooks.requestAgentEvents(
+      {
+        runId: run.runId,
+        events: [
+          {
+            type: "result",
+            sequenceNumber: 1,
+            result: "Future result must stay outside the completed run",
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    const messages = await waitForThreadMessages(
+      actor,
+      run.threadId,
+      (threadMessages) => {
+        return (
+          lifecycleMarkers(threadMessages, run.runId, "completed").length === 1
+        );
+      },
+    );
+    expect(eventBackedContents(messages.events, run.runId)).toHaveLength(0);
+    await flushWaitUntilForTest();
+    expect(firstAssistantEventsForRun(run.runId)).toStrictEqual([]);
+  }, 90_000);
+
+  it("completes when no output materialization exists", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -3922,7 +4041,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     expect(eventBackedContents(messages.events, run.runId)).toHaveLength(0);
   }, 90_000);
 
-  it("extracts assistant output from Codex items and result fallbacks, skips non-events, and acknowledges progress without reading events", async () => {
+  it("extracts assistant output from Codex items and result fallbacks, skips non-events, and handles heartbeats without reading events", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const routeRequests = chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -4112,6 +4231,83 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
 });
 
 describe("CHAT-02: drain-time admission failure", () => {
+  it("terminalizes a pre-cutover Morning Brief queue head without creating a Run", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const anchor = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before the legacy queue cutover",
+    });
+    const legacyPrompt = `legacy morning brief queue ${randomUUID()}`;
+    const queuedEventId = await insertQueuedLegacyMorningBriefFixture({
+      threadId: anchor.threadId,
+      content: legacyPrompt,
+    });
+    await api.requestCancelRun(actor, anchor.runId, [200]);
+    await flushWaitUntilForTest();
+    const terminal = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (events) => {
+        return (
+          userMessages(events).some((event) => {
+            return (
+              event.eventType === "input.rejected" &&
+              event.revokesEventId === queuedEventId &&
+              event.error === "legacy_morning_brief_cutover"
+            );
+          }) &&
+          assistantMessages(events).some((event) => {
+            return (
+              event.eventType === "output.error" &&
+              event.error === "legacy_morning_brief_cutover"
+            );
+          })
+        );
+      },
+    );
+    expect(
+      userMessages(terminal.events).filter((event) => {
+        return event.revokesEventId === queuedEventId;
+      }),
+    ).toStrictEqual([
+      expect.objectContaining({
+        eventType: "input.rejected",
+        error: "legacy_morning_brief_cutover",
+      }),
+    ]);
+    expect(
+      assistantMessages(terminal.events).filter((event) => {
+        return (
+          event.eventType === "output.error" &&
+          event.error === "legacy_morning_brief_cutover"
+        );
+      }),
+    ).toHaveLength(1);
+    expect(
+      (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
+        return run.prompt === legacyPrompt;
+      }),
+    ).toHaveLength(0);
+
+    await api.requestCancelRun(actor, anchor.runId, [200, 400]);
+    await flushWaitUntilForTest();
+    const afterDuplicate = await chat.listThreadEvents(actor, anchor.threadId);
+    expect(
+      userMessages(afterDuplicate.events).filter((event) => {
+        return event.revokesEventId === queuedEventId;
+      }),
+    ).toHaveLength(1);
+    expect(
+      assistantMessages(afterDuplicate.events).filter((event) => {
+        return (
+          event.eventType === "output.error" &&
+          event.error === "legacy_morning_brief_cutover"
+        );
+      }),
+    ).toHaveLength(1);
+  }, 90_000);
+
   it.each([
     {
       publicBrand: "okou",
@@ -4310,7 +4506,7 @@ describe("CHAT-02: drain-time admission failure", () => {
       {
         model: "claude-sonnet-5",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },
@@ -5056,8 +5252,6 @@ describe("CHAT-02: auto-send after failures", () => {
     expectNoChatCallbackPreCreateTimingActions(timingEvents, [
       "api_dispatch_pre_create_zero_chat_callback_prepare_completed",
       "api_dispatch_pre_create_zero_chat_callback_load_db_output_state",
-      "api_dispatch_pre_create_zero_chat_callback_db_output_complete",
-      "api_dispatch_pre_create_zero_chat_callback_db_output_incomplete",
       "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker",
       "api_dispatch_pre_create_zero_chat_callback_load_followup_context",
     ]);

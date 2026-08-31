@@ -35,7 +35,7 @@ import type {
   ConnectorCatalogArtifactConnector,
   ConnectorCatalogAuthMethod,
   ConnectorCatalogSkill,
-} from "./connector-catalog-artifacts/artifacts";
+} from "@okouai/connectors/connector-catalog/artifacts/artifacts";
 import {
   getConnectorCatalogResolutionDetail,
   listAcceptedConnectorCatalogAvailableSlugs,

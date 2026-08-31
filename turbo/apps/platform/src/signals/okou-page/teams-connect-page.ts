@@ -1,25 +1,15 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { i18n } from "../../i18n/index.ts";
 import { TeamsConnectPage } from "../../views/okou-page/teams-connect-page.tsx";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
-import { detachedNavigateTo$ } from "../route.ts";
-import { ROUTES } from "../route-paths.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 import { initTeamsConnectPage$ } from "./teams-connect-signals.ts";
 
 export const setupTeamsConnectPage$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const features = get(featureSwitch$);
-    if (!features[FeatureSwitchKey.TeamsIntegration]) {
-      set(detachedNavigateTo$, ROUTES.home, { replace: true });
-      return;
-    }
-
+  async ({ set }, signal: AbortSignal) => {
     if (await set(onboardGuard$, signal)) {
       return;
     }

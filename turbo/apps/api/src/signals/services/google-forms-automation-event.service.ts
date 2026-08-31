@@ -777,6 +777,7 @@ export async function ensureGoogleFormsWatchForUser(
     readonly connectorId?: string;
     readonly resetAutomationId?: string;
     readonly seedCursor?: string;
+    readonly allowStagedOfficialTarget?: boolean;
   },
   signal: AbortSignal,
 ): Promise<EnsureGoogleFormsWatchResult> {
@@ -807,7 +808,7 @@ export async function ensureGoogleFormsWatchForUser(
       },
       signal,
     );
-    if (!hasConsumer) {
+    if (!hasConsumer && args.allowStagedOfficialTarget !== true) {
       return { kind: "ok", watchStateId: null };
     }
     const [existing] = await tx
@@ -1020,7 +1021,7 @@ export async function reconcileGoogleFormsWatchesForUser(
     readonly formId: string;
   },
   signal: AbortSignal,
-): Promise<void> {
+): Promise<boolean> {
   const [state] = await args.db
     .select()
     .from(googleFormsWatchStates)
@@ -1033,19 +1034,21 @@ export async function reconcileGoogleFormsWatchesForUser(
     .limit(1);
   signal.throwIfAborted();
   if (state) {
-    await reconcileGoogleFormsWatchState(
+    const result = await reconcileGoogleFormsWatchState(
       {
         db: args.db,
         state,
       },
       signal,
     );
-    return;
+    return result.kind !== "failed";
   }
   const hasConsumer = await hasEnabledGoogleFormsConsumer(args, signal);
   if (hasConsumer) {
-    await ensureGoogleFormsWatchForUser(args, signal);
+    const ensured = await ensureGoogleFormsWatchForUser(args, signal);
+    return ensured.kind === "ok";
   }
+  return true;
 }
 
 export async function cleanupGoogleFormsWatchesForConnector(

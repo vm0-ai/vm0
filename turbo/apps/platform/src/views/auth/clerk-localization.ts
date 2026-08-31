@@ -1,17 +1,9 @@
-import {
-  deDE,
-  enUS,
-  esES,
-  frFR,
-  hiIN,
-  idID,
-  itIT,
-  jaJP,
-  koKR,
-  ptBR,
-} from "@clerk/localizations";
 import { publicBrandPresentation } from "@okouai/core/public-brand";
 import type { TFunction } from "i18next";
+import {
+  clerkLocalizationForLocale,
+  type ClerkLocalizationCache,
+} from "../../i18n/clerk-localization.ts";
 import type { SupportedLocale } from "../../i18n/resources.ts";
 import type { BrandName } from "../../signals/branding.ts";
 
@@ -39,31 +31,13 @@ function replaceClerkApplicationName<T>(value: T, brandName: BrandName): T {
 export function getClerkLocalization(
   brandName: BrandName,
   locale: SupportedLocale,
+  clerkLocalizations: ClerkLocalizationCache,
   t: TFunction<"common">,
 ) {
   const supportEmail = publicBrandPresentation(
     brandName === "Okou" ? "okou" : "vm0",
   ).supportEmail;
-  const localization =
-    locale === "pt-BR"
-      ? ptBR
-      : locale === "ja-JP"
-        ? jaJP
-        : locale === "ko-KR"
-          ? koKR
-          : locale === "id-ID"
-            ? idID
-            : locale === "de-DE"
-              ? deDE
-              : locale === "es-ES"
-                ? esES
-                : locale === "it-IT"
-                  ? itIT
-                  : locale === "fr-FR"
-                    ? frFR
-                    : locale === "hi-IN"
-                      ? hiIN
-                      : enUS;
+  const localization = clerkLocalizationForLocale(clerkLocalizations, locale);
   const brandedLocalization =
     brandName === "Okou"
       ? replaceClerkApplicationName(localization, brandName)

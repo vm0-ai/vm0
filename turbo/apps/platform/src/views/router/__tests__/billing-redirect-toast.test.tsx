@@ -6,11 +6,9 @@ import {
 } from "@okouai/api-contracts/contracts/billing";
 
 import {
-  clearMockedAuthOnAbort,
-  mockOrganization,
-  mockUser,
-} from "../../../__tests__/mock-auth.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+  detachedSetupPage,
+  setupBootstrap,
+} from "../../../__tests__/page-helper.ts";
 import { search } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
@@ -86,16 +84,6 @@ describe("billing redirect toast", () => {
 
   it("fires Paid After Onboarding after a usage pack purchase is confirmed", async () => {
     const gtag = installGtagMock();
-    context.mocks.browser.url("http://localhost/");
-    mockUser(
-      { id: "test-user-123", fullName: "Test User" },
-      { token: "test-token" },
-    );
-    mockOrganization({
-      activeOrg: { id: "org_default", name: "Default Org" },
-      memberships: [{ id: "org_default" }],
-    });
-    clearMockedAuthOnAbort(context.signal);
     context.mocks.api(
       billingUsagePackCheckoutContract.create,
       ({ body, respond }) => {
@@ -121,6 +109,7 @@ describe("billing redirect toast", () => {
         });
       },
     );
+    await setupBootstrap({ context, path: "/error" });
     await context.store.set(
       startUsagePackCheckout$,
       {

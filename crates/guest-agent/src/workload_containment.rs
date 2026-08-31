@@ -29,32 +29,9 @@ use guest_contracts::process_containment::{
 const CGROUP_PROCS_FILE: &str = "cgroup.procs";
 const PROC_SELF_CGROUP: &str = "/proc/self/cgroup";
 const CGROUP2_SUPER_MAGIC: u64 = 0x6367_7270;
-const WORKLOAD_BOOTSTRAP_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+const WORKLOAD_BOOTSTRAP_IO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 #[cfg(debug_assertions)]
 const TEST_ALLOW_UNMANAGED_PROCESS_CONTROL_ENV: &str = "OKOU_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL";
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum CgroupPlacementEnvSource {
-    CanonicalOnly,
-    LegacyOnly,
-    Dual,
-}
-
-impl CgroupPlacementEnvSource {
-    fn label(self) -> &'static str {
-        match self {
-            Self::CanonicalOnly => "canonical-only",
-            Self::LegacyOnly => "legacy-only",
-            Self::Dual => "dual",
-        }
-    }
-}
-
-#[derive(Debug, Eq, PartialEq)]
-struct ResolvedCgroupPlacementEndpoint {
-    value: String,
-    source: CgroupPlacementEnvSource,
-}
 
 /// Root-opened capability used only to place CLI children in `workload/runtime`.
 #[derive(Clone, Debug)]
@@ -62,8 +39,6 @@ pub struct WorkloadContainment {
     placement: Arc<OwnedFd>,
     workload_path: Arc<PathBuf>,
     tool_placement_endpoint: Arc<str>,
-    workload_endpoint_source: CgroupPlacementEnvSource,
-    tool_endpoint_source: CgroupPlacementEnvSource,
 }
 
 /// Resource enforcement observed for a completed workload.
@@ -79,16 +54,13 @@ impl WorkloadContainment {
     /// Receive and adopt the production bootstrap descriptor.
     ///
     /// This must run before any other thread can read or mutate process-global
-    /// environment state. The caller supplies the once-resolved canonical or
-    /// legacy process-control presence. A process-control bootstrap requires a
-    /// matching workload capability in production. Direct local execution is
-    /// unmanaged when neither bootstrap value exists.
-    ///
-    /// This reader fallback covers existing runners and reusable sandboxes for
-    /// the two-hour guest runtime budget plus bounded finalization. #28914 owns
-    /// the writer-cutover and reader-removal follow-ups; remove the legacy
-    /// branches only after the reader floor, drain, rollback window, and
-    /// legacy-read-zero gates are complete.
+    /// environment state. The caller supplies the once-resolved canonical
+    /// process-control presence. A process-control bootstrap requires
+    /// the canonical workload and tool capabilities in production. Direct
+    /// local execution is unmanaged when the canonical process-control value
+    /// and both canonical capabilities are absent.
+    /// Retired root-bootstrap aliases are ignored during selection and scrubbed
+    /// after the canonical pair is captured successfully.
     pub fn from_process_env(process_control_present: bool) -> Result<Option<Self>, String> {
         let (placement_endpoint, tool_endpoint) =
             resolve_cgroup_placement_endpoints_from_process_env()?;
@@ -98,43 +70,30 @@ impl WorkloadContainment {
             (true, None, None) if test_allows_unmanaged_process_control() => Ok(None),
             (true, Some(placement), Some(tool)) => {
                 reject_empty_cgroup_placement_endpoint(
-                    &placement.value,
+                    &placement,
                     CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
-                    WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
                 )?;
-                reject_empty_cgroup_placement_endpoint(
-                    &tool.value,
-                    CANONICAL_TOOL_CGROUP_PROCS_ENV,
-                    TOOL_CGROUP_PROCS_ENDPOINT_ENV,
-                )?;
+                reject_empty_cgroup_placement_endpoint(&tool, CANONICAL_TOOL_CGROUP_PROCS_ENV)?;
                 // SAFETY: production calls this before constructing the Tokio
                 // runtime, so no other thread can access the environment.
                 unsafe {
                     remove_cgroup_placement_endpoint_aliases();
                 }
-                Self::receive(&placement.value, tool.value, placement.source, tool.source)
-                    .map(Some)
-                    .map_err(|error| {
-                        format!("invalid {WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV}: {error}")
-                    })
+                Self::receive(&placement, tool).map(Some).map_err(|error| {
+                    format!("invalid {CANONICAL_WORKLOAD_CGROUP_PROCS_ENV}: {error}")
+                })
             }
             (true, _, _) => Err(format!(
-                "{} or {}, and {} or {}, are required with {} or {}",
+                "{} and {} are required with {}",
                 CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
-                WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
                 CANONICAL_TOOL_CGROUP_PROCS_ENV,
-                TOOL_CGROUP_PROCS_ENDPOINT_ENV,
-                process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
-                process_control_ipc::BOOTSTRAP_ENV
+                process_control_ipc::CANONICAL_BOOTSTRAP_ENV
             )),
             (false, _, _) => Err(format!(
-                "{} or {}, and {} or {}, require {} or {}",
+                "{} and {} require {}",
                 CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
-                WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
                 CANONICAL_TOOL_CGROUP_PROCS_ENV,
-                TOOL_CGROUP_PROCS_ENDPOINT_ENV,
-                process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
-                process_control_ipc::BOOTSTRAP_ENV
+                process_control_ipc::CANONICAL_BOOTSTRAP_ENV
             )),
         }
     }
@@ -185,47 +144,29 @@ impl WorkloadContainment {
     /// Runner-owned endpoint injected into managed CLI environments.
     pub(crate) fn tool_placement_env(&self) -> (&'static str, String) {
         (
-            TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+            CANONICAL_TOOL_CGROUP_PROCS_ENV,
             self.tool_placement_endpoint.to_string(),
         )
     }
 
     pub(crate) fn env_source_evidence(&self) -> [(&'static str, &'static str); 2] {
         [
-            (
-                CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
-                self.workload_endpoint_source.label(),
-            ),
-            (
-                CANONICAL_TOOL_CGROUP_PROCS_ENV,
-                self.tool_endpoint_source.label(),
-            ),
+            (CANONICAL_WORKLOAD_CGROUP_PROCS_ENV, "canonical-only"),
+            (CANONICAL_TOOL_CGROUP_PROCS_ENV, "canonical-only"),
         ]
     }
 
-    fn receive(
-        endpoint: &str,
-        tool_endpoint: String,
-        workload_endpoint_source: CgroupPlacementEnvSource,
-        tool_endpoint_source: CgroupPlacementEnvSource,
-    ) -> io::Result<Self> {
+    fn receive(endpoint: &str, tool_endpoint: String) -> io::Result<Self> {
         let stream = process_control_ipc::connect_abstract(endpoint)?;
-        stream.set_read_timeout(Some(WORKLOAD_BOOTSTRAP_READ_TIMEOUT))?;
+        stream.set_read_timeout(Some(WORKLOAD_BOOTSTRAP_IO_TIMEOUT))?;
+        stream.set_write_timeout(Some(WORKLOAD_BOOTSTRAP_IO_TIMEOUT))?;
         let placement = process_control_ipc::receive_workload_placement(&stream)?;
-        Self::adopt(
-            placement,
-            tool_endpoint,
-            workload_endpoint_source,
-            tool_endpoint_source,
-        )
+        let containment = Self::adopt(placement, tool_endpoint)?;
+        process_control_ipc::write_workload_placement_confirmation(&stream)?;
+        Ok(containment)
     }
 
-    fn adopt(
-        placement: OwnedFd,
-        tool_endpoint: String,
-        workload_endpoint_source: CgroupPlacementEnvSource,
-        tool_endpoint_source: CgroupPlacementEnvSource,
-    ) -> io::Result<Self> {
+    fn adopt(placement: OwnedFd, tool_endpoint: String) -> io::Result<Self> {
         // SAFETY: F_GETFD only inspects the supplied descriptor.
         let descriptor_flags = unsafe { libc::fcntl(placement.as_raw_fd(), libc::F_GETFD) };
         if descriptor_flags < 0 {
@@ -243,73 +184,25 @@ impl WorkloadContainment {
             placement: Arc::new(placement),
             workload_path: Arc::new(workload_path),
             tool_placement_endpoint: Arc::from(tool_endpoint),
-            workload_endpoint_source,
-            tool_endpoint_source,
         })
     }
 }
 
-fn resolve_cgroup_placement_endpoints_from_process_env() -> Result<
-    (
-        Option<ResolvedCgroupPlacementEndpoint>,
-        Option<ResolvedCgroupPlacementEndpoint>,
-    ),
-    String,
-> {
+fn resolve_cgroup_placement_endpoints_from_process_env()
+-> Result<(Option<String>, Option<String>), String> {
     let workload_canonical = std::env::var_os(CANONICAL_WORKLOAD_CGROUP_PROCS_ENV);
-    let workload_legacy = std::env::var_os(WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV);
     let tool_canonical = std::env::var_os(CANONICAL_TOOL_CGROUP_PROCS_ENV);
-    let tool_legacy = std::env::var_os(TOOL_CGROUP_PROCS_ENDPOINT_ENV);
 
     Ok((
-        resolve_cgroup_placement_endpoint_aliases(
+        canonical_cgroup_placement_endpoint(
             CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
-            WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
             workload_canonical,
-            workload_legacy,
         )?,
-        resolve_cgroup_placement_endpoint_aliases(
-            CANONICAL_TOOL_CGROUP_PROCS_ENV,
-            TOOL_CGROUP_PROCS_ENDPOINT_ENV,
-            tool_canonical,
-            tool_legacy,
-        )?,
+        canonical_cgroup_placement_endpoint(CANONICAL_TOOL_CGROUP_PROCS_ENV, tool_canonical)?,
     ))
 }
 
-fn resolve_cgroup_placement_endpoint_aliases(
-    canonical_key: &'static str,
-    legacy_key: &'static str,
-    canonical: Option<OsString>,
-    legacy: Option<OsString>,
-) -> Result<Option<ResolvedCgroupPlacementEndpoint>, String> {
-    let canonical = cgroup_placement_endpoint_value(canonical_key, canonical)?;
-    let legacy = cgroup_placement_endpoint_value(legacy_key, legacy)?;
-
-    match (canonical, legacy) {
-        (None, None) => Ok(None),
-        (Some(value), None) => Ok(Some(ResolvedCgroupPlacementEndpoint {
-            value,
-            source: CgroupPlacementEnvSource::CanonicalOnly,
-        })),
-        (None, Some(value)) => Ok(Some(ResolvedCgroupPlacementEndpoint {
-            value,
-            source: CgroupPlacementEnvSource::LegacyOnly,
-        })),
-        (Some(canonical), Some(legacy)) if canonical == legacy => {
-            Ok(Some(ResolvedCgroupPlacementEndpoint {
-                value: canonical,
-                source: CgroupPlacementEnvSource::Dual,
-            }))
-        }
-        (Some(_), Some(_)) => Err(format!(
-            "conflicting cgroup placement environment aliases: canonical_key={canonical_key} \
-             legacy_key={legacy_key} state=conflict"
-        )),
-    }
-}
-
-fn cgroup_placement_endpoint_value(
+fn canonical_cgroup_placement_endpoint(
     key: &'static str,
     value: Option<OsString>,
 ) -> Result<Option<String>, String> {
@@ -322,15 +215,10 @@ fn cgroup_placement_endpoint_value(
         .transpose()
 }
 
-fn reject_empty_cgroup_placement_endpoint(
-    endpoint: &str,
-    canonical_key: &'static str,
-    legacy_key: &'static str,
-) -> Result<(), String> {
+fn reject_empty_cgroup_placement_endpoint(endpoint: &str, key: &'static str) -> Result<(), String> {
     if endpoint.is_empty() {
         return Err(format!(
-            "invalid cgroup placement environment aliases: canonical_key={canonical_key} \
-             legacy_key={legacy_key} state=empty"
+            "invalid cgroup placement environment: key={key} state=empty"
         ));
     }
     Ok(())
@@ -507,8 +395,6 @@ mod tests {
             placement: Arc::new(placement.try_clone().unwrap().into()),
             workload_path: Arc::new(PathBuf::from("/unused")),
             tool_placement_endpoint: Arc::from("test-tool-endpoint"),
-            workload_endpoint_source: CgroupPlacementEnvSource::LegacyOnly,
-            tool_endpoint_source: CgroupPlacementEnvSource::LegacyOnly,
         };
         let placement_fd = containment.placement.as_raw_fd();
         let mut command = tokio::process::Command::new("/bin/sh");
@@ -540,154 +426,62 @@ mod tests {
             placement: Arc::new(tempfile::tempfile().unwrap().into()),
             workload_path: Arc::new(PathBuf::from("/unused")),
             tool_placement_endpoint: Arc::from("runner-tool-endpoint"),
-            workload_endpoint_source: CgroupPlacementEnvSource::CanonicalOnly,
-            tool_endpoint_source: CgroupPlacementEnvSource::Dual,
         };
 
         assert_eq!(
             containment.tool_placement_env(),
             (
-                TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+                CANONICAL_TOOL_CGROUP_PROCS_ENV,
                 "runner-tool-endpoint".to_string()
             )
         );
         assert_ne!(
             containment.tool_placement_env().0,
-            CANONICAL_TOOL_CGROUP_PROCS_ENV
+            TOOL_CGROUP_PROCS_ENDPOINT_ENV
         );
         assert_eq!(
             containment.env_source_evidence(),
             [
                 (CANONICAL_WORKLOAD_CGROUP_PROCS_ENV, "canonical-only"),
-                (CANONICAL_TOOL_CGROUP_PROCS_ENV, "dual"),
+                (CANONICAL_TOOL_CGROUP_PROCS_ENV, "canonical-only"),
             ]
         );
     }
 
     #[test]
-    fn resolves_cgroup_placement_alias_values_without_collapsing_empty() {
-        let success_cases = [
-            ("absent", None, None, None),
-            (
-                "canonical-only",
-                Some("canonical-endpoint"),
-                None,
-                Some((
-                    "canonical-endpoint",
-                    CgroupPlacementEnvSource::CanonicalOnly,
-                )),
-            ),
-            (
-                "legacy-only",
-                None,
-                Some("legacy-endpoint"),
-                Some(("legacy-endpoint", CgroupPlacementEnvSource::LegacyOnly)),
-            ),
-            (
-                "equal-dual",
-                Some("shared-endpoint"),
-                Some("shared-endpoint"),
-                Some(("shared-endpoint", CgroupPlacementEnvSource::Dual)),
-            ),
-            (
-                "canonical-empty",
-                Some(""),
-                None,
-                Some(("", CgroupPlacementEnvSource::CanonicalOnly)),
-            ),
-            (
-                "legacy-empty",
-                None,
-                Some(""),
-                Some(("", CgroupPlacementEnvSource::LegacyOnly)),
-            ),
-            (
-                "dual-empty",
-                Some(""),
-                Some(""),
-                Some(("", CgroupPlacementEnvSource::Dual)),
-            ),
-        ];
-
-        for (name, canonical, legacy, expected) in success_cases {
-            let resolved = resolve_cgroup_placement_endpoint_aliases(
+    fn canonical_cgroup_placement_endpoint_preserves_values_and_empty() {
+        assert_eq!(
+            canonical_cgroup_placement_endpoint(CANONICAL_WORKLOAD_CGROUP_PROCS_ENV, None),
+            Ok(None)
+        );
+        assert_eq!(
+            canonical_cgroup_placement_endpoint(
                 CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
-                WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
-                canonical.map(OsString::from),
-                legacy.map(OsString::from),
-            )
-            .unwrap();
-            assert_eq!(
-                resolved
-                    .as_ref()
-                    .map(|endpoint| (endpoint.value.as_str(), endpoint.source)),
-                expected,
-                "{name} resolved incorrectly"
-            );
-        }
+                Some(OsString::from("canonical-endpoint")),
+            ),
+            Ok(Some("canonical-endpoint".to_string()))
+        );
+        assert_eq!(
+            canonical_cgroup_placement_endpoint(
+                CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
+                Some(OsString::new()),
+            ),
+            Ok(Some(String::new()))
+        );
     }
 
     #[test]
-    fn rejects_cgroup_placement_alias_conflicts_and_invalid_encoding_without_values() {
-        let canonical_key = CANONICAL_WORKLOAD_CGROUP_PROCS_ENV;
-        let legacy_key = WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV;
-        let expected_conflict = format!(
-            "conflicting cgroup placement environment aliases: canonical_key={canonical_key} \
-             legacy_key={legacy_key} state=conflict"
+    fn rejects_non_unicode_canonical_cgroup_placement_endpoint_without_values() {
+        let error = canonical_cgroup_placement_endpoint(
+            CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
+            Some(OsString::from_vec(vec![0xff])),
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            error,
+            format!("{CANONICAL_WORKLOAD_CGROUP_PROCS_ENV} must be valid UTF-8")
         );
-
-        for (name, canonical, legacy) in [
-            ("unequal", "canonical-must-not-leak", "legacy-must-not-leak"),
-            ("canonical-empty", "", "legacy-must-not-leak"),
-            ("legacy-empty", "canonical-must-not-leak", ""),
-        ] {
-            let error = resolve_cgroup_placement_endpoint_aliases(
-                canonical_key,
-                legacy_key,
-                Some(OsString::from(canonical)),
-                Some(OsString::from(legacy)),
-            )
-            .unwrap_err();
-            assert_eq!(error, expected_conflict, "{name} returned the wrong error");
-            assert!(
-                !error.contains("must-not-leak"),
-                "{name} exposed an endpoint"
-            );
-        }
-
-        for (name, canonical, legacy, expected_key) in [
-            (
-                "canonical-non-unicode",
-                Some(OsString::from_vec(vec![0xff])),
-                None,
-                canonical_key,
-            ),
-            (
-                "legacy-non-unicode",
-                None,
-                Some(OsString::from_vec(vec![0xff])),
-                legacy_key,
-            ),
-            (
-                "readable-with-non-unicode",
-                Some(OsString::from("canonical-must-not-leak")),
-                Some(OsString::from_vec(vec![0xff])),
-                legacy_key,
-            ),
-        ] {
-            let error = resolve_cgroup_placement_endpoint_aliases(
-                canonical_key,
-                legacy_key,
-                canonical,
-                legacy,
-            )
-            .unwrap_err();
-            assert_eq!(error, format!("{expected_key} must be valid UTF-8"));
-            assert!(
-                !error.contains("must-not-leak"),
-                "{name} exposed an endpoint"
-            );
-        }
     }
 
     #[test]
@@ -714,8 +508,6 @@ mod tests {
             placement: Arc::new(tempfile::tempfile().unwrap().into()),
             workload_path: Arc::new(directory.path().to_path_buf()),
             tool_placement_endpoint: Arc::from("test-tool-endpoint"),
-            workload_endpoint_source: CgroupPlacementEnvSource::LegacyOnly,
-            tool_endpoint_source: CgroupPlacementEnvSource::LegacyOnly,
         };
 
         let diagnostics = containment.resource_diagnostics().unwrap();
@@ -765,8 +557,6 @@ mod tests {
             placement: Arc::new(tempfile::tempfile().unwrap().into()),
             workload_path: Arc::new(directory.path().to_path_buf()),
             tool_placement_endpoint: Arc::from("test-tool-endpoint"),
-            workload_endpoint_source: CgroupPlacementEnvSource::LegacyOnly,
-            tool_endpoint_source: CgroupPlacementEnvSource::LegacyOnly,
         };
 
         let diagnostics = containment.resource_diagnostics().unwrap();

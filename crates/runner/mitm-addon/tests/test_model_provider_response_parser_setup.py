@@ -68,7 +68,7 @@ class TestResponseHeadersModelJsonParser:
             "tokens.output": 7,
         }
 
-    def test_brotli_model_json_skips_incremental_parser(self, real_flow, mitm_ctx):
+    def test_brotli_model_json_uses_incremental_parser(self, real_flow, mitm_ctx):
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.response = tutils.tresp(
             status_code=200,
@@ -78,17 +78,12 @@ class TestResponseHeadersModelJsonParser:
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
 
-        with mitm_ctx() as log:
+        with mitm_ctx():
             mitm_addon.responseheaders(flow)
 
         assert callable(response_stream(flow))
-        assert "model_json_usage_finish" not in flow.metadata
+        assert "model_json_usage_finish" in flow.metadata
         assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
-        assert any(
-            "Streaming decompression skipped: brotli streaming output cannot be bounded"
-            in call.args[0]
-            for call in log.debug.call_args_list
-        )
 
 
 class TestBodylessModelResponseParserAdmission:

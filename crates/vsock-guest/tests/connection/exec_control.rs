@@ -1,5 +1,12 @@
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
+use std::path::PathBuf;
 use std::thread;
 
+use guest_contracts::process_containment::{
+    CANONICAL_TOOL_CGROUP_PROCS_ENV, CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
+    TOOL_CGROUP_PROCS_ENDPOINT_ENV, WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+};
 use vsock_proto::{
     self, ExecControlPolicy, ExecControlStatus, ExecLifecyclePolicy, ExecOutputPolicy,
     ExecStartEncodeRequest, ExecTermination, ExecTimeoutPolicy, MSG_EXEC_RESULT,
@@ -107,17 +114,12 @@ fn supervised_exec_control_spawn_failure_releases_registration() {
 }
 
 #[test]
-fn supervised_exec_control_forwards_to_bootstrap_sink() {
-    let pid_path = unique_pid_path("supervised-exec-bootstrap-sink");
-    let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
-    let target_seq = 203;
+fn controlled_agent_spawn_failure_returns_start_failed_and_releases_registration() {
+    let agent_path = unique_tmp_path("controlled-agent-missing", ".secret");
+    let target_seq = 212;
     let control_nonce = unique_exec_control_nonce(u64::from(target_seq));
-    let endpoint = process_control_ipc::endpoint_name(target_seq, &control_nonce);
-    let command = format!(
-        "printf '%s' \"$$\" > '{}'; if [ \"${{OKOU_PROCESS_CONTROL_ENDPOINT+x}}\" = x ]; then exit 42; fi; if [ \"${{OKOU_WORKLOAD_CGROUP_PROCS_ENDPOINT+x}}\" = x ] || [ \"${{OKOU_TOOL_CGROUP_PROCS_ENDPOINT+x}}\" = x ]; then exit 43; fi; printf '%s' \"$VM0_PROCESS_CONTROL_ENDPOINT\"; sleep 60",
-        pid_path.as_str()
-    );
-    let (handle, mut host_stream) = start_guest_connection();
+    let (handle, mut host_stream) =
+        start_guest_connection_with_guest_agent_program(PathBuf::from(agent_path.as_str()));
 
     send_exec_start_request(
         &mut host_stream,
@@ -126,8 +128,113 @@ fn supervised_exec_control_forwards_to_bootstrap_sink() {
             lifecycle: ExecLifecyclePolicy::Supervised,
             role: vsock_proto::ExecProcessRole::Agent,
             timeout: ExecTimeoutPolicy::None,
-            command: &command,
-            env: &[(process_control_ipc::BOOTSTRAP_ENV, "stale-endpoint")],
+            command: "",
+            env: &[],
+            sudo: false,
+            label: "controlled-agent-start-failure",
+            stdout: ExecOutputPolicy::Discard,
+            stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+            expected_exit_codes: &[],
+            control: ExecControlPolicy::Enabled {
+                control_nonce,
+                sink: true,
+            },
+            stdin_bytes: None,
+        },
+    );
+
+    let msg = read_message(&mut host_stream);
+    assert_eq!(msg.msg_type, MSG_EXEC_RESULT);
+    assert_eq!(msg.seq, target_seq);
+    let result = vsock_proto::decode_exec_result(&msg.payload).unwrap();
+    assert_eq!(result.termination, ExecTermination::StartFailed);
+    assert_eq!(
+        result.diagnostic,
+        "Failed to execute controlled Agent: agent bootstrap failed: guest-agent is missing"
+    );
+    assert!(!result.diagnostic.contains(agent_path.as_str()));
+
+    send_exec_control(
+        &mut host_stream,
+        320,
+        target_seq,
+        control_nonce,
+        "message-after-agent-start-failed",
+    );
+    assert_exec_control_result(
+        &mut host_stream,
+        320,
+        target_seq,
+        control_nonce,
+        "message-after-agent-start-failed",
+        ExecControlStatus::Inactive,
+        "exec operation is not active",
+    );
+
+    send_quiesce_operations(&mut host_stream, 321);
+    let quiesced = read_message(&mut host_stream);
+    assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
+    assert_eq!(quiesced.seq, 321);
+    assert!(quiesced.payload.is_empty());
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn supervised_exec_control_forwards_to_bootstrap_sink() {
+    let pid_path = unique_pid_path("supervised-exec-bootstrap-sink");
+    let agent_path = unique_tmp_path("supervised-exec-bootstrap-agent", ".sh");
+    fs::write(
+        agent_path.as_str(),
+        r#"#!/bin/sh
+printf '%s' "$$" > "$VM0_TEST_AGENT_PID_PATH"
+if [ "${VM0_PROCESS_CONTROL_ENDPOINT+x}" = x ]; then exit 42; fi
+if [ "${VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT-}" = stale-legacy-workload-endpoint ] || [ "${OKOU_WORKLOAD_CGROUP_PROCS_ENDPOINT-}" = stale-canonical-workload-endpoint ]; then exit 43; fi
+if [ "${VM0_TOOL_CGROUP_PROCS_ENDPOINT-}" = stale-legacy-tool-endpoint ] || [ "${OKOU_TOOL_CGROUP_PROCS_ENDPOINT-}" = stale-canonical-tool-endpoint ]; then exit 43; fi
+printf '%s' "$OKOU_PROCESS_CONTROL_ENDPOINT"
+sleep 60
+"#,
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(agent_path.as_str()).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(agent_path.as_str(), permissions).unwrap();
+    let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
+    let target_seq = 203;
+    let control_nonce = unique_exec_control_nonce(u64::from(target_seq));
+    let endpoint = process_control_ipc::endpoint_name(target_seq, &control_nonce);
+    let (handle, mut host_stream) =
+        start_guest_connection_with_guest_agent_program(PathBuf::from(agent_path.as_str()));
+
+    send_exec_start_request(
+        &mut host_stream,
+        target_seq,
+        ExecStartEncodeRequest {
+            lifecycle: ExecLifecyclePolicy::Supervised,
+            role: vsock_proto::ExecProcessRole::Agent,
+            timeout: ExecTimeoutPolicy::None,
+            command: "",
+            env: &[
+                ("VM0_TEST_AGENT_PID_PATH", pid_path.as_str()),
+                ("VM0_PROCESS_CONTROL_ENDPOINT", "stale-legacy-endpoint"),
+                (
+                    process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+                    "stale-canonical-endpoint",
+                ),
+                (
+                    WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+                    "stale-legacy-workload-endpoint",
+                ),
+                (
+                    CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
+                    "stale-canonical-workload-endpoint",
+                ),
+                (TOOL_CGROUP_PROCS_ENDPOINT_ENV, "stale-legacy-tool-endpoint"),
+                (
+                    CANONICAL_TOOL_CGROUP_PROCS_ENV,
+                    "stale-canonical-tool-endpoint",
+                ),
+            ],
             sudo: false,
             label: "supervised-test",
             stdout: ExecOutputPolicy::CaptureAndStream {
@@ -145,6 +252,8 @@ fn supervised_exec_control_forwards_to_bootstrap_sink() {
         },
     );
     assert!(read_exec_started(&mut host_stream, target_seq) > 0);
+    let ready = read_exec_agent_ready(&mut host_stream, target_seq);
+    assert!(ready.shell_spawn_us > 0);
     let pid = child_guard.read_pid();
     assert_eq!(
         read_exec_stdout_output(&mut host_stream, target_seq),

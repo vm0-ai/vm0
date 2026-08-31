@@ -198,7 +198,7 @@ describe("GET /api/integrations/teams/connect", () => {
 
   it("falls back to the web origin when the API backend URL is unset", async () => {
     const fixture = teamsConnectFixture();
-    mockEnv("VM0_API_BACKEND_URL", undefined);
+    mockEnv("OKOU_API_BACKEND_URL", undefined);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const client = setupApp({ context, routes: teamsConnectRoutes })(

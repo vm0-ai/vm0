@@ -66,8 +66,9 @@ import { detach, onDomEventFn, Reason } from "../../../../signals/utils.ts";
 import { ConnectorHelpText } from "./connector-help-text.tsx";
 import { i18n } from "../../../../i18n/index.ts";
 import {
-  connectorAccountMutationFor,
+  connectorAccountOptionsFor,
   type ConnectorAccountConnectMode,
+  type ConnectorAccountMutationOptions,
 } from "../../../../signals/okou-page/settings/connector-account-dialogs.ts";
 
 // ---------------------------------------------------------------------------
@@ -116,6 +117,7 @@ type PostConnectOptions = {
   readonly connectorLabel?: string;
   readonly agentId?: string;
   readonly account?: ConnectorAccountMutationIntent;
+  readonly useDefaultConnectorProjection?: boolean;
 };
 type BrowserAuthPostConnectOptions = PostConnectOptions & {
   readonly connectorIcon: PlatformConnectorCatalogStatusItem["icon"];
@@ -184,7 +186,9 @@ type ConnectModalContentProps = {
   agentId?: string;
   onSuccess: (connectionId: string | null) => void | Promise<void>;
   authorizeVisibleAgentsOnConnect: boolean;
+  accountOptions: ConnectorAccountMutationOptions;
   accountMode?: ConnectorAccountConnectMode;
+  reconnectAuthMethod?: ConnectorAuthMethodId;
 };
 
 type ConnectMethodContentProps = ConnectModalContentProps & {
@@ -272,7 +276,7 @@ function ManualGrantForm({
   onSuccess,
   authorizeVisibleAgentsOnConnect,
   agentId,
-  accountMode,
+  accountOptions,
   submit,
   submitting,
 }: {
@@ -283,7 +287,7 @@ function ManualGrantForm({
   onSuccess: (connectionId: string | null) => void | Promise<void>;
   authorizeVisibleAgentsOnConnect: boolean;
   agentId?: string;
-  accountMode?: ConnectorAccountConnectMode;
+  accountOptions: ConnectorAccountMutationOptions;
   submit: SubmitManualGrantFn;
   submitting: boolean;
 }) {
@@ -312,11 +316,7 @@ function ManualGrantForm({
           authorizeVisibleAgents: authorizeVisibleAgentsOnConnect,
           connectorLabel,
           ...(agentId ? { agentId } : {}),
-          ...(accountMode
-            ? {
-                account: connectorAccountMutationFor(accountMode),
-              }
-            : {}),
+          ...accountOptions,
         },
         pageSignal,
       );
@@ -424,7 +424,9 @@ function OAuthAuthCodeConnectButton({
   onSuccess,
   authorizeVisibleAgentsOnConnect,
   agentId,
+  accountOptions,
   accountMode,
+  reconnectAuthMethod,
   connectOAuthAuthCodeAndSettle,
 }: ConnectModalContentProps & {
   method: PublicConnectorCatalogAuthMethodDetail;
@@ -446,11 +448,7 @@ function OAuthAuthCodeConnectButton({
               connectorLabel: item.label,
               connectorIcon: item.icon,
               ...(agentId ? { agentId } : {}),
-              ...(accountMode
-                ? {
-                    account: connectorAccountMutationFor(accountMode),
-                  }
-                : {}),
+              ...accountOptions,
             },
             signal,
           ),
@@ -459,7 +457,7 @@ function OAuthAuthCodeConnectButton({
       }}
       className="w-full"
     >
-      {accountMode?.kind === "reconnect"
+      {accountMode?.kind === "reconnect" || reconnectAuthMethod !== undefined
         ? t(($) => {
             return $.connectors.actions.reconnect;
           })
@@ -480,8 +478,11 @@ function OAuthAuthCodeConnectMethodContent(props: ConnectMethodContentProps) {
       item={props.item}
       method={props.method}
       onSuccess={props.onSuccess}
+      agentId={props.agentId}
       authorizeVisibleAgentsOnConnect={props.authorizeVisibleAgentsOnConnect}
+      accountOptions={props.accountOptions}
       accountMode={props.accountMode}
+      reconnectAuthMethod={props.reconnectAuthMethod}
       connectOAuthAuthCodeAndSettle={props.connectOAuthAuthCodeAndSettle}
     />
   );
@@ -813,11 +814,7 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
           authorizeVisibleAgents: props.authorizeVisibleAgentsOnConnect,
           connectorLabel: props.item.label,
           ...(props.agentId ? { agentId: props.agentId } : {}),
-          ...(props.accountMode
-            ? {
-                account: connectorAccountMutationFor(props.accountMode),
-              }
-            : {}),
+          ...props.accountOptions,
         },
         startOptions: selectedDeviceAuthStartOptions(
           startOptions,
@@ -1052,12 +1049,8 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
         connectorSlug: props.item.slug,
         authMethod: props.authMethod,
         ...(props.agentId ? { agentId: props.agentId } : {}),
-        ...(props.accountMode
-          ? {
-              account: connectorAccountMutationFor(props.accountMode),
-              authorizeVisibleAgents: props.authorizeVisibleAgentsOnConnect,
-            }
-          : {}),
+        ...props.accountOptions,
+        authorizeVisibleAgents: props.authorizeVisibleAgentsOnConnect,
       },
       signal,
     );
@@ -1074,11 +1067,7 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
           authorizeVisibleAgents: props.authorizeVisibleAgentsOnConnect,
           connectorLabel: props.item.label,
           ...(props.agentId ? { agentId: props.agentId } : {}),
-          ...(props.accountMode
-            ? {
-                account: connectorAccountMutationFor(props.accountMode),
-              }
-            : {}),
+          ...props.accountOptions,
         },
       },
       signal,
@@ -1141,7 +1130,7 @@ function ManualGrantConnectMethodContent(props: ConnectMethodContentProps) {
       onSuccess={props.onSuccess}
       authorizeVisibleAgentsOnConnect={props.authorizeVisibleAgentsOnConnect}
       agentId={props.agentId}
-      accountMode={props.accountMode}
+      accountOptions={props.accountOptions}
       submit={props.submitManualGrant}
       submitting={props.manualGrantSubmitting}
     />
@@ -1161,11 +1150,7 @@ function NoAuthConnectMethodContent(props: ConnectMethodContentProps) {
           authorizeVisibleAgents: props.authorizeVisibleAgentsOnConnect,
           connectorLabel: props.item.label,
           ...(props.agentId ? { agentId: props.agentId } : {}),
-          ...(props.accountMode
-            ? {
-                account: connectorAccountMutationFor(props.accountMode),
-              }
-            : {}),
+          ...props.accountOptions,
         },
       },
       signal,
@@ -1227,15 +1212,17 @@ function getConnectMethodContentComponent(
   }
 }
 
-function getConnectMethodContentEntries(
+function getConnectEntries(
   item: PlatformConnectorCatalogStatusItem,
   accountMode: ConnectorAccountConnectMode | undefined,
+  reconnectAuthMethod: ConnectorAuthMethodId | undefined,
 ): ConnectMethodContentEntry[] {
+  const requiredAuthMethod =
+    accountMode?.kind === "reconnect"
+      ? accountMode.authMethod
+      : reconnectAuthMethod;
   return item.authMethods.flatMap((method) => {
-    if (
-      accountMode?.kind === "reconnect" &&
-      method.id !== accountMode.account.authMethod
-    ) {
+    if (requiredAuthMethod !== undefined && method.id !== requiredAuthMethod) {
       return [];
     }
     const authMethod = method.id;
@@ -1326,7 +1313,9 @@ function StandardConnectMethodsContent({
   agentId,
   onSuccess,
   authorizeVisibleAgentsOnConnect,
+  accountOptions,
   accountMode,
+  reconnectAuthMethod,
   connectOAuthAuthCodeAndSettle,
   connectOAuthDeviceAuthAndSettle,
   connectExternalCode,
@@ -1359,7 +1348,9 @@ function StandardConnectMethodsContent({
           agentId,
           onSuccess,
           authorizeVisibleAgentsOnConnect,
+          accountOptions,
           accountMode,
+          reconnectAuthMethod,
           connectOAuthAuthCodeAndSettle,
           connectOAuthDeviceAuthAndSettle,
           connectExternalCode,
@@ -1380,7 +1371,9 @@ function ConnectModalContent({
   agentId,
   onSuccess,
   authorizeVisibleAgentsOnConnect,
+  accountOptions,
   accountMode,
+  reconnectAuthMethod,
 }: ConnectModalContentProps) {
   const [settleLoadable, connectOAuthAuthCodeAndSettleCommand] = useLoadableSet(
     connectConnectorOAuthAuthCodeAndSettle$,
@@ -1419,7 +1412,7 @@ function ConnectModalContent({
   const manualGrantSubmitting = manualGrantLoadable.state === "loading";
   const noAuthSubmitting = noAuthLoadable.state === "loading";
   const isPolling = pollingConnectorSlug === item.slug;
-  const entries = getConnectMethodContentEntries(item, accountMode);
+  const entries = getConnectEntries(item, accountMode, reconnectAuthMethod);
   const onConnectSuccess = async (connectionId: string | null) => {
     await runConnectSuccess(item.slug, onSuccess, connectionId, pageSignal);
   };
@@ -1485,7 +1478,9 @@ function ConnectModalContent({
       agentId={agentId}
       onSuccess={onConnectSuccess}
       authorizeVisibleAgentsOnConnect={authorizeVisibleAgentsOnConnect}
+      accountOptions={accountOptions}
       accountMode={accountMode}
+      reconnectAuthMethod={reconnectAuthMethod}
       connectOAuthAuthCodeAndSettle={connectOAuthAuthCodeAndSettle}
       connectOAuthDeviceAuthAndSettle={connectOAuthDeviceAuthAndSettleCommandFn}
       connectExternalCode={connectExternalCode}
@@ -1510,14 +1505,18 @@ export function ConnectModal({
   onSuccess,
   authorizeVisibleAgentsOnConnect = false,
   agentId,
+  accountOptions,
   accountMode,
+  reconnectAuthMethod,
 }: {
   item: PlatformConnectorCatalogStatusItem;
   onClose: () => void;
   onSuccess?: (connectionId: string | null) => void | Promise<void>;
   authorizeVisibleAgentsOnConnect?: boolean;
   agentId?: string;
+  accountOptions?: ConnectorAccountMutationOptions;
   accountMode?: ConnectorAccountConnectMode;
+  reconnectAuthMethod?: ConnectorAuthMethodId;
 }) {
   const clearConnectorOAuthDeviceAuth = useSet(clearConnectorOAuthDeviceAuth$);
   const clearConnectorExternalCode = useSet(clearConnectorExternalCode$);
@@ -1579,7 +1578,11 @@ export function ConnectModal({
           item={item}
           agentId={agentId}
           authorizeVisibleAgentsOnConnect={authorizeVisibleAgentsOnConnect}
+          accountOptions={
+            accountOptions ?? connectorAccountOptionsFor(accountMode)
+          }
           accountMode={accountMode}
+          reconnectAuthMethod={reconnectAuthMethod}
           onSuccess={async (connectionId) => {
             await onSuccess?.(connectionId);
             clearConnectorOAuthDeviceAuth();

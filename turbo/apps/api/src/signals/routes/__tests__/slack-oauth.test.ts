@@ -101,7 +101,7 @@ describe("Slack OAuth API routes", () => {
   });
 
   beforeEach(() => {
-    mockEnv("VM0_WEB_URL", WEB_ORIGIN);
+    mockEnv("OKOU_WEB_URL", WEB_ORIGIN);
     mockEnv("APP_URL", APP_ORIGIN);
     mockSlackEnv();
     context.mocks.slack.chat.postMessage.mockResolvedValue({
@@ -732,7 +732,7 @@ describe("Slack OAuth API routes", () => {
     it("keeps preview OAuth start and callback handling on the preview API", async () => {
       const previewApiOrigin = "https://pr-22539-api.vm6.ai";
       const previewAppOrigin = "https://pr-22539-app.omby.ai";
-      mockEnv("VM0_WEB_URL", previewApiOrigin);
+      mockEnv("OKOU_WEB_URL", previewApiOrigin);
       mockEnv("APP_URL", previewAppOrigin);
 
       const start = await appRequest("/api/zero/slack/oauth/install", {

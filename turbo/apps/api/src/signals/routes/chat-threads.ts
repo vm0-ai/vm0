@@ -1,8 +1,4 @@
-import {
-  CHAT_EVENT_SCHEMA_VERSION_HEADER,
-  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  type ChatEventSnapshotProjection,
-} from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { command, computed } from "ccstate";
 import {
   chatSearchContract,
@@ -12,11 +8,6 @@ import {
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { z } from "zod";
-import {
-  isFeatureEnabled,
-  type FeatureSwitchContext,
-} from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -41,7 +32,6 @@ import {
   chatThreadEventSnapshot,
 } from "../services/chat-event-snapshot.service";
 import { resolveChatEventSchemaVersion } from "../services/chat-event-schema-version.service";
-import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import {
   getChatThreadEventsSince,
   getChatThreadSnapshot,
@@ -73,24 +63,6 @@ function chatThreadNotFound() {
 
 function isValidChatThreadId(id: string): boolean {
   return chatThreadIdSchema.safeParse(id).success;
-}
-
-function chatEventSnapshotProjection(
-  featureSwitchContext: FeatureSwitchContext,
-  schemaVersion: number,
-): ChatEventSnapshotProjection {
-  // V5 app and pinned CLI contexts cannot parse output.tool. Keep their API
-  // and R2 delivery redacted until the bounded bridge tracked by #29362 is
-  // removed after the V6 app floor and queued contexts have drained.
-  if (schemaVersion < CURRENT_CHAT_EVENT_SCHEMA_VERSION) {
-    return "tool-redacted";
-  }
-  return isFeatureEnabled(
-    FeatureSwitchKey.ChatToolActivity,
-    featureSwitchContext,
-  )
-    ? "full"
-    : "tool-redacted";
 }
 
 const getChatThreadInner$ = computed(async (get) => {
@@ -187,19 +159,10 @@ const getChatEventSnapshotInner$ = command(
       CHAT_EVENT_SCHEMA_VERSION_HEADER,
       version.version.toString(),
     );
-    const featureSwitchContext = auth.orgId
-      ? await get(userFeatureSwitchContext(auth.orgId, auth.userId))
-      : { userId: auth.userId };
-    signal.throwIfAborted();
-    const projection = chatEventSnapshotProjection(
-      featureSwitchContext,
-      version.version,
-    );
     const snapshot = await set(
       chatThreadEventSnapshot({
         threadId: params.threadId,
         userId: auth.userId,
-        projection,
       }),
       signal,
     );
@@ -225,7 +188,6 @@ const getChatEventSnapshotInner$ = command(
         expiresInSeconds: snapshot.expiresInSeconds,
         lastEventId: snapshot.lastEventId,
         lastSeqId: snapshot.lastSeqId,
-        projection: snapshot.projection,
       },
     };
   },
@@ -247,27 +209,17 @@ const listChatEventRowsInner$ = command(
       CHAT_EVENT_SCHEMA_VERSION_HEADER,
       version.version.toString(),
     );
-    const featureSwitchContext = auth.orgId
-      ? await get(userFeatureSwitchContext(auth.orgId, auth.userId))
-      : { userId: auth.userId };
-    signal.throwIfAborted();
-    const projection = chatEventSnapshotProjection(
-      featureSwitchContext,
-      version.version,
-    );
     const page = await get(
       chatThreadEventRows({
         threadId: params.threadId,
         userId: auth.userId,
-        projection,
-        // The deployed V5 client advances from the last visible row and only
-        // continues after 50 visible rows. Remove this compatibility mode with
-        // #29362 after the V6 app floor and pinned CLI drain gates pass.
-        pagination:
-          version.version < CURRENT_CHAT_EVENT_SCHEMA_VERSION
-            ? "visible"
-            : "physical",
-        ...query,
+        limit: query.limit,
+        ...(query.sinceEventId === undefined
+          ? { sinceSeqId: 0 as const }
+          : {
+              sinceSeqId: query.sinceSeqId,
+              sinceEventId: query.sinceEventId,
+            }),
       }),
     );
     signal.throwIfAborted();
@@ -292,7 +244,6 @@ const listChatEventRowsInner$ = command(
         rows: [...page.rows],
         cursor: page.cursor,
         hasMore: page.hasMore,
-        projection: page.projection,
       },
     };
   },

@@ -188,7 +188,7 @@ async fn idle_sandbox_remains_reusable_until_capacity_is_needed() {
 // -----------------------------------------------------------------------
 
 #[tokio::test(flavor = "current_thread")]
-async fn budget_pressure_starts_fresh_vm_before_idle_destroy_finishes() {
+async fn budget_pressure_starts_fresh_sandbox_before_idle_destroy_finishes() {
     let destroy_gate = sandbox_mock::MockLifecycleGate::new();
     let wait_gate = sandbox_mock::MockLifecycleGate::new();
     let idle_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());

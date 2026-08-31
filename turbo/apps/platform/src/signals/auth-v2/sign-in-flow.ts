@@ -20,8 +20,10 @@ import { onRef, setLoop, settle, withCleanup } from "../utils.ts";
 import {
   discoverAuthV2ExistingAccounts,
   discoverAuthV2ExternalCapabilities,
+  discoverAuthV2PasskeyCapability,
   type AuthV2ExistingAccount,
   type AuthV2ExternalCapabilities,
+  type AuthV2PasskeyCapability,
   recoverAuthV2OAuth,
   requestGoogleOneTapCredential,
   startAuthV2OAuth,
@@ -32,10 +34,17 @@ import {
   isAuthV2OAuthStrategy,
   type AuthV2OAuthStrategy,
 } from "./oauth-strategies.ts";
+import {
+  AUTH_V2_SIGN_IN_RESEND_COOLDOWN_STORAGE_KEY,
+  createAuthV2ResendCooldownStorage,
+} from "./resend-cooldown.ts";
 
 export const AUTH_V2_SIGN_IN_RESEND_COOLDOWN_SECONDS = 30;
 const AUTH_V2_SIGN_IN_RESEND_COOLDOWN_MS =
   AUTH_V2_SIGN_IN_RESEND_COOLDOWN_SECONDS * 1000;
+const signInResendCooldownStorage = createAuthV2ResendCooldownStorage(
+  AUTH_V2_SIGN_IN_RESEND_COOLDOWN_STORAGE_KEY,
+);
 
 export type AuthV2SignInFactor =
   | {
@@ -63,6 +72,7 @@ export type AuthV2SignInFactor =
   | {
       readonly id: `oauth:${AuthV2OAuthStrategy}`;
       readonly kind: "oauth";
+      readonly lastUsed: boolean;
       readonly strategy: AuthV2OAuthStrategy;
     }
   | {
@@ -235,6 +245,7 @@ interface SignInFlowAtoms {
   readonly pendingFactorId$: State<string | null>;
   readonly password$: State<string>;
   readonly passwordRecovery$: State<boolean>;
+  readonly passkeyCapability$: State<AuthV2PasskeyCapability>;
   readonly resendRemainingSeconds$: State<number>;
   readonly selectedFactor$: State<AuthV2SignInFactor | null>;
   readonly signOutOfOtherSessions$: State<boolean>;
@@ -259,6 +270,7 @@ function emptyExternalCapabilities(): AuthV2ExternalCapabilities {
   return {
     googleOneTapClientId: null,
     identifierMode: "email",
+    lastUsedOAuthStrategy: null,
     oauthStrategies: [],
     passkey: false,
   };
@@ -271,16 +283,20 @@ interface FactorDiscovery {
 
 function oauthFactor(
   strategy: AuthV2OAuthStrategy,
+  lastUsedOAuthStrategy: AuthV2OAuthStrategy | null,
 ): Extract<AuthV2SignInFactor, { kind: "oauth" }> {
   return {
     id: `oauth:${strategy}`,
     kind: "oauth",
+    lastUsed: strategy === lastUsedOAuthStrategy,
     strategy,
   };
 }
 
 function discoverFactors(
   factors: readonly SignInFirstFactor[] | null,
+  lastUsedOAuthStrategy: AuthV2OAuthStrategy | null,
+  passkeyCapability: AuthV2PasskeyCapability,
 ): FactorDiscovery {
   if (!factors) {
     return { factors: [], unknownStrategies: [] };
@@ -306,9 +322,11 @@ function discoverFactors(
         safeIdentifier: factor.safeIdentifier,
       });
     } else if (isAuthV2OAuthStrategy(factor.strategy)) {
-      discovered.push(oauthFactor(factor.strategy));
+      discovered.push(oauthFactor(factor.strategy, lastUsedOAuthStrategy));
     } else if (factor.strategy === "passkey") {
-      discovered.push({ id: "passkey", kind: "passkey" });
+      if (passkeyCapability !== "unavailable") {
+        discovered.push({ id: "passkey", kind: "passkey" });
+      }
     } else {
       unknownStrategies.push(factor.strategy);
     }
@@ -342,12 +360,13 @@ function discoverClientTrustFactors(
 
 function entryFactors(
   capabilities: AuthV2ExternalCapabilities,
+  passkeyCapability: AuthV2PasskeyCapability,
 ): readonly AuthV2SignInFactor[] {
   const factors: AuthV2SignInFactor[] = [];
   for (const strategy of capabilities.oauthStrategies) {
-    factors.push(oauthFactor(strategy));
+    factors.push(oauthFactor(strategy, capabilities.lastUsedOAuthStrategy));
   }
-  if (capabilities.passkey) {
+  if (capabilities.passkey && passkeyCapability !== "unavailable") {
     factors.push({ id: "passkey", kind: "passkey" });
   }
   return factors;
@@ -356,6 +375,7 @@ function entryFactors(
 function snapshotSignInResource(
   resource: SignInResource,
   capabilities: AuthV2ExternalCapabilities,
+  passkeyCapability: AuthV2PasskeyCapability,
 ): SignInResourceSnapshot {
   // The legacy resource is the stable low-level API used by this app. Clerk
   // exposes transferability on its future view, so keep that SDK detail
@@ -363,21 +383,29 @@ function snapshotSignInResource(
   const discovered =
     resource.status === "needs_client_trust"
       ? discoverClientTrustFactors(resource.supportedSecondFactors)
-      : discoverFactors(resource.supportedFirstFactors);
+      : discoverFactors(
+          resource.supportedFirstFactors,
+          capabilities.lastUsedOAuthStrategy,
+          passkeyCapability,
+        );
   const factorsWithExternalOAuth =
     resource.status === "needs_client_trust"
       ? discovered.factors
       : [
           ...discovered.factors,
-          ...capabilities.oauthStrategies.map(oauthFactor).filter((factor) => {
-            return !discovered.factors.some((candidate) => {
-              return candidate.id === factor.id;
-            });
-          }),
+          ...capabilities.oauthStrategies
+            .map((strategy) => {
+              return oauthFactor(strategy, capabilities.lastUsedOAuthStrategy);
+            })
+            .filter((factor) => {
+              return !discovered.factors.some((candidate) => {
+                return candidate.id === factor.id;
+              });
+            }),
         ];
   const factors =
     resource.status === "needs_identifier" || resource.status === null
-      ? entryFactors(capabilities)
+      ? entryFactors(capabilities, passkeyCapability)
       : factorsWithExternalOAuth;
   return {
     clerkStatus: resource.status,
@@ -452,6 +480,47 @@ function clerkErrorField(
   return fallbackField;
 }
 
+function passkeyErrorCode(
+  clerkCode: string | undefined,
+  errorName: string | undefined,
+  errorMessage: string | undefined,
+): "passkey-cancelled" | "passkey-unavailable" | null {
+  if (
+    errorName === "AbortError" ||
+    clerkCode === "passkey_retrieval_cancelled" ||
+    clerkCode === "passkey_operation_aborted"
+  ) {
+    return "passkey-cancelled";
+  }
+  if (
+    errorName === "NotSupportedError" ||
+    errorMessage ===
+      "Resident credentials or empty 'allowCredentials' lists are not supported at this time." ||
+    errorMessage === "Error connecting to Web Authentication service." ||
+    clerkCode === "passkey_not_supported" ||
+    clerkCode === "passkey_pa_not_supported" ||
+    clerkCode === "passkeys_pa_not_supported"
+  ) {
+    return "passkey-unavailable";
+  }
+  return null;
+}
+
+function isGoogleOneTapUnavailableError(error: unknown): boolean {
+  if (!isRecord(error)) {
+    return false;
+  }
+  const apiError = Array.isArray(error.errors)
+    ? error.errors.find(isRecord)
+    : null;
+  const normalizedError = apiError ?? error;
+  return (
+    stringProperty(normalizedError, "name") === "NotSupportedError" ||
+    stringProperty(normalizedError, "message") ===
+      "Error connecting to Web Authentication service."
+  );
+}
+
 function normalizeClerkError(
   error: unknown,
   fallbackField: AuthV2SignInErrorField,
@@ -464,7 +533,14 @@ function normalizeClerkError(
     : null;
   const normalizedError = apiError ?? error;
   const clerkCode = stringProperty(normalizedError, "code");
-  if (!apiError && !clerkCode) {
+  const errorName = stringProperty(normalizedError, "name");
+  const errorMessage = stringProperty(normalizedError, "message");
+  const normalizedPasskeyCode = passkeyErrorCode(
+    clerkCode,
+    errorName,
+    errorMessage,
+  );
+  if (!apiError && !clerkCode && !normalizedPasskeyCode) {
     return { code: "unknown", field: fallbackField };
   }
   const code =
@@ -472,17 +548,12 @@ function normalizeClerkError(
     (clerkCode?.toLowerCase().includes("expired") === true ||
       clerkCode?.toLowerCase().includes("timeout") === true)
       ? "code-expired"
-      : clerkCode === "passkey_retrieval_cancelled" ||
-          clerkCode === "passkey_operation_aborted"
-        ? "passkey-cancelled"
-        : clerkCode === "passkey_not_supported" ||
-            clerkCode === "passkey_pa_not_supported"
-          ? "passkey-unavailable"
-          : clerkCode === "not_allowed_access"
-            ? "access-not-allowed"
-            : clerkCode === "user_banned"
-              ? "user-banned"
-              : "clerk";
+      : (normalizedPasskeyCode ??
+        (clerkCode === "not_allowed_access"
+          ? "access-not-allowed"
+          : clerkCode === "user_banned"
+            ? "user-banned"
+            : "clerk"));
   return {
     ...(clerkCode ? { clerkCode } : {}),
     code,
@@ -744,6 +815,7 @@ function createSignInFlowAtoms(): SignInFlowAtoms {
   const methodChooser$ = state(false);
   const pendingFactorId$ = state<string | null>(null);
   const passwordRecovery$ = state(false);
+  const passkeyCapability$ = state<AuthV2PasskeyCapability>("unknown");
   const resendRemainingSeconds$ = state(0);
   const code$ = state("");
   const newPassword$ = state("");
@@ -777,6 +849,7 @@ function createSignInFlowAtoms(): SignInFlowAtoms {
     pendingFactorId$,
     password$,
     passwordRecovery$,
+    passkeyCapability$,
     resendRemainingSeconds$,
     selectedFactor$,
     signOutOfOtherSessions$,
@@ -798,13 +871,12 @@ function createSignInFlowRuntime(): SignInFlowRuntime {
 function createStartCooldownCommand(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
-): Command<void, [AbortSignal]> {
-  return command(({ set }, signal: AbortSignal): void => {
+): Command<void, [string, AbortSignal]> {
+  return command(({ set }, identity: string, signal: AbortSignal): void => {
     signal.throwIfAborted();
-    set(
-      runtime.cooldownDeadlineMs$,
-      now() + AUTH_V2_SIGN_IN_RESEND_COOLDOWN_MS,
-    );
+    const deadlineMs = now() + AUTH_V2_SIGN_IN_RESEND_COOLDOWN_MS;
+    set(signInResendCooldownStorage.save$, identity, deadlineMs);
+    set(runtime.cooldownDeadlineMs$, deadlineMs);
     set(atoms.resendRemainingSeconds$, AUTH_V2_SIGN_IN_RESEND_COOLDOWN_SECONDS);
   });
 }
@@ -834,6 +906,7 @@ function createResendCooldownLifecycleRef(
             if (remainingSeconds > 0) {
               return false;
             }
+            set(signInResendCooldownStorage.clear$);
             set(runtime.cooldownDeadlineMs$, null);
             return true;
           },
@@ -860,6 +933,7 @@ function createCommitResourceCommand(
       const snapshot = snapshotSignInResource(
         resource,
         get(atoms.capabilities$),
+        get(atoms.passkeyCapability$),
       );
       set(atoms.snapshot$, snapshot);
       set(atoms.fatalState$, null);
@@ -881,8 +955,26 @@ function createCommitResourceCommand(
             ? snapshot.secondFactorVerificationStatus
             : snapshot.firstFactorVerificationStatus;
         if (verificationStatus === "expired") {
+          set(signInResendCooldownStorage.clear$);
+          set(runtime.cooldownDeadlineMs$, null);
+          set(atoms.resendRemainingSeconds$, 0);
           set(atoms.error$, { code: "code-expired", field: "code" });
+        } else {
+          const deadlineMs = set(
+            signInResendCooldownStorage.restore$,
+            preparedFactor.id,
+          );
+          set(runtime.cooldownDeadlineMs$, deadlineMs);
+          set(
+            atoms.resendRemainingSeconds$,
+            deadlineMs === null ? 0 : Math.ceil((deadlineMs - now()) / 1000),
+          );
         }
+      }
+      if (snapshot.clerkStatus === "complete") {
+        set(signInResendCooldownStorage.clear$);
+        set(runtime.cooldownDeadlineMs$, null);
+        set(atoms.resendRemainingSeconds$, 0);
       }
       if (snapshot.clerkStatus === "needs_second_factor") {
         set(dependencies.continuation.failClosed$, "second-factor");
@@ -912,7 +1004,7 @@ function createCommitResourceCommand(
 function createResourceCommands(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
-  startCooldown$: Command<void, [AbortSignal]>,
+  startCooldown$: Command<void, [string, AbortSignal]>,
   dependencies: AuthV2SignInFlowDependencies,
 ): {
   readonly applyResource$: ApplySignInResourceCommand;
@@ -933,6 +1025,7 @@ function createResourceCommands(
       const snapshot = snapshotSignInResource(
         resource,
         get(atoms.capabilities$),
+        get(atoms.passkeyCapability$),
       );
       const clientTrustFactor = snapshot.factors.find((factor) => {
         return factor.kind === "client-trust-email-code";
@@ -963,7 +1056,7 @@ function createResourceCommands(
       set(runtime.preparedFactorId$, clientTrustFactor.id);
       await set(commitResource$, prepared.value, signal);
       signal.throwIfAborted();
-      set(startCooldown$, signal);
+      set(startCooldown$, clientTrustFactor.id, signal);
     },
   );
 
@@ -976,7 +1069,25 @@ function createResourceCommands(
           "Loaded Clerk instance did not provide a client resource",
         );
       }
-      set(atoms.capabilities$, discoverAuthV2ExternalCapabilities(clerk));
+      const capabilities = discoverAuthV2ExternalCapabilities(clerk);
+      set(atoms.capabilities$, capabilities);
+      const passkeyOffered =
+        capabilities.passkey ||
+        clerk.client.signIn.supportedFirstFactors?.some((factor) => {
+          return factor.strategy === "passkey";
+        }) === true;
+      const detectedPasskeyCapability = passkeyOffered
+        ? await discoverAuthV2PasskeyCapability()
+        : "unknown";
+      signal.throwIfAborted();
+      const passkeyCapability =
+        get(atoms.passkeyCapability$) === "unavailable"
+          ? "unavailable"
+          : detectedPasskeyCapability;
+      set(atoms.passkeyCapability$, passkeyCapability);
+      if (passkeyOffered && passkeyCapability === "unavailable") {
+        set(atoms.error$, { code: "passkey-unavailable", field: "general" });
+      }
 
       if (dependencies.isOAuthCallbackRoute) {
         const recovery = await settle(
@@ -1220,7 +1331,7 @@ function createFactorSelectionCommand(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
   applyResource$: ApplySignInResourceCommand,
-  startCooldown$: Command<void, [AbortSignal]>,
+  startCooldown$: Command<void, [string, AbortSignal]>,
   dependencies: AuthV2SignInFlowDependencies,
 ): Command<Promise<void>, [string, AbortSignal]> {
   const prepareFactorOperation$ = command(
@@ -1264,15 +1375,21 @@ function createFactorSelectionCommand(
         return;
       }
       if (factor.kind === "passkey") {
-        const authentication = await settle(
+        const [authentication] = await Promise.allSettled([
           resource.authenticateWithPasskey({ flow: "discoverable" }),
-          signal,
-        );
-        if (!authentication.ok) {
-          set(
-            atoms.error$,
-            normalizeClerkError(authentication.error, "general"),
+        ]);
+        signal.throwIfAborted();
+        if (authentication.status === "rejected") {
+          const normalizedError = normalizeClerkError(
+            authentication.reason,
+            "general",
           );
+          set(atoms.error$, normalizedError);
+          if (normalizedError.code === "passkey-unavailable") {
+            set(atoms.passkeyCapability$, "unavailable");
+            await set(applyResource$, resource, signal);
+            signal.throwIfAborted();
+          }
           return;
         }
         await set(applyResource$, authentication.value, signal);
@@ -1302,7 +1419,7 @@ function createFactorSelectionCommand(
       set(atoms.methodChooser$, false);
       set(atoms.passwordRecovery$, false);
       set(atoms.selectedFactor$, factor);
-      set(startCooldown$, signal);
+      set(startCooldown$, factor.id, signal);
     },
   );
 
@@ -1483,6 +1600,9 @@ function createGoogleOneTapCommand(
         signal,
       );
       if (!credential.ok) {
+        if (isGoogleOneTapUnavailableError(credential.error)) {
+          return;
+        }
         set(atoms.error$, normalizeClerkError(credential.error, "general"));
         return;
       }
@@ -1500,7 +1620,7 @@ function createResendCodeOperation$(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
   applyResource$: ApplySignInResourceCommand,
-  startCooldown$: Command<void, [AbortSignal]>,
+  startCooldown$: Command<void, [string, AbortSignal]>,
 ): Command<Promise<void>, [AbortSignal]> {
   return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
     const factor = get(atoms.selectedFactor$);
@@ -1535,7 +1655,7 @@ function createResendCodeOperation$(
     set(atoms.code$, "");
     await set(applyResource$, prepared.value, signal);
     signal.throwIfAborted();
-    set(startCooldown$, signal);
+    set(startCooldown$, factor.id, signal);
   });
 }
 
@@ -1544,6 +1664,7 @@ function createEntryNavigationCommands(
   runtime: SignInFlowRuntime,
 ) {
   const clearCooldown$ = command(({ set }): void => {
+    set(signInResendCooldownStorage.clear$);
     set(runtime.cooldownDeadlineMs$, null);
     set(atoms.resendRemainingSeconds$, 0);
   });
@@ -1582,7 +1703,10 @@ function createEntryNavigationCommands(
     set(atoms.snapshot$, {
       clerkStatus: "needs_identifier",
       createdSessionId: null,
-      factors: entryFactors(get(atoms.capabilities$)),
+      factors: entryFactors(
+        get(atoms.capabilities$),
+        get(atoms.passkeyCapability$),
+      ),
       firstFactorVerificationStatus: null,
       firstFactorVerificationStrategy: null,
       identifier: null,

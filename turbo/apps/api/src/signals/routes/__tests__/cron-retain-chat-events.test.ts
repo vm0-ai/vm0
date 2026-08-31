@@ -62,7 +62,9 @@ async function createFixtureThread(label: string): Promise<string> {
 async function retainFixtures(...chatThreadIds: readonly string[]) {
   const response = await accept(
     fixtureClient().retain({
-      body: { chat_thread_ids: [...chatThreadIds] },
+      body: {
+        chat_thread_ids: [...chatThreadIds],
+      },
     }),
     [200],
   );
@@ -203,10 +205,21 @@ describe("chat event retention cron", () => {
     await expect(eventRows(retainedEventId)).resolves.toHaveLength(1);
   }, 60_000);
 
-  it("requires a current snapshot and durable search coverage", async () => {
+  it("uses a clean redacted head as retention authority", async () => {
     const snapshotThreadId = await createFixtureThread("snapshot-gate");
     const searchThreadId = await createFixtureThread("search-gate");
-    const projectionThreadId = await createFixtureThread("projection-gate");
+    const redactedAuthorityThreadId =
+      await createFixtureThread("redacted-authority");
+    await store.set(
+      seedRetentionOutputEvent$,
+      { chatThreadId: snapshotThreadId, offsetMs: NEW_OFFSET_MS },
+      context.signal,
+    );
+    await store.set(
+      coverRetentionThread$,
+      { chatThreadId: snapshotThreadId },
+      context.signal,
+    );
     const snapshotEventId = await store.set(
       seedRetentionOutputEvent$,
       { chatThreadId: snapshotThreadId, offsetMs: OLD_OFFSET_MS },
@@ -217,14 +230,9 @@ describe("chat event retention cron", () => {
       { chatThreadId: searchThreadId, offsetMs: OLD_OFFSET_MS },
       context.signal,
     );
-    const projectionEventId = await store.set(
+    const redactedAuthorityEventId = await store.set(
       seedRetentionOutputEvent$,
-      { chatThreadId: projectionThreadId, offsetMs: OLD_OFFSET_MS },
-      context.signal,
-    );
-    await store.set(
-      coverRetentionThread$,
-      { chatThreadId: snapshotThreadId, archiveSchemaVersion: 3 },
+      { chatThreadId: redactedAuthorityThreadId, offsetMs: OLD_OFFSET_MS },
       context.signal,
     );
     const searchLastSeqId = await store.set(
@@ -242,26 +250,23 @@ describe("chat event retention cron", () => {
     );
     await store.set(
       coverRetentionThread$,
-      {
-        chatThreadId: projectionThreadId,
-        snapshotProjections: ["full"],
-      },
+      { chatThreadId: redactedAuthorityThreadId },
       context.signal,
     );
 
     const held = await retainFixtures(
       snapshotThreadId,
       searchThreadId,
-      projectionThreadId,
+      redactedAuthorityThreadId,
     );
     expect(held).toMatchObject({
-      deleted: 0,
-      skippedSnapshot: 2,
+      deleted: 1,
+      skippedSnapshot: 1,
       skippedSearchWatermark: 1,
     });
     await expect(
-      eventRows(snapshotEventId, searchEventId, projectionEventId),
-    ).resolves.toHaveLength(3);
+      eventRows(snapshotEventId, searchEventId, redactedAuthorityEventId),
+    ).resolves.toHaveLength(2);
 
     await store.set(
       coverRetentionThread$,
@@ -273,19 +278,10 @@ describe("chat event retention cron", () => {
       { chatThreadId: searchThreadId },
       context.signal,
     );
-    await store.set(
-      coverRetentionThread$,
-      { chatThreadId: projectionThreadId },
-      context.signal,
-    );
-    const released = await retainFixtures(
-      snapshotThreadId,
-      searchThreadId,
-      projectionThreadId,
-    );
-    expect(released.deleted).toBe(3);
+    const released = await retainFixtures(snapshotThreadId, searchThreadId);
+    expect(released.deleted).toBe(2);
     await expect(
-      eventRows(snapshotEventId, searchEventId, projectionEventId),
+      eventRows(snapshotEventId, searchEventId),
     ).resolves.toHaveLength(0);
   }, 60_000);
 

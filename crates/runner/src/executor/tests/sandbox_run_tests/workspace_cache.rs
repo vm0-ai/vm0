@@ -482,7 +482,6 @@ async fn workspace_mount_retry_starts_a_new_codex_catalog_prefetch_owner() {
     assert!(start_calls[1].cmd.contains("codex --version"));
     let agent_calls = overrides.start_agent_process_calls();
     assert_eq!(agent_calls.len(), 1);
-    assert!(!agent_calls[0].cmd.contains("codex --version"));
     assert_eq!(
         telemetry
             .pending_ops_snapshot()

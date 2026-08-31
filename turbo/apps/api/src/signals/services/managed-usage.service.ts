@@ -198,6 +198,7 @@ export const recordManagedUsage$ = command(
       readonly actor: ManagedUsageActor;
       readonly resource: ManagedUsageResource;
       readonly label: string;
+      readonly idempotencyKey?: string;
     },
     signal: AbortSignal,
   ): Promise<number> => {
@@ -216,11 +217,12 @@ export const recordManagedUsage$ = command(
       : [];
     signal.throwIfAborted();
 
+    const idempotencyKey = args.idempotencyKey ?? randomUUID();
     const [inserted] = await writeDb
       .insert(usageEvent)
       .values({
         runId: run?.id ?? null,
-        idempotencyKey: randomUUID(),
+        idempotencyKey,
         orgId: args.actor.orgId,
         userId: args.actor.userId,
         kind: args.resource.kind,
@@ -228,24 +230,44 @@ export const recordManagedUsage$ = command(
         category: args.resource.category,
         quantity: args.resource.quantity ?? 1,
       })
+      .onConflictDoNothing({ target: usageEvent.idempotencyKey })
       .returning({ id: usageEvent.id });
     signal.throwIfAborted();
 
-    if (!inserted) {
-      throw new Error(`Failed to insert ${args.label} usage event`);
-    }
+    const usageEventId = inserted?.id;
 
     await set(processOrgUsageEvents$, args.actor.orgId, signal);
     signal.throwIfAborted();
 
     const [processed] = await writeDb
       .select({
+        orgId: usageEvent.orgId,
+        userId: usageEvent.userId,
+        kind: usageEvent.kind,
+        provider: usageEvent.provider,
+        category: usageEvent.category,
+        quantity: usageEvent.quantity,
         billingError: usageEvent.billingError,
         creditsCharged: usageEvent.creditsCharged,
       })
       .from(usageEvent)
-      .where(eq(usageEvent.id, inserted.id));
+      .where(
+        usageEventId
+          ? eq(usageEvent.id, usageEventId)
+          : eq(usageEvent.idempotencyKey, idempotencyKey),
+      );
     signal.throwIfAborted();
+    if (
+      processed &&
+      (processed.orgId !== args.actor.orgId ||
+        processed.userId !== args.actor.userId ||
+        processed.kind !== args.resource.kind ||
+        processed.provider !== args.resource.provider ||
+        processed.category !== args.resource.category ||
+        processed.quantity !== (args.resource.quantity ?? 1))
+    ) {
+      throw new Error(`${args.label} usage idempotency key collision`);
+    }
     if (!processed || processed.creditsCharged === null) {
       throw new Error(`Failed to process ${args.label} usage event`);
     }

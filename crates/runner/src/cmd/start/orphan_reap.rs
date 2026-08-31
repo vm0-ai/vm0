@@ -352,7 +352,7 @@ mod tests {
         }
 
         async fn add_active_orphan(&self, run_id: RunId, sandbox_id: SandboxId) {
-            self.status.add_run(run_id, sandbox_id).await;
+            self.status.add_run(run_id, sandbox_id).await.unwrap();
             self.orphans.insert(run_id, sandbox_id);
         }
 
@@ -516,12 +516,12 @@ mod tests {
                 .map(|idle_sandboxes| {
                     idle_sandboxes
                         .iter()
-                        .map(|vm| {
-                            let reuse_key = vm
+                        .map(|sandbox| {
+                            let reuse_key = sandbox
                                 .get("reuse_key")
                                 .and_then(|reuse_key| reuse_key.as_str())
                                 .expect("idle sandbox must include reuse_key");
-                            let sandbox_id = vm
+                            let sandbox_id = sandbox
                                 .get("sandbox_id")
                                 .and_then(|sandbox| sandbox.as_str())
                                 .expect("idle sandbox must include sandbox_id");

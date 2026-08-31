@@ -402,7 +402,7 @@ function builtinConnection(
     externalId: row.externalId,
     externalUsername: row.externalUsername,
     externalEmail: row.externalEmail,
-    oauthScopes: parseOauthScopes(row.oauthGrantedScopes ?? row.oauthScopes),
+    oauthScopes: parseOauthScopes(row.oauthGrantedScopes),
     connectionStatus,
     reconnectReason:
       !runtimeMethod || !storageCompatible

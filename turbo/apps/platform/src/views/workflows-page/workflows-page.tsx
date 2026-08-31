@@ -7,8 +7,10 @@ import {
   useSet,
 } from "ccstate-react";
 import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   ArrowUpDown,
+  BadgeCheck,
   ChevronDown,
   Lock,
   Plus,
@@ -37,6 +39,7 @@ import { i18n } from "../../i18n/index.ts";
 import { nowDate } from "../../lib/time.ts";
 import { openCreateWorkflowDialog$ } from "../../signals/automation-page/workflow-automation-dialog.ts";
 import { brandName$ } from "../../signals/branding.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import {
   allVisibleWorkflows$,
@@ -390,8 +393,29 @@ function WorkflowRow({
               className="flex min-w-0 flex-1 items-center gap-3 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
             >
               <WorkflowRowIcon entries={entries} />
-              <span className="min-w-0 truncate text-sm font-medium underline decoration-dotted decoration-foreground/40 decoration-[1px] underline-offset-2">
-                {title}
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="min-w-0 truncate text-sm font-medium underline decoration-dotted decoration-foreground/40 decoration-[1px] underline-offset-2">
+                  {title}
+                </span>
+                {workflow.official ? (
+                  <span
+                    className={cn(
+                      "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+                      workflow.official.definitionLifecycle === "retired"
+                        ? "bg-amber-50 text-amber-700"
+                        : "bg-blue-50 text-blue-700",
+                    )}
+                  >
+                    <BadgeCheck size={11} />
+                    {workflow.official.definitionLifecycle === "retired"
+                      ? i18n.t(($) => {
+                          return $.workflows.official.retiredBadge;
+                        })
+                      : i18n.t(($) => {
+                          return $.workflows.official.badge;
+                        })}
+                  </span>
+                ) : null}
               </span>
             </Link>
           </TooltipTrigger>
@@ -1038,6 +1062,9 @@ export function WorkflowsPage() {
   );
   const preferences = useLastResolved(userPreferences$);
   const openCreateWorkflowDialog = useSet(openCreateWorkflowDialog$);
+  const features = useGet(featureSwitch$);
+  const officialWorkflowsEnabled =
+    features[FeatureSwitchKey.OfficialWorkflows] ?? false;
   const loading =
     workflowsLoadable.state === "loading" ||
     automationEntriesLoadable.state === "loading";
@@ -1086,20 +1113,38 @@ export function WorkflowsPage() {
               })}
             </p>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border"
-            onClick={() => {
-              openCreateWorkflowDialog();
-            }}
-          >
-            <Plus size={14} />
-            {t(($) => {
-              return $.workflows.list.createInChat;
-            })}
-          </Button>
+          <div className="flex items-center gap-2">
+            {officialWorkflowsEnabled ? (
+              <Button
+                asChild
+                type="button"
+                variant="outline"
+                size="sm"
+                className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border"
+              >
+                <Link pathname={ROUTES.officialWorkflows}>
+                  <BadgeCheck size={14} />
+                  {t(($) => {
+                    return $.workflows.official.browse;
+                  })}
+                </Link>
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border"
+              onClick={() => {
+                openCreateWorkflowDialog();
+              }}
+            >
+              <Plus size={14} />
+              {t(($) => {
+                return $.workflows.list.createInChat;
+              })}
+            </Button>
+          </div>
         </div>
       </header>
 

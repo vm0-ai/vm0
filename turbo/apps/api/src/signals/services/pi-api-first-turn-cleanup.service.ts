@@ -13,16 +13,16 @@ import {
 import { PI_API_FIRST_TURN_URL_TTL_SECONDS } from "./pi-api-first-turn-config";
 
 const PI_API_FIRST_TURN_PREFIX = "pi-api-first-turn";
-export const PI_API_FIRST_TURN_STAGING_RETENTION_MS =
+const PI_API_FIRST_TURN_STAGING_RETENTION_MS =
   PI_API_FIRST_TURN_URL_TTL_SECONDS * 1000;
-export const PI_RESOURCE_SNAPSHOT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const PI_RESOURCE_SNAPSHOT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface PiApiFirstTurnCleanupResult {
   readonly stagingObjectsDeleted: number;
   readonly resourceSnapshotsDeleted: number;
 }
 
-export function expiredPiApiFirstTurnObjectKeys(
+function expiredPiApiFirstTurnObjectKeys(
   objects: readonly S3Object[],
   at: number,
 ): readonly string[] {
@@ -32,7 +32,7 @@ export function expiredPiApiFirstTurnObjectKeys(
   });
 }
 
-export function piResourceSnapshotExpirationCutoff(at: number): Date {
+function piResourceSnapshotExpirationCutoff(at: number): Date {
   return new Date(at - PI_RESOURCE_SNAPSHOT_RETENTION_MS);
 }
 

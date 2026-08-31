@@ -1,0 +1,28 @@
+export interface SocialKitDownloadRequestSnapshot {
+  readonly platform: "youtube" | "tiktok" | "instagram" | "facebook";
+  readonly url: string;
+  readonly maxDuration: number;
+  readonly quality: "240p" | "360p" | "480p" | "720p" | "1080p";
+  readonly format: "mp4" | "m4a";
+}
+
+export interface SocialKitDownloadProviderResult {
+  readonly durationSeconds: number;
+  readonly fileSizeMB: number;
+  readonly creditsCost: number;
+  readonly title?: string;
+  readonly thumbnail?: string;
+}
+
+export interface SocialKitDownloadArtifactResult {
+  readonly id: string;
+  readonly url: string;
+  readonly filename: string;
+  readonly contentType: string;
+  readonly sizeBytes: number;
+}
+
+export interface SocialKitDownloadError {
+  readonly code: string;
+  readonly message: string;
+}

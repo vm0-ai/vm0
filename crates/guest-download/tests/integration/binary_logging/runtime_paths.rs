@@ -9,32 +9,26 @@ use std::ffi::OsString;
 #[cfg(unix)]
 use std::os::unix::ffi::OsStringExt;
 
-const SOURCE_EVENT: &str = "guest_runtime_dir_env_source";
+const RETIRED_GUEST_RUNTIME_DIR_ENV: &str = "VM0_GUEST_RUNTIME_DIR";
+const RETIRED_SOURCE_EVENT: &str = "guest_runtime_dir_env_source";
 
-fn apply_runtime_aliases(
+fn apply_runtime_env(
     command: &mut std::process::Command,
     canonical: Option<&OsStr>,
-    legacy: Option<&OsStr>,
+    retired: Option<&OsStr>,
 ) {
     command
         .env_remove(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV)
-        .env_remove(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV);
+        .env_remove(RETIRED_GUEST_RUNTIME_DIR_ENV);
     if let Some(value) = canonical {
         command.env(
             guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             value,
         );
     }
-    if let Some(value) = legacy {
-        command.env(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV, value);
+    if let Some(value) = retired {
+        command.env(RETIRED_GUEST_RUNTIME_DIR_ENV, value);
     }
-}
-
-fn source_messages(log: &str) -> Vec<&str> {
-    log.lines()
-        .filter_map(|line| line.rsplit_once("] ").map(|(_, message)| message))
-        .filter(|message| message.starts_with(SOURCE_EVENT))
-        .collect()
 }
 
 #[test]
@@ -56,10 +50,7 @@ fn binary_writes_system_log_to_explicit_runtime_path() {
         "unexpected system log: {content:?}"
     );
     assert_eq!(content.matches("Download completed").count(), 1);
-    assert_eq!(
-        source_messages(&content),
-        ["guest_runtime_dir_env_source key=OKOU_GUEST_RUNTIME_DIR source=legacy-only"]
-    );
+    assert!(!content.contains(RETIRED_SOURCE_EVENT));
     assert!(!content.contains(fixture.logs.runtime_dir.to_string_lossy().as_ref()));
 
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -71,24 +62,53 @@ fn binary_writes_system_log_to_explicit_runtime_path() {
 }
 
 #[test]
-fn binary_dual_reads_runtime_aliases_with_value_free_sink_scoped_evidence() {
-    for (name, canonical, legacy, expected_source) in [
-        ("canonical-only", true, false, "canonical-only"),
-        ("legacy-only", false, true, "legacy-only"),
-        ("equal-dual", true, true, "dual"),
+fn binary_reads_only_the_canonical_runtime_override() {
+    for (name, canonical, retired, use_canonical) in [
+        ("absent", None, false, false),
+        ("canonical-empty", Some(""), false, false),
+        ("canonical-absolute", Some("selected"), false, true),
+        ("retired-only-is-ignored", None, true, false),
+        (
+            "canonical-is-not-overridden-by-retired",
+            Some("selected"),
+            true,
+            true,
+        ),
+        (
+            "canonical-empty-does-not-fall-back-to-retired",
+            Some(""),
+            true,
+            false,
+        ),
     ] {
         let dir = tempfile::tempdir().unwrap();
         let manifest_path = write_manifest(&dir, &[], None).unwrap();
-        let runtime_dir = dir.path().join(format!("{name}-must-not-leak"));
+        let run_id = unique_run_id(name);
+        let home = dir.path().join("home");
+        let fallback_dir =
+            guest_contracts::runtime_paths::run_dir_for_home(&home, &run_id).unwrap();
+        let canonical_dir = dir.path().join(format!("{name}-canonical-must-not-leak"));
+        let retired_dir = dir.path().join(format!("{name}-retired-must-not-leak"));
+        let expected_dir = if use_canonical {
+            &canonical_dir
+        } else {
+            &fallback_dir
+        };
         let mut command = guest_download_command();
         command
             .arg(&manifest_path)
-            .env(guest_contracts::env::RUN_ID_ENV, "invalid/run-id")
-            .env("HOME", dir.path().join("unused-home"));
-        apply_runtime_aliases(
+            .env(guest_contracts::env::RUN_ID_ENV, &run_id)
+            .env("HOME", &home);
+        apply_runtime_env(
             &mut command,
-            canonical.then_some(runtime_dir.as_os_str()),
-            legacy.then_some(runtime_dir.as_os_str()),
+            canonical.map(|value| {
+                if value.is_empty() {
+                    OsStr::new("")
+                } else {
+                    canonical_dir.as_os_str()
+                }
+            }),
+            retired.then_some(retired_dir.as_os_str()),
         );
 
         let output = process::run(&mut command).unwrap();
@@ -98,100 +118,20 @@ fn binary_dual_reads_runtime_aliases_with_value_free_sink_scoped_evidence() {
             String::from_utf8_lossy(&output.stderr)
         );
         let log = std::fs::read_to_string(guest_contracts::runtime_paths::system_log_file(
-            &runtime_dir,
+            expected_dir,
         ))
         .unwrap();
-        let expected = format!(
-            "{SOURCE_EVENT} key={} source={expected_source}",
-            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV
-        );
-        assert_eq!(source_messages(&log), [expected.as_str()], "{name}");
+        assert!(!log.contains(RETIRED_SOURCE_EVENT), "{name}");
         assert!(!log.contains("must-not-leak"), "{name}");
         assert!(
             !String::from_utf8_lossy(&output.stderr).contains("must-not-leak"),
             "{name}"
         );
+        if !use_canonical {
+            assert!(!guest_contracts::runtime_paths::system_log_file(&canonical_dir).exists());
+        }
+        assert!(!guest_contracts::runtime_paths::system_log_file(&retired_dir).exists());
     }
-}
-
-#[test]
-fn binary_treats_empty_runtime_alias_as_absent() {
-    for (name, canonical_empty) in [("canonical-empty", true), ("legacy-empty", false)] {
-        let dir = tempfile::tempdir().unwrap();
-        let manifest_path = write_manifest(&dir, &[], None).unwrap();
-        let runtime_dir = dir.path().join(format!("{name}-runtime"));
-        let mut command = guest_download_command();
-        command
-            .arg(&manifest_path)
-            .env(guest_contracts::env::RUN_ID_ENV, "invalid/run-id")
-            .env("HOME", dir.path().join("unused-home"));
-        let empty = OsStr::new("");
-        apply_runtime_aliases(
-            &mut command,
-            Some(if canonical_empty {
-                empty
-            } else {
-                runtime_dir.as_os_str()
-            }),
-            Some(if canonical_empty {
-                runtime_dir.as_os_str()
-            } else {
-                empty
-            }),
-        );
-
-        let output = process::run(&mut command).unwrap();
-        assert!(
-            output.status.success(),
-            "{name}: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let log = std::fs::read_to_string(guest_contracts::runtime_paths::system_log_file(
-            &runtime_dir,
-        ))
-        .unwrap();
-        let expected_source = if canonical_empty {
-            "legacy-only"
-        } else {
-            "canonical-only"
-        };
-        let expected = format!(
-            "{SOURCE_EVENT} key={} source={expected_source}",
-            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV
-        );
-        assert_eq!(source_messages(&log), [expected.as_str()], "{name}");
-    }
-}
-
-#[test]
-fn binary_rejects_runtime_alias_conflict_without_path_or_log_side_effects() {
-    let dir = tempfile::tempdir().unwrap();
-    let manifest_path = write_manifest(&dir, &[], None).unwrap();
-    let canonical_dir = dir.path().join("canonical-must-not-leak");
-    let legacy_dir = dir.path().join("legacy-must-not-leak");
-    let mut command = guest_download_command();
-    command
-        .arg(&manifest_path)
-        .env(guest_contracts::env::RUN_ID_ENV, "run-id")
-        .env("HOME", dir.path().join("home"));
-    apply_runtime_aliases(
-        &mut command,
-        Some(canonical_dir.as_os_str()),
-        Some(legacy_dir.as_os_str()),
-    );
-
-    let output = process::run(&mut command).unwrap();
-    assert!(!output.status.success());
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains(
-        "conflicting guest runtime directory environment aliases: \
-         canonical_key=OKOU_GUEST_RUNTIME_DIR legacy_key=VM0_GUEST_RUNTIME_DIR state=conflict"
-    ));
-    assert!(!stderr.contains("canonical-must-not-leak"));
-    assert!(!stderr.contains("legacy-must-not-leak"));
-    assert!(!guest_contracts::runtime_paths::system_log_file(canonical_dir).exists());
-    assert!(!guest_contracts::runtime_paths::system_log_file(legacy_dir).exists());
-    assert!(manifest_path.exists());
 }
 
 #[cfg(unix)]
@@ -207,7 +147,12 @@ fn binary_accepts_non_unicode_runtime_override_and_home_fallback() {
     override_command
         .arg(&override_manifest)
         .env(guest_contracts::env::RUN_ID_ENV, "invalid/run-id");
-    apply_runtime_aliases(&mut override_command, Some(override_dir.as_os_str()), None);
+    let retired_dir = dir.path().join("retired-non-unicode-runtime");
+    apply_runtime_env(
+        &mut override_command,
+        Some(override_dir.as_os_str()),
+        Some(retired_dir.as_os_str()),
+    );
     let override_output = process::run(&mut override_command).unwrap();
     assert!(
         override_output.status.success(),
@@ -218,10 +163,8 @@ fn binary_accepts_non_unicode_runtime_override_and_home_fallback() {
         &override_dir,
     ))
     .unwrap();
-    assert_eq!(
-        source_messages(&override_log),
-        ["guest_runtime_dir_env_source key=OKOU_GUEST_RUNTIME_DIR source=canonical-only"]
-    );
+    assert!(!override_log.contains(RETIRED_SOURCE_EVENT));
+    assert!(!guest_contracts::runtime_paths::system_log_file(retired_dir).exists());
 
     let fallback_manifest = write_manifest(&dir, &[], None).unwrap();
     let home = dir.path().join(OsString::from_vec(b"home-\xfe".to_vec()));
@@ -232,7 +175,7 @@ fn binary_accepts_non_unicode_runtime_override_and_home_fallback() {
         .arg(&fallback_manifest)
         .env(guest_contracts::env::RUN_ID_ENV, &run_id)
         .env("HOME", &home);
-    apply_runtime_aliases(&mut fallback_command, None, None);
+    apply_runtime_env(&mut fallback_command, None, None);
     let fallback_output = process::run(&mut fallback_command).unwrap();
     assert!(
         fallback_output.status.success(),
@@ -243,7 +186,7 @@ fn binary_accepts_non_unicode_runtime_override_and_home_fallback() {
         fallback_dir,
     ))
     .unwrap();
-    assert!(source_messages(&fallback_log).is_empty());
+    assert!(!fallback_log.contains(RETIRED_SOURCE_EVENT));
 }
 
 #[test]
@@ -291,26 +234,31 @@ fn binary_fails_with_relative_runtime_dir_for_runtime_log_setup() {
     let dir = tempfile::tempdir().unwrap();
     let manifest_path = write_manifest(&dir, &[], None).unwrap();
     let run_id = unique_run_id("relative-runtime-dir");
+    let retired_dir = dir.path().join("retired-runtime-must-not-leak");
+    let mut command = guest_download_command();
+    command
+        .arg(&manifest_path)
+        .env(guest_contracts::env::RUN_ID_ENV, run_id);
+    apply_runtime_env(
+        &mut command,
+        Some(OsStr::new("relative-runtime-dir")),
+        Some(retired_dir.as_os_str()),
+    );
 
-    let output = process::run(
-        guest_download_command()
-            .arg(&manifest_path)
-            .env(guest_contracts::env::RUN_ID_ENV, run_id)
-            .env(
-                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-                "relative-runtime-dir",
-            ),
-    )
-    .unwrap();
+    let output = process::run(&mut command).unwrap();
 
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains(
-            "failed to resolve guest-download runtime paths: VM0_GUEST_RUNTIME_DIR must be an absolute path"
+            "failed to resolve guest-download runtime paths: OKOU_GUEST_RUNTIME_DIR must be an absolute path"
         ),
         "unexpected stderr: {stderr}"
     );
+    assert!(!stderr.contains("retired-runtime-must-not-leak"));
+    assert!(!stderr.contains(RETIRED_SOURCE_EVENT));
+    assert!(!guest_contracts::runtime_paths::system_log_file(retired_dir).exists());
+    assert!(manifest_path.exists());
 }
 
 #[test]
@@ -321,8 +269,7 @@ fn binary_fails_with_invalid_run_id_for_runtime_log_setup() {
     let output = process::run(
         guest_download_command()
             .arg(&manifest_path)
-            .env(guest_contracts::env::RUN_ID_ENV, "invalid/run/id")
-            .env_remove(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV),
+            .env(guest_contracts::env::RUN_ID_ENV, "invalid/run/id"),
     )
     .unwrap();
 
@@ -350,7 +297,7 @@ fn binary_uses_absolute_runtime_dir_without_validating_run_id_as_path_segment() 
                 "ignored/when/runtime-dir/is-set",
             )
             .env(
-                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
                 &logs.runtime_dir,
             ),
     )
@@ -378,7 +325,6 @@ fn binary_fails_without_home_or_runtime_dir_for_runtime_log_setup() {
         guest_download_command()
             .arg(&manifest_path)
             .env(guest_contracts::env::RUN_ID_ENV, run_id)
-            .env_remove(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
             .env_remove("HOME"),
     )
     .unwrap();

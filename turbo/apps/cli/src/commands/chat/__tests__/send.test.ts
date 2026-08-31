@@ -39,7 +39,7 @@ describe("okou chat send command", () => {
   beforeEach(() => {
     chalk.level = 0;
     tempDir = mkdtempSync(path.join(tmpdir(), "chat-send-"));
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
     vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_ID);
   });

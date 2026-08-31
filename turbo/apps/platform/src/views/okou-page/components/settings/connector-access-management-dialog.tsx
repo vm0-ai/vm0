@@ -70,6 +70,7 @@ import { IconTooltipButton } from "../../../components/icon-tooltip.tsx";
 interface ConnectorAccessManagementDialogProps {
   readonly connectorSlug: ConnectorSlug;
   readonly connectorLabel: string;
+  readonly allowAccessIncrease: boolean;
   readonly onClose: () => void;
 }
 
@@ -459,6 +460,7 @@ function AgentPermissionDialog({
 export function ConnectorAccessManagementDialog({
   connectorSlug,
   connectorLabel,
+  allowAccessIncrease,
   onClose,
 }: ConnectorAccessManagementDialogProps) {
   const { t } = useTranslation();
@@ -528,6 +530,7 @@ export function ConnectorAccessManagementDialog({
         rows={filterRows(rows, search)}
         rowsLoaded={rowsLoadable.state === "hasData"}
         hasPermissions={(metadata?.permissionCount ?? 0) > 0}
+        allowAccessIncrease={allowAccessIncrease}
         savingAgentId={savingAgentId}
         search={search}
         onSearchChange={setSearch}

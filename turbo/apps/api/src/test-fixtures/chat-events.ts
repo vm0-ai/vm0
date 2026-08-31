@@ -31,6 +31,7 @@ import { conversations } from "@okouai/db/schema/conversation";
 import { githubChatThreadRoutes } from "@okouai/db/schema/github-chat-thread-route";
 import { githubInstallations } from "@okouai/db/schema/github-installation";
 import { orgModelPolicies } from "@okouai/db/schema/org-model-policy";
+import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
 import {
   and,
@@ -870,6 +871,38 @@ export async function insertQueuedSlackMissingContextFixture(args: {
     await tx.delete(chatSlackContext).where(eq(chatSlackContext.id, event.id));
     return event.id;
   });
+}
+
+/** Reproduces a pre-cutover legacy queue head without admitting new runtime state. */
+export async function insertQueuedLegacyMorningBriefFixture(args: {
+  readonly threadId: string;
+  readonly content: string;
+}): Promise<string> {
+  const eventId = randomUUID();
+  await db().transaction(async (tx) => {
+    const [thread] = await tx
+      .update(chatThreads)
+      .set({
+        lastChatEventSeqId: sql`${chatThreads.lastChatEventSeqId} + 1`,
+      })
+      .where(eq(chatThreads.id, args.threadId))
+      .returning({ seqId: chatThreads.lastChatEventSeqId });
+    if (!thread) {
+      throw new Error("Expected the legacy Morning Brief thread");
+    }
+    await tx.insert(chatEvents).values({
+      id: eventId,
+      chatThreadId: args.threadId,
+      contextType: "morning_brief",
+      eventType: "input.prompt",
+      payload: {
+        userMessage: createUserMessageDocument({ text: args.content }),
+      },
+      runId: null,
+      seqId: thread.seqId,
+    });
+  });
+  return eventId;
 }
 
 export async function replayPendingChatInputQueueEventFixture(args: {
@@ -2492,6 +2525,56 @@ export async function holdChatEventInsertTransactionFixture(args: {
     done,
     blockedWaiterCount: async () => {
       return await transitiveBlockedWaiterCount(pid);
+    },
+  };
+}
+
+/** Holds one existing run-output row to expose writes from later event batches. */
+export async function holdRunOutputMaterializationRowFixture(args: {
+  readonly runId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const pidRows = await executeRawRows(
+      tx,
+      sql`
+        SELECT pg_backend_pid() AS "pid"
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = pidRows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the run-output row lock holder pid");
+    }
+    const [row] = await tx
+      .select({ runId: runOutputMaterializations.runId })
+      .from(runOutputMaterializations)
+      .where(eq(runOutputMaterializations.runId, args.runId))
+      .for("update")
+      .limit(1);
+    if (!row) {
+      throw new Error("Expected an existing run-output materialization");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      return await transitiveBlockedWaiterCount(holderPid);
     },
   };
 }

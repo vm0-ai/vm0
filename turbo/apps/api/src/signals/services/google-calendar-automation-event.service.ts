@@ -1456,6 +1456,7 @@ async function finalizePreparedCalendarWatch(args: {
   readonly calendarId: string;
   readonly prepared: PreparedGoogleCalendarWatch;
   readonly watch: z.infer<typeof calendarWatchResponseSchema>;
+  readonly allowStagedOfficialTarget?: boolean;
 }): Promise<
   | { readonly kind: "active"; readonly state: GoogleCalendarWatchStateRow }
   | { readonly kind: "inactive" }
@@ -1492,7 +1493,7 @@ async function finalizePreparedCalendarWatch(args: {
       },
       lifecycleSignal,
     );
-    if (!hasConsumer) {
+    if (!hasConsumer && args.allowStagedOfficialTarget !== true) {
       return { kind: "inactive" };
     }
     const [updated] = await tx
@@ -1538,6 +1539,7 @@ async function activatePreparedCalendarWatch(args: {
   readonly access: GoogleCalendarAccess;
   readonly calendarId: string;
   readonly prepared: PreparedGoogleCalendarWatch;
+  readonly allowStagedOfficialTarget?: boolean;
 }): Promise<
   | { readonly kind: "ok"; readonly state: GoogleCalendarWatchStateRow }
   | { readonly kind: "bad_request"; readonly message: string }
@@ -1619,6 +1621,7 @@ export async function ensureGoogleCalendarWatchForUser(
     readonly userId: string;
     readonly calendarId?: string;
     readonly forceRefresh?: boolean;
+    readonly allowStagedOfficialTarget?: boolean;
   },
   signal: AbortSignal,
 ): Promise<EnsureGoogleCalendarWatchResult> {
@@ -1646,7 +1649,7 @@ export async function ensureGoogleCalendarWatchForUser(
       },
       signal,
     );
-    if (!hasConsumer) {
+    if (!hasConsumer && args.allowStagedOfficialTarget !== true) {
       return { kind: "unchanged" } as const;
     }
 
@@ -1695,6 +1698,7 @@ export async function ensureGoogleCalendarWatchForUser(
     access: accessResult.access,
     calendarId,
     prepared: prepared.prepared,
+    allowStagedOfficialTarget: args.allowStagedOfficialTarget,
   });
   if (registered.kind === "ok") {
     log.debug("Workflow watch lifecycle reconciled", {
@@ -2000,7 +2004,7 @@ export async function reconcileGoogleCalendarWatchesForUser(
     readonly calendarId?: string;
   },
   signal: AbortSignal,
-): Promise<void> {
+): Promise<boolean> {
   const states = await args.db
     .select({
       connectorId: googleCalendarWatchStates.connectorId,
@@ -2017,8 +2021,9 @@ export async function reconcileGoogleCalendarWatchesForUser(
       ),
     );
   signal.throwIfAborted();
+  let succeeded = true;
   for (const state of states) {
-    await reconcileGoogleCalendarWatchState(
+    const result = await reconcileGoogleCalendarWatchState(
       {
         db: args.db,
         connectorId: state.connectorId,
@@ -2026,7 +2031,9 @@ export async function reconcileGoogleCalendarWatchesForUser(
       },
       signal,
     );
+    succeeded &&= result.kind !== "failed";
   }
+  return succeeded;
 }
 
 export async function cleanupGoogleCalendarWatchesForConnector(

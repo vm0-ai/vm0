@@ -1,4 +1,4 @@
-//! Run-metadata bootstrap aliases are resolved at the process-env boundary.
+//! Canonical run-metadata bootstrap values are captured at the process-env boundary.
 
 use std::ffi::OsStr;
 use std::path::Path;
@@ -8,36 +8,36 @@ use guest_agent::env::GuestConfigRaw;
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 #[derive(Clone, Copy)]
-struct RunMetadataEnvPair {
+struct RunMetadataEnvSpec {
     canonical: &'static str,
-    legacy: &'static str,
+    retired: &'static str,
     value: fn(&GuestConfigRaw) -> &str,
 }
 
-const RUN_METADATA_ENV_PAIRS: [RunMetadataEnvPair; 5] = [
-    RunMetadataEnvPair {
+const RUN_METADATA_ENV_SPECS: [RunMetadataEnvSpec; 5] = [
+    RunMetadataEnvSpec {
         canonical: guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
-        legacy: guest_contracts::env::SANDBOX_ID_ENV,
+        retired: "VM0_SANDBOX_ID",
         value: |raw| &raw.sandbox_id,
     },
-    RunMetadataEnvPair {
+    RunMetadataEnvSpec {
         canonical: guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
-        legacy: guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
+        retired: "VM0_SANDBOX_REUSE_RESULT",
         value: |raw| &raw.sandbox_reuse_result,
     },
-    RunMetadataEnvPair {
+    RunMetadataEnvSpec {
         canonical: guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
-        legacy: guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV,
+        retired: "VM0_WORKSPACE_REUSE_RESULT",
         value: |raw| &raw.workspace_reuse_result,
     },
-    RunMetadataEnvPair {
+    RunMetadataEnvSpec {
         canonical: guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
-        legacy: guest_contracts::env::RESUME_SESSION_ID_ENV,
+        retired: "VM0_RESUME_SESSION_ID",
         value: |raw| &raw.resume_session_id,
     },
-    RunMetadataEnvPair {
+    RunMetadataEnvSpec {
         canonical: guest_contracts::env::CANONICAL_API_START_TIME_ENV,
-        legacy: guest_contracts::env::API_START_TIME_ENV,
+        retired: "VM0_API_START_TIME",
         value: |raw| &raw.api_start_time,
     },
 ];
@@ -59,159 +59,84 @@ fn remove_test_env(key: impl AsRef<OsStr>) {
 }
 
 fn clear_run_metadata_env() {
-    for pair in RUN_METADATA_ENV_PAIRS {
-        remove_test_env(pair.canonical);
-        remove_test_env(pair.legacy);
+    for spec in RUN_METADATA_ENV_SPECS {
+        remove_test_env(spec.canonical);
+        remove_test_env(spec.retired);
     }
 }
 
-fn capture_raw(log_path: &Path) -> std::io::Result<(Result<GuestConfigRaw, String>, String)> {
-    guest_common::log::set_system_log_file(log_path);
-    let raw = GuestConfigRaw::from_process_env();
+fn capture_raw(log_path: &Path) -> TestResult<GuestConfigRaw> {
     guest_common::log::clear_system_log_file();
-    let log = match std::fs::read_to_string(log_path) {
-        Ok(log) => log,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(error) => return Err(error),
-    };
-    Ok((raw, log))
-}
-
-fn assert_source_log(
-    log: &str,
-    pair: RunMetadataEnvPair,
-    source: &str,
-    forbidden_value: Option<&str>,
-) {
+    let raw = GuestConfigRaw::from_process_env().map_err(std::io::Error::other)?;
     assert!(
-        log.contains(&format!(
-            "run_metadata_env_source key={} source={source}",
-            pair.canonical
-        )),
-        "missing fixed source evidence for {}: {log}",
-        pair.canonical
+        !log_path.exists(),
+        "raw capture installed or wrote a system-log sink"
     );
-    if let Some(value) = forbidden_value {
-        assert!(!log.contains(value), "source evidence leaked the value");
-    }
+    assert!(
+        raw.bootstrap_alias_source_events()
+            .all(|(family, _, _)| family != "run_metadata_env_source"),
+        "raw capture retained run-metadata source evidence"
+    );
+    Ok(raw)
 }
 
-fn assert_missing_and_single_source_behaviors(
+fn assert_canonical_capture_behaviors(
     tmp: &Path,
     index: usize,
-    pair: RunMetadataEnvPair,
+    spec: RunMetadataEnvSpec,
 ) -> TestResult {
     clear_run_metadata_env();
-    let (raw, log) = capture_raw(&tmp.join(format!("{index}-absent.log")))?;
-    let raw = raw.map_err(std::io::Error::other)?;
-    assert_eq!((pair.value)(&raw), "");
-    assert!(!log.contains("run_metadata_env_source"));
+    let raw = capture_raw(&tmp.join(format!("{index}-absent.log")))?;
+    assert_eq!((spec.value)(&raw), "");
 
-    let legacy_value = format!("legacy-value-{index}");
-    set_test_env(pair.legacy, &legacy_value);
-    let (raw, log) = capture_raw(&tmp.join(format!("{index}-legacy.log")))?;
-    let raw = raw.map_err(std::io::Error::other)?;
-    assert_eq!((pair.value)(&raw), legacy_value);
-    assert_source_log(&log, pair, "legacy-only", Some(&legacy_value));
+    set_test_env(spec.retired, format!("retired-only-{index}"));
+    let raw = capture_raw(&tmp.join(format!("{index}-retired-only.log")))?;
+    assert_eq!((spec.value)(&raw), "");
 
     clear_run_metadata_env();
-    set_test_env(pair.legacy, "");
-    let (raw, log) = capture_raw(&tmp.join(format!("{index}-legacy-empty.log")))?;
-    let raw = raw.map_err(std::io::Error::other)?;
-    assert_eq!((pair.value)(&raw), "");
-    assert_source_log(&log, pair, "legacy-only", None);
+    set_test_env(spec.canonical, "");
+    let raw = capture_raw(&tmp.join(format!("{index}-canonical-empty.log")))?;
+    assert_eq!((spec.value)(&raw), "");
 
-    clear_run_metadata_env();
-    set_test_env(pair.canonical, "");
-    let (raw, log) = capture_raw(&tmp.join(format!("{index}-canonical-empty.log")))?;
-    let raw = raw.map_err(std::io::Error::other)?;
-    assert_eq!((pair.value)(&raw), "");
-    assert_source_log(&log, pair, "canonical-only", None);
+    set_test_env(spec.retired, format!("retired-beside-empty-{index}"));
+    let raw = capture_raw(&tmp.join(format!("{index}-canonical-empty-retired.log")))?;
+    assert_eq!((spec.value)(&raw), "");
 
-    let canonical_value = format!("canonical-value-{index}");
+    let canonical_value = format!("canonical-value-值-{index}");
     clear_run_metadata_env();
-    set_test_env(pair.canonical, &canonical_value);
-    let (raw, log) = capture_raw(&tmp.join(format!("{index}-canonical.log")))?;
-    let raw = raw.map_err(std::io::Error::other)?;
-    assert_eq!((pair.value)(&raw), canonical_value);
-    assert_source_log(&log, pair, "canonical-only", Some(&canonical_value));
-    Ok(())
-}
+    set_test_env(spec.canonical, &canonical_value);
+    let raw = capture_raw(&tmp.join(format!("{index}-canonical.log")))?;
+    assert_eq!((spec.value)(&raw), canonical_value);
 
-fn assert_dual_and_conflict_behaviors(
-    tmp: &Path,
-    index: usize,
-    pair: RunMetadataEnvPair,
-) -> TestResult {
-    let dual_value = format!("dual-value-{index}");
-    clear_run_metadata_env();
-    set_test_env(pair.canonical, &dual_value);
-    set_test_env(pair.legacy, &dual_value);
-    let (raw, log) = capture_raw(&tmp.join(format!("{index}-dual.log")))?;
-    let raw = raw.map_err(std::io::Error::other)?;
-    assert_eq!((pair.value)(&raw), dual_value);
-    assert_source_log(&log, pair, "dual", Some(&dual_value));
-
-    clear_run_metadata_env();
-    set_test_env(pair.canonical, "");
-    set_test_env(pair.legacy, "");
-    let (raw, log) = capture_raw(&tmp.join(format!("{index}-dual-empty.log")))?;
-    let raw = raw.map_err(std::io::Error::other)?;
-    assert_eq!((pair.value)(&raw), "");
-    assert_source_log(&log, pair, "dual", None);
-
-    let canonical_conflict = format!("canonical-secret-{index}");
-    let legacy_conflict = format!("legacy-secret-{index}");
-    clear_run_metadata_env();
-    set_test_env(pair.canonical, &canonical_conflict);
-    set_test_env(pair.legacy, &legacy_conflict);
-    let (raw, log) = capture_raw(&tmp.join(format!("{index}-conflict.log")))?;
-    let error = match raw {
-        Ok(_) => {
-            return Err(std::io::Error::other("conflicting aliases should fail closed").into());
-        }
-        Err(error) => error,
-    };
-    assert!(error.contains(pair.canonical));
-    assert!(error.contains(pair.legacy));
-    assert!(error.contains("state=conflict"));
-    assert!(!error.contains(&canonical_conflict));
-    assert!(!error.contains(&legacy_conflict));
-    assert!(!log.contains(&canonical_conflict));
-    assert!(!log.contains(&legacy_conflict));
+    set_test_env(spec.retired, format!("different-retired-value-{index}"));
+    let raw = capture_raw(&tmp.join(format!("{index}-canonical-retired.log")))?;
+    assert_eq!((spec.value)(&raw), canonical_value);
     Ok(())
 }
 
 #[cfg(unix)]
-fn assert_non_unicode_behaviors(tmp: &Path, index: usize, pair: RunMetadataEnvPair) -> TestResult {
+fn assert_non_unicode_behaviors(tmp: &Path, index: usize, spec: RunMetadataEnvSpec) -> TestResult {
     use std::ffi::OsString;
     use std::os::unix::ffi::OsStringExt;
 
     clear_run_metadata_env();
-    set_test_env(pair.legacy, OsString::from_vec(vec![0xff]));
-    let (raw, log) = capture_raw(&tmp.join(format!("{index}-legacy-unicode.log")))?;
-    let raw = raw.map_err(std::io::Error::other)?;
-    assert_eq!((pair.value)(&raw), "");
-    assert!(!log.contains("run_metadata_env_source"));
+    set_test_env(spec.retired, format!("retired-value-{index}"));
+    set_test_env(spec.canonical, OsString::from_vec(vec![0xff]));
+    let raw = capture_raw(&tmp.join(format!("{index}-canonical-non-unicode.log")))?;
+    assert_eq!((spec.value)(&raw), "");
 
+    let canonical_value = format!("canonical-beside-retired-non-unicode-{index}");
     clear_run_metadata_env();
-    set_test_env(pair.canonical, OsString::from_vec(vec![0xff]));
-    let (raw, log) = capture_raw(&tmp.join(format!("{index}-canonical-unicode.log")))?;
-    let raw = raw.map_err(std::io::Error::other)?;
-    assert_eq!((pair.value)(&raw), "");
-    assert!(!log.contains("run_metadata_env_source"));
+    set_test_env(spec.canonical, &canonical_value);
+    set_test_env(spec.retired, OsString::from_vec(vec![0xff]));
+    let raw = capture_raw(&tmp.join(format!("{index}-retired-non-unicode.log")))?;
+    assert_eq!((spec.value)(&raw), canonical_value);
     Ok(())
 }
 
-fn assert_guest_config_for_source(tmp: &Path, canonical: bool) -> TestResult {
+fn assert_guest_config_uses_canonical_values(tmp: &Path) -> TestResult {
     clear_run_metadata_env();
-    let source = if canonical { "canonical" } else { "legacy" };
-    let source_label = if canonical {
-        "canonical-only"
-    } else {
-        "legacy-only"
-    };
-    let runtime_dir = tmp.join(format!("{source}-config-runtime"));
+    let runtime_dir = tmp.join("canonical-config-runtime");
     let payload_dir = runtime_dir.join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME);
     let payload_path = payload_dir.join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
     std::fs::create_dir_all(&payload_dir)?;
@@ -227,57 +152,45 @@ fn assert_guest_config_for_source(tmp: &Path, canonical: bool) -> TestResult {
         "resume-session-id",
         "1700000000000",
     ];
-    set_test_env(
-        guest_contracts::env::RUN_ID_ENV,
-        format!("{source}-config-run"),
-    );
+    set_test_env(guest_contracts::env::RUN_ID_ENV, "canonical-config-run");
     set_test_env("HOME", tmp.join("home"));
     set_test_env(
-        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
         &runtime_dir,
     );
-    set_test_env(guest_contracts::env::RUN_PAYLOAD_FILE_ENV, &payload_path);
-    remove_test_env(guest_contracts::env::USER_ENV_FILE_ENV);
-    for (pair, value) in RUN_METADATA_ENV_PAIRS.into_iter().zip(values) {
-        let key = if canonical {
-            pair.canonical
-        } else {
-            pair.legacy
-        };
-        set_test_env(key, value);
+    set_test_env(
+        guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
+        &payload_path,
+    );
+    remove_test_env("VM0_USER_ENV_FILE");
+    remove_test_env(guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV);
+    for (index, (spec, value)) in RUN_METADATA_ENV_SPECS.into_iter().zip(values).enumerate() {
+        set_test_env(spec.canonical, value);
+        set_test_env(spec.retired, format!("retired-config-value-{index}"));
     }
 
-    let config_log_path = tmp.join(format!("{source}-config.log"));
-    guest_common::log::set_system_log_file(&config_log_path);
-    let config =
-        guest_agent::env::GuestConfig::from_process_env().map_err(std::io::Error::other)?;
-    guest_common::log::clear_system_log_file();
+    let raw = capture_raw(&tmp.join("canonical-config.log"))?;
+    let config = guest_agent::env::GuestConfig::from_raw(raw).map_err(std::io::Error::other)?;
 
     assert_eq!(config.sandbox_id, values[0]);
     assert_eq!(config.sandbox_reuse_result, values[1]);
     assert_eq!(config.workspace_reuse_result, values[2]);
     assert_eq!(config.resume_session_id, values[3]);
     assert_eq!(config.api_start_time, values[4]);
-    let config_log = std::fs::read_to_string(config_log_path)?;
-    for (pair, value) in RUN_METADATA_ENV_PAIRS.into_iter().zip(values) {
-        assert_source_log(&config_log, pair, source_label, Some(value));
-    }
 
     clear_run_metadata_env();
     Ok(())
 }
 
 #[test]
-fn process_env_dual_reads_run_metadata_without_value_leaks() -> TestResult {
+fn process_env_reads_only_canonical_run_metadata() -> TestResult {
     let tmp = tempfile::tempdir()?;
 
-    for (index, pair) in RUN_METADATA_ENV_PAIRS.into_iter().enumerate() {
-        assert_missing_and_single_source_behaviors(tmp.path(), index, pair)?;
-        assert_dual_and_conflict_behaviors(tmp.path(), index, pair)?;
+    for (index, spec) in RUN_METADATA_ENV_SPECS.into_iter().enumerate() {
+        assert_canonical_capture_behaviors(tmp.path(), index, spec)?;
         #[cfg(unix)]
-        assert_non_unicode_behaviors(tmp.path(), index, pair)?;
+        assert_non_unicode_behaviors(tmp.path(), index, spec)?;
     }
 
-    assert_guest_config_for_source(tmp.path(), false)?;
-    assert_guest_config_for_source(tmp.path(), true)
+    assert_guest_config_uses_canonical_values(tmp.path())
 }

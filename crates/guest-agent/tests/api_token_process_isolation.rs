@@ -19,7 +19,7 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 #[tokio::test]
-async fn guest_agent_hides_api_token_aliases_from_its_cli_child() -> TestResult {
+async fn guest_agent_hides_canonical_and_retired_api_tokens_from_its_cli_child() -> TestResult {
     assert!(
         Path::new("/proc/self/environ").is_file(),
         "the process-isolation test requires procfs"
@@ -27,7 +27,7 @@ async fn guest_agent_hides_api_token_aliases_from_its_cli_child() -> TestResult 
     common::ensure_canonical_workspace_for_test()?;
 
     for (case, token_env) in [
-        ("legacy", guest_contracts::env::API_TOKEN_ENV),
+        ("retired", "VM0_API_TOKEN"),
         ("canonical", guest_contracts::env::CANONICAL_API_TOKEN_ENV),
     ] {
         assert_api_token_process_isolation(case, token_env).await?;
@@ -65,23 +65,32 @@ async fn assert_api_token_process_isolation(case: &str, token_env: &str) -> Test
         )
         .env("SHELL", "/bin/sh")
         .env("HOME", &home)
-        .env(guest_contracts::env::API_URL_ENV, "http://127.0.0.1:1")
+        .env(
+            guest_contracts::env::CANONICAL_API_URL_ENV,
+            "http://127.0.0.1:1",
+        )
         .env(token_env, API_TOKEN)
         .env(guest_contracts::env::RUN_ID_ENV, format!("{RUN_ID}-{case}"))
         .env(
-            guest_contracts::env::SANDBOX_ID_ENV,
+            guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
             "00000000-0000-4000-8000-000000000abc",
         )
-        .env(guest_contracts::env::SANDBOX_REUSE_RESULT_ENV, "reused")
+        .env(
+            guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+            "reused",
+        )
         .env(guest_contracts::env::CLI_AGENT_TYPE_ENV, "claude-code")
         .env(guest_contracts::env::USE_MOCK_CLAUDE_ENV, "true")
-        .env(guest_contracts::env::MOCK_CLAUDE_PATH_ENV, &probe_path)
         .env(
-            guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+            guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
+            &probe_path,
+        )
+        .env(
+            guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
             &run_payload_path,
         )
         .env(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             &runtime_dir,
         );
     if launch_unprivileged {
@@ -132,7 +141,7 @@ async fn assert_api_token_process_isolation(case: &str, token_env: &str) -> Test
 }
 
 fn write_process_inspection_probe(path: &Path, marker_path: &Path) -> TestResult {
-    let expected_legacy = format!("{}={API_TOKEN}", guest_contracts::env::API_TOKEN_ENV);
+    let expected_retired = format!("VM0_API_TOKEN={API_TOKEN}");
     let expected_canonical = format!(
         "{}={API_TOKEN}",
         guest_contracts::env::CANONICAL_API_TOKEN_ENV
@@ -157,7 +166,7 @@ fn write_process_inspection_probe(path: &Path, marker_path: &Path) -> TestResult
          printf '%s' \"$result\" > \"$marker\"\n\
          exit 1\n",
         quote_shell_arg(&marker_path.to_string_lossy()),
-        quote_shell_arg(&expected_legacy),
+        quote_shell_arg(&expected_retired),
         quote_shell_arg(&expected_canonical),
     );
     std::fs::write(path, script)?;

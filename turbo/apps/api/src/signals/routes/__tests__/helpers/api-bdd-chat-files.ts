@@ -1132,9 +1132,6 @@ export function createChatFilesBddApi(context: TestContext) {
               : {
                   sinceSeqId: cursor.lastSeqId,
                   sinceEventId: cursor.lastEventId,
-                  ...(cursor.projection === undefined
-                    ? {}
-                    : { sinceProjection: cursor.projection }),
                 },
         }),
         [200],

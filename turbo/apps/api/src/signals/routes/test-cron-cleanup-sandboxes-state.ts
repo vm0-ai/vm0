@@ -16,6 +16,7 @@ import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { exportJobs } from "@okouai/db/schema/export-job";
+import { orgMetadataLegacyWrites } from "@okouai/db/operations/org-metadata-legacy-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { hostedDeployments, hostedSites } from "@okouai/db/schema/hosted-site";
 import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
@@ -145,7 +146,7 @@ async function seedRunForAction(
   }
 
   await db
-    .insert(orgMetadata)
+    .insert(orgMetadataLegacyWrites)
     .values({
       orgId,
       tier: "free",
@@ -919,6 +920,50 @@ async function getExportJobForAction(
   return actionOk({ export_job: job ?? null });
 }
 
+const TEST_TERMINAL_RUN_STATUSES = [
+  "completed",
+  "failed",
+  "cancelled",
+  "timeout",
+] as const;
+
+async function transitionRunTerminalForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const runId = readString(body, "run_id");
+  const status = readString(body, "status");
+  if (!runId) {
+    return actionBadRequest("run_id is required");
+  }
+  const terminalStatus = TEST_TERMINAL_RUN_STATUSES.find((candidate) => {
+    return candidate === status;
+  });
+  if (!terminalStatus) {
+    return actionBadRequest("terminal status is required");
+  }
+  const [updated] = await db
+    .update(agentRuns)
+    .set({
+      status: terminalStatus,
+      completedAt: nowDate(),
+      error:
+        terminalStatus === "completed"
+          ? null
+          : `Run entered ${terminalStatus} in endpoint integration fixture`,
+    })
+    .where(
+      and(
+        eq(agentRuns.id, runId),
+        inArray(agentRuns.status, ["pending", "running"]),
+      ),
+    )
+    .returning({ id: agentRuns.id });
+  signal.throwIfAborted();
+  return updated ? actionOk() : actionBadRequest("active run not found");
+}
+
 const cronCleanupSandboxesActionHandlers = {
   "seed-run": seedRunForAction,
   "seed-run-ownership": seedRunOwnershipForAction,
@@ -937,6 +982,7 @@ const cronCleanupSandboxesActionHandlers = {
   "get-queue-entry": getQueueEntryForAction,
   "get-queue-marker-revoker": getQueueMarkerRevokerForAction,
   "get-export-job": getExportJobForAction,
+  "transition-run-terminal": transitionRunTerminalForAction,
 } satisfies Record<
   CronCleanupSandboxesAction,
   CronCleanupSandboxesActionHandler

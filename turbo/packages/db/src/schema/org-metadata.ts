@@ -13,13 +13,11 @@ import {
 import { agents } from "./agent";
 
 /**
- * org_metadata — stores per-org data that is owned by the platform (not Clerk).
- * Holds credit balance, tier, default agent configuration, and Stripe billing fields.
- * Clerk remains source of truth for slug and membership only.
+ * Legacy org-metadata projection kept free of expand-only columns while the
+ * immediately pre-expand database remains a supported deployment target.
  */
-export const orgMetadata = pgTable(
-  "org_metadata",
-  {
+export function orgMetadataLegacyColumns() {
+  return {
     orgId: text("org_id").primaryKey(),
     // Credits are granted explicitly through Stripe invoices, one-time purchases,
     // or legacy/manual grants. The column DEFAULT is 0 — never rely on the
@@ -71,6 +69,20 @@ export const orgMetadata = pgTable(
     autoRechargePendingAt: timestamp("auto_recharge_pending_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  };
+}
+
+/**
+ * org_metadata — stores per-org data that is owned by the platform (not Clerk).
+ * Holds credit balance, tier, default agent configuration, and Stripe billing fields.
+ * Clerk remains source of truth for slug and membership only.
+ */
+export const orgMetadata = pgTable(
+  "org_metadata",
+  {
+    ...orgMetadataLegacyColumns(),
+    // Expand-only mapping; active application contracts remain legacy.
+    acquisitionFirstPartySource: text("acquisition_first_party_source"),
   },
   (table) => {
     return [

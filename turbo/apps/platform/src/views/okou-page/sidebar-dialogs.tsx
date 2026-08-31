@@ -24,7 +24,7 @@ import {
   Video,
   X,
 } from "lucide-react";
-import { r2ImageTransformUrl } from "@okouai/core";
+import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
 import type { ChatSearchResult } from "@okouai/api-contracts/contracts/chat-threads";
 import type { ArtifactCatalogKind } from "@okouai/api-contracts/contracts/artifact-catalog";
 import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
@@ -229,8 +229,6 @@ function AgentCommandSearch({
     <div className="px-5 pb-3">
       <div className="relative w-full">
         <CommandInput
-          value={query}
-          onValueChange={setQuery}
           placeholder={placeholder}
           className={query ? "pr-7" : ""}
         />
@@ -268,7 +266,7 @@ function AgentCommandSection({
   return (
     <CommandGroup
       heading={label}
-      className={`px-5 ${className} [&_[cmdk-group-items]]:mt-1 [&_[cmdk-group-items]]:flex [&_[cmdk-group-items]]:flex-col`}
+      className={`px-5 ${className} [&_[data-slot=command-group-items]]:mt-1 [&_[data-slot=command-group-items]]:flex [&_[data-slot=command-group-items]]:flex-col`}
     >
       {children}
     </CommandGroup>
@@ -307,7 +305,7 @@ function AgentCommandAgentContent({
 }
 
 /**
- * Trailing pin toggle for a pin-dialog row. It stays hidden until cmdk selects
+ * Trailing pin toggle for a pin-dialog row. It stays hidden until the command highlights
  * the row — hovering or arrowing onto it — so a resting row never shows the
  * pin glyph the rest of the app uses to mean "already pinned".
  */
@@ -328,7 +326,7 @@ function AgentCommandPinToggle({
       variant="quiet"
       size="xs"
       disabled={disabled}
-      className="ml-auto shrink-0 gap-1.5 opacity-0 transition-opacity duration-150 group-data-[selected=true]:opacity-100 focus-visible:opacity-100"
+      className="ml-auto shrink-0 gap-1.5 opacity-0 transition-opacity duration-150 group-data-[highlighted]:opacity-100 focus-visible:opacity-100"
       onClick={(e) => {
         e.stopPropagation();
         onToggle();
@@ -1200,13 +1198,7 @@ function SpotlightFilterButton({
   );
 }
 
-function SpotlightSearchInput({
-  query,
-  onValueChange,
-}: {
-  readonly query: string;
-  readonly onValueChange: (query: string) => void;
-}) {
+function SpotlightSearchInput() {
   const { t } = useTranslation("agents");
 
   return (
@@ -1215,8 +1207,6 @@ function SpotlightSearchInput({
     <div className="p-5">
       <div className="relative">
         <CommandInput
-          value={query}
-          onValueChange={onValueChange}
           placeholder={t(($) => {
             return $.sidebar.searchWorkspace;
           })}
@@ -1332,7 +1322,7 @@ interface SpotlightSearchResultsProps {
   readonly showNoResults: boolean;
   readonly onSelectChatThread: (threadId: string) => void;
   readonly onSelectWorkflow: (workflowId: string) => void;
-  readonly onSelectArtifact: (artifactId: string) => void;
+  readonly onSelectArtifact: (artifact: ThreeColumnArtifactSearchItem) => void;
 }
 
 interface SpotlightQueryResult {
@@ -1451,7 +1441,7 @@ function SpotlightSearchResults({
         No group heading: the filter row above already names what is listed, and
         "Best matches" was labelling the only group there is.
       */}
-      <CommandGroup className="[&_[cmdk-group-items]]:flex [&_[cmdk-group-items]]:flex-col">
+      <CommandGroup className="[&_[data-slot=command-group-items]]:flex [&_[data-slot=command-group-items]]:flex-col">
         {showThreads
           ? threads.map((thread) => {
               return (
@@ -1509,7 +1499,7 @@ function SpotlightSearchResults({
                   key={artifact.id}
                   artifact={artifact}
                   onSelect={() => {
-                    return onSelectArtifact(artifact.id);
+                    return onSelectArtifact(artifact);
                   }}
                 />
               );
@@ -1561,7 +1551,7 @@ export function ThreeColumnSearchDialog({
   readonly onOpenChange: (open: boolean) => void;
   readonly onSelectChatThread: (threadId: string) => void;
   readonly onSelectWorkflow: (workflowId: string) => void;
-  readonly onSelectArtifact: (artifactId: string) => void;
+  readonly onSelectArtifact: (artifact: ThreeColumnArtifactSearchItem) => void;
 }) {
   const { t } = useTranslation("agents");
   const query = useGet(chatListQuery$);
@@ -1643,9 +1633,9 @@ export function ThreeColumnSearchDialog({
     onOpenChange(false);
     onSelectWorkflow(workflowId);
   };
-  const selectArtifact = (artifactId: string) => {
+  const selectArtifact = (artifact: ThreeColumnArtifactSearchItem) => {
     onOpenChange(false);
-    onSelectArtifact(artifactId);
+    onSelectArtifact(artifact);
   };
 
   return (
@@ -1657,7 +1647,12 @@ export function ThreeColumnSearchDialog({
       })}
       className="zero-app w-[calc(100vw-2rem)] gap-0 sm:max-w-[820px] [&_[data-slot=dialog-close]]:hidden"
       commandClassName="gap-0"
-      commandProps={{ shouldFilter: false, loop: true }}
+      commandProps={{
+        shouldFilter: false,
+        loop: true,
+        value: query,
+        onValueChange: setQuery,
+      }}
     >
       <DialogHeader className="sr-only">
         <DialogTitle>
@@ -1671,7 +1666,7 @@ export function ThreeColumnSearchDialog({
           })}
         </DialogDescription>
       </DialogHeader>
-      <SpotlightSearchInput query={query} onValueChange={setQuery} />
+      <SpotlightSearchInput />
       <SpotlightSearchFilterBar
         filter={filter}
         resultCount={resultCount}
@@ -1872,7 +1867,7 @@ function AgentListDialogUnifiedSearch({
   const showNoResults = messageResult !== undefined && !hasResult;
 
   return (
-    <CommandGroup className="px-5 pb-3 [&_[cmdk-group-items]]:flex [&_[cmdk-group-items]]:flex-col">
+    <CommandGroup className="px-5 pb-3 [&_[data-slot=command-group-items]]:flex [&_[data-slot=command-group-items]]:flex-col">
       {items.map((item) => {
         if (item.kind === "agent") {
           return (
@@ -2016,7 +2011,12 @@ export function AgentListDialog({
       })}
       className="zero-app sm:max-w-xl w-[calc(100vw-2rem)] gap-0"
       commandClassName="gap-0"
-      commandProps={{ shouldFilter: false, loop: true }}
+      commandProps={{
+        shouldFilter: false,
+        loop: true,
+        value: query,
+        onValueChange: setQuery,
+      }}
     >
       <DialogHeader className="px-5 pt-5 pb-3">
         <DialogTitle className="text-base font-semibold">
@@ -2165,7 +2165,12 @@ export function PinAgentDialog({
       })}
       className="zero-app sm:max-w-xl w-[calc(100vw-2rem)] gap-0"
       commandClassName="gap-0"
-      commandProps={{ shouldFilter: false, loop: true }}
+      commandProps={{
+        shouldFilter: false,
+        loop: true,
+        value: query,
+        onValueChange: setQuery,
+      }}
     >
       <DialogHeader className="px-5 pt-5 pb-3">
         <DialogTitle className="text-base font-semibold">

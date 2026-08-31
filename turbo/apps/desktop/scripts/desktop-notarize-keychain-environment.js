@@ -35,10 +35,12 @@ function resolveEnvironmentAlias(canonicalKey, legacyKey) {
   return canonicalPresent ? canonicalValue : legacyValue;
 }
 
-// The README remains legacy-only for this external local-build reader stage.
-// Production silence cannot prove that independent local configuration drained.
-// Remove these aliases only after the later documentation cutover and explicit
-// external-support rollback window complete under #28914.
+// Repository documentation is canonical-only for these Keychain inputs.
+// Legacy aliases remain accepted for independently configured external local
+// builds and unit-revert compatibility; centralized production silence is not
+// a removal signal. Reader removal requires a separate explicit support-cutoff
+// issue, a current inventory of team-owned external build configuration, and an
+// announced breaking-change and rollback decision under #28914.
 function resolveDesktopNotarizeKeychainEnvironment() {
   const keychainProfile = resolveEnvironmentAlias(
     CANONICAL_KEYCHAIN_PROFILE,

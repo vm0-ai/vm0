@@ -11,6 +11,7 @@ import {
   expectNoOrganizationCreation,
   expectStepAnnouncement,
   openAuthV2,
+  reloadAuthV2,
   signInMethodButton,
   submitSignInIdentifier,
   waitForPathname,
@@ -18,6 +19,7 @@ import {
 
 const ORGANIZATION_ALPHA = "Auth v2 Browser Alpha";
 const ORGANIZATION_BETA = "Auth v2 Browser Beta";
+const AUTH_V2_PRIMARY_BACKGROUND_COLOR = "rgb(239, 80, 1)";
 const SUPPORTED_AUTH_V2_LOCALES = [
   { locale: "en-US", title: "Create your account" },
   { locale: "pt-BR", title: "Criar sua conta" },
@@ -31,63 +33,119 @@ const SUPPORTED_AUTH_V2_LOCALES = [
   { locale: "hi-IN", title: "अपना खाता बनाएं" },
 ] as const;
 
-test("base, nested, refreshed, and legacy auth routes coexist on desktop", async ({
+function relativeLuminance(color: string): number {
+  const channels = color
+    .match(/[0-9.]+/g)
+    ?.slice(0, 3)
+    .map(Number);
+  if (
+    channels?.length !== 3 ||
+    channels.some((channel) => !Number.isFinite(channel))
+  ) {
+    throw new Error(`Expected an RGB color, received ${color}`);
+  }
+  const [red = 0, green = 0, blue = 0] = channels.map((channel) => {
+    const normalized = channel / 255;
+    return normalized <= 0.04045
+      ? normalized / 12.92
+      : ((normalized + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
+function contrastRatio(foreground: string, background: string): number {
+  const foregroundLuminance = relativeLuminance(foreground);
+  const backgroundLuminance = relativeLuminance(background);
+  return (
+    (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
+    (Math.min(foregroundLuminance, backgroundLuminance) + 0.05)
+  );
+}
+
+async function renderedLinkContrast(
+  linkAction: Locator,
+  surface: Locator,
+): Promise<number> {
+  const linkForeground = await linkAction.evaluate((element) => {
+    return getComputedStyle(element).color;
+  });
+  const surfaceBackground = await surface.evaluate((element) => {
+    return getComputedStyle(element).backgroundColor;
+  });
+  return contrastRatio(linkForeground, surfaceBackground);
+}
+
+async function expectAccessibleLinkContrast(
+  linkAction: Locator,
+  surface: Locator,
+): Promise<void> {
+  await expect
+    .poll(async () => {
+      return renderedLinkContrast(linkAction, surface);
+    })
+    .toBeGreaterThanOrEqual(4.5);
+}
+
+test("stable auth routes render Auth v2 on desktop", async ({
   page,
 }) => {
-  const v2Routes = [
-    "/v2/sign-in",
-    "/v2/sign-in/factor-one?auth_v2_e2e=nested#/factor-one",
-    "/v2/sign-up",
-    "/v2/sign-up/verify-email-address?auth_v2_e2e=nested#/verify",
+  const stableRoutes = [
+    "/sign-in",
+    "/sign-in/factor-one?auth_v2_e2e=nested#/factor-one",
+    "/sign-up",
+    "/sign-up/verify-email-address?auth_v2_e2e=nested#/verify",
   ];
-  for (const route of v2Routes) {
+  for (const route of stableRoutes) {
     await openAuthV2(page, route);
     const expectedPathname = new URL(route, "https://auth-v2.invalid").pathname;
     expect(new URL(page.url()).pathname).toBe(expectedPathname);
-    await page.reload({ waitUntil: "domcontentloaded" });
-    await expect(authV2Root(page)).toBeVisible();
+    await reloadAuthV2(page);
     expect(new URL(page.url()).pathname).toBe(expectedPathname);
   }
 
   expect(await page.evaluate(() => window.innerWidth)).toBeGreaterThanOrEqual(
     1_000,
   );
-  for (const legacyRoute of ["/sign-in", "/sign-up"]) {
-    await page.goto(legacyRoute, { waitUntil: "domcontentloaded" });
-    await expect(page.getByTestId("app-auth-layout")).toBeVisible();
-    await expect(authV2Root(page)).toHaveCount(0);
-    expect(new URL(page.url()).pathname.startsWith(legacyRoute)).toBe(true);
-  }
 });
 
-test("primary and link actions retain accessible brand colors in both themes", async ({
+test("primary actions retain brand styling while links remain accessible", async ({
   page,
 }) => {
-  await openAuthV2(page, "/v2/sign-up");
+  await openAuthV2(page, "/sign-up");
 
   const root = authV2Root(page);
   const continueButton = root.getByRole("button", {
     exact: true,
     name: "Continue",
   });
-  const currentSignUpLink = page.getByRole("link", {
-    name: "Use current sign-up",
+  const signInLink = root.getByRole("link", {
+    exact: true,
+    name: "Sign in",
   });
   const passwordVisibilityAction = root.getByRole("button", {
     name: "Show password",
   });
 
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  await expect(continueButton).toHaveCSS("background-color", "rgb(208, 67, 1)");
+  await expect(continueButton).toHaveCSS(
+    "background-color",
+    AUTH_V2_PRIMARY_BACKGROUND_COLOR,
+  );
   await expect(continueButton).toHaveCSS("color", "rgb(255, 255, 255)");
-  await expect(currentSignUpLink).toHaveCSS("color", "rgb(208, 67, 1)");
+  await expect(continueButton).toHaveClass(/\bbg-primary\b/);
+  await expect(continueButton).toHaveClass(/\btext-primary-foreground\b/);
+  await expect(signInLink).toHaveClass(/\btext-primary-900\b/);
+  await expectAccessibleLinkContrast(signInLink, root);
   await expect(passwordVisibilityAction).toHaveCSS("color", "rgb(21, 24, 30)");
 
   await page.getByRole("button", { name: "Toggle theme" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await expect(continueButton).toHaveCSS("background-color", "rgb(208, 67, 1)");
+  await expect(continueButton).toHaveCSS(
+    "background-color",
+    AUTH_V2_PRIMARY_BACKGROUND_COLOR,
+  );
   await expect(continueButton).toHaveCSS("color", "rgb(255, 255, 255)");
-  await expect(currentSignUpLink).toHaveCSS("color", "rgb(239, 90, 15)");
+  await expectAccessibleLinkContrast(signInLink, root);
   await expect(passwordVisibilityAction).toHaveCSS(
     "color",
     "rgb(233, 234, 236)",
@@ -106,7 +164,7 @@ test.describe("localized mobile presentation", () => {
   }) => {
     await openAuthV2(
       page,
-      "/v2/sign-in/factor-one?auth_v2_e2e=mobile#/factor-one",
+      "/sign-in/factor-one?auth_v2_e2e=mobile#/factor-one",
     );
 
     const heading = authV2Root(page).locator("h1");
@@ -140,7 +198,7 @@ for (const { locale, title } of SUPPORTED_AUTH_V2_LOCALES) {
     test.use({ locale });
 
     test("loads platform-owned sign-up copy", async ({ page }) => {
-      await openAuthV2(page, "/v2/sign-up/verify-email-address");
+      await openAuthV2(page, "/sign-up/verify-email-address");
       await expect(page.locator("html")).toHaveAttribute("lang", locale);
       const heading = authV2Root(page).locator("h1");
       await expect(heading).toHaveText(title);
@@ -158,7 +216,7 @@ test("password sign-in completes Device Trust and honors an allowed redirect", a
     ORGANIZATION_BETA,
   ]);
   const redirect = sameOriginRedirect(baseURL, "password");
-  await openAuthV2(page, authUrl("/v2/sign-in", redirect));
+  await openAuthV2(page, authUrl("/sign-in", redirect));
   await submitSignInIdentifier(page, identity.email);
 
   const password = authV2Input(page, "password");
@@ -182,7 +240,7 @@ test("email-code sign-in completes with the development verification code", asyn
     ORGANIZATION_ALPHA,
   ]);
   const redirect = sameOriginRedirect(baseURL, "email-code");
-  await openAuthV2(page, authUrl("/v2/sign-in", redirect));
+  await openAuthV2(page, authUrl("/sign-in", redirect));
   await submitSignInIdentifier(page, identity.email);
   await authV2Root(page)
     .getByRole("button", { name: /use another method/i })
@@ -205,7 +263,7 @@ test("password reset completes through email verification", async ({
   ]);
   const newPassword = authV2Resources.createPassword();
   const redirect = sameOriginRedirect(baseURL, "password-reset");
-  await openAuthV2(page, authUrl("/v2/sign-in", redirect));
+  await openAuthV2(page, authUrl("/sign-in", redirect));
   await submitSignInIdentifier(page, identity.email);
   await authV2Root(page)
     .getByRole("button", { name: /forgot password/i })
@@ -233,7 +291,7 @@ test("progressive sign-up activates without optional profile fields", async ({
   const emailAddress = authV2Resources.allocateEmail();
   const password = authV2Resources.createPassword();
   const redirect = sameOriginRedirect(baseURL, "sign-up");
-  await openAuthV2(page, authUrl("/v2/sign-up", redirect));
+  await openAuthV2(page, authUrl("/sign-up", redirect));
   const email = authV2Input(page, "email-address");
   const passwordInput = authV2Input(page, "password");
   await expect(email).toBeVisible();
@@ -269,7 +327,7 @@ test("existing sessions continue without exposing organization creation", async 
   await clerk.signIn({ emailAddress: identity.email, page });
   await waitForSignedInAccount(page, identity.email);
 
-  await openAuthV2(page, authUrl("/v2/sign-in", redirect));
+  await openAuthV2(page, authUrl("/sign-in", redirect));
   const account = authV2Root(page).getByRole("button", {
     name: identity.email,
   });
@@ -283,7 +341,7 @@ test("bounds Google One Tap, OAuth, and passkey behavior at external handoffs", 
   page,
 }, testInfo) => {
   await installExternalAuthBoundaryStubs(page);
-  await openAuthV2(page, "/v2/sign-in");
+  await openAuthV2(page, "/sign-in");
   await expect(authV2Input(page, "identifier")).toBeVisible();
 
   const oneTapConfigured = await page.evaluate(() => {
@@ -305,7 +363,7 @@ test("bounds Google One Tap, OAuth, and passkey behavior at external handoffs", 
       .toBe(1);
     expect(await googleBoundaryCount(page, "initializes")).toBe(1);
     expect(await googleBoundaryCount(page, "fedCmInitializes")).toBe(1);
-    await openAuthV2(page, "/v2/sign-in/factor-one");
+    await openAuthV2(page, "/sign-in/factor-one");
     expect(await googleBoundaryCount(page, "prompts")).toBe(1);
     expect(await googleBoundaryCount(page, "initializes")).toBe(1);
     expect(await googleBoundaryCount(page, "fedCmInitializes")).toBe(1);
@@ -316,7 +374,7 @@ test("bounds Google One Tap, OAuth, and passkey behavior at external handoffs", 
     });
   }
 
-  await openAuthV2(page, "/v2/sign-in");
+  await openAuthV2(page, "/sign-in");
   await expect(authV2Input(page, "identifier")).toBeVisible();
   const passkey = signInMethodButton(page, "passkey");
   if (await passkey.isVisible()) {
@@ -342,7 +400,7 @@ test("bounds Google One Tap, OAuth, and passkey behavior at external handoffs", 
     const signUpPage = await page.context().newPage();
     try {
       await installExternalAuthBoundaryStubs(signUpPage);
-      await openAuthV2(signUpPage, "/v2/sign-up");
+      await openAuthV2(signUpPage, "/sign-up");
       await expect(authV2Input(signUpPage, "email-address")).toBeVisible();
       const legal = authV2Root(signUpPage).getByRole("checkbox");
       if (await legal.isVisible()) {
@@ -500,7 +558,7 @@ async function waitForActivatedSessionOrRedirect(
         window.location.pathname === redirectPathname ||
         Boolean(
           window.Clerk?.client?.signUp.status === "complete" &&
-            window.Clerk.session,
+          window.Clerk.session,
         )
       );
     },

@@ -126,11 +126,40 @@ describe("connector account contracts", () => {
     ).toBe(false);
   });
 
-  it("keeps account intent optional for installed CLI manual grants", () => {
+  it("preserves manual grant inputs and declares the CLI retirement response", () => {
     expect(
       connectorManualGrantContract.connect.body.safeParse({
         authMethod: "api-token",
         values: { apiKey: "test" },
+      }).success,
+    ).toBe(true);
+    expect(
+      connectorManualGrantContract.connect.body.safeParse({
+        authMethod: "api-token",
+        account: { intent: "single-account" },
+        values: { apiKey: "test" },
+      }).success,
+    ).toBe(true);
+    expect(
+      connectorManualGrantContract.connect.body.safeParse({
+        authMethod: "api-token",
+        account: { intent: "add", displayName: "Work" },
+        values: { apiKey: "test" },
+      }).success,
+    ).toBe(true);
+    expect(
+      connectorManualGrantContract.connect.body.safeParse({
+        authMethod: "api-token",
+        account: { intent: "reconnect", connectionId },
+        values: { apiKey: "test" },
+      }).success,
+    ).toBe(true);
+    expect(
+      connectorManualGrantContract.connect.responses[426].safeParse({
+        error: {
+          message: "Update the CLI to connect this connector",
+          code: "CLI_CONNECTOR_ACCOUNT_INTENT_RETIRED",
+        },
       }).success,
     ).toBe(true);
   });

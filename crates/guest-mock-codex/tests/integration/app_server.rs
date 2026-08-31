@@ -1,6 +1,6 @@
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::process::{ChildStdin, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
@@ -8,14 +8,14 @@ use guest_mock_codex::{read_session_file, session_artifacts};
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
-use crate::support::{BIN, ChildWaitOutcome, require_session_file, run, wait_child_with_timeout};
+use crate::support::{BIN, ChildWaitOutcome, ProcessGroupChild, require_session_file, run};
 
 const APP_SERVER_READ_TIMEOUT: Duration = Duration::from_secs(5);
 const APP_SERVER_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 pub(crate) const MOCK_CODEX_SESSION_TIMESTAMP_ENV: &str = "MOCK_CODEX_SESSION_TIMESTAMP";
 
 pub(crate) struct AppServerProcess {
-    child: Option<Child>,
+    child: Option<ProcessGroupChild>,
     stdin: Option<ChildStdin>,
     stdout_rx: Receiver<Result<Option<Value>, String>>,
     stdout_done_rx: Option<Receiver<()>>,
@@ -91,11 +91,8 @@ impl AppServerProcess {
             .take()
             .ok_or_else(|| std::io::Error::other("app-server child already waited"))?;
         let stdout_deadline = Instant::now() + APP_SERVER_EXIT_TIMEOUT + APP_SERVER_EXIT_TIMEOUT;
-        let status = match wait_child_with_timeout(
-            child,
-            APP_SERVER_EXIT_TIMEOUT,
-            APP_SERVER_EXIT_TIMEOUT,
-        ) {
+        let status = match child.wait_with_timeout(APP_SERVER_EXIT_TIMEOUT, APP_SERVER_EXIT_TIMEOUT)
+        {
             ChildWaitOutcome::Exited(status) | ChildWaitOutcome::TimedOut(status) => status,
             ChildWaitOutcome::ReapTimedOut => {
                 self.detach_stdout_reader();
@@ -109,6 +106,13 @@ impl AppServerProcess {
                 return Err(std::io::Error::new(
                     error.kind(),
                     format!("failed to kill app-server child after timeout: {error}"),
+                ));
+            }
+            ChildWaitOutcome::CleanupFailed(error) => {
+                self.detach_stdout_reader();
+                return Err(std::io::Error::new(
+                    error.kind(),
+                    format!("clean up app-server process group: {error}"),
                 ));
             }
             ChildWaitOutcome::ReapFailed(error) | ChildWaitOutcome::WaitFailed(error) => {
@@ -152,16 +156,8 @@ impl AppServerProcess {
 impl Drop for AppServerProcess {
     fn drop(&mut self) {
         self.stdin.take();
-        if let Some(mut child) = self.child.take() {
-            match child.try_wait() {
-                Ok(Some(_)) => {
-                    let _ = child.wait();
-                }
-                Ok(None) | Err(_) => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                }
-            }
+        if let Some(child) = self.child.take() {
+            let _ = child.wait_with_timeout(Duration::ZERO, APP_SERVER_EXIT_TIMEOUT);
         }
         let _ = self.wait_for_stdout_reader_until(Instant::now() + APP_SERVER_EXIT_TIMEOUT);
     }
@@ -194,14 +190,14 @@ pub(crate) fn spawn_app_server_with_env(
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
-    let mut child = cmd.spawn()?;
-    let stdin = child.stdin.take().ok_or_else(|| {
+    let mut child = ProcessGroupChild::spawn(&mut cmd)?;
+    let stdin = child.take_stdin().ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::BrokenPipe,
             "failed to open app-server stdin",
         )
     })?;
-    let stdout = child.stdout.take().ok_or_else(|| {
+    let stdout = child.take_stdout().ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::BrokenPipe,
             "failed to open app-server stdout",
@@ -265,6 +261,166 @@ pub(crate) fn initialize_params() -> Value {
             "requestAttestation": false
         }
     })
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Clone, Copy)]
+struct LinuxProcessStat {
+    state: char,
+    process_group_id: i32,
+    start_time_ticks: u64,
+}
+
+#[cfg(target_os = "linux")]
+fn read_linux_process_stat(pid: u32) -> std::io::Result<Option<LinuxProcessStat>> {
+    let stat_path = format!("/proc/{pid}/stat");
+    let stat = match std::fs::read_to_string(&stat_path) {
+        Ok(stat) => stat,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    let (_command, fields_text) = stat.rsplit_once(") ").ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("{stat_path} is missing its command terminator"),
+        )
+    })?;
+    let fields = fields_text.split_whitespace().collect::<Vec<_>>();
+    let state = fields
+        .first()
+        .and_then(|state| {
+            let mut chars = state.chars();
+            let state = chars.next()?;
+            chars.next().is_none().then_some(state)
+        })
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("{stat_path} has an invalid process state"),
+            )
+        })?;
+    let process_group_id = fields
+        .get(2)
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("{stat_path} is missing its process-group ID"),
+            )
+        })?
+        .parse::<i32>()
+        .map_err(|error| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("parse {stat_path} process-group ID: {error}"),
+            )
+        })?;
+    let start_time_ticks = fields
+        .get(19)
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("{stat_path} is missing its start time"),
+            )
+        })?
+        .parse::<u64>()
+        .map_err(|error| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("parse {stat_path} start time: {error}"),
+            )
+        })?;
+
+    Ok(Some(LinuxProcessStat {
+        state,
+        process_group_id,
+        start_time_ticks,
+    }))
+}
+
+#[cfg(target_os = "linux")]
+fn wait_for_published_process(
+    pid_path: &Path,
+    deadline: Instant,
+) -> std::io::Result<(u32, LinuxProcessStat)> {
+    let mut last_observation = "PID file not observed".to_string();
+    loop {
+        match std::fs::read_to_string(pid_path) {
+            Ok(contents) => match contents.trim().parse::<u32>() {
+                Ok(pid) => match read_linux_process_stat(pid)? {
+                    Some(stat) => return Ok((pid, stat)),
+                    None => last_observation = format!("published process {pid} disappeared"),
+                },
+                Err(error) => {
+                    last_observation =
+                        format!("PID file contained {contents:?}, which is not a PID: {error}");
+                }
+            },
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!(
+                    "checkpoint descendant did not publish a live PID before the deadline: \
+                     {last_observation}"
+                ),
+            ));
+        }
+        std::thread::sleep(remaining.min(Duration::from_millis(10)));
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn wait_for_process_exit(
+    pid: u32,
+    start_time_ticks: u64,
+    deadline: Instant,
+) -> std::io::Result<()> {
+    loop {
+        match read_linux_process_stat(pid)? {
+            None => return Ok(()),
+            Some(stat)
+                if stat.start_time_ticks != start_time_ticks
+                    || matches!(stat.state, 'Z' | 'X' | 'x') =>
+            {
+                return Ok(());
+            }
+            Some(_) => {}
+        }
+
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!("process {pid} did not exit before the deadline"),
+            ));
+        }
+        std::thread::sleep(remaining.min(Duration::from_millis(10)));
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn require_child_reaped(pid: u32) -> std::io::Result<()> {
+    let pid = libc::pid_t::try_from(pid).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "app-server child PID does not fit in pid_t",
+        )
+    })?;
+    let mut status = 0;
+    // SAFETY: AppServerProcess has already consumed and reaped this direct
+    // child; WNOHANG only verifies that no waitable child remains.
+    let result = unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) };
+    if result == -1 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ECHILD) {
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!(
+            "app-server child {pid} remained waitable after Drop: waitpid returned {result}"
+        )))
+    }
 }
 
 #[test]
@@ -391,6 +547,9 @@ fn app_server_turn_steer_can_complete_runtime_turn_after_success() -> std::io::R
             "item/started",
             "item/started",
             "item/completed",
+            "thread/tokenUsage/updated",
+            "thread/tokenUsage/updated",
+            "thread/tokenUsage/updated",
             "turn/completed",
         ]
     );
@@ -590,16 +749,103 @@ fn app_server_checkpointed_shell_emits_output_before_continuing() -> std::io::Re
 
     std::fs::write(release_file, "continue")?;
     let completed_item = server.read_required()?;
-    let completed_turn = server.read_required()?;
     assert_eq!(completed_item["method"], "item/completed");
     assert_eq!(
         completed_item["params"]["item"]["text"],
         "continuation-finished"
     );
-    assert_eq!(completed_turn["method"], "turn/completed");
+    let mut usage_notifications = 0;
+    loop {
+        let notification = server.read_required()?;
+        match notification["method"].as_str() {
+            Some("thread/tokenUsage/updated") => usage_notifications += 1,
+            Some("turn/completed") => break,
+            method => panic!("unexpected completion notification: {method:?}"),
+        }
+    }
+    assert_eq!(usage_notifications, 3);
 
     assert_eq!(server.close_and_wait()?, 0);
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn app_server_drop_terminates_checkpoint_descendant() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let descendant_pid_path = dir.path().join("checkpoint-descendant.pid");
+    let descendant_pid_path_value = descendant_pid_path.to_string_lossy().into_owned();
+    let mut server = spawn_app_server_with_env(
+        dir.path(),
+        &["app-server", "--listen", "stdio://"],
+        Some("runtime-turn-complete"),
+        &[("MOCK_DESCENDANT_PID_FILE", &descendant_pid_path_value)],
+    )?;
+    let app_server_pid = server
+        .child
+        .as_ref()
+        .ok_or_else(|| std::io::Error::other("app-server child is missing"))?
+        .id();
+    let app_server_pgid = i32::try_from(app_server_pid).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "app-server child PID does not fit in i32",
+        )
+    })?;
+
+    server.request(1, "initialize", initialize_params())?;
+    server.send(&json!({
+        "id": 2,
+        "method": "thread/start",
+        "params": { "cwd": "/tmp" }
+    }))?;
+    let thread_started = server.read_required()?;
+    assert_eq!(thread_started["method"], "thread/started");
+    let started = server.read_required()?;
+    let thread_id = started["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    server.request(
+        3,
+        "turn/start",
+        json!({
+            "threadId": thread_id,
+            "input": [text_input(concat!(
+                "@shell-checkpoint@\n",
+                "printf checkpoint-ready\n",
+                "@continue@\n",
+                "printf '%s\\n' \"$$\" > \"$MOCK_DESCENDANT_PID_FILE.tmp\"\n",
+                "mv \"$MOCK_DESCENDANT_PID_FILE.tmp\" \"$MOCK_DESCENDANT_PID_FILE\"\n",
+                "while :; do sleep 30; done"
+            ))]
+        }),
+    )?;
+
+    loop {
+        let notification = server.read_required()?;
+        if notification["method"] != "item/completed" {
+            continue;
+        }
+        assert_eq!(notification["params"]["item"]["text"], "checkpoint-ready");
+        break;
+    }
+
+    let (descendant_pid, descendant_stat) = wait_for_published_process(
+        &descendant_pid_path,
+        Instant::now() + APP_SERVER_EXIT_TIMEOUT,
+    )?;
+    assert_eq!(descendant_stat.process_group_id, app_server_pgid);
+    assert_ne!(descendant_stat.process_group_id, unsafe { libc::getpgrp() });
+
+    drop(server);
+
+    require_child_reaped(app_server_pid)?;
+    wait_for_process_exit(
+        descendant_pid,
+        descendant_stat.start_time_ticks,
+        Instant::now() + APP_SERVER_EXIT_TIMEOUT,
+    )
 }
 
 #[test]
@@ -651,9 +897,17 @@ fn app_server_can_start_runtime_turn_before_steer_completion() -> std::io::Resul
     assert_eq!(steered["result"]["turnId"], turn_id);
 
     let item_completed_notification = server.read_required()?;
-    let turn_completed_notification = server.read_required()?;
     assert_eq!(item_completed_notification["method"], "item/completed");
-    assert_eq!(turn_completed_notification["method"], "turn/completed");
+    let mut usage_notifications = 0;
+    loop {
+        let notification = server.read_required()?;
+        match notification["method"].as_str() {
+            Some("thread/tokenUsage/updated") => usage_notifications += 1,
+            Some("turn/completed") => break,
+            method => panic!("unexpected completion notification: {method:?}"),
+        }
+    }
+    assert_eq!(usage_notifications, 3);
     assert_eq!(server.close_and_wait()?, 0);
     Ok(())
 }

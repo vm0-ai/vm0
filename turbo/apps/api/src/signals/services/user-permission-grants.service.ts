@@ -42,7 +42,7 @@ import type {
 } from "./connector-server-firewall-catalog.service";
 import { connectorCatalogSource } from "./connector-catalog-source";
 import { connectorCatalogExecutableCapabilityDigest } from "./connector-catalog-compatibility.service";
-import { SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION } from "./connector-catalog-artifacts/artifacts";
+import { SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION } from "@okouai/connectors/connector-catalog/artifacts/artifacts";
 import {
   connectorCatalogValidationAuthorityIsCurrent,
   currentConnectorCatalogValidatorIdentity,
@@ -385,7 +385,10 @@ function baselineStaticIdentityIsCurrent(
       SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION &&
     baseline.catalogIdentity.capabilityDigest === current.capabilityDigest &&
     connectorCatalogValidationAuthorityIsCurrent({
-      authority: baseline.validationAuthority,
+      authority: {
+        validatorVersion: baseline.validationAuthority.backendVersion,
+        buildCommitSha: baseline.validationAuthority.buildCommitSha,
+      },
       validator: current.validator,
     })
   );

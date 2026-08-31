@@ -214,6 +214,12 @@ function mockCatalog(
   context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
     return respond(200, { connectors: [...connectors] });
   });
+  context.mocks.api(connectorCatalogContract.discovery, ({ respond }) => {
+    return respond(200, {
+      connectors: [...connectors],
+      totalConnectorCount: connectors.length,
+    });
+  });
 }
 
 function createMockAuthWindow(): Window {
@@ -284,6 +290,43 @@ beforeEach(() => {
 });
 
 describe("chat composer connector connection", () => {
+  it("loads connector data only after the connector menu is opened", async () => {
+    const user = userEvent.setup({ delay: null });
+    let discoveryRequests = 0;
+    let customConnectorRequests = 0;
+    mockThread();
+    context.mocks.api(connectorCatalogContract.discovery, ({ respond }) => {
+      discoveryRequests += 1;
+      return respond(200, { connectors: [], totalConnectorCount: 0 });
+    });
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      customConnectorRequests += 1;
+      return respond(200, { connectors: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    expect(discoveryRequests).toBe(0);
+    expect(customConnectorRequests).toBe(0);
+
+    await user.click(within(composer).getByLabelText("Connectors"));
+
+    await waitFor(() => {
+      expect(discoveryRequests).toBe(1);
+      expect(customConnectorRequests).toBe(1);
+      expect(within(composer).getByLabelText("Connectors")).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
+    });
+  });
+
   it("makes connector permissions interactive on the first click", async () => {
     const user = userEvent.setup({ delay: null });
     mockThread();
@@ -298,9 +341,11 @@ describe("chat composer connector connection", () => {
     const composer = composerElementFrom(
       await screen.findByPlaceholderText(PLACEHOLDER),
     );
-    const connectorsTrigger = within(composer).getByLabelText("Connectors");
-    await user.click(connectorsTrigger);
-    expect(connectorsTrigger).toHaveAttribute("aria-expanded", "true");
+    const connectorsTrigger = () => {
+      return within(composer).getByLabelText("Connectors");
+    };
+    await user.click(connectorsTrigger());
+    expect(connectorsTrigger()).toHaveAttribute("aria-expanded", "true");
 
     await user.click(
       await screen.findByLabelText("Configure Axiom permissions"),
@@ -310,7 +355,7 @@ describe("chat composer connector connection", () => {
       name: /Axiom permissions/u,
     });
     await waitFor(() => {
-      expect(connectorsTrigger).toHaveAttribute("aria-expanded", "false");
+      expect(connectorsTrigger()).toHaveAttribute("aria-expanded", "false");
       expect(screen.queryByText("Add connectors")).not.toBeInTheDocument();
     });
 
@@ -334,7 +379,59 @@ describe("chat composer connector connection", () => {
     await waitFor(() => {
       expect(permissionsDialog).not.toBeInTheDocument();
     });
-    expect(connectorsTrigger).toHaveAttribute("aria-expanded", "false");
+    expect(connectorsTrigger()).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("places the account action before connector permissions", async () => {
+    const user = userEvent.setup({ delay: null });
+    const defaultAccount: ConnectorAccountConnection = {
+      ...githubAccount("10000000-0000-4000-8000-000000000004", "Work", true),
+      target: { kind: "builtin", connectorSlug: "axiom" },
+      authMethod: "api-token",
+    };
+    mockThread();
+    mockConnectors([{ connectorSlug: "axiom", authMethod: "api-token" }]);
+    mockAgentConnectorAuthorizations(["axiom"]);
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: defaultAccount.target,
+            accountCount: 2,
+            attentionCount: 0,
+            defaultConnection: defaultAccount,
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.get,
+      ({ respond }) => {
+        return respond(200, { selections: [], selectedConnections: [] });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    await user.click(within(composer).getByLabelText("Connectors"));
+    const accountAction = await screen.findByLabelText(
+      "Axiom · Using default account: Work",
+    );
+    const permissionAction = screen.getByLabelText(
+      "Configure Axiom permissions",
+    );
+
+    expect(
+      accountAction.compareDocumentPosition(permissionAction) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
   it("keeps permissioned connector row height stable while toggling access", async () => {
@@ -545,8 +642,10 @@ describe("chat composer connector connection", () => {
     const composer = composerElementFrom(
       await screen.findByPlaceholderText(PLACEHOLDER),
     );
-    const connectorsButton = within(composer).getByLabelText("Connectors");
-    await user.click(connectorsButton);
+    const connectorsButton = () => {
+      return within(composer).getByLabelText("Connectors");
+    };
+    await user.click(connectorsButton());
     const defaultMode = await screen.findByLabelText(
       "GitHub · Using default account: Work",
     );
@@ -570,27 +669,27 @@ describe("chat composer connector connection", () => {
 
     await user.click(defaultMode);
     await expect(
-      screen.findByText("Account for this thread"),
+      screen.findByText("Account for this chat"),
     ).resolves.toBeVisible();
     await user.click(screen.getByLabelText("Back"));
     await waitFor(() => {
-      expect(screen.queryByText("Account for this thread")).toBeNull();
+      expect(screen.queryByText("Account for this chat")).toBeNull();
     });
-    expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
+    expect(connectorsButton()).toHaveAttribute("aria-expanded", "true");
 
     await user.click(defaultMode);
     await expect(
-      screen.findByText("Account for this thread"),
+      screen.findByText("Account for this chat"),
     ).resolves.toBeVisible();
     await user.click(document.body);
     await waitFor(() => {
-      expect(screen.queryByText("Account for this thread")).toBeNull();
+      expect(screen.queryByText("Account for this chat")).toBeNull();
     });
-    expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
+    expect(connectorsButton()).toHaveAttribute("aria-expanded", "true");
 
     await user.click(defaultMode);
     await expect(
-      screen.findByText("Account for this thread"),
+      screen.findByText("Account for this chat"),
     ).resolves.toBeVisible();
     const summaryReadsBeforeSelection = summaryReads;
     expect(screen.getByText("GitHub")).toBeVisible();
@@ -612,21 +711,21 @@ describe("chat composer connector connection", () => {
       "GitHub · Selected account: Work",
     );
     await waitFor(() => {
-      expect(screen.queryByText("Account for this thread")).toBeNull();
+      expect(screen.queryByText("Account for this chat")).toBeNull();
     });
-    expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
+    expect(connectorsButton()).toHaveAttribute("aria-expanded", "true");
     expect(selectedWorkMode).toHaveClass("text-muted-foreground");
     expect(selectedWorkMode).not.toHaveClass("border");
 
     await user.click(selectedWorkMode);
     await expect(
-      screen.findByText("Account for this thread"),
+      screen.findByText("Account for this chat"),
     ).resolves.toBeVisible();
     await user.keyboard("{Escape}");
     await waitFor(() => {
-      expect(screen.queryByText("Account for this thread")).toBeNull();
+      expect(screen.queryByText("Account for this chat")).toBeNull();
     });
-    expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
+    expect(connectorsButton()).toHaveAttribute("aria-expanded", "true");
     expect(selectedWorkMode).toHaveFocus();
 
     await user.click(selectedWorkMode);
@@ -635,9 +734,9 @@ describe("chat composer connector connection", () => {
       expect(selectionWrites).toBe(2);
     });
     await waitFor(() => {
-      expect(screen.queryByText("Account for this thread")).toBeNull();
+      expect(screen.queryByText("Account for this chat")).toBeNull();
     });
-    expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
+    expect(connectorsButton()).toHaveAttribute("aria-expanded", "true");
     await expect(
       screen.findByLabelText("GitHub · Selected account: Personal"),
     ).resolves.toHaveClass("text-muted-foreground");
@@ -650,18 +749,18 @@ describe("chat composer connector connection", () => {
       expect(selectionClears).toBe(1);
     });
     await waitFor(() => {
-      expect(screen.queryByText("Account for this thread")).toBeNull();
+      expect(screen.queryByText("Account for this chat")).toBeNull();
     });
     await expect(
       screen.findByLabelText("GitHub · Using default account: Work"),
     ).resolves.toBeInTheDocument();
-    expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
+    expect(connectorsButton()).toHaveAttribute("aria-expanded", "true");
     expect(authorizationWrites).toBe(1);
     expect(summaryReads).toBe(summaryReadsBeforeSelection);
 
     await user.click(document.body);
     await waitFor(() => {
-      expect(connectorsButton).toHaveAttribute("aria-expanded", "false");
+      expect(connectorsButton()).toHaveAttribute("aria-expanded", "false");
     });
   });
 
@@ -740,7 +839,7 @@ describe("chat composer connector connection", () => {
 
     await user.keyboard("{Escape}");
     await waitFor(() => {
-      expect(screen.queryByText("Account for this thread")).toBeNull();
+      expect(screen.queryByText("Account for this chat")).toBeNull();
     });
     expect(requestedSearches).toStrictEqual(["", "missing"]);
   });
@@ -1175,7 +1274,7 @@ describe("chat composer connector connection", () => {
       ({ body, params, respond }) => {
         expect(params.id).toBe(connector.id);
         expect(body).toStrictEqual({
-          account: { intent: "single-account" },
+          account: { intent: "add" },
           values: [{ key: "secret", kind: "secret", value: "acme-secret" }],
         });
         connected = true;
@@ -1290,7 +1389,11 @@ describe("chat composer connector connection", () => {
       connectorOauthStartContract.start,
       ({ body, params, respond }) => {
         expect(params.connectorSlug).toBe("google-analytics");
-        expect(body.agentId).toBe(AGENT_ID);
+        expect(body).toMatchObject({
+          account: { intent: "add" },
+          agentId: AGENT_ID,
+          authorizeAgent: true,
+        });
         return respond(200, {
           authorizationUrl: "https://accounts.google.test/analytics/authorize",
         });
@@ -1343,7 +1446,7 @@ describe("chat composer connector connection", () => {
         connectCount += 1;
         expect(params.connectorSlug).toBe("stripe");
         expect(body).toStrictEqual({
-          account: { intent: "single-account" },
+          account: { intent: "add" },
           authMethod: "api",
           agentId: AGENT_ID,
           authorizeAgent: true,
@@ -1491,7 +1594,6 @@ describe("chat composer connector connection", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const dialog = await openAddConnectorsDialog(user);

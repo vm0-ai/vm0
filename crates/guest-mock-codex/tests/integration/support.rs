@@ -1,8 +1,11 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, ExitStatus, Output, Stdio};
+use std::process::{Child, ChildStdin, ChildStdout, Command, ExitStatus, Output, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
+
+#[cfg(unix)]
+use std::os::unix::process::CommandExt as _;
 
 use guest_mock_codex::find_session_file;
 use serde_json::Value;
@@ -17,6 +20,57 @@ pub(crate) struct RunOutput {
     pub(crate) events: Vec<Value>,
     pub(crate) status: i32,
     pub(crate) stderr: String,
+}
+
+pub(crate) struct ProcessGroupChild {
+    child: Child,
+    #[cfg(unix)]
+    child_pid: u32,
+}
+
+impl ProcessGroupChild {
+    pub(crate) fn spawn(command: &mut Command) -> std::io::Result<Self> {
+        #[cfg(unix)]
+        command.process_group(0);
+
+        let child = command.spawn()?;
+        #[cfg(unix)]
+        let child_pid = child.id();
+        Ok(Self {
+            child,
+            #[cfg(unix)]
+            child_pid,
+        })
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn id(&self) -> u32 {
+        self.child_pid
+    }
+
+    pub(crate) fn take_stdin(&mut self) -> Option<ChildStdin> {
+        self.child.stdin.take()
+    }
+
+    pub(crate) fn take_stdout(&mut self) -> Option<ChildStdout> {
+        self.child.stdout.take()
+    }
+
+    pub(crate) fn wait_with_timeout(
+        self,
+        timeout: Duration,
+        kill_timeout: Duration,
+    ) -> ChildWaitOutcome {
+        #[cfg(unix)]
+        {
+            wait_process_group_child_with_timeout(self, timeout, kill_timeout)
+        }
+
+        #[cfg(not(unix))]
+        {
+            wait_child_with_timeout(self.child, timeout, kill_timeout)
+        }
+    }
 }
 
 pub(crate) fn run(codex_home: &Path, args: &[&str]) -> std::io::Result<RunOutput> {
@@ -101,6 +155,9 @@ fn output_with_timeout_before_kill(
         ChildWaitOutcome::ReapFailed(error) => {
             Err(cli_run_timeout_error(args, run_timeout, None, Some(&error)))
         }
+        ChildWaitOutcome::CleanupFailed(error) => {
+            Err(cli_run_timeout_error(args, run_timeout, None, Some(&error)))
+        }
         ChildWaitOutcome::WaitFailed(error) => Err(std::io::Error::other(format!(
             "guest-mock-codex CLI child wait failed: args={args:?}; error={error}"
         ))),
@@ -148,8 +205,143 @@ pub(crate) enum ChildWaitOutcome {
     TimedOut(ExitStatus),
     ReapTimedOut,
     KillFailed(std::io::Error),
+    CleanupFailed(std::io::Error),
     ReapFailed(std::io::Error),
     WaitFailed(std::io::Error),
+}
+
+#[cfg(unix)]
+fn wait_process_group_child_with_timeout(
+    mut child: ProcessGroupChild,
+    timeout: Duration,
+    kill_timeout: Duration,
+) -> ChildWaitOutcome {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match child_exited_without_reaping(child.child_pid) {
+            Ok(true) => {
+                let cleanup_result = kill_process_group(child.child_pid);
+                let wait_result = child.child.wait();
+                return match wait_result {
+                    Ok(status) => match cleanup_result {
+                        Ok(()) => ChildWaitOutcome::Exited(status),
+                        Err(error) => ChildWaitOutcome::CleanupFailed(error),
+                    },
+                    Err(error) => ChildWaitOutcome::WaitFailed(error),
+                };
+            }
+            Ok(false) => {}
+            Err(error) => {
+                spawn_child_reaper(child.child);
+                return ChildWaitOutcome::WaitFailed(error);
+            }
+        }
+
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        std::thread::sleep(remaining.min(CHILD_WAIT_POLL_INTERVAL));
+    }
+
+    let cleanup_result = kill_process_group(child.child_pid);
+    let fallback_result = if cleanup_result.is_err() {
+        child.child.kill()
+    } else {
+        Ok(())
+    };
+    let reaper_rx = spawn_child_reaper(child.child);
+    if let Err(error) = cleanup_result {
+        return match fallback_result {
+            Ok(()) => ChildWaitOutcome::CleanupFailed(error),
+            Err(fallback_error) => ChildWaitOutcome::CleanupFailed(std::io::Error::new(
+                error.kind(),
+                format!(
+                    "kill app-server process group: {error}; direct-child fallback failed: \
+                     {fallback_error}"
+                ),
+            )),
+        };
+    }
+
+    match reaper_rx.recv_timeout(kill_timeout) {
+        Ok(Ok(status)) => ChildWaitOutcome::TimedOut(status),
+        Ok(Err(error)) => ChildWaitOutcome::ReapFailed(error),
+        Err(mpsc::RecvTimeoutError::Timeout) => ChildWaitOutcome::ReapTimedOut,
+        Err(mpsc::RecvTimeoutError::Disconnected) => ChildWaitOutcome::ReapFailed(
+            std::io::Error::other("child reaper exited without status"),
+        ),
+    }
+}
+
+#[cfg(unix)]
+fn child_exited_without_reaping(child_pid: u32) -> std::io::Result<bool> {
+    let child_pid = libc::pid_t::try_from(child_pid).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "app-server child PID does not fit in pid_t",
+        )
+    })?;
+    let child_wait_id = libc::id_t::try_from(child_pid).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "app-server child PID does not fit in id_t",
+        )
+    })?;
+
+    loop {
+        let mut info = std::mem::MaybeUninit::<libc::siginfo_t>::zeroed();
+        // SAFETY: this owner still retains the direct child. WNOWAIT observes
+        // terminal state without releasing its PID/process-group identity.
+        let result = unsafe {
+            libc::waitid(
+                libc::P_PID,
+                child_wait_id,
+                info.as_mut_ptr(),
+                libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+            )
+        };
+        if result == 0 {
+            // SAFETY: zero is valid for siginfo_t, and waitid may have updated
+            // it. si_pid remains zero when WNOHANG observes no status.
+            let info = unsafe { info.assume_init() };
+            return Ok(unsafe { info.si_pid() } != 0);
+        }
+
+        let error = std::io::Error::last_os_error();
+        if error.kind() != std::io::ErrorKind::Interrupted {
+            return Err(error);
+        }
+    }
+}
+
+#[cfg(unix)]
+fn kill_process_group(child_pid: u32) -> std::io::Result<()> {
+    let process_group = libc::pid_t::try_from(child_pid).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "app-server process-group ID does not fit in pid_t",
+        )
+    })?;
+    if process_group <= 1 || process_group == unsafe { libc::getpgrp() } {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("refusing to signal app-server process group {process_group}"),
+        ));
+    }
+
+    // SAFETY: ProcessGroupChild created this group with process_group(0), and
+    // the unreaped group-leader child still reserves this numeric identity.
+    if unsafe { libc::kill(-process_group, libc::SIGKILL) } == 0 {
+        return Ok(());
+    }
+
+    let error = std::io::Error::last_os_error();
+    if error.raw_os_error() == Some(libc::ESRCH) {
+        Ok(())
+    } else {
+        Err(error)
+    }
 }
 
 pub(crate) fn wait_child_with_timeout(

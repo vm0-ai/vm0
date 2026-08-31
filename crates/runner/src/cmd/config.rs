@@ -24,9 +24,6 @@ pub struct ConfigArgs {
     #[arg(long, required = true)]
     snapshot_hash: Vec<String>,
 
-    /// Runner logical name
-    #[arg(long)]
-    name: String,
     /// Canonical physical hostname used for diagnostic attribution
     #[arg(long)]
     hostname: Option<String>,
@@ -138,7 +135,6 @@ async fn run_config_with_home(args: ConfigArgs, paths: HomePaths) -> RunnerResul
 
     let runner_dir = paths.runners_dir().join(&args.runner_dirname);
     let runner_config = RunnerConfig {
-        name: args.name,
         hostname: args.hostname,
         group: args.group,
         base_dir: runner_dir.clone(),
@@ -182,7 +178,6 @@ mod tests {
             profile: vec!["vm0/default".into()],
             rootfs_hash: vec!["dummy".into()],
             snapshot_hash: vec!["dummy".into()],
-            name: "test".into(),
             hostname: None,
             group: "vm0/test".into(),
             runner_dirname: dirname.into(),
@@ -331,6 +326,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn run_config_rejects_cleartext_remote_api_url_before_filesystem_setup() {
+        let mut args = args_with_valid_image_hashes();
+        args.api_url = "http://api.example.com".into();
+
+        let err = run_config(args).await.unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("server.url"), "got: {msg}");
+        assert!(msg.contains("https"), "got: {msg}");
+        assert!(!msg.contains("api.example.com"), "got: {msg}");
+        assert!(
+            !msg.contains("rootfs not found"),
+            "API URL validation should happen before image checks: {msg}"
+        );
+    }
+
+    #[tokio::test]
     async fn run_config_rejects_mismatched_profile_arg_lengths() {
         let cases = [
             (
@@ -471,7 +482,6 @@ mod tests {
             profile: vec!["vm0/default".into()],
             rootfs_hash: vec!["dummy".into()],
             snapshot_hash: vec!["dummy".into()],
-            name: "test".into(),
             hostname: None,
             group: "vm0/test".into(),
             runner_dirname: "runner-01".into(),

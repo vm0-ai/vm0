@@ -2,7 +2,7 @@
 //!
 //! # Why a dedicated test binary
 //!
-//! The pre-existing `tests/integration/mod.rs` binary defaults to Claude. This
+//! The pre-existing `tests/integration.rs` binary defaults to Claude. This
 //! binary keeps Codex metadata tests separate so their setup can stay focused
 //! on Codex config and file layout.
 //!
@@ -219,13 +219,15 @@ fn recovery_checkpoint_resolves_history_from_codex_sessions_root() -> TestResult
             .body(history.as_str());
         then.status(200);
     });
-    let checkpoint_mock = server.mock(|when, then| {
+    let complete_mock = server.mock(|when, then| {
         when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
-            .json_body_includes(format!(r#"{{"cliAgentSessionId":"{thread_id}"}}"#));
+            .path("/api/webhooks/agent/complete")
+            .json_body_includes(format!(
+                r#"{{"exitCode":1,"checkpoint":{{"cliAgentSessionId":"{thread_id}"}}}}"#
+            ));
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "codex-derived-checkpoint", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
+            .json_body(json!({"success": true, "status": "failed"}));
     });
 
     let config = fixture.config(&server.base_url(), "test-token")?;
@@ -249,15 +251,25 @@ fn recovery_checkpoint_resolves_history_from_codex_sessions_root() -> TestResult
             },
         ),
     );
-    runtime.block_on(
-        guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(
+    runtime.block_on(async {
+        let checkpoint = guest_agent::checkpoint::prepare_recovery_checkpoint_for_runtime(
             &guest_runtime,
             &session_metadata,
-        ),
-    )?;
+        )
+        .await?;
+        guest_agent::complete::report_checkpoint_for_run(
+            &guest_runtime,
+            1,
+            None,
+            None,
+            &[],
+            checkpoint,
+        )
+        .await
+    })?;
     prepare_mock.assert_calls(1);
     upload_mock.assert_calls(1);
-    checkpoint_mock.assert_calls(1);
+    complete_mock.assert_calls(1);
     Ok(())
 }
 

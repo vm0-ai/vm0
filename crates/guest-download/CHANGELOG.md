@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.23.42](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.41...guest-download-v0.23.42) (2026-08-30)
+
+## [0.23.41](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.40...guest-download-v0.23.41) (2026-08-30)
+
+## [0.23.40](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.39...guest-download-v0.23.40) (2026-08-30)
+
+## [0.23.39](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.38...guest-download-v0.23.39) (2026-08-29)
+
+## [0.23.38](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.37...guest-download-v0.23.38) (2026-08-28)
+
+## [0.23.37](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.36...guest-download-v0.23.37) (2026-08-28)
+
+## [0.23.36](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.35...guest-download-v0.23.36) (2026-08-28)
+
+## [0.23.35](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.34...guest-download-v0.23.35) (2026-08-28)
+
+## [0.23.34](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.33...guest-download-v0.23.34) (2026-08-28)
+
+## [0.23.33](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.32...guest-download-v0.23.33) (2026-08-28)
+
+
+### Refactoring
+
+* **test:** cut guest runtime directory writers to canonical alias ([#30000](https://github.com/vm0-ai/vm0/issues/30000)) ([89c3cdc](https://github.com/vm0-ai/vm0/commit/89c3cdc8c5c7abd4cade63cc0debe62cbd909ca4))
+
+## [0.23.32](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.31...guest-download-v0.23.32) (2026-08-28)
+
+## [0.23.31](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.30...guest-download-v0.23.31) (2026-08-27)
+
+## [0.23.30](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.29...guest-download-v0.23.30) (2026-08-27)
+
+## [0.23.29](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.28...guest-download-v0.23.29) (2026-08-27)
+
 ## [0.23.28](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.27...guest-download-v0.23.28) (2026-08-26)
 
 ## [0.23.27](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.26...guest-download-v0.23.27) (2026-08-26)

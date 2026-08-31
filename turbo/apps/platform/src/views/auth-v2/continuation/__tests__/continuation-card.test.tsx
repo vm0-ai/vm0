@@ -16,17 +16,24 @@ import { createDeferredPromise } from "../../../../signals/utils.ts";
 
 const context = testContext();
 
-function membership(id: string, name: string): MockedMembership {
+function membership(
+  id: string,
+  name: string,
+  imageUrl?: string,
+): MockedMembership {
   return {
     id: `membership_${id}`,
-    organization: { id, name },
+    organization: { id, imageUrl, name },
     role: "org:member",
   };
 }
 
 function buttonNamed(name: string): HTMLElement | undefined {
   return queryAllByRoleFast("button").find((candidate) => {
-    return candidate.textContent?.trim() === name;
+    return (
+      candidate.getAttribute("aria-label") === name ||
+      candidate.textContent?.trim() === name
+    );
   });
 }
 
@@ -48,7 +55,7 @@ function setupTaskPage(options: {
 }): void {
   const memberships = options.memberships ?? [];
   const url = new URL(
-    options.url ?? "https://app.vm0.ai/v2/sign-in/tasks/choose-organization",
+    options.url ?? "https://app.vm0.ai/sign-in/tasks/choose-organization",
   );
   context.mocks.browser.url(url.toString());
   detachedSetupPage({
@@ -65,6 +72,7 @@ function setupTaskPage(options: {
           user: {
             fullName: "Test User",
             organizationMemberships: memberships,
+            primaryEmailAddress: { emailAddress: "test@example.com" },
           },
         },
       ],
@@ -78,13 +86,21 @@ describe("auth v2 continuation card", () => {
   it("recovers forced selection, switches membership once, and exposes no organization management", async () => {
     const user = userEvent.setup({ delay: null });
     const memberships = [
-      membership("org_alpha", "Alpha Company"),
-      membership("org_beta", "Beta Studio"),
+      membership(
+        "org_alpha",
+        "Alpha Company",
+        "https://cdn.vm0.test/orgs/alpha.png",
+      ),
+      membership(
+        "org_beta",
+        "Beta Studio",
+        "https://cdn.vm0.test/orgs/beta.png",
+      ),
     ];
     setupTaskPage({
       memberships,
       taskKey: "choose-organization",
-      url: `https://app.vm0.ai/v2/sign-in/tasks/choose-organization?redirect_url=${encodeURIComponent("https://app.vm0.ai/agents")}`,
+      url: `https://app.vm0.ai/sign-in/tasks/choose-organization?redirect_url=${encodeURIComponent("https://app.vm0.ai/agents")}`,
     });
 
     const beta = await waitForButton("Continue with Beta Studio");
@@ -92,6 +108,12 @@ describe("auth v2 continuation card", () => {
       screen.getByRole("heading", { name: "Choose an organization" }),
     );
     expect(buttonNamed("Continue with Alpha Company")).toBeVisible();
+    expect(screen.getByRole("img", { name: "Alpha Company" })).toHaveAttribute(
+      "src",
+      "https://cdn.vm0.test/orgs/alpha.png",
+    );
+    expect(screen.getByText("Signed in as test@example.com")).toBeVisible();
+    expect(buttonNamed("Sign out")).toBeVisible();
     expect(screen.queryByText(/create organization/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/invitation/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/manage organization/i)).not.toBeInTheDocument();
@@ -134,10 +156,10 @@ describe("auth v2 continuation card", () => {
       expect(beta).toHaveAttribute("aria-busy", "true");
     });
     expect(beta).toHaveAccessibleName("Continue with Beta Studio");
-    expect(beta.textContent?.trim()).toBe("");
+    expect(beta.textContent?.trim()).toBe("Beta Studio");
     expect(alpha).toBeDisabled();
     expect(alpha).toHaveAttribute("aria-busy", "false");
-    expect(alpha.textContent?.trim()).toBe("Continue with Alpha Company");
+    expect(alpha).toHaveTextContent("Alpha Company");
     expect(document.querySelectorAll('[aria-busy="true"]')).toHaveLength(1);
 
     await act(async () => {
@@ -147,7 +169,7 @@ describe("auth v2 continuation card", () => {
 
     await waitFor(() => {
       expect(beta).toHaveAttribute("aria-busy", "false");
-      expect(beta).toHaveTextContent("Continue with Beta Studio");
+      expect(beta).toHaveTextContent("Beta Studio");
     });
   });
 
@@ -241,10 +263,10 @@ describe("auth v2 continuation card", () => {
 
   it("fails closed when Clerk returns a second-factor sign-in status", async () => {
     mockSignInResource({ status: "needs_second_factor" });
-    context.mocks.browser.url("https://app.vm0.ai/v2/sign-in/factor-two");
+    context.mocks.browser.url("https://app.vm0.ai/sign-in/factor-two");
     detachedSetupPage({
       context,
-      path: "/v2/sign-in/factor-two",
+      path: "/sign-in/factor-two",
       session: null,
       user: null,
     });

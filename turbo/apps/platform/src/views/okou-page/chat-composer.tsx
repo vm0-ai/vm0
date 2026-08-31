@@ -133,11 +133,6 @@ import type { IllustrationTemplateItem } from "@okouai/core/illustration-templat
 import type { PresentationTemplateItem } from "@okouai/core/presentation-template-items";
 import { formatUserPresentationTemplateId } from "@okouai/core/presentation-template-selection";
 import type { VideoTemplateItem } from "@okouai/core/video-template-items";
-import {
-  INTRO_VIDEO_TEMPLATE_ITEMS,
-  findIntroVideoTemplateItem,
-  type IntroVideoTemplateItem,
-} from "@okouai/core/intro-video-template-items";
 import type { WebsiteTemplateItem } from "@okouai/core/website-template-items";
 import {
   WORKFLOW_TEMPLATE_CATEGORIES,
@@ -176,6 +171,11 @@ import { CustomConnectorConnectDialog } from "./components/settings/custom-conne
 import type { ConnectorConnectHandlers } from "./components/settings/launch-connector-connect.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
+  defaultBuiltinConnectorAccountOptions,
+  defaultCustomConnectorAccountOptions,
+  type DefaultConnectorAccountMutationOptions,
+} from "../../signals/okou-page/settings/connector-account-dialogs.ts";
+import {
   connectConnectorNoAuth$,
   connectConnectorOAuthAuthCode$,
   connectFlowConnectorSlug$,
@@ -202,7 +202,6 @@ import {
 import {
   codexFastModeEnabled$,
   customConnectorMcpEnabled$,
-  introVideoTemplatesEnabled$,
   imageRecognitionAvailable$,
 } from "../../signals/external/feature-switch.ts";
 import {
@@ -871,9 +870,11 @@ function selectedTemplateTitle(
   value: GenerationTemplateRequest | undefined,
   importedTemplates: readonly PresentationTemplateSummary[] = [],
 ): string | undefined {
-  const videoTitle = selectedVideoFamilyTemplateTitle(value);
-  if (videoTitle !== undefined) {
-    return videoTitle;
+  if (value?.type === "video") {
+    return (
+      avatarTemplateSelection(value)?.title ??
+      selectedVideoTemplateItem(value)?.title
+    );
   }
   if (value?.type === "workflow") {
     const workflowItem = selectedWorkflowTemplateItem(value);
@@ -889,21 +890,6 @@ function selectedTemplateTitle(
     selectedPresentationTemplateItem(value)?.title ??
     selectedIllustrationTemplateItem(value)?.title
   );
-}
-
-function selectedVideoFamilyTemplateTitle(
-  value: GenerationTemplateRequest | undefined,
-): string | undefined {
-  if (value?.type === "video") {
-    return (
-      avatarTemplateSelection(value)?.title ??
-      selectedVideoTemplateItem(value)?.title
-    );
-  }
-  if (value?.type === "intro-video") {
-    return selectedIntroVideoTemplateItem(value)?.title;
-  }
-  return undefined;
 }
 
 function selectedPresentationTemplateItem(
@@ -983,36 +969,6 @@ function selectedVideoTemplateItem(
     return undefined;
   }
   return findVideoTemplateItem(value.selection.stylePresetId);
-}
-
-function isSelectedIntroVideoTemplate(
-  item: IntroVideoTemplateItem,
-  value: GenerationTemplateRequest | undefined,
-): boolean {
-  return (
-    value?.type === "intro-video" &&
-    findIntroVideoTemplateItem(value.selection.templateId)?.id === item.id
-  );
-}
-
-function toIntroVideoGenerationTemplate(
-  item: IntroVideoTemplateItem,
-): GenerationTemplateRequest {
-  return {
-    type: "intro-video",
-    selection: {
-      templateId: item.id,
-    },
-  };
-}
-
-function selectedIntroVideoTemplateItem(
-  value: GenerationTemplateRequest | undefined,
-): IntroVideoTemplateItem | undefined {
-  if (value?.type !== "intro-video") {
-    return undefined;
-  }
-  return findIntroVideoTemplateItem(value.selection.templateId);
 }
 
 function isSelectedWorkflowTemplate(
@@ -1302,29 +1258,15 @@ function VideoTemplateCard({
 
 function VideoTemplateGrid({
   items,
-  introVideoItems,
   value,
   onSelect,
-  onSelectIntroVideo,
 }: {
   items: readonly VideoTemplateItem[];
-  introVideoItems: readonly IntroVideoTemplateItem[];
   value: GenerationTemplateRequest | undefined;
   onSelect: (item: VideoTemplateItem) => void;
-  onSelectIntroVideo: (item: IntroVideoTemplateItem) => void;
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {introVideoItems.map((item) => {
-        return (
-          <IntroVideoTemplateCard
-            key={item.id}
-            item={item}
-            selected={isSelectedIntroVideoTemplate(item, value)}
-            onSelect={onSelectIntroVideo}
-          />
-        );
-      })}
       {items.map((item) => {
         return (
           <VideoTemplateCard
@@ -1335,80 +1277,6 @@ function VideoTemplateGrid({
           />
         );
       })}
-    </div>
-  );
-}
-
-function IntroVideoTemplateCard({
-  item,
-  selected,
-  onSelect,
-}: {
-  item: IntroVideoTemplateItem;
-  selected: boolean;
-  onSelect: (item: IntroVideoTemplateItem) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className={TEMPLATE_TILE_WRAPPER}>
-      <div
-        className={cn(
-          TEMPLATE_TILE_MEDIA,
-          TEMPLATE_TILE_RING,
-          "aspect-[16/9]",
-          selected && TEMPLATE_TILE_RING_SELECTED,
-        )}
-      >
-        <div className="h-full bg-[#f7f7f5] p-3">
-          <div className="flex h-full flex-col rounded-2xl border border-black/5 bg-white p-3 shadow-[0_8px_24px_rgba(20,20,20,0.06)]">
-            <div className="flex items-center gap-2">
-              <span className="flex size-7 items-center justify-center rounded-lg bg-violet-600 text-base font-black leading-none text-white">
-                *
-              </span>
-              <span className="text-[11px] font-semibold text-neutral-700">
-                {item.title}
-              </span>
-              <span className="ml-auto rounded-full bg-violet-50 px-2 py-0.5 text-[9px] font-semibold text-violet-700">
-                {item.implementation.label}
-              </span>
-            </div>
-            <div className="mt-3 rounded-xl bg-neutral-100 px-3 py-2 text-[10px] font-medium leading-4 text-neutral-700">
-              {item.previewQuote}
-            </div>
-            <div className="mt-auto flex items-center gap-1.5">
-              <span className="h-1.5 flex-1 rounded-full bg-violet-600" />
-              <span className="h-1.5 flex-1 rounded-full bg-violet-200" />
-              <span className="h-1.5 flex-1 rounded-full bg-neutral-200" />
-            </div>
-          </div>
-        </div>
-        {selected ? (
-          <span className="pointer-events-none absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
-            <Check size={14} />
-          </span>
-        ) : null}
-        <button
-          type="button"
-          aria-label={t(
-            ($) => {
-              return $.artifacts.templates.selectVideo;
-            },
-            { title: item.title },
-          )}
-          aria-pressed={selected}
-          onClick={() => {
-            onSelect(item);
-          }}
-          className={TEMPLATE_TILE_USE}
-        >
-          {t(($) => {
-            return $.artifacts.templates.use;
-          })}
-        </button>
-      </div>
-      <div className={TEMPLATE_TILE_CAPTION}>
-        <p className={TEMPLATE_TILE_NAME}>{item.title}</p>
-      </div>
     </div>
   );
 }
@@ -5643,6 +5511,9 @@ function ImportedPresentationTemplateRenameControl({
         }
         const normalized = normalizeImportedTemplateTitle(nextTitle);
         if (normalized.length > 0 && normalized !== title) {
+          // Confirming ends this edit. Keeping the submit control focused pins
+          // the check visible through the form's focus-within affordance.
+          event.currentTarget.querySelector<HTMLElement>(":focus")?.blur();
           onRename(normalized);
         }
       }}
@@ -6359,10 +6230,6 @@ function TemplatePickerDialog({
 }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
-  const introVideoTemplatesEnabled = useGet(introVideoTemplatesEnabled$);
-  const introVideoItems = introVideoTemplatesEnabled
-    ? INTRO_VIDEO_TEMPLATE_ITEMS
-    : [];
   const category = useGet(signals.template.templatePickerCategory$);
   const setCategory = useSet(signals.template.setTemplatePickerCategory$);
   const search = useGet(signals.template.templatePickerSearch$);
@@ -6524,11 +6391,6 @@ function TemplatePickerDialog({
 
   const handleSelectVideo = (item: VideoTemplateItem) => {
     onChange(toVideoGenerationTemplate(item));
-    closeTemplatePicker();
-  };
-
-  const handleSelectIntroVideo = (item: IntroVideoTemplateItem) => {
-    onChange(toIntroVideoGenerationTemplate(item));
     closeTemplatePicker();
   };
 
@@ -6785,7 +6647,6 @@ function TemplatePickerDialog({
                 websiteItems={WEBSITE_TEMPLATE_ITEMS}
                 illustrationItems={ILLUSTRATION_TEMPLATE_ITEMS}
                 videoItems={VIDEO_TEMPLATE_ITEMS}
-                introVideoItems={introVideoItems}
                 workflowCatalog={workflowCatalog}
                 value={value}
                 illustrationVariantIndex={illustrationVariantIndex}
@@ -6801,7 +6662,6 @@ function TemplatePickerDialog({
                 onSelectIllustration={handleSelectIllustration}
                 onIllustrationVariantChange={setIllustrationVariantIndex}
                 onSelectVideo={handleSelectVideo}
-                onSelectIntroVideo={handleSelectIntroVideo}
                 onSelectAvatar={handleSelectAvatar}
                 onWorkflowCategoryChange={setWorkflowCategoryFilter}
                 onSelectWorkflow={handleSelectWorkflow}
@@ -6844,7 +6704,6 @@ function TemplatePickerCategoryContent({
   websiteItems,
   illustrationItems,
   videoItems,
-  introVideoItems,
   workflowCatalog,
   value,
   illustrationVariantIndex,
@@ -6860,7 +6719,6 @@ function TemplatePickerCategoryContent({
   onSelectIllustration,
   onIllustrationVariantChange,
   onSelectVideo,
-  onSelectIntroVideo,
   onSelectAvatar,
   onWorkflowCategoryChange,
   onSelectWorkflow,
@@ -6876,7 +6734,6 @@ function TemplatePickerCategoryContent({
   websiteItems: readonly WebsiteTemplateItem[];
   illustrationItems: readonly IllustrationTemplateItem[];
   videoItems: readonly VideoTemplateItem[];
-  introVideoItems: readonly IntroVideoTemplateItem[];
   workflowCatalog: ResolvedWorkflowTemplateCatalog;
   value: GenerationTemplateRequest | undefined;
   illustrationVariantIndex: Readonly<Record<string, number>>;
@@ -6901,7 +6758,6 @@ function TemplatePickerCategoryContent({
   onSelectIllustration: (item: IllustrationTemplateItem) => void;
   onIllustrationVariantChange: (slug: string, index: number) => void;
   onSelectVideo: (item: VideoTemplateItem) => void;
-  onSelectIntroVideo: (item: IntroVideoTemplateItem) => void;
   onSelectAvatar: (
     avatar: AvatarVideoAvatar,
     voice: AvatarVideoVoice,
@@ -6996,13 +6852,11 @@ function TemplatePickerCategoryContent({
         data-video-template-grid-scroll=""
         className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
       >
-        {videoItems.length > 0 || introVideoItems.length > 0 ? (
+        {videoItems.length > 0 ? (
           <VideoTemplateGrid
             items={videoItems}
-            introVideoItems={introVideoItems}
             value={value}
             onSelect={onSelectVideo}
-            onSelectIntroVideo={onSelectIntroVideo}
           />
         ) : (
           <TemplateEmptyPanel />
@@ -7119,14 +6973,6 @@ function selectedComposerTemplateAttachment(
   const videoItem = selectedVideoTemplateItem(value);
   if (videoItem) {
     return { type: "video", title: videoItem.title, category: "video" };
-  }
-  const introVideoItem = selectedIntroVideoTemplateItem(value);
-  if (introVideoItem) {
-    return {
-      type: "intro-video",
-      title: introVideoItem.title,
-      category: "video",
-    };
   }
   const workflowItem = selectedWorkflowTemplateItem(value);
   if (workflowItem) {
@@ -8755,6 +8601,7 @@ function ConnectorsPopoverButton({
 
   return (
     <Popover
+      defaultOpen
       onOpenChange={(open, eventDetails) => {
         if (
           !open &&
@@ -8899,6 +8746,7 @@ function ConnectorsPopoverButton({
                           actions={
                             showPermissionAction || accountAction ? (
                               <>
+                                {accountAction}
                                 {showPermissionAction ? (
                                   <PopoverClose asChild>
                                     <Button
@@ -8925,7 +8773,6 @@ function ConnectorsPopoverButton({
                                     </Button>
                                   </PopoverClose>
                                 ) : null}
-                                {accountAction}
                               </>
                             ) : null
                           }
@@ -10169,37 +10016,57 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   );
 }
 
-function ComposerTemporaryModelNoticeRow({
-  notice,
+function ComposerModelScopeCard({
+  label,
+  model,
   updating,
-  onSetAsDefault,
+  onUseForFutureChats,
 }: {
-  notice: string;
+  label: string;
+  model: string;
   updating: boolean;
-  onSetAsDefault: () => void;
+  onUseForFutureChats: () => void;
 }) {
   const { t } = useTranslation();
   return (
-    <div
-      className="mt-1.5 flex flex-wrap items-center justify-end gap-x-1.5 gap-y-1 px-3 text-xs leading-5 text-muted-foreground sm:px-4"
-      aria-live="polite"
-      aria-atomic="true"
-    >
-      <span>{notice}</span>
-      <button
-        type="button"
-        className="inline-flex items-center gap-1 rounded-sm font-medium text-foreground underline-offset-2 transition-colors hover:text-foreground/70 hover:underline focus-visible:text-foreground/70 focus-visible:underline disabled:pointer-events-none disabled:opacity-70"
-        disabled={updating}
-        aria-busy={updating}
-        onClick={onSetAsDefault}
+    <div className="relative z-0 mx-3 sm:ml-auto sm:mr-4 sm:w-fit sm:max-w-[calc(100%_-_2rem)]">
+      {/* The surface extends one content-height behind the composer. The
+          composer stays above it (z-10), while the controls remain fully
+          visible in the half that protrudes below. */}
+      <div
+        className="pointer-events-none absolute inset-x-0 -top-full bottom-0 rounded-xl bg-gray-50"
+        aria-hidden="true"
+      />
+      <div
+        className="relative flex flex-wrap items-center gap-2 p-1 pl-3 text-xs sm:flex-nowrap"
+        role="group"
+        aria-label={label}
+        aria-live="polite"
+        aria-atomic="true"
       >
-        {updating && (
-          <Loader2 size={12} className="animate-spin" aria-hidden="true" />
-        )}
-        {t(($) => {
-          return $.chat.composer.setAsDefault;
-        })}
-      </button>
+        <span className="min-w-0 max-w-full text-muted-foreground">
+          <span>
+            {t(($) => {
+              return $.chat.composer.temporarilySwitchTo;
+            })}
+          </span>{" "}
+          <span>{model}</span>
+        </span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="ml-auto shrink-0 text-xs font-medium text-foreground"
+          disabled={updating}
+          aria-busy={updating}
+          onClick={onUseForFutureChats}
+        >
+          {updating && <Loader2 className="animate-spin" aria-hidden="true" />}
+          {t(($) => {
+            return $.chat.composer.useForFutureChats;
+          })}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -10244,23 +10111,10 @@ function ComposerTemporaryModelNotice({
       ? $.settings.models.picker.fast
       : $.settings.models.picker.standard;
   });
-  const notice = !modelChanged
-    ? t(($) => {
-        return selectionServiceTier === "priority"
-          ? $.chat.composer.temporaryFastModeEnabledNotice
-          : $.chat.composer.temporaryFastModeDisabledNotice;
-      })
-    : t(
-        ($) => {
-          return $.chat.composer.temporaryModelNotice;
-        },
-        {
-          model: serviceTierChanged
-            ? `${modelName} ${runSpeedLabel}`
-            : modelName,
-        },
-      );
-  const setAsDefault = () => {
+  const scopedModelLabel = serviceTierChanged
+    ? `${modelName} ${runSpeedLabel}`
+    : modelName;
+  const useForFutureChats = () => {
     if (updating) {
       return;
     }
@@ -10276,10 +10130,13 @@ function ComposerTemporaryModelNotice({
     );
   };
   return (
-    <ComposerTemporaryModelNoticeRow
-      notice={notice}
+    <ComposerModelScopeCard
+      label={t(($) => {
+        return $.chat.composer.modelForThisChat;
+      })}
+      model={scopedModelLabel}
       updating={updating}
-      onSetAsDefault={setAsDefault}
+      onUseForFutureChats={useForFutureChats}
     />
   );
 }
@@ -10290,7 +10147,7 @@ function ComposerTemporaryVideoModelNotice({
   videoModelSignals: ComposerVideoModelSignals;
 }) {
   const { t } = useTranslation();
-  // The effective model, not the pin: the notice names the model a run would
+  // The effective model, not the pin: the card names the model a run would
   // actually use, which is what the member default is being compared against.
   const selection = useLastResolved(videoModelSignals.effectiveVideoModel$);
   const userPreference = useLastResolved(userModelPreference$);
@@ -10307,22 +10164,20 @@ function ComposerTemporaryVideoModelNotice({
     return null;
   }
   const updating = updateLoadable.state === "loading";
-  const setAsDefault = () => {
+  const useForFutureChats = () => {
     if (updating) {
       return;
     }
     detach(updateDefaultVideoModel(selection, pageSignal), Reason.DomCallback);
   };
   return (
-    <ComposerTemporaryModelNoticeRow
-      notice={t(
-        ($) => {
-          return $.chat.composer.temporaryVideoModelNotice;
-        },
-        { model: getModelDisplayName(selection) },
-      )}
+    <ComposerModelScopeCard
+      label={t(($) => {
+        return $.chat.composer.videoModelForThisChat;
+      })}
+      model={getModelDisplayName(selection)}
       updating={updating}
-      onSetAsDefault={setAsDefault}
+      onUseForFutureChats={useForFutureChats}
     />
   );
 }
@@ -10348,22 +10203,20 @@ function ComposerTemporaryImageModelNotice({
     return null;
   }
   const updating = updateLoadable.state === "loading";
-  const setAsDefault = () => {
+  const useForFutureChats = () => {
     if (updating) {
       return;
     }
     detach(updateDefaultImageModel(selection, pageSignal), Reason.DomCallback);
   };
   return (
-    <ComposerTemporaryModelNoticeRow
-      notice={t(
-        ($) => {
-          return $.chat.composer.temporaryImageModelNotice;
-        },
-        { model: IMAGE_MODEL_CONFIGS[selection].label },
-      )}
+    <ComposerModelScopeCard
+      label={t(($) => {
+        return $.chat.composer.imageModelForThisChat;
+      })}
+      model={IMAGE_MODEL_CONFIGS[selection].label}
       updating={updating}
-      onSetAsDefault={setAsDefault}
+      onUseForFutureChats={useForFutureChats}
     />
   );
 }
@@ -10380,7 +10233,7 @@ function ComposerTemporaryModelNoticeSlot({
   if (!enabled) {
     return null;
   }
-  // One notice at a time: it belongs to whichever model the composer is
+  // One card at a time: it belongs to whichever model the composer is
   // currently pointed at, matching the pressed state of the two mode chips.
   if (imageModelSignals && mediaModelCategory === "image") {
     return (
@@ -10633,6 +10486,7 @@ function ComposerAttachments({ signals }: { signals: ComposerSignals }) {
   return (
     <AttachmentChips
       attachments={visibleAttachments}
+      onAnnotationChange={notifyDraftChanged}
       onRemove={(attachment) => {
         removeAttachment(attachment);
         notifyDraftChanged();
@@ -10641,13 +10495,49 @@ function ComposerAttachments({ signals }: { signals: ComposerSignals }) {
   );
 }
 
-function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
-  const { t } = useTranslation();
-  const mcpEnabled = useGet(customConnectorMcpEnabled$);
-  const connectorReadState = useComposerConnectorReadState(signals);
-  const agents = useLastResolved(agents$) ?? [];
-  const connectorUi = useGet(signals.connector.connectorUiState$);
-  const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
+function ComposerConnectorConnectDialogs({
+  selectedConnector,
+  selectedConnectorAccountOptions,
+  selectedCustomConnector,
+  selectedCustomConnectorAccountOptions,
+  agentId,
+  onBuiltinClose,
+  onBuiltinSuccess,
+  onCustomClose,
+}: {
+  readonly selectedConnector: PlatformConnectorCatalogStatusItem | undefined;
+  readonly selectedConnectorAccountOptions: DefaultConnectorAccountMutationOptions | null;
+  readonly selectedCustomConnector: CustomConnectorResponse | undefined;
+  readonly selectedCustomConnectorAccountOptions: DefaultConnectorAccountMutationOptions | null;
+  readonly agentId: string;
+  readonly onBuiltinClose: () => void;
+  readonly onBuiltinSuccess: () => Promise<void>;
+  readonly onCustomClose: () => void;
+}) {
+  return (
+    <>
+      {selectedConnector && selectedConnectorAccountOptions ? (
+        <ConnectModal
+          item={selectedConnector}
+          agentId={agentId}
+          accountOptions={selectedConnectorAccountOptions}
+          onClose={onBuiltinClose}
+          onSuccess={onBuiltinSuccess}
+        />
+      ) : null}
+      {selectedCustomConnector && selectedCustomConnectorAccountOptions ? (
+        <CustomConnectorConnectDialog
+          connector={selectedCustomConnector}
+          agentId={agentId}
+          accountOptions={selectedCustomConnectorAccountOptions}
+          onClose={onCustomClose}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function useComposerComputerUse(signals: ComposerSignals): ComposerComputerUse {
   const storedComputerUseHostId = useGet(signals.computer.computerUseHostId$);
   const cloudBrowserEnabled = useGet(signals.computer.cloudBrowserEnabled$);
   const setComputerUseHostId = useSet(signals.computer.setComputerUseHostId$);
@@ -10665,7 +10555,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
     storedComputerUseHostId,
   );
   const composerPageSignal = useGet(pageSignal$);
-  const computerUse: ComposerComputerUse = {
+  return {
     hosts: visibleComputerUseHosts(computerUseHosts, resolvedComputerUseHostId),
     loading:
       computerUseHostsState.state === "loading" &&
@@ -10686,6 +10576,62 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
     },
     downloadUrl: OKOU_DESKTOP_DOWNLOAD_URL,
   };
+}
+
+function ComposerConnectorsActivator({
+  computerUse,
+  onActivate,
+}: {
+  readonly computerUse: ComposerComputerUse;
+  readonly onActivate: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-state-hover sm:min-w-9 sm:px-1.5",
+              COMPOSER_CONTROL_FOCUS_CLASS,
+            )}
+            aria-label={t(($) => {
+              return $.chat.connectors.title;
+            })}
+            onClick={onActivate}
+          >
+            <ConnectorTriggerIcons
+              connectors={[]}
+              customConnectors={[]}
+              hasComputerUse={Boolean(computerUse.selectedHostId)}
+              hasCloudBrowser={computerUse.cloudBrowserEnabled}
+            />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          {t(($) => {
+            return $.chat.connectors.title;
+          })}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function ActivatedComposerConnectorsSlot({
+  signals,
+  computerUse,
+}: {
+  readonly signals: ComposerSignals;
+  readonly computerUse: ComposerComputerUse;
+}) {
+  const { t } = useTranslation();
+  const mcpEnabled = useGet(customConnectorMcpEnabled$);
+  const connectorReadState = useComposerConnectorReadState(signals);
+  const agents = useLastResolved(agents$) ?? [];
+  const connectorUi = useGet(signals.connector.connectorUiState$);
+  const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
 
   // Connectors: connected (org-level) + authorized (agent-level) → available
   const relatedCatalogItemsLoadable = connectorReadState.relatedCatalogItems;
@@ -10752,6 +10698,10 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
   const selectedConnector = selectedConnectorSlug
     ? connectorMap.get(selectedConnectorSlug)
     : undefined;
+  const selectedConnectorAccountOptions =
+    defaultBuiltinConnectorAccountOptions(selectedConnector);
+  const selectedCustomConnectorAccountOptions =
+    defaultCustomConnectorAccountOptions(selectedCustomConnector);
 
   const handleConnectSuccess = async (connectorSlug: ConnectorSlug) => {
     const label = connectorMap.get(connectorSlug)?.label ?? connectorSlug;
@@ -10821,6 +10771,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
     connector: PlatformConnectorCatalogStatusItem,
   ): ConnectorConnectHandlers => {
     const connectorSlug = connector.slug;
+    const accountOptions = defaultBuiltinConnectorAccountOptions(connector);
     return {
       openModal: () => {
         updateConnectorUi({
@@ -10829,6 +10780,9 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
         });
       },
       connectBrowserAuth: async (authMethod) => {
+        if (!accountOptions) {
+          return false;
+        }
         updateConnectorUi({ pendingConnectorSlug: connectorSlug });
         const connected = await connectBrowserAuth(
           connectorSlug,
@@ -10837,6 +10791,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
             connectorLabel: connector.label,
             connectorIcon: connector.icon,
             agentId: agentRecordId,
+            ...accountOptions,
           },
           pageSignal,
         );
@@ -10848,6 +10803,9 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
         return connected;
       },
       connectNoAuth: async (authMethod) => {
+        if (!accountOptions) {
+          return false;
+        }
         updateConnectorUi({ pendingConnectorSlug: connectorSlug });
         const connected = await connectNoAuth(
           {
@@ -10856,6 +10814,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
             options: {
               connectorLabel: connector.label,
               agentId: agentRecordId,
+              ...accountOptions,
             },
           },
           pageSignal,
@@ -10925,30 +10884,27 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
         onToggle={handleToggle}
         onToggleCustom={handleCustomToggle}
       />
-      {selectedConnector && (
-        <ConnectModal
-          item={selectedConnector}
-          agentId={agentRecordId}
-          onClose={() => {
-            return updateConnectorUi({ selectedConnectorSlug: null });
-          }}
-          onSuccess={async () => {
-            const connectorSlug = pendingConnectorSlug ?? selectedConnectorSlug;
-            if (connectorSlug) {
-              await completeConnectorAddition(connectorSlug);
-            }
-          }}
-        />
-      )}
-      {selectedCustomConnector && agentRecordId && (
-        <CustomConnectorConnectDialog
-          connector={selectedCustomConnector}
-          agentId={agentRecordId}
-          onClose={() => {
-            updateConnectorUi({ selectedCustomConnectorId: null });
-          }}
-        />
-      )}
+      <ComposerConnectorConnectDialogs
+        selectedConnector={selectedConnector}
+        selectedConnectorAccountOptions={selectedConnectorAccountOptions}
+        selectedCustomConnector={selectedCustomConnector}
+        selectedCustomConnectorAccountOptions={
+          selectedCustomConnectorAccountOptions
+        }
+        agentId={agentRecordId}
+        onBuiltinClose={() => {
+          updateConnectorUi({ selectedConnectorSlug: null });
+        }}
+        onBuiltinSuccess={async () => {
+          const connectorSlug = pendingConnectorSlug ?? selectedConnectorSlug;
+          if (connectorSlug) {
+            await completeConnectorAddition(connectorSlug);
+          }
+        }}
+        onCustomClose={() => {
+          updateConnectorUi({ selectedCustomConnectorId: null });
+        }}
+      />
       {connectorUi.showAddDialog && (
         <AddConnectorsDialog
           signals={signals}
@@ -10971,6 +10927,35 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
         />
       )}
     </>
+  );
+}
+
+function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
+  const computerUse = useComposerComputerUse(signals);
+  const connectorUi = useGet(signals.connector.connectorUiState$);
+  const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
+  const openAccountsPopover = useSet(signals.connector.accounts.openPopover$);
+
+  if (connectorUi.connectorDataActivated) {
+    return (
+      <ActivatedComposerConnectorsSlot
+        signals={signals}
+        computerUse={computerUse}
+      />
+    );
+  }
+
+  return (
+    <ComposerConnectorsActivator
+      computerUse={computerUse}
+      onActivate={() => {
+        updateConnectorUi({
+          connectorDataActivated: true,
+          popoverSortOrder: [],
+        });
+        openAccountsPopover();
+      }}
+    />
   );
 }
 

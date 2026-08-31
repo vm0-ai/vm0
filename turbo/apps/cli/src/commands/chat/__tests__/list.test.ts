@@ -103,7 +103,7 @@ describe("okou chat list command", () => {
   beforeEach(async () => {
     chalk.level = 0;
     cacheDirectory = await mkdtemp(join(tmpdir(), "chat-list-"));
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", okouToken());
     vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
     vi.stubEnv("XDG_CACHE_HOME", cacheDirectory);

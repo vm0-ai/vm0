@@ -44,7 +44,7 @@ const authV2SignalSources = import.meta.glob(
   },
 ) as Record<string, string>;
 
-const v1LocalizationSources = import.meta.glob(
+const clerkLocalizationSources = import.meta.glob(
   "../../auth/clerk-localization.ts",
   {
     eager: true,
@@ -53,11 +53,14 @@ const v1LocalizationSources = import.meta.glob(
   },
 ) as Record<string, string>;
 
-const v1ProviderSources = import.meta.glob("../../clerk/clerk-provider.tsx", {
-  eager: true,
-  import: "default",
-  query: "?raw",
-}) as Record<string, string>;
+const clerkProviderSources = import.meta.glob(
+  "../../clerk/clerk-provider.tsx",
+  {
+    eager: true,
+    import: "default",
+    query: "?raw",
+  },
+) as Record<string, string>;
 
 const criticalLocalizedAuthV2Keys: readonly string[] = [
   "signIn.editIdentifier",
@@ -153,7 +156,7 @@ describe("auth v2 platform localization ownership", () => {
     }
   });
 
-  it("uses no Clerk localization lookup in Auth v2 while preserving v1", () => {
+  it("keeps Clerk localization out of Auth v2 and in the shared provider", () => {
     const sources = Object.entries({
       ...authV2SignalSources,
       ...authV2ViewSources,
@@ -165,12 +168,14 @@ describe("auth v2 platform localization ownership", () => {
       expect(source).not.toContain("getClerkLocalization");
     }
 
-    const v1Localization = Object.values(v1LocalizationSources).join("\n");
-    expect(v1Localization).toContain("@clerk/localizations");
-    expect(v1Localization).toContain("getClerkLocalization");
+    const clerkLocalization = Object.values(clerkLocalizationSources).join(
+      "\n",
+    );
+    expect(clerkLocalization).toContain("getClerkLocalization");
+    expect(clerkLocalization).toContain("clerkLocalizationForLocale");
 
-    const v1Provider = Object.values(v1ProviderSources).join("\n");
-    expect(v1Provider).toContain('from "../auth/clerk-localization.ts"');
-    expect(v1Provider).toMatch(/localization:\s*getClerkLocalization\(/);
+    const clerkProvider = Object.values(clerkProviderSources).join("\n");
+    expect(clerkProvider).toContain('from "../auth/clerk-localization.ts"');
+    expect(clerkProvider).toMatch(/localization:\s*getClerkLocalization\(/);
   });
 });

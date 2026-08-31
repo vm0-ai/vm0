@@ -16,12 +16,13 @@ import type { RouteEntry } from "../route-entry";
 import { deleteWorkflow$ } from "../services/workflow-delete.service";
 import { workflowDetail } from "../services/workflow-detail.service";
 import {
-  getActiveOfficialWorkflow,
+  getOfficialWorkflow,
+  getOfficialWorkflowInstallationDefinition,
   installOfficialWorkflow$,
   listActiveOfficialWorkflows,
-  reconfigureOfficialWorkflow$,
   type OfficialWorkflowInstallResult,
 } from "../services/official-workflow-installation.service";
+import { reconcileOfficialWorkflowInstallation$ } from "../services/official-workflow-reconciliation.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 
 const officialWorkflowReadAuth = {
@@ -95,7 +96,7 @@ const getOfficialWorkflowInner$ = command(
     }
     signal.throwIfAborted();
     const params = get(pathParamsOf(officialWorkflowsContract.get));
-    const workflow = await getActiveOfficialWorkflow(
+    const workflow = await getOfficialWorkflow(
       get(db$),
       params.definitionName,
       signal,
@@ -147,11 +148,19 @@ const installOfficialWorkflowInner$ = command(
     if (!detail?.official) {
       throw new Error("Installed Official Workflow is not readable");
     }
-    return { status: 201 as const, body: { workflow: detail } };
+    const definition = await getOfficialWorkflowInstallationDefinition(
+      get(db$),
+      detail.official.definitionName,
+      signal,
+    );
+    return {
+      status: 201 as const,
+      body: { workflow: detail, ...(definition ? { definition } : {}) },
+    };
   },
 );
 
-const getInstallationInner$ = computed(async (get) => {
+const getInstallationInner$ = command(async ({ get }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(officialWorkflowInstallationsContract.get));
   const detail = await get(
@@ -161,11 +170,21 @@ const getInstallationInner$ = computed(async (get) => {
       workflowId: params.workflowId,
     }),
   );
-  return detail?.official
-    ? { status: 200 as const, body: { workflow: detail } }
-    : notFound(
-        `Official Workflow installation not found: ${params.workflowId}`,
-      );
+  signal.throwIfAborted();
+  if (!detail?.official) {
+    return notFound(
+      `Official Workflow installation not found: ${params.workflowId}`,
+    );
+  }
+  const definition = await getOfficialWorkflowInstallationDefinition(
+    get(db$),
+    detail.official.definitionName,
+    signal,
+  );
+  return {
+    status: 200 as const,
+    body: { workflow: detail, ...(definition ? { definition } : {}) },
+  };
 });
 
 const reconfigureBody$ = bodyResultOf(
@@ -182,18 +201,38 @@ const reconfigureInstallationInner$ = command(
     if (!body.ok) {
       return body.response;
     }
-    const result = await set(
-      reconfigureOfficialWorkflow$,
+    const publicBrand =
+      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+    const reconciliation = await set(
+      reconcileOfficialWorkflowInstallation$,
       {
         orgId: auth.orgId,
         member: memberFromAuth(auth),
         workflowId: params.workflowId,
-        blueprints: body.data.blueprints,
+        overrides: body.data.blueprints,
+        publicBrand,
       },
-      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
       signal,
     );
     signal.throwIfAborted();
+    const result: OfficialWorkflowInstallResult =
+      reconciliation.kind === "current"
+        ? { kind: "ok", workflowId: reconciliation.workflowId }
+        : reconciliation.kind === "invalid" ||
+            reconciliation.kind === "needs-reconfiguration"
+          ? { kind: "bad-request", message: reconciliation.message }
+          : reconciliation.kind === "not-found"
+            ? {
+                kind: "not-found",
+                message: `Official Workflow installation not found: ${params.workflowId}`,
+              }
+            : {
+                kind: "conflict",
+                message:
+                  reconciliation.kind === "retry"
+                    ? reconciliation.message
+                    : "Official Workflow changed during reconfiguration; retry",
+              };
     if (result.kind !== "ok") {
       return mutationFailure(result);
     }
@@ -208,7 +247,15 @@ const reconfigureInstallationInner$ = command(
     if (!detail?.official) {
       throw new Error("Reconfigured Official Workflow is not readable");
     }
-    return { status: 200 as const, body: { workflow: detail } };
+    const definition = await getOfficialWorkflowInstallationDefinition(
+      get(db$),
+      detail.official.definitionName,
+      signal,
+    );
+    return {
+      status: 200 as const,
+      body: { workflow: detail, ...(definition ? { definition } : {}) },
+    };
   },
 );
 
@@ -237,6 +284,7 @@ const uninstallInstallationInner$ = command(
         orgId: auth.orgId,
         workflowId: params.workflowId,
         allowOfficialInstallationDeletion: true,
+        serializeOfficialLifecycle: true,
       },
       signal,
     );

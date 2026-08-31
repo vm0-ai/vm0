@@ -8,9 +8,9 @@ Fixtures here exist for two reasons:
    :class:`mitmproxy.http.Headers` via ``mitmproxy.test`` helpers so tests
    exercise real attribute/property semantics (``pretty_host``,
    ``pretty_url``, ``content`` decompression, header casing, …).
-2. **Stubbing at the genuine external boundary (``mitmproxy.ctx``)**.
-   ``mitm_ctx`` replaces ``ctx.options`` and ``ctx.log`` for handler tests
-   that cannot rely on a running ``mitmdump`` process.
+2. **Stubbing at genuine external boundaries**. ``mitm_ctx`` replaces
+   ``ctx.options`` and captures addon process events for handler tests that
+   cannot rely on a running ``mitmdump`` process.
 """
 
 import contextlib
@@ -45,6 +45,7 @@ import upstream_admission
 import upstream_destination_binding
 import usage
 from tests.auth_state_helpers import clear_auth_state
+from tests.process_log_helpers import capture_addon_process_events
 from tests.usage_helpers import UsageWebhookServer, fresh_usage_executor_context
 from usage.providers import connectors as _usage_connectors
 
@@ -69,6 +70,7 @@ def _reset_module_state() -> Iterator[None]:
     registry.reset_cache_for_tests()
     upstream_destination_binding.reset_for_tests()
     runner_flush_lifecycle.reset_runner_usage_flush_state_for_tests()
+    upstream_admission.reset_api_destination_cache_for_tests()
     upstream_admission.reset_tls_admission_state_for_tests()
     platform_api.configure_client_headers(client_session_id="", client_version="")
     clear_auth_state()
@@ -79,6 +81,7 @@ def _reset_module_state() -> Iterator[None]:
     codex_output_timing.reset_for_tests()
     model_provider_failure.reset_for_tests()
     usage.reset_usage_buffer_for_tests()
+    usage.configure_model_usage_observation_reporting(api_url="", runner_token="")
     usage.webhook.reset_delivery_capacity_for_tests()
     usage.counters.reset_for_tests()
     logging_utils.reset_log_writer_for_tests()
@@ -97,6 +100,7 @@ def _reset_module_state() -> Iterator[None]:
     aws_sigv4_body_admission.reset_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()
     upstream_destination_binding.reset_for_tests()
+    upstream_admission.reset_api_destination_cache_for_tests()
     upstream_admission.reset_tls_admission_state_for_tests()
     platform_api.configure_client_headers(client_session_id="", client_version="")
     usage.webhook.reset_delivery_capacity_for_tests()
@@ -355,12 +359,12 @@ class _StubOptions:
 
 @pytest.fixture
 def mitm_ctx(tmp_path):
-    """Stub ``mitmproxy.ctx.options`` and ``ctx.log`` for a test block.
+    """Stub ``mitmproxy.ctx.options`` and addon process events for a test block.
 
     Returns a context-manager factory: calling ``mitm_ctx(registry_path=...)``
-    patches in a concrete options stub for settings consumed by the addon and
-    modeled by these tests, plus a ``MagicMock`` log. The log stays on
-    ``MagicMock`` so tests that need to assert on warn/debug calls can do so;
+    patches in a concrete options stub for settings consumed by the addon and a
+    ``MagicMock`` process-event capture. WARN and ERROR event details are
+    exposed as ``log.warn`` and ``log.error`` calls for focused assertions.
     ``options`` stays concrete so unexpected attribute access fails instead of
     silently creating another mock.
 
@@ -396,18 +400,25 @@ def mitm_ctx(tmp_path):
             client_version=client_version,
             ssl_insecure=ssl_insecure,
         )
-        log = MagicMock()
         with (
             patch.object(mitm_addon.ctx, "options", options, create=True),
-            patch.object(mitm_addon.ctx, "log", log, create=True),
+            capture_addon_process_events() as log,
         ):
             platform_api.configure_client_headers(
                 client_session_id=client_session_id,
                 client_version=client_version,
             )
+            usage.configure_model_usage_observation_reporting(
+                api_url=api_url,
+                runner_token=str(uuid.uuid4()),
+            )
             try:
                 yield log
             finally:
+                usage.configure_model_usage_observation_reporting(
+                    api_url="",
+                    runner_token="",
+                )
                 platform_api.configure_client_headers(
                     client_session_id="",
                     client_version="",
@@ -473,7 +484,7 @@ def usage_webhook_api(mitm_ctx):
 
 @pytest.fixture
 def sync_usage_executor():
-    """Swap ``usage.webhook.usage_executor`` for a synchronous stub.
+    """Swap both usage webhook executors for a synchronous stub.
 
     Tests that want webhook side effects to complete before inline
     assertions can use this instead of a background thread plus explicit
@@ -516,8 +527,10 @@ def sync_usage_executor():
                 future.result()
 
     original = usage.webhook.usage_executor
+    original_observation = usage.webhook.model_usage_observation_executor
     executor = _InlineExecutor()
     usage.webhook.usage_executor = executor
+    usage.webhook.model_usage_observation_executor = executor
     try:
         yield executor
     finally:
@@ -525,6 +538,7 @@ def sync_usage_executor():
             executor.shutdown(wait=True)
         finally:
             usage.webhook.usage_executor = original
+            usage.webhook.model_usage_observation_executor = original_observation
 
 
 @pytest.fixture

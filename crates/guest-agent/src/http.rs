@@ -96,7 +96,7 @@ fn format_reqwest_error(error: reqwest::Error) -> String {
 /// API-enabled runs build this during initialization and pass cheap clones to
 /// background tasks. That keeps webhook/S3 timeout configuration consistent
 /// across all HTTP calls and makes client-construction failures explicit at
-/// startup. Local/test runs without `VM0_API_TOKEN` use a disabled client so
+/// startup. Local/test runs without `OKOU_API_TOKEN` use a disabled client so
 /// they do not fail on HTTP stack setup they will never use.
 #[derive(Clone)]
 pub struct HttpClient {
@@ -116,7 +116,6 @@ struct ApiHttpConfig {
 #[derive(Clone)]
 struct ApiUrls {
     events: String,
-    checkpoint: String,
     complete: String,
     heartbeat: String,
     telemetry: String,
@@ -129,7 +128,7 @@ impl HttpClient {
     /// Build an HTTP transport client without API webhook configuration.
     ///
     /// This constructor always initializes the underlying `reqwest` client and
-    /// does not check `VM0_API_TOKEN`. It can send presigned uploads, but
+    /// does not check `OKOU_API_TOKEN`. It can send presigned uploads, but
     /// webhook JSON posts require API config from [`Self::with_api_config`],
     /// or [`Self::for_config`].
     /// Production guest-agent initialization should use [`Self::for_config`]
@@ -267,7 +266,7 @@ impl HttpClient {
     fn inner(&self) -> Result<&Client, AgentError> {
         self.inner.as_ref().ok_or_else(|| {
             AgentError::Http(
-                "guest-agent HTTP client is disabled because VM0_API_TOKEN is unset".into(),
+                "guest-agent HTTP client is disabled because OKOU_API_TOKEN is unset".into(),
             )
         })
     }
@@ -303,10 +302,6 @@ impl HttpClient {
 
     pub(crate) fn events_url(&self) -> Result<&str, AgentError> {
         Ok(&self.api_config()?.urls.events)
-    }
-
-    pub(crate) fn checkpoint_url(&self) -> Result<&str, AgentError> {
-        Ok(&self.api_config()?.urls.checkpoint)
     }
 
     pub(crate) fn complete_url(&self) -> Result<&str, AgentError> {
@@ -355,12 +350,12 @@ impl ApiHttpConfig {
     ) -> Result<Self, AgentError> {
         if base_url.is_empty() {
             return Err(AgentError::Http(
-                "VM0_API_BACKEND_URL is required when VM0_API_TOKEN is set".into(),
+                "OKOU_API_BACKEND_URL is required when OKOU_API_TOKEN is set".into(),
             ));
         }
         if token.is_empty() {
             return Err(AgentError::Http(
-                "VM0_API_TOKEN is required for enabled API HTTP config".into(),
+                "OKOU_API_TOKEN is required for enabled API HTTP config".into(),
             ));
         }
         reqwest::header::HeaderValue::from_str(&client_session_id)
@@ -379,7 +374,6 @@ impl ApiUrls {
     fn new(base_url: &str) -> Self {
         Self {
             events: urls::events_url(base_url),
-            checkpoint: urls::checkpoint_url(base_url),
             complete: urls::complete_url(base_url),
             heartbeat: urls::heartbeat_url(base_url),
             telemetry: urls::telemetry_url(base_url),

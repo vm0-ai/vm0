@@ -1,295 +1,58 @@
-import { z } from "zod";
-
 import {
   canonicalizeFirewallDnsHostname,
   FIREWALL_HOSTNAME_POLICY_VERSION,
 } from "./firewall-hostname-policy";
+import {
+  firewallBaseHostPolicySchema,
+  type FirewallApi,
+  type FirewallBaseHostPolicy,
+  type FirewallConfig,
+  type FirewallPolicyValue,
+  type Firewalls,
+} from "./firewall-contracts";
 import { hasRawWhitespace, hasUnsafeUrlCodepoint } from "./firewall-url-utils";
 import { PUBLIC_DESTINATION_ADDRESS_POLICY } from "./public-destination-policy";
 import { parseSegment, splitPathSegments } from "./segment-parser";
 
 export { normalizeFirewallFixedHost } from "./firewall-url-utils";
 
-const HOST_DOT_EQUIVALENT_PATTERN = /[\u3002\uff0e\uff61]/g;
-const HOST_POLICY_HOST_FORBIDDEN_PATTERN = /[%*[\]/?#@\\:{}<>^|]/u;
-const DNS_HOST_FORBIDDEN_ASCII_CHARS = new Set(["<", ">", "[", "]", "^", "|"]);
-
-/**
- * Proxy-side firewall configuration for token replacement.
- *
- * All firewall zod schemas are defined here as the single source of truth.
- * Other modules (composes.ts, runners.ts) import from here.
- */
-
-/**
- * Firewall permission schema — a named permission group with matching rules.
- * Rules use the format `METHOD /path` where path is relative to the API entry's base URL.
- */
-export const firewallPermissionSchema = z.object({
-  name: z.string(),
-  description: z.string().optional(),
-  rules: z.array(z.string()),
-});
-
-export const firewallAwsSigv4AuthSchema = z
-  .object({
-    accessKeyId: z.string().min(1),
-    secretAccessKey: z.string().min(1),
-    sessionToken: z.string().min(1).optional(),
-  })
-  .strict();
-
-const firewallAuthSchema = z
-  .object({
-    headers: z.record(z.string(), z.string()).optional(),
-    base: z.string().min(1).optional(),
-    query: z.record(z.string(), z.string()).optional(),
-    awsSigv4: firewallAwsSigv4AuthSchema.optional(),
-  })
-  .superRefine((auth, ctx) => {
-    if (!auth.awsSigv4) {
-      return;
-    }
-    if (auth.headers && Object.keys(auth.headers).length > 0) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["headers"],
-        message: "auth.headers cannot be combined with auth.awsSigv4",
-      });
-    }
-    if (auth.query && Object.keys(auth.query).length > 0) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["query"],
-        message: "auth.query cannot be combined with auth.awsSigv4",
-      });
-    }
-    if (auth.base !== undefined) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["base"],
-        message: "auth.base cannot be combined with auth.awsSigv4",
-      });
-    }
-  });
-
-function hostPolicyHostHasFixedOwnership(
-  value: string,
-  options: { readonly allowLeadingDot: boolean },
-): boolean {
-  if (!options.allowLeadingDot && value.startsWith(".")) {
-    return false;
-  }
-  const rawHost =
-    options.allowLeadingDot && value.startsWith(".") ? value.slice(1) : value;
-  const normalized = rawHost
-    .replace(HOST_DOT_EQUIVALENT_PATTERN, ".")
-    .toLowerCase();
-  const withoutTrailingDot = normalized.endsWith(".")
-    ? normalized.slice(0, -1)
-    : normalized;
-  if (
-    withoutTrailingDot === "" ||
-    !isAscii(value) ||
-    hasRawWhitespace(value) ||
-    hasUnsafeUrlCodepoint(value) ||
-    HOST_POLICY_HOST_FORBIDDEN_PATTERN.test(withoutTrailingDot)
-  ) {
-    return false;
-  }
-  if (
-    isIpv4LiteralLike(withoutTrailingDot) ||
-    parseIpv6Address(withoutTrailingDot)
-  ) {
-    return false;
-  }
-  const labels = withoutTrailingDot.split(".");
-  return (
-    labels.length >= 2 &&
-    labels.every((label) => {
-      return label !== "";
-    })
-  );
-}
-
-const firewallProviderOwnedHostPolicySchema = z
-  .object({
-    kind: z.literal("providerOwned"),
-    exactHosts: z.array(z.string().min(1)).optional(),
-    suffixes: z.array(z.string().min(1)).optional(),
-    allowNonDefaultPort: z.boolean().optional(),
-  })
-  .strict()
-  .superRefine((policy, ctx) => {
-    if (
-      (policy.exactHosts?.length ?? 0) === 0 &&
-      (policy.suffixes?.length ?? 0) === 0
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        message: "providerOwned host policy requires exactHosts or suffixes",
-      });
-    }
-    for (const [index, exactHost] of (policy.exactHosts ?? []).entries()) {
-      if (
-        !hostPolicyHostHasFixedOwnership(exactHost, { allowLeadingDot: false })
-      ) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["exactHosts", index],
-          message:
-            "providerOwned host policy exactHosts must be fixed hostnames with at least two labels",
-        });
-      }
-    }
-    for (const [index, suffix] of (policy.suffixes ?? []).entries()) {
-      if (!hostPolicyHostHasFixedOwnership(suffix, { allowLeadingDot: true })) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["suffixes", index],
-          message:
-            "providerOwned host policy suffixes must be fixed hostnames with at least two labels",
-        });
-      }
-    }
-  });
-
-const firewallPublicDestinationHostPolicySchema = z
-  .object({
-    kind: z.literal("publicDestination"),
-  })
-  .strict();
-
-export const firewallBaseHostPolicySchema = z.union([
-  firewallProviderOwnedHostPolicySchema,
-  firewallPublicDestinationHostPolicySchema,
-]);
-
-/**
- * Firewall API entry — a base URL with optional auth headers/query/base and permissions.
- * An entry without permissions is the owner's fallback when no concrete
- * permission route matches.
- */
-export const firewallApiSchema = z.object({
-  base: z.string(),
-  hostPolicy: firewallBaseHostPolicySchema.optional(),
-  auth: firewallAuthSchema,
-  permissions: z.array(firewallPermissionSchema).optional(),
-});
-
-/**
- * A single firewall with its name and API entries.
- * Used in the expanded (post-compose) format.
- */
-export const firewallSchema = z.object({
-  name: z.string(),
-  apis: z.array(firewallApiSchema),
-});
-
-/**
- * Firewall configuration for proxy-side token replacement.
- * Flat array of firewall entries: [{ name, apis }]
- */
-export const firewallsSchema = z.array(firewallSchema);
-
-export const executionFirewallBuiltinEntrySchema = z.object({
-  kind: z.literal("builtin"),
-  name: z.string().min(1),
-  baseUrlVars: z.record(z.string(), z.string()).optional(),
-  sourceId: z.uuid().optional(),
-});
-
-const executionFirewallSchema = firewallSchema.extend({
-  apis: z.array(
-    firewallApiSchema.extend({
-      id: z.string().min(1).optional(),
-    }),
-  ),
-});
-
-export const executionFirewallInlineEntrySchema = z.object({
-  kind: z.literal("inline"),
-  firewall: executionFirewallSchema,
-  customConnectorId: z.uuid().optional(),
-  sourceId: z.uuid().optional(),
-});
-
-export const executionFirewallEntrySchema = z.discriminatedUnion("kind", [
+export {
   executionFirewallBuiltinEntrySchema,
+  executionFirewallEntrySchema,
   executionFirewallInlineEntrySchema,
-]);
-
-export const executionFirewallsSchema = z.array(executionFirewallEntrySchema);
-
-/**
- * Reserved permission name used by user grant storage to represent the
- * unknown-endpoint policy row for a connector firewall.
- */
-export const UNKNOWN_PERMISSION_GRANT = "__unknown__";
-
-/** Zod schema for validating firewall config definitions. */
-export const firewallConfigSchema = z.object({
-  name: z.string().min(1, "Firewall name is required"),
-  description: z.string().optional(),
-  apis: z
-    .array(firewallApiSchema)
-    .min(1, "Firewall must have at least one API entry"),
-  placeholders: z.record(z.string(), z.string()).optional(),
-});
-
-/**
- * Firewall policy value — per-permission access control.
- * - "allow": always allow without prompting
- * - "deny": always deny
- * - "ask": prompt user for approval each time
- */
-export const firewallPolicyValueSchema = z.enum(["allow", "deny", "ask"]);
-export type FirewallPolicyValue = z.infer<typeof firewallPolicyValueSchema>;
-
-/**
- * Per-firewall permission policy: permission map + unknown endpoint handling.
- */
-export const firewallPolicySchema = z.object({
-  policies: z.record(z.string(), firewallPolicyValueSchema),
-  unknownPolicy: firewallPolicyValueSchema.optional(),
-});
-export type FirewallPolicy = z.infer<typeof firewallPolicySchema>;
-
-/**
- * Firewall policies — map of firewall name → firewall permission policy.
- * Example: { "github": { policies: { "repo-read": "allow" }, unknownPolicy: "allow" } }
- */
-export const firewallPoliciesSchema = z.record(
-  z.string(),
+  executionFirewallsSchema,
+  firewallApiSchema,
+  firewallAwsSigv4AuthSchema,
+  firewallBaseHostPolicySchema,
+  firewallConfigSchema,
+  firewallPermissionSchema,
+  firewallPoliciesSchema,
   firewallPolicySchema,
-);
-export type FirewallPolicies = z.infer<typeof firewallPoliciesSchema>;
+  firewallPolicyValueSchema,
+  firewallSchema,
+  firewallsSchema,
+  networkPoliciesSchema,
+  networkPolicySchema,
+  UNKNOWN_PERMISSION_GRANT,
+  type ExecutionFirewallBuiltinEntry,
+  type ExecutionFirewallEntry,
+  type ExecutionFirewallInlineEntry,
+  type ExecutionFirewalls,
+  type Firewall,
+  type FirewallApi,
+  type FirewallBaseHostPolicy,
+  type FirewallConfig,
+  type FirewallPolicies,
+  type FirewallPolicy,
+  type FirewallPolicyValue,
+  type Firewalls,
+  type NetworkPolicies,
+  type NetworkPolicy,
+  type PermissionNamesOf,
+} from "./firewall-contracts";
 
-/**
- * Per-firewall grant configuration — which permissions are granted and
- * what policy applies to unknown endpoints (not matching any permission rule).
- * Firewall names absent from the map are fully permissive (all granted + allow unknown).
- */
-export const networkPolicySchema = z.object({
-  allow: z.array(z.string()),
-  deny: z.array(z.string()),
-  ask: z.array(z.string()),
-  unknownPolicy: firewallPolicyValueSchema,
-});
-export type NetworkPolicy = z.infer<typeof networkPolicySchema>;
-
-/**
- * Network policies map — firewall name → runtime network policy config.
- * Example: { "github": { allow: ["repo-read"], deny: ["admin"], ask: [], unknownPolicy: "deny" } }
- */
-export const networkPoliciesSchema = z.record(z.string(), networkPolicySchema);
-export type NetworkPolicies = z.infer<typeof networkPoliciesSchema>;
-
-/** Inferred types */
-export type FirewallApi = z.infer<typeof firewallApiSchema>;
-export type FirewallBaseHostPolicy = z.infer<
-  typeof firewallBaseHostPolicySchema
->;
+const HOST_DOT_EQUIVALENT_PATTERN = /[\u3002\uff0e\uff61]/g;
+const DNS_HOST_FORBIDDEN_ASCII_CHARS = new Set(["<", ">", "[", "]", "^", "|"]);
 
 export class FirewallBaseUrlResolutionError extends Error {
   constructor(message: string) {
@@ -297,35 +60,6 @@ export class FirewallBaseUrlResolutionError extends Error {
     this.name = "FirewallBaseUrlResolutionError";
   }
 }
-
-export type FirewallConfig = z.infer<typeof firewallConfigSchema>;
-/**
- * Extract the union of permission names from a firewall config object.
- * Requires the config to be declared with `as const satisfies FirewallConfig`
- * so that permission name strings are preserved as literal types.
- */
-export type PermissionNamesOf<T extends FirewallConfig> =
-  T["apis"][number] extends infer Api
-    ? Api extends { readonly permissions?: infer P }
-      ? P extends ReadonlyArray<{ readonly name: infer N }>
-        ? N extends string
-          ? N
-          : never
-        : never
-      : never
-    : never;
-export type Firewall = z.infer<typeof firewallSchema>;
-export type Firewalls = z.infer<typeof firewallsSchema>;
-export type ExecutionFirewallBuiltinEntry = z.infer<
-  typeof executionFirewallBuiltinEntrySchema
->;
-export type ExecutionFirewallInlineEntry = z.infer<
-  typeof executionFirewallInlineEntrySchema
->;
-export type ExecutionFirewallEntry = z.infer<
-  typeof executionFirewallEntrySchema
->;
-export type ExecutionFirewalls = z.infer<typeof executionFirewallsSchema>;
 
 /**
  * Regex pattern matching `${{ secrets.XXX }}` references in auth header templates.
@@ -2327,12 +2061,11 @@ function isAscii(value: string): boolean {
 function isIpv4NumberComponent(value: string): boolean {
   if (value === "") return false;
   if (value.toLowerCase().startsWith("0x")) {
-    return (
-      value.length > 2 &&
-      [...value.slice(2)].every((char) => {
-        return isHexDigit(char);
-      })
-    );
+    if (value.length <= 2) return false;
+    for (let index = 2; index < value.length; index += 1) {
+      if (!isHexDigit(value.charAt(index))) return false;
+    }
+    return true;
   }
   return UNICODE_DECIMAL_NUMBER_PATTERN.test(value);
 }

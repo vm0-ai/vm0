@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -95,7 +95,7 @@ function mockSidebarThreadStory(threads: readonly SidebarThread[]): void {
 }
 
 describe("zero sidebar mac shortcuts", () => {
-  it("toggles the sidebar with cmd+b while the chat composer is focused", async () => {
+  it("toggles the chat list with cmd+b while the chat composer is focused", async () => {
     prepareDefaultAgent();
     mockSidebarThreadStory([createThread(THREAD_ID, "Release plan")]);
 
@@ -105,9 +105,9 @@ describe("zero sidebar mac shortcuts", () => {
     });
 
     const composer = await screen.findByRole("textbox", { name: "Message" });
+    const list = await screen.findByTestId("chat-list-column");
     await waitFor(() => {
-      expect(screen.getByLabelText("Collapse sidebar")).toBeInTheDocument();
-      expect(screen.queryByLabelText("Expand sidebar")).not.toBeInTheDocument();
+      expect(within(list).getByLabelText("Hide chat list")).toBeInTheDocument();
     });
 
     composer.focus();
@@ -120,7 +120,12 @@ describe("zero sidebar mac shortcuts", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Expand sidebar")).toBeInTheDocument();
+      expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
+      expect(
+        within(screen.getByTestId("labeled-nav-rail")).getByLabelText(
+          "Show chat list",
+        ),
+      ).toBeInTheDocument();
     });
   });
 

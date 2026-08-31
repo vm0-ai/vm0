@@ -1961,12 +1961,16 @@ const runAgentForTelegram$ = command(
       return { kind: "ignored" };
     }
 
-    await publishChatThreadMessageCreatedSafely(
-      args.source.userLink.userId,
-      persisted.chatThreadId,
-    );
+    await publishChatThreadMessageCreatedSafely({
+      userId: args.source.userLink.userId,
+      orgId: args.source.orgId,
+      threadId: persisted.chatThreadId,
+    });
     signal.throwIfAborted();
-    await publishThreadListChanged(args.source.userLink.userId);
+    await publishThreadListChanged({
+      userId: args.source.userLink.userId,
+      orgId: args.source.orgId,
+    });
     signal.throwIfAborted();
     await set(
       drainChatThreadQueueForThread$,

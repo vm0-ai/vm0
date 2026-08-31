@@ -13,6 +13,7 @@ import {
   appendChatThreadEvent,
   chatThreadServiceTierFromCodex,
 } from "./chat-thread-event.service";
+import { chatThreadOrganizationCondition } from "./chat-thread-organization.service";
 import {
   isCodexFastServiceTierSupported,
   resolveDefaultModelFirstPin,
@@ -139,7 +140,10 @@ function transactionResultWithoutPublish(
 
 async function loadLockedChatThreadModel(
   tx: ChatThreadModelTransaction,
-  params: Pick<ResolvePersistedChatThreadModelParams, "threadId" | "userId">,
+  params: Pick<
+    ResolvePersistedChatThreadModelParams,
+    "orgId" | "threadId" | "userId"
+  >,
 ): Promise<PersistedChatThreadModelSnapshot | undefined> {
   const [thread] = await tx
     .select(persistedChatThreadModelSnapshotColumns())
@@ -148,6 +152,7 @@ async function loadLockedChatThreadModel(
       and(
         eq(chatThreads.id, params.threadId),
         eq(chatThreads.userId, params.userId),
+        chatThreadOrganizationCondition(tx, params.orgId),
       ),
     )
     .limit(1)
@@ -157,7 +162,10 @@ async function loadLockedChatThreadModel(
 
 async function loadChatThreadModel(
   db: Db,
-  params: Pick<ResolvePersistedChatThreadModelParams, "threadId" | "userId">,
+  params: Pick<
+    ResolvePersistedChatThreadModelParams,
+    "orgId" | "threadId" | "userId"
+  >,
 ): Promise<PersistedChatThreadModelSnapshot | undefined> {
   const [thread] = await db
     .select(persistedChatThreadModelSnapshotColumns())
@@ -166,6 +174,7 @@ async function loadChatThreadModel(
       and(
         eq(chatThreads.id, params.threadId),
         eq(chatThreads.userId, params.userId),
+        chatThreadOrganizationCondition(db, params.orgId),
       ),
     )
     .limit(1);
@@ -257,6 +266,7 @@ async function persistReconciledChatThreadModel(args: {
       and(
         eq(chatThreads.id, args.params.threadId),
         eq(chatThreads.userId, args.params.userId),
+        chatThreadOrganizationCondition(args.tx, args.params.orgId),
       ),
     );
   if (args.selectedModelChanged) {
@@ -458,7 +468,10 @@ export async function resolvePersistedChatThreadModel(
 
   await Promise.all([
     result.publishThreadList
-      ? publishThreadListChangedSafely(params.userId)
+      ? publishThreadListChangedSafely({
+          userId: params.userId,
+          orgId: params.orgId,
+        })
       : Promise.resolve(),
     result.publishThreadDetail
       ? publishChatThreadDetailChangedSafely(params.userId, params.threadId)

@@ -3,8 +3,6 @@ import { billingRedeemCodeContract } from "@okouai/api-contracts/contracts/billi
 
 import { env, optionalEnv } from "../../lib/env";
 import { badRequestMessage, providerUnavailable } from "../../lib/error";
-import { logAliasResolutionInfo, logger } from "../../lib/log";
-import { singleton } from "../../lib/singleton";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
@@ -26,39 +24,6 @@ const DEFAULT_NON_PROD_ATOM_URL = "https://tunnel-yuma-atom-api.vm7.ai";
 const ATOM_M2M_TOKEN_TTL_SECONDS = 60 * 60;
 const ATOM_M2M_TOKEN_MIN_REMAINING_TTL_SECONDS = 5 * 60;
 const DEFAULT_REDEEM_CODE_ERROR_MESSAGE = "Redeem code could not be redeemed";
-const MACHINE_SECRET_ALIAS_RESOLUTION_EVENT =
-  "billing_machine_secret_alias_resolution";
-
-const log = logger("api:zero:billing-redeem-code");
-
-type MachineSecretKeyResolution =
-  | { readonly source: "absent" }
-  | { readonly source: "conflicting-dual" }
-  | {
-      readonly source: "canonical-only" | "legacy-only" | "equal-dual";
-      readonly value: string;
-    };
-
-type MachineSecretAliasState = MachineSecretKeyResolution["source"];
-
-const reportedMachineSecretStates = singleton(() => {
-  return new Set<MachineSecretAliasState>();
-});
-
-function reportMachineSecretResolution(source: MachineSecretAliasState): void {
-  const states = reportedMachineSecretStates();
-  if (states.has(source)) {
-    return;
-  }
-  states.add(source);
-
-  const fields = { source };
-  if (source === "conflicting-dual") {
-    log.warn(MACHINE_SECRET_ALIAS_RESOLUTION_EVENT, fields);
-    return;
-  }
-  logAliasResolutionInfo(log, MACHINE_SECRET_ALIAS_RESOLUTION_EVENT, fields);
-}
 
 const ATOM_REDEEM_CODE_ERROR_MESSAGES: Readonly<Record<string, string>> =
   Object.freeze({
@@ -88,32 +53,6 @@ function getAtomUrl(): string | undefined {
     return DEFAULT_NON_PROD_ATOM_URL;
   }
   return undefined;
-}
-
-// Production deployment and local configuration still write only the legacy
-// alias. Remove it after #28914 retires every pre-reader API rollback target,
-// switches all writers to canonical-only, and observes zero legacy-only
-// resolutions through the supported rollback window.
-function resolveMachineSecretKey(): MachineSecretKeyResolution {
-  const canonical = optionalEnv("OKOU_MACHINE_SECRET_KEY");
-  const legacy = optionalEnv("VM0_MACHINE_SECRET_KEY");
-
-  if (!canonical) {
-    return legacy
-      ? { source: "legacy-only", value: legacy }
-      : { source: "absent" };
-  }
-  if (!legacy) {
-    return { source: "canonical-only", value: canonical };
-  }
-  if (canonical === legacy) {
-    return { source: "equal-dual", value: canonical };
-  }
-  return { source: "conflicting-dual" };
-}
-
-export function reportMachineSecretAliasSourceAtProcessInitialization(): void {
-  reportMachineSecretResolution(resolveMachineSecretKey().source);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -250,18 +189,14 @@ const redeemCodeAuthed$ = command(async ({ get }, signal: AbortSignal) => {
     return providerUnavailable("Redeem service user unavailable");
   }
 
-  const machineSecretKeyResolution = resolveMachineSecretKey();
-  reportMachineSecretResolution(machineSecretKeyResolution.source);
-  if (machineSecretKeyResolution.source === "conflicting-dual") {
-    return providerUnavailable("Redeem service not configured");
-  }
-  if (machineSecretKeyResolution.source === "absent") {
+  const machineSecretKey = optionalEnv("OKOU_MACHINE_SECRET_KEY");
+  if (!machineSecretKey) {
     return providerUnavailable("Redeem service not configured");
   }
 
   const m2mToken = await tapError(
     clerk.m2m.createToken({
-      machineSecretKey: machineSecretKeyResolution.value,
+      machineSecretKey,
       secondsUntilExpiration: ATOM_M2M_TOKEN_TTL_SECONDS,
       minRemainingTtlSeconds: ATOM_M2M_TOKEN_MIN_REMAINING_TTL_SECONDS,
     }),

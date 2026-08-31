@@ -41,6 +41,7 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
       ),
       mode,
       navigation: platformContext.navigation,
+      presentation: "route",
     });
     const continuationSignals = diagnostics.instrumentContinuation(
       continuationController,
@@ -48,10 +49,9 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
     let signInSignals: AuthV2SignInSignals | null = null;
     let signUpSignals: AuthV2SignUpSignals | null = null;
     if (mode === "sign-in") {
-      const isBaseRoute = location.pathname === ROUTES.signInV2;
+      const isBaseRoute = location.pathname === ROUTES.signIn;
       const isOAuthCallbackRoute =
-        location.pathname ===
-        `${ROUTES.signInV2}${AUTH_V2_OAUTH_CALLBACK_PATH}`;
+        location.pathname === `${ROUTES.signIn}${AUTH_V2_OAUTH_CALLBACK_PATH}`;
       signInSignals = diagnostics.instrumentSignIn(
         createAuthV2SignInSignals({
           continuation: continuationController,
@@ -77,7 +77,7 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
     } else {
       const isOAuthCallbackRoute =
         location.pathname ===
-        `${ROUTES.signUpV2}${AUTH_V2_SIGN_UP_OAUTH_CALLBACK_PATH}`;
+        `${ROUTES.signUp}${AUTH_V2_SIGN_UP_OAUTH_CALLBACK_PATH}`;
       signUpSignals = diagnostics.instrumentSignUp(
         createAuthV2SignUpSignals({
           continuation: continuationController,

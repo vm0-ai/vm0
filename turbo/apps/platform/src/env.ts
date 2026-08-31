@@ -14,6 +14,10 @@ declare global {
 /**
  * Detect if running in Vitest environment.
  * Used for test-specific behavior like promise tracking.
+ *
+ * Read through globalThis: this module reaches the shared database worker,
+ * which has no `window` binding at all.
  */
-export const IN_VITEST =
-  typeof window !== "undefined" && Boolean(window.__vitest_index__);
+export const IN_VITEST = Boolean(
+  (globalThis as { __vitest_index__?: boolean }).__vitest_index__,
+);

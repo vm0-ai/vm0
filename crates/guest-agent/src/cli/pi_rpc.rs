@@ -1,4 +1,217 @@
 //! Official Pi RPC command lifecycle and public-event projection.
+//!
+//! ## Ownership and data flow
+//!
+//! The sandbox TypeScript host resolves the API-first handoff, restores the
+//! validated H1 session file, writes one private startup-boundary record to
+//! stdout, and then enters Pi's official `runRpcMode`. The guest-agent owns the
+//! other side of that boundary. Its stdout loop in `cli/mod.rs` admits the
+//! boundary before any official RPC record, starts the shared event pipeline
+//! from the installed sequence, and then applies this module's projection.
+//!
+//! There are two coupled JSONL paths after startup:
+//!
+//! - The guest writer owns child stdin. It sends `get_state`, the initial
+//!   `prompt`, and later `steer` commands for accepted active-input frames. The
+//!   stdout loop routes `response` records into the writer's response channel.
+//! - The stdout loop owns child stdout. It retains each ordinary raw record in
+//!   the best-effort local agent transcript, projects supported records into
+//!   the existing public event shape, and passes projected events through
+//!   normalization, secret masking, sequencing, bounded FIFO delivery, and the
+//!   HTTP event worker. The startup control is the exception: it is consumed
+//!   before the transcript and public pipeline and is never delivered.
+//!
+//! The public event pipeline is deliberately created only after boundary
+//! installation. `CliEventIngestor` and `EventDeliveryRuntime` receive the same
+//! installed first sequence, so the first public event and the delivery
+//! acknowledgement watermark cannot start from different boundaries.
+//!
+//! ## API-first startup boundary
+//!
+//! The host emits this private control record before official RPC output:
+//!
+//! ```json
+//! {
+//!   "type": "vm0_pi_api_first_turn_boundary",
+//!   "schemaVersion": 1,
+//!   "sandboxEventSequenceStart": 4
+//! }
+//! ```
+//!
+//! The control record's schema version is independent of the API manifest
+//! version. The host maps a manifest v1 handoff to sequence `1`; a manifest v2
+//! supplies its positive `sandboxEventSequenceStart`. Rust accepts the private
+//! control only when its type and schema version are exact, all fields are
+//! known, and the sequence is in `1..=i32::MAX` (`1..=2,147,483,647`).
+//!
+//! `PiRpcStartupBoundary` is a fail-closed one-time gate:
+//!
+//! - Before installation, a non-control JSON record fails with
+//!   `PI_HANDOFF_BOUNDARY_MISSING`. A malformed control, invalid schema, zero,
+//!   overflowing, or otherwise invalid sequence fails with
+//!   `PI_HANDOFF_BOUNDARY_INVALID`.
+//! - The first valid control installs the boundary. A second control before an
+//!   official record is a duplicate; a different value is a conflict; and a
+//!   control after an official record is late. Each is terminal and rejects
+//!   the stream.
+//! - After a rejection, `discard_remaining` makes all later records
+//!   non-projecting. Invalid non-JSON input is also fatal while the boundary is
+//!   still required, or when the raw line resembles the control type.
+//! - `cli/mod.rs` consumes the installed control before projection. It is not
+//!   written to the agent transcript, assigned a public sequence, sent to the
+//!   webhook, or rendered as an agent/Chat event.
+//!
+//! This ordering is the API-first reader contract: no official RPC record may
+//! reach projection, masking, sequencing, or delivery until the boundary that
+//! authorized the restored H1 session has been installed.
+//!
+//! ## Command and acknowledgement lifecycle
+//!
+//! `write_commands` has one serialized command flow. It first writes
+//! `get_state` with ID `<run-id>:pi:get-state` and waits for a response with
+//! the exact ID, command name, and `success: true`. The successful response is
+//! sent to the response channel and is also used by the projection to emit
+//! `system/init` after validating the configured session ID, returned
+//! `data.sessionId`, and required `data.sessionFile`.
+//!
+//! The writer then sends the initial `prompt` with ID
+//! `<run-id>:pi:initial-prompt` and waits for its exactly correlated successful
+//! response. Once that acknowledgement arrives, each accepted active-input
+//! frame is sent as a `steer` command whose ID is the frame's delivery UUID and
+//! whose message is the frame text. A matching successful `steer` response is
+//! recorded with `mark_backend_accepted_without_replay`; it does not create a
+//! replay user event in the Pi path. A failed or interrupted steer marks the
+//! delivery failed and enters the writer's abort/error path.
+//!
+//! Normal response waits reject an unexpected ID, unexpected command,
+//! unsuccessful response, or a closed response channel. Abort is different in
+//! one respect: it ignores unrelated response IDs while waiting for its own
+//! acknowledgement. It writes ID `<run-id>:pi:abort`, requires the matching
+//! successful `abort` response, and has a ten-second timeout covering the write
+//! and acknowledgement wait.
+//!
+//! The guest keeps child stdin owned by this writer after the initial prompt.
+//! The host's official RPC loop therefore remains alive while the guest waits
+//! for active input and while stdout drains through `agent_settled`. After a
+//! projected terminal result, Pi active input closes when no follow-up frame is
+//! pending; final guest cleanup closes it in all remaining cases, allowing the
+//! host to observe stdin EOF.
+//!
+//! User cancellation closes active-input state and cancels the Pi writer. When
+//! cancellation wins while the writer is waiting for a command response, the
+//! writer sends the bounded `abort` command. If cancellation wins inside the
+//! cancellable stdin write itself, that write returns an interruption error
+//! before an abort can be written; this is a distinct early-write failure path.
+//! The final guest control result records `Run cancelled by user` and the
+//! `UserCancellation` termination reason. Current Pi tool-result events do not
+//! carry a `vm0_user_cancelled` field: that marker was removed with Chat Tool
+//! Activity in #30215. Claude-only replay filtering is enabled outside this
+//! module; Pi does not set `replay_user_messages`.
+//!
+//! ## Record admission and projection
+//!
+//! `PiRpcProjection::project` receives only official records admitted after the
+//! startup boundary. The common loop records the raw JSONL line locally even
+//! when the record has no public projection. The routing contract is:
+//!
+//! - `response`: every response is routed to the command channel. Only the
+//!   first successful `get_state` response emits `system/init`; prompt, steer,
+//!   abort, and other responses are acknowledgement records only. The raw
+//!   response remains in the local transcript.
+//! - `message_end` with an assistant message: the latest assistant terminal
+//!   state is cached. Supported content is emitted as an `assistant` event;
+//!   empty content, unknown content blocks, and assistant messages with no
+//!   supported content emit no public event, but their raw records remain local.
+//! - `message_end` with a `toolResult` message: required tool-result fields are
+//!   validated and one public `user` event containing one `tool_result` block is
+//!   emitted. The raw record remains local. Other message roles are ignored
+//!   publicly and retained locally.
+//! - `agent_settled`: this is the sole Pi owner of the public terminal
+//!   `result` event. It consumes the cached assistant terminal state. Neither
+//!   `message_end` nor `agent_end` owns the public terminal result.
+//! - `extension_error`: no public event is emitted. Projection becomes
+//!   terminal and returns an execution error; later records are discarded from
+//!   public projection while the stdout loop continues its controlled failure
+//!   and local-transcript handling.
+//! - Unsupported official records, including `agent_end`, emit no public
+//!   event and are retained locally unless the projection is already terminal.
+//!
+//! After projection, assistant and user events with multiple content blocks
+//! are split by `provider_event_normalization` into one independently
+//! sequenced public event per block. The source order is retained, and common
+//! masking and bounded delivery happen after that normalization.
+//!
+//! ## Public event shapes
+//!
+//! A successful `get_state` projects to:
+//!
+//! ```json
+//! {
+//!   "type": "system",
+//!   "subtype": "init",
+//!   "session_id": "<configured-session-id>",
+//!   "session_file": "<returned-session-file>"
+//! }
+//! ```
+//!
+//! An assistant `message_end` projects to an `assistant` envelope whose
+//! message contains `id`, `role: "assistant"`, ordered `content`, `model`, and
+//! `usage`. The ID is `responseId` when supplied, otherwise
+//! `<run-id>:<timestamp>:<model>`. Usage maps `input`, `output`, `cacheRead`,
+//! and `cacheWrite` to `input_tokens`, `output_tokens`,
+//! `cache_read_input_tokens`, and `cache_creation_input_tokens`.
+//!
+//! Text blocks are trimmed and empty text is omitted. A `toolCall` requires a
+//! non-empty `id` and `name` plus an object `arguments`, and becomes a
+//! `{type: "tool_use", id, name, input}` block. Unknown assistant content
+//! types are omitted. A tool-only assistant message still produces an
+//! assistant event because its `toolCall` block is supported.
+//!
+//! A `toolResult` message requires a non-empty `toolCallId`, an array
+//! `content`, and a boolean `isError`. It becomes:
+//!
+//! ```json
+//! {
+//!   "type": "user",
+//!   "session_id": "<configured-session-id>",
+//!   "message": {
+//!     "role": "user",
+//!     "content": [{
+//!       "type": "tool_result",
+//!       "tool_use_id": "<toolCallId>",
+//!       "content": [],
+//!       "is_error": false
+//!     }]
+//!   }
+//! }
+//! ```
+//!
+//! Tool-result text blocks retain their text. Image blocks become base64 image
+//! sources with `mimeType` mapped to `media_type` and `data` mapped to
+//! `data`; unsupported result content blocks are omitted. The resulting `user`
+//! event is a tool result, not a replayable prompt, and has no
+//! `vm0_user_cancelled` field.
+//!
+//! ## Terminal result and failure ownership
+//!
+//! Each assistant `message_end` updates `PiAssistantTerminal`; it does not
+//! itself close the public run. `stopReason` values `error` and `aborted` set
+//! the cached failure flag. The result text uses `errorMessage` when present,
+//! otherwise the joined non-empty assistant text. If both are empty, it falls
+//! back to `Pi model turn <stopReason>` when a stop reason exists.
+//!
+//! When `agent_settled` arrives, the cached state is consumed and the public
+//! result contains `type: "result"`, `subtype: "error_during_execution"` and
+//! `is_error: true` for a cached failure, or `subtype: "success"` and
+//! `is_error: false` otherwise. It also contains the selected `result` text,
+//! configured `session_id`, and elapsed `duration_ms`. With no cached assistant
+//! message, the default terminal state is successful with an empty result.
+//!
+//! The common guest loop treats this projected result as the terminal JSONL
+//! event: it masks the printed result, closes idle Pi active input, and drains
+//! successful delivery or aborts unsent delivery on a control/error path. A
+//! user cancellation can subsequently override the final guest control
+//! diagnostic, but it does not mutate the public tool-result shape.
 
 use std::time::Instant;
 
@@ -13,7 +226,6 @@ use crate::error::AgentError;
 
 const PI_RPC_ABORT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 const PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE: &str = "vm0_pi_api_first_turn_boundary";
-const PI_TOOL_RESULT_USER_CANCELLED_FIELD: &str = "vm0_user_cancelled";
 const MAX_EVENT_SEQUENCE_NUMBER: u32 = i32::MAX as u32;
 
 #[derive(Deserialize)]
@@ -160,15 +372,10 @@ pub(super) struct PiRpcProjection {
     emitted_session_init: bool,
     assistant_terminal: Option<PiAssistantTerminal>,
     terminal_error: bool,
-    user_cancellation: CancellationToken,
 }
 
 impl PiRpcProjection {
-    pub(super) fn new(
-        run_id: &str,
-        session_id: &str,
-        user_cancellation: CancellationToken,
-    ) -> Self {
+    pub(super) fn new(run_id: &str, session_id: &str) -> Self {
         Self {
             run_id: run_id.to_string(),
             session_id: session_id.to_string(),
@@ -176,7 +383,6 @@ impl PiRpcProjection {
             emitted_session_init: false,
             assistant_terminal: None,
             terminal_error: false,
-            user_cancellation,
         }
     }
 
@@ -331,26 +537,17 @@ impl PiRpcProjection {
                     "Pi RPC toolResult message omitted its error status".to_string(),
                 )
             })?;
-        let mut result = serde_json::Map::new();
-        result.insert("type".to_string(), Value::String("tool_result".to_string()));
-        result.insert(
-            "tool_use_id".to_string(),
-            Value::String(tool_use_id.to_string()),
-        );
-        result.insert("content".to_string(), Value::Array(content));
-        result.insert("is_error".to_string(), Value::Bool(is_error));
-        if self.user_cancellation.is_cancelled() {
-            result.insert(
-                PI_TOOL_RESULT_USER_CANCELLED_FIELD.to_string(),
-                Value::Bool(true),
-            );
-        }
         Ok(json!({
             "type": "user",
             "session_id": self.session_id,
             "message": {
                 "role": "user",
-                "content": [Value::Object(result)],
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": tool_use_id,
+                    "content": content,
+                    "is_error": is_error,
+                }],
             },
         }))
     }
@@ -484,6 +681,20 @@ async fn write_command(
     Ok(())
 }
 
+async fn write_command_with_cancellation(
+    stdin: &mut tokio::process::ChildStdin,
+    command: &Value,
+    cancellation: &CancellationToken,
+) -> Result<(), AgentError> {
+    tokio::select! {
+        biased;
+        () = cancellation.cancelled() => Err(AgentError::Execution(
+            "Pi RPC command write was interrupted by cancellation".to_string(),
+        )),
+        result = write_command(stdin, command) => result,
+    }
+}
+
 async fn wait_for_response(
     responses: &mut mpsc::UnboundedReceiver<Value>,
     expected_id: &str,
@@ -527,13 +738,12 @@ async fn abort(
     run_id: &str,
 ) -> Result<(), AgentError> {
     let id = format!("{run_id}:pi:abort");
-    write_command(stdin, &json!({ "id": id, "type": "abort" })).await?;
-    tokio::time::timeout(
-        PI_RPC_ABORT_TIMEOUT,
-        wait_for_response(responses, &id, "abort", true),
-    )
+    tokio::time::timeout(PI_RPC_ABORT_TIMEOUT, async {
+        write_command(stdin, &json!({ "id": id, "type": "abort" })).await?;
+        wait_for_response(responses, &id, "abort", true).await
+    })
     .await
-    .map_err(|_| AgentError::Execution("Pi RPC abort acknowledgement timed out".to_string()))?
+    .map_err(|_| AgentError::Execution("Pi RPC abort timed out".to_string()))?
 }
 
 async fn request_prompt(
@@ -543,13 +753,14 @@ async fn request_prompt(
     message: &str,
     cancellation: &CancellationToken,
 ) -> Result<bool, AgentError> {
-    write_command(
+    write_command_with_cancellation(
         stdin,
         &json!({
             "id": id,
             "type": "prompt",
             "message": message,
         }),
+        cancellation,
     )
     .await?;
     tokio::select! {
@@ -569,13 +780,14 @@ async fn request_steer(
     message: &str,
     cancellation: &CancellationToken,
 ) -> Result<bool, AgentError> {
-    write_command(
+    write_command_with_cancellation(
         stdin,
         &json!({
             "id": id,
             "type": "steer",
             "message": message,
         }),
+        cancellation,
     )
     .await?;
     tokio::select! {
@@ -622,7 +834,12 @@ pub(super) async fn write_commands(
     cancellation: CancellationToken,
 ) -> Result<(), AgentError> {
     let state_id = format!("{run_id}:pi:get-state");
-    write_command(&mut stdin, &json!({ "id": state_id, "type": "get_state" })).await?;
+    write_command_with_cancellation(
+        &mut stdin,
+        &json!({ "id": state_id, "type": "get_state" }),
+        &cancellation,
+    )
+    .await?;
     tokio::select! {
         biased;
         () = cancellation.cancelled() => {
@@ -696,7 +913,7 @@ mod tests {
     #[test]
     fn projection_uses_agent_settled_as_the_terminal_event() {
         let (responses, _rx) = mpsc::unbounded_channel();
-        let mut projection = PiRpcProjection::new("run", "session", CancellationToken::new());
+        let mut projection = PiRpcProjection::new("run", "session");
         assert!(
             projection
                 .project(
@@ -731,50 +948,9 @@ mod tests {
     }
 
     #[test]
-    fn projection_marks_tool_results_from_positive_user_cancellation_state() {
-        let (responses, _rx) = mpsc::unbounded_channel();
-        let user_cancellation = CancellationToken::new();
-        let mut projection = PiRpcProjection::new("run", "session", user_cancellation.clone());
-        let tool_result = |tool_call_id: &str| {
-            json!({
-                "type": "message_end",
-                "message": {
-                    "role": "toolResult",
-                    "toolCallId": tool_call_id,
-                    "content": [{ "type": "text", "text": "provider result text" }],
-                    "isError": true,
-                },
-            })
-        };
-
-        let ordinary = projection
-            .project(tool_result("ordinary"), &responses)
-            .expect("ordinary tool result should project")
-            .expect("ordinary tool result should emit an event");
-        assert_eq!(
-            ordinary.pointer("/message/content/0/vm0_user_cancelled"),
-            None
-        );
-
-        user_cancellation.cancel();
-        let cancelled = projection
-            .project(tool_result("cancelled"), &responses)
-            .expect("cancelled tool result should project")
-            .expect("cancelled tool result should emit an event");
-        assert_eq!(
-            cancelled.pointer("/message/content/0/vm0_user_cancelled"),
-            Some(&Value::Bool(true))
-        );
-        assert_eq!(
-            cancelled.pointer("/message/content/0/is_error"),
-            Some(&Value::Bool(true))
-        );
-    }
-
-    #[test]
     fn projection_validates_get_state_session_identity() {
         let (responses, mut rx) = mpsc::unbounded_channel();
-        let mut projection = PiRpcProjection::new("run", "session", CancellationToken::new());
+        let mut projection = PiRpcProjection::new("run", "session");
         let event = projection
             .project(
                 json!({
@@ -805,7 +981,7 @@ mod tests {
     #[test]
     fn projection_discards_buffered_records_after_extension_failure() {
         let (responses, _rx) = mpsc::unbounded_channel();
-        let mut projection = PiRpcProjection::new("run", "session", CancellationToken::new());
+        let mut projection = PiRpcProjection::new("run", "session");
         let error = projection
             .project(
                 json!({

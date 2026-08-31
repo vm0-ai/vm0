@@ -1,15 +1,21 @@
 import {
   ILLUSTRATION_TEMPLATE_ITEMS as CANONICAL_ILLUSTRATION_TEMPLATE_ITEMS,
-  PRESENTATION_TEMPLATE_PICKER_ITEMS as CANONICAL_PRESENTATION_TEMPLATE_PICKER_ITEMS,
-  VIDEO_TEMPLATE_ITEMS as CANONICAL_VIDEO_TEMPLATE_ITEMS,
-  WEBSITE_TEMPLATE_ITEMS as CANONICAL_WEBSITE_TEMPLATE_ITEMS,
-  findVideoTemplateItem as findCanonicalVideoTemplateItem,
-  findWebsiteTemplateItem as findCanonicalWebsiteTemplateItem,
   type IllustrationTemplateItem,
+} from "@okouai/core/illustration-template-items";
+import {
+  PRESENTATION_TEMPLATE_PICKER_ITEMS as CANONICAL_PRESENTATION_TEMPLATE_PICKER_ITEMS,
   type PresentationTemplateItem,
+} from "@okouai/core/presentation-template-items";
+import {
+  VIDEO_TEMPLATE_ITEMS as CANONICAL_VIDEO_TEMPLATE_ITEMS,
+  findVideoTemplateItem as findCanonicalVideoTemplateItem,
   type VideoTemplateItem,
+} from "@okouai/core/video-template-items";
+import {
+  WEBSITE_TEMPLATE_ITEMS as CANONICAL_WEBSITE_TEMPLATE_ITEMS,
+  findWebsiteTemplateItem as findCanonicalWebsiteTemplateItem,
   type WebsiteTemplateItem,
-} from "@okouai/core";
+} from "@okouai/core/website-template-items";
 
 import { platformPublicStaticUrl } from "./static-assets.ts";
 

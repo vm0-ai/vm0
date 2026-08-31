@@ -38,7 +38,6 @@ import {
   resolveBuiltInModelRuntimeRoute,
   type BuiltInModelRuntimeRoute,
 } from "./built-in-model-runtime-route.service";
-import { OFFICIAL_WORKFLOW_EXECUTION_UNAVAILABLE_MESSAGE } from "./official-workflow-constants";
 
 export type AutomationRow = typeof workflowAutomations.$inferSelect;
 
@@ -173,43 +172,49 @@ function workflowAutomationRunMetadata(
 }
 
 /**
- * The recurrence reschedule callback (advances `next_run_at` / failure
- * bookkeeping on completion) plus the chat callback (drives the web-chat
- * render). Cron and once both use the cron callback; once carries no
- * cronExpression so it does not recur.
+ * The schedule recurrence callback (when applicable), the launch-snapshotted
+ * Official result-email callback, and the chat callback. Cron and once both
+ * use the cron callback; once carries no cronExpression so it does not recur.
  */
 export function buildWorkflowAutomationCallbacks(
   automation: AutomationRow,
   agentId: string,
   chatThreadId: string,
   publicBrand: PublicBrand,
+  workflowName: string,
 ): InternalRunCallbackInput[] {
   const callbacks: InternalRunCallbackInput[] = [];
-  if (automation.kind !== "schedule") {
-    return buildChatOnlyWorkflowAutomationCallbacks(
-      chatThreadId,
-      agentId,
-      publicBrand,
-    );
+  if (automation.kind === "schedule") {
+    if (automation.scheduleType === "loop") {
+      callbacks.push({
+        internalKind: "workflow-automation:loop",
+        secret: generateCallbackSecret(),
+        payload: {
+          automationId: automation.id,
+        },
+      });
+    } else {
+      callbacks.push({
+        internalKind: "workflow-automation:cron",
+        secret: generateCallbackSecret(),
+        payload: {
+          automationId: automation.id,
+          timezone: automation.timezone,
+          ...(automation.cronExpression
+            ? { cronExpression: automation.cronExpression }
+            : {}),
+        },
+      });
+    }
   }
-  if (automation.scheduleType === "loop") {
+  if (automation.officialResultEmailEnabled === true) {
     callbacks.push({
-      internalKind: "workflow-automation:loop",
+      internalKind: "workflow-automation:result-email",
       secret: generateCallbackSecret(),
       payload: {
         automationId: automation.id,
-      },
-    });
-  } else {
-    callbacks.push({
-      internalKind: "workflow-automation:cron",
-      secret: generateCallbackSecret(),
-      payload: {
-        automationId: automation.id,
-        timezone: automation.timezone,
-        ...(automation.cronExpression
-          ? { cronExpression: automation.cronExpression }
-          : {}),
+        workflowName,
+        publicBrand,
       },
     });
   }
@@ -268,24 +273,6 @@ function appendComputerUseSystemPrompt(
     "# Computer Use",
     `Computer Use is enabled for this run on ${grant.displayName}.`,
   ].join("\n\n");
-}
-
-export function buildChatOnlyWorkflowAutomationCallbacks(
-  chatThreadId: string,
-  agentId: string,
-  publicBrand: PublicBrand,
-): InternalRunCallbackInput[] {
-  return [
-    {
-      internalKind: "chat",
-      secret: generateCallbackSecret(),
-      payload: {
-        threadId: chatThreadId,
-        agentId,
-        publicBrand,
-      },
-    },
-  ];
 }
 
 async function resolveModelContext(
@@ -458,12 +445,6 @@ async function checkWorkflowAutomationTargetReadable(
     "api_dispatch_pre_create_zero_workflow_automation_check_target_access",
     "nested",
     async (): Promise<RunFailure | undefined> => {
-      if (args.automation.officialBlueprintKey !== null) {
-        return {
-          kind: "conflict",
-          message: OFFICIAL_WORKFLOW_EXECUTION_UNAVAILABLE_MESSAGE,
-        };
-      }
       const canFire = await workflowAutomationCanFire(
         args.db,
         {
@@ -555,6 +536,7 @@ async function recordWorkflowAutomationRunStart(
   const { automation, chatThreadId } = args.due;
   await finalizeClaimedRunUserMessage({
     db,
+    orgId: automation.orgId,
     threadId: chatThreadId,
     userId: automation.ownerUserId,
     runId,
@@ -702,6 +684,9 @@ export const launchQueuedWorkflowAutomation$ = command(
         appendSystemPrompt: runInput.appendSystemPrompt,
         callbacks: runInput.callbacks,
         agentRunMetadata: runInput.agentRunMetadata,
+        ...(automation.officialBlueprintKey === null
+          ? {}
+          : { requiredOfficialWorkflowIds: [automation.workflowId] }),
         queueFirstAssociation: {
           kind: "automation_event",
           threadId: chatThreadId,

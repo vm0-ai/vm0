@@ -14,7 +14,7 @@ use guest_contracts::managed_command::{
 };
 use guest_contracts::process_containment::{
     CANONICAL_TOOL_CGROUP_PROCS_ENV, EXEC_CGROUP_NAME_PREFIX, RUNTIME_CGROUP_NAME,
-    TOOL_CGROUP_PROCS_ENDPOINT_ENV, WORKLOAD_CGROUP_NAME,
+    WORKLOAD_CGROUP_NAME,
 };
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
@@ -130,43 +130,27 @@ fn place_managed_tool() -> io::Result<()> {
     place_current_process(&endpoint)
 }
 
-/// Resolve Stage 1 compatibility between managed CLI children and this tool
-/// reader. Existing runners and reusable sandboxes can run for the two-hour
-/// guest runtime budget plus bounded finalization. #28914 owns the later
-/// writer-cutover and reader-removal follow-ups; remove the legacy branch only
-/// after the reader floor, drain, rollback window, and legacy-read-zero gates.
+/// Resolve the canonical endpoint written to managed CLI children by Guest
+/// Agent. The endpoint value stays out of diagnostics on every invalid path.
 fn tool_placement_endpoint_from_process_env() -> io::Result<String> {
-    let canonical = env::var_os(CANONICAL_TOOL_CGROUP_PROCS_ENV);
-    let legacy = env::var_os(TOOL_CGROUP_PROCS_ENDPOINT_ENV);
-    resolve_tool_placement_endpoint(canonical, legacy)
+    resolve_tool_placement_endpoint(env::var_os(CANONICAL_TOOL_CGROUP_PROCS_ENV))
 }
 
-fn resolve_tool_placement_endpoint(
-    canonical: Option<OsString>,
-    legacy: Option<OsString>,
-) -> io::Result<String> {
-    let canonical = tool_placement_endpoint_value(canonical)?;
-    let legacy = tool_placement_endpoint_value(legacy)?;
-    let endpoint = match (canonical, legacy) {
-        (None, None) => {
-            return Err(io::Error::new(
+fn resolve_tool_placement_endpoint(canonical: Option<OsString>) -> io::Result<String> {
+    let endpoint = canonical
+        .ok_or_else(|| {
+            io::Error::new(
                 io::ErrorKind::PermissionDenied,
                 "managed runtime is missing the tool placement endpoint",
-            ));
-        }
-        (Some(endpoint), None) | (None, Some(endpoint)) => endpoint,
-        (Some(canonical), Some(legacy)) if canonical == legacy => canonical,
-        (Some(_), Some(_)) => {
-            return Err(io::Error::new(
+            )
+        })?
+        .into_string()
+        .map_err(|_| {
+            io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!(
-                    "conflicting tool placement environment aliases: canonical_key={} \
-                     legacy_key={} state=conflict",
-                    CANONICAL_TOOL_CGROUP_PROCS_ENV, TOOL_CGROUP_PROCS_ENDPOINT_ENV
-                ),
-            ));
-        }
-    };
+                "tool placement endpoint is not valid UTF-8",
+            )
+        })?;
     if endpoint.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -174,19 +158,6 @@ fn resolve_tool_placement_endpoint(
         ));
     }
     Ok(endpoint)
-}
-
-fn tool_placement_endpoint_value(value: Option<OsString>) -> io::Result<Option<String>> {
-    value
-        .map(|value| {
-            value.into_string().map_err(|_| {
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "tool placement endpoint is not valid UTF-8",
-                )
-            })
-        })
-        .transpose()
 }
 
 fn current_process_is_runtime() -> io::Result<bool> {
@@ -341,111 +312,36 @@ mod tests {
     }
 
     #[test]
-    fn resolves_tool_placement_aliases_and_preserves_empty_validation() {
-        for (name, canonical, legacy, expected) in [
-            (
-                "canonical-only",
-                Some("canonical-endpoint"),
-                None,
-                "canonical-endpoint",
-            ),
-            (
-                "legacy-only",
-                None,
-                Some("legacy-endpoint"),
-                "legacy-endpoint",
-            ),
-            (
-                "equal-dual",
-                Some("shared-endpoint"),
-                Some("shared-endpoint"),
-                "shared-endpoint",
-            ),
-        ] {
-            let endpoint = resolve_tool_placement_endpoint(
-                canonical.map(OsString::from),
-                legacy.map(OsString::from),
-            )
-            .unwrap();
-            assert_eq!(endpoint, expected, "{name} resolved incorrectly");
-        }
+    fn resolves_canonical_tool_placement_endpoint() {
+        let endpoint =
+            resolve_tool_placement_endpoint(Some(OsString::from("canonical-endpoint"))).unwrap();
 
-        for (name, canonical, legacy) in [
-            ("canonical-empty", Some(""), None),
-            ("legacy-empty", None, Some("")),
-            ("dual-empty", Some(""), Some("")),
-        ] {
-            let error = resolve_tool_placement_endpoint(
-                canonical.map(OsString::from),
-                legacy.map(OsString::from),
-            )
-            .unwrap_err();
-            assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
-            assert_eq!(
-                error.to_string(),
-                "tool placement endpoint is empty",
-                "{name}"
-            );
-        }
+        assert_eq!(endpoint, "canonical-endpoint");
     }
 
     #[test]
-    fn rejects_tool_placement_conflicts_and_invalid_encoding_without_values() {
-        let conflict = resolve_tool_placement_endpoint(
-            Some(OsString::from("canonical-must-not-leak")),
-            Some(OsString::from("legacy-must-not-leak")),
-        )
-        .unwrap_err();
-        assert_eq!(conflict.kind(), io::ErrorKind::InvalidInput);
+    fn rejects_missing_empty_and_non_unicode_canonical_endpoint_without_values() {
+        let missing = resolve_tool_placement_endpoint(None).unwrap_err();
+        assert_eq!(missing.kind(), io::ErrorKind::PermissionDenied);
         assert_eq!(
-            conflict.to_string(),
-            format!(
-                "conflicting tool placement environment aliases: canonical_key={} \
-                 legacy_key={} state=conflict",
-                CANONICAL_TOOL_CGROUP_PROCS_ENV, TOOL_CGROUP_PROCS_ENDPOINT_ENV
-            )
+            missing.to_string(),
+            "managed runtime is missing the tool placement endpoint"
         );
-        assert!(!conflict.to_string().contains("must-not-leak"));
 
-        for (name, canonical, legacy) in [
-            (
-                "canonical-non-unicode",
-                Some(OsString::from_vec(vec![0xff])),
-                None,
-            ),
-            (
-                "legacy-non-unicode",
-                None,
-                Some(OsString::from_vec(vec![0xff])),
-            ),
-            (
-                "readable-with-non-unicode",
-                Some(OsString::from("canonical-must-not-leak")),
-                Some(OsString::from_vec(vec![0xff])),
-            ),
-        ] {
-            let error = resolve_tool_placement_endpoint(canonical, legacy).unwrap_err();
-            assert_eq!(error.kind(), io::ErrorKind::InvalidInput, "{name}");
-            assert_eq!(
-                error.to_string(),
-                "tool placement endpoint is not valid UTF-8",
-                "{name}"
-            );
-            assert!(!error.to_string().contains("must-not-leak"), "{name}");
-        }
+        let empty = resolve_tool_placement_endpoint(Some(OsString::new())).unwrap_err();
+        assert_eq!(empty.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(empty.to_string(), "tool placement endpoint is empty");
 
-        for (name, canonical, legacy) in [
-            ("canonical-empty", "", "legacy-must-not-leak"),
-            ("legacy-empty", "canonical-must-not-leak", ""),
-        ] {
-            let error = resolve_tool_placement_endpoint(
-                Some(OsString::from(canonical)),
-                Some(OsString::from(legacy)),
-            )
-            .unwrap_err();
-            assert_eq!(error.to_string(), conflict.to_string(), "{name}");
-            assert!(!error.to_string().contains("must-not-leak"), "{name}");
-        }
+        let non_unicode = resolve_tool_placement_endpoint(Some(OsString::from_vec(
+            b"canonical-must-not-leak\xff".to_vec(),
+        )))
+        .unwrap_err();
+        assert_eq!(non_unicode.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(
+            non_unicode.to_string(),
+            "tool placement endpoint is not valid UTF-8"
+        );
+        assert!(!non_unicode.to_string().contains("must-not-leak"));
     }
 
     #[test]

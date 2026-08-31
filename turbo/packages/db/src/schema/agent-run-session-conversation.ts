@@ -21,6 +21,7 @@ import { threadGoals } from "./thread-goal";
 import { workflowAutomations } from "./workflow";
 import type {
   AgentRunLaunchSnapshot,
+  AgentRunOfficialWorkflowProvenance,
   AgentRunResult,
   AgentRunSecretNames,
   AgentRunStorageMounts,
@@ -56,6 +57,11 @@ export const agentRuns = pgTable(
     // Canonical resolved mounts used by new run writers.
     storageMounts: jsonb("storage_mounts").$type<AgentRunStorageMounts>(),
     launchSnapshot: jsonb("launch_snapshot").$type<AgentRunLaunchSnapshot>(),
+    // Exact accepted Definition inputs mounted for this Run. Null preserves
+    // historical and non-Official producers during the additive rollout.
+    officialWorkflowProvenance: jsonb(
+      "official_workflow_provenance",
+    ).$type<AgentRunOfficialWorkflowProvenance>(),
     sandboxId: varchar("sandbox_id", { length: 255 }),
     // One of: "reused" | "featureDisabled" | "noSessionId" | "noReuseKey" |
     // "poolMiss" | "profileMismatch" | "deviceLimitMismatch" | "unparkFailed".
@@ -88,10 +94,6 @@ export const agentRuns = pgTable(
     runnerHostname: varchar("runner_hostname", { length: 255 }),
     runnerVersion: varchar("runner_version", { length: 128 }),
     activeInputEnabled: boolean("active_input_enabled")
-      .default(false)
-      .notNull(),
-    /** Immutable effective generation decision captured once at Run creation. */
-    chatToolActivityEnabled: boolean("chat_tool_activity_enabled")
       .default(false)
       .notNull(),
     runnerGroup: varchar("runner_group", { length: 255 }),
@@ -231,6 +233,73 @@ export const agentRuns = pgTable(
             ) = 'string' AND
             char_length(${table.launchSnapshot} ->> 'runnerProfile') >= 1 AND
             char_length(${table.launchSnapshot} ->> 'runnerProfile') <= 255
+          )
+        )`,
+      ),
+      check(
+        "agent_runs_official_workflow_provenance_check",
+        sql`(
+          ${table.officialWorkflowProvenance} IS NULL OR (
+            jsonb_typeof(${table.officialWorkflowProvenance}) = 'object' AND
+            ${table.officialWorkflowProvenance} ?& ARRAY[
+              'schemaVersion',
+              'definitions'
+            ] AND
+            (
+              ${table.officialWorkflowProvenance} -
+              'schemaVersion' -
+              'definitions'
+            ) = '{}'::jsonb AND
+            ${table.officialWorkflowProvenance} -> 'schemaVersion' = '1'::jsonb AND
+            jsonb_typeof(
+              ${table.officialWorkflowProvenance} -> 'definitions'
+            ) = 'array' AND
+            jsonb_array_length(
+              ${table.officialWorkflowProvenance} -> 'definitions'
+            ) > 0 AND
+            NOT jsonb_path_exists(
+              ${table.officialWorkflowProvenance},
+              '$.definitions[*] ? (
+                @.type() != "object" ||
+                !exists(@.name) ||
+                @.name.type() != "string" ||
+                !(@.name like_regex "^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$") ||
+                !exists(@.revision) ||
+                @.revision.type() != "string" ||
+                !(@.revision like_regex "^[0-9a-f]{64}$") ||
+                !exists(@.artifact) ||
+                @.artifact.type() != "object" ||
+                exists(
+                  @.keyvalue() ? (
+                    @.key != "name" &&
+                    @.key != "revision" &&
+                    @.key != "artifact"
+                  )
+                ) ||
+                !exists(@.artifact.orgId) ||
+                @.artifact.orgId != "__system__" ||
+                !exists(@.artifact.userId) ||
+                @.artifact.userId != "__org__" ||
+                !exists(@.artifact.storageName) ||
+                @.artifact.storageName.type() != "string" ||
+                !(@.artifact.storageName like_regex "^.{1,255}.?$") ||
+                !exists(@.artifact.storageId) ||
+                @.artifact.storageId.type() != "string" ||
+                !(@.artifact.storageId like_regex "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$") ||
+                !exists(@.artifact.storageVersion) ||
+                @.artifact.storageVersion.type() != "string" ||
+                !(@.artifact.storageVersion like_regex "^[0-9a-f]{64}$") ||
+                exists(
+                  @.artifact.keyvalue() ? (
+                    @.key != "orgId" &&
+                    @.key != "userId" &&
+                    @.key != "storageName" &&
+                    @.key != "storageId" &&
+                    @.key != "storageVersion"
+                  )
+                )
+              )'
+            )
           )
         )`,
       ),

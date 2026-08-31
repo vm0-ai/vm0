@@ -17,10 +17,14 @@ import { resolveAuthV2PlatformContext } from "./platform-context.ts";
 
 const context = testContext();
 
-function membership(id: string, name: string): MockedMembership {
+function membership(
+  id: string,
+  name: string,
+  imageUrl?: string,
+): MockedMembership {
   return {
     id: `membership_${id}`,
-    organization: { id, name },
+    organization: { id, imageUrl, name },
     role: "org:member",
   };
 }
@@ -31,7 +35,7 @@ async function setupContinuation(options: {
   readonly path?: string;
   readonly taskKey?: string;
 }): Promise<AuthV2ContinuationSignals> {
-  const path = options.path ?? "/v2/sign-in/tasks/choose-organization";
+  const path = options.path ?? "/sign-in/tasks/choose-organization";
   const memberships = options.memberships ?? [];
   context.mocks.browser.url(`https://app.vm0.ai${path}`);
   await setupPage({
@@ -49,6 +53,7 @@ async function setupContinuation(options: {
               user: {
                 fullName: "Test User",
                 organizationMemberships: memberships,
+                primaryEmailAddress: { emailAddress: "test@example.com" },
               },
             },
           ]
@@ -67,6 +72,7 @@ async function setupContinuation(options: {
     ),
     mode,
     navigation: platformContext.navigation,
+    presentation: "route",
   });
 }
 
@@ -77,22 +83,24 @@ async function initialize(signals: AuthV2ContinuationSignals): Promise<void> {
 describe("auth v2 continuation recovery", () => {
   it("recognizes pathname and Clerk hash task refresh routes", () => {
     expect(
-      isAuthV2ContinuationLocation("/v2/sign-in/tasks/choose-organization", ""),
+      isAuthV2ContinuationLocation("/sign-in/tasks/choose-organization", ""),
     ).toBe(true);
     expect(
       isAuthV2ContinuationLocation(
-        "/v2/sign-in",
+        "/sign-in",
         "#/tasks/choose-organization?attempt=1",
       ),
     ).toBe(true);
-    expect(isAuthV2ContinuationLocation("/v2/sign-in/factor-one", "")).toBe(
-      false,
-    );
+    expect(isAuthV2ContinuationLocation("/sign-in/factor-one", "")).toBe(false);
   });
 
   it("recovers a pending organization task with existing memberships only", async () => {
     const memberships = [
-      membership("org_alpha", "Alpha Company"),
+      membership(
+        "org_alpha",
+        "Alpha Company",
+        "https://cdn.vm0.test/orgs/alpha.png",
+      ),
       membership("org_beta", "Beta Studio"),
     ];
     const signals = await setupContinuation({
@@ -106,9 +114,14 @@ describe("auth v2 continuation recovery", () => {
     await initialize(signals);
 
     expect(context.store.get(signals.state$)).toStrictEqual({
+      accountIdentifier: "test@example.com",
       organizations: [
-        { id: "org_alpha", name: "Alpha Company" },
-        { id: "org_beta", name: "Beta Studio" },
+        {
+          id: "org_alpha",
+          imageUrl: "https://cdn.vm0.test/orgs/alpha.png",
+          name: "Alpha Company",
+        },
+        { id: "org_beta", imageUrl: null, name: "Beta Studio" },
       ],
       selectingOrganizationId: null,
       status: "incomplete",
@@ -123,7 +136,7 @@ describe("auth v2 continuation recovery", () => {
     ];
     const signals = await setupContinuation({
       memberships,
-      path: `/v2/sign-in/tasks/choose-organization?redirect_url=${encodeURIComponent("https://app.vm0.ai/agents")}`,
+      path: `/sign-in/tasks/choose-organization?redirect_url=${encodeURIComponent("https://app.vm0.ai/agents")}`,
       taskKey: "choose-organization",
     });
     await initialize(signals);
@@ -177,7 +190,7 @@ describe("auth v2 continuation route ownership", () => {
   it("keeps a completed sign-up task on the nested sign-up route", async () => {
     const signals = await setupContinuation({
       mode: "sign-up",
-      path: "/v2/sign-up",
+      path: "/sign-up",
     });
     await initialize(signals);
     const memberships = [membership("org_alpha", "Alpha Company")];
@@ -201,9 +214,12 @@ describe("auth v2 continuation route ownership", () => {
       context.signal,
     );
 
-    expect(location.pathname).toBe("/v2/sign-up/tasks/choose-organization");
+    expect(location.pathname).toBe("/sign-up/tasks/choose-organization");
     expect(context.store.get(signals.state$)).toStrictEqual({
-      organizations: [{ id: "org_alpha", name: "Alpha Company" }],
+      accountIdentifier: "Account",
+      organizations: [
+        { id: "org_alpha", imageUrl: null, name: "Alpha Company" },
+      ],
       selectingOrganizationId: null,
       status: "incomplete",
       task: "choose-organization",
@@ -213,7 +229,7 @@ describe("auth v2 continuation route ownership", () => {
 
 describe("auth v2 continuation terminal states", () => {
   it("coalesces duplicate completed-session activation", async () => {
-    const signals = await setupContinuation({ path: "/v2/sign-in" });
+    const signals = await setupContinuation({ path: "/sign-in" });
     await initialize(signals);
     const activation = createDeferredPromise<void>(context.signal);
     mockedClerk.setActive.mockImplementation(async (params) => {
@@ -285,7 +301,7 @@ describe("auth v2 continuation terminal states", () => {
   });
 
   it("surfaces session activation failure without retrying", async () => {
-    const sessionSignals = await setupContinuation({ path: "/v2/sign-in" });
+    const sessionSignals = await setupContinuation({ path: "/sign-in" });
     await initialize(sessionSignals);
     mockedClerk.setActive.mockRejectedValueOnce(
       new Error("sensitive session activation response"),

@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { command, computed } from "ccstate";
 import {
   workflowsCollectionContract,
@@ -20,7 +22,7 @@ import {
   workflowWebhookAutomations,
   workflows,
 } from "@okouai/db/schema/workflow";
-import { and, eq, ne } from "drizzle-orm";
+import { and, asc, eq, ne, sql } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -44,7 +46,10 @@ import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { requireAgentPermission } from "../../lib/require-agent-permission";
 import { uploadVolumeServerSide$ } from "../services/storage-volume-upload.service";
-import { deleteWorkflow$ } from "../services/workflow-delete.service";
+import {
+  deleteOrphanedWorkflowVolume$,
+  deleteWorkflow$,
+} from "../services/workflow-delete.service";
 import { workflowDetail } from "../services/workflow-detail.service";
 import {
   ensureWorkflowUserAutomationThread,
@@ -70,7 +75,7 @@ import {
   childAutonomyBudget,
   loadOwnedRunAutonomyBudget,
 } from "../services/autonomy-budget.service";
-import { settle } from "../utils";
+import { onRejection, settle } from "../utils";
 import {
   loadVisibleWorkflowById,
   requireWorkflowPermission,
@@ -84,9 +89,19 @@ import type { RouteEntry } from "../route-entry";
 import { sendNormalEvent$ } from "../services/chat-events.command";
 import type { Tx } from "../../lib/db-types";
 import {
-  OFFICIAL_WORKFLOW_EXECUTION_UNAVAILABLE_MESSAGE,
+  OFFICIAL_WORKFLOW_CATALOG_ACTIVATION_LOCK,
   OFFICIAL_WORKFLOW_READ_ONLY_MESSAGE,
 } from "../services/official-workflow-constants";
+import {
+  readAcceptedOfficialWorkflowDefinition,
+  readAcceptedOfficialWorkflowRevision,
+} from "../services/official-workflow-catalog-read.service";
+import { resolveOfficialWorkflowBlueprintForReconciliation } from "../services/official-workflow-installation.service";
+import {
+  commitPreparedVolumeServerSide,
+  ensureVolumeStorage$,
+  prepareVolumeServerSideWithDb$,
+} from "../services/storage-volume-publication.service";
 
 const log = logger("api:workflow-connector-readiness");
 
@@ -727,8 +742,10 @@ interface CopyWorkflowRuntimeArgs {
   readonly userId: string;
   readonly sourceWorkflow: WorkflowRow;
   readonly targetAgentId: string;
+  readonly targetWorkflowId: string;
   readonly currentTime: Date;
   readonly inheritedAutonomyBudget?: number;
+  readonly sourceAutomations?: readonly (typeof workflowAutomations.$inferSelect)[];
 }
 
 interface CopyWorkflowScopedRowsArgs {
@@ -743,6 +760,136 @@ interface CopyWorkflowScopedRowsArgs {
 interface CopyWorkflowAutomationRowsArgs extends CopyWorkflowScopedRowsArgs {
   readonly targetAgentId: string;
   readonly workflowTitle: string;
+  readonly sourceAutomations?: readonly (typeof workflowAutomations.$inferSelect)[];
+}
+
+interface OfficialCopyMaterialization {
+  readonly sourceWorkflow: WorkflowRow;
+  readonly sourceAutomations: readonly (typeof workflowAutomations.$inferSelect)[];
+  readonly files: readonly {
+    readonly path: string;
+    readonly content: string;
+  }[];
+}
+
+type OfficialCopyResolution =
+  | {
+      readonly kind: "ok";
+      readonly materialization: OfficialCopyMaterialization;
+    }
+  | { readonly kind: "conflict"; readonly message: string };
+
+const OFFICIAL_COPY_RECONFIGURE_MESSAGE =
+  "Official Workflow cannot be copied from mixed or stale state; Reconfigure it and retry";
+
+async function resolveOfficialCopyMaterialization(
+  tx: WorkflowCopyTransaction,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly sourceWorkflow: WorkflowRow;
+  },
+): Promise<OfficialCopyResolution> {
+  const definitionName = args.sourceWorkflow.officialDefinitionName;
+  if (!definitionName) {
+    throw new Error(
+      "Official copy materialization requires an Official source",
+    );
+  }
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock_shared(hashtext(${OFFICIAL_WORKFLOW_CATALOG_ACTIVATION_LOCK}))`,
+  );
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${args.orgId}))`);
+
+  const [sourceWorkflow] = await tx
+    .select()
+    .from(workflows)
+    .where(
+      and(
+        eq(workflows.id, args.sourceWorkflow.id),
+        eq(workflows.orgId, args.orgId),
+        eq(workflows.ownerUserId, args.userId),
+        eq(workflows.officialDefinitionName, definitionName),
+        eq(workflows.officialInstallationState, "installed"),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  if (!sourceWorkflow) {
+    return { kind: "conflict", message: OFFICIAL_COPY_RECONFIGURE_MESSAGE };
+  }
+
+  const definition = await readAcceptedOfficialWorkflowDefinition(
+    tx,
+    definitionName,
+  );
+  if (!definition) {
+    return { kind: "conflict", message: OFFICIAL_COPY_RECONFIGURE_MESSAGE };
+  }
+  const revision = await readAcceptedOfficialWorkflowRevision(tx, {
+    name: definition.name,
+    revision: definition.revision,
+  });
+  if (!revision) {
+    return { kind: "conflict", message: OFFICIAL_COPY_RECONFIGURE_MESSAGE };
+  }
+  const rows = await tx
+    .select(workflowAutomationColumns())
+    .from(workflowAutomations)
+    .where(
+      and(
+        eq(workflowAutomations.orgId, args.orgId),
+        eq(workflowAutomations.ownerUserId, args.userId),
+        eq(workflowAutomations.workflowId, sourceWorkflow.id),
+      ),
+    )
+    .orderBy(asc(workflowAutomations.officialBlueprintKey))
+    .for("update");
+  if (rows.length !== revision.definition.blueprints.length) {
+    return { kind: "conflict", message: OFFICIAL_COPY_RECONFIGURE_MESSAGE };
+  }
+  const rowsByBlueprint = new Map(
+    rows.map((row) => {
+      return [row.officialBlueprintKey, row] as const;
+    }),
+  );
+  const sourceAutomations: (typeof workflowAutomations.$inferSelect)[] = [];
+  for (const blueprint of revision.definition.blueprints) {
+    const row = rowsByBlueprint.get(blueprint.key);
+    if (
+      !row ||
+      row.officialAppliedFingerprint !== blueprint.fingerprint ||
+      row.officialReconciliationStatus !== "current" ||
+      row.officialParameterBindings === null
+    ) {
+      return { kind: "conflict", message: OFFICIAL_COPY_RECONFIGURE_MESSAGE };
+    }
+    const resolved = resolveOfficialWorkflowBlueprintForReconciliation(
+      blueprint,
+      row.officialParameterBindings,
+      [],
+      null,
+    );
+    if (!resolved.ok) {
+      return { kind: "conflict", message: OFFICIAL_COPY_RECONFIGURE_MESSAGE };
+    }
+    sourceAutomations.push(row);
+  }
+  return {
+    kind: "ok",
+    materialization: {
+      sourceWorkflow: {
+        ...sourceWorkflow,
+        instruction: revision.definition.workflow.instruction,
+        displayName: revision.definition.workflow.displayName,
+        description: revision.definition.workflow.description,
+        officialDefinitionName: null,
+        officialInstallationState: null,
+      },
+      sourceAutomations,
+      files: revision.definition.workflow.files,
+    },
+  };
 }
 
 async function insertCopiedWorkflowRow(
@@ -752,6 +899,7 @@ async function insertCopiedWorkflowRow(
   const [workflow] = await tx
     .insert(workflows)
     .values({
+      id: args.targetWorkflowId,
       orgId: args.orgId,
       agentId: args.targetAgentId,
       name: args.sourceWorkflow.name,
@@ -866,16 +1014,18 @@ async function copyWorkflowUserAutomations(
   tx: WorkflowCopyTransaction,
   args: CopyWorkflowAutomationRowsArgs,
 ): Promise<void> {
-  const rows = await tx
-    .select(workflowAutomationColumns())
-    .from(workflowAutomations)
-    .where(
-      and(
-        eq(workflowAutomations.orgId, args.orgId),
-        eq(workflowAutomations.ownerUserId, args.userId),
-        eq(workflowAutomations.workflowId, args.sourceWorkflowId),
-      ),
-    );
+  const rows =
+    args.sourceAutomations ??
+    (await tx
+      .select(workflowAutomationColumns())
+      .from(workflowAutomations)
+      .where(
+        and(
+          eq(workflowAutomations.orgId, args.orgId),
+          eq(workflowAutomations.ownerUserId, args.userId),
+          eq(workflowAutomations.workflowId, args.sourceWorkflowId),
+        ),
+      ));
   if (rows.length === 0) {
     return;
   }
@@ -916,9 +1066,221 @@ async function copyWorkflowRuntimeConfiguration(
     ...scopedRowsArgs,
     targetAgentId: args.targetAgentId,
     workflowTitle: args.sourceWorkflow.displayName ?? args.sourceWorkflow.name,
+    ...(args.sourceAutomations
+      ? { sourceAutomations: args.sourceAutomations }
+      : {}),
   });
   return workflow;
 }
+
+type CopyWorkflowDatabaseResult =
+  | { readonly kind: "conflict"; readonly message: string }
+  | {
+      readonly kind: "ok";
+      readonly inserted: { readonly id: string };
+    };
+
+async function copyWorkflowDatabaseRows(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly sourceWorkflow: WorkflowRow;
+    readonly targetAgentId: string;
+    readonly targetWorkflowId: string;
+    readonly currentTime: Date;
+    readonly inheritedAutonomyBudget: number | undefined;
+    readonly sourceFiles:
+      | readonly {
+          readonly path: string;
+          readonly content: string;
+        }[]
+      | null;
+    readonly publishVolume: (
+      tx: WorkflowCopyTransaction,
+      sourceWorkflow: WorkflowRow,
+      sourceFiles:
+        | readonly {
+            readonly path: string;
+            readonly content: string;
+          }[]
+        | null,
+    ) => Promise<void>;
+  },
+): Promise<CopyWorkflowDatabaseResult> {
+  return await db.transaction(async (tx) => {
+    const officialResolution = args.sourceWorkflow.officialDefinitionName
+      ? await resolveOfficialCopyMaterialization(tx, {
+          orgId: args.orgId,
+          userId: args.userId,
+          sourceWorkflow: args.sourceWorkflow,
+        })
+      : null;
+    if (officialResolution?.kind === "conflict") {
+      return officialResolution;
+    }
+    const materialization = officialResolution?.materialization;
+    const sourceWorkflow =
+      materialization?.sourceWorkflow ?? args.sourceWorkflow;
+    const inserted = await copyWorkflowRuntimeConfiguration(tx, {
+      orgId: args.orgId,
+      userId: args.userId,
+      sourceWorkflow,
+      targetAgentId: args.targetAgentId,
+      targetWorkflowId: args.targetWorkflowId,
+      currentTime: args.currentTime,
+      ...(materialization
+        ? { sourceAutomations: materialization.sourceAutomations }
+        : {}),
+      ...(args.inheritedAutonomyBudget === undefined
+        ? {}
+        : { inheritedAutonomyBudget: args.inheritedAutonomyBudget }),
+    });
+    if (!inserted) {
+      throw new Error("Failed to copy workflow");
+    }
+    await args.publishVolume(
+      tx,
+      sourceWorkflow,
+      materialization?.files ?? args.sourceFiles,
+    );
+    return { kind: "ok", inserted };
+  });
+}
+
+function copiedWorkflowVolumeFiles(
+  sourceWorkflow: Pick<WorkflowRow, "name" | "description" | "instruction">,
+  sourceFiles:
+    | readonly { readonly path: string; readonly content: string }[]
+    | null,
+) {
+  const skillMd = synthesizeWorkflowSkillMd({
+    name: sourceWorkflow.name,
+    description: sourceWorkflow.description,
+    instruction: sourceWorkflow.instruction,
+  });
+  const attachedFiles = (sourceFiles ?? [])
+    .filter((file) => {
+      return file.path !== "SKILL.md";
+    })
+    .map((file) => {
+      return { path: file.path, content: file.content };
+    });
+  return [{ path: "SKILL.md", content: skillMd }, ...attachedFiles];
+}
+
+const publishCopiedWorkflow$ = command(
+  async (
+    { set },
+    args: {
+      readonly db: Db;
+      readonly orgId: string;
+      readonly userId: string;
+      readonly member: WorkflowMember;
+      readonly sourceWorkflow: WorkflowRow;
+      readonly sourceFiles:
+        | readonly { readonly path: string; readonly content: string }[]
+        | null;
+      readonly targetAgentId: string;
+      readonly inheritedAutonomyBudget: number | undefined;
+      readonly currentTime: Date;
+    },
+    signal: AbortSignal,
+  ) => {
+    // Reserve the target volume identity first, then keep the exact-source
+    // locks, new Workflow, final Automation states, and volume HEAD in one
+    // transaction. The Workflow and its runnable Automations therefore become
+    // visible only after the prepared S3 objects are durable.
+    const targetWorkflowId = randomUUID();
+    const cleanupSignal = new AbortController().signal;
+    return await onRejection(
+      (async () => {
+        await set(
+          ensureVolumeStorage$,
+          {
+            orgId: args.orgId,
+            storageName: getCustomSkillStorageName(targetWorkflowId),
+          },
+          signal,
+        );
+        signal.throwIfAborted();
+
+        const copied = await copyWorkflowDatabaseRows(args.db, {
+          orgId: args.orgId,
+          userId: args.userId,
+          sourceWorkflow: args.sourceWorkflow,
+          sourceFiles: args.sourceFiles,
+          targetAgentId: args.targetAgentId,
+          targetWorkflowId,
+          currentTime: args.currentTime,
+          inheritedAutonomyBudget: args.inheritedAutonomyBudget,
+          publishVolume: async (
+            tx,
+            copiedSourceWorkflow,
+            copiedSourceFiles,
+          ) => {
+            const volume = await set(
+              prepareVolumeServerSideWithDb$,
+              {
+                db: tx,
+                input: {
+                  orgId: args.orgId,
+                  storageName: getCustomSkillStorageName(targetWorkflowId),
+                  files: copiedWorkflowVolumeFiles(
+                    copiedSourceWorkflow,
+                    copiedSourceFiles,
+                  ),
+                },
+              },
+              signal,
+            );
+            await commitPreparedVolumeServerSide({ db: tx, volume }, signal);
+            signal.throwIfAborted();
+          },
+        });
+        signal.throwIfAborted();
+        if (copied.kind === "conflict") {
+          await set(
+            deleteOrphanedWorkflowVolume$,
+            { orgId: args.orgId, workflowId: targetWorkflowId },
+            cleanupSignal,
+          );
+          return conflict(copied.message);
+        }
+
+        const visible = await loadVisibleWorkflowById(args.db, {
+          orgId: args.orgId,
+          member: args.member,
+          workflowId: targetWorkflowId,
+        });
+        signal.throwIfAborted();
+        if (!visible) {
+          throw new Error(`Copied workflow not found: ${targetWorkflowId}`);
+        }
+        return {
+          status: 201 as const,
+          body: workflowSummary({
+            workflow: visible.workflow,
+            agent: visible.agent,
+            member: args.member,
+          }),
+        };
+      })(),
+      async () => {
+        await set(
+          deleteWorkflow$,
+          { orgId: args.orgId, workflowId: targetWorkflowId },
+          cleanupSignal,
+        );
+        await set(
+          deleteOrphanedWorkflowVolume$,
+          { orgId: args.orgId, workflowId: targetWorkflowId },
+          cleanupSignal,
+        );
+      },
+    );
+  },
+);
 
 const copyWorkflowInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -958,10 +1320,6 @@ const copyWorkflowInner$ = command(
     if (!source) {
       return workflowNotFound(params.workflowId);
     }
-    if (source.workflow.officialDefinitionName !== null) {
-      return conflict(OFFICIAL_WORKFLOW_READ_ONLY_MESSAGE);
-    }
-
     const targetAgent = await loadAgentForConfiguration(writeDb, {
       orgId: auth.orgId,
       agentId: bodyResult.data.toAgentId,
@@ -991,75 +1349,35 @@ const copyWorkflowInner$ = command(
       return slugError;
     }
 
+    const sourceFiles =
+      source.workflow.officialDefinitionName === null
+        ? await get(
+            loadWorkflowVolumeFiles({
+              orgId: auth.orgId,
+              workflowId: source.workflow.id,
+            }),
+          )
+        : null;
+    signal.throwIfAborted();
+
     // A copy is a fork owned by the caller: a new private workflow under the
     // target agent. User-scoped runtime configuration is cloned only for the
     // caller so copies do not leak another user's automations.
-    const currentTime = nowDate();
-    const inserted = await writeDb.transaction(async (tx) => {
-      return await copyWorkflowRuntimeConfiguration(tx, {
+    return await set(
+      publishCopiedWorkflow$,
+      {
+        db: writeDb,
         orgId: auth.orgId,
         userId: auth.userId,
+        member,
         sourceWorkflow: source.workflow,
+        sourceFiles,
         targetAgentId: targetAgent.id,
-        currentTime,
-        ...(inheritedAutonomyBudget === undefined
-          ? {}
-          : { inheritedAutonomyBudget }),
-      });
-    });
-    signal.throwIfAborted();
-    if (!inserted) {
-      throw new Error("Failed to copy workflow");
-    }
-
-    // Clone the source volume: re-synthesize SKILL.md from the (cloned) DB
-    // fields and carry over the supplementary files verbatim.
-    const sourceFiles = await get(
-      loadWorkflowVolumeFiles({
-        orgId: auth.orgId,
-        workflowId: source.workflow.id,
-      }),
-    );
-    signal.throwIfAborted();
-    const attachedFiles = (sourceFiles ?? [])
-      .filter((file) => {
-        return file.path !== "SKILL.md";
-      })
-      .map((file) => {
-        return { path: file.path, content: file.content };
-      });
-    const skillMd = synthesizeWorkflowSkillMd({
-      name: source.workflow.name,
-      description: source.workflow.description,
-      instruction: source.workflow.instruction,
-    });
-    await set(
-      uploadVolumeServerSide$,
-      {
-        orgId: auth.orgId,
-        storageName: getCustomSkillStorageName(inserted.id),
-        files: [{ path: "SKILL.md", content: skillMd }, ...attachedFiles],
+        inheritedAutonomyBudget,
+        currentTime: nowDate(),
       },
       signal,
     );
-    signal.throwIfAborted();
-
-    const visible = await loadVisibleWorkflowById(writeDb, {
-      orgId: auth.orgId,
-      member,
-      workflowId: inserted.id,
-    });
-    signal.throwIfAborted();
-    if (!visible) {
-      throw new Error(`Copied workflow not found: ${inserted.id}`);
-    }
-
-    const summary = workflowSummary({
-      workflow: visible.workflow,
-      agent: visible.agent,
-      member,
-    });
-    return { status: 201 as const, body: summary };
   },
 );
 
@@ -1135,10 +1453,6 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return workflowNotFound(params.workflowId);
   }
   const { workflow, agent } = visible;
-  if (workflow.officialDefinitionName !== null) {
-    return conflict(OFFICIAL_WORKFLOW_EXECUTION_UNAVAILABLE_MESSAGE);
-  }
-
   // The workflow is run on its owning agent; the caller must be able to run
   // that agent (public agents are runnable by any member, private ones only by
   // their owner).
@@ -1209,6 +1523,9 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       preloadedAgent: agent,
       timing,
       agentRunPreCreateSource: "workflow_slash_command",
+      ...(workflow.officialDefinitionName === null
+        ? {}
+        : { requiredOfficialWorkflowIds: [workflow.id] }),
     },
     signal,
   );

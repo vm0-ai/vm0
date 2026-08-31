@@ -1,15 +1,15 @@
 import { command, computed, state, type Command } from "ccstate";
 import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
-import {
-  Realtime,
-  type ChannelStateChange,
-  type ConnectionStateChange,
-  type InboundMessage,
-  type RealtimeChannel,
+import type {
+  ChannelStateChange,
+  ConnectionStateChange,
+  InboundMessage,
+  RealtimeChannel,
 } from "ably";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
+import { createAblyRealtime, type AblyRealtime } from "../lib/ably-realtime.ts";
 import { now } from "../lib/time.ts";
 import { apiClient$ } from "./api-client.ts";
 import { authenticatedIdentity$ } from "./auth.ts";
@@ -112,7 +112,7 @@ interface StableRealtimeChannel {
 }
 
 interface RealtimeSession {
-  readonly ably: Realtime;
+  readonly ably: AblyRealtime;
   readonly channels: RealtimeSessionChannels;
   readonly close: () => void;
 }
@@ -214,8 +214,7 @@ interface RealtimeLoopArgs {
 
 interface RealtimePayloadLoopArgs {
   readonly channel: StableRealtimeChannel;
-  readonly topic: string | null;
-  readonly passMessage?: boolean;
+  readonly topic: string;
   readonly loopCommand$: Command<
     Promise<boolean> | boolean,
     [unknown, AbortSignal]
@@ -239,14 +238,6 @@ interface SetAblyPayloadLoopArgs {
   >;
   readonly catchUpCommand$?: Command<Promise<boolean> | boolean, [AbortSignal]>;
   readonly options?: RealtimeSubscribeOptions;
-}
-
-interface SetAblyMessageLoopArgs {
-  readonly loopCommand$: Command<
-    Promise<boolean> | boolean,
-    [unknown, AbortSignal]
-  >;
-  readonly catchUpCommand$?: Command<Promise<boolean> | boolean, [AbortSignal]>;
 }
 
 interface RealtimePayloadLoopState {
@@ -571,16 +562,9 @@ const runWithChannelPayload$ = command(
     args: RealtimePayloadLoopArgs,
     signal: AbortSignal,
   ): Promise<void> => {
-    const {
-      channel,
-      topic,
-      passMessage,
-      loopCommand$,
-      catchUpCommand$,
-      options,
-    } = args;
+    const { channel, topic, loopCommand$, catchUpCommand$, options } = args;
     signal.throwIfAborted();
-    const subscriptionLabel = topic ?? "all user channel messages";
+    const subscriptionLabel = topic;
     const state: RealtimePayloadLoopState = {
       deferred: createDeferredPromise(signal),
       poked: false,
@@ -609,7 +593,7 @@ const runWithChannelPayload$ = command(
         return;
       }
       L.debug("got queued message from topic", subscriptionLabel, message);
-      state.pendingPayloads.push(passMessage ? message : message.data);
+      state.pendingPayloads.push(message.data);
       pokeLoop();
     };
     await subscribeChannel(
@@ -937,7 +921,7 @@ interface ConnectedRealtimeChannels {
 }
 
 function connectedRealtimeChannels(
-  ably: Realtime,
+  ably: AblyRealtime,
   userId: string,
   orgId: string,
 ): ConnectedRealtimeChannels {
@@ -968,7 +952,7 @@ function observeRealtimeChannels(
 }
 
 interface ConnectedRealtimeClient {
-  readonly ably: Realtime;
+  readonly ably: AblyRealtime;
   readonly channels: ConnectedRealtimeChannels;
   readonly close: () => void;
 }
@@ -982,7 +966,7 @@ const connectRealtimeClient$ = command(
     signal.throwIfAborted();
     const createClient = get(apiClient$);
     const client = createClient(platformRealtimeTokenContract);
-    const ably = new Realtime({
+    const ably = createAblyRealtime({
       // Ably TokenRequest is single-use — see lib/ably-auth.ts for why
       // every invocation must fetch a freshly-signed request.
       authCallback: createAblyAuthCallback(client, signal),
@@ -1436,34 +1420,6 @@ export const setAblyPayloadLoop$ = command(
     await set(
       runWithChannelPayload$,
       { channel, topic, loopCommand$, catchUpCommand$, options },
-      signal,
-    );
-    signal.throwIfAborted();
-  },
-);
-
-export const setAblyMessageLoop$ = command(
-  async (
-    { set },
-    { loopCommand$, catchUpCommand$ }: SetAblyMessageLoopArgs,
-    signal: AbortSignal,
-  ) => {
-    const channel = await set(
-      realtimeChannel$,
-      "user",
-      "all user channel messages",
-      signal,
-    );
-    signal.throwIfAborted();
-    await set(
-      runWithChannelPayload$,
-      {
-        channel,
-        topic: null,
-        passMessage: true,
-        loopCommand$,
-        catchUpCommand$,
-      },
       signal,
     );
     signal.throwIfAborted();

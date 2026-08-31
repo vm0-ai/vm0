@@ -27,6 +27,7 @@ import {
 } from "../../contracts/client-headers";
 import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
+  AGENT_EXECUTION_TIMEOUT_SECONDS,
   BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION,
   BUILTIN_FIREWALL_CATALOG_MAX_BYTES,
   CANONICAL_CLAUDE_CONFIG_DIR,
@@ -103,9 +104,13 @@ const activeInputControlPayloadMaxBytesDoc = [
   "Maximum serialized active-input control payload accepted by runner and guest process control.",
   "The API validates the materialized prompt against this shared limit before committing claimed chat events.",
 ] as const;
+const agentExecutionTimeoutSecondsDoc = [
+  "Maximum execution budget for one agent run, in seconds.",
+  "The runner enforces this deadline and the API includes it in the agent-facing system prompt.",
+] as const;
 const builtinFirewallCatalogMaxBytesDoc = [
   "Maximum builtin firewall catalog response and cache size accepted by runners.",
-  "This is generated from the TypeScript connector catalog raw-byte contract so source ingestion and runner delivery stay aligned.",
+  "This Runner wire and cache boundary is independent of the larger full connector catalog source-ingestion limit.",
 ] as const;
 const builtinFirewallCatalogCacheSchemaVersionDoc = [
   "Schema version written to builtin firewall catalog cache files and accepted by the mitm addon.",
@@ -257,6 +262,12 @@ const expectedBindings = [
     rustConstName: "ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES",
     value: rustU64(ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES),
     rustDoc: activeInputControlPayloadMaxBytesDoc,
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "AGENT_EXECUTION_TIMEOUT_SECONDS",
+    value: rustU64(AGENT_EXECUTION_TIMEOUT_SECONDS),
+    rustDoc: agentExecutionTimeoutSecondsDoc,
   },
   {
     rustModulePath: ["runners"],
@@ -517,6 +528,8 @@ describe("Rust constant bindings", () => {
   });
 
   it("renders deterministic Rust constants for the supported registry", () => {
+    expect(BUILTIN_FIREWALL_CATALOG_MAX_BYTES).toBe(16 * 1024 * 1024);
+
     const firstRender = renderRustConstants(rustConstantBindings);
     const secondRender = renderRustConstants(rustConstantBindings);
 
@@ -575,6 +588,9 @@ describe("Rust constant bindings", () => {
     );
     expect(firstRender).toContain(
       `pub const ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES: u64 = ${ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES};`,
+    );
+    expect(firstRender).toContain(
+      `pub const AGENT_EXECUTION_TIMEOUT_SECONDS: u64 = ${AGENT_EXECUTION_TIMEOUT_SECONDS};`,
     );
     expect(firstRender).toContain(
       `pub const BUILTIN_FIREWALL_CATALOG_MAX_BYTES: u64 = ${BUILTIN_FIREWALL_CATALOG_MAX_BYTES};`,

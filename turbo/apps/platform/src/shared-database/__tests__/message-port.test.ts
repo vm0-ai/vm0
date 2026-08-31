@@ -3,7 +3,10 @@ import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-t
 import type { Store } from "ccstate";
 import { describe, expect, it, vi } from "vitest";
 
-import { testContext } from "../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../signals/__tests__/test-helpers.ts";
 import { mockNow } from "../../lib/time.ts";
 import { createChildAbortController } from "../../signals/utils.ts";
 import {
@@ -13,6 +16,7 @@ import {
 } from "../../signals/shared-database.ts";
 import type {
   SharedDatabaseBridgeEvents,
+  SharedDatabaseChangeKind,
   SharedDatabaseHeartbeat,
   SharedDatabasePortLike,
 } from "../bridge.ts";
@@ -146,12 +150,29 @@ function installProtocolBridge(): {
     platformPort,
     location.origin,
     {
+      authenticationRequired: vi.fn<() => void>(),
       reloadRequired: vi.fn<() => void>(),
       statusChanged: vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
     },
   );
   platformStore.set(installSharedDatabaseBridge$, bridge);
   return { platformStore, workerStore, platformPort, workerPort };
+}
+
+function connectProtocolTransport(
+  events: SharedDatabaseBridgeEvents,
+): MessagePortSharedDatabaseBridge {
+  const [platformPort, workerPort] = messagePortPair();
+  new SharedDatabaseMessagePortServer(
+    context.workerStore,
+    workerPort,
+    context.signal,
+  );
+  return new MessagePortSharedDatabaseBridge(
+    platformPort,
+    location.origin,
+    events,
+  );
 }
 
 describe("shared database MessagePort protocol", () => {
@@ -184,15 +205,15 @@ describe("shared database MessagePort protocol", () => {
       chatThreadEventsContract.rows,
       async ({ params, query, respond }) => {
         if (query.sinceSeqId > 0) {
-          return respond(200, { rows: [] });
+          return respond(200, chatEventRowsResponse([], query));
         }
         started.add(params.threadId);
         if (params.threadId === firstKey.threadId) {
           await firstGate.promise;
-          return respond(200, { rows: [firstRow] });
+          return respond(200, chatEventRowsResponse([firstRow], query));
         }
         await secondGate.promise;
-        return respond(200, { rows: [secondRow] });
+        return respond(200, chatEventRowsResponse([secondRow], query));
       },
     );
 
@@ -252,9 +273,9 @@ describe("shared database MessagePort protocol", () => {
         if (query.sinceSeqId === 0) {
           pageStarted = true;
           await pageGate.promise;
-          return respond(200, { rows: [canonicalRow] });
+          return respond(200, chatEventRowsResponse([canonicalRow], query));
         }
-        return respond(200, { rows: [] });
+        return respond(200, chatEventRowsResponse([], query));
       },
     );
 
@@ -287,21 +308,6 @@ describe("shared database MessagePort protocol", () => {
     workerStore.set(bootstrapSharedDatabaseWorker$, context.signal);
     const start = Date.parse("2030-01-01T00:00:00.000Z");
     mockNow(start, context.signal);
-    const connectProtocolTransport = (
-      events: SharedDatabaseBridgeEvents,
-    ): MessagePortSharedDatabaseBridge => {
-      const [platformPort, workerPort] = messagePortPair();
-      new SharedDatabaseMessagePortServer(
-        workerStore,
-        workerPort,
-        context.signal,
-      );
-      return new MessagePortSharedDatabaseBridge(
-        platformPort,
-        location.origin,
-        events,
-      );
-    };
 
     let firstTabTransports = 0;
     let staleTabTransports = 0;
@@ -312,6 +318,7 @@ describe("shared database MessagePort protocol", () => {
         return connectProtocolTransport(events);
       },
       events: {
+        authenticationRequired: vi.fn<() => void>(),
         reloadRequired: vi.fn<() => void>(),
         statusChanged:
           vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
@@ -323,6 +330,7 @@ describe("shared database MessagePort protocol", () => {
         return connectProtocolTransport(events);
       },
       events: {
+        authenticationRequired: vi.fn<() => void>(),
         reloadRequired: vi.fn<() => void>(),
         statusChanged: (status) => {
           staleTabStatuses.push(status);
@@ -333,6 +341,7 @@ describe("shared database MessagePort protocol", () => {
     const staleOwner = createChildAbortController(context.signal);
     const subscription = createChildAbortController(context.signal);
     try {
+      const initialAttach = context.mocks.ably.deferNextSubscribe();
       await firstTab.heartbeat(heartbeat(), firstOwner.signal);
       await staleTab.heartbeat(heartbeat(), staleOwner.signal);
 
@@ -340,7 +349,6 @@ describe("shared database MessagePort protocol", () => {
       const canonicalRow = row(key.threadId, 1);
       const requestedSeqIds: number[] = [];
       let appends = 0;
-      const initialAttach = context.mocks.ably.deferNextSubscribe();
       await staleTab.on(
         key,
         () => {
@@ -363,9 +371,13 @@ describe("shared database MessagePort protocol", () => {
       });
       context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
         requestedSeqIds.push(query.sinceSeqId);
-        return respond(200, {
-          rows: query.sinceSeqId === 0 ? [canonicalRow] : [],
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            query.sinceSeqId === 0 ? [canonicalRow] : [],
+            query,
+          ),
+        );
       });
 
       mockNow(start + 2 * 60 * 1000, context.signal);
@@ -375,16 +387,13 @@ describe("shared database MessagePort protocol", () => {
 
       expect(firstTabTransports).toBe(1);
       expect(staleTabTransports).toBe(1);
-      expect(context.mocks.ably.hasChannelSubscription()).toBeFalsy();
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
       initialAttach.attach();
-      const recoveredAttach = context.mocks.ably.deferNextSubscribe();
       await staleTab.heartbeat(heartbeat(), staleOwner.signal);
-      await recoveredAttach.started;
-      expect(staleTabTransports).toBe(2);
-      recoveredAttach.attach();
+      expect(staleTabTransports).toBe(1);
       await vi.waitFor(() => {
         expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-        expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(2);
+        expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(1);
         expect(staleTabStatuses.at(-1)).toBe("connected");
         expect(requestedSeqIds).toStrictEqual([0, 1]);
         expect(appends).toBe(1);
@@ -396,9 +405,70 @@ describe("shared database MessagePort protocol", () => {
     }
   });
 
+  it("renews a single expired tab over its existing MessagePort", async () => {
+    const workerStore = context.workerStore;
+    workerStore.set(bootstrapSharedDatabaseWorker$, context.signal);
+    const start = Date.parse("2030-01-01T00:00:00.000Z");
+    mockNow(start, context.signal);
+    let transports = 0;
+    const bridge = new ReconnectingSharedDatabaseBridge({
+      createBridge: (events) => {
+        transports += 1;
+        return connectProtocolTransport(events);
+      },
+      events: {
+        authenticationRequired: vi.fn<() => void>(),
+        reloadRequired: vi.fn<() => void>(),
+        statusChanged:
+          vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
+      },
+    });
+    const owner = createChildAbortController(context.signal);
+    const subscription = createChildAbortController(context.signal);
+    try {
+      const initialAttach = context.mocks.ably.deferNextSubscribe();
+      await bridge.heartbeat(heartbeat(), owner.signal);
+      const key = dataKey(crypto.randomUUID());
+      context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+        return respond(404, {
+          error: {
+            code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+            message: "Chat event snapshot not found",
+          },
+        });
+      });
+      context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+        return respond(200, chatEventRowsResponse([], query));
+      });
+
+      await bridge.on(key, vi.fn<() => void>(), subscription.signal);
+      await initialAttach.started;
+      initialAttach.attach();
+      await vi.waitFor(() => {
+        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+        expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(1);
+      });
+
+      mockNow(start + 4 * 60 * 1000, context.signal);
+      const renewedAttach = context.mocks.ably.deferNextSubscribe();
+      await bridge.heartbeat(heartbeat(), owner.signal);
+      await renewedAttach.started;
+      renewedAttach.attach();
+      await vi.waitFor(() => {
+        expect(transports).toBe(1);
+        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+        expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(2);
+      });
+    } finally {
+      subscription.abort();
+      owner.abort();
+    }
+  });
+
   it("validates results and handles callback cleanup plus control messages", async () => {
     const [platformPort, serverPort] = messagePortPair();
     const statuses: SharedDatabaseConnectionStatus[] = [];
+    let authenticationRequests = 0;
     let reloads = 0;
     let subscriptionId: string | null = null;
     let observedHeartbeat: SharedDatabaseClientMessage | null = null;
@@ -408,6 +478,9 @@ describe("shared database MessagePort protocol", () => {
       platformPort,
       location.origin,
       {
+        authenticationRequired: () => {
+          authenticationRequests += 1;
+        },
         reloadRequired: () => {
           reloads += 1;
         },
@@ -423,7 +496,7 @@ describe("shared database MessagePort protocol", () => {
         serverPort.postMessage({
           type: "result",
           requestId: message.requestId,
-          value: null,
+          value: { clientReconnected: false },
         });
         return;
       }
@@ -465,31 +538,39 @@ describe("shared database MessagePort protocol", () => {
     });
 
     const subscription = createChildAbortController(context.signal);
-    let callbacks = 0;
+    const changes: SharedDatabaseChangeKind[] = [];
     await bridge.on(
       key,
-      () => {
-        callbacks += 1;
+      (kind) => {
+        changes.push(kind);
       },
       subscription.signal,
     );
-    expect(callbacks).toBe(1);
+    expect(changes).toStrictEqual(["append"]);
     expect(subscriptionId).not.toBeNull();
+    if (subscriptionId === null) {
+      throw new Error("Expected a protocol subscription ID");
+    }
+    serverPort.postMessage({
+      type: "invalidate",
+      subscriptionId,
+      dataKey: key,
+    });
+    await vi.waitFor(() => {
+      expect(changes).toStrictEqual(["append", "invalidate"]);
+    });
 
     subscription.abort(new DOMException("listener removed", "AbortError"));
     await vi.waitFor(() => {
       expect(unsubscribeObserved).toBeTruthy();
     });
-    if (subscriptionId === null) {
-      throw new Error("Expected a protocol subscription ID");
-    }
     serverPort.postMessage({
       type: "append",
       subscriptionId,
       dataKey: key,
     });
     await Promise.resolve();
-    expect(callbacks).toBe(1);
+    expect(changes).toStrictEqual(["append", "invalidate"]);
 
     await expect(
       bridge.query(
@@ -498,10 +579,12 @@ describe("shared database MessagePort protocol", () => {
       ),
     ).rejects.toMatchObject({ name: "ZodError" });
 
+    serverPort.postMessage({ type: "authentication-required" });
     serverPort.postMessage({ type: "status", status: "disconnected" });
     serverPort.postMessage({ type: "reload-required" });
     await vi.waitFor(() => {
       expect(statuses).toStrictEqual(["disconnected"]);
+      expect(authenticationRequests).toBe(1);
       expect(reloads).toBe(1);
     });
   });

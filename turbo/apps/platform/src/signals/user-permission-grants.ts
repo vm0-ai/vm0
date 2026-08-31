@@ -2,7 +2,7 @@ import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicies,
   type FirewallPolicyValue,
-} from "@okouai/connectors/firewall-types";
+} from "@okouai/connectors/firewall-contracts";
 import {
   permissionGrantsToFirewallPolicies,
   resolveFirewallMetadataPolicies,

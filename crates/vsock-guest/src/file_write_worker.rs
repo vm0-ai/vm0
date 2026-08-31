@@ -21,6 +21,7 @@ const THREAD_FILE_WRITE: &str = "vsock-file-write";
 pub(crate) enum FileWriteKind {
     File,
     Files,
+    PrivateFiles,
 }
 
 impl FileWriteKind {
@@ -28,13 +29,14 @@ impl FileWriteKind {
         match self {
             Self::File => "write_file",
             Self::Files => "write_files",
+            Self::PrivateFiles => "write_private_files",
         }
     }
 
     pub(crate) fn validate_payload(self, payload: &[u8]) -> Result<(), vsock_proto::ProtocolError> {
         match self {
             Self::File => decode_write_file_message(payload).map(|_| ()),
-            Self::Files => decode_write_files_message(payload).map(|_| ()),
+            Self::Files | Self::PrivateFiles => decode_write_files_message(payload).map(|_| ()),
         }
     }
 }
@@ -156,7 +158,12 @@ fn handle_request(
         FileWriteKind::Files => decode_write_files_message(&payload)
             .map_err(protocol_error)
             .and_then(|decoded| {
-                handle_decoded_write_files_message(seq, decoded, connection_cancel)
+                handle_decoded_write_files_message(seq, decoded, false, connection_cancel)
+            }),
+        FileWriteKind::PrivateFiles => decode_write_files_message(&payload)
+            .map_err(protocol_error)
+            .and_then(|decoded| {
+                handle_decoded_write_files_message(seq, decoded, true, connection_cancel)
             }),
     };
     // Admission may be released at the writer boundary, but do not retain the

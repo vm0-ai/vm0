@@ -53,15 +53,44 @@ import {
   validateAgentRunLaunchSnapshotMigration,
   validateAgentRunLaunchSnapshotSchema,
 } from "./test-agent-run-launch-snapshot";
+import { validateAgentRunOfficialWorkflowProvenanceSchema } from "./test-agent-run-official-workflow-provenance";
+import {
+  validateOfficialAutomationResultEmailMigration,
+  validateOfficialAutomationResultEmailSchema,
+} from "./test-official-automation-result-email-schema";
 import { validatePermanentAgentRunBuiltInModelKeyState } from "./test-agent-run-built-in-model-key-permanent";
 import { validatePermanentBuiltInModelCooldownState } from "./test-built-in-model-cooldown-permanent";
 import { validatePermanentBuiltInModelKeyState } from "./test-built-in-model-keys-permanent";
+import { validatePermanentBuiltInProviderDiscriminatorState } from "./test-built-in-provider-discriminator-permanent";
+import { validateBuiltInProviderDiscriminatorMigration } from "./test-built-in-provider-discriminator-migration";
 import { validateConnectorAccountExpansion } from "./test-connector-account-expansion";
 import { validateConnectorAuthorizationAccountMutationPresence } from "./test-connector-authorization-account-mutation-presence";
-import { validateConnectorOAuthScopeFacts } from "./test-connector-oauth-scope-facts";
 import { validateCustomGatewayProviderTypes } from "./test-custom-gateway-provider-types";
 import { validateFeishuMemberConnectorReconciliation } from "./test-feishu-member-connector-reconciliation";
 import { validateOkouDebugFeatureSwitchKeyRename } from "./test-okou-debug-feature-switch-key-rename";
+import { validateOrgMetadataAcquisitionFirstPartySourceExpansion } from "./test-org-metadata-acquisition-first-party-source-expansion";
+import {
+  installOrgMetadataAcquisitionFirstPartySourceArtifactsOnRegeneratedSchema,
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_MIGRATION,
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_FUNCTION,
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_TRIGGER,
+  validatePermanentOrgMetadataAcquisitionFirstPartySourceState,
+} from "./test-org-metadata-acquisition-first-party-source-permanent";
+import { validateOrgPlanEntitlementRestrictionExpansion } from "./test-org-plan-entitlement-restriction-expansion";
+import {
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_BACKFILL_MIGRATION,
+  validateOrgPlanEntitlementRestrictionBackfill,
+  validateOrgPlanEntitlementRestrictionBackfillOnRegeneratedSchema,
+} from "./test-org-plan-entitlement-restriction-backfill";
+import { validateOrgPlanEntitlementRestrictionNotNull } from "./test-org-plan-entitlement-restriction-not-null";
+import {
+  installOrgPlanEntitlementRestrictionArtifactsOnRegeneratedSchema,
+  ORG_METADATA_PLAN_ENTITLEMENT_PERMANENT_FUNCTION,
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_MIGRATION,
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_FUNCTION,
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_TRIGGER,
+  validatePermanentOrgPlanEntitlementRestrictionState,
+} from "./test-org-plan-entitlement-restriction-permanent";
 import { validateSlackOfficialBrandMigration } from "./test-slack-official-brand-migration";
 import { validatePermanentSlackPublicBrandState } from "./test-slack-public-brand-permanent";
 import { validateWorkflowCompatibilityViews } from "./test-workflow-compatibility-views";
@@ -2322,6 +2351,73 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "chat_events",
     triggerName: "chat_events_reject_update",
   },
+  // Temporary #30264 rolling floor. Phase B removes all five triggers and
+  // functions after the released legacy zero-traffic observation gate.
+  {
+    definition:
+      "CREATE TRIGGER force_legacy_morning_brief_disabled_1029 BEFORE INSERT OR UPDATE OF morning_brief_enabled ON public.org_members_metadata FOR EACH ROW EXECUTE FUNCTION force_legacy_morning_brief_disabled_1029()",
+    schemaName: "public",
+    tableName: "org_members_metadata",
+    triggerName: "force_legacy_morning_brief_disabled_1029",
+  },
+  {
+    definition:
+      "CREATE TRIGGER pause_legacy_morning_brief_schedule_1029 BEFORE INSERT OR UPDATE OF next_run_at ON public.morning_brief_schedules FOR EACH ROW EXECUTE FUNCTION pause_legacy_morning_brief_schedule_1029()",
+    schemaName: "public",
+    tableName: "morning_brief_schedules",
+    triggerName: "pause_legacy_morning_brief_schedule_1029",
+  },
+  {
+    definition:
+      "CREATE TRIGGER reject_legacy_morning_brief_delivery_1029 BEFORE INSERT OR UPDATE OF status, run_id, input_key, output_key ON public.morning_brief_deliveries FOR EACH ROW EXECUTE FUNCTION reject_legacy_morning_brief_delivery_1029()",
+    schemaName: "public",
+    tableName: "morning_brief_deliveries",
+    triggerName: "reject_legacy_morning_brief_delivery_1029",
+  },
+  {
+    definition:
+      "CREATE TRIGGER reject_legacy_morning_brief_context_1029 BEFORE INSERT ON public.chat_morning_brief_context FOR EACH ROW EXECUTE FUNCTION reject_legacy_morning_brief_context_1029()",
+    schemaName: "public",
+    tableName: "chat_morning_brief_context",
+    triggerName: "reject_legacy_morning_brief_context_1029",
+  },
+  {
+    definition:
+      "CREATE TRIGGER reject_legacy_morning_brief_email_1029 BEFORE INSERT ON public.email_outbox FOR EACH ROW EXECUTE FUNCTION reject_legacy_morning_brief_email_1029()",
+    schemaName: "public",
+    tableName: "email_outbox",
+    triggerName: "reject_legacy_morning_brief_email_1029",
+  },
+  // Temporary #29910 old-writer/new-DB bridges. Remove only with #28368's
+  // separately reviewed legacy-acceptor contract after the production drain.
+  {
+    definition:
+      "CREATE TRIGGER canonicalize_agent_run_builtin_provider BEFORE INSERT OR UPDATE OF model_provider ON public.agent_runs FOR EACH ROW EXECUTE FUNCTION canonicalize_agent_run_builtin_provider()",
+    schemaName: "public",
+    tableName: "agent_runs",
+    triggerName: "canonicalize_agent_run_builtin_provider",
+  },
+  {
+    definition:
+      "CREATE TRIGGER canonicalize_chat_thread_builtin_provider BEFORE INSERT OR UPDATE OF model_provider_type ON public.chat_threads FOR EACH ROW EXECUTE FUNCTION canonicalize_chat_thread_builtin_provider()",
+    schemaName: "public",
+    tableName: "chat_threads",
+    triggerName: "canonicalize_chat_thread_builtin_provider",
+  },
+  {
+    definition:
+      "CREATE TRIGGER canonicalize_model_provider_builtin_type BEFORE INSERT OR UPDATE ON public.model_providers FOR EACH ROW EXECUTE FUNCTION canonicalize_model_provider_builtin_type()",
+    schemaName: "public",
+    tableName: "model_providers",
+    triggerName: "canonicalize_model_provider_builtin_type",
+  },
+  {
+    definition:
+      "CREATE TRIGGER canonicalize_org_model_policy_builtin_provider BEFORE INSERT OR UPDATE OF default_provider_type, model_provider_id, model_provider_surface_id ON public.org_model_policies FOR EACH ROW EXECUTE FUNCTION canonicalize_org_model_policy_builtin_provider()",
+    schemaName: "public",
+    tableName: "org_model_policies",
+    triggerName: "canonicalize_org_model_policy_builtin_provider",
+  },
   {
     definition:
       "CREATE TRIGGER allocate_legacy_chat_thread_event_seq_id BEFORE INSERT ON public.chat_thread_events FOR EACH ROW EXECUTE FUNCTION allocate_legacy_chat_thread_event_seq_id()",
@@ -2349,15 +2445,6 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     schemaName: "public",
     tableName: "chat_threads",
     triggerName: "chat_threads_normalize_computer_access",
-  },
-  // #29465/#29466 rolling API bridge. Remove in #29468 after old writers and
-  // rollback versions can no longer reconnect built-in OAuth accounts.
-  {
-    definition:
-      "CREATE TRIGGER connectors_clear_builtin_oauth_granted_scopes_1006 BEFORE UPDATE OF oauth_scopes ON public.connectors FOR EACH ROW WHEN ((new.connector_slug IS NOT NULL)) EXECUTE FUNCTION clear_builtin_oauth_granted_scopes_1006()",
-    schemaName: "public",
-    tableName: "connectors",
-    triggerName: "connectors_clear_builtin_oauth_granted_scopes_1006",
   },
   {
     definition:
@@ -2408,6 +2495,12 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "org_metadata",
     triggerName: "ensure_legacy_org_metadata_plan_entitlement",
   },
+  // Temporary #30379 expand/mirror bridge. Remove only with #28368 after the
+  // backfill, canonical application/reporting switch, and rollback gates pass.
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_TRIGGER,
+  // Temporary #30162 expand/mirror bridge. Remove only with #28368 after the
+  // canonical reader/writer switch, backfill, and rollback drain are accepted.
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_TRIGGER,
   {
     definition:
       "CREATE TRIGGER sync_legacy_org_plan_entitlement_can_buy_credits BEFORE INSERT OR UPDATE OF plan_key ON public.org_plan_entitlements FOR EACH ROW EXECUTE FUNCTION sync_legacy_org_plan_entitlement_can_buy_credits()",
@@ -2462,6 +2555,71 @@ const EXPECTED_PERMANENT_TRIGGERS = [
 ] as const satisfies readonly PermanentTrigger[];
 
 const EXPECTED_PERMANENT_FUNCTIONS = [
+  // Same temporary #30264 bridge and phase-B removal gate as the triggers.
+  {
+    bodyHash: "44930ae5bfb57cee2cb3645f16abc8fb",
+    functionName: "force_legacy_morning_brief_disabled_1029",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "b888804c00096033c0d80b03ae7181f5",
+    functionName: "pause_legacy_morning_brief_schedule_1029",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "4d498817e1b718b455b034ae068a678b",
+    functionName: "reject_legacy_morning_brief_delivery_1029",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "a652f4bc6cc488ef084432476fda6113",
+    functionName: "reject_legacy_morning_brief_context_1029",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "0fedb75100b0bdde27915e5688d35fc0",
+    functionName: "reject_legacy_morning_brief_email_1029",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  // Same temporary #29910 bridge and #28368 removal gate as the triggers.
+  {
+    bodyHash: "08ccacae72d432c06fecb49b4f01dcbf",
+    functionName: "canonicalize_agent_run_builtin_provider",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "8184f2daa343c7eb811308c17a6a2b65",
+    functionName: "canonicalize_chat_thread_builtin_provider",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "90eafccc4fe3a0ffa32dec184c340e77",
+    functionName: "canonicalize_model_provider_builtin_type",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "dfd0098b8afe609bbbcd336b22f6ec3b",
+    functionName: "canonicalize_org_model_policy_builtin_provider",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
   {
     bodyHash: "6b1b5ad47ec35bcbaad3fa95d86ef027",
     functionName: "allocate_legacy_chat_thread_event_seq_id",
@@ -2473,14 +2631,6 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     bodyHash: "4886a7314cbaa815a4f8290a16a2f528",
     functionName: "assert_org_custom_connector_oauth_mode",
     identityArguments: "target_connector_id uuid, target_org_id text",
-    kind: "f",
-    schemaName: "public",
-  },
-  // Same #29465/#29466 rollout bridge and #29468 removal gate as its trigger.
-  {
-    bodyHash: "c56516b5a7fb5ed9ccbbccc61015b136",
-    functionName: "clear_builtin_oauth_granted_scopes_1006",
-    identityArguments: "",
     kind: "f",
     schemaName: "public",
   },
@@ -2527,13 +2677,9 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     kind: "f",
     schemaName: "public",
   },
-  {
-    bodyHash: "903925177de13d29257fec494957b1cd",
-    functionName: "ensure_legacy_org_metadata_plan_entitlement",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
+  ORG_METADATA_PLAN_ENTITLEMENT_PERMANENT_FUNCTION,
+  // Same temporary #30379 bridge and #28368 removal gate as its trigger.
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_FUNCTION,
   {
     bodyHash: "7740cf65befb5e06a73e1f21bcfdd5cc",
     functionName: "fill_legacy_chat_thread_snapshot_event_seq_id",
@@ -2555,6 +2701,8 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     kind: "f",
     schemaName: "public",
   },
+  // Same temporary #30162 bridge and #28368 removal gate as its trigger.
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_FUNCTION,
   {
     bodyHash: "daf97695043bdbafd864f7ff7a8f8d5d",
     functionName: "sync_legacy_org_plan_entitlement_can_buy_credits",
@@ -4167,6 +4315,25 @@ async function addCurrentChatEventPayloadStorage(
   await client.query(`
     ALTER TABLE "chat_events"
     ADD COLUMN "payload" jsonb
+  `);
+  await addCurrentChatEventOfficialWorkflowQueueStorage(client);
+}
+
+async function addCurrentChatEventOfficialWorkflowQueueStorage(
+  client: Client,
+): Promise<void> {
+  await client.query(`
+    ALTER TABLE "chat_events"
+    ADD COLUMN "required_official_workflow_ids" uuid[]
+  `);
+}
+
+async function removeCurrentChatEventOfficialWorkflowQueueStorage(
+  client: Client,
+): Promise<void> {
+  await client.query(`
+    ALTER TABLE "chat_events"
+    DROP COLUMN "required_official_workflow_ids"
   `);
 }
 
@@ -7623,6 +7790,7 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
     const client = new Client({ connectionString: testDbUrl });
     await client.connect();
     try {
+      await addCurrentChatEventOfficialWorkflowQueueStorage(client);
       await client.query(
         `
           INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
@@ -7741,6 +7909,10 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
         seqId: 10,
         threadId: fixture.threadId,
       });
+      // Migration 0910 intentionally asserts its historical exact column set.
+      // The private queue column arrived later, so remove the test-only current
+      // ORM shim while 0910 runs and restore it for the post-migration probe.
+      await removeCurrentChatEventOfficialWorkflowQueueStorage(client);
 
       await client.query(
         `
@@ -7768,6 +7940,7 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
         client,
         CHAT_EVENT_PHYSICAL_CONTRACTION_MIGRATION,
       );
+      await addCurrentChatEventOfficialWorkflowQueueStorage(client);
 
       const retained = await client.query<{ row: Record<string, unknown> }>(
         `
@@ -7787,6 +7960,7 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
         "event_type",
         "id",
         "payload",
+        "required_official_workflow_ids",
         "revokes_event_id",
         "run_event_id",
         "run_event_sequence_number",
@@ -10511,225 +10685,6 @@ async function validateCustomConnectorSecretPlaceholderCanonicalization(): Promi
   }
 }
 
-const CHAT_EVENT_SNAPSHOT_CONTRACTION_PREVIOUS_MIGRATION =
-  "0927_backfill_zero_agent_default_avatar";
-const CHAT_EVENT_SNAPSHOT_CONTRACTION_PREPARE_MIGRATION =
-  "0928_contract_chat_event_snapshots";
-const CHAT_EVENT_SNAPSHOT_CONTRACTION_FINAL_MIGRATION = "0929_cold_azazel";
-
-async function validateChatEventSnapshotContraction(): Promise<void> {
-  console.log("=== Validate Chat Event Snapshot contraction ===\n");
-  const testDb = "migration_chat_event_snapshot_contract";
-  const testDbUrl = createTestDbUrl(testDb);
-  const composeId = "00000000-0000-4000-8000-000000092700";
-  const threadIds = [
-    "00000000-0000-4000-8000-000000092701",
-    "00000000-0000-4000-8000-000000092702",
-    "00000000-0000-4000-8000-000000092703",
-    "00000000-0000-4000-8000-000000092704",
-  ] as const;
-  const expectedPreparedIds = [
-    "00000000-0000-4000-8000-000000092712",
-    "00000000-0000-4000-8000-000000092721",
-    "00000000-0000-4000-8000-000000092732",
-    "00000000-0000-4000-8000-000000092742",
-  ] as const;
-  const raceWinnerId = "00000000-0000-4000-8000-000000092713";
-
-  await createDatabase(testDb);
-  try {
-    await runMigrationsUpToTag(
-      testDbUrl,
-      CHAT_EVENT_SNAPSHOT_CONTRACTION_PREVIOUS_MIGRATION,
-    );
-    const client = new Client({ connectionString: testDbUrl });
-    await client.connect();
-    try {
-      await client.query(
-        `
-          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
-          VALUES ($1, 'snapshot-contract-user', 'snapshot-contract', 'snapshot-contract-org')
-        `,
-        [composeId],
-      );
-      await client.query(
-        `
-          INSERT INTO "chat_threads" (
-            "id", "user_id", "agent_compose_id", "title",
-            "last_chat_event_seq_id"
-          )
-          SELECT
-            "thread_id",
-            'snapshot-contract-user',
-            $1,
-            'snapshot contract ' || "ordinal"::text,
-            100
-          FROM unnest($2::uuid[]) WITH ORDINALITY
-            AS "fixture"("thread_id", "ordinal")
-        `,
-        [composeId, [...threadIds]],
-      );
-      await client.query(
-        `
-          INSERT INTO "chat_event_snapshots" (
-            "id", "chat_thread_id", "parent_snapshot_id", "last_seq_id",
-            "last_event_id", "archive_schema_version", "object_key",
-            "is_head", "created_at"
-          ) VALUES
-            ('00000000-0000-4000-8000-000000092711', $1, NULL, 10,
-              '00000000-0000-4000-8000-000000092811', 5,
-              'snapshot-contract/watermark-low', true,
-              '2026-08-15 04:00:00'),
-            ('00000000-0000-4000-8000-000000092712', $1,
-              '00000000-0000-4000-8000-000000092711', 20,
-              '00000000-0000-4000-8000-000000092812', 5,
-              'snapshot-contract/watermark-high', false,
-              '2026-08-15 03:00:00'),
-            ('00000000-0000-4000-8000-000000092729', $2, NULL, 30,
-              '00000000-0000-4000-8000-000000092829', 5,
-              'snapshot-contract/equal-non-head', false,
-              '2026-08-15 05:00:00'),
-            ('00000000-0000-4000-8000-000000092721', $2, NULL, 30,
-              '00000000-0000-4000-8000-000000092821', 5,
-              'snapshot-contract/equal-head', true,
-              '2026-08-15 02:00:00'),
-            ('00000000-0000-4000-8000-000000092731', $3, NULL, 40,
-              '00000000-0000-4000-8000-000000092831', 5,
-              'snapshot-contract/equal-created-old', false,
-              '2026-08-15 01:00:00'),
-            ('00000000-0000-4000-8000-000000092732', $3, NULL, 40,
-              '00000000-0000-4000-8000-000000092832', 5,
-              'snapshot-contract/equal-created-new', false,
-              '2026-08-15 02:00:00'),
-            ('00000000-0000-4000-8000-000000092741', $4, NULL, 50,
-              '00000000-0000-4000-8000-000000092841', 5,
-              'snapshot-contract/equal-id-low', false,
-              '2026-08-15 01:00:00'),
-            ('00000000-0000-4000-8000-000000092742', $4, NULL, 50,
-              '00000000-0000-4000-8000-000000092842', 5,
-              'snapshot-contract/equal-id-high', false,
-              '2026-08-15 01:00:00')
-        `,
-        [...threadIds],
-      );
-
-      await applyMigrationsUpToTag(
-        client,
-        CHAT_EVENT_SNAPSHOT_CONTRACTION_PREPARE_MIGRATION,
-      );
-      const prepared = await client.query<{ id: string }>(`
-        SELECT "id" FROM "chat_event_snapshots" ORDER BY "chat_thread_id"
-      `);
-      assert.deepEqual(
-        prepared.rows.map((row) => {
-          return row.id;
-        }),
-        expectedPreparedIds,
-      );
-
-      await client.query(
-        `
-          INSERT INTO "chat_event_snapshots" (
-            "id", "chat_thread_id", "parent_snapshot_id", "last_seq_id",
-            "last_event_id", "archive_schema_version", "object_key",
-            "is_head", "created_at"
-          ) VALUES ($1, $2, $3, 25, $4, 5, $5, true, $6)
-        `,
-        [
-          raceWinnerId,
-          threadIds[0],
-          expectedPreparedIds[0],
-          "00000000-0000-4000-8000-000000092813",
-          "snapshot-contract/race-high",
-          "2026-08-15 05:00:00",
-        ],
-      );
-
-      await applyMigrationsUpToTag(
-        client,
-        CHAT_EVENT_SNAPSHOT_CONTRACTION_FINAL_MIGRATION,
-      );
-      const contracted = await client.query<{
-        id: string;
-        lastEventId: string;
-      }>(`
-        SELECT "id", "last_event_id" AS "lastEventId"
-        FROM "chat_event_snapshots"
-        ORDER BY "chat_thread_id"
-      `);
-      assert.deepEqual(contracted.rows, [
-        {
-          id: raceWinnerId,
-          lastEventId: "00000000-0000-4000-8000-000000092813",
-        },
-        {
-          id: expectedPreparedIds[1],
-          lastEventId: "00000000-0000-4000-8000-000000092821",
-        },
-        {
-          id: expectedPreparedIds[2],
-          lastEventId: "00000000-0000-4000-8000-000000092832",
-        },
-        {
-          id: expectedPreparedIds[3],
-          lastEventId: "00000000-0000-4000-8000-000000092842",
-        },
-      ]);
-
-      const columns = await client.query<{
-        columnName: string;
-        isNullable: "NO" | "YES";
-      }>(`
-        SELECT
-          "column_name" AS "columnName",
-          "is_nullable" AS "isNullable"
-        FROM "information_schema"."columns"
-        WHERE "table_schema" = 'public'
-          AND "table_name" = 'chat_event_snapshots'
-          AND "column_name" IN (
-            'last_event_id', 'parent_snapshot_id', 'is_head'
-          )
-        ORDER BY "column_name"
-      `);
-      assert.deepEqual(columns.rows, [
-        { columnName: "last_event_id", isNullable: "NO" },
-      ]);
-      await assert.rejects(
-        client.query(
-          `
-            INSERT INTO "chat_event_snapshots" (
-              "chat_thread_id", "last_seq_id", "last_event_id",
-              "archive_schema_version", "object_key"
-            ) VALUES ($1, 26, $2, 5, 'snapshot-contract/duplicate-final')
-          `,
-          [threadIds[0], "00000000-0000-4000-8000-000000092814"],
-        ),
-        (error: unknown) => {
-          return (
-            typeof error === "object" &&
-            error !== null &&
-            "code" in error &&
-            error.code === "23505"
-          );
-        },
-      );
-
-      console.log(
-        "   ✅ greatest Snapshot watermark wins deterministic dedupe",
-      );
-      console.log("   ✅ equal watermarks preserve the existing reader order");
-      console.log("   ✅ contraction closes writes after online preparation");
-      console.log(
-        "   ✅ terminal cursor and thread/version constraints hold\n",
-      );
-    } finally {
-      await client.end();
-    }
-  } finally {
-    await dropDatabase(testDb);
-  }
-}
-
 async function validateUsagePackPendingSnapshotSerializationMigration(): Promise<void> {
   console.log(
     "=== Phase 1.30: Validate usage-pack pending snapshot serialization ===\n",
@@ -10898,13 +10853,13 @@ async function main(): Promise<void> {
     await validateConnectionScopedVariableUniqueness();
     await validateInactiveRunModelFinalization();
     await validateCustomConnectorSecretPlaceholderCanonicalization();
-    await validateChatEventSnapshotContraction();
     await validateAgentRunMetadataStage2Preflight();
     await validateAgentRunMetadataStage2Lock();
     await validateAgentRunMetadataStage2Index();
     await validateAgentRunMetadataStage2Final();
     await validateAgentRunMetadataStage2Runner();
     await validateAgentRunLaunchSnapshotMigration();
+    await validateOfficialAutomationResultEmailMigration();
     await validateFeishuConnectorOwnershipCleanup();
     await validateConnectorAccountExpansion();
     await validateConnectorAuthorizationAccountMutationPresence();
@@ -10915,6 +10870,13 @@ async function main(): Promise<void> {
     await validateSlackOfficialBrandMigration();
     await validateAgentDraftsCompatibilityRelation();
     await validateWorkflowCompatibilityViews();
+    await validateBuiltInProviderDiscriminatorMigration(dbUrl.toString());
+    await validateOrgMetadataAcquisitionFirstPartySourceExpansion(
+      dbUrl.toString(),
+    );
+    await validateOrgPlanEntitlementRestrictionExpansion(dbUrl.toString());
+    await validateOrgPlanEntitlementRestrictionBackfill(dbUrl.toString());
+    await validateOrgPlanEntitlementRestrictionNotNull(dbUrl.toString());
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -10935,14 +10897,18 @@ async function main(): Promise<void> {
     await validateCanonicalIntegrationIdentitySchema(dbUrl1);
     await validatePermanentAgentRunBuiltInModelKeyState(dbUrl1);
     await validatePermanentTriggerAndFunctionInventory(dbUrl1);
+    await validatePermanentOrgMetadataAcquisitionFirstPartySourceState(dbUrl1);
+    await validatePermanentOrgPlanEntitlementRestrictionState(dbUrl1);
+    await validatePermanentBuiltInProviderDiscriminatorState(dbUrl1);
     await validateActiveLegacyDatabaseIdentityInventory(dbUrl1);
-    await validateConnectorOAuthScopeFacts(dbUrl1);
     await validatePermanentArtifactTriggerBehavior(dbUrl1);
     await validatePermanentAgentRunMetadataState(dbUrl1);
     await validatePermanentBuiltInModelCooldownState(dbUrl1);
     await validatePermanentBuiltInModelKeyState(dbUrl1);
     await validatePermanentSlackPublicBrandState(dbUrl1);
     await validateAgentRunLaunchSnapshotSchema(dbUrl1);
+    await validateAgentRunOfficialWorkflowProvenanceSchema(dbUrl1);
+    await validateOfficialAutomationResultEmailSchema(dbUrl1);
     await validateExpandedBrowserSchema(dbUrl1);
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
     await validateChatEventContextPointerConstraints(dbUrl1);
@@ -10952,6 +10918,28 @@ async function main(): Promise<void> {
 
     // Step 2: Backup and regenerate migrations
     console.log("=== Phase 3: Test regenerated migrations ===\n");
+    const orgMetadataAcquisitionFirstPartySourceMigrationSql =
+      await fs.readFile(
+        path.join(
+          MIGRATIONS_DIR,
+          `${ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_MIGRATION}.sql`,
+        ),
+        "utf8",
+      );
+    const orgPlanEntitlementRestrictionMigrationSql = await fs.readFile(
+      path.join(
+        MIGRATIONS_DIR,
+        `${ORG_PLAN_ENTITLEMENT_RESTRICTION_MIGRATION}.sql`,
+      ),
+      "utf8",
+    );
+    const orgPlanEntitlementRestrictionBackfillMigrationSql = await fs.readFile(
+      path.join(
+        MIGRATIONS_DIR,
+        `${ORG_PLAN_ENTITLEMENT_RESTRICTION_BACKFILL_MIGRATION}.sql`,
+      ),
+      "utf8",
+    );
     await backupMigrations();
     migrationsBackedUp = true;
     await generateFreshMigrations();
@@ -10961,11 +10949,27 @@ async function main(): Promise<void> {
     const dbUrl2 = createTestDbUrl(TEST_DB_2);
     await runMigrations(dbUrl2);
     console.log("   ✅ Fresh migrations applied successfully\n");
+    await installOrgMetadataAcquisitionFirstPartySourceArtifactsOnRegeneratedSchema(
+      dbUrl2,
+      orgMetadataAcquisitionFirstPartySourceMigrationSql,
+    );
+    await installOrgPlanEntitlementRestrictionArtifactsOnRegeneratedSchema(
+      dbUrl2,
+      orgPlanEntitlementRestrictionMigrationSql,
+    );
+    await validateOrgPlanEntitlementRestrictionBackfillOnRegeneratedSchema(
+      dbUrl2,
+      orgPlanEntitlementRestrictionBackfillMigrationSql,
+    );
+    await validatePermanentOrgMetadataAcquisitionFirstPartySourceState(dbUrl2);
+    await validatePermanentOrgPlanEntitlementRestrictionState(dbUrl2);
     await validatePermanentAgentRunBuiltInModelKeyState(dbUrl2);
     await validatePermanentBuiltInModelCooldownState(dbUrl2);
     await validatePermanentBuiltInModelKeyState(dbUrl2);
     await validatePermanentSlackPublicBrandState(dbUrl2);
     await validateAgentRunLaunchSnapshotSchema(dbUrl2);
+    await validateAgentRunOfficialWorkflowProvenanceSchema(dbUrl2);
+    await validateOfficialAutomationResultEmailSchema(dbUrl2);
 
     // Step 4: Restore original migrations
     await restoreMigrations();
@@ -11002,6 +11006,9 @@ async function main(): Promise<void> {
         "   ✅ Old run creation paths synchronize metadata into agent_runs",
       );
       console.log("   ✅ Agent-run model-key canonical schemas match");
+      console.log(
+        "   ✅ Org plan restriction expansion, backfill, NOT NULL, and mirror invariants match",
+      );
       console.log("   ✅ Permanent trigger and function inventories match");
       console.log(
         "   ✅ Permanent artifact triggers preserve cascade, queue, and scope behavior",

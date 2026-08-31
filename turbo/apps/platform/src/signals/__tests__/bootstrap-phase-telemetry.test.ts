@@ -1,5 +1,4 @@
 import { waitFor } from "@testing-library/react";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -46,16 +45,12 @@ const { apiOriginMarker, posthog } = vi.hoisted(() => {
   };
 });
 
-vi.mock("posthog-js", () => {
+vi.mock("posthog-js/dist/module.slim", () => {
   return { posthog };
 });
 
 const context = testContext();
 const THREAD_ID = "b0000000-0000-4000-a000-000000000901";
-
-function disabledSharedDatabase(): Partial<Record<FeatureSwitchKey, boolean>> {
-  return { [FeatureSwitchKey.SharedChatDatabase]: false };
-}
 
 beforeEach(() => {
   posthog.capture.mockClear();
@@ -110,8 +105,6 @@ describe("bootstrap phase telemetry", () => {
     await setupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      cachedFeatureSwitches: disabledSharedDatabase(),
-      featureSwitches: disabledSharedDatabase(),
       withoutRender: true,
     });
 
@@ -128,6 +121,7 @@ describe("bootstrap phase telemetry", () => {
         local_thread_metadata_ms: expect.any(Number),
         remote_thread_metadata_ms: expect.any(Number),
         route_setup_ms: expect.any(Number),
+        skeleton_duration_ms: expect.any(Number),
         standalone_pwa: false,
         thread_metadata_source:
           "not_found" satisfies BootstrapThreadMetadataSource,
@@ -135,6 +129,12 @@ describe("bootstrap phase telemetry", () => {
         was_hidden: false,
       }),
     );
+    const skeletonDurationMs = properties?.skeleton_duration_ms;
+    if (typeof skeletonDurationMs !== "number") {
+      throw new TypeError("expected a numeric skeleton duration");
+    }
+    expect(Number.isFinite(skeletonDurationMs)).toBeTruthy();
+    expect(skeletonDurationMs).toBeGreaterThanOrEqual(0);
     expect(JSON.stringify(properties)).not.toContain(THREAD_ID);
   });
 
@@ -145,6 +145,17 @@ describe("bootstrap phase telemetry", () => {
     context.store.set(hideAppSkeleton$, context.signal);
 
     expect(timingEvents()).toHaveLength(1);
+    expect(
+      posthog.capture.mock.calls.flatMap(([eventName]) => {
+        return eventName === "app_first_skeleton_hide" ||
+          eventName === BOOTSTRAP_PHASE_TIMING_EVENT
+          ? [eventName]
+          : [];
+      }),
+    ).toStrictEqual(["app_first_skeleton_hide", BOOTSTRAP_PHASE_TIMING_EVENT]);
+    expect(timingEvents()[0]).toStrictEqual(
+      expect.objectContaining({ skeleton_duration_ms: expect.any(Number) }),
+    );
   });
 
   it("discards thread timing from an aborted navigation", async () => {
@@ -166,8 +177,6 @@ describe("bootstrap phase telemetry", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      cachedFeatureSwitches: disabledSharedDatabase(),
-      featureSwitches: disabledSharedDatabase(),
       withoutRender: true,
     });
     await snapshotRequested.promise;
@@ -198,6 +207,7 @@ describe("bootstrap phase telemetry", () => {
 
     expect(timingEvents()).toHaveLength(1);
     expect(timingEvents()[0]).not.toHaveProperty("entry_module_ready_ms");
+    expect(timingEvents()[0]).not.toHaveProperty("skeleton_duration_ms");
     expect(timingEvents()[0]).toStrictEqual(
       expect.objectContaining({
         final_route: ROUTES.error,
@@ -206,5 +216,24 @@ describe("bootstrap phase telemetry", () => {
         route_setup_ms: expect.any(Number),
       }),
     );
+    expect(
+      posthog.capture.mock.calls.filter(([eventName]) => {
+        return eventName === "app_first_skeleton_hide";
+      }),
+    ).toHaveLength(0);
+  });
+
+  it("omits an invalid skeleton timing without changing the total event", async () => {
+    window.__appBootstrapStart = Number.NaN;
+
+    await setupPage({ context, path: ROUTES.error, withoutRender: true });
+
+    expect(timingEvents()).toHaveLength(1);
+    expect(timingEvents()[0]).not.toHaveProperty("skeleton_duration_ms");
+    expect(
+      posthog.capture.mock.calls.filter(([eventName]) => {
+        return eventName === "app_first_skeleton_hide";
+      }),
+    ).toHaveLength(1);
   });
 });

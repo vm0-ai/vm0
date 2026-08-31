@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  CONNECTOR_CATALOG_VALIDATION_FAILURE_CODES,
+  connectorCatalogCompatibilityReasonSchema,
+} from "@okouai/connectors/connector-catalog/contracts";
 
 import {
   connectorAuthMethodIdSchema,
@@ -7,25 +11,10 @@ import {
 
 export const connectorCatalogSyncFailureCodeSchema = z.enum([
   "source-unavailable",
-  "object-too-large",
-  "invalid-json",
-  "invalid-pointer",
-  "invalid-reference",
-  "digest-mismatch",
-  "unsupported-schema",
-  "invalid-artifact",
-  "public-leakage",
-  "relationship-mismatch",
-  "invalid-compression",
+  ...CONNECTOR_CATALOG_VALIDATION_FAILURE_CODES,
 ]);
 
-export const connectorCatalogCompatibilityReasonSchema = z.enum([
-  "missing-grant-provider",
-  "missing-access-provider",
-  "missing-revoke-provider",
-  "provider-contract-mismatch",
-  "missing-platform-configuration",
-]);
+export { connectorCatalogCompatibilityReasonSchema };
 
 export const connectorCatalogFilteredAuthMethodSchema = z.object({
   connectorSlug: connectorSlugSchema,
@@ -89,9 +78,7 @@ export const connectorCatalogDiagnosticsSchema = z.object({
 export type ConnectorCatalogSyncFailureCode = z.infer<
   typeof connectorCatalogSyncFailureCodeSchema
 >;
-export type ConnectorCatalogCompatibilityReason = z.infer<
-  typeof connectorCatalogCompatibilityReasonSchema
->;
+export type { ConnectorCatalogCompatibilityReason } from "@okouai/connectors/connector-catalog/contracts";
 export type ConnectorCatalogFilteredAuthMethod = z.infer<
   typeof connectorCatalogFilteredAuthMethodSchema
 >;

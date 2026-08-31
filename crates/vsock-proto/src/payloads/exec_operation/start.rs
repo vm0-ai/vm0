@@ -116,6 +116,23 @@ pub enum ExecControlPolicy {
 }
 
 /// Parameters for encoding an exec_start payload with extended metadata.
+///
+/// # Process contract
+///
+/// The `lifecycle`, `role`, and `control` fields form one semantic contract. The
+/// following combinations are accepted:
+///
+/// | Role | Lifecycle | Control | Meaning |
+/// | --- | --- | --- | --- |
+/// | [`ExecProcessRole::Workload`] | [`ExecLifecyclePolicy::OneShot`] | [`ExecControlPolicy::Disabled`] | One-shot contained workload |
+/// | [`ExecProcessRole::Workload`] | [`ExecLifecyclePolicy::Supervised`] | [`ExecControlPolicy::Disabled`] | Ordinary supervised workload |
+/// | [`ExecProcessRole::Workload`] | [`ExecLifecyclePolicy::Supervised`] | `Enabled { sink: false, .. }` | Controlled supervised workload without a guest sink |
+/// | [`ExecProcessRole::Agent`] | [`ExecLifecyclePolicy::Supervised`] | `Enabled { sink: true, .. }` | Controlled Agent operation with a guest sink |
+///
+/// An `Agent` therefore requires a supervised lifecycle and an enabled control
+/// sink. A controlled `Workload` is supervised with an enabled control channel
+/// but `sink: false`. Every other combination is rejected during both encoding
+/// and decoding by [`validate_exec_process_contract`].
 pub struct ExecStartEncodeRequest<'a> {
     /// Process lifecycle policy to encode.
     pub lifecycle: ExecLifecyclePolicy,
@@ -150,6 +167,10 @@ pub struct ExecStartEncodeRequest<'a> {
 }
 
 /// Decoded exec_start payload.
+///
+/// Its `lifecycle`, `role`, and `control` fields satisfy the process contract
+/// documented on [`ExecStartEncodeRequest`]. Decoding rejects every other
+/// combination.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecodedExecStart<'a> {
     /// Decoded process lifecycle policy.
@@ -294,6 +315,9 @@ fn validate_exec_timeout_policy(timeout: ExecTimeoutPolicy) -> Result<(), Protoc
 }
 
 /// Validate the semantic role, lifecycle, and transport-control combination.
+///
+/// The accepted combinations are documented on [`ExecStartEncodeRequest`].
+/// This same contract is enforced by the exec-start encoder and decoder.
 pub fn validate_exec_process_contract(
     role: ExecProcessRole,
     lifecycle: ExecLifecyclePolicy,

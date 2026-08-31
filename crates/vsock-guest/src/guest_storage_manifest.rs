@@ -327,7 +327,7 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
         .arg("--manifest-stdin")
         .env(guest_contracts::env::RUN_ID_ENV, run_id)
         .env(
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             runtime_dir,
         )
         .stdin(Stdio::piped())
@@ -634,10 +634,12 @@ fn failed_output(
         stdout: BoundedDrainResult {
             captured: Some(Vec::new()),
             capture_truncated: false,
+            stream_truncated: false,
         },
         stderr: BoundedDrainResult {
             captured: Some(Vec::new()),
             capture_truncated: false,
+            stream_truncated: false,
         },
         diagnostic: truncate_utf8(diagnostic, MAX_DIAGNOSTIC_BYTES),
     }

@@ -1,8 +1,9 @@
 import type { Locator, Page, Request, Response } from "@playwright/test";
+import { resolveApiBackendUrl } from "../api-backend-url";
 import { expect, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
-const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
+const appUrl = deriveAppUrl(resolveApiBackendUrl());
 const chatEventSchemaVersionHeader = "X-Chat-Event-Schema-Version";
 const composerConnectorSlugs = ["github", "slack", "asana"] as const;
 const responsiveFollowupThreadId = "b0000000-0000-4000-a000-000000000734";
@@ -51,6 +52,11 @@ interface ModelPickerGeometry {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function mockChatEventCursorId(seqId: number): string {
+  const suffix = seqId.toString(16).padStart(12, "0").slice(-12);
+  return `00000000-0000-4000-8000-${suffix}`;
 }
 
 async function negotiatedChatEventHeaders(
@@ -169,7 +175,7 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
       contentType: "image/svg+xml",
     });
   });
-  await page.route("**/api/connector-catalog/status", async (route) => {
+  await page.route("**/api/connector-catalog/discovery", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
     if (!isConnectorCatalogStatusResponse(body)) {
@@ -217,7 +223,6 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
 async function enableFeatureSwitch(
   page: Page,
   key:
-    | "chatForward"
     | "composerImageAnnotation"
     | "imageModelSelection"
     | "responsiveFollowupCards",
@@ -243,10 +248,6 @@ async function enableFeatureSwitch(
 
 async function enableResponsiveFollowupCards(page: Page): Promise<void> {
   await enableFeatureSwitch(page, "responsiveFollowupCards");
-}
-
-async function enableChatForward(page: Page): Promise<void> {
-  await enableFeatureSwitch(page, "chatForward");
 }
 
 async function mockUnrestrictedModelBilling(page: Page): Promise<void> {
@@ -522,9 +523,30 @@ async function mockChatThread(
         .filter((row) => {
           return typeof row.seqId === "number" && row.seqId > sinceSeqId;
         });
+      const lastRow = rows.at(-1);
+      const lastSeqId =
+        lastRow !== undefined && typeof lastRow.seqId === "number"
+          ? lastRow.seqId
+          : null;
+      const cursor =
+        lastSeqId !== null
+          ? {
+              lastEventId: mockChatEventCursorId(lastSeqId),
+              lastSeqId,
+            }
+          : sinceEventId === null
+            ? { lastEventId: null, lastSeqId: 0 }
+            : {
+                lastEventId: sinceEventId,
+                lastSeqId: sinceSeqId,
+              };
       await route.fulfill({
         headers: await negotiatedChatEventHeaders(route.request()),
-        json: { rows },
+        json: {
+          rows,
+          cursor,
+          hasMore: false,
+        },
       });
     },
   );
@@ -1249,6 +1271,148 @@ test("chat page displays tagline after onboarding", async ({ page }) => {
   });
 });
 
+test("home content keeps its reserved offset while the growth entry loads", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const orgRequested = deferred();
+  const releaseOrg = deferred();
+  const slackStatusRequested = deferred();
+  const releaseSlackStatus = deferred();
+  await page.route(
+    (url) => url.pathname === "/api/org",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      orgRequested.resolve();
+      await releaseOrg.promise;
+      await route.fulfill({
+        json: { id: "org_admin", name: "Admin Org", role: "admin" },
+      });
+    },
+  );
+  await page.route("**/api/integrations/slack", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    slackStatusRequested.resolve();
+    await releaseSlackStatus.promise;
+    await route.fulfill({
+      json: {
+        connectUrl: null,
+        environment: {
+          missingSecrets: [],
+          missingVars: [],
+          requiredSecrets: [],
+          requiredVars: [],
+        },
+        installUrl: null,
+        isAdmin: true,
+        isConnected: false,
+        isInstalled: true,
+        reinstallUrl: null,
+        scopeMismatch: false,
+        workspaceName: null,
+      },
+    });
+  });
+
+  await page.goto(appUrl);
+  await page.waitForURL(/\/agents\/[^/]+\/chat\/?$/, { timeout: 30_000 });
+  await orgRequested.promise;
+
+  const growthEntry = page.getByTestId("growth-entry");
+  const main = page.locator("main");
+  const tagline = page.getByTestId("chat-tagline");
+  await expect(tagline).toBeVisible({ timeout: 20_000 });
+  await expect(growthEntry).not.toBeAttached();
+  const mainBefore = await main.boundingBox();
+  const taglineBefore = await tagline.boundingBox();
+  if (!mainBefore || !taglineBefore) {
+    throw new Error("Home content has no measurable layout before entry load");
+  }
+  // Reserve the former 56px header slot before either async dependency resolves.
+  expect(mainBefore.y).toBe(56);
+
+  releaseOrg.resolve();
+  await slackStatusRequested.promise;
+  await expect(growthEntry).not.toBeAttached();
+  const mainAfterRole = await main.boundingBox();
+  const taglineAfterRole = await tagline.boundingBox();
+  if (!mainAfterRole || !taglineAfterRole) {
+    throw new Error("Home content has no measurable layout after role load");
+  }
+  expect(mainAfterRole.y).toBe(mainBefore.y);
+  expect(mainAfterRole.height).toBe(mainBefore.height);
+  expect(taglineAfterRole.y).toBe(taglineBefore.y);
+
+  releaseSlackStatus.resolve();
+  await expect(growthEntry).toBeVisible();
+  await expect(growthEntry).toContainText("Invite humans 🤝");
+  const mainAfter = await main.boundingBox();
+  const taglineAfter = await tagline.boundingBox();
+  if (!mainAfter || !taglineAfter) {
+    throw new Error("Home content has no measurable layout after entry load");
+  }
+
+  expect(mainAfter.y).toBe(mainBefore.y);
+  expect(mainAfter.height).toBe(mainBefore.height);
+  expect(taglineAfter.y).toBe(taglineBefore.y);
+});
+
+test("non-admin home content keeps the reserved desktop offset", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.route(
+    (url) => url.pathname === "/api/org",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        json: { id: "org_member", name: "Member Org", role: "member" },
+      });
+    },
+  );
+  const memberOrgLoaded = page.waitForResponse((response) => {
+    const request = response.request();
+    return (
+      response.ok() &&
+      request.method() === "GET" &&
+      new URL(response.url()).pathname === "/api/org"
+    );
+  });
+
+  await page.goto(appUrl);
+  await page.waitForURL(/\/agents\/[^/]+\/chat\/?$/, { timeout: 30_000 });
+  await memberOrgLoaded;
+  await expect(page.getByTestId("chat-tagline")).toBeVisible({
+    timeout: 20_000,
+  });
+  // Let the member role commit before reading the stable layout.
+  await page.evaluate(async () => {
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          resolve();
+        });
+      });
+    });
+  });
+
+  await expect(page.getByTestId("growth-entry")).not.toBeAttached();
+  const mainBox = await page.locator("main").boundingBox();
+  if (!mainBox) {
+    throw new Error("Non-admin home content has no measurable layout");
+  }
+  expect(mainBox.y).toBe(56);
+});
+
 test("checkmark keeps its column across selection states and previews deactivation", async ({
   page,
 }) => {
@@ -1542,8 +1706,9 @@ test("chat composer keeps standard tool icons and Send inside on narrow screens"
   });
   const sendButton = composer.getByRole("button", { name: "Send" });
 
-  await expect(connectorsButton.locator("img")).toHaveCount(2);
+  await expect(connectorsButton.locator("img")).toHaveCount(0);
   await connectorsButton.click();
+  await expect(connectorsButton.locator("img")).toHaveCount(2);
   await expect(
     page.getByRole("switch", { name: "Disable Cloud browser" }),
   ).toBeVisible();
@@ -1590,7 +1755,6 @@ test("chat composer keeps standard tool icons and Send inside on narrow screens"
 test("forward composer stays inside the modal on narrow screens", async ({
   page,
 }) => {
-  await enableChatForward(page);
   await page.setViewportSize({ width: 360, height: 780 });
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });

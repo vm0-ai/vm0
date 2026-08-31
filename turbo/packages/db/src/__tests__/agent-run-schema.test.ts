@@ -54,7 +54,7 @@ describe("agentRuns circular foreign keys", () => {
       "workflow_automation_id",
     );
     expect(workflowAutomation.foreignKey.getName()).toBe(
-      "agent_runs_workflow_automation_id_zero_workflow_automations_id_fk",
+      "agent_runs_workflow_automation_id_workflow_automations_id_fk",
     );
     expect(workflowAutomation.foreignKey.onDelete).toBe("set null");
     expect(workflowAutomation.reference.columns).toEqual([
@@ -81,9 +81,11 @@ describe("agentRuns circular foreign keys", () => {
     expect(agentRuns.autonomyBudget.hasDefault).toBe(false);
     expect(agentRuns.launchSnapshot.notNull).toBe(false);
     expect(agentRuns.launchSnapshot.hasDefault).toBe(false);
-    expect(agentRuns.chatToolActivityEnabled.notNull).toBe(true);
-    expect(agentRuns.chatToolActivityEnabled.hasDefault).toBe(true);
-    expect(agentRuns.chatToolActivityEnabled.default).toBe(false);
+    expect(agentRuns.officialWorkflowProvenance.name).toBe(
+      "official_workflow_provenance",
+    );
+    expect(agentRuns.officialWorkflowProvenance.notNull).toBe(false);
+    expect(agentRuns.officialWorkflowProvenance.hasDefault).toBe(false);
     expect(Reflect.has(agentRuns, "vm0ModelKeyId")).toBe(false);
     expect(agentRuns.builtInModelKeyId.notNull).toBe(false);
     expect(agentRuns.builtInModelKeyId.hasDefault).toBe(false);
@@ -179,7 +181,42 @@ describe("agentRuns circular foreign keys", () => {
     expect(launchSnapshotSql).toContain("'pi'");
     expect(launchSnapshotSql).toContain(">= 1");
     expect(launchSnapshotSql).toContain("<= 255");
-    expect(launchSnapshotSql).not.toContain("chat_tool_activity_enabled");
+
+    const officialWorkflowProvenanceCheck = agentRunConfig.checks.find(
+      (check) => {
+        return check.name === "agent_runs_official_workflow_provenance_check";
+      },
+    );
+    expect(officialWorkflowProvenanceCheck).toBeDefined();
+    if (!officialWorkflowProvenanceCheck) {
+      throw new Error("Missing Official Workflow provenance check");
+    }
+    const officialWorkflowProvenanceSql = new PgDialect().sqlToQuery(
+      officialWorkflowProvenanceCheck.value,
+    ).sql;
+    for (const identity of [
+      "schemaVersion",
+      "definitions",
+      "name",
+      "revision",
+      "artifact",
+      "orgId",
+      "userId",
+      "storageName",
+      "storageId",
+      "storageVersion",
+    ]) {
+      expect(officialWorkflowProvenanceSql).toContain(identity);
+    }
+    expect(officialWorkflowProvenanceSql).toContain(
+      '"agent_runs"."official_workflow_provenance" IS NULL',
+    );
+    expect(officialWorkflowProvenanceSql).toContain("jsonb_array_length");
+    expect(officialWorkflowProvenanceSql).toContain("jsonb_path_exists");
+    expect(officialWorkflowProvenanceSql).toContain("keyvalue()");
+    expect(officialWorkflowProvenanceSql).toContain("__system__");
+    expect(officialWorkflowProvenanceSql).toContain("__org__");
+    expect(officialWorkflowProvenanceSql).toContain("^[0-9a-f]{64}$");
 
     const agentSessionRun = foreignKeyReference(
       chatThreads,

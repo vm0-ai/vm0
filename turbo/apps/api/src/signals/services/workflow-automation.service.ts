@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 import { command } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { OfficialWorkflowParameterBinding } from "@okouai/api-contracts/contracts/official-workflow-bindings";
@@ -60,6 +62,7 @@ import {
   strapiWorkflowAutomations,
 } from "@okouai/db/schema/strapi-integration";
 import {
+  officialWorkflowAutomationIdentities,
   workflowUserAutomationThreads,
   workflowAutomations,
   workflowWebhookAutomations,
@@ -138,7 +141,6 @@ import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecy
 import { readAcceptedOfficialWorkflowCatalog } from "./official-workflow-catalog-read.service";
 import {
   OFFICIAL_WORKFLOW_AUTOMATION_READ_ONLY_MESSAGE,
-  OFFICIAL_WORKFLOW_EXECUTION_UNAVAILABLE_MESSAGE,
   OFFICIAL_WORKFLOW_RECONFIGURATION_IN_PROGRESS_MESSAGE,
 } from "./official-workflow-constants";
 
@@ -277,6 +279,7 @@ interface CreateEventAutomationWorkflowContext {
   readonly agentId: string;
   readonly workflowTitle: string;
   readonly publicBrand: PublicBrand;
+  readonly automationId?: string;
 }
 
 interface ScheduleColumns {
@@ -993,7 +996,7 @@ function canUseAgent(agent: UsableAgent, member: WorkflowMember): boolean {
 
 /**
  * Resolve the workflow's single owning agent for an automation. Under 1:N the agent
- * is derived from `zero_workflows.agent_id`, not from the automation row.
+ * is derived from `workflows.agent_id`, not from the automation row.
  */
 async function loadAutomationWorkflowAgentId(
   db: ReadonlyDb,
@@ -1516,6 +1519,11 @@ export interface OfficialAutomationCreationMetadata {
   readonly blueprintKey: string;
   readonly appliedFingerprint: string;
   readonly parameterBindings: readonly OfficialWorkflowParameterBinding[];
+  readonly resultEmailEnabled: boolean;
+  readonly automationId?: string;
+  readonly installationState?: "installing" | "installed";
+  readonly intendedEnabled?: boolean;
+  readonly stagedMaterialization?: boolean;
 }
 
 export type CreateAutomationInput = (
@@ -1628,6 +1636,7 @@ async function insertEventAutomation(
     readonly workflowId: string;
     readonly agentId: string;
     readonly workflowTitle: string;
+    readonly automationId?: string;
     readonly currentTime: Date;
   },
 ): Promise<WorkflowAutomationSummary> {
@@ -1642,6 +1651,7 @@ async function insertEventAutomation(
     });
 
     const row = await insertWorkflowAutomation(tx, {
+      id: args.automationId,
       orgId: args.input.orgId,
       workflowId: args.workflowId,
       ownerUserId: args.input.member.userId,
@@ -1675,6 +1685,7 @@ async function insertWebhookEventAutomation(
     readonly workflowId: string;
     readonly agentId: string;
     readonly workflowTitle: string;
+    readonly automationId?: string;
     readonly currentTime: Date;
     readonly publicBrand: PublicBrand;
   },
@@ -1700,6 +1711,7 @@ async function insertWebhookEventAutomation(
     });
 
     const row = await insertWorkflowAutomation(tx, {
+      id: args.automationId,
       orgId: args.input.orgId,
       workflowId: args.workflowId,
       ownerUserId: args.input.member.userId,
@@ -1842,6 +1854,7 @@ async function createGmailEventAutomationForWorkflow(
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
     workflowTitle: args.context.workflowTitle,
+    automationId: args.context.automationId,
     currentTime: nowDate(),
   });
   if (!args.input.enabled) {
@@ -1898,6 +1911,7 @@ async function insertScheduleAutomation(
     readonly workflowId: string;
     readonly agentId: string;
     readonly workflowTitle: string;
+    readonly automationId?: string;
     readonly columns: ScheduleColumns;
     readonly nextRunAt: Date | null;
     readonly currentTime: Date;
@@ -1914,6 +1928,7 @@ async function insertScheduleAutomation(
     });
 
     const row = await insertWorkflowAutomation(tx, {
+      id: args.automationId,
       orgId: args.input.orgId,
       workflowId: args.workflowId,
       ownerUserId: args.input.member.userId,
@@ -1954,6 +1969,7 @@ async function createWebhookEventAutomationForWorkflow(
       workflowId: args.context.workflowId,
       agentId: args.context.agentId,
       workflowTitle: args.context.workflowTitle,
+      automationId: args.context.automationId,
       currentTime: nowDate(),
       publicBrand: args.context.publicBrand,
     },
@@ -1994,6 +2010,7 @@ async function createGithubWorkflowRunEventAutomationForWorkflow(
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
     workflowTitle: args.context.workflowTitle,
+    automationId: args.context.automationId,
     currentTime: nowDate(),
   });
   signal.throwIfAborted();
@@ -2029,6 +2046,7 @@ async function createGithubWebhookEventAutomationForWorkflow(
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
     workflowTitle: args.context.workflowTitle,
+    automationId: args.context.automationId,
     currentTime: nowDate(),
   });
   signal.throwIfAborted();
@@ -2076,6 +2094,7 @@ async function createGoogleCalendarEventAutomationForWorkflow(
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
     workflowTitle: args.context.workflowTitle,
+    automationId: args.context.automationId,
     currentTime: nowDate(),
   });
   if (!args.input.enabled) {
@@ -2179,6 +2198,7 @@ async function createGoogleFormsEventAutomationForWorkflow(
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
     workflowTitle: args.context.workflowTitle,
+    automationId: args.context.automationId,
     currentTime: nowDate(),
   });
   const resultSummary = googleFormsSummaryWithWarning(
@@ -2262,6 +2282,7 @@ async function createGoogleMeetEventAutomationForWorkflow(
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
     workflowTitle: args.context.workflowTitle,
+    automationId: args.context.automationId,
     currentTime: nowDate(),
   });
   signal.throwIfAborted();
@@ -2379,6 +2400,7 @@ async function createNotionEventAutomationForWorkflow(
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
     workflowTitle: args.context.workflowTitle,
+    automationId: args.context.automationId,
     currentTime: nowDate(),
   });
   signal.throwIfAborted();
@@ -2434,6 +2456,7 @@ async function createStrapiEventAutomationForWorkflow(
       currentTime,
     });
     const row = await insertWorkflowAutomation(tx, {
+      id: args.context.automationId,
       orgId: args.input.orgId,
       workflowId: args.context.workflowId,
       ownerUserId: args.input.member.userId,
@@ -2495,6 +2518,7 @@ async function createStripeInvoicePaidEventAutomationForWorkflow(
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
     workflowTitle: args.context.workflowTitle,
+    automationId: args.context.automationId,
     currentTime: nowDate(),
   });
   signal.throwIfAborted();
@@ -2536,6 +2560,7 @@ async function createChatRunFinishedEventAutomationForWorkflow(
       readonly workflowId: string;
       readonly agentId: string;
       readonly workflowTitle: string;
+      readonly automationId?: string;
     };
     readonly input: CreateChatRunFinishedEventAutomationInput;
   },
@@ -2579,6 +2604,7 @@ async function createChatRunFinishedEventAutomationForWorkflow(
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
     workflowTitle: args.context.workflowTitle,
+    automationId: args.context.automationId,
     currentTime: nowDate(),
   });
   signal.throwIfAborted();
@@ -2595,6 +2621,7 @@ const createEventAutomationForWorkflow$ = command(
       readonly agentId: string;
       readonly workflowTitle: string;
       readonly publicBrand: PublicBrand;
+      readonly automationId?: string;
     },
     signal: AbortSignal,
   ): Promise<AutomationResult> => {
@@ -2720,6 +2747,177 @@ const createEventAutomationForWorkflow$ = command(
   },
 );
 
+async function lockPlainOfficialAutomation(
+  db: Db,
+  automationId: string,
+): Promise<AutomationRow> {
+  const [automation] = await db
+    .select()
+    .from(workflowAutomations)
+    .where(
+      and(
+        eq(workflowAutomations.id, automationId),
+        isNull(workflowAutomations.officialBlueprintKey),
+        isNull(workflowAutomations.officialAppliedFingerprint),
+        isNull(workflowAutomations.officialReconciliationStatus),
+        isNull(workflowAutomations.officialParameterBindings),
+        isNull(workflowAutomations.officialIntendedEnabled),
+        isNull(workflowAutomations.officialResultEmailEnabled),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  if (!automation) {
+    throw new Error("Failed to lock new Official Workflow automation");
+  }
+  return automation;
+}
+
+async function stagedMaterializationReservationIsOwned(
+  db: Db,
+  automation: AutomationRow,
+  automationId: string,
+  metadata: OfficialAutomationCreationMetadata,
+): Promise<boolean> {
+  if (metadata.stagedMaterialization !== true) {
+    return true;
+  }
+  if (
+    metadata.automationId === undefined ||
+    metadata.automationId !== automationId ||
+    automation.enabled
+  ) {
+    throw new Error("Official materialization identity is incomplete");
+  }
+  const [reservation] = await db
+    .select({
+      retainedAppliedFingerprint:
+        officialWorkflowAutomationIdentities.retainedAppliedFingerprint,
+      retainedParameterBindings:
+        officialWorkflowAutomationIdentities.retainedParameterBindings,
+      retainedIntendedEnabled:
+        officialWorkflowAutomationIdentities.retainedIntendedEnabled,
+    })
+    .from(officialWorkflowAutomationIdentities)
+    .where(
+      and(
+        eq(officialWorkflowAutomationIdentities.id, metadata.automationId),
+        eq(
+          officialWorkflowAutomationIdentities.blueprintKey,
+          metadata.blueprintKey,
+        ),
+        eq(
+          officialWorkflowAutomationIdentities.workflowId,
+          automation.workflowId,
+        ),
+        eq(officialWorkflowAutomationIdentities.state, "reconciling"),
+        isNull(officialWorkflowAutomationIdentities.automationId),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  return (
+    reservation?.retainedAppliedFingerprint === metadata.appliedFingerprint &&
+    isDeepStrictEqual(
+      reservation.retainedParameterBindings,
+      metadata.parameterBindings,
+    ) &&
+    reservation.retainedIntendedEnabled === (metadata.intendedEnabled ?? true)
+  );
+}
+
+async function upsertCreatedOfficialAutomationIdentity(
+  db: Db,
+  automation: AutomationRow,
+  metadata: OfficialAutomationCreationMetadata,
+  currentTime: Date,
+): Promise<void> {
+  await db
+    .insert(officialWorkflowAutomationIdentities)
+    .values({
+      id: automation.id,
+      workflowId: automation.workflowId,
+      automationId: automation.id,
+      blueprintKey: metadata.blueprintKey,
+      state: "active",
+      retainedParameterBindings: null,
+      retainedIntendedEnabled: null,
+      retainedAppliedFingerprint: null,
+      createdAt: currentTime,
+      updatedAt: currentTime,
+    })
+    .onConflictDoUpdate({
+      target: [
+        officialWorkflowAutomationIdentities.workflowId,
+        officialWorkflowAutomationIdentities.blueprintKey,
+      ],
+      set: {
+        automationId: automation.id,
+        state: "active",
+        retainedParameterBindings: null,
+        retainedIntendedEnabled: null,
+        retainedAppliedFingerprint: null,
+        updatedAt: currentTime,
+      },
+    });
+}
+
+async function persistOfficialAutomationMetadata(
+  db: Db,
+  automationId: string,
+  metadata: OfficialAutomationCreationMetadata,
+) {
+  const plain = await lockPlainOfficialAutomation(db, automationId);
+  if (
+    !(await stagedMaterializationReservationIsOwned(
+      db,
+      plain,
+      automationId,
+      metadata,
+    ))
+  ) {
+    return { kind: "reservation-lost" as const };
+  }
+  const currentTime = nowDate();
+  const [updated] = await db
+    .update(workflowAutomations)
+    .set({
+      officialBlueprintKey: metadata.blueprintKey,
+      officialAppliedFingerprint: metadata.appliedFingerprint,
+      officialReconciliationStatus:
+        metadata.stagedMaterialization === true ? "reconciling" : "current",
+      officialParameterBindings: [...metadata.parameterBindings],
+      officialIntendedEnabled: metadata.intendedEnabled ?? true,
+      officialResultEmailEnabled: metadata.resultEmailEnabled,
+      updatedAt: currentTime,
+    })
+    .where(
+      and(
+        eq(workflowAutomations.id, automationId),
+        eq(workflowAutomations.updatedAt, plain.updatedAt),
+        isNull(workflowAutomations.officialBlueprintKey),
+        isNull(workflowAutomations.officialAppliedFingerprint),
+        isNull(workflowAutomations.officialReconciliationStatus),
+        isNull(workflowAutomations.officialParameterBindings),
+        isNull(workflowAutomations.officialIntendedEnabled),
+        isNull(workflowAutomations.officialResultEmailEnabled),
+      ),
+    )
+    .returning(workflowAutomationColumns());
+  if (!updated) {
+    throw new Error("Failed to mark Official Workflow automation");
+  }
+  if (metadata.stagedMaterialization !== true) {
+    await upsertCreatedOfficialAutomationIdentity(
+      db,
+      updated,
+      metadata,
+      currentTime,
+    );
+  }
+  return { kind: "attached" as const, row: updated };
+}
+
 async function attachOfficialAutomationMetadata(
   db: Db,
   result: AutomationResult,
@@ -2729,25 +2927,38 @@ async function attachOfficialAutomationMetadata(
   if (result.kind !== "ok" || metadata === undefined) {
     return result;
   }
-  const [row] = await db
-    .update(workflowAutomations)
-    .set({
-      officialBlueprintKey: metadata.blueprintKey,
-      officialAppliedFingerprint: metadata.appliedFingerprint,
-      officialReconciliationStatus: "current",
-      officialParameterBindings: [...metadata.parameterBindings],
-      officialIntendedEnabled: true,
-      updatedAt: nowDate(),
-    })
-    .where(eq(workflowAutomations.id, result.summary.id))
-    .returning(workflowAutomationColumns());
+  const attached = await db.transaction(async (tx) => {
+    return await persistOfficialAutomationMetadata(
+      tx,
+      result.summary.id,
+      metadata,
+    );
+  });
   signal.throwIfAborted();
-  if (!row) {
-    throw new Error("Failed to mark Official Workflow automation");
+  if (attached.kind === "reservation-lost") {
+    await db
+      .delete(workflowAutomations)
+      .where(
+        and(
+          eq(workflowAutomations.id, result.summary.id),
+          eq(workflowAutomations.enabled, false),
+          isNull(workflowAutomations.officialBlueprintKey),
+          isNull(workflowAutomations.officialAppliedFingerprint),
+          isNull(workflowAutomations.officialReconciliationStatus),
+          isNull(workflowAutomations.officialParameterBindings),
+          isNull(workflowAutomations.officialIntendedEnabled),
+          isNull(workflowAutomations.officialResultEmailEnabled),
+        ),
+      );
+    signal.throwIfAborted();
+    return {
+      kind: "conflict",
+      message: "Official Workflow reconciliation was superseded",
+    };
   }
   return {
     kind: "ok",
-    summary: await rowToSummary(db, row, {
+    summary: await rowToSummary(db, attached.row, {
       chatThreadId: result.summary.chatThreadId,
     }),
   };
@@ -2776,7 +2987,8 @@ export const createWorkflowAutomation$ = command(
       args.officialInstallation !== undefined &&
       (workflow.officialDefinitionName !==
         args.officialInstallation.definitionName ||
-        workflow.officialInstallationState !== "installing" ||
+        workflow.officialInstallationState !==
+          (args.officialInstallation.installationState ?? "installing") ||
         workflow.ownerUserId !== args.member.userId)
     ) {
       return { kind: "not-found" };
@@ -2822,6 +3034,7 @@ export const createWorkflowAutomation$ = command(
           agentId: agent.id,
           workflowTitle,
           publicBrand,
+          automationId: args.officialInstallation?.automationId,
         },
         signal,
       );
@@ -2856,6 +3069,7 @@ export const createWorkflowAutomation$ = command(
       workflowId: workflow.id,
       agentId: agent.id,
       workflowTitle,
+      automationId: args.officialInstallation?.automationId,
       columns: cols,
       nextRunAt,
       currentTime: now,
@@ -2883,6 +3097,98 @@ export interface OfficialAutomationEventPreparation {
   readonly eventConfig: WorkflowAutomationEventConfig;
   readonly googleFormsSeedCursor?: string;
   readonly strapiIntegrationId?: string;
+}
+
+type OfficialAutomationSubtypeTransitionAutomation = Pick<
+  AutomationRow,
+  "id" | "orgId" | "ownerUserId" | "eventType" | "enabled"
+>;
+
+/**
+ * Brings durable provider-specific rows into line with a structurally new
+ * Official Automation configuration. The caller owns the surrounding
+ * catalog/workflow/Automation locks and transaction.
+ */
+export async function syncOfficialAutomationSubtypeRows(
+  db: Db,
+  args: {
+    readonly current: OfficialAutomationSubtypeTransitionAutomation;
+    readonly preparation: OfficialAutomationEventPreparation | undefined;
+    readonly webhookTierEligible: boolean;
+    readonly currentTime: Date;
+  },
+  signal: AbortSignal,
+): Promise<AutomationActionFailure | null> {
+  const [webhook] = await db
+    .select({ automationId: workflowWebhookAutomations.automationId })
+    .from(workflowWebhookAutomations)
+    .where(eq(workflowWebhookAutomations.automationId, args.current.id))
+    .limit(1);
+  signal.throwIfAborted();
+  if (args.current.eventType === "webhook-received") {
+    if (!args.webhookTierEligible) {
+      return workflowWebhookTeamRequiredResult();
+    }
+    if (!webhook) {
+      const token = mintWorkflowWebhookToken();
+      const secret = mintWorkflowWebhookSecret();
+      await db.insert(workflowWebhookAutomations).values({
+        automationId: args.current.id,
+        tokenHash: hashWorkflowWebhookToken(token),
+        encryptedToken: await encryptWorkflowWebhookToken(token, {
+          orgId: args.current.orgId,
+          userId: args.current.ownerUserId,
+        }),
+        encryptedSecret: await encryptWorkflowWebhookSecret(secret, {
+          orgId: args.current.orgId,
+          userId: args.current.ownerUserId,
+        }),
+        secretLastFour: secret.slice(-4),
+        createdAt: args.currentTime,
+        updatedAt: args.currentTime,
+      });
+    } else {
+      await db
+        .update(workflowWebhookAutomations)
+        .set({ disabledReason: null, updatedAt: args.currentTime })
+        .where(eq(workflowWebhookAutomations.automationId, args.current.id));
+    }
+  } else if (webhook) {
+    await db
+      .delete(workflowWebhookAutomations)
+      .where(eq(workflowWebhookAutomations.automationId, args.current.id));
+  }
+
+  const [strapi] = await db
+    .select({ automationId: strapiWorkflowAutomations.automationId })
+    .from(strapiWorkflowAutomations)
+    .where(eq(strapiWorkflowAutomations.automationId, args.current.id))
+    .limit(1);
+  signal.throwIfAborted();
+  if (args.current.eventType === "strapi-entry-published") {
+    const integrationId = args.preparation?.strapiIntegrationId;
+    if (integrationId === undefined) {
+      throw new Error("Official Strapi automation preparation disappeared");
+    }
+    if (strapi) {
+      await db
+        .update(strapiWorkflowAutomations)
+        .set({ integrationId })
+        .where(eq(strapiWorkflowAutomations.automationId, args.current.id));
+    } else {
+      await db.insert(strapiWorkflowAutomations).values({
+        automationId: args.current.id,
+        integrationId,
+        createdAt: args.currentTime,
+      });
+    }
+  } else if (strapi) {
+    await db
+      .delete(strapiWorkflowAutomations)
+      .where(eq(strapiWorkflowAutomations.automationId, args.current.id));
+  }
+  signal.throwIfAborted();
+  return null;
 }
 
 export type OfficialAutomationEventPreparationResult =
@@ -3250,10 +3556,8 @@ export const prepareOfficialAutomationReconfiguration$ = command(
     const automation = owned.automation;
     if (
       automationCreateInputIsSchedule(input) ||
-      automation.kind !== "event" ||
       automation.officialBlueprintKey === null ||
-      automation.workflowId !== input.workflowId ||
-      automation.eventType !== input.eventType
+      automation.workflowId !== input.workflowId
     ) {
       return {
         kind: "conflict",
@@ -3285,7 +3589,9 @@ export const prepareOfficialAutomationReconfiguration$ = command(
       return await prepareOfficialGoogleFormsReconfiguration(
         db,
         input,
-        automation.eventConfig,
+        automation.eventType === input.eventType
+          ? automation.eventConfig
+          : undefined,
         enabled,
         signal,
       );
@@ -3684,6 +3990,11 @@ interface AutomationActionInput {
   readonly automationId: string;
   readonly sourceRunId?: string;
   readonly inheritedAutonomyBudget?: number;
+  readonly allowReservedOfficialMaterialization?: boolean;
+}
+
+interface AutomationRunNowInput extends AutomationActionInput {
+  readonly publicBrand: PublicBrand;
 }
 
 /**
@@ -3715,7 +4026,7 @@ function manualTriggerContext(args: {
 export const runOwnedWorkflowAutomationNow$ = command(
   async (
     { set },
-    args: AutomationActionInput,
+    args: AutomationRunNowInput,
     signal: AbortSignal,
   ): Promise<WorkflowAutomationRunNowResult> => {
     const writeDb = set(writeDb$);
@@ -3725,12 +4036,6 @@ export const runOwnedWorkflowAutomationNow$ = command(
       return owned;
     }
     const { automation } = owned;
-    if (automation.officialBlueprintKey !== null) {
-      return {
-        kind: "conflict",
-        message: OFFICIAL_WORKFLOW_EXECUTION_UNAVAILABLE_MESSAGE,
-      };
-    }
     if (
       automation.eventType === "strapi-entry-published" &&
       !isFeatureEnabled(FeatureSwitchKey.StrapiIntegration, {
@@ -3804,6 +4109,7 @@ export const runOwnedWorkflowAutomationNow$ = command(
           chatThreadId,
         },
         automationContext: manualContext,
+        publicBrand: args.publicBrand,
         apiStartTime: currentTime.getTime(),
         triggerSource: manualTriggerSource(automation),
         triggerBrief:
@@ -4457,7 +4763,14 @@ export const enableWorkflowAutomation$ = command(
     }
     const { automation } = owned;
     const reconfigurationFailure =
-      officialAutomationReconfigurationFailure(automation);
+      args.allowReservedOfficialMaterialization === true
+        ? automation.officialReconciliationStatus === "reconciling"
+          ? null
+          : {
+              kind: "conflict" as const,
+              message: OFFICIAL_WORKFLOW_RECONFIGURATION_IN_PROGRESS_MESSAGE,
+            }
+        : officialAutomationReconfigurationFailure(automation);
     if (reconfigurationFailure) {
       return reconfigurationFailure;
     }

@@ -31,6 +31,10 @@ function getOrgChannelName(orgId: string): string {
   return `org:${orgId}`;
 }
 
+function getUserOrgChannelName(userId: string, orgId: string): string {
+  return `user-org:${userId}:${orgId}`;
+}
+
 function getBuiltInGenerationEventName(generationId: string): string {
   return `built-in-generation:${generationId}`;
 }
@@ -59,6 +63,7 @@ export async function createPlatformRealtimeToken(
   };
   if (orgId !== undefined) {
     capability[getOrgChannelName(orgId)] = ["subscribe"];
+    capability[getUserOrgChannelName(userId, orgId)] = ["subscribe"];
   }
   const tokenRequest = await ablyClient().auth.createTokenRequest({
     capability,
@@ -110,6 +115,37 @@ async function publishUserSignalNow(
   L.debug(`Published "${topic}" to ${userIds.length} user(s)`);
 }
 
+async function publishChatDatabaseSignalNow(
+  target: { readonly userId: string; readonly orgId: string },
+  topic: string,
+  payload: unknown,
+): Promise<void> {
+  // Version-migration fallback: already-loaded App clients can keep the
+  // pre-SharedWorker user-channel subscription for up to two days. Remove the
+  // duplicate publish after the replacement App is live and the client-version
+  // floor excludes pre-#30272 builds; follow-up #30334.
+  const channelNames = [
+    getUserOrgChannelName(target.userId, target.orgId),
+    getUserChannelName(target.userId),
+  ];
+  const client = ablyClient();
+  await Promise.all(
+    channelNames.map(async (channelName) => {
+      await client.channels.get(channelName).publish(topic, payload);
+    }),
+  );
+  L.debug(`Published "${topic}" to ${channelNames.join(", ")}`);
+}
+
+function publishChatDatabaseSignal(
+  target: { readonly userId: string; readonly orgId: string },
+  topic: string,
+  payload: unknown = null,
+): Promise<void> {
+  waitUntil(bestEffort(publishChatDatabaseSignalNow(target, topic, payload)));
+  return Promise.resolve();
+}
+
 /**
  * Schedule a per-user invalidation/notification signal.
  *
@@ -137,19 +173,23 @@ export async function publishUserPreferenceChangedForUserSafely(
 }
 
 /**
- * Fire the user-level "thread list shape changed" signal. The sidebar
- * subscribes to this topic and reloads the full list on any delivery —
- * payload is intentionally empty because the server is authoritative and
- * the client already has a cheap list endpoint to re-fetch.
+ * Fire the per-user-org "thread list shape changed" signal. The SharedWorker
+ * consumes this topic to invalidate its local thread-event view; the App then
+ * reloads derived thread and indicator state. The payload is intentionally
+ * empty because the server is authoritative.
  */
-export async function publishThreadListChanged(userId: string): Promise<void> {
-  await publishUserSignal([userId], "threadListChanged");
+export async function publishThreadListChanged(target: {
+  readonly userId: string;
+  readonly orgId: string;
+}): Promise<void> {
+  await publishChatDatabaseSignal(target, "threadListChanged");
 }
 
-export async function publishThreadListChangedSafely(
-  userId: string,
-): Promise<void> {
-  await publishThreadListChanged(userId);
+export async function publishThreadListChangedSafely(target: {
+  readonly userId: string;
+  readonly orgId: string;
+}): Promise<void> {
+  await publishThreadListChanged(target);
 }
 
 /**
@@ -195,15 +235,18 @@ export async function publishChatThreadDetailChangedSafely(
  *
  * Best-effort: a failed publish must not fail the mutation that triggered it.
  */
-export async function publishChatThreadMessageCreatedSafely(
-  userId: string,
-  threadId: string,
-  syncThroughSeqId?: number,
-): Promise<void> {
-  await publishUserSignal(
-    [userId],
-    `chatThreadMessageCreated:${threadId}`,
-    syncThroughSeqId === undefined ? null : { syncThroughSeqId },
+export async function publishChatThreadMessageCreatedSafely(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly threadId: string;
+  readonly syncThroughSeqId?: number;
+}): Promise<void> {
+  await publishChatDatabaseSignal(
+    args,
+    `chatThreadMessageCreated:${args.threadId}`,
+    args.syncThroughSeqId === undefined
+      ? null
+      : { syncThroughSeqId: args.syncThroughSeqId },
   );
 }
 

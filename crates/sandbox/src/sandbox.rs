@@ -498,7 +498,7 @@ pub trait SandboxFinalExecParkObserver: Send {
 /// Production backends must make dropping an active sandbox a best-effort
 /// emergency cleanup path. If runner-side code unwinds before calling
 /// [`SandboxFactory::destroy()`](crate::SandboxFactory::destroy), `Drop`
-/// must not silently leave a VM process and associated host resources alive.
+/// must not silently leave a backing process and associated host resources alive.
 /// This fallback is only a safety net: callers must not treat drop-triggered
 /// cleanup as proof that explicit destroy completed.
 #[async_trait]
@@ -509,7 +509,7 @@ pub trait Sandbox: Send + Sync + Any {
     /// process. Used in logs, metrics, and socket/path derivation.
     fn id(&self) -> &str;
     /// The network-visible source IP address for this sandbox.
-    /// Used as the key for proxy VM registration.
+    /// Used as the key for proxy sandbox registration.
     fn source_ip(&self) -> &str;
     /// Host-side PID of the sandbox backing process (e.g. firecracker).
     /// Used for host diagnostics like OOM detection.
@@ -825,6 +825,22 @@ pub trait Sandbox: Send + Sync + Any {
     /// The guest path must be non-empty and must not contain NUL bytes.
     async fn write_private_file(&self, path: &str, content: &[u8]) -> Result<()>;
 
+    /// Write multiple private runtime files inside the guest.
+    ///
+    /// Each entry has the same private path, parent, ownership, and permission
+    /// semantics as [`write_private_file`](Self::write_private_file). An empty
+    /// batch is accepted as a no-op. A later failure can leave earlier entries
+    /// complete, but the operation returns an error.
+    ///
+    /// The default implementation preserves compatibility by writing entries
+    /// sequentially with [`write_private_file`](Self::write_private_file).
+    async fn write_private_files(&self, files: &[WriteFileEntry<'_>]) -> Result<()> {
+        for file in files {
+            self.write_private_file(file.path, file.content).await?;
+        }
+        Ok(())
+    }
+
     /// Start `request.cmd` in the guest and return a handle for later
     /// supervision via [`wait_process`](Self::wait_process).
     ///
@@ -835,7 +851,8 @@ pub trait Sandbox: Send + Sync + Any {
     async fn start_process(&self, request: &StartProcessRequest<'_>) -> Result<GuestProcessHandle>;
     /// Start the controlled guest Agent process.
     ///
-    /// A successful result always includes process control by construction.
+    /// A successful result always includes process control and timing captured
+    /// after the Agent has confirmed runtime placement.
     async fn start_agent_process(
         &self,
         request: &StartAgentProcessRequest<'_>,

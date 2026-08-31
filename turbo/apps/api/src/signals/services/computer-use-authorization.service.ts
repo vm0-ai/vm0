@@ -592,7 +592,10 @@ export const applyComputerUseAuthorizationRequest$ = command(
       .where(eq(computerUseAuthorizationRequests.id, request.id));
     signal.throwIfAborted();
 
-    await publishThreadListChanged(args.userId);
+    await publishThreadListChanged({
+      userId: args.userId,
+      orgId: args.orgId,
+    });
     signal.throwIfAborted();
 
     return {

@@ -1,5 +1,6 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { orgContract } from "@okouai/api-contracts/contracts/org-routes";
 
 import {
   click,
@@ -99,11 +100,11 @@ describe("zero org switcher", () => {
     });
 
     const orgSwitcher = await waitFor(() => {
-      expect(screen.getByText("Acme")).toBeInTheDocument();
+      const switcher = buttonByText("Acme");
       expect(
-        screen.getByTestId("pending-invitations-badge"),
+        within(switcher).getByTestId("pending-invitations-badge"),
       ).toBeInTheDocument();
-      return buttonByText("Acme");
+      return switcher;
     });
 
     click(orgSwitcher);
@@ -145,10 +146,14 @@ describe("zero org switcher", () => {
   });
 
   it("creates a new workspace from the org switcher menu", async () => {
+    context.mocks.api(orgContract.createdCount, ({ respond }) => {
+      return respond(200, { createdOrganizationsCount: 0 });
+    });
     context.mocks.data.org({
       id: "org_current",
       name: "Solo",
       role: "admin",
+      createdBy: "other-user-456",
     });
 
     detachedSetupPage({
@@ -159,6 +164,7 @@ describe("zero org switcher", () => {
         fullName: "Alex Rivera",
         email: "alex.rivera@example.test",
         createOrganizationEnabled: true,
+        createOrganizationsLimit: 1,
       },
       org: {
         activeOrg: {
@@ -203,6 +209,69 @@ describe("zero org switcher", () => {
       expect(mockedClerk.setActive).toHaveBeenCalledWith({
         organization: "new-org-id",
       });
+    });
+  });
+
+  it("hides workspace creation after reaching the limit while another workspace is active", async () => {
+    context.mocks.api(orgContract.createdCount, ({ respond }) => {
+      return respond(200, { createdOrganizationsCount: 1 });
+    });
+    context.mocks.data.org({
+      id: "org_current",
+      name: "Shared",
+      role: "admin",
+      createdBy: "other-user-456",
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/",
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+        createOrganizationEnabled: true,
+        createOrganizationsLimit: 1,
+      },
+      org: {
+        activeOrg: {
+          id: "org_current",
+          name: "Shared",
+          slug: "shared",
+        },
+        memberships: [
+          {
+            id: "membership_current",
+            organization: {
+              id: "org_current",
+              name: "Shared",
+            },
+          },
+          {
+            id: "membership_owned",
+            organization: {
+              id: "org_owned",
+              name: "Owned",
+            },
+          },
+        ],
+      },
+    });
+
+    const orgSwitcher = await waitFor(() => {
+      const label = screen.getByText("Shared");
+      const trigger = label.closest("button");
+      if (!trigger) {
+        throw new Error("Org switcher trigger not found");
+      }
+      return trigger;
+    });
+
+    click(orgSwitcher);
+
+    await screen.findByRole("menu");
+    await waitFor(() => {
+      expect(screen.queryByText("Create workspace")).not.toBeInTheDocument();
     });
   });
 

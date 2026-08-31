@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import datetime
+import errno
 import json
 import os
 import socket
@@ -70,10 +71,24 @@ class _LifecycleSocket(_REAL_SOCKET):
         socket_type: int = -1,
         proto: int = -1,
         fileno: int | None = None,
+        *,
+        tcp_nodelay_error: OSError | None = None,
     ) -> None:
         super().__init__(family, socket_type, proto, fileno)
+        self._tcp_nodelay_error = tcp_nodelay_error
+        self.setsockopt_calls: list[tuple[int, int, int]] = []
         self.shutdown_calls: list[int] = []
         self.close_call_count = 0
+
+    def setsockopt(self, level: int, optname: int, value: int) -> None:
+        self.setsockopt_calls.append((level, optname, value))
+        if (
+            level == socket.IPPROTO_TCP
+            and optname == socket.TCP_NODELAY
+            and self._tcp_nodelay_error is not None
+        ):
+            raise self._tcp_nodelay_error
+        super().setsockopt(level, optname, value)
 
     def shutdown(self, how: int) -> None:
         self.shutdown_calls.append(how)
@@ -86,6 +101,7 @@ class _LifecycleSocket(_REAL_SOCKET):
 
 @dataclass
 class _LifecycleSocketFactory:
+    tcp_nodelay_errors: tuple[OSError | None, ...] = ()
     sockets: list[_LifecycleSocket] = field(default_factory=list)
 
     def __call__(
@@ -97,7 +113,18 @@ class _LifecycleSocketFactory:
     ) -> socket.socket:
         if fileno is not None:
             return _REAL_SOCKET(family, socket_type, proto, fileno)
-        created = _LifecycleSocket(family, socket_type, proto)
+        socket_index = len(self.sockets)
+        tcp_nodelay_error = (
+            self.tcp_nodelay_errors[socket_index]
+            if socket_index < len(self.tcp_nodelay_errors)
+            else None
+        )
+        created = _LifecycleSocket(
+            family,
+            socket_type,
+            proto,
+            tcp_nodelay_error=tcp_nodelay_error,
+        )
         self.sockets.append(created)
         return created
 
@@ -1285,6 +1312,125 @@ class TestFirewallAuthAsyncTransport:
         assert requests[0].method == "POST"
         assert requests[0].target == "/api/webhooks/agent/firewall/auth"
 
+    async def test_uses_connected_socket_when_tcp_nodelay_is_unsupported(self, mitm_ctx):
+        requests: list[_RawHttpRequest] = []
+        socket_factory = _LifecycleSocketFactory(
+            tcp_nodelay_errors=(OSError(errno.ENOPROTOOPT, "not supported"),)
+        )
+
+        async def handle_client(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            requests.append(await _read_raw_http_request(reader))
+            await _write_success_response(writer)
+
+        async with _run_test_server(handle_client) as port:
+            with (
+                patch.dict(os.environ, _EMPTY_PROXY_ENVIRONMENT),
+                patch.object(auth_client.socket, "socket", side_effect=socket_factory),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                mitm_ctx(api_url=f"http://127.0.0.1:{port}"),
+            ):
+                result = await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+        assert result.payload.headers == {}
+        assert len(requests) == 1
+        assert len(socket_factory.sockets) == 1
+        connected_socket = socket_factory.sockets[0]
+        assert connected_socket.setsockopt_calls == [(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)]
+        assert connected_socket.shutdown_calls == []
+
+    async def test_aborts_connected_socket_when_tcp_nodelay_setup_fails(self, mitm_ctx):
+        tcp_nodelay_error = OSError(errno.EINVAL, "setsockopt failed")
+        socket_factory = _LifecycleSocketFactory(tcp_nodelay_errors=(tcp_nodelay_error,))
+
+        async def handle_client(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            await reader.read()
+            await _close_test_writer(writer)
+
+        async with _run_test_server(handle_client) as port:
+            with (
+                patch.dict(os.environ, _EMPTY_PROXY_ENVIRONMENT),
+                patch.object(auth_client.socket, "socket", side_effect=socket_factory),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                mitm_ctx(api_url=f"http://127.0.0.1:{port}"),
+                pytest.raises(OSError, match=r"setsockopt failed$") as exc_info,
+            ):
+                await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+        assert exc_info.value is tcp_nodelay_error
+        assert len(socket_factory.sockets) == 1
+        failed_socket = socket_factory.sockets[0]
+        assert failed_socket.setsockopt_calls == [(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)]
+        assert failed_socket.shutdown_calls == [socket.SHUT_RDWR]
+        assert failed_socket.close_call_count == 1
+
+    async def test_uses_later_address_after_tcp_nodelay_setup_failure(self, mitm_ctx):
+        requests: list[_RawHttpRequest] = []
+        loop = asyncio.get_running_loop()
+        socket_factory = _LifecycleSocketFactory(
+            tcp_nodelay_errors=(OSError(errno.EINVAL, "setsockopt failed"), None)
+        )
+        resolver = _OrderedResolver(
+            expected_host="firewall-auth.invalid",
+            addresses=("192.0.2.2", "192.0.2.1"),
+        )
+
+        async def handle_client(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            try:
+                request = await _read_raw_http_request(reader)
+            except asyncio.IncompleteReadError:
+                await _close_test_writer(writer)
+                return
+            requests.append(request)
+            await _write_success_response(writer)
+
+        async with _run_test_server(handle_client) as port:
+            connect_probe = _SimultaneousSockConnect(
+                loop.sock_connect,
+                ("127.0.0.1", port),
+                participant_count=2,
+            )
+            expected_addresses: list[_SocketAddress] = [
+                ("192.0.2.2", port),
+                ("192.0.2.1", port),
+            ]
+            with (
+                patch.dict(os.environ, _EMPTY_PROXY_ENVIRONMENT),
+                patch.object(auth_client, "_dns_resolver", resolver),
+                patch.object(auth_client.socket, "socket", side_effect=socket_factory),
+                patch.object(loop, "sock_connect", new=connect_probe),
+                patch.object(
+                    auth_client,
+                    "_FIREWALL_AUTH_CONNECTION_ATTEMPT_DELAY_SECONDS",
+                    0.0,
+                ),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                mitm_ctx(api_url=f"http://firewall-auth.invalid:{port}"),
+            ):
+                result = await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+        assert result.payload.headers == {}
+        assert len(requests) == 1
+        assert connect_probe.attempted_addresses == expected_addresses
+        assert set(connect_probe.completed_addresses) == set(expected_addresses)
+        failed_socket = connect_probe.sockets_by_address[expected_addresses[0]]
+        winner_socket = connect_probe.sockets_by_address[expected_addresses[1]]
+        assert isinstance(failed_socket, _LifecycleSocket)
+        assert isinstance(winner_socket, _LifecycleSocket)
+        assert failed_socket.setsockopt_calls == [(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)]
+        assert failed_socket.shutdown_calls == [socket.SHUT_RDWR]
+        assert failed_socket.close_call_count == 1
+        assert winner_socket.setsockopt_calls == [(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)]
+        assert winner_socket.shutdown_calls == []
+
     async def test_retries_next_resolved_address_after_connect_failure(self, mitm_ctx):
         class OrderedResolver:
             async def lookup_ip(self, host: str) -> list[str]:
@@ -1478,6 +1624,63 @@ class TestFirewallAuthAsyncTransport:
         ]
         assert connect_probe.cancelled_addresses == [("192.0.2.1", port)]
         assert connect_probe.max_active_count == 2
+        assert connect_probe.active_count == 0
+        assert all(sock.fileno() == -1 for sock in connect_probe.sockets)
+
+    async def test_deduplicates_normalized_addresses_before_connection_racing(self, mitm_ctx):
+        requests: list[_RawHttpRequest] = []
+
+        async def handle_client(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            requests.append(await _read_raw_http_request(reader))
+            await _write_success_response(writer)
+
+        loop = asyncio.get_running_loop()
+        connect_probe = _PendingSockConnect(loop.sock_connect)
+        resolver = _OrderedResolver(
+            expected_host="firewall-auth.invalid",
+            addresses=(
+                "192.0.2.1",
+                "192.0.2.1",
+                "2001:0db8::1",
+                "2001:db8::1",
+                "192.0.2.2",
+                "127.0.0.1",
+            ),
+        )
+        async with _run_test_server(handle_client) as port:
+            with (
+                patch.dict(os.environ, _EMPTY_PROXY_ENVIRONMENT),
+                patch.object(auth_client, "_dns_resolver", resolver),
+                patch.object(loop, "sock_connect", new=connect_probe),
+                patch.object(
+                    auth_client,
+                    "_FIREWALL_AUTH_CONNECTION_ATTEMPT_DELAY_SECONDS",
+                    0.0,
+                ),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                mitm_ctx(api_url=f"http://firewall-auth.invalid:{port}"),
+            ):
+                result = await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+        assert result.payload.headers == {}
+        assert len(requests) == 1
+        attempted_hosts = [address[0] for address in connect_probe.attempted_addresses]
+        assert attempted_hosts == [
+            "192.0.2.1",
+            "2001:db8::1",
+            "192.0.2.2",
+            "127.0.0.1",
+        ]
+        assert len(attempted_hosts) == len(set(attempted_hosts))
+        assert {address[0] for address in connect_probe.cancelled_addresses} == {
+            "192.0.2.1",
+            "2001:db8::1",
+            "192.0.2.2",
+        }
+        assert connect_probe.max_active_count == 4
         assert connect_probe.active_count == 0
         assert all(sock.fileno() == -1 for sock in connect_probe.sockets)
 

@@ -4,6 +4,7 @@ import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context";
+import { chatMorningBriefContext } from "@okouai/db/schema/chat-morning-brief-context";
 import {
   chatEvents,
   type ChatEventUserMessage,
@@ -17,6 +18,7 @@ import {
   asc,
   eq,
   exists,
+  inArray,
   isNull,
   notExists,
   sql,
@@ -52,11 +54,18 @@ import {
 import { INITIAL_AUTONOMY_BUDGET } from "./autonomy-budget.constants";
 import type { Tx } from "../../lib/db-types";
 import {
+  agentRunSourceAnnotation,
   createUserMessageDocument,
   withRunModelAnnotation,
 } from "./chat-user-message.service";
-import { canonicalChatEventUserMessage } from "./canonical-chat-event-read.service";
-import { webChatPublicBrandFromContextId } from "./web-chat-public-brand-context.service";
+import {
+  canonicalChatEventUserMessage,
+  parseCanonicalChatEventRequiredOfficialWorkflowIds,
+} from "./canonical-chat-event-read.service";
+import {
+  officialWorkflowQueueContextFromContextId,
+  webChatQueueContextFromContextId,
+} from "./web-chat-public-brand-context.service";
 
 type DbTransaction = Tx;
 
@@ -140,12 +149,14 @@ export interface QueuedUserMessage {
   readonly id: string;
   readonly createdAt: Date;
   readonly userMessage: ChatEventUserMessage;
+  readonly requiredOfficialWorkflowIds?: readonly string[];
   readonly publicBrand: PublicBrand | null;
   readonly modelProviderId: string | null;
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
   readonly selectedModel: string | null;
   readonly contextType: QueuedUserMessageContextType;
+  readonly contextId: string | null;
   readonly autonomyBudget:
     | ChildAutonomyBudget
     | { readonly kind: "unavailable"; readonly message: string };
@@ -157,7 +168,6 @@ export type QueueFirstRunAssociation =
       readonly threadId: string;
       readonly eventId: string;
       readonly admissionTime: number;
-      readonly morningBriefDeliveryId?: string;
     }
   | {
       readonly kind: "automation_event";
@@ -182,7 +192,6 @@ export type QueueFirstRunClaimResult =
   | {
       readonly kind: "claimed";
       readonly createdAt: Date;
-      readonly morningBriefDeliveryId?: string;
     }
   | { readonly kind: "lost" };
 
@@ -251,6 +260,77 @@ export function queuedUserMessageExists(db: Pick<Db, "select">): SQL {
   );
 }
 
+function resolveQueuedOfficialWorkflowContext(args: {
+  readonly contextType: QueuedUserMessageContextType;
+  readonly contextId: string | null;
+  readonly requiredOfficialWorkflowIds: readonly string[] | null;
+}) {
+  const webContext =
+    args.contextType === "web"
+      ? webChatQueueContextFromContextId(args.contextId)
+      : null;
+  const officialAgentContext =
+    args.contextType === "agent_run"
+      ? officialWorkflowQueueContextFromContextId(args.contextId)
+      : null;
+  const markerRequiresClaim =
+    webContext?.officialWorkflowClaimRequired === true ||
+    officialAgentContext !== null;
+  const hasClaim = args.requiredOfficialWorkflowIds !== null;
+  if (markerRequiresClaim !== hasClaim) {
+    throw new Error(
+      "Queued Official Workflow marker and source claim do not match",
+    );
+  }
+  if (hasClaim && !isWebChatContextType(args.contextType)) {
+    throw new Error(
+      `Queued ${args.contextType} input cannot carry an Official Workflow source claim`,
+    );
+  }
+  return { webContext, officialAgentContext };
+}
+
+async function loadQueuedSourceAutonomyBudget(
+  db: Db,
+  args: {
+    readonly userMessage: ChatEventUserMessage;
+    readonly sourceAutonomyBudget: number | null;
+    readonly officialAgentClaim: boolean;
+  },
+): Promise<number | null> {
+  if (!args.officialAgentClaim) {
+    return args.sourceAutonomyBudget;
+  }
+  const source = agentRunSourceAnnotation(args.userMessage);
+  if (!source) {
+    throw new Error(
+      "Queued Official agent input is missing its source Run annotation",
+    );
+  }
+  const [sourceRun] = await db
+    .select({ autonomyBudget: agentRuns.autonomyBudget })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, source.runId))
+    .limit(1);
+  return sourceRun?.autonomyBudget ?? null;
+}
+
+function queuedUserMessageAutonomyBudget(
+  contextType: QueuedUserMessageContextType,
+  sourceAutonomyBudget: number | null,
+): QueuedUserMessage["autonomyBudget"] {
+  if (contextType !== "agent_run") {
+    return { kind: "ok", autonomyBudget: INITIAL_AUTONOMY_BUDGET };
+  }
+  if (sourceAutonomyBudget === null) {
+    return {
+      kind: "unavailable",
+      message: "Agent source run no longer exists",
+    };
+  }
+  return childAutonomyBudget(sourceAutonomyBudget);
+}
+
 export async function loadNextUnclaimedQueuedUserMessage(
   db: Db,
   threadId: string,
@@ -270,6 +350,7 @@ export async function loadNextUnclaimedQueuedUserMessage(
       id: chatEvents.id,
       createdAt: chatEvents.createdAt,
       userMessage: canonicalChatEventUserMessage(),
+      requiredOfficialWorkflowIds: chatEvents.requiredOfficialWorkflowIds,
       modelProviderId: sql`NULL`.mapWith(pgNullDecoder),
       modelProviderType: sql`NULL`.mapWith(pgNullDecoder),
       modelProviderCredentialScope: sql`NULL`.mapWith(pgNullDecoder),
@@ -303,23 +384,36 @@ export async function loadNextUnclaimedQueuedUserMessage(
     throw new Error("Queued input event is missing userMessage");
   }
   const contextType = requiredQueuedUserMessageContextType(event.contextType);
-  const publicBrand =
-    contextType === "web"
-      ? webChatPublicBrandFromContextId(event.contextId)
-      : null;
-  const autonomyBudget: QueuedUserMessage["autonomyBudget"] =
-    contextType !== "agent_run"
-      ? { kind: "ok", autonomyBudget: INITIAL_AUTONOMY_BUDGET }
-      : event.sourceAutonomyBudget === null
-        ? {
-            kind: "unavailable",
-            message: "Agent source run no longer exists",
-          }
-        : childAutonomyBudget(event.sourceAutonomyBudget);
-  return {
-    ...event,
+  const requiredOfficialWorkflowIds =
+    parseCanonicalChatEventRequiredOfficialWorkflowIds(
+      event.requiredOfficialWorkflowIds,
+    );
+  const { webContext, officialAgentContext } =
+    resolveQueuedOfficialWorkflowContext({
+      contextType,
+      contextId: event.contextId,
+      requiredOfficialWorkflowIds,
+    });
+  const sourceAutonomyBudget = await loadQueuedSourceAutonomyBudget(db, {
     userMessage: event.userMessage,
-    publicBrand,
+    sourceAutonomyBudget: event.sourceAutonomyBudget,
+    officialAgentClaim: officialAgentContext !== null,
+  });
+  const autonomyBudget = queuedUserMessageAutonomyBudget(
+    contextType,
+    sourceAutonomyBudget,
+  );
+  const { requiredOfficialWorkflowIds: _storedClaim, ...queuedEvent } = event;
+  return {
+    ...queuedEvent,
+    userMessage: event.userMessage,
+    ...(requiredOfficialWorkflowIds === null
+      ? {}
+      : {
+          requiredOfficialWorkflowIds,
+        }),
+    publicBrand:
+      webContext?.publicBrand ?? officialAgentContext?.publicBrand ?? null,
     contextType,
     autonomyBudget,
   };
@@ -653,17 +747,6 @@ export async function claimQueueFirstRunAssociation(
         return { kind: "lost" };
       }
 
-      if (
-        args.kind === "user_message" &&
-        !(await lockUnclaimedMorningBriefDelivery(
-          db,
-          args.morningBriefDeliveryId,
-        ))
-      ) {
-        outcome = "lost";
-        return { kind: "lost" };
-      }
-
       const claimed = await args.timing.measure(
         "api_dispatch_persist_queue_first_replacement",
         "nested",
@@ -687,95 +770,12 @@ export async function claimQueueFirstRunAssociation(
       return {
         kind: "claimed",
         createdAt: claimed.createdAt,
-        ...(args.kind === "user_message" && args.morningBriefDeliveryId
-          ? { morningBriefDeliveryId: args.morningBriefDeliveryId }
-          : {}),
       };
     },
     () => {
       return { queue_first_claim_result: outcome };
     },
   );
-}
-
-async function lockUnclaimedMorningBriefDelivery(
-  db: DbTransaction,
-  deliveryId: string | undefined,
-): Promise<boolean> {
-  if (!deliveryId) {
-    return true;
-  }
-  const [delivery] = await db
-    .select({ runId: morningBriefDeliveries.runId })
-    .from(morningBriefDeliveries)
-    .where(eq(morningBriefDeliveries.id, deliveryId))
-    .for("update")
-    .limit(1);
-  return delivery?.runId === null;
-}
-
-/**
- * Finish queue-claim side effects that reference the newly inserted run row.
- * The caller invokes this in the same final-admission transaction immediately
- * after run persistence so the delivery foreign key and queue claim commit
- * atomically.
- */
-export async function recordQueueFirstClaimedRun(
-  db: DbTransaction,
-  args: {
-    readonly claim: Extract<
-      QueueFirstRunClaimResult,
-      { readonly kind: "claimed" }
-    >;
-    readonly runId: string;
-  },
-): Promise<void> {
-  if (!args.claim.morningBriefDeliveryId) {
-    return;
-  }
-  const [delivery] = await db
-    .update(morningBriefDeliveries)
-    .set({
-      status: "running",
-      runId: args.runId,
-      updatedAt: sql`now()`,
-    })
-    .where(eq(morningBriefDeliveries.id, args.claim.morningBriefDeliveryId))
-    .returning({ id: morningBriefDeliveries.id });
-  if (!delivery) {
-    throw new Error("Failed to record the admitted morning brief run");
-  }
-}
-
-/**
- * A failed queue-first launch still owns the queue claim and run foreign key,
- * but must never make the Morning Brief delivery look active.
- */
-export async function recordQueueFirstFailedRun(
-  db: DbTransaction,
-  args: {
-    readonly claim: Extract<
-      QueueFirstRunClaimResult,
-      { readonly kind: "claimed" }
-    >;
-    readonly runId: string;
-  },
-): Promise<void> {
-  if (!args.claim.morningBriefDeliveryId) {
-    return;
-  }
-  const [delivery] = await db
-    .update(morningBriefDeliveries)
-    .set({
-      status: "failed",
-      runId: args.runId,
-      updatedAt: sql`now()`,
-    })
-    .where(eq(morningBriefDeliveries.id, args.claim.morningBriefDeliveryId))
-    .returning({ id: morningBriefDeliveries.id });
-  if (!delivery) {
-    throw new Error("Failed to record the failed morning brief run");
-  }
 }
 
 /**
@@ -827,77 +827,149 @@ export async function discardUnclaimedUserMessage(
  * assistant replacements that explain a permanent integration admission
  * failure.
  */
+interface FailQueuedUserMessageArgs {
+  readonly threadId: string;
+  readonly eventId: string;
+  readonly assistantContent: string;
+  readonly errorMarker: string;
+  readonly currentTime: Date;
+}
+
+async function failQueuedUserMessageInTransaction(
+  tx: DbTransaction,
+  args: FailQueuedUserMessageArgs,
+): Promise<{ readonly assistantEventId: string } | null> {
+  if (!(await lockUserMessageQueueThread(tx, args.threadId))) {
+    return null;
+  }
+  if (
+    (await loadNextUnclaimedQueuedUserMessageId(tx, args.threadId)) !==
+    args.eventId
+  ) {
+    return null;
+  }
+
+  const [queued] = await tx
+    .select({
+      userMessage: canonicalChatEventUserMessage(),
+      createdAt: chatEvents.createdAt,
+    })
+    .from(chatEvents)
+    .where(
+      and(
+        eq(chatEvents.id, args.eventId),
+        eq(chatEvents.chatThreadId, args.threadId),
+        chatEventTypeIn(["input.prompt"]),
+        isNull(chatEvents.runId),
+      ),
+    )
+    .for("update", { of: chatEvents })
+    .limit(1);
+  if (!queued) {
+    return null;
+  }
+  if (!queued.userMessage) {
+    throw new Error("Queued input event is missing userMessage");
+  }
+  const terminalAt = new Date(
+    Math.max(args.currentTime.getTime(), queued.createdAt.getTime() + 1),
+  );
+
+  const replacement = await replaceChatEvent(tx, args.eventId, {
+    chatThreadId: args.threadId,
+    eventType: "input.rejected",
+    userMessage: queued.userMessage,
+    runId: null,
+    error: args.errorMarker,
+    createdAt: terminalAt,
+  });
+  if (!replacement) {
+    return null;
+  }
+
+  const assistant = await insertChatEvent(tx, {
+    chatThreadId: args.threadId,
+    eventType: "output.error",
+    content: args.assistantContent,
+    runId: null,
+    error: args.errorMarker,
+    createdAt: new Date(terminalAt.getTime() + 1),
+  });
+  if (!assistant) {
+    throw new Error("Failed to append integration admission error");
+  }
+  await touchChatThreadLastMessageAt(tx, args.threadId, assistant.createdAt);
+  return { assistantEventId: assistant.id };
+}
+
 export async function failQueuedUserMessage(
+  db: Db,
+  args: FailQueuedUserMessageArgs,
+): Promise<{ readonly assistantEventId: string } | null> {
+  return await db.transaction(async (tx) => {
+    return await failQueuedUserMessageInTransaction(tx, args);
+  });
+}
+
+/**
+ * Deployment fallback for a legacy queue head persisted before phase A. It
+ * appends terminal history and never creates a Run. Phase B removes it after
+ * #30264's released zero-traffic gate proves no legacy queue context remains.
+ */
+export async function retireQueuedMorningBriefMessage(
   db: Db,
   args: {
     readonly threadId: string;
     readonly eventId: string;
-    readonly assistantContent: string;
-    readonly errorMarker: string;
+    readonly contextId: string | null;
     readonly currentTime: Date;
   },
-): Promise<{ readonly assistantEventId: string } | null> {
+): Promise<boolean> {
   return await db.transaction(async (tx) => {
-    if (!(await lockUserMessageQueueThread(tx, args.threadId))) {
-      return null;
-    }
-    if (
-      (await loadNextUnclaimedQueuedUserMessageId(tx, args.threadId)) !==
-      args.eventId
-    ) {
-      return null;
-    }
-
-    const [queued] = await tx
-      .select({
-        userMessage: canonicalChatEventUserMessage(),
-        createdAt: chatEvents.createdAt,
-      })
-      .from(chatEvents)
-      .where(
-        and(
-          eq(chatEvents.id, args.eventId),
-          eq(chatEvents.chatThreadId, args.threadId),
-          chatEventTypeIn(["input.prompt"]),
-          isNull(chatEvents.runId),
-        ),
-      )
-      .for("update", { of: chatEvents })
-      .limit(1);
-    if (!queued) {
-      return null;
-    }
-    if (!queued.userMessage) {
-      throw new Error("Queued input event is missing userMessage");
-    }
-    const terminalAt = new Date(
-      Math.max(args.currentTime.getTime(), queued.createdAt.getTime() + 1),
-    );
-
-    const replacement = await replaceChatEvent(tx, args.eventId, {
-      chatThreadId: args.threadId,
-      eventType: "input.rejected",
-      userMessage: queued.userMessage,
-      runId: null,
-      error: args.errorMarker,
-      createdAt: terminalAt,
+    const failed = await failQueuedUserMessageInTransaction(tx, {
+      threadId: args.threadId,
+      eventId: args.eventId,
+      assistantContent:
+        "This legacy Morning Brief was stopped during the Official Workflow cutover.",
+      errorMarker: "legacy_morning_brief_cutover",
+      currentTime: args.currentTime,
     });
-    if (!replacement) {
-      return null;
+    if (!failed) {
+      return false;
     }
 
-    const assistant = await insertChatEvent(tx, {
-      chatThreadId: args.threadId,
-      eventType: "output.error",
-      content: args.assistantContent,
-      runId: null,
-      error: args.errorMarker,
-      createdAt: new Date(terminalAt.getTime() + 1),
-    });
-    if (!assistant) {
-      throw new Error("Failed to append integration admission error");
+    const [context] = args.contextId
+      ? await tx
+          .select({ deliveryId: chatMorningBriefContext.deliveryId })
+          .from(chatMorningBriefContext)
+          .where(
+            and(
+              eq(chatMorningBriefContext.id, args.contextId),
+              eq(chatMorningBriefContext.chatThreadId, args.threadId),
+            ),
+          )
+          .limit(1)
+      : [];
+    if (context) {
+      await tx
+        .update(morningBriefDeliveries)
+        .set({
+          status: "failed",
+          error:
+            "Legacy Morning Brief stopped during the Official Workflow cutover",
+          updatedAt: args.currentTime,
+        })
+        .where(
+          and(
+            eq(morningBriefDeliveries.id, context.deliveryId),
+            inArray(morningBriefDeliveries.status, [
+              "collecting",
+              "queued",
+              "running",
+            ]),
+          ),
+        );
     }
-    await touchChatThreadLastMessageAt(tx, args.threadId, assistant.createdAt);
-    return { assistantEventId: assistant.id };
+    return true;
   });
 }

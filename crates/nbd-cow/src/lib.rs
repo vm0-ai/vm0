@@ -32,7 +32,6 @@ pub mod error;
 pub mod netlink;
 pub mod orphan;
 pub mod pool;
-#[path = "protocol.rs"]
 mod protocol_impl;
 /// Compatibility exports for protocol-related public error types.
 pub mod protocol {

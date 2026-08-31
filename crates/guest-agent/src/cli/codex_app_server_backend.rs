@@ -19,8 +19,9 @@ use super::codex_app_server::{
     CodexAppServerClient, CodexAppServerConfig, CodexAppServerError, ServerNotification,
 };
 use super::codex_app_server_events::{
-    CodexOutputItemKind, CodexOutputItemStart, IGNORED_NOTIFICATION_METHODS,
-    codex_output_item_start, notification_thread_id, notification_to_codex_event,
+    CodexOutputItemKind, CodexOutputItemStart, CodexTurnUsageTracker, IGNORED_NOTIFICATION_METHODS,
+    codex_output_item_start, codex_token_usage_update, notification_thread_id,
+    notification_to_codex_event,
 };
 use super::event_delivery::{EventDeliveryRuntime, EventDeliverySender};
 use super::{
@@ -35,6 +36,7 @@ use guest_contracts::diagnostics::{
 };
 
 const TURN_NOTIFICATION_LABEL: &str = "turn notification";
+const TURN_INTERRUPT_GRACE: Duration = Duration::from_secs(5);
 const API_TO_CODEX_OUTPUT_ITEM_STARTED: &str = "api_to_codex_output_item_started";
 const API_TO_CODEX_AGENT_MESSAGE_ITEM_STARTED: &str = "api_to_codex_agent_message_item_started";
 
@@ -53,9 +55,23 @@ struct PreparedNotificationIngest {
     terminal_exit_code: Option<i32>,
 }
 
+#[derive(Default)]
+struct CodexNotificationState {
+    thread_started_emitted: bool,
+    secondary_thread_notification_logged: bool,
+    turn_usage: CodexTurnUsageTracker,
+    allow_historical_usage: bool,
+}
+
 struct ThreadIdentity {
     wire_id: String,
     canonical_id: String,
+}
+
+struct ActiveTurnIdentity {
+    wire_thread_id: String,
+    canonical_thread_id: String,
+    turn_id: String,
 }
 
 struct EventIngestSink<'a, 'startup> {
@@ -186,6 +202,51 @@ async fn run_with_execution_deadline(
     }
 }
 
+async fn interrupt_active_turn(
+    client: &mut CodexAppServerClient,
+    active_turn: &ActiveTurnIdentity,
+    sink: &mut EventIngestSink<'_, '_>,
+    active_input: &ActiveInputWriter,
+    notification_state: &mut CodexNotificationState,
+) -> Result<(), AgentError> {
+    match client
+        .request_value(
+            "turn/interrupt",
+            json!({
+                "threadId": active_turn.wire_thread_id,
+                "turnId": active_turn.turn_id,
+            }),
+        )
+        .await
+    {
+        Ok(_) | Err(CodexAppServerError::Rpc { .. }) => {}
+        Err(error) => return Err(app_server_error(sink.masker, error)),
+    }
+
+    let notification_scope = CodexTurnScope {
+        thread_id: &active_turn.canonical_thread_id,
+        turn_id: &active_turn.turn_id,
+    };
+    loop {
+        let notification = client
+            .next_notification(TURN_NOTIFICATION_LABEL)
+            .await
+            .map_err(|error| app_server_error(sink.masker, error))?;
+        let is_turn_completed = notification.method == "turn/completed";
+        let ingest_result = ingest_run_notification(
+            notification,
+            sink,
+            active_input,
+            &notification_scope,
+            notification_state,
+        )
+        .await?;
+        if is_turn_completed && ingest_result.terminal_exit_code.is_some() {
+            return Ok(());
+        }
+    }
+}
+
 pub(super) async fn execute_codex_app_server_for_runtime(
     masker: &SecretMasker,
     mut heartbeat_monitor: HeartbeatMonitor,
@@ -248,6 +309,12 @@ async fn run_codex_app_server(
         CliEventIngestor::new_with_session_metadata(runtime, codex_startup, session_metadata, 0);
     let mut output_timing = CodexOutputTiming::default();
     let resume_thread_id = resume_thread_id_from_runtime(runtime)?;
+    let can_replay_historical_usage = resume_thread_id.is_some();
+    let mut notification_state = CodexNotificationState {
+        allow_historical_usage: can_replay_historical_usage,
+        ..CodexNotificationState::default()
+    };
+    let mut active_turn = None;
     let mut client = CodexAppServerClient::spawn(codex_app_server_config(
         runtime,
         workload_containment.cloned(),
@@ -273,8 +340,6 @@ async fn run_codex_app_server(
         .await?;
         let thread_identity = thread_identity_from_response(&thread_response)?;
         validate_resumed_thread_id(&thread_identity.canonical_id, resume_thread_id.as_deref())?;
-        let mut thread_started_emitted = false;
-        let mut secondary_thread_notification_logged = false;
 
         while let Some(notification) = client.pop_notification() {
             let mut sink = EventIngestSink {
@@ -288,17 +353,17 @@ async fn run_codex_app_server(
             let ingest_result = ingest_notification(
                 notification,
                 &mut sink,
-                thread_started_emitted,
                 &thread_identity.canonical_id,
                 "",
                 None,
-                &mut secondary_thread_notification_logged,
+                &mut notification_state,
             )
             .await?;
-            thread_started_emitted = thread_started_emitted || ingest_result.emitted_thread_started;
+            notification_state.thread_started_emitted =
+                notification_state.thread_started_emitted || ingest_result.emitted_thread_started;
         }
 
-        if !thread_started_emitted {
+        if !notification_state.thread_started_emitted {
             let mut sink = EventIngestSink {
                 ingestor: &mut ingestor,
                 output_timing: &mut output_timing,
@@ -312,7 +377,7 @@ async fn run_codex_app_server(
                 &mut sink,
             )
             .await?;
-            thread_started_emitted = true;
+            notification_state.thread_started_emitted = true;
         }
 
         let turn_response = race_with_heartbeat(
@@ -326,8 +391,14 @@ async fn run_codex_app_server(
         )
         .await?;
         let turn_id = turn_id_from_response(&turn_response)?;
+        active_turn = Some(ActiveTurnIdentity {
+            wire_thread_id: thread_identity.wire_id.clone(),
+            canonical_thread_id: thread_identity.canonical_id.clone(),
+            turn_id: turn_id.clone(),
+        });
         let mut active_input_open = active_input.is_enabled();
         let mut turn_started_observed = false;
+        notification_state.allow_historical_usage = can_replay_historical_usage;
 
         let exit_code = loop {
             let event = next_codex_run_event(
@@ -358,9 +429,8 @@ async fn run_codex_app_server(
                         notification,
                         &mut sink,
                         &active_input,
-                        &mut thread_started_emitted,
                         &notification_scope,
-                        &mut secondary_thread_notification_logged,
+                        &mut notification_state,
                     )
                     .await?;
                     turn_started_observed =
@@ -401,9 +471,8 @@ async fn run_codex_app_server(
                         &mut client,
                         &mut sink,
                         &active_input,
-                        &mut thread_started_emitted,
                         &notification_scope,
-                        &mut secondary_thread_notification_logged,
+                        &mut notification_state,
                     )
                     .await?
                     {
@@ -425,8 +494,8 @@ async fn run_codex_app_server(
             stderr_lines: Vec::new(),
             last_event_sequence: None,
             event_delivery: None,
-            claude_result: None,
-            post_result_cleanup_result: None,
+            jsonl_result: None,
+            post_result_cleanup_jsonl_result: None,
             failure_diagnostic: ingestor.failure_diagnostic(),
             control_error: None,
             cli_termination: None,
@@ -442,8 +511,69 @@ async fn run_codex_app_server(
     .await;
     active_input.close_terminal();
 
+    let interrupted_terminal = if matches!(
+        &run_outcome,
+        AppServerRunOutcome::ExecutionTimedOut { .. } | AppServerRunOutcome::UserCancelled
+    ) && let Some(active_turn) = active_turn.as_ref()
+    {
+        let mut sink = EventIngestSink {
+            ingestor: &mut ingestor,
+            output_timing: &mut output_timing,
+            agent_log: &mut agent_log,
+            masker,
+            should_send_events,
+            event_tx,
+        };
+        match tokio::time::timeout(
+            TURN_INTERRUPT_GRACE,
+            interrupt_active_turn(
+                &mut client,
+                active_turn,
+                &mut sink,
+                &active_input,
+                &mut notification_state,
+            ),
+        )
+        .await
+        {
+            Ok(Ok(())) => true,
+            Ok(Err(error)) => {
+                log_warn!(
+                    LOG_TAG,
+                    "Codex active turn interruption failed; terminating app-server: {}",
+                    masker.mask_string(&error.to_string())
+                );
+                false
+            }
+            Err(_) => {
+                log_warn!(
+                    LOG_TAG,
+                    "Codex active turn interruption timed out; terminating app-server"
+                );
+                false
+            }
+        }
+    } else {
+        false
+    };
+
     let shutdown_result = match &run_outcome {
         AppServerRunOutcome::Completed(result) if result.is_ok() => client.shutdown().await,
+        AppServerRunOutcome::ExecutionTimedOut { .. } | AppServerRunOutcome::UserCancelled
+            if interrupted_terminal =>
+        {
+            match client.shutdown().await {
+                Ok(()) => Ok(()),
+                Err(error) => {
+                    log_warn!(
+                        LOG_TAG,
+                        "Codex app-server shutdown failed after turn interruption; terminating: {}",
+                        masker.mask_string(&error.to_string())
+                    );
+                    client.terminate().await
+                }
+            }
+        }
         AppServerRunOutcome::Completed(_)
         | AppServerRunOutcome::ExecutionTimedOut { .. }
         | AppServerRunOutcome::UserCancelled => client.terminate().await,
@@ -510,8 +640,8 @@ async fn run_codex_app_server(
                 stderr_lines,
                 last_event_sequence: None,
                 event_delivery: None,
-                claude_result: None,
-                post_result_cleanup_result: None,
+                jsonl_result: None,
+                post_result_cleanup_jsonl_result: None,
                 failure_diagnostic: ingestor.failure_diagnostic(),
                 control_error: Some(AgentError::Execution(format!(
                     "Agent execution timed out after {timeout_secs} seconds"
@@ -536,8 +666,8 @@ async fn run_codex_app_server(
                 stderr_lines,
                 last_event_sequence: None,
                 event_delivery: None,
-                claude_result: None,
-                post_result_cleanup_result: None,
+                jsonl_result: None,
+                post_result_cleanup_jsonl_result: None,
                 failure_diagnostic: ingestor.failure_diagnostic(),
                 control_error: Some(AgentError::Execution("Run cancelled by user".to_string())),
                 cli_termination: Some(CliTerminationDiagnostic::new(
@@ -598,6 +728,7 @@ async fn start_or_resume_thread(
                 "threadId".to_string(),
                 Value::String(resume_thread_id.to_string()),
             );
+            params.insert("excludeTurns".to_string(), Value::Bool(true));
             client
                 .request_value("thread/resume", Value::Object(params))
                 .await
@@ -826,19 +957,18 @@ async fn drain_queued_notifications(
     client: &mut CodexAppServerClient,
     sink: &mut EventIngestSink<'_, '_>,
     active_input: &ActiveInputWriter,
-    thread_started_emitted: &mut bool,
     scope: &CodexTurnScope<'_>,
-    secondary_thread_notification_logged: &mut bool,
+    notification_state: &mut CodexNotificationState,
 ) -> Result<Option<i32>, AgentError> {
     let mut prepared_notifications = Vec::new();
-    let mut prepared_thread_started_emitted = *thread_started_emitted;
+    let mut prepared_thread_started_emitted = notification_state.thread_started_emitted;
     while let Some(notification) = client.pop_notification() {
         let prepared = prepare_notification_ingest(
             notification,
             prepared_thread_started_emitted,
             scope.thread_id,
             scope.turn_id,
-            secondary_thread_notification_logged,
+            notification_state,
         )?;
         prepared_thread_started_emitted =
             prepared_thread_started_emitted || prepared.emitted_thread_started;
@@ -854,7 +984,8 @@ async fn drain_queued_notifications(
         if let Some(event) = prepared.event {
             ingest_event(event, sink).await?;
         }
-        *thread_started_emitted = *thread_started_emitted || prepared.emitted_thread_started;
+        notification_state.thread_started_emitted =
+            notification_state.thread_started_emitted || prepared.emitted_thread_started;
         if let Some(exit_code) = prepared.terminal_exit_code {
             return Ok(Some(exit_code));
         }
@@ -866,16 +997,15 @@ async fn ingest_run_notification(
     notification: ServerNotification,
     sink: &mut EventIngestSink<'_, '_>,
     active_input: &ActiveInputWriter,
-    thread_started_emitted: &mut bool,
     scope: &CodexTurnScope<'_>,
-    secondary_thread_notification_logged: &mut bool,
+    notification_state: &mut CodexNotificationState,
 ) -> Result<NotificationIngestResult, AgentError> {
     let prepared = prepare_notification_ingest(
         notification,
-        *thread_started_emitted,
+        notification_state.thread_started_emitted,
         scope.thread_id,
         scope.turn_id,
-        secondary_thread_notification_logged,
+        notification_state,
     )?;
     record_output_item_start(prepared.output_item_start.as_ref(), sink);
     // Close before any ingest await so the control path cannot accept input
@@ -891,7 +1021,8 @@ async fn ingest_run_notification(
     if let Some(event) = prepared.event {
         ingest_event(event, sink).await?;
     }
-    *thread_started_emitted = *thread_started_emitted || prepared.emitted_thread_started;
+    notification_state.thread_started_emitted =
+        notification_state.thread_started_emitted || prepared.emitted_thread_started;
     Ok(result)
 }
 
@@ -926,18 +1057,17 @@ fn heartbeat_error(result: Result<HeartbeatStatus, oneshot::error::RecvError>) -
 async fn ingest_notification(
     notification: ServerNotification,
     sink: &mut EventIngestSink<'_, '_>,
-    thread_started_emitted: bool,
     expected_thread_id: &str,
     active_turn_id: &str,
     terminal_active_input: Option<&ActiveInputWriter>,
-    secondary_thread_notification_logged: &mut bool,
+    notification_state: &mut CodexNotificationState,
 ) -> Result<NotificationIngestResult, AgentError> {
     let prepared = prepare_notification_ingest(
         notification,
-        thread_started_emitted,
+        notification_state.thread_started_emitted,
         expected_thread_id,
         active_turn_id,
-        secondary_thread_notification_logged,
+        notification_state,
     )?;
     record_output_item_start(prepared.output_item_start.as_ref(), sink);
     if prepared.terminal_exit_code.is_some()
@@ -961,18 +1091,47 @@ fn prepare_notification_ingest(
     thread_started_emitted: bool,
     expected_thread_id: &str,
     active_turn_id: &str,
-    secondary_thread_notification_logged: &mut bool,
+    notification_state: &mut CodexNotificationState,
 ) -> Result<PreparedNotificationIngest, AgentError> {
     if let Some(secondary_thread_id) =
         secondary_notification_thread_id(&notification, expected_thread_id)
     {
-        if !*secondary_thread_notification_logged {
+        if !notification_state.secondary_thread_notification_logged {
             log_info!(
                 LOG_TAG,
                 "Ignoring codex app-server notification for secondary thread: method={} thread_id={secondary_thread_id}",
                 notification.method
             );
-            *secondary_thread_notification_logged = true;
+            notification_state.secondary_thread_notification_logged = true;
+        }
+        return Ok(PreparedNotificationIngest::default());
+    }
+
+    if let Some(update) = codex_token_usage_update(&notification)
+        .map_err(|error| AgentError::Execution(error.to_string()))?
+    {
+        if notification_state.allow_historical_usage
+            && (active_turn_id.is_empty() || update.turn_id != active_turn_id)
+        {
+            validate_scope(
+                Some(&update.thread_id),
+                None,
+                expected_thread_id,
+                active_turn_id,
+            )?;
+            notification_state.turn_usage.observe_replay(update);
+        } else {
+            validate_scope(
+                Some(&update.thread_id),
+                Some(&update.turn_id),
+                expected_thread_id,
+                active_turn_id,
+            )?;
+            notification_state
+                .turn_usage
+                .observe_current(update)
+                .map_err(|error| AgentError::Execution(error.to_string()))?;
+            notification_state.allow_historical_usage = false;
         }
         return Ok(PreparedNotificationIngest::default());
     }
@@ -987,7 +1146,7 @@ fn prepare_notification_ingest(
             active_turn_id,
         )?;
     }
-    let Some(event) = notification_to_codex_event(&notification)
+    let Some(mut event) = notification_to_codex_event(&notification)
         .map_err(|error| AgentError::Execution(error.to_string()))?
     else {
         return Ok(PreparedNotificationIngest {
@@ -996,6 +1155,20 @@ fn prepare_notification_ingest(
         });
     };
     validate_event_scope(&event, expected_thread_id, active_turn_id)?;
+    if !active_turn_id.is_empty() && event_turn_id(&event).is_some() {
+        notification_state.allow_historical_usage = false;
+    }
+    if event.get("type").and_then(Value::as_str) == Some("turn.completed")
+        && let Some(usage) = notification_state
+            .turn_usage
+            .usage()
+            .map_err(|error| AgentError::Execution(error.to_string()))?
+    {
+        let event = event.as_object_mut().ok_or_else(|| {
+            AgentError::Execution("normalized codex event is not an object".to_string())
+        })?;
+        event.insert("usage".to_string(), usage);
+    }
     if is_duplicate_thread_started(&event, thread_started_emitted, expected_thread_id) {
         return Ok(PreparedNotificationIngest {
             output_item_start,

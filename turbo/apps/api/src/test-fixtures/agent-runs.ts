@@ -40,6 +40,20 @@ import { projectLegacyWritebackArtifacts } from "../signals/services/storage-leg
 
 const store = createStore();
 
+export async function readSessionHistoryBlobRefCountFixture(
+  hash: string,
+): Promise<number> {
+  const [blob] = await db()
+    .select({ refCount: blobs.refCount })
+    .from(blobs)
+    .where(eq(blobs.hash, hash))
+    .limit(1);
+  if (!blob) {
+    throw new Error("Expected the Session history Blob fixture to exist");
+  }
+  return blob.refCount;
+}
+
 export async function clearRunLaunchSnapshotFixture(
   runId: string,
 ): Promise<void> {

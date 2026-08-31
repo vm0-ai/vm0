@@ -1,3 +1,4 @@
+import { chatEventRowsResponse } from "../../../signals/__tests__/test-helpers.ts";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -8,6 +9,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
+import { createChatEvent } from "../../../mocks/mock-helpers.ts";
 import { mockChatLifecycle, sendMessageInUI } from "./chat-test-helpers.ts";
 import {
   mockChatEventRows,
@@ -438,11 +440,15 @@ function mockLiveThread({
     const availableEvents = appendedEventsPublished
       ? events
       : events.slice(0, initialCount);
-    return respond(200, {
-      rows: mockChatEventRows(availableEvents).filter((row) => {
-        return row.seqId > query.sinceSeqId;
-      }),
-    });
+    return respond(
+      200,
+      chatEventRowsResponse(
+        mockChatEventRows(availableEvents).filter((row) => {
+          return row.seqId > query.sinceSeqId;
+        }),
+        query,
+      ),
+    );
   });
 
   const prepareAppend = async () => {
@@ -454,7 +460,7 @@ function mockLiveThread({
   return {
     publishAppendedEvents: async () => {
       await prepareAppend();
-      context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+      createChatEvent(threadId);
     },
     publishAppendedEventsOnReconnect: async () => {
       await prepareAppend();
@@ -586,9 +592,10 @@ function mockKeyboardThreadScrollLayout({
         }
         return event.seqId > query.sinceSeqId;
       });
-      return respond(200, {
-        rows: mockChatEventRows(filteredEvents),
-      });
+      return respond(
+        200,
+        chatEventRowsResponse(mockChatEventRows(filteredEvents), query),
+      );
     },
   );
   installChatLayout(
@@ -635,9 +642,7 @@ function mockKeyboardThreadScrollLayout({
         expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
       });
       currentThreadTargetPublished = true;
-      context.mocks.ably.trigger(
-        `chatThreadMessageCreated:${KEYBOARD_CURRENT_THREAD_ID}`,
-      );
+      createChatEvent(KEYBOARD_CURRENT_THREAD_ID);
     },
   };
 }

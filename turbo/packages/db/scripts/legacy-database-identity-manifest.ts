@@ -66,325 +66,39 @@ function physicalEntries(
   });
 }
 
-const workflowDisposition = {
-  classification: "migrate",
-  reason:
-    "The physical Workflow storage cluster and its compatibility views remain on the staged expand, switch, and contract path.",
-  ownerIssue: "#26896",
-  writerStopCondition:
-    "The #26896 canonical read/write switch is production-accepted and every supported rollback build addresses all six canonical Workflow relations.",
-  drainEvidence:
-    "A fresh pg_catalog replay has zero unowned legacy dependencies, MaskDB has exact key parity for all six relation pairs, and a 24-hour post-switch Axiom window has zero legacy-relation SQL errors.",
-  removalGate:
-    "#26896 may contract an entry only after the 24-hour zero-error window, zero legacy writer inventory, and exact catalog dependency review all pass.",
-} as const satisfies ManifestDisposition;
-
-const workflowIdentities = [
-  {
-    key: "relation:public.zero_workflow_automations",
-    kind: "relation",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "relation:public.zero_workflow_github_processed_events",
-    kind: "relation",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "relation:public.zero_workflow_strapi_automations",
-    kind: "relation",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "relation:public.zero_workflow_webhook_automations",
-    kind: "relation",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "relation:public.zero_workflow_webhook_deliveries",
-    kind: "relation",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "relation:public.zero_workflows",
-    kind: "relation",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "view:public.workflow_automations",
-    kind: "view",
-    sources: CATALOG_ONLY,
-  },
-  {
-    key: "view:public.workflow_github_processed_events",
-    kind: "view",
-    sources: CATALOG_ONLY,
-  },
-  {
-    key: "view:public.workflow_strapi_automations",
-    kind: "view",
-    sources: CATALOG_ONLY,
-  },
-  {
-    key: "view:public.workflow_webhook_automations",
-    kind: "view",
-    sources: CATALOG_ONLY,
-  },
-  {
-    key: "view:public.workflow_webhook_deliveries",
-    kind: "view",
-    sources: CATALOG_ONLY,
-  },
-  {
-    key: "view:public.workflows",
-    kind: "view",
-    sources: CATALOG_ONLY,
-  },
-  {
-    key: "index:public.idx_zero_workflow_automations_next_run",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflow_automations_official_blueprint_unique",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflow_automations_org",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflow_automations_workflow",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflow_github_processed_automation_delivery",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflow_github_processed_subject",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflow_strapi_automations_integration",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflow_webhook_automations_token_hash",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflow_webhook_deliveries_automation_key",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflow_webhook_deliveries_automation_received",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflows_agent",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflows_org",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflows_org_owner",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflows_private_owner_agent_name_unique",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "index:public.idx_zero_workflows_public_agent_name_unique",
-    kind: "index",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.agent_runs.agent_runs_workflow_automation_id_zero_workflow_automations_id_",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.gmail_processed_events.gmail_processed_events_automation_id_zero_workflow_automations_",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.google_calendar_processed_events.google_calendar_processed_events_automation_id_zero_workflow_au",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.google_forms_automation_cursors.google_forms_automation_cursors_automation_id_zero_workflow_aut",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.google_forms_processed_events.google_forms_processed_events_automation_id_zero_workflow_autom",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.google_workspace_processed_events.google_workspace_processed_events_automation_id_zero_workflow_a",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.notion_workflow_pending_events.notion_workflow_pending_events_automation_id_zero_workflow_auto",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.strapi_workflow_pending_events.strapi_workflow_pending_events_automation_id_zero_workflow_auto",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.stripe_workflow_automation_health.stripe_workflow_automation_health_automation_id_zero_workflow_a",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.workflow_user_automation_threads.workflow_user_automation_threads_workflow_id_zero_workflows_id_",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflow_automations.zero_workflow_automations_autonomy_budget_check",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflow_automations.zero_workflow_automations_official_binding_check",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflow_automations.zero_workflow_automations_schedule_config_check",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflow_automations.zero_workflow_automations_workflow_id_zero_workflows_id_fk",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflow_github_processed_events.zero_workflow_github_processed_events_automation_id_zero_workfl",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflow_strapi_automations.zero_workflow_strapi_automations_automation_id_zero_workflow_au",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflow_strapi_automations.zero_workflow_strapi_automations_integration_id_strapi_integrat",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflow_webhook_automations.zero_workflow_webhook_automations_automation_id_zero_workflow_a",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflow_webhook_deliveries.zero_workflow_webhook_deliveries_automation_id_zero_workflow_au",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflows.zero_workflows_agent_id_agents_id_fk",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflows.zero_workflows_official_installation_check",
-    kind: "constraint",
-    sources: SNAPSHOT_AND_CATALOG,
-  },
-  {
-    key: "constraint:public.zero_workflow_automations.zero_workflow_automations_pkey",
-    kind: "constraint",
-    sources: CATALOG_ONLY,
-  },
-  {
-    key: "constraint:public.zero_workflow_github_processed_events.zero_workflow_github_processed_events_pkey",
-    kind: "constraint",
-    sources: CATALOG_ONLY,
-  },
-  {
-    key: "constraint:public.zero_workflow_strapi_automations.zero_workflow_strapi_automations_pkey",
-    kind: "constraint",
-    sources: CATALOG_ONLY,
-  },
-  {
-    key: "constraint:public.zero_workflow_webhook_automations.zero_workflow_webhook_automations_pkey",
-    kind: "constraint",
-    sources: CATALOG_ONLY,
-  },
-  {
-    key: "constraint:public.zero_workflow_webhook_deliveries.zero_workflow_webhook_deliveries_pkey",
-    kind: "constraint",
-    sources: CATALOG_ONLY,
-  },
-  {
-    key: "constraint:public.zero_workflows.zero_workflows_pkey",
-    kind: "constraint",
-    sources: CATALOG_ONLY,
-  },
-] as const satisfies readonly PhysicalIdentitySpec[];
-
 const acquisitionDisposition = {
   classification: "migrate",
   reason:
-    "The acquisition attribution column still exposes a legacy product identity in current schema.",
+    "The legacy acquisition column and temporary mirror bridge retain the historical database identity during the canonical expand rollout.",
   ownerIssue: "#28368",
   writerStopCondition:
-    "A separately reviewed dual-column release writes only the domain-approved canonical acquisition attribution column under #28368.",
+    "A separately reviewed switch makes acquisition_first_party_source the only active application writer while the mirror bridge remains installed for rollback.",
   drainEvidence:
-    "MaskDB has zero non-null legacy-only attribution rows after backfill and a 7-day reporting audit has zero readers of the legacy column.",
+    "After the bounded backfill, exact MaskDB reads show zero legacy-only, canonical-only, or unequal non-null source pairs; a 7-day audit shows zero application writers and reporting readers of acquisition_vm0_source, and the rollback target no longer requires legacy-only state.",
   removalGate:
-    "#28368 may contract the column only when both zero residual rows and the 7-day zero-reader reporting audit are recorded.",
+    "#28368 may remove the bridge or contract acquisition_vm0_source only after writer-stop, exact parity, the 7-day reporting-reader audit, rollback drain, and replayed/regenerated catalog-contract verification all pass.",
 } as const satisfies ManifestDisposition;
 
 const entitlementDisposition = {
   classification: "migrate",
   reason:
-    "The entitlement column and its permanent migration helper still encode the retired built-in-model brand.",
+    "The legacy entitlement column, updated org-metadata helper, and temporary mirror bridge still encode the retired built-in-model brand during the canonical expand release.",
   ownerIssue: "#28368",
   writerStopCondition:
-    "A separately reviewed dual-column release writes only the canonical built-in-model entitlement field and updates the permanent helper under #28368.",
+    "A separately reviewed switch makes the canonical built-in-model entitlement field the only active application reader and writer while the mirror bridge remains available for rollback.",
   drainEvidence:
-    "MaskDB has zero legacy-only entitlement rows after backfill and a 7-day API and billing audit has zero readers of restricted_vm0_models.",
+    "After a bounded backfill, exact MaskDB queries show zero canonical NULL, mismatched, or legacy-only entitlement rows, and a 7-day API and billing audit shows zero legacy readers or writers.",
   removalGate:
-    "#28368 may contract the column and helper only after zero residual rows, the 7-day zero-reader audit, and exact replayed catalog verification all pass.",
+    "#28368 may remove the mirror bridge, replace the helper again, or contract the legacy field only after the switch, backfill, rollback drain, 7-day zero-reader/writer audit, and exact replayed catalog verification all pass.",
 } as const satisfies ManifestDisposition;
 
 const providerDisposition = {
   classification: "migrate",
   reason:
-    "The vm0 provider discriminator remains an active persisted compatibility value while consumers dual-accept built-in.",
+    "built-in is the canonical persisted provider discriminator after Phase D1, while the exact vm0 request/read alias and database rollback bridge remain active compatibility contracts.",
   ownerIssue: "#28368",
   writerStopCondition:
-    "The #28368 provider writer/default switch is production-accepted and all four mutable surfaces write built-in for new values.",
+    "The #29910 writer/default/backfill release is production-accepted and all supported application writers emit built-in on all four mutable surfaces.",
   drainEvidence:
     "Exact MaskDB counts on all four surfaces show zero mutable vm0 values and a 7-day production window shows zero supported legacy-provider writers.",
   removalGate:
@@ -438,6 +152,16 @@ const nonWorkflowPhysicalEntries = [
         kind: "column",
         sources: SNAPSHOT_AND_CATALOG,
       },
+      {
+        key: "function:public.sync_org_metadata_acquisition_first_party_source_1033()",
+        kind: "function",
+        sources: CATALOG_ONLY,
+      },
+      {
+        key: "trigger:public.org_metadata.sync_org_metadata_acquisition_first_party_source_1033",
+        kind: "trigger",
+        sources: CATALOG_ONLY,
+      },
     ],
     acquisitionDisposition,
   ),
@@ -453,20 +177,40 @@ const nonWorkflowPhysicalEntries = [
         kind: "function",
         sources: CATALOG_ONLY,
       },
+      {
+        key: "function:public.sync_org_plan_entitlement_model_restrictions_1023()",
+        kind: "function",
+        sources: CATALOG_ONLY,
+      },
+      {
+        key: "trigger:public.org_plan_entitlements.sync_org_plan_entitlement_model_restrictions_1023",
+        kind: "trigger",
+        sources: CATALOG_ONLY,
+      },
     ],
     entitlementDisposition,
   ),
   ...physicalEntries(
     [
       {
-        key: "default:public.org_model_policies.default_provider_type",
-        kind: "default",
-        sources: SNAPSHOT_AND_CATALOG,
+        key: "function:public.canonicalize_agent_run_builtin_provider()",
+        kind: "function",
+        sources: CATALOG_ONLY,
       },
       {
-        key: "constraint:public.org_model_policies.chk_org_model_policies_builtin_route_no_provider_id",
-        kind: "constraint",
-        sources: SNAPSHOT_AND_CATALOG,
+        key: "function:public.canonicalize_chat_thread_builtin_provider()",
+        kind: "function",
+        sources: CATALOG_ONLY,
+      },
+      {
+        key: "function:public.canonicalize_model_provider_builtin_type()",
+        kind: "function",
+        sources: CATALOG_ONLY,
+      },
+      {
+        key: "function:public.canonicalize_org_model_policy_builtin_provider()",
+        kind: "function",
+        sources: CATALOG_ONLY,
       },
     ],
     providerDisposition,
@@ -547,6 +291,7 @@ const publicBrandMembers = [
   "public.shared_threads.public_brand = 'vm0'",
   "public.slack_chat_ingress.public_brand = 'vm0'",
   "public.slack_org_installations.public_brand = 'vm0'",
+  "public.socialkit_download_jobs.public_brand = 'vm0'",
   "public.teams_org_installations.public_brand = 'vm0'",
   "public.telegram_installations.public_brand = 'vm0'",
   "public.telegram_official_user_links.public_brand = 'vm0'",
@@ -590,7 +335,6 @@ const semanticFamilyEntries = [
 ] as const satisfies readonly LegacyDatabaseIdentityManifestEntry[];
 
 export const LEGACY_DATABASE_IDENTITY_MANIFEST = [
-  ...physicalEntries(workflowIdentities, workflowDisposition),
   ...nonWorkflowPhysicalEntries,
   ...semanticFamilyEntries,
 ] as const satisfies readonly LegacyDatabaseIdentityManifestEntry[];

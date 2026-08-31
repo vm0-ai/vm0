@@ -43,7 +43,10 @@ export interface ChatEventRetentionStats {
 
 type ChatEventRetentionScope =
   | { readonly kind: "global" }
-  | { readonly kind: "fixtures"; readonly chatThreadIds: readonly string[] };
+  | {
+      readonly kind: "fixtures";
+      readonly chatThreadIds: readonly string[];
+    };
 
 type ChatEventRetentionDb = Pick<Db, "execute" | "transaction">;
 
@@ -110,17 +113,6 @@ function retentionSafetyAndSelectionSql(cutoff: string): SQL {
               WHERE snapshot.chat_thread_id = event.chat_thread_id
                 AND snapshot.archive_schema_version
                   = ${CURRENT_CHAT_EVENT_SCHEMA_VERSION}
-                AND snapshot.projection = 'full'
-                AND snapshot.last_seq_id >= event.seq_id
-                AND snapshot.object_key ~ '-[0-9a-f]{64}[.]ndjson[.]gz$'
-            )
-            OR NOT EXISTS (
-              SELECT 1
-              FROM ${chatEventSnapshots} snapshot
-              WHERE snapshot.chat_thread_id = event.chat_thread_id
-                AND snapshot.archive_schema_version
-                  = ${CURRENT_CHAT_EVENT_SCHEMA_VERSION}
-                AND snapshot.projection = 'tool-redacted'
                 AND snapshot.last_seq_id >= event.seq_id
                 AND snapshot.object_key ~ '-[0-9a-f]{64}[.]ndjson[.]gz$'
             )
@@ -258,17 +250,6 @@ async function hasMoreRetainableRows(
             WHERE snapshot.chat_thread_id = event.chat_thread_id
               AND snapshot.archive_schema_version
                 = ${CURRENT_CHAT_EVENT_SCHEMA_VERSION}
-              AND snapshot.projection = 'full'
-              AND snapshot.last_seq_id >= event.seq_id
-              AND snapshot.object_key ~ '-[0-9a-f]{64}[.]ndjson[.]gz$'
-          )
-          AND EXISTS (
-            SELECT 1
-            FROM ${chatEventSnapshots} snapshot
-            WHERE snapshot.chat_thread_id = event.chat_thread_id
-              AND snapshot.archive_schema_version
-                = ${CURRENT_CHAT_EVENT_SCHEMA_VERSION}
-              AND snapshot.projection = 'tool-redacted'
               AND snapshot.last_seq_id >= event.seq_id
               AND snapshot.object_key ~ '-[0-9a-f]{64}[.]ndjson[.]gz$'
           )

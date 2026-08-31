@@ -6,6 +6,7 @@ import {
   officialWorkflowAcceptedBlueprintSchema,
   officialWorkflowBlueprintBindingsSchema,
   officialWorkflowExecutableSchema,
+  officialWorkflowLifecycleSchema,
   officialWorkflowPresentationSchema,
 } from "./official-workflow-catalog";
 import { workflowDetailResponseSchema, workflowNameSchema } from "./workflows";
@@ -28,6 +29,7 @@ export type OfficialWorkflowCatalogSummary = z.infer<
 
 export const officialWorkflowCatalogDetailSchema =
   officialWorkflowCatalogSummarySchema.extend({
+    lifecycle: officialWorkflowLifecycleSchema,
     workflow: officialWorkflowExecutableSchema,
   });
 export type OfficialWorkflowCatalogDetail = z.infer<
@@ -53,9 +55,25 @@ export type OfficialWorkflowReconfigureRequest = z.infer<
   typeof officialWorkflowReconfigureRequestSchema
 >;
 
+export const officialWorkflowInstallationDefinitionSchema = z
+  .object({
+    name: workflowNameSchema,
+    revision: z.string().regex(/^[0-9a-f]{64}$/),
+    lifecycle: officialWorkflowLifecycleSchema,
+    blueprints: z.array(officialWorkflowAcceptedBlueprintSchema),
+  })
+  .strict();
+export type OfficialWorkflowInstallationDefinition = z.infer<
+  typeof officialWorkflowInstallationDefinitionSchema
+>;
+
 export const officialWorkflowInstallationResponseSchema = z
   .object({
     workflow: workflowDetailResponseSchema,
+    // New App -> old API fallback. Current APIs always return authoritative
+    // accepted Definition metadata; remove the optional parser in #29991
+    // after pre-P4 APIs are no longer serving or retained for rollback.
+    definition: officialWorkflowInstallationDefinitionSchema.optional(),
   })
   .strict();
 export type OfficialWorkflowInstallationResponse = z.infer<
@@ -88,7 +106,7 @@ export const officialWorkflowsContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get one active Official Workflow",
+    summary: "Get one retained Official Workflow Definition",
   },
   install: {
     method: "POST",

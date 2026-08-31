@@ -154,6 +154,8 @@ interface ModelProviderPickerProps {
   codexFastModeEnabled?: boolean;
   /** Media-model category panel state for composer callers. */
   mediaModelPanel?: MediaModelPanelState;
+  /** Model omitted from this caller's list of available choices. */
+  excludedModel?: SupportedRunModel;
 }
 
 // Keep the inherit option distinct from an empty model identifier at the UI
@@ -1287,6 +1289,7 @@ function resolveModelFirstModelPickerState({
   placeholder,
   codexFastModeEnabled,
   fastLabel,
+  excludedModel,
 }: {
   value: ModelProviderSelection | null;
   userPreference: { selectedModel: string | null } | null | undefined;
@@ -1296,8 +1299,11 @@ function resolveModelFirstModelPickerState({
   placeholder: string;
   codexFastModeEnabled: boolean;
   fastLabel: string;
+  excludedModel: SupportedRunModel | undefined;
 }): ModelFirstModelPickerState {
-  const policies = policyResponse?.policies ?? [];
+  const policies = (policyResponse?.policies ?? []).filter((policy) => {
+    return policy.model !== excludedModel;
+  });
   const selectablePolicies = selectablePoliciesForPlan(
     policies,
     modelCapabilities,
@@ -1418,6 +1424,7 @@ function SubscribedModelFirstModelPicker({
   codexFastModeEnabled = false,
   fastLabel,
   mediaModelPanel,
+  excludedModel,
 }: ModelProviderPickerProps & {
   placeholder: string;
   compactTrigger: boolean;
@@ -1447,6 +1454,7 @@ function SubscribedModelFirstModelPicker({
     placeholder,
     codexFastModeEnabled,
     fastLabel,
+    excludedModel,
   });
 
   if (disabled) {
@@ -1619,12 +1627,14 @@ function SubscribedExplicitModelFirstModelPickerContent({
   codexFastModeEnabled,
   fastLabel,
   mediaModelPanel,
+  excludedModel,
 }: {
   value: ModelProviderSelection | null;
   placeholder: string;
   codexFastModeEnabled: boolean;
   fastLabel: string;
   mediaModelPanel: MediaModelPanelState | undefined;
+  excludedModel: SupportedRunModel | undefined;
 }) {
   const policiesLoadable = useLastLoadable(orgModelPolicies$);
   const modelCapabilities =
@@ -1658,6 +1668,7 @@ function SubscribedExplicitModelFirstModelPickerContent({
     placeholder,
     codexFastModeEnabled,
     fastLabel,
+    excludedModel,
   });
   return (
     <ModelFirstModelPickerContentLayout
@@ -1729,6 +1740,7 @@ function EnabledExplicitModelFirstModelPicker(
             codexFastModeEnabled={props.codexFastModeEnabled ?? false}
             fastLabel={props.fastLabel}
             mediaModelPanel={props.mediaModelPanel}
+            excludedModel={props.excludedModel}
           />
         ) : undefined
       }
@@ -1805,6 +1817,7 @@ export function ModelProviderPicker({
   resolveDefaultSelection = true,
   codexFastModeEnabled = false,
   mediaModelPanel,
+  excludedModel,
 }: ModelProviderPickerProps) {
   const { t } = useTranslation();
   const resolvedPlaceholder =
@@ -1828,6 +1841,7 @@ export function ModelProviderPicker({
     disabled,
     codexFastModeEnabled,
     fastLabel,
+    excludedModel,
     ...(mediaModelPanel ? { mediaModelPanel } : {}),
   };
   if (resolveDefaultSelection) {

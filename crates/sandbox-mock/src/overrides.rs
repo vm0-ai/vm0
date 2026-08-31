@@ -7,8 +7,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::call_records::{
     CopyFileCall, ExecCall, ExecMatcher, GuestStateRestoreCall, ProcessCancelCall,
-    ProcessControlCall, StartProcessCall, StorageManifestCall, WaitProcessCall, WriteFileCall,
-    WriteFilesCall,
+    ProcessControlCall, StartAgentProcessCall, StartProcessCall, StorageManifestCall,
+    WaitProcessCall, WriteFileCall, WriteFilesCall,
 };
 use crate::lifecycle::{DestroyBehavior, LifecycleBehaviors, MockLifecycleGate};
 use crate::support::LockIgnoringPoison;
@@ -29,6 +29,20 @@ pub(crate) enum ExecMatcherOutcome {
     Panic(String),
 }
 
+pub(crate) enum GuestStateRestoreBehavior {
+    Return(Result<ExecResult>),
+    Panic(String),
+}
+
+impl GuestStateRestoreBehavior {
+    pub(crate) fn into_result(self) -> Result<ExecResult> {
+        match self {
+            Self::Return(result) => result,
+            Self::Panic(message) => std::panic::resume_unwind(Box::new(message)),
+        }
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct ExecOverrideState {
     /// Pattern-matched exec behaviors. First matching pattern wins and is
@@ -43,8 +57,8 @@ pub(crate) struct ExecOverrideState {
     pub(crate) storage_manifest_calls: Mutex<Vec<StorageManifestCall>>,
     /// Recorded fixed guest-state restore calls across all attached sandboxes.
     pub(crate) guest_state_restore_calls: Mutex<Vec<GuestStateRestoreCall>>,
-    /// FIFO results for fixed guest-state restore operations.
-    pub(crate) guest_state_restore_results: Mutex<VecDeque<Result<ExecResult>>>,
+    /// FIFO behaviors for fixed guest-state restore operations.
+    pub(crate) guest_state_restore_behaviors: Mutex<VecDeque<GuestStateRestoreBehavior>>,
     /// Wakes tests after a guest-state restore call is recorded.
     pub(crate) guest_state_restore_call_notify: tokio::sync::Notify,
     /// Wakes tests after an exec call is recorded.
@@ -64,6 +78,10 @@ pub(crate) struct FileOverrideState {
     pub(crate) private_write_file_calls: Mutex<Vec<WriteFileCall>>,
     /// FIFO queue of write_private_file results consumed by factory-created sandboxes.
     pub(crate) private_write_file_results: Mutex<VecDeque<Result<()>>>,
+    /// Recorded write_private_files calls across all sandboxes built from this override set.
+    pub(crate) private_write_files_calls: Mutex<Vec<WriteFilesCall>>,
+    /// FIFO queue of write_private_files results consumed by factory-created sandboxes.
+    pub(crate) private_write_files_results: Mutex<VecDeque<Result<()>>>,
     /// FIFO queue of read_file results consumed by factory-created sandboxes.
     pub(crate) read_file_results: Mutex<VecDeque<Result<Option<Vec<u8>>>>>,
     /// FIFO queue of copy_file results consumed by factory-created sandboxes.
@@ -158,7 +176,7 @@ pub(crate) struct ProcessOverrideState {
     pub(crate) start_process_calls: Mutex<Vec<StartProcessCall>>,
     /// Recorded start_agent_process calls across all sandboxes built from this
     /// override set.
-    pub(crate) start_agent_process_calls: Mutex<Vec<StartProcessCall>>,
+    pub(crate) start_agent_process_calls: Mutex<Vec<StartAgentProcessCall>>,
     /// FIFO queue of stdout chunk batches emitted by factory-created
     /// sandboxes during streaming start_process calls.
     pub(crate) start_process_stdout_chunks: Mutex<VecDeque<Vec<ProcessOutputChunk>>>,
@@ -476,9 +494,17 @@ impl MockSandboxOverrides {
     /// Queue a result for the next fixed guest-state restore operation.
     pub fn push_guest_state_restore_result(&self, result: Result<ExecResult>) {
         self.exec
-            .guest_state_restore_results
+            .guest_state_restore_behaviors
             .lock_ignoring_poison()
-            .push_back(result);
+            .push_back(GuestStateRestoreBehavior::Return(result));
+    }
+
+    /// Queue a panic for the next fixed guest-state restore operation.
+    pub fn push_guest_state_restore_panic(&self, message: impl Into<String>) {
+        self.exec
+            .guest_state_restore_behaviors
+            .lock_ignoring_poison()
+            .push_back(GuestStateRestoreBehavior::Panic(message.into()));
     }
 
     /// Return fixed guest-state restore calls across all attached sandboxes.
@@ -568,12 +594,31 @@ impl MockSandboxOverrides {
             .clone()
     }
 
+    /// Return recorded private write-files batch calls across all sandboxes
+    /// built from this override set.
+    pub fn private_write_files_calls(&self) -> Vec<WriteFilesCall> {
+        self.file
+            .private_write_files_calls
+            .lock_ignoring_poison()
+            .clone()
+    }
+
     /// Queue a write_private_file result applied to the next private write made
     /// through any sandbox built from these overrides after that sandbox's
     /// local private-write queue is empty.
     pub fn push_private_write_file_result(&self, result: Result<()>) {
         self.file
             .private_write_file_results
+            .lock_ignoring_poison()
+            .push_back(result);
+    }
+
+    /// Queue a write_private_files result applied to the next private batch
+    /// made through any sandbox built from these overrides after that
+    /// sandbox's local private-batch queue is empty.
+    pub fn push_private_write_files_result(&self, result: Result<()>) {
+        self.file
+            .private_write_files_results
             .lock_ignoring_poison()
             .push_back(result);
     }
@@ -786,7 +831,7 @@ impl MockSandboxOverrides {
 
     /// Return recorded start-Agent-process calls across all sandboxes built
     /// from this override set.
-    pub fn start_agent_process_calls(&self) -> Vec<StartProcessCall> {
+    pub fn start_agent_process_calls(&self) -> Vec<StartAgentProcessCall> {
         self.process
             .start_agent_process_calls
             .lock_ignoring_poison()

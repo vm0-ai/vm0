@@ -26,6 +26,114 @@ def assert_usage_buffer_drained(enqueue: RecordingEnqueue) -> None:
     enqueue.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "post_executor_drain",
+    [pytest.param(False, id="flush"), pytest.param(True, id="post-executor-drain")],
+)
+def test_billing_lane_failure_still_attempts_observation_lane(tmp_path, post_executor_drain: bool):
+    def fail_billing_enqueue(
+        url: str,
+        sandbox_token: str,
+        payload: dict,
+        path: str,
+        log_type: str,
+        delivery_outcome_callback: DeliveryOutcomeCallback,
+    ) -> bool:
+        del url, sandbox_token, payload, path
+        if log_type == "usage_event":
+            raise OSError("billing unavailable")
+        delivery_outcome_callback("success")
+        return True
+
+    enqueue = RecordingEnqueue(side_effect=fail_billing_enqueue)
+    pending_path = tmp_path / "usage-pending"
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    usage.set_pending_path(str(pending_path))
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [event(source_key="billing-source")],
+        proxy_log_path,
+    )
+    usage.buffer_model_usage_observations(
+        "https://api.test/api/runners/model-usage-observations",
+        "runner-token",
+        "run-1",
+        [observation(source_key="observation-source", input_tokens=1)],
+        proxy_log_path,
+    )
+
+    if post_executor_drain:
+        with pytest.raises(OSError, match="billing unavailable"):
+            usage.drain_usage_events_after_executor_shutdown()
+    else:
+        with pytest.raises(OSError, match="billing unavailable"):
+            usage.flush_usage_events(trigger="shutdown")
+
+    assert [call.log_type for call in enqueue.calls] == [
+        "usage_event",
+        "model_usage_observation",
+    ]
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=1,
+        reports=0,
+        flush_request_id="billing-failed-observation-drained",
+    )
+
+    enqueue.side_effect = None
+    if post_executor_drain:
+        usage.drain_usage_events_after_executor_shutdown()
+    else:
+        assert usage.flush_billing_usage_events(trigger="shutdown") == 1
+
+
+def test_pre_admission_failure_retains_source_event_and_releases_delivery_ownership(
+    tmp_path,
+):
+    enqueue = RecordingEnqueue()
+    pending_path = tmp_path / "usage-pending"
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    usage.set_pending_path(str(pending_path))
+    usage.buffer_source_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [event(source_key="source-1", quantity=10)],
+        str(tmp_path / "proxy.jsonl"),
+    )
+
+    with (
+        patch(
+            "usage.buffer.orchestrator._log_flush_summaries",
+            side_effect=[RuntimeError("pre-admission summary failed"), None],
+        ),
+        pytest.raises(RuntimeError, match="pre-admission summary failed"),
+    ):
+        usage.flush_usage_events(trigger="test")
+
+    enqueue.assert_not_called()
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=1,
+        reports=0,
+        flush_request_id="pre-admission-failed",
+    )
+
+    assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    retry_payload = enqueue.last_call.payload
+    assert retry_payload["runId"] == "run-1"
+    assert retry_payload["events"][0]["quantity"] == 10
+    assert retry_payload["events"][0]["idempotencyKey"] == "source-1"
+    assert_usage_buffer_drained(enqueue)
+
+
 def test_flush_failure_preserves_retryable_payload_with_same_idempotency_key(tmp_path):
     failed_payloads = []
     pending_path = tmp_path / "usage-pending"
@@ -413,7 +521,7 @@ def test_billable_usage_is_admitted_before_model_usage_observation(tmp_path):
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
     proxy_log_path = str(tmp_path / "proxy.jsonl")
     usage.buffer_model_usage_observations(
-        "https://api.test/api/webhooks/agent/model-usage-observation",
+        "https://api.test/api/runners/model-usage-observations",
         "token-a",
         "run-1",
         [observation(source_key="observation-source", input_tokens=1)],
@@ -445,7 +553,7 @@ def test_live_billable_usage_preempts_retained_model_usage_observation(tmp_path)
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
     proxy_log_path = str(tmp_path / "proxy.jsonl")
     usage.buffer_model_usage_observations(
-        "https://api.test/api/webhooks/agent/model-usage-observation",
+        "https://api.test/api/runners/model-usage-observations",
         "token-a",
         "run-1",
         [observation(source_key="observation-source", input_tokens=1)],

@@ -5,6 +5,10 @@ type PlatformPublicBrand = "vm0" | "okou";
 
 export type PlatformService = "api" | "www" | "app" | "platform";
 
+// Resolved from `location` and build-time constants alone. The shared database
+// SharedWorker is a second entry point into this bundle and has no DOM, so
+// nothing here may read page state: every value must come from the hostname or
+// from an `import.meta.env` constant that the build inlines.
 interface PlatformRuntimeConfig {
   readonly environment: PlatformEnvironment;
   readonly publicBrand: PlatformPublicBrand;
@@ -13,6 +17,7 @@ interface PlatformRuntimeConfig {
   readonly publicStaticAssetsBaseUrl: string;
   readonly zeroHostDomain: "sites.vm0.io" | "sites.vm7.io";
   readonly plausibleScriptUrl: string | null;
+  readonly postHogHost: string | null;
   readonly postHogKey: string | null;
   readonly sentryDsn: string | null;
   readonly vapidPublicKey: string | null;
@@ -186,6 +191,9 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
     return {
       environment,
       publicBrand,
+      // Both keys are inlined into every artifact and selected by hostname,
+      // mirroring the early bootstrap in index.html. Keep the two selections
+      // in step; src/__tests__/clerk-entrypoint.test.ts pins them together.
       clerkPublishableKey: requiredBuildValue(
         import.meta.env.VITE_CLERK_PUBLISHABLE_KEY_PROD,
         "VITE_CLERK_PUBLISHABLE_KEY_PROD",
@@ -196,6 +204,7 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
       plausibleScriptUrl: optionalBuildValue(
         import.meta.env.VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION,
       ),
+      postHogHost: "https://j.okou.io",
       postHogKey: optionalBuildValue(import.meta.env.VITE_POSTHOG_KEY),
       sentryDsn: optionalBuildValue(import.meta.env.VITE_SENTRY_DSN_PROD),
       vapidPublicKey: optionalBuildValue(
@@ -218,6 +227,7 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
       environment === "preview"
         ? optionalBuildValue(import.meta.env.VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW)
         : null,
+    postHogHost: null,
     postHogKey: null,
     sentryDsn: null,
     vapidPublicKey: optionalBuildValue(

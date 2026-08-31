@@ -1757,12 +1757,16 @@ const runAgentForAgentPhone$ = command(
       return { kind: "ignored" };
     }
 
-    await publishChatThreadMessageCreatedSafely(
-      args.userLink.userId,
-      persisted.chatThreadId,
-    );
+    await publishChatThreadMessageCreatedSafely({
+      userId: args.userLink.userId,
+      orgId: args.userLink.orgId,
+      threadId: persisted.chatThreadId,
+    });
     signal.throwIfAborted();
-    await publishThreadListChanged(args.userLink.userId);
+    await publishThreadListChanged({
+      userId: args.userLink.userId,
+      orgId: args.userLink.orgId,
+    });
     signal.throwIfAborted();
     await set(
       drainChatThreadQueueForThread$,

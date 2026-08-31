@@ -1,4 +1,5 @@
-//! Tracing layer that ships WARN+ events to Axiom.
+//! Tracing layer that ships WARN+ events and the dedicated Runner operator
+//! environment alias-state event to Axiom.
 //!
 //! Disabled at construction when `AXIOM_TOKEN_TELEMETRY` or
 //! `AXIOM_DATASET_SUFFIX` is unset. Dual-write: the existing fmt subscriber
@@ -67,6 +68,8 @@ const DEFAULT_AXIOM_URL: &str = "https://api.axiom.co";
 const SERVICE_NAME: &str = "runner";
 const AXIOM_TOKEN_ENV: &str = "AXIOM_TOKEN_TELEMETRY";
 const AXIOM_SUFFIX_ENV: &str = "AXIOM_DATASET_SUFFIX";
+const ADDON_LOG_TARGET: &str = "mitmdump_addon";
+pub(crate) const OPERATOR_ENV_ALIAS_STATES_TARGET: &str = "runner::operator_env::alias_states";
 /// Target used for this layer's own diagnostics. Dispatcher diagnostics
 /// (non-success ingest responses, HTTP errors) remain visible to local
 /// logging, while the Axiom per-layer filter keeps any observed diagnostics
@@ -235,7 +238,10 @@ pub(crate) struct AxiomLayer {
 }
 
 fn should_ingest(metadata: &Metadata<'_>) -> bool {
-    *metadata.level() <= tracing::Level::WARN && metadata.target() != INTERNAL_TARGET
+    metadata.target() != INTERNAL_TARGET
+        && (*metadata.level() <= tracing::Level::WARN
+            || (*metadata.level() == tracing::Level::INFO
+                && metadata.target() == OPERATOR_ENV_ALIAS_STATES_TARGET))
 }
 
 fn ingest_filter() -> FilterFn<fn(&Metadata<'_>) -> bool> {
@@ -426,6 +432,13 @@ fn serialize_event(event: &Event<'_>, runner_hostname: Option<&str>) -> Value {
     event.record(&mut v);
 
     let mut out = v.0;
+    if meta.target() == ADDON_LOG_TARGET
+        && let Some(encoded) = out.get("message").and_then(Value::as_str)
+        && let Ok(addon_log) = serde_json::from_str::<Map<String, Value>>(encoded)
+    {
+        out = addon_log;
+        out.remove("runner_hostname");
+    }
     out.insert(
         "_time".into(),
         Value::String(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)),
@@ -450,5 +463,4 @@ fn serialize_event(event: &Event<'_>, runner_hostname: Option<&str>) -> Value {
 }
 
 #[cfg(test)]
-#[path = "axiom_layer_tests.rs"]
 mod tests;

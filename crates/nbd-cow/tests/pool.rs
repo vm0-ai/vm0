@@ -2,7 +2,6 @@
 
 //! Unprivileged DevicePool integration tests for the nbd-cow crate.
 
-#[path = "support/nbd_fixture.rs"]
 mod nbd_fixture;
 
 use nbd_cow::error::NbdCowError;

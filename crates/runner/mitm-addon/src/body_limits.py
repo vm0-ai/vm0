@@ -24,18 +24,21 @@ DEFAULT_BODY_DECODE_LIMIT = _SMALL_BODY_LIMIT_BYTES
 # bodies from request stream buffers.
 REQUEST_BODY_BILLING_INSPECTION_LIMIT = STREAM_BUFFER_LIMIT
 
-# Maximum decoded chunk size fed to incremental usage parsers. This bounds
-# transient decompressor output independently of the response-level expansion
-# budget below.
+# Maximum decoded chunk size fed to incremental usage parsers. gzip/deflate
+# also enforce this as a hard decompressor output limit. Brotli 1.2 treats its
+# output_buffer_limit as a soft allocation threshold, so supporting br accepts
+# that the decoder may transiently return more; body_decoding slices that output
+# before parser delivery.
 STREAM_DECODE_CHUNK_LIMIT = 64 * 1024  # 64 KB
 
-# Initial decoded-output allowance for streaming gzip/deflate usage inspection.
+# Initial decoded-output allowance for streaming compressed usage inspection.
 # This permits small or initially bursty compressed bodies without imposing a
-# fixed total cap on long, low-ratio streams.
+# fixed total cap on long, low-ratio streams. It limits bytes delivered to
+# parsers, not Brotli's transient output allocation described above.
 STREAM_DECODE_EXPANSION_GRACE = 5 * 1024 * 1024  # 5 MB
 
 # Maximum cumulative decoded bytes allowed per compressed byte seen by a
-# streaming gzip/deflate response session, after the grace allowance is spent.
+# streaming compressed response session, after the grace allowance is spent.
 STREAM_DECODE_MAX_EXPANSION_RATIO = 100
 
 # Decompression cap for production model-provider and connector JSON usage

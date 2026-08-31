@@ -47,10 +47,15 @@ import {
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
-import { setupAppWithRoutes } from "../../../../__tests__/test-app";
+import {
+  setupAppWithRoutes,
+  setupRawAppRequestWithRoutes,
+} from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { apiTestS3PresignedUrl } from "../../../../__tests__/mocks";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now, withNowScopeForTest } from "../../../../lib/time";
+import { createDeferredPromise } from "../../../utils";
 import {
   createDirectAgentExecutionFixture,
   createDirectRunFixture,
@@ -239,7 +244,6 @@ function runnerHeartbeatBody(
 ): RunnerHeartbeatBody {
   return {
     runnerId: args.runnerId ?? randomUUID(),
-    runnerName: "bdd-runner",
     group: args.group ?? "vm0/test",
     snapshotGeneration: args.snapshotGeneration ?? 1,
     snapshotSequence: args.snapshotSequence ?? 1,
@@ -334,8 +338,10 @@ export function createRunsApi(context: TestContext) {
     },
 
     acceptStorageDownloads(): void {
-      context.mocks.s3.getSignedUrl.mockResolvedValue(
-        "https://r2.example.com/storage/archive.tar.gz?sig=bdd",
+      context.mocks.s3.getSignedUrl.mockImplementation(
+        (_client: unknown, command: unknown) => {
+          return Promise.resolve(apiTestS3PresignedUrl(command));
+        },
       );
     },
 
@@ -517,6 +523,49 @@ export function createRunsApi(context: TestContext) {
         [200],
       );
       return response.body;
+    },
+
+    async startRunnerModelProviderFailureWithDelayedBody(
+      runId: string,
+      body: RunnerModelProviderFailureRequest,
+    ) {
+      const bodyRequested = createDeferredPromise<void>(context.signal);
+      const bodyReleased = createDeferredPromise<void>(context.signal);
+      const encodedBody = new TextEncoder().encode(JSON.stringify(body));
+      const requestBody = new ReadableStream<Uint8Array>(
+        {
+          async pull(controller) {
+            if (!bodyRequested.settled()) {
+              bodyRequested.resolve(undefined);
+            }
+            await bodyReleased.promise;
+            controller.enqueue(encodedBody);
+            controller.close();
+          },
+        },
+        { highWaterMark: 0 },
+      );
+      const response = setupRawAppRequestWithRoutes({
+        context,
+        routes: runRoutes,
+      })(`/api/runners/runs/${runId}/model-provider-failures`, {
+        method: "POST",
+        headers: {
+          authorization: OFFICIAL_RUNNER_AUTHORIZATION,
+          "content-type": "application/json",
+        },
+        body: requestBody,
+        duplex: "half",
+      } as RequestInit & { readonly duplex: "half" });
+      await bodyRequested.promise;
+      return {
+        releaseBody: () => {
+          if (!bodyReleased.settled()) {
+            bodyReleased.resolve(undefined);
+          }
+        },
+        response,
+      };
     },
 
     async requestRunnerModelProviderFailureAs(

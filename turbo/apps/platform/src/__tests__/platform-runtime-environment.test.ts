@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BrowserOptions } from "@sentry/browser";
-import type { PostHogConfig } from "posthog-js";
+import type { PostHog, PostHogConfig } from "posthog-js/dist/module.slim";
 import { isOkouProductionHostname } from "../lib/platform-host.ts";
 import { sentryLogContext } from "../lib/sentry-config.ts";
 import { initSharedDatabaseWorkerSentry } from "../shared-database/worker-sentry.ts";
@@ -25,8 +25,10 @@ const {
   sentryInit,
 } = vi.hoisted(() => {
   return {
-    browserSentryCaptureException: vi.fn(),
-    browserSentryCaptureMessage: vi.fn(),
+    browserSentryCaptureException:
+      vi.fn<typeof import("@sentry/browser").captureException>(),
+    browserSentryCaptureMessage:
+      vi.fn<typeof import("@sentry/browser").captureMessage>(),
     browserSentryInit: vi.fn<(options: BrowserOptions) => void>(),
     posthogInit:
       vi.fn<(key: string, config?: Partial<PostHogConfig>) => void>(),
@@ -34,13 +36,13 @@ const {
   };
 });
 
-vi.mock("posthog-js", () => {
+vi.mock("posthog-js/dist/module.slim", () => {
   return {
     posthog: {
-      capture: vi.fn(),
-      identify: vi.fn(),
+      capture: vi.fn<PostHog["capture"]>(),
+      identify: vi.fn<PostHog["identify"]>(),
       init: posthogInit,
-      reset: vi.fn(),
+      reset: vi.fn<PostHog["reset"]>(),
     },
   };
 });
@@ -48,7 +50,7 @@ vi.mock("posthog-js", () => {
 vi.mock("@sentry/react", () => {
   return {
     init: sentryInit,
-    setUser: vi.fn(),
+    setUser: vi.fn<typeof import("@sentry/react").setUser>(),
   };
 });
 
@@ -167,9 +169,9 @@ describe("portable platform runtime environment", () => {
       environment: "production",
       publicBrand: "okou",
       publicStaticAssetsBaseUrl: "https://static.okou.io",
-      clerkPublishableKey: PRODUCTION_CLERK_KEY,
       sentryDsn: SENTRY_DSN,
       vapidPublicKey: PRODUCTION_VAPID_KEY,
+      clerkPublishableKey: PRODUCTION_CLERK_KEY,
     });
     const plausibleController = new AbortController();
     await runtime.plausible.initPlausible(plausibleController.signal);
@@ -203,6 +205,7 @@ describe("portable platform runtime environment", () => {
       environment: "production",
       publicBrand: "vm0",
       publicStaticAssetsBaseUrl: "https://static.vm0.io",
+      clerkPublishableKey: PRODUCTION_CLERK_KEY,
     });
   });
 
@@ -246,8 +249,9 @@ describe("portable platform runtime environment", () => {
     expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       publicBrand: "vm0",
-      clerkPublishableKey: PRODUCTION_CLERK_KEY,
+      postHogHost: "https://j.okou.io",
       vapidPublicKey: PRODUCTION_VAPID_KEY,
+      clerkPublishableKey: PRODUCTION_CLERK_KEY,
     });
     expect(
       runtime.attachmentUrl.publicAttachmentUrl(
@@ -268,7 +272,7 @@ describe("portable platform runtime environment", () => {
     ]);
     expect(posthogInit).toHaveBeenCalledWith(
       POSTHOG_KEY,
-      expect.objectContaining({ api_host: "https://j.vm0.ai" }),
+      expect.objectContaining({ api_host: "https://j.okou.io" }),
     );
     const [, posthogConfig] = posthogInit.mock.lastCall ?? [];
     expect(
@@ -315,8 +319,8 @@ describe("portable platform runtime environment", () => {
       environment: "preview",
       publicBrand: "okou",
       publicStaticAssetsBaseUrl: "https://static.okou.io",
-      clerkPublishableKey: PREVIEW_CLERK_KEY,
       vapidPublicKey: PREVIEW_VAPID_KEY,
+      clerkPublishableKey: PREVIEW_CLERK_KEY,
     });
     expect(
       runtime.attachmentUrl.publicAttachmentUrl(
@@ -445,8 +449,8 @@ describe("portable platform runtime environment", () => {
     );
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       environment: "preview",
-      clerkPublishableKey: PREVIEW_CLERK_KEY,
       vapidPublicKey: PREVIEW_VAPID_KEY,
+      clerkPublishableKey: PREVIEW_CLERK_KEY,
     });
   });
 
@@ -465,6 +469,7 @@ describe("portable platform runtime environment", () => {
     );
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       publicBrand: "okou",
+      clerkPublishableKey: PREVIEW_CLERK_KEY,
     });
   });
 

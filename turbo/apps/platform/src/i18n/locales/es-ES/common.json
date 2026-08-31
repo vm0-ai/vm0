@@ -455,7 +455,6 @@
       "ariaLabel": "Barra lateral",
       "chat": "Chat",
       "collapse": "Contraer barra lateral",
-      "expand": "Expandir la barra lateral",
       "hideChatList": "Ocultar lista de chats",
       "manage": "Gestionar",
       "mobile": {
@@ -531,7 +530,6 @@
         "arrow": "Flecha",
         "box": "Rectángulo",
         "pen": "Dibujar",
-        "redact": "Ocultar",
         "text": "Texto"
       },
       "undo": "Deshacer"
@@ -1095,6 +1093,7 @@
         "secondFactorDescription": "Este inicio de sesión requiere un paso de verificación adicional que esta página no admite. Vuelve a empezar para probar otro método de inicio de sesión.",
         "secondFactorTitle": "Se requiere verificación adicional",
         "selectOrganization": "Continuar con {{organizationName}}",
+        "signedInAs": "Sesión iniciada como {{identifier}}",
         "unsupportedDescription": "Tu cuenta devolvió un paso de autenticación que esta página no admite. Vuelve a empezar para probar otro método de inicio de sesión.",
         "unsupportedTitle": "Paso de inicio de sesión no disponible"
       },
@@ -1103,7 +1102,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Usar el inicio de sesión actual",
         "addAccount": "Añadir cuenta",
         "appleMethod": "Continuar con Apple",
         "back": "Atrás",
@@ -1133,6 +1131,7 @@
         "hidePassword": "Ocultar contraseña",
         "identifierLabel": "Correo electrónico o nombre de usuario",
         "identifierPlaceholder": "Introduce tu correo electrónico o nombre de usuario",
+        "lastUsed": "Último uso",
         "methodsHelpPrompt": "¿No tienes ninguna de estas opciones?",
         "newPasswordLabel": "Nueva contraseña",
         "newPasswordSubtitle": "Por razones de seguridad, se requiere restablecer su contraseña.",
@@ -1170,7 +1169,6 @@
         "verify": "Verificar"
       },
       "signUp": {
-        "action": "Usar el registro actual",
         "alreadyHaveAccount": "¿Ya tienes una cuenta?",
         "appleMethod": "Continuar con Apple",
         "back": "Atrás",
@@ -1927,18 +1925,17 @@
       "agentSuggestions": "Agentes",
       "configureModel": "Configurar modelo",
       "createWorkflow": "Crear flujo de trabajo",
+      "imageModelForThisChat": "Modelo de imagen para este chat",
       "message": "Mensaje",
+      "modelForThisChat": "Modelo para este chat",
       "placeholder": "Pídeme que automatice flujos de trabajo, gestione tareas...",
       "selectedModelUnavailable": "El modelo seleccionado no está disponible. Configúralo antes de enviar.",
       "selectedModelUnavailableToast": "El modelo seleccionado no está disponible",
       "selectModel": "Seleccionar modelo",
-      "setAsDefault": "Establecer como predeterminado",
-      "temporaryFastModeDisabledNotice": "El modo rápido está desactivado temporalmente para esta ejecución",
-      "temporaryFastModeEnabledNotice": "El modo rápido está activado temporalmente para esta ejecución",
-      "temporaryImageModelNotice": "Cambio temporal a {{model}} para imágenes",
-      "temporaryModelNotice": "Cambio temporal a {{model}}",
-      "temporaryVideoModelNotice": "Cambio temporal a {{model}} para vídeo",
+      "temporarilySwitchTo": "Cambiar temporalmente a",
       "threadSuggestions": "Conversaciones",
+      "useForFutureChats": "Usar este modelo en futuros chats",
+      "videoModelForThisChat": "Modelo de vídeo para este chat",
       "visualAttachmentsUnsupported": "{{modelName}} no reconoce imágenes ni vídeos. Cambia a un modelo con capacidad visual para adjuntarlos.",
       "workflows": {
         "empty": "No hay flujos de trabajo coincidentes",
@@ -2008,6 +2005,8 @@
         "resetsAt": "Se restablece {{time}}",
         "selectModel": "Cambiar de modelo",
         "tryAgain": "Intentar de nuevo",
+        "unavailableDescription": "Este modelo no es compatible con la cuenta de ChatGPT conectada. Cambia a otro modelo para continuar.",
+        "unavailableTitle": "El modelo seleccionado no está disponible",
         "usageDescription": "Puedes continuar cuando se restablezca tu límite de uso o cambiar de modelo ahora.",
         "usageTitle": "Se alcanzó el límite de {{framework}}"
       },
@@ -2040,6 +2039,100 @@
       "sent": "Reenviado correctamente",
       "threads": "Conversaciones",
       "title": "Reenviar a"
+    },
+    "introVideo": {
+      "avatar": {
+        "heading": "Elige un avatar",
+        "help": "Elige un presentador o continúa sin avatar",
+        "none": "Sin avatar",
+        "visualBalanceAvatarLed": "Centrado en el avatar — el narrador aparece en pantalla la mayor parte del tiempo",
+        "visualBalanceBalanced": "Mezcla equilibrada — el mismo tiempo para ambos",
+        "visualBalanceBRollLed": "Centrado en recursos visuales — prioridad para diapositivas e imágenes",
+        "visualBalanceHeading": "¿Qué equilibrio visual prefieres?"
+      },
+      "cardDescription": "Convierte un archivo o una grabación de pantalla en un vídeo terminado",
+      "description": "Añade una fuente, elige un avatar y una voz opcionales y crea el vídeo en un hilo de chat.",
+      "errors": {
+        "recordingEmpty": "La grabación está vacía. Inténtalo de nuevo.",
+        "recordingFailed": "No se pudo iniciar la grabación de pantalla. Inténtalo de nuevo en una versión reciente de Chrome.",
+        "recordingPermission": "No se compartió nada. Elige una pestaña, ventana o pantalla cuando estés listo.",
+        "recordingShareEnded": "La pantalla dejó de compartirse antes de que empezara la grabación.",
+        "recordingUnsupported": "Este navegador no admite la grabación de pantalla.",
+        "sendFailed": "No se pudo crear el hilo de chat. La fuente sigue guardada localmente y se ha descargado como copia de seguridad.",
+        "uploadFailed": "No se pudo subir la fuente. Sigue guardada localmente y se ha descargado como copia de seguridad."
+      },
+      "footer": {
+        "back": "Atrás",
+        "createInChat": "Crear en el chat",
+        "download": "Descargar fuente",
+        "next": "Siguiente",
+        "startRecording": "Elegir pantalla e iniciar",
+        "stopRecording": "Detener grabación"
+      },
+      "recording": {
+        "chooseSurface": "Elige una pestaña, ventana o pantalla",
+        "countdown": "La grabación comienza después de la cuenta atrás",
+        "description": "Chrome te preguntará qué quieres compartir. La grabación solo comienza cuando termina la cuenta atrás de tres segundos.",
+        "heading": "Graba tu pantalla",
+        "localNote": "Puedes detenerla desde la barra de uso compartido de Chrome o volver aquí. La grabación permanece en local hasta que se crea el hilo de chat.",
+        "microphone": "Micrófono",
+        "microphoneHelp": "Añade narración mientras haces la demostración",
+        "recordingLocally": "Grabando en local",
+        "systemAudio": "Audio del sistema",
+        "systemAudioHelp": "Las fuentes disponibles dependen de Chrome y de tu sistema"
+      },
+      "review": {
+        "avatar": "Avatar",
+        "heading": "Revisa tu vídeo de introducción",
+        "help": "Confirma las opciones que recibirá Zero en el nuevo hilo de chat",
+        "instructions": "Instrucciones de edición",
+        "source": "Fuente",
+        "voice": "Voz"
+      },
+      "source": {
+        "chatDescription": "Abre un hilo ahora y da forma al vídeo con Zero",
+        "chatDetail": "Añade una fuente, un avatar o una voz más tarde en el chat",
+        "chatTitle": "Empezar en el chat",
+        "documentDescription": "Convierte tu contenido en un vídeo de introducción narrado",
+        "documentFormats": "PPTX, PPT, PDF, DOC, DOCX",
+        "documentTitle": "Subir diapositivas o un documento",
+        "dropDescription": "Diapositivas, documentos o grabaciones",
+        "dropTitle": "Suelta una fuente aquí",
+        "heading": "¿Cómo quieres empezar?",
+        "help": "Añade algo que ya tengas, graba tu pantalla o describe el vídeo con tus propias palabras",
+        "recordDescription": "Elige una pestaña, ventana o toda la pantalla",
+        "recordDetail": "Comienza tras una cuenta atrás de tres segundos",
+        "recordTitle": "Grabar la pantalla",
+        "videoDescription": "Deja que la IA mejore el ritmo, el encuadre y la narración",
+        "videoFormats": "MP4, MOV, WEBM",
+        "videoTitle": "Subir una grabación"
+      },
+      "sourceReview": {
+        "format": "Formato",
+        "heading": "Tu fuente está lista",
+        "help": "Comprueba el archivo antes de continuar",
+        "inBrowser": "En este navegador",
+        "inTab": "Hasta que cierres esta pestaña",
+        "replace": "Sustituir fuente",
+        "saved": "Guardada",
+        "source": "Fuente"
+      },
+      "steps": {
+        "avatar": "Avatar",
+        "label": "Pasos del vídeo de introducción",
+        "review": "Revisar",
+        "source": "Fuente",
+        "voice": "Voz"
+      },
+      "title": "Crear un vídeo de introducción",
+      "voice": {
+        "heading": "Elige una voz",
+        "help": "Escucha una muestra antes de continuar",
+        "none": "Sin narración",
+        "noneDescription": "Crea un vídeo guiado por subtítulos sin narración",
+        "original": "Audio original",
+        "originalDescription": "Conserva el audio del vídeo o la grabación que has subido"
+      }
     },
     "mail": {
       "bcc": "BCC",
@@ -2141,6 +2234,7 @@
       "message_one": "{{count}} mensaje",
       "message_many": "{{count}} mensajes",
       "message_other": "{{count}} mensajes",
+      "morningBrief": "Resumen matutino",
       "openGoalDetails": "Abrir detalles del objetivo",
       "pendingAutomationEvent": "Evento de automatización pendiente",
       "queuedMessage": "Mensaje en cola",
@@ -2358,48 +2452,6 @@
       "copied": "Copiado",
       "deleted": "Chat eliminado"
     },
-    "toolActivity": {
-      "categories": {
-        "changes": {
-          "pending": {
-            "plural": "Modificando archivos",
-            "singular": "Modificando un archivo"
-          },
-          "terminal": {
-            "plural": "Archivos modificados",
-            "singular": "Archivo modificado"
-          }
-        },
-        "read": {
-          "pending": {
-            "plural": "Leyendo archivos",
-            "singular": "Leyendo un archivo"
-          },
-          "terminal": {
-            "plural": "Archivos leídos",
-            "singular": "Archivo leído"
-          }
-        },
-        "run": {
-          "pending": {
-            "plural": "Ejecutando comandos",
-            "singular": "Ejecutando un comando"
-          },
-          "terminal": {
-            "plural": "Comandos ejecutados",
-            "singular": "Comando ejecutado"
-          }
-        }
-      },
-      "collapse": "Contraer actividad de herramientas",
-      "expand": "Expandir actividad de herramientas",
-      "status": {
-        "cancelled": "Cancelado",
-        "error": "Fallido",
-        "pending": "En curso",
-        "success": "Completado"
-      }
-    },
     "voice": {
       "checkingLimit": "Comprobando el límite de entrada de voz",
       "input": "Entrada de voz",
@@ -2473,11 +2525,10 @@
       "summaryOne_one": "",
       "summaryOne_many": "",
       "summaryOne_other": "",
-      "summaryWithAttention": "{{summary}} · {{value}} requieren atención",
+      "summaryWithAttention": "{{value}}/{{total}} requieren atención",
       "summaryWithAttention_one": "",
       "summaryWithAttention_many": "",
-      "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}"
+      "summaryWithAttention_other": ""
     },
     "actions": {
       "apply": "Aplicar",
@@ -2541,6 +2592,8 @@
       "access": {
         "add": "Añadir acceso",
         "manage": "Gestionar el acceso a {{connector}}",
+        "summaryMany": "{{value}} agentes",
+        "unavailable": "Acceso no disponible",
         "usedBy": "Utilizado por"
       },
       "categories": {
@@ -3334,15 +3387,6 @@
       "doneTitle": "Suscripción cancelada",
       "errorBody": "Este enlace de baja es inválido o caducado. Puedes gestionar las notificaciones por correo electrónico en Configuración.",
       "errorTitle": "Algo salió mal"
-    },
-    "morningBriefUnsubscribe": {
-      "documentTitle": "Resumen matutino",
-      "doneBody": "Ya no recibirás el correo electrónico diario de Morning Brief. Puedes volver a activarlo en cualquier momento en Configuración.",
-      "doneTitle": "Morning Brief desactivado",
-      "errorBody": "El enlace de baja es inválido o incompleto. Abre el último correo de Morning Brief y utiliza su enlace de baja o gestiona la preferencia en Configuración.",
-      "errorTitle": "Este enlace no es válido",
-      "loadingLabel": "Cargando estado de cancelación de suscripción",
-      "managePreferences": "Gestionar preferencias"
     },
     "pwaInstall": {
       "banner": "Instala {{assistantName}} para una mejor experiencia",
@@ -5194,16 +5238,6 @@
         },
         "title": "Idioma"
       },
-      "morningBrief": {
-        "description": "Un correo diario a las 7:00 de la mañana con tu agenda, acciones y actualizaciones de GitHub, Gmail y Google Calendar",
-        "nextEmail": "Siguiente correo: {{date}}",
-        "nextEmailInTimezone": "Siguiente correo: {{date}} ({{timezone}})",
-        "notScheduled": "Siguiente correo: aún no está programado — apaga y enciende el interruptor para reprogramar",
-        "sending": "Enviando...",
-        "sendNow": "Enviar ahora",
-        "title": "Resumen matutino",
-        "triggeredToast": "Se inició el resumen matutino; el correo llegará en breve"
-      },
       "pageDescription": "Gestiona la apariencia y las preferencias de ejecución de tus agentes",
       "pageTitle": "Preferencias",
       "send": {
@@ -5414,15 +5448,20 @@
       "viewSource": "Código del diagrama"
     },
     "notFound": {
+      "action": "Volver al inicio",
       "description": "La página que buscas no existe.",
       "title": "Página no encontrada"
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
-    "notFoundDescription": "Esta conversación compartida no existe.",
+    "handoffDescription": "{{assistantName}} lleva el contexto a un chat nuevo",
+    "handoffPrompt": "Continúa esta conversación compartida conmigo: {{url}}",
+    "makeConversationYours": "Haz tuya esta conversación",
     "notFoundTitle": "Conversación compartida no encontrada",
-    "tryOkou": "Probar {{assistantName}}"
+    "share": "Compartir",
+    "signIn": "Iniciar sesión",
+    "signUp": "Registrarse",
+    "tryItYourself": "Pruébalo tú"
   },
   "usage": {
     "displayNames": {
@@ -6173,6 +6212,69 @@
       },
       "title": "Flujos de trabajo",
       "viewAutomations": "Ver automatizaciones"
+    },
+    "official": {
+      "activeInstallationDescription": "Este flujo de trabajo oficial sigue operativo y su contenido administrado permanece en modo de solo lectura.",
+      "activeInstallationTitle": "Flujo de trabajo oficial",
+      "agent": "Agente",
+      "automationCount_one": "{{count}} automatización",
+      "automationCount_many": "",
+      "automationCount_other": "{{count}} automatizaciones",
+      "badge": "Oficial",
+      "browse": "Explorar oficiales",
+      "chooseValue": "Elige un valor",
+      "copySucceededUninstallFailed": "La copia está lista, pero no se pudo desinstalar el flujo de trabajo oficial original.",
+      "description": "Instala flujos de trabajo administrados y mantenidos por vm0.",
+      "empty": "No hay flujos de trabajo oficiales disponibles.",
+      "includedAutomations": "Automatizaciones incluidas",
+      "install": "Instalar",
+      "installDescription": "Elige un agente y completa todos los parámetros obligatorios. Se instalarán todas las automatizaciones incluidas.",
+      "installed": "Flujo de trabajo oficial instalado",
+      "installErrorDescription": "Comprueba el agente y los valores de los parámetros e inténtalo de nuevo.",
+      "installErrorTitle": "No se pudo instalar el flujo de trabajo oficial",
+      "installTitle": "Instalar {{name}}",
+      "intendedOff": "debe estar desactivado",
+      "intendedOn": "debe estar activado",
+      "loadErrorDescription": "Es posible que este catálogo no esté disponible o no esté habilitado para tu cuenta.",
+      "loadErrorTitle": "No se pudieron cargar los flujos de trabajo oficiales",
+      "no": "No",
+      "noParameters": "No se requieren parámetros.",
+      "noResults": "Ningún flujo de trabajo oficial coincide con tu búsqueda.",
+      "notFound": "No se encontró este flujo de trabajo oficial.",
+      "parameterCount_one": "{{count}} parámetro",
+      "parameterCount_many": "",
+      "parameterCount_other": "{{count}} parámetros",
+      "parameterRequired": "{{key}} (obligatorio)",
+      "reconciliationState": "{{state}} · {{intended}}",
+      "reconfigure": "Reconfigurar",
+      "reconfigured": "Flujo de trabajo oficial reconfigurado",
+      "reconfigureDescription": "Actualiza los parámetros tipados sin reemplazar este flujo de trabajo ni sus automatizaciones.",
+      "reconfigureDialogDescription": "Revisa cada automatización administrada y actualiza sus parámetros.",
+      "reconfigureErrorDescription": "Revisa los valores obligatorios e inténtalo de nuevo.",
+      "reconfigureErrorTitle": "No se pudo reconfigurar el flujo de trabajo oficial",
+      "reconfigureTitle": "Parámetros de instalación",
+      "reconfigureUnavailable": "Los metadatos de parámetros oficiales no están disponibles temporalmente.",
+      "retiredBadge": "Oficial · Retirado",
+      "retiredDefinitionDescription": "Esta definición conservada se puede consultar, pero ya no se puede instalar.",
+      "retiredInstallationDescription": "Esta definición está retirada. La instalación existente seguirá operativa y en modo de solo lectura hasta que la desinstales.",
+      "retiredInstallationTitle": "Flujo de trabajo oficial retirado",
+      "retiredTitle": "Definición retirada",
+      "retry": "Intentar de nuevo",
+      "search": "Buscar flujos de trabajo oficiales",
+      "selectAgent": "Selecciona un agente",
+      "statusCurrent": "Actual",
+      "statusFailed": "Fallido",
+      "statusNeedsReconfiguration": "Necesita reconfiguración",
+      "statusReconciling": "Sincronizando",
+      "title": "Flujos de trabajo oficiales",
+      "unavailableInstallationDescription": "La definición aceptada no está disponible temporalmente. Los controles operativos existentes siguen disponibles.",
+      "unavailableInstallationTitle": "Definición oficial no disponible",
+      "uninstall": "Desinstalar",
+      "uninstallConfirm": "Esto elimina la instalación oficial y todas sus automatizaciones. Esta acción no se puede deshacer.",
+      "uninstallDescription": "Elimina esta instalación de flujo de trabajo oficial mediante su ciclo de vida administrado.",
+      "uninstallTitle": "Desinstalar flujo de trabajo oficial",
+      "viewAndInstall": "Ver e instalar",
+      "yes": "Sí"
     }
   },
   "works": {

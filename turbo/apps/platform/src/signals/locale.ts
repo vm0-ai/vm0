@@ -1,5 +1,14 @@
 import { command, computed, state } from "ccstate";
-import { changeI18nLanguage, initializeI18n } from "../i18n/index.ts";
+import {
+  cacheClerkLocalization$,
+  loadClerkLocalization$,
+} from "../i18n/clerk-localization.ts";
+import {
+  changeI18nLanguageWithResources,
+  initializeI18nWithResources,
+  loadI18nLanguageResources,
+  loadInitialLocaleResources,
+} from "../i18n/index.ts";
 import { DEFAULT_LOCALE, type SupportedLocale } from "../i18n/resources.ts";
 import {
   localeStorageKey,
@@ -36,8 +45,14 @@ export const availableLocalePreferences$ = computed(async (get) => {
 export const initLocale$ = command(
   async ({ set }, signal: AbortSignal): Promise<SupportedLocale | null> => {
     const requestedLocale = resolveDocumentLocale();
-    const locale = await initializeI18n(requestedLocale, signal);
+    const [initial, clerkLocalization] = await Promise.all([
+      loadInitialLocaleResources(requestedLocale, signal),
+      set(loadClerkLocalization$, requestedLocale, signal),
+    ]);
     signal.throwIfAborted();
+    const locale = await initializeI18nWithResources(initial, signal);
+    signal.throwIfAborted();
+    set(cacheClerkLocalization$, requestedLocale, clerkLocalization);
     applyDocumentLocaleCopy();
     set(internalLocale$, locale);
     document.documentElement.lang = locale;
@@ -47,8 +62,14 @@ export const initLocale$ = command(
 
 export const setLocale$ = command(
   async ({ set }, locale: SupportedLocale, signal: AbortSignal) => {
-    await changeI18nLanguage(locale, signal);
+    const [resources, clerkLocalization] = await Promise.all([
+      loadI18nLanguageResources(locale, signal),
+      set(loadClerkLocalization$, locale, signal),
+    ]);
     signal.throwIfAborted();
+    await changeI18nLanguageWithResources(locale, resources, signal);
+    signal.throwIfAborted();
+    set(cacheClerkLocalization$, locale, clerkLocalization);
     applyDocumentLocaleCopy();
     set(internalLocale$, locale);
     document.documentElement.lang = locale;

@@ -75,6 +75,11 @@ const cronProcessUsageEventsResponseSchema = z.object({
   processed: z.number(),
 });
 
+const cronReconcileSocialKitDownloadsResponseSchema = z.object({
+  success: z.literal(true),
+  processed: z.number().int().nonnegative(),
+});
+
 const cronCompactChatThreadSnapshotsResponseSchema = z.object({
   success: z.literal(true),
   scopes: z.number(),
@@ -94,40 +99,26 @@ export const cronProjectChatEventSearchResponseSchema = z.object({
   }),
 });
 
-const chatEventSnapshotConvergenceSchema = z.object({
-  snapshotHeads: z.number().int().nonnegative(),
-  nonCurrentSnapshotHeads: z.number().int().nonnegative(),
-  snapshotHeadVersions: z.array(
-    z.object({
-      archiveSchemaVersion: z.number().int().positive(),
-      heads: z.number().int().positive(),
-    }),
-  ),
+const cronSnapshotChatEventsResponseSchema = z.object({
+  success: z.literal(true),
+  snapshots: z.number(),
+  archivedEvents: z.number(),
+  unreadableParents: z.number().int().nonnegative(),
+  skippedUnreadableHeads: z.number().int().nonnegative(),
+  skippedUndecodableHeads: z.number().int().nonnegative(),
+  skippedIncompleteHeads: z.number().int().nonnegative(),
+  duplicateEventIdConflictThreads: z.number().int().nonnegative(),
+  duplicateEventIdConflicts: z.number().int().nonnegative(),
+  duplicateEventIdsRemapped: z.number().int().nonnegative(),
+  duplicateEventReferencesRemapped: z.number().int().nonnegative(),
+  r2ObjectsScanned: z.number().int().nonnegative(),
+  r2ObjectsMeasured: z.number().int().nonnegative(),
+  r2ObjectsDeleted: z.number().int().nonnegative(),
+  r2BytesMeasured: z.number().int().nonnegative(),
+  r2BytesDeleted: z.number().int().nonnegative(),
+  r2GcShardsScanned: z.number().int().nonnegative(),
+  r2GcSubpartitionedShards: z.number().int().nonnegative(),
 });
-
-const cronSnapshotChatEventsResponseSchema =
-  chatEventSnapshotConvergenceSchema.extend({
-    success: z.literal(true),
-    snapshots: z.number(),
-    archivedEvents: z.number(),
-    unreadableParents: z.number().int().nonnegative(),
-    skippedUnreadableHeads: z.number().int().nonnegative(),
-    skippedUndecodableHeads: z.number().int().nonnegative(),
-    skippedIncompleteHeads: z.number().int().nonnegative(),
-    skippedUnsupportedHeads: z.number().int().nonnegative(),
-    duplicateEventIdConflictThreads: z.number().int().nonnegative(),
-    duplicateEventIdConflicts: z.number().int().nonnegative(),
-    duplicateEventIdsRemapped: z.number().int().nonnegative(),
-    duplicateEventReferencesRemapped: z.number().int().nonnegative(),
-    retiredSnapshotReferencesDeleted: z.number().int().nonnegative(),
-    r2ObjectsScanned: z.number().int().nonnegative(),
-    r2ObjectsMeasured: z.number().int().nonnegative(),
-    r2ObjectsDeleted: z.number().int().nonnegative(),
-    r2BytesMeasured: z.number().int().nonnegative(),
-    r2BytesDeleted: z.number().int().nonnegative(),
-    r2GcShardsScanned: z.number().int().nonnegative(),
-    r2GcSubpartitionedShards: z.number().int().nonnegative(),
-  });
 
 const cronRetainChatEventsResponseSchema = z.object({
   success: z.literal(true),
@@ -235,12 +226,6 @@ const cronExecuteWorkflowAutomationsResponseSchema = z.object({
   skipped: z.number(),
 });
 
-const cronExecuteMorningBriefsResponseSchema = z.object({
-  success: z.literal(true),
-  executed: z.number(),
-  skipped: z.number(),
-});
-
 const cronRenewGmailWatchesResponseSchema = z.object({
   success: z.literal(true),
   renewed: z.number(),
@@ -299,6 +284,19 @@ export const cronProcessUsageEventsContract = c.router({
       401: apiErrorSchema,
     },
     summary: "Process pending usage events",
+  },
+});
+
+export const cronReconcileSocialKitDownloadsContract = c.router({
+  reconcile: {
+    method: "GET",
+    path: "/api/cron/reconcile-socialkit-downloads",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronReconcileSocialKitDownloadsResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Reconcile managed SocialKit downloads",
   },
 });
 
@@ -578,19 +576,6 @@ export const cronExecuteWorkflowAutomationsContract = c.router({
   },
 });
 
-export const cronExecuteMorningBriefsContract = c.router({
-  execute: {
-    method: "GET",
-    path: "/api/cron/execute-morning-briefs",
-    headers: authHeadersSchema,
-    responses: {
-      200: cronExecuteMorningBriefsResponseSchema,
-      401: apiErrorSchema,
-    },
-    summary: "Execute due morning briefs",
-  },
-});
-
 export const cronAggregateModelStatsContract = c.router({
   aggregate: {
     method: "GET",
@@ -620,6 +605,8 @@ export const cronRefreshStoragePresignedUrlsContract = c.router({
 
 export type CronProcessUsageEventsContract =
   typeof cronProcessUsageEventsContract;
+export type CronReconcileSocialKitDownloadsContract =
+  typeof cronReconcileSocialKitDownloadsContract;
 export type CronCompactChatThreadSnapshotsContract =
   typeof cronCompactChatThreadSnapshotsContract;
 export type CronMonitorChatEventQueueContract =
@@ -659,6 +646,7 @@ export {
   cronSnapshotChatEventsResponseSchema,
   cronRetainChatEventsResponseSchema,
   cronProcessUsageEventsResponseSchema,
+  cronReconcileSocialKitDownloadsResponseSchema,
   cronReconcileBillingEntitlementsResponseSchema,
   cronTelegramCleanupResponseSchema,
   cronConnectorOauthStateCleanupResponseSchema,

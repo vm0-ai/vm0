@@ -2,7 +2,7 @@
 
 mod common;
 
-use guest_agent::cli::ClaudeResultStatus;
+use guest_agent::cli::JsonlResultStatus;
 use std::time::Duration;
 
 const AGENT_LOG_WARNING: &str = "Agent log flush failed; continuing without local transcript";
@@ -64,8 +64,8 @@ async fn agent_log_flush_failure_keeps_claude_run_successful()
     assert!(execution.control_error.is_none());
     assert!(execution.cli_termination.is_none());
     assert_eq!(
-        execution.claude_result.map(|result| result.status),
-        Some(ClaudeResultStatus::Success)
+        execution.jsonl_result.map(|result| result.status),
+        Some(JsonlResultStatus::Success)
     );
     assert_eq!(execution.last_event_sequence, None);
     assert_eq!(

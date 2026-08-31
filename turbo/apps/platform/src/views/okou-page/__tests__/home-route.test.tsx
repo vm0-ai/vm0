@@ -5,7 +5,7 @@ import {
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
 import { screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   detachedSetupPage,
@@ -136,6 +136,36 @@ function installBootstrapSkeleton(): HTMLDivElement {
 }
 
 describe("home route", () => {
+  it("sets the resolved agent document title without an intermediate title", async () => {
+    context.store.set(clearLastUsedAgentId$);
+    context.mocks.data.onboardingStatus({
+      defaultAgentId: DEFAULT_AGENT_ID,
+    });
+    const team = deferAgentsResponse([
+      agentResponse(DEFAULT_AGENT_ID, "Default agent"),
+    ]);
+    const titleSetter = vi.spyOn(document, "title", "set");
+
+    try {
+      detachedSetupPage({ context, path: "/" });
+
+      await team.started.promise;
+      expect(titleSetter).not.toHaveBeenCalled();
+
+      team.release.resolve(undefined);
+      await waitFor(() => {
+        expect(document.title).toBe("Default agent | VM0");
+      });
+      expect(
+        titleSetter.mock.calls.map(([title]) => {
+          return title;
+        }),
+      ).toStrictEqual(["Default agent | VM0"]);
+    } finally {
+      titleSetter.mockRestore();
+    }
+  });
+
   it("routes a first-time user to the default agent before the agents list resolves", async () => {
     context.store.set(clearLastUsedAgentId$);
     context.mocks.data.onboardingStatus({
@@ -226,6 +256,8 @@ describe("home route", () => {
       await expect(
         screen.findByRole("textbox", { name: "Message" }),
       ).resolves.toBeInTheDocument();
+      const pageMain = document.querySelector("main");
+      expect(pageMain).not.toBeNull();
       expect(draftLoads()).not.toContain(candidate.candidateId);
 
       team.release.resolve(undefined);
@@ -233,6 +265,7 @@ describe("home route", () => {
         expect(pathname()).toBe(`/agents/${candidate.recoveryAgentId}/chat`);
         expect(document.title).toContain(candidate.recoveryAgentName);
       });
+      expect(document.querySelector("main")).toBe(pageMain);
       expect(draftLoads()).not.toContain(candidate.candidateId);
     },
   );
@@ -359,7 +392,7 @@ describe("home route", () => {
     context.track(setupPromise);
     await onboardingRequestStarted.promise;
     await waitFor(() => {
-      expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(1);
+      expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(2);
     });
 
     context.store.set(detachedNavigateTo$, ROUTES.skeleton, { replace: true });

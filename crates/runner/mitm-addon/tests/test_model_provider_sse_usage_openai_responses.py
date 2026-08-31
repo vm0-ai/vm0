@@ -14,10 +14,6 @@ import body_decoding
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 from tests.flow_helpers import response_stream
-from tests.jsonl_log_helpers import (
-    jsonl_exists_after_flush,
-    read_jsonl_entries_after_flush,
-)
 from tests.model_provider_flow_helpers import RealFlowFactory, model_usage_source_entries
 from tests.model_provider_sse_usage_helpers import (
     assert_single_model_sse_parse_warning,
@@ -37,7 +33,7 @@ def _openai_responses_sse_flow(
     *,
     model_usage_provider: str = "gpt-5.5",
 ) -> http.HTTPFlow:
-    return model_provider_sse_flow(
+    flow = model_provider_sse_flow(
         tmp_path,
         real_flow,
         host="api.openai.com",
@@ -46,6 +42,8 @@ def _openai_responses_sse_flow(
         cli_agent_type="codex",
         model_usage_provider=model_usage_provider,
     )
+    flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] = "already_stream_decodable"
+    return flow
 
 
 class TestOpenAIResponsesSseUsage:
@@ -161,7 +159,7 @@ class TestOpenAIResponsesSseUsage:
         assert model_sse_parse_warnings(flow) == []
 
     @pytest.mark.parametrize("capture_body", [False, True])
-    def test_brotli_sse_does_not_use_model_json_fallback(self, tmp_path, real_flow, capture_body):
+    def test_brotli_sse_reports_usage(self, tmp_path, real_flow, capture_body):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
         assert flow.response is not None
         flow.response.headers["content-encoding"] = "br"
@@ -174,21 +172,21 @@ class TestOpenAIResponsesSseUsage:
         )
 
         mitm_addon.responseheaders(flow)
-        response_stream(flow)(brotli.compress(plaintext))
+        assert flow.response.status_code == 200
+        compressed = brotli.compress(plaintext)
+        midpoint = len(compressed) // 2
+        assert response_stream(flow)(compressed[:midpoint]) == compressed[:midpoint]
+        assert response_stream(flow)(compressed[midpoint:]) == compressed[midpoint:]
         assert (metadata_keys.STREAM_BUFFER in flow.metadata) is capture_body
         assert (metadata_keys.STREAM_BUFFER_STATE in flow.metadata) is capture_body
 
         webhook = run_response(flow, self._usage_webhook_api)
 
-        assert webhook.request_count == 0
-        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
-        entries = (
-            read_jsonl_entries_after_flush(proxy_log) if jsonl_exists_after_flush(proxy_log) else []
-        )
-        assert not any(
-            entry.get("message") == "Model provider JSON usage extraction failed"
-            for entry in entries
-        )
+        assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
+            "tokens.input": 50,
+            "tokens.output": 20,
+        }
+        assert model_sse_parse_warnings(flow) == []
 
     def test_full_pipeline_model_sse_reports_response_incomplete_usage(self, tmp_path, real_flow):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)

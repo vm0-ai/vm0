@@ -1,4 +1,4 @@
-import type { Clerk } from "@clerk/clerk-js";
+import type { BrowserClerk as Clerk } from "@clerk/shared/types";
 import type {
   SessionResource,
   SignedInSessionResource,
@@ -21,6 +21,7 @@ export const AUTH_V2_CHOOSE_ORGANIZATION_PATH = "/tasks/choose-organization";
 
 export interface AuthV2ContinuationOrganization {
   readonly id: string;
+  readonly imageUrl: string | null;
   readonly name: string;
 }
 
@@ -41,6 +42,7 @@ export type AuthV2ContinuationState =
   | { readonly status: "inactive" }
   | { readonly status: "recovering" }
   | {
+      readonly accountIdentifier: string;
       readonly organizations: readonly AuthV2ContinuationOrganization[];
       readonly selectingOrganizationId: string | null;
       readonly status: "incomplete";
@@ -75,6 +77,7 @@ export interface AuthV2ContinuationDependencies {
   readonly isContinuationRoute: boolean;
   readonly mode: AuthV2RouteMode;
   readonly navigation: AuthV2Navigation;
+  readonly presentation: "inline" | "route";
 }
 
 type ContinuationSessionSource = "organization" | "recovery" | "session";
@@ -118,13 +121,23 @@ function availableOrganizations(
   const organizations: AuthV2ContinuationOrganization[] = [];
   const seenOrganizationIds = new Set<string>();
   for (const membership of session.user?.organizationMemberships ?? []) {
-    const { id, name } = membership.organization;
+    const { id, imageUrl, name } = membership.organization;
     if (!seenOrganizationIds.has(id)) {
       seenOrganizationIds.add(id);
-      organizations.push({ id, name });
+      organizations.push({ id, imageUrl: imageUrl ?? null, name });
     }
   }
   return organizations;
+}
+
+function continuationAccountIdentifier(session: SessionResource): string {
+  const user = session.user;
+  return (
+    user?.primaryEmailAddress?.emailAddress ??
+    user?.fullName ??
+    user?.username ??
+    "Account"
+  );
 }
 
 function createContinuationAtoms(): ContinuationAtoms {
@@ -191,12 +204,16 @@ function createApplySessionCommand(
             return;
           }
           set(atoms.state$, {
+            accountIdentifier: continuationAccountIdentifier(session),
             organizations,
             selectingOrganizationId: null,
             status: "incomplete",
             task: "choose-organization",
           });
-          if (!dependencies.isContinuationRoute) {
+          if (
+            dependencies.presentation === "route" &&
+            !dependencies.isContinuationRoute
+          ) {
             set(
               navigateToTask$,
               decorateUrl(
@@ -396,7 +413,7 @@ function createRestartCommand(
   runtime: ContinuationRuntime,
   dependencies: AuthV2ContinuationDependencies,
 ): Command<Promise<void>, [AbortSignal]> {
-  return command(async ({ get }, signal: AbortSignal): Promise<void> => {
+  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
     const current = get(runtime.inFlight$);
     if (current) {
       await current;
@@ -412,6 +429,15 @@ function createRestartCommand(
         return;
       }
     }
+    if (dependencies.presentation === "inline") {
+      set(atoms.sessionId$, null);
+      set(runtime.activatedOrganizationId$, null);
+      set(runtime.handledSessionId$, null);
+      set(runtime.redirected$, false);
+      set(runtime.taskNavigated$, false);
+      set(atoms.state$, { status: "inactive" });
+      return;
+    }
     window.location.href = dependencies.navigation.href(dependencies.mode);
   });
 }
@@ -420,10 +446,7 @@ export function isAuthV2ContinuationLocation(
   pathname: string,
   hash: string,
 ): boolean {
-  const pathPrefixes = [
-    `${ROUTES.signInV2}/tasks/`,
-    `${ROUTES.signUpV2}/tasks/`,
-  ];
+  const pathPrefixes = [`${ROUTES.signIn}/tasks/`, `${ROUTES.signUp}/tasks/`];
   const hashPath = hash.startsWith("#") ? hash.slice(1) : hash;
   return (
     pathPrefixes.some((prefix) => {

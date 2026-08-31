@@ -1,4 +1,4 @@
-import type { Clerk } from "@clerk/clerk-js";
+import type { PlatformClerk as Clerk } from "../../lib/clerk-runtime.ts";
 import type {
   ClerkAPIError,
   SignInResource,
@@ -112,7 +112,6 @@ export function startAuthV2OAuthSignUp(
   strategy: AuthV2OAuthStrategy,
 ): Promise<void> {
   return resource.authenticateWithRedirect({
-    continueSignIn: false,
     continueSignUp: false,
     ...(legalAccepted ? { legalAccepted: true } : {}),
     redirectUrl: navigation.href(

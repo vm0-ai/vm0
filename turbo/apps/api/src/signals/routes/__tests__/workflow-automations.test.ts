@@ -174,11 +174,27 @@ async function enableNotionWorkflowAutomations(
   });
 }
 
+async function disableNotionWorkflowAutomations(
+  fixture: WorkflowsFixture,
+): Promise<void> {
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.NotionWorkflowAutomations]: false,
+  });
+}
+
 async function enableGoogleFormsWorkflowAutomations(
   fixture: WorkflowsFixture,
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
     [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
+  });
+}
+
+async function disableGoogleFormsWorkflowAutomations(
+  fixture: WorkflowsFixture,
+): Promise<void> {
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: false,
   });
 }
 
@@ -394,7 +410,7 @@ function configureGoogleCalendarWatchMock(args?: {
     channelIds: [],
   };
   const calendarId = args?.calendarId ?? "primary";
-  mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
   server.use(
     http.post(
       "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events/watch",
@@ -1250,7 +1266,7 @@ describe("okou workflow automations", () => {
   });
 
   it("projects webhook URLs by request and run brand without rotating credentials", async () => {
-    mockEnv("VM0_WEB_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://api.vm0.ai");
     const { actor, agentId, workflowId } = await setupFixture("team");
     const created = await accept(
       automationsClient().create({
@@ -1510,7 +1526,8 @@ describe("okou workflow automations", () => {
   });
 
   it("rejects Google Forms response automation creation when the feature is disabled", async () => {
-    const { workflowId } = await setupFixture();
+    const { fixture, workflowId } = await setupFixture();
+    await disableGoogleFormsWorkflowAutomations(fixture);
     const rejected = await accept(
       automationsClient().create({
         headers: authHeaders(),
@@ -1973,7 +1990,8 @@ describe("okou workflow automations", () => {
   });
 
   it("rejects Notion child page automations when Notion automation creation is disabled", async () => {
-    const { workflowId } = await setupFixture();
+    const { fixture, workflowId } = await setupFixture();
+    await disableNotionWorkflowAutomations(fixture);
     const rejected = await accept(
       automationsClient().create({
         headers: authHeaders(),
@@ -1997,7 +2015,8 @@ describe("okou workflow automations", () => {
   });
 
   it("rejects Notion database item automations when Notion automation creation is disabled", async () => {
-    const { workflowId } = await setupFixture();
+    const { fixture, workflowId } = await setupFixture();
+    await disableNotionWorkflowAutomations(fixture);
     const rejected = await accept(
       automationsClient().create({
         headers: authHeaders(),
@@ -2021,7 +2040,8 @@ describe("okou workflow automations", () => {
   });
 
   it("rejects Notion page content updated automations when Notion automation creation is disabled", async () => {
-    const { workflowId } = await setupFixture();
+    const { fixture, workflowId } = await setupFixture();
+    await disableNotionWorkflowAutomations(fixture);
     const rejected = await accept(
       automationsClient().create({
         headers: authHeaders(),

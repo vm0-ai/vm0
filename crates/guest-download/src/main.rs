@@ -53,18 +53,10 @@ fn install_runtime_log_paths() -> Result<(), String> {
         ));
     }
 
-    let (run_dir, source) = runtime_paths::run_dir_from_env_with_source(&run_id)
+    let run_dir = runtime_paths::run_dir_from_env(&run_id)
         .map_err(|error| format!("failed to resolve guest-download runtime paths: {error}"))?;
     guest_common::log::set_system_log_file(runtime_paths::system_log_file(&run_dir));
     guest_common::telemetry::set_sandbox_ops_log_file(runtime_paths::sandbox_ops_log_file(run_dir));
-    if let Some(source) = source {
-        log_info!(
-            LOG_TAG,
-            "guest_runtime_dir_env_source key={} source={}",
-            runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
-            source.label()
-        );
-    }
     Ok(())
 }
 

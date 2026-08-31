@@ -27,9 +27,6 @@ import {
   AlertCircle,
   Coffee,
   Flag,
-  FilePen,
-  FilePlus,
-  FileText,
   Hand,
   Heart,
   Leaf,
@@ -58,7 +55,6 @@ import {
   Search,
   Sunrise,
   Target,
-  Terminal,
   X,
   Clock,
   Hourglass,
@@ -106,7 +102,6 @@ import {
   foldLatestChatUsageByRunId,
   isChatEventContentTextType,
   terminatedChatRunIds,
-  type OutputToolPayload,
 } from "@okouai/api-contracts/contracts/chat-events";
 import {
   messageDocumentToDisplayText,
@@ -175,6 +170,10 @@ import {
 } from "../../signals/chat-page/chat-goal.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { CustomConnectorConnectDialog } from "./components/settings/custom-connector-connect-dialog.tsx";
+import {
+  defaultBuiltinConnectorAccountOptions,
+  defaultCustomConnectorAccountOptions,
+} from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 import { customConnectors$ } from "../../signals/okou-page/settings/custom-connectors.ts";
 import {
   openImageLightbox$ as openAttachmentImageLightbox$,
@@ -296,6 +295,21 @@ import {
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
+import {
+  ChatAssistantMessageBody,
+  ChatUserMessageBubble,
+  CHAT_THREAD_ASSISTANT_AVATAR_FRAME_CLASS,
+  CHAT_THREAD_ASSISTANT_AVATAR_IMAGE_CLASS,
+  CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_CLASS,
+  CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_ROW_CLASS,
+  CHAT_THREAD_ASSISTANT_MESSAGE_GROUP_CLASS,
+  CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS,
+  CHAT_THREAD_CONTENT_MAIN_CLASS,
+  CHAT_THREAD_MESSAGE_LIST_CLASS,
+  CHAT_THREAD_MESSAGE_STACK_PULL_CLASS,
+  CHAT_THREAD_USER_MESSAGE_ACTIONS_CLASS,
+  CHAT_THREAD_USER_MESSAGE_ROW_CLASS,
+} from "./chat-message-surface.tsx";
 
 type RecommendedFollowup = ChatRecommendedFollowup;
 
@@ -2986,8 +3000,6 @@ function resolveSessionError(
   return null;
 }
 
-const CHAT_THREAD_CONTENT_MAIN_CLASS =
-  "items-center py-4 pl-4 pr-4 sm:pl-6 sm:pr-6 @container";
 const CHAT_RENDER_LOAD_MORE_TOP_THRESHOLD_PX = 100;
 
 function renderedChatEventKeys(
@@ -3186,7 +3198,7 @@ function ChatThreadEventsMain({ thread }: { thread: ChatPanelSignals }) {
         ref={scrollContentOnRef}
         data-message-container
         className={cn(
-          "w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible",
+          CHAT_THREAD_MESSAGE_LIST_CLASS,
           sharingPhase !== "idle" && "pr-10 lg:pr-0",
         )}
         style={{ visibility: renderedGroupsReady ? "visible" : "hidden" }}
@@ -3648,326 +3660,10 @@ function attachUsageToCompletedWorkGroups(
 function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
   return (
     chatEventCompatibilityRole(event.eventType) === "assistant" &&
-    (event.eventType === "output.tool" ||
-      (isChatEventContentTextType(event.eventType) && Boolean(event.content)) ||
+    ((isChatEventContentTextType(event.eventType) && Boolean(event.content)) ||
       Boolean(chatEventError(event)) ||
       hasChatEventBodyContent(event) ||
       Boolean(chatEventAttachments(event)?.length))
-  );
-}
-
-type ToolActivityEvent = Extract<
-  EnrichedChatEvent,
-  { readonly eventType: "output.tool" }
->;
-
-type AssistantRenderPlanItem =
-  | {
-      readonly kind: "event";
-      readonly event: EnrichedChatEvent;
-    }
-  | {
-      readonly kind: "tool-activity";
-      readonly anchorEventId: string;
-      readonly events: readonly ToolActivityEvent[];
-    };
-
-function isToolActivityEvent(
-  event: EnrichedChatEvent,
-): event is ToolActivityEvent {
-  return event.eventType === "output.tool";
-}
-
-function buildAssistantRenderPlan(
-  events: readonly EnrichedChatEvent[],
-): AssistantRenderPlanItem[] {
-  const plan: AssistantRenderPlanItem[] = [];
-  let toolEvents: ToolActivityEvent[] = [];
-  for (const event of events) {
-    if (isToolActivityEvent(event)) {
-      toolEvents.push(event);
-      continue;
-    }
-    if (!isRenderableAssistantEvent(event)) {
-      continue;
-    }
-    const firstToolEvent = toolEvents[0];
-    if (firstToolEvent !== undefined) {
-      plan.push({
-        kind: "tool-activity",
-        anchorEventId: firstToolEvent.id,
-        events: toolEvents,
-      });
-      toolEvents = [];
-    }
-    plan.push({ kind: "event", event });
-  }
-  const firstToolEvent = toolEvents[0];
-  if (firstToolEvent !== undefined) {
-    plan.push({
-      kind: "tool-activity",
-      anchorEventId: firstToolEvent.id,
-      events: toolEvents,
-    });
-  }
-  return plan;
-}
-
-type ToolActivityCategory = "run" | "read" | "changes";
-
-function toolActivityCategory(
-  action: OutputToolPayload["action"],
-): ToolActivityCategory {
-  switch (action) {
-    case "run": {
-      return "run";
-    }
-    case "read": {
-      return "read";
-    }
-    case "write":
-    case "edit": {
-      return "changes";
-    }
-  }
-}
-
-function toolActivityCategoryLabel(
-  category: ToolActivityCategory,
-  operationCount: number,
-  hasPending: boolean,
-  t: TFunction<"common">,
-): string {
-  const singular = operationCount === 1;
-  switch (category) {
-    case "run": {
-      return hasPending
-        ? singular
-          ? t(($) => {
-              return $.chat.toolActivity.categories.run.pending.singular;
-            })
-          : t(($) => {
-              return $.chat.toolActivity.categories.run.pending.plural;
-            })
-        : singular
-          ? t(($) => {
-              return $.chat.toolActivity.categories.run.terminal.singular;
-            })
-          : t(($) => {
-              return $.chat.toolActivity.categories.run.terminal.plural;
-            });
-    }
-    case "read": {
-      return hasPending
-        ? singular
-          ? t(($) => {
-              return $.chat.toolActivity.categories.read.pending.singular;
-            })
-          : t(($) => {
-              return $.chat.toolActivity.categories.read.pending.plural;
-            })
-        : singular
-          ? t(($) => {
-              return $.chat.toolActivity.categories.read.terminal.singular;
-            })
-          : t(($) => {
-              return $.chat.toolActivity.categories.read.terminal.plural;
-            });
-    }
-    case "changes": {
-      return hasPending
-        ? singular
-          ? t(($) => {
-              return $.chat.toolActivity.categories.changes.pending.singular;
-            })
-          : t(($) => {
-              return $.chat.toolActivity.categories.changes.pending.plural;
-            })
-        : singular
-          ? t(($) => {
-              return $.chat.toolActivity.categories.changes.terminal.singular;
-            })
-          : t(($) => {
-              return $.chat.toolActivity.categories.changes.terminal.plural;
-            });
-    }
-  }
-}
-
-function toolActivityGroupLabel(
-  events: readonly ToolActivityEvent[],
-  t: TFunction<"common">,
-): string {
-  const categoryStates = new Map<
-    ToolActivityCategory,
-    { readonly operationCount: number; readonly hasPending: boolean }
-  >();
-  for (const event of events) {
-    const category = toolActivityCategory(event.action);
-    const prior = categoryStates.get(category);
-    categoryStates.set(category, {
-      operationCount: (prior?.operationCount ?? 0) + 1,
-      hasPending: (prior?.hasPending ?? false) || event.status === "pending",
-    });
-  }
-  const labels = Array.from(categoryStates, ([category, state]) => {
-    return toolActivityCategoryLabel(
-      category,
-      state.operationCount,
-      state.hasPending,
-      t,
-    );
-  });
-  const label = new Intl.ListFormat(i18n.resolvedLanguage, {
-    style: "short",
-    type: "conjunction",
-  }).format(labels);
-  for (const state of categoryStates.values()) {
-    if (state.hasPending) {
-      return `${label}…`;
-    }
-  }
-  return label;
-}
-
-const TOOL_ACTIVITY_ICON_BY_ACTION = {
-  run: Terminal,
-  read: FileText,
-  write: FilePlus,
-  edit: FilePen,
-} satisfies Record<OutputToolPayload["action"], LucideIcon>;
-
-function ToolActivityStatus({
-  status,
-}: {
-  status: OutputToolPayload["status"];
-}) {
-  const { t } = useTranslation();
-  const label =
-    status === "pending"
-      ? t(($) => {
-          return $.chat.toolActivity.status.pending;
-        })
-      : status === "error"
-        ? t(($) => {
-            return $.chat.toolActivity.status.error;
-          })
-        : status === "cancelled"
-          ? t(($) => {
-              return $.chat.toolActivity.status.cancelled;
-            })
-          : t(($) => {
-              return $.chat.toolActivity.status.success;
-            });
-  if (status === "success") {
-    return <span className="sr-only">{label}</span>;
-  }
-  if (status === "pending") {
-    return (
-      <span role="status" className="sr-only">
-        {label}
-      </span>
-    );
-  }
-  return (
-    <span
-      role="status"
-      className={cn(
-        "shrink-0 text-[11px] leading-5",
-        status === "error" ? "text-destructive/80" : "text-muted-foreground/60",
-      )}
-    >
-      {label}
-    </span>
-  );
-}
-
-function ToolActivityGroup({
-  anchorEventId,
-  events,
-  compactTop,
-  thread,
-}: {
-  anchorEventId: string;
-  events: readonly ToolActivityEvent[];
-  compactTop: boolean;
-  thread: ChatPanelSignals;
-}) {
-  const { t } = useTranslation();
-  const expanded = useGet(thread.timelineExpandedIds$).has(anchorEventId);
-  const toggleExpanded = useSet(thread.toggleTimelineExpanded$);
-  const label = toolActivityGroupLabel(events, t);
-  return (
-    <div
-      data-chat-tool-activity
-      className={cn(
-        "relative -mx-2 min-w-0",
-        compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
-      )}
-    >
-      <button
-        type="button"
-        aria-expanded={expanded}
-        aria-label={
-          expanded
-            ? t(($) => {
-                return $.chat.toolActivity.collapse;
-              })
-            : t(($) => {
-                return $.chat.toolActivity.expand;
-              })
-        }
-        onClick={() => {
-          toggleExpanded(anchorEventId);
-        }}
-        className="inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-lg px-2 py-1 text-muted-foreground transition-colors hover:bg-state-hover"
-      >
-        <span className="min-w-0 truncate text-[13px]">{label}</span>
-        <ChevronRight
-          aria-hidden
-          size={13}
-          className={cn(
-            "shrink-0 transition-transform",
-            expanded && "rotate-90",
-          )}
-        />
-      </button>
-      {expanded ? (
-        <ul className="ml-2 flex flex-col py-0.5">
-          {events.map((event) => {
-            const Icon = TOOL_ACTIVITY_ICON_BY_ACTION[event.action];
-            return (
-              <li
-                key={event.id}
-                data-chat-scroll-anchor-event-id={event.id}
-                className="flex min-w-0 items-start gap-2 px-2 py-1 text-[13px] leading-5 text-muted-foreground"
-              >
-                <Icon
-                  aria-hidden
-                  size={13}
-                  className="mt-1 shrink-0 text-muted-foreground/55"
-                />
-                <span className="min-w-0 flex-1 break-words">
-                  {event.summary}
-                </span>
-                <ToolActivityStatus status={event.status} />
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        events.map((event) => {
-          return (
-            <span
-              key={event.id}
-              aria-hidden
-              data-chat-scroll-anchor-event-id={event.id}
-              className="sr-only"
-            />
-          );
-        })
-      )}
-    </div>
   );
 }
 
@@ -4222,12 +3918,6 @@ const RUN_SECTION_LABEL_CLASS =
   "min-w-0 max-w-full shrink-0 break-words font-serif text-[13px] italic text-muted-foreground/50";
 const RUN_SECTION_ROW_CLASS =
   "-mt-5 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
-
-// Consecutive user messages read as one burst, which means an even rhythm: the
-// copy button sits the same distance from the text above it as from the next
-// message. The button already sits `mt-1` under its own message, so this pull
-// cancels the thread's 24px gap down to that same 4px on the other side of it.
-const MESSAGE_STACK_PULL_CLASS = "-mt-5";
 
 function RunSectionDivider({
   label,
@@ -4563,7 +4253,12 @@ function ChatThreadSkeletonOverlay({ thread }: { thread: ChatPanelSignals }) {
       className="absolute inset-0 z-10 overflow-hidden pointer-events-none bg-background"
     >
       <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
-        <div className="zero-chat-skeleton-reveal w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4">
+        <div
+          className={cn(
+            "zero-chat-skeleton-reveal",
+            CHAT_THREAD_MESSAGE_LIST_CLASS,
+          )}
+        >
           <ChatSkeleton />
         </div>
       </main>
@@ -5072,7 +4767,6 @@ function ActiveGoalObjectiveDialog({ threadId }: { threadId: string }) {
             <Markdown
               source={goal.objective}
               escapeHtml
-              mathEnabled
               style={{ fontSize: "inherit", lineHeight: "inherit" }}
             />
           ) : (
@@ -5363,9 +5057,13 @@ function WaitingForAssistantResponse({
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
 }) {
+  const thinkingIndicatorProps = isQueued
+    ? {}
+    : { "data-thinking-indicator": true };
+
   return (
     <div
-      data-thinking-indicator
+      {...thinkingIndicatorProps}
       data-role="assistant"
       className="zero-thinking-enter flex flex-col gap-1"
     >
@@ -5398,7 +5096,7 @@ function WaitingForAssistantResponse({
 }
 
 function AssistantThinkingStatusRow({
-  running,
+  active,
   blockStyle,
   isQueued,
   thinkingLabel,
@@ -5406,7 +5104,7 @@ function AssistantThinkingStatusRow({
   thread,
   recommendedFollowupSource,
 }: {
-  running: boolean;
+  active: boolean;
   blockStyle: CSSProperties;
   isQueued: boolean;
   thinkingLabel: string;
@@ -5414,9 +5112,8 @@ function AssistantThinkingStatusRow({
   thread: ChatPanelSignals;
   recommendedFollowupSource: RecommendedFollowupSource | null;
 }) {
-  const thinkingIndicatorProps = running
-    ? { "data-thinking-indicator": true }
-    : {};
+  const thinkingIndicatorProps =
+    active && !isQueued ? { "data-thinking-indicator": true } : {};
 
   return (
     <div
@@ -5426,7 +5123,7 @@ function AssistantThinkingStatusRow({
     >
       <div className="hidden @[900px]:block" />
       <div className="min-w-0">
-        {running ? (
+        {active ? (
           <InlineThinkingRow
             blockStyle={blockStyle}
             isQueued={isQueued}
@@ -5441,7 +5138,7 @@ function AssistantThinkingStatusRow({
   );
 }
 
-function thinkingIndicatorRunning(mode: ThinkingIndicatorMode): boolean {
+function runStatusIndicatorActive(mode: ThinkingIndicatorMode): boolean {
   return mode !== null && mode !== "finished";
 }
 
@@ -5480,7 +5177,7 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
       equalityFn: equalRecommendedFollowupSources,
     }) ?? null;
   const thinkingLabel = useGet(thread.thinkingPhrase$);
-  const running = thinkingIndicatorRunning(mode);
+  const active = runStatusIndicatorActive(mode);
   const isQueued = thinkingIndicatorQueued(mode);
   const thinkingEventId = useLastResolved(thread.thinkingEventId$);
   const displayedThinkingText =
@@ -5491,7 +5188,7 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
     thread.setThinkingIndicatorTextRef$,
   );
   const serverThinkingLabel =
-    thinkingText && thinkingEventId && running
+    thinkingText && thinkingEventId && active && !isQueued
       ? {
           displayedText: displayedThinkingText,
           fadingOut: thinkingTextFadingOut,
@@ -5509,7 +5206,7 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
   if (thinkingIndicatorUsesStatusRow(mode)) {
     return (
       <AssistantThinkingStatusRow
-        running={running}
+        active={active}
         blockStyle={blockStyle}
         isQueued={isQueued}
         thinkingLabel={thinkingLabel}
@@ -5533,6 +5230,16 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
 }
 
 function ChatConnectorActionConnectModal() {
+  const active = useGet(activeChatConnectorAction$);
+
+  if (!active) {
+    return null;
+  }
+
+  return <ActiveChatConnectorActionConnectModal />;
+}
+
+function ActiveChatConnectorActionConnectModal() {
   const active = useGet(activeChatConnectorAction$);
   const mcpEnabled = useGet(customConnectorMcpEnabled$);
   const close = useSet(closeChatConnectorActionConnectDialog$);
@@ -5564,20 +5271,37 @@ function ChatConnectorActionConnectModal() {
         (candidate.kind === "http" || mcpEnabled)
       );
     });
-    return connector ? (
+    const accountOptions = connector
+      ? defaultCustomConnectorAccountOptions(connector)
+      : null;
+    return connector && accountOptions ? (
       <CustomConnectorConnectDialog
         connector={connector}
         agentId={active.agentId}
+        accountOptions={accountOptions}
         onClose={close}
         onSuccess={onSuccess}
       />
     ) : null;
   }
 
+  const accountOptions = defaultBuiltinConnectorAccountOptions(
+    active.catalogItem,
+  );
+  if (!accountOptions) {
+    return null;
+  }
+  const reconnectAuthMethod =
+    accountOptions.account.intent === "reconnect"
+      ? active.catalogItem.connection?.authMethod
+      : undefined;
+
   return (
     <ConnectModal
       item={active.catalogItem}
       agentId={active.agentId}
+      accountOptions={accountOptions}
+      reconnectAuthMethod={reconnectAuthMethod}
       onClose={close}
       onSuccess={onSuccess}
     />
@@ -5917,6 +5641,7 @@ function AssistantRecoveryActions({
   const retrying = retryLoadable.state === "loading";
   const resetting = resetLoadable.state === "loading";
   const hasResetAction = recovery.actions.resetAndTryAgain !== null;
+  const hasRetryAction = recovery.actions.tryAgain !== null;
   const handleModelSelection = (
     selection: ModelProviderSelection | null,
   ): void => {
@@ -5952,21 +5677,26 @@ function AssistantRecoveryActions({
         triggerClassName="h-8 w-auto min-w-[9rem] bg-background text-sm"
         compactTrigger
         resolveDefaultSelection={false}
+        {...(recovery.failedModel
+          ? { excludedModel: recovery.failedModel }
+          : {})}
       />
-      <Button
-        type="button"
-        size="sm"
-        variant={hasResetAction ? "outline" : "default"}
-        disabled={retrying || resetting}
-        onClick={() => {
-          detach(retry(pageSignal), Reason.DomCallback);
-        }}
-      >
-        <AssistantRecoveryActionSpinner loading={retrying} />
-        {t(($) => {
-          return $.chat.errors.recovery.tryAgain;
-        })}
-      </Button>
+      {hasRetryAction && (
+        <Button
+          type="button"
+          size="sm"
+          variant={hasResetAction ? "outline" : "default"}
+          disabled={retrying || resetting}
+          onClick={() => {
+            detach(retry(pageSignal), Reason.DomCallback);
+          }}
+        >
+          <AssistantRecoveryActionSpinner loading={retrying} />
+          {t(($) => {
+            return $.chat.errors.recovery.tryAgain;
+          })}
+        </Button>
+      )}
     </div>
   );
 }
@@ -6012,21 +5742,29 @@ function AssistantErrorRecoveryCard({
                   },
                   { framework },
                 )
-              : t(
-                  ($) => {
-                    return $.chat.errors.recovery.capacityTitle;
-                  },
-                  { framework },
-                )}
+              : recovery.kind === "model-unavailable"
+                ? t(($) => {
+                    return $.chat.errors.recovery.unavailableTitle;
+                  })
+                : t(
+                    ($) => {
+                      return $.chat.errors.recovery.capacityTitle;
+                    },
+                    { framework },
+                  )}
           </div>
           <p className="mt-0.5 text-sm leading-5 text-muted-foreground">
             {recovery.kind === "usage-limit"
               ? t(($) => {
                   return $.chat.errors.recovery.usageDescription;
                 })
-              : t(($) => {
-                  return $.chat.errors.recovery.capacityDescription;
-                })}
+              : recovery.kind === "model-unavailable"
+                ? t(($) => {
+                    return $.chat.errors.recovery.unavailableDescription;
+                  })
+                : t(($) => {
+                    return $.chat.errors.recovery.capacityDescription;
+                  })}
           </p>
           {resetText && (
             <div className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
@@ -6194,7 +5932,7 @@ function AssistantBubbleAvatar({ thread }: { thread: ChatPanelSignals }) {
     <Link
       pathname="/agents/:agentId"
       options={{ pathParams: { agentId } }}
-      className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-state-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className={`${CHAT_THREAD_ASSISTANT_AVATAR_FRAME_CLASS} transition-colors duration-150 hover:bg-state-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2`}
       aria-label={t(($) => {
         return $.chat.agentPage.viewAgentProfile;
       })}
@@ -6202,7 +5940,7 @@ function AssistantBubbleAvatar({ thread }: { thread: ChatPanelSignals }) {
       <AgentAvatarImg
         name={agentId}
         alt=""
-        className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-full object-cover object-top"
+        className={CHAT_THREAD_ASSISTANT_AVATAR_IMAGE_CLASS}
       />
     </Link>
   );
@@ -6676,7 +6414,7 @@ function UserMessageActions({
     return null;
   }
   return (
-    <div className="flex justify-end gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+    <div className={CHAT_THREAD_USER_MESSAGE_ACTIONS_CLASS}>
       <IconTooltipButton
         type="button"
         onClick={onCopy}
@@ -6785,14 +6523,14 @@ function MessageAnnotation({
     return (
       <div
         aria-label={t(($) => {
-          return $.settings.preferences.morningBrief.title;
+          return $.chat.queue.morningBrief;
         })}
         className={className}
       >
         <Sunrise size={15} className="shrink-0" />
         <span>
           {t(($) => {
-            return $.settings.preferences.morningBrief.title;
+            return $.chat.queue.morningBrief;
           })}
         </span>
       </div>
@@ -7416,14 +7154,6 @@ function isElevatedUserMessagePart(
   );
 }
 
-function UserMessageBubble({ children }: { children: ReactNode }) {
-  return (
-    <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
-      {children}
-    </div>
-  );
-}
-
 function UserMessageContent({
   document,
   attachments,
@@ -7458,14 +7188,14 @@ function UserMessageContent({
         onImageClick={onImageClick}
       />
       {hasBody ? (
-        <UserMessageBubble>
+        <ChatUserMessageBubble>
           <div className="px-4 py-3">
             <UserMessageView
               document={document}
               elevatedFileIds={elevatedFileIds}
             />
           </div>
-        </UserMessageBubble>
+        </ChatUserMessageBubble>
       ) : null}
     </>
   );
@@ -7509,7 +7239,7 @@ function WorkflowUserMessage({
       data-turn-created-at={event.createdAt}
       className="group"
     >
-      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+      <div className={CHAT_THREAD_USER_MESSAGE_ROW_CLASS}>
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex w-full flex-col items-end">
           <MessageAnnotation renderPart={renderPart} />
@@ -7562,7 +7292,7 @@ function GoalUserMessage({
       data-turn-created-at={event.createdAt}
       className="group"
     >
-      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+      <div className={CHAT_THREAD_USER_MESSAGE_ROW_CLASS}>
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex w-full flex-col items-end">
           <MessageAnnotation renderPart={renderPart} />
@@ -7692,9 +7422,12 @@ function PagedUserMessage({
       data-role="user"
       data-chat-scroll-anchor-event-id={event.id}
       data-turn-created-at={event.createdAt}
-      className={cn("group", stackedOnPrevious && MESSAGE_STACK_PULL_CLASS)}
+      className={cn(
+        "group",
+        stackedOnPrevious && CHAT_THREAD_MESSAGE_STACK_PULL_CLASS,
+      )}
     >
-      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+      <div className={CHAT_THREAD_USER_MESSAGE_ROW_CLASS}>
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
           {annotationPart ? (
@@ -7753,21 +7486,13 @@ function PagedAssistantGroup({
     .join("\n\n");
   let renderedAssistantItemCount = 0;
   const renderAssistantTimeline = (events: readonly EnrichedChatEvent[]) => {
-    return buildAssistantRenderPlan(events).map((item) => {
+    return events.filter(isRenderableAssistantEvent).map((event) => {
       const compactTop = renderedAssistantItemCount > 0;
       renderedAssistantItemCount += 1;
-      return item.kind === "tool-activity" ? (
-        <ToolActivityGroup
-          key={`tool-activity:${item.anchorEventId}`}
-          anchorEventId={item.anchorEventId}
-          events={item.events}
-          compactTop={compactTop}
-          thread={thread}
-        />
-      ) : (
+      return (
         <PagedAssistantEventItem
-          key={item.event.id}
-          event={item.event}
+          key={event.id}
+          event={event}
           compactTop={compactTop}
           thread={thread}
         />
@@ -7781,9 +7506,9 @@ function PagedAssistantGroup({
       data-role="assistant"
       data-chat-run-id={runId}
       data-turn-created-at={group.events[0]?.createdAt}
-      className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
+      className={CHAT_THREAD_ASSISTANT_MESSAGE_GROUP_CLASS}
     >
-      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+      <div className={CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS}>
         <AssistantBubbleAvatar thread={thread} />
         <div className="relative flex flex-col gap-2">
           {runGroupFolds?.map((fold) => {
@@ -7824,23 +7549,22 @@ function PagedAssistantEventItem({
   compactTop?: boolean;
   thread: ChatPanelSignals;
 }) {
+  const retryRichEventTree = useSet(thread.retryRichEventTree$);
+  const pageSignal = useGet(pageSignal$);
   const error = chatEventError(event);
   if (error) {
     return (
-      <div
+      <ChatAssistantMessageBody
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
-        className={cn(
-          "zero-chat-bubble-assistant px-0 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]",
-          compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
-        )}
+        compactTop={compactTop}
       >
         <AssistantErrorContent
           error={error}
           eventId={event.id}
           thread={thread}
         />
-      </div>
+      </ChatAssistantMessageBody>
     );
   }
 
@@ -7849,18 +7573,26 @@ function PagedAssistantEventItem({
     hasChatEventBodyContent(event)
   ) {
     return (
-      <div
+      <ChatAssistantMessageBody
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
-        className={cn(
-          "zero-chat-bubble-assistant px-0 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]",
-          compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
-        )}
+        compactTop={compactTop}
       >
-        {event.tree !== undefined ? (
-          <MarkdownEventBody tree={event.tree} mediaPreview />
-        ) : null}
-      </div>
+        <MarkdownEventBody
+          tree={event.tree}
+          mediaPreview
+          onRetry={
+            event.richContentError
+              ? () => {
+                  detach(
+                    retryRichEventTree(event, pageSignal),
+                    Reason.DomCallback,
+                  );
+                }
+              : undefined
+          }
+        />
+      </ChatAssistantMessageBody>
     );
   }
 
@@ -8127,9 +7859,9 @@ function PagedGroupActions({
   };
 
   return (
-    <div className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
+    <div className={CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_ROW_CLASS}>
       <div className="hidden @[900px]:block" />
-      <div className="flex items-center justify-between pt-2 pb-1 gap-2 -ml-1">
+      <div className={CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_CLASS}>
         <PagedGroupPrimaryActions
           firstRunId={firstRunId}
           hasContent={hasContent}

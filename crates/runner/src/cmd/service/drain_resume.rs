@@ -90,7 +90,10 @@ use super::systemctl::{
     get_service_restart_policy, is_unit_active_bounded, read_unit_enablement,
     restore_unit_enablement, run_systemctl,
 };
-use super::{RunnerServiceUnit, ServiceFuture, acquire_service_lock};
+use super::{
+    RunnerServiceUnit, ServiceFuture, acquire_service_lock, read_unit_config_path,
+    selected_config_base_dir,
+};
 
 const DRAIN_SIGNAL_CONVERGENCE_TIMEOUT: Duration = Duration::from_secs(10);
 const DRAIN_SIGNAL_CONVERGENCE_POLL_INTERVAL: Duration = Duration::from_millis(250);
@@ -168,6 +171,10 @@ trait ServiceResumeOps {
         unit: &'a RunnerServiceUnit,
         timeout: Duration,
     ) -> ServiceFuture<'a, bool>;
+    fn read_unit_config_path<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, Option<std::path::PathBuf>>;
     fn enablement<'a>(
         &'a mut self,
         unit: &'a RunnerServiceUnit,
@@ -276,6 +283,13 @@ impl ServiceResumeOps for RealServiceResumeOps {
         timeout: Duration,
     ) -> ServiceFuture<'a, bool> {
         Box::pin(async move { is_unit_active_bounded(unit, timeout).await })
+    }
+
+    fn read_unit_config_path<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, Option<std::path::PathBuf>> {
+        Box::pin(async move { read_unit_config_path(unit).await })
     }
 
     fn enablement<'a>(
@@ -942,7 +956,21 @@ async fn resume_with_ops(
     // is still Running can race with the pending SIGUSR1: SIGUSR2 is a no-op
     // in Running, but removing the restart override would let a later Draining
     // runner regain restart behavior.
-    let base_dir = home.runners_dir().join(unit.suffix());
+    let config_path = ops.read_unit_config_path(unit).await?.ok_or_else(|| {
+        RunnerError::Internal(format!(
+            "{} does not select a runner --config path — cannot resume",
+            unit.unit_name()
+        ))
+    })?;
+    let base_dir = selected_config_base_dir(unit, &config_path, home)
+        .await?
+        .ok_or_else(|| {
+            RunnerError::Internal(format!(
+                "cannot resolve a live runner instance for {} from selected config {} — cannot resume",
+                unit.unit_name(),
+                config_path.display()
+            ))
+        })?;
     let status = read_runner_status(&base_dir).await.map_err(|error| {
         RunnerError::Internal(format!(
             "cannot read status.json for {} during resume preflight: {error}",
@@ -1036,6 +1064,24 @@ mod tests {
         .unwrap();
     }
 
+    async fn publish_test_live_runner(
+        home: &HomePaths,
+        config_path: &Path,
+        base_dir: &Path,
+    ) -> crate::live_runner_instances::LiveRunnerInstanceHandle {
+        crate::live_runner_instances::publish(
+            home,
+            crate::live_runner_instances::LiveRunnerInstanceMetadata {
+                config_path: config_path.to_path_buf(),
+                base_dir: base_dir.to_path_buf(),
+                runner_group: "test".to_string(),
+                subcommand: "start".to_string(),
+            },
+        )
+        .await
+        .unwrap()
+    }
+
     async fn resume_after_preflight_for_test(ops: &mut FakeResumeOps) -> RunnerResult<()> {
         let dir = tempfile::tempdir().unwrap();
         write_test_status(dir.path(), "running", TEST_RUNNER_STARTED_AT).await;
@@ -1066,6 +1112,7 @@ mod tests {
     struct FakeResumeOps {
         events: Vec<&'static str>,
         active_results: VecDeque<RunnerResult<bool>>,
+        config_path: Option<PathBuf>,
         enablement_results: VecDeque<RunnerResult<SystemdUnitEnablement>>,
         write_error: bool,
         remove_error: bool,
@@ -1105,6 +1152,7 @@ mod tests {
             Self {
                 events: Vec::new(),
                 active_results: active_results(1),
+                config_path: Some(PathBuf::from("/tmp/runner-config.yaml")),
                 enablement_results: VecDeque::from([Ok(SystemdUnitEnablement::NotEnabled)]),
                 write_error: false,
                 remove_error: false,
@@ -1262,6 +1310,14 @@ mod tests {
             Box::pin(std::future::ready(
                 self.active_results.pop_front().unwrap_or(Ok(false)),
             ))
+        }
+
+        fn read_unit_config_path<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+        ) -> ServiceFuture<'a, Option<PathBuf>> {
+            self.events.push("read_config_path");
+            Box::pin(std::future::ready(Ok(self.config_path.clone())))
         }
 
         fn enablement<'a>(
@@ -2069,16 +2125,61 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn resume_refuses_unresolved_selected_config_before_mutation() {
+        let unit = service_unit();
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let mut no_config_ops = FakeResumeOps {
+            config_path: None,
+            ..FakeResumeOps::default()
+        };
+
+        let no_config_error = resume_with_ops(&unit, &home, &mut no_config_ops)
+            .await
+            .unwrap_err();
+
+        assert!(
+            no_config_error
+                .to_string()
+                .contains("does not select a runner --config path")
+        );
+        assert_eq!(no_config_ops.events, ["is_active", "read_config_path"]);
+
+        let config_path = dir.path().join("selected-config.yaml");
+        let mut no_record_ops = FakeResumeOps {
+            config_path: Some(config_path),
+            ..FakeResumeOps::default()
+        };
+
+        let no_record_error = resume_with_ops(&unit, &home, &mut no_record_ops)
+            .await
+            .unwrap_err();
+
+        assert!(
+            no_record_error
+                .to_string()
+                .contains("cannot resolve a live runner instance")
+        );
+        assert_eq!(no_record_ops.events, ["is_active", "read_config_path"]);
+    }
+
+    #[tokio::test]
     async fn resume_refuses_missing_status_before_mutation() {
         let unit = service_unit();
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("home"));
-        let mut ops = FakeResumeOps::default();
+        let config_path = dir.path().join("selected-config.yaml");
+        let base_dir = home.runners_dir().join("runner-release");
+        let _live_instance = publish_test_live_runner(&home, &config_path, &base_dir).await;
+        let mut ops = FakeResumeOps {
+            config_path: Some(config_path),
+            ..FakeResumeOps::default()
+        };
 
         let error = resume_with_ops(&unit, &home, &mut ops).await.unwrap_err();
 
         assert!(error.to_string().contains("cannot read status.json"));
-        assert_eq!(ops.events, ["is_active"]);
+        assert_eq!(ops.events, ["is_active", "read_config_path"]);
     }
 
     #[tokio::test]
@@ -2086,17 +2187,22 @@ mod tests {
         let unit = service_unit();
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("home"));
-        let base_dir = home.runners_dir().join(unit.suffix());
+        let config_path = dir.path().join("selected-config.yaml");
+        let base_dir = home.runners_dir().join("runner-release");
+        let _live_instance = publish_test_live_runner(&home, &config_path, &base_dir).await;
         tokio::fs::create_dir_all(&base_dir).await.unwrap();
         tokio::fs::write(base_dir.join("status.json"), "{")
             .await
             .unwrap();
-        let mut ops = FakeResumeOps::default();
+        let mut ops = FakeResumeOps {
+            config_path: Some(config_path),
+            ..FakeResumeOps::default()
+        };
 
         let error = resume_with_ops(&unit, &home, &mut ops).await.unwrap_err();
 
         assert!(error.to_string().contains("cannot read status.json"));
-        assert_eq!(ops.events, ["is_active"]);
+        assert_eq!(ops.events, ["is_active", "read_config_path"]);
     }
 
     #[tokio::test]
@@ -2104,7 +2210,9 @@ mod tests {
         let unit = service_unit();
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("home"));
-        let base_dir = home.runners_dir().join(unit.suffix());
+        let config_path = dir.path().join("selected-config.yaml");
+        let base_dir = home.runners_dir().join("runner-release");
+        let _live_instance = publish_test_live_runner(&home, &config_path, &base_dir).await;
         tokio::fs::create_dir_all(&base_dir).await.unwrap();
         tokio::fs::write(
             base_dir.join("status.json"),
@@ -2112,20 +2220,25 @@ mod tests {
         )
         .await
         .unwrap();
-        let mut ops = FakeResumeOps::default();
+        let mut ops = FakeResumeOps {
+            config_path: Some(config_path),
+            ..FakeResumeOps::default()
+        };
 
         let error = resume_with_ops(&unit, &home, &mut ops).await.unwrap_err();
 
         assert!(error.to_string().contains("running, not draining"));
-        assert_eq!(ops.events, ["is_active"]);
+        assert_eq!(ops.events, ["is_active", "read_config_path"]);
     }
 
     #[tokio::test]
-    async fn resume_verified_draining_status_reaches_transition() {
+    async fn resume_uses_selected_config_base_dir_for_transition() {
         let unit = service_unit();
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("home"));
-        let base_dir = home.runners_dir().join(unit.suffix());
+        let config_path = dir.path().join("selected-config.yaml");
+        let base_dir = home.runners_dir().join("runner-release");
+        let _live_instance = publish_test_live_runner(&home, &config_path, &base_dir).await;
         tokio::fs::create_dir_all(&base_dir).await.unwrap();
         tokio::fs::write(
             base_dir.join("status.json"),
@@ -2135,6 +2248,7 @@ mod tests {
         .unwrap();
         let mut ops = FakeResumeOps {
             active_results: active_results(2),
+            config_path: Some(config_path),
             status_update_on_signal: Some((
                 base_dir.join("status.json"),
                 test_status_content("running", TEST_RUNNER_STARTED_AT),
@@ -2148,6 +2262,7 @@ mod tests {
             ops.events,
             [
                 "is_active",
+                "read_config_path",
                 "is_enabled",
                 "remove_restart_override",
                 "enable",
@@ -2236,10 +2351,13 @@ mod tests {
         let unit = service_unit();
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("home"));
-        let base_dir = home.runners_dir().join(unit.suffix());
+        let config_path = dir.path().join("selected-config.yaml");
+        let base_dir = home.runners_dir().join("runner-release");
+        let _live_instance = publish_test_live_runner(&home, &config_path, &base_dir).await;
         write_test_status(&base_dir, "draining", TEST_RUNNER_STARTED_AT).await;
         let mut ops = FakeResumeOps {
             active_results: active_results(2),
+            config_path: Some(config_path),
             status_update_on_signal: Some((
                 base_dir.join("status.json"),
                 test_status_content("stopping", TEST_RUNNER_STARTED_AT),
@@ -2254,6 +2372,7 @@ mod tests {
             ops.events,
             [
                 "is_active",
+                "read_config_path",
                 "is_enabled",
                 "remove_restart_override",
                 "enable",

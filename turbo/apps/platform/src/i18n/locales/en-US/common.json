@@ -441,7 +441,6 @@
       "ariaLabel": "Sidebar",
       "chat": "Chat",
       "collapse": "Collapse sidebar",
-      "expand": "Expand sidebar",
       "hideChatList": "Hide chat list",
       "manage": "Manage",
       "mobile": {
@@ -516,7 +515,6 @@
         "arrow": "Arrow",
         "box": "Box",
         "pen": "Draw",
-        "redact": "Redact",
         "text": "Text"
       },
       "undo": "Undo"
@@ -1076,6 +1074,7 @@
         "secondFactorDescription": "This sign-in requires an additional verification step that this page doesn't support. Start over to try another sign-in method.",
         "secondFactorTitle": "Additional verification required",
         "selectOrganization": "Continue with {{organizationName}}",
+        "signedInAs": "Signed in as {{identifier}}",
         "unsupportedDescription": "Your account returned an authentication step that this page doesn't support. Start over to try another sign-in method.",
         "unsupportedTitle": "Sign-in step unavailable"
       },
@@ -1084,7 +1083,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "Use current sign-in",
         "addAccount": "Add account",
         "appleMethod": "Continue with Apple",
         "back": "Back",
@@ -1114,6 +1112,7 @@
         "hidePassword": "Hide password",
         "identifierLabel": "Email address or username",
         "identifierPlaceholder": "Enter your email address or username",
+        "lastUsed": "Last used",
         "methodsHelpPrompt": "Don’t have any of these?",
         "newPasswordLabel": "New password",
         "newPasswordSubtitle": "For security reasons, it is required to reset your password.",
@@ -1151,7 +1150,6 @@
         "verify": "Verify"
       },
       "signUp": {
-        "action": "Use current sign-up",
         "alreadyHaveAccount": "Already have an account?",
         "appleMethod": "Continue with Apple",
         "back": "Back",
@@ -1897,18 +1895,17 @@
       "agentSuggestions": "Agents",
       "configureModel": "Configure model",
       "createWorkflow": "Create workflow",
+      "imageModelForThisChat": "Image model for this chat",
       "message": "Message",
+      "modelForThisChat": "Model for this chat",
       "placeholder": "Ask me to automate workflows, manage tasks...",
       "selectedModelUnavailable": "The selected model is not available. Configure it before sending.",
       "selectedModelUnavailableToast": "The selected model is not available",
       "selectModel": "Select model",
-      "setAsDefault": "Set as default",
-      "temporaryFastModeDisabledNotice": "Fast mode is temporarily disabled for this run",
-      "temporaryFastModeEnabledNotice": "Fast mode is temporarily enabled for this run",
-      "temporaryImageModelNotice": "Temporarily switched to {{model}} for images",
-      "temporaryModelNotice": "Temporarily switched to {{model}}",
-      "temporaryVideoModelNotice": "Temporarily switched to {{model}} for video",
+      "temporarilySwitchTo": "Temporarily switch to",
       "threadSuggestions": "Chat threads",
+      "useForFutureChats": "Use this for future chats",
+      "videoModelForThisChat": "Video model for this chat",
       "visualAttachmentsUnsupported": "{{modelName}} cannot recognize images or videos. Switch to a vision-capable model to attach them.",
       "workflows": {
         "empty": "No matching workflows",
@@ -1938,7 +1935,7 @@
       "yourComputer": "Your computer"
     },
     "connectors": {
-      "accountForThread": "Account for this thread",
+      "accountForThread": "Account for this chat",
       "add": "Add {{connectorName}}",
       "addConnectors": "Add connectors",
       "authorizationFailed": "{{connectorName}} connected but could not be authorized for {{agentName}}",
@@ -1977,6 +1974,8 @@
         "resetsAt": "Resets {{time}}",
         "selectModel": "Switch model",
         "tryAgain": "Try again",
+        "unavailableDescription": "This model isn't supported by the connected ChatGPT account. Switch to another model to continue.",
+        "unavailableTitle": "Selected model isn't available",
         "usageDescription": "You can continue when your usage limit resets, or switch models now.",
         "usageTitle": "{{framework}} limit reached"
       },
@@ -2007,6 +2006,100 @@
       "sent": "Forwarded successfully",
       "threads": "Chats",
       "title": "Forward to"
+    },
+    "introVideo": {
+      "avatar": {
+        "heading": "Choose an avatar",
+        "help": "Choose a presenter or continue without one",
+        "none": "No avatar",
+        "visualBalanceAvatarLed": "Avatar-led — narrator on screen most of the time",
+        "visualBalanceBalanced": "Balanced mix — equal time for both",
+        "visualBalanceBRollLed": "B-roll-led — focus on slides and visuals",
+        "visualBalanceHeading": "How would you like the visual balance?"
+      },
+      "cardDescription": "Turn a file or screen recording into a finished video",
+      "description": "Add a source, choose an optional avatar and voice, then create the video in a chat thread.",
+      "errors": {
+        "recordingEmpty": "The recording was empty. Please try again.",
+        "recordingFailed": "Screen recording could not start. Try again in a recent Chrome browser.",
+        "recordingPermission": "Nothing was shared. Choose a tab, window, or screen when you are ready.",
+        "recordingShareEnded": "Screen sharing ended before recording started.",
+        "recordingUnsupported": "Screen recording is not supported in this browser.",
+        "sendFailed": "The chat thread could not be created. Your source is still saved locally and has been downloaded as a backup.",
+        "uploadFailed": "The source could not be uploaded. It is still saved locally and has been downloaded as a backup."
+      },
+      "footer": {
+        "back": "Back",
+        "createInChat": "Create in chat",
+        "download": "Download source",
+        "next": "Next",
+        "startRecording": "Choose screen and start",
+        "stopRecording": "Stop recording"
+      },
+      "recording": {
+        "chooseSurface": "Choose a tab, window, or screen",
+        "countdown": "Recording starts after the countdown",
+        "description": "Chrome will ask what to share. Recording begins only after the three-second countdown finishes.",
+        "heading": "Record your screen",
+        "localNote": "You can stop from Chrome's sharing bar or return here. The recording stays local until the chat thread is created.",
+        "microphone": "Microphone",
+        "microphoneHelp": "Add narration while you demonstrate",
+        "recordingLocally": "Recording locally",
+        "systemAudio": "System audio",
+        "systemAudioHelp": "Available sources depend on Chrome and your system"
+      },
+      "review": {
+        "avatar": "Avatar",
+        "heading": "Review your intro video",
+        "help": "Confirm the choices Zero will receive in the new chat thread",
+        "instructions": "Editing instructions",
+        "source": "Source",
+        "voice": "Voice"
+      },
+      "source": {
+        "chatDescription": "Open a thread now and shape the video with Zero",
+        "chatDetail": "Add a source, avatar, or voice later in chat",
+        "chatTitle": "Start in chat",
+        "documentDescription": "Turn your content into a narrated intro video",
+        "documentFormats": "PPTX, PPT, PDF, DOC, DOCX",
+        "documentTitle": "Upload slides or a document",
+        "dropDescription": "Slides, documents, or recordings",
+        "dropTitle": "Drop a source here",
+        "heading": "How do you want to start?",
+        "help": "Add something you already have, record your screen, or describe the video in your own words",
+        "recordDescription": "Choose a tab, window, or your entire screen",
+        "recordDetail": "Starts after a three-second countdown",
+        "recordTitle": "Record your screen",
+        "videoDescription": "Let AI tighten the pacing, framing, and narration",
+        "videoFormats": "MP4, MOV, WEBM",
+        "videoTitle": "Upload a recording"
+      },
+      "sourceReview": {
+        "format": "Format",
+        "heading": "Your source is ready",
+        "help": "Check the file before you continue",
+        "inBrowser": "In this browser",
+        "inTab": "Until this tab closes",
+        "replace": "Replace source",
+        "saved": "Saved",
+        "source": "Source"
+      },
+      "steps": {
+        "avatar": "Avatar",
+        "label": "Intro video steps",
+        "review": "Review",
+        "source": "Source",
+        "voice": "Voice"
+      },
+      "title": "Create an intro video",
+      "voice": {
+        "heading": "Choose a voice",
+        "help": "Preview a sample before you continue",
+        "none": "No voiceover",
+        "noneDescription": "Create a caption-led video without narration",
+        "original": "Original audio",
+        "originalDescription": "Keep the audio from the uploaded video or recording"
+      }
     },
     "mail": {
       "bcc": "bcc",
@@ -2104,6 +2197,7 @@
       "loadingGoal": "Loading goal...",
       "message_one": "{{count}} message",
       "message_other": "{{count}} messages",
+      "morningBrief": "Morning Brief",
       "openGoalDetails": "Open goal details",
       "pendingAutomationEvent": "Pending automation event",
       "queuedMessage": "Queued message",
@@ -2314,48 +2408,6 @@
       "copied": "Copied",
       "deleted": "Chat deleted"
     },
-    "toolActivity": {
-      "categories": {
-        "changes": {
-          "pending": {
-            "plural": "Changing files",
-            "singular": "Changing a file"
-          },
-          "terminal": {
-            "plural": "Changed files",
-            "singular": "Changed a file"
-          }
-        },
-        "read": {
-          "pending": {
-            "plural": "Reading files",
-            "singular": "Reading a file"
-          },
-          "terminal": {
-            "plural": "Read files",
-            "singular": "Read a file"
-          }
-        },
-        "run": {
-          "pending": {
-            "plural": "Running commands",
-            "singular": "Running a command"
-          },
-          "terminal": {
-            "plural": "Ran commands",
-            "singular": "Ran a command"
-          }
-        }
-      },
-      "collapse": "Collapse tool activity",
-      "expand": "Expand tool activity",
-      "status": {
-        "cancelled": "Cancelled",
-        "error": "Failed",
-        "pending": "In progress",
-        "success": "Completed"
-      }
-    },
     "voice": {
       "checkingLimit": "Checking voice input limit",
       "input": "Voice input",
@@ -2420,8 +2472,7 @@
       "skipName": "Skip",
       "summaryMany": "{{value}} accounts",
       "summaryOne": "{{value}} account",
-      "summaryWithAttention": "{{summary}} · {{value}} need attention",
-      "summaryWithDefault": "{{summary}} · {{account}}"
+      "summaryWithAttention": "{{value}}/{{total}} need attention"
     },
     "actions": {
       "apply": "Apply",
@@ -2485,6 +2536,8 @@
       "access": {
         "add": "Add access",
         "manage": "Manage {{connector}} access",
+        "summaryMany": "{{value}} agents",
+        "unavailable": "Access unavailable",
         "usedBy": "Used by "
       },
       "categories": {
@@ -3275,15 +3328,6 @@
       "doneTitle": "Unsubscribed",
       "errorBody": "This unsubscribe link is invalid or expired. You can manage email notifications in Settings.",
       "errorTitle": "Something went wrong"
-    },
-    "morningBriefUnsubscribe": {
-      "documentTitle": "Morning Brief",
-      "doneBody": "You will no longer receive the daily Morning Brief email. You can turn it back on any time in Settings.",
-      "doneTitle": "Morning Brief turned off",
-      "errorBody": "The unsubscribe link is invalid or incomplete. Open the latest Morning Brief email and use its unsubscribe link, or manage the preference in Settings.",
-      "errorTitle": "This link is invalid",
-      "loadingLabel": "Loading unsubscribe status",
-      "managePreferences": "Manage preferences"
     },
     "pwaInstall": {
       "banner": "Install {{assistantName}} for a better experience",
@@ -5127,16 +5171,6 @@
         },
         "title": "Language"
       },
-      "morningBrief": {
-        "description": "A daily 7:00 AM email with your schedule, action items, and updates from connected GitHub, Gmail, and Google Calendar",
-        "nextEmail": "Next email: {{date}}",
-        "nextEmailInTimezone": "Next email: {{date}} ({{timezone}})",
-        "notScheduled": "Next email: not scheduled yet — turn the switch off and on to reschedule",
-        "sending": "Sending...",
-        "sendNow": "Send now",
-        "title": "Morning Brief",
-        "triggeredToast": "Morning Brief triggered, the email arrives shortly"
-      },
       "pageDescription": "Manage your appearance and agent runtime preferences",
       "pageTitle": "Preferences",
       "send": {
@@ -5347,15 +5381,20 @@
       "viewSource": "Diagram source"
     },
     "notFound": {
+      "action": "Back to home",
       "description": "The page you are looking for does not exist.",
       "title": "Page not found"
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
-    "notFoundDescription": "This shared conversation does not exist.",
+    "handoffDescription": "{{assistantName}} carries the context into a new chat",
+    "handoffPrompt": "Continue this shared conversation with me: {{url}}",
+    "makeConversationYours": "Make this conversation yours",
     "notFoundTitle": "Shared conversation not found",
-    "tryOkou": "Try {{assistantName}}"
+    "share": "Share",
+    "signIn": "Sign in",
+    "signUp": "Sign up",
+    "tryItYourself": "Try it yourself"
   },
   "usage": {
     "displayNames": {
@@ -6100,6 +6139,67 @@
       },
       "title": "Workflows",
       "viewAutomations": "View automations"
+    },
+    "official": {
+      "activeInstallationDescription": "This Official Workflow remains operational and its managed content stays read-only.",
+      "activeInstallationTitle": "Official Workflow",
+      "agent": "Agent",
+      "automationCount_one": "{{count}} automation",
+      "automationCount_other": "{{count}} automations",
+      "badge": "Official",
+      "browse": "Browse Official",
+      "chooseValue": "Choose a value",
+      "copySucceededUninstallFailed": "The copy is ready, but the original Official Workflow could not be uninstalled.",
+      "description": "Install managed workflows maintained by vm0.",
+      "empty": "No Official Workflows are available.",
+      "includedAutomations": "Included automations",
+      "install": "Install",
+      "installDescription": "Choose an Agent and complete every required parameter. All included automations will be installed.",
+      "installed": "Official Workflow installed",
+      "installErrorDescription": "Check the Agent and parameter values, then try again.",
+      "installErrorTitle": "Official Workflow could not be installed",
+      "installTitle": "Install {{name}}",
+      "intendedOff": "intended off",
+      "intendedOn": "intended on",
+      "loadErrorDescription": "This catalog may be unavailable or not enabled for your account.",
+      "loadErrorTitle": "Official Workflows could not be loaded",
+      "no": "No",
+      "noParameters": "No parameters are required.",
+      "noResults": "No Official Workflows match your search.",
+      "notFound": "This Official Workflow was not found.",
+      "parameterCount_one": "{{count}} parameter",
+      "parameterCount_other": "{{count}} parameters",
+      "parameterRequired": "{{key}} (required)",
+      "reconciliationState": "{{state}} · {{intended}}",
+      "reconfigure": "Reconfigure",
+      "reconfigured": "Official Workflow reconfigured",
+      "reconfigureDescription": "Update typed parameters without replacing this Workflow or its automations.",
+      "reconfigureDialogDescription": "Review every managed automation and update its parameters.",
+      "reconfigureErrorDescription": "Review the required values and try again.",
+      "reconfigureErrorTitle": "Official Workflow could not be reconfigured",
+      "reconfigureTitle": "Installation parameters",
+      "reconfigureUnavailable": "Authoritative parameter metadata is temporarily unavailable.",
+      "retiredBadge": "Official · Retired",
+      "retiredDefinitionDescription": "This retained Definition can be viewed, but it can no longer be installed.",
+      "retiredInstallationDescription": "This Definition is retired. Your existing installation remains operational and read-only until you uninstall it.",
+      "retiredInstallationTitle": "Official Workflow retired",
+      "retiredTitle": "Retired Definition",
+      "retry": "Try again",
+      "search": "Search Official Workflows",
+      "selectAgent": "Select an Agent",
+      "statusCurrent": "Current",
+      "statusFailed": "Failed",
+      "statusNeedsReconfiguration": "Needs reconfiguration",
+      "statusReconciling": "Reconciling",
+      "title": "Official Workflows",
+      "unavailableInstallationDescription": "The accepted Definition is temporarily unavailable. Existing operational controls remain available.",
+      "unavailableInstallationTitle": "Official Definition unavailable",
+      "uninstall": "Uninstall",
+      "uninstallConfirm": "This removes the Official installation and all of its automations. This action cannot be undone.",
+      "uninstallDescription": "Remove this Official Workflow installation through its managed lifecycle.",
+      "uninstallTitle": "Uninstall Official Workflow",
+      "viewAndInstall": "View and install",
+      "yes": "Yes"
     }
   },
   "works": {

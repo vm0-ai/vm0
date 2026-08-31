@@ -17,6 +17,7 @@ import {
 import type { RouteEntry } from "../route-entry";
 import { clerkRateLimit } from "../external/clerk";
 import {
+  createdOrganizationsCount$,
   leaveOrg$,
   orgDetail$,
   orgMembersList$,
@@ -40,6 +41,32 @@ const getOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   return { status: 200 as const, body: org };
 });
+
+const getCreatedOrganizationsCountInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(authContext$);
+    const result = await settle(
+      set(createdOrganizationsCount$, auth.userId, signal),
+      signal,
+    );
+    if (result.ok) {
+      return {
+        status: 200 as const,
+        body: { createdOrganizationsCount: result.value },
+      };
+    }
+
+    const rateLimit = clerkRateLimit(result.error);
+    if (!rateLimit) {
+      throw result.error;
+    }
+    set(setResHeader$, "Retry-After", String(rateLimit.retryAfterSeconds));
+    set(setResHeader$, "Cache-Control", "no-store");
+    return providerUnavailable(
+      "Organization creation status is temporarily unavailable",
+    );
+  },
+);
 
 const updateOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(authContext$);
@@ -141,6 +168,13 @@ export const orgReadRoutes: readonly RouteEntry[] = [
   {
     route: orgContract.get,
     handler: authRoute({ acceptAnySandboxCapability: true }, getOrgInner$),
+  },
+  {
+    route: orgContract.createdCount,
+    handler: authRoute(
+      { accept: ["session"] },
+      getCreatedOrganizationsCountInner$,
+    ),
   },
   {
     route: orgContract.update,

@@ -9,9 +9,8 @@
 //! descriptors move with `SCM_RIGHTS` and are never inherited through the
 //! sandbox-user launch chain.
 //!
-//! The endpoint is bootstrapped through [`BOOTSTRAP_ENV`] or its reader-only
-//! canonical alias [`CANONICAL_BOOTSTRAP_ENV`]. `vsock-guest` creates the
-//! endpoint name with [`endpoint_name`], binds it with
+//! The endpoint is bootstrapped through [`CANONICAL_BOOTSTRAP_ENV`].
+//! `vsock-guest` creates the endpoint name with [`endpoint_name`], binds it with
 //! [`bind_abstract_listener`], accepts a single control sink connection, and
 //! then drives request/response exchange. `guest-agent` resolves the endpoint
 //! name from the environment, connects with [`connect_abstract`], sends a hello
@@ -19,8 +18,9 @@
 //!
 //! Two companion placement endpoints are derived from the same operation-local
 //! control name. The one-shot runtime endpoint transfers a root-opened
-//! `workload/runtime/cgroup.procs` descriptor to Guest Agent. The tool endpoint
-//! serves repeated authenticated Bash-launcher connections: root creates a
+//! `workload/runtime/cgroup.procs` descriptor to Guest Agent, which confirms
+//! after validating and adopting it. The tool endpoint serves repeated
+//! authenticated Bash-launcher connections: root creates a
 //! unique tool cgroup, transfers its write-only `cgroup.procs` descriptor, and
 //! acknowledges only after the launcher confirms and root revalidates exact
 //! placement. User shell code does not run before that acknowledgement.
@@ -77,9 +77,10 @@ pub use codec::{
 };
 pub use transport::{
     accept_with_timeout, bind_abstract_listener, connect_abstract, endpoint_name,
-    read_tool_placement_ack, read_tool_placement_confirmation, receive_tool_placement,
-    receive_workload_placement, send_tool_placement, send_workload_placement,
-    write_tool_placement_ack, write_tool_placement_confirmation,
+    read_tool_placement_ack, read_tool_placement_confirmation,
+    read_workload_placement_confirmation, receive_tool_placement, receive_workload_placement,
+    send_tool_placement, send_workload_placement, write_tool_placement_ack,
+    write_tool_placement_confirmation, write_workload_placement_confirmation,
 };
 
 /// Environment variable carrying the operation-control abstract socket name.
@@ -88,13 +89,6 @@ pub use transport::{
 /// starts a guest operation that supports a local control sink. `guest-agent`
 /// reads it during startup and connects to that abstract socket. Child agent
 /// CLI processes must not inherit this variable.
-pub const BOOTSTRAP_ENV: &str = "VM0_PROCESS_CONTROL_ENDPOINT";
-
-/// Canonical operation-control endpoint alias accepted by guest readers.
-///
-/// `vsock-guest` keeps writing [`BOOTSTRAP_ENV`] until the deployed reader
-/// floor, sandbox drain, rollback window, and legacy-read-zero gates in #28914
-/// are complete.
 pub const CANONICAL_BOOTSTRAP_ENV: &str = "OKOU_PROCESS_CONTROL_ENDPOINT";
 
 /// Maximum request payload size carried by a local control request frame.

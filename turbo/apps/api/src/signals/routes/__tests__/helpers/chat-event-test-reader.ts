@@ -77,34 +77,17 @@ export async function readProjectedChatEvents(
             : {
                 sinceSeqId: cursor.lastSeqId,
                 sinceEventId: cursor.lastEventId,
-                ...(cursor.projection === undefined
-                  ? {}
-                  : { sinceProjection: cursor.projection }),
                 limit,
               },
       }),
       [200],
     );
     rows.push(...response.body.rows);
-    const hasMore =
-      response.body.hasMore ?? response.body.rows.length === limit;
-    if (!hasMore) {
+    if (!response.body.hasMore) {
       return projectChatEventRows(rows);
     }
 
-    const lastRow = response.body.rows.at(-1);
-    const nextCursor =
-      response.body.cursor ??
-      (lastRow === undefined
-        ? cursor
-        : {
-            lastEventId: lastRow.id,
-            lastSeqId: lastRow.seqId,
-            projection:
-              response.body.projection ??
-              ("projection" in cursor ? cursor.projection : undefined) ??
-              "full",
-          });
+    const nextCursor = response.body.cursor;
     if (
       nextCursor.lastEventId === null ||
       nextCursor.lastSeqId <= cursor.lastSeqId

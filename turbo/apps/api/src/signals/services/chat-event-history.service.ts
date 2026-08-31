@@ -3,10 +3,7 @@ import { promisify } from "node:util";
 import { gunzip } from "node:zlib";
 
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
-import {
-  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  type ChatEventSnapshotProjection,
-} from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { computed, type Computed } from "ccstate";
 import { and, asc, eq, gt } from "drizzle-orm";
 import { chatEvents } from "@okouai/db/schema/chat-event";
@@ -14,10 +11,7 @@ import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
 
 import type { Db } from "../external/db";
 import { downloadS3Buffer } from "../external/s3";
-import {
-  decodeChatEventSnapshotBody,
-  projectChatEventSnapshotRows,
-} from "./chat-event-snapshot-body.service";
+import { decodeChatEventSnapshotBody } from "./chat-event-snapshot-body.service";
 import { chatEventRowFromDbRow } from "./cron-snapshot-chat-events.service";
 
 const gunzipAsync = promisify(gunzip);
@@ -34,7 +28,6 @@ async function readPostgresTail(
   db: ChatEventHistoryQueryDb,
   chatThreadId: string,
   afterSeqId: number,
-  projection: ChatEventSnapshotProjection,
   signal: AbortSignal,
 ): Promise<readonly ChatEventRow[]> {
   const events: ChatEventRow[] = [];
@@ -65,12 +58,7 @@ async function readPostgresTail(
       .orderBy(asc(chatEvents.seqId))
       .limit(CHAT_EVENT_HISTORY_PAGE_SIZE);
     signal.throwIfAborted();
-    events.push(
-      ...projectChatEventSnapshotRows(
-        rows.map(chatEventRowFromDbRow),
-        projection,
-      ),
-    );
+    events.push(...rows.map(chatEventRowFromDbRow));
     const lastRow = rows[rows.length - 1];
     if (lastRow !== undefined) {
       cursor = lastRow.seqId;
@@ -85,18 +73,16 @@ function decodeSnapshotRows(
   body: Buffer,
   chatThreadId: string,
   lastSeqId: number,
-  lastEventId: string,
-  projection: ChatEventSnapshotProjection,
+  terminalCursor: {
+    readonly eventId: string | null;
+    readonly seqId: number | null;
+  },
 ): readonly ChatEventRow[] {
   const rows = decodeChatEventSnapshotBody(body);
-  if (projection === "full" && rows.length === 0) {
-    throw new Error("Chat event snapshot is empty");
-  }
   let previousSeqId: number | null = null;
   for (const row of rows) {
     if (
       row.chatThreadId !== chatThreadId ||
-      (projection === "tool-redacted" && row.eventType === "output.tool") ||
       (previousSeqId !== null && row.seqId <= previousSeqId) ||
       row.seqId > lastSeqId
     ) {
@@ -104,7 +90,11 @@ function decodeSnapshotRows(
     }
     previousSeqId = row.seqId;
   }
-  if (projection === "full" && rows.at(-1)?.id !== lastEventId) {
+  if (
+    terminalCursor.seqId !== null &&
+    ((rows.at(-1)?.id ?? null) !== terminalCursor.eventId ||
+      (rows.at(-1)?.seqId ?? 0) !== terminalCursor.seqId)
+  ) {
     throw new Error("Chat event snapshot terminal metadata is invalid");
   }
   return rows;
@@ -123,15 +113,14 @@ function readCurrentChatEventHistoryAtSnapshot(
     readonly db: ChatEventHistoryQueryDb;
   },
   chatThreadId: string,
-  projection: ChatEventSnapshotProjection,
   signal: AbortSignal,
 ): Computed<Promise<readonly ChatEventRow[]>> {
   return computed(async (get) => {
     const [head] = await runtime.db
       .select({
-        archiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
         lastSeqId: chatEventSnapshots.lastSeqId,
-        lastEventId: chatEventSnapshots.lastEventId,
+        terminalSeqId: chatEventSnapshots.terminalSeqId,
+        terminalEventId: chatEventSnapshots.terminalEventId,
         objectKey: chatEventSnapshots.objectKey,
       })
       .from(chatEventSnapshots)
@@ -142,26 +131,15 @@ function readCurrentChatEventHistoryAtSnapshot(
             chatEventSnapshots.archiveSchemaVersion,
             CURRENT_CHAT_EVENT_SCHEMA_VERSION,
           ),
-          eq(chatEventSnapshots.projection, projection),
         ),
       )
       .limit(1);
     signal.throwIfAborted();
 
     if (head === undefined) {
-      return await readPostgresTail(
-        runtime.db,
-        chatThreadId,
-        0,
-        projection,
-        signal,
-      );
+      return await readPostgresTail(runtime.db, chatThreadId, 0, signal);
     }
-    if (
-      head.archiveSchemaVersion !== CURRENT_CHAT_EVENT_SCHEMA_VERSION ||
-      head.lastSeqId <= 0 ||
-      head.objectKey.trim().length === 0
-    ) {
+    if (head.lastSeqId <= 0 || head.objectKey.trim().length === 0) {
       throw new Error("Chat event snapshot head is not reusable");
     }
 
@@ -175,34 +153,31 @@ function readCurrentChatEventHistoryAtSnapshot(
     ) {
       throw new Error("Chat event snapshot checksum is invalid");
     }
+    const decompressed = await gunzipAsync(compressed);
     const snapshot = decodeSnapshotRows(
-      await gunzipAsync(compressed),
+      decompressed,
       chatThreadId,
       head.lastSeqId,
-      head.lastEventId,
-      projection,
+      {
+        eventId: head.terminalEventId,
+        seqId: head.terminalSeqId,
+      },
     );
     signal.throwIfAborted();
     const tail = await readPostgresTail(
       runtime.db,
       chatThreadId,
       head.lastSeqId,
-      projection,
       signal,
     );
     return [...snapshot, ...tail];
   });
 }
 
-/**
- * Current logical thread history: the reusable V6 R2 pointer followed by every
- * PostgreSQL row after its watermark. A thread without a pointer is still a
- * cold thread, so its current PostgreSQL rows are the complete history.
- */
+/** Current logical history with PostgreSQL continuation after physical coverage. */
 export function readCurrentChatEventHistory(
   runtime: ChatEventHistoryRuntime,
   chatThreadId: string,
-  projection: ChatEventSnapshotProjection,
   signal: AbortSignal,
 ): Computed<Promise<readonly ChatEventRow[]>> {
   return computed(async (get) => {
@@ -212,7 +187,6 @@ export function readCurrentChatEventHistory(
           readCurrentChatEventHistoryAtSnapshot(
             { ...runtime, db: tx },
             chatThreadId,
-            projection,
             signal,
           ),
         );

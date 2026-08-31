@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
 import {
+  HeadObjectCommand,
   PutObjectCommand,
   type PutObjectCommandInput,
 } from "@aws-sdk/client-s3";
@@ -10,8 +11,10 @@ import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
+import { apiTestS3PresignedUrl } from "../../../__tests__/mocks";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
+import { buildArtifactKeyV2, buildFileUrlFromKey } from "../../../lib/file-url";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
@@ -38,6 +41,9 @@ import { createRouteMocks } from "./helpers/route-test";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { setRunImageModelFixture } from "../../../test-fixtures/run-image-model";
 import { removeBuiltInGenerationPublicBrandFixture } from "../../../test-fixtures/built-in-generation";
+import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
+import { hostedTextFile } from "./helpers/api-bdd-host-files";
+import { createHostMapsBddApi } from "./helpers/api-bdd-host-maps";
 
 const context = testContext();
 const store = createStore();
@@ -565,8 +571,8 @@ describe("POST /api/image-io/generate", () => {
   let releasePendingFalResponse: (() => void) | null = null;
 
   beforeEach(() => {
-    mockEnv("VM0_API_BACKEND_URL", WEB_ORIGIN);
-    mockEnv("VM0_WEB_URL", WEB_ORIGIN);
+    mockEnv("OKOU_API_BACKEND_URL", WEB_ORIGIN);
+    mockEnv("OKOU_WEB_URL", WEB_ORIGIN);
     context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
@@ -1128,7 +1134,6 @@ describe("POST /api/image-io/generate", () => {
 
   it("generates image files on the Okou CDN for Okou run-scoped agent tokens", async () => {
     mockEnv("OKOU_API_BACKEND_URL", API_ORIGIN);
-    mockEnv("VM0_API_BACKEND_URL", undefined);
     const fixture = await seedImageFixture({});
     const pricingFixture = await createScopedImagePricing({
       configured: GPT_IMAGE_1_PRICING,
@@ -1673,8 +1678,38 @@ describe("POST /api/image-io/generate", () => {
       sourceUrl: BYTEPLUS_SEEDREAM_5_PRO_LOW_MEDIA_URL,
     });
 
+    const hostApi = createHostMapsBddApi(context);
+    hostApi.captureHostedSitesS3();
+    await upsertOrgPlanEntitlementFixture({
+      orgId: fixture.orgId,
+      restrictedVm0Models: false,
+    });
+    const site = `seedream-reference-${randomUUID().slice(0, 8)}`;
+    const hostActor = {
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      orgRole: "org:admin" as const,
+      email: `${fixture.userId}@example.test`,
+    };
+    const hosted = await hostApi.prepareHostedSite(hostActor, {
+      site,
+      artifactKind: "hosted-site",
+      spaFallback: false,
+      files: [
+        hostedTextFile("/index.html", "<main>Reference image</main>"),
+        hostedTextFile("/img4.jpeg", "reference", "image/jpeg"),
+      ],
+    });
+    await hostApi.completeHostedSite(hostActor, hosted.deploymentId);
+    context.mocks.s3.getSignedUrl.mockImplementation(
+      (_client: unknown, command: unknown) => {
+        return Promise.resolve(apiTestS3PresignedUrl(command));
+      },
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const hostedImageUrl = `${hosted.url}/img4.jpeg`;
     const sourceImageUrls = [
-      MOCKUP_IMAGE_URL,
+      hostedImageUrl,
       SECOND_MOCKUP_IMAGE_URL,
       THIRD_MOCKUP_IMAGE_URL,
     ];
@@ -1718,25 +1753,38 @@ describe("POST /api/image-io/generate", () => {
       "Bearer test-byteplus-key",
       "Bearer test-byteplus-key",
     ]);
-    expect(observedBodies).toStrictEqual([
-      {
-        model: "dola-seedream-5-0-pro-260628",
-        prompt: "a precise editorial portrait",
-        size: "1.5K",
-        output_format: "jpeg",
-        response_format: "url",
-        watermark: false,
-      },
-      {
-        model: "dola-seedream-5-0-pro-260628",
-        prompt: "combine these references into a campaign image",
-        image: sourceImageUrls,
-        size: "2K",
-        output_format: "jpeg",
-        response_format: "url",
-        watermark: false,
-      },
-    ]);
+    expect(observedBodies[0]).toStrictEqual({
+      model: "dola-seedream-5-0-pro-260628",
+      prompt: "a precise editorial portrait",
+      size: "1.5K",
+      output_format: "jpeg",
+      response_format: "url",
+      watermark: false,
+    });
+    expect(observedBodies[1]).toMatchObject({
+      model: "dola-seedream-5-0-pro-260628",
+      prompt: "combine these references into a campaign image",
+      size: "2K",
+      output_format: "jpeg",
+      response_format: "url",
+      watermark: false,
+    });
+    const providerSourceImageUrls = (
+      observedBodies[1] as { readonly image?: unknown }
+    ).image;
+    expect(Array.isArray(providerSourceImageUrls)).toBeTruthy();
+    if (!Array.isArray(providerSourceImageUrls)) {
+      throw new Error("Expected BytePlus image references");
+    }
+    expect(providerSourceImageUrls.slice(1)).toStrictEqual(
+      sourceImageUrls.slice(1),
+    );
+    const signedHostedUrl = new URL(String(providerSourceImageUrls[0]));
+    expect(signedHostedUrl.origin).toBe("https://r2.example.com");
+    expect(signedHostedUrl.searchParams.get("sig")).toBe("bdd");
+    expect(signedHostedUrl.searchParams.get("object")).toMatch(
+      /^test-hosted-sites\/sites\/.+\/img4\.jpeg$/u,
+    );
     await expect(orgCredits(fixture)).resolves.toBe(823);
   });
 
@@ -2612,8 +2660,18 @@ describe("POST /api/image-io/generate", () => {
     });
     expect(falCalls).toBe(0);
 
+    const ownedArtifactKey = buildArtifactKeyV2(randomUUID(), "reference.png");
+    const ownedArtifactUrl = buildFileUrlFromKey(ownedArtifactKey, "vm0");
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (command instanceof HeadObjectCommand) {
+        return Promise.resolve({
+          Metadata: { "user-id": encodeURIComponent(fixture.userId) },
+        });
+      }
+      return Promise.resolve({});
+    });
     const sourceImageUrls = [
-      MOCKUP_IMAGE_URL,
+      ownedArtifactUrl,
       SECOND_MOCKUP_IMAGE_URL,
       THIRD_MOCKUP_IMAGE_URL,
     ];
@@ -2656,9 +2714,31 @@ describe("POST /api/image-io/generate", () => {
       model: "alibaba/qwen-image-3/text-to-image",
       billingCategory: "output_image.1k",
       sourceUrl: FAL_QWEN_IMAGE_3_MEDIA_URL,
+      sourceImageUrls,
     });
     expect(falCalls).toBe(1);
-    expect(observedBody).toMatchObject({ image_urls: sourceImageUrls });
+    const providerImageUrls = (
+      observedBody as unknown as Record<string, unknown>
+    )["image_urls"];
+    expect(Array.isArray(providerImageUrls)).toBeTruthy();
+    if (!Array.isArray(providerImageUrls)) {
+      throw new Error("Expected Fal image references");
+    }
+    expect(providerImageUrls.slice(1)).toStrictEqual(sourceImageUrls.slice(1));
+    const signedArtifactUrl = new URL(String(providerImageUrls[0]));
+    expect(signedArtifactUrl.origin).toBe("https://r2.example.com");
+    expect(signedArtifactUrl.searchParams.get("object")).toBe(
+      `${TEST_BUCKET}/${ownedArtifactKey}`,
+    );
+    const headObjectInputs = context.mocks.s3.send.mock.calls.flatMap(
+      ([command]) => {
+        return command instanceof HeadObjectCommand ? [command.input] : [];
+      },
+    );
+    expect(headObjectInputs).toContainEqual({
+      Bucket: TEST_BUCKET,
+      Key: ownedArtifactKey,
+    });
     await expect(orgCredits(fixture)).resolves.toBe(
       1000 - FAL_QWEN_IMAGE_3_STANDARD_TIER_CREDITS,
     );

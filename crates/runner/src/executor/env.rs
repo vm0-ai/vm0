@@ -9,7 +9,7 @@ use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use guest_contracts::connector_account_context::{
     RunConnectorAccountContext, RunConnectorAccountTarget,
 };
-use sandbox::Sandbox;
+use sandbox::{Sandbox, WriteFileEntry};
 
 use super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
@@ -480,34 +480,49 @@ pub(super) async fn write_connector_account_context_file(
     Ok(file_path)
 }
 
-pub(super) async fn write_user_env_file(
+pub(super) struct RequiredAgentFiles {
+    pub(super) user_env_file: Option<String>,
+    pub(super) run_payload_file: String,
+}
+
+pub(super) async fn write_required_agent_files(
     sandbox: &dyn Sandbox,
     run_id: RunId,
     user_env: &HashMap<String, String>,
-) -> RunnerResult<Option<String>> {
-    if user_env.is_empty() {
-        return Ok(None);
-    }
-
-    let file_path = guest_user_env_file_path(run_id)?;
-    let payload = serde_json::to_vec(user_env)
-        .map_err(|e| RunnerError::Internal(format!("serialize user env: {e}")))?;
-    sandbox.write_private_file(&file_path, &payload).await?;
-
-    Ok(Some(file_path))
-}
-
-pub(super) async fn write_run_payload_file(
-    sandbox: &dyn Sandbox,
-    run_id: RunId,
     run_payload: &guest_contracts::env::RunPayload,
-) -> RunnerResult<String> {
-    let file_path = guest_run_payload_file_path(run_id)?;
-    let payload = serde_json::to_vec(run_payload)
+) -> RunnerResult<RequiredAgentFiles> {
+    let run_payload_file = guest_run_payload_file_path(run_id)?;
+    let run_payload_bytes = serde_json::to_vec(run_payload)
         .map_err(|e| RunnerError::Internal(format!("serialize run payload: {e}")))?;
-    sandbox.write_private_file(&file_path, &payload).await?;
 
-    Ok(file_path)
+    let user_env_file = if user_env.is_empty() {
+        sandbox
+            .write_private_file(&run_payload_file, &run_payload_bytes)
+            .await?;
+        None
+    } else {
+        let user_env_file = guest_user_env_file_path(run_id)?;
+        let user_env_bytes = serde_json::to_vec(user_env)
+            .map_err(|e| RunnerError::Internal(format!("serialize user env: {e}")))?;
+        sandbox
+            .write_private_files(&[
+                WriteFileEntry {
+                    path: &user_env_file,
+                    content: &user_env_bytes,
+                },
+                WriteFileEntry {
+                    path: &run_payload_file,
+                    content: &run_payload_bytes,
+                },
+            ])
+            .await?;
+        Some(user_env_file)
+    };
+
+    Ok(RequiredAgentFiles {
+        user_env_file,
+        run_payload_file,
+    })
 }
 
 pub(super) fn build_env_json_with_host_env(
@@ -570,40 +585,43 @@ fn build_env_json_with_host_env_inner(
 ) -> RunnerResult<HashMap<String, String>> {
     let mut env = HashMap::new();
 
-    env.insert(guest_contracts::env::API_URL_ENV.into(), api_url.into());
+    env.insert(
+        guest_contracts::env::CANONICAL_API_URL_ENV.into(),
+        api_url.into(),
+    );
     env.insert(
         guest_contracts::env::RUN_ID_ENV.into(),
         context.run_id.to_string(),
     );
     env.insert(
-        guest_contracts::env::API_TOKEN_ENV.into(),
+        guest_contracts::env::CANONICAL_API_TOKEN_ENV.into(),
         context.sandbox_token.clone(),
     );
     env.insert(
-        guest_contracts::env::SANDBOX_ID_ENV.into(),
+        guest_contracts::env::CANONICAL_SANDBOX_ID_ENV.into(),
         sandbox_id.into(),
     );
     env.insert(
-        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV.into(),
+        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV.into(),
         guest_runtime_dir(context.run_id)?,
     );
     env.insert(
-        guest_contracts::env::SANDBOX_REUSE_RESULT_ENV.into(),
+        guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV.into(),
         reuse_result.as_wire().into(),
     );
     if let Some(workspace_reuse_result) = workspace_reuse_result {
         env.insert(
-            guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV.into(),
+            guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV.into(),
             workspace_reuse_result.as_wire().into(),
         );
     }
     env.insert(
-        guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV.into(),
+        guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV.into(),
         JOB_TIMEOUT.as_secs().to_string(),
     );
     insert_guest_agent_tuning_env(&mut env, context);
     env.insert(
-        guest_contracts::env::API_START_TIME_ENV.into(),
+        guest_contracts::env::CANONICAL_API_START_TIME_ENV.into(),
         context
             .api_start_time
             .map(|t| t.to_string())
@@ -633,7 +651,7 @@ fn build_env_json_with_host_env_inner(
                 session.cli_agent_session_id.clone()
             };
         env.insert(
-            guest_contracts::env::RESUME_SESSION_ID_ENV.into(),
+            guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV.into(),
             session_id,
         );
     }
@@ -815,9 +833,11 @@ pub(super) fn insert_guest_agent_tuning_env(
     let Some(user_env) = &context.environment else {
         return;
     };
-    for key in guest_contracts::env::GUEST_AGENT_TUNING_ENV_KEYS {
-        if let Some(value) = user_env.get(*key) {
-            env.insert((*key).into(), value.clone());
+    for (legacy_input, canonical_bootstrap_output) in
+        guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
+    {
+        if let Some(value) = user_env.get(legacy_input) {
+            env.insert(canonical_bootstrap_output.into(), value.clone());
         }
     }
 }

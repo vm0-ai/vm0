@@ -8,6 +8,7 @@ const ENDPOINT_PREFIX: &str = "vm0-process-control-";
 const MAX_U32_DECIMAL_DIGITS: usize = 10;
 const NONCE_HEX_LEN: usize = 16 * 2;
 const WORKLOAD_PLACEMENT_MARKER: u8 = 0x57;
+const WORKLOAD_PLACEMENT_CONFIRM_MARKER: u8 = 0x52;
 const TOOL_PLACEMENT_MARKER: u8 = 0x54;
 const TOOL_PLACEMENT_CONFIRM_MARKER: u8 = 0x43;
 const TOOL_PLACEMENT_ACK_MARKER: u8 = 0x41;
@@ -18,7 +19,8 @@ const LISTENER_BACKLOG: libc::c_int = 128;
 ///
 /// The name includes the guest operation sequence number and a hexadecimal
 /// encoding of the 16-byte control nonce. The returned string is suitable for
-/// [`bind_abstract_listener`], [`connect_abstract`], and [`crate::BOOTSTRAP_ENV`].
+/// [`bind_abstract_listener`], [`connect_abstract`], and
+/// [`crate::CANONICAL_BOOTSTRAP_ENV`].
 pub fn endpoint_name(seq: u32, nonce: &[u8; 16]) -> String {
     let mut out =
         String::with_capacity(ENDPOINT_PREFIX.len() + MAX_U32_DECIMAL_DIGITS + 1 + NONCE_HEX_LEN);
@@ -286,6 +288,25 @@ fn receive_placement(stream: &UnixStream, expected_marker: u8) -> io::Result<Own
     Ok(unsafe { OwnedFd::from_raw_fd(descriptor) })
 }
 
+/// Confirm that Guest Agent validated and adopted the workload placement.
+///
+/// # Errors
+///
+/// Stream write errors are returned unchanged.
+pub fn write_workload_placement_confirmation(stream: &UnixStream) -> io::Result<()> {
+    write_marker(stream, WORKLOAD_PLACEMENT_CONFIRM_MARKER)
+}
+
+/// Read Guest Agent's workload-placement adoption confirmation.
+///
+/// # Errors
+///
+/// EOF, stream errors, and an unexpected marker are returned as
+/// [`io::Error`] values.
+pub fn read_workload_placement_confirmation(stream: &UnixStream) -> io::Result<()> {
+    read_marker(stream, WORKLOAD_PLACEMENT_CONFIRM_MARKER)
+}
+
 /// Confirm that the launcher wrote itself into the supplied tool cgroup.
 ///
 /// # Errors
@@ -338,7 +359,7 @@ fn read_marker(stream: &UnixStream, expected: u8) -> io::Result<()> {
     } else {
         Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "invalid tool placement handshake marker",
+            "invalid placement handshake marker",
         ))
     }
 }
@@ -630,9 +651,11 @@ mod tests {
         let expected = placement.metadata().unwrap();
         let send = std::thread::spawn(move || {
             send_workload_placement(&sender, placement.as_fd()).unwrap();
+            read_workload_placement_confirmation(&sender).unwrap();
         });
 
         let received = receive_workload_placement(&receiver).unwrap();
+        write_workload_placement_confirmation(&receiver).unwrap();
         send.join().unwrap();
         let received = std::fs::File::from(received);
         let actual = received.metadata().unwrap();
@@ -642,6 +665,16 @@ mod tests {
         let flags = unsafe { libc::fcntl(received.as_raw_fd(), libc::F_GETFD) };
         assert!(flags >= 0);
         assert_ne!(flags & libc::FD_CLOEXEC, 0);
+    }
+
+    #[test]
+    fn workload_placement_confirmation_rejects_wrong_marker() {
+        let (mut sender, receiver) = UnixStream::pair().unwrap();
+        sender.write_all(&[TOOL_PLACEMENT_ACK_MARKER]).unwrap();
+
+        let error = read_workload_placement_confirmation(&receiver).unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
     }
 
     #[test]

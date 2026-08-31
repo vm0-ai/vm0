@@ -15,6 +15,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
+import { createFixtureOperationOwner } from "./helpers/fixture-operation-owner";
 import {
   type TestCronDeleteCleanupsStateActionBody,
   type TestCronDeleteCleanupsStateResponse,
@@ -25,7 +26,7 @@ import { cronTelegramCleanupRoutes } from "../cron-telegram-cleanup";
 
 const context = testContext();
 const CRON_SECRET = "test-delete-cleanups-secret";
-const CONNECTOR_EXPIRED_COUNT = 10_001;
+const CONNECTOR_EXPIRED_COUNT = 11;
 const TELEGRAM_EXPIRED_COUNT = 10_001;
 const CUTOFF_MS = Date.parse("1950-01-31T00:00:00.000Z");
 const TELEGRAM_CUTOFF_MS = Date.parse("1950-04-20T00:00:00.000Z");
@@ -48,7 +49,7 @@ async function requestFixture(
 }
 
 function registerFixtureCleanup(
-  action: "delete-connector" | "delete-telegram",
+  action: "delete-telegram",
   marker: string,
 ): void {
   onTestFinished(async () => {
@@ -56,16 +57,32 @@ function registerFixtureCleanup(
   });
 }
 
-async function seedConnectorFixture(expiredCount: number): Promise<string> {
+async function seedConnectorFixture(expiredCount: number) {
   const marker = `connector-cleanup-${randomUUID()}`;
-  registerFixtureCleanup("delete-connector", marker);
-  await requestFixture({
-    action: "seed-connector",
-    marker,
-    cutoff: new Date(CUTOFF_MS).toISOString(),
-    expiredCount,
+  const owner = createFixtureOperationOwner(async () => {
+    await requestFixture({ action: "delete-connector", marker });
   });
-  return marker;
+  await owner.run(async () => {
+    await requestFixture({
+      action: "seed-connector",
+      marker,
+      cutoff: new Date(CUTOFF_MS).toISOString(),
+      expiredCount,
+    });
+  });
+  return {
+    marker,
+    cleanup: async () => {
+      return await owner.run(async () => {
+        return await requestFixture({ action: "cleanup-connector", marker });
+      });
+    },
+    read: async () => {
+      return await owner.run(async () => {
+        return await requestFixture({ action: "read-connector", marker });
+      });
+    },
+  };
 }
 
 async function seedTelegramFixture(expiredCount: number): Promise<string> {
@@ -82,10 +99,6 @@ async function seedTelegramFixture(expiredCount: number): Promise<string> {
 
 function cronHeaders() {
   return { authorization: `Bearer ${CRON_SECRET}` };
-}
-
-async function cleanupConnectorOauthStates(marker: string) {
-  return await requestFixture({ action: "cleanup-connector", marker });
 }
 
 async function cleanupTelegramMessages() {
@@ -112,44 +125,38 @@ describe("complete delete cleanup crons", () => {
   it("caps connector cleanup at ten batches and preserves the UTC cutoff outside UTC", async () => {
     stubTestTimezone("Asia/Shanghai");
     mockNow(CUTOFF_MS);
-    const marker = await seedConnectorFixture(CONNECTOR_EXPIRED_COUNT);
-    const unrelatedMarker = await seedConnectorFixture(1);
+    const fixture = await seedConnectorFixture(CONNECTOR_EXPIRED_COUNT);
+    const unrelatedFixture = await seedConnectorFixture(1);
 
-    const first = await cleanupConnectorOauthStates(marker);
-    expect(first.deleted).toBe(10_000);
-    await expect(
-      requestFixture({ action: "read-connector", marker }),
-    ).resolves.toStrictEqual({
+    const first = await fixture.cleanup();
+    expect(first.deleted).toBe(10);
+    await expect(fixture.read()).resolves.toStrictEqual({
       ok: true,
       remaining: [
-        connectorState(marker, "equal"),
-        connectorState(marker, "expired-10000"),
-        connectorState(marker, "future"),
+        connectorState(fixture.marker, "equal"),
+        connectorState(fixture.marker, "expired-10"),
+        connectorState(fixture.marker, "future"),
       ],
     });
-    await expect(
-      requestFixture({ action: "read-connector", marker: unrelatedMarker }),
-    ).resolves.toStrictEqual({
+    await expect(unrelatedFixture.read()).resolves.toStrictEqual({
       ok: true,
       remaining: [
-        connectorState(unrelatedMarker, "equal"),
-        connectorState(unrelatedMarker, "expired-0"),
-        connectorState(unrelatedMarker, "future"),
+        connectorState(unrelatedFixture.marker, "equal"),
+        connectorState(unrelatedFixture.marker, "expired-0"),
+        connectorState(unrelatedFixture.marker, "future"),
       ],
     });
 
-    const second = await cleanupConnectorOauthStates(marker);
+    const second = await fixture.cleanup();
     expect(second.deleted).toBe(2);
-    await expect(
-      requestFixture({ action: "read-connector", marker }),
-    ).resolves.toStrictEqual({
+    await expect(fixture.read()).resolves.toStrictEqual({
       ok: true,
-      remaining: [connectorState(marker, "future")],
+      remaining: [connectorState(fixture.marker, "future")],
     });
 
-    const empty = await cleanupConnectorOauthStates(marker);
+    const empty = await fixture.cleanup();
     expect(empty.deleted).toBe(0);
-  }, 15_000);
+  });
 
   it("runs full and short telegram batches across a non-UTC daylight-saving boundary", async () => {
     stubTestTimezone("America/New_York");

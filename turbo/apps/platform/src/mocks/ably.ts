@@ -85,11 +85,15 @@ const subscribeErrors = new Map<
   }
 >();
 
-function invokeAuthCallback(cb: AuthCallback): Promise<AuthCallbackToken> {
-  const deferred = createDeferredPromise<AuthCallbackToken>(
-    AbortSignal.any([]),
-  );
+function invokeAuthCallback(
+  cb: AuthCallback,
+  signal: AbortSignal = AbortSignal.any([]),
+): Promise<AuthCallbackToken> {
+  const deferred = createDeferredPromise<AuthCallbackToken>(signal);
   cb({}, (error, token) => {
+    if (deferred.settled()) {
+      return;
+    }
     if (error) {
       const message =
         typeof error === "string" ? error : (error.message ?? "auth error");
@@ -243,6 +247,7 @@ export class Realtime {
   readonly channels: { get: (_name: string) => FakeChannel };
 
   private readonly channelsByName = new Map<string, FakeChannel>();
+  private readonly authController = new AbortController();
 
   private readonly connectedOnceListeners = new Set<ConnectionEventListener>();
   private readonly failedOnceListeners = new Set<ConnectionEventListener>();
@@ -314,7 +319,7 @@ export class Realtime {
 
     if (config?.authCallback) {
       capturedAuthCallback = config.authCallback;
-      invokeAuthCallback(config.authCallback)
+      invokeAuthCallback(config.authCallback, this.authController.signal)
         .then(() => {
           this.connect();
         })
@@ -334,6 +339,9 @@ export class Realtime {
     if (this.connection.state === "closed") {
       return;
     }
+    this.authController.abort(
+      new DOMException("Ably client closed", "AbortError"),
+    );
     this.transition("closing");
     for (const channel of this.channelsByName.values()) {
       channel.clear();
@@ -447,12 +455,40 @@ export class Realtime {
   }
 }
 
-/** Fire a server-side publish on every connected Realtime instance. */
+export { Realtime as BaseRealtime };
+export const FetchRequest = Symbol("FetchRequest");
+export const WebSocketTransport = Symbol("WebSocketTransport");
+export const XHRPolling = Symbol("XHRPolling");
+
+function isSharedDatabaseRealtimeTopic(topic: string): boolean {
+  return (
+    topic === "threadListChanged" ||
+    topic.startsWith("chatThreadMessageCreated:")
+  );
+}
+
+/** Fire a server-side publish using the production topic-to-channel routing. */
 export function triggerAblyEvent(topic: string, data?: unknown): void {
+  const channelPrefix = isSharedDatabaseRealtimeTopic(topic)
+    ? "user-org:"
+    : "user:";
   for (const realtime of realtimeInstances) {
     if (realtime.connection.state === "connected") {
       for (const [channelName, channel] of realtime.namedChannels()) {
-        if (channelName.startsWith("user:")) {
+        if (channelName.startsWith(channelPrefix)) {
+          channel.trigger(topic, data);
+        }
+      }
+    }
+  }
+}
+
+/** Fire a chat-database publish on every connected user-org channel. */
+export function triggerChatDatabaseEvent(topic: string, data?: unknown): void {
+  for (const realtime of realtimeInstances) {
+    if (realtime.connection.state === "connected") {
+      for (const [channelName, channel] of realtime.namedChannels()) {
+        if (channelName.startsWith("user-org:")) {
           channel.trigger(topic, data);
         }
       }
@@ -496,6 +532,7 @@ export function triggerAblyReconnect(): void {
 export function triggerAblyConnectionState(
   state: "connected" | "disconnected" | "suspended",
   options: {
+    readonly channelName?: string;
     readonly code?: number;
     readonly message?: string;
     readonly retryIn?: number;
@@ -504,9 +541,16 @@ export function triggerAblyConnectionState(
 ): void {
   let activeRealtime: Realtime | null = null;
   for (const realtime of realtimeInstances) {
-    if (realtime.connection.state !== "closed") {
-      activeRealtime = realtime;
+    if (realtime.connection.state === "closed") {
+      continue;
     }
+    if (options.channelName) {
+      const channel = realtime.getExistingChannel(options.channelName);
+      if (!channel || channel.state === "initialized") {
+        continue;
+      }
+    }
+    activeRealtime = realtime;
   }
   activeRealtime?.transitionTo(
     state,
@@ -600,6 +644,19 @@ export function hasChannelSubscription(): boolean {
       if (channel.hasChannelSubscription()) {
         return true;
       }
+    }
+  }
+  return false;
+}
+
+export function hasChannelSubscriptionOnChannel(channelName: string): boolean {
+  for (const realtime of realtimeInstances) {
+    if (
+      realtime.connection.state === "connected" &&
+      realtime.getExistingChannel(channelName)?.hasChannelSubscription() ===
+        true
+    ) {
+      return true;
     }
   }
   return false;

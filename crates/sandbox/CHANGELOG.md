@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.19.60](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.59...sandbox-v0.19.60) (2026-08-29)
+
+
+### Refactoring
+
+* **runner:** finish vm-to-sandbox terminology cleanup ([#30171](https://github.com/vm0-ai/vm0/issues/30171)) ([22d9b2e](https://github.com/vm0-ai/vm0/commit/22d9b2ebfdb9f9d3910eb8b30f8d2679aaed3081))
+
+## [0.19.59](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.58...sandbox-v0.19.59) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** launch guest agent without shell bootstrap ([#30153](https://github.com/vm0-ai/vm0/issues/30153)) ([b2409fe](https://github.com/vm0-ai/vm0/commit/b2409fed8caa794a4e7d604f7d4c64559a385737))
+
+## [0.19.58](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.57...sandbox-v0.19.58) (2026-08-28)
+
+
+### Bug Fixes
+
+* **sandbox:** preserve process handle must-use diagnostics ([#30094](https://github.com/vm0-ai/vm0/issues/30094)) ([4db19fd](https://github.com/vm0-ai/vm0/commit/4db19fdc7ceffb7ddba056888c1851c82b2a09a6))
+
+## [0.19.57](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.56...sandbox-v0.19.57) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** batch required private guest writes ([#29943](https://github.com/vm0-ai/vm0/issues/29943)) ([97414e6](https://github.com/vm0-ai/vm0/commit/97414e6c34b2241df1cbcf87fa85fa6248cf41d6))
+
+## [0.19.56](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.55...sandbox-v0.19.56) (2026-08-27)
+
+
+### Documentation
+
+* **rust:** make SandboxId contract provider-neutral ([#29852](https://github.com/vm0-ai/vm0/issues/29852)) ([74114a7](https://github.com/vm0-ai/vm0/commit/74114a7a29b92fa61a47b378a27b43b07163e4ac))
+
+## [0.19.55](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.54...sandbox-v0.19.55) (2026-08-27)
+
+
+### Refactoring
+
+* **runner:** establish guest agent readiness ([#29748](https://github.com/vm0-ai/vm0/issues/29748)) ([8eaafa1](https://github.com/vm0-ai/vm0/commit/8eaafa13bc280f08033fded17e7c3fd5c9822804))
+* **rust:** avoid duplicating process stream capacity ([#29784](https://github.com/vm0-ai/vm0/issues/29784)) ([30918ec](https://github.com/vm0-ai/vm0/commit/30918ec96e76b1498fded4d16943fa6f005ae1bb))
+
 ## [0.19.54](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.53...sandbox-v0.19.54) (2026-08-26)
 
 

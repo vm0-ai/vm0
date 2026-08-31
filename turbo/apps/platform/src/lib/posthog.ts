@@ -1,9 +1,10 @@
 import { command, state } from "ccstate";
-import { posthog, type CaptureResult } from "posthog-js";
+import { posthog, type CaptureResult } from "posthog-js/dist/module.slim";
 import { isStandalonePwa } from "./keyboard-dismiss-gesture.ts";
 import { resolvePlatformRuntimeConfig } from "./platform-host.ts";
 
 const RUNTIME_CONFIG = resolvePlatformRuntimeConfig();
+const POSTHOG_HOST = RUNTIME_CONFIG.postHogHost;
 const POSTHOG_KEY = RUNTIME_CONFIG.postHogKey;
 
 export const AUTH_V2_DIAGNOSTIC_EVENT = "auth_v2_diagnostic";
@@ -188,20 +189,20 @@ function sanitizePostHogCaptureResult(
   };
 }
 
-function runPostHog(action: (key: string) => void): void {
-  if (!POSTHOG_KEY) {
+function runPostHog(action: (key: string, host: string) => void): void {
+  if (!POSTHOG_KEY || !POSTHOG_HOST) {
     return;
   }
-  action(POSTHOG_KEY);
+  action(POSTHOG_KEY, POSTHOG_HOST);
 }
 
 export function initPostHog(): void {
-  runPostHog((key) => {
+  runPostHog((key, host) => {
     posthog.init(key, {
       // First-party reverse proxy (Cloudflare-fronted): forwards /static assets,
       // /flags, ingest and replay (/s) to PostHog US so ad blockers do not drop
       // events. Shared with so.vm0.ai for one ingest domain.
-      api_host: "https://j.vm0.ai",
+      api_host: host,
       ui_host: "https://us.posthog.com",
       autocapture: false,
       capture_pageview: false,
@@ -528,6 +529,8 @@ function elapsedDuration(
   if (
     startedAt === undefined ||
     completedAt === undefined ||
+    !Number.isFinite(startedAt) ||
+    !Number.isFinite(completedAt) ||
     completedAt < startedAt
   ) {
     return undefined;
@@ -583,6 +586,11 @@ export const captureBootstrapPhaseTiming$ = command(({ get, set }) => {
       properties,
       "entry_module_ready_ms",
       entryModuleReadyDurationMs,
+    );
+    setDurationProperty(
+      properties,
+      "skeleton_duration_ms",
+      elapsedDuration(window.__appBootstrapStart, capturedAt),
     );
     setDurationProperty(
       properties,

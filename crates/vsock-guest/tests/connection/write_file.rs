@@ -1,6 +1,8 @@
 use std::path::Path;
 
-use vsock_proto::{self, MSG_WRITE_FILE, MSG_WRITE_FILES, WriteFileBatchEntry};
+use vsock_proto::{
+    self, MSG_WRITE_FILE, MSG_WRITE_FILES, MSG_WRITE_PRIVATE_FILES, WriteFileBatchEntry,
+};
 
 use super::support::{
     assert_ping_pong, finish_guest_connection, read_error_response, send_control_payload,
@@ -52,6 +54,24 @@ fn write_files_seq_zero_does_not_write_valid_payload() {
 }
 
 #[test]
+fn write_private_files_seq_zero_does_not_write_valid_payload() {
+    let (handle, mut host_stream) = start_guest_connection();
+    let path = unique_tmp_path("write-private-files-seq-zero", ".txt");
+    let payload = vsock_proto::encode_write_files(&[WriteFileBatchEntry {
+        path: path.as_str(),
+        content: b"should-not-write",
+    }])
+    .expect("encode write_private_files");
+
+    send_control_payload(&mut host_stream, MSG_WRITE_PRIVATE_FILES, 0, &payload);
+    let error = read_error_response(&mut host_stream, 0);
+    assert_eq!(error, "write_private_files requires non-zero sequence");
+    assert!(!Path::new(path.as_str()).exists());
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn malformed_write_file_payload_returns_error_and_keeps_connection_open() {
     let (handle, mut host_stream) = start_guest_connection();
 
@@ -73,6 +93,19 @@ fn malformed_write_files_payload_returns_error_and_keeps_connection_open() {
     assert_eq!(error, "invalid payload: write_files path_len truncated");
 
     assert_ping_pong(&mut host_stream, 42);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn malformed_write_private_files_payload_returns_error_and_keeps_connection_open() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_control_payload(&mut host_stream, MSG_WRITE_PRIVATE_FILES, 51, &[0, 1]);
+    let error = read_error_response(&mut host_stream, 51);
+    assert_eq!(error, "invalid payload: write_files path_len truncated");
+
+    assert_ping_pong(&mut host_stream, 52);
 
     finish_guest_connection(handle, host_stream);
 }

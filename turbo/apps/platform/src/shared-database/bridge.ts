@@ -4,30 +4,39 @@ import type {
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
 } from "./data-key.ts";
-import type { SharedDatabaseConnectionStatus } from "./protocol.ts";
+import type {
+  SharedDatabaseConnectionStatus,
+  SharedDatabaseHeartbeatResult,
+} from "./protocol.ts";
 
 export interface SharedDatabaseHeartbeat {
   readonly identity: SharedDatabaseIdentity;
   readonly vercelProtectionBypass?: string;
 }
 
+export type SharedDatabaseChangeKind = "append" | "invalidate";
+export type SharedDatabaseSubscriptionCallback = (
+  kind: SharedDatabaseChangeKind,
+) => void;
+
 export interface SharedDatabaseBridge {
   heartbeat(
     heartbeat: SharedDatabaseHeartbeat,
     signal: AbortSignal,
-  ): Promise<void>;
+  ): Promise<SharedDatabaseHeartbeatResult>;
   query<TKey extends SharedDatabaseDataKey>(
     query: SharedDatabaseQuery<TKey>,
     signal: AbortSignal,
   ): Promise<SharedDatabaseQueryResult<TKey>>;
   on(
     dataKey: SharedDatabaseDataKey,
-    callback: () => void,
+    callback: SharedDatabaseSubscriptionCallback,
     signal: AbortSignal,
   ): Promise<void>;
 }
 
 export interface SharedDatabaseBridgeEvents {
+  readonly authenticationRequired: () => void;
   readonly reloadRequired: () => void;
   readonly statusChanged: (status: SharedDatabaseConnectionStatus) => void;
 }

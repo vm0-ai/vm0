@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import { testMailDraftStateContract } from "@okouai/api-contracts/contracts/test-mail-draft-state";
 import { mailContract } from "@okouai/api-contracts/contracts/mail";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -27,6 +28,7 @@ import {
   seedBuiltinThreadConnectorSelection,
   seedCustomConnectorRuntimeConnectors,
   seedCustomThreadConnectorSelection,
+  setBuiltinOAuthScopeFacts,
   setConnectorDefaultState,
   setConnectorCredentialStorageState,
   setConnectorSecretOwner,
@@ -40,6 +42,7 @@ const connectors = createConnectorBddApi(context);
 const runs = createRunsApi(context);
 const mocks = createRouteMocks(context);
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
+const GMAIL_MODIFY_SCOPE = "https://www.googleapis.com/auth/gmail.modify";
 const GMAIL_DRAFT_ID = "r-test-draft";
 const GMAIL_THREAD_ID = "gmail-thread-id";
 const GMAIL_MESSAGE_ID = "gmail-draft-message-id";
@@ -59,6 +62,8 @@ function gmailPayload(
   imageAttachmentId: string | null = GMAIL_IMAGE_ATTACHMENT_ID,
   pdfAttachmentId: string | null = "attachment-1",
   includeTextAttachment = false,
+  subject: string | null = "Attachment review",
+  body = "Mail body",
 ) {
   return {
     partId: "",
@@ -68,7 +73,7 @@ function gmailPayload(
       { name: "From", value: "Sender <sender@example.com>" },
       { name: "To", value: "recipient@example.com" },
       { name: "Cc", value: "copy@example.com" },
-      { name: "Subject", value: "Attachment review" },
+      ...(subject === null ? [] : [{ name: "Subject", value: subject }]),
     ],
     body: { size: 0 },
     parts: [
@@ -84,7 +89,10 @@ function gmailPayload(
             mimeType: "text/plain",
             filename: "",
             headers: [],
-            body: { size: 9, data: encodedBody("Mail body") },
+            body: {
+              size: Buffer.byteLength(body),
+              data: encodedBody(body),
+            },
           },
           {
             partId: "0.1",
@@ -156,7 +164,11 @@ function gmailPayload(
 
 interface GmailDraftTestState {
   exists: boolean;
+  insufficientScope: boolean;
+  permissionDenied: boolean;
   unauthorized: boolean;
+  subject: string | null;
+  body: string;
   draftReadCount: number;
   sendCount: number;
   deleteCount: number;
@@ -170,7 +182,11 @@ function mockGmailDraftApi(options?: {
 }): GmailDraftTestState {
   const state: GmailDraftTestState = {
     exists: true,
+    insufficientScope: false,
+    permissionDenied: false,
     unauthorized: false,
+    subject: "Attachment review",
+    body: "Mail body",
     draftReadCount: 0,
     sendCount: 0,
     deleteCount: 0,
@@ -191,6 +207,45 @@ function mockGmailDraftApi(options?: {
           { status: 401 },
         );
       }
+      if (state.insufficientScope) {
+        return HttpResponse.json(
+          {
+            error: {
+              code: 403,
+              message: "Request had insufficient authentication scopes.",
+              status: "PERMISSION_DENIED",
+              details: [
+                {
+                  "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                  reason: "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
+                  domain: "googleapis.com",
+                  metadata: { service: "gmail.googleapis.com" },
+                },
+              ],
+            },
+          },
+          { status: 403 },
+        );
+      }
+      if (state.permissionDenied) {
+        return HttpResponse.json(
+          {
+            error: {
+              code: 403,
+              message: "The caller does not have permission.",
+              status: "PERMISSION_DENIED",
+              details: [
+                {
+                  "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                  reason: "PERMISSION_DENIED",
+                  domain: "googleapis.com",
+                },
+              ],
+            },
+          },
+          { status: 403 },
+        );
+      }
       if (!state.exists) {
         return new HttpResponse(null, { status: 404 });
       }
@@ -204,6 +259,8 @@ function mockGmailDraftApi(options?: {
             options?.inlineImageData ? null : currentImageAttachmentId,
             options?.regularAttachmentData ? null : "attachment-1",
             options?.textAttachmentData,
+            state.subject,
+            state.body,
           ),
         },
       });
@@ -314,7 +371,117 @@ async function linkDraft(
   );
 }
 
+async function setGmailOAuthScopeFacts(
+  fixture: Awaited<ReturnType<typeof seedGmailMailCardFixture>>,
+  oauthGrantedScopes: readonly string[] | null,
+): Promise<void> {
+  await setBuiltinOAuthScopeFacts(context, {
+    orgId: fixture.actor.orgId ?? "",
+    userId: fixture.actor.userId,
+    connectorSlug: "gmail",
+    oauthScopes: [GMAIL_MODIFY_SCOPE],
+    oauthGrantedScopes,
+  });
+}
+
 describe("POST /api/mail/drafts/link", () => {
+  it("uses a healthy Gmail connection with unknown historical grants", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    await setGmailOAuthScopeFacts(fixture, null);
+    await connectors.updateFeatureSwitches(fixture.actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    const gmail = mockGmailDraftApi();
+
+    await expect(
+      connectors.readConnectorBySlug(fixture.actor, "gmail"),
+    ).resolves.toMatchObject({
+      oauthScopes: null,
+      connectionStatus: "connected",
+    });
+    await expect(
+      connectors.listBuiltinConnectorAccounts(fixture.actor, "gmail"),
+    ).resolves.toMatchObject([
+      {
+        oauthScopes: null,
+        connectionStatus: "connected",
+      },
+    ]);
+    await expect(linkDraft(fixture)).resolves.toMatchObject({ status: 200 });
+    expect(gmail.draftReadCount).toBe(1);
+  });
+
+  it("rejects a known-insufficient Gmail grant before provider access", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    await setGmailOAuthScopeFacts(fixture, []);
+    const gmail = mockGmailDraftApi();
+
+    const response = await accept(
+      client().linkDraft({
+        headers: authHeaders(),
+        body: {
+          threadId: fixture.thread.id,
+          agentId: fixture.agent.agentId,
+          gmailDraftId: GMAIL_DRAFT_ID,
+        },
+      }),
+      [409],
+    );
+    expect(response.body.error.message).toBe(
+      "Connect and authorize Gmail for this agent first",
+    );
+    expect(gmail.draftReadCount).toBe(0);
+  });
+
+  it("requires reconnect when Gmail reports an insufficient token scope", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    await setGmailOAuthScopeFacts(fixture, null);
+    const gmail = mockGmailDraftApi();
+    gmail.insufficientScope = true;
+
+    const response = await accept(
+      client().linkDraft({
+        headers: authHeaders(),
+        body: {
+          threadId: fixture.thread.id,
+          agentId: fixture.agent.agentId,
+          gmailDraftId: GMAIL_DRAFT_ID,
+        },
+      }),
+      [409],
+    );
+    expect(response.body.error.message).toBe(
+      "Reconnect Gmail before continuing",
+    );
+    expect(gmail.draftReadCount).toBe(1);
+    await expect(
+      connectors.readConnectorBySlug(fixture.actor, "gmail"),
+    ).resolves.toMatchObject({ connectionStatus: "reconnect-required" });
+  });
+
+  it("does not require reconnect for an unrelated Gmail permission denial", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    await setGmailOAuthScopeFacts(fixture, null);
+    const gmail = mockGmailDraftApi();
+    gmail.permissionDenied = true;
+
+    await expect(
+      client().linkDraft({
+        headers: authHeaders(),
+        body: {
+          threadId: fixture.thread.id,
+          agentId: fixture.agent.agentId,
+          gmailDraftId: GMAIL_DRAFT_ID,
+        },
+      }),
+    ).rejects.toThrow();
+
+    expect(gmail.draftReadCount).toBe(1);
+    await expect(
+      connectors.readConnectorBySlug(fixture.actor, "gmail"),
+    ).resolves.toMatchObject({ connectionStatus: "connected" });
+  });
+
   it("uses the default for new drafts while preserving and deleting an exact pinned account", async () => {
     const fixture = await seedGmailMailCardFixture();
     mockGmailDraftApi();
@@ -563,6 +730,34 @@ describe("POST /api/mail/drafts/link", () => {
 
     const page = await chat.listThreadEvents(fixture.actor, fixture.thread.id);
     expect(page.events).toHaveLength(0);
+  });
+
+  it("refreshes a linked draft whose subject was initially empty", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    const gmail = mockGmailDraftApi();
+    gmail.subject = null;
+    gmail.body = "";
+
+    const linked = await linkDraft(fixture);
+    expect(gmail.draftReadCount).toBe(1);
+
+    gmail.subject = "Updated subject";
+    gmail.body = "Updated body";
+
+    const loaded = await accept(
+      client().getDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [200],
+    );
+
+    expect(gmail.draftReadCount).toBe(2);
+    expect(loaded.body.mailDraft).toMatchObject({
+      subject: "Updated subject",
+      body: "Updated body",
+      status: "draft",
+    });
   });
 
   it("serves an inline image stored directly in the Gmail MIME body", async () => {

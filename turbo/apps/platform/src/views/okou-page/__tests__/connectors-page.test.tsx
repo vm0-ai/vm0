@@ -48,6 +48,7 @@ import { CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY } from "@okouai/conne
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
+import { compile } from "tailwindcss";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -459,6 +460,13 @@ function mockPublicConnectorStatus(
       ...(categoryMetadata ? { categoryMetadata } : {}),
     });
   });
+  context.mocks.api(connectorCatalogContract.discovery, ({ respond }) => {
+    return respond(200, {
+      connectors: [...connectors],
+      totalConnectorCount: connectors.length,
+      ...(categoryMetadata ? { categoryMetadata } : {}),
+    });
+  });
 }
 
 function mockCustomConnectorStory(): {
@@ -608,17 +616,10 @@ async function expectConnectorCardsVisible(expected: {
   readonly asana: boolean;
 }): Promise<void> {
   await waitFor(() => {
-    if (expected.github) {
-      expect(queryConnectorCardByLabel("GitHub")).toBeInTheDocument();
-    } else {
-      expect(queryConnectorCardByLabel("GitHub")).not.toBeInTheDocument();
-    }
-
-    if (expected.asana) {
-      expect(queryConnectorCardByLabel("Asana")).toBeInTheDocument();
-    } else {
-      expect(queryConnectorCardByLabel("Asana")).not.toBeInTheDocument();
-    }
+    expect({
+      github: queryConnectorCardByLabel("GitHub") !== null,
+      asana: queryConnectorCardByLabel("Asana") !== null,
+    }).toStrictEqual(expected);
   });
 }
 
@@ -712,7 +713,6 @@ describe("connectors page", () => {
       context,
       path: "/connectors",
       featureSwitches: {
-        [FeatureSwitchKey.ConnectorDiscovery]: true,
         [FeatureSwitchKey.ConnectorCatalogCount]: true,
       },
     });
@@ -788,7 +788,6 @@ describe("connectors page", () => {
       context,
       path: "/connectors",
       featureSwitches: {
-        [FeatureSwitchKey.ConnectorDiscovery]: true,
         [FeatureSwitchKey.ConnectorCatalogCount]: true,
       },
     });
@@ -840,7 +839,7 @@ describe("connectors page", () => {
   });
 
   it("shows only the update dialog when the client requires an upgrade", async () => {
-    context.mocks.http.get("*/api/connector-catalog/status", () => {
+    context.mocks.http.get("*/api/connector-catalog/discovery", () => {
       return Response.json(
         { error: "Client update required" },
         { status: CLIENT_FORCE_UPGRADE_STATUS },
@@ -877,11 +876,7 @@ describe("connectors page", () => {
       return respond(200, []);
     });
 
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
-    });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await expect(
       screen.findByRole("heading", { name: "Conectores" }),
@@ -1329,11 +1324,7 @@ describe("connectors page", () => {
       },
     );
 
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
-    });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       const card = connectorCardByLabel("Meta Ads");
@@ -1462,6 +1453,186 @@ describe("connectors page", () => {
     });
   });
 
+  it("shows the connector description when there are no accounts or agent access", async () => {
+    mockConnectors([]);
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, { summaries: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    await waitFor(() => {
+      const card = connectorCardByLabel("GitHub");
+      expect(within(card).getByTestId("connector-help-text")).toHaveTextContent(
+        "Connect your GitHub account to access repositories and GitHub features.",
+      );
+      expect(within(card).queryByText("No accounts")).toBeNull();
+      expect(
+        within(card).queryByTestId("connector-card-agent-access"),
+      ).toBeNull();
+    });
+  });
+
+  it("keeps the zero-account connect action disabled while connection starts", async () => {
+    mockConnectors([]);
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, { summaries: [] });
+    });
+    const authWindow = createMockAuthWindow();
+    const openMock = context.mocks.browser.open(authWindow);
+    context.mocks.api(connectorOauthStartContract.start, ({ never }) => {
+      return never();
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const connectAction = await screen.findByLabelText("Connect GitHub");
+    click(connectAction);
+
+    await waitFor(() => {
+      expect(openMock.calls).toHaveLength(1);
+      expect(connectAction).toBeDisabled();
+    });
+    expect(screen.getByLabelText("Connect GitHub")).toBe(connectAction);
+  });
+
+  it("shows an account identity while agent access is unavailable", async () => {
+    const [connector] = mockConnectors([
+      { connectorSlug: "github", externalUsername: "work" },
+    ]);
+    if (!connector) {
+      throw new Error("Expected GitHub fixture connector");
+    }
+    const account = {
+      id: connector.id,
+      target: { kind: "builtin" as const, connectorSlug: "github" },
+      authMethod: connector.authMethod,
+      displayName: "Work",
+      isDefault: true,
+      externalId: null,
+      externalUsername: "work",
+      externalEmail: null,
+      oauthScopes: [],
+      connectionStatus: "reconnect-required" as const,
+      reconnectReason: "authorization_expired_or_revoked" as const,
+      tokenExpiresAt: null,
+      createdAt: connector.createdAt,
+      updatedAt: connector.updatedAt,
+    } satisfies ConnectorAccountConnection;
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: account.target,
+            accountCount: 2,
+            attentionCount: 1,
+            defaultConnection: account,
+          },
+        ],
+      });
+    });
+    context.mocks.data.agents([
+      listAgent("c0000000-0000-4000-a000-000000000001", "Research"),
+    ]);
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
+      return respond(500, {
+        error: { message: "Agent access unavailable", code: "UNAVAILABLE" },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    await waitFor(() => {
+      const card = connectorCardByLabel("GitHub");
+      expect(within(card).getByText("1/2 need attention")).toBeInTheDocument();
+      expect(within(card).getByText("Access unavailable")).toBeInTheDocument();
+      expect(
+        within(card).getByLabelText("Manage GitHub access"),
+      ).toBeDisabled();
+    });
+  });
+
+  it("shows when every connector account needs attention", async () => {
+    const [connector] = mockConnectors([
+      { connectorSlug: "github", externalUsername: "work" },
+    ]);
+    if (!connector) {
+      throw new Error("Expected GitHub fixture connector");
+    }
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: { kind: "builtin", connectorSlug: "github" },
+            accountCount: 2,
+            attentionCount: 2,
+            defaultConnection: null,
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        within(connectorCardByLabel("GitHub")).getByText("2/2 need attention"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows the connector description after the last account is removed", async () => {
+    const researchAgentId = "c0000000-0000-4000-a000-000000000001";
+    mockConnectors([]);
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, { summaries: [] });
+    });
+    context.mocks.data.agents([listAgent(researchAgentId, "Research")]);
+    context.mocks.api(userConnectorsContract.get, ({ params, respond }) => {
+      return respond(200, {
+        enabledConnectorSlugs: params.id === researchAgentId ? ["github"] : [],
+      });
+    });
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, []);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    await waitFor(() => {
+      const githubCard = connectorCardByLabel("GitHub");
+      expect(
+        within(githubCard).getByTestId("connector-help-text"),
+      ).toHaveTextContent(
+        "Connect your GitHub account to access repositories and GitHub features.",
+      );
+      expect(within(githubCard).queryByText("No accounts")).toBeNull();
+      expect(
+        within(githubCard).queryByTestId("connector-card-agent-access"),
+      ).toBeNull();
+    });
+  });
+
   it("names the exact account after a feature-on manual account addition", async () => {
     mockConnectors([]);
     const connectionId = crypto.randomUUID();
@@ -1559,7 +1730,9 @@ describe("connectors page", () => {
     });
 
     await waitFor(() => {
-      expect(connectorCardByLabel("GitHub")).toHaveTextContent("7 accounts");
+      expect(connectorCardByLabel("GitHub")).toHaveTextContent(
+        "1/7 need attention",
+      );
     });
     const manageAccounts = await waitForButtonByAriaLabel(
       "Manage GitHub accounts",
@@ -2418,6 +2591,52 @@ describe("connectors page", () => {
     });
   });
 
+  it("keeps the expanded category menu above connector access controls", async () => {
+    mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledConnectorSlugs: [] });
+    });
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    const categoryMenuItem = await screen.findByTestId(
+      "connector-category-menu-ai",
+    );
+    categoryMenuItem.focus();
+    expect(categoryMenuItem).toHaveFocus();
+
+    const categoryMenuLayer = categoryMenuItem.closest("aside");
+    const accessControl = within(connectorCardByLabel("GitHub")).getByLabelText(
+      "Manage GitHub access",
+    );
+    const accessControlLayer = accessControl.parentElement;
+    if (
+      !(categoryMenuLayer instanceof HTMLElement) ||
+      !(accessControlLayer instanceof HTMLElement)
+    ) {
+      throw new Error("Connector stacking layers not found");
+    }
+
+    const tailwindCompiler = await compile("@tailwind utilities;");
+    const styleElement = document.createElement("style");
+    styleElement.textContent = tailwindCompiler.build([
+      ...categoryMenuLayer.classList,
+      ...accessControlLayer.classList,
+    ]);
+    document.head.append(styleElement);
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        styleElement.remove();
+      },
+      { once: true },
+    );
+
+    expect(Number(getComputedStyle(categoryMenuLayer).zIndex)).toBeGreaterThan(
+      Number(getComputedStyle(accessControlLayer).zIndex),
+    );
+  });
+
   it("filters connectors by slug", async () => {
     mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
 
@@ -2580,29 +2799,31 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: false },
+      featureSwitches: { [FeatureSwitchKey.MailchimpConnector]: false },
     });
 
     const searchInput = await screen.findByPlaceholderText("Find connectors");
-    await fill(searchInput, "meta");
+    await fill(searchInput, "mailchimp");
 
     await expect(
       screen.findByText(/No connectors matching/),
     ).resolves.toBeInTheDocument();
-    expect(screen.queryByLabelText("Connect Meta Ads")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Connect Mailchimp"),
+    ).not.toBeInTheDocument();
   });
 
-  it("refreshes connector catalog status when connector feature switches change", async () => {
+  it("refreshes connector discovery when connector feature switches change", async () => {
     mockConnectors([]);
 
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: false },
+      featureSwitches: { [FeatureSwitchKey.MailchimpConnector]: false },
     });
 
     const searchInput = await screen.findByPlaceholderText("Find connectors");
-    await fill(searchInput, "meta");
+    await fill(searchInput, "mailchimp");
 
     await expect(
       screen.findByText(/No connectors matching/),
@@ -2610,18 +2831,18 @@ describe("connectors page", () => {
 
     context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
       return respond(200, {
-        switches: { [FeatureSwitchKey.MetaAdsConnector]: true },
-        effectiveSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
+        switches: { [FeatureSwitchKey.MailchimpConnector]: true },
+        effectiveSwitches: { [FeatureSwitchKey.MailchimpConnector]: true },
       });
     });
     await context.store.set(
       setFeatureSwitch$,
-      { [FeatureSwitchKey.MetaAdsConnector]: true },
+      { [FeatureSwitchKey.MailchimpConnector]: true },
       context.signal,
     );
 
     await expect(
-      screen.findByLabelText("Connect Meta Ads"),
+      screen.findByLabelText("Connect Mailchimp"),
     ).resolves.toBeInTheDocument();
   });
 
@@ -2778,7 +2999,7 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows authorized agent names with an overflow count on connector cards", async () => {
+  it("shows an exact authorized-agent count on connector cards", async () => {
     const agentIds = [
       "c0000000-0000-4000-a000-000000000001",
       "c0000000-0000-4000-a000-000000000002",
@@ -2812,10 +3033,9 @@ describe("connectors page", () => {
     await waitFor(() => {
       const card = connectorCardByLabel("GitHub");
       const access = within(card).getByLabelText("Manage GitHub access");
-      expect(access.textContent).toContain("Used by\u00a0Research, Support");
-      expect(access).toHaveTextContent("Research, Support");
-      expect(access).toHaveTextContent("+2");
+      expect(access.textContent).toContain("Used by\u00a04 agents");
       expect(access).not.toHaveTextContent("Growth");
+      expect(access).not.toHaveAttribute("title");
     });
 
     click(
@@ -2828,6 +3048,26 @@ describe("connectors page", () => {
       name: "Manage GitHub access",
     });
     expect(dialog).toBeInTheDocument();
+  });
+
+  it("keeps a single long authorized-agent name available on the card", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000001";
+    const agentName = "Research Operations for International Partnerships";
+    mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
+    context.mocks.data.agents([listAgent(agentId, agentName)]);
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledConnectorSlugs: ["github"] });
+    });
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      const access = within(connectorCardByLabel("GitHub")).getByLabelText(
+        "Manage GitHub access",
+      );
+      expect(access).toHaveTextContent(`Used by ${agentName}`);
+      expect(access).toHaveAttribute("title", agentName);
+    });
   });
 
   it("shows an add-access affordance when no agents are authorized", async () => {
@@ -2960,11 +3200,7 @@ describe("connectors page", () => {
       },
     );
 
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
-    });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await fill(await screen.findByPlaceholderText("Find connectors"), "meta");
     click(await screen.findByLabelText("Connect Meta Ads"));
@@ -3999,9 +4235,12 @@ describe("connectors page", () => {
     ];
     let catalogStatusRequestCount = 0;
     let manualGrantConnectResponded = false;
-    context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
+    context.mocks.api(connectorCatalogContract.discovery, ({ respond }) => {
       catalogStatusRequestCount += 1;
-      return respond(200, { connectors: [...catalogStatusItems] });
+      return respond(200, {
+        connectors: [...catalogStatusItems],
+        totalConnectorCount: catalogStatusItems.length,
+      });
     });
     context.mocks.api(
       connectorManualGrantContract.connect,
@@ -4512,7 +4751,9 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
     await waitFor(() => {
       expect(
-        within(connectorCardByLabel("AWS")).getByText("Connected"),
+        within(connectorCardByLabel("AWS")).getByText(
+          "arn:aws:iam::000000000000:user/mock-aws",
+        ),
       ).toBeInTheDocument();
     });
   });
@@ -4746,7 +4987,9 @@ describe("connectors page", () => {
       expect(
         within(card).queryByTestId("connector-card-agent-access"),
       ).not.toBeInTheDocument();
-      expect(card).toHaveAccessibleName("Connect Acme Search");
+      expect(within(card).getByLabelText("Connect Acme Search").tagName).toBe(
+        "BUTTON",
+      );
     });
 
     click(screen.getByLabelText("More options"));
@@ -5458,7 +5701,7 @@ describe("connectors page", () => {
         within(connectorCardByLabel("Acme MCP")).getByTestId(
           "connector-card-agent-access",
         ),
-      ).toHaveTextContent("Used by Research, Support");
+      ).toHaveTextContent("Used by 2 agents");
       expect(
         within(connectorCardByLabel("Acme MCP")).getByText("Connected"),
       ).toBeInTheDocument();
@@ -6369,7 +6612,7 @@ describe("connectors page", () => {
       expect(within(card).getByText("Connected")).toBeInTheDocument();
       expect(
         within(card).getByTestId("connector-card-agent-access"),
-      ).toHaveTextContent("Used by Zero, Research");
+      ).toHaveTextContent("Used by 2 agents");
     });
     expect(browserOpen.calls).toStrictEqual([
       {
@@ -6379,6 +6622,102 @@ describe("connectors page", () => {
       },
     ]);
     expect(oauthStartCount).toBe(1);
+  });
+
+  it("updates custom connector access eligibility while the dialog is open", async () => {
+    const researchAgentId = "c0000000-0000-4000-a000-000000000051";
+    const supportAgentId = "c0000000-0000-4000-a000-000000000052";
+    const connector = customConnector({
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: ["secret"],
+    });
+    context.mocks.data.agents([
+      listAgent(researchAgentId, "Research"),
+      listAgent(supportAgentId, "Support"),
+    ]);
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(
+      agentCustomConnectorsContract.get,
+      ({ params, respond }) => {
+        const grants: AgentCustomConnectorGrant[] =
+          params.id === researchAgentId
+            ? [{ customConnectorId: connector.id, permissionNames: [] }]
+            : [];
+        return respond(200, { grants });
+      },
+    );
+    let summariesRequestStarted = false;
+    let resolveSummaries = (): void => {
+      throw new Error("Account summaries request did not start");
+    };
+    context.mocks.api(
+      connectorAccountsContract.summaries,
+      async ({ deferred, respond }) => {
+        const summariesDeferred = deferred<void>();
+        resolveSummaries = () => {
+          summariesDeferred.resolve();
+        };
+        summariesRequestStarted = true;
+        await summariesDeferred.promise;
+        return respond(200, {
+          summaries: [
+            {
+              target: {
+                kind: "custom",
+                customConnectorId: connector.id,
+              },
+              accountCount: 1,
+              attentionCount: 0,
+              defaultConnection: null,
+            },
+          ],
+        });
+      },
+    );
+    detachedSetupPage({
+      context,
+      path: "/connectors?tab=custom",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    await waitFor(() => {
+      expect(summariesRequestStarted).toBeTruthy();
+      expect(
+        screen.getByLabelText("Manage Acme Search access"),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Manage Acme Search access"));
+    const accessDialog = await screen.findByRole("dialog", {
+      name: "Manage Acme Search access",
+    });
+    const supportAccessSwitch = within(accessDialog).getByLabelText(
+      "Authorize Acme Search access for Support",
+    );
+    expect(supportAccessSwitch).toHaveAttribute("aria-disabled", "true");
+
+    resolveSummaries();
+
+    await waitFor(() => {
+      expect(supportAccessSwitch).not.toHaveAttribute("aria-disabled", "true");
+    });
+    click(within(accessDialog).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Manage Acme Search access" }),
+      ).toBeNull();
+    });
+    const manageAccounts = await waitForButtonByAriaLabel(
+      "Manage Acme Search accounts",
+    );
+    const manageAccess = within(
+      connectorCardByLabel("Acme Search"),
+    ).getByLabelText("Manage Acme Search access");
+    expect(manageAccounts.tagName).toBe("BUTTON");
+    expect(manageAccounts.querySelector("button")).toBeNull();
+    expect(manageAccounts).not.toContainElement(manageAccess);
   });
 
   it.each([
@@ -6489,7 +6828,7 @@ describe("connectors page", () => {
       await waitFor(() => {
         expect(
           within(connectorCardByLabel(connector.displayName)).getByText(
-            "Connected",
+            `Account #${connectionId.slice(0, 8)}`,
           ),
         ).toBeInTheDocument();
       });
@@ -6853,7 +7192,7 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(
         within(connectorCardByLabel(connector.displayName)).getByText(
-          "Connected",
+          `Account #${connectionId.slice(0, 8)}`,
         ),
       ).toBeInTheDocument();
     });
@@ -6927,13 +7266,13 @@ describe("connectors page", () => {
       expect(within(card).getByText("Connected")).toBeInTheDocument();
       expect(
         within(card).getByTestId("connector-card-agent-access"),
-      ).toHaveTextContent("Used by Zero, Research +1");
+      ).toHaveTextContent("Used by 3 agents");
     });
     expect(
       within(connectorCardByLabel("Acme API")).getByTestId(
         "connector-card-agent-access",
       ),
-    ).toHaveAttribute("title", "Zero, Research, Support");
+    ).not.toHaveAttribute("title");
     expect(
       within(connectorCardByLabel("Acme API")).getByText(
         "https://api.acme.test/v1/",

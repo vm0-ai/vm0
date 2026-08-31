@@ -87,8 +87,19 @@ def test_registered_flow_metadata_keys_use_registry_constants():
     assert flow_metadata_key_linter.repository_metadata_key_violations() == []
 
 
-def test_check_flow_metadata_keys_cli_passes_current_repository(tmp_path):
-    result = _run_check_script(_CHECK_SCRIPT, _ADDON_ROOT, tmp_path)
+def test_check_flow_metadata_keys_cli_passes_clean_addon(tmp_path):
+    addon_root = tmp_path / "mitm-addon"
+    check_script = _copy_linter_scripts(addon_root)
+    src_root = addon_root / "src"
+    src_root.mkdir()
+    (src_root / "flow_metadata_keys.py").write_text(
+        'SANDBOX_RUN_ID = "sandbox_run_id"\n', encoding="utf-8"
+    )
+    (src_root / "clean.py").write_text(
+        'flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-1"\n', encoding="utf-8"
+    )
+
+    result = _run_check_script(check_script, addon_root, tmp_path)
 
     assert result.returncode == 0
     assert result.stdout == ""

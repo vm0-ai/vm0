@@ -114,6 +114,7 @@ import * as artifactSchema from "./schema/artifact";
 import * as sharedThreadSchema from "./schema/shared-thread";
 import * as userArtifactFavoriteSchema from "./schema/user-artifact-favorite";
 import * as builtInGenerationJobSchema from "./schema/built-in-generation-job";
+import * as socialKitDownloadJobSchema from "./schema/socialkit-download-job";
 import * as bankingSchema from "./schema/banking";
 import * as gmailEventSchema from "./schema/gmail-event";
 import * as notionEventSchema from "./schema/notion-event";
@@ -246,6 +247,7 @@ export const schema = {
   ...sharedThreadSchema,
   ...userArtifactFavoriteSchema,
   ...builtInGenerationJobSchema,
+  ...socialKitDownloadJobSchema,
   ...bankingSchema,
   ...gmailEventSchema,
   ...notionEventSchema,

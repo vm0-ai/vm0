@@ -690,8 +690,8 @@ fn preserves_successful_post_result_cleanup(
         && cli_result.control_error.is_none()
         && cli_result.exit_code != 0
         && cli_result
-            .post_result_cleanup_result
-            .is_some_and(|result| result.status == cli::ClaudeResultStatus::Success)
+            .post_result_cleanup_jsonl_result
+            .is_some_and(|result| result.status == cli::JsonlResultStatus::Success)
         && cli_result
             .cli_termination
             .as_ref()
@@ -790,6 +790,13 @@ async fn complete_execution(
         log_info!(LOG_TAG, "✗ Execution failed ({}s)", cli_elapsed.as_secs());
     }
 
+    let user_cancelled = state
+        .failure_diagnostic
+        .as_ref()
+        .and_then(|diagnostic| diagnostic.cli_termination.as_ref())
+        .is_some_and(|termination| termination.reason == CliTerminationReason::UserCancellation);
+    let mut guest_completion_reported = false;
+
     // Checkpoint on success (skip when no API — local/test mode). The
     // pre-checkpoint flush runs in `tokio::join!` with the snapshot work so
     // its ~1s upload overlaps the ~4s checkpoint. The EOF-consuming final
@@ -805,41 +812,49 @@ async fn complete_execution(
             let session_metadata = state.session_metadata.ok_or_else(|| {
                 AgentError::Checkpoint("No valid CLI session ID was captured".to_string())
             })?;
-            checkpoint::create_checkpoint_for_runtime(runtime, session_metadata).await
+            checkpoint::prepare_checkpoint_for_runtime(runtime, session_metadata).await
         };
         let (cp_result, _) = tokio::join!(checkpoint, telemetry.flush(UploadMode::Live),);
         match cp_result {
-            Ok(()) => {
-                log_info!(
-                    LOG_TAG,
-                    "✓ Checkpoint complete ({}s)",
-                    cp_start.elapsed().as_secs()
-                );
-
-                // Checkpoint row is in the DB — the complete route's only
-                // hard dependency is satisfied. Fire /complete now so the
-                // host's `last_event_to_complete` timestamp isn't stretched
-                // by VM teardown + runner fallback (which used to be the
-                // only trigger). Runner still posts /complete after VM
+            Ok(checkpoint) => {
+                // Persist the prepared checkpoint and terminal state together
+                // before returning to the top-level final telemetry pass. The
+                // runner still posts a checkpoint-less /complete after VM
                 // exit; its call is idempotency-short-circuited.
-                //
-                // Serialize /complete before returning to the top-level final
-                // telemetry pass so the ack log line lands in the file before
-                // the telemetry uploader snapshots its EOF. The
-                // ~hundreds-of-ms we pay for serialization is invisible to
-                // users because the host's status transition already happened
-                // the moment /complete returned.
                 log_info!(LOG_TAG, "▷ Cleanup");
-                complete::report_success_for_run(
-                    http,
-                    &config.run_id,
-                    &config.sandbox_id,
-                    &config.sandbox_reuse_result,
-                    &config.workspace_reuse_result,
+                let result = complete::report_checkpoint_for_run(
+                    runtime,
+                    0,
+                    None,
                     state.last_event_sequence,
                     state.active_input_delivery_ids,
+                    checkpoint,
                 )
                 .await;
+                match result {
+                    Ok(()) => {
+                        guest_completion_reported = true;
+                        log_info!(
+                            LOG_TAG,
+                            "✓ Checkpoint complete ({}s)",
+                            cp_start.elapsed().as_secs()
+                        );
+                    }
+                    Err(e) => {
+                        record_persistence_failure(
+                            PersistenceFailure {
+                                label: "Checkpoint",
+                                error: &e,
+                                elapsed: cp_start.elapsed(),
+                                cli_exit_code,
+                                wrote_failure_diagnostic,
+                            },
+                            runtime,
+                            state.session_metadata,
+                        );
+                        exit_code = 1;
+                    }
+                }
             }
             Err(e) => {
                 record_persistence_failure(
@@ -874,10 +889,29 @@ async fn complete_execution(
         if http.has_api() {
             if let Some(session_metadata) = state.session_metadata {
                 log_info!(LOG_TAG, "Attempting best-effort recovery checkpoint");
-                match checkpoint::create_recovery_checkpoint_for_runtime(runtime, session_metadata)
+                match checkpoint::prepare_recovery_checkpoint_for_runtime(runtime, session_metadata)
                     .await
                 {
-                    Ok(()) => log_info!(LOG_TAG, "Recovery checkpoint created"),
+                    Ok(checkpoint) => {
+                        match complete::report_checkpoint_for_run(
+                            runtime,
+                            exit_code,
+                            state.failure_message,
+                            state.last_event_sequence,
+                            state.active_input_delivery_ids,
+                            checkpoint,
+                        )
+                        .await
+                        {
+                            Ok(()) => {
+                                guest_completion_reported = true;
+                                log_info!(LOG_TAG, "Recovery checkpoint created");
+                            }
+                            Err(e) => {
+                                log_warn!(LOG_TAG, "Recovery checkpoint skipped: {e}");
+                            }
+                        }
+                    }
                     Err(e) => log_warn!(LOG_TAG, "Recovery checkpoint skipped: {e}"),
                 }
             } else {
@@ -891,12 +925,7 @@ async fn complete_execution(
         log_info!(LOG_TAG, "▷ Cleanup");
     }
 
-    if state
-        .failure_diagnostic
-        .as_ref()
-        .and_then(|diagnostic| diagnostic.cli_termination.as_ref())
-        .is_some_and(|termination| termination.reason == CliTerminationReason::UserCancellation)
-    {
+    if user_cancelled && !guest_completion_reported {
         complete::report_user_cancellation_for_run(
             http,
             &config.run_id,
@@ -1142,15 +1171,18 @@ mod tests {
         let _ = std::fs::remove_dir_all(&*MAIN_TEST_RUNTIME_ROOT);
         unsafe {
             clear_test_env();
-            std::env::set_var("VM0_API_BACKEND_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
+            std::env::set_var(
+                guest_contracts::env::CANONICAL_API_URL_ENV,
+                server.base_url(),
+            );
+            std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token");
             std::env::set_var(guest_contracts::env::RUN_ID_ENV, "main-recovery-checkpoint");
             std::env::set_var(
-                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
                 test_runtime_dir(),
             );
             std::env::set_var(
-                guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+                guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
                 write_test_run_payload(prompt),
             );
         }
@@ -1161,29 +1193,29 @@ mod tests {
         for key in [
             guest_contracts::env::API_URL_ENV,
             guest_contracts::env::RUN_ID_ENV,
-            guest_contracts::env::API_TOKEN_ENV,
+            "VM0_API_TOKEN",
             guest_contracts::env::CANONICAL_API_TOKEN_ENV,
-            guest_contracts::env::SANDBOX_ID_ENV,
+            "VM0_SANDBOX_ID",
             guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
-            guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
+            "VM0_SANDBOX_REUSE_RESULT",
             guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
-            guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV,
+            "VM0_WORKSPACE_REUSE_RESULT",
             guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
             guest_contracts::env::PROMPT_ENV,
             guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
             guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
-            guest_contracts::env::RESUME_SESSION_ID_ENV,
+            "VM0_RESUME_SESSION_ID",
             guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
-            guest_contracts::env::API_START_TIME_ENV,
+            "VM0_API_START_TIME",
             guest_contracts::env::CANONICAL_API_START_TIME_ENV,
             guest_contracts::env::SECRET_VALUES_ENV,
             guest_contracts::env::DISALLOWED_TOOLS_ENV,
             guest_contracts::env::TOOLS_ENV,
             guest_contracts::env::SETTINGS_ENV,
             guest_contracts::env::CLI_AGENT_TYPE_ENV,
-            guest_contracts::env::USER_ENV_FILE_ENV,
+            "VM0_USER_ENV_FILE",
             guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
-            guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+            "VM0_RUN_PAYLOAD_FILE",
             guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
             guest_contracts::env::ARTIFACTS_ENV,
             guest_contracts::env::FEATURE_FLAGS_ENV,
@@ -1197,11 +1229,9 @@ mod tests {
             guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             guest_contracts::env::USE_MOCK_CLAUDE_ENV,
             guest_contracts::env::USE_MOCK_CODEX_ENV,
-            guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
-            guest_contracts::env::MOCK_CODEX_PATH_ENV,
+            guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
+            guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
             guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
-            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-            process_control_ipc::BOOTSTRAP_ENV,
             process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
             guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
             guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
@@ -1247,12 +1277,12 @@ mod tests {
 
     #[test]
     fn successful_post_result_cleanup_preserves_semantic_success_only_for_narrow_case() {
-        let success_result = cli::ClaudeResultSummary {
+        let success_result = cli::JsonlResultSummary {
             num_turns: Some(1),
-            status: cli::ClaudeResultStatus::Success,
+            status: cli::JsonlResultStatus::Success,
         };
-        let make_result = |claude_result: cli::ClaudeResultSummary,
-                           cleanup_result: cli::ClaudeResultSummary,
+        let make_result = |jsonl_result: cli::JsonlResultSummary,
+                           cleanup_result: cli::JsonlResultSummary,
                            termination_reason: CliTerminationReason| {
             let termination = CliTerminationDiagnostic::new(termination_reason)
                 .record_signal(CliTerminationSignal::Sigterm, Some(42), Some(1_000))
@@ -1263,8 +1293,8 @@ mod tests {
                 stderr_lines: Vec::new(),
                 last_event_sequence: None,
                 event_delivery: None,
-                claude_result: Some(claude_result),
-                post_result_cleanup_result: Some(cleanup_result),
+                jsonl_result: Some(jsonl_result),
+                post_result_cleanup_jsonl_result: Some(cleanup_result),
                 failure_diagnostic: None,
                 control_error: None,
                 cli_termination: Some(termination),
@@ -1287,9 +1317,9 @@ mod tests {
         ));
 
         let late_error_result_after_successful_cleanup = make_result(
-            cli::ClaudeResultSummary {
+            cli::JsonlResultSummary {
                 num_turns: Some(1),
-                status: cli::ClaudeResultStatus::Error,
+                status: cli::JsonlResultStatus::Error,
             },
             success_result,
             CliTerminationReason::PostResultReap,
@@ -1301,9 +1331,9 @@ mod tests {
 
         let error_cleanup = make_result(
             success_result,
-            cli::ClaudeResultSummary {
+            cli::JsonlResultSummary {
                 num_turns: Some(1),
-                status: cli::ClaudeResultStatus::Error,
+                status: cli::JsonlResultStatus::Error,
             },
             CliTerminationReason::PostResultReap,
         );
@@ -1509,7 +1539,17 @@ mod tests {
             .enable_all()
             .build()
             .unwrap()
-            .block_on(complete_execution_creates_recovery_checkpoint_after_cli_failure_inner());
+            .block_on(complete_execution_after_cli_failure_inner(200, 1));
+    }
+
+    #[test]
+    fn complete_execution_keeps_cli_failure_when_recovery_report_fails() {
+        let _test_state_guard = lock_test_state();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(complete_execution_after_cli_failure_inner(500, 3));
     }
 
     #[test]
@@ -1530,6 +1570,18 @@ mod tests {
             .build()
             .unwrap()
             .block_on(complete_execution_writes_checkpoint_failure_diagnostic_inner());
+    }
+
+    #[test]
+    fn complete_execution_treats_combined_report_failure_as_checkpoint_failure() {
+        let _test_state_guard = lock_test_state();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(
+                complete_execution_treats_combined_report_failure_as_checkpoint_failure_inner(),
+            );
     }
 
     #[test]
@@ -1753,6 +1805,75 @@ mod tests {
         }
     }
 
+    async fn complete_execution_treats_combined_report_failure_as_checkpoint_failure_inner() {
+        let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
+        server.reset_async().await;
+        let _env_guard = unsafe { set_test_env(server, Some("/combined-checkpoint-failure")) };
+        let guest_paths = test_guest_paths();
+
+        let cleanup_paths = run_scoped_cleanup_paths(&guest_paths, true);
+        for path in &cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+
+        let complete_mock = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/complete")
+                .json_body_includes(
+                    r#"{"exitCode":0,"checkpoint":{"cliAgentSessionId":"combined-failure-session"}}"#,
+                );
+            then.status(500);
+        });
+        let _telemetry_mock = server.mock(|when, then| {
+            when.method(POST).path("/api/webhooks/agent/telemetry");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({}));
+        });
+
+        let config = test_guest_config(server, Some("/combined-checkpoint-failure"));
+        let masker = Arc::new(masker::SecretMasker::from_config(&config));
+        let http = test_http_client(server);
+        let telemetry =
+            Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
+        let runtime = test_guest_runtime(config, http);
+        let session_metadata =
+            session_metadata::CapturedSessionMetadata::for_test("combined-failure-session", None);
+        let exit_code = complete_execution(
+            0,
+            0,
+            Duration::ZERO,
+            CompletionState {
+                last_event_sequence: None,
+                failure_message: None,
+                failure_diagnostic: None,
+                active_input_delivery_ids: &[],
+                session_metadata: Some(&session_metadata),
+            },
+            &telemetry,
+            &runtime,
+        )
+        .await;
+        telemetry.shutdown().await;
+
+        assert_eq!(exit_code, 1);
+        complete_mock.assert_calls_async(3).await;
+        let error = std::fs::read_to_string(guest_paths.checkpoint_error_file()).unwrap();
+        assert!(
+            error.contains("POST failed after 3 attempts"),
+            "got: {error}"
+        );
+        let diagnostic: FailureDiagnostic =
+            serde_json::from_slice(&std::fs::read(guest_paths.failure_diagnostic_file()).unwrap())
+                .unwrap();
+        assert_eq!(diagnostic.failure_class, FailureClass::CheckpointFailed);
+        assert_eq!(diagnostic.cli_exit_code, Some(0));
+
+        for path in cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
     async fn complete_execution_keeps_success_when_history_is_unavailable_inner() {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
@@ -1769,19 +1890,15 @@ mod tests {
                 .path("/api/webhooks/agent/checkpoints/prepare-history");
             then.status(500);
         });
-        let checkpoint_mock = server.mock(|when, then| {
-            when.method(POST)
-                .path("/api/webhooks/agent/checkpoints")
-                .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"unavailable"}"#);
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body(json!({"checkpointId": "historyless-checkpoint", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
-        });
         let complete_mock = server.mock(|when, then| {
-            when.method(POST).path("/api/webhooks/agent/complete");
+            when.method(POST)
+                .path("/api/webhooks/agent/complete")
+                .json_body_includes(
+                    r#"{"exitCode":0,"checkpoint":{"cliAgentSessionHistoryDisposition":"unavailable"}}"#,
+                );
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body(json!({}));
+                .json_body(json!({"success": true, "status": "completed"}));
         });
         let _telemetry_mock = server.mock(|when, then| {
             when.method(POST).path("/api/webhooks/agent/telemetry");
@@ -1817,7 +1934,6 @@ mod tests {
 
         assert_eq!(exit_code, 0);
         assert_eq!(prepare_mock.calls_async().await, 0);
-        assert_eq!(checkpoint_mock.calls_async().await, 1);
         assert_eq!(complete_mock.calls_async().await, 1);
 
         for path in cleanup_paths {
@@ -1825,7 +1941,10 @@ mod tests {
         }
     }
 
-    async fn complete_execution_creates_recovery_checkpoint_after_cli_failure_inner() {
+    async fn complete_execution_after_cli_failure_inner(
+        completion_status: u16,
+        expected_completion_calls: usize,
+    ) {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         let _env_guard = unsafe { set_test_env(server, Some("plain prompt")) };
@@ -1874,13 +1993,15 @@ mod tests {
                 .body(history.as_str());
             then.status(200);
         });
-        let checkpoint_mock = server.mock(|when, then| {
+        let complete_mock = server.mock(|when, then| {
             when.method(POST)
-                .path("/api/webhooks/agent/checkpoints")
-                .json_body_includes(r#"{"cliAgentSessionId":"recovery-session-from-main"}"#);
-            then.status(200)
+                .path("/api/webhooks/agent/complete")
+                .json_body_includes(
+                    r#"{"exitCode":1,"error":"You've hit your usage limit.","checkpoint":{"cliAgentSessionId":"recovery-session-from-main"}}"#,
+                );
+            then.status(completion_status)
                 .header("Content-Type", "application/json")
-                .json_body(json!({"checkpointId": "checkpoint-from-main", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
+                .json_body(json!({"success": true, "status": "failed"}));
         });
         let _telemetry_mock = server.mock(|when, then| {
             when.method(POST).path("/api/webhooks/agent/telemetry");
@@ -1931,7 +2052,9 @@ mod tests {
         assert_eq!(diagnostic, failure_diagnostic);
         prepare_mock.assert_calls_async(1).await;
         upload_mock.assert_calls_async(1).await;
-        checkpoint_mock.assert_calls_async(1).await;
+        complete_mock
+            .assert_calls_async(expected_completion_calls)
+            .await;
 
         for path in cleanup_paths {
             let _ = std::fs::remove_file(path);

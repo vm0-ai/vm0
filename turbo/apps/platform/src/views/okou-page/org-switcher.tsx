@@ -13,8 +13,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@okouai/ui";
+import type { BrowserClerk as Clerk } from "@clerk/shared/types";
 import { ChevronDown, Plus, Mail } from "lucide-react";
 import { clerk$, currentOrgInfo$ } from "../../signals/auth.ts";
+import {
+  createdOrganizationsCount$,
+  refreshCreatedOrganizationsCount$,
+} from "../../signals/org.ts";
 import {
   bestEffort,
   detach,
@@ -95,34 +100,34 @@ function InvitationRow({
   );
 }
 
-function CreateWorkspaceItem() {
-  const clerkLoadable = useLastLoadable(clerk$);
-  const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
+function CreateWorkspaceMenuItem({ clerk }: { clerk: Clerk }) {
   const creatingOrg = useGet(creatingOrg$);
   const setCreating = useSet(setCreatingOrg$);
+  const refreshCreatedOrganizationsCount = useSet(
+    refreshCreatedOrganizationsCount$,
+  );
   const { t } = useTranslation();
 
   const handleCreateOrg = onDomEventFn(async () => {
-    if (!clerk) {
-      return;
-    }
     setCreating(true);
     const slug = `workspace-${crypto.randomUUID().slice(0, 8)}`;
     await bestEffort(
       (async () => {
         const org = await clerk.createOrganization({ name: slug, slug });
-        await clerk.setActive({ organization: org.id });
+        await clerk.setActive({ organization: org.id }).finally(() => {
+          refreshCreatedOrganizationsCount();
+        });
       })(),
     );
     setCreating(false);
   });
 
   return (
-    <>
+    <div className="shrink-0">
       <DropdownMenuSeparator />
       <DropdownMenuItem
         onClick={handleCreateOrg}
-        disabled={clerk === null || creatingOrg}
+        disabled={creatingOrg}
         className="min-w-0 gap-3 px-3 py-2.5"
       >
         <Plus size={18} className="shrink-0" />
@@ -136,8 +141,42 @@ function CreateWorkspaceItem() {
               })}
         </span>
       </DropdownMenuItem>
-    </>
+    </div>
   );
+}
+
+function LimitedCreateWorkspaceItem({
+  clerk,
+  limit,
+}: {
+  clerk: Clerk;
+  limit: number;
+}) {
+  const createdCountLoadable = useLastLoadable(createdOrganizationsCount$);
+  if (
+    createdCountLoadable.state !== "hasData" ||
+    createdCountLoadable.data >= limit
+  ) {
+    return null;
+  }
+
+  return <CreateWorkspaceMenuItem clerk={clerk} />;
+}
+
+function CreateWorkspaceItem() {
+  const clerkLoadable = useLastLoadable(clerk$);
+  const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
+  const user = clerk?.user;
+  if (!clerk || user?.createOrganizationEnabled !== true) {
+    return null;
+  }
+
+  const limit = user.createOrganizationsLimit;
+  if (limit === null) {
+    return <CreateWorkspaceMenuItem clerk={clerk} />;
+  }
+
+  return <LimitedCreateWorkspaceItem clerk={clerk} limit={limit} />;
 }
 
 function OtherMembershipsList() {
@@ -207,7 +246,6 @@ function OrgDropdownContent() {
     );
   });
   const hasOrgOptions = hasOtherMemberships || hasPendingInvitations;
-  const canCreateOrg = clerk?.user?.createOrganizationEnabled ?? false;
 
   return (
     <DropdownMenuContent
@@ -251,11 +289,7 @@ function OrgDropdownContent() {
         </div>
       )}
 
-      {canCreateOrg && (
-        <div className="shrink-0">
-          <CreateWorkspaceItem />
-        </div>
-      )}
+      <CreateWorkspaceItem />
     </DropdownMenuContent>
   );
 }

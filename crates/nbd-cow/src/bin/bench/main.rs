@@ -1,7 +1,15 @@
 //! Benchmark: NBD COW vs dm-snapshot.
 //!
 //! Runs fio workloads on both a dm-snapshot device and an NBD COW device,
-//! then compares VM-visible IOPS, latency, AND actual host disk IOPS.
+//! then compares VM-visible IOPS, latency, and I/O observed on a selected host
+//! block device.
+//!
+//! The selected host-device metric is a whole-device counter delta and can
+//! include unrelated host I/O. Host-device selection first tries `df /tmp` and
+//! otherwise uses a heuristic fallback, so it is not guaranteed to identify
+//! the device backing the benchmark work directory. The work directory is
+//! created under the process temp-directory configuration, which may differ
+//! from `/tmp`.
 //!
 //! Requires: root, nbd kernel module, fio, losetup, dmsetup.
 
@@ -58,12 +66,12 @@ async fn main() {
         std::process::exit(1);
     }
 
-    // Detect host disk
+    // Select the host device whose diskstats counters will be sampled.
     let host_disk = detect_host_disk().unwrap_or_else(|e| {
         eprintln!("ERROR: {e}");
         std::process::exit(1);
     });
-    eprintln!("Host disk: {host_disk}");
+    eprintln!("Host device sampled by diskstats: {host_disk}");
     eprintln!();
 
     let work_dir = tempfile::Builder::new()
@@ -160,11 +168,11 @@ async fn main() {
         "DM IOPS",
         "DM p50",
         "DM p99",
-        "DM disk-IO",
+        "DM host I/O",
         "NBD IOPS",
         "NBD p50",
         "NBD p99",
-        "NBD disk-IO"
+        "NBD host I/O"
     );
     println!("{}", "-".repeat(118));
 

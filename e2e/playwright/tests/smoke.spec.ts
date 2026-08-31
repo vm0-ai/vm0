@@ -1,4 +1,5 @@
 import { setupClerkTestingToken } from "@clerk/testing/playwright";
+import { resolveApiBackendUrl } from "../api-backend-url";
 import { expect, test } from "../fixtures";
 import { signInWithClerkTestingHelper } from "../lib/auth";
 import { completeExploreOnboarding } from "../lib/onboarding";
@@ -9,7 +10,7 @@ test("complete app onboarding to chat page", async ({ browser, page }) => {
 
   const email = process.env.E2E_CLERK_USER_EMAIL!;
   const orgId = process.env.E2E_CLERK_ORG_ID!;
-  const apiUrl = process.env.VM0_API_BACKEND_URL!;
+  const apiUrl = resolveApiBackendUrl();
   const appUrl = deriveAppUrl(apiUrl);
 
   await signInWithClerkTestingHelper(page, email, appUrl, {
@@ -61,7 +62,7 @@ test("complete app onboarding to chat page", async ({ browser, page }) => {
 test("keep scrollbar thumbs visible without global hover styling", async ({
   page,
 }) => {
-  const apiUrl = process.env.VM0_API_BACKEND_URL!;
+  const apiUrl = resolveApiBackendUrl();
   const appUrl = deriveAppUrl(apiUrl);
 
   await page.goto(`${appUrl}/_/error`, { waitUntil: "domcontentloaded" });

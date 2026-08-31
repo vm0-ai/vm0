@@ -1,38 +1,25 @@
 import { socialContract } from "@okouai/api-contracts/contracts/social";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { bodyResultOf } from "../context/request";
+import { bodyResultOf, pathParamsOf } from "../context/request";
+import { publicBrand$ } from "../context/hono";
+import { waitUntil } from "../context/wait-until";
+import { notFound } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { socialKitRequest$ } from "../services/social.service";
+import {
+  createSocialKitDownload$,
+  getSocialKitDownload$,
+  reconcileSocialKitDownload$,
+  SOCIALKIT_RECONCILIATION_TIMEOUT_MS,
+} from "../services/socialkit-download.service";
 
 const socialKitRequestBody$ = bodyResultOf(socialContract.request);
-
-const socialKitDisabled = Object.freeze({
-  status: 403 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Managed SocialKit is not enabled",
-      code: "FORBIDDEN",
-    }),
-  }),
-});
-
-const socialKitEnabled$ = command(async ({ get }) => {
-  const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  return isFeatureEnabled(FeatureSwitchKey.ManagedSocialKit, {
-    orgId: auth.orgId,
-    userId: auth.userId,
-    overrides,
-  });
-});
+const socialKitDownloadBody$ = bodyResultOf(socialContract.createDownload);
+const socialKitDownloadPathParams$ = pathParamsOf(socialContract.getDownload);
+const socialKitDownloadNotFound = notFound("SocialKit download not found");
 
 const socialKitRequestInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -42,15 +29,75 @@ const socialKitRequestInner$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
-    if (!(await set(socialKitEnabled$))) {
-      return socialKitDisabled;
-    }
-    signal.throwIfAborted();
     return await set(
       socialKitRequest$,
       { auth, body: bodyResult.data },
       signal,
     );
+  },
+);
+
+const createSocialKitDownloadInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const bodyResult = await get(socialKitDownloadBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const publicBrand =
+      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+    const reconciliationSignal = AbortSignal.timeout(
+      SOCIALKIT_RECONCILIATION_TIMEOUT_MS,
+    );
+    const response = await set(
+      createSocialKitDownload$,
+      { auth, body: bodyResult.data, publicBrand },
+      signal,
+    );
+    if (response.status === 202) {
+      waitUntil(
+        set(
+          reconcileSocialKitDownload$,
+          response.body.downloadId,
+          reconciliationSignal,
+        ),
+      );
+    }
+    return response;
+  },
+);
+
+const getSocialKitDownloadInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const params = get(socialKitDownloadPathParams$);
+    const response = await set(
+      getSocialKitDownload$,
+      {
+        downloadId: params.downloadId,
+        orgId: auth.orgId,
+        userId: auth.userId,
+      },
+      signal,
+    );
+    if (!response) {
+      return socialKitDownloadNotFound;
+    }
+    if (
+      response.status === "processing" ||
+      response.status === "materializing" ||
+      response.status === "artifact_failed"
+    ) {
+      waitUntil(
+        set(
+          reconcileSocialKitDownload$,
+          response.downloadId,
+          AbortSignal.timeout(SOCIALKIT_RECONCILIATION_TIMEOUT_MS),
+        ),
+      );
+    }
+    return { status: 200 as const, body: response };
   },
 );
 
@@ -64,6 +111,28 @@ export const socialRoutes: readonly RouteEntry[] = [
         requiredCapability: "social:read",
       },
       socialKitRequestInner$,
+    ),
+  },
+  {
+    route: socialContract.createDownload,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "social:read",
+      },
+      createSocialKitDownloadInner$,
+    ),
+  },
+  {
+    route: socialContract.getDownload,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "social:read",
+      },
+      getSocialKitDownloadInner$,
     ),
   },
 ];

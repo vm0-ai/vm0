@@ -1,3 +1,4 @@
+import { resolveApiBackendUrl } from "../api-backend-url";
 import { expect, test } from "../fixtures";
 import { signInWithClerkTestingHelper } from "../lib/auth";
 import {
@@ -18,7 +19,7 @@ test("paid onboarding completes through the video template deep link", async ({
 }) => {
   test.setTimeout(240_000);
 
-  const apiUrl = process.env.VM0_API_BACKEND_URL!;
+  const apiUrl = resolveApiBackendUrl();
   const appUrl = deriveAppUrl(apiUrl);
   const email = generateTestEmail("paid-onboarding");
   let organizationId: string | undefined;

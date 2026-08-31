@@ -5,7 +5,6 @@ import {
   findVideoTemplate,
   findWebsiteTemplatePackage,
   resolvePresentationRunbookColorToken,
-  type PresentationRunbookArchiveVersion,
   type PresentationRunbookPackage,
   type WebsiteTemplatePackage,
 } from "@okouai/core/resource-registry";
@@ -29,14 +28,6 @@ import {
   PRESENTATION_STATIC_HTML_INSTRUCTION,
 } from "@okouai/core/presentation-generation-instructions";
 import { WEBSITE_IMAGE_BATCH_INSTRUCTION } from "@okouai/core/website-generation-instructions";
-import {
-  HYPERFRAMES_AUTHORING_SOURCE,
-  HYPERFRAMES_RUNTIME,
-} from "@okouai/core/hyperframes-source";
-import {
-  findIntroVideoTemplateItem,
-  type IntroVideoTemplateItem,
-} from "@okouai/core/intro-video-template-items";
 
 interface PresentationGenerationTemplateInput {
   readonly type: "presentation";
@@ -60,13 +51,6 @@ interface VideoGenerationTemplateInput {
     readonly voiceId?: string;
     /** @deprecated Read-only fallback; see readAvatarTemplateOptions. */
     readonly aspectRatio?: "portrait" | "landscape" | "square";
-  };
-}
-
-interface IntroVideoGenerationTemplateInput {
-  readonly type: "intro-video";
-  readonly selection: {
-    readonly templateId: string;
   };
 }
 
@@ -94,7 +78,6 @@ interface WebsiteGenerationTemplateInput {
 type GenerationTemplateInput =
   | PresentationGenerationTemplateInput
   | VideoGenerationTemplateInput
-  | IntroVideoGenerationTemplateInput
   | IllustrationGenerationTemplateInput
   | WorkflowGenerationTemplateInput
   | WebsiteGenerationTemplateInput;
@@ -134,9 +117,6 @@ function generationTemplateTypeLabel(
  * leave it empty and lose the guidance rather than point at nothing.
  */
 interface GenerationTemplatePromptOptions {
-  readonly introVideoTemplatesEnabled?: boolean;
-  readonly latestWebsiteTemplatesEnabled?: boolean;
-  readonly latestPresentationTemplatesEnabled?: boolean;
   readonly presentationTemplatesEnabled?: boolean;
   readonly mountedUserPresentationTemplateIds?: readonly string[];
 }
@@ -152,12 +132,6 @@ export function buildGenerationTemplatePrompt(
   if (generationTemplate.type === "video") {
     return buildVideoGenerationTemplatePrompt(generationTemplate);
   }
-  if (generationTemplate.type === "intro-video") {
-    return buildIntroVideoGenerationTemplatePrompt(
-      generationTemplate,
-      options.introVideoTemplatesEnabled === true,
-    );
-  }
   if (generationTemplate.type === "illustration") {
     return buildIllustrationGenerationTemplatePrompt(generationTemplate);
   }
@@ -165,17 +139,13 @@ export function buildGenerationTemplatePrompt(
     return buildWorkflowGenerationTemplatePrompt(generationTemplate);
   }
   if (generationTemplate.type === "website") {
-    return buildWebsiteGenerationTemplatePrompt(
-      generationTemplate,
-      options.latestWebsiteTemplatesEnabled === true,
-    );
+    return buildWebsiteGenerationTemplatePrompt(generationTemplate);
   }
 
   return buildPresentationGenerationTemplatePrompt(
     generationTemplate,
     options.presentationTemplatesEnabled === true,
     options.mountedUserPresentationTemplateIds ?? [],
-    options.latestPresentationTemplatesEnabled === true ? "latest" : "previous",
   );
 }
 
@@ -255,7 +225,6 @@ function buildPresentationGenerationTemplatePrompt(
   generationTemplate: PresentationGenerationTemplateInput,
   presentationTemplatesEnabled: boolean,
   mountedUserPresentationTemplateIds: readonly string[],
-  archiveVersion: PresentationRunbookArchiveVersion,
 ): GenerationTemplatePromptResult {
   const { templateId } = generationTemplate.selection;
   if (isUserPresentationTemplateId(templateId)) {
@@ -279,18 +248,11 @@ function buildPresentationGenerationTemplatePrompt(
   // Presentation picker selections are valid only when they resolve to a
   // self-contained runbook package. The legacy multi-resource registry flow has
   // been retired, so ids without a runbook package are rejected.
-  const runbookPackage = findPresentationRunbookPackage(
-    templateId,
-    archiveVersion,
-  );
+  const runbookPackage = findPresentationRunbookPackage(templateId);
   if (!runbookPackage) {
     return { status: "invalid", message: "Unknown generation template" };
   }
-  return buildPresentationRunbookPrompt(
-    generationTemplate,
-    runbookPackage,
-    archiveVersion,
-  );
+  return buildPresentationRunbookPrompt(generationTemplate, runbookPackage);
 }
 
 /**
@@ -333,7 +295,6 @@ function buildUserPresentationTemplatePrompt(
 function buildPresentationRunbookPrompt(
   generationTemplate: PresentationGenerationTemplateInput,
   runbookPackage: PresentationRunbookPackage,
-  archiveVersion: PresentationRunbookArchiveVersion,
 ): GenerationTemplatePromptResult {
   const color = resolvePresentationRunbookColorToken(
     runbookPackage,
@@ -353,7 +314,6 @@ function buildPresentationRunbookPrompt(
       ...buildPresentationRunbookInstructionLines({
         runbookPackage,
         colorSystemToken: color.token,
-        archiveVersion,
       }),
     ].join("\n"),
   };
@@ -361,7 +321,6 @@ function buildPresentationRunbookPrompt(
 
 function buildWebsiteGenerationTemplatePrompt(
   generationTemplate: WebsiteGenerationTemplateInput,
-  latestWebsiteTemplatesEnabled: boolean,
 ): GenerationTemplatePromptResult {
   const item = findWebsiteTemplateItem(
     generationTemplate.selection.websiteTemplateId,
@@ -370,25 +329,17 @@ function buildWebsiteGenerationTemplatePrompt(
     return { status: "invalid", message: "Unknown website template" };
   }
 
-  const packageId = latestWebsiteTemplatesEnabled
-    ? item.templateId
-    : `${item.templateId}-v2`;
-  const pkg = findWebsiteTemplatePackage(packageId);
+  const pkg = findWebsiteTemplatePackage(item.templateId);
   if (!pkg) {
     return { status: "invalid", message: "Unknown website template" };
   }
 
-  return buildWebsiteTemplatePackagePrompt(
-    item,
-    pkg,
-    latestWebsiteTemplatesEnabled,
-  );
+  return buildWebsiteTemplatePackagePrompt(item, pkg);
 }
 
 function buildWebsiteTemplatePackagePrompt(
   item: WebsiteTemplateItem,
   pkg: WebsiteTemplatePackage,
-  latestWebsiteTemplatesEnabled: boolean,
 ): GenerationTemplatePromptResult {
   const packageDir = `./generated/resources/${pkg.slug}`;
 
@@ -407,20 +358,12 @@ function buildWebsiteTemplatePackagePrompt(
       "When you produce a website from the user's request:",
       `- Pull the package: okou resource pull ${pkg.resourceId} --dir ./generated/resources`,
       `- Work from ${packageDir}. Inspect the bundled package metadata and instructions before editing.`,
-      ...(latestWebsiteTemplatesEnabled
-        ? [
-            `- Read ${packageDir}/SKILL.md before authoring; it owns this package's contract.`,
-            "- Assemble the page once with `node tools/compose.mjs <section-ids...>`, then author the composed index.html directly. The command refuses a second compose pass; bypassing that guard would discard authored work.",
-            `- ${WEBSITE_IMAGE_BATCH_INSTRUCTION}`,
-            "- Repair every blocking failure from `bash checks/verify.sh index.html qa` until it prints QA_READY.",
-            "- Stage and host once: `node tools/stage.mjs publish` writes a clean ./publish directory, then `okou host ./publish --site <slug>`.",
-            "- Check the deployed page with `bash checks/verify-published.sh <url>`; a local pass is not evidence about the deployment.",
-          ]
-        : [
-            `- Use ${packageDir}/resolve-images.mjs for image slots when the template asks for image resolution; it uses /api/presentation/images/resolve.`,
-            `- Render with ${packageDir}/render.mjs after preparing the template content plan.`,
-            "- Host the finished static website: okou host <output-dir> --site <slug>",
-          ]),
+      `- Read ${packageDir}/SKILL.md before authoring; it owns this package's contract.`,
+      "- Assemble the page once with `node tools/compose.mjs <section-ids...>`, then author the composed index.html directly. The command refuses a second compose pass; bypassing that guard would discard authored work.",
+      `- ${WEBSITE_IMAGE_BATCH_INSTRUCTION}`,
+      "- Repair every blocking failure from `bash checks/verify.sh index.html qa` until it prints QA_READY.",
+      "- Stage and host once: `node tools/stage.mjs publish` writes a clean ./publish directory, then `okou host ./publish --site <slug>`.",
+      "- Check the deployed page with `bash checks/verify-published.sh <url>`; a local pass is not evidence about the deployment.",
       "- Use this built-in R2-backed package; do not substitute generic Open Design website templates for the selected template.",
       "- Return the hosted website URL and keep the generated static site as the final deliverable.",
     ].join("\n"),
@@ -470,46 +413,6 @@ function buildVideoGenerationTemplatePrompt(
       "- Then run final direct video generation from the resolved prompt and parameters without `--template`.",
       "- If a connector/provider is requested, follow connector guidance instead.",
       "- If a flag above no longer applies, run `okou generate video -h` to discover the current flags, models, and providers.",
-    ].join("\n"),
-  };
-}
-
-function buildIntroVideoGenerationTemplatePrompt(
-  generationTemplate: IntroVideoGenerationTemplateInput,
-  introVideoTemplatesEnabled: boolean,
-): GenerationTemplatePromptResult {
-  const template = findIntroVideoTemplateItem(
-    generationTemplate.selection.templateId,
-  );
-  if (!template || !introVideoTemplatesEnabled) {
-    return { status: "invalid", message: "Unknown intro-video template" };
-  }
-
-  return buildHyperframesIntroVideoGenerationTemplatePrompt(template);
-}
-
-function buildHyperframesIntroVideoGenerationTemplatePrompt(
-  template: IntroVideoTemplateItem,
-): GenerationTemplatePromptResult {
-  return {
-    status: "resolved",
-    prompt: [
-      ...templateFraming("an intro video"),
-      "Selected intro-video template:",
-      "- Artifact type: intro video",
-      `- Template: ${template.title} (${template.id})`,
-      `- Template description: ${template.description}`,
-      `- Story pattern: ${template.story.pattern}`,
-      `- Implementation: ${template.implementation.label}`,
-      `- Official workflow: ${template.implementation.workflow}`,
-      `- Official source: ${HYPERFRAMES_AUTHORING_SOURCE.repo}@${HYPERFRAMES_AUTHORING_SOURCE.ref}`,
-      `- Pinned runtime: ${HYPERFRAMES_RUNTIME.packageSpec}`,
-      "",
-      "When you produce an intro video from the user's request:",
-      `- Run once to fetch the locked authoring packet: okou generate intro-video --template ${template.id} --prompt "<user request>"`,
-      "- Follow that packet and the pinned official HyperFrames source completely; it owns story, motion, authoring, verification, and output paths.",
-      "- Do not substitute direct built-in text-to-video generation for this template.",
-      "- Return the final rendered video or the concrete render blocker named by the packet.",
     ].join("\n"),
   };
 }

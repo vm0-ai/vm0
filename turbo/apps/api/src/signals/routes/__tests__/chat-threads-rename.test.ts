@@ -162,4 +162,47 @@ describe("POST /api/chat-threads/:id/rename", () => {
       },
     });
   });
+
+  it("does not rename a same-user thread from another org", async () => {
+    const fixture = await seedChatThread("Original title");
+    const otherOrgId = `org_${randomUUID()}`;
+    await store.set(
+      seedOrgMembership$,
+      { orgId: otherOrgId, userId: fixture.userId },
+      context.signal,
+    );
+
+    const response = await accept(
+      renameClient().rename({
+        headers: {
+          authorization: `Bearer ${okouToken({
+            userId: fixture.userId,
+            orgId: otherOrgId,
+            capabilities: ["chat-thread:write"],
+          })}`,
+        },
+        params: { id: fixture.threadId },
+        body: { title: "Wrong org title" },
+      }),
+      [404],
+    );
+    expect(response.body).toStrictEqual({
+      error: { code: "NOT_FOUND", message: "Chat thread not found" },
+    });
+
+    const metadataResponse = await accept(
+      metadataClient().get({
+        headers: {
+          authorization: `Bearer ${okouToken({
+            userId: fixture.userId,
+            orgId: fixture.orgId,
+            capabilities: ["chat-thread:read"],
+          })}`,
+        },
+        params: { id: fixture.threadId },
+      }),
+      [200],
+    );
+    expect(metadataResponse.body.title).toBe("Original title");
+  });
 });

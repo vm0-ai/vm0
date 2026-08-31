@@ -16,7 +16,10 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import {
   mockChatEventRows,
@@ -589,7 +592,9 @@ describe("user messages", () => {
     });
 
     const agentsLink = await waitFor(() => {
-      const link = screen.getByText("Agents").closest("a");
+      const link = within(screen.getByTestId("labeled-nav-rail"))
+        .getByText("Agents")
+        .closest("a");
       if (!link) {
         throw new Error("Expected the Agents navigation link");
       }
@@ -700,13 +705,17 @@ describe("user messages", () => {
       chatThreadEventsContract.rows,
       ({ params, query, respond }) => {
         if (params.threadId !== threadId) {
-          return respond(200, { rows: [] });
+          return respond(200, chatEventRowsResponse([], query));
         }
-        return respond(200, {
-          rows: mockChatEventRows(sourceEvents).filter((row) => {
-            return row.seqId > query.sinceSeqId;
-          }),
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            mockChatEventRows(sourceEvents).filter((row) => {
+              return row.seqId > query.sinceSeqId;
+            }),
+            query,
+          ),
+        );
       },
     );
 
@@ -718,7 +727,9 @@ describe("user messages", () => {
     expect(screen.getAllByText("source-context.bin").length).toBeGreaterThan(0);
 
     const sidebarThreadLink = await waitFor(() => {
-      const link = screen.getByText("Sidebar chat").closest("a");
+      const link = within(screen.getByTestId("chat-list-column"))
+        .getByText("Sidebar chat")
+        .closest("a");
       if (!link) {
         throw new Error("Expected the sidebar thread link");
       }

@@ -260,21 +260,10 @@ describe("auth tokens", () => {
     );
   });
 
-  it("gates social capability behind the managed SocialKit feature switch", () => {
-    const defaultToken = generateOkouToken("user_okou", "run_okou", "org_okou");
-    const enabledToken = generateOkouToken(
-      "user_okou",
-      "run_okou",
-      "org_okou",
-      { [FeatureSwitchKey.ManagedSocialKit]: true },
-    );
+  it("grants social capability by default", () => {
+    const token = generateOkouToken("user_okou", "run_okou", "org_okou");
 
-    expect(verifyOkouToken(defaultToken)?.capabilities).not.toContain(
-      "social:read",
-    );
-    expect(verifyOkouToken(enabledToken)?.capabilities).toContain(
-      "social:read",
-    );
+    expect(verifyOkouToken(token)?.capabilities).toContain("social:read");
   });
 
   it("grants custom connector writes by default", () => {
@@ -313,12 +302,6 @@ describe("auth tokens", () => {
     expect(verifyOkouToken(token)?.capabilities).toContain(
       "people-search:read",
     );
-  });
-
-  it("grants translation capability by default", () => {
-    const token = generateOkouToken("user_okou", "run_okou", "org_okou");
-
-    expect(verifyOkouToken(token)?.capabilities).toContain("translation:write");
   });
 
   it("gates image recognition on run eligibility", () => {

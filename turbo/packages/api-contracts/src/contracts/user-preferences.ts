@@ -10,6 +10,22 @@ const c = initContract();
 export const sendModeSchema = z.enum(["enter", "cmd-enter"]);
 export type SendMode = z.infer<typeof sendModeSchema>;
 
+export const themePreferenceSchema = z.enum(["light", "dark", "system"]);
+export type ThemePreference = z.infer<typeof themePreferenceSchema>;
+
+export const COLOR_THEMES = [
+  "golden-hour",
+  "citrus-spark",
+  "berry-blush",
+  "cotton-sky",
+  "blue-horizon",
+  "daydream",
+  "deep-lagoon",
+  "limelight",
+] as const;
+export const colorThemeSchema = z.enum(COLOR_THEMES);
+export type ColorTheme = z.infer<typeof colorThemeSchema>;
+
 export const SUPPORTED_USER_LOCALES = [
   "en-US",
   "pt-BR",
@@ -33,12 +49,16 @@ export const userPreferencesResponseSchema = z.object({
   // canonical order and ignores client-provided order on writes.
   pinnedAgentIds: z.array(z.string()),
   sendMode: sendModeSchema,
-  morningBriefEnabled: z.boolean(),
+  theme: themePreferenceSchema.nullable(),
+  colorTheme: colorThemeSchema.nullable(),
   /**
-   * Next scheduled Morning Brief send (ISO instant), or null when no run is
-   * scheduled (preference off, timezone missing, or schedule not synced).
+   * Phase-A response fallback for old App bundles; always false. Phase B
+   * removes it after #30264's released zero-traffic gate and replacement App
+   * version floor close the retained-client window.
    */
-  morningBriefNextRunAt: z.string().nullable(),
+  morningBriefEnabled: z.literal(false),
+  /** Same phase-A old-App fallback and phase-B gate; always null. */
+  morningBriefNextRunAt: z.null(),
   captureNetworkBodiesRemaining: z.number().int().min(0),
 });
 
@@ -53,6 +73,12 @@ export const updateUserPreferencesRequestSchema = z
     // Membership update only; request order is not used for display ordering.
     pinnedAgentIds: z.array(z.string()).optional(),
     sendMode: sendModeSchema.optional(),
+    theme: themePreferenceSchema.optional(),
+    colorTheme: colorThemeSchema.optional(),
+    /**
+     * Phase-A old-App request fallback; accepted as a no-op. Phase B removes
+     * it at #30264's released zero-traffic and replacement-App version gate.
+     */
     morningBriefEnabled: z.boolean().optional(),
     captureNetworkBodiesRemaining: z.number().int().min(0).optional(),
   })
@@ -63,6 +89,8 @@ export const updateUserPreferencesRequestSchema = z
         data.locale !== undefined ||
         data.pinnedAgentIds !== undefined ||
         data.sendMode !== undefined ||
+        data.theme !== undefined ||
+        data.colorTheme !== undefined ||
         data.morningBriefEnabled !== undefined ||
         data.captureNetworkBodiesRemaining !== undefined
       );

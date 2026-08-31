@@ -3,9 +3,10 @@
 ## Diagnostic Host Attribution
 
 `runner.yaml` may contain an optional `hostname` used only to identify the
-physical runner in claims, sandbox telemetry, and Runner Axiom warning/error
-events. Production automation writes the exact Ansible `inventory_hostname`;
-it does not derive the value from DNS or the operating system at runtime.
+physical runner in claims, sandbox telemetry, Runner Axiom warning/error
+events, and the dedicated operator-environment alias-state event. Production
+automation writes the exact Ansible `inventory_hostname`; it does not derive
+the value from DNS or the operating system at runtime.
 
 The value must be non-empty and no longer than 255 JavaScript string units
 (UTF-16 code units). `runner config --hostname <value>` validates and preserves
@@ -13,12 +14,24 @@ the raw value. Existing configuration files without `hostname` continue to
 load and omit the canonical hostname fields.
 
 Hostname does not select a service, directory, release, or rollback target.
-Those lifecycle identities continue to use the version-shaped `name`, such as
-`v0.174.0`. Current Runner binaries send optional canonical `runnerHostname`
-from configuration and canonical `runnerVersion` compiled into the binary. They
-no longer send legacy `runnerName` in heartbeats or sandbox telemetry. During
-the compatibility window, the API still accepts `runnerName` from draining
-older Runner binaries and preserves its version-shaped value as `runner_name`.
+Systemd service suffixes are opaque local instance names. Production currently
+passes its explicit `runner_release` value as the service name and Runner
+directory name, but version logic uses `runner_release` directly and does not
+interpret a runner name as a version. Live processes are selected by their
+exact config path and process identity, and rolling log files use the release
+compiled into the Runner binary. Current Runner binaries send optional
+canonical `runnerHostname` from configuration and canonical `runnerVersion`
+compiled into the binary. They no longer send legacy `runnerName` in
+heartbeats or sandbox telemetry. Current API revisions no longer declare,
+persist, or map that field. During deployment overlap, an extra `runnerName`
+from an older Runner payload is tolerated but discarded before request
+handling.
+
+Current `runner.yaml` has no legacy `name` field. Repository automation writes
+`hostname` through `runner config`, while `--runner-dirname` and systemd service
+`--name` remain opaque local lifecycle inputs. Live-runner records contain exact
+config/process metadata and no legacy runner name. Readiness and doctor select
+live processes by the unit's exact config path.
 
 Operational queries and alerts should use `runner_hostname` and
 `runner_version`. A bounded historical fallback may use `runner_name` only for
@@ -26,11 +39,46 @@ records that lack the canonical dimensions from before the cutover. Never
 interpret `runner_name` as a hostname.
 
 Runner Axiom warning/error events similarly include optional
-`runner_hostname` and required `runner_version`. Deploy the API and nullable
-heartbeat storage before deploying a Runner that omits the legacy name. Canary
-the Runner and verify claim snapshots, telemetry/Axiom dimensions, distinct
-hostnames on two hosts running one version, and retained-version rollback
-before removing the legacy receiver or historical query fallback.
+`runner_hostname` and required `runner_version`. The rollout order is compatible
+API and nullable heartbeat storage, Runner producer cutover, then logical API
+receiver removal, followed by physical state-column removal after pre-cutover
+serving API instances drained. The current schema no longer contains
+`runner_state.runner_name`. Canary each transition and verify claim snapshots,
+telemetry/Axiom dimensions, and distinct hostnames on two hosts running one
+version. Remove any historical query fallback only after its bounded
+observation window expires.
+
+## Runner Start Operator-Environment Alias Telemetry
+
+After `runner start` has normalized its effective server URL successfully and
+proved its effective token is non-empty, it emits exactly one informational
+`runner operator environment alias states` event. Its dedicated tracing target,
+serialized to the Axiom `context` field, is
+`runner::operator_env::alias_states`. The Runner Axiom filter admits this exact
+informational target in addition to its existing warning-and-error traffic;
+unrelated informational, debug, and trace events remain local.
+
+The event classifies only the live `runner start` process environment. It
+contains two fixed, value-free fields:
+
+| Field                      | Classifications                                                                |
+| -------------------------- | ------------------------------------------------------------------------------ |
+| `api_url_alias_state`      | `absent`, `canonical_only`, `legacy_only`, `equal_dual`, or `conflicting_dual` |
+| `runner_token_alias_state` | `absent`, `canonical_only`, `legacy_only`, or `dual_present`                   |
+
+For the API URL pair, a dual state distinguishes equal values from
+conflicting values. Token classification inspects presence only; it never
+compares the two token values. The event never includes URL or token values,
+lengths, hashes, prefixes, suffixes, command arguments, environment dumps,
+configuration contents, or error representations. `runner_hostname` and
+`runner_version` are added automatically by the Axiom layer.
+
+This event does not prove that arbitrary external `runner config` invocations
+have stopped using a legacy alias. Removing either legacy reader still requires
+a current source and configuration inventory, evidence from every intended
+Runner host, supported rollback ancestry, and an explicit compatibility
+decision. A failed URL or token validation emits no event, so missing expected
+host coverage is not legacy-drain evidence.
 
 The runner reads host-local overrides from `/etc/vm0-runner/host.env` once
 during startup. A missing file is equivalent to an empty file: the runner uses
@@ -55,33 +103,21 @@ comments. The parser accepts only the keys listed below. An unreadable file, a
 line without `=`, an unsupported key, or a duplicate key is a configuration
 error that prevents the runner from starting.
 
-## Temporary Dual-Read Migration
+## Canonical Host-Tuning Contract
 
-The `OKOU_*` names are canonical. During the temporary dual-read stage, the
-runner also accepts the corresponding legacy `VM0_*` alias for each logical
-field:
+The runner accepts only these five host-tuning keys:
 
-| Canonical key                            | Temporary legacy alias                  | Unit                   | Valid values                               | Behavior                                                                                             |
-| ---------------------------------------- | --------------------------------------- | ---------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `OKOU_RUNNER_CONCURRENCY_FACTOR`         | `VM0_RUNNER_CONCURRENCY_FACTOR`         | Dimensionless multiple | Positive finite number                     | Optional; overrides `sandbox.concurrency_factor` from `runner.yaml`. An invalid value fails startup. |
-| `OKOU_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC` | `VM0_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC` | MiB/s                  | Positive finite decimal in the `u64` range | Required with the other three I/O keys.                                                              |
-| `OKOU_RUNNER_DISK_IOPS`                  | `VM0_RUNNER_DISK_IOPS`                  | Operations/s           | Integer in `1..=u64::MAX`                  | Required with the other three I/O keys.                                                              |
-| `OKOU_RUNNER_NET_RX_MIB_PER_SEC`         | `VM0_RUNNER_NET_RX_MIB_PER_SEC`         | MiB/s                  | Positive finite decimal in the `u64` range | Required with the other three I/O keys.                                                              |
-| `OKOU_RUNNER_NET_TX_MIB_PER_SEC`         | `VM0_RUNNER_NET_TX_MIB_PER_SEC`         | MiB/s                  | Positive finite decimal in the `u64` range | Required with the other three I/O keys.                                                              |
+| Key                                      | Unit                   | Valid values                               | Behavior                                                                                             |
+| ---------------------------------------- | ---------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `OKOU_RUNNER_CONCURRENCY_FACTOR`         | Dimensionless multiple | Positive finite number                     | Optional; overrides `sandbox.concurrency_factor` from `runner.yaml`. An invalid value fails startup. |
+| `OKOU_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC` | MiB/s                  | Positive finite decimal in the `u64` range | Required with the other three I/O keys.                                                              |
+| `OKOU_RUNNER_DISK_IOPS`                  | Operations/s           | Integer in `1..=u64::MAX`                  | Required with the other three I/O keys.                                                              |
+| `OKOU_RUNNER_NET_RX_MIB_PER_SEC`         | MiB/s                  | Positive finite decimal in the `u64` range | Required with the other three I/O keys.                                                              |
+| `OKOU_RUNNER_NET_TX_MIB_PER_SEC`         | MiB/s                  | Positive finite decimal in the `u64` range | Required with the other three I/O keys.                                                              |
 
-Use exactly one spelling for each field. If both aliases for the same field
-appear, the runner fails startup even when their values are identical; the
-error does not include either value. Different I/O fields may use different
-spellings during migration, and they still form one all-or-none group after
-alias normalization. A planned host cutover should rewrite all four I/O fields
-to their canonical spelling in the same file update.
-
-Do not change a deployed `host.env` to canonical names until every supported
-runner and rollback target includes this dual reader. An older reader rejects
-the canonical names as unsupported. Rolling back to an older reader therefore
-requires atomically restoring the legacy spellings before starting the older
-binary. Every file change still requires the normal runner drain and restart;
-the running process does not reload it.
+Each key may appear at most once. Retired host-tuning names and every other
+unlisted key are unsupported and cannot select or override a value. The four
+I/O keys form one all-or-none group.
 
 Bandwidth values may be fractional. After conversion from MiB/s, the byte/s
 value must be at least `1`, must fit in a `u64`, and is rounded down to an
@@ -89,6 +125,23 @@ integer. Disk IOPS must parse directly as a nonzero `u64`.
 
 The concurrency override is independent of the I/O group, but it changes the
 resource budget used to calculate the I/O limits.
+
+## Completed Canonical Cutover and Rollback Floor
+
+Production host configuration completed the canonical cutover with Runner
+`0.178.4` (`b1440bfb43d75590ea1d0a43d9b8f0c8340832ef`). All three production
+hosts started and passed readiness and health on that release before their old
+services drained. Successor promotions confirmed the same canonical files.
+
+Runner `0.178.4` is the rollback floor for hosts using this contract. The
+retained rollback targets `0.178.4`, `0.178.6`, and `0.178.7` all read the five
+canonical keys. Do not add an earlier rollback target unless its compatibility
+with the canonical host file has been established separately.
+
+Normal Runner promotion no longer mutates `host.env`. It installs, starts, and
+health-checks the target before draining old services. If target installation,
+readiness, or health fails, promotion stops the failed target and leaves the
+already-running old services available.
 
 ## Configure Host I/O Capacity
 
@@ -167,11 +220,10 @@ Host-file parsing and I/O resolution have different failure boundaries:
 | Configuration state                                                       | Runner behavior                                                                                                                                  |
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | File missing, or none of the four I/O keys present                        | Starts with I/O limiters disabled and logs `I/O limiters disabled`.                                                                              |
-| All four logical I/O fields present and usable                            | Starts with all jobs limited and logs `I/O limiter capacity configured; applying limiters to all jobs`.                                          |
+| All four I/O fields present and usable                                    | Starts with all jobs limited and logs `I/O limiter capacity configured; applying limiters to all jobs`.                                          |
 | I/O fields partial, numerically invalid, or insufficient after division   | Starts, logs `I/O limiter host env config invalid; disabling I/O limiter capacity` with a `reason`, and disables every disk and network limiter. |
 | File unreadable, line malformed, key unsupported, or exact key duplicated | Fails startup with a runner configuration error.                                                                                                 |
-| Both aliases for one logical field present                                | Fails startup with a value-free alias conflict error.                                                                                            |
-| `OKOU_RUNNER_CONCURRENCY_FACTOR` or its legacy alias present but invalid  | Fails startup with a runner configuration error naming the canonical key and `host.env`.                                                         |
+| `OKOU_RUNNER_CONCURRENCY_FACTOR` present but invalid                      | Fails startup with a runner configuration error naming the key and `host.env`.                                                                   |
 
 The non-fatal I/O warning is all-or-nothing. A valid disk pair does not stay
 enabled when the network pair is missing or invalid, and vice versa.

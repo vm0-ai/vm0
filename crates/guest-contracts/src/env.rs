@@ -2,11 +2,12 @@
 //!
 //! The runner uses these names to bootstrap the guest-agent process. User,
 //! model-provider, and connector environment is a separate payload loaded
-//! through [`USER_ENV_FILE_ENV`], so user-provided keys cannot override runner
+//! through [`CANONICAL_USER_ENV_FILE_ENV`], so user-provided keys cannot override runner
 //! bootstrap controls directly.
 //!
 //! The `OKOU_` and `VM0_` namespaces are runner-owned, including keys defined
-//! in sibling modules such as [`crate::runtime_paths::GUEST_RUNTIME_DIR_ENV`].
+//! in sibling modules such as
+//! [`crate::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV`].
 //! User env filtering should treat current and future `OKOU_` keys plus current,
 //! future, and retired `VM0_` keys as protected. Bootstrap keys outside those
 //! namespaces are listed explicitly below.
@@ -15,22 +16,21 @@
 //! selected runner-owned keys may cross the local user-env boundary as
 //! guest-agent timing overrides.
 
-/// Backend API base URL provided to the guest-agent.
+/// Legacy backend API URL spelling retained outside Guest root capture.
 ///
-/// This is the only runner bootstrap key intentionally exposed to CLI child
-/// processes by the guest-agent's curated child environment.
+/// Guest root capture reads only [`CANONICAL_API_URL_ENV`]. This spelling
+/// remains an independent compatibility input for the Runner operator and the
+/// managed CLI reader, and remains named by user-environment filtering and
+/// negative coverage. The production Runner and the guest-agent's curated
+/// managed CLI-child environment do not emit this alias.
 pub const API_URL_ENV: &str = "VM0_API_BACKEND_URL";
 
-/// Canonical backend API URL spelling shared by migration readers.
+/// Canonical backend API URL spelling written by the production Runner, read at
+/// Guest root bootstrap, and exposed to managed CLI children.
 ///
-/// The Guest Agent bootstrap reader and Runner operator parser reuse this exact
-/// spelling but have independent rollout floors. On the Runner-to-Guest surface,
-/// Runner writers keep using [`API_URL_ENV`], and the guest-agent keeps exposing
-/// that legacy spelling to managed CLI children. Remove that legacy reader only
-/// after the exact production Runner plus embedded-Guest reader floor, complete
-/// pre-reader service and reusable-sandbox drain, supported rollback window,
-/// and value-free legacy-source-zero gates in #28914. Runner operator input and
-/// managed CLI-child exposure each have their own later support floors.
+/// The production Runner emits only this spelling and Guest root capture reads
+/// it without consulting [`API_URL_ENV`]. The Runner operator and downstream
+/// managed CLI reader retain independent compatibility contracts.
 pub const CANONICAL_API_URL_ENV: &str = "OKOU_API_BACKEND_URL";
 
 /// Stable run identifier used by guest-agent logs, telemetry, and runtime
@@ -41,37 +41,18 @@ pub const RUN_ID_ENV: &str = "OKOU_RUN_ID";
 ///
 /// This value is runner-owned and must not be exposed through user-provided
 /// environment or CLI child env.
-pub const API_TOKEN_ENV: &str = "VM0_API_TOKEN";
-
-/// Canonical API token alias accepted by guest readers during migration.
-///
-/// Runner writers keep using [`API_TOKEN_ENV`] until the deployed reader floor,
-/// sandbox drain, rollback window, and legacy-read-zero gates are complete.
 pub const CANONICAL_API_TOKEN_ENV: &str = "OKOU_API_TOKEN";
 
-/// Sandbox identifier assigned by the runner.
-pub const SANDBOX_ID_ENV: &str = "VM0_SANDBOX_ID";
-
-// These four canonical aliases are reader-only during #28914 migration Stage 1.
-// Runner writers keep using the legacy constants until the deployed reader floor,
-// sandbox drain, rollback window, and legacy-read-zero gates are complete.
-// #28914 owns creation of the later writer-cutover and reader-removal issues.
-/// Canonical alias for the sandbox identifier accepted by guest readers.
+/// Sandbox identifier assigned and written by the runner.
 pub const CANONICAL_SANDBOX_ID_ENV: &str = "OKOU_SANDBOX_ID";
 
 /// Wire value for the runner's sandbox-reuse decision.
 ///
-/// `reused` means an idle VM was unparked. Other values describe why reuse did
+/// `reused` means an idle sandbox was unparked. Other values describe why reuse did
 /// not happen, such as `poolMiss` or `noReuseKey`.
-pub const SANDBOX_REUSE_RESULT_ENV: &str = "VM0_SANDBOX_REUSE_RESULT";
-
-/// Canonical alias for the sandbox-reuse decision accepted by guest readers.
 pub const CANONICAL_SANDBOX_REUSE_RESULT_ENV: &str = "OKOU_SANDBOX_REUSE_RESULT";
 
 /// Wire value for the runner's final workspace-reuse decision.
-pub const WORKSPACE_REUSE_RESULT_ENV: &str = "VM0_WORKSPACE_REUSE_RESULT";
-
-/// Canonical alias for the workspace-reuse decision accepted by guest readers.
 pub const CANONICAL_WORKSPACE_REUSE_RESULT_ENV: &str = "OKOU_WORKSPACE_REUSE_RESULT";
 
 /// Logical run-payload field name for the user prompt.
@@ -94,36 +75,20 @@ pub const VERCEL_PROTECTION_BYPASS_ENV: &str = "VERCEL_PROTECTION_BYPASS";
 /// session.
 ///
 /// The runner normalizes Codex thread ids before emitting this key.
-pub const RESUME_SESSION_ID_ENV: &str = "VM0_RESUME_SESSION_ID";
-
-/// Canonical resume-session alias accepted by guest readers during migration.
-///
-/// Runner writers keep using [`RESUME_SESSION_ID_ENV`] until the deployed reader
-/// floor, sandbox drain, rollback window, and legacy-read-zero gates are complete.
 pub const CANONICAL_RESUME_SESSION_ID_ENV: &str = "OKOU_RESUME_SESSION_ID";
 
 /// Optional Unix epoch millisecond timestamp for when the API accepted the
 /// run.
 ///
 /// The runner emits an empty string when the timestamp is unavailable.
-pub const API_START_TIME_ENV: &str = "VM0_API_START_TIME";
-
-/// Canonical alias for the API start timestamp accepted by guest readers.
 pub const CANONICAL_API_START_TIME_ENV: &str = "OKOU_API_START_TIME";
 
-/// Maximum agent execution duration in seconds.
+/// Maximum agent execution duration in seconds, written by the runner.
 ///
 /// The runner owns this fixed lifecycle budget. Guest-agent uses it to stop
 /// the CLI before the later sandbox supervisor deadline, leaving time for
 /// recovery checkpointing and final telemetry. It is intentionally not a
 /// local user-tuning key.
-pub const AGENT_EXECUTION_TIMEOUT_SECS_ENV: &str = "VM0_AGENT_EXECUTION_TIMEOUT_SECS";
-
-/// Canonical agent execution timeout alias accepted by guest readers.
-///
-/// Runner writers keep using [`AGENT_EXECUTION_TIMEOUT_SECS_ENV`] until the
-/// deployed reader floor, sandbox drain, rollback window, and legacy-read-zero
-/// gates are complete.
 pub const CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV: &str = "OKOU_AGENT_EXECUTION_TIMEOUT_SECS";
 
 /// Logical run-payload field name for sensitive values used by the guest-agent
@@ -160,25 +125,18 @@ pub const SETTINGS_ENV: &str = "VM0_SETTINGS";
 /// this exact name.
 pub const CLI_AGENT_TYPE_ENV: &str = "CLI_AGENT_TYPE";
 
-/// Path to the private user environment JSON file written by the runner.
+/// Canonical private user-environment file pointer written by the runner.
 ///
 /// The guest-agent validates that the path points at its per-run private
 /// runtime directory, parses it as a `HashMap<String, String>`, and removes the
 /// file after loading. Unset or empty means there is no user environment
 /// payload.
-pub const USER_ENV_FILE_ENV: &str = "VM0_USER_ENV_FILE";
-
-/// Canonical user-environment file pointer accepted by guest readers.
-///
-/// Runners keep writing [`USER_ENV_FILE_ENV`] until the deployed reader floor,
-/// sandbox drain, rollback window, and legacy-read-zero gates in #28914 are
-/// complete.
 pub const CANONICAL_USER_ENV_FILE_ENV: &str = "OKOU_USER_ENV_FILE";
 
-/// Private runtime subdirectory used by [`USER_ENV_FILE_ENV`].
+/// Private runtime subdirectory used by [`CANONICAL_USER_ENV_FILE_ENV`].
 pub const USER_ENV_PRIVATE_DIR_NAME: &str = "user-env";
 
-/// Private runtime filename used by [`USER_ENV_FILE_ENV`].
+/// Private runtime filename used by [`CANONICAL_USER_ENV_FILE_ENV`].
 pub const USER_ENV_FILENAME: &str = "env.json";
 
 /// Path to the non-secret connector account context for the current run.
@@ -194,24 +152,17 @@ pub const CONNECTOR_ACCOUNT_CONTEXT_PRIVATE_DIR_NAME: &str = "connector-account-
 /// Private runtime filename used by [`CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV`].
 pub const CONNECTOR_ACCOUNT_CONTEXT_FILENAME: &str = "context.json";
 
-/// Path to the private runner-owned run payload JSON file.
+/// Canonical private runner-owned run-payload file pointer written by the runner.
 ///
 /// Large prompt-like and configuration payloads use this file instead of
 /// bootstrap environment values so guest-agent startup does not hit Linux
-/// argv/env limits. Production guest-agent startup requires this key.
-pub const RUN_PAYLOAD_FILE_ENV: &str = "VM0_RUN_PAYLOAD_FILE";
-
-/// Canonical run-payload file pointer accepted by guest readers.
-///
-/// Runners keep writing [`RUN_PAYLOAD_FILE_ENV`] until the deployed reader
-/// floor, sandbox drain, rollback window, and legacy-read-zero gates in #28914
-/// are complete.
+/// argv/env limits. Production guest-agent startup requires this pointer.
 pub const CANONICAL_RUN_PAYLOAD_FILE_ENV: &str = "OKOU_RUN_PAYLOAD_FILE";
 
-/// Private runtime subdirectory used by [`RUN_PAYLOAD_FILE_ENV`].
+/// Private runtime subdirectory used by [`CANONICAL_RUN_PAYLOAD_FILE_ENV`].
 pub const RUN_PAYLOAD_PRIVATE_DIR_NAME: &str = "run-payload";
 
-/// Private runtime filename used by [`RUN_PAYLOAD_FILE_ENV`].
+/// Private runtime filename used by [`CANONICAL_RUN_PAYLOAD_FILE_ENV`].
 pub const RUN_PAYLOAD_FILENAME: &str = "payload.json";
 
 /// Logical run-payload field name for the JSON array describing artifact mounts
@@ -263,7 +214,7 @@ pub const PI_MODEL_CONFIG_ENV: &str = "OKOU_PI_MODEL_CONFIG";
 pub const PI_SESSION_ID_ENV: &str = "OKOU_PI_SESSION_ID";
 
 /// Runner-owned variable-length run payload sent through
-/// [`RUN_PAYLOAD_FILE_ENV`].
+/// [`CANONICAL_RUN_PAYLOAD_FILE_ENV`].
 ///
 /// Empty strings mean "no value" for optional fields.
 #[derive(Clone, Debug, Default, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -394,62 +345,91 @@ impl RunPayload {
     }
 }
 
-/// Guest-agent stuck-tool timeout override in seconds.
+/// Retained local input for the Guest Agent stuck-tool timeout in seconds.
 ///
-/// This is a tuning key: local execution may pass it through user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The guest-agent parses the value as `u64`;
-/// unset or unparseable values use the compiled default.
+/// Local execution may pass this legacy name through ordinary user env via
+/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The runner translates it to
+/// [`CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV`] for Guest bootstrap. The
+/// guest-agent parses the value as `u64`; unset or unparseable values use the
+/// compiled default.
 pub const STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "VM0_STUCK_TOOL_TIMEOUT_SECS";
 
-/// Canonical stuck-tool timeout alias accepted by guest readers.
+/// Canonical stuck-tool timeout bootstrap output written by the runner.
 ///
-/// The runner writer and supported local tuning interface remain on
-/// [`STUCK_TOOL_TIMEOUT_SECS_ENV`] during #28914 reader Stage 1.
+/// The Guest Agent reads only this spelling at bootstrap. The legacy spelling
+/// remains a supported local Runner input through [`GUEST_AGENT_TUNING_ENV_KEYS`].
 pub const CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "OKOU_STUCK_TOOL_TIMEOUT_SECS";
 
-/// Guest-agent grace period in seconds before sending SIGTERM after the CLI
-/// reports a final result.
+/// Retained local input for the Guest Agent SIGTERM grace period in seconds
+/// after the CLI reports a final result.
 ///
-/// This is a tuning key: local execution may pass it through user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. Unset, unparseable, or out-of-range values
-/// use the guest-agent's compiled default.
+/// Local execution may pass this legacy name through ordinary user env via
+/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The runner translates it to
+/// [`CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV`] for Guest bootstrap. Unset,
+/// unparseable, or out-of-range values use the guest-agent's compiled default.
 pub const POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGTERM_GRACE_SECS";
 
-/// Canonical post-result SIGTERM grace alias accepted by guest readers.
+/// Canonical post-result SIGTERM grace bootstrap output written by the runner.
 ///
-/// The runner writer and supported local tuning interface remain on
-/// [`POST_RESULT_SIGTERM_GRACE_SECS_ENV`] during #28914 reader Stage 1.
+/// The Guest Agent reads only this spelling at bootstrap. The legacy spelling
+/// remains a supported local Runner input through [`GUEST_AGENT_TUNING_ENV_KEYS`].
 pub const CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str =
     "OKOU_POST_RESULT_SIGTERM_GRACE_SECS";
 
-/// Guest-agent absolute cap in seconds before sending SIGTERM after the CLI
-/// reports a final result, regardless of later post-result stdout events.
+/// Retained local input for the Guest Agent absolute cap in seconds before
+/// sending SIGTERM after the CLI reports a final result, regardless of later
+/// post-result stdout events.
 ///
-/// This is a tuning key: local execution may pass it through user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. Unset, unparseable, or out-of-range values
-/// use the guest-agent's compiled default.
+/// Local execution may pass this legacy name through ordinary user env via
+/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The runner translates it to
+/// [`CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV`] for Guest bootstrap. Unset,
+/// unparseable, or out-of-range values use the guest-agent's compiled default.
 pub const POST_RESULT_TOTAL_CAP_SECS_ENV: &str = "VM0_POST_RESULT_TOTAL_CAP_SECS";
 
-/// Canonical post-result total-cap alias accepted by guest readers.
+/// Canonical post-result total-cap bootstrap output written by the runner.
 ///
-/// The runner writer and supported local tuning interface remain on
-/// [`POST_RESULT_TOTAL_CAP_SECS_ENV`] during #28914 reader Stage 1.
+/// The Guest Agent reads only this spelling at bootstrap. The legacy spelling
+/// remains a supported local Runner input through [`GUEST_AGENT_TUNING_ENV_KEYS`].
 pub const CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV: &str = "OKOU_POST_RESULT_TOTAL_CAP_SECS";
 
-/// Guest-agent grace period in seconds before escalating from SIGTERM to
-/// SIGKILL after the CLI reports a final result.
+/// Retained local input for the Guest Agent grace period in seconds before
+/// escalating from SIGTERM to SIGKILL after the CLI reports a final result.
 ///
-/// This is a tuning key: local execution may pass it through user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. Unset, unparseable, or out-of-range values
-/// use the guest-agent's compiled default.
+/// Local execution may pass this legacy name through ordinary user env via
+/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The runner translates it to
+/// [`CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV`] for Guest bootstrap. Unset,
+/// unparseable, or out-of-range values use the guest-agent's compiled default.
 pub const POST_RESULT_SIGKILL_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGKILL_GRACE_SECS";
 
-/// Canonical post-result SIGKILL grace alias accepted by guest readers.
+/// Canonical post-result SIGKILL grace bootstrap output written by the runner.
 ///
-/// The runner writer and supported local tuning interface remain on
-/// [`POST_RESULT_SIGKILL_GRACE_SECS_ENV`] during #28914 reader Stage 1.
+/// The Guest Agent reads only this spelling at bootstrap. The legacy spelling
+/// remains a supported local Runner input through [`GUEST_AGENT_TUNING_ENV_KEYS`].
 pub const CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV: &str =
     "OKOU_POST_RESULT_SIGKILL_GRACE_SECS";
+
+/// Complete mapping from retained legacy local tuning inputs to canonical
+/// Guest bootstrap outputs.
+///
+/// Each tuple is `(legacy_input, canonical_bootstrap_output)`.
+pub const GUEST_AGENT_TUNING_ENV_MAPPINGS: [(&str, &str); 4] = [
+    (
+        STUCK_TOOL_TIMEOUT_SECS_ENV,
+        CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+    ),
+    (
+        POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+        CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+    ),
+    (
+        POST_RESULT_TOTAL_CAP_SECS_ENV,
+        CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+    ),
+    (
+        POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+        CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+    ),
+];
 
 /// Test/debug bootstrap switch that makes the guest-agent use the mock Claude
 /// binary.
@@ -470,41 +450,28 @@ pub const USE_MOCK_CODEX_ENV: &str = "USE_MOCK_CODEX";
 /// Optional test/debug override for the mock Claude binary path.
 ///
 /// Unset means the guest-agent uses its compiled default mock binary path.
-pub const MOCK_CLAUDE_PATH_ENV: &str = "VM0_MOCK_CLAUDE_PATH";
-
-/// Canonical mock Claude binary path alias accepted by guest readers.
-///
-/// Existing test/debug writers keep using [`MOCK_CLAUDE_PATH_ENV`] until the
-/// reader floor, rollback window, and legacy-read-zero gates in #28914 are
-/// complete.
 pub const CANONICAL_MOCK_CLAUDE_PATH_ENV: &str = "OKOU_MOCK_CLAUDE_PATH";
 
 /// Optional test/debug override for the mock Codex binary path.
 ///
 /// Unset means the guest-agent uses its compiled default mock binary path.
-pub const MOCK_CODEX_PATH_ENV: &str = "VM0_MOCK_CODEX_PATH";
-
-/// Canonical mock Codex binary path alias accepted by guest readers.
-///
-/// Existing test/debug writers keep using [`MOCK_CODEX_PATH_ENV`] until the
-/// reader floor, rollback window, and legacy-read-zero gates in #28914 are
-/// complete.
 pub const CANONICAL_MOCK_CODEX_PATH_ENV: &str = "OKOU_MOCK_CODEX_PATH";
 
 /// Retired runner bootstrap key that must remain protected at the user-env
 /// boundary.
 pub const WORKING_DIR_ENV: &str = "VM0_WORKING_DIR";
 
-/// Runner-owned guest-agent tuning keys that local user env may provide.
+/// Retained legacy Guest Agent tuning inputs that local user env may provide.
 ///
 /// These are the only `VM0_` keys intentionally allowed to cross the local
-/// user-env boundary. They tune guest-agent timing behavior and are copied into
-/// the bootstrap env separately from the general user environment payload.
+/// user-env boundary. The runner translates them to the corresponding canonical
+/// outputs in [`GUEST_AGENT_TUNING_ENV_MAPPINGS`] separately from the general
+/// user environment payload.
 pub const GUEST_AGENT_TUNING_ENV_KEYS: &[&str] = &[
-    STUCK_TOOL_TIMEOUT_SECS_ENV,
-    POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-    POST_RESULT_TOTAL_CAP_SECS_ENV,
-    POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+    GUEST_AGENT_TUNING_ENV_MAPPINGS[0].0,
+    GUEST_AGENT_TUNING_ENV_MAPPINGS[1].0,
+    GUEST_AGENT_TUNING_ENV_MAPPINGS[2].0,
+    GUEST_AGENT_TUNING_ENV_MAPPINGS[3].0,
 ];
 
 const EXPLICIT_RUNNER_OWNED_ENV_KEYS: &[&str] = &[
@@ -599,23 +566,17 @@ mod tests {
         assert_eq!(API_URL_ENV, "VM0_API_BACKEND_URL");
         assert_eq!(CANONICAL_API_URL_ENV, "OKOU_API_BACKEND_URL");
         assert_eq!(RUN_ID_ENV, "OKOU_RUN_ID");
-        assert_eq!(API_TOKEN_ENV, "VM0_API_TOKEN");
         assert_eq!(CANONICAL_API_TOKEN_ENV, "OKOU_API_TOKEN");
-        assert_eq!(SANDBOX_ID_ENV, "VM0_SANDBOX_ID");
         assert_eq!(CANONICAL_SANDBOX_ID_ENV, "OKOU_SANDBOX_ID");
-        assert_eq!(SANDBOX_REUSE_RESULT_ENV, "VM0_SANDBOX_REUSE_RESULT");
         assert_eq!(
             CANONICAL_SANDBOX_REUSE_RESULT_ENV,
             "OKOU_SANDBOX_REUSE_RESULT"
         );
-        assert_eq!(WORKSPACE_REUSE_RESULT_ENV, "VM0_WORKSPACE_REUSE_RESULT");
         assert_eq!(
             CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
             "OKOU_WORKSPACE_REUSE_RESULT"
         );
-        assert_eq!(RESUME_SESSION_ID_ENV, "VM0_RESUME_SESSION_ID");
         assert_eq!(CANONICAL_RESUME_SESSION_ID_ENV, "OKOU_RESUME_SESSION_ID");
-        assert_eq!(API_START_TIME_ENV, "VM0_API_START_TIME");
         assert_eq!(CANONICAL_API_START_TIME_ENV, "OKOU_API_START_TIME");
         assert_eq!(PI_SESSION_ID_ENV, "OKOU_PI_SESSION_ID");
         assert_eq!(PI_LAUNCH_CONFIG_ENV, "OKOU_PI_LAUNCH_CONFIG");
@@ -625,14 +586,9 @@ mod tests {
         assert_eq!(PI_MODEL_CONFIG_ENV, "OKOU_PI_MODEL_CONFIG");
         assert_eq!(CLI_AGENT_TYPE_ENV, "CLI_AGENT_TYPE");
         assert_eq!(
-            AGENT_EXECUTION_TIMEOUT_SECS_ENV,
-            "VM0_AGENT_EXECUTION_TIMEOUT_SECS"
-        );
-        assert_eq!(
             CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
             "OKOU_AGENT_EXECUTION_TIMEOUT_SECS"
         );
-        assert_eq!(USER_ENV_FILE_ENV, "VM0_USER_ENV_FILE");
         assert_eq!(CANONICAL_USER_ENV_FILE_ENV, "OKOU_USER_ENV_FILE");
         assert_eq!(USER_ENV_PRIVATE_DIR_NAME, "user-env");
         assert_eq!(USER_ENV_FILENAME, "env.json");
@@ -645,7 +601,6 @@ mod tests {
             "connector-account-context"
         );
         assert_eq!(CONNECTOR_ACCOUNT_CONTEXT_FILENAME, "context.json");
-        assert_eq!(RUN_PAYLOAD_FILE_ENV, "VM0_RUN_PAYLOAD_FILE");
         assert_eq!(CANONICAL_RUN_PAYLOAD_FILE_ENV, "OKOU_RUN_PAYLOAD_FILE");
         assert_eq!(RUN_PAYLOAD_PRIVATE_DIR_NAME, "run-payload");
         assert_eq!(RUN_PAYLOAD_FILENAME, "payload.json");
@@ -665,9 +620,7 @@ mod tests {
             CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             "OKOU_POST_RESULT_SIGKILL_GRACE_SECS"
         );
-        assert_eq!(MOCK_CLAUDE_PATH_ENV, "VM0_MOCK_CLAUDE_PATH");
         assert_eq!(CANONICAL_MOCK_CLAUDE_PATH_ENV, "OKOU_MOCK_CLAUDE_PATH");
-        assert_eq!(MOCK_CODEX_PATH_ENV, "VM0_MOCK_CODEX_PATH");
         assert_eq!(CANONICAL_MOCK_CODEX_PATH_ENV, "OKOU_MOCK_CODEX_PATH");
     }
 
@@ -847,23 +800,27 @@ mod tests {
             API_URL_ENV,
             CANONICAL_API_URL_ENV,
             RUN_ID_ENV,
-            API_TOKEN_ENV,
+            "VM0_API_TOKEN",
             CANONICAL_API_TOKEN_ENV,
             CANONICAL_SANDBOX_ID_ENV,
             CANONICAL_SANDBOX_REUSE_RESULT_ENV,
             CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
-            RESUME_SESSION_ID_ENV,
             CANONICAL_RESUME_SESSION_ID_ENV,
             CANONICAL_API_START_TIME_ENV,
+            "VM0_SANDBOX_ID",
+            "VM0_SANDBOX_REUSE_RESULT",
+            "VM0_WORKSPACE_REUSE_RESULT",
+            "VM0_RESUME_SESSION_ID",
+            "VM0_API_START_TIME",
             PI_SESSION_ID_ENV,
             PI_LAUNCH_CONFIG_ENV,
             PI_LAUNCH_PAYLOAD_FILE_ENV,
             PI_MODEL_CONFIG_ENV,
             CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV,
             WORKING_DIR_ENV,
-            USER_ENV_FILE_ENV,
+            "VM0_USER_ENV_FILE",
             CANONICAL_USER_ENV_FILE_ENV,
-            RUN_PAYLOAD_FILE_ENV,
+            "VM0_RUN_PAYLOAD_FILE",
             CANONICAL_RUN_PAYLOAD_FILE_ENV,
             CLI_AGENT_TYPE_ENV,
             USE_MOCK_CLAUDE_ENV,
@@ -895,7 +852,28 @@ mod tests {
     }
 
     #[test]
-    fn guest_agent_tuning_keys_are_explicit() {
+    fn guest_agent_tuning_mapping_and_local_inputs_are_explicit() {
+        assert_eq!(
+            GUEST_AGENT_TUNING_ENV_MAPPINGS,
+            [
+                (
+                    STUCK_TOOL_TIMEOUT_SECS_ENV,
+                    CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+                ),
+                (
+                    POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+                    CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+                ),
+                (
+                    POST_RESULT_TOTAL_CAP_SECS_ENV,
+                    CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+                ),
+                (
+                    POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+                    CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+                ),
+            ]
+        );
         assert_eq!(
             GUEST_AGENT_TUNING_ENV_KEYS,
             [
@@ -913,7 +891,7 @@ mod tests {
         ] {
             assert!(
                 !is_guest_agent_tuning_env_key(key),
-                "canonical reader alias {key} must not become a local tuning input"
+                "canonical bootstrap output {key} must not become a local tuning input"
             );
         }
         for key in [API_URL_ENV, CANONICAL_API_URL_ENV] {

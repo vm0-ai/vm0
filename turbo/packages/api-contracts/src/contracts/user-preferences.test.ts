@@ -8,6 +8,45 @@ import {
 } from "./user-preferences";
 
 describe("user preferences contract", () => {
+  it("keeps the deprecated Morning Brief shape parseable for old App bundles", () => {
+    expect(
+      updateUserPreferencesRequestSchema.parse({ morningBriefEnabled: true }),
+    ).toStrictEqual({ morningBriefEnabled: true });
+
+    expect(
+      userPreferencesResponseSchema.parse({
+        timezone: null,
+        locale: null,
+        supportedLocales: [...SUPPORTED_USER_LOCALES],
+        pinnedAgentIds: [],
+        sendMode: "enter",
+        theme: null,
+        colorTheme: null,
+        morningBriefEnabled: false,
+        morningBriefNextRunAt: null,
+        captureNetworkBodiesRemaining: 0,
+      }),
+    ).toMatchObject({
+      morningBriefEnabled: false,
+      morningBriefNextRunAt: null,
+    });
+
+    expect(
+      userPreferencesResponseSchema.safeParse({
+        timezone: null,
+        locale: null,
+        supportedLocales: [...SUPPORTED_USER_LOCALES],
+        pinnedAgentIds: [],
+        sendMode: "enter",
+        theme: null,
+        colorTheme: null,
+        morningBriefEnabled: true,
+        morningBriefNextRunAt: "2026-08-31T00:00:00.000Z",
+        captureNetworkBodiesRemaining: 0,
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts Indonesian as a user locale", () => {
     const preferences = userPreferencesResponseSchema.parse({
       timezone: null,
@@ -15,6 +54,8 @@ describe("user preferences contract", () => {
       supportedLocales: ["en-US", "pt-BR", "id-ID"],
       pinnedAgentIds: [],
       sendMode: "enter",
+      theme: null,
+      colorTheme: null,
       morningBriefEnabled: false,
       morningBriefNextRunAt: null,
       captureNetworkBodiesRemaining: 0,
@@ -30,6 +71,8 @@ describe("user preferences contract", () => {
       supportedLocales: [...SUPPORTED_USER_LOCALES],
       pinnedAgentIds: [],
       sendMode: "enter",
+      theme: null,
+      colorTheme: null,
       morningBriefEnabled: false,
       morningBriefNextRunAt: null,
       captureNetworkBodiesRemaining: 0,
@@ -47,6 +90,8 @@ describe("user preferences contract", () => {
         supportedLocales: ["en-US", "pt-BR", "ja-JP"],
         pinnedAgentIds: [],
         sendMode: "enter",
+        theme: null,
+        colorTheme: null,
         morningBriefEnabled: false,
         morningBriefNextRunAt: null,
         captureNetworkBodiesRemaining: 0,
@@ -66,6 +111,8 @@ describe("user preferences contract", () => {
         supportedLocales: ["en-US", "pt-BR", "ja-JP", "ko-KR"],
         pinnedAgentIds: [],
         sendMode: "enter",
+        theme: null,
+        colorTheme: null,
         morningBriefEnabled: false,
         morningBriefNextRunAt: null,
         captureNetworkBodiesRemaining: 0,
@@ -85,6 +132,8 @@ describe("user preferences contract", () => {
         supportedLocales: ["en-US", "pt-BR", "ja-JP", "es-ES"],
         pinnedAgentIds: [],
         sendMode: "enter",
+        theme: null,
+        colorTheme: null,
         morningBriefEnabled: false,
         morningBriefNextRunAt: null,
         captureNetworkBodiesRemaining: 0,
@@ -106,6 +155,8 @@ describe("user preferences contract", () => {
       supportedLocales: ["en-US", "it-IT"],
       pinnedAgentIds: [],
       sendMode: "enter",
+      theme: null,
+      colorTheme: null,
       morningBriefEnabled: false,
       morningBriefNextRunAt: null,
       captureNetworkBodiesRemaining: 0,
@@ -135,6 +186,8 @@ describe("user preferences contract", () => {
       supportedLocales: [...SUPPORTED_USER_LOCALES],
       pinnedAgentIds: [],
       sendMode: "enter",
+      theme: null,
+      colorTheme: null,
       morningBriefEnabled: false,
       morningBriefNextRunAt: null,
       captureNetworkBodiesRemaining: 0,

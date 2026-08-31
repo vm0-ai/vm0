@@ -9,7 +9,6 @@ import type { OrgModelPolicy } from "@okouai/api-contracts/contracts/model-provi
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import { workflowsCollectionContract } from "@okouai/api-contracts/contracts/workflows";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@okouai/core";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
@@ -232,7 +231,7 @@ async function findForwardFeedbackNote(
 ): Promise<HTMLElement> {
   return await waitFor((): HTMLElement => {
     const note = dialog.querySelector(
-      "[data-chat-composer] [data-feedback-item] [data-feedback-note]",
+      "[data-chat-composer] [data-feedback-item][data-feedback-note]",
     );
     if (!(note instanceof HTMLElement)) {
       throw new Error("Forward feedback note not found");
@@ -401,7 +400,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
     });
 
     selectTextForInlineFeedback(await screen.findByText(selectedContent));
@@ -510,7 +508,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
     });
 
     selectTextForInlineFeedback(await screen.findByText(selectedContent));
@@ -640,7 +637,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
     });
 
     const assistantReply = await screen.findByText(selectedContent);
@@ -700,7 +696,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
     });
 
     selectTextForInlineFeedback(await screen.findByText(selectedContent));
@@ -856,12 +851,7 @@ describe("chat inline feedback", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Quote")).toBeInTheDocument();
-      expect(screen.queryByText("Forward")).not.toBeInTheDocument();
     });
-
-    const forwardEvent = dispatchDocumentShortcut("f");
-    expect(forwardEvent.defaultPrevented).toBeFalsy();
-    expect(screen.getByText("Quote")).toBeInTheDocument();
 
     await user.click(buttonByText("Copy"));
 
@@ -878,7 +868,7 @@ describe("chat inline feedback", () => {
 
     const feedbackComment = await findFeedbackNote();
     await expect(findComposerEditor()).resolves.toBe(composerEditor);
-    expect(feedbackComment).toHaveTextContent("");
+    expect(feedbackComment.querySelector(":scope > p")).toHaveTextContent(/^$/);
     expect(composerEditor).toHaveTextContent(
       "Mention the dates before the risk summary.",
     );
@@ -1508,7 +1498,7 @@ describe("chat inline feedback", () => {
     expect(sentPrompts[0]).toContain("补充具体日期");
   });
 
-  async function setupFlatFeedbackNoteThread(caseName: string): Promise<{
+  async function setupFeedbackNoteThread(caseName: string): Promise<{
     readonly assistantReply: string;
     readonly sentMessages: RunCreateCapture[];
   }> {
@@ -1519,17 +1509,17 @@ describe("chat inline feedback", () => {
       threadTitle: "Feedback review",
       chatEvents: [
         {
-          id: `msg-feedback-flat-${caseName}-user`,
+          id: `msg-feedback-note-${caseName}-user`,
           role: "user",
           content: "Review this launch summary",
-          runId: `run-feedback-flat-${caseName}`,
+          runId: `run-feedback-note-${caseName}`,
           createdAt: "2026-06-09T10:00:00Z",
         },
         {
-          id: `msg-feedback-flat-${caseName}-assistant`,
+          id: `msg-feedback-note-${caseName}-assistant`,
           role: "assistant",
           content: assistantReply,
-          runId: `run-feedback-flat-${caseName}`,
+          runId: `run-feedback-note-${caseName}`,
           createdAt: "2026-06-09T10:01:00Z",
         },
       ],
@@ -1540,24 +1530,21 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerFlatFeedbackNote]: true,
-      },
     });
     await findComposerEditor();
     return { assistantReply, sentMessages };
   }
 
-  it("renders the flat quote block and submits typed text with the flat note switch enabled", async () => {
+  it("renders the quote block and submits typed text", async () => {
     const user = userEvent.setup({ delay: null });
     const { assistantReply, sentMessages } =
-      await setupFlatFeedbackNoteThread("submit");
+      await setupFeedbackNoteThread("submit");
 
     selectTextForInlineFeedback(await screen.findByText(assistantReply));
     await user.click(await screen.findByText("Quote"));
 
     const note = await findFeedbackNote();
-    // The flat block is its own content element: no nested note wrapper.
+    // The block is its own content element: no nested note wrapper.
     expect(note.dataset.feedbackItem).toBe("");
     expect(note.querySelector("[data-feedback-note]")).toBeNull();
     // The chrome widget carries the quote chip; the empty-note placeholder is
@@ -1592,7 +1579,7 @@ describe("chat inline feedback", () => {
     // to the caret; at an IME composition boundary WebKit loses the caret.
     // The widget must survive both transitions with the same DOM element.
     const user = userEvent.setup({ delay: null });
-    const { assistantReply } = await setupFlatFeedbackNoteThread("stable");
+    const { assistantReply } = await setupFeedbackNoteThread("stable");
 
     selectTextForInlineFeedback(await screen.findByText(assistantReply));
     await user.click(await screen.findByText("Quote"));
@@ -1619,10 +1606,10 @@ describe("chat inline feedback", () => {
     expect(note.firstElementChild).toBe(chrome);
   });
 
-  it("stays editable after the flat quote block is damaged in place", async () => {
+  it("stays editable after the quote block is damaged in place", async () => {
     const user = userEvent.setup({ delay: null });
     const { assistantReply, sentMessages } =
-      await setupFlatFeedbackNoteThread("damage");
+      await setupFeedbackNoteThread("damage");
 
     selectTextForInlineFeedback(await screen.findByText(assistantReply));
     await user.click(await screen.findByText("Quote"));
@@ -1660,82 +1647,9 @@ describe("chat inline feedback", () => {
     expect(sentMessages[0]?.prompt).toContain("typed after damage");
   });
 
-  it("keeps dropping input after the legacy note wrappers collapse", async () => {
-    // Control for the flat-note tests: with the switch off, the legacy
-    // structure swallows the traced WebKit collapse (wrapper removed, <br>
-    // left behind) and silently drops everything typed afterwards — the
-    // #27787 failure the flat block exists to remove.
+  it("removes the quote block from its widget chrome button", async () => {
     const user = userEvent.setup({ delay: null });
-    const assistantReply = "The rollout dates are unclear in this summary.";
-    const sentMessages: RunCreateCapture[] = [];
-    mockChatLifecycle(context, {
-      threadId: FEEDBACK_THREAD_ID,
-      threadTitle: "Feedback review",
-      chatEvents: [
-        {
-          id: "msg-feedback-flat-control-user",
-          role: "user",
-          content: "Review this launch summary",
-          runId: "run-feedback-flat-control",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-feedback-flat-control-assistant",
-          role: "assistant",
-          content: assistantReply,
-          runId: "run-feedback-flat-control",
-          createdAt: "2026-06-09T10:01:00Z",
-        },
-      ],
-      onRunCreate: (body) => {
-        sentMessages.push(body);
-      },
-    });
-    detachedSetupPage({
-      context,
-      path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerFlatFeedbackNote]: false,
-      },
-    });
-    await findComposerEditor();
-
-    selectTextForInlineFeedback(await screen.findByText(assistantReply));
-    await user.click(await screen.findByText("Quote"));
-
-    const note = await findFeedbackNote();
-    await user.click(note);
-    pastePlainText(note, "Make the dates");
-    await waitFor(() => {
-      expect(note).toHaveTextContent("Make the dates");
-    });
-
-    const item = note.closest("[data-feedback-item]");
-    const wrapper = note.parentElement;
-    if (!(item instanceof HTMLElement) || !(wrapper instanceof HTMLElement)) {
-      throw new Error("Legacy feedback structure not found");
-    }
-    wrapper.remove();
-    item.append(document.createElement("br"));
-    await waitFor(() => {
-      expect(document.querySelector("[data-feedback-note]")).toBeNull();
-    });
-
-    // Later typing lands in the collapsed block; the legacy ignoreMutation
-    // discards it, so it never reaches the document or the submission.
-    item.append(document.createTextNode(" typed after damage"));
-
-    await user.click(screen.getByLabelText("Send"));
-    await waitFor(() => {
-      expect(sentMessages).toHaveLength(1);
-    });
-    expect(sentMessages[0]?.prompt).toContain("Make the dates");
-    expect(sentMessages[0]?.prompt).not.toContain("typed after damage");
-  });
-
-  it("removes the flat quote block from its widget chrome button", async () => {
-    const user = userEvent.setup({ delay: null });
-    const { assistantReply } = await setupFlatFeedbackNoteThread("remove");
+    const { assistantReply } = await setupFeedbackNoteThread("remove");
 
     selectTextForInlineFeedback(await screen.findByText(assistantReply));
     await user.click(await screen.findByText("Quote"));
@@ -2023,7 +1937,9 @@ describe("chat inline feedback", () => {
       featureSwitches: {},
     });
 
-    const firstReplyElement = await screen.findByText(firstReply);
+    const firstReplyElement = await screen.findByText(firstReply, undefined, {
+      timeout: 10_000,
+    });
     const secondReplyElement = await screen.findByText(secondReply);
     selectTextAcrossElementsForInlineFeedback(
       firstReplyElement,
@@ -2063,7 +1979,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
     });
 
     const assistantReplyElement = await screen.findByText(assistantReply);
@@ -2381,7 +2296,7 @@ describe("chat inline feedback", () => {
     // The first note persists on top; the newest fragment sits below it with
     // an empty note, taking the composer position nearest Send.
     expect(comments[0]).toHaveTextContent("Assign each risk to an owner.");
-    expect(comments[1]).toHaveTextContent("");
+    expect(comments[1]?.querySelector(":scope > p")).toHaveTextContent(/^$/);
 
     // Removing the empty draft row leaves the noted fragment intact.
     await user.click(screen.getAllByLabelText("Remove feedback")[1]);

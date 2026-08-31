@@ -28,6 +28,7 @@ auditConfig:
 overrides:
   "@babel/core": ">=7.29.6"
   "@electron/get>undici": 7.28.0
+  "@floating-ui/dom": 1.8.0
   "@esbuild-kit/core-utils>esbuild": ^0.25.4
   "@isaacs/brace-expansion": ">=5.0.1"
   "@opentelemetry/core": ">=2.8.0"
@@ -47,7 +48,6 @@ overrides:
   "@tiptap/extension-heading": 3.21.0
   "@tiptap/extension-horizontal-rule": 3.21.0
   "@tiptap/extension-italic": 3.21.0
-  "@tiptap/extension-link": 3.21.0
   "@tiptap/extension-list": 3.21.0
   "@tiptap/extension-list-item": 3.21.0
   "@tiptap/extension-list-keymap": 3.21.0
@@ -60,7 +60,6 @@ overrides:
   "@tiptap/markdown": 3.21.0
   "@tiptap/pm": 3.21.0
   "@tiptap/react": 3.21.0
-  "@tiptap/starter-kit": 3.21.0
   "@tiptap/suggestion": 3.21.0
   "@types/node": 24.3.0
   axios: ">=1.18.0"

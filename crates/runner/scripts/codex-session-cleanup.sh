@@ -1,3 +1,32 @@
+# Codex restore cleanup contract
+#
+# This helper is embedded by the runner and runs before history restoration
+# only when an idle sandbox is reused. It is destructive within the canonical
+# $codex_home/sessions tree: matching regular files and symlinks are removed,
+# while unrelated entries and directories are preserved.
+#
+# OKOU_CODEX_RESTORE_SESSION_ID and
+# OKOU_CODEX_RESTORE_SESSION_FILENAME_KEY identify the dashed and undashed
+# session-name forms. OKOU_CODEX_RESTORE_SESSION_PATH supplies the caller's
+# canonical sessions/YYYY/MM/DD restore path. The helper validates these
+# inputs' shape and the session root's directory components before scanning;
+# Rust independently validates any logical path returned by the helper.
+#
+# The collection pass walks the whole sessions tree, not only the fallback date
+# directory, and is bounded by OKOU_CODEX_SESSION_CLEANUP_SCAN_BUDGET (default
+# 16384 entries). It records matching .jsonl, .jsonl.zst,
+# .jsonl.vm0tmp-*, and .jsonl.zst.vm0tmp-* entries first; only file-like
+# entries are later deleted. A canonical regular-file .jsonl or .jsonl.zst
+# match produces one logical path, with raw/zstd siblings normalized together.
+# No canonical match produces empty stdout; distinct canonical paths are
+# ambiguous and fail before deletion.
+#
+# On success, stdout is empty or exactly one LF-terminated logical path. The
+# Rust caller validates that path independently before writing. Validation,
+# scan, budget, ambiguity, temporary-file, or deletion failure exits nonzero;
+# collection completes before deletion, and any such failure prevents the
+# caller from writing replacement history. Exit traps remove helper temp files.
+
 root="$codex_home/sessions"
 restore_path="$OKOU_CODEX_RESTORE_SESSION_PATH"
 restore_dir="${restore_path%/*}"

@@ -15,7 +15,8 @@ import { accept } from "../../lib/accept.ts";
 import { now } from "../../lib/time.ts";
 import { apiClient$, type ApiClientFactory } from "../api-client.ts";
 import { setAblyLoop$ } from "../realtime.ts";
-import { onRef, setLoop } from "../utils.ts";
+import { rootSignal$ } from "../root-signal.ts";
+import { createDeferredPromise, onRef, setLoop } from "../utils.ts";
 import { presentationTemplateImportEnabled$ } from "./presentation-template-import.ts";
 
 export type { PresentationTemplateDetail, PresentationTemplateSummary };
@@ -30,6 +31,9 @@ interface ImportedPresentationTemplateDetailResolver {
 }
 
 const presentationTemplatesVersion$ = state(0);
+const presentationTemplatesRealtimeReady$ = computed((get) => {
+  return createDeferredPromise<void>(get(rootSignal$));
+});
 /**
  * A successful local delete permanently removes the database row. Keep its ID
  * hidden for the rest of this app session so an older in-flight catalog cannot
@@ -67,6 +71,9 @@ const importedPresentationTemplateCatalog$ = computed(
     if (!get(presentationTemplateImportEnabled$)) {
       return { templates: [], loadedAtMs: now() };
     }
+    // Attach realtime before the baseline fetch so an update cannot be lost
+    // between loading the catalog and starting its subscription.
+    await get(presentationTemplatesRealtimeReady$).promise;
     get(presentationTemplatesVersion$);
     const client = get(apiClient$)(presentationTemplatesContract);
     const result = await accept(client.list(), [200]);
@@ -102,13 +109,20 @@ const refreshPresentationTemplatesFromRealtime$ = command(
  */
 export const subscribePresentationTemplatesChanged$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const realtimeReady = get(presentationTemplatesRealtimeReady$);
     const subscriptions = [
       set(
         setAblyLoop$,
         {
           topic: "presentationTemplatesChanged",
           loopCommand$: refreshPresentationTemplatesFromRealtime$,
-          options: { runOnSubscribe: true },
+          options: {
+            onSubscribed: () => {
+              if (!realtimeReady.settled()) {
+                realtimeReady.resolve();
+              }
+            },
+          },
         },
         signal,
       ),

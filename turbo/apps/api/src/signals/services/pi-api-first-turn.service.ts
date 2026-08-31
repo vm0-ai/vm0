@@ -12,12 +12,12 @@ import { activeInputDeliveries } from "@okouai/db/schema/active-input-delivery";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { blobs } from "@okouai/db/schema/blob";
 import {
-  MemoryPiSession,
+  inspectPiSessionJsonl,
   runPiApiFirstTurn,
   type PiApiFirstTurnResult,
   UnsupportedPiResourceSnapshotError,
   UnsupportedPiSessionVersionError,
-} from "@okouai/pi-agent-runtime/node";
+} from "@okouai/pi-agent-runtime/api";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
@@ -317,7 +317,7 @@ function validateResumeSession(args: {
     return;
   }
   const parsed = safeSync(() => {
-    return MemoryPiSession.fromJsonl(args.loaded.jsonl ?? "");
+    return inspectPiSessionJsonl(args.loaded.jsonl ?? "");
   });
   if ("error" in parsed) {
     if (parsed.error instanceof UnsupportedPiSessionVersionError) {
@@ -334,7 +334,7 @@ function validateResumeSession(args: {
     );
   }
   const session = parsed.ok;
-  if (session.getSessionId() !== args.sessionId) {
+  if (session.sessionId !== args.sessionId) {
     throw piApiFirstTurnError(
       "PI_H0_SESSION_MISMATCH",
       "Pi H0 session id does not match the launch session",
@@ -803,7 +803,7 @@ function validateApiFirstTurnH1(
     );
   }
   const parsed = safeSync(() => {
-    return MemoryPiSession.fromJsonl(turn.sessionJsonl);
+    return inspectPiSessionJsonl(turn.sessionJsonl);
   });
   if ("error" in parsed) {
     throw piApiFirstTurnError(
@@ -813,15 +813,15 @@ function validateApiFirstTurnH1(
     );
   }
   const committedSession = parsed.ok;
-  if (committedSession.getSessionId() !== sessionId) {
+  if (committedSession.sessionId !== sessionId) {
     throw piApiFirstTurnError(
       "PI_H1_INVALID",
       "Pi H1 session id does not match the launch session",
     );
   }
   if (
-    (turn.handoffRequired && !committedSession.hasPendingToolCalls()) ||
-    (!turn.handoffRequired && !committedSession.isSettledCheckpoint())
+    (turn.handoffRequired && !committedSession.hasPendingToolCalls) ||
+    (!turn.handoffRequired && !committedSession.isSettledCheckpoint)
   ) {
     throw piApiFirstTurnError(
       "PI_H1_INVALID",

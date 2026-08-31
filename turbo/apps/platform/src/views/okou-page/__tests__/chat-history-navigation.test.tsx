@@ -1,3 +1,4 @@
+import { chatEventRowsResponse } from "../../../signals/__tests__/test-helpers.ts";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -11,7 +12,6 @@ import {
   type ChatThreadEvent,
   type ChatEvent,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../../signals/okou-page/sidebar-state.ts";
 import { pathname$ } from "../../../signals/route.ts";
 import { click, fill } from "../../../__tests__/page-helper.ts";
@@ -35,7 +35,6 @@ import {
   mockKeyboardNavigationThreads,
   buttonByText,
   buttonByLabel,
-  linkByText,
   queryButtonByText,
   chatScrollContainer,
   chatComposerTextarea,
@@ -43,6 +42,9 @@ import {
   setScrollMetrics,
   mockResizeObserver,
 } from "./chat-lifecycle-test-helpers.ts";
+
+const SHARED_DATABASE_REALTIME_CHANNEL = "user-org:test-user-123:org_default";
+type RenameRequest = (threadId: string, title: string) => void;
 
 describe("chat lifecycle", () => {
   it("renders new messages after a payload-less created event", async () => {
@@ -79,11 +81,15 @@ describe("chat lifecycle", () => {
       const events = exposeNewMessage
         ? [initialMessage, newMessage]
         : [initialMessage];
-      return respond(200, {
-        rows: mockChatEventRows(events).filter((row) => {
-          return row.seqId > query.sinceSeqId;
-        }),
-      });
+      return respond(
+        200,
+        chatEventRowsResponse(
+          mockChatEventRows(events).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
+          query,
+        ),
+      );
     });
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
       return respond(200, { lastReadAt: null, unreads: [] });
@@ -95,7 +101,11 @@ describe("chat lifecycle", () => {
       expect(screen.getByText(initialMessage.content)).toBeInTheDocument();
     });
     await waitFor(() => {
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
     });
     expect(
       context.mocks.ably.hasSubscription(
@@ -104,7 +114,10 @@ describe("chat lifecycle", () => {
     ).toBeFalsy();
 
     exposeNewMessage = true;
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+    context.mocks.ably.triggerOnChannel(
+      SHARED_DATABASE_REALTIME_CHANNEL,
+      `chatThreadMessageCreated:${threadId}`,
+    );
 
     await waitFor(() => {
       expect(screen.getByText(newMessage.content)).toBeInTheDocument();
@@ -143,18 +156,22 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       if (query.sinceSeqId === initialMessage.seqId) {
         if (!exposePersistedMessage || persistedMessage === null) {
-          return respond(200, { rows: [] });
+          return respond(200, chatEventRowsResponse([], query));
         }
       }
       const events: ChatEvent[] = [initialMessage];
       if (exposePersistedMessage && persistedMessage !== null) {
         events.push(persistedMessage, acknowledgement);
       }
-      return respond(200, {
-        rows: mockChatEventRows(events).filter((row) => {
-          return row.seqId > query.sinceSeqId;
-        }),
-      });
+      return respond(
+        200,
+        chatEventRowsResponse(
+          mockChatEventRows(events).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
+          query,
+        ),
+      );
     });
     context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
       const clientEventId = body.clientEventId;
@@ -188,7 +205,11 @@ describe("chat lifecycle", () => {
       screen.findByText(initialMessage.content),
     ).resolves.toBeInTheDocument();
     await waitFor(() => {
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
     });
 
     await sendMessageInUI(user, chatComposerTextarea(), prompt);
@@ -198,7 +219,10 @@ describe("chat lifecycle", () => {
     });
 
     exposePersistedMessage = true;
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+    context.mocks.ably.triggerOnChannel(
+      SHARED_DATABASE_REALTIME_CHANNEL,
+      `chatThreadMessageCreated:${threadId}`,
+    );
 
     await expect(
       screen.findByText(acknowledgement.content),
@@ -269,11 +293,15 @@ describe("chat lifecycle", () => {
         pendingSteer,
         ...(exposeReplacement ? [deliveredSteer] : []),
       ];
-      return respond(200, {
-        rows: mockChatEventRows(events).filter((row) => {
-          return row.seqId > query.sinceSeqId;
-        }),
-      });
+      return respond(
+        200,
+        chatEventRowsResponse(
+          mockChatEventRows(events).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
+          query,
+        ),
+      );
     });
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
@@ -283,11 +311,18 @@ describe("chat lifecycle", () => {
     });
     expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
     await waitFor(() => {
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
     });
 
     exposeReplacement = true;
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+    context.mocks.ably.triggerOnChannel(
+      SHARED_DATABASE_REALTIME_CHANNEL,
+      `chatThreadMessageCreated:${threadId}`,
+    );
 
     await waitFor(() => {
       expect(screen.getAllByText(prompt)).toHaveLength(1);
@@ -334,10 +369,10 @@ describe("chat lifecycle", () => {
             : sidebarInitialMessage;
         if (query.sinceSeqId === initialMessage.seqId) {
           if (params.threadId !== KEYBOARD_NEXT_THREAD_ID) {
-            return respond(200, { rows: [] });
+            return respond(200, chatEventRowsResponse([], query));
           }
           if (!exposeSidebarMessage) {
-            return respond(200, { rows: [] });
+            return respond(200, chatEventRowsResponse([], query));
           }
         }
         const events = [
@@ -347,11 +382,15 @@ describe("chat lifecycle", () => {
             ? [sidebarNewMessage]
             : []),
         ];
-        return respond(200, {
-          rows: mockChatEventRows(events).filter((row) => {
-            return row.seqId > query.sinceSeqId;
-          }),
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            mockChatEventRows(events).filter((row) => {
+              return row.seqId > query.sinceSeqId;
+            }),
+            query,
+          ),
+        );
       },
     );
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
@@ -368,7 +407,11 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText(sidebarInitialMessage.content),
       ).toBeInTheDocument();
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
     });
     expect(
       context.mocks.ably.hasSubscription(
@@ -382,7 +425,8 @@ describe("chat lifecycle", () => {
     ).toBeFalsy();
 
     exposeSidebarMessage = true;
-    context.mocks.ably.trigger(
+    context.mocks.ably.triggerOnChannel(
+      SHARED_DATABASE_REALTIME_CHANNEL,
       `chatThreadMessageCreated:${KEYBOARD_NEXT_THREAD_ID}`,
     );
 
@@ -683,12 +727,17 @@ describe("chat lifecycle", () => {
       path: "/chats/b0000000-0000-4000-a000-000000000708",
     });
 
+    const chatList = await screen.findByTestId("chat-list-column");
     await waitFor(() => {
       expect(
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
-      expect(screen.getByText("Previous keyboard thread")).toBeInTheDocument();
-      expect(screen.getByText("Next keyboard thread")).toBeInTheDocument();
+      expect(
+        within(chatList).getByText("Previous keyboard thread"),
+      ).toBeInTheDocument();
+      expect(
+        within(chatList).getByText("Next keyboard thread"),
+      ).toBeInTheDocument();
     });
 
     const threadRegion = screen.getByLabelText("Chat thread");
@@ -771,16 +820,19 @@ describe("chat lifecycle", () => {
       path: "/chats/b0000000-0000-4000-a000-000000000708",
     });
 
+    const chatList = await screen.findByTestId("chat-list-column");
     await waitFor(() => {
       expect(
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
       expect(
-        screen.getByTestId("sidebar-chat-threads-virtual-list"),
+        within(chatList).getByTestId("sidebar-chat-threads-virtual-list"),
       ).toBeInTheDocument();
     });
 
-    const sidebarScrollArea = screen.getByTestId("sidebar-scroll-area");
+    const sidebarScrollArea = within(chatList).getByTestId(
+      "sidebar-scroll-area",
+    );
     Object.defineProperties(sidebarScrollArea, {
       clientHeight: {
         configurable: true,
@@ -810,7 +862,7 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Next thread launch note")).toBeInTheDocument();
     });
     await waitFor(() => {
-      expect(screen.getByTestId("sidebar-scroll-area").scrollTop).toBe(
+      expect(sidebarScrollArea.scrollTop).toBe(
         CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 21,
       );
     });
@@ -839,15 +891,25 @@ describe("chat lifecycle", () => {
       path: "/chats/b0000000-0000-4000-a000-000000000708",
     });
 
+    const chatList = await screen.findByTestId("chat-list-column");
     await waitFor(() => {
       expect(
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
-      expect(screen.getByText("Previous keyboard thread")).toBeInTheDocument();
-      expect(screen.getByText("Next keyboard thread")).toBeInTheDocument();
+      expect(
+        within(chatList).getByText("Previous keyboard thread"),
+      ).toBeInTheDocument();
+      expect(
+        within(chatList).getByText("Next keyboard thread"),
+      ).toBeInTheDocument();
     });
 
-    const currentThreadLink = linkByText("Current keyboard thread");
+    const currentThreadLink = within(chatList)
+      .getByText("Current keyboard thread")
+      .closest("a");
+    if (!currentThreadLink) {
+      throw new Error("Current keyboard thread link not found");
+    }
     currentThreadLink.focus();
     expect(currentThreadLink).toHaveFocus();
     expect(
@@ -1002,7 +1064,7 @@ describe("chat lifecycle", () => {
       threadTitle: "Thread detail should stay pending",
     });
     lifecycle.setThreadList([thread]);
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     let persistedRenameEvent: ChatThreadEvent | null = null;
 
     context.mocks.api(chatThreadByIdContract.get, ({ never }) => {
@@ -1091,7 +1153,17 @@ describe("chat lifecycle", () => {
     });
 
     expect(document.title).toBe(`${originalTitle} | VM0`);
-    triggerAblyEvent("threadListChanged");
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
+    });
+    context.mocks.ably.triggerOnChannel(
+      SHARED_DATABASE_REALTIME_CHANNEL,
+      "threadListChanged",
+    );
     await waitFor(() => {
       expect(document.title).toBe(`${renamedTitle} | VM0`);
     });
@@ -1191,7 +1263,7 @@ describe("chat lifecycle", () => {
   });
 
   it("adds an emoji to the current chat from the Shift+F2 picker", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentDetailTitle: null });
     context.mocks.api(
@@ -1232,7 +1304,7 @@ describe("chat lifecycle", () => {
   });
 
   it("adds an emoji to the current chat directly with Ctrl+Shift+1", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentDetailTitle: null });
     context.mocks.api(
@@ -1273,7 +1345,7 @@ describe("chat lifecycle", () => {
   });
 
   it("adds an emoji to the focused side chat directly with Ctrl+Shift+1", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentDetailTitle: null });
     context.mocks.api(
@@ -1317,7 +1389,7 @@ describe("chat lifecycle", () => {
   });
 
   it("adds an emoji from the composer with Ctrl+Shift+1", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentDetailTitle: null });
     context.mocks.api(
@@ -1357,7 +1429,7 @@ describe("chat lifecycle", () => {
   });
 
   it("clears the current chat emoji directly with Ctrl+Shift+0", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({
       currentTitle: "🔥 Current keyboard thread",
@@ -1398,7 +1470,7 @@ describe("chat lifecycle", () => {
 
   it("keeps shifted digit input editable in the chat composer", async () => {
     const user = userEvent.setup({ delay: null });
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentDetailTitle: null });
     context.mocks.api(
@@ -1483,7 +1555,7 @@ describe("chat lifecycle", () => {
   });
 
   it("replaces the current chat emoji from the Shift+F2 picker", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({
       currentTitle: "🔥   Current keyboard thread",
@@ -1526,7 +1598,7 @@ describe("chat lifecycle", () => {
   });
 
   it("clears the current chat emoji from the picker Remove button", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({
       currentTitle: "🔥 Current keyboard thread",
@@ -1564,7 +1636,7 @@ describe("chat lifecycle", () => {
   });
 
   it("does not clear the emoji when the chat has no other title text", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentTitle: "🔥" });
     context.mocks.api(

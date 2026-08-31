@@ -1,5 +1,13 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
+  HeadObjectCommand,
+  ListObjectsV2Command,
+  UploadPartCommand,
+} from "@aws-sdk/client-s3";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 
@@ -13,7 +21,6 @@ import {
 } from "@okouai/api-contracts/contracts/social";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { usageRecordContract } from "@okouai/api-contracts/contracts/usage-record";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -26,9 +33,11 @@ import {
   type UsagePricingKey,
 } from "../../../test-fixtures/system-config-seeds";
 import { mockEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
+import { buildArtifactKeyV2 } from "../../../lib/file-url";
+import { mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import type { RouteEntry } from "../../route-entry";
 import { createDeferredPromise } from "../../utils";
 import { billingStatusRoutes } from "../billing-status";
@@ -40,8 +49,8 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
+import { reconcileSocialKitDownloadsForTest } from "./helpers/runtime-state";
 
 const context = testContext();
 const SOCIALKIT_BASE = "https://api.socialkit.dev";
@@ -175,18 +184,6 @@ async function setActorCredits(
 async function fundActor(actor: ApiTestUser): Promise<void> {
   await bootstrapOnboarding(actor);
   await setActorCredits(actor, 10_000);
-  await enableSocialKit(actor);
-}
-
-async function enableSocialKit(actor: ApiTestUser): Promise<void> {
-  if (!actor.orgId) {
-    throw new Error("Social test actor must belong to an organization");
-  }
-  await updateFeatureSwitchesForUser(
-    context,
-    { userId: actor.userId, orgId: actor.orgId },
-    { [FeatureSwitchKey.ManagedSocialKit]: true },
-  );
 }
 
 async function credits(actor: ApiTestUser): Promise<number> {
@@ -374,10 +371,12 @@ describe("managed SocialKit route", () => {
     );
   });
 
-  it("rejects valid requests while managed SocialKit is disabled", async () => {
+  it("accepts valid requests without a feature override", async () => {
     const actor = createBddApi(context).user();
     let providerRequests = 0;
     configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
     server.use(
       providerHandler("GET", "/youtube/transcript", () => {
         providerRequests += 1;
@@ -386,16 +385,15 @@ describe("managed SocialKit route", () => {
     );
 
     const response = await accept(
-      client()(socialContract).request({
+      client(pricing.resolution)(socialContract).request({
         headers: authenticate(actor),
         body: DEFAULT_SOCIAL_REQUEST,
       }),
-      [403],
+      [200],
     );
 
-    expectApiError(response.body);
-    expect(response.body.error.code).toBe("FORBIDDEN");
-    expect(providerRequests).toBe(0);
+    expect(response.body.provider).toBe("socialkit");
+    expect(providerRequests).toBe(1);
   });
 
   it("accepts agent tokens and attributes usage to their run", async () => {
@@ -800,7 +798,6 @@ describe("managed SocialKit route", () => {
     const pricing = await setupConfiguredPricing();
     await bootstrapOnboarding(actor);
     await setActorCredits(actor, SOCIALKIT_REQUEST_CREDITS);
-    await enableSocialKit(actor);
     server.use(
       http.get(`${SOCIALKIT_BASE}/youtube/search`, ({ request }) => {
         observedLimit = new URL(request.url).searchParams.get("limit");
@@ -904,7 +901,6 @@ describe("managed SocialKit route", () => {
     const pricing = await setupConfiguredPricing();
     await bootstrapOnboarding(actor);
     await setActorCredits(actor, SOCIALKIT_REQUEST_CREDITS);
-    await enableSocialKit(actor);
     server.use(
       providerHandler("GET", "/youtube/search", () => {
         providerRequests += 1;
@@ -1118,7 +1114,6 @@ describe("managed SocialKit route", () => {
 
   it("rejects requests when SocialKit is not configured", async () => {
     const actor = createBddApi(context).user();
-    await enableSocialKit(actor);
     mockEnv("OKOU_SOCIAL_SOCIALKIT_TOKEN", undefined);
 
     const response = await accept(
@@ -1166,7 +1161,6 @@ describe("managed SocialKit route", () => {
     const pricing = await setupConfiguredPricing();
     await bootstrapOnboarding(actor);
     await setActorCredits(actor, SOCIALKIT_REQUEST_CREDITS - 1);
-    await enableSocialKit(actor);
     server.use(
       providerHandler("GET", "/youtube/transcript", () => {
         providerRequests += 1;
@@ -1549,5 +1543,1284 @@ describe("managed SocialKit route", () => {
     expect(beforeCredits - (await credits(actor))).toBe(
       4 * SOCIALKIT_REQUEST_CREDITS,
     );
+  });
+
+  it("materializes a ready v2 download and bills provider credits once", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    mockNow(Date.UTC(2000, 0, 1));
+    const payload = new TextEncoder().encode("downloaded social video");
+    const providerJobId = `provider-download-${randomUUID()}`;
+    let startBody: unknown;
+    let providerPolls = 0;
+    context.mocks.dns.lookupOverrides.set("media.socialkit.test", [
+      { address: "8.8.8.8", family: 4 },
+    ]);
+    server.use(
+      http.post(
+        `${SOCIALKIT_BASE}/v2/youtube/download`,
+        async ({ request }) => {
+          startBody = await request.json();
+          return HttpResponse.json({
+            success: true,
+            data: {
+              jobId: providerJobId,
+              status: "queued",
+              statusUrl: `${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`,
+            },
+          });
+        },
+      ),
+      http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
+        providerPolls += 1;
+        if (providerPolls === 1) {
+          return HttpResponse.json({
+            success: true,
+            data: {
+              jobId: providerJobId,
+              status: "processing",
+            },
+          });
+        }
+        return HttpResponse.json({
+          success: true,
+          data: {
+            jobId: providerJobId,
+            status: "ready",
+            platform: "youtube",
+            downloadUrl: "https://media.socialkit.test/download-1",
+            durationSeconds: 61,
+            fileSizeMB: "1.5 MB",
+            creditsCost: 2,
+            quality: "480p",
+            format: "mp4",
+            title: "Public / 视频.mp4",
+            thumbnail: "https://media.socialkit.test/thumbnail.jpg",
+          },
+        });
+      }),
+      http.get("https://media.socialkit.test/download-1", () => {
+        return new HttpResponse(payload, {
+          headers: { "content-length": String(payload.byteLength) },
+        });
+      }),
+    );
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (command instanceof ListObjectsV2Command) {
+        return Promise.resolve({ Contents: [] });
+      }
+      if (command instanceof CreateMultipartUploadCommand) {
+        return Promise.resolve({ UploadId: "socialkit-upload-1" });
+      }
+      if (command instanceof UploadPartCommand) {
+        return Promise.resolve({ ETag: '"socialkit-etag-1"' });
+      }
+      if (command instanceof CompleteMultipartUploadCommand) {
+        return Promise.resolve({});
+      }
+      return Promise.resolve({});
+    });
+    const socialClient = client(pricing.resolution)(socialContract);
+
+    const created = await accept(
+      socialClient.createDownload({
+        headers: authenticate(actor),
+        body: {
+          platform: "youtube",
+          url: "https://youtu.be/public-video",
+          maxDuration: 120,
+          quality: "720p",
+          format: "mp4",
+        },
+      }),
+      [202],
+    );
+    await flushWaitUntilForTest();
+    const processing = await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+    await flushWaitUntilForTest();
+    const completed = await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+    const creditsAfterCompletion = await credits(actor);
+    await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+
+    expect(startBody).toStrictEqual({
+      url: "https://youtu.be/public-video",
+      max_duration: 120,
+      quality: "720p",
+      format: "mp4",
+    });
+    expect(created.body.status).toBe("processing");
+    expect(processing.body.status).toBe("processing");
+    expect(completed.body).toMatchObject({
+      status: "completed",
+      provider: {
+        durationSeconds: 61,
+        creditsCost: 2,
+        thumbnail: "https://media.socialkit.test/thumbnail.jpg",
+      },
+      billing: { quantity: 2, creditsCharged: 6 },
+      artifact: {
+        id: created.body.downloadId,
+        filename: "Public _ 视频.mp4",
+        contentType: "video/mp4",
+        sizeBytes: payload.byteLength,
+      },
+    });
+    expect(beforeCredits - creditsAfterCompletion).toBe(6);
+    await expect(credits(actor)).resolves.toBe(creditsAfterCompletion);
+    expect(
+      context.mocks.s3.send.mock.calls.filter(([command]) => {
+        return command instanceof UploadPartCommand;
+      }),
+    ).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      caseName: "declared oversized",
+      response: () => {
+        return new HttpResponse(new Uint8Array([1]), {
+          headers: {
+            "content-length": String(2 * 1024 * 1024 * 1024 + 1),
+          },
+        });
+      },
+      expectsMultipartAbort: false,
+    },
+    {
+      caseName: "empty",
+      response: () => {
+        return new HttpResponse(new Uint8Array(0), {
+          headers: { "content-length": "0" },
+        });
+      },
+      expectsMultipartAbort: true,
+    },
+  ])(
+    "marks $caseName artifact output billed and retryable",
+    async ({ response, expectsMultipartAbort }) => {
+      const actor = createBddApi(context).user();
+      configureProvider();
+      const pricing = await setupConfiguredPricing();
+      await fundActor(actor);
+      const beforeCredits = await credits(actor);
+      const providerJobId = `provider-invalid-artifact-${randomUUID()}`;
+      context.mocks.dns.lookupOverrides.set("media.socialkit.test", [
+        { address: "8.8.8.8", family: 4 },
+      ]);
+      server.use(
+        http.post(`${SOCIALKIT_BASE}/v2/youtube/download`, () => {
+          return HttpResponse.json({ jobId: providerJobId, status: "queued" });
+        }),
+        http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
+          return HttpResponse.json({
+            jobId: providerJobId,
+            status: "ready",
+            platform: "youtube",
+            downloadUrl:
+              "https://media.socialkit.test/invalid-artifact-download",
+            durationSeconds: 61,
+            fileSizeMB: 1,
+            creditsCost: 2,
+            quality: "720p",
+            format: "mp4",
+          });
+        }),
+        http.get(
+          "https://media.socialkit.test/invalid-artifact-download",
+          response,
+        ),
+      );
+      context.mocks.s3.send.mockImplementation((command: unknown) => {
+        if (command instanceof CreateMultipartUploadCommand) {
+          return Promise.resolve({ UploadId: "socialkit-invalid-artifact" });
+        }
+        return Promise.resolve({});
+      });
+      const socialClient = client(pricing.resolution)(socialContract);
+
+      const created = await accept(
+        socialClient.createDownload({
+          headers: authenticate(actor),
+          body: {
+            platform: "youtube",
+            url: "https://youtu.be/public-video",
+            maxDuration: 120,
+            quality: "720p",
+            format: "mp4",
+          },
+        }),
+        [202],
+      );
+      await flushWaitUntilForTest();
+      const failed = await accept(
+        socialClient.getDownload({
+          headers: authenticate(actor),
+          params: { downloadId: created.body.downloadId },
+        }),
+        [200],
+      );
+
+      expect(failed.body).toMatchObject({
+        status: "artifact_failed",
+        billing: { quantity: 2, creditsCharged: 6 },
+        artifact: null,
+        error: { billed: true, retryable: true },
+      });
+      expect(beforeCredits - (await credits(actor))).toBe(6);
+      expect(
+        context.mocks.s3.send.mock.calls.some(([command]) => {
+          return command instanceof AbortMultipartUploadCommand;
+        }),
+      ).toBe(expectsMultipartAbort);
+    },
+  );
+
+  it("recovers billing after ready metadata is persisted before settlement interruption", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    const payload = new TextEncoder().encode("settlement recovery video");
+    const providerJobId = `provider-settlement-${randomUUID()}`;
+    let interruptedSettlement = false;
+    context.mocks.abortSignal.timeout.mockImplementation((milliseconds) => {
+      if (milliseconds === 10_000 && !interruptedSettlement) {
+        interruptedSettlement = true;
+        const settlement = new AbortController();
+        settlement.abort(
+          new DOMException("Ready settlement timed out", "TimeoutError"),
+        );
+        return settlement.signal;
+      }
+      return undefined;
+    });
+    context.mocks.dns.lookupOverrides.set("media.socialkit.test", [
+      { address: "8.8.8.8", family: 4 },
+    ]);
+    server.use(
+      http.post(`${SOCIALKIT_BASE}/v2/youtube/download`, () => {
+        return HttpResponse.json({ jobId: providerJobId, status: "queued" });
+      }),
+      http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
+        return HttpResponse.json({
+          jobId: providerJobId,
+          status: "ready",
+          platform: "youtube",
+          downloadUrl: "https://media.socialkit.test/settlement-recovery",
+          durationSeconds: 61,
+          fileSizeMB: 1,
+          creditsCost: 2,
+          quality: "720p",
+          format: "mp4",
+        });
+      }),
+      http.get("https://media.socialkit.test/settlement-recovery", () => {
+        return new HttpResponse(payload, {
+          headers: { "content-length": String(payload.byteLength) },
+        });
+      }),
+    );
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (command instanceof ListObjectsV2Command) {
+        return Promise.resolve({ Contents: [] });
+      }
+      if (command instanceof CreateMultipartUploadCommand) {
+        return Promise.resolve({ UploadId: "socialkit-settlement-upload" });
+      }
+      if (command instanceof UploadPartCommand) {
+        return Promise.resolve({ ETag: '"socialkit-settlement-etag"' });
+      }
+      return Promise.resolve({});
+    });
+    const socialClient = client(pricing.resolution)(socialContract);
+
+    const created = await accept(
+      socialClient.createDownload({
+        headers: authenticate(actor),
+        body: {
+          platform: "youtube",
+          url: "https://youtu.be/public-video",
+          maxDuration: 120,
+          quality: "720p",
+          format: "mp4",
+        },
+      }),
+      [202],
+    );
+    await flushWaitUntilForTest();
+    const interrupted = await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+
+    expect(interruptedSettlement).toBeTruthy();
+    expect(interrupted.body).toMatchObject({
+      status: "processing",
+      provider: { durationSeconds: 61, creditsCost: 2 },
+      billing: null,
+    });
+    await expect(credits(actor)).resolves.toBe(beforeCredits);
+
+    mockNow(now() + 61_000);
+    await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+    await flushWaitUntilForTest();
+    const completed = await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+
+    expect(completed.body).toMatchObject({
+      status: "completed",
+      billing: { quantity: 2, creditsCharged: 6 },
+      artifact: { sizeBytes: payload.byteLength },
+    });
+    expect(beforeCredits - (await credits(actor))).toBe(6);
+  });
+
+  it("rejects credential-bearing download URLs before provider work", async () => {
+    const actor = createBddApi(context).user();
+    let providerRequests = 0;
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    server.use(
+      http.post(`${SOCIALKIT_BASE}/v2/youtube/download`, () => {
+        providerRequests += 1;
+        return HttpResponse.error();
+      }),
+    );
+
+    const response = await accept(
+      client(pricing.resolution)(socialContract).createDownload({
+        headers: authenticate(actor),
+        body: {
+          platform: "youtube",
+          url: "https://user:password@youtu.be/public-video",
+          maxDuration: 60,
+          quality: "720p",
+          format: "mp4",
+        },
+      }),
+      [400],
+    );
+
+    expectApiError(response.body);
+    expect(providerRequests).toBe(0);
+  });
+
+  it("preflights the maximum download duration before provider work", async () => {
+    const actor = createBddApi(context).user();
+    let providerRequests = 0;
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await bootstrapOnboarding(actor);
+    await setActorCredits(actor, SOCIALKIT_REQUEST_CREDITS);
+    server.use(
+      http.post(`${SOCIALKIT_BASE}/v2/youtube/download`, () => {
+        providerRequests += 1;
+        return HttpResponse.error();
+      }),
+    );
+
+    const response = await accept(
+      client(pricing.resolution)(socialContract).createDownload({
+        headers: authenticate(actor),
+        body: {
+          platform: "youtube",
+          url: "https://youtu.be/public-video",
+          maxDuration: 120,
+          quality: "720p",
+          format: "mp4",
+        },
+      }),
+      [402],
+    );
+
+    expectApiError(response.body);
+    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    expect(providerRequests).toBe(0);
+  });
+
+  it("allows only one active download per user", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    const providerStarted = createDeferredPromise<void>(context.signal);
+    const releaseProvider = createDeferredPromise<void>(context.signal);
+    const providerPollStarted = createDeferredPromise<void>(context.signal);
+    const releaseProviderPoll = createDeferredPromise<void>(context.signal);
+    const providerJobPrefix = `provider-single-download-${randomUUID()}`;
+    let providerStarts = 0;
+    let providerPolls = 0;
+    server.use(
+      http.post(`${SOCIALKIT_BASE}/v2/youtube/download`, async () => {
+        providerStarts += 1;
+        if (providerStarts === 1) {
+          providerStarted.resolve();
+          await releaseProvider.promise;
+        }
+        return HttpResponse.json({
+          jobId: `${providerJobPrefix}-${providerStarts}`,
+          status: "queued",
+        });
+      }),
+      http.get(/^https:\/\/api\.socialkit\.dev\/v2\/downloads\//u, async () => {
+        providerPolls += 1;
+        if (providerPolls === 1) {
+          providerPollStarted.resolve();
+          await releaseProviderPoll.promise;
+        }
+        return HttpResponse.json({ status: "failed" });
+      }),
+    );
+    const socialClient = client(pricing.resolution)(socialContract);
+    const request = {
+      headers: authenticate(actor),
+      body: {
+        platform: "youtube" as const,
+        url: "https://youtu.be/public-video",
+        maxDuration: 60,
+        quality: "720p" as const,
+        format: "mp4" as const,
+      },
+    };
+
+    const firstPromise = socialClient.createDownload(request);
+    await providerStarted.promise;
+    const blocked = await accept(socialClient.createDownload(request), [409]);
+    releaseProvider.resolve();
+    const first = await accept(firstPromise, [202]);
+
+    expectApiError(blocked.body);
+    expect(blocked.body.error).toStrictEqual({
+      code: "DOWNLOAD_IN_PROGRESS",
+      message: "Another social media download is already in progress",
+    });
+    expect(first.body.status).toBe("processing");
+    expect(providerStarts).toBe(1);
+    await providerPollStarted.promise;
+    const blockedWhileProcessing = await accept(
+      socialClient.createDownload(request),
+      [409],
+    );
+
+    expectApiError(blockedWhileProcessing.body);
+    expect(blockedWhileProcessing.body.error.code).toBe("DOWNLOAD_IN_PROGRESS");
+    expect(providerStarts).toBe(1);
+
+    releaseProviderPoll.resolve();
+    await flushWaitUntilForTest();
+    const next = await accept(socialClient.createDownload(request), [202]);
+
+    expect(next.body.status).toBe("processing");
+    expect(providerStarts).toBe(2);
+    await flushWaitUntilForTest();
+  });
+
+  it("does not expose download state to another user", async () => {
+    const owner = createBddApi(context).user();
+    if (!owner.orgId) {
+      throw new Error("Social test owner must belong to an organization");
+    }
+    const other = createBddApi(context).user({ orgId: owner.orgId });
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(owner);
+    const providerJobId = `provider-owner-${randomUUID()}`;
+    server.use(
+      http.post(`${SOCIALKIT_BASE}/v2/youtube/download`, () => {
+        return HttpResponse.json({ jobId: providerJobId, status: "queued" });
+      }),
+      http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
+        return HttpResponse.json({ jobId: providerJobId, status: "failed" });
+      }),
+    );
+    const socialClient = client(pricing.resolution)(socialContract);
+    const created = await accept(
+      socialClient.createDownload({
+        headers: authenticate(owner),
+        body: {
+          platform: "youtube",
+          url: "https://youtu.be/public-video",
+          maxDuration: 60,
+          quality: "720p",
+          format: "mp4",
+        },
+      }),
+      [202],
+    );
+    await flushWaitUntilForTest();
+
+    const response = await accept(
+      socialClient.getDownload({
+        headers: authenticate(other),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [404],
+    );
+
+    expect(response.status).toBe(404);
+    expectApiError(response.body);
+  });
+
+  it("keeps transient provider polling failures unbilled and retryable", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    const providerJobId = `provider-transient-${randomUUID()}`;
+    server.use(
+      http.post(`${SOCIALKIT_BASE}/v2/youtube/download`, () => {
+        return HttpResponse.json({ jobId: providerJobId, status: "queued" });
+      }),
+      http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
+        return HttpResponse.json(
+          { message: "temporary outage" },
+          { status: 503 },
+        );
+      }),
+    );
+    const socialClient = client(pricing.resolution)(socialContract);
+
+    const created = await accept(
+      socialClient.createDownload({
+        headers: authenticate(actor),
+        body: {
+          platform: "youtube",
+          url: "https://youtu.be/public-video",
+          maxDuration: 60,
+          quality: "720p",
+          format: "mp4",
+        },
+      }),
+      [202],
+    );
+    await flushWaitUntilForTest();
+    const pending = await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+
+    expect(pending.body).toMatchObject({
+      status: "processing",
+      billing: null,
+      error: { billed: false, retryable: true },
+    });
+    await flushWaitUntilForTest();
+    await expect(credits(actor)).resolves.toBe(beforeCredits);
+
+    mockNow(now() + 61_000);
+    server.use(
+      http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
+        return HttpResponse.json({ jobId: providerJobId, status: "failed" });
+      }),
+    );
+    await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+    await flushWaitUntilForTest();
+    const terminal = await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+    expect(terminal.body.status).toBe("provider_failed");
+  });
+
+  it("defers a claimed download when its reconciliation budget expires", async () => {
+    const actor = createBddApi(context).user();
+    const reconciliation = new AbortController();
+    const abortError = new DOMException(
+      "SocialKit reconciliation timed out",
+      "TimeoutError",
+    );
+    let suppliedReconciliationSignal = false;
+    context.mocks.abortSignal.timeout.mockImplementation((milliseconds) => {
+      if (milliseconds === 280_000 && !suppliedReconciliationSignal) {
+        suppliedReconciliationSignal = true;
+        return reconciliation.signal;
+      }
+      return undefined;
+    });
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    const providerJobId = `provider-timeout-${randomUUID()}`;
+    server.use(
+      http.post(`${SOCIALKIT_BASE}/v2/youtube/download`, () => {
+        return HttpResponse.json({ jobId: providerJobId, status: "queued" });
+      }),
+      http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
+        reconciliation.abort(abortError);
+        return HttpResponse.json({
+          jobId: providerJobId,
+          status: "processing",
+        });
+      }),
+    );
+    const socialClient = client(pricing.resolution)(socialContract);
+
+    const created = await accept(
+      socialClient.createDownload({
+        headers: authenticate(actor),
+        body: {
+          platform: "youtube",
+          url: "https://youtu.be/public-video",
+          maxDuration: 60,
+          quality: "720p",
+          format: "mp4",
+        },
+      }),
+      [202],
+    );
+    await expect(flushWaitUntilForTest()).rejects.toBe(abortError);
+    const deferred = await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    expect(deferred.body).toMatchObject({
+      status: "processing",
+      billing: null,
+      error: {
+        code: "SOCIALKIT_RECONCILIATION_FAILED",
+        billed: false,
+        retryable: true,
+      },
+    });
+    await expect(credits(actor)).resolves.toBe(beforeCredits);
+  });
+
+  it("reconciles an expired claimed download through the bounded cron batch", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    const payload = new TextEncoder().encode("cron-reconciled social video");
+    const providerJobId = `provider-cron-${randomUUID()}`;
+    let providerReady = false;
+    context.mocks.dns.lookupOverrides.set("media.socialkit.test", [
+      { address: "8.8.8.8", family: 4 },
+    ]);
+    server.use(
+      http.post(`${SOCIALKIT_BASE}/v2/youtube/download`, () => {
+        return HttpResponse.json({ jobId: providerJobId, status: "queued" });
+      }),
+      http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
+        if (!providerReady) {
+          return HttpResponse.json(
+            { message: "temporary outage" },
+            { status: 503 },
+          );
+        }
+        return HttpResponse.json({
+          jobId: providerJobId,
+          status: "ready",
+          platform: "youtube",
+          downloadUrl: "https://media.socialkit.test/cron-download",
+          durationSeconds: 60,
+          fileSizeMB: 1,
+          creditsCost: 1,
+          quality: "720p",
+          format: "mp4",
+        });
+      }),
+      http.get("https://media.socialkit.test/cron-download", () => {
+        return new HttpResponse(payload, {
+          headers: { "content-length": String(payload.byteLength) },
+        });
+      }),
+    );
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (command instanceof CreateMultipartUploadCommand) {
+        return Promise.resolve({ UploadId: "socialkit-cron-upload" });
+      }
+      if (command instanceof UploadPartCommand) {
+        return Promise.resolve({ ETag: '"socialkit-cron-etag"' });
+      }
+      return Promise.resolve({});
+    });
+    const socialClient = client(pricing.resolution)(socialContract);
+
+    const created = await accept(
+      socialClient.createDownload({
+        headers: authenticate(actor),
+        body: {
+          platform: "youtube",
+          url: "https://youtu.be/public-video",
+          maxDuration: 60,
+          quality: "720p",
+          format: "mp4",
+        },
+      }),
+      [202],
+    );
+    await flushWaitUntilForTest();
+    const blocked = await reconcileSocialKitDownloadsForTest(
+      context,
+      [created.body.downloadId],
+      pricing.resolution,
+    );
+    providerReady = true;
+    mockNow(now() + 61_000);
+
+    const processed = await reconcileSocialKitDownloadsForTest(
+      context,
+      [created.body.downloadId],
+      pricing.resolution,
+    );
+    const completed = await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+
+    expect(blocked).toBe(0);
+    expect(processed).toBe(1);
+    expect(completed.body).toMatchObject({
+      status: "completed",
+      billing: { quantity: 1, creditsCharged: 3 },
+      artifact: { sizeBytes: payload.byteLength },
+    });
+    expect(beforeCredits - (await credits(actor))).toBe(3);
+  });
+
+  it("reuses a completed multipart result and bills concurrent retries once", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    const payload = new TextEncoder().encode("retryable social video");
+    const providerJobId = `provider-retry-${randomUUID()}`;
+    let providerStarts = 0;
+    let multipartAttempts = 0;
+    let artifactStored = false;
+    const createdDownload: { id?: string } = {};
+    context.mocks.dns.lookupOverrides.set("media.socialkit.test", [
+      { address: "8.8.8.8", family: 4 },
+    ]);
+    server.use(
+      http.post(`${SOCIALKIT_BASE}/v2/youtube/download`, () => {
+        providerStarts += 1;
+        return HttpResponse.json({ jobId: providerJobId, status: "queued" });
+      }),
+      http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
+        return HttpResponse.json({
+          jobId: providerJobId,
+          status: "ready",
+          platform: "youtube",
+          downloadUrl: "https://media.socialkit.test/retry-download",
+          durationSeconds: 61,
+          fileSizeMB: 1,
+          creditsCost: 2,
+          quality: "720p",
+          format: "mp4",
+          title: { untrusted: true },
+          thumbnail: "https://media.socialkit.test/retry-download#preview",
+        });
+      }),
+      http.get("https://media.socialkit.test/retry-download", () => {
+        return new HttpResponse(payload, {
+          headers: { "content-length": String(payload.byteLength) },
+        });
+      }),
+    );
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (command instanceof HeadObjectCommand) {
+        if (!artifactStored) {
+          const error = new Error("Artifact not found");
+          error.name = "NotFound";
+          return Promise.reject(error);
+        }
+        const createdDownloadId = createdDownload.id;
+        if (!createdDownloadId) {
+          return Promise.reject(new Error("Missing created download id"));
+        }
+        const filename = `download-${createdDownloadId.slice(0, 8)}.mp4`;
+        const key = buildArtifactKeyV2(
+          createdDownloadId,
+          filename,
+          "socialkit",
+        );
+        if (command.input.Key !== key) {
+          return Promise.reject(new Error("Unexpected artifact key"));
+        }
+        return Promise.resolve({
+          ContentLength: payload.byteLength,
+          ContentType: "video/mp4",
+          LastModified: new Date("2026-08-27T00:00:00.000Z"),
+          Metadata: {
+            "artifact-id": createdDownloadId,
+            filename: encodeURIComponent(filename),
+            "user-id": encodeURIComponent(actor.userId),
+            "public-brand": "vm0",
+          },
+        });
+      }
+      if (command instanceof CreateMultipartUploadCommand) {
+        multipartAttempts += 1;
+        return Promise.resolve({
+          UploadId: `socialkit-retry-${multipartAttempts}`,
+        });
+      }
+      if (command instanceof UploadPartCommand) {
+        return Promise.resolve({ ETag: '"socialkit-retry-etag"' });
+      }
+      if (command instanceof CompleteMultipartUploadCommand) {
+        artifactStored = true;
+        return Promise.reject(new Error("R2 completion response was lost"));
+      }
+      return Promise.resolve({});
+    });
+    const socialClient = client(pricing.resolution)(socialContract);
+
+    const created = await accept(
+      socialClient.createDownload({
+        headers: authenticate(actor),
+        body: {
+          platform: "youtube",
+          url: "https://youtu.be/public-video",
+          maxDuration: 120,
+          quality: "720p",
+          format: "mp4",
+        },
+      }),
+      [202],
+    );
+    createdDownload.id = created.body.downloadId;
+    await flushWaitUntilForTest();
+    const failed = await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+    const creditsAfterFailure = await credits(actor);
+
+    expect(failed.body).toMatchObject({
+      status: "artifact_failed",
+      billing: { quantity: 2, creditsCharged: 6 },
+      error: { billed: true, retryable: true },
+    });
+    expect(failed.body.provider).not.toHaveProperty("title");
+    expect(failed.body.provider).not.toHaveProperty("thumbnail");
+    expect(beforeCredits - creditsAfterFailure).toBe(6);
+    expect(
+      context.mocks.s3.send.mock.calls.some(([command]) => {
+        return command instanceof AbortMultipartUploadCommand;
+      }),
+    ).toBeTruthy();
+    const blocked = await accept(
+      socialClient.createDownload({
+        headers: authenticate(actor),
+        body: {
+          platform: "youtube",
+          url: "https://youtu.be/another-public-video",
+          maxDuration: 120,
+          quality: "720p",
+          format: "mp4",
+        },
+      }),
+      [409],
+    );
+
+    expectApiError(blocked.body);
+    expect(blocked.body.error.code).toBe("DOWNLOAD_IN_PROGRESS");
+    expect(providerStarts).toBe(1);
+
+    mockNow(now() + 61_000);
+    await Promise.all([
+      accept(
+        socialClient.getDownload({
+          headers: authenticate(actor),
+          params: { downloadId: created.body.downloadId },
+        }),
+        [200],
+      ),
+      accept(
+        socialClient.getDownload({
+          headers: authenticate(actor),
+          params: { downloadId: created.body.downloadId },
+        }),
+        [200],
+      ),
+    ]);
+    await flushWaitUntilForTest();
+    const completed = await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+
+    expect(completed.body.status).toBe("completed");
+    expect(providerStarts).toBe(1);
+    expect(multipartAttempts).toBe(1);
+    await expect(credits(actor)).resolves.toBe(creditsAfterFailure);
+  });
+
+  it("preserves bounded provider download diagnostics", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    const providerJobId = `provider-failed-${randomUUID()}`;
+    server.use(
+      http.post(`${SOCIALKIT_BASE}/v2/tiktok/download`, () => {
+        return HttpResponse.json({
+          jobId: providerJobId,
+          status: "queued",
+        });
+      }),
+      http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
+        return HttpResponse.json({
+          jobId: providerJobId,
+          status: "failed",
+          errorCode: "duration_limit_exceeded",
+          error: "Video exceeds the max_duration=60s limit",
+          retryable: false,
+          downloadUrl: "https://temporary.socialkit.test/private-video",
+          accessKey: "test-socialkit-key",
+        });
+      }),
+    );
+    const socialClient = client(pricing.resolution)(socialContract);
+
+    const created = await accept(
+      socialClient.createDownload({
+        headers: authenticate(actor),
+        body: {
+          platform: "tiktok",
+          url: "https://www.tiktok.com/@public/video/1",
+          maxDuration: 60,
+          quality: "720p",
+          format: "mp4",
+        },
+      }),
+      [202],
+    );
+    await flushWaitUntilForTest();
+    const failed = await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+
+    expect(failed.body).toMatchObject({
+      status: "provider_failed",
+      billing: null,
+      error: {
+        code: "SOCIALKIT_PROVIDER_duration_limit_exceeded",
+        message: "Video exceeds the max_duration=60s limit",
+        billed: false,
+        retryable: false,
+      },
+    });
+    expect(JSON.stringify(failed.body)).not.toContain("downloadUrl");
+    expect(JSON.stringify(failed.body)).not.toContain("test-socialkit-key");
+    await expect(credits(actor)).resolves.toBe(beforeCredits);
+  });
+
+  it.each([
+    {
+      caseName: "legacy failure without diagnostics",
+      providerFailure: {
+        status: "failed",
+      },
+      expectedCode: "SOCIALKIT_DOWNLOAD_FAILED",
+    },
+    {
+      caseName: "malformed provider code",
+      providerFailure: {
+        status: "failed",
+        errorCode: "invalid provider code",
+        error: "The provider could not prepare the download",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_DOWNLOAD_FAILED",
+    },
+    {
+      caseName: "oversized provider code",
+      providerFailure: {
+        status: "failed",
+        errorCode: "x".repeat(129),
+        error: "The provider could not prepare the download",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_DOWNLOAD_FAILED",
+    },
+    {
+      caseName: "oversized provider message",
+      providerFailure: {
+        status: "failed",
+        errorCode: "oversized_failure",
+        error: "x".repeat(501),
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_DOWNLOAD_FAILED",
+    },
+    {
+      caseName: "provider URL",
+      providerFailure: {
+        status: "failed",
+        errorCode: "private_failure",
+        error: "Download failed at https://temporary.socialkit.test/file",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_private_failure",
+    },
+    {
+      caseName: "configured provider credential",
+      providerFailure: {
+        status: "failed",
+        errorCode: "credential_failure",
+        error: "Provider failed with test-socialkit-key",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_credential_failure",
+    },
+    {
+      caseName: "credential assignment",
+      providerFailure: {
+        status: "failed",
+        errorCode: "authorization_failure",
+        error: "Authorization: Bearer different-provider-secret",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_authorization_failure",
+    },
+    {
+      caseName: "stack frame",
+      providerFailure: {
+        status: "failed",
+        errorCode: "stack_failure",
+        error: "Provider failed at worker (/srv/provider.js:1:2)",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_stack_failure",
+    },
+    {
+      caseName: "ASCII multiline provider message",
+      providerFailure: {
+        status: "failed",
+        errorCode: "multiline_failure",
+        error: "Provider failure\nwith hidden next line",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_multiline_failure",
+    },
+    {
+      caseName: "C1 control provider message",
+      providerFailure: {
+        status: "failed",
+        errorCode: "control_failure",
+        error: "Provider failure\u0085with hidden next line",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_control_failure",
+    },
+    {
+      caseName: "unicode multiline provider message",
+      providerFailure: {
+        status: "failed",
+        errorCode: "multiline_failure",
+        error: "Provider failure\u2028with hidden next line",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_multiline_failure",
+    },
+    {
+      caseName: "unicode paragraph separator provider message",
+      providerFailure: {
+        status: "failed",
+        errorCode: "multiline_failure",
+        error: "Provider failure\u2029with hidden next line",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_multiline_failure",
+    },
+  ])(
+    "uses a safe fallback for $caseName",
+    async ({ providerFailure, expectedCode }) => {
+      const actor = createBddApi(context).user();
+      configureProvider();
+      const pricing = await setupConfiguredPricing();
+      await fundActor(actor);
+      const beforeCredits = await credits(actor);
+      const providerJobId = `provider-safe-fallback-${randomUUID()}`;
+      server.use(
+        http.post(`${SOCIALKIT_BASE}/v2/tiktok/download`, () => {
+          return HttpResponse.json({
+            jobId: providerJobId,
+            status: "queued",
+          });
+        }),
+        http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
+          return HttpResponse.json({
+            jobId: providerJobId,
+            ...providerFailure,
+          });
+        }),
+      );
+      const socialClient = client(pricing.resolution)(socialContract);
+
+      const created = await accept(
+        socialClient.createDownload({
+          headers: authenticate(actor),
+          body: {
+            platform: "tiktok",
+            url: "https://www.tiktok.com/@public/video/1",
+            maxDuration: 60,
+            quality: "720p",
+            format: "mp4",
+          },
+        }),
+        [202],
+      );
+      await flushWaitUntilForTest();
+      const failed = await accept(
+        socialClient.getDownload({
+          headers: authenticate(actor),
+          params: { downloadId: created.body.downloadId },
+        }),
+        [200],
+      );
+
+      expect(failed.body).toMatchObject({
+        status: "provider_failed",
+        billing: null,
+        error: {
+          code: expectedCode,
+          message: "SocialKit could not prepare the download",
+          billed: false,
+          retryable: false,
+        },
+      });
+      const serialized = JSON.stringify(failed.body);
+      expect(serialized).not.toContain("temporary.socialkit.test");
+      expect(serialized).not.toContain("test-socialkit-key");
+      expect(serialized).not.toContain("provider.js");
+      await expect(credits(actor)).resolves.toBe(beforeCredits);
+    },
+  );
+
+  it("rejects a ready response for a different platform without billing", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    const providerJobId = `provider-platform-${randomUUID()}`;
+    server.use(
+      http.post(`${SOCIALKIT_BASE}/v2/youtube/download`, () => {
+        return HttpResponse.json({ jobId: providerJobId, status: "queued" });
+      }),
+      http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
+        return HttpResponse.json({
+          jobId: providerJobId,
+          status: "ready",
+          platform: "facebook",
+          downloadUrl: "https://media.socialkit.test/wrong-platform",
+          durationSeconds: 60,
+          fileSizeMB: "1 MB",
+          creditsCost: 1,
+          quality: "720p",
+          format: "mp4",
+        });
+      }),
+    );
+    const socialClient = client(pricing.resolution)(socialContract);
+
+    const created = await accept(
+      socialClient.createDownload({
+        headers: authenticate(actor),
+        body: {
+          platform: "youtube",
+          url: "https://youtu.be/public-video",
+          maxDuration: 60,
+          quality: "720p",
+          format: "mp4",
+        },
+      }),
+      [202],
+    );
+    await flushWaitUntilForTest();
+    const failed = await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+
+    expect(failed.body).toMatchObject({
+      status: "provider_failed",
+      billing: null,
+      error: {
+        code: "SOCIALKIT_INVALID_DOWNLOAD_RESPONSE",
+        billed: false,
+        retryable: false,
+      },
+    });
+    await expect(credits(actor)).resolves.toBe(beforeCredits);
   });
 });

@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.18.42](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.41...vsock-proto-v0.18.42) (2026-08-31)
+
+
+### Documentation
+
+* **vsock-proto:** document guest storage manifest request constraints ([#30456](https://github.com/vm0-ai/vm0/issues/30456)) ([f1a688a](https://github.com/vm0-ai/vm0/commit/f1a688ade7bbe5d7de975147f2521a4676357ee6))
+
+## [0.18.41](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.40...vsock-proto-v0.18.41) (2026-08-28)
+
+
+### Documentation
+
+* **rust:** document exec-start process contracts ([#30083](https://github.com/vm0-ai/vm0/issues/30083)) ([598b61b](https://github.com/vm0-ai/vm0/commit/598b61b22a54af2f711ab05c7ed09431d0924ceb))
+
+## [0.18.40](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.39...vsock-proto-v0.18.40) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** batch required private guest writes ([#29943](https://github.com/vm0-ai/vm0/issues/29943)) ([97414e6](https://github.com/vm0-ai/vm0/commit/97414e6c34b2241df1cbcf87fa85fa6248cf41d6))
+
+## [0.18.39](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.38...vsock-proto-v0.18.39) (2026-08-27)
+
+
+### Refactoring
+
+* **runner:** establish guest agent readiness ([#29748](https://github.com/vm0-ai/vm0/issues/29748)) ([8eaafa1](https://github.com/vm0-ai/vm0/commit/8eaafa13bc280f08033fded17e7c3fd5c9822804))
+
 ## [0.18.38](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.37...vsock-proto-v0.18.38) (2026-08-26)
 
 

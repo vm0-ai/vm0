@@ -12,7 +12,6 @@ import {
   Plug,
   Search,
 } from "lucide-react";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   Button,
   Tooltip,
@@ -45,15 +44,17 @@ import {
 } from "../../signals/okou-page/sidebar-state.ts";
 import { OrgSwitcher, OrgSwitcherCompact } from "./org-switcher.tsx";
 import { Link } from "../router/link.tsx";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { slackOrgScopeMismatch$ } from "../../signals/okou-page/slack.ts";
 import { AccountDropdown } from "./sidebar-account.tsx";
-import { ChatThreadsSection } from "./sidebar-threads.tsx";
+import { ChatThreadDialogs, ChatThreadsSection } from "./sidebar-threads.tsx";
 import {
   responsiveSidebarChatThreadScrollSignals,
   threeColumnSidebarChatThreadScrollSignals,
 } from "../../signals/chat-page/sidebar-chat-thread-scroll.ts";
-import { PinnedAgentListSection } from "./sidebar-pinned.tsx";
+import {
+  PinnedAgentDialogs,
+  PinnedAgentListSection,
+} from "./sidebar-pinned.tsx";
 import { ThreeColumnSearchDialog } from "./sidebar-dialogs.tsx";
 import { SidebarUpgradeCard } from "./sidebar-upgrade.tsx";
 import { rootSignal$ } from "../../signals/root-signal.ts";
@@ -64,7 +65,6 @@ import {
   newChatThreadDisabled$,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
-import { openArtifact$ } from "../../signals/artifacts-page/artifact-catalog-signals.ts";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
@@ -201,8 +201,10 @@ function useSidebarCollapseToggle() {
 // to thread onAccountAction through props.
 function AccountDropdownContainer({
   collapsed = false,
+  renderCodexResetDialog = true,
 }: {
   collapsed?: boolean;
+  renderCodexResetDialog?: boolean;
 }) {
   const onAccountAction = useSet(handleAccountAction$);
   const settingsOwnerId = collapsed ? "sidebar-collapsed" : "sidebar-expanded";
@@ -211,163 +213,21 @@ function AccountDropdownContainer({
       onAccountAction={onAccountAction}
       settingsOwnerId={settingsOwnerId}
       collapsed={collapsed}
+      renderCodexResetDialog={renderCodexResetDialog}
     />
   );
 }
 
-// --- Collapsed icon-only sidebar (desktop, only when sidebarOff) ---
+// --- Expanded mobile drawer ---
 
-function CollapsedSidebar() {
-  const off = useGet(sidebarOff$);
-  if (!off) {
-    return null;
-  }
-  return (
-    <aside className="zero-nav zero-collapsed-sidebar box-border hidden md:flex h-full w-16 shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar px-2 transition-all duration-300">
-      <div className="zero-desktop-titlebar-drag-region" aria-hidden="true" />
-      <CollapsedExpandButton />
-      <CollapsedNavList />
-      <CollapsedFooter />
-    </aside>
-  );
-}
-
-function CollapsedExpandButton() {
-  const onCollapse = useSidebarCollapseToggle();
-  const { t } = useTranslation();
-  const expandLabel = t(($) => {
-    return $.appShell.sidebar.expand;
-  });
-  return (
-    <div className="flex w-full shrink-0 justify-center pt-3 pb-1">
-      <TooltipProvider delayDuration={200}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="quiet"
-              size="icon-sm"
-              iconSize="md"
-              className="shrink-0"
-              onClick={onCollapse}
-              aria-label={expandLabel}
-            >
-              <PanelLeftClose size={18} className="rotate-180 opacity-50" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="right">
-            <p className="text-xs">{expandLabel}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    </div>
-  );
-}
-
-function CollapsedNavList() {
-  const activeId = useGet(activeRoute$);
-  const slackScopeMismatch = useLastResolved(slackOrgScopeMismatch$) ?? false;
-  const onSelect = useNavSelect();
-  const { manageNav, footerNav } = useResolvedNavItems();
-  const { t } = useTranslation();
-  const allNavItems = [
-    ...manageNav.map(({ id, activeKeys, pathname: p, label, icon }) => {
-      return { id, activeKeys, pathname: p, label, icon };
-    }),
-    {
-      id: "chat" as const,
-      activeKeys: ["home", "agentChat", "agentIdeas", "chat"] as RouteKey[],
-      pathname: "/",
-      label: t(($) => {
-        return $.appShell.sidebar.navigation.newChat;
-      }),
-      icon: Edit as NavIcon,
-    },
-    ...footerNav.map(({ id, activeKeys, pathname: p, label, icon }) => {
-      return { id, activeKeys, pathname: p, label, icon };
-    }),
-  ];
-  return (
-    <nav
-      aria-label={t(($) => {
-        return $.appShell.sidebar.ariaLabel;
-      })}
-      className="flex min-h-0 w-full min-w-0 flex-1 flex-col items-center gap-1 pb-2 pt-0"
-    >
-      <TooltipProvider delayDuration={100}>
-        {allNavItems.map(
-          ({ id, activeKeys, pathname: navPath, label, icon: Icon }) => {
-            const isActive =
-              activeId !== null &&
-              (activeKeys as readonly RouteKey[]).includes(activeId);
-            return (
-              <div key={id} className="flex w-full shrink-0 justify-center">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Link
-                      pathname={
-                        navPath as Parameters<typeof Link>[0]["pathname"]
-                      }
-                      onClick={(e) => {
-                        if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                          return;
-                        }
-                        e.preventDefault();
-                        onSelect(id);
-                      }}
-                      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
-                        isActive
-                          ? "bg-state-selected text-sidebar-foreground"
-                          : "text-sidebar-foreground hover:bg-state-hover"
-                      }`}
-                      aria-label={label}
-                    >
-                      <span className="relative inline-flex">
-                        <Icon size={16} className="shrink-0 opacity-70" />
-                        {id === "works" && slackScopeMismatch && (
-                          <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
-                        )}
-                      </span>
-                    </Link>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    <p className="text-xs">{label}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-            );
-          },
-        )}
-      </TooltipProvider>
-    </nav>
-  );
-}
-
-function CollapsedFooter() {
-  return (
-    <div className="flex w-full shrink-0 flex-col items-center gap-1 pb-2 pt-1">
-      <AccountDropdownContainer collapsed />
-    </div>
-  );
-}
-
-// --- Expanded full sidebar (desktop default, mobile overlay when expanded) ---
-
-function ExpandedSidebar({ mobileOnly = false }: { mobileOnly?: boolean }) {
-  const off = useGet(sidebarOff$);
+function ExpandedSidebar() {
   const expanded = useGet(sidebarExpanded$);
-  // When the three-column layout owns the desktop columns, this full sidebar is
-  // reused solely as the mobile drawer, so it hides on desktop instead of showing.
-  const visibility = mobileOnly
-    ? "hidden data-[sidebar-expanded]:max-md:flex md:hidden"
-    : "hidden md:flex data-[sidebar-off]:md:hidden data-[sidebar-expanded]:max-md:flex";
   return (
     <aside
-      data-sidebar-off={off || undefined}
       data-sidebar-expanded={expanded || undefined}
       className={cn(
         "zero-nav zero-pwa-fixed-cover zero-mobile-fixed-safe-area h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:h-auto max-md:shadow-xl",
-        visibility,
+        "hidden data-[sidebar-expanded]:max-md:flex md:hidden",
       )}
     >
       <ExpandedHeader />
@@ -446,7 +306,7 @@ function ExpandedManageSection() {
           return setManageCollapsed(!manageCollapsed);
         }}
       >
-        <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
+        <span className="zero-nav-copy-muted zero-nav-copy-muted-hover flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
           {t(($) => {
             return $.appShell.sidebar.manage;
           })}
@@ -484,7 +344,7 @@ function ExpandedManageSection() {
                   }`}
                 >
                   <Icon size={16} className="shrink-0" />
-                  <span className="truncate">{label}</span>
+                  <span className="zero-nav-copy truncate">{label}</span>
                 </Link>
               );
             },
@@ -566,7 +426,7 @@ function ExpandedFooter() {
                 ) : (
                   <Icon size={16} className="shrink-0" />
                 )}
-                <span className="truncate flex-1">{label}</span>
+                <span className="zero-nav-copy flex-1 truncate">{label}</span>
                 {id === "works" && slackScopeMismatch && (
                   <span
                     data-testid="slack-scope-mismatch-indicator"
@@ -578,13 +438,14 @@ function ExpandedFooter() {
           },
         )}
         <div className="h-px bg-border/30 mx-1 my-1" />
-        <AccountDropdownContainer />
+        {/* The always-mounted rail owns the shared reset dialog controller. */}
+        <AccountDropdownContainer renderCodexResetDialog={false} />
       </div>
     </div>
   );
 }
 
-// --- Three-column (Slack-style) layout, gated behind ThreeColumnNav ---
+// --- Three-column (Slack-style) layout ---
 
 function LabeledRailLink({
   id,
@@ -669,7 +530,9 @@ function LabeledRailLink({
       </span>
       <span
         className={`max-w-full truncate px-0.5 text-[9px] font-medium leading-[14px] ${
-          isActive ? "text-sidebar-foreground" : "text-sidebar-foreground/60"
+          isActive
+            ? "zero-nav-copy text-sidebar-foreground"
+            : "zero-nav-copy-muted text-sidebar-foreground/60"
         }`}
       >
         {caption}
@@ -757,7 +620,7 @@ function LabeledNavRail() {
   return (
     <aside
       data-testid="labeled-nav-rail"
-      className="zero-nav hidden md:flex h-full w-[68px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-gray-50 px-1.5 pb-2 pt-3"
+      className="zero-nav zero-nav-rail hidden md:flex h-full w-[68px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-gray-50 px-1.5 pb-2 pt-3"
     >
       <div className="zero-desktop-titlebar-drag-region" aria-hidden="true" />
       <div className="mb-3 shrink-0">
@@ -805,8 +668,6 @@ function ThreeColumnSearchDialogContainer() {
   const open = useGet(threeColumnSearchOpen$);
   const onOpenChange = useSet(setThreeColumnSearchOpen$);
   const navigate = useSet(detachedNavigateTo$);
-  const openArtifact = useSet(openArtifact$);
-  const rootSignal = useGet(rootSignal$);
 
   if (!open) {
     return null;
@@ -826,12 +687,14 @@ function ThreeColumnSearchDialogContainer() {
           pathParams: { workflowId },
         });
       }}
-      onSelectArtifact={(artifactId) => {
-        detach(
-          openArtifact(artifactId, rootSignal),
-          Reason.DomCallback,
-          "open artifact from workspace search",
-        );
+      onSelectArtifact={(artifact) => {
+        const searchParams = new URLSearchParams({
+          artifact: artifact.id,
+        });
+        if (artifact.kind !== "presentation") {
+          searchParams.set("tab", artifact.kind);
+        }
+        navigate("/artifacts", { searchParams });
       }}
     />
   );
@@ -866,7 +729,7 @@ function ChatListColumn() {
       className="zero-nav hidden md:flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar"
     >
       <div className="flex shrink-0 items-center gap-1 px-3 pb-2 pt-3">
-        <span className="flex-1 pl-2 text-[15px] font-semibold text-sidebar-foreground">
+        <span className="zero-nav-copy flex-1 pl-2 text-[15px] font-semibold text-sidebar-foreground">
           {t(($) => {
             return $.appShell.sidebar.chat;
           })}
@@ -937,22 +800,13 @@ function ThreeColumnNav() {
       <LabeledNavRail />
       {!chatListHidden && <ChatListColumn />}
       <ThreeColumnSearchDialogContainer />
-      {/* Reuse the full sidebar as the mobile drawer only. */}
-      <ExpandedSidebar mobileOnly />
+      <PinnedAgentDialogs />
+      <ChatThreadDialogs />
+      <ExpandedSidebar />
     </>
   );
 }
 
 export function Sidebar() {
-  const features = useLastResolved(featureSwitch$);
-  const threeColumnNav = features?.[FeatureSwitchKey.ThreeColumnNav] ?? false;
-  if (threeColumnNav) {
-    return <ThreeColumnNav />;
-  }
-  return (
-    <>
-      <CollapsedSidebar />
-      <ExpandedSidebar />
-    </>
-  );
+  return <ThreeColumnNav />;
 }

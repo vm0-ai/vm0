@@ -1,7 +1,6 @@
 import { command } from "ccstate";
 import {
   webhookHeartbeatContract,
-  webhookModelUsageObservationContract,
   webhookTelemetryContract,
   webhookUsageEventContract,
   type RunnerPreSpawnConcurrencyBucket,
@@ -9,14 +8,9 @@ import {
   type SandboxReuseResult,
 } from "@okouai/api-contracts/contracts/webhooks";
 import { agentRuns } from "@okouai/db/schema/agent-run";
-import { modelUsageObservation } from "@okouai/db/schema/model-usage-observation";
 import { usageEvent } from "@okouai/db/schema/usage-event";
-import { and, eq, isNotNull } from "drizzle-orm";
-import {
-  isBuiltInModelProviderType,
-  isSupportedRunModel,
-  normalizeRunModelId,
-} from "@okouai/api-contracts/contracts/model-providers";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
@@ -66,7 +60,6 @@ interface SandboxOperationDimensionInput {
 }
 
 interface SandboxRunnerDimensionInput {
-  readonly runnerName?: string;
   readonly runnerHostname?: string;
   readonly runnerVersion?: string;
 }
@@ -77,7 +70,6 @@ function sandboxOperationDimensions(
 ): Record<string, string> {
   return {
     source: "sandbox",
-    ...(runner.runnerName ? { runner_name: runner.runnerName } : {}),
     ...(runner.runnerHostname
       ? { runner_hostname: runner.runnerHostname }
       : {}),
@@ -169,7 +161,13 @@ const heartbeat$ = command(async ({ get, set }, signal: AbortSignal) => {
   const result = await db
     .update(agentRuns)
     .set({ lastHeartbeatAt: nowDate() })
-    .where(and(eq(agentRuns.id, body.runId), eq(agentRuns.userId, auth.userId)))
+    .where(
+      and(
+        eq(agentRuns.id, body.runId),
+        eq(agentRuns.userId, auth.userId),
+        inArray(agentRuns.status, ["pending", "running"]),
+      ),
+    )
     .returning({ id: agentRuns.id });
   signal.throwIfAborted();
 
@@ -266,76 +264,6 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
     body: { success: true },
   };
 });
-
-const modelUsageObservationBody$ = bodyResultOf(
-  webhookModelUsageObservationContract.send,
-);
-const modelUsageObservation$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const bodyResult = await get(modelUsageObservationBody$);
-    signal.throwIfAborted();
-    if (!bodyResult.ok) {
-      return bodyResult.response;
-    }
-
-    const body = bodyResult.data;
-    if (!getSandboxAuthForRun(body.runId, get(authorization$))) {
-      return unauthorizedRunMismatch;
-    }
-
-    const db = set(writeDb$);
-    const [runModelContext] = await db
-      .select({
-        selectedModel: agentRuns.selectedModel,
-      })
-      .from(agentRuns)
-      .where(
-        and(eq(agentRuns.id, body.runId), isNotNull(agentRuns.triggerSource)),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (!runModelContext) {
-      return notFound("Run not found");
-    }
-
-    const observedAt = nowDate();
-    const observationValues = body.events.flatMap((event) => {
-      const canonicalModel = normalizeRunModelId(
-        runModelContext.selectedModel ?? event.model,
-      );
-      if (!isSupportedRunModel(canonicalModel)) {
-        return [];
-      }
-      return [
-        {
-          model: canonicalModel,
-          inputTokens: event.inputTokens,
-          outputTokens: event.outputTokens,
-          cacheReadInputTokens: event.cacheReadInputTokens,
-          cacheCreationInputTokens: event.cacheCreationInputTokens,
-          observedAt,
-          idempotencyKey: event.idempotencyKey,
-        },
-      ];
-    });
-
-    if (observationValues.length > 0) {
-      await db
-        .insert(modelUsageObservation)
-        .values(observationValues)
-        .onConflictDoNothing({
-          target: [modelUsageObservation.idempotencyKey],
-        });
-    }
-    signal.throwIfAborted();
-
-    return {
-      status: 200 as const,
-      body: { success: true },
-    };
-  },
-);
 
 const telemetryBody$ = bodyResultOf(webhookTelemetryContract.send);
 const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
@@ -442,7 +370,6 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
         runId: body.runId,
         timestamp: op.ts,
         dimensions: sandboxOperationDimensions(op, {
-          runnerName: body.runnerName,
           runnerHostname: body.runnerHostname,
           runnerVersion: body.runnerVersion,
         }),
@@ -467,10 +394,6 @@ export const webhooksAgentHealthUsageTelemetryRoutes: readonly RouteEntry[] = [
   {
     route: webhookUsageEventContract.send,
     handler: usageEvent$,
-  },
-  {
-    route: webhookModelUsageObservationContract.send,
-    handler: modelUsageObservation$,
   },
   {
     route: webhookTelemetryContract.send,

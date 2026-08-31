@@ -6,11 +6,16 @@
 pub(crate) fn cleanup_stale_nbd_devices() {
     let max = nbd_cow::netlink::nbds_max();
     for i in 0..max {
-        let Some(candidate) = nbd_cow::orphan::observe(
+        let candidate = match nbd_cow::orphan::observe(
             i,
             nbd_cow::orphan::NbdOrphanPolicy::DeadOrCurrentProcessOwnerWithNonZeroSize,
-        ) else {
-            continue;
+        ) {
+            Ok(Some(candidate)) => candidate,
+            Ok(None) => continue,
+            Err(error) => {
+                eprintln!("  Skipped stale /dev/nbd{i} cleanup: {error}");
+                continue;
+            }
         };
         match nbd_cow::orphan::disconnect(candidate) {
             nbd_cow::orphan::NbdOrphanDisconnect::Disconnected(current) => {

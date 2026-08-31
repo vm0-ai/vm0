@@ -16,23 +16,32 @@ export default defineConfig({
       ),
       // Mock ably in tests so setupRealtime$ creates a fake channel and
       // setAblyLoop$ uses the real subscribe/deferred code path.
+      "ably/modular": path.resolve(__dirname, "./src/mocks/ably.ts"),
       ably: path.resolve(__dirname, "./src/mocks/ably.ts"),
       // Mock idb in tests so IndexedDB operations fall through to the
       // remote (MSW-mocked) path on openDB rejection in happy-dom.
       idb: path.resolve(__dirname, "./src/mocks/idb.ts"),
-      // Stub mermaid rendering in tests: the real renderer needs the SVG
+      // Stub Mermaid rendering in tests: the real renderer needs the SVG
       // measurement APIs of a browser layout engine, which happy-dom does not
       // implement. Parsing has no such needs, so the stub delegates it to the
-      // real module via `mermaid-real`.
-      mermaid: path.resolve(__dirname, "./src/mocks/mermaid.ts"),
-      "mermaid-real": path.resolve(
+      // real supported-diagrams module via `mermaid-lite-real`.
+      "@okouai/mermaid-lite": path.resolve(__dirname, "./src/mocks/mermaid.ts"),
+      "mermaid-lite-real": path.resolve(
         __dirname,
-        "./node_modules/mermaid/dist/mermaid.core.mjs",
+        "../../packages/mermaid-lite/dist/mermaid.esm.min.mjs",
       ),
+      "virtual:shared-database-worker": `${path.resolve(
+        __dirname,
+        "./src/shared-database-worker.ts",
+      )}?sharedworker&inline`,
       "idb-real": path.resolve(__dirname, "./node_modules/idb/build/index.js"),
     },
   },
   define: {
+    __OKOU_APP_GIT_COMMIT_SHA__: JSON.stringify(
+      "0123456789abcdef0123456789abcdef01234567",
+    ),
+    __OKOU_APP_VERSION__: JSON.stringify("0.540.0"),
     "import.meta.env.VITE_MOCK_LOG_DETAIL": JSON.stringify(""),
   },
   test: {

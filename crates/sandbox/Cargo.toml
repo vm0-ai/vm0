@@ -1,6 +1,6 @@
 [package]
 name = "sandbox"
-version = "0.19.54"
+version = "0.19.60"
 edition.workspace = true
 
 [dependencies]
@@ -12,6 +12,7 @@ uuid = { workspace = true, features = ["v4", "serde"] }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+trybuild = { workspace = true }
 
 [lints]
 workspace = true

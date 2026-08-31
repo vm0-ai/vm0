@@ -6,6 +6,7 @@
 //!
 //! Protocol encoding/decoding is handled by the `vsock-proto` crate.
 
+mod agent_command;
 mod connection;
 mod drain;
 mod error;
@@ -32,7 +33,9 @@ mod worker_ownership;
 mod writer;
 
 pub use connection::handle_connection_with_test_dns_readiness_program;
+pub use connection::handle_connection_with_test_guest_agent_program;
 pub use connection::handle_connection_with_test_guest_state_restore_program;
+pub use connection::handle_connection_with_test_memory_snapshot_path;
 pub use connection::handle_connection_with_test_storage_manifest_program;
 pub use connection::{
     connect_unix, connect_vsock, handle_connection,

@@ -4387,9 +4387,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const fastClaim = await runs.claimRunnerJob(fastRunId);
     expect(fastClaim.cliAgentType).toBe("codex");
     expect(fastClaim.environment?.OKOU_CODEX_SERVICE_TIER).toBe("fast");
-    expect(fastClaim.environment?.VM0_CODEX_SERVICE_TIER).toBe(
-      fastClaim.environment?.OKOU_CODEX_SERVICE_TIER,
-    );
+    expect(fastClaim.environment?.VM0_CODEX_SERVICE_TIER).toBeUndefined();
     const fastOkouToken = fastClaim.environment?.OKOU_TOKEN;
     if (!fastOkouToken) {
       throw new Error("Expected the Slack Fast run to expose OKOU_TOKEN");
@@ -5509,9 +5507,7 @@ describe("INT-02: Telegram integration", () => {
     const claim = await runs.claimRunnerJob(runId);
     expect(claim.cliAgentType).toBe("codex");
     expect(claim.environment?.OKOU_CODEX_SERVICE_TIER).toBe("fast");
-    expect(claim.environment?.VM0_CODEX_SERVICE_TIER).toBe(
-      claim.environment?.OKOU_CODEX_SERVICE_TIER,
-    );
+    expect(claim.environment?.VM0_CODEX_SERVICE_TIER).toBeUndefined();
     const okouToken = claim.environment?.OKOU_TOKEN;
     if (!okouToken) {
       throw new Error("Expected the Telegram Fast run to expose OKOU_TOKEN");
@@ -5711,7 +5707,7 @@ describe("INT-02: Telegram integration", () => {
 describe("INT-03: GitHub and AgentPhone integrations", () => {
   it("keeps GitHub OAuth install and connect-start errors visible through redirects", async () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
-    mockEnv("VM0_WEB_URL", "https://www.vm0.test");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.test");
     integrations.clearGithubAppProvider();
     await installApiTestConnectorCatalog();
 
@@ -5841,7 +5837,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
 
   it("starts configured GitHub user OAuth with connector state", async () => {
     mockEnv("APP_URL", "https://app.vm0.test");
-    mockEnv("VM0_WEB_URL", "https://www.vm0.test");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.test");
     integrations.clearGithubAppProvider();
     mockOptionalEnv("GH_OAUTH_CLIENT_ID", "bdd-github-client-id");
     mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", "bdd-github-client-secret");
@@ -5875,7 +5871,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     await expect(
       readConnectorOAuthAccountMutation(context, state),
     ).resolves.toMatchObject({
-      account_mutation: { intent: "single-account" },
+      account_mutation: { intent: "add" },
     });
     expect(response.headers.get("Cache-Control")).toBe("no-store");
 
@@ -5892,7 +5888,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
 
   it("preserves signed GitHub install brand across provider callbacks", async () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
-    mockEnv("VM0_WEB_URL", "https://www.vm0.test");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.test");
     integrations.clearGithubAppProvider();
     integrations.configureGithubAppInstallProvider();
 

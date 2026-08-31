@@ -1,6 +1,11 @@
+import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
-import type { SharedDatabasePortLike } from "../../shared-database/bridge.ts";
+import type {
+  SharedDatabaseHeartbeat,
+  SharedDatabasePortLike,
+} from "../../shared-database/bridge.ts";
+import type { AuthRecovery } from "../auth-retry.ts";
 import { heartbeatSharedDatabase$ } from "../shared-database.ts";
 import { setupSharedDatabaseBridge$ } from "../shared-database-browser.ts";
 import { testContext } from "./test-helpers.ts";
@@ -8,6 +13,7 @@ import { testContext } from "./test-helpers.ts";
 const context = testContext();
 
 class TestSharedWorkerPort implements SharedDatabasePortLike {
+  readonly heartbeatTokens: string[] = [];
   private listener: ((event: MessageEvent<unknown>) => void) | null = null;
 
   postMessage(value: unknown): void {
@@ -21,17 +27,40 @@ class TestSharedWorkerPort implements SharedDatabasePortLike {
     ) {
       return;
     }
+    if (
+      "identity" in value &&
+      typeof value.identity === "object" &&
+      value.identity !== null &&
+      "token" in value.identity &&
+      typeof value.identity.token === "string"
+    ) {
+      this.heartbeatTokens.push(value.identity.token);
+    }
     const requestId = value.requestId;
     queueMicrotask(() => {
       this.listener?.(
         new MessageEvent("message", {
-          data: { type: "result", requestId, value: null },
+          data: {
+            type: "result",
+            requestId,
+            value: { clientReconnected: false },
+          },
         }),
       );
     });
   }
 
   start(): void {}
+
+  requireAuthentication(): void {
+    queueMicrotask(() => {
+      this.listener?.(
+        new MessageEvent("message", {
+          data: { type: "authentication-required" },
+        }),
+      );
+    });
+  }
 
   close(): void {
     this.listener = null;
@@ -54,46 +83,231 @@ class TestSharedWorkerPort implements SharedDatabasePortLike {
   }
 }
 
-describe("shared database browser bridge", () => {
-  it("creates the shared worker with the Okou core service identity", async () => {
-    const constructorCalls: {
-      readonly options?: string | WorkerOptions;
-      readonly scriptURL: string | URL;
-    }[] = [];
+interface SharedWorkerConstructorCall {
+  readonly options?: string | WorkerOptions;
+  readonly scriptURL: string | URL;
+}
 
-    class TestSharedWorker {
-      readonly port = new TestSharedWorkerPort();
+class TestSharedWorker {
+  readonly port = new TestSharedWorkerPort();
+  private errorListener: ((event: ErrorEvent) => void) | null = null;
+  private readonly scriptURL: string;
 
-      constructor(scriptURL: string | URL, options?: string | WorkerOptions) {
-        constructorCalls.push({ scriptURL, options });
-      }
+  constructor(
+    scriptURL: string | URL,
+    options: string | WorkerOptions | undefined,
+    constructorCalls: SharedWorkerConstructorCall[],
+  ) {
+    this.scriptURL = String(scriptURL);
+    constructorCalls.push({ scriptURL, options });
+  }
 
-      addEventListener(
-        _type: "error",
-        _listener: (event: ErrorEvent) => void,
-        _options?: AddEventListenerOptions | boolean,
-      ): void {}
-    }
-
-    vi.stubGlobal("SharedWorker", TestSharedWorker);
-
-    context.store.set(setupSharedDatabaseBridge$, context.signal);
-    await context.store.set(
-      heartbeatSharedDatabase$,
-      {
-        identity: {
-          userId: "shared-worker-user",
-          orgId: "shared-worker-org",
-          token: "shared-worker-token",
-        },
+  addEventListener(
+    _type: "error",
+    listener: (event: ErrorEvent) => void,
+    options?: AddEventListenerOptions | boolean,
+  ): void {
+    this.errorListener = listener;
+    const signal = typeof options === "object" ? options.signal : undefined;
+    signal?.addEventListener(
+      "abort",
+      () => {
+        this.errorListener = null;
       },
-      context.signal,
+      { once: true },
     );
+  }
+
+  fail(): void {
+    this.errorListener?.(
+      new ErrorEvent("error", {
+        error: new Error("SharedWorker module script failed to load"),
+        filename: this.scriptURL,
+        message: "SharedWorker module script failed to load",
+      }),
+    );
+  }
+
+  requireAuthentication(): void {
+    this.port.requireAuthentication();
+  }
+}
+
+function installSharedWorkerMock(): {
+  readonly constructorCalls: SharedWorkerConstructorCall[];
+  readonly workers: TestSharedWorker[];
+} {
+  const constructorCalls: SharedWorkerConstructorCall[] = [];
+  const workers: TestSharedWorker[] = [];
+  class SharedWorkerMock extends TestSharedWorker {
+    constructor(scriptURL: string | URL, options?: string | WorkerOptions) {
+      super(scriptURL, options, constructorCalls);
+      workers.push(this);
+    }
+  }
+  vi.stubGlobal("SharedWorker", SharedWorkerMock);
+  return { constructorCalls, workers };
+}
+
+function sharedDatabaseHeartbeat(): SharedDatabaseHeartbeat {
+  return {
+    identity: {
+      userId: "shared-worker-user",
+      orgId: "shared-worker-org",
+      token: "shared-worker-token",
+    },
+  };
+}
+
+function authRecovery(replacementToken = "replacement-token"): AuthRecovery {
+  return {
+    getToken: () => {
+      return Promise.resolve("shared-worker-token");
+    },
+    forceRefreshToken: () => {
+      return Promise.resolve(replacementToken);
+    },
+  };
+}
+
+async function setupBridge(recovery = authRecovery()): Promise<void> {
+  context.store.set(setupSharedDatabaseBridge$, recovery, context.signal);
+  await context.store.set(
+    heartbeatSharedDatabase$,
+    sharedDatabaseHeartbeat(),
+    context.signal,
+  );
+}
+
+describe("shared database browser bridge", () => {
+  it("forces an auth refresh when the worker rejects its credential", async () => {
+    const { workers } = installSharedWorkerMock();
+    await setupBridge();
+
+    workers[0]!.requireAuthentication();
+
+    await vi.waitFor(() => {
+      expect(workers[0]!.port.heartbeatTokens).toStrictEqual([
+        "shared-worker-token",
+        "replacement-token",
+      ]);
+    });
+  });
+
+  it("creates the shared worker with the Okou core service identity", async () => {
+    const { constructorCalls } = installSharedWorkerMock();
+
+    await setupBridge();
 
     expect(constructorCalls).toHaveLength(1);
     expect(constructorCalls[0]?.options).toStrictEqual({
       name: "okou core service",
       type: "module",
     });
+    expect(
+      new URL(String(constructorCalls[0]?.scriptURL), window.location.href)
+        .origin,
+    ).toBe(window.location.origin);
+  });
+
+  it("recreates the shared worker when the module asset is still available", async () => {
+    const { constructorCalls, workers } = installSharedWorkerMock();
+    await setupBridge();
+    const workerUrl = String(constructorCalls[0]!.scriptURL);
+    context.mocks.http.get(workerUrl, () => {
+      return new HttpResponse("export {};", {
+        headers: { "content-type": "application/javascript" },
+      });
+    });
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    workers[0]!.fail();
+    await context.store.set(
+      heartbeatSharedDatabase$,
+      sharedDatabaseHeartbeat(),
+      context.signal,
+    );
+
+    expect(constructorCalls).toHaveLength(2);
+    expect(consoleError).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    {
+      label: "missing",
+      response: () => {
+        return new HttpResponse("Not found", { status: 404 });
+      },
+    },
+    {
+      label: "replaced by HTML",
+      response: () => {
+        return new HttpResponse("<!doctype html>", {
+          headers: { "content-type": "text/html" },
+        });
+      },
+    },
+  ])("reloads when the worker asset is $label", async ({ response }) => {
+    const reload = vi.fn<() => void>();
+    const { constructorCalls, workers } = installSharedWorkerMock();
+    await setupBridge();
+    vi.stubGlobal("location", {
+      href: window.location.href,
+      origin: window.location.origin,
+      reload,
+    });
+    const workerUrl = String(constructorCalls[0]!.scriptURL);
+    context.mocks.http.get(workerUrl, response);
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    workers[0]!.fail();
+    const heartbeat = context.store.set(
+      heartbeatSharedDatabase$,
+      sharedDatabaseHeartbeat(),
+      context.signal,
+    );
+    context.track(heartbeat);
+
+    await vi.waitFor(() => {
+      expect(reload).toHaveBeenCalledOnce();
+    });
+    expect(constructorCalls).toHaveLength(1);
+    expect(consoleError).toHaveBeenCalledOnce();
+  });
+
+  it("waits for connectivity before recreating the shared worker", async () => {
+    const { constructorCalls, workers } = installSharedWorkerMock();
+    await setupBridge();
+    const workerUrl = String(constructorCalls[0]!.scriptURL);
+    let probeRequests = 0;
+    context.mocks.http.get(workerUrl, () => {
+      probeRequests += 1;
+      return HttpResponse.error();
+    });
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    workers[0]!.fail();
+    const heartbeat = context.store.set(
+      heartbeatSharedDatabase$,
+      sharedDatabaseHeartbeat(),
+      context.signal,
+    );
+    await vi.waitFor(() => {
+      expect(probeRequests).toBe(1);
+    });
+    expect(constructorCalls).toHaveLength(1);
+
+    await Promise.resolve();
+    window.dispatchEvent(new Event("online"));
+    await heartbeat;
+
+    expect(constructorCalls).toHaveLength(2);
+    expect(consoleError).toHaveBeenCalledOnce();
   });
 });

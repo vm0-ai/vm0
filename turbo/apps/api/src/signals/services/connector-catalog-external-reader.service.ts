@@ -1,7 +1,9 @@
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import type { ConnectorCatalogSyncFailureCode } from "@okouai/api-contracts/contracts/connector-catalog-diagnostics";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/connectors";
+import { staticUrlForPublicBrand } from "@okouai/core/public-brand";
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogAuthMethodSummary,
@@ -24,7 +26,7 @@ import {
 import { and, eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
-import { singleton } from "../../lib/singleton";
+import { singleton, testOverride } from "../../lib/singleton";
 import type { ReadonlyDb } from "../external/db";
 import { onRejection, settle } from "../utils";
 import {
@@ -32,14 +34,14 @@ import {
   type ConnectorCatalogArtifact,
   type ConnectorCatalogArtifactConnector,
   type ConnectorCatalogAuthMethod,
-} from "./connector-catalog-artifacts/artifacts";
+} from "@okouai/connectors/connector-catalog/artifacts/artifacts";
 import {
   connectorCatalogArtifactFailureCode,
   decodeAttestedConnectorCatalogSnapshot,
   decodeConnectorCatalogSnapshot,
-} from "./connector-catalog-artifacts/loader";
-import { connectorCatalogIconUrl } from "./connector-catalog-artifacts/icon";
-import { deriveConnectorCatalogFirewallPermissions } from "./connector-catalog-artifacts/relationships";
+} from "@okouai/connectors/connector-catalog/artifacts/loader";
+import { isConnectorCatalogIconKey } from "@okouai/connectors/connector-catalog/artifacts/icon";
+import { deriveConnectorCatalogFirewallPermissions } from "@okouai/connectors/connector-catalog/artifacts/relationships";
 import {
   connectorCatalogCompatibilityEvaluationSchema,
   connectorCatalogExecutableCapabilityState,
@@ -63,6 +65,7 @@ import {
 import type { ConnectorCatalogConnection } from "./connector-catalog-connection";
 
 const log = logger("connector-catalog:reader");
+const CONNECTOR_CATALOG_ICON_BASE_URL = "https://static.vm0.io/";
 
 export interface ExternalCatalogIdentity {
   readonly sourceId: string;
@@ -154,10 +157,44 @@ interface ConnectorCatalogDiscoveryRead {
   readonly referenceMetadata: readonly ConnectorCatalogReferenceMetadata[];
 }
 
+type ExternalConnectorCatalogUnavailableReason =
+  | "missing_current_identity"
+  | "missing_active_snapshot_after_retry"
+  | "invalid_compatibility_evaluation"
+  | `invalid_artifact:${ConnectorCatalogSyncFailureCode}`;
+
 export class ExternalConnectorCatalogUnavailableError extends Error {
-  constructor() {
+  readonly code: `CONNECTOR_CATALOG_UNAVAILABLE:${ExternalConnectorCatalogUnavailableReason}`;
+
+  constructor(readonly reason: ExternalConnectorCatalogUnavailableReason) {
     super("Accepted external connector catalog is unavailable");
     this.name = "ExternalConnectorCatalogUnavailableError";
+    this.code = `CONNECTOR_CATALOG_UNAVAILABLE:${reason}`;
+  }
+}
+
+type ConnectorCatalogExternalReaderIdentityReadHook = () => Promise<void>;
+
+const externalReaderIdentityReadHook = testOverride<
+  ConnectorCatalogExternalReaderIdentityReadHook | undefined
+>(() => {
+  return undefined;
+});
+
+export function setConnectorCatalogExternalReaderIdentityReadHookForTest(
+  hook: ConnectorCatalogExternalReaderIdentityReadHook,
+): void {
+  externalReaderIdentityReadHook.set(hook);
+}
+
+export function clearConnectorCatalogExternalReaderIdentityReadHookForTest(): void {
+  externalReaderIdentityReadHook.clear();
+}
+
+async function runExternalReaderIdentityReadHook(): Promise<void> {
+  const hook = externalReaderIdentityReadHook.get();
+  if (hook) {
+    await hook();
   }
 }
 
@@ -194,13 +231,13 @@ function identityLogFields(identity: ExternalCatalogIdentity) {
 
 function persistedCatalogValidationAuthority(args: {
   readonly backendVersion: string | null;
-  readonly buildCommitSha: string | null;
+  readonly validationRevision: string | null;
 }): ConnectorCatalogValidationAuthority | null {
   return args.backendVersion === null
     ? null
     : {
-        backendVersion: args.backendVersion,
-        buildCommitSha: args.buildCommitSha,
+        validatorVersion: args.backendVersion,
+        buildCommitSha: args.validationRevision,
       };
 }
 
@@ -388,7 +425,7 @@ async function readCurrentCatalog(args: {
   };
   const validationAuthority = persistedCatalogValidationAuthority({
     backendVersion: row.catalogValidationBackendVersion,
-    buildCommitSha: row.catalogValidationBuildCommitSha,
+    validationRevision: row.catalogValidationBuildCommitSha,
   });
   const compatibilityEvaluationExists = row.executableCapabilityDigest !== null;
   const validationAuthorityIsCurrent =
@@ -417,7 +454,7 @@ async function readCurrentCatalog(args: {
     args.timing,
     "api_dispatch_connector_catalog_validate_compatibility",
     () => {
-      if (!compatibilityEvaluationExists) {
+      if (!validationAuthorityIsCurrent) {
         return evaluateConnectorCatalogCompatibility({
           artifact: decoded.artifact,
           capability: args.capability,
@@ -434,7 +471,9 @@ async function readCurrentCatalog(args: {
             failureCode: "invalid-compatibility-evaluation",
           },
         );
-        throw new ExternalConnectorCatalogUnavailableError();
+        throw new ExternalConnectorCatalogUnavailableError(
+          "invalid_compatibility_evaluation",
+        );
       }
       return parsed.data.filteredAuthMethods;
     },
@@ -485,7 +524,9 @@ async function loadCurrentCatalog(args: {
     ...identityLogFields(args.identity),
     failureCode,
   });
-  throw new ExternalConnectorCatalogUnavailableError();
+  throw new ExternalConnectorCatalogUnavailableError(
+    `invalid_artifact:${failureCode}`,
+  );
 }
 
 function deleteInFlightCatalog(
@@ -511,8 +552,11 @@ async function loadAcceptedConnectorCatalogSnapshotAttempt(
     ...(timing === undefined ? {} : { timing }),
   });
   if (!currentIdentity) {
-    throw new ExternalConnectorCatalogUnavailableError();
+    throw new ExternalConnectorCatalogUnavailableError(
+      "missing_current_identity",
+    );
   }
+  await runExternalReaderIdentityReadHook();
   const currentKey = identityKey(currentIdentity);
   const cache = preparedCatalogCache();
   if (cache.completed?.key === currentKey) {
@@ -572,7 +616,9 @@ export async function loadAcceptedConnectorCatalogSnapshot(
   // identity no longer has a row; retry once against the newly active identity.
   const second = await loadAcceptedConnectorCatalogSnapshotAttempt(db, timing);
   if (!second) {
-    throw new ExternalConnectorCatalogUnavailableError();
+    throw new ExternalConnectorCatalogUnavailableError(
+      "missing_active_snapshot_after_retry",
+    );
   }
   return second;
 }
@@ -628,8 +674,15 @@ function iconForCatalog(
   connector: ConnectorCatalogArtifactConnector,
   publicBrand: PublicBrand,
 ): PublicConnectorCatalogIcon {
+  const key = connector.icon.key;
+  if (!isConnectorCatalogIconKey(key)) {
+    throw new Error(`Invalid connector catalog icon key "${key}"`);
+  }
   return {
-    url: connectorCatalogIconUrl(connector.icon.key, publicBrand),
+    url: staticUrlForPublicBrand(
+      `${CONNECTOR_CATALOG_ICON_BASE_URL}${key}`,
+      publicBrand,
+    ),
     invertInDarkMode: connector.icon.invertInDarkMode,
     ...(connector.icon.scale === undefined
       ? {}
@@ -821,6 +874,7 @@ function connectionForCatalogStatus(
     return null;
   }
   return {
+    id: connector.id,
     authMethod: connector.authMethod,
     externalUsername: connector.externalUsername,
     externalEmail: connector.externalEmail,

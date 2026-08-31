@@ -11,7 +11,6 @@ import {
   cronConnectorOauthStateCleanupContract,
   cronComputerUseScreenshotCleanupContract,
   cronDrainEmailOutboxContract,
-  cronExecuteMorningBriefsContract,
   cronExecuteWorkflowAutomationsContract,
   cronMonitorChatEventQueueContract,
   cronOfficialWorkflowCatalogContract,
@@ -24,6 +23,7 @@ import {
   cronRenewGoogleCalendarWatchesContract,
   cronRenewGoogleWorkspaceEventSubscriptionsContract,
   cronReconcileBillingEntitlementsContract,
+  cronReconcileSocialKitDownloadsContract,
   cronRefreshStoragePresignedUrlsContract,
   cronSteerRunTimeBudgetContract,
   cronSyncSkillsContract,
@@ -72,10 +72,6 @@ const expectedVercelCrons = [
   },
   {
     path: cronExecuteWorkflowAutomationsContract.execute.path,
-    schedule: "* * * * *",
-  },
-  {
-    path: cronExecuteMorningBriefsContract.execute.path,
     schedule: "* * * * *",
   },
   {
@@ -128,6 +124,10 @@ const expectedVercelCrons = [
   },
   {
     path: cronProcessUsageEventsContract.process.path,
+    schedule: "* * * * *",
+  },
+  {
+    path: cronReconcileSocialKitDownloadsContract.reconcile.path,
     schedule: "* * * * *",
   },
   {

@@ -110,7 +110,7 @@ import {
   permSavingConnectorSlug$,
   setPermSavingConnectorSlug$,
 } from "../../signals/okou-page/job-detail-page.ts";
-import type { FirewallPolicies } from "@okouai/connectors/firewall-types";
+import type { FirewallPolicies } from "@okouai/connectors/firewall-contracts";
 import type {
   PlatformConnectorCatalogStatusItem,
   PlatformConnectorPermissionMetadata,

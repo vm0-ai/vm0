@@ -5,11 +5,11 @@ import type {
   TestRuntimeStateActionBody,
   TestRuntimeStateActionResponse,
 } from "@okouai/api-contracts/contracts/test-runtime-state";
-import type { ChatEventSnapshotProjection } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { onTestFinished } from "vitest";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import type { TestContext } from "../../../../__tests__/test-context";
+import type { UsagePricingResolution } from "../../../context/usage-pricing-resolution";
 import { testRuntimeStateRoutes } from "../../test-runtime-state";
 
 const RUNTIME_STATE_ROUTE = "/api/test/runtime-state";
@@ -18,10 +18,12 @@ function requestRuntimeState(
   context: TestContext,
   path: string,
   init?: RequestInit,
+  usagePricingResolution?: UsagePricingResolution,
 ): Promise<Response> {
   const app = createAppWithRoutes({
     signal: context.signal,
     routes: testRuntimeStateRoutes,
+    usagePricingResolution,
   });
   return Promise.resolve(app.request(path, init));
 }
@@ -40,6 +42,7 @@ function expectOk(response: Response, operation: string): void {
 async function postAction(
   context: TestContext,
   body: TestRuntimeStateActionBody,
+  usagePricingResolution?: UsagePricingResolution,
 ): Promise<TestRuntimeStateActionResponse> {
   const response = await requestRuntimeState(
     context,
@@ -49,9 +52,29 @@ async function postAction(
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     },
+    usagePricingResolution,
   );
   await expectOk(response, `runtime state action ${body.action}`);
   return await readJson<TestRuntimeStateActionResponse>(response);
+}
+
+export async function reconcileSocialKitDownloadsForTest(
+  context: TestContext,
+  downloadIds: readonly string[],
+  usagePricingResolution: UsagePricingResolution,
+): Promise<number> {
+  const response = await postAction(
+    context,
+    {
+      action: "reconcile-socialkit-downloads",
+      download_ids: [...downloadIds],
+    },
+    usagePricingResolution,
+  );
+  if (response.processed === undefined) {
+    throw new Error("SocialKit reconciliation fixture returned no count");
+  }
+  return response.processed;
 }
 
 interface Vm0BuiltInModelKeyFixture {
@@ -295,6 +318,8 @@ export async function readWorkflowAutomationAutonomyFixture(
   readonly autonomyBudget: number;
   readonly enabled: boolean;
   readonly lastRunId: string | null;
+  readonly officialBlueprintKey: string | null;
+  readonly officialResultEmailEnabled: boolean | null;
 } | null> {
   const response = await postAction(context, {
     action: "read-workflow-automation-autonomy-state",
@@ -311,6 +336,8 @@ export async function readWorkflowAutomationAutonomyFixture(
         autonomyBudget: state.autonomy_budget,
         enabled: state.enabled,
         lastRunId: state.last_run_id,
+        officialBlueprintKey: state.official_blueprint_key,
+        officialResultEmailEnabled: state.official_result_email_enabled,
       }
     : null;
 }
@@ -347,6 +374,198 @@ export async function readLatestWorkflowAutomationRunFixture(
   return run
     ? { runId: run.run_id, autonomyBudget: run.autonomy_budget }
     : null;
+}
+
+export async function readOfficialWorkflowRunStateFixture(
+  context: TestContext,
+  runId: string,
+): Promise<
+  NonNullable<TestRuntimeStateActionResponse["official_workflow_run_state"]>
+> {
+  const response = await postAction(context, {
+    action: "read-official-workflow-run-state",
+    run_id: runId,
+  });
+  if (!("official_workflow_run_state" in response)) {
+    throw new Error(
+      "readOfficialWorkflowRunStateFixture missing official_workflow_run_state",
+    );
+  }
+  if (!response.official_workflow_run_state) {
+    throw new Error("Official Workflow Run is unavailable");
+  }
+  return response.official_workflow_run_state;
+}
+
+export async function readAgentRunFamilyCountsFixture(
+  context: TestContext,
+  agentId: string,
+): Promise<
+  NonNullable<TestRuntimeStateActionResponse["agent_run_family_counts"]>
+> {
+  const response = await postAction(context, {
+    action: "read-agent-run-family-counts",
+    agent_id: agentId,
+  });
+  if (!("agent_run_family_counts" in response)) {
+    throw new Error(
+      "readAgentRunFamilyCountsFixture missing agent_run_family_counts",
+    );
+  }
+  if (!response.agent_run_family_counts) {
+    throw new Error("Agent Run-family count is unavailable");
+  }
+  return response.agent_run_family_counts;
+}
+
+export async function readChatEventRowsAsPreviousApiFixture(
+  context: TestContext,
+  threadId: string,
+): Promise<
+  NonNullable<TestRuntimeStateActionResponse["previous_api_chat_event_rows"]>
+> {
+  const response = await postAction(context, {
+    action: "read-chat-event-rows-as-previous-api",
+    thread_id: threadId,
+  });
+  if (!("previous_api_chat_event_rows" in response)) {
+    throw new Error(
+      "readChatEventRowsAsPreviousApiFixture missing previous_api_chat_event_rows",
+    );
+  }
+  return response.previous_api_chat_event_rows ?? [];
+}
+
+export async function corruptOfficialWorkflowRevisionPayloadFixture(
+  context: TestContext,
+  definitionName: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "corrupt-official-workflow-revision-payload",
+    definition_name: definitionName,
+  });
+}
+
+export async function setOfficialWorkflowAutomationAdmissionStateFixture(
+  context: TestContext,
+  automationId: string,
+  reconciliationStatus:
+    | "current"
+    | "reconciling"
+    | "needs_reconfiguration"
+    | "failed",
+  appliedFingerprint?: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-official-workflow-automation-admission-state",
+    automation_id: automationId,
+    reconciliation_status: reconciliationStatus,
+    ...(appliedFingerprint === undefined
+      ? {}
+      : { applied_fingerprint: appliedFingerprint }),
+  });
+}
+
+export async function retargetWorkflowAutomationFixture(
+  context: TestContext,
+  automationId: string,
+  workflowId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "retarget-workflow-automation",
+    automation_id: automationId,
+    workflow_id: workflowId,
+  });
+}
+
+export async function assertOfficialWorkflowAutomationFinalAdmissionRejectedFixture(
+  context: TestContext,
+  automationId: string,
+  officialWorkflowId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "assert-official-workflow-automation-final-admission-rejected",
+    automation_id: automationId,
+    official_workflow_id: officialWorkflowId,
+  });
+}
+
+type OfficialWorkflowRunGateKind =
+  | "observation"
+  | "final-admission"
+  | "bootstrap-requirement";
+
+type OfficialWorkflowRunGateState = NonNullable<
+  TestRuntimeStateActionResponse["official_workflow_run_gate_state"]
+>;
+
+interface OfficialWorkflowRunGateFixture {
+  read(): Promise<OfficialWorkflowRunGateState>;
+  release(): Promise<void>;
+}
+
+async function readOfficialWorkflowRunGateStateFixture(
+  context: TestContext,
+): Promise<OfficialWorkflowRunGateState | null> {
+  const response = await postAction(context, {
+    action: "read-official-workflow-run-gate-state",
+  });
+  if (!("official_workflow_run_gate_state" in response)) {
+    throw new Error(
+      "readOfficialWorkflowRunGateStateFixture missing gate state",
+    );
+  }
+  return response.official_workflow_run_gate_state ?? null;
+}
+
+export async function installOfficialWorkflowRunGateFixture(
+  context: TestContext,
+  gate: OfficialWorkflowRunGateKind,
+): Promise<OfficialWorkflowRunGateFixture> {
+  const held = postAction(context, {
+    action: "hold-official-workflow-run-gate",
+    gate,
+  }).then(
+    () => {
+      return { ok: true as const };
+    },
+    (error: unknown) => {
+      return { ok: false as const, error };
+    },
+  );
+  let released = false;
+  const release = async (): Promise<void> => {
+    if (released) {
+      return;
+    }
+    released = true;
+    await postAction(context, {
+      action: "release-official-workflow-run-gate",
+    });
+    const outcome = await held;
+    if (!outcome.ok && !context.signal.aborted) {
+      throw outcome.error;
+    }
+  };
+  onTestFinished(release);
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const state = await readOfficialWorkflowRunGateStateFixture(context);
+    if (state?.gate === gate) {
+      return {
+        async read(): Promise<OfficialWorkflowRunGateState> {
+          const current =
+            await readOfficialWorkflowRunGateStateFixture(context);
+          if (!current || current.gate !== gate) {
+            throw new Error("Official Workflow Run gate is unavailable");
+          }
+          return current;
+        },
+        release,
+      };
+    }
+  }
+  await release();
+  throw new Error("Official Workflow Run gate did not become active");
 }
 
 export async function readThreadGoalAutonomyBudgetFixture(
@@ -531,35 +750,21 @@ export async function readRunUploadedFileSources(
   return response.uploaded_file_sources ?? [];
 }
 
-export async function setChatEventSnapshotHeadVersion(
+export async function updateChatEventSnapshotHead(
   context: TestContext,
   threadId: string,
-  archiveSchemaVersion: number,
-  ...[objectKey, lastSeqId, projection]: [
+  ...[objectKey, lastSeqId, lastEventId]: [
     objectKey?: string,
     lastSeqId?: number,
-    projection?: ChatEventSnapshotProjection,
+    lastEventId?: string,
   ]
 ): Promise<void> {
   await postAction(context, {
-    action: "set-chat-event-snapshot-head-version",
+    action: "update-chat-event-snapshot-head",
     thread_id: threadId,
-    archive_schema_version: archiveSchemaVersion,
     ...(objectKey === undefined ? {} : { object_key: objectKey }),
     ...(lastSeqId === undefined ? {} : { last_seq_id: lastSeqId }),
-    ...(projection === undefined ? {} : { projection }),
-  });
-}
-
-export async function deleteChatEventSnapshotHead(
-  context: TestContext,
-  threadId: string,
-  projection: ChatEventSnapshotProjection,
-): Promise<void> {
-  await postAction(context, {
-    action: "delete-chat-event-snapshot-head",
-    thread_id: threadId,
-    projection,
+    ...(lastEventId === undefined ? {} : { last_event_id: lastEventId }),
   });
 }
 
@@ -578,35 +783,17 @@ export async function advanceChatEventSequenceAsPreviousApi(
 export async function readChatEventSnapshotHead(
   context: TestContext,
   threadId: string,
-  projection?: ChatEventSnapshotProjection,
 ): Promise<
   NonNullable<TestRuntimeStateActionResponse["chat_event_snapshot_head"]>
 > {
   const response = await postAction(context, {
     action: "read-chat-event-snapshot-head",
     thread_id: threadId,
-    ...(projection === undefined ? {} : { projection }),
   });
   if (!response.chat_event_snapshot_head) {
     throw new Error("readChatEventSnapshotHead missing snapshot head");
   }
   return response.chat_event_snapshot_head;
-}
-
-export async function readRunChatToolActivityDecision(
-  context: TestContext,
-  runId: string,
-): Promise<
-  NonNullable<TestRuntimeStateActionResponse["run_chat_tool_activity_decision"]>
-> {
-  const response = await postAction(context, {
-    action: "read-run-chat-tool-activity-decision",
-    run_id: runId,
-  });
-  if (!response.run_chat_tool_activity_decision) {
-    throw new Error("readRunChatToolActivityDecision missing run");
-  }
-  return response.run_chat_tool_activity_decision;
 }
 
 export async function insertHostedSiteAsPreviousApi(

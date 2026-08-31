@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 
 import { emailOutbox } from "@okouai/db/schema/email-outbox";
 import { emailSuppressions } from "@okouai/db/schema/email-suppression";
-import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { userCache } from "@okouai/db/schema/user-cache";
 import { users } from "@okouai/db/schema/user";
 import { command } from "ccstate";
@@ -27,6 +26,7 @@ import { webUrl } from "../../lib/web-url";
 import type { ClerkClient } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import type { Tx } from "../../lib/db-types";
+import { renderOfficialAutomationResultEmail } from "./official-automation-result-email-renderer";
 
 type Transaction = Tx;
 
@@ -61,6 +61,27 @@ function outboxDrainDelayMs(): number {
 const OUTBOX_TTL_MS = 15 * 60 * 1000;
 export const CREDIT_LOW_BALANCE_EMAIL_SUBJECT =
   "Your credit balance is running low";
+export const OFFICIAL_AUTOMATION_RESULT_EMAIL_SUBJECT_MAX_CHARACTERS = 180;
+export const OFFICIAL_AUTOMATION_RESULT_EMAIL_TITLE_MAX_CHARACTERS = 160;
+export const OFFICIAL_AUTOMATION_RESULT_EMAIL_TEXT_MAX_CHARACTERS = 8000;
+export const OFFICIAL_AUTOMATION_RESULT_EMAIL_TEXT_TRUNCATION_MARKER =
+  "\n\n[Result truncated]";
+
+function unicodeCharacterCount(value: string): number {
+  return Array.from(value).length;
+}
+
+function boundedUnicodeString(maxCharacters: number) {
+  return z
+    .string()
+    .min(1)
+    .refine(
+      (value) => {
+        return unicodeCharacterCount(value) <= maxCharacters;
+      },
+      { message: `Must contain at most ${maxCharacters} Unicode characters` },
+    );
+}
 
 const emailTemplateSchema = z.discriminatedUnion("template", [
   z.object({
@@ -72,6 +93,9 @@ const emailTemplateSchema = z.discriminatedUnion("template", [
       unsubscribeUrl: z.string().optional(),
     }),
   }),
+  // Phase-A drain fallback for Morning Brief outbox rows persisted before the
+  // cutover. Phase B removes this template and renderer after #30264's released
+  // zero-traffic gate also proves no pending or retryable legacy email remains.
   z.object({
     template: z.literal("morning-brief"),
     props: z.object({
@@ -104,6 +128,23 @@ const emailTemplateSchema = z.discriminatedUnion("template", [
       unsubscribeUrl: z.string().optional(),
     }),
   }),
+  z
+    .object({
+      template: z.literal("official-automation-result"),
+      props: z
+        .object({
+          title: boundedUnicodeString(
+            OFFICIAL_AUTOMATION_RESULT_EMAIL_TITLE_MAX_CHARACTERS,
+          ),
+          resultText: boundedUnicodeString(
+            OFFICIAL_AUTOMATION_RESULT_EMAIL_TEXT_MAX_CHARACTERS,
+          ),
+          runUrl: z.url().max(1024),
+          manageUrl: z.url().max(1024),
+        })
+        .strict(),
+    })
+    .strict(),
 ]);
 
 export type EmailTemplate = z.output<typeof emailTemplateSchema>;
@@ -287,10 +328,15 @@ function renderMorningBriefTemplate(
   )}" style="${MORNING_BRIEF_LINK_STYLE}">Turn off Morning Brief</a></div></td></tr></table><div style="margin-top:16px;color:#737373;font-size:12px;line-height:1.45">From your &ldquo;Morning Brief&rdquo; routine</div></td></tr></table></td></tr></table></body></html>`;
 }
 
+interface RenderedEmailTemplate {
+  readonly html: string;
+  readonly text?: string;
+}
+
 function renderTemplate(
   template: EmailTemplate,
   publicBrand: PublicBrand,
-): string {
+): RenderedEmailTemplate {
   switch (template.template) {
     case "data-export-ready": {
       const unsubscribe = template.props.unsubscribeUrl
@@ -298,14 +344,16 @@ function renderTemplate(
             template.props.unsubscribeUrl,
           )}">Unsubscribe</a></p>`
         : "";
-      return `<main><h1>Your data export is ready</h1><p>${template.props.artifactCount} artifacts. Expires ${escapeHtml(
-        template.props.expiresAt,
-      )}.</p><p><a href="${escapeHtml(
-        template.props.downloadUrl,
-      )}">Download export</a></p>${unsubscribe}</main>`;
+      return {
+        html: `<main><h1>Your data export is ready</h1><p>${template.props.artifactCount} artifacts. Expires ${escapeHtml(
+          template.props.expiresAt,
+        )}.</p><p><a href="${escapeHtml(
+          template.props.downloadUrl,
+        )}">Download export</a></p>${unsubscribe}</main>`,
+      };
     }
     case "morning-brief": {
-      return renderMorningBriefTemplate(template, publicBrand);
+      return { html: renderMorningBriefTemplate(template, publicBrand) };
     }
     case "credit-low-balance": {
       const remainingCredits =
@@ -317,15 +365,31 @@ function renderTemplate(
             template.props.unsubscribeUrl,
           )}">Unsubscribe</a></p>`
         : "";
-      return `<main><h1>${CREDIT_LOW_BALANCE_EMAIL_SUBJECT}</h1><p>${escapeHtml(
-        template.props.orgName,
-      )} has ${escapeHtml(
-        remainingCredits,
-      )} credits remaining.</p><p>This alert is sent when an org reaches ${escapeHtml(
-        thresholdCredits,
-      )} credits or less.</p><p><a href="${escapeHtml(
-        template.props.billingUrl,
-      )}">Manage billing</a></p>${unsubscribe}</main>`;
+      return {
+        html: `<main><h1>${CREDIT_LOW_BALANCE_EMAIL_SUBJECT}</h1><p>${escapeHtml(
+          template.props.orgName,
+        )} has ${escapeHtml(
+          remainingCredits,
+        )} credits remaining.</p><p>This alert is sent when an org reaches ${escapeHtml(
+          thresholdCredits,
+        )} credits or less.</p><p><a href="${escapeHtml(
+          template.props.billingUrl,
+        )}">Manage billing</a></p>${unsubscribe}</main>`,
+      };
+    }
+    case "official-automation-result": {
+      const rendered = renderOfficialAutomationResultEmail(
+        template.props,
+        publicBrand,
+      );
+      if (rendered.fallback) {
+        log.warn("Official Automation result email used fallback renderer", {
+          reason: rendered.fallback.reason,
+          attemptedHtmlBytes: rendered.fallback.attemptedHtmlBytes,
+          fallbackHtmlBytes: rendered.fallback.fallbackHtmlBytes,
+        });
+      }
+      return { html: rendered.html, text: rendered.text };
     }
   }
 }
@@ -344,11 +408,12 @@ async function sendEmailDirect(options: {
   | { readonly ok: false; readonly error: string }
 > {
   const resend = getResendClient();
+  const rendered = renderTemplate(options.template, options.publicBrand);
   const { data, error } = await resend.emails.send({
     from: options.from,
     to: typeof options.to === "string" ? options.to : [...options.to],
     subject: options.subject,
-    html: renderTemplate(options.template, options.publicBrand),
+    ...rendered,
     cc:
       options.cc === undefined
         ? undefined
@@ -733,18 +798,6 @@ export async function getUserIdByEmail(
       },
     });
   return user.id;
-}
-
-export async function resolveDefaultAgent(
-  db: Db,
-  orgId: string,
-): Promise<string | null> {
-  const [row] = await db
-    .select({ defaultAgentId: orgMetadata.defaultAgentId })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
-  return row?.defaultAgentId ?? null;
 }
 
 export async function unsubscribeUser(db: Db, userId: string): Promise<void> {

@@ -261,12 +261,13 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
         assert!(call.cmd.contains(&metadata.history_size_bytes.to_string()));
         assert_eq!(
             call.env_keys,
-            vec![guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV]
+            vec![guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV]
         );
         assert!(
-            !call.env_keys.iter().any(|key| {
-                key == guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV
-            })
+            !call
+                .env_keys
+                .iter()
+                .any(|key| { key == "VM0_GUEST_RUNTIME_DIR" })
         );
         assert!(!call.sudo);
         assert!(call.stdin_bytes.is_none());

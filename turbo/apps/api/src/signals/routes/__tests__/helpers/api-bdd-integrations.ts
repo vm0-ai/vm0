@@ -920,8 +920,8 @@ export function createBddIntegrationApi(context: TestContext) {
       mockEnv("SLACK_OAUTH_CLIENT_ID", "slack-bdd-client-id");
       mockOptionalEnv("SLACK_OAUTH_CLIENT_SECRET", "slack-bdd-client-secret");
       mockEnv("APP_URL", "https://app.vm0.test");
-      mockEnv("VM0_WEB_URL", "https://www.vm0.test");
-      mockEnv("VM0_API_BACKEND_URL", SLACK_APP_INTERNAL_API_URL);
+      mockEnv("OKOU_WEB_URL", "https://www.vm0.test");
+      mockEnv("OKOU_API_BACKEND_URL", SLACK_APP_INTERNAL_API_URL);
       context.mocks.s3.send.mockResolvedValue({ ContentLength: 1024 });
       context.mocks.slack.assistant.threads.setStatus.mockResolvedValue({
         ok: true,

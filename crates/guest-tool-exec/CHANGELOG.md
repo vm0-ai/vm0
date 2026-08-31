@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.1.26](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.25...guest-tool-exec-v0.1.26) (2026-08-30)
+
+## [0.1.25](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.24...guest-tool-exec-v0.1.25) (2026-08-30)
+
+## [0.1.24](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.23...guest-tool-exec-v0.1.24) (2026-08-30)
+
+
+### Refactoring
+
+* **guest:** retire legacy tool cgroup reader ([#30278](https://github.com/vm0-ai/vm0/issues/30278)) ([416b413](https://github.com/vm0-ai/vm0/commit/416b41325cd6a19c62e4f006b7ef7a4af2aca4cb)), closes [#30276](https://github.com/vm0-ai/vm0/issues/30276) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+
+## [0.1.23](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.22...guest-tool-exec-v0.1.23) (2026-08-29)
+
+## [0.1.22](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.21...guest-tool-exec-v0.1.22) (2026-08-28)
+
+## [0.1.21](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.20...guest-tool-exec-v0.1.21) (2026-08-28)
+
+## [0.1.20](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.19...guest-tool-exec-v0.1.20) (2026-08-28)
+
+## [0.1.19](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.18...guest-tool-exec-v0.1.19) (2026-08-28)
+
+## [0.1.18](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.17...guest-tool-exec-v0.1.18) (2026-08-28)
+
+## [0.1.17](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.16...guest-tool-exec-v0.1.17) (2026-08-28)
+
+## [0.1.16](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.15...guest-tool-exec-v0.1.16) (2026-08-28)
+
+## [0.1.15](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.14...guest-tool-exec-v0.1.15) (2026-08-27)
+
+## [0.1.14](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.13...guest-tool-exec-v0.1.14) (2026-08-27)
+
+## [0.1.13](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.12...guest-tool-exec-v0.1.13) (2026-08-27)
+
 ## [0.1.12](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.11...guest-tool-exec-v0.1.12) (2026-08-26)
 
 ## [0.1.11](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.10...guest-tool-exec-v0.1.11) (2026-08-26)

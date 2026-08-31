@@ -4,6 +4,7 @@
 mod common;
 
 use guest_agent::masker::SecretMasker;
+use guest_contracts::diagnostics::{AgentFramework, FailureDetailSource};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -68,13 +69,19 @@ fi
         common::clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var(guest_contracts::env::CLI_AGENT_TYPE_ENV, "pi");
         std::env::set_var(guest_contracts::env::RUN_ID_ENV, run_id);
-        std::env::set_var(guest_contracts::env::API_URL_ENV, &server.base_url);
-        std::env::set_var(guest_contracts::env::API_TOKEN_ENV, "test-token");
         std::env::set_var(
-            guest_contracts::env::SANDBOX_ID_ENV,
+            guest_contracts::env::CANONICAL_API_URL_ENV,
+            &server.base_url,
+        );
+        std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
             "00000000-0000-4000-8000-000000000abc",
         );
-        std::env::set_var(guest_contracts::env::SANDBOX_REUSE_RESULT_ENV, "reused");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+            "reused",
+        );
         std::env::set_var("HOME", tmp.path());
         let mut paths = vec![bin_dir];
         paths.extend(std::env::split_paths(base_path));
@@ -123,8 +130,30 @@ fi
     std::env::set_current_dir(original_directory)?;
     assert_eq!(result.exit_code, 1);
     assert_eq!(
-        result.claude_result.map(|summary| summary.status),
-        Some(guest_agent::cli::ClaudeResultStatus::Error)
+        result.jsonl_result.map(|summary| summary.status),
+        Some(guest_agent::cli::JsonlResultStatus::Error)
+    );
+    let terminal_failure = guest_agent::failure_diagnostics::cli_nonzero_failure_for_config(
+        &runtime.config,
+        None,
+        &result,
+    );
+    assert_eq!(terminal_failure.diagnostic.framework, AgentFramework::Pi);
+    assert_eq!(
+        terminal_failure.diagnostic.failure_detail_source,
+        Some(FailureDetailSource::PiResult)
+    );
+    assert_eq!(terminal_failure.diagnostic.claude_num_turns, None);
+    assert_eq!(terminal_failure.diagnostic.failure_reason, None);
+
+    let system_log = std::fs::read_to_string(runtime.paths.system_log_file())?;
+    assert!(
+        system_log.contains("Pi JSONL failure result"),
+        "system log should attribute the result failure to Pi: {system_log}"
+    );
+    assert!(
+        !system_log.contains("Claude JSONL failure result"),
+        "system log should not attribute a Pi result failure to Claude: {system_log}"
     );
 
     let mut delivered_events = Vec::new();
@@ -170,10 +199,10 @@ async fn guest_preserves_pi_error_and_aborted_settlement_results()
             "responseId": "response-error",
             "usage": {},
             "stopReason": "error",
-            "errorMessage": "provider failed",
+            "errorMessage": "API Error: Overloaded",
             "timestamp": 1,
         }),
-        "provider failed",
+        "API Error: Overloaded",
         &base_path,
         &original_directory,
     )

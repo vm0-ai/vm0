@@ -29,10 +29,6 @@
       "schedule": "* * * * *"
     },
     {
-      "path": "/api/cron/execute-morning-briefs",
-      "schedule": "* * * * *"
-    },
-    {
       "path": "/api/cron/renew-gmail-watches",
       "schedule": "0 */12 * * *"
     },
@@ -82,6 +78,10 @@
     },
     {
       "path": "/api/cron/process-usage-events",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-socialkit-downloads",
       "schedule": "* * * * *"
     },
     {

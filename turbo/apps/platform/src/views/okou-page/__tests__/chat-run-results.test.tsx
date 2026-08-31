@@ -4,12 +4,13 @@ import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
-import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import { fillComposer, mockChatLifecycle } from "./chat-test-helpers.ts";
 import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
   billingStatus,
   buildModelPolicy,
   buildProvider,
+  expectComposerModel,
 } from "./chat-composer-test-helpers.ts";
 import {
   context,
@@ -708,9 +709,14 @@ describe("chat lifecycle", () => {
         }),
       ).toBeTruthy();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
     });
 
-    click(screen.getByText("Resolved server queue"));
+    click(
+      within(screen.getByTestId("chat-list-column")).getByText(
+        "Resolved server queue",
+      ),
+    );
 
     await waitFor(() => {
       expect(
@@ -722,6 +728,7 @@ describe("chat lifecycle", () => {
         }),
       ).toBeFalsy();
       expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
     });
   });
 
@@ -2151,6 +2158,167 @@ describe("chat lifecycle", () => {
         parts: [{ type: "text", text: "try again" }],
       });
     });
+  });
+
+  it("offers switch-only recovery when a ChatGPT account rejects the selected model", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000794";
+    const error =
+      '{"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The \'gpt-5.6-sol\' model is not supported when using Codex with a ChatGPT account."}}';
+    let updatedModel: string | undefined;
+    let sentPrompt: string | undefined;
+    let sentUserMessage: unknown;
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000979",
+        model: "gpt-5.6-sol",
+        modelLabel: "GPT 5.6 Sol",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000980",
+        model: "gpt-5.6-luna",
+        modelLabel: "GPT 5.6 Luna",
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([
+      buildProvider({
+        id: "00000000-0000-4000-a000-000000000981",
+        type: "codex-oauth-token",
+        framework: "codex",
+        secretName: null,
+        authMethod: "auth_json",
+        secretNames: ["CODEX_AUTH_JSON"],
+        planType: "plus",
+      }),
+    ]);
+    mockChatLifecycle(context, {
+      threadId,
+      selectedModel: "gpt-5.6-sol",
+      chatEvents: [
+        {
+          id: "unsupported-model-user",
+          role: "user",
+          content: "Continue",
+          runId: "unsupported-model-run",
+          createdAt: "2026-07-30T09:00:00Z",
+        },
+        {
+          id: "unsupported-model-failure",
+          role: "assistant",
+          content: null,
+          error,
+          runId: "unsupported-model-run",
+          runLifecycleEvent: "failed",
+          createdAt: "2026-07-30T09:00:01Z",
+        },
+      ],
+      onModelSelectionUpdate: (body) => {
+        updatedModel = body.modelSelection?.selectedModel;
+      },
+      onSendRequest: (body) => {
+        sentPrompt = body.prompt;
+        sentUserMessage = body.userMessage;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ChatErrorRecovery]: false },
+      path: `/chats/${threadId}`,
+    });
+
+    const card = await screen.findByTestId("assistant-error-recovery");
+    expect(
+      within(card).getByText("Selected model isn't available"),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByText(
+        "This model isn't supported by the connected ChatGPT account. Switch to another model to continue.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(card).queryByText(error)).not.toBeInTheDocument();
+    expect(within(card).queryByText("Try again")).not.toBeInTheDocument();
+    expect(
+      within(card).queryByText("Reset and try again"),
+    ).not.toBeInTheDocument();
+    expect(sentPrompt).toBeUndefined();
+
+    click(within(card).getByRole("combobox", { name: "Switch model" }));
+    await expect(
+      screen.findByRole("option", { name: /GPT 5\.6 Luna/u }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: /GPT 5\.6 Sol/u }),
+    ).not.toBeInTheDocument();
+
+    click(screen.getByRole("option", { name: /GPT 5\.6 Luna/u }));
+    await waitFor(() => {
+      expect(updatedModel).toBe("gpt-5.6-luna");
+    });
+    await expectComposerModel("GPT 5.6 Luna");
+    expect(sentPrompt).toBeUndefined();
+
+    const composer = await screen.findByRole("textbox", { name: "Message" });
+    await fillComposer(composer, "Continue with another model");
+    click(
+      await waitFor(() => {
+        const sendButton = buttonByLabel("Send");
+        expect(sendButton).toBeEnabled();
+        return sendButton;
+      }),
+    );
+    await waitFor(() => {
+      expect(sentPrompt).toBe("Continue with another model");
+      expect(sentUserMessage).toMatchObject({
+        version: 1,
+        parts: expect.arrayContaining([
+          { type: "model", selectedModel: "gpt-5.6-luna" },
+        ]),
+      });
+    });
+  });
+
+  it("does not show model recovery for unsupported-model text without the provider envelope", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000795";
+    const error =
+      "The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account.";
+    mockChatLifecycle(context, {
+      threadId,
+      selectedModel: "gpt-5.6-sol",
+      chatEvents: [
+        {
+          id: "unsupported-model-near-miss-user",
+          role: "user",
+          content: "Continue",
+          runId: "unsupported-model-near-miss-run",
+          createdAt: "2026-07-30T09:00:00Z",
+        },
+        {
+          id: "unsupported-model-near-miss-failure",
+          role: "assistant",
+          content: null,
+          error,
+          runId: "unsupported-model-near-miss-run",
+          runLifecycleEvent: "failed",
+          createdAt: "2026-07-30T09:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ChatErrorRecovery]: false },
+      path: `/chats/${threadId}`,
+    });
+
+    await expect(screen.findByText(error)).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("assistant-error-recovery"),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps the provider error unchanged when recovery is disabled", async () => {

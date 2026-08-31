@@ -260,7 +260,6 @@ describe("computer-use command visibility", () => {
 
   it("should prefer the trimmed canonical output directory", () => {
     vi.stubEnv("OKOU_COMPUTER_OUTPUT_DIR", `  ${testOutputDir}  `);
-    vi.stubEnv("VM0_COMPUTER_OUTPUT_DIR", path.join(testOutputDir, "legacy"));
 
     expect(computerUseOutputDir()).toBe(testOutputDir);
   });
@@ -269,26 +268,18 @@ describe("computer-use command visibility", () => {
     ["unset", undefined],
     ["blank", " \t "],
   ])(
-    "should use the trimmed legacy output directory when the canonical variable is %s",
+    "should default computer-use artifacts to the Okou temp directory when the canonical variable is %s",
     (_case, canonical) => {
       vi.stubEnv("OKOU_COMPUTER_OUTPUT_DIR", canonical);
-      vi.stubEnv("VM0_COMPUTER_OUTPUT_DIR", `  ${testOutputDir}  `);
 
-      expect(computerUseOutputDir()).toBe(testOutputDir);
+      expect(computerUseOutputDir()).toBe(
+        path.join(tmpdir(), "okou", "computer-use"),
+      );
     },
   );
 
-  it("should default computer-use artifacts to the Okou temp directory", () => {
-    vi.stubEnv("OKOU_COMPUTER_OUTPUT_DIR", undefined);
-    vi.stubEnv("VM0_COMPUTER_OUTPUT_DIR", undefined);
-
-    expect(computerUseOutputDir()).toBe(
-      path.join(tmpdir(), "okou", "computer-use"),
-    );
-  });
-
   it("should guide missing computer-use capability errors to delegated authorization", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "run-token-without-computer-use");
 
     server.use(
@@ -328,7 +319,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should poll pending command results every 500ms", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
 
     let pollCount = 0;
@@ -428,7 +419,6 @@ describe("computer-use command visibility", () => {
   it("should prefer the canonical backend URL without adding a trailing slash", async () => {
     vi.stubEnv("OKOU_TOKEN", "test-token");
     vi.stubEnv("OKOU_API_BACKEND_URL", "canonical.example.test/");
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://legacy.example.test");
 
     server.use(
       http.post(
@@ -532,7 +522,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should print screenshot and app state file paths for get-app-state", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
 
     const screenshotBytes = Buffer.from("test-png-data");
@@ -603,7 +593,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should send click snapshot coordinates and mouse options", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
 
     server.use(
@@ -680,7 +670,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should send click element indexes", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
 
     const screenshotBytes = Buffer.from("test-png-data");
@@ -764,7 +754,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should send press-key snapshot id and key", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
 
     server.use(
@@ -826,7 +816,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should send type-text snapshot id and text", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
 
     server.use(
@@ -885,7 +875,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should call an mcp plugin tool with json arguments", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
 
     let createBody: unknown;
@@ -950,7 +940,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should list a server's mcp tools via the reserved tools/list call", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
 
     let createBody: unknown;
@@ -1011,7 +1001,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should list mcp servers reported by linked hosts", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
 
     server.use(
@@ -1052,7 +1042,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should guide empty mcp setup to Okou Desktop", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
 
     server.use(
@@ -1077,7 +1067,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should download pointer-backed screenshots through the API proxy", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
 
     const screenshotBytes = Buffer.from("proxy-png-bytes");
@@ -1143,7 +1133,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should mark expired pointer screenshots in command output", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
 
     server.use(

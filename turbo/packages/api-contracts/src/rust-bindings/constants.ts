@@ -16,6 +16,7 @@ import {
 } from "../contracts/client-headers";
 import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
+  AGENT_EXECUTION_TIMEOUT_SECONDS,
   BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION,
   BUILTIN_FIREWALL_CATALOG_MAX_BYTES,
   CANONICAL_CLAUDE_CONFIG_DIR,
@@ -293,6 +294,15 @@ export const rustConstantBindings = [
   },
   {
     rustModulePath: ["runners"],
+    rustConstName: "AGENT_EXECUTION_TIMEOUT_SECONDS",
+    value: rustU64(AGENT_EXECUTION_TIMEOUT_SECONDS),
+    rustDoc: [
+      "Maximum execution budget for one agent run, in seconds.",
+      "The runner enforces this deadline and the API includes it in the agent-facing system prompt.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
     rustConstName: "BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION",
     value: rustU32(BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION),
     rustDoc: [
@@ -306,7 +316,7 @@ export const rustConstantBindings = [
     value: rustU64(BUILTIN_FIREWALL_CATALOG_MAX_BYTES),
     rustDoc: [
       "Maximum builtin firewall catalog response and cache size accepted by runners.",
-      "This is generated from the TypeScript connector catalog raw-byte contract so source ingestion and runner delivery stay aligned.",
+      "This Runner wire and cache boundary is independent of the larger full connector catalog source-ingestion limit.",
     ],
   },
   {

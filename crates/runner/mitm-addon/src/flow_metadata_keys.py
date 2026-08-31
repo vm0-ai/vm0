@@ -40,6 +40,11 @@ Request context
   HTTP/1.1 request is a confirmed WebSocket upgrade handshake. Read by
   response streaming so only matching 101 responses defer model-provider usage
   release until ``websocket_end()``.
+- ``RESPONSE_ENCODING_NEGOTIATION``: fixed ``str`` outcome written when request
+  handling normalizes ``Accept-Encoding`` for response-body usage inspection.
+  Read only by the fail-closed response-encoding diagnostic, restored with an
+  abandoned header-phase request probe, preserved across firewall-auth
+  revalidation, and removed by terminal flow cleanup.
 
 Timing context
 --------------
@@ -210,6 +215,7 @@ SUPPRESS_REQUEST_BODY_CAPTURE: Final = "suppress_request_body_capture"
 CLI_AGENT_TYPE: Final = "cli_agent_type"
 BROWSER_USER_AGENT: Final = "browser_user_agent"
 WEBSOCKET_UPGRADE_REQUEST: Final = "websocket_upgrade_request"
+RESPONSE_ENCODING_NEGOTIATION: Final = "response_encoding_negotiation"
 
 # Timing metadata
 HTTP_REQUEST_START_MONOTONIC: Final = "http_request_start_monotonic"

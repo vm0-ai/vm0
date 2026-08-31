@@ -441,7 +441,6 @@
       "ariaLabel": "サイドバー",
       "chat": "チャット",
       "collapse": "サイドバーを折りたたむ",
-      "expand": "サイドバーを展開する",
       "hideChatList": "チャットリストを非表示",
       "manage": "管理",
       "mobile": {
@@ -515,7 +514,6 @@
         "arrow": "矢印",
         "box": "矩形",
         "pen": "手描き",
-        "redact": "塗りつぶし",
         "text": "テキスト"
       },
       "undo": "元に戻す"
@@ -1075,6 +1073,7 @@
         "secondFactorDescription": "このサインインには、このページでサポートされていない追加の確認手順が必要です。別のサインイン方法を試すには、最初からやり直してください。",
         "secondFactorTitle": "追加の確認が必要です",
         "selectOrganization": "{{organizationName}} で続行",
+        "signedInAs": "{{identifier}} としてサインイン中",
         "unsupportedDescription": "このページでサポートされていない認証手順がアカウントから返されました。別のサインイン方法を試すには、最初からやり直してください。",
         "unsupportedTitle": "サインイン手順を利用できません"
       },
@@ -1083,7 +1082,6 @@
         "google": "Google"
       },
       "signIn": {
-        "action": "現在のサインインを使用",
         "addAccount": "アカウントを追加",
         "appleMethod": "Appleで続ける",
         "back": "戻る",
@@ -1113,6 +1111,7 @@
         "hidePassword": "パスワードを非表示",
         "identifierLabel": "メールアドレスまたはユーザー名",
         "identifierPlaceholder": "メールアドレスまたはユーザー名を入力してください",
+        "lastUsed": "最後に使用したもの",
         "methodsHelpPrompt": "これらの方法を利用できませんか？",
         "newPasswordLabel": "新しいパスワード",
         "newPasswordSubtitle": "セキュリティ上の理由から、パスワードのリセットが必要です。",
@@ -1150,7 +1149,6 @@
         "verify": "確認する"
       },
       "signUp": {
-        "action": "現在のサインアップを使用",
         "alreadyHaveAccount": "アカウントをお持ちですか？",
         "appleMethod": "Appleで続ける",
         "back": "戻る",
@@ -1894,18 +1892,17 @@
       "agentSuggestions": "エージェント",
       "configureModel": "モデルの構成",
       "createWorkflow": "ワークフローの作成",
+      "imageModelForThisChat": "このチャットの画像モデル",
       "message": "メッセージ",
+      "modelForThisChat": "このチャットのモデル",
       "placeholder": "ワークフローの自動化、タスクの管理を依頼してください...",
       "selectedModelUnavailable": "選択されたモデルは使用できません。送信する前に設定してください。",
       "selectedModelUnavailableToast": "選択したモデルは利用できません",
       "selectModel": "モデルを選択してください",
-      "setAsDefault": "デフォルトに設定",
-      "temporaryFastModeDisabledNotice": "この実行では一時的に高速モードが無効です",
-      "temporaryFastModeEnabledNotice": "この実行では一時的に高速モードが有効です",
-      "temporaryImageModelNotice": "画像モデルを一時的に {{model}} に切り替えました",
-      "temporaryModelNotice": "一時的に {{model}} に切り替えました",
-      "temporaryVideoModelNotice": "動画モデルを一時的に {{model}} に切り替えました",
+      "temporarilySwitchTo": "一時的な切り替え先",
       "threadSuggestions": "チャットスレッド",
+      "useForFutureChats": "今後のチャットでも使用",
+      "videoModelForThisChat": "このチャットの動画モデル",
       "visualAttachmentsUnsupported": "{{modelName}} は画像またはビデオを認識できません。ビジョン対応モデルに切り替えて取り付けてください。",
       "workflows": {
         "empty": "一致するワークフローがありません",
@@ -1974,6 +1971,8 @@
         "resetsAt": "{{time}} にリセット",
         "selectModel": "モデルを切り替える",
         "tryAgain": "もう一度試す",
+        "unavailableDescription": "このモデルは接続中の ChatGPT アカウントではサポートされていません。続行するには別のモデルに切り替えてください。",
+        "unavailableTitle": "選択したモデルは利用できません",
         "usageDescription": "使用制限がリセットされた後に続行するか、今すぐ別のモデルに切り替えられます。",
         "usageTitle": "{{framework}} の使用制限に達しました"
       },
@@ -2004,6 +2003,100 @@
       "sent": "転送しました",
       "threads": "チャット",
       "title": "転送先"
+    },
+    "introVideo": {
+      "avatar": {
+        "heading": "アバターを選択",
+        "help": "プレゼンターを選ぶか、アバターなしで続行します",
+        "none": "アバターなし",
+        "visualBalanceAvatarLed": "アバター中心 — ナレーターをほとんどの時間画面に表示",
+        "visualBalanceBalanced": "バランス型 — 両方を同じくらい表示",
+        "visualBalanceBRollLed": "映像素材中心 — スライドやビジュアルを重視",
+        "visualBalanceHeading": "映像のバランスをどうしますか？"
+      },
+      "cardDescription": "ファイルや画面録画を完成した動画に変換",
+      "description": "素材を追加し、必要に応じてアバターと音声を選んで、チャットスレッドで動画を作成します。",
+      "errors": {
+        "recordingEmpty": "録画が空でした。もう一度お試しください。",
+        "recordingFailed": "画面録画を開始できませんでした。最新の Chrome でもう一度お試しください。",
+        "recordingPermission": "共有対象が選択されませんでした。準備ができたらタブ、ウィンドウ、または画面を選択してください。",
+        "recordingShareEnded": "録画開始前に画面共有が終了しました。",
+        "recordingUnsupported": "このブラウザは画面録画に対応していません。",
+        "sendFailed": "チャットスレッドを作成できませんでした。素材はローカルに保存され、バックアップとしてダウンロードされました。",
+        "uploadFailed": "素材をアップロードできませんでした。ローカルに保存され、バックアップとしてダウンロードされました。"
+      },
+      "footer": {
+        "back": "戻る",
+        "createInChat": "チャットで作成",
+        "download": "素材をダウンロード",
+        "next": "次へ",
+        "startRecording": "画面を選んで開始",
+        "stopRecording": "録画を停止"
+      },
+      "recording": {
+        "chooseSurface": "タブ、ウィンドウ、または画面を選択",
+        "countdown": "カウントダウン終了後に録画を開始します",
+        "description": "Chrome が共有対象を確認します。3 秒のカウントダウンが終わるまで録画は始まりません。",
+        "heading": "画面を録画",
+        "localNote": "Chrome の共有バーまたはこの画面から停止できます。チャットスレッドが作成されるまで録画はローカルに保持されます。",
+        "microphone": "マイク",
+        "microphoneHelp": "操作を見せながらナレーションを追加",
+        "recordingLocally": "ローカルで録画中",
+        "systemAudio": "システム音声",
+        "systemAudioHelp": "利用できる音声は Chrome とシステムによって異なります"
+      },
+      "review": {
+        "avatar": "アバター",
+        "heading": "イントロビデオを確認",
+        "help": "新しいチャットスレッドに送る設定を確認してください",
+        "instructions": "編集指示",
+        "source": "素材",
+        "voice": "音声"
+      },
+      "source": {
+        "chatDescription": "今すぐスレッドを開き、Zero と動画を作り上げます",
+        "chatDetail": "素材、アバター、音声は後からチャットで追加できます",
+        "chatTitle": "チャットから開始",
+        "documentDescription": "コンテンツをナレーション付きイントロビデオに変換",
+        "documentFormats": "PPTX、PPT、PDF、DOC、DOCX",
+        "documentTitle": "スライドまたは文書をアップロード",
+        "dropDescription": "スライド、文書、または録画",
+        "dropTitle": "素材をここにドロップ",
+        "heading": "どのように始めますか？",
+        "help": "手元の素材を追加するか、画面を録画するか、作りたい動画を言葉で説明してください",
+        "recordDescription": "タブ、ウィンドウ、または画面全体を選択",
+        "recordDetail": "3 秒のカウントダウン後に開始",
+        "recordTitle": "画面を録画",
+        "videoDescription": "AI がテンポ、フレーミング、ナレーションを整えます",
+        "videoFormats": "MP4、MOV、WEBM",
+        "videoTitle": "録画をアップロード"
+      },
+      "sourceReview": {
+        "format": "形式",
+        "heading": "素材の準備ができました",
+        "help": "続行する前にファイルを確認してください",
+        "inBrowser": "このブラウザ内",
+        "inTab": "このタブを閉じるまで",
+        "replace": "素材を置き換える",
+        "saved": "保存先",
+        "source": "素材"
+      },
+      "steps": {
+        "avatar": "アバター",
+        "label": "イントロビデオの手順",
+        "review": "確認",
+        "source": "素材",
+        "voice": "音声"
+      },
+      "title": "イントロビデオを作成",
+      "voice": {
+        "heading": "音声を選択",
+        "help": "続行する前にサンプルを再生できます",
+        "none": "ナレーションなし",
+        "noneDescription": "ナレーションを使わず字幕中心の動画を作成",
+        "original": "元の音声",
+        "originalDescription": "アップロードした動画または録画の音声を維持"
+      }
     },
     "mail": {
       "bcc": "BCC",
@@ -2101,6 +2194,7 @@
       "loadingGoal": "目標を読み込んでいます...",
       "message_one": "{{count}} メッセージ",
       "message_other": "{{count}} メッセージ",
+      "morningBrief": "モーニングブリーフ",
       "openGoalDetails": "目標の詳細を開く",
       "pendingAutomationEvent": "保留中のオートメーションイベント",
       "queuedMessage": "キューに入れられたメッセージ",
@@ -2310,48 +2404,6 @@
       "copied": "コピーされました",
       "deleted": "チャットが削除されました"
     },
-    "toolActivity": {
-      "categories": {
-        "changes": {
-          "pending": {
-            "plural": "複数のファイルを変更中",
-            "singular": "ファイルを変更中"
-          },
-          "terminal": {
-            "plural": "複数のファイルを変更",
-            "singular": "ファイルを変更"
-          }
-        },
-        "read": {
-          "pending": {
-            "plural": "複数のファイルを読み取り中",
-            "singular": "ファイルを読み取り中"
-          },
-          "terminal": {
-            "plural": "複数のファイルを読み取り",
-            "singular": "ファイルを読み取り"
-          }
-        },
-        "run": {
-          "pending": {
-            "plural": "複数のコマンドを実行中",
-            "singular": "コマンドを実行中"
-          },
-          "terminal": {
-            "plural": "複数のコマンドを実行",
-            "singular": "コマンドを実行"
-          }
-        }
-      },
-      "collapse": "ツールアクティビティを折りたたむ",
-      "expand": "ツールアクティビティを展開",
-      "status": {
-        "cancelled": "キャンセル済み",
-        "error": "失敗",
-        "pending": "進行中",
-        "success": "完了"
-      }
-    },
     "voice": {
       "checkingLimit": "音声入力制限を確認する",
       "input": "音声入力",
@@ -2419,9 +2471,8 @@
       "summaryMany_other": "",
       "summaryOne": "{{value}} 件のアカウント",
       "summaryOne_other": "",
-      "summaryWithAttention": "{{summary}} · {{value}} 件に対応が必要",
-      "summaryWithAttention_other": "",
-      "summaryWithDefault": "{{summary}} · {{account}}"
+      "summaryWithAttention": "{{value}}/{{total}} 件に対応が必要",
+      "summaryWithAttention_other": ""
     },
     "actions": {
       "apply": "申し込む",
@@ -2485,6 +2536,8 @@
       "access": {
         "add": "アクセス権の追加",
         "manage": "{{connector}} アクセスを管理する",
+        "summaryMany": "{{value}} 件のエージェント",
+        "unavailable": "アクセスを利用できません",
         "usedBy": "使用者 "
       },
       "categories": {
@@ -3275,15 +3328,6 @@
       "doneTitle": "購読解除済み",
       "errorBody": "この購読解除リンクは無効であるか、期限切れです。メール通知は設定で管理できます。",
       "errorTitle": "何か問題が発生しました"
-    },
-    "morningBriefUnsubscribe": {
-      "documentTitle": "モーニングブリーフ",
-      "doneBody": "毎日の Morning Brief メールは受信されなくなります。設定でいつでもオンに戻すことができます。",
-      "doneTitle": "モーニングブリーフがオフになりました",
-      "errorBody": "購読解除リンクが無効か不完全です。最新の Morning Brief メールを開いて購読解除リンクを使用するか、設定で設定を管理します。",
-      "errorTitle": "このリンクは無効です",
-      "loadingLabel": "購読解除ステータスを読み込んでいます",
-      "managePreferences": "設定の管理"
     },
     "pwaInstall": {
       "banner": "{{assistantName}} をインストールするとエクスペリエンスが向上します",
@@ -5127,16 +5171,6 @@
         },
         "title": "言語"
       },
-      "morningBrief": {
-        "description": "接続されている GitHub、Gmail、Google Calendar からのスケジュール、アクション アイテム、更新情報を含む毎日午前 7 時のメール",
-        "nextEmail": "次のメール: {{date}}",
-        "nextEmailInTimezone": "次のメール: {{date}} ({{timezone}})",
-        "notScheduled": "次のメール: まだスケジュールされていません — スイッチをオフにしてからオンにし、スケジュールを変更してください",
-        "sending": "送信中...",
-        "sendNow": "今すぐ送信",
-        "title": "モーニングブリーフ",
-        "triggeredToast": "モーニング ブリーフがトリガーされ、すぐにメールが届きます"
-      },
       "pageDescription": "外観とエージェントの実行時の設定を管理する",
       "pageTitle": "設定",
       "send": {
@@ -5347,15 +5381,20 @@
       "viewSource": "図のソース"
     },
     "notFound": {
+      "action": "ホームに戻る",
       "description": "お探しのページは存在しません。",
       "title": "ページが見つかりません"
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
-    "notFoundDescription": "この共有された会話は存在しません。",
+    "handoffDescription": "{{assistantName}} がコンテキストを新しいチャットに引き継ぎます",
+    "handoffPrompt": "この共有された会話を私と続けてください: {{url}}",
+    "makeConversationYours": "この会話を自分のものに",
     "notFoundTitle": "共有された会話が見つかりません",
-    "tryOkou": "{{assistantName}}を試す"
+    "share": "共有",
+    "signIn": "ログイン",
+    "signUp": "新規登録",
+    "tryItYourself": "自分で試す"
   },
   "usage": {
     "displayNames": {
@@ -6100,6 +6139,67 @@
       },
       "title": "ワークフロー",
       "viewAutomations": "オートメーションを表示する"
+    },
+    "official": {
+      "activeInstallationDescription": "この公式ワークフローは引き続き動作し、管理対象コンテンツは読み取り専用のままです。",
+      "activeInstallationTitle": "公式ワークフロー",
+      "agent": "エージェント",
+      "automationCount_one": "{{count}} 件の自動化",
+      "automationCount_other": "{{count}} 件の自動化",
+      "badge": "公式",
+      "browse": "公式を探す",
+      "chooseValue": "値を選択",
+      "copySucceededUninstallFailed": "コピーは準備できましたが、元の公式ワークフローをアンインストールできませんでした。",
+      "description": "vm0 が管理・保守するワークフローをインストールします。",
+      "empty": "利用可能な公式ワークフローはありません。",
+      "includedAutomations": "含まれる自動化",
+      "install": "インストール",
+      "installDescription": "エージェントを選択し、必須パラメーターをすべて入力してください。含まれるすべての自動化がインストールされます。",
+      "installed": "公式ワークフローをインストールしました",
+      "installErrorDescription": "エージェントとパラメーター値を確認して、もう一度お試しください。",
+      "installErrorTitle": "公式ワークフローをインストールできませんでした",
+      "installTitle": "{{name}} をインストール",
+      "intendedOff": "オフに設定",
+      "intendedOn": "オンに設定",
+      "loadErrorDescription": "このカタログは利用できないか、アカウントで有効になっていない可能性があります。",
+      "loadErrorTitle": "公式ワークフローを読み込めませんでした",
+      "no": "いいえ",
+      "noParameters": "必要なパラメーターはありません。",
+      "noResults": "検索に一致する公式ワークフローはありません。",
+      "notFound": "この公式ワークフローは見つかりませんでした。",
+      "parameterCount_one": "{{count}} 個のパラメーター",
+      "parameterCount_other": "{{count}} 個のパラメーター",
+      "parameterRequired": "{{key}}（必須）",
+      "reconciliationState": "{{state}} · {{intended}}",
+      "reconfigure": "再構成",
+      "reconfigured": "公式ワークフローを再構成しました",
+      "reconfigureDescription": "このワークフローや自動化を置き換えずに、型付きパラメーターを更新します。",
+      "reconfigureDialogDescription": "管理対象の自動化をすべて確認し、パラメーターを更新してください。",
+      "reconfigureErrorDescription": "必須の値を確認して、もう一度お試しください。",
+      "reconfigureErrorTitle": "公式ワークフローを再構成できませんでした",
+      "reconfigureTitle": "インストールパラメーター",
+      "reconfigureUnavailable": "正規のパラメーターメタデータは一時的に利用できません。",
+      "retiredBadge": "公式 · 廃止",
+      "retiredDefinitionDescription": "保持されているこの定義は表示できますが、新たにインストールすることはできません。",
+      "retiredInstallationDescription": "この定義は廃止されています。既存のインストールは、アンインストールするまで動作し、読み取り専用のままです。",
+      "retiredInstallationTitle": "廃止された公式ワークフロー",
+      "retiredTitle": "廃止された定義",
+      "retry": "もう一度試す",
+      "search": "公式ワークフローを検索",
+      "selectAgent": "エージェントを選択",
+      "statusCurrent": "最新",
+      "statusFailed": "失敗",
+      "statusNeedsReconfiguration": "再構成が必要",
+      "statusReconciling": "同期中",
+      "title": "公式ワークフロー",
+      "unavailableInstallationDescription": "承認済みの定義は一時的に利用できません。既存の操作コントロールは引き続き利用できます。",
+      "unavailableInstallationTitle": "公式定義を利用できません",
+      "uninstall": "アンインストール",
+      "uninstallConfirm": "公式インストールとそのすべての自動化を削除します。この操作は元に戻せません。",
+      "uninstallDescription": "管理されたライフサイクルを通じて、この公式ワークフローのインストールを削除します。",
+      "uninstallTitle": "公式ワークフローをアンインストール",
+      "viewAndInstall": "表示してインストール",
+      "yes": "はい"
     }
   },
   "works": {

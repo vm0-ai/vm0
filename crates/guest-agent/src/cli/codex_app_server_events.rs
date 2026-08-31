@@ -27,6 +27,7 @@
 //! app-server representation.
 
 use guest_contracts::epoch_milliseconds::is_plausible_epoch_milliseconds;
+use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use super::codex_app_server::ServerNotification;
@@ -69,6 +70,116 @@ pub(super) struct CodexOutputItemStart {
     pub(super) turn_id: String,
     pub(super) started_at_ms: u64,
     pub(super) kind: CodexOutputItemKind,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct CodexTokenUsage {
+    input_tokens: i64,
+    cached_input_tokens: i64,
+    cache_write_input_tokens: i64,
+    output_tokens: i64,
+    reasoning_output_tokens: i64,
+    total_tokens: i64,
+}
+
+impl CodexTokenUsage {
+    fn is_non_negative(self) -> bool {
+        self.input_tokens >= 0
+            && self.cached_input_tokens >= 0
+            && self.cache_write_input_tokens >= 0
+            && self.output_tokens >= 0
+            && self.reasoning_output_tokens >= 0
+            && self.total_tokens >= 0
+    }
+
+    fn checked_sub(self, baseline: Self, method: &str) -> Result<Self, CodexAppServerEventError> {
+        let difference = |latest: i64, prior: i64| {
+            latest
+                .checked_sub(prior)
+                .filter(|value| *value >= 0)
+                .ok_or_else(|| invalid_field_for_method(method, "tokenUsage.total"))
+        };
+        Ok(Self {
+            input_tokens: difference(self.input_tokens, baseline.input_tokens)?,
+            cached_input_tokens: difference(
+                self.cached_input_tokens,
+                baseline.cached_input_tokens,
+            )?,
+            cache_write_input_tokens: difference(
+                self.cache_write_input_tokens,
+                baseline.cache_write_input_tokens,
+            )?,
+            output_tokens: difference(self.output_tokens, baseline.output_tokens)?,
+            reasoning_output_tokens: difference(
+                self.reasoning_output_tokens,
+                baseline.reasoning_output_tokens,
+            )?,
+            total_tokens: difference(self.total_tokens, baseline.total_tokens)?,
+        })
+    }
+
+    fn into_value(self) -> Value {
+        json!({
+            "input_tokens": self.input_tokens,
+            "cached_input_tokens": self.cached_input_tokens,
+            "cache_write_input_tokens": self.cache_write_input_tokens,
+            "output_tokens": self.output_tokens,
+            "reasoning_output_tokens": self.reasoning_output_tokens,
+            "total_tokens": self.total_tokens,
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct CodexTokenUsageUpdate {
+    pub(super) thread_id: String,
+    pub(super) turn_id: String,
+    total: CodexTokenUsage,
+    last: CodexTokenUsage,
+}
+
+#[derive(Debug, Default)]
+pub(super) struct CodexTurnUsageTracker {
+    baseline: Option<CodexTokenUsage>,
+    latest: Option<CodexTokenUsage>,
+}
+
+impl CodexTurnUsageTracker {
+    pub(super) fn observe_replay(&mut self, update: CodexTokenUsageUpdate) {
+        self.baseline = Some(update.total);
+    }
+
+    pub(super) fn observe_current(
+        &mut self,
+        update: CodexTokenUsageUpdate,
+    ) -> Result<(), CodexAppServerEventError> {
+        let baseline = match self.baseline {
+            Some(baseline) => baseline,
+            None => {
+                let baseline = update
+                    .total
+                    .checked_sub(update.last, "thread/tokenUsage/updated")?;
+                self.baseline = Some(baseline);
+                baseline
+            }
+        };
+        update
+            .total
+            .checked_sub(baseline, "thread/tokenUsage/updated")?;
+        self.latest = Some(update.total);
+        Ok(())
+    }
+
+    pub(super) fn usage(&self) -> Result<Option<Value>, CodexAppServerEventError> {
+        let (Some(baseline), Some(latest)) = (self.baseline, self.latest) else {
+            return Ok(None);
+        };
+        latest
+            .checked_sub(baseline, "thread/tokenUsage/updated")
+            .map(CodexTokenUsage::into_value)
+            .map(Some)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -146,8 +257,14 @@ pub(super) fn notification_thread_id(notification: &ServerNotification) -> Optio
     let params = notification.params.as_ref()?;
     let thread_id = match notification.method.as_str() {
         "thread/started" => params.pointer("/thread/id"),
-        "turn/started" | "turn/completed" | "turn/plan/updated" | "item/started"
-        | "item/completed" | "error" | "warning" => params.get("threadId"),
+        "turn/started"
+        | "turn/completed"
+        | "turn/plan/updated"
+        | "item/started"
+        | "item/completed"
+        | "thread/tokenUsage/updated"
+        | "error"
+        | "warning" => params.get("threadId"),
         _ => None,
     }?;
     thread_id.as_str().filter(|thread_id| !thread_id.is_empty())
@@ -220,6 +337,43 @@ pub(super) fn notification_to_codex_event(
     }
 }
 
+pub(super) fn codex_token_usage_update(
+    notification: &ServerNotification,
+) -> Result<Option<CodexTokenUsageUpdate>, CodexAppServerEventError> {
+    if notification.method != "thread/tokenUsage/updated" {
+        return Ok(None);
+    }
+
+    let params = required_params_object(notification)?;
+    let thread_id =
+        required_non_empty_string_key(params, &notification.method, "threadId", "threadId")?;
+    let turn_id = required_non_empty_string_key(params, &notification.method, "turnId", "turnId")?;
+    let token_usage =
+        required_object_key(params, &notification.method, "tokenUsage", "tokenUsage")?;
+    let total = required_token_usage(
+        required_object_key(
+            token_usage,
+            &notification.method,
+            "total",
+            "tokenUsage.total",
+        )?,
+        &notification.method,
+        "tokenUsage.total",
+    )?;
+    let last = required_token_usage(
+        required_object_key(token_usage, &notification.method, "last", "tokenUsage.last")?,
+        &notification.method,
+        "tokenUsage.last",
+    )?;
+
+    Ok(Some(CodexTokenUsageUpdate {
+        thread_id: thread_id.to_string(),
+        turn_id: turn_id.to_string(),
+        total,
+        last,
+    }))
+}
+
 fn map_thread_started(
     notification: &ServerNotification,
 ) -> Result<Value, CodexAppServerEventError> {
@@ -287,8 +441,20 @@ fn map_turn_completed(
         "turn".to_string(),
         normalize_turn(turn, &notification.method, status)?,
     );
-    copy_optional_field(&mut event, "usage", params, "usage");
     Ok(Value::Object(event))
+}
+
+fn required_token_usage(
+    usage: &Map<String, Value>,
+    method: &str,
+    field: &'static str,
+) -> Result<CodexTokenUsage, CodexAppServerEventError> {
+    let usage = serde_json::from_value::<CodexTokenUsage>(Value::Object(usage.clone()))
+        .map_err(|_error| invalid_field_for_method(method, field))?;
+    usage
+        .is_non_negative()
+        .then_some(usage)
+        .ok_or_else(|| invalid_field_for_method(method, field))
 }
 
 fn map_turn_plan_updated(
@@ -453,6 +619,9 @@ fn normalize_item(
         ("item/completed", "agentMessage") => normalize_agent_message(item, method).map(Some),
         ("item/completed", "plan") => normalize_plan(item, method).map(Some),
         ("item/completed", "reasoning") => normalize_reasoning(item, method).map(Some),
+        ("item/completed", "functionCallOutput") => {
+            normalize_function_call_output(item, method).map(Some)
+        }
         ("item/completed", "commandExecution") => {
             normalize_command_execution(item, method).map(Some)
         }
@@ -534,6 +703,22 @@ fn normalize_command_execution(
     );
     copy_optional_field(&mut normalized, "exit_code", item, "exitCode");
     copy_optional_field(&mut normalized, "duration_ms", item, "durationMs");
+    Ok(Value::Object(normalized))
+}
+
+fn normalize_function_call_output(
+    item: &Map<String, Value>,
+    method: &str,
+) -> Result<Value, CodexAppServerEventError> {
+    let mut normalized = base_item(item, method, "function_call_output")?;
+    let name = required_string_key(item, method, "name", "item.name")?;
+    normalized.insert("name".to_string(), Value::String(name.to_string()));
+    copy_optional_field(&mut normalized, "namespace", item, "namespace");
+    let output = item
+        .get("output")
+        .filter(|output| matches!(output, Value::String(_) | Value::Array(_)))
+        .ok_or_else(|| invalid_field_for_method(method, "item.output"))?;
+    normalized.insert("output".to_string(), output.clone());
     Ok(Value::Object(normalized))
 }
 
@@ -657,6 +842,35 @@ fn normalize_error_object(error: &Map<String, Value>) -> Value {
     );
     copy_optional_field(&mut normalized, "connectors", error, "connectors");
     copy_optional_field(&mut normalized, "failureReason", error, "failureReason");
+    if let Some(misalignment) = error.get("misalignment") {
+        normalized.insert(
+            "misalignment".to_string(),
+            normalize_optional_misalignment(misalignment),
+        );
+    }
+    Value::Object(normalized)
+}
+
+fn normalize_optional_misalignment(misalignment: &Value) -> Value {
+    let Value::Object(misalignment) = misalignment else {
+        return misalignment.clone();
+    };
+    let mut normalized = Map::new();
+    copy_first_optional_field(
+        &mut normalized,
+        "error_type",
+        misalignment,
+        &["error_type", "errorType"],
+    );
+    copy_first_optional_field(
+        &mut normalized,
+        "detailed_explanation",
+        misalignment,
+        &["detailed_explanation", "detailedExplanation"],
+    );
+    if let Some(steer) = misalignment.get("steer") {
+        normalized.insert("steer".to_string(), steer.clone());
+    }
     Value::Object(normalized)
 }
 
@@ -1169,7 +1383,7 @@ mod tests {
     }
 
     #[test]
-    fn successful_turn_completed_stays_turn_completed() {
+    fn turn_completed_does_not_read_non_contract_usage() {
         let event = mapped_event(
             "turn/completed",
             json!({
@@ -1198,9 +1412,47 @@ mod tests {
                     "started_at": 10,
                     "completed_at": 20,
                     "duration_ms": 1000
-                },
-                "usage": {"input_tokens": 1}
+                }
             })
+        );
+    }
+
+    #[test]
+    fn token_usage_update_rejects_negative_count() {
+        let error = codex_token_usage_update(&notification(
+            "thread/tokenUsage/updated",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "tokenUsage": {
+                    "total": {
+                        "inputTokens": -1,
+                        "cachedInputTokens": 0,
+                        "cacheWriteInputTokens": 0,
+                        "outputTokens": 0,
+                        "reasoningOutputTokens": 0,
+                        "totalTokens": 0
+                    },
+                    "last": {
+                        "inputTokens": 0,
+                        "cachedInputTokens": 0,
+                        "cacheWriteInputTokens": 0,
+                        "outputTokens": 0,
+                        "reasoningOutputTokens": 0,
+                        "totalTokens": 0
+                    },
+                    "modelContextWindow": 258400
+                }
+            }),
+        ))
+        .expect_err("negative token usage should fail");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::InvalidField {
+                method: "thread/tokenUsage/updated".to_string(),
+                field: "tokenUsage.total"
+            }
         );
     }
 
@@ -1239,6 +1491,33 @@ mod tests {
                 message:
                     "selected model is at capacity. please try a different model. (retry later)"
                         .to_string(),
+                failure_reason: Some(FailureReason::ProviderOverloaded),
+            })
+        );
+    }
+
+    #[test]
+    fn failed_turn_completed_classifies_rate_limit_for_diagnostics() {
+        let event = mapped_event(
+            "turn/completed",
+            json!({
+                "threadId": "thread-1",
+                "turn": {
+                    "id": "turn-1",
+                    "status": "failed",
+                    "error": {
+                        "message": "Rate limit exceeded.",
+                        "codexErrorInfo": "rateLimitExceeded"
+                    }
+                }
+            }),
+        );
+
+        assert_eq!(
+            events::masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(events::CodexFailureDiagnostic {
+                event_type: "turn.completed",
+                message: "Rate limit exceeded.".to_string(),
                 failure_reason: Some(FailureReason::ProviderOverloaded),
             })
         );
@@ -1287,7 +1566,12 @@ mod tests {
                     "status": "failed",
                     "error": {
                         "message": "This request violates the provider's alignment policy.",
-                        "codexErrorInfo": "misalignmentPolicyViolation"
+                        "codexErrorInfo": "misalignmentPolicyViolation",
+                        "misalignment": {
+                            "errorType": "policy_violation",
+                            "detailedExplanation": "Try a safer direction.",
+                            "steer": {"message": "Continue with a safe alternative."}
+                        }
                     },
                     "startedAt": 10,
                     "completedAt": 20,
@@ -1299,6 +1583,14 @@ mod tests {
         assert_eq!(
             event["turn"]["error"]["codex_error_info"],
             "misalignmentPolicyViolation"
+        );
+        assert_eq!(
+            event["turn"]["error"]["misalignment"],
+            json!({
+                "error_type": "policy_violation",
+                "detailed_explanation": "Try a safer direction.",
+                "steer": {"message": "Continue with a safe alternative."}
+            })
         );
         assert_eq!(
             events::masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
@@ -1696,6 +1988,42 @@ mod tests {
         assert_eq!(event["item"]["duration_ms"], 50);
         assert_eq!(event["item"]["arguments"], json!({"owner": "vm0-ai"}));
         assert_eq!(event["item"]["large"], json!([1, 2, 3]));
+    }
+
+    #[test]
+    fn function_call_output_preserves_structured_output() {
+        let event = mapped_event(
+            "item/completed",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "completedAtMs": 42,
+                "item": {
+                    "type": "functionCallOutput",
+                    "id": "function-output-1",
+                    "name": "lookup",
+                    "namespace": "tools",
+                    "output": [
+                        {"type": "input_text", "text": "result"},
+                        {"type": "input_image", "image_url": "data:image/png;base64,AA=="}
+                    ]
+                }
+            }),
+        );
+
+        assert_eq!(
+            event["item"],
+            json!({
+                "type": "function_call_output",
+                "id": "function-output-1",
+                "name": "lookup",
+                "namespace": "tools",
+                "output": [
+                    {"type": "input_text", "text": "result"},
+                    {"type": "input_image", "image_url": "data:image/png;base64,AA=="}
+                ]
+            })
+        );
     }
 
     #[test]

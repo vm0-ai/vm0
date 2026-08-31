@@ -72,9 +72,6 @@ pub(crate) const DIAGNOSTIC_CONFIG_MAX_BYTES: u64 = 1024 * 1024;
 /// are resolved against the YAML file's parent directory during [`load`].
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct RunnerConfig {
-    /// Human-readable identifier for this runner instance, surfaced in logs
-    /// and reported to the control plane alongside `group`.
-    pub name: String,
     /// Canonical physical host identity used only for diagnostic attribution.
     /// The raw configured value is preserved and never used for scheduling,
     /// authorization, targeting, or ownership.
@@ -293,8 +290,9 @@ pub(crate) fn validate_runner_hostname(value: &str) -> RunnerResult<()> {
 
 /// Validate and normalize the runner API base URL.
 ///
-/// The URL is later copied into guest-visible config and log-adjacent paths,
-/// so reject components that can carry credentials or other sensitive values.
+/// The URL is used for authenticated requests and later copied into
+/// guest-visible config and log-adjacent paths, so require HTTPS outside the
+/// loopback development boundary and reject sensitive URL components.
 pub(crate) fn normalize_api_base_url(value: &str) -> RunnerResult<String> {
     let mut parsed = url::Url::parse(value)
         .map_err(|_| RunnerError::Config("server.url must be an absolute http(s) URL".into()))?;
@@ -339,6 +337,19 @@ pub(crate) fn normalize_api_base_url(value: &str) -> RunnerResult<String> {
         parsed
             .set_host(Some(&host))
             .map_err(|_| RunnerError::Config("server.url has an invalid host".into()))?;
+    }
+
+    let host_is_loopback = match parsed.host() {
+        Some(url::Host::Domain(host)) => host == "localhost",
+        Some(url::Host::Ipv4(address)) => address.is_loopback(),
+        Some(url::Host::Ipv6(address)) => address.is_loopback(),
+        None => false,
+    };
+    if parsed.scheme() == "http" && !host_is_loopback {
+        return Err(RunnerError::Config(
+            "server.url must use https unless its host is localhost or a loopback IP address"
+                .into(),
+        ));
     }
 
     Ok(parsed.as_str().trim_end_matches('/').to_string())
@@ -688,5 +699,4 @@ impl RunnerConfig {
 }
 
 #[cfg(test)]
-#[path = "config_tests.rs"]
 mod tests;

@@ -242,7 +242,7 @@ async fn export_session_history_sidecar(
     ]
     .join(" ");
     let env = [(
-        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
         verification.runtime_dir,
     )];
     let request = ExecRequest {

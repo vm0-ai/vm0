@@ -2,7 +2,7 @@ use std::future::Future;
 use std::io;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Serialize};
@@ -41,11 +41,10 @@ pub const EXEC_OUTPUT_LIMIT_1_MIB: ExecOutputLimits = ExecOutputLimits::same(102
 /// Larger output budget used by interactive runner exec-style tooling.
 pub const EXEC_OUTPUT_LIMIT_7_MIB: ExecOutputLimits = ExecOutputLimits::same(7 * 1024 * 1024);
 
-/// One ordinary guest file write entry for a multi-file write operation.
+/// One guest file entry for a typed multi-file write operation.
 ///
-/// Entries use the same semantics as [`crate::Sandbox::write_file`]: create
-/// missing parent directories, create or truncate the target file, and write
-/// the provided bytes without private runtime-file semantics.
+/// The selected [`crate::Sandbox`] method defines whether entries use ordinary
+/// or private runtime-file semantics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WriteFileEntry<'a> {
     /// Guest path to create or replace.
@@ -183,14 +182,18 @@ impl StartProcessRequest<'_> {
 /// Agent startup is intentionally separate from ordinary supervised process
 /// startup so generic callers cannot select the controlled Agent topology.
 pub struct StartAgentProcessRequest<'a> {
-    /// Common process startup fields.
-    pub process: StartProcessRequest<'a>,
+    /// Guest-side Agent supervisor timeout.
+    pub timeout: Duration,
+    /// Environment variables passed to the fixed Guest Agent executable.
+    pub env: &'a [(&'a str, &'a str)],
+    /// Buffered or streamed Agent output behavior.
+    pub output: ProcessOutputMode,
 }
 
 impl StartAgentProcessRequest<'_> {
     /// Return the timeout as milliseconds, saturating at `u32::MAX`.
     pub fn timeout_ms(&self) -> u32 {
-        self.process.timeout_ms()
+        duration_ms(self.timeout)
     }
 }
 
@@ -779,6 +782,7 @@ impl GuestProcessControlHandle {
 /// [`Sandbox::wait_process`](crate::Sandbox::wait_process). When stdout streaming is
 /// enabled, callers may use [`take_stdout_receiver`](Self::take_stdout_receiver)
 /// before waiting; if they do, they must drain it while the process runs.
+#[must_use = "retain this process handle and complete supervision with Sandbox::wait_process"]
 pub struct GuestProcessHandle {
     /// Guest process id reported by the provider.
     ///
@@ -873,14 +877,39 @@ impl GuestProcessHandle {
 /// A successful Agent start always includes the process-control capability.
 /// The process handle remains the sole owner of wait, cancellation, stdout,
 /// and drop cleanup state.
+#[must_use = "retain this Agent process handle and complete supervision with Sandbox::wait_process"]
 pub struct GuestAgentProcessHandle {
     process: GuestProcessHandle,
     control: GuestProcessControlHandle,
+    start_timing: GuestAgentStartTiming,
+}
+
+/// Provider-neutral timing captured at the controlled Agent readiness boundary.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GuestAgentStartTiming {
+    /// Host monotonic instant when the guest controlled process was spawned.
+    pub shell_started_at: Instant,
+    /// Host monotonic instant when Agent runtime placement was confirmed.
+    pub ready_at: Instant,
+    /// Guest time spent creating the per-exec process containment hierarchy.
+    pub containment_create: Duration,
+    /// Guest time spent creating workload and tool placement brokers.
+    pub placement_broker_setup: Duration,
+    /// Guest time spent launching the controlled process.
+    ///
+    /// The `shell_spawn` name remains stable for timing-series compatibility;
+    /// direct Agent launch does not execute a shell.
+    pub shell_spawn: Duration,
+    /// Guest time from controlled-process launch through confirmed placement.
+    pub bootstrap_ready_wait: Duration,
 }
 
 impl GuestAgentProcessHandle {
     /// Convert a provider process handle into a controlled Agent handle.
-    pub fn try_from_process(mut process: GuestProcessHandle) -> crate::Result<Self> {
+    pub fn try_from_process(
+        mut process: GuestProcessHandle,
+        start_timing: GuestAgentStartTiming,
+    ) -> crate::Result<Self> {
         let Some(control) = process.control.take() else {
             return Err(crate::SandboxError::Operation {
                 operation: crate::SandboxOperation::StartAgentProcess,
@@ -888,7 +917,16 @@ impl GuestAgentProcessHandle {
                 message: "provider returned an Agent process without process control".into(),
             });
         };
-        Ok(Self { process, control })
+        Ok(Self {
+            process,
+            control,
+            start_timing,
+        })
+    }
+
+    /// Return timing captured while the controlled Agent became ready.
+    pub fn start_timing(&self) -> GuestAgentStartTiming {
+        self.start_timing
     }
 
     /// Consume the Agent handle into its process owner and control capability.
@@ -940,6 +978,8 @@ pub enum ProcessOutputMode {
         /// This bounds host buffering for delivered chunks. It is not a
         /// guarantee that a slow caller applies backpressure to the guest; host
         /// delivery overflow is reported through [`ProcessExit::stream_overflowed`].
+        /// The queue retains at most this many chunks; the next valid chunk
+        /// closes delivery and marks the process exit as overflowed.
         queue_capacity: usize,
         /// Optional captured stderr byte limit retained in [`ProcessExit`].
         ///
@@ -1092,6 +1132,18 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, Ordering};
 
+    fn guest_agent_start_timing() -> GuestAgentStartTiming {
+        let ready_at = Instant::now();
+        GuestAgentStartTiming {
+            shell_started_at: ready_at,
+            ready_at,
+            containment_create: Duration::ZERO,
+            placement_broker_setup: Duration::ZERO,
+            shell_spawn: Duration::ZERO,
+            bootstrap_ready_wait: Duration::ZERO,
+        }
+    }
+
     #[test]
     fn timeout_ms_normal() {
         let req = ExecRequest {
@@ -1147,15 +1199,11 @@ mod tests {
     }
 
     #[test]
-    fn start_agent_process_timeout_uses_common_process_request() {
+    fn start_agent_process_timeout_rounds_nonzero_submillisecond_up() {
         let req = StartAgentProcessRequest {
-            process: StartProcessRequest {
-                cmd: "true",
-                timeout: Duration::from_nanos(1),
-                env: &[],
-                sudo: false,
-                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            },
+            timeout: Duration::from_nanos(1),
+            env: &[],
+            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
         };
         assert_eq!(req.timeout_ms(), 1);
     }
@@ -1452,10 +1500,11 @@ mod tests {
             }),
         );
 
-        let error = match GuestAgentProcessHandle::try_from_process(process) {
-            Ok(_) => panic!("Agent handle unexpectedly accepted missing control"),
-            Err(error) => error,
-        };
+        let error =
+            match GuestAgentProcessHandle::try_from_process(process, guest_agent_start_timing()) {
+                Ok(_) => panic!("Agent handle unexpectedly accepted missing control"),
+                Err(error) => error,
+            };
         assert!(matches!(
             error,
             crate::SandboxError::Operation {
@@ -1480,7 +1529,8 @@ mod tests {
             }),
         );
 
-        let agent = GuestAgentProcessHandle::try_from_process(process).unwrap();
+        let agent =
+            GuestAgentProcessHandle::try_from_process(process, guest_agent_start_timing()).unwrap();
         let (process, control) = agent.into_parts();
         assert_eq!(process.guest_pid, 42);
         let ack = control

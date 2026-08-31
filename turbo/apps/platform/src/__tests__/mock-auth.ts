@@ -1,7 +1,9 @@
 import type {
   Attribute,
   AttributeData,
+  BrowserClerk,
   ClerkAPIError,
+  CreateOrganizationParams,
   PasswordValidation,
 } from "@clerk/react/types";
 import { vi } from "vitest";
@@ -66,6 +68,7 @@ export interface MockedAuthV2Capabilities {
   readonly appleOAuth?: boolean;
   readonly googleOAuth?: boolean;
   readonly googleOneTapClientId?: string | null;
+  readonly lastAuthenticationStrategy?: "oauth_apple" | "oauth_google" | null;
   readonly passkey?: boolean;
 }
 
@@ -134,6 +137,7 @@ interface MockedUser {
   primaryEmailAddress: { emailAddress: string } | null;
   unsafeMetadata: Record<string, unknown>;
   createOrganizationEnabled: boolean;
+  createOrganizationsLimit: number | null;
   organizationMemberships: MockedMembership[];
   getOrganizationInvitations: (params?: {
     status?: string;
@@ -160,6 +164,7 @@ let internalMockedAuthV2Capabilities: Required<MockedAuthV2Capabilities> = {
   appleOAuth: false,
   googleOAuth: false,
   googleOneTapClientId: null,
+  lastAuthenticationStrategy: null,
   passkey: false,
 };
 let internalMockedClerkLoadOptions: MockedClerkLoadOptions = {};
@@ -350,6 +355,7 @@ export function mockAuthV2Capabilities(
     appleOAuth: capabilities.appleOAuth ?? false,
     googleOAuth: capabilities.googleOAuth ?? false,
     googleOneTapClientId: capabilities.googleOneTapClientId ?? null,
+    lastAuthenticationStrategy: capabilities.lastAuthenticationStrategy ?? null,
     passkey: capabilities.passkey ?? false,
   };
 }
@@ -377,6 +383,7 @@ export function mockUser(
     imageUrl?: string;
     createdAt?: Date;
     createOrganizationEnabled?: boolean;
+    createOrganizationsLimit?: number | null;
     clientSessions?: MockedClientSession[];
   } | null,
   session: { token: string } | null,
@@ -388,6 +395,7 @@ export function mockUser(
       primaryEmailAddress: user.email ? { emailAddress: user.email } : null,
       unsafeMetadata: {},
       createOrganizationEnabled: user.createOrganizationEnabled ?? false,
+      createOrganizationsLimit: user.createOrganizationsLimit ?? null,
       get organizationMemberships() {
         return internalMockedMemberships;
       },
@@ -519,6 +527,7 @@ function clearMockedAuth() {
     appleOAuth: false,
     googleOAuth: false,
     googleOneTapClientId: null,
+    lastAuthenticationStrategy: null,
     passkey: false,
   };
   internalMockedGoogleOneTapCredential = null;
@@ -1049,6 +1058,10 @@ interface MockedUserProfileOptions {
   getContainer?: () => HTMLElement | null;
 }
 
+type MockedCreateOrganization = (
+  params: CreateOrganizationParams,
+) => Promise<{ readonly id: string }>;
+
 export const mockedClerk = {
   initialize,
   get loaded() {
@@ -1109,6 +1122,9 @@ export const mockedClerk = {
   signUpReload,
   signUpAuthenticateWithRedirect,
   client: {
+    get lastAuthenticationStrategy() {
+      return internalMockedAuthV2Capabilities.lastAuthenticationStrategy;
+    },
     get sessions() {
       return internalMockedClientSessions;
     },
@@ -1178,12 +1194,10 @@ export const mockedClerk = {
     };
   },
   handleRedirectCallback,
-  signOut: vi.fn(() => {
+  signOut: vi.fn<BrowserClerk["signOut"]>(() => {
     return Promise.resolve();
   }),
-  openSignIn: vi.fn(() => {
-    return Promise.resolve();
-  }),
+  openSignIn: vi.fn<BrowserClerk["openSignIn"]>(),
   openUserProfile: vi.fn<(options?: MockedUserProfileOptions) => void>(),
   closeUserProfile: vi.fn<() => void>(),
   load: mockedClerkLoad,
@@ -1200,18 +1214,20 @@ export const mockedClerk = {
       }
     };
   },
-  redirectToSignIn: vi.fn(),
+  redirectToSignIn: vi.fn<BrowserClerk["redirectToSignIn"]>(),
   buildSignInUrl: vi.fn<typeof defaultBuildSignInUrlImpl>(
     defaultBuildSignInUrlImpl,
   ),
   // Production-instance behavior: the URL passes through unchanged. Dev
   // instances append the __clerk_db_jwt session handoff parameter.
-  buildUrlWithAuth: vi.fn(defaultBuildUrlWithAuthImpl),
+  buildUrlWithAuth: vi.fn<typeof defaultBuildUrlWithAuthImpl>(
+    defaultBuildUrlWithAuthImpl,
+  ),
   buildUserProfileUrl: vi.fn<typeof defaultBuildUserProfileUrlImpl>(
     defaultBuildUserProfileUrlImpl,
   ),
   setActive: vi.fn<typeof defaultSetActiveImpl>(defaultSetActiveImpl),
-  createOrganization: vi.fn((_params: { name: string; slug: string }) => {
+  createOrganization: vi.fn<MockedCreateOrganization>(() => {
     return Promise.resolve({ id: "new-org-id" });
   }),
 };

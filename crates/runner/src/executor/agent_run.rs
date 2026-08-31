@@ -17,7 +17,7 @@ use guest_contracts::session_history_identity::{
 use sandbox::{
     EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, GuestProcessCancelHandle,
     GuestProcessControlHandle, GuestProcessHandle, ProcessOutputMode, Sandbox,
-    StartAgentProcessRequest, StartProcessRequest,
+    StartAgentProcessRequest,
 };
 use shell_quote::quote_shell_arg;
 use tokio_util::sync::CancellationToken;
@@ -41,7 +41,7 @@ use super::diagnostics::{
 use super::effective_cli_framework;
 use super::env::{
     PreparedRunPayload, build_env_json_for_run, build_user_env_json,
-    write_connector_account_context_file, write_run_payload_file, write_user_env_file,
+    write_connector_account_context_file, write_required_agent_files,
 };
 use super::guest_state::{restore_guest_state, sync_guest_timezone};
 use super::session_history_cpu::{SessionHistoryCpuJob, SessionHistoryPrefixOutcome};
@@ -53,7 +53,7 @@ use super::session_restore::{
     MaterializedResumeSession, SessionRestoreDiagnostics, restore_session,
 };
 use super::storage::download_storages;
-use super::telemetry::{RunnerSpawnTiming, record_api_to_spawn};
+use super::telemetry::{RunnerSpawnTiming, record_api_startup_boundaries};
 use super::workspace_session_history_materializer::{
     WorkspaceSessionHistoryMaterialization, WorkspaceSessionHistoryPhaseTiming,
     WorkspaceSessionHistoryTimings,
@@ -63,8 +63,8 @@ use super::{
     JOB_TIMEOUT_EXIT_CODE, ResourceFailureDiagnostics, ResourceFailureKind, RunnerError,
     RunnerResult, SandboxReuseDisposition, SandboxReuseRejection, SandboxReuseResult,
     SandboxReuseTerminal, SessionHistoryRestoreFallback, SessionHistoryRestorePlan,
-    USER_ENV_FILE_ENV_KEY, agent_exit_failure_message, guest_runtime_dir, guest_runtime_path,
-    job_supervisor_timeout, job_terminal_wait_timeout, normalize_failure_exit_code,
+    agent_exit_failure_message, guest_runtime_dir, guest_runtime_path, job_supervisor_timeout,
+    job_terminal_wait_timeout, normalize_failure_exit_code,
 };
 use crate::active_input::ActiveInputSource;
 use crate::helper_exec::{helper_exec_succeeded, helper_exec_termination_label};
@@ -79,7 +79,7 @@ use crate::telemetry::{
 };
 use crate::types::{ExecutionContext, WorkspaceReuseResult};
 
-const AGENT_WRAPPER_STDERR_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
+const AGENT_START_STDERR_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
 const SESSION_HISTORY_DOWNLOAD_TELEMETRY_ERROR: &str = "session history download failed";
 const SESSION_HISTORY_DOWNLOAD_PHASE_TELEMETRY_ERROR: &str =
     "session history download phase failed";
@@ -427,40 +427,11 @@ async fn materialize_inline_resume_session(
     )))
 }
 
-pub(super) fn build_agent_start_command(run_agent_path: &str) -> String {
-    let run_agent_path = quote_shell_arg(run_agent_path);
-    format!(
-        "if [ ! -e {run_agent_path} ]; then \
-            printf '%s\\n' 'agent bootstrap failed: guest-agent is missing' >&2; \
-            exit 127; \
-        fi; \
-        if [ ! -f {run_agent_path} ]; then \
-            printf '%s\\n' 'agent bootstrap failed: guest-agent is not a regular file' >&2; \
-            exit 126; \
-        fi; \
-        if [ ! -x {run_agent_path} ]; then \
-            printf '%s\\n' 'agent bootstrap failed: guest-agent is not executable' >&2; \
-            exit 126; \
-        fi; \
-        exec {run_agent_path} 2>&1"
-    )
-}
-
-fn validate_agent_bootstrap_exec_boundary(
-    agent_cmd: &str,
-    env_pairs: &[(String, String)],
-) -> RunnerResult<()> {
-    let mut values = Vec::with_capacity(env_pairs.len() + 3);
+fn validate_agent_bootstrap_exec_boundary(env_pairs: &[(String, String)]) -> RunnerResult<()> {
+    let mut values = Vec::with_capacity(env_pairs.len() + 1);
     values.push(guest_contracts::exec_limits::ExecBoundaryValue::arg(
         "argv[0]",
-        "/bin/bash",
-    ));
-    values.push(guest_contracts::exec_limits::ExecBoundaryValue::arg(
-        "argv[1]", "-c",
-    ));
-    values.push(guest_contracts::exec_limits::ExecBoundaryValue::arg(
-        "argv[2] bootstrap command",
-        agent_cmd,
+        guest::RUN_AGENT,
     ));
     for (key, value) in env_pairs {
         values.push(guest_contracts::exec_limits::ExecBoundaryValue::env(
@@ -522,7 +493,7 @@ async fn verify_final_identity_metadata(
     runtime_dir: &str,
 ) -> Result<RestoredSessionIdentity, SessionHistoryIdentityReason> {
     let env = [(
-        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
         runtime_dir,
     )];
     let request = ExecRequest {
@@ -2037,28 +2008,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             );
         }
     }
-    let user_env_started = Instant::now();
-    let user_env_file = match write_user_env_file(sandbox, context.run_id, &user_env_map).await {
-        Ok(user_env_file) => {
-            telemetry.record(
-                "runner_user_env_write",
-                user_env_started.elapsed(),
-                true,
-                None,
-            );
-            user_env_file
-        }
-        Err(error) => {
-            telemetry.record_with_outcome(
-                "runner_user_env_write",
-                user_env_started.elapsed(),
-                false,
-                None,
-                private_write_timeout_stage(&error),
-            );
-            return Err(error);
-        }
-    };
     let env_build_started = Instant::now();
     let run_payload = match prepared_run_payload.into_run_payload(context) {
         Ok(run_payload) => run_payload,
@@ -2084,29 +2033,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         feature_flags_bytes = run_payload.feature_flags.len(),
         "guest-agent run payload prepared"
     );
-    let run_payload_write_started = Instant::now();
-    let run_payload_file = match write_run_payload_file(sandbox, context.run_id, &run_payload).await
-    {
-        Ok(path) => {
-            telemetry.record(
-                "runner_run_payload_write",
-                run_payload_write_started.elapsed(),
-                true,
-                None,
-            );
-            path
-        }
-        Err(error) => {
-            telemetry.record_with_outcome(
-                "runner_run_payload_write",
-                run_payload_write_started.elapsed(),
-                false,
-                None,
-                private_write_timeout_stage(&error),
-            );
-            return Err(error);
-        }
-    };
     let mut env_map = match build_env_json_for_run(
         context,
         &config.api_url,
@@ -2125,11 +2051,51 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             return Err(error);
         }
     };
+    telemetry.record(
+        "runner_agent_env_build",
+        env_build_started.elapsed(),
+        true,
+        None,
+    );
+
+    let required_private_files_started = Instant::now();
+    let required_files =
+        match write_required_agent_files(sandbox, context.run_id, &user_env_map, &run_payload).await {
+            Ok(required_files) => {
+                telemetry.record(
+                    "runner_required_private_files_write",
+                    required_private_files_started.elapsed(),
+                    true,
+                    None,
+                );
+                required_files
+            }
+            Err(error) => {
+                telemetry.record_with_outcome(
+                    "runner_required_private_files_write",
+                    required_private_files_started.elapsed(),
+                    false,
+                    None,
+                    private_write_timeout_stage(&error),
+                );
+                return Err(error);
+            }
+        };
+    let user_env_file = required_files.user_env_file;
+    let run_payload_file = required_files.run_payload_file;
+    debug_assert!(
+        !env_map.contains_key("VM0_USER_ENV_FILE")
+            && !env_map.contains_key("VM0_RUN_PAYLOAD_FILE"),
+        "legacy private payload pointers must be absent before canonical insertion"
+    );
     if let Some(path) = user_env_file {
-        env_map.insert(USER_ENV_FILE_ENV_KEY.into(), path);
+        env_map.insert(
+            guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV.into(),
+            path,
+        );
     }
     env_map.insert(
-        guest_contracts::env::RUN_PAYLOAD_FILE_ENV.into(),
+        guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV.into(),
         run_payload_file,
     );
     let env_diagnostics = build_agent_env_diagnostics(&env_map, &user_env_map);
@@ -2138,19 +2104,12 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
-    telemetry.record(
-        "runner_agent_env_build",
-        env_build_started.elapsed(),
-        true,
-        None,
-    );
     info!(run_id = %context.run_id, count = env_refs.len(), "passing env vars via vsock");
 
-    // Spawn guest-agent with stdout streamed to the host via vsock. Its stderr
-    // is merged into stdout, while a small capture keeps shell or wrapper
-    // startup failures visible when the process exits before guest logging.
-    let agent_cmd = build_agent_start_command(guest::RUN_AGENT);
-    validate_agent_bootstrap_exec_boundary(&agent_cmd, &env_pairs)?;
+    // Spawn the fixed guest-agent executable with combined stdout/stderr
+    // streamed to the host. A small terminal capture remains available for
+    // bounded pre-start diagnostics.
+    validate_agent_bootstrap_exec_boundary(&env_pairs)?;
     info!(run_id = %context.run_id, "spawning agent");
 
     // Guest-agent receives JOB_TIMEOUT as the user execution budget. The
@@ -2160,33 +2119,82 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     let t = Instant::now();
     let handle = sandbox
         .start_agent_process(&StartAgentProcessRequest {
-            process: StartProcessRequest {
-                cmd: &agent_cmd,
-                timeout: job_supervisor_timeout(),
-                env: &env_refs,
-                sudo: false,
-                output: ProcessOutputMode::stream_with_stderr_capture(
-                    AGENT_WRAPPER_STDERR_CAPTURE_LIMIT_BYTES,
-                ),
-            },
+            timeout: job_supervisor_timeout(),
+            env: &env_refs,
+            output: ProcessOutputMode::stream_with_stderr_capture(
+                AGENT_START_STDERR_CAPTURE_LIMIT_BYTES,
+            ),
         })
         .await;
 
     let agent_handle = match handle {
         Ok(h) => {
-            let spawned_at = Instant::now();
+            let timing = h.start_timing();
             telemetry.record(
                 "runner_agent_start_process",
-                spawned_at.saturating_duration_since(t),
+                timing.shell_started_at.saturating_duration_since(t),
+                true,
+                None,
+            );
+            telemetry.record(
+                "runner_agent_start_to_ready",
+                timing.ready_at.saturating_duration_since(t),
+                true,
+                None,
+            );
+            telemetry.record(
+                "runner_agent_containment_create",
+                timing.containment_create,
+                true,
+                None,
+            );
+            telemetry.record(
+                "runner_agent_placement_broker_setup",
+                timing.placement_broker_setup,
+                true,
+                None,
+            );
+            telemetry.record(
+                "runner_agent_shell_spawn",
+                timing.shell_spawn,
+                true,
+                None,
+            );
+            telemetry.record(
+                "runner_agent_bootstrap_ready_wait",
+                timing.bootstrap_ready_wait,
                 true,
                 None,
             );
             if let Some(spawn_timing) = spawn_timing {
-                spawn_timing.record_spawn_success_at(telemetry, spawned_at);
+                spawn_timing.record_agent_ready_success_at(
+                    telemetry,
+                    timing.shell_started_at,
+                    timing.ready_at,
+                );
             }
-            // The guest process handle is the api_to_spawn boundary. Releasing here keeps
-            // steady-state execution outside the burst gate while every pre-spawn early return
-            // continues to release through RAII.
+            record_api_startup_boundaries(
+                context,
+                telemetry,
+                start.reuse_result,
+                start.workspace_reuse_result,
+                timing.shell_started_at,
+                timing.ready_at,
+            );
+            info!(
+                run_id = %context.run_id,
+                sandbox_reuse = ?start.reuse_result,
+                workspace_reuse = ?start.workspace_reuse_result,
+                shell_spawn_ms = timing.shell_started_at.saturating_duration_since(t).as_millis(),
+                agent_ready_ms = timing.ready_at.saturating_duration_since(t).as_millis(),
+                containment_create_us = timing.containment_create.as_micros(),
+                placement_broker_setup_us = timing.placement_broker_setup.as_micros(),
+                shell_spawn_component_us = timing.shell_spawn.as_micros(),
+                bootstrap_ready_wait_us = timing.bootstrap_ready_wait.as_micros(),
+                "agent startup timing"
+            );
+            // Keep the burst gate through the authenticated Agent-ready boundary.
+            // Every pre-ready return continues to release through RAII.
             drop(pre_spawn_admission_lease.take());
             h
         }
@@ -2253,14 +2261,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         env_diagnostics,
         env_pairs,
     } = prepared_agent;
-
-    // Claude Code process has a PID now — record end-to-end startup latency.
-    record_api_to_spawn(
-        context,
-        telemetry,
-        start.reuse_result,
-        start.workspace_reuse_result,
-    );
 
     // Start locally owned input and output work, then release deferred cache
     // fill now that process spawn has succeeded.
@@ -2729,10 +2729,9 @@ mod tests {
         let secret = "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
         let env_pairs = vec![("VM0_OVERSIZED".to_string(), secret.clone())];
 
-        let error =
-            validate_agent_bootstrap_exec_boundary("exec /usr/local/bin/guest-agent", &env_pairs)
-                .unwrap_err()
-                .to_string();
+        let error = validate_agent_bootstrap_exec_boundary(&env_pairs)
+            .unwrap_err()
+            .to_string();
 
         assert!(error.contains("guest-agent bootstrap argv/env too large"));
         assert!(error.contains("VM0_OVERSIZED"));
@@ -2746,25 +2745,21 @@ mod tests {
             .map(|index| (format!("VM0_CHUNK_{index}"), value.clone()))
             .collect();
 
-        let error =
-            validate_agent_bootstrap_exec_boundary("exec /usr/local/bin/guest-agent", &env_pairs)
-                .unwrap_err()
-                .to_string();
+        let error = validate_agent_bootstrap_exec_boundary(&env_pairs)
+            .unwrap_err()
+            .to_string();
 
         assert!(error.contains("argv/env aggregate too large"));
     }
 
     #[test]
-    fn bootstrap_exec_boundary_counts_shell_wrapper_dash_c_arg() {
-        let agent_cmd = "exec /usr/local/bin/guest-agent";
-        let shell_arg_bytes = exec_arg_aggregate_bytes("/bin/bash")
-            + exec_arg_aggregate_bytes("-c")
-            + exec_arg_aggregate_bytes(agent_cmd);
+    fn bootstrap_exec_boundary_counts_fixed_agent_executable_arg() {
+        let executable_arg_bytes = exec_arg_aggregate_bytes(guest::RUN_AGENT);
         let env_pairs = env_pairs_for_aggregate_bytes(
-            guest_contracts::exec_limits::EXECVE_ARG_ENV_MAX_BYTES + 1 - shell_arg_bytes,
+            guest_contracts::exec_limits::EXECVE_ARG_ENV_MAX_BYTES + 1 - executable_arg_bytes,
         );
 
-        let error = validate_agent_bootstrap_exec_boundary(agent_cmd, &env_pairs)
+        let error = validate_agent_bootstrap_exec_boundary(&env_pairs)
             .unwrap_err()
             .to_string();
 

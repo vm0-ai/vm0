@@ -95,10 +95,7 @@ function createExternalCodeGrantProvider(): ExternalCodeConnectorAuthProvider<
           deviceCatalog,
         },
         expiresIn: token.expiresIn,
-        scopes:
-          token.scopes !== null && token.scopes.length > 0
-            ? token.scopes
-            : args.externalCodeGrant.scopes,
+        scopes: token.scopes ?? args.externalCodeGrant.scopes,
         userInfo: nintendoSwitchParentalControlsUserInfo(token.idToken),
       };
     },

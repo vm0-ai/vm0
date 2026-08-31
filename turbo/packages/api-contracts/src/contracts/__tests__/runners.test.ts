@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import {
+  AGENT_EXECUTION_TIMEOUT_SECONDS,
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
   activeInputDeliveryReserveResponseSchema,
   compatibleStoredExecutionContextSchema,
@@ -26,15 +27,81 @@ import {
   runnersBuiltinFirewallsResolveContract,
   runnersConnectorRuntimeSyncContract,
   runnersJobClaimContract,
+  runnersModelUsageObservationsContract,
   runnersPollContract,
+  sandboxReuseResultSchema as runnersSandboxReuseResultSchema,
   storageMountEntrySchema,
   storageManifestSchema,
   storedConnectorPermissionBaselineSchema,
   storedExecutionContextSchema,
   storedResumeSessionSchema,
+  workspaceReuseResultSchema as runnersWorkspaceReuseResultSchema,
 } from "../runners";
+import {
+  runnerHeartbeatGenerationSchema,
+  runnerHostnameSchema,
+  runnerVersionSchema,
+  sandboxReuseResultSchema,
+  workspaceReuseResultSchema,
+} from "../runner-primitives";
 import { runRunnerContract } from "../run-routes";
 import { MAX_EVENT_SEQUENCE_NUMBER } from "../runs";
+import {
+  sandboxReuseResultSchema as webhookSandboxReuseResultSchema,
+  workspaceReuseResultSchema as webhookWorkspaceReuseResultSchema,
+} from "../webhooks";
+
+describe("runner model usage observations contract", () => {
+  const event = {
+    idempotencyKey: "00000000-0000-4000-8000-000000000000",
+    model: "gpt-5.6-sol",
+    inputTokens: 1,
+    outputTokens: 2,
+    cacheReadInputTokens: 3,
+    cacheCreationInputTokens: 4,
+  };
+
+  it("accepts an events-only cross-job payload", () => {
+    expect(
+      runnersModelUsageObservationsContract.report.body.parse({
+        events: [event],
+      }),
+    ).toStrictEqual({ events: [event] });
+  });
+
+  it("rejects invalid observation batches", () => {
+    const invalidBodies = [
+      { events: [] },
+      { events: [{ ...event, inputTokens: Number.MAX_SAFE_INTEGER + 1 }] },
+      {
+        events: [
+          {
+            ...event,
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
+          },
+        ],
+      },
+      { events: [event, event] },
+      { events: [event], runId: "run-partition-is-not-accepted" },
+    ];
+
+    for (const body of invalidBodies) {
+      expect(
+        runnersModelUsageObservationsContract.report.body.safeParse(body)
+          .success,
+      ).toBe(false);
+    }
+  });
+});
+
+describe("agent execution timing contract", () => {
+  it("keeps one run bounded to two hours", () => {
+    expect(AGENT_EXECUTION_TIMEOUT_SECONDS).toBe(2 * 60 * 60);
+  });
+});
 
 describe("active-input reservation contract", () => {
   const deliveryId = "b1e2ad6d-930a-4d51-aa40-7952d54f978b";
@@ -119,6 +186,36 @@ describe("run runner response compatibility", () => {
     expect(
       runRunnerContract.getRunner.responses[200].parse(currentResponse),
     ).toStrictEqual(currentResponse);
+  });
+
+  it("accepts a ready runner lifecycle snapshot", () => {
+    const readyResponse = {
+      sandboxReuseResult: "reused",
+      workspaceReuseResult: "sandboxReused",
+      runnerHostname: "prod-1.aws.vm3.ai",
+      runnerVersion: "1.381.12",
+      runnerId: "00000000-0000-4000-8000-000000000001",
+      runnerHeartbeatGeneration: 1,
+    } as const;
+
+    expect(
+      runRunnerContract.getRunner.responses[200].parse(readyResponse),
+    ).toStrictEqual(readyResponse);
+  });
+
+  it("rejects invalid runner readiness metadata", () => {
+    expect(runnerHeartbeatGenerationSchema.safeParse(0).success).toBe(false);
+    expect(runnerHostnameSchema.safeParse("").success).toBe(false);
+    expect(runnerVersionSchema.safeParse("").success).toBe(false);
+  });
+});
+
+describe("runner lifecycle schema ownership", () => {
+  it("keeps runner and webhook compatibility exports on one schema instance", () => {
+    expect(runnersSandboxReuseResultSchema).toBe(sandboxReuseResultSchema);
+    expect(webhookSandboxReuseResultSchema).toBe(sandboxReuseResultSchema);
+    expect(runnersWorkspaceReuseResultSchema).toBe(workspaceReuseResultSchema);
+    expect(webhookWorkspaceReuseResultSchema).toBe(workspaceReuseResultSchema);
   });
 });
 
@@ -923,12 +1020,14 @@ describe("runner storage manifest contract", () => {
         versionId: "version-1",
         mountPath: "/workspace",
         archiveUrl: "https://storage.example/workspace.tar.gz",
+        baselineCandidate: true,
       }),
     ).toMatchObject({
       name: "workspace",
       storageId: "storage-id-1",
       versionId: "version-1",
       mountPath: "/workspace",
+      baselineCandidate: true,
     });
 
     expect(
@@ -968,6 +1067,21 @@ describe("runner storage manifest contract", () => {
         ...base,
         archiveUrl: "https://storage.example/workspace.tar.gz",
         missingRootPolicy: "fail",
+      }).success,
+    ).toBe(false);
+    expect(
+      storageMountEntrySchema.safeParse({
+        ...base,
+        archiveUrl: "https://storage.example/workspace.tar.gz",
+        baselineCandidate: false,
+      }).success,
+    ).toBe(false);
+    expect(
+      storageMountEntrySchema.safeParse({
+        ...base,
+        empty: true,
+        writeback: true,
+        baselineCandidate: true,
       }).success,
     ).toBe(false);
     expect(
@@ -1253,7 +1367,6 @@ describe("runner resume session contract", () => {
   it("accepts ordered heartbeat snapshots", () => {
     const heartbeat = {
       runnerId: "33333333-3333-4333-8333-333333333333",
-      runnerName: "runner-contract-test",
       group: "vm0/test",
       snapshotGeneration: 1,
       snapshotSequence: 1,
@@ -1281,12 +1394,6 @@ describe("runner resume session contract", () => {
             reusableSandbox: { profile: "vm0/default" },
           },
         ],
-      }).success,
-    ).toBe(true);
-    expect(
-      heartbeatBodySchema.safeParse({
-        ...heartbeat,
-        runnerName: undefined,
       }).success,
     ).toBe(true);
     expect(
@@ -1323,7 +1430,6 @@ describe("runner resume session contract", () => {
   it("requires canonical heartbeat state", () => {
     const heartbeat = {
       runnerId: "33333333-3333-4333-8333-333333333333",
-      runnerName: "runner-contract-test",
       group: "vm0/test",
       snapshotGeneration: 1,
       snapshotSequence: 1,
@@ -1363,7 +1469,6 @@ describe("runner resume session contract", () => {
   it("bounds profile-qualified workspace cache heartbeat state", () => {
     const heartbeat = {
       runnerId: "33333333-3333-4333-8333-333333333333",
-      runnerName: "runner-contract-test",
       group: "vm0/test",
       snapshotGeneration: 1,
       snapshotSequence: 1,

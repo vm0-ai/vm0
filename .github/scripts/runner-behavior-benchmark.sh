@@ -11,7 +11,7 @@ ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
   --profile vm0/default \
   --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
   --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
-  --name ${JOB_REF}-bench \
+  --hostname ${HOST} \
   --group vm0/benchmark-${JOB_REF} \
   --runner-dirname ${JOB_REF}-bench \
   --api-url https://not-a-real-server.test \

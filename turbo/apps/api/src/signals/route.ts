@@ -1,4 +1,3 @@
-import { reportApiBackendUrlAliasSourceAtProcessInitialization } from "../lib/api-backend-url";
 import { authMeRoutes } from "./routes/auth-me";
 import { cliAuthRoutes } from "./routes/cli-auth";
 import type { RouteEntry } from "./route-entry";
@@ -13,7 +12,6 @@ import { cronConnectorCatalogRoutes } from "./routes/cron-connector-catalog";
 import { cronOfficialWorkflowCatalogRoutes } from "./routes/cron-official-workflow-catalog";
 import { cronConnectorOauthStateCleanupRoutes } from "./routes/cron-connector-oauth-state-cleanup";
 import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
-import { cronExecuteMorningBriefsRoutes } from "./routes/cron-execute-morning-briefs";
 import { cronExecuteWorkflowAutomationsRoutes } from "./routes/cron-execute-workflow-automations";
 import { cronMonitorChatEventQueueRoutes } from "./routes/cron-monitor-chat-event-queue";
 import { cronRenewGmailWatchesRoutes } from "./routes/cron-renew-gmail-watches";
@@ -21,6 +19,7 @@ import { cronRenewGoogleFormsWatchesRoutes } from "./routes/cron-renew-google-fo
 import { cronRenewGoogleCalendarWatchesRoutes } from "./routes/cron-renew-google-calendar-watches";
 import { cronRenewGoogleWorkspaceEventSubscriptionsRoutes } from "./routes/cron-renew-google-workspace-event-subscriptions";
 import { cronProcessUsageEventsRoutes } from "./routes/cron-process-usage-events";
+import { cronReconcileSocialKitDownloadRoutes } from "./routes/cron-reconcile-socialkit-downloads";
 import { cronReconcileBillingEntitlementsRoutes } from "./routes/cron-reconcile-billing-entitlements";
 import { cronRefreshStoragePresignedUrlsRoutes } from "./routes/cron-refresh-storage-presigned-urls";
 import { cronComputerUseScreenshotCleanupRoutes } from "./routes/cron-computer-use-screenshot-cleanup";
@@ -31,11 +30,9 @@ import { cronTelegramCleanupRoutes } from "./routes/cron-telegram-cleanup";
 import { desktopAuthRoutes } from "./routes/desktop-auth";
 import { desktopUpdateRoutes } from "./routes/desktop-updates";
 import { emailMorningBriefUnsubscribeRoutes } from "./routes/email-morning-brief-unsubscribe";
-import { morningBriefRoutes } from "./routes/morning-brief";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
 import { healthRoutes } from "./routes/health";
 import { buildInfoRoutes } from "./routes/build-info";
-import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
 import { modelStatsRoutes } from "./routes/model-stats";
 import { presentationImagesRoutes } from "./routes/presentation-images";
@@ -72,10 +69,7 @@ import { billingCreditCheckoutRoutes } from "./routes/billing-credit-checkout";
 import { billingDowngradeRoutes } from "./routes/billing-downgrade";
 import { billingInvoicesRoutes } from "./routes/billing-invoices";
 import { billingPortalRoutes } from "./routes/billing-portal";
-import {
-  billingRedeemCodeRoutes,
-  reportMachineSecretAliasSourceAtProcessInitialization,
-} from "./routes/billing-redeem-code";
+import { billingRedeemCodeRoutes } from "./routes/billing-redeem-code";
 import { billingRedeemRoutes } from "./routes/billing-redeem";
 import { billingRestoreRoutes } from "./routes/billing-restore";
 import { billingStatusRoutes } from "./routes/billing-status";
@@ -124,7 +118,6 @@ import { pushSubscriptionsRoutes } from "./routes/push-subscriptions";
 import { queuePositionRoutes } from "./routes/queue-position";
 import { realtimeTokenRoutes } from "./routes/realtime-token";
 import { imageRecognitionRoutes } from "./routes/image-recognition";
-import { translationRoutes } from "./routes/translation";
 import { runDetailRoutes } from "./routes/run-detail";
 import { runsRoutes } from "./routes/runs";
 import { runsCancelRoutes } from "./routes/runs-cancel";
@@ -201,9 +194,6 @@ import { videoIoGenerateRoutes } from "./routes/video-io-generate";
 import { webDownloadRoutes } from "./routes/web-download";
 import { webFileUrlRoutes } from "./routes/web-file-url";
 
-reportMachineSecretAliasSourceAtProcessInitialization();
-reportApiBackendUrlAliasSourceAtProcessInitialization();
-
 export const ROUTES: readonly RouteEntry[] = [
   ...healthRoutes,
   ...buildInfoRoutes,
@@ -211,7 +201,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cliAuthRoutes,
   ...desktopAuthRoutes,
   ...desktopUpdateRoutes,
-  ...healthAuthProbeRoutes,
   ...githubOauthRoutes,
   ...userExportRoutes,
   ...webhooksClerkRoutes,
@@ -243,7 +232,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronOfficialWorkflowCatalogRoutes,
   ...cronConnectorOauthStateCleanupRoutes,
   ...cronDrainEmailOutboxRoutes,
-  ...cronExecuteMorningBriefsRoutes,
   ...cronExecuteWorkflowAutomationsRoutes,
   ...cronMonitorChatEventQueueRoutes,
   ...cronRenewGmailWatchesRoutes,
@@ -251,6 +239,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronRenewGoogleCalendarWatchesRoutes,
   ...cronRenewGoogleWorkspaceEventSubscriptionsRoutes,
   ...cronProcessUsageEventsRoutes,
+  ...cronReconcileSocialKitDownloadRoutes,
   ...cronReconcileBillingEntitlementsRoutes,
   ...cronRefreshStoragePresignedUrlsRoutes,
   ...cronComputerUseScreenshotCleanupRoutes,
@@ -259,7 +248,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronSyncSkillsRoutes,
   ...cronTelegramCleanupRoutes,
   ...emailMorningBriefUnsubscribeRoutes,
-  ...morningBriefRoutes,
   ...emailUnsubscribeRoutes,
   ...agentDraftRoutes,
   ...agentInstructionsRoutes,
@@ -332,7 +320,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...queuePositionRoutes,
   ...realtimeTokenRoutes,
   ...imageRecognitionRoutes,
-  ...translationRoutes,
   ...runDetailRoutes,
   ...runsRoutes,
   ...runsCancelRoutes,

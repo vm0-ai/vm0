@@ -6,11 +6,13 @@ import {
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, vi } from "vitest";
 
 import { detachedSetupPage, setupPage } from "../../__tests__/page-helper.ts";
-import { testContext } from "../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../signals/__tests__/test-helpers.ts";
 import { createChatEventSignals } from "../../signals/chat-page/chat-event-signals.ts";
 import { eventDrivenChatThreads$ } from "../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { writeConnectionDiagnostic$ } from "../../signals/connection-diagnostics.ts";
@@ -27,7 +29,6 @@ import {
   queryChatEventSharedDatabase$,
   setSharedDatabaseConnectionStatus$,
 } from "../../signals/shared-database.ts";
-import { selectSharedDatabaseMode$ } from "../../signals/shared-database-mode.ts";
 import { okouDebugRealtimeIndicator$ } from "../../signals/okou-page/realtime-status.ts";
 
 vi.mock("idb", async () => {
@@ -43,6 +44,10 @@ function userId(): string {
 
 function orgId(): string {
   return `direct-bridge-org-${context.resourceId}`;
+}
+
+function realtimeChannel(): string {
+  return `user-org:${userId()}:${orgId()}`;
 }
 
 function row(threadId: string, seqId: number): ChatEventRow {
@@ -120,17 +125,21 @@ describe("shared database direct Platform bridge", () => {
       async ({ params, query, respond }) => {
         if (params.threadId === unreadThreadId) {
           prewarmedThreadIds.push(params.threadId);
-          return respond(200, { rows: [] });
+          return respond(200, chatEventRowsResponse([], query));
         }
         requestedSeqIds.push(query.sinceSeqId);
         if (query.sinceSeqId === 1) {
           await initialPage.promise;
         }
-        return respond(200, {
-          rows: availableRows.filter((candidate) => {
-            return candidate.seqId > query.sinceSeqId;
-          }),
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            availableRows.filter((candidate) => {
+              return candidate.seqId > query.sinceSeqId;
+            }),
+            query,
+          ),
+        );
       },
     );
 
@@ -144,7 +153,6 @@ describe("shared database direct Platform bridge", () => {
         activeOrg: { id: orgId(), name: "Direct Bridge Org" },
         memberships: [{ id: orgId() }],
       },
-      featureSwitches: { [FeatureSwitchKey.SharedChatDatabase]: true },
     });
     await vi.waitFor(() => {
       expect(prewarmedThreadIds).toContain(unreadThreadId);
@@ -177,7 +185,10 @@ describe("shared database direct Platform bridge", () => {
     ).toStrictEqual([1, 2]);
 
     availableRows = [caughtUpRow, realtimeRow];
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+    context.mocks.ably.triggerOnChannel(
+      realtimeChannel(),
+      `chatThreadMessageCreated:${threadId}`,
+    );
     await vi.waitFor(() => {
       expect(
         context.store.get(signals.chatEvents$).map((event) => {
@@ -213,7 +224,10 @@ describe("shared database direct Platform bridge", () => {
 
     owner.abort(new DOMException("chat closed", "AbortError"));
     const requestsBeforeAbort = requestedSeqIds.length;
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+    context.mocks.ably.triggerOnChannel(
+      realtimeChannel(),
+      `chatThreadMessageCreated:${threadId}`,
+    );
     await Promise.resolve();
     await Promise.resolve();
     expect(requestedSeqIds).toHaveLength(requestsBeforeAbort);
@@ -225,7 +239,6 @@ describe("shared database direct Platform bridge", () => {
       action: "set-enabled",
       enabled: true,
     });
-    context.store.set(selectSharedDatabaseMode$, true);
     context.store.set(setSharedDatabaseConnectionStatus$, "connected");
 
     expect(context.store.get(okouDebugRealtimeIndicator$)).toBeNull();
@@ -250,7 +263,6 @@ describe("shared database direct Platform bridge", () => {
         activeOrg: { id: orgId(), name: "Direct Bridge Org" },
         memberships: [{ id: orgId() }],
       },
-      featureSwitches: { [FeatureSwitchKey.SharedChatDatabase]: true },
       afterSharedDatabaseWorkerHeartbeat: async () => {
         const gate = context.mocks.deferred<void>();
         heartbeatGates.push(gate);
@@ -289,9 +301,10 @@ describe("shared database direct Platform bridge", () => {
     });
     context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       requestedSeqIds.push(query.sinceSeqId);
-      return respond(200, {
-        rows: query.sinceSeqId === 0 ? [remoteRow] : [],
-      });
+      return respond(
+        200,
+        chatEventRowsResponse(query.sinceSeqId === 0 ? [remoteRow] : [], query),
+      );
     });
 
     await setupPage({
@@ -304,7 +317,6 @@ describe("shared database direct Platform bridge", () => {
         activeOrg: { id: orgId(), name: "Direct Bridge Org" },
         memberships: [{ id: orgId() }],
       },
-      featureSwitches: { [FeatureSwitchKey.SharedChatDatabase]: true },
     });
 
     const owner = createChildAbortController(context.signal);
@@ -316,12 +328,12 @@ describe("shared database direct Platform bridge", () => {
       orgId: orgId(),
       threadId,
     };
-    let appends = 0;
+    let notifications = 0;
     await context.store.set(
       onSharedDatabase$,
       dataKey,
       () => {
-        appends += 1;
+        notifications += 1;
       },
       owner.signal,
     );
@@ -334,7 +346,10 @@ describe("shared database direct Platform bridge", () => {
       upgradedDb.close();
     });
 
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+    context.mocks.ably.triggerOnChannel(
+      realtimeChannel(),
+      `chatThreadMessageCreated:${threadId}`,
+    );
     await vi.waitFor(() => {
       expect(
         context.store.get(signals.chatEvents$).map((event) => {
@@ -342,7 +357,7 @@ describe("shared database direct Platform bridge", () => {
         }),
       ).toStrictEqual([1]);
     });
-    expect(appends).toBe(1);
+    expect(notifications).toBe(2);
     expect(requestedSeqIds).toStrictEqual([0, 1, 0, 1]);
 
     await context.store.set(
@@ -354,7 +369,7 @@ describe("shared database direct Platform bridge", () => {
       },
       owner.signal,
     );
-    expect(appends).toBe(1);
+    expect(notifications).toBe(2);
     expect(requestedSeqIds).toStrictEqual([0, 1, 0, 1, 0, 1]);
     owner.abort(new DOMException("chat closed", "AbortError"));
   });
@@ -423,7 +438,6 @@ describe("shared database direct Platform bridge", () => {
         activeOrg: { id: orgId(), name: "Direct Bridge Org" },
         memberships: [{ id: orgId() }],
       },
-      featureSwitches: { [FeatureSwitchKey.SharedChatDatabase]: true },
     });
     await vi.waitFor(() => {
       expect(
@@ -434,7 +448,7 @@ describe("shared database direct Platform bridge", () => {
     });
 
     availableEvents = [firstRename, secondRename];
-    context.mocks.ably.trigger("threadListChanged");
+    context.mocks.ably.triggerOnChannel(realtimeChannel(), "threadListChanged");
     await vi.waitFor(() => {
       expect(
         context.store.get(eventDrivenChatThreads$).find((thread) => {

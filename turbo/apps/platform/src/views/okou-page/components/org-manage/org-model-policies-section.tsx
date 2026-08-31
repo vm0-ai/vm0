@@ -180,7 +180,7 @@ function toUpdate(policy: OrgModelPolicy): UpdateOrgModelPolicy {
     model: policy.model,
     isDefault: policy.isDefault,
     defaultProviderType: isBuiltInModelProviderType(policy.defaultProviderType)
-      ? "vm0"
+      ? "built-in"
       : policy.defaultProviderType,
     credentialScope: policy.credentialScope,
     modelProviderId: policy.modelProviderId,
@@ -195,7 +195,7 @@ function makeDefaultPolicy(
   return {
     model,
     isDefault,
-    defaultProviderType: "vm0",
+    defaultProviderType: "built-in",
     credentialScope: "org",
     modelProviderId: null,
     modelProviderSurfaceId: null,
@@ -996,7 +996,7 @@ function buildPolicyUpdate(params: {
   if (params.routeKind === "built-in") {
     return {
       ...base,
-      defaultProviderType: "vm0",
+      defaultProviderType: "built-in",
       credentialScope: "org",
       modelProviderId: null,
       modelProviderSurfaceId: null,
@@ -1011,7 +1011,7 @@ function buildPolicyUpdate(params: {
     return {
       ...base,
       defaultProviderType: isBuiltInModelProviderType(params.providerType)
-        ? "vm0"
+        ? "built-in"
         : params.providerType,
       credentialScope: "member",
       modelProviderId: null,
@@ -1026,7 +1026,7 @@ function buildPolicyUpdate(params: {
     return {
       ...base,
       defaultProviderType: isBuiltInModelProviderType(params.providerType)
-        ? "vm0"
+        ? "built-in"
         : params.providerType,
       credentialScope: "org",
       modelProviderId: null,
@@ -1041,7 +1041,7 @@ function buildPolicyUpdate(params: {
   return {
     ...base,
     defaultProviderType: isBuiltInModelProviderType(params.provider.type)
-      ? "vm0"
+      ? "built-in"
       : params.provider.type,
     credentialScope: "org",
     modelProviderId: params.provider.id,
@@ -1521,7 +1521,7 @@ function ModelPolicyRouteDialog({
           {
             model: selectedModel,
             providerType: isBuiltInModelProviderType(selectedProviderType)
-              ? "vm0"
+              ? "built-in"
               : selectedProviderType,
             apiKey: sanitizeTokenInput(apiKeyValue),
           },

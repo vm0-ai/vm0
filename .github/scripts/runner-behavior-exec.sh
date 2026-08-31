@@ -9,7 +9,7 @@ ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
   --profile vm0/default \
   --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
   --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
-  --name ${JOB_REF}-exec \
+  --hostname ${HOST} \
   --group vm0/exec-${JOB_REF} \
   --runner-dirname ${JOB_REF}-exec \
   --max-concurrent 2 \
@@ -1111,8 +1111,8 @@ sudo "$BIN_DIR/runner" exec --timeout 75 \
   || fail "Claude compact-generation compatibility"
 echo "PASS: Claude compact-generation compatibility"
 
-# Test 9: verify the bundled Codex resumes and appends a native compact
-# generation under the same thread ID. Model requests terminate on loopback.
+# Test 9: verify successful usage notifications and that the bundled Codex
+# resumes and appends a native compact generation under the same thread ID.
 echo "--- Test: Codex compact-generation compatibility ---"
 CODEX_COMPACT_SMOKE=$(cat <<'PY'
 import json
@@ -1129,6 +1129,8 @@ seed_token = "CODEX-COMPACT-SEED-TOKEN"
 compacting_turn_token = "CODEX-COMPACTING-TURN-TOKEN"
 candidate_turn_token = "CODEX-COMPACT-CANDIDATE-TURN-TOKEN"
 append_token = "CODEX-COMPACT-APPEND-TOKEN"
+legacy_seed_token = "CODEX-LEGACY-SEED-TOKEN"
+usage_token = "CODEX-TOKEN-USAGE-TOKEN"
 # [sync:codex-app-server-compatibility-params] Keep in sync with initialize in
 # codex_app_server.rs, thread/turn params in codex_app_server_backend.rs, and
 # IGNORED_NOTIFICATION_METHODS in codex_app_server_events.rs.
@@ -1159,6 +1161,59 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("content-length", "0"))
         payload = json.loads(self.rfile.read(length))
         requests.append((self.path, payload))
+        if usage_token in json.dumps(payload.get("input", [])):
+            events = [
+                {
+                    "type": "response.created",
+                    "response": {"id": "resp-token-usage"},
+                },
+                {
+                    "type": "response.output_item.done",
+                    "item": {
+                        "type": "message",
+                        "role": "assistant",
+                        "id": "msg-token-usage",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": "token usage probe complete",
+                            }
+                        ],
+                    },
+                },
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "id": "resp-token-usage",
+                        "usage": {
+                            "input_tokens": 30,
+                            "input_tokens_details": {
+                                "cached_tokens": 11,
+                                "cache_write_tokens": 2,
+                            },
+                            "output_tokens": 7,
+                            "output_tokens_details": {
+                                "reasoning_tokens": 3,
+                            },
+                            "total_tokens": 37,
+                        },
+                    },
+                },
+            ]
+            body = "".join(
+                "event: "
+                + event["type"]
+                + "\ndata: "
+                + json.dumps(event, separators=(",", ":"))
+                + "\n\n"
+                for event in events
+            ).encode()
+            self.send_response(200)
+            self.send_header("content-type", "text/event-stream")
+            self.send_header("content-length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         body = json.dumps(
             {
                 "error": {
@@ -1218,7 +1273,12 @@ def wait_for_app_server_response(process, response_id, messages):
         return message["result"]
 
 
-def run_codex_app_server(codex_home, prompt, resume_id=None):
+def run_codex_app_server(
+    codex_home,
+    prompt,
+    resume_id=None,
+    expected_history_mode="paginated",
+):
     env = os.environ.copy()
     env.update(
         {
@@ -1286,6 +1346,7 @@ def run_codex_app_server(codex_home, prompt, resume_id=None):
             if resume_id is not None:
                 thread_method = "thread/resume"
                 thread_params["threadId"] = resume_id
+                thread_params["excludeTurns"] = True
             send_app_server_message(
                 process,
                 {"id": 2, "method": thread_method, "params": thread_params},
@@ -1293,7 +1354,9 @@ def run_codex_app_server(codex_home, prompt, resume_id=None):
             thread_result = wait_for_app_server_response(process, 2, messages)
             thread = thread_result["thread"]
             thread_id = thread["id"]
-            assert thread["historyMode"] == "legacy", thread
+            assert thread["historyMode"] == expected_history_mode, thread
+            if resume_id is not None:
+                assert thread["turns"] == [], thread
 
             send_app_server_message(
                 process,
@@ -1368,6 +1431,61 @@ def response_request_for_prompt(prompt):
     return matching_requests[0]
 
 
+def probe_token_usage(codex_home, port):
+    write_config(codex_home, port)
+    requests.clear()
+    result = run_codex_app_server(codex_home, usage_token)
+    response_request_for_prompt(usage_token)
+    messages = result["messages"]
+    turn_response = next(
+        message
+        for message in messages
+        if message.get("id") == 3
+    )
+    turn_id = turn_response["result"]["turn"]["id"]
+    usage_notifications = [
+        (index, message)
+        for index, message in enumerate(messages)
+        if (
+            message.get("method") == "thread/tokenUsage/updated"
+            and message.get("params", {}).get("threadId")
+            == result["thread_id"]
+            and message.get("params", {}).get("turnId") == turn_id
+        )
+    ]
+    assert usage_notifications, (
+        "Codex did not emit thread/tokenUsage/updated on success\n"
+        + app_server_output(result)
+    )
+    usage_index, usage_message = usage_notifications[-1]
+    expected_usage = {
+        "inputTokens": 30,
+        "cachedInputTokens": 11,
+        "cacheWriteInputTokens": 2,
+        "outputTokens": 7,
+        "reasoningOutputTokens": 3,
+        "totalTokens": 37,
+    }
+    token_usage = usage_message["params"]["tokenUsage"]
+    assert token_usage["total"] == expected_usage, token_usage
+    assert token_usage["last"] == expected_usage, token_usage
+    completion_index, completion = next(
+        (index, message)
+        for index, message in enumerate(messages)
+        if (
+            message.get("method") == "turn/completed"
+            and message.get("params", {}).get("threadId")
+            == result["thread_id"]
+            and message.get("params", {}).get("turn", {}).get("id")
+            == turn_id
+        )
+    )
+    assert usage_index < completion_index, (
+        "token usage notification must precede turn completion"
+    )
+    assert "usage" not in completion.get("params", {}), completion
+
+
 def zstd_compress(history_bytes):
     result = subprocess.run(
         [
@@ -1423,6 +1541,7 @@ def resume_history(
     history_bytes,
     session_id,
     port,
+    expected_history_mode="paginated",
 ):
     codex_home = root / ".codex"
     write_config(codex_home, port)
@@ -1439,6 +1558,7 @@ def resume_history(
         codex_home,
         append_token,
         session_id,
+        expected_history_mode=expected_history_mode,
     )
     output = app_server_output(resumed)
     assert (
@@ -1446,6 +1566,120 @@ def resume_history(
     ), output
     response_request = response_request_for_prompt(append_token)
     return resumed, history_file, original_size, response_request
+
+
+def probe_legacy_resume(root, port):
+    session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    turn_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+
+    def record(record_type, payload):
+        return json.dumps(
+            {
+                "timestamp": "2026-01-01T00:00:00Z",
+                "type": record_type,
+                "payload": payload,
+            },
+            separators=(",", ":"),
+        ) + "\n"
+
+    history_bytes = "".join(
+        [
+            record(
+                "session_meta",
+                {
+                    "id": session_id,
+                    "session_id": session_id,
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "cwd": "/home/user/workspace",
+                    "originator": "vm0-guest-agent",
+                    "cli_version": "0.150.1",
+                    "source": "vscode",
+                    "model_provider": "mock",
+                    "history_mode": "legacy",
+                },
+            ),
+            record(
+                "event_msg",
+                {
+                    "type": "task_started",
+                    "turn_id": turn_id,
+                    "started_at": 1767225600,
+                    "model_context_window": 258400,
+                    "collaboration_mode_kind": "default",
+                },
+            ),
+            record(
+                "turn_context",
+                {
+                    "turn_id": turn_id,
+                    "cwd": "/home/user/workspace",
+                    "approval_policy": "never",
+                    "sandbox_policy": {"type": "danger-full-access"},
+                    "model": "gpt-5.1-codex-mini",
+                    "summary": "auto",
+                },
+            ),
+            record(
+                "response_item",
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": legacy_seed_token,
+                        }
+                    ],
+                },
+            ),
+            record(
+                "event_msg",
+                {
+                    "type": "user_message",
+                    "message": legacy_seed_token,
+                    "images": [],
+                    "local_images": [],
+                    "audio": [],
+                    "local_audio": [],
+                    "text_elements": [],
+                },
+            ),
+            record(
+                "event_msg",
+                {
+                    "type": "task_complete",
+                    "turn_id": turn_id,
+                    "last_agent_message": None,
+                    "started_at": 1767225600,
+                    "completed_at": 1767225601,
+                    "duration_ms": 1000,
+                },
+            ),
+        ]
+    ).encode()
+    candidate_relative_path = Path(
+        "2026/01/01/"
+        f"rollout-2026-01-01T00-00-00-{session_id}.jsonl"
+    )
+
+    requests.clear()
+    resumed, history_file, original_size, response_request = resume_history(
+        root,
+        candidate_relative_path,
+        history_bytes,
+        session_id,
+        port,
+        expected_history_mode="legacy",
+    )
+    assert resumed["thread_id"] == session_id, (
+        "Codex changed the legacy thread ID"
+    )
+    assert legacy_seed_token in json.dumps(response_request["input"]), (
+        "Codex did not restore the legacy session context"
+    )
+    assert history_file.stat().st_size > original_size, (
+        "Codex did not append to the legacy rollout"
+    )
 
 
 def probe_current_codex(
@@ -1573,6 +1807,8 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
         root = Path(temp_root)
         port = server.server_port
 
+        probe_token_usage(root / "usage" / ".codex", port)
+
         seed_home = root / "seed" / ".codex"
         write_config(seed_home, port)
         run_codex_app_server(
@@ -1650,6 +1886,8 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
                 },
             },
         )
+        for ordinal, record in enumerate(records):
+            record["ordinal"] = ordinal
         source.write_bytes(
             "".join(
                 json.dumps(record, separators=(",", ":")) + "\n"
@@ -1724,6 +1962,7 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
             session_id,
             port,
         )
+        probe_legacy_resume(root / "legacy", port)
 
         server.shutdown()
         server_thread.join()

@@ -3,7 +3,6 @@ import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
-  INTRO_VIDEO_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
@@ -571,70 +570,6 @@ describe("chat composer templates", () => {
     expect(sentInlineTemplate(submittedUserMessage)).toStrictEqual({
       type: "video",
       selection: { stylePresetId: template.id },
-    });
-  });
-
-  it("keeps the intro-video placeholder out of the picker while switched off", async () => {
-    const user = userEvent.setup({ delay: null });
-    const template = INTRO_VIDEO_TEMPLATE_ITEMS[0]!;
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-
-    detachedSetupPage({
-      context,
-      featureSwitches: {
-        [FeatureSwitchKey.IntroVideoTemplates]: false,
-      },
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await user.click(await screen.findByLabelText("Template"));
-    await user.click(tabByText("Video"));
-    expect(
-      screen.queryByLabelText(`Select video template ${template.title}`),
-    ).not.toBeInTheDocument();
-  });
-
-  it("selects Interview as a switched-on intro-video template", async () => {
-    const user = userEvent.setup({ delay: null });
-    const template = INTRO_VIDEO_TEMPLATE_ITEMS[0]!;
-    let submittedUserMessage: UserMessageDocument | undefined;
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      onRunCreate(body) {
-        submittedUserMessage = body.userMessage;
-      },
-    });
-
-    detachedSetupPage({
-      context,
-      featureSwitches: {
-        [FeatureSwitchKey.IntroVideoTemplates]: true,
-      },
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await user.click(await screen.findByLabelText("Template"));
-    await user.click(tabByText("Video"));
-    const select = await screen.findByLabelText(
-      `Select video template ${template.title}`,
-    );
-    expect(
-      select.closest("[class*='aspect-']")?.querySelector("video"),
-    ).toBeNull();
-    await user.click(select);
-    const chip = await waitFor(() => {
-      const found = document.querySelector("[data-composer-inline-template]");
-      expect(found).not.toBeNull();
-      return found!;
-    });
-    expect(chip).toHaveTextContent(template.title);
-
-    await user.click(screen.getByLabelText("Send"));
-    await waitFor(() => {
-      expect(sentInlineTemplate(submittedUserMessage)).toStrictEqual({
-        type: "intro-video",
-        selection: { templateId: template.id },
-      });
     });
   });
 
@@ -2789,8 +2724,8 @@ describe("chat composer templates", () => {
     if (!illustrationTemplate) {
       throw new Error("Illustration template with four variants not found");
     }
-    const scrollIntoView = vi.fn();
-    const scrollTo = vi.fn();
+    const scrollIntoView = vi.fn<HTMLElement["scrollIntoView"]>();
+    const scrollTo = vi.fn<HTMLElement["scrollTo"]>();
     const rect = ({
       left,
       right,
@@ -4408,6 +4343,71 @@ describe("chat composer templates", () => {
         ),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("releases rename focus after confirming an uploaded template title", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    let template = presentationTemplateDetail({
+      id: "34c41aed-b488-4e09-b7ea-23a712a270dd",
+      title: "Focus deck",
+      sourceFilename: "focus-deck.pptx",
+      coverUrl: "https://example.com/focus-deck-cover.png",
+      pageCount: 1,
+      visibility: "private",
+      canManage: true,
+      pageUrls: ["https://example.com/focus-deck-cover.png"],
+      createdAt: "2026-08-21T02:41:59.522Z",
+      updatedAt: "2026-08-21T02:41:59.522Z",
+    });
+    setMockPresentationTemplates([template]);
+    const updateStarted = context.mocks.deferred<void>();
+    const releaseUpdate = context.mocks.deferred<void>();
+    context.mocks.api(
+      presentationTemplatesContract.update,
+      async ({ body, params, respond }) => {
+        expect(params.templateId).toBe(template.id);
+        expect(body).toStrictEqual({ title: "Renamed focus deck" });
+        updateStarted.resolve();
+        await releaseUpdate.promise;
+        template = {
+          ...template,
+          title: body.title ?? template.title,
+          updatedAt: "2026-08-27T02:41:59.522Z",
+        };
+        return respond(200, presentationTemplateSummary(template));
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.PresentationTemplates]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(await screen.findByLabelText("Template"));
+    await user.click(
+      await screen.findByLabelText("Preview Focus deck at current slide"),
+    );
+    const titleInput = await screen.findByRole("textbox", {
+      name: "Rename template",
+    });
+    await fill(titleInput, "Renamed focus deck");
+    const renameButton = queryAllByRoleFast("button").find((candidate) => {
+      return candidate.getAttribute("aria-label") === "Rename template";
+    });
+    if (!renameButton) {
+      throw new Error("Imported template Rename button not found");
+    }
+    await user.click(renameButton);
+    await updateStarted.promise;
+
+    expect(renameButton).not.toHaveFocus();
+
+    releaseUpdate.resolve();
+    await expect(
+      screen.findByTestId("Renamed focus deck imported detail image preview"),
+    ).resolves.toBeInTheDocument();
   });
 
   it("keeps loaded uploaded slides mounted while visibility metadata refreshes", async () => {

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { timestampQueryNumberSchema } from "./base";
-import { firewallPoliciesSchema } from "@okouai/connectors/firewall-types";
+import { firewallPoliciesSchema } from "@okouai/connectors/firewall-contracts";
 import {
   modelProviderWriteTypeSchema,
   type ModelProviderWriteType,
@@ -8,13 +8,16 @@ import {
 import { triggerSourceSchema } from "./logs";
 import { orgTierSchema } from "./orgs";
 
-export type DirectRunModelProviderType = Exclude<ModelProviderWriteType, "vm0">;
+export type DirectRunModelProviderType = Exclude<
+  ModelProviderWriteType,
+  "built-in"
+>;
 
 const directRunModelProviderTypeSchema = modelProviderWriteTypeSchema.refine(
   (type) => {
-    return type !== "vm0";
+    return type !== "built-in";
   },
-  { message: "vm0 model provider is only supported by zero runs" },
+  { message: "built-in model provider is only supported by zero runs" },
 );
 
 export const claudeToolEntrySchema = z
@@ -137,8 +140,8 @@ const unifiedRunRequestSchema = z
     permissionPolicies: firewallPoliciesSchema.optional(),
 
     // Internal: pin provider type for direct CLI runs used by E2E.
-    // vm0 is intentionally excluded here because only zero runs enforce
-    // vm0-built-in-provider credits.
+    // The built-in provider is intentionally excluded here because only Zero
+    // runs enforce built-in-provider credits.
     modelProviderType: directRunModelProviderTypeSchema.optional(),
   })
   .strict();

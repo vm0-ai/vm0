@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { initContract } from "./base";
 import { connectorRuntimeTargetsSchema } from "./runners";
-import { CHAT_EVENT_SNAPSHOT_PROJECTIONS } from "./chat-event-schema-version";
 
 const c = initContract();
 
@@ -156,7 +155,10 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("read-chat-event-snapshot-head"),
     thread_id: z.uuid(),
-    projection: z.enum(CHAT_EVENT_SNAPSHOT_PROJECTIONS).optional(),
+  }),
+  z.object({
+    action: z.literal("read-chat-event-rows-as-previous-api"),
+    thread_id: z.uuid(),
   }),
   z.object({
     action: z.literal("advance-chat-event-sequence-as-previous-api"),
@@ -164,17 +166,11 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     count: z.int().positive(),
   }),
   z.object({
-    action: z.literal("set-chat-event-snapshot-head-version"),
+    action: z.literal("update-chat-event-snapshot-head"),
     thread_id: z.uuid(),
-    archive_schema_version: z.int().positive(),
     object_key: z.string().optional(),
     last_seq_id: z.int().nonnegative().optional(),
-    projection: z.enum(CHAT_EVENT_SNAPSHOT_PROJECTIONS).optional(),
-  }),
-  z.object({
-    action: z.literal("delete-chat-event-snapshot-head"),
-    thread_id: z.uuid(),
-    projection: z.enum(CHAT_EVENT_SNAPSHOT_PROJECTIONS),
+    last_event_id: z.uuid().optional(),
   }),
   z.object({
     action: z.literal("clear-run-api-start"),
@@ -194,8 +190,52 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     run_id: z.uuid(),
   }),
   z.object({
-    action: z.literal("read-run-chat-tool-activity-decision"),
+    action: z.literal("read-official-workflow-run-state"),
     run_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("read-agent-run-family-counts"),
+    agent_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("corrupt-official-workflow-revision-payload"),
+    definition_name: z.string(),
+  }),
+  z.object({
+    action: z.literal("set-official-workflow-automation-admission-state"),
+    automation_id: z.uuid(),
+    reconciliation_status: z.enum([
+      "current",
+      "reconciling",
+      "needs_reconfiguration",
+      "failed",
+    ]),
+    applied_fingerprint: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .optional(),
+  }),
+  z.object({
+    action: z.literal("retarget-workflow-automation"),
+    automation_id: z.uuid(),
+    workflow_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal(
+      "assert-official-workflow-automation-final-admission-rejected",
+    ),
+    automation_id: z.uuid(),
+    official_workflow_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("hold-official-workflow-run-gate"),
+    gate: z.enum(["observation", "final-admission", "bootstrap-requirement"]),
+  }),
+  z.object({
+    action: z.literal("read-official-workflow-run-gate-state"),
+  }),
+  z.object({
+    action: z.literal("release-official-workflow-run-gate"),
   }),
   z.object({
     action: z.literal("read-thread-session-binding"),
@@ -251,10 +291,15 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     connector_id: z.uuid(),
     value_template: z.string(),
   }),
+  z.object({
+    action: z.literal("reconcile-socialkit-downloads"),
+    download_ids: z.array(z.uuid()).min(1).max(2),
+  }),
 ]);
 
 export const testRuntimeStateActionResponseSchema = z.object({
   ok: z.literal(true),
+  processed: z.int().nonnegative().optional(),
   selected_model: z.string().optional(),
   built_in_model_route: builtInModelRuntimeRouteSchema.nullable().optional(),
   browser_screenshot_schema_available: z.boolean().optional(),
@@ -266,6 +311,8 @@ export const testRuntimeStateActionResponseSchema = z.object({
       autonomy_budget: z.int().min(0).max(10),
       enabled: z.boolean(),
       last_run_id: z.uuid().nullable(),
+      official_blueprint_key: z.string().nullable(),
+      official_result_email_enabled: z.boolean().nullable(),
     })
     .nullable()
     .optional(),
@@ -284,10 +331,22 @@ export const testRuntimeStateActionResponseSchema = z.object({
       archive_schema_version: z.int().positive(),
       last_event_id: z.uuid(),
       last_seq_id: z.int().nonnegative(),
+      terminal_event_id: z.uuid().nullable(),
+      terminal_seq_id: z.int().nonnegative().nullable(),
       object_key: z.string(),
       snapshot_count: z.int().positive(),
     })
     .nullable()
+    .optional(),
+  previous_api_chat_event_rows: z
+    .array(
+      z.object({
+        id: z.uuid(),
+        event_type: z.string(),
+        revokes_event_id: z.uuid().nullable(),
+        payload_keys: z.array(z.string()),
+      }),
+    )
     .optional(),
   api_started_at: z.string().nullable().optional(),
   run_time_budget: z
@@ -309,10 +368,70 @@ export const testRuntimeStateActionResponseSchema = z.object({
         .nullable(),
     })
     .optional(),
-  run_chat_tool_activity_decision: z
+  official_workflow_run_state: z
     .object({
-      run_id: z.uuid(),
-      chat_tool_activity_enabled: z.boolean(),
+      status: z.string(),
+      model_provider: z.string().nullable(),
+      provenance: z
+        .object({
+          schemaVersion: z.literal(1),
+          definitions: z.array(
+            z.object({
+              name: z.string(),
+              revision: z.string().regex(/^[0-9a-f]{64}$/),
+              artifact: z.object({
+                orgId: z.string(),
+                userId: z.string(),
+                storageName: z.string(),
+                storageId: z.uuid(),
+                storageVersion: z.string().regex(/^[0-9a-f]{64}$/),
+              }),
+            }),
+          ),
+        })
+        .nullable(),
+      storage_mounts: z
+        .array(
+          z.object({
+            org_id: z.string(),
+            user_id: z.string(),
+            name: z.string(),
+            storage_id: z.uuid(),
+            version: z.string().optional(),
+            mount_path: z.string(),
+            writeback: z.boolean().optional(),
+          }),
+        )
+        .nullable(),
+      runner_job_count: z.int().nonnegative(),
+      callback_count: z.int().nonnegative(),
+    })
+    .nullable()
+    .optional(),
+  agent_run_family_counts: z
+    .object({
+      run_count: z.int().nonnegative(),
+      callback_count: z.int().nonnegative(),
+      runner_job_count: z.int().nonnegative(),
+      launch_queue_count: z.int().nonnegative(),
+    })
+    .optional(),
+  official_workflow_run_gate_state: z
+    .object({
+      gate: z.enum(["observation", "final-admission", "bootstrap-requirement"]),
+      arrivals: z.int().nonnegative(),
+      shared_catalog_holder_count: z.int().nonnegative(),
+      exclusive_catalog_waiter_count: z.int().nonnegative(),
+      blocked_waiter_count: z.int().nonnegative(),
+      bootstrap_requirement: z
+        .object({
+          workflow_ids: z.array(z.uuid()),
+          queue_first_kind: z
+            .enum(["user_message", "automation_event"])
+            .nullable(),
+          workflow_automation_id: z.uuid().nullable(),
+        })
+        .nullable(),
     })
     .nullable()
     .optional(),

@@ -58,6 +58,12 @@ pub(super) enum BoundedSystemctlOutcome {
     TimedOut,
 }
 
+#[derive(Debug)]
+pub(super) enum BoundedSystemctlQuery<T> {
+    Completed(T),
+    TimedOut,
+}
+
 /// Run `systemctl <args>` with a caller-supplied deadline.
 ///
 /// Timeout is a cleanup policy boundary, not normal service behavior. Existing
@@ -85,6 +91,16 @@ pub(super) async fn run_systemctl_output_bounded(
     args: &[&str],
     duration: Duration,
 ) -> RunnerResult<Output> {
+    match run_systemctl_output_bounded_query(args, duration).await? {
+        BoundedSystemctlQuery::Completed(output) => Ok(output),
+        BoundedSystemctlQuery::TimedOut => Err(systemctl_timeout_error(duration)),
+    }
+}
+
+async fn run_systemctl_output_bounded_query(
+    args: &[&str],
+    duration: Duration,
+) -> RunnerResult<BoundedSystemctlQuery<Output>> {
     let mut command = tokio::process::Command::new("systemctl");
     command.args(args);
     match run_output_bounded(
@@ -96,12 +112,16 @@ pub(super) async fn run_systemctl_output_bounded(
     .await
     .map_err(|error| bounded_command_error("systemctl", error))?
     {
-        BoundedCommandOutcome::Exited(output) => Ok(output),
-        BoundedCommandOutcome::TimedOut => Err(RunnerError::Internal(format!(
-            "systemctl timed out after {}ms",
-            duration.as_millis()
-        ))),
+        BoundedCommandOutcome::Exited(output) => Ok(BoundedSystemctlQuery::Completed(output)),
+        BoundedCommandOutcome::TimedOut => Ok(BoundedSystemctlQuery::TimedOut),
     }
+}
+
+fn systemctl_timeout_error(duration: Duration) -> RunnerError {
+    RunnerError::Internal(format!(
+        "systemctl timed out after {}ms",
+        duration.as_millis()
+    ))
 }
 
 fn bounded_command_error(program: &str, error: BoundedCommandError) -> RunnerError {
@@ -141,11 +161,32 @@ pub(super) async fn is_unit_active_bounded(
     unit: &RunnerServiceUnit,
     duration: Duration,
 ) -> RunnerResult<bool> {
+    match is_unit_active_bounded_query(unit, duration).await? {
+        BoundedSystemctlQuery::Completed(active) => Ok(active),
+        BoundedSystemctlQuery::TimedOut => Err(systemctl_timeout_error(duration)),
+    }
+}
+
+pub(super) async fn is_unit_active_bounded_query(
+    unit: &RunnerServiceUnit,
+    duration: Duration,
+) -> RunnerResult<BoundedSystemctlQuery<bool>> {
     let svc = unit.service_name();
     let properties = ["LoadState", "ActiveState"];
-    let output = run_systemctl_show_bounded(svc, &properties, duration).await?;
-    let values = parse_systemctl_show_output(svc, &properties, &output)?;
-    unit_active_from_systemctl_show(svc, &properties, &output.status, &values, &output.stderr)
+    match run_systemctl_show_bounded_query(svc, &properties, duration).await? {
+        BoundedSystemctlQuery::Completed(output) => {
+            let values = parse_systemctl_show_output(svc, &properties, &output)?;
+            unit_active_from_systemctl_show(
+                svc,
+                &properties,
+                &output.status,
+                &values,
+                &output.stderr,
+            )
+            .map(BoundedSystemctlQuery::Completed)
+        }
+        BoundedSystemctlQuery::TimedOut => Ok(BoundedSystemctlQuery::TimedOut),
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -356,11 +397,23 @@ fn service_unit_state_from_output(
 
 /// Read the fragment and drop-ins selected by the running systemd manager.
 pub(super) async fn cat_unit_content(unit: &RunnerServiceUnit) -> RunnerResult<String> {
+    match cat_unit_content_bounded(unit, SYSTEMCTL_QUERY_TIMEOUT).await? {
+        BoundedSystemctlQuery::Completed(content) => Ok(content),
+        BoundedSystemctlQuery::TimedOut => Err(systemctl_timeout_error(SYSTEMCTL_QUERY_TIMEOUT)),
+    }
+}
+
+pub(super) async fn cat_unit_content_bounded(
+    unit: &RunnerServiceUnit,
+    duration: Duration,
+) -> RunnerResult<BoundedSystemctlQuery<String>> {
     let svc = unit.service_name();
-    let output =
-        run_systemctl_output_bounded(&["--no-pager", "cat", "--", svc], SYSTEMCTL_QUERY_TIMEOUT)
-            .await?;
-    unit_content_from_systemctl_cat(svc, &output)
+    match run_systemctl_output_bounded_query(&["--no-pager", "cat", "--", svc], duration).await? {
+        BoundedSystemctlQuery::Completed(output) => {
+            unit_content_from_systemctl_cat(svc, &output).map(BoundedSystemctlQuery::Completed)
+        }
+        BoundedSystemctlQuery::TimedOut => Ok(BoundedSystemctlQuery::TimedOut),
+    }
 }
 
 /// Read the systemd ActiveState using cleanup semantics.
@@ -550,12 +603,23 @@ async fn run_systemctl_show_bounded(
     properties: &[&str],
     duration: Duration,
 ) -> RunnerResult<Output> {
+    match run_systemctl_show_bounded_query(svc, properties, duration).await? {
+        BoundedSystemctlQuery::Completed(output) => Ok(output),
+        BoundedSystemctlQuery::TimedOut => Err(systemctl_timeout_error(duration)),
+    }
+}
+
+async fn run_systemctl_show_bounded_query(
+    svc: &str,
+    properties: &[&str],
+    duration: Duration,
+) -> RunnerResult<BoundedSystemctlQuery<Output>> {
     let mut args = vec!["show".to_string(), svc.to_string()];
     for property in properties {
         args.push(format!("--property={property}"));
     }
     let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
-    run_systemctl_output_bounded(&arg_refs, duration).await
+    run_systemctl_output_bounded_query(&arg_refs, duration).await
 }
 
 fn parse_systemctl_show_output(

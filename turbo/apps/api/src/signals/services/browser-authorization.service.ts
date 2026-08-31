@@ -281,7 +281,10 @@ export const applyBrowserAuthorizationRequest$ = command(
       return { status: "scope_not_found" };
     }
 
-    await publishThreadListChanged(args.userId);
+    await publishThreadListChanged({
+      userId: args.userId,
+      orgId: args.orgId,
+    });
     signal.throwIfAborted();
     return { status: "applied" };
   },

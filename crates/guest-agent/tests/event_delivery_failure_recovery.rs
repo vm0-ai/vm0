@@ -123,13 +123,15 @@ async fn run_event_failure_case(
             .header("Content-Type", "application/octet-stream");
         then.status(200);
     });
-    let checkpoint = server.mock(|when, then| {
+    let complete = server.mock(|when, then| {
         when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
-            .json_body_includes(format!(r#"{{"cliAgentSessionId":"{THREAD_ID}"}}"#));
+            .path("/api/webhooks/agent/complete")
+            .json_body_includes(format!(
+                r#"{{"exitCode":1,"checkpoint":{{"cliAgentSessionId":"{THREAD_ID}"}}}}"#
+            ));
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "event-delivery-recovery-checkpoint", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
+            .json_body(json!({"success": true, "status": "failed"}));
     });
 
     let output = common::command_output_with_timeout(
@@ -143,26 +145,38 @@ async fn run_event_failure_case(
             )
             .env("SHELL", "/bin/sh")
             .env("HOME", &home)
-            .env(guest_contracts::env::API_URL_ENV, server.base_url())
-            .env(guest_contracts::env::API_TOKEN_ENV, "test-token")
+            .env(
+                guest_contracts::env::CANONICAL_API_URL_ENV,
+                server.base_url(),
+            )
+            .env(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token")
             .env(guest_contracts::env::RUN_ID_ENV, run_id)
             .env(
-                guest_contracts::env::SANDBOX_ID_ENV,
+                guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
                 "00000000-0000-4000-8000-000000000abc",
             )
-            .env(guest_contracts::env::SANDBOX_REUSE_RESULT_ENV, "reused")
+            .env(
+                guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
+                "reused",
+            )
             .env(guest_contracts::env::CLI_AGENT_TYPE_ENV, "codex")
             .env("OKOU_TEST_CODEX_HOME_DIR", home.join(".codex"))
             .env(guest_contracts::env::USE_MOCK_CODEX_ENV, "true")
-            .env(guest_contracts::env::MOCK_CODEX_PATH_ENV, &mock_codex)
-            .env(guest_contracts::env::RESUME_SESSION_ID_ENV, THREAD_ID)
+            .env(
+                guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
+                &mock_codex,
+            )
+            .env(
+                guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
+                THREAD_ID,
+            )
             .env("MOCK_CODEX_APP_SERVER_SCENARIO", mock_scenario)
             .env(
-                guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+                guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
                 &run_payload_file,
             )
             .env(
-                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
                 &runtime_dir,
             ),
         Duration::from_secs(20),
@@ -173,7 +187,7 @@ async fn run_event_failure_case(
     assert!(events.calls_async().await >= 3);
     prepare.assert_calls_async(1).await;
     upload.assert_calls_async(1).await;
-    checkpoint.assert_calls_async(1).await;
+    complete.assert_calls_async(1).await;
 
     let paths = guest_agent::paths::GuestPaths::from_runtime_dir(runtime_dir.clone());
     let diagnostic: FailureDiagnostic =

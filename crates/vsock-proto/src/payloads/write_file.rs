@@ -6,8 +6,8 @@ use crate::read::{
     ensure_u32_len, expect_consumed, read_slice, read_str, read_u8, read_u16, read_u32,
 };
 use crate::wire::{
-    MSG_WRITE_FILE, MSG_WRITE_FILES, WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_PRIVATE,
-    WRITE_FILE_FLAG_SUDO,
+    MSG_WRITE_FILE, MSG_WRITE_FILES, MSG_WRITE_PRIVATE_FILES, WRITE_FILE_FLAG_APPEND,
+    WRITE_FILE_FLAG_PRIVATE, WRITE_FILE_FLAG_SUDO,
 };
 
 struct EncodedWriteFilePayload<'a> {
@@ -32,7 +32,7 @@ struct EncodedWriteFilesPayload<'a> {
     payload_len: usize,
 }
 
-/// One ordinary file write entry in a `write_files` batch payload.
+/// One file entry in a `write_files` or `write_private_files` batch payload.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WriteFileBatchEntry<'a> {
     /// Guest path to create or replace.
@@ -186,6 +186,32 @@ pub fn encode_write_files_frame_into(
     encode_into(frame, MSG_WRITE_FILES, seq, encoded.payload_len, |frame| {
         append_write_files_payload(frame, &encoded);
     })
+}
+
+/// Encode a full private write_files frame into `frame`.
+///
+/// The payload bytes and validation rules match
+/// [`encode_write_files_frame_into`]; the request message type selects
+/// runtime-private semantics for every entry.
+///
+/// # Errors
+///
+/// Returns [`ProtocolError`] under the same conditions as
+/// [`encode_write_files_frame_into`].
+pub fn encode_private_write_files_frame_into(
+    frame: &mut Vec<u8>,
+    seq: u32,
+    files: &[WriteFileBatchEntry<'_>],
+) -> Result<(), ProtocolError> {
+    frame.clear();
+    let encoded = validate_write_files_payload(files)?;
+    encode_into(
+        frame,
+        MSG_WRITE_PRIVATE_FILES,
+        seq,
+        encoded.payload_len,
+        |frame| append_write_files_payload(frame, &encoded),
+    )
 }
 
 fn validate_write_files_payload<'a>(
@@ -560,6 +586,27 @@ mod tests {
     }
 
     #[test]
+    fn private_write_files_frame_reuses_batch_payload() {
+        let files = [
+            WriteFileBatchEntry {
+                path: "/tmp/a.txt",
+                content: b"alpha",
+            },
+            WriteFileBatchEntry {
+                path: "/tmp/b.txt",
+                content: b"beta",
+            },
+        ];
+        let payload = encode_write_files(&files).unwrap();
+        let expected = encode(MSG_WRITE_PRIVATE_FILES, 45, &payload).unwrap();
+        let mut frame = Vec::new();
+
+        encode_private_write_files_frame_into(&mut frame, 45, &files).unwrap();
+
+        assert_eq!(frame, expected);
+    }
+
+    #[test]
     fn write_files_rejects_empty_batch() {
         let err = encode_write_files(&[]).unwrap_err();
 
@@ -570,6 +617,15 @@ mod tests {
     fn write_files_frame_rejects_empty_batch() {
         let mut frame = vec![0xFF];
         let err = encode_write_files_frame_into(&mut frame, 1, &[]).unwrap_err();
+
+        assert_invalid_payload(err, "write_files file count must be positive");
+        assert!(frame.is_empty());
+    }
+
+    #[test]
+    fn private_write_files_frame_rejects_empty_batch() {
+        let mut frame = vec![0xFF];
+        let err = encode_private_write_files_frame_into(&mut frame, 1, &[]).unwrap_err();
 
         assert_invalid_payload(err, "write_files file count must be positive");
         assert!(frame.is_empty());

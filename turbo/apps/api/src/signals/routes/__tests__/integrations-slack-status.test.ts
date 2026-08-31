@@ -28,7 +28,7 @@ describe("GET /api/zero/integrations/slack", () => {
 
   beforeEach(() => {
     mockEnv("SLACK_OAUTH_CLIENT_ID", "test-slack-client-id");
-    mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
   });
 
   it("returns 401 when the request is unauthenticated", async () => {

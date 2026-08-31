@@ -16,7 +16,7 @@ describe("Auth v2 platform context", () => {
   it("uses an allowed Okou redirect as the brand context on the primary app", () => {
     const redirectUrl = "https://app.okou.ai/onboarding?source=auth-v2";
     setBrowserUrl(
-      `https://app.vm0.ai/v2/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`,
+      `https://app.vm0.ai/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`,
     );
 
     const platformContext = resolveAuthV2PlatformContext("sign-in");
@@ -32,7 +32,7 @@ describe("Auth v2 platform context", () => {
   it("preserves the registered Okou satellite context and primary-app redirects", () => {
     const redirectUrl = "https://app.vm0.ai/onboarding?source=okou";
     setBrowserUrl(
-      `https://app.okou.ai/v2/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`,
+      `https://app.okou.ai/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`,
     );
 
     const platformContext = resolveAuthV2PlatformContext("sign-up");
@@ -52,13 +52,13 @@ describe("Auth v2 platform context", () => {
       platformContext.navigation.href("sign-up", "/verify-email-address"),
     );
     expect(nestedUrl.origin).toBe("https://app.okou.ai");
-    expect(nestedUrl.pathname).toBe("/v2/sign-up/verify-email-address");
+    expect(nestedUrl.pathname).toBe("/sign-up/verify-email-address");
     expect(nestedUrl.searchParams.get("redirect_url")).toBe(redirectUrl);
   });
 
   it("preserves sign-up campaign attribution and onboarding intent across flows", () => {
     setBrowserUrl(
-      "https://app.vm0.ai/v2/sign-up/verify-email-address?gclid=click-123&utm_campaign=summer&utm_content=hero&utm_content=footer#/verify?step=code",
+      "https://app.vm0.ai/sign-up/verify-email-address?gclid=click-123&utm_campaign=summer&utm_content=hero&utm_content=footer#/verify?step=code",
     );
 
     const signUpContext = resolveAuthV2PlatformContext("sign-up");
@@ -77,7 +77,7 @@ describe("Auth v2 platform context", () => {
     expect(completionUrl.searchParams.get("vm0_source")).toBe("homepage");
     expect(completionUrl.searchParams.get("landing_host")).toBe("app.vm0.ai");
     expect(completionUrl.searchParams.get("landing_path")).toBe(
-      "/v2/sign-up/verify-email-address",
+      "/sign-up/verify-email-address",
     );
 
     const nestedSignUpUrl = absoluteNavigationUrl(
@@ -102,7 +102,7 @@ describe("Auth v2 platform context", () => {
 
   it("preserves campaign onboarding when switching from sign-in to sign-up", () => {
     setBrowserUrl(
-      "https://app.vm0.ai/v2/sign-in?gclid=click-123&utm_campaign=summer#/factor-one?step=code",
+      "https://app.vm0.ai/sign-in?gclid=click-123&utm_campaign=summer#/factor-one?step=code",
     );
 
     const signInContext = resolveAuthV2PlatformContext("sign-in");
@@ -139,7 +139,7 @@ describe("Auth v2 platform context", () => {
   it("keeps an explicit allowed sign-up redirect ahead of campaign fallback", () => {
     const redirectUrl = "https://www.vm0.ai/connector/success";
     setBrowserUrl(
-      `https://app.vm0.ai/v2/sign-up?gclid=click-123&redirect_url=${encodeURIComponent(redirectUrl)}`,
+      `https://app.vm0.ai/sign-up?gclid=click-123&redirect_url=${encodeURIComponent(redirectUrl)}`,
     );
 
     const { navigation } = resolveAuthV2PlatformContext("sign-up");
@@ -150,5 +150,25 @@ describe("Auth v2 platform context", () => {
     expect(navigation.completionRedirectUrl).toBe(redirectUrl);
     expect(nestedUrl.searchParams.get("gclid")).toBe("click-123");
     expect(nestedUrl.searchParams.get("redirect_url")).toBe(redirectUrl);
+  });
+});
+
+describe("Auth v2 app-owned platform context", () => {
+  it("does not inherit the current page URL", () => {
+    setBrowserUrl(
+      "https://app.vm0.ai/agents?redirect_url=https%3A%2F%2Fwww.vm0.ai%2Fconnector%2Fsuccess#private-page-state",
+    );
+
+    const { navigation } = resolveAuthV2PlatformContext("sign-in", {
+      authHash: "",
+      authSearch: "",
+    });
+    const signInUrl = absoluteNavigationUrl(navigation.href("sign-in"));
+
+    expect(navigation.completionRedirectUrl).toBe("https://app.vm0.ai");
+    expect(signInUrl.searchParams.get("redirect_url")).toBe(
+      "https://app.vm0.ai",
+    );
+    expect(signInUrl.hash).toBe("");
   });
 });

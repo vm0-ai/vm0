@@ -103,7 +103,23 @@ export async function piSandboxAgentConfigFromEnv(
   };
 }
 
-/** Run the official sandbox-owned Pi RPC host until guest-agent closes stdin. */
+/**
+ * Resolve the API-first handoff and run the official sandbox-owned Pi RPC host.
+ *
+ * The handoff resolver validates the immutable manifest and restored H1
+ * session, maps manifest v1 to sequence 1 or reads the manifest v2 sequence,
+ * and returns the session file plus the authoritative first Sandbox event
+ * sequence. This host then writes one private JSONL startup-control record with
+ * that sequence before entering `runPiOfficialRpcMode`.
+ *
+ * The guest-agent consumes that control record before admitting any official
+ * Pi RPC record, so the control is not an agent event, Chat event, transcript
+ * line, or public delivery. `runPiOfficialRpcMode` owns the official RPC
+ * command/record stream; guest-agent owns its stdin and keeps it open through
+ * `agent_settled`, closing it only after terminal handling and active-input
+ * quiescence. The host consequently remains in official RPC mode until the
+ * guest closes stdin.
+ */
 export async function runPiSandboxAgentLoop(args: {
   readonly config: PiSandboxAgentConfig;
   readonly cwd?: string;

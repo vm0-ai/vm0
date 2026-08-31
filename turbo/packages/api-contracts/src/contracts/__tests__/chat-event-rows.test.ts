@@ -60,15 +60,6 @@ function projectableRow(eventType: ChatEventType): ChatEventRow {
     },
     "output.thinking": { payload: { thinking: "thinking" } },
     "output.followups": { payload: { content: "followups" } },
-    "output.tool": {
-      runId,
-      payload: {
-        toolUseId: "tool-use-1",
-        action: "read",
-        status: "success",
-        summary: "Read package.json",
-      },
-    },
     "run.queued": { runId, payload: { content: "queued" } },
     "run.dequeued": { runId, revokesEventId },
     "run.completed": { runId },
@@ -134,25 +125,6 @@ describe("canonical chat event row schema", () => {
     expect(parsed).not.toHaveProperty("content");
     expect(parsed).not.toHaveProperty("interruptsRunId");
     expect(parsed).not.toHaveProperty("runGroupId");
-  });
-
-  it("enforces the exact output.tool payload boundary", () => {
-    const valid = projectableRow("output.tool");
-    if (valid.eventType !== "output.tool") {
-      throw new Error("Expected an output.tool row");
-    }
-    expect(chatEventRowSchema.safeParse(valid).success).toBe(true);
-    for (const payload of [
-      { ...valid.payload, action: "execute" },
-      { ...valid.payload, status: "running" },
-      { ...valid.payload, summary: "first\nsecond" },
-      { ...valid.payload, summary: "x".repeat(241) },
-      { ...valid.payload, stdout: "raw result" },
-    ]) {
-      expect(chatEventRowSchema.safeParse({ ...valid, payload }).success).toBe(
-        false,
-      );
-    }
   });
 });
 

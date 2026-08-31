@@ -1,5 +1,404 @@
 # Changelog
 
+## [9.298.3](https://github.com/vm0-ai/vm0/compare/cli-v9.298.2...cli-v9.298.3) (2026-08-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.14
+    * @okouai/connectors bumped to 3.0.1
+    * @okouai/core bumped to 8.604.0
+
+## [9.298.2](https://github.com/vm0-ai/vm0/compare/cli-v9.298.1...cli-v9.298.2) (2026-08-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.13
+    * @okouai/core bumped to 8.603.6
+
+## [9.298.1](https://github.com/vm0-ai/vm0/compare/cli-v9.298.0...cli-v9.298.1) (2026-08-31)
+
+
+### Refactoring
+
+* remove latest presentation templates switch ([#30335](https://github.com/vm0-ai/vm0/issues/30335)) ([8bfe687](https://github.com/vm0-ai/vm0/commit/8bfe68776bed2e55405192a0d7e0636039561b0a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.603.5
+
+## [9.298.0](https://github.com/vm0-ai/vm0/compare/cli-v9.297.14...cli-v9.298.0) (2026-08-30)
+
+
+### Features
+
+* **cli:** improve social download diagnostics ([#30361](https://github.com/vm0-ai/vm0/issues/30361)) ([6e9881f](https://github.com/vm0-ai/vm0/commit/6e9881f9ab8b3aa9753d5c2e93b184f575825c6c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.12
+    * @okouai/core bumped to 8.603.4
+
+## [9.297.14](https://github.com/vm0-ai/vm0/compare/cli-v9.297.13...cli-v9.297.14) (2026-08-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.11
+    * @okouai/connectors bumped to 1.210.8
+    * @okouai/core bumped to 8.603.3
+
+## [9.297.13](https://github.com/vm0-ai/vm0/compare/cli-v9.297.12...cli-v9.297.13) (2026-08-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.10
+    * @okouai/core bumped to 8.603.2
+
+## [9.297.12](https://github.com/vm0-ai/vm0/compare/cli-v9.297.11...cli-v9.297.12) (2026-08-30)
+
+
+### Refactoring
+
+* detach chat event cursors from projection ([#30280](https://github.com/vm0-ai/vm0/issues/30280)) ([4af0bb3](https://github.com/vm0-ai/vm0/commit/4af0bb302f2365e03543e7423b6fc7368f392650))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.9
+    * @okouai/core bumped to 8.603.1
+
+## [9.297.11](https://github.com/vm0-ai/vm0/compare/cli-v9.297.10...cli-v9.297.11) (2026-08-30)
+
+
+### Refactoring
+
+* **cli:** use canonical API URL in ordinary tests ([#30309](https://github.com/vm0-ai/vm0/issues/30309)) ([c3a4c58](https://github.com/vm0-ai/vm0/commit/c3a4c58707ecd86e89db02dcd7c7513bfab85cb4))
+
+## [9.297.10](https://github.com/vm0-ai/vm0/compare/cli-v9.297.9...cli-v9.297.10) (2026-08-30)
+
+
+### Documentation
+
+* **rust:** document Pi RPC lifecycle and event projection ([#30258](https://github.com/vm0-ai/vm0/issues/30258)) ([e8c2fc8](https://github.com/vm0-ai/vm0/commit/e8c2fc85f241138a17cf021108ad5e8163928464))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.603.0
+
+## [9.297.9](https://github.com/vm0-ai/vm0/compare/cli-v9.297.8...cli-v9.297.9) (2026-08-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.8
+    * @okouai/core bumped to 8.602.0
+
+## [9.297.8](https://github.com/vm0-ai/vm0/compare/cli-v9.297.7...cli-v9.297.8) (2026-08-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.7
+    * @okouai/core bumped to 8.601.8
+
+## [9.297.7](https://github.com/vm0-ai/vm0/compare/cli-v9.297.6...cli-v9.297.7) (2026-08-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.6
+    * @okouai/core bumped to 8.601.7
+
+## [9.297.6](https://github.com/vm0-ai/vm0/compare/cli-v9.297.5...cli-v9.297.6) (2026-08-29)
+
+
+### Performance Improvements
+
+* **api:** isolate Pi runtime declarations ([#30230](https://github.com/vm0-ai/vm0/issues/30230)) ([ab556ae](https://github.com/vm0-ai/vm0/commit/ab556ae809c27f77ab768925504ab5ce0383ef27))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.5
+    * @okouai/core bumped to 8.601.6
+    * @okouai/pi-agent-runtime bumped to 1.6.1
+
+## [9.297.5](https://github.com/vm0-ai/vm0/compare/cli-v9.297.4...cli-v9.297.5) (2026-08-29)
+
+
+### Refactoring
+
+* remove chat event version fallbacks ([#30226](https://github.com/vm0-ai/vm0/issues/30226)) ([713e58e](https://github.com/vm0-ai/vm0/commit/713e58e581c660f73f836511118cecef551d6d29))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.4
+    * @okouai/core bumped to 8.601.5
+
+## [9.297.4](https://github.com/vm0-ai/vm0/compare/cli-v9.297.3...cli-v9.297.4) (2026-08-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.3
+    * @okouai/core bumped to 8.601.4
+
+## [9.297.3](https://github.com/vm0-ai/vm0/compare/cli-v9.297.2...cli-v9.297.3) (2026-08-29)
+
+
+### Refactoring
+
+* remove chat tool activity ([#30215](https://github.com/vm0-ai/vm0/issues/30215)) ([c475f9e](https://github.com/vm0-ai/vm0/commit/c475f9e59935ec292acd8b35ceb66e1f59708866))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.2
+    * @okouai/core bumped to 8.601.3
+
+## [9.297.2](https://github.com/vm0-ai/vm0/compare/cli-v9.297.1...cli-v9.297.2) (2026-08-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.1
+    * @okouai/connectors bumped to 1.210.7
+    * @okouai/core bumped to 8.601.2
+
+## [9.297.1](https://github.com/vm0-ai/vm0/compare/cli-v9.297.0...cli-v9.297.1) (2026-08-28)
+
+
+### Refactoring
+
+* remove introVideoTemplates feature switch ([#30158](https://github.com/vm0-ai/vm0/issues/30158)) ([5797b76](https://github.com/vm0-ai/vm0/commit/5797b76de0daad39916c79d72714b043da8cb03b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.0
+    * @okouai/core bumped to 8.601.1
+
+## [9.297.0](https://github.com/vm0-ai/vm0/compare/cli-v9.296.1...cli-v9.297.0) (2026-08-28)
+
+
+### Features
+
+* improve okou social discovery and branding ([#30096](https://github.com/vm0-ai/vm0/issues/30096)) ([28e6fe6](https://github.com/vm0-ai/vm0/commit/28e6fe6a63a98e0ce80a68fbaa6fbd06afd6a73b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.380.0
+    * @okouai/core bumped to 8.601.0
+
+## [9.296.1](https://github.com/vm0-ai/vm0/compare/cli-v9.296.0...cli-v9.296.1) (2026-08-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.379.1
+    * @okouai/connectors bumped to 1.210.6
+    * @okouai/core bumped to 8.600.1
+
+## [9.296.0](https://github.com/vm0-ai/vm0/compare/cli-v9.295.1...cli-v9.296.0) (2026-08-28)
+
+
+### Features
+
+* **social:** download socialkit media as artifacts ([#29875](https://github.com/vm0-ai/vm0/issues/29875)) ([eb36e7d](https://github.com/vm0-ai/vm0/commit/eb36e7d6e21792ac51ab2149b910cd5783ec8e11))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.379.0
+    * @okouai/core bumped to 8.600.0
+
+## [9.295.1](https://github.com/vm0-ai/vm0/compare/cli-v9.295.0...cli-v9.295.1) (2026-08-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.378.1
+    * @okouai/core bumped to 8.599.5
+
+## [9.295.0](https://github.com/vm0-ai/vm0/compare/cli-v9.294.6...cli-v9.295.0) (2026-08-28)
+
+
+### Features
+
+* migrate chat event snapshots to v7 ([#29950](https://github.com/vm0-ai/vm0/issues/29950)) ([6746a51](https://github.com/vm0-ai/vm0/commit/6746a519009477e95d6ed6e3d3cab093d19db04e))
+
+
+### Refactoring
+
+* **cli:** remove legacy computer-use output directory fallback ([#29974](https://github.com/vm0-ai/vm0/issues/29974)) ([7598521](https://github.com/vm0-ai/vm0/commit/7598521abc05b24bd435ec81075b435ff8941652)), closes [#29970](https://github.com/vm0-ai/vm0/issues/29970)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.378.0
+    * @okouai/core bumped to 8.599.4
+
+## [9.294.6](https://github.com/vm0-ai/vm0/compare/cli-v9.294.5...cli-v9.294.6) (2026-08-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.599.3
+
+## [9.294.5](https://github.com/vm0-ai/vm0/compare/cli-v9.294.4...cli-v9.294.5) (2026-08-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.377.1
+    * @okouai/core bumped to 8.599.2
+
+## [9.294.4](https://github.com/vm0-ai/vm0/compare/cli-v9.294.3...cli-v9.294.4) (2026-08-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.377.0
+    * @okouai/core bumped to 8.599.1
+
+## [9.294.3](https://github.com/vm0-ai/vm0/compare/cli-v9.294.2...cli-v9.294.3) (2026-08-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.376.3
+    * @okouai/connectors bumped to 1.210.5
+    * @okouai/core bumped to 8.599.0
+
+## [9.294.2](https://github.com/vm0-ai/vm0/compare/cli-v9.294.1...cli-v9.294.2) (2026-08-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.376.2
+    * @okouai/core bumped to 8.598.2
+
+## [9.294.1](https://github.com/vm0-ai/vm0/compare/cli-v9.294.0...cli-v9.294.1) (2026-08-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.376.1
+    * @okouai/core bumped to 8.598.1
+
+## [9.294.0](https://github.com/vm0-ai/vm0/compare/cli-v9.293.6...cli-v9.294.0) (2026-08-27)
+
+
+### Features
+
+* **cli:** make connector account intent explicit ([#29814](https://github.com/vm0-ai/vm0/issues/29814)) ([42e2ebd](https://github.com/vm0-ai/vm0/commit/42e2ebd17b62b3896fc733db8bfad6266827f76d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.376.0
+    * @okouai/core bumped to 8.598.0
+
+## [9.293.6](https://github.com/vm0-ai/vm0/compare/cli-v9.293.5...cli-v9.293.6) (2026-08-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.597.0
+
+## [9.293.5](https://github.com/vm0-ai/vm0/compare/cli-v9.293.4...cli-v9.293.5) (2026-08-27)
+
+
+### Refactoring
+
+* roll out the latest website templates and remove their feature switch ([#29442](https://github.com/vm0-ai/vm0/issues/29442)) ([7ef1518](https://github.com/vm0-ai/vm0/commit/7ef1518aff0eacf8e8b83f6421e515ad12088998))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.375.2
+    * @okouai/core bumped to 8.596.2
+
+## [9.293.4](https://github.com/vm0-ai/vm0/compare/cli-v9.293.3...cli-v9.293.4) (2026-08-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.375.1
+    * @okouai/core bumped to 8.596.1
+
 ## [9.293.3](https://github.com/vm0-ai/vm0/compare/cli-v9.293.2...cli-v9.293.3) (2026-08-27)
 
 

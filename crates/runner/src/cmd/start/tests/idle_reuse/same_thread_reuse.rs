@@ -195,7 +195,7 @@ async fn invalid_resume_session_fails_before_fresh_sandbox_creation() {
 // -----------------------------------------------------------------------
 
 #[tokio::test(start_paused = true)]
-async fn profile_mismatch_destroys_stale_vm() {
+async fn profile_mismatch_destroys_stale_sandbox() {
     let (config, env) = mock_run_config(two_profiles(), 16, 32768, 4);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);

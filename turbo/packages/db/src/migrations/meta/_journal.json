@@ -1408,6 +1408,181 @@
       "when": 1787794381799,
       "tag": "1008_spotty_legion",
       "breakpoints": true
+    },
+    {
+      "idx": 1009,
+      "version": "7",
+      "when": 1787809366082,
+      "tag": "1009_drop_builtin_oauth_scope_bridge",
+      "breakpoints": true
+    },
+    {
+      "idx": 1010,
+      "version": "7",
+      "when": 1787813971397,
+      "tag": "1010_late_odin",
+      "breakpoints": true
+    },
+    {
+      "idx": 1011,
+      "version": "7",
+      "when": 1787818418078,
+      "tag": "1011_conscious_gabe_jones",
+      "breakpoints": true
+    },
+    {
+      "idx": 1012,
+      "version": "7",
+      "when": 1787820730994,
+      "tag": "1012_yellow_spyke",
+      "breakpoints": true
+    },
+    {
+      "idx": 1013,
+      "version": "7",
+      "when": 1787834151155,
+      "tag": "1013_calm_darwin",
+      "breakpoints": true
+    },
+    {
+      "idx": 1014,
+      "version": "7",
+      "when": 1787839916785,
+      "tag": "1014_built_in_provider_bridge_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 1015,
+      "version": "7",
+      "when": 1787839938017,
+      "tag": "1015_canonical_built_in_provider_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 1016,
+      "version": "7",
+      "when": 1787848958062,
+      "tag": "1016_short_korvac",
+      "breakpoints": true
+    },
+    {
+      "idx": 1017,
+      "version": "7",
+      "when": 1787858160467,
+      "tag": "1017_vengeful_nova",
+      "breakpoints": true
+    },
+    {
+      "idx": 1018,
+      "version": "7",
+      "when": 1787870435556,
+      "tag": "1018_broad_maestro",
+      "breakpoints": true
+    },
+    {
+      "idx": 1019,
+      "version": "7",
+      "when": 1787884012384,
+      "tag": "1019_sturdy_firestar",
+      "breakpoints": true
+    },
+    {
+      "idx": 1020,
+      "version": "7",
+      "when": 1787886691692,
+      "tag": "1020_refresh_workflow_compatibility_views",
+      "breakpoints": true
+    },
+    {
+      "idx": 1021,
+      "version": "7",
+      "when": 1787891848957,
+      "tag": "1021_bizarre_ronan",
+      "breakpoints": true
+    },
+    {
+      "idx": 1022,
+      "version": "7",
+      "when": 1787903227138,
+      "tag": "1022_workflow_physical_switch",
+      "breakpoints": true
+    },
+    {
+      "idx": 1023,
+      "version": "7",
+      "when": 1787964065933,
+      "tag": "1023_org_plan_entitlement_restriction_expand",
+      "breakpoints": true
+    },
+    {
+      "idx": 1024,
+      "version": "7",
+      "when": 1787976463633,
+      "tag": "1024_org_plan_entitlement_restriction_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 1025,
+      "version": "7",
+      "when": 1787985501082,
+      "tag": "1025_curved_wither",
+      "breakpoints": true
+    },
+    {
+      "idx": 1026,
+      "version": "7",
+      "when": 1787991804403,
+      "tag": "1026_org_plan_entitlement_restriction_not_null",
+      "breakpoints": true
+    },
+    {
+      "idx": 1027,
+      "version": "7",
+      "when": 1787997705357,
+      "tag": "1027_remove_chat_event_legacy_snapshot_fallbacks",
+      "breakpoints": true
+    },
+    {
+      "idx": 1028,
+      "version": "7",
+      "when": 1787997747018,
+      "tag": "1028_contract_chat_event_snapshot_v7",
+      "breakpoints": true
+    },
+    {
+      "idx": 1029,
+      "version": "7",
+      "when": 1788048199922,
+      "tag": "1029_morning_brief_phase_a_cutover",
+      "breakpoints": true
+    },
+    {
+      "idx": 1030,
+      "version": "7",
+      "when": 1788059979897,
+      "tag": "1030_contract_legacy_workflow_compatibility_views",
+      "breakpoints": true
+    },
+    {
+      "idx": 1031,
+      "version": "7",
+      "when": 1788068208560,
+      "tag": "1031_assert_legacy_workflow_routine_references",
+      "breakpoints": true
+    },
+    {
+      "idx": 1032,
+      "version": "7",
+      "when": 1788086558358,
+      "tag": "1032_remove_chat_event_projection_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 1033,
+      "version": "7",
+      "when": 1788145500398,
+      "tag": "1033_org_metadata_acquisition_first_party_source_expand",
+      "breakpoints": true
     }
   ]
 }

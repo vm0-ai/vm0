@@ -10,6 +10,8 @@ import {
   buildArtifactPrefix,
   buildArtifactPrefixV2,
   buildFileUrlFromKey,
+  isArtifactKeyV2,
+  publicArtifactsBaseUrlForBrand,
   sanitizeArtifactFilename,
 } from "../../lib/file-url";
 import { inferMimetype } from "../../lib/mimetype";
@@ -20,13 +22,15 @@ import {
   type S3ObjectHead,
   tryListMultipartS3Parts,
 } from "../external/s3";
-import { safeUriComponentDecode } from "../utils";
+import { safeUriComponentDecode, safeUrlParse } from "../utils";
 
 const MAX_ARTIFACT_KEY_ATTEMPTS = 5;
 const ARTIFACT_ID_METADATA_KEY = "artifact-id";
 const ARTIFACT_FILENAME_METADATA_KEY = "filename";
 const ARTIFACT_USER_ID_METADATA_KEY = "user-id";
 const ARTIFACT_PUBLIC_BRAND_METADATA_KEY = "public-brand";
+const CLOUDFLARE_IMAGE_RESIZE_PATH_PREFIX = "/cdn-cgi/image/";
+const PUBLIC_ARTIFACT_PATH_PREFIX = "/artifacts/";
 
 export interface ArtifactObjectLocation {
   readonly id: string;
@@ -53,6 +57,76 @@ export interface ResolvedArtifactObject {
   readonly size: number;
   readonly lastModified: Date | undefined;
 }
+
+function publicArtifactPath(pathname: string): string | null {
+  if (pathname.startsWith(PUBLIC_ARTIFACT_PATH_PREFIX)) {
+    return pathname;
+  }
+  if (!pathname.startsWith(CLOUDFLARE_IMAGE_RESIZE_PATH_PREFIX)) {
+    return null;
+  }
+  const artifactStart = pathname.indexOf(
+    PUBLIC_ARTIFACT_PATH_PREFIX,
+    CLOUDFLARE_IMAGE_RESIZE_PATH_PREFIX.length,
+  );
+  return artifactStart === -1 ? null : pathname.slice(artifactStart);
+}
+
+function publicArtifactKeyFromUrl(value: string): string | null {
+  const url = safeUrlParse(value);
+  if (!url) {
+    return null;
+  }
+  const allowedOrigins = new Set([
+    new URL(publicArtifactsBaseUrlForBrand("vm0")).origin,
+    new URL(publicArtifactsBaseUrlForBrand("okou")).origin,
+  ]);
+  if (!allowedOrigins.has(url.origin)) {
+    return null;
+  }
+  const path = publicArtifactPath(url.pathname);
+  return path?.replace(/^\/+/, "") ?? null;
+}
+
+function isOwnedLegacyArtifactKey(key: string, userId: string): boolean {
+  const segments = key.split("/");
+  return (
+    segments.length === 4 &&
+    segments[0] === "artifacts" &&
+    segments[1] === encodeURIComponent(userId) &&
+    Boolean(segments[2]) &&
+    Boolean(segments[3])
+  );
+}
+
+export const resolveOwnedPublicArtifactKey$ = command(
+  async (
+    { get },
+    args: { readonly userId: string; readonly url: string },
+    signal: AbortSignal,
+  ): Promise<string | null> => {
+    const key = publicArtifactKeyFromUrl(args.url);
+    if (!key) {
+      return null;
+    }
+    if (isOwnedLegacyArtifactKey(key, args.userId)) {
+      return key;
+    }
+    if (!isArtifactKeyV2(key)) {
+      return null;
+    }
+
+    const head = await get(
+      s3ObjectHead(env("R2_USER_ARTIFACTS_BUCKET_NAME"), key),
+    );
+    signal.throwIfAborted();
+    return head.kind === "found" &&
+      head.metadata[ARTIFACT_USER_ID_METADATA_KEY] ===
+        encodeURIComponent(args.userId)
+      ? key
+      : null;
+  },
+);
 
 interface ResolvedArtifactMultipartUpload {
   readonly key: string;
@@ -280,9 +354,10 @@ function resolveExactV2ArtifactObject(
   userId: string,
   id: string,
   filenameHint: string,
+  variant?: string,
 ): Computed<Promise<ResolvedArtifactObject | null>> {
   return computed(async (get): Promise<ResolvedArtifactObject | null> => {
-    const key = buildArtifactKeyV2(id, filenameHint);
+    const key = buildArtifactKeyV2(id, filenameHint, variant);
     const head = await get(s3ObjectHead(bucket, key));
     return resolvedV2ArtifactObjectFromHead({ userId, id, key, head });
   });
@@ -345,16 +420,20 @@ export function resolvedArtifactObject(
   userId: string,
   id: string,
   filenameHint?: string,
+  variant?: string,
 ): Computed<Promise<ResolvedArtifactObject | null>> {
   return computed(async (get): Promise<ResolvedArtifactObject | null> => {
     const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
     if (filenameHint !== undefined) {
       const exact = await get(
-        resolveExactV2ArtifactObject(bucket, userId, id, filenameHint),
+        resolveExactV2ArtifactObject(bucket, userId, id, filenameHint, variant),
       );
       if (exact) {
         return exact;
       }
+    }
+    if (variant !== undefined) {
+      return null;
     }
     return (
       (await get(resolveV2ArtifactObject(bucket, userId, id))) ??
@@ -370,11 +449,17 @@ export const resolveArtifactObject$ = command(
       readonly userId: string;
       readonly id: string;
       readonly filenameHint?: string;
+      readonly variant?: string;
     },
     signal: AbortSignal,
   ): Promise<ResolvedArtifactObject | null> => {
     const resolved = await get(
-      resolvedArtifactObject(args.userId, args.id, args.filenameHint),
+      resolvedArtifactObject(
+        args.userId,
+        args.id,
+        args.filenameHint,
+        args.variant,
+      ),
     );
     signal.throwIfAborted();
     return resolved;

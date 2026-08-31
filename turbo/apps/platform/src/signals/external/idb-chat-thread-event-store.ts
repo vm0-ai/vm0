@@ -11,7 +11,6 @@ import {
   CHAT_THREAD_EVENTS_STORE,
   CHAT_THREAD_SNAPSHOT_STORE,
 } from "./chat-idb-schema.ts";
-import { chatIdbReadOr, chatIdbWriteBestEffort } from "./chat-idb-safe.ts";
 
 const SINGLETON_ID = "current";
 const EVENT_READ_PAGE_SIZE = 300;
@@ -167,32 +166,6 @@ function createStrictReadStore(getDb: GetDb) {
   };
 }
 
-function createReadStore(getDb: GetDb) {
-  const strict = createStrictReadStore(getDb);
-  return {
-    async readSnapshot(signal?: AbortSignal) {
-      return await chatIdbReadOr(
-        "threadEvents:readSnapshot",
-        () => {
-          return strict.readSnapshot(signal);
-        },
-        null,
-        signal,
-      );
-    },
-    async readEventLog(signal?: AbortSignal) {
-      return await chatIdbReadOr(
-        "threadEvents:readEventLog",
-        () => {
-          return strict.readEventLog(signal);
-        },
-        emptyEventLog(),
-        signal,
-      );
-    },
-  };
-}
-
 function createStrictWriteStore(getDb: GetDb) {
   return {
     async replaceFromSnapshot(
@@ -261,53 +234,6 @@ function createStrictWriteStore(getDb: GetDb) {
       await tx.done;
     },
   };
-}
-
-function createWriteStore(getDb: GetDb) {
-  const strict = createStrictWriteStore(getDb);
-  return {
-    async replaceFromSnapshot(
-      snapshot: ChatThreadSnapshotRecord,
-      events: readonly ChatThreadEvent[],
-      signal?: AbortSignal,
-    ) {
-      await chatIdbWriteBestEffort(
-        "threadEvents:replaceFromSnapshot",
-        () => {
-          return strict.replaceFromSnapshot(snapshot, events, signal);
-        },
-        signal,
-      );
-    },
-    async upsertEvents(
-      events: readonly ChatThreadEvent[],
-      signal?: AbortSignal,
-    ) {
-      await chatIdbWriteBestEffort(
-        "threadEvents:upsertEvents",
-        () => {
-          return strict.upsertEvents(events, signal);
-        },
-        signal,
-      );
-    },
-    async clear(signal?: AbortSignal) {
-      await chatIdbWriteBestEffort(
-        "threadEvents:clear",
-        () => {
-          return strict.clear(signal);
-        },
-        signal,
-      );
-    },
-  };
-}
-
-export function createIdbChatThreadEventStores(getDb: GetDb) {
-  return Object.freeze({
-    readStore: createReadStore(getDb),
-    writeStore: createWriteStore(getDb),
-  });
 }
 
 export function createStrictIdbChatThreadEventStores(getDb: GetDb) {

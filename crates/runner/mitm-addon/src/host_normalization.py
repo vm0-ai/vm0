@@ -345,6 +345,16 @@ def _validate_normalized_label_text(normalized_label: str) -> None:
     _validate_normalized_label_bidi(normalized_label)
 
 
+def _encode_normalized_label(normalized_label: str) -> str:
+    try:
+        payload = normalized_label.encode("punycode").decode("ascii").lower()
+    except UnicodeError as exc:
+        raise UnicodeError("invalid IDNA label") from exc
+    if not payload:
+        raise UnicodeError("invalid IDNA label")
+    return f"{_PUNYCODE_PREFIX}{payload}"
+
+
 def _canonical_punycode_label(label: str) -> str:
     if _has_unsafe_uts46_mapping_chars(label):
         raise UnsafeIdnaCompatibilityMappingError("unsafe IDNA compatibility mapping")
@@ -355,20 +365,19 @@ def _canonical_punycode_label(label: str) -> str:
     if len(normalized_label) > _PUNYCODE_INPUT_MAX_CODEPOINTS:
         raise UnicodeError("IDNA label too long")
 
-    try:
-        payload = normalized_label.encode("punycode").decode("ascii").lower()
-    except UnicodeError as exc:
-        raise UnicodeError("invalid IDNA label") from exc
-    if not payload:
-        raise UnicodeError("invalid IDNA label")
-    return f"{_PUNYCODE_PREFIX}{payload}"
+    return _encode_normalized_label(normalized_label)
 
 
 def _encode_unicode_label(label: str) -> str:
     normalized_label = _normalize_label_text(label)
+    if len(normalized_label) > _PUNYCODE_INPUT_MAX_CODEPOINTS:
+        raise UnicodeError("IDNA label too long")
+    _validate_normalized_label_text(normalized_label)
     if _is_ascii(normalized_label):
         raise UnsafeIdnaCompatibilityMappingError("unsafe IDNA compatibility mapping")
-    return _canonical_punycode_label(label)
+    if _has_unsafe_uts46_mapping_chars(label):
+        raise UnsafeIdnaCompatibilityMappingError("unsafe IDNA compatibility mapping")
+    return _encode_normalized_label(normalized_label)
 
 
 def _is_valid_alabel(label: str) -> bool:
@@ -400,7 +409,8 @@ def _has_invalid_alabel(ascii_host: str) -> bool:
 def _normalize_label(label: str) -> str:
     if not label:
         raise UnicodeError("empty IDNA label")
-    if _is_ascii(label):
+    input_is_ascii = _is_ascii(label)
+    if input_is_ascii:
         if any(
             char <= _ASCII_SPACE or char == _ASCII_DELETE or char in _FORBIDDEN_ASCII_LABEL_CHARS
             for char in label
@@ -408,12 +418,10 @@ def _normalize_label(label: str) -> str:
             raise UnicodeError("invalid IDNA label")
         ascii_label = label.lower()
     else:
-        normalized_label = _normalize_label_text(label)
-        _validate_normalized_label_text(normalized_label)
         ascii_label = _encode_unicode_label(label)
     if len(ascii_label) > _DNS_LABEL_MAX_LENGTH:
         raise UnicodeError("IDNA label too long")
-    if not _is_valid_alabel(ascii_label):
+    if input_is_ascii and not _is_valid_alabel(ascii_label):
         raise UnicodeError("invalid IDNA A-label")
     return ascii_label
 

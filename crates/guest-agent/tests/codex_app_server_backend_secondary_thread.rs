@@ -31,7 +31,10 @@ async fn codex_app_server_backend_ignores_secondary_thread_notifications()
                 resume_session_id: None,
             },
         )?;
-        std::env::set_var("VM0_API_START_TIME", "1699999999000");
+        std::env::set_var(
+            guest_contracts::env::CANONICAL_API_START_TIME_ENV,
+            "1699999999000",
+        );
     }
     let runtime = common::guest_runtime_from_process_env()?;
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
@@ -83,6 +86,10 @@ async fn codex_app_server_backend_ignores_secondary_thread_notifications()
     assert!(events.iter().all(|event| {
         event.get("thread_id").and_then(Value::as_str) != Some(SECONDARY_THREAD_ID)
     }));
+    assert_eq!(
+        events.last().ok_or("missing terminal event")?["usage"],
+        common::expected_codex_turn_usage()
+    );
 
     let sandbox_ops = std::fs::read_to_string(runtime.paths.sandbox_ops_file()).unwrap_or_default();
     assert!(!sandbox_ops.contains("api_to_codex_output_item_started"));

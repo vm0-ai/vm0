@@ -297,6 +297,7 @@ async function queryAgentRunWorkflowCandidates(
       name: workflows.name,
       visibility: workflows.visibility,
       ownerUserId: workflows.ownerUserId,
+      officialDefinitionName: workflows.officialDefinitionName,
       createdAt: workflows.createdAt,
     })
     .from(workflows)
@@ -304,7 +305,10 @@ async function queryAgentRunWorkflowCandidates(
       and(
         eq(workflows.orgId, args.orgId),
         eq(workflows.agentId, args.agentId),
-        isNull(workflows.officialDefinitionName),
+        or(
+          isNull(workflows.officialDefinitionName),
+          eq(workflows.officialInstallationState, "installed"),
+        ),
         or(
           eq(workflows.visibility, "public"),
           eq(workflows.ownerUserId, args.userId),

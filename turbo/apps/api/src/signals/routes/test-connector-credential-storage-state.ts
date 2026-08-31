@@ -405,7 +405,15 @@ async function seedLegacyCustomFeishuOAuthState(
       storageVersion: body.storage_version,
       providerContext: {
         provider: "feishu",
-        completionTarget: "custom",
+        ...(body.provider_context.completion_target === "custom"
+          ? { completionTarget: "custom" }
+          : {
+              completionTarget: "feishu",
+              installationId: body.provider_context.installation_id,
+              ...(body.provider_context.expected_open_id
+                ? { expectedOpenId: body.provider_context.expected_open_id }
+                : {}),
+            }),
       },
     }),
     accountMutation: { intent: "single-account" },
@@ -571,14 +579,20 @@ async function setConnectorState(
       };
 }
 
-async function setLegacyBuiltinOAuthScopes(
+async function setBuiltinOAuthScopeFacts(
   db: Db,
-  body: ConnectorCredentialStorageAction<"set-legacy-builtin-oauth-scopes">,
+  body: ConnectorCredentialStorageAction<"set-builtin-oauth-scope-facts">,
   signal: AbortSignal,
 ) {
   const [updated] = await db
     .update(connectors)
-    .set({ oauthScopes: JSON.stringify(body.oauth_scopes) })
+    .set({
+      oauthScopes: JSON.stringify(body.oauth_scopes),
+      oauthGrantedScopes:
+        body.oauth_granted_scopes === null
+          ? null
+          : JSON.stringify(body.oauth_granted_scopes),
+    })
     .where(
       and(
         eq(connectors.orgId, body.org_id),
@@ -827,8 +841,8 @@ async function mutateConnectorAccountCompatibilityState(
     case "set-connector-account-state": {
       return await setConnectorAccountState(db, body, signal);
     }
-    case "set-legacy-builtin-oauth-scopes": {
-      return await setLegacyBuiltinOAuthScopes(db, body, signal);
+    case "set-builtin-oauth-scope-facts": {
+      return await setBuiltinOAuthScopeFacts(db, body, signal);
     }
     case "seed-builtin-thread-selection": {
       return await seedBuiltinThreadSelection(db, body, signal);

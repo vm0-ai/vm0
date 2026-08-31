@@ -38,6 +38,7 @@ import { workflowsCollectionContract } from "@okouai/api-contracts/contracts/wor
 import { IMAGE_RECOGNITION_MAX_FILE_BYTES } from "@okouai/api-contracts/contracts/image-recognition";
 import { beforeEach, describe, expect, it } from "vitest";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
+import { changeChatThreadList } from "../../../mocks/mock-helpers.ts";
 import { emitMockedClerkEvent } from "../../../__tests__/mock-auth.ts";
 import { orgModelPolicies$ } from "../../../signals/external/org-model-policies.ts";
 import {
@@ -90,6 +91,8 @@ import {
   composerElementFrom,
   findComposerEditor,
 } from "./chat-composer-test-helpers.ts";
+
+const SHARED_DATABASE_REALTIME_CHANNEL = "user-org:test-user-123:org_default";
 
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
@@ -176,6 +179,23 @@ function fastModeIcon(option: HTMLElement): SVGElement {
     throw new Error("Fast mode icon not found");
   }
   return icon;
+}
+
+type ModelScopeLabel =
+  | "Model for this chat"
+  | "Image model for this chat"
+  | "Video model for this chat";
+
+function queryModelScope(label: ModelScopeLabel): HTMLElement | null {
+  return screen.queryByRole("group", { name: label });
+}
+
+function queryModelScopeValue(
+  label: ModelScopeLabel,
+  model: string,
+): HTMLElement | null {
+  const scope = queryModelScope(label);
+  return scope ? within(scope).queryByText(model) : null;
 }
 
 function mockBuiltInFastModel(): void {
@@ -424,7 +444,7 @@ describe("chat composer models", () => {
     },
   );
 
-  it("offers to make a temporary new-chat model choice the default below the composer", async () => {
+  it("shows a new-chat model scope card and offers it for future chats", async () => {
     const user = userEvent.setup({ delay: null });
     let preference: UserModelPreferenceResponse = {
       selectedModel: "claude-fable-5",
@@ -483,21 +503,29 @@ describe("chat composer models", () => {
     expect(within(modelPicker).queryByText("Default")).not.toBeInTheDocument();
 
     await user.keyboard("{Escape}");
+    const scopeCard = screen.getByRole("group", {
+      name: "Model for this chat",
+    });
     expect(
-      screen.getByText("Temporarily switched to Claude Sonnet 4.6"),
+      within(scopeCard).getByText("Claude Sonnet 4.6"),
     ).toBeInTheDocument();
-    const setDefaultButton = buttonContainingText(
-      "Set as default",
-      document.body,
+    expect(
+      within(scopeCard).getByText("Temporarily switch to"),
+    ).toBeInTheDocument();
+    const useForFutureChatsButton = buttonContainingText(
+      "Use this for future chats",
+      scopeCard,
     );
 
-    await user.click(setDefaultButton);
+    await user.click(useForFutureChatsButton);
 
     await waitFor(() => {
       expect(updatedModels).toStrictEqual(["claude-sonnet-4-6"]);
     });
-    expect(setDefaultButton).toHaveAttribute("aria-busy", "true");
-    expect(setDefaultButton.querySelector(".animate-spin")).not.toBeNull();
+    expect(useForFutureChatsButton).toHaveAttribute("aria-busy", "true");
+    expect(
+      useForFutureChatsButton.querySelector(".animate-spin"),
+    ).not.toBeNull();
 
     preferenceUpdate.resolve();
     await waitFor(() => {
@@ -509,12 +537,10 @@ describe("chat composer models", () => {
       kinds: ["defaultModel"],
     });
     await waitFor(() => {
-      expect(
-        screen.queryByText("Temporarily switched to Claude Sonnet 4.6"),
-      ).not.toBeInTheDocument();
+      expect(queryModelScope("Model for this chat")).toBeNull();
       expect(
         queryAllByRoleFast("button").some((button) => {
-          return button.textContent === "Set as default";
+          return button.textContent === "Use this for future chats";
         }),
       ).toBeFalsy();
     });
@@ -524,14 +550,14 @@ describe("chat composer models", () => {
     {
       defaultServiceTier: null,
       targetSpeed: "Fast",
-      notice: "Fast mode is temporarily enabled for this run",
+      scopedModel: "GPT 5.6 Sol Fast",
       expectedServiceTier: "priority" as const,
       expectedZapIcon: true,
     },
     {
       defaultServiceTier: "priority" as const,
       targetSpeed: "Standard",
-      notice: "Fast mode is temporarily disabled for this run",
+      scopedModel: "GPT 5.6 Sol Standard",
       expectedServiceTier: null,
       expectedZapIcon: false,
     },
@@ -539,7 +565,7 @@ describe("chat composer models", () => {
     "offers to make a temporary $targetSpeed run speed the default",
     async ({
       defaultServiceTier,
-      notice,
+      scopedModel,
       expectedServiceTier,
       expectedZapIcon,
     }) => {
@@ -604,8 +630,14 @@ describe("chat composer models", () => {
       );
       await user.click(fastModeOption);
       await expectComposerModel(targetLabel);
-      await expect(screen.findByText(notice)).resolves.toBeInTheDocument();
-      await user.click(buttonContainingText("Set as default", document.body));
+      await waitFor(() => {
+        expect(
+          queryModelScopeValue("Model for this chat", scopedModel),
+        ).toBeInTheDocument();
+      });
+      await user.click(
+        buttonContainingText("Use this for future chats", document.body),
+      );
 
       await waitFor(() => {
         expect(updatedPreference).toStrictEqual({
@@ -616,7 +648,7 @@ describe("chat composer models", () => {
     },
   );
 
-  it("includes Fast in the temporary label when model and run speed change", async () => {
+  it("includes Fast in the scoped model when model and run speed change", async () => {
     const user = userEvent.setup({ delay: null });
     const codexProvider = buildProvider({
       id: "00000000-0000-4000-a000-000000000919",
@@ -677,10 +709,14 @@ describe("chat composer models", () => {
     await user.click(await findComposerModel("Claude Fable 5"));
     await user.click(await findFastModeOption("GPT 5.6 Sol"));
 
-    await expect(
-      screen.findByText("Temporarily switched to GPT 5.6 Sol Fast"),
-    ).resolves.toBeInTheDocument();
-    await user.click(buttonContainingText("Set as default", document.body));
+    await waitFor(() => {
+      expect(
+        queryModelScopeValue("Model for this chat", "GPT 5.6 Sol Fast"),
+      ).toBeInTheDocument();
+    });
+    await user.click(
+      buttonContainingText("Use this for future chats", document.body),
+    );
 
     await waitFor(() => {
       expect(updatedPreference).toStrictEqual({
@@ -726,9 +762,7 @@ describe("chat composer models", () => {
     expect(
       screen.queryByText("Default for new chats and new automations"),
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("Temporarily switched to Claude Sonnet 4.6"),
-    ).not.toBeInTheDocument();
+    expect(queryModelScope("Model for this chat")).toBeNull();
   });
 
   it("shows Fast details only while the Fast option is hovered", async () => {
@@ -901,12 +935,14 @@ describe("chat composer models", () => {
     const reconciledTitle = "Reconciled Fast thread";
     const reconciledSelectedModel = createdBody?.model ?? null;
     const reconciledServiceTier = createdBody?.serviceTier ?? null;
-    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    let reconciliationEventRequests = 0;
+    context.mocks.api(chatThreadsContract.events, ({ query, respond }) => {
+      reconciliationEventRequests++;
       return respond(200, {
         events: [
           {
             id: reconciledCreateEventId,
-            seqId: 1,
+            seqId: (query.sinceSeqId ?? 0) + 1,
             kind: "created",
             chatThreadId: reconciledThreadId,
             agentId: AGENT_ID,
@@ -921,8 +957,16 @@ describe("chat composer models", () => {
         hasMore: false,
       });
     });
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
+    });
     triggerAblyEvent("threadListChanged");
     await waitFor(() => {
+      expect(reconciliationEventRequests).toBeGreaterThan(0);
       expect(document.title).toBe(`${reconciledTitle} | VM0`);
     });
     await expectComposerModel("GPT 5.6 Sol Fast");
@@ -1541,8 +1585,15 @@ describe("chat composer models", () => {
     await expectComposerModel("GPT 5.6 Sol Fast");
 
     lifecycle.setCodexServiceTier(null);
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
+    });
     act(() => {
-      triggerAblyEvent("threadListChanged");
+      changeChatThreadList();
     });
     await expectComposerModel("GPT 5.6 Sol");
     await sendMessageInUI(
@@ -1940,9 +1991,7 @@ describe("chat composer models", () => {
     expect(
       screen.queryByText("Default for new chats and new automations"),
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("Temporarily switched to Claude Sonnet 4.6"),
-    ).not.toBeInTheDocument();
+    expect(queryModelScope("Model for this chat")).toBeNull();
   });
 
   it("shows limited-free-1 models and opens plans for Pro models", async () => {
@@ -2989,14 +3038,17 @@ describe("chat composer models", () => {
     const composer = composerElementFrom(
       await screen.findByPlaceholderText(PLACEHOLDER),
     );
-    const connectorButton = within(composer).getByLabelText("Connectors");
+    const connectorButton = () => {
+      return within(composer).getByLabelText("Connectors");
+    };
+    click(connectorButton());
 
     await waitFor(() => {
       expect(
-        connectorButton.querySelectorAll(":scope > span > span"),
+        connectorButton().querySelectorAll(":scope > span > span"),
       ).toHaveLength(3);
       expect(
-        connectorButton.querySelector(".lucide-globe"),
+        connectorButton().querySelector(".lucide-globe"),
       ).toBeInTheDocument();
     });
   });
@@ -3063,11 +3115,12 @@ describe("chat composer models", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const initialConnectorButton = within(
-      await screen.findByLabelText("Chat thread"),
-    ).getByLabelText("Connectors");
+    const initialThread = await screen.findByLabelText("Chat thread");
+    click(within(initialThread).getByLabelText("Connectors"));
     await waitFor(() => {
-      expect(initialConnectorButton.querySelector("img")).not.toBeNull();
+      expect(
+        within(initialThread).getByLabelText("Connectors").querySelector("img"),
+      ).not.toBeNull();
     });
     const settledAgentRequestCount = agentRequestCount;
 
@@ -3081,10 +3134,14 @@ describe("chat composer models", () => {
     });
     expect(agentRequestCount).toBe(settledAgentRequestCount);
 
-    const nextConnectorButton = within(
-      screen.getByLabelText("Chat thread"),
-    ).getByLabelText("Connectors");
-    expect(nextConnectorButton.querySelector("img")).not.toBeNull();
+    const nextThread = screen.getByLabelText("Chat thread");
+    click(within(nextThread).getByLabelText("Connectors"));
+    await waitFor(() => {
+      expect(
+        within(nextThread).getByLabelText("Connectors").querySelector("img"),
+      ).not.toBeNull();
+    });
+    expect(agentRequestCount).toBe(settledAgentRequestCount);
   });
 
   it("keeps connector catalog and access resolved across same-agent chat navigation", async () => {
@@ -3185,14 +3242,14 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const initialThread = await screen.findByLabelText("Chat thread");
-    const initialConnectorButton =
-      within(initialThread).getByLabelText("Connectors");
+    click(within(initialThread).getByLabelText("Connectors"));
     await waitFor(() => {
-      expect(initialConnectorButton.querySelector("img")).not.toBeNull();
+      expect(
+        within(initialThread).getByLabelText("Connectors").querySelector("img"),
+      ).not.toBeNull();
       expect(authorizationRequestCount).toBe(1);
       expect(customAuthorizationRequestCount).toBe(1);
       expect(discoveryRequestCount).toBe(1);
@@ -3207,12 +3264,11 @@ describe("chat composer models", () => {
       ).toBeInTheDocument();
     });
 
-    const nextConnectorButton = within(
-      screen.getByLabelText("Chat thread"),
-    ).getByLabelText("Connectors");
-    click(nextConnectorButton);
-    const connectorStatusStayedResolved =
-      screen.queryByLabelText("Remove GitHub") !== null;
+    const nextThread = screen.getByLabelText("Chat thread");
+    click(within(nextThread).getByLabelText("Connectors"));
+    await expect(
+      screen.findByLabelText("Remove GitHub"),
+    ).resolves.toBeInTheDocument();
     const requestCountAfterNavigation = authorizationRequestCount;
     const customRequestCountAfterNavigation = customAuthorizationRequestCount;
     const discoveryRequestCountAfterNavigation = discoveryRequestCount;
@@ -3220,11 +3276,12 @@ describe("chat composer models", () => {
     unexpectedCustomReload.resolve();
     unexpectedDiscoveryReload.resolve();
 
-    expect(connectorStatusStayedResolved).toBeTruthy();
     expect(requestCountAfterNavigation).toBe(1);
     expect(customRequestCountAfterNavigation).toBe(1);
     expect(discoveryRequestCountAfterNavigation).toBe(1);
-    expect(nextConnectorButton.querySelector("img")).not.toBeNull();
+    expect(
+      within(nextThread).getByLabelText("Connectors").querySelector("img"),
+    ).not.toBeNull();
   });
 
   it("does not expose previous-agent connector access while navigation resolves", async () => {
@@ -3257,18 +3314,18 @@ describe("chat composer models", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const initialConnectorButton = within(
-      await screen.findByLabelText("Chat thread"),
-    ).getByLabelText("Connectors");
+    const initialThread = await screen.findByLabelText("Chat thread");
+    click(within(initialThread).getByLabelText("Connectors"));
     await waitFor(() => {
-      expect(initialConnectorButton.querySelector("img")).not.toBeNull();
+      expect(
+        within(initialThread).getByLabelText("Connectors").querySelector("img"),
+      ).not.toBeNull();
     });
 
     act(() => {
       context.store.set(loadLeftThread$, OTHER_AGENT_THREAD_ID);
     });
     await waitFor(() => {
-      expect(authorizationAgentIds).toContain(OTHER_AGENT_ID);
       expect(
         within(screen.getByLabelText("Chat thread")).getByText(
           "Other agent thread",
@@ -3276,12 +3333,15 @@ describe("chat composer models", () => {
       ).toBeInTheDocument();
     });
 
-    const nextConnectorButton = within(
-      screen.getByLabelText("Chat thread"),
-    ).getByLabelText("Connectors");
-    click(nextConnectorButton);
+    const nextThread = screen.getByLabelText("Chat thread");
+    click(within(nextThread).getByLabelText("Connectors"));
+    await waitFor(() => {
+      expect(authorizationAgentIds).toContain(OTHER_AGENT_ID);
+    });
     expect(screen.queryByLabelText("Remove GitHub")).not.toBeInTheDocument();
-    expect(nextConnectorButton.querySelector("img")).toBeNull();
+    expect(
+      within(nextThread).getByLabelText("Connectors").querySelector("img"),
+    ).toBeNull();
 
     otherAgentAuthorization.resolve();
     await expect(
@@ -3342,32 +3402,36 @@ describe("chat composer models", () => {
       expect(screen.getAllByLabelText("Chat thread")).toHaveLength(2);
     });
     const threadRegions = screen.getAllByLabelText("Chat thread");
+    const mainThread = threadRegions[0];
+    const sideThread = threadRegions[1];
+    if (!mainThread || !sideThread) {
+      throw new Error("Split chat threads not found");
+    }
+    const connectorButtonFor = (thread: HTMLElement) => {
+      return within(thread).getByLabelText("Connectors");
+    };
+
+    await user.click(connectorButtonFor(mainThread));
+    await user.click(connectorButtonFor(mainThread));
+    await user.click(connectorButtonFor(sideThread));
     await waitFor(() => {
       expect(authorizationRequestCount).toBe(1);
     });
 
     initialAuthorization.resolve();
-    const connectorButtons = threadRegions.map((thread) => {
-      return within(thread).getByLabelText("Connectors");
-    });
     await waitFor(() => {
-      for (const button of connectorButtons) {
-        expect(button.querySelector("img")).not.toBeNull();
+      for (const thread of threadRegions) {
+        expect(connectorButtonFor(thread).querySelector("img")).not.toBeNull();
       }
     });
 
-    const sideConnectorButton = connectorButtons[1];
-    if (!sideConnectorButton) {
-      throw new Error("Side connector button not found");
-    }
-    await user.click(sideConnectorButton);
     await user.click(await screen.findByLabelText("Remove Slack"));
 
     await waitFor(() => {
       expect(updatedAuthorizationAgentId).toBe(AGENT_ID);
       expect(authorizationRequestCount).toBe(2);
-      for (const button of connectorButtons) {
-        expect(button.querySelector("img")).toBeNull();
+      for (const thread of threadRegions) {
+        expect(connectorButtonFor(thread).querySelector("img")).toBeNull();
       }
     });
   });
@@ -3456,15 +3520,19 @@ describe("chat composer models", () => {
       expect(screen.getAllByLabelText("Chat thread")).toHaveLength(2);
     });
     const threadRegions = screen.getAllByLabelText("Chat thread");
+    const mainThread = threadRegions[0];
     const sideThread = threadRegions[1];
-    if (!sideThread) {
-      throw new Error("Side chat thread not found");
+    if (!mainThread || !sideThread) {
+      throw new Error("Split chat threads not found");
     }
     const sideComposer = sideThread.querySelector("[data-chat-composer]");
     if (!(sideComposer instanceof HTMLElement)) {
       throw new Error("Side chat composer not found");
     }
 
+    await user.click(within(mainThread).getByLabelText("Connectors"));
+    await user.click(within(mainThread).getByLabelText("Connectors"));
+    await user.click(within(sideComposer).getByLabelText("Connectors"));
     await waitFor(() => {
       expect(new Set(authorizationAgentIds)).toStrictEqual(
         new Set([AGENT_ID, OTHER_AGENT_ID]),
@@ -3487,7 +3555,14 @@ describe("chat composer models", () => {
       computerUseHostId: null,
       createdAt: "2026-07-22T09:00:00.000Z",
     };
-    triggerAblyEvent("threadListChanged");
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
+    });
+    changeChatThreadList();
     await waitFor(() => {
       expect(
         within(sideThread).getByText("Renamed other agent thread"),
@@ -3495,7 +3570,6 @@ describe("chat composer models", () => {
     });
     expect(authorizationAgentIds).toHaveLength(authorizationRequestCount);
     expect(workflowAgentIds).toHaveLength(workflowRequestCount);
-    await user.click(within(sideComposer).getByLabelText("Connectors"));
     await user.click(
       await screen.findByLabelText("Configure Slack permissions"),
     );
@@ -3721,14 +3795,12 @@ describe("chat composer image model", () => {
 
     await user.click(await findComposerModel("Claude Fable 5"));
     await user.click(await findCategoryTab("Image"));
-    expect(
-      screen.queryByText("Temporarily switched to Nano Banana 2 for images"),
-    ).not.toBeInTheDocument();
+    expect(queryModelScope("Image model for this chat")).toBeNull();
     await user.click(await findMediaPanelButton("GPT Image 2"));
 
     await waitFor(() => {
       expect(
-        screen.getByText("Temporarily switched to GPT Image 2 for images"),
+        queryModelScopeValue("Image model for this chat", "GPT Image 2"),
       ).toBeInTheDocument();
     });
     expect(updates).toStrictEqual([]);
@@ -3867,7 +3939,11 @@ describe("chat composer image model", () => {
     await openImageModels(user);
     await user.click(await findMediaPanelButton("GPT Image 2"));
     expect(updates).toStrictEqual([]);
-    await screen.findByText("Temporarily switched to GPT Image 2 for images");
+    await waitFor(() => {
+      expect(
+        queryModelScopeValue("Image model for this chat", "GPT Image 2"),
+      ).toBeInTheDocument();
+    });
 
     stored = {
       ...stored,
@@ -3876,8 +3952,11 @@ describe("chat composer image model", () => {
       selectedVideoModel: "fal-ai/veo3.1/fast",
       updatedAt: "2026-08-18T00:01:00Z",
     };
-    const setAsDefault = buttonContainingText("Set as default", document.body);
-    await user.click(setAsDefault);
+    const useForFutureChats = buttonContainingText(
+      "Use this for future chats",
+      document.body,
+    );
+    await user.click(useForFutureChats);
 
     await waitFor(() => {
       expect(updates).toStrictEqual([
@@ -3887,10 +3966,10 @@ describe("chat composer image model", () => {
           selectedImageModel: "gpt-image-2",
         },
       ]);
-      expect(setAsDefault).toBeDisabled();
-      expect(setAsDefault).toHaveAttribute("aria-busy", "true");
+      expect(useForFutureChats).toBeDisabled();
+      expect(useForFutureChats).toHaveAttribute("aria-busy", "true");
     });
-    fireEvent.click(setAsDefault);
+    fireEvent.click(useForFutureChats);
     expect(updates).toHaveLength(1);
     updateGate.resolve();
 
@@ -3905,13 +3984,11 @@ describe("chat composer image model", () => {
       });
     });
     await waitFor(() => {
-      expect(
-        screen.queryByText("Temporarily switched to GPT Image 2 for images"),
-      ).not.toBeInTheDocument();
+      expect(queryModelScope("Image model for this chat")).toBeNull();
     });
   });
 
-  it("shows only the active Chat, Image, or Video notice", async () => {
+  it("shows only the active Chat, Image, or Video scope card", async () => {
     const user = userEvent.setup({ delay: null });
     const updates: UpdateUserModelPreferenceRequest[] = [];
     context.mocks.browser.matchMedia(true);
@@ -3943,45 +4020,65 @@ describe("chat composer image model", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    const chatNotice = "Temporarily switched to Claude Sonnet 4.6";
-    const imageNotice = "Temporarily switched to GPT Image 2 for images";
-    const videoNotice = "Temporarily switched to Veo 3.1 Fast for video";
-
     await user.click(await findComposerModel("Claude Fable 5"));
     await user.click(
       await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
     );
-    await screen.findByText(chatNotice);
+    await waitFor(() => {
+      expect(
+        queryModelScopeValue("Model for this chat", "Claude Sonnet 4.6"),
+      ).toBeInTheDocument();
+    });
 
     await openImageModels(user);
     await user.click(await findMediaPanelButton("GPT Image 2"));
-    await screen.findByText(imageNotice);
-    expect(screen.queryByText(chatNotice)).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        queryModelScopeValue("Image model for this chat", "GPT Image 2"),
+      ).toBeInTheDocument();
+    });
+    expect(queryModelScope("Model for this chat")).toBeNull();
 
-    // Switching category is enough to re-point the composer, so the notice
+    // Switching category is enough to re-point the composer, so the card
     // follows the tab even before a model in it is picked.
     await user.click(await findComposerModelPickerTrigger());
     await user.click(await findCategoryTab("Video"));
     await waitFor(() => {
-      expect(screen.queryByText(imageNotice)).not.toBeInTheDocument();
+      expect(queryModelScope("Image model for this chat")).toBeNull();
     });
     await user.click(await findMediaPanelButton("Veo 3.1 fast"));
-    await screen.findByText(videoNotice);
-    expect(screen.queryByText(imageNotice)).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        queryModelScopeValue("Video model for this chat", "Veo 3.1 Fast"),
+      ).toBeInTheDocument();
+    });
+    expect(queryModelScope("Image model for this chat")).toBeNull();
 
     await user.click(await findComposerModelPickerTrigger());
     await user.click(await findCategoryTab("Image"));
-    await screen.findByText(imageNotice);
-    expect(screen.queryByText(videoNotice)).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        queryModelScopeValue("Image model for this chat", "GPT Image 2"),
+      ).toBeInTheDocument();
+    });
+    expect(queryModelScope("Video model for this chat")).toBeNull();
 
     await user.click(await findCategoryTab("Video"));
-    await screen.findByText(videoNotice);
-    expect(screen.queryByText(imageNotice)).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        queryModelScopeValue("Video model for this chat", "Veo 3.1 Fast"),
+      ).toBeInTheDocument();
+    });
+    expect(queryModelScope("Image model for this chat")).toBeNull();
 
     await user.click(await findCategoryTab("Chat"));
-    await screen.findByText(chatNotice);
-    expect(screen.queryByText(imageNotice)).not.toBeInTheDocument();
-    expect(screen.queryByText(videoNotice)).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        queryModelScopeValue("Model for this chat", "Claude Sonnet 4.6"),
+      ).toBeInTheDocument();
+    });
+    expect(queryModelScope("Image model for this chat")).toBeNull();
+    expect(queryModelScope("Video model for this chat")).toBeNull();
     expect(updates).toStrictEqual([]);
   });
 
@@ -4767,10 +4864,6 @@ describe("chat composer video model", () => {
     return { updates };
   }
 
-  function noticeText(text: string): HTMLElement | null {
-    return screen.queryByText(text);
-  }
-
   it("keeps a new-chat video pick temporary and offers it as the default", async () => {
     const user = userEvent.setup({ delay: null });
     const { updates } = mockNewChatVideoDefaultAction({
@@ -4791,21 +4884,21 @@ describe("chat composer video model", () => {
     // Entering video mode with the member default still selected says nothing.
     // The first category switch also opens the video list.
     await openVideoModels(user);
-    expect(
-      noticeText("Temporarily switched to MiniMax H3 for video"),
-    ).toBeNull();
+    expect(queryModelScope("Video model for this chat")).toBeNull();
 
     await user.click(await findVideoPanelButton("Veo 3.1 fast"));
 
     await waitFor(() => {
       expect(
-        noticeText("Temporarily switched to Veo 3.1 Fast for video"),
+        queryModelScopeValue("Video model for this chat", "Veo 3.1 Fast"),
       ).toBeInTheDocument();
     });
     // Picking alone must not touch the member default any more.
     expect(updates).toStrictEqual([]);
 
-    await user.click(buttonContainingText("Set as default", document.body));
+    await user.click(
+      buttonContainingText("Use this for future chats", document.body),
+    );
 
     await waitFor(() => {
       expect(updates).toStrictEqual([
@@ -4831,13 +4924,11 @@ describe("chat composer video model", () => {
       });
     });
     await waitFor(() => {
-      expect(
-        noticeText("Temporarily switched to Veo 3.1 Fast for video"),
-      ).toBeNull();
+      expect(queryModelScope("Video model for this chat")).toBeNull();
     });
   });
 
-  it("shows only the notice for the model mode the composer is in", async () => {
+  it("shows only the scope card for the model mode the composer is in", async () => {
     const user = userEvent.setup({ delay: null });
     const { updates } = mockNewChatVideoDefaultAction({
       selectedModel: "claude-fable-5",
@@ -4845,9 +4936,6 @@ describe("chat composer video model", () => {
       selectedVideoModel: "MiniMax-H3",
       updatedAt: "2026-08-14T00:00:00Z",
     });
-    const chatNotice = "Temporarily switched to Claude Sonnet 4.6";
-    const videoNotice = "Temporarily switched to Veo 3.1 Fast for video";
-
     detachedSetupPage({
       context,
       featureSwitches: {
@@ -4861,40 +4949,50 @@ describe("chat composer video model", () => {
       await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
     );
     await waitFor(() => {
-      expect(noticeText(chatNotice)).toBeInTheDocument();
+      expect(
+        queryModelScopeValue("Model for this chat", "Claude Sonnet 4.6"),
+      ).toBeInTheDocument();
     });
 
     // Video category, video model still on the member default: nothing pending.
     const videoTab = await openVideoModels(user);
     expect(videoTab).toHaveAttribute("aria-checked", "true");
     await waitFor(() => {
-      expect(noticeText(chatNotice)).toBeNull();
+      expect(queryModelScope("Model for this chat")).toBeNull();
     });
-    expect(noticeText(videoNotice)).toBeNull();
+    expect(queryModelScope("Video model for this chat")).toBeNull();
 
     await user.click(await findVideoPanelButton("Veo 3.1 fast"));
     await waitFor(() => {
-      expect(noticeText(videoNotice)).toBeInTheDocument();
+      expect(
+        queryModelScopeValue("Video model for this chat", "Veo 3.1 Fast"),
+      ).toBeInTheDocument();
     });
-    expect(noticeText(chatNotice)).toBeNull();
+    expect(queryModelScope("Model for this chat")).toBeNull();
 
-    // Back to the chat tab: the run-model notice returns, the video one leaves.
+    // Back to the chat tab: the run-model card returns, the video one leaves.
     await user.click(await findComposerModelPickerTrigger());
     await user.click(await findCategoryTab("Chat"));
     await waitFor(() => {
-      expect(noticeText(chatNotice)).toBeInTheDocument();
+      expect(
+        queryModelScopeValue("Model for this chat", "Claude Sonnet 4.6"),
+      ).toBeInTheDocument();
     });
-    expect(noticeText(videoNotice)).toBeNull();
+    expect(queryModelScope("Video model for this chat")).toBeNull();
 
     // And back again — still one at a time, still the current category's.
     await user.click(await findCategoryTab("Video"));
     await waitFor(() => {
-      expect(noticeText(videoNotice)).toBeInTheDocument();
+      expect(
+        queryModelScopeValue("Video model for this chat", "Veo 3.1 Fast"),
+      ).toBeInTheDocument();
     });
-    expect(noticeText(chatNotice)).toBeNull();
+    expect(queryModelScope("Model for this chat")).toBeNull();
 
     // Setting the default in video mode writes the video model only.
-    await user.click(buttonContainingText("Set as default", document.body));
+    await user.click(
+      buttonContainingText("Use this for future chats", document.body),
+    );
 
     await waitFor(() => {
       expect(updates).toStrictEqual([
@@ -4930,10 +5028,12 @@ describe("chat composer video model", () => {
     );
     await waitFor(() => {
       expect(
-        noticeText("Temporarily switched to Claude Sonnet 4.6"),
+        queryModelScopeValue("Model for this chat", "Claude Sonnet 4.6"),
       ).toBeInTheDocument();
     });
-    await user.click(buttonContainingText("Set as default", document.body));
+    await user.click(
+      buttonContainingText("Use this for future chats", document.body),
+    );
     await waitFor(() => {
       expect(updates).toHaveLength(1);
     });
@@ -4944,10 +5044,12 @@ describe("chat composer video model", () => {
     await user.click(await findVideoPanelButton("Veo 3.1 fast"));
     await waitFor(() => {
       expect(
-        noticeText("Temporarily switched to Veo 3.1 Fast for video"),
+        queryModelScopeValue("Video model for this chat", "Veo 3.1 Fast"),
       ).toBeInTheDocument();
     });
-    await user.click(buttonContainingText("Set as default", document.body));
+    await user.click(
+      buttonContainingText("Use this for future chats", document.body),
+    );
 
     await waitFor(() => {
       expect(updates).toStrictEqual([

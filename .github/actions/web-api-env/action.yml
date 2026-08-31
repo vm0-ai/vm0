@@ -104,6 +104,7 @@ runs:
           local accessor="$1"
           local canonical_key="$2"
           local legacy_key="$3"
+          local source_label="${4:-GitHub App}"
           local canonical_value
           local legacy_value
           local state
@@ -113,7 +114,8 @@ runs:
           legacy_value="$("$accessor" "$legacy_key")"
           if [[ -n "$canonical_value" && -n "$legacy_value" ]]; then
             if [[ "$canonical_value" != "$legacy_value" ]]; then
-              printf '::error::GitHub App source conflict canonical_key=%s legacy_key=%s state=conflict\n' \
+              printf '::error::%s source conflict canonical_key=%s legacy_key=%s state=conflict\n' \
+                "$source_label" \
                 "$canonical_key" \
                 "$legacy_key" \
                 >&2
@@ -131,7 +133,8 @@ runs:
             return 0
           fi
 
-          printf '::notice::GitHub App source canonical_key=%s legacy_key=%s state=%s\n' \
+          printf '::notice::%s source canonical_key=%s legacy_key=%s state=%s\n' \
+            "$source_label" \
             "$canonical_key" \
             "$legacy_key" \
             "$state" \
@@ -190,6 +193,10 @@ runs:
         github_app_client_secret="$(resolve_repo_alias repo_secret OKOU_GITHUB_APP_CLIENT_SECRET VM0_GITHUB_APP_CLIENT_SECRET)"
         github_app_webhook_secret="$(resolve_repo_alias repo_secret OKOU_GITHUB_APP_WEBHOOK_SECRET VM0_GITHUB_APP_WEBHOOK_SECRET)"
         github_app_private_key="$(resolve_repo_alias repo_secret OKOU_GITHUB_APP_PRIVATE_KEY VM0_GITHUB_APP_PRIVATE_KEY)"
+        api_backend_url="$INPUT_API_BACKEND_URL"
+        if [[ "$INPUT_ENVIRONMENT" == "production" && -z "$api_backend_url" ]]; then
+          api_backend_url="$(resolve_repo_alias repo_var OKOU_API_BACKEND_URL VM0_API_BACKEND_URL "API backend URL")"
+        fi
 
         : > "$env_file"
 
@@ -200,7 +207,6 @@ runs:
         if [[ "$INPUT_ENVIRONMENT" == "production" ]]; then
           web_url="${INPUT_WEB_URL:-https://www.vm0.ai}"
           app_url="${INPUT_APP_URL:-https://app.vm0.ai}"
-          api_backend_url="$(first_non_empty "$INPUT_API_BACKEND_URL" "$(repo_var VM0_API_BACKEND_URL)")"
           axiom_dataset_suffix="prod"
           deploy_env="production"
           runner_default_group="vm0/production"
@@ -218,7 +224,6 @@ runs:
         else
           web_url="$INPUT_WEB_URL"
           app_url="$INPUT_APP_URL"
-          api_backend_url="$INPUT_API_BACKEND_URL"
           axiom_dataset_suffix="dev"
           deploy_env="preview"
           runner_default_group="vm0/development-${INPUT_JOB_REF}"
@@ -254,14 +259,12 @@ runs:
           fi
           if [[ "$INPUT_ENVIRONMENT" == "preview" && -n "$INPUT_JOB_REF" ]]; then
             add_env OKOU_PREVIEW_JOB_REF "$INPUT_JOB_REF"
-            add_env VM0_PREVIEW_JOB_REF "$INPUT_JOB_REF"
           fi
           if [[ -n "$atom_url" ]]; then
             add_env ATOM_URL "$atom_url"
           fi
           if [[ -n "$machine_secret_key" ]]; then
             add_env OKOU_MACHINE_SECRET_KEY "$machine_secret_key"
-            add_env VM0_MACHINE_SECRET_KEY "$machine_secret_key"
           fi
         fi
         # Inject the checked-out build commit explicitly so OTel / Sentry can
@@ -324,7 +327,6 @@ runs:
         add_env CONCURRENT_RUN_LIMIT_CAP "$concurrent_run_limit_cap"
         if [[ "$INPUT_ENVIRONMENT" == "preview" ]]; then
           add_env OKOU_DEBUG "*"
-          add_env VM0_DEBUG "*"
         fi
         add_var CLAUDE_CODE_VERSION_URL CLAUDE_CODE_VERSION_URL
         add_secret SLACK_SIGNING_SECRET SLACK_SIGNING_SECRET
@@ -465,7 +467,6 @@ runs:
         add_var GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME
         add_var GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_AUDIENCE GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_AUDIENCE
         add_var GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL
-        add_var VM0_DEFAULT_AGENT VM0_DEFAULT_AGENT
         add_env GITHUB_APP_SLUG "$github_app_slug"
         add_env GITHUB_APP_ID "$github_app_id"
         add_env GITHUB_APP_CLIENT_ID "$github_app_client_id"

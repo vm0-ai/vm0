@@ -104,12 +104,16 @@ pub mod runners {
     /// The API validates the materialized prompt against this shared limit before committing claimed chat events.
     pub const ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES: u64 = 1048576;
 
+    /// Maximum execution budget for one agent run, in seconds.
+    /// The runner enforces this deadline and the API includes it in the agent-facing system prompt.
+    pub const AGENT_EXECUTION_TIMEOUT_SECONDS: u64 = 7200;
+
     /// Schema version written to builtin firewall catalog cache files and accepted by the mitm addon.
     /// This value is generated for both Rust and Python consumers so cache compatibility cannot drift between them.
     pub const BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION: u32 = 1;
 
     /// Maximum builtin firewall catalog response and cache size accepted by runners.
-    /// This is generated from the TypeScript connector catalog raw-byte contract so source ingestion and runner delivery stay aligned.
+    /// This Runner wire and cache boundary is independent of the larger full connector catalog source-ingestion limit.
     pub const BUILTIN_FIREWALL_CATALOG_MAX_BYTES: u64 = 16777216;
 
     /// Maximum API admission hold after public user cancellation when recovery completion is lost.

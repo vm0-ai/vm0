@@ -3,12 +3,10 @@ import { COMPUTER_USE_CHANNELS } from "./computer-use-ipc-channels";
 import { DESKTOP_AUTH_CHANNELS } from "./desktop-auth-ipc-channels";
 import { DESKTOP_DEVELOPER_TOOLS_CHANNELS } from "./desktop-developer-tools-ipc-channels";
 import { DESKTOP_IDENTITY_CHANNEL } from "./desktop-identity-ipc-channels";
-import { DESKTOP_ZERO_MIGRATION_CHANNELS } from "./desktop-zero-migration-ipc-channels";
 import type {
   DesktopAuthApi,
   DesktopComputerUseApi,
   DesktopDeveloperToolsApi,
-  DesktopZeroMigrationApi,
 } from "./desktop-bridge";
 
 type ExposeInMainWorld = (key: string, api: unknown) => void;
@@ -91,7 +89,6 @@ describe("Desktop preload bridge", () => {
       "vm0DesktopAuth",
       "vm0DesktopComputerUse",
       "vm0DesktopDeveloperTools",
-      "vm0DesktopZeroMigration",
       "vm0DesktopIdentity",
     ]);
     expect(exposedApi<DesktopAuthApi>("vm0DesktopAuth")).toBeTruthy();
@@ -100,9 +97,6 @@ describe("Desktop preload bridge", () => {
     ).toBeTruthy();
     expect(
       exposedApi<DesktopDeveloperToolsApi>("vm0DesktopDeveloperTools"),
-    ).toBeTruthy();
-    expect(
-      exposedApi<DesktopZeroMigrationApi>("vm0DesktopZeroMigration"),
     ).toBeTruthy();
     expect(exposedApi("vm0DesktopIdentity")).toStrictEqual({
       product: "zero",
@@ -196,27 +190,6 @@ describe("Desktop preload bridge", () => {
     ]);
   });
 
-  it("routes Zero migration API calls through IPC channels", async () => {
-    await loadPreload();
-    const zeroMigration = exposedApi<DesktopZeroMigrationApi>(
-      "vm0DesktopZeroMigration",
-    );
-
-    await zeroMigration.getState();
-    await zeroMigration.remindLater();
-    await zeroMigration.beginMigration();
-    await zeroMigration.resumeZero();
-    await zeroMigration.quitZero();
-
-    expect(electronMock.ipcRenderer.invoke.mock.calls).toStrictEqual([
-      [DESKTOP_ZERO_MIGRATION_CHANNELS.getState],
-      [DESKTOP_ZERO_MIGRATION_CHANNELS.remindLater],
-      [DESKTOP_ZERO_MIGRATION_CHANNELS.beginMigration],
-      [DESKTOP_ZERO_MIGRATION_CHANNELS.resumeZero],
-      [DESKTOP_ZERO_MIGRATION_CHANNELS.quitZero],
-    ]);
-  });
-
   it("cleans up desktop IPC subscriptions", async () => {
     await loadPreload();
     const auth = exposedApi<DesktopAuthApi>("vm0DesktopAuth");
@@ -226,57 +199,41 @@ describe("Desktop preload bridge", () => {
     const developerTools = exposedApi<DesktopDeveloperToolsApi>(
       "vm0DesktopDeveloperTools",
     );
-    const zeroMigration = exposedApi<DesktopZeroMigrationApi>(
-      "vm0DesktopZeroMigration",
-    );
     const authChanged = vi.fn<() => void>();
     const computerUseChanged = vi.fn<() => void>();
     const developerToolsChanged = vi.fn<() => void>();
-    const zeroMigrationChanged = vi.fn<() => void>();
 
     const unsubscribeAuth = auth.subscribe(authChanged);
     const unsubscribeComputerUse = computerUse.subscribe(computerUseChanged);
     const unsubscribeDeveloperTools = developerTools.subscribe(
       developerToolsChanged,
     );
-    const unsubscribeZeroMigration =
-      zeroMigration.subscribe(zeroMigrationChanged);
 
     electronMock.emit(DESKTOP_AUTH_CHANNELS.changed, { ignored: true });
     electronMock.emit(COMPUTER_USE_CHANNELS.changed, { ignored: true });
     electronMock.emit(DESKTOP_DEVELOPER_TOOLS_CHANNELS.changed, {
       ignored: true,
     });
-    electronMock.emit(DESKTOP_ZERO_MIGRATION_CHANNELS.changed, {
-      ignored: true,
-    });
 
     expect(authChanged).toHaveBeenCalledOnce();
     expect(computerUseChanged).toHaveBeenCalledOnce();
     expect(developerToolsChanged).toHaveBeenCalledOnce();
-    expect(zeroMigrationChanged).toHaveBeenCalledOnce();
 
     const authListener = listenerFor(DESKTOP_AUTH_CHANNELS.changed);
     const computerUseListener = listenerFor(COMPUTER_USE_CHANNELS.changed);
     const developerToolsListener = listenerFor(
       DESKTOP_DEVELOPER_TOOLS_CHANNELS.changed,
     );
-    const zeroMigrationListener = listenerFor(
-      DESKTOP_ZERO_MIGRATION_CHANNELS.changed,
-    );
     unsubscribeAuth();
     unsubscribeComputerUse();
     unsubscribeDeveloperTools();
-    unsubscribeZeroMigration();
     electronMock.emit(DESKTOP_AUTH_CHANNELS.changed);
     electronMock.emit(COMPUTER_USE_CHANNELS.changed);
     electronMock.emit(DESKTOP_DEVELOPER_TOOLS_CHANNELS.changed);
-    electronMock.emit(DESKTOP_ZERO_MIGRATION_CHANNELS.changed);
 
     expect(authChanged).toHaveBeenCalledOnce();
     expect(computerUseChanged).toHaveBeenCalledOnce();
     expect(developerToolsChanged).toHaveBeenCalledOnce();
-    expect(zeroMigrationChanged).toHaveBeenCalledOnce();
     expect(electronMock.ipcRenderer.off).toHaveBeenCalledWith(
       DESKTOP_AUTH_CHANNELS.changed,
       authListener,
@@ -288,10 +245,6 @@ describe("Desktop preload bridge", () => {
     expect(electronMock.ipcRenderer.off).toHaveBeenCalledWith(
       DESKTOP_DEVELOPER_TOOLS_CHANNELS.changed,
       developerToolsListener,
-    );
-    expect(electronMock.ipcRenderer.off).toHaveBeenCalledWith(
-      DESKTOP_ZERO_MIGRATION_CHANNELS.changed,
-      zeroMigrationListener,
     );
   });
 });

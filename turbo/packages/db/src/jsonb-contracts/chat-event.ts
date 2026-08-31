@@ -1,5 +1,4 @@
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
-import type { OutputToolPayload } from "@okouai/api-contracts/contracts/chat-events";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 export type ChatEventUserMessage = UserMessageDocument;
@@ -29,10 +28,6 @@ export interface ChatEventPayload {
   readonly thinking?: string;
   readonly error?: string;
   readonly usage?: ChatEventUsagePayload;
-  readonly toolUseId?: OutputToolPayload["toolUseId"];
-  readonly action?: OutputToolPayload["action"];
-  readonly status?: OutputToolPayload["status"];
-  readonly summary?: OutputToolPayload["summary"];
 }
 
 export interface ChatEventAttachFileMetadata {

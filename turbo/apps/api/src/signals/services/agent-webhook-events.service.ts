@@ -13,6 +13,7 @@ import type { SandboxAuth } from "../../types/auth";
 import { refreshAgentPhoneTypingEvents$ } from "./agent-event-consumer-agentphone-typing.service";
 import { ingestAxiomEvents } from "./agent-event-consumer-axiom.service";
 import {
+  AgentEventRunNotFoundError,
   materializeRunOutputEvents$,
   publishMaterializedChatProjection,
   type MaterializedChatProjection,
@@ -178,7 +179,10 @@ export const receiveAgentEvents$ = command(
     );
     signal.throwIfAborted();
     if (!projectionResult.ok) {
-      if (isForeignKeyViolation(projectionResult.error)) {
+      if (
+        projectionResult.error instanceof AgentEventRunNotFoundError ||
+        isForeignKeyViolation(projectionResult.error)
+      ) {
         L.debug("Ignored events for deleted run", {
           runId: payload.runId,
           ...range,
@@ -205,6 +209,24 @@ export const receiveAgentEvents$ = command(
       };
     }
 
+    if (projectionResult.value.outcome === "ignored-timeout") {
+      L.debug("Ignored events for timed-out run", {
+        runId: payload.runId,
+        status: "timeout",
+        eventCount: payload.events.length,
+        ...range,
+      });
+      return {
+        response: {
+          status: 200 as const,
+          body: {
+            received: payload.events.length,
+            ...range,
+          },
+        },
+      };
+    }
+
     L.debug(
       `Events ${range.firstSequence}-${range.lastSequence} accepted for run ${payload.runId} (${now() - startedAt}ms)`,
     );
@@ -218,7 +240,7 @@ export const receiveAgentEvents$ = command(
       },
       acceptedEvents: {
         payload,
-        chatProjection: projectionResult.value,
+        chatProjection: projectionResult.value.chatProjection,
       },
     };
   },

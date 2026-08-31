@@ -435,7 +435,7 @@ async fn version_retention_reason(
         Ok(unit) => unit,
         Err(e) => return Some(VersionRetentionReason::InvalidServiceSuffix(e.to_string())),
     };
-    let service_lock_path = home.service_lock(unit.unit_name());
+    let service_lock_path = unit.lock_path(home);
     let service_lock_parent = host_file::file_parent(&service_lock_path);
     match tokio::fs::symlink_metadata(service_lock_parent).await {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -632,7 +632,7 @@ async fn gc_versions_with_analysis_and_operations(
             Ok(u) => u,
             Err(_) => continue,
         };
-        let service_lock_path = home.service_lock(unit.unit_name());
+        let service_lock_path = unit.lock_path(home);
         let service_lock_name = service_lock_path
             .file_name()
             .and_then(|name| name.to_str())

@@ -2,12 +2,13 @@
 
 import json
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 import registry
 import state_file
+from tests.process_log_helpers import capture_addon_process_events
 from tests.registry_helpers import (
     pin_mtime,
     write_simple_registry,
@@ -20,29 +21,6 @@ class TestLoadRegistry:
 
         assert "10.200.0.1" in result
         assert result["10.200.0.1"]["runId"] == "run-abc-123"
-
-    def test_does_not_read_legacy_vms_collection(self, tmp_path):
-        path = tmp_path / "registry.json"
-        path.write_text(
-            json.dumps(
-                {
-                    "vms": {
-                        "10.200.0.1": {
-                            "runId": "run-legacy",
-                            "billableFirewalls": [],
-                            "cliAgentType": "claude-code",
-                        }
-                    },
-                    "updatedAt": 0,
-                }
-            )
-        )
-
-        state = registry.load_registry_state(str(path))
-
-        assert not isinstance(state, registry.RegistryUnavailable)
-        assert state.sandboxes == {}
-        assert state.invalid_sandboxes == {}
 
     def test_classifies_invalid_registered_sandbox_entries(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -70,7 +48,7 @@ class TestLoadRegistry:
             )
         )
 
-        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+        with capture_addon_process_events():
             state = registry.load_registry_state(str(path))
 
         assert not isinstance(state, registry.RegistryUnavailable)
@@ -204,7 +182,7 @@ class TestLoadRegistry:
         }
         path.write_text(json.dumps({"sandboxes": {"10.200.0.1": sandbox}, "updatedAt": 0}))
 
-        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+        with capture_addon_process_events():
             state = registry.load_registry_state(str(path))
 
         assert not isinstance(state, registry.RegistryUnavailable)
@@ -246,7 +224,7 @@ class TestLoadRegistry:
         }
         path.write_text(json.dumps({"sandboxes": {"10.200.0.1": sandbox}, "updatedAt": 0}))
 
-        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+        with capture_addon_process_events():
             state = registry.load_registry_state(str(path))
 
         assert not isinstance(state, registry.RegistryUnavailable)
@@ -255,7 +233,7 @@ class TestLoadRegistry:
 
     def test_missing_file_returns_empty(self, tmp_path):
         missing = str(tmp_path / "nonexistent.json")
-        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+        with capture_addon_process_events():
             result = registry.load_registry(missing)
             state = registry.load_registry_state(missing)
 
@@ -311,8 +289,7 @@ class TestLoadRegistry:
         write_simple_registry(path_a)
         registry.load_registry(str(path_a))
 
-        log = MagicMock()
-        with patch.object(registry.ctx, "log", log, create=True):
+        with capture_addon_process_events() as log:
             result = registry.load_registry(str(missing_b))
 
         assert result == {}
@@ -358,8 +335,7 @@ class TestLoadRegistry:
             )
         )
 
-        log = MagicMock()
-        with patch.object(registry.ctx, "log", log, create=True):
+        with capture_addon_process_events() as log:
             result = registry.load_registry(str(path))
             cached = registry.load_registry(str(path))
 
@@ -380,8 +356,7 @@ class TestLoadRegistry:
     def test_missing_file_logs_once_across_calls(self, tmp_path):
         """Stat-path failures repeated across requests emit at most one warn."""
         missing = str(tmp_path / "nonexistent.json")
-        log = MagicMock()
-        with patch.object(registry.ctx, "log", log, create=True):
+        with capture_addon_process_events() as log:
             for _ in range(5):
                 assert registry.load_registry(missing) == {}
 
@@ -392,8 +367,7 @@ class TestLoadRegistry:
         registry.load_registry(str(registry_file))
         registry_file.unlink()
 
-        log = MagicMock()
-        with patch.object(registry.ctx, "log", log, create=True):
+        with capture_addon_process_events() as log:
             result1 = registry.load_registry(str(registry_file))
             result2 = registry.load_registry(str(registry_file))
             state = registry.load_registry_state(str(registry_file))
@@ -417,7 +391,7 @@ class TestLoadRegistry:
         registry_file.unlink()
         registry_file.symlink_to(target)
 
-        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+        with capture_addon_process_events():
             result = registry.load_registry(str(registry_file))
             state = registry.load_registry_state(str(registry_file))
 
@@ -429,9 +403,8 @@ class TestLoadRegistry:
         path = tmp_path / "registry.json"
         max_registry_bytes = 5
         path.write_bytes(b" " * (max_registry_bytes + 1))
-        log = MagicMock()
         with (
-            patch.object(registry.ctx, "log", log, create=True),
+            capture_addon_process_events() as log,
             patch.object(registry, "MAX_REGISTRY_BYTES", max_registry_bytes),
             patch.object(registry.json, "loads", wraps=registry.json.loads) as spy,
         ):
@@ -447,9 +420,8 @@ class TestLoadRegistry:
         """Parse failure on a fixed file: key match short-circuits re-parse."""
         bad = tmp_path / "bad.json"
         bad.write_text("{ not valid json")
-        log = MagicMock()
         with (
-            patch.object(registry.ctx, "log", log, create=True),
+            capture_addon_process_events() as log,
             patch.object(registry.json, "loads", wraps=registry.json.loads) as spy,
         ):
             for _ in range(5):
@@ -463,9 +435,8 @@ class TestLoadRegistry:
         registry.load_registry(str(registry_file))
         registry_file.write_text("{ not valid json after success")
 
-        log = MagicMock()
         with (
-            patch.object(registry.ctx, "log", log, create=True),
+            capture_addon_process_events() as log,
             patch.object(registry.json, "loads", wraps=registry.json.loads) as spy,
         ):
             result1 = registry.load_registry(str(registry_file))
@@ -503,9 +474,8 @@ class TestLoadRegistry:
 
         registry_file.write_bytes(registry_payload)
 
-        log = MagicMock()
         with (
-            patch.object(registry.ctx, "log", log, create=True),
+            capture_addon_process_events() as log,
             patch.object(registry.json, "loads", wraps=registry.json.loads) as spy,
         ):
             state1 = registry.load_registry_state(str(registry_file))
@@ -525,9 +495,8 @@ class TestLoadRegistry:
         registry.load_registry(str(registry_file))
         registry_file.write_text(json.dumps({"sandboxes": ["broken"], "updatedAt": 0}))
 
-        log = MagicMock()
         with (
-            patch.object(registry.ctx, "log", log, create=True),
+            capture_addon_process_events() as log,
             patch.object(registry.json, "loads", wraps=registry.json.loads) as spy,
         ):
             result1 = registry.load_registry(str(registry_file))
@@ -546,9 +515,8 @@ class TestLoadRegistry:
         registry.load_registry(str(registry_file))
         registry_file.write_text(json.dumps(["broken"]))
 
-        log = MagicMock()
         with (
-            patch.object(registry.ctx, "log", log, create=True),
+            capture_addon_process_events() as log,
             patch.object(registry.json, "loads", wraps=registry.json.loads) as spy,
         ):
             result1 = registry.load_registry(str(registry_file))
@@ -567,8 +535,7 @@ class TestLoadRegistry:
         path = tmp_path / "registry.json"
         path.write_text("{ broken")
 
-        log = MagicMock()
-        with patch.object(registry.ctx, "log", log, create=True):
+        with capture_addon_process_events() as log:
             registry.load_registry(str(path))
             assert log.warn.call_count == 1
 
@@ -605,9 +572,8 @@ class TestLoadRegistry:
                 raise result
             return result
 
-        log = MagicMock()
         with (
-            patch.object(registry.ctx, "log", log, create=True),
+            capture_addon_process_events() as log,
             patch.object(state_file.os, "read", side_effect=read_with_one_failure) as spy,
         ):
             failed = registry.load_registry(str(registry_file))
@@ -640,8 +606,7 @@ class TestLoadRegistry:
         path.write_bytes(b"{" + b" " * (len(valid_bytes) - 1))
         first_stat = path.stat()
 
-        log = MagicMock()
-        with patch.object(registry.ctx, "log", log, create=True):
+        with capture_addon_process_events() as log:
             assert registry.load_registry(str(path)) == {}
 
             path.write_bytes(b"x" * (len(valid_bytes) + 1))
@@ -679,8 +644,7 @@ class TestLoadRegistry:
         """Successful load clears the flag so a later failure re-warns once."""
         path = tmp_path / "registry.json"
         path.write_text("{ broken")
-        log = MagicMock()
-        with patch.object(registry.ctx, "log", log, create=True):
+        with capture_addon_process_events() as log:
             registry.load_registry(str(path))  # parse fails → warn #1
             assert log.warn.call_count == 1
 

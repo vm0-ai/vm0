@@ -1,6 +1,7 @@
 import { delay } from "signal-timers";
 import {
   createChildAbortController,
+  createDeferredPromise,
   settle,
   withCleanup,
 } from "../signals/utils.ts";
@@ -8,8 +9,12 @@ import type {
   SharedDatabaseBridge,
   SharedDatabaseBridgeEvents,
   SharedDatabaseHeartbeat,
+  SharedDatabaseSubscriptionCallback,
 } from "./bridge.ts";
-import { SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME } from "./protocol.ts";
+import {
+  SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME,
+  type SharedDatabaseHeartbeatResult,
+} from "./protocol.ts";
 import type {
   SharedDatabaseDataKey,
   SharedDatabaseIdentity,
@@ -34,9 +39,10 @@ interface Connection {
 }
 
 interface DurableSubscription {
-  readonly callback: () => void;
+  readonly callback: SharedDatabaseSubscriptionCallback;
   readonly dataKey: SharedDatabaseDataKey;
   registeredGeneration: number | null;
+  registrationController: AbortController | null;
 }
 
 class SharedDatabaseTransportTimeoutError extends Error {
@@ -46,9 +52,39 @@ class SharedDatabaseTransportTimeoutError extends Error {
   }
 }
 
+export type SharedDatabaseTransportRecovery = "reconnect" | "reload";
+
+export class SharedDatabaseTransportError extends Error {
+  private recoveryPromise: Promise<SharedDatabaseTransportRecovery> | null =
+    null;
+  private reloadRequested = false;
+
+  constructor(
+    message: string,
+    private readonly resolveRecovery: () => Promise<SharedDatabaseTransportRecovery>,
+  ) {
+    super(message);
+    this.name = "SharedDatabaseTransportError";
+  }
+
+  recover(): Promise<SharedDatabaseTransportRecovery> {
+    this.recoveryPromise ??= this.resolveRecovery();
+    return this.recoveryPromise;
+  }
+
+  claimReload(): boolean {
+    if (this.reloadRequested) {
+      return false;
+    }
+    this.reloadRequested = true;
+    return true;
+  }
+}
+
 function isReconnectableTransportError(error: unknown): boolean {
   return (
     error instanceof SharedDatabaseTransportTimeoutError ||
+    error instanceof SharedDatabaseTransportError ||
     (error instanceof Error &&
       error.name === SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME)
   );
@@ -108,7 +144,7 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
   async heartbeat(
     heartbeat: SharedDatabaseHeartbeat,
     signal: AbortSignal,
-  ): Promise<void> {
+  ): Promise<SharedDatabaseHeartbeatResult> {
     this.bindOwner(signal);
     const credentialChanged = !sameCredential(
       this.heartbeatRegistration,
@@ -116,61 +152,43 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
     );
     this.heartbeatRegistration = heartbeat;
     if (credentialChanged) {
+      const credentialChange = new DOMException(
+        "Shared database credential changed",
+        "AbortError",
+      );
       for (const [id, subscription] of this.subscriptions) {
+        this.invalidateSubscriptionRegistration(subscription, credentialChange);
         if (!dataKeyMatchesIdentity(subscription.dataKey, heartbeat.identity)) {
           this.subscriptions.delete(id);
           this.subscriptionSignals.delete(id);
-        } else {
-          subscription.registeredGeneration = null;
         }
       }
     }
 
-    const current = this.connection;
-    if (!current) {
-      const result = await settle(this.ensureConnection(), signal);
-      if (result.ok) {
-        return;
+    const connectionToRenew = this.connection;
+    await this.runWithReconnect(async (connection) => {
+      if (connection === connectionToRenew) {
+        await this.renewConnection(connection, heartbeat, credentialChanged);
       }
-      if (!isReconnectableTransportError(result.error)) {
-        throw result.error;
-      }
-      await this.ensureConnection();
-      return;
-    }
-    const result = await settle(
-      this.renewConnection(current, heartbeat, credentialChanged),
-      signal,
-    );
-    if (result.ok) {
-      return;
-    }
-    if (!isReconnectableTransportError(result.error)) {
-      throw result.error;
-    }
-    this.resetConnection(current, result.error);
-    await this.ensureConnection();
+    }, signal);
+    return { clientReconnected: false };
   }
 
   async query<TKey extends SharedDatabaseDataKey>(
     query: SharedDatabaseQuery<TKey>,
     signal: AbortSignal,
   ): Promise<SharedDatabaseQueryResult<TKey>> {
-    const connection = await this.ensureConnection();
-    const result = await settle(connection.bridge.query(query, signal), signal);
-    if (result.ok) {
-      return result.value;
-    }
-    if (!(result.error instanceof SharedDatabaseTransportTimeoutError)) {
-      throw result.error;
-    }
-    const recovered = await this.ensureConnection();
-    return await recovered.bridge.query(query, signal);
+    return await this.runWithReconnect(async (connection) => {
+      return await this.runTransportRequest(
+        connection.bridge.query(query, signal),
+        connection,
+      );
+    }, signal);
   }
 
   async on(
     dataKey: SharedDatabaseDataKey,
-    callback: () => void,
+    callback: SharedDatabaseSubscriptionCallback,
     signal: AbortSignal,
   ): Promise<void> {
     signal.throwIfAborted();
@@ -185,6 +203,7 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
       callback,
       dataKey,
       registeredGeneration: null,
+      registrationController: null,
     };
     this.subscriptions.set(id, subscription);
     this.subscriptionSignals.set(id, signal);
@@ -194,15 +213,12 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
     };
     signal.addEventListener("abort", remove, { once: true });
     const result = await settle(
-      this.connectAndRegister(subscription, signal),
+      this.runWithReconnect(async (connection) => {
+        await this.registerSubscription(connection, subscription, signal);
+      }, signal),
       signal,
     );
     if (result.ok) {
-      return;
-    }
-    if (result.error instanceof SharedDatabaseTransportTimeoutError) {
-      const recovered = await this.ensureConnection();
-      await this.registerSubscription(recovered, subscription, signal);
       return;
     }
     signal.removeEventListener("abort", remove);
@@ -257,6 +273,11 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
     const generation = ++this.generation;
     this.options.events.statusChanged("connecting");
     const bridge = this.options.createBridge({
+      authenticationRequired: () => {
+        if (this.connection?.generation === generation) {
+          this.options.events.authenticationRequired();
+        }
+      },
       reloadRequired: () => {
         if (this.connection?.generation === generation) {
           this.options.events.reloadRequired();
@@ -286,28 +307,25 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
     heartbeat: SharedDatabaseHeartbeat,
     registerSubscriptions: boolean,
   ): Promise<void> {
-    await this.runControlRequest(
+    const result = await this.runTransportRequest(
       connection.bridge.heartbeat(heartbeat, connection.controller.signal),
       connection,
     );
-    if (registerSubscriptions) {
+    if (result.clientReconnected) {
+      this.invalidateSubscriptionRegistrations(
+        new DOMException("Shared database client renewed", "AbortError"),
+      );
+    }
+    if (registerSubscriptions || result.clientReconnected) {
       await this.registerSubscriptions(connection);
     }
-  }
-
-  private async connectAndRegister(
-    subscription: DurableSubscription,
-    signal: AbortSignal,
-  ): Promise<void> {
-    const connection = await this.ensureConnection();
-    await this.registerSubscription(connection, subscription, signal);
   }
 
   private async initializeConnection(
     connection: Connection,
     heartbeat: SharedDatabaseHeartbeat,
   ): Promise<void> {
-    await this.runControlRequest(
+    await this.runTransportRequest(
       connection.bridge.heartbeat(heartbeat, connection.controller.signal),
       connection,
     );
@@ -338,28 +356,30 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
       subscriptionSignal,
       connection.controller.signal,
     ]);
+    const registrationController = createChildAbortController(signal);
+    subscription.registrationController = registrationController;
     const result = await settle(
-      this.runControlRequest(
+      this.runTransportRequest(
         connection.bridge.on(
           subscription.dataKey,
           subscription.callback,
-          signal,
+          registrationController.signal,
         ),
         connection,
       ),
-      signal,
+      registrationController.signal,
     );
-    if (result.ok) {
-      subscription.registeredGeneration = connection.generation;
-      return;
+    if (!result.ok) {
+      registrationController.abort(result.error);
+      if (subscription.registrationController === registrationController) {
+        subscription.registrationController = null;
+      }
+      throw result.error;
     }
-    if (result.error instanceof SharedDatabaseTransportTimeoutError) {
-      this.resetConnection(connection, result.error);
-    }
-    throw result.error;
+    subscription.registeredGeneration = connection.generation;
   }
 
-  private async runControlRequest<T>(
+  private async runTransportRequest<T>(
     work: Promise<T>,
     connection: Connection,
   ): Promise<T> {
@@ -368,6 +388,86 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
       this.controlRequestTimeoutMs,
       connection.controller.signal,
     );
+  }
+
+  private async runWithReconnect<T>(
+    operation: (connection: Connection) => Promise<T>,
+    signal: AbortSignal,
+  ): Promise<T> {
+    let attemptedConnection: Connection | null = null;
+    const run = async (): Promise<T> => {
+      attemptedConnection = await this.ensureConnection();
+      return await operation(attemptedConnection);
+    };
+    const first = await settle(run(), signal);
+    if (first.ok) {
+      return first.value;
+    }
+    if (!isReconnectableTransportError(first.error)) {
+      throw first.error;
+    }
+    if (attemptedConnection) {
+      this.resetConnection(attemptedConnection, first.error);
+    }
+    await this.waitForTransportRecovery(first.error, signal);
+
+    attemptedConnection = null;
+    const second = await settle(run(), signal);
+    if (second.ok) {
+      return second.value;
+    }
+    if (isReconnectableTransportError(second.error)) {
+      if (attemptedConnection) {
+        this.resetConnection(attemptedConnection, second.error);
+      }
+      await this.waitForTransportRecovery(second.error, signal);
+    }
+    throw second.error;
+  }
+
+  private async waitForTransportRecovery(
+    failure: unknown,
+    signal: AbortSignal,
+  ): Promise<void> {
+    if (!(failure instanceof SharedDatabaseTransportError)) {
+      return;
+    }
+    const waitController = createChildAbortController(signal);
+    const aborted = createDeferredPromise<never>(waitController.signal);
+    const recoveryWork = failure.recover();
+    const recovery = await withCleanup(
+      Promise.race([recoveryWork, aborted.promise]),
+      () => {
+        waitController.abort(
+          new DOMException("Transport recovery wait completed", "AbortError"),
+        );
+      },
+    );
+    signal.throwIfAborted();
+    if (recovery === "reconnect") {
+      return;
+    }
+    if (failure.claimReload()) {
+      this.options.events.reloadRequired();
+    }
+    await createDeferredPromise<never>(signal).promise;
+  }
+
+  private invalidateSubscriptionRegistrations(reason?: unknown): void {
+    for (const subscription of this.subscriptions.values()) {
+      this.invalidateSubscriptionRegistration(subscription, reason);
+    }
+  }
+
+  private invalidateSubscriptionRegistration(
+    subscription: DurableSubscription,
+    reason?: unknown,
+  ): void {
+    if (reason !== undefined) {
+      subscription.registrationController?.abort(reason);
+    }
+    subscription.registrationController = null;
+    subscription.registeredGeneration = null;
   }
 
   private resetConnection(
@@ -380,9 +480,7 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
     }
     this.connection = null;
     connection.controller.abort(reason);
-    for (const subscription of this.subscriptions.values()) {
-      subscription.registeredGeneration = null;
-    }
+    this.invalidateSubscriptionRegistrations();
     if (reportDisconnected && !this.ownerSignal?.aborted) {
       this.options.events.statusChanged("disconnected");
     }

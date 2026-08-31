@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.9.261](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.260...vsock-test-v0.9.261) (2026-08-31)
+
+## [0.9.260](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.259...vsock-test-v0.9.260) (2026-08-30)
+
+## [0.9.259](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.258...vsock-test-v0.9.259) (2026-08-30)
+
+## [0.9.258](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.257...vsock-test-v0.9.258) (2026-08-30)
+
+## [0.9.257](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.256...vsock-test-v0.9.257) (2026-08-29)
+
+## [0.9.256](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.255...vsock-test-v0.9.256) (2026-08-28)
+
+## [0.9.255](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.254...vsock-test-v0.9.255) (2026-08-28)
+
+## [0.9.254](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.253...vsock-test-v0.9.254) (2026-08-28)
+
+## [0.9.253](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.252...vsock-test-v0.9.253) (2026-08-28)
+
+## [0.9.252](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.251...vsock-test-v0.9.252) (2026-08-28)
+
+## [0.9.251](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.250...vsock-test-v0.9.251) (2026-08-28)
+
+## [0.9.250](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.249...vsock-test-v0.9.250) (2026-08-28)
+
+## [0.9.249](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.248...vsock-test-v0.9.249) (2026-08-28)
+
+## [0.9.248](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.247...vsock-test-v0.9.248) (2026-08-27)
+
+## [0.9.247](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.246...vsock-test-v0.9.247) (2026-08-27)
+
+## [0.9.246](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.245...vsock-test-v0.9.246) (2026-08-27)
+
+## [0.9.245](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.244...vsock-test-v0.9.245) (2026-08-27)
+
+
+### Bug Fixes
+
+* **ci:** validate release candidates before fast path ([#29689](https://github.com/vm0-ai/vm0/issues/29689)) ([16f3c0b](https://github.com/vm0-ai/vm0/commit/16f3c0b22cb836b259f4451fe51d6db4d5136253)), closes [#29687](https://github.com/vm0-ai/vm0/issues/29687)
+
+
+### Refactoring
+
+* **runner:** make guest process roles explicit ([#29679](https://github.com/vm0-ai/vm0/issues/29679)) ([fe5d663](https://github.com/vm0-ai/vm0/commit/fe5d663d192a9838dfdf4aecc2ffc8c7a22d24fa))
+
 ## [0.9.244](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.243...vsock-test-v0.9.244) (2026-08-26)
 
 ## [0.9.243](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.242...vsock-test-v0.9.243) (2026-08-26)

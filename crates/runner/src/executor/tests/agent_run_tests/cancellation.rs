@@ -310,6 +310,7 @@ async fn run_in_sandbox_starts_no_guest_work_when_already_cancelled() {
     assert!(overrides.exec_calls().is_empty());
     assert!(overrides.write_file_calls().is_empty());
     assert!(overrides.private_write_file_calls().is_empty());
+    assert!(overrides.private_write_files_calls().is_empty());
     assert!(overrides.start_agent_process_calls().is_empty());
     assert!(overrides.wait_process_calls().is_empty());
 }
@@ -343,6 +344,7 @@ async fn run_in_sandbox_observes_cancellation_while_guest_helper_is_pending() {
     assert_eq!(failure.error, "cancelled by user");
     assert!(overrides.exec_calls().is_empty());
     assert!(overrides.private_write_file_calls().is_empty());
+    assert!(overrides.private_write_files_calls().is_empty());
     assert!(overrides.start_agent_process_calls().is_empty());
     assert!(overrides.wait_process_calls().is_empty());
 }

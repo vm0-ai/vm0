@@ -134,10 +134,6 @@ function getInternalAllowedLiterals() {
       "src/views/okou-page/tiptap-instructions-editor.tsx\u0000baselineMarkdown",
       "Tiptap storage plugin identifier",
     ],
-    [
-      "src/views/okou-page/tiptap-instructions-editor.tsx\u0000lowlightHighlight",
-      "Tiptap extension identifier",
-    ],
   ];
 }
 

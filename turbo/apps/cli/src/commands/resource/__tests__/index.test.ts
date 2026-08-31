@@ -80,23 +80,6 @@ describe("okou resource pull registry resolver", () => {
     );
   });
 
-  it("resolves the pre-cutover stable website SHA outside the rollout", () => {
-    expect(
-      findRegistryResourceForPull("template:dot-matrix", "previous"),
-    ).toEqual(
-      expect.objectContaining({
-        id: "template:dot-matrix",
-        source: expect.objectContaining({
-          archive: {
-            type: "tar.gz",
-            sha256:
-              "f489a51fb99d8fadff8712d0406df06ac1a530116ebe612ab3f8605daa2bcce2",
-          },
-        }),
-      }),
-    );
-  });
-
   it("resolves every website template v2 package", () => {
     for (const item of WEBSITE_TEMPLATE_ITEMS) {
       const resourceId = `${item.resourceId}-v2`;
@@ -169,7 +152,7 @@ describe("okou resource pull command", () => {
 
   beforeEach(async () => {
     chalk.level = 0;
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
     outputDir = await mkdtemp(path.join(tmpdir(), "resource-pull-test-"));
     mockExit.mockClear();

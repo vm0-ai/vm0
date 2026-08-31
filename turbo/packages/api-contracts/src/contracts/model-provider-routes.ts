@@ -5,7 +5,7 @@ import {
   modelProviderListResponseSchema,
   upsertModelProviderRequestSchema,
   upsertModelProviderResponseSchema,
-  modelProviderTypeSchema,
+  modelProviderWriteTypeSchema,
 } from "./model-providers";
 
 const c = initContract();
@@ -114,7 +114,7 @@ export const modelProvidersByTypeContract = c.router({
     path: "/api/model-providers/:type",
     headers: authHeadersSchema,
     pathParams: z.object({
-      type: modelProviderTypeSchema,
+      type: modelProviderWriteTypeSchema,
     }),
     responses: {
       204: c.noBody(),

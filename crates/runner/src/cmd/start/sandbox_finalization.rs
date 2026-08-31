@@ -890,7 +890,7 @@ async fn finalize_sandbox_for_completion_inner(
                             "sandbox parked for reuse"
                         );
                         #[cfg(test)]
-                        test_observer.notify_vm_parked_for_reuse(run_id, reuse_key.clone());
+                        test_observer.notify_sandbox_parked_for_reuse(run_id, reuse_key.clone());
                         cleanup_state.mark_idle_pool_owned();
                         #[cfg(test)]
                         maybe_panic_outer_job(
@@ -1369,7 +1369,7 @@ mod tests {
                 None,
                 None,
             ));
-            status.write_initial().await;
+            status.write_initial().await.unwrap();
             let parking_gate = ParkingGate::new_open();
             let idle_pool: SharedIdlePool = Arc::new(tokio::sync::Mutex::new(
                 IdlePool::new_with_parking_gate(IdlePoolConfig { max_idle }, parking_gate.clone()),
@@ -1903,7 +1903,7 @@ mod tests {
         )
         .await;
         let observed_reuse_key = observer
-            .wait_vm_parked_for_reuse(run_id, Duration::from_secs(1))
+            .wait_sandbox_parked_for_reuse(run_id, Duration::from_secs(1))
             .await;
 
         assert_eq!(observed_reuse_key, reuse_key);
@@ -2077,6 +2077,7 @@ mod tests {
                         mount_path: current_storage_path.clone(),
                         vas_storage_name: "current-storage".into(),
                         vas_version_id: "v1".into(),
+                        baseline_candidate: false,
                         instructions_target_filename: None,
                         archive_url: "https://example.com/current-storage.tar.gz".into(),
                         archive_size: None,

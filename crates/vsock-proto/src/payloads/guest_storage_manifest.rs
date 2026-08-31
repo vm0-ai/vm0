@@ -32,6 +32,17 @@ pub struct DecodedGuestStorageManifestRequest<'a> {
 }
 
 /// Encode a fixed guest storage-manifest request payload.
+///
+/// # Errors
+///
+/// Returns [`ProtocolError`] if `timeout_ms` is zero, `run_id` is empty,
+/// contains a NUL byte, or exceeds [`GUEST_STORAGE_MANIFEST_MAX_RUN_ID_BYTES`]
+/// bytes; if `runtime_dir` is empty, is not absolute, contains a NUL byte, or
+/// exceeds [`GUEST_STORAGE_MANIFEST_MAX_RUNTIME_DIR_BYTES`] bytes; if
+/// `manifest_json` exceeds [`MAX_EXEC_STDIN_BYTES`] bytes; if an encoded field
+/// does not fit its wire length field; or if the encoded payload exceeds the
+/// maximum protocol message size. String limits are measured in UTF-8 bytes,
+/// not characters.
 pub fn encode_guest_storage_manifest_request(
     timeout_ms: u32,
     run_id: &str,
@@ -53,6 +64,22 @@ pub fn encode_guest_storage_manifest_request(
 }
 
 /// Encode a full fixed guest storage-manifest request frame into `frame`.
+///
+/// # Errors
+///
+/// Returns [`ProtocolError`] if `timeout_ms` is zero, `run_id` is empty,
+/// contains a NUL byte, or exceeds [`GUEST_STORAGE_MANIFEST_MAX_RUN_ID_BYTES`]
+/// bytes; if `runtime_dir` is empty, is not absolute, contains a NUL byte, or
+/// exceeds [`GUEST_STORAGE_MANIFEST_MAX_RUNTIME_DIR_BYTES`] bytes; if
+/// `manifest_json` exceeds [`MAX_EXEC_STDIN_BYTES`] bytes; if an encoded field
+/// does not fit its wire length field; or if the encoded payload exceeds the
+/// maximum protocol message size. String limits are measured in UTF-8 bytes,
+/// not characters.
+///
+/// Request validation runs before the shared frame encoder clears `frame`, so
+/// validation errors leave the destination unchanged. After validation
+/// succeeds, the shared frame encoder clears `frame` before checking the frame
+/// size and writing the encoded bytes.
 pub fn encode_guest_storage_manifest_request_frame_into(
     frame: &mut Vec<u8>,
     seq: u32,
@@ -287,110 +314,5 @@ fn validate_result_output(
         ExecCapturedOutput::Discarded => Err(ProtocolError::InvalidPayload(
             "guest_storage_manifest_result output must be captured",
         )),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn request_round_trip_preserves_exact_boundary_bytes() {
-        let manifest = vec![b'x'; MAX_EXEC_STDIN_BYTES];
-        let payload = encode_guest_storage_manifest_request(
-            300_000,
-            "run-1",
-            "/run/vm0/runs/run-1",
-            &manifest,
-        )
-        .unwrap();
-
-        let decoded = decode_guest_storage_manifest_request(&payload).unwrap();
-
-        assert_eq!(decoded.timeout_ms, 300_000);
-        assert_eq!(decoded.run_id, "run-1");
-        assert_eq!(decoded.runtime_dir, "/run/vm0/runs/run-1");
-        assert_eq!(decoded.manifest_json, manifest);
-    }
-
-    #[test]
-    fn request_rejects_invalid_context_and_oversized_manifest() {
-        assert!(encode_guest_storage_manifest_request(0, "run", "/run", b"{}").is_err());
-        assert!(encode_guest_storage_manifest_request(1, "", "/run", b"{}").is_err());
-        assert!(encode_guest_storage_manifest_request(1, "run", "relative", b"{}").is_err());
-        assert!(
-            encode_guest_storage_manifest_request(
-                1,
-                "run",
-                "/run",
-                &vec![0; MAX_EXEC_STDIN_BYTES + 1],
-            )
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn result_round_trip_requires_bounded_capture_for_both_streams() {
-        let stdout = ExecCapturedOutput::Captured {
-            bytes: b"out",
-            truncated: false,
-        };
-        let stderr = ExecCapturedOutput::Captured {
-            bytes: b"err",
-            truncated: true,
-        };
-        let payload = encode_guest_storage_manifest_result(
-            ExecTermination::Exited { exit_code: 7 },
-            42,
-            stdout,
-            stderr,
-            "diagnostic",
-        )
-        .unwrap();
-
-        let decoded = decode_guest_storage_manifest_result(&payload).unwrap();
-
-        assert_eq!(
-            decoded.termination,
-            ExecTermination::Exited { exit_code: 7 }
-        );
-        assert_eq!(decoded.duration_ms, 42);
-        assert_eq!(decoded.stdout, stdout);
-        assert_eq!(decoded.stderr, stderr);
-        assert_eq!(decoded.diagnostic, "diagnostic");
-        assert!(
-            encode_guest_storage_manifest_result(
-                ExecTermination::WaitFailed,
-                0,
-                ExecCapturedOutput::Discarded,
-                stderr,
-                "",
-            )
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn result_rejects_unknown_termination_and_truncated_exit_code() {
-        assert!(matches!(
-            decode_guest_storage_manifest_result(&[0xff]),
-            Err(ProtocolError::InvalidPayload(
-                "invalid exec termination tag"
-            ))
-        ));
-        assert!(matches!(
-            decode_guest_storage_manifest_result(&[0x00, 0x00, 0x00, 0x00]),
-            Err(ProtocolError::InvalidPayload(
-                "exec result exit_code truncated"
-            ))
-        ));
-    }
-
-    #[test]
-    fn request_decoder_rejects_trailing_bytes() {
-        let mut payload = encode_guest_storage_manifest_request(1, "run", "/run", b"{}").unwrap();
-        payload.push(0);
-
-        assert!(decode_guest_storage_manifest_request(&payload).is_err());
     }
 }
