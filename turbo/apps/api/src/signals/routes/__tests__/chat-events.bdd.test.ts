@@ -75,6 +75,10 @@ import {
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { setOrgModelPolicyProviderTypeFixture } from "../../../test-fixtures/org-model-policies";
+import {
+  createUsagePricingFixture,
+  type UsagePricingFixture,
+} from "../../../test-fixtures/usage-pricing";
 import { setChatThreadVideoModelFixture } from "../../../test-fixtures/chat-thread-events";
 import { seededSystemSkillArchive } from "../../../test-fixtures/seeded-system-skill-archive";
 import {
@@ -212,6 +216,24 @@ const runStateStore = createStore();
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "okou web upload-file -f <path>";
 const RUN_TIME_BUDGET_STEER_AT_MS = 115 * 60 * 1000;
+const TERRA_STANDARD_USAGE_PRICING = [
+  "tokens.input",
+  "tokens.output",
+  "tokens.cache_read",
+  "tokens.cache_creation",
+  "tokens.input.long_context",
+  "tokens.output.long_context",
+  "tokens.cache_read.long_context",
+  "tokens.cache_creation.long_context",
+].map((category) => {
+  return {
+    kind: "model",
+    provider: "gpt-5.6-terra",
+    category,
+    unitPrice: 1,
+    unitSize: 1_000_000,
+  };
+});
 const RUN_TIME_BUDGET_MESSAGE = `This runner has a hard maximum runtime of 2 hours. The current run has been active for 115 minutes, leaving approximately 5 minutes before it is terminated.
 
 An active goal allows unfinished work to continue in a later run. An existing goal already provides that continuity and remains unchanged. If no goal exists, the unfinished outcome needs to be captured in a new goal before this run ends.
@@ -551,20 +573,36 @@ async function expectTerraApiFirstTurnUsage(
 }
 
 async function expectTerraApiFollowUpUsage(runId: string): Promise<void> {
-  await expect(readRunUsageEventsFixture(runId)).resolves.toStrictEqual([
+  const usageRows = await readRunUsageEventsFixture(runId);
+  expect(usageRows).toStrictEqual([
     expect.objectContaining({
       provider: "gpt-5.6-terra",
       category: "tokens.input",
       quantity: 5,
       status: "processed",
+      billingError: null,
+      creditsCharged: expect.any(Number),
     }),
     expect.objectContaining({
       provider: "gpt-5.6-terra",
       category: "tokens.output",
       quantity: 3,
       status: "processed",
+      billingError: null,
+      creditsCharged: expect.any(Number),
     }),
   ]);
+  expect(totalChargedCredits(usageRows)).toBeGreaterThan(0);
+}
+
+async function createTerraUsagePricingResolution(): Promise<
+  UsagePricingFixture["resolution"]
+> {
+  const pricing = await createUsagePricingFixture({
+    configured: TERRA_STANDARD_USAGE_PRICING,
+  });
+  onTestFinished(pricing.cleanup);
+  return pricing.resolution;
 }
 
 async function seedVm0BuiltInModelKey(selectedModel: string): Promise<string> {
@@ -592,6 +630,7 @@ async function sendChatRun(
   actor: ApiTestUser,
   body: ChatRunSendBody,
   publicBrand: PublicBrand = "vm0",
+  usagePricingResolution?: UsagePricingFixture["resolution"],
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
   const { template, ...canonicalBody } = body;
   const requestBody = {
@@ -607,6 +646,7 @@ async function sendChatRun(
     [201],
     undefined,
     publicBrand,
+    usagePricingResolution,
   );
   if (sent.status !== 201) {
     throw new Error("Expected the entitled chat send to create a run");
@@ -4777,6 +4817,7 @@ async function queueCapabilityProvenPiRun(args: {
   readonly anchor: { readonly runId: string; readonly threadId: string };
   readonly anchorClaim: Awaited<ReturnType<typeof claimChatRun>>;
   readonly run: { readonly runId: string; readonly threadId: string };
+  readonly usagePricingResolution: UsagePricingFixture["resolution"];
 }> {
   if (!args.actor.orgId) {
     throw new Error("Expected entitled chat actor to have an org");
@@ -4802,13 +4843,19 @@ async function queueCapabilityProvenPiRun(args: {
     { ...args.actor, orgId: args.actor.orgId },
     { [FeatureSwitchKey.PiLoop]: true },
   );
-  const run = await sendChatRun(args.actor, {
-    agentId: args.agentId,
-    prompt: args.prompt,
-    model: "gpt-5.6-terra",
-  });
+  const usagePricingResolution = await createTerraUsagePricingResolution();
+  const run = await sendChatRun(
+    args.actor,
+    {
+      agentId: args.agentId,
+      prompt: args.prompt,
+      model: "gpt-5.6-terra",
+    },
+    "vm0",
+    usagePricingResolution,
+  );
   await waitForRunStatus(args.actor, run.runId, "queued");
-  return { anchor, anchorClaim, run };
+  return { anchor, anchorClaim, run, usagePricingResolution };
 }
 
 function occurrences(haystack: string, needle: string): number {
@@ -5039,6 +5086,7 @@ describe("CHAT-02: model-first provider policies", () => {
     "runs the Pi API first turn once for %s and resumes canonical JSONL",
     async (selectedModel) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
+      const usagePricingResolution = await createTerraUsagePricingResolution();
       const orgId = actor.orgId;
       if (!orgId) {
         throw new Error("Expected entitled chat actor to have an org");
@@ -5100,11 +5148,16 @@ describe("CHAT-02: model-first provider policies", () => {
         }),
       );
       const firstPrompt = "persist this turn in the native Pi session";
-      const first = await sendChatRun(actor, {
-        agentId,
-        prompt: firstPrompt,
-        model: selectedModel,
-      });
+      const first = await sendChatRun(
+        actor,
+        {
+          agentId,
+          prompt: firstPrompt,
+          model: selectedModel,
+        },
+        "vm0",
+        usagePricingResolution,
+      );
       await waitForRunStatus(actor, first.runId, "completed");
       await flushWaitUntilForTest();
       await expect(
@@ -5169,11 +5222,16 @@ describe("CHAT-02: model-first provider policies", () => {
       ]);
 
       const secondPrompt = "continue the same Pi session";
-      const second = await sendChatRun(actor, {
-        agentId,
-        threadId: first.threadId,
-        prompt: secondPrompt,
-      });
+      const second = await sendChatRun(
+        actor,
+        {
+          agentId,
+          threadId: first.threadId,
+          prompt: secondPrompt,
+        },
+        "vm0",
+        usagePricingResolution,
+      );
       await waitForRunStatus(actor, second.runId, "completed");
       await flushWaitUntilForTest();
       expect(modelRequests).toHaveLength(2);
@@ -6285,7 +6343,7 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(claim.status).toBe(404);
   }, 90_000);
 
-  it("aborts or disregards one in-flight provider result after canonical cancellation", async () => {
+  it("does not fabricate usage when cancellation aborts an in-flight provider response", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     mockPiResourceArchiveDownloads();
     const providerEntered = createDeferredPromise<void>(context.signal);
@@ -6318,33 +6376,14 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(modelCalls).toBe(1);
     releaseProvider.resolve(undefined);
     await flushWaitUntilForTest();
-    if (!actor.orgId) {
-      throw new Error("Expected cancellation actor to have an org");
-    }
-    await api.reconcileBillingOrganizations([actor.orgId]);
 
     await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
       status: "cancelled",
     });
     expect(modelCalls).toBe(1);
-    const cancelledUsage = await readRunUsageEventsFixture(run.runId);
-    expect(cancelledUsage).toStrictEqual([
-      expect.objectContaining({
-        provider: "gpt-5.6-terra",
-        category: "tokens.input",
-        quantity: 5,
-        status: "processed",
-        billingError: null,
-      }),
-      expect.objectContaining({
-        provider: "gpt-5.6-terra",
-        category: "tokens.output",
-        quantity: 3,
-        status: "processed",
-        billingError: null,
-      }),
-    ]);
-    expect(totalChargedCredits(cancelledUsage)).toBeGreaterThan(0);
+    await expect(readRunUsageEventsFixture(run.runId)).resolves.toStrictEqual(
+      [],
+    );
     expect(
       checkpointObjects.has(
         `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`,
@@ -6385,12 +6424,13 @@ describe("CHAT-02: model-first provider policies", () => {
       }),
     );
     const checkpointObjects = mockPiCheckpointObjectStore();
-    const { anchor, anchorClaim, run } = await queueCapabilityProvenPiRun({
-      actor,
-      agentId,
-      runnerGroup,
-      prompt: "let cancellation commit before API publication",
-    });
+    const { anchor, anchorClaim, run, usagePricingResolution } =
+      await queueCapabilityProvenPiRun({
+        actor,
+        agentId,
+        runnerGroup,
+        prompt: "let cancellation commit before API publication",
+      });
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
     await providerEntered.promise;
     const lifecycleLock = await holdPiApiFirstTurnLifecycleLockFixture({
@@ -6410,8 +6450,13 @@ describe("CHAT-02: model-first provider policies", () => {
     await lifecycleLock.done;
     await cancellation;
     await flushWaitUntilForTest();
+    await api.reconcileBillingOrganizations(
+      [requireOrgId(actor)],
+      usagePricingResolution,
+    );
 
     expect(modelCalls).toBe(1);
+    await expectTerraApiFollowUpUsage(run.runId);
     await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
       status: "cancelled",
     });
@@ -6540,7 +6585,7 @@ describe("CHAT-02: model-first provider policies", () => {
         model: "deepseek-v4-flash",
       });
 
-      await waitForRunStatus(actor, run.runId, "failed");
+      await waitForRunStatus(actor, run.runId, "failed", 5000);
       await flushWaitUntilForTest();
       const failed = await api.readRun(actor, run.runId);
       expect(failed.error).toContain(`[${expectedCode}]`);
@@ -6804,6 +6849,7 @@ describe("CHAT-02: model-first provider policies", () => {
     if (!actor.orgId) {
       throw new Error("Expected entitled chat actor to have an org");
     }
+    const usagePricingResolution = await createTerraUsagePricingResolution();
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
     const runnerIdentity = {
       runnerId: randomUUID(),
@@ -6855,11 +6901,16 @@ describe("CHAT-02: model-first provider policies", () => {
       }),
     );
     const checkpointObjects = mockPiCheckpointObjectStore();
-    const first = await sendChatRun(actor, {
-      agentId,
-      prompt: "create a settled Pi checkpoint",
-      model: "gpt-5.6-terra",
-    });
+    const first = await sendChatRun(
+      actor,
+      {
+        agentId,
+        prompt: "create a settled Pi checkpoint",
+        model: "gpt-5.6-terra",
+      },
+      "vm0",
+      usagePricingResolution,
+    );
     await waitForRunStatus(actor, first.runId, "completed");
     await flushWaitUntilForTest();
     expect(modelCalls).toBe(1);
@@ -6891,12 +6942,17 @@ describe("CHAT-02: model-first provider policies", () => {
 
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
     const prompt = "preserve this original prompt for official compaction";
-    const second = await sendChatRun(actor, {
-      agentId,
-      threadId: first.threadId,
-      prompt,
-      model: "gpt-5.6-terra",
-    });
+    const second = await sendChatRun(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt,
+        model: "gpt-5.6-terra",
+      },
+      "vm0",
+      usagePricingResolution,
+    );
     await waitForRunStatus(actor, second.runId, "queued");
     context.mocks.axiomLogging.debug.mockClear();
     await completeChatRunOk(anchor.runId, anchorSandboxHeaders);
@@ -7041,6 +7097,7 @@ describe("CHAT-02: model-first provider policies", () => {
   it("publishes ordered mixed blocks and hands explicit Sandbox tool turns to H2", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const orgId = requireOrgId(actor);
+    const usagePricingResolution = await createTerraUsagePricingResolution();
     await configureBuiltInPiModel(actor, "gpt-5.6-terra");
     await updateFeatureSwitchesForUser(
       context,
@@ -7098,11 +7155,16 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     const checkpointObjects = mockPiCheckpointObjectStore();
     const prompt = "use the Okou CLI through the Sandbox handoff";
-    const run = await sendChatRun(actor, {
-      agentId,
-      prompt,
-      model: "gpt-5.6-terra",
-    });
+    const run = await sendChatRun(
+      actor,
+      {
+        agentId,
+        prompt,
+        model: "gpt-5.6-terra",
+      },
+      "vm0",
+      usagePricingResolution,
+    );
     const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`;
     await expect
       .poll(() => {
@@ -7209,11 +7271,13 @@ describe("CHAT-02: model-first provider policies", () => {
         { runId: run.runId, events: [sandboxUsageEvent] },
         claimed.sandboxHeaders,
         [200],
+        usagePricingResolution,
       ),
       webhooks.requestAgentUsageEvent(
         { runId: run.runId, events: [sandboxUsageEvent] },
         claimed.sandboxHeaders,
         [200],
+        usagePricingResolution,
       ),
     ]);
     expect(
@@ -7425,6 +7489,8 @@ describe("CHAT-02: model-first provider policies", () => {
       },
       claimed.sandboxHeaders,
       [200],
+      undefined,
+      usagePricingResolution,
     );
     expect(combinedH2.body).toStrictEqual({
       success: true,

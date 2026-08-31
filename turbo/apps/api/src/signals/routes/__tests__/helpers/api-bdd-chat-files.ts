@@ -72,6 +72,7 @@ import {
 } from "@okouai/api-contracts/contracts/uploads";
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
+import type { UsagePricingResolution } from "../../../context/usage-pricing-resolution";
 import {
   buildArtifactKey,
   sanitizeArtifactFilename,
@@ -1318,12 +1319,16 @@ export function createChatFilesBddApi(context: TestContext) {
       )[],
       signal?: AbortSignal,
       publicBrand: PublicBrand = "vm0",
+      usagePricingResolution?: UsagePricingResolution,
     ) {
-      const client = signal
-        ? setupAppWithRoutes({ context, routes: chatFilesRoutes, signal })(
-            chatEventsContract,
-          )
-        : chatEventsClient();
+      const client = setupAppWithRoutes({
+        context,
+        routes: chatFilesRoutes,
+        ...(signal === undefined ? {} : { signal }),
+        ...(usagePricingResolution === undefined
+          ? {}
+          : { usagePricingResolution }),
+      })(chatEventsContract);
       const defaultModel =
         "prompt" in body &&
         body.threadId === undefined &&

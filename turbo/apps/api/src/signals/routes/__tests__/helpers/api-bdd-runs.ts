@@ -56,6 +56,7 @@ import { apiTestS3PresignedUrl } from "../../../../__tests__/mocks";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now, withNowScopeForTest } from "../../../../lib/time";
 import { createDeferredPromise } from "../../../utils";
+import type { UsagePricingResolution } from "../../../context/usage-pricing-resolution";
 import {
   createDirectAgentExecutionFixture,
   createDirectRunFixture,
@@ -1378,10 +1379,16 @@ export function createRunsApi(context: TestContext) {
       };
     },
 
-    async reconcileBillingOrganizations(orgIds: readonly string[]) {
+    async reconcileBillingOrganizations(
+      orgIds: readonly string[],
+      usagePricingResolution?: UsagePricingResolution,
+    ) {
       const client = setupAppWithRoutes({
         context,
         routes: testBillingReconciliationStateRoutes,
+        ...(usagePricingResolution === undefined
+          ? {}
+          : { usagePricingResolution }),
       })(testBillingReconciliationStateContract);
       return await accept(
         client.reconcile({
