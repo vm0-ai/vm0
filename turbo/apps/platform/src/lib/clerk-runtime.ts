@@ -1,11 +1,6 @@
-import {
-  loadClerkJSScript,
-  loadClerkUIScript,
-} from "@clerk/shared/loadClerkJsScript";
+import { loadClerkJSScript } from "@clerk/shared/loadClerkJsScript";
 import type { BrowserClerk, EnvironmentResource } from "@clerk/shared/types";
-import type { ClerkUIConstructor } from "@clerk/shared/ui";
-import { createDeferredPromise } from "../signals/utils.ts";
-import { CLERK_JS_VERSION, CLERK_UI_VERSION } from "./clerk-versions.ts";
+import { CLERK_JS_VERSION } from "./clerk-versions.ts";
 
 interface ClerkRuntimeOptions {
   readonly publishableKey: string;
@@ -21,34 +16,12 @@ interface ClerkRuntimeLoadOptions {
   readonly signUpUrl: string;
 }
 
-interface ClerkScriptOptions {
-  readonly publishableKey: string;
-  readonly domain?: string;
-}
-
-interface DeferredClerkUI {
-  readonly promise: Promise<ClerkUIConstructor>;
-  readonly resolve: (value: ClerkUIConstructor) => void;
-}
-
 export interface ClerkBrowserRuntime {
   readonly clerk: PlatformClerk;
-  readonly ensureUiLoaded: () => Promise<void>;
   readonly loaded: Promise<void>;
 }
 
 type EarlyClerkBootstrap = NonNullable<Window["__vm0ClerkBootstrap"]>;
-
-/**
- * Clerk keeps this promise for the lifetime of the shared browser runtime and
- * reads it only when hosted UI is mounted. The app root owns that runtime;
- * route and command signals must not abort it independently.
- */
-function createDeferredClerkUI(signal: AbortSignal): DeferredClerkUI {
-  const { promise, resolve } =
-    createDeferredPromise<ClerkUIConstructor>(signal);
-  return { promise, resolve };
-}
 
 function globalProperty(name: string): unknown {
   return Reflect.get(globalThis, name);
@@ -65,32 +38,6 @@ function isBrowserClerk(value: unknown): value is PlatformClerk {
     typeof Reflect.get(value, "load") === "function" &&
     typeof Reflect.get(value, "on") === "function"
   );
-}
-
-function isClerkUIConstructor(value: unknown): value is ClerkUIConstructor {
-  return typeof value === "function";
-}
-
-function createClerkUiLoader(
-  options: ClerkScriptOptions,
-  clerkUi: DeferredClerkUI,
-): () => Promise<void> {
-  let loadPromise: Promise<void> | undefined;
-  return () => {
-    loadPromise ??= (async () => {
-      await loadClerkUIScript({
-        __internal_clerkUIVersion: CLERK_UI_VERSION,
-        domain: options.domain,
-        publishableKey: options.publishableKey,
-      });
-      const constructor = globalProperty("__internal_ClerkUICtor");
-      if (!isClerkUIConstructor(constructor)) {
-        throw new Error("Clerk UI script did not expose a valid constructor");
-      }
-      clerkUi.resolve(constructor);
-    })();
-    return loadPromise;
-  };
 }
 
 function patchSharedClerkInstance(clerk: PlatformClerk): void {
@@ -144,22 +91,11 @@ function adoptEarlyClerkRuntime(
 
   const abort = (): void => {
     bootstrap.abortOnboarding();
-    bootstrap.rejectClerkUi(signal.reason);
   };
   signal.addEventListener("abort", abort, { once: true });
 
   return {
     clerk,
-    ensureUiLoaded: createClerkUiLoader(
-      {
-        domain: options.domain,
-        publishableKey: options.publishableKey,
-      },
-      {
-        promise: bootstrap.clerkUiPromise,
-        resolve: bootstrap.resolveClerkUi,
-      },
-    ),
     loaded: bootstrap.loaded,
   };
 }
@@ -196,17 +132,8 @@ export function startClerkBrowserRuntime(
       return earlyRuntime;
     }
 
-    const clerkUi = createDeferredClerkUI(signal);
-    const scriptOptions = {
-      domain: options.domain,
-      publishableKey: options.publishableKey,
-    };
-    const ensureUiLoaded = createClerkUiLoader(scriptOptions, clerkUi);
     patchSharedClerkInstance(clerk);
-    const loaded = clerk.load({
-      ...options.loadOptions,
-      ui: { ClerkUI: clerkUi.promise },
-    });
-    return { clerk, ensureUiLoaded, loaded };
+    const loaded = clerk.load(options.loadOptions);
+    return { clerk, loaded };
   })();
 }

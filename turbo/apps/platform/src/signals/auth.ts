@@ -417,15 +417,6 @@ export const clerkInstance$ = computed(async (get) => {
   return runtime.clerk;
 });
 
-export const ensureClerkUiLoaded$ = command(
-  async ({ get }, signal: AbortSignal) => {
-    const runtime = await get(clerkRuntime$);
-    signal.throwIfAborted();
-    await runtime.ensureUiLoaded();
-    signal.throwIfAborted();
-  },
-);
-
 /** Loaded Clerk instance for consumers that need authentication state. */
 export const clerk$ = computed(async (get) => {
   const runtime = await get(clerkRuntime$);

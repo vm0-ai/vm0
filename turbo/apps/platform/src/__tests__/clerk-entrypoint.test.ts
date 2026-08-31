@@ -194,7 +194,6 @@ function startClerkPage(
       }
       window.__vm0BrowserSupported = true;
       Reflect.deleteProperty(globalThis, "Clerk");
-      Reflect.deleteProperty(globalThis, "__internal_ClerkUICtor");
 
       const observeScript = (
         append: typeof document.body.appendChild,
@@ -205,7 +204,6 @@ function startClerkPage(
         }
 
         requests.push({ element: node, url: node.src });
-        const isClerkUiRequest = node.src.includes("/npm/@clerk/ui@");
         node.removeAttribute("src");
         const appended = append(node);
         if (
@@ -215,16 +213,8 @@ function startClerkPage(
           earlyScript = node;
           return appended;
         }
-        if (isClerkUiRequest) {
-          Reflect.set(
-            globalThis,
-            "__internal_ClerkUICtor",
-            function ClerkUI() {},
-          );
-        } else {
-          retryStarted.resolve(undefined);
-          Reflect.set(globalThis, "Clerk", mockedClerk);
-        }
+        retryStarted.resolve(undefined);
+        Reflect.set(globalThis, "Clerk", mockedClerk);
         node.dispatchEvent(new Event("load"));
         return appended;
       };
@@ -266,7 +256,6 @@ function startClerkPage(
             request.element.remove();
           }
           Reflect.deleteProperty(globalThis, "Clerk");
-          Reflect.deleteProperty(globalThis, "__internal_ClerkUICtor");
           Reflect.deleteProperty(window, "__vm0BrowserSupported");
           Reflect.deleteProperty(window, "__vm0ClerkBootstrap");
           performance.clearMarks(CLERK_LOAD_STARTED_MARK);
@@ -547,7 +536,6 @@ describe("platform Clerk entrypoint", () => {
           ...(domain ? { isSatellite: true, satelliteAutoSync: true } : {}),
           signInUrl: `${authOrigin}/sign-in`,
           signUpUrl: `${authOrigin}/sign-up`,
-          ui: { ClerkUI: expect.any(Promise) },
         }),
       );
     },

@@ -1,4 +1,3 @@
-import type { ClerkUIConstructor } from "@clerk/shared/ui";
 import type { PlatformClerk } from "./lib/clerk-runtime";
 import type { DebugLoggers } from "./types/global-method";
 
@@ -28,14 +27,11 @@ interface VM0ClerkBootstrap {
   clerk?: PlatformClerk;
   clerkLoadCompletedAt?: number;
   clerkLoadStartedAt?: number;
-  readonly clerkUiPromise: Promise<ClerkUIConstructor>;
   readonly domain?: string;
   readonly loadOptions: VM0ClerkBootstrapLoadOptions;
   loaded?: Promise<void>;
   onboardingStatusPromise?: Promise<VM0ClerkBootstrapOnboardingStatus | null>;
   readonly publishableKey: string;
-  readonly rejectClerkUi: (reason?: unknown) => void;
-  readonly resolveClerkUi: (constructor: ClerkUIConstructor) => void;
 }
 
 interface VM0Global {

@@ -61,14 +61,6 @@
           loadOptions.satelliteAutoSync = true;
         }
 
-        var clerkUiResolve;
-        var clerkUiReject;
-        var clerkUiSettled = false;
-        var clerkUiPromise = new Promise(function (resolve, reject) {
-          clerkUiResolve = resolve;
-          clerkUiReject = reject;
-        });
-        clerkUiPromise.catch(function () {});
         var onboardingController = null;
         var clientSessionId =
           typeof crypto.randomUUID === "function"
@@ -79,20 +71,9 @@
             if (onboardingController) onboardingController.abort();
           },
           clientSessionId: clientSessionId,
-          clerkUiPromise: clerkUiPromise,
           domain: satellite ? PRODUCTION_SATELLITE_DOMAIN : undefined,
           loadOptions: loadOptions,
           publishableKey: publishableKey,
-          rejectClerkUi: function (reason) {
-            if (clerkUiSettled) return;
-            clerkUiSettled = true;
-            clerkUiReject(reason);
-          },
-          resolveClerkUi: function (constructor) {
-            if (clerkUiSettled) return;
-            clerkUiSettled = true;
-            clerkUiResolve(constructor);
-          },
         };
         window.__vm0ClerkBootstrap = bootstrap;
 
@@ -405,11 +386,7 @@
               startTime: bootstrap.clerkLoadStartedAt,
             });
           }
-          bootstrap.loaded = clerk.load(
-            Object.assign({}, loadOptions, {
-              ui: { ClerkUI: clerkUiPromise },
-            }),
-          );
+          bootstrap.loaded = clerk.load(loadOptions);
           bootstrap.onboardingStatusPromise = bootstrap.loaded
             .then(function () {
               markClerkLoadCompleted();
