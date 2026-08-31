@@ -1,4 +1,5 @@
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import type { ConnectorCatalogSyncFailureCode } from "@okouai/api-contracts/contracts/connector-catalog-diagnostics";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/connectors";
@@ -24,7 +25,7 @@ import {
 import { and, eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
-import { singleton } from "../../lib/singleton";
+import { singleton, testOverride } from "../../lib/singleton";
 import type { ReadonlyDb } from "../external/db";
 import { onRejection, settle } from "../utils";
 import {
@@ -154,10 +155,44 @@ interface ConnectorCatalogDiscoveryRead {
   readonly referenceMetadata: readonly ConnectorCatalogReferenceMetadata[];
 }
 
+type ExternalConnectorCatalogUnavailableReason =
+  | "missing_current_identity"
+  | "missing_active_snapshot_after_retry"
+  | "invalid_compatibility_evaluation"
+  | `invalid_artifact:${ConnectorCatalogSyncFailureCode}`;
+
 export class ExternalConnectorCatalogUnavailableError extends Error {
-  constructor() {
+  readonly code: `CONNECTOR_CATALOG_UNAVAILABLE:${ExternalConnectorCatalogUnavailableReason}`;
+
+  constructor(readonly reason: ExternalConnectorCatalogUnavailableReason) {
     super("Accepted external connector catalog is unavailable");
     this.name = "ExternalConnectorCatalogUnavailableError";
+    this.code = `CONNECTOR_CATALOG_UNAVAILABLE:${reason}`;
+  }
+}
+
+type ConnectorCatalogExternalReaderIdentityReadHook = () => Promise<void>;
+
+const externalReaderIdentityReadHook = testOverride<
+  ConnectorCatalogExternalReaderIdentityReadHook | undefined
+>(() => {
+  return undefined;
+});
+
+export function setConnectorCatalogExternalReaderIdentityReadHookForTest(
+  hook: ConnectorCatalogExternalReaderIdentityReadHook,
+): void {
+  externalReaderIdentityReadHook.set(hook);
+}
+
+export function clearConnectorCatalogExternalReaderIdentityReadHookForTest(): void {
+  externalReaderIdentityReadHook.clear();
+}
+
+async function runExternalReaderIdentityReadHook(): Promise<void> {
+  const hook = externalReaderIdentityReadHook.get();
+  if (hook) {
+    await hook();
   }
 }
 
@@ -434,7 +469,9 @@ async function readCurrentCatalog(args: {
             failureCode: "invalid-compatibility-evaluation",
           },
         );
-        throw new ExternalConnectorCatalogUnavailableError();
+        throw new ExternalConnectorCatalogUnavailableError(
+          "invalid_compatibility_evaluation",
+        );
       }
       return parsed.data.filteredAuthMethods;
     },
@@ -485,7 +522,9 @@ async function loadCurrentCatalog(args: {
     ...identityLogFields(args.identity),
     failureCode,
   });
-  throw new ExternalConnectorCatalogUnavailableError();
+  throw new ExternalConnectorCatalogUnavailableError(
+    `invalid_artifact:${failureCode}`,
+  );
 }
 
 function deleteInFlightCatalog(
@@ -511,8 +550,11 @@ async function loadAcceptedConnectorCatalogSnapshotAttempt(
     ...(timing === undefined ? {} : { timing }),
   });
   if (!currentIdentity) {
-    throw new ExternalConnectorCatalogUnavailableError();
+    throw new ExternalConnectorCatalogUnavailableError(
+      "missing_current_identity",
+    );
   }
+  await runExternalReaderIdentityReadHook();
   const currentKey = identityKey(currentIdentity);
   const cache = preparedCatalogCache();
   if (cache.completed?.key === currentKey) {
@@ -572,7 +614,9 @@ export async function loadAcceptedConnectorCatalogSnapshot(
   // identity no longer has a row; retry once against the newly active identity.
   const second = await loadAcceptedConnectorCatalogSnapshotAttempt(db, timing);
   if (!second) {
-    throw new ExternalConnectorCatalogUnavailableError();
+    throw new ExternalConnectorCatalogUnavailableError(
+      "missing_active_snapshot_after_retry",
+    );
   }
   return second;
 }
