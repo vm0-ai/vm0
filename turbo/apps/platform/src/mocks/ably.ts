@@ -559,6 +559,30 @@ export function triggerAblyReconnect(): void {
   }
 }
 
+/** Reconnect only the Realtime client that owns SharedWorker database events. */
+export function triggerSharedWorkerAblyReconnect(): void {
+  for (const realtime of realtimeInstances) {
+    if (realtime.connection.state === "closed") {
+      continue;
+    }
+    const ownsSharedDatabaseEvents = [...realtime.namedChannels()].some(
+      ([channelName, channel]) => {
+        return (
+          channelName.startsWith("user-org:") &&
+          channel.hasChannelSubscription()
+        );
+      },
+    );
+    if (ownsSharedDatabaseEvents) {
+      realtime.reconnect();
+      return;
+    }
+  }
+  throw new Error(
+    "SharedWorker Ably reconnect triggered before its database subscription",
+  );
+}
+
 /** Forward mock realtime recovery to a direct worker test host. */
 export function subscribeChatDatabaseRecovery(
   listener: ChatDatabaseRecoveryListener,

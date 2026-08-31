@@ -10,6 +10,7 @@ import {
 import { browserContract } from "@okouai/api-contracts/contracts/browser";
 
 import {
+  click,
   detachedSetupPage,
   setupPageAndWaitForContent,
 } from "../../../__tests__/page-helper.ts";
@@ -426,7 +427,7 @@ describe("chat thread metadata readiness", () => {
     });
   });
 
-  it("preserves foreground synchronization across realtime reconnect", async () => {
+  it("recovers event metadata when only the shared worker reconnects", async () => {
     const reconnectRequested = context.mocks.deferred<void>();
     const releaseReconnect = context.mocks.deferred<void>();
     let reconnecting = false;
@@ -468,9 +469,8 @@ describe("chat thread metadata readiness", () => {
     await expectActiveThread(OTHER_THREAD_ID, "Online thread");
 
     reconnecting = true;
-    context.mocks.ably.triggerReconnect();
+    context.mocks.ably.triggerSharedWorkerReconnect();
     await reconnectRequested.promise;
-    context.store.set(navigateToChat$, THREAD_ID);
 
     expect(
       document.querySelector(
@@ -479,6 +479,22 @@ describe("chat thread metadata readiness", () => {
     ).not.toBeNull();
 
     releaseReconnect.resolve();
+
+    const recoveredThreadLink = await waitFor(() => {
+      const link = screen
+        .getAllByText("Recovered after reconnect")
+        .map((title) => {
+          return title.closest("a");
+        })
+        .find((candidate): candidate is HTMLAnchorElement => {
+          return candidate !== null;
+        });
+      if (!link) {
+        throw new Error("Recovered chat thread link is not mounted");
+      }
+      return link;
+    });
+    click(recoveredThreadLink);
 
     await expectActiveThread(THREAD_ID, "Recovered after reconnect");
   });

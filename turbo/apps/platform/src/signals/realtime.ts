@@ -56,6 +56,22 @@ function isDocumentVisible(): boolean {
 export type RealtimeConnectionState = ConnectionStateChange["current"];
 type RealtimeChannelState = ChannelStateChange["current"];
 
+export interface RealtimeConnectionUpdate {
+  readonly state: RealtimeConnectionState;
+  readonly reconnected: boolean;
+}
+
+function realtimeConnectionUpdate(
+  stateChange: ConnectionStateChange,
+  initialConnectionComplete: boolean,
+): RealtimeConnectionUpdate {
+  return {
+    state: stateChange.current,
+    reconnected:
+      initialConnectionComplete && stateChange.current === "connected",
+  };
+}
+
 function connectionStateDetails(
   stateChange: ConnectionStateChange,
 ): ConnectionDiagnosticDetails {
@@ -134,15 +150,17 @@ interface RealtimeSessionChannels {
 
 const internalRealtimeSession$ = state<RealtimeSession | null>(null);
 const realtimeStateRevision$ = state(0);
-type RealtimeConnectionStateListener = (state: RealtimeConnectionState) => void;
+type RealtimeConnectionStateListener = (
+  update: RealtimeConnectionUpdate,
+) => void;
 const realtimeConnectionStateListeners$ = state<
   ReadonlySet<RealtimeConnectionStateListener>
 >(new Set());
 
 const notifyRealtimeConnectionState$ = command(
-  ({ get }, connectionState: RealtimeConnectionState): void => {
+  ({ get }, update: RealtimeConnectionUpdate): void => {
     for (const listener of get(realtimeConnectionStateListeners$)) {
-      listener(connectionState);
+      listener(update);
     }
   },
 );
@@ -170,7 +188,10 @@ export const subscribeRealtimeConnectionState$ = command(
     );
     const session = get(internalRealtimeSession$);
     if (session) {
-      listener(session.ably.connection.state);
+      listener({
+        state: session.ably.connection.state,
+        reconnected: false,
+      });
     }
   },
 );
@@ -1056,20 +1077,20 @@ const connectRealtimeClient$ = command(
     const handleConnectionStateChange = (
       stateChange: ConnectionStateChange,
     ): void => {
+      const update = realtimeConnectionUpdate(
+        stateChange,
+        initialConnectionComplete,
+      );
       set(realtimeStateRevision$, (revision) => {
         return revision + 1;
       });
-      set(notifyRealtimeConnectionState$, stateChange.current);
+      set(notifyRealtimeConnectionState$, update);
       publishRealtimeDiagnostic(diagnosticsEnabled, {
         details: connectionStateDetails(stateChange),
         event: "realtime.connection",
         phase: "instant",
       });
-      if (
-        diagnosticsEnabled &&
-        initialConnectionComplete &&
-        stateChange.current === "connected"
-      ) {
+      if (diagnosticsEnabled && update.reconnected) {
         L.debug("reconnected, requesting foreground catch-up");
         set(requestForegroundCatchUp$);
       }
@@ -1392,7 +1413,10 @@ export const setupRealtime$ = command(
       channels,
       close: connected.close,
     });
-    set(notifyRealtimeConnectionState$, connected.ably.connection.state);
+    set(notifyRealtimeConnectionState$, {
+      state: connected.ably.connection.state,
+      reconnected: false,
+    });
     set(subscribeForegroundCatchUp$, foregroundRealtimeCatchUp$, signal);
     if (isAppRuntime && typeof document !== "undefined") {
       const handleVisibilityChange = onDomEventFn(async () => {

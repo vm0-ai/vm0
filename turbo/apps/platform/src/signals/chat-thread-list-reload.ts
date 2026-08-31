@@ -28,7 +28,7 @@ export const reloadChatIndicators$ = command(({ get, set }) => {
   set(reloadChatIndicatorsLocally$);
 });
 
-const reloadChatIndicatorsFromRealtime$ = command(({ set }) => {
+export const reloadChatIndicatorsFromRealtime$ = command(({ set }) => {
   set(reloadChatIndicators$);
   set(invalidateTabIndicators$);
   return false;

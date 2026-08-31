@@ -154,7 +154,7 @@ describe("agents page (redesign)", () => {
     });
   });
 
-  it("updates unread indicators after realtime invalidation with the shared database", async () => {
+  it("recovers unread indicators after the shared worker reconnects", async () => {
     const user = userEvent.setup();
     context.mocks.data.agents(agents);
     context.mocks.data.orgMembers({ members: [] });
@@ -191,7 +191,7 @@ describe("agents page (redesign)", () => {
     ).not.toBeInTheDocument();
 
     hasUnread = true;
-    context.mocks.ably.trigger("threadListChanged");
+    context.mocks.ably.triggerSharedWorkerReconnect();
 
     await waitFor(() => {
       expect(

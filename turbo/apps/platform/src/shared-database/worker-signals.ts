@@ -37,6 +37,7 @@ import {
 } from "../signals/realtime.ts";
 import {
   reloadChatIndicators$,
+  reloadChatIndicatorsFromRealtime$,
   subscribeChatThreadReadCursorUpdated$,
   subscribeThreadListChanged$,
 } from "../signals/chat-thread-list-reload.ts";
@@ -124,6 +125,14 @@ export const catchUpSharedDatabaseAfterRealtimeRecovery$ = command(
   },
 );
 
+const recoverCredentialStoreAfterRealtimeReconnect$ = command(
+  ({ set }, signal: AbortSignal): void => {
+    signal.throwIfAborted();
+    set(catchUpSharedDatabaseAfterRealtimeRecovery$, signal);
+    set(reloadChatIndicatorsFromRealtime$);
+  },
+);
+
 export const bootstrapSharedDatabaseWorker$ = command(
   ({ get, set }, signal: AbortSignal): void => {
     if (get(workerRuntimeState$)) {
@@ -170,8 +179,11 @@ export const runCredentialStoreDaemons$ = command(
     set(credentialStoreDaemonsStarted$, true);
     set(
       subscribeRealtimeConnectionState$,
-      (state) => {
+      ({ state, reconnected }) => {
         set(updateSharedDatabaseRealtimeStatus$, state);
+        if (reconnected) {
+          set(recoverCredentialStoreAfterRealtimeReconnect$, signal);
+        }
       },
       signal,
     );
