@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.298.0](https://github.com/vm0-ai/vm0/compare/cli-v9.297.14...cli-v9.298.0) (2026-08-30)
+
+
+### Features
+
+* **cli:** improve social download diagnostics ([#30361](https://github.com/vm0-ai/vm0/issues/30361)) ([6e9881f](https://github.com/vm0-ai/vm0/commit/6e9881f9ab8b3aa9753d5c2e93b184f575825c6c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.12
+    * @okouai/core bumped to 8.603.4
+
 ## [9.297.14](https://github.com/vm0-ai/vm0/compare/cli-v9.297.13...cli-v9.297.14) (2026-08-30)
 
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.512.0](https://github.com/vm0-ai/vm0/compare/api-v1.511.8...api-v1.512.0) (2026-08-30)
+
+
+### Features
+
+* **cli:** improve social download diagnostics ([#30361](https://github.com/vm0-ai/vm0/issues/30361)) ([6e9881f](https://github.com/vm0-ai/vm0/commit/6e9881f9ab8b3aa9753d5c2e93b184f575825c6c))
+
+
+### Bug Fixes
+
+* support atomic guest checkpoint completion ([#30363](https://github.com/vm0-ai/vm0/issues/30363)) ([a3e30e0](https://github.com/vm0-ai/vm0/commit/a3e30e0b098ff97fa23c23d6367d0c8a9f4e1a5a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.12
+    * @okouai/connector-catalog-validation bumped to 2.0.15
+    * @okouai/core bumped to 8.603.4
+    * @okouai/db bumped to 1.228.20
+
 ## [1.511.8](https://github.com/vm0-ai/vm0/compare/api-v1.511.7...api-v1.511.8) (2026-08-30)
 
 
