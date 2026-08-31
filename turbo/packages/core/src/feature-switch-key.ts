@@ -34,7 +34,6 @@ export enum FeatureSwitchKey {
   OkouDebug = "okouDebug",
   Banking = "banking",
   Lab = "lab",
-  AuthV2AddAccount = "authV2AddAccount",
   NotionWorkflowAutomations = "notionWorkflowAutomations",
   GoogleFormsWorkflowAutomations = "googleFormsWorkflowAutomations",
   StripeInvoicePaidWorkflowAutomations = "stripeInvoicePaidWorkflowAutomations",

@@ -447,6 +447,8 @@ export function isAuthV2ContinuationLocation(
   hash: string,
 ): boolean {
   const pathPrefixes = [
+    `${ROUTES.signIn}/tasks/`,
+    `${ROUTES.signUp}/tasks/`,
     `${ROUTES.signInV2}/tasks/`,
     `${ROUTES.signUpV2}/tasks/`,
   ];
