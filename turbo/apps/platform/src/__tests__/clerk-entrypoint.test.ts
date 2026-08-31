@@ -244,6 +244,9 @@ describe("platform Clerk entrypoint", () => {
         );
       },
     );
+    const postSkeletonStyles = parsedDocument.querySelector(
+      "style[data-vm0-post-skeleton-styles]",
+    );
     const mainScript = parsedDocument.querySelector(
       'script[type="module"][src="/src/main.ts"]',
     );
@@ -256,6 +259,9 @@ describe("platform Clerk entrypoint", () => {
     }
     if (!(paintScheduler instanceof HTMLScriptElement)) {
       throw new Error("Built index.html does not contain the paint scheduler");
+    }
+    if (!(postSkeletonStyles instanceof HTMLStyleElement)) {
+      throw new Error("Built index.html does not contain post-skeleton styles");
     }
     if (!(mainScript instanceof HTMLScriptElement)) {
       throw new Error("Built index.html does not contain the app module");
@@ -270,6 +276,13 @@ describe("platform Clerk entrypoint", () => {
     expect(paintScheduler.textContent).toContain("first-contentful-paint");
     expect(skeleton.compareDocumentPosition(paintScheduler)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(skeleton.compareDocumentPosition(postSkeletonStyles)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(postSkeletonStyles.textContent).toContain(".browser-upgrade");
+    expect(postSkeletonStyles.textContent).toContain(
+      "@keyframes app-bootstrap-skeleton-type",
     );
     expect(externalSkeletonImages).toHaveLength(0);
     expect(skeleton.querySelector("svg")).not.toBeNull();
