@@ -73,7 +73,6 @@ import { setupConnectorCallbackPage$ } from "./connectors-page/connector-callbac
 import { setupBankingConnectReturnPage$ } from "./banking-connect-return-page-setup.ts";
 import { setupEmailUnsubscribePage$ } from "./email-unsubscribe/email-unsubscribe-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
-import { setupSignInPage$, setupSignUpPage$ } from "./auth-page-setup.ts";
 import {
   setupSignInV2Page$,
   setupSignUpV2Page$,
@@ -166,19 +165,19 @@ const ROUTE_CONFIG = [
   },
   {
     path: ROUTES.signIn,
-    setup: setupSignInPage$,
+    setup: setupPageWrapper(setupSignInV2Page$),
   },
   {
     path: ROUTES.signInCatchAll,
-    setup: setupSignInPage$,
+    setup: setupPageWrapper(setupSignInV2Page$),
   },
   {
     path: ROUTES.signUp,
-    setup: setupSignUpPage$,
+    setup: setupPageWrapper(setupSignUpV2Page$),
   },
   {
     path: ROUTES.signUpCatchAll,
-    setup: setupSignUpPage$,
+    setup: setupPageWrapper(setupSignUpV2Page$),
   },
   {
     path: ROUTES.signInV2,
