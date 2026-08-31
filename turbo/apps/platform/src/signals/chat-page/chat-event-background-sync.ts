@@ -1,6 +1,5 @@
 import { command } from "ccstate";
 
-import { authenticatedIdentity$ } from "../auth.ts";
 import { queryChatEventSharedDatabase$ } from "../shared-database.ts";
 import { allUnreadThreadIds$ } from "./chat-thread-indicators.ts";
 
@@ -8,10 +7,7 @@ const BACKGROUND_UNREAD_THREAD_LIMIT = 10;
 
 export const prewarmSharedUnreadChatEvents$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const [{ userId, orgId }, unreadThreadIds] = await Promise.all([
-      get(authenticatedIdentity$),
-      get(allUnreadThreadIds$),
-    ]);
+    const unreadThreadIds = await get(allUnreadThreadIds$);
     signal.throwIfAborted();
     await Promise.all(
       Array.from(unreadThreadIds)
@@ -22,8 +18,6 @@ export const prewarmSharedUnreadChatEvents$ = command(
             {
               dataKey: {
                 kind: "chat-event",
-                userId,
-                orgId,
                 threadId,
               },
               afterSeqId: null,

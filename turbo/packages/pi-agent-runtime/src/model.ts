@@ -15,7 +15,11 @@ import type {
   SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
 
-import type { PiAgentModelConfig, PiOpenAICompatibleProvider } from "./types";
+import type {
+  PiAgentApi,
+  PiAgentModelConfig,
+  PiOpenAICompatibleProvider,
+} from "./types";
 
 type PiCatalogProvider = Exclude<PiOpenAICompatibleProvider, "codex">;
 
@@ -46,6 +50,40 @@ function sourceModel(
   return providerModels(provider).find((candidate) => {
     return candidate.id === model;
   });
+}
+
+function supportedPiApi(api: Api): api is PiAgentApi {
+  return (
+    api === "openai-completions" ||
+    api === "openai-responses" ||
+    api === "openai-codex-responses"
+  );
+}
+
+/** Resolve the VM0-supported transport for a model in Pi's native catalog. */
+export function resolvePiAgentModelApi(args: {
+  readonly provider: PiOpenAICompatibleProvider;
+  readonly model: string;
+}): PiAgentApi | null {
+  if (args.provider === "codex") {
+    const source = openaiCodexProvider()
+      .getModels()
+      .find((candidate) => {
+        return candidate.id === args.model;
+      });
+    return source && supportedPiApi(source.api) ? source.api : null;
+  }
+
+  const source = sourceModel(args.provider, args.model);
+  if (!source) {
+    return null;
+  }
+  // Preserve the existing VM0 DeepSeek Responses adapter contract even though
+  // the upstream catalog describes these models as Chat Completions models.
+  if (args.provider === "deepseek") {
+    return "openai-responses";
+  }
+  return supportedPiApi(source.api) ? source.api : null;
 }
 
 // The firewall placeholder is not a real ChatGPT JWT. Pi's Codex transport
@@ -132,13 +170,14 @@ export function resolvePiAgentModel(
       .find((candidate) => {
         return candidate.id === config.model;
       });
-    return source
-      ? {
-          ...source,
-          provider: config.provider,
-          baseUrl: config.baseUrl,
-        }
-      : null;
+    if (!source || (config.api !== undefined && source.api !== config.api)) {
+      return null;
+    }
+    return {
+      ...source,
+      provider: config.provider,
+      baseUrl: config.baseUrl,
+    };
   }
 
   const source = sourceModel(config.provider, config.model);
@@ -159,12 +198,26 @@ export function resolvePiAgentModel(
     headers: source.headers,
   };
   if (config.provider === "deepseek") {
+    if (config.api !== undefined && config.api !== "openai-responses") {
+      return null;
+    }
     return { ...base, api: "openai-responses" };
   }
-  const completionsModel = { ...base, api: "openai-completions" as const };
-  return source.api === "openai-completions"
-    ? { ...completionsModel, compat: source.compat }
-    : completionsModel;
+  const api = config.api ?? "openai-completions";
+  if (
+    !supportedPiApi(source.api) ||
+    (config.api && source.api !== config.api)
+  ) {
+    return null;
+  }
+  const model = { ...base, api };
+  return source.api === api
+    ? {
+        ...model,
+        samplingParams: source.samplingParams,
+        compat: source.compat,
+      }
+    : model;
 }
 
 export function isPiAgentModelSupported(config: PiAgentModelConfig): boolean {

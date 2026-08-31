@@ -9,7 +9,10 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { agentsMainContract } from "@okouai/api-contracts/contracts/agents";
 
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import {
@@ -189,7 +192,7 @@ describe("chat thread event sourcing local-first list", () => {
       return never();
     });
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/error",
       withoutRender: true,

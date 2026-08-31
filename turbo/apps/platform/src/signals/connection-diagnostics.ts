@@ -137,14 +137,31 @@ const connectionDiagnosticState$ = state<ConnectionDiagnosticState>({
   nextSequence: 1,
 });
 
+function runtimeBrowserState(): {
+  readonly focused: boolean;
+  readonly online: boolean;
+  readonly visibilityState: DocumentVisibilityState;
+} {
+  return {
+    focused:
+      typeof document === "undefined" ? true : globalThis.document.hasFocus(),
+    online: typeof navigator === "undefined" ? true : navigator.onLine,
+    visibilityState:
+      typeof document === "undefined"
+        ? "visible"
+        : globalThis.document.visibilityState,
+  };
+}
+
 function browserDetails(
   trigger: NonNullable<ConnectionDiagnosticDetails["trigger"]>,
 ): ConnectionDiagnosticDetails {
+  const state = runtimeBrowserState();
   return {
-    focused: document.hasFocus(),
-    online: navigator.onLine,
+    focused: state.focused,
+    online: state.online,
     trigger,
-    visibilityState: document.visibilityState,
+    visibilityState: state.visibilityState,
   };
 }
 
@@ -310,6 +327,7 @@ export const connectionDiagnostics$ = computed((get): ConnectionDiagnostics => {
   const current = get(connectionDiagnosticState$);
   const activeWaits = activeDiagnosticWaits(current.events);
   const states = latestConnectionStates(current.events);
+  const browserState = runtimeBrowserState();
   return {
     activeWaits,
     capacity: MAX_CONNECTION_DIAGNOSTIC_EVENTS,
@@ -321,10 +339,10 @@ export const connectionDiagnostics$ = computed((get): ConnectionDiagnostics => {
     events: current.events,
     snapshot: {
       ...states,
-      focused: document.hasFocus(),
-      online: navigator.onLine,
+      focused: browserState.focused,
+      online: browserState.online,
       recoveryPhase: activeWaits.at(-1)?.event ?? "idle",
-      visibilityState: document.visibilityState,
+      visibilityState: browserState.visibilityState,
     },
   };
 });
@@ -332,7 +350,10 @@ export const connectionDiagnostics$ = computed((get): ConnectionDiagnostics => {
 export function publishConnectionDiagnostic(
   event: ConnectionDiagnosticInput,
 ): void {
-  window.dispatchEvent(
+  if (typeof window === "undefined") {
+    return;
+  }
+  globalThis.window.dispatchEvent(
     new CustomEvent<ConnectionDiagnosticInput>(CONNECTION_DIAGNOSTIC_EVENT, {
       detail: event,
     }),
@@ -380,6 +401,9 @@ export function connectionDiagnosticError(
 
 export const setupConnectionDiagnostics$ = command(
   ({ set }, signal: AbortSignal): void => {
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return;
+    }
     const handleDiagnosticEvent = (event: Event): void => {
       const diagnosticEvent = event as CustomEvent<ConnectionDiagnosticInput>;
       set(writeConnectionDiagnostic$, {
@@ -387,7 +411,7 @@ export const setupConnectionDiagnostics$ = command(
         event: diagnosticEvent.detail,
       });
     };
-    window.addEventListener(
+    globalThis.window.addEventListener(
       CONNECTION_DIAGNOSTIC_EVENT,
       handleDiagnosticEvent,
       {
@@ -395,7 +419,7 @@ export const setupConnectionDiagnostics$ = command(
       },
     );
 
-    document.addEventListener(
+    globalThis.document.addEventListener(
       "visibilitychange",
       () => {
         publishConnectionDiagnostic({
@@ -406,7 +430,7 @@ export const setupConnectionDiagnostics$ = command(
       },
       { signal },
     );
-    window.addEventListener(
+    globalThis.window.addEventListener(
       "focus",
       () => {
         publishConnectionDiagnostic({
@@ -417,7 +441,7 @@ export const setupConnectionDiagnostics$ = command(
       },
       { signal },
     );
-    window.addEventListener(
+    globalThis.window.addEventListener(
       "blur",
       () => {
         publishConnectionDiagnostic({
@@ -428,7 +452,7 @@ export const setupConnectionDiagnostics$ = command(
       },
       { signal },
     );
-    window.addEventListener(
+    globalThis.window.addEventListener(
       "online",
       () => {
         publishConnectionDiagnostic({
@@ -439,7 +463,7 @@ export const setupConnectionDiagnostics$ = command(
       },
       { signal },
     );
-    window.addEventListener(
+    globalThis.window.addEventListener(
       "offline",
       () => {
         publishConnectionDiagnostic({

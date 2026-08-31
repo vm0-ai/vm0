@@ -1,4 +1,7 @@
-import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
+import {
+  InMemoryCredentialStore,
+  type ModelThinkingLevel,
+} from "@earendil-works/pi-ai";
 import {
   createAgentSessionFromServices,
   createAgentSessionServices,
@@ -36,11 +39,39 @@ function registeredModelConfig(
         cost: model.cost,
         contextWindow: model.contextWindow,
         maxTokens: model.maxTokens,
+        samplingParams: model.samplingParams,
         headers: model.headers,
         compat: model.compat,
       },
     ],
   };
+}
+
+function configuredThinkingLevel(
+  sessionManager: SessionManager,
+  configured: ModelThinkingLevel | undefined,
+): ModelThinkingLevel | undefined {
+  const hasThinkingEntry = sessionManager.getBranch().some((entry) => {
+    return entry.type === "thinking_level_change";
+  });
+  if (!hasThinkingEntry) {
+    return configured;
+  }
+  const existing = sessionManager.buildSessionContext().thinkingLevel;
+  switch (existing) {
+    case "off":
+    case "minimal":
+    case "low":
+    case "medium":
+    case "high":
+    case "xhigh":
+    case "max": {
+      return existing;
+    }
+    default: {
+      throw new Error(`Unsupported Pi session thinking level: ${existing}`);
+    }
+  }
 }
 
 export async function createPiAgentSessionForRuntime(args: {
@@ -97,6 +128,10 @@ export async function createPiAgentSessionForRuntime(args: {
     sessionManager: args.sessionManager,
     sessionStartEvent: args.sessionStartEvent,
     model,
+    thinkingLevel: configuredThinkingLevel(
+      args.sessionManager,
+      args.model.thinkingLevel,
+    ),
     customTools: [
       createBashTool(args.cwd, {
         shellPath: "/usr/local/bin/guest-tool-exec",

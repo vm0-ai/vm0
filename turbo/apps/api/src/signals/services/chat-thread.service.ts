@@ -25,6 +25,10 @@ import {
 } from "@okouai/api-contracts/contracts/host";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
+import {
+  chatEventSearchMessages,
+  chatEventSearchMessageWatermarks,
+} from "@okouai/db/schema/chat-event-search";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
 import {
@@ -866,6 +870,20 @@ export const deleteChatThread$ = command(
           currentTime: nowDate(),
         },
       );
+
+      // Search rows are an eventually consistent derived projection without a
+      // parent FK. Remove the normal-path rows synchronously; the projection
+      // cron repairs only writes that race this transaction. Delete the
+      // watermark first so any later projector write also restores the cleanup
+      // anchor.
+      await tx
+        .delete(chatEventSearchMessageWatermarks)
+        .where(
+          eq(chatEventSearchMessageWatermarks.chatThreadId, ownedThread.id),
+        );
+      await tx
+        .delete(chatEventSearchMessages)
+        .where(eq(chatEventSearchMessages.chatThreadId, ownedThread.id));
 
       // Delete the thread last inside the lock. Cascades chat_events; captured
       // active runs lose their canonical chatThreadId, while any retained legacy

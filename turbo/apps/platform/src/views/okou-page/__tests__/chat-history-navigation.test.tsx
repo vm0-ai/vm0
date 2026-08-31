@@ -15,7 +15,11 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../../signals/okou-page/sidebar-state.ts";
 import { pathname$ } from "../../../signals/route.ts";
-import { click, fill } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  fill,
+  setupPageAndWaitForContent,
+} from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
   PLACEHOLDER,
@@ -113,23 +117,15 @@ describe("chat lifecycle", () => {
       return respond(200, { lastReadAt: null, unreads: [] });
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    await setupPageAndWaitForContent({
+      context,
+      path: `/chats/${threadId}`,
+      sharedWorkerTestTransport: "message-port",
+    });
 
     await waitFor(() => {
       expect(screen.getByText(initialMessage.content)).toBeInTheDocument();
     });
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasChannelSubscriptionOnChannel(
-          SHARED_DATABASE_REALTIME_CHANNEL,
-        ),
-      ).toBeTruthy();
-    });
-    expect(
-      context.mocks.ably.hasSubscription(
-        `chatThreadMessageCreated:${threadId}`,
-      ),
-    ).toBeFalsy();
 
     exposeNewMessage = true;
     context.mocks.ably.triggerOnChannel(
@@ -217,18 +213,15 @@ describe("chat lifecycle", () => {
       });
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    await setupPageAndWaitForContent({
+      context,
+      path: `/chats/${threadId}`,
+      sharedWorkerTestTransport: "message-port",
+    });
 
     await expect(
       screen.findByText(initialMessage.content),
     ).resolves.toBeInTheDocument();
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasChannelSubscriptionOnChannel(
-          SHARED_DATABASE_REALTIME_CHANNEL,
-        ),
-      ).toBeTruthy();
-    });
 
     await sendMessageInUI(user, chatComposerTextarea(), prompt);
     await waitFor(() => {
@@ -297,6 +290,15 @@ describe("chat lifecycle", () => {
       runId,
       revokesEventId: pendingSteer.id,
     } satisfies ChatEvent;
+    const replacementAcknowledgement = {
+      id: "00000000-0000-4000-8000-000000000764",
+      threadId,
+      eventType: "output.message" as const,
+      content: "Steer delivery synchronized",
+      createdAt: "2026-06-09T10:00:04.000Z",
+      seqId: 5,
+      runId,
+    } satisfies ChatEvent;
     let exposeReplacement = false;
 
     mockChatLifecycle(context, {
@@ -309,7 +311,9 @@ describe("chat lifecycle", () => {
         initialUser,
         activeReply,
         pendingSteer,
-        ...(exposeReplacement ? [deliveredSteer] : []),
+        ...(exposeReplacement
+          ? [deliveredSteer, replacementAcknowledgement]
+          : []),
       ];
       return respond(
         200,
@@ -322,20 +326,16 @@ describe("chat lifecycle", () => {
       );
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    await setupPageAndWaitForContent({
+      context,
+      path: `/chats/${threadId}`,
+      sharedWorkerTestTransport: "message-port",
+    });
 
     await waitFor(() => {
       expect(screen.getAllByText(prompt)).toHaveLength(1);
     });
     expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasChannelSubscriptionOnChannel(
-          SHARED_DATABASE_REALTIME_CHANNEL,
-        ),
-      ).toBeTruthy();
-    });
-
     exposeReplacement = true;
     context.mocks.ably.triggerOnChannel(
       SHARED_DATABASE_REALTIME_CHANNEL,
@@ -343,6 +343,9 @@ describe("chat lifecycle", () => {
     );
 
     await waitFor(() => {
+      expect(
+        screen.getByText(replacementAcknowledgement.content),
+      ).toBeInTheDocument();
       expect(screen.getAllByText(prompt)).toHaveLength(1);
     });
     expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
@@ -415,9 +418,10 @@ describe("chat lifecycle", () => {
       return respond(200, { lastReadAt: null, unreads: [] });
     });
 
-    detachedSetupPage({
+    await setupPageAndWaitForContent({
       context,
       path: `/chats/${KEYBOARD_CURRENT_THREAD_ID}?sidebar=${KEYBOARD_NEXT_THREAD_ID}`,
+      sharedWorkerTestTransport: "message-port",
     });
 
     await waitFor(() => {
@@ -425,22 +429,7 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText(sidebarInitialMessage.content),
       ).toBeInTheDocument();
-      expect(
-        context.mocks.ably.hasChannelSubscriptionOnChannel(
-          SHARED_DATABASE_REALTIME_CHANNEL,
-        ),
-      ).toBeTruthy();
     });
-    expect(
-      context.mocks.ably.hasSubscription(
-        `chatThreadMessageCreated:${KEYBOARD_CURRENT_THREAD_ID}`,
-      ),
-    ).toBeFalsy();
-    expect(
-      context.mocks.ably.hasSubscription(
-        `chatThreadMessageCreated:${KEYBOARD_NEXT_THREAD_ID}`,
-      ),
-    ).toBeFalsy();
 
     exposeSidebarMessage = true;
     context.mocks.ably.triggerOnChannel(
@@ -1101,9 +1090,10 @@ describe("chat lifecycle", () => {
       },
     );
 
-    detachedSetupPage({
+    await setupPageAndWaitForContent({
       context,
       path: `/chats/${EVENT_SOURCED_RENAME_THREAD_ID}`,
+      sharedWorkerTestTransport: "message-port",
     });
 
     const threadRegion = await screen.findByLabelText("Chat thread");
@@ -1134,13 +1124,6 @@ describe("chat lifecycle", () => {
     });
 
     expect(document.title).toBe(`${originalTitle} | VM0`);
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasChannelSubscriptionOnChannel(
-          SHARED_DATABASE_REALTIME_CHANNEL,
-        ),
-      ).toBeTruthy();
-    });
     context.mocks.ably.triggerOnChannel(
       SHARED_DATABASE_REALTIME_CHANNEL,
       "threadListChanged",

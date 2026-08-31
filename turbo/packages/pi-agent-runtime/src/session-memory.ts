@@ -40,6 +40,7 @@ interface RunPiFirstModelTurnOptions<TApi extends Api = Api> {
   readonly systemPrompt: string;
   readonly tools: readonly Tool[];
   readonly prompt: string;
+  readonly thinkingLevel?: ModelThinkingLevel;
   readonly timestamp?: number;
   readonly streamOptions?: Omit<SimpleStreamOptions, "sessionId">;
 }
@@ -187,7 +188,10 @@ export class MemoryPiSession {
   }
 
   /** Mirror the official Pi SDK's persisted model and thinking defaults. */
-  prepareModelTurn<TApi extends Api>(model: Model<TApi>): void {
+  prepareModelTurn<TApi extends Api>(
+    model: Model<TApi>,
+    thinkingLevel: ModelThinkingLevel = PI_DEFAULT_THINKING_LEVEL,
+  ): void {
     const branch = this.#activeBranch();
     const hasMessages = branch.some((entry) => {
       return entry.type === "message";
@@ -202,10 +206,10 @@ export class MemoryPiSession {
     const hasThinkingEntry = branch.some((entry) => {
       return entry.type === "thinking_level_change";
     });
-    if (!hasMessages || !hasThinkingEntry) {
+    if (!hasThinkingEntry) {
       this.#appendEntry({
         type: "thinking_level_change",
-        thinkingLevel: clampThinkingLevel(model, PI_DEFAULT_THINKING_LEVEL),
+        thinkingLevel: clampThinkingLevel(model, thinkingLevel),
       });
     }
   }
@@ -292,7 +296,7 @@ function piAssistantRequiresHandoff(message: AssistantMessage): boolean {
 export async function runPiFirstModelTurn<TApi extends Api>(
   options: RunPiFirstModelTurnOptions<TApi>,
 ): Promise<PiModelTurnResult> {
-  options.session.prepareModelTurn(options.model);
+  options.session.prepareModelTurn(options.model, options.thinkingLevel);
   options.session.appendMessage({
     role: "user",
     content: options.prompt,

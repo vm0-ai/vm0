@@ -69,12 +69,12 @@ function physicalEntries(
 const acquisitionDisposition = {
   classification: "migrate",
   reason:
-    "The legacy acquisition column and temporary mirror bridge retain the historical database identity during the canonical expand rollout.",
+    "The legacy acquisition column and temporary mirror bridge remain rollback compatibility after active application authority moved to the canonical first-party-source column.",
   ownerIssue: "#28368",
   writerStopCondition:
-    "A separately reviewed switch makes acquisition_first_party_source the only active application writer while the mirror bridge remains installed for rollback.",
+    "#30605 makes acquisition_first_party_source the only active application writer and in-repository acquisition reader while the mirror bridge remains installed for rollback.",
   drainEvidence:
-    "After the bounded backfill, exact MaskDB reads show zero legacy-only, canonical-only, or unequal non-null source pairs; a 7-day audit shows zero application writers and reporting readers of acquisition_vm0_source, and the rollback target no longer requires legacy-only state.",
+    "The production-accepted bounded backfill has exact MaskDB parity with valid both-null rows preserved; the 7-day legacy reader/writer audit and rollback drain remain open.",
   removalGate:
     "#28368 may remove the bridge or contract acquisition_vm0_source only after writer-stop, exact parity, the 7-day reporting-reader audit, rollback drain, and replayed/regenerated catalog-contract verification all pass.",
 } as const satisfies ManifestDisposition;

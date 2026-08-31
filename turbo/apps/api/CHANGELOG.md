@@ -1,5 +1,46 @@
 # Changelog
 
+## [1.517.0](https://github.com/vm0-ai/vm0/compare/api-v1.516.0...api-v1.517.0) (2026-08-31)
+
+
+### Features
+
+* **pi:** add versioned sandbox ownership transfers ([#30607](https://github.com/vm0-ai/vm0/issues/30607)) ([dbc4e02](https://github.com/vm0-ai/vm0/commit/dbc4e02e9360749162d2bcf3fd1726f12a8e521f))
+* **pi:** support terra runtime contract ([#30606](https://github.com/vm0-ai/vm0/issues/30606)) ([c92fe87](https://github.com/vm0-ai/vm0/commit/c92fe8706d66dd88f28f253010008d158e6893a0))
+* **platform:** share indicators through shared worker ([#30339](https://github.com/vm0-ai/vm0/issues/30339)) ([5d900dc](https://github.com/vm0-ai/vm0/commit/5d900dc601daa8c6ac27f8926dfaa604bb6e8583))
+
+
+### Bug Fixes
+
+* **chat-search:** avoid thread deletion lock contention ([#30453](https://github.com/vm0-ai/vm0/issues/30453)) ([b5676e7](https://github.com/vm0-ai/vm0/commit/b5676e768129c4bc63bdbba59c05e434a771b336))
+
+
+### Refactoring
+
+* **api:** switch acquisition source authority ([#30617](https://github.com/vm0-ai/vm0/issues/30617)) ([000aa50](https://github.com/vm0-ai/vm0/commit/000aa50d303ca7c9b1fd590e47b2b7956fa1b168)), closes [#30605](https://github.com/vm0-ai/vm0/issues/30605)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.383.0
+    * @okouai/core bumped to 8.605.2
+    * @okouai/db bumped to 1.228.27
+    * @okouai/pi-agent-runtime bumped to 1.7.0
+
+## [1.516.0](https://github.com/vm0-ai/vm0/compare/api-v1.515.0...api-v1.516.0) (2026-08-31)
+
+
+### Features
+
+* **api:** publish connector doctor official workflow ([#30600](https://github.com/vm0-ai/vm0/issues/30600)) ([8b71e53](https://github.com/vm0-ai/vm0/commit/8b71e536916f05cdfbd1cf015547d3842472f87c))
+
+
+### Bug Fixes
+
+* **api:** bound pi resume to harness generations ([#30590](https://github.com/vm0-ai/vm0/issues/30590)) ([dd104c7](https://github.com/vm0-ai/vm0/commit/dd104c73c15db4be1a05b22ea162fa6697d51c25))
+
 ## [1.515.0](https://github.com/vm0-ai/vm0/compare/api-v1.514.0...api-v1.515.0) (2026-08-31)
 
 

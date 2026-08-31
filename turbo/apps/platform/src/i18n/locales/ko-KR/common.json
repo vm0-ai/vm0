@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Codex 오류",
       "commandStatus": "명령 {{status}}",
+      "contextCompaction": "컨텍스트 압축 완료",
       "error": "오류: {{error}}",
       "fileChangeKind": "변경",
       "fileOperationCompleted": "파일 작업 완료",
@@ -27,6 +28,12 @@
       },
       "status": "상태: {{status}}",
       "statusDetail": "상태: {{status}}",
+      "subAgentActivity": {
+        "completed": "하위 에이전트 완료",
+        "interacted": "하위 에이전트와 상호 작용",
+        "interrupted": "하위 에이전트 중단",
+        "started": "하위 에이전트 시작"
+      },
       "turnFailed": "턴 실패",
       "turnStatus": "턴 {{status}}",
       "warning": "[경고] {{message}}",

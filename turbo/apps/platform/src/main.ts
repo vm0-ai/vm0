@@ -1,4 +1,5 @@
 import "./lib/preview-bypass-cookie-bootstrap.ts";
+import "./lib/accept-browser.ts";
 import { initSentry } from "./lib/sentry.ts";
 import { captureFirstSkeletonPaint, initPostHog } from "./lib/posthog.ts";
 import { initPlausible } from "./lib/plausible.ts";
@@ -53,6 +54,9 @@ function startApplication(): void {
             root.unmount();
           });
         });
+      },
+      (daemon) => {
+        detach(daemon, Reason.Daemon, "app realtime subscriptions");
       },
       rootSignal,
     );

@@ -195,6 +195,115 @@ describe("MemoryPiSession", () => {
     ).toBe("high");
   });
 
+  it("uses configured low thinking for a fresh API-first session without replacing its explicit entry", async () => {
+    const memory = MemoryPiSession.create({
+      cwd: "/home/user/workspace",
+      id: SESSION_ID,
+    });
+    const faux = createFauxCore({
+      api: "memory-terra-reasoning-test",
+      provider: "openai",
+      models: [
+        {
+          id: "gpt-5.6-terra",
+          reasoning: true,
+          input: ["text", "image"],
+          cost: { input: 2, output: 12, cacheRead: 0.2, cacheWrite: 2.5 },
+          contextWindow: 272_000,
+          maxTokens: 128_000,
+        },
+      ],
+    });
+    const requestedReasoning: Array<string | undefined> = [];
+    faux.setResponses([
+      (_context, options) => {
+        requestedReasoning.push(options?.reasoning);
+        return fauxAssistantMessage("first Terra answer", { timestamp: 2 });
+      },
+      (_context, options) => {
+        requestedReasoning.push(options?.reasoning);
+        return fauxAssistantMessage("second Terra answer", { timestamp: 4 });
+      },
+    ]);
+
+    await runPiFirstModelTurn({
+      model: faux.getModel(),
+      session: memory,
+      stream: faux.streamSimple,
+      systemPrompt: "system",
+      prompt: "first Terra prompt",
+      thinkingLevel: "low",
+      timestamp: 1,
+      tools: [],
+    });
+    await runPiFirstModelTurn({
+      model: faux.getModel(),
+      session: memory,
+      stream: faux.streamSimple,
+      systemPrompt: "system",
+      prompt: "second Terra prompt",
+      thinkingLevel: "high",
+      timestamp: 3,
+      tools: [],
+    });
+
+    expect(requestedReasoning).toStrictEqual(["low", "low"]);
+    const thinkingEntries = memory
+      .toJsonl()
+      .trim()
+      .split("\n")
+      .map((line) => {
+        return JSON.parse(line) as {
+          type: string;
+          thinkingLevel?: string;
+        };
+      })
+      .filter((entry) => {
+        return entry.type === "thinking_level_change";
+      });
+    expect(thinkingEntries).toStrictEqual([
+      expect.objectContaining({ thinkingLevel: "low" }),
+    ]);
+  });
+
+  it("keeps an explicit thinking entry authoritative before the first message", () => {
+    const memory = MemoryPiSession.create({
+      cwd: "/home/user/workspace",
+      id: SESSION_ID,
+    });
+    const faux = createFauxCore({
+      api: "memory-existing-reasoning-test",
+      provider: "openai",
+      models: [
+        {
+          id: "gpt-5.6-terra",
+          reasoning: true,
+          input: ["text", "image"],
+          cost: { input: 2, output: 12, cacheRead: 0.2, cacheWrite: 2.5 },
+          contextWindow: 272_000,
+          maxTokens: 128_000,
+        },
+      ],
+    });
+
+    memory.prepareModelTurn(faux.getModel(), "high");
+    memory.prepareModelTurn(faux.getModel(), "low");
+
+    expect(memory.buildSessionContext().thinkingLevel).toBe("high");
+    expect(
+      memory
+        .toJsonl()
+        .trim()
+        .split("\n")
+        .map((line) => {
+          return JSON.parse(line) as { type: string };
+        })
+        .filter((entry) => {
+          return entry.type === "thinking_level_change";
+        }),
+    ).toHaveLength(1);
+  });
+
   it("uses Pi migrations and compacted-context projection", async () => {
     const legacyJsonl = [
       {

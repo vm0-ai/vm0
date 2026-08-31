@@ -13,6 +13,7 @@ import {
   detachedSetupPage,
   fill,
   queryAllByRoleFast,
+  setupPageAndWaitForContent,
 } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
@@ -347,7 +348,7 @@ describe("chat inline feedback", () => {
       ],
     });
 
-    detachedSetupPage({
+    await setupPageAndWaitForContent({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
     });

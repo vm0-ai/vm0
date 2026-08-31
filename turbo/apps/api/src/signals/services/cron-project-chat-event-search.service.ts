@@ -8,6 +8,7 @@ import {
   gt,
   gte,
   inArray,
+  notExists,
   sql,
 } from "drizzle-orm";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
@@ -36,6 +37,7 @@ interface ChatEventSearchProjectionStats {
   readonly threads: number;
   readonly indexedEvents: number;
   readonly deletedDocs: number;
+  readonly orphanedThreads: number;
   readonly convergence: ChatEventSearchProjectionConvergence;
 }
 
@@ -218,18 +220,14 @@ async function visibleSearchEventIds(
   );
 }
 
-async function lockProjectionThreadAgainstDelete(
+async function loadProjectionThread(
   tx: Tx,
   chatThreadId: string,
 ): Promise<{ readonly lastChatEventSeqId: number } | null> {
-  // Keep the FK parent alive until its projection writes commit. KEY SHARE
-  // blocks deletion without conflicting with non-key updates such as event
-  // sequence advancement.
   const [thread] = await tx
     .select({ lastChatEventSeqId: chatThreads.lastChatEventSeqId })
     .from(chatThreads)
     .where(eq(chatThreads.id, chatThreadId))
-    .for("key share")
     .limit(1);
   return thread ?? null;
 }
@@ -415,7 +413,7 @@ async function projectThread(
   thread: CandidateThread,
 ): Promise<ThreadProjectionStats> {
   return await db.transaction(async (tx) => {
-    const projectionThread = await lockProjectionThreadAgainstDelete(
+    const projectionThread = await loadProjectionThread(
       tx,
       thread.chatThreadId,
     );
@@ -449,6 +447,72 @@ function projectionThreadScope(chatThreadIds: readonly string[] | undefined) {
   return chatThreadIds === undefined
     ? undefined
     : inArray(chatThreads.id, [...chatThreadIds]);
+}
+
+function projectionWatermarkScope(
+  chatThreadIds: readonly string[] | undefined,
+) {
+  return chatThreadIds === undefined
+    ? undefined
+    : inArray(chatEventSearchMessageWatermarks.chatThreadId, [
+        ...chatThreadIds,
+      ]);
+}
+
+/**
+ * Removes a bounded set of derived rows whose canonical thread is gone.
+ * A projector racing this cleanup can recreate an orphan after the selection;
+ * the next cron tick will select it again.
+ */
+async function cleanupOrphanedSearchProjection(
+  db: Db,
+  options: ChatEventSearchProjectionOptions,
+): Promise<number> {
+  return await db.transaction(async (tx) => {
+    const orphanedWatermarks = await tx
+      .select({ chatThreadId: chatEventSearchMessageWatermarks.chatThreadId })
+      .from(chatEventSearchMessageWatermarks)
+      .where(
+        and(
+          projectionWatermarkScope(options.chatThreadIds),
+          notExists(
+            tx
+              .select({ id: chatThreads.id })
+              .from(chatThreads)
+              .where(
+                eq(
+                  chatThreads.id,
+                  chatEventSearchMessageWatermarks.chatThreadId,
+                ),
+              ),
+          ),
+        ),
+      )
+      .orderBy(asc(chatEventSearchMessageWatermarks.chatThreadId))
+      .limit(chatEventSearchThreadBatchSize());
+    if (orphanedWatermarks.length === 0) {
+      return 0;
+    }
+
+    const chatThreadIds = orphanedWatermarks.map((watermark) => {
+      return watermark.chatThreadId;
+    });
+    // The watermark is the repair anchor. Remove it first so a racing projector
+    // either commits before the message delete or recreates a discoverable
+    // watermark after this transaction.
+    const deletedWatermarks = await tx
+      .delete(chatEventSearchMessageWatermarks)
+      .where(
+        inArray(chatEventSearchMessageWatermarks.chatThreadId, chatThreadIds),
+      )
+      .returning({
+        chatThreadId: chatEventSearchMessageWatermarks.chatThreadId,
+      });
+    await tx
+      .delete(chatEventSearchMessages)
+      .where(inArray(chatEventSearchMessages.chatThreadId, chatThreadIds));
+    return deletedWatermarks.length;
+  });
 }
 
 async function loadCandidateThreads(
@@ -520,6 +584,8 @@ async function projectChatEventSearch(
   signal: AbortSignal,
   options: ChatEventSearchProjectionOptions,
 ): Promise<ChatEventSearchProjectionStats> {
+  const orphanedThreads = await cleanupOrphanedSearchProjection(db, options);
+  signal.throwIfAborted();
   const candidateThreads = await loadCandidateThreads(db, options);
   signal.throwIfAborted();
 
@@ -539,6 +605,7 @@ async function projectChatEventSearch(
     threads,
     indexedEvents,
     deletedDocs,
+    orphanedThreads,
     convergence,
   };
 }

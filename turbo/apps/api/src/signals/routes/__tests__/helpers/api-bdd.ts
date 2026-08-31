@@ -215,6 +215,7 @@ export function createBddApi(context: TestContext) {
     async readMe(nextUser: ApiTestUser): Promise<{
       readonly userId: string;
       readonly email: string;
+      readonly orgId: string | null;
     }> {
       const response = await accept(
         authClient().me({ headers: authenticate(nextUser) }),

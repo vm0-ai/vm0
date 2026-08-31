@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Codex त्रुटि",
       "commandStatus": "कमांड {{status}}",
+      "contextCompaction": "संदर्भ संकुचित किया गया",
       "error": "त्रुटि: {{error}}",
       "fileChangeKind": "परिवर्तन",
       "fileOperationCompleted": "फ़ाइल कार्रवाई पूरी हुई",
@@ -27,6 +28,12 @@
       },
       "status": "स्थिति: {{status}}",
       "statusDetail": "स्थिति: {{status}}",
+      "subAgentActivity": {
+        "completed": "उप-एजेंट पूरा हुआ",
+        "interacted": "उप-एजेंट से बातचीत की",
+        "interrupted": "उप-एजेंट बाधित हुआ",
+        "started": "उप-एजेंट शुरू हुआ"
+      },
       "turnFailed": "टर्न विफल",
       "turnStatus": "{{status}} चालू करें",
       "warning": "[चेतावनी] {{message}}",

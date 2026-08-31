@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Error de Codex",
       "commandStatus": "Comando {{status}}",
+      "contextCompaction": "Contexto compactado",
       "error": "Error: {{error}}",
       "fileChangeKind": "Cambio",
       "fileOperationCompleted": "Operación de archivo completada",
@@ -29,6 +30,12 @@
       },
       "status": "Estado: {{status}}",
       "statusDetail": "Estado: {{status}}",
+      "subAgentActivity": {
+        "completed": "Subagente completado",
+        "interacted": "Interacción con el subagente",
+        "interrupted": "Subagente interrumpido",
+        "started": "Subagente iniciado"
+      },
       "turnFailed": "Turno fallido",
       "turnStatus": "Turno {{status}}",
       "warning": "[advertencia] {{message}}",

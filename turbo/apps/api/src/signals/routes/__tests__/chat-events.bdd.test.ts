@@ -5829,6 +5829,9 @@ describe("CHAT-02: model-first provider policies", () => {
         sandboxEventSequenceStart: 1,
       },
     });
+    expect(claimed.claim.piLaunchConfig?.apiFirstTurn).not.toHaveProperty(
+      "ownershipTransfer",
+    );
     expect(claimed.claim.prompt).toBe(prompt);
     const h1 =
       checkpointObjects

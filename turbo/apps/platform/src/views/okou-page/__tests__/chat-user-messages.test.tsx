@@ -15,6 +15,7 @@ import { browserContract } from "@okouai/api-contracts/contracts/browser";
 import {
   detachedSetupPage,
   queryAllByRoleFast,
+  setupPageAndWaitForContent,
 } from "../../../__tests__/page-helper.ts";
 import {
   testContext,
@@ -87,7 +88,7 @@ describe("user messages", () => {
       ],
     });
 
-    detachedSetupPage({
+    await setupPageAndWaitForContent({
       context,
       path: `/chats/${threadId}`,
     });

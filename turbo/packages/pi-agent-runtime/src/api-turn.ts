@@ -99,6 +99,7 @@ export async function runPiApiFirstTurn(
       systemPrompt: shell.session.systemPrompt,
       tools: shell.session.agent.state.tools,
       prompt: args.prompt,
+      thinkingLevel: args.model.thinkingLevel,
       streamOptions: {
         apiKey: args.model.apiKey,
         signal,
