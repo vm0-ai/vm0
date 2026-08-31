@@ -437,10 +437,13 @@ impl AppServerState {
                 "checkpointed shell prompts require a runtime turn-complete scenario",
             ));
         }
-        if self.scenario == Scenario::RuntimeTurnFailed {
+        if let Some(failure) = self.scenario.turn_failure() {
             write_json_line(output, &turn_started_notification(&thread_id, &turn_id))?;
             write_turn_usage_notifications(output, &thread_id, &turn_id)?;
-            write_json_line(output, &turn_failed_notification(&thread_id, &turn_id))?;
+            write_json_line(
+                output,
+                &turn_failed_notification(&thread_id, &turn_id, failure),
+            )?;
         }
         if self.scenario == Scenario::RuntimeEventFlood {
             write_json_line(output, &turn_started_notification(&thread_id, &turn_id))?;

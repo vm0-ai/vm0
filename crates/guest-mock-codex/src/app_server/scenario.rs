@@ -29,6 +29,13 @@ pub(super) enum Scenario {
     ExitOnTurnSteer,
     RuntimeTurnComplete,
     RuntimeTurnFailed,
+    RuntimeTurnFailedContextWindowExceeded,
+    RuntimeTurnFailedInternalServerError,
+    RuntimeTurnFailedResponseStreamConnectionFailed,
+    RuntimeTurnFailedResponseStreamDisconnected,
+    RuntimeTurnFailedResponseTooManyFailedAttempts,
+    RuntimeTurnFailedUnauthorized,
+    RuntimeTurnFailedUnknown,
     RuntimeTurnCompleteAfterSteer,
     RuntimeTurnCompleteBeforeSteerResponse,
     RuntimeTurnStartedBeforeSteer,
@@ -87,6 +94,23 @@ impl Scenario {
                 "exit-on-turn-steer" => Ok(Self::ExitOnTurnSteer),
                 "runtime-turn-complete" => Ok(Self::RuntimeTurnComplete),
                 "runtime-turn-failed" => Ok(Self::RuntimeTurnFailed),
+                "runtime-turn-failed-context-window-exceeded" => {
+                    Ok(Self::RuntimeTurnFailedContextWindowExceeded)
+                }
+                "runtime-turn-failed-internal-server-error" => {
+                    Ok(Self::RuntimeTurnFailedInternalServerError)
+                }
+                "runtime-turn-failed-response-stream-connection-failed" => {
+                    Ok(Self::RuntimeTurnFailedResponseStreamConnectionFailed)
+                }
+                "runtime-turn-failed-response-stream-disconnected" => {
+                    Ok(Self::RuntimeTurnFailedResponseStreamDisconnected)
+                }
+                "runtime-turn-failed-response-too-many-failed-attempts" => {
+                    Ok(Self::RuntimeTurnFailedResponseTooManyFailedAttempts)
+                }
+                "runtime-turn-failed-unauthorized" => Ok(Self::RuntimeTurnFailedUnauthorized),
+                "runtime-turn-failed-unknown" => Ok(Self::RuntimeTurnFailedUnknown),
                 "runtime-turn-complete-after-steer" => Ok(Self::RuntimeTurnCompleteAfterSteer),
                 "runtime-turn-complete-before-steer-response" => {
                     Ok(Self::RuntimeTurnCompleteBeforeSteerResponse)
@@ -155,4 +179,38 @@ impl Scenario {
                 | Self::CompleteBeforeTurnInterrupt
         )
     }
+
+    pub(super) const fn turn_failure(self) -> Option<TurnFailure> {
+        match self {
+            Self::RuntimeTurnFailed => Some(TurnFailure::Generic),
+            Self::RuntimeTurnFailedContextWindowExceeded => {
+                Some(TurnFailure::ContextWindowExceeded)
+            }
+            Self::RuntimeTurnFailedInternalServerError => Some(TurnFailure::InternalServerError),
+            Self::RuntimeTurnFailedResponseStreamConnectionFailed => {
+                Some(TurnFailure::ResponseStreamConnectionFailed)
+            }
+            Self::RuntimeTurnFailedResponseStreamDisconnected => {
+                Some(TurnFailure::ResponseStreamDisconnected)
+            }
+            Self::RuntimeTurnFailedResponseTooManyFailedAttempts => {
+                Some(TurnFailure::ResponseTooManyFailedAttempts)
+            }
+            Self::RuntimeTurnFailedUnauthorized => Some(TurnFailure::Unauthorized),
+            Self::RuntimeTurnFailedUnknown => Some(TurnFailure::Unknown),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum TurnFailure {
+    Generic,
+    ContextWindowExceeded,
+    InternalServerError,
+    ResponseStreamConnectionFailed,
+    ResponseStreamDisconnected,
+    ResponseTooManyFailedAttempts,
+    Unauthorized,
+    Unknown,
 }
