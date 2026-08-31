@@ -394,6 +394,7 @@ runs:
           GUMROAD
           MERCURY
           SPOTIFY
+          ZOOM
         )
         for prefix in "${oauth_client_config_prefixes[@]}"; do
           add_oauth_client_config "$prefix"
