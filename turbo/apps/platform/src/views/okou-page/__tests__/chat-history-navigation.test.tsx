@@ -1227,6 +1227,7 @@ describe("chat lifecycle", () => {
     const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentDetailTitle: null });
+    mockNoThreadEvents();
     context.mocks.api(
       chatThreadRenameContract.rename,
       ({ body, params, respond }) => {
@@ -1240,10 +1241,8 @@ describe("chat lifecycle", () => {
       path: "/chats/b0000000-0000-4000-a000-000000000708",
     });
 
+    await screen.findByPlaceholderText(PLACEHOLDER);
     await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
       expect(
         screen.getAllByText("Current keyboard thread").length,
       ).toBeGreaterThan(0);
@@ -1467,6 +1466,7 @@ describe("chat lifecycle", () => {
     mockKeyboardNavigationThreads({
       currentTitle: "🔥 Current keyboard thread",
     });
+    mockNoThreadEvents();
 
     detachedSetupPage({
       context,
@@ -1474,9 +1474,6 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
       expect(screen.getByLabelText("Change icon")).toHaveTextContent("🔥");
     });
 
@@ -1521,6 +1518,7 @@ describe("chat lifecycle", () => {
     mockKeyboardNavigationThreads({
       currentTitle: "🔥   Current keyboard thread",
     });
+    mockNoThreadEvents();
     context.mocks.api(
       chatThreadRenameContract.rename,
       ({ body, params, respond }) => {
@@ -1535,9 +1533,6 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
       expect(document.title).toBe("🔥   Current keyboard thread | VM0");
       expect(screen.getByLabelText("Change icon")).toHaveTextContent("🔥");
       expect(screen.getByText("Current keyboard thread")).toBeInTheDocument();
@@ -1564,6 +1559,7 @@ describe("chat lifecycle", () => {
     mockKeyboardNavigationThreads({
       currentTitle: "🔥 Current keyboard thread",
     });
+    mockNoThreadEvents();
     context.mocks.api(
       chatThreadRenameContract.rename,
       ({ body, params, respond }) => {
@@ -1600,6 +1596,7 @@ describe("chat lifecycle", () => {
     const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentTitle: "🔥" });
+    mockNoThreadEvents();
     context.mocks.api(
       chatThreadRenameContract.rename,
       ({ body, params, respond }) => {
