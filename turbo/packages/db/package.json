@@ -20,6 +20,10 @@
       "import": "./src/operations/model-provider-built-in-identity.ts",
       "types": "./src/operations/model-provider-built-in-identity.ts"
     },
+    "./operations/org-metadata-legacy-write": {
+      "import": "./src/operations/org-metadata-legacy-write.ts",
+      "types": "./src/operations/org-metadata-legacy-write.ts"
+    },
     "./operations/org-plan-entitlement-canonical-write": {
       "import": "./src/operations/org-plan-entitlement-canonical-write.ts",
       "types": "./src/operations/org-plan-entitlement-canonical-write.ts"
