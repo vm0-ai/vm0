@@ -288,9 +288,11 @@ A connector account switch URL matches:
 Custom connectors use `kind=custom` and `customConnectorId` instead of
 `connectorSlug`. The parser requires exactly one well-formed target, the chat's
 server-derived agent ID, and a callback bound to the current thread. These URL
-values are untrusted claims. The card reads the exact account from the API and
-uses only the live account metadata for presentation; a missing, cross-owner,
-or wrong-target account renders an inert unavailable card.
+values are untrusted claims. Before reading the account, the card resolves the
+current agent's connector authorization and rejects an unauthorized target.
+It then reads the exact account from the API and uses only the live account
+metadata for presentation; a missing, cross-owner, wrong-target, or
+unauthorized account renders an inert unavailable card.
 
 Confirmation writes the exact account selection to the current thread before
 starting the callback round. The selection endpoint resolves the externally
@@ -301,10 +303,11 @@ override used by future runs; it does not mutate the global default or the run
 that produced the card.
 
 Repeated occurrences of the same action share one signals object. The card also
-reads the composer's shared connector-account preference state, so local
-confirmation and thread-detail realtime events update every mounted occurrence.
-The action is gated by `ConnectorAccounts`; older frontends that do not know the
-card continue to render the emitted Markdown link.
+reads the composer's shared connector authorization and connector-account
+preference state, so local confirmation and thread-detail realtime events
+update every mounted occurrence. The action is gated by `ConnectorAccounts`;
+older frontends that do not know the card continue to render the emitted
+Markdown link.
 
 ### Provider-backed resource: Gmail draft
 
