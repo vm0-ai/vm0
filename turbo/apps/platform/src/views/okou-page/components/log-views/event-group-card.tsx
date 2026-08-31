@@ -429,10 +429,7 @@ function CodexSystemEventGroupCard({
             }
           }
         })();
-  const statusVariant =
-    subtype === "codex_context_compaction" || subAgentKind === "completed"
-      ? "success"
-      : "neutral";
+  const statusVariant = subAgentKind === "completed" ? "success" : "neutral";
 
   return (
     <div className={`${GROUP_SPACING} relative`}>
