@@ -9,24 +9,24 @@ import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-hel
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
 const previousMigration =
-  "1033_org_metadata_acquisition_first_party_source_expand";
+  "1034_org_metadata_acquisition_first_party_source_backfill";
 export const CHAT_SEARCH_DELETE_COMPATIBILITY_MIGRATION =
-  "1034_chat_search_delete_compatibility";
+  "1035_chat_search_delete_compatibility";
 export const CHAT_SEARCH_FOREIGN_KEY_CONTRACTION_MIGRATION =
-  "1035_noisy_rockslide";
+  "1036_damp_star_brand";
 const testDatabaseName = "migration_chat_search_delete_compatibility_30453";
 
 export const CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_TRIGGER = {
   definition:
-    "CREATE TRIGGER chat_threads_delete_search_projection_1034 AFTER DELETE ON public.chat_threads FOR EACH ROW EXECUTE FUNCTION delete_chat_event_search_projection_1034()",
+    "CREATE TRIGGER chat_threads_delete_search_projection_1035 AFTER DELETE ON public.chat_threads FOR EACH ROW EXECUTE FUNCTION delete_chat_event_search_projection_1035()",
   schemaName: "public",
   tableName: "chat_threads",
-  triggerName: "chat_threads_delete_search_projection_1034",
+  triggerName: "chat_threads_delete_search_projection_1035",
 } as const;
 
 export const CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_FUNCTION = {
   bodyHash: "e1fbe1ea49b41a5c7326f63a954c7aff",
-  functionName: "delete_chat_event_search_projection_1034",
+  functionName: "delete_chat_event_search_projection_1035",
   identityArguments: "",
   kind: "f",
   schemaName: "public",
@@ -102,11 +102,11 @@ async function validateMigrationSql(): Promise<void> {
   assert.equal(compatibilityStatements.length, 2);
   assert.match(
     compatibilityStatements[0] ?? "",
-    /CREATE FUNCTION "delete_chat_event_search_projection_1034"\(\).*DELETE FROM "public"\."chat_event_search_messages" WHERE "chat_thread_id" = OLD\."id";.*DELETE FROM "public"\."chat_event_search_message_watermarks" WHERE "chat_thread_id" = OLD\."id";.*RETURN OLD;/u,
+    /CREATE FUNCTION "delete_chat_event_search_projection_1035"\(\).*DELETE FROM "public"\."chat_event_search_messages" WHERE "chat_thread_id" = OLD\."id";.*DELETE FROM "public"\."chat_event_search_message_watermarks" WHERE "chat_thread_id" = OLD\."id";.*RETURN OLD;/u,
   );
   assert.match(
     compatibilityStatements[1] ?? "",
-    /CREATE TRIGGER "chat_threads_delete_search_projection_1034" AFTER DELETE ON "public"\."chat_threads" FOR EACH ROW EXECUTE FUNCTION "public"\."delete_chat_event_search_projection_1034"\(\);$/u,
+    /CREATE TRIGGER "chat_threads_delete_search_projection_1035" AFTER DELETE ON "public"\."chat_threads" FOR EACH ROW EXECUTE FUNCTION "public"\."delete_chat_event_search_projection_1035"\(\);$/u,
   );
 
   const contractionSql = await fs.readFile(
@@ -157,7 +157,7 @@ async function validateMigratedCatalog(client: Client): Promise<void> {
       ON "namespace_row"."oid" = "relation_row"."relnamespace"
     WHERE "namespace_row"."nspname" = 'public'
       AND "trigger_row"."tgname" =
-        'chat_threads_delete_search_projection_1034'
+        'chat_threads_delete_search_projection_1035'
       AND NOT "trigger_row"."tgisinternal"
   `);
   assert.deepEqual(triggers.rows, [
@@ -186,7 +186,7 @@ async function validateMigratedCatalog(client: Client): Promise<void> {
       ON "namespace_row"."oid" = "function_row"."pronamespace"
     WHERE "namespace_row"."nspname" = 'public'
       AND "function_row"."proname" =
-        'delete_chat_event_search_projection_1034'
+        'delete_chat_event_search_projection_1035'
   `);
   assert.deepEqual(functions.rows, [
     CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_FUNCTION,
