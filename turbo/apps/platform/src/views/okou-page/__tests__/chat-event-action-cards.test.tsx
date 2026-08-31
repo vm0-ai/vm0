@@ -534,9 +534,9 @@ describe("chat event action cards", () => {
     );
     expect(cards).toHaveLength(2);
     for (const card of cards) {
-      expect(card).toHaveTextContent("Use Work for future runs?");
+      expect(card).toHaveTextContent("Switch to Work?");
       expect(card).toHaveTextContent("github · work@example.com");
-      expect(card).toHaveTextContent("The current run will not change.");
+      expect(card).not.toHaveTextContent("The current run will not change.");
     }
 
     const firstCard = cards[0];
@@ -545,14 +545,14 @@ describe("chat event action cards", () => {
       throw new Error("Expected repeated connector account action cards");
     }
     act(() => {
-      buttonByText("Use account and continue", firstCard).click();
-      buttonByText("Use account and continue", secondCard).click();
+      buttonByText("Switch", firstCard).click();
+      buttonByText("Switch", secondCard).click();
     });
 
     await waitFor(() => {
       expect(actionOrder).toStrictEqual(["selection"]);
       for (const card of cards) {
-        expect(buttonByText("Use account and continue", card)).toBeDisabled();
+        expect(buttonByText("Switching...", card)).toBeDisabled();
       }
     });
     resolveSelectionUpdate();
@@ -564,15 +564,13 @@ describe("chat event action cards", () => {
       });
       expect(actionOrder).toStrictEqual(["selection", "callback"]);
       for (const card of cards) {
-        expect(card).toHaveTextContent("Already selected for this chat");
-        expect(card).toHaveTextContent("Continuation requested");
-        expect(buttonByText("Continuation requested", card)).toBeDisabled();
+        expect(card).toHaveTextContent("Switched to Work");
+        expect(queryAllByRoleFast("button", card)).toStrictEqual([]);
       }
     });
   });
 
-  it("continues after idempotently writing an already-selected account", async () => {
-    const user = userEvent.setup({ delay: null });
+  it("renders an already-selected account without another action", async () => {
     const threadId = "e4000000-0000-4000-a000-000000000022";
     const customConnectorId = "a2000000-0000-4000-a000-000000000022";
     const account = connectorAccount({
@@ -640,17 +638,13 @@ describe("chat event action cards", () => {
       undefined,
       { timeout: 10_000 },
     );
-    expect(card).toHaveTextContent("Already selected for this chat");
+    expect(card).toHaveTextContent("Switched to Work");
     expect(card).toHaveTextContent(
       `Custom connector · ${customConnectorId.slice(0, 8)} · work@example.com`,
     );
-    await user.click(buttonByText("Continue with this account", card));
-
-    await waitFor(() => {
-      expect(updateCount).toBe(1);
-      expect(sentPrompts).toStrictEqual([callbackPrompt]);
-      expect(card).toHaveTextContent("Continuation requested");
-    });
+    expect(queryAllByRoleFast("button", card)).toStrictEqual([]);
+    expect(updateCount).toBe(0);
+    expect(sentPrompts).toStrictEqual([]);
   });
 
   it("renders a hallucinated or cross-target account as unavailable", async () => {
@@ -699,6 +693,9 @@ describe("chat event action cards", () => {
       { timeout: 10_000 },
     );
     expect(card).toHaveTextContent("Account unavailable");
+    expect(card).toHaveTextContent(
+      "This account does not exist or is not available for this connector.",
+    );
     expect(queryAllByRoleFast("button", card)).toStrictEqual([]);
   });
 
@@ -883,7 +880,7 @@ describe("chat event action cards", () => {
 
     const card = await screen.findByTestId("connector-account-action-card");
     expect(accountReadCount).toBe(2);
-    expect(card).toHaveTextContent("Use Work for future runs?");
+    expect(card).toHaveTextContent("Switch to Work?");
     expect(card).toHaveTextContent(
       "Reconnect required. Later runs may use the existing fallback.",
     );
@@ -955,25 +952,27 @@ describe("chat event action cards", () => {
     if (!firstCard || !secondCard) {
       throw new Error("Expected repeated connector account action cards");
     }
-    await user.click(buttonByText("Use account and continue", firstCard));
+    await user.click(buttonByText("Switch", firstCard));
 
     await waitFor(() => {
       expect(firstCard).toHaveTextContent(
-        "Couldn't confirm this account or continue the chat. Try again.",
+        "Couldn't switch accounts. Try again.",
       );
+      expect(buttonByText("Retry", firstCard)).toBeEnabled();
       expect(sentPrompts).toStrictEqual([]);
     });
 
-    await user.click(buttonByText("Use account and continue", secondCard));
+    await user.click(buttonByText("Retry", secondCard));
 
     await waitFor(() => {
       expect(updateCount).toBe(2);
       expect(sentPrompts).toStrictEqual(["Continue"]);
       for (const card of cards) {
         expect(card).not.toHaveTextContent(
-          "Couldn't confirm this account or continue the chat. Try again.",
+          "Couldn't switch accounts. Try again.",
         );
-        expect(card).toHaveTextContent("Continuation requested");
+        expect(card).toHaveTextContent("Switched to Work");
+        expect(queryAllByRoleFast("button", card)).toStrictEqual([]);
       }
     });
   });
@@ -1020,7 +1019,7 @@ describe("chat event action cards", () => {
       undefined,
       { timeout: 10_000 },
     );
-    expect(card).not.toHaveTextContent("Already selected for this chat");
+    expect(card).not.toHaveTextContent("Switched to Work");
     await waitFor(() => {
       expect(
         hasSubscription(`chatThreadDetailChanged:${threadId}`),
@@ -1032,7 +1031,8 @@ describe("chat event action cards", () => {
     triggerAblyEvent(`chatThreadDetailChanged:${threadId}`);
 
     await waitFor(() => {
-      expect(card).toHaveTextContent("Already selected for this chat");
+      expect(card).toHaveTextContent("Switched to Work");
+      expect(queryAllByRoleFast("button", card)).toStrictEqual([]);
     });
   });
 
@@ -1103,7 +1103,7 @@ describe("chat event action cards", () => {
       undefined,
       { timeout: 10_000 },
     );
-    expect(card).toHaveTextContent("Use Realtime account for future runs?");
+    expect(card).toHaveTextContent("Switch to Realtime account?");
   });
 
   it("renders an unconnected banking request with the compact action card layout", async () => {

@@ -1900,19 +1900,17 @@
     },
     "connectorAccountSwitch": {
       "accountFallback": "कनेक्टर खाता",
-      "actionFailed": "इस खाते की पुष्टि या चैट को जारी नहीं रखा जा सका। फिर से प्रयास करें।",
-      "continued": "जारी रखने का अनुरोध किया गया",
-      "continueWithAccount": "इस खाते के साथ जारी रखें",
-      "currentRunUnchanged": "वर्तमान रन नहीं बदलेगा।",
+      "actionFailed": "खाता स्विच नहीं किया जा सका। फिर से प्रयास करें।",
       "customConnector": "कस्टम कनेक्टर",
       "loadFailed": "यह कनेक्टर खाता लोड नहीं हो सका।",
       "reconnectRequired": "फिर से कनेक्ट करना आवश्यक है। बाद के रन मौजूदा फ़ॉलबैक का उपयोग कर सकते हैं।",
       "retry": "पुनः प्रयास करें",
-      "selected": "इस चैट के लिए पहले से चयनित",
-      "title": "भविष्य के रन के लिए {{account}} का उपयोग करें?",
+      "selected": "{{account}} पर स्विच किया गया",
+      "switch": "स्विच करें",
+      "switching": "स्विच हो रहा है...",
+      "title": "{{account}} पर स्विच करें?",
       "unavailableDescription": "यह खाता मौजूद नहीं है या इस कनेक्टर के लिए उपलब्ध नहीं है।",
-      "unavailableTitle": "खाता उपलब्ध नहीं है",
-      "useAndContinue": "खाते का उपयोग करें और जारी रखें"
+      "unavailableTitle": "खाता उपलब्ध नहीं है"
     },
     "connectors": {
       "accountForThread": "इस थ्रेड के लिए खाता",

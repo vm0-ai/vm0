@@ -1900,19 +1900,17 @@
     },
     "connectorAccountSwitch": {
       "accountFallback": "Connector account",
-      "actionFailed": "Couldn't confirm this account or continue the chat. Try again.",
-      "continued": "Continuation requested",
-      "continueWithAccount": "Continue with this account",
-      "currentRunUnchanged": "The current run will not change.",
+      "actionFailed": "Couldn't switch accounts. Try again.",
       "customConnector": "Custom connector",
       "loadFailed": "Couldn't load this connector account.",
       "reconnectRequired": "Reconnect required. Later runs may use the existing fallback.",
       "retry": "Retry",
-      "selected": "Already selected for this chat",
-      "title": "Use {{account}} for future runs?",
+      "selected": "Switched to {{account}}",
+      "switch": "Switch",
+      "switching": "Switching...",
+      "title": "Switch to {{account}}?",
       "unavailableDescription": "This account does not exist or is not available for this connector.",
-      "unavailableTitle": "Account unavailable",
-      "useAndContinue": "Use account and continue"
+      "unavailableTitle": "Account unavailable"
     },
     "connectors": {
       "accountForThread": "Account for this chat",

@@ -51,7 +51,8 @@ export type ConnectorAccountActionStatus =
 export type ConnectorAccountActionConfirmationState =
   | "idle"
   | "loading"
-  | "continued";
+  | "error"
+  | "switched";
 
 export interface ConnectorAccountActionSignals extends ConnectorAccountActionDescriptor {
   readonly status$: Computed<Promise<ConnectorAccountActionStatus>>;
@@ -227,7 +228,8 @@ function createConnectorAccountActionSignals(
   });
   const confirm$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      if (get(internalConfirmationState$) !== "idle") {
+      const currentState = get(internalConfirmationState$);
+      if (currentState !== "idle" && currentState !== "error") {
         return;
       }
       set(internalConfirmationState$, "loading");
@@ -243,6 +245,7 @@ function createConnectorAccountActionSignals(
             signal,
           );
           set(refresh$);
+          set(internalConfirmationState$, "switched");
           await set(
             runChatActionCallback$,
             {
@@ -252,11 +255,10 @@ function createConnectorAccountActionSignals(
             },
             signal,
           );
-          set(internalConfirmationState$, "continued");
         })(),
         () => {
           set(internalConfirmationState$, (current) => {
-            return current === "loading" ? "idle" : current;
+            return current === "loading" ? "error" : current;
           });
         },
       );

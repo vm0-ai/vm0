@@ -136,9 +136,10 @@ function ReadyConnectorAccountActionCard({
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const confirmationState = useGet(signals.confirmationState$);
-  const [confirmLoadable, confirm] = useLoadableSet(signals.confirm$);
-  const loading = confirmationState === "loading";
-  const continued = confirmationState === "continued";
+  const [, confirm] = useLoadableSet(signals.confirm$);
+  const selected = status.selected || confirmationState === "switched";
+  const switching = confirmationState === "loading";
+  const switchFailed = confirmationState === "error" && !selected;
   const accountLabel = connectorAccountEffectiveLabel(
     status.account,
     t(($) => {
@@ -161,38 +162,40 @@ function ReadyConnectorAccountActionCard({
           <CircleUserRound size={22} />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[0.9375rem] font-medium text-foreground">
-            {t(
-              ($) => {
-                return $.chat.connectorAccountSwitch.title;
-              },
-              { account: accountLabel },
-            )}
+          <div className="flex items-center gap-1.5 truncate text-[0.9375rem] font-medium text-foreground">
+            {selected ? (
+              <Check
+                size={15}
+                className="shrink-0 text-emerald-600 dark:text-emerald-400"
+              />
+            ) : null}
+            {selected
+              ? t(
+                  ($) => {
+                    return $.chat.connectorAccountSwitch.selected;
+                  },
+                  { account: accountLabel },
+                )
+              : t(
+                  ($) => {
+                    return $.chat.connectorAccountSwitch.title;
+                  },
+                  { account: accountLabel },
+                )}
           </div>
           <div className="mt-0.5 truncate text-sm text-muted-foreground">
             {[target, identity && identity !== accountLabel ? identity : null]
               .filter(Boolean)
               .join(" · ")}
           </div>
-          <div className="mt-1 text-xs text-muted-foreground">
-            {status.account.connectionStatus === "reconnect-required"
-              ? t(($) => {
-                  return $.chat.connectorAccountSwitch.reconnectRequired;
-                })
-              : t(($) => {
-                  return $.chat.connectorAccountSwitch.currentRunUnchanged;
-                })}
-          </div>
-          {status.selected ? (
-            <div className="mt-1 flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
-              <Check size={13} />
+          {status.account.connectionStatus === "reconnect-required" ? (
+            <div className="mt-1 text-xs text-muted-foreground">
               {t(($) => {
-                return $.chat.connectorAccountSwitch.selected;
+                return $.chat.connectorAccountSwitch.reconnectRequired;
               })}
             </div>
           ) : null}
-          {confirmationState === "idle" &&
-          confirmLoadable.state === "hasError" ? (
+          {switchFailed ? (
             <div className="mt-1 text-xs text-destructive">
               {t(($) => {
                 return $.chat.connectorAccountSwitch.actionFailed;
@@ -200,26 +203,30 @@ function ReadyConnectorAccountActionCard({
             </div>
           ) : null}
         </div>
-        <Button
-          size="sm"
-          disabled={loading || continued}
-          onClick={() => {
-            detach(confirm(pageSignal), Reason.DomCallback);
-          }}
-        >
-          {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-          {continued
-            ? t(($) => {
-                return $.chat.connectorAccountSwitch.continued;
-              })
-            : status.selected
+        {selected ? null : (
+          <Button
+            size="sm"
+            disabled={switching}
+            onClick={() => {
+              detach(confirm(pageSignal), Reason.DomCallback);
+            }}
+          >
+            {switching ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : null}
+            {switching
               ? t(($) => {
-                  return $.chat.connectorAccountSwitch.continueWithAccount;
+                  return $.chat.connectorAccountSwitch.switching;
                 })
-              : t(($) => {
-                  return $.chat.connectorAccountSwitch.useAndContinue;
-                })}
-        </Button>
+              : switchFailed
+                ? t(($) => {
+                    return $.chat.connectorAccountSwitch.retry;
+                  })
+                : t(($) => {
+                    return $.chat.connectorAccountSwitch.switch;
+                  })}
+          </Button>
+        )}
       </div>
     </div>
   );
