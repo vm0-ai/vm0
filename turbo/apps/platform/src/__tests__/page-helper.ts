@@ -215,7 +215,14 @@ export async function setupBootstrap(
   // Not wrapped in act() — background polling loops would cause act() to
   // hang indefinitely waiting for them to settle. React "not wrapped in
   // act" warnings are suppressed in setup.ts.
-  await options.context.store.set(bootstrap$, render, options.context.signal);
+  await options.context.store.set(
+    bootstrap$,
+    render,
+    (daemon) => {
+      options.context.track(daemon);
+    },
+    options.context.signal,
+  );
 }
 
 export async function setupPage(options: SetupPageOptions): Promise<void> {

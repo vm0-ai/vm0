@@ -8,6 +8,7 @@ import {
   watchOrgSwitch$,
 } from "./auth.ts";
 import {
+  type AuthenticatedDaemonOwner,
   setupAuthenticatedBootstrapData$,
   setupAuthenticatedDaemons$,
 } from "./authenticated-daemons.ts";
@@ -474,13 +475,18 @@ const setupRoutes$ = command(async ({ set }, signal: AbortSignal) => {
 });
 
 const setupAuthenticatedRoutes$ = command(
-  async ({ set }, signal: AbortSignal): Promise<void> => {
-    await set(setupAuthenticatedDaemons$, signal);
+  async (
+    { set },
+    ownDaemon: AuthenticatedDaemonOwner,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await set(setupAuthenticatedDaemons$, ownDaemon, signal);
     signal.throwIfAborted();
     await Promise.all([
       set(setupRoutes$, signal),
       set(setupAuthenticatedBootstrapData$, signal),
     ]);
+    signal.throwIfAborted();
   },
 );
 
@@ -535,7 +541,12 @@ const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
 });
 
 export const bootstrap$ = command(
-  async ({ get, set }, render: () => void, signal: AbortSignal) => {
+  async (
+    { get, set },
+    render: () => void,
+    ownDaemon: AuthenticatedDaemonOwner,
+    signal: AbortSignal,
+  ): Promise<void> => {
     set(initBootstrapPhaseTiming$, signal);
     set(captureInvitationRedirect$);
     set(markBootstrapLocaleInitStarted$);
@@ -574,7 +585,7 @@ export const bootstrap$ = command(
     set(handleSlackRedirect$);
 
     await Promise.all([
-      set(setupAuthenticatedRoutes$, signal),
+      set(setupAuthenticatedRoutes$, ownDaemon, signal),
       set(startSkeletonCycling$, signal),
       set(setupGlobalMethod$, signal),
       set(registerServiceWorker$, signal),

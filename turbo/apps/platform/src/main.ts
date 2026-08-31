@@ -55,6 +55,9 @@ function startApplication(): void {
           });
         });
       },
+      (daemon) => {
+        detach(daemon, Reason.Daemon, "app realtime subscriptions");
+      },
       rootSignal,
     );
     await store.set(runAuthenticatedDaemons$, rootSignal);

@@ -13,7 +13,6 @@ import {
   testContext,
   chatEventRowsResponse,
 } from "../../signals/__tests__/test-helpers.ts";
-import { runAuthenticatedDaemons$ } from "../../signals/authenticated-daemons.ts";
 import { appSkeletonVisible$ } from "../../signals/app-skeleton.ts";
 import { createChatEventSignals } from "../../signals/chat-page/chat-event-signals.ts";
 import { eventDrivenChatThreads$ } from "../../signals/chat-page/chat-thread-event-sourcing.ts";
@@ -264,20 +263,14 @@ describe("shared database direct Platform bridge", () => {
     });
     expect(
       context.mocks.ably.hasSubscription("connectorPermissionUpdated"),
-    ).toBeFalsy();
+    ).toBeTruthy();
     expect(context.store.get(appSkeletonVisible$)).toBeTruthy();
     heartbeatGates[0]?.resolve(undefined);
     await bootstrap;
     expect(context.store.get(appSkeletonVisible$)).toBeFalsy();
     expect(
       context.mocks.ably.hasSubscription("connectorPermissionUpdated"),
-    ).toBeFalsy();
-    context.track(context.store.set(runAuthenticatedDaemons$, context.signal));
-    await vi.waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscription("connectorPermissionUpdated"),
-      ).toBeTruthy();
-    });
+    ).toBeTruthy();
     expect(heartbeatGates).toHaveLength(1);
     expect(context.store).not.toBe(context.workerStore);
   });

@@ -23,9 +23,28 @@ import { runSharedDatabaseInvalidationDaemon$ } from "./shared-database-invalida
 
 const authenticatedServicesInstalled$ = state(false);
 
+export type AuthenticatedDaemonOwner = (daemon: Promise<void>) => void;
+
+const runAppRealtimeDaemons$ = command(
+  async ({ set }, signal: AbortSignal): Promise<void> => {
+    await Promise.all([
+      set(subscribeChatThreadReadCursorUpdated$, signal),
+      set(subscribePermissionUpdate$, signal),
+      set(setupBillingRealtime$, signal),
+      set(subscribePresentationTemplatesChanged$, signal),
+      set(setupUserPreferenceRealtime$, signal),
+      set(subscribeCustomConnectorListChanged$, signal),
+    ]);
+  },
+);
+
 /** Install user-scoped application services during bootstrap. */
 export const setupAuthenticatedDaemons$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
+  async (
+    { get, set },
+    ownDaemon: AuthenticatedDaemonOwner,
+    signal: AbortSignal,
+  ): Promise<void> => {
     await set(setupClerk$, signal);
     const clerk = await get(clerk$);
     signal.throwIfAborted();
@@ -50,9 +69,12 @@ export const setupAuthenticatedDaemons$ = command(
 
     const authRecovery = await get(authRecovery$);
     signal.throwIfAborted();
+    const realtimeSetup = set(setupRealtime$, signal);
+    const appRealtimeDaemons = set(runAppRealtimeDaemons$, signal);
+    ownDaemon(appRealtimeDaemons);
     await Promise.all([
+      realtimeSetup,
       set(setupSharedDatabaseBridge$, authRecovery, signal),
-      set(setupRealtime$, signal),
     ]);
     signal.throwIfAborted();
     set(authenticatedServicesInstalled$, true);
@@ -73,19 +95,13 @@ export const setupAuthenticatedBootstrapData$ = command(
   },
 );
 
-/** Run authenticated root-lifecycle subscriptions and loops. */
+/** Run SharedWorker-backed authenticated root-lifecycle loops. */
 export const runAuthenticatedDaemons$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
     if (!get(authenticatedServicesInstalled$)) {
       return;
     }
     await Promise.all([
-      set(subscribeChatThreadReadCursorUpdated$, signal),
-      set(subscribePermissionUpdate$, signal),
-      set(setupBillingRealtime$, signal),
-      set(subscribePresentationTemplatesChanged$, signal),
-      set(setupUserPreferenceRealtime$, signal),
-      set(subscribeCustomConnectorListChanged$, signal),
       set(runSharedDatabaseHeartbeatLoop$, signal),
       set(runSharedDatabaseInvalidationDaemon$, signal),
     ]);

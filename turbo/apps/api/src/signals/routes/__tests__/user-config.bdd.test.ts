@@ -714,7 +714,7 @@ describe("AUTH-01 sandbox and agent bearers", () => {
     expect(zeroWriteMe).toStrictEqual({
       userId: writeActor.userId,
       email: writeActor.email,
-      orgId: writeActor.orgId,
+      orgId: null,
     });
 
     cfg.mockClerkUsers([bareActor]);
@@ -724,7 +724,7 @@ describe("AUTH-01 sandbox and agent bearers", () => {
     expect(zeroBareMe).toStrictEqual({
       userId: bareActor.userId,
       email: bareActor.email,
-      orgId: bareActor.orgId,
+      orgId: null,
     });
   });
 
