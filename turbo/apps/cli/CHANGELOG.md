@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.301.0](https://github.com/vm0-ai/vm0/compare/cli-v9.300.1...cli-v9.301.0) (2026-08-31)
+
+
+### Features
+
+* **pi:** activate built-in terra routing ([#30653](https://github.com/vm0-ai/vm0/issues/30653)) ([14a89ec](https://github.com/vm0-ai/vm0/commit/14a89eca1599b6940cb48f9b5f81fd45dc1e1533))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/pi-agent-runtime bumped to 1.9.0
+
 ## [9.300.1](https://github.com/vm0-ai/vm0/compare/cli-v9.300.0...cli-v9.300.1) (2026-08-31)
 
 
