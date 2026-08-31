@@ -551,8 +551,31 @@ const connectorReadinessInner$ = command(
     if (!visible) {
       return workflowNotFound(params.workflowId);
     }
-    if (visible.workflow.officialDefinitionName !== null) {
-      return conflict(OFFICIAL_WORKFLOW_READ_ONLY_MESSAGE);
+
+    const officialDefinition = visible.workflow.officialDefinitionName
+      ? await readAcceptedOfficialWorkflowDefinition(
+          get(db$),
+          visible.workflow.officialDefinitionName,
+          signal,
+        )
+      : null;
+    const officialRevision = officialDefinition
+      ? await readAcceptedOfficialWorkflowRevision(
+          get(db$),
+          {
+            name: officialDefinition.name,
+            revision: officialDefinition.revision,
+          },
+          signal,
+        )
+      : null;
+    if (
+      visible.workflow.officialDefinitionName !== null &&
+      officialRevision === null
+    ) {
+      return providerUnavailable(
+        "Official Workflow content is temporarily unavailable. Please retry.",
+      );
     }
 
     const detected = await settle(
@@ -563,11 +586,17 @@ const connectorReadinessInner$ = command(
           userId: auth.userId,
           agentId: visible.workflow.agentId,
           workflowId: visible.workflow.id,
-          workflow: {
-            name: visible.workflow.name,
-            description: visible.workflow.description,
-            instruction: visible.workflow.instruction,
-          },
+          workflow: officialRevision
+            ? {
+                name: officialRevision.definition.name,
+                description: officialRevision.definition.workflow.description,
+                instruction: officialRevision.definition.workflow.instruction,
+              }
+            : {
+                name: visible.workflow.name,
+                description: visible.workflow.description,
+                instruction: visible.workflow.instruction,
+              },
           featureStates: getAllFeatureStates(featureContext),
           publicBrand: get(publicBrand$),
         },
