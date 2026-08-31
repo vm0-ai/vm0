@@ -1,5 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { expect, vi } from "vitest";
+import { expect, vi, type Mock } from "vitest";
 import {
   chatThreadByIdContract,
   chatThreadArtifactsContract,
@@ -113,7 +113,7 @@ export function computerUsePermissions() {
 }
 
 interface PushBrowserMock {
-  readonly register: ReturnType<typeof vi.fn>;
+  readonly register: Mock<TestServiceWorkerContainer["register"]>;
 }
 
 type TestPushManager = Pick<PushManager, "getSubscription" | "subscribe">;
@@ -186,7 +186,7 @@ export function mockPushBrowserSupport(): PushBrowserMock {
     get permission() {
       return notificationPermission;
     },
-    requestPermission: vi.fn(() => {
+    requestPermission: vi.fn<typeof Notification.requestPermission>(() => {
       notificationPermission = "granted";
       return Promise.resolve(notificationPermission);
     }),
@@ -203,17 +203,17 @@ export function mockPushBrowserSupport(): PushBrowserMock {
     },
   } satisfies Pick<PushSubscription, "endpoint" | "getKey">;
   const pushManager: TestPushManager = {
-    getSubscription: vi.fn(() => {
+    getSubscription: vi.fn<PushManager["getSubscription"]>(() => {
       return Promise.resolve(null);
     }),
-    subscribe: vi.fn(() => {
+    subscribe: vi.fn<PushManager["subscribe"]>(() => {
       return Promise.resolve(subscription as PushSubscription);
     }),
   };
   const registration = {
     pushManager,
   } satisfies TestServiceWorkerRegistration;
-  const register = vi.fn(() => {
+  const register = vi.fn<TestServiceWorkerContainer["register"]>(() => {
     return Promise.resolve(registration);
   });
   const descriptor = Object.getOwnPropertyDescriptor(
@@ -308,28 +308,13 @@ export function makeEvent(
 }
 
 export function mockKeyboardNavigationThreads({
-  leadingThreadCount = 0,
   currentTitle = "Current keyboard thread",
   currentDetailTitle = currentTitle,
 }: {
-  leadingThreadCount?: number;
   currentTitle?: string;
   currentDetailTitle?: string | null;
 } = {}): void {
-  const leadingFixtures = Array.from(
-    { length: leadingThreadCount },
-    (_, index) => {
-      const itemNumber = index + 1;
-      return {
-        id: `b0000000-0000-4000-a000-${String(720 + index).padStart(12, "0")}`,
-        title: `Leading keyboard thread ${itemNumber}`,
-        detailTitle: `Leading keyboard thread ${itemNumber}`,
-        message: `Leading thread launch note ${itemNumber}`,
-      };
-    },
-  );
   const threadFixtures = [
-    ...leadingFixtures,
     {
       id: KEYBOARD_PREV_THREAD_ID,
       title: "Previous keyboard thread",

@@ -1,5 +1,76 @@
 # Changelog
 
+## [9.298.4](https://github.com/vm0-ai/vm0/compare/cli-v9.298.3...cli-v9.298.4) (2026-08-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.15
+    * @okouai/core bumped to 8.604.1
+
+## [9.298.3](https://github.com/vm0-ai/vm0/compare/cli-v9.298.2...cli-v9.298.3) (2026-08-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.14
+    * @okouai/connectors bumped to 3.0.1
+    * @okouai/core bumped to 8.604.0
+
+## [9.298.2](https://github.com/vm0-ai/vm0/compare/cli-v9.298.1...cli-v9.298.2) (2026-08-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.13
+    * @okouai/core bumped to 8.603.6
+
+## [9.298.1](https://github.com/vm0-ai/vm0/compare/cli-v9.298.0...cli-v9.298.1) (2026-08-31)
+
+
+### Refactoring
+
+* remove latest presentation templates switch ([#30335](https://github.com/vm0-ai/vm0/issues/30335)) ([8bfe687](https://github.com/vm0-ai/vm0/commit/8bfe68776bed2e55405192a0d7e0636039561b0a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.603.5
+
+## [9.298.0](https://github.com/vm0-ai/vm0/compare/cli-v9.297.14...cli-v9.298.0) (2026-08-30)
+
+
+### Features
+
+* **cli:** improve social download diagnostics ([#30361](https://github.com/vm0-ai/vm0/issues/30361)) ([6e9881f](https://github.com/vm0-ai/vm0/commit/6e9881f9ab8b3aa9753d5c2e93b184f575825c6c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.12
+    * @okouai/core bumped to 8.603.4
+
+## [9.297.14](https://github.com/vm0-ai/vm0/compare/cli-v9.297.13...cli-v9.297.14) (2026-08-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.11
+    * @okouai/connectors bumped to 1.210.8
+    * @okouai/core bumped to 8.603.3
+
 ## [9.297.13](https://github.com/vm0-ai/vm0/compare/cli-v9.297.12...cli-v9.297.13) (2026-08-30)
 
 

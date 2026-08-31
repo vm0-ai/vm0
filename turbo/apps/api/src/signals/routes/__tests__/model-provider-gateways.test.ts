@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { MODEL_PROVIDER_ENV_PLACEHOLDERS } from "@okouai/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   modelProviderConnectionsByIdContract,
   modelProviderConnectionsMainContract,
@@ -11,6 +12,7 @@ import { createBddApi } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
 import { modelProviderGatewayRoutes } from "../model-provider-gateways";
 
@@ -582,4 +584,81 @@ describe("custom model provider gateway routes", () => {
       await runs.requestCancelRun(actor, deepseekRunId, [200]);
     }
   });
+
+  it("keeps a DeepSeek custom gateway out of Pi execution", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsApi(context);
+    const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization-scoped actor");
+    }
+    bdd.acceptAgentStorageWrites();
+    chatCallbacks.acceptChatObjectStorage();
+    chatCallbacks.disableVapid();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.PiLoop]: true },
+    );
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Custom DeepSeek gateway runtime",
+      visibility: "private",
+    });
+    mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
+
+    const created = await accept(
+      mainClient().create({
+        headers: authHeaders(),
+        body: {
+          displayName: "Custom DeepSeek Gateway",
+          secret: "custom-deepseek-gateway-secret",
+          surfaces: [
+            {
+              protocol: "openai-responses",
+              apiBaseUrl: "https://gateway.example.com/openai/v1",
+              authHeaderName: "Authorization",
+              authHeaderTemplate: "Bearer {{secret}}",
+              modelMappings: {
+                "deepseek-v4-flash": "deepseek-v4-flash-0731",
+              },
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+    const surfaceId = created.body.surfaces[0]?.id;
+    if (!surfaceId) {
+      throw new Error("Expected the custom DeepSeek gateway surface");
+    }
+    await runs.updateOrgModelPolicies(actor, [
+      {
+        model: "deepseek-v4-flash",
+        isDefault: true,
+        defaultProviderType: "custom-openai-responses",
+        credentialScope: "org",
+        modelProviderId: null,
+        modelProviderSurfaceId: surfaceId,
+      },
+    ]);
+
+    const sent = await chat.requestSendEvent(
+      actor,
+      {
+        clientEventId: randomUUID(),
+        agentId: agent.agentId,
+        prompt: "keep the custom DeepSeek gateway on the standard runtime",
+        model: "deepseek-v4-flash",
+      },
+      [201],
+    );
+    if ("error" in sent.body || !sent.body.runId) {
+      throw new Error("Expected the custom DeepSeek gateway run to start");
+    }
+    await runs.requestCancelRun(actor, sent.body.runId, [200]);
+  }, 30_000);
 });

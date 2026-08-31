@@ -81,6 +81,7 @@ import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
 import {
   readRunIdentityMismatchWriteCountsFixture,
   readRunModelRuntimeRouteFixture,
+  readSessionHistoryBlobRefCountFixture,
   setRunModelProviderFixture,
   setRunModelRuntimeRouteFixture,
 } from "../../../test-fixtures/agent-runs";
@@ -17985,33 +17986,28 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
     const historyHash = createHash("sha256")
       .update(`bdd snapshot history ${created.runId}`)
       .digest("hex");
-    const checkpoint = await webhooks.requestAgentCheckpoint(
+    const completion = await webhooks.requestAgentComplete(
       {
         runId: created.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-snapshot-cli-${created.runId}`,
-        cliAgentSessionHistoryHash: historyHash,
-        artifactSnapshots,
-        volumeVersionsSnapshot: {
-          versions: { [cacheVolume]: cachePrepared.versionId },
+        exitCode: 0,
+        lastEventSequence: 3,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-snapshot-cli-${created.runId}`,
+          cliAgentSessionHistoryHash: historyHash,
+          artifactSnapshots,
+          volumeVersionsSnapshot: {
+            versions: { [cacheVolume]: cachePrepared.versionId },
+          },
         },
       },
       sandboxHeaders,
       [200],
     );
-    if (checkpoint.status !== 200) {
-      throw new Error("Expected the snapshot checkpoint to succeed");
-    }
-    expect(checkpoint.body.artifacts).toStrictEqual(artifactSnapshots);
-    expect(checkpoint.body.volumes).toStrictEqual({
-      [cacheVolume]: cachePrepared.versionId,
+    expect(completion.body).toStrictEqual({
+      success: true,
+      status: "completed",
     });
-
-    await webhooks.requestAgentComplete(
-      { runId: created.runId, exitCode: 0, lastEventSequence: 3 },
-      sandboxHeaders,
-      [200],
-    );
 
     const completed = await api.readRun(actor, created.runId);
     expect(completed.status).toBe("completed");
@@ -18060,6 +18056,360 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
 });
 
 describe("RUN-03: sandbox completion reports against missing checkpoints and settled runs", () => {
+  it.each(["claude-code", "codex"] as const)(
+    "atomically completes a run with a %s checkpoint",
+    async (cliAgentType) => {
+      const api = createRunsApi(context);
+      const webhooks = createWebhookCallbackApi(context);
+      const { actor, agentId } = await entitledRunActor();
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt: `complete with ${cliAgentType} checkpoint`,
+        modelProvider: "anthropic-api-key",
+      });
+      const claim = await api.claimRunnerJob(run.runId);
+      const history = `bdd combined ${cliAgentType} history ${run.runId}`;
+      const historyHash = createHash("sha256").update(history).digest("hex");
+      const cliAgentSessionId = `bdd-combined-${cliAgentType}-${run.runId}`;
+      mockSessionHistoryBlob(historyHash, history);
+      const sandboxHeaders = {
+        authorization: `Bearer ${claim.sandboxToken}`,
+      };
+      const body = {
+        runId: run.runId,
+        exitCode: 0,
+        lastEventSequence: 0,
+        checkpoint: {
+          cliAgentType,
+          cliAgentSessionId,
+          cliAgentSessionHistoryHash: historyHash,
+        },
+      } as const;
+
+      const completed = await webhooks.requestAgentComplete(
+        body,
+        sandboxHeaders,
+        [200],
+      );
+      expect(completed.body).toStrictEqual({
+        success: true,
+        status: "completed",
+      });
+      const settled = await api.readRun(actor, run.runId);
+      expect(settled.status).toBe("completed");
+      expect(settled.result).toMatchObject({
+        checkpointId: expect.any(String),
+        agentSessionId: run.sessionId,
+        conversationId: expect.any(String),
+      });
+
+      const repeated = await webhooks.requestAgentComplete(
+        body,
+        sandboxHeaders,
+        [200],
+      );
+      expect(repeated.body).toStrictEqual(completed.body);
+      await expect(
+        readSessionHistoryBlobRefCountFixture(historyHash),
+      ).resolves.toBe(1);
+      const conflictingExitDuplicate = await webhooks.requestAgentComplete(
+        {
+          ...body,
+          exitCode: 1,
+          error: "response-loss retry reported a failure",
+        },
+        sandboxHeaders,
+        [200],
+      );
+      expect(conflictingExitDuplicate.body).toStrictEqual(completed.body);
+      const conflictingCheckpoint = await webhooks.requestAgentComplete(
+        {
+          ...body,
+          checkpoint: {
+            ...body.checkpoint,
+            cliAgentSessionId: `${cliAgentSessionId}-conflict`,
+          },
+        },
+        sandboxHeaders,
+        [400],
+      );
+      expectApiError(conflictingCheckpoint.body);
+      expect(conflictingCheckpoint.body.error.message).toContain(
+        "Final checkpoint does not exactly match",
+      );
+      await expect(
+        readSessionHistoryBlobRefCountFixture(historyHash),
+      ).resolves.toBe(1);
+      const runnerDuplicate = await webhooks.requestAgentComplete(
+        {
+          runId: run.runId,
+          exitCode: 1,
+          error: "late runner failure",
+          lastEventSequence: 0,
+        },
+        sandboxHeaders,
+        [200],
+      );
+      expect(runnerDuplicate.body).toStrictEqual(completed.body);
+      const stillSettled = await api.readRun(actor, run.runId);
+      expect(stillSettled.result).toStrictEqual(settled.result);
+      expect(stillSettled.error ?? null).toBeNull();
+
+      const continued = await api.createRun(actor, {
+        agentId,
+        sessionId: run.sessionId,
+        prompt: `resume combined ${cliAgentType} checkpoint`,
+        modelProvider: "anthropic-api-key",
+      });
+      const continuedClaim = await api.claimRunnerJob(continued.runId);
+      expect(continuedClaim.resumeSession).toMatchObject({
+        sessionId: cliAgentSessionId,
+        historyRef: { kind: "blob", hash: historyHash },
+      });
+      const successorHistory = `bdd successor ${cliAgentType} history ${continued.runId}`;
+      const successorHistoryHash = createHash("sha256")
+        .update(successorHistory)
+        .digest("hex");
+      const successorCliAgentSessionId = `bdd-successor-${cliAgentType}-${continued.runId}`;
+      mockSessionHistoryBlob(successorHistoryHash, successorHistory);
+      await webhooks.requestAgentComplete(
+        {
+          runId: continued.runId,
+          exitCode: 0,
+          checkpoint: {
+            cliAgentType,
+            cliAgentSessionId: successorCliAgentSessionId,
+            cliAgentSessionHistoryHash: successorHistoryHash,
+          },
+        },
+        { authorization: `Bearer ${continuedClaim.sandboxToken}` },
+        [200],
+      );
+
+      const repeatedAfterSuccessor = await webhooks.requestAgentComplete(
+        body,
+        sandboxHeaders,
+        [200],
+      );
+      expect(repeatedAfterSuccessor.body).toStrictEqual(completed.body);
+
+      const afterRetry = await api.createRun(actor, {
+        agentId,
+        sessionId: run.sessionId,
+        prompt: `resume successor ${cliAgentType} checkpoint`,
+        modelProvider: "anthropic-api-key",
+      });
+      const afterRetryClaim = await api.claimRunnerJob(afterRetry.runId);
+      expect(afterRetryClaim.resumeSession).toMatchObject({
+        sessionId: successorCliAgentSessionId,
+        historyRef: { kind: "blob", hash: successorHistoryHash },
+      });
+      await api.requestCancelRun(actor, afterRetry.runId, [200]);
+    },
+  );
+
+  it.each(["combined-first", "runner-first"] as const)(
+    "preserves generic failure recovery when completion is %s",
+    async (ordering) => {
+      const api = createRunsApi(context);
+      const webhooks = createWebhookCallbackApi(context);
+      const { actor, agentId } = await entitledRunActor();
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt: `recover a ${ordering} failure`,
+        modelProvider: "anthropic-api-key",
+      });
+      const claim = await api.claimRunnerJob(run.runId);
+      const history = `bdd ${ordering} recovery history ${run.runId}`;
+      const historyHash = createHash("sha256").update(history).digest("hex");
+      const cliAgentSessionId = `bdd-${ordering}-cli-${run.runId}`;
+      mockSessionHistoryBlob(historyHash, history);
+      const sandboxHeaders = {
+        authorization: `Bearer ${claim.sandboxToken}`,
+      };
+      if (ordering === "runner-first") {
+        await webhooks.requestAgentComplete(
+          {
+            runId: run.runId,
+            exitCode: 1,
+            error: "runner reported failure",
+          },
+          sandboxHeaders,
+          [200],
+        );
+      }
+
+      const recoveryBody = {
+        runId: run.runId,
+        exitCode: 1,
+        error: "guest reported failure",
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId,
+          cliAgentSessionHistoryHash: historyHash,
+        },
+      } as const;
+      const recovery = await webhooks.requestAgentComplete(
+        recoveryBody,
+        sandboxHeaders,
+        [200],
+      );
+      expect(recovery.body).toStrictEqual({ success: true, status: "failed" });
+      const failed = await api.readRun(actor, run.runId);
+      expect(failed.status).toBe("failed");
+      expect(failed.error).toBe(
+        ordering === "runner-first"
+          ? "runner reported failure"
+          : "guest reported failure",
+      );
+
+      const continued = await api.createRun(actor, {
+        agentId,
+        sessionId: run.sessionId,
+        prompt: `resume ${ordering} recovery`,
+        modelProvider: "anthropic-api-key",
+      });
+      const continuedClaim = await api.claimRunnerJob(continued.runId);
+      expect(continuedClaim.resumeSession).toMatchObject({
+        sessionId: cliAgentSessionId,
+        historyRef: { kind: "blob", hash: historyHash },
+      });
+      const successorHistory = `bdd ${ordering} successor history ${continued.runId}`;
+      const successorHistoryHash = createHash("sha256")
+        .update(successorHistory)
+        .digest("hex");
+      const successorCliAgentSessionId = `bdd-${ordering}-successor-${continued.runId}`;
+      mockSessionHistoryBlob(successorHistoryHash, successorHistory);
+      await webhooks.requestAgentComplete(
+        {
+          runId: continued.runId,
+          exitCode: 0,
+          checkpoint: {
+            cliAgentType: "claude-code",
+            cliAgentSessionId: successorCliAgentSessionId,
+            cliAgentSessionHistoryHash: successorHistoryHash,
+          },
+        },
+        { authorization: `Bearer ${continuedClaim.sandboxToken}` },
+        [200],
+      );
+
+      const repeatedAfterSuccessor = await webhooks.requestAgentComplete(
+        recoveryBody,
+        sandboxHeaders,
+        [200],
+      );
+      expect(repeatedAfterSuccessor.body).toStrictEqual(recovery.body);
+
+      const afterRetry = await api.createRun(actor, {
+        agentId,
+        sessionId: run.sessionId,
+        prompt: `resume the ${ordering} successor`,
+        modelProvider: "anthropic-api-key",
+      });
+      const afterRetryClaim = await api.claimRunnerJob(afterRetry.runId);
+      expect(afterRetryClaim.resumeSession).toMatchObject({
+        sessionId: successorCliAgentSessionId,
+        historyRef: { kind: "blob", hash: successorHistoryHash },
+      });
+      await api.requestCancelRun(actor, afterRetry.runId, [200]);
+    },
+  );
+
+  it("preserves generic cancellation recovery in a combined request", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "cancel before combined recovery",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+    const history = `bdd cancellation recovery ${run.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    const cliAgentSessionId = `bdd-cancel-recovery-${run.runId}`;
+    mockSessionHistoryBlob(historyHash, history);
+    const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
+    await api.requestCancelRun(actor, run.runId, [200]);
+
+    const recovery = await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 1,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId,
+          cliAgentSessionHistoryHash: historyHash,
+        },
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(recovery.body).toStrictEqual({ success: true, status: "failed" });
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "cancelled",
+    });
+
+    const continued = await api.createRun(actor, {
+      agentId,
+      sessionId: run.sessionId,
+      prompt: "resume cancellation recovery",
+      modelProvider: "anthropic-api-key",
+    });
+    const continuedClaim = await api.claimRunnerJob(continued.runId);
+    expect(continuedClaim.resumeSession).toMatchObject({
+      sessionId: cliAgentSessionId,
+      historyRef: { kind: "blob", hash: historyHash },
+    });
+    await api.requestCancelRun(actor, continued.runId, [200]);
+  });
+
+  it("rejects a combined checkpoint after timeout without partial persistence", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "time out before combined completion",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+    const history = `bdd timed out combined history ${run.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    mockSessionHistoryBlob(historyHash, history);
+    const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
+    await timeoutRunWithoutCallbacksFixture({ runId: run.runId });
+
+    const rejected = await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-timeout-combined-${run.runId}`,
+          cliAgentSessionHistoryHash: historyHash,
+        },
+      },
+      sandboxHeaders,
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toContain("run status is timeout");
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "timeout",
+    });
+
+    const fallback = await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0 },
+      sandboxHeaders,
+      [200],
+    );
+    expect(fallback.body).toStrictEqual({ success: true, status: "failed" });
+    const failed = await api.readRun(actor, run.runId);
+    expect(failed.error).toBe("Checkpoint for run not found");
+  });
+
   it("keeps claim auth valid through timeout completion and final telemetry", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);

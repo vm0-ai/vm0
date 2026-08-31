@@ -625,14 +625,12 @@ export const confirmInvitePurchase$ = command(
     const result = await accept(
       client.confirmPurchase({
         params: { purchaseId: preview.payment.purchaseId },
-        body: {
-          ...(preview.payment.paymentMethodPreviewToken
-            ? {
-                paymentMethodPreviewToken:
-                  preview.payment.paymentMethodPreviewToken,
-              }
-            : {}),
-        },
+        body: preview.payment.paymentMethodPreviewToken
+          ? {
+              paymentMethodPreviewToken:
+                preview.payment.paymentMethodPreviewToken,
+            }
+          : {},
         fetchOptions: { signal },
       }),
       [200],

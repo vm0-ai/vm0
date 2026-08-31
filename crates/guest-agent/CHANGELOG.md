@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.82.26](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.25...guest-agent-v0.82.26) (2026-08-31)
+
+## [0.82.25](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.24...guest-agent-v0.82.25) (2026-08-31)
+
+
+### Bug Fixes
+
+* **guest-agent:** atomically persist checkpoint completion ([#30384](https://github.com/vm0-ai/vm0/issues/30384)) ([f54e213](https://github.com/vm0-ai/vm0/commit/f54e213e05c57ae39beecc27fa706b98fc96b791))
+
+## [0.82.24](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.23...guest-agent-v0.82.24) (2026-08-31)
+
+
+### Bug Fixes
+
+* **guest-agent:** classify structured codex errors ([#30377](https://github.com/vm0-ai/vm0/issues/30377)) ([b33d3f4](https://github.com/vm0-ai/vm0/commit/b33d3f402c7574605a292b11eb2db80e8b8f388e))
+
+## [0.82.23](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.22...guest-agent-v0.82.23) (2026-08-30)
+
+
+### Documentation
+
+* **rust:** document GuestConfig field contracts ([#30359](https://github.com/vm0-ai/vm0/issues/30359)) ([d0ebfde](https://github.com/vm0-ai/vm0/commit/d0ebfde1ae2639216cb879841457e5d4b40a5664))
+
+## [0.82.22](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.21...guest-agent-v0.82.22) (2026-08-30)
+
+
+### Bug Fixes
+
+* interrupt active codex turns before shutdown ([#30344](https://github.com/vm0-ai/vm0/issues/30344)) ([2270569](https://github.com/vm0-ai/vm0/commit/2270569209f12ec58078cee520878409b4f15041))
+* preserve codex per-turn token usage ([#30337](https://github.com/vm0-ai/vm0/issues/30337)) ([c9ef6c1](https://github.com/vm0-ai/vm0/commit/c9ef6c1e407cf07ca71a1ac7bc0bfccfad3bf205))
+
 ## [0.82.21](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.20...guest-agent-v0.82.21) (2026-08-30)
 
 

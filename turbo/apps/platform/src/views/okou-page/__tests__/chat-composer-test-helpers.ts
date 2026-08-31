@@ -552,8 +552,10 @@ export function mockUrlObjectMethods(
     URL,
     "revokeObjectURL",
   );
-  const createObjectURL = vi.fn(createObjectURLImplementation);
-  const revokeObjectURL = vi.fn();
+  const createObjectURL = vi.fn<typeof URL.createObjectURL>(
+    createObjectURLImplementation,
+  );
+  const revokeObjectURL = vi.fn<typeof URL.revokeObjectURL>();
   Object.defineProperties(URL, {
     createObjectURL: {
       configurable: true,

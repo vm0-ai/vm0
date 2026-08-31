@@ -468,6 +468,22 @@ async function seedVm0BuiltInModelKey(selectedModel: string): Promise<string> {
   return fixture.selectedModel;
 }
 
+async function configureBuiltInPiModel(
+  actor: ApiTestUser,
+  selectedModel: "deepseek-v4-flash" | "deepseek-v4-pro",
+): Promise<void> {
+  await seedVm0BuiltInModelKey(selectedModel);
+  await api.updateOrgModelPolicies(actor, [
+    {
+      model: selectedModel,
+      isDefault: true,
+      defaultProviderType: "built-in",
+      credentialScope: "org",
+      modelProviderId: null,
+    },
+  ]);
+}
+
 async function sendChatRun(
   actor: ApiTestUser,
   body: ChatRunSendBody,
@@ -2510,8 +2526,25 @@ describe("CHAT-02: queueing and recalling messages", () => {
       throw new Error("Expected terminal input to be reserved");
     }
 
-    await completeChatRunOk(active.runId, claimed.sandboxHeaders, {
-      activeInputDeliveryIds: [reserved.deliveryId],
+    const history = `bdd combined delivery history ${active.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    const completed = await webhooks.requestAgentComplete(
+      {
+        runId: active.runId,
+        exitCode: 0,
+        activeInputDeliveryIds: [reserved.deliveryId],
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-combined-delivery-${active.runId}`,
+          cliAgentSessionHistoryHash: historyHash,
+        },
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    expect(completed.body).toStrictEqual({
+      success: true,
+      status: "completed",
     });
     await flushWaitUntilForTest();
 
@@ -4853,19 +4886,7 @@ describe("CHAT-02: model-first provider policies", () => {
       if (!orgId) {
         throw new Error("Expected entitled chat actor to have an org");
       }
-      const { providerId } = await upsertOrgModelProvider(actor, {
-        type: "deepseek",
-        secret: "selected-pi-sandbox-key",
-      });
-      await api.updateOrgModelPolicies(actor, [
-        {
-          model: selectedModel,
-          isDefault: true,
-          defaultProviderType: "deepseek",
-          credentialScope: "org",
-          modelProviderId: providerId,
-        },
-      ]);
+      await configureBuiltInPiModel(actor, selectedModel);
       await updateFeatureSwitchesForUser(
         context,
         { ...actor, orgId },
@@ -4919,8 +4940,8 @@ describe("CHAT-02: model-first provider policies", () => {
         },
       });
       expect(modelRequests).toHaveLength(1);
-      expect(modelRequests[0]?.authorization).toBe(
-        "Bearer selected-pi-sandbox-key",
+      expect(modelRequests[0]?.authorization).toMatch(
+        /^Bearer vm0-key-runtime-fixture-/u,
       );
       const firstModelInput = JSON.stringify(modelRequests[0]?.body);
       expect(occurrences(firstModelInput, firstPrompt)).toBe(1);
@@ -4973,8 +4994,8 @@ describe("CHAT-02: model-first provider policies", () => {
       await waitForRunStatus(actor, second.runId, "completed");
       await flushWaitUntilForTest();
       expect(modelRequests).toHaveLength(2);
-      expect(modelRequests[1]?.authorization).toBe(
-        "Bearer selected-pi-sandbox-key",
+      expect(modelRequests[1]?.authorization).toMatch(
+        /^Bearer vm0-key-runtime-fixture-/u,
       );
       const secondModelInput = JSON.stringify(modelRequests[1]?.body);
       expect(occurrences(secondModelInput, firstPrompt)).toBe(1);
@@ -5012,19 +5033,7 @@ describe("CHAT-02: model-first provider policies", () => {
     if (!actor.orgId) {
       throw new Error("Expected entitled chat actor to have an org");
     }
-    const { providerId } = await upsertOrgModelProvider(actor, {
-      type: "deepseek",
-      secret: "pi-content-block-key",
-    });
-    await api.updateOrgModelPolicies(actor, [
-      {
-        model: "deepseek-v4-flash",
-        isDefault: true,
-        defaultProviderType: "deepseek",
-        credentialScope: "org",
-        modelProviderId: providerId,
-      },
-    ]);
+    await configureBuiltInPiModel(actor, "deepseek-v4-flash");
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId: actor.orgId },
@@ -5139,19 +5148,7 @@ describe("CHAT-02: model-first provider policies", () => {
       if (!actor.orgId) {
         throw new Error("Expected entitled chat actor to have an org");
       }
-      const { providerId } = await upsertOrgModelProvider(actor, {
-        type: "deepseek",
-        secret: "strict-pi-failure-key",
-      });
-      await api.updateOrgModelPolicies(actor, [
-        {
-          model: "deepseek-v4-flash",
-          isDefault: true,
-          defaultProviderType: "deepseek",
-          credentialScope: "org",
-          modelProviderId: providerId,
-        },
-      ]);
+      await configureBuiltInPiModel(actor, "deepseek-v4-flash");
       await updateFeatureSwitchesForUser(
         context,
         { ...actor, orgId: actor.orgId },
@@ -5197,19 +5194,7 @@ describe("CHAT-02: model-first provider policies", () => {
     if (!actor.orgId) {
       throw new Error("Expected entitled chat actor to have an org");
     }
-    const { providerId } = await upsertOrgModelProvider(actor, {
-      type: "deepseek",
-      secret: "strict-pi-h0-key",
-    });
-    await api.updateOrgModelPolicies(actor, [
-      {
-        model: "deepseek-v4-flash",
-        isDefault: true,
-        defaultProviderType: "deepseek",
-        credentialScope: "org",
-        modelProviderId: providerId,
-      },
-    ]);
+    await configureBuiltInPiModel(actor, "deepseek-v4-flash");
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId: actor.orgId },
@@ -5288,19 +5273,7 @@ describe("CHAT-02: model-first provider policies", () => {
     if (!actor.orgId) {
       throw new Error("Expected entitled chat actor to have an org");
     }
-    const { providerId } = await upsertOrgModelProvider(actor, {
-      type: "deepseek",
-      secret: "strict-pi-handoff-key",
-    });
-    await api.updateOrgModelPolicies(actor, [
-      {
-        model: "deepseek-v4-flash",
-        isDefault: true,
-        defaultProviderType: "deepseek",
-        credentialScope: "org",
-        modelProviderId: providerId,
-      },
-    ]);
+    await configureBuiltInPiModel(actor, "deepseek-v4-flash");
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId: actor.orgId },
@@ -5607,6 +5580,25 @@ describe("CHAT-02: model-first provider policies", () => {
       `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${h2Hash}.blob`,
       Buffer.from(h2, "utf8"),
     );
+    const combinedH2 = await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 0,
+        checkpoint: {
+          cliAgentType: "pi",
+          cliAgentSessionId: run.threadId,
+          cliAgentSessionHistoryHash: h2Hash,
+        },
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    expect(combinedH2.body).toStrictEqual({
+      success: true,
+      status: "completed",
+    });
+    await waitForRunStatus(actor, run.runId, "completed");
+    await flushWaitUntilForTest();
     const committedH2 = await webhooks.requestAgentCheckpoint(
       {
         runId: run.runId,
@@ -5623,13 +5615,6 @@ describe("CHAT-02: model-first provider policies", () => {
         `Expected H2 checkpoint success: ${committedH2Body.error.message}`,
       );
     }
-    await webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 0 },
-      claimed.sandboxHeaders,
-      [200],
-    );
-    await waitForRunStatus(actor, run.runId, "completed");
-    await flushWaitUntilForTest();
     expect(modelCalls).toBe(1);
     expect(checkpointObjects.has(manifestKey)).toBeFalsy();
     expect(
@@ -5746,12 +5731,16 @@ describe("CHAT-02: model-first provider policies", () => {
       `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${invalidH2Hash}.blob`,
       invalidH2,
     );
-    const invalidCheckpoint = await webhooks.requestAgentCheckpoint(
+    const invalidCheckpoint = await webhooks.requestAgentComplete(
       {
         runId: failedHandoff.runId,
-        cliAgentType: "pi",
-        cliAgentSessionId: run.threadId,
-        cliAgentSessionHistoryHash: invalidH2Hash,
+        exitCode: 1,
+        error: "reject invalid native checkpoint",
+        checkpoint: {
+          cliAgentType: "pi",
+          cliAgentSessionId: run.threadId,
+          cliAgentSessionHistoryHash: invalidH2Hash,
+        },
       },
       failedClaim.sandboxHeaders,
       [400],
@@ -5772,12 +5761,15 @@ describe("CHAT-02: model-first provider policies", () => {
     await flushWaitUntilForTest();
     expect(modelCalls).toBe(2);
     expect(checkpointObjects.has(failedManifestKey)).toBeFalsy();
-    const lateFailedH2 = await webhooks.requestAgentCheckpoint(
+    const lateFailedH2 = await webhooks.requestAgentComplete(
       {
         runId: failedHandoff.runId,
-        cliAgentType: "pi",
-        cliAgentSessionId: run.threadId,
-        cliAgentSessionHistoryHash: h2Hash,
+        exitCode: 1,
+        checkpoint: {
+          cliAgentType: "pi",
+          cliAgentSessionId: run.threadId,
+          cliAgentSessionHistoryHash: h2Hash,
+        },
       },
       failedClaim.sandboxHeaders,
       [400],
@@ -5807,16 +5799,11 @@ describe("CHAT-02: model-first provider policies", () => {
     const explicitResume = await api.createRun(actor, {
       agentId,
       sessionId: canonicalConversation.agent_session_id,
-      prompt: "explicitly resume the last completed Pi checkpoint",
+      prompt: "keep an incompatible direct run off the Pi checkpoint",
     });
     const explicitResumeClaim = await api.claimRunnerJob(explicitResume.runId);
-    expect(explicitResumeClaim.resumeSession).toMatchObject({
-      sessionId: run.threadId,
-      historyRef: {
-        kind: "blob",
-        hash: h2Hash,
-      },
-    });
+    expect(explicitResumeClaim.cliAgentType).toBe("claude-code");
+    expect(explicitResumeClaim.resumeSession).toBeNull();
     expect(modelCalls).toBe(2);
     await api.requestCancelRun(actor, explicitResume.runId, [200]);
     await waitForRunStatus(actor, explicitResume.runId, "cancelled");
@@ -5841,12 +5828,15 @@ describe("CHAT-02: model-first provider policies", () => {
       cancelledHandoff.runId,
       cancelledClaim.sandboxHeaders,
     );
-    const lateCancelledH2 = await webhooks.requestAgentCheckpoint(
+    const lateCancelledH2 = await webhooks.requestAgentComplete(
       {
         runId: cancelledHandoff.runId,
-        cliAgentType: "pi",
-        cliAgentSessionId: run.threadId,
-        cliAgentSessionHistoryHash: h2Hash,
+        exitCode: 1,
+        checkpoint: {
+          cliAgentType: "pi",
+          cliAgentSessionId: run.threadId,
+          cliAgentSessionHistoryHash: h2Hash,
+        },
       },
       cancelledClaim.sandboxHeaders,
       [400],
@@ -5966,6 +5956,74 @@ describe("CHAT-02: model-first provider policies", () => {
       readThreadSessionConversation(context, run.threadId),
     ).resolves.toStrictEqual(canonicalConversation);
     expect(modelCalls).toBe(5);
+
+    const reportedFailureHandoff = await sendChatRun(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "retry one atomically reported Pi failure",
+    });
+    const reportedFailureManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${reportedFailureHandoff.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.has(reportedFailureManifestKey);
+      })
+      .toBe(true);
+    const reportedFailureClaim = await claimChatRun(
+      runnerGroup,
+      reportedFailureHandoff.runId,
+    );
+    const reportedFailureBody = {
+      runId: reportedFailureHandoff.runId,
+      exitCode: 1,
+      error: "guest reported Pi failure",
+      checkpoint: {
+        cliAgentType: "pi",
+        cliAgentSessionId: run.threadId,
+        cliAgentSessionHistoryHash: h2Hash,
+      },
+    } as const;
+    const reportedFailure = await webhooks.requestAgentComplete(
+      reportedFailureBody,
+      reportedFailureClaim.sandboxHeaders,
+      [200],
+    );
+    expect(reportedFailure.body).toStrictEqual({
+      success: true,
+      status: "failed",
+    });
+    await waitForRunStatus(actor, reportedFailureHandoff.runId, "failed");
+    await flushWaitUntilForTest();
+    const repeatedReportedFailure = await webhooks.requestAgentComplete(
+      reportedFailureBody,
+      reportedFailureClaim.sandboxHeaders,
+      [200],
+    );
+    expect(repeatedReportedFailure.body).toStrictEqual(reportedFailure.body);
+    await expect(
+      readThreadSessionConversation(context, run.threadId),
+    ).resolves.toStrictEqual(canonicalConversation);
+    expect(modelCalls).toBe(6);
+
+    const conversationClear = await holdThreadSessionConversationClearFixture({
+      threadId: run.threadId,
+      signal: context.signal,
+    });
+    conversationClear.release();
+    await conversationClear.done;
+    const repeatedCombinedH2 = await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 0,
+        checkpoint: {
+          cliAgentType: "pi",
+          cliAgentSessionId: run.threadId,
+          cliAgentSessionHistoryHash: h2Hash,
+        },
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    expect(repeatedCombinedH2.body).toStrictEqual(combinedH2.body);
   }, 90_000);
 
   it("routes DeepSeek V4 Flash through the native Responses adapter", async () => {
@@ -6053,6 +6111,51 @@ describe("CHAT-02: model-first provider policies", () => {
 
     await cancelChatRun(actor, followUp.runId);
   });
+
+  it("keeps direct DeepSeek BYOK out of Pi execution", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected entitled chat actor to have an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.PiLoop]: true },
+    );
+    const { providerId } = await upsertOrgModelProvider(actor, {
+      type: "deepseek",
+      secret: "selected-deepseek-pi-disabled-key",
+    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "deepseek-v4-flash",
+        isDefault: true,
+        defaultProviderType: "deepseek",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "keep direct DeepSeek on the standard runtime",
+      model: "deepseek-v4-flash",
+    });
+    await flushWaitUntilForTest();
+    await expect
+      .poll(() => {
+        return apiDispatchTimingEventsForRun(run.runId).some((event) => {
+          return event.op_type === "api_dispatch_build_runner_job_payload";
+        });
+      })
+      .toBe(true);
+    expectPiLaunchResourceTiming(
+      apiDispatchTimingEventsForRun(run.runId),
+      "not_required",
+    );
+    await cancelChatRun(actor, run.runId);
+  }, 30_000);
 
   it("reuses a Codex session across DeepSeek V4 model switches", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();

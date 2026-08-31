@@ -9,7 +9,6 @@ import type { OrgModelPolicy } from "@okouai/api-contracts/contracts/model-provi
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import { workflowsCollectionContract } from "@okouai/api-contracts/contracts/workflows";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@okouai/core";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
@@ -402,7 +401,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
     });
 
     selectTextForInlineFeedback(await screen.findByText(selectedContent));
@@ -511,7 +509,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
     });
 
     selectTextForInlineFeedback(await screen.findByText(selectedContent));
@@ -641,7 +638,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
     });
 
     const assistantReply = await screen.findByText(selectedContent);
@@ -701,7 +697,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
     });
 
     selectTextForInlineFeedback(await screen.findByText(selectedContent));
@@ -839,7 +834,6 @@ describe("chat inline feedback", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.ChatForward]: false },
       path: `/chats/${FEEDBACK_THREAD_ID}`,
     });
 
@@ -858,12 +852,7 @@ describe("chat inline feedback", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Quote")).toBeInTheDocument();
-      expect(screen.queryByText("Forward")).not.toBeInTheDocument();
     });
-
-    const forwardEvent = dispatchDocumentShortcut("f");
-    expect(forwardEvent.defaultPrevented).toBeFalsy();
-    expect(screen.getByText("Quote")).toBeInTheDocument();
 
     await user.click(buttonByText("Copy"));
 
@@ -1991,7 +1980,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
     });
 
     const assistantReplyElement = await screen.findByText(assistantReply);

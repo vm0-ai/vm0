@@ -700,86 +700,6 @@ describe("chat composer models", () => {
     });
   });
 
-  it("reloads workflow suggestions and highlights without remounting the composer", async () => {
-    const user = userEvent.setup({ delay: null });
-    const reloadWorkflowsRequested = context.mocks.deferred<void>();
-    const releaseReloadWorkflows = context.mocks.deferred<void>();
-    const reloadedWorkflow = workflowSummary({
-      name: "new-chat-workflow",
-      displayName: "New Chat Workflow",
-      description: "Created by the current chat run",
-      agentId: AGENT_ID,
-    });
-    let workflowPhase: "initial" | "reloaded" = "initial";
-    mockOrgModelRoutes("claude-fable-5");
-    mockAgent();
-    mockThread();
-    context.mocks.api(workflowsCollectionContract.list, async ({ respond }) => {
-      if (workflowPhase === "initial") {
-        return respond(200, []);
-      }
-      if (!reloadWorkflowsRequested.settled()) {
-        reloadWorkflowsRequested.resolve();
-      }
-      await releaseReloadWorkflows.promise;
-      return respond(200, [reloadedWorkflow]);
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscription(
-          `chatThreadWorkflowsChanged:${THREAD_ID}`,
-        ),
-      ).toBeTruthy();
-      expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
-        "aria-hidden",
-        "true",
-      );
-    });
-    const thread = await screen.findByLabelText("Chat thread");
-    const initialEditor = await within(thread).findByRole("textbox", {
-      name: "Message",
-    });
-    await user.click(initialEditor);
-    await user.keyboard("/");
-    await expect(
-      screen.findByText("No matching workflows"),
-    ).resolves.toBeInTheDocument();
-    const editor = await findComposerEditor();
-
-    workflowPhase = "reloaded";
-    act(() => {
-      context.mocks.ably.trigger(
-        `chatThreadWorkflowsChanged:${THREAD_ID}`,
-        null,
-      );
-    });
-    await reloadWorkflowsRequested.promise;
-    releaseReloadWorkflows.resolve();
-
-    await expect(
-      screen.findByText("new-chat-workflow"),
-    ).resolves.toBeInTheDocument();
-    await expect(findComposerEditor()).resolves.toBe(editor);
-
-    await user.keyboard("{Enter}");
-
-    await waitFor(() => {
-      expect(mountedComposerText()).toContain("/new-chat-workflow");
-    });
-    const highlightedWorkflow = screen
-      .getAllByText("/new-chat-workflow")
-      .find((element) => {
-        return element.tagName.toLowerCase() === "span";
-      });
-    expect(highlightedWorkflow).toHaveClass("text-primary");
-  });
-
   it("keeps the latest workflow highlights when split-pane reloads resolve out of order", async () => {
     const user = userEvent.setup({ delay: null });
     const staleRequestsStarted = context.mocks.deferred<void>();
@@ -1075,7 +995,7 @@ describe("chat composer models", () => {
 
   it("scrolls the slash workflow picker with keyboard selection", async () => {
     const user = userEvent.setup({ delay: null });
-    const scrollIntoView = vi.fn();
+    const scrollIntoView = vi.fn<HTMLElement["scrollIntoView"]>();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: scrollIntoView,

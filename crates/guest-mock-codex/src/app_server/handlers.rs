@@ -4,11 +4,11 @@ use super::messages::{
     large_warning_notification, reasoning_item_started_notification,
     secondary_token_usage_notification, server_notification, server_notification_with_index,
     server_request, thread_response, thread_started_notification, turn,
-    turn_completed_notification, turn_failed_notification, turn_started_notification,
-    warning_notification, write_error, write_json_line, write_oversized_delivery_notifications,
-    write_resumed_turn_notifications, write_split_json_line_prefix, write_success,
-    write_turn_completion_notifications, write_turn_notifications, write_turn_start_notifications,
-    write_turn_usage_notifications,
+    turn_completed_notification, turn_failed_notification, turn_interrupted_notification,
+    turn_started_notification, warning_notification, write_error, write_json_line,
+    write_oversized_delivery_notifications, write_resumed_turn_notifications,
+    write_split_json_line_prefix, write_success, write_turn_completion_notifications,
+    write_turn_notifications, write_turn_start_notifications, write_turn_usage_notifications,
 };
 use super::persistence::{InputEventContext, persist_input_events, session_rollout_timestamp};
 use super::scenario::Scenario;
@@ -29,6 +29,8 @@ const SESSION_HISTORY_READY_EVENT: &str = "vm0_mock_codex_session_history_ready"
 const WAIT_ON_TURN_STEER_READY_FILE: &str = ".vm0-mock-codex-turn-steer-ready";
 const WAIT_ON_TURN_STEER_READY_EVENT: &str = "vm0_mock_codex_turn_steer_ready";
 const WAIT_ON_TURN_STEER_RELEASE_SOCKET: &str = ".vm0-mock-codex-turn-steer-release.sock";
+const TURN_INTERRUPT_READY_FILE: &str = ".vm0-mock-codex-turn-interrupt-ready";
+const TURN_INTERRUPT_READY_EVENT: &str = "vm0_mock_codex_turn_interrupt_ready";
 const NOTIFICATION_OVERFLOW_COUNT: usize = 129;
 const STDOUT_STREAM_CHUNK_BYTES: usize = 8 * 1024;
 const EVENT_DELIVERY_FLOOD_COUNT: usize = 640;
@@ -366,7 +368,7 @@ impl AppServerState {
             write_secondary_thread_notifications(output, &thread_id, &turn_id, response_text)?;
             return Ok(ServerAction::Continue);
         }
-        if self.scenario.writes_turn_started_before_steer() {
+        if self.scenario.writes_turn_started_before_control() {
             if let Some(current_thread) = &mut self.current_thread
                 && matches!(
                     self.scenario,
@@ -376,6 +378,12 @@ impl AppServerState {
                 current_thread.active_turn_id = Some(turn_id.clone());
             }
             write_json_line(output, &turn_started_notification(&thread_id, &turn_id))?;
+        }
+        if self.scenario.waits_for_turn_interrupt() {
+            write_json_line(
+                output,
+                &server_request(json!("guest-mock-codex-active-turn-ready")),
+            )?;
         }
         if matches!(
             self.scenario,
@@ -429,10 +437,13 @@ impl AppServerState {
                 "checkpointed shell prompts require a runtime turn-complete scenario",
             ));
         }
-        if self.scenario == Scenario::RuntimeTurnFailed {
+        if let Some(failure) = self.scenario.turn_failure() {
             write_json_line(output, &turn_started_notification(&thread_id, &turn_id))?;
             write_turn_usage_notifications(output, &thread_id, &turn_id)?;
-            write_json_line(output, &turn_failed_notification(&thread_id, &turn_id))?;
+            write_json_line(
+                output,
+                &turn_failed_notification(&thread_id, &turn_id, failure),
+            )?;
         }
         if self.scenario == Scenario::RuntimeEventFlood {
             write_json_line(output, &turn_started_notification(&thread_id, &turn_id))?;
@@ -462,6 +473,62 @@ impl AppServerState {
             write_oversized_delivery_notifications(output, &thread_id, &turn_id)?;
             write_json_line(output, &turn_completed_notification(&thread_id, &turn_id))?;
         }
+        Ok(ServerAction::Continue)
+    }
+
+    pub(super) fn handle_turn_interrupt<W: Write>(
+        &mut self,
+        id: Value,
+        params: &Value,
+        output: &mut W,
+    ) -> io::Result<ServerAction> {
+        if !self.initialized {
+            write_error(output, id, INVALID_REQUEST, "app server is not initialized")?;
+            return Ok(ServerAction::Continue);
+        }
+        let Some(thread_id) = non_empty_string_param(params, "threadId") else {
+            write_error(output, id, INVALID_REQUEST, "missing threadId")?;
+            return Ok(ServerAction::Continue);
+        };
+        let Some(turn_id) = non_empty_string_param(params, "turnId") else {
+            write_error(output, id, INVALID_REQUEST, "missing turnId")?;
+            return Ok(ServerAction::Continue);
+        };
+        let current_thread = match self.current_thread(thread_id) {
+            Ok(current_thread) => current_thread,
+            Err(message) => {
+                write_error(output, id, INVALID_REQUEST, message)?;
+                return Ok(ServerAction::Continue);
+            }
+        };
+        if current_thread.active_turn_id.as_deref() != Some(turn_id) {
+            write_error(output, id, INVALID_REQUEST, "turn is not active")?;
+            return Ok(ServerAction::Continue);
+        }
+
+        let home = std::env::var_os("HOME")
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))?;
+        std::fs::write(
+            PathBuf::from(home).join(TURN_INTERRUPT_READY_FILE),
+            TURN_INTERRUPT_READY_EVENT,
+        )?;
+        if self.scenario == Scenario::HangOnTurnInterrupt {
+            loop {
+                thread::park();
+            }
+        }
+
+        let thread_id = current_thread.protocol_thread_id.clone();
+        if let Some(current_thread) = &mut self.current_thread {
+            current_thread.active_turn_id = None;
+        }
+        if self.scenario == Scenario::CompleteBeforeTurnInterrupt {
+            write_json_line(output, &turn_completed_notification(&thread_id, turn_id))?;
+            write_error(output, id, INVALID_REQUEST, "turn is not active")?;
+            return Ok(ServerAction::Continue);
+        }
+        write_success(output, id, json!({}))?;
+        write_json_line(output, &turn_interrupted_notification(&thread_id, turn_id))?;
         Ok(ServerAction::Continue)
     }
 

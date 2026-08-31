@@ -1,14 +1,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { clerkSetup } from "@clerk/testing/playwright";
 import { chromium, type Browser, type Page } from "@playwright/test";
 
-import {
-  refreshClerkSessionToken,
-  signInWithLoadedClerkTestingHelper,
-  withLoadedClerkTestingPage,
-} from "./lib/auth";
+import { resolveApiBackendUrl } from "./api-backend-url";
+import { refreshClerkSessionToken, signInWithClerkEmailCode } from "./lib/auth";
 import { issueCliToken } from "./lib/cli-token";
 import { runnerTestAccounts } from "./lib/clerk-api";
 import {
@@ -16,13 +12,13 @@ import {
   startVideoOnboardingCheckout,
   waitForPaidOnboardingCompletion,
 } from "./lib/onboarding";
+import { seedPreviewBypassCookie } from "./lib/preview-bypass";
 import {
   collectStripeCheckoutState,
   fillStripeCheckout,
 } from "./lib/stripe-checkout";
 
 const RUNNER_CREDENTIAL_CONCURRENCY = 2;
-const VERCEL_PROTECTION_BYPASS_COOKIE = "x-vercel-protection-bypass";
 
 interface RunnerCredentialTarget {
   readonly email: string;
@@ -42,7 +38,7 @@ interface ProvisionRunnerCredentialOptions {
 
 async function main(): Promise<void> {
   requiredEnvironmentVariable("JOB_REF");
-  const apiUrl = requiredEnvironmentVariable("VM0_API_BACKEND_URL");
+  const apiUrl = resolveApiBackendUrl();
   const appUrl = requiredEnvironmentVariable("OKOU_APP_URL");
   const outputDirectory = process.argv[2];
   if (!outputDirectory) {
@@ -86,7 +82,6 @@ async function main(): Promise<void> {
     process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
 
   await mkdir(outputDirectory, { recursive: true });
-  await clerkSetup();
   const browser = await chromium.launch();
   try {
     for (
@@ -145,79 +140,51 @@ async function provisionRunnerCredential(
     target,
     vercelAutomationBypassSecret,
   } = options;
-  await withLoadedClerkTestingPage(
-    browser,
-    {
+  const context = await browser.newContext({
+    ignoreHTTPSErrors: true,
+  });
+  try {
+    await seedPreviewBypassCookie(
+      context,
       appUrl,
-      contextOptions: {
-        ignoreHTTPSErrors: true,
-        extraHTTPHeaders: vercelAutomationBypassSecret
-          ? {
-              "x-vercel-protection-bypass": vercelAutomationBypassSecret,
-            }
-          : undefined,
-      },
-    },
-    async (page) => {
-      await installSharedWorkerPreviewBypassCookie(
-        page,
-        appUrl,
-        vercelAutomationBypassSecret,
-      );
-      let clerkSessionToken = await signInWithLoadedClerkTestingHelper(
-        page,
-        target.email,
-        appUrl,
-        { activeOrganizationId: target.organizationId },
-      );
-      await ensureRunnerOrganizationReady({
-        apiUrl,
-        clerkSessionToken,
-        vercelAutomationBypassSecret,
+      vercelAutomationBypassSecret,
+    );
+    const page = await context.newPage();
+    let clerkSessionToken = await signInWithClerkEmailCode(
+      page,
+      target.email,
+      appUrl,
+      { activeOrganizationId: target.organizationId },
+    );
+    await ensureRunnerOrganizationReady({
+      apiUrl,
+      clerkSessionToken,
+      vercelAutomationBypassSecret,
+    });
+    if (target.upgradeToPro) {
+      await completePaidOnboarding(page, target, appUrl, outputDirectory);
+      clerkSessionToken = await refreshClerkSessionToken(page, {
+        activeOrganizationId: target.organizationId,
       });
-      if (target.upgradeToPro) {
-        await completePaidOnboarding(page, target, appUrl, outputDirectory);
-        clerkSessionToken = await refreshClerkSessionToken(page, {
-          activeOrganizationId: target.organizationId,
-        });
-      }
-      const token = await issueCliToken({
-        apiUrl,
-        clerkSessionToken,
-        vercelAutomationBypassSecret,
-      });
-      const outputFile = join(outputDirectory, target.fileName);
-      await writeFile(
-        outputFile,
-        `${JSON.stringify({ token, apiUrl }, null, 2)}\n`,
-        { encoding: "utf8", mode: 0o600 },
-      );
-      console.log("Generated runner E2E API credential", {
-        email: target.email,
-        outputFile,
-      });
-    },
-  );
-}
-
-async function installSharedWorkerPreviewBypassCookie(
-  page: Page,
-  appUrl: string,
-  vercelAutomationBypassSecret: string | undefined,
-): Promise<void> {
-  if (!vercelAutomationBypassSecret) {
-    return;
+    }
+    const token = await issueCliToken({
+      apiUrl,
+      clerkSessionToken,
+      vercelAutomationBypassSecret,
+    });
+    const outputFile = join(outputDirectory, target.fileName);
+    await writeFile(
+      outputFile,
+      `${JSON.stringify({ token, apiUrl }, null, 2)}\n`,
+      { encoding: "utf8", mode: 0o600 },
+    );
+    console.log("Generated runner E2E API credential", {
+      email: target.email,
+      outputFile,
+    });
+  } finally {
+    await context.close();
   }
-  const appOrigin = new URL(appUrl);
-  await page.context().addCookies([
-    {
-      name: VERCEL_PROTECTION_BYPASS_COOKIE,
-      value: vercelAutomationBypassSecret,
-      url: appOrigin.origin,
-      sameSite: "Lax",
-      secure: appOrigin.protocol === "https:",
-    },
-  ]);
 }
 
 async function completePaidOnboarding(

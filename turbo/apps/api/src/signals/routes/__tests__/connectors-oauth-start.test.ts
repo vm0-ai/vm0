@@ -356,8 +356,8 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
       expect(response.status).toBe(200);
       const authorizationUrl = await authorizationUrlFromResponse(response);
       expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-        connectorSlug === "slack"
-          ? `${WEB_ORIGIN}/api/connectors/slack/callback`
+        connectorSlug === "github"
+          ? "https://app.vm0.ai/connectors/github/callback"
           : `https://app.${publicBrand === "okou" ? "okou" : "vm0"}.ai/connectors/google-maps/callback`,
       );
       const state = authorizationUrl.searchParams.get("state") ?? "";
@@ -387,9 +387,9 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
     expect(okou.location.origin).toBe("https://app.okou.ai");
     expect(okou.location.pathname).toBe("/connector/error");
 
-    const legacyCallback = await callbackLocation("okou", "slack");
-    expect(legacyCallback.state).toMatch(/^okou\.[0-9a-f]{64}$/u);
-    expect(legacyCallback.location.origin).toBe("https://app.okou.ai");
+    const notDirectReady = await callbackLocation("okou", "github");
+    expect(notDirectReady.state).toMatch(/^okou\.[0-9a-f]{64}$/u);
+    expect(notDirectReady.location.origin).toBe("https://app.okou.ai");
 
     const vm0 = await callbackLocation("vm0");
     expect(vm0.state).toMatch(/^[0-9a-f]{64}$/u);
@@ -1039,7 +1039,7 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
     await rejectProviderAuthorization(authorizationUrl);
   });
 
-  it("keeps denylisted callbacks on the legacy path", async () => {
+  it("uses the direct Okou App callback for Slack", async () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
     mockAuthenticatedSession();
 
@@ -1052,9 +1052,28 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
     expect(response.status).toBe(200);
     const authorizationUrl = await authorizationUrlFromResponse(response);
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-      `${WEB_ORIGIN}/api/connectors/slack/callback`,
+      "https://app.okou.ai/connectors/slack/callback",
     );
     expectOkouOauthState(authorizationUrl);
+    await rejectProviderAuthorization(authorizationUrl);
+  });
+
+  it("keeps the VM0 App callback for Slack", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockAuthenticatedSession();
+
+    const response = await requestOauthStart("slack", {
+      headers: authHeaders(),
+      origin: API_ORIGIN,
+      callbackTarget: "app",
+    });
+
+    expect(response.status).toBe(200);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      "https://app.vm0.ai/connectors/slack/callback",
+    );
+    expectOauthState(authorizationUrl);
     await rejectProviderAuthorization(authorizationUrl);
   });
 

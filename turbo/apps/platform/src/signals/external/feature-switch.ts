@@ -1,4 +1,5 @@
 import { command, computed } from "ccstate";
+import type { BrowserClerk as Clerk } from "@clerk/shared/types";
 import { getAllFeatureStates } from "@okouai/core/feature-switch";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -13,6 +14,53 @@ import {
   featureSwitchCacheState$,
   setFeatureSwitchLocalStorage$,
 } from "./feature-switch-state.ts";
+import {
+  completeOnLocalAbort,
+  createChildAbortController,
+  withCleanup,
+} from "../utils.ts";
+
+type FeatureSwitchClerk = Pick<
+  Clerk,
+  "addListener" | "organization" | "session" | "user"
+>;
+
+interface FeatureSwitchIdentity {
+  readonly email: string | undefined;
+  readonly orgId: string;
+  readonly sessionId: string;
+  readonly userId: string;
+}
+
+function readFeatureSwitchIdentity(
+  clerk: FeatureSwitchClerk,
+): FeatureSwitchIdentity | null {
+  const user = clerk.user;
+  const organization = clerk.organization;
+  const session = clerk.session;
+  if (!user || !organization || !session) {
+    return null;
+  }
+  return {
+    email: user.primaryEmailAddress?.emailAddress,
+    orgId: organization.id,
+    sessionId: session.id,
+    userId: user.id,
+  };
+}
+
+function isSameFeatureSwitchIdentity(
+  left: FeatureSwitchIdentity,
+  right: FeatureSwitchIdentity | null,
+): boolean {
+  return (
+    right !== null &&
+    left.email === right.email &&
+    left.orgId === right.orgId &&
+    left.sessionId === right.sessionId &&
+    left.userId === right.userId
+  );
+}
 
 // Pinned to the API backend: feature switches bootstrap before the platform API
 // client is available.
@@ -68,18 +116,14 @@ export const customConnectorMcpEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CustomConnectorMcp] ?? false;
 });
 
-export const reloadFeatureSwitch$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const clerk = await get(clerk$);
+const hydrateFeatureSwitch$ = command(
+  async (
+    { get, set },
+    clerk: FeatureSwitchClerk,
+    identity: FeatureSwitchIdentity,
+    signal: AbortSignal,
+  ) => {
     signal.throwIfAborted();
-    if (!clerk.user || !clerk.organization) {
-      set(writeConnectionDiagnostic$, {
-        action: "set-enabled",
-        enabled: false,
-      });
-      return;
-    }
-
     const client = get(apiFeatureSwitchClient$);
     const result = await accept(
       client.get({ fetchOptions: { signal } }),
@@ -87,10 +131,16 @@ export const reloadFeatureSwitch$ = command(
     );
     signal.throwIfAborted();
 
+    if (
+      !isSameFeatureSwitchIdentity(identity, readFeatureSwitchIdentity(clerk))
+    ) {
+      return;
+    }
+
     const combined = getAllFeatureStates({
-      userId: clerk.user.id,
-      email: clerk.user.primaryEmailAddress?.emailAddress,
-      orgId: clerk.organization.id,
+      userId: identity.userId,
+      email: identity.email,
+      orgId: identity.orgId,
     });
     applySwitches(
       combined,
@@ -102,6 +152,45 @@ export const reloadFeatureSwitch$ = command(
       action: "set-enabled",
       enabled: combined[FeatureSwitchKey.OkouDebug],
     });
+  },
+);
+
+export const reloadFeatureSwitch$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    const identity = readFeatureSwitchIdentity(clerk);
+    if (!identity) {
+      set(writeConnectionDiagnostic$, {
+        action: "set-enabled",
+        enabled: false,
+      });
+      return;
+    }
+
+    const requestController = createChildAbortController(signal);
+    const abortIfIdentityChanged = () => {
+      if (
+        !isSameFeatureSwitchIdentity(identity, readFeatureSwitchIdentity(clerk))
+      ) {
+        requestController.abort();
+      }
+    };
+    const unsubscribe = clerk.addListener(abortIfIdentityChanged, {
+      skipInitialEmit: true,
+    });
+    abortIfIdentityChanged();
+    await withCleanup(
+      completeOnLocalAbort(
+        set(hydrateFeatureSwitch$, clerk, identity, requestController.signal),
+        requestController.signal,
+        signal,
+      ),
+      () => {
+        unsubscribe();
+        requestController.abort();
+      },
+    );
   },
 );
 

@@ -7,6 +7,22 @@ const OTHER_ROOTFS_HASH: &str = "11111111111111111111111111111111111111111111111
 const OTHER_SNAPSHOT_HASH: &str =
     "2222222222222222222222222222222222222222222222222222222222222222";
 
+async fn assert_rootfs_pair_held(home: &HomePaths, hash: &str) {
+    for path in [home.legacy_rootfs_lock(hash), home.rootfs_lock(hash)] {
+        let error = crate::lock::try_acquire(path).await.unwrap_err();
+        assert!(
+            error.to_string().contains("lock is already held"),
+            "unexpected rootfs lock error: {error}"
+        );
+    }
+}
+
+async fn assert_rootfs_pair_released(home: &HomePaths, hash: &str) {
+    for path in [home.legacy_rootfs_lock(hash), home.rootfs_lock(hash)] {
+        drop(crate::lock::try_acquire(path).await.unwrap());
+    }
+}
+
 struct ConfigFixture {
     dir: tempfile::TempDir,
     firecracker: std::path::PathBuf,
@@ -188,13 +204,14 @@ fn normalize_api_base_url_accepts_http_https_and_preserves_path_prefix() {
         ("https://api.example.com", "https://api.example.com"),
         ("https://api.example.com/", "https://api.example.com"),
         ("http://localhost:3000/api/", "http://localhost:3000/api"),
+        ("http://LOCALHOST.:3000/api/", "http://localhost:3000/api"),
+        ("http://127.0.0.2:8080/base/", "http://127.0.0.2:8080/base"),
         ("https://faß.de/base", "https://xn--fa-hia.de/base"),
         ("https://xn--fa-hia.de/base", "https://xn--fa-hia.de/base"),
         (
             "https://api。example.com.:8443/base/",
             "https://api.example.com:8443/base",
         ),
-        ("http://192.0.2.10:8080/base", "http://192.0.2.10:8080/base"),
         (
             "https://api.example.com/prefix/v1",
             "https://api.example.com/prefix/v1",
@@ -208,6 +225,19 @@ fn normalize_api_base_url_accepts_http_https_and_preserves_path_prefix() {
 
     for (input, expected) in cases {
         assert_eq!(normalize_api_base_url(input).unwrap(), expected);
+    }
+}
+
+#[test]
+fn normalize_api_base_url_rejects_cleartext_remote_hosts() {
+    for input in [
+        "http://api.example.com",
+        "http://localhost.example.com",
+        "http://10.0.0.5:3000",
+        "http://192.0.2.10:8080/base",
+        "http://[2001:db8::1]:8080/base",
+    ] {
+        assert_invalid_api_base_url(input, "https");
     }
 }
 
@@ -407,6 +437,26 @@ async fn load_for_start_applies_api_url_override_before_server_url_validation() 
     let server = config.server.unwrap();
     assert_eq!(server.url, "https://api.example.com/prefix");
     assert_eq!(server.token, "secret");
+}
+
+#[tokio::test]
+async fn load_for_start_rejects_cleartext_remote_api_url_override() {
+    let fixture = ConfigFixture::new().await;
+    let yaml = fixture.yaml_with_default_profile(
+        r#"server:
+  url: https://api.example.com
+  token: secret
+"#,
+    );
+    let config_path = fixture.write_config(&yaml).await;
+
+    let error = load_for_start(&config_path, Some("http://api.example.com"))
+        .await
+        .unwrap_err();
+    let message = error.to_string();
+
+    assert!(message.contains("https"), "got: {message}");
+    assert!(!message.contains("api.example.com"), "got: {message}");
 }
 
 #[tokio::test]
@@ -927,13 +977,7 @@ async fn lock_and_validate_profile_image_artifacts_holds_resource_locks() {
         .await
         .unwrap();
 
-    let rootfs_err = crate::lock::try_acquire(home.rootfs_lock(TEST_ROOTFS_HASH))
-        .await
-        .unwrap_err();
-    assert!(
-        rootfs_err.to_string().contains("lock is already held"),
-        "got: {rootfs_err}"
-    );
+    assert_rootfs_pair_held(&home, TEST_ROOTFS_HASH).await;
 
     let snapshot_err = crate::lock::try_acquire(home.snapshot_lock(TEST_SNAPSHOT_HASH))
         .await
@@ -944,10 +988,7 @@ async fn lock_and_validate_profile_image_artifacts_holds_resource_locks() {
     );
 
     drop(guard);
-    let released_lock = crate::lock::try_acquire(home.rootfs_lock(TEST_ROOTFS_HASH))
-        .await
-        .unwrap();
-    drop(released_lock);
+    assert_rootfs_pair_released(&home, TEST_ROOTFS_HASH).await;
     let released_lock = crate::lock::try_acquire(home.snapshot_lock(TEST_SNAPSHOT_HASH))
         .await
         .unwrap();
@@ -972,10 +1013,7 @@ async fn lock_and_validate_runner_image_artifacts_releases_locks_on_validation_e
         "expected missing cow bitmap error, got: {err}"
     );
 
-    let rootfs_lock = crate::lock::try_acquire(home.rootfs_lock(TEST_ROOTFS_HASH))
-        .await
-        .unwrap();
-    drop(rootfs_lock);
+    assert_rootfs_pair_released(&home, TEST_ROOTFS_HASH).await;
     let snapshot_lock = crate::lock::try_acquire(home.snapshot_lock(TEST_SNAPSHOT_HASH))
         .await
         .unwrap();
@@ -1025,13 +1063,7 @@ async fn lock_and_validate_runner_image_artifacts_holds_all_resource_locks() {
         (TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH),
         (OTHER_ROOTFS_HASH, OTHER_SNAPSHOT_HASH),
     ] {
-        let rootfs_err = crate::lock::try_acquire(home.rootfs_lock(rootfs_hash))
-            .await
-            .unwrap_err();
-        assert!(
-            rootfs_err.to_string().contains("lock is already held"),
-            "got: {rootfs_err}"
-        );
+        assert_rootfs_pair_held(&home, rootfs_hash).await;
         let snapshot_err = crate::lock::try_acquire(home.snapshot_lock(snapshot_hash))
             .await
             .unwrap_err();
@@ -1046,10 +1078,7 @@ async fn lock_and_validate_runner_image_artifacts_holds_all_resource_locks() {
         (TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH),
         (OTHER_ROOTFS_HASH, OTHER_SNAPSHOT_HASH),
     ] {
-        let released_lock = crate::lock::try_acquire(home.rootfs_lock(rootfs_hash))
-            .await
-            .unwrap();
-        drop(released_lock);
+        assert_rootfs_pair_released(&home, rootfs_hash).await;
         let released_lock = crate::lock::try_acquire(home.snapshot_lock(snapshot_hash))
             .await
             .unwrap();

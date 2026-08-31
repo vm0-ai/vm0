@@ -1,6 +1,6 @@
 {
   "name": "@okouai/connectors",
-  "version": "1.210.7",
+  "version": "3.0.1",
   "private": true,
   "type": "module",
   "exports": {
@@ -11,6 +11,34 @@
     "./connector-config": {
       "import": "./src/connector-config.ts",
       "types": "./src/connector-config.ts"
+    },
+    "./connector-identity": {
+      "import": "./src/connector-identity.ts",
+      "types": "./src/connector-identity.ts"
+    },
+    "./connector-catalog/artifacts/*": {
+      "import": "./src/connector-catalog/artifacts/*.ts",
+      "types": "./src/connector-catalog/artifacts/*.ts"
+    },
+    "./connector-catalog/authority": {
+      "import": "./src/connector-catalog/authority.ts",
+      "types": "./src/connector-catalog/authority.ts"
+    },
+    "./connector-catalog/compatibility": {
+      "import": "./src/connector-catalog/compatibility.ts",
+      "types": "./src/connector-catalog/compatibility.ts"
+    },
+    "./connector-catalog/contracts": {
+      "import": "./src/connector-catalog/contracts.ts",
+      "types": "./src/connector-catalog/contracts.ts"
+    },
+    "./connector-catalog/runtime-projection": {
+      "import": "./src/connector-catalog/runtime-projection.ts",
+      "types": "./src/connector-catalog/runtime-projection.ts"
+    },
+    "./connector-catalog/version": {
+      "import": "./src/connector-catalog/version.ts",
+      "types": "./src/connector-catalog/version.ts"
     },
     "./app-oauth-callback": {
       "import": "./src/app-oauth-callback.ts",
@@ -76,7 +104,7 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
+    "lint": "oxlint --deny-warnings && oxlint --type-aware -c ../../.oxlintrc.typeaware.json --deny-warnings && eslint . --max-warnings 0",
     "check-types": "tsc --noEmit"
   },
   "dependencies": {

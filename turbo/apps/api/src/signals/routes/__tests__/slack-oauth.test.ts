@@ -130,7 +130,7 @@ describe("Slack OAuth API routes", () => {
         "test-slack-client-id",
       );
       expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-        `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
+        `${WEB_ORIGIN}/api/integrations/slack/oauth/callback`,
       );
       const scopes = redirectUrl.searchParams.get("scope")?.split(",") ?? [];
       expect(scopes).toContain("app_mentions:read");
@@ -252,7 +252,7 @@ describe("Slack OAuth API routes", () => {
       expect(response.status).toBe(307);
       const redirectUrl = new URL(response.headers.get("location")!);
       expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-        `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
+        `${WEB_ORIGIN}/api/integrations/slack/oauth/callback`,
       );
     });
 
@@ -266,7 +266,7 @@ describe("Slack OAuth API routes", () => {
       const redirectUrl = new URL(response.headers.get("location")!);
       expect(redirectUrl.origin).toBe("https://slack.com");
       expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-        `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
+        `${WEB_ORIGIN}/api/integrations/slack/oauth/callback`,
       );
     });
 
@@ -304,7 +304,7 @@ describe("Slack OAuth API routes", () => {
       const redirectUrl = new URL(response.headers.get("location")!);
       expect(redirectUrl.origin).toBe("https://slack.com");
       expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-        `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
+        `${WEB_ORIGIN}/api/integrations/slack/oauth/callback`,
       );
     });
 
@@ -345,7 +345,7 @@ describe("Slack OAuth API routes", () => {
       expect(response.status).toBe(307);
       const redirectUrl = new URL(response.headers.get("location")!);
       expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-        `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
+        `${WEB_ORIGIN}/api/integrations/slack/oauth/callback`,
       );
       expect(redirectUrl.searchParams.get("user_scope")).toBe("identity.basic");
       expect(redirectUrl.searchParams.get("team")).toBe(
@@ -398,7 +398,7 @@ describe("Slack OAuth API routes", () => {
       expect(response.status).toBe(307);
       const redirectUrl = new URL(response.headers.get("location")!);
       expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-        `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
+        `${WEB_ORIGIN}/api/integrations/slack/oauth/callback`,
       );
     });
 
@@ -578,7 +578,7 @@ describe("Slack OAuth API routes", () => {
       });
       expect(context.mocks.slack.oauth.v2.access).toHaveBeenCalledWith(
         expect.objectContaining({
-          redirect_uri: `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
+          redirect_uri: `${WEB_ORIGIN}/api/integrations/slack/oauth/callback`,
         }),
       );
 
@@ -672,7 +672,7 @@ describe("Slack OAuth API routes", () => {
       expect(response.status).toBe(307);
       expect(context.mocks.slack.oauth.v2.access).toHaveBeenCalledWith(
         expect.objectContaining({
-          redirect_uri: `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
+          redirect_uri: `${WEB_ORIGIN}/api/integrations/slack/oauth/callback`,
         }),
       );
     });
@@ -742,7 +742,7 @@ describe("Slack OAuth API routes", () => {
       const authorizationUrl = new URL(start.headers.get("location")!);
       expect(authorizationUrl.origin).toBe("https://slack.com");
       expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-        `${previewApiOrigin}/api/zero/slack/oauth/callback`,
+        `${previewApiOrigin}/api/integrations/slack/oauth/callback`,
       );
       const state = authorizationUrl.searchParams.get("state");
       if (!state) {
@@ -764,7 +764,7 @@ describe("Slack OAuth API routes", () => {
       expect(callbackLocation.pathname).toBe("/slack/failed");
       expect(context.mocks.slack.oauth.v2.access).toHaveBeenCalledWith(
         expect.objectContaining({
-          redirect_uri: `${previewApiOrigin}/api/zero/slack/oauth/callback`,
+          redirect_uri: `${previewApiOrigin}/api/integrations/slack/oauth/callback`,
         }),
       );
     });

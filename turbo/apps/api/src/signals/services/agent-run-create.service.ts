@@ -239,10 +239,6 @@ import {
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
-  PRESENTATION_RUNBOOK_ARCHIVE_VERSION_ENV,
-  type PresentationRunbookArchiveVersion,
-} from "@okouai/core/resource-registry";
-import {
   resolvePiSandboxModelConfig,
   shouldUsePiExecution,
 } from "./pi-sandbox-config";
@@ -6377,28 +6373,14 @@ function storedConnectorRuntimeTargets(args: {
   ];
 }
 
-function presentationRunbookArchiveVersionForRun(
-  featureSwitchContext: FeatureSwitchContext,
-): PresentationRunbookArchiveVersion {
-  return isFeatureEnabled(
-    FeatureSwitchKey.LatestPresentationTemplates,
-    featureSwitchContext,
-  )
-    ? "latest"
-    : "previous";
-}
-
 function buildStoredPlatformEnvironment(args: {
   readonly platformEnvironment: Record<string, string> | undefined;
   readonly okouTokenPublicBrand: PublicBrand | undefined;
-  readonly featureSwitchContext: FeatureSwitchContext;
   readonly canonicalOkouRuntime: boolean;
 }): Record<string, string> {
   const platformEnvironment = {
     ...args.platformEnvironment,
     CLI_PKG_URL: cliPackageUrlForPublicBrand(args.okouTokenPublicBrand),
-    [PRESENTATION_RUNBOOK_ARCHIVE_VERSION_ENV]:
-      presentationRunbookArchiveVersionForRun(args.featureSwitchContext),
   };
   return args.canonicalOkouRuntime
     ? (withoutLegacyZeroEntries(platformEnvironment) ?? {})
@@ -6460,7 +6442,6 @@ async function buildStoredExecutionContextDraft(args: {
   const platformEnvironment = buildStoredPlatformEnvironment({
     platformEnvironment: args.platformEnvironment,
     okouTokenPublicBrand: args.okouTokenPublicBrand,
-    featureSwitchContext: args.featureSwitchContext,
     canonicalOkouRuntime: args.includeOkouTokenSecret === true,
   });
   // New API -> old runner: keep trusted entries in legacy environment until
@@ -8265,9 +8246,11 @@ interface FinalizedPreparedRunContext extends PreparedRunContext {
 function isPiSandboxEnabledForRun(
   createArgs: CreateAgentRunArgs,
   featureSwitchContext: FeatureSwitchContext,
+  modelProvider: ResolvedModelProviderEnvironment | null,
 ): boolean {
   return shouldUsePiExecution({
     chatThreadId: createArgs.chatThreadId,
+    modelProviderType: modelProvider?.type,
     selectedModel: createArgs.selectedModelOverride,
     triggerSource: createArgs.body.triggerSource,
     featureSwitchContext,
@@ -8279,7 +8262,13 @@ function resolvePreparedPiModelConfig(args: {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
 }): PiModelConfig | undefined {
-  if (!isPiSandboxEnabledForRun(args.createArgs, args.featureSwitchContext)) {
+  if (
+    !isPiSandboxEnabledForRun(
+      args.createArgs,
+      args.featureSwitchContext,
+      args.modelProvider,
+    )
+  ) {
     return undefined;
   }
   const config = resolvePiSandboxModelConfig(args.modelProvider);

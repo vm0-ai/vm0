@@ -12,7 +12,9 @@ class TestXStreamPathRouting:
     """Tests for stream path routing through responseheaders (issue #9534)."""
 
     def _make_x_response_flow(self, real_flow, path: str):
-        return make_x_response_flow(real_flow, path=path)
+        flow = make_x_response_flow(real_flow, path=path)
+        flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] = "already_stream_decodable"
+        return flow
 
     @pytest.mark.parametrize(
         "path",
@@ -113,7 +115,7 @@ class TestXStreamPathRouting:
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
-    def test_brotli_stream_path_skips_response_body_parser(self, real_flow, mitm_ctx):
+    def test_brotli_stream_path_registers_response_body_parser(self, real_flow, mitm_ctx):
         flow = self._make_x_response_flow(real_flow, "/2/tweets/search/stream")
         assert flow.response is not None
         flow.response.headers = header_map(
@@ -124,8 +126,10 @@ class TestXStreamPathRouting:
             mitm_addon.responseheaders(flow)
 
         assert callable(response_stream(flow))
-        assert metadata_keys.X_NDJSON_STATE not in flow.metadata
-        assert "connector_response_finish" not in flow.metadata
+        assert metadata_keys.X_NDJSON_STATE in flow.metadata
+        assert "connector_response_finish" in flow.metadata
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
     def test_unregistered_parser_factory_does_not_require_original_url(self, real_flow):
         flow = self._make_x_response_flow(real_flow, "/2/tweets/search/stream")

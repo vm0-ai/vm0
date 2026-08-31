@@ -48,10 +48,6 @@ import {
   mockUploadPending,
   mockUploadSuccess,
 } from "../../mocks/upload-helpers.ts";
-import {
-  resetMockClerkAuthComponentMounted,
-  setMockClerkAuthComponentMounted,
-} from "../../test/mocks/clerk-react.ts";
 import { createDeferredPromise } from "../utils.ts";
 
 interface WindowOpenCall {
@@ -487,17 +483,6 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       hasSubscriptionOnChannel,
       getAuthTokenHistory,
     },
-    clerk: {
-      deferAuthComponentMount: () => {
-        setMockClerkAuthComponentMounted(false);
-        restoreOnAbort(getSignal(), resetMockClerkAuthComponentMounted);
-        return {
-          mount: () => {
-            setMockClerkAuthComponentMounted(true);
-          },
-        };
-      },
-    },
     deferred: <T>() => {
       return createDeferredPromise<T>(getSignal());
     },
@@ -554,11 +539,11 @@ function mockMatchMedia(matches: boolean | ((query: string) => boolean)): void {
       matches: typeof matches === "function" ? matches(query) : matches,
       media: query,
       onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
+      addListener: vi.fn<MediaQueryList["addListener"]>(),
+      removeListener: vi.fn<MediaQueryList["removeListener"]>(),
+      addEventListener: vi.fn<MediaQueryList["addEventListener"]>(),
+      removeEventListener: vi.fn<MediaQueryList["removeEventListener"]>(),
+      dispatchEvent: vi.fn<MediaQueryList["dispatchEvent"]>(),
     };
     return mediaQueryList;
   });

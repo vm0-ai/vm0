@@ -7,11 +7,9 @@ import {
   type State,
 } from "ccstate";
 import { delay } from "signal-timers";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isEditableTarget, matchShortcut } from "@okouai/ui";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { i18n } from "../../i18n/index.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import type {
   ComposerFeedbackSignals,
   FeedbackRange,
@@ -396,9 +394,6 @@ function createStartForward(
   openForward$: Command<void, [ChatForwardSelection]>,
 ) {
   return command(({ get, set }): boolean => {
-    if (!(get(featureSwitch$)[FeatureSwitchKey.ChatForward] ?? false)) {
-      return false;
-    }
     const selection = get(selection$);
     if (!selection?.threadId || !selection.runId) {
       return false;

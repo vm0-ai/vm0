@@ -26,6 +26,7 @@ import {
 import { and, eq, inArray } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
+import { redactPresignedUrls } from "../../lib/presigned-url-redaction";
 import {
   canonicalUsagePricingProvider,
   resolveUsagePricingProvider,
@@ -1366,9 +1367,10 @@ async function readProviderErrorBodyForLog(
   if (!body) {
     return undefined;
   }
-  return body.length > PROVIDER_ERROR_BODY_LOG_MAX_LENGTH
-    ? `${body.slice(0, PROVIDER_ERROR_BODY_LOG_MAX_LENGTH)}...`
-    : body;
+  const redactedBody = redactPresignedUrls(body);
+  return redactedBody.length > PROVIDER_ERROR_BODY_LOG_MAX_LENGTH
+    ? `${redactedBody.slice(0, PROVIDER_ERROR_BODY_LOG_MAX_LENGTH)}...`
+    : redactedBody;
 }
 
 export async function submitBytePlusVideoGeneration(

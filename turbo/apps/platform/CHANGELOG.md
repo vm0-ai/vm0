@@ -1,5 +1,119 @@
 # Changelog
 
+## [0.813.2](https://github.com/vm0-ai/vm0/compare/app-v0.813.1...app-v0.813.2) (2026-08-31)
+
+
+### Performance Improvements
+
+* **platform:** remove server contracts from startup graph ([#30444](https://github.com/vm0-ai/vm0/issues/30444)) ([e9aff31](https://github.com/vm0-ai/vm0/commit/e9aff312223e62e4e451eb68b61864687e08b007))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.15
+    * @okouai/core bumped to 8.604.1
+
+## [0.813.1](https://github.com/vm0-ai/vm0/compare/app-v0.813.0...app-v0.813.1) (2026-08-31)
+
+
+### Refactoring
+
+* **auth:** fully roll out auth v2 ([#30406](https://github.com/vm0-ai/vm0/issues/30406)) ([9509186](https://github.com/vm0-ai/vm0/commit/950918630f56ba9019dfc32893dd29e8f5bd5797))
+
+
+### Performance Improvements
+
+* **platform:** load Google Fonts from document head ([#30449](https://github.com/vm0-ai/vm0/issues/30449)) ([882445c](https://github.com/vm0-ai/vm0/commit/882445c0008c52f284db0885cc1ed8e34ff60ea8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.14
+    * @okouai/connectors bumped to 3.0.1
+    * @okouai/core bumped to 8.604.0
+
+## [0.813.0](https://github.com/vm0-ai/vm0/compare/app-v0.812.6...app-v0.813.0) (2026-08-31)
+
+
+### Features
+
+* **platform:** add intro video visual balance ([#30399](https://github.com/vm0-ai/vm0/issues/30399)) ([adf2b69](https://github.com/vm0-ai/vm0/commit/adf2b693c71a29714269e78ca6608c1f1a7e6141))
+
+
+### Bug Fixes
+
+* **chat:** offer recovery for unsupported codex models ([#30420](https://github.com/vm0-ai/vm0/issues/30420)) ([2aab056](https://github.com/vm0-ai/vm0/commit/2aab056fbdb9eb1c48238a8f1a75dd5d97066182))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.13
+    * @okouai/core bumped to 8.603.6
+
+## [0.812.6](https://github.com/vm0-ai/vm0/compare/app-v0.812.5...app-v0.812.6) (2026-08-31)
+
+
+### Refactoring
+
+* remove teams integration feature switch ([#30383](https://github.com/vm0-ai/vm0/issues/30383)) ([21bfe91](https://github.com/vm0-ai/vm0/commit/21bfe915ee1183d2267b62c36fb90773f54192a5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.603.5
+
+## [0.812.5](https://github.com/vm0-ai/vm0/compare/app-v0.812.4...app-v0.812.5) (2026-08-31)
+
+
+### Bug Fixes
+
+* **platform:** derive thinking indicator from chat events ([#30357](https://github.com/vm0-ai/vm0/issues/30357)) ([19fe4f5](https://github.com/vm0-ai/vm0/commit/19fe4f529e23558401e59fb898d895144e1959c5))
+
+## [0.812.4](https://github.com/vm0-ai/vm0/compare/app-v0.812.3...app-v0.812.4) (2026-08-30)
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#30366](https://github.com/vm0-ai/vm0/issues/30366)) ([ec658a5](https://github.com/vm0-ai/vm0/commit/ec658a548883f28e75126106528e53c7241a1ade))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.12
+    * @okouai/core bumped to 8.603.4
+
+## [0.812.3](https://github.com/vm0-ai/vm0/compare/app-v0.812.2...app-v0.812.3) (2026-08-30)
+
+
+### Bug Fixes
+
+* **platform:** align pinned agent shortcuts with sidebar navigation ([#30338](https://github.com/vm0-ai/vm0/issues/30338)) ([81834c3](https://github.com/vm0-ai/vm0/commit/81834c35a51d4ce5920946acdd3712d4c8c9a21d))
+
+
+### Refactoring
+
+* clear app and connector lint warnings ([#30350](https://github.com/vm0-ai/vm0/issues/30350)) ([36e363e](https://github.com/vm0-ai/vm0/commit/36e363e2bd57c38ba82c541cb80e17c568551364))
+* remove shared chat database feature switch ([#30272](https://github.com/vm0-ai/vm0/issues/30272)) ([2210065](https://github.com/vm0-ai/vm0/commit/221006596f337e8d50882a3c427b2cdd56619d87))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.11
+    * @okouai/connectors bumped to 1.210.8
+    * @okouai/core bumped to 8.603.3
+
 ## [0.812.2](https://github.com/vm0-ai/vm0/compare/app-v0.812.1...app-v0.812.2) (2026-08-30)
 
 

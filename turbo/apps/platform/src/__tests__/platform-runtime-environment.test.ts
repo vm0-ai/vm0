@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BrowserOptions } from "@sentry/browser";
-import type { PostHogConfig } from "posthog-js/dist/module.slim";
+import type { PostHog, PostHogConfig } from "posthog-js/dist/module.slim";
 import { isOkouProductionHostname } from "../lib/platform-host.ts";
 import { sentryLogContext } from "../lib/sentry-config.ts";
 import { initSharedDatabaseWorkerSentry } from "../shared-database/worker-sentry.ts";
@@ -25,8 +25,10 @@ const {
   sentryInit,
 } = vi.hoisted(() => {
   return {
-    browserSentryCaptureException: vi.fn(),
-    browserSentryCaptureMessage: vi.fn(),
+    browserSentryCaptureException:
+      vi.fn<typeof import("@sentry/browser").captureException>(),
+    browserSentryCaptureMessage:
+      vi.fn<typeof import("@sentry/browser").captureMessage>(),
     browserSentryInit: vi.fn<(options: BrowserOptions) => void>(),
     posthogInit:
       vi.fn<(key: string, config?: Partial<PostHogConfig>) => void>(),
@@ -37,10 +39,10 @@ const {
 vi.mock("posthog-js/dist/module.slim", () => {
   return {
     posthog: {
-      capture: vi.fn(),
-      identify: vi.fn(),
+      capture: vi.fn<PostHog["capture"]>(),
+      identify: vi.fn<PostHog["identify"]>(),
       init: posthogInit,
-      reset: vi.fn(),
+      reset: vi.fn<PostHog["reset"]>(),
     },
   };
 });
@@ -48,7 +50,7 @@ vi.mock("posthog-js/dist/module.slim", () => {
 vi.mock("@sentry/react", () => {
   return {
     init: sentryInit,
-    setUser: vi.fn(),
+    setUser: vi.fn<typeof import("@sentry/react").setUser>(),
   };
 });
 
@@ -247,6 +249,7 @@ describe("portable platform runtime environment", () => {
     expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       publicBrand: "vm0",
+      postHogHost: "https://j.okou.io",
       vapidPublicKey: PRODUCTION_VAPID_KEY,
       clerkPublishableKey: PRODUCTION_CLERK_KEY,
     });
@@ -269,7 +272,7 @@ describe("portable platform runtime environment", () => {
     ]);
     expect(posthogInit).toHaveBeenCalledWith(
       POSTHOG_KEY,
-      expect.objectContaining({ api_host: "https://j.vm0.ai" }),
+      expect.objectContaining({ api_host: "https://j.okou.io" }),
     );
     const [, posthogConfig] = posthogInit.mock.lastCall ?? [];
     expect(

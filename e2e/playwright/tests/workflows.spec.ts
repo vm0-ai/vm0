@@ -1,7 +1,8 @@
+import { resolveApiBackendUrl } from "../api-backend-url";
 import { expect, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
-const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
+const appUrl = deriveAppUrl(resolveApiBackendUrl());
 
 test("navigate to workflows page and verify heading", async ({ page }) => {
   await page.goto(`${appUrl}/workflows`);

@@ -3,6 +3,7 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
@@ -112,10 +113,6 @@ struct StatusSnapshot {
     status: RunnerStatus,
 }
 
-struct PersistenceState {
-    published_generation: u64,
-}
-
 struct SerializedStatusSnapshot {
     generation: u64,
     json: String,
@@ -127,7 +124,8 @@ struct DelayedPersistenceState {
 }
 
 struct PersistenceCoordinator {
-    ordering: Arc<Mutex<PersistenceState>>,
+    ordering: Arc<Mutex<()>>,
+    published_generation: AtomicU64,
     delayed: std::sync::Mutex<DelayedPersistenceState>,
     #[cfg(test)]
     settled: tokio::sync::Notify,
@@ -138,7 +136,7 @@ type StatusWriteFuture = Pin<Box<dyn Future<Output = StatusResult<()>> + Send + 
 enum InFlightStatusWriteState {
     Active {
         write: StatusWriteFuture,
-        ordering: OwnedMutexGuard<PersistenceState>,
+        ordering: OwnedMutexGuard<()>,
     },
     Complete,
 }
@@ -154,9 +152,8 @@ struct InFlightStatusWrite {
 impl PersistenceCoordinator {
     fn new() -> Self {
         Self {
-            ordering: Arc::new(Mutex::new(PersistenceState {
-                published_generation: 0,
-            })),
+            ordering: Arc::new(Mutex::new(())),
+            published_generation: AtomicU64::new(0),
             delayed: std::sync::Mutex::new(DelayedPersistenceState {
                 active: false,
                 pending: None,
@@ -215,7 +212,7 @@ impl PersistenceCoordinator {
 impl InFlightStatusWrite {
     fn new(
         write: StatusWriteFuture,
-        ordering: OwnedMutexGuard<PersistenceState>,
+        ordering: OwnedMutexGuard<()>,
         persistence: Arc<PersistenceCoordinator>,
         path: PathBuf,
         generation: u64,
@@ -235,10 +232,10 @@ impl InFlightStatusWrite {
             InFlightStatusWriteState::Active { write, .. } => write.as_mut().await,
             InFlightStatusWriteState::Complete => return Ok(()),
         };
-        if result.is_ok()
-            && let InFlightStatusWriteState::Active { ordering, .. } = &mut self.state
-        {
-            ordering.published_generation = self.generation;
+        if result.is_ok() {
+            self.persistence
+                .published_generation
+                .store(self.generation, Ordering::Release);
         }
         self.state = InFlightStatusWriteState::Complete;
         result
@@ -274,7 +271,7 @@ impl Drop for InFlightStatusWrite {
 
 async fn continue_in_flight_status_write(
     write: StatusWriteFuture,
-    mut ordering: OwnedMutexGuard<PersistenceState>,
+    _ordering: OwnedMutexGuard<()>,
     persistence: Arc<PersistenceCoordinator>,
     path: PathBuf,
     generation: u64,
@@ -282,11 +279,13 @@ async fn continue_in_flight_status_write(
     if let Err(error) = write.await {
         warn!(generation, %error, "in-flight status persistence later failed");
     } else {
-        ordering.published_generation = generation;
+        persistence
+            .published_generation
+            .store(generation, Ordering::Release);
     }
     while let Some(pending) = persistence.take_pending_or_finish() {
         let pending_generation = pending.generation;
-        if ordering.published_generation >= pending_generation {
+        if persistence.published_generation.load(Ordering::Acquire) >= pending_generation {
             continue;
         }
         if let Err(source) =
@@ -302,7 +301,9 @@ async fn continue_in_flight_status_write(
                 "deferred status persistence failed"
             );
         } else {
-            ordering.published_generation = pending_generation;
+            persistence
+                .published_generation
+                .store(pending_generation, Ordering::Release);
         }
     }
 }
@@ -589,13 +590,36 @@ impl StatusTracker {
             let mut state = self.state.lock().await;
             let removed = matches!(state.active_runs.get(&run_id), Some(current) if current.sandbox_id == sandbox_id);
             if !removed {
-                return Ok(false);
+                None
+            } else {
+                state.active_runs.remove(&run_id);
+                Some(self.capture_changed_snapshot(&mut state))
             }
-            state.active_runs.remove(&run_id);
-            self.capture_changed_snapshot(&mut state)
+        };
+        let Some(snapshot) = snapshot else {
+            self.retry_unpublished_snapshot().await?;
+            return Ok(false);
         };
         self.persist_snapshot(snapshot).await?;
         Ok(true)
+    }
+
+    /// Publish the current whole status when requested state is newer than the
+    /// latest successful publication.
+    pub async fn retry_unpublished_snapshot(&self) -> StatusResult<()> {
+        let snapshot = {
+            let mut state = self.state.lock().await;
+            if self
+                .persistence
+                .published_generation
+                .load(Ordering::Acquire)
+                >= state.generation
+            {
+                return Ok(());
+            }
+            self.capture_changed_snapshot(&mut state)
+        };
+        self.persist_snapshot(snapshot).await
     }
 
     /// Replace the idle sandbox list only if the snapshot is at least as new as the
@@ -732,7 +756,7 @@ impl StatusTracker {
                 });
             }
         };
-        if ordering.published_generation >= serialized.generation {
+        if persistence.published_generation.load(Ordering::Acquire) >= serialized.generation {
             return Ok(());
         }
 
@@ -816,6 +840,17 @@ mod tests {
         serde_json::from_str(&content).unwrap()
     }
 
+    async fn assert_latest_generation_published(tracker: &StatusTracker) {
+        let requested_generation = tracker.state.lock().await.generation;
+        assert_eq!(
+            tracker
+                .persistence
+                .published_generation
+                .load(Ordering::Acquire),
+            requested_generation,
+        );
+    }
+
     #[tokio::test]
     async fn write_initial_creates_file() {
         let dir = tempfile::tempdir().unwrap();
@@ -830,6 +865,7 @@ mod tests {
         assert!(status["active_runs"].as_array().unwrap().is_empty());
         assert!(status["started_at"].as_str().is_some());
         assert!(status["updated_at"].as_str().is_some());
+        assert_latest_generation_published(&tracker).await;
     }
 
     #[tokio::test]
@@ -918,6 +954,7 @@ mod tests {
         tracker.set_mode(RunnerMode::Running).await.unwrap();
         let status = read_status(&path);
         assert_eq!(status["mode"], "running");
+        assert_latest_generation_published(&tracker).await;
     }
 
     #[tokio::test(start_paused = true)]
@@ -962,6 +999,7 @@ mod tests {
         );
         let status = read_status(&path);
         assert_eq!(status["mode"], "running");
+        assert_latest_generation_published(&tracker).await;
     }
 
     #[tokio::test]
@@ -1020,6 +1058,94 @@ mod tests {
         tracker.set_mode(RunnerMode::Running).await.unwrap();
         let status = read_status(&path);
         assert_eq!(status["mode"], "running");
+        assert_latest_generation_published(&tracker).await;
+    }
+
+    #[tokio::test]
+    async fn remove_run_if_matching_retries_failed_publication_without_another_mutation() {
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("status");
+        let unavailable_parent = dir.path().join("status-unavailable");
+        tokio::fs::create_dir(&parent).await.unwrap();
+        let path = parent.join("status.json");
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        tracker.add_run(run_id, sandbox_id).await.unwrap();
+
+        tokio::fs::rename(&parent, &unavailable_parent)
+            .await
+            .unwrap();
+        let error = tracker
+            .remove_run_if_matching(run_id, sandbox_id)
+            .await
+            .unwrap_err();
+        assert!(matches!(error, StatusPersistenceError::Write { .. }));
+        tokio::fs::rename(&unavailable_parent, &parent)
+            .await
+            .unwrap();
+
+        assert!(
+            !tracker
+                .remove_run_if_matching(run_id, sandbox_id)
+                .await
+                .unwrap()
+        );
+
+        let status = read_status(&path);
+        assert!(status["active_runs"].as_array().unwrap().is_empty());
+        assert_latest_generation_published(&tracker).await;
+    }
+
+    #[tokio::test]
+    async fn failed_removal_retry_publishes_replacement_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("status");
+        let unavailable_parent = dir.path().join("status-unavailable");
+        tokio::fs::create_dir(&parent).await.unwrap();
+        let path = parent.join("status.json");
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
+        let run_id = RunId::new_v4();
+        let old_sandbox_id = SandboxId::new_v4();
+        let current_sandbox_id = SandboxId::new_v4();
+        tracker.add_run(run_id, old_sandbox_id).await.unwrap();
+
+        tokio::fs::rename(&parent, &unavailable_parent)
+            .await
+            .unwrap();
+        let removal_error = tracker
+            .remove_run_if_matching(run_id, old_sandbox_id)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            removal_error,
+            StatusPersistenceError::Write { .. }
+        ));
+        let replacement_error = tracker
+            .add_run(run_id, current_sandbox_id)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            replacement_error,
+            StatusPersistenceError::Write { .. }
+        ));
+        tokio::fs::rename(&unavailable_parent, &parent)
+            .await
+            .unwrap();
+
+        assert!(
+            !tracker
+                .remove_run_if_matching(run_id, old_sandbox_id)
+                .await
+                .unwrap()
+        );
+
+        let status = read_status(&path);
+        let runs = status["active_runs"].as_array().unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0]["run_id"], run_id.to_string());
+        assert_eq!(runs[0]["sandbox_id"], current_sandbox_id.to_string());
+        assert_latest_generation_published(&tracker).await;
     }
 
     #[tokio::test]

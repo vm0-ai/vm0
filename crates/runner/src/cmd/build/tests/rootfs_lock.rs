@@ -1,6 +1,16 @@
 use super::fixtures::*;
 use super::*;
 
+async fn assert_rootfs_pair_held(home: &HomePaths, hash: &str) {
+    for path in [home.legacy_rootfs_lock(hash), home.rootfs_lock(hash)] {
+        let error = lock::try_acquire(path).await.unwrap_err();
+        assert!(
+            error.to_string().contains("lock is already held"),
+            "unexpected rootfs lock error: {error}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn existing_rootfs_best_effort_allows_missing_r2_cache() {
     let dir = tempfile::tempdir().unwrap();
@@ -105,6 +115,7 @@ async fn rootfs_image_lock_uses_shared_for_existing_rootfs_in_use() {
     .unwrap();
 
     assert!(image_lock.is_shared());
+    assert_rootfs_pair_held(&home, rootfs_hash).await;
 }
 
 #[tokio::test]
@@ -119,6 +130,7 @@ async fn rootfs_image_lock_uses_exclusive_for_missing_rootfs() {
         .unwrap();
 
     assert!(image_lock.is_exclusive());
+    assert_rootfs_pair_held(&home, rootfs_hash).await;
 }
 
 #[tokio::test]

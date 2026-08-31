@@ -29,7 +29,7 @@ describe("force upgrade dialog", () => {
   });
 
   it("shows an update dialog and refreshes after confirmation", async () => {
-    const reload = vi.fn();
+    const reload = vi.fn<() => void>();
     context.store.set(forceUpgradeDialogOpen$, true);
 
     render(

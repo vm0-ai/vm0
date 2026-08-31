@@ -116,7 +116,9 @@ async function chatSearchIndexedMatches(
           : undefined,
       ),
     )
-    .orderBy(desc(chatEventSearchMessages.createdAt))
+    // Match the existing user/org/created_at index ordering exactly so
+    // PostgreSQL can scan it directly when finding the newest matches.
+    .orderBy(sql`${desc(chatEventSearchMessages.createdAt)} NULLS LAST`)
     .limit(args.limit)
     .as("chat_search_indexed_matches");
 

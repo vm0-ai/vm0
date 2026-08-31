@@ -19,6 +19,16 @@ import { afterAll, afterEach, beforeEach, beforeAll, vi } from "vitest";
 import { mockedClerk } from "../__tests__/mock-auth.ts";
 import { clearAllDetached } from "../signals/utils.ts";
 
+for (const [name, content] of [
+  ["okou-app-git-commit-sha", "0123456789abcdef0123456789abcdef01234567"],
+  ["okou-app-version", "0.540.0"],
+]) {
+  const meta = document.createElement("meta");
+  meta.name = name;
+  meta.content = content;
+  document.head.append(meta);
+}
+
 vi.mock("@clerk/shared/loadClerkJsScript", () => {
   return {
     loadClerkJSScript: (options: {
@@ -33,11 +43,6 @@ vi.mock("@clerk/shared/loadClerkJsScript", () => {
         mockedClerk.initialize(options.publishableKey);
       }
       Reflect.set(globalThis, "Clerk", mockedClerk);
-      return Promise.resolve(null);
-    },
-    loadClerkUIScript: () => {
-      function MockClerkUI() {}
-      Reflect.set(globalThis, "__internal_ClerkUICtor", MockClerkUI);
       return Promise.resolve(null);
     },
   };

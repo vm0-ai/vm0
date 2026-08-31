@@ -69,14 +69,14 @@ function physicalEntries(
 const acquisitionDisposition = {
   classification: "migrate",
   reason:
-    "The acquisition attribution column still exposes a legacy product identity in current schema.",
+    "The legacy acquisition column and temporary mirror bridge retain the historical database identity during the canonical expand rollout.",
   ownerIssue: "#28368",
   writerStopCondition:
-    "A separately reviewed dual-column release writes only the domain-approved canonical acquisition attribution column under #28368.",
+    "A separately reviewed switch makes acquisition_first_party_source the only active application writer while the mirror bridge remains installed for rollback.",
   drainEvidence:
-    "MaskDB has zero non-null legacy-only attribution rows after backfill and a 7-day reporting audit has zero readers of the legacy column.",
+    "After the bounded backfill, exact MaskDB reads show zero legacy-only, canonical-only, or unequal non-null source pairs; a 7-day audit shows zero application writers and reporting readers of acquisition_vm0_source, and the rollback target no longer requires legacy-only state.",
   removalGate:
-    "#28368 may contract the column only when both zero residual rows and the 7-day zero-reader reporting audit are recorded.",
+    "#28368 may remove the bridge or contract acquisition_vm0_source only after writer-stop, exact parity, the 7-day reporting-reader audit, rollback drain, and replayed/regenerated catalog-contract verification all pass.",
 } as const satisfies ManifestDisposition;
 
 const entitlementDisposition = {
@@ -151,6 +151,16 @@ const nonWorkflowPhysicalEntries = [
         key: "column:public.org_metadata.acquisition_vm0_source",
         kind: "column",
         sources: SNAPSHOT_AND_CATALOG,
+      },
+      {
+        key: "function:public.sync_org_metadata_acquisition_first_party_source_1033()",
+        kind: "function",
+        sources: CATALOG_ONLY,
+      },
+      {
+        key: "trigger:public.org_metadata.sync_org_metadata_acquisition_first_party_source_1033",
+        kind: "trigger",
+        sources: CATALOG_ONLY,
       },
     ],
     acquisitionDisposition,

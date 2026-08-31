@@ -29,7 +29,7 @@ type AuthV2PageProps = {
 export function AuthV2Page(props: AuthV2PageProps) {
   const continuationState = useGet(props.continuationSignals.state$);
   return (
-    <AuthShell authBrand={props.platformContext.authBrand} variant="v2">
+    <AuthShell authBrand={props.platformContext.authBrand}>
       {continuationState.status !== "inactive" ? (
         <AuthV2ContinuationCard
           authBrand={props.platformContext.authBrand}

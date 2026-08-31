@@ -1175,6 +1175,7 @@ def _current_firewall_authorization_classification(
             metadata_keys.HTTP_REQUEST_START_MONOTONIC,
             metadata_keys.WEBSOCKET_UPGRADE_REQUEST,
             metadata_keys.AWS_SIGV4_REQUEST_INSPECTION,
+            metadata_keys.RESPONSE_ENCODING_NEGOTIATION,
         )
         if key in flow.metadata
     }
@@ -1518,8 +1519,10 @@ def _maybe_normalize_accept_encoding_for_body_inspection(
     if _is_websocket_upgrade_request(flow):
         flow.metadata[metadata_keys.WEBSOCKET_UPGRADE_REQUEST] = True
     if _expects_http_response_body_usage_inspection(flow, allow, sandbox_info):
-        response_encoding_negotiation.normalize_accept_encoding_for_body_inspection(
-            flow.request.headers
+        flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] = (
+            response_encoding_negotiation.normalize_accept_encoding_for_body_inspection(
+                flow.request.headers
+            )
         )
 
 
@@ -1683,6 +1686,7 @@ def _release_terminal_flow_state(
     flow.metadata.pop(metadata_keys.FIREWALL_AUTH_PROBE_FAILURE, None)
     release_aws_sigv4_request_inspection(flow)
     flow.metadata.pop(metadata_keys.WEBSOCKET_UPGRADE_REQUEST, None)
+    flow.metadata.pop(metadata_keys.RESPONSE_ENCODING_NEGOTIATION, None)
     request_streaming.release_request_stream_state(flow)
     connector_diagnostics.release_flow_state(flow)
     codex_model_catalog_cache.release_flow_state(flow)
@@ -1954,6 +1958,9 @@ def _handle_error(flow: http.HTTPFlow) -> None:
             response_size=0,
         )
         log_entry["error"] = error_msg
+
+        if flow_metadata.should_capture_body(flow.metadata):
+            body_capture.add_capture_fields(flow, log_entry, response_incomplete=True)
 
         log_http_network_entry(network_log_path, log_entry, raw_url)
 
