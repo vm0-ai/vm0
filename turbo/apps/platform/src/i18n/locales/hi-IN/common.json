@@ -655,6 +655,7 @@
       "importedSlides_one": "{{count}} स्लाइड",
       "importedSlides_other": "{{count}} स्लाइड",
       "multiAccent": "बहु-उच्चारण",
+      "needPro": "Pro चाहिए",
       "nextSlide": "अगली स्लाइड का पूर्वावलोकन करें",
       "noMatches": "कोई मेल नहीं",
       "placeholder": "{{title}} वेबसाइट पूर्वावलोकन प्लेसहोल्डर",
@@ -707,6 +708,7 @@
       "tryDifferentSearch": "भिन्न खोज का प्रयास करें.",
       "use": "उपयोग",
       "useThisTemplate": "इस टेम्पलेट का उपयोग करें",
+      "viewVideoPlans": "वीडियो टेम्पलेट {{title}} के लिए प्लान देखें",
       "visibility": {
         "change": "बदलें",
         "changeLabel": "टेम्पलेट की दृश्यता बदलें",

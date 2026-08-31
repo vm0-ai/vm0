@@ -674,6 +674,7 @@
       "importedSlides_many": "{{count}} slides",
       "importedSlides_other": "{{count}} slides",
       "multiAccent": "Várias cores de destaque",
+      "needPro": "Requer Pro",
       "nextSlide": "Visualizar próximo slide",
       "noMatches": "Nenhum resultado",
       "placeholder": "Espaço reservado para visualização do site {{title}}",
@@ -726,6 +727,7 @@
       "tryDifferentSearch": "Tente outra busca.",
       "use": "Usar",
       "useThisTemplate": "Usar este modelo",
+      "viewVideoPlans": "Ver planos para o modelo de vídeo {{title}}",
       "visibility": {
         "change": "Alterar",
         "changeLabel": "Alterar a visibilidade do modelo",

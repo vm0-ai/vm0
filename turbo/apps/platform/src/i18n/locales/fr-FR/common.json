@@ -674,6 +674,7 @@
       "importedSlides_many": "{{count}} diapositives",
       "importedSlides_other": "{{count}} diapositives",
       "multiAccent": "Multi-accents",
+      "needPro": "Pro requis",
       "nextSlide": "Aperçu de la diapositive suivante",
       "noMatches": "Aucun résultat",
       "placeholder": "Espace réservé pour l'aperçu du site {{title}}",
@@ -726,6 +727,7 @@
       "tryDifferentSearch": "Essayez une recherche différente.",
       "use": "Utiliser",
       "useThisTemplate": "Utilisez ce modèle",
+      "viewVideoPlans": "Voir les offres pour le modèle vidéo {{title}}",
       "visibility": {
         "change": "Modifier",
         "changeLabel": "Modifier la visibilité du modèle",
