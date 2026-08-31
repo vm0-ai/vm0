@@ -46,6 +46,8 @@ import {
 import { isComputerUseSetupRequired } from "./computer-use-startup-gate";
 import { ComputerUseRuntimeController } from "./computer-use-runtime-controller";
 import { DeveloperToolsController } from "./desktop-developer-tools-controller";
+import { DesktopRecorderController } from "./desktop-recorder-controller";
+import { createRecorderNativeBackend } from "./desktop-recorder-native";
 import {
   getComputerUsePermissionState,
   probeComputerUseAutomationPermission,
@@ -204,6 +206,18 @@ const quitConfirmation = new DesktopQuitConfirmationController({
     app.quit();
   },
 });
+const screenRecorder = new DesktopRecorderController({
+  createBackend: () => createRecorderNativeBackend(),
+  createOutputPath: () =>
+    path.join(
+      app.getPath("userData"),
+      "recordings",
+      `screen-recording-${Date.now().toString()}.mp4`,
+    ),
+  logError: (error) => {
+    console.warn("Desktop screen recording teardown failed", error);
+  },
+});
 const developerTools = new DeveloperToolsController({
   fetchFeatureSwitches: () =>
     getAuthSession().fetchWithSessionAuth(
@@ -212,6 +226,9 @@ const developerTools = new DeveloperToolsController({
   setFilesystemPluginFeatureEnabled: (enabled) => {
     filesystemPluginManager?.setFeatureEnabled(enabled);
     mcpPluginManager?.setFeatureEnabled(enabled);
+  },
+  setScreenRecordingFeatureEnabled: (enabled) => {
+    screenRecorder.setFeatureEnabled(enabled);
   },
   onChange: notifyDeveloperToolsChanged,
   logRefreshError: (error) => {

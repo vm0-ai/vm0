@@ -32,9 +32,6 @@ interface VM0PreBundleCopy {
 }
 
 declare global {
-  const __OKOU_APP_GIT_COMMIT_SHA__: string;
-  const __OKOU_APP_VERSION__: string;
-
   interface Window {
     _vm0: VM0Global | undefined;
     __vm0BrowserSupported?: boolean;
