@@ -143,11 +143,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Webflow site management connector",
     enabled: false,
   },
-  [FeatureSwitchKey.MetaAdsConnector]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Enable the Meta Ads Manager connector",
-    enabled: true,
-  },
   [FeatureSwitchKey.PosthogConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the PostHog analytics connector",

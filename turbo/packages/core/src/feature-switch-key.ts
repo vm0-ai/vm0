@@ -25,7 +25,6 @@ export enum FeatureSwitchKey {
   SupabaseConnector = "supabaseConnector",
   WebflowConnector = "webflowConnector",
   CloseConnector = "closeConnector",
-  MetaAdsConnector = "metaAdsConnector",
   PosthogConnector = "posthogConnector",
   PayPalConnector = "payPalConnector",
   RampConnector = "rampConnector",
