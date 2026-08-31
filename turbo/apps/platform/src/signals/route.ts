@@ -6,6 +6,7 @@ import { pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { clearPage$ } from "./react-router.ts";
 import { rootSignal$ } from "./root-signal.ts";
+import { waitForAuthenticatedServices$ } from "./auth-context.ts";
 import {
   bestEffort,
   detach,
@@ -366,6 +367,8 @@ export const setupAuthPageWrapper = (
       return;
     }
 
+    await set(waitForAuthenticatedServices$, signal);
+    signal.throwIfAborted();
     await set(setupPageWrapper(fn), signal);
   });
 };

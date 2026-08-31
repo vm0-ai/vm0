@@ -8,14 +8,21 @@ const forceUpgradeDialogOpenState$ = state(false);
 export const forceUpgradeDialogOpen$ = forceUpgradeDialogOpenState$;
 
 export function reportForceUpgradeRequired(): void {
-  window.dispatchEvent(new Event(FORCE_UPGRADE_REQUIRED_EVENT));
+  if (typeof window !== "undefined") {
+    globalThis.window.dispatchEvent(new Event(FORCE_UPGRADE_REQUIRED_EVENT));
+  }
 }
 
-export function reportForceUpgradeResponse(response: {
-  readonly status: number;
-}): boolean {
+export function reportForceUpgradeResponse(
+  response: { readonly status: number },
+  onForceUpgrade?: () => void,
+): boolean {
   if (response.status === CLIENT_FORCE_UPGRADE_STATUS) {
-    reportForceUpgradeRequired();
+    if (onForceUpgrade) {
+      onForceUpgrade();
+    } else {
+      reportForceUpgradeRequired();
+    }
     return true;
   }
   return false;
@@ -23,7 +30,7 @@ export function reportForceUpgradeResponse(response: {
 
 export const listenForceUpgradeDialog$ = command(
   ({ set }, signal: AbortSignal) => {
-    if (signal.aborted) {
+    if (signal.aborted || typeof window === "undefined") {
       return;
     }
 
@@ -31,10 +38,16 @@ export const listenForceUpgradeDialog$ = command(
       set(forceUpgradeDialogOpenState$, true);
     };
     const removeListener = () => {
-      window.removeEventListener(FORCE_UPGRADE_REQUIRED_EVENT, onRequired);
+      globalThis.window.removeEventListener(
+        FORCE_UPGRADE_REQUIRED_EVENT,
+        onRequired,
+      );
     };
 
-    window.addEventListener(FORCE_UPGRADE_REQUIRED_EVENT, onRequired);
+    globalThis.window.addEventListener(
+      FORCE_UPGRADE_REQUIRED_EVENT,
+      onRequired,
+    );
     signal.addEventListener("abort", removeListener, { once: true });
   },
 );

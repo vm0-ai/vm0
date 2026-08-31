@@ -22,11 +22,8 @@ import {
 } from "../lib/platform-host.ts";
 import { resolveBrandNameForHostname, type BrandName } from "./branding.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
-import {
-  createAuthRecovery,
-  setupForegroundCatchUp$,
-  type AuthRecovery,
-} from "./auth-retry.ts";
+import { createAuthRecovery, setupForegroundCatchUp$ } from "./auth-retry.ts";
+import { authRecovery$, setAuthRecovery$ } from "./auth-context.ts";
 import { writeConnectionDiagnostic$ } from "./connection-diagnostics.ts";
 import { sessionStorageSignals } from "./external/session-storage.ts";
 
@@ -369,10 +366,6 @@ export function buildSignInRedirectUrl(
 const internalClerkRuntime$ = state<Promise<ClerkBrowserRuntime> | undefined>(
   undefined,
 );
-const internalAuthRecovery$ = state<Promise<AuthRecovery> | undefined>(
-  undefined,
-);
-
 export const initClerkRuntime$ = command(
   ({ set }, signal: AbortSignal): void => {
     signal.throwIfAborted();
@@ -426,10 +419,11 @@ export const clerk$ = computed(async (get) => {
 export const initAuthRecovery$ = command(
   ({ get, set }, signal: AbortSignal): void => {
     signal.throwIfAborted();
+    const clerkPromise = get(clerk$);
     set(
-      internalAuthRecovery$,
+      setAuthRecovery$,
       (async () => {
-        const clerk = await get(clerk$);
+        const clerk = await clerkPromise;
         signal.throwIfAborted();
         return createAuthRecovery(clerk, signal);
       })(),
@@ -437,13 +431,7 @@ export const initAuthRecovery$ = command(
   },
 );
 
-export const authRecovery$ = computed((get) => {
-  const recovery = get(internalAuthRecovery$);
-  if (!recovery) {
-    throw new Error("Auth recovery was not initialized during bootstrap");
-  }
-  return recovery;
-});
+export { authRecovery$ };
 
 /**
  * Command to setup Clerk authentication listeners.
@@ -571,13 +559,6 @@ export const user$ = computed(async (get) => {
   return clerk.user ?? undefined;
 });
 
-/**
- * Stable cache ownership for authenticated pages.
- *
- * Route setup guarantees both values before page data is loaded. Keeping this
- * invariant here prevents cache-backed data sources from independently
- * treating a missing Clerk value as an empty cache or a remote-only mode.
- */
 export const authenticatedIdentity$ = computed(async (get) => {
   const clerk = await get(clerk$);
   if (!clerk.user || !clerk.organization) {
@@ -590,6 +571,13 @@ export const authenticatedIdentity$ = computed(async (get) => {
   };
 });
 
+/**
+ * Stable cache ownership for authenticated pages.
+ *
+ * Route setup guarantees both values before page data is loaded. Keeping this
+ * invariant here prevents cache-backed data sources from independently
+ * treating a missing Clerk value as an empty cache or a remote-only mode.
+ */
 export const currentUserInfo$ = computed(async (get) => {
   get(clerkVersion$);
   const clerk = await get(clerk$);

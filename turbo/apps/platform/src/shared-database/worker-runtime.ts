@@ -8,8 +8,6 @@ import {
   type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
 import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
-import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
-import type { InboundMessage, TokenRequest } from "ably";
 import type { IDBPDatabase } from "idb";
 import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
@@ -34,6 +32,8 @@ import {
 import {
   sharedDatabaseCredentialId,
   sharedDatabaseDataKeyId,
+  scopeSharedDatabaseDataKey,
+  unScopeSharedDatabaseDataKey,
   type ChatEventDataKey,
   type ChatThreadEventDataKey,
   type ChatThreadEventQueryResult,
@@ -41,6 +41,10 @@ import {
   type SharedDatabaseIdentity,
   type SharedDatabaseQuery,
   type SharedDatabaseQueryResult,
+  type ScopedChatEventDataKey,
+  type ScopedChatThreadEventDataKey,
+  type ScopedSharedDatabaseDataKey,
+  type ScopedSharedDatabaseQuery,
 } from "./data-key.ts";
 import {
   SHARED_DATABASE_AUTH_BLOCKED_ERROR_NAME,
@@ -50,10 +54,6 @@ import {
   type SharedDatabaseWorkerMessage,
 } from "./protocol.ts";
 import { createSharedDatabaseContractClient } from "./worker-client.ts";
-import {
-  createSharedDatabaseRealtimeSession,
-  type SharedDatabaseRealtimeSession,
-} from "./worker-realtime.ts";
 import {
   assertChatEventSchemaVersion,
   CHAT_EVENT_SCHEMA_VERSION_HEADERS,
@@ -97,7 +97,7 @@ export type WorkerClientEmitter = (event: WorkerClientEvent) => void;
 interface WorkerClientRegistration {
   readonly clientId: string;
   readonly emit: WorkerClientEmitter;
-  readonly subscriptions: Map<string, SharedDatabaseDataKey>;
+  readonly subscriptions: Map<string, ScopedSharedDatabaseDataKey>;
   identity: SharedDatabaseIdentity | null;
   apiBaseUrl: string | null;
   lastHeartbeatAt: number;
@@ -161,7 +161,7 @@ interface ChatThreadEventRemoteContext {
 
 interface ChatEventActor {
   readonly kind: "chat-event";
-  readonly dataKey: ChatEventDataKey;
+  readonly dataKey: ScopedChatEventDataKey;
   backgroundCatchUp: boolean;
   degraded: boolean;
   observedSeqId: number | null;
@@ -171,7 +171,7 @@ interface ChatEventActor {
 
 interface ChatThreadEventActor {
   readonly kind: "chat-thread-event";
-  readonly dataKey: ChatThreadEventDataKey;
+  readonly dataKey: ScopedChatThreadEventDataKey;
   degraded: boolean;
   observedSeqId: number | null;
   invalidationPending: boolean;
@@ -388,10 +388,6 @@ export class SharedDatabaseWorkerRuntime {
   private readonly credentials = new Map<string, CredentialState>();
   private readonly actors = new Map<string, DatasetActor>();
   private readonly databases = new Map<string, ChatDatabaseEntry>();
-  private readonly realtimeSessions = new Map<
-    string,
-    SharedDatabaseRealtimeSession
-  >();
   private readonly realtimeStatuses = new Map<
     string,
     SharedDatabaseConnectionStatus
@@ -402,10 +398,6 @@ export class SharedDatabaseWorkerRuntime {
       "abort",
       () => {
         L.debug("runtime.abort");
-        for (const session of this.realtimeSessions.values()) {
-          session.close();
-        }
-        this.realtimeSessions.clear();
         this.realtimeStatuses.clear();
         for (const entry of this.databases.values()) {
           entry.database?.close();
@@ -485,7 +477,6 @@ export class SharedDatabaseWorkerRuntime {
     client.apiBaseUrl = apiBaseUrl;
     if (credentialChanged) {
       this.removeUnusedActors();
-      this.closeUnusedRealtimeSessions();
       this.releaseCredentialIfUnused(previousCredentialId);
     }
 
@@ -520,10 +511,8 @@ export class SharedDatabaseWorkerRuntime {
       credential.authBlocked = false;
       credential.rejectedToken = null;
       client.emit({ type: "status", status: "connecting" });
-      this.restartRealtimeForCredential(credential);
       await this.catchUpDirtyActors(credential);
     }
-    this.ensureRealtimeForCredential(credential);
     client.emit({
       type: "status",
       status: credential.authBlocked
@@ -556,7 +545,6 @@ export class SharedDatabaseWorkerRuntime {
     client.subscriptions.clear();
     this.clients.delete(clientId);
     this.removeUnusedActors();
-    this.closeUnusedRealtimeSessions();
     if (credentialId !== null) {
       this.releaseCredentialIfUnused(credentialId);
     }
@@ -567,17 +555,18 @@ export class SharedDatabaseWorkerRuntime {
     subscriptionId: string,
     dataKey: SharedDatabaseDataKey,
   ): void {
-    const client = this.requireClientForDataKey(clientId, dataKey);
-    const actorId = sharedDatabaseDataKeyId(dataKey);
+    const { client, identity } = this.requireClientWithIdentity(clientId);
+    const scopedDataKey = scopeSharedDatabaseDataKey(dataKey, identity);
+    const actorId = sharedDatabaseDataKeyId(scopedDataKey);
     const alreadySubscribed = this.isActorSubscribed(actorId);
     L.debug("subscription.add", {
       clientId,
-      dataset: dataKey.kind,
+      dataset: scopedDataKey.kind,
       subscriptionId,
     });
-    client.subscriptions.set(subscriptionId, dataKey);
-    const actor = this.getOrCreateActor(dataKey);
-    const credential = this.requireCredential(dataKey);
+    client.subscriptions.set(subscriptionId, scopedDataKey);
+    const actor = this.getOrCreateActor(scopedDataKey);
+    const credential = this.requireCredential(scopedDataKey);
     if (
       !alreadySubscribed &&
       this.realtimeStatuses.get(sharedDatabaseCredentialId(credential)) ===
@@ -596,7 +585,6 @@ export class SharedDatabaseWorkerRuntime {
     L.debug("subscription.remove", { clientId, subscriptionId });
     client?.subscriptions.delete(subscriptionId);
     this.removeUnusedActors();
-    this.closeUnusedRealtimeSessions();
   }
 
   async query<TKey extends SharedDatabaseDataKey>(
@@ -604,11 +592,13 @@ export class SharedDatabaseWorkerRuntime {
     query: SharedDatabaseQuery<TKey>,
     signal: AbortSignal,
   ): Promise<SharedDatabaseQueryResult<TKey>> {
-    const client = this.requireClientForDataKey(clientId, query.dataKey);
-    const credentialId = sharedDatabaseCredentialId(query.dataKey);
-    const actor = this.getOrCreateActor(query.dataKey);
+    const { client, identity } = this.requireClientWithIdentity(clientId);
+    const credentialId = sharedDatabaseCredentialId(identity);
+    const scopedDataKey = scopeSharedDatabaseDataKey(query.dataKey, identity);
+    const actor = this.getOrCreateActor(scopedDataKey);
+    const scopedQuery = { ...query, dataKey: scopedDataKey };
     const result = await withCleanup(
-      this.queryActor(actor, query, signal),
+      this.queryActor(actor, scopedQuery, signal),
       () => {
         this.removeUnusedActors();
       },
@@ -623,11 +613,11 @@ export class SharedDatabaseWorkerRuntime {
     return result;
   }
 
-  private async queryActor<TKey extends SharedDatabaseDataKey>(
+  private async queryActor<TKey extends ScopedSharedDatabaseDataKey>(
     actor: DatasetActor,
-    query: SharedDatabaseQuery<TKey>,
+    query: ScopedSharedDatabaseQuery<TKey>,
     signal: AbortSignal,
-  ): Promise<SharedDatabaseQueryResult<TKey>> {
+  ): Promise<SharedDatabaseQueryResult<SharedDatabaseDataKey>> {
     if (actor.kind === "chat-event") {
       const result = await this.queryChatEvents(
         actor,
@@ -635,14 +625,14 @@ export class SharedDatabaseWorkerRuntime {
         query.consistency,
         signal,
       );
-      return result as SharedDatabaseQueryResult<TKey>;
+      return result;
     }
     const result = await this.queryChatThreadEvents(
       actor,
       query.consistency,
       signal,
     );
-    return result as SharedDatabaseQueryResult<TKey>;
+    return result;
   }
 
   private async queryChatEvents(
@@ -1001,7 +991,7 @@ export class SharedDatabaseWorkerRuntime {
 
   private async fetchChatEventSnapshot(
     client: ChatEventContractClient,
-    dataKey: ChatEventDataKey,
+    dataKey: ScopedChatEventDataKey,
     credential: CredentialState,
     requestToken: string,
     signal: AbortSignal,
@@ -1347,7 +1337,7 @@ export class SharedDatabaseWorkerRuntime {
   }
 
   private async getDatabase(
-    dataKey: SharedDatabaseDataKey,
+    dataKey: ScopedSharedDatabaseDataKey,
   ): Promise<IDBPDatabase> {
     const credentialId = sharedDatabaseCredentialId(dataKey);
     let entry = this.databases.get(credentialId);
@@ -1386,12 +1376,12 @@ export class SharedDatabaseWorkerRuntime {
     return database;
   }
 
-  private getOrCreateActor(dataKey: ChatEventDataKey): ChatEventActor;
+  private getOrCreateActor(dataKey: ScopedChatEventDataKey): ChatEventActor;
   private getOrCreateActor(
-    dataKey: ChatThreadEventDataKey,
+    dataKey: ScopedChatThreadEventDataKey,
   ): ChatThreadEventActor;
-  private getOrCreateActor(dataKey: SharedDatabaseDataKey): DatasetActor;
-  private getOrCreateActor(dataKey: SharedDatabaseDataKey): DatasetActor {
+  private getOrCreateActor(dataKey: ScopedSharedDatabaseDataKey): DatasetActor;
+  private getOrCreateActor(dataKey: ScopedSharedDatabaseDataKey): DatasetActor {
     const id = sharedDatabaseDataKeyId(dataKey);
     const existing = this.actors.get(id);
     if (existing) {
@@ -1429,24 +1419,20 @@ export class SharedDatabaseWorkerRuntime {
     return client;
   }
 
-  private requireClientForDataKey(
-    clientId: string,
-    dataKey: SharedDatabaseDataKey,
-  ): WorkerClientRegistration {
+  private requireClientWithIdentity(clientId: string): {
+    readonly client: WorkerClientRegistration;
+    readonly identity: SharedDatabaseIdentity;
+  } {
     const client = this.requireClient(clientId);
-    if (
-      client.identity === null ||
-      client.identity.userId !== dataKey.userId ||
-      client.identity.orgId !== dataKey.orgId
-    ) {
-      throw new Error(
-        "Shared database data key does not match client identity",
-      );
+    if (client.identity === null) {
+      throw new SharedDatabaseClientNotConnectedError();
     }
-    return client;
+    return { client, identity: client.identity };
   }
 
-  private requireCredential(dataKey: SharedDatabaseDataKey): CredentialState {
+  private requireCredential(
+    dataKey: ScopedSharedDatabaseDataKey,
+  ): CredentialState {
     const credential = this.credentials.get(
       sharedDatabaseCredentialId(dataKey),
     );
@@ -1509,7 +1495,7 @@ export class SharedDatabaseWorkerRuntime {
   }
 
   private notifyActor(
-    dataKey: SharedDatabaseDataKey,
+    dataKey: ScopedSharedDatabaseDataKey,
     type: "append" | "invalidate",
   ): void {
     const id = sharedDatabaseDataKeyId(dataKey);
@@ -1522,7 +1508,7 @@ export class SharedDatabaseWorkerRuntime {
           client.emit({
             type,
             subscriptionId,
-            dataKey,
+            dataKey: unScopeSharedDatabaseDataKey(dataKey),
           });
         }
       }
@@ -1540,108 +1526,22 @@ export class SharedDatabaseWorkerRuntime {
     }
   }
 
-  private notifyIndicatorsInvalidated(
-    credential: CredentialState,
-    payload: unknown,
+  handleRealtimeMessage(
+    identity: SharedDatabaseIdentity,
+    message: { readonly name?: string },
   ): void {
-    for (const client of this.clients.values()) {
-      if (
-        client.identity?.userId === credential.userId &&
-        client.identity.orgId === credential.orgId
-      ) {
-        client.emit({ type: "indicators-invalidated", payload });
-      }
-    }
-  }
-
-  private ensureRealtimeForCredential(credential: CredentialState): void {
-    const credentialId = sharedDatabaseCredentialId(credential);
-    if (this.realtimeSessions.has(credentialId) || credential.authBlocked) {
+    const credential = this.credentials.get(
+      sharedDatabaseCredentialId(identity),
+    );
+    if (!credential || credential.authBlocked) {
       return;
     }
-    this.realtimeStatuses.set(credentialId, "connecting");
-    this.broadcastRealtimeStatus(credential, "connecting");
-    const session = createSharedDatabaseRealtimeSession(
-      {
-        userId: credential.userId,
-        orgId: credential.orgId,
-        getTokenRequest: async () => {
-          return await this.fetchRealtimeTokenRequest(credential);
-        },
-        onMessage: (message) => {
-          this.handleRealtimeMessage(credential, message);
-        },
-        onReconnect: () => {
-          this.catchUpSubscribedActorsForCredential(credential);
-        },
-        onStatus: (status) => {
-          this.realtimeStatuses.set(credentialId, status);
-          this.broadcastRealtimeStatus(credential, status);
-        },
-      },
-      this.rootSignal,
-    );
-    this.realtimeSessions.set(credentialId, session);
-    const catchUpAfterAttach = (async (): Promise<void> => {
-      const attached = await session.ready;
-      this.rootSignal.throwIfAborted();
-      if (this.realtimeSessions.get(credentialId) !== session) {
-        return;
-      }
-      if (!attached) {
-        session.close();
-        this.realtimeSessions.delete(credentialId);
-        this.realtimeStatuses.set(credentialId, "disconnected");
-        this.broadcastRealtimeStatus(credential, "disconnected");
-        return;
-      }
-      this.catchUpSubscribedActorsForCredential(credential);
-    })();
-    detach(
-      settle(catchUpAfterAttach, this.rootSignal),
-      Reason.Daemon,
-      `shared database post-attach catch-up: ${credentialId}`,
-    );
-  }
-
-  private async fetchRealtimeTokenRequest(
-    credential: CredentialState,
-  ): Promise<TokenRequest> {
-    if (credential.authBlocked) {
-      throw new SharedDatabaseAuthBlockedError();
-    }
-    const requestToken = credential.token;
-    const client = createSharedDatabaseContractClient(
-      platformRealtimeTokenContract,
-      credential.apiBaseUrl,
-      () => {
-        return requestToken;
-      },
-      () => {
-        return credential.vercelProtectionBypass;
-      },
-    );
-    const result = await client.create({ body: {} });
-    if (result.status === 401) {
-      this.blockCredential(credential, requestToken);
-      throw new SharedDatabaseAuthBlockedError();
-    }
-    if (result.status !== 200) {
-      throw new SharedDatabaseHttpError(result.status);
-    }
-    return result.body;
-  }
-
-  private handleRealtimeMessage(
-    credential: CredentialState,
-    message: InboundMessage,
-  ): void {
     const topic = message.name ?? "";
     const threadId = topic.startsWith("chatThreadMessageCreated:")
       ? topic.slice("chatThreadMessageCreated:".length)
       : null;
     if (threadId !== null && threadId.length > 0) {
-      const dataKey: ChatEventDataKey = {
+      const dataKey: ScopedChatEventDataKey = {
         kind: "chat-event",
         userId: credential.userId,
         orgId: credential.orgId,
@@ -1656,14 +1556,9 @@ export class SharedDatabaseWorkerRuntime {
       );
       return;
     }
-    if (topic === "chatThreadReadCursorUpdated") {
-      this.notifyIndicatorsInvalidated(credential, message.data ?? null);
-      return;
-    }
     if (topic !== "threadListChanged") {
       return;
     }
-    this.notifyIndicatorsInvalidated(credential, null);
     for (const [id, actor] of this.actors) {
       const matches =
         actor.kind === "chat-thread-event" &&
@@ -1678,6 +1573,29 @@ export class SharedDatabaseWorkerRuntime {
         `shared database realtime catch-up: ${id}`,
       );
     }
+  }
+
+  updateRealtimeStatus(
+    identity: SharedDatabaseIdentity,
+    status: SharedDatabaseConnectionStatus,
+  ): void {
+    const credentialId = sharedDatabaseCredentialId(identity);
+    const credential = this.credentials.get(credentialId);
+    if (!credential) {
+      return;
+    }
+    this.realtimeStatuses.set(credentialId, status);
+    this.broadcastRealtimeStatus(credential, status);
+  }
+
+  catchUpAfterRealtimeRecovery(identity: SharedDatabaseIdentity): void {
+    const credential = this.credentials.get(
+      sharedDatabaseCredentialId(identity),
+    );
+    if (!credential || credential.authBlocked) {
+      return;
+    }
+    this.catchUpSubscribedActorsForCredential(credential);
   }
 
   private catchUpSubscribedActorsForCredential(
@@ -1759,16 +1677,6 @@ export class SharedDatabaseWorkerRuntime {
     return this.realtimeStatuses.get(credentialId) ?? "connecting";
   }
 
-  private restartRealtimeForCredential(credential: CredentialState): void {
-    const credentialId = sharedDatabaseCredentialId(credential);
-    this.realtimeSessions.get(credentialId)?.close();
-    this.realtimeSessions.delete(credentialId);
-    this.realtimeStatuses.delete(credentialId);
-    if (this.hasCredentialClient(credentialId)) {
-      this.ensureRealtimeForCredential(credential);
-    }
-  }
-
   private isActorSubscribed(actorId: string): boolean {
     return Array.from(this.clients.values()).some((client) => {
       return Array.from(client.subscriptions.values()).some((dataKey) => {
@@ -1783,29 +1691,6 @@ export class SharedDatabaseWorkerRuntime {
       this.isActorSubscribed(actorId) ||
       (actor?.kind === "chat-event" && actor.backgroundCatchUp)
     );
-  }
-
-  private hasCredentialClient(credentialId: string): boolean {
-    return Array.from(this.clients.values()).some((client) => {
-      return (
-        client.identity !== null &&
-        sharedDatabaseCredentialId(client.identity) === credentialId
-      );
-    });
-  }
-
-  private closeUnusedRealtimeSessions(): void {
-    for (const [credentialId, session] of this.realtimeSessions) {
-      if (!this.hasCredentialClient(credentialId)) {
-        const credential = this.credentials.get(credentialId);
-        session.close();
-        this.realtimeSessions.delete(credentialId);
-        this.realtimeStatuses.delete(credentialId);
-        if (credential) {
-          this.broadcastRealtimeStatus(credential, "connected");
-        }
-      }
-    }
   }
 
   private pruneStaleClients(currentTime: number): void {
@@ -1856,8 +1741,6 @@ export class SharedDatabaseWorkerRuntime {
     if (stillUsed) {
       return;
     }
-    this.realtimeSessions.get(credentialId)?.close();
-    this.realtimeSessions.delete(credentialId);
     this.realtimeStatuses.delete(credentialId);
 
     for (const actor of this.actors.values()) {

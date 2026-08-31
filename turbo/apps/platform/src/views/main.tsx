@@ -8,7 +8,6 @@ import { ForceUpgradeDialog } from "./components/force-upgrade-dialog.tsx";
 import { AuthV2AddAccountDialog } from "./auth-v2/auth-v2-add-account-dialog.tsx";
 import { InspectLogFileInput } from "./inspect-log-file-input.tsx";
 import { listenForceUpgradeDialog$ } from "../signals/force-upgrade.ts";
-import { setupAuthenticatedDaemons$ } from "../signals/authenticated-daemons.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
 import { handleInvitationRedirect$ } from "../signals/invitation-redirect.ts";
 import { handleBillingRedirect$ } from "../signals/okou-page/billing.ts";
@@ -60,7 +59,6 @@ export const setupRouter = (
       once: true,
     });
   }
-  detach(store.set(setupAuthenticatedDaemons$, signal), Reason.Daemon);
   detach(
     store.set(listenForceUpgradeDialog$, signal),
     Reason.Daemon,

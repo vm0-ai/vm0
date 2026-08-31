@@ -11,8 +11,8 @@ import type {
   SharedDatabaseSubscriptionCallback,
 } from "../bridge.ts";
 import type {
+  ChatThreadIndicators,
   SharedDatabaseDataKey,
-  SharedDatabaseIdentity,
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
 } from "../data-key.ts";
@@ -36,6 +36,12 @@ class FakeBridge implements SharedDatabaseBridge {
   queryError: Error | null = null;
   subscribeError: Error | null = null;
   timeoutHeartbeatCall: number | null = null;
+
+  indicators(_signal: AbortSignal): Promise<ChatThreadIndicators> {
+    return Promise.resolve({ agents: {}, threads: {} });
+  }
+
+  reloadIndicators(): void {}
 
   async heartbeat(
     heartbeat: SharedDatabaseHeartbeat,
@@ -91,30 +97,20 @@ class FakeBridge implements SharedDatabaseBridge {
 
 const context = testContext();
 
-function identity(): SharedDatabaseIdentity {
-  return {
-    userId: "reconnecting-user",
-    orgId: "reconnecting-org",
-    token: "first-token",
-  };
-}
-
 function heartbeat(
-  overrides: Partial<SharedDatabaseIdentity> = {},
+  overrides: Partial<SharedDatabaseHeartbeat> = {},
   vercelProtectionBypass?: string,
 ): SharedDatabaseHeartbeat {
   return {
-    identity: { ...identity(), ...overrides },
+    token: "first-token",
+    ...overrides,
     ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
   };
 }
 
 function dataKey(): SharedDatabaseDataKey {
-  const currentIdentity = identity();
   return {
     kind: "chat-event",
-    userId: currentIdentity.userId,
-    orgId: currentIdentity.orgId,
     threadId: "reconnecting-thread",
   };
 }

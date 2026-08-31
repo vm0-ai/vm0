@@ -237,6 +237,7 @@ export function createUserConfigBddApi(context: TestContext) {
     async readMe(credential: Credential): Promise<{
       readonly userId: string;
       readonly email: string;
+      readonly orgId: string | null;
     }> {
       const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
         authContract,

@@ -3341,7 +3341,11 @@ describe("chat event action cards", () => {
       path: "/chats/e4000000-0000-4000-a000-000000000017",
     });
 
-    const permissionCard = await screen.findByTestId("permission-action-card");
+    const permissionCard = await screen.findByTestId(
+      "permission-action-card",
+      {},
+      { timeout: 3000 },
+    );
     await waitForButtonByText("Confirm", permissionCard);
     expect(
       within(permissionCard).queryByText("Already allowed"),

@@ -14,6 +14,11 @@ import { createDeferredPromise } from "../signals/utils.ts";
  */
 
 type Callback = (message: { name: string; data: unknown }) => void;
+type ChatDatabaseEventListener = (message: {
+  readonly name: string;
+  readonly data: unknown;
+}) => void;
+type ChatDatabaseRecoveryListener = () => void;
 
 type AuthCallbackError = string | { message?: string } | null;
 type AuthCallbackToken = unknown;
@@ -77,6 +82,8 @@ let nextSubscribeGate: {
   readonly release: ReturnType<typeof createDeferredPromise<void>>;
 } | null = null;
 const realtimeInstances = new Set<Realtime>();
+const chatDatabaseEventListeners = new Set<ChatDatabaseEventListener>();
+const chatDatabaseRecoveryListeners = new Set<ChatDatabaseRecoveryListener>();
 const subscribeErrors = new Map<
   string,
   {
@@ -486,6 +493,10 @@ export function triggerAblyEvent(topic: string, data?: unknown): void {
 
 /** Fire a chat-database publish on every connected user-org channel. */
 export function triggerChatDatabaseEvent(topic: string, data?: unknown): void {
+  const message = { name: topic, data };
+  for (const listener of chatDatabaseEventListeners) {
+    listener(message);
+  }
   for (const realtime of realtimeInstances) {
     if (realtime.connection.state === "connected") {
       for (const [channelName, channel] of realtime.namedChannels()) {
@@ -495,6 +506,22 @@ export function triggerChatDatabaseEvent(topic: string, data?: unknown): void {
       }
     }
   }
+}
+
+/** Forward mock chat-database publishes to a direct worker test host. */
+export function subscribeChatDatabaseEvents(
+  listener: ChatDatabaseEventListener,
+  signal: AbortSignal,
+): void {
+  signal.throwIfAborted();
+  chatDatabaseEventListeners.add(listener);
+  signal.addEventListener(
+    "abort",
+    () => {
+      chatDatabaseEventListeners.delete(listener);
+    },
+    { once: true },
+  );
 }
 
 /** Fire a server-side publish on one named channel. */
@@ -525,9 +552,52 @@ export function getAuthTokenHistory(): readonly AuthCallbackToken[] {
 
 /** Fire a reconnect event on every connected Realtime instance. */
 export function triggerAblyReconnect(): void {
+  for (const listener of chatDatabaseRecoveryListeners) {
+    listener();
+  }
   for (const realtime of realtimeInstances) {
     realtime.reconnect();
   }
+}
+
+/** Reconnect only the Realtime client that owns SharedWorker database events. */
+export function triggerSharedWorkerAblyReconnect(): void {
+  for (const realtime of realtimeInstances) {
+    if (realtime.connection.state === "closed") {
+      continue;
+    }
+    const ownsSharedDatabaseEvents = [...realtime.namedChannels()].some(
+      ([channelName, channel]) => {
+        return (
+          channelName.startsWith("user-org:") &&
+          channel.hasChannelSubscription()
+        );
+      },
+    );
+    if (ownsSharedDatabaseEvents) {
+      realtime.reconnect();
+      return;
+    }
+  }
+  throw new Error(
+    "SharedWorker Ably reconnect triggered before its database subscription",
+  );
+}
+
+/** Forward mock realtime recovery to a direct worker test host. */
+export function subscribeChatDatabaseRecovery(
+  listener: ChatDatabaseRecoveryListener,
+  signal: AbortSignal,
+): void {
+  signal.throwIfAborted();
+  chatDatabaseRecoveryListeners.add(listener);
+  signal.addEventListener(
+    "abort",
+    () => {
+      chatDatabaseRecoveryListeners.delete(listener);
+    },
+    { once: true },
+  );
 }
 
 export function triggerAblyConnectionState(
@@ -550,6 +620,8 @@ export function triggerAblyConnectionState(
       if (!channel || channel.state === "initialized") {
         continue;
       }
+      activeRealtime = realtime;
+      break;
     }
     activeRealtime = realtime;
   }
@@ -666,6 +738,8 @@ export function hasChannelSubscriptionOnChannel(channelName: string): boolean {
 /** Reset all subscriptions and captured auth state between tests. */
 export function resetAblySubscriptions(): void {
   triggerAblyConnectionClosed();
+  chatDatabaseEventListeners.clear();
+  chatDatabaseRecoveryListeners.clear();
   capturedAuthCallback = null;
   tokenBodies = [];
   nextSubscribeError = null;

@@ -263,6 +263,7 @@ describe("okou chat thread IndexedDB fallback", () => {
     expect(
       screen.queryByRole("heading", { name: "Chat thread not found" }),
     ).not.toBeInTheDocument();
+    await screen.findAllByRole("navigation", { name: "Sidebar" });
 
     releaseSnapshot.resolve();
 
@@ -490,6 +491,7 @@ describe("okou chat thread IndexedDB fallback", () => {
     );
     expect(metadataRequests).toBe(0);
     expect(releaseRebaseSnapshot.settled()).toBeFalsy();
+    await screen.findAllByRole("navigation", { name: "Sidebar" });
 
     releaseRebaseSnapshot.resolve();
 

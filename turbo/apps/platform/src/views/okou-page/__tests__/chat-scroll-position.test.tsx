@@ -44,6 +44,14 @@ interface ResizeObserverController {
 
 const CHAT_VIEWPORT_TOP = 100;
 
+async function setupVisibleChatPage(
+  options: Parameters<typeof detachedSetupPage>[0],
+): Promise<void> {
+  detachedSetupPage(options);
+  await screen.findAllByRole("navigation", { name: "Sidebar" });
+  await screen.findByRole("textbox", { name: "Message" });
+}
+
 function domRect(top: number, height: number): DOMRect {
   return {
     bottom: top + height,
@@ -419,8 +427,8 @@ function mockLiveThread({
   readonly initialEvents: readonly MockChatEventInput[];
   readonly appendedEvents: readonly MockChatEventInput[];
 }): {
-  publishAppendedEvents: () => Promise<void>;
-  publishAppendedEventsOnReconnect: () => Promise<void>;
+  publishAppendedEvents: () => void;
+  publishAppendedEventsOnReconnect: () => void;
 } {
   const inputs = [...initialEvents, ...appendedEvents].map((event) => {
     return { ...event, threadId };
@@ -451,19 +459,13 @@ function mockLiveThread({
     );
   });
 
-  const prepareAppend = async () => {
-    await waitFor(() => {
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-    });
-    appendedEventsPublished = true;
-  };
   return {
-    publishAppendedEvents: async () => {
-      await prepareAppend();
+    publishAppendedEvents: () => {
+      appendedEventsPublished = true;
       createChatEvent(threadId);
     },
-    publishAppendedEventsOnReconnect: async () => {
-      await prepareAppend();
+    publishAppendedEventsOnReconnect: () => {
+      appendedEventsPublished = true;
       context.mocks.ably.triggerReconnect();
     },
   };
@@ -476,7 +478,7 @@ function mockLateGrowingThread({
   readonly threadId: string;
   readonly prefix: string;
 }): {
-  readonly publishAppendedEvents: () => Promise<void>;
+  readonly publishAppendedEvents: () => void;
   readonly growContent: (extraScrollHeight: number) => void;
   readonly growContentAbove: (extraScrollHeight: number) => void;
 } {
@@ -539,7 +541,7 @@ function mockKeyboardThreadScrollLayout({
   readonly includeCurrentLeadingEvent?: boolean;
 }): {
   readonly beginPartialCurrentThreadReturn: () => void;
-  readonly publishCurrentThreadTarget: () => Promise<void>;
+  readonly publishCurrentThreadTarget: () => void;
 } {
   mockKeyboardNavigationThreads();
   let partialCurrentThreadReturn = false;
@@ -637,10 +639,7 @@ function mockKeyboardThreadScrollLayout({
       partialCurrentThreadReturn = true;
       currentThreadTargetPublished = false;
     },
-    publishCurrentThreadTarget: async () => {
-      await waitFor(() => {
-        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-      });
+    publishCurrentThreadTarget: () => {
       currentThreadTargetPublished = true;
       createChatEvent(KEYBOARD_CURRENT_THREAD_ID);
     },
@@ -675,7 +674,7 @@ describe("chat scroll position", () => {
       ]),
     );
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    await setupVisibleChatPage({ context, path: `/chats/${threadId}` });
 
     await expect(
       screen.findByText("Send a message to start the conversation"),
@@ -720,7 +719,7 @@ describe("chat scroll position", () => {
       ]),
     );
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    await setupVisibleChatPage({ context, path: `/chats/${threadId}` });
 
     const container = await waitFor(() => {
       expect(screen.getByText("tail-follow message 7")).toBeInTheDocument();
@@ -729,7 +728,7 @@ describe("chat scroll position", () => {
       return current;
     });
 
-    await publishAppendedEvents();
+    publishAppendedEvents();
 
     await waitFor(() => {
       expect(screen.getByText("tail-follow message 8")).toBeInTheDocument();
@@ -744,7 +743,7 @@ describe("chat scroll position", () => {
       prefix: "late-growth",
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    await setupVisibleChatPage({ context, path: `/chats/${threadId}` });
 
     const container = await waitFor(() => {
       expect(screen.getByText("late-growth message 7")).toBeInTheDocument();
@@ -758,7 +757,7 @@ describe("chat scroll position", () => {
     growContent(400);
     fireEvent.scroll(container);
 
-    await publishAppendedEvents();
+    publishAppendedEvents();
 
     await waitFor(() => {
       expect(screen.getByText("late-growth message 8")).toBeInTheDocument();
@@ -777,7 +776,7 @@ describe("chat scroll position", () => {
     });
     const resizeObserver = installResizeObserver();
 
-    detachedSetupPage({
+    await setupVisibleChatPage({
       context,
       path: `/chats/${threadId}`,
     });
@@ -818,7 +817,7 @@ describe("chat scroll position", () => {
     });
     const resizeObserver = installResizeObserver();
 
-    detachedSetupPage({
+    await setupVisibleChatPage({
       context,
       path: `/chats/${threadId}`,
     });
@@ -861,7 +860,7 @@ describe("chat scroll position", () => {
     });
     const resizeObserver = installResizeObserver();
 
-    detachedSetupPage({
+    await setupVisibleChatPage({
       context,
       path: `/chats/${threadId}`,
     });
@@ -913,7 +912,7 @@ describe("chat scroll position", () => {
     });
     const resizeObserver = installResizeObserver();
 
-    detachedSetupPage({
+    await setupVisibleChatPage({
       context,
       path: `/chats/${threadId}`,
     });
@@ -947,7 +946,7 @@ describe("chat scroll position", () => {
       prefix: "nested-scroll",
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    await setupVisibleChatPage({ context, path: `/chats/${threadId}` });
 
     const container = await waitFor(() => {
       expect(screen.getByText("nested-scroll message 7")).toBeInTheDocument();
@@ -972,7 +971,7 @@ describe("chat scroll position", () => {
     // the thread itself sits.
     fireEvent.scroll(messageContainer);
 
-    await publishAppendedEvents();
+    publishAppendedEvents();
 
     await waitFor(() => {
       expect(screen.getByText("nested-scroll message 8")).toBeInTheDocument();
@@ -1019,7 +1018,7 @@ describe("chat scroll position", () => {
       ]),
     );
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    await setupVisibleChatPage({ context, path: `/chats/${threadId}` });
 
     const container = await waitFor(() => {
       expect(screen.getByText("local-send-tail message 7")).toBeInTheDocument();
@@ -1083,7 +1082,7 @@ describe("chat scroll position", () => {
       ]),
     );
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    await setupVisibleChatPage({ context, path: `/chats/${threadId}` });
 
     const container = await waitFor(() => {
       expect(screen.getByText("tail-preserve message 7")).toBeInTheDocument();
@@ -1095,7 +1094,7 @@ describe("chat scroll position", () => {
     scrollTo(container, 420);
     expect(viewportOffsetTop("tail-preserve-4")).toBe(-20);
 
-    await publishAppendedEvents();
+    publishAppendedEvents();
 
     await waitFor(() => {
       expect(screen.getByText("tail-preserve message 8")).toBeInTheDocument();
@@ -1142,7 +1141,7 @@ describe("chat scroll position", () => {
       ]),
     );
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    await setupVisibleChatPage({ context, path: `/chats/${threadId}` });
 
     const container = await waitFor(() => {
       expect(screen.getByText("after-change message 7")).toBeInTheDocument();
@@ -1157,7 +1156,7 @@ describe("chat scroll position", () => {
     contentShift = 50;
     expect(viewportOffsetTop("after-change-4")).toBe(30);
 
-    await publishAppendedEvents();
+    publishAppendedEvents();
 
     await waitFor(() => {
       expect(screen.getByText("after-change message 8")).toBeInTheDocument();
@@ -1211,7 +1210,7 @@ describe("chat scroll position", () => {
       ]),
     );
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    await setupVisibleChatPage({ context, path: `/chats/${threadId}` });
 
     const container = await waitFor(() => {
       expect(
@@ -1222,7 +1221,7 @@ describe("chat scroll position", () => {
     scrollTo(container, 420);
     expect(viewportOffsetTop("reconnect-preserve-4")).toBe(-20);
 
-    await publishAppendedEventsOnReconnect();
+    publishAppendedEventsOnReconnect();
 
     await waitFor(() => {
       expect(
@@ -1287,7 +1286,7 @@ describe("chat scroll position", () => {
       ]),
     );
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    await setupVisibleChatPage({ context, path: `/chats/${threadId}` });
 
     const container = await waitFor(() => {
       expect(screen.getByText("Prepend anchor reply 23")).toBeInTheDocument();
@@ -1311,7 +1310,7 @@ describe("chat scroll position", () => {
       },
     });
 
-    detachedSetupPage({
+    await setupVisibleChatPage({
       context,
       path: `/chats/${KEYBOARD_CURRENT_THREAD_ID}`,
     });
@@ -1378,7 +1377,7 @@ describe("chat scroll position", () => {
       },
     });
 
-    detachedSetupPage({
+    await setupVisibleChatPage({
       context,
       path: `/chats/${KEYBOARD_CURRENT_THREAD_ID}`,
     });
@@ -1429,7 +1428,7 @@ describe("chat scroll position", () => {
         includeCurrentLeadingEvent: true,
       });
 
-    detachedSetupPage({
+    await setupVisibleChatPage({
       context,
       path: `/chats/${KEYBOARD_CURRENT_THREAD_ID}`,
     });
@@ -1467,7 +1466,7 @@ describe("chat scroll position", () => {
       ).not.toBeInTheDocument();
       expect(document.querySelector("[data-scroll-to-bottom]")).not.toBeNull();
     });
-    await publishCurrentThreadTarget();
+    publishCurrentThreadTarget();
 
     await waitFor(() => {
       expect(
@@ -1549,7 +1548,7 @@ describe("chat scroll position", () => {
       ]),
     );
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    await setupVisibleChatPage({ context, path: `/chats/${threadId}` });
 
     const container = await waitFor(() => {
       expect(screen.getByText("First grouped reply")).toBeInTheDocument();
@@ -1558,7 +1557,7 @@ describe("chat scroll position", () => {
     scrollTo(container, 420);
     expect(viewportOffsetTop("run-group-assistant-1")).toBe(-20);
 
-    await publishAppendedEvents();
+    publishAppendedEvents();
 
     await waitFor(() => {
       expect(screen.getByText("Second grouped reply")).toBeInTheDocument();
@@ -1631,7 +1630,7 @@ describe("chat scroll position", () => {
       ]),
     );
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    await setupVisibleChatPage({ context, path: `/chats/${threadId}` });
 
     const container = await waitFor(() => {
       expect(
@@ -1642,7 +1641,7 @@ describe("chat scroll position", () => {
     scrollTo(container, 420);
     expect(viewportOffsetTop("completed-work-intermediate")).toBe(-20);
 
-    await publishAppendedEvents();
+    publishAppendedEvents();
 
     await waitFor(() => {
       expect(screen.getByText("Final release analysis")).toBeInTheDocument();
@@ -1696,7 +1695,7 @@ describe("chat scroll position", () => {
       ]),
     );
 
-    detachedSetupPage({
+    await setupVisibleChatPage({
       context,
       path: `/chats/${threadId}`,
     });
@@ -1759,7 +1758,7 @@ describe("chat scroll position", () => {
       ]),
     );
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    await setupVisibleChatPage({ context, path: `/chats/${threadId}` });
 
     const container = await waitFor(() => {
       expect(screen.getByText("resize-follow message 7")).toBeInTheDocument();
@@ -1815,7 +1814,7 @@ describe("chat scroll position", () => {
       ]),
     );
 
-    detachedSetupPage({
+    await setupVisibleChatPage({
       context,
       path: `/chats/${threadId}`,
       featureSwitches: {
