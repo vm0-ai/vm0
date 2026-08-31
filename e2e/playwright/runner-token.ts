@@ -12,6 +12,7 @@ import {
   startVideoOnboardingCheckout,
   waitForPaidOnboardingCompletion,
 } from "./lib/onboarding";
+import { seedPreviewBypassCookie } from "./lib/preview-bypass";
 import {
   collectStripeCheckoutState,
   fillStripeCheckout,
@@ -143,6 +144,11 @@ async function provisionRunnerCredential(
     ignoreHTTPSErrors: true,
   });
   try {
+    await seedPreviewBypassCookie(
+      context,
+      appUrl,
+      vercelAutomationBypassSecret,
+    );
     const page = await context.newPage();
     let clerkSessionToken = await signInWithClerkEmailCode(
       page,
