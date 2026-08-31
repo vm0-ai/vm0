@@ -38,6 +38,7 @@ export default defineConfig({
     },
   },
   define: {
+    __OKOU_APP_VERSION__: JSON.stringify("0.540.0"),
     "import.meta.env.VITE_MOCK_LOG_DETAIL": JSON.stringify(""),
   },
   test: {

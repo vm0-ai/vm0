@@ -46,6 +46,7 @@ vi.mock("idb", async () => {
 
 const context = testContext();
 const CREATED_AT = "2026-08-14T09:00:00.000Z";
+const WORKER_APP_VERSION = "message-port-worker-version";
 
 class InMemoryMessagePort implements SharedDatabasePortLike {
   readonly listeners = new Set<(event: MessageEvent<unknown>) => void>();
@@ -137,6 +138,7 @@ function dataKey(threadId: string): ChatEventDataKey {
 function workerBoundaryState(): SharedDatabaseWorkerMaps {
   let nextTabId = 0;
   return {
+    appVersion: WORKER_APP_VERSION,
     allocateTabId: (): TabId => {
       return nextTabId++;
     },
@@ -149,7 +151,8 @@ function workerBoundaryState(): SharedDatabaseWorkerMaps {
 
 function installHeartbeatAuthentication(): void {
   const current = identity();
-  context.mocks.api(authContract.me, ({ respond }) => {
+  context.mocks.api(authContract.me, ({ request, respond }) => {
+    expect(request.headers.get("x-client-version")).toBe(WORKER_APP_VERSION);
     return respond(200, {
       userId: current.userId,
       email: "message-port@example.com",

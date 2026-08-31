@@ -19,6 +19,7 @@ import {
   testContext,
   chatEventRowsResponse,
 } from "../../signals/__tests__/test-helpers.ts";
+import { initializeAppVersion$ } from "../../signals/app-version.ts";
 import { CHAT_IDB_VERSION } from "../../signals/external/chat-idb-schema.ts";
 import { createChildAbortController } from "../../signals/utils.ts";
 import type {
@@ -39,6 +40,7 @@ import {
   subscribeSharedDatabaseWorker$,
 } from "../worker-signals.ts";
 import { SharedDatabaseWorkerRuntime } from "../worker-runtime.ts";
+import { createSharedDatabaseContractClientFactory } from "../worker-client.ts";
 
 vi.mock("idb", async () => {
   return await vi.importActual<typeof import("idb")>("idb-real");
@@ -47,6 +49,7 @@ vi.mock("idb", async () => {
 const context = testContext();
 const SNAPSHOT_URL = "https://r2.example.com/shared-worker-chat-events.ndjson";
 const CREATED_AT = "2026-08-14T08:00:00.000Z";
+const WORKER_APP_VERSION = "shared-worker-store-version";
 
 function chatEventSchemaVersionResponseHeaders(): Record<string, string> {
   return {
@@ -167,6 +170,7 @@ async function connectRuntimeWithIdentity(
   vercelProtectionBypass?: string,
 ): Promise<string> {
   const clientId = crypto.randomUUID();
+  context.workerStore.set(initializeAppVersion$, WORKER_APP_VERSION);
   context.workerStore.set(
     initializeCredentialStore$,
     {
@@ -216,6 +220,7 @@ async function query<TKey extends ChatEventDataKey | ChatThreadEventDataKey>(
 
 function createRuntimeHarness() {
   const store = createStore();
+  store.set(initializeAppVersion$, WORKER_APP_VERSION);
   return {
     connect: async (
       currentIdentity: SharedDatabaseIdentity,
@@ -352,6 +357,43 @@ describe("shared database worker runtime", () => {
         }),
       ).toBeTruthy();
     }
+  });
+
+  it("uses the app version initialized in the worker Store", async () => {
+    const observedVersions: (string | null)[] = [];
+    context.mocks.api(
+      chatThreadEventsContract.snapshot,
+      ({ request, respond }) => {
+        observedVersions.push(request.headers.get("x-client-version"));
+        return respond(404, {
+          error: {
+            code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+            message: "Chat event snapshot not found",
+          },
+        });
+      },
+    );
+    context.mocks.api(
+      chatThreadEventsContract.rows,
+      ({ query: requestQuery, request, respond }) => {
+        observedVersions.push(request.headers.get("x-client-version"));
+        return respond(200, chatEventRowsResponse([], requestQuery));
+      },
+    );
+
+    const clientId = await connectRuntime();
+    await query(clientId, {
+      dataKey: chatEventKey(crypto.randomUUID()),
+      afterSeqId: null,
+      consistency: "catch-up",
+    });
+
+    expect(observedVersions.length).toBeGreaterThan(0);
+    expect(
+      observedVersions.every((version) => {
+        return version === WORKER_APP_VERSION;
+      }),
+    ).toBeTruthy();
   });
 
   it("omits the Preview bypass outside Preview", async () => {
@@ -961,7 +1003,10 @@ describe("shared database worker runtime", () => {
     const dataKey = chatEventKey(crypto.randomUUID());
     const requestStarted = context.mocks.deferred<void>();
     const releaseResponse = context.mocks.deferred<void>();
-    const runtime = new SharedDatabaseWorkerRuntime(context.signal);
+    const runtime = new SharedDatabaseWorkerRuntime(
+      context.signal,
+      createSharedDatabaseContractClientFactory(WORKER_APP_VERSION),
+    );
 
     context.mocks.api(
       chatThreadEventsContract.snapshot,

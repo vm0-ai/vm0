@@ -21,6 +21,7 @@ import {
   subscribeRealtimeReadyCatchUp$,
 } from "../realtime.ts";
 import { initAuthRecovery$, initClerkRuntime$, setupClerk$ } from "../auth.ts";
+import { initializeAppVersion$ } from "../app-version.ts";
 import { foregroundReady$ } from "../auth-retry.ts";
 import { setRootSignal$ } from "../root-signal.ts";
 import { setApiClientRuntime$ } from "../api-client-runtime.ts";
@@ -34,6 +35,7 @@ import { subscribePresentationTemplatesChanged$ } from "../okou-page/presentatio
 const context = testContext();
 
 beforeEach(() => {
+  context.store.set(initializeAppVersion$, __OKOU_APP_VERSION__);
   context.store.set(setRootSignal$, context.signal);
   context.store.set(setApiClientRuntime$, {
     environment: "app",

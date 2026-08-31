@@ -13,6 +13,7 @@ import {
   setupAuthenticatedDaemons$,
 } from "./authenticated-daemons.ts";
 import { initTheme$, syncThemePreferences$ } from "./theme.ts";
+import { initializeAppVersion$ } from "./app-version.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
 import { setRootSignal$ } from "./root-signal.ts";
 import { setApiClientRuntime$ } from "./api-client-runtime.ts";
@@ -521,10 +522,12 @@ const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
 export const bootstrap$ = command(
   async (
     { get, set },
+    appVersion: string,
     render: () => void,
     ownDaemon: AuthenticatedDaemonOwner,
     signal: AbortSignal,
   ): Promise<void> => {
+    set(initializeAppVersion$, appVersion);
     set(initBootstrapPhaseTiming$, signal);
     set(captureInvitationRedirect$);
     set(markBootstrapLocaleInitStarted$);

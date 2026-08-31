@@ -1,7 +1,6 @@
 import { command, state } from "ccstate";
 import { delay } from "signal-timers";
 import sharedDatabaseWorkerAssetUrl from "virtual:shared-database-worker";
-import { getBuildVersion } from "../lib/build-info.ts";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import { sentryLogContext } from "../lib/sentry-config.ts";
 import { resolveApiBaseForTarget } from "./api-base.ts";
@@ -103,16 +102,6 @@ function isJavaScriptResponse(response: Response): boolean {
   );
 }
 
-function sharedDatabaseWorkerUrl(): URL {
-  const version = getBuildVersion();
-  if (version === null) {
-    throw new Error("App version is required for the shared database worker");
-  }
-  const url = new URL(sharedDatabaseWorkerAssetUrl, location.href);
-  url.searchParams.set("okou-app-version", version);
-  return url;
-}
-
 async function waitForWorkerRetry(signal: AbortSignal): Promise<void> {
   const controller = createChildAbortController(signal);
   const ready = createDeferredPromise<void>(controller.signal);
@@ -171,10 +160,13 @@ function createBrowserSharedDatabaseBridge(
   events: SharedDatabaseBridgeEvents,
   signal: AbortSignal,
 ): SharedDatabaseBridge {
-  const worker = new SharedWorker(sharedDatabaseWorkerUrl(), {
-    name: "okou core service",
-    type: "module",
-  });
+  const worker = new SharedWorker(
+    new URL(sharedDatabaseWorkerAssetUrl, location.href),
+    {
+      name: "okou core service",
+      type: "module",
+    },
+  );
   const portBridge = new MessagePortSharedDatabaseBridge(
     worker.port,
     apiBaseUrl,

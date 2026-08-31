@@ -35,6 +35,8 @@ import {
   type SharedWorkerTestTransport,
 } from "../shared-database/test-bridge.ts";
 
+export const TEST_APP_VERSION = "0.540.0";
+
 const {
   set$: setFeatureSwitchCacheLocalStorage$,
   clear$: clearFeatureSwitchCacheLocalStorage$,
@@ -86,6 +88,7 @@ function ensureTestLocalStorage(): void {
 }
 
 export interface SetupBootstrapOptions {
+  appVersion?: string;
   context: TestContext;
   path: string;
   beforeBootstrap?: (signal: AbortSignal) => void;
@@ -116,6 +119,7 @@ export interface SetupBootstrapOptions {
   cachedFeatureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   afterSharedDatabaseWorkerHeartbeat?: () => Promise<void>;
+  sharedWorkerAppVersion?: string;
   sharedWorkerTestTransport?: SharedWorkerTestTransport;
 }
 
@@ -204,6 +208,7 @@ export async function setupBootstrap(
   options.context.store.set(
     setupSharedWorkerTestBootstrap$,
     {
+      appVersion: options.sharedWorkerAppVersion ?? TEST_APP_VERSION,
       workerStore: options.context.workerStore,
       identity:
         testUser && activeOrgId
@@ -230,6 +235,7 @@ export async function setupBootstrap(
   // act" warnings are suppressed in setup.ts.
   await options.context.store.set(
     bootstrap$,
+    options.appVersion ?? TEST_APP_VERSION,
     render,
     (daemon) => {
       options.context.track(daemon);

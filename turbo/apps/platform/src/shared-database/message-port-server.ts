@@ -5,6 +5,7 @@ import { accept } from "../lib/accept.ts";
 import { captureSentryLogError } from "../lib/sentry-config.ts";
 import { now } from "../lib/time.ts";
 import { createAuthedContractClient } from "../signals/api-client-base.ts";
+import { initializeAppVersion$ } from "../signals/app-version.ts";
 import type { AuthRecovery } from "../signals/auth-retry.ts";
 import { logger } from "../signals/log.ts";
 import {
@@ -37,6 +38,7 @@ import {
 type CredentialId = string;
 
 export interface SharedDatabaseWorkerMaps {
+  readonly appVersion: string;
   readonly allocateTabId: () => TabId;
   readonly credentialStores: Map<CredentialId, Store>;
   readonly credentialAbortControllers: Map<CredentialId, AbortController>;
@@ -87,12 +89,14 @@ function fixedTokenAuthRecovery(token: string): AuthRecovery {
 
 async function authenticateHeartbeat(
   message: Extract<SharedDatabaseClientMessage, { readonly type: "heartbeat" }>,
+  clientVersion: string,
   onForceUpgrade: () => void,
   signal: AbortSignal,
 ): Promise<SharedDatabaseIdentity> {
   const authRecovery = fixedTokenAuthRecovery(message.token);
   const client = createAuthedContractClient(authContract, {
     baseUrl: message.apiBaseUrl,
+    clientVersion,
     getAuthRecovery: () => {
       return Promise.resolve(authRecovery);
     },
@@ -280,6 +284,7 @@ export class SharedDatabaseMessagePortServer {
     this.pruneStaleTabs(heartbeatAt);
     const identity = await authenticateHeartbeat(
       message,
+      this.maps.appVersion,
       () => {
         this.emit({ type: "reload-required" });
         this.closed = true;
@@ -319,6 +324,7 @@ export class SharedDatabaseMessagePortServer {
     const created = store === undefined;
     if (!store) {
       store = createStore();
+      store.set(initializeAppVersion$, this.maps.appVersion);
       controller = createChildAbortController(this.signal);
       this.maps.credentialStores.set(credentialId, store);
       this.maps.credentialAbortControllers.set(credentialId, controller);
