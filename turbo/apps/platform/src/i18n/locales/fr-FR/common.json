@@ -2042,7 +2042,11 @@
       "avatar": {
         "heading": "Choisir un avatar",
         "help": "Choisissez un présentateur ou continuez sans avatar",
-        "none": "Aucun avatar"
+        "none": "Aucun avatar",
+        "visualBalanceAvatarLed": "Centré sur l'avatar — le narrateur reste à l'écran la plupart du temps",
+        "visualBalanceBalanced": "Mélange équilibré — autant de temps pour les deux",
+        "visualBalanceBRollLed": "Centré sur les visuels — priorité aux diapositives et aux images",
+        "visualBalanceHeading": "Quel équilibre visuel souhaitez-vous ?"
       },
       "cardDescription": "Transformez un fichier ou un enregistrement d'écran en vidéo finalisée",
       "description": "Ajoutez une source, choisissez éventuellement un avatar et une voix, puis créez la vidéo dans un fil de discussion.",

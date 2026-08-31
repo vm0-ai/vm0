@@ -2042,7 +2042,11 @@
       "avatar": {
         "heading": "Escolha um avatar",
         "help": "Escolha um apresentador ou continue sem um",
-        "none": "Sem avatar"
+        "none": "Sem avatar",
+        "visualBalanceAvatarLed": "Foco no avatar — o narrador fica na tela na maior parte do tempo",
+        "visualBalanceBalanced": "Mix equilibrado — o mesmo tempo para ambos",
+        "visualBalanceBRollLed": "Foco nos recursos visuais — prioridade para slides e imagens",
+        "visualBalanceHeading": "Como você prefere o equilíbrio visual?"
       },
       "cardDescription": "Transforme um arquivo ou gravação de tela em um vídeo finalizado",
       "description": "Adicione uma fonte, escolha um avatar e uma voz opcionais e crie o vídeo em uma conversa.",
