@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
@@ -11,6 +11,8 @@ import {
 
 const THREAD_ID = "b0000000-0000-4000-a000-000000000806";
 const GEOMETRY_THREAD_ID = "b0000000-0000-4000-a000-000000000807";
+const VIRTUAL_THREAD_ID = "b0000000-0000-4000-a000-000000000808";
+const GOAL_THREAD_ID = "b0000000-0000-4000-a000-000000000809";
 
 const VIEWPORT_PX = 600;
 const RAIL_PX = 600;
@@ -24,7 +26,13 @@ const TURN_SELECTOR = '[data-role="user"], [data-role="assistant"]';
  * as zero-sized and never open. This models the one layout it cares about: a
  * fixed-height viewport scrolling over turns of equal height.
  */
-function stubLayout(): void {
+function stubLayout({
+  minimumScrollTurns = 0,
+  turnHeight = TURN_PX,
+}: {
+  minimumScrollTurns?: number;
+  turnHeight?: number;
+} = {}): void {
   const prototype = globalThis.HTMLElement.prototype;
   const rectDescriptor = Object.getOwnPropertyDescriptor(
     prototype,
@@ -81,7 +89,12 @@ function stubLayout(): void {
       if (!isScroller(this)) {
         return 0;
       }
-      return this.querySelectorAll(TURN_SELECTOR).length * TURN_PX;
+      return (
+        Math.max(
+          minimumScrollTurns,
+          this.querySelectorAll(TURN_SELECTOR).length,
+        ) * turnHeight
+      );
     },
   });
   Object.defineProperty(prototype, "getBoundingClientRect", {
@@ -113,7 +126,7 @@ function stubLayout(): void {
         return originalRect.call(this);
       }
       const scroller = this.closest<HTMLElement>("[data-scroll-container]");
-      return rect(index * TURN_PX - (scroller?.scrollTop ?? 0), TURN_PX);
+      return rect(index * turnHeight - (scroller?.scrollTop ?? 0), turnHeight);
     },
   });
 
@@ -152,6 +165,102 @@ function longConversation(): MockChatEventInput[] {
   });
 }
 
+function virtualConversation(): MockChatEventInput[] {
+  return Array.from({ length: 15 }, (_unused, index) => {
+    const minute = String(index).padStart(2, "0");
+    const runId = `run-locator-virtual-${index}`;
+    return [
+      {
+        id: `locator-virtual-user-${index}`,
+        eventType: "input.prompt" as const,
+        role: "user" as const,
+        content: `Virtual question ${index}`,
+        runId,
+        createdAt: `2026-06-09T12:${minute}:00Z`,
+      },
+      {
+        id: `locator-virtual-assistant-${index}`,
+        eventType: "output.message" as const,
+        role: "assistant" as const,
+        content: `Virtual answer ${index}`,
+        runId,
+        createdAt: `2026-06-09T12:${minute}:30Z`,
+      },
+    ];
+  }).flat();
+}
+
+function goalConversation(): MockChatEventInput[] {
+  const prefix = Array.from({ length: 5 }, (_unused, index) => {
+    const minute = String(index).padStart(2, "0");
+    const runId = `run-locator-goal-prefix-${index}`;
+    return [
+      {
+        id: `locator-goal-prefix-user-${index}`,
+        eventType: "input.prompt" as const,
+        role: "user" as const,
+        content: `Goal prefix question ${index}`,
+        runId,
+        createdAt: `2026-06-09T13:${minute}:00Z`,
+      },
+      {
+        id: `locator-goal-prefix-assistant-${index}`,
+        eventType: "output.message" as const,
+        role: "assistant" as const,
+        content: `Goal prefix answer ${index}`,
+        runId,
+        createdAt: `2026-06-09T13:${minute}:30Z`,
+      },
+    ];
+  }).flat();
+  const runGroupId = "run-group-locator-goal";
+  const goalBrief = "Keep the locator goal moving";
+  return [
+    ...prefix,
+    {
+      id: "locator-goal-hidden-user",
+      role: "user",
+      content: goalBrief,
+      userMessage: {
+        version: 1,
+        parts: [{ type: "goal", goalBrief }],
+      },
+      runId: "run-locator-goal-hidden",
+      runGroupId,
+      createdAt: "2026-06-09T13:10:00Z",
+    },
+    {
+      id: "locator-goal-hidden-assistant",
+      role: "assistant",
+      content: "First goal result in the locator",
+      runId: "run-locator-goal-hidden",
+      runGroupId,
+      createdAt: "2026-06-09T13:10:30Z",
+    },
+    {
+      id: "locator-goal-latest-user",
+      role: "user",
+      content: goalBrief,
+      userMessage: {
+        version: 1,
+        parts: [{ type: "goal", goalBrief }],
+      },
+      runId: "run-locator-goal-latest",
+      runGroupId,
+      createdAt: "2026-06-09T13:12:00Z",
+    },
+    {
+      id: "locator-goal-latest-assistant",
+      role: "assistant",
+      content: "Latest goal result in the locator",
+      runId: "run-locator-goal-latest",
+      runGroupId,
+      runLifecycleEvent: "completed",
+      createdAt: "2026-06-09T13:12:30Z",
+    },
+  ];
+}
+
 function pointerAt(rail: HTMLElement, y: number, type: string): void {
   rail.dispatchEvent(
     new MouseEvent(type, { bubbles: true, clientX: 20, clientY: y }),
@@ -162,26 +271,48 @@ function ticksOf(rail: HTMLElement): HTMLElement[] {
   return [...rail.querySelectorAll<HTMLElement>("[data-locator-tick]")];
 }
 
-async function renderLongThread(): Promise<{
+function locatorPreview(): HTMLElement {
+  const preview = document.querySelector<HTMLElement>(
+    "[data-conversation-locator-preview]",
+  );
+  expect(preview).not.toBeNull();
+  return preview as HTMLElement;
+}
+
+async function renderMeasuredThread({
+  threadId,
+  threadTitle,
+  chatEvents,
+  renderedText,
+  minimumScrollTurns = 0,
+  turnHeight = TURN_PX,
+}: {
+  threadId: string;
+  threadTitle: string;
+  chatEvents: MockChatEventInput[];
+  renderedText: string;
+  minimumScrollTurns?: number;
+  turnHeight?: number;
+}): Promise<{
   rail: HTMLElement;
   resize: { automationAll: () => void };
 }> {
-  stubLayout();
+  stubLayout({ minimumScrollTurns, turnHeight });
   const resize = mockResizeObserver();
   mockChatLifecycle(context, {
-    threadId: GEOMETRY_THREAD_ID,
-    threadTitle: "Locator geometry",
-    chatEvents: longConversation(),
+    threadId,
+    threadTitle,
+    chatEvents,
   });
   detachedSetupPage({
     context,
-    path: `/chats/${GEOMETRY_THREAD_ID}`,
+    path: `/chats/${threadId}`,
     featureSwitches: {
       [FeatureSwitchKey.ChatConversationLocator]: true,
     },
   });
 
-  await screen.findByText(`Prompt ${LONG_TURN_COUNT - 1}`);
+  await screen.findByText(renderedText);
   const rail = await waitFor(() => {
     const element = document.querySelector<HTMLElement>(
       "[data-conversation-locator]",
@@ -196,6 +327,18 @@ async function renderLongThread(): Promise<{
     expect(ticksOf(rail).length).toBeGreaterThan(0);
   });
   return { rail, resize };
+}
+
+function renderLongThread(): Promise<{
+  rail: HTMLElement;
+  resize: { automationAll: () => void };
+}> {
+  return renderMeasuredThread({
+    threadId: GEOMETRY_THREAD_ID,
+    threadTitle: "Locator geometry",
+    chatEvents: longConversation(),
+    renderedText: `Prompt ${LONG_TURN_COUNT - 1}`,
+  });
 }
 
 /** Ten alternating turns: past the locator's turn floor on its own. */
@@ -442,6 +585,98 @@ describe("chat conversation locator", () => {
     rail.dispatchEvent(boundaryWheel);
 
     expect(boundaryWheel.defaultPrevented).toBeFalsy();
+  });
+
+  it("lists and jumps to a turn outside the virtual render window", async () => {
+    const { rail } = await renderMeasuredThread({
+      threadId: VIRTUAL_THREAD_ID,
+      threadTitle: "Virtual locator turns",
+      chatEvents: virtualConversation(),
+      renderedText: "Virtual answer 14",
+      turnHeight: 60,
+    });
+
+    expect(
+      document.querySelector(
+        '[data-chat-scroll-anchor-event-id="locator-virtual-user-0"]',
+      ),
+    ).toBeNull();
+    expect(ticksOf(rail)).toHaveLength(24);
+
+    pointerAt(rail, 0, "pointerenter");
+    rail.dispatchEvent(
+      new WheelEvent("wheel", {
+        bubbles: true,
+        cancelable: true,
+        deltaY: -3000,
+      }),
+    );
+    const firstTick = await waitFor(() => {
+      const tick = ticksOf(rail)[0];
+      expect(tick?.dataset.turnIndex).toBe("0");
+      return tick as HTMLElement;
+    });
+    pointerAt(rail, Number.parseFloat(firstTick.style.top), "pointermove");
+
+    await waitFor(() => {
+      expect(locatorPreview()).toHaveTextContent("Virtual question 0");
+      expect(locatorPreview()).toHaveTextContent("1/30");
+    });
+    rail.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    await screen.findByText("Virtual question 0");
+    await waitFor(() => {
+      const target = document.querySelector<HTMLElement>(
+        '[data-chat-scroll-anchor-event-id="locator-virtual-user-0"]',
+      );
+      expect(target).not.toBeNull();
+      expect(target).toHaveAttribute("data-locator-landed");
+    });
+  });
+
+  it("keeps merged goal turns out of the locator until the group expands", async () => {
+    const { rail, resize } = await renderMeasuredThread({
+      threadId: GOAL_THREAD_ID,
+      threadTitle: "Goal locator turns",
+      chatEvents: goalConversation(),
+      renderedText: "Latest goal result in the locator",
+    });
+
+    expect(screen.queryByText("First goal result in the locator")).toBeNull();
+    expect(ticksOf(rail)).toHaveLength(12);
+
+    fireEvent.click(screen.getByLabelText("Expand grouped run history"));
+    await screen.findByText("First goal result in the locator");
+    resize.automationAll();
+    await waitFor(() => {
+      expect(ticksOf(rail)).toHaveLength(14);
+    });
+
+    const hiddenAssistantTick = ticksOf(rail).find((tick) => {
+      return tick.dataset.turnIndex === "11";
+    });
+    expect(hiddenAssistantTick).toBeDefined();
+    pointerAt(rail, 0, "pointerenter");
+    pointerAt(
+      rail,
+      Number.parseFloat(hiddenAssistantTick!.style.top),
+      "pointermove",
+    );
+    await waitFor(() => {
+      expect(locatorPreview()).toHaveTextContent(
+        "First goal result in the locator",
+      );
+    });
+    rail.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    await waitFor(() => {
+      const anchor = document.querySelector<HTMLElement>(
+        '[data-chat-scroll-anchor-event-id="locator-goal-hidden-assistant"]',
+      );
+      const landed = anchor?.closest<HTMLElement>('[data-role="assistant"]');
+      expect(landed).not.toBeNull();
+      expect(landed).toHaveAttribute("data-locator-landed");
+    });
   });
 
   it("marks the turn a click lands on", async () => {

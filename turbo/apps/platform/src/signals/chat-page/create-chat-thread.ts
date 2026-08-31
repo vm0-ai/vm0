@@ -1119,14 +1119,15 @@ function groupEventsForDisplay(events: EnrichedChatEvent[]): ChatEventGroup[] {
 function createRenderedChatGroups(
   semanticEvents$: Computed<SemanticChatEvent[]>,
 ) {
-  const transcriptEvents$ = createTranscriptEventsComputed(semanticEvents$);
+  const allChatGroups$ = computed((get): ChatEventGroup[] => {
+    return groupEventsForDisplay(
+      enrichedChatEventsFromSemantic(get(semanticEvents$)),
+    );
+  });
 
-  const allRenderedChatGroups$ = computed(
-    async (get): Promise<ChatEventGroup[]> => {
-      const events = await get(transcriptEvents$);
-      return groupEventsForDisplay(events);
-    },
-  );
+  const allRenderedChatGroups$ = computed((get): Promise<ChatEventGroup[]> => {
+    return Promise.resolve(get(allChatGroups$));
+  });
   const eventImageGroups$ = computed(
     async (get): Promise<EventImageGroupProjection[]> => {
       return (await get(allRenderedChatGroups$)).map((group) => {
@@ -1146,6 +1147,7 @@ function createRenderedChatGroups(
   );
 
   return {
+    allChatGroups$,
     allRenderedChatGroups$,
     eventImageGroups$,
   };
@@ -1356,22 +1358,18 @@ function createRawEventsComputed(
   });
 }
 
-function createTranscriptEventsComputed(
-  semanticEvents$: Computed<SemanticChatEvent[]>,
-): Computed<Promise<EnrichedChatEvent[]>> {
-  return computed((get): Promise<EnrichedChatEvent[]> => {
-    return Promise.resolve(
-      get(semanticEvents$).map((entry) => {
-        const { event, isQueued, userMessageRenderDocument } = entry;
-        return {
-          ...event,
-          tree: entry.tree,
-          richContentError: entry.richContentError,
-          isQueued,
-          userMessageRenderDocument,
-        };
-      }),
-    );
+function enrichedChatEventsFromSemantic(
+  entries: readonly SemanticChatEvent[],
+): EnrichedChatEvent[] {
+  return entries.map((entry) => {
+    const { event, isQueued, userMessageRenderDocument } = entry;
+    return {
+      ...event,
+      tree: entry.tree,
+      richContentError: entry.richContentError,
+      isQueued,
+      userMessageRenderDocument,
+    };
   });
 }
 
@@ -4241,17 +4239,18 @@ function createChatPanelSignalsWithDraft(
     draft,
   );
   const feedback = createChatThreadFeedbackSignals(threadId, composer.feedback);
+  const messagePipeline = createChatThreadMessagePipeline(
+    {
+      chatActionContext: { threadId, agentId },
+      chatEvents,
+      previewImageUrlsByUrl$: createArtifactPreviewImageUrls(
+        artifact.artifacts$,
+      ),
+    },
+    signal,
+  );
   const messages: MessageListSignals = {
-    ...createChatThreadMessagePipeline(
-      {
-        chatActionContext: { threadId, agentId },
-        chatEvents,
-        previewImageUrlsByUrl$: createArtifactPreviewImageUrls(
-          artifact.artifacts$,
-        ),
-      },
-      signal,
-    ),
+    ...messagePipeline,
     ...artifact,
   };
   const sharing = createChatThreadSharingSignals(threadId, messages.scroll);
@@ -4259,6 +4258,8 @@ function createChatPanelSignalsWithDraft(
     threadId,
     scrollContainer$: messages.scroll.scrollContainer$,
     scrollToEvent$: messages.scroll.scrollToEvent$,
+    allChatGroups$: messagePipeline.allChatGroups$,
+    threadScrollPosition$: messages.scroll.threadScrollPosition$,
   });
   const runTracking = createRunTracking({
     threadId,
