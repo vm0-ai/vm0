@@ -112,23 +112,20 @@ describe("app skeleton", () => {
     expect(screen.queryByTestId("app-skeleton")).not.toBeInTheDocument();
   });
 
-  it("renders the loading state in the workspace locale", async () => {
-    context.mocks.data.userPreferences({
-      locale: "pt-BR",
-      supportedLocales: ["en-US", "pt-BR"],
-    });
-
+  it("renders the first avatar preset with a locale-free pulse", async () => {
     detachedSetupPage({
       context,
       path: "/_/skeleton",
     });
 
-    const skeletons = await screen.findAllByRole("status", {
-      name: "Carregando seu espaço de trabalho",
-    });
+    const skeletons = await screen.findAllByRole("status", { name: "Loading" });
     expect(skeletons.length).toBeGreaterThan(0);
-    expect(skeletons[0]).toHaveTextContent(
-      /Aquecendo os neurônios|Preparando algumas ideias|Preparando tudo|Quase lá|Carregando seu espaço de trabalho|Ajustando os instrumentos|Ligando os pontos|Reunindo a equipe/u,
+    expect(skeletons[0]).toHaveTextContent("");
+    expect(skeletons[0]?.firstElementChild).toHaveClass("animate-pulse");
+    expect(skeletons[0]?.querySelectorAll("img")).toHaveLength(3);
+    expect(skeletons[0]?.querySelectorAll("img")[0]).toHaveAttribute(
+      "src",
+      expect.stringContaining("/head-r1-s0.svg"),
     );
   });
 });

@@ -370,51 +370,6 @@
     }
   },
   "appShell": {
-    "browserUpgrade": {
-      "browser": {
-        "action": "ブラウザを更新する",
-        "description": "{{assistantName}} は、現在のブラウザのバージョンをサポートしていません。続行するにはブラウザを更新してください。",
-        "title": "続行するにはブラウザを更新してください"
-      },
-      "chrome": {
-        "action": "Chrome を更新します",
-        "description": "{{assistantName}} は、現在のブラウザのバージョンをサポートしていません。続行するには、Chrome を更新してください。",
-        "title": "続行するには Chrome を更新してください"
-      },
-      "chromium": {
-        "action": "Chromium を更新します",
-        "description": "{{assistantName}} は、現在のブラウザのバージョンをサポートしていません。続行するには、Chromium を更新してください。",
-        "title": "続行するには Chromium を更新してください"
-      },
-      "ios": {
-        "action": "iOS を更新します",
-        "description": "{{assistantName}} は、現在のブラウザのバージョンをサポートしていません。続行するには、iOS を更新してください。",
-        "title": "続行するには iOS を更新してください"
-      },
-      "safari": {
-        "action": "Safari を更新します",
-        "description": "{{assistantName}} は、現在のブラウザのバージョンをサポートしていません。続行するには、Safari を更新してください。",
-        "title": "続行するには Safari を更新してください"
-      }
-    },
-    "loading": {
-      "ariaLabel": "ワークスペースを読み込み中",
-      "messages": {
-        "almostThere": "もうすぐです...",
-        "brewingIdeas": "アイデアを練っています...",
-        "connectingDots": "点と点をつないでいます...",
-        "gettingReady": "準備しています...",
-        "loadingWorkspace": "ワークスペースを読み込んでいます...",
-        "spinningTeam": "チームを立ち上げています...",
-        "tuningInstruments": "楽器を調整しています...",
-        "warmingNeurons": "ニューラルネットワークを準備しています..."
-      }
-    },
-    "logoAlt": "{{brandName}}",
-    "metadata": {
-      "description": "{{assistantName}}は{{brandName}}のAIコワーカーです。{{assistantName}}にメッセージを送るか、Webでチャットできます。リサーチ、メール、ドキュメント、Slack、GitHub、Notionなど、100以上のツールを利用できます。",
-      "title": "{{assistantName}} — {{brandName}}のAIコワーカー"
-    },
     "shortcutHelp": {
       "close": "キーボードショートカットを閉じる",
       "description": "このページで利用可能なショートカット",

@@ -370,51 +370,6 @@
     }
   },
   "appShell": {
-    "browserUpgrade": {
-      "browser": {
-        "action": "Perbarui browser",
-        "description": "{{assistantName}} tidak mendukung versi browser Anda saat ini. Perbarui browser Anda untuk melanjutkan.",
-        "title": "Perbarui browser Anda untuk melanjutkan"
-      },
-      "chrome": {
-        "action": "Perbarui Chrome",
-        "description": "{{assistantName}} tidak mendukung versi Chrome Anda saat ini. Perbarui Chrome untuk melanjutkan.",
-        "title": "Perbarui Chrome untuk melanjutkan"
-      },
-      "chromium": {
-        "action": "Perbarui Chromium",
-        "description": "{{assistantName}} tidak mendukung versi Chromium Anda saat ini. Perbarui Chromium untuk melanjutkan.",
-        "title": "Perbarui Chromium untuk melanjutkan"
-      },
-      "ios": {
-        "action": "Perbarui iOS",
-        "description": "{{assistantName}} tidak mendukung versi iOS Anda saat ini. Perbarui iOS untuk melanjutkan.",
-        "title": "Perbarui iOS untuk melanjutkan"
-      },
-      "safari": {
-        "action": "Perbarui Safari",
-        "description": "{{assistantName}} tidak mendukung versi Safari Anda saat ini. Perbarui Safari untuk melanjutkan.",
-        "title": "Perbarui Safari untuk melanjutkan"
-      }
-    },
-    "loading": {
-      "ariaLabel": "Memuat ruang kerja Anda",
-      "messages": {
-        "almostThere": "Hampir sampai...",
-        "brewingIdeas": "Sedang meracik ide...",
-        "connectingDots": "Sedang menghubungkan titik-titik...",
-        "gettingReady": "Sedang menyiapkan semuanya...",
-        "loadingWorkspace": "Memuat ruang kerja Anda...",
-        "spinningTeam": "Sedang menyiapkan tim...",
-        "tuningInstruments": "Sedang menyetel instrumen...",
-        "warmingNeurons": "Sedang memanaskan neuron..."
-      }
-    },
-    "logoAlt": "{{brandName}}",
-    "metadata": {
-      "description": "{{assistantName}} adalah rekan kerja AI Anda dari {{brandName}}. Kirim pesan ke {{assistantName}} atau chat di web — riset, email, dokumen, Slack, GitHub, Notion, dan 100+ alat.",
-      "title": "{{assistantName}} — Rekan kerja AI Anda dari {{brandName}}"
-    },
     "shortcutHelp": {
       "close": "Tutup pintasan keyboard",
       "description": "Pintasan yang tersedia di halaman ini",

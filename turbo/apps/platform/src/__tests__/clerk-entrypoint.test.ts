@@ -105,7 +105,6 @@ function executeClerkBootstrap(html: string): void {
 
 function captureClerkBootstrapScript(url: string): HTMLScriptElement {
   context.mocks.browser.url(url);
-  window.__vm0BrowserSupported = true;
   let clerkScript: HTMLScriptElement | undefined;
   const appendSpy = vi
     .spyOn(document.head, "appendChild")
@@ -121,7 +120,6 @@ function captureClerkBootstrapScript(url: string): HTMLScriptElement {
 
   executeClerkBootstrap(builtIndexHtml());
   appendSpy.mockRestore();
-  Reflect.deleteProperty(window, "__vm0BrowserSupported");
   if (!clerkScript) {
     throw new Error("Clerk bootstrap did not create the core script");
   }
@@ -137,7 +135,6 @@ function startClerkPage(path = "/error"): ClerkEntrypointHarness {
   const setup = setupPage({
     beforeBootstrap: (signal) => {
       context.mocks.browser.url("https://pr-30199-app.omby.ai/");
-      window.__vm0BrowserSupported = true;
       Reflect.deleteProperty(globalThis, "Clerk");
 
       const observeScript = (
@@ -200,7 +197,6 @@ function startClerkPage(path = "/error"): ClerkEntrypointHarness {
             request.element.remove();
           }
           Reflect.deleteProperty(globalThis, "Clerk");
-          Reflect.deleteProperty(window, "__vm0BrowserSupported");
         },
         { once: true },
       );
@@ -247,12 +243,7 @@ describe("platform Clerk entrypoint", () => {
         );
       },
     );
-    const avatarBootstrap = parsedDocument.querySelector(
-      "script[data-vm0-avatar-bootstrap]",
-    );
-    const postSkeletonStyles = parsedDocument.querySelector(
-      "style[data-vm0-post-skeleton-styles]",
-    );
+    const criticalStyles = parsedDocument.querySelector("head style");
     const mainScript = parsedDocument.querySelector(
       'script[type="module"][src="/src/main.ts"]',
     );
@@ -272,11 +263,8 @@ describe("platform Clerk entrypoint", () => {
     if (!(paintScheduler instanceof HTMLScriptElement)) {
       throw new Error("Built index.html does not contain the paint scheduler");
     }
-    if (!(avatarBootstrap instanceof HTMLScriptElement)) {
-      throw new Error("Built index.html does not contain the avatar bootstrap");
-    }
-    if (!(postSkeletonStyles instanceof HTMLStyleElement)) {
-      throw new Error("Built index.html does not contain post-skeleton styles");
+    if (!(criticalStyles instanceof HTMLStyleElement)) {
+      throw new Error("Built index.html does not contain critical styles");
     }
     if (!(mainScript instanceof HTMLScriptElement)) {
       throw new Error("Built index.html does not contain the app module");
@@ -295,40 +283,38 @@ describe("platform Clerk entrypoint", () => {
     expect(skeleton.compareDocumentPosition(paintScheduler)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
-    expect(skeleton.compareDocumentPosition(avatarBootstrap)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
+    expect(criticalStyles.textContent).toContain(
+      "@keyframes app-bootstrap-skeleton-avatar-pulse",
     );
-    expect(avatarBootstrap.compareDocumentPosition(paintScheduler)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
-    expect(avatarBootstrap.textContent).toContain(
-      "avatarLayers[i].src = avatarSources[i]",
-    );
-    expect(skeleton.compareDocumentPosition(postSkeletonStyles)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
-    expect(postSkeletonStyles.textContent).toContain(".browser-upgrade");
-    expect(postSkeletonStyles.textContent).toContain(
-      "@keyframes app-bootstrap-skeleton-type",
-    );
-    expect(externalSkeletonImages).toHaveLength(0);
+    expect(externalSkeletonImages).toHaveLength(3);
     expect(avatarLayers).toHaveLength(3);
     for (const avatarLayer of avatarLayers ?? []) {
       expect(avatarLayer.getAttribute("decoding")).toBe("async");
       expect(avatarLayer.getAttribute("fetchpriority")).toBe("low");
     }
+    expect(externalSkeletonImages?.[0]?.getAttribute("src")).toMatch(
+      /\/head-r1-s0\.svg$/u,
+    );
+    expect(externalSkeletonImages?.[1]?.getAttribute("src")).toMatch(
+      /\/face-r1-f1-h\.svg$/u,
+    );
+    expect(externalSkeletonImages?.[2]?.getAttribute("src")).toMatch(
+      /\/hair-r1-h1-c5\.svg$/u,
+    );
     expect(skeleton.querySelector("svg")).toBeNull();
+    expect(skeleton).toHaveTextContent("");
     expect(fontStylesheet.hasAttribute("rel")).toBeFalsy();
     expect(fontStylesheet.hasAttribute("as")).toBeFalsy();
     expect(html.indexOf("data-vm0-clerk-bootstrap")).toBeLessThan(
       html.indexOf("var appEntry ="),
     );
+    expect(html).not.toContain("copyByLocale");
+    expect(html).not.toContain("browser-upgrade");
     expect(html).not.toContain("@clerk/ui");
   });
 
   it("preconnects immediately and starts the Clerk core after first paint", () => {
     context.mocks.browser.url("https://app.vm0.ai/");
-    window.__vm0BrowserSupported = true;
     let afterFirstPaint: (() => void) | undefined;
     window.__vm0AfterFirstPaint = (callback) => {
       afterFirstPaint = callback;
@@ -369,7 +355,6 @@ describe("platform Clerk entrypoint", () => {
     } finally {
       appendSpy.mockRestore();
       Reflect.deleteProperty(window, "__vm0AfterFirstPaint");
-      Reflect.deleteProperty(window, "__vm0BrowserSupported");
     }
   });
 

@@ -384,51 +384,6 @@
     }
   },
   "appShell": {
-    "browserUpgrade": {
-      "browser": {
-        "action": "Actualizar navegador",
-        "description": "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza el navegador para continuar.",
-        "title": "Actualiza tu navegador para continuar"
-      },
-      "chrome": {
-        "action": "Actualizar Chrome",
-        "description": "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza Chrome para continuar.",
-        "title": "Actualiza Chrome para continuar"
-      },
-      "chromium": {
-        "action": "Actualizar Chromium",
-        "description": "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza Chromium para continuar.",
-        "title": "Actualiza Chromium para continuar"
-      },
-      "ios": {
-        "action": "Actualizar iOS",
-        "description": "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza iOS para continuar.",
-        "title": "Actualiza iOS para continuar"
-      },
-      "safari": {
-        "action": "Actualizar Safari",
-        "description": "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza Safari para continuar.",
-        "title": "Actualiza Safari para continuar"
-      }
-    },
-    "loading": {
-      "ariaLabel": "Cargando tu espacio de trabajo",
-      "messages": {
-        "almostThere": "Ya casi está...",
-        "brewingIdeas": "Preparando algunas ideas...",
-        "connectingDots": "Conectando los puntos...",
-        "gettingReady": "Dejándolo todo listo...",
-        "loadingWorkspace": "Cargando tu espacio de trabajo...",
-        "spinningTeam": "Reuniendo al equipo...",
-        "tuningInstruments": "Afinando los instrumentos...",
-        "warmingNeurons": "Activando las neuronas..."
-      }
-    },
-    "logoAlt": "{{brandName}}",
-    "metadata": {
-      "description": "{{assistantName}} es tu compañero de IA de {{brandName}}. Escríbele a {{assistantName}} o chatea en la web: investiga, envía correos, crea documentos y usa Slack, GitHub, Notion y más de 100 herramientas.",
-      "title": "{{assistantName}} — Tu compañero de IA de {{brandName}}"
-    },
     "shortcutHelp": {
       "close": "Cerrar atajos de teclado",
       "description": "Atajos disponibles en esta página",

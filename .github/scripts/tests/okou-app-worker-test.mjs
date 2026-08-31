@@ -306,8 +306,13 @@ function clerkBootstrap(html) {
   return bootstrap;
 }
 
-function assertBootstrapAvatar(html) {
+function assertBootstrapAvatar(html, staticAssetsOrigin) {
   assert.doesNotMatch(html, /app-bootstrap-skeleton__avatar-placeholder/u);
+  const sourceByLayer = {
+    face: "face-r1-f1-h.svg",
+    hair: "hair-r1-h1-c5.svg",
+    head: "head-r1-s0.svg",
+  };
   for (const layer of ["head", "face", "hair"]) {
     assert.equal(
       tagAttribute(
@@ -317,7 +322,7 @@ function assertBootstrapAvatar(html) {
         layer,
         "src",
       ),
-      null,
+      `${staticAssetsOrigin}/platform/views/zero-page/assets/avatar-svg/${sourceByLayer[layer]}`,
     );
     assert.equal(
       tagAttribute(
@@ -396,7 +401,7 @@ assert.ok(
     "https://static.vm0.io/platform/icon.svg",
   ),
 );
-assertBootstrapAvatar(vm0Page.html);
+assertBootstrapAvatar(vm0Page.html, "https://static.vm0.io");
 assert.equal(clerkBootstrap(vm0Page.html), expectedClerkBootstrap);
 
 const okouPage = await requestAppPage("https://app.okou.ai");
@@ -441,7 +446,7 @@ assert.ok(
     (href) => href === "https://static.okou.io",
   ),
 );
-assertBootstrapAvatar(okouPage.html);
+assertBootstrapAvatar(okouPage.html, "https://static.okou.io");
 assert.equal(clerkBootstrap(okouPage.html), expectedClerkBootstrap);
 
 const okouPreview = await requestAppPage(

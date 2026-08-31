@@ -370,51 +370,6 @@
     }
   },
   "appShell": {
-    "browserUpgrade": {
-      "browser": {
-        "action": "브라우저 업데이트",
-        "description": "{{assistantName}}는 현재 브라우저 버전을 지원하지 않습니다. 계속하려면 브라우저를 업데이트하세요.",
-        "title": "계속하려면 브라우저를 업데이트하세요"
-      },
-      "chrome": {
-        "action": "Chrome 업데이트",
-        "description": "{{assistantName}}는 현재 Chrome 버전을 지원하지 않습니다. 계속하려면 Chrome을 업데이트하세요.",
-        "title": "계속하려면 Chrome을 업데이트하세요"
-      },
-      "chromium": {
-        "action": "Chromium 업데이트",
-        "description": "{{assistantName}}는 현재 Chromium 버전을 지원하지 않습니다. 계속하려면 Chromium을 업데이트하세요.",
-        "title": "계속하려면 Chromium을 업데이트하세요"
-      },
-      "ios": {
-        "action": "iOS 업데이트",
-        "description": "{{assistantName}}는 현재 iOS 버전을 지원하지 않습니다. 계속하려면 iOS를 업데이트하세요.",
-        "title": "계속하려면 iOS를 업데이트하세요"
-      },
-      "safari": {
-        "action": "Safari 업데이트",
-        "description": "{{assistantName}}는 현재 Safari 버전을 지원하지 않습니다. 계속하려면 Safari를 업데이트하세요.",
-        "title": "계속하려면 Safari를 업데이트하세요"
-      }
-    },
-    "loading": {
-      "ariaLabel": "워크스페이스를 불러오는 중",
-      "messages": {
-        "almostThere": "거의 완료되었습니다...",
-        "brewingIdeas": "아이디어를 구상 중...",
-        "connectingDots": "연결 중...",
-        "gettingReady": "준비 중...",
-        "loadingWorkspace": "워크스페이스를 불러오는 중...",
-        "spinningTeam": "팀을 구성하는 중...",
-        "tuningInstruments": "도구를 조율하는 중...",
-        "warmingNeurons": "뉴런을 예열하는 중..."
-      }
-    },
-    "logoAlt": "{{brandName}}",
-    "metadata": {
-      "description": "{{assistantName}}는 {{brandName}}의 AI 팀원입니다. {{assistantName}}에 텍스트를 보내거나 웹에서 채팅하세요 — 리서치, 이메일, 문서, Slack, GitHub, Notion 및 100개 이상의 도구를 지원합니다.",
-      "title": "{{assistantName}} — {{brandName}}의 AI 팀원"
-    },
     "shortcutHelp": {
       "close": "단축키 닫기",
       "description": "이 페이지에서 사용 가능한 단축키",

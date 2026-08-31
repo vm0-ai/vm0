@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import {
   defaultTreeAdapter,
   html as htmlConstants,
@@ -12,14 +10,6 @@ import { transformWithEsbuild, type Plugin, type ResolvedConfig } from "vite";
 const APP_ENTRY_ATTRIBUTE = "data-vm0-app-entry";
 const APP_MODULE_PRELOAD_ATTRIBUTE = "data-vm0-app-module-preload";
 const APP_STYLESHEET_ATTRIBUTE = "data-vm0-app-stylesheet";
-const AFTER_FIRST_PAINT_ENTRY_ATTRIBUTE = "data-vm0-after-first-paint-entry";
-const AFTER_FIRST_PAINT_ENTRY_PLACEHOLDER =
-  "__VM0_AFTER_FIRST_PAINT_ENTRY_URL__";
-
-type ExtractedAfterFirstPaintBootstrap = {
-  readonly html: string;
-  readonly source: string;
-};
 
 type InlineBlockKind = "script" | "style";
 
@@ -206,99 +196,6 @@ export function deferApplicationEntryResources(html: string): string {
   return applyHtmlReplacements(html, replacements);
 }
 
-export function extractAfterFirstPaintBootstrap(
-  html: string,
-): ExtractedAfterFirstPaintBootstrap {
-  const callbacks: string[] = [];
-  let insertedEntrypoint = false;
-  const replacements: HtmlReplacement[] = [];
-  for (const element of htmlElements(html)) {
-    const location = element.sourceCodeLocation;
-    if (
-      element.tagName !== "script" ||
-      element.attrs.length !== 0 ||
-      location?.startTag === undefined ||
-      location.endTag === undefined
-    ) {
-      continue;
-    }
-    const source = html.slice(
-      location.startTag.endOffset,
-      location.endTag.startOffset,
-    );
-    if (
-      !source
-        .trimStart()
-        .startsWith("window.__vm0AfterFirstPaint(function () {")
-    ) {
-      continue;
-    }
-    callbacks.push(source.trim());
-    let replacement = "";
-    if (insertedEntrypoint) {
-      replacements.push({
-        endOffset: location.endOffset,
-        replacement,
-        startOffset: location.startOffset,
-      });
-      continue;
-    }
-    insertedEntrypoint = true;
-    replacement = `<link crossorigin href="${AFTER_FIRST_PAINT_ENTRY_PLACEHOLDER}" ${AFTER_FIRST_PAINT_ENTRY_ATTRIBUTE}="">
-    <script data-vm0-after-first-paint-loader="">
-      window.__vm0AfterFirstPaint(function () {
-        if (window.__vm0BrowserSupported === true) {
-          var modulePreloads = document.querySelectorAll(
-            'link[${APP_ENTRY_ATTRIBUTE}=""], link[${APP_MODULE_PRELOAD_ATTRIBUTE}=""]',
-          );
-          for (var index = 0; index < modulePreloads.length; index += 1) {
-            modulePreloads[index].rel = "modulepreload";
-          }
-
-          var appStylesheet = document.querySelector(
-            'link[${APP_STYLESHEET_ATTRIBUTE}=""]',
-          );
-          if (appStylesheet) {
-            appStylesheet.rel = "preload";
-            appStylesheet.as = "style";
-          }
-
-          var fontStylesheet = document.querySelector(
-            'link[data-vm0-font-stylesheet=""]',
-          );
-          if (fontStylesheet) {
-            fontStylesheet.rel = "preload";
-            fontStylesheet.as = "style";
-          }
-        }
-
-        var entry = document.querySelector(
-          'link[${AFTER_FIRST_PAINT_ENTRY_ATTRIBUTE}=""]',
-        );
-        if (!entry) return;
-
-        var script = document.createElement("script");
-        script.src = entry.href;
-        script.crossOrigin = "anonymous";
-        document.head.appendChild(script);
-      });
-    </script>`;
-    replacements.push({
-      endOffset: location.endOffset,
-      replacement,
-      startOffset: location.startOffset,
-    });
-  }
-  if (callbacks.length === 0) {
-    throw new Error("Expected deferred after-first-paint bootstrap callbacks");
-  }
-
-  return {
-    html: applyHtmlReplacements(html, replacements),
-    source: `"use strict";\n${callbacks.join("\n")}\n`,
-  };
-}
-
 async function minifyInlineBlock(
   kind: InlineBlockKind,
   element: HtmlElement,
@@ -376,10 +273,6 @@ async function minifyInlineBootstrap(html: string): Promise<string> {
   return applyHtmlReplacements(minified, whitespaceReplacements).trim();
 }
 
-function assetUrl(config: ResolvedConfig, fileName: string): string {
-  return `${config.base.replace(/\/?$/u, "/")}${fileName}`;
-}
-
 export function deferredApplicationEntryHtmlPlugin(): Plugin {
   let resolvedConfig: ResolvedConfig | undefined;
   return {
@@ -394,33 +287,7 @@ export function deferredApplicationEntryHtmlPlugin(): Plugin {
         if (resolvedConfig?.command !== "build") {
           return deferredHtml;
         }
-        const extracted = extractAfterFirstPaintBootstrap(deferredHtml);
-        const minifiedSource = (
-          await transformWithEsbuild(
-            extracted.source,
-            "bootstrap-after-first-paint.js",
-            {
-              legalComments: "none",
-              loader: "js",
-              minify: true,
-              target: "es2020",
-            },
-          )
-        ).code.trim();
-        const digest = createHash("sha256")
-          .update(minifiedSource)
-          .digest("hex")
-          .slice(0, 12);
-        const fileName = `assets/bootstrap-after-first-paint-${digest}.js`;
-        this.emitFile({
-          type: "asset",
-          fileName,
-          source: minifiedSource,
-        });
-        const entryUrl = assetUrl(resolvedConfig, fileName);
-        return await minifyInlineBootstrap(
-          extracted.html.replace(AFTER_FIRST_PAINT_ENTRY_PLACEHOLDER, entryUrl),
-        );
+        return await minifyInlineBootstrap(deferredHtml);
       },
     },
   };

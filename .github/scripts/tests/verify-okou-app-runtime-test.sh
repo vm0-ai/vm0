@@ -21,7 +21,6 @@ fail() {
 
 for file_name in \
   app-AbCd1234.js \
-  bootstrap-after-first-paint-123456789abc.js \
   vendor-EfGh5678.js \
   rolldown-runtime-IjKl9012.js \
   shared-database-worker-MnOp3456.js; do
@@ -35,7 +34,6 @@ cat > "$html_source" <<'HTML'
 <link crossorigin href="https://static.test/okou-app/assets/app-AbCd1234.js" data-vm0-app-entry="">
 <link crossorigin href="https://static.test/okou-app/assets/rolldown-runtime-IjKl9012.js" data-vm0-app-module-preload="">
 <link crossorigin href="https://static.test/okou-app/assets/vendor-EfGh5678.js" data-vm0-app-module-preload="">
-<link crossorigin href="https://static.test/okou-app/assets/bootstrap-after-first-paint-123456789abc.js" data-vm0-after-first-paint-entry="">
 HTML
 
 cat > "$old_html_source" <<'HTML'
@@ -45,7 +43,6 @@ cat > "$old_html_source" <<'HTML'
 <link crossorigin href="https://static.test/okou-app/assets/app-Old12345.js" data-vm0-app-entry="">
 <link crossorigin href="https://static.test/okou-app/assets/rolldown-runtime-Old12345.js" data-vm0-app-module-preload="">
 <link crossorigin href="https://static.test/okou-app/assets/vendor-Old12345.js" data-vm0-app-module-preload="">
-<link crossorigin href="https://static.test/okou-app/assets/bootstrap-after-first-paint-Old12345.js" data-vm0-after-first-paint-entry="">
 HTML
 
 cat > "${fake_bin}/curl" <<'BASH'
@@ -106,12 +103,11 @@ output="$({
 } 2>&1)"
 
 grep -Fq \
-  'Verified app runtime: app=https://static.test/okou-app/assets/app-AbCd1234.js after-first-paint=https://static.test/okou-app/assets/bootstrap-after-first-paint-123456789abc.js vendor=https://static.test/okou-app/assets/vendor-EfGh5678.js runtime=https://static.test/okou-app/assets/rolldown-runtime-IjKl9012.js worker=https://app.test/okou-app/assets/shared-database-worker-MnOp3456.js' \
+  'Verified app runtime: app=https://static.test/okou-app/assets/app-AbCd1234.js vendor=https://static.test/okou-app/assets/vendor-EfGh5678.js runtime=https://static.test/okou-app/assets/rolldown-runtime-IjKl9012.js worker=https://app.test/okou-app/assets/shared-database-worker-MnOp3456.js' \
   <<< "$output" || fail "runtime verification summary is incorrect"
 for expected_url in \
   https://app.test/sign-up \
   https://static.test/okou-app/assets/app-AbCd1234.js \
-  https://static.test/okou-app/assets/bootstrap-after-first-paint-123456789abc.js \
   https://static.test/okou-app/assets/vendor-EfGh5678.js \
   https://static.test/okou-app/assets/rolldown-runtime-IjKl9012.js \
   https://app.test/okou-app/assets/shared-database-worker-MnOp3456.js; do
