@@ -271,7 +271,7 @@ describe("portable platform runtime environment", () => {
     ]);
     expect(posthogInit).toHaveBeenCalledWith(
       POSTHOG_KEY,
-      expect.objectContaining({ api_host: "https://j.vm0.ai" }),
+      expect.objectContaining({ api_host: "https://j.okou.io" }),
     );
     const [, posthogConfig] = posthogInit.mock.lastCall ?? [];
     expect(
