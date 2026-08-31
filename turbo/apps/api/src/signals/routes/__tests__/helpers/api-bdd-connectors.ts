@@ -173,7 +173,7 @@ const SLOCK_DEVICE_CODE_URL = "https://api.slock.ai/api/auth/device/authorize";
 const SLOCK_TOKEN_URL = "https://api.slock.ai/api/auth/device/token";
 const SLOCK_USERINFO_URL = "https://api.slock.ai/api/auth/me";
 const SLOCK_SERVERS_URL = "https://api.slock.ai/api/servers";
-const STRIPE_OAUTH_TOKEN_URL = "https://connect.stripe.com/oauth/token";
+const STRIPE_OAUTH_TOKEN_URL = "https://api.stripe.com/v1/oauth/token";
 const STRIPE_ACCOUNT_URL = "https://api.stripe.com/v1/account";
 const STRIPE_CLI_AUTH_URL = "https://dashboard.stripe.com/stripecli/auth";
 const STRIPE_CLI_BROWSER_URL =
@@ -315,6 +315,7 @@ interface StripeConnectorOAuthOptions {
 
 interface StripeConnectorOAuthRecorder {
   readonly tokenBodies: URLSearchParams[];
+  readonly tokenAuthorizationHeaders: (string | null)[];
   readonly accountAuthorizationHeaders: (string | null)[];
 }
 
@@ -323,21 +324,23 @@ export function mockStripeConnectorOAuth(
 ): StripeConnectorOAuthRecorder {
   mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
   mockOptionalEnv("STRIPE_OAUTH_CLIENT_ID", "stripe-client-id");
-  mockOptionalEnv("STRIPE_SECRET_KEY", "stripe-client-secret");
+  mockOptionalEnv("STRIPE_OAUTH_CLIENT_SECRET", "sk_test_marketplace_secret");
 
   const tokenBodies: URLSearchParams[] = [];
+  const tokenAuthorizationHeaders: (string | null)[] = [];
   const accountAuthorizationHeaders: (string | null)[] = [];
   const accessToken = options.accessToken ?? "stripe-live-access-token";
   const accountId = options.accountId ?? "acct_live_workflow";
   server.use(
     http.post(STRIPE_OAUTH_TOKEN_URL, async ({ request }) => {
       tokenBodies.push(new URLSearchParams(await request.text()));
+      tokenAuthorizationHeaders.push(request.headers.get("authorization"));
       return HttpResponse.json({
         access_token: accessToken,
         livemode: options.livemode ?? true,
         refresh_token: options.refreshToken ?? "stripe-refresh-token",
         stripe_user_id: accountId,
-        scope: "read_write",
+        scope: "stripe_apps",
       });
     }),
     http.get(STRIPE_ACCOUNT_URL, ({ request }) => {
@@ -349,7 +352,11 @@ export function mockStripeConnectorOAuth(
       });
     }),
   );
-  return { tokenBodies, accountAuthorizationHeaders };
+  return {
+    tokenBodies,
+    tokenAuthorizationHeaders,
+    accountAuthorizationHeaders,
+  };
 }
 
 interface DatadogOAuthProviderRecorder {

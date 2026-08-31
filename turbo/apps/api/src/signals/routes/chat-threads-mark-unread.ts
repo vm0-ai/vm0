@@ -8,7 +8,7 @@ import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
-import { publishUserSignal } from "../external/realtime";
+import { publishChatThreadReadCursorUpdatedSafely } from "../external/realtime";
 import { notFound } from "../../lib/error";
 import { chatThreadUnreads } from "../services/chat-thread.service";
 import type { RouteEntry } from "../route-entry";
@@ -38,11 +38,14 @@ const markUnreadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return notFound("Chat thread not found");
   }
 
-  await publishUserSignal([auth.userId], "chatThreadReadCursorUpdated", {
-    threadId: params.id,
-    agentId: thread.agentId,
-    lastReadAt: null,
-  });
+  await publishChatThreadReadCursorUpdatedSafely(
+    { userId: auth.userId, orgId: thread.orgId },
+    {
+      threadId: params.id,
+      agentId: thread.agentId,
+      lastReadAt: null,
+    },
+  );
   signal.throwIfAborted();
 
   const unreads = await get(

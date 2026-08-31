@@ -15,7 +15,6 @@ import { activeRoute$ } from "../active-route.ts";
 import { authenticatedIdentity$ } from "../auth.ts";
 import { apiClient$ } from "../api-client.ts";
 import { foregroundReady$ } from "../auth-retry.ts";
-import { reloadChatIndicators$ } from "../chat-thread-list-reload.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { subscribeRealtimeReadyCatchUp$ } from "../realtime.ts";
 import { rootSignal$ } from "../root-signal.ts";
@@ -314,10 +313,7 @@ const subscribeSharedEventDrivenChatThreads$ = command(
     await set(
       onSharedDatabase$,
       dataKey,
-      (kind) => {
-        if (kind === "invalidate") {
-          set(reloadChatIndicators$);
-        }
+      () => {
         set(markChatThreadEventSyncPending$);
         set(enqueueSharedDatabaseInvalidation$, dataKey);
       },

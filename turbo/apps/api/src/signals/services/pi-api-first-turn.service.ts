@@ -39,7 +39,7 @@ import {
   type CompleteSideEffectsInput,
   type DispatchCompleteSideEffectsInput,
 } from "./agent-webhook-complete.service";
-import { createAgentCheckpoint$ } from "./agent-webhook-checkpoints.service";
+import { createPiApiFirstTurnCheckpoint$ } from "./agent-webhook-checkpoints.service";
 import { resolveModelProviderRuntimeSecretForApi } from "./agent-webhook-firewall-auth.service";
 import {
   dispatchOptionalAgentEventConsumers$,
@@ -921,7 +921,7 @@ const persistCompleteTurnCheckpoint$ = command(
       signal,
     );
     const checkpoint = await set(
-      createAgentCheckpoint$,
+      createPiApiFirstTurnCheckpoint$,
       {
         auth: prepared.auth,
         body: {

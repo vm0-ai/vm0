@@ -1174,16 +1174,6 @@ describe("Feishu integration", () => {
       headers,
       [200],
     );
-    await webhooksApi.requestAgentCheckpoint(
-      {
-        runId: args.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: args.sessionId,
-        cliAgentSessionHistoryHash: historyHash,
-      },
-      headers,
-      [200],
-    );
     if (args.assistantText !== undefined) {
       const assistantEvent = {
         type: "assistant" as const,
@@ -1210,6 +1200,11 @@ describe("Feishu integration", () => {
       {
         runId: args.runId,
         exitCode: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: args.sessionId,
+          cliAgentSessionHistoryHash: historyHash,
+        },
         ...(args.assistantText === undefined ? {} : { lastEventSequence: 0 }),
       },
       headers,

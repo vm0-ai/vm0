@@ -27,6 +27,7 @@ import {
   type AvatarVideoVoice,
   type AvatarVideoVoicesQuery,
 } from "@okouai/api-contracts/contracts/avatar-video";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { avatarTemplateStylePresetId } from "@okouai/core/avatar-template";
 import { setMockPresentationTemplates } from "../../../mocks/handlers/api-presentation-templates.ts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -64,6 +65,7 @@ import {
   expectInlineTemplateInComposer,
   composerInlineTemplates,
   appendAndSend,
+  billingStatus,
 } from "./chat-composer-test-helpers.ts";
 
 // Templates are sent as inline parts of the structured userMessage.
@@ -411,6 +413,9 @@ async function selectAvatarRecommendationFilters(
 
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
+  context.mocks.api(billingStatusContract.get, ({ respond }) => {
+    return respond(200, billingStatus("pro"));
+  });
   context.mocks.http.get("*/__vm0-dev-artifact-fetch", ({ request }) => {
     const requestedUrl = new URL(request.url).searchParams.get("url");
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
@@ -3279,6 +3284,53 @@ describe("chat composer templates", () => {
         }),
       ).toStrictEqual([videoStyle.title]);
     });
+  });
+
+  it("opens compare plans from video templates when the workspace cannot generate video", async () => {
+    const videoStyle = VIDEO_TEMPLATE_ITEMS[0]!;
+    const user = userEvent.setup({ delay: null });
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
+      return respond(200, billingStatus("limited-free-1"));
+    });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await user.click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await user.click(
+      await waitFor(() => {
+        return tabByText("Video");
+      }),
+    );
+
+    const upgrade = await waitFor(() => {
+      const found = queryAllByRoleFast("button").find((candidate) => {
+        return (
+          candidate.getAttribute("aria-label") ===
+          `View plans for video template ${videoStyle.title}`
+        );
+      });
+      if (found === undefined) {
+        throw new Error("Video template plan button not found");
+      }
+      return found;
+    });
+    expect(upgrade).toHaveTextContent("Need Pro");
+
+    await user.click(upgrade);
+
+    await expect(
+      screen.findByRole("heading", { name: "Choose a plan" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Template" })).toBeNull();
+    expect(composerInlineTemplates()).toHaveLength(0);
   });
 
   it("selects and sends a workflow template from the picker", async () => {

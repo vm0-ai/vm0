@@ -43,20 +43,18 @@ async function completeRunThroughSandbox(
   runId: string,
 ): Promise<void> {
   const sandboxHeaders = { authorization: `Bearer ${sandboxToken}` };
-  await webhooksApi.requestAgentCheckpoint(
+  await webhooksApi.requestAgentComplete(
     {
       runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId: `calendar-webhook-cli-${runId}`,
-      cliAgentSessionHistoryHash: createHash("sha256")
-        .update(`calendar webhook history ${runId}`)
-        .digest("hex"),
+      exitCode: 0,
+      checkpoint: {
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `calendar-webhook-cli-${runId}`,
+        cliAgentSessionHistoryHash: createHash("sha256")
+          .update(`calendar webhook history ${runId}`)
+          .digest("hex"),
+      },
     },
-    sandboxHeaders,
-    [200],
-  );
-  await webhooksApi.requestAgentComplete(
-    { runId, exitCode: 0 },
     sandboxHeaders,
     [200],
   );

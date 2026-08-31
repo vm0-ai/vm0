@@ -1,9 +1,6 @@
 import { command } from "ccstate";
 import { authRecovery$, clerk$ } from "./auth.ts";
-import {
-  subscribeChatThreadReadCursorUpdated$,
-  setupChatIndicatorForegroundCatchUp$,
-} from "./chat-thread-list-reload.ts";
+import { setupChatIndicatorForegroundCatchUp$ } from "./chat-thread-list-reload.ts";
 import { subscribeEventDrivenChatThreads$ } from "./chat-page/chat-thread-event-sourcing.ts";
 import { prewarmSharedUnreadChatEvents$ } from "./chat-page/chat-event-background-sync.ts";
 import { setupUserPreferenceRealtime$ } from "./external/user-model-preference.ts";
@@ -30,7 +27,6 @@ export const setupAuthenticatedDaemons$ = command(
 
     await Promise.all([
       set(setupRealtime$, signal),
-      set(subscribeChatThreadReadCursorUpdated$, signal),
       set(setupChatIndicatorForegroundCatchUp$, signal),
       set(subscribePermissionUpdate$, signal),
       set(setupBillingRealtime$, signal),

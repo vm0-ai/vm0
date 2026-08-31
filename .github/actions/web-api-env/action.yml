@@ -193,6 +193,7 @@ runs:
         github_app_client_secret="$(resolve_repo_alias repo_secret OKOU_GITHUB_APP_CLIENT_SECRET VM0_GITHUB_APP_CLIENT_SECRET)"
         github_app_webhook_secret="$(resolve_repo_alias repo_secret OKOU_GITHUB_APP_WEBHOOK_SECRET VM0_GITHUB_APP_WEBHOOK_SECRET)"
         github_app_private_key="$(resolve_repo_alias repo_secret OKOU_GITHUB_APP_PRIVATE_KEY VM0_GITHUB_APP_PRIVATE_KEY)"
+        machine_secret_key="$(resolve_repo_alias repo_secret OKOU_MACHINE_SECRET_KEY VM0_MACHINE_SECRET_KEY "API machine secret")"
         api_backend_url="$INPUT_API_BACKEND_URL"
         if [[ "$INPUT_ENVIRONMENT" == "production" && -z "$api_backend_url" ]]; then
           api_backend_url="$(resolve_repo_alias repo_var OKOU_API_BACKEND_URL VM0_API_BACKEND_URL "API backend URL")"
@@ -220,7 +221,6 @@ runs:
           public_artifacts_base_url="$(repo_var PUBLIC_ARTIFACTS_BASE_URL)"
           static_assets_base_url="$(first_non_empty "$(repo_var STATIC_ASSETS_BASE_URL_PROD)" "$(repo_var STATIC_ASSETS_BASE_URL)" "https://static.vm0.io")"
           atom_url="$(repo_var ATOM_URL)"
-          machine_secret_key="$(repo_secret VM0_MACHINE_SECRET_KEY)"
         else
           web_url="$INPUT_WEB_URL"
           app_url="$INPUT_APP_URL"
@@ -237,7 +237,6 @@ runs:
           public_artifacts_base_url="$(first_non_empty "$(repo_var PUBLIC_ARTIFACTS_BASE_URL_DEV)" "$(repo_var PUBLIC_ARTIFACTS_BASE_URL)" "https://cdn.vm7.io")"
           static_assets_base_url="$(first_non_empty "$(repo_var STATIC_ASSETS_BASE_URL_DEV)" "$(repo_var STATIC_ASSETS_BASE_URL)" "https://static.vm7.io")"
           atom_url="https://tunnel-yuma-atom-api.vm7.ai"
-          machine_secret_key="$(repo_secret VM0_MACHINE_SECRET_KEY)"
         fi
 
         if [[ -n "$api_backend_url" ]]; then
@@ -393,6 +392,7 @@ runs:
           GUMROAD
           MERCURY
           SPOTIFY
+          STRIPE
           ZOOM
         )
         for prefix in "${oauth_client_config_prefixes[@]}"; do
@@ -424,7 +424,6 @@ runs:
         add_var VERCEL_INTEGRATION_SLUG VERCEL_INTEGRATION_SLUG
         add_var MERCURY_OAUTH_ENVIRONMENT MERCURY_OAUTH_ENVIRONMENT
         add_var MONDAY_OAUTH_APP_ID MONDAY_OAUTH_APP_ID
-        add_oauth_client_config_key STRIPE_OAUTH_CLIENT_ID
         add_secret STRIPE_SECRET_KEY STRIPE_SECRET_KEY
         add_var STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID
         add_secret STRIPE_WEBHOOK_SECRET STRIPE_WEBHOOK_SECRET
