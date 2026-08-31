@@ -68,6 +68,14 @@ import { validateConnectorAuthorizationAccountMutationPresence } from "./test-co
 import { validateCustomGatewayProviderTypes } from "./test-custom-gateway-provider-types";
 import { validateFeishuMemberConnectorReconciliation } from "./test-feishu-member-connector-reconciliation";
 import { validateOkouDebugFeatureSwitchKeyRename } from "./test-okou-debug-feature-switch-key-rename";
+import { validateOrgMetadataAcquisitionFirstPartySourceExpansion } from "./test-org-metadata-acquisition-first-party-source-expansion";
+import {
+  installOrgMetadataAcquisitionFirstPartySourceArtifactsOnRegeneratedSchema,
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_MIGRATION,
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_FUNCTION,
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_TRIGGER,
+  validatePermanentOrgMetadataAcquisitionFirstPartySourceState,
+} from "./test-org-metadata-acquisition-first-party-source-permanent";
 import { validateOrgPlanEntitlementRestrictionExpansion } from "./test-org-plan-entitlement-restriction-expansion";
 import {
   ORG_PLAN_ENTITLEMENT_RESTRICTION_BACKFILL_MIGRATION,
@@ -2487,6 +2495,9 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "org_metadata",
     triggerName: "ensure_legacy_org_metadata_plan_entitlement",
   },
+  // Temporary #30379 expand/mirror bridge. Remove only with #28368 after the
+  // backfill, canonical application/reporting switch, and rollback gates pass.
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_TRIGGER,
   // Temporary #30162 expand/mirror bridge. Remove only with #28368 after the
   // canonical reader/writer switch, backfill, and rollback drain are accepted.
   ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_TRIGGER,
@@ -2667,6 +2678,8 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     schemaName: "public",
   },
   ORG_METADATA_PLAN_ENTITLEMENT_PERMANENT_FUNCTION,
+  // Same temporary #30379 bridge and #28368 removal gate as its trigger.
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_FUNCTION,
   {
     bodyHash: "7740cf65befb5e06a73e1f21bcfdd5cc",
     functionName: "fill_legacy_chat_thread_snapshot_event_seq_id",
@@ -10858,6 +10871,9 @@ async function main(): Promise<void> {
     await validateAgentDraftsCompatibilityRelation();
     await validateWorkflowCompatibilityViews();
     await validateBuiltInProviderDiscriminatorMigration(dbUrl.toString());
+    await validateOrgMetadataAcquisitionFirstPartySourceExpansion(
+      dbUrl.toString(),
+    );
     await validateOrgPlanEntitlementRestrictionExpansion(dbUrl.toString());
     await validateOrgPlanEntitlementRestrictionBackfill(dbUrl.toString());
     await validateOrgPlanEntitlementRestrictionNotNull(dbUrl.toString());
@@ -10881,6 +10897,7 @@ async function main(): Promise<void> {
     await validateCanonicalIntegrationIdentitySchema(dbUrl1);
     await validatePermanentAgentRunBuiltInModelKeyState(dbUrl1);
     await validatePermanentTriggerAndFunctionInventory(dbUrl1);
+    await validatePermanentOrgMetadataAcquisitionFirstPartySourceState(dbUrl1);
     await validatePermanentOrgPlanEntitlementRestrictionState(dbUrl1);
     await validatePermanentBuiltInProviderDiscriminatorState(dbUrl1);
     await validateActiveLegacyDatabaseIdentityInventory(dbUrl1);
@@ -10901,6 +10918,14 @@ async function main(): Promise<void> {
 
     // Step 2: Backup and regenerate migrations
     console.log("=== Phase 3: Test regenerated migrations ===\n");
+    const orgMetadataAcquisitionFirstPartySourceMigrationSql =
+      await fs.readFile(
+        path.join(
+          MIGRATIONS_DIR,
+          `${ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_MIGRATION}.sql`,
+        ),
+        "utf8",
+      );
     const orgPlanEntitlementRestrictionMigrationSql = await fs.readFile(
       path.join(
         MIGRATIONS_DIR,
@@ -10924,6 +10949,10 @@ async function main(): Promise<void> {
     const dbUrl2 = createTestDbUrl(TEST_DB_2);
     await runMigrations(dbUrl2);
     console.log("   ✅ Fresh migrations applied successfully\n");
+    await installOrgMetadataAcquisitionFirstPartySourceArtifactsOnRegeneratedSchema(
+      dbUrl2,
+      orgMetadataAcquisitionFirstPartySourceMigrationSql,
+    );
     await installOrgPlanEntitlementRestrictionArtifactsOnRegeneratedSchema(
       dbUrl2,
       orgPlanEntitlementRestrictionMigrationSql,
@@ -10932,6 +10961,7 @@ async function main(): Promise<void> {
       dbUrl2,
       orgPlanEntitlementRestrictionBackfillMigrationSql,
     );
+    await validatePermanentOrgMetadataAcquisitionFirstPartySourceState(dbUrl2);
     await validatePermanentOrgPlanEntitlementRestrictionState(dbUrl2);
     await validatePermanentAgentRunBuiltInModelKeyState(dbUrl2);
     await validatePermanentBuiltInModelCooldownState(dbUrl2);
