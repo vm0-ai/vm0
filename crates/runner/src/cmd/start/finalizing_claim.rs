@@ -6,17 +6,18 @@
 //!
 //! - `Pending` means that publication or handoff is still possible.
 //! - `ExactSandboxPublished` means that the successor may reserve the exact idle entry.
-//! - `ExactSandboxHandedOff` means that the exact entry was delivered to another successor and
-//!   the successor must use fallback resources.
+//! - `ExactSandboxHandedOff` means that the exact entry was handed off. A live request for this
+//!   successor receives its candidate before fallback; otherwise the successor uses fallback
+//!   resources.
 //! - `NoExactSandbox` and `Released` mean that no exact predecessor resource will be published,
 //!   so the successor must use fallback resources.
 //!
 //! While the predecessor is `Pending`, the successor requests one direct handoff. Handoff
 //! acceptance is allowed until the later of the predecessor preference deadline and the claim's
-//! return time plus `FINALIZING_HANDOFF_ACCEPTANCE_GRACE`. A candidate that was already
-//! accepted and delivered wins a deadline race. Cancellation is checked with priority; if a
-//! candidate was delivered before the receiver was closed, the handoff request recovers it so
-//! this module can destroy it rather than lose ownership.
+//! return time plus `FINALIZING_HANDOFF_ACCEPTANCE_GRACE`. An accepted handoff, including a
+//! candidate that was already delivered, wins a deadline race. Cancellation is checked with
+//! priority; if a candidate was delivered before the receiver was closed, the handoff request
+//! recovers it so this module can destroy it rather than lose ownership.
 //!
 //! Every exact resource is reserved for the claimed successor's reuse key, profile, device
 //! limits, and history-generation run ID. A handed-off candidate is checked against the
@@ -574,7 +575,7 @@ async fn prepare_finalizing_resource(
 /// The handoff request is one-shot and is created before observing the predecessor state so a
 /// successor that was claimed early can race publication safely. The claim-relative grace period
 /// extends the predecessor preference deadline, but only an unaccepted request expires there; an
-/// accepted delivery is still received. A cancellation can recover a candidate already sent over
+/// accepted handoff is still received. A cancellation can recover a candidate already sent over
 /// the request, and the caller owns destroying that candidate or rolling back an exact
 /// reservation returned through `reserved_exact`.
 async fn wait_for_finalizing_resource(
