@@ -11,6 +11,8 @@ export async function installPageBridge(
   channelName: string,
   bindingName: string,
 ): Promise<void> {
+  // Keep the injected code browser-native. Passing a transpiled callback can
+  // leak tsx's __name helper into the page, where that helper does not exist.
   await page.addInitScript({
     content: pageBridgeSource(channelName, bindingName),
   });
@@ -97,7 +99,7 @@ export function workerBridgeSource(
   channelName: string,
   apiOrigin: string,
 ): string {
-  return `(() => new Promise((resolveBridge) => {
+  return `(() => new Promise((resolveBridge, rejectBridge) => {
     const installBridge = () => {
       const channel = new BroadcastChannel(${JSON.stringify(channelName)});
       const nativeFetch = globalThis.fetch.bind(globalThis);
@@ -143,6 +145,9 @@ export function workerBridgeSource(
       installBridge();
       return;
     }
+    // The production worker assigns _vm0 after Sentry initialization and
+    // before accepting connections. Observe that assignment without polling,
+    // then restore the ordinary writable data property expected by the app.
     Object.defineProperty(globalThis, "_vm0", {
       configurable: true,
       get: () => undefined,
@@ -153,7 +158,11 @@ export function workerBridgeSource(
           value,
           writable: true,
         });
-        installBridge();
+        try {
+          installBridge();
+        } catch (error) {
+          rejectBridge(error);
+        }
       },
     });
   }))()`;

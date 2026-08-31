@@ -9,11 +9,11 @@ import {
 
 interface PendingChildCommand {
   readonly sessionId: string;
-  readonly resolve: () => void;
+  readonly resolve: (result: unknown) => void;
   readonly reject: (reason: unknown) => void;
 }
 
-interface PausedRequest {
+interface RouteRequestDetails {
   readonly url: string;
   readonly method: string;
   readonly headers: Readonly<Record<string, string>>;
@@ -69,19 +69,19 @@ export interface SharedWorkerRouteRegistration {
 }
 
 class WorkerRequest implements SharedWorkerRequest {
-  constructor(private readonly paused: PausedRequest) {}
+  constructor(private readonly details: RouteRequestDetails) {}
 
   url(): string {
-    return this.paused.url;
+    return this.details.url;
   }
 
   method(): string {
-    return this.paused.method;
+    return this.details.method;
   }
 
   async headerValue(name: string): Promise<string | null> {
     const normalizedName = name.toLowerCase();
-    for (const [headerName, value] of Object.entries(this.paused.headers)) {
+    for (const [headerName, value] of Object.entries(this.details.headers)) {
       if (headerName.toLowerCase() === normalizedName) {
         return value;
       }
@@ -319,11 +319,18 @@ export class SharedWorkerRoutes {
         "Runtime.runIfWaitingForDebugger",
         {},
       );
-      await this.sendChildCommand(sessionId, "Runtime.evaluate", {
-        awaitPromise: true,
-        expression: workerBridgeSource(this.channelName, this.apiOrigin),
-        returnByValue: true,
-      });
+      const evaluation = await this.sendChildCommand(
+        sessionId,
+        "Runtime.evaluate",
+        {
+          awaitPromise: true,
+          expression: workerBridgeSource(this.channelName, this.apiOrigin),
+          returnByValue: true,
+        },
+      );
+      if (isRecord(evaluation) && "exceptionDetails" in evaluation) {
+        throw childEvaluationError(evaluation.exceptionDetails);
+      }
       this.workerReady = true;
       this.resolveWorkerReady();
     } finally {
@@ -351,21 +358,21 @@ export class SharedWorkerRoutes {
       pending.reject(childCommandError(value.error));
       return;
     }
-    pending.resolve();
+    pending.resolve("result" in value ? value.result : undefined);
   }
 
   private async handleRequest(value: unknown): Promise<RouteResponse> {
     if (this.closed) {
       return { action: "continue" };
     }
-    const paused = parsePausedRequest(value);
+    const details = parseRouteRequest(value);
     const entry = this.entries.find((candidate) => {
-      return candidate.matches(new URL(paused.url));
+      return candidate.matches(new URL(details.url));
     });
     if (!entry) {
       return { action: "continue" };
     }
-    const request = new WorkerRequest(paused);
+    const request = new WorkerRequest(details);
     const route = new WorkerRoute(request);
     try {
       await entry.handler(route);
@@ -389,14 +396,14 @@ export class SharedWorkerRoutes {
     sessionId: string,
     method: string,
     params: Readonly<Record<string, unknown>>,
-  ): Promise<void> {
+  ): Promise<unknown> {
     if (this.closed) {
       throw this.closeError;
     }
     const id = ++this.nextCommandId;
-    let resolveCommand!: () => void;
+    let resolveCommand!: (result: unknown) => void;
     let rejectCommand!: (reason: unknown) => void;
-    const command = new Promise<void>((resolve, reject) => {
+    const command = new Promise<unknown>((resolve, reject) => {
       resolveCommand = resolve;
       rejectCommand = reject;
     });
@@ -414,7 +421,7 @@ export class SharedWorkerRoutes {
       this.pendingCommands.delete(id);
       rejectCommand(error);
     }
-    await command;
+    return await command;
   }
 
   private rejectPendingCommands(sessionId: string, reason: Error): void {
@@ -438,7 +445,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null;
 }
 
-function parsePausedRequest(value: unknown): PausedRequest {
+function parseRouteRequest(value: unknown): RouteRequestDetails {
   if (
     !isRecord(value) ||
     typeof value.url !== "string" ||
@@ -466,6 +473,21 @@ function childCommandError(value: unknown): Error {
     return new Error("SharedWorker target command failed");
   }
   return new Error(value.message);
+}
+
+function childEvaluationError(value: unknown): Error {
+  if (isRecord(value)) {
+    if (
+      isRecord(value.exception) &&
+      typeof value.exception.description === "string"
+    ) {
+      return new Error(value.exception.description);
+    }
+    if (typeof value.text === "string") {
+      return new Error(value.text);
+    }
+  }
+  return new Error("SharedWorker bridge evaluation failed");
 }
 
 function toError(value: unknown): Error {

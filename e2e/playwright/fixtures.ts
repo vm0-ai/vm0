@@ -45,9 +45,8 @@ export const test = base.extend<{ sharedWorkerRoutes: SharedWorkerRoutes }>({
     }
   },
   sharedWorkerRoutes: async ({ browser, page }, use) => {
-    const apiUrl = process.env.VM0_API_BACKEND_URL;
     if (!apiUrl) {
-      throw new Error("VM0_API_BACKEND_URL environment variable is required");
+      throw new Error("E2E API backend URL is required");
     }
     const routes = await SharedWorkerRoutes.create(
       browser,
