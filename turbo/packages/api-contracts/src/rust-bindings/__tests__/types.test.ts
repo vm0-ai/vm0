@@ -271,6 +271,9 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain("pub struct PiLaunchConfig {");
     expect(firstRender).toContain("pub struct PiLaunchConfigApiFirstTurn {");
     expect(firstRender).toContain(
+      "pub struct PiLaunchConfigApiFirstTurnOwnershipTransfer {",
+    );
+    expect(firstRender).toContain(
       "pub struct PiLaunchConfigApiFirstTurnBaseSession {",
     );
     expect(firstRender).toContain("pub struct PiModelConfig {");
@@ -417,6 +420,12 @@ describe("Rust type bindings", () => {
               type: "integer",
               minimum: 1,
               maximum: MAX_EVENT_SEQUENCE_NUMBER,
+            },
+            ownershipTransfer: {
+              required: ["schemaVersion"],
+              properties: {
+                schemaVersion: { const: 1 },
+              },
             },
             baseSession: {
               required: ["sessionId", "sha256"],

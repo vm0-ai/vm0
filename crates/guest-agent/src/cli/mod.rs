@@ -1086,6 +1086,8 @@ async fn execute_cli_inner(
     let active_input_controller = active_input.controller();
     let pi_execution = matches!(runtime.framework, env::Framework::Pi);
     let (pi_rpc_response_tx, pi_rpc_response_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (pi_rpc_startup_tx, pi_rpc_startup_rx) = tokio::sync::oneshot::channel();
+    let mut pi_rpc_startup_tx = pi_execution.then_some(pi_rpc_startup_tx);
     let pi_rpc_cancellation = CancellationToken::new();
     let mut pi_rpc_projection = pi_execution.then(|| {
         pi_rpc::PiRpcProjection::new(runtime.run_id.as_ref(), runtime.pi_session_id.as_ref())
@@ -1103,6 +1105,7 @@ async fn execute_cli_inner(
                     &prompt,
                     active_input,
                     pi_rpc_response_rx,
+                    pi_rpc_startup_rx,
                     pi_rpc_cancellation,
                 )
                 .await
@@ -1343,17 +1346,23 @@ async fn execute_cli_inner(
                         if let Ok(mut event) = serde_json::from_str::<serde_json::Value>(stripped) {
                             if let Some(startup_boundary) = pi_rpc_startup_boundary.as_mut() {
                                 match startup_boundary.admit(&event) {
-                                    Ok(pi_rpc::PiRpcRecordAdmission::InstallBoundary(sequence)) => {
+                                    Ok(pi_rpc::PiRpcRecordAdmission::InstallBoundary(startup)) => {
                                         match CliEventPipeline::start(
                                             runtime,
                                             session_metadata.clone(),
                                             &http,
-                                            sequence,
+                                            startup.sandbox_event_sequence_start,
                                         ) {
                                             Ok(pipeline) => {
                                                 event_pipeline = Some(pipeline);
+                                                if let Some(sender) = pi_rpc_startup_tx.take() {
+                                                    let _ = sender.send(
+                                                        startup.ownership_transfer_mode,
+                                                    );
+                                                }
                                             }
                                             Err(error) => {
+                                                pi_rpc_startup_tx.take();
                                                 startup_boundary.discard_remaining();
                                                 active_input_controller.close_terminal();
                                                 if cli_status.is_some() {
@@ -1400,6 +1409,7 @@ async fn execute_cli_inner(
                                     }
                                     Ok(pi_rpc::PiRpcRecordAdmission::Discard) => continue,
                                     Err(error) => {
+                                        pi_rpc_startup_tx.take();
                                         active_input_controller.close_terminal();
                                         if cli_status.is_some() {
                                             break Err(error);
@@ -1628,6 +1638,7 @@ async fn execute_cli_inner(
                             if let Some(boundary) = pi_rpc_startup_boundary.as_mut() {
                                 boundary.discard_remaining();
                             }
+                            pi_rpc_startup_tx.take();
                             let error = pi_rpc::PiRpcStartupBoundary::malformed_record_error();
                             active_input_controller.close_terminal();
                             if cli_status.is_some() {
@@ -1656,6 +1667,7 @@ async fn execute_cli_inner(
                             if let Some(boundary) = pi_rpc_startup_boundary.as_mut() {
                                 boundary.discard_remaining();
                             }
+                            pi_rpc_startup_tx.take();
                             let error = pi_rpc::PiRpcStartupBoundary::missing_error();
                             if cli_status.is_some() {
                                 break Err(error);

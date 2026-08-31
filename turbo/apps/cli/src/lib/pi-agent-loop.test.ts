@@ -367,6 +367,150 @@ function occurrences(value: string, needle: string): number {
   return value.split(needle).length - 1;
 }
 
+function prepareDeepSeekModel(session: MemoryPiSession, baseUrl: string): void {
+  session.prepareModelTurn({
+    id: "deepseek-v4-flash",
+    name: "DeepSeek V4 Flash",
+    api: "openai-responses",
+    provider: "deepseek",
+    baseUrl,
+    reasoning: true,
+    thinkingLevelMap: {
+      minimal: null,
+      low: null,
+      medium: null,
+      high: "high",
+      max: "max",
+    },
+    input: ["text"],
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    },
+    contextWindow: 1_000_000,
+    maxTokens: 384_000,
+  });
+}
+
+async function startOwnershipTransferHost(args: {
+  readonly root: string;
+  readonly jsonl: string;
+  readonly mode:
+    | "sandbox-first"
+    | "pending-tool-continuation"
+    | "settled-session-continuation";
+  readonly baseSessionSha256: string | null;
+  readonly providerBaseUrl: string;
+}): Promise<{
+  readonly host: RpcHost;
+  readonly handoffServer: Server;
+}> {
+  const agentDir = join(args.root, ".pi", "agent");
+  const sessionDir = join(agentDir, "sessions", "--test--");
+  const manifest = {
+    schemaVersion: 3,
+    outcome: "ownership-transfer",
+    mode: args.mode,
+    baseSession: {
+      sessionId: SESSION_ID,
+      sha256: args.baseSessionSha256,
+    },
+    session: {
+      sessionId: SESSION_ID,
+      sha256: createHash("sha256").update(args.jsonl).digest("hex"),
+      rawSize: Buffer.byteLength(args.jsonl),
+    },
+    sandboxEventSequenceStart: 4,
+  };
+  const handoffServer = createServer((request, response) => {
+    if (request.url === "/manifest.json") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify(manifest));
+      return;
+    }
+    if (request.url === "/session.jsonl") {
+      response.writeHead(200, {
+        "content-type": "application/x-ndjson",
+        "content-length": String(Buffer.byteLength(args.jsonl)),
+      });
+      response.end(args.jsonl);
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+  await new Promise<void>((resolve, reject) => {
+    handoffServer.once("error", reject);
+    handoffServer.listen(0, "127.0.0.1", () => {
+      handoffServer.off("error", reject);
+      resolve();
+    });
+  });
+  const address = handoffServer.address();
+  if (address === null || typeof address === "string") {
+    throw new Error("Pi handoff test server has no TCP address");
+  }
+  const handoffBaseUrl = `http://127.0.0.1:${address.port}`;
+  const payloadFile = join(args.root, "launch-payload.json");
+  await mkdir(agentDir, { recursive: true });
+  await writeFile(
+    payloadFile,
+    JSON.stringify({
+      schemaVersion: 1,
+      appendSystemPrompt: null,
+      launchConfig: {
+        schemaVersion: 2,
+        apiFirstTurn: {
+          schemaVersion: 1,
+          resourceSnapshotDigest: "a".repeat(64),
+          manifestUrl: `${handoffBaseUrl}/manifest.json`,
+          sessionUrl: `${handoffBaseUrl}/session.jsonl`,
+          deadlineAt: Date.now() + 10_000,
+          baseSession: {
+            sessionId: SESSION_ID,
+            sha256: args.baseSessionSha256,
+          },
+          sandboxEventSequenceStart: 1,
+          ownershipTransfer: { schemaVersion: 1 },
+        },
+      },
+    }),
+    { mode: 0o600 },
+  );
+  const env = {
+    ...process.env,
+    OKOU_RUN_ID: RUN_ID,
+    OKOU_PI_SESSION_ID: SESSION_ID,
+    OKOU_PI_LAUNCH_PAYLOAD_FILE: payloadFile,
+    OKOU_PI_MODEL_CONFIG: JSON.stringify({
+      provider: "deepseek",
+      baseUrl: args.providerBaseUrl,
+      model: "deepseek-v4-flash",
+      apiKeyEnv: "OPENAI_API_KEY",
+      credentialSecretName: "DEEPSEEK_API_KEY",
+    }),
+    OPENAI_API_KEY: "pi-ownership-transfer-test-key",
+  };
+  return {
+    host: new RpcHost({ cwd: args.root, agentDir, sessionDir, env }),
+    handoffServer,
+  };
+}
+
+async function closeServer(server: Server): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
 describe("sandbox Pi agent loop", () => {
   it("resolves the Pi session, launch payload file, and model credential", async () => {
     await expect(
@@ -426,30 +570,7 @@ describe("sandbox Pi agent loop", () => {
     const prompt = "read the handoff source exactly once";
     const provider = await ProviderHarness.start();
     const memory = MemoryPiSession.create({ cwd: root, id: SESSION_ID });
-    memory.prepareModelTurn({
-      id: "deepseek-v4-flash",
-      name: "DeepSeek V4 Flash",
-      api: "openai-responses",
-      provider: "deepseek",
-      baseUrl: provider.baseUrl,
-      reasoning: true,
-      thinkingLevelMap: {
-        minimal: null,
-        low: null,
-        medium: null,
-        high: "high",
-        max: "max",
-      },
-      input: ["text"],
-      cost: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-      },
-      contextWindow: 1_000_000,
-      maxTokens: 384_000,
-    });
+    prepareDeepSeekModel(memory, provider.baseUrl);
     memory.appendMessage({ role: "user", content: prompt, timestamp: 1 });
     memory.appendMessage({
       role: "assistant",
@@ -618,6 +739,157 @@ describe("sandbox Pi agent loop", () => {
           }
         });
       });
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("runs the sandbox-first prompt exactly once through AgentSession", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vm0-pi-sandbox-first-rpc-"));
+    const prompt = "execute this sandbox-owned first turn once";
+    const provider = await ProviderHarness.start();
+    const session = MemoryPiSession.create({ cwd: root, id: SESSION_ID });
+    let host: RpcHost | undefined;
+    let handoffServer: Server | undefined;
+
+    try {
+      const started = await startOwnershipTransferHost({
+        root,
+        jsonl: session.toJsonl(),
+        mode: "sandbox-first",
+        baseSessionSha256: null,
+        providerBaseUrl: provider.baseUrl,
+      });
+      host = started.host;
+      handoffServer = started.handoffServer;
+
+      const state = await host.state("sandbox-first-state");
+      expect(host.records[0]).toStrictEqual({
+        type: "vm0_pi_api_first_turn_boundary",
+        schemaVersion: 2,
+        sandboxEventSequenceStart: 4,
+        ownershipTransferMode: "sandbox-first",
+      });
+      expect(state).toMatchObject({ sessionId: SESSION_ID, messageCount: 0 });
+
+      host.send({ id: "sandbox-first", type: "prompt", message: prompt });
+      const request = await provider.nextRequest();
+      expect(occurrences(JSON.stringify(request.body), prompt)).toBe(1);
+      request.respond("sandbox-first complete");
+      await host.waitFor((record) => {
+        return record.type === "agent_settled";
+      });
+      await host.close();
+      host = undefined;
+
+      expect(provider.requests).toHaveLength(1);
+      const persisted = await readFile(String(state.sessionFile), "utf8");
+      expect(occurrences(persisted, prompt)).toBe(1);
+      expect(persisted).toContain("sandbox-first complete");
+    } finally {
+      await host?.terminate();
+      if (handoffServer) {
+        await closeServer(handoffServer);
+      }
+      await provider.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("acknowledges a settled transfer without replaying its original prompt", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vm0-pi-settled-rpc-"));
+    const originalPrompt = "the API already completed this prompt";
+    const continuation = "start the newly owned continuation";
+    const provider = await ProviderHarness.start();
+    const session = MemoryPiSession.create({ cwd: root, id: SESSION_ID });
+    prepareDeepSeekModel(session, provider.baseUrl);
+    session.appendMessage({
+      role: "user",
+      content: originalPrompt,
+      timestamp: 1,
+    });
+    session.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "API-first turn complete" }],
+      api: "openai-responses",
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      usage: {
+        input: 5,
+        output: 3,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 8,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason: "stop",
+      timestamp: 2,
+    });
+    let host: RpcHost | undefined;
+    let handoffServer: Server | undefined;
+
+    try {
+      const started = await startOwnershipTransferHost({
+        root,
+        jsonl: session.toJsonl(),
+        mode: "settled-session-continuation",
+        baseSessionSha256: null,
+        providerBaseUrl: provider.baseUrl,
+      });
+      host = started.host;
+      handoffServer = started.handoffServer;
+
+      const state = await host.state("settled-state");
+      expect(host.records[0]).toStrictEqual({
+        type: "vm0_pi_api_first_turn_boundary",
+        schemaVersion: 2,
+        sandboxEventSequenceStart: 4,
+        ownershipTransferMode: "settled-session-continuation",
+      });
+      expect(state).toMatchObject({ sessionId: SESSION_ID, messageCount: 2 });
+
+      host.send({
+        id: "settled-startup",
+        type: "prompt",
+        message: originalPrompt,
+      });
+      await host.waitFor((record) => {
+        return record.type === "response" && record.id === "settled-startup";
+      });
+      expect(provider.requests).toHaveLength(0);
+
+      host.send({
+        id: "settled-continuation",
+        type: "prompt",
+        message: continuation,
+      });
+      const request = await provider.nextRequest();
+      const requestBody = JSON.stringify(request.body);
+      expect(occurrences(requestBody, originalPrompt)).toBe(1);
+      expect(occurrences(requestBody, continuation)).toBe(1);
+      request.respond("settled continuation complete");
+      await host.waitFor((record) => {
+        return record.type === "agent_settled";
+      });
+      await host.close();
+      host = undefined;
+
+      expect(provider.requests).toHaveLength(1);
+      const persisted = await readFile(String(state.sessionFile), "utf8");
+      expect(occurrences(persisted, originalPrompt)).toBe(1);
+      expect(occurrences(persisted, continuation)).toBe(1);
+      expect(persisted).toContain("settled continuation complete");
+    } finally {
+      await host?.terminate();
+      if (handoffServer) {
+        await closeServer(handoffServer);
+      }
+      await provider.close();
       await rm(root, { recursive: true, force: true });
     }
   }, 20_000);
