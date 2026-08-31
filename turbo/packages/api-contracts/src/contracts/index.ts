@@ -167,20 +167,6 @@ export {
   type RegistryResourceDownloadContract,
 } from "./registry-resources";
 export {
-  presentationImageAssetSchema,
-  presentationImageOrientationSchema,
-  presentationImageResolveErrorSchema,
-  presentationImageResolveItemSchema,
-  presentationImageResolveRequestSchema,
-  presentationImageResolveResponseSchema,
-  presentationImagesContract,
-  type PresentationImageAsset,
-  type PresentationImageResolveItem,
-  type PresentationImageResolveRequest,
-  type PresentationImageResolveResponse,
-  type PresentationImagesContract,
-} from "./presentation-images";
-export {
   testTeamsDispatchProbeBodySchema,
   testTeamsDispatchProbeContract,
   testTeamsDispatchProbeErrorSchema,

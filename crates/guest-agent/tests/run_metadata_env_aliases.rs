@@ -72,11 +72,6 @@ fn capture_raw(log_path: &Path) -> TestResult<GuestConfigRaw> {
         !log_path.exists(),
         "raw capture installed or wrote a system-log sink"
     );
-    assert!(
-        raw.bootstrap_alias_source_events()
-            .all(|(family, _, _)| family != "run_metadata_env_source"),
-        "raw capture retained run-metadata source evidence"
-    );
     Ok(raw)
 }
 

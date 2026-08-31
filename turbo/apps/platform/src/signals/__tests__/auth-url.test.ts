@@ -264,9 +264,6 @@ describe("platform auth redirects", () => {
       afterSignOutUrl: "https://app.vm0.ai/sign-in",
       signInUrl: "https://app.vm0.ai/sign-in",
       signUpUrl: "https://app.vm0.ai/sign-up",
-      ui: expect.objectContaining({
-        ClerkUI: expect.any(Promise),
-      }),
     });
   });
 
@@ -298,9 +295,6 @@ describe("platform auth redirects", () => {
       satelliteAutoSync: true,
       signInUrl: "https://app.vm0.ai/sign-in",
       signUpUrl: "https://app.vm0.ai/sign-up",
-      ui: expect.objectContaining({
-        ClerkUI: expect.any(Promise),
-      }),
     });
   });
 });

@@ -381,24 +381,21 @@ export const initClerkRuntime$ = command(
     markBootstrapClerkLoadStarted();
     set(
       internalClerkRuntime$,
-      startClerkBrowserRuntime(
-        {
-          domain: satelliteConfig?.domain,
-          loadOptions: {
-            ...(satelliteConfig
-              ? {
-                  isSatellite: true,
-                  satelliteAutoSync: satelliteConfig.satelliteAutoSync,
-                }
-              : {}),
-            afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
-            signInUrl: resolveAppAuthUrl("/sign-in"),
-            signUpUrl: resolveAppAuthUrl("/sign-up"),
-          },
-          publishableKey,
+      startClerkBrowserRuntime({
+        domain: satelliteConfig?.domain,
+        loadOptions: {
+          ...(satelliteConfig
+            ? {
+                isSatellite: true,
+                satelliteAutoSync: satelliteConfig.satelliteAutoSync,
+              }
+            : {}),
+          afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
+          signInUrl: resolveAppAuthUrl("/sign-in"),
+          signUpUrl: resolveAppAuthUrl("/sign-up"),
         },
-        signal,
-      ),
+        publishableKey,
+      }),
     );
   },
 );
@@ -416,15 +413,6 @@ export const clerkInstance$ = computed(async (get) => {
   const runtime = await get(clerkRuntime$);
   return runtime.clerk;
 });
-
-export const ensureClerkUiLoaded$ = command(
-  async ({ get }, signal: AbortSignal) => {
-    const runtime = await get(clerkRuntime$);
-    signal.throwIfAborted();
-    await runtime.ensureUiLoaded();
-    signal.throwIfAborted();
-  },
-);
 
 /** Loaded Clerk instance for consumers that need authentication state. */
 export const clerk$ = computed(async (get) => {
