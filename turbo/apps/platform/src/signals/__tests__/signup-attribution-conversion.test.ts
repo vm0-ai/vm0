@@ -85,9 +85,11 @@ function executeMarketingEntrypoint(): WindowWithMarketingQueue {
     `${marketingEntrypointSource()}\n//# sourceURL=platform-marketing-entrypoint-test.js`,
   ) as MarketingEntrypointScript;
   const previousAfterFirstPaint = window.__vm0AfterFirstPaint;
+  const previousBrowserSupported = window.__vm0BrowserSupported;
   window.__vm0AfterFirstPaint = (callback) => {
     callback();
   };
+  window.__vm0BrowserSupported = true;
   try {
     executeEntrypointScript(window, document);
   } finally {
@@ -95,6 +97,11 @@ function executeMarketingEntrypoint(): WindowWithMarketingQueue {
       Reflect.deleteProperty(window, "__vm0AfterFirstPaint");
     } else {
       window.__vm0AfterFirstPaint = previousAfterFirstPaint;
+    }
+    if (previousBrowserSupported === undefined) {
+      Reflect.deleteProperty(window, "__vm0BrowserSupported");
+    } else {
+      window.__vm0BrowserSupported = previousBrowserSupported;
     }
   }
   // The marketing entrypoint has already attempted to schedule its external

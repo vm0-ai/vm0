@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { parse, type DefaultTreeAdapterTypes } from "parse5";
 import { transformWithEsbuild, type Plugin, type ResolvedConfig } from "vite";
 
 const APP_ENTRY_ATTRIBUTE = "data-vm0-app-entry";
@@ -16,81 +17,187 @@ type ExtractedAfterFirstPaintBootstrap = {
 
 type InlineBlockKind = "script" | "style";
 
-function tagAttributes(tag: string): ReadonlyMap<string, string | undefined> {
-  const attributes = new Map<string, string | undefined>();
-  const pattern = /\s([A-Za-z_:][A-Za-z0-9:._-]*)(?:="([^"]*)")?/gu;
-  for (const match of tag.matchAll(pattern)) {
-    const name = match[1];
-    if (name !== undefined) {
-      attributes.set(name, match[2]);
+type HtmlElement = DefaultTreeAdapterTypes.Element;
+type HtmlNode = DefaultTreeAdapterTypes.Node;
+
+type HtmlReplacement = {
+  readonly endOffset: number;
+  readonly replacement: string;
+  readonly startOffset: number;
+};
+
+function isElement(node: HtmlNode): node is HtmlElement {
+  return "tagName" in node;
+}
+
+function htmlElements(html: string): readonly HtmlElement[] {
+  const document = parse(html, { sourceCodeLocationInfo: true });
+  const elements: HtmlElement[] = [];
+  const visit = (node: HtmlNode): void => {
+    if (isElement(node) && node.sourceCodeLocation !== undefined) {
+      elements.push(node);
     }
+    if ("childNodes" in node) {
+      for (const child of node.childNodes) {
+        visit(child);
+      }
+    }
+  };
+  visit(document);
+  return elements;
+}
+
+function attributeValue(
+  element: HtmlElement,
+  name: string,
+): string | undefined {
+  return element.attrs.find((attribute) => {
+    return attribute.name === name;
+  })?.value;
+}
+
+function hasAttribute(element: HtmlElement, name: string): boolean {
+  return element.attrs.some((attribute) => {
+    return attribute.name === name;
+  });
+}
+
+function escapeAttribute(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function applyHtmlReplacements(
+  html: string,
+  replacements: readonly HtmlReplacement[],
+): string {
+  const sorted = [...replacements].sort(
+    (left, right) => {
+      return right.startOffset - left.startOffset;
+    },
+  );
+  let earliestOffset = html.length;
+  let output = html;
+  for (const replacement of sorted) {
+    if (
+      replacement.startOffset < 0 ||
+      replacement.endOffset < replacement.startOffset ||
+      replacement.endOffset > earliestOffset
+    ) {
+      throw new Error("Invalid or overlapping HTML replacement");
+    }
+    output =
+      output.slice(0, replacement.startOffset) +
+      replacement.replacement +
+      output.slice(replacement.endOffset);
+    earliestOffset = replacement.startOffset;
   }
-  return attributes;
-}
-
-function attributeValue(tag: string, name: string): string | undefined {
-  return tagAttributes(tag).get(name);
-}
-
-function hasAttribute(tag: string, name: string): boolean {
-  return tagAttributes(tag).has(name);
+  return output;
 }
 
 function inertResourceTag(
-  sourceTag: string,
+  sourceElement: HtmlElement,
   href: string,
   marker: string,
 ): string {
-  const crossorigin = hasAttribute(sourceTag, "crossorigin")
+  const crossorigin = hasAttribute(sourceElement, "crossorigin")
     ? " crossorigin"
     : "";
-  return `<link${crossorigin} href="${href}" ${marker}="">`;
+  return `<link${crossorigin} href="${escapeAttribute(href)}" ${marker}="">`;
+}
+
+function deferredApplicationScriptReplacement(
+  html: string,
+  element: HtmlElement,
+): HtmlReplacement | undefined {
+  const location = element.sourceCodeLocation;
+  if (
+    element.tagName !== "script" ||
+    location?.startTag === undefined ||
+    location.endTag === undefined ||
+    html
+      .slice(location.startTag.endOffset, location.endTag.startOffset)
+      .trim() !== ""
+  ) {
+    return undefined;
+  }
+  const href = attributeValue(element, "src");
+  const isSourceEntry = hasAttribute(element, APP_ENTRY_ATTRIBUTE);
+  const isBuiltEntry =
+    attributeValue(element, "type") === "module" && href?.endsWith(".js");
+  if (!isSourceEntry && !isBuiltEntry) {
+    return undefined;
+  }
+  if (href === undefined) {
+    throw new Error("Deferred app entry is missing its source URL");
+  }
+  return {
+    endOffset: location.endOffset,
+    replacement: inertResourceTag(element, href, APP_ENTRY_ATTRIBUTE),
+    startOffset: location.startOffset,
+  };
+}
+
+function deferredApplicationLinkReplacement(
+  element: HtmlElement,
+): HtmlReplacement | undefined {
+  const location = element.sourceCodeLocation;
+  if (element.tagName !== "link" || location?.startTag === undefined) {
+    return undefined;
+  }
+  const href = attributeValue(element, "href");
+  let marker: string | undefined;
+  if (
+    attributeValue(element, "rel") === "modulepreload" &&
+    href?.endsWith(".js") &&
+    hasAttribute(element, "crossorigin")
+  ) {
+    marker = APP_MODULE_PRELOAD_ATTRIBUTE;
+  } else if (
+    attributeValue(element, "rel") === "stylesheet" &&
+    href?.endsWith(".css") &&
+    hasAttribute(element, "crossorigin")
+  ) {
+    marker = APP_STYLESHEET_ATTRIBUTE;
+  }
+  if (href === undefined || marker === undefined) {
+    return undefined;
+  }
+  return {
+    endOffset: location.startTag.endOffset,
+    replacement: inertResourceTag(element, href, marker),
+    startOffset: location.startTag.startOffset,
+  };
 }
 
 export function deferApplicationEntryResources(html: string): string {
   let applicationEntries = 0;
-  const deferredEntryHtml = html.replace(
-    /<script\b[^>]*>\s*<\/script\s*>/giu,
-    (tag) => {
-      const href = attributeValue(tag, "src");
-      const isSourceEntry = hasAttribute(tag, APP_ENTRY_ATTRIBUTE);
-      const isBuiltEntry =
-        attributeValue(tag, "type") === "module" && href?.endsWith(".js");
-      if (!isSourceEntry && !isBuiltEntry) {
-        return tag;
-      }
-      if (href === undefined) {
-        throw new Error("Deferred app entry is missing its source URL");
-      }
+  const replacements: HtmlReplacement[] = [];
+  for (const element of htmlElements(html)) {
+    const scriptReplacement = deferredApplicationScriptReplacement(
+      html,
+      element,
+    );
+    if (scriptReplacement !== undefined) {
       applicationEntries += 1;
-      return inertResourceTag(tag, href, APP_ENTRY_ATTRIBUTE);
-    },
-  );
+      replacements.push(scriptReplacement);
+      continue;
+    }
+    const linkReplacement = deferredApplicationLinkReplacement(element);
+    if (linkReplacement !== undefined) {
+      replacements.push(linkReplacement);
+    }
+  }
   if (applicationEntries !== 1) {
     throw new Error(
       `Expected exactly one deferred app entry, found ${applicationEntries}`,
     );
   }
 
-  return deferredEntryHtml.replace(/<link\b[^>]*>/gu, (tag) => {
-    const href = attributeValue(tag, "href");
-    if (
-      attributeValue(tag, "rel") === "modulepreload" &&
-      href?.endsWith(".js") &&
-      hasAttribute(tag, "crossorigin")
-    ) {
-      return inertResourceTag(tag, href, APP_MODULE_PRELOAD_ATTRIBUTE);
-    }
-    if (
-      attributeValue(tag, "rel") !== "stylesheet" ||
-      href === undefined ||
-      !href.endsWith(".css") ||
-      !hasAttribute(tag, "crossorigin")
-    ) {
-      return tag;
-    }
-    return inertResourceTag(tag, href, APP_STYLESHEET_ATTRIBUTE);
-  });
+  return applyHtmlReplacements(html, replacements);
 }
 
 export function extractAfterFirstPaintBootstrap(
@@ -98,18 +205,40 @@ export function extractAfterFirstPaintBootstrap(
 ): ExtractedAfterFirstPaintBootstrap {
   const callbacks: string[] = [];
   let insertedEntrypoint = false;
-  const extractedHtml = html.replace(
-    /<script\s*>([\s\S]*?)<\/script\s*>/giu,
-    (tag, source: string) => {
-      if (!/^\s*window\.__vm0AfterFirstPaint\(function \(\) \{/u.test(source)) {
-        return tag;
-      }
-      callbacks.push(source.trim());
-      if (insertedEntrypoint) {
-        return "";
-      }
-      insertedEntrypoint = true;
-      return `<link crossorigin href="${AFTER_FIRST_PAINT_ENTRY_PLACEHOLDER}" ${AFTER_FIRST_PAINT_ENTRY_ATTRIBUTE}="">
+  const replacements: HtmlReplacement[] = [];
+  for (const element of htmlElements(html)) {
+    const location = element.sourceCodeLocation;
+    if (
+      element.tagName !== "script" ||
+      element.attrs.length !== 0 ||
+      location?.startTag === undefined ||
+      location.endTag === undefined
+    ) {
+      continue;
+    }
+    const source = html.slice(
+      location.startTag.endOffset,
+      location.endTag.startOffset,
+    );
+    if (
+      !source
+        .trimStart()
+        .startsWith("window.__vm0AfterFirstPaint(function () {")
+    ) {
+      continue;
+    }
+    callbacks.push(source.trim());
+    let replacement = "";
+    if (insertedEntrypoint) {
+      replacements.push({
+        endOffset: location.endOffset,
+        replacement,
+        startOffset: location.startOffset,
+      });
+      continue;
+    }
+    insertedEntrypoint = true;
+    replacement = `<link crossorigin href="${AFTER_FIRST_PAINT_ENTRY_PLACEHOLDER}" ${AFTER_FIRST_PAINT_ENTRY_ATTRIBUTE}="">
     <script data-vm0-after-first-paint-loader="">
       window.__vm0AfterFirstPaint(function () {
         if (window.__vm0BrowserSupported === true) {
@@ -148,32 +277,35 @@ export function extractAfterFirstPaintBootstrap(
         document.head.appendChild(script);
       });
     </script>`;
-    },
-  );
+    replacements.push({
+      endOffset: location.endOffset,
+      replacement,
+      startOffset: location.startOffset,
+    });
+  }
   if (callbacks.length === 0) {
     throw new Error("Expected deferred after-first-paint bootstrap callbacks");
   }
 
   return {
-    html: extractedHtml,
+    html: applyHtmlReplacements(html, replacements),
     source: `"use strict";\n${callbacks.join("\n")}\n`,
   };
 }
 
 async function minifyInlineBlock(
   kind: InlineBlockKind,
-  attributes: string,
+  element: HtmlElement,
   source: string,
 ): Promise<string> {
   if (source.trim() === "") {
     return source;
   }
   if (kind === "script") {
-    const sourceTag = `<script${attributes}>`;
-    if (hasAttribute(sourceTag, "src")) {
+    if (hasAttribute(element, "src")) {
       return source;
     }
-    const type = attributeValue(sourceTag, "type");
+    const type = attributeValue(element, "type");
     if (type !== undefined && type !== "module" && type !== "text/javascript") {
       return source;
     }
@@ -192,30 +324,50 @@ async function minifyInlineBlock(
 }
 
 async function minifyInlineBootstrap(html: string): Promise<string> {
-  const pattern = /<(script|style)([^>]*)>([\s\S]*?)<\/\1>/gu;
-  const parts: string[] = [];
-  let sourceOffset = 0;
-  for (const match of html.matchAll(pattern)) {
-    const fullMatch = match[0];
-    const kind = match[1] as InlineBlockKind | undefined;
-    const attributes = match[2];
-    const source = match[3];
-    if (
-      fullMatch === undefined ||
-      kind === undefined ||
-      attributes === undefined ||
-      source === undefined ||
-      match.index === undefined
-    ) {
+  const replacements: HtmlReplacement[] = [];
+  for (const element of htmlElements(html)) {
+    if (element.tagName !== "script" && element.tagName !== "style") {
       continue;
     }
-    parts.push(html.slice(sourceOffset, match.index));
-    const minified = await minifyInlineBlock(kind, attributes, source);
-    parts.push(`<${kind}${attributes}>${minified}</${kind}>`);
-    sourceOffset = match.index + fullMatch.length;
+    const location = element.sourceCodeLocation;
+    if (location?.startTag === undefined || location.endTag === undefined) {
+      continue;
+    }
+    const source = html.slice(
+      location.startTag.endOffset,
+      location.endTag.startOffset,
+    );
+    const minified = await minifyInlineBlock(element.tagName, element, source);
+    replacements.push({
+      endOffset: location.endTag.startOffset,
+      replacement: minified,
+      startOffset: location.startTag.endOffset,
+    });
   }
-  parts.push(html.slice(sourceOffset));
-  return parts.join("").replace(/>\s+</gu, "><").trim();
+  const minified = applyHtmlReplacements(html, replacements);
+  const whitespaceReplacements: HtmlReplacement[] = [];
+  const document = parse(minified, { sourceCodeLocationInfo: true });
+  const visit = (node: HtmlNode): void => {
+    if (
+      node.nodeName === "#text" &&
+      node.value.trim() === "" &&
+      node.sourceCodeLocation !== undefined &&
+      node.sourceCodeLocation !== null
+    ) {
+      whitespaceReplacements.push({
+        endOffset: node.sourceCodeLocation.endOffset,
+        replacement: "",
+        startOffset: node.sourceCodeLocation.startOffset,
+      });
+    }
+    if ("childNodes" in node) {
+      for (const child of node.childNodes) {
+        visit(child);
+      }
+    }
+  };
+  visit(document);
+  return applyHtmlReplacements(minified, whitespaceReplacements).trim();
 }
 
 function assetUrl(config: ResolvedConfig, fileName: string): string {
