@@ -19,26 +19,39 @@ pub(super) async fn create_bounded_checkpoint(
     runtime: &guest_agent::run_context::GuestRuntime,
 ) -> Result<(), guest_agent::error::AgentError> {
     let session_metadata = checkpoint_session_metadata(runtime);
-    guest_agent::checkpoint::create_checkpoint_for_runtime_with_history_limits_for_test(
-        runtime,
-        &session_metadata,
-        CHECKPOINT_TEST_CANDIDATE_MAX_BYTES,
-        CHECKPOINT_TEST_MAX_BYTES,
-    )
-    .await
+    let checkpoint =
+        guest_agent::checkpoint::prepare_checkpoint_for_runtime_with_history_limits_for_test(
+            runtime,
+            &session_metadata,
+            CHECKPOINT_TEST_CANDIDATE_MAX_BYTES,
+            CHECKPOINT_TEST_MAX_BYTES,
+        )
+        .await?;
+    report_prepared_checkpoint(runtime, 0, checkpoint).await
 }
 
 pub(super) async fn create_bounded_recovery_checkpoint(
     runtime: &guest_agent::run_context::GuestRuntime,
 ) -> Result<(), guest_agent::error::AgentError> {
     let session_metadata = checkpoint_session_metadata(runtime);
-    guest_agent::checkpoint::create_recovery_checkpoint_for_runtime_with_history_limits_for_test(
-        runtime,
-        &session_metadata,
-        CHECKPOINT_TEST_CANDIDATE_MAX_BYTES,
-        CHECKPOINT_TEST_MAX_BYTES,
-    )
-    .await
+    let checkpoint =
+        guest_agent::checkpoint::prepare_recovery_checkpoint_for_runtime_with_history_limits_for_test(
+            runtime,
+            &session_metadata,
+            CHECKPOINT_TEST_CANDIDATE_MAX_BYTES,
+            CHECKPOINT_TEST_MAX_BYTES,
+        )
+        .await?;
+    report_prepared_checkpoint(runtime, 1, checkpoint).await
+}
+
+pub(super) async fn report_prepared_checkpoint(
+    runtime: &guest_agent::run_context::GuestRuntime,
+    exit_code: i32,
+    checkpoint: guest_agent::checkpoint::PreparedCheckpoint,
+) -> Result<(), guest_agent::error::AgentError> {
+    guest_agent::complete::report_checkpoint_for_run(runtime, exit_code, None, &[], checkpoint)
+        .await
 }
 
 pub(super) fn checkpoint_session_metadata(

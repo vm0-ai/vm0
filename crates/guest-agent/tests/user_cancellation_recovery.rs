@@ -26,31 +26,45 @@ struct Scenario {
     run_id: &'static str,
     thread_id: &'static str,
     endpoint_nonce: &'static [u8; 16],
-    checkpoint_status: u16,
+    combined_completion_status: u16,
+    combined_completion_attempts: usize,
+    fallback_completion_attempts: usize,
+    expected_request_order: &'static [&'static str],
     recovery_log: &'static str,
 }
 
 #[tokio::test]
-async fn user_cancellation_checkpoints_before_reporting_completion()
+async fn user_cancellation_reports_checkpoint_with_completion()
 -> Result<(), Box<dyn std::error::Error>> {
     run_scenario(Scenario {
         run_id: SUCCESS_RUN_ID,
         thread_id: SUCCESS_THREAD_ID,
         endpoint_nonce: b"cancel-success01",
-        checkpoint_status: 200,
+        combined_completion_status: 200,
+        combined_completion_attempts: 1,
+        fallback_completion_attempts: 0,
+        expected_request_order: &["combined_complete"],
         recovery_log: "Recovery checkpoint created",
     })
     .await
 }
 
 #[tokio::test]
-async fn user_cancellation_reports_completion_after_recovery_failure()
+async fn user_cancellation_falls_back_after_combined_completion_failure()
 -> Result<(), Box<dyn std::error::Error>> {
     run_scenario(Scenario {
         run_id: FAILURE_RUN_ID,
         thread_id: FAILURE_THREAD_ID,
         endpoint_nonce: b"cancel-failure01",
-        checkpoint_status: 400,
+        combined_completion_status: 500,
+        combined_completion_attempts: 3,
+        fallback_completion_attempts: 1,
+        expected_request_order: &[
+            "combined_complete",
+            "combined_complete",
+            "combined_complete",
+            "fallback_complete",
+        ],
         recovery_log: "Recovery checkpoint skipped:",
     })
     .await
@@ -111,37 +125,46 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
             .header("Content-Type", "application/octet-stream");
         then.status(200);
     });
-    let checkpoint_order = Arc::clone(&request_order);
-    let checkpoint = server.mock(move |when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
-            .json_body_includes(format!(
-                r#"{{"cliAgentSessionId":"{}"}}"#,
-                scenario.thread_id
-            ));
-        then.respond_with(move |_| {
-            checkpoint_order
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .push("checkpoint");
-            HttpMockResponse::builder()
-                .status(scenario.checkpoint_status)
-                .header("Content-Type", "application/json")
-                .body(r#"{"checkpointId":"user-cancellation-recovery-checkpoint","agentSessionId":"test-agent-session","conversationId":"test-conversation"}"#)
-                .build()
-        });
-    });
-    let complete_order = Arc::clone(&request_order);
-    let complete = server.mock(move |when, then| {
+    let combined_complete_order = Arc::clone(&request_order);
+    let combined_complete = server.mock(move |when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/complete")
             .header("Authorization", "Bearer test-token")
-            .json_body_includes(format!(r#"{{"runId":"{}","exitCode":1}}"#, scenario.run_id));
+            .json_body_includes(format!(
+                r#"{{"runId":"{}","exitCode":1,"checkpoint":{{"cliAgentSessionId":"{}"}}}}"#,
+                scenario.run_id, scenario.thread_id
+            ));
         then.respond_with(move |_| {
-            complete_order
+            combined_complete_order
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
-                .push("complete");
+                .push("combined_complete");
+            HttpMockResponse::builder()
+                .status(scenario.combined_completion_status)
+                .header("Content-Type", "application/json")
+                .body(r#"{"success":true,"status":"failed"}"#)
+                .build()
+        });
+    });
+    let fallback_complete_order = Arc::clone(&request_order);
+    let fallback_complete = server.mock(move |when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/complete")
+            .header("Authorization", "Bearer test-token")
+            .is_true(move |request| {
+                let Ok(body) = serde_json::from_slice::<serde_json::Value>(request.body_ref())
+                else {
+                    return false;
+                };
+                body.get("runId").and_then(serde_json::Value::as_str) == Some(scenario.run_id)
+                    && body.get("exitCode").and_then(serde_json::Value::as_i64) == Some(1)
+                    && body.get("checkpoint").is_none()
+            });
+        then.respond_with(move |_| {
+            fallback_complete_order
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push("fallback_complete");
             HttpMockResponse::builder()
                 .status(200)
                 .header("Content-Type", "application/json")
@@ -267,28 +290,28 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
     );
     prepare.assert_calls_async(1).await;
     upload.assert_calls_async(1).await;
-    checkpoint.assert_calls_async(1).await;
-    complete.assert_calls_async(1).await;
+    combined_complete
+        .assert_calls_async(scenario.combined_completion_attempts)
+        .await;
+    fallback_complete
+        .assert_calls_async(scenario.fallback_completion_attempts)
+        .await;
     assert_eq!(
         request_order
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .as_slice(),
-        ["checkpoint", "complete"],
-        "recovery checkpoint request must arrive before /complete"
+        scenario.expected_request_order,
+        "checkpoint-less cancellation completion may only follow failed combined attempts"
     );
 
     let stderr = String::from_utf8_lossy(&output.stderr);
-    let recovery_index = stderr
+    stderr
         .find(scenario.recovery_log)
         .ok_or_else(|| std::io::Error::other(format!("missing recovery log:\n{stderr}")))?;
-    let complete_index = stderr
+    stderr
         .find("Complete webhook acknowledged")
         .ok_or_else(|| std::io::Error::other(format!("missing completion log:\n{stderr}")))?;
-    assert!(
-        recovery_index < complete_index,
-        "recovery must finish before /complete:\n{stderr}"
-    );
 
     let paths = guest_agent::paths::GuestPaths::from_runtime_dir(runtime_dir);
     let diagnostic: FailureDiagnostic =

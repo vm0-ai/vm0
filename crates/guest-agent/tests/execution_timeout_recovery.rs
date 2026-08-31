@@ -69,13 +69,16 @@ async fn execution_timeout_checkpoints_the_resumable_session_before_exit()
             .header("Content-Type", "application/octet-stream");
         then.status(200);
     });
-    let checkpoint = server.mock(|when, then| {
+    let complete = server.mock(|when, then| {
         when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
-            .json_body_includes(format!(r#"{{"cliAgentSessionId":"{THREAD_ID}"}}"#));
+            .path("/api/webhooks/agent/complete")
+            .json_body_includes(format!(
+                r#"{{"exitCode":{},"checkpoint":{{"cliAgentSessionId":"{THREAD_ID}"}}}}"#,
+                AGENT_EXECUTION_TIMEOUT_EXIT_CODE
+            ));
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "execution-timeout-recovery-checkpoint", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
+            .json_body(json!({"success": true, "status": "failed"}));
     });
 
     let output = common::command_output_with_timeout(
@@ -147,7 +150,7 @@ async fn execution_timeout_checkpoints_the_resumable_session_before_exit()
     );
     prepare.assert_calls_async(1).await;
     upload.assert_calls_async(1).await;
-    checkpoint.assert_calls_async(1).await;
+    complete.assert_calls_async(1).await;
 
     let paths = guest_agent::paths::GuestPaths::from_runtime_dir(runtime_dir);
     let diagnostic: FailureDiagnostic =

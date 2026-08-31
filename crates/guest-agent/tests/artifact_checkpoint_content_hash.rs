@@ -29,7 +29,8 @@ fn checkpoint_request_has_artifact_snapshot(
         return false;
     };
     let Some(snapshots) = body
-        .get("artifactSnapshots")
+        .get("checkpoint")
+        .and_then(|checkpoint| checkpoint.get("artifactSnapshots"))
         .and_then(|value| value.as_array())
     else {
         return false;
@@ -169,9 +170,9 @@ async fn unchanged_artifact_checkpoint_records_content_hash_timing()
     });
     let expected_version = version_id.clone();
     let expected_mount_path = mount_path.to_string_lossy().into_owned();
-    let checkpoint = server.mock(|when, then| {
+    let complete = server.mock(|when, then| {
         when.method(POST)
-            .path("/api/webhooks/agent/checkpoints")
+            .path("/api/webhooks/agent/complete")
             .is_true(move |req| {
                 checkpoint_request_has_artifact_snapshot(
                     req,
@@ -181,15 +182,18 @@ async fn unchanged_artifact_checkpoint_records_content_hash_timing()
             });
         then.status(200)
             .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "checkpoint-with-unchanged-artifact", "agentSessionId": "test-agent-session", "conversationId": "test-conversation"}));
+            .json_body(json!({"success": true, "status": "completed"}));
     });
 
-    guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime, &session_metadata).await?;
+    let checkpoint =
+        guest_agent::checkpoint::prepare_checkpoint_for_runtime(&runtime, &session_metadata)
+            .await?;
+    guest_agent::complete::report_checkpoint_for_run(&runtime, 0, None, &[], checkpoint).await?;
 
     history_prepare.assert_calls_async(1).await;
     storage_prepare.assert_calls_async(0).await;
     storage_commit.assert_calls_async(0).await;
-    checkpoint.assert_calls_async(1).await;
+    complete.assert_calls_async(1).await;
 
     let sandbox_ops = std::fs::read_to_string(runtime.paths.sandbox_ops_file())?;
     assert!(sandbox_ops.contains(r#""action_type":"artifact_content_hash_compute""#));
