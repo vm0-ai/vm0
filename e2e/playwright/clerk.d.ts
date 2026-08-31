@@ -5,6 +5,7 @@ declare global {
     Clerk?: {
       loaded: boolean;
       organization?: { readonly id: string } | null;
+      setActive(options: { readonly organization: string }): Promise<void>;
       session?: {
         getToken(options?: {
           readonly skipCache?: boolean;

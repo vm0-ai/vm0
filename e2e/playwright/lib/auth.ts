@@ -22,6 +22,12 @@ export async function signInWithClerkSignInToken(
 
   await page.goto(signInUrl.toString(), { waitUntil: "domcontentloaded" });
   await page.waitForFunction(
+    () => Boolean(window.Clerk?.loaded && window.Clerk.session),
+    undefined,
+    { timeout: 30_000 },
+  );
+  await activateClerkOrganization(page, options.activeOrganizationId);
+  await page.waitForFunction(
     (organizationId) => {
       return Boolean(
         window.Clerk?.loaded &&
@@ -42,6 +48,26 @@ export async function signInWithClerkSignInToken(
     await page.goto("about:blank");
   }
   return token;
+}
+
+async function activateClerkOrganization(
+  page: Page,
+  organizationId: string,
+): Promise<void> {
+  const activeOrganizationId = await page.evaluate(() => {
+    return window.Clerk?.organization?.id ?? null;
+  });
+  if (activeOrganizationId === organizationId) {
+    return;
+  }
+
+  await page.evaluate((targetOrganizationId) => {
+    const clerk = window.Clerk;
+    if (!clerk?.session) {
+      throw new Error("Clerk session unavailable for organization activation");
+    }
+    void clerk.setActive({ organization: targetOrganizationId });
+  }, organizationId);
 }
 
 export async function refreshClerkSessionToken(
