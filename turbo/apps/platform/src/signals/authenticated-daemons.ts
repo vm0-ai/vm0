@@ -50,10 +50,10 @@ export const setupAuthenticatedDaemons$ = command(
 
     const authRecovery = await get(authRecovery$);
     signal.throwIfAborted();
-    await set(setupSharedDatabaseBridge$, authRecovery, signal);
-    signal.throwIfAborted();
-
-    await set(setupRealtime$, signal);
+    await Promise.all([
+      set(setupSharedDatabaseBridge$, authRecovery, signal),
+      set(setupRealtime$, signal),
+    ]);
     signal.throwIfAborted();
     set(authenticatedServicesInstalled$, true);
   },

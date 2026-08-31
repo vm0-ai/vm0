@@ -52,7 +52,7 @@ function isDocumentVisible(): boolean {
   );
 }
 
-type RealtimeConnectionState = ConnectionStateChange["current"];
+export type RealtimeConnectionState = ConnectionStateChange["current"];
 type RealtimeChannelState = ChannelStateChange["current"];
 
 function connectionStateDetails(
@@ -133,6 +133,46 @@ interface RealtimeSessionChannels {
 
 const internalRealtimeSession$ = state<RealtimeSession | null>(null);
 const realtimeStateRevision$ = state(0);
+type RealtimeConnectionStateListener = (state: RealtimeConnectionState) => void;
+const realtimeConnectionStateListeners$ = state<
+  ReadonlySet<RealtimeConnectionStateListener>
+>(new Set());
+
+const notifyRealtimeConnectionState$ = command(
+  ({ get }, connectionState: RealtimeConnectionState): void => {
+    for (const listener of get(realtimeConnectionStateListeners$)) {
+      listener(connectionState);
+    }
+  },
+);
+
+export const subscribeRealtimeConnectionState$ = command(
+  (
+    { get, set },
+    listener: RealtimeConnectionStateListener,
+    signal: AbortSignal,
+  ): void => {
+    signal.throwIfAborted();
+    set(realtimeConnectionStateListeners$, (listeners) => {
+      return new Set([...listeners, listener]);
+    });
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(realtimeConnectionStateListeners$, (listeners) => {
+          const updatedListeners = new Set(listeners);
+          updatedListeners.delete(listener);
+          return updatedListeners;
+        });
+      },
+      { once: true },
+    );
+    const session = get(internalRealtimeSession$);
+    if (session) {
+      listener(session.ably.connection.state);
+    }
+  },
+);
 
 interface RealtimeSubscriptionSnapshot {
   readonly channelState: RealtimeChannelState | null;
@@ -197,7 +237,7 @@ const runRealtimeReadyCatchUp$ = command(
 
 interface PendingAblySubscription {
   readonly scope: RealtimeChannelScope;
-  topic: string;
+  topic: string | null;
   signal: AbortSignal;
   channelDeferred: ReturnType<
     typeof createDeferredPromise<StableRealtimeChannel>
@@ -221,11 +261,12 @@ interface RealtimeLoopArgs {
 
 interface RealtimePayloadLoopArgs {
   readonly channel: StableRealtimeChannel;
-  readonly topic: string;
+  readonly topic: string | null;
   readonly loopCommand$: Command<
     Promise<boolean> | boolean,
     [unknown, AbortSignal]
   >;
+  readonly includeMessage?: boolean;
   readonly catchUpCommand$?: Command<Promise<boolean> | boolean, [AbortSignal]>;
   readonly options?: RealtimeSubscribeOptions;
 }
@@ -238,11 +279,13 @@ interface SetAblyLoopArgs {
 }
 
 interface SetAblyPayloadLoopArgs {
-  readonly topic: string;
+  readonly scope?: RealtimeChannelScope;
+  readonly topic: string | null;
   readonly loopCommand$: Command<
     Promise<boolean> | boolean,
     [unknown, AbortSignal]
   >;
+  readonly includeMessage?: boolean;
   readonly catchUpCommand$?: Command<Promise<boolean> | boolean, [AbortSignal]>;
   readonly options?: RealtimeSubscribeOptions;
 }
@@ -569,9 +612,16 @@ const runWithChannelPayload$ = command(
     args: RealtimePayloadLoopArgs,
     signal: AbortSignal,
   ): Promise<void> => {
-    const { channel, topic, loopCommand$, catchUpCommand$, options } = args;
+    const {
+      channel,
+      topic,
+      loopCommand$,
+      includeMessage,
+      catchUpCommand$,
+      options,
+    } = args;
     signal.throwIfAborted();
-    const subscriptionLabel = topic;
+    const subscriptionLabel = topic ?? "channel";
     const state: RealtimePayloadLoopState = {
       deferred: createDeferredPromise(signal),
       poked: false,
@@ -600,7 +650,7 @@ const runWithChannelPayload$ = command(
         return;
       }
       L.debug("got queued message from topic", subscriptionLabel, message);
-      state.pendingPayloads.push(message.data);
+      state.pendingPayloads.push(includeMessage ? message : message.data);
       pokeLoop();
     };
     await subscribeChannel(
@@ -997,6 +1047,7 @@ const connectRealtimeClient$ = command(
       set(realtimeStateRevision$, (revision) => {
         return revision + 1;
       });
+      set(notifyRealtimeConnectionState$, stateChange.current);
       publishConnectionDiagnostic({
         details: connectionStateDetails(stateChange),
         event: "realtime.connection",
@@ -1324,8 +1375,9 @@ export const setupRealtime$ = command(
       channels,
       close: connected.close,
     });
+    set(notifyRealtimeConnectionState$, connected.ably.connection.state);
+    set(subscribeForegroundCatchUp$, foregroundRealtimeCatchUp$, signal);
     if (typeof document !== "undefined") {
-      set(subscribeForegroundCatchUp$, foregroundRealtimeCatchUp$, signal);
       const handleVisibilityChange = onDomEventFn(async () => {
         await set(updateRealtimeVisibility$, signal);
       });
@@ -1378,7 +1430,7 @@ const realtimeChannel$ = command(
   async (
     { get, set },
     scope: RealtimeChannelScope,
-    topic: string,
+    topic: string | null,
     signal: AbortSignal,
   ): Promise<StableRealtimeChannel> => {
     signal.throwIfAborted();
@@ -1433,14 +1485,28 @@ export const setAblyLoop$ = command(
 export const setAblyPayloadLoop$ = command(
   async (
     { set },
-    { topic, loopCommand$, catchUpCommand$, options }: SetAblyPayloadLoopArgs,
+    {
+      scope = "user",
+      topic,
+      loopCommand$,
+      includeMessage,
+      catchUpCommand$,
+      options,
+    }: SetAblyPayloadLoopArgs,
     signal: AbortSignal,
   ) => {
-    const channel = await set(realtimeChannel$, "user", topic, signal);
+    const channel = await set(realtimeChannel$, scope, topic, signal);
     signal.throwIfAborted();
     await set(
       runWithChannelPayload$,
-      { channel, topic, loopCommand$, catchUpCommand$, options },
+      {
+        channel,
+        topic,
+        loopCommand$,
+        includeMessage,
+        catchUpCommand$,
+        options,
+      },
       signal,
     );
     signal.throwIfAborted();

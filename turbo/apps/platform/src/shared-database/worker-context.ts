@@ -1,4 +1,4 @@
-import { command, state } from "ccstate";
+import { command, computed, state } from "ccstate";
 
 import { createDeferredPromise, withCleanup } from "../signals/utils.ts";
 import type { AuthRecovery } from "../signals/auth-retry.ts";
@@ -75,6 +75,11 @@ function requireWorkerCredentialContext(
   }
   return context;
 }
+
+export const workerCredentialIdentity$ = computed((get) => {
+  return requireWorkerCredentialContext(get(internalWorkerCredentialContext$))
+    .identity;
+});
 
 export const initializeWorkerCredentialContext$ = command(
   ({ get, set }, identity: SharedDatabaseIdentity): AuthRecovery => {

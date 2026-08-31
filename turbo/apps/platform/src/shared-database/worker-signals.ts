@@ -1,4 +1,5 @@
 import { command, state } from "ccstate";
+import type { InboundMessage } from "ably";
 import type {
   ChatThreadIndicators,
   SharedDatabaseDataKey,
@@ -24,16 +25,26 @@ import {
   initializeWorkerCredentialContext$,
   registerTab$,
   unregisterTab$,
+  workerCredentialIdentity$,
   type TabId,
 } from "./worker-context.ts";
-import { setupRealtime$ } from "../signals/realtime.ts";
+import {
+  setAblyPayloadLoop$,
+  setupRealtime$,
+  subscribeRealtimeConnectionState$,
+  type RealtimeConnectionState,
+} from "../signals/realtime.ts";
 import {
   subscribeChatThreadReadCursorUpdated$,
   subscribeThreadListChanged$,
+  setupChatIndicatorForegroundCatchUp$,
 } from "../signals/chat-thread-list-reload.ts";
 import { chatThreadIndicators$ } from "../signals/chat-page/chat-thread-indicators.ts";
+import { setupForegroundCatchUp$ } from "../signals/auth-retry.ts";
+import { settle } from "../signals/utils.ts";
 
 const workerRuntimeState$ = state<SharedDatabaseWorkerRuntime | null>(null);
+const credentialStoreDaemonsStarted$ = state(false);
 
 interface SharedDatabaseWorkerHeartbeat {
   readonly identity: SharedDatabaseIdentity;
@@ -57,6 +68,61 @@ function requireRuntime(
   }
   return runtime;
 }
+
+function sharedDatabaseConnectionStatus(
+  state: RealtimeConnectionState,
+): "connected" | "connecting" | "disconnected" {
+  if (state === "connected") {
+    return "connected";
+  }
+  if (state === "closed" || state === "closing" || state === "failed") {
+    return "disconnected";
+  }
+  return "connecting";
+}
+
+function isInboundMessage(value: unknown): value is InboundMessage {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (!("name" in value) ||
+      value.name === undefined ||
+      typeof value.name === "string")
+  );
+}
+
+const updateSharedDatabaseRealtimeStatus$ = command(
+  ({ get }, state: RealtimeConnectionState): void => {
+    requireRuntime(get(workerRuntimeState$)).updateRealtimeStatus(
+      get(workerCredentialIdentity$),
+      sharedDatabaseConnectionStatus(state),
+    );
+  },
+);
+
+const handleSharedDatabaseRealtimeMessage$ = command(
+  ({ get }, payload: unknown, signal: AbortSignal): boolean => {
+    signal.throwIfAborted();
+    if (!isInboundMessage(payload)) {
+      throw new Error("Shared database realtime message is invalid");
+    }
+    requireRuntime(get(workerRuntimeState$)).handleRealtimeMessage(
+      get(workerCredentialIdentity$),
+      payload,
+    );
+    return false;
+  },
+);
+
+const catchUpSharedDatabaseAfterRealtimeRecovery$ = command(
+  ({ get }, signal: AbortSignal): boolean => {
+    signal.throwIfAborted();
+    requireRuntime(get(workerRuntimeState$)).catchUpAfterRealtimeRecovery(
+      get(workerCredentialIdentity$),
+    );
+    return false;
+  },
+);
 
 export const bootstrapSharedDatabaseWorker$ = command(
   ({ get, set }, signal: AbortSignal): void => {
@@ -92,18 +158,54 @@ export const initializeCredentialStore$ = command(
     set(setAuthenticatedIdentity$, Promise.resolve(input.identity));
     if (get(workerRuntimeState$) === null) {
       set(bootstrapSharedDatabaseWorker$, signal);
+      set(setupForegroundCatchUp$, signal);
     }
   },
 );
 
 export const runCredentialStoreDaemons$ = command(
-  async ({ set }, signal: AbortSignal): Promise<void> => {
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    if (get(credentialStoreDaemonsStarted$)) {
+      return;
+    }
+    set(credentialStoreDaemonsStarted$, true);
+    set(
+      subscribeRealtimeConnectionState$,
+      (state) => {
+        set(updateSharedDatabaseRealtimeStatus$, state);
+      },
+      signal,
+    );
     await set(setupRealtime$, signal);
     signal.throwIfAborted();
-    await Promise.all([
-      set(subscribeThreadListChanged$, signal),
-      set(subscribeChatThreadReadCursorUpdated$, signal),
-    ]);
+    set(setupChatIndicatorForegroundCatchUp$, signal);
+    const subscriptions = await settle(
+      Promise.all([
+        set(
+          setAblyPayloadLoop$,
+          {
+            scope: "credential",
+            topic: null,
+            loopCommand$: handleSharedDatabaseRealtimeMessage$,
+            includeMessage: true,
+            catchUpCommand$: catchUpSharedDatabaseAfterRealtimeRecovery$,
+            options: {
+              onSubscribed: () => {
+                set(catchUpSharedDatabaseAfterRealtimeRecovery$, signal);
+              },
+            },
+          },
+          signal,
+        ),
+        set(subscribeThreadListChanged$, signal),
+        set(subscribeChatThreadReadCursorUpdated$, signal),
+      ]),
+      signal,
+    );
+    signal.throwIfAborted();
+    if (!subscriptions.ok) {
+      set(updateSharedDatabaseRealtimeStatus$, "failed");
+    }
   },
 );
 

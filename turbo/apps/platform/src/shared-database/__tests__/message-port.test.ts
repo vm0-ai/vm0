@@ -492,7 +492,7 @@ describe("shared database MessagePort protocol", () => {
       await initialAttach.started;
       await vi.waitFor(() => {
         expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-        expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(2);
+        expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(1);
       });
       context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
         return respond(404, {
@@ -526,7 +526,7 @@ describe("shared database MessagePort protocol", () => {
       expect(staleTabTransports).toBe(1);
       await vi.waitFor(() => {
         expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-        expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(2);
+        expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(1);
         expect(staleTabStatuses.at(-1)).toBe("connected");
         expect(requestedSeqIds).toStrictEqual([0, 1]);
         expect(appends).toBe(1);
@@ -580,7 +580,7 @@ describe("shared database MessagePort protocol", () => {
       initialAttach.attach();
       await vi.waitFor(() => {
         expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-        expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(2);
+        expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(1);
       });
       const initialController = Array.from(
         boundary.credentialAbortControllers.values(),
@@ -597,7 +597,7 @@ describe("shared database MessagePort protocol", () => {
       await vi.waitFor(() => {
         expect(transports).toBe(1);
         expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-        expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(4);
+        expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(2);
       });
       expect(initialController.signal.aborted).toBeTruthy();
       expect(
