@@ -739,6 +739,36 @@ fn assert_pre_spawn_concurrency_bucket(
     assert_eq!(operation.runner_pre_spawn_concurrency_bucket, expected);
 }
 
+fn assert_resource_budget_occupancy(
+    telemetry: &JobTelemetry,
+    action: &str,
+    expected: Option<(
+        RunnerResourceBudgetUtilizationBucket,
+        RunnerResourceBudgetUtilizationBucket,
+        RunnerResourceBudgetLeaseCountBucket,
+    )>,
+) {
+    let operations = telemetry.pending_ops_with_runner_startup_snapshot();
+    let matching: Vec<_> = operations
+        .iter()
+        .filter(|operation| operation.action_type == action)
+        .collect();
+    let [operation] = matching.as_slice() else {
+        panic!("expected one {action} operation, got {operations:?}");
+    };
+    let expected = expected.map_or((None, None, None), |(vcpu, memory, leases)| {
+        (Some(vcpu), Some(memory), Some(leases))
+    });
+    assert_eq!(
+        (
+            operation.runner_resource_budget_vcpu_utilization_bucket,
+            operation.runner_resource_budget_memory_utilization_bucket,
+            operation.runner_resource_budget_lease_count_bucket,
+        ),
+        expected,
+    );
+}
+
 fn pre_spawn_timing_with_exact_reuse_speculation() -> RunnerPreSpawnTiming {
     let mut timing = RunnerPreSpawnTiming::start_after_claim();
     timing.record_exact_reuse_speculation(ExactReuseSpeculationTiming {
@@ -1312,6 +1342,56 @@ async fn execute_job_attributes_overlapping_pre_spawn_work_and_releases_membersh
         "api_to_agent_ready",
         Some(RunnerPreSpawnConcurrencyBucket::One),
     );
+}
+
+#[tokio::test]
+async fn execute_job_attributes_resource_budget_occupancy_until_agent_ready() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let factory = ObservedMockSandboxFactory::new();
+    let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 0));
+    let _current_lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+    let _idle_lease = ResourceBudget::try_reserve_lease(&budget, 3, 12288).unwrap();
+    let mut pre_spawn_timing = pre_spawn_timing_with_phases();
+    pre_spawn_timing.record_resource_budget_occupancy(&budget);
+    let mut context = minimal_context();
+    context.api_start_time = Some(chrono::Utc::now().timestamp_millis().max(0) as u64);
+    let cancel = tokio_util::sync::CancellationToken::new();
+
+    let (_outcome, telemetry) = execute_job_with_prepared_notifier(
+        &factory,
+        context,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        RunCancellationSignals::hard_only(cancel),
+        ExecutionHooks {
+            sandbox_prepared: None,
+            active_input_source: None,
+            pre_spawn_timing: Some(pre_spawn_timing),
+            session_history_restore_plan: SessionHistoryRestorePlan::Default,
+        },
+    )
+    .await;
+
+    let expected = Some((
+        RunnerResourceBudgetUtilizationBucket::FiftyOneToSeventyFive,
+        RunnerResourceBudgetUtilizationBucket::TwentySixToFifty,
+        RunnerResourceBudgetLeaseCountBucket::Two,
+    ));
+    for action in [
+        "runner_claim_to_executor_start",
+        "runner_fresh_sandbox_prepare",
+        "runner_agent_start_process",
+        "api_to_spawn",
+        "api_to_agent_ready",
+    ] {
+        assert_resource_budget_occupancy(&telemetry, action, expected);
+    }
+    assert_resource_budget_occupancy(&telemetry, "agent_execute", None);
 }
 
 #[tokio::test]
