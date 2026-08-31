@@ -72,7 +72,10 @@ export const subscribeThreadListChanged$ = command(
         scope: "credential",
         topic: "threadListChanged",
         loopCommand$: reloadChatIndicatorsFromRealtime$,
-        options: { runOnForegroundCatchUp: false },
+        options: {
+          runOnForegroundCatchUp: false,
+          runOnSubscribe: true,
+        },
       },
       signal,
     );
