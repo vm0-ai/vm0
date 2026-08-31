@@ -26,6 +26,7 @@ export interface SharedDatabaseBridge {
     signal: AbortSignal,
   ): Promise<SharedDatabaseHeartbeatResult>;
   indicators(signal: AbortSignal): Promise<ChatThreadIndicators>;
+  reloadIndicators(): void;
   query<TKey extends SharedDatabaseDataKey>(
     query: SharedDatabaseQuery<TKey>,
     signal: AbortSignal,

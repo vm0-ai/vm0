@@ -118,6 +118,10 @@ export class AuthRecoveringSharedDatabaseBridge implements SharedDatabaseBridge 
     return await this.bridge.indicators(signal);
   }
 
+  reloadIndicators(): void {
+    this.bridge.reloadIndicators();
+  }
+
   async authenticationRequired(): Promise<void> {
     if (this.retryingQueries > 0) {
       return;

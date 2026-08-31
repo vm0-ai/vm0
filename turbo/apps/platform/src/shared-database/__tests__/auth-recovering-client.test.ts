@@ -28,6 +28,8 @@ class FakeBridge implements SharedDatabaseBridge {
     return Promise.resolve({ agents: {}, threads: {} });
   }
 
+  reloadIndicators(): void {}
+
   heartbeat(
     heartbeat: SharedDatabaseHeartbeat,
     _signal: AbortSignal,

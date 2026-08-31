@@ -6,6 +6,8 @@ import {
 } from "./realtime.ts";
 import { clearOptimisticReadMark$ } from "./chat-page/optimistic-chat-thread-read-marks.ts";
 import { invalidateTabIndicators$ } from "../shared-database/worker-context.ts";
+import { apiClientRuntime$ } from "./api-client-runtime.ts";
+import { reloadSharedDatabaseIndicators$ } from "./shared-database-bridge-state.ts";
 
 const internalReloadChatIndicators$ = state(0);
 
@@ -13,10 +15,17 @@ export const reloadChatIndicatorsCounter$ = computed((get) => {
   return get(internalReloadChatIndicators$);
 });
 
-export const reloadChatIndicators$ = command(({ set }) => {
+export const reloadChatIndicatorsLocally$ = command(({ set }) => {
   set(internalReloadChatIndicators$, (n) => {
     return n + 1;
   });
+});
+
+export const reloadChatIndicators$ = command(({ get, set }) => {
+  if (get(apiClientRuntime$).environment === "app") {
+    set(reloadSharedDatabaseIndicators$);
+  }
+  set(reloadChatIndicatorsLocally$);
 });
 
 const reloadChatIndicatorsFromRealtime$ = command(({ set }) => {
@@ -26,7 +35,7 @@ const reloadChatIndicatorsFromRealtime$ = command(({ set }) => {
 });
 
 const reloadChatIndicatorsFromReadCursor$ = command(
-  ({ set }, payload: unknown, signal: AbortSignal) => {
+  ({ get, set }, payload: unknown, signal: AbortSignal) => {
     signal.throwIfAborted();
     if (
       typeof payload === "object" &&
@@ -38,8 +47,12 @@ const reloadChatIndicatorsFromReadCursor$ = command(
     ) {
       set(clearOptimisticReadMark$, payload.threadId);
     }
-    set(reloadChatIndicators$);
-    set(invalidateTabIndicators$);
+    if (get(apiClientRuntime$).environment === "app") {
+      set(reloadChatIndicatorsLocally$);
+    } else {
+      set(reloadChatIndicators$);
+      set(invalidateTabIndicators$);
+    }
     return false;
   },
 );

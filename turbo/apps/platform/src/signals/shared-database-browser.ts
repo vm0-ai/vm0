@@ -31,9 +31,9 @@ import {
   heartbeatSharedDatabase$,
   installSharedDatabaseBridge$,
   sharedDatabaseBridgeInstalled$,
-  setSharedDatabaseConnectionStatus$,
-} from "./shared-database.ts";
-import { reloadChatIndicators$ } from "./chat-thread-list-reload.ts";
+} from "./shared-database-bridge-state.ts";
+import { setSharedDatabaseConnectionStatus$ } from "./shared-database.ts";
+import { reloadChatIndicatorsLocally$ } from "./chat-thread-list-reload.ts";
 
 const MAX_HEARTBEAT_INTERVAL_MS = 60_000;
 const AUTHENTICATION_REQUIRED_EVENT = "authentication-required";
@@ -242,7 +242,7 @@ export const setupSharedDatabaseBridge$ = command(
           location.reload();
         },
         indicatorsInvalidated: () => {
-          set(reloadChatIndicators$);
+          set(reloadChatIndicatorsLocally$);
         },
         statusChanged: (status) => {
           set(setSharedDatabaseConnectionStatus$, status);

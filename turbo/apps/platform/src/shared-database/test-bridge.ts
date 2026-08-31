@@ -39,6 +39,10 @@ class TestSharedDatabaseBridge implements SharedDatabaseBridge {
     return this.bridge.indicators(signal);
   }
 
+  reloadIndicators(): void {
+    this.bridge.reloadIndicators();
+  }
+
   query<TKey extends SharedDatabaseDataKey>(
     query: SharedDatabaseQuery<TKey>,
     signal: AbortSignal,

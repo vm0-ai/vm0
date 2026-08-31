@@ -549,6 +549,8 @@ export function triggerAblyConnectionState(
       if (!channel || channel.state === "initialized") {
         continue;
       }
+      activeRealtime = realtime;
+      break;
     }
     activeRealtime = realtime;
   }

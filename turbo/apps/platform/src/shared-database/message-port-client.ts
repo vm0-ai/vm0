@@ -121,6 +121,13 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     return chatThreadIndicatorsSchema.parse(value);
   }
 
+  reloadIndicators(): void {
+    if (this.closed) {
+      throw this.closeReason;
+    }
+    this.port.postMessage({ type: "reload-indicators" });
+  }
+
   async query<TKey extends SharedDatabaseDataKey>(
     query: SharedDatabaseQuery<TKey>,
     signal: AbortSignal,

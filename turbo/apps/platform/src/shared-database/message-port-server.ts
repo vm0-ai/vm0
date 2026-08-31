@@ -27,6 +27,7 @@ import {
   heartbeatStoreMessage$,
   indicatorsStoreMessage$,
   queryStoreMessage$,
+  reloadIndicatorsStoreMessage$,
   runCredentialStoreDaemons$,
   subscribeStoreMessage$,
   unregisterSharedDatabaseWorkerTab$,
@@ -64,6 +65,7 @@ const messageRoutes = {
   subscribe: subscribeStoreMessage$,
   unsubscribe: unsubscribeStoreMessage$,
   "get-indicators": indicatorsStoreMessage$,
+  "reload-indicators": reloadIndicatorsStoreMessage$,
 } as const;
 
 function serializedError(error: unknown): { name: string; message: string } {
@@ -254,6 +256,13 @@ export class SharedDatabaseMessagePortServer {
           signal,
         );
       }
+      case "reload-indicators": {
+        return store.set(
+          messageRoutes["reload-indicators"],
+          this.tabId,
+          message,
+        );
+      }
     }
   }
 
@@ -384,7 +393,10 @@ export class SharedDatabaseMessagePortServer {
     if (!store || !controller || controller.signal.aborted) {
       return;
     }
-    if (message.type === "unsubscribe") {
+    if (
+      message.type === "unsubscribe" ||
+      message.type === "reload-indicators"
+    ) {
       this.routeStoreMessage(store, message, controller.signal);
       return;
     }

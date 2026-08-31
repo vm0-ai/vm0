@@ -161,6 +161,14 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
     }, signal);
   }
 
+  reloadIndicators(): void {
+    const connection = this.connection;
+    if (!connection) {
+      throw new Error("Shared database worker is not connected");
+    }
+    connection.bridge.reloadIndicators();
+  }
+
   async on(
     dataKey: SharedDatabaseDataKey,
     callback: SharedDatabaseSubscriptionCallback,

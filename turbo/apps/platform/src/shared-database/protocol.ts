@@ -62,12 +62,17 @@ const indicatorsRequestSchema = z
   })
   .strict();
 
+const reloadIndicatorsRequestSchema = z
+  .object({ type: z.literal("reload-indicators") })
+  .strict();
+
 export const sharedDatabaseClientMessageSchema = z.discriminatedUnion("type", [
   heartbeatRequestSchema,
   queryRequestSchema,
   subscribeRequestSchema,
   unsubscribeRequestSchema,
   indicatorsRequestSchema,
+  reloadIndicatorsRequestSchema,
 ]);
 
 export type SharedDatabaseClientMessage = z.infer<

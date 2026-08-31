@@ -23,6 +23,7 @@ import {
 } from "../signals/auth-context.ts";
 import {
   initializeWorkerCredentialContext$,
+  invalidateTabIndicators$,
   registerTab$,
   unregisterTab$,
   workerCredentialIdentity$,
@@ -35,12 +36,11 @@ import {
   type RealtimeConnectionState,
 } from "../signals/realtime.ts";
 import {
+  reloadChatIndicators$,
   subscribeChatThreadReadCursorUpdated$,
   subscribeThreadListChanged$,
-  setupChatIndicatorForegroundCatchUp$,
 } from "../signals/chat-thread-list-reload.ts";
 import { chatThreadIndicators$ } from "../signals/chat-page/chat-thread-indicators.ts";
-import { setupForegroundCatchUp$ } from "../signals/auth-retry.ts";
 import { settle } from "../signals/utils.ts";
 
 const workerRuntimeState$ = state<SharedDatabaseWorkerRuntime | null>(null);
@@ -158,7 +158,6 @@ export const initializeCredentialStore$ = command(
     set(setAuthenticatedIdentity$, Promise.resolve(input.identity));
     if (get(workerRuntimeState$) === null) {
       set(bootstrapSharedDatabaseWorker$, signal);
-      set(setupForegroundCatchUp$, signal);
     }
   },
 );
@@ -178,7 +177,6 @@ export const runCredentialStoreDaemons$ = command(
     );
     await set(setupRealtime$, signal);
     signal.throwIfAborted();
-    set(setupChatIndicatorForegroundCatchUp$, signal);
     const subscriptions = await settle(
       Promise.all([
         set(
@@ -317,6 +315,10 @@ type IndicatorsMessage = Extract<
   SharedDatabaseClientMessage,
   { readonly type: "get-indicators" }
 >;
+type ReloadIndicatorsMessage = Extract<
+  SharedDatabaseClientMessage,
+  { readonly type: "reload-indicators" }
+>;
 
 interface HeartbeatStoreMessage {
   readonly message: HeartbeatMessage;
@@ -426,5 +428,12 @@ export const indicatorsStoreMessage$ = command(
     signal: AbortSignal,
   ): Promise<ChatThreadIndicators> => {
     return await set(readWorkerChatThreadIndicators$, signal);
+  },
+);
+
+export const reloadIndicatorsStoreMessage$ = command(
+  ({ set }, _tabId: TabId, _message: ReloadIndicatorsMessage): void => {
+    set(reloadChatIndicators$);
+    set(invalidateTabIndicators$);
   },
 );

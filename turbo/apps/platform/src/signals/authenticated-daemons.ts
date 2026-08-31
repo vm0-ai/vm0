@@ -27,6 +27,8 @@ export type AuthenticatedDaemonOwner = (daemon: Promise<void>) => void;
 
 const runAppRealtimeDaemons$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
+    await set(setupRealtime$, signal);
+    signal.throwIfAborted();
     await Promise.all([
       set(subscribeChatThreadReadCursorUpdated$, signal),
       set(subscribePermissionUpdate$, signal),
@@ -69,13 +71,9 @@ export const setupAuthenticatedDaemons$ = command(
 
     const authRecovery = await get(authRecovery$);
     signal.throwIfAborted();
-    const realtimeSetup = set(setupRealtime$, signal);
     const appRealtimeDaemons = set(runAppRealtimeDaemons$, signal);
     ownDaemon(appRealtimeDaemons);
-    await Promise.all([
-      realtimeSetup,
-      set(setupSharedDatabaseBridge$, authRecovery, signal),
-    ]);
+    await set(setupSharedDatabaseBridge$, authRecovery, signal);
     signal.throwIfAborted();
     set(authenticatedServicesInstalled$, true);
   },

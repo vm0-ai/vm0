@@ -86,7 +86,6 @@ const ARCHIVED_THREAD_ID = "b0000000-0000-4000-a000-000000000004";
 const RESEARCH_THREAD_ID = "b0000000-0000-4000-a000-000000000005";
 const WORKFLOW_ID = "d0000000-0000-4000-a000-000000000001";
 const ARTIFACT_ID = "a0000000-0000-4000-a000-000000000001";
-const SHARED_DATABASE_REALTIME_CHANNEL = "user-org:test-user-123:org_default";
 
 interface SidebarThread {
   readonly id: string;
@@ -715,15 +714,12 @@ describe("zero sidebar", () => {
     const nav = await waitFor(() => {
       const current = mobileSidebar();
       expect(within(current).getByText("Zero")).toBeInTheDocument();
-      expect(
-        context.mocks.ably.hasChannelSubscriptionOnChannel(
-          SHARED_DATABASE_REALTIME_CHANNEL,
-        ),
-      ).toBeTruthy();
       return current;
     });
     const agentRow = agentRowByName(nav, "Zero");
-    const threadRow = threadRowByTitle("Remote unread conversation");
+    const threadRow = await waitFor(() => {
+      return threadRowByTitle("Remote unread conversation");
+    });
     await waitFor(() => {
       expect(within(agentRow).queryByLabelText("Unread")).toBeNull();
       expect(within(threadRow).queryByLabelText("Unread")).toBeNull();
@@ -4600,9 +4596,9 @@ describe("zero sidebar", () => {
       within(rail).getByLabelText("Onde Zero trabalha"),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Abrir menu")).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Abrir artefatos no celular"),
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Abrir artefatos no celular"),
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByLabelText("Abrir automações no celular"),
     ).toBeInTheDocument();
@@ -4652,9 +4648,9 @@ describe("zero sidebar", () => {
     expect(within(rail).getByText("アーティファクト")).toBeInTheDocument();
     expect(within(rail).getByLabelText("Zeroの連携先")).toBeInTheDocument();
     expect(screen.getByLabelText("メニューを開く")).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("モバイルでアーティファクトを開く"),
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("モバイルでアーティファクトを開く"),
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByLabelText("モバイルでオートメーションを開く"),
     ).toBeInTheDocument();
@@ -4708,9 +4704,9 @@ describe("zero sidebar", () => {
       within(rail).getByLabelText("Dónde trabaja Zero"),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Abrir menú")).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Abrir artefactos en móvil"),
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Abrir artefactos en móvil"),
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByLabelText("Abrir automatizaciones en móvil"),
     ).toBeInTheDocument();

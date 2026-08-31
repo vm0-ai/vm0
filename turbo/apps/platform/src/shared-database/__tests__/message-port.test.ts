@@ -14,11 +14,12 @@ import {
 import { mockNow } from "../../lib/time.ts";
 import { createChildAbortController } from "../../signals/utils.ts";
 import {
-  installSharedDatabaseBridge$,
   queryChatEventSharedDatabase$,
   sharedDatabaseChatThreadIndicators$,
 } from "../../signals/shared-database.ts";
-import { reloadChatIndicators$ } from "../../signals/chat-thread-list-reload.ts";
+import { installSharedDatabaseBridge$ } from "../../signals/shared-database-bridge-state.ts";
+import { reloadChatIndicatorsLocally$ } from "../../signals/chat-thread-list-reload.ts";
+import { setApiClientRuntime$ } from "../../signals/api-client-runtime.ts";
 import { setRootSignal$ } from "../../signals/root-signal.ts";
 import type {
   SharedDatabaseBridgeEvents,
@@ -184,6 +185,11 @@ async function installProtocolBridge(): Promise<{
 }> {
   const platformStore = context.store;
   platformStore.set(setRootSignal$, context.signal);
+  platformStore.set(setApiClientRuntime$, {
+    environment: "app",
+    apiBaseUrl: location.origin,
+    oauthApiBaseUrl: location.origin,
+  });
   const boundary = workerBoundaryState();
   const [platformPort, workerPort] = messagePortPair();
   installHeartbeatAuthentication();
@@ -194,7 +200,7 @@ async function installProtocolBridge(): Promise<{
     {
       authenticationRequired: vi.fn<() => void>(),
       indicatorsInvalidated: () => {
-        platformStore.set(reloadChatIndicators$);
+        platformStore.set(reloadChatIndicatorsLocally$);
       },
       reloadRequired: vi.fn<() => void>(),
       statusChanged: vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),

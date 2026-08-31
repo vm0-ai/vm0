@@ -6,7 +6,7 @@ import type {
   SharedDatabasePortLike,
 } from "../../shared-database/bridge.ts";
 import type { AuthRecovery } from "../auth-retry.ts";
-import { heartbeatSharedDatabase$ } from "../shared-database.ts";
+import { heartbeatSharedDatabase$ } from "../shared-database-bridge-state.ts";
 import { setupSharedDatabaseBridge$ } from "../shared-database-browser.ts";
 import { testContext } from "./test-helpers.ts";
 
