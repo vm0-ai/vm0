@@ -2001,6 +2001,7 @@
         "capacityTitle": "O modelo {{framework}} está ocupado",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "Continuar",
         "resetAndTryAgain": "Redefinir e tentar novamente",
         "resetsAt": "Redefine {{time}}",
         "selectModel": "Trocar modelo",

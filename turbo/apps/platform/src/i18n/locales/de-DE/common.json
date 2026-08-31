@@ -1970,6 +1970,7 @@
         "capacityTitle": "{{framework}}-Modell ist ausgelastet",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "Fortfahren",
         "resetAndTryAgain": "Zurücksetzen und erneut versuchen",
         "resetsAt": "Wird um {{time}} zurückgesetzt",
         "selectModel": "Modell wechseln",

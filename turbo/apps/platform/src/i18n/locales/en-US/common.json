@@ -1970,6 +1970,7 @@
         "capacityTitle": "{{framework}} model is busy",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "Continue",
         "resetAndTryAgain": "Reset and try again",
         "resetsAt": "Resets {{time}}",
         "selectModel": "Switch model",
