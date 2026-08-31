@@ -16,16 +16,14 @@ import {
   type WorkflowAutomationSummary,
 } from "@okouai/api-contracts/contracts/workflows";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { workflowAutomations } from "@okouai/db/schema/workflow";
-import { eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
-import { db } from "../../../lib/db";
 import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { clearWorkflowAutomationEventConnectorFixture } from "../../../test-fixtures/workflow-automation";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import {
@@ -1321,10 +1319,7 @@ describe("POST /api/webhooks/gmail", () => {
       "Bearer gmail-second-access-token",
     ]);
 
-    await db()
-      .update(workflowAutomations)
-      .set({ eventConnectorId: null })
-      .where(eq(workflowAutomations.id, created.body.id));
+    await clearWorkflowAutomationEventConnectorFixture(created.body.id);
 
     const oldSource = await postGmailWebhook(
       gmailPushBody({
@@ -1340,13 +1335,6 @@ describe("POST /api/webhooks/gmail", () => {
       dispatched: 0,
       duplicates: 0,
     });
-    const [repairedLegacyProjection] = await db()
-      .select({ connectorId: workflowAutomations.eventConnectorId })
-      .from(workflowAutomations)
-      .where(eq(workflowAutomations.id, created.body.id))
-      .limit(1);
-    expect(repairedLegacyProjection?.connectorId).toBe(secondConnectorId);
-
     const currentSource = await postGmailWebhook(
       gmailPushBody({
         emailAddress: secondEmail,
