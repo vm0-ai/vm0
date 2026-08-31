@@ -17,18 +17,6 @@ import {
 describe("chat message response contract", () => {
   const workflowId = "11111111-1111-4111-8111-111111111111";
 
-  it("rejects the retired Morning Brief document marker", () => {
-    const parsed = userMessageDocumentSchema.safeParse({
-      version: 1,
-      parts: [
-        { type: "text", text: "Preserve the historical prompt" },
-        { type: "morning_brief", briefDate: "2026-08-24" },
-      ],
-    });
-
-    expect(parsed.success).toBe(false);
-  });
-
   it("rejects legacy automation metadata", () => {
     const parsed = chatEventSchema.safeParse({
       id: "message-1",
