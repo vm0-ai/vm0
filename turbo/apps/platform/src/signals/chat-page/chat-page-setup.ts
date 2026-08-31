@@ -29,7 +29,12 @@ function chatEventIdFromHash(hash: string): string | null {
     return null;
   }
   const encodedEventId = hash.slice(CHAT_EVENT_HASH_PREFIX.length);
-  return encodedEventId.length > 0 ? decodeURIComponent(encodedEventId) : null;
+  if (encodedEventId.length === 0) {
+    return null;
+  }
+  return new URLSearchParams(
+    `event=${encodedEventId.replaceAll("+", "%2B")}`,
+  ).get("event");
 }
 
 const setupResolvedLeftThread$ = command(

@@ -358,9 +358,13 @@ function installResizeObserver(): ResizeObserverController {
 }
 
 function eventAnchor(eventId: string): HTMLElement {
-  const anchor = document.querySelector(
-    `[data-chat-scroll-anchor-event-id="${eventId}"]`,
-  );
+  const anchor = Array.from(
+    document.querySelectorAll<HTMLElement>(
+      "[data-chat-scroll-anchor-event-id]",
+    ),
+  ).find((candidate) => {
+    return candidate.dataset.chatScrollAnchorEventId === eventId;
+  });
   if (!(anchor instanceof HTMLElement)) {
     throw new Error(`Chat scroll anchor not found: ${eventId}`);
   }
@@ -725,6 +729,112 @@ describe("chat scroll position", () => {
       expect(screen.getByText("deep-link message 2")).toBeInTheDocument();
       expect(chatScrollContainer().scrollTop).toBe(200);
       expect(viewportOffsetTop("deep-link-2")).toBe(0);
+    });
+  });
+
+  it.each([
+    {
+      hash: "#event-%",
+      label: "malformed",
+      threadId: "b0000000-0000-4000-a000-000000000818",
+    },
+    {
+      hash: `#event-${encodeURIComponent('missing-"]')}`,
+      label: "unknown",
+      threadId: "b0000000-0000-4000-a000-000000000819",
+    },
+  ])(
+    "ignores a $label event hash and follows the thread tail",
+    async ({ hash, threadId }) => {
+      const events = simpleUserEvents(threadId, "invalid-deep-link", 20);
+      mockChatLifecycle(context, {
+        threadId,
+        threadTitle: "Invalid event deep link",
+        chatEvents: events,
+      });
+      installChatLayout(
+        new Map([
+          [
+            threadId,
+            {
+              clientHeight: () => {
+                return 300;
+              },
+              scrollHeight: () => {
+                return 2000;
+              },
+              eventRect: (eventId) => {
+                const index = Number(eventId.split("-").at(-1));
+                return Number.isFinite(index)
+                  ? { top: index * 100, height: 80 }
+                  : undefined;
+              },
+            },
+          ],
+        ]),
+      );
+
+      detachedSetupPage({
+        context,
+        path: `/chats/${threadId}${hash}`,
+        featureSwitches: {
+          [FeatureSwitchKey.ChatConversationLocator]: true,
+        },
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("invalid-deep-link message 19"),
+        ).toBeInTheDocument();
+        expect(chatScrollContainer().scrollTop).toBe(1700);
+      });
+    },
+  );
+
+  it("opens an encoded selector-sensitive event hash", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000820";
+    const prefix = 'quoted-"event';
+    const events = simpleUserEvents(threadId, prefix, 20);
+    const targetEventId = `${prefix}-2`;
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Encoded event deep link",
+      chatEvents: events,
+    });
+    installChatLayout(
+      new Map([
+        [
+          threadId,
+          {
+            clientHeight: () => {
+              return 300;
+            },
+            scrollHeight: () => {
+              return 2000;
+            },
+            eventRect: (eventId) => {
+              const index = Number(eventId.split("-").at(-1));
+              return Number.isFinite(index)
+                ? { top: index * 100, height: 80 }
+                : undefined;
+            },
+          },
+        ],
+      ]),
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}#event-${encodeURIComponent(targetEventId)}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatConversationLocator]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(`${prefix} message 2`)).toBeInTheDocument();
+      expect(chatScrollContainer().scrollTop).toBe(200);
+      expect(viewportOffsetTop(targetEventId)).toBe(0);
     });
   });
 

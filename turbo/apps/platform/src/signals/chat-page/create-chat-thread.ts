@@ -2502,6 +2502,9 @@ function createChatThreadMessagePipeline(
     eventTreeErrors$: resources.eventTreeErrors$,
   });
   const initialEventsReady$ = state(false);
+  const initialEventsReadyView$ = computed((get): boolean => {
+    return get(initialEventsReady$);
+  });
   const renderWindow = createChatRenderWindow({
     threadId,
     allRenderedChatGroups$: projections.allRenderedChatGroups$,
@@ -2532,6 +2535,8 @@ function createChatThreadMessagePipeline(
     threadId,
     position,
     ensureVisibleEventTreesAfterScroll$,
+    chatEvents.chatEvents$,
+    initialEventsReadyView$,
   );
   const effects = createEventChangeEffects(
     {
@@ -2543,9 +2548,6 @@ function createChatThreadMessagePipeline(
     },
     ownerSignal,
   );
-  const initialEventsReadyView$ = computed((get): boolean => {
-    return get(initialEventsReady$);
-  });
   const lifecycle = createChatEventPresentationLifecycle({
     chatEvents,
     afterEventsChange$: effects.afterEventsChange$,

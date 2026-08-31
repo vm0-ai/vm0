@@ -1,7 +1,8 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { animationFrame } from "signal-timers";
 import { logger } from "../log.ts";
-import { onDomEventFn, onRef } from "../utils.ts";
+import { onDomEventFn, onRef, setLoop } from "../utils.ts";
+import type { ChatEvent } from "./chat-event-types.ts";
 
 const L = logger("AutoScroll");
 const AT_BOTTOM_THRESHOLD_PX = 10;
@@ -98,12 +99,10 @@ function scrollAnchorForEvent(
   container: HTMLElement,
   eventId: string,
 ): HTMLElement | null {
-  // Selected by attribute rather than scanned out of `scrollAnchors`: a reader
-  // holding an anchor restores on every frame the thread grows, and collecting
-  // every anchor in the thread first would walk the whole history before each
-  // paint.
-  return container.querySelector<HTMLElement>(
-    `[${SCROLL_ANCHOR_ATTRIBUTE}="${eventId}"]`,
+  return (
+    scrollAnchors(container).find((anchor) => {
+      return anchor.getAttribute(SCROLL_ANCHOR_ATTRIBUTE) === eventId;
+    }) ?? null
   );
 }
 
@@ -688,6 +687,8 @@ export function createChatThreadScrollSignals(
   threadId: string,
   position: ThreadScrollPositionSignals,
   afterThreadScrollPositionChanged$: Command<Promise<void>, [AbortSignal]>,
+  chatEvents$: Computed<readonly ChatEvent[]>,
+  initialEventsReady$: Computed<boolean>,
 ): ChatThreadScrollSignals {
   const runtime: ScrollRuntime = {
     initialized: false,
@@ -715,7 +716,27 @@ export function createChatThreadScrollSignals(
   );
   const scrollContentOnRef$ = createScrollContentOnRef(threadId, navigation);
   const scrollToEvent$ = command(
-    async ({ set }, eventId: string, signal: AbortSignal): Promise<void> => {
+    async (
+      { get, set },
+      eventId: string,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      await setLoop(
+        () => {
+          return get(initialEventsReady$);
+        },
+        16,
+        signal,
+        { retryTransientErrors: false },
+      );
+      signal.throwIfAborted();
+      const eventExists = get(chatEvents$).some((event) => {
+        return event.id === eventId;
+      });
+      if (!eventExists) {
+        L.debug("scroll target event not found", { threadId, eventId });
+        return;
+      }
       const position: ThreadScrollPosition = {
         targetEventId: eventId,
         viewportOffsetTop: 0,

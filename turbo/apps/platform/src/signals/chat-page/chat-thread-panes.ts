@@ -183,13 +183,12 @@ const resolvePaneThread$ = command(
     L.debug("resolvePaneThread$ Promise.all start", {
       threadId: thread.threadId,
     });
-    if (initialEventId) {
-      await set(thread.scrollToEvent$, initialEventId, signal);
-      signal.throwIfAborted();
-    }
     await Promise.all([
       set(loadDraft$, thread, isNew, signal),
       set(thread.subscribeChatThread$, signal),
+      initialEventId
+        ? set(thread.scrollToEvent$, initialEventId, signal)
+        : Promise.resolve(),
     ]);
     signal.throwIfAborted();
     L.debug("resolvePaneThread$ Promise.all done", {
