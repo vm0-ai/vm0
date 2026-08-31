@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.178.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.12...runner-rs-v0.178.13) (2026-08-31)
+
+
+### Performance Improvements
+
+* **python:** avoid omitted connector union allocation ([#30371](https://github.com/vm0-ai/vm0/issues/30371)) ([1e4a29d](https://github.com/vm0-ai/vm0/commit/1e4a29dc1433797553a968e4b4a2526a154b41c9))
+
 ## [0.178.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.11...runner-rs-v0.178.12) (2026-08-30)
 
 ## [0.178.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.10...runner-rs-v0.178.11) (2026-08-30)

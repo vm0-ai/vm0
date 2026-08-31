@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.82.24](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.23...guest-agent-v0.82.24) (2026-08-31)
+
+
+### Bug Fixes
+
+* **guest-agent:** classify structured codex errors ([#30377](https://github.com/vm0-ai/vm0/issues/30377)) ([b33d3f4](https://github.com/vm0-ai/vm0/commit/b33d3f402c7574605a292b11eb2db80e8b8f388e))
+
 ## [0.82.23](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.22...guest-agent-v0.82.23) (2026-08-30)
 
 
