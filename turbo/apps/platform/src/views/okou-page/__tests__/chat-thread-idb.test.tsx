@@ -183,60 +183,6 @@ function trackActiveAgentError(): () => boolean {
 }
 
 describe("okou chat thread IndexedDB fallback", () => {
-  it("falls back to canonical sync when narrow metadata is incomplete", async () => {
-    prepareDefaultAgent();
-    mockCurrentThreadDetail();
-    context.mocks.api(chatThreadMetadataContract.get, ({ respond }) => {
-      return respond(200, {
-        id: THREAD_ID,
-        agentId: AGENT_ID,
-        title: "Older API payload",
-        selectedModel: null,
-        serviceTier: null,
-      });
-    });
-    context.mocks.api(browserContract.get, ({ respond }) => {
-      return respond(404, {
-        error: {
-          code: "BROWSER_NOT_FOUND",
-          message: "Managed browser not found",
-        },
-      });
-    });
-    await primeChatDb();
-    const snapshotRequested = context.mocks.deferred<void>();
-    const releaseSnapshot = context.mocks.deferred<void>();
-    const activeAgentErrorLogged = trackActiveAgentError();
-    context.mocks.api(chatThreadsContract.snapshot, async ({ respond }) => {
-      if (!snapshotRequested.settled()) {
-        snapshotRequested.resolve();
-      }
-      await releaseSnapshot.promise;
-      return respond(200, currentThreadSnapshot());
-    });
-    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
-      return respond(200, { events: [], hasMore: false });
-    });
-
-    setupChatPage();
-    await snapshotRequested.promise;
-
-    const appSkeleton = await screen.findByTestId("app-skeleton");
-    expect(appSkeleton).not.toHaveAttribute("aria-hidden");
-    expect(screen.queryByPlaceholderText(PLACEHOLDER)).not.toBeInTheDocument();
-    expect(activeAgentErrorLogged()).toBeFalsy();
-
-    releaseSnapshot.resolve();
-
-    await expect(
-      screen.findByPlaceholderText(PLACEHOLDER),
-    ).resolves.toBeInTheDocument();
-    await waitFor(() => {
-      expect(appSkeleton).toHaveAttribute("aria-hidden", "true");
-    });
-    expect(activeAgentErrorLogged()).toBeFalsy();
-  });
-
   it("shows chat thread not found after remote metadata sync confirms a miss", async () => {
     await primeChatDb();
     const snapshotRequested = context.mocks.deferred<void>();

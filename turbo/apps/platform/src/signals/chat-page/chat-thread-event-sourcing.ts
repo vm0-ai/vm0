@@ -421,16 +421,7 @@ export function threadMeta(threadId: string) {
   });
 }
 
-function remoteThreadMeta(metadata: ChatThreadMetadata): ThreadMeta | null {
-  if (
-    metadata.pinnedAt === undefined ||
-    metadata.computerUseHostId === undefined ||
-    metadata.cloudBrowserEnabled === undefined ||
-    metadata.selectedVideoModel === undefined ||
-    metadata.selectedImageModel === undefined
-  ) {
-    return null;
-  }
+function remoteThreadMeta(metadata: ChatThreadMetadata): ThreadMeta {
   return {
     id: metadata.id,
     agentId: metadata.agentId,
@@ -464,10 +455,7 @@ const fetchRemoteThreadMeta$ = command(
     if (result.status === 404) {
       return { meta: null, outcome: "not-found" };
     }
-    const meta = remoteThreadMeta(result.body);
-    return meta?.id === threadId
-      ? { meta, outcome: "hit" }
-      : { meta: null, outcome: "older-payload" };
+    return { meta: remoteThreadMeta(result.body), outcome: "hit" };
   },
 );
 

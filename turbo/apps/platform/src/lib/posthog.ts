@@ -385,7 +385,6 @@ export function captureTaskCompletedSuccessfully(): void {
 
 export type ChatThreadMetadataShortcutOutcome =
   | "hit"
-  | "older-payload"
   | "not-found"
   | "transport-failure";
 
