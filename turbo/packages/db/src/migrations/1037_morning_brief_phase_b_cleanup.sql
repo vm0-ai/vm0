@@ -178,21 +178,6 @@ BEGIN
     RAISE EXCEPTION 'Morning Brief event document has an unexpected historical shape';
   END IF;
 
-  IF EXISTS (
-    SELECT 1
-    FROM "chat_events" AS "event"
-    WHERE "event"."context_type" IS DISTINCT FROM 'morning_brief'
-      AND jsonb_typeof("event"."payload" -> 'userMessage' -> 'parts') = 'array'
-      AND EXISTS (
-        SELECT 1
-        FROM jsonb_array_elements(
-          "event"."payload" -> 'userMessage' -> 'parts'
-        ) AS "part"
-        WHERE "part" ->> 'type' = 'morning_brief'
-      )
-  ) THEN
-    RAISE EXCEPTION 'Morning Brief document marker exists outside its legacy context';
-  END IF;
 END;
 $$;
 --> statement-breakpoint
