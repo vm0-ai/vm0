@@ -14,6 +14,12 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.TeamsIntegration, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.MetaAdsConnector, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.ChatForward, {})).toBe(true);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.NotionWorkflowAutomations, {}),
+    ).toBe(true);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.GoogleFormsWorkflowAutomations, {}),
+    ).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
