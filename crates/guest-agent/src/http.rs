@@ -116,7 +116,6 @@ struct ApiHttpConfig {
 #[derive(Clone)]
 struct ApiUrls {
     events: String,
-    checkpoint: String,
     complete: String,
     heartbeat: String,
     telemetry: String,
@@ -305,10 +304,6 @@ impl HttpClient {
         Ok(&self.api_config()?.urls.events)
     }
 
-    pub(crate) fn checkpoint_url(&self) -> Result<&str, AgentError> {
-        Ok(&self.api_config()?.urls.checkpoint)
-    }
-
     pub(crate) fn complete_url(&self) -> Result<&str, AgentError> {
         Ok(&self.api_config()?.urls.complete)
     }
@@ -379,7 +374,6 @@ impl ApiUrls {
     fn new(base_url: &str) -> Self {
         Self {
             events: urls::events_url(base_url),
-            checkpoint: urls::checkpoint_url(base_url),
             complete: urls::complete_url(base_url),
             heartbeat: urls::heartbeat_url(base_url),
             telemetry: urls::telemetry_url(base_url),
