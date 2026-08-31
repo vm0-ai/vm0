@@ -522,8 +522,10 @@ describe("chat event action cards", () => {
   it("continues after idempotently writing an already-selected account", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e4000000-0000-4000-a000-000000000022";
+    const customConnectorId = "a2000000-0000-4000-a000-000000000022";
     const account = connectorAccount({
       id: "a1000000-0000-4000-a000-000000000022",
+      target: { kind: "custom", customConnectorId },
     });
     const selection = {
       connectionId: account.id,
@@ -533,9 +535,13 @@ describe("chat event action cards", () => {
     let updateCount = 0;
     const sentPrompts: string[] = [];
 
-    context.mocks.api(connectorAccountsContract.connection, ({ respond }) => {
-      return respond(200, account);
-    });
+    context.mocks.api(
+      connectorAccountsContract.connection,
+      ({ query, respond }) => {
+        expect(query).toStrictEqual({ kind: "custom", customConnectorId });
+        return respond(200, account);
+      },
+    );
     context.mocks.api(
       chatThreadConnectorSelectionContract.get,
       ({ respond }) => {
@@ -581,6 +587,9 @@ describe("chat event action cards", () => {
       { timeout: 10_000 },
     );
     expect(card).toHaveTextContent("Already selected for this chat");
+    expect(card).toHaveTextContent(
+      `Custom connector · ${customConnectorId.slice(0, 8)} · work@example.com`,
+    );
     await user.click(buttonByText("Continue with this account", card));
 
     await waitFor(() => {
