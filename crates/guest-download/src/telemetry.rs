@@ -48,9 +48,9 @@
 //!
 //! # Task totals and dimensions
 //!
-//! Each completed storage task emits `storage_download`, and each completed
-//! artifact task emits `artifact_download`. The task total carries two bounded
-//! dimensions:
+//! Each task that reaches a final success or failure result emits
+//! `storage_download` or `artifact_download`, respectively. The task total
+//! carries two bounded dimensions:
 //!
 //! - `outcome` identifies the URL kind and compressed-size classification. A
 //!   remote task uses `remote_*`, a local `file://` task uses `file_*`, and any
@@ -103,10 +103,11 @@
 //! attribution tests in
 //! `tests/integration/binary_logging/attribution.rs` cover action ordering,
 //! successful and failed downloads, local-versus-remote emission, retry
-//! aggregation, timing separation, size buckets, framework task roles, and
-//! redaction. Changes to an action name, bucket, dimension, or emission point
-//! change this production contract and must update the schema and attribution
-//! evidence together.
+//! aggregation, timing separation, size buckets, and framework task roles.
+//! The sibling `tests/integration/binary_logging/redaction.rs` tests cover
+//! sanitized failure details and the absence of raw URLs and paths. Changes to
+//! an action name, bucket, dimension, or emission point change this production
+//! contract and must update the schema and attribution evidence together.
 
 use crate::source;
 use guest_common::telemetry::{
