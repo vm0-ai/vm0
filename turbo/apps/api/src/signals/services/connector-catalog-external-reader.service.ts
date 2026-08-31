@@ -3,6 +3,7 @@ import type { ConnectorCatalogSyncFailureCode } from "@okouai/api-contracts/cont
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/connectors";
+import { staticUrlForPublicBrand } from "@okouai/core/public-brand";
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogAuthMethodSummary,
@@ -33,14 +34,14 @@ import {
   type ConnectorCatalogArtifact,
   type ConnectorCatalogArtifactConnector,
   type ConnectorCatalogAuthMethod,
-} from "@okouai/connector-catalog-validation/artifacts/artifacts";
+} from "@okouai/connectors/connector-catalog/artifacts/artifacts";
 import {
   connectorCatalogArtifactFailureCode,
   decodeAttestedConnectorCatalogSnapshot,
   decodeConnectorCatalogSnapshot,
-} from "@okouai/connector-catalog-validation/artifacts/loader";
-import { connectorCatalogIconUrl } from "@okouai/connector-catalog-validation/artifacts/icon";
-import { deriveConnectorCatalogFirewallPermissions } from "@okouai/connector-catalog-validation/artifacts/relationships";
+} from "@okouai/connectors/connector-catalog/artifacts/loader";
+import { isConnectorCatalogIconKey } from "@okouai/connectors/connector-catalog/artifacts/icon";
+import { deriveConnectorCatalogFirewallPermissions } from "@okouai/connectors/connector-catalog/artifacts/relationships";
 import {
   connectorCatalogCompatibilityEvaluationSchema,
   connectorCatalogExecutableCapabilityState,
@@ -64,6 +65,7 @@ import {
 import type { ConnectorCatalogConnection } from "./connector-catalog-connection";
 
 const log = logger("connector-catalog:reader");
+const CONNECTOR_CATALOG_ICON_BASE_URL = "https://static.vm0.io/";
 
 export interface ExternalCatalogIdentity {
   readonly sourceId: string;
@@ -672,8 +674,15 @@ function iconForCatalog(
   connector: ConnectorCatalogArtifactConnector,
   publicBrand: PublicBrand,
 ): PublicConnectorCatalogIcon {
+  const key = connector.icon.key;
+  if (!isConnectorCatalogIconKey(key)) {
+    throw new Error(`Invalid connector catalog icon key "${key}"`);
+  }
   return {
-    url: connectorCatalogIconUrl(connector.icon.key, publicBrand),
+    url: staticUrlForPublicBrand(
+      `${CONNECTOR_CATALOG_ICON_BASE_URL}${key}`,
+      publicBrand,
+    ),
     invertInDarkMode: connector.icon.invertInDarkMode,
     ...(connector.icon.scale === undefined
       ? {}

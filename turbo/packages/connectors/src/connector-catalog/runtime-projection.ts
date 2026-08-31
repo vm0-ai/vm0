@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 
-import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import { BUILTIN_FIREWALL_CATALOG_MAX_BYTES } from "@okouai/api-contracts/contracts/runners";
+import type { ConnectorSlug } from "../connector-identity";
 
 import type { ConnectorCatalogArtifactConnector } from "./artifacts/artifacts";
+import { BUILTIN_FIREWALL_CATALOG_MAX_BYTES } from "./contracts";
 import { parseJson } from "./safe";
 
 export const CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION = 2;

@@ -2824,6 +2824,7 @@ dependencies = [
  "libc",
  "nbd-cow",
  "nix",
+ "proptest",
  "reqwest",
  "rustix",
  "sandbox",

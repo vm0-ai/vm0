@@ -5,7 +5,7 @@ import {
   validateAuthBaseUrl,
   validateBaseUrl,
   validateBaseUrlHostPolicy,
-} from "@okouai/connectors/firewall-types";
+} from "../../firewall-types";
 import { z } from "zod";
 
 import { connectorSlugSchema, privateNameSchema } from "./common";
