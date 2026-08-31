@@ -4220,7 +4220,15 @@ function s3GetObjectCommandCalls(): readonly unknown[] {
   });
 }
 
-function piResponsesTextSse(text: string, sequence: number): string {
+function piResponsesTextSse(
+  text: string,
+  sequence: number,
+  usage: {
+    readonly input_tokens: number;
+    readonly output_tokens: number;
+    readonly total_tokens: number;
+  } = { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
+): string {
   const responseId = `resp_pi_api_${sequence.toString()}`;
   const messageId = `msg_pi_api_${sequence.toString()}`;
   return [
@@ -4277,7 +4285,7 @@ function piResponsesTextSse(text: string, sequence: number): string {
             content: [{ type: "output_text", text, annotations: [] }],
           },
         ],
-        usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
+        usage,
       },
     },
   ]
@@ -6680,7 +6688,11 @@ describe("CHAT-02: model-first provider policies", () => {
       http.post("https://api.deepseek.com/responses", () => {
         modelCalls += 1;
         return new HttpResponse(
-          piResponsesTextSse("seed the compaction checkpoint", modelCalls),
+          piResponsesTextSse("seed the compaction checkpoint", modelCalls, {
+            input_tokens: 983_617,
+            output_tokens: 0,
+            total_tokens: 983_617,
+          }),
           { headers: { "content-type": "text/event-stream" } },
         );
       }),
@@ -6695,53 +6707,18 @@ describe("CHAT-02: model-first provider policies", () => {
     await flushWaitUntilForTest();
     expect(modelCalls).toBe(1);
 
-    const firstSessionBytes = checkpointObjects.get(
-      [...checkpointObjects.keys()].find((key) => {
-        return key.includes("/blobs/");
-      }) ?? "missing-compaction-pi-blob",
-    );
-    if (!firstSessionBytes) {
+    const blobPrefix = `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/`;
+    const persistedBlobs = [...checkpointObjects.entries()].filter(([key]) => {
+      return key.startsWith(blobPrefix) && key.endsWith(".blob");
+    });
+    expect(persistedBlobs).toHaveLength(1);
+    const persistedBlob = persistedBlobs[0];
+    if (!persistedBlob) {
       throw new Error("Expected the first Pi run to persist native H1");
     }
-    const h0Entries = firstSessionBytes
-      .toString("utf8")
-      .trimEnd()
-      .split("\n")
-      .map((line) => {
-        return JSON.parse(line) as {
-          type?: string;
-          message?: {
-            role?: string;
-            usage?: Record<string, unknown>;
-          };
-        };
-      });
-    const lastAssistant = [...h0Entries].reverse().find((entry) => {
-      return entry.type === "message" && entry.message?.role === "assistant";
-    });
-    if (!lastAssistant?.message?.usage) {
-      throw new Error("Expected a settled assistant usage checkpoint");
-    }
-    Object.assign(lastAssistant.message.usage, {
-      input: 983_617,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: 983_617,
-    });
-    const compactionH0 = `${h0Entries
-      .map((entry) => {
-        return JSON.stringify(entry);
-      })
-      .join("\n")}\n`;
-    const h0Hash = await replacePiSessionHistoryJsonlFixture({
-      runId: first.runId,
-      jsonl: compactionH0,
-    });
-    checkpointObjects.set(
-      `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${h0Hash}.blob`,
-      Buffer.from(compactionH0, "utf8"),
-    );
+    const [h0ObjectKey, firstSessionBytes] = persistedBlob;
+    const h0Hash = h0ObjectKey.slice(blobPrefix.length, -".blob".length);
+    const compactionH0 = firstSessionBytes.toString("utf8");
 
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
     const prompt = "preserve this original prompt for official compaction";
