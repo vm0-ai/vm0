@@ -665,13 +665,14 @@ describe("chat event action cards", () => {
     expect(queryAllByRoleFast("button", card)).toStrictEqual([]);
   });
 
-  it("does not continue when a stale account selection is rejected", async () => {
+  it("retries a rejected selection from another repeated card", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e4000000-0000-4000-a000-000000000024";
     const account = connectorAccount({
       id: "a1000000-0000-4000-a000-000000000024",
     });
     const sentPrompts: string[] = [];
+    let updateCount = 0;
     context.mocks.api(connectorAccountsContract.connection, ({ respond }) => {
       return respond(200, account);
     });
@@ -683,13 +684,16 @@ describe("chat event action cards", () => {
     );
     context.mocks.api(
       chatThreadConnectorSelectionContract.update,
-      ({ respond }) => {
-        return respond(400, {
-          error: {
-            code: "BAD_REQUEST",
-            message: "Connector account selection is no longer valid",
-          },
-        });
+      ({ body, respond }) => {
+        updateCount += 1;
+        return updateCount === 1
+          ? respond(400, {
+              error: {
+                code: "BAD_REQUEST",
+                message: "Connector account selection is no longer valid",
+              },
+            })
+          : respond(200, body);
       },
     );
     mockChatLifecycle(context, {
@@ -699,7 +703,7 @@ describe("chat event action cards", () => {
         {
           id: `${threadId}-message`,
           role: "assistant",
-          content: connectorAccountActionUrl(threadId, account, "Continue"),
+          content: `${connectorAccountActionUrl(threadId, account, "Continue")}\n\n${connectorAccountActionUrl(threadId, account, "Continue")}`,
           runId: `${threadId}-run`,
           createdAt: "2026-08-31T10:00:00.000Z",
         },
@@ -715,18 +719,37 @@ describe("chat event action cards", () => {
       featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
     });
 
-    const card = await screen.findByTestId(
+    const cards = await screen.findAllByTestId(
       "connector-account-action-card",
       undefined,
       { timeout: 10_000 },
     );
-    await user.click(buttonByText("Use account and continue", card));
+    expect(cards).toHaveLength(2);
+    const firstCard = cards[0];
+    const secondCard = cards[1];
+    if (!firstCard || !secondCard) {
+      throw new Error("Expected repeated connector account action cards");
+    }
+    await user.click(buttonByText("Use account and continue", firstCard));
 
     await waitFor(() => {
-      expect(card).toHaveTextContent(
+      expect(firstCard).toHaveTextContent(
         "Couldn't confirm this account or continue the chat. Try again.",
       );
       expect(sentPrompts).toStrictEqual([]);
+    });
+
+    await user.click(buttonByText("Use account and continue", secondCard));
+
+    await waitFor(() => {
+      expect(updateCount).toBe(2);
+      expect(sentPrompts).toStrictEqual(["Continue"]);
+      for (const card of cards) {
+        expect(card).not.toHaveTextContent(
+          "Couldn't confirm this account or continue the chat. Try again.",
+        );
+        expect(card).toHaveTextContent("Continuation requested");
+      }
     });
   });
 

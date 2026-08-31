@@ -191,7 +191,8 @@ function ReadyConnectorAccountActionCard({
               })}
             </div>
           ) : null}
-          {confirmLoadable.state === "hasError" ? (
+          {confirmationState === "idle" &&
+          confirmLoadable.state === "hasError" ? (
             <div className="mt-1 text-xs text-destructive">
               {t(($) => {
                 return $.chat.connectorAccountSwitch.actionFailed;
