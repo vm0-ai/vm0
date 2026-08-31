@@ -17,6 +17,7 @@ fail() {
 
 printf 'javascript\n' > "${assets_directory}/app-AbCd1234.js"
 printf '{}\n' > "${assets_directory}/app-AbCd1234.js.map"
+printf 'bootstrap\n' > "${assets_directory}/bootstrap-after-first-paint-123456789abc.js"
 printf 'vendor\n' > "${assets_directory}/vendor-EfGh5678.js"
 printf '{}\n' > "${assets_directory}/vendor-EfGh5678.js.map"
 printf 'runtime\n' > "${assets_directory}/rolldown-runtime-IjKl9012.js"
@@ -50,15 +51,16 @@ output="$({
 grep -Fq 'Skipping unhashed source map: runtime.js.map' <<< "$output" ||
   fail "unhashed source map was not reported as skipped"
 grep -Fq \
-  'App bundle layout: app=app-AbCd1234.js vendor=vendor-EfGh5678.js runtime=rolldown-runtime-IjKl9012.js worker=shared-database-worker-MnOp3456.js' \
+  'App bundle layout: app=app-AbCd1234.js after-first-paint=bootstrap-after-first-paint-123456789abc.js vendor=vendor-EfGh5678.js runtime=rolldown-runtime-IjKl9012.js worker=shared-database-worker-MnOp3456.js' \
   <<< "$output" || fail "bundle layout was not reported"
 grep -Fq \
-  'Verified 8 immutable app assets on https://static.test/okou-app/assets' \
+  'Verified 9 immutable app assets on https://static.test/okou-app/assets' \
   <<< "$output" || fail "verification summary is incorrect"
 
 for relative_path in \
   app-AbCd1234.js \
   app-AbCd1234.js.map \
+  bootstrap-after-first-paint-123456789abc.js \
   vendor-EfGh5678.js \
   vendor-EfGh5678.js.map \
   rolldown-runtime-IjKl9012.js \
@@ -95,7 +97,7 @@ if PATH="${fake_bin}:$PATH" \
   fail "missing Rolldown runtime did not fail layout verification"
 fi
 grep -Fq \
-  'Expected exactly one app, vendor, Rolldown runtime, and SharedWorker JavaScript asset' \
+  'Expected exactly one app, after-first-paint bootstrap, vendor, Rolldown runtime, and SharedWorker JavaScript asset' \
   "${test_root}/layout-failure.log" || fail "layout failure was not identified"
 
 echo "verify okou app assets tests passed"
