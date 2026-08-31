@@ -1971,6 +1971,8 @@
         "resetsAt": "{{time}} にリセット",
         "selectModel": "モデルを切り替える",
         "tryAgain": "もう一度試す",
+        "unavailableDescription": "このモデルは接続中の ChatGPT アカウントではサポートされていません。続行するには別のモデルに切り替えてください。",
+        "unavailableTitle": "選択したモデルは利用できません",
         "usageDescription": "使用制限がリセットされた後に続行するか、今すぐ別のモデルに切り替えられます。",
         "usageTitle": "{{framework}} の使用制限に達しました"
       },

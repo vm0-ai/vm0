@@ -2005,6 +2005,8 @@
         "resetsAt": "Ripristino alle {{time}}",
         "selectModel": "Cambia modello",
         "tryAgain": "Riprova",
+        "unavailableDescription": "Questo modello non è supportato dall'account ChatGPT collegato. Passa a un altro modello per continuare.",
+        "unavailableTitle": "Il modello selezionato non è disponibile",
         "usageDescription": "Puoi continuare quando il limite di utilizzo viene reimpostato oppure cambiare modello ora.",
         "usageTitle": "Limite di {{framework}} raggiunto"
       },

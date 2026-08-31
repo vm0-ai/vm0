@@ -1974,6 +1974,8 @@
         "resetsAt": "Resets {{time}}",
         "selectModel": "Switch model",
         "tryAgain": "Try again",
+        "unavailableDescription": "This model isn't supported by the connected ChatGPT account. Switch to another model to continue.",
+        "unavailableTitle": "Selected model isn't available",
         "usageDescription": "You can continue when your usage limit resets, or switch models now.",
         "usageTitle": "{{framework}} limit reached"
       },
