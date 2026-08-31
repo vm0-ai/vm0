@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.39.3](https://github.com/vm0-ai/vm0/compare/desktop-v0.39.2...desktop-v0.39.3) (2026-08-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.384.0
+
 ## [0.39.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.39.1...desktop-v0.39.2) (2026-08-31)
 
 

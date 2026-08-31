@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.300.0](https://github.com/vm0-ai/vm0/compare/cli-v9.299.0...cli-v9.300.0) (2026-08-31)
+
+
+### Features
+
+* **pi:** gate api-first on official compaction preflight ([#30646](https://github.com/vm0-ai/vm0/issues/30646)) ([eec5b6f](https://github.com/vm0-ai/vm0/commit/eec5b6f0f87098efe771444573bc0dade9cc6642))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.384.0
+    * @okouai/core bumped to 8.605.3
+    * @okouai/pi-agent-runtime bumped to 1.8.0
+
 ## [9.299.0](https://github.com/vm0-ai/vm0/compare/cli-v9.298.6...cli-v9.299.0) (2026-08-31)
 
 

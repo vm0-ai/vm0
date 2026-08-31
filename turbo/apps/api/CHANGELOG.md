@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.518.0](https://github.com/vm0-ai/vm0/compare/api-v1.517.0...api-v1.518.0) (2026-08-31)
+
+
+### Features
+
+* **pi:** fall back before provider ownership ([#30626](https://github.com/vm0-ai/vm0/issues/30626)) ([90825fb](https://github.com/vm0-ai/vm0/commit/90825fb9985b8e0bdb07611f1e1347449659b26e))
+* **pi:** gate api-first on official compaction preflight ([#30646](https://github.com/vm0-ai/vm0/issues/30646)) ([eec5b6f](https://github.com/vm0-ai/vm0/commit/eec5b6f0f87098efe771444573bc0dade9cc6642))
+* **pi:** preserve API-first input and cancellation ([#30643](https://github.com/vm0-ai/vm0/issues/30643)) ([2333991](https://github.com/vm0-ai/vm0/commit/23339919da702853935334c2a011865b8e8fed6d))
+* **runner:** attribute resource budget occupancy ([#30625](https://github.com/vm0-ai/vm0/issues/30625)) ([8a47886](https://github.com/vm0-ai/vm0/commit/8a478861b73da1995caf8e24dbb54c130c156970))
+
+
+### Refactoring
+
+* remove legacy morning brief pipeline ([#30438](https://github.com/vm0-ai/vm0/issues/30438)) ([9c59bfe](https://github.com/vm0-ai/vm0/commit/9c59bfe9ad3575244584924c1408839e8aa5d500))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.384.0
+    * @okouai/core bumped to 8.605.3
+    * @okouai/db bumped to 1.228.28
+    * @okouai/pi-agent-runtime bumped to 1.8.0
+
 ## [1.517.0](https://github.com/vm0-ai/vm0/compare/api-v1.516.0...api-v1.517.0) (2026-08-31)
 
 
