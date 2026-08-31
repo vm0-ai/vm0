@@ -52,7 +52,6 @@ export enum FeatureSwitchKey {
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   ChatErrorRecovery = "chatErrorRecovery",
   BuiltInModelProviderFallback = "builtInModelProviderFallback",
-  ChatForward = "chatForward",
   ResponsiveFollowupCards = "responsiveFollowupCards",
   ConnectorCatalogCount = "connectorCatalogCount",
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",

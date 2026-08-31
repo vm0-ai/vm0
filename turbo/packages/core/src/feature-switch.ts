@@ -345,12 +345,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // flatten and two-file send are still unexercised outside tests.
     enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
   },
-  [FeatureSwitchKey.ChatForward]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the Forward action in the assistant text-selection pill.",
-    enabled: true,
-  },
   [FeatureSwitchKey.EmojiPickerCategoryRail]: {
     maintainer: "tongx@vm0.ai",
     description:
