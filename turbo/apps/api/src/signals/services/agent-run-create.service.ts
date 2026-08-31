@@ -7020,6 +7020,9 @@ function preparePiLaunchResources(args: {
               deadlineAt: args.apiStartTime + PI_API_FIRST_TURN_TIMEOUT_MS,
               baseSession: piBaseSession(resumeSession, chatThreadId),
               sandboxEventSequenceStart: 1,
+              // Consumer-first rollout: keep V3 ownership transfer disabled
+              // until the compatible CLI and Guest release is proven live on
+              // every Pi-eligible Sandbox path.
             },
           },
           resumeSession,

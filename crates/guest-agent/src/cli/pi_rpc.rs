@@ -3,17 +3,18 @@
 //! ## Ownership and data flow
 //!
 //! The sandbox TypeScript host resolves the API-first handoff, restores the
-//! validated H1 session file, writes one private startup-boundary record to
-//! stdout, and then enters Pi's official `runRpcMode`. The guest-agent owns the
+//! validated ownership-transfer session file, writes one private startup
+//! record to stdout, and then enters Pi's official `runRpcMode`. The guest owns the
 //! other side of that boundary. Its stdout loop in `cli/mod.rs` admits the
 //! boundary before any official RPC record, starts the shared event pipeline
 //! from the installed sequence, and then applies this module's projection.
 //!
 //! There are two coupled JSONL paths after startup:
 //!
-//! - The guest writer owns child stdin. It sends `get_state`, the initial
-//!   `prompt`, and later `steer` commands for accepted active-input frames. The
-//!   stdout loop routes `response` records into the writer's response channel.
+//! - The guest writer owns child stdin. It sends `get_state`, waits until the
+//!   private startup record is installed, sends the initial `prompt`, and then
+//!   delivers accepted active-input frames. The stdout loop routes `response`
+//!   records into the writer's response channel.
 //! - The stdout loop owns child stdout. It retains each ordinary raw record in
 //!   the best-effort local agent transcript, projects supported records into
 //!   the existing public event shape, and passes projected events through
@@ -28,7 +29,8 @@
 //!
 //! ## API-first startup boundary
 //!
-//! The host emits this private control record before official RPC output:
+//! Legacy manifest V1/V2 handoffs emit this private control before official RPC
+//! output:
 //!
 //! ```json
 //! {
@@ -38,11 +40,14 @@
 //! }
 //! ```
 //!
-//! The control record's schema version is independent of the API manifest
-//! version. The host maps a manifest v1 handoff to sequence `1`; a manifest v2
-//! supplies its positive `sandboxEventSequenceStart`. Rust accepts the private
-//! control only when its type and schema version are exact, all fields are
-//! known, and the sequence is in `1..=i32::MAX` (`1..=2,147,483,647`).
+//! The host maps both legacy manifest versions to implicit
+//! `pending-tool-continuation`. Manifest V3 instead emits boundary schema V2
+//! with one explicit `ownershipTransferMode`: `sandbox-first`,
+//! `pending-tool-continuation`, or `settled-session-continuation`. The private
+//! boundary schema is independent of the public manifest schema. Rust accepts a
+//! boundary only when its type and schema version are exact, all fields are
+//! known, the mode is valid for that schema, and the sequence is in
+//! `1..=i32::MAX` (`1..=2,147,483,647`).
 //!
 //! `PiRpcStartupBoundary` is a fail-closed one-time gate:
 //!
@@ -74,14 +79,22 @@
 //! `system/init` after validating the configured session ID, returned
 //! `data.sessionId`, and required `data.sessionFile`.
 //!
-//! The writer then sends the initial `prompt` with ID
-//! `<run-id>:pi:initial-prompt` and waits for its exactly correlated successful
-//! response. Once that acknowledgement arrives, each accepted active-input
-//! frame is sent as a `steer` command whose ID is the frame's delivery UUID and
-//! whose message is the frame text. A matching successful `steer` response is
-//! recorded with `mark_backend_accepted_without_replay`; it does not create a
-//! replay user event in the Pi path. A failed or interrupted steer marks the
-//! delivery failed and enters the writer's abort/error path.
+//! After `get_state`, the writer waits for the stdout loop to install the
+//! startup boundary. It then sends the original initial `prompt` with ID
+//! `<run-id>:pi:initial-prompt`; the TypeScript host interprets that official
+//! command according to the installed mode. Sandbox-first executes it normally,
+//! pending-tool continuation substitutes pending-tool execution, and settled
+//! continuation acknowledges it without a model request. This preserves the
+//! official RPC acknowledgement while preventing original-prompt replay.
+//!
+//! Once the initial acknowledgement arrives, accepted active input keeps the
+//! existing `steer` command for sandbox-first and pending-tool continuation. A
+//! settled transfer has no active model turn, so its newly owned continuation
+//! uses `prompt`. In both cases the command ID is the delivery UUID, and the
+//! matching successful response is required before
+//! `mark_backend_accepted_without_replay` records ownership. A failed or
+//! interrupted command marks the delivery failed and enters the abort/error
+//! path.
 //!
 //! Normal response waits reject an unexpected ID, unexpected command,
 //! unsuccessful response, or a closed response channel. Abort is different in
@@ -228,24 +241,48 @@ const PI_RPC_ABORT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs
 const PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE: &str = "vm0_pi_api_first_turn_boundary";
 const MAX_EVENT_SEQUENCE_NUMBER: u32 = i32::MAX as u32;
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub(super) enum PiRpcOwnershipTransferMode {
+    SandboxFirst,
+    PendingToolContinuation,
+    SettledSessionContinuation,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct PiApiFirstTurnBoundaryControl {
+struct PiApiFirstTurnBoundaryControlV1 {
     #[serde(rename = "type")]
     record_type: String,
     schema_version: u32,
     sandbox_event_sequence_start: u64,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PiApiFirstTurnBoundaryControlV2 {
+    #[serde(rename = "type")]
+    record_type: String,
+    schema_version: u32,
+    sandbox_event_sequence_start: u64,
+    ownership_transfer_mode: PiRpcOwnershipTransferMode,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct PiRpcStartup {
+    pub(super) sandbox_event_sequence_start: u32,
+    pub(super) ownership_transfer_mode: PiRpcOwnershipTransferMode,
+}
+
 pub(super) enum PiRpcRecordAdmission {
-    InstallBoundary(u32),
+    InstallBoundary(PiRpcStartup),
     Project,
     Discard,
 }
 
 #[derive(Default)]
 pub(super) struct PiRpcStartupBoundary {
-    installed: Option<u32>,
+    installed: Option<PiRpcStartup>,
     official_record_seen: bool,
     terminal_error: bool,
 }
@@ -323,19 +360,51 @@ impl PiRpcStartupBoundary {
     }
 }
 
-fn parse_boundary_control(record: &Value) -> Result<u32, AgentError> {
-    let control: PiApiFirstTurnBoundaryControl = serde_json::from_value(record.clone())
-        .map_err(|_| PiRpcStartupBoundary::malformed_record_error())?;
-    if control.record_type != PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE || control.schema_version != 1
-    {
-        return Err(PiRpcStartupBoundary::malformed_record_error());
-    }
-    let sequence = u32::try_from(control.sandbox_event_sequence_start)
-        .map_err(|_| PiRpcStartupBoundary::malformed_record_error())?;
+fn validated_boundary_sequence(sequence: u64) -> Result<u32, AgentError> {
+    let sequence =
+        u32::try_from(sequence).map_err(|_| PiRpcStartupBoundary::malformed_record_error())?;
     if sequence == 0 || sequence > MAX_EVENT_SEQUENCE_NUMBER {
         return Err(PiRpcStartupBoundary::malformed_record_error());
     }
     Ok(sequence)
+}
+
+fn parse_boundary_control(record: &Value) -> Result<PiRpcStartup, AgentError> {
+    match record.get("schemaVersion").and_then(Value::as_u64) {
+        Some(1) => {
+            let control: PiApiFirstTurnBoundaryControlV1 =
+                serde_json::from_value(record.clone())
+                    .map_err(|_| PiRpcStartupBoundary::malformed_record_error())?;
+            if control.record_type != PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE
+                || control.schema_version != 1
+            {
+                return Err(PiRpcStartupBoundary::malformed_record_error());
+            }
+            Ok(PiRpcStartup {
+                sandbox_event_sequence_start: validated_boundary_sequence(
+                    control.sandbox_event_sequence_start,
+                )?,
+                ownership_transfer_mode: PiRpcOwnershipTransferMode::PendingToolContinuation,
+            })
+        }
+        Some(2) => {
+            let control: PiApiFirstTurnBoundaryControlV2 =
+                serde_json::from_value(record.clone())
+                    .map_err(|_| PiRpcStartupBoundary::malformed_record_error())?;
+            if control.record_type != PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE
+                || control.schema_version != 2
+            {
+                return Err(PiRpcStartupBoundary::malformed_record_error());
+            }
+            Ok(PiRpcStartup {
+                sandbox_event_sequence_start: validated_boundary_sequence(
+                    control.sandbox_event_sequence_start,
+                )?,
+                ownership_transfer_mode: control.ownership_transfer_mode,
+            })
+        }
+        _ => Err(PiRpcStartupBoundary::malformed_record_error()),
+    }
 }
 
 fn boundary_error(code: &str, message: &str) -> AgentError {
@@ -805,10 +874,20 @@ async fn deliver_active_input(
     responses: &mut mpsc::UnboundedReceiver<Value>,
     active_input: &ActiveInputWriter,
     frame: &ActiveInputFrame,
+    ownership_transfer_mode: PiRpcOwnershipTransferMode,
     cancellation: &CancellationToken,
 ) -> Result<bool, AgentError> {
     active_input.mark_writing(&frame.uuid);
-    match request_steer(stdin, responses, &frame.uuid, &frame.text, cancellation).await {
+    let request = match ownership_transfer_mode {
+        PiRpcOwnershipTransferMode::SettledSessionContinuation => {
+            request_prompt(stdin, responses, &frame.uuid, &frame.text, cancellation).await
+        }
+        PiRpcOwnershipTransferMode::SandboxFirst
+        | PiRpcOwnershipTransferMode::PendingToolContinuation => {
+            request_steer(stdin, responses, &frame.uuid, &frame.text, cancellation).await
+        }
+    };
+    match request {
         Ok(true) => {
             active_input.mark_backend_accepted_without_replay(frame)?;
             Ok(true)
@@ -831,6 +910,7 @@ pub(super) async fn write_commands(
     prompt: &str,
     mut active_input: ActiveInputWriter,
     mut responses: mpsc::UnboundedReceiver<Value>,
+    ownership_transfer_mode: tokio::sync::oneshot::Receiver<PiRpcOwnershipTransferMode>,
     cancellation: CancellationToken,
 ) -> Result<(), AgentError> {
     let state_id = format!("{run_id}:pi:get-state");
@@ -850,6 +930,17 @@ pub(super) async fn write_commands(
             response?;
         }
     }
+
+    let ownership_transfer_mode = tokio::select! {
+        biased;
+        () = cancellation.cancelled() => {
+            abort(&mut stdin, &mut responses, run_id).await?;
+            return Ok(());
+        }
+        mode = ownership_transfer_mode => mode.map_err(|_| AgentError::Execution(
+            "Pi RPC startup boundary closed before ownership was installed".to_string(),
+        ))?,
+    };
 
     let prompt_id = format!("{run_id}:pi:initial-prompt");
     if !request_prompt(
@@ -881,6 +972,7 @@ pub(super) async fn write_commands(
                     &mut responses,
                     &active_input,
                     &frame,
+                    ownership_transfer_mode,
                     &cancellation,
                 ).await? {
                     abort(&mut stdin, &mut responses, run_id).await?;
@@ -908,6 +1000,84 @@ mod tests {
             .await
             .expect("mock Pi stdout should be readable");
         serde_json::from_str(&line).expect("Pi command should be JSON")
+    }
+
+    #[test]
+    fn boundary_v1_maps_to_pending_tool_continuation() {
+        let startup = parse_boundary_control(&json!({
+            "type": PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE,
+            "schemaVersion": 1,
+            "sandboxEventSequenceStart": 4,
+        }))
+        .expect("legacy boundary should remain readable");
+
+        assert_eq!(startup.sandbox_event_sequence_start, 4);
+        assert_eq!(
+            startup.ownership_transfer_mode,
+            PiRpcOwnershipTransferMode::PendingToolContinuation
+        );
+    }
+
+    #[test]
+    fn boundary_v2_accepts_each_explicit_ownership_mode() {
+        for (wire_mode, expected) in [
+            ("sandbox-first", PiRpcOwnershipTransferMode::SandboxFirst),
+            (
+                "pending-tool-continuation",
+                PiRpcOwnershipTransferMode::PendingToolContinuation,
+            ),
+            (
+                "settled-session-continuation",
+                PiRpcOwnershipTransferMode::SettledSessionContinuation,
+            ),
+        ] {
+            let startup = parse_boundary_control(&json!({
+                "type": PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE,
+                "schemaVersion": 2,
+                "sandboxEventSequenceStart": 7,
+                "ownershipTransferMode": wire_mode,
+            }))
+            .expect("V2 boundary mode should be readable");
+
+            assert_eq!(startup.sandbox_event_sequence_start, 7);
+            assert_eq!(startup.ownership_transfer_mode, expected);
+        }
+    }
+
+    #[test]
+    fn boundary_modes_fail_closed_across_schema_versions() {
+        for record in [
+            json!({
+                "type": PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE,
+                "schemaVersion": 1,
+                "sandboxEventSequenceStart": 4,
+                "ownershipTransferMode": "sandbox-first",
+            }),
+            json!({
+                "type": PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE,
+                "schemaVersion": 2,
+                "sandboxEventSequenceStart": 4,
+            }),
+            json!({
+                "type": PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE,
+                "schemaVersion": 2,
+                "sandboxEventSequenceStart": 4,
+                "ownershipTransferMode": "future-mode",
+            }),
+            json!({
+                "type": PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE,
+                "schemaVersion": 3,
+                "sandboxEventSequenceStart": 4,
+                "ownershipTransferMode": "pending-tool-continuation",
+            }),
+        ] {
+            assert!(
+                parse_boundary_control(&record)
+                    .expect_err("unsupported boundary should fail closed")
+                    .to_string()
+                    .contains("PI_HANDOFF_BOUNDARY_INVALID")
+            );
+        }
     }
 
     #[test]
@@ -1044,12 +1214,14 @@ mod tests {
             ActiveInputControlOutcome::Accepted
         );
         let (response_tx, response_rx) = mpsc::unbounded_channel();
+        let (startup_tx, startup_rx) = tokio::sync::oneshot::channel();
         let writer = tokio::spawn(write_commands(
             stdin,
             "run",
             "initial prompt",
             active_input.into_writer(),
             response_rx,
+            startup_rx,
             CancellationToken::new(),
         ));
 
@@ -1067,6 +1239,18 @@ mod tests {
                 },
             }))
             .expect("state response should route");
+        assert!(
+            tokio::time::timeout(
+                std::time::Duration::from_millis(50),
+                next_command(&mut stdout)
+            )
+            .await
+            .is_err(),
+            "initial prompt must wait for boundary installation"
+        );
+        startup_tx
+            .send(PiRpcOwnershipTransferMode::PendingToolContinuation)
+            .expect("startup mode should route");
 
         let initial = next_command(&mut stdout).await;
         assert_eq!(initial["type"], "prompt");
@@ -1094,6 +1278,94 @@ mod tests {
                 "success": true,
             }))
             .expect("steer response should route");
+        controller.close_terminal();
+
+        writer
+            .await
+            .expect("writer task should join")
+            .expect("writer should succeed");
+        assert_eq!(
+            controller
+                .finalize_receipts()
+                .await
+                .expect("receipts should finalize"),
+            vec![delivery_id.to_string()]
+        );
+        child.wait().await.expect("cat should exit");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn settled_writer_uses_prompt_ack_for_newly_owned_input() {
+        let mut child = tokio::process::Command::new("cat")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("cat should spawn");
+        let stdin = child.stdin.take().expect("cat stdin should exist");
+        let stdout = child.stdout.take().expect("cat stdout should exist");
+        let mut stdout = BufReader::new(stdout);
+        let active_input = ActiveInputRuntime::new_for_test("run", "original prompt");
+        let controller = active_input.controller();
+        let delivery_id = "22222222-2222-4222-8222-222222222222";
+        let payload = json!({
+            "type": "active-input",
+            "deliveryId": delivery_id,
+            "text": "newly owned continuation",
+        });
+        assert_eq!(
+            controller.handle_control_payload(&serde_json::to_vec(&payload).expect("payload")),
+            ActiveInputControlOutcome::Accepted
+        );
+        let (response_tx, response_rx) = mpsc::unbounded_channel();
+        let (startup_tx, startup_rx) = tokio::sync::oneshot::channel();
+        let writer = tokio::spawn(write_commands(
+            stdin,
+            "run",
+            "original prompt",
+            active_input.into_writer(),
+            response_rx,
+            startup_rx,
+            CancellationToken::new(),
+        ));
+
+        let state = next_command(&mut stdout).await;
+        assert_eq!(state["type"], "get_state");
+        response_tx
+            .send(json!({
+                "id": state["id"],
+                "type": "response",
+                "command": "get_state",
+                "success": true,
+            }))
+            .expect("state response should route");
+        startup_tx
+            .send(PiRpcOwnershipTransferMode::SettledSessionContinuation)
+            .expect("startup mode should route");
+
+        let initial = next_command(&mut stdout).await;
+        assert_eq!(initial["type"], "prompt");
+        assert_eq!(initial["message"], "original prompt");
+        response_tx
+            .send(json!({
+                "id": initial["id"],
+                "type": "response",
+                "command": "prompt",
+                "success": true,
+            }))
+            .expect("startup acknowledgement should route");
+
+        let continuation = next_command(&mut stdout).await;
+        assert_eq!(continuation["id"], delivery_id);
+        assert_eq!(continuation["type"], "prompt");
+        assert_eq!(continuation["message"], "newly owned continuation");
+        response_tx
+            .send(json!({
+                "id": delivery_id,
+                "type": "response",
+                "command": "prompt",
+                "success": true,
+            }))
+            .expect("continuation acknowledgement should route");
         controller.close_terminal();
 
         writer

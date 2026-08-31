@@ -237,6 +237,9 @@ describe("platform Clerk entrypoint", () => {
     const parsedDocument = new DOMParser().parseFromString(html, "text/html");
     const skeleton = parsedDocument.getElementById("app-bootstrap-skeleton");
     const bootstrap = parsedDocument.querySelector(CLERK_BOOTSTRAP_SELECTOR);
+    const fontStylesheet = parsedDocument.querySelector(
+      "link[data-vm0-font-stylesheet]",
+    );
     const paintScheduler = [...parsedDocument.querySelectorAll("script")].find(
       (script) => {
         return script.textContent.includes(
@@ -263,6 +266,9 @@ describe("platform Clerk entrypoint", () => {
     if (!(bootstrap instanceof HTMLScriptElement)) {
       throw new Error("Built index.html does not contain the Clerk bootstrap");
     }
+    if (!(fontStylesheet instanceof HTMLLinkElement)) {
+      throw new Error("Built index.html does not contain the font stylesheet");
+    }
     if (!(paintScheduler instanceof HTMLScriptElement)) {
       throw new Error("Built index.html does not contain the paint scheduler");
     }
@@ -280,6 +286,9 @@ describe("platform Clerk entrypoint", () => {
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
     expect(skeleton.compareDocumentPosition(bootstrap)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(bootstrap.compareDocumentPosition(fontStylesheet)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
     expect(paintScheduler.textContent).toContain("first-contentful-paint");
@@ -309,11 +318,8 @@ describe("platform Clerk entrypoint", () => {
       expect(avatarLayer.getAttribute("fetchpriority")).toBe("low");
     }
     expect(skeleton.querySelector("svg")).toBeNull();
-    expect(
-      parsedDocument.querySelector(
-        "link[data-vm0-font-stylesheet]:not([rel]):not([as])",
-      ),
-    ).not.toBeNull();
+    expect(fontStylesheet.hasAttribute("rel")).toBeFalsy();
+    expect(fontStylesheet.hasAttribute("as")).toBeFalsy();
     expect(html.indexOf("data-vm0-clerk-bootstrap")).toBeLessThan(
       html.indexOf("var appEntry ="),
     );

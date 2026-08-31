@@ -255,6 +255,7 @@ describe("Pi API facade", () => {
 
     expect(inspectPiSessionJsonl(session.toJsonl())).toStrictEqual({
       sessionId: SESSION_ID,
+      messageCount: 1,
       hasPendingToolCalls: false,
       isSettledCheckpoint: true,
     });

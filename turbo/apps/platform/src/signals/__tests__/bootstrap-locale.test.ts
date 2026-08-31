@@ -2,7 +2,7 @@ import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
 import indexHtml from "../../../index.html?raw";
-import { setupPage } from "../../__tests__/page-helper.ts";
+import { setupBootstrap, setupPage } from "../../__tests__/page-helper.ts";
 import { formatAppNumber } from "../../i18n/format.ts";
 import frFRClerk from "../../i18n/clerk-localizations/fr-FR.json";
 import frFRClerkUrl from "../../i18n/clerk-localizations/fr-FR.json?url";
@@ -296,26 +296,16 @@ describe("bootstrap locale", () => {
     }
   });
 
-  it("falls back to English when the selected locale fails to load", async () => {
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
+  it("rejects bootstrap when the selected locale fails to load", async () => {
+    context.mocks.browser.language("fr-FR");
+    executeLocaleEntrypoint();
     context.mocks.http.get(frFRCommonUrl, () => {
       return new HttpResponse(null, { status: 503 });
     });
 
-    await expect(initializeI18n("fr-FR")).resolves.toBe(DEFAULT_LOCALE);
-    expect(consoleError).toHaveBeenCalledWith(
-      "[E][I18n]",
-      `Failed to load fr-FR locale resources; falling back to ${DEFAULT_LOCALE}`,
-      expect.any(Error),
+    await expect(setupBootstrap({ context, path: "/error" })).rejects.toThrow(
+      "Failed to load fr-FR common locale resources (HTTP 503)",
     );
-    expect(i18n.language).toBe(DEFAULT_LOCALE);
-    expect(
-      i18n.t(($) => {
-        return $.settings.preferences.language.title;
-      }),
-    ).toBe("Language");
   });
 
   it("keeps runtime locale state unchanged when resources fail to load", async () => {

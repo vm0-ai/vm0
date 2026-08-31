@@ -358,6 +358,112 @@ function TaskEventGroupCard({
   );
 }
 
+type CodexSubAgentActivityKind =
+  | "started"
+  | "interacted"
+  | "interrupted"
+  | "completed";
+
+function isCodexSubAgentActivityKind(
+  value: string | undefined,
+): value is CodexSubAgentActivityKind {
+  return (
+    value === "started" ||
+    value === "interacted" ||
+    value === "interrupted" ||
+    value === "completed"
+  );
+}
+
+function CodexSystemEventGroupCard({
+  eventData,
+  subtype,
+  subAgentKind,
+  showConnector,
+  timestamp,
+}: {
+  eventData: Record<string, unknown>;
+  showConnector: boolean;
+  timestamp: string;
+} & (
+  | {
+      subtype: "codex_sub_agent_activity";
+      subAgentKind: CodexSubAgentActivityKind;
+    }
+  | {
+      subtype: "codex_context_compaction";
+      subAgentKind?: never;
+    }
+)) {
+  const { t } = useTranslation();
+  const subAgentIdentity =
+    stringValue(eventData.agent_path) ??
+    stringValue(eventData.agent_thread_id) ??
+    "";
+  const codexActivityLabel =
+    subtype === "codex_context_compaction"
+      ? t(($) => {
+          return $.activity.codex.contextCompaction;
+        })
+      : (() => {
+          switch (subAgentKind) {
+            case "started": {
+              return t(($) => {
+                return $.activity.codex.subAgentActivity.started;
+              });
+            }
+            case "interacted": {
+              return t(($) => {
+                return $.activity.codex.subAgentActivity.interacted;
+              });
+            }
+            case "interrupted": {
+              return t(($) => {
+                return $.activity.codex.subAgentActivity.interrupted;
+              });
+            }
+            case "completed": {
+              return t(($) => {
+                return $.activity.codex.subAgentActivity.completed;
+              });
+            }
+          }
+        })();
+  const statusVariant = subAgentKind === "completed" ? "success" : "neutral";
+
+  return (
+    <div className={`${GROUP_SPACING} relative`}>
+      {showConnector && (
+        <div
+          className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/70"
+          aria-hidden="true"
+        />
+      )}
+      <div className="flex gap-2 items-center relative">
+        <StatusDot variant={statusVariant} />
+        <span className="font-semibold text-sm text-foreground shrink-0">
+          {codexActivityLabel}
+        </span>
+        {subAgentIdentity && (
+          <code
+            className="text-xs text-muted-foreground font-mono truncate"
+            title={subAgentIdentity}
+          >
+            {subAgentIdentity}
+          </code>
+        )}
+        <span className="flex-1" />
+        <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
+          {timestamp}
+        </span>
+      </div>
+      <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
+        {timestamp}
+      </div>
+    </div>
+  );
+}
+
 function SystemEventGroupCard({
   group,
   searchTerm,
@@ -387,6 +493,32 @@ function SystemEventGroupCard({
   }
 
   const timestamp = formatEventTime(group.createdAt, startedAt);
+  const subAgentKind = stringValue(eventData.activity_kind);
+  if (subtype === "codex_context_compaction") {
+    return (
+      <CodexSystemEventGroupCard
+        eventData={eventData}
+        subtype={subtype}
+        showConnector={showConnector}
+        timestamp={timestamp}
+      />
+    );
+  }
+  if (
+    subtype === "codex_sub_agent_activity" &&
+    isCodexSubAgentActivityKind(subAgentKind)
+  ) {
+    return (
+      <CodexSystemEventGroupCard
+        eventData={eventData}
+        subtype={subtype}
+        subAgentKind={subAgentKind}
+        showConnector={showConnector}
+        timestamp={timestamp}
+      />
+    );
+  }
+
   return (
     <div className={`${GROUP_SPACING} relative`}>
       {showConnector && (
