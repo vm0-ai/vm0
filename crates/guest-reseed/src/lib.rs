@@ -1,12 +1,12 @@
-//! Inject host-provided entropy and force a kernel CRNG reseed after a
-//! Firecracker snapshot restore.
+//! Repair snapshot-sensitive guest state and apply the guest timezone.
 //!
 //! On ARM64 with Linux 6.1, VMGenID does not automatically reseed the CRNG
 //! after snapshot restore because the kernel driver supports ACPI but not
 //! DeviceTree until Linux 6.10. This crate accepts fresh host entropy through
 //! stdin, writes it to `/dev/urandom`, and forces an immediate reseed through
 //! the `RNDRESEEDCRNG` ioctl so restored VMs do not share identical random
-//! output.
+//! output. Its timezone-only mode applies the canonical guest timezone policy
+//! without changing the clock or reading entropy.
 
 use std::ffi::{OsStr, OsString};
 use std::fs;
@@ -25,6 +25,7 @@ const RNDRESEEDCRNG: libc::Ioctl = 0x5207;
 const MAX_ENTROPY_BYTES: usize = 64 * 1024;
 const RESTORE_ENTROPY_BYTES: usize = 256;
 const RESTORE_MODE_ARG: &str = "--restore-state";
+const TIMEZONE_MODE_ARG: &str = "--sync-timezone";
 const CLOCK_SYNC_FAILED_MARKER: &str = "guest clock sync failed";
 const RESEED_FAILED_MARKER: &str = "guest-reseed failed";
 const TIMEZONE_SYNC_FAILED_MARKER: &str = "guest timezone sync failed";
@@ -228,6 +229,19 @@ fn parse_restore_args(args: &[OsString]) -> Result<RestoreArgs, &'static str> {
     }
 }
 
+fn parse_timezone_args(args: &[OsString]) -> Result<&str, &'static str> {
+    let [mode, timezone] = args else {
+        return Err("timezone is missing or invalid");
+    };
+    if mode != TIMEZONE_MODE_ARG {
+        return Err("timezone is missing or invalid");
+    }
+    timezone
+        .to_str()
+        .filter(|timezone| is_safe_timezone_name(timezone))
+        .ok_or("timezone is missing or invalid")
+}
+
 /// Runs the `guest-reseed` CLI.
 ///
 /// `args` must contain the command-line arguments after the executable name,
@@ -244,9 +258,15 @@ fn parse_restore_args(args: &[OsString]) -> Result<RestoreArgs, &'static str> {
 ///   <none|best-effort|required> [timezone] < entropy-bytes
 /// ```
 ///
+/// The timezone-only operation uses:
+///
+/// ```text
+/// guest-reseed --sync-timezone <timezone>
+/// ```
+///
 /// Entropy-only input must contain between 1 and 65,536 bytes. Restore input
-/// must contain exactly 256 bytes. `stderr` receives usage and runtime
-/// diagnostics.
+/// must contain exactly 256 bytes. Timezone-only mode does not read input.
+/// `stderr` receives usage and runtime diagnostics.
 ///
 /// Valid input is written to `/dev/urandom`, then the kernel CRNG is force-
 /// reseeded through the `RNDRESEEDCRNG` ioctl. This operation requires
@@ -255,6 +275,8 @@ fn parse_restore_args(args: &[OsString]) -> Result<RestoreArgs, &'static str> {
 /// Restore mode sets the realtime clock, reseeds the CRNG, then optionally
 /// applies the timezone. Required timezone failures return non-zero;
 /// best-effort application failures emit a marker and return success.
+/// Timezone-only mode uses the same best-effort marker contract without
+/// setting the clock or reseeding the CRNG.
 ///
 /// Returns process-style exit codes: `0` for success and `1` for argument,
 /// input, clock, reseed, or required-timezone failures.
@@ -290,6 +312,21 @@ where
     if args.is_empty() {
         return run_entropy_only(input, &mut stderr, reseed_fn);
     }
+    if args
+        .first()
+        .and_then(|arg| arg.to_str())
+        .is_some_and(|arg| arg == TIMEZONE_MODE_ARG)
+    {
+        let timezone = match parse_timezone_args(&args) {
+            Ok(timezone) => timezone,
+            Err(error) => {
+                let _ = writeln!(stderr, "guest-reseed: {error}");
+                let _ = writeln!(stderr, "usage: guest-reseed --sync-timezone <timezone>");
+                return 1;
+            }
+        };
+        return report_timezone_result(timezone_fn(timezone), false, &mut stderr);
+    }
 
     let restore = match parse_restore_args(&args) {
         Ok(restore) => restore,
@@ -321,23 +358,23 @@ where
     let Some(timezone) = restore.timezone.as_deref() else {
         return 0;
     };
-    match timezone_fn(timezone) {
+    report_timezone_result(
+        timezone_fn(timezone),
+        restore.timezone_mode == RestoreTimezoneMode::Required,
+        &mut stderr,
+    )
+}
+
+fn report_timezone_result(result: io::Result<bool>, required: bool, mut stderr: impl Write) -> i32 {
+    match result {
         Ok(true) => 0,
-        Ok(false) if restore.timezone_mode == RestoreTimezoneMode::BestEffort => {
-            let _ = writeln!(stderr, "{TIMEZONE_UNAVAILABLE_MARKER}");
-            0
-        }
         Ok(false) => {
             let _ = writeln!(stderr, "{TIMEZONE_UNAVAILABLE_MARKER}");
-            1
-        }
-        Err(error) if restore.timezone_mode == RestoreTimezoneMode::BestEffort => {
-            let _ = writeln!(stderr, "{TIMEZONE_SYNC_FAILED_MARKER}: {error}");
-            0
+            i32::from(required)
         }
         Err(error) => {
             let _ = writeln!(stderr, "{TIMEZONE_SYNC_FAILED_MARKER}: {error}");
-            1
+            i32::from(required)
         }
     }
 }
@@ -486,6 +523,106 @@ mod tests {
             String::from_utf8(stderr).unwrap(),
             "usage: guest-reseed < entropy-bytes\n"
         );
+    }
+
+    #[test]
+    fn timezone_mode_only_applies_timezone() {
+        let clock_called = Cell::new(false);
+        let reseed_called = Cell::new(false);
+        let timezone = RefCell::new(None);
+        let mut stderr = Vec::new();
+
+        let code = run_with_operations(
+            &b""[..],
+            &mut stderr,
+            [TIMEZONE_MODE_ARG, "Asia/Shanghai"],
+            |_, _| {
+                clock_called.set(true);
+                Ok(())
+            },
+            |_| {
+                reseed_called.set(true);
+                Ok(())
+            },
+            |received| {
+                timezone.replace(Some(received.to_owned()));
+                Ok(true)
+            },
+        );
+
+        assert_eq!(code, 0);
+        assert!(!clock_called.get());
+        assert!(!reseed_called.get());
+        assert_eq!(timezone.into_inner().as_deref(), Some("Asia/Shanghai"));
+        assert!(stderr.is_empty());
+    }
+
+    #[test]
+    fn timezone_mode_reports_best_effort_outcomes() {
+        for (timezone_result, marker) in [
+            (Ok(false), TIMEZONE_UNAVAILABLE_MARKER),
+            (
+                Err(io::Error::other("write denied")),
+                TIMEZONE_SYNC_FAILED_MARKER,
+            ),
+        ] {
+            let mut stderr = Vec::new();
+            let code = run_with_operations(
+                &b""[..],
+                &mut stderr,
+                [TIMEZONE_MODE_ARG, "UTC"],
+                |_, _| Ok(()),
+                |_| Ok(()),
+                |_| timezone_result,
+            );
+            let stderr = String::from_utf8(stderr).unwrap();
+
+            assert_eq!(code, 0, "stderr={stderr}");
+            assert!(stderr.contains(marker), "stderr={stderr}");
+        }
+    }
+
+    #[test]
+    fn timezone_mode_rejects_invalid_arguments_before_operations() {
+        let cases: &[&[&str]] = &[
+            &[TIMEZONE_MODE_ARG],
+            &[TIMEZONE_MODE_ARG, "UTC", "extra"],
+            &[TIMEZONE_MODE_ARG, "../UTC"],
+            &[TIMEZONE_MODE_ARG, "UTC;id"],
+        ];
+
+        for args in cases {
+            let clock_called = Cell::new(false);
+            let reseed_called = Cell::new(false);
+            let timezone_called = Cell::new(false);
+            let mut stderr = Vec::new();
+            let code = run_with_operations(
+                &b""[..],
+                &mut stderr,
+                args.iter().copied(),
+                |_, _| {
+                    clock_called.set(true);
+                    Ok(())
+                },
+                |_| {
+                    reseed_called.set(true);
+                    Ok(())
+                },
+                |_| {
+                    timezone_called.set(true);
+                    Ok(true)
+                },
+            );
+
+            assert_eq!(code, 1, "args={args:?}");
+            assert!(!clock_called.get(), "args={args:?}");
+            assert!(!reseed_called.get(), "args={args:?}");
+            assert!(!timezone_called.get(), "args={args:?}");
+            assert!(
+                String::from_utf8(stderr).unwrap().contains("usage:"),
+                "args={args:?}"
+            );
+        }
     }
 
     #[test]

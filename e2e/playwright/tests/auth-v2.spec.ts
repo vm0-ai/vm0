@@ -86,7 +86,7 @@ async function expectAccessibleLinkContrast(
     .toBeGreaterThanOrEqual(4.5);
 }
 
-test("stable and versioned auth routes render Auth v2 on desktop", async ({
+test("stable auth routes render Auth v2 on desktop", async ({
   page,
 }) => {
   const stableRoutes = [
@@ -106,11 +106,6 @@ test("stable and versioned auth routes render Auth v2 on desktop", async ({
   expect(await page.evaluate(() => window.innerWidth)).toBeGreaterThanOrEqual(
     1_000,
   );
-  for (const versionedRoute of ["/v2/sign-in", "/v2/sign-up"]) {
-    await openAuthV2(page, versionedRoute);
-    await expect(authV2Root(page)).toBeVisible();
-    expect(new URL(page.url()).pathname).toBe(versionedRoute);
-  }
 });
 
 test("primary actions retain brand styling while links remain accessible", async ({

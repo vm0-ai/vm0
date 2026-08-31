@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.38.129](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.128...desktop-v0.38.129) (2026-08-31)
+
+
+### Refactoring
+
+* **desktop:** delete the zero migration bridge source ([#30477](https://github.com/vm0-ai/vm0/issues/30477)) ([0b38fcb](https://github.com/vm0-ai/vm0/commit/0b38fcb2c04cab53cbdef569ff3c5f81da2ecef8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.15
+
+## [0.38.128](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.127...desktop-v0.38.128) (2026-08-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.14
+
 ## [0.38.127](https://github.com/vm0-ai/vm0/compare/desktop-v0.38.126...desktop-v0.38.127) (2026-08-31)
 
 

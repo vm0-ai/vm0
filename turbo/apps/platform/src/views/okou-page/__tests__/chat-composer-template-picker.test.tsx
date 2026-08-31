@@ -4095,6 +4095,69 @@ describe("chat composer templates", () => {
     await expectInlineTemplateInComposer("Fresh deck");
   });
 
+  it("drops a workspace template from an open picker once its owner makes it private", async () => {
+    const sharedTemplate = {
+      id: "3c7f1d84-5b2a-4e6f-8a90-1b2c3d4e5f61",
+      title: "Workspace brand",
+      sourceFilename: "workspace-brand.pptx",
+      coverUrl: "https://example.com/workspace-brand-cover.png",
+      pageCount: 6,
+      visibility: "public" as const,
+      canManage: false,
+      pageUrls: ["https://example.com/workspace-brand-cover.png"],
+      createdAt: "2026-08-23T03:00:00.000Z",
+      updatedAt: "2026-08-23T03:00:00.000Z",
+    };
+    setMockPresentationTemplates([sharedTemplate]);
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.PresentationTemplates]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    const dialog = await waitFor(() => {
+      const card = document.querySelector(
+        `[data-imported-presentation-template="${sharedTemplate.id}"]`,
+      );
+      if (!(card instanceof HTMLElement)) {
+        throw new Error("Shared template card not found");
+      }
+      return screen.getByRole("dialog");
+    });
+
+    // The owner takes the deck back: the row leaves this member's catalog and
+    // the workspace channel says so while the picker is still open.
+    setMockPresentationTemplates([]);
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscriptionOnChannel(
+          "org:org_default",
+          "presentationTemplatesChanged",
+        ),
+      ).toBeTruthy();
+    });
+    context.mocks.ably.triggerOnChannel(
+      "org:org_default",
+      "presentationTemplatesChanged",
+    );
+
+    await waitFor(() => {
+      expect(
+        dialog.querySelector(
+          `[data-imported-presentation-template="${sharedTemplate.id}"]`,
+        ),
+      ).toBeNull();
+    });
+    expect(screen.getByRole("dialog")).toBe(dialog);
+  });
+
   it("scrubs every uploaded slide and manages an owned template from its detail view", async () => {
     const user = userEvent.setup({ delay: null });
     const imageDecodes = controlImportedTemplateImageDecodes([

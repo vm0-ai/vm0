@@ -35,8 +35,7 @@ before the diagnostic reaches workflow redaction.
 
 The `auth-v2.spec.ts` project covers:
 
-- base and nested sign-in/sign-up routes, hard refresh, desktop rendering, and
-  compatibility for the former `/v2` route prefix;
+- base and nested sign-in/sign-up routes, hard refresh, and desktop rendering;
 - all ten supported platform locales, a French mobile viewport, light/dark
   theme switching, keyboard focus, live announcements, and overflow safety;
 - password sign-in through Clerk Device Trust email verification, same-origin

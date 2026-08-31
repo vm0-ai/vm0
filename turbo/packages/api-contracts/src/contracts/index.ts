@@ -193,8 +193,6 @@ export {
 } from "./test-teams-dispatch-probe";
 export { emailInboundContract } from "./email";
 export {
-  sandboxReuseResultSchema,
-  workspaceReuseResultSchema,
   webhookClerkContract,
   webhookEventsContract,
   webhookFirewallAuthContract,
@@ -217,8 +215,6 @@ export {
   // Direct upload contracts (Webhook endpoints for sandbox)
   webhookStoragesPrepareContract,
   webhookStoragesCommitContract,
-  type SandboxReuseResult,
-  type WorkspaceReuseResult,
   type WebhookWorkflowAutomationContract,
   type WebhookEventsContract,
   type WebhookFirewallAuthContract,
@@ -622,6 +618,12 @@ export {
   type ChatThreadArtifactGoogleDriveSync,
   type ChatThreadArtifactRun,
 } from "./chat-threads";
+export {
+  sandboxReuseResultSchema,
+  workspaceReuseResultSchema,
+  type SandboxReuseResult,
+  type WorkspaceReuseResult,
+} from "./runner-primitives";
 export {
   runnersPollContract,
   runnersJobClaimContract,

@@ -261,6 +261,7 @@ fn assert_action_once_with_duration(telemetry: &JobTelemetry, action: &str, dura
 fn assert_lacks_api_claim_timing(telemetry: &JobTelemetry) {
     for action in [
         "runner_claim_http_request",
+        "runner_claim_request_to_response_headers",
         "runner_claim_response_body_read",
         "runner_claim_response_decode",
     ] {
@@ -663,6 +664,7 @@ fn pre_spawn_timing_with_phases_and_concurrency(
         Instant::now(),
         Some(ApiClaimTiming::new(
             Duration::from_millis(42),
+            Duration::from_millis(11),
             Duration::from_millis(7),
             Duration::from_millis(3),
         )),
@@ -1106,6 +1108,7 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
 
     for action in [
         "runner_claim_http_request",
+        "runner_claim_request_to_response_headers",
         "runner_claim_response_body_read",
         "runner_claim_response_decode",
         "runner_claim_to_executor_start",
@@ -1137,6 +1140,7 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
         assert_has_action(&telemetry, action);
     }
     assert_action_once_with_duration(&telemetry, "runner_claim_http_request", 42);
+    assert_action_once_with_duration(&telemetry, "runner_claim_request_to_response_headers", 11);
     assert_action_once_with_duration(&telemetry, "runner_claim_response_body_read", 7);
     assert_action_once_with_duration(&telemetry, "runner_claim_response_decode", 3);
     assert_action_duration(&telemetry, "workspace_drive_mount_guest_exec", 23);
@@ -1572,6 +1576,7 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
 
     for action in [
         "runner_claim_http_request",
+        "runner_claim_request_to_response_headers",
         "runner_claim_response_body_read",
         "runner_claim_response_decode",
         "runner_claim_to_executor_start",
@@ -1596,6 +1601,7 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
         assert_has_action(&telemetry, action);
     }
     assert_action_once_with_duration(&telemetry, "runner_claim_http_request", 42);
+    assert_action_once_with_duration(&telemetry, "runner_claim_request_to_response_headers", 11);
     assert_action_once_with_duration(&telemetry, "runner_claim_response_body_read", 7);
     assert_action_once_with_duration(&telemetry, "runner_claim_response_decode", 3);
     assert_pre_spawn_phase_actions_succeeded(&telemetry);

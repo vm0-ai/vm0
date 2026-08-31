@@ -308,28 +308,13 @@ export function makeEvent(
 }
 
 export function mockKeyboardNavigationThreads({
-  leadingThreadCount = 0,
   currentTitle = "Current keyboard thread",
   currentDetailTitle = currentTitle,
 }: {
-  leadingThreadCount?: number;
   currentTitle?: string;
   currentDetailTitle?: string | null;
 } = {}): void {
-  const leadingFixtures = Array.from(
-    { length: leadingThreadCount },
-    (_, index) => {
-      const itemNumber = index + 1;
-      return {
-        id: `b0000000-0000-4000-a000-${String(720 + index).padStart(12, "0")}`,
-        title: `Leading keyboard thread ${itemNumber}`,
-        detailTitle: `Leading keyboard thread ${itemNumber}`,
-        message: `Leading thread launch note ${itemNumber}`,
-      };
-    },
-  );
   const threadFixtures = [
-    ...leadingFixtures,
     {
       id: KEYBOARD_PREV_THREAD_ID,
       title: "Previous keyboard thread",

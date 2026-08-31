@@ -587,10 +587,9 @@ class TestModelProviderJsonStreaming:
         MODEL_PROVIDER_JSON_CASES,
         ids=model_provider_json_case_id,
     )
-    def test_full_pipeline_brotli_model_json_uses_bounded_fallback(
+    def test_full_pipeline_brotli_model_json_streams_usage(
         self, tmp_path, real_flow, provider_case
     ):
-        """Brotli streaming decode is skipped, but bounded JSON fallback remains active."""
         flow = model_provider_flow(
             real_flow,
             tmp_path,
@@ -605,9 +604,11 @@ class TestModelProviderJsonStreaming:
         )
 
         mitm_addon.responseheaders(flow)
-        response_stream(flow)(compressed)
-        assert metadata_keys.STREAM_BUFFER in flow.metadata
-        assert metadata_keys.STREAM_BUFFER_STATE in flow.metadata
+        midpoint = len(compressed) // 2
+        response_stream(flow)(compressed[:midpoint])
+        response_stream(flow)(compressed[midpoint:])
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
         webhook = run_response(flow, self._usage_webhook_api)
 
