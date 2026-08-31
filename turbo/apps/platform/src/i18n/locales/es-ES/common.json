@@ -674,6 +674,7 @@
       "importedSlides_many": "{{count}} diapositivas",
       "importedSlides_other": "{{count}} diapositivas",
       "multiAccent": "Multiacentos",
+      "needPro": "Necesitas Pro",
       "nextSlide": "Vista previa de la diapositiva siguiente",
       "noMatches": "Sin coincidencias",
       "placeholder": "Vista previa del sitio web {{title}}",
@@ -726,6 +727,7 @@
       "tryDifferentSearch": "Prueba con otra búsqueda.",
       "use": "Usar",
       "useThisTemplate": "Usa esta plantilla",
+      "viewVideoPlans": "Ver planes para la plantilla de vídeo {{title}}",
       "visibility": {
         "change": "Cambiar",
         "changeLabel": "Cambiar la visibilidad de la plantilla",

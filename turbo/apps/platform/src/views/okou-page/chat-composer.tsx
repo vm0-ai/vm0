@@ -192,6 +192,11 @@ import {
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
+import { orgPlanCapabilities$ } from "../../signals/okou-page/org-plan-capabilities.ts";
+import {
+  openSettingsBillingPlans$,
+  setSettingsDialogOpen$,
+} from "../../signals/okou-page/settings/settings-dialog.ts";
 import { orgModelPolicies$ } from "../../signals/external/org-model-policies.ts";
 import {
   updateDefaultImageModel$,
@@ -1205,10 +1210,12 @@ const TEMPLATE_TILE_NAME =
 function VideoTemplateCard({
   item,
   selected,
+  requiresPro,
   onSelect,
 }: {
   item: VideoTemplateItem;
   selected: boolean;
+  requiresPro: boolean;
   onSelect: (item: VideoTemplateItem) => void;
 }) {
   const { t } = useTranslation();
@@ -1230,23 +1237,42 @@ function VideoTemplateCard({
         ) : null}
         <button
           type="button"
-          aria-label={t(
-            ($) => {
-              return $.artifacts.templates.selectVideo;
-            },
-            {
-              title: item.title,
-            },
-          )}
-          aria-pressed={selected}
+          aria-label={
+            requiresPro
+              ? t(
+                  ($) => {
+                    return $.artifacts.templates.viewVideoPlans;
+                  },
+                  {
+                    title: item.title,
+                  },
+                )
+              : t(
+                  ($) => {
+                    return $.artifacts.templates.selectVideo;
+                  },
+                  {
+                    title: item.title,
+                  },
+                )
+          }
+          aria-pressed={requiresPro ? undefined : selected}
           onClick={() => {
             onSelect(item);
           }}
-          className={TEMPLATE_TILE_USE}
+          className={cn(
+            TEMPLATE_TILE_USE,
+            requiresPro && "inline-flex items-center gap-1 !opacity-100",
+          )}
         >
-          {t(($) => {
-            return $.artifacts.templates.use;
-          })}
+          {requiresPro ? <Lock size={12} aria-hidden="true" /> : null}
+          {requiresPro
+            ? t(($) => {
+                return $.artifacts.templates.needPro;
+              })
+            : t(($) => {
+                return $.artifacts.templates.use;
+              })}
         </button>
       </div>
       <div className={TEMPLATE_TILE_CAPTION}>
@@ -1259,10 +1285,12 @@ function VideoTemplateCard({
 function VideoTemplateGrid({
   items,
   value,
+  videoGenerationAllowed,
   onSelect,
 }: {
   items: readonly VideoTemplateItem[];
   value: GenerationTemplateRequest | undefined;
+  videoGenerationAllowed: boolean;
   onSelect: (item: VideoTemplateItem) => void;
 }) {
   return (
@@ -1273,6 +1301,7 @@ function VideoTemplateGrid({
             key={item.id}
             item={item}
             selected={isSelectedVideoTemplate(item, value)}
+            requiresPro={!videoGenerationAllowed}
             onSelect={onSelect}
           />
         );
@@ -6230,6 +6259,11 @@ function TemplatePickerDialog({
 }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
+  const planCapabilities = useLastResolved(orgPlanCapabilities$);
+  const videoGenerationAllowed =
+    planCapabilities?.videoGenerationAllowed ?? true;
+  const openBillingPlans = useSet(openSettingsBillingPlans$);
+  const openSettings = useSet(setSettingsDialogOpen$);
   const category = useGet(signals.template.templatePickerCategory$);
   const setCategory = useSet(signals.template.setTemplatePickerCategory$);
   const search = useGet(signals.template.templatePickerSearch$);
@@ -6390,6 +6424,12 @@ function TemplatePickerDialog({
   };
 
   const handleSelectVideo = (item: VideoTemplateItem) => {
+    if (!videoGenerationAllowed) {
+      closeTemplatePicker();
+      openBillingPlans();
+      detach(openSettings(true, pageSignal), Reason.DomCallback);
+      return;
+    }
     onChange(toVideoGenerationTemplate(item));
     closeTemplatePicker();
   };
@@ -6647,6 +6687,7 @@ function TemplatePickerDialog({
                 websiteItems={WEBSITE_TEMPLATE_ITEMS}
                 illustrationItems={ILLUSTRATION_TEMPLATE_ITEMS}
                 videoItems={VIDEO_TEMPLATE_ITEMS}
+                videoGenerationAllowed={videoGenerationAllowed}
                 workflowCatalog={workflowCatalog}
                 value={value}
                 illustrationVariantIndex={illustrationVariantIndex}
@@ -6704,6 +6745,7 @@ function TemplatePickerCategoryContent({
   websiteItems,
   illustrationItems,
   videoItems,
+  videoGenerationAllowed,
   workflowCatalog,
   value,
   illustrationVariantIndex,
@@ -6734,6 +6776,7 @@ function TemplatePickerCategoryContent({
   websiteItems: readonly WebsiteTemplateItem[];
   illustrationItems: readonly IllustrationTemplateItem[];
   videoItems: readonly VideoTemplateItem[];
+  videoGenerationAllowed: boolean;
   workflowCatalog: ResolvedWorkflowTemplateCatalog;
   value: GenerationTemplateRequest | undefined;
   illustrationVariantIndex: Readonly<Record<string, number>>;
@@ -6856,6 +6899,7 @@ function TemplatePickerCategoryContent({
           <VideoTemplateGrid
             items={videoItems}
             value={value}
+            videoGenerationAllowed={videoGenerationAllowed}
             onSelect={onSelectVideo}
           />
         ) : (
