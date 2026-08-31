@@ -87,7 +87,7 @@ function executeMarketingEntrypoint(hostname: string): MarketingHarness {
     },
   );
 
-  const afterFirstPaintCallbacks: Array<() => void> = [];
+  const afterFirstPaintCallbacks: (() => void)[] = [];
   const previousAfterFirstPaint = window.__vm0AfterFirstPaint;
   window.__vm0AfterFirstPaint = (callback) => {
     afterFirstPaintCallbacks.push(callback);
