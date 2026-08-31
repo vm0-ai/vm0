@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "$#" -ne 2 ]; then
-  echo "usage: $0 <scenario-name> <remote-worker>" >&2
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+  echo "usage: $0 <scenario-name> <remote-worker> [worker-argument]" >&2
   exit 2
 fi
 
 TEST_NAME=$1
 REMOTE_WORKER=$2
+REMOTE_WORKER_ARGUMENTS=()
+if [ "$#" -eq 3 ]; then
+  REMOTE_WORKER_ARGUMENTS=("$3")
+fi
 if [[ ! "$TEST_NAME" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
   echo "scenario name must contain lowercase alphanumeric segments joined by hyphens" >&2
   exit 2
@@ -104,7 +108,8 @@ trap - EXIT" < "$REMOTE_WORKER" || status=$?
 launch_once() {
   ssh "$REMOTE" bash -s -- \
     "$REMOTE_DIR" "$REMOTE_WORKER_PATH" "$REMOTE_LOG" "$REMOTE_STATUS" \
-    "$REMOTE_UNIT" "$BIN_DIR" "$JOB_REF" <<'REMOTE_LAUNCH'
+    "$REMOTE_UNIT" "$BIN_DIR" "$JOB_REF" \
+    "${REMOTE_WORKER_ARGUMENTS[@]}" <<'REMOTE_LAUNCH'
 set -euo pipefail
 REMOTE_DIR=$1
 WORKER=$2
@@ -113,6 +118,7 @@ STATUS_FILE=$4
 UNIT=$5
 BIN_DIR=$6
 JOB_REF=$7
+WORKER_ARGUMENTS=("${@:8}")
 
 exec 9>"${REMOTE_DIR}/launch.lock"
 flock 9
@@ -171,14 +177,16 @@ sudo systemd-run \
     status_file=$3
     bin_dir=$4
     job_ref=$5
+    shift 5
 
     set -euo pipefail
     worker_status=0
-    "$worker" "$bin_dir" "$job_ref" > "$log" 2>&1 || worker_status=$?
+    "$worker" "$bin_dir" "$job_ref" "$@" > "$log" 2>&1 || worker_status=$?
     printf "%s\n" "$worker_status" > "${status_file}.tmp"
     mv "${status_file}.tmp" "$status_file"
     exit "$worker_status"
-  ' runner-behavior-result-wrapper "$WORKER" "$LOG" "$STATUS_FILE" "$BIN_DIR" "$JOB_REF"
+  ' runner-behavior-result-wrapper "$WORKER" "$LOG" "$STATUS_FILE" "$BIN_DIR" "$JOB_REF" \
+  "${WORKER_ARGUMENTS[@]}"
 REMOTE_LAUNCH
 }
 
