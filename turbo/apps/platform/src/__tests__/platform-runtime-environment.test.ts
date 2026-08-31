@@ -249,6 +249,7 @@ describe("portable platform runtime environment", () => {
     expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       publicBrand: "vm0",
+      postHogHost: "https://j.okou.io",
       vapidPublicKey: PRODUCTION_VAPID_KEY,
       clerkPublishableKey: PRODUCTION_CLERK_KEY,
     });
