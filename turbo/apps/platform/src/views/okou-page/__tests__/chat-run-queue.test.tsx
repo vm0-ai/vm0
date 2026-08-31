@@ -215,20 +215,6 @@ function mockActiveRunModelChange(): void {
         runId: "run-active",
         createdAt: "2026-08-06T10:00:01Z",
       },
-      {
-        id: `${THREAD_ID}-queued-user`,
-        role: "user",
-        content: null,
-        userMessage: {
-          version: 1,
-          parts: [
-            { type: "text", text: "Follow up after the active run" },
-            { type: "morning_brief", briefDate: "2026-08-06" },
-          ],
-        },
-        runId: undefined,
-        createdAt: "2026-08-06T10:00:02Z",
-      },
     ],
   });
 }
@@ -351,7 +337,6 @@ function mockCompletedRunModelHistory({
 }
 
 function mockCancellationRecoveryQueue(options?: {
-  readonly includeAutomation?: boolean;
   readonly onRecallEventAppend?: (body: {
     revokesEventId: string;
     clientEventId: string;
@@ -377,40 +362,22 @@ function mockCancellationRecoveryQueue(options?: {
         createdAt: "2026-07-30T10:00:01Z",
       },
       {
-        id: `${THREAD_ID}-queued-user`,
-        role: "user",
+        id: `${THREAD_ID}-queued-automation`,
+        eventType: "input.automation",
         content: null,
         userMessage: {
           version: 1,
           parts: [
-            { type: "text", text: "Continue after recovery" },
-            { type: "morning_brief", briefDate: "2026-07-30" },
+            {
+              type: "automation",
+              workflowName: "queued-workflow",
+              automationBrief: "Process the queued automation",
+            },
           ],
         },
         runId: undefined,
         createdAt: "2026-07-30T10:00:02Z",
       },
-      ...(options?.includeAutomation
-        ? [
-            {
-              id: `${THREAD_ID}-queued-automation`,
-              eventType: "input.automation" as const,
-              content: null,
-              userMessage: {
-                version: 1 as const,
-                parts: [
-                  {
-                    type: "automation" as const,
-                    workflowName: "queued-workflow",
-                    automationBrief: "Process the queued automation",
-                  },
-                ],
-              },
-              runId: undefined,
-              createdAt: "2026-07-30T10:00:03Z",
-            },
-          ]
-        : []),
     ],
     onRecallEventAppend: options?.onRecallEventAppend,
   });
@@ -444,20 +411,6 @@ describe("chat run queue", () => {
           createdAt: "2026-08-04T10:00:02Z",
         },
         {
-          id: `${THREAD_ID}-pending-morning-brief`,
-          role: "user",
-          content: null,
-          userMessage: {
-            version: 1,
-            parts: [
-              { type: "text", text: "Keep the morning brief queued" },
-              { type: "morning_brief", briefDate: "2026-08-05" },
-            ],
-          },
-          runId: undefined,
-          createdAt: "2026-08-04T10:00:03Z",
-        },
-        {
           id: `${THREAD_ID}-pending-automation`,
           eventType: "input.automation",
           content: null,
@@ -472,7 +425,7 @@ describe("chat run queue", () => {
             ],
           },
           runId: undefined,
-          createdAt: "2026-08-04T10:00:04Z",
+          createdAt: "2026-08-04T10:00:03Z",
         },
       ],
     });
@@ -485,12 +438,6 @@ describe("chat run queue", () => {
     await expect(
       screen.findByText("Steer this follow-up"),
     ).resolves.toBeInTheDocument();
-    expect(screen.getByLabelText("Queued message")).toHaveTextContent(
-      "Keep the morning brief queued",
-    );
-    expect(screen.getByLabelText("Queued message")).not.toHaveTextContent(
-      "Steer this follow-up",
-    );
     expect(screen.getByLabelText("Pending automation event")).toHaveTextContent(
       "Keep this automation queued",
     );
@@ -510,8 +457,6 @@ describe("chat run queue", () => {
     expect(notice).toHaveAttribute("aria-live", "polite");
     expect(label.closest("[data-message-container]")).toBeInTheDocument();
     expectTextBefore("Start the active run", NEXT_RUN_MODEL_COPY);
-    expectTextBefore(NEXT_RUN_MODEL_COPY, "1 message waiting");
-    expectTextBefore(NEXT_RUN_MODEL_COPY, "Follow up after the active run");
   });
 
   it.each([
@@ -1037,7 +982,7 @@ describe("chat run queue", () => {
     await submit;
   });
 
-  it("falls back to generic queue guidance for a previous API response", async () => {
+  it("falls back to generic automation guidance for a previous API response", async () => {
     mockCancellationRecoveryQueue();
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
@@ -1049,18 +994,18 @@ describe("chat run queue", () => {
     detachedSetupPage({ context, path: CHAT_PATH });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
-        "Continue after recovery",
-      );
+      expect(
+        screen.getByLabelText("Pending automation event"),
+      ).toHaveTextContent("Process the queued automation");
     });
     expect(
       screen.queryByText(CANCELLATION_RECOVERY_COPY),
     ).not.toBeInTheDocument();
 
-    click(screen.getByLabelText("About this queued message"));
+    click(screen.getByLabelText("About this automation event"));
     await expect(
       screen.findByText(
-        "Waits in line and sends once the current run finishes.",
+        "Waits behind queued messages and runs once the current run finishes.",
       ),
     ).resolves.toBeInTheDocument();
     expect(
@@ -1079,8 +1024,8 @@ describe("chat run queue", () => {
     detachedSetupPage({ context, path: CHAT_PATH });
 
     await expect(
-      screen.findByLabelText("Queued message"),
-    ).resolves.toHaveTextContent("Continue after recovery");
+      screen.findByLabelText("Pending automation event"),
+    ).resolves.toHaveTextContent("Process the queued automation");
     expect(
       screen.queryByText(CANCELLATION_RECOVERY_COPY),
     ).not.toBeInTheDocument();
@@ -1089,7 +1034,6 @@ describe("chat run queue", () => {
   it("explains recovery without disabling queued work or the composer", async () => {
     const recalledEventIds: string[] = [];
     mockCancellationRecoveryQueue({
-      includeAutomation: true,
       onRecallEventAppend: ({ revokesEventId }) => {
         recalledEventIds.push(revokesEventId);
       },
@@ -1109,19 +1053,10 @@ describe("chat run queue", () => {
     expect(
       screen.getByText("Paused mid-thought — pick it back up whenever."),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Queued message")).toHaveTextContent(
-      "Continue after recovery",
-    );
     expect(screen.getByLabelText("Pending automation event")).toHaveTextContent(
       "Process the queued automation",
     );
     expect(screen.getByRole("textbox", { name: "Message" })).toBeEnabled();
-
-    click(screen.getByLabelText("About this queued message"));
-    await waitFor(() => {
-      expect(screen.getAllByText(CANCELLATION_RECOVERY_COPY)).toHaveLength(2);
-    });
-    fireEvent.keyDown(document, { key: "Escape" });
 
     click(screen.getByLabelText("About this automation event"));
     await waitFor(() => {
@@ -1129,10 +1064,6 @@ describe("chat run queue", () => {
     });
     fireEvent.keyDown(document, { key: "Escape" });
 
-    click(screen.getByLabelText("Remove queued message"));
-    await waitFor(() => {
-      expect(recalledEventIds).toContain(`${THREAD_ID}-queued-user`);
-    });
     click(screen.getByLabelText("Skip automation event"));
     await waitFor(() => {
       expect(recalledEventIds).toContain(`${THREAD_ID}-queued-automation`);
@@ -1174,7 +1105,9 @@ describe("chat run queue", () => {
 
     await waitFor(() => {
       expect(detailReads).toBeGreaterThan(0);
-      expect(screen.getByLabelText("Queued message")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Pending automation event"),
+      ).toBeInTheDocument();
     });
     expect(
       screen.queryByText(CANCELLATION_RECOVERY_COPY),
@@ -1218,87 +1151,6 @@ describe("chat run queue", () => {
         "Finalizando a execução cancelada antes de continuar o trabalho na fila.",
       ),
     ).resolves.toBeInTheDocument();
-  });
-
-  it("labels a queued message from its userMessage projection", async () => {
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      chatEvents: [
-        {
-          id: `${THREAD_ID}-active-user`,
-          role: "user",
-          content: "Start the active run",
-          runId: "run-active",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: `${THREAD_ID}-active-assistant`,
-          role: "assistant",
-          content: null,
-          runId: "run-active",
-          createdAt: "2026-06-09T10:00:01Z",
-        },
-        {
-          id: `${THREAD_ID}-queued-user`,
-          role: "user",
-          content: "legacy queued label",
-          runId: undefined,
-          userMessage: {
-            version: 1,
-            parts: [
-              {
-                type: "template",
-                titleSnapshot: "Pitch deck",
-                template: {
-                  type: "illustration",
-                  selection: { illustrationStyleId: "editorial" },
-                },
-              },
-              {
-                type: "file",
-                fileId: "file-one",
-                filenameSnapshot: "file-one.pdf",
-                contentType: "application/pdf",
-              },
-              {
-                type: "file",
-                fileId: "file-two",
-                filenameSnapshot: "file-two.txt",
-                contentType: "text/plain",
-              },
-              { type: "text", text: "  Review " },
-              {
-                type: "chat_thread",
-                threadId: THREAD_ID,
-                titleSnapshot: "Project Alpha",
-              },
-              { type: "text", text: " then\ncontinue" },
-              { type: "morning_brief", briefDate: "2026-06-09" },
-            ],
-          },
-          createdAt: "2026-06-09T10:00:02Z",
-        },
-      ],
-      activeRunIds: ["run-active"],
-    });
-
-    detachedSetupPage({
-      context,
-      path: CHAT_PATH,
-    });
-
-    const userMessageLabel =
-      "[Template: Pitch deck] [File: file-one.pdf] [File: file-two.txt] " +
-      "Review [Chat thread: Project Alpha] then continue";
-    const legacyLabel = "legacy queued label";
-    await waitFor(() => {
-      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
-        userMessageLabel,
-      );
-    });
-    expect(screen.getByLabelText("Queued message")).not.toHaveTextContent(
-      legacyLabel,
-    );
   });
 
   it("shows a sent message and stop control while a new chat run is active", async () => {

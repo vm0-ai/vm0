@@ -104,15 +104,6 @@ function isQueuedChatEvent(event: ChatEvent): event is QueuedChatEvent {
   );
 }
 
-function isTemporarilyQueuedMorningBrief(event: ChatEvent): boolean {
-  return (
-    event.eventType === "input.prompt" &&
-    event.userMessage.parts.some((part) => {
-      return part.type === "morning_brief";
-    })
-  );
-}
-
 export interface SemanticChatEventGroup<
   T extends SemanticChatEventState = SemanticChatEventState,
 > {
@@ -212,9 +203,7 @@ export function semanticChatEventsFromChatEvents(
     const isQueued =
       isUnassociatedUser &&
       optimisticAssociation !== "run" &&
-      (event.eventType === "input.automation" ||
-        (event.eventType === "input.prompt" &&
-          isTemporarilyQueuedMorningBrief(event)));
+      event.eventType === "input.automation";
     return [{ event, isQueued }];
   });
 }

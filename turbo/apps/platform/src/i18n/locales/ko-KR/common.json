@@ -2204,7 +2204,6 @@
       "loadingGoal": "목표 불러오는 중...",
       "message_one": "{{count}}개 메시지",
       "message_other": "{{count}}개 메시지",
-      "morningBrief": "모닝 브리프",
       "openGoalDetails": "목표 세부 정보 열기",
       "pendingAutomationEvent": "대기 중인 자동화 이벤트",
       "queuedMessage": "대기 중인 메시지",

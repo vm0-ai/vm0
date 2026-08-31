@@ -20,7 +20,6 @@ import * as chatAgentphoneContextSchema from "./schema/chat-agentphone-context";
 import * as chatAutomationContextSchema from "./schema/chat-automation-context";
 import * as chatFeishuContextSchema from "./schema/chat-feishu-context";
 import * as chatGithubContextSchema from "./schema/chat-github-context";
-import * as chatMorningBriefContextSchema from "./schema/chat-morning-brief-context";
 import * as chatSlackContextSchema from "./schema/chat-slack-context";
 import * as chatTeamsContextSchema from "./schema/chat-teams-context";
 import * as chatTelegramContextSchema from "./schema/chat-telegram-context";
@@ -95,7 +94,6 @@ import * as runUploadedFileSchema from "./schema/run-uploaded-file";
 import * as builtInModelKeySchema from "./schema/built-in-model-key";
 import * as builtInModelCooldownSchema from "./schema/built-in-model-cooldown";
 import * as workflowSchema from "./schema/workflow";
-import * as morningBriefSchema from "./schema/morning-brief";
 import * as computerUseHostSchema from "./schema/computer-use-host";
 import * as userFeatureSwitchesSchema from "./schema/user-feature-switches";
 import * as userBehaviorCountSchema from "./schema/user-behavior-count";
@@ -153,7 +151,6 @@ export const schema = {
   ...chatAutomationContextSchema,
   ...chatFeishuContextSchema,
   ...chatGithubContextSchema,
-  ...chatMorningBriefContextSchema,
   ...chatSlackContextSchema,
   ...chatTeamsContextSchema,
   ...chatTelegramContextSchema,
@@ -228,7 +225,6 @@ export const schema = {
   ...builtInModelKeySchema,
   ...builtInModelCooldownSchema,
   ...workflowSchema,
-  ...morningBriefSchema,
   ...computerUseHostSchema,
   ...userFeatureSwitchesSchema,
   ...userBehaviorCountSchema,

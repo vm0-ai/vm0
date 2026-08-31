@@ -18,7 +18,6 @@ import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context
 import { chatAgentphoneContext } from "@okouai/db/schema/chat-agentphone-context";
 import { chatFeishuContext } from "@okouai/db/schema/chat-feishu-context";
 import { chatGithubContext } from "@okouai/db/schema/chat-github-context";
-import { chatMorningBriefContext } from "@okouai/db/schema/chat-morning-brief-context";
 import { chatSlackContext } from "@okouai/db/schema/chat-slack-context";
 import { chatTeamsContext } from "@okouai/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@okouai/db/schema/chat-telegram-context";
@@ -190,9 +189,6 @@ interface ChatEventContextFixture {
   readonly githubMessageText: string | null;
   readonly githubTriggerReactionId: string | null;
   readonly githubTriggerCommentBody: string | null;
-  readonly morningBriefDeliveryId: string | null;
-  readonly morningBriefTimezone: string | null;
-  readonly morningBriefTriggeredAt: Date | null;
 }
 
 export async function readChatEventContextFixture(
@@ -292,9 +288,6 @@ export async function readChatEventContextFixture(
       githubMessageText: chatGithubContext.messageText,
       githubTriggerReactionId: chatGithubContext.triggerReactionId,
       githubTriggerCommentBody: chatGithubContext.triggerCommentBody,
-      morningBriefDeliveryId: chatMorningBriefContext.deliveryId,
-      morningBriefTimezone: chatMorningBriefContext.timezone,
-      morningBriefTriggeredAt: chatMorningBriefContext.triggeredAt,
     })
     .from(chatEvents)
     .leftJoin(chatAutomationContext, eq(chatAutomationContext.id, contextId))
@@ -304,10 +297,6 @@ export async function readChatEventContextFixture(
     .leftJoin(chatAgentphoneContext, eq(chatAgentphoneContext.id, contextId))
     .leftJoin(chatTelegramContext, eq(chatTelegramContext.id, contextId))
     .leftJoin(chatGithubContext, eq(chatGithubContext.id, contextId))
-    .leftJoin(
-      chatMorningBriefContext,
-      eq(chatMorningBriefContext.id, contextId),
-    )
     .where(eq(chatEvents.id, eventId))
     .limit(1);
   return event ?? null;
@@ -872,38 +861,6 @@ export async function insertQueuedSlackMissingContextFixture(args: {
     await tx.delete(chatSlackContext).where(eq(chatSlackContext.id, event.id));
     return event.id;
   });
-}
-
-/** Reproduces a pre-cutover legacy queue head without admitting new runtime state. */
-export async function insertQueuedLegacyMorningBriefFixture(args: {
-  readonly threadId: string;
-  readonly content: string;
-}): Promise<string> {
-  const eventId = randomUUID();
-  await db().transaction(async (tx) => {
-    const [thread] = await tx
-      .update(chatThreads)
-      .set({
-        lastChatEventSeqId: sql`${chatThreads.lastChatEventSeqId} + 1`,
-      })
-      .where(eq(chatThreads.id, args.threadId))
-      .returning({ seqId: chatThreads.lastChatEventSeqId });
-    if (!thread) {
-      throw new Error("Expected the legacy Morning Brief thread");
-    }
-    await tx.insert(chatEvents).values({
-      id: eventId,
-      chatThreadId: args.threadId,
-      contextType: "morning_brief",
-      eventType: "input.prompt",
-      payload: {
-        userMessage: createUserMessageDocument({ text: args.content }),
-      },
-      runId: null,
-      seqId: thread.seqId,
-    });
-  });
-  return eventId;
 }
 
 export async function replayPendingChatInputQueueEventFixture(args: {

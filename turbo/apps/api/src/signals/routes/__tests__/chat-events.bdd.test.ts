@@ -10177,43 +10177,6 @@ describe("CHAT-02: prior rounds and thread titles", () => {
 });
 
 describe("CHAT-02: generation templates and attachments", () => {
-  it("keeps Morning Brief metadata out of the runtime prompt", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const prompt = "Generate my Morning Brief for 2026-08-05.";
-    const baseline = await sendChatRun(actor, {
-      agentId,
-      prompt,
-      userMessage: {
-        version: 1,
-        parts: [{ type: "text", text: prompt }],
-      },
-    });
-    const withMorningBriefPart = await sendChatRun(actor, {
-      agentId,
-      prompt,
-      userMessage: {
-        version: 1,
-        parts: [
-          { type: "text", text: prompt },
-          { type: "morning_brief", briefDate: "2026-08-05" },
-        ],
-      },
-    });
-
-    const baselineRun = await api.readRun(actor, baseline.runId);
-    const morningBriefRun = await api.readRun(
-      actor,
-      withMorningBriefPart.runId,
-    );
-    expect(morningBriefRun.prompt).toBe(baselineRun.prompt);
-    expect(morningBriefRun.prompt).toBe(prompt);
-
-    await cancelChatRun(actor, baseline.runId);
-    await cancelChatRun(actor, withMorningBriefPart.runId);
-  }, 90_000);
-
   it("uses the userMessage document for the runtime prompt", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();

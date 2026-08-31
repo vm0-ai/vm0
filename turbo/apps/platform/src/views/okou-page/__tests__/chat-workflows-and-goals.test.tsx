@@ -22,10 +22,7 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import {
-  expectQueuedMessages,
-  mockChatLifecycle,
-} from "./chat-test-helpers.ts";
+import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import { canonicalUserMessageFileUrl } from "../../../signals/chat-page/user-message-files.ts";
 import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../../signals/chat-page/workflow-prompt-action";
 import {
@@ -776,7 +773,7 @@ describe("chat lifecycle", () => {
     expect(screen.getAllByText("Reopened objective")).toHaveLength(1);
   });
 
-  it("folds goal-state markers into the goal row beneath the queued messages", async () => {
+  it("folds goal-state markers into the goal row beneath queued work", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000723";
     mockChatLifecycle(context, {
@@ -807,15 +804,18 @@ describe("chat lifecycle", () => {
           createdAt: "2026-06-09T10:00:02Z",
         },
         {
-          id: "msg-goal-morning-brief",
-          eventType: "input.prompt",
+          id: "msg-goal-automation",
+          eventType: "input.automation",
           role: "user",
           content: null,
           userMessage: {
             version: 1,
             parts: [
-              { type: "text", text: "First queued follow-up" },
-              { type: "morning_brief", briefDate: "2026-06-09" },
+              {
+                type: "automation",
+                workflowName: "release-follow-up",
+                automationBrief: "First queued follow-up",
+              },
             ],
           },
           runId: undefined,
@@ -852,15 +852,17 @@ describe("chat lifecycle", () => {
     // The marker is a control row — it must not also render as a chat bubble.
     expect(screen.getAllByText("Drive the release to merge")).toHaveLength(1);
 
-    // The goal is the lowest-priority row: it sits after every queued message.
-    await expectQueuedMessages(["First queued follow-up"]);
+    // The goal is the lowest-priority row: it sits after every queued item.
+    await expect(
+      screen.findByLabelText("Pending automation event"),
+    ).resolves.toHaveTextContent("First queued follow-up");
     const goalRow = screen.getByLabelText("Active goal");
     const strip = goalRow.closest('[role="list"]');
     expect(strip).not.toBeNull();
     const rows = within(strip as HTMLElement).getAllByRole("listitem");
     const goalIndex = rows.indexOf(goalRow);
     const queuedIndex = rows.findIndex((row) => {
-      return row.getAttribute("aria-label") === "Queued message";
+      return row.getAttribute("aria-label") === "Pending automation event";
     });
     expect(queuedIndex).toBeGreaterThanOrEqual(0);
     expect(goalIndex).toBeGreaterThan(queuedIndex);

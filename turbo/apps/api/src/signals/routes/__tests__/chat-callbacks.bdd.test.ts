@@ -29,7 +29,6 @@ import {
   holdModelPolicyReadsFixture,
   holdRunOutputMaterializationRowFixture,
   invalidateChatCallbackPayloadFixture,
-  insertQueuedLegacyMorningBriefFixture,
   insertQueuedSlackMissingContextFixture,
   readChatEventContextFixture,
   removeAcknowledgedCancellationLifecycleFixture,
@@ -4212,83 +4211,6 @@ describe("CHAT-02: chat output extraction and terminal callbacks", () => {
 });
 
 describe("CHAT-02: drain-time admission failure", () => {
-  it("terminalizes a pre-cutover Morning Brief queue head without creating a Run", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-    const anchor = await startChatRun(actor, {
-      agentId,
-      prompt: "finish before the legacy queue cutover",
-    });
-    const legacyPrompt = `legacy morning brief queue ${randomUUID()}`;
-    const queuedEventId = await insertQueuedLegacyMorningBriefFixture({
-      threadId: anchor.threadId,
-      content: legacyPrompt,
-    });
-    await api.requestCancelRun(actor, anchor.runId, [200]);
-    await flushWaitUntilForTest();
-    const terminal = await waitForThreadMessages(
-      actor,
-      anchor.threadId,
-      (events) => {
-        return (
-          userMessages(events).some((event) => {
-            return (
-              event.eventType === "input.rejected" &&
-              event.revokesEventId === queuedEventId &&
-              event.error === "legacy_morning_brief_cutover"
-            );
-          }) &&
-          assistantMessages(events).some((event) => {
-            return (
-              event.eventType === "output.error" &&
-              event.error === "legacy_morning_brief_cutover"
-            );
-          })
-        );
-      },
-    );
-    expect(
-      userMessages(terminal.events).filter((event) => {
-        return event.revokesEventId === queuedEventId;
-      }),
-    ).toStrictEqual([
-      expect.objectContaining({
-        eventType: "input.rejected",
-        error: "legacy_morning_brief_cutover",
-      }),
-    ]);
-    expect(
-      assistantMessages(terminal.events).filter((event) => {
-        return (
-          event.eventType === "output.error" &&
-          event.error === "legacy_morning_brief_cutover"
-        );
-      }),
-    ).toHaveLength(1);
-    expect(
-      (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
-        return run.prompt === legacyPrompt;
-      }),
-    ).toHaveLength(0);
-
-    await api.requestCancelRun(actor, anchor.runId, [200, 400]);
-    await flushWaitUntilForTest();
-    const afterDuplicate = await chat.listThreadEvents(actor, anchor.threadId);
-    expect(
-      userMessages(afterDuplicate.events).filter((event) => {
-        return event.revokesEventId === queuedEventId;
-      }),
-    ).toHaveLength(1);
-    expect(
-      assistantMessages(afterDuplicate.events).filter((event) => {
-        return (
-          event.eventType === "output.error" &&
-          event.error === "legacy_morning_brief_cutover"
-        );
-      }),
-    ).toHaveLength(1);
-  }, 90_000);
-
   it.each([
     {
       publicBrand: "okou",

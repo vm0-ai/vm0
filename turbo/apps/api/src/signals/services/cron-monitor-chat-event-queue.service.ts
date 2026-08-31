@@ -3,7 +3,6 @@ import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatFeishuContext } from "@okouai/db/schema/chat-feishu-context";
 import { chatGithubContext } from "@okouai/db/schema/chat-github-context";
-import { chatMorningBriefContext } from "@okouai/db/schema/chat-morning-brief-context";
 import { chatSlackContext } from "@okouai/db/schema/chat-slack-context";
 import { chatTeamsContext } from "@okouai/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@okouai/db/schema/chat-telegram-context";
@@ -141,20 +140,6 @@ function missingScheduledContextRowCondition(db: Db) {
             and(
               eq(chatAutomationContext.id, chatEvents.contextId),
               eq(chatAutomationContext.chatThreadId, chatEvents.chatThreadId),
-            ),
-          ),
-      ),
-    ),
-    and(
-      eq(chatEvents.contextType, "morning_brief"),
-      notExists(
-        db
-          .select({ id: chatMorningBriefContext.id })
-          .from(chatMorningBriefContext)
-          .where(
-            and(
-              eq(chatMorningBriefContext.id, chatEvents.contextId),
-              eq(chatMorningBriefContext.chatThreadId, chatEvents.chatThreadId),
             ),
           ),
       ),
