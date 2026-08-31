@@ -55,8 +55,6 @@ impl GuestRuntime {
                 );
             }
         }
-        raw.emit_bootstrap_alias_source_events();
-
         let config = GuestConfig::from_raw(raw)?;
         let http = HttpClient::for_config(&config).map_err(|error| error.to_string())?;
 

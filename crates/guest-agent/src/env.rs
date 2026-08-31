@@ -26,20 +26,6 @@ const TEST_CLAUDE_CONFIG_DIR_ENV_KEY: &str = "OKOU_TEST_CLAUDE_CONFIG_DIR";
 #[cfg(debug_assertions)]
 const TEST_CODEX_HOME_DIR_ENV_KEY: &str = "OKOU_TEST_CODEX_HOME_DIR";
 
-/// Empty value-free source evidence retained across capture and runtime sink setup.
-///
-/// All staged bootstrap alias source slots have been retired.
-#[derive(Clone, Default)]
-pub struct BootstrapAliasSourceEvents;
-
-impl BootstrapAliasSourceEvents {
-    fn iter(&self) -> impl Iterator<Item = (&'static str, &'static str, &'static str)> + '_ {
-        std::iter::empty()
-    }
-
-    fn emit(&self) {}
-}
-
 fn env_or_empty(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
 }
@@ -219,10 +205,6 @@ pub struct GuestConfigRaw {
     pub post_result_sigterm_grace_secs: String,
     pub post_result_total_cap_secs: String,
     pub post_result_sigkill_grace_secs: String,
-    /// Empty bootstrap alias source state retained until the run-scoped
-    /// system-log sink is installed.
-    #[doc(hidden)]
-    pub bootstrap_alias_sources: BootstrapAliasSourceEvents,
 }
 
 impl GuestConfigRaw {
@@ -241,7 +223,6 @@ impl GuestConfigRaw {
     pub(crate) fn from_process_env_with_guest_runtime_dir(
         guest_runtime_dir: Option<PathBuf>,
     ) -> Result<Self, String> {
-        let bootstrap_alias_sources = BootstrapAliasSourceEvents;
         let api_url = env_or_empty(guest_contracts::env::CANONICAL_API_URL_ENV);
 
         let stuck_tool_timeout_secs =
@@ -297,21 +278,7 @@ impl GuestConfigRaw {
             post_result_sigterm_grace_secs,
             post_result_total_cap_secs,
             post_result_sigkill_grace_secs,
-            bootstrap_alias_sources,
         })
-    }
-
-    /// Iterate the captured fixed event family, canonical key, and source
-    /// label without exposing any selected environment value.
-    #[doc(hidden)]
-    pub fn bootstrap_alias_source_events(
-        &self,
-    ) -> impl Iterator<Item = (&'static str, &'static str, &'static str)> + '_ {
-        self.bootstrap_alias_sources.iter()
-    }
-
-    pub(crate) fn emit_bootstrap_alias_source_events(&self) {
-        self.bootstrap_alias_sources.emit();
     }
 
     pub(crate) fn require_run_payload_file(&self) -> Result<(), String> {
