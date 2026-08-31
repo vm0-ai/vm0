@@ -308,7 +308,7 @@ export function makeEvent(
   };
 }
 
-export function mockNoBrowserSession(): void {
+function mockNoBrowserSession(): void {
   context.mocks.api(browserContract.get, ({ respond }) => {
     return respond(404, {
       error: {
