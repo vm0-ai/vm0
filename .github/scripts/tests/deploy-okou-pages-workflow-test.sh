@@ -63,6 +63,7 @@ preview_readiness_step = find_step(
     turbo_job, "Wait for Cloudflare Pages deployment readiness"
 )
 preview_gateway_step = find_step(turbo_job, "Smoke test app preview gateway")
+app_preview_url_step = find_step(turbo_job, "Resolve app preview gateway URL")
 prepare_release_step = find_step(
     release_job, "Prepare Cloudflare Pages production deployment"
 )
@@ -158,35 +159,43 @@ if not (
 if "publish-okou-app-assets.sh" in str(release_job):
     raise RuntimeError("production promotion must not publish immutable app assets")
 
-require_fragments(
+readiness_source = require_fragments(
     preview_readiness_step,
     [
         'id="app-bootstrap-skeleton"',
         "Cloudflare Pages shell is ready",
-        "bash .github/scripts/verify-okou-app-runtime.sh",
-        '"https://static.okou.io/okou-app/assets"',
-        '"$CANONICAL_ASSETS"',
     ],
 )
 if "PAGES_DIST" in preview_readiness_step.get("env", {}):
     raise RuntimeError("Pages shell readiness must not inspect removed app assets")
-if preview_readiness_step.get("env", {}).get("CANONICAL_ASSETS") != (
-    "${{ steps.pages-preview.outputs.canonical-dist }}/assets"
-):
-    raise RuntimeError("Pages readiness must verify the canonical App bundles")
-require_fragments(
+# A Pages alias can serve the shell and then 404 again while the edge converges.
+# Readiness only waits for that propagation; point sampling the runtime contract
+# here fails the job on flapping the very next second.
+if "verify-okou-app-runtime.sh" in readiness_source:
+    raise RuntimeError("Pages readiness must not point sample the runtime contract")
+gateway_source = require_fragments(
     preview_gateway_step,
     [
         "bash .github/scripts/verify-okou-app-runtime.sh",
         '"$APP_PREVIEW_URL"',
         '"https://static.okou.io/okou-app/assets"',
         '"$CANONICAL_ASSETS"',
+        "{1..12}",
     ],
 )
 if preview_gateway_step.get("env", {}).get("CANONICAL_ASSETS") != (
     "${{ steps.pages-preview.outputs.canonical-dist }}/assets"
 ):
     raise RuntimeError("SharedWorker smoke test must use canonical app assets")
+if turbo_source.count("bash .github/scripts/verify-okou-app-runtime.sh") != 1:
+    raise RuntimeError(
+        "the app preview runtime contract must be verified exactly once, with retries"
+    )
+if "if" in app_preview_url_step:
+    raise RuntimeError(
+        "the app preview gateway URL must always resolve, "
+        "or runtime verification silently skips"
+    )
 release_step_source = require_fragments(
     release_step,
     [
