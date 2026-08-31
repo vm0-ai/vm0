@@ -478,6 +478,95 @@ function requireOrgId(actor: ApiTestUser): string {
   return actor.orgId;
 }
 
+function totalChargedCredits(
+  rows: readonly { readonly creditsCharged: number | null }[],
+): number {
+  return rows.reduce((total, row) => {
+    if (row.creditsCharged === null) {
+      throw new Error("Expected processed usage to have charged credits");
+    }
+    return total + row.creditsCharged;
+  }, 0);
+}
+
+async function expectTerraApiFirstTurnUsage(
+  runId: string,
+  sessionBytes: Buffer,
+): Promise<void> {
+  const firstSession = MemoryPiSession.fromJsonl(sessionBytes.toString("utf8"));
+  const firstAssistant = [...firstSession.buildSessionContext().messages]
+    .reverse()
+    .find((message) => {
+      return message.role === "assistant";
+    });
+  expect(
+    firstAssistant?.role === "assistant" ? firstAssistant.usage : null,
+  ).toMatchObject({
+    input: 5,
+    output: 3,
+    cacheRead: 3,
+    cacheWrite: 2,
+  });
+  const usageRows = await readRunUsageEventsFixture(runId);
+  expect(usageRows).toStrictEqual([
+    expect.objectContaining({
+      provider: "gpt-5.6-terra",
+      category: "tokens.cache_creation",
+      quantity: 2,
+      status: "processed",
+      billingError: null,
+      creditsCharged: expect.any(Number),
+    }),
+    expect.objectContaining({
+      provider: "gpt-5.6-terra",
+      category: "tokens.cache_read",
+      quantity: 3,
+      status: "processed",
+      billingError: null,
+      creditsCharged: expect.any(Number),
+    }),
+    expect.objectContaining({
+      provider: "gpt-5.6-terra",
+      category: "tokens.input",
+      quantity: 5,
+      status: "processed",
+      billingError: null,
+      creditsCharged: expect.any(Number),
+    }),
+    expect.objectContaining({
+      provider: "gpt-5.6-terra",
+      category: "tokens.output",
+      quantity: 3,
+      status: "processed",
+      billingError: null,
+      creditsCharged: expect.any(Number),
+    }),
+  ]);
+  expect(totalChargedCredits(usageRows)).toBeGreaterThan(0);
+  expect(
+    usageRows.some((row) => {
+      return row.category.endsWith(".fast");
+    }),
+  ).toBeFalsy();
+}
+
+async function expectTerraApiFollowUpUsage(runId: string): Promise<void> {
+  await expect(readRunUsageEventsFixture(runId)).resolves.toStrictEqual([
+    expect.objectContaining({
+      provider: "gpt-5.6-terra",
+      category: "tokens.input",
+      quantity: 5,
+      status: "processed",
+    }),
+    expect.objectContaining({
+      provider: "gpt-5.6-terra",
+      category: "tokens.output",
+      quantity: 3,
+      status: "processed",
+    }),
+  ]);
+}
+
 async function seedVm0BuiltInModelKey(selectedModel: string): Promise<string> {
   const fixture = await seedVm0BuiltInModelKeyState(context, selectedModel);
   return fixture.selectedModel;
@@ -5048,74 +5137,16 @@ describe("CHAT-02: model-first provider policies", () => {
       const firstSessionBytes = firstSessionEntry?.[1];
       expect(checkpointObjects.has(firstManifestKey)).toBeFalsy();
       expect(checkpointObjects.has(firstSessionKey)).toBeFalsy();
-      expect(firstSessionBytes).toBeDefined();
+      if (!firstSessionBytes) {
+        throw new Error("Expected the first Pi run to persist native H1");
+      }
       if (selectedModel === "gpt-5.6-terra") {
-        const firstSession = MemoryPiSession.fromJsonl(
-          firstSessionBytes?.toString("utf8") ?? "",
-        );
-        const firstAssistant = [...firstSession.buildSessionContext().messages]
-          .reverse()
-          .find((message) => {
-            return message.role === "assistant";
-          });
-        expect(
-          firstAssistant?.role === "assistant" ? firstAssistant.usage : null,
-        ).toMatchObject({
-          input: 5,
-          output: 3,
-          cacheRead: 3,
-          cacheWrite: 2,
-        });
-        const usageRows = await readRunUsageEventsFixture(first.runId);
-        expect(usageRows).toStrictEqual([
-          expect.objectContaining({
-            provider: "gpt-5.6-terra",
-            category: "tokens.cache_creation",
-            quantity: 2,
-            status: "processed",
-            billingError: null,
-            creditsCharged: expect.any(Number),
-          }),
-          expect.objectContaining({
-            provider: "gpt-5.6-terra",
-            category: "tokens.cache_read",
-            quantity: 3,
-            status: "processed",
-            billingError: null,
-            creditsCharged: expect.any(Number),
-          }),
-          expect.objectContaining({
-            provider: "gpt-5.6-terra",
-            category: "tokens.input",
-            quantity: 5,
-            status: "processed",
-            billingError: null,
-            creditsCharged: expect.any(Number),
-          }),
-          expect.objectContaining({
-            provider: "gpt-5.6-terra",
-            category: "tokens.output",
-            quantity: 3,
-            status: "processed",
-            billingError: null,
-            creditsCharged: expect.any(Number),
-          }),
-        ]);
-        expect(
-          usageRows.reduce((total, row) => {
-            return total + (row.creditsCharged ?? 0);
-          }, 0),
-        ).toBeGreaterThan(0);
-        expect(
-          usageRows.some((row) => {
-            return row.category.endsWith(".fast");
-          }),
-        ).toBeFalsy();
+        await expectTerraApiFirstTurnUsage(first.runId, firstSessionBytes);
       }
       const firstSessionHash = createHash("sha256")
-        .update(firstSessionBytes ?? Buffer.alloc(0))
+        .update(firstSessionBytes)
         .digest("hex");
-      expect(firstSessionBytes?.toString("utf8")).toContain(first.threadId);
+      expect(firstSessionBytes.toString("utf8")).toContain(first.threadId);
       expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
         `runner-group:${runnerGroup}`,
       );
@@ -5147,22 +5178,7 @@ describe("CHAT-02: model-first provider policies", () => {
       await flushWaitUntilForTest();
       expect(modelRequests).toHaveLength(2);
       if (selectedModel === "gpt-5.6-terra") {
-        await expect(
-          readRunUsageEventsFixture(second.runId),
-        ).resolves.toStrictEqual([
-          expect.objectContaining({
-            provider: "gpt-5.6-terra",
-            category: "tokens.input",
-            quantity: 5,
-            status: "processed",
-          }),
-          expect.objectContaining({
-            provider: "gpt-5.6-terra",
-            category: "tokens.output",
-            quantity: 3,
-            status: "processed",
-          }),
-        ]);
+        await expectTerraApiFollowUpUsage(second.runId);
       }
       expect(modelRequests[1]?.authorization).toMatch(
         /^Bearer vm0-key-runtime-fixture-/u,
@@ -6328,11 +6344,7 @@ describe("CHAT-02: model-first provider policies", () => {
         billingError: null,
       }),
     ]);
-    expect(
-      cancelledUsage.reduce((total, row) => {
-        return total + (row.creditsCharged ?? 0);
-      }, 0),
-    ).toBeGreaterThan(0);
+    expect(totalChargedCredits(cancelledUsage)).toBeGreaterThan(0);
     expect(
       checkpointObjects.has(
         `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`,
@@ -6899,8 +6911,12 @@ describe("CHAT-02: model-first provider policies", () => {
     await expect(
       readRunUsageEventsFixture(second.runId),
     ).resolves.toStrictEqual([]);
+    const manifestBytes = checkpointObjects.get(manifestKey);
+    if (!manifestBytes) {
+      throw new Error("Expected compaction ownership-transfer manifest");
+    }
     const manifest = piApiFirstTurnManifestV3Schema.parse(
-      JSON.parse(checkpointObjects.get(manifestKey)?.toString("utf8") ?? "{}"),
+      JSON.parse(manifestBytes.toString("utf8")),
     );
     expect(manifest).toMatchObject({
       schemaVersion: 3,
@@ -6914,12 +6930,13 @@ describe("CHAT-02: model-first provider policies", () => {
       },
       sandboxEventSequenceStart: 1,
     });
-    const transferredH0 =
-      checkpointObjects
-        .get(
-          `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${second.runId}/session.jsonl`,
-        )
-        ?.toString("utf8") ?? "";
+    const transferredH0Bytes = checkpointObjects.get(
+      `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${second.runId}/session.jsonl`,
+    );
+    if (!transferredH0Bytes) {
+      throw new Error("Expected compaction ownership-transfer session");
+    }
+    const transferredH0 = transferredH0Bytes.toString("utf8");
     expect(transferredH0).toBe(compactionH0);
     const claim = await api.claimRunnerJob(second.runId, { runnerIdentity });
     const sandboxHeaders = {
@@ -7105,8 +7122,12 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(terraTools).toStrictEqual(
       expect.arrayContaining(["read", "write", "edit", "bash"]),
     );
+    const manifestBytes = checkpointObjects.get(manifestKey);
+    if (!manifestBytes) {
+      throw new Error("Expected pending-tool ownership-transfer manifest");
+    }
     const manifest = piApiFirstTurnManifestV3Schema.parse(
-      JSON.parse(checkpointObjects.get(manifestKey)?.toString("utf8") ?? "{}"),
+      JSON.parse(manifestBytes.toString("utf8")),
     );
     expect(manifest).toMatchObject({
       schemaVersion: 3,
@@ -7153,15 +7174,22 @@ describe("CHAT-02: model-first provider policies", () => {
     const terraEnvironment = claimEnvironment(claimed.claim);
     expect(terraEnvironment.OKOU_TOKEN).toBeTruthy();
     expect(terraEnvironment.CLI_PKG_URL).toBeTruthy();
-    const terraInstructions = claimed.claim.appendSystemPrompt ?? "";
+    const terraInstructions = claimed.claim.appendSystemPrompt;
+    if (!terraInstructions) {
+      throw new Error("Expected Terra Web instructions");
+    }
     expect(terraInstructions).toContain(
       "You are currently running inside: Web",
     );
     expect(terraInstructions).toContain("okou web download-file -h");
     expect(terraInstructions).not.toMatch(/auto.?memory/iu);
-    const terraMounts =
-      expectCanonicalStorageManifest(claimed.claim.storageManifest)
-        ?.storageMounts ?? [];
+    const terraStorageManifest = expectCanonicalStorageManifest(
+      claimed.claim.storageManifest,
+    );
+    if (!terraStorageManifest) {
+      throw new Error("Expected Terra storage manifest");
+    }
+    const terraMounts = terraStorageManifest.storageMounts;
     expect(terraMounts).not.toContainEqual(
       expect.objectContaining({ name: "memory" }),
     );
@@ -7193,12 +7221,13 @@ describe("CHAT-02: model-first provider policies", () => {
         return receipt.body;
       }),
     ).toStrictEqual([{ success: true }, { success: true }]);
-    const h1 =
-      checkpointObjects
-        .get(
-          `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/session.jsonl`,
-        )
-        ?.toString("utf8") ?? "";
+    const h1Bytes = checkpointObjects.get(
+      `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/session.jsonl`,
+    );
+    if (!h1Bytes) {
+      throw new Error("Expected pending-tool ownership-transfer session");
+    }
+    const h1 = h1Bytes.toString("utf8");
     expect(h1).toContain('"type":"thinking_level_change"');
     expect(h1).toContain('"thinkingLevel":"low"');
     const h2Session = MemoryPiSession.fromJsonl(h1);

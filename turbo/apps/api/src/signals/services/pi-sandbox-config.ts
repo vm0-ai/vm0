@@ -81,7 +81,7 @@ function piCredentialSecretName(
 export function shouldUsePiExecution(args: {
   readonly chatThreadId: string | undefined;
   readonly modelProviderType: string | null | undefined;
-  readonly selectedModel: string | undefined;
+  readonly selectedModel: string | null | undefined;
   readonly codexServiceTier: "fast" | undefined;
   readonly triggerSource: TriggerSource;
   readonly featureSwitchContext: FeatureSwitchContext;

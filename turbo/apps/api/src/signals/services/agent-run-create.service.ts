@@ -8244,12 +8244,8 @@ function isPiSandboxEnabledForRun(
 ): boolean {
   return shouldUsePiExecution({
     chatThreadId: createArgs.chatThreadId,
-    modelProviderType:
-      createArgs.agentRunModelPin?.modelProvider ??
-      createArgs.modelProviderType,
-    selectedModel:
-      createArgs.agentRunModelPin?.selectedModel ??
-      createArgs.selectedModelOverride,
+    modelProviderType: createArgs.agentRunModelPin?.modelProvider,
+    selectedModel: createArgs.agentRunModelPin?.selectedModel,
     codexServiceTier: createArgs.codexServiceTier,
     triggerSource: createArgs.body.triggerSource,
     featureSwitchContext,

@@ -2992,6 +2992,11 @@ export async function isVisibleChatEventFixture(
   return event !== undefined;
 }
 
+/**
+ * Usage-ledger rows have no production read endpoint. This test-only fixture is
+ * the narrow external-behavior exception needed to prove exactly-once billing
+ * without exposing internal billing records through a new product API.
+ */
 export async function readRunUsageEventsFixture(runId: string): Promise<
   readonly {
     readonly provider: string;

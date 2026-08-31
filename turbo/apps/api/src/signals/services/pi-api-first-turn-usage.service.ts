@@ -15,6 +15,17 @@ const PI_API_FIRST_TURN_OBSERVATION_NAMESPACE =
   "670e6ebc-79c3-4f44-b322-e26d1be7cf2e";
 const TERRA_MODEL = "gpt-5.6-terra";
 
+function terraLongContextMinimumInputTokens(): number {
+  const minimum = MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS[TERRA_MODEL];
+  if (minimum === undefined) {
+    throw new Error("Terra long-context pricing threshold is missing");
+  }
+  return minimum;
+}
+
+const TERRA_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS =
+  terraLongContextMinimumInputTokens();
+
 type PiUsageCategoryBase =
   | "tokens.input"
   | "tokens.output"
@@ -65,8 +76,7 @@ function piApiFirstTurnUsageEntries(
   const cacheCreation = usageQuantity(usage.cacheWrite, "cache-creation");
   const longContext =
     input + cacheRead + cacheCreation >=
-    (MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS[TERRA_MODEL] ??
-      Number.POSITIVE_INFINITY);
+    TERRA_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS;
   const suffix = longContext ? ".long_context" : "";
   return (
     [
