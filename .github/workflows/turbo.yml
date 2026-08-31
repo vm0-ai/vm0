@@ -3054,8 +3054,6 @@ jobs:
               echo "✅ $job: $result"
             elif { [ "$allow_skip" = "skipped" ] || [ "$allow_skip" = "true" ]; } && [ "$result" = "skipped" ]; then
               echo "⏭️ $job: $result (allowed)"
-            elif [ "$allow_skip" = "true" ] && [ "$result" = "cancelled" ]; then
-              echo "⚠️ $job: $result (cancelled by concurrency group, allowed)"
             elif [ "$allow_skip" = "informational" ]; then
               echo "ℹ️ $job: $result (informational, not blocking)"
             else

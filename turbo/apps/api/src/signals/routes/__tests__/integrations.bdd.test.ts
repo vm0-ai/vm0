@@ -3530,7 +3530,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
       expect(helpJson).toContain(`<@${botUserId}> Slack Bot Help`);
       expect(helpJson).toContain("/okou switch");
       expect(helpJson).toContain("/okou model");
-      expect(helpJson).toContain("/zero");
       expect(helpJson).toContain(`<@${botUserId}>`);
     }
 
@@ -3545,17 +3544,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(vm0HostHelpJson).toContain(`<@${botUserId}> Slack Bot Help`);
     expect(vm0HostHelpJson).toContain("Connect to Zero");
     expect(vm0HostHelpJson).toContain(`<@${botUserId}>`);
-
-    const legacyHelp = await integrations.postSlackCommand({
-      teamId,
-      userId: slackUserId,
-      channelId: "C_BDD_CMD",
-      command: "/zero",
-      text: "help",
-    });
-    expect(JSON.stringify(legacyHelp)).toContain(
-      `<@${botUserId}> Slack Bot Help`,
-    );
 
     const alreadyConnected = await integrations.postSlackCommand({
       teamId,
@@ -3676,7 +3664,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(helpJson).toContain("/okou connect");
     expect(helpJson).not.toContain("/okou switch");
     expect(helpJson).not.toContain("/okou model");
-    expect(helpJson).toContain("/zero");
   });
 
   it("prompts for login when switching agents without a Slack connection", async () => {

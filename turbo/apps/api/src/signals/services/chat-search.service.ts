@@ -123,8 +123,10 @@ async function chatSearchIndexedMatchBatch(
         chatSearchCursorCondition(args.cursor),
       ),
     )
+    // Keep the created_at prefix aligned with the scoped index while the
+    // remaining columns provide a stable keyset order for equal timestamps.
     .orderBy(
-      desc(chatEventSearchMessages.createdAt),
+      sql`${desc(chatEventSearchMessages.createdAt)} NULLS LAST`,
       desc(chatEventSearchMessages.chatThreadId),
       desc(chatEventSearchMessages.seqId),
     )

@@ -1,4 +1,5 @@
 const GIT_COMMIT_SHA_REGEX = /^[0-9a-f]{40}$/u;
+const APP_VERSION_SEARCH_PARAMETER = "okou-app-version";
 
 function normalizeBuildCommitSha(value: unknown): string | null {
   if (typeof value !== "string") {
@@ -19,9 +20,22 @@ function normalizeBuildVersion(value: unknown): string | null {
 }
 
 export function getBuildCommitSha(): string | null {
-  return normalizeBuildCommitSha(__OKOU_APP_GIT_COMMIT_SHA__);
+  const runtimeDocument = globalThis.document;
+  return normalizeBuildCommitSha(
+    runtimeDocument?.head.querySelector<HTMLMetaElement>(
+      'meta[name="okou-app-git-commit-sha"]',
+    )?.content,
+  );
 }
 
 export function getBuildVersion(): string | null {
-  return normalizeBuildVersion(__OKOU_APP_VERSION__);
+  const runtimeDocument = globalThis.document;
+  const value = runtimeDocument
+    ? runtimeDocument.head.querySelector<HTMLMetaElement>(
+        'meta[name="okou-app-version"]',
+      )?.content
+    : new URL(globalThis.location.href).searchParams.get(
+        APP_VERSION_SEARCH_PARAMETER,
+      );
+  return normalizeBuildVersion(value);
 }

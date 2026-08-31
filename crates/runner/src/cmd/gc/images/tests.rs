@@ -890,8 +890,7 @@ async fn gc_nested_images_recent_snapshot_protected() {
 /// When the rootfs lock is held, GC skips the whole rootfs. This avoids
 /// racing `runner start`, which acquires shared rootfs before shared
 /// snapshot and may be between those two locks.
-#[tokio::test]
-async fn gc_nested_images_locked_rootfs_keeps_all_snapshots() {
+async fn assert_locked_rootfs_keeps_all_snapshots(use_legacy_identity: bool) {
     use std::fs::FileTimes;
 
     let dir = tempfile::tempdir().unwrap();
@@ -917,7 +916,12 @@ async fn gc_nested_images_locked_rootfs_keeps_all_snapshots() {
         .unwrap();
 
     // Simulate `runner start` holding shared locks on rootfs + snap_used.
-    let rootfs_lock_file = lock::open_lock_file(&home.rootfs_lock("can_delete_rootfs")).unwrap();
+    let rootfs_lock_path = if use_legacy_identity {
+        home.legacy_rootfs_lock("can_delete_rootfs")
+    } else {
+        home.rootfs_lock("can_delete_rootfs")
+    };
+    let rootfs_lock_file = lock::open_lock_file(&rootfs_lock_path).unwrap();
     let _rootfs_held = Flock::lock(rootfs_lock_file, FlockArg::LockShared).unwrap();
     let snap_lock_file = lock::open_lock_file(&home.snapshot_lock("snap_used")).unwrap();
     let _snap_held = Flock::lock(snap_lock_file, FlockArg::LockShared).unwrap();
@@ -930,6 +934,16 @@ async fn gc_nested_images_locked_rootfs_keeps_all_snapshots() {
     assert!(snap_used.exists(), "locked snapshot must survive");
     assert!(rootfs_dir.exists(), "rootfs must survive (lock held)");
     assert_eq!(freed, 0);
+}
+
+#[tokio::test]
+async fn gc_nested_images_historical_rootfs_lock_keeps_all_snapshots() {
+    assert_locked_rootfs_keeps_all_snapshots(true).await;
+}
+
+#[tokio::test]
+async fn gc_nested_images_canonical_rootfs_lock_keeps_all_snapshots() {
+    assert_locked_rootfs_keeps_all_snapshots(false).await;
 }
 
 /// A locked snapshot must survive even with keep_latest=0 and old mtime.
@@ -994,6 +1008,51 @@ async fn gc_rootfs_action_keeps_candidate_locked_after_inventory() {
         "a candidate locked after inventory must survive action"
     );
     assert!(rootfs_dir.exists(), "the candidate's rootfs must survive");
+}
+
+async fn assert_rootfs_action_keeps_candidate_for_rootfs_lock(use_legacy_identity: bool) {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+    let rootfs_hash = "rootfs_action_rootfs_lock";
+    let snapshot_hash = "snapshot_action_rootfs_lock";
+    let rootfs_dir = home.images_dir().join(rootfs_hash);
+    let snapshot_dir = rootfs_dir.join("snapshots").join(snapshot_hash);
+    std::fs::create_dir_all(&snapshot_dir).unwrap();
+    std::fs::write(snapshot_dir.join("snapshot.bin"), b"snapshot").unwrap();
+    std::fs::write(rootfs_dir.join("rootfs.ext4"), b"rootfs").unwrap();
+    set_mtime(&snapshot_dir, old_gc_time());
+    set_mtime(&rootfs_dir, old_gc_time());
+
+    let state = rootfs_state_with_deletion(rootfs_dir.clone(), rootfs_hash, snapshot_hash);
+    let rootfs_lock_path = if use_legacy_identity {
+        home.legacy_rootfs_lock(rootfs_hash)
+    } else {
+        home.rootfs_lock(rootfs_hash)
+    };
+    let rootfs_lock_file = lock::open_lock_file(&rootfs_lock_path).unwrap();
+    let _rootfs_lock = Flock::lock(rootfs_lock_file, FlockArg::LockShared).unwrap();
+    let mut action_entry_reader = GcDirEntryReader::new();
+
+    let report = gc_rootfs_action(&home, &state, false, &mut action_entry_reader).await;
+
+    assert_eq!(report, GcReport::default());
+    assert!(
+        snapshot_dir.exists(),
+        "a candidate protected by either rootfs identity must survive action"
+    );
+    assert!(rootfs_dir.exists(), "the candidate's rootfs must survive");
+}
+
+#[tokio::test]
+async fn gc_rootfs_action_keeps_candidate_with_historical_rootfs_lock() {
+    assert_rootfs_action_keeps_candidate_for_rootfs_lock(true).await;
+}
+
+#[tokio::test]
+async fn gc_rootfs_action_keeps_candidate_with_canonical_rootfs_lock() {
+    assert_rootfs_action_keeps_candidate_for_rootfs_lock(false).await;
 }
 
 #[tokio::test]

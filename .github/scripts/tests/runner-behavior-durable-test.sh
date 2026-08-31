@@ -5,8 +5,27 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 BALLOON_DRIVER="$REPO_ROOT/.github/scripts/runner-behavior-balloon.sh"
 BALLOON_REMOTE_WORKER="$REPO_ROOT/.github/scripts/runner-behavior-balloon-remote.sh"
+DRAIN_DRIVER="$REPO_ROOT/.github/scripts/runner-behavior-drain-resume.sh"
+DRAIN_REMOTE_WORKER="$REPO_ROOT/.github/scripts/runner-behavior-drain-resume-remote.sh"
 WORKSPACE_DRIVER="$REPO_ROOT/.github/scripts/runner-behavior-workspace-cache-promotion.sh"
 WORKSPACE_REMOTE_WORKER="$REPO_ROOT/.github/scripts/runner-behavior-workspace-cache-promotion-remote.sh"
+BALLOON_PRESSURE_DRIVER="$REPO_ROOT/.github/scripts/runner-behavior-balloon-pressure.sh"
+BALLOON_PRESSURE_REMOTE_WORKER="$REPO_ROOT/.github/scripts/runner-behavior-balloon-pressure-remote.sh"
+BENCHMARK_DRIVER="$REPO_ROOT/.github/scripts/runner-behavior-benchmark.sh"
+BENCHMARK_REMOTE_WORKER="$REPO_ROOT/.github/scripts/runner-behavior-benchmark-remote.sh"
+CANCEL_DRIVER="$REPO_ROOT/.github/scripts/runner-behavior-cancel.sh"
+CANCEL_REMOTE_WORKER="$REPO_ROOT/.github/scripts/runner-behavior-cancel-remote.sh"
+EXEC_DRIVER="$REPO_ROOT/.github/scripts/runner-behavior-exec.sh"
+EXEC_REMOTE_WORKER="$REPO_ROOT/.github/scripts/runner-behavior-exec-remote.sh"
+KEEP_ALIVE_DRIVER="$REPO_ROOT/.github/scripts/runner-behavior-keep-alive.sh"
+KEEP_ALIVE_REMOTE_WORKER="$REPO_ROOT/.github/scripts/runner-behavior-keep-alive-remote.sh"
+PROCESS_CONTAINMENT_DRIVER="$REPO_ROOT/.github/scripts/runner-behavior-process-containment.sh"
+PROCESS_CONTAINMENT_REMOTE_WORKER="$REPO_ROOT/.github/scripts/runner-behavior-process-containment-remote.sh"
+AGENT_READY_BENCHMARK_REMOTE_WORKER="$REPO_ROOT/.github/scripts/runner-behavior-agent-ready-benchmark-remote.sh"
+SYSTEMD_RELOAD_DRIVER="$REPO_ROOT/.github/scripts/runner-behavior-systemd-reload.sh"
+SYSTEMD_RELOAD_REMOTE_WORKER="$REPO_ROOT/.github/scripts/runner-behavior-systemd-reload-remote.sh"
+UPGRADE_LOCAL_DRIVER="$REPO_ROOT/.github/scripts/runner-behavior-upgrade-local.sh"
+UPGRADE_LOCAL_REMOTE_WORKER="$REPO_ROOT/.github/scripts/runner-behavior-upgrade-local-remote.sh"
 
 assert_contains() {
   local file="$1"
@@ -77,6 +96,16 @@ if [ "$#" -eq 2 ] && [[ "$2" == *"runner config"* ]]; then
   exit 0
 fi
 
+if [ "$#" -eq 2 ] && [[ "$2" == *"published_tmp"* ]]; then
+  cmp - "$EXPECTED_SUPPORT_WORKER"
+  printf '%s\n' "$2" > "$FAKE_SSH_STATE_DIR/support-stage-command"
+  support_stage_attempt=$(increment support-stage-attempt-count)
+  if [ "$support_stage_attempt" -eq 1 ]; then
+    exit 255
+  fi
+  exit 0
+fi
+
 if [ "$#" -eq 8 ] && [ "$2" = "bash" ] && [ "$3" = "-s" ]; then
   cat > "$FAKE_SSH_STATE_DIR/cleanup-script"
   increment cleanup-count >/dev/null
@@ -88,6 +117,7 @@ if [ "$#" -eq 2 ] && [[ "$2" == *"worker.XXXXXX"* ]]; then
   mkdir -p "$FAKE_REMOTE_DIR"
   cat > "$FAKE_REMOTE_WORKER" <<'FAKE_REMOTE_WORKER_SCRIPT'
 #!/usr/bin/env bash
+printf '%s\n' "${3:-}" > "$FAKE_WORKER_ARGUMENT_FILE"
 while [ ! -f "$FAKE_WORKER_RELEASE" ]; do
   /bin/sleep 0.01
 done
@@ -108,7 +138,8 @@ if [ "$#" -eq 2 ] && [[ "$2" == "cat -- "* ]]; then
   exit 0
 fi
 
-if [ "$#" -eq 11 ] && [ "$2" = "bash" ] && [ "$3" = "-s" ]; then
+if [ "$#" -ge 11 ] && [ "$#" -le 12 ] \
+  && [ "$2" = "bash" ] && [ "$3" = "-s" ]; then
   cat > "$FAKE_SSH_STATE_DIR/launch-script"
   launch_attempt=$(increment launch-attempt-count)
   launch_status=0
@@ -116,7 +147,7 @@ if [ "$#" -eq 11 ] && [ "$2" = "bash" ] && [ "$3" = "-s" ]; then
     cd "$FAKE_REMOTE_CWD"
     HOME="$FAKE_REMOTE_HOME" bash "$FAKE_SSH_STATE_DIR/launch-script" \
       "$FAKE_REMOTE_DIR" "$FAKE_REMOTE_WORKER" "$FAKE_REMOTE_LOG" \
-      "$FAKE_REMOTE_STATUS" "$9" "${10}" "${11}"
+      "$FAKE_REMOTE_STATUS" "$9" "${10}" "${11}" "${@:12}"
   ) || launch_status=$?
   if [ "$launch_status" -ne 0 ]; then
     exit "$launch_status"
@@ -157,6 +188,11 @@ set -euo pipefail
 printf '%s\n' "$*" >> "$FAKE_SLEEP_INVOCATIONS"
 if [ "$*" = "2" ]; then
   touch "$FAKE_WORKER_RELEASE"
+  for _ in $(seq 1 100); do
+    [ -f "$FAKE_REMOTE_STATUS" ] && break
+    /bin/sleep 0.01
+  done
+  test -f "$FAKE_REMOTE_STATUS"
 fi
 /bin/sleep 0.01
 FAKE_SLEEP
@@ -245,7 +281,10 @@ run_driver_case() {
   local case_name="$1"
   local driver="$2"
   local remote_worker="$3"
-  local expected_cleanup_count="$4"
+  local expected_config_count="$4"
+  local expected_cleanup_count="$5"
+  local expected_worker_argument="${6:-}"
+  local expected_support_worker="${7:-}"
   local case_dir="$state_dir/$case_name"
   local runner_temp="$case_dir/runner-temp"
   local fake_remote_dir="$case_dir/remote"
@@ -267,6 +306,7 @@ run_driver_case() {
     FAKE_REMOTE_WORKER="$fake_remote_worker" \
     FAKE_REMOTE_LOG="$fake_remote_log" \
     FAKE_REMOTE_STATUS="$fake_remote_status" \
+    FAKE_WORKER_ARGUMENT_FILE="$case_dir/worker-argument" \
     FAKE_REMOTE_HOME="$fake_remote_home" \
     FAKE_REMOTE_CWD="$fake_remote_cwd" \
     FAKE_WORKER_RELEASE="$case_dir/release-worker" \
@@ -276,6 +316,7 @@ run_driver_case() {
     FAKE_SYSTEMD_RUN_COUNT_FILE="$case_dir/execution-count" \
     FAKE_SYSTEMD_RUN_ARGS_FILE="$case_dir/systemd-run-args" \
     FAKE_SYSTEMD_COMMAND_STATUS_FILE="$case_dir/systemd-command-status" \
+    EXPECTED_SUPPORT_WORKER="$expected_support_worker" \
     RUNNER_TEMP="$runner_temp" \
     METAL_USER="metal" \
     HOST="runner.example.test" \
@@ -295,7 +336,7 @@ run_driver_case() {
     exit 1
   }
 
-  assert_value "$case_dir/config-count" "1"
+  assert_value "$case_dir/config-count" "$expected_config_count"
   assert_value "$case_dir/stage-count" "1"
   assert_value "$case_dir/launch-attempt-count" "2"
   assert_value "$case_dir/execution-count" "1"
@@ -303,6 +344,7 @@ run_driver_case() {
   assert_value "$case_dir/fetch-count" "1"
   assert_value "$case_dir/remove-count" "1"
   assert_value "$case_dir/systemd-command-status" "37"
+  assert_value "$case_dir/worker-argument" "$expected_worker_argument"
   test -f "$case_dir/atomic-status-observed"
   test ! -e "$fake_remote_dir"
   test ! -e "$case_dir/systemd-active"
@@ -313,9 +355,22 @@ run_driver_case() {
   assert_contains "$case_dir/systemd-run-args" "--gid=$(id -g)"
   assert_contains "$case_dir/systemd-run-args" "--working-directory=$fake_remote_cwd"
   assert_contains "$case_dir/systemd-run-args" "--setenv=HOME=$fake_remote_home"
+  assert_contains "$case_dir/systemd-run-args" \
+    "--setenv=RUNNER_BEHAVIOR_DURABLE_UNIT=vm0-ci-${case_name}-30429172938-1.service"
   assert_count "$case_dir/stdout" "1" "$durable_output"
   assert_contains "$case_dir/stderr" "Lost SSH launch response"
   assert_contains "$case_dir/stderr" "Transient SSH failure while observing ${case_name} result"
+
+  if [ -n "$expected_support_worker" ]; then
+    assert_value "$case_dir/support-stage-attempt-count" "2"
+    assert_contains "$case_dir/support-stage-command" "sha256sum"
+    assert_contains "$case_dir/support-stage-command" "sudo mktemp"
+    assert_contains "$case_dir/support-stage-command" "sudo mv --"
+    assert_contains "$case_dir/stderr" \
+      "Transient SSH failure while staging Agent-ready benchmark worker"
+  else
+    test ! -e "$case_dir/support-stage-attempt-count"
+  fi
 
   if [ "$expected_cleanup_count" -eq 0 ]; then
     test ! -e "$case_dir/cleanup-count"
@@ -341,8 +396,24 @@ run_driver_case() {
   LAST_REMOTE_CWD="$fake_remote_cwd"
 }
 
-run_driver_case balloon "$BALLOON_DRIVER" "$BALLOON_REMOTE_WORKER" 0
-run_driver_case workspace-cache-promotion "$WORKSPACE_DRIVER" "$WORKSPACE_REMOTE_WORKER" 1
+run_driver_case balloon "$BALLOON_DRIVER" "$BALLOON_REMOTE_WORKER" 1 0
+run_driver_case drain-resume "$DRAIN_DRIVER" "$DRAIN_REMOTE_WORKER" 1 0
+run_driver_case workspace-cache-promotion "$WORKSPACE_DRIVER" "$WORKSPACE_REMOTE_WORKER" 1 1
+run_driver_case balloon-pressure \
+  "$BALLOON_PRESSURE_DRIVER" "$BALLOON_PRESSURE_REMOTE_WORKER" 1 1
+run_driver_case benchmark "$BENCHMARK_DRIVER" "$BENCHMARK_REMOTE_WORKER" 1 0
+run_driver_case cancel "$CANCEL_DRIVER" "$CANCEL_REMOTE_WORKER" 1 1
+run_driver_case exec "$EXEC_DRIVER" "$EXEC_REMOTE_WORKER" 1 0
+run_driver_case keep-alive "$KEEP_ALIVE_DRIVER" "$KEEP_ALIVE_REMOTE_WORKER" 1 1
+run_driver_case process-containment \
+  "$PROCESS_CONTAINMENT_DRIVER" "$PROCESS_CONTAINMENT_REMOTE_WORKER" 1 1 \
+  3 "$AGENT_READY_BENCHMARK_REMOTE_WORKER"
+run_driver_case systemd-reload \
+  "$SYSTEMD_RELOAD_DRIVER" "$SYSTEMD_RELOAD_REMOTE_WORKER" 2 0
+assert_contains "$SYSTEMD_RELOAD_REMOTE_WORKER" \
+  "REQUEST_SCOPE=\"unit \${RUNNER_BEHAVIOR_DURABLE_UNIT}\""
+run_driver_case upgrade-local \
+  "$UPGRADE_LOCAL_DRIVER" "$UPGRADE_LOCAL_REMOTE_WORKER" 2 0
 
 case_dir="$LAST_CASE_DIR"
 fake_remote_home="$LAST_REMOTE_HOME"

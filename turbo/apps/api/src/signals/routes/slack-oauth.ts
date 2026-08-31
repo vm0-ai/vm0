@@ -127,13 +127,8 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
   };
 }
 
-// Deliberately still the branded form after #28600 moved the callback contract
-// to `/api/integrations/slack/oauth/callback`. Slack rejects a token exchange
-// whose `redirect_uri` is not registered in the app configuration, and that
-// configuration has not been repointed, so this value moves only once it has.
-// Its `MIGRATED_BRANDED_PATHS` row keeps the path served in the meantime.
 function callbackRedirectUri(origin: string): string {
-  return `${origin}/api/zero/slack/oauth/callback`;
+  return `${origin}/api/integrations/slack/oauth/callback`;
 }
 
 function slackCredentials(): {

@@ -27,19 +27,12 @@ const bdd = createBddApi(context);
 const chat = createChatFilesBddApi(context);
 const CRON_SECRET = "durable-chat-search-projection-secret";
 
-async function projectChatEventSearch() {
+function cronClient() {
   mockEnv("CRON_SECRET", CRON_SECRET);
-  const client = setupApp({
+  return setupApp({
     context,
     routes: cronProjectChatEventSearchRoutes,
   })(cronProjectChatEventSearchContract);
-  const response = await accept(
-    client.project({
-      headers: { authorization: `Bearer ${CRON_SECRET}` },
-    }),
-    [200],
-  );
-  return response.body;
 }
 
 async function projectOwnedChatEventSearch(chatThreadIds: readonly string[]) {
@@ -79,14 +72,12 @@ describe("GET /api/cron/project-chat-event-search", () => {
       terminalText,
     });
 
-    const tick = await projectChatEventSearch();
+    const tick = await projectOwnedChatEventSearch([chatThreadId]);
     expect(tick.success).toBeTruthy();
-    expect(tick.threads).toBeGreaterThanOrEqual(1);
-    expect(tick.indexedEvents).toBeGreaterThanOrEqual(2);
-    expect(tick.convergence.eligibleThreads).toBeGreaterThanOrEqual(
-      tick.convergence.durableCaughtUpThreads,
-    );
-    expect(tick.convergence.durableCaughtUpThreads).toBeGreaterThanOrEqual(1);
+    expect(tick.threads).toBe(1);
+    expect(tick.indexedEvents).toBe(2);
+    expect(tick.convergence.eligibleThreads).toBe(1);
+    expect(tick.convergence.durableCaughtUpThreads).toBe(1);
 
     const projection = await readChatEventSearchProjectionFixture(chatThreadId);
     expect(projection.messages).toStrictEqual([
@@ -104,6 +95,14 @@ describe("GET /api/cron/project-chat-event-search", () => {
       },
     ]);
     expect(projection.indexedSeqId).toBe(projection.lastChatEventSeqId);
+  });
+
+  it("requires the cron secret", async () => {
+    const response = await accept(cronClient().project({ headers: {} }), [401]);
+
+    expect(response.body).toStrictEqual({
+      error: { code: "UNAUTHORIZED", message: "Invalid cron secret" },
+    });
   });
 
   it("keeps overlapping projection ticks idempotent", async () => {

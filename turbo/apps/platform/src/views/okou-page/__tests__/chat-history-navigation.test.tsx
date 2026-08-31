@@ -12,6 +12,7 @@ import {
   type ChatThreadEvent,
   type ChatEvent,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import { browserContract } from "@okouai/api-contracts/contracts/browser";
 import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../../signals/okou-page/sidebar-state.ts";
 import { pathname$ } from "../../../signals/route.ts";
 import { click, fill } from "../../../__tests__/page-helper.ts";
@@ -793,7 +794,19 @@ describe("chat lifecycle", () => {
 
   it("aligns the next thread shortcut to the sidebar bottom from the composer", async () => {
     mockResizeObserver();
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(performance.now());
+      return 1;
+    });
     mockKeyboardNavigationThreads();
+    context.mocks.api(browserContract.get, ({ respond }) => {
+      return respond(404, {
+        error: { code: "BROWSER_NOT_FOUND", message: "Browser not found" },
+      });
+    });
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      return respond(200, chatEventRowsResponse([], query));
+    });
 
     detachedSetupPage({
       context,
@@ -802,14 +815,11 @@ describe("chat lifecycle", () => {
 
     const chatList = await screen.findByTestId("chat-list-column");
     await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
+      expect(chatComposerTextarea()).toBeInTheDocument();
       expect(
         within(chatList).getByTestId("sidebar-chat-threads-virtual-list"),
       ).toBeInTheDocument();
     });
-
     const sidebarScrollArea = within(chatList).getByTestId(
       "sidebar-scroll-area",
     );
@@ -839,9 +849,9 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Next thread launch note")).toBeInTheDocument();
-    });
-    await waitFor(() => {
+      expect(context.store.get(pathname$)).toBe(
+        `/chats/${KEYBOARD_NEXT_THREAD_ID}`,
+      );
       expect(sidebarScrollArea.scrollTop).toBe(CHAT_THREAD_VIRTUAL_ROW_HEIGHT);
     });
   });
