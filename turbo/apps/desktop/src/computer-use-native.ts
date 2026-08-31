@@ -1,7 +1,9 @@
 import { spawn } from "node:child_process";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync } from "node:fs";
-import path from "node:path";
+import {
+  resolveNativeHelperPath,
+  type ResolveNativeHelperPathOptions,
+} from "./native-helper-path";
 import type {
   AccessibilityAppStateSnapshot,
   ComputerUseCommandFailure,
@@ -14,6 +16,8 @@ import type {
   ComputerUseAutomationPermissionTargetState,
   ComputerUsePermissionState,
 } from "./computer-use-types";
+
+const COMPUTER_USE_HELPER_NAME = "computer-use-helper";
 
 type ComputerUseNativeErrorCode = ComputerUseCommandFailure["error"]["code"];
 
@@ -146,12 +150,6 @@ interface ComputerUseNativeFailureResponse {
 type ComputerUseNativeResponse =
   | ComputerUseNativeSuccessResponse
   | ComputerUseNativeFailureResponse;
-
-interface ResolveComputerUseHelperPathOptions {
-  readonly appRoot?: string;
-  readonly resourcesPath?: string;
-  readonly exists?: (candidate: string) => boolean;
-}
 
 interface RunComputerUseHelperOptions {
   readonly helperPath?: string;
@@ -412,35 +410,10 @@ function resultAutomationPermissionTargetState(
   };
 }
 
-function helperPathCandidates(
-  options: ResolveComputerUseHelperPathOptions,
-): readonly [string, string, string] {
-  const appRoot = options.appRoot ?? path.resolve(__dirname, "..");
-  const resourcesPath =
-    options.resourcesPath ?? process.resourcesPath ?? appRoot;
-  return [
-    path.join(resourcesPath, "native", "computer-use-helper"),
-    path.join(appRoot, "native", "dist", "native", "computer-use-helper"),
-    path.join(
-      appRoot,
-      "native",
-      "computer-use-helper",
-      ".build",
-      "release",
-      "computer-use-helper",
-    ),
-  ];
-}
-
 export function resolveComputerUseHelperPath(
-  options: ResolveComputerUseHelperPathOptions = {},
+  options: ResolveNativeHelperPathOptions = {},
 ): string {
-  const exists = options.exists ?? existsSync;
-  const candidates = helperPathCandidates(options);
-  const existing = candidates.find((candidate) => {
-    return exists(candidate);
-  });
-  return existing ?? candidates[1];
+  return resolveNativeHelperPath(COMPUTER_USE_HELPER_NAME, options);
 }
 
 async function runComputerUseHelper(
