@@ -1008,30 +1008,13 @@ describe("chat lifecycle", () => {
 
   it("keeps active submission state scoped to its thread", async () => {
     const user = userEvent.setup({ delay: null });
-    const sourceEvents: MockChatEventInput[] = [
-      ...threadIsolationSourceEvents(),
-      {
-        id: "msg-pending-user",
-        seqId: 4,
-        role: "user",
-        runId: "run-pending",
-        content: "Pending follow-up",
-        createdAt: "2026-03-10T00:00:03Z",
-      },
-      {
-        id: "msg-pending-assistant",
-        seqId: 5,
-        role: "assistant",
-        runId: "run-pending",
-        content: null,
-        createdAt: "2026-03-10T00:00:04Z",
-      },
-    ];
+    const sendGate = context.mocks.deferred<void>();
+    const sourceEvents = threadIsolationSourceEvents();
     const destinationEvents = threadIsolationDestinationEvents();
     const lifecycle = mockChatLifecycle(context, {
       threadId: THREAD_ISOLATION_SOURCE_ID,
       threadTitle: "Long thread",
-      activeRunIds: ["run-pending"],
+      sendGate: sendGate.promise,
       chatEvents: sourceEvents,
     });
     lifecycle.setThreadList(threadIsolationList());
@@ -1046,6 +1029,13 @@ describe("chat lifecycle", () => {
       path: `/chats/${THREAD_ISOLATION_SOURCE_ID}`,
     });
 
+    await expect(
+      screen.findByText("Existing context"),
+    ).resolves.toBeInTheDocument();
+    const textarea = screen.getByPlaceholderText(
+      PLACEHOLDER,
+    ) as HTMLTextAreaElement;
+    await sendMessageInUI(user, textarea, "Pending follow-up");
     await waitFor(() => {
       expect(screen.getByText("Pending follow-up")).toBeInTheDocument();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
