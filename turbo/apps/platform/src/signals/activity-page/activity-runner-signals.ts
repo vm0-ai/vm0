@@ -3,7 +3,7 @@ import { runRunnerContract } from "@okouai/api-contracts/contracts/run-routes";
 import type {
   SandboxReuseResult,
   WorkspaceReuseResult,
-} from "@okouai/api-contracts/contracts/webhooks";
+} from "@okouai/api-contracts/contracts/runner-primitives";
 import { apiClient$ } from "../api-client.ts";
 import { currentRunId$, activityDetail$ } from "./activity-signals.ts";
 import { accept } from "../../lib/accept.ts";
