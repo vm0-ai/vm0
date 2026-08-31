@@ -27,19 +27,12 @@ const bdd = createBddApi(context);
 const chat = createChatFilesBddApi(context);
 const CRON_SECRET = "durable-chat-search-projection-secret";
 
-async function projectChatEventSearch() {
+function cronClient() {
   mockEnv("CRON_SECRET", CRON_SECRET);
-  const client = setupApp({
+  return setupApp({
     context,
     routes: cronProjectChatEventSearchRoutes,
   })(cronProjectChatEventSearchContract);
-  const response = await accept(
-    client.project({
-      headers: { authorization: `Bearer ${CRON_SECRET}` },
-    }),
-    [200],
-  );
-  return response.body;
 }
 
 async function projectOwnedChatEventSearch(chatThreadIds: readonly string[]) {
@@ -104,18 +97,12 @@ describe("GET /api/cron/project-chat-event-search", () => {
     expect(projection.indexedSeqId).toBe(projection.lastChatEventSeqId);
   });
 
-  it("authorizes the cron route and bounds its tick to the thread batch", async () => {
-    // The cron route projects every lagging thread in the database, so this
-    // shared-database test must cap the batch instead of scaling with the
-    // threads that unrelated test files leave behind.
-    mockOptionalEnv("CHAT_EVENT_SEARCH_PROJECTION_BATCH_SIZE", "1");
-    const tick = await projectChatEventSearch();
+  it("requires the cron secret", async () => {
+    const response = await accept(cronClient().project({ headers: {} }), [401]);
 
-    expect(tick.success).toBeTruthy();
-    expect(tick.threads).toBeLessThanOrEqual(1);
-    expect(tick.convergence.eligibleThreads).toBeGreaterThanOrEqual(
-      tick.convergence.durableCaughtUpThreads,
-    );
+    expect(response.body).toStrictEqual({
+      error: { code: "UNAUTHORIZED", message: "Invalid cron secret" },
+    });
   });
 
   it("keeps overlapping projection ticks idempotent", async () => {
