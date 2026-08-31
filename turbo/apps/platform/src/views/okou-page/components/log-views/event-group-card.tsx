@@ -378,16 +378,24 @@ function isCodexSubAgentActivityKind(
 function CodexSystemEventGroupCard({
   eventData,
   subtype,
+  subAgentKind,
   showConnector,
   timestamp,
 }: {
   eventData: Record<string, unknown>;
-  subtype: "codex_sub_agent_activity" | "codex_context_compaction";
   showConnector: boolean;
   timestamp: string;
-}) {
+} & (
+  | {
+      subtype: "codex_sub_agent_activity";
+      subAgentKind: CodexSubAgentActivityKind;
+    }
+  | {
+      subtype: "codex_context_compaction";
+      subAgentKind?: never;
+    }
+)) {
   const { t } = useTranslation();
-  const subAgentKind = stringValue(eventData.activity_kind);
   const subAgentIdentity =
     stringValue(eventData.agent_path) ??
     stringValue(eventData.agent_thread_id) ??
@@ -418,9 +426,6 @@ function CodexSystemEventGroupCard({
               return t(($) => {
                 return $.activity.codex.subAgentActivity.completed;
               });
-            }
-            default: {
-              return "";
             }
           }
         })();
@@ -492,15 +497,25 @@ function SystemEventGroupCard({
 
   const timestamp = formatEventTime(group.createdAt, startedAt);
   const subAgentKind = stringValue(eventData.activity_kind);
+  if (subtype === "codex_context_compaction") {
+    return (
+      <CodexSystemEventGroupCard
+        eventData={eventData}
+        subtype={subtype}
+        showConnector={showConnector}
+        timestamp={timestamp}
+      />
+    );
+  }
   if (
-    subtype === "codex_context_compaction" ||
-    (subtype === "codex_sub_agent_activity" &&
-      isCodexSubAgentActivityKind(subAgentKind))
+    subtype === "codex_sub_agent_activity" &&
+    isCodexSubAgentActivityKind(subAgentKind)
   ) {
     return (
       <CodexSystemEventGroupCard
         eventData={eventData}
         subtype={subtype}
+        subAgentKind={subAgentKind}
         showConnector={showConnector}
         timestamp={timestamp}
       />

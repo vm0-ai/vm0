@@ -33,6 +33,7 @@ interface CodexNormalizedEvent {
 }
 
 const MAX_FORMATTED_ARRAY_ITEMS = 6;
+const MAX_FORMATTED_ARRAY_INSPECTED_ITEMS = 16;
 const MAX_FORMATTED_ARRAY_DEPTH = 4;
 const MAX_FORMATTED_OBJECT_FIELDS = 8;
 const MAX_FORMATTED_OBJECT_INSPECTED_FIELDS = 16;
@@ -119,11 +120,16 @@ function getStringArray(
     if (!Array.isArray(value)) {
       continue;
     }
-    return value
-      .filter((item): item is string => {
-        return typeof item === "string" && item.trim().length > 0;
-      })
-      .slice(0, MAX_FORMATTED_AGENT_STATES);
+    const items: string[] = [];
+    for (const item of value.slice(0, MAX_FORMATTED_ARRAY_INSPECTED_ITEMS)) {
+      if (typeof item === "string" && item.trim().length > 0) {
+        items.push(truncate(item.trim()));
+      }
+      if (items.length >= MAX_FORMATTED_AGENT_STATES) {
+        break;
+      }
+    }
+    return items;
   }
   return [];
 }
@@ -1464,13 +1470,13 @@ function codexCollabInput(
     input.receiver_thread_ids = receiverThreadIds;
   }
   if (prompt) {
-    input.prompt = prompt;
+    input.prompt = truncate(prompt);
   }
   if (model) {
-    input.model = model;
+    input.model = truncate(model);
   }
   if (reasoningEffort) {
-    input.reasoning_effort = reasoningEffort;
+    input.reasoning_effort = truncate(reasoningEffort);
   }
   return input;
 }
@@ -1480,27 +1486,36 @@ function formatCodexCollabResult(item: Record<string, unknown>): string {
   const statesValue = item.agents_states ?? item.agentsStates;
   const lines: string[] = [];
   if (isRecord(statesValue)) {
-    const entries = Object.entries(statesValue);
-    for (const [threadId, rawState] of entries.slice(
-      0,
-      MAX_FORMATTED_AGENT_STATES,
-    )) {
+    let inspectedStates = 0;
+    for (const threadId in statesValue) {
+      if (!hasOwnKey(statesValue, threadId)) {
+        continue;
+      }
+      if (
+        lines.length >= MAX_FORMATTED_AGENT_STATES ||
+        inspectedStates >= MAX_FORMATTED_OBJECT_INSPECTED_FIELDS
+      ) {
+        lines.push("...");
+        break;
+      }
+      inspectedStates += 1;
+      const rawState = statesValue[threadId];
       if (!isRecord(rawState)) {
         continue;
       }
       const agentStatus = getFirstString(rawState, ["status"]);
       const message = getFirstNonBlankString(rawState, ["message"]);
-      const details = [agentStatus, message].filter(
-        (value): value is string => {
+      const details = [agentStatus, message]
+        .filter((value): value is string => {
           return value !== undefined;
-        },
-      );
+        })
+        .map(truncate);
+      const displayThreadId = truncate(threadId);
       lines.push(
-        details.length > 0 ? `${threadId}: ${details.join(" — ")}` : threadId,
+        details.length > 0
+          ? `${displayThreadId}: ${details.join(" — ")}`
+          : displayThreadId,
       );
-    }
-    if (entries.length > MAX_FORMATTED_AGENT_STATES) {
-      lines.push(`... +${entries.length - MAX_FORMATTED_AGENT_STATES}`);
     }
   }
   if (lines.length > 0) {
@@ -1571,8 +1586,8 @@ function normalizeCodexSubAgentActivity(
   return makeCodexActivitySystemEvent(event, "codex_sub_agent_activity", {
     item_id: itemId,
     activity_kind: kind,
-    agent_thread_id: agentThreadId,
-    agent_path: agentPath,
+    agent_thread_id: agentThreadId ? truncate(agentThreadId) : undefined,
+    agent_path: agentPath ? truncate(agentPath) : undefined,
   });
 }
 
