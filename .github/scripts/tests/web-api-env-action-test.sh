@@ -325,9 +325,6 @@ build_doppler_secrets_json() {
     fi
     json="$(jq -c --arg key "$key" --arg value "doppler-${key}" '. + {($key): $value}' <<< "$json")"
   done <<< "$(oauth_client_config_keys)"
-  if [[ "$omit_key" != "STRIPE_OAUTH_CLIENT_ID" ]]; then
-    json="$(jq -c --arg value "doppler-STRIPE_OAUTH_CLIENT_ID" '. + {STRIPE_OAUTH_CLIENT_ID: $value}' <<< "$json")"
-  fi
   json="$(
     jq -c '
       . + {
@@ -679,6 +676,7 @@ assert_env_value "$success_env_file" GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME "
 assert_env_value "$success_env_file" GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_AUDIENCE "https://api.github.test/api/webhooks/google-workspace-events"
 assert_env_value "$success_env_file" GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL "workspace-events-push@github.test"
 assert_env_value "$success_env_file" STRIPE_OAUTH_CLIENT_ID "doppler-STRIPE_OAUTH_CLIENT_ID"
+assert_env_value "$success_env_file" STRIPE_OAUTH_CLIENT_SECRET "doppler-STRIPE_OAUTH_CLIENT_SECRET"
 assert_env_value "$success_env_file" STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID "bpc_test_concurrency"
 assert_env_absent_value "$success_env_file" "github-gh-client-id"
 assert_env_absent_value "$success_env_file" "github-gh-client-secret"
@@ -813,6 +811,15 @@ if [[ "$status" -eq 0 ]]; then
   fail "expected missing Stripe Doppler OAuth client id to fail"
 fi
 assert_contains "$missing_stripe_output" "::error::STRIPE_OAUTH_CLIENT_ID is missing from Doppler OAuth config"
+
+missing_stripe_secret_dir="$(mktemp -d)"
+TEMP_DIRS+=("$missing_stripe_secret_dir")
+status=0
+missing_stripe_secret_output="$(run_action "$(build_doppler_secrets_json STRIPE_OAUTH_CLIENT_SECRET)" "$missing_stripe_secret_dir" 2>&1)" || status=$?
+if [[ "$status" -eq 0 ]]; then
+  fail "expected missing Stripe Doppler OAuth client secret to fail"
+fi
+assert_contains "$missing_stripe_secret_output" "::error::STRIPE_OAUTH_CLIENT_SECRET is missing from Doppler OAuth config"
 
 missing_cli_pkg_dir="$(mktemp -d)"
 TEMP_DIRS+=("$missing_cli_pkg_dir")

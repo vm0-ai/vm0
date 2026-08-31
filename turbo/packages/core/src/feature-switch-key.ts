@@ -31,6 +31,7 @@ export enum FeatureSwitchKey {
   MailchimpConnector = "mailchimpConnector",
   ResendConnector = "resendConnector",
   SpotifyConnector = "spotifyConnector",
+  StripeMarketplaceOAuthConnector = "stripeMarketplaceOAuthConnector",
   OkouDebug = "okouDebug",
   Banking = "banking",
   Lab = "lab",

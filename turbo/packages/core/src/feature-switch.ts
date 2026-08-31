@@ -173,6 +173,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Spotify connector integration",
     enabled: false,
   },
+  [FeatureSwitchKey.StripeMarketplaceOAuthConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Show Stripe Marketplace OAuth as a sign-in option for the Stripe connector.",
+    enabled: false,
+  },
   [FeatureSwitchKey.OkouDebug]: {
     maintainer: "ethan@vm0.ai",
     description:
