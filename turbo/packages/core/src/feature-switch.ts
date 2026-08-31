@@ -284,6 +284,15 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
+  [FeatureSwitchKey.DesktopScreenRecording]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable Okou Desktop screen recording: native capture, click track, and delivery back into the intro video workflow.",
+    enabled: false,
+    // Scoped to the maintainer while the native capture helper is still
+    // unproven outside CI; widen once it has run on real hardware.
+    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
+  },
   [FeatureSwitchKey.ChatConversationLocator]: {
     maintainer: "tongx@vm0.ai",
     description:

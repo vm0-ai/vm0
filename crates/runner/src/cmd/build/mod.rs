@@ -1,8 +1,6 @@
-use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use clap::Args;
-use nix::fcntl::Flock;
 use sandbox::SnapshotProvider;
 use sandbox_fc::DNS_PROBE_RESOLVER_IPV4;
 
@@ -13,6 +11,7 @@ use crate::lock;
 use crate::paths::{HomePaths, RootfsPaths, touch_mtime};
 use crate::profile;
 use crate::r2_cache::R2ImageCache;
+use crate::rootfs_lock::{self, RootfsLockGuard};
 
 mod guest;
 mod hashes;
@@ -259,8 +258,8 @@ struct RootfsBuildInput<'a> {
 }
 
 enum RootfsImageLock {
-    Shared { _guard: Flock<File> },
-    Exclusive { _guard: Flock<File> },
+    Shared { _guard: RootfsLockGuard },
+    Exclusive { _guard: RootfsLockGuard },
 }
 
 impl RootfsImageLock {
@@ -288,16 +287,11 @@ async fn acquire_rootfs_lock_for_image_build_inner(
     rootfs_paths: &RootfsPaths,
     mut before_shared_lock: impl FnMut(),
 ) -> RunnerResult<RootfsImageLock> {
-    let rootfs_lock_path = paths.rootfs_lock(rootfs_hash);
-
     loop {
         if is_rootfs_present(rootfs_paths).await? {
             before_shared_lock();
-            tracing::info!(
-                "acquiring shared rootfs lock for image build: {}",
-                rootfs_lock_path.display()
-            );
-            let guard = lock::acquire_shared(rootfs_lock_path.clone()).await?;
+            tracing::info!("acquiring shared rootfs lock pair for image build: {rootfs_hash}");
+            let guard = rootfs_lock::acquire_shared(paths, rootfs_hash).await?;
             if is_rootfs_present(rootfs_paths).await? {
                 return Ok(RootfsImageLock::Shared { _guard: guard });
             }
@@ -308,11 +302,8 @@ async fn acquire_rootfs_lock_for_image_build_inner(
             continue;
         }
 
-        tracing::info!(
-            "acquiring exclusive rootfs lock for image build: {}",
-            rootfs_lock_path.display()
-        );
-        let guard = lock::acquire(rootfs_lock_path.clone()).await?;
+        tracing::info!("acquiring exclusive rootfs lock pair for image build: {rootfs_hash}");
+        let guard = rootfs_lock::acquire(paths, rootfs_hash).await?;
         if is_rootfs_present(rootfs_paths).await? {
             drop(guard);
             tracing::info!(
@@ -452,7 +443,7 @@ pub async fn run_build(mut args: BuildArgs, provider: &dyn SnapshotProvider) -> 
     ) && is_rootfs_present(rootfs_paths).await?
         && provider.is_complete(snapshot_dir).await.unwrap_or(false)
     {
-        let _rootfs_lock = lock::acquire_shared(paths.rootfs_lock(rootfs_hash)).await?;
+        let _rootfs_lock = rootfs_lock::acquire_shared(&paths, rootfs_hash).await?;
         let rootfs_still_present = is_rootfs_present(rootfs_paths).await?;
         let _snapshot_lock = lock::acquire_shared(paths.snapshot_lock(snapshot_hash)).await?;
         if rootfs_still_present && provider.is_complete(snapshot_dir).await.unwrap_or(false) {
