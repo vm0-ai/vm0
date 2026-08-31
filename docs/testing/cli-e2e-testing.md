@@ -7,7 +7,7 @@ entry points. The current suite covers:
 
 - the packaged canonical `okou` binary through unauthenticated command-boundary
   smoke checks, including rejection of the retired executable name;
-- Clerk sign-up and sign-in through the hosted form UI;
+- Clerk-backed sign-up and sign-in through the platform-owned Auth v2 UI;
 - onboarding, chat submission, runner dispatch, and the assistant result through
   the deployed web application;
 - real Claude BYOK, vm0 built-in Codex, and vm0 built-in Pi execution, including

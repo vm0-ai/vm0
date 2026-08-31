@@ -94,30 +94,11 @@ describe("app auth routes", () => {
       screen.findByRole("region", { name: routeCase.heading }),
     ).resolves.toBeVisible();
     expect(screen.getByTestId("app-auth-v2")).toBeVisible();
-    expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
     expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
       "aria-hidden",
       "true",
     );
     expect(document.title).toBe(routeCase.documentTitle);
-  });
-
-  it.each([
-    { heading: "Sign in to VM0", path: "/v2/sign-in" },
-    {
-      heading: "Create your account",
-      path: "/v2/sign-up/verify-email-address",
-    },
-  ])("keeps the versioned route $path compatible", async (routeCase) => {
-    setBrowserUrl(`https://app.vm0.ai${routeCase.path}`);
-
-    detachedSetupPage({ context, path: routeCase.path });
-
-    await expect(
-      screen.findByRole("region", { name: routeCase.heading }),
-    ).resolves.toBeVisible();
-    expect(screen.getByTestId("app-auth-v2")).toBeVisible();
   });
 
   it("recovers forced organization selection on a stable task route", async () => {
