@@ -5,7 +5,7 @@ import { publicBrandPresentation } from "@okouai/core/public-brand";
 
 import { safeSync, safeUrlParse } from "../utils";
 
-export const OFFICIAL_AUTOMATION_RESULT_EMAIL_HTML_MAX_BYTES = 96 * 1024;
+const OFFICIAL_AUTOMATION_RESULT_EMAIL_HTML_MAX_BYTES = 96 * 1024;
 
 const SAFE_LINK_INFO = "official-email-safe-link";
 const UNSAFE_LINK_INFO = "official-email-unsafe-link";
