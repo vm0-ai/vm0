@@ -16,7 +16,7 @@ import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { exportJobs } from "@okouai/db/schema/export-job";
-import { orgMetadataLegacyWrites } from "@okouai/db/operations/org-metadata-legacy-write";
+import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-canonical-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { hostedDeployments, hostedSites } from "@okouai/db/schema/hosted-site";
 import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
@@ -146,7 +146,7 @@ async function seedRunForAction(
   }
 
   await db
-    .insert(orgMetadataLegacyWrites)
+    .insert(orgMetadataCanonicalWrites)
     .values({
       orgId,
       tier: "free",

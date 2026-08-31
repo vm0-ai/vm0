@@ -7,7 +7,7 @@
  */
 import { orgPlanEntitlementsCanonicalWrites } from "@okouai/db/operations/org-plan-entitlement-canonical-write";
 import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
-import { orgMetadataLegacyWrites } from "@okouai/db/operations/org-metadata-legacy-write";
+import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-canonical-write";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 
@@ -134,7 +134,7 @@ export async function insertOrgMetadataAsLegacyWriterFixture(values: {
 }): Promise<void> {
   await createStore()
     .set(writeDb$)
-    .insert(orgMetadataLegacyWrites)
+    .insert(orgMetadataCanonicalWrites)
     .values(values);
 }
 

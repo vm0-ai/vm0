@@ -14,7 +14,7 @@ import {
 import { connectors } from "@okouai/db/schema/connector";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
-import { orgMetadataLegacyWrites } from "@okouai/db/operations/org-metadata-legacy-write";
+import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-canonical-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { bench } from "vitest";
 import {
@@ -641,7 +641,7 @@ async function seedSideEffectFreeGetData(
     context.signal,
   );
 
-  await db.insert(orgMetadataLegacyWrites).values({
+  await db.insert(orgMetadataCanonicalWrites).values({
     orgId: fixture.orgId,
     credits: 125_000,
     tier: "pro",
