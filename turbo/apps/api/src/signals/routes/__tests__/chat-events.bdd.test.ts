@@ -640,14 +640,10 @@ async function sendChatRun(
       : { userMessage: userMessageWithTemplate(body.prompt, template) }),
     clientEventId: body.clientEventId ?? randomUUID(),
   };
-  const sent = await chat.requestSendEvent(
-    actor,
-    requestBody,
-    [201],
-    undefined,
+  const sent = await chat.requestSendEvent(actor, requestBody, [201], {
     publicBrand,
     usagePricingResolution,
-  );
+  });
   if (sent.status !== 201) {
     throw new Error("Expected the entitled chat send to create a run");
   }
@@ -4126,13 +4122,9 @@ describe("CHAT-02: admission without spendable credits", () => {
       model: "claude-sonnet-5",
       clientEventId,
     };
-    const sent = await chat.requestSendEvent(
-      actor,
-      sendBody,
-      [201],
-      undefined,
-      "okou",
-    );
+    const sent = await chat.requestSendEvent(actor, sendBody, [201], {
+      publicBrand: "okou",
+    });
     if (sent.status !== 201) {
       throw new Error("Expected the blocked send to return 201 without a run");
     }
@@ -4205,8 +4197,7 @@ describe("CHAT-02: admission without spendable credits", () => {
       actor,
       { ...sendBody, threadId: sent.body.threadId },
       [201],
-      undefined,
-      "okou",
+      { publicBrand: "okou" },
     );
     expect(retry.body).toStrictEqual(sent.body);
     const afterRetry = await chat.listThreadEvents(actor, sent.body.threadId);
@@ -6442,7 +6433,12 @@ describe("CHAT-02: model-first provider policies", () => {
       await lifecycleLock.done;
     });
 
-    const cancellation = api.requestCancelRun(actor, run.runId, [200]);
+    const cancellation = api.requestCancelRun(
+      actor,
+      run.runId,
+      [200],
+      usagePricingResolution,
+    );
     await expect.poll(lifecycleLock.waiterCount).toBe(1);
     releaseProvider.resolve(undefined);
     await expect.poll(lifecycleLock.waiterCount).toBe(2);
@@ -6450,10 +6446,6 @@ describe("CHAT-02: model-first provider policies", () => {
     await lifecycleLock.done;
     await cancellation;
     await flushWaitUntilForTest();
-    await api.reconcileBillingOrganizations(
-      [requireOrgId(actor)],
-      usagePricingResolution,
-    );
 
     expect(modelCalls).toBe(1);
     await expectTerraApiFollowUpUsage(run.runId);
@@ -6540,68 +6532,51 @@ describe("CHAT-02: model-first provider policies", () => {
     ).toHaveLength(1);
   }, 90_000);
 
-  it.each([
-    {
-      failure: "resource download",
-      expectedCode: "PI_API_RESOURCE_PREPARATION_FAILED",
-      failResource: true,
-      expectedModelCalls: 0,
-    },
-    {
-      failure: "model request",
-      expectedCode: "PI_API_MODEL_FAILED",
-      failResource: false,
-      expectedModelCalls: 1,
-    },
-  ] as const)(
-    "fails Pi on $failure without claiming Sandbox or replaying the model",
-    async ({ expectedCode, failResource, expectedModelCalls }) => {
-      const { actor, agentId } = await entitledChatActor();
-      if (!actor.orgId) {
-        throw new Error("Expected entitled chat actor to have an org");
-      }
-      await configureBuiltInPiModel(actor, "deepseek-v4-flash");
-      await updateFeatureSwitchesForUser(
-        context,
-        { ...actor, orgId: actor.orgId },
-        { [FeatureSwitchKey.PiLoop]: true },
-      );
-      mockPiResourceArchiveDownloads(failResource);
-      let modelCalls = 0;
-      server.use(
-        http.post("https://api.deepseek.com/responses", () => {
-          modelCalls += 1;
-          return HttpResponse.json(
-            { error: "provider unavailable" },
-            { status: 503 },
-          );
-        }),
-      );
-      const checkpointObjects = mockPiCheckpointObjectStore();
-      const prompt = `strict ${expectedCode} prompt`;
-      const run = await sendChatRun(actor, {
-        agentId,
-        prompt,
-        model: "deepseek-v4-flash",
-      });
+  it("fails Pi after one model request without claiming Sandbox or replaying the model", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected entitled chat actor to have an org");
+    }
+    await configureBuiltInPiModel(actor, "deepseek-v4-flash");
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.PiLoop]: true },
+    );
+    mockPiResourceArchiveDownloads();
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.deepseek.com/responses", () => {
+        modelCalls += 1;
+        return HttpResponse.json(
+          { error: "provider unavailable" },
+          { status: 503 },
+        );
+      }),
+    );
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    const prompt = "strict PI_API_MODEL_FAILED prompt";
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt,
+      model: "deepseek-v4-flash",
+    });
 
-      await waitForRunStatus(actor, run.runId, "failed", 5000);
-      await flushWaitUntilForTest();
-      const failed = await api.readRun(actor, run.runId);
-      expect(failed.error).toContain(`[${expectedCode}]`);
-      expect(modelCalls).toBe(expectedModelCalls);
-      expect(
-        checkpointObjects.has(
-          `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`,
-        ),
-      ).toBeFalsy();
-      const claim = await api.requestClaimRunnerJob(true, run.runId, [404]);
-      expect(claim.status).toBe(404);
-    },
-    90_000,
-  );
+    await waitForRunStatus(actor, run.runId, "failed");
+    await flushWaitUntilForTest();
+    const failed = await api.readRun(actor, run.runId);
+    expect(failed.error).toContain("[PI_API_MODEL_FAILED]");
+    expect(modelCalls).toBe(1);
+    expect(
+      checkpointObjects.has(
+        `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`,
+      ),
+    ).toBeFalsy();
+    const claim = await api.requestClaimRunnerJob(true, run.runId, [404]);
+    expect(claim.status).toBe(404);
+  }, 90_000);
 
-  it("hands a proven pre-provider failure to Sandbox without replaying a later provider failure", async () => {
+  it("hands a Terra resource failure to Sandbox without replaying a later provider failure", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     if (!actor.orgId) {
       throw new Error("Expected entitled chat actor to have an org");
@@ -6623,7 +6598,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
     expect(anchorClaim.claim.cliAgentType).toBe("claude-code");
 
-    await configureBuiltInPiModel(actor, "deepseek-v4-flash");
+    await configureBuiltInPiModel(actor, "gpt-5.6-terra");
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId: actor.orgId },
@@ -6632,7 +6607,7 @@ describe("CHAT-02: model-first provider policies", () => {
     mockPiResourceArchiveDownloads(true);
     let modelCalls = 0;
     server.use(
-      http.post("https://api.deepseek.com/responses", () => {
+      http.post("https://api.openai.com/v1/responses", () => {
         modelCalls += 1;
         return HttpResponse.json(
           { error: "provider unavailable" },
@@ -6645,20 +6620,14 @@ describe("CHAT-02: model-first provider policies", () => {
     const fallback = await sendChatRun(actor, {
       agentId,
       prompt: fallbackPrompt,
-      model: "deepseek-v4-flash",
+      model: "gpt-5.6-terra",
     });
     await waitForRunStatus(actor, fallback.runId, "queued");
 
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
     const fallbackManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${fallback.runId}/manifest.json`;
-    await expect
-      .poll(
-        () => {
-          return checkpointObjects.get(fallbackManifestKey);
-        },
-        { timeout: 5000 },
-      )
-      .toBeInstanceOf(Buffer);
+    expect(checkpointObjects.get(fallbackManifestKey)).toBeInstanceOf(Buffer);
     expect(modelCalls).toBe(0);
 
     const fallbackManifest = piApiFirstTurnManifestV3Schema.parse(
@@ -6707,7 +6676,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const postProvider = await sendChatRun(actor, {
       agentId,
       prompt: postProviderPrompt,
-      model: "deepseek-v4-flash",
+      model: "gpt-5.6-terra",
     });
     await waitForRunStatus(actor, postProvider.runId, "queued");
 
@@ -6722,8 +6691,8 @@ describe("CHAT-02: model-first provider policies", () => {
       role: "assistant",
       content: [{ type: "text", text: fallbackAnswer }],
       api: "openai-responses",
-      provider: "deepseek",
-      model: "deepseek-v4-flash",
+      provider: "openai",
+      model: "gpt-5.6-terra",
       usage: {
         input: 0,
         output: 0,
@@ -13713,8 +13682,7 @@ describe("CHAT-02: public-brand default assistant identity", () => {
           clientEventId: queuedEventId,
         },
         [201],
-        undefined,
-        queuedBrand,
+        { publicBrand: queuedBrand },
       );
       if (queued.status !== 201) {
         throw new Error(

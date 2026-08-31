@@ -141,6 +141,11 @@ type BddSendEventBody =
       readonly clientEventId?: string;
     };
 
+interface RequestSendEventOptions {
+  readonly publicBrand?: PublicBrand;
+  readonly usagePricingResolution?: UsagePricingResolution;
+}
+
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
   return actor
     ? {
@@ -356,10 +361,6 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function threadComputerUseHostClient() {
     return chatFilesApp(context)(chatThreadComputerUseHostContract);
-  }
-
-  function chatEventsClient() {
-    return chatFilesApp(context)(chatEventsContract);
   }
 
   function chatSearchClient() {
@@ -1317,17 +1318,17 @@ export function createChatFilesBddApi(context: TestContext) {
         | 429
         | 503
       )[],
+      options: RequestSendEventOptions = {},
       signal?: AbortSignal,
-      publicBrand: PublicBrand = "vm0",
-      usagePricingResolution?: UsagePricingResolution,
     ) {
+      const publicBrand = options.publicBrand ?? "vm0";
       const client = setupAppWithRoutes({
         context,
         routes: chatFilesRoutes,
         ...(signal === undefined ? {} : { signal }),
-        ...(usagePricingResolution === undefined
+        ...(options.usagePricingResolution === undefined
           ? {}
-          : { usagePricingResolution }),
+          : { usagePricingResolution: options.usagePricingResolution }),
       })(chatEventsContract);
       const defaultModel =
         "prompt" in body &&

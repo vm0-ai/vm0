@@ -141,13 +141,7 @@ async function sendChatRun(
   },
   publicBrand: PublicBrand = "vm0",
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
-  const sent = await chat.requestSendEvent(
-    actor,
-    body,
-    [201],
-    undefined,
-    publicBrand,
-  );
+  const sent = await chat.requestSendEvent(actor, body, [201], { publicBrand });
   if (sent.status !== 201 || sent.body.runId === null) {
     throw new Error("Expected chat send to create a run");
   }

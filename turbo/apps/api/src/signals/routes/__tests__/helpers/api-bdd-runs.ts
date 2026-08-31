@@ -171,8 +171,15 @@ const runRoutes = [
   ...userPermissionGrantsRoutes,
 ] as const;
 
-function runApp(context: TestContext) {
-  return setupAppWithRoutes({ context, routes: runRoutes });
+function runApp(
+  context: TestContext,
+  usagePricingResolution?: UsagePricingResolution,
+) {
+  return setupAppWithRoutes({
+    context,
+    routes: runRoutes,
+    ...(usagePricingResolution === undefined ? {} : { usagePricingResolution }),
+  });
 }
 
 function clerkUserProfile(actor: ApiTestUser): ClerkUserProfile {
@@ -1167,9 +1174,13 @@ export function createRunsApi(context: TestContext) {
       actor: ApiTestUser | null,
       runId: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
+      usagePricingResolution?: UsagePricingResolution,
     ) {
       return await accept(
-        runApp(context)(runsCancelContract).cancel({
+        runApp(
+          context,
+          usagePricingResolution,
+        )(runsCancelContract).cancel({
           headers: authenticate(context, actor),
           params: { id: runId },
         }),
@@ -1379,16 +1390,10 @@ export function createRunsApi(context: TestContext) {
       };
     },
 
-    async reconcileBillingOrganizations(
-      orgIds: readonly string[],
-      usagePricingResolution?: UsagePricingResolution,
-    ) {
+    async reconcileBillingOrganizations(orgIds: readonly string[]) {
       const client = setupAppWithRoutes({
         context,
         routes: testBillingReconciliationStateRoutes,
-        ...(usagePricingResolution === undefined
-          ? {}
-          : { usagePricingResolution }),
       })(testBillingReconciliationStateContract);
       return await accept(
         client.reconcile({

@@ -297,13 +297,7 @@ async function startChatRun(
       : { revokesEventId: body.revokesEventId }),
     ...(selectedModel === undefined ? {} : { model: selectedModel }),
   };
-  const sent = await chat.requestSendEvent(
-    actor,
-    requestBody,
-    [201],
-    undefined,
-    options?.publicBrand,
-  );
+  const sent = await chat.requestSendEvent(actor, requestBody, [201], options);
   if (sent.status !== 201) {
     throw new Error("Expected the entitled chat send to create a run");
   }
@@ -4259,8 +4253,7 @@ describe("CHAT-02: drain-time admission failure", () => {
           clientEventId: queuedEventId,
         },
         [201],
-        undefined,
-        publicBrand,
+        { publicBrand },
       );
       if ("error" in queued.body) {
         throw new Error(queued.body.error.message);
@@ -4358,8 +4351,7 @@ describe("CHAT-02: drain-time admission failure", () => {
           clientEventId: queuedEventId,
         },
         [201],
-        undefined,
-        publicBrand,
+        { publicBrand },
       );
       if ("error" in retried.body) {
         throw new Error(retried.body.error.message);
