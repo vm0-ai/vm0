@@ -165,6 +165,7 @@ class TestErrorHandler:
         assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
         assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
         assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
+        assert flow.request.stream is False
 
     def test_header_phase_connector_diagnostic_error_keeps_connection_error(
         self, tmp_path, real_flow, mitm_ctx
@@ -299,6 +300,7 @@ class TestErrorHandler:
         assert entry["response_body"] == "partial response"
         assert entry["response_body_encoding"] == "utf-8"
         assert entry["response_body_truncated"] is True
+        assert metadata_keys.RESPONSE_STREAM_STATE not in flow.metadata
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
         assert flow.response.stream is False
