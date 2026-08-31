@@ -49,6 +49,11 @@ export interface DesktopRecorderCaptureGeometry {
 
 export interface DesktopRecorderRecording {
   readonly videoPath: string;
+  /**
+   * Sidecar JSON holding every click that landed inside the captured region,
+   * timestamped against the same clock as the video frames.
+   */
+  readonly clickTrackPath: string;
   readonly durationMs: number;
   readonly sizeBytes: number;
   readonly width: number;

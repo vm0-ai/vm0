@@ -8,6 +8,7 @@ import type {
 
 const RECORDING: DesktopRecorderRecording = {
   videoPath: "/tmp/recording.mp4",
+  clickTrackPath: "/tmp/recording.clicks.json",
   durationMs: 4200,
   sizeBytes: 1024,
   width: 1920,

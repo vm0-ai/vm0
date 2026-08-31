@@ -330,6 +330,7 @@ function toRecording(
 ): DesktopRecorderRecording {
   return {
     videoPath: requiredString(result, "videoPath"),
+    clickTrackPath: requiredString(result, "clickTrackPath"),
     durationMs: requiredNumber(result, "durationMs"),
     sizeBytes: requiredNumber(result, "sizeBytes"),
     width: requiredNumber(result, "width"),
