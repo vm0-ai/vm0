@@ -23,6 +23,22 @@ import { createPiApiFirstTurnOwnership } from "./provider-ownership";
 const SESSION_ID = "00000000-0000-4000-8000-000000000123";
 const temporaryDirectories: string[] = [];
 
+function promiseWithResolvers<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+  readonly reject: (reason?: unknown) => void;
+} {
+  return (
+    Promise as PromiseConstructor & {
+      withResolvers<TValue>(): {
+        readonly promise: Promise<TValue>;
+        readonly resolve: (value: TValue) => void;
+        readonly reject: (reason?: unknown) => void;
+      };
+    }
+  ).withResolvers<T>();
+}
+
 async function temporaryDirectory(): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "pi-memory-session-"));
   temporaryDirectories.push(directory);
@@ -38,6 +54,50 @@ afterEach(async () => {
 });
 
 describe("MemoryPiSession", () => {
+  it("commits the durable provider boundary before invoking transport", async () => {
+    const memory = MemoryPiSession.create({
+      cwd: "/home/user/workspace",
+      id: SESSION_ID,
+    });
+    const faux = createFauxCore({
+      api: "provider-boundary-test",
+      provider: "provider-boundary-test",
+    });
+    const ownership = createPiApiFirstTurnOwnership();
+    const boundaryEntered = promiseWithResolvers<void>();
+    const releaseBoundary = promiseWithResolvers<void>();
+    faux.setResponses([
+      () => {
+        expect(ownership.stage).toBe("provider-may-have-started");
+        return fauxAssistantMessage("boundary committed");
+      },
+    ]);
+
+    const turn = runPiFirstModelTurn({
+      model: faux.getModel(),
+      session: memory,
+      stream: faux.streamSimple,
+      systemPrompt: "system",
+      prompt: "cross the durable provider boundary",
+      tools: [],
+      ownership,
+      providerRequestBoundary: async (markProviderRequestMayHaveStarted) => {
+        expect(ownership.stage).toBe("pre-provider");
+        boundaryEntered.resolve();
+        await releaseBoundary.promise;
+        markProviderRequestMayHaveStarted();
+      },
+    });
+
+    await boundaryEntered.promise;
+    expect(faux.state.callCount).toBe(0);
+    expect(ownership.stage).toBe("pre-provider");
+    releaseBoundary.resolve();
+    await expect(turn).resolves.toMatchObject({ handoffRequired: false });
+    expect(faux.state.callCount).toBe(1);
+    expect(ownership.stage).toBe("provider-may-have-started");
+  });
+
   it("round-trips native Pi JSONL and appends one API model turn", async () => {
     const directory = await temporaryDirectory();
     const nativeSession = SessionManager.create(

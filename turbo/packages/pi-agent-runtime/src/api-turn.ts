@@ -105,6 +105,7 @@ export async function runPiApiFirstTurn(
         signal,
       },
       ownership: args.ownership,
+      providerRequestBoundary: args.providerRequestBoundary,
     });
     return {
       assistantMessage: projectPiApiAssistantMessage(turn.assistantMessage),

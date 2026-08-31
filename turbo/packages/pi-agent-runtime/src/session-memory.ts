@@ -46,6 +46,9 @@ interface RunPiFirstModelTurnOptions<TApi extends Api = Api> {
   readonly timestamp?: number;
   readonly streamOptions?: Omit<SimpleStreamOptions, "sessionId">;
   readonly ownership: PiApiFirstTurnOwnership;
+  readonly providerRequestBoundary?: (
+    markProviderRequestMayHaveStarted: () => void,
+  ) => Promise<void>;
 }
 
 interface PiModelTurnResult {
@@ -311,7 +314,18 @@ export async function runPiFirstModelTurn<TApi extends Api>(
     messages: convertToLlm(sessionContext.messages),
     tools: [...options.tools],
   };
-  options.ownership.markProviderRequestMayHaveStarted();
+  if (options.providerRequestBoundary) {
+    await options.providerRequestBoundary(() => {
+      options.ownership.markProviderRequestMayHaveStarted();
+    });
+    if (options.ownership.stage !== "provider-may-have-started") {
+      throw new Error(
+        "Pi provider request boundary returned without claiming ownership",
+      );
+    }
+  } else {
+    options.ownership.markProviderRequestMayHaveStarted();
+  }
   const responseStream = options.stream(options.model, context, {
     ...options.streamOptions,
     reasoning:
