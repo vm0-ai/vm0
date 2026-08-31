@@ -1,7 +1,8 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { animationFrame } from "signal-timers";
 import { logger } from "../log.ts";
-import { onDomEventFn, onRef } from "../utils.ts";
+import { onDomEventFn, onRef, setLoop } from "../utils.ts";
+import type { ChatEvent } from "./chat-event-types.ts";
 
 const L = logger("AutoScroll");
 const AT_BOTTOM_THRESHOLD_PX = 10;
@@ -50,6 +51,7 @@ export interface ChatThreadScrollSignals {
     Promise<void>,
     [ThreadScrollPosition | null, AbortSignal]
   >;
+  readonly scrollToEvent$: Command<Promise<void>, [string, AbortSignal]>;
   readonly scrollTo$: Command<void, [ThreadScrollPosition]>;
   readonly scrollToTop$: Command<Promise<void>, [AbortSignal]>;
   readonly scrollToBottom$: Command<Promise<void>, [AbortSignal]>;
@@ -97,12 +99,10 @@ function scrollAnchorForEvent(
   container: HTMLElement,
   eventId: string,
 ): HTMLElement | null {
-  // Selected by attribute rather than scanned out of `scrollAnchors`: a reader
-  // holding an anchor restores on every frame the thread grows, and collecting
-  // every anchor in the thread first would walk the whole history before each
-  // paint.
-  return container.querySelector<HTMLElement>(
-    `[${SCROLL_ANCHOR_ATTRIBUTE}="${eventId}"]`,
+  return (
+    scrollAnchors(container).find((anchor) => {
+      return anchor.getAttribute(SCROLL_ANCHOR_ATTRIBUTE) === eventId;
+    }) ?? null
   );
 }
 
@@ -313,6 +313,7 @@ function createInternalScrollSignals(
     awayFromBottom$,
     readRenderedThreadScrollPosition$,
     syncThreadScrollPosition$,
+    setThreadScrollPosition$,
     clearThreadScrollPosition$,
     bindScrollContainer$,
     clearScrollContainer$,
@@ -686,6 +687,8 @@ export function createChatThreadScrollSignals(
   threadId: string,
   position: ThreadScrollPositionSignals,
   afterThreadScrollPositionChanged$: Command<Promise<void>, [AbortSignal]>,
+  chatEvents$: Computed<readonly ChatEvent[]>,
+  initialEventsReady$: Computed<boolean>,
 ): ChatThreadScrollSignals {
   const runtime: ScrollRuntime = {
     initialized: false,
@@ -712,6 +715,37 @@ export function createChatThreadScrollSignals(
     runtime,
   );
   const scrollContentOnRef$ = createScrollContentOnRef(threadId, navigation);
+  const scrollToEvent$ = command(
+    async (
+      { get, set },
+      eventId: string,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      await setLoop(
+        () => {
+          return get(initialEventsReady$);
+        },
+        16,
+        signal,
+        { retryTransientErrors: false },
+      );
+      signal.throwIfAborted();
+      const eventExists = get(chatEvents$).some((event) => {
+        return event.id === eventId;
+      });
+      if (!eventExists) {
+        L.debug("scroll target event not found", { threadId, eventId });
+        return;
+      }
+      const position: ThreadScrollPosition = {
+        targetEventId: eventId,
+        viewportOffsetTop: 0,
+      };
+      await set(scroll.setThreadScrollPosition$, position, signal);
+      signal.throwIfAborted();
+      await set(render.autoScroll$, position, signal);
+    },
+  );
 
   return {
     scrollContainerOnRef$,
@@ -723,6 +757,7 @@ export function createChatThreadScrollSignals(
     awayFromBottom$: scroll.awayFromBottom$,
     readRenderedThreadScrollPosition$: scroll.readRenderedThreadScrollPosition$,
     autoScroll$: render.autoScroll$,
+    scrollToEvent$,
     scrollTo$: navigation.scrollTo$,
     scrollToTop$: navigation.scrollToTop$,
     scrollToBottom$: navigation.scrollToBottom$,

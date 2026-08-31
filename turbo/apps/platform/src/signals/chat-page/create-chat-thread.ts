@@ -1119,14 +1119,15 @@ function groupEventsForDisplay(events: EnrichedChatEvent[]): ChatEventGroup[] {
 function createRenderedChatGroups(
   semanticEvents$: Computed<SemanticChatEvent[]>,
 ) {
-  const transcriptEvents$ = createTranscriptEventsComputed(semanticEvents$);
+  const allChatGroups$ = computed((get): ChatEventGroup[] => {
+    return groupEventsForDisplay(
+      enrichedChatEventsFromSemantic(get(semanticEvents$)),
+    );
+  });
 
-  const allRenderedChatGroups$ = computed(
-    async (get): Promise<ChatEventGroup[]> => {
-      const events = await get(transcriptEvents$);
-      return groupEventsForDisplay(events);
-    },
-  );
+  const allRenderedChatGroups$ = computed((get): Promise<ChatEventGroup[]> => {
+    return Promise.resolve(get(allChatGroups$));
+  });
   const eventImageGroups$ = computed(
     async (get): Promise<EventImageGroupProjection[]> => {
       return (await get(allRenderedChatGroups$)).map((group) => {
@@ -1146,6 +1147,7 @@ function createRenderedChatGroups(
   );
 
   return {
+    allChatGroups$,
     allRenderedChatGroups$,
     eventImageGroups$,
   };
@@ -1353,22 +1355,18 @@ function createRawEventsComputed(
   });
 }
 
-function createTranscriptEventsComputed(
-  semanticEvents$: Computed<SemanticChatEvent[]>,
-): Computed<Promise<EnrichedChatEvent[]>> {
-  return computed((get): Promise<EnrichedChatEvent[]> => {
-    return Promise.resolve(
-      get(semanticEvents$).map((entry) => {
-        const { event, isQueued, userMessageRenderDocument } = entry;
-        return {
-          ...event,
-          tree: entry.tree,
-          richContentError: entry.richContentError,
-          isQueued,
-          userMessageRenderDocument,
-        };
-      }),
-    );
+function enrichedChatEventsFromSemantic(
+  entries: readonly SemanticChatEvent[],
+): EnrichedChatEvent[] {
+  return entries.map((entry) => {
+    const { event, isQueued, userMessageRenderDocument } = entry;
+    return {
+      ...event,
+      tree: entry.tree,
+      richContentError: entry.richContentError,
+      isQueued,
+      userMessageRenderDocument,
+    };
   });
 }
 
@@ -2501,6 +2499,9 @@ function createChatThreadMessagePipeline(
     eventTreeErrors$: resources.eventTreeErrors$,
   });
   const initialEventsReady$ = state(false);
+  const initialEventsReadyView$ = computed((get): boolean => {
+    return get(initialEventsReady$);
+  });
   const renderWindow = createChatRenderWindow({
     threadId,
     allRenderedChatGroups$: projections.allRenderedChatGroups$,
@@ -2531,6 +2532,8 @@ function createChatThreadMessagePipeline(
     threadId,
     position,
     ensureVisibleEventTreesAfterScroll$,
+    chatEvents.chatEvents$,
+    initialEventsReadyView$,
   );
   const effects = createEventChangeEffects(
     {
@@ -2542,9 +2545,6 @@ function createChatThreadMessagePipeline(
     },
     ownerSignal,
   );
-  const initialEventsReadyView$ = computed((get): boolean => {
-    return get(initialEventsReady$);
-  });
   const lifecycle = createChatEventPresentationLifecycle({
     chatEvents,
     afterEventsChange$: effects.afterEventsChange$,
@@ -4238,27 +4238,28 @@ function createChatPanelSignalsWithDraft(
     draft,
   );
   const feedback = createChatThreadFeedbackSignals(threadId, composer.feedback);
-  const messages: MessageListSignals = {
-    ...createChatThreadMessagePipeline(
-      {
-        chatActionContext: { threadId, agentId },
-        chatEvents,
-        previewImageUrlsByUrl$: createArtifactPreviewImageUrls(
-          artifact.artifacts$,
-        ),
-      },
-      signal,
-    ),
-    ...artifact,
-  };
-  const sharing = createChatThreadSharingSignals(threadId, messages.scroll);
-  const locator = createChatConversationLocatorSignals(
+  const messagePipeline = createChatThreadMessagePipeline(
     {
-      threadId,
-      scrollContainer$: messages.scroll.scrollContainer$,
+      chatActionContext: { threadId, agentId },
+      chatEvents,
+      previewImageUrlsByUrl$: createArtifactPreviewImageUrls(
+        artifact.artifacts$,
+      ),
     },
     signal,
   );
+  const messages: MessageListSignals = {
+    ...messagePipeline,
+    ...artifact,
+  };
+  const sharing = createChatThreadSharingSignals(threadId, messages.scroll);
+  const locator = createChatConversationLocatorSignals({
+    threadId,
+    scrollContainer$: messages.scroll.scrollContainer$,
+    scrollToEvent$: messages.scroll.scrollToEvent$,
+    allChatGroups$: messagePipeline.allChatGroups$,
+    threadScrollPosition$: messages.scroll.threadScrollPosition$,
+  });
   const runTracking = createRunTracking({
     threadId,
     setupChatEvents$: messages.setup$,
@@ -4284,6 +4285,7 @@ function createChatPanelSignalsWithDraft(
     scrollContainer$: messages.scroll.scrollContainer$,
     threadScrollPosition$: messages.scroll.threadScrollPosition$,
     awayFromBottom$: messages.scroll.awayFromBottom$,
+    scrollToEvent$: messages.scroll.scrollToEvent$,
     scrollTo$: messages.scroll.scrollTo$,
     scrollToTop$: messages.scroll.scrollToTop$,
     scrollToBottom$: messages.scroll.scrollToBottom$,

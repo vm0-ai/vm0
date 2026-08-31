@@ -18,6 +18,7 @@ import {
   mockPushState,
   mockReplaceState,
   pushState,
+  setHash,
   setPathname,
   setSearch,
 } from "../signals/location";
@@ -341,6 +342,7 @@ function createPushStateMock(signal: AbortSignal) {
   const updateLocation = (entry: HistoryEntry) => {
     setPathname(entry.url.pathname, signal);
     setSearch(entry.url.search, signal);
+    setHash(entry.url.hash, signal);
   };
 
   const fn = vi.fn<typeof window.history.pushState>(
