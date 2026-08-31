@@ -1,6 +1,31 @@
-import { command, computed, state } from "ccstate";
 import type { InboundMessage } from "ably";
-import { appVersion$ } from "../signals/app-version.ts";
+import { command, computed, createStore, state, type Store } from "ccstate";
+
+import { setApiClientRuntime$ } from "../signals/api-client-runtime.ts";
+import { appVersion$, initializeAppVersion$ } from "../signals/app-version.ts";
+import {
+  setAuthenticatedIdentity$,
+  setAuthRecovery$,
+} from "../signals/auth-context.ts";
+import {
+  reloadChatIndicators$,
+  reloadChatIndicatorsFromRealtime$,
+  subscribeChatThreadReadCursorUpdated$,
+  subscribeThreadListChanged$,
+} from "../signals/chat-thread-list-reload.ts";
+import {
+  setAblyPayloadLoop$,
+  setupRealtime$,
+  subscribeRealtimeConnectionState$,
+  type RealtimeConnectionState,
+} from "../signals/realtime.ts";
+import { rootSignal$, setRootSignal$ } from "../signals/root-signal.ts";
+import {
+  createChildAbortController,
+  createDeferredPromise,
+  settle,
+} from "../signals/utils.ts";
+import { chatThreadIndicators$ } from "../signals/chat-page/chat-thread-indicators.ts";
 import type {
   ChatThreadIndicators,
   SharedDatabaseDataKey,
@@ -13,64 +38,63 @@ import type {
   SharedDatabaseHeartbeatResult,
 } from "./protocol.ts";
 import {
-  SharedDatabaseWorkerRuntime,
-  type WorkerClientEmitter,
-} from "./worker-runtime.ts";
-import { createSharedDatabaseContractClientFactory } from "./worker-client.ts";
-import { setRootSignal$ } from "../signals/root-signal.ts";
-import { setApiClientRuntime$ } from "../signals/api-client-runtime.ts";
-import {
-  setAuthenticatedIdentity$,
-  setAuthRecovery$,
-} from "../signals/auth-context.ts";
-import {
+  broadcastSharedDatabaseWorkerMessage$,
+  heartbeatConnection$,
   initializeWorkerCredentialContext$,
-  invalidateTabIndicators$,
-  registerTab$,
-  unregisterTab$,
-  workerCredentialIdentity$,
-  type TabId,
+  invalidateConnectionIndicators$,
+  reloadConnections$,
+  requireConnectionSignal$,
+  updateRealtimeStatusForConnections$,
+  updateWorkerCredentialIdentity$,
+  WorkerAuthRecovery,
+  type ConnectionId,
+  type WorkerBroadcastMessage,
 } from "./worker-context.ts";
-import {
-  setAblyPayloadLoop$,
-  setupRealtime$,
-  subscribeRealtimeConnectionState$,
-  type RealtimeConnectionState,
-} from "../signals/realtime.ts";
-import {
-  reloadChatIndicators$,
-  reloadChatIndicatorsFromRealtime$,
-  subscribeChatThreadReadCursorUpdated$,
-  subscribeThreadListChanged$,
-} from "../signals/chat-thread-list-reload.ts";
-import { chatThreadIndicators$ } from "../signals/chat-page/chat-thread-indicators.ts";
-import { settle } from "../signals/utils.ts";
+import { SharedDatabaseWorkerRuntime } from "./worker-runtime.ts";
+import { createSharedDatabaseContractClientFactory } from "./worker-client.ts";
 
+const STALE_CONNECTION_AFTER_MS = 3 * 60 * 1000;
+
+const credentialControllerState$ = state<AbortController | null>(null);
 const workerRuntimeState$ = state<SharedDatabaseWorkerRuntime | null>(null);
-const credentialStoreDaemonsStarted$ = state(false);
+const credentialStoreDaemonsReadyState$ = state<Promise<void> | null>(null);
 const sharedDatabaseClientFactory$ = computed((get) => {
   return createSharedDatabaseContractClientFactory(get(appVersion$));
 });
+
+interface CreateSharedDatabaseCredentialStoreOptions {
+  readonly appVersion: string;
+  readonly identity: SharedDatabaseIdentity;
+  readonly apiBaseUrl: string;
+  readonly vercelProtectionBypass: string | undefined;
+}
+
+export interface InitializeCredentialStoreOptions {
+  readonly identity: SharedDatabaseIdentity;
+  readonly apiBaseUrl: string;
+  readonly vercelProtectionBypass: string | undefined;
+  readonly onForceUpgrade: () => void;
+}
 
 interface SharedDatabaseWorkerHeartbeat {
   readonly identity: SharedDatabaseIdentity;
   readonly apiBaseUrl: string;
   readonly vercelProtectionBypass?: string;
-  readonly emit?: WorkerClientEmitter;
 }
 
-interface InitializeCredentialStore {
-  readonly identity: SharedDatabaseIdentity;
-  readonly apiBaseUrl: string;
-  readonly vercelProtectionBypass?: string;
-  readonly onForceUpgrade: () => void;
+interface CredentialStoreResources {
+  readonly controller: AbortController;
+  readonly runtime: SharedDatabaseWorkerRuntime;
+  readonly authRecovery: WorkerAuthRecovery;
 }
+
+export type CredentialStoreDaemonOwner = (daemon: Promise<void>) => void;
 
 function requireRuntime(
   runtime: SharedDatabaseWorkerRuntime | null,
 ): SharedDatabaseWorkerRuntime {
   if (!runtime) {
-    throw new Error("Shared database worker is not bootstrapped");
+    throw new Error("Shared database credential Store is not bootstrapped");
   }
   return runtime;
 }
@@ -97,97 +121,154 @@ function isInboundMessage(value: unknown): value is InboundMessage {
   );
 }
 
-const updateSharedDatabaseRealtimeStatus$ = command(
-  ({ get }, state: RealtimeConnectionState): void => {
-    requireRuntime(get(workerRuntimeState$)).updateRealtimeStatus(
-      get(workerCredentialIdentity$),
-      sharedDatabaseConnectionStatus(state),
-    );
-  },
-);
-
-export const handleSharedDatabaseRealtimeMessage$ = command(
-  ({ get }, payload: unknown, signal: AbortSignal): boolean => {
+const installCredentialStore$ = command(
+  (
+    { set },
+    resources: CredentialStoreResources,
+    options: InitializeCredentialStoreOptions,
+    signal: AbortSignal,
+  ): void => {
     signal.throwIfAborted();
-    if (!isInboundMessage(payload)) {
-      throw new Error("Shared database realtime message is invalid");
-    }
-    requireRuntime(get(workerRuntimeState$)).handleRealtimeMessage(
-      get(workerCredentialIdentity$),
-      payload,
-    );
-    return false;
-  },
-);
-
-export const catchUpSharedDatabaseAfterRealtimeRecovery$ = command(
-  ({ get }, signal: AbortSignal): boolean => {
-    signal.throwIfAborted();
-    requireRuntime(get(workerRuntimeState$)).catchUpAfterRealtimeRecovery(
-      get(workerCredentialIdentity$),
-    );
-    return false;
-  },
-);
-
-const recoverCredentialStoreAfterRealtimeReconnect$ = command(
-  ({ set }, signal: AbortSignal): void => {
-    signal.throwIfAborted();
-    set(catchUpSharedDatabaseAfterRealtimeRecovery$, signal);
-    set(reloadChatIndicatorsFromRealtime$);
-  },
-);
-
-export const bootstrapSharedDatabaseWorker$ = command(
-  ({ get, set }, signal: AbortSignal): void => {
-    if (get(workerRuntimeState$)) {
-      return;
-    }
+    set(credentialControllerState$, resources.controller);
+    set(workerRuntimeState$, resources.runtime);
     set(
-      workerRuntimeState$,
-      new SharedDatabaseWorkerRuntime(
-        signal,
-        get(sharedDatabaseClientFactory$),
-      ),
+      initializeWorkerCredentialContext$,
+      options.identity,
+      resources.authRecovery,
     );
+    set(setApiClientRuntime$, {
+      environment: "worker",
+      apiBaseUrl: options.apiBaseUrl,
+      oauthApiBaseUrl: options.apiBaseUrl,
+      ...(options.vercelProtectionBypass
+        ? { vercelProtectionBypass: options.vercelProtectionBypass }
+        : {}),
+      onForceUpgrade: options.onForceUpgrade,
+    });
+    set(setAuthRecovery$, Promise.resolve(resources.authRecovery));
+    set(setAuthenticatedIdentity$, Promise.resolve(options.identity));
   },
 );
 
 export const initializeCredentialStore$ = command(
   (
     { get, set },
-    input: InitializeCredentialStore,
+    controller: AbortController,
+    options: InitializeCredentialStoreOptions,
+    broadcast: (message: WorkerBroadcastMessage) => void,
     signal: AbortSignal,
   ): void => {
     signal.throwIfAborted();
     set(setRootSignal$, signal);
-    set(setApiClientRuntime$, {
-      environment: "worker",
-      apiBaseUrl: input.apiBaseUrl,
-      oauthApiBaseUrl: input.apiBaseUrl,
-      ...(input.vercelProtectionBypass
-        ? { vercelProtectionBypass: input.vercelProtectionBypass }
-        : {}),
-      onForceUpgrade: input.onForceUpgrade,
-    });
-    const authRecovery = set(
-      initializeWorkerCredentialContext$,
-      input.identity,
+    const authRecovery = new WorkerAuthRecovery(
+      options.identity.token,
+      broadcast,
     );
-    set(setAuthRecovery$, Promise.resolve(authRecovery));
-    set(setAuthenticatedIdentity$, Promise.resolve(input.identity));
-    if (get(workerRuntimeState$) === null) {
-      set(bootstrapSharedDatabaseWorker$, signal);
-    }
+    const runtime = new SharedDatabaseWorkerRuntime(
+      {
+        identity: options.identity,
+        apiBaseUrl: options.apiBaseUrl,
+        vercelProtectionBypass: options.vercelProtectionBypass,
+        emit: broadcast,
+        createContractClient: get(sharedDatabaseClientFactory$),
+      },
+      signal,
+    );
+    set(
+      installCredentialStore$,
+      { controller, runtime, authRecovery },
+      options,
+      signal,
+    );
   },
 );
 
-export const runCredentialStoreDaemons$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    if (get(credentialStoreDaemonsStarted$)) {
-      return;
+export function createSharedDatabaseCredentialStore(
+  options: CreateSharedDatabaseCredentialStoreOptions,
+  workerSignal: AbortSignal,
+): Store {
+  const store = createStore();
+  store.set(initializeAppVersion$, options.appVersion);
+  const credentialController = createChildAbortController(workerSignal);
+  const credentialSignal = credentialController.signal;
+  const broadcast = (message: WorkerBroadcastMessage): void => {
+    store.set(broadcastSharedDatabaseWorkerMessage$, message);
+  };
+  store.set(
+    initializeCredentialStore$,
+    credentialController,
+    {
+      ...options,
+      onForceUpgrade: () => {
+        store.set(reloadConnections$);
+        credentialController.abort(
+          new DOMException(
+            "Credential Store requires a newer client",
+            "AbortError",
+          ),
+        );
+      },
+    },
+    broadcast,
+    credentialSignal,
+  );
+  return store;
+}
+
+const updateSharedDatabaseRealtimeStatus$ = command(
+  ({ set }, state: RealtimeConnectionState): void => {
+    set(
+      updateRealtimeStatusForConnections$,
+      sharedDatabaseConnectionStatus(state),
+    );
+  },
+);
+
+const broadcastSharedDatabaseReconnect$ = command(({ set }): boolean => {
+  set(broadcastSharedDatabaseWorkerMessage$, { type: "reconnect" });
+  return false;
+});
+
+export const handleSharedDatabaseRealtimeMessage$ = command(
+  ({ set }, payload: unknown, signal: AbortSignal): boolean => {
+    signal.throwIfAborted();
+    if (!isInboundMessage(payload)) {
+      throw new Error("Shared database realtime message is invalid");
     }
-    set(credentialStoreDaemonsStarted$, true);
+    const topic = payload.name ?? "";
+    const threadId = topic.startsWith("chatThreadMessageCreated:")
+      ? topic.slice("chatThreadMessageCreated:".length)
+      : null;
+    const dataKey: SharedDatabaseDataKey | null =
+      threadId !== null && threadId.length > 0
+        ? { kind: "chat-event", threadId }
+        : topic === "threadListChanged"
+          ? { kind: "chat-thread-event" }
+          : null;
+    if (dataKey) {
+      set(broadcastSharedDatabaseWorkerMessage$, {
+        type: "invalidate",
+        dataKey,
+      });
+    }
+    return false;
+  },
+);
+
+export const recoverCredentialStoreAfterRealtimeReconnect$ = command(
+  ({ set }, signal: AbortSignal): void => {
+    signal.throwIfAborted();
+    set(broadcastSharedDatabaseReconnect$);
+    set(reloadChatIndicatorsFromRealtime$);
+  },
+);
+
+const runCredentialStoreDaemons$ = command(
+  async (
+    { set },
+    ready: ReturnType<typeof createDeferredPromise<void>>,
+    signal: AbortSignal,
+  ): Promise<void> => {
     set(
       subscribeRealtimeConnectionState$,
       ({ state, reconnected }) => {
@@ -198,8 +279,14 @@ export const runCredentialStoreDaemons$ = command(
       },
       signal,
     );
-    await set(setupRealtime$, signal);
-    signal.throwIfAborted();
+    const setup = await settle(set(setupRealtime$, signal), signal);
+    if (!setup.ok) {
+      if (!ready.settled()) {
+        ready.reject(setup.error);
+      }
+      set(updateSharedDatabaseRealtimeStatus$, "failed");
+      return;
+    }
     const subscriptions = await settle(
       Promise.all([
         set(
@@ -209,10 +296,13 @@ export const runCredentialStoreDaemons$ = command(
             topic: null,
             loopCommand$: handleSharedDatabaseRealtimeMessage$,
             includeMessage: true,
-            catchUpCommand$: catchUpSharedDatabaseAfterRealtimeRecovery$,
             options: {
               onSubscribed: () => {
-                set(catchUpSharedDatabaseAfterRealtimeRecovery$, signal);
+                if (!ready.settled()) {
+                  ready.resolve();
+                  return;
+                }
+                set(broadcastSharedDatabaseReconnect$);
               },
             },
           },
@@ -225,8 +315,55 @@ export const runCredentialStoreDaemons$ = command(
     );
     signal.throwIfAborted();
     if (!subscriptions.ok) {
+      if (!ready.settled()) {
+        ready.reject(subscriptions.error);
+      }
       set(updateSharedDatabaseRealtimeStatus$, "failed");
     }
+  },
+);
+
+export const startCredentialStoreDaemons$ = command(
+  ({ get, set }, ownDaemon: CredentialStoreDaemonOwner): Promise<void> => {
+    const existing = get(credentialStoreDaemonsReadyState$);
+    if (existing) {
+      return existing;
+    }
+    const signal = get(rootSignal$);
+    const ready = createDeferredPromise<void>(signal);
+    set(credentialStoreDaemonsReadyState$, ready.promise);
+    ownDaemon(set(runCredentialStoreDaemons$, ready, signal));
+    return ready.promise;
+  },
+);
+
+export const heartbeatSharedDatabaseWorker$ = command(
+  (
+    { get, set },
+    connectionId: ConnectionId,
+    heartbeat: SharedDatabaseWorkerHeartbeat,
+    signal: AbortSignal,
+  ): SharedDatabaseHeartbeatResult => {
+    set(heartbeatConnection$, connectionId, signal, STALE_CONNECTION_AFTER_MS);
+    set(updateWorkerCredentialIdentity$, heartbeat.identity);
+    set(setAuthenticatedIdentity$, Promise.resolve(heartbeat.identity));
+    return requireRuntime(get(workerRuntimeState$)).heartbeat(
+      heartbeat.identity,
+      heartbeat.apiBaseUrl,
+      heartbeat.vercelProtectionBypass,
+    );
+  },
+);
+
+export const querySharedDatabaseWorker$ = command(
+  async (
+    { get, set },
+    connectionId: ConnectionId,
+    query: SharedDatabaseQuery<SharedDatabaseDataKey>,
+    signal: AbortSignal,
+  ): Promise<SharedDatabaseQueryResult<SharedDatabaseDataKey>> => {
+    set(requireConnectionSignal$, connectionId, signal);
+    return await requireRuntime(get(workerRuntimeState$)).query(query, signal);
   },
 );
 
@@ -238,86 +375,6 @@ export const readWorkerChatThreadIndicators$ = command(
   },
 );
 
-export const connectSharedDatabaseWorkerClient$ = command(
-  ({ get }, clientId: string, emit: WorkerClientEmitter): void => {
-    requireRuntime(get(workerRuntimeState$)).connectClient(clientId, emit);
-  },
-);
-
-export const registerSharedDatabaseWorkerTab$ = command(
-  ({ get, set }, tabId: TabId, emit: WorkerClientEmitter): void => {
-    const runtime = requireRuntime(get(workerRuntimeState$));
-    runtime.connectClient(String(tabId), emit);
-    set(registerTab$, tabId, emit);
-  },
-);
-
-export const unregisterSharedDatabaseWorkerTab$ = command(
-  ({ get, set }, tabId: TabId): number => {
-    requireRuntime(get(workerRuntimeState$)).disconnectClient(String(tabId));
-    return set(unregisterTab$, tabId);
-  },
-);
-
-export const heartbeatSharedDatabaseWorker$ = command(
-  async (
-    { get },
-    clientId: string,
-    heartbeat: SharedDatabaseWorkerHeartbeat,
-    signal: AbortSignal,
-  ): Promise<SharedDatabaseHeartbeatResult> => {
-    signal.throwIfAborted();
-    const result = await requireRuntime(get(workerRuntimeState$)).heartbeat(
-      clientId,
-      heartbeat.emit,
-      heartbeat.identity,
-      heartbeat.apiBaseUrl,
-      heartbeat.vercelProtectionBypass,
-    );
-    signal.throwIfAborted();
-    return result;
-  },
-);
-
-export const subscribeSharedDatabaseWorker$ = command(
-  (
-    { get },
-    clientId: string,
-    subscriptionId: string,
-    dataKey: SharedDatabaseDataKey,
-  ): void => {
-    requireRuntime(get(workerRuntimeState$)).subscribe(
-      clientId,
-      subscriptionId,
-      dataKey,
-    );
-  },
-);
-
-export const unsubscribeSharedDatabaseWorker$ = command(
-  ({ get }, clientId: string, subscriptionId: string): void => {
-    requireRuntime(get(workerRuntimeState$)).unsubscribe(
-      clientId,
-      subscriptionId,
-    );
-  },
-);
-
-export const querySharedDatabaseWorker$ = command(
-  async (
-    { get },
-    clientId: string,
-    query: SharedDatabaseQuery<SharedDatabaseDataKey>,
-    signal: AbortSignal,
-  ): Promise<SharedDatabaseQueryResult<SharedDatabaseDataKey>> => {
-    return await requireRuntime(get(workerRuntimeState$)).query(
-      clientId,
-      query,
-      signal,
-    );
-  },
-);
-
 type HeartbeatMessage = Extract<
   SharedDatabaseClientMessage,
   { readonly type: "heartbeat" }
@@ -325,14 +382,6 @@ type HeartbeatMessage = Extract<
 type QueryMessage = Extract<
   SharedDatabaseClientMessage,
   { readonly type: "query" }
->;
-type SubscribeMessage = Extract<
-  SharedDatabaseClientMessage,
-  { readonly type: "subscribe" }
->;
-type UnsubscribeMessage = Extract<
-  SharedDatabaseClientMessage,
-  { readonly type: "unsubscribe" }
 >;
 type IndicatorsMessage = Extract<
   SharedDatabaseClientMessage,
@@ -343,102 +392,41 @@ type ReloadIndicatorsMessage = Extract<
   { readonly type: "reload-indicators" }
 >;
 
-interface HeartbeatStoreMessage {
-  readonly message: HeartbeatMessage;
-  readonly identity: SharedDatabaseIdentity;
-  readonly emit: WorkerClientEmitter;
-  readonly register: boolean;
-  readonly onForceUpgrade: () => void;
-}
-
 export const heartbeatStoreMessage$ = command(
-  async (
+  (
     { set },
-    tabId: TabId,
-    input: HeartbeatStoreMessage,
+    connectionId: ConnectionId,
+    message: HeartbeatMessage,
+    identity: SharedDatabaseIdentity,
     signal: AbortSignal,
-  ): Promise<SharedDatabaseHeartbeatResult> => {
-    set(
-      initializeCredentialStore$,
-      {
-        identity: input.identity,
-        apiBaseUrl: input.message.apiBaseUrl,
-        ...(input.message.vercelProtectionBypass
-          ? {
-              vercelProtectionBypass: input.message.vercelProtectionBypass,
-            }
-          : {}),
-        onForceUpgrade: input.onForceUpgrade,
-      },
-      signal,
-    );
-    if (input.register) {
-      set(registerSharedDatabaseWorkerTab$, tabId, input.emit);
-    }
-    const result = await set(
+  ): SharedDatabaseHeartbeatResult => {
+    return set(
       heartbeatSharedDatabaseWorker$,
-      String(tabId),
+      connectionId,
       {
-        identity: input.identity,
-        apiBaseUrl: input.message.apiBaseUrl,
-        emit: input.emit,
-        ...(input.message.vercelProtectionBypass
-          ? {
-              vercelProtectionBypass: input.message.vercelProtectionBypass,
-            }
+        identity,
+        apiBaseUrl: message.apiBaseUrl,
+        ...(message.vercelProtectionBypass
+          ? { vercelProtectionBypass: message.vercelProtectionBypass }
           : {}),
       },
       signal,
     );
-    return {
-      clientReconnected: input.register || result.clientReconnected,
-    };
   },
 );
 
 export const queryStoreMessage$ = command(
   async (
     { set },
-    tabId: TabId,
+    connectionId: ConnectionId,
     message: QueryMessage,
     signal: AbortSignal,
   ): Promise<SharedDatabaseQueryResult<SharedDatabaseDataKey>> => {
     return await set(
       querySharedDatabaseWorker$,
-      String(tabId),
+      connectionId,
       message.query,
       signal,
-    );
-  },
-);
-
-export const subscribeStoreMessage$ = command(
-  (
-    { set },
-    tabId: TabId,
-    message: SubscribeMessage,
-    _signal: AbortSignal,
-  ): void => {
-    set(
-      subscribeSharedDatabaseWorker$,
-      String(tabId),
-      message.subscriptionId,
-      message.dataKey,
-    );
-  },
-);
-
-export const unsubscribeStoreMessage$ = command(
-  (
-    { set },
-    tabId: TabId,
-    message: UnsubscribeMessage,
-    _signal: AbortSignal,
-  ): void => {
-    set(
-      unsubscribeSharedDatabaseWorker$,
-      String(tabId),
-      message.subscriptionId,
     );
   },
 );
@@ -446,17 +434,33 @@ export const unsubscribeStoreMessage$ = command(
 export const indicatorsStoreMessage$ = command(
   async (
     { set },
-    _tabId: TabId,
+    connectionId: ConnectionId,
     _message: IndicatorsMessage,
     signal: AbortSignal,
   ): Promise<ChatThreadIndicators> => {
+    set(requireConnectionSignal$, connectionId, signal);
     return await set(readWorkerChatThreadIndicators$, signal);
   },
 );
 
 export const reloadIndicatorsStoreMessage$ = command(
-  ({ set }, _tabId: TabId, _message: ReloadIndicatorsMessage): void => {
+  (
+    { set },
+    _connectionId: ConnectionId,
+    _message: ReloadIndicatorsMessage,
+  ): void => {
     set(reloadChatIndicators$);
-    set(invalidateTabIndicators$, null);
+    set(invalidateConnectionIndicators$, null);
+  },
+);
+
+export const disposeSharedDatabaseCredentialStore$ = command(
+  ({ get }): void => {
+    get(credentialControllerState$)?.abort(
+      new DOMException(
+        "Shared database credential Store disposed",
+        "AbortError",
+      ),
+    );
   },
 );

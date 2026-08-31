@@ -68,6 +68,7 @@ import {
   piApiFirstTurnObjectKey,
   type PiApiFirstTurnActivation,
 } from "./pi-api-first-turn-config";
+import { recordPiApiFirstTurnUsage } from "./pi-api-first-turn-usage.service";
 import {
   PiResourceSnapshotPreparationError,
   preparePiResourceSnapshot,
@@ -846,13 +847,20 @@ async function resolveApiFirstTurnKey(
 
 async function observeDiscardedProviderResult(
   operation: Promise<PiApiFirstTurnResult>,
-  runId: string,
+  args: ApiFirstTurnContext,
   ownership: PiApiFirstTurnOwnership,
 ): Promise<void> {
   const late = await settleIncludingAbort(operation);
   if (late.ok) {
+    await recordPiApiFirstTurnUsage(args.db, {
+      runId: args.activation.runId,
+      orgId: args.activation.orgId,
+      userId: args.activation.userId,
+      modelUsageProvider: args.activation.executionContext.modelUsageProvider,
+      turn: late.value,
+    });
     L.warn("Pi API first-turn outcome", {
-      runId,
+      runId: args.activation.runId,
       outcome: "discarded_late_provider_result",
       reason: "aborted_execution",
       ownershipStage: ownership.stage,
@@ -932,11 +940,7 @@ async function executeApiModelTurn(
   if (!executed.ok) {
     if (modelSignal.aborted) {
       waitUntil(
-        observeDiscardedProviderResult(
-          operation,
-          args.activation.runId,
-          args.ownership,
-        ),
+        observeDiscardedProviderResult(operation, args.context, args.ownership),
       );
     }
     if (
@@ -971,6 +975,13 @@ async function executeApiModelTurn(
     );
   }
   const turn = executed.value;
+  await recordPiApiFirstTurnUsage(args.context.db, {
+    runId: args.activation.runId,
+    orgId: args.activation.orgId,
+    userId: args.activation.userId,
+    modelUsageProvider: args.executionContext.modelUsageProvider,
+    turn,
+  });
   if (
     turn.assistantMessage.stopReason === "error" ||
     turn.assistantMessage.stopReason === "aborted"

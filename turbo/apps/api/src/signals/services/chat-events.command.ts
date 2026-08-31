@@ -2686,6 +2686,7 @@ function usesPi(
     modelProviderType:
       runConfiguration.providerAdmission.effectiveModelProvider,
     selectedModel: runConfiguration.modelPin.selectedModel ?? undefined,
+    codexServiceTier: runConfiguration.codexServiceTier,
     triggerSource: normalSendTriggerSource(args.auth),
     featureSwitchContext: featureSwitches.featureSwitchContext,
   });

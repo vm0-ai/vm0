@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.815.0](https://github.com/vm0-ai/vm0/compare/app-v0.814.2...app-v0.815.0) (2026-08-31)
+
+
+### Features
+
+* **platform:** add chat event deep links ([#30611](https://github.com/vm0-ai/vm0/issues/30611)) ([bfd41de](https://github.com/vm0-ai/vm0/commit/bfd41def55d0949c70c002f6dad1b51efc36c37b))
+
 ## [0.814.2](https://github.com/vm0-ai/vm0/compare/app-v0.814.1...app-v0.814.2) (2026-08-31)
 
 

@@ -600,16 +600,6 @@ export async function mutateRunnerJobSecretValueEnvironmentKeys(
   });
 }
 
-export async function enableQueuedPiOwnershipTransferFixture(
-  context: TestContext,
-  runId: string,
-): Promise<void> {
-  await postAction(context, {
-    action: "enable-queued-pi-ownership-transfer",
-    run_id: runId,
-  });
-}
-
 export async function mutateRunnerJobConnectorPermissionBaseline(
   context: TestContext,
   runId: string,

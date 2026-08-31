@@ -29,11 +29,7 @@ import type {
   ChatThreadEventDataKey,
   ChatThreadEventQueryResult,
 } from "../../shared-database/data-key.ts";
-import {
-  onSharedDatabase$,
-  queryChatThreadEventSharedDatabase$,
-} from "../shared-database.ts";
-import { enqueueSharedDatabaseInvalidation$ } from "../shared-database-invalidation-queue.ts";
+import { queryChatThreadEventSharedDatabase$ } from "../shared-database.ts";
 import type {
   ChatThreadEventView,
   OptimisticChatThreadEvent,
@@ -111,7 +107,6 @@ const bootstrapThreadMetaState$ = state<
   ReadonlyMap<string, BootstrapThreadMetaEntry>
 >(new Map());
 const chatThreadEventSyncVersion$ = state(0);
-const sharedChatThreadEventInvalidationPending$ = state(false);
 
 const clearBootstrapThreadMeta$ = command(({ get, set }) => {
   set(bootstrapThreadMetaState$, new Map());
@@ -254,7 +249,6 @@ const applySharedChatThreadEventResult$ = command(
       return;
     }
     set(clearBootstrapThreadMeta$);
-    set(sharedChatThreadEventInvalidationPending$, false);
     const synced = get(initialRemoteChatThreadEventsSyncedDeferred$);
     if (!synced.settled()) {
       synced.resolve();
@@ -307,22 +301,6 @@ const subscribeSharedEventDrivenChatThreads$ = command(
       signal,
     );
     const dataKey = await get(sharedChatThreadEventDataKey$);
-    signal.throwIfAborted();
-    await set(
-      onSharedDatabase$,
-      dataKey,
-      (kind) => {
-        if (kind === "invalidate") {
-          set(sharedChatThreadEventInvalidationPending$, true);
-        } else if (get(sharedChatThreadEventInvalidationPending$)) {
-          set(sharedChatThreadEventInvalidationPending$, false);
-          return;
-        }
-        set(markChatThreadEventSyncPending$);
-        set(enqueueSharedDatabaseInvalidation$, dataKey);
-      },
-      signal,
-    );
     signal.throwIfAborted();
     const cached = await set(
       queryChatThreadEventSharedDatabase$,

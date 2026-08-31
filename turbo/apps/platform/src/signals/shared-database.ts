@@ -7,7 +7,6 @@ import type {
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
 } from "../shared-database/data-key.ts";
-import type { SharedDatabaseSubscriptionCallback } from "../shared-database/bridge.ts";
 import type { SharedDatabaseConnectionStatus } from "../shared-database/protocol.ts";
 import { reloadChatIndicatorsCounter$ } from "./chat-thread-list-reload.ts";
 import { rootSignal$ } from "./root-signal.ts";
@@ -61,14 +60,3 @@ export const queryChatEventSharedDatabase$ =
   querySharedDatabaseCommand$ as QueryChatEventSharedDatabaseCommand;
 export const queryChatThreadEventSharedDatabase$ =
   querySharedDatabaseCommand$ as QueryChatThreadEventSharedDatabaseCommand;
-
-export const onSharedDatabase$ = command(
-  async (
-    { get },
-    dataKey: SharedDatabaseDataKey,
-    callback: SharedDatabaseSubscriptionCallback,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    await get(installedSharedDatabaseBridge$).on(dataKey, callback, signal);
-  },
-);

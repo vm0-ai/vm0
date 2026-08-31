@@ -10,10 +10,7 @@ import {
 } from "@okouai/api-contracts/contracts/test-runtime-state";
 import { chatEventRowSchema } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
-import {
-  compatibleStoredExecutionContextSchema,
-  storedExecutionContextSchema,
-} from "@okouai/api-contracts/contracts/runners";
+import { compatibleStoredExecutionContextSchema } from "@okouai/api-contracts/contracts/runners";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
@@ -64,10 +61,6 @@ import { usagePackPurchaseSerializationSchemaAvailable } from "../services/usage
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import { writeRunMetadata } from "../services/agent-run-metadata-write.service";
 import { saveRunSummary } from "../services/run-summary.service";
-import {
-  decryptQueuedRunnerJobPayload,
-  encryptQueuedRunnerJobPayload,
-} from "../services/agent-run-queue-payload.service";
 import { reconcileSocialKitDownloads$ } from "../services/socialkit-download.service";
 import { steerRunNearTimeBudgetForTest } from "../services/cron-steer-run-time-budget.service";
 import {
@@ -1793,59 +1786,6 @@ async function setRunnerJobContextProfileAsPreviousApi(
   return { status: 200 as const, body: { ok: true as const } };
 }
 
-async function enableQueuedPiOwnershipTransfer(
-  db: Db,
-  runId: string,
-  signal: AbortSignal,
-): Promise<void> {
-  // Production intentionally leaves this capability absent until a future
-  // route selects a proven-compatible Sandbox. This test-only mutation lets
-  // BDD exercise that deployment boundary without adding a production writer.
-  const [row] = await db
-    .select({ encryptedParams: agentRunQueue.encryptedParams })
-    .from(agentRunQueue)
-    .where(eq(agentRunQueue.runId, runId))
-    .limit(1);
-  signal.throwIfAborted();
-  const payload = await decryptQueuedRunnerJobPayload(
-    row?.encryptedParams ?? null,
-  );
-  signal.throwIfAborted();
-  const piLaunchConfig = payload?.executionContext.piLaunchConfig;
-  if (!payload || !piLaunchConfig) {
-    throw new Error("Expected a queued Pi runner payload");
-  }
-  const executionContext = storedExecutionContextSchema.parse({
-    ...payload.executionContext,
-    piLaunchConfig: {
-      ...piLaunchConfig,
-      apiFirstTurn: {
-        ...piLaunchConfig.apiFirstTurn,
-        ownershipTransfer: { schemaVersion: 1 },
-      },
-    },
-  });
-  const encryptedParams = await encryptQueuedRunnerJobPayload({
-    version: payload.version,
-    runnerGroup: payload.runnerGroup,
-    profile: payload.profile,
-    cliAgentSessionId: payload.cliAgentSessionId,
-    reuseKey: payload.reuseKey,
-    historyGenerationRunId: payload.historyGenerationRunId,
-    executionContext,
-  });
-  signal.throwIfAborted();
-  const [updated] = await db
-    .update(agentRunQueue)
-    .set({ encryptedParams })
-    .where(eq(agentRunQueue.runId, runId))
-    .returning({ runId: agentRunQueue.runId });
-  signal.throwIfAborted();
-  if (!updated) {
-    throw new Error("Expected a queued Pi runner payload to update");
-  }
-}
-
 type CompatibilityFixtureAction =
   | AutonomyBudgetFixtureAction
   | LegacyArtifactCatalogFileAction
@@ -2579,10 +2519,6 @@ const postRuntimeStateAction$ = command(
           body.mode,
           signal,
         );
-        return { status: 200 as const, body: { ok: true as const } };
-      }
-      case "enable-queued-pi-ownership-transfer": {
-        await enableQueuedPiOwnershipTransfer(db, body.run_id, signal);
         return { status: 200 as const, body: { ok: true as const } };
       }
       case "set-runner-job-connector-runtime-targets": {

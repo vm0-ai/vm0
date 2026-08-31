@@ -72,6 +72,7 @@ import {
 } from "@okouai/api-contracts/contracts/uploads";
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
+import type { UsagePricingResolution } from "../../../context/usage-pricing-resolution";
 import {
   buildArtifactKey,
   sanitizeArtifactFilename,
@@ -139,6 +140,11 @@ type BddSendEventBody =
       readonly interruptsRunId: string;
       readonly clientEventId?: string;
     };
+
+interface RequestSendEventOptions {
+  readonly publicBrand?: PublicBrand;
+  readonly usagePricingResolution?: UsagePricingResolution;
+}
 
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
   return actor
@@ -355,10 +361,6 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function threadComputerUseHostClient() {
     return chatFilesApp(context)(chatThreadComputerUseHostContract);
-  }
-
-  function chatEventsClient() {
-    return chatFilesApp(context)(chatEventsContract);
   }
 
   function chatSearchClient() {
@@ -1316,14 +1318,18 @@ export function createChatFilesBddApi(context: TestContext) {
         | 429
         | 503
       )[],
+      options: RequestSendEventOptions = {},
       signal?: AbortSignal,
-      publicBrand: PublicBrand = "vm0",
     ) {
-      const client = signal
-        ? setupAppWithRoutes({ context, routes: chatFilesRoutes, signal })(
-            chatEventsContract,
-          )
-        : chatEventsClient();
+      const publicBrand = options.publicBrand ?? "vm0";
+      const client = setupAppWithRoutes({
+        context,
+        routes: chatFilesRoutes,
+        ...(signal === undefined ? {} : { signal }),
+        ...(options.usagePricingResolution === undefined
+          ? {}
+          : { usagePricingResolution: options.usagePricingResolution }),
+      })(chatEventsContract);
       const defaultModel =
         "prompt" in body &&
         body.threadId === undefined &&

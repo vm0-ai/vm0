@@ -3322,7 +3322,8 @@
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "La requête a échoué"
+      "requestFailed": "La requête a échoué",
+      "sharedDatabaseUnavailable": "L’application a rencontré un problème. Veuillez patienter un moment, puis actualiser la page pour réessayer."
     },
     "realtime": {
       "degraded": "Les mises à jour en direct ont rencontré un problème. Veuillez actualiser la page.",

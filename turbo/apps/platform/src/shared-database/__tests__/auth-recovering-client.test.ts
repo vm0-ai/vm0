@@ -6,7 +6,6 @@ import { AuthRecoveringSharedDatabaseBridge } from "../auth-recovering-client.ts
 import type {
   SharedDatabaseBridge,
   SharedDatabaseHeartbeat,
-  SharedDatabaseSubscriptionCallback,
 } from "../bridge.ts";
 import type {
   ChatThreadIndicators,
@@ -48,14 +47,6 @@ class FakeBridge implements SharedDatabaseBridge {
       return Promise.reject(error);
     }
     return Promise.resolve([] as SharedDatabaseQueryResult<TKey>);
-  }
-
-  on(
-    _dataKey: SharedDatabaseDataKey,
-    _callback: SharedDatabaseSubscriptionCallback,
-    _signal: AbortSignal,
-  ): Promise<void> {
-    return Promise.resolve();
   }
 }
 

@@ -1,17 +1,14 @@
 import { authContract } from "@okouai/api-contracts/contracts/auth";
-import { createStore, type Store } from "ccstate";
 
 import { accept } from "../lib/accept.ts";
 import { captureSentryLogError } from "../lib/sentry-config.ts";
-import { now } from "../lib/time.ts";
 import { createAuthedContractClient } from "../signals/api-client-base.ts";
-import { initializeAppVersion$ } from "../signals/app-version.ts";
 import type { AuthRecovery } from "../signals/auth-retry.ts";
 import { logger } from "../signals/log.ts";
 import {
   createChildAbortController,
-  detach,
-  Reason,
+  onDomEventFn,
+  settle,
 } from "../signals/utils.ts";
 import type { SharedDatabasePortLike } from "./bridge.ts";
 import {
@@ -20,31 +17,21 @@ import {
 } from "./data-key.ts";
 import {
   sharedDatabaseClientMessageSchema,
+  SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME,
   type SharedDatabaseClientMessage,
+  type SharedDatabaseHeartbeatResult,
   type SharedDatabaseWorkerMessage,
 } from "./protocol.ts";
-import { reloadTabs$, type TabId } from "./worker-context.ts";
+import {
+  SharedDatabaseWorkerContext,
+  type SharedDatabaseConnectionBinding,
+} from "./worker-host-context.ts";
 import {
   heartbeatStoreMessage$,
   indicatorsStoreMessage$,
   queryStoreMessage$,
   reloadIndicatorsStoreMessage$,
-  runCredentialStoreDaemons$,
-  subscribeStoreMessage$,
-  unregisterSharedDatabaseWorkerTab$,
-  unsubscribeStoreMessage$,
 } from "./worker-signals.ts";
-
-type CredentialId = string;
-
-export interface SharedDatabaseWorkerMaps {
-  readonly appVersion: string;
-  readonly allocateTabId: () => TabId;
-  readonly credentialStores: Map<CredentialId, Store>;
-  readonly credentialAbortControllers: Map<CredentialId, AbortController>;
-  readonly tabCredentialIds: Map<TabId, CredentialId>;
-  readonly tabHeartbeatAts: Map<TabId, number>;
-}
 
 type RequestMessage = Extract<
   SharedDatabaseClientMessage,
@@ -52,20 +39,10 @@ type RequestMessage = Extract<
 >;
 type RoutedMessage = Exclude<
   SharedDatabaseClientMessage,
-  { readonly type: "heartbeat" }
+  { readonly type: "disconnect" | "heartbeat" }
 >;
 
-const STALE_TAB_AFTER_MS = 3 * 60 * 1000;
 const L = logger("SharedDatabaseWorker");
-
-const messageRoutes = {
-  heartbeat: heartbeatStoreMessage$,
-  query: queryStoreMessage$,
-  subscribe: subscribeStoreMessage$,
-  unsubscribe: unsubscribeStoreMessage$,
-  "get-indicators": indicatorsStoreMessage$,
-  "reload-indicators": reloadIndicatorsStoreMessage$,
-} as const;
 
 function serializedError(error: unknown): { name: string; message: string } {
   if (error instanceof Error || error instanceof DOMException) {
@@ -124,149 +101,134 @@ async function authenticateHeartbeat(
   };
 }
 
+class SharedDatabaseClientNotConnectedError extends Error {
+  constructor() {
+    super("Shared database heartbeat is required before query");
+    this.name = SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME;
+  }
+}
+
 export class SharedDatabaseMessagePortServer {
-  private readonly tabId: TabId;
-  private closed = false;
+  private readonly connectionId = crypto.randomUUID();
+  private readonly connectionController: AbortController;
+  private readonly connectionSignal: AbortSignal;
+  private binding: SharedDatabaseConnectionBinding | null = null;
+  private credentialConnectionSignal: AbortSignal | null = null;
+  private credentialReady = false;
+  private disconnected = false;
 
   constructor(
+    private readonly context: SharedDatabaseWorkerContext,
     private readonly port: SharedDatabasePortLike,
-    private readonly signal: AbortSignal,
-    private readonly maps: SharedDatabaseWorkerMaps,
+    workerSignal: AbortSignal,
   ) {
-    signal.throwIfAborted();
-    this.tabId = maps.allocateTabId();
-    port.addEventListener("message", this.handleMessage, { signal });
+    workerSignal.throwIfAborted();
+    this.connectionController = createChildAbortController(workerSignal);
+    this.connectionSignal = this.connectionController.signal;
+    L.debug("connection.connect", { connectionId: this.connectionId });
+    port.addEventListener("message", this.handleMessage);
     port.start();
-    signal.addEventListener(
+    this.connectionSignal.addEventListener(
       "abort",
-      () => {
-        this.closed = true;
-        this.port.close();
-      },
+      this.handleConnectionAbort,
       { once: true },
     );
   }
 
-  private readonly emit = (message: SharedDatabaseWorkerMessage): void => {
-    if (!this.closed) {
-      this.port.postMessage(message);
-    }
+  private readonly handleConnectionAbort = (): void => {
+    this.disconnect("connection-abort");
   };
 
-  private startRequest(
+  private readonly handleCredentialConnectionAbort = (): void => {
+    this.disconnect("credential-abort");
+  };
+
+  private emit(message: SharedDatabaseWorkerMessage): void {
+    if (!this.disconnected) {
+      this.port.postMessage(message);
+    }
+  }
+
+  private async startRequest(
     message: RequestMessage,
     signal: AbortSignal,
-    operation: (signal: AbortSignal) => Promise<unknown> | unknown,
-  ): void {
-    const completion = (async (): Promise<void> => {
-      const runOperation = async (): Promise<unknown> => {
-        return await operation(signal);
-      };
-      const [result] = await Promise.allSettled([runOperation()]);
-      if (this.closed || signal.aborted || !result) {
-        return;
-      }
-      if (result.status === "fulfilled") {
-        this.emit({
-          type: "result",
-          requestId: message.requestId,
-          value: result.value,
-        });
-        return;
-      }
-      this.emit({
-        type: "error",
+    operation: () => Promise<unknown> | unknown,
+  ): Promise<boolean> {
+    L.debug("request.start", {
+      connectionId: this.connectionId,
+      requestId: message.requestId,
+      type: message.type,
+    });
+    const result = await settle(
+      (async (): Promise<unknown> => {
+        return await operation();
+      })(),
+    );
+    if (this.disconnected || signal.aborted) {
+      return false;
+    }
+    if (result.ok) {
+      L.debug("request.finish", {
+        connectionId: this.connectionId,
         requestId: message.requestId,
-        error: serializedError(result.reason),
+        type: message.type,
       });
-    })();
-    detach(
-      completion,
-      Reason.Daemon,
-      `shared database MessagePort request: ${message.type}`,
-    );
-  }
-
-  private releaseTab(tabId: TabId, credentialId: CredentialId): void {
-    const controller = this.maps.credentialAbortControllers.get(credentialId);
-    if (!controller) {
-      return;
+      this.emit({
+        type: "result",
+        requestId: message.requestId,
+        value: result.value,
+      });
+      return true;
     }
-    if (this.maps.tabCredentialIds.get(tabId) === credentialId) {
-      this.maps.tabCredentialIds.delete(tabId);
-      this.maps.tabHeartbeatAts.delete(tabId);
-    }
-    const store = this.maps.credentialStores.get(credentialId);
-    if (!store) {
-      controller.abort(
-        new DOMException("Credential Store was released", "AbortError"),
-      );
-      this.maps.credentialAbortControllers.delete(credentialId);
-      return;
-    }
-    const remainingTabs = store.set(unregisterSharedDatabaseWorkerTab$, tabId);
-    if (remainingTabs > 0) {
-      return;
-    }
-    controller.abort(
-      new DOMException("Credential Store was released", "AbortError"),
-    );
-    this.maps.credentialAbortControllers.delete(credentialId);
-    this.maps.credentialStores.delete(credentialId);
-  }
-
-  private pruneStaleTabs(currentTime: number): void {
-    for (const [tabId, lastHeartbeatAt] of this.maps.tabHeartbeatAts) {
-      if (lastHeartbeatAt >= currentTime - STALE_TAB_AFTER_MS) {
-        continue;
-      }
-      const credentialId = this.maps.tabCredentialIds.get(tabId);
-      if (credentialId) {
-        this.releaseTab(tabId, credentialId);
-      }
-    }
+    const error = serializedError(result.error);
+    L.debug("request.error", {
+      connectionId: this.connectionId,
+      error,
+      requestId: message.requestId,
+      type: message.type,
+    });
+    this.emit({
+      type: "error",
+      requestId: message.requestId,
+      error,
+    });
+    return false;
   }
 
   private routeStoreMessage(
     message: RoutedMessage,
     signal: AbortSignal,
   ): Promise<unknown> | unknown {
-    const credentialId = this.maps.tabCredentialIds.get(this.tabId);
-    if (!credentialId) {
-      return;
+    const binding = this.binding;
+    if (
+      !binding ||
+      !this.credentialReady ||
+      this.credentialConnectionSignal !== signal
+    ) {
+      throw new SharedDatabaseClientNotConnectedError();
     }
-    const store = this.maps.credentialStores.get(credentialId);
-    const controller = this.maps.credentialAbortControllers.get(credentialId);
-    if (!store || !controller || controller.signal !== signal) {
-      return;
-    }
+    const store = binding.store;
     switch (message.type) {
       case "query": {
-        return store.set(messageRoutes.query, this.tabId, message, signal);
-      }
-      case "subscribe": {
-        return store.set(messageRoutes.subscribe, this.tabId, message, signal);
-      }
-      case "unsubscribe": {
         return store.set(
-          messageRoutes.unsubscribe,
-          this.tabId,
+          queryStoreMessage$,
+          this.connectionId,
           message,
           signal,
         );
       }
       case "get-indicators": {
         return store.set(
-          messageRoutes["get-indicators"],
-          this.tabId,
+          indicatorsStoreMessage$,
+          this.connectionId,
           message,
           signal,
         );
       }
       case "reload-indicators": {
         return store.set(
-          messageRoutes["reload-indicators"],
-          this.tabId,
+          reloadIndicatorsStoreMessage$,
+          this.connectionId,
           message,
         );
       }
@@ -279,138 +241,180 @@ export class SharedDatabaseMessagePortServer {
       { readonly type: "heartbeat" }
     >,
     signal: AbortSignal,
-  ): Promise<unknown> {
-    const heartbeatAt = now();
-    this.pruneStaleTabs(heartbeatAt);
+  ): Promise<SharedDatabaseHeartbeatResult> {
     const identity = await authenticateHeartbeat(
       message,
-      this.maps.appVersion,
+      this.context.appVersion,
       () => {
         this.emit({ type: "reload-required" });
-        this.closed = true;
-        this.port.close();
+        this.disconnect("force-upgrade");
       },
       signal,
     );
+    signal.throwIfAborted();
     const credentialId = sharedDatabaseCredentialId(identity);
-    const previousCredentialId = this.maps.tabCredentialIds.get(this.tabId);
-    if (
-      previousCredentialId !== undefined &&
-      previousCredentialId !== credentialId
-    ) {
-      this.releaseTab(this.tabId, previousCredentialId);
-    }
-
-    let store = this.maps.credentialStores.get(credentialId);
-    let controller = this.maps.credentialAbortControllers.get(credentialId);
-    if (
-      controller?.signal.aborted ||
-      (store === undefined) !== (controller === undefined)
-    ) {
-      controller?.abort(
-        new DOMException("Credential Store was replaced", "AbortError"),
-      );
-      this.maps.credentialStores.delete(credentialId);
-      this.maps.credentialAbortControllers.delete(credentialId);
-      for (const [tabId, mappedCredentialId] of this.maps.tabCredentialIds) {
-        if (mappedCredentialId === credentialId) {
-          this.maps.tabCredentialIds.delete(tabId);
-          this.maps.tabHeartbeatAts.delete(tabId);
-        }
+    const currentBinding = this.binding;
+    if (currentBinding) {
+      if (currentBinding.credentialId !== credentialId) {
+        return this.reloadAfterCredentialChange();
       }
-      store = undefined;
-      controller = undefined;
-    }
-    const created = store === undefined;
-    if (!store) {
-      store = createStore();
-      store.set(initializeAppVersion$, this.maps.appVersion);
-      controller = createChildAbortController(this.signal);
-      this.maps.credentialStores.set(credentialId, store);
-      this.maps.credentialAbortControllers.set(credentialId, controller);
-    }
-    if (!controller) {
-      throw new Error("Credential Store is missing its AbortController");
-    }
-
-    const register =
-      this.maps.tabCredentialIds.get(this.tabId) !== credentialId;
-    const result = await store.set(
-      messageRoutes.heartbeat,
-      this.tabId,
-      {
+      return await this.heartbeatBoundConnection(
+        currentBinding,
         message,
         identity,
-        emit: this.emit,
-        register,
-        onForceUpgrade: () => {
-          store.set(reloadTabs$);
-          controller.abort(
-            new DOMException(
-              "Credential Store requires a newer client",
-              "AbortError",
-            ),
-          );
-        },
-      },
-      controller.signal,
-    );
-    this.maps.tabCredentialIds.set(this.tabId, credentialId);
-    this.maps.tabHeartbeatAts.set(this.tabId, heartbeatAt);
-    if (created) {
-      detach(
-        store.set(runCredentialStoreDaemons$, controller.signal),
-        Reason.Daemon,
-        `shared database credential daemons: ${credentialId}`,
+        signal,
       );
     }
+    const update = this.context.bindConnection({
+      connectionId: this.connectionId,
+      connectionController: this.connectionController,
+      port: this.port,
+      identity,
+      apiBaseUrl: message.apiBaseUrl,
+      vercelProtectionBypass: message.vercelProtectionBypass,
+    });
+    const { binding, signal: credentialConnectionSignal } = update;
+    this.setCredentialBinding(binding, credentialConnectionSignal);
+    return await this.heartbeatBoundConnection(
+      binding,
+      message,
+      identity,
+      signal,
+    );
+  }
+
+  private async heartbeatBoundConnection(
+    binding: SharedDatabaseConnectionBinding,
+    message: Extract<
+      SharedDatabaseClientMessage,
+      { readonly type: "heartbeat" }
+    >,
+    identity: SharedDatabaseIdentity,
+    signal: AbortSignal,
+  ): Promise<SharedDatabaseHeartbeatResult> {
+    const credentialConnectionSignal = this.credentialConnectionSignal;
+    if (!credentialConnectionSignal || binding !== this.binding) {
+      throw new SharedDatabaseClientNotConnectedError();
+    }
+    const result = binding.store.set(
+      heartbeatStoreMessage$,
+      this.connectionId,
+      message,
+      identity,
+      credentialConnectionSignal,
+    );
+    await this.context.startCredentialStoreDaemons(binding.credentialId);
+    signal.throwIfAborted();
+    credentialConnectionSignal.throwIfAborted();
+    this.credentialReady = true;
     return result;
   }
 
-  private readonly handleMessage = (event: MessageEvent<unknown>): void => {
-    const parsed = sharedDatabaseClientMessageSchema.safeParse(event.data);
-    if (!parsed.success) {
-      const credentialId = this.maps.tabCredentialIds.get(this.tabId);
-      if (credentialId) {
-        this.releaseTab(this.tabId, credentialId);
-      }
-      this.closed = true;
-      this.port.close();
-      const error = new Error("Invalid shared database client message");
-      const details = {
-        tabId: this.tabId,
-        issueCount: parsed.error.issues.length,
-      };
-      L.debug("protocol.error", { ...details, error });
-      captureSentryLogError("SharedDatabaseWorker", [error, details]);
-      return;
-    }
-    const message = parsed.data;
-    if (message.type === "heartbeat") {
-      this.startRequest(message, this.signal, (signal) => {
-        return this.routeHeartbeat(message, signal);
-      });
-      return;
-    }
+  private reloadAfterCredentialChange(): never {
+    const reason = new DOMException(
+      "Shared database MessagePort credential changed",
+      "AbortError",
+    );
+    this.connectionSignal.removeEventListener(
+      "abort",
+      this.handleConnectionAbort,
+    );
+    this.credentialConnectionSignal?.removeEventListener(
+      "abort",
+      this.handleCredentialConnectionAbort,
+    );
+    this.connectionController.abort(reason);
+    this.emit({ type: "reload-required" });
+    this.disconnect("credential-changed");
+    throw reason;
+  }
 
-    const credentialId = this.maps.tabCredentialIds.get(this.tabId);
-    if (!credentialId) {
-      return;
+  private setCredentialBinding(
+    binding: SharedDatabaseConnectionBinding,
+    signal: AbortSignal,
+  ): void {
+    if (this.binding || this.credentialConnectionSignal) {
+      throw new Error("Shared database MessagePort credential is immutable");
     }
-    const store = this.maps.credentialStores.get(credentialId);
-    const controller = this.maps.credentialAbortControllers.get(credentialId);
-    if (!store || !controller || controller.signal.aborted) {
-      return;
-    }
-    if (
-      message.type === "unsubscribe" ||
-      message.type === "reload-indicators"
-    ) {
-      this.routeStoreMessage(message, controller.signal);
-      return;
-    }
-    this.startRequest(message, controller.signal, (signal) => {
-      return this.routeStoreMessage(message, signal);
+    this.binding = binding;
+    this.credentialConnectionSignal = signal;
+    signal.addEventListener("abort", this.handleCredentialConnectionAbort, {
+      once: true,
     });
-  };
+  }
+
+  private disconnect(reason: string): void {
+    if (this.disconnected) {
+      return;
+    }
+    this.disconnected = true;
+    L.debug("connection.disconnect", {
+      connectionId: this.connectionId,
+      reason,
+    });
+    this.port.removeEventListener("message", this.handleMessage);
+    this.connectionSignal.removeEventListener(
+      "abort",
+      this.handleConnectionAbort,
+    );
+    this.credentialConnectionSignal?.removeEventListener(
+      "abort",
+      this.handleCredentialConnectionAbort,
+    );
+    this.connectionController.abort(
+      new DOMException(
+        "Shared database MessagePort disconnected",
+        "AbortError",
+      ),
+    );
+    this.binding = null;
+    this.credentialConnectionSignal = null;
+    this.credentialReady = false;
+    this.port.close();
+  }
+
+  private readonly handleMessage = onDomEventFn(
+    async (event: MessageEvent<unknown>): Promise<void> => {
+      const parsed = sharedDatabaseClientMessageSchema.safeParse(event.data);
+      if (!parsed.success) {
+        this.disconnect("invalid-message");
+        const error = new Error("Invalid shared database client message");
+        const details = {
+          connectionId: this.connectionId,
+          issueCount: parsed.error.issues.length,
+        };
+        L.debug("protocol.error", { ...details, error });
+        captureSentryLogError("SharedDatabaseWorker", [error, details]);
+        return;
+      }
+      const message = parsed.data;
+      if (message.type === "disconnect") {
+        this.disconnect("client-request");
+        return;
+      }
+      if (message.type === "heartbeat") {
+        await this.startRequest(message, this.connectionSignal, () => {
+          return this.routeHeartbeat(message, this.connectionSignal);
+        });
+        return;
+      }
+      const binding = this.binding;
+      const credentialConnectionSignal = this.credentialConnectionSignal;
+      if (!binding || !credentialConnectionSignal) {
+        if ("requestId" in message) {
+          await this.startRequest(message, this.connectionSignal, () => {
+            throw new SharedDatabaseClientNotConnectedError();
+          });
+        }
+        return;
+      }
+      if (message.type === "reload-indicators") {
+        this.routeStoreMessage(message, credentialConnectionSignal);
+        return;
+      }
+      await this.startRequest(message, credentialConnectionSignal, () => {
+        return this.routeStoreMessage(message, credentialConnectionSignal);
+      });
+    },
+  );
 }

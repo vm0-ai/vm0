@@ -5,7 +5,7 @@ import {
   subscribeRealtimeReadyCatchUp$,
 } from "./realtime.ts";
 import { clearOptimisticReadMark$ } from "./chat-page/optimistic-chat-thread-read-marks.ts";
-import { invalidateTabIndicators$ } from "../shared-database/worker-context.ts";
+import { invalidateConnectionIndicators$ } from "../shared-database/worker-context.ts";
 import { apiClientRuntime$ } from "./api-client-runtime.ts";
 import { reloadSharedDatabaseIndicators$ } from "./shared-database-bridge-state.ts";
 
@@ -30,7 +30,7 @@ export const reloadChatIndicators$ = command(({ get, set }) => {
 
 export const reloadChatIndicatorsFromRealtime$ = command(({ set }) => {
   set(reloadChatIndicators$);
-  set(invalidateTabIndicators$, null);
+  set(invalidateConnectionIndicators$, null);
   return false;
 });
 
@@ -54,7 +54,7 @@ const reloadChatIndicatorsFromReadCursor$ = command(
   ({ set }, payload: unknown, signal: AbortSignal) => {
     signal.throwIfAborted();
     set(reloadChatIndicators$);
-    set(invalidateTabIndicators$, payload);
+    set(invalidateConnectionIndicators$, payload);
     return false;
   },
 );

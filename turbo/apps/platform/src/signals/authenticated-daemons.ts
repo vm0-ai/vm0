@@ -16,7 +16,6 @@ import {
   runSharedDatabaseHeartbeatLoop$,
   setupSharedDatabaseBridge$,
 } from "./shared-database-browser.ts";
-import { runSharedDatabaseInvalidationDaemon$ } from "./shared-database-invalidation-daemon.ts";
 
 const authenticatedServicesInstalled$ = state(false);
 
@@ -95,9 +94,6 @@ export const runAuthenticatedDaemons$ = command(
     if (!get(authenticatedServicesInstalled$)) {
       return;
     }
-    await Promise.all([
-      set(runSharedDatabaseHeartbeatLoop$, signal),
-      set(runSharedDatabaseInvalidationDaemon$, signal),
-    ]);
+    await set(runSharedDatabaseHeartbeatLoop$, signal);
   },
 );

@@ -1,10 +1,9 @@
 import "./polyfill.ts";
-import type { Store } from "ccstate";
 import { createDebugLoggers } from "./lib/debug-loggers.ts";
 import { logger } from "./signals/log.ts";
 import { SharedDatabaseMessagePortServer } from "./shared-database/message-port-server.ts";
 import { initSharedDatabaseWorkerSentry } from "./shared-database/worker-sentry.ts";
-import type { TabId } from "./shared-database/worker-context.ts";
+import { SharedDatabaseWorkerContext } from "./shared-database/worker-host-context.ts";
 import type { DebugLoggers } from "./types/global-method.ts";
 
 const L = logger("SharedDatabaseWorker");
@@ -38,26 +37,15 @@ function main(): void {
   // SharedWorker termination tears down the whole global without an observable
   // abort hook. Credential Stores still own abortable child lifecycles below.
   const workerSignal = AbortSignal.any([]);
-  let nextTabId = 0;
-  const credentialStores = new Map<string, Store>();
-  const credentialAbortControllers = new Map<string, AbortController>();
-  const tabCredentialIds = new Map<TabId, string>();
-  const tabHeartbeatAts = new Map<TabId, number>();
-  const maps = {
-    appVersion: __OKOU_APP_VERSION__,
-    allocateTabId: (): TabId => {
-      return nextTabId++;
-    },
-    credentialStores,
-    credentialAbortControllers,
-    tabCredentialIds,
-    tabHeartbeatAts,
-  };
+  const context = new SharedDatabaseWorkerContext(
+    workerSignal,
+    __OKOU_APP_VERSION__,
+  );
   L.debug("worker.bootstrap");
   workerGlobal.addEventListener("connect", (event): void => {
     L.debug("worker.connect", { portCount: event.ports.length });
     for (const port of event.ports) {
-      new SharedDatabaseMessagePortServer(port, workerSignal, maps);
+      new SharedDatabaseMessagePortServer(context, port, workerSignal);
     }
   });
 }
