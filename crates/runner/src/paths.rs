@@ -271,11 +271,15 @@ impl HomePaths {
         self.locks_dir().join(base_dir_lock_name(base_dir))
     }
 
-    /// Lock file for a rootfs hash.
-    ///
-    /// Keeps the `image-` prefix for backward compatibility: during rolling
-    /// deploys, old runner binaries still hold locks under this name.
     pub fn rootfs_lock(&self, hash: &str) -> PathBuf {
+        self.locks_dir().join(format!("rootfs-{hash}.lock"))
+    }
+
+    /// Compatibility lock for rootfs users from before the canonical rename.
+    ///
+    /// Bridge releases acquire this before [`Self::rootfs_lock`]. Remove it
+    /// only after the rollout gate in vm0-ai/vm0#30478 is complete.
+    pub fn legacy_rootfs_lock(&self, hash: &str) -> PathBuf {
         self.locks_dir().join(format!("image-{hash}.lock"))
     }
 
@@ -553,8 +557,11 @@ mod tests {
     fn lock_paths() {
         let home = HomePaths::with_root(PathBuf::from("/test"));
         let rootfs_lock = home.rootfs_lock("abc123");
-        assert!(rootfs_lock.starts_with("/test/locks/"));
-        assert!(rootfs_lock.to_string_lossy().contains("image-abc123"));
+        assert_eq!(rootfs_lock, PathBuf::from("/test/locks/rootfs-abc123.lock"));
+        assert_eq!(
+            home.legacy_rootfs_lock("abc123"),
+            PathBuf::from("/test/locks/image-abc123.lock")
+        );
         let template_lock = home.template_lock("def456");
         assert!(template_lock.starts_with("/test/locks/"));
         assert!(template_lock.to_string_lossy().contains("template-def456"));

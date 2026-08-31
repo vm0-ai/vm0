@@ -1209,13 +1209,16 @@ profiles:
     }
 
     async fn assert_artifact_locks_held(home: &HomePaths) {
-        let rootfs_err = crate::lock::try_acquire(home.rootfs_lock(TEST_ROOTFS_HASH))
-            .await
-            .unwrap_err();
-        assert!(
-            rootfs_err.to_string().contains("lock is already held"),
-            "unexpected rootfs lock error: {rootfs_err}"
-        );
+        for path in [
+            home.legacy_rootfs_lock(TEST_ROOTFS_HASH),
+            home.rootfs_lock(TEST_ROOTFS_HASH),
+        ] {
+            let error = crate::lock::try_acquire(path).await.unwrap_err();
+            assert!(
+                error.to_string().contains("lock is already held"),
+                "unexpected rootfs lock error: {error}"
+            );
+        }
 
         let snapshot_err = crate::lock::try_acquire(home.snapshot_lock(TEST_SNAPSHOT_HASH))
             .await
@@ -1227,10 +1230,12 @@ profiles:
     }
 
     async fn assert_artifact_locks_released(home: &HomePaths) {
-        let rootfs_lock = crate::lock::try_acquire(home.rootfs_lock(TEST_ROOTFS_HASH))
-            .await
-            .unwrap();
-        drop(rootfs_lock);
+        for path in [
+            home.legacy_rootfs_lock(TEST_ROOTFS_HASH),
+            home.rootfs_lock(TEST_ROOTFS_HASH),
+        ] {
+            drop(crate::lock::try_acquire(path).await.unwrap());
+        }
 
         let snapshot_lock = crate::lock::try_acquire(home.snapshot_lock(TEST_SNAPSHOT_HASH))
             .await
