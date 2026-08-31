@@ -256,9 +256,9 @@ export class ReconnectingSharedDatabaseBridge implements SharedDatabaseBridge {
           this.options.events.authenticationRequired();
         }
       },
-      indicatorsInvalidated: () => {
+      indicatorsInvalidated: (payload) => {
         if (this.connection?.generation === generation) {
-          this.options.events.indicatorsInvalidated();
+          this.options.events.indicatorsInvalidated(payload);
         }
       },
       reloadRequired: () => {

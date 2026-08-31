@@ -34,6 +34,7 @@ import {
   heartbeatSharedDatabaseWorker$,
   initializeCredentialStore$,
   querySharedDatabaseWorker$,
+  registerSharedDatabaseWorkerTab$,
   runCredentialStoreDaemons$,
   subscribeSharedDatabaseWorker$,
 } from "../worker-signals.ts";
@@ -220,7 +221,8 @@ function createRuntimeHarness() {
       currentIdentity: SharedDatabaseIdentity,
       events: WorkerEvent[],
     ): Promise<string> => {
-      const clientId = crypto.randomUUID();
+      const tabId = 1;
+      const clientId = String(tabId);
       store.set(
         initializeCredentialStore$,
         {
@@ -230,7 +232,7 @@ function createRuntimeHarness() {
         },
         context.signal,
       );
-      store.set(connectSharedDatabaseWorkerClient$, clientId, (event) => {
+      store.set(registerSharedDatabaseWorkerTab$, tabId, (event) => {
         events.push(event);
       });
       await store.set(
@@ -1002,6 +1004,72 @@ describe("shared database worker runtime", () => {
     });
   });
 
+  it("forwards indicator invalidations only to the matching user-org clients", async () => {
+    const sharedUserId = `indicator-user-${context.resourceId}`;
+    const orgAIdentity: SharedDatabaseIdentity = {
+      userId: sharedUserId,
+      orgId: `indicator-org-a-${context.resourceId}`,
+      token: "indicator-org-a-token",
+    };
+    const orgBIdentity: SharedDatabaseIdentity = {
+      userId: sharedUserId,
+      orgId: `indicator-org-b-${context.resourceId}`,
+      token: "indicator-org-b-token",
+    };
+    const orgAEvents: WorkerEvent[] = [];
+    const orgBEvents: WorkerEvent[] = [];
+    const orgAHarness = createRuntimeHarness();
+    const orgBHarness = createRuntimeHarness();
+    await orgAHarness.connect(orgAIdentity, orgAEvents);
+    await orgBHarness.connect(orgBIdentity, orgBEvents);
+
+    await vi.waitFor(() => {
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          realtimeChannel(orgAIdentity),
+        ),
+      ).toBeTruthy();
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          realtimeChannel(orgBIdentity),
+        ),
+      ).toBeTruthy();
+    });
+    orgAEvents.length = 0;
+    orgBEvents.length = 0;
+
+    const readCursorPayload = {
+      threadId: crypto.randomUUID(),
+      agentId: crypto.randomUUID(),
+      lastReadAt: null,
+    };
+    context.mocks.ably.triggerOnChannel(
+      realtimeChannel(orgAIdentity),
+      "threadListChanged",
+    );
+    context.mocks.ably.triggerOnChannel(
+      realtimeChannel(orgAIdentity),
+      "chatThreadReadCursorUpdated",
+      readCursorPayload,
+    );
+
+    await vi.waitFor(() => {
+      expect(
+        orgAEvents.filter((event) => {
+          return event.type === "indicators-invalidated";
+        }),
+      ).toStrictEqual([
+        { type: "indicators-invalidated", payload: null },
+        { type: "indicators-invalidated", payload: readCursorPayload },
+      ]);
+    });
+    expect(
+      orgBEvents.filter((event) => {
+        return event.type === "indicators-invalidated";
+      }),
+    ).toStrictEqual([]);
+  });
+
   it("isolates realtime sessions and background caches by user and org", async () => {
     const sharedUserId = `shared-worker-user-${context.resourceId}`;
     const orgAIdentity: SharedDatabaseIdentity = {
@@ -1077,15 +1145,15 @@ describe("shared database worker runtime", () => {
       otherUserOrgBWorkerEvents,
     );
     await vi.waitFor(() => {
-      expect(orgAWorkerEvents.at(-1)).toMatchObject({
+      expect(orgAWorkerEvents).toContainEqual({
         type: "status",
         status: "connected",
       });
-      expect(orgBWorkerEvents.at(-1)).toMatchObject({
+      expect(orgBWorkerEvents).toContainEqual({
         type: "status",
         status: "connected",
       });
-      expect(otherUserOrgBWorkerEvents.at(-1)).toMatchObject({
+      expect(otherUserOrgBWorkerEvents).toContainEqual({
         type: "status",
         status: "connected",
       });

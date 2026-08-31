@@ -14,7 +14,6 @@ import {
 import { activeRoute$ } from "../active-route.ts";
 import { apiClient$ } from "../api-client.ts";
 import { foregroundReady$ } from "../auth-retry.ts";
-import { reloadChatIndicators$ } from "../chat-thread-list-reload.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { subscribeRealtimeReadyCatchUp$ } from "../realtime.ts";
 import { rootSignal$ } from "../root-signal.ts";
@@ -315,7 +314,6 @@ const subscribeSharedEventDrivenChatThreads$ = command(
       (kind) => {
         if (kind === "invalidate") {
           set(sharedChatThreadEventInvalidationPending$, true);
-          set(reloadChatIndicators$);
         } else if (get(sharedChatThreadEventInvalidationPending$)) {
           set(sharedChatThreadEventInvalidationPending$, false);
           return;

@@ -62,6 +62,11 @@ interface SetupSharedWorkerTestBootstrap {
   readonly workerStore: Store;
 }
 
+interface DirectRealtimeMessage {
+  readonly data: unknown;
+  readonly name: string;
+}
+
 type DirectWorkerEvent = Extract<
   SharedDatabaseWorkerMessage,
   {
@@ -123,7 +128,7 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
       return;
     }
     if (event.type === "indicators-invalidated") {
-      this.events.indicatorsInvalidated();
+      this.events.indicatorsInvalidated(event.payload);
       return;
     }
     if (event.type === "reload-required") {
@@ -132,6 +137,33 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
     }
     this.events.statusChanged(event.status);
   };
+
+  handleRealtimeMessage(message: DirectRealtimeMessage): void {
+    this.workerStore.set(
+      handleSharedDatabaseRealtimeMessage$,
+      message,
+      this.workerSignal,
+    );
+    if (
+      message.name !== "threadListChanged" &&
+      message.name !== "chatThreadReadCursorUpdated"
+    ) {
+      return;
+    }
+    this.workerStore.set(reloadChatIndicators$);
+    this.events.indicatorsInvalidated(
+      message.name === "chatThreadReadCursorUpdated" ? message.data : null,
+    );
+  }
+
+  handleRealtimeRecovery(): void {
+    this.workerStore.set(
+      catchUpSharedDatabaseAfterRealtimeRecovery$,
+      this.workerSignal,
+    );
+    this.workerStore.set(reloadChatIndicators$);
+    this.events.indicatorsInvalidated(null);
+  }
 
   async heartbeat(
     heartbeat: SharedDatabaseHeartbeat,
@@ -187,7 +219,7 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
 
   reloadIndicators(): void {
     this.workerStore.set(reloadChatIndicators$);
-    this.events.indicatorsInvalidated();
+    this.events.indicatorsInvalidated(null);
   }
 
   async query<TKey extends SharedDatabaseDataKey>(
@@ -281,6 +313,7 @@ export const setupSharedWorkerTestBootstrap$ = command(
     signal: AbortSignal,
   ): void => {
     const directIdentity = options.identity;
+    let directBridge: DirectSharedDatabaseBridge | null = null;
     let directRealtimeForwardingInstalled = false;
     const maps = {
       credentialStores: new Map<string, Store>(),
@@ -306,27 +339,21 @@ export const setupSharedWorkerTestBootstrap$ = command(
           options.workerStore.set(bootstrapSharedDatabaseWorker$, signal);
           if (!directRealtimeForwardingInstalled) {
             subscribeChatDatabaseEvents((message) => {
-              options.workerStore.set(
-                handleSharedDatabaseRealtimeMessage$,
-                message,
-                signal,
-              );
+              directBridge?.handleRealtimeMessage(message);
             }, signal);
             subscribeChatDatabaseRecovery(() => {
-              options.workerStore.set(
-                catchUpSharedDatabaseAfterRealtimeRecovery$,
-                signal,
-              );
+              directBridge?.handleRealtimeRecovery();
             }, signal);
             directRealtimeForwardingInstalled = true;
           }
-          bridge = new DirectSharedDatabaseBridge(
+          directBridge = new DirectSharedDatabaseBridge(
             options.workerStore,
             directIdentity,
             apiBaseUrl,
             events,
             signal,
           );
+          bridge = directBridge;
         }
         return new TestSharedDatabaseBridge(bridge, options.afterHeartbeat);
       },

@@ -1,7 +1,7 @@
 import "./lib/preview-bypass-cookie-bootstrap.ts";
 import "./lib/accept-browser.ts";
 import { initSentry } from "./lib/sentry.ts";
-import { initPostHog } from "./lib/posthog.ts";
+import { captureFirstSkeletonPaint, initPostHog } from "./lib/posthog.ts";
 import { initPlausible } from "./lib/plausible.ts";
 import { setupVisualViewportKeyboardState } from "./lib/visual-viewport-keyboard.ts";
 import "./polyfill.ts";
@@ -21,6 +21,7 @@ function startApplication(): void {
   // Initialize Sentry before bootstrap so errors during startup are captured
   initSentry();
   initPostHog();
+  captureFirstSkeletonPaint();
 
   async function main() {
     const store = createStore();

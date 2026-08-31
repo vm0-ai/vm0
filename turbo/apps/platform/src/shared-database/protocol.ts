@@ -125,7 +125,10 @@ const authenticationRequiredMessageSchema = z
   .strict();
 
 const indicatorsInvalidatedMessageSchema = z
-  .object({ type: z.literal("indicators-invalidated") })
+  .object({
+    type: z.literal("indicators-invalidated"),
+    payload: z.unknown(),
+  })
   .strict();
 
 export const sharedDatabaseConnectionStatusSchema = z.enum([

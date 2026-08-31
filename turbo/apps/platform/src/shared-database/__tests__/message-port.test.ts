@@ -18,7 +18,7 @@ import {
   sharedDatabaseChatThreadIndicators$,
 } from "../../signals/shared-database.ts";
 import { installSharedDatabaseBridge$ } from "../../signals/shared-database-bridge-state.ts";
-import { reloadChatIndicatorsLocally$ } from "../../signals/chat-thread-list-reload.ts";
+import { invalidateChatIndicatorsFromRealtime$ } from "../../signals/chat-thread-list-reload.ts";
 import { setApiClientRuntime$ } from "../../signals/api-client-runtime.ts";
 import { setRootSignal$ } from "../../signals/root-signal.ts";
 import type {
@@ -199,8 +199,8 @@ async function installProtocolBridge(): Promise<{
     location.origin,
     {
       authenticationRequired: vi.fn<() => void>(),
-      indicatorsInvalidated: () => {
-        platformStore.set(reloadChatIndicatorsLocally$);
+      indicatorsInvalidated: (payload) => {
+        platformStore.set(invalidateChatIndicatorsFromRealtime$, payload);
       },
       reloadRequired: vi.fn<() => void>(),
       statusChanged: vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
@@ -232,10 +232,10 @@ describe("shared database MessagePort protocol", () => {
   it("shares one credential Store and fans indicator invalidation to every tab", async () => {
     installHeartbeatAuthentication();
     const boundary = workerBoundaryState();
-    const firstInvalidated = vi.fn<() => void>();
-    const secondInvalidated = vi.fn<() => void>();
+    const firstInvalidated = vi.fn<(payload: unknown) => void>();
+    const secondInvalidated = vi.fn<(payload: unknown) => void>();
     const createEvents = (
-      indicatorsInvalidated: () => void,
+      indicatorsInvalidated: (payload: unknown) => void,
     ): SharedDatabaseBridgeEvents => {
       return {
         authenticationRequired: vi.fn<() => void>(),
@@ -278,8 +278,8 @@ describe("shared database MessagePort protocol", () => {
     context.mocks.ably.trigger("threadListChanged");
 
     await vi.waitFor(() => {
-      expect(firstInvalidated).toHaveBeenCalledOnce();
-      expect(secondInvalidated).toHaveBeenCalledOnce();
+      expect(firstInvalidated).toHaveBeenCalledWith(null);
+      expect(secondInvalidated).toHaveBeenCalledWith(null);
     });
   });
 
@@ -456,7 +456,7 @@ describe("shared database MessagePort protocol", () => {
       },
       events: {
         authenticationRequired: vi.fn<() => void>(),
-        indicatorsInvalidated: vi.fn<() => void>(),
+        indicatorsInvalidated: vi.fn<(payload: unknown) => void>(),
         reloadRequired: vi.fn<() => void>(),
         statusChanged:
           vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
@@ -469,7 +469,7 @@ describe("shared database MessagePort protocol", () => {
       },
       events: {
         authenticationRequired: vi.fn<() => void>(),
-        indicatorsInvalidated: vi.fn<() => void>(),
+        indicatorsInvalidated: vi.fn<(payload: unknown) => void>(),
         reloadRequired: vi.fn<() => void>(),
         statusChanged: (status) => {
           staleTabStatuses.push(status);
@@ -557,7 +557,7 @@ describe("shared database MessagePort protocol", () => {
       },
       events: {
         authenticationRequired: vi.fn<() => void>(),
-        indicatorsInvalidated: vi.fn<() => void>(),
+        indicatorsInvalidated: vi.fn<(payload: unknown) => void>(),
         reloadRequired: vi.fn<() => void>(),
         statusChanged:
           vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
@@ -618,8 +618,8 @@ describe("shared database MessagePort protocol", () => {
   it("validates results and handles callback cleanup plus control messages", async () => {
     const [platformPort, serverPort] = messagePortPair();
     const statuses: SharedDatabaseConnectionStatus[] = [];
+    const indicatorInvalidations: unknown[] = [];
     let authenticationRequests = 0;
-    let indicatorInvalidations = 0;
     let reloads = 0;
     let subscriptionId: string | null = null;
     let observedHeartbeat: SharedDatabaseClientMessage | null = null;
@@ -632,8 +632,8 @@ describe("shared database MessagePort protocol", () => {
         authenticationRequired: () => {
           authenticationRequests += 1;
         },
-        indicatorsInvalidated: () => {
-          indicatorInvalidations += 1;
+        indicatorsInvalidated: (payload) => {
+          indicatorInvalidations.push(payload);
         },
         reloadRequired: () => {
           reloads += 1;
@@ -734,13 +734,20 @@ describe("shared database MessagePort protocol", () => {
     ).rejects.toMatchObject({ name: "ZodError" });
 
     serverPort.postMessage({ type: "authentication-required" });
-    serverPort.postMessage({ type: "indicators-invalidated" });
+    const invalidationPayload = {
+      threadId: crypto.randomUUID(),
+      lastReadAt: null,
+    };
+    serverPort.postMessage({
+      type: "indicators-invalidated",
+      payload: invalidationPayload,
+    });
     serverPort.postMessage({ type: "status", status: "disconnected" });
     serverPort.postMessage({ type: "reload-required" });
     await vi.waitFor(() => {
       expect(statuses).toStrictEqual(["disconnected"]);
       expect(authenticationRequests).toBe(1);
-      expect(indicatorInvalidations).toBe(1);
+      expect(indicatorInvalidations).toStrictEqual([invalidationPayload]);
       expect(reloads).toBe(1);
     });
   });

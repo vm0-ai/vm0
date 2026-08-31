@@ -40,8 +40,8 @@ export interface SharedDatabaseBridge {
 
 export interface SharedDatabaseBridgeEvents {
   readonly authenticationRequired: () => void;
+  readonly indicatorsInvalidated: (payload: unknown) => void;
   readonly reloadRequired: () => void;
-  readonly indicatorsInvalidated: () => void;
   readonly statusChanged: (status: SharedDatabaseConnectionStatus) => void;
 }
 

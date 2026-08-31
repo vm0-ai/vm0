@@ -2,10 +2,7 @@ import { command, state } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { authRecovery$, clerk$, setupClerk$ } from "./auth.ts";
 import { setAuthenticatedIdentity$ } from "./auth-context.ts";
-import {
-  subscribeChatThreadReadCursorUpdated$,
-  setupChatIndicatorForegroundCatchUp$,
-} from "./chat-thread-list-reload.ts";
+import { setupChatIndicatorForegroundCatchUp$ } from "./chat-thread-list-reload.ts";
 import { subscribeEventDrivenChatThreads$ } from "./chat-page/chat-thread-event-sourcing.ts";
 import { prewarmSharedUnreadChatEvents$ } from "./chat-page/chat-event-background-sync.ts";
 import { setupUserPreferenceRealtime$ } from "./external/user-model-preference.ts";
@@ -30,7 +27,6 @@ const runAppRealtimeDaemons$ = command(
     await set(setupRealtime$, signal);
     signal.throwIfAborted();
     await Promise.all([
-      set(subscribeChatThreadReadCursorUpdated$, signal),
       set(subscribePermissionUpdate$, signal),
       set(setupBillingRealtime$, signal),
       set(subscribePresentationTemplatesChanged$, signal),

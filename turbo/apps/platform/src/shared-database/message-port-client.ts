@@ -62,7 +62,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
         return;
       }
       if (message.type === "indicators-invalidated") {
-        this.events.indicatorsInvalidated();
+        this.events.indicatorsInvalidated(message.payload);
         return;
       }
       if (message.type === "status") {

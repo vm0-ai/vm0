@@ -469,6 +469,7 @@ export const XHRPolling = Symbol("XHRPolling");
 
 function isSharedDatabaseRealtimeTopic(topic: string): boolean {
   return (
+    topic === "chatThreadReadCursorUpdated" ||
     topic === "threadListChanged" ||
     topic.startsWith("chatThreadMessageCreated:")
   );

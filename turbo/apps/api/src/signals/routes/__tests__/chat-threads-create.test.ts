@@ -797,7 +797,7 @@ describe("POST /api/zero/chat-threads", () => {
     expect(afterDisconnect.body.selections).toStrictEqual([]);
   });
 
-  it("routes thread-list invalidations to permanent and compatibility channels", async () => {
+  it("routes thread-list invalidations only to the user-org channel", async () => {
     const fixture = await seedAgent();
     const token = okouToken({
       userId: fixture.userId,
@@ -818,16 +818,9 @@ describe("POST /api/zero/chat-threads", () => {
     await flushWaitUntilForTest();
     expect(context.mocks.ably.channelGet.mock.calls).toStrictEqual([
       [`user-org:${fixture.userId}:${fixture.orgId}`],
-      [`user:${fixture.userId}`],
     ]);
-    expect(context.mocks.ably.publish).toHaveBeenCalledTimes(2);
-    expect(context.mocks.ably.publish).toHaveBeenNthCalledWith(
-      1,
-      "threadListChanged",
-      null,
-    );
-    expect(context.mocks.ably.publish).toHaveBeenNthCalledWith(
-      2,
+    expect(context.mocks.ably.publish).toHaveBeenCalledOnce();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "threadListChanged",
       null,
     );

@@ -132,11 +132,13 @@ export const unregisterTab$ = command(({ get, set }, tabId: TabId): number => {
   return size;
 });
 
-export const invalidateTabIndicators$ = command(({ get }): void => {
-  for (const tab of get(internalTabs$).values()) {
-    tab.emit({ type: "indicators-invalidated" });
-  }
-});
+export const invalidateTabIndicators$ = command(
+  ({ get }, payload: unknown): void => {
+    for (const tab of get(internalTabs$).values()) {
+      tab.emit({ type: "indicators-invalidated", payload });
+    }
+  },
+);
 
 export const reloadTabs$ = command(({ get }): void => {
   for (const tab of get(internalTabs$).values()) {

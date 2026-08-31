@@ -59,7 +59,10 @@ import {
 } from "../../../signals/okou-page/sidebar-state.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
-import { changeChatThreadList } from "../../../mocks/mock-helpers.ts";
+import {
+  changeChatThreadList,
+  changeChatThreadReadCursor,
+} from "../../../mocks/mock-helpers.ts";
 
 // The composer editor is mounted on first paint and mounted again once page
 // bootstrap settles, so an element captured too early is detached before a test
@@ -1047,12 +1050,7 @@ describe("zero sidebar", () => {
 
     markReadDeferred.resolve();
 
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscription("chatThreadReadCursorUpdated"),
-      ).toBeTruthy();
-    });
-    context.mocks.ably.trigger("chatThreadReadCursorUpdated", {
+    changeChatThreadReadCursor({
       threadId: INCIDENT_THREAD_ID,
       agentId: AGENT_ID,
       lastReadAt: null,
@@ -2958,7 +2956,7 @@ describe("zero sidebar", () => {
     });
 
     unreadAgentIds = [SUPPORT_AGENT_ID];
-    context.mocks.ably.trigger("chatThreadReadCursorUpdated", {
+    changeChatThreadReadCursor({
       agentId: RESEARCH_AGENT_ID,
     });
 

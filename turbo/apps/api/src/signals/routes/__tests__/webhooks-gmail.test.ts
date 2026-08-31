@@ -626,20 +626,18 @@ async function completeRunThroughSandbox(
   await runsApi.heartbeatRunner(runnerGroup);
   const claim = await runsApi.claimRunnerJob(runId);
   const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
-  await webhooksApi.requestAgentCheckpoint(
+  await webhooksApi.requestAgentComplete(
     {
       runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId: `gmail-workflow-cli-${runId}`,
-      cliAgentSessionHistoryHash: createHash("sha256")
-        .update(`gmail workflow history ${runId}`)
-        .digest("hex"),
+      exitCode: 0,
+      checkpoint: {
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `gmail-workflow-cli-${runId}`,
+        cliAgentSessionHistoryHash: createHash("sha256")
+          .update(`gmail workflow history ${runId}`)
+          .digest("hex"),
+      },
     },
-    sandboxHeaders,
-    [200],
-  );
-  await webhooksApi.requestAgentComplete(
-    { runId, exitCode: 0 },
     sandboxHeaders,
     [200],
   );

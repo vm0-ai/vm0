@@ -30,13 +30,12 @@ export const reloadChatIndicators$ = command(({ get, set }) => {
 
 export const reloadChatIndicatorsFromRealtime$ = command(({ set }) => {
   set(reloadChatIndicators$);
-  set(invalidateTabIndicators$);
+  set(invalidateTabIndicators$, null);
   return false;
 });
 
-const reloadChatIndicatorsFromReadCursor$ = command(
-  ({ get, set }, payload: unknown, signal: AbortSignal) => {
-    signal.throwIfAborted();
+export const invalidateChatIndicatorsFromRealtime$ = command(
+  ({ set }, payload: unknown) => {
     if (
       typeof payload === "object" &&
       payload !== null &&
@@ -47,12 +46,15 @@ const reloadChatIndicatorsFromReadCursor$ = command(
     ) {
       set(clearOptimisticReadMark$, payload.threadId);
     }
-    if (get(apiClientRuntime$).environment === "app") {
-      set(reloadChatIndicatorsLocally$);
-    } else {
-      set(reloadChatIndicators$);
-      set(invalidateTabIndicators$);
-    }
+    set(reloadChatIndicatorsLocally$);
+  },
+);
+
+const reloadChatIndicatorsFromReadCursor$ = command(
+  ({ set }, payload: unknown, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    set(reloadChatIndicators$);
+    set(invalidateTabIndicators$, payload);
     return false;
   },
 );
@@ -87,6 +89,7 @@ export const subscribeChatThreadReadCursorUpdated$ = command(
     await set(
       setAblyPayloadLoop$,
       {
+        scope: "credential",
         topic: "chatThreadReadCursorUpdated",
         loopCommand$: reloadChatIndicatorsFromReadCursor$,
         options: { runOnForegroundCatchUp: false },

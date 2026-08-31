@@ -8,7 +8,7 @@ import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
-import { publishUserSignal } from "../external/realtime";
+import { publishChatThreadReadCursorUpdatedSafely } from "../external/realtime";
 import { notFound } from "../../lib/error";
 import { latestRunFinishEventSubquery } from "../services/chat-thread-read-state-query";
 import { chatThreadUnreads } from "../services/chat-thread.service";
@@ -81,13 +81,16 @@ const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     };
   }
 
-  // Read-state invalidation only. Thread-list shape is unchanged, and
-  // clients refetch unread snapshots from this generic user-level topic.
-  await publishUserSignal([auth.userId], "chatThreadReadCursorUpdated", {
-    threadId: params.id,
-    agentId,
-    lastReadAt: updated.lastReadAt?.toISOString() ?? null,
-  });
+  // Read-state invalidation only. Thread-list shape is unchanged, and the
+  // SharedWorker fans the user-org signal out to every matching tab.
+  await publishChatThreadReadCursorUpdatedSafely(
+    { userId: auth.userId, orgId: thread.orgId },
+    {
+      threadId: params.id,
+      agentId,
+      lastReadAt: updated.lastReadAt?.toISOString() ?? null,
+    },
+  );
   signal.throwIfAborted();
 
   return {

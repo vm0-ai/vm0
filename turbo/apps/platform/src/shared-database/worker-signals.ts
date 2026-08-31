@@ -446,6 +446,6 @@ export const indicatorsStoreMessage$ = command(
 export const reloadIndicatorsStoreMessage$ = command(
   ({ set }, _tabId: TabId, _message: ReloadIndicatorsMessage): void => {
     set(reloadChatIndicators$);
-    set(invalidateTabIndicators$);
+    set(invalidateTabIndicators$, null);
   },
 );
