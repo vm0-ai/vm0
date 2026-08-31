@@ -14,6 +14,8 @@ printf '%s\n' \
   '<!doctype html>' \
   '<head>' \
   '  <meta name="vm0-api-origin" content="" />' \
+  '  <meta name="okou-app-git-commit-sha" content="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">' \
+  '  <meta name="okou-app-version" content="0.812.5">' \
   '</head>' \
   '<script type="module" src="https://static.okou.io/okou-app/assets/app-123.js"></script>' \
   > "${canonical_dist}/index.html"
@@ -50,6 +52,11 @@ grep -Fq 'display-capture=(self)' "${pages_dist}/_headers"
 grep -Fq '<title>Not Found</title>' "${pages_dist}/assets/404.html"
 grep -Fq '<meta name="vm0-api-origin" content="" />' \
   "${pages_dist}/index.html"
+grep -Fq \
+  '<meta name="okou-app-git-commit-sha" content="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">' \
+  "${pages_dist}/index.html"
+grep -Fq '<meta name="okou-app-version" content="0.812.5">' \
+  "${pages_dist}/index.html"
 grep -Fxq 'Allow: /' "${pages_dist}/robots.txt"
 ! grep -Fq 'Disallow:' "${pages_dist}/robots.txt"
 
@@ -74,6 +81,11 @@ bash "$script" \
   "https://pr-23364-api.vm6.ai"
 grep -Fq \
   '<meta name="vm0-api-origin" content="https://pr-23364-api.vm6.ai" />' \
+  "${preview_pages_dist}/index.html"
+grep -Fq \
+  '<meta name="okou-app-git-commit-sha" content="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">' \
+  "${preview_pages_dist}/index.html"
+grep -Fq '<meta name="okou-app-version" content="0.812.5">' \
   "${preview_pages_dist}/index.html"
 
 invalid_origin_dist="${tmp_dir}/invalid-origin"
