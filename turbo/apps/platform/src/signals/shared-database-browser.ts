@@ -285,7 +285,7 @@ export const heartbeatSharedDatabaseNow$ = command(
     const token = await authRecovery.getToken(signal);
     signal.throwIfAborted();
     if (!token) {
-      throw new Error("Clerk token is required for the shared database");
+      return;
     }
     const apiBaseUrl = resolveApiBaseForTarget("api");
     const vercelProtectionBypass =
@@ -308,7 +308,7 @@ export const runSharedDatabaseHeartbeatLoop$ = command(
     const token = await authRecovery.getToken(signal);
     signal.throwIfAborted();
     if (!token) {
-      throw new Error("Clerk token is required for the shared database");
+      return;
     }
     const heartbeatNow = onDomEventFn(async () => {
       await set(heartbeatSharedDatabaseNow$, signal);
