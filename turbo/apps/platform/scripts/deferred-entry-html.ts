@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 
-import { parse, type DefaultTreeAdapterTypes } from "parse5";
+import {
+  defaultTreeAdapter,
+  html as htmlConstants,
+  parse,
+  serializeOuter,
+  type DefaultTreeAdapterTypes,
+} from "parse5";
 import { transformWithEsbuild, type Plugin, type ResolvedConfig } from "vite";
 
 const APP_ENTRY_ATTRIBUTE = "data-vm0-app-entry";
@@ -62,23 +68,13 @@ function hasAttribute(element: HtmlElement, name: string): boolean {
   });
 }
 
-function escapeAttribute(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
-}
-
 function applyHtmlReplacements(
   html: string,
   replacements: readonly HtmlReplacement[],
 ): string {
-  const sorted = [...replacements].sort(
-    (left, right) => {
-      return right.startOffset - left.startOffset;
-    },
-  );
+  const sorted = [...replacements].sort((left, right) => {
+    return right.startOffset - left.startOffset;
+  });
   let earliestOffset = html.length;
   let output = html;
   for (const replacement of sorted) {
@@ -103,10 +99,20 @@ function inertResourceTag(
   href: string,
   marker: string,
 ): string {
-  const crossorigin = hasAttribute(sourceElement, "crossorigin")
-    ? " crossorigin"
-    : "";
-  return `<link${crossorigin} href="${escapeAttribute(href)}" ${marker}="">`;
+  const attributes = [];
+  if (hasAttribute(sourceElement, "crossorigin")) {
+    attributes.push({
+      name: "crossorigin",
+      value: attributeValue(sourceElement, "crossorigin") ?? "",
+    });
+  }
+  attributes.push({ name: "href", value: href }, { name: marker, value: "" });
+  const link = defaultTreeAdapter.createElement(
+    "link",
+    htmlConstants.NS.HTML,
+    attributes,
+  );
+  return serializeOuter(link);
 }
 
 function deferredApplicationScriptReplacement(

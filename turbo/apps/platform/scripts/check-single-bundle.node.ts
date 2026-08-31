@@ -37,15 +37,15 @@ await test("defers app execution and resource discovery until first paint", () =
 
   assert.match(
     html,
-    /<link crossorigin href="\/assets\/app-AppHash1\.js" data-vm0-app-entry="">/u,
+    /<link crossorigin="" href="\/assets\/app-AppHash1\.js" data-vm0-app-entry="">/u,
   );
   assert.match(
     html,
-    /<link crossorigin href="\/assets\/app-AppHash1\.css" data-vm0-app-stylesheet="">/u,
+    /<link crossorigin="" href="\/assets\/app-AppHash1\.css" data-vm0-app-stylesheet="">/u,
   );
   assert.match(
     html,
-    /<link crossorigin href="\/assets\/vendor-Vendor01\.js" data-vm0-app-module-preload="">/u,
+    /<link crossorigin="" href="\/assets\/vendor-Vendor01\.js" data-vm0-app-module-preload="">/u,
   );
   assert.match(
     html,
