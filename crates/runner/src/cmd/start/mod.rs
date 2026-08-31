@@ -453,20 +453,7 @@ async fn run_start_with_home(
         server.token = token;
     }
 
-    // Validate required server fields
-    if server.url.is_empty() {
-        return Err(RunnerError::Config(format!(
-            "server.url is required (set in config or via --api-url / {} / {})",
-            crate::operator_api_url::CANONICAL_ENV,
-            crate::operator_api_url::LEGACY_ENV
-        )));
-    }
-    server.url = config::normalize_api_base_url(&server.url)?;
-    if server.token.is_empty() {
-        return Err(RunnerError::Config(
-            "server.token is required (set in config or via --token / OKOU_RUNNER_TOKEN / VM0_RUNNER_TOKEN)".into(),
-        ));
-    }
+    let server = validate_server_config_for_start(server)?;
 
     let runner_host_env = crate::host_env::read_runner_host_env()?;
     let config::SandboxConfig {
@@ -977,6 +964,33 @@ async fn run_start_with_home(
         tracing::warn!(error = %e, "failed to remove live runner instance record");
     }
     run_result
+}
+
+fn validate_server_config_for_start(
+    mut server: config::ServerConfig,
+) -> RunnerResult<config::ServerConfig> {
+    if server.url.is_empty() {
+        return Err(RunnerError::Config(format!(
+            "server.url is required (set in config or via --api-url / {} / {})",
+            crate::operator_api_url::CANONICAL_ENV,
+            crate::operator_api_url::LEGACY_ENV
+        )));
+    }
+    server.url = config::normalize_api_base_url(&server.url)?;
+    if server.token.is_empty() {
+        return Err(RunnerError::Config(
+            "server.token is required (set in config or via --token / OKOU_RUNNER_TOKEN / VM0_RUNNER_TOKEN)".into(),
+        ));
+    }
+
+    info!(
+        target: crate::axiom_layer::OPERATOR_ENV_ALIAS_STATES_TARGET,
+        api_url_alias_state = crate::operator_api_url::environment_alias_state_label(),
+        runner_token_alias_state = crate::runner_token::environment_alias_state_label(),
+        "runner operator environment alias states"
+    );
+
+    Ok(server)
 }
 
 struct RunConfig {
