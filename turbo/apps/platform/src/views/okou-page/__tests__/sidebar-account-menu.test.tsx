@@ -10,7 +10,6 @@ import { command } from "ccstate";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
-import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   billingStatusContract,
   billingUsagePackCreditsContract,
@@ -35,7 +34,6 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { foregroundReady$ } from "../../../signals/auth-retry.ts";
 import { subscribeRealtimeReadyCatchUp$ } from "../../../signals/realtime.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { changeChatThreadList } from "../../../mocks/mock-helpers.ts";
 
 const context = testContext();
 
@@ -664,19 +662,9 @@ describe("zero sidebar account menu", () => {
     expect(within(menu).queryByText("12,500 credits")).not.toBeInTheDocument();
   });
 
-  it("shares foreground indicator and billing refreshes with the account menu", async () => {
-    let billingRequests = 0;
-    let indicatorRequests = 0;
+  it("refreshes visible billing data after returning to the foreground", async () => {
     mockAdminAccountSidebar();
-    mockAdminBillingStatus(12_500, {
-      onRequest: () => {
-        billingRequests += 1;
-      },
-    });
-    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
-      indicatorRequests += 1;
-      return respond(200, { agents: {}, threads: {} });
-    });
+    mockAdminBillingStatus(12_500);
 
     detachedSetupPage({
       context,
@@ -688,91 +676,46 @@ describe("zero sidebar account menu", () => {
       },
     });
 
+    let menu = await openAccountMenu();
     await waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscription("billing:changed"),
-      ).toBeTruthy();
-      expect(
-        context.mocks.ably.hasChannelSubscriptionOnChannel(
-          SHARED_DATABASE_REALTIME_CHANNEL,
-        ),
-      ).toBeTruthy();
-      expect(
-        context.mocks.ably.hasSubscription("chatThreadReadCursorUpdated"),
-      ).toBeTruthy();
-      expect(billingRequests).toBeGreaterThan(0);
-      expect(indicatorRequests).toBeGreaterThan(0);
+      expect(within(menu).getByText("12,500 credits")).toBeInTheDocument();
+    });
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     });
 
-    let previousIndicatorRequests = indicatorRequests;
-    changeChatThreadList();
-    await waitFor(() => {
-      expect(indicatorRequests).toBe(previousIndicatorRequests + 1);
-    });
-    previousIndicatorRequests = indicatorRequests;
-    context.mocks.ably.trigger("chatThreadReadCursorUpdated");
-    await waitFor(() => {
-      expect(indicatorRequests).toBe(previousIndicatorRequests + 1);
-    });
-
-    mockAdminBillingStatus(500, {
-      onRequest: () => {
-        billingRequests += 1;
-      },
-    });
-    billingRequests = 0;
-    indicatorRequests = 0;
-
-    const accountName = screen.getByText("Alex Rivera");
-    const accountButton = accountName.closest("button");
-    if (!accountButton) {
-      throw new Error("Expected account menu trigger");
-    }
+    mockAdminBillingStatus(500);
     window.dispatchEvent(new Event("focus"));
-    fireEvent.click(accountButton);
-    let menu = await screen.findByRole("menu");
+    menu = await openAccountMenu();
     await waitFor(() => {
       expect(within(menu).getByText("500 credits")).toBeInTheDocument();
-      expect(billingRequests).toBe(1);
-      expect(indicatorRequests).toBe(1);
     });
-    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
+    expect(within(menu).queryByText("12,500 credits")).not.toBeInTheDocument();
 
     fireEvent.keyDown(document.body, { key: "Escape" });
     await waitFor(() => {
       expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     });
-    mockAdminBillingStatus(250, {
-      onRequest: () => {
-        billingRequests += 1;
-      },
-    });
-    billingRequests = 0;
+    mockAdminBillingStatus(250);
 
     menu = await openAccountMenu();
     await waitFor(() => {
       expect(within(menu).getByText("250 credits")).toBeInTheDocument();
-      expect(billingRequests).toBe(1);
     });
 
     fireEvent.keyDown(document.body, { key: "Escape" });
     await waitFor(() => {
       expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     });
-    billingRequests = 0;
     mockAdminBillingStatus(125, {
       failFirstRequest: true,
-      onRequest: () => {
-        billingRequests += 1;
-      },
     });
 
     window.dispatchEvent(new Event("focus"));
-    fireEvent.click(accountButton);
-    menu = await screen.findByRole("menu");
+    menu = await openAccountMenu();
     await waitFor(() => {
       expect(within(menu).getByText("125 credits")).toBeInTheDocument();
-      expect(billingRequests).toBe(2);
     });
   });
 

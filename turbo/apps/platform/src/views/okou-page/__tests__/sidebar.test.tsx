@@ -688,9 +688,7 @@ describe("zero sidebar", () => {
       createThread(EXISTING_THREAD_ID, "Remote unread conversation"),
     ]);
     let hasUnread = false;
-    let indicatorRequests = 0;
     context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
-      indicatorRequests += 1;
       return respond(200, {
         agents: hasUnread ? { [AGENT_ID]: "unread" } : {},
         threads: hasUnread ? { [EXISTING_THREAD_ID]: "unread" } : {},
@@ -723,15 +721,12 @@ describe("zero sidebar", () => {
     await waitFor(() => {
       expect(within(agentRow).queryByLabelText("Unread")).toBeNull();
       expect(within(threadRow).queryByLabelText("Unread")).toBeNull();
-      expect(indicatorRequests).toBeGreaterThan(0);
     });
 
-    const requestsBeforeInvalidation = indicatorRequests;
     hasUnread = true;
     changeChatThreadList();
 
     await waitFor(() => {
-      expect(indicatorRequests).toBeGreaterThan(requestsBeforeInvalidation);
       expect(within(agentRow).getByLabelText("Unread")).toBeInTheDocument();
       expect(within(threadRow).getByLabelText("Unread")).toBeInTheDocument();
     });

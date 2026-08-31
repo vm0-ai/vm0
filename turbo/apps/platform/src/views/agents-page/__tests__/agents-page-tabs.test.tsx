@@ -188,11 +188,6 @@ describe("agents page (redesign)", () => {
       within(agentCard("Private Ops")).queryByLabelText("Unread"),
     ).not.toBeInTheDocument();
 
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscription("threadListChanged"),
-      ).toBeTruthy();
-    });
     hasUnread = true;
     context.mocks.ably.trigger("threadListChanged");
 

@@ -9,6 +9,7 @@ import {
 } from "./auth.ts";
 import {
   type AuthenticatedDaemonOwner,
+  runAuthenticatedDaemons$,
   setupAuthenticatedBootstrapData$,
   setupAuthenticatedDaemons$,
 } from "./authenticated-daemons.ts";
@@ -482,6 +483,7 @@ const setupAuthenticatedRoutes$ = command(
   ): Promise<void> => {
     await set(setupAuthenticatedDaemons$, ownDaemon, signal);
     signal.throwIfAborted();
+    ownDaemon(set(runAuthenticatedDaemons$, signal));
     await Promise.all([
       set(setupRoutes$, signal),
       set(setupAuthenticatedBootstrapData$, signal),
