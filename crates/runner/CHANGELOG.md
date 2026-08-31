@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.178.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.13...runner-rs-v0.178.14) (2026-08-31)
+
+
+### Bug Fixes
+
+* **runner:** report only fail-closed response encoding risk ([#30385](https://github.com/vm0-ai/vm0/issues/30385)) ([de3e772](https://github.com/vm0-ai/vm0/commit/de3e7722b447ff4f0f9831ac43cb9dd6582c6cc6))
+
 ## [0.178.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.178.12...runner-rs-v0.178.13) (2026-08-31)
 
 
