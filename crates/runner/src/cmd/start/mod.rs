@@ -1793,9 +1793,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     );
 
     // -----------------------------------------------------------------------
-    // Heartbeat interval — same first-tick delay as above. One integration
-    // test injects manual ticks so its coalescing assertions do not advance
-    // unrelated Runner timers.
+    // Heartbeat interval — same first-tick delay as above. Integration tests
+    // inject manual ticks so their assertions do not advance unrelated Runner
+    // timers.
     // -----------------------------------------------------------------------
     #[cfg(test)]
     let mut heartbeat_tick = match test_hooks.manual_routine_heartbeat_rx.take() {
