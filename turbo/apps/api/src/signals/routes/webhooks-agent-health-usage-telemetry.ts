@@ -4,6 +4,8 @@ import {
   webhookTelemetryContract,
   webhookUsageEventContract,
   type RunnerPreSpawnConcurrencyBucket,
+  type RunnerResourceBudgetLeaseCountBucket,
+  type RunnerResourceBudgetUtilizationBucket,
   type RunnerStartupPath,
   type SandboxReuseResult,
 } from "@okouai/api-contracts/contracts/webhooks";
@@ -47,6 +49,9 @@ interface SandboxOperationDimensionInput {
   readonly runner_startup_path?: RunnerStartupPath;
   readonly sandbox_reuse_result?: SandboxReuseResult;
   readonly runner_pre_spawn_concurrency_bucket?: RunnerPreSpawnConcurrencyBucket;
+  readonly runner_resource_budget_vcpu_utilization_bucket?: RunnerResourceBudgetUtilizationBucket;
+  readonly runner_resource_budget_memory_utilization_bucket?: RunnerResourceBudgetUtilizationBucket;
+  readonly runner_resource_budget_lease_count_bucket?: RunnerResourceBudgetLeaseCountBucket;
   readonly encoding?: string;
   readonly session_history_raw_size_bucket?: string;
   readonly session_history_encoded_size_bucket?: string;
@@ -62,6 +67,31 @@ interface SandboxOperationDimensionInput {
 interface SandboxRunnerDimensionInput {
   readonly runnerHostname?: string;
   readonly runnerVersion?: string;
+}
+
+function runnerResourceBudgetDimensions(
+  op: SandboxOperationDimensionInput,
+): Record<string, string> {
+  return {
+    ...(op.runner_resource_budget_vcpu_utilization_bucket
+      ? {
+          runner_resource_budget_vcpu_utilization_bucket:
+            op.runner_resource_budget_vcpu_utilization_bucket,
+        }
+      : {}),
+    ...(op.runner_resource_budget_memory_utilization_bucket
+      ? {
+          runner_resource_budget_memory_utilization_bucket:
+            op.runner_resource_budget_memory_utilization_bucket,
+        }
+      : {}),
+    ...(op.runner_resource_budget_lease_count_bucket
+      ? {
+          runner_resource_budget_lease_count_bucket:
+            op.runner_resource_budget_lease_count_bucket,
+        }
+      : {}),
+  };
 }
 
 function sandboxOperationDimensions(
@@ -89,6 +119,7 @@ function sandboxOperationDimensions(
             op.runner_pre_spawn_concurrency_bucket,
         }
       : {}),
+    ...runnerResourceBudgetDimensions(op),
     ...(op.encoding ? { encoding: op.encoding } : {}),
     ...(op.session_history_raw_size_bucket
       ? {

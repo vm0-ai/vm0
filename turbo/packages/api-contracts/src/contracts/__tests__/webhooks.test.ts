@@ -465,6 +465,90 @@ describe("webhook telemetry contract", () => {
     ).toBe(false);
   });
 
+  it("accepts bounded runner resource-budget occupancy and keeps it optional", () => {
+    const utilizationBuckets = [
+      "0_25",
+      "26_50",
+      "51_75",
+      "76_100",
+      "over_100",
+    ] as const;
+    const leaseCountBuckets = ["0", "1", "2", "3_4", "5_8", "9_plus"] as const;
+    const result = webhookTelemetryContract.send.body.parse({
+      runId: "00000000-0000-4000-8000-000000000000",
+      sandboxOperations: [
+        ...leaseCountBuckets.map((leaseCount, index) => {
+          const utilization =
+            utilizationBuckets[index % utilizationBuckets.length];
+          return {
+            ts: "2026-01-15T10:00:00.000Z",
+            action_type: "runner_claim_to_spawn",
+            duration_ms: 10,
+            success: true,
+            runner_resource_budget_vcpu_utilization_bucket: utilization,
+            runner_resource_budget_memory_utilization_bucket: utilization,
+            runner_resource_budget_lease_count_bucket: leaseCount,
+          };
+        }),
+        {
+          ts: "2026-01-15T10:00:00.000Z",
+          action_type: "agent_execute",
+          duration_ms: 20,
+          success: true,
+        },
+      ],
+    });
+
+    expect(
+      result.sandboxOperations
+        ?.slice(0, leaseCountBuckets.length)
+        .map((operation) => {
+          return [
+            operation.runner_resource_budget_vcpu_utilization_bucket,
+            operation.runner_resource_budget_memory_utilization_bucket,
+            operation.runner_resource_budget_lease_count_bucket,
+          ];
+        }),
+    ).toStrictEqual(
+      leaseCountBuckets.map((leaseCount, index) => {
+        const utilization =
+          utilizationBuckets[index % utilizationBuckets.length];
+        return [utilization, utilization, leaseCount];
+      }),
+    );
+    expect(result.sandboxOperations?.at(-1)).not.toHaveProperty(
+      "runner_resource_budget_vcpu_utilization_bucket",
+    );
+    expect(
+      webhookTelemetryContract.send.body.safeParse({
+        runId: "00000000-0000-4000-8000-000000000000",
+        sandboxOperations: [
+          {
+            ts: "2026-01-15T10:00:00.000Z",
+            action_type: "runner_claim_to_spawn",
+            duration_ms: 10,
+            success: true,
+            runner_resource_budget_vcpu_utilization_bucket: "101_plus",
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      webhookTelemetryContract.send.body.safeParse({
+        runId: "00000000-0000-4000-8000-000000000000",
+        sandboxOperations: [
+          {
+            ts: "2026-01-15T10:00:00.000Z",
+            action_type: "runner_claim_to_spawn",
+            duration_ms: 10,
+            success: true,
+            runner_resource_budget_lease_count_bucket: "10_plus",
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts known session history download sources", () => {
     const result = webhookTelemetryContract.send.body.safeParse({
       runId: "00000000-0000-4000-8000-000000000000",

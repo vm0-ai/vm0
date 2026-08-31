@@ -13,8 +13,10 @@ use tracing::warn;
 
 use crate::guest_timezone::GuestTimezoneAssumption;
 use crate::provider::ApiClaimTiming;
+use crate::resource_budget::ResourceBudget;
 use crate::telemetry::{
-    JobTelemetry, RunnerPreSpawnAttribution, RunnerPreSpawnConcurrencyBucket, RunnerStartupPath,
+    JobTelemetry, RunnerPreSpawnAttribution, RunnerPreSpawnConcurrencyBucket,
+    RunnerResourceBudgetOccupancy, RunnerStartupPath,
 };
 use crate::types::{ExecutionContext, SandboxReuseResult, WorkspaceReuseResult};
 use crate::workspace_image_cache::WorkspaceCacheCheckoutResult;
@@ -60,6 +62,11 @@ impl RunnerPreSpawnConcurrencyGuard {
         // Live membership ends when this guard drops at spawn. The immutable
         // cohort remains valid for the immediately following api_to_spawn row.
         self.preserve_attribution_on_drop = true;
+    }
+
+    fn record_resource_budget_occupancy(&mut self, budget: &ResourceBudget) {
+        self.attribution
+            .set_resource_budget_occupancy(RunnerResourceBudgetOccupancy::capture(budget));
     }
 }
 
@@ -286,6 +293,10 @@ impl RunnerPreSpawnTiming {
 
     pub(crate) fn mark_task_enqueued(&mut self) {
         self.task_enqueued_at = Some(Instant::now());
+    }
+
+    pub(crate) fn record_resource_budget_occupancy(&mut self, budget: &ResourceBudget) {
+        self.concurrency.record_resource_budget_occupancy(budget);
     }
 
     fn elapsed_at(&self, at: Instant) -> Duration {
