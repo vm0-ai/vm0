@@ -119,14 +119,6 @@ function setupSignInPage(
   });
 }
 
-function useGermanLocale(): void {
-  document.documentElement.lang = "de-DE";
-  context.mocks.data.userPreferences({
-    locale: "de-DE",
-    supportedLocales: ["de-DE", "en-US"],
-  });
-}
-
 function containingForm(element: HTMLElement): HTMLFormElement {
   const form = element.closest("form");
   if (!(form instanceof HTMLFormElement)) {
@@ -2157,17 +2149,16 @@ describe("auth v2 sign-in flow", () => {
     );
   });
 
-  it("substitutes the Okou brand in German entry and password subtitles", async () => {
-    useGermanLocale();
+  it("substitutes the Okou brand during English startup and password flow", async () => {
     setupSignInPage(
       { status: "needs_identifier" },
       { url: "https://app.okou.ai/sign-in" },
     );
 
-    const identifierInput = await screen.findByLabelText("E-Mail-Adresse");
+    const identifierInput = await screen.findByLabelText("Email address");
     expect(
-      screen.getByRole("region", { name: "Bei Okou anmelden" }),
-    ).toHaveAccessibleDescription("weiter zu Okou");
+      screen.getByRole("region", { name: "Sign in to Okou" }),
+    ).toHaveAccessibleDescription("Welcome back! Please sign in to continue");
 
     const nextResource = moveSignInTo({
       status: "needs_first_factor",
@@ -2179,10 +2170,12 @@ describe("auth v2 sign-in flow", () => {
     });
     fireEvent.submit(containingForm(identifierInput));
 
-    await screen.findByLabelText("Passwort");
+    await screen.findByLabelText("Password");
     expect(
-      screen.getByRole("region", { name: "Geben Sie Ihr Passwort ein" }),
-    ).toHaveAccessibleDescription("weiter zu Okou");
+      screen.getByRole("region", { name: "Enter your password" }),
+    ).toHaveAccessibleDescription(
+      "Enter the password associated with your account",
+    );
     expect(document.body).not.toHaveTextContent("{{brandName}}");
   });
 
