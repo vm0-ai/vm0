@@ -315,7 +315,11 @@ export const setupSharedWorkerTestBootstrap$ = command(
     const directIdentity = options.identity;
     let directBridge: DirectSharedDatabaseBridge | null = null;
     let directRealtimeForwardingInstalled = false;
+    let nextTabId = 0;
     const maps = {
+      allocateTabId: (): TabId => {
+        return nextTabId++;
+      },
       credentialStores: new Map<string, Store>(),
       credentialAbortControllers: new Map<string, AbortController>(),
       tabCredentialIds: new Map<TabId, string>(),

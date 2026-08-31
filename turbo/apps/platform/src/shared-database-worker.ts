@@ -35,15 +35,18 @@ function main(): void {
     },
   };
 
-  // A SharedWorker global has no parent lifecycle signal; this controller is
-  // the root owner from which every credential Store signal cascades.
-  // eslint-disable-next-line ccstate/no-new-abort-controller
-  const workerController = new AbortController();
+  // SharedWorker termination tears down the whole global without an observable
+  // abort hook. Credential Stores still own abortable child lifecycles below.
+  const workerSignal = AbortSignal.any([]);
+  let nextTabId = 0;
   const credentialStores = new Map<string, Store>();
   const credentialAbortControllers = new Map<string, AbortController>();
   const tabCredentialIds = new Map<TabId, string>();
   const tabHeartbeatAts = new Map<TabId, number>();
   const maps = {
+    allocateTabId: (): TabId => {
+      return nextTabId++;
+    },
     credentialStores,
     credentialAbortControllers,
     tabCredentialIds,
@@ -53,7 +56,7 @@ function main(): void {
   workerGlobal.addEventListener("connect", (event): void => {
     L.debug("worker.connect", { portCount: event.ports.length });
     for (const port of event.ports) {
-      new SharedDatabaseMessagePortServer(port, workerController.signal, maps);
+      new SharedDatabaseMessagePortServer(port, workerSignal, maps);
     }
   });
 }

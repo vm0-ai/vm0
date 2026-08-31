@@ -37,6 +37,7 @@ import {
 type CredentialId = string;
 
 export interface SharedDatabaseWorkerMaps {
+  readonly allocateTabId: () => TabId;
   readonly credentialStores: Map<CredentialId, Store>;
   readonly credentialAbortControllers: Map<CredentialId, AbortController>;
   readonly tabCredentialIds: Map<TabId, CredentialId>;
@@ -54,10 +55,6 @@ type RoutedMessage = Exclude<
 
 const STALE_TAB_AFTER_MS = 3 * 60 * 1000;
 const L = logger("SharedDatabaseWorker");
-// A process-local monotonic transport ID is the trusted tab identity. It is
-// intentionally not represented as ccstate business state.
-// eslint-disable-next-line ccstate/no-package-variable
-let nextTabId = 0;
 
 const messageRoutes = {
   heartbeat: heartbeatStoreMessage$,
@@ -124,7 +121,7 @@ async function authenticateHeartbeat(
 }
 
 export class SharedDatabaseMessagePortServer {
-  private readonly tabId: TabId = nextTabId++;
+  private readonly tabId: TabId;
   private closed = false;
 
   constructor(
@@ -133,6 +130,7 @@ export class SharedDatabaseMessagePortServer {
     private readonly maps: SharedDatabaseWorkerMaps,
   ) {
     signal.throwIfAborted();
+    this.tabId = maps.allocateTabId();
     port.addEventListener("message", this.handleMessage, { signal });
     port.start();
     signal.addEventListener(
@@ -226,13 +224,18 @@ export class SharedDatabaseMessagePortServer {
   }
 
   private routeStoreMessage(
-    // The MessagePort callback resolves the trusted credential Store before
-    // routing; Store must not cross any boundary below this method.
-    // eslint-disable-next-line ccstate/no-store-in-params
-    store: Store,
     message: RoutedMessage,
     signal: AbortSignal,
   ): Promise<unknown> | unknown {
+    const credentialId = this.maps.tabCredentialIds.get(this.tabId);
+    if (!credentialId) {
+      return;
+    }
+    const store = this.maps.credentialStores.get(credentialId);
+    const controller = this.maps.credentialAbortControllers.get(credentialId);
+    if (!store || !controller || controller.signal !== signal) {
+      return;
+    }
     switch (message.type) {
       case "query": {
         return store.set(messageRoutes.query, this.tabId, message, signal);
@@ -397,11 +400,11 @@ export class SharedDatabaseMessagePortServer {
       message.type === "unsubscribe" ||
       message.type === "reload-indicators"
     ) {
-      this.routeStoreMessage(store, message, controller.signal);
+      this.routeStoreMessage(message, controller.signal);
       return;
     }
     this.startRequest(message, controller.signal, (signal) => {
-      return this.routeStoreMessage(store, message, signal);
+      return this.routeStoreMessage(message, signal);
     });
   };
 }

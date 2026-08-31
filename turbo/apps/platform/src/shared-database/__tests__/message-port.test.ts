@@ -33,6 +33,7 @@ import {
   SharedDatabaseMessagePortServer,
   type SharedDatabaseWorkerMaps,
 } from "../message-port-server.ts";
+import type { TabId } from "../worker-context.ts";
 import { ReconnectingSharedDatabaseBridge } from "../reconnecting-client.ts";
 import type {
   SharedDatabaseClientMessage,
@@ -134,7 +135,11 @@ function dataKey(threadId: string): ChatEventDataKey {
 }
 
 function workerBoundaryState(): SharedDatabaseWorkerMaps {
+  let nextTabId = 0;
   return {
+    allocateTabId: (): TabId => {
+      return nextTabId++;
+    },
     credentialStores: new Map(),
     credentialAbortControllers: new Map(),
     tabCredentialIds: new Map(),
