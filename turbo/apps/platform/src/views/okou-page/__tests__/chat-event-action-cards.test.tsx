@@ -578,6 +578,7 @@ describe("chat event action cards", () => {
       target: account.target,
     } satisfies ConnectorAccountSelection;
     const callbackPrompt = "Continue the original task";
+    const actionUrl = `${window.location.origin}/agents/${AGENT_ID.toUpperCase()}/connector-accounts/${account.id.toUpperCase()}/select?kind=custom&customConnectorId=${customConnectorId.toUpperCase()}&threadId=${threadId.toUpperCase()}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
     let updateCount = 0;
     const sentPrompts: string[] = [];
 
@@ -611,7 +612,7 @@ describe("chat event action cards", () => {
         {
           id: `${threadId}-message`,
           role: "assistant",
-          content: connectorAccountActionUrl(threadId, account, callbackPrompt),
+          content: actionUrl,
           runId: `${threadId}-run`,
           createdAt: "2026-08-31T10:00:00.000Z",
         },

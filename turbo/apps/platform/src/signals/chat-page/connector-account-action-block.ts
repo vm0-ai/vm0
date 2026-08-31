@@ -92,10 +92,10 @@ function selectionFromUrl(
     kind === "builtin" && connectorSlug && customConnectorId === null
       ? { kind, connectorSlug }
       : kind === "custom" && customConnectorId && connectorSlug === null
-        ? { kind, customConnectorId }
+        ? { kind, customConnectorId: customConnectorId.toLowerCase() }
         : null;
   const parsed = connectorAccountSelectionSchema.safeParse({
-    connectionId,
+    connectionId: connectionId.toLowerCase(),
     target,
   });
   return parsed.success ? parsed.data : null;
