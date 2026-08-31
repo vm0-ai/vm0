@@ -5636,6 +5636,7 @@ function AssistantRecoveryActions({
   const retrying = retryLoadable.state === "loading";
   const resetting = resetLoadable.state === "loading";
   const hasResetAction = recovery.actions.resetAndTryAgain !== null;
+  const hasRetryAction = recovery.actions.tryAgain !== null;
   const handleModelSelection = (
     selection: ModelProviderSelection | null,
   ): void => {
@@ -5671,21 +5672,26 @@ function AssistantRecoveryActions({
         triggerClassName="h-8 w-auto min-w-[9rem] bg-background text-sm"
         compactTrigger
         resolveDefaultSelection={false}
+        {...(recovery.failedModel
+          ? { excludedModel: recovery.failedModel }
+          : {})}
       />
-      <Button
-        type="button"
-        size="sm"
-        variant={hasResetAction ? "outline" : "default"}
-        disabled={retrying || resetting}
-        onClick={() => {
-          detach(retry(pageSignal), Reason.DomCallback);
-        }}
-      >
-        <AssistantRecoveryActionSpinner loading={retrying} />
-        {t(($) => {
-          return $.chat.errors.recovery.tryAgain;
-        })}
-      </Button>
+      {hasRetryAction && (
+        <Button
+          type="button"
+          size="sm"
+          variant={hasResetAction ? "outline" : "default"}
+          disabled={retrying || resetting}
+          onClick={() => {
+            detach(retry(pageSignal), Reason.DomCallback);
+          }}
+        >
+          <AssistantRecoveryActionSpinner loading={retrying} />
+          {t(($) => {
+            return $.chat.errors.recovery.tryAgain;
+          })}
+        </Button>
+      )}
     </div>
   );
 }
@@ -5731,21 +5737,29 @@ function AssistantErrorRecoveryCard({
                   },
                   { framework },
                 )
-              : t(
-                  ($) => {
-                    return $.chat.errors.recovery.capacityTitle;
-                  },
-                  { framework },
-                )}
+              : recovery.kind === "model-unavailable"
+                ? t(($) => {
+                    return $.chat.errors.recovery.unavailableTitle;
+                  })
+                : t(
+                    ($) => {
+                      return $.chat.errors.recovery.capacityTitle;
+                    },
+                    { framework },
+                  )}
           </div>
           <p className="mt-0.5 text-sm leading-5 text-muted-foreground">
             {recovery.kind === "usage-limit"
               ? t(($) => {
                   return $.chat.errors.recovery.usageDescription;
                 })
-              : t(($) => {
-                  return $.chat.errors.recovery.capacityDescription;
-                })}
+              : recovery.kind === "model-unavailable"
+                ? t(($) => {
+                    return $.chat.errors.recovery.unavailableDescription;
+                  })
+                : t(($) => {
+                    return $.chat.errors.recovery.capacityDescription;
+                  })}
           </p>
           {resetText && (
             <div className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-foreground">

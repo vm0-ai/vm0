@@ -2,7 +2,6 @@ import type { CSSProperties } from "react";
 import { Copy, Forward, MessageCircle } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   getShortcutParts,
   Popover,
@@ -10,7 +9,6 @@ import {
   PopoverContent,
 } from "@okouai/ui";
 import { rootSignal$ } from "../../signals/root-signal.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import type {
   ChatThreadFeedbackSelection,
@@ -133,8 +131,6 @@ export function ChatFeedbackSelection({
   const selection = useGet(feedback.selection$);
   const forwardSelection = useGet(feedback.forwardSelection$);
   const forwardComposerState = useGet(feedback.forwardComposerState$);
-  const forwardEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ChatForward] ?? false;
   const rootSignal = useGet(rootSignal$);
   const setFeedbackSelectionListenersRef = useSet(feedback.setListenersRef$);
   const setFeedbackSelectionToolbarRef = useSet(feedback.setToolbarRef$);
@@ -167,9 +163,7 @@ export function ChatFeedbackSelection({
             }}
             onProvideFeedback={startFeedback}
             onForward={
-              forwardEnabled && selection.threadId && selection.runId
-                ? startForward
-                : undefined
+              selection.threadId && selection.runId ? startForward : undefined
             }
           />
         </Popover>

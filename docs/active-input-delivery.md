@@ -98,12 +98,13 @@ thread without replaying the run's ordinary terminal callbacks or billing work.
 
 ### Final Checkpoint Completion
 
-The Guest may include final checkpoint metadata in
+The bundled Guest prepares final checkpoint metadata and sends it in
 `/api/webhooks/agent/complete`. Session history and artifact bytes are uploaded
-before that request; completion carries only their validated identities and
-storage snapshots. The API then persists the checkpoint, promotes the eligible
-canonical AgentSession conversation, settles active-input delivery, and applies
-the terminal run state in the same database transaction.
+before that request; completion carries their validated identities and storage
+snapshots together with the event watermark, active-input delivery IDs, and
+sandbox reuse metadata. The API then persists the checkpoint, promotes the
+eligible canonical AgentSession conversation, settles active-input delivery,
+and applies the terminal run state in the same database transaction.
 
 The nested checkpoint omits `runId`; the completion request's outer `runId` and
 sandbox authorization remain authoritative. Invalid checkpoint metadata rejects
@@ -111,11 +112,26 @@ the combined request without partially finalizing delivery or changing the run
 status. Repeating a committed combined request is idempotent, and a later
 checkpoint-less Runner completion observes the first terminal result.
 
+Successful execution and successful recovery send one combined completion and
+do not post the prepared checkpoint to the standalone route. Combined reporting
+uses the checkpoint retry budget. Mandatory success-path failure produces a
+nonzero Guest result, while recovery remains best-effort. Explicit cancellation
+still sends one checkpoint-less completion when checkpoint preparation or the
+combined request is not acknowledged. Local session-history reconciliation
+happens only after the combined request is acknowledged.
+
 The standalone checkpoint route and checkpoint-less completion remain supported
-for older Guests. Runner completion timing and payloads are unchanged. The API
-release that accepts the combined request must reach production, and preceding
-API handlers must drain, before a Guest starts sending it. While combined Guests
-can execute, that API release is the rollback floor.
+for outgoing Guests and the unchanged Runner fallback. Runner completion timing
+and payloads are unchanged. The API release that accepts the combined request
+must reach production, and preceding API handlers must drain, before a Guest
+starts sending it. While combined Guests can execute, that API release is the
+rollback floor.
+
+After the combined Guest/Runner artifact reaches production, record its traffic
+promotion boundary, stop the outgoing Runner target from claiming new work, and
+wait for its existing Guest runs to drain. The later immutable-timeout rollout
+must wait at least 7,200 seconds after that cutover and confirm that no
+pre-cutover `pending` or `running` cohort remains.
 
 This compatibility boundary does not make timeout immutable and does not change
 legacy standalone checkpoint admission. Those changes require the later timeout
