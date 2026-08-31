@@ -237,6 +237,13 @@ describe("platform Clerk entrypoint", () => {
     const parsedDocument = new DOMParser().parseFromString(html, "text/html");
     const skeleton = parsedDocument.getElementById("app-bootstrap-skeleton");
     const bootstrap = parsedDocument.querySelector(CLERK_BOOTSTRAP_SELECTOR);
+    const paintScheduler = [...parsedDocument.querySelectorAll("script")].find(
+      (script) => {
+        return script.textContent.includes(
+          "__appBootstrapFirstPaintUpperBound",
+        );
+      },
+    );
     const mainScript = parsedDocument.querySelector(
       'script[type="module"][src="/src/main.ts"]',
     );
@@ -247,6 +254,9 @@ describe("platform Clerk entrypoint", () => {
     if (!(bootstrap instanceof HTMLScriptElement)) {
       throw new Error("Built index.html does not contain the Clerk bootstrap");
     }
+    if (!(paintScheduler instanceof HTMLScriptElement)) {
+      throw new Error("Built index.html does not contain the paint scheduler");
+    }
     if (!(mainScript instanceof HTMLScriptElement)) {
       throw new Error("Built index.html does not contain the app module");
     }
@@ -255,6 +265,10 @@ describe("platform Clerk entrypoint", () => {
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
     expect(skeleton.compareDocumentPosition(bootstrap)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(paintScheduler.textContent).toContain("first-contentful-paint");
+    expect(skeleton.compareDocumentPosition(paintScheduler)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
     expect(externalSkeletonImages).toHaveLength(0);
