@@ -5633,6 +5633,8 @@ function AssistantRecoveryActions({
 }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
+  const modelSelection =
+    useLastResolved(thread.composer.model.modelSelection$) ?? null;
   const setModelSelection = useSet(thread.composer.model.setModelSelection$);
   const [retryLoadable, retry] = useLoadableSet(thread.retryAssistantError$);
   const [resetLoadable, resetAndRetry] = useLoadableSet(
@@ -5669,7 +5671,7 @@ function AssistantRecoveryActions({
         </Button>
       )}
       <ModelProviderPicker
-        value={null}
+        value={modelSelection}
         onChange={handleModelSelection}
         placeholder={t(($) => {
           return $.chat.errors.recovery.selectModel;
@@ -5693,7 +5695,7 @@ function AssistantRecoveryActions({
         >
           <AssistantRecoveryActionSpinner loading={retrying} />
           {t(($) => {
-            return $.chat.errors.recovery.tryAgain;
+            return $.chat.errors.recovery.continue;
           })}
         </Button>
       )}

@@ -1972,6 +1972,7 @@
         "capacityTitle": "{{framework}} मॉडल व्यस्त है",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "जारी रखें",
         "resetAndTryAgain": "रीसेट करके फिर कोशिश करें",
         "resetsAt": "{{time}} पर रीसेट होगा",
         "selectModel": "मॉडल बदलें",

@@ -2003,6 +2003,7 @@
         "capacityTitle": "Il modello {{framework}} è occupato",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "Continua",
         "resetAndTryAgain": "Reimposta e riprova",
         "resetsAt": "Ripristino alle {{time}}",
         "selectModel": "Cambia modello",

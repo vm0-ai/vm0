@@ -1969,6 +1969,7 @@
         "capacityTitle": "{{framework}} 모델이 혼잡합니다",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "계속",
         "resetAndTryAgain": "재설정하고 다시 시도",
         "resetsAt": "{{time}}에 재설정",
         "selectModel": "모델 전환",
