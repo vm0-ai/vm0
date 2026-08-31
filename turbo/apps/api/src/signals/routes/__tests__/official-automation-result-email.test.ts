@@ -350,12 +350,22 @@ describe.sequential("Official Automation result email callbacks", () => {
     await flushWaitUntilForTest();
   });
 
-  it("retries independently of Run success, preserves brand, and renders bounded escaped output", async () => {
+  it("retries independently of Run success, preserves brand, and sends bounded Markdown multipart output", async () => {
     const scenario = await setupScenario();
     const runId = await startRun(scenario, "https://app.okou.ai");
-    const hostileOutput = `<script>alert("unsafe") & ${"😀".repeat(
-      9000,
-    )}</script>`;
+    const longPlainText = `LONG_PLAIN_TEXT_${"x".repeat(160)}`;
+    const hostileOutput = [
+      "## Priorities",
+      "",
+      "- **Reply** to the [customer](https://example.com/customer)",
+      "- [unsafe destination](jav&#x61;script:alert(1))",
+      "- ![tracking pixel](https://tracker.example/pixel.png)",
+      "",
+      longPlainText,
+      "",
+      '<script>alert("unsafe") &</script>',
+      "😀".repeat(9000),
+    ].join("\n");
     const resultCallbackId = await seedResultCallback({
       runId,
       automationId: scenario.automationId,
@@ -450,13 +460,103 @@ describe.sequential("Official Automation result email callbacks", () => {
         ? send.html
         : "";
     expect(html).not.toContain("<script>alert");
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("tracker.example");
     expect(html).toContain("&lt;script&gt;");
     expect(html).toContain("&amp;");
     expect(html).toContain("&quot;");
+    expect(html).toContain(">Priorities</h2>");
+    expect(html).toContain("<ul style=");
+    expect(html).toContain("<strong style=");
+    expect(html).toContain('href="https://example.com/customer"');
+    expect(html).not.toContain('href="javascript:');
     expect(html).toContain("[Result truncated]");
     expect(html).toContain(`https://app.okou.ai/activities/${runId}`);
     expect(html).toContain("https://app.okou.ai/email/unsubscribe");
     expect(Buffer.byteLength(html, "utf8")).toBeLessThanOrEqual(96 * 1024);
+
+    const text =
+      typeof send === "object" &&
+      send !== null &&
+      "text" in send &&
+      typeof send.text === "string"
+        ? send.text
+        : "";
+    expect(text).not.toBe("");
+    expect(text.toLowerCase()).toContain("priorities");
+    expect(text).toContain("Reply");
+    expect(text).toContain("https://example.com/customer");
+    expect(text).toContain(longPlainText);
+    expect(text).toContain("[Result truncated]");
+    expect(text).toContain(`https://app.okou.ai/activities/${runId}`);
+    expect(text).toContain("https://app.okou.ai/email/unsubscribe");
+  });
+
+  it("falls back after pathological Markdown expansion and sends one bounded multipart email", async () => {
+    const scenario = await setupScenario();
+    const runId = await startRun(scenario, "https://app.okou.ai");
+    await seedResultCallback({
+      runId,
+      automationId: scenario.automationId,
+      publicBrand: "okou",
+    });
+    const pathologicalOutput = Array.from({ length: 2000 }, () => {
+      return "- x";
+    }).join("\n");
+    expect(Array.from(pathologicalOutput)).toHaveLength(7999);
+
+    await completeRun(scenario, runId, {
+      exitCode: 0,
+      output: pathologicalOutput,
+    });
+    expect((await runs.readRun(scenario.actor, runId)).status).toBe(
+      "completed",
+    );
+    await expect(resultCallbackState(scenario, runId)).resolves.toMatchObject([
+      { status: "delivered", attempts: 1 },
+    ]);
+
+    const source = await outbox.findSourceState({
+      sourceRunId: runId,
+      sourceWorkflowAutomationId: scenario.automationId,
+    });
+    const item = source.items[0];
+    if (!item) {
+      throw new Error("Expected pathological output to enqueue one email");
+    }
+    expect(item.template).toMatchObject({
+      template: "official-automation-result",
+      props: { resultText: pathologicalOutput },
+    });
+
+    await expect(outbox.drainItems([item.id])).resolves.toBe(1);
+    expect(context.mocks.resend.send).toHaveBeenCalledTimes(1);
+    const send = context.mocks.resend.send.mock.calls[0]?.[0];
+    const html =
+      typeof send === "object" &&
+      send !== null &&
+      "html" in send &&
+      typeof send.html === "string"
+        ? send.html
+        : "";
+    const text =
+      typeof send === "object" &&
+      send !== null &&
+      "text" in send &&
+      typeof send.text === "string"
+        ? send.text
+        : "";
+    expect(html).toContain("white-space:pre-wrap");
+    expect(html).not.toContain("<li");
+    expect(html).toContain("- x\n- x");
+    expect(Buffer.byteLength(html, "utf8")).toBeLessThanOrEqual(96 * 1024);
+    expect(text).toContain("- x\n- x");
+    expect(text).toContain(`https://app.okou.ai/activities/${runId}`);
+    expect(text).toContain("https://app.okou.ai/email/unsubscribe");
+    await expect(outbox.readItem(item.id)).resolves.toMatchObject({
+      status: "sent",
+      attempts: 1,
+    });
   });
 
   it("keeps suppression at send and leaves a successful Run unchanged", async () => {
