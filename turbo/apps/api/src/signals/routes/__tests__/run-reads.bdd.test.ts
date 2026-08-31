@@ -149,7 +149,7 @@ function s3BytesBody(bytes: Buffer): AsyncIterable<Buffer> {
 
 /**
  * Marks a claimed run completed through the sandbox webhooks. Successful
- * completion requires a checkpoint, so one is always posted first.
+ * completion requires a checkpoint, so one is included atomically.
  */
 async function completeRun(
   runId: string,
@@ -157,22 +157,17 @@ async function completeRun(
   options: { readonly lastEventSequence?: number } = {},
 ): Promise<void> {
   const headers = sandboxHeaders(sandboxToken);
-  await webhooks.requestAgentCheckpoint(
-    {
-      runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId: `bdd-cli-${runId}`,
-      cliAgentSessionHistoryHash: createHash("sha256")
-        .update(`bdd run reads history ${runId}`)
-        .digest("hex"),
-    },
-    headers,
-    [200],
-  );
   await webhooks.requestAgentComplete(
     {
       runId,
       exitCode: 0,
+      checkpoint: {
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cli-${runId}`,
+        cliAgentSessionHistoryHash: createHash("sha256")
+          .update(`bdd run reads history ${runId}`)
+          .digest("hex"),
+      },
       ...(options.lastEventSequence === undefined
         ? {}
         : { lastEventSequence: options.lastEventSequence }),
@@ -963,19 +958,16 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
       existing: true,
       encoding: "gzip",
     });
-    const checkpointed = await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: run.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-cli-${run.runId}`,
-        cliAgentSessionHistoryHash: historyHash,
+        exitCode: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-cli-${run.runId}`,
+          cliAgentSessionHistoryHash: historyHash,
+        },
       },
-      headers,
-      [200],
-    );
-    mustOk(checkpointed, "compressed resume checkpoint");
-    await webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 0 },
       headers,
       [200],
     );
@@ -1072,19 +1064,16 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
       existing: true,
       encoding: "zstd",
     });
-    const checkpointed = await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: run.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-cli-${run.runId}`,
-        cliAgentSessionHistoryHash: historyHash,
+        exitCode: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-cli-${run.runId}`,
+          cliAgentSessionHistoryHash: historyHash,
+        },
       },
-      headers,
-      [200],
-    );
-    mustOk(checkpointed, "zstd compressed resume checkpoint");
-    await webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 0 },
       headers,
       [200],
     );
@@ -1418,29 +1407,24 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
 
     const cliAgentSessionId = `bdd-cli-${r1.runId}`;
     const headers1 = sandboxHeaders(claim1.sandboxToken);
-    const checkpointed = await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: r1.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId,
-        cliAgentSessionHistoryHash: historyHash,
-        artifactSnapshots: [
-          {
-            name: "memory",
-            version: memory1.versionId,
-            mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
-          },
-        ],
-        volumeVersionsSnapshot: { versions: { data: volumeVersion } },
+        exitCode: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId,
+          cliAgentSessionHistoryHash: historyHash,
+          artifactSnapshots: [
+            {
+              name: "memory",
+              version: memory1.versionId,
+              mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+            },
+          ],
+          volumeVersionsSnapshot: { versions: { data: volumeVersion } },
+        },
       },
-      headers1,
-      [200],
-    );
-    if (checkpointed.status !== 200) {
-      throw new Error("Expected the resume checkpoint webhook to succeed");
-    }
-    await webhooks.requestAgentComplete(
-      { runId: r1.runId, exitCode: 0 },
       headers1,
       [200],
     );
@@ -2491,23 +2475,17 @@ describe("RUN-04: agent run telemetry families", () => {
       const claim = await api.claimRunnerJob(run.runId);
       const headers = sandboxHeaders(claim.sandboxToken);
 
-      await webhooks.requestAgentCheckpoint(
-        {
-          runId: run.runId,
-          cliAgentType: "claude-code",
-          cliAgentSessionId: `bdd-cli-${run.runId}`,
-          cliAgentSessionHistoryHash: createHash("sha256")
-            .update(`bdd sandbox reuse ${run.runId}`)
-            .digest("hex"),
-        },
-        headers,
-        [200],
-      );
-
       const completion = await webhooks.requestAgentComplete(
         {
           runId: run.runId,
           exitCode: 0,
+          checkpoint: {
+            cliAgentType: "claude-code",
+            cliAgentSessionId: `bdd-cli-${run.runId}`,
+            cliAgentSessionHistoryHash: createHash("sha256")
+              .update(`bdd sandbox reuse ${run.runId}`)
+              .digest("hex"),
+          },
           sandboxReuseResult: scenario.sandboxResult,
           workspaceReuseResult: scenario.workspaceResult,
         },
@@ -2612,22 +2590,17 @@ describe("RUN-04: agent run telemetry families", () => {
     });
     const claim = await api.claimRunnerJob(agentRun.runId);
     const headers = sandboxHeaders(claim.sandboxToken);
-    await webhooks.requestAgentCheckpoint(
-      {
-        runId: agentRun.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-cli-${agentRun.runId}`,
-        cliAgentSessionHistoryHash: createHash("sha256")
-          .update(`bdd zero detail ${agentRun.runId}`)
-          .digest("hex"),
-      },
-      headers,
-      [200],
-    );
     await webhooks.requestAgentComplete(
       {
         runId: agentRun.runId,
         exitCode: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-cli-${agentRun.runId}`,
+          cliAgentSessionHistoryHash: createHash("sha256")
+            .update(`bdd zero detail ${agentRun.runId}`)
+            .digest("hex"),
+        },
         sandboxReuseResult: "reused",
         workspaceReuseResult: "sandboxReused",
       },

@@ -99,20 +99,18 @@ async function completeClaimedRunOk(
 ): Promise<void> {
   const sandboxHeaders = { authorization: `Bearer ${sandboxToken}` };
   const history = `GitHub workflow BDD history ${runId}`;
-  await webhooksApi.requestAgentCheckpoint(
+  await webhooksApi.requestAgentComplete(
     {
       runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId: `github-workflow-bdd-${runId}`,
-      cliAgentSessionHistoryHash: createHash("sha256")
-        .update(history)
-        .digest("hex"),
+      exitCode: 0,
+      checkpoint: {
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `github-workflow-bdd-${runId}`,
+        cliAgentSessionHistoryHash: createHash("sha256")
+          .update(history)
+          .digest("hex"),
+      },
     },
-    sandboxHeaders,
-    [200],
-  );
-  await webhooksApi.requestAgentComplete(
-    { runId, exitCode: 0 },
     sandboxHeaders,
     [200],
   );

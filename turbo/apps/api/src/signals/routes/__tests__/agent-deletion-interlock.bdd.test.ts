@@ -88,7 +88,7 @@ function expectRetryConflict(response: {
   });
 }
 
-async function expectCheckpointSucceeds(
+async function expectActiveCheckpointRejected(
   actor: ApiTestUser,
   runId: string,
 ): Promise<void> {
@@ -100,9 +100,12 @@ async function expectCheckpointSucceeds(
       cliAgentSessionHistoryDisposition: "unavailable",
     },
     { authorization: `Bearer ${api.sandboxTokenForRun(actor, runId)}` },
-    [200],
+    [400],
   );
-  expect(response.status).toBe(200);
+  expect(response.status).toBe(400);
+  expect(JSON.stringify(response.body)).toContain(
+    "[CHECKPOINT_RUN_NOT_SETTLED]",
+  );
 }
 
 describe("DELETE /api/agents/:id bounded deletion interlock", () => {
@@ -155,7 +158,7 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
       runId: survivorRun.runId,
       status: "pending",
     });
-    await expectCheckpointSucceeds(actor, survivorRun.runId);
+    await expectActiveCheckpointRejected(actor, survivorRun.runId);
     await expect(readUsageEventRunIdFixture(usageEventId)).resolves.toBeNull();
     await expect(readDatabaseLockTimeoutFixture()).resolves.toBe(
       lockTimeoutBefore,
@@ -278,7 +281,7 @@ describe("DELETE /api/agents/:id bounded deletion interlock", () => {
       runId: survivorRun.runId,
       status: "pending",
     });
-    await expectCheckpointSucceeds(survivorOwner, survivorRun.runId);
+    await expectActiveCheckpointRejected(survivorOwner, survivorRun.runId);
     await expect(
       readUsageEventRunIdFixture(pendingUsageId),
     ).resolves.toBeNull();

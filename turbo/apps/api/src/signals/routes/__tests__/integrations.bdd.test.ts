@@ -449,18 +449,6 @@ async function completeSlackTriggeredRun(args: {
   const sandboxHeaders = {
     authorization: `Bearer ${args.sandboxToken}`,
   };
-  await webhooks.requestAgentCheckpoint(
-    {
-      runId: args.runId,
-      cliAgentType: args.cliAgentType,
-      cliAgentSessionId: `bdd-slack-cli-${args.runId}`,
-      cliAgentSessionHistoryHash: createHash("sha256")
-        .update(`bdd slack history ${args.runId}`)
-        .digest("hex"),
-    },
-    sandboxHeaders,
-    [200],
-  );
   const assistantEvents =
     args.assistantText === undefined
       ? []
@@ -513,6 +501,13 @@ async function completeSlackTriggeredRun(args: {
     {
       runId: args.runId,
       exitCode: 0,
+      checkpoint: {
+        cliAgentType: args.cliAgentType,
+        cliAgentSessionId: `bdd-slack-cli-${args.runId}`,
+        cliAgentSessionHistoryHash: createHash("sha256")
+          .update(`bdd slack history ${args.runId}`)
+          .digest("hex"),
+      },
       ...(outputEvents.length > 0
         ? { lastEventSequence: outputEvents.length - 1 }
         : {}),
