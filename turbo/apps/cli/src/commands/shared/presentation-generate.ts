@@ -13,7 +13,6 @@ import {
   PRESENTATION_STATIC_HTML_INSTRUCTION,
 } from "@okouai/core/presentation-generation-instructions";
 import { canonicalizeRegistryId } from "./resource-listing";
-import { presentationRunbookArchiveVersionFromEnvironment } from "./presentation-runbook-archive-version";
 
 type PresentationRunbookPackage = ReturnType<
   typeof listPresentationRunbookPackages
@@ -46,9 +45,7 @@ function parseSlideCount(value: string): number {
 }
 
 function listPresentationTemplates(): readonly PresentationRunbookPackage[] {
-  return listPresentationRunbookPackages(
-    presentationRunbookArchiveVersionFromEnvironment(),
-  );
+  return listPresentationRunbookPackages();
 }
 
 function unknownTemplateError(id: string, usageCommand: string): Error {
@@ -127,12 +124,7 @@ ${formatPresentationTemplateListing(templates)}`;
             "template",
             options.template,
           );
-          const archiveVersion =
-            presentationRunbookArchiveVersionFromEnvironment();
-          const template = findPresentationRunbookPackage(
-            canonical,
-            archiveVersion,
-          );
+          const template = findPresentationRunbookPackage(canonical);
           if (!template) {
             throw unknownTemplateError(options.template, config.usageCommand);
           }
@@ -149,7 +141,6 @@ ${formatPresentationTemplateListing(templates)}`;
               ...buildPresentationRunbookInstructionLines({
                 runbookPackage: template,
                 colorSystemToken,
-                archiveVersion,
               }),
               "",
               `User request: ${prompt}`,
