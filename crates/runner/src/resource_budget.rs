@@ -293,7 +293,7 @@ impl ResourceBudget {
         self.max_concurrent
     }
 
-    /// Returns (allocated_vcpu, allocated_memory_mb, running_count) for heartbeat reporting.
+    /// Returns the current allocated vCPU, memory, and lease count in one snapshot.
     pub fn allocated(&self) -> (u32, u32, usize) {
         let state = self.lock();
         (

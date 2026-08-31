@@ -747,6 +747,9 @@ pub(super) async fn build_spawn_job_request(
     ctx: &SpawnContext,
 ) -> Result<SpawnJobRequest, StatusPersistenceError> {
     let setup = &mut *activation.setup;
+    setup
+        .pre_spawn_timing
+        .record_resource_budget_occupancy(&ctx.budget);
     let run_id = setup.claimed.context().run_id;
     let sandbox_id = activation.sandbox_id;
     #[cfg(test)]
