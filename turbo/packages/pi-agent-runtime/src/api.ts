@@ -41,6 +41,7 @@ export function inspectPiSessionJsonl(jsonl: string): PiSessionInspection {
   const session = MemoryPiSession.fromJsonl(jsonl);
   return {
     sessionId: session.getSessionId(),
+    messageCount: session.buildSessionContext().messages.length,
     hasPendingToolCalls: session.hasPendingToolCalls(),
     isSettledCheckpoint: session.isSettledCheckpoint(),
   };
