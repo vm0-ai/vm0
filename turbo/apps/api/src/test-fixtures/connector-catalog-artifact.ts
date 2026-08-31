@@ -7,7 +7,7 @@ import type {
   ConnectorCatalogArtifact,
   ConnectorCatalogArtifactConnector,
   ConnectorCatalogAuthMethod,
-} from "@okouai/connector-catalog-validation/artifacts/artifacts";
+} from "@okouai/connectors/connector-catalog/artifacts/artifacts";
 
 type ManualField = Extract<
   ConnectorCatalogAuthMethod["grant"],

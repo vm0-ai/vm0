@@ -32,7 +32,8 @@ def normalize_accept_encoding_for_body_inspection(
 
     The proxy inspects selected upstream responses for usage/billing.  For those
     requests, avoid negotiating encodings whose Python streaming decoders cannot
-    provide the needed bounded-output behavior.
+    provide the needed bounded-output behavior. Brotli participates under the
+    documented soft output-limit contract in ``body_decoding``.
 
     The helper preserves explicit requester rejections.  When ``identity`` and
     every supported compression coding are rejected, the original header remains

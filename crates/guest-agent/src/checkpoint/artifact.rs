@@ -1,4 +1,12 @@
 //! Checkpoint-specific artifact snapshot planning and scheduling.
+//!
+//! Artifact checkpointing is intentionally split into two phases. The first
+//! phase walks and plans every configured artifact locally, with at most
+//! [`ARTIFACT_CHECKPOINT_CONCURRENCY`] walks in flight. Only after the complete
+//! preflight succeeds does the second phase start remote VAS snapshot work.
+//! Keeping that boundary prevents a later invalid artifact root from creating
+//! a partial remote checkpoint. The second phase retains input indices so it
+//! can overlap remote work without changing result order or error selection.
 
 use super::LOG_TAG;
 use crate::artifact as vas;
@@ -158,10 +166,33 @@ async fn snapshot_artifact_plan(
     ))
 }
 
-/// Snapshot artifact entries. Memory rides in `VM0_ARTIFACTS` post-#10602, so
-/// there is no longer a separate memory arm. The generated checkpoint
-/// contract preserves the optional missing-root policy for every snapshot
-/// path.
+/// Snapshot artifact entries.
+///
+/// Memory rides in `VM0_ARTIFACTS` post-#10602, so there is no longer a
+/// separate memory arm. The generated checkpoint contract preserves the
+/// optional missing-root policy for every snapshot path.
+///
+/// This is a two-phase operation. First, every entry is walked and converted
+/// into a local snapshot plan with at most
+/// [`ARTIFACT_CHECKPOINT_CONCURRENCY`] walks in flight. The complete preflight
+/// result set is collected before any plan can call VAS prepare, upload, or
+/// commit APIs. This separation is what makes a later invalid entry fail
+/// without remote side effects; see
+/// `artifact_snapshot_later_missing_mount_fails_before_any_storage_api_calls`.
+///
+/// After preflight succeeds, remote snapshot plans may overlap within the same
+/// concurrency bound. Futures can finish out of input order, so input indices
+/// are retained and successful snapshots are returned in input order. A
+/// remote error stops admitting new pending plans, but futures that were
+/// already started are drained. Errors are retained by input index so the
+/// lowest-index error is returned deterministically. The overlap and ordering
+/// guarantee is covered by
+/// `artifact_snapshot_pipelines_overlap_and_preserve_result_order`.
+///
+/// The checkpoint caller in `checkpoint/mod.rs` runs this prerequisite with
+/// session-history preparation in `prepare_checkpoint_impl` via
+/// `tokio::join!` and waits for both results before constructing the combined
+/// completion request.
 pub(super) async fn snapshot_artifact_entries(
     http: &HttpClient,
     run_id: &str,

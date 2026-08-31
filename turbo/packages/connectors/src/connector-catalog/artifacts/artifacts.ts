@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { SYSTEM_ORG_ID } from "@okouai/core/storage-names";
 
 import {
   artifactKeySchema,
@@ -31,7 +30,7 @@ export const CONNECTOR_CATALOG_ACTIVE_KEY = `connectors/v${SUPPORTED_CONNECTOR_C
 const CONNECTOR_SKILL_MAX_FILES = 64;
 const CONNECTOR_SKILL_MAX_TOTAL_BYTES = 1024 * 1024;
 const CONNECTOR_SKILL_MAX_ARCHIVE_BYTES = CONNECTOR_SKILL_MAX_TOTAL_BYTES * 2;
-const CONNECTOR_SKILL_STORAGE_PATH_PREFIX = `${SYSTEM_ORG_ID}/volume`;
+const CONNECTOR_SKILL_STORAGE_PATH_PREFIX = "__system__/volume";
 
 function artifactHeaderShape() {
   return {

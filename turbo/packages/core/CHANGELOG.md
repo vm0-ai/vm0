@@ -1,5 +1,33 @@
 # Changelog
 
+## [8.604.1](https://github.com/vm0-ai/vm0/compare/core-v8.604.0...core-v8.604.1) (2026-08-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.15
+
+## [8.604.0](https://github.com/vm0-ai/vm0/compare/core-v8.603.6...core-v8.604.0) (2026-08-31)
+
+
+### Features
+
+* enable notion and google forms workflow automations ([#30388](https://github.com/vm0-ai/vm0/issues/30388)) ([b0fadac](https://github.com/vm0-ai/vm0/commit/b0fadac0eceb69141f724555c9dfb680bd2b8ae3))
+
+
+### Refactoring
+
+* **auth:** fully roll out auth v2 ([#30406](https://github.com/vm0-ai/vm0/issues/30406)) ([9509186](https://github.com/vm0-ai/vm0/commit/950918630f56ba9019dfc32893dd29e8f5bd5797))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.381.14
+
 ## [8.603.6](https://github.com/vm0-ai/vm0/compare/core-v8.603.5...core-v8.603.6) (2026-08-31)
 
 

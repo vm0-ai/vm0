@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.274](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.273...sandbox-fc-v0.37.274) (2026-08-31)
+
+
+### Bug Fixes
+
+* **runner:** validate dns readiness responses ([#30433](https://github.com/vm0-ai/vm0/issues/30433)) ([db27fae](https://github.com/vm0-ai/vm0/commit/db27faea984277ac6fad8dd35276d5b1cec81101))
+
 ## [0.37.273](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.272...sandbox-fc-v0.37.273) (2026-08-30)
 
 ## [0.37.272](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.271...sandbox-fc-v0.37.272) (2026-08-30)

@@ -1,6 +1,6 @@
 {
   "name": "api",
-  "version": "1.512.2",
+  "version": "1.513.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -39,7 +39,6 @@
     "@vercel/functions": "^3.4.4",
     "@vercel/otel": "^2.1.2",
     "@okouai/api-contracts": "workspace:*",
-    "@okouai/connector-catalog-validation": "workspace:*",
     "@okouai/connectors": "workspace:*",
     "@okouai/core": "workspace:*",
     "@okouai/db": "workspace:*",
