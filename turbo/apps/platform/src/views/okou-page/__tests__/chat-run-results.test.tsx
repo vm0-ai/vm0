@@ -2260,7 +2260,9 @@ describe("chat lifecycle", () => {
     });
 
     const composer = await screen.findByRole("textbox", { name: "Message" });
-    const composerContainer = composer.closest("[data-chat-composer]");
+    const composerContainer = composer.closest<HTMLElement>(
+      "[data-chat-composer]",
+    );
     if (!composerContainer) {
       throw new Error("Expected chat composer container");
     }
