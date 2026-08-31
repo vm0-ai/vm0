@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.812.5](https://github.com/vm0-ai/vm0/compare/app-v0.812.4...app-v0.812.5) (2026-08-31)
+
+
+### Bug Fixes
+
+* **platform:** derive thinking indicator from chat events ([#30357](https://github.com/vm0-ai/vm0/issues/30357)) ([19fe4f5](https://github.com/vm0-ai/vm0/commit/19fe4f529e23558401e59fb898d895144e1959c5))
+
 ## [0.812.4](https://github.com/vm0-ai/vm0/compare/app-v0.812.3...app-v0.812.4) (2026-08-30)
 
 
