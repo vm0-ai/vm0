@@ -53,7 +53,7 @@ export default defineConfig(({ command }) => ({
     tailwindcss(),
     react(),
     devArtifactFetchProxy(),
-    clerkCoreHtmlPlugin(),
+    clerkCoreHtmlPlugin(APP_VERSION),
     applicationJavaScriptBundlePlugin(),
     // Sentry source map upload (production builds only)
     process.env.SENTRY_AUTH_TOKEN &&

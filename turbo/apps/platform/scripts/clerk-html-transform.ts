@@ -5,9 +5,11 @@ import { CLERK_JS_VERSION } from "../src/lib/clerk-versions.ts";
 const PREVIEW_SCRIPT_URL_MARKER = "__VM0_CLERK_PREVIEW_SCRIPT_URL__";
 const PRODUCTION_SCRIPT_URL_MARKER = "__VM0_CLERK_PRODUCTION_SCRIPT_URL__";
 const SATELLITE_SCRIPT_URL_MARKER = "__VM0_CLERK_SATELLITE_SCRIPT_URL__";
+const APP_VERSION_JSON_MARKER = "__VM0_APP_VERSION_JSON__";
 const PRODUCTION_SATELLITE_DOMAIN = "app.okou.ai";
 
 export interface ClerkCoreHtmlOptions {
+  readonly appVersion: string;
   readonly previewPublishableKey: string;
   readonly productionPublishableKey: string;
 }
@@ -25,6 +27,7 @@ export function transformClerkCoreScriptUrls(
   options: ClerkCoreHtmlOptions,
 ): string {
   return html
+    .replaceAll(APP_VERSION_JSON_MARKER, JSON.stringify(options.appVersion))
     .replaceAll(
       PREVIEW_SCRIPT_URL_MARKER,
       scriptUrl(options.previewPublishableKey),

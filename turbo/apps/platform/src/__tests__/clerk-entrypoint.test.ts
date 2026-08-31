@@ -1,3 +1,5 @@
+import type { OnboardingStatusResponse } from "@okouai/api-contracts/contracts/onboarding";
+import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
 import indexHtml from "../../index.html?raw";
@@ -5,7 +7,13 @@ import { transformClerkCoreScriptUrls } from "../../scripts/clerk-html-transform
 import { CLERK_JS_VERSION } from "../lib/clerk-versions.ts";
 import { resolvePlatformRuntimeConfig } from "../lib/platform-host.ts";
 import { testContext } from "../signals/__tests__/test-helpers.ts";
-import { mockedClerk, mockedClerkLoad } from "./mock-auth.ts";
+import { onboardingStatus$ } from "../signals/okou-page/onboarding.ts";
+import {
+  mockedClerk,
+  mockedClerkLoad,
+  mockOrganization,
+  mockUser,
+} from "./mock-auth.ts";
 import { setupPage } from "./page-helper.ts";
 
 vi.unmock("@clerk/shared/loadClerkJsScript");
@@ -15,6 +23,25 @@ const PRODUCTION_FRONTEND_API_HOST = "clerk.vm0.ai";
 const PRODUCTION_SATELLITE_DOMAIN = "app.okou.ai";
 const CLERK_BOOTSTRAP_SELECTOR = "script[data-vm0-clerk-bootstrap]";
 const CLERK_SCRIPT_SELECTOR = "script[data-clerk-js-script]";
+const TEST_APP_VERSION = "0.812.5-test";
+const CLERK_LOAD_COMPLETED_MARK = "vm0:bootstrap:clerk-load-completed";
+const CLERK_LOAD_STARTED_MARK = "vm0:bootstrap:clerk-load-started";
+
+const PREFETCHED_ONBOARDING_STATUS: OnboardingStatusResponse = {
+  defaultAgentId: "c0000000-0000-4000-a000-000000000101",
+  defaultAgentMetadata: { displayName: "Prefetched Zero" },
+  hasDefaultAgent: true,
+  hasOrg: true,
+  isAdmin: true,
+  needsOnboarding: false,
+  onboardingComplete: true,
+};
+
+const RETRIED_ONBOARDING_STATUS: OnboardingStatusResponse = {
+  ...PREFETCHED_ONBOARDING_STATUS,
+  defaultAgentId: "c0000000-0000-4000-a000-000000000102",
+  defaultAgentMetadata: { displayName: "Retried Zero" },
+};
 
 type ClerkBootstrapScript = (
   window: Window,
@@ -33,6 +60,13 @@ interface ClerkEntrypointHarness {
   readonly requests: ClerkScriptRequest[];
   readonly retryStarted: Promise<void>;
   readonly setup: Promise<void>;
+}
+
+interface ClerkPageOptions {
+  readonly apiOriginMarker?: string | null;
+  readonly cookie?: string;
+  readonly path?: string;
+  readonly url?: string;
 }
 
 const context = testContext();
@@ -58,6 +92,11 @@ function expectedClerkUiScriptUrl(host: string): string {
   return `https://${host}/npm/@clerk/ui@1.26.0/dist/ui.browser.js`;
 }
 
+function stubClerkBuildEnvironment(): void {
+  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PREVIEW", PREVIEW_PUBLISHABLE_KEY);
+  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PROD", PRODUCTION_PUBLISHABLE_KEY);
+}
+
 function builtIndexHtml(): string {
   return transformClerkCoreScriptUrls(
     indexHtml
@@ -70,6 +109,7 @@ function builtIndexHtml(): string {
         PRODUCTION_PUBLISHABLE_KEY,
       ),
     {
+      appVersion: TEST_APP_VERSION,
       previewPublishableKey: PREVIEW_PUBLISHABLE_KEY,
       productionPublishableKey: PRODUCTION_PUBLISHABLE_KEY,
     },
@@ -95,8 +135,28 @@ function executeClerkBootstrap(html: string): void {
   executeEntrypointScript(window, document, location);
 }
 
-function captureClerkBootstrapScript(url: string): HTMLScriptElement {
-  context.mocks.browser.url(url);
+function captureClerkBootstrapScript(
+  url: string,
+  options: Pick<ClerkPageOptions, "apiOriginMarker" | "cookie"> = {},
+): HTMLScriptElement {
+  stubClerkBuildEnvironment();
+  context.mocks.browser.url(url, {
+    apiOriginMarker: options.apiOriginMarker,
+  });
+  if (options.cookie !== undefined) {
+    context.mocks.browser.cookie(options.cookie);
+  }
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      window.dispatchEvent(new Event("pagehide"));
+      Reflect.deleteProperty(globalThis, "Clerk");
+      Reflect.deleteProperty(window, "__vm0ClerkBootstrap");
+      performance.clearMarks(CLERK_LOAD_STARTED_MARK);
+      performance.clearMarks(CLERK_LOAD_COMPLETED_MARK);
+    },
+    { once: true },
+  );
   let clerkScript: HTMLScriptElement | undefined;
   const appendSpy = vi
     .spyOn(document.head, "appendChild")
@@ -118,7 +178,10 @@ function captureClerkBootstrapScript(url: string): HTMLScriptElement {
   return clerkScript;
 }
 
-function startClerkPage(path = "/error"): ClerkEntrypointHarness {
+function startClerkPage(
+  options: ClerkPageOptions = {},
+): ClerkEntrypointHarness {
+  stubClerkBuildEnvironment();
   const requests: ClerkScriptRequest[] = [];
   const clerkLoaderWatchingEarlyScript = context.mocks.deferred<void>();
   const retryStarted = context.mocks.deferred<void>();
@@ -126,7 +189,13 @@ function startClerkPage(path = "/error"): ClerkEntrypointHarness {
 
   const setup = setupPage({
     beforeBootstrap: (signal) => {
-      context.mocks.browser.url("https://pr-30199-app.omby.ai/");
+      context.mocks.browser.url(
+        options.url ?? "https://pr-30199-app.omby.ai/",
+        { apiOriginMarker: options.apiOriginMarker },
+      );
+      if (options.cookie !== undefined) {
+        context.mocks.browser.cookie(options.cookie);
+      }
       window.__vm0BrowserSupported = true;
       Reflect.deleteProperty(globalThis, "Clerk");
       Reflect.deleteProperty(globalThis, "__internal_ClerkUICtor");
@@ -196,18 +265,22 @@ function startClerkPage(path = "/error"): ClerkEntrypointHarness {
         () => {
           headAppendSpy.mockRestore();
           bodyAppendSpy.mockRestore();
+          window.dispatchEvent(new Event("pagehide"));
           for (const request of requests) {
             request.element.remove();
           }
           Reflect.deleteProperty(globalThis, "Clerk");
           Reflect.deleteProperty(globalThis, "__internal_ClerkUICtor");
           Reflect.deleteProperty(window, "__vm0BrowserSupported");
+          Reflect.deleteProperty(window, "__vm0ClerkBootstrap");
+          performance.clearMarks(CLERK_LOAD_STARTED_MARK);
+          performance.clearMarks(CLERK_LOAD_COMPLETED_MARK);
         },
         { once: true },
       );
     },
     context,
-    path,
+    path: options.path ?? "/error",
     withoutRender: true,
   });
 
@@ -223,12 +296,18 @@ function startClerkPage(path = "/error"): ClerkEntrypointHarness {
   };
 }
 
-async function completeEarlyClerkScript(
+async function loadEarlyClerkScript(
   harness: ClerkEntrypointHarness,
 ): Promise<void> {
   await harness.clerkLoaderWatchingEarlyScript;
   Reflect.set(globalThis, "Clerk", mockedClerk);
   harness.earlyScript.dispatchEvent(new Event("load"));
+}
+
+async function completeEarlyClerkScript(
+  harness: ClerkEntrypointHarness,
+): Promise<void> {
+  await loadEarlyClerkScript(harness);
   await harness.setup;
 }
 
@@ -250,29 +329,34 @@ describe("platform Clerk entrypoint", () => {
     expect(bootstrap.compareDocumentPosition(mainScript)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
+    expect(html).not.toContain("__VM0_");
     expect(html).not.toContain("@clerk/ui");
   });
 
   it.each([
     {
+      authOrigin: "https://pr-30199-app.omby.ai",
       domain: null,
       publishableKey: PREVIEW_PUBLISHABLE_KEY,
       scriptUrl: expectedClerkScriptUrl(PREVIEW_FRONTEND_API_HOST),
       url: "https://pr-30199-app.omby.ai/",
     },
     {
+      authOrigin: "https://app.vm0.ai",
       domain: null,
       publishableKey: PRODUCTION_PUBLISHABLE_KEY,
       scriptUrl: expectedClerkScriptUrl(PRODUCTION_FRONTEND_API_HOST),
       url: "https://app.vm0.ai/",
     },
     {
+      authOrigin: "https://app.vm0.ai",
       domain: PRODUCTION_SATELLITE_DOMAIN,
       publishableKey: PRODUCTION_PUBLISHABLE_KEY,
       scriptUrl: expectedClerkScriptUrl(`clerk.${PRODUCTION_SATELLITE_DOMAIN}`),
       url: "https://app.okou.ai/",
     },
     {
+      authOrigin: "https://okou.ai.evil.example",
       domain: null,
       publishableKey: PREVIEW_PUBLISHABLE_KEY,
       scriptUrl: expectedClerkScriptUrl(PREVIEW_FRONTEND_API_HOST),
@@ -280,10 +364,12 @@ describe("platform Clerk entrypoint", () => {
     },
   ])(
     "selects the Clerk core configuration on $url",
-    ({ domain, publishableKey, scriptUrl, url }) => {
-      vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PREVIEW", PREVIEW_PUBLISHABLE_KEY);
-      vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PROD", PRODUCTION_PUBLISHABLE_KEY);
+    ({ authOrigin, domain, publishableKey, scriptUrl, url }) => {
       const script = captureClerkBootstrapScript(url);
+      const bootstrap = window.__vm0ClerkBootstrap;
+      if (!bootstrap) {
+        throw new Error("Clerk bootstrap did not expose its shared state");
+      }
 
       // The bootstrap and the bundle select the key independently: the
       // bootstrap runs before any module loads, and the shared database worker
@@ -300,11 +386,64 @@ describe("platform Clerk entrypoint", () => {
       expect(script.dataset.clerkPublishableKey).toBe(publishableKey);
       expect(script.dataset.clerkDomain ?? null).toBe(domain);
       expect(script.onerror).toStrictEqual(expect.any(Function));
+      expect(script.onload).toStrictEqual(expect.any(Function));
       expect(script.type).toBe("text/javascript");
+      expect(bootstrap.publishableKey).toBe(publishableKey);
+      expect(bootstrap.domain ?? null).toBe(domain);
+      expect(bootstrap.loadOptions).toStrictEqual({
+        afterSignOutUrl: `${authOrigin}/sign-in`,
+        ...(domain ? { isSatellite: true, satelliteAutoSync: true } : {}),
+        signInUrl: `${authOrigin}/sign-in`,
+        signUpUrl: `${authOrigin}/sign-up`,
+      });
     },
   );
 
-  it("merges the in-flight script and lets TypeScript call Clerk.load", async () => {
+  it("starts Clerk.load before application bootstrap and adopts the same promise", async () => {
+    const loadCanFinish = context.mocks.deferred<void>();
+    mockedClerkLoad.mockReturnValue(loadCanFinish.promise);
+    const script = captureClerkBootstrapScript("https://pr-30199-app.omby.ai/");
+
+    Reflect.set(globalThis, "Clerk", mockedClerk);
+    script.dispatchEvent(new Event("load"));
+
+    const bootstrap = window.__vm0ClerkBootstrap;
+    if (!bootstrap?.loaded || !bootstrap.onboardingStatusPromise) {
+      throw new Error("Clerk bootstrap did not start its shared promises");
+    }
+    const startedAt = bootstrap.clerkLoadStartedAt;
+    expect(startedAt).toStrictEqual(expect.any(Number));
+    expect(mockedClerkLoad).toHaveBeenCalledOnce();
+    expect(bootstrap.loaded).toBe(loadCanFinish.promise);
+    const onboardingStatusPromise = bootstrap.onboardingStatusPromise;
+    script.dispatchEvent(new Event("load"));
+    expect(bootstrap.onboardingStatusPromise).toBe(onboardingStatusPromise);
+    expect(mockedClerkLoad).toHaveBeenCalledOnce();
+
+    const setup = setupPage({
+      context,
+      path: "/error",
+      withoutRender: true,
+    });
+    expect(mockedClerkLoad).toHaveBeenCalledOnce();
+
+    loadCanFinish.resolve(undefined);
+    await Promise.all([setup, bootstrap.onboardingStatusPromise]);
+
+    const completedAt = bootstrap.clerkLoadCompletedAt;
+    expect(completedAt).toStrictEqual(expect.any(Number));
+    expect(mockedClerkLoad).toHaveBeenCalledOnce();
+    expect(
+      performance.getEntriesByName(CLERK_LOAD_STARTED_MARK, "mark")[0]
+        ?.startTime,
+    ).toBe(startedAt);
+    expect(
+      performance.getEntriesByName(CLERK_LOAD_COMPLETED_MARK, "mark")[0]
+        ?.startTime,
+    ).toBe(completedAt);
+  });
+
+  it("merges the in-flight core script without a second Clerk.load", async () => {
     const harness = startClerkPage();
 
     expect(mockedClerkLoad).not.toHaveBeenCalled();
@@ -318,8 +457,275 @@ describe("platform Clerk entrypoint", () => {
     expect(mockedClerkLoad).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    {
+      apiOriginMarker: undefined,
+      authOrigin: "https://pr-30199-app.omby.ai",
+      bypass: "preview-secret",
+      cookie: "x-vercel-protection-bypass=preview-secret",
+      domain: null,
+      expectedRequestUrl: "https://pr-30199-api.vm6.ai/api/onboarding/status",
+      expectedScriptUrl: expectedClerkScriptUrl(PREVIEW_FRONTEND_API_HOST),
+      url: "https://pr-30199-app.omby.ai/",
+    },
+    {
+      apiOriginMarker: undefined,
+      authOrigin: "https://app.vm0.ai",
+      bypass: null,
+      cookie: undefined,
+      domain: null,
+      expectedRequestUrl: "https://api.vm0.ai/api/onboarding/status",
+      expectedScriptUrl: expectedClerkScriptUrl(PRODUCTION_FRONTEND_API_HOST),
+      url: "https://app.vm0.ai/",
+    },
+    {
+      apiOriginMarker: undefined,
+      authOrigin: "https://app.vm0.ai",
+      bypass: null,
+      cookie: undefined,
+      domain: PRODUCTION_SATELLITE_DOMAIN,
+      expectedRequestUrl: "https://api.okou.ai/api/onboarding/status",
+      expectedScriptUrl: expectedClerkScriptUrl(
+        `clerk.${PRODUCTION_SATELLITE_DOMAIN}`,
+      ),
+      url: "https://app.okou.ai/",
+    },
+    {
+      apiOriginMarker: "https://pr-30199-api.vm6.ai",
+      authOrigin: "https://pr-30199.okou-app.pages.dev",
+      bypass: null,
+      cookie: undefined,
+      domain: null,
+      expectedRequestUrl: "https://pr-30199-api.vm6.ai/api/onboarding/status",
+      expectedScriptUrl: expectedClerkScriptUrl(PREVIEW_FRONTEND_API_HOST),
+      url: "https://pr-30199.okou-app.pages.dev/",
+    },
+  ])(
+    "prefetches onboarding with the authenticated $url configuration",
+    async ({
+      apiOriginMarker,
+      authOrigin,
+      bypass,
+      cookie,
+      domain,
+      expectedRequestUrl,
+      expectedScriptUrl,
+      url,
+    }) => {
+      const requests: Request[] = [];
+      context.mocks.http.get("*/api/onboarding/status", ({ request }) => {
+        requests.push(request);
+        return HttpResponse.json(PREFETCHED_ONBOARDING_STATUS);
+      });
+      const harness = startClerkPage({
+        apiOriginMarker,
+        cookie,
+        url,
+      });
+
+      await completeEarlyClerkScript(harness);
+
+      expect(harness.requests.map((request) => request.url)).toStrictEqual([
+        expectedScriptUrl,
+      ]);
+      expect(requests).toHaveLength(1);
+      const request = requests[0];
+      if (!request) {
+        throw new Error("Onboarding prefetch did not issue a request");
+      }
+      expect(request.url).toBe(expectedRequestUrl);
+      expect(request.credentials).toBe("include");
+      expect(request.headers.get("authorization")).toBe("Bearer test-token");
+      expect(request.headers.get("x-client-type")).toBe("App");
+      expect(request.headers.get("x-client-version")).toBe(TEST_APP_VERSION);
+      expect(request.headers.get("x-client-session-id")).toMatch(
+        /^[0-9a-f-]{36}$/u,
+      );
+      expect(request.headers.get("x-client-request-id")).toMatch(
+        /^[0-9a-f-]{36}$/u,
+      );
+      expect(request.headers.get("x-vercel-protection-bypass")).toBe(bypass);
+      expect(mockedClerkLoad).toHaveBeenCalledWith(
+        expect.objectContaining({
+          afterSignOutUrl: `${authOrigin}/sign-in`,
+          ...(domain ? { isSatellite: true, satelliteAutoSync: true } : {}),
+          signInUrl: `${authOrigin}/sign-in`,
+          signUpUrl: `${authOrigin}/sign-up`,
+          ui: { ClerkUI: expect.any(Promise) },
+        }),
+      );
+    },
+  );
+
+  it("reuses the in-flight onboarding result without a second request", async () => {
+    const requestStarted = context.mocks.deferred<void>();
+    const requestCanFinish = context.mocks.deferred<void>();
+    let requests = 0;
+    context.mocks.http.get("*/api/onboarding/status", async () => {
+      requests += 1;
+      requestStarted.resolve(undefined);
+      await requestCanFinish.promise;
+      return HttpResponse.json(PREFETCHED_ONBOARDING_STATUS);
+    });
+    const harness = startClerkPage();
+
+    await loadEarlyClerkScript(harness);
+    await requestStarted.promise;
+    const onboardingStatus = context.store.get(onboardingStatus$);
+
+    expect(requests).toBe(1);
+    requestCanFinish.resolve(undefined);
+    await expect(onboardingStatus).resolves.toStrictEqual(
+      PREFETCHED_ONBOARDING_STATUS,
+    );
+    await harness.setup;
+    expect(requests).toBe(1);
+    expect(mockedClerkLoad).toHaveBeenCalledOnce();
+  });
+
+  it("settles early ownership when aborted during the Clerk token read", async () => {
+    const tokenReadStarted = context.mocks.deferred<void>();
+    const tokenReadCanFinish = context.mocks.deferred<string>();
+    let observedTokenRead = false;
+    mockedClerk.sessionGetToken.mockImplementation((options) => {
+      if (options?.skipCache) {
+        return Promise.resolve("fresh-test-token");
+      }
+      if (!observedTokenRead) {
+        observedTokenRead = true;
+        tokenReadStarted.resolve(undefined);
+      }
+      return tokenReadCanFinish.promise;
+    });
+    let requests = 0;
+    context.mocks.http.get("*/api/onboarding/status", () => {
+      requests += 1;
+      return HttpResponse.json(PREFETCHED_ONBOARDING_STATUS);
+    });
+    const harness = startClerkPage();
+
+    await loadEarlyClerkScript(harness);
+    await tokenReadStarted.promise;
+    const bootstrap = window.__vm0ClerkBootstrap;
+    if (!bootstrap?.onboardingStatusPromise) {
+      throw new Error("Clerk bootstrap did not start onboarding ownership");
+    }
+    bootstrap.abortOnboarding();
+
+    await expect(bootstrap.onboardingStatusPromise).resolves.toBeNull();
+    expect(requests).toBe(0);
+    tokenReadCanFinish.resolve("test-token");
+    await harness.setup;
+    expect(requests).toBe(0);
+  });
+
+  it("falls through to existing auth recovery after an early request failure", async () => {
+    const authorizations: (string | null)[] = [];
+    context.mocks.http.get("*/api/onboarding/status", ({ request }) => {
+      authorizations.push(request.headers.get("authorization"));
+      if (authorizations.length < 3) {
+        return HttpResponse.json(
+          {
+            error: {
+              code: "UNAUTHORIZED",
+              message: "Unauthorized",
+            },
+          },
+          { status: 401 },
+        );
+      }
+      return HttpResponse.json(RETRIED_ONBOARDING_STATUS);
+    });
+    mockedClerk.sessionGetToken.mockImplementation((options) => {
+      return Promise.resolve(
+        options?.skipCache ? "fresh-test-token" : "stale-test-token",
+      );
+    });
+    const harness = startClerkPage();
+
+    await completeEarlyClerkScript(harness);
+    const forcedTokenReadsBeforeRetry =
+      mockedClerk.sessionGetToken.mock.calls.filter(([options]) => {
+        return options?.skipCache === true;
+      }).length;
+    await expect(context.store.get(onboardingStatus$)).resolves.toStrictEqual(
+      RETRIED_ONBOARDING_STATUS,
+    );
+
+    expect(authorizations).toStrictEqual([
+      "Bearer stale-test-token",
+      "Bearer stale-test-token",
+      "Bearer fresh-test-token",
+    ]);
+    expect(
+      mockedClerk.sessionGetToken.mock.calls.filter(([options]) => {
+        return options?.skipCache === true;
+      }),
+    ).toHaveLength(forcedTokenReadsBeforeRetry + 1);
+  });
+
+  it.each([
+    {
+      identity: "organization",
+      switchIdentity: () => {
+        mockOrganization({
+          activeOrg: { id: "org_next", name: "Next Org" },
+          memberships: [{ id: "org_next" }],
+        });
+      },
+    },
+    {
+      identity: "session",
+      switchIdentity: () => {
+        mockUser(
+          {
+            clientSessions: [
+              {
+                id: "next-session-id",
+                status: "pending",
+                user: { fullName: "Test User" },
+              },
+            ],
+            fullName: "Test User",
+            id: "test-user-123",
+          },
+          { token: "next-test-token" },
+        );
+      },
+    },
+  ])(
+    "rejects a stale in-flight result after an $identity switch",
+    async ({ switchIdentity }) => {
+      const firstRequestStarted = context.mocks.deferred<void>();
+      const firstRequestCanFinish = context.mocks.deferred<void>();
+      let requests = 0;
+      context.mocks.http.get("*/api/onboarding/status", async () => {
+        requests += 1;
+        if (requests === 1) {
+          firstRequestStarted.resolve(undefined);
+          await firstRequestCanFinish.promise;
+          return HttpResponse.json(PREFETCHED_ONBOARDING_STATUS);
+        }
+        return HttpResponse.json(RETRIED_ONBOARDING_STATUS);
+      });
+      const harness = startClerkPage();
+
+      await loadEarlyClerkScript(harness);
+      await firstRequestStarted.promise;
+      const onboardingStatus = context.store.get(onboardingStatus$);
+      switchIdentity();
+      firstRequestCanFinish.resolve(undefined);
+
+      await expect(onboardingStatus).resolves.toStrictEqual(
+        RETRIED_ONBOARDING_STATUS,
+      );
+      await harness.setup;
+      expect(requests).toBe(2);
+    },
+  );
+
   it("loads the matching Clerk UI release only when the auth route requests it", async () => {
-    const harness = startClerkPage("/sign-in");
+    const harness = startClerkPage({ path: "/sign-in" });
 
     await completeEarlyClerkScript(harness);
 

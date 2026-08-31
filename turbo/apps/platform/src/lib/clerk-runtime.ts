@@ -37,6 +37,8 @@ export interface ClerkBrowserRuntime {
   readonly loaded: Promise<void>;
 }
 
+type EarlyClerkBootstrap = NonNullable<Window["__vm0ClerkBootstrap"]>;
+
 /**
  * Clerk keeps this promise for the lifetime of the shared browser runtime and
  * reads it only when hosted UI is mounted. The app root owns that runtime;
@@ -110,26 +112,96 @@ function patchSharedClerkInstance(clerk: PlatformClerk): void {
   };
 }
 
+function matchesEarlyLoadOptions(
+  early: EarlyClerkBootstrap["loadOptions"],
+  current: ClerkRuntimeLoadOptions,
+): boolean {
+  return (
+    early.afterSignOutUrl === current.afterSignOutUrl &&
+    early.isSatellite === current.isSatellite &&
+    early.satelliteAutoSync === current.satelliteAutoSync &&
+    early.signInUrl === current.signInUrl &&
+    early.signUpUrl === current.signUpUrl
+  );
+}
+
+function adoptEarlyClerkRuntime(
+  clerk: PlatformClerk,
+  options: ClerkRuntimeOptions,
+  signal: AbortSignal,
+): ClerkBrowserRuntime | null {
+  const bootstrap = window.__vm0ClerkBootstrap;
+  if (!bootstrap?.loaded || bootstrap.clerk !== clerk) {
+    return null;
+  }
+  if (
+    bootstrap.publishableKey !== options.publishableKey ||
+    bootstrap.domain !== options.domain ||
+    !matchesEarlyLoadOptions(bootstrap.loadOptions, options.loadOptions)
+  ) {
+    throw new Error("Early Clerk bootstrap configuration mismatch");
+  }
+
+  const abort = (): void => {
+    bootstrap.abortOnboarding();
+    bootstrap.rejectClerkUi(signal.reason);
+  };
+  signal.addEventListener("abort", abort, { once: true });
+
+  return {
+    clerk,
+    ensureUiLoaded: createClerkUiLoader(
+      {
+        domain: options.domain,
+        publishableKey: options.publishableKey,
+      },
+      {
+        promise: bootstrap.clerkUiPromise,
+        resolve: bootstrap.resolveClerkUi,
+      },
+    ),
+    loaded: bootstrap.loaded,
+  };
+}
+
+export function takeClerkBootstrapOnboardingStatus(
+  clerk: PlatformClerk,
+): EarlyClerkBootstrap["onboardingStatusPromise"] {
+  const bootstrap = window.__vm0ClerkBootstrap;
+  if (!bootstrap || bootstrap.clerk !== clerk) {
+    return undefined;
+  }
+  const promise = bootstrap.onboardingStatusPromise;
+  bootstrap.onboardingStatusPromise = undefined;
+  return promise;
+}
+
 export function startClerkBrowserRuntime(
   options: ClerkRuntimeOptions,
   signal: AbortSignal,
 ): Promise<ClerkBrowserRuntime> {
-  const clerkUi = createDeferredClerkUI(signal);
-  const scriptOptions = {
-    domain: options.domain,
-    publishableKey: options.publishableKey,
-  };
-  const ensureUiLoaded = createClerkUiLoader(scriptOptions, clerkUi);
   return (async () => {
     await loadClerkJSScript({
       __internal_clerkJSVersion: CLERK_JS_VERSION,
       domain: options.domain,
       publishableKey: options.publishableKey,
     });
+    signal.throwIfAborted();
     const clerk = globalProperty("Clerk");
     if (!isBrowserClerk(clerk)) {
       throw new Error("Clerk browser script did not expose a valid runtime");
     }
+    const earlyRuntime = adoptEarlyClerkRuntime(clerk, options, signal);
+    if (earlyRuntime) {
+      return earlyRuntime;
+    }
+
+    const clerkUi = createDeferredClerkUI(signal);
+    const scriptOptions = {
+      domain: options.domain,
+      publishableKey: options.publishableKey,
+    };
+    const ensureUiLoaded = createClerkUiLoader(scriptOptions, clerkUi);
     patchSharedClerkInstance(clerk);
     const loaded = clerk.load({
       ...options.loadOptions,

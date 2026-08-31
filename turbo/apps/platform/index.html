@@ -11,6 +11,23 @@
     <meta name="vm0-api-origin" content="" />
     <script data-vm0-clerk-bootstrap="">
       (function () {
+        // Keep host, API-origin, and preview-bypass selection aligned with
+        // platform-host.ts, api-base.ts, and preview-bypass-cookie.ts. The
+        // entrypoint integration suite pins all supported environment paths.
+        var APP_VERSION = __VM0_APP_VERSION_JSON__;
+        var CLIENT_REQUEST_ID_HEADER = "X-Client-Request-Id";
+        var CLIENT_SESSION_ID_HEADER = "X-Client-Session-Id";
+        var CLIENT_TYPE_HEADER = "X-Client-Type";
+        var CLIENT_VERSION_HEADER = "X-Client-Version";
+        var CLERK_LOAD_COMPLETED_MARK = "vm0:bootstrap:clerk-load-completed";
+        var CLERK_LOAD_STARTED_MARK = "vm0:bootstrap:clerk-load-started";
+        var OKOU_PAGES_PREVIEW_HOST_SUFFIX = ".okou-app.pages.dev";
+        var OKOU_PREVIEW_ROOT_DOMAIN = "omby.ai";
+        var PREVIEW_API_HOSTNAME_PATTERN =
+          /^(?:staging|pr-[0-9]+)-api\.vm6\.ai$/;
+        var PREVIEW_API_ROOT_DOMAIN = "vm6.ai";
+        var PRODUCTION_SATELLITE_DOMAIN = "app.okou.ai";
+        var PROTECTION_BYPASS_NAME = "x-vercel-protection-bypass";
         var hostname = location.hostname.toLowerCase();
         var production =
           hostname === "vm0.ai" ||
@@ -27,6 +44,382 @@
           : production
             ? "__VM0_CLERK_PRODUCTION_SCRIPT_URL__"
             : "__VM0_CLERK_PREVIEW_SCRIPT_URL__";
+        var authOrigin = satellite ? "https://app.vm0.ai" : location.origin;
+        var loadOptions = {
+          afterSignOutUrl: new URL("/sign-in", authOrigin).toString(),
+          signInUrl: new URL("/sign-in", authOrigin).toString(),
+          signUpUrl: new URL("/sign-up", authOrigin).toString(),
+        };
+        if (satellite) {
+          loadOptions.isSatellite = true;
+          loadOptions.satelliteAutoSync = true;
+        }
+
+        var clerkUiResolve;
+        var clerkUiReject;
+        var clerkUiSettled = false;
+        var clerkUiPromise = new Promise(function (resolve, reject) {
+          clerkUiResolve = resolve;
+          clerkUiReject = reject;
+        });
+        clerkUiPromise.catch(function () {});
+        var onboardingController = null;
+        var clientSessionId =
+          typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : undefined;
+        var bootstrap = {
+          abortOnboarding: function () {
+            if (onboardingController) onboardingController.abort();
+          },
+          clientSessionId: clientSessionId,
+          clerkUiPromise: clerkUiPromise,
+          domain: satellite ? PRODUCTION_SATELLITE_DOMAIN : undefined,
+          loadOptions: loadOptions,
+          publishableKey: publishableKey,
+          rejectClerkUi: function (reason) {
+            if (clerkUiSettled) return;
+            clerkUiSettled = true;
+            clerkUiReject(reason);
+          },
+          resolveClerkUi: function (constructor) {
+            if (clerkUiSettled) return;
+            clerkUiSettled = true;
+            clerkUiResolve(constructor);
+          },
+        };
+        window.__vm0ClerkBootstrap = bootstrap;
+
+        function isDomainOrSubdomain(value, domain) {
+          return value === domain || value.endsWith("." + domain);
+        }
+
+        function rewriteServiceHostname(value, target) {
+          var labels = value.split(".");
+          var serviceLabelIndex = labels.length - 3;
+          if (serviceLabelIndex < 0) return value;
+
+          var serviceLabel = labels[serviceLabelIndex];
+          if (
+            serviceLabel === "platform" ||
+            serviceLabel === "app" ||
+            serviceLabel === "www" ||
+            serviceLabel === "api"
+          ) {
+            labels[serviceLabelIndex] = target;
+            return labels.join(".");
+          }
+
+          var suffixes = ["-platform", "-app", "-www", "-api"];
+          for (var i = 0; i < suffixes.length; i += 1) {
+            var suffix = suffixes[i];
+            if (serviceLabel.endsWith(suffix)) {
+              labels[serviceLabelIndex] =
+                serviceLabel.slice(0, -suffix.length) + "-" + target;
+              return labels.join(".");
+            }
+          }
+          return value;
+        }
+
+        function configuredApiOrigin() {
+          var marker = document.querySelector('meta[name="vm0-api-origin"]');
+          var configured = marker ? marker.content.trim() : "";
+
+          if (hostname === "app.vm0.ai" || hostname === "app.okou.ai") {
+            var expected =
+              hostname === "app.okou.ai"
+                ? "https://api.okou.ai"
+                : "https://api.vm0.ai";
+            if (configured !== expected) {
+              throw new Error(
+                "Production API origin marker does not match the app host",
+              );
+            }
+            return configured;
+          }
+
+          if (
+            location.protocol === "https:" &&
+            hostname.endsWith(OKOU_PAGES_PREVIEW_HOST_SUFFIX) &&
+            configured
+          ) {
+            var configuredUrl = new URL(configured);
+            if (
+              configuredUrl.protocol !== "https:" ||
+              configuredUrl.port !== "" ||
+              configuredUrl.username !== "" ||
+              configuredUrl.password !== "" ||
+              configuredUrl.pathname !== "/" ||
+              configuredUrl.search !== "" ||
+              configuredUrl.hash !== "" ||
+              !PREVIEW_API_HOSTNAME_PATTERN.test(configuredUrl.hostname)
+            ) {
+              throw new Error("Invalid Cloudflare Pages preview API origin");
+            }
+            return configuredUrl.origin;
+          }
+
+          return null;
+        }
+
+        function resolveApiOrigin() {
+          var configured = configuredApiOrigin();
+          if (configured) return configured;
+
+          var apiUrl = new URL(location.origin);
+          if (production) {
+            apiUrl.hostname = isDomainOrSubdomain(hostname, "okou.ai")
+              ? "api.okou.ai"
+              : "api.vm0.ai";
+            return apiUrl.origin;
+          }
+
+          apiUrl.hostname = rewriteServiceHostname(hostname, "api");
+          if (apiUrl.hostname.endsWith("." + OKOU_PREVIEW_ROOT_DOMAIN)) {
+            apiUrl.hostname =
+              apiUrl.hostname.slice(0, -(OKOU_PREVIEW_ROOT_DOMAIN.length + 1)) +
+              "." +
+              PREVIEW_API_ROOT_DOMAIN;
+          }
+          return apiUrl.origin;
+        }
+
+        function cookieValue(name) {
+          var segments = document.cookie.split(";");
+          for (var i = 0; i < segments.length; i += 1) {
+            var segment = segments[i];
+            var separatorIndex = segment.indexOf("=");
+            if (separatorIndex === -1) continue;
+            if (segment.slice(0, separatorIndex).trim() !== name) continue;
+            return decodeURIComponent(segment.slice(separatorIndex + 1).trim());
+          }
+          return null;
+        }
+
+        function previewBypass(apiOrigin) {
+          var targetHostname = new URL(apiOrigin).hostname.toLowerCase();
+          if (
+            !isDomainOrSubdomain(hostname, OKOU_PREVIEW_ROOT_DOMAIN) ||
+            !isDomainOrSubdomain(targetHostname, PREVIEW_API_ROOT_DOMAIN)
+          ) {
+            return null;
+          }
+
+          var sourcePrefix = hostname.slice(
+            0,
+            -(OKOU_PREVIEW_ROOT_DOMAIN.length + 1),
+          );
+          var targetPrefix = targetHostname.slice(
+            0,
+            -(PREVIEW_API_ROOT_DOMAIN.length + 1),
+          );
+          if (
+            !sourcePrefix.endsWith("-app") ||
+            targetPrefix !== sourcePrefix.slice(0, -4) + "-api"
+          ) {
+            return null;
+          }
+
+          var queryBypass = new URLSearchParams(location.search).get(
+            PROTECTION_BYPASS_NAME,
+          );
+          return queryBypass !== null
+            ? queryBypass
+            : cookieValue(PROTECTION_BYPASS_NAME);
+        }
+
+        function activeIdentity(clerk) {
+          var session = clerk.session;
+          var user = clerk.user;
+          var organization = clerk.organization;
+          if (!session || !user || !organization) return null;
+          return {
+            orgId: organization.id,
+            sessionId: session.id,
+            userId: user.id,
+          };
+        }
+
+        function identityMatches(clerk, identity) {
+          var current = activeIdentity(clerk);
+          return (
+            current !== null &&
+            current.orgId === identity.orgId &&
+            current.sessionId === identity.sessionId &&
+            current.userId === identity.userId
+          );
+        }
+
+        function waitForSignal(promise, signal) {
+          return new Promise(function (resolve, reject) {
+            if (signal.aborted) {
+              reject(signal.reason);
+              return;
+            }
+            function onAbort() {
+              reject(signal.reason);
+            }
+            signal.addEventListener("abort", onAbort, { once: true });
+            promise.then(
+              function (value) {
+                signal.removeEventListener("abort", onAbort);
+                resolve(value);
+              },
+              function (error) {
+                signal.removeEventListener("abort", onAbort);
+                reject(error);
+              },
+            );
+          });
+        }
+
+        function startOnboardingStatus(clerk) {
+          var identity = activeIdentity(clerk);
+          if (!identity || !clientSessionId) return Promise.resolve(null);
+
+          onboardingController = new AbortController();
+          var signal = onboardingController.signal;
+          var unsubscribe = clerk.addListener(function () {
+            var session = clerk.session;
+            var user = clerk.user;
+            var organization = clerk.organization;
+            if (
+              session === null ||
+              user === null ||
+              organization === null ||
+              (session !== undefined && session.id !== identity.sessionId) ||
+              (user !== undefined && user.id !== identity.userId) ||
+              (organization !== undefined && organization.id !== identity.orgId)
+            ) {
+              onboardingController.abort();
+            }
+          });
+
+          var request = waitForSignal(clerk.session.getToken(), signal).then(
+            function (token) {
+              if (!token || !identityMatches(clerk, identity)) return null;
+
+              var apiOrigin = resolveApiOrigin();
+              var headers = new Headers({
+                Authorization: "Bearer " + token,
+              });
+              headers.set(CLIENT_VERSION_HEADER, APP_VERSION);
+              headers.set(CLIENT_TYPE_HEADER, "App");
+              headers.set(CLIENT_SESSION_ID_HEADER, clientSessionId);
+              headers.set(CLIENT_REQUEST_ID_HEADER, crypto.randomUUID());
+              var bypass = previewBypass(apiOrigin);
+              if (bypass) headers.set(PROTECTION_BYPASS_NAME, bypass);
+
+              return fetch(
+                new URL("/api/onboarding/status", apiOrigin).toString(),
+                {
+                  credentials: "include",
+                  headers: headers,
+                  method: "GET",
+                  signal: signal,
+                },
+              ).then(function (response) {
+                if (response.status !== 200) {
+                  return {
+                    body: null,
+                    identity: identity,
+                    status: response.status,
+                  };
+                }
+                return response.json().then(function (body) {
+                  return {
+                    body: body,
+                    identity: identity,
+                    status: response.status,
+                  };
+                });
+              });
+            },
+          );
+
+          return request.then(
+            function (result) {
+              unsubscribe();
+              return result;
+            },
+            function (error) {
+              unsubscribe();
+              throw error;
+            },
+          );
+        }
+
+        function markClerkLoadCompleted() {
+          bootstrap.clerkLoadCompletedAt = performance.now();
+          if (
+            performance.getEntriesByName(CLERK_LOAD_COMPLETED_MARK, "mark")
+              .length === 0
+          ) {
+            performance.mark(CLERK_LOAD_COMPLETED_MARK, {
+              startTime: bootstrap.clerkLoadCompletedAt,
+            });
+          }
+        }
+
+        function startClerk() {
+          var clerk = window.Clerk;
+          if (
+            !clerk ||
+            typeof clerk.load !== "function" ||
+            typeof clerk.on !== "function"
+          ) {
+            return;
+          }
+          if (bootstrap.loaded) return;
+
+          var subscribeToStatus = clerk.on.bind(clerk);
+          clerk.on = function (event, handler, options) {
+            subscribeToStatus(
+              event,
+              handler,
+              Object.assign({}, options, { notify: true }),
+            );
+          };
+
+          var loadClerk = clerk.load.bind(clerk);
+          var loadPromise;
+          clerk.load = function (options) {
+            if (!loadPromise) loadPromise = loadClerk(options);
+            return loadPromise;
+          };
+
+          bootstrap.clerk = clerk;
+          bootstrap.clerkLoadStartedAt = performance.now();
+          if (
+            performance.getEntriesByName(CLERK_LOAD_STARTED_MARK, "mark")
+              .length === 0
+          ) {
+            performance.mark(CLERK_LOAD_STARTED_MARK, {
+              startTime: bootstrap.clerkLoadStartedAt,
+            });
+          }
+          bootstrap.loaded = clerk.load(
+            Object.assign({}, loadOptions, {
+              ui: { ClerkUI: clerkUiPromise },
+            }),
+          );
+          bootstrap.onboardingStatusPromise = bootstrap.loaded
+            .then(function () {
+              markClerkLoadCompleted();
+              return startOnboardingStatus(clerk);
+            })
+            .catch(function () {
+              return null;
+            });
+        }
+
+        function abortOnFinalPageHide(event) {
+          if (event.persisted) return;
+          bootstrap.abortOnboarding();
+          window.removeEventListener("pagehide", abortOnFinalPageHide);
+        }
+        window.addEventListener("pagehide", abortOnFinalPageHide);
 
         var script = document.createElement("script");
         script.async = false;
@@ -35,11 +428,12 @@
         script.dataset.clerkJsScript = "";
         script.dataset.clerkPublishableKey = publishableKey;
         if (satellite) {
-          script.dataset.clerkDomain = "app.okou.ai";
+          script.dataset.clerkDomain = PRODUCTION_SATELLITE_DOMAIN;
         }
         script.onerror = function () {
           script.remove();
         };
+        script.onload = startClerk;
         script.src = scriptUrl;
         script.type = "text/javascript";
         document.head.appendChild(script);

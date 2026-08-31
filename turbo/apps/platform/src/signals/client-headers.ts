@@ -17,7 +17,9 @@ function readClientVersion(): string {
 }
 
 const clientVersion = readClientVersion();
-const clientSessionId = crypto.randomUUID();
+const clientSessionId =
+  globalThis.window?.__vm0ClerkBootstrap?.clientSessionId ??
+  crypto.randomUUID();
 
 function createClientHeaders(): Record<string, string> {
   return {

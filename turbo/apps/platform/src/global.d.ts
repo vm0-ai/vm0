@@ -1,4 +1,42 @@
+import type { ClerkUIConstructor } from "@clerk/shared/ui";
+import type { PlatformClerk } from "./lib/clerk-runtime";
 import type { DebugLoggers } from "./types/global-method";
+
+interface VM0ClerkBootstrapIdentity {
+  readonly orgId: string;
+  readonly sessionId: string;
+  readonly userId: string;
+}
+
+interface VM0ClerkBootstrapOnboardingStatus {
+  readonly body: unknown;
+  readonly identity: VM0ClerkBootstrapIdentity;
+  readonly status: number;
+}
+
+interface VM0ClerkBootstrapLoadOptions {
+  readonly afterSignOutUrl: string;
+  readonly isSatellite?: true;
+  readonly satelliteAutoSync?: true;
+  readonly signInUrl: string;
+  readonly signUpUrl: string;
+}
+
+interface VM0ClerkBootstrap {
+  readonly abortOnboarding: () => void;
+  readonly clientSessionId?: string;
+  clerk?: PlatformClerk;
+  clerkLoadCompletedAt?: number;
+  clerkLoadStartedAt?: number;
+  readonly clerkUiPromise: Promise<ClerkUIConstructor>;
+  readonly domain?: string;
+  readonly loadOptions: VM0ClerkBootstrapLoadOptions;
+  loaded?: Promise<void>;
+  onboardingStatusPromise?: Promise<VM0ClerkBootstrapOnboardingStatus | null>;
+  readonly publishableKey: string;
+  readonly rejectClerkUi: (reason?: unknown) => void;
+  readonly resolveClerkUi: (constructor: ClerkUIConstructor) => void;
+}
 
 interface VM0Global {
   loggers: DebugLoggers;
@@ -38,6 +76,7 @@ declare global {
   interface Window {
     _vm0: VM0Global | undefined;
     __vm0BrowserSupported?: boolean;
+    __vm0ClerkBootstrap?: VM0ClerkBootstrap;
     __vm0BrowserUpgrade?: VM0BrowserUpgradeCopy & { actionUrl: string };
     __vm0PreBundleCopy?: VM0PreBundleCopy;
     /**
