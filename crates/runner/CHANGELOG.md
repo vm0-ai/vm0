@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.182.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.0...runner-rs-v0.182.1) (2026-08-31)
+
+
+### Bug Fixes
+
+* **runner:** treat systemd daemon-reload notice as advisory ([#30649](https://github.com/vm0-ai/vm0/issues/30649)) ([1efe6ba](https://github.com/vm0-ai/vm0/commit/1efe6ba13679f181a41caea9c52e7926695220d8))
+
 ## [0.182.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.181.0...runner-rs-v0.182.0) (2026-08-31)
 
 
