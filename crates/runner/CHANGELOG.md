@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.182.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.181.0...runner-rs-v0.182.0) (2026-08-31)
+
+
+### Features
+
+* **runner:** attribute resource budget occupancy ([#30625](https://github.com/vm0-ai/vm0/issues/30625)) ([8a47886](https://github.com/vm0-ai/vm0/commit/8a478861b73da1995caf8e24dbb54c130c156970))
+
 ## [0.181.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.180.0...runner-rs-v0.181.0) (2026-08-31)
 
 
