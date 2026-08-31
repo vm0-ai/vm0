@@ -2506,9 +2506,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         .await;
         teardown.phase_complete("orphan_reap_shutdown_final", phase);
     }
-    if let Err(error) = shared.status.retry_unpublished_snapshot().await {
-        warn!(%error, "failed to publish final runner status snapshot");
-    }
     // Wait for any in-flight destroy tasks (from capacity or profile-mismatch
     // eviction) so their factory Arcs are dropped before the
     // factory shutdown ownership preflight.
@@ -2611,6 +2608,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let phase = teardown.phase_start("status_stopped");
     if let Err(error) = shared.status.set_mode(RunnerMode::Stopped).await {
         warn!(%error, "failed to persist final stopped runner status");
+    }
+    if let Err(error) = shared.status.retry_unpublished_snapshot().await {
+        warn!(%error, "failed to publish final runner status snapshot");
     }
     teardown.phase_complete("status_stopped", phase);
     info!(total_teardown_ms = teardown.elapsed_ms(), "runner stopped");
