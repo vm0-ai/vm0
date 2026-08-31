@@ -374,6 +374,30 @@ describe("sandbox Pi agent loop", () => {
     ).resolves.toEqual(CONFIG);
   });
 
+  it("reads optional Terra transport and thinking fields from the launch config", async () => {
+    const env = piEnv({ OKOU_RUN_ID: RUN_ID });
+    env.OKOU_PI_MODEL_CONFIG = JSON.stringify({
+      provider: "openai",
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-5.6-terra",
+      api: "openai-responses",
+      thinkingLevel: "low",
+      apiKeyEnv: "OPENAI_API_KEY",
+      credentialSecretName: "OPENAI_API_KEY",
+    });
+
+    await expect(piSandboxAgentConfigFromEnv(env)).resolves.toMatchObject({
+      model: {
+        provider: "openai",
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-5.6-terra",
+        api: "openai-responses",
+        thinkingLevel: "low",
+        apiKey: "test-api-key",
+      },
+    });
+  });
+
   it("requires the run id", async () => {
     await expect(piSandboxAgentConfigFromEnv(piEnv({}))).rejects.toThrowError(
       "OKOU_RUN_ID is required for Pi execution",

@@ -18,6 +18,7 @@ import {
   jobSchema,
   piApiFirstTurnConfigSchema,
   piApiFirstTurnManifestSchema,
+  piModelConfigSchema,
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
@@ -394,6 +395,23 @@ describe("Pi sandbox execution contract", () => {
     sha256: "b".repeat(64),
     rawSize: 1024,
   };
+
+  it("accepts optional Terra runtime fields while preserving legacy configs", () => {
+    expect(piModelConfigSchema.parse(piStoredContext.piModelConfig)).toEqual(
+      piStoredContext.piModelConfig,
+    );
+    expect(
+      piModelConfigSchema.parse({
+        provider: "openai",
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-5.6-terra",
+        api: "openai-responses",
+        thinkingLevel: "low",
+        apiKeyEnv: "OPENAI_API_KEY",
+        credentialSecretName: "OPENAI_API_KEY",
+      }),
+    ).toMatchObject({ api: "openai-responses", thinkingLevel: "low" });
+  });
 
   it("accepts manifest v1 as the implicit start-at-1 contract", () => {
     const manifest = piApiFirstTurnManifestSchema.parse({

@@ -275,6 +275,8 @@ describe("Rust type bindings", () => {
     );
     expect(firstRender).toContain("pub struct PiModelConfig {");
     expect(firstRender).toContain("pub enum PiModelConfigProvider {");
+    expect(firstRender).toContain("pub enum PiModelConfigApi {");
+    expect(firstRender).toContain("pub enum PiModelConfigThinkingLevel {");
     expect(firstRender).toContain("pub enum PiModelConfigApiKeyEnv {");
     expect(firstRender).toContain(
       "pub http_headers: Option<std::collections::BTreeMap<String, String>>",
@@ -450,6 +452,16 @@ describe("Rust type bindings", () => {
             "OPENAI_API_KEY",
             "CHATGPT_ACCESS_TOKEN",
           ],
+        },
+        api: {
+          enum: [
+            "openai-completions",
+            "openai-responses",
+            "openai-codex-responses",
+          ],
+        },
+        thinkingLevel: {
+          enum: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
         },
       },
     });
