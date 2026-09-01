@@ -102,7 +102,10 @@ import {
   hasEnabledGoogleFormsConsumer,
   prepareGoogleFormsResponseEventConfigForPersist,
 } from "./google-forms-automation-event.service";
-import { ensureGoogleMeetTranscriptGeneratedSubscriptionForUser } from "./google-meet-automation-event.service";
+import {
+  ensureGoogleMeetTranscriptGeneratedSubscriptionForUser,
+  hasEnabledGoogleMeetConsumer,
+} from "./google-meet-automation-event.service";
 import { prepareGithubWebhookEventConfigForPersist } from "./github-webhook-automation-event.service";
 import { prepareGithubWorkflowRunEventConfigForPersist } from "./github-workflow-run-event.service";
 import {
@@ -2369,20 +2372,6 @@ async function createGoogleMeetEventAutomationForWorkflow(
   const preparedConfig = googleMeetTranscriptGeneratedEventConfigSchema.parse(
     args.input.eventConfig,
   );
-  const subscriptionResult =
-    await ensureGoogleMeetTranscriptGeneratedSubscriptionForUser(
-      {
-        db: args.context.db,
-        orgId: args.input.orgId,
-        userId: args.input.member.userId,
-      },
-      signal,
-    );
-  signal.throwIfAborted();
-  if (subscriptionResult.kind !== "ok") {
-    return { kind: "bad-request", message: subscriptionResult.message };
-  }
-
   const summary = await insertEventAutomation(args.context.db, {
     input: { ...args.input, eventConfig: preparedConfig },
     workflowId: args.context.workflowId,
@@ -2391,6 +2380,47 @@ async function createGoogleMeetEventAutomationForWorkflow(
     automationId: args.context.automationId,
     currentTime: nowDate(),
   });
+  if (!args.input.enabled) {
+    return { kind: "ok", summary };
+  }
+
+  const rollback = async (): Promise<void> => {
+    const cleanupSignal = new AbortController().signal;
+    await args.context.db
+      .delete(workflowAutomations)
+      .where(eq(workflowAutomations.id, summary.id));
+    await reconcileAutomationEventWatches(
+      {
+        db: args.context.db,
+        automations: [
+          {
+            orgId: args.input.orgId,
+            ownerUserId: args.input.member.userId,
+            eventType: args.input.eventType,
+            eventConfig: preparedConfig,
+            eventConnectorId: null,
+          },
+        ],
+      },
+      cleanupSignal,
+    );
+  };
+  const subscriptionResult = await onRejection(
+    ensureGoogleMeetTranscriptGeneratedSubscriptionForUser(
+      {
+        db: args.context.db,
+        orgId: args.input.orgId,
+        userId: args.input.member.userId,
+      },
+      signal,
+    ),
+    rollback,
+  );
+  if (subscriptionResult.kind !== "ok") {
+    await rollback();
+    signal.throwIfAborted();
+    return { kind: "bad-request", message: subscriptionResult.message };
+  }
   signal.throwIfAborted();
   return { kind: "ok", summary };
 }
@@ -3646,27 +3676,13 @@ async function prepareOfficialGoogleFormsReconfiguration(
   );
 }
 
-async function prepareOfficialGoogleMeetEvent(
-  db: Db,
+function prepareOfficialGoogleMeetEvent(
   input: CreateGoogleMeetEventAutomationInput,
-  signal: AbortSignal,
-): Promise<OfficialAutomationEventPreparationResult> {
+): OfficialAutomationEventPreparationResult {
   const eventConfig = googleMeetTranscriptGeneratedEventConfigSchema.parse(
     input.eventConfig,
   );
-  const subscription =
-    await ensureGoogleMeetTranscriptGeneratedSubscriptionForUser(
-      {
-        db,
-        orgId: input.orgId,
-        userId: input.member.userId,
-      },
-      signal,
-    );
-  signal.throwIfAborted();
-  return subscription.kind === "ok"
-    ? preparedOfficialEvent(eventConfig)
-    : { kind: "bad-request", message: subscription.message };
+  return preparedOfficialEvent(eventConfig);
 }
 
 async function prepareOfficialStripeEvent(
@@ -3757,7 +3773,7 @@ export const prepareOfficialAutomationReconfiguration$ = command(
       );
     }
     if (automationCreateInputIsGoogleMeet(input)) {
-      return await prepareOfficialGoogleMeetEvent(db, input, signal);
+      return prepareOfficialGoogleMeetEvent(input);
     }
     if (automationCreateInputIsNotion(input)) {
       const enabled = await get(
@@ -4453,22 +4469,6 @@ const ensureEventAutomationCanBeEnabled$ = command(
       return preparedConfig.kind === "ok" ? null : preparedConfig;
     }
 
-    if (supportedGoogleMeetEventType(args.automation.eventType)) {
-      const subscriptionResult =
-        await ensureGoogleMeetTranscriptGeneratedSubscriptionForUser(
-          {
-            db: args.db,
-            orgId: args.orgId,
-            userId: args.member.userId,
-          },
-          signal,
-        );
-      signal.throwIfAborted();
-      if (subscriptionResult.kind !== "ok") {
-        return { kind: "bad-request", message: subscriptionResult.message };
-      }
-      return null;
-    }
     return null;
   },
 );
@@ -4490,6 +4490,16 @@ async function enabledWatchHadConsumer(
         orgId: args.automation.orgId,
         userId: args.automation.ownerUserId,
         connectorId: args.automation.eventConnectorId,
+      },
+      signal,
+    );
+  }
+  if (supportedGoogleMeetEventType(args.automation.eventType)) {
+    return await hasEnabledGoogleMeetConsumer(
+      {
+        db: args.db,
+        orgId: args.automation.orgId,
+        userId: args.automation.ownerUserId,
       },
       signal,
     );
@@ -4547,6 +4557,19 @@ async function ensureEnabledAutomationEventWatch(
         userId: args.automation.ownerUserId,
         connectorId: args.automation.eventConnectorId,
         forceRefresh: !args.hadConsumer,
+      },
+      signal,
+    );
+    return result.kind === "ok"
+      ? null
+      : { kind: "bad-request", message: result.message };
+  }
+  if (supportedGoogleMeetEventType(args.automation.eventType)) {
+    const result = await ensureGoogleMeetTranscriptGeneratedSubscriptionForUser(
+      {
+        db: args.db,
+        orgId: args.automation.orgId,
+        userId: args.automation.ownerUserId,
       },
       signal,
     );
