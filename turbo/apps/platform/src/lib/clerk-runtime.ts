@@ -97,18 +97,6 @@ function adoptEarlyClerkRuntime(
   };
 }
 
-export function takeClerkBootstrapOnboardingStatus(
-  clerk: PlatformClerk,
-): EarlyClerkBootstrap["onboardingStatusPromise"] {
-  const bootstrap = window.__vm0ClerkBootstrap;
-  if (!bootstrap || bootstrap.clerk !== clerk) {
-    return undefined;
-  }
-  const promise = bootstrap.onboardingStatusPromise;
-  bootstrap.onboardingStatusPromise = undefined;
-  return promise;
-}
-
 export function startClerkBrowserRuntime(
   options: ClerkRuntimeOptions,
 ): Promise<ClerkBrowserRuntime> {

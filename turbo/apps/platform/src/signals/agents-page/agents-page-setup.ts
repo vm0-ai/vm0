@@ -3,7 +3,6 @@ import { createElement } from "react";
 import { AgentsPage } from "../../views/agents-page/agents-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { i18n } from "../../i18n/index.ts";
 
@@ -20,9 +19,5 @@ export const setupAgentsPage$ = command(
       ),
     );
     await set(hideAppSkeleton$, signal);
-
-    if (await set(onboardGuard$, signal)) {
-      return;
-    }
   },
 );

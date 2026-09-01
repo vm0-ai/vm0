@@ -1,18 +1,6 @@
 import type { PlatformClerk } from "./lib/clerk-runtime";
 import type { DebugLoggers } from "./types/global-method";
 
-interface VM0ClerkBootstrapIdentity {
-  readonly orgId: string;
-  readonly sessionId: string;
-  readonly userId: string;
-}
-
-interface VM0ClerkBootstrapOnboardingStatus {
-  readonly body: unknown;
-  readonly identity: VM0ClerkBootstrapIdentity;
-  readonly status: number;
-}
-
 interface VM0ClerkBootstrapLoadOptions {
   readonly afterSignOutUrl: string;
   readonly isSatellite?: true;
@@ -22,13 +10,10 @@ interface VM0ClerkBootstrapLoadOptions {
 }
 
 interface VM0ClerkBootstrap {
-  readonly abortOnboarding: () => void;
-  readonly clientSessionId?: string;
   clerk?: PlatformClerk;
   readonly domain?: string;
   readonly loadOptions: VM0ClerkBootstrapLoadOptions;
   loaded?: Promise<void>;
-  onboardingStatusPromise?: Promise<VM0ClerkBootstrapOnboardingStatus | null>;
   readonly productionPrimaryAppDomain: "app.okou.ai" | "app.vm0.ai";
   readonly publishableKey: string;
 }

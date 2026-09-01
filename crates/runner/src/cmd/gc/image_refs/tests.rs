@@ -71,7 +71,7 @@ if [ "$1" = "--no-pager" ] && [ "$2" = "cat" ] && [ "$3" = "--" ]; then
         "ExecStart=/usr/bin/runner start --config /configs/$suffix.yaml"
       exit 0
       ;;
-    effective)
+    effective|malformed-config)
       printf '%s\n' \
         '# /etc/systemd/system/vm0-runner-test.service' \
         '[Service]' \
@@ -188,7 +188,7 @@ async fn protected_refs_from_versions(
         .await
         .unwrap();
     let mut refs = ProtectedImageRefs::new();
-    collect_retained_version_image_refs(home, &analysis, &mut refs).await;
+    assert!(collect_retained_version_image_refs(home, &analysis, &mut refs).await);
     refs
 }
 
@@ -365,26 +365,69 @@ async fn removable_version_config_does_not_protect_image_snapshot() {
 }
 
 #[tokio::test]
-async fn malformed_retained_version_config_is_ignored_for_image_refs() {
+async fn malformed_retained_version_config_skips_image_gc() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    let version = "v1.0.0";
+    let rootfs_hash = test_hash('a');
+    let snapshot_hash = test_hash('b');
+    let snapshot_dir = create_old_test_snapshot(&home, &rootfs_hash, &snapshot_hash);
+    let config_path = create_test_version_with_config(&home, version, &rootfs_hash, &snapshot_hash);
+    std::fs::write(
+        config_path,
+        "server:\n  token: should-not-appear-in-errors\nprofiles: [",
+    )
+    .unwrap();
+
+    let analysis = analyze_version_gc(&home, Some(version), None)
+        .await
+        .unwrap();
+    let refs = protected_image_refs_for_gc(&home, &analysis).await;
+
+    assert!(!refs.is_complete());
+    let report = gc_nested_images_with_protected_refs(&home, Some(0), false, &refs)
+        .await
+        .unwrap();
+
+    assert_eq!(report.freed_bytes, 0);
+    assert_eq!(report.activity_count, 0);
+    assert!(snapshot_dir.exists());
+    assert!(home.images_dir().join(rootfs_hash).exists());
+}
+
+#[tokio::test]
+async fn missing_retained_version_config_makes_protection_inventory_incomplete() {
     let dir = tempfile::tempdir().unwrap();
     let home = test_home(dir.path());
     let version = "v1.0.0";
     std::fs::create_dir_all(home.bin_dir().join(version)).unwrap();
-    let config_dir = home.runners_dir().join(version);
-    std::fs::create_dir_all(&config_dir).unwrap();
-    std::fs::write(
-        config_dir.join("runner.yaml"),
-        "server:\n  token: should-not-appear-in-errors\nprofiles: [",
-    )
-    .unwrap();
-    age_version_past_gc_min_age(&home, version);
+    let analysis = analyze_version_gc(&home, Some(version), None)
+        .await
+        .unwrap();
 
-    let refs = protected_refs_from_versions(&home, Some(version), None).await;
+    let refs = protected_image_refs_for_gc(&home, &analysis).await;
 
-    assert!(
-        refs.is_empty(),
-        "malformed retained config should be skipped instead of protecting images"
-    );
+    assert!(!refs.is_complete());
+}
+
+#[tokio::test]
+async fn invalid_retained_version_profile_hash_makes_protection_inventory_incomplete() {
+    for (rootfs_hash, snapshot_hash) in [
+        ("invalid".to_string(), test_hash('b')),
+        (test_hash('a'), "invalid".to_string()),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let version = "v1.0.0";
+        create_test_version_with_config(&home, version, &rootfs_hash, &snapshot_hash);
+        let analysis = analyze_version_gc(&home, Some(version), None)
+            .await
+            .unwrap();
+
+        let refs = protected_image_refs_for_gc(&home, &analysis).await;
+
+        assert!(!refs.is_complete());
+    }
 }
 
 #[tokio::test]
@@ -397,7 +440,7 @@ async fn service_config_image_ref_keeps_image_snapshot() {
     let config_path =
         write_test_runner_config(&home, "service-config", &rootfs_hash, &snapshot_hash);
     let mut refs = ProtectedImageRefs::new();
-    collect_config_image_refs(&config_path, "enabled service", &mut refs).await;
+    assert!(collect_config_image_refs(&config_path, "enabled service", &mut refs).await);
 
     let freed = gc_nested_images_with_protected_refs(&home, Some(0), false, &refs)
         .await
@@ -483,6 +526,11 @@ async fn enabled_service_discovery_failures_make_inventory_incomplete() {
 }
 
 #[tokio::test]
+async fn malformed_enabled_service_config_makes_inventory_incomplete() {
+    run_enabled_service_scenario("malformed-config").await;
+}
+
+#[tokio::test]
 async fn readable_unit_without_runner_config_remains_best_effort() {
     run_enabled_service_scenario("unparseable").await;
 }
@@ -512,6 +560,13 @@ async fn run_enabled_service_scenario(scenario: &str) -> Vec<String> {
     let snapshot_hash = test_hash('b');
     create_old_test_snapshot(&home, &rootfs_hash, &snapshot_hash);
     let config_path = write_test_runner_config(&home, "effective", &rootfs_hash, &snapshot_hash);
+    if scenario == "malformed-config" {
+        std::fs::write(
+            &config_path,
+            "server:\n  token: should-not-appear-in-errors\nprofiles: [",
+        )
+        .unwrap();
+    }
 
     let invocations_path = dir.path().join("invocations");
     let state_dir = dir.path().join("state");
@@ -585,6 +640,11 @@ async fn enabled_service_systemctl_child() {
 
             assert!(!scan.inventory_complete);
             assert!(scan.paths.is_empty());
+        }
+        "malformed-config" => {
+            let mut refs = ProtectedImageRefs::new();
+
+            assert!(!collect_enabled_service_image_refs_from_dir(&system_dir, &mut refs).await);
         }
         "unparseable" => {
             let scan = enabled_runner_service_config_paths(&system_dir).await;

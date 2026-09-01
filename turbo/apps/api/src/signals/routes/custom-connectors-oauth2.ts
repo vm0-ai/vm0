@@ -8,7 +8,7 @@ import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { badRequestMessage } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$, setResHeader$ } from "../context/hono";
+import { publicBrand$, request$, setResHeader$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -20,6 +20,7 @@ import { validateConnectorAuthorizationTarget$ } from "../services/connected-con
 import {
   customConnectorOAuth2EffectiveInitialToken as effectiveInitialToken,
   customConnectorOAuthStateMatchesDefinition,
+  isCustomConnectorAutomaticOAuthStateContext,
   isCustomConnectorCustomOAuthStateContext,
   decryptCustomConnectorOAuth2Credentials,
   exchangeCustomConnectorOAuth2Code,
@@ -28,6 +29,12 @@ import {
   storeCustomConnectorOAuth2Connection,
   type OAuthTokenResult,
 } from "../services/custom-connector-oauth2.service";
+import {
+  CustomConnectorAutomaticOAuthError,
+  customConnectorAutomaticOAuthResourceMatchesEndpoint,
+  exchangeCustomConnectorAutomaticOAuthCode,
+  validateCustomConnectorAutomaticOAuthCallbackIssuer,
+} from "../services/custom-connector-automatic-oauth.service";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { addUserCustomConnector } from "../services/user-connectors.service";
 import { commitConnectorRuntimeMutation } from "../services/connector-runtime-wakeup.service";
@@ -38,7 +45,7 @@ import {
   type CustomConnectorOAuthConfigRow,
   type CustomConnectorRow,
 } from "../services/custom-connector.service";
-import { tapError } from "../utils";
+import { safeSync, tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
 import {
   connectorOAuthRedirectResponse,
@@ -46,6 +53,10 @@ import {
 } from "../../lib/connector-oauth-state";
 import { env } from "../../lib/env";
 import { connectorConnectionWriteFailureMessage } from "../services/connector-data.service";
+import {
+  okouMcpOAuthClientMetadata,
+  okouMcpOAuthDynamicClientMetadata,
+} from "../services/mcp-oauth-client-metadata.service";
 
 const CUSTOM_CONNECTOR_OAUTH_CALLBACK_PATH = "/connectors/custom/callback";
 
@@ -72,6 +83,14 @@ function callbackError(origin: string, message: string): Response {
 
 function appOriginForPublicBrand(publicBrand: "vm0" | "okou"): string {
   return new URL(appUrlForPublicBrand(env("APP_URL"), publicBrand)).origin;
+}
+
+function okouOAuthRedirectUri(request: Request): string {
+  const [redirectUri] = okouMcpOAuthClientMetadata(request).redirect_uris;
+  if (!redirectUri) {
+    throw new Error("Okou MCP OAuth callback is unavailable");
+  }
+  return redirectUri;
 }
 
 function callbackResultFromRedirect(
@@ -121,6 +140,7 @@ const startOAuth2Inner$ = command(async ({ get, set }, signal: AbortSignal) => {
     CUSTOM_CONNECTOR_OAUTH_CALLBACK_PATH,
     env("APP_URL"),
   ).toString();
+  const okouClientMetadata = okouMcpOAuthClientMetadata(get(request$).raw);
   const result = await set(
     startCustomConnectorOAuth2$,
     {
@@ -129,6 +149,11 @@ const startOAuth2Inner$ = command(async ({ get, set }, signal: AbortSignal) => {
       connectorId: params.id,
       redirectUri,
       publicBrand: get(publicBrand$),
+      automaticOAuthClient: {
+        redirectUri: okouOAuthRedirectUri(get(request$).raw),
+        cimdClientId: okouClientMetadata.client_id,
+        dcrClientMetadata: okouMcpOAuthDynamicClientMetadata(get(request$).raw),
+      },
       agentId: body.data.agentId,
       account: body.data.account,
     },
@@ -169,6 +194,30 @@ function isCurrentOAuthCustomConnector(
     connector.authMode === "oauth" &&
     connector.oauthSetup === "custom" &&
     connector.oauthConfig &&
+    customConnectorOAuthStateMatchesDefinition(context, connector),
+  );
+}
+
+function isCurrentAutomaticOAuthCustomConnector(
+  connector: CustomConnectorRow | null,
+  context: NonNullable<ReturnType<typeof parseValidCustomConnectorOAuthState>>,
+): connector is CustomConnectorRow & {
+  readonly kind: "mcp";
+  readonly authMode: "oauth";
+  readonly oauthSetup: "automatic";
+  readonly oauthConfig: null;
+} {
+  return Boolean(
+    connector &&
+    isCustomConnectorAutomaticOAuthStateContext(context) &&
+    connector.kind === "mcp" &&
+    connector.authMode === "oauth" &&
+    connector.oauthSetup === "automatic" &&
+    connector.oauthConfig === null &&
+    customConnectorAutomaticOAuthResourceMatchesEndpoint(
+      context.resource,
+      connector.endpoint,
+    ) &&
     customConnectorOAuthStateMatchesDefinition(context, connector),
   );
 }
@@ -224,6 +273,19 @@ async function persistCustomConnectorOAuth2Connection(
     readonly featureContext: FeatureSwitchContext;
     readonly account: ConnectorAccountMutationIntent;
     readonly insertConnectionId?: string;
+    readonly automaticOAuthBinding?: {
+      readonly issuer: string;
+      readonly resource: string;
+      readonly resourceMetadataUrl: string | null;
+      readonly tokenEndpoint: string;
+      readonly clientId: string;
+      readonly tokenEndpointAuthMethod:
+        | "none"
+        | "client_secret_basic"
+        | "client_secret_post";
+      readonly registrationMethod: "cimd" | "dcr";
+      readonly dcrRegistrationId: string | null;
+    };
   },
   signal: AbortSignal,
 ): Promise<
@@ -282,6 +344,205 @@ async function codeLessCustomOAuthCallbackResponse(
     : callbackError(args.origin, "Invalid OAuth state - please try again");
 }
 
+async function completeAutomaticOAuthCallback(
+  args: {
+    readonly db: Db;
+    readonly request: Request;
+    readonly state: StoredCustomConnectorOAuthState;
+    readonly connector: CustomConnectorRow & {
+      readonly kind: "mcp";
+      readonly authMode: "oauth";
+      readonly oauthSetup: "automatic";
+      readonly oauthConfig: null;
+    };
+    readonly context: NonNullable<
+      ReturnType<typeof parseValidCustomConnectorOAuthState>
+    > & { readonly oauthSetup: "automatic" };
+    readonly authorizationCode: string;
+    readonly iss: string | undefined;
+    readonly featureContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<string | null> {
+  const completed = await tapError(
+    (async () => {
+      if (!args.state.codeVerifier) {
+        throw new CustomConnectorAutomaticOAuthError(
+          "binding-drift",
+          "Automatic OAuth state is missing its PKCE verifier",
+        );
+      }
+      const clientMetadata = okouMcpOAuthClientMetadata(args.request);
+      if (args.state.redirectUri !== okouOAuthRedirectUri(args.request)) {
+        throw new CustomConnectorAutomaticOAuthError(
+          "binding-drift",
+          "Automatic OAuth callback changed",
+        );
+      }
+      const token = await exchangeCustomConnectorAutomaticOAuthCode(
+        {
+          db: args.db,
+          context: args.context,
+          redirectUri: args.state.redirectUri,
+          cimdClientId: clientMetadata.client_id,
+          code: args.authorizationCode,
+          iss: args.iss,
+          codeVerifier: args.state.codeVerifier,
+          featureContext: args.featureContext,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+      return await persistCustomConnectorOAuth2Connection(
+        {
+          db: args.db,
+          orgId: args.state.orgId,
+          userId: args.state.userId,
+          connectorId: args.connector.id,
+          storageVersion: args.connector.storageVersion,
+          token: effectiveInitialToken(token, args.state.authorizationUrl),
+          featureContext: args.featureContext,
+          account: args.state.accountMutation,
+          insertConnectionId:
+            args.state.accountMutation.intent === "add"
+              ? args.state.id
+              : undefined,
+          automaticOAuthBinding: {
+            issuer: args.context.issuer,
+            resource: args.context.resource,
+            resourceMetadataUrl: args.context.resourceMetadataUrl,
+            tokenEndpoint: args.context.tokenEndpoint,
+            clientId: args.context.clientId,
+            tokenEndpointAuthMethod: args.context.tokenEndpointAuthMethod,
+            registrationMethod: args.context.registrationMethod,
+            dcrRegistrationId:
+              args.context.registrationMethod === "dcr"
+                ? args.context.dcrRegistrationId
+                : null,
+          },
+        },
+        signal,
+      );
+    })(),
+  );
+  signal.throwIfAborted();
+  return customConnectorOAuthPersistenceFailure(completed);
+}
+
+async function completeCustomOAuthCallback(
+  args: {
+    readonly db: Db;
+    readonly state: StoredCustomConnectorOAuthState;
+    readonly connector: CustomConnectorRow & {
+      readonly authMode: "oauth";
+      readonly oauthConfig: CustomConnectorOAuthConfigRow;
+    };
+    readonly authorizationCode: string;
+    readonly featureContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<string | null> {
+  if (args.connector.oauthConfig.providerAdapter !== "standard") {
+    return "OAuth callback was sent to the wrong connector endpoint";
+  }
+  const credentials = await tapError(
+    decryptCustomConnectorOAuth2Credentials(
+      args.connector,
+      args.featureContext,
+    ),
+  );
+  signal.throwIfAborted();
+  if (!credentials) {
+    return "Could not read OAuth client credentials";
+  }
+  const completed = await tapError(
+    (async () => {
+      const token = await exchangeCustomConnectorOAuth2Code(
+        {
+          config: args.connector.oauthConfig,
+          clientSecret: credentials.clientSecret,
+          code: args.authorizationCode,
+          codeVerifier: args.state.codeVerifier,
+          redirectUri: args.state.redirectUri,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+      return await persistCustomConnectorOAuth2Connection(
+        {
+          db: args.db,
+          orgId: args.state.orgId,
+          userId: args.state.userId,
+          connectorId: args.connector.id,
+          storageVersion: args.connector.storageVersion,
+          token: effectiveInitialToken(token, args.state.authorizationUrl),
+          featureContext: args.featureContext,
+          account: args.state.accountMutation,
+          insertConnectionId:
+            args.state.accountMutation.intent === "add"
+              ? args.state.id
+              : undefined,
+        },
+        signal,
+      );
+    })(),
+  );
+  signal.throwIfAborted();
+  return customConnectorOAuthPersistenceFailure(completed);
+}
+
+async function completeCurrentOAuthCallback(
+  args: {
+    readonly db: Db;
+    readonly request: Request;
+    readonly state: StoredCustomConnectorOAuthState;
+    readonly connector: CustomConnectorRow;
+    readonly context: NonNullable<
+      ReturnType<typeof parseValidCustomConnectorOAuthState>
+    >;
+    readonly authorizationCode: string;
+    readonly iss: string | undefined;
+    readonly featureContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<string | null> {
+  if (isCustomConnectorAutomaticOAuthStateContext(args.context)) {
+    if (!isCurrentAutomaticOAuthCustomConnector(args.connector, args.context)) {
+      throw new Error(
+        "Custom connector OAuth configuration changed during callback",
+      );
+    }
+    return await completeAutomaticOAuthCallback(
+      {
+        db: args.db,
+        request: args.request,
+        state: args.state,
+        connector: args.connector,
+        context: args.context,
+        authorizationCode: args.authorizationCode,
+        iss: args.iss,
+        featureContext: args.featureContext,
+      },
+      signal,
+    );
+  }
+  if (!isCurrentOAuthCustomConnector(args.connector, args.context)) {
+    throw new Error(
+      "Custom connector OAuth configuration changed during callback",
+    );
+  }
+  return await completeCustomOAuthCallback(
+    {
+      db: args.db,
+      state: args.state,
+      connector: args.connector,
+      authorizationCode: args.authorizationCode,
+      featureContext: args.featureContext,
+    },
+    signal,
+  );
+}
+
 const completeOAuth2Callback$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const query = get(queryOf(customConnectorOAuth2Contract.callback));
@@ -311,12 +572,32 @@ const completeOAuth2Callback$ = command(
       );
     }
     const origin = appOriginForPublicBrand(claimed.state.publicBrand);
-    if (providerError) {
-      return callbackError(origin, query.error_description ?? providerError);
-    }
     const state = validateClaimedState(claimed.state);
     if (!state.ok) {
       return callbackError(origin, "Invalid OAuth state - please try again");
+    }
+    const automaticContext = isCustomConnectorAutomaticOAuthStateContext(
+      state.context,
+    )
+      ? state.context
+      : null;
+    if (automaticContext) {
+      const issuerValidation = safeSync(() => {
+        validateCustomConnectorAutomaticOAuthCallbackIssuer(
+          automaticContext,
+          query.iss,
+        );
+        return true;
+      });
+      if (!("ok" in issuerValidation)) {
+        return callbackError(
+          origin,
+          "OAuth authorization issuer did not match - please try again",
+        );
+      }
+    }
+    if (providerError) {
+      return callbackError(origin, query.error_description ?? providerError);
     }
     const connector = await get(
       getCustomConnectorById({
@@ -325,18 +606,21 @@ const completeOAuth2Callback$ = command(
       }),
     );
     signal.throwIfAborted();
-    if (!isCurrentOAuthCustomConnector(connector, state.context)) {
+    const currentCustom = isCurrentOAuthCustomConnector(
+      connector,
+      state.context,
+    );
+    const currentAutomatic = automaticContext
+      ? isCurrentAutomaticOAuthCustomConnector(connector, automaticContext)
+      : false;
+    if (!currentCustom && !currentAutomatic) {
       return callbackError(
         origin,
         "Custom connector OAuth configuration changed - please try again",
       );
     }
-    const oauthConfig = connector.oauthConfig;
-    if (oauthConfig.providerAdapter !== "standard") {
-      return callbackError(
-        origin,
-        "OAuth callback was sent to the wrong connector endpoint",
-      );
+    if (!connector) {
+      throw new Error("Validated custom connector is unavailable");
     }
     const featureContext = await get(
       userFeatureSwitchContext(claimed.state.orgId, claimed.state.userId),
@@ -351,48 +635,20 @@ const completeOAuth2Callback$ = command(
         "MCP custom connector management is not enabled",
       );
     }
-    const credentials = await tapError(
-      decryptCustomConnectorOAuth2Credentials(connector, featureContext),
+    const persistenceFailure = await completeCurrentOAuthCallback(
+      {
+        db: set(writeDb$),
+        request: get(request$).raw,
+        state: claimed.state,
+        connector,
+        context: state.context,
+        authorizationCode,
+        iss: query.iss,
+        featureContext,
+      },
+      signal,
     );
     signal.throwIfAborted();
-    if (!credentials) {
-      return callbackError(origin, "Could not read OAuth client credentials");
-    }
-    const completed = await tapError(
-      (async () => {
-        const token = await exchangeCustomConnectorOAuth2Code(
-          {
-            config: oauthConfig,
-            clientSecret: credentials.clientSecret,
-            code: authorizationCode,
-            codeVerifier: claimed.state.codeVerifier,
-            redirectUri: claimed.state.redirectUri,
-          },
-          signal,
-        );
-        signal.throwIfAborted();
-        return await persistCustomConnectorOAuth2Connection(
-          {
-            db: set(writeDb$),
-            orgId: claimed.state.orgId,
-            userId: claimed.state.userId,
-            connectorId: connector.id,
-            storageVersion: connector.storageVersion,
-            token: effectiveInitialToken(token, claimed.state.authorizationUrl),
-            featureContext,
-            account: claimed.state.accountMutation,
-            insertConnectionId:
-              claimed.state.accountMutation.intent === "add"
-                ? claimed.state.id
-                : undefined,
-          },
-          signal,
-        );
-      })(),
-    );
-    signal.throwIfAborted();
-    const persistenceFailure =
-      customConnectorOAuthPersistenceFailure(completed);
     if (persistenceFailure) {
       return callbackError(origin, persistenceFailure);
     }

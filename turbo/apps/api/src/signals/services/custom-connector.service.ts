@@ -636,7 +636,14 @@ function credentialContractChanged(args: {
   readonly definition: ValidatedDefinition;
   readonly nextOAuthConfig: CustomConnectorOAuthConfigRow | null;
 }): boolean {
+  const automaticMcpEndpointChanged =
+    args.existing.kind === "mcp" &&
+    args.definition.kind === "mcp" &&
+    args.existing.oauthSetup === "automatic" &&
+    args.definition.oauthSetup === "automatic" &&
+    args.existing.endpoint !== args.definition.endpoint;
   return (
+    automaticMcpEndpointChanged ||
     args.existing.authMode !== args.definition.authMode ||
     args.existing.oauthSetup !== args.definition.oauthSetup ||
     !credentialFieldsEqual(args.existing.fields, args.definition.fields) ||
@@ -1920,11 +1927,6 @@ export const createCustomConnector$ = command(
     if (isBadRequest(oauthConfigUpdate)) {
       return oauthConfigUpdate;
     }
-    if (v.oauthSetup === "automatic") {
-      return badRequestMessage(
-        "Automatic OAuth connector setup is not enabled yet",
-      );
-    }
     signal.throwIfAborted();
 
     let encryptedClientSecret: string | null = null;
@@ -2271,11 +2273,6 @@ function prepareCustomConnectorUpdate(args: {
   );
   if (isBadRequest(definition)) {
     return definition;
-  }
-  if (definition.oauthSetup === "automatic") {
-    return badRequestMessage(
-      "Automatic OAuth connector setup is not enabled yet",
-    );
   }
   const oauthConfigUpdate = validateOAuthConfigUpdate({
     authMode: definition.authMode,

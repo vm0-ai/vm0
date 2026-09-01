@@ -8,7 +8,6 @@ import {
   updateSearchParams$,
   detachedNavigateTo$,
 } from "../route.ts";
-import { onboardGuard$ } from "./onboard-guard.ts";
 import {
   currentAgentId$,
   defaultAgentId$,
@@ -43,10 +42,6 @@ import { featureSwitch$ } from "../external/feature-switch.ts";
 export const setupAgentChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const agentId = get(currentAgentId$);
-
-    if (await set(onboardGuard$, signal)) {
-      return;
-    }
 
     if (!agentId) {
       throw new Error("Chat page requires an active agent, but none found");

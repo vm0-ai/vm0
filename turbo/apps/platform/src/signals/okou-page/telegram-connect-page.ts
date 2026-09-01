@@ -8,14 +8,9 @@ import { updatePage$ } from "../react-router.ts";
 import { searchParams$ } from "../route.ts";
 import { TelegramConnectPage } from "../../views/okou-page/telegram-connect-page.tsx";
 import { parseTelegramConnectParams } from "./telegram-connect-params.ts";
-import { onboardGuard$ } from "./onboard-guard.ts";
 
 export const setupTelegramConnectPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (await set(onboardGuard$, signal)) {
-      return;
-    }
-
     const parsed = parseTelegramConnectParams(get(searchParams$));
     capturePlausibleEvent("telegram_connect_visit", {
       props: {

@@ -101,6 +101,16 @@ async function resolvePublicAddress(
   return address;
 }
 
+export async function validateMcpOAuthPublicUrl(
+  input: string | URL,
+  signal: AbortSignal,
+): Promise<string> {
+  const url = allowedUrl(input);
+  await resolvePublicAddress(url, signal);
+  signal.throwIfAborted();
+  return url.href;
+}
+
 function requestMethod(
   method: string | undefined,
 ): SerializedRequest["method"] {
