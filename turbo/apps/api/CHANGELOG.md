@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.523.0](https://github.com/vm0-ai/vm0/compare/api-v1.522.2...api-v1.523.0) (2026-09-01)
+
+
+### Features
+
+* graduate built-in model provider fallback ([#30861](https://github.com/vm0-ai/vm0/issues/30861)) ([be446a6](https://github.com/vm0-ai/vm0/commit/be446a6678a6fe32d6df9788b2b17550ebddd8b4))
+
+
+### Bug Fixes
+
+* **api:** keep a committed delete successful when storage cleanup fails ([#30863](https://github.com/vm0-ai/vm0/issues/30863)) ([c256e81](https://github.com/vm0-ai/vm0/commit/c256e81be0509cab6a42872b5be44958cf6f0e91))
+* **mail:** use thread gmail account for draft handoff ([#30846](https://github.com/vm0-ai/vm0/issues/30846)) ([99e2b42](https://github.com/vm0-ai/vm0/commit/99e2b42770617c62b57787973131d1002f0ebbbf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.387.0
+    * @okouai/core bumped to 8.606.0
+    * @okouai/db bumped to 1.229.4
+
 ## [1.522.2](https://github.com/vm0-ai/vm0/compare/api-v1.522.1...api-v1.522.2) (2026-09-01)
 
 
