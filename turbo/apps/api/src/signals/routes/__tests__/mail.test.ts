@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
+import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { testMailDraftStateContract } from "@okouai/api-contracts/contracts/test-mail-draft-state";
 import { mailContract } from "@okouai/api-contracts/contracts/mail";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -35,6 +36,7 @@ import {
   setConnectorSecretOwner,
 } from "./helpers/connector-credential-storage-state";
 import { mailRoutes } from "../mail";
+import { chatThreadRoutes } from "../chat-threads";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -347,6 +349,12 @@ function client() {
   return setupApp({ context, routes: mailRoutes })(mailContract);
 }
 
+function connectorSelectionsClient() {
+  return setupApp({ context, routes: chatThreadRoutes })(
+    chatThreadConnectorSelectionContract,
+  );
+}
+
 function stateClient() {
   return setupApp({ context, routes: testMailDraftStateRoutes })(
     testMailDraftStateContract,
@@ -425,6 +433,23 @@ async function addGmailAccount(
   return account.id;
 }
 
+async function selectGmailAccount(
+  fixture: Awaited<ReturnType<typeof seedGmailMailCardFixture>>,
+  connectorId: string,
+): Promise<void> {
+  await accept(
+    connectorSelectionsClient().update({
+      headers: authHeaders(),
+      params: { id: fixture.thread.id },
+      body: {
+        connectionId: connectorId,
+        target: { kind: "builtin", connectorSlug: "gmail" },
+      },
+    }),
+    [200],
+  );
+}
+
 describe("POST /api/mail/drafts/link", () => {
   it("uses the thread-selected Gmail account without probing the default", async () => {
     const fixture = await seedGmailMailCardFixture();
@@ -434,11 +459,7 @@ describe("POST /api/mail/drafts/link", () => {
       email: "selected@example.com",
       subject: "selected-gmail-account",
     });
-    await seedBuiltinThreadConnectorSelection(context, {
-      chatThreadId: fixture.thread.id,
-      connectorId: selectedConnectorId,
-      connectorSlug: "gmail",
-    });
+    await selectGmailAccount(fixture, selectedConnectorId);
     const gmail = mockGmailDraftApi({ accessToken: selectedAccessToken });
 
     const linked = await linkDraft(fixture);
@@ -461,11 +482,7 @@ describe("POST /api/mail/drafts/link", () => {
       email: "unavailable-selected@example.com",
       subject: "unavailable-selected-gmail-account",
     });
-    await seedBuiltinThreadConnectorSelection(context, {
-      chatThreadId: fixture.thread.id,
-      connectorId: selectedConnectorId,
-      connectorSlug: "gmail",
-    });
+    await selectGmailAccount(fixture, selectedConnectorId);
     const orgId = fixture.actor.orgId;
     if (!orgId) {
       throw new Error("Expected an organization-scoped mail fixture");
