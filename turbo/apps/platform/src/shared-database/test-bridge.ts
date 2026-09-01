@@ -71,7 +71,7 @@ interface DirectWorkerState {
 }
 
 interface DirectSharedDatabaseBridgeOptions {
-  readonly identity: Pick<SharedDatabaseIdentity, "orgId" | "userId">;
+  readonly identity: Pick<SharedDatabaseIdentity, "orgId" | "userId"> | null;
   readonly apiBaseUrl: string;
 }
 
@@ -176,6 +176,9 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
     heartbeat: SharedDatabaseHeartbeat,
     signal: AbortSignal,
   ): Promise<SharedDatabaseHeartbeatResult> {
+    if (!this.options.identity) {
+      throw new Error("Authenticated test identity is required");
+    }
     const identity = { ...this.options.identity, token: heartbeat.token };
     if (!this.state.credentialController) {
       const credentialController = createChildAbortController(
@@ -340,9 +343,6 @@ export const setupSharedWorkerTestBootstrap$ = command(
             events,
           );
         } else {
-          if (!directIdentity) {
-            throw new Error("Authenticated test identity is required");
-          }
           if (!directRealtimeForwardingInstalled) {
             subscribeChatDatabaseEvents((message) => {
               directBridge?.handleRealtimeMessage(message);

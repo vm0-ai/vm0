@@ -391,10 +391,15 @@ describe("zero sidebar account menu", () => {
     }
     await waitFor(() => {
       expect(within(accountButton).queryByRole("status")).toBeNull();
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          "user-org:test-user-123:org_default",
+        ),
+      ).toBeTruthy();
     });
 
     act(() => {
-      context.mocks.ably.triggerConnectionState("disconnected", {
+      context.mocks.ably.triggerSharedWorkerConnectionState("disconnected", {
         retryIn: 5000,
       });
     });
@@ -407,14 +412,16 @@ describe("zero sidebar account menu", () => {
     });
 
     act(() => {
-      context.mocks.ably.triggerConnectionState("connected");
+      context.mocks.ably.triggerSharedWorkerConnectionState("connected");
     });
     await waitFor(() => {
       expect(within(accountButton).queryByRole("status")).toBeNull();
     });
 
     act(() => {
-      context.mocks.ably.triggerFailure("terminal connection failure");
+      context.mocks.ably.triggerSharedWorkerFailure(
+        "terminal connection failure",
+      );
     });
     await waitFor(() => {
       expect(

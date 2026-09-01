@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { SharedDatabasePortLike } from "../../shared-database/bridge.ts";
 import type { AuthRecovery } from "../auth-retry.ts";
-import { setupSharedDatabaseBridge$ } from "../shared-database-browser.ts";
+import {
+  prepareSharedDatabaseBridge$,
+  setupSharedDatabaseBridge$,
+} from "../shared-database-browser.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
@@ -166,6 +169,15 @@ async function setupBridge(recovery = authRecovery()): Promise<void> {
 }
 
 describe("shared database browser bridge", () => {
+  it("starts the shared worker before the authentication handshake", async () => {
+    const { constructorCalls, workers } = installSharedWorkerMock();
+
+    await context.store.set(prepareSharedDatabaseBridge$, context.signal);
+
+    expect(constructorCalls).toHaveLength(1);
+    expect(workers[0]!.port.heartbeatTokens).toStrictEqual([]);
+  });
+
   it("forces an auth refresh when the worker rejects its credential", async () => {
     const { workers } = installSharedWorkerMock();
     await setupBridge();

@@ -93,12 +93,12 @@ export class SharedDatabaseWorkerContext {
     return { binding, signal };
   }
 
-  startCredentialStoreDaemons(credentialId: string): Promise<void> {
+  startCredentialStoreDaemons(credentialId: string): void {
     const store = this.credentialStores.get(credentialId);
     if (!store) {
       throw new Error("Shared database credential Store was not found");
     }
-    return store.set(startCredentialStoreDaemons$, (daemon) => {
+    store.set(startCredentialStoreDaemons$, (daemon) => {
       this.ownCredentialDaemon(daemon);
     });
   }

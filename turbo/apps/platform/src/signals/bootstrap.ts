@@ -18,6 +18,7 @@ import { initLocale$, syncLocalePreference$ } from "./locale.ts";
 import { setRootSignal$ } from "./root-signal.ts";
 import { setApiClientRuntime$ } from "./api-client-runtime.ts";
 import { setAuthenticatedServicesReady$ } from "./auth-context.ts";
+import { prepareSharedDatabaseBridge$ } from "./shared-database-browser.ts";
 import { resolveApiBaseForTarget, resolveOAuthApiBase } from "./api-base.ts";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import {
@@ -541,6 +542,7 @@ export const bootstrap$ = command(
       oauthApiBaseUrl: resolveOAuthApiBase(),
       ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
     });
+    ownDaemon(set(prepareSharedDatabaseBridge$, signal));
     set(initClerkRuntime$, signal);
     set(initAuthRecovery$, signal);
     set(initBootstrapSkeleton$);

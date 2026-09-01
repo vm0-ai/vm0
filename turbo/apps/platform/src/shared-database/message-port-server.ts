@@ -258,7 +258,7 @@ export class SharedDatabaseMessagePortServer {
       if (currentBinding.credentialId !== credentialId) {
         return this.reloadAfterCredentialChange();
       }
-      return await this.heartbeatBoundConnection(
+      return this.heartbeatBoundConnection(
         currentBinding,
         message,
         identity,
@@ -275,15 +275,10 @@ export class SharedDatabaseMessagePortServer {
     });
     const { binding, signal: credentialConnectionSignal } = update;
     this.setCredentialBinding(binding, credentialConnectionSignal);
-    return await this.heartbeatBoundConnection(
-      binding,
-      message,
-      identity,
-      signal,
-    );
+    return this.heartbeatBoundConnection(binding, message, identity, signal);
   }
 
-  private async heartbeatBoundConnection(
+  private heartbeatBoundConnection(
     binding: SharedDatabaseConnectionBinding,
     message: Extract<
       SharedDatabaseClientMessage,
@@ -291,7 +286,7 @@ export class SharedDatabaseMessagePortServer {
     >,
     identity: SharedDatabaseIdentity,
     signal: AbortSignal,
-  ): Promise<SharedDatabaseHeartbeatResult> {
+  ): SharedDatabaseHeartbeatResult {
     const credentialConnectionSignal = this.credentialConnectionSignal;
     if (!credentialConnectionSignal || binding !== this.binding) {
       throw new SharedDatabaseClientNotConnectedError();
@@ -303,7 +298,7 @@ export class SharedDatabaseMessagePortServer {
       identity,
       credentialConnectionSignal,
     );
-    await this.context.startCredentialStoreDaemons(binding.credentialId);
+    this.context.startCredentialStoreDaemons(binding.credentialId);
     signal.throwIfAborted();
     credentialConnectionSignal.throwIfAborted();
     this.credentialReady = true;
