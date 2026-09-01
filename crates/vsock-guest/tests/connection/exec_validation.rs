@@ -4,8 +4,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
 use guest_contracts::codex_session_cleanup::{
-    CODEX_SESSION_CLEANUP_DIAGNOSTIC_LABEL, CODEX_SESSION_CLEANUP_OUTPUT_LIMIT_BYTES,
-    CodexSessionCleanupRequest,
+    CODEX_SESSION_CLEANUP_DIAGNOSTIC_LABEL, CODEX_SESSION_CLEANUP_MAX_PATH_BYTES,
+    CODEX_SESSION_CLEANUP_OUTPUT_LIMIT_BYTES, CodexSessionCleanupRequest,
 };
 use guest_contracts::session_history_identity::{
     SESSION_HISTORY_IDENTITY_VERIFY_DIAGNOSTIC_LABEL,
@@ -628,6 +628,16 @@ fn codex_session_cleanup_rejects_generic_exec_authority_and_invalid_payload() {
         "Codex session cleanup payload is invalid"
     );
 
+    send_exec_start_request(
+        &mut host_stream,
+        160,
+        codex_cleanup_exec_request("{not-json"),
+    );
+    assert_eq!(
+        read_error_response(&mut host_stream, 160),
+        "Codex session cleanup payload is invalid"
+    );
+
     let invalid_path_payload = serde_json::to_string(&CodexSessionCleanupRequest {
         session_id: CODEX_SESSION_ID.to_owned(),
         fallback_relative_path: "../../tmp/session.jsonl".to_owned(),
@@ -635,15 +645,45 @@ fn codex_session_cleanup_rejects_generic_exec_authority_and_invalid_payload() {
     .unwrap();
     send_exec_start_request(
         &mut host_stream,
-        160,
+        161,
         codex_cleanup_exec_request(&invalid_path_payload),
     );
     assert_eq!(
-        read_error_response(&mut host_stream, 160),
+        read_error_response(&mut host_stream, 161),
         "Codex session cleanup payload is invalid"
     );
 
-    assert_ping_pong(&mut host_stream, 161);
+    let noncanonical_id_payload = serde_json::to_string(&CodexSessionCleanupRequest {
+        session_id: CODEX_SESSION_ID.to_ascii_uppercase(),
+        fallback_relative_path: CODEX_FALLBACK_RELATIVE_PATH.to_owned(),
+    })
+    .unwrap();
+    send_exec_start_request(
+        &mut host_stream,
+        162,
+        codex_cleanup_exec_request(&noncanonical_id_payload),
+    );
+    assert_eq!(
+        read_error_response(&mut host_stream, 162),
+        "Codex session cleanup payload is invalid"
+    );
+
+    let oversized_path_payload = serde_json::to_string(&CodexSessionCleanupRequest {
+        session_id: CODEX_SESSION_ID.to_owned(),
+        fallback_relative_path: "x".repeat(CODEX_SESSION_CLEANUP_MAX_PATH_BYTES + 1),
+    })
+    .unwrap();
+    send_exec_start_request(
+        &mut host_stream,
+        163,
+        codex_cleanup_exec_request(&oversized_path_payload),
+    );
+    assert_eq!(
+        read_error_response(&mut host_stream, 163),
+        "Codex session cleanup payload is invalid"
+    );
+
+    assert_ping_pong(&mut host_stream, 164);
     finish_guest_connection(handle, host_stream);
 }
 
