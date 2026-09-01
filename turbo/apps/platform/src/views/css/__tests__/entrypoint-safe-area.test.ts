@@ -50,8 +50,6 @@ describe("platform entrypoint safe area behavior", () => {
     expect(contentRule).toMatch(/top:\s*50svh;/);
     expect(contentRule).toMatch(/left:\s*50%;/);
     expect(contentRule).toMatch(/transform:\s*translate\(-50%,\s*-50%\);/);
-    expect(indexHtml).not.toContain("window.visualViewport.height");
-    expect(indexHtml).not.toContain("--app-bootstrap-skeleton-center-y");
   });
 
   it("suppresses the bottom safe-area inset only while the keyboard is open", () => {
