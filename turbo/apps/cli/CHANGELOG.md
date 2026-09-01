@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.301.1](https://github.com/vm0-ai/vm0/compare/cli-v9.301.0...cli-v9.301.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **cli:** diagnose effective visible workflows ([#30696](https://github.com/vm0-ai/vm0/issues/30696)) ([af34735](https://github.com/vm0-ai/vm0/commit/af3473581a3c7a7eed432684f2c2ac206e6f0dda))
+
 ## [9.301.0](https://github.com/vm0-ai/vm0/compare/cli-v9.300.1...cli-v9.301.0) (2026-08-31)
 
 

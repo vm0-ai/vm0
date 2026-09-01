@@ -1255,7 +1255,7 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
 name = "guest-agent"
-version = "0.83.0"
+version = "0.83.1"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1294,7 +1294,7 @@ dependencies = [
 
 [[package]]
 name = "guest-common"
-version = "0.3.39"
+version = "0.3.40"
 dependencies = [
  "chrono",
  "guest-contracts",
@@ -1306,7 +1306,7 @@ dependencies = [
 
 [[package]]
 name = "guest-contracts"
-version = "0.12.14"
+version = "0.12.15"
 dependencies = [
  "base64 0.23.1",
  "chrono",
@@ -1320,7 +1320,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.23.43"
+version = "0.23.44"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1336,7 +1336,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.212"
+version = "0.16.213"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -1347,7 +1347,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.21.109"
+version = "0.21.110"
 dependencies = [
  "api-contracts",
  "guest-contracts",
@@ -1359,7 +1359,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-codex"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "chrono",
  "clap",
@@ -1380,7 +1380,7 @@ dependencies = [
 
 [[package]]
 name = "guest-session-prune"
-version = "0.3.53"
+version = "0.3.54"
 dependencies = [
  "guest-contracts",
  "proptest",
@@ -1391,7 +1391,7 @@ dependencies = [
 
 [[package]]
 name = "guest-tool-exec"
-version = "0.1.26"
+version = "0.1.27"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -1403,7 +1403,7 @@ dependencies = [
 
 [[package]]
 name = "guest-write-file"
-version = "0.1.112"
+version = "0.1.113"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -2608,7 +2608,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.182.2"
+version = "0.182.3"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2801,7 +2801,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.19.60"
+version = "0.19.61"
 dependencies = [
  "async-trait",
  "serde",
@@ -2814,7 +2814,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.275"
+version = "0.37.276"
 dependencies = [
  "async-trait",
  "clap",
@@ -2846,7 +2846,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.9.53"
+version = "0.9.54"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -3827,7 +3827,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.19.131"
+version = "0.19.132"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -3840,7 +3840,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.17.116"
+version = "0.17.117"
 dependencies = [
  "guest-contracts",
  "nix",
@@ -3857,14 +3857,14 @@ dependencies = [
 
 [[package]]
 name = "vsock-proto"
-version = "0.18.43"
+version = "0.18.44"
 dependencies = [
  "proptest",
 ]
 
 [[package]]
 name = "vsock-test"
-version = "0.9.262"
+version = "0.9.263"
 dependencies = [
  "guest-write-file",
  "libc",

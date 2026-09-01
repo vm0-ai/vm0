@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.83.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.0...guest-agent-v0.83.1) (2026-09-01)
+
+
+### Performance Improvements
+
+* **runner:** launch reuse identity verifier without shell ([#30644](https://github.com/vm0-ai/vm0/issues/30644)) ([3ea790e](https://github.com/vm0-ai/vm0/commit/3ea790e5a8bca85854debfe537a89a66c4520445))
+
 ## [0.83.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.27...guest-agent-v0.83.0) (2026-08-31)
 
 

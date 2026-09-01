@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.519.2](https://github.com/vm0-ai/vm0/compare/api-v1.519.1...api-v1.519.2) (2026-09-01)
+
+
+### Bug Fixes
+
+* **cli:** diagnose effective visible workflows ([#30696](https://github.com/vm0-ai/vm0/issues/30696)) ([af34735](https://github.com/vm0-ai/vm0/commit/af3473581a3c7a7eed432684f2c2ac206e6f0dda))
+* **email:** link official workflow result footer to automation ([#30591](https://github.com/vm0-ai/vm0/issues/30591)) ([0e556c4](https://github.com/vm0-ai/vm0/commit/0e556c4e81749a8e4718f4ccbe1a2f151068c9f5))
+
+
+### Refactoring
+
+* **api:** unify the teams oauth callback and delete the legacy zero path map ([#30673](https://github.com/vm0-ai/vm0/issues/30673)) ([97bdd0c](https://github.com/vm0-ai/vm0/commit/97bdd0c0e5d2f36549e1c40d7bf11952eb02c8ba)), closes [#30667](https://github.com/vm0-ai/vm0/issues/30667)
+
 ## [1.519.1](https://github.com/vm0-ai/vm0/compare/api-v1.519.0...api-v1.519.1) (2026-09-01)
 
 
