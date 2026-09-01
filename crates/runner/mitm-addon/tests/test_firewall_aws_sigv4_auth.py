@@ -176,6 +176,10 @@ async def test_re_signs_header_sigv4_request_with_leading_dot_segments(
     assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
     assert flow.response is None
     assert flow.request.url == f"https://iam.amazonaws.com{path}"
+    authorization = flow.request.headers["authorization"]
+    assert authorization.startswith("AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/")
+    assert "PLACEHOLDER" not in authorization
+    assert "Signature=placeholder" not in authorization
 
 
 async def test_re_signs_header_sigv4_request_with_encoded_path(
