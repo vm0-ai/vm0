@@ -3394,6 +3394,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
     const provider = mockAutomaticMcpOAuthProvider(context, {
       registration: "dcr",
+      synchronizeAuthorizationServerDiscovery: true,
     });
     const admin = createBddApi(context).user({ orgRole: "org:admin" });
     await connectorsApi.updateFeatureSwitches(admin, {
@@ -3422,6 +3423,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       connectorsApi.startCustomConnectorOAuth2(admin, connector.id),
     ]);
     expect(authorizationUrls).toHaveLength(2);
+    expect(provider.authorizationServerDiscoveryCalls()).toBe(2);
     expect(provider.registrationBodies).toHaveLength(1);
 
     await connectorsApi.deleteCustomConnector(admin, connector.id);

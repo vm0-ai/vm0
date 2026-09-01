@@ -281,6 +281,7 @@ interface AutomaticMcpOAuthProviderOptions {
     | "none"
     | "client_secret_basic"
     | "client_secret_post";
+  readonly synchronizeAuthorizationServerDiscovery?: boolean;
   readonly dcrFailureStatus?: number;
   readonly discovery?: "challenge" | "well-known-oidc";
   readonly resourceMetadataStatus?: number;
@@ -305,6 +306,7 @@ interface AutomaticMcpOAuthProviderRecorder {
   readonly endpoint: string;
   readonly issuer: string;
   readonly registrationBodies: readonly Record<string, unknown>[];
+  authorizationServerDiscoveryCalls(): number;
   readonly tokenBodies: readonly URLSearchParams[];
   readonly tokenAuthorizationHeaders: readonly (string | null)[];
 }
@@ -359,7 +361,32 @@ export function mockAutomaticMcpOAuthProvider(
   const registrationBodies: Record<string, unknown>[] = [];
   const tokenBodies: URLSearchParams[] = [];
   const tokenAuthorizationHeaders: (string | null)[] = [];
+  let authorizationServerDiscoveryCallCount = 0;
   let refreshAttempts = 0;
+  const authorizationServerDiscoveryBarrier =
+    options.synchronizeAuthorizationServerDiscovery
+      ? createDeferredPromise<void>(AbortSignal.any([]))
+      : null;
+  if (authorizationServerDiscoveryBarrier) {
+    onTestFinished(() => {
+      if (!authorizationServerDiscoveryBarrier.settled()) {
+        authorizationServerDiscoveryBarrier.resolve(undefined);
+      }
+    });
+  }
+  const recordAuthorizationServerDiscovery = async (): Promise<void> => {
+    authorizationServerDiscoveryCallCount += 1;
+    if (
+      authorizationServerDiscoveryBarrier &&
+      authorizationServerDiscoveryCallCount >= 2 &&
+      !authorizationServerDiscoveryBarrier.settled()
+    ) {
+      authorizationServerDiscoveryBarrier.resolve(undefined);
+    }
+    if (authorizationServerDiscoveryBarrier) {
+      await authorizationServerDiscoveryBarrier.promise;
+    }
+  };
   server.use(
     http.post(endpoint, () => {
       const challengeScope =
@@ -404,12 +431,14 @@ export function mockAutomaticMcpOAuthProvider(
           : HttpResponse.json(resourceMetadata);
       },
     ),
-    http.get(`${issuer}/.well-known/oauth-authorization-server`, () => {
+    http.get(`${issuer}/.well-known/oauth-authorization-server`, async () => {
+      await recordAuthorizationServerDiscovery();
       return options.discovery === "well-known-oidc"
         ? new HttpResponse(null, { status: 404 })
         : HttpResponse.json(authorizationServerMetadata);
     }),
-    http.get(`${issuer}/.well-known/openid-configuration`, () => {
+    http.get(`${issuer}/.well-known/openid-configuration`, async () => {
+      await recordAuthorizationServerDiscovery();
       return HttpResponse.json({
         ...authorizationServerMetadata,
         jwks_uri: `${issuer}/jwks.json`,
@@ -475,6 +504,9 @@ export function mockAutomaticMcpOAuthProvider(
     endpoint,
     issuer,
     registrationBodies,
+    authorizationServerDiscoveryCalls: () => {
+      return authorizationServerDiscoveryCallCount;
+    },
     tokenBodies,
     tokenAuthorizationHeaders,
   };
