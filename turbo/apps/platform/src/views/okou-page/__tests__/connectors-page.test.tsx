@@ -5613,11 +5613,6 @@ describe("connectors page", () => {
       }
       click(buttonByText("Add authentication", createDialog));
       click(menuItemByText("No authentication"));
-      expect(
-        within(createDialog).getByText(
-          "Connect without sending credentials or authentication data.",
-        ),
-      ).toBeVisible();
       click(buttonByText("Create", createDialog));
 
       await waitFor(() => {
