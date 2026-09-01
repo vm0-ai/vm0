@@ -400,22 +400,25 @@ async fn natural_shutdown_flushes_stopping_after_current_heartbeat() {
 /// had to be handled by the Draining-mode heartbeat branch.
 #[tokio::test]
 async fn heartbeat_fires_while_draining() {
-    let gate = Arc::new(tokio::sync::Notify::new());
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
-        Arc::clone(&gate),
-    ));
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
     let (mut config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
     let (heartbeat_trigger, heartbeat_trigger_rx) = tokio::sync::mpsc::unbounded_channel();
     config.test_hooks.manual_routine_heartbeat_rx = Some(heartbeat_trigger_rx);
     let status_path = env._temp_dir.path().join("status.json");
     let run_handle = tokio::spawn(run(config));
 
-    // Claim a gated job so Draining mode has an active job to wait
-    // on — otherwise `jobs.is_empty()` auto-transitions straight to
-    // Stopping before the Draining wait path is exercised.
+    // Claim a job and wait until it is blocked in `wait_process` so Draining
+    // has an active job to wait on. Otherwise `jobs.is_empty()` auto-transitions
+    // straight to Stopping before the Draining wait path is exercised.
     let run_id = RunId::new_v4();
     push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
     let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("active job should enter wait_process before Draining heartbeat check");
 
     // Enter Draining before triggering the routine heartbeat. `status.json`
     // is updated only after the main loop observes the mode transition.
