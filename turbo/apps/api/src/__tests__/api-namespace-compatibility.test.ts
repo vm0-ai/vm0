@@ -14,25 +14,26 @@ import {
 const CANONICAL_PREFIX = "/api/okou";
 const LEGACY_PREFIX = "/api/zero";
 
-// The six legacy `/api/zero/**` paths this service still owes a caller, keyed
-// by the canonical `/api/okou/**` path the same handler answers. #30667 deleted
+// The legacy `/api/zero/**` paths this service still owes a caller, keyed by
+// the canonical `/api/okou/**` path the same handler answers. #30667 deleted
 // `LEGACY_ZERO_PATHS`, so none of them is derived any more: each is named
 // directly by a `MIGRATED_BRANDED_PATHS` row. Restated here rather than
 // imported from `route-entry.ts`, so narrowing that table fails this file
 // instead of quietly agreeing with itself.
 //
-// Every row is held by a Slack or Teams app configuration: a provider console
-// holds the URL, so no deploy and no client release drains it. `slack/commands`
-// and `slack/interactive` carried no traffic in the 6.3 days
-// `vm0-request-log-prod` retained when #28701 read it, and stay because they
-// live in the same Slack app configuration as the Event Subscriptions URL that
-// demonstrably still points at the legacy path.
+// #30668 took the list from six paths to two, because for four of them the
+// producer that held the branded URL moved rather than a caller draining: the
+// Slack app console now posts the three webhooks to `/api/webhooks/slack/*`,
+// with `Slackbot 1.0` observed delivering to each, and `routes/slack-oauth.ts`
+// emits the neutral `redirect_uri` since #30551.
+//
+// The two that remain have no producer left to move, so no deploy can drain
+// them. The Teams callback is registered in the Microsoft app registration, and
+// the Slack install link was handed to people rather than computed per request
+// — its `zero` form was still answering browser and crawler requests ten hours
+// after the deploy that was supposed to have drained it.
 const SERVED_LEGACY_PATHS: Readonly<Record<string, string>> = {
-  "/api/okou/slack/events": "/api/zero/slack/events",
   "/api/okou/slack/oauth/install": "/api/zero/slack/oauth/install",
-  "/api/okou/slack/oauth/callback": "/api/zero/slack/oauth/callback",
-  "/api/okou/slack/commands": "/api/zero/slack/commands",
-  "/api/okou/slack/interactive": "/api/zero/slack/interactive",
   "/api/okou/teams/oauth/callback": "/api/zero/teams/oauth/callback",
 };
 
@@ -294,12 +295,14 @@ describe("API namespace compatibility", () => {
   // #28600 moved the last branded contract, so the subject is now a route that
   // has already migrated, moved a second time to a path no
   // `MIGRATED_BRANDED_PATHS` row names. That is the same failure: a slice edits
-  // the contract and forgets the rows the branded paths depend on.
+  // the contract and forgets the rows the branded paths depend on. #30668 took
+  // the Slack events row this used to drive and repointed it at the Slack
+  // install link, whose branded forms that PR measured still in use.
   it("reports the branded registrations a neutral contract migration would drop", () => {
-    const canonical = "/api/okou/slack/events";
-    const legacy = "/api/zero/slack/events";
-    const declared = "/api/webhooks/slack/events";
-    const neutral = "/api/slack/events";
+    const canonical = "/api/okou/slack/oauth/install";
+    const legacy = "/api/zero/slack/oauth/install";
+    const declared = "/api/slack/oauth/install";
+    const neutral = "/api/slack/install";
     expect(
       SERVED_LEGACY_PATHS[canonical],
       `${canonical} must stay in the served-legacy list for this guard to mean anything`,

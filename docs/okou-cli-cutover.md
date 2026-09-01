@@ -61,7 +61,7 @@ identifiers, the Slack `/zero model` interaction, and the separate Desktop
 identity. These are not executable CLI producers.
 
 `/api/okou/**` is not a preserved identity. It is a compatibility surface being
-drained under #26701: it is down to 62 rows in `MIGRATED_BRANDED_PATHS`, and
+drained under #26701: it is down to 58 rows in `MIGRATED_BRANDED_PATHS`, and
 after #28984 no contract declares a branded path, so those rows are the only
 thing still registering one.
 

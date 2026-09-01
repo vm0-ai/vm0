@@ -9,15 +9,21 @@ import { testContext } from "./test-context";
 const c = initContract();
 const REQUEST_ORIGIN = "http://api.test";
 
-// `/api/webhooks/slack/events` is a `MIGRATED_BRANDED_PATHS` key in
+// `/api/slack/oauth/install` is a `MIGRATED_BRANDED_PATHS` key in
 // `route-entry.ts`, so a contract declaring it is registered on both branded
 // forms as well. The `__test` paths are named by no table, so they stand in for
 // the branded contract paths #28701 stopped deriving a legacy form for and
 // #30667 made unconditional.
+//
+// #30668 moved this subject off `/api/webhooks/slack/events`, whose row it
+// retired once the Slack app console stopped posting to the branded forms. The
+// install row is the opposite case and the reason it is the subject now: its
+// branded URL was handed to people rather than emitted per request, so no
+// deploy can drain it and the row outlives the ones a console held.
 const namespaceContract = c.router({
   migrated: {
     method: "GET",
-    path: "/api/webhooks/slack/events",
+    path: "/api/slack/oauth/install",
     responses: {
       200: z.object({ served: z.literal(true) }),
     },
@@ -63,12 +69,14 @@ describe("legacy API namespace paths", () => {
   it("serves a migrated route's declared path and both branded paths", async () => {
     const app = createTestApp();
 
-    const legacy = await app.request(`${REQUEST_ORIGIN}/api/zero/slack/events`);
+    const legacy = await app.request(
+      `${REQUEST_ORIGIN}/api/zero/slack/oauth/install`,
+    );
     const canonical = await app.request(
-      `${REQUEST_ORIGIN}/api/okou/slack/events`,
+      `${REQUEST_ORIGIN}/api/okou/slack/oauth/install`,
     );
     const declared = await app.request(
-      `${REQUEST_ORIGIN}/api/webhooks/slack/events`,
+      `${REQUEST_ORIGIN}/api/slack/oauth/install`,
     );
 
     expect([legacy.status, canonical.status, declared.status]).toStrictEqual([
