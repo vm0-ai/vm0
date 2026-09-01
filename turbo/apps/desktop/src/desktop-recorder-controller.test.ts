@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { DesktopRecorderController } from "./desktop-recorder-controller";
+import type { DeliveredRecording } from "./desktop-recorder-delivery";
 import type {
   DesktopRecorderNativeStatus,
   DesktopRecorderPrepareResult,
@@ -50,19 +51,44 @@ function createBackendFake(
   };
 }
 
+const DELIVERED: DeliveredRecording = {
+  videoUploadId: "upload-video",
+  clickTrackUploadId: "upload-clicks",
+  reviewUrl: "https://app.okou.ai/?intro-video-recording=upload-video",
+};
+
 function createController(
   backend: RecorderNativeBackend = createBackendFake(),
+  overrides: {
+    readonly canDeliver?: () => Promise<boolean>;
+    readonly deliver?: () => Promise<DeliveredRecording>;
+  } = {},
 ) {
   const onChange = vi.fn();
   const logError = vi.fn();
   const createBackend = vi.fn(() => backend);
+  const openReview = vi.fn();
+  const canDeliver = vi.fn(overrides.canDeliver ?? (async () => true));
+  const deliver = vi.fn(overrides.deliver ?? (async () => DELIVERED));
   const controller = new DesktopRecorderController({
     createBackend,
     createOutputPath: () => "/tmp/recording.mp4",
+    canDeliver,
+    deliver,
+    openReview,
     onChange,
     logError,
   });
-  return { controller, backend, createBackend, onChange, logError };
+  return {
+    controller,
+    backend,
+    createBackend,
+    onChange,
+    logError,
+    openReview,
+    canDeliver,
+    deliver,
+  };
 }
 
 async function enableAndPrepare(controller: DesktopRecorderController) {
@@ -157,6 +183,90 @@ describe("DesktopRecorderController", () => {
     );
     expect(backend.prepare).not.toHaveBeenCalled();
     expect(controller.getState().status).toBe("idle");
+  });
+
+  it("uploads the finished recording and opens it for review", async () => {
+    const { controller, deliver, openReview } = createController();
+    await enableAndPrepare(controller);
+    await controller.start();
+
+    await controller.stop();
+
+    expect(deliver).toHaveBeenCalledWith(RECORDING);
+    expect(openReview).toHaveBeenCalledWith(DELIVERED.reviewUrl);
+    expect(controller.getState()).toMatchObject({
+      status: "idle",
+      error: null,
+    });
+  });
+
+  it("refuses to record while signed out, before anything is captured", async () => {
+    const { controller, backend } = createController(createBackendFake(), {
+      canDeliver: async () => false,
+    });
+    controller.setFeatureEnabled(true);
+
+    await expect(controller.startMainDisplayRecording()).rejects.toThrow(
+      "Cannot record while signed out of Okou",
+    );
+    expect(backend.prepare).not.toHaveBeenCalled();
+    expect(controller.getState()).toMatchObject({
+      status: "idle",
+      error: { code: "signed_out" },
+    });
+  });
+
+  it("keeps the recording and stays retryable when delivery fails", async () => {
+    const { controller, openReview } = createController(createBackendFake(), {
+      deliver: async () => {
+        throw new Error("Uploading recording.mp4 failed with 503");
+      },
+    });
+    await enableAndPrepare(controller);
+    await controller.start();
+
+    await expect(controller.stop()).resolves.toEqual(RECORDING);
+
+    expect(openReview).not.toHaveBeenCalled();
+    expect(controller.getState()).toMatchObject({
+      status: "idle",
+      lastRecording: RECORDING,
+      error: {
+        code: "delivery_failed",
+        message: "Uploading recording.mp4 failed with 503",
+      },
+    });
+  });
+
+  it("delivers the same recording again on retry", async () => {
+    let attempts = 0;
+    const { controller, openReview } = createController(createBackendFake(), {
+      deliver: async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Error("network down");
+        }
+        return DELIVERED;
+      },
+    });
+    await enableAndPrepare(controller);
+    await controller.start();
+    await controller.stop();
+
+    await controller.retryDelivery();
+
+    expect(attempts).toBe(2);
+    expect(openReview).toHaveBeenCalledWith(DELIVERED.reviewUrl);
+    expect(controller.getState().error).toBeNull();
+  });
+
+  it("has nothing to retry before a recording exists", async () => {
+    const { controller } = createController();
+    controller.setFeatureEnabled(true);
+
+    await expect(controller.retryDelivery()).rejects.toThrow(
+      "There is no recording to deliver",
+    );
   });
 
   it("rejects starting before a session is prepared", async () => {

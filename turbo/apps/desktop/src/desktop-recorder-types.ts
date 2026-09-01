@@ -6,6 +6,7 @@
  */
 
 export type DesktopRecorderStatus =
+  | "delivering"
   | "finalizing"
   | "idle"
   | "preparing"
@@ -15,8 +16,10 @@ export type DesktopRecorderStatus =
 
 export type DesktopRecorderErrorCode =
   | "capture_failed"
+  | "delivery_failed"
   | "helper_unavailable"
   | "permission_denied"
+  | "signed_out"
   | "source_lost";
 
 export interface DesktopRecorderError {

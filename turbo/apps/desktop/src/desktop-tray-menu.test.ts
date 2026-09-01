@@ -118,6 +118,7 @@ function trayActions(
     setKeepAwakeEnabled: vi.fn(),
     startScreenRecording: vi.fn(),
     stopScreenRecording: vi.fn(),
+    retryScreenRecordingDelivery: vi.fn(),
     quit: vi.fn(),
     ...overrides,
   };

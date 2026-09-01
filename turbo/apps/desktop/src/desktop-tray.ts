@@ -38,6 +38,7 @@ interface DesktopTrayControllerOptions {
   readonly getRecorderState: () => DesktopRecorderState;
   readonly startScreenRecording: () => Promise<void>;
   readonly stopScreenRecording: () => Promise<void>;
+  readonly retryScreenRecordingDelivery: () => Promise<void>;
   readonly quit: () => void;
 }
 
@@ -388,6 +389,12 @@ export class DesktopTrayController {
       stopScreenRecording: this.runAction("stop screen recording", () => {
         return this.options.stopScreenRecording();
       }),
+      retryScreenRecordingDelivery: this.runAction(
+        "retry screen recording delivery",
+        () => {
+          return this.options.retryScreenRecordingDelivery();
+        },
+      ),
       quit: () => {
         this.options.quit();
       },
