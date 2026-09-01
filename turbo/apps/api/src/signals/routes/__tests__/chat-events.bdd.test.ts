@@ -217,7 +217,7 @@ const runStateStore = createStore();
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "okou web upload-file -f <path>";
 const RUN_TIME_BUDGET_STEER_AT_MS = 115 * 60 * 1000;
-const TERRA_STANDARD_USAGE_PRICING = [
+const TERRA_USAGE_PRICING = [
   "tokens.input",
   "tokens.output",
   "tokens.cache_read",
@@ -226,6 +226,14 @@ const TERRA_STANDARD_USAGE_PRICING = [
   "tokens.output.long_context",
   "tokens.cache_read.long_context",
   "tokens.cache_creation.long_context",
+  "tokens.input.fast",
+  "tokens.output.fast",
+  "tokens.cache_read.fast",
+  "tokens.cache_creation.fast",
+  "tokens.input.long_context.fast",
+  "tokens.output.long_context.fast",
+  "tokens.cache_read.long_context.fast",
+  "tokens.cache_creation.long_context.fast",
 ].map((category) => {
   return {
     kind: "model",
@@ -530,77 +538,65 @@ async function expectTerraApiFirstTurnUsage(
     cacheRead: 3,
     cacheWrite: 2,
   });
-  const usageRows = await readRunUsageEventsFixture(runId);
-  expect(usageRows).toStrictEqual([
-    expect.objectContaining({
-      provider: "gpt-5.6-terra",
-      category: "tokens.cache_creation",
-      quantity: 2,
-      status: "processed",
-      billingError: null,
-      creditsCharged: expect.any(Number),
-    }),
-    expect.objectContaining({
-      provider: "gpt-5.6-terra",
-      category: "tokens.cache_read",
-      quantity: 3,
-      status: "processed",
-      billingError: null,
-      creditsCharged: expect.any(Number),
-    }),
-    expect.objectContaining({
-      provider: "gpt-5.6-terra",
-      category: "tokens.input",
-      quantity: 5,
-      status: "processed",
-      billingError: null,
-      creditsCharged: expect.any(Number),
-    }),
-    expect.objectContaining({
-      provider: "gpt-5.6-terra",
-      category: "tokens.output",
-      quantity: 3,
-      status: "processed",
-      billingError: null,
-      creditsCharged: expect.any(Number),
-    }),
-  ]);
-  expect(totalChargedCredits(usageRows)).toBeGreaterThan(0);
-  expect(
-    usageRows.some((row) => {
-      return row.category.endsWith(".fast");
-    }),
-  ).toBeFalsy();
+  await expectTerraApiUsage(runId, "", {
+    input: 5,
+    output: 3,
+    cacheRead: 3,
+    cacheCreation: 2,
+  });
 }
 
-async function expectTerraApiFollowUpUsage(runId: string): Promise<void> {
+async function expectTerraApiUsage(
+  runId: string,
+  suffix: "" | ".fast" | ".long_context" | ".long_context.fast",
+  expected: {
+    readonly input: number;
+    readonly output: number;
+    readonly cacheRead: number;
+    readonly cacheCreation: number;
+  },
+): Promise<void> {
   const usageRows = await readRunUsageEventsFixture(runId);
-  expect(usageRows).toStrictEqual([
-    expect.objectContaining({
-      provider: "gpt-5.6-terra",
-      category: "tokens.input",
-      quantity: 5,
-      status: "processed",
-      billingError: null,
-      creditsCharged: expect.any(Number),
-    }),
-    expect.objectContaining({
-      provider: "gpt-5.6-terra",
-      category: "tokens.output",
-      quantity: 3,
-      status: "processed",
-      billingError: null,
-      creditsCharged: expect.any(Number),
-    }),
-  ]);
+  const expectedRows = [
+    ["tokens.cache_creation", expected.cacheCreation],
+    ["tokens.cache_read", expected.cacheRead],
+    ["tokens.input", expected.input],
+    ["tokens.output", expected.output],
+  ]
+    .filter((entry) => {
+      return entry[1] !== 0;
+    })
+    .map(([category, quantity]) => {
+      return expect.objectContaining({
+        provider: "gpt-5.6-terra",
+        category: `${category}${suffix}`,
+        quantity,
+        status: "processed",
+        billingError: null,
+        creditsCharged: expect.any(Number),
+      });
+    });
+  expect(usageRows).toStrictEqual(expectedRows);
   expect(totalChargedCredits(usageRows)).toBeGreaterThan(0);
+}
+
+async function expectTerraApiFollowUpUsage(
+  runId: string,
+  suffix: "" | ".fast" = "",
+): Promise<void> {
+  await expectTerraApiUsage(runId, suffix, {
+    input: 5,
+    output: 3,
+    cacheRead: 0,
+    cacheCreation: 0,
+  });
 }
 
 async function createTerraUsagePricingResolution(): Promise<
   UsagePricingFixture["resolution"]
 > {
   const pricing = await createUsagePricingFixture({
-    configured: TERRA_STANDARD_USAGE_PRICING,
+    configured: TERRA_USAGE_PRICING,
   });
   onTestFinished(pricing.cleanup);
   return pricing.resolution;
@@ -1058,6 +1054,7 @@ async function completeChatRunOk(
     readonly activeInputDeliveryIds?: readonly string[];
     readonly cliAgentType?: "claude-code" | "codex";
     readonly lastEventSequence?: number;
+    readonly usagePricingResolution?: UsagePricingFixture["resolution"];
   } = {},
 ): Promise<void> {
   const stagedOutputEvents = chatCallbacks.consumeMockChatOutputEvents();
@@ -1096,6 +1093,8 @@ async function completeChatRunOk(
     },
     sandboxHeaders,
     [200],
+    undefined,
+    options.usagePricingResolution,
   );
 }
 
@@ -4807,6 +4806,7 @@ async function queueCapabilityProvenPiRun(args: {
   readonly agentId: string;
   readonly runnerGroup: string;
   readonly prompt: string;
+  readonly codexServiceTier?: "fast";
 }): Promise<{
   readonly anchor: { readonly runId: string; readonly threadId: string };
   readonly anchorClaim: Awaited<ReturnType<typeof claimChatRun>>;
@@ -4835,7 +4835,12 @@ async function queueCapabilityProvenPiRun(args: {
   await updateFeatureSwitchesForUser(
     context,
     { ...args.actor, orgId: args.actor.orgId },
-    { [FeatureSwitchKey.PiLoop]: true },
+    {
+      [FeatureSwitchKey.PiLoop]: true,
+      ...(args.codexServiceTier === "fast"
+        ? { [FeatureSwitchKey.CodexFastMode]: true }
+        : {}),
+    },
   );
   const usagePricingResolution = await createTerraUsagePricingResolution();
   const run = await sendChatRun(
@@ -4844,6 +4849,9 @@ async function queueCapabilityProvenPiRun(args: {
       agentId: args.agentId,
       prompt: args.prompt,
       model: "gpt-5.6-terra",
+      ...(args.codexServiceTier === undefined
+        ? {}
+        : { runOptions: { codexServiceTier: args.codexServiceTier } }),
     },
     "vm0",
     usagePricingResolution,
@@ -5437,7 +5445,357 @@ describe("CHAT-02: model-first provider policies", () => {
     90_000,
   );
 
-  it("preserves generations across standard Terra, fast Terra, and standard Terra", async () => {
+  it("reuses one Pi session across standard, fast, and standard Terra turns", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const orgId = requireOrgId(actor);
+    const usagePricingResolution = await createTerraUsagePricingResolution();
+    await configureBuiltInPiModel(actor, "gpt-5.6-terra");
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      {
+        [FeatureSwitchKey.PiLoop]: true,
+        [FeatureSwitchKey.CodexFastMode]: true,
+      },
+    );
+    mockPiResourceArchiveDownloads();
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    const prompts = [
+      "start standard Terra in the canonical Pi session",
+      "continue fast Terra in the same Pi session",
+      "return to standard Terra in the same Pi session",
+    ] as const;
+    const answers = [
+      "first standard Terra answer",
+      "fast Terra answer",
+      "second standard Terra answer",
+    ] as const;
+    const modelRequests: unknown[] = [];
+    server.use(
+      http.post("https://api.openai.com/v1/responses", async ({ request }) => {
+        const requestIndex = modelRequests.length;
+        modelRequests.push(await request.json());
+        const answer = answers[requestIndex];
+        if (!answer) {
+          return HttpResponse.json(
+            { error: "unexpected duplicate Terra request" },
+            { status: 500 },
+          );
+        }
+        return new HttpResponse(
+          piResponsesTextSse(answer, requestIndex, {
+            input_tokens: 10,
+            output_tokens: 3,
+            total_tokens: 13,
+            input_tokens_details: {
+              cached_tokens: 3,
+              cache_write_tokens: 2,
+            },
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }),
+    );
+
+    const first = await sendChatRun(
+      actor,
+      {
+        agentId,
+        prompt: prompts[0],
+        model: "gpt-5.6-terra",
+      },
+      "vm0",
+      usagePricingResolution,
+    );
+    await waitForRunStatus(actor, first.runId, "completed", 10_000);
+    await flushWaitUntilForTest();
+    const firstBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    if (!firstBinding.agent_session_id) {
+      throw new Error("Expected standard Terra to bind a canonical Pi session");
+    }
+
+    const fast = await sendChatRun(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt: prompts[1],
+        model: "gpt-5.6-terra",
+        runOptions: { codexServiceTier: "fast" },
+      },
+      "vm0",
+      usagePricingResolution,
+    );
+    await waitForRunStatus(actor, fast.runId, "completed", 10_000);
+    await flushWaitUntilForTest();
+    const fastBinding = await readThreadSessionBinding(context, first.threadId);
+    expect(fastBinding.agent_session_id).toBe(firstBinding.agent_session_id);
+
+    await chat.updateThreadModelSelection(
+      actor,
+      first.threadId,
+      "gpt-5.6-terra",
+      { codexServiceTier: null },
+    );
+    const returned = await sendChatRun(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt: prompts[2],
+        model: "gpt-5.6-terra",
+      },
+      "vm0",
+      usagePricingResolution,
+    );
+    await waitForRunStatus(actor, returned.runId, "completed", 10_000);
+    await flushWaitUntilForTest();
+    const returnedBinding = await readThreadSessionBinding(
+      context,
+      first.threadId,
+    );
+    expect(returnedBinding.agent_session_id).toBe(
+      firstBinding.agent_session_id,
+    );
+    await expect(
+      readThreadSessionConversation(context, first.threadId),
+    ).resolves.toMatchObject({
+      agent_session_id: firstBinding.agent_session_id,
+      conversation_run_id: returned.runId,
+    });
+
+    expect(modelRequests).toHaveLength(3);
+    const requestTiers = modelRequests.map((body) => {
+      return z
+        .object({ service_tier: z.literal("priority").optional() })
+        .passthrough()
+        .parse(body).service_tier;
+    });
+    expect(requestTiers).toStrictEqual([undefined, "priority", undefined]);
+    for (const [requestIndex, expectedTurns] of [
+      [0, [prompts[0]]],
+      [1, [prompts[0], answers[0], prompts[1]]],
+      [2, [prompts[0], answers[0], prompts[1], answers[1], prompts[2]]],
+    ] as const) {
+      const input = JSON.stringify(modelRequests[requestIndex]);
+      for (const turn of expectedTurns) {
+        expect(occurrences(input, turn)).toBe(1);
+      }
+      expect(occurrences(input, answers[requestIndex])).toBe(0);
+    }
+
+    for (const run of [first, fast, returned]) {
+      await expect(
+        readRunLaunchSnapshotFixture(context, run.runId),
+      ).resolves.toMatchObject({
+        launch_snapshot: { framework: "pi" },
+      });
+      const claim = await api.requestClaimRunnerJob(true, run.runId, [404]);
+      expect(claim.status).toBe(404);
+    }
+    for (const runId of [fast.runId, returned.runId]) {
+      const run = await api.readRun(actor, runId);
+      const appendSystemPrompt = run.appendSystemPrompt ?? "";
+      expect(appendSystemPrompt).not.toContain("# Web Chat Run Context");
+      for (const turn of [...prompts, ...answers]) {
+        expect(appendSystemPrompt).not.toContain(turn);
+      }
+    }
+
+    await expectTerraApiUsage(first.runId, "", {
+      input: 5,
+      output: 3,
+      cacheRead: 3,
+      cacheCreation: 2,
+    });
+    await expectTerraApiUsage(fast.runId, ".fast", {
+      input: 5,
+      output: 3,
+      cacheRead: 3,
+      cacheCreation: 2,
+    });
+    await expectTerraApiUsage(returned.runId, "", {
+      input: 5,
+      output: 3,
+      cacheRead: 3,
+      cacheCreation: 2,
+    });
+
+    const visibleTurns = [
+      { runId: first.runId, prompt: prompts[0], answer: answers[0] },
+      { runId: fast.runId, prompt: prompts[1], answer: answers[1] },
+      { runId: returned.runId, prompt: prompts[2], answer: answers[2] },
+    ];
+    const finalEvents = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (events) => {
+        return eventBackedContents(events, returned.runId).some((event) => {
+          return event.content === answers[2];
+        });
+      },
+    );
+    const runIds = new Set(
+      visibleTurns.map((turn) => {
+        return turn.runId;
+      }),
+    );
+    expect(
+      finalEvents.events
+        .filter((event) => {
+          return (
+            event.runId !== undefined &&
+            event.runId !== null &&
+            runIds.has(event.runId) &&
+            (event.eventType === "input.prompt" ||
+              event.eventType === "output.message")
+          );
+        })
+        .map((event) => {
+          return {
+            runId: event.runId,
+            eventType: event.eventType,
+            content: chatEventDisplayText(event),
+          };
+        }),
+    ).toStrictEqual(
+      visibleTurns.flatMap((turn) => {
+        return [
+          {
+            runId: turn.runId,
+            eventType: "input.prompt",
+            content: turn.prompt,
+          },
+          {
+            runId: turn.runId,
+            eventType: "output.message",
+            content: turn.answer,
+          },
+        ];
+      }),
+    );
+    const sessionBlobs = [...checkpointObjects.entries()].filter(([key]) => {
+      return key.includes("/blobs/");
+    });
+    expect(sessionBlobs.length).toBeGreaterThan(0);
+    for (const [, bytes] of sessionBlobs) {
+      expect(bytes.toString("utf8")).not.toContain("serviceTier");
+    }
+  }, 90_000);
+
+  it("promotes queued fast Terra through Pi API-first with priority", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const orgId = requireOrgId(actor);
+    const usagePricingResolution = await createTerraUsagePricingResolution();
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "hold the thread before queued fast Terra",
+      model: "claude-sonnet-5",
+    });
+    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
+
+    await configureBuiltInPiModel(actor, "gpt-5.6-terra");
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      {
+        [FeatureSwitchKey.PiLoop]: true,
+        [FeatureSwitchKey.CodexFastMode]: true,
+      },
+    );
+    mockPiResourceArchiveDownloads();
+    mockPiCheckpointObjectStore();
+    const modelRequests: unknown[] = [];
+    const prompt = "promote queued fast Terra through the callback";
+    const answer = "queued fast Terra API-first answer";
+    server.use(
+      http.post("https://api.openai.com/v1/responses", async ({ request }) => {
+        modelRequests.push(await request.json());
+        return new HttpResponse(piResponsesTextSse(answer, 0), {
+          headers: { "content-type": "text/event-stream" },
+        });
+      }),
+    );
+
+    const queuedId = randomUUID();
+    const queued = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt,
+        clientEventId: queuedId,
+        model: "gpt-5.6-terra",
+        runOptions: { codexServiceTier: "fast" },
+      },
+      [201],
+      { usagePricingResolution },
+    );
+    if (queued.status !== 201) {
+      throw new Error("Expected queued fast Terra to enter the chat queue");
+    }
+    expect(queued.body.runId).toBeNull();
+
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
+      usagePricingResolution,
+    });
+    const messages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (events) => {
+        return userMessages(events).some((event) => {
+          return (
+            event.revokesEventId === queuedId && typeof event.runId === "string"
+          );
+        });
+      },
+    );
+    const promoted = userMessages(messages.events).find((event) => {
+      return event.revokesEventId === queuedId;
+    });
+    if (!promoted?.runId) {
+      throw new Error("Expected queued fast Terra to create a run");
+    }
+    const promotedRunId = promoted.runId;
+    await waitForRunStatus(actor, promotedRunId, "completed", 10_000);
+    await flushWaitUntilForTest();
+
+    expect(modelRequests).toHaveLength(1);
+    const request = z
+      .object({ service_tier: z.literal("priority") })
+      .passthrough()
+      .parse(modelRequests[0]);
+    expect(request.service_tier).toBe("priority");
+    expect(occurrences(JSON.stringify(request), prompt)).toBe(1);
+    await expect(
+      readRunLaunchSnapshotFixture(context, promotedRunId),
+    ).resolves.toMatchObject({
+      launch_snapshot: { framework: "pi" },
+    });
+    const claim = await api.requestClaimRunnerJob(true, promotedRunId, [404]);
+    expect(claim.status).toBe(404);
+    await expectTerraApiFollowUpUsage(promotedRunId, ".fast");
+    const finalEvents = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (events) => {
+        return eventBackedContents(events, promotedRunId).some((event) => {
+          return event.content === answer;
+        });
+      },
+    );
+    expect(
+      eventBackedContents(finalEvents.events, promotedRunId).filter((event) => {
+        return event.content === answer;
+      }),
+    ).toHaveLength(1);
+  }, 90_000);
+
+  it("preserves generations across Terra Pi and fast Sol Codex boundaries", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const orgId = actor.orgId;
     if (!orgId) {
@@ -5445,10 +5803,18 @@ describe("CHAT-02: model-first provider policies", () => {
     }
     const piModel = "gpt-5.6-terra";
     await seedVm0BuiltInModelKey(piModel);
+    await seedVm0BuiltInModelKey("gpt-5.6-sol");
     await api.updateOrgModelPolicies(actor, [
       {
         model: piModel,
         isDefault: true,
+        defaultProviderType: "built-in",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+      {
+        model: "gpt-5.6-sol",
+        isDefault: false,
         defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
@@ -5525,7 +5891,7 @@ describe("CHAT-02: model-first provider policies", () => {
       agentId,
       threadId: firstPi.threadId,
       prompt: firstCodexPrompt,
-      model: piModel,
+      model: "gpt-5.6-sol",
       runOptions: { codexServiceTier: "fast" },
     });
     const firstCodexBinding = await readThreadSessionBinding(
@@ -5689,7 +6055,7 @@ describe("CHAT-02: model-first provider policies", () => {
       agentId,
       threadId: firstPi.threadId,
       prompt: repeatedCodexPrompt,
-      model: piModel,
+      model: "gpt-5.6-sol",
       runOptions: { codexServiceTier: "fast" },
     });
     const repeatedCodexBinding = await readThreadSessionBinding(
@@ -6575,15 +6941,25 @@ describe("CHAT-02: model-first provider policies", () => {
     const providerEntered = createDeferredPromise<void>(context.signal);
     const releaseProvider = createDeferredPromise<void>(context.signal);
     let modelCalls = 0;
+    const modelRequests: unknown[] = [];
     server.use(
-      http.post("https://api.openai.com/v1/responses", async () => {
+      http.post("https://api.openai.com/v1/responses", async ({ request }) => {
         modelCalls += 1;
+        modelRequests.push(await request.json());
         if (!providerEntered.settled()) {
           providerEntered.resolve(undefined);
         }
         await releaseProvider.promise;
         return new HttpResponse(
-          piResponsesTextSse("result blocked before publication", modelCalls),
+          piResponsesTextSse("result blocked before publication", modelCalls, {
+            input_tokens: 10,
+            output_tokens: 3,
+            total_tokens: 13,
+            input_tokens_details: {
+              cached_tokens: 3,
+              cache_write_tokens: 2,
+            },
+          }),
           { headers: { "content-type": "text/event-stream" } },
         );
       }),
@@ -6595,6 +6971,7 @@ describe("CHAT-02: model-first provider policies", () => {
         agentId,
         runnerGroup,
         prompt: "let cancellation commit before API publication",
+        codexServiceTier: "fast",
       });
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
     await providerEntered.promise;
@@ -6622,7 +6999,18 @@ describe("CHAT-02: model-first provider policies", () => {
     await flushWaitUntilForTest();
 
     expect(modelCalls).toBe(1);
-    await expectTerraApiFollowUpUsage(run.runId);
+    expect(
+      z
+        .object({ service_tier: z.literal("priority") })
+        .passthrough()
+        .parse(modelRequests[0]).service_tier,
+    ).toBe("priority");
+    await expectTerraApiUsage(run.runId, ".fast", {
+      input: 5,
+      output: 3,
+      cacheRead: 3,
+      cacheCreation: 2,
+    });
     await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
       status: "cancelled",
     });
@@ -7026,13 +7414,18 @@ describe("CHAT-02: model-first provider policies", () => {
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.PiLoop]: true },
+      {
+        [FeatureSwitchKey.PiLoop]: true,
+        [FeatureSwitchKey.CodexFastMode]: true,
+      },
     );
     mockPiResourceArchiveDownloads();
     let modelCalls = 0;
+    const modelRequests: unknown[] = [];
     server.use(
-      http.post("https://api.openai.com/v1/responses", () => {
+      http.post("https://api.openai.com/v1/responses", async ({ request }) => {
         modelCalls += 1;
+        modelRequests.push(await request.json());
         return new HttpResponse(
           piResponsesTextSse("seed the compaction checkpoint", modelCalls, {
             input_tokens: 983_617,
@@ -7050,6 +7443,7 @@ describe("CHAT-02: model-first provider policies", () => {
         agentId,
         prompt: "create a settled Pi checkpoint",
         model: "gpt-5.6-terra",
+        runOptions: { codexServiceTier: "fast" },
       },
       "vm0",
       usagePricingResolution,
@@ -7057,11 +7451,17 @@ describe("CHAT-02: model-first provider policies", () => {
     await waitForRunStatus(actor, first.runId, "completed");
     await flushWaitUntilForTest();
     expect(modelCalls).toBe(1);
+    expect(
+      z
+        .object({ service_tier: z.literal("priority") })
+        .passthrough()
+        .parse(modelRequests[0]).service_tier,
+    ).toBe("priority");
     await expect(readRunUsageEventsFixture(first.runId)).resolves.toStrictEqual(
       [
         expect.objectContaining({
           provider: "gpt-5.6-terra",
-          category: "tokens.input.long_context",
+          category: "tokens.input.long_context.fast",
           quantity: 983_617,
           status: "processed",
           billingError: null,
@@ -7092,6 +7492,7 @@ describe("CHAT-02: model-first provider policies", () => {
         threadId: first.threadId,
         prompt,
         model: "gpt-5.6-terra",
+        runOptions: { codexServiceTier: "fast" },
       },
       "vm0",
       usagePricingResolution,
@@ -7145,7 +7546,9 @@ describe("CHAT-02: model-first provider policies", () => {
       cliAgentType: "pi",
       piSessionId: first.threadId,
       prompt,
+      piModelConfig: { serviceTier: "priority" },
     });
+    expect(transferredH0).not.toContain("serviceTier");
     expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
       "Pi API first-turn outcome",
       expect.objectContaining({
@@ -7237,7 +7640,7 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(claim.status).toBe(404);
   }, 90_000);
 
-  it("publishes ordered mixed blocks and hands explicit Sandbox tool turns to H2", async () => {
+  it("publishes ordered mixed blocks and hands fast Sandbox tool turns to H2", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const orgId = requireOrgId(actor);
     const usagePricingResolution = await createTerraUsagePricingResolution();
@@ -7247,6 +7650,7 @@ describe("CHAT-02: model-first provider policies", () => {
       { ...actor, orgId },
       {
         [FeatureSwitchKey.PiLoop]: true,
+        [FeatureSwitchKey.CodexFastMode]: true,
       },
     );
     mockPiResourceArchiveDownloads();
@@ -7304,6 +7708,7 @@ describe("CHAT-02: model-first provider policies", () => {
         agentId,
         prompt,
         model: "gpt-5.6-terra",
+        runOptions: { codexServiceTier: "fast" },
       },
       "vm0",
       usagePricingResolution,
@@ -7318,6 +7723,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const terraTools = z
       .object({
         tools: z.array(z.object({ name: z.string() }).passthrough()),
+        service_tier: z.literal("priority"),
       })
       .passthrough()
       .parse(terraModelRequests[0])
@@ -7367,6 +7773,9 @@ describe("CHAT-02: model-first provider policies", () => {
     const claimed = await claimChatRun(runnerGroup, run.runId);
     expect(claimed.claim.cliAgentType).toBe("pi");
     expect(claimed.claim.piSessionId).toBe(run.threadId);
+    expect(claimed.claim.piModelConfig).toMatchObject({
+      serviceTier: "priority",
+    });
     expect(claimed.claim.piLaunchConfig).toMatchObject({
       schemaVersion: 2,
       apiFirstTurn: {
@@ -7406,7 +7815,7 @@ describe("CHAT-02: model-first provider policies", () => {
       idempotencyKey: randomUUID(),
       kind: "model" as const,
       provider: "gpt-5.6-terra",
-      category: "tokens.output",
+      category: "tokens.output.fast",
       quantity: 2,
     };
     const sandboxUsageReceipts = await Promise.all([
@@ -7437,6 +7846,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const h1 = h1Bytes.toString("utf8");
     expect(h1).toContain('"type":"thinking_level_change"');
     expect(h1).toContain('"thinkingLevel":"low"');
+    expect(h1).not.toContain("serviceTier");
     const h2Session = MemoryPiSession.fromJsonl(h1);
     const h1Assistant = [...h2Session.buildSessionContext().messages]
       .reverse()
@@ -7644,17 +8054,17 @@ describe("CHAT-02: model-first provider policies", () => {
     const combinedUsage = await readRunUsageEventsFixture(run.runId);
     expect(
       combinedUsage.filter((row) => {
-        return row.category === "tokens.input" && row.quantity === 5;
+        return row.category === "tokens.input.fast" && row.quantity === 5;
       }),
     ).toHaveLength(1);
     expect(
       combinedUsage.filter((row) => {
-        return row.category === "tokens.output" && row.quantity === 3;
+        return row.category === "tokens.output.fast" && row.quantity === 3;
       }),
     ).toHaveLength(1);
     expect(
       combinedUsage.filter((row) => {
-        return row.category === "tokens.output" && row.quantity === 2;
+        return row.category === "tokens.output.fast" && row.quantity === 2;
       }),
     ).toHaveLength(1);
     expect(combinedUsage).toHaveLength(3);
@@ -7664,7 +8074,7 @@ describe("CHAT-02: model-first provider policies", () => {
           row.provider === "gpt-5.6-terra" &&
           row.status === "processed" &&
           row.billingError === null &&
-          !row.category.endsWith(".fast")
+          row.category.endsWith(".fast")
         );
       }),
     ).toBeTruthy();

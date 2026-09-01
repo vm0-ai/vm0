@@ -6,6 +6,20 @@ import {
   shouldUsePiExecution,
 } from "../pi-sandbox-config";
 
+const OPENAI_TERRA_ROUTE = {
+  selectedModel: "gpt-5.6-terra",
+  providerType: "openai-api-key",
+  upstreamModel: "gpt-5.6-terra",
+  modelKeyId: "openai-terra-key",
+} as const;
+
+const OPENROUTER_TERRA_ROUTE = {
+  selectedModel: "gpt-5.6-terra",
+  providerType: "openrouter-codex",
+  upstreamModel: "openai/gpt-5.6-terra",
+  modelKeyId: "openrouter-terra-key",
+} as const;
+
 describe("Pi sandbox model configuration", () => {
   it("resolves the built-in OpenAI Terra primary route", () => {
     expect(
@@ -111,6 +125,7 @@ describe("Pi sandbox model configuration", () => {
           modelProviderType: "built-in",
           selectedModel: "gpt-5.6-terra",
           codexServiceTier: undefined,
+          builtInModelRuntimeRoute: OPENROUTER_TERRA_ROUTE,
           triggerSource,
           featureSwitchContext: {
             overrides: { [FeatureSwitchKey.PiLoop]: true },
@@ -120,60 +135,131 @@ describe("Pi sandbox model configuration", () => {
     },
   );
 
+  it.each(["web", "agent"] as const)(
+    "makes fast built-in OpenAI Terra eligible for %s chat when both switches are on",
+    (triggerSource) => {
+      expect(
+        shouldUsePiExecution({
+          chatThreadId: "thread-id",
+          modelProviderType: "built-in",
+          selectedModel: "gpt-5.6-terra",
+          codexServiceTier: "fast",
+          builtInModelRuntimeRoute: OPENAI_TERRA_ROUTE,
+          triggerSource,
+          featureSwitchContext: {
+            overrides: {
+              [FeatureSwitchKey.PiLoop]: true,
+              [FeatureSwitchKey.CodexFastMode]: true,
+            },
+          },
+        }),
+      ).toBeTruthy();
+    },
+  );
+
   it.each([
     {
-      name: "feature switch off",
+      name: "Pi feature switch off",
       modelProviderType: "built-in",
       selectedModel: "gpt-5.6-terra",
       codexServiceTier: undefined,
+      builtInModelRuntimeRoute: OPENAI_TERRA_ROUTE,
       triggerSource: "web" as const,
       chatThreadId: "thread-id",
-      enabled: false,
+      piLoopEnabled: false,
+      codexFastModeEnabled: true,
     },
     {
-      name: "fast Terra",
+      name: "fast Terra with Codex fast mode off",
       modelProviderType: "built-in",
       selectedModel: "gpt-5.6-terra",
       codexServiceTier: "fast" as const,
+      builtInModelRuntimeRoute: OPENAI_TERRA_ROUTE,
       triggerSource: "web" as const,
       chatThreadId: "thread-id",
-      enabled: true,
+      piLoopEnabled: true,
+      codexFastModeEnabled: false,
+    },
+    {
+      name: "fast Terra on managed OpenRouter",
+      modelProviderType: "built-in",
+      selectedModel: "gpt-5.6-terra",
+      codexServiceTier: "fast" as const,
+      builtInModelRuntimeRoute: OPENROUTER_TERRA_ROUTE,
+      triggerSource: "web" as const,
+      chatThreadId: "thread-id",
+      piLoopEnabled: true,
+      codexFastModeEnabled: true,
+    },
+    {
+      name: "fast Terra without a concrete route",
+      modelProviderType: "built-in",
+      selectedModel: "gpt-5.6-terra",
+      codexServiceTier: "fast" as const,
+      builtInModelRuntimeRoute: undefined,
+      triggerSource: "web" as const,
+      chatThreadId: "thread-id",
+      piLoopEnabled: true,
+      codexFastModeEnabled: true,
     },
     {
       name: "Terra BYOK",
       modelProviderType: "openai-api-key",
       selectedModel: "gpt-5.6-terra",
       codexServiceTier: undefined,
+      builtInModelRuntimeRoute: OPENAI_TERRA_ROUTE,
       triggerSource: "web" as const,
       chatThreadId: "thread-id",
-      enabled: true,
+      piLoopEnabled: true,
+      codexFastModeEnabled: true,
+    },
+    {
+      name: "fast Terra BYOK",
+      modelProviderType: "openai-api-key",
+      selectedModel: "gpt-5.6-terra",
+      codexServiceTier: "fast" as const,
+      builtInModelRuntimeRoute: undefined,
+      triggerSource: "web" as const,
+      chatThreadId: "thread-id",
+      piLoopEnabled: true,
+      codexFastModeEnabled: true,
     },
     {
       name: "non-Web trigger",
       modelProviderType: "built-in",
       selectedModel: "gpt-5.6-terra",
       codexServiceTier: undefined,
+      builtInModelRuntimeRoute: OPENAI_TERRA_ROUTE,
       triggerSource: "slack" as const,
       chatThreadId: "thread-id",
-      enabled: true,
+      piLoopEnabled: true,
+      codexFastModeEnabled: true,
     },
     {
       name: "unbound chat thread",
       modelProviderType: "built-in",
       selectedModel: "gpt-5.6-terra",
       codexServiceTier: undefined,
+      builtInModelRuntimeRoute: OPENAI_TERRA_ROUTE,
       triggerSource: "web" as const,
       chatThreadId: undefined,
-      enabled: true,
+      piLoopEnabled: true,
+      codexFastModeEnabled: true,
     },
     {
       name: "unrelated model",
       modelProviderType: "built-in",
       selectedModel: "gpt-5.6-sol",
       codexServiceTier: undefined,
+      builtInModelRuntimeRoute: {
+        ...OPENAI_TERRA_ROUTE,
+        selectedModel: "gpt-5.6-sol",
+        upstreamModel: "gpt-5.6-sol",
+      },
       triggerSource: "web" as const,
       chatThreadId: "thread-id",
-      enabled: true,
+      piLoopEnabled: true,
+      codexFastModeEnabled: true,
     },
   ])("keeps $name on Codex", (testCase) => {
     expect(
@@ -182,9 +268,13 @@ describe("Pi sandbox model configuration", () => {
         modelProviderType: testCase.modelProviderType,
         selectedModel: testCase.selectedModel,
         codexServiceTier: testCase.codexServiceTier,
+        builtInModelRuntimeRoute: testCase.builtInModelRuntimeRoute,
         triggerSource: testCase.triggerSource,
         featureSwitchContext: {
-          overrides: { [FeatureSwitchKey.PiLoop]: testCase.enabled },
+          overrides: {
+            [FeatureSwitchKey.PiLoop]: testCase.piLoopEnabled,
+            [FeatureSwitchKey.CodexFastMode]: testCase.codexFastModeEnabled,
+          },
         },
       }),
     ).toBeFalsy();
@@ -197,6 +287,7 @@ describe("Pi sandbox model configuration", () => {
         modelProviderType: "built-in",
         selectedModel: "deepseek-v4-flash",
         codexServiceTier: "fast",
+        builtInModelRuntimeRoute: undefined,
         triggerSource: "web",
         featureSwitchContext: {
           overrides: { [FeatureSwitchKey.PiLoop]: true },

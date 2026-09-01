@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS } from "@okouai/api-contracts/contracts/model-price-tiers";
+import type { PiModelConfig } from "@okouai/api-contracts/contracts/runners";
 import { modelUsageObservation } from "@okouai/db/schema/model-usage-observation";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import type { PiApiFirstTurnResult } from "@okouai/pi-agent-runtime/api";
@@ -33,7 +34,9 @@ type PiUsageCategoryBase =
   | "tokens.cache_creation";
 type PiUsageCategory =
   | PiUsageCategoryBase
-  | `${PiUsageCategoryBase}.long_context`;
+  | `${PiUsageCategoryBase}.long_context`
+  | `${PiUsageCategoryBase}.fast`
+  | `${PiUsageCategoryBase}.long_context.fast`;
 
 interface PiApiFirstTurnUsageEntry {
   readonly category: PiUsageCategory;
@@ -45,6 +48,7 @@ interface RecordPiApiFirstTurnUsageArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly modelUsageProvider: string | undefined;
+  readonly serviceTier: PiModelConfig["serviceTier"];
   readonly turn: PiApiFirstTurnResult;
 }
 
@@ -68,6 +72,7 @@ function idempotencyKey(namespace: string, parts: readonly string[]): string {
 
 function piApiFirstTurnUsageEntries(
   turn: PiApiFirstTurnResult,
+  serviceTier: PiModelConfig["serviceTier"],
 ): readonly PiApiFirstTurnUsageEntry[] {
   const usage = turn.assistantMessage.usage;
   const input = usageQuantity(usage.input, "input");
@@ -77,14 +82,20 @@ function piApiFirstTurnUsageEntries(
   const longContext =
     input + cacheRead + cacheCreation >=
     TERRA_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS;
-  const suffix = longContext ? ".long_context" : "";
+  const fast = serviceTier === "priority";
+  const category = (base: PiUsageCategoryBase): PiUsageCategory => {
+    if (longContext) {
+      return fast ? `${base}.long_context.fast` : `${base}.long_context`;
+    }
+    return fast ? `${base}.fast` : base;
+  };
   return (
     [
-      { category: `tokens.input${suffix}`, quantity: input },
-      { category: `tokens.output${suffix}`, quantity: output },
-      { category: `tokens.cache_read${suffix}`, quantity: cacheRead },
+      { category: category("tokens.input"), quantity: input },
+      { category: category("tokens.output"), quantity: output },
+      { category: category("tokens.cache_read"), quantity: cacheRead },
       {
-        category: `tokens.cache_creation${suffix}`,
+        category: category("tokens.cache_creation"),
         quantity: cacheCreation,
       },
     ] satisfies readonly {
@@ -123,7 +134,7 @@ export async function recordPiApiFirstTurnUsage(
     return;
   }
   const responseSourceId = sourceId(args.turn);
-  const entries = piApiFirstTurnUsageEntries(args.turn);
+  const entries = piApiFirstTurnUsageEntries(args.turn, args.serviceTier);
   const usageRows = entries.map((entry) => {
     return {
       runId: args.runId,
