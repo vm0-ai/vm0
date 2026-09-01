@@ -269,6 +269,10 @@ export const testConnectorCredentialStorageStateActionResponseSchema = z.object(
     ok: z.literal(true),
     connector: connectorStateSchema.nullable().optional(),
     connector_id: z.uuid().optional(),
+    definition_oauth_setup: z
+      .enum(["custom", "automatic"])
+      .nullable()
+      .optional(),
     account_mutation: connectorAccountMutationIntentSchema
       .nullable()
       .optional(),

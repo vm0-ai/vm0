@@ -389,6 +389,16 @@ describe("connector client request contracts", () => {
     ).toMatchObject({ authMode: "oauth", oauthSetup: "automatic" });
   });
 
+  it("keeps additive request fields forward-compatible", () => {
+    expect(
+      createCustomConnectorBodySchema.parse({
+        ...definitionBase,
+        authMode: "manual",
+        futureOption: true,
+      }),
+    ).not.toHaveProperty("futureOption");
+  });
+
   it("rejects ambiguous OAuth setup variants", () => {
     const automatic = {
       ...definitionBase,

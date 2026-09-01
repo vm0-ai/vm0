@@ -336,18 +336,15 @@ const customConnectorHttpDefinitionWriteCoreSchema =
   });
 
 const customConnectorHttpDefinitionWriteSchema =
-  customConnectorHttpDefinitionWriteCoreSchema
-    .strict()
-    .superRefine((value, context) => {
-      validateCustomConnectorAuthWrite(value, context, false);
-    });
+  customConnectorHttpDefinitionWriteCoreSchema.superRefine((value, context) => {
+    validateCustomConnectorAuthWrite(value, context, false);
+  });
 
 export const customConnectorHttpCreateBodySchema =
   customConnectorHttpDefinitionWriteCoreSchema
     .extend({
       slug: z.string().optional(),
     })
-    .strict()
     .superRefine((value, context) => {
       validateCustomConnectorAuthWrite(value, context, false);
     });
@@ -362,7 +359,6 @@ export const customConnectorMcpCreateBodySchema =
       slug: z.string().optional(),
       prefixTemplates: z.never().optional(),
     })
-    .strict()
     .superRefine((value, context) => {
       validateCustomConnectorAuthWrite(value, context, true);
     });
@@ -387,7 +383,6 @@ export const customConnectorMcpUpdateBodySchema =
       permissionBundleRef: z.null().optional(),
       prefixTemplates: z.never().optional(),
     })
-    .strict()
     .superRefine((value, context) => {
       validateCustomConnectorAuthWrite(value, context, true);
     });

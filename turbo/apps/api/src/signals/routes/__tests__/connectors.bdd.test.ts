@@ -2258,6 +2258,13 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       connected: false,
     });
     expectNoVisibleSecret(created, clientSecret);
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId: requiredOrgId(admin),
+        userId: admin.userId,
+        customConnectorId: created.id,
+      }),
+    ).resolves.toMatchObject({ definition_oauth_setup: null });
     const expectedGrant = {
       customConnectorId: created.id,
       permissionNames: ["chat:write"],
@@ -3259,7 +3266,10 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         userId: admin.userId,
         customConnectorId,
       }),
-    ).resolves.toMatchObject({ connector: { storage_version: 1 } });
+    ).resolves.toMatchObject({
+      definition_oauth_setup: null,
+      connector: { storage_version: 1 },
+    });
     await expect(
       readAutomaticOAuthBindingState(context, connectorAccountId),
     ).resolves.toStrictEqual({

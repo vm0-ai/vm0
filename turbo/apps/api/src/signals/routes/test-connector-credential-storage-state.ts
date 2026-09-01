@@ -143,20 +143,32 @@ async function readCustomParent(
   body: ConnectorCredentialStorageAction<"read-custom-parent">,
   signal: AbortSignal,
 ) {
-  const [connector] = await db
-    .select({
-      id: connectors.id,
-      storageVersion: connectors.storageVersion,
-    })
-    .from(connectors)
-    .where(
-      and(
-        eq(connectors.orgId, body.org_id),
-        eq(connectors.userId, body.user_id),
-        eq(connectors.customConnectorId, body.custom_connector_id),
-      ),
-    )
-    .limit(1);
+  const [[connector], [definition]] = await Promise.all([
+    db
+      .select({
+        id: connectors.id,
+        storageVersion: connectors.storageVersion,
+      })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.orgId, body.org_id),
+          eq(connectors.userId, body.user_id),
+          eq(connectors.customConnectorId, body.custom_connector_id),
+        ),
+      )
+      .limit(1),
+    db
+      .select({ oauthSetup: orgCustomConnectors.oauthSetup })
+      .from(orgCustomConnectors)
+      .where(
+        and(
+          eq(orgCustomConnectors.id, body.custom_connector_id),
+          eq(orgCustomConnectors.orgId, body.org_id),
+        ),
+      )
+      .limit(1),
+  ]);
   signal.throwIfAborted();
   const secretRows = connector
     ? await db
@@ -184,6 +196,7 @@ async function readCustomParent(
     : [];
   signal.throwIfAborted();
   return actionOk({
+    definition_oauth_setup: definition?.oauthSetup ?? null,
     connector: connector
       ? {
           id: connector.id,

@@ -3643,6 +3643,7 @@ async function validateCustomConnectorOauthModeConstraints(
     dcrRegistrationId: "72000000-0000-4000-8000-000000000007",
     otherAutomaticConnectorId: "72000000-0000-4000-8000-000000000008",
     otherAutomaticAccountId: "72000000-0000-4000-8000-000000000009",
+    legacyOauthConnectorId: "72000000-0000-4000-8000-000000000010",
   } as const;
   const insertConnector = `
     INSERT INTO "org_custom_connectors" (
@@ -3794,6 +3795,21 @@ async function validateCustomConnectorOauthModeConstraints(
       [fixture.oauthConnectorId],
     );
 
+    await client.query("BEGIN");
+    await client.query(insertConnector, [
+      fixture.legacyOauthConnectorId,
+      fixture.orgId,
+      "_migration_legacy_oauth",
+      "Migration Legacy OAuth Connector",
+      "oauth",
+      fixture.createdBy,
+    ]);
+    await client.query(insertOauthConfig, [
+      fixture.legacyOauthConnectorId,
+      fixture.orgId,
+    ]);
+    await client.query("COMMIT");
+
     await client.query(insertAutomaticConnector, [
       fixture.automaticConnectorId,
       fixture.orgId,
@@ -3863,6 +3879,42 @@ async function validateCustomConnectorOauthModeConstraints(
         },
       ],
     });
+
+    // The API version preceding #30487 does not include oauth_setup in this
+    // update. Its exact statement sequence must remain legal after migration.
+    await client.query("BEGIN");
+    await client.query(
+      `
+        UPDATE "org_custom_connectors"
+        SET "auth_mode" = 'manual'
+        WHERE "id" = $1
+      `,
+      [fixture.legacyOauthConnectorId],
+    );
+    await client.query(
+      `
+        DELETE FROM "org_custom_connector_oauth_configs"
+        WHERE "connector_id" = $1
+      `,
+      [fixture.legacyOauthConnectorId],
+    );
+    await client.query("COMMIT");
+    const legacyTransition = await client.query<{
+      authMode: string;
+      oauthSetup: string | null;
+    }>(
+      `
+        SELECT
+          "auth_mode" AS "authMode",
+          "oauth_setup" AS "oauthSetup"
+        FROM "org_custom_connectors"
+        WHERE "id" = $1
+      `,
+      [fixture.legacyOauthConnectorId],
+    );
+    assert.deepEqual(legacyTransition.rows, [
+      { authMode: "manual", oauthSetup: null },
+    ]);
 
     await expectDeferredDatabaseError(client, {
       code: "23514",
@@ -4073,13 +4125,14 @@ async function validateCustomConnectorOauthModeConstraints(
     await client.query(
       `
         DELETE FROM "org_custom_connectors"
-        WHERE "id" IN ($1, $2, $3, $4)
+        WHERE "id" IN ($1, $2, $3, $4, $5)
       `,
       [
         fixture.manualConnectorId,
         fixture.oauthConnectorId,
         fixture.automaticConnectorId,
         fixture.otherAutomaticConnectorId,
+        fixture.legacyOauthConnectorId,
       ],
     );
     const deletedRegistration = await client.query(
@@ -4095,7 +4148,7 @@ async function validateCustomConnectorOauthModeConstraints(
   }
 
   console.log(
-    "   ✅ OAuth setup variants, registrations, bindings, and cascades preserve strict ownership\n",
+    "   ✅ OAuth setup variants, old-writer transitions, bindings, and cascades preserve strict ownership\n",
   );
 }
 

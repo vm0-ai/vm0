@@ -159,6 +159,15 @@ type ForbiddenResponse = {
 };
 type DbTransaction = Tx;
 
+function persistedOAuthSetup(
+  oauthSetup: CustomConnectorOAuthSetup | null,
+): CustomConnectorOAuthSetup | null {
+  // Keep Custom OAuth in the legacy NULL form while the API release preceding
+  // #30487 can still serve or be a rollback target. That writer does not know
+  // to clear oauth_setup when changing a connector from OAuth to manual.
+  return oauthSetup === "custom" ? null : oauthSetup;
+}
+
 function forbidden(message: string): ForbiddenResponse {
   return {
     status: 403,
@@ -1837,7 +1846,7 @@ async function persistCustomConnectorCreate(
         headerInjections: [...args.definition.headerInjections],
         queryInjections: [...args.definition.queryInjections],
         authMode: args.definition.authMode,
-        oauthSetup: args.definition.oauthSetup,
+        oauthSetup: persistedOAuthSetup(args.definition.oauthSetup),
         skillMarkdown: args.definition.skillMarkdown,
         skillStorageVersionId: args.preparedSkill?.version.versionId ?? null,
         storageVersion: args.storageVersion,
@@ -2156,7 +2165,7 @@ async function persistCustomConnectorUpdate(
         headerInjections: [...args.definition.headerInjections],
         queryInjections: [...args.definition.queryInjections],
         authMode: args.definition.authMode,
-        oauthSetup: args.definition.oauthSetup,
+        oauthSetup: persistedOAuthSetup(args.definition.oauthSetup),
         skillMarkdown: args.definition.skillMarkdown,
         skillStorageVersionId: args.preparedSkill?.version.versionId ?? null,
         storageVersion: args.storageVersion,

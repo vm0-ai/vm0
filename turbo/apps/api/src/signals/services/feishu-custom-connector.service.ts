@@ -201,7 +201,9 @@ function desiredConnectorDefinition(installation: FeishuConnectorInstallation) {
     ],
     queryInjections: [],
     authMode: "oauth" as const,
-    oauthSetup: "custom" as const,
+    // Preserve the pre-#30487 persisted shape until the outgoing API and its
+    // rollback window have drained. Readers still normalize this to Custom.
+    oauthSetup: null,
     enabled: true,
     permissionBundleRef: null,
     skillMarkdown: FEISHU_SKILL_MARKDOWN,
