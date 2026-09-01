@@ -437,9 +437,8 @@ describe("okou doctor connectors command", () => {
       },
       connectors: [],
       error: {
-        code: "OFFICIAL_WORKFLOW_UNSUPPORTED",
-        message:
-          "Connector readiness is unavailable for this Official Workflow during rollout.",
+        code: "CONFLICT",
+        message: "The workflow could not be checked in its current state.",
         status: 409,
       },
     });
