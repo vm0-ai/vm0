@@ -132,6 +132,12 @@ export function RecorderBar(): React.ReactElement {
   const windows = sources.filter((source) => {
     return source.kind === "window";
   });
+  const chosenWindow =
+    choice.kind === "window"
+      ? windows.find((source) => {
+          return source.id === choice.sourceId;
+        })
+      : undefined;
 
   return (
     <div className="recorder-bar">
@@ -159,20 +165,29 @@ export function RecorderBar(): React.ReactElement {
           }}
         >
           <Monitor size={22} />
-          <span>Display</span>
+          <span className="recorder-bar__source-label">Display</span>
         </button>
 
-        <label className="recorder-bar__source recorder-bar__source--select">
+        {/* The picker covers the whole tile invisibly, so Window looks and
+            sits exactly like the buttons either side of it instead of growing
+            a control of its own. */}
+        <div
+          className="recorder-bar__source recorder-bar__source--window"
+          aria-pressed={choice.kind === "window"}
+        >
           <AppWindow size={22} />
-          <span>Window</span>
+          <span className="recorder-bar__source-label">
+            {chosenWindow ? sourceLabel(chosenWindow) : "Window"}
+          </span>
           <select
+            className="recorder-bar__window-picker"
             aria-label="Window to record"
             value={choice.kind === "window" ? (choice.sourceId ?? "") : ""}
             onChange={(event) => {
               setChoice({ kind: "window", sourceId: event.target.value });
             }}
           >
-            <option value="">Choose…</option>
+            <option value="">Window</option>
             {windows.map((source) => {
               return (
                 <option key={source.id} value={source.id}>
@@ -181,7 +196,7 @@ export function RecorderBar(): React.ReactElement {
               );
             })}
           </select>
-        </label>
+        </div>
 
         <button
           type="button"
@@ -193,9 +208,15 @@ export function RecorderBar(): React.ReactElement {
           }}
         >
           <SquareDashed size={22} />
-          <span>Area</span>
+          <span className="recorder-bar__source-label">
+            {choice.kind === "area" && choice.area
+              ? `${choice.area.width.toString()} × ${choice.area.height.toString()}`
+              : "Area"}
+          </span>
         </button>
       </div>
+
+      <span className="recorder-bar__divider" />
 
       <button
         type="button"
