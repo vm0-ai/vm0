@@ -452,6 +452,62 @@ describe("thread-owned utility sidebar", () => {
     expect(requestedThreadIds).toContain(THREAD_ID);
   });
 
+  it("opens an assistant generic file card in the preview dialog", async () => {
+    const filename = "revised-manuscript.docx";
+    const url = `https://cdn.vm7.io/artifacts/test/run-sidebar/${filename}`;
+    setupChatThread({
+      artifactFiles: [
+        threadArtifactFile(url, {
+          id: "artifact-revised-manuscript",
+          filename,
+          contentType:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }),
+      ],
+      messages: [
+        {
+          id: "msg-revised-manuscript",
+          role: "assistant",
+          content: `[${filename}](${url})`,
+          runId: "run-sidebar",
+          seqId: 1,
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+        {
+          id: "msg-revised-manuscript-completed",
+          role: "assistant",
+          content: null,
+          runId: "run-sidebar",
+          runLifecycleEvent: "completed",
+          seqId: 2,
+          createdAt: "2026-03-10T00:00:02Z",
+        },
+      ],
+    });
+
+    const card = await screen.findByLabelText(`Preview ${filename}`);
+    expect(
+      screen.queryByLabelText(`Download ${filename}`),
+    ).not.toBeInTheDocument();
+    click(card);
+
+    const dialog = await screen.findByTestId("attachment-lightbox");
+    expect(
+      within(dialog).getByText("No inline preview available for this file."),
+    ).toBeInTheDocument();
+    expect(within(dialog).getAllByText(filename).length).toBeGreaterThan(0);
+
+    click(within(dialog).getByLabelText("Open in split view"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    expect(within(sidebar).getAllByText(filename).length).toBeGreaterThan(0);
+  });
+
   it("previews a public catalog document through the resolved resource url", async () => {
     const htmlUrl = "https://catalog-document.sites.vm7.io";
     const summary = catalogArtifact({ title: "launch-site.html" });
