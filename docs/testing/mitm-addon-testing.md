@@ -191,6 +191,23 @@ uv run --no-sync ruff check .
 uv run --no-sync basedpyright -p .
 ```
 
+### Flow metadata key contract check
+
+Run the flow metadata key linter when adding or renaming shared metadata keys,
+and before committing related addon changes:
+
+```bash
+cd crates/runner/mitm-addon
+./scripts/check-flow-metadata-keys.py
+```
+
+A clean run exits 0 without output. An exit code of 1 prints duplicate
+registered metadata-key values or repository key-use diagnostics. The linter
+recursively scans Python files under `src/` and `tests/`, excludes the
+canonical [`src/flow_metadata_keys.py`](../../crates/runner/mitm-addon/src/flow_metadata_keys.py)
+registry, and does not inspect `scripts/`. Use the registry's `metadata_keys`
+constants instead of literal shared metadata keys.
+
 Pre-commit hooks verify the lockfile when dependency metadata changes and run
 Ruff from the locked environment for staged addon Python files. Run pytest
 manually before committing behavior changes.

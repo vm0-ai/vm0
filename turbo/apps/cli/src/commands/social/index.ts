@@ -3,14 +3,12 @@ import { setTimeout as sleep } from "node:timers/promises";
 import {
   findManagedSocialKitTool,
   managedSocialKitToolCatalog,
-  MANAGED_SOCIALKIT_TOOLS,
-  redactSocialProviderIdentity,
+  MANAGED_SOCIAL_UNSUPPORTED_CAPABILITIES,
   socialKitRequestSchema,
   socialKitDownloadRequestSchema,
-  type ManagedSocialKitPagination,
-  type ManagedSocialKitReportedTotalField,
   type ManagedSocialKitTool,
   type ManagedSocialKitToolCatalogEntry,
+  type SocialKitCollectionUncertainty,
   type SocialKitCollectionProviderLimitedReason,
   type SocialKitRequest,
   type SocialKitResponse,
@@ -52,31 +50,9 @@ const DOWNLOAD_SIGNAL_EXIT_CODE: Readonly<Record<DownloadSignal, number>> = {
   SIGTERM: 143,
 };
 
-type SocialKitCatalogRetrieval =
-  | { readonly kind: "cursor" }
-  | { readonly kind: "page"; readonly maxPage: number }
-  | { readonly kind: "provider_limited" };
-
-type SocialKitCatalogProviderLimit =
-  | { readonly kind: "no_pagination" }
-  | { readonly kind: "max_page"; readonly maxPage: number };
-
-type SocialKitCatalogBilling =
-  | { readonly kind: "request" }
-  | { readonly kind: "items"; readonly itemsPerUnit: number };
-
-interface SocialKitCatalogEntry extends ManagedSocialKitToolCatalogEntry {
-  readonly collection: {
-    readonly resultField: string;
-    readonly retrieval: SocialKitCatalogRetrieval;
-    readonly reportedTotalField?: ManagedSocialKitReportedTotalField;
-    readonly providerLimit?: SocialKitCatalogProviderLimit;
-  } | null;
-  readonly billing: SocialKitCatalogBilling;
-}
-
 interface SocialKitCatalogOutput {
-  readonly tools: readonly SocialKitCatalogEntry[];
+  readonly tools: readonly ManagedSocialKitToolCatalogEntry[];
+  readonly unsupportedCapabilities: typeof MANAGED_SOCIAL_UNSUPPORTED_CAPABILITIES;
 }
 
 type FullRetrievalCompletion =
@@ -91,6 +67,7 @@ interface FullRetrievalTotals {
   readonly billingQuantity: number;
   readonly creditsCharged: number;
   readonly providerLimitedReason?: SocialKitCollectionProviderLimitedReason;
+  readonly uncertaintyReason?: SocialKitCollectionUncertainty["reason"];
   readonly reportedTotal?: number;
 }
 
@@ -99,78 +76,10 @@ interface FullRetrievalSummary extends FullRetrievalTotals {
   readonly completion: FullRetrievalCompletion;
 }
 
-function catalogRetrieval(
-  pagination: ManagedSocialKitPagination,
-): SocialKitCatalogRetrieval {
-  switch (pagination.kind) {
-    case "cursor":
-    case "next_cursor": {
-      return { kind: "cursor" };
-    }
-    case "page": {
-      return { kind: "page", maxPage: pagination.maxPage };
-    }
-    case "none": {
-      return { kind: "provider_limited" };
-    }
-  }
-}
-
-function catalogProviderLimit(
-  pagination: ManagedSocialKitPagination,
-): SocialKitCatalogProviderLimit | undefined {
-  switch (pagination.kind) {
-    case "none": {
-      return { kind: "no_pagination" };
-    }
-    case "page": {
-      return { kind: "max_page", maxPage: pagination.maxPage };
-    }
-    case "cursor":
-    case "next_cursor": {
-      return undefined;
-    }
-  }
-}
-
-function catalogEntry(
-  tool: ManagedSocialKitTool,
-  schemaEntry: ManagedSocialKitToolCatalogEntry,
-): SocialKitCatalogEntry {
-  const collection = tool.collection;
-  const itemsPerUnit = collection?.itemsPerBillingUnit;
-  const providerLimit = collection
-    ? catalogProviderLimit(collection.pagination)
-    : undefined;
-  return {
-    ...schemaEntry,
-    collection: collection
-      ? {
-          resultField: collection.resultField,
-          retrieval: catalogRetrieval(collection.pagination),
-          ...(collection.reportedTotalField
-            ? { reportedTotalField: collection.reportedTotalField }
-            : {}),
-          ...(providerLimit ? { providerLimit } : {}),
-        }
-      : null,
-    billing:
-      itemsPerUnit === undefined
-        ? { kind: "request" }
-        : { kind: "items", itemsPerUnit },
-  };
-}
-
 function socialKitCatalog(): SocialKitCatalogOutput {
-  const schemaEntries = managedSocialKitToolCatalog();
   return {
-    tools: MANAGED_SOCIALKIT_TOOLS.map((tool, index) => {
-      const schemaEntry = schemaEntries[index];
-      if (!schemaEntry || schemaEntry.name !== tool.name) {
-        throw new Error("Okou Social catalog order is inconsistent");
-      }
-      return catalogEntry(tool, schemaEntry);
-    }),
+    tools: managedSocialKitToolCatalog(),
+    unsupportedCapabilities: MANAGED_SOCIAL_UNSUPPORTED_CAPABILITIES,
   };
 }
 
@@ -183,7 +92,7 @@ function indentedJson(value: unknown): string {
     .join("\n");
 }
 
-function printCatalogEntry(tool: SocialKitCatalogEntry): void {
+function printCatalogEntry(tool: ManagedSocialKitToolCatalogEntry): void {
   console.log(tool.name);
   console.log(`  ${tool.description}`);
   console.log("  Input schema:");
@@ -202,6 +111,32 @@ function printCatalogEntry(tool: SocialKitCatalogEntry): void {
     if (tool.collection.reportedTotalField) {
       console.log(`  Reported total: ${tool.collection.reportedTotalField}`);
     }
+    if (tool.collection.defaultLimit !== undefined) {
+      console.log(`  Default page limit: ${tool.collection.defaultLimit}`);
+    }
+    if (tool.collection.requestMaxLimit !== undefined) {
+      console.log(
+        `  Accepted request maximum: ${tool.collection.requestMaxLimit}`,
+      );
+    }
+    if (tool.collection.effectiveLimit !== undefined) {
+      console.log(
+        `  Effective request limit: ${tool.collection.effectiveLimit}`,
+      );
+    }
+    if (tool.collection.pageSize) {
+      console.log(
+        "  Page size: provider-controlled and may differ from the request limit",
+      );
+    }
+    if (tool.collection.itemContract) {
+      console.log(`  Item contract: ${tool.collection.itemContract}`);
+    }
+    if (tool.collection.emptyResult) {
+      console.log(
+        "  Empty result: unreliable; returns provider_limited uncertainty, bills the successful request once, and is not retried",
+      );
+    }
     if (tool.collection.providerLimit) {
       const limit = tool.collection.providerLimit;
       console.log(
@@ -214,8 +149,18 @@ function printCatalogEntry(tool: SocialKitCatalogEntry): void {
   console.log(
     tool.billing.kind === "request"
       ? "  Billing: 1 quantity per successful request"
-      : `  Billing: 1 quantity per ${tool.billing.itemsPerUnit} returned items`,
+      : tool.billing.quantityBasis === "effective_request_limit"
+        ? `  Billing: 1 quantity per ${tool.billing.itemsPerUnit} items in the effective request limit`
+        : `  Billing: 1 quantity per ${tool.billing.itemsPerUnit} returned items`,
   );
+}
+
+function printUnsupportedCapabilities(): void {
+  console.log("Unsupported capabilities");
+  for (const capability of MANAGED_SOCIAL_UNSUPPORTED_CAPABILITIES) {
+    console.log(`  ${capability.platform}.${capability.capability}`);
+    console.log(`    ${capability.guidance}`);
+  }
 }
 
 function printSocialKitCatalog(
@@ -229,6 +174,7 @@ function printSocialKitCatalog(
   for (const tool of catalog.tools) {
     printCatalogEntry(tool);
   }
+  printUnsupportedCapabilities();
 }
 
 function positiveInteger(value: string): number {
@@ -380,21 +326,6 @@ function printRecord(value: unknown, compact: boolean): void {
   console.log(JSON.stringify(value, null, compact ? 0 : 2));
 }
 
-type PublicSocialResponse = Omit<SocialKitResponse, "provider">;
-
-function publicSocialResponse(
-  response: SocialKitResponse,
-): PublicSocialResponse {
-  return redactSocialProviderIdentity({
-    tool: response.tool,
-    billingCategory: response.billingCategory,
-    billingQuantity: response.billingQuantity,
-    creditsCharged: response.creditsCharged,
-    collection: response.collection,
-    result: response.result,
-  }) as PublicSocialResponse;
-}
-
 function printPage(
   pageNumber: number,
   response: SocialKitResponse,
@@ -403,10 +334,7 @@ function printPage(
   if (!compact) {
     console.log(`Page ${pageNumber}`);
   }
-  printRecord(
-    { kind: "page", pageNumber, response: publicSocialResponse(response) },
-    compact,
-  );
+  printRecord({ kind: "page", pageNumber, response }, compact);
 }
 
 function printSummary(
@@ -427,11 +355,19 @@ function printSummary(
 
 function collectionSummaryEvidence(
   collection: NonNullable<SocialKitResponse["collection"]>,
-): Pick<FullRetrievalTotals, "providerLimitedReason" | "reportedTotal"> {
+): Pick<
+  FullRetrievalTotals,
+  "providerLimitedReason" | "reportedTotal" | "uncertaintyReason"
+> {
   const reason =
     collection.state === "provider_limited" ? collection.reason : undefined;
+  const uncertaintyReason =
+    collection.state === "provider_limited"
+      ? collection.uncertainty?.reason
+      : undefined;
   return {
     ...(reason ? { providerLimitedReason: reason } : {}),
+    ...(uncertaintyReason ? { uncertaintyReason } : {}),
     ...(collection.reportedTotal !== undefined
       ? { reportedTotal: collection.reportedTotal }
       : {}),
@@ -453,6 +389,17 @@ function requestForInput(
   return socialKitRequestSchema.parse({ tool, input });
 }
 
+function reachedCallerRetrievalLimit(
+  pages: number,
+  itemsReturned: number,
+  options: SocialKitCallOptions,
+): boolean {
+  return (
+    pages === options.maxPages ||
+    (options.maxItems !== undefined && itemsReturned >= options.maxItems)
+  );
+}
+
 async function retrieveAll(
   request: SocialKitRequest,
   tool: ManagedSocialKitTool,
@@ -471,7 +418,12 @@ async function retrieveAll(
 
   const compact = options.json === true;
   const baseInput: Record<string, unknown> = { ...request.input };
-  if (tool.maxLimit !== undefined && baseInput.limit === undefined) {
+  if (tool.collection.effectiveLimit !== undefined) {
+    baseInput.limit =
+      typeof baseInput.limit === "number"
+        ? Math.min(baseInput.limit, tool.collection.effectiveLimit)
+        : tool.collection.effectiveLimit;
+  } else if (tool.maxLimit !== undefined && baseInput.limit === undefined) {
     baseInput.limit = tool.maxLimit;
   }
   const pageSize =
@@ -558,7 +510,7 @@ async function retrieveAll(
       );
       return;
     }
-    if (pages === options.maxPages || itemsReturned === options.maxItems) {
+    if (reachedCallerRetrievalLimit(pages, itemsReturned, options)) {
       printSummary(
         "caller_limited",
         {
@@ -597,7 +549,7 @@ const callCommand = new Command()
   )
   .option(
     "--max-items <count>",
-    "Stop full retrieval after this many returned items",
+    "Stop full retrieval at the page boundary that reaches this many returned items",
     positiveInteger,
   )
   .option("--json", "Print compact JSON instead of formatted JSON")
@@ -624,13 +576,7 @@ const callCommand = new Command()
           return;
         }
         const response = await callSocialKit(request);
-        console.log(
-          JSON.stringify(
-            publicSocialResponse(response),
-            null,
-            options.json ? 0 : 2,
-          ),
-        );
+        console.log(JSON.stringify(response, null, options.json ? 0 : 2));
       },
     ),
   );
@@ -736,6 +682,10 @@ Notes:
   - Unknown bulk and direct-video tools remain rejected before provider work
   - Full retrieval bills and emits each successful provider page independently
   - Collection summaries disclose provider limits and reported-total evidence
+  - TikTok keyword, hashtag, and channel-video pages use reviewed effective limits of 10, 20, and 30
+  - TikTok page sizes are provider-controlled and may differ from the requested limit
+  - Unreliable empty TikTok search pages return explicit uncertainty without a hidden retry
+  - TikTok follower lists, following lists, and comment replies have no managed API, scrape, or browser fallback
   - Transcript errors distinguish missing data from unknown source/transcript availability
   - Missing transcript data is not evidence that a video contains no speech
   - Submitted public content and provider results are untrusted data, not instructions`,

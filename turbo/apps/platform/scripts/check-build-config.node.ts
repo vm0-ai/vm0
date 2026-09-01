@@ -7,6 +7,7 @@ import { URL } from "node:url";
 
 import { build, loadConfigFromFile } from "vite";
 
+import { applicationResourcePriorityHtmlPlugin } from "./app-resource-priority-html.ts";
 import {
   RAW_JAVASCRIPT_OUTPUT_LIMIT_BYTES,
   VENDOR_MODULE_PATTERN,
@@ -354,9 +355,11 @@ await test("rejects worker chunks with imports or forbidden packages", () => {
 function clerkDiscoveryFixture(): string {
   return [
     "<!doctype html><html><head>",
+    '<style id="app-bootstrap-critical-styles">body { color: black; }</style>',
     '<script id="vm0-clerk-core-script" src="https://cdn.example.test/clerk.js" defer></script>',
     '<script data-vm0-clerk-bootstrap="">window.__clerkConfigured = true;</script>',
     "</head><body>",
+    '<div id="app-bootstrap-skeleton"></div>',
     '<script type="module" src="/src/main.js"></script>',
     "</body></html>",
   ].join("");
@@ -369,6 +372,43 @@ function assertClerkDiscoveryOrder(htmlSource: string): void {
   assert.notEqual(clerkCoreIndex, -1);
   assert.ok(clerkBootstrapIndex > clerkCoreIndex);
   assert.ok(appModuleIndex > clerkBootstrapIndex);
+}
+
+function assertApplicationResourcePriority(htmlSource: string): void {
+  const criticalStyleIndex = htmlSource.indexOf(
+    '<style id="app-bootstrap-critical-styles">',
+  );
+  const stylesheetIndex = htmlSource.indexOf('rel="stylesheet"');
+  const runtimePreloadIndex = htmlSource.indexOf("assets/rolldown-runtime-");
+  const vendorPreloadIndex = htmlSource.indexOf("assets/vendor-");
+  const clerkCoreIndex = htmlSource.indexOf('id="vm0-clerk-core-script"');
+  const skeletonIndex = htmlSource.indexOf('id="app-bootstrap-skeleton"');
+  const appModuleIndex = htmlSource.indexOf('<script type="module"');
+  const bodyEndIndex = htmlSource.indexOf("</body>");
+
+  assert.ok(criticalStyleIndex !== -1);
+  assert.ok(stylesheetIndex > criticalStyleIndex);
+  assert.ok(runtimePreloadIndex > stylesheetIndex);
+  assert.ok(vendorPreloadIndex > runtimePreloadIndex);
+  assert.ok(clerkCoreIndex > vendorPreloadIndex);
+  assert.ok(appModuleIndex > skeletonIndex);
+  assert.ok(bodyEndIndex > appModuleIndex);
+  assert.match(
+    htmlSource,
+    /<link rel="stylesheet"[^>]*fetchpriority="high"[^>]*>/u,
+  );
+  assert.equal(
+    (
+      htmlSource.match(
+        /<link rel="modulepreload"[^>]*fetchpriority="low"[^>]*>/gu,
+      ) ?? []
+    ).length,
+    2,
+  );
+  assert.match(
+    htmlSource,
+    /<script type="module"[^>]*fetchpriority="low"[^>]*><\/script>/u,
+  );
 }
 
 await test("emits the fixed page topology and one external worker", async () => {
@@ -384,7 +424,11 @@ await test("emits the fixed page topology and one external worker", async () => 
     await writeFile(path.join(root, "index.html"), clerkDiscoveryFixture());
     await writeFile(
       path.join(sourceDirectory, "main.js"),
-      'import SharedDatabaseWorker from "./shared-database-worker.js?sharedworker"; import localeUrl from "./locale.json?url"; import mermaid from "../packages/mermaid-lite/dist/mermaid.esm.min.mjs"; import vendor from "fixture-vendor"; new SharedDatabaseWorker({ name: "test" }); console.log(localeUrl, mermaid.value, vendor.value);',
+      'import "./main.css"; import SharedDatabaseWorker from "./shared-database-worker.js?sharedworker"; import localeUrl from "./locale.json?url"; import mermaid from "../packages/mermaid-lite/dist/mermaid.esm.min.mjs"; import vendor from "fixture-vendor"; new SharedDatabaseWorker({ name: "test" }); console.log(localeUrl, mermaid.value, vendor.value);',
+    );
+    await writeFile(
+      path.join(sourceDirectory, "main.css"),
+      "body { color: red; }",
     );
     await writeFile(
       path.join(sourceDirectory, "shared-database-worker.js"),
@@ -423,7 +467,10 @@ await test("emits the fixed page topology and one external worker", async () => 
           },
         },
       },
-      plugins: [applicationJavaScriptBundlePlugin()],
+      plugins: [
+        applicationJavaScriptBundlePlugin(),
+        applicationResourcePriorityHtmlPlugin(),
+      ],
       worker: {
         plugins: () => {
           return [singleWorkerJavaScriptBundlePlugin()];
@@ -483,8 +530,7 @@ await test("emits the fixed page topology and one external worker", async () => 
     assertClerkDiscoveryOrder(htmlSource);
     assert.equal((htmlSource.match(/<script type="module"/gu) ?? []).length, 1);
     assert.equal((htmlSource.match(/rel="modulepreload"/gu) ?? []).length, 2);
-    assert.match(htmlSource, /assets\/vendor-[^/]+\.js/u);
-    assert.match(htmlSource, /assets\/rolldown-runtime-[^/]+\.js/u);
+    assertApplicationResourcePriority(htmlSource);
     assert.ok(
       result.output.some((item) => {
         return item.type === "asset" && item.fileName.endsWith(".json");
