@@ -894,12 +894,10 @@ describe("settings dialog", () => {
         if (requestCount > 1) {
           await releaseRefresh.promise;
           return respond(200, {
-            fallbackEnabled: true,
             activeCooldowns: [],
           });
         }
         return respond(200, {
-          fallbackEnabled: false,
           activeCooldowns: [
             {
               selectedModel: "gpt-5.6-luna",
@@ -919,7 +917,6 @@ describe("settings dialog", () => {
     });
     const { details, summary } = builtInModelCooldownDisclosure(diagnostics);
     expect(details.open).toBeFalsy();
-    expect(summary).toHaveTextContent("workspace fallback: disabled");
     expect(summary).toHaveTextContent("global active cooldowns: 1");
     expect(
       within(diagnostics).queryByText("gpt-5.6-luna-2026-08-01"),
@@ -935,11 +932,6 @@ describe("settings dialog", () => {
     expect(
       within(diagnostics).getByText("2026-08-23T04:05:00.000Z"),
     ).toHaveAttribute("datetime", "2026-08-23T04:05:00.000Z");
-    expect(
-      within(diagnostics).getByText(
-        "Built-in model fallback is disabled for this workspace, so these global cooldowns are currently ignored here.",
-      ),
-    ).toBeInTheDocument();
     expect(
       queryAllByRoleFast("button", diagnostics).some((button) => {
         return button.textContent?.trim() === "Cancel cooldown";
@@ -966,7 +958,6 @@ describe("settings dialog", () => {
 
     releaseRefresh.resolve();
     await waitFor(() => {
-      expect(summary).toHaveTextContent("workspace fallback: enabled");
       expect(summary).toHaveTextContent("global active cooldowns: 0");
       expect(refreshButton).toBeEnabled();
     });
@@ -992,7 +983,6 @@ describe("settings dialog", () => {
       ({ respond }) => {
         diagnosticsRequestCount += 1;
         return respond(200, {
-          fallbackEnabled: true,
           canCancelCooldowns: true,
           activeCooldowns:
             diagnosticsRequestCount === 1
@@ -1039,7 +1029,7 @@ describe("settings dialog", () => {
     ).toBeVisible();
     expect(
       within(confirmation).getByText(
-        "Cancelling this global cooldown makes the route immediately eligible for every workspace with built-in model fallback enabled.",
+        "Cancelling this global cooldown makes the route immediately eligible for every workspace.",
       ),
     ).toBeVisible();
     expect(
@@ -1083,7 +1073,6 @@ describe("settings dialog", () => {
       ({ respond }) => {
         requestCount += 1;
         return respond(200, {
-          fallbackEnabled: true,
           activeCooldowns: [],
         });
       },
@@ -1095,7 +1084,6 @@ describe("settings dialog", () => {
       name: "Built-in model fallback",
     });
     let disclosure = builtInModelCooldownDisclosure(diagnostics);
-    expect(disclosure.summary).toHaveTextContent("workspace fallback: enabled");
     expect(disclosure.summary).toHaveTextContent("global active cooldowns: 0");
     click(disclosure.summary);
     expect(
