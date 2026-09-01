@@ -161,6 +161,7 @@ import {
   scheduleChatThreadTitleGeneration,
 } from "./chat-title.service";
 import { createQueueFirstAgentRun$ } from "./agent-runs-create.service";
+import { shouldUsePiExecution } from "./pi-sandbox-config";
 import { loadActiveGoalForThread } from "./goal.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
@@ -684,6 +685,7 @@ interface CreateQueuedChatRunInput {
   readonly effectiveModelProvider: string | null | undefined;
   readonly builtInModelRuntimeRoute: BuiltInModelRuntimeRoute | undefined;
   readonly cliAgentType: string | null;
+  readonly piExecution: boolean;
   readonly codexServiceTier: "fast" | undefined;
   readonly computerUseHostGrant: {
     readonly hostId: string;
@@ -957,6 +959,7 @@ function buildQueuedCreateAgentRunArgs(
       modelProviderCredentialScope: input.modelPin.modelProviderCredentialScope,
       selectedModel: input.modelPin.selectedModel,
     },
+    piExecution: input.piExecution,
     agentRunMetadata: { autonomyBudget: input.autonomyBudget },
     ...(input.requiredOfficialWorkflowIds === undefined
       ? {}
@@ -2601,6 +2604,34 @@ interface QueuedMessageModelRoute {
   readonly codexServiceTier: "fast" | undefined;
 }
 
+function routeQueuedMessagePiExecution(args: {
+  readonly input: CreateQueuedChatRunInputArgs;
+  readonly modelRoute: QueuedMessageModelRoute;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}) {
+  const triggerSource = queuedUserMessageTriggerSource(
+    args.input.queuedMessage.contextType,
+  );
+  const piExecution = shouldUsePiExecution({
+    chatThreadId: args.input.threadId,
+    modelProviderType: args.modelRoute.effectiveModelProvider,
+    selectedModel: args.modelRoute.modelPin.selectedModel,
+    codexServiceTier: args.modelRoute.codexServiceTier,
+    triggerSource,
+    featureSwitchContext: args.featureSwitchContext,
+  });
+  return {
+    piExecution,
+    triggerSource,
+    routedModel: {
+      ...args.modelRoute,
+      cliAgentType: piExecution
+        ? ("pi" as const)
+        : args.modelRoute.cliAgentType,
+    },
+  };
+}
+
 interface QueuedMessageModelRouteError {
   readonly code: string;
   readonly message: string;
@@ -3219,9 +3250,16 @@ async function buildCreateQueuedChatRunInput(
     );
   }
   const modelRoute = modelRouteResolution.route;
+  // Keep session routing and launch on the same queued-message admission.
+  const { piExecution, routedModel, triggerSource } =
+    routeQueuedMessagePiExecution({
+      input: args,
+      modelRoute,
+      featureSwitchContext,
+    });
 
   const [startNewSession, loadedIncompleteContext] =
-    await loadQueuedMessageSessionState(args, modelRoute);
+    await loadQueuedMessageSessionState(args, routedModel);
   const incompleteContext = startNewSession ? "" : loadedIncompleteContext;
   const priorContext = await measureChatCallbackPreCreateTiming(
     args.timing,
@@ -3254,10 +3292,6 @@ async function buildCreateQueuedChatRunInput(
   const prompt = queuedMessagePrompt({
     launchMaterial,
   });
-  const triggerSource = queuedUserMessageTriggerSource(
-    args.queuedMessage.contextType,
-  );
-
   return {
     orgId: args.agent.orgId,
     userId: args.userId,
@@ -3283,11 +3317,12 @@ async function buildCreateQueuedChatRunInput(
           requiredOfficialWorkflowIds:
             args.queuedMessage.requiredOfficialWorkflowIds,
         }),
-    modelPin: modelRoute.modelPin,
-    effectiveModelProvider: modelRoute.effectiveModelProvider,
-    builtInModelRuntimeRoute: modelRoute.builtInModelRuntimeRoute,
-    cliAgentType: modelRoute.cliAgentType,
-    codexServiceTier: modelRoute.codexServiceTier,
+    modelPin: routedModel.modelPin,
+    effectiveModelProvider: routedModel.effectiveModelProvider,
+    builtInModelRuntimeRoute: routedModel.builtInModelRuntimeRoute,
+    cliAgentType: routedModel.cliAgentType,
+    piExecution,
+    codexServiceTier: routedModel.codexServiceTier,
     computerUseHostGrant,
     triggerSource,
     realAgentInPreview: isFeatureEnabled(

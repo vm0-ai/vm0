@@ -4,11 +4,47 @@ import { createStore } from "ccstate";
 
 import { now } from "../lib/time";
 import { createAgentRun$ } from "../signals/services/agent-run-create.service";
-import { createTestFixtureAgentRun$ } from "../signals/services/agent-runs-create.service";
+import {
+  clearAgentRunPiExecutionSnapshotHookForTest,
+  createTestFixtureAgentRun$,
+  setAgentRunPiExecutionSnapshotHookForTest,
+  type AgentRunPiExecutionSnapshot,
+} from "../signals/services/agent-runs-create.service";
 import { buildAgentExecutionConfig } from "../signals/services/agent-execution-config";
+import { createDeferredPromise } from "../signals/utils";
 
 const USER_ID = "thread-run-invariant-user";
 const ORG_ID = "thread-run-invariant-org";
+
+export function holdAgentRunPiExecutionSnapshotFixture(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly signal: AbortSignal;
+}): {
+  readonly arrival: Promise<AgentRunPiExecutionSnapshot>;
+  readonly release: () => void;
+} {
+  const arrival = createDeferredPromise<AgentRunPiExecutionSnapshot>(
+    args.signal,
+  );
+  const released = createDeferredPromise<void>(args.signal);
+  setAgentRunPiExecutionSnapshotHookForTest(async (snapshot) => {
+    if (snapshot.userId !== args.userId || snapshot.orgId !== args.orgId) {
+      return;
+    }
+    arrival.resolve(snapshot);
+    await released.promise;
+  });
+  return {
+    arrival: arrival.promise,
+    release: () => {
+      clearAgentRunPiExecutionSnapshotHookForTest();
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+  };
+}
 
 /**
  * Exercise the agent-runs-create service boundary that public contracts cannot
@@ -31,6 +67,7 @@ export async function createUnassociatedThreadBoundAgentRunsServiceFixture(
         prompt: "must be rejected before Zero run preparation",
       },
       apiStartTime: now(),
+      piExecution: false,
       chatThreadId,
     },
     new AbortController().signal,
@@ -57,6 +94,7 @@ export async function createUnassociatedThreadBoundAgentRunFixture(
       productAgentExecutionPlan: {
         content: buildAgentExecutionConfig("thread-run-invariant-agent"),
       },
+      piExecution: false,
       chatThreadId,
       connectorScope: {
         allowedConnectorSlugs: [],
