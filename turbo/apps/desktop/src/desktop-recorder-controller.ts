@@ -4,7 +4,7 @@ import {
   type DesktopRecorderError,
   type DesktopRecorderPrepareRequest,
   type DesktopRecorderRecording,
-  type DesktopRecorderSource,
+  type DesktopRecorderSourceList,
   type DesktopRecorderState,
   type DesktopRecorderStatus,
   type RecorderNativeBackend,
@@ -87,7 +87,8 @@ export class DesktopRecorderController {
   }
 
   /**
-   * Applies the `desktopScreenRecording` feature switch.
+   * Applies the effective native recording availability resolved from the
+   * `introVideo` and `desktopScreenRecording` feature switches.
    *
    * Turning it off releases the native helper rather than only hiding the
    * entry point. An in-flight recording is stopped first so the file on disk is
@@ -106,30 +107,8 @@ export class DesktopRecorderController {
     void this.releaseAfterDisable();
   }
 
-  async listSources(): Promise<readonly DesktopRecorderSource[]> {
+  async listSources(): Promise<DesktopRecorderSourceList> {
     return await this.requireBackend().listSources();
-  }
-
-  /**
-   * Prepares and starts a recording of the primary display in one step.
-   *
-   * The menu bar offers this because it cannot host a source picker; choosing a
-   * specific window arrives with the picker UI.
-   */
-  async startMainDisplayRecording(): Promise<void> {
-    const sources = await this.listSources();
-    const display = sources.find((source) => {
-      return source.kind === "display";
-    });
-    if (!display) {
-      throw new Error("No display is available to record");
-    }
-    await this.prepare({
-      sourceId: display.id,
-      sourceKind: "display",
-      systemAudio: true,
-    });
-    await this.start();
   }
 
   async prepare(request: DesktopRecorderPrepareRequest): Promise<void> {
@@ -171,16 +150,55 @@ export class DesktopRecorderController {
     this.setStatus("recording");
   }
 
-  async stop(): Promise<DesktopRecorderRecording> {
+  async pause(): Promise<void> {
     const backend = this.requireBackend();
     const sessionId = this.requireSession();
     this.requireStatus("recording");
+    await backend.pause(sessionId);
+    this.setStatus("paused");
+  }
+
+  async resume(): Promise<void> {
+    const backend = this.requireBackend();
+    const sessionId = this.requireSession();
+    this.requireStatus("paused");
+    await backend.resume(sessionId);
+    this.setStatus("recording");
+  }
+
+  /**
+   * Ends the capture and throws the recording away.
+   *
+   * Nothing is kept as `lastRecording`, so a discarded recording cannot be
+   * delivered later by a retry.
+   */
+  async discard(): Promise<void> {
+    const backend = this.requireBackend();
+    const sessionId = this.requireSession();
+    if (this.status !== "recording" && this.status !== "paused") {
+      throw new Error(`Screen recording is ${this.status}, expected recording`);
+    }
+    await backend.discard(sessionId);
+    this.sessionId = null;
+    this.elapsedMs = 0;
+    this.error = null;
+    this.lastRecording = null;
+    this.setStatus("idle");
+  }
+
+  async stop(): Promise<DesktopRecorderRecording> {
+    const backend = this.requireBackend();
+    const sessionId = this.requireSession();
+    const resumeStatus = this.status;
+    if (resumeStatus !== "recording" && resumeStatus !== "paused") {
+      throw new Error(`Screen recording is ${this.status}, expected recording`);
+    }
     this.setStatus("finalizing");
     // A rejected stop leaves the session in the caller's hands: go back to
     // `recording` so the stop can be retried, rather than stranding the machine
     // in `finalizing` where neither stop nor prepare is accepted again.
     const recording = await this.restoreStatusOnFailure(
-      "recording",
+      resumeStatus,
       async () => {
         return await backend.stop(sessionId);
       },
@@ -239,6 +257,8 @@ export class DesktopRecorderController {
    * window closing, the display being unplugged — only surfaces here.
    */
   async refreshRecordingStatus(): Promise<void> {
+    // A paused capture is still open, but its own status is what the poll would
+    // be reading, so leave it alone until it resumes.
     if (this.status !== "recording" || !this.sessionId || !this.backend) {
       return;
     }

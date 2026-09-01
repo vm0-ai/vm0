@@ -1,4 +1,5 @@
 import {
+  OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION,
   officialWorkflowAcceptedRevisionSchema,
   officialWorkflowCatalogReleasePayloadSchema,
   officialWorkflowDefinitionRevisionPayloadSchema,
@@ -31,6 +32,21 @@ interface OfficialWorkflowRevisionRow {
   readonly storageName: string;
   readonly storageId: string;
   readonly storageVersion: string;
+}
+
+function officialWorkflowPayloadSchemaVersion(payload: unknown): number {
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    Array.isArray(payload) ||
+    !("schemaVersion" in payload) ||
+    typeof payload.schemaVersion !== "number" ||
+    !Number.isSafeInteger(payload.schemaVersion) ||
+    payload.schemaVersion < 1
+  ) {
+    throw new Error("Official Workflow payload version is invalid");
+  }
+  return payload.schemaVersion;
 }
 
 function acceptedRevisionFromRow(
@@ -81,6 +97,12 @@ export async function readAcceptedOfficialWorkflowCatalog(
     .limit(1);
   signal?.throwIfAborted();
   if (!row) {
+    return null;
+  }
+  if (
+    officialWorkflowPayloadSchemaVersion(row.payload) <
+    OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION
+  ) {
     return null;
   }
   return {
@@ -153,7 +175,7 @@ export async function readAcceptedOfficialWorkflowRevision(
   return acceptedRevisionFromRow(row);
 }
 
-export async function readAllAcceptedOfficialWorkflowRevisions(
+export async function readAllCurrentSchemaOfficialWorkflowRevisions(
   db: ReadonlyDb,
   signal?: AbortSignal,
 ): Promise<readonly OfficialWorkflowAcceptedRevision[]> {
@@ -196,7 +218,13 @@ export async function readAllAcceptedOfficialWorkflowRevisions(
       asc(officialWorkflowDefinitionRevisions.revision),
     );
   signal?.throwIfAborted();
-  return rows.map((row) => {
+  return rows.flatMap((row) => {
+    if (
+      officialWorkflowPayloadSchemaVersion(row.payload) !==
+      OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION
+    ) {
+      return [];
+    }
     if (
       row.verifiedStorageId !== row.storageId ||
       row.verifiedStorageVersion !== row.storageVersion
@@ -205,6 +233,6 @@ export async function readAllAcceptedOfficialWorkflowRevisions(
         "Official Workflow revision artifact registration is inconsistent",
       );
     }
-    return acceptedRevisionFromRow(row);
+    return [acceptedRevisionFromRow(row)];
   });
 }

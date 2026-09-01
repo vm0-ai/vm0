@@ -46,8 +46,11 @@ import {
   type DuplicateEventIdNormalizationStats,
 } from "./chat-event-snapshot-duplicate-id-normalization";
 import {
+  ChatEventSnapshotProjectionError,
   decodeChatEventSnapshotBody,
   repairMorningBriefPhaseBSnapshot,
+  type ChatEventSnapshotProjectionSubstage,
+  type ChatEventSnapshotProjectionVariant,
 } from "./chat-event-snapshot-body.service";
 
 const log = logger("api:cron:snapshot-chat-events");
@@ -306,11 +309,18 @@ type SnapshotDecodeFailureClass =
 
 class SnapshotDecodeFailure extends Error {
   readonly failureClass: SnapshotDecodeFailureClass;
+  readonly projectionSubstage: ChatEventSnapshotProjectionSubstage | undefined;
+  readonly projectionVariant: ChatEventSnapshotProjectionVariant | undefined;
 
-  constructor(failureClass: SnapshotDecodeFailureClass) {
+  constructor(
+    failureClass: SnapshotDecodeFailureClass,
+    projectionFailure?: ChatEventSnapshotProjectionError,
+  ) {
     super("Chat Event Snapshot decode failed");
     this.name = "SnapshotDecodeFailure";
     this.failureClass = failureClass;
+    this.projectionSubstage = projectionFailure?.projectionSubstage;
+    this.projectionVariant = projectionFailure?.projectionVariant;
   }
 }
 
@@ -323,6 +333,8 @@ type SnapshotSkippedResolution =
       readonly kind: "skipped";
       readonly reason: "undecodable";
       readonly failureClass: SnapshotDecodeFailureClass;
+      readonly projectionSubstage?: ChatEventSnapshotProjectionSubstage;
+      readonly projectionVariant?: ChatEventSnapshotProjectionVariant;
     };
 
 type SnapshotSourceResolution =
@@ -467,7 +479,12 @@ async function decodeSnapshotStage<T>(
     })(),
   );
   if (!decoded.ok) {
-    throw new SnapshotDecodeFailure(failureClass);
+    throw new SnapshotDecodeFailure(
+      failureClass,
+      decoded.error instanceof ChatEventSnapshotProjectionError
+        ? decoded.error
+        : undefined,
+    );
   }
   return decoded.value;
 }
@@ -546,6 +563,13 @@ function readSnapshotPrefix(
       kind: "skipped",
       reason: "undecodable",
       failureClass: decoded.error.failureClass,
+      ...(decoded.error.projectionSubstage === undefined ||
+      decoded.error.projectionVariant === undefined
+        ? {}
+        : {
+            projectionSubstage: decoded.error.projectionSubstage,
+            projectionVariant: decoded.error.projectionVariant,
+          }),
     };
   });
 }
@@ -647,7 +671,16 @@ function skippedArchivedThread(
     chatThreadId: candidate.chatThreadId,
     reason: resolution.reason,
     ...(resolution.reason === "undecodable"
-      ? { failureClass: resolution.failureClass }
+      ? {
+          failureClass: resolution.failureClass,
+          ...(resolution.projectionSubstage === undefined ||
+          resolution.projectionVariant === undefined
+            ? {}
+            : {
+                projectionSubstage: resolution.projectionSubstage,
+                projectionVariant: resolution.projectionVariant,
+              }),
+        }
       : {}),
   });
   return {

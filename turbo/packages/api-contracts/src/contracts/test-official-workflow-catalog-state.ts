@@ -19,6 +19,11 @@ export const testOfficialWorkflowCatalogStateActionBodySchema =
       .strict(),
     z
       .object({
+        action: z.literal("seed-previous-schema-release"),
+      })
+      .strict(),
+    z
+      .object({
         action: z.literal("read"),
         definitionName: workflowNameSchema.optional(),
         workflowId: z.uuid().optional(),

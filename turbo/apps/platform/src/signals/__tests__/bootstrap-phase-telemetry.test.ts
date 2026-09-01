@@ -218,7 +218,6 @@ describe("bootstrap phase telemetry", () => {
     const properties = timingEvents()[0];
     expect(properties).toStrictEqual(
       expect.objectContaining({
-        clerk_load_ms: expect.any(Number),
         entry_module_ready_ms: 10,
         final_route: ROUTES.chat,
         initial_route: ROUTES.chat,

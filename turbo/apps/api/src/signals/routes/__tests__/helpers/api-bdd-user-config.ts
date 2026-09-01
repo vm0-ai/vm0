@@ -79,11 +79,16 @@ const c = initContract();
  * contract-invalid bodies through the app (the real contract types reject
  * them at compile time). Mirrors the raw `app.request` cases in the legacy
  * user-model-preference test.
+ *
+ * The path is the neutral one the real contract declares: this is a client
+ * against an app built from `userConfigRoutes`, so it reaches the real handler
+ * rather than registering a route of its own, and #30807 retired the branded
+ * forms this mirror used to send.
  */
 const rawModelPreferenceContract = c.router({
   update: {
     method: "PUT" as const,
-    path: "/api/zero/user-model-preference",
+    path: "/api/user-model-preference",
     headers: z.object({ authorization: z.string().optional() }),
     body: z.unknown(),
     responses: {

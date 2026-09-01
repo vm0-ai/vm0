@@ -332,14 +332,14 @@ describe("Slack OAuth API routes", () => {
     });
   });
 
-  describe("GET /api/zero/slack/oauth/connect", () => {
+  describe("GET /api/slack/oauth/connect", () => {
     it("redirects to Slack OAuth with team and connect state", async () => {
       const fixture = await track(
         store.set(seedSlackConnectOrg$, {}, context.signal),
       );
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/connect?orgId=${fixture.orgId}&userId=${fixture.userId}`,
+        `/api/slack/oauth/connect?orgId=${fixture.orgId}&userId=${fixture.userId}`,
       );
 
       expect(response.status).toBe(307);
@@ -388,7 +388,7 @@ describe("Slack OAuth API routes", () => {
       );
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/connect?orgId=${fixture.orgId}&userId=${fixture.userId}`,
+        `/api/slack/oauth/connect?orgId=${fixture.orgId}&userId=${fixture.userId}`,
         {
           origin: API_ORIGIN,
           headers: { "x-vm0-web-origin": WEB_ORIGIN },
@@ -408,7 +408,7 @@ describe("Slack OAuth API routes", () => {
       );
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/connect?orgId=${fixture.orgId}&userId=${fixture.userId}&prompt=${encodeURIComponent("summarize my inbox")}`,
+        `/api/slack/oauth/connect?orgId=${fixture.orgId}&userId=${fixture.userId}&prompt=${encodeURIComponent("summarize my inbox")}`,
       );
 
       expect(response.status).toBe(307);
@@ -435,7 +435,7 @@ describe("Slack OAuth API routes", () => {
       const prompt = "x".repeat(1200);
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/connect?orgId=${fixture.orgId}&userId=${fixture.userId}&prompt=${encodeURIComponent(prompt)}`,
+        `/api/slack/oauth/connect?orgId=${fixture.orgId}&userId=${fixture.userId}&prompt=${encodeURIComponent(prompt)}`,
       );
 
       expect(response.status).toBe(307);
@@ -453,7 +453,7 @@ describe("Slack OAuth API routes", () => {
       const prompt = "\u{1F600}".repeat(600);
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/connect?orgId=${fixture.orgId}&userId=${fixture.userId}&prompt=${encodeURIComponent(prompt)}`,
+        `/api/slack/oauth/connect?orgId=${fixture.orgId}&userId=${fixture.userId}&prompt=${encodeURIComponent(prompt)}`,
       );
 
       expect(response.status).toBe(307);
@@ -473,7 +473,7 @@ describe("Slack OAuth API routes", () => {
       );
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/connect?orgId=${fixture.orgId}&userId=${fixture.userId}`,
+        `/api/slack/oauth/connect?orgId=${fixture.orgId}&userId=${fixture.userId}`,
       );
 
       expect(response.status).toBe(307);
@@ -486,20 +486,18 @@ describe("Slack OAuth API routes", () => {
 
     it("redirects direct API host connect requests to the canonical web route", async () => {
       const response = await appRequest(
-        "/api/zero/slack/oauth/connect?orgId=org_1&userId=user_1",
+        "/api/slack/oauth/connect?orgId=org_1&userId=user_1",
         { origin: API_ORIGIN },
       );
 
       expect(response.status).toBe(307);
       expect(response.headers.get("location")).toBe(
-        `${WEB_ORIGIN}/api/zero/slack/oauth/connect?orgId=org_1&userId=user_1`,
+        `${WEB_ORIGIN}/api/slack/oauth/connect?orgId=org_1&userId=user_1`,
       );
     });
 
     it("returns 400 when orgId or userId is missing", async () => {
-      const response = await appRequest(
-        "/api/zero/slack/oauth/connect?orgId=org_1",
-      );
+      const response = await appRequest("/api/slack/oauth/connect?orgId=org_1");
 
       expect(response.status).toBe(400);
       await expect(response.json()).resolves.toStrictEqual({
@@ -509,7 +507,7 @@ describe("Slack OAuth API routes", () => {
 
     it("returns 404 when no Slack installation exists for the org", async () => {
       const response = await appRequest(
-        "/api/zero/slack/oauth/connect?orgId=org_missing&userId=user_1",
+        "/api/slack/oauth/connect?orgId=org_missing&userId=user_1",
       );
 
       expect(response.status).toBe(404);
@@ -522,7 +520,7 @@ describe("Slack OAuth API routes", () => {
       mockEnv("SLACK_OAUTH_CLIENT_ID", "");
 
       const response = await appRequest(
-        "/api/zero/slack/oauth/connect?orgId=org_1&userId=user_1",
+        "/api/slack/oauth/connect?orgId=org_1&userId=user_1",
       );
 
       expect(response.status).toBe(503);

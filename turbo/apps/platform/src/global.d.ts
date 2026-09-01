@@ -25,8 +25,6 @@ interface VM0ClerkBootstrap {
   readonly abortOnboarding: () => void;
   readonly clientSessionId?: string;
   clerk?: PlatformClerk;
-  clerkLoadCompletedAt?: number;
-  clerkLoadStartedAt?: number;
   readonly domain?: string;
   readonly loadOptions: VM0ClerkBootstrapLoadOptions;
   loaded?: Promise<void>;

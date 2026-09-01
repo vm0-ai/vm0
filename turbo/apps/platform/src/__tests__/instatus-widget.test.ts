@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import indexHtml from "../../index.html?raw";
+import { initInstatusWidget } from "../lib/instatus-widget.ts";
 import { testContext } from "../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -9,31 +9,6 @@ const INSTATUS_SCRIPT_URL =
   "https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en";
 const INSTATUS_SCRIPT_INTEGRITY =
   "sha384-ZW3eZwADOMdlg2fdvESPD7jguK16IC/edxNFakKs81D2lkNdi3BXRmx/g331lkD3";
-
-type EntrypointScript = (
-  windowObject: Window,
-  documentObject: Document,
-) => void;
-
-function getInstatusLoaderSource(): string {
-  const inlineScripts = [
-    ...indexHtml.matchAll(/<script>([\s\S]*?)<\/script>/gi),
-  ]
-    .map((match) => {
-      return match[1];
-    })
-    .filter((script): script is string => {
-      return script !== undefined;
-    });
-  const source = inlineScripts.find((script) => {
-    return script.includes(INSTATUS_SCRIPT_URL);
-  });
-
-  if (source === undefined) {
-    throw new Error("Unable to locate the Instatus loader in index.html");
-  }
-  return source;
-}
 
 function loadInstatusScripts(hostname: string): HTMLScriptElement[] {
   context.mocks.browser.url(`https://${hostname}/`);
@@ -46,13 +21,7 @@ function loadInstatusScripts(hostname: string): HTMLScriptElement[] {
       return node;
     },
   );
-  const executeEntrypointScript = new Function(
-    "window",
-    "document",
-    `${getInstatusLoaderSource()}\n//# sourceURL=platform-instatus-widget-test.js`,
-  ) as EntrypointScript;
-
-  executeEntrypointScript(window, document);
+  initInstatusWidget();
   return appendedScripts;
 }
 

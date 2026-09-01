@@ -33,6 +33,25 @@ uv run --no-sync python -m pytest tests/test_update_x_tlds.py
 For a local or reproducible source file, pass `--source-file` to the updater instead
 of fetching IANA. The same generated-module and integrity-pin review applies.
 
+# Flow metadata key linter
+
+The flow metadata key linter checks shared `flow.metadata` keys for duplicate
+registry values and repository key-use diagnostics. Run it from the addon root:
+
+```bash
+cd crates/runner/mitm-addon
+./scripts/check-flow-metadata-keys.py
+```
+
+A clean run exits 0 without output. An exit code of 1 prints the diagnostics
+that need correction. The linter recursively scans Python files under `src/`
+and `tests/`, excludes the canonical [`src/flow_metadata_keys.py`](../src/flow_metadata_keys.py)
+registry, and does not inspect `scripts/`.
+
+When adding or renaming a shared metadata key, update the registry and use its
+`metadata_keys` constants instead of literal shared keys, then run this check
+before committing the related addon changes.
+
 # Chat Completions extractor benchmark
 
 The [Chat Completions extractor benchmark](benchmark_openai_chat_completions_usage.py)

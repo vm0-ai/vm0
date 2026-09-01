@@ -9,6 +9,7 @@ export type DesktopRecorderStatus =
   | "delivering"
   | "finalizing"
   | "idle"
+  | "paused"
   | "preparing"
   | "ready"
   | "recording"
@@ -27,7 +28,42 @@ export interface DesktopRecorderError {
   readonly message: string;
 }
 
+/** What `listSources` can enumerate. An area is a crop, not a listable source. */
 export type DesktopRecorderSourceKind = "display" | "window";
+
+/** What a capture can be aimed at. */
+export type DesktopRecorderCaptureKind = DesktopRecorderSourceKind | "area";
+
+/** A selected region in global screen points, top-left origin. */
+export interface DesktopRecorderArea {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * What the recorder overlays ask to capture.
+ *
+ * Only a window names its source. A display or area capture is aimed at the
+ * screen the overlays themselves were opened on, and the main process is what
+ * knows which one that is, so the renderer cannot pair a region drawn on one
+ * screen with another screen's id.
+ */
+export type DesktopRecorderCaptureRequest = {
+  readonly systemAudio: boolean;
+  readonly microphone: boolean;
+} & (
+  | { readonly sourceKind: "area"; readonly area: DesktopRecorderArea }
+  | { readonly sourceKind: "display" }
+  | { readonly sourceKind: "window"; readonly sourceId: string }
+);
+
+export interface DesktopRecorderSourceList {
+  readonly sources: readonly DesktopRecorderSource[];
+  /** ScreenCaptureKit only reaches the microphone on macOS 15 and later. */
+  readonly supportsMicrophone: boolean;
+}
 
 export interface DesktopRecorderSource {
   readonly id: string;
@@ -53,8 +89,8 @@ export interface DesktopRecorderCaptureGeometry {
 export interface DesktopRecorderRecording {
   readonly videoPath: string;
   /**
-   * Sidecar JSON holding every click that landed inside the captured region,
-   * timestamped against the same clock as the video frames.
+   * Sidecar JSON holding clicks and pointer movement inside the captured
+   * region, timestamped against the same clock as the video frames.
    */
   readonly clickTrackPath: string;
   readonly durationMs: number;
@@ -74,8 +110,16 @@ export interface DesktopRecorderState {
 
 export interface DesktopRecorderPrepareRequest {
   readonly sourceId: string;
-  readonly sourceKind: DesktopRecorderSourceKind;
+  readonly sourceKind: DesktopRecorderCaptureKind;
   readonly systemAudio: boolean;
+  /** Narration, on its own track. Needs macOS 15 or later. */
+  readonly microphone: boolean;
+  /**
+   * Required when `sourceKind` is `"area"`, and `sourceId` then names the
+   * display the region was drawn on. ScreenCaptureKit has no region filter, so
+   * the display is captured and this crops it.
+   */
+  readonly area?: DesktopRecorderArea;
 }
 
 export interface DesktopRecorderPrepareResult {
@@ -99,11 +143,15 @@ export interface DesktopRecorderNativeStatus {
  */
 export interface RecorderNativeBackend {
   readonly dispose: () => void;
-  readonly listSources: () => Promise<readonly DesktopRecorderSource[]>;
+  readonly listSources: () => Promise<DesktopRecorderSourceList>;
   readonly prepare: (
     request: DesktopRecorderPrepareRequest,
   ) => Promise<DesktopRecorderPrepareResult>;
   readonly start: (sessionId: string, outputPath: string) => Promise<void>;
+  readonly pause: (sessionId: string) => Promise<void>;
+  readonly resume: (sessionId: string) => Promise<void>;
+  /** Ends the capture and deletes what was written. */
+  readonly discard: (sessionId: string) => Promise<void>;
   readonly stop: (sessionId: string) => Promise<DesktopRecorderRecording>;
   readonly getStatus: (
     sessionId: string,

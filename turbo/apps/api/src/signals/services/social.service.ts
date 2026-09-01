@@ -1,6 +1,7 @@
 import {
   findManagedSocialKitTool,
   MANAGED_SOCIALKIT_BILLING_CATEGORY,
+  projectPublicSocialResponse,
   SOCIALKIT_MAX_INPUT_VALUE_CHARS,
   SOCIALKIT_TRANSCRIPT_ERROR_CODES,
   type ManagedSocialKitPagination,
@@ -265,14 +266,20 @@ function providerUrl(
   tool: ManagedSocialKitTool,
 ): URL {
   const url = new URL(tool.path, SOCIALKIT_API_BASE);
+  const resultLimit = effectiveRequestLimit(request, tool);
   for (const [name, value] of Object.entries(request.input)) {
-    url.searchParams.set(name, providerInputValue(value));
+    url.searchParams.set(
+      name,
+      providerInputValue(
+        name === "limit" && resultLimit !== undefined ? resultLimit : value,
+      ),
+    );
   }
   if (
-    tool.collection?.defaultLimit !== undefined &&
+    resultLimit !== undefined &&
     requestInputValue(request, "limit") === undefined
   ) {
-    url.searchParams.set("limit", String(tool.collection.defaultLimit));
+    url.searchParams.set("limit", String(resultLimit));
   }
   return url;
 }
@@ -403,7 +410,7 @@ function providerResult(
   if (collection === undefined) {
     return { ok: false };
   }
-  const billingQuantity = tool.collection?.itemsPerBillingUnit
+  const returnedItemsBillingQuantity = tool.collection?.itemsPerBillingUnit
     ? Math.max(
         1,
         Math.ceil(
@@ -413,6 +420,10 @@ function providerResult(
         ),
       )
     : 1;
+  const billingQuantity =
+    tool.collection?.pageSize?.kind === "provider_controlled"
+      ? preflightBillingQuantity(request, tool)
+      : returnedItemsBillingQuantity;
   return {
     ok: true,
     result: result.data,
@@ -421,16 +432,32 @@ function providerResult(
   };
 }
 
-function effectiveResultLimit(
+function effectiveRequestLimit(
   request: SocialKitRequest,
   tool: ManagedSocialKitTool,
 ): number | undefined {
-  const defaultLimit = tool.collection?.defaultLimit;
-  if (defaultLimit === undefined) {
+  const collection = tool.collection;
+  if (!collection || collection.defaultLimit === undefined) {
     return undefined;
   }
+  const defaultLimit = collection.defaultLimit;
   const requestedLimit = requestInputValue(request, "limit");
-  return typeof requestedLimit === "number" ? requestedLimit : defaultLimit;
+  const limit =
+    typeof requestedLimit === "number" ? requestedLimit : defaultLimit;
+  return collection.effectiveLimit === undefined
+    ? limit
+    : Math.min(limit, collection.effectiveLimit);
+}
+
+function acceptedResultLimit(
+  request: SocialKitRequest,
+  tool: ManagedSocialKitTool,
+): number | undefined {
+  const requestLimit = effectiveRequestLimit(request, tool);
+  return tool.collection?.pageSize?.kind === "provider_controlled" &&
+    tool.maxLimit !== undefined
+    ? tool.maxLimit
+    : requestLimit;
 }
 
 function paginationCursorValue(value: unknown): string | undefined {
@@ -655,8 +682,8 @@ function validatedCollection(
   if (!Array.isArray(items)) {
     return undefined;
   }
-  const effectiveLimit = effectiveResultLimit(request, tool);
-  if (effectiveLimit !== undefined && items.length > effectiveLimit) {
+  const resultLimit = acceptedResultLimit(request, tool);
+  if (resultLimit !== undefined && items.length > resultLimit) {
     return undefined;
   }
   const reportedTotal = validatedReportedTotal(
@@ -681,7 +708,7 @@ function preflightBillingQuantity(
   tool: ManagedSocialKitTool,
 ): number {
   const itemsPerBillingUnit = tool.collection?.itemsPerBillingUnit;
-  const resultLimit = effectiveResultLimit(request, tool);
+  const resultLimit = effectiveRequestLimit(request, tool);
   return itemsPerBillingUnit === undefined || resultLimit === undefined
     ? 1
     : Math.max(1, Math.ceil(resultLimit / itemsPerBillingUnit));
@@ -713,6 +740,18 @@ async function completeSocialKitRequest(
     args.tool,
   );
   if (!parsed.ok) {
+    return invalidResponse();
+  }
+  const projectionCandidate = socialKitResponseSchema.parse({
+    provider: PROVIDER,
+    tool: args.tool.name,
+    billingCategory: MANAGED_SOCIALKIT_BILLING_CATEGORY,
+    billingQuantity: parsed.billingQuantity,
+    creditsCharged: 0,
+    collection: parsed.collection,
+    result: parsed.result,
+  });
+  if (!projectPublicSocialResponse(projectionCandidate).ok) {
     return invalidResponse();
   }
   const creditsCharged = await args.recordUsage(parsed.billingQuantity);

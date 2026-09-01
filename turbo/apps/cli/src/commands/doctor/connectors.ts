@@ -549,12 +549,13 @@ async function selectedWorkflows(
     const workflowId = await resolveWorkflowRef(workflowRef, options);
     return [await getWorkflow(workflowId)];
   }
-  if (options.agent) {
-    throw new Error("--agent requires a workflow argument");
-  }
-  const workflows = await listWorkflows({});
+  const workflows = await listWorkflows({ agentId: options.agent });
   return workflows.filter((workflow) => {
-    return workflow.shadowedBy == null;
+    return (
+      workflow.shadowedBy == null &&
+      (options.agent === undefined ||
+        workflow.agentId.toLowerCase() === options.agent.toLowerCase())
+    );
   });
 }
 
@@ -564,21 +565,23 @@ export const connectorsCommand = new Command()
   .argument("[workflow]", "Workflow ID or slug name")
   .option(
     "--agent <id>",
-    "Agent scope for a workflow slug (defaults to OKOU_AGENT_ID)",
+    "Agent scope for aggregate diagnosis or workflow slug resolution (slugs default to OKOU_AGENT_ID)",
   )
   .option("--json", "Print a versioned machine-readable report")
   .addHelpText(
     "after",
     `
 Examples:
-  Check effective visible workflows: okou doctor connectors
+  Check effective visible workflows across Agents: okou doctor connectors
+  Check effective workflows on one Agent: okou doctor connectors --agent <agent-id>
   Check one workflow ID: okou doctor connectors <workflow-id>
   Check one workflow name: okou doctor connectors <workflow-name> --agent <agent-id>
-  Print JSON: okou doctor connectors --json
+  Print Agent-scoped JSON: okou doctor connectors --agent <agent-id> --json
 
 Notes:
-  - Without a workflow argument, every effective visible workflow across all visible Agents is checked; shadowed workflows are skipped
-  - Aggregate mode is not limited by OKOU_AGENT_ID; each workflow's Agent is used for connector authorization
+  - Without a workflow argument or --agent, every effective visible workflow across all visible Agents is checked; shadowed workflows are skipped
+  - With --agent and no workflow argument, every effective workflow hosted by that Agent is checked; public and private workflows are included; shadowed workflows are skipped
+  - With a workflow argument, --agent scopes workflow slug resolution; slugs otherwise use OKOU_AGENT_ID, while workflow IDs retain their existing direct lookup behavior
   - Each workflow is checked through its stored connector-readiness route
   - Findings and per-workflow unknowns are report data and do not fail the command
   - Use okou connector check for one current-run URL, firewall decision, or permission failure`,
