@@ -1897,14 +1897,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(claim).not.toHaveProperty("connectorPermissionBaseline");
     expectClaimNetworkPolicyRefreshPath(created.runId, "no_builtin_targets");
 
-    const {
-      actor: warmActor,
-      agentId: warmAgentId,
-      runnerGroup: warmRunnerGroup,
-    } = await entitledRunActor();
     const warmPrompt = "repeated empty timing should not leak prompt";
-    const warmCreated = await api.createRun(warmActor, {
-      agentId: warmAgentId,
+    const warmCreated = await api.createRun(actor, {
+      agentId,
       prompt: warmPrompt,
       modelProvider: "anthropic-api-key",
     });
@@ -1922,14 +1917,14 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     for (const event of warmTimingEvents) {
       expect(event).toStrictEqual(
         expect.objectContaining({
-          runner_group: warmRunnerGroup,
+          runner_group: runnerGroup,
           run_id: warmCreated.runId,
         }),
       );
     }
     expectApiDispatchTimingEventsNotToLeak(warmTimingEvents, [
       warmPrompt,
-      warmAgentId,
+      agentId,
       "test-oauth-secret",
       "fixture-confidential-secret",
     ]);
