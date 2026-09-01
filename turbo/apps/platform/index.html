@@ -225,8 +225,11 @@
         var publishableKey = production
           ? "%VITE_CLERK_PUBLISHABLE_KEY_PROD%"
           : "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%";
-        var primaryClerkFrontendApi = clerkFrontendApi(publishableKey);
-        var okouPrimary = primaryClerkFrontendApi === "clerk.app.okou.ai";
+        var productionPrimaryAppDomain =
+          "__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__" === "app.okou.ai"
+            ? "app.okou.ai"
+            : "app.vm0.ai";
+        var okouPrimary = productionPrimaryAppDomain === "app.okou.ai";
         var satelliteDomain = null;
         if (
           production &&
@@ -243,9 +246,7 @@
         }
         var satellite = satelliteDomain !== null;
         var authOrigin = satellite
-          ? okouPrimary
-            ? "https://app.okou.ai"
-            : "https://app.vm0.ai"
+          ? "https://" + productionPrimaryAppDomain
           : location.origin;
         var loadOptions = {
           afterSignOutUrl: new URL("/sign-in", authOrigin).toString(),
@@ -269,23 +270,13 @@
           clientSessionId: clientSessionId,
           domain: satelliteDomain || undefined,
           loadOptions: loadOptions,
+          productionPrimaryAppDomain: productionPrimaryAppDomain,
           publishableKey: publishableKey,
         };
         window.__vm0ClerkBootstrap = bootstrap;
 
         function isDomainOrSubdomain(value, domain) {
           return value === domain || value.endsWith("." + domain);
-        }
-
-        function clerkFrontendApi(key) {
-          var encoded = key.split("_")[2];
-          if (!encoded) return "";
-          try {
-            var decoded = atob(encoded);
-            return decoded.endsWith("$") ? decoded.slice(0, -1) : "";
-          } catch (_error) {
-            return "";
-          }
         }
 
         function rewriteServiceHostname(value, target) {

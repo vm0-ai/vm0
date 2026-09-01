@@ -1,16 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  normalizeClerkProductionPrimaryAppDomain,
   resolveClerkProductionSatelliteDomain,
   resolveClerkProductionTopology,
 } from "../clerk-production-topology.ts";
 
-const VM0_PRIMARY_PUBLISHABLE_KEY = "pk_live_Y2xlcmsudm0wLmFpJA";
-const OKOU_PRIMARY_PUBLISHABLE_KEY = "pk_live_Y2xlcmsuYXBwLm9rb3UuYWkk";
+const CURRENT_PRIMARY_APP_DOMAIN = "app.vm0.ai";
+const CUTOVER_PRIMARY_APP_DOMAIN = "app.okou.ai";
 
 describe("clerk production topology", () => {
-  it("keeps the deployed VM0 primary topology for the legacy key", () => {
+  it("keeps the deployed VM0 primary topology for the current satellite", () => {
     expect(
-      resolveClerkProductionTopology(VM0_PRIMARY_PUBLISHABLE_KEY),
+      resolveClerkProductionTopology(CURRENT_PRIMARY_APP_DOMAIN),
     ).toStrictEqual({
       primaryAppOrigin: "https://app.vm0.ai",
       primaryBrand: "vm0",
@@ -19,53 +20,56 @@ describe("clerk production topology", () => {
     expect(
       resolveClerkProductionSatelliteDomain(
         "app.okou.ai",
-        VM0_PRIMARY_PUBLISHABLE_KEY,
+        CURRENT_PRIMARY_APP_DOMAIN,
       ),
     ).toBe("app.okou.ai");
     expect(
       resolveClerkProductionSatelliteDomain(
         "app.vm0.ai",
-        VM0_PRIMARY_PUBLISHABLE_KEY,
+        CURRENT_PRIMARY_APP_DOMAIN,
       ),
     ).toBeNull();
   });
 
   it("switches VM0 hosts to the root satellite when Okou is primary", () => {
     expect(
-      resolveClerkProductionTopology(OKOU_PRIMARY_PUBLISHABLE_KEY),
+      resolveClerkProductionTopology(CUTOVER_PRIMARY_APP_DOMAIN),
     ).toStrictEqual({
       primaryAppOrigin: "https://app.okou.ai",
       primaryBrand: "okou",
-      primaryUserProfileUrl: "https://accounts.app.okou.ai/user",
+      primaryUserProfileUrl: "https://accounts.vm0.ai/user",
     });
     expect(
       resolveClerkProductionSatelliteDomain(
         "app.okou.ai",
-        OKOU_PRIMARY_PUBLISHABLE_KEY,
+        CUTOVER_PRIMARY_APP_DOMAIN,
       ),
     ).toBeNull();
     expect(
       resolveClerkProductionSatelliteDomain(
         "app.vm0.ai",
-        OKOU_PRIMARY_PUBLISHABLE_KEY,
+        CUTOVER_PRIMARY_APP_DOMAIN,
       ),
     ).toBe("vm0.ai");
     expect(
       resolveClerkProductionSatelliteDomain(
         "www.vm0.ai",
-        OKOU_PRIMARY_PUBLISHABLE_KEY,
+        CUTOVER_PRIMARY_APP_DOMAIN,
       ),
     ).toBe("vm0.ai");
     expect(
       resolveClerkProductionSatelliteDomain(
         "vm0.ai.evil.example",
-        OKOU_PRIMARY_PUBLISHABLE_KEY,
+        CUTOVER_PRIMARY_APP_DOMAIN,
       ),
     ).toBeNull();
   });
 
-  it("falls back to the rollback-safe VM0 topology for an unknown key", () => {
-    expect(resolveClerkProductionTopology("invalid-key")).toMatchObject({
+  it("falls back to the rollback-safe current topology for an unknown value", () => {
+    expect(normalizeClerkProductionPrimaryAppDomain("invalid-domain")).toBe(
+      CURRENT_PRIMARY_APP_DOMAIN,
+    );
+    expect(resolveClerkProductionTopology("invalid-domain")).toMatchObject({
       primaryAppOrigin: "https://app.vm0.ai",
       primaryBrand: "vm0",
     });

@@ -79,11 +79,20 @@ release_api_verification_step = find_step(
     release_api_job, "Verify production App and API domains"
 )
 rollback_step = find_step(rollback_job, "Deploy App to Cloudflare Pages production")
+rollback_prepare_step = find_step(rollback_job, "Prepare App production deployment")
 rollback_verification_step = find_step(
     rollback_verification_job, "Verify production App and API domains"
 )
 
 shared_script = "bash .github/scripts/deploy-okou-pages.sh"
+primary_app_domain_expression = (
+    "${{ vars.CLERK_PRODUCTION_PRIMARY_APP_DOMAIN || 'app.vm0.ai' }}"
+)
+for step in (prepare_preview_step, prepare_release_step, rollback_prepare_step):
+    if step.get("env", {}).get("CLERK_PRODUCTION_PRIMARY_APP_DOMAIN") != primary_app_domain_expression:
+        raise RuntimeError(
+            f"step {step.get('name')} must inject the Clerk production primary app domain"
+        )
 require_fragments(
     build_step,
     ["build:verify-hashes", "--sourcemap", "sentry-cli sourcemaps inject dist"],
