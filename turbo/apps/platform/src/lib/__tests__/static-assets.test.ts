@@ -120,8 +120,15 @@ describe("published static asset URLs", () => {
     );
   });
 
-  it("keeps the frozen CDN prefix in the bootstrap skeleton", () => {
-    expect(indexHtml).toContain(`${FROZEN_CDN_PREFIX}assets/avatar-svg/`);
+  it("keeps the bootstrap avatar independent from static asset requests", () => {
+    const document = new DOMParser().parseFromString(indexHtml, "text/html");
+    const skeleton = document.getElementById("app-bootstrap-skeleton");
+
+    expect(
+      skeleton?.querySelector("svg.app-bootstrap-skeleton__avatar-layers"),
+    ).toBeInstanceOf(SVGSVGElement);
+    expect(skeleton?.querySelectorAll("img[src]")).toHaveLength(0);
+    expect(indexHtml).not.toContain(`${FROZEN_CDN_PREFIX}assets/avatar-svg/`);
   });
 });
 

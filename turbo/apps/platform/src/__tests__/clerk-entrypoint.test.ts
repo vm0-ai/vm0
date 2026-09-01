@@ -299,7 +299,7 @@ async function completeEarlyClerkScript(
 }
 
 describe("platform Clerk entrypoint", () => {
-  it("starts Clerk and app discovery before the skeleton assets", () => {
+  it("preserves startup discovery while keeping the skeleton avatar inline", () => {
     const html = builtIndexHtml();
     const parsedDocument = new DOMParser().parseFromString(html, "text/html");
     const skeleton = parsedDocument.getElementById("app-bootstrap-skeleton");
@@ -313,8 +313,8 @@ describe("platform Clerk entrypoint", () => {
       'script[type="module"][src="/src/main.ts"]',
     );
     const externalSkeletonImages = skeleton?.querySelectorAll("img[src]");
-    const avatarLayers = skeleton?.querySelectorAll(
-      "[data-app-bootstrap-avatar-layer]",
+    const inlineAvatar = skeleton?.querySelector(
+      "svg.app-bootstrap-skeleton__avatar-layers",
     );
     if (!(skeleton instanceof HTMLDivElement)) {
       throw new Error("Built index.html does not contain the app skeleton");
@@ -365,22 +365,10 @@ describe("platform Clerk entrypoint", () => {
     expect(criticalStyles.textContent).toContain(
       "@keyframes app-bootstrap-skeleton-avatar-pulse",
     );
-    expect(externalSkeletonImages).toHaveLength(3);
-    expect(avatarLayers).toHaveLength(3);
-    for (const avatarLayer of avatarLayers ?? []) {
-      expect(avatarLayer.getAttribute("decoding")).toBe("async");
-      expect(avatarLayer.getAttribute("fetchpriority")).toBe("low");
-    }
-    expect(externalSkeletonImages?.[0]?.getAttribute("src")).toMatch(
-      /\/head-r1-s0\.svg$/u,
-    );
-    expect(externalSkeletonImages?.[1]?.getAttribute("src")).toMatch(
-      /\/face-r1-f1-h\.svg$/u,
-    );
-    expect(externalSkeletonImages?.[2]?.getAttribute("src")).toMatch(
-      /\/hair-r1-h1-c5\.svg$/u,
-    );
-    expect(skeleton.querySelector("svg")).toBeNull();
+    expect(externalSkeletonImages).toHaveLength(0);
+    expect(inlineAvatar).toBeInstanceOf(SVGSVGElement);
+    expect(inlineAvatar?.querySelectorAll("path").length).toBeGreaterThan(0);
+    expect(html).not.toContain("/assets/avatar-svg/");
     expect(skeleton).toHaveTextContent("");
     expect(fontStylesheet.rel).toBe("stylesheet");
     expect(fontStylesheet.hasAttribute("as")).toBeFalsy();
