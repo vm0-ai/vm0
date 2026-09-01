@@ -1,6 +1,7 @@
 import { waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { context, detachedSetupPage } from "./chat-lifecycle-test-helpers.ts";
+import { setupPageAndWaitForContent } from "../../../__tests__/page-helper.ts";
+import { context } from "./chat-lifecycle-test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const THREAD_ID = "b0000000-0000-4000-a000-000000000210";
@@ -105,7 +106,7 @@ function recordRenderedLabelText(): string[] {
   return rendered;
 }
 
-function setupThinkingRun(): string[] {
+async function setupThinkingRun(): Promise<string[]> {
   stubLabelTextMeasurement();
   mockChatLifecycle(context, {
     threadId: THREAD_ID,
@@ -137,17 +138,22 @@ function setupThinkingRun(): string[] {
   });
 
   const rendered = recordRenderedLabelText();
-  detachedSetupPage({
+  // Page bootstrap costs far more than the animation itself, so it gets its own
+  // barrier instead of eating into the `waitFor` budget the frames need.
+  await setupPageAndWaitForContent({
     context,
     path: `/chats/${THREAD_ID}`,
   });
   return rendered;
 }
 
-async function waitForBothLines(rendered: readonly string[]): Promise<void> {
-  await waitFor(() => {
-    expect(rendered).toContain(FIRST_OVERFLOW_FRAME);
-  });
+/**
+ * The typewriter stops on the last explicit line, so that frame is the stable
+ * end of the animation. Waiting for it means every earlier frame is already
+ * recorded and can be asserted synchronously, without sampling for a frame that
+ * only exists mid-animation.
+ */
+async function waitForTypedLines(rendered: readonly string[]): Promise<void> {
   await waitFor(() => {
     expect(rendered).toContain(SECOND_LINE);
   });
@@ -155,8 +161,8 @@ async function waitForBothLines(rendered: readonly string[]): Promise<void> {
 
 describe("chat thinking indicator", () => {
   it("discards an overflowing line remainder before showing the next explicit line", async () => {
-    const rendered = setupThinkingRun();
-    await waitForBothLines(rendered);
+    const rendered = await setupThinkingRun();
+    await waitForTypedLines(rendered);
 
     expect(rendered).toContain(FIRST_OVERFLOW_FRAME);
     expect(rendered).toContain(SECOND_LINE);
@@ -174,8 +180,8 @@ describe("chat thinking indicator", () => {
   });
 
   it("never turns an overflowing remainder into another displayed line", async () => {
-    const rendered = setupThinkingRun();
-    await waitForBothLines(rendered);
+    const rendered = await setupThinkingRun();
+    await waitForTypedLines(rendered);
 
     for (const frame of rendered) {
       expect(
