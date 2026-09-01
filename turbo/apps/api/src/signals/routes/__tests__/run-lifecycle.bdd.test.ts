@@ -86,7 +86,7 @@ import {
   setRunModelRuntimeRouteFixture,
 } from "../../../test-fixtures/agent-runs";
 import {
-  holdCheckpointReadsFixture,
+  holdAgentRunRowLockFixture,
   timeoutRunWithoutCallbacksFixture,
 } from "../../../test-fixtures/chat-events";
 import {
@@ -18367,12 +18367,15 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       modelProvider: "anthropic-api-key",
     });
     const claim = await api.claimRunnerJob(run.runId);
-    const checkpointGate = await holdCheckpointReadsFixture({
+    const lifecycleGate = await holdAgentRunRowLockFixture({
+      runId: run.runId,
       signal: context.signal,
     });
+    const ownedRequests: Promise<unknown>[] = [];
     onTestFinished(async () => {
-      checkpointGate.release();
-      await checkpointGate.done;
+      lifecycleGate.release();
+      await Promise.all(ownedRequests);
+      await lifecycleGate.done;
     });
     const completion = webhooks.requestAgentComplete(
       {
@@ -18387,9 +18390,8 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       { authorization: `Bearer ${claim.sandboxToken}` },
       [200],
     );
-    await expect
-      .poll(checkpointGate.blockedWaiterCount)
-      .toBeGreaterThanOrEqual(1);
+    ownedRequests.push(Promise.allSettled([completion]));
+    await expect.poll(lifecycleGate.waiterCount).toBe(1);
 
     mockNow(startedAt + 3 * 60 * 1000);
     const cleanup = cleanupTimedOutRun(context, {
@@ -18397,13 +18399,19 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       chatThreadId: randomUUID(),
       orgId: actor.orgId,
     });
-    checkpointGate.release();
-    await checkpointGate.done;
+    ownedRequests.push(Promise.allSettled([cleanup]));
+    await expect.poll(lifecycleGate.waiterCount).toBe(2);
+    const requests = Promise.all([completion, cleanup] as const);
+    lifecycleGate.release();
+    const [, [completionResult, cleanupResult]] = await Promise.all([
+      lifecycleGate.done,
+      requests,
+    ] as const);
 
-    await expect(completion).resolves.toMatchObject({
+    expect(completionResult).toMatchObject({
       body: { success: true, status: "completed" },
     });
-    await expect(cleanup).resolves.toMatchObject({
+    expect(cleanupResult).toMatchObject({
       body: { cleaned: 0, errors: 0, results: [] },
     });
     await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
