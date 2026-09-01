@@ -70,7 +70,12 @@ pub fn cli_control_failure_for_config(
     );
     let diagnostic =
         with_cli_observed_exit(diagnostic, cli_result.cli_observed_exit.as_ref().cloned());
-    with_cli_termination(diagnostic, cli_result.cli_termination)
+    let diagnostic = with_cli_termination(diagnostic, cli_result.cli_termination);
+    if let Some(heartbeat) = cli_result.heartbeat.clone() {
+        diagnostic.with_heartbeat(heartbeat)
+    } else {
+        diagnostic
+    }
 }
 
 /// Build the primary diagnostic for terminal event delivery after a CLI result.

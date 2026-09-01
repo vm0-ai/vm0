@@ -67,6 +67,8 @@ pub const CLEAN_EXIT: i32 = 0;
 pub const MOCK_TERMINATION_READY_EVENT: &str = "vm0_mock_termination_ready";
 pub const MOCK_CODEX_TURN_START_READY_FILE: &str = ".vm0-mock-codex-turn-start-ready";
 pub const MOCK_CODEX_TURN_START_READY_EVENT: &str = "vm0_mock_codex_turn_start_ready";
+pub const MOCK_CODEX_TURN_COMPLETE_BEFORE_HEARTBEAT_READY_FILE: &str =
+    ".vm0-mock-codex-turn-complete-before-heartbeat-ready";
 pub const MOCK_CODEX_SESSION_HISTORY_READY_FILE: &str = ".vm0-mock-codex-session-history-ready";
 pub const MOCK_CODEX_SESSION_HISTORY_READY_EVENT: &str = "vm0_mock_codex_session_history_ready";
 pub const MOCK_CODEX_TURN_STEER_READY_FILE: &str = ".vm0-mock-codex-turn-steer-ready";
@@ -1409,12 +1411,40 @@ where
         let task = tokio::spawn(future);
         let status = match task.await {
             Ok(Ok(())) => guest_agent::cli::HeartbeatStatus::Stopped,
-            Ok(Err(error)) => guest_agent::cli::HeartbeatStatus::Failed(error),
+            Ok(Err(error)) => guest_agent::cli::HeartbeatStatus::Failed(
+                guest_agent::heartbeat::HeartbeatFailure {
+                    error,
+                    diagnostic: test_heartbeat_failure_diagnostic(),
+                },
+            ),
             Err(error) => guest_agent::cli::HeartbeatStatus::TaskFailed(error.to_string()),
         };
         let _ = tx.send(status);
     });
     Some(rx)
+}
+
+pub fn test_heartbeat_failure_diagnostic()
+-> guest_contracts::diagnostics::HeartbeatFailureDiagnostic {
+    use guest_contracts::diagnostics::{
+        HeartbeatAttemptFailureKind, HeartbeatCompletedAttemptDiagnostic,
+        HeartbeatFailedCycleDiagnostic, HeartbeatFailureDiagnostic,
+    };
+
+    HeartbeatFailureDiagnostic {
+        failed_cycles: vec![HeartbeatFailedCycleDiagnostic {
+            scheduled_lag_ms: 17,
+            attempts: vec![HeartbeatCompletedAttemptDiagnostic {
+                attempt: 3,
+                client_request_id: "11111111-1111-4111-8111-111111111111".to_string(),
+                elapsed_ms: 30_001,
+                failure_kind: HeartbeatAttemptFailureKind::Timeout,
+                http_status: None,
+                timeout_observed: Some(true),
+                connect_observed: Some(false),
+            }],
+        }],
+    }
 }
 
 /// Dummy heartbeat that never completes. The CLI-wait / reap-deadline

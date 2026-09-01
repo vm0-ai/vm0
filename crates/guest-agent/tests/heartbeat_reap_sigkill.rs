@@ -66,5 +66,11 @@ async fn heartbeat_failure_reap_escalates_to_sigkill_when_sigterm_ignored()
     assert_eq!(termination.signal_sent, Some(CliTerminationSignal::Sigkill));
     assert!(termination.escalated);
     assert_eq!(termination.observed_exit_code, Some(common::SIGKILL_EXIT));
+    assert_eq!(
+        result
+            .heartbeat
+            .expect("heartbeat failure should retain HTTP evidence"),
+        common::test_heartbeat_failure_diagnostic()
+    );
     Ok(())
 }

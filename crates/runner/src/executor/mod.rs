@@ -281,6 +281,7 @@ impl SandboxReuseDisposition {
             Self::Ineligible(SandboxReuseRejection::HardCancellation) => "hard_cancellation",
             Self::Ineligible(SandboxReuseRejection::UnconfirmedTimeout) => "unconfirmed_timeout",
             Self::Ineligible(SandboxReuseRejection::ResourceFailure) => "resource_failure",
+            Self::Ineligible(SandboxReuseRejection::ControlPathFailure) => "control_path_failure",
             Self::Ineligible(SandboxReuseRejection::PostJobCleanupFailure) => {
                 "post_job_cleanup_failure"
             }
@@ -314,6 +315,9 @@ impl SandboxReuseDisposition {
             Self::Ineligible(SandboxReuseRejection::ResourceFailure) => {
                 "runner_terminal_sandbox_reuse_rejected_resource_failure"
             }
+            Self::Ineligible(SandboxReuseRejection::ControlPathFailure) => {
+                "runner_terminal_sandbox_reuse_rejected_control_path_failure"
+            }
             Self::Ineligible(SandboxReuseRejection::PostJobCleanupFailure) => {
                 "runner_terminal_sandbox_reuse_rejected_post_job_cleanup_failure"
             }
@@ -341,6 +345,7 @@ pub(crate) enum SandboxReuseRejection {
     HardCancellation,
     UnconfirmedTimeout,
     ResourceFailure,
+    ControlPathFailure,
     PostJobCleanupFailure,
 }
 

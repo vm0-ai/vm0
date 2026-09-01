@@ -50,6 +50,7 @@ use crate::env;
 use crate::error::AgentError;
 use crate::events;
 use crate::failure_patterns;
+use crate::heartbeat::HeartbeatFailure;
 use crate::http::HttpClient;
 use crate::masker::SecretMasker;
 use crate::paths;
@@ -61,7 +62,7 @@ use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{
     CliObservedExitDiagnostic, CliTerminationDiagnostic, EventDeliveryDiagnostic,
-    FailureDetailSource, FailureReason,
+    FailureDetailSource, FailureReason, HeartbeatFailureDiagnostic,
 };
 use guest_contracts::stdout_framing::ORDINARY_CLI_STDOUT_MAX_LINE_BYTES;
 use process_group::ChildProcessGroup;
@@ -246,6 +247,9 @@ pub struct CliExecutionResult {
     /// Bounded event-delivery failure details, when delivery was terminally incomplete.
     pub event_delivery: Option<EventDeliveryDiagnostic>,
 
+    /// Bounded heartbeat failure details, when the control path stopped making progress.
+    pub heartbeat: Option<HeartbeatFailureDiagnostic>,
+
     /// Final JSONL result metadata, when a terminal result event was observed.
     /// Codex uses its own event schema and leaves this unset.
     pub jsonl_result: Option<JsonlResultSummary>,
@@ -288,7 +292,7 @@ pub enum HeartbeatStatus {
     /// CLI execution treats this as a guest-agent control-path failure and may
     /// terminate the CLI process group so final diagnostics can report the
     /// heartbeat failure.
-    Failed(AgentError),
+    Failed(HeartbeatFailure),
 
     /// The heartbeat loop stopped cleanly.
     ///
@@ -1196,6 +1200,7 @@ async fn execute_cli_inner(
     };
 
     let mut heartbeat_done = false;
+    let mut heartbeat_failure = None;
     let mut user_cancellation_handled = false;
     let mut pi_user_cancelled = false;
     let mut cli_exit_at: Option<Instant> = None;
@@ -1848,11 +1853,12 @@ async fn execute_cli_inner(
                     CliExitObservation::ExitedAndStdoutClosed => break Ok(()),
                 }
                 match heartbeat_result {
-                    Ok(HeartbeatStatus::Failed(e)) => {
+                    Ok(HeartbeatStatus::Failed(failure)) => {
                         // Heartbeat failed — kill process group
+                        heartbeat_failure = Some(failure.diagnostic);
                         termination_runtime.begin_control_failure(
                             TerminationReason::HeartbeatError,
-                            e,
+                            failure.error,
                             ControlTerminationLog::HeartbeatFailed,
                             termination_deadline.as_mut(),
                         );
@@ -2046,6 +2052,7 @@ async fn execute_cli_inner(
         stderr_lines: masked_stderr_lines,
         last_event_sequence: delivery_report.last_acknowledged_sequence,
         event_delivery: delivery_report.diagnostic,
+        heartbeat: heartbeat_failure,
         jsonl_result,
         post_result_cleanup_jsonl_result,
         failure_diagnostic,
