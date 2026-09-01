@@ -97,6 +97,7 @@ export const bootstrapOnboardingGuard$ = command(
     if (!isOnboardingGuardedPath(get(pathname$))) {
       return;
     }
+    const onboardingSearchParams = new URLSearchParams(get(searchParams$));
 
     const clerk = await get(clerk$);
     signal.throwIfAborted();
@@ -129,6 +130,6 @@ export const bootstrapOnboardingGuard$ = command(
       }
     }
 
-    await set(redirectToConfiguredOnboarding$, undefined, signal);
+    await set(redirectToConfiguredOnboarding$, onboardingSearchParams, signal);
   },
 );

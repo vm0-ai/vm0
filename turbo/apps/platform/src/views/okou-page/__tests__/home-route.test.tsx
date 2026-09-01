@@ -13,11 +13,10 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { localStorageSignals } from "../../../signals/external/local-storage.ts";
-import { pathname } from "../../../signals/location.ts";
+import { pathname, search } from "../../../signals/location.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { isAbortError } from "../../../signals/utils.ts";
-import { onboardingStatus$ } from "../../../signals/okou-page/onboarding.ts";
 
 const context = testContext();
 const LAST_USED_AGENT_STORAGE_KEY = "zero.lastUsedAgentId";
@@ -271,7 +270,7 @@ describe("home route", () => {
     },
   );
 
-  it("runs onboarding concurrently with persisted-agent navigation", async () => {
+  it("preserves initial onboarding params after persisted-agent navigation", async () => {
     context.store.set(setLastUsedAgentId$, RETURNING_AGENT_ID);
     const onboardingRequestStarted = context.mocks.deferred<void>();
     const releaseOnboardingRequest = context.mocks.deferred<void>();
@@ -295,17 +294,28 @@ describe("home route", () => {
       agentResponse(RETURNING_AGENT_ID, "Returning agent"),
     ]);
 
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/?prompt=hello%20world&connector=github&vm0_source=presentation",
+    });
 
     await Promise.all([onboardingRequestStarted.promise, team.started.promise]);
     expect(pathname()).toBe(`/agents/${RETURNING_AGENT_ID}/chat`);
 
-    team.release.resolve(undefined);
     releaseOnboardingRequest.resolve(undefined);
     await expect(
-      screen.findByRole("heading", { name: "What do you want to make first" }),
+      screen.findByRole("heading", { name: "Try this prompt" }),
     ).resolves.toBeInTheDocument();
     expect(pathname()).toBe(ROUTES.onboarding);
+    const redirectedSearchParams = new URLSearchParams(search());
+    expect(redirectedSearchParams.get("prompt")).toBe("hello world");
+    expect(redirectedSearchParams.get("connector")).toBe("github");
+    expect(redirectedSearchParams.get("vm0_source")).toBe("presentation");
+    expect(screen.getByLabelText("Onboarding prompt")).toHaveValue(
+      "hello world",
+    );
+
+    team.release.resolve(undefined);
   });
 
   it("keeps organization selection ahead of persisted-agent navigation", async () => {
@@ -415,9 +425,6 @@ describe("home route", () => {
     });
 
     releaseOnboardingRequest.resolve(undefined);
-    await expect(context.store.get(onboardingStatus$)).resolves.toMatchObject({
-      needsOnboarding: true,
-    });
     let setupError: unknown;
     try {
       await setupPromise;
