@@ -13,12 +13,16 @@ import type {
   SharedDatabasePortLike,
 } from "./bridge.ts";
 import {
+  redactSharedDatabaseClientMessageForLog,
   sharedDatabaseHeartbeatResultSchema,
   sharedDatabaseWorkerMessageSchema,
   type SharedDatabaseClientMessage,
   type SharedDatabaseHeartbeatResult,
 } from "./protocol.ts";
+import { logger } from "../signals/log.ts";
 import { createDeferredPromise, onDomEventFn } from "../signals/utils.ts";
+
+const L = logger("SharedWorkerBridge");
 
 interface PendingRequest {
   readonly resolve: (value: unknown) => void;
@@ -39,6 +43,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
   ) {
     this.handleMessage = onDomEventFn(async (event) => {
       const message = sharedDatabaseWorkerMessageSchema.parse(event.data);
+      L.debug("got message from worker", message);
       if (message.type === "invalidate") {
         await this.events.databaseInvalidated(message.dataKey);
         return;
@@ -119,7 +124,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     if (this.closed) {
       throw this.closeReason;
     }
-    this.port.postMessage({ type: "reload-indicators" });
+    this.emit({ type: "reload-indicators" });
   }
 
   async query<TKey extends SharedDatabaseDataKey>(
@@ -186,8 +191,16 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
       reject: finish(deferred.reject),
     });
     signal.addEventListener("abort", abort, { once: true });
-    this.port.postMessage(message);
+    this.emit(message);
     return deferred.promise;
+  }
+
+  private emit(message: SharedDatabaseClientMessage): void {
+    L.debug(
+      "send message to worker",
+      redactSharedDatabaseClientMessageForLog(message),
+    );
+    this.port.postMessage(message);
   }
 
   private close(reason: unknown, reportDisconnected = true): void {
@@ -196,7 +209,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     }
     this.closed = true;
     this.closeReason = reason;
-    this.port.postMessage({ type: "disconnect" });
+    this.emit({ type: "disconnect" });
     this.port.removeEventListener("message", this.handleMessage);
     this.port.close();
     for (const pending of this.pendingRequests.values()) {

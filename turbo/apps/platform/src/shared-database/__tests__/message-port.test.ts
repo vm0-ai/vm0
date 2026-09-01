@@ -9,6 +9,7 @@ import {
   chatEventRowsResponse,
   testContext,
 } from "../../signals/__tests__/test-helpers.ts";
+import { Level, logger } from "../../signals/log.ts";
 import { createChildAbortController } from "../../signals/utils.ts";
 import { queryChatEventSharedDatabase$ } from "../../signals/shared-database.ts";
 import { installSharedDatabaseBridge$ } from "../../signals/shared-database-bridge-state.ts";
@@ -198,6 +199,82 @@ async function installProtocolBridge(): Promise<{
 }
 
 describe("shared database MessagePort protocol", () => {
+  it("logs app and worker bridge traffic without exposing heartbeat credentials", async () => {
+    const token = "secret-heartbeat-token";
+    const vercelProtectionBypass = "secret-vercel-bypass";
+    context.mocks.api(authContract.me, ({ request, respond }) => {
+      expect(request.headers.get("authorization")).toBe(`Bearer ${token}`);
+      expect(request.headers.get("x-vercel-protection-bypass")).toBe(
+        vercelProtectionBypass,
+      );
+      return respond(200, {
+        userId: identity().userId,
+        email: "message-port@example.com",
+        orgId: identity().orgId,
+      });
+    });
+
+    const bridgeLogger = logger("SharedWorkerBridge");
+    const previousLevel = bridgeLogger.level;
+    bridgeLogger.level = Level.Debug;
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        bridgeLogger.level = previousLevel;
+        consoleLog.mockRestore();
+      },
+      { once: true },
+    );
+
+    const workerContext = new SharedDatabaseWorkerContext(
+      context.signal,
+      WORKER_APP_VERSION,
+    );
+    const bridge = connectProtocolTransport(workerContext, bridgeEvents());
+    const owner = createChildAbortController(context.signal);
+
+    await expect(
+      bridge.heartbeat({ token, vercelProtectionBypass }, owner.signal),
+    ).resolves.toStrictEqual({ clientReconnected: false });
+
+    const redactedHeartbeat = expect.objectContaining({
+      type: "heartbeat",
+      token: "[redacted]",
+      vercelProtectionBypass: "[redacted]",
+    });
+    expect(consoleLog).toHaveBeenCalledWith(
+      "[D][SharedWorkerBridge]",
+      "send message to worker",
+      redactedHeartbeat,
+    );
+    expect(consoleLog).toHaveBeenCalledWith(
+      "[D][SharedWorkerBridge]",
+      "got message from app",
+      expect.any(String),
+      redactedHeartbeat,
+    );
+    expect(consoleLog).toHaveBeenCalledWith(
+      "[D][SharedWorkerBridge]",
+      "send message to app",
+      expect.any(String),
+      expect.objectContaining({ type: "result" }),
+    );
+    expect(consoleLog).toHaveBeenCalledWith(
+      "[D][SharedWorkerBridge]",
+      "got message from worker",
+      expect.objectContaining({ type: "result" }),
+    );
+    const serializedLogs = JSON.stringify(consoleLog.mock.calls);
+    expect(serializedLogs).not.toContain(token);
+    expect(serializedLogs).not.toContain(vercelProtectionBypass);
+
+    owner.abort();
+    await vi.waitFor(() => {
+      expect(workerContext.credentialStoreCount()).toBe(0);
+    });
+  });
+
   it("completes the initial heartbeat before the credential realtime subscription", async () => {
     installHeartbeatAuthentication();
     const initialAttachment = context.mocks.ably.deferNextSubscribe();

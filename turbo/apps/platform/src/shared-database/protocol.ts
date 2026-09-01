@@ -65,6 +65,21 @@ export type SharedDatabaseClientMessage = z.infer<
   typeof sharedDatabaseClientMessageSchema
 >;
 
+export function redactSharedDatabaseClientMessageForLog(
+  message: SharedDatabaseClientMessage,
+): SharedDatabaseClientMessage {
+  if (message.type !== "heartbeat") {
+    return message;
+  }
+  return {
+    ...message,
+    token: "[redacted]",
+    ...(message.vercelProtectionBypass === undefined
+      ? {}
+      : { vercelProtectionBypass: "[redacted]" }),
+  };
+}
+
 const resultMessageSchema = z
   .object({
     type: z.literal("result"),
