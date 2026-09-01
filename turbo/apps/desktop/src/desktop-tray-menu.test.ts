@@ -725,6 +725,29 @@ describe("desktop tray screen recording section", () => {
     expect(actions.startScreenRecording).toHaveBeenCalledOnce();
   });
 
+  it("offers to deliver a recording that was salvaged from a broken capture", () => {
+    const actions = trayActions();
+    const menu = menuFor(
+      recorderState({
+        error: { code: "source_lost", message: "Display disconnected" },
+        lastRecording: {
+          videoPath: "/recordings/screen-recording-1.mp4",
+          clickTrackPath: "/recordings/screen-recording-1.clicks.json",
+          durationMs: 12_000,
+          sizeBytes: 2_600_000,
+          width: 1920,
+          height: 1200,
+        },
+      }),
+      actions,
+    );
+
+    const section = findItem(menu, "Screen Recording: Failed");
+    click(findItem(submenu(section), "Retry Delivery"));
+
+    expect(actions.retryScreenRecordingDelivery).toHaveBeenCalledOnce();
+  });
+
   it("shows where the finished recording was written", () => {
     const menu = menuFor(
       recorderState({

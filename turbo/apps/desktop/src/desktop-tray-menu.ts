@@ -428,9 +428,10 @@ function buildScreenRecordingSubmenu(
       separator(),
       disabledLabel(truncateMenuLabel(recorder.error.message)),
     );
-    // The capture succeeded and both files are still on disk, so a failed
-    // upload is worth retrying rather than re-recording.
-    if (recorder.error.code === "delivery_failed" && recorder.lastRecording) {
+    // Whatever went wrong, the capture already produced files on disk, so
+    // delivering them is worth another try rather than re-recording. This
+    // covers a capture that broke partway as well as a failed upload.
+    if (recorder.lastRecording) {
       items.push({
         label: "Retry Delivery",
         click: actions.retryScreenRecordingDelivery,
