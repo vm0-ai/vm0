@@ -335,9 +335,10 @@ async function seedGmailMailCardFixture() {
     code: "zero-mail-code",
     state,
   });
+  const gmail = await connectors.readConnectorBySlug(actor, "gmail");
   await runs.enableAgentConnectors(actor, agent.agentId, ["gmail"]);
   mocks.clerk.session(actor.userId, actorWithOrg.orgId);
-  return { actor, agent, thread };
+  return { actor, agent, thread, gmail };
 }
 
 function client() {
@@ -379,6 +380,7 @@ async function setGmailOAuthScopeFacts(
     orgId: fixture.actor.orgId ?? "",
     userId: fixture.actor.userId,
     connectorSlug: "gmail",
+    connectorId: fixture.gmail.id,
     oauthScopes: [GMAIL_MODIFY_SCOPE],
     oauthGrantedScopes,
   });

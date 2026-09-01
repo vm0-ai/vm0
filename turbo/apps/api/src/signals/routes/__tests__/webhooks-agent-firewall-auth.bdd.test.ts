@@ -995,6 +995,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       orgId: actor.orgId,
       userId: actor.userId,
       connectorSlug: "test-oauth",
+      connectorId: connected.id,
       oauthScopes: ["legacy-requested"],
       oauthGrantedScopes: null,
     });

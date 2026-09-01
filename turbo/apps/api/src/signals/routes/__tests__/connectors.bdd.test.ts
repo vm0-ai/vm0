@@ -6579,6 +6579,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       orgId: actor.orgId ?? "",
       userId: actor.userId,
       connectorSlug: "test-oauth",
+      connectorId: supplemental.id,
       oauthScopes: ["read", "legacy-write"],
       oauthGrantedScopes: null,
     });
