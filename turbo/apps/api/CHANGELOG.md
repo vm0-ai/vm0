@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.522.1](https://github.com/vm0-ai/vm0/compare/api-v1.522.0...api-v1.522.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **api:** repair chained legacy snapshot revocations ([#30808](https://github.com/vm0-ai/vm0/issues/30808)) ([5458a54](https://github.com/vm0-ai/vm0/commit/5458a54c86bbb10b16db73cdd91d76585b6cc7ec))
+* scope connector doctor to its host agent ([#30809](https://github.com/vm0-ai/vm0/issues/30809)) ([61495a2](https://github.com/vm0-ai/vm0/commit/61495a251cd71be80dc05d4438f24f85ae3bda15))
+
+
+### Refactoring
+
+* **api:** drop the computer-use and feature-switch compatibility rows ([#30814](https://github.com/vm0-ai/vm0/issues/30814)) ([07296e0](https://github.com/vm0-ai/vm0/commit/07296e0bf4bcc1d68f6695f3210440f346658df5)), closes [#30804](https://github.com/vm0-ai/vm0/issues/30804)
+* **api:** drop the teams callback and slack connect compatibility rows ([#30821](https://github.com/vm0-ai/vm0/issues/30821)) ([60bad02](https://github.com/vm0-ai/vm0/commit/60bad025e87ad5fc048e3a579f13277d44a38e74)), closes [#30812](https://github.com/vm0-ai/vm0/issues/30812)
+
 ## [1.522.0](https://github.com/vm0-ai/vm0/compare/api-v1.521.0...api-v1.522.0) (2026-09-01)
 
 
