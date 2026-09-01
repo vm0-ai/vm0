@@ -70,6 +70,24 @@ describe("built-in welcome thread", () => {
       within(content).getByText("Qualify inbound leads"),
     ).toBeInTheDocument();
     expect(
+      within(content).getByRole("heading", {
+        name: "How to work with me as a team",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(content).getByRole("heading", { name: "Talk to me in Slack" }),
+    ).toBeInTheDocument();
+    expect(within(content).getByText("/okou")).toBeInTheDocument();
+    const slackSetupLink = queryAllByRoleFast("link", content).find(
+      (candidate) => {
+        return candidate.textContent === "Set up Slack";
+      },
+    );
+    expect(slackSetupLink).toHaveAttribute(
+      "href",
+      `${window.location.origin}/works`,
+    );
+    expect(
       within(page).getByRole("textbox", { name: "Message" }),
     ).toBeInTheDocument();
     await waitFor(() => {

@@ -17,6 +17,7 @@ import {
 import { agentChatComposerSignals$ } from "../../signals/okou-page/agent-composer-signals.ts";
 import { subscribeComputerUseHostsChangedRef$ } from "../../signals/okou-page/computer-use-hosts.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { ROUTES } from "../../signals/route-paths.ts";
 import { MarkdownEventBody } from "../components/markdown.tsx";
 import { Link } from "../router/link.tsx";
 import { ChatComposer } from "./chat-composer.tsx";
@@ -63,6 +64,7 @@ function WelcomeThreadMessage() {
   const pageSignal = useGet(pageSignal$);
   const docsUrl = `${derivePlatformServiceOrigin(window.location.origin, "www")}/docs`;
   const inviteUrl = `${window.location.origin}/?settings=people`;
+  const worksUrl = `${window.location.origin}${ROUTES.works}`;
   const source = t(
     ($) => {
       return $.chat.welcomeThread.content;
@@ -76,6 +78,7 @@ function WelcomeThreadMessage() {
       presentationUrl: welcomePresentation.embedUrl,
       slideCount: welcomePresentation.slideCount ?? 15,
       videoUrl: welcomeVideo.previewVideo,
+      worksUrl,
     },
   );
   const tree = parseMarkdownTree(source, {
