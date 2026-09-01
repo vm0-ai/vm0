@@ -183,13 +183,16 @@ describe("overlay window sizes", () => {
 
   /** The height of an overlay's own surface, as the stylesheet sets it. */
   function surfaceHeight(selector: string): number {
-    const rule = new RegExp(
-      `\\${selector}\\s*\\{[\\s\\S]*?height:\\s*(\\d+)px`,
-    ).exec(css);
-    if (!rule?.[1]) {
+    const start = css.indexOf(`${selector} {`);
+    const end = css.indexOf("}", start);
+    if (start === -1 || end === -1) {
+      throw new Error(`No rule found for ${selector}`);
+    }
+    const height = /height:\s*(\d+)px/.exec(css.slice(start, end));
+    if (!height?.[1]) {
       throw new Error(`No fixed height found for ${selector}`);
     }
-    return Number(rule[1]);
+    return Number(height[1]);
   }
 
   // The window is what the system clips to. A message drawn below the surface
