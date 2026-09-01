@@ -166,9 +166,7 @@ describe("Auth v2 app-owned platform context", () => {
     const signInUrl = absoluteNavigationUrl(navigation.href("sign-in"));
 
     expect(navigation.completionRedirectUrl).toBe("https://app.vm0.ai");
-    expect(signInUrl.searchParams.get("redirect_url")).toBe(
-      "https://app.vm0.ai",
-    );
+    expect(signInUrl.searchParams.get("redirect_url")).toBeNull();
     expect(signInUrl.hash).toBe("");
   });
 });
