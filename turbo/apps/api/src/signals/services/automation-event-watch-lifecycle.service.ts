@@ -140,7 +140,7 @@ function targetKey(target: AutomationEventWatchTarget): string {
     return `gmail:${target.orgId}:${target.userId}:${target.connectorId ?? "unavailable"}`;
   }
   if (target.provider === "google_forms") {
-    return `google_forms:${target.userId}:${target.formId}`;
+    return `google_forms:${target.orgId}:${target.userId}`;
   }
   if (target.provider === "google_meet") {
     return `google_meet:${target.orgId}:${target.userId}`;
