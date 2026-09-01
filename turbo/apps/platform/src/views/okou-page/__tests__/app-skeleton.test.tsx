@@ -6,7 +6,6 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { hideBootstrapSkeleton } from "../../../signals/app-skeleton.ts";
 
 const context = testContext();
 
@@ -54,14 +53,23 @@ describe("app skeleton", () => {
   });
 
   it("keeps the inline loading surface when the main stylesheet fails", async () => {
-    vi.stubGlobal("__mainStylesheetLoaded", Promise.resolve("failed"));
+    const stylesheetLoaded = context.mocks.deferred<"failed" | "loaded">();
+    vi.stubGlobal("__mainStylesheetLoaded", stylesheetLoaded.promise);
     const bootstrapSkeleton = document.createElement("div");
     bootstrapSkeleton.id = "app-bootstrap-skeleton";
     document.body.append(bootstrapSkeleton);
 
-    await expect(hideBootstrapSkeleton()).rejects.toThrow(
-      "Failed to load the main application stylesheet",
-    );
+    // A stylesheet network failure happens before the app exposes a page
+    // interaction, so the build-installed promise is this scenario's
+    // production boundary. The page still enters through its real bootstrap.
+    detachedSetupPage({ context, path: "/_/error" });
+
+    await waitFor(() => {
+      expect(queryAllByRoleFast("link")).not.toHaveLength(0);
+    });
+
+    stylesheetLoaded.resolve("failed");
+    await stylesheetLoaded.promise;
 
     expect(bootstrapSkeleton).not.toHaveAttribute("aria-hidden");
     expect(document.getElementById("app-bootstrap-skeleton")).toBe(
