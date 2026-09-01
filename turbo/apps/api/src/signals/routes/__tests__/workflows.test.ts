@@ -48,8 +48,11 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 import {
+  seedBuiltinThreadConnectorSelection,
+  seedConnectorStorageRow,
   setBuiltinOAuthScopeFacts,
   setConnectorAccountState,
+  setConnectorDefaultState,
 } from "./helpers/connector-credential-storage-state";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { chatThreadRoutes } from "../chat-threads";
@@ -720,6 +723,33 @@ describe("workflows", () => {
     if (selectedRuntimeResult.status !== 200) {
       throw new Error("Expected selected Runtime account");
     }
+    await setConnectorDefaultState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      connectorId: defaultRuntimeResult.body.id,
+      isDefault: false,
+    });
+    // The production API cannot create an account for a retired catalog auth
+    // method, but an account can become unprojectable after the catalog changes.
+    const unprojectableRuntimeId = await seedConnectorStorageRow(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      connectorSlug: "runtime",
+      authMethod: "retired-runtime-method",
+      storageVersion: 1,
+    });
+    await setConnectorDefaultState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      connectorId: unprojectableRuntimeId,
+      isDefault: false,
+    });
+    await setConnectorDefaultState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      connectorId: defaultRuntimeResult.body.id,
+      isDefault: true,
+    });
     await api.enableAgentConnectors(actor, agent.agentId, ["gmail", "runtime"]);
 
     const eventWorkflow = await createWorkflow(actor, {
@@ -845,6 +875,38 @@ describe("workflows", () => {
         connectorSlug: "runtime",
         reason: "The workflow reads Runtime jobs.",
         status: "connected",
+      },
+    ]);
+
+    const unprojectableWorkflow = await createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: `unprojectable-account-readiness-${randomUUID().slice(0, 8)}`,
+      instruction: "Read Runtime jobs with a retired account method.",
+    });
+    const unprojectableThread = await accept(
+      detailClient().chatThread({
+        headers: authHeaders(actor),
+        params: { workflowId: unprojectableWorkflow.body.id },
+      }),
+      [200],
+    );
+    await seedBuiltinThreadConnectorSelection(context, {
+      chatThreadId: unprojectableThread.body.chatThreadId,
+      connectorId: unprojectableRuntimeId,
+      connectorSlug: "runtime",
+    });
+    const unprojectableSelected = await accept(
+      detailClient().connectorReadiness({
+        headers: authHeaders(actor),
+        params: { workflowId: unprojectableWorkflow.body.id },
+      }),
+      [200],
+    );
+    expect(unprojectableSelected.body.connectors).toMatchObject([
+      {
+        connectorSlug: "runtime",
+        reason: "The workflow reads Runtime jobs.",
+        status: "not-connected",
       },
     ]);
 
