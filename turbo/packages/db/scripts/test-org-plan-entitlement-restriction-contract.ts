@@ -541,6 +541,8 @@ async function validateRefusalReplay(baseUrl: string): Promise<void> {
         ENABLE TRIGGER "sync_org_plan_entitlement_model_restrictions_1023"
       `);
 
+      // Preserve the accepted NOT NULL catalog while constructing a corrupt
+      // heap row; the migration's JSON projection must still detect the NULL.
       await client.query(`
         ALTER TABLE "org_plan_entitlements"
         ALTER COLUMN "restricted_vm0_models" DROP NOT NULL;

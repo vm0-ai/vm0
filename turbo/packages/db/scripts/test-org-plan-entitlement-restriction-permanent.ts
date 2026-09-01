@@ -896,6 +896,8 @@ export async function installOrgPlanEntitlementRestrictionArtifactsOnRegenerated
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
   try {
+    // Recreate the accepted 1023 catalog on a fresh canonical schema. Adding
+    // without a default keeps atthasmissing false, matching the replayed state.
     await client.query(`
       ALTER TABLE "org_plan_entitlements"
       ADD COLUMN "restricted_vm0_models" boolean;
