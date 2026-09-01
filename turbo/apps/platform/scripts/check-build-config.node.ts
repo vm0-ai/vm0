@@ -3,8 +3,9 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { URL } from "node:url";
 
-import { build } from "vite";
+import { build, loadConfigFromFile } from "vite";
 
 import {
   RAW_JAVASCRIPT_OUTPUT_LIMIT_BYTES,
@@ -18,6 +19,83 @@ import {
   domGlobalUsageCounts,
   workerDomGlobalsMessage,
 } from "./worker-dom-globals.ts";
+
+const productionConfigPromise = loadConfigFromFile(
+  { command: "build", mode: "production" },
+  new URL("../vite.config.ts", import.meta.url).pathname,
+);
+
+await test("production build emits one deterministic vendor group with a compiled app version", async () => {
+  const loaded = await productionConfigPromise;
+
+  assert.ok(loaded);
+  const output = loaded.config.build?.rolldownOptions?.output;
+  assert.ok(output && !Array.isArray(output));
+  const codeSplitting = output.codeSplitting;
+  assert.equal(typeof codeSplitting, "object");
+  assert.ok(codeSplitting && typeof codeSplitting === "object");
+  assert.equal(codeSplitting.groups?.length, 1);
+  const vendorGroup = codeSplitting.groups?.[0];
+  assert.equal(vendorGroup?.name, "vendor");
+  assert.ok(vendorGroup?.test instanceof RegExp);
+  assert.equal(
+    vendorGroup.test.test("/repo/node_modules/react/index.js"),
+    true,
+  );
+  assert.equal(
+    vendorGroup.test.test(
+      "/repo/packages/mermaid-lite/dist/mermaid.esm.min.mjs",
+    ),
+    true,
+  );
+  assert.equal(
+    vendorGroup.test.test("/repo/packages/mermaid-lite/src/index.ts"),
+    false,
+  );
+  assert.equal(
+    vendorGroup.test.test("/repo/packages/core/src/resource-registry.ts"),
+    false,
+  );
+  assert.equal(vendorGroup.test.test("/repo/src/main.ts"), false);
+  assert.equal(loaded.config.define?.__OKOU_APP_GIT_COMMIT_SHA__, undefined);
+  assert.equal(
+    typeof JSON.parse(loaded.config.define?.__OKOU_APP_VERSION__ ?? "null"),
+    "string",
+  );
+  assert.ok(
+    loaded.config.plugins?.some((plugin) => {
+      return (
+        typeof plugin === "object" &&
+        plugin !== null &&
+        "name" in plugin &&
+        plugin.name === "platform-runtime-build-info-html"
+      );
+    }),
+  );
+});
+
+await test("production shared worker stays on the app origin", async () => {
+  const loaded = await productionConfigPromise;
+
+  assert.ok(loaded);
+  const renderBuiltUrl = loaded.config.experimental?.renderBuiltUrl;
+  assert.equal(typeof renderBuiltUrl, "function");
+  assert.ok(renderBuiltUrl);
+  const context = {
+    hostId: "assets/index-AbCd1234.js",
+    hostType: "js",
+    ssr: false,
+    type: "asset",
+  } satisfies Parameters<typeof renderBuiltUrl>[1];
+  assert.deepEqual(
+    renderBuiltUrl("assets/shared-database-worker-AbCd1234.js", context),
+    {
+      runtime:
+        'location.origin + "/okou-app/assets/shared-database-worker-AbCd1234.js"',
+    },
+  );
+  assert.equal(renderBuiltUrl("assets/index-AbCd1234.js", context), undefined);
+});
 
 const APP_FILE = "assets/index-AppHash1.js";
 const VENDOR_FILE = "assets/vendor-Vendor01.js";
