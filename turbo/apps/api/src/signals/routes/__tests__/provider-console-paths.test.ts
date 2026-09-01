@@ -29,30 +29,20 @@ interface ResponseSnapshot {
   readonly body: string;
 }
 
-// Every request below is replayed on the branded paths that serve it today and
-// on the neutral path from #28278, so the assertion is that all three produce
-// the same response rather than merely that the neutral path is routed.
+// Every block below is now narrowed to the single path that serves it, because
+// every provider console and producer that held a branded form has moved. Each
+// request used to be replayed on both branded forms as well, so the assertion
+// was that all three answered identically rather than merely that the neutral
+// path was routed; a dropped `MIGRATED_BRANDED_PATHS` row showed up here as one
+// of the three answering differently.
 //
-// Every endpoint using this helper declares its neutral path and gains both
-// branded forms from `MIGRATED_BRANDED_PATHS` — the Teams OAuth callback in
-// #28545. Which mechanism produces which registration is deliberately not
-// asserted; what a caller can reach is the same either way, and that is the
-// property this file exists to pin. A dropped row on either side shows up here
-// as one of the three forms answering differently.
-//
-// The Slack blocks below are narrowed to the path that serves them, because the
-// consoles and producers that held their branded forms have moved. #28600 put
-// the Slack OAuth callback and the three inbound webhooks on neutral paths with
-// rows for both branded forms; #30668 retired those four rows once the Slack app
-// console was repointed at `/api/webhooks/slack/*` and `routes/slack-oauth.ts`
-// began emitting the neutral `redirect_uri`. The Feishu OAuth callback was
-// narrowed the same way by #28709.
-function namespacePaths(
-  brandedSuffix: string,
-  finalPath: string,
-): readonly string[] {
-  return [`/api/okou${brandedSuffix}`, `/api/zero${brandedSuffix}`, finalPath];
-}
+// #28600 put the Slack OAuth callback and the three inbound webhooks on neutral
+// paths with rows for both branded forms, and #30668 retired those four rows
+// once the Slack app console was repointed at `/api/webhooks/slack/*` and
+// `routes/slack-oauth.ts` began emitting the neutral `redirect_uri`. The Feishu
+// OAuth callback was narrowed the same way by #28709 and the Teams OAuth
+// callback by #30812, which leaves nothing in this file holding a branded form.
+// What each block still pins is that the console flow reaches its handler.
 
 async function snapshot(response: Response): Promise<ResponseSnapshot> {
   return {
@@ -176,14 +166,15 @@ describe("provider console paths", () => {
     });
   });
 
-  // Kept here after #28545 moved the contract onto the final path: what this
-  // block asserts is that all three forms answer identically, which is the
-  // property the move has to preserve.
+  // Kept here after #28545 moved the contract onto the final path, and narrowed
+  // to that path by #30812. The branded forms were held by the Microsoft app
+  // registration and by `callbackRedirectUri`, which emitted the `zero` form for
+  // the VM0 brand until #30667 unified it; a `redirect_uri` is computed per
+  // request, so that deploy bounded the branded form to authorizations already
+  // in flight. The block stays because the callback is still reached from a
+  // Microsoft console flow.
   describe("GET /api/integrations/teams/oauth/callback", () => {
-    const paths = namespacePaths(
-      "/teams/oauth/callback",
-      "/api/integrations/teams/oauth/callback",
-    );
+    const paths = ["/api/integrations/teams/oauth/callback"];
 
     it("rejects a callback without an authorization code identically", async () => {
       const snapshots = await snapshotEachPath(
@@ -222,8 +213,7 @@ describe("provider console paths", () => {
     });
   });
 
-  // The one endpoint in this file that no longer has branded forms. #28544
-  // moved the contract to the neutral path and gave it a
+  // #28544 moved this contract to the neutral path and gave it a
   // `MIGRATED_BRANDED_PATHS` row; #28709 removed that row, because the only
   // thing holding the branded form was an already-loaded platform tab
   // forwarding a code, a window that closed well before the retained request

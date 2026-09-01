@@ -263,6 +263,24 @@ export function withApiNamespaceAliases(
  * inventory does not settle it either — the two `computer_use_hosts` rows below
  * 0.38.100 that were active in the same week sent no request in this window at
  * all, and the versions that did send one have no row.
+ *
+ * #30812 then took `integrations/teams/oauth/callback` and
+ * `slack/oauth/connect`, leaving 51, and refines that rule in the direction the
+ * two of them expose. Which kind a producer is turns out to be a property of
+ * the link rather than of the function: `buildSlackConnectUrl` is the same
+ * shape as `buildSlackInstallUrl` and hands the same kind of URL to the same
+ * kind of person, and the difference between them is only that two marketing
+ * landing pages publish an install `href` and nothing publishes a connect one.
+ * So the second kind is retired by finding where the link was published rather
+ * than by waiting, and the evidence that settles it is a differential in one
+ * window: the crawler population that found `/api/zero/slack/oauth/install`
+ * twenty times found no form of `slack/oauth/connect` at all. The Teams
+ * callback is the first kind and drained on its deploy, `chat_teams_context`
+ * holding zero rows over the whole life of the integration.
+ *
+ * The retained window is now 4.4 days, 2026-08-27 22:19Z to 2026-09-01 08:48Z.
+ * It has not grown since #28917 measured 4.1, so the header's caution about
+ * what a silence can carry has not loosened.
  */
 type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
 
@@ -607,14 +625,14 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // These rows hold two surfaces open. A released web or app build keeps the
   // branded path it was compiled against until a refresh loads a build that
   // derives the neutral one, the ~2 day window in `docs/fallback.md` section 7.
-  // The OAuth-start paths have a second holder that no client version bounds:
-  // `buildSlackInstallUrl` and `buildSlackConnectUrl` in
-  // `services/slack-data.service.ts` hand a link to a user, and that link lives
-  // in a Slack message, a bookmark or a search index for as long as its holder
-  // keeps it. Both producers emit the neutral path today, which bounds the
-  // links minted from now on and nothing about the ones already out there.
-  // `/api/okou/slack/oauth/install` is also the measured traffic the
-  // legacy-path table #30667 deleted listed, which only these rows can serve.
+  // `slack/oauth/install` has a second holder that no client version bounds:
+  // `buildSlackInstallUrl` in `services/slack-data.service.ts` hands a link to a
+  // user, and that link lives in a Slack message, a bookmark or a search index
+  // for as long as its holder keeps it. The producer emits the neutral path
+  // today, which bounds the links minted from now on and nothing about the ones
+  // already out there. `/api/okou/slack/oauth/install` is also the measured
+  // traffic the legacy-path table #30667 deleted listed, which only this row
+  // can serve.
   //
   // #30668 measured that holder directly rather than reasoning about it.
   // `/api/zero/slack/oauth/install` took 24 requests across the retained
@@ -624,20 +642,24 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // addresses, every one answered 307. The branded install URL is published
   // somewhere a crawler can reach, so it has no drain window at all.
   //
-  // `slack/oauth/connect` took no request on any of its three forms in that
-  // window, the neutral one included, so its branded silence measures a call
-  // rate rather than a drain and cannot retire it — the rule the table header
-  // states, reached the same way `computer-use/hosts/start` reaches it.
+  // #30812 removed `slack/oauth/connect`, the sibling row, and the two are why
+  // "a producer hands a URL to a person" is a property of the link rather than
+  // of the function that builds it. `buildSlackConnectUrl` is the same shape as
+  // `buildSlackInstallUrl` and emits the same neutral path, but no page
+  // publishes a connect link: the two hardcoded `href`s that kept the branded
+  // install form alive are on the marketing landing pages, both
+  // `/api/slack/oauth/install`, and neither has a connect equivalent. The
+  // measurement is the differential rather than the silence — over the same
+  // 4.4-day window and the same crawler population that found
+  // `/api/zero/slack/oauth/install` twenty times, all three forms of
+  // `slack/oauth/connect` took zero requests, the neutral one included. A
+  // published branded link would have been found the same way.
   //
   // Removal follows the #26701 evidence gate like every other row, not either
   // clock.
   "/api/slack/channels": [
     "/api/okou/slack/channels",
     "/api/zero/slack/channels",
-  ],
-  "/api/slack/oauth/connect": [
-    "/api/okou/slack/oauth/connect",
-    "/api/zero/slack/oauth/connect",
   ],
   "/api/slack/oauth/install": [
     "/api/okou/slack/oauth/install",
@@ -770,38 +792,33 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/agents/:id/user-connectors",
   ],
   "/api/workflows": ["/api/okou/workflows", "/api/zero/workflows"],
-  // #28545: the Microsoft console routes, the first rows whose branded forms a
-  // provider console holds rather than a released client. The Azure Bot
-  // messaging endpoint and the Microsoft identity platform redirect URIs now
-  // hold the final paths, so the contracts declare them and both branded forms
-  // are owed from here.
+  // #28545 added the Microsoft console routes, the first rows whose branded
+  // forms a provider console held rather than a released client, and #30812
+  // removed the last of them. #28917 took the slice's `webhooks/teams/bot` row
+  // once an operator had repointed the Azure Bot messaging endpoint at the
+  // neutral path, and #30812 took the OAuth callback.
   //
-  // What holds the branded forms open is not a released client but the
-  // Microsoft consoles themselves, which have no drain window: they keep
-  // sending to whatever URL is registered until an operator changes it.
-  // Removal follows #26701's evidence rules.
+  // The callback is the one row in this table whose producer moved and whose
+  // holder still had to drain, so it is worth keeping why both halves were
+  // needed. `callbackRedirectUri` in `routes/teams-oauth.ts` was
+  // brand-conditional and emitted `/api/zero/teams/oauth/callback` for the VM0
+  // brand, which made the row an active producer target no traffic sweep could
+  // retire — a quiet window meant nobody connected Teams under the VM0 brand
+  // that week, and the next person who did was sent there regardless. #28917
+  // listed the row for removal on that silence and it was held back for exactly
+  // that reason. #30667 unified the producer onto the canonical path, leaving
+  // only authorizations already in flight, and unlike a handed-out link a
+  // `redirect_uri` is computed per request: the deploy bounds it to the minutes
+  // an OAuth authorization stays valid, which had passed many times over by the
+  // time this row was removed.
   //
-  // #28917 removed the slice's `webhooks/teams/bot` row. #28545 records that an
-  // operator had already repointed the Azure Bot messaging endpoint at the
-  // neutral path before that slice landed, so nothing on the Microsoft side
-  // still holds either branded bot URL, and the retained window measured both
-  // silent. The OAuth callback row below stays for the reason its own comment
-  // gives.
-  "/api/integrations/teams/oauth/callback": [
-    "/api/okou/teams/oauth/callback",
-    // `callbackRedirectUri` in `routes/teams-oauth.ts` was brand-conditional
-    // and emitted this exact path for the VM0 brand, which made the row an
-    // active producer target no traffic sweep could retire: a quiet window
-    // meant nobody connected Teams under the VM0 brand that week, and the next
-    // person who did was sent here regardless. #28917 listed the row for
-    // removal on that silence and it was held back for exactly that reason.
-    //
-    // #30667 unified the producer onto the canonical path, so what this row
-    // now holds open is an authorization that started before that deploy and
-    // carries the legacy `redirect_uri` in its state. Removal follows #26701's
-    // evidence rules like every other row.
-    "/api/zero/teams/oauth/callback",
-  ],
+  // The window then measured both branded forms at one request — `curl/8.5.0`
+  // answered 400, which the table header's rules exclude and which carried no
+  // authorization anyway — against zero on the neutral path. No Teams message
+  // has ever been ingested: `chat_teams_context` holds zero rows, so no
+  // authorization has ever completed on either brand. The Microsoft app
+  // registration keeps both branded values, which costs nothing now that
+  // nothing is sent there.
   // #28463: avatar video generation, the per-token browser authorization
   // requests, mail drafts, the per-template presentation read, uploads,
   // voice-io quota and speech, and the web file-url read. The slice also
