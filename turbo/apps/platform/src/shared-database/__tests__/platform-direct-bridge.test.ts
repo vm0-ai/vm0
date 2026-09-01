@@ -228,7 +228,7 @@ describe("shared database direct Platform bridge", () => {
     expect(context.store.get(okouDebugRealtimeIndicator$)).toBe("disconnected");
   });
 
-  it("starts app realtime while the initial worker heartbeat handshake is pending", async () => {
+  it("starts app realtime after the initial worker heartbeat handshake completes", async () => {
     const heartbeatGates: {
       readonly promise: Promise<void>;
       readonly resolve: (value: void) => void;
@@ -256,16 +256,19 @@ describe("shared database direct Platform bridge", () => {
 
     await vi.waitFor(() => {
       expect(heartbeatGates).toHaveLength(1);
-      expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(2);
+      expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(1);
     });
     expect(
       context.mocks.ably.hasSubscription("connectorPermissionUpdated"),
-    ).toBeTruthy();
+    ).toBeFalsy();
     heartbeatGates[0]?.resolve(undefined);
     await bootstrap;
-    expect(
-      context.mocks.ably.hasSubscription("connectorPermissionUpdated"),
-    ).toBeTruthy();
+    await vi.waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("connectorPermissionUpdated"),
+      ).toBeTruthy();
+      expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(2);
+    });
     expect(heartbeatGates).toHaveLength(1);
     expect(context.store).not.toBe(context.workerStore);
   });

@@ -18,6 +18,9 @@ describe("okou doctor command", () => {
       "Diagnose stored connector readiness across workflows",
     );
     expect(normalizedHelp).toContain(
+      "stored connector readiness across effective visible workflows on every visible Agent",
+    );
+    expect(normalizedHelp).toContain(
       "Use okou connector check for one current-run URL, environment name, firewall decision, or permission failure",
     );
   });

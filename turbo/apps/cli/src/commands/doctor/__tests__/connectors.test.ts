@@ -14,12 +14,15 @@ const API_ORIGIN = "http://localhost:3000";
 const OWNER_USER_ID = "user-owner";
 const OTHER_USER_ID = "user-other";
 const AGENT_ID = "11111111-1111-1111-1111-111111111111";
+const SECOND_AGENT_ID = "11111111-1111-1111-1111-111111111112";
 const ATTENTION_WORKFLOW_ID = "20000000-0000-4000-8000-000000000001";
 const UNKNOWN_WORKFLOW_ID = "20000000-0000-4000-8000-000000000002";
 const READY_WORKFLOW_ID = "20000000-0000-4000-8000-000000000003";
 const EMPTY_WORKFLOW_ID = "20000000-0000-4000-8000-000000000004";
 const OFFICIAL_WORKFLOW_ID = "20000000-0000-4000-8000-000000000005";
 const FOREIGN_WORKFLOW_ID = "20000000-0000-4000-8000-000000000006";
+const SHADOWED_WORKFLOW_ID = "20000000-0000-4000-8000-000000000007";
+const PRIVATE_WINNER_WORKFLOW_ID = "20000000-0000-4000-8000-000000000008";
 const RAW_SECRET = "raw-secret-must-not-appear";
 
 interface JsonConnector {
@@ -176,7 +179,7 @@ describe("okou doctor connectors command", () => {
     await connectorsCommand.parseAsync(["node", "cli", ...args]);
   }
 
-  it("reports only owned workflows with stable outcomes and action links", async () => {
+  it("reports effective visible workflows with stable outcomes and action links", async () => {
     const attention = workflow(ATTENTION_WORKFLOW_ID, "attention-workflow", {
       displayName: "Attention Workflow",
       description: `Connector configuration ${RAW_SECRET}`,
@@ -193,6 +196,9 @@ describe("okou doctor connectors command", () => {
       },
     });
     const foreign = workflow(FOREIGN_WORKFLOW_ID, "foreign-workflow", {
+      agentId: SECOND_AGENT_ID,
+      agentName: "public-agent",
+      agentDisplayName: "Public Agent",
       visibility: "public",
       ownerUserId: OTHER_USER_ID,
     });
@@ -285,6 +291,18 @@ describe("okou doctor connectors command", () => {
               { status: 409 },
             );
           }
+          if (workflowId === FOREIGN_WORKFLOW_ID) {
+            return HttpResponse.json({
+              connectors: [
+                {
+                  connectorSlug: "github",
+                  label: "GitHub",
+                  reason: "The public workflow reads GitHub issues.",
+                  status: "connected",
+                },
+              ] satisfies WorkflowConnectorReadinessEntry[],
+            });
+          }
           throw new Error(`Unexpected readiness request for ${workflowId}`);
         },
       ),
@@ -301,10 +319,10 @@ describe("okou doctor connectors command", () => {
     ]);
     expect(report.schemaVersion).toBe(1);
     expect(report.summary).toStrictEqual({
-      checked: 5,
+      checked: 6,
       attention: 1,
       unknown: 2,
-      ready: 1,
+      ready: 2,
       noConnectors: 1,
     });
     expect(checkedWorkflowIds).toStrictEqual(
@@ -314,6 +332,7 @@ describe("okou doctor connectors command", () => {
         READY_WORKFLOW_ID,
         EMPTY_WORKFLOW_ID,
         OFFICIAL_WORKFLOW_ID,
+        FOREIGN_WORKFLOW_ID,
       ]),
     );
 
@@ -425,14 +444,64 @@ describe("okou doctor connectors command", () => {
       },
     });
     expect(
-      report.workflows.some((item) => {
+      report.workflows.find((item) => {
         return item.id === FOREIGN_WORKFLOW_ID;
       }),
-    ).toBe(false);
+    ).toMatchObject({
+      agent: { id: SECOND_AGENT_ID },
+      outcome: "ready",
+    });
     expect(printed).not.toContain(RAW_SECRET);
     expect(printed).not.toContain(OWNER_USER_ID);
     expect(printed).not.toContain(process.env.OKOU_TOKEN);
     expect(mockExit).not.toHaveBeenCalled();
+  });
+
+  it("checks only the private runtime winner when it shadows a public workflow", async () => {
+    const privateWinner = workflow(
+      PRIVATE_WINNER_WORKFLOW_ID,
+      "shared-workflow",
+      { displayName: "Private Winner" },
+    );
+    const shadowedPublic = workflow(SHADOWED_WORKFLOW_ID, "shared-workflow", {
+      displayName: "Public Workflow",
+      visibility: "public",
+      ownerUserId: OTHER_USER_ID,
+      shadowedBy: {
+        id: privateWinner.id,
+        name: privateWinner.name,
+        displayName: privateWinner.displayName,
+      },
+    });
+    const publicWinner = workflow(FOREIGN_WORKFLOW_ID, "public-winner", {
+      visibility: "public",
+      ownerUserId: OTHER_USER_ID,
+    });
+    mockWorkflowList([shadowedPublic, privateWinner, publicWinner]);
+
+    const checkedWorkflowIds = new Set<string>();
+    server.use(
+      http.post(
+        `${API_ORIGIN}/api/workflows/:workflowId/connector-readiness`,
+        ({ params }) => {
+          checkedWorkflowIds.add(String(params.workflowId));
+          return HttpResponse.json({ connectors: [] });
+        },
+      ),
+    );
+
+    await run(["--json"]);
+
+    const report = reportFromOutput(output());
+    expect(report.summary.checked).toBe(2);
+    expect(checkedWorkflowIds).toStrictEqual(
+      new Set([PRIVATE_WINNER_WORKFLOW_ID, FOREIGN_WORKFLOW_ID]),
+    );
+    expect(
+      report.workflows.map((item) => {
+        return item.id;
+      }),
+    ).toStrictEqual([PRIVATE_WINNER_WORKFLOW_ID, FOREIGN_WORKFLOW_ID]);
   });
 
   it("resolves a workflow name through the normal agent-scoped list", async () => {
@@ -470,7 +539,15 @@ describe("okou doctor connectors command", () => {
   });
 
   it("checks a workflow ID without listing other workflows", async () => {
-    const selected = workflow(READY_WORKFLOW_ID, "direct-id");
+    const selected = workflow(READY_WORKFLOW_ID, "direct-id", {
+      visibility: "public",
+      ownerUserId: OTHER_USER_ID,
+      shadowedBy: {
+        id: PRIVATE_WINNER_WORKFLOW_ID,
+        name: "direct-id",
+        displayName: "Private Direct ID",
+      },
+    });
     mockWorkflowDetail(selected);
     server.use(
       http.post(
@@ -484,6 +561,25 @@ describe("okou doctor connectors command", () => {
     await run([selected.id, "--json"]);
 
     expect(reportFromOutput(output()).workflows[0]?.id).toBe(selected.id);
+  });
+
+  it("preserves the single-workflow all-clear copy", async () => {
+    const selected = workflow(READY_WORKFLOW_ID, "direct-id");
+    mockWorkflowDetail(selected);
+    server.use(
+      http.post(
+        `${API_ORIGIN}/api/workflows/${selected.id}/connector-readiness`,
+        () => {
+          return HttpResponse.json({ connectors: [] });
+        },
+      ),
+    );
+
+    await run([selected.id]);
+
+    expect(output()).toContain("✓ All clear: 1 workflow checked");
+    expect(output()).toContain("0 ready · 1 no connectors required");
+    expect(output()).not.toContain("Checked workflows by Agent:");
   });
 
   it("bounds readiness requests and keeps a partial failure in the report", async () => {
@@ -624,10 +720,22 @@ describe("okou doctor connectors command", () => {
     expect(mockExit).not.toHaveBeenCalled();
   });
 
-  it("prints an all-clear result for ready and connector-free workflows", async () => {
+  it("prints effective visible all-clear coverage across every Agent", async () => {
     const ready = workflow(READY_WORKFLOW_ID, "ready-workflow");
-    const empty = workflow(EMPTY_WORKFLOW_ID, "empty-workflow");
-    mockWorkflowList([ready, empty]);
+    const empty = workflow(EMPTY_WORKFLOW_ID, "empty-workflow", {
+      agentId: SECOND_AGENT_ID,
+      agentName: "operations-agent",
+      agentDisplayName: "Operations Agent",
+      displayName: "Empty Workflow",
+    });
+    vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
+    let requestedAgentId: string | null = AGENT_ID;
+    server.use(
+      http.get(`${API_ORIGIN}/api/workflows`, ({ request }) => {
+        requestedAgentId = new URL(request.url).searchParams.get("agentId");
+        return HttpResponse.json([ready, empty]);
+      }),
+    );
     server.use(
       http.post(
         `${API_ORIGIN}/api/workflows/:workflowId/connector-readiness`,
@@ -651,17 +759,19 @@ describe("okou doctor connectors command", () => {
 
     await run();
 
-    expect(output()).toContain("✓ All clear: 2 workflows checked");
-    expect(output()).toContain("1 ready · 1 no connectors required");
+    const printed = output();
+    expect(requestedAgentId).toBeNull();
+    expect(printed).toContain("✓ All clear across effective visible workflows");
+    expect(printed).toContain("2 checked · 1 ready · 1 no connectors required");
+    expect(printed).toContain("Checked workflows by Agent:");
+    expect(printed).toContain("Doctor Agent: ready-workflow");
+    expect(printed).toContain(
+      "Operations Agent: Empty Workflow (empty-workflow)",
+    );
   });
 
-  it("prints an empty-owned-workflows result without checking public rows", async () => {
-    mockWorkflowList([
-      workflow(FOREIGN_WORKFLOW_ID, "foreign-workflow", {
-        visibility: "public",
-        ownerUserId: OTHER_USER_ID,
-      }),
-    ]);
+  it("prints an empty effective-visible result without readiness requests", async () => {
+    mockWorkflowList([]);
     let readinessRequests = 0;
     server.use(
       http.post(
@@ -676,13 +786,21 @@ describe("okou doctor connectors command", () => {
     await run();
 
     expect(output()).toContain(
-      "No owned or installed workflows to check for connectors",
+      "No effective visible workflows to check for connectors",
     );
     expect(readinessRequests).toBe(0);
   });
 
-  it("fails before listing workflows when OKOU_TOKEN cannot identify the owner", async () => {
+  it("fails when the aggregate workflow list rejects authentication", async () => {
     vi.stubEnv("OKOU_TOKEN", "invalid-token");
+    server.use(
+      http.get(`${API_ORIGIN}/api/workflows`, () => {
+        return HttpResponse.json(
+          { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+          { status: 401 },
+        );
+      }),
+    );
 
     await expect(run()).rejects.toThrow("process.exit called");
 
@@ -700,6 +818,24 @@ describe("okou doctor connectors command", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
     expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
       "--agent requires a workflow argument",
+    );
+  });
+
+  it("documents the effective visible aggregate scope", () => {
+    let help = "";
+    connectorsCommand.configureOutput({
+      writeOut: (text: string) => {
+        help += text;
+      },
+    });
+    connectorsCommand.outputHelp();
+    help = help.replace(/\s+/gu, " ");
+
+    expect(help).toContain(
+      "every effective visible workflow across all visible Agents is checked; shadowed workflows are skipped",
+    );
+    expect(help).toContain(
+      "Aggregate mode is not limited by OKOU_AGENT_ID; each workflow's Agent is used for connector authorization",
     );
   });
 });

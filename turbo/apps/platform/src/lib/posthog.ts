@@ -12,10 +12,6 @@ const AUTH_V2_DIAGNOSTIC_DISTINCT_ID = "auth-v2";
 export const APP_FIRST_SKELETON_PAINT_EVENT = "app_first_skeleton_paint";
 const APP_FIRST_SKELETON_PAINT_DISTINCT_ID = "app-bootstrap";
 
-type FirstSkeletonPaintMetric =
-  | "after-first-paint-upper-bound"
-  | "first-contentful-paint";
-
 export type AuthV2DiagnosticFlow = "sign-in" | "sign-up" | "unknown";
 
 export type AuthV2DiagnosticMethod =
@@ -174,12 +170,6 @@ function finiteNonNegativeNumber(value: unknown): number | undefined {
     : undefined;
 }
 
-function firstSkeletonPaintMetric(value: unknown): FirstSkeletonPaintMetric {
-  return value === "first-contentful-paint"
-    ? value
-    : "after-first-paint-upper-bound";
-}
-
 function sanitizePostHogCaptureResult(
   captureResult: CaptureResult | null,
 ): CaptureResult | null {
@@ -191,7 +181,7 @@ function sanitizePostHogCaptureResult(
     const sanitizedProperties: Record<string, boolean | number | string> = {
       $process_person_profile: false,
       distinct_id: APP_FIRST_SKELETON_PAINT_DISTINCT_ID,
-      paint_metric: firstSkeletonPaintMetric(properties.paint_metric),
+      paint_metric: "first-contentful-paint",
       public_brand: RUNTIME_CONFIG.publicBrand,
       token: POSTHOG_KEY ?? "",
     };
@@ -302,13 +292,7 @@ export function captureFirstSkeletonPaint(): void {
   }
   const responseStart = finiteNonNegativeNumber(navigation.responseStart);
   const responseEnd = finiteNonNegativeNumber(navigation.responseEnd);
-  const firstContentfulPaint = finiteNonNegativeNumber(
-    firstContentfulPaintTime(),
-  );
-  const firstPaintUpperBound = finiteNonNegativeNumber(
-    window.__appBootstrapFirstPaintUpperBound,
-  );
-  const skeletonPaint = firstContentfulPaint ?? firstPaintUpperBound;
+  const skeletonPaint = finiteNonNegativeNumber(firstContentfulPaintTime());
   if (
     responseStart === undefined ||
     responseEnd === undefined ||
@@ -323,10 +307,7 @@ export function captureFirstSkeletonPaint(): void {
     posthog.capture(APP_FIRST_SKELETON_PAINT_EVENT, {
       navigation_response_end_ms: Math.round(responseEnd),
       navigation_response_start_ms: Math.round(responseStart),
-      paint_metric:
-        firstContentfulPaint === undefined
-          ? "after-first-paint-upper-bound"
-          : "first-contentful-paint",
+      paint_metric: "first-contentful-paint",
       response_end_to_skeleton_paint_ms: Math.round(
         skeletonPaint - responseEnd,
       ),

@@ -121,25 +121,6 @@ describe("connector redirecting page", () => {
     expect(backToBrandLink("VM0")).toHaveAttribute("href", "/");
   });
 
-  it("localizes OAuth start failures in Portuguese", async () => {
-    document.documentElement.lang = "pt-BR";
-    detachedSetupPage({
-      context,
-      path: "/connectors/github/redirecting?label=GitHub&status=error",
-      user: null,
-      session: null,
-    });
-
-    await expect(
-      screen.findByRole("heading", {
-        name: "Não foi possível abrir GitHub",
-      }),
-    ).resolves.toBeInTheDocument();
-    expect(
-      screen.getByText("Volte para VM0 e tente conectar novamente."),
-    ).toBeInTheDocument();
-  });
-
   it("uses Okou copy on an Okou host", async () => {
     context.mocks.browser.url(
       "https://app.okou.ai/connectors/github/redirecting?label=GitHub",

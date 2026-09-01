@@ -7,7 +7,6 @@ import {
   queryAllByRoleFast,
   setupPageAndWaitForContent,
 } from "../../../__tests__/page-helper.ts";
-import { initializeI18n } from "../../../i18n/index.ts";
 import { fillComposer, mockChatLifecycle } from "./chat-test-helpers.ts";
 import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
@@ -407,7 +406,7 @@ describe("chat lifecycle", () => {
 
   it("localizes managed API usage when completed work is folded", async () => {
     document.documentElement.lang = "pt-BR";
-    await initializeI18n("pt-BR");
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
     mockChatLifecycle(context, {
       threadId: "e7000000-0000-4000-a000-000000000006",
       chatEvents: [

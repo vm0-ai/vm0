@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.39.4...desktop-v0.40.0) (2026-09-01)
+
+
+### Features
+
+* **desktop:** drive screen recording from the menu bar and deliver it back to okou ([#30518](https://github.com/vm0-ai/vm0/issues/30518)) ([d7f8adc](https://github.com/vm0-ai/vm0/commit/d7f8adc4bcca0def9089003343d87109089e4860))
+
 ## [0.39.4](https://github.com/vm0-ai/vm0/compare/desktop-v0.39.3...desktop-v0.39.4) (2026-08-31)
 
 

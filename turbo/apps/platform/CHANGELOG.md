@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.815.1](https://github.com/vm0-ai/vm0/compare/app-v0.815.0...app-v0.815.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **locator:** drop the preview counter and widen the band with its ticks ([#30662](https://github.com/vm0-ai/vm0/issues/30662)) ([96a4aa5](https://github.com/vm0-ai/vm0/commit/96a4aa5301b97d485ed81caaf295dfa370c56d5f))
+
+
+### Performance Improvements
+
+* **platform:** load clerk before app bootstrap ([#30628](https://github.com/vm0-ai/vm0/issues/30628)) ([c47e857](https://github.com/vm0-ai/vm0/commit/c47e8576b7669457018bca010e2d35d7ecafc669))
+* **platform:** start shared worker before auth handshake ([#30661](https://github.com/vm0-ai/vm0/issues/30661)) ([e873720](https://github.com/vm0-ai/vm0/commit/e87372019a934192ae717cc6fb5b51693882b1f0))
+
 ## [0.815.0](https://github.com/vm0-ai/vm0/compare/app-v0.814.2...app-v0.815.0) (2026-08-31)
 
 

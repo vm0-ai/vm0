@@ -370,51 +370,6 @@
     }
   },
   "appShell": {
-    "browserUpgrade": {
-      "browser": {
-        "action": "ब्राउज़र अपडेट करें",
-        "description": "{{assistantName}} आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए अपना ब्राउज़र अपडेट करें।",
-        "title": "जारी रखने के लिए अपना ब्राउज़र अपडेट करें"
-      },
-      "chrome": {
-        "action": "Chrome को अपडेट करें",
-        "description": "{{assistantName}} आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए Chrome को अपडेट करें।",
-        "title": "जारी रखने के लिए Chrome को अपडेट करें"
-      },
-      "chromium": {
-        "action": "Chromium को अपडेट करें",
-        "description": "{{assistantName}} आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए Chromium को अपडेट करें।",
-        "title": "जारी रखने के लिए Chromium को अपडेट करें"
-      },
-      "ios": {
-        "action": "iOS को अपडेट करें",
-        "description": "{{assistantName}} आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए iOS को अपडेट करें।",
-        "title": "जारी रखने के लिए iOS को अपडेट करें"
-      },
-      "safari": {
-        "action": "Safari को अपडेट करें",
-        "description": "{{assistantName}} आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए Safari को अपडेट करें।",
-        "title": "जारी रखने के लिए Safari को अपडेट करें"
-      }
-    },
-    "loading": {
-      "ariaLabel": "आपका वर्कस्पेस लोड हो रहा है",
-      "messages": {
-        "almostThere": "बस लगभग तैयार...",
-        "brewingIdeas": "कुछ नए विचार तैयार कर रहे हैं...",
-        "connectingDots": "कड़ियाँ जोड़ रहे हैं...",
-        "gettingReady": "सब कुछ तैयार कर रहे हैं...",
-        "loadingWorkspace": "आपका वर्कस्पेस लोड हो रहा है...",
-        "spinningTeam": "टीम को तैयार कर रहे हैं...",
-        "tuningInstruments": "उपकरणों को ट्यून कर रहे हैं...",
-        "warmingNeurons": "न्यूरॉन्स को सक्रिय कर रहे हैं..."
-      }
-    },
-    "logoAlt": "{{brandName}}",
-    "metadata": {
-      "description": "{{assistantName}}, {{brandName}} से आपका AI सहकर्मी है। {{assistantName}} को टेक्स्ट करें या वेब पर चैट करें — रिसर्च, ईमेल, दस्तावेज़, Slack, GitHub, Notion और 100+ टूल।",
-      "title": "{{assistantName}} — {{brandName}} से आपका AI सहकर्मी"
-    },
     "shortcutHelp": {
       "close": "कुंजीपटल शॉर्टकट बंद करें",
       "description": "इस पृष्ठ पर उपलब्ध शॉर्टकट",

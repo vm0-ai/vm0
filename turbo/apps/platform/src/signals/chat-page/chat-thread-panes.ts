@@ -187,7 +187,12 @@ const resolvePaneThread$ = command(
       set(loadDraft$, thread, isNew, signal),
       set(thread.subscribeChatThread$, signal),
       initialEventId
-        ? set(thread.scrollToEvent$, initialEventId, signal)
+        ? set(
+            thread.scrollToEvent$,
+            initialEventId,
+            { behavior: "instant", viewportOffsetTop: 0 },
+            signal,
+          )
         : Promise.resolve(),
     ]);
     signal.throwIfAborted();

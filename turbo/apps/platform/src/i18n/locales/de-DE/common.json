@@ -370,51 +370,6 @@
     }
   },
   "appShell": {
-    "browserUpgrade": {
-      "browser": {
-        "action": "Browser aktualisieren",
-        "description": "{{assistantName}} unterstützt Ihre aktuelle Browserversion nicht. Aktualisieren Sie Ihren Browser, um fortzufahren.",
-        "title": "Aktualisieren Sie Ihren Browser, um fortzufahren"
-      },
-      "chrome": {
-        "action": "Chrome aktualisieren",
-        "description": "{{assistantName}} unterstützt Ihre aktuelle Browserversion nicht. Aktualisieren Sie Chrome, um fortzufahren.",
-        "title": "Aktualisieren Sie Chrome, um fortzufahren"
-      },
-      "chromium": {
-        "action": "Chromium aktualisieren",
-        "description": "{{assistantName}} unterstützt Ihre aktuelle Browserversion nicht. Aktualisieren Sie Chromium, um fortzufahren.",
-        "title": "Aktualisieren Sie Chromium, um fortzufahren"
-      },
-      "ios": {
-        "action": "iOS aktualisieren",
-        "description": "{{assistantName}} unterstützt Ihre aktuelle Browserversion nicht. Aktualisieren Sie iOS, um fortzufahren.",
-        "title": "Aktualisieren Sie iOS, um fortzufahren"
-      },
-      "safari": {
-        "action": "Safari aktualisieren",
-        "description": "{{assistantName}} unterstützt Ihre aktuelle Browserversion nicht. Aktualisieren Sie Safari, um fortzufahren.",
-        "title": "Aktualisieren Sie Safari, um fortzufahren"
-      }
-    },
-    "loading": {
-      "ariaLabel": "Ihr Arbeitsbereich wird geladen",
-      "messages": {
-        "almostThere": "Fast geschafft...",
-        "brewingIdeas": "Ideen werden entwickelt...",
-        "connectingDots": "Punkte werden verbunden...",
-        "gettingReady": "Alles wird vorbereitet...",
-        "loadingWorkspace": "Ihr Arbeitsbereich wird geladen...",
-        "spinningTeam": "Das Team wird zusammengestellt...",
-        "tuningInstruments": "Instrumente werden gestimmt...",
-        "warmingNeurons": "Neuronen werden aufgewärmt..."
-      }
-    },
-    "logoAlt": "{{brandName}}",
-    "metadata": {
-      "description": "{{assistantName}} ist Ihr KI-Kollege von {{brandName}}. Schreiben Sie {{assistantName}} oder chatten Sie im Web — für Recherche, E-Mails, Dokumente, Slack, GitHub, Notion und über 100 weitere Tools.",
-      "title": "{{assistantName}} — Ihr KI-Kollege von {{brandName}}"
-    },
     "shortcutHelp": {
       "close": "Tastaturkürzel schließen",
       "description": "Verfügbare Tastaturkürzel für diese Seite",

@@ -2652,6 +2652,7 @@ describe("zero attachment chips", () => {
 
   it("localizes a hosted-site preview and its artifact actions", async () => {
     document.documentElement.lang = "pt-BR";
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
     context.mocks.browser.clipboardWriteText();
     setupHostedSiteArtifactPreview({
       filename: "localized-site.html",

@@ -2687,27 +2687,25 @@ function setThreadRenderWindowState(
 
 function scrollTargetStartIndex(
   groups: readonly ChatEventGroup[],
-  targetEventId: string | null,
+  position: ThreadScrollPosition | null,
 ): number | null {
-  if (targetEventId === null) {
+  if (position === null) {
     return null;
   }
   const targetGroupIndex = groups.findIndex((group) => {
     return group.events.some((event) => {
-      return event.id === targetEventId;
+      return event.id === position.targetEventId;
     });
   });
   if (targetGroupIndex === -1) {
     return null;
   }
   const targetRunId = groups[targetGroupIndex]?.events.find((event) => {
-    return event.id === targetEventId;
+    return event.id === position.targetEventId;
   })?.runId;
-  if (targetRunId === undefined) {
-    return targetGroupIndex;
-  }
   let startIndex = targetGroupIndex;
   while (
+    targetRunId !== undefined &&
     startIndex > 0 &&
     groups[startIndex - 1]?.events.some((event) => {
       return event.runId === targetRunId;
@@ -2715,7 +2713,12 @@ function scrollTargetStartIndex(
   ) {
     startIndex--;
   }
-  return startIndex;
+  // A positive viewport inset needs content before the target. Preload one
+  // established window so the smooth scroll cannot cross the top load-more
+  // threshold and replace its layout halfway through the animation.
+  return position.viewportOffsetTop > 0
+    ? previousRenderWindowStartIndex(groups, startIndex)
+    : startIndex;
 }
 
 interface ChatRenderWindowOptions {
@@ -2748,7 +2751,7 @@ function createChatRenderWindow({
       const requestedStartIndex = renderWindowStartIndex(groups, cursorGroupId);
       const targetStartIndex = scrollTargetStartIndex(
         groups,
-        get(threadScrollPosition$)?.targetEventId ?? null,
+        get(threadScrollPosition$),
       );
       return groups.slice(
         targetStartIndex === null
@@ -2806,7 +2809,7 @@ function createChatRenderWindow({
       );
       const targetStartIndex = scrollTargetStartIndex(
         groups,
-        get(threadScrollPosition$)?.targetEventId ?? null,
+        get(threadScrollPosition$),
       );
       const startIndex =
         targetStartIndex === null

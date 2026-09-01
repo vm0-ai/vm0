@@ -1,10 +1,5 @@
 <!doctype html>
-<html
-  lang="en-US"
-  translate="no"
-  data-app-brand-name="VM0"
-  data-app-head-managed="true"
->
+<html lang="en-US" translate="no" data-app-brand-name="VM0">
   <head>
     <script>
       window.__appBootstrapStart = performance.now();
@@ -134,15 +129,11 @@
       }
 
       #root {
-        display: none;
+        display: block;
         position: fixed;
         top: 0;
         right: 0;
         left: 0;
-      }
-
-      [data-browser-supported="true"] #root {
-        display: block;
       }
 
       #app-bootstrap-skeleton {
@@ -152,28 +143,16 @@
            standalone viewport unit, which can resolve after first paint. */
         z-index: 60;
         box-sizing: border-box;
-        display: none;
+        display: flex;
         align-items: center;
         justify-content: center;
         background: #fdfdfe;
-        color: rgba(20, 23, 29, 0.7);
-        font-family:
-          system-ui,
-          -apple-system,
-          BlinkMacSystemFont,
-          "Segoe UI",
-          sans-serif;
         opacity: 1;
         transition: opacity 300ms ease;
       }
 
-      [data-browser-supported="true"] #app-bootstrap-skeleton {
-        display: flex;
-      }
-
       [data-theme="dark"] #app-bootstrap-skeleton {
         background: #19191b;
-        color: rgba(232, 233, 237, 0.7);
       }
 
       #app-bootstrap-skeleton.app-bootstrap-skeleton--hidden {
@@ -185,11 +164,13 @@
         position: fixed;
         top: var(--app-bootstrap-skeleton-center-y, 50dvh);
         left: 50%;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 20px;
         transform: translate(-50%, -50%);
+      }
+
+      @keyframes app-bootstrap-skeleton-avatar-pulse {
+        50% {
+          opacity: 0.5;
+        }
       }
 
       .app-bootstrap-skeleton__avatar {
@@ -198,20 +179,14 @@
         height: 64px;
         overflow: hidden;
         border-radius: 9999px;
+        animation: app-bootstrap-skeleton-avatar-pulse 2s
+          cubic-bezier(0.4, 0, 0.6, 1) infinite;
       }
 
       .app-bootstrap-skeleton__avatar-layers {
         position: absolute;
         inset: 0;
-      }
-
-      .app-bootstrap-skeleton__avatar-layers {
-        opacity: 0;
         transform: scale(1.25);
-      }
-
-      .app-bootstrap-skeleton__avatar-layers--ready {
-        opacity: 1;
       }
 
       .app-bootstrap-skeleton__avatar img {
@@ -221,492 +196,14 @@
         height: 100%;
         object-fit: cover;
       }
-
-      .app-bootstrap-skeleton__message {
-        position: relative;
-        height: 24px;
-        font-size: 16px;
-        font-weight: 500;
-        line-height: 24px;
-      }
-
-      .app-bootstrap-skeleton__message p {
-        margin: 0;
-        white-space: nowrap;
-      }
-
-      .app-bootstrap-skeleton__message-spacer {
-        visibility: hidden;
-      }
-
-      .app-bootstrap-skeleton__message-static {
-        position: absolute;
-        top: 0;
-        left: 50%;
-        transform: translateX(-50%);
-      }
-
-      .app-bootstrap-skeleton__message-typewriter {
-        position: absolute;
-        inset: 0;
-        width: 0;
-        overflow: hidden;
-        border-right: 2px solid currentColor;
-        visibility: hidden;
-      }
     </style>
-    <script>
-      (function () {
-        var ua = navigator.userAgent || "";
-        var supported = true;
-        var upgradeTargetKind = "browser";
-        var actionUrl = "https://www.google.com/chrome/";
-        var iosPattern = /\b(?:iPhone|iPad|iPod)\b.*\bOS (\d+)(?:_(\d+))?/;
-        var iosMatch = iosPattern.exec(ua);
-        var chromiumMatch = /\bChromium\/(\d+)/.exec(ua);
-        var chromeMatch = /\b(?:Chrome|CriOS|HeadlessChrome)\/(\d+)/.exec(ua);
-
-        if (iosMatch) {
-          upgradeTargetKind = "ios";
-          actionUrl = "https://support.apple.com/HT204204";
-          var iosMajor = parseInt(iosMatch[1], 10);
-          var iosMinor = iosMatch[2] ? parseInt(iosMatch[2], 10) : 0;
-          if (!isNaN(iosMajor) && !isNaN(iosMinor)) {
-            supported = iosMajor > 16 || (iosMajor === 16 && iosMinor >= 4);
-          }
-        } else if (
-          (chromiumMatch || chromeMatch) &&
-          !/\b(?:Edg|OPR|SamsungBrowser)\//.test(ua)
-        ) {
-          var chromiumBrowser = !!chromiumMatch;
-          upgradeTargetKind = chromiumBrowser ? "chromium" : "chrome";
-          actionUrl = chromiumBrowser
-            ? "https://www.chromium.org/getting-involved/download-chromium/"
-            : "https://www.google.com/chrome/";
-          var chromeMajor = parseInt(
-            chromiumBrowser ? chromiumMatch[1] : chromeMatch[1],
-            10,
-          );
-          if (!isNaN(chromeMajor)) {
-            supported = chromeMajor >= 111;
-          }
-        } else {
-          var safariMatch = /\bVersion\/(\d+)(?:\.(\d+))?.*\bSafari\//.exec(ua);
-          if (
-            safariMatch &&
-            !/\b(?:Chrome|CriOS|Chromium|Edg|OPR|FxiOS)\//.test(ua)
-          ) {
-            upgradeTargetKind = "safari";
-            actionUrl = "https://support.apple.com/safari";
-            var safariMajor = parseInt(safariMatch[1], 10);
-            var safariMinor = safariMatch[2] ? parseInt(safariMatch[2], 10) : 0;
-            if (!isNaN(safariMajor) && !isNaN(safariMinor)) {
-              supported =
-                safariMajor > 16 || (safariMajor === 16 && safariMinor >= 4);
-            }
-          }
-        }
-
-        window.__vm0BrowserSupported = supported;
-        document.documentElement.dataset.browserUpgradeActionUrl = actionUrl;
-        document.documentElement.dataset.browserUpgradeTarget =
-          upgradeTargetKind;
-        document.documentElement.setAttribute(
-          "data-browser-supported",
-          supported ? "true" : "false",
-        );
-      })();
-    </script>
-  </head>
-  <body>
-    <div
-      id="app-bootstrap-skeleton"
-      role="status"
-      aria-live="polite"
-      aria-label="Loading your workspace"
-    >
-      <div class="app-bootstrap-skeleton__content">
-        <div class="app-bootstrap-skeleton__avatar" aria-hidden="true">
-          <div class="app-bootstrap-skeleton__avatar-layers">
-            <img
-              data-app-bootstrap-avatar-layer="head"
-              alt=""
-              decoding="async"
-              fetchpriority="low"
-            />
-            <img
-              data-app-bootstrap-avatar-layer="face"
-              alt=""
-              decoding="async"
-              fetchpriority="low"
-            />
-            <img
-              data-app-bootstrap-avatar-layer="hair"
-              alt=""
-              decoding="async"
-              fetchpriority="low"
-            />
-          </div>
-        </div>
-        <div class="app-bootstrap-skeleton__message">
-          <p class="app-bootstrap-skeleton__message-spacer" aria-hidden="true">
-            Brewing some ideas...
-          </p>
-          <p class="app-bootstrap-skeleton__message-static">
-            Warming up the neurons...
-          </p>
-          <p class="app-bootstrap-skeleton__message-typewriter">
-            Brewing some ideas...
-          </p>
-        </div>
-      </div>
-    </div>
-    <script data-vm0-avatar-bootstrap="">
-      (function () {
-        if (window.__vm0BrowserSupported !== true) return;
-
-        var skeleton = document.getElementById("app-bootstrap-skeleton");
-        var avatarPresets = [
-          [1, 0, 1, 5, 1, "h"],
-          [2, 1, 3, 3, 1, "m"],
-          [4, 2, 5, 4, 3, "d"],
-          [3, 3, 4, 1, 4, "h"],
-          [5, 4, 2, 2, 5, "m"],
-        ];
-        var avatar =
-          avatarPresets[Math.floor(Math.random() * avatarPresets.length)];
-        var staticAssetBase =
-          document.documentElement.getAttribute("data-app-brand-name") ===
-          "Okou"
-            ? "https://static.okou.io"
-            : "https://static.vm0.io";
-        var avatarAssetBase =
-          staticAssetBase + "/platform/views/zero-page/assets/avatar-svg/";
-        var avatarSources = [
-          avatarAssetBase + "head-r" + avatar[0] + "-s" + avatar[1] + ".svg",
-          avatarAssetBase +
-            "face-r" +
-            avatar[0] +
-            "-f" +
-            avatar[4] +
-            "-" +
-            avatar[5] +
-            ".svg",
-          avatarAssetBase +
-            "hair-r" +
-            avatar[0] +
-            "-h" +
-            avatar[2] +
-            "-c" +
-            avatar[3] +
-            ".svg",
-        ];
-        var avatarLayers = skeleton.querySelectorAll(
-          "[data-app-bootstrap-avatar-layer]",
-        );
-        var loadedAvatarLayers = 0;
-
-        for (var i = 0; i < avatarLayers.length; i += 1) {
-          avatarLayers[i].addEventListener(
-            "load",
-            function () {
-              loadedAvatarLayers += 1;
-              if (loadedAvatarLayers === avatarLayers.length) {
-                skeleton
-                  .querySelector(".app-bootstrap-skeleton__avatar-layers")
-                  .classList.add(
-                    "app-bootstrap-skeleton__avatar-layers--ready",
-                  );
-              }
-            },
-            { once: true },
-          );
-          avatarLayers[i].src = avatarSources[i];
-        }
-      })();
-    </script>
-    <script>
-      (function () {
-        var callbacks = [];
-        var paintObserver = null;
-        var ready = false;
-
-        window.__vm0AfterFirstPaint = function (callback) {
-          if (ready) {
-            callback();
-            return;
-          }
-          callbacks.push(callback);
-        };
-
-        function flushCallbacks(firstPaintObserved) {
-          if (ready) return;
-          ready = true;
-          if (paintObserver) paintObserver.disconnect();
-          if (firstPaintObserved) {
-            window.__appBootstrapFirstPaintUpperBound = performance.now();
-          }
-          for (var i = 0; i < callbacks.length; i += 1) {
-            callbacks[i]();
-          }
-          callbacks.length = 0;
-        }
-
-        if (document.visibilityState === "visible") {
-          var observingFirstContentfulPaint = false;
-          if (typeof PerformanceObserver === "function") {
-            try {
-              paintObserver = new PerformanceObserver(function (list) {
-                var entries = list.getEntries();
-                for (var i = 0; i < entries.length; i += 1) {
-                  if (entries[i].name === "first-contentful-paint") {
-                    flushCallbacks(true);
-                    return;
-                  }
-                }
-              });
-              paintObserver.observe({ buffered: true, type: "paint" });
-              observingFirstContentfulPaint = true;
-            } catch {
-              paintObserver = null;
-            }
-          }
-
-          window.requestAnimationFrame(function () {
-            window.requestAnimationFrame(function () {
-              if (!observingFirstContentfulPaint) {
-                flushCallbacks(true);
-                return;
-              }
-              window.setTimeout(function () {
-                flushCallbacks(true);
-              }, 250);
-            });
-          });
-          return;
-        }
-
-        window.setTimeout(function () {
-          flushCallbacks(false);
-        }, 100);
-      })();
-    </script>
-    <style data-vm0-post-skeleton-styles="">
-      @keyframes app-bootstrap-skeleton-hide-static {
-        0%,
-        99.9% {
-          opacity: 1;
-        }
-        100% {
-          opacity: 0;
-        }
-      }
-
-      @keyframes app-bootstrap-skeleton-show-typewriter {
-        0%,
-        99.9% {
-          visibility: hidden;
-        }
-        100% {
-          visibility: visible;
-        }
-      }
-
-      @keyframes app-bootstrap-skeleton-type {
-        from {
-          width: 0;
-        }
-        to {
-          width: 100%;
-        }
-      }
-
-      @keyframes app-bootstrap-skeleton-blink {
-        0%,
-        100% {
-          border-color: transparent;
-        }
-        50% {
-          border-color: currentColor;
-        }
-      }
-
-      .browser-upgrade {
-        background: #ffffff;
-        box-sizing: border-box;
-        color: #14171d;
-        display: flex;
-        font-family:
-          system-ui,
-          -apple-system,
-          BlinkMacSystemFont,
-          "Segoe UI",
-          sans-serif;
-        align-items: center;
-        justify-content: center;
-        min-height: 100vh;
-        overflow: hidden;
-        padding: 24px;
-        position: relative;
-        width: 100%;
-      }
-
-      .browser-upgrade * {
-        box-sizing: border-box;
-      }
-
-      .browser-upgrade::before {
-        background-image: radial-gradient(
-          ellipse 120% 80% at 50% -20%,
-          rgba(248, 249, 251, 0.9),
-          transparent 50%
-        );
-        background-size: 100% 100%;
-        content: "";
-        inset: 0;
-        position: absolute;
-        z-index: 0;
-      }
-
-      [data-browser-supported="true"] .browser-upgrade {
-        display: none;
-      }
-
-      .browser-upgrade__center {
-        position: relative;
-        width: 100%;
-        z-index: 1;
-      }
-
-      .browser-upgrade__panel {
-        background: #ffffff;
-        border: 0.7px solid #dce1e8;
-        border-radius: 16px;
-        box-shadow:
-          0 2px 12px rgba(113, 120, 133, 0.04),
-          0 0 0 0.5px rgba(113, 120, 133, 0.02);
-        display: flex;
-        flex-direction: column;
-        gap: 24px;
-        align-items: center;
-        margin: 0 auto;
-        max-width: 384px;
-        padding: 32px;
-        text-align: center;
-      }
-
-      .browser-upgrade__icon {
-        align-items: center;
-        display: flex;
-        height: 40px;
-        justify-content: center;
-        width: 40px;
-      }
-
-      .browser-upgrade__icon svg {
-        display: block;
-        height: 40px;
-        width: 40px;
-      }
-
-      .browser-upgrade__copy {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-
-      .browser-upgrade h1 {
-        color: #14171d;
-        font-size: 16px;
-        font-weight: 600;
-        letter-spacing: 0;
-        line-height: 24px;
-        margin: 0;
-      }
-
-      .browser-upgrade p {
-        color: #5d6572;
-        font-size: 14px;
-        line-height: 22px;
-        margin: 0;
-      }
-
-      .browser-upgrade__actions {
-        width: 100%;
-      }
-
-      .browser-upgrade a {
-        background: #ed4e01;
-        border: 1px solid #ed4e01;
-        border-radius: 8px;
-        box-sizing: border-box;
-        color: #ffffff;
-        display: inline-block;
-        font-size: 14px;
-        font-weight: 600;
-        line-height: 20px;
-        min-height: 40px;
-        padding: 9px 14px;
-        text-align: center;
-        text-decoration: none;
-        width: 100%;
-      }
-
-      .browser-upgrade a:hover {
-        background: #d94600;
-        border-color: #d94600;
-      }
-
-      @media (max-width: 520px) {
-        .browser-upgrade__panel {
-          padding: 24px 20px;
-        }
-      }
-    </style>
-    <script data-vm0-app-entry="" type="module" src="/src/main.ts"></script>
-    <div class="browser-upgrade" role="status" aria-live="polite">
-      <div class="browser-upgrade__center">
-        <div class="browser-upgrade__panel">
-          <div class="browser-upgrade__icon" aria-hidden="true">
-            <svg viewBox="0 0 40 40" aria-hidden="true">
-              <rect width="40" height="40" rx="10" fill="#fff1e9" />
-              <path
-                d="M13 20a7 7 0 0 1 12-5M27 20a7 7 0 0 1-12 5"
-                fill="none"
-                stroke="#ed4e01"
-                stroke-linecap="round"
-                stroke-width="2.5"
-              />
-              <path d="m24 11 1 4-4 1M16 29l-1-4 4-1" fill="#ed4e01" />
-            </svg>
-          </div>
-          <div class="browser-upgrade__copy">
-            <h1 id="browser-upgrade-title">Update your browser to continue</h1>
-            <p id="browser-upgrade-description">
-              Zero does not support your current browser version. Update your
-              browser to continue.
-            </p>
-          </div>
-          <div class="browser-upgrade__actions">
-            <a
-              id="browser-upgrade-action"
-              href="https://www.google.com/chrome/"
-            >
-              Update browser
-            </a>
-          </div>
-        </div>
-      </div>
-    </div>
-    <script>
-      (function () {
-        var action = document.getElementById("browser-upgrade-action");
-        var actionUrl =
-          document.documentElement.dataset.browserUpgradeActionUrl;
-        if (action && actionUrl) action.href = actionUrl;
-      })();
-    </script>
-    <div id="root"></div>
+    <script
+      id="vm0-clerk-core-script"
+      src="__VM0_CLERK_BROWSER_SCRIPT_URL__"
+      crossorigin="anonymous"
+      defer
+      type="text/javascript"
+    ></script>
     <script data-vm0-clerk-bootstrap="">
       (function () {
         // Keep host, API-origin, and preview-bypass selection aligned with
@@ -737,16 +234,6 @@
         var publishableKey = production
           ? "%VITE_CLERK_PUBLISHABLE_KEY_PROD%"
           : "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%";
-        var scriptUrl = satellite
-          ? "__VM0_CLERK_SATELLITE_SCRIPT_URL__"
-          : production
-            ? "__VM0_CLERK_PRODUCTION_SCRIPT_URL__"
-            : "__VM0_CLERK_PREVIEW_SCRIPT_URL__";
-        var preconnect = document.createElement("link");
-        preconnect.rel = "preconnect";
-        preconnect.href = new URL(scriptUrl).origin;
-        preconnect.crossOrigin = "anonymous";
-        document.head.appendChild(preconnect);
         var authOrigin = satellite ? "https://app.vm0.ai" : location.origin;
         var loadOptions = {
           afterSignOutUrl: new URL("/sign-in", authOrigin).toString(),
@@ -1102,889 +589,146 @@
         }
         window.addEventListener("pagehide", abortOnFinalPageHide);
 
-        window.__vm0AfterFirstPaint(function () {
-          if (window.__vm0BrowserSupported !== true) return;
-
-          var script = document.createElement("script");
-          script.async = false;
-          script.defer = true;
-          script.crossOrigin = "anonymous";
-          script.dataset.clerkJsScript = "";
-          script.dataset.clerkPublishableKey = publishableKey;
-          if (satellite) {
-            script.dataset.clerkDomain = PRODUCTION_SATELLITE_DOMAIN;
-          }
-          script.onerror = function () {
-            script.remove();
-          };
-          script.onload = startClerk;
-          script.src = scriptUrl;
-          script.type = "text/javascript";
-          document.head.appendChild(script);
-        });
+        var script = document.getElementById("vm0-clerk-core-script");
+        if (!script) throw new Error("Clerk core script is unavailable");
+        script.dataset.clerkJsScript = "";
+        script.dataset.clerkPublishableKey = publishableKey;
+        if (satellite) {
+          script.dataset.clerkDomain = PRODUCTION_SATELLITE_DOMAIN;
+        }
+        script.onerror = function () {
+          script.remove();
+        };
+        script.onload = startClerk;
       })();
     </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.ts"></script>
+    <div
+      id="app-bootstrap-skeleton"
+      role="status"
+      aria-live="polite"
+      aria-label="Loading"
+    >
+      <div class="app-bootstrap-skeleton__content">
+        <div class="app-bootstrap-skeleton__avatar" aria-hidden="true">
+          <div class="app-bootstrap-skeleton__avatar-layers">
+            <img
+              data-app-bootstrap-avatar-layer="head"
+              alt=""
+              src="https://static.vm0.io/platform/views/zero-page/assets/avatar-svg/head-r1-s0.svg"
+              decoding="async"
+              fetchpriority="low"
+            />
+            <img
+              data-app-bootstrap-avatar-layer="face"
+              alt=""
+              src="https://static.vm0.io/platform/views/zero-page/assets/avatar-svg/face-r1-f1-h.svg"
+              decoding="async"
+              fetchpriority="low"
+            />
+            <img
+              data-app-bootstrap-avatar-layer="hair"
+              alt=""
+              src="https://static.vm0.io/platform/views/zero-page/assets/avatar-svg/hair-r1-h1-c5.svg"
+              decoding="async"
+              fetchpriority="low"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
     <link
-      data-vm0-font-stylesheet=""
+      rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
     />
     <script>
-      window.__vm0AfterFirstPaint(function () {
-        // Resolve locale before Clerk and the application entry start.
-        (function () {
-          var orgId = sessionStorage.getItem("clerk-active-org-id");
-          var cacheKey = orgId ? "vm0:locale:" + orgId : null;
-          var cached = cacheKey ? localStorage.getItem(cacheKey) : null;
-          // Prefer the workspace cache. Signed-out and first-time visitors use a
-          // supported browser language, with English as the fallback.
-          var browserLocale = /^ja(?:-|$)/i.test(navigator.language)
-            ? "ja-JP"
-            : /^ko(?:-|$)/i.test(navigator.language)
-              ? "ko-KR"
-              : /^id(?:-|$)/i.test(navigator.language)
-                ? "id-ID"
-                : /^de(?:-|$)/i.test(navigator.language)
-                  ? "de-DE"
-                  : /^es(?:-|$)/i.test(navigator.language)
-                    ? "es-ES"
-                    : /^it(?:-|$)/i.test(navigator.language)
-                      ? "it-IT"
-                      : /^fr(?:-|$)/i.test(navigator.language)
-                        ? "fr-FR"
-                        : /^hi(?:-|$)/i.test(navigator.language)
-                          ? "hi-IN"
-                          : /^pt(?:-|$)/i.test(navigator.language)
-                            ? "pt-BR"
-                            : "en-US";
-          var locale =
-            cached === "en-US" ||
-            cached === "pt-BR" ||
-            cached === "ja-JP" ||
-            cached === "ko-KR" ||
-            cached === "id-ID" ||
-            cached === "de-DE" ||
-            cached === "es-ES" ||
-            cached === "it-IT" ||
-            cached === "fr-FR" ||
-            cached === "hi-IN"
-              ? cached
-              : browserLocale;
-          var copyByLocale = {
-            "en-US": {
-              browserUpgrade: {
-                browser: {
-                  actionLabel: "Update browser",
-                  description:
-                    "{{assistantName}} does not support your current browser version. Update your browser to continue.",
-                  title: "Update your browser to continue",
-                },
-                chrome: {
-                  actionLabel: "Update Chrome",
-                  description:
-                    "{{assistantName}} does not support your current browser version. Update Chrome to continue.",
-                  title: "Update Chrome to continue",
-                },
-                chromium: {
-                  actionLabel: "Update Chromium",
-                  description:
-                    "{{assistantName}} does not support your current browser version. Update Chromium to continue.",
-                  title: "Update Chromium to continue",
-                },
-                ios: {
-                  actionLabel: "Update iOS",
-                  description:
-                    "{{assistantName}} does not support your current browser version. Update iOS to continue.",
-                  title: "Update iOS to continue",
-                },
-                safari: {
-                  actionLabel: "Update Safari",
-                  description:
-                    "{{assistantName}} does not support your current browser version. Update Safari to continue.",
-                  title: "Update Safari to continue",
-                },
-              },
-              loading: {
-                ariaLabel: "Loading your workspace",
-                messages: [
-                  "Warming up the neurons...",
-                  "Brewing some ideas...",
-                  "Getting things ready...",
-                  "Almost there...",
-                  "Loading your workspace...",
-                  "Tuning the instruments...",
-                  "Connecting the dots...",
-                  "Spinning up the team...",
-                ],
-              },
-              metadata: {
-                description:
-                  "{{assistantName}} is your AI coworker from {{brandName}}. Text {{assistantName}} or chat on the web — research, email, docs, Slack, GitHub, Notion, and 100+ tools.",
-                title:
-                  "{{assistantName}} — Your AI coworker from {{brandName}}",
-              },
-            },
-            "fr-FR": {
-              browserUpgrade: {
-                browser: {
-                  actionLabel: "Mettre à jour le navigateur",
-                  description:
-                    "{{assistantName}} ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour votre navigateur pour continuer.",
-                  title: "Mettez à jour votre navigateur pour continuer",
-                },
-                chrome: {
-                  actionLabel: "Mettre à jour Chrome",
-                  description:
-                    "{{assistantName}} ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour Chrome pour continuer.",
-                  title: "Mettez à jour Chrome pour continuer",
-                },
-                chromium: {
-                  actionLabel: "Mettre à jour Chromium",
-                  description:
-                    "{{assistantName}} ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour Chromium pour continuer.",
-                  title: "Mettez à jour Chromium pour continuer",
-                },
-                ios: {
-                  actionLabel: "Mettre à jour iOS",
-                  description:
-                    "{{assistantName}} ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour iOS pour continuer.",
-                  title: "Mettez à jour iOS pour continuer",
-                },
-                safari: {
-                  actionLabel: "Mettre à jour Safari",
-                  description:
-                    "{{assistantName}} ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour Safari pour continuer.",
-                  title: "Mettez à jour Safari pour continuer",
-                },
-              },
-              loading: {
-                ariaLabel: "Chargement de votre espace de travail",
-                messages: [
-                  "Initialisation des neurones...",
-                  "Quelques idées sont en préparation...",
-                  "Préparation en cours...",
-                  "Presque prêt...",
-                  "Chargement de votre espace de travail...",
-                  "Accordage des instruments...",
-                  "Connexion des idées...",
-                  "Mise en place de l’équipe...",
-                ],
-              },
-              metadata: {
-                description:
-                  "{{assistantName}} est votre coéquipier IA créé par {{brandName}}. Envoyez un message à {{assistantName}} ou discutez sur le web — recherche, e-mails, documents, Slack, GitHub, Notion et plus de 100 outils.",
-                title:
-                  "{{assistantName}} — Votre coéquipier IA créé par {{brandName}}",
-              },
-            },
-            "pt-BR": {
-              browserUpgrade: {
-                browser: {
-                  actionLabel: "Atualizar navegador",
-                  description:
-                    "O {{assistantName}} não oferece suporte à versão atual do seu navegador. Atualize o navegador para continuar.",
-                  title: "Atualize seu navegador para continuar",
-                },
-                chrome: {
-                  actionLabel: "Atualizar Chrome",
-                  description:
-                    "O {{assistantName}} não oferece suporte à versão atual do seu navegador. Atualize o Chrome para continuar.",
-                  title: "Atualize o Chrome para continuar",
-                },
-                chromium: {
-                  actionLabel: "Atualizar Chromium",
-                  description:
-                    "O {{assistantName}} não oferece suporte à versão atual do seu navegador. Atualize o Chromium para continuar.",
-                  title: "Atualize o Chromium para continuar",
-                },
-                ios: {
-                  actionLabel: "Atualizar iOS",
-                  description:
-                    "O {{assistantName}} não oferece suporte à versão atual do seu navegador. Atualize o iOS para continuar.",
-                  title: "Atualize o iOS para continuar",
-                },
-                safari: {
-                  actionLabel: "Atualizar Safari",
-                  description:
-                    "O {{assistantName}} não oferece suporte à versão atual do seu navegador. Atualize o Safari para continuar.",
-                  title: "Atualize o Safari para continuar",
-                },
-              },
-              loading: {
-                ariaLabel: "Carregando seu espaço de trabalho",
-                messages: [
-                  "Aquecendo os neurônios...",
-                  "Preparando algumas ideias...",
-                  "Preparando tudo...",
-                  "Quase lá...",
-                  "Carregando seu espaço de trabalho...",
-                  "Ajustando os instrumentos...",
-                  "Ligando os pontos...",
-                  "Reunindo a equipe...",
-                ],
-              },
-              metadata: {
-                description:
-                  "{{assistantName}} é seu colega de IA da {{brandName}}. Envie uma mensagem para o {{assistantName}} ou converse pela web — pesquise, envie e-mails, crie documentos e use Slack, GitHub, Notion e mais de 100 ferramentas.",
-                title: "{{assistantName}} — Seu colega de IA da {{brandName}}",
-              },
-            },
-            "ja-JP": {
-              browserUpgrade: {
-                browser: {
-                  actionLabel: "ブラウザを更新",
-                  description:
-                    "現在のブラウザのバージョンは{{assistantName}}でサポートされていません。続行するにはブラウザを更新してください。",
-                  title: "続行するにはブラウザを更新してください",
-                },
-                chrome: {
-                  actionLabel: "Chromeを更新",
-                  description:
-                    "現在のブラウザのバージョンは{{assistantName}}でサポートされていません。続行するにはChromeを更新してください。",
-                  title: "続行するにはChromeを更新してください",
-                },
-                chromium: {
-                  actionLabel: "Chromiumを更新",
-                  description:
-                    "現在のブラウザのバージョンは{{assistantName}}でサポートされていません。続行するにはChromiumを更新してください。",
-                  title: "続行するにはChromiumを更新してください",
-                },
-                ios: {
-                  actionLabel: "iOSを更新",
-                  description:
-                    "現在のブラウザのバージョンは{{assistantName}}でサポートされていません。続行するにはiOSを更新してください。",
-                  title: "続行するにはiOSを更新してください",
-                },
-                safari: {
-                  actionLabel: "Safariを更新",
-                  description:
-                    "現在のブラウザのバージョンは{{assistantName}}でサポートされていません。続行するにはSafariを更新してください。",
-                  title: "続行するにはSafariを更新してください",
-                },
-              },
-              loading: {
-                ariaLabel: "ワークスペースを読み込み中",
-                messages: [
-                  "ニューラルネットワークを準備しています...",
-                  "アイデアを練っています...",
-                  "準備しています...",
-                  "もうすぐです...",
-                  "ワークスペースを読み込んでいます...",
-                  "楽器を調整しています...",
-                  "点と点をつないでいます...",
-                  "チームを立ち上げています...",
-                ],
-              },
-              metadata: {
-                description:
-                  "{{assistantName}}は{{brandName}}のAIコワーカーです。{{assistantName}}にメッセージを送るか、Webでチャットできます。リサーチ、メール、ドキュメント、Slack、GitHub、Notionなど、100以上のツールを利用できます。",
-                title: "{{assistantName}} — {{brandName}}のAIコワーカー",
-              },
-            },
-            "ko-KR": {
-              browserUpgrade: {
-                browser: {
-                  actionLabel: "브라우저 업데이트",
-                  description:
-                    "{{assistantName}}는 현재 브라우저 버전을 지원하지 않습니다. 계속하려면 브라우저를 업데이트하세요.",
-                  title: "계속하려면 브라우저를 업데이트하세요",
-                },
-                chrome: {
-                  actionLabel: "Chrome 업데이트",
-                  description:
-                    "{{assistantName}}는 현재 Chrome 버전을 지원하지 않습니다. 계속하려면 Chrome을 업데이트하세요.",
-                  title: "계속하려면 Chrome을 업데이트하세요",
-                },
-                chromium: {
-                  actionLabel: "Chromium 업데이트",
-                  description:
-                    "{{assistantName}}는 현재 Chromium 버전을 지원하지 않습니다. 계속하려면 Chromium을 업데이트하세요.",
-                  title: "계속하려면 Chromium을 업데이트하세요",
-                },
-                ios: {
-                  actionLabel: "iOS 업데이트",
-                  description:
-                    "{{assistantName}}는 현재 iOS 버전을 지원하지 않습니다. 계속하려면 iOS를 업데이트하세요.",
-                  title: "계속하려면 iOS를 업데이트하세요",
-                },
-                safari: {
-                  actionLabel: "Safari 업데이트",
-                  description:
-                    "{{assistantName}}는 현재 Safari 버전을 지원하지 않습니다. 계속하려면 Safari를 업데이트하세요.",
-                  title: "계속하려면 Safari를 업데이트하세요",
-                },
-              },
-              loading: {
-                ariaLabel: "워크스페이스를 불러오는 중",
-                messages: [
-                  "뉴런을 예열하는 중...",
-                  "아이디어를 구상 중...",
-                  "준비 중...",
-                  "거의 완료되었습니다...",
-                  "워크스페이스를 불러오는 중...",
-                  "도구를 조율하는 중...",
-                  "연결 중...",
-                  "팀을 구성하는 중...",
-                ],
-              },
-              metadata: {
-                description:
-                  "{{assistantName}}는 {{brandName}}의 AI 팀원입니다. {{assistantName}}에 텍스트를 보내거나 웹에서 채팅하세요 — 리서치, 이메일, 문서, Slack, GitHub, Notion 및 100개 이상의 도구를 지원합니다.",
-                title: "{{assistantName}} — {{brandName}}의 AI 팀원",
-              },
-            },
-            "id-ID": {
-              browserUpgrade: {
-                browser: {
-                  actionLabel: "Perbarui browser",
-                  description:
-                    "{{assistantName}} tidak mendukung versi browser Anda saat ini. Perbarui browser Anda untuk melanjutkan.",
-                  title: "Perbarui browser Anda untuk melanjutkan",
-                },
-                chrome: {
-                  actionLabel: "Perbarui Chrome",
-                  description:
-                    "{{assistantName}} tidak mendukung versi Chrome Anda saat ini. Perbarui Chrome untuk melanjutkan.",
-                  title: "Perbarui Chrome untuk melanjutkan",
-                },
-                chromium: {
-                  actionLabel: "Perbarui Chromium",
-                  description:
-                    "{{assistantName}} tidak mendukung versi Chromium Anda saat ini. Perbarui Chromium untuk melanjutkan.",
-                  title: "Perbarui Chromium untuk melanjutkan",
-                },
-                ios: {
-                  actionLabel: "Perbarui iOS",
-                  description:
-                    "{{assistantName}} tidak mendukung versi iOS Anda saat ini. Perbarui iOS untuk melanjutkan.",
-                  title: "Perbarui iOS untuk melanjutkan",
-                },
-                safari: {
-                  actionLabel: "Perbarui Safari",
-                  description:
-                    "{{assistantName}} tidak mendukung versi Safari Anda saat ini. Perbarui Safari untuk melanjutkan.",
-                  title: "Perbarui Safari untuk melanjutkan",
-                },
-              },
-              loading: {
-                ariaLabel: "Memuat ruang kerja Anda",
-                messages: [
-                  "Sedang memanaskan neuron...",
-                  "Sedang meracik ide...",
-                  "Sedang menyiapkan semuanya...",
-                  "Hampir sampai...",
-                  "Memuat ruang kerja Anda...",
-                  "Sedang menyetel instrumen...",
-                  "Sedang menghubungkan titik-titik...",
-                  "Sedang menyiapkan tim...",
-                ],
-              },
-              metadata: {
-                description:
-                  "{{assistantName}} adalah rekan kerja AI Anda dari {{brandName}}. Kirim pesan ke {{assistantName}} atau chat di web — riset, email, dokumen, Slack, GitHub, Notion, dan 100+ alat.",
-                title:
-                  "{{assistantName}} — Rekan kerja AI Anda dari {{brandName}}",
-              },
-            },
-            "de-DE": {
-              browserUpgrade: {
-                browser: {
-                  actionLabel: "Browser aktualisieren",
-                  description:
-                    "{{assistantName}} unterstützt Ihre aktuelle Browserversion nicht. Aktualisieren Sie Ihren Browser, um fortzufahren.",
-                  title: "Aktualisieren Sie Ihren Browser, um fortzufahren",
-                },
-                chrome: {
-                  actionLabel: "Chrome aktualisieren",
-                  description:
-                    "{{assistantName}} unterstützt Ihre aktuelle Browserversion nicht. Aktualisieren Sie Chrome, um fortzufahren.",
-                  title: "Aktualisieren Sie Chrome, um fortzufahren",
-                },
-                chromium: {
-                  actionLabel: "Chromium aktualisieren",
-                  description:
-                    "{{assistantName}} unterstützt Ihre aktuelle Browserversion nicht. Aktualisieren Sie Chromium, um fortzufahren.",
-                  title: "Aktualisieren Sie Chromium, um fortzufahren",
-                },
-                ios: {
-                  actionLabel: "iOS aktualisieren",
-                  description:
-                    "{{assistantName}} unterstützt Ihre aktuelle Browserversion nicht. Aktualisieren Sie iOS, um fortzufahren.",
-                  title: "Aktualisieren Sie iOS, um fortzufahren",
-                },
-                safari: {
-                  actionLabel: "Safari aktualisieren",
-                  description:
-                    "{{assistantName}} unterstützt Ihre aktuelle Browserversion nicht. Aktualisieren Sie Safari, um fortzufahren.",
-                  title: "Aktualisieren Sie Safari, um fortzufahren",
-                },
-              },
-              loading: {
-                ariaLabel: "Ihr Arbeitsbereich wird geladen",
-                messages: [
-                  "Neuronen werden aufgewärmt...",
-                  "Ideen werden entwickelt...",
-                  "Alles wird vorbereitet...",
-                  "Fast geschafft...",
-                  "Ihr Arbeitsbereich wird geladen...",
-                  "Instrumente werden gestimmt...",
-                  "Punkte werden verbunden...",
-                  "Das Team wird zusammengestellt...",
-                ],
-              },
-              metadata: {
-                description:
-                  "{{assistantName}} ist Ihr KI-Kollege von {{brandName}}. Schreiben Sie {{assistantName}} oder chatten Sie im Web — für Recherche, E-Mails, Dokumente, Slack, GitHub, Notion und über 100 weitere Tools.",
-                title: "{{assistantName}} — Ihr KI-Kollege von {{brandName}}",
-              },
-            },
-            "es-ES": {
-              browserUpgrade: {
-                browser: {
-                  actionLabel: "Actualizar navegador",
-                  description:
-                    "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza el navegador para continuar.",
-                  title: "Actualiza tu navegador para continuar",
-                },
-                chrome: {
-                  actionLabel: "Actualizar Chrome",
-                  description:
-                    "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza Chrome para continuar.",
-                  title: "Actualiza Chrome para continuar",
-                },
-                chromium: {
-                  actionLabel: "Actualizar Chromium",
-                  description:
-                    "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza Chromium para continuar.",
-                  title: "Actualiza Chromium para continuar",
-                },
-                ios: {
-                  actionLabel: "Actualizar iOS",
-                  description:
-                    "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza iOS para continuar.",
-                  title: "Actualiza iOS para continuar",
-                },
-                safari: {
-                  actionLabel: "Actualizar Safari",
-                  description:
-                    "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza Safari para continuar.",
-                  title: "Actualiza Safari para continuar",
-                },
-              },
-              loading: {
-                ariaLabel: "Cargando tu espacio de trabajo",
-                messages: [
-                  "Activando las neuronas...",
-                  "Preparando algunas ideas...",
-                  "Dejándolo todo listo...",
-                  "Ya casi está...",
-                  "Cargando tu espacio de trabajo...",
-                  "Afinando los instrumentos...",
-                  "Conectando los puntos...",
-                  "Reuniendo al equipo...",
-                ],
-              },
-              metadata: {
-                description:
-                  "{{assistantName}} es tu compañero de IA de {{brandName}}. Escríbele a {{assistantName}} o chatea en la web: investiga, envía correos, crea documentos y usa Slack, GitHub, Notion y más de 100 herramientas.",
-                title:
-                  "{{assistantName}} — Tu compañero de IA de {{brandName}}",
-              },
-            },
-            "it-IT": {
-              browserUpgrade: {
-                browser: {
-                  actionLabel: "Aggiorna browser",
-                  description:
-                    "{{assistantName}} non supporta la versione attuale del tuo browser. Aggiorna il browser per continuare.",
-                  title: "Aggiorna il browser per continuare",
-                },
-                chrome: {
-                  actionLabel: "Aggiorna Chrome",
-                  description:
-                    "{{assistantName}} non supporta la versione attuale del tuo browser. Aggiorna Chrome per continuare.",
-                  title: "Aggiorna Chrome per continuare",
-                },
-                chromium: {
-                  actionLabel: "Aggiorna Chromium",
-                  description:
-                    "{{assistantName}} non supporta la versione attuale del tuo browser. Aggiorna Chromium per continuare.",
-                  title: "Aggiorna Chromium per continuare",
-                },
-                ios: {
-                  actionLabel: "Aggiorna iOS",
-                  description:
-                    "{{assistantName}} non supporta la versione attuale del tuo browser. Aggiorna iOS per continuare.",
-                  title: "Aggiorna iOS per continuare",
-                },
-                safari: {
-                  actionLabel: "Aggiorna Safari",
-                  description:
-                    "{{assistantName}} non supporta la versione attuale del tuo browser. Aggiorna Safari per continuare.",
-                  title: "Aggiorna Safari per continuare",
-                },
-              },
-              loading: {
-                ariaLabel: "Caricamento dell'area di lavoro",
-                messages: [
-                  "Riscaldamento dei neuroni...",
-                  "Preparando qualche idea...",
-                  "Preparando tutto...",
-                  "Ci siamo quasi...",
-                  "Caricamento dell'area di lavoro...",
-                  "Accordando gli strumenti...",
-                  "Unendo i puntini...",
-                  "Radunando il team...",
-                ],
-              },
-              metadata: {
-                description:
-                  "{{assistantName}} è il tuo collega AI di {{brandName}}. Scrivi a {{assistantName}} o chatta sul web — ricerca, email, documenti, Slack, GitHub, Notion e oltre 100 strumenti.",
-                title: "{{assistantName}} — Il tuo collega AI di {{brandName}}",
-              },
-            },
-            "hi-IN": {
-              browserUpgrade: {
-                browser: {
-                  actionLabel: "ब्राउज़र अपडेट करें",
-                  description:
-                    "{{assistantName}} आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए अपना ब्राउज़र अपडेट करें।",
-                  title: "जारी रखने के लिए अपना ब्राउज़र अपडेट करें",
-                },
-                chrome: {
-                  actionLabel: "Chrome को अपडेट करें",
-                  description:
-                    "{{assistantName}} आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए Chrome को अपडेट करें।",
-                  title: "जारी रखने के लिए Chrome को अपडेट करें",
-                },
-                chromium: {
-                  actionLabel: "Chromium को अपडेट करें",
-                  description:
-                    "{{assistantName}} आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए Chromium को अपडेट करें।",
-                  title: "जारी रखने के लिए Chromium को अपडेट करें",
-                },
-                ios: {
-                  actionLabel: "iOS को अपडेट करें",
-                  description:
-                    "{{assistantName}} आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए iOS को अपडेट करें।",
-                  title: "जारी रखने के लिए iOS को अपडेट करें",
-                },
-                safari: {
-                  actionLabel: "Safari को अपडेट करें",
-                  description:
-                    "{{assistantName}} आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए Safari को अपडेट करें।",
-                  title: "जारी रखने के लिए Safari को अपडेट करें",
-                },
-              },
-              loading: {
-                ariaLabel: "आपका वर्कस्पेस लोड हो रहा है",
-                messages: [
-                  "न्यूरॉन्स को सक्रिय कर रहे हैं...",
-                  "कुछ नए विचार तैयार कर रहे हैं...",
-                  "सब कुछ तैयार कर रहे हैं...",
-                  "बस लगभग तैयार...",
-                  "आपका वर्कस्पेस लोड हो रहा है...",
-                  "उपकरणों को ट्यून कर रहे हैं...",
-                  "कड़ियाँ जोड़ रहे हैं...",
-                  "टीम को तैयार कर रहे हैं...",
-                ],
-              },
-              metadata: {
-                description:
-                  "{{assistantName}}, {{brandName}} से आपका AI सहकर्मी है। {{assistantName}} को टेक्स्ट करें या वेब पर चैट करें — रिसर्च, ईमेल, दस्तावेज़, Slack, GitHub, Notion और 100+ टूल।",
-                title: "{{assistantName}} — {{brandName}} से आपका AI सहकर्मी",
-              },
-            },
-          };
+      (function () {
+        var hostname = window.location.hostname;
+        var isProductionHost =
+          hostname === "vm0.ai" ||
+          hostname.endsWith(".vm0.ai") ||
+          hostname === "okou.ai" ||
+          hostname.endsWith(".okou.ai");
+        if (!isProductionHost) return;
 
-          var selectedCopy = copyByLocale[locale];
-          var brandName = document.documentElement.dataset.appBrandName;
-          if (brandName !== "VM0" && brandName !== "Okou") {
-            throw new Error("Invalid app brand name");
-          }
-          var assistantName = brandName === "Okou" ? "Okou" : "Zero";
-          var interpolateBrandCopy = function (value) {
-            return value
-              .replace(/\{\{assistantName\}\}/g, assistantName)
-              .replace(/\{\{brandName\}\}/g, brandName);
-          };
-          var browserUpgradeTargets = [
-            "browser",
-            "chrome",
-            "chromium",
-            "ios",
-            "safari",
-          ];
-          for (var i = 0; i < browserUpgradeTargets.length; i += 1) {
-            var target = selectedCopy.browserUpgrade[browserUpgradeTargets[i]];
-            target.description = interpolateBrandCopy(target.description);
-          }
-          selectedCopy.metadata.description = interpolateBrandCopy(
-            selectedCopy.metadata.description,
-          );
-          selectedCopy.metadata.title = interpolateBrandCopy(
-            selectedCopy.metadata.title,
-          );
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = function () {
+          window.dataLayer.push(arguments);
+        };
+        window.gtag("js", new Date());
+        window.gtag("config", "AW-18144854014");
+        window.gtag("config", "AW-18407336975");
 
-          window.__vm0PreBundleCopy = selectedCopy;
-          document.documentElement.lang = locale;
-          if (cacheKey) localStorage.setItem(cacheKey, locale);
+        var initialized = false;
 
-          var upgradeTargetKind =
-            document.documentElement.dataset.browserUpgradeTarget;
-          var upgradeCopy = upgradeTargetKind
-            ? selectedCopy.browserUpgrade[upgradeTargetKind]
-            : null;
-          if (upgradeCopy) {
-            var configuredActionUrl =
-              document.documentElement.dataset.browserUpgradeActionUrl;
-            window.__vm0BrowserUpgrade = {
-              actionLabel: upgradeCopy.actionLabel,
-              actionUrl: configuredActionUrl
-                ? configuredActionUrl
-                : "https://www.google.com/chrome/",
-              description: upgradeCopy.description,
-              title: upgradeCopy.title,
-            };
-          }
-        })();
-      });
-    </script>
-    <script>
-      window.__vm0AfterFirstPaint(function () {
-        (function () {
-          if (window.__vm0BrowserSupported !== true) return;
+        function loadMarketingScripts() {
+          var gtagScript = document.createElement("script");
+          gtagScript.async = true;
+          gtagScript.src =
+            "https://www.googletagmanager.com/gtag/js?id=AW-18144854014";
+          document.head.appendChild(gtagScript);
+        }
 
-          var hostname = window.location.hostname;
-          var isProductionHost =
-            hostname === "vm0.ai" ||
-            hostname.endsWith(".vm0.ai") ||
-            hostname === "okou.ai" ||
-            hostname.endsWith(".okou.ai");
-          if (!isProductionHost) return;
+        function scheduleMarketingScripts() {
+          if (initialized) return;
+          initialized = true;
 
-          window.dataLayer = window.dataLayer || [];
-          window.gtag = function () {
-            window.dataLayer.push(arguments);
-          };
-          window.gtag("js", new Date());
-          window.gtag("config", "AW-18144854014");
-          window.gtag("config", "AW-18407336975");
-
-          var initialized = false;
-
-          function loadMarketingScripts() {
-            var gtagScript = document.createElement("script");
-            gtagScript.async = true;
-            gtagScript.src =
-              "https://www.googletagmanager.com/gtag/js?id=AW-18144854014";
-            document.head.appendChild(gtagScript);
-          }
-
-          function scheduleMarketingScripts() {
-            if (initialized) return;
-            initialized = true;
-
-            if (typeof window.requestIdleCallback === "function") {
-              window.requestIdleCallback(loadMarketingScripts, {
-                timeout: 1500,
-              });
-              return;
-            }
-
-            window.setTimeout(loadMarketingScripts, 0);
-          }
-
-          // Keep vendor work outside the first-content critical path. The
-          // 30-second guard exceeds the observed mobile P90 startup window and
-          // still bounds bootstraps that never reach real app content.
-          window.addEventListener(
-            "vm0:app-first-content-visible",
-            scheduleMarketingScripts,
-            { once: true },
-          );
-          window.setTimeout(scheduleMarketingScripts, 30000);
-        })();
-      });
-    </script>
-    <script>
-      window.__vm0AfterFirstPaint(function () {
-        (function () {
-          if (document.documentElement.dataset.appHeadManaged === "true")
+          if (typeof window.requestIdleCallback === "function") {
+            window.requestIdleCallback(loadMarketingScripts, {
+              timeout: 1500,
+            });
             return;
-
-          var copy = window.__vm0PreBundleCopy.metadata;
-          var metadata = [
-            ['meta[name="description"]', copy.description],
-            ['meta[property="og:description"]', copy.description],
-            ['meta[property="og:image:alt"]', copy.title],
-            ['meta[property="og:title"]', copy.title],
-            ['meta[name="twitter:description"]', copy.description],
-            ['meta[name="twitter:title"]', copy.title],
-          ];
-          for (var i = 0; i < metadata.length; i += 1) {
-            var element = document.querySelector(metadata[i][0]);
-            if (element) element.setAttribute("content", metadata[i][1]);
           }
-        })();
-      });
-    </script>
-    <script>
-      window.__vm0AfterFirstPaint(function () {
-        if (window.__vm0BrowserSupported !== true) return;
 
-        var fontStylesheet = document.querySelector(
-          'link[data-vm0-font-stylesheet=""]',
+          window.setTimeout(loadMarketingScripts, 0);
+        }
+
+        // Keep vendor work outside the first-content critical path. The
+        // 30-second guard exceeds the observed mobile P90 startup window and
+        // still bounds bootstraps that never reach real app content.
+        window.addEventListener(
+          "vm0:app-first-content-visible",
+          scheduleMarketingScripts,
+          { once: true },
         );
-        if (fontStylesheet) {
-          fontStylesheet.rel = "stylesheet";
-          fontStylesheet.removeAttribute("as");
-        }
-
-        var appStylesheet = document.querySelector(
-          'link[data-vm0-app-stylesheet=""]',
-        );
-        if (appStylesheet) {
-          appStylesheet.rel = "stylesheet";
-          appStylesheet.removeAttribute("as");
-        }
-
-        var appEntry = document.querySelector('link[data-vm0-app-entry=""]');
-        if (!appEntry) return;
-
-        var appScript = document.createElement("script");
-        appScript.type = "module";
-        appScript.src = appEntry.href;
-        if (appEntry.hasAttribute("crossorigin")) {
-          appScript.crossOrigin = appEntry.getAttribute("crossorigin") || "";
-        }
-        appEntry.after(appScript);
-      });
+        window.setTimeout(scheduleMarketingScripts, 30000);
+      })();
     </script>
     <script>
-      window.__vm0AfterFirstPaint(function () {
-        (function () {
-          var target = window.__vm0BrowserUpgrade;
-          if (!target) return;
-
-          var title = document.getElementById("browser-upgrade-title");
-          var description = document.getElementById(
-            "browser-upgrade-description",
+      (function () {
+        var skeleton = document.getElementById("app-bootstrap-skeleton");
+        // iOS standalone can expand the fixed containing viewport one frame
+        // after launch. Pin the content to the initially reachable viewport
+        // so that later geometry resolution cannot visibly recenter it.
+        var viewportHeight =
+          window.visualViewport && window.visualViewport.height > 0
+            ? window.visualViewport.height
+            : window.innerHeight;
+        if (viewportHeight > 0) {
+          skeleton.style.setProperty(
+            "--app-bootstrap-skeleton-center-y",
+            viewportHeight / 2 + "px",
           );
-          var action = document.getElementById("browser-upgrade-action");
-
-          if (title) title.textContent = target.title;
-          if (description) description.textContent = target.description;
-          if (action) {
-            action.textContent = target.actionLabel;
-            action.href = target.actionUrl;
-          }
-        })();
-      });
+        }
+      })();
     </script>
     <script>
-      window.__vm0AfterFirstPaint(function () {
-        (function () {
-          if (window.__vm0BrowserSupported !== true) return;
+      (function () {
+        var hostname = window.location.hostname.toLowerCase();
+        if (hostname !== "app.vm0.ai" && hostname !== "app.okou.ai") return;
 
-          var skeleton = document.getElementById("app-bootstrap-skeleton");
-          // iOS standalone can expand the fixed containing viewport one frame
-          // after launch. Pin the content to the initially reachable viewport
-          // so that later geometry resolution cannot visibly recenter it.
-          var viewportHeight =
-            window.visualViewport && window.visualViewport.height > 0
-              ? window.visualViewport.height
-              : window.innerHeight;
-          if (viewportHeight > 0) {
-            skeleton.style.setProperty(
-              "--app-bootstrap-skeleton-center-y",
-              viewportHeight / 2 + "px",
-            );
-          }
-          var loadingCopy = window.__vm0PreBundleCopy.loading;
-          var messages = loadingCopy.messages;
-          skeleton.setAttribute("aria-label", loadingCopy.ariaLabel);
-          var messageIndex = Math.floor(Math.random() * messages.length);
-          var staticMessage = skeleton.querySelector(
-            ".app-bootstrap-skeleton__message-static",
-          );
-          var spacerMessage = skeleton.querySelector(
-            ".app-bootstrap-skeleton__message-spacer",
-          );
-          var typewriterMessage = skeleton.querySelector(
-            ".app-bootstrap-skeleton__message-typewriter",
-          );
-
-          function typewriterAnimation(message, delay) {
-            return (
-              "app-bootstrap-skeleton-show-typewriter " +
-              delay +
-              "ms forwards, app-bootstrap-skeleton-type 1.5s steps(" +
-              message.length +
-              ") " +
-              delay +
-              "ms forwards, app-bootstrap-skeleton-blink 0.6s step-end " +
-              delay +
-              "ms infinite"
-            );
-          }
-
-          function setMessages(isFirst) {
-            var currentMessage = messages[messageIndex % messages.length];
-            var nextMessage = messages[(messageIndex + 1) % messages.length];
-            var nextTypewriterMessage = typewriterMessage.cloneNode(true);
-
-            staticMessage.textContent = currentMessage;
-            staticMessage.style.display = isFirst ? "block" : "none";
-            staticMessage.style.animation = isFirst
-              ? "app-bootstrap-skeleton-hide-static 800ms forwards"
-              : "none";
-            spacerMessage.textContent = nextMessage;
-            nextTypewriterMessage.textContent = nextMessage;
-            nextTypewriterMessage.style.animation = typewriterAnimation(
-              nextMessage,
-              isFirst ? 800 : 0,
-            );
-            typewriterMessage.replaceWith(nextTypewriterMessage);
-            typewriterMessage = nextTypewriterMessage;
-          }
-
-          setMessages(true);
-
-          var cycles = 0;
-          var interval = window.setInterval(function () {
-            if (!document.getElementById("app-bootstrap-skeleton")) {
-              window.clearInterval(interval);
-              return;
-            }
-
-            messageIndex += 1;
-            setMessages(false);
-            cycles += 1;
-            if (cycles >= 3) {
-              window.clearInterval(interval);
-            }
-          }, 4000);
-        })();
-      });
-    </script>
-    <script>
-      window.__vm0AfterFirstPaint(function () {
-        (function () {
-          if (window.__vm0BrowserSupported !== true) return;
-
-          var hostname = window.location.hostname.toLowerCase();
-          if (hostname !== "app.vm0.ai" && hostname !== "app.okou.ai") return;
-
-          var instatusScript = document.createElement("script");
-          instatusScript.src =
-            "https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en";
-          instatusScript.integrity =
-            "sha384-ZW3eZwADOMdlg2fdvESPD7jguK16IC/edxNFakKs81D2lkNdi3BXRmx/g331lkD3";
-          instatusScript.crossOrigin = "anonymous";
-          instatusScript.defer = true;
-          document.body.appendChild(instatusScript);
-        })();
-      });
+        var instatusScript = document.createElement("script");
+        instatusScript.src =
+          "https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en";
+        instatusScript.integrity =
+          "sha384-ZW3eZwADOMdlg2fdvESPD7jguK16IC/edxNFakKs81D2lkNdi3BXRmx/g331lkD3";
+        instatusScript.crossOrigin = "anonymous";
+        instatusScript.defer = true;
+        document.body.appendChild(instatusScript);
+      })();
     </script>
   </body>
 </html>

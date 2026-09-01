@@ -20,8 +20,6 @@ const VERSION_META_NAME = "okou-app-version";
 const VENDOR_FILE_PATTERN = /^vendor-[^/]+\.js$/u;
 const RUNTIME_FILE_PATTERN = /^rolldown-runtime-[^/]+\.js$/u;
 const WORKER_FILE_PATTERN = /^shared-database-worker-[^/]+\.js$/u;
-const AFTER_FIRST_PAINT_FILE_PATTERN =
-  /^bootstrap-after-first-paint-[a-f0-9]{12}\.js$/u;
 const MERMAID_LITE_MODULE_PATH =
   "/packages/mermaid-lite/dist/mermaid.esm.min.mjs";
 const BASELINE_COMMIT_SHA = "1111111111111111111111111111111111111111";
@@ -183,15 +181,8 @@ async function describeBuild(outputDirectory) {
     WORKER_FILE_PATTERN,
     "SharedWorker JavaScript file",
   );
-  const afterFirstPaintFile = exactlyOne(
-    javaScriptFiles,
-    AFTER_FIRST_PAINT_FILE_PATTERN,
-    "after-first-paint bootstrap JavaScript file",
-  );
   const appFiles = javaScriptFiles.filter((fileName) => {
-    return ![vendorFile, runtimeFile, workerFile, afterFirstPaintFile].includes(
-      fileName,
-    );
+    return ![vendorFile, runtimeFile, workerFile].includes(fileName);
   });
   assert.equal(
     appFiles.length,
@@ -203,7 +194,6 @@ async function describeBuild(outputDirectory) {
 
   const artifacts = {
     app: await describeFile(assetsDirectory, appFile),
-    afterFirstPaint: await describeFile(assetsDirectory, afterFirstPaintFile),
     vendor: await describeFile(assetsDirectory, vendorFile),
     runtime: await describeFile(assetsDirectory, runtimeFile),
     worker: await describeFile(assetsDirectory, workerFile),
@@ -317,16 +307,10 @@ try {
     outputDirectory: path.join(appDirectory, "dist"),
     version: appVersion,
   });
-  for (const label of [
-    "app",
-    "afterFirstPaint",
-    "vendor",
-    "runtime",
-    "worker",
-  ]) {
+  for (const label of ["app", "vendor", "runtime", "worker"]) {
     assertStable([baseline, canonical], label);
   }
-  for (const label of ["afterFirstPaint", "vendor", "runtime"]) {
+  for (const label of ["vendor", "runtime"]) {
     assertStable([versionChange, canonical], label);
   }
   assert.deepEqual(baseline.runtimeMetadata, {
@@ -351,10 +335,10 @@ try {
       canonical.artifacts[label].sha256,
     );
   }
-  for (const label of ["afterFirstPaint", "vendor", "runtime", "worker"]) {
+  for (const label of ["vendor", "runtime", "worker"]) {
     assertStable([canonical, appMutation], label);
   }
-  for (const label of ["afterFirstPaint", "runtime", "worker"]) {
+  for (const label of ["runtime", "worker"]) {
     assertStable([canonical, mermaidMutation], label);
   }
   assert.notEqual(
@@ -413,16 +397,10 @@ try {
           },
         },
         verifiedStable: {
-          appMutation: ["afterFirstPaint", "vendor", "runtime", "worker"],
-          commitChange: [
-            "app",
-            "afterFirstPaint",
-            "vendor",
-            "runtime",
-            "worker",
-          ],
-          mermaidMutation: ["afterFirstPaint", "runtime", "worker"],
-          versionChange: ["afterFirstPaint", "vendor", "runtime"],
+          appMutation: ["vendor", "runtime", "worker"],
+          commitChange: ["app", "vendor", "runtime", "worker"],
+          mermaidMutation: ["runtime", "worker"],
+          versionChange: ["vendor", "runtime"],
         },
         verifiedInvalidated: {
           appMutation: ["app"],

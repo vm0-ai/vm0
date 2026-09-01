@@ -27,6 +27,7 @@ describe("build information settings", () => {
 
   it("shows build information in Brazilian Portuguese", async () => {
     document.documentElement.lang = "pt-BR";
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
 
     detachedSetupPage({
       context,

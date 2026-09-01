@@ -8,7 +8,6 @@ import { defineConfig, type Plugin } from "vite";
 import { devArtifactFetchProxy } from "./dev-artifact-fetch-proxy.ts";
 import platformPackage from "./package.json";
 import { clerkCoreHtmlPlugin } from "./scripts/clerk-html.ts";
-import { deferredApplicationEntryHtmlPlugin } from "./scripts/deferred-entry-html.ts";
 import {
   VENDOR_MODULE_PATTERN,
   applicationJavaScriptBundlePlugin,
@@ -77,7 +76,6 @@ export default defineConfig(({ command }) => ({
     devArtifactFetchProxy(),
     clerkCoreHtmlPlugin(APP_VERSION),
     runtimeBuildInfoHtmlPlugin,
-    deferredApplicationEntryHtmlPlugin(),
     applicationJavaScriptBundlePlugin(),
     // Sentry source map upload (production builds only)
     process.env.SENTRY_AUTH_TOKEN &&

@@ -28,7 +28,7 @@ import {
 import { integrationsGithubContract } from "@okouai/api-contracts/contracts/integrations-github";
 import { strapiIntegrationsContract } from "@okouai/api-contracts/contracts/strapi-integrations";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 
 import {
   click,
@@ -98,6 +98,15 @@ function detachedSetupWorkflowDetailPage(
       ...featureSwitches,
     },
   });
+}
+
+function installScrollIntoViewMock(): Mock<HTMLElement["scrollIntoView"]> {
+  const scrollIntoView = vi.fn<HTMLElement["scrollIntoView"]>();
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+    configurable: true,
+    value: scrollIntoView,
+  });
+  return scrollIntoView;
 }
 
 function billingStatus(
@@ -2057,6 +2066,80 @@ describe("workflow detail page", () => {
     );
     expect(pathname()).toBe(`/workflows/${SALES_WORKFLOW_ID}/instructions`);
     expect(search()).toBe("?file=config%2Fsettings.json");
+  });
+
+  it("locates the deep-linked automation and keeps its existing switch scoped to that row", async () => {
+    context.mocks.data.userPreferences({ timezone: "UTC" });
+    const workflow = {
+      ...salesResearch(),
+      automations: [weekdayWorkflowAutomation(), gmailWorkflowAutomation()],
+    };
+    const scrollIntoView = installScrollIntoViewMock();
+    mockWorkflowApis([workflow]);
+
+    detachedSetupWorkflowDetailPage(
+      `${workflowDetailPath("automations")}?automationId=${GMAIL_AUTOMATION_ID}`,
+    );
+
+    const gmailSwitch = await screen.findByRole("switch", {
+      name: "Disable Gmail new message",
+    });
+    const gmailRow = document.querySelector(
+      `[data-automation-id="${GMAIL_AUTOMATION_ID}"]`,
+    );
+    const weekdayRow = document.querySelector(
+      '[data-automation-id="workflow-automation-weekday-brief"]',
+    );
+    expect(gmailRow).toHaveAttribute("aria-current", "true");
+    expect(weekdayRow).not.toHaveAttribute("aria-current");
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "center" });
+    expect(search()).toBe(`?automationId=${GMAIL_AUTOMATION_ID}`);
+
+    click(gmailSwitch);
+
+    await screen.findByRole("switch", { name: "Enable Gmail new message" });
+    expect(
+      screen.getByRole("switch", {
+        name: "Disable Every weekday at 9:00 AM",
+      }),
+    ).toBeChecked();
+    expect(workflow.automations[0]?.enabled).toBeTruthy();
+    expect(workflow.automations[1]?.enabled).toBeFalsy();
+  });
+
+  it("leaves the Automations page usable when the targeted automation is stale", async () => {
+    context.mocks.data.userPreferences({ timezone: "UTC" });
+    const scrollIntoView = installScrollIntoViewMock();
+    mockWorkflowApis([salesResearch()]);
+
+    detachedSetupWorkflowDetailPage(
+      `${workflowDetailPath("automations")}?automationId=deleted-automation`,
+    );
+
+    await expect(
+      screen.findByRole("switch", {
+        name: "Disable Every weekday at 9:00 AM",
+      }),
+    ).resolves.toBeInTheDocument();
+    expect(document.querySelector('[aria-current="true"]')).toBeNull();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it("fails gracefully when a deep-linked workflow is no longer readable", async () => {
+    const scrollIntoView = installScrollIntoViewMock();
+    mockWorkflowApis([]);
+
+    detachedSetupWorkflowDetailPage(
+      `${workflowDetailPath("automations")}?automationId=${GMAIL_AUTOMATION_ID}`,
+    );
+
+    await expect(
+      screen.findByText("Workflow not found."),
+    ).resolves.toBeInTheDocument();
+    expect(pathname()).toBe(`/workflows/${SALES_WORKFLOW_ID}/automations`);
+    expect(search()).toBe(`?automationId=${GMAIL_AUTOMATION_ID}`);
+    expect(document.querySelector('[aria-current="true"]')).toBeNull();
+    expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
   it("checks connector readiness only on request and shows every status", async () => {

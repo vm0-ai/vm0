@@ -61,6 +61,7 @@ describe("export page", () => {
 
   it("shows export controls in Brazilian Portuguese", async () => {
     document.documentElement.lang = "pt-BR";
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
     mockNow(context.signal);
     context.mocks.api(userExportContract.get, ({ respond }) => {
       return respond(200, {
@@ -87,7 +88,7 @@ describe("export page", () => {
           name: "Exportar dados",
         }),
       ).toBeInTheDocument();
-      expect(document.title).toBe("Exportar dados | VM0");
+      expect(document.title).toBe("Export data | VM0");
     });
     expect(
       screen.getByText("Instruções e arquivos SKILL.md dos fluxos de trabalho"),

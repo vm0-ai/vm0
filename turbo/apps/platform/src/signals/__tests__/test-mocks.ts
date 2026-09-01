@@ -17,6 +17,8 @@ import {
   triggerAblyFailure,
   triggerAblyReauth,
   triggerAblyReconnect,
+  triggerSharedWorkerAblyConnectionState,
+  triggerSharedWorkerAblyFailure,
   triggerSharedWorkerAblyReconnect,
 } from "../../mocks/ably.ts";
 import { setMockAgents } from "../../mocks/handlers/api-agents.ts";
@@ -470,6 +472,9 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       triggerConnectionState: triggerAblyConnectionState,
       triggerFailure: triggerAblyFailure,
       triggerReconnect: triggerAblyReconnect,
+      triggerSharedWorkerConnectionState:
+        triggerSharedWorkerAblyConnectionState,
+      triggerSharedWorkerFailure: triggerSharedWorkerAblyFailure,
       triggerSharedWorkerReconnect: triggerSharedWorkerAblyReconnect,
       triggerReauth: triggerAblyReauth,
       triggerConnectionClosed: triggerAblyConnectionClosed,

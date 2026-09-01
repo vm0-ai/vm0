@@ -19,6 +19,7 @@ import type { EditorDocumentSnapshot } from "../okou-page/user-message-document-
 import type {
   createChatThreadScrollSignals,
   ReadyScrollAfterRenderRequest,
+  ScrollToEventOptions,
   ThreadScrollPosition,
 } from "./chat-thread-scroll.ts";
 import type { AssistantErrorRecovery } from "./assistant-error-recovery.ts";
@@ -161,7 +162,10 @@ export interface ChatPanelSignals {
   /** The mounted scroll viewport, for readers that measure it themselves. */
   readonly scrollContainer$: Computed<HTMLElement | null>;
   readonly threadScrollPosition$: Computed<ThreadScrollPosition | null>;
-  readonly scrollToEvent$: Command<Promise<void>, [string, AbortSignal]>;
+  readonly scrollToEvent$: Command<
+    Promise<void>,
+    [string, ScrollToEventOptions, AbortSignal]
+  >;
   readonly scrollTo$: Command<void, [ThreadScrollPosition]>;
   readonly scrollToBottom$: Command<Promise<void>, [AbortSignal]>;
   readonly scrollToTop$: Command<Promise<void>, [AbortSignal]>;

@@ -36,10 +36,10 @@ If the command fails, its output is not valid JSON, or its schema version is uns
 
 ## Report valid results
 
-- If \`summary.checked === 0\`, report that no owned or installed workflows were available to check. Treat this as a distinct no-workflows result, not an all-clear over diagnosed workflows.
+- If \`summary.checked === 0\`, report that no effective visible workflows were available to check. Treat this as a distinct no-workflows result, not an all-clear over diagnosed workflows.
 - Group every connector entry with a non-null action by identical \`action.kind\` and exact \`action.url\`. Include the repair link once for each group, then list every affected workflow with the connector's returned readiness status and reason. Never merge entries whose exact URLs differ, even when their action kinds or connector labels match, because the URL identifies the target Agent.
 - Under **Unknown**, list every connector whose status is \`unavailable\` and every workflow with a non-null \`error\`. Include the returned workflow identity and reason or error message. Unknown is never healthy.
-- Emit a short all-clear only when \`summary.checked > 0\`, \`summary.attention === 0\`, and \`summary.unknown === 0\`.
+- Emit a short all-clear only when \`summary.checked > 0\`, \`summary.attention === 0\`, and \`summary.unknown === 0\`. State that the aggregate covered effective visible workflows and include a compact inventory of every checked entry in \`workflows\`, grouped by its returned Agent identity. Use only workflow and Agent names or IDs present in the JSON.
 - Keep the report concise and include only facts, counts, statuses, reasons, and repair links present in the returned JSON.
 
 ## Safety boundaries

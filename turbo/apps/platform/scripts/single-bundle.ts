@@ -4,8 +4,6 @@ export const RAW_JAVASCRIPT_OUTPUT_LIMIT_BYTES = 8_500_000;
 
 const SHARED_DATABASE_WORKER_FILE_PATTERN =
   /^assets\/shared-database-worker-[^/]+\.js$/u;
-const AFTER_FIRST_PAINT_BOOTSTRAP_FILE_PATTERN =
-  /^assets\/bootstrap-after-first-paint-[a-f0-9]{12}\.js$/u;
 const VENDOR_FILE_PATTERN = /^assets\/vendor-[^/]+\.js$/u;
 const ROLLDOWN_RUNTIME_FILE_PATTERN = /^assets\/rolldown-runtime-[^/]+\.js$/u;
 
@@ -240,14 +238,6 @@ export function applicationBundleViolations(
       );
     },
   );
-  const afterFirstPaintBootstrapAssets = javaScriptOutputs.filter(
-    (output): output is GeneratedAsset => {
-      return (
-        output.type === "asset" &&
-        AFTER_FIRST_PAINT_BOOTSTRAP_FILE_PATTERN.test(output.fileName)
-      );
-    },
-  );
   const vendorChunks = applicationChunks.filter((chunk) => {
     return VENDOR_FILE_PATTERN.test(chunk.fileName);
   });
@@ -264,24 +254,24 @@ export function applicationBundleViolations(
   const vendorChunk = vendorChunks[0];
   const runtimeChunk = runtimeChunks[0];
   const workerAsset = workerAssets[0];
-  const layoutViolation = `Expected exactly one app entry, one vendor chunk, one Rolldown runtime chunk, one shared database worker asset, and at most one after-first-paint bootstrap asset, but generated: ${outputDescription(javaScriptOutputs)}`;
-  if (!appChunk || !vendorChunk || !runtimeChunk || !workerAsset) {
-    return [layoutViolation];
-  }
-  const hasExpectedLayout = [
-    javaScriptOutputs.length === 4 + afterFirstPaintBootstrapAssets.length,
-    applicationChunks.length === 3,
-    appChunks.length === 1,
-    vendorChunks.length === 1,
-    runtimeChunks.length === 1,
-    workerAssets.length === 1,
-    afterFirstPaintBootstrapAssets.length <= 1,
-    appChunk.isEntry === true,
-    vendorChunk.isEntry !== true,
-    runtimeChunk.isEntry !== true,
-  ].every(Boolean);
-  if (!hasExpectedLayout) {
-    return [layoutViolation];
+  if (
+    javaScriptOutputs.length !== 4 ||
+    applicationChunks.length !== 3 ||
+    appChunks.length !== 1 ||
+    vendorChunks.length !== 1 ||
+    runtimeChunks.length !== 1 ||
+    workerAssets.length !== 1 ||
+    !appChunk ||
+    !vendorChunk ||
+    !runtimeChunk ||
+    !workerAsset ||
+    appChunk.isEntry !== true ||
+    vendorChunk.isEntry === true ||
+    runtimeChunk.isEntry === true
+  ) {
+    return [
+      `Expected exactly one app entry, one vendor chunk, one Rolldown runtime chunk, and one shared database worker asset, but generated: ${outputDescription(javaScriptOutputs)}`,
+    ];
   }
 
   const allowedStaticImports = new Set(

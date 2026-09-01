@@ -35,7 +35,10 @@ import {
   buildRunGroupFolding,
   runGroupExpansionOverrides$,
 } from "./run-group-folding.ts";
-import type { ThreadScrollPosition } from "./chat-thread-scroll.ts";
+import type {
+  ScrollToEventOptions,
+  ThreadScrollPosition,
+} from "./chat-thread-scroll.ts";
 
 const L = logger("ConversationLocator");
 
@@ -52,6 +55,8 @@ const SHOW_MIN_TURNS = 8;
 const SHOW_MIN_SCREENS = 3;
 /** Fraction of the viewport that decides which turn counts as "current". */
 const CURRENT_TURN_VIEWPORT_RATIO = 0.38;
+/** Where a jump parks its target inside the viewport. */
+const JUMP_VIEWPORT_RATIO = 0.28;
 /** Wheel travel that advances the window by one tick. */
 const WHEEL_STEP_PX = 26;
 /** Follow coefficient for the preview card; below 1 it trails the cursor. */
@@ -71,6 +76,13 @@ const TICK_METRICS = {
   user: { base: 7, grow: 3.1 },
   assistant: { base: 12, grow: 2.5 },
 } as const;
+
+/**
+ * Resting width of the viewport band. The band grows by exactly as much as the
+ * widest tick it covers, so a magnified bar never spills out of the frame that
+ * is supposed to contain it.
+ */
+export const BAND_BASE_WIDTH_PX = 32;
 
 const GROUP_SELECTOR = '[data-role="user"], [data-role="assistant"]';
 const SCROLL_ANCHOR_SELECTOR = "[data-chat-scroll-anchor-event-id]";
@@ -111,9 +123,6 @@ export interface LocatorPreview {
   readonly text: string;
   /** ISO timestamp of the turn, or undefined when it carries none. */
   readonly createdAt: string | undefined;
-  /** 1-based, for the "12/32" counter. */
-  readonly position: number;
-  readonly total: number;
 }
 
 export interface ChatConversationLocatorSignals {
@@ -521,13 +530,28 @@ function tickNodes(rail: HTMLElement): HTMLElement[] {
   return [...rail.querySelectorAll<HTMLElement>("[data-locator-tick]")];
 }
 
-function resetTickWidths(rail: HTMLElement): void {
+/**
+ * The band is the frame around the ticks inside the viewport, so it widens by
+ * whatever its widest tick gained rather than by a growth of its own: one
+ * dimension, one source, and the bars stay enclosed at every magnification.
+ */
+function writeBandWidth(rail: HTMLElement, growth: number): void {
+  const band = rail.querySelector<HTMLElement>(
+    "[data-conversation-locator-band]",
+  );
+  if (band) {
+    band.style.width = `${(BAND_BASE_WIDTH_PX + growth).toFixed(2)}px`;
+  }
+}
+
+function resetRailWidths(rail: HTMLElement): void {
   for (const node of tickNodes(rail)) {
     const role: LocatorRole =
       node.dataset.locatorTick === "user" ? "user" : "assistant";
     node.style.width = `${TICK_METRICS[role].base}px`;
     delete node.dataset.locatorHot;
   }
+  writeBandWidth(rail, 0);
 }
 
 /**
@@ -545,6 +569,8 @@ function applyMagnification(
     MAGNIFY_SIGMA_MIN_PX,
     layout.pitch * MAGNIFY_SIGMA_RATIO,
   );
+  const bandBottom = layout.bandTop + layout.bandHeight;
+  let bandGrowth = 0;
   let nearest = -1;
   let nearestDistance = Number.POSITIVE_INFINITY;
   for (const [index, tick] of layout.ticks.entries()) {
@@ -561,7 +587,11 @@ function applyMagnification(
     const metrics = TICK_METRICS[tick.role];
     const width = metrics.base * (1 + weight * metrics.grow);
     node.style.width = `${width.toFixed(2)}px`;
+    if (tick.y >= layout.bandTop && tick.y <= bandBottom) {
+      bandGrowth = Math.max(bandGrowth, width - metrics.base);
+    }
   }
+  writeBandWidth(rail, bandGrowth);
 
   // Anywhere inside the group the nearest tick is at most half a pitch away,
   // so only overshooting the first or last tick misses.
@@ -707,7 +737,7 @@ function createPaint(
       return;
     }
     if (pointerY === null) {
-      resetTickWidths(rail);
+      resetRailWidths(rail);
       set(store.preview$, null);
       return;
     }
@@ -725,8 +755,7 @@ function createPaint(
       shown?.turnIndex === tick.turnIndex &&
       shown.role === tick.role &&
       shown.text === turn.text &&
-      shown.createdAt === turn.createdAt &&
-      shown.total === layout.turnCount
+      shown.createdAt === turn.createdAt
     ) {
       return;
     }
@@ -735,8 +764,6 @@ function createPaint(
       role: tick.role,
       text: turn.text,
       createdAt: turn.createdAt,
-      position: tick.turnIndex + 1,
-      total: layout.turnCount,
     });
   });
 }
@@ -745,7 +772,10 @@ function createJump(
   threadId: string,
   visibleTurns$: Computed<readonly LocatorTurn[]>,
   scrollContainer$: Computed<HTMLElement | null>,
-  scrollToEvent$: Command<Promise<void>, [string, AbortSignal]>,
+  scrollToEvent$: Command<
+    Promise<void>,
+    [string, ScrollToEventOptions, AbortSignal]
+  >,
 ) {
   const resetLandedSignal$ = resetSignal();
 
@@ -759,22 +789,34 @@ function createJump(
       if (!turn) {
         return;
       }
-      L.debug("jump to turn", { threadId, turnIndex, eventId: turn.eventId });
-      await set(scrollToEvent$, turn.eventId, signal);
-      signal.throwIfAborted();
       const container = get(scrollContainer$);
-      const element = container
-        ? readTurns(container).find((candidate) => {
+      if (!container) {
+        return;
+      }
+      L.debug("jump to turn", { threadId, turnIndex, eventId: turn.eventId });
+      await set(
+        scrollToEvent$,
+        turn.eventId,
+        {
+          behavior: "smooth",
+          viewportOffsetTop: container.clientHeight * JUMP_VIEWPORT_RATIO,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+      const committedContainer = get(scrollContainer$);
+      const landedElement = committedContainer
+        ? readTurns(committedContainer).find((candidate) => {
             return candidate.eventId === turn.eventId;
           })?.element
         : undefined;
-      if (!element) {
+      if (!landedElement) {
         return;
       }
       const landedSignal = set(resetLandedSignal$, signal);
-      element.dataset.locatorLanded = "";
+      landedElement.dataset.locatorLanded = "";
       const clearLanded = () => {
-        delete element.dataset.locatorLanded;
+        delete landedElement.dataset.locatorLanded;
       };
       landedSignal.addEventListener("abort", clearLanded, { once: true });
       timeout(
@@ -1145,7 +1187,10 @@ export function createChatConversationLocatorSignals({
 }: {
   threadId: string;
   scrollContainer$: Computed<HTMLElement | null>;
-  scrollToEvent$: Command<Promise<void>, [string, AbortSignal]>;
+  scrollToEvent$: Command<
+    Promise<void>,
+    [string, ScrollToEventOptions, AbortSignal]
+  >;
   allChatGroups$: Computed<readonly ChatEventGroup[]>;
   threadScrollPosition$: Computed<ThreadScrollPosition | null>;
 }): ChatConversationLocatorSignals {

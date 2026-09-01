@@ -12,7 +12,6 @@ import {
   listWorkflows,
 } from "../../lib/api/domains/workflows";
 import { ApiRequestError } from "../../lib/api/core/client-factory";
-import { decodeSandboxTokenPayload } from "../../lib/api/sandbox-token";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { connectorActionUrl } from "../connector/action-url";
 import { resolveWorkflowRef } from "../workflow/resolve-workflow-ref";
@@ -87,18 +86,6 @@ interface ConnectorDoctorReport {
 interface ConnectorsOptions {
   readonly agent?: string;
   readonly json?: boolean;
-}
-
-function currentRunUserId(): string {
-  const payload = decodeSandboxTokenPayload();
-  if (
-    !payload ||
-    typeof payload.userId !== "string" ||
-    payload.userId.length === 0
-  ) {
-    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
-  }
-  return payload.userId;
 }
 
 function connectorAction(
@@ -480,24 +467,57 @@ function printProblemSection(
   }
 }
 
-function printHumanReport(report: ConnectorDoctorReport): void {
+function printWorkflowInventory(
+  workflows: readonly ConnectorDoctorWorkflow[],
+): void {
+  const workflowsByAgent = new Map<
+    string,
+    { readonly label: string; readonly workflows: string[] }
+  >();
+  for (const workflow of workflows) {
+    const group = workflowsByAgent.get(workflow.agent.id);
+    if (group) {
+      group.workflows.push(workflowLabel(workflow));
+      continue;
+    }
+    workflowsByAgent.set(workflow.agent.id, {
+      label: compactText(agentLabel(workflow)),
+      workflows: [workflowLabel(workflow)],
+    });
+  }
+
+  console.log(chalk.dim("  Checked workflows by Agent:"));
+  for (const group of workflowsByAgent.values()) {
+    console.log(chalk.dim(`    ${group.label}: ${group.workflows.join(", ")}`));
+  }
+}
+
+function printHumanReport(
+  report: ConnectorDoctorReport,
+  aggregateMode: boolean,
+): void {
   if (report.summary.checked === 0) {
     console.log(
-      chalk.green("✓ No owned or installed workflows to check for connectors"),
+      chalk.green("✓ No effective visible workflows to check for connectors"),
     );
     return;
   }
   if (report.summary.attention === 0 && report.summary.unknown === 0) {
     console.log(
       chalk.green(
-        `✓ All clear: ${report.summary.checked} workflow${report.summary.checked === 1 ? "" : "s"} checked`,
+        aggregateMode
+          ? "✓ All clear across effective visible workflows"
+          : `✓ All clear: ${report.summary.checked} workflow${report.summary.checked === 1 ? "" : "s"} checked`,
       ),
     );
     console.log(
       chalk.dim(
-        `  ${report.summary.ready} ready · ${report.summary.noConnectors} no connectors required`,
+        `  ${aggregateMode ? `${report.summary.checked} checked · ` : ""}${report.summary.ready} ready · ${report.summary.noConnectors} no connectors required`,
       ),
     );
+    if (aggregateMode) {
+      printWorkflowInventory(report.workflows);
+    }
     return;
   }
 
@@ -532,10 +552,9 @@ async function selectedWorkflows(
   if (options.agent) {
     throw new Error("--agent requires a workflow argument");
   }
-  const userId = currentRunUserId();
   const workflows = await listWorkflows({});
   return workflows.filter((workflow) => {
-    return workflow.ownerUserId === userId;
+    return workflow.shadowedBy == null;
   });
 }
 
@@ -552,13 +571,14 @@ export const connectorsCommand = new Command()
     "after",
     `
 Examples:
-  Check owned workflows: okou doctor connectors
+  Check effective visible workflows: okou doctor connectors
   Check one workflow ID: okou doctor connectors <workflow-id>
   Check one workflow name: okou doctor connectors <workflow-name> --agent <agent-id>
   Print JSON: okou doctor connectors --json
 
 Notes:
-  - Without a workflow argument, only workflows owned or installed by the OKOU_TOKEN user are checked
+  - Without a workflow argument, every effective visible workflow across all visible Agents is checked; shadowed workflows are skipped
+  - Aggregate mode is not limited by OKOU_AGENT_ID; each workflow's Agent is used for connector authorization
   - Each workflow is checked through its stored connector-readiness route
   - Findings and per-workflow unknowns are report data and do not fail the command
   - Use okou connector check for one current-run URL, firewall decision, or permission failure`,
@@ -575,7 +595,7 @@ Notes:
           console.log(JSON.stringify(report, null, 2));
           return;
         }
-        printHumanReport(report);
+        printHumanReport(report, workflowRef === undefined);
       },
     ),
   );

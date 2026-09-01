@@ -9,18 +9,8 @@ import {
 } from "../lib/auth-v2-ui";
 
 const AUTH_V2_PRIMARY_BACKGROUND_COLOR = "rgb(239, 80, 1)";
-const SUPPORTED_AUTH_V2_LOCALES = [
-  { locale: "en-US", title: "Create your account" },
-  { locale: "pt-BR", title: "Criar sua conta" },
-  { locale: "ja-JP", title: "アカウントを作成" },
-  { locale: "ko-KR", title: "계정 만들기" },
-  { locale: "id-ID", title: "Buat akun Anda" },
-  { locale: "de-DE", title: "Ihr Konto erstellen" },
-  { locale: "es-ES", title: "Crea tu cuenta" },
-  { locale: "it-IT", title: "Crea il tuo account" },
-  { locale: "fr-FR", title: "Créer votre compte" },
-  { locale: "hi-IN", title: "अपना खाता बनाएं" },
-] as const;
+const UNSUPPORTED_CHROME_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/110.0.0.0 Safari/537.36";
 
 function relativeLuminance(color: string): number {
   const channels = color
@@ -141,7 +131,7 @@ test("primary actions retain brand styling while links remain accessible", async
   );
 });
 
-test.describe("localized mobile presentation", () => {
+test.describe("English startup in a non-English browser", () => {
   test.use({
     colorScheme: "dark",
     locale: "fr-FR",
@@ -159,8 +149,7 @@ test.describe("localized mobile presentation", () => {
     const heading = authV2Root(page).locator("h1");
     await expect(heading).toBeVisible();
     await expect(heading).toContainText(/Okou|VM0/);
-    await expect(heading).not.toHaveText(/^Sign in to (Okou|VM0)$/);
-    await expect(page.locator("html")).toHaveAttribute("lang", /^fr/i);
+    await expect(page.locator("html")).toHaveAttribute("lang", "en-US");
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     await expect(heading).toBeFocused();
     await expectStepAnnouncement(page);
@@ -180,17 +169,51 @@ test.describe("localized mobile presentation", () => {
     });
     expect(hasHorizontalOverflow).toBe(false);
   });
+
+  test("loads English platform-owned sign-up copy", async ({ page }) => {
+    await openAuthV2(page, "/sign-up/verify-email-address");
+    await expect(page.locator("html")).toHaveAttribute("lang", "en-US");
+    await expect(authV2Root(page).locator("h1")).toHaveText(
+      "Create your account",
+    );
+  });
 });
 
-for (const { locale, title } of SUPPORTED_AUTH_V2_LOCALES) {
-  test.describe(`Auth v2 locale ${locale}`, () => {
-    test.use({ locale });
+test.describe("unsupported browser", () => {
+  test.use({ userAgent: UNSUPPORTED_CHROME_USER_AGENT });
 
-    test("loads platform-owned sign-up copy", async ({ page }) => {
-      await openAuthV2(page, "/sign-up/verify-email-address");
-      await expect(page.locator("html")).toHaveAttribute("lang", locale);
-      const heading = authV2Root(page).locator("h1");
-      await expect(heading).toHaveText(title);
-    });
+  test("shows the English browser upgrade page", async ({ page }) => {
+    await page.goto("/sign-up", { waitUntil: "domcontentloaded" });
+
+    await expect(
+      page.getByRole("heading", { name: "Update Chrome to continue" }),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "Update Chrome" })).toHaveAttribute(
+      "href",
+      "https://www.google.com/chrome/",
+    );
   });
-}
+
+  test("preserves the upgrade page for browser history restoration", async ({
+    page,
+  }) => {
+    await page.goto("/sign-up", { waitUntil: "domcontentloaded" });
+    const heading = page.getByRole("heading", {
+      name: "Update Chrome to continue",
+    });
+    await expect(heading).toBeVisible();
+
+    // Exercise the persisted lifecycle explicitly so coverage does not depend
+    // on the test browser accepting this page into BFCache.
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new PageTransitionEvent("pagehide", { persisted: true }),
+      );
+      window.dispatchEvent(
+        new PageTransitionEvent("pageshow", { persisted: true }),
+      );
+    });
+
+    await expect(heading).toBeVisible();
+  });
+});

@@ -384,51 +384,6 @@
     }
   },
   "appShell": {
-    "browserUpgrade": {
-      "browser": {
-        "action": "Mettre à jour le navigateur",
-        "description": "{{assistantName}} ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour votre navigateur pour continuer.",
-        "title": "Mettez à jour votre navigateur pour continuer"
-      },
-      "chrome": {
-        "action": "Mettre à jour Chrome",
-        "description": "{{assistantName}} ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour Chrome pour continuer.",
-        "title": "Mettez à jour Chrome pour continuer"
-      },
-      "chromium": {
-        "action": "Mettre à jour Chromium",
-        "description": "{{assistantName}} ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour Chromium pour continuer.",
-        "title": "Mettez à jour Chromium pour continuer"
-      },
-      "ios": {
-        "action": "Mettre à jour iOS",
-        "description": "{{assistantName}} ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour iOS pour continuer.",
-        "title": "Mettez à jour iOS pour continuer"
-      },
-      "safari": {
-        "action": "Mettre à jour Safari",
-        "description": "{{assistantName}} ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour Safari pour continuer.",
-        "title": "Mettez à jour Safari pour continuer"
-      }
-    },
-    "loading": {
-      "ariaLabel": "Chargement de votre espace de travail",
-      "messages": {
-        "almostThere": "Presque prêt...",
-        "brewingIdeas": "Quelques idées sont en préparation...",
-        "connectingDots": "Connexion des idées...",
-        "gettingReady": "Préparation en cours...",
-        "loadingWorkspace": "Chargement de votre espace de travail...",
-        "spinningTeam": "Mise en place de l’équipe...",
-        "tuningInstruments": "Accordage des instruments...",
-        "warmingNeurons": "Initialisation des neurones..."
-      }
-    },
-    "logoAlt": "{{brandName}}",
-    "metadata": {
-      "description": "{{assistantName}} est votre coéquipier IA créé par {{brandName}}. Envoyez un message à {{assistantName}} ou discutez sur le web — recherche, e-mails, documents, Slack, GitHub, Notion et plus de 100 outils.",
-      "title": "{{assistantName}} — Votre coéquipier IA créé par {{brandName}}"
-    },
     "shortcutHelp": {
       "close": "Fermer les raccourcis clavier",
       "description": "Raccourcis disponibles sur cette page",

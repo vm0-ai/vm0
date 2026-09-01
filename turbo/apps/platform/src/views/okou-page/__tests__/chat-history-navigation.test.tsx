@@ -19,11 +19,7 @@ import {
   fill,
   setupPageAndWaitForContent,
 } from "../../../__tests__/page-helper.ts";
-import {
-  mockChatLifecycle,
-  PLACEHOLDER,
-  sendMessageInUI,
-} from "./chat-test-helpers.ts";
+import { PLACEHOLDER, sendMessageInUI } from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
 import {
   context,
@@ -36,6 +32,7 @@ import {
   AGENT_CHAT_PATH,
   makeRunGroupMessages,
   makeEvent,
+  mockChatLifecycleWithoutBrowserSession,
   mockKeyboardNavigationThreads,
   buttonByText,
   buttonByLabel,
@@ -77,7 +74,7 @@ describe("chat lifecycle", () => {
     } satisfies ChatEvent;
     let exposeNewMessage = false;
 
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Live message regression",
     });
@@ -151,7 +148,7 @@ describe("chat lifecycle", () => {
     let persistedMessage: ChatEvent | null = null;
     let exposePersistedMessage = false;
 
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Optimistic realtime reconciliation",
     });
@@ -289,7 +286,7 @@ describe("chat lifecycle", () => {
     } satisfies ChatEvent;
     let exposeReplacement = false;
 
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Durable steer projection",
       activeRunIds: [runId],
@@ -437,7 +434,7 @@ describe("chat lifecycle", () => {
   it("keeps chat scroll controls responsive to buttons and keyboard", async () => {
     mockResizeObserver();
     const threadId = "b0000000-0000-4000-a000-000000000722";
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Scroll history",
       chatEvents: Array.from({ length: 8 }, (_, index) => {
@@ -537,7 +534,7 @@ describe("chat lifecycle", () => {
       };
     });
 
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Render window",
       chatEvents,
@@ -587,7 +584,7 @@ describe("chat lifecycle", () => {
 
   it("counts a folded tail run group as one item in the initial chat window", async () => {
     const threadId = "e5000000-0000-4000-a000-000000000002";
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Tail run group window",
       chatEvents: [
@@ -647,7 +644,7 @@ describe("chat lifecycle", () => {
           }
         : message;
     });
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Structured run group label",
       chatEvents: messages,
@@ -672,7 +669,7 @@ describe("chat lifecycle", () => {
 
   it("keeps the item before a folded middle run group in the initial chat window", async () => {
     const threadId = "e5000000-0000-4000-a000-000000000004";
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Middle run group window",
       chatEvents: [
@@ -1014,7 +1011,7 @@ describe("chat lifecycle", () => {
       updatedAt: "2026-06-01T00:00:00.000Z",
       pinnedAt: null,
     };
-    const lifecycle = mockChatLifecycle(context, {
+    const lifecycle = mockChatLifecycleWithoutBrowserSession({
       threadId: EVENT_SOURCED_RENAME_THREAD_ID,
       threadTitle: "Thread detail should stay pending",
     });
@@ -1133,7 +1130,7 @@ describe("chat lifecycle", () => {
   it("keeps F2 rename available after creating a chat from the agent composer", async () => {
     const user = userEvent.setup({ delay: null });
     mockResizeObserver();
-    mockChatLifecycle(context);
+    mockChatLifecycleWithoutBrowserSession();
 
     detachedSetupPage({ context, path: AGENT_CHAT_PATH });
 
@@ -1227,6 +1224,7 @@ describe("chat lifecycle", () => {
     const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentDetailTitle: null });
+    mockNoThreadEvents();
     context.mocks.api(
       chatThreadRenameContract.rename,
       ({ body, params, respond }) => {
@@ -1240,10 +1238,8 @@ describe("chat lifecycle", () => {
       path: "/chats/b0000000-0000-4000-a000-000000000708",
     });
 
+    await screen.findByPlaceholderText(PLACEHOLDER);
     await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
       expect(
         screen.getAllByText("Current keyboard thread").length,
       ).toBeGreaterThan(0);
@@ -1467,6 +1463,7 @@ describe("chat lifecycle", () => {
     mockKeyboardNavigationThreads({
       currentTitle: "🔥 Current keyboard thread",
     });
+    mockNoThreadEvents();
 
     detachedSetupPage({
       context,
@@ -1474,9 +1471,6 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
       expect(screen.getByLabelText("Change icon")).toHaveTextContent("🔥");
     });
 
@@ -1521,6 +1515,7 @@ describe("chat lifecycle", () => {
     mockKeyboardNavigationThreads({
       currentTitle: "🔥   Current keyboard thread",
     });
+    mockNoThreadEvents();
     context.mocks.api(
       chatThreadRenameContract.rename,
       ({ body, params, respond }) => {
@@ -1535,9 +1530,6 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
       expect(document.title).toBe("🔥   Current keyboard thread | VM0");
       expect(screen.getByLabelText("Change icon")).toHaveTextContent("🔥");
       expect(screen.getByText("Current keyboard thread")).toBeInTheDocument();
@@ -1564,6 +1556,7 @@ describe("chat lifecycle", () => {
     mockKeyboardNavigationThreads({
       currentTitle: "🔥 Current keyboard thread",
     });
+    mockNoThreadEvents();
     context.mocks.api(
       chatThreadRenameContract.rename,
       ({ body, params, respond }) => {
@@ -1600,6 +1593,7 @@ describe("chat lifecycle", () => {
     const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentTitle: "🔥" });
+    mockNoThreadEvents();
     context.mocks.api(
       chatThreadRenameContract.rename,
       ({ body, params, respond }) => {

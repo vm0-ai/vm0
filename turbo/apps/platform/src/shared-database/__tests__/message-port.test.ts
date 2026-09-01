@@ -24,10 +24,9 @@ import type {
 } from "../data-key.ts";
 import { MessagePortSharedDatabaseBridge } from "../message-port-client.ts";
 import { SharedDatabaseMessagePortServer } from "../message-port-server.ts";
-import {
-  SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME,
-  type SharedDatabaseClientMessage,
-  type SharedDatabaseConnectionStatus,
+import type {
+  SharedDatabaseClientMessage,
+  SharedDatabaseConnectionStatus,
 } from "../protocol.ts";
 import { SingleConnectionSharedDatabaseBridge } from "../single-connection-client.ts";
 import { SharedDatabaseWorkerContext } from "../worker-host-context.ts";
@@ -199,7 +198,7 @@ async function installProtocolBridge(): Promise<{
 }
 
 describe("shared database MessagePort protocol", () => {
-  it("waits for the credential realtime subscription before completing the initial heartbeat", async () => {
+  it("completes the initial heartbeat before the credential realtime subscription", async () => {
     installHeartbeatAuthentication();
     const initialAttachment = context.mocks.ably.deferNextSubscribe();
     const workerContext = new SharedDatabaseWorkerContext(
@@ -215,7 +214,6 @@ describe("shared database MessagePort protocol", () => {
     })();
 
     await initialAttachment.started;
-    expect(heartbeatCompleted).toBeFalsy();
     await expect(
       bridge.query(
         {
@@ -225,17 +223,15 @@ describe("shared database MessagePort protocol", () => {
         },
         owner.signal,
       ),
-    ).rejects.toMatchObject({
-      name: SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME,
-    });
-    initialAttachment.attach();
+    ).resolves.toStrictEqual([]);
     await completion;
 
     expect(heartbeatCompleted).toBeTruthy();
+    initialAttachment.attach();
     owner.abort();
   });
 
-  it("rejects the initial heartbeat when the credential realtime subscription fails", async () => {
+  it("keeps the initial heartbeat successful when the credential realtime subscription fails", async () => {
     installHeartbeatAuthentication();
     context.mocks.ably.rejectNextSubscribe("credential attach failed");
     const workerContext = new SharedDatabaseWorkerContext(
@@ -245,9 +241,9 @@ describe("shared database MessagePort protocol", () => {
     const bridge = connectProtocolTransport(workerContext, bridgeEvents());
     const owner = createChildAbortController(context.signal);
 
-    await expect(bridge.heartbeat(heartbeat(), owner.signal)).rejects.toThrow(
-      "credential attach failed",
-    );
+    await expect(
+      bridge.heartbeat(heartbeat(), owner.signal),
+    ).resolves.toStrictEqual({ clientReconnected: false });
 
     owner.abort(new DOMException("App unloaded", "AbortError"));
     await vi.waitFor(() => {

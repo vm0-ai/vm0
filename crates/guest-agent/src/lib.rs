@@ -80,10 +80,9 @@
 //! - [`SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE`](guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE)
 //!   means the history exceeds the guest verification budget.
 //!
-//! The runner caller is
-//! `crates/runner/src/executor/agent_run.rs::build_final_identity_verify_command`,
-//! invoked from `verify_restored_session_identity_for_reuse`. The command is
-//! executed by `verify_final_identity_metadata`, and
+//! The runner caller is `verify_restored_session_identity_for_reuse` in
+//! `crates/runner/src/executor/agent_run.rs`. It builds the typed fixed-helper
+//! request executed by `verify_final_identity_metadata`, and
 //! `session_history_identity_reason_from_helper_result` maps its exit status
 //! to runner reasons. Keep those source references in sync with the linked
 //! shared constants when changing this protocol.
