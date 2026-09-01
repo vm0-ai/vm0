@@ -57,6 +57,7 @@ const R2_GC_SHARD_GROUP_COUNT = 16 ** 2;
 const RETIRED_MORNING_BRIEF_CUTOVER_ERROR = "legacy_morning_brief_cutover";
 const RETIRED_MORNING_BRIEF_CUTOVER_MESSAGE =
   "This legacy Morning Brief was stopped during the Official Workflow cutover.";
+const HISTORICAL_MORNING_BRIEF_SELECTED_MODEL = "claude-sonnet-5";
 
 function sanitizedLegacyControlRevokeLine(row: ChatEventRow): string {
   const invalidFields = [
@@ -207,6 +208,65 @@ function sanitizedLegacyContextlessMorningBriefClaimLines(
     throw new Error("Expected an exact historical contextless claim pair");
   }
   chatEventFromRow(root);
+  chatEventFromRow(claim);
+  const encode = (row: ChatEventRow): string => {
+    return `${JSON.stringify({
+      id: row.id,
+      chatThreadId: row.chatThreadId,
+      runId: row.runId,
+      revokesEventId: row.revokesEventId,
+      eventType: "input.prompt",
+      payload: row.payload,
+      contextType: "morning_brief",
+      contextId: null,
+      runEventSequenceNumber: null,
+      runEventId: null,
+      seqId: row.seqId,
+      createdAt: row.createdAt,
+    })}\n`;
+  };
+  return { root: encode(root), claim: encode(claim) };
+}
+
+function sanitizedLegacyContextlessMorningBriefModelClaimLines(
+  root: ChatEventRow,
+  claim: ChatEventRow,
+): { readonly root: string; readonly claim: string } {
+  const projectedRoot = chatEventFromRow(root);
+  if (
+    !isSanitizedContextlessMorningBriefRoot(root) ||
+    projectedRoot.eventType !== "input.prompt" ||
+    projectedRoot.userMessage.parts.some((part) => {
+      return part.type === "model";
+    }) ||
+    claim.id === root.id ||
+    claim.chatThreadId !== root.chatThreadId ||
+    claim.eventType !== "input.prompt" ||
+    claim.runId === null ||
+    claim.revokesEventId !== root.id ||
+    claim.contextType !== "morning_brief" ||
+    claim.contextId !== null ||
+    claim.runEventSequenceNumber !== null ||
+    claim.runEventId !== null ||
+    claim.seqId <= root.seqId ||
+    claim.createdAt <= root.createdAt ||
+    !isDeepStrictEqual(claim.payload, {
+      userMessage: {
+        version: 1,
+        parts: [
+          ...projectedRoot.userMessage.parts,
+          {
+            type: "model",
+            selectedModel: HISTORICAL_MORNING_BRIEF_SELECTED_MODEL,
+          },
+        ],
+      },
+    })
+  ) {
+    throw new Error(
+      "Expected an exact historical contextless model-annotated claim pair",
+    );
+  }
   chatEventFromRow(claim);
   const encode = (row: ChatEventRow): string => {
     return `${JSON.stringify({
@@ -567,7 +627,7 @@ describe("chat event snapshot read endpoints", () => {
     const agent = await bdd.createAgent(owner, {
       displayName: "Morning Brief archive repair agent",
     });
-    const markers = Array.from({ length: 6 }, (_, index) => {
+    const markers = Array.from({ length: 7 }, (_, index) => {
       return `morning-brief-history-${(index + 1).toString()}-${randomUUID()}`;
     });
     let threadId: string | undefined;
@@ -599,12 +659,13 @@ describe("chat event snapshot read endpoints", () => {
     const promptRows = originalRows.filter((row) => {
       return row.eventType === "input.prompt";
     });
-    expect(promptRows).toHaveLength(6);
+    expect(promptRows).toHaveLength(7);
 
     const runIds = markers.map(() => {
       return randomUUID();
     });
     const contextlessClaimRunId = randomUUID();
+    const contextlessModelClaimRunId = randomUUID();
     const historicalDocuments: readonly UserMessageDocument[] = [
       {
         version: 1,
@@ -677,6 +738,15 @@ describe("chat event snapshot read endpoints", () => {
           },
         ],
       },
+      {
+        version: 1,
+        parts: [
+          {
+            type: "text",
+            text: "Preserve the authoritative Run model annotation.",
+          },
+        ],
+      },
     ];
     const promptIndexById = new Map(
       promptRows.map((row, index) => {
@@ -712,6 +782,10 @@ describe("chat event snapshot read endpoints", () => {
       rejectionRows[5],
       revocationFixtureMessage,
     );
+    const contextlessModelClaimRow = requiredRevokingRow(
+      rejectionRows[6],
+      revocationFixtureMessage,
+    );
     const contextlessRootRow = requiredPromptRow(
       originalRows.find((row) => {
         return row.id === contextlessClaimRow.revokesEventId;
@@ -729,6 +803,12 @@ describe("chat event snapshot read endpoints", () => {
         return row.id === contextlessRetirementRow.revokesEventId;
       }),
       "Expected the historical contextless retirement root prompt",
+    );
+    const contextlessModelClaimRootRow = requiredPromptRow(
+      originalRows.find((row) => {
+        return row.id === contextlessModelClaimRow.revokesEventId;
+      }),
+      "Expected the historical contextless model-annotated root prompt",
     );
     const contextlessRetirementCompanionRow = requiredValue(
       originalRows.find((row) => {
@@ -757,6 +837,14 @@ describe("chat event snapshot read endpoints", () => {
         : historicalDocuments[contextlessRetirementRootPromptIndex],
       "Expected the contextless retirement document",
     );
+    const contextlessModelClaimRootPromptIndex = requiredValue(
+      promptIndexById.get(contextlessModelClaimRootRow.id),
+      "Expected the contextless model-annotated claim prompt index",
+    );
+    const contextlessModelClaimDocument = requiredValue(
+      historicalDocuments[contextlessModelClaimRootPromptIndex],
+      "Expected the contextless model-annotated claim document",
+    );
     const expectedRows = originalRows.map((row): ChatEventRow => {
       if (row.id === contextlessClaimRow.id) {
         return chatEventRowSchema.parse({
@@ -766,6 +854,29 @@ describe("chat event snapshot read endpoints", () => {
           contextType: "web",
           contextId: null,
           payload: { userMessage: contextlessDocument },
+          runEventSequenceNumber: null,
+          runEventId: null,
+        });
+      }
+      if (row.id === contextlessModelClaimRow.id) {
+        return chatEventRowSchema.parse({
+          ...row,
+          eventType: "input.prompt",
+          runId: contextlessModelClaimRunId,
+          contextType: "web",
+          contextId: null,
+          payload: {
+            userMessage: {
+              version: 1,
+              parts: [
+                ...contextlessModelClaimDocument.parts,
+                {
+                  type: "model",
+                  selectedModel: HISTORICAL_MORNING_BRIEF_SELECTED_MODEL,
+                },
+              ],
+            },
+          },
           runEventSequenceNumber: null,
           runEventId: null,
         });
@@ -837,7 +948,8 @@ describe("chat event snapshot read endpoints", () => {
           runId:
             row.id === contextlessRootRow.id ||
             row.id === chainedRootRow.id ||
-            row.id === contextlessRetirementRootRow.id
+            row.id === contextlessRetirementRootRow.id ||
+            row.id === contextlessModelClaimRootRow.id
               ? null
               : runId,
           contextType: "web",
@@ -884,7 +996,9 @@ describe("chat event snapshot read endpoints", () => {
         row.id === contextlessRootRow.id ||
         row.id === contextlessClaimRow.id ||
         row.id === contextlessRetirementRootRow.id ||
-        row.id === contextlessRetirementRow.id
+        row.id === contextlessRetirementRow.id ||
+        row.id === contextlessModelClaimRootRow.id ||
+        row.id === contextlessModelClaimRow.id
       ) {
         return chatEventRowSchema.parse({
           ...row,
@@ -994,6 +1108,18 @@ describe("chat event snapshot read endpoints", () => {
     const staleContextlessRetirementCompanion = staleRows.find((row) => {
       return row.id === contextlessRetirementCompanionRow.id;
     });
+    const staleContextlessModelClaimRoot = requiredValue(
+      staleRows.find((row) => {
+        return row.id === contextlessModelClaimRootRow.id;
+      }),
+      "Expected a byte-exact contextless model-annotated claim root",
+    );
+    const staleContextlessModelClaim = requiredValue(
+      staleRows.find((row) => {
+        return row.id === contextlessModelClaimRow.id;
+      }),
+      "Expected a byte-exact contextless model-annotated claim",
+    );
     if (
       staleDirectControlRevoke === undefined ||
       staleContextlessRoot === undefined ||
@@ -1026,6 +1152,11 @@ describe("chat event snapshot read endpoints", () => {
         staleContextlessRetirement,
         staleContextlessRetirementCompanion,
       );
+    const byteExactContextlessModelClaimLines =
+      sanitizedLegacyContextlessMorningBriefModelClaimLines(
+        staleContextlessModelClaimRoot,
+        staleContextlessModelClaim,
+      );
     const staleArchive = Buffer.from(
       staleRows
         .map((row) => {
@@ -1046,6 +1177,12 @@ describe("chat event snapshot read endpoints", () => {
           }
           if (row.id === contextlessRetirementCompanionRow.id) {
             return byteExactContextlessRetirementLines.companion;
+          }
+          if (row.id === contextlessModelClaimRootRow.id) {
+            return byteExactContextlessModelClaimLines.root;
+          }
+          if (row.id === contextlessModelClaimRow.id) {
+            return byteExactContextlessModelClaimLines.claim;
           }
           return row.id === chainedControlRevokeRow.id
             ? byteExactChainedRevokeLine
@@ -1070,6 +1207,13 @@ describe("chat event snapshot read endpoints", () => {
       staleArchive.includes(
         Buffer.from(
           `${byteExactContextlessRetirementLines.root}${byteExactContextlessRetirementLines.retirement}${byteExactContextlessRetirementLines.companion}`,
+        ),
+      ),
+    ).toBeTruthy();
+    expect(
+      staleArchive.includes(
+        Buffer.from(
+          `${byteExactContextlessModelClaimLines.root}${byteExactContextlessModelClaimLines.claim}`,
         ),
       ),
     ).toBeTruthy();
@@ -1197,6 +1341,43 @@ describe("chat event snapshot read endpoints", () => {
     });
     expect(
       repairedRows.find((row) => {
+        return row.id === contextlessModelClaimRootRow.id;
+      }),
+    ).toMatchObject({
+      eventType: "input.prompt",
+      runId: null,
+      revokesEventId: null,
+      contextType: "web",
+      contextId: null,
+      payload: { userMessage: contextlessModelClaimDocument },
+    });
+    expect(
+      repairedRows.find((row) => {
+        return row.id === contextlessModelClaimRow.id;
+      }),
+    ).toMatchObject({
+      eventType: "input.prompt",
+      runId: contextlessModelClaimRunId,
+      revokesEventId: contextlessModelClaimRootRow.id,
+      contextType: "web",
+      contextId: null,
+      payload: {
+        userMessage: {
+          version: 1,
+          parts: [
+            ...contextlessModelClaimDocument.parts,
+            {
+              type: "model",
+              selectedModel: HISTORICAL_MORNING_BRIEF_SELECTED_MODEL,
+            },
+          ],
+        },
+      },
+      runEventSequenceNumber: null,
+      runEventId: null,
+    });
+    expect(
+      repairedRows.find((row) => {
         return row.id === contextlessRetirementRootRow.id;
       }),
     ).toMatchObject({
@@ -1249,7 +1430,7 @@ describe("chat event snapshot read endpoints", () => {
     const expectedPromptRows = expectedRows.filter((row) => {
       return row.eventType === "input.prompt";
     });
-    expect(expectedPromptRows).toHaveLength(7);
+    expect(expectedPromptRows).toHaveLength(9);
     expect(
       projectedPrompts.map((event) => {
         return {
@@ -1549,6 +1730,21 @@ describe("chat event snapshot read endpoints", () => {
       runEventSequenceNumber: null,
       runEventId: null,
     });
+    const contextlessModelClaim = chatEventRowSchema.parse({
+      ...contextlessClaim,
+      payload: {
+        userMessage: {
+          version: 1,
+          parts: [
+            ...contextlessDocument.parts,
+            {
+              type: "model",
+              selectedModel: HISTORICAL_MORNING_BRIEF_SELECTED_MODEL,
+            },
+          ],
+        },
+      },
+    });
     const contextlessRetirement = chatEventRowSchema.parse({
       ...rejectedRow,
       runId: null,
@@ -1587,6 +1783,10 @@ describe("chat event snapshot read endpoints", () => {
       contextlessRoot,
       contextlessRetirement,
       contextlessRetirementCompanion,
+    );
+    sanitizedLegacyContextlessMorningBriefModelClaimLines(
+      contextlessRoot,
+      contextlessModelClaim,
     );
     const contextlessRows = (
       root: ChatEventRow,
@@ -1690,6 +1890,123 @@ describe("chat event snapshot read endpoints", () => {
             })
           : row;
       }),
+    );
+    const missingModelClaimPredecessorBody = encodeRows(
+      contextlessRows(
+        contextlessRoot,
+        chatEventRowSchema.parse({
+          ...contextlessModelClaim,
+          revokesEventId: randomUUID(),
+        }),
+      ),
+    );
+    const mismatchedModelClaimPayloadBody = encodeRows(
+      contextlessRows(
+        contextlessRoot,
+        chatEventRowSchema.parse({
+          ...contextlessModelClaim,
+          payload: {
+            userMessage: {
+              version: 1,
+              parts: [
+                {
+                  type: "text",
+                  text: "Sanitized mismatched model-annotated prompt.",
+                },
+                {
+                  type: "model",
+                  selectedModel: HISTORICAL_MORNING_BRIEF_SELECTED_MODEL,
+                },
+              ],
+            },
+          },
+        }),
+      ),
+    );
+    const reorderedModelClaimBody = encodeRows(
+      contextlessRows(
+        contextlessRoot,
+        chatEventRowSchema.parse({
+          ...contextlessModelClaim,
+          createdAt: contextlessRoot.createdAt,
+        }),
+      ),
+    );
+    const crossThreadModelClaimBody = encodeRows(
+      contextlessRows(
+        contextlessRoot,
+        chatEventRowSchema.parse({
+          ...contextlessModelClaim,
+          chatThreadId: randomUUID(),
+        }),
+      ),
+    );
+    const malformedModelClaimBody = encodeRows(
+      contextlessRows(
+        contextlessRoot,
+        chatEventRowSchema.parse({
+          ...contextlessModelClaim,
+          payload: {
+            userMessage: {
+              version: 1,
+              parts: [
+                {
+                  type: "model",
+                  selectedModel: HISTORICAL_MORNING_BRIEF_SELECTED_MODEL,
+                },
+                ...contextlessDocument.parts,
+              ],
+            },
+          },
+        }),
+      ),
+    );
+    const ambiguousModelClaimBody = encodeRows(
+      contextlessRows(
+        contextlessRoot,
+        contextlessModelClaim,
+        chatEventRowSchema.parse({
+          ...semanticRootRow,
+          revokesEventId: contextlessRoot.id,
+        }),
+      ),
+    );
+    const duplicateModelClaimIdBody = encodeRows(
+      originalRows.map((row) => {
+        if (row.id === contextlessRoot.id) {
+          return contextlessRoot;
+        }
+        if (row.id === contextlessModelClaim.id) {
+          return contextlessModelClaim;
+        }
+        return row.id === semanticRootRow.id
+          ? chatEventRowSchema.parse({
+              ...semanticRootRow,
+              id: contextlessRoot.id,
+            })
+          : row;
+      }),
+    );
+    const futureModelClaimBody = encodeRows(
+      contextlessRows(
+        contextlessRoot,
+        chatEventRowSchema.parse({
+          ...contextlessModelClaim,
+          payload: {
+            userMessage: {
+              version: 1,
+              parts: [
+                ...contextlessDocument.parts,
+                {
+                  type: "model",
+                  selectedModel: HISTORICAL_MORNING_BRIEF_SELECTED_MODEL,
+                  serviceTier: "priority",
+                },
+              ],
+            },
+          },
+        }),
+      ),
     );
     const missingRetirementPredecessorBody = encodeRows(
       contextlessRetirementRows(
@@ -1956,6 +2273,54 @@ describe("chat event snapshot read endpoints", () => {
       {
         failureClass: "projection",
         object: gzipSync(duplicateContextlessIdBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(missingModelClaimPredecessorBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(mismatchedModelClaimPayloadBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(reorderedModelClaimBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(crossThreadModelClaimBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(malformedModelClaimBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(ambiguousModelClaimBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(duplicateModelClaimIdBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(futureModelClaimBody),
         projectionSubstage: "retired_context",
         projectionVariant: "missing_context_id",
       },

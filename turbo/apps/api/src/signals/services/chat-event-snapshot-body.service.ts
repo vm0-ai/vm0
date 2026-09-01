@@ -143,6 +143,42 @@ function isExactContextlessMorningBriefRoot(row: ChatEventRow): boolean {
   );
 }
 
+function hasExactContextlessMorningBriefModelClaimPayload(
+  row: ChatEventRow,
+  root: ChatEventRow,
+): boolean {
+  const rootUserMessage = root.payload?.userMessage;
+  const claimUserMessage = row.payload?.userMessage;
+  if (
+    !isRecord(rootUserMessage) ||
+    !Array.isArray(rootUserMessage.parts) ||
+    !isRecord(claimUserMessage) ||
+    !Array.isArray(claimUserMessage.parts) ||
+    rootUserMessage.parts.some((part) => {
+      return isRecord(part) && part.type === "model";
+    }) ||
+    claimUserMessage.parts.length !== rootUserMessage.parts.length + 1
+  ) {
+    return false;
+  }
+  const modelPart = claimUserMessage.parts.at(-1);
+  // The #25467 queue-claim writer copied every original part, then appended
+  // exactly one server-owned Run model annotation. The archived Morning Brief
+  // fixture predates service-tier annotations, so every wider shape stays
+  // fail-closed.
+  return (
+    isRecord(modelPart) &&
+    Object.keys(modelPart).length === 2 &&
+    modelPart.type === "model" &&
+    typeof modelPart.selectedModel === "string" &&
+    modelPart.selectedModel.length > 0 &&
+    isDeepStrictEqual(
+      claimUserMessage.parts.slice(0, -1),
+      rootUserMessage.parts,
+    )
+  );
+}
+
 function isExactContextlessMorningBriefClaim(
   row: ChatEventRow,
   root: ChatEventRow,
@@ -160,7 +196,8 @@ function isExactContextlessMorningBriefClaim(
     root.seqId < row.seqId &&
     root.createdAt < row.createdAt &&
     hasExactContextlessMorningBriefPromptPayload(row) &&
-    isDeepStrictEqual(row.payload, root.payload)
+    (isDeepStrictEqual(row.payload, root.payload) ||
+      hasExactContextlessMorningBriefModelClaimPayload(row, root))
   );
 }
 
@@ -446,13 +483,14 @@ function repairMorningBriefRow(
     return { row, removedDocumentParts: 0 };
   }
   // Before Morning Brief context rows existed, queue claim wrote an ordered,
-  // run-owned replacement prompt. The Phase A drain fallback also wrote an
-  // ordered run-less rejection plus its adjacent error companion. Both writers
-  // revoked a run-less root and copied its exact document. Migration 0836 later
-  // classified the affected inputs while intentionally preserving their null
-  // context IDs. Accept only those complete archive-local relationships; never
-  // derive or synthesize an ID. This persisted-state compatibility is limited
-  // to immutable legacy V7 Snapshots. Remove it after all surviving V7 heads
+  // run-owned replacement prompt. One revision copied the document byte-for-
+  // byte; #25467 copied its original parts and appended the authoritative Run
+  // model annotation. The Phase A drain fallback also wrote an ordered run-less
+  // rejection plus its adjacent error companion. Migration 0836 classified the
+  // affected inputs while intentionally preserving their null context IDs.
+  // Accept only those complete archive-local relationships; never derive or
+  // synthesize an ID. This persisted-state compatibility is limited to
+  // immutable legacy V7 Snapshots. Remove it after all surviving V7 heads
   // converge to r1 and the retired writer rollback window closes; removal is
   // tracked by #30369 and #28905.
   if (row.contextId === null && !contextlessRepairIds.has(row.id)) {
