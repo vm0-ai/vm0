@@ -1037,60 +1037,77 @@ describe("auth v2 sign-in flow", () => {
     expect(mockedClerk.clientSignInCreate).not.toHaveBeenCalled();
   });
 
-  it("retries Google One Tap after a script failure and back navigation", async () => {
-    context.mocks.browser.fedCm();
-    mockAuthV2Capabilities({
-      googleOAuth: true,
-      googleOneTapClientId: "google-client-id",
-    });
-    const failedScript = createStalledGoogleOneTapScript();
-    setupSignInPage({ status: "needs_identifier" });
-
-    // Script loading is a browser resource boundary and cannot be triggered
-    // through a rendered control, so dispatch its terminal event directly.
-    await screen.findByLabelText("Email address");
-    fireEvent.error(failedScript);
-
-    await waitFor(() => {
-      expect(failedScript).not.toBeInTheDocument();
-    });
-    await expect(screen.findByRole("alert")).resolves.toBeVisible();
-
-    navigateToSignUp();
-    await expect(
-      screen.findByRole("region", { name: "Create your account" }),
-    ).resolves.toBeVisible();
-
-    const retryScript = createStalledGoogleOneTapScript();
-    act(() => {
-      window.history.back();
-    });
-    await screen.findByLabelText("Email address");
-    expect(retryScript).not.toBe(failedScript);
-
-    mockGoogleOneTapCredential("retry-google-one-tap-token");
-    mockedClerk.clientSignInCreate.mockImplementation((params) => {
-      if (params.strategy === "google_one_tap") {
-        return Promise.resolve(
-          moveSignInTo({
-            createdSessionId: "session_one_tap_retry",
-            status: "complete",
-          }),
-        );
-      }
-      return Promise.resolve(currentSignInResource());
-    });
-    fireEvent.load(retryScript);
-
-    await waitFor(() => {
-      expect(mockedClerk.clientSignInCreate).toHaveBeenCalledWith({
-        signUpIfMissing: false,
-        strategy: "google_one_tap",
-        token: "retry-google-one-tap-token",
+  it.each([
+    { event: "error" as const, name: "script load failure" },
+    { event: "load" as const, name: "script initialization failure" },
+  ])(
+    "silently falls back after a Google One Tap $name and retries after back navigation",
+    async ({ event }) => {
+      context.mocks.browser.fedCm();
+      mockAuthV2Capabilities({
+        googleOAuth: true,
+        googleOneTapClientId: "google-client-id",
       });
-      expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
-    });
-  });
+      const failedScript = createStalledGoogleOneTapScript();
+      setupSignInPage({ status: "needs_identifier" });
+
+      // Script loading is a browser resource boundary and cannot be triggered
+      // through a rendered control, so dispatch its terminal event directly.
+      await screen.findByLabelText("Email address");
+      await act(async () => {
+        if (event === "error") {
+          fireEvent.error(failedScript);
+        } else {
+          fireEvent.load(failedScript);
+        }
+        await Promise.resolve();
+      });
+
+      expect(failedScript).not.toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      await expect(
+        screen.findByLabelText("Email address"),
+      ).resolves.toBeEnabled();
+      await expect(
+        waitForRoleElement("button", "Continue with Google"),
+      ).resolves.toBeEnabled();
+
+      navigateToSignUp();
+      await expect(
+        screen.findByRole("region", { name: "Create your account" }),
+      ).resolves.toBeVisible();
+
+      const retryScript = createStalledGoogleOneTapScript();
+      act(() => {
+        window.history.back();
+      });
+      await screen.findByLabelText("Email address");
+      expect(retryScript).not.toBe(failedScript);
+
+      mockGoogleOneTapCredential("retry-google-one-tap-token");
+      mockedClerk.clientSignInCreate.mockImplementation((params) => {
+        if (params.strategy === "google_one_tap") {
+          return Promise.resolve(
+            moveSignInTo({
+              createdSessionId: "session_one_tap_retry",
+              status: "complete",
+            }),
+          );
+        }
+        return Promise.resolve(currentSignInResource());
+      });
+      fireEvent.load(retryScript);
+
+      await waitFor(() => {
+        expect(mockedClerk.clientSignInCreate).toHaveBeenCalledWith({
+          signUpIfMissing: false,
+          strategy: "google_one_tap",
+          token: "retry-google-one-tap-token",
+        });
+        expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
+      });
+    },
+  );
 
   it.each([
     {
