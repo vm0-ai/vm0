@@ -591,11 +591,11 @@ def streamed_response_size(flow: http.HTTPFlow) -> int | None:
 
 
 def captured_response_stream_body(flow: http.HTTPFlow) -> stream_capture.CapturedStreamBody | None:
-    """Return buffered response body bytes and truncation state for capture logging.
+    """Return buffered response body bytes and truncation state.
 
     ``configure_response_stream()`` writes ``STREAM_BUFFER`` and
     ``STREAM_BUFFER_STATE`` together. This read helper keeps the metadata
-    invariant next to the writer while staying neutral about capture log fields.
+    invariant next to the writer for capture logging and terminal inspection.
     """
     stream_buf = flow.metadata.get(metadata_keys.STREAM_BUFFER)
     stream_state = flow.metadata.get(metadata_keys.STREAM_BUFFER_STATE)
@@ -610,7 +610,7 @@ def captured_response_stream_body(flow: http.HTTPFlow) -> stream_capture.Capture
 
 
 def finalize_model_json_usage(flow: http.HTTPFlow, proxy_log_path: str) -> None:
-    """Finalize incremental JSON model-provider usage extraction.
+    """Finalize incremental or bounded terminal model-provider JSON usage extraction.
 
     Called from ``response()`` before usage reporting. Pops
     ``_MODEL_JSON_USAGE_FINISH``, so repeated calls after the first are no-ops.
