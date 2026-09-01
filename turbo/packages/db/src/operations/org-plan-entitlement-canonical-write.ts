@@ -5,10 +5,8 @@ import { orgPlanEntitlementCanonicalColumns } from "../schema/org-plan-entitleme
 /**
  * Canonical-only application write projection for org plan entitlements.
  *
- * The released 1023 bridge mirrors this column into restricted_vm0_models for
- * the immediately previous application release and rollback builds. Keeping
- * the compatibility column out of this projection prevents application-level
- * dual writes and lets canonical input override the legacy column default.
+ * Keeping active inserts on an explicit projection pins every generated target
+ * column to the canonical application contract.
  */
 export const orgPlanEntitlementsCanonicalWrites = pgTable(
   "org_plan_entitlements",

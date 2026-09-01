@@ -6,11 +6,11 @@ import { Client } from "pg";
 
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
 import {
-  ORG_METADATA_PLAN_ENTITLEMENT_PERMANENT_FUNCTION,
+  ORG_METADATA_PLAN_ENTITLEMENT_TRANSITION_FUNCTION,
   ORG_PLAN_ENTITLEMENT_RESTRICTION_MIGRATION,
-  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_FUNCTION,
-  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_TRIGGER,
-  validatePermanentOrgPlanEntitlementRestrictionState,
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_TRANSITION_FUNCTION,
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_TRANSITION_TRIGGER,
+  validateTransitionOrgPlanEntitlementRestrictionState,
 } from "./test-org-plan-entitlement-restriction-permanent";
 
 export const ORG_PLAN_ENTITLEMENT_RESTRICTION_BACKFILL_MIGRATION =
@@ -22,7 +22,7 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
 const testDatabaseName = "migration_org_plan_restriction_backfill_30193";
 const bridgeTriggerName =
-  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_TRIGGER.triggerName;
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_TRANSITION_TRIGGER.triggerName;
 const helperTriggerName = "ensure_legacy_org_metadata_plan_entitlement";
 
 interface SeedRow {
@@ -146,9 +146,9 @@ function validateBackfillPreflight(
     "requires the accepted org metadata helper",
     "found canonical-only rows",
     "found unequal dual rows",
-    ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_TRIGGER.definition,
-    ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_FUNCTION.bodyHash,
-    ORG_METADATA_PLAN_ENTITLEMENT_PERMANENT_FUNCTION.bodyHash,
+    ORG_PLAN_ENTITLEMENT_RESTRICTION_TRANSITION_TRIGGER.definition,
+    ORG_PLAN_ENTITLEMENT_RESTRICTION_TRANSITION_FUNCTION.bodyHash,
+    ORG_METADATA_PLAN_ENTITLEMENT_TRANSITION_FUNCTION.bodyHash,
   ]) {
     assert.ok(preflight.includes(expected));
   }
@@ -241,9 +241,9 @@ function validateBackfillFinalAssertions(statements: readonly string[]): void {
     "did not preserve the accepted enabled 1023 bridge",
     "did not preserve the accepted org metadata helper",
     "backfill procedure still exists",
-    ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_TRIGGER.definition,
-    ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_FUNCTION.bodyHash,
-    ORG_METADATA_PLAN_ENTITLEMENT_PERMANENT_FUNCTION.bodyHash,
+    ORG_PLAN_ENTITLEMENT_RESTRICTION_TRANSITION_TRIGGER.definition,
+    ORG_PLAN_ENTITLEMENT_RESTRICTION_TRANSITION_FUNCTION.bodyHash,
+    ORG_METADATA_PLAN_ENTITLEMENT_TRANSITION_FUNCTION.bodyHash,
   ]) {
     assert.ok(postflight.includes(expected));
   }
@@ -935,7 +935,7 @@ export async function validateOrgPlanEntitlementRestrictionBackfill(
       await proofClient.end();
     }
 
-    await validatePermanentOrgPlanEntitlementRestrictionState(
+    await validateTransitionOrgPlanEntitlementRestrictionState(
       dbUrl,
       "nullable",
     );

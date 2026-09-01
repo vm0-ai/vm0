@@ -95,11 +95,14 @@ import {
 } from "./test-org-plan-entitlement-restriction-backfill";
 import { validateOrgPlanEntitlementRestrictionNotNull } from "./test-org-plan-entitlement-restriction-not-null";
 import {
+  applyOrgPlanEntitlementRestrictionContractOnRegeneratedSchema,
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_CONTRACT_MIGRATION,
+  validateOrgPlanEntitlementRestrictionContract,
+} from "./test-org-plan-entitlement-restriction-contract";
+import {
   installOrgPlanEntitlementRestrictionArtifactsOnRegeneratedSchema,
   ORG_METADATA_PLAN_ENTITLEMENT_PERMANENT_FUNCTION,
   ORG_PLAN_ENTITLEMENT_RESTRICTION_MIGRATION,
-  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_FUNCTION,
-  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_TRIGGER,
   validatePermanentOrgPlanEntitlementRestrictionState,
 } from "./test-org-plan-entitlement-restriction-permanent";
 import { validateSlackOfficialBrandMigration } from "./test-slack-official-brand-migration";
@@ -2445,9 +2448,6 @@ const EXPECTED_PERMANENT_TRIGGERS = [
   // Temporary #30379 expand/mirror bridge. Remove only with #28368 after the
   // backfill, canonical application/reporting switch, and rollback gates pass.
   ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_TRIGGER,
-  // Temporary #30162 expand/mirror bridge. Remove only with #28368 after the
-  // canonical reader/writer switch, backfill, and rollback drain are accepted.
-  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_TRIGGER,
   {
     definition:
       "CREATE TRIGGER sync_legacy_org_plan_entitlement_can_buy_credits BEFORE INSERT OR UPDATE OF plan_key ON public.org_plan_entitlements FOR EACH ROW EXECUTE FUNCTION sync_legacy_org_plan_entitlement_can_buy_credits()",
@@ -2585,8 +2585,6 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     kind: "f",
     schemaName: "public",
   },
-  // Same temporary #30162 bridge and #28368 removal gate as its trigger.
-  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_FUNCTION,
   {
     bodyHash: "daf97695043bdbafd864f7ff7a8f8d5d",
     functionName: "sync_legacy_org_plan_entitlement_can_buy_credits",
@@ -11121,6 +11119,7 @@ async function main(): Promise<void> {
     await validateOrgPlanEntitlementRestrictionExpansion(dbUrl.toString());
     await validateOrgPlanEntitlementRestrictionBackfill(dbUrl.toString());
     await validateOrgPlanEntitlementRestrictionNotNull(dbUrl.toString());
+    await validateOrgPlanEntitlementRestrictionContract(dbUrl.toString());
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -11192,6 +11191,13 @@ async function main(): Promise<void> {
       ),
       "utf8",
     );
+    const orgPlanEntitlementRestrictionContractMigrationSql = await fs.readFile(
+      path.join(
+        MIGRATIONS_DIR,
+        `${ORG_PLAN_ENTITLEMENT_RESTRICTION_CONTRACT_MIGRATION}.sql`,
+      ),
+      "utf8",
+    );
     await backupMigrations();
     migrationsBackedUp = true;
     await generateFreshMigrations();
@@ -11216,6 +11222,10 @@ async function main(): Promise<void> {
     await validateOrgPlanEntitlementRestrictionBackfillOnRegeneratedSchema(
       dbUrl2,
       orgPlanEntitlementRestrictionBackfillMigrationSql,
+    );
+    await applyOrgPlanEntitlementRestrictionContractOnRegeneratedSchema(
+      dbUrl2,
+      orgPlanEntitlementRestrictionContractMigrationSql,
     );
     await validatePermanentOrgMetadataAcquisitionFirstPartySourceState(dbUrl2);
     await validatePermanentOrgPlanEntitlementRestrictionState(dbUrl2);

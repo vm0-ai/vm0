@@ -4,14 +4,20 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { orgPlanEntitlementsCanonicalWrites } from "@okouai/db/operations/org-plan-entitlement-canonical-write";
-import {
-  orgPlanEntitlementLegacyColumns,
-  orgPlanEntitlements,
-} from "@okouai/db/schema/org-plan-entitlement";
+import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { getTableConfig, pgTable } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  getTableConfig,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  varchar,
+} from "drizzle-orm/pg-core";
 import { Client } from "pg";
 
 import { loadOrgPlanCapabilities } from "../../../apps/api/src/signals/services/org-plan-entitlement-read.service";
@@ -19,7 +25,7 @@ import { upsertOrgPlanEntitlement } from "../../../apps/api/src/signals/services
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
 import {
   ORG_PLAN_ENTITLEMENT_RESTRICTION_MIGRATION,
-  validatePermanentOrgPlanEntitlementRestrictionState,
+  validateTransitionOrgPlanEntitlementRestrictionState,
 } from "./test-org-plan-entitlement-restriction-permanent";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -34,9 +40,61 @@ const applicationRuntimePathspecs = [
   "crates",
   "e2e",
 ] as const;
+
+function previousReleaseOrgPlanEntitlementColumns() {
+  return {
+    orgId: text("org_id").primaryKey(),
+    planKey: text("plan_key").notNull(),
+    planRank: integer("plan_rank").notNull(),
+    source: varchar("source", { length: 50 }).notNull(),
+    status: varchar("status", { length: 30 }).notNull().default("active"),
+    baseConcurrencyLimit: integer("base_concurrency_limit")
+      .notNull()
+      .default(0),
+    canBuyConcurrency: boolean("can_buy_concurrency").notNull().default(false),
+    canBuyCredits: boolean("can_buy_credits").notNull().default(false),
+    memberInviteUsagePackRequired: boolean("member_invite_usage_pack_required")
+      .notNull()
+      .default(false),
+    memberInvitationAllowed: boolean("member_invitation_allowed")
+      .notNull()
+      .default(false),
+    autoRechargeAllowed: boolean("auto_recharge_allowed")
+      .notNull()
+      .default(false),
+    supportByok: boolean("support_byok").notNull().default(false),
+    restrictedVm0Models: boolean("restricted_vm0_models")
+      .notNull()
+      .default(true),
+    videoGenerationAllowed: boolean("video_generation_allowed")
+      .notNull()
+      .default(false),
+    workflowWebhookTriggerAllowed: boolean("workflow_webhook_trigger_allowed")
+      .notNull()
+      .default(false),
+    audioLifetimeLimit: integer("audio_lifetime_limit"),
+    audioDailyRateLimit: integer("audio_daily_rate_limit").notNull().default(0),
+    audioDailyDurationSeconds: integer("audio_daily_duration_seconds")
+      .notNull()
+      .default(0),
+    stripeSubscriptionId: text("stripe_subscription_id"),
+    stripeProductId: text("stripe_product_id"),
+    stripePriceId: text("stripe_price_id"),
+    currentPeriodStart: timestamp("current_period_start"),
+    currentPeriodEnd: timestamp("current_period_end"),
+    cancelAt: timestamp("cancel_at"),
+    expiresAt: timestamp("expires_at"),
+    metadataVersion: text("metadata_version").notNull().default("1"),
+    metadataHash: text("metadata_hash"),
+    sourceMetadata: jsonb("source_metadata").notNull().default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  };
+}
+
 const orgPlanEntitlementsPreviousReleaseWrites = pgTable(
   "org_plan_entitlements",
-  orgPlanEntitlementLegacyColumns(),
+  previousReleaseOrgPlanEntitlementColumns(),
 );
 
 interface HistoricalRowSnapshot {
@@ -192,8 +250,8 @@ function validateApplicationWriteProjections(): void {
       return column.name;
     },
   );
-  assert.ok(currentColumnNames.includes("restricted_vm0_models"));
   assert.ok(currentColumnNames.includes("restricted_built_in_models"));
+  assert.equal(currentColumnNames.includes("restricted_vm0_models"), false);
 
   const canonicalWriteColumnNames = getTableConfig(
     orgPlanEntitlementsCanonicalWrites,
@@ -436,16 +494,6 @@ export async function exerciseCurrentApplicationStatements(
   assert.equal(selection?.orgId, orgId);
   assert.equal(selection?.restrictedBuiltInModels, false);
 
-  const [freePair] = await database
-    .select({
-      canonical: orgPlanEntitlements.restrictedBuiltInModels,
-      legacy: orgPlanEntitlements.restrictedVm0Models,
-    })
-    .from(orgPlanEntitlements)
-    .where(eq(orgPlanEntitlements.orgId, orgId))
-    .limit(1);
-  assert.deepEqual(freePair, { canonical: false, legacy: false });
-
   await database.transaction(async (tx) => {
     await upsertOrgPlanEntitlement(tx, {
       orgId,
@@ -455,15 +503,14 @@ export async function exerciseCurrentApplicationStatements(
   });
   const suspended = await loadOrgPlanCapabilities(database, orgId);
   assert.equal(suspended?.restrictedVm0Models, true);
-  const [suspendedPair] = await database
+  const [suspendedCanonical] = await database
     .select({
       canonical: orgPlanEntitlements.restrictedBuiltInModels,
-      legacy: orgPlanEntitlements.restrictedVm0Models,
     })
     .from(orgPlanEntitlements)
     .where(eq(orgPlanEntitlements.orgId, orgId))
     .limit(1);
-  assert.deepEqual(suspendedPair, { canonical: true, legacy: true });
+  assert.deepEqual(suspendedCanonical, { canonical: true });
 
   await database
     .update(orgPlanEntitlements)
@@ -666,7 +713,7 @@ export async function validateOrgPlanEntitlementRestrictionExpansion(
       await client.end();
     }
 
-    await validatePermanentOrgPlanEntitlementRestrictionState(
+    await validateTransitionOrgPlanEntitlementRestrictionState(
       dbUrl,
       "nullable",
     );

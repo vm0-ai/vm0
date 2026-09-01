@@ -65,7 +65,7 @@ function catalogCandidate(args: {
 }
 
 describe("active legacy database identity inventory", () => {
-  it("tracks exactly 24 identities after the provider contract", () => {
+  it("tracks exactly 20 identities after the entitlement contract", () => {
     const counts = LEGACY_DATABASE_IDENTITY_MANIFEST.reduce(
       (result, entry) => {
         result[entry.classification] += 1;
@@ -76,20 +76,39 @@ describe("active legacy database identity inventory", () => {
     expect({
       total: LEGACY_DATABASE_IDENTITY_MANIFEST.length,
       ...counts,
-    }).toEqual({ total: 24, migrate: 7, retain: 17 });
+    }).toEqual({ total: 20, migrate: 3, retain: 17 });
 
-    const removedProviderKeys = [
-      "function:public.canonicalize_agent_run_builtin_provider()",
-      "function:public.canonicalize_chat_thread_builtin_provider()",
-      "function:public.canonicalize_model_provider_builtin_type()",
-      "function:public.canonicalize_org_model_policy_builtin_provider()",
-      "enum-discriminator-value:contract.model-provider = 'vm0'",
+    expect(
+      LEGACY_DATABASE_IDENTITY_MANIFEST.filter((entry) => {
+        return entry.classification === "migrate";
+      }).map((entry) => {
+        return entry.key;
+      }),
+    ).toEqual([
+      "column:public.org_metadata.acquisition_vm0_source",
+      "function:public.sync_org_metadata_acquisition_first_party_source_1033()",
+      "trigger:public.org_metadata.sync_org_metadata_acquisition_first_party_source_1033",
+    ]);
+
+    const removedEntitlementKeys = [
+      "column:public.org_plan_entitlements.restricted_vm0_models",
+      "function:public.ensure_legacy_org_metadata_plan_entitlement()",
+      "function:public.sync_org_plan_entitlement_model_restrictions_1023()",
+      "trigger:public.org_plan_entitlements.sync_org_plan_entitlement_model_restrictions_1023",
     ];
     expect(
       LEGACY_DATABASE_IDENTITY_MANIFEST.filter((entry) => {
-        return removedProviderKeys.includes(entry.key);
+        return removedEntitlementKeys.includes(entry.key);
       }),
     ).toEqual([]);
+
+    expect(
+      LEGACY_DATABASE_IDENTITY_MANIFEST.filter((entry) => {
+        return entry.sources.some((source) => {
+          return source === "snapshot";
+        });
+      }),
+    ).toHaveLength(15);
   });
 
   it("matches the journal-selected current snapshot and semantic contracts exactly", async () => {

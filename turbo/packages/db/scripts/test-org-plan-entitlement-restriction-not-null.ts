@@ -3,14 +3,18 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { orgPlanEntitlementsCanonicalWrites } from "@okouai/db/operations/org-plan-entitlement-canonical-write";
-import {
-  orgPlanEntitlementLegacyColumns,
-  orgPlanEntitlements,
-} from "@okouai/db/schema/org-plan-entitlement";
+import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { getTableConfig, pgTable } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  getTableConfig,
+  integer,
+  pgTable,
+  text,
+  varchar,
+} from "drizzle-orm/pg-core";
 import { Client } from "pg";
 
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
@@ -19,10 +23,10 @@ import {
   exercisePreviousReleaseApplicationStatements,
 } from "./test-org-plan-entitlement-restriction-expansion";
 import {
-  ORG_METADATA_PLAN_ENTITLEMENT_PERMANENT_FUNCTION,
-  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_FUNCTION,
-  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_TRIGGER,
-  validatePermanentOrgPlanEntitlementRestrictionState,
+  ORG_METADATA_PLAN_ENTITLEMENT_TRANSITION_FUNCTION,
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_TRANSITION_FUNCTION,
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_TRANSITION_TRIGGER,
+  validateTransitionOrgPlanEntitlementRestrictionState,
 } from "./test-org-plan-entitlement-restriction-permanent";
 
 export const ORG_PLAN_ENTITLEMENT_RESTRICTION_NOT_NULL_MIGRATION =
@@ -32,15 +36,18 @@ const previousMigration = "1025_curved_wither";
 const temporaryConstraintName =
   "org_plan_entitlements_restricted_built_in_models_not_null_1026";
 const bridgeTriggerName =
-  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_TRIGGER.triggerName;
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_TRANSITION_TRIGGER.triggerName;
 const helperTriggerName = "ensure_legacy_org_metadata_plan_entitlement";
 const testDatabaseName = "migration_org_plan_restriction_not_null_30214";
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
-const previousReleaseWrites = pgTable(
-  "org_plan_entitlements",
-  orgPlanEntitlementLegacyColumns(),
-);
+const previousReleaseWrites = pgTable("org_plan_entitlements", {
+  orgId: text("org_id").primaryKey(),
+  planKey: text("plan_key").notNull(),
+  planRank: integer("plan_rank").notNull(),
+  source: varchar("source", { length: 50 }).notNull(),
+  restrictedVm0Models: boolean("restricted_vm0_models").notNull().default(true),
+});
 
 interface CatalogIdentityRow {
   readonly bodyHash: string;
@@ -181,13 +188,10 @@ async function validateGeneratedArtifacts(): Promise<void> {
     return column.name === "restricted_vm0_models";
   });
   assert.ok(fullCanonical);
-  assert.ok(fullLegacy);
+  assert.equal(fullLegacy, undefined);
   assert.equal(fullCanonical.notNull, true);
   assert.equal(fullCanonical.hasDefault, false);
   assert.equal(fullCanonical.default, undefined);
-  assert.equal(fullLegacy.notNull, true);
-  assert.equal(fullLegacy.hasDefault, true);
-  assert.equal(fullLegacy.default, true);
 
   const canonicalWriteColumns = getTableConfig(
     orgPlanEntitlementsCanonicalWrites,
@@ -310,9 +314,9 @@ export function validateOrgPlanEntitlementRestrictionNotNullMigrationSql(
     "requires the accepted column shape",
     "requires the accepted enabled 1023 bridge",
     "requires the accepted org metadata helper",
-    ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_TRIGGER.definition,
-    ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_FUNCTION.bodyHash,
-    ORG_METADATA_PLAN_ENTITLEMENT_PERMANENT_FUNCTION.bodyHash,
+    ORG_PLAN_ENTITLEMENT_RESTRICTION_TRANSITION_TRIGGER.definition,
+    ORG_PLAN_ENTITLEMENT_RESTRICTION_TRANSITION_FUNCTION.bodyHash,
+    ORG_METADATA_PLAN_ENTITLEMENT_TRANSITION_FUNCTION.bodyHash,
   ]) {
     assert.ok(preflight.includes(expected));
   }
@@ -1139,7 +1143,7 @@ export async function validateOrgPlanEntitlementRestrictionNotNull(
       await client.end();
     }
 
-    await validatePermanentOrgPlanEntitlementRestrictionState(databaseUrl);
+    await validateTransitionOrgPlanEntitlementRestrictionState(databaseUrl);
     console.log("   ✅ fail-closed preflight precedes the only data mutation");
     console.log("   ✅ reconciliation is predicate-bounded and idempotent");
     console.log("   ✅ staged validation promotes NOT NULL without a default");
