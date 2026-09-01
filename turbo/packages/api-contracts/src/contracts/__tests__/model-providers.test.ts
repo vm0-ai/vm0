@@ -421,7 +421,7 @@ describe("model-first canonical catalog", () => {
   });
 
   it("checks model/provider compatibility", () => {
-    expect(isModelSupportedByProvider("gpt-5.6-sol", "vm0")).toBe(true);
+    expect(isModelSupportedByProvider("gpt-5.6-sol", "built-in")).toBe(true);
     expect(isModelSupportedByProvider("gpt-5.6-sol", "openai-api-key")).toBe(
       true,
     );
@@ -441,12 +441,12 @@ describe("model-first canonical catalog", () => {
     expect(isModelSupportedByProvider("deepseek-v4-pro", "deepseek")).toBe(
       true,
     );
-    expect(isModelSupportedByProvider("anthropic/claude-opus-4.8", "vm0")).toBe(
-      true,
-    );
-    expect(isModelSupportedByProvider("anthropic/claude-opus-5", "vm0")).toBe(
-      true,
-    );
+    expect(
+      isModelSupportedByProvider("anthropic/claude-opus-4.8", "built-in"),
+    ).toBe(true);
+    expect(
+      isModelSupportedByProvider("anthropic/claude-opus-5", "built-in"),
+    ).toBe(true);
     expect(isModelSupportedByProvider("MiniMax-M3", "openrouter-api-key")).toBe(
       false,
     );
@@ -510,7 +510,9 @@ describe("model-first canonical catalog", () => {
     expect(getProviderRuntimeModel("openai-api-key", "gpt-5.6-sol")).toBe(
       "gpt-5.6-sol",
     );
-    expect(getProviderRuntimeModel("vm0", "gpt-5.6-sol")).toBe("gpt-5.6-sol");
+    expect(getProviderRuntimeModel("built-in", "gpt-5.6-sol")).toBe(
+      "gpt-5.6-sol",
+    );
     expect(getVm0ConcreteProviderType("gpt-5.6-sol")).toBe("openai-api-key");
     expect(getVm0Vendor("gpt-5.6-sol")).toBe("openai");
     expect(getProviderRuntimeModel("openrouter-api-key", "custom/model")).toBe(
@@ -524,7 +526,7 @@ describe("model-first canonical catalog", () => {
       expect(getVm0ConcreteProviderType(model)).toBe("deepseek");
       expect(getVm0Vendor(model)).toBe("deepseek");
       expect(getVm0ApiModel(model)).toBe(model);
-      expect(getProviderRuntimeModel("vm0", model)).toBe(model);
+      expect(getProviderRuntimeModel("built-in", model)).toBe(model);
     },
   );
 
@@ -540,7 +542,7 @@ describe("model-first canonical catalog", () => {
       expect(getVm0ConcreteProviderType(model)).toBe("anthropic-api-key");
       expect(getVm0Vendor(model)).toBe("anthropic");
       expect(getVm0ApiModel(model)).toBe(model);
-      expect(getProviderRuntimeModel("vm0", model)).toBe(model);
+      expect(getProviderRuntimeModel("built-in", model)).toBe(model);
     },
   );
 
@@ -626,7 +628,9 @@ describe("model-first canonical catalog", () => {
     expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("deepseek-v4-flash");
     expect(LIMITED_FREE1_DEFAULT_RUN_MODEL).toBe("deepseek-v4-flash");
     expect(DEFAULT_ORG_MODEL_POLICY_MODELS).not.toContain("deepseek-v4-pro");
-    expect(getDefaultModel("vm0")).toBe(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
+    expect(getDefaultModel("built-in")).toBe(
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+    );
     expect(getDefaultOrgModelPolicySeed()).toEqual(
       DEFAULT_ORG_MODEL_POLICY_MODELS.map((model) => {
         return {
@@ -1535,7 +1539,7 @@ describe("custom model gateway provider types", () => {
   });
 
   it.each([
-    "vm0",
+    "built-in",
     "anthropic-api-key",
     "claude-code-oauth-token",
     "openai-api-key",
@@ -1589,70 +1593,82 @@ describe("custom model gateway provider types", () => {
   });
 });
 
-describe("built-in provider discriminator compatibility", () => {
-  const aliases = ["vm0", "built-in"] as const;
+describe("built-in provider discriminator contract", () => {
+  const providerResponse = {
+    id: "11111111-1111-4111-8111-111111111111",
+    type: "built-in",
+    framework: "claude-code",
+    secretName: null,
+    authMethod: null,
+    secretNames: null,
+    isDefault: true,
+    selectedModel: null,
+    createdAt: "2026-08-26T00:00:00.000Z",
+    updatedAt: "2026-08-26T00:00:00.000Z",
+    needsReconnect: false,
+    lastRefreshErrorCode: null,
+  } as const;
+  const policyResponse = {
+    id: "22222222-2222-4222-8222-222222222222",
+    model: "gpt-5.6-sol",
+    modelLabel: "GPT 5.6 Sol",
+    isDefault: true,
+    defaultProviderType: "built-in",
+    credentialScope: "org",
+    modelProviderId: null,
+    routeStatus: "valid",
+    routeStatusReason: null,
+    createdAt: "2026-08-26T00:00:00.000Z",
+    updatedAt: "2026-08-26T00:00:00.000Z",
+  } as const;
 
-  it("recognizes exactly the two built-in aliases", () => {
-    for (const alias of aliases) {
-      expect(isBuiltInModelProviderType(alias)).toBe(true);
-    }
-    for (const other of ["anthropic-api-key", "VM0", "", null, undefined]) {
+  it("recognizes only the canonical built-in discriminator", () => {
+    expect(isBuiltInModelProviderType("built-in")).toBe(true);
+    for (const other of [
+      "vm0",
+      "anthropic-api-key",
+      "VM0",
+      "",
+      null,
+      undefined,
+    ]) {
       expect(isBuiltInModelProviderType(other)).toBe(false);
     }
   });
 
-  it("accepts and preserves both aliases in read and response contracts", () => {
-    for (const alias of aliases) {
-      expect(modelProviderTypeSchema.parse(alias)).toBe(alias);
-      expect(
-        modelProviderResponseSchema.parse({
-          id: "11111111-1111-4111-8111-111111111111",
-          type: alias,
-          framework: "claude-code",
-          secretName: null,
-          authMethod: null,
-          secretNames: null,
-          isDefault: true,
-          selectedModel: null,
-          createdAt: "2026-08-26T00:00:00.000Z",
-          updatedAt: "2026-08-26T00:00:00.000Z",
-          needsReconnect: false,
-          lastRefreshErrorCode: null,
-        }).type,
-      ).toBe(alias);
-      expect(
-        orgModelPolicySchema.parse({
-          id: "22222222-2222-4222-8222-222222222222",
-          model: "gpt-5.6-sol",
-          modelLabel: "GPT 5.6 Sol",
-          isDefault: true,
-          defaultProviderType: alias,
-          credentialScope: "org",
-          modelProviderId: null,
-          routeStatus: "valid",
-          routeStatusReason: null,
-          createdAt: "2026-08-26T00:00:00.000Z",
-          updatedAt: "2026-08-26T00:00:00.000Z",
-        }).defaultProviderType,
-      ).toBe(alias);
-    }
-    expect(modelProviderTypeSchema.safeParse("unknown-provider").success).toBe(
-      false,
-    );
-  });
-
-  it("accepts both request aliases and normalizes exact vm0 to built-in", () => {
-    expect(modelProviderWriteTypeSchema.parse("vm0")).toBe("built-in");
-    expect(modelProviderWriteTypeSchema.parse("built-in")).toBe("built-in");
-    expect(upsertModelProviderRequestSchema.parse({ type: "vm0" }).type).toBe(
+  it("accepts built-in and rejects exact vm0 in read contracts", () => {
+    expect(modelProviderTypeSchema.parse("built-in")).toBe("built-in");
+    expect(modelProviderResponseSchema.parse(providerResponse).type).toBe(
       "built-in",
     );
+    expect(orgModelPolicySchema.parse(policyResponse).defaultProviderType).toBe(
+      "built-in",
+    );
+
+    expect(modelProviderTypeSchema.safeParse("vm0").success).toBe(false);
+    expect(
+      modelProviderResponseSchema.safeParse({
+        ...providerResponse,
+        type: "vm0",
+      }).success,
+    ).toBe(false);
+    expect(
+      orgModelPolicySchema.safeParse({
+        ...policyResponse,
+        defaultProviderType: "vm0",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts built-in and rejects exact vm0 in write contracts", () => {
+    expect(modelProviderWriteTypeSchema.parse("built-in")).toBe("built-in");
     expect(
       upsertModelProviderRequestSchema.parse({ type: "built-in" }).type,
     ).toBe("built-in");
     expect(
-      modelProvidersByTypeContract.delete.pathParams.parse({ type: "vm0" })
-        .type,
+      modelProvidersByTypeContract.delete.pathParams.parse({
+        type: "built-in",
+      }).type,
     ).toBe("built-in");
 
     const policy = {
@@ -1664,28 +1680,36 @@ describe("built-in provider discriminator compatibility", () => {
     expect(
       updateOrgModelPolicySchema.parse({
         ...policy,
-        defaultProviderType: "vm0",
-      }).defaultProviderType,
-    ).toBe("built-in");
-    expect(
-      updateOrgModelPolicySchema.parse({
-        ...policy,
         defaultProviderType: "built-in",
       }).defaultProviderType,
     ).toBe("built-in");
+
+    expect(modelProviderWriteTypeSchema.safeParse("vm0").success).toBe(false);
+    expect(
+      upsertModelProviderRequestSchema.safeParse({ type: "vm0" }).success,
+    ).toBe(false);
+    expect(
+      modelProvidersByTypeContract.delete.pathParams.safeParse({ type: "vm0" })
+        .success,
+    ).toBe(false);
+    expect(
+      updateOrgModelPolicySchema.safeParse({
+        ...policy,
+        defaultProviderType: "vm0",
+      }).success,
+    ).toBe(false);
   });
 
-  it("shares built-in behavior without duplicating selectable providers", () => {
-    expect(MODEL_PROVIDER_TYPES["built-in"]).toBe(MODEL_PROVIDER_TYPES.vm0);
-    expect(getFrameworkForType("built-in")).toBe(getFrameworkForType("vm0"));
+  it("exposes built-in exactly once without a legacy config or firewall", () => {
+    expect(MODEL_PROVIDER_TYPES).toHaveProperty("built-in");
+    expect(MODEL_PROVIDER_TYPES).not.toHaveProperty("vm0");
+    expect(getFrameworkForType("built-in")).toBe("claude-code");
     expect(getModelProviderPresentationLabel("built-in")).toBe(
-      getModelProviderPresentationLabel("vm0"),
+      "Built-in model",
     );
-    expect(isModelSupportedByProvider("gpt-5.6-sol", "built-in")).toBe(
-      isModelSupportedByProvider("gpt-5.6-sol", "vm0"),
-    );
+    expect(isModelSupportedByProvider("gpt-5.6-sol", "built-in")).toBe(true);
     expect(getProviderRuntimeModel("built-in", "gpt-5.6-sol")).toBe(
-      getProviderRuntimeModel("vm0", "gpt-5.6-sol"),
+      "gpt-5.6-sol",
     );
     expect(getSecretNameForType("built-in")).toBeUndefined();
     expect(getModelProviderFirewall("anthropic-api-key")).toBeDefined();

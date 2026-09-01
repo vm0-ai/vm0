@@ -1808,7 +1808,7 @@ async function upsertOrgModelProvider(
       | "openai-api-key"
       | "openrouter-api-key"
       | "vercel-ai-gateway"
-      | "vm0";
+      | "built-in";
     readonly secret?: string;
   },
 ): Promise<{ readonly providerId: string; readonly created: boolean }> {

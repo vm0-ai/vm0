@@ -2532,8 +2532,8 @@ jobs:
           # deterministic runner policy must stay within that plan's catalog.
           payload="$(jq -nc '{
             policies: [
-              {model: "deepseek-v4-flash", isDefault: true, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
-              {model: "gpt-5.6-luna", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null}
+              {model: "deepseek-v4-flash", isDefault: true, defaultProviderType: "built-in", credentialScope: "org", modelProviderId: null},
+              {model: "gpt-5.6-luna", isDefault: false, defaultProviderType: "built-in", credentialScope: "org", modelProviderId: null}
             ]
           }')"
 
@@ -2654,7 +2654,7 @@ jobs:
                   {
                     model: $model,
                     isDefault: false,
-                    defaultProviderType: "vm0",
+                    defaultProviderType: "built-in",
                     credentialScope: "org",
                     modelProviderId: null
                   }

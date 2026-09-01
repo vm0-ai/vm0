@@ -7,7 +7,6 @@ import {
 } from "@okouai/api-contracts/contracts/billing";
 import type {
   ModelProviderResponse,
-  ModelProviderType,
   OrgModelPolicy,
 } from "@okouai/api-contracts/contracts/model-providers";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
@@ -88,14 +87,13 @@ function builtInPolicy(
   model: OrgModelPolicy["model"],
   modelLabel: string,
   isDefault: boolean,
-  defaultProviderType: Extract<ModelProviderType, "vm0" | "built-in"> = "vm0",
 ): OrgModelPolicy {
   return {
     id,
     model,
     modelLabel,
     isDefault,
-    defaultProviderType,
+    defaultProviderType: "built-in",
     credentialScope: "org",
     modelProviderId: null,
     routeStatus: "valid",
@@ -863,13 +861,12 @@ describe("organization model providers settings", () => {
     });
   });
 
-  it("renders both built-in read aliases once and writes the canonical type", async () => {
+  it("renders the built-in route once and writes the canonical type", async () => {
     const canonicalPolicy = builtInPolicy(
       "00000000-0000-4000-a000-000000000219",
       "deepseek-v4-flash",
       "DeepSeek V4 Flash",
       true,
-      "built-in",
     );
     mockAdminOrg();
     mockBillingCapabilities({
@@ -882,7 +879,7 @@ describe("organization model providers settings", () => {
     context.mocks.api(modelPoliciesMainContract.update, ({ body, respond }) => {
       writtenProviderType = body.policies[0]?.defaultProviderType ?? null;
       return respond(200, {
-        policies: [{ ...canonicalPolicy, defaultProviderType: "vm0" }],
+        policies: [{ ...canonicalPolicy, defaultProviderType: "built-in" }],
         workspaceDefaultModel: canonicalPolicy.model,
         workspaceDefaultPolicyId: canonicalPolicy.id,
       });

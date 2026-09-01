@@ -67,6 +67,7 @@ import { validatePermanentAgentRunBuiltInModelKeyState } from "./test-agent-run-
 import { validatePermanentBuiltInModelCooldownState } from "./test-built-in-model-cooldown-permanent";
 import { validatePermanentBuiltInModelKeyState } from "./test-built-in-model-keys-permanent";
 import { validatePermanentBuiltInProviderDiscriminatorState } from "./test-built-in-provider-discriminator-permanent";
+import { validateBuiltInProviderDiscriminatorContract } from "./test-built-in-provider-discriminator-contract";
 import { validateBuiltInProviderDiscriminatorMigration } from "./test-built-in-provider-discriminator-migration";
 import { validateConnectorAccountExpansion } from "./test-connector-account-expansion";
 import { validateConnectorAuthorizationAccountMutationPresence } from "./test-connector-authorization-account-mutation-presence";
@@ -2364,36 +2365,6 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "chat_events",
     triggerName: "chat_events_reject_update",
   },
-  // Temporary #29910 old-writer/new-DB bridges. Remove only with #28368's
-  // separately reviewed legacy-acceptor contract after the production drain.
-  {
-    definition:
-      "CREATE TRIGGER canonicalize_agent_run_builtin_provider BEFORE INSERT OR UPDATE OF model_provider ON public.agent_runs FOR EACH ROW EXECUTE FUNCTION canonicalize_agent_run_builtin_provider()",
-    schemaName: "public",
-    tableName: "agent_runs",
-    triggerName: "canonicalize_agent_run_builtin_provider",
-  },
-  {
-    definition:
-      "CREATE TRIGGER canonicalize_chat_thread_builtin_provider BEFORE INSERT OR UPDATE OF model_provider_type ON public.chat_threads FOR EACH ROW EXECUTE FUNCTION canonicalize_chat_thread_builtin_provider()",
-    schemaName: "public",
-    tableName: "chat_threads",
-    triggerName: "canonicalize_chat_thread_builtin_provider",
-  },
-  {
-    definition:
-      "CREATE TRIGGER canonicalize_model_provider_builtin_type BEFORE INSERT OR UPDATE ON public.model_providers FOR EACH ROW EXECUTE FUNCTION canonicalize_model_provider_builtin_type()",
-    schemaName: "public",
-    tableName: "model_providers",
-    triggerName: "canonicalize_model_provider_builtin_type",
-  },
-  {
-    definition:
-      "CREATE TRIGGER canonicalize_org_model_policy_builtin_provider BEFORE INSERT OR UPDATE OF default_provider_type, model_provider_id, model_provider_surface_id ON public.org_model_policies FOR EACH ROW EXECUTE FUNCTION canonicalize_org_model_policy_builtin_provider()",
-    schemaName: "public",
-    tableName: "org_model_policies",
-    triggerName: "canonicalize_org_model_policy_builtin_provider",
-  },
   {
     definition:
       "CREATE TRIGGER allocate_legacy_chat_thread_event_seq_id BEFORE INSERT ON public.chat_thread_events FOR EACH ROW EXECUTE FUNCTION allocate_legacy_chat_thread_event_seq_id()",
@@ -2533,35 +2504,6 @@ const EXPECTED_PERMANENT_TRIGGERS = [
 const EXPECTED_PERMANENT_FUNCTIONS = [
   // Same temporary #30453 bridge and #30468 removal gate as its trigger.
   CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_FUNCTION,
-  // Same temporary #29910 bridge and #28368 removal gate as the triggers.
-  {
-    bodyHash: "08ccacae72d432c06fecb49b4f01dcbf",
-    functionName: "canonicalize_agent_run_builtin_provider",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "8184f2daa343c7eb811308c17a6a2b65",
-    functionName: "canonicalize_chat_thread_builtin_provider",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "90eafccc4fe3a0ffa32dec184c340e77",
-    functionName: "canonicalize_model_provider_builtin_type",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "dfd0098b8afe609bbbcd336b22f6ec3b",
-    functionName: "canonicalize_org_model_policy_builtin_provider",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
   {
     bodyHash: "6b1b5ad47ec35bcbaad3fa95d86ef027",
     functionName: "allocate_legacy_chat_thread_event_seq_id",
@@ -10814,6 +10756,7 @@ async function main(): Promise<void> {
     await validateChatSearchDeleteCompatibility(dbUrl.toString());
     await validateWorkflowCompatibilityViews();
     await validateBuiltInProviderDiscriminatorMigration(dbUrl.toString());
+    await validateBuiltInProviderDiscriminatorContract(dbUrl.toString());
     await validateOrgMetadataAcquisitionFirstPartySourceExpansion(
       dbUrl.toString(),
     );

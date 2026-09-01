@@ -65,6 +65,33 @@ function catalogCandidate(args: {
 }
 
 describe("active legacy database identity inventory", () => {
+  it("tracks exactly 24 identities after the provider contract", () => {
+    const counts = LEGACY_DATABASE_IDENTITY_MANIFEST.reduce(
+      (result, entry) => {
+        result[entry.classification] += 1;
+        return result;
+      },
+      { migrate: 0, retain: 0 },
+    );
+    expect({
+      total: LEGACY_DATABASE_IDENTITY_MANIFEST.length,
+      ...counts,
+    }).toEqual({ total: 24, migrate: 7, retain: 17 });
+
+    const removedProviderKeys = [
+      "function:public.canonicalize_agent_run_builtin_provider()",
+      "function:public.canonicalize_chat_thread_builtin_provider()",
+      "function:public.canonicalize_model_provider_builtin_type()",
+      "function:public.canonicalize_org_model_policy_builtin_provider()",
+      "enum-discriminator-value:contract.model-provider = 'vm0'",
+    ];
+    expect(
+      LEGACY_DATABASE_IDENTITY_MANIFEST.filter((entry) => {
+        return removedProviderKeys.includes(entry.key);
+      }),
+    ).toEqual([]);
+  });
+
   it("matches the journal-selected current snapshot and semantic contracts exactly", async () => {
     const latest =
       await discoverLatestLegacySnapshotIdentities(migrationsDirectory);

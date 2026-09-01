@@ -433,6 +433,12 @@ unless Array(bootstrap["needs"]).include?("cli-e2e-03-runner-prepare")
   raise "runner bootstrap must wait for the token artifact"
 end
 bootstrap_steps = bootstrap.fetch("steps")
+legacy_provider_writer = bootstrap_steps.find do |step|
+  step.fetch("run", "").match?(/defaultProviderType:\s*"vm0"/)
+end
+if legacy_provider_writer
+  raise "runner bootstrap policy writers must not emit the legacy vm0 provider discriminator"
+end
 unless bootstrap_steps.any? do |step|
     step["uses"]&.start_with?("actions/checkout@")
   end
@@ -474,6 +480,7 @@ unless model_defaults_script.include?("/api/model-policies") &&
     model_defaults_script.include?("/api/user-model-preference") &&
     model_defaults_script.include?("deepseek-v4-flash") &&
     model_defaults_script.include?("gpt-5.6-luna") &&
+    model_defaults_script.scan('defaultProviderType: "built-in"').length == 2 &&
     model_defaults_script.include?('{"selectedModel":null,"serviceTier":null}')
   raise "runner bootstrap must reset the limited-free model defaults"
 end
@@ -570,7 +577,7 @@ end
 if claude_script.include?("claude-sonnet-4-6")
   raise "real Claude bootstrap must not retain the Sonnet 4.6 pin"
 end
-unless claude_script.include?('defaultProviderType: "vm0"') &&
+unless claude_script.include?('defaultProviderType: "built-in"') &&
     claude_script.include?("modelProviderId: null")
   raise "real Claude bootstrap must use the built-in provider"
 end

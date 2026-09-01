@@ -48,7 +48,7 @@ function logDetail(): LogDetail {
 function managedLogDetail(): LogDetail {
   return {
     ...logDetail(),
-    modelProvider: "vm0",
+    modelProvider: "built-in",
     selectedModel: SELECTED_MODEL,
     modelRuntimeProvider: RUNTIME_PROVIDER,
     modelRuntimeModel: RUNTIME_MODEL,
@@ -221,7 +221,7 @@ describe("activity retained diagnostic data", () => {
 
     expect(download.filename).toBe(`${RUN_ID}-logs.json`);
     expect(downloaded.meta).toMatchObject({
-      modelProvider: "vm0",
+      modelProvider: "built-in",
       selectedModel: SELECTED_MODEL,
       modelRuntimeProvider: RUNTIME_PROVIDER,
       modelRuntimeModel: RUNTIME_MODEL,

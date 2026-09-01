@@ -484,7 +484,7 @@ function getPolicyRouteSummary(
   if (isBuiltInModelProviderType(policy.defaultProviderType)) {
     return {
       label: builtInLabel,
-      iconType: "vm0",
+      iconType: "built-in",
     };
   }
 

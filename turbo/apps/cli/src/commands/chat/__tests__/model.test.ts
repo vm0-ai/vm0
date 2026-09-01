@@ -56,7 +56,7 @@ const MODEL_POLICIES_RESPONSE = {
       model: "deepseek-v4-flash",
       modelLabel: "DeepSeek V4 Flash",
       isDefault: false,
-      defaultProviderType: "vm0",
+      defaultProviderType: "built-in",
       credentialScope: "org",
       modelProviderId: null,
       routeStatus: "valid",
@@ -132,7 +132,7 @@ describe("okou chat model command", () => {
     expect(output).toContain("Chat thread loaded");
     expect(output).toContain("Model:  Claude Sonnet 5 (claude-sonnet-5)");
     expect(output).toContain("Switchable models:");
-    expect(output).toContain("provider: built-in (Built-in model; vm0)");
+    expect(output).toContain("provider: built-in (Built-in model; built-in)");
     expect(output).toContain(`okou chat model --thread ${THREAD_ID} <model>`);
   });
 

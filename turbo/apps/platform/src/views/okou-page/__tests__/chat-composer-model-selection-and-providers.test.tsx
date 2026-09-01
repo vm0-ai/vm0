@@ -203,7 +203,7 @@ function mockBuiltInFastModel(): void {
       model: "gpt-5.6-sol",
       modelLabel: "GPT 5.6 Sol",
       isDefault: true,
-      defaultProviderType: "vm0",
+      defaultProviderType: "built-in",
       credentialScope: "org",
     }),
   ]);
@@ -665,7 +665,7 @@ describe("chat composer models", () => {
         model: "claude-fable-5",
         modelLabel: "Claude Fable 5",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
       }),
       buildModelPolicy({
@@ -984,7 +984,7 @@ describe("chat composer models", () => {
         id: "00000000-0000-4000-a000-000000000915",
         model: "deepseek-v4-flash",
         modelLabel: "DeepSeek V4 Flash",
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
       }),
     ]);
@@ -1215,7 +1215,7 @@ describe("chat composer models", () => {
       codexFastModeEnabled: true,
       model: "gpt-5.5" as const,
       modelLabel: "GPT 5.5",
-      defaultProviderType: "vm0" as const,
+      defaultProviderType: "built-in" as const,
       credentialScope: "org" as const,
     },
   ])(
@@ -1320,7 +1320,7 @@ describe("chat composer models", () => {
         model: "claude-fable-5",
         modelLabel: "Claude Fable 5",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
       }),
       buildModelPolicy({
@@ -1491,7 +1491,7 @@ describe("chat composer models", () => {
         model: "gpt-5.6-luna",
         modelLabel: "GPT 5.6 Luna",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
       }),
     ]);
@@ -1630,14 +1630,14 @@ describe("chat composer models", () => {
         id: "00000000-0000-4000-a000-000000000917",
         model: "gpt-5.6-luna",
         modelLabel: "GPT 5.6 Luna",
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000932",
         model: "claude-sonnet-5",
         modelLabel: "Claude Sonnet 5",
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
       }),
     ]);
@@ -1752,7 +1752,7 @@ describe("chat composer models", () => {
         model: "claude-sonnet-5",
         modelLabel: "Claude Sonnet 5",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
       }),
     ]);
@@ -1987,28 +1987,28 @@ describe("chat composer models", () => {
         model: "deepseek-v4-flash",
         modelLabel: "DeepSeek V4 Flash",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000702",
         model: "gpt-5.6-luna",
         modelLabel: "GPT 5.6 Luna",
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000703",
         model: "gpt-5.6-sol",
         modelLabel: "GPT 5.6 Sol",
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000704",
         model: "claude-fable-5",
         modelLabel: "Claude Fable 5",
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
       }),
     ]);
@@ -2049,7 +2049,7 @@ describe("chat composer models", () => {
         model: "claude-sonnet-4-6",
         modelLabel: "Claude Sonnet 4.6",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
       }),
       buildModelPolicy({
@@ -2111,7 +2111,7 @@ describe("chat composer models", () => {
         model: "claude-fable-5",
         modelLabel: "Claude Fable 5",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
       }),
       buildModelPolicy({
@@ -2173,14 +2173,14 @@ describe("chat composer models", () => {
         model: "claude-sonnet-4-6",
         modelLabel: "Claude Sonnet 4.6",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000304",
         model: "claude-fable-5",
         modelLabel: "Claude Fable 5",
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
       }),
     ]);
@@ -2224,7 +2224,7 @@ describe("chat composer models", () => {
         model: "gpt-5.5",
         modelLabel: "GPT 5.5",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
       }),
     ]);
@@ -2296,7 +2296,7 @@ describe("chat composer models", () => {
         model: "claude-fable-5",
         modelLabel: "Claude Fable 5",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
       }),
     ]);
@@ -2330,7 +2330,7 @@ describe("chat composer models", () => {
       model: "claude-sonnet-4-6",
       modelLabel: "Claude Sonnet 4.6",
       isDefault: true,
-      defaultProviderType: "vm0",
+      defaultProviderType: "built-in",
       credentialScope: "org",
     });
     let runCreateCount = 0;
