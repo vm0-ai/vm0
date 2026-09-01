@@ -634,13 +634,6 @@ function officialCatalogDetail(
         fingerprint: OFFICIAL_BLUEPRINT_FINGERPRINT,
         parameters: [
           {
-            key: "time-zone",
-            type: "string",
-            format: "timezone",
-            required: true,
-            derivation: { kind: "user-timezone" },
-          },
-          {
             key: "interval-seconds",
             type: "integer",
             required: true,
@@ -705,7 +698,6 @@ function officialSalesResearch(
           reconciliationStatus,
           intendedEnabled: true,
           parameterBindings: [
-            { key: "time-zone", value: "UTC" },
             { key: "interval-seconds", value: 3600 },
             { key: "include-weekends", value: false },
           ],
@@ -1570,7 +1562,7 @@ describe("workflows routes", () => {
     expect(queryButtonByText("Install")).toBeNull();
   });
 
-  it("preselects the default Agent and hides legacy derived timezone parameters", async () => {
+  it("preselects the default Agent and installs every Blueprint with typed parameters", async () => {
     const definition = officialCatalogDetail();
     const installBodies: unknown[] = [];
     mockAgentPageApis();
@@ -1607,7 +1599,6 @@ describe("workflows routes", () => {
     );
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Research Bot")).toBeInTheDocument();
-    expect(within(dialog).queryByLabelText("time-zone (required)")).toBeNull();
     expect(
       within(dialog).getByLabelText("interval-seconds (required)"),
     ).toHaveValue(3600);
@@ -2749,7 +2740,6 @@ describe("workflow detail page", () => {
     expect(
       within(dialog).getByLabelText("interval-seconds (required)"),
     ).toHaveValue(3600);
-    expect(within(dialog).queryByLabelText("time-zone (required)")).toBeNull();
     fireEvent.change(
       within(dialog).getByLabelText("interval-seconds (required)"),
       { target: { value: "1800" } },
@@ -2814,7 +2804,6 @@ describe("workflow detail page", () => {
           official: {
             ...secondAutomation.official,
             parameterBindings: [
-              { key: "time-zone", value: "America/New_York" },
               { key: "interval-seconds", value: 7200 },
               { key: "include-weekends", value: true },
             ],
@@ -2883,9 +2872,6 @@ describe("workflow detail page", () => {
       }),
     );
     const firstDialog = await screen.findByRole("dialog");
-    expect(
-      within(firstDialog).queryByLabelText("time-zone (required)"),
-    ).toBeNull();
     fireEvent.change(
       within(firstDialog).getByLabelText("interval-seconds (required)"),
       { target: { value: "1800" } },
@@ -2911,9 +2897,6 @@ describe("workflow detail page", () => {
 
     click(buttonByText("Reconfigure"));
     const secondDialog = await screen.findByRole("dialog");
-    expect(
-      within(secondDialog).queryByLabelText("time-zone (required)"),
-    ).toBeNull();
     expect(
       within(secondDialog).getByLabelText("interval-seconds (required)"),
     ).toHaveValue(7200);

@@ -1042,11 +1042,11 @@ describe.sequential("Official Workflow catalog release boundary", () => {
               ...scheduleBlueprint("daily"),
               parameters: [
                 {
-                  key: "time-zone",
+                  key: "callback-url",
                   type: "string",
-                  format: "text",
+                  format: "url",
                   required: true,
-                  derivation: { kind: "user-timezone" },
+                  default: "not-a-url",
                 },
               ],
             },
@@ -1055,7 +1055,7 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       ],
     });
     expect(invalidParameter.body.diagnostics).toContainEqual(
-      expect.objectContaining({ code: "invalid-candidate" }),
+      expect.objectContaining({ code: "invalid-parameter-declaration" }),
     );
 
     const unknownRuntimeSetting = await syncCatalog({

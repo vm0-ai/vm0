@@ -1,5 +1,6 @@
 import type {
   OfficialWorkflowAcceptedBlueprint,
+  OfficialWorkflowInstallationParameter,
   OfficialWorkflowParameterBinding,
   OfficialWorkflowParameterValue,
 } from "@okouai/api-contracts/contracts/official-workflow-catalog";
@@ -26,36 +27,16 @@ interface ConfigurationAgent {
   readonly displayName?: string | null;
 }
 
-type AcceptedInstallationParameter =
-  OfficialWorkflowAcceptedBlueprint["parameters"][number];
-
-function isLegacyUserTimezoneParameter(
-  parameter: AcceptedInstallationParameter,
-): boolean {
-  return (
-    parameter.type === "string" &&
-    parameter.derivation?.kind === "user-timezone"
-  );
-}
-
-function configurableParameters(
-  blueprint: OfficialWorkflowAcceptedBlueprint,
-): readonly AcceptedInstallationParameter[] {
-  return blueprint.parameters.filter((parameter) => {
-    return !isLegacyUserTimezoneParameter(parameter);
-  });
-}
-
 export function officialWorkflowHasConfigurableParameters(
   blueprints: readonly OfficialWorkflowAcceptedBlueprint[],
 ): boolean {
   return blueprints.some((blueprint) => {
-    return configurableParameters(blueprint).length > 0;
+    return blueprint.parameters.length > 0;
   });
 }
 
 function parameterInitialValue(
-  parameter: AcceptedInstallationParameter,
+  parameter: OfficialWorkflowInstallationParameter,
   current: ReadonlyMap<string, OfficialWorkflowParameterValue>,
 ): OfficialWorkflowParameterValue | undefined {
   const currentValue = current.get(parameter.key);
@@ -78,9 +59,6 @@ function initialBlueprintBindings(
     }),
   );
   return blueprint.parameters.flatMap((parameter) => {
-    if (isLegacyUserTimezoneParameter(parameter)) {
-      return [];
-    }
     const value = parameterInitialValue(parameter, currentByKey);
     return value === undefined ? [] : [{ key: parameter.key, value }];
   });
@@ -140,7 +118,6 @@ export function officialWorkflowConfigurationComplete(
   return blueprints.every((blueprint) => {
     return blueprint.parameters.every((parameter) => {
       return (
-        isLegacyUserTimezoneParameter(parameter) ||
         !parameter.required ||
         bindingValue(form, blueprint.key, parameter.key) !== undefined
       );
@@ -155,7 +132,7 @@ function ParameterField({
   disabled,
 }: {
   readonly blueprintKey: string;
-  readonly parameter: AcceptedInstallationParameter;
+  readonly parameter: OfficialWorkflowInstallationParameter;
   readonly value: OfficialWorkflowParameterValue | undefined;
   readonly disabled: boolean;
 }) {
@@ -298,7 +275,6 @@ export function OfficialWorkflowConfigurationFields({
         </div>
       ) : null}
       {blueprints.map((blueprint) => {
-        const parameters = configurableParameters(blueprint);
         return (
           <section
             key={blueprint.key}
@@ -313,13 +289,13 @@ export function OfficialWorkflowConfigurationFields({
                   ($) => {
                     return $.workflows.official.parameterCount;
                   },
-                  { count: parameters.length },
+                  { count: blueprint.parameters.length },
                 )}
               </p>
             </div>
-            {parameters.length > 0 ? (
+            {blueprint.parameters.length > 0 ? (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {parameters.map((parameter) => {
+                {blueprint.parameters.map((parameter) => {
                   return (
                     <ParameterField
                       key={parameter.key}

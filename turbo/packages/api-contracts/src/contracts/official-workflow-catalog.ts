@@ -266,30 +266,8 @@ export type OfficialWorkflowArtifactReference = z.infer<
   typeof officialWorkflowArtifactReferenceSchema
 >;
 
-const legacyOfficialWorkflowUserTimezoneDerivationSchema = z
-  .object({ kind: z.literal("user-timezone") })
-  .strict();
-
-// Accepted revisions are immutable persisted data. Revisions published before
-// schedule timezones became owner defaults can still contain this field, while
-// current source Definitions cannot declare it through the source schema above.
-const acceptedOfficialWorkflowStringParameterSchema =
-  officialWorkflowStringParameterSchema.extend({
-    derivation: legacyOfficialWorkflowUserTimezoneDerivationSchema.optional(),
-  });
-
-const acceptedOfficialWorkflowInstallationParameterSchema =
-  z.discriminatedUnion("type", [
-    acceptedOfficialWorkflowStringParameterSchema,
-    officialWorkflowIntegerParameterSchema,
-    officialWorkflowBooleanParameterSchema,
-  ]);
-
 export const officialWorkflowAcceptedBlueprintSchema =
-  officialWorkflowBlueprintSchema.extend({
-    parameters: z.array(acceptedOfficialWorkflowInstallationParameterSchema),
-    fingerprint: fingerprintSchema,
-  });
+  officialWorkflowBlueprintSchema.extend({ fingerprint: fingerprintSchema });
 export type OfficialWorkflowAcceptedBlueprint = z.infer<
   typeof officialWorkflowAcceptedBlueprintSchema
 >;
