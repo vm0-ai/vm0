@@ -7,20 +7,22 @@ const OTHER_ROOTFS_HASH: &str = "11111111111111111111111111111111111111111111111
 const OTHER_SNAPSHOT_HASH: &str =
     "2222222222222222222222222222222222222222222222222222222222222222";
 
-async fn assert_rootfs_pair_held(home: &HomePaths, hash: &str) {
-    for path in [home.legacy_rootfs_lock(hash), home.rootfs_lock(hash)] {
-        let error = crate::lock::try_acquire(path).await.unwrap_err();
-        assert!(
-            error.to_string().contains("lock is already held"),
-            "unexpected rootfs lock error: {error}"
-        );
-    }
+async fn assert_rootfs_lock_held(home: &HomePaths, hash: &str) {
+    let error = crate::lock::try_acquire(home.rootfs_lock(hash))
+        .await
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("lock is already held"),
+        "unexpected rootfs lock error: {error}"
+    );
 }
 
-async fn assert_rootfs_pair_released(home: &HomePaths, hash: &str) {
-    for path in [home.legacy_rootfs_lock(hash), home.rootfs_lock(hash)] {
-        drop(crate::lock::try_acquire(path).await.unwrap());
-    }
+async fn assert_rootfs_lock_released(home: &HomePaths, hash: &str) {
+    drop(
+        crate::lock::try_acquire(home.rootfs_lock(hash))
+            .await
+            .unwrap(),
+    );
 }
 
 struct ConfigFixture {
@@ -977,7 +979,7 @@ async fn lock_and_validate_profile_image_artifacts_holds_resource_locks() {
         .await
         .unwrap();
 
-    assert_rootfs_pair_held(&home, TEST_ROOTFS_HASH).await;
+    assert_rootfs_lock_held(&home, TEST_ROOTFS_HASH).await;
 
     let snapshot_err = crate::lock::try_acquire(home.snapshot_lock(TEST_SNAPSHOT_HASH))
         .await
@@ -988,7 +990,7 @@ async fn lock_and_validate_profile_image_artifacts_holds_resource_locks() {
     );
 
     drop(guard);
-    assert_rootfs_pair_released(&home, TEST_ROOTFS_HASH).await;
+    assert_rootfs_lock_released(&home, TEST_ROOTFS_HASH).await;
     let released_lock = crate::lock::try_acquire(home.snapshot_lock(TEST_SNAPSHOT_HASH))
         .await
         .unwrap();
@@ -1013,7 +1015,7 @@ async fn lock_and_validate_runner_image_artifacts_releases_locks_on_validation_e
         "expected missing cow bitmap error, got: {err}"
     );
 
-    assert_rootfs_pair_released(&home, TEST_ROOTFS_HASH).await;
+    assert_rootfs_lock_released(&home, TEST_ROOTFS_HASH).await;
     let snapshot_lock = crate::lock::try_acquire(home.snapshot_lock(TEST_SNAPSHOT_HASH))
         .await
         .unwrap();
@@ -1063,7 +1065,7 @@ async fn lock_and_validate_runner_image_artifacts_holds_all_resource_locks() {
         (TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH),
         (OTHER_ROOTFS_HASH, OTHER_SNAPSHOT_HASH),
     ] {
-        assert_rootfs_pair_held(&home, rootfs_hash).await;
+        assert_rootfs_lock_held(&home, rootfs_hash).await;
         let snapshot_err = crate::lock::try_acquire(home.snapshot_lock(snapshot_hash))
             .await
             .unwrap_err();
@@ -1078,7 +1080,7 @@ async fn lock_and_validate_runner_image_artifacts_holds_all_resource_locks() {
         (TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH),
         (OTHER_ROOTFS_HASH, OTHER_SNAPSHOT_HASH),
     ] {
-        assert_rootfs_pair_released(&home, rootfs_hash).await;
+        assert_rootfs_lock_released(&home, rootfs_hash).await;
         let released_lock = crate::lock::try_acquire(home.snapshot_lock(snapshot_hash))
             .await
             .unwrap();

@@ -7,7 +7,6 @@ use tracing::{info, warn};
 use crate::byte_size::human_bytes;
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
-use crate::rootfs_lock::{self, RootfsLockGuard, TryRootfsLock};
 
 use super::GC_MIN_AGE;
 use super::filesystem::{
@@ -45,20 +44,6 @@ struct RootfsState {
 struct SnapshotDeletion {
     path: PathBuf,
     hash: String,
-}
-
-enum RootfsLockProbe {
-    Free(RootfsLockGuard),
-    Held,
-    Error(String),
-}
-
-fn probe_rootfs_lock(home: &HomePaths, hash: &str) -> RootfsLockProbe {
-    match rootfs_lock::try_acquire_or_busy_blocking(home, hash) {
-        Ok(TryRootfsLock::Acquired(lock)) => RootfsLockProbe::Free(lock),
-        Ok(TryRootfsLock::Busy) => RootfsLockProbe::Held,
-        Err(error) => RootfsLockProbe::Error(error.to_string()),
-    }
 }
 
 /// Try to delete an orphaned rootfs directory (no surviving snapshots).
@@ -174,15 +159,15 @@ async fn gc_rootfs_action(
     dry_run: bool,
     snapshot_entry_reader: &mut GcDirEntryReader,
 ) -> GcReport {
-    let _rootfs_lock = match probe_rootfs_lock(home, &state.hash) {
-        RootfsLockProbe::Free(lock) => lock,
-        RootfsLockProbe::Held => {
+    let _rootfs_lock = match probe_lock(&home.rootfs_lock(&state.hash)) {
+        LockProbe::Free(lock) => lock,
+        LockProbe::Held => {
             if dry_run {
                 info!("images/{}: rootfs in use, skipping", state.hash);
             }
             return GcReport::default();
         }
-        RootfsLockProbe::Error(e) => {
+        LockProbe::Error(e) => {
             warn!("images/{}: lock probe failed ({e}), skipping", state.hash);
             return GcReport::default();
         }
@@ -477,15 +462,15 @@ async fn gc_nested_images_with_protected_refs_and_readers(
         // `runner start` acquires shared rootfs before shared snapshot; cleaning
         // snapshots while only the rootfs lock is held can race that acquisition
         // window and delete a snapshot the runner is about to lock.
-        let rootfs_lock = match probe_rootfs_lock(home, &rootfs_hash) {
-            RootfsLockProbe::Free(lock) => lock,
-            RootfsLockProbe::Held => {
+        let rootfs_lock = match probe_lock(&home.rootfs_lock(&rootfs_hash)) {
+            LockProbe::Free(lock) => lock,
+            LockProbe::Held => {
                 if dry_run {
                     info!("images/{rootfs_hash}: rootfs in use, skipping");
                 }
                 continue;
             }
-            RootfsLockProbe::Error(e) => {
+            LockProbe::Error(e) => {
                 warn!("images/{rootfs_hash}: lock probe failed ({e}), skipping");
                 continue;
             }
