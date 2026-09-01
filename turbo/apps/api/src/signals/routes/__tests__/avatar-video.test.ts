@@ -720,6 +720,6 @@ describe("JoggAI built-in avatar video routes", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(providerCalled).toBe(false);
+    expect(providerCalled).toBeFalsy();
   });
 });
