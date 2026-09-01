@@ -7,7 +7,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 
-import { mockOptionalEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import {
   setSecretKmsClientForTests,
   type SecretKmsClient,
@@ -34,6 +34,7 @@ import {
 import {
   awsVerificationCode,
   createConnectorBddApi,
+  mockAutomaticMcpOAuthProvider,
   mockAwsExternalCodeProvider,
   mockTestOAuthAuthCodeProvider,
 } from "./helpers/api-bdd-connectors";
@@ -900,6 +901,193 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     expect(refreshed.body.refreshedConnectors).toStrictEqual(["test-oauth"]);
   });
 
+  it.each([
+    {
+      registration: "cimd" as const,
+      refreshError: "invalid_grant" as const,
+      failureReason: "reconnect_required",
+      connectedAfterFailure: false,
+    },
+    {
+      registration: "cimd" as const,
+      refreshError: "temporarily_unavailable" as const,
+      failureReason: "upstream_provider",
+      connectedAfterFailure: true,
+    },
+    {
+      registration: "dcr" as const,
+      refreshError: "invalid_client" as const,
+      failureReason: "reconnect_required",
+      connectedAfterFailure: false,
+    },
+  ])(
+    "classifies Automatic MCP OAuth $refreshError refresh failures",
+    async ({
+      registration,
+      refreshError,
+      failureReason,
+      connectedAfterFailure,
+    }) => {
+      mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+      mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+      mockEnv("APP_URL", "https://app.vm0.ai");
+      const provider = mockAutomaticMcpOAuthProvider(context, {
+        registration,
+        initialExpiresIn: 3600,
+        ...(refreshError === "temporarily_unavailable"
+          ? { refreshErrors: [refreshError] }
+          : { refreshError }),
+      });
+      const fw = createFirewallApi(context);
+      const connectors = createConnectorBddApi(context);
+      const { actor, headers } = await firewallRun();
+      await connectors.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.CustomConnectorMcp]: true,
+        [FeatureSwitchKey.ConnectorAccounts]: true,
+      });
+      const mcp = await connectors.createCustomConnector(actor, {
+        kind: "mcp",
+        displayName: `BDD Automatic MCP ${refreshError}`,
+        endpoint: provider.endpoint,
+        transport: "streamable-http",
+        fields: [],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{oauth.access_token}}",
+          },
+        ],
+        queryInjections: [],
+        authMode: "oauth",
+        oauthSetup: "automatic",
+      });
+      const authorizationUrl = await connectors.startCustomConnectorOAuth2(
+        actor,
+        mcp.id,
+      );
+      const state = new URL(authorizationUrl).searchParams.get("state");
+      if (!state) {
+        throw new Error("Expected Automatic MCP OAuth state");
+      }
+      await connectors.completeCustomConnectorOAuth2Callback({
+        code: `automatic-mcp-${refreshError}-code`,
+        state,
+        iss: provider.issuer,
+      });
+      if (refreshError === "invalid_client") {
+        const secondAuthorization = await connectors.startCustomConnectorOAuth2(
+          actor,
+          mcp.id,
+          undefined,
+          { intent: "add", displayName: "Second" },
+        );
+        const secondState = new URL(secondAuthorization).searchParams.get(
+          "state",
+        );
+        if (!secondState) {
+          throw new Error("Expected second Automatic MCP OAuth state");
+        }
+        await connectors.completeCustomConnectorOAuth2Callback({
+          code: "automatic-mcp-invalid-client-second-code",
+          state: secondState,
+          iss: provider.issuer,
+        });
+      }
+      const accounts = await connectors.listCustomConnectorAccounts(
+        actor,
+        mcp.id,
+      );
+      const [account] = accounts;
+      if (!account) {
+        throw new Error("Expected an Automatic MCP OAuth account");
+      }
+      const internalName = `custom_connector_${mcp.id.replaceAll("-", "")}`;
+      const secretKey = `CUSTOM_${mcp.id.replaceAll("-", "")}_S___OAUTH_ACCESS_TOKEN`;
+      const authBody = {
+        encryptedSecrets: fw.encryptedSecretsBody({}),
+        authHeaders: {
+          Authorization: `Bearer ${secretTemplate(secretKey)}`,
+        },
+        matchedFirewall: {
+          name: internalName,
+          apiId: `${internalName}:0`,
+          customConnectorId: mcp.id,
+          sourceId: account.id,
+          routingVariables: {},
+        },
+        forceRefresh: true,
+      };
+
+      const failed = await fw.requestFirewallAuth(headers, authBody, [502]);
+      if (failed.status !== 502) {
+        throw new Error("Expected Automatic MCP OAuth refresh failure");
+      }
+      expect(failed.body.error).toMatchObject({
+        code: "TOKEN_REFRESH_FAILED",
+        connectors: [mcp.id],
+        failureReason,
+      });
+      await expect(
+        connectors.readCustomConnector(actor, mcp.id),
+      ).resolves.toMatchObject({
+        connected: connectedAfterFailure,
+      });
+      expect(
+        provider.tokenBodies.map((body) => {
+          return body.get("grant_type");
+        }),
+      ).toStrictEqual(
+        refreshError === "invalid_client"
+          ? ["authorization_code", "authorization_code", "refresh_token"]
+          : ["authorization_code", "refresh_token"],
+      );
+      const verifyOutcome: Record<typeof refreshError, () => Promise<void>> = {
+        invalid_grant: () => {
+          return Promise.resolve();
+        },
+        invalid_client: async () => {
+          const retiredAccounts = await connectors.listCustomConnectorAccounts(
+            actor,
+            mcp.id,
+          );
+          expect(retiredAccounts).toHaveLength(2);
+          expect(
+            retiredAccounts.map((item) => {
+              return item.connectionStatus;
+            }),
+          ).toStrictEqual(["reconnect-required", "reconnect-required"]);
+          await connectors.startCustomConnectorOAuth2(
+            actor,
+            mcp.id,
+            undefined,
+            { intent: "reconnect", connectionId: account.id },
+          );
+          expect(provider.registrationBodies).toHaveLength(2);
+        },
+        temporarily_unavailable: async () => {
+          const recovered = await fw.requestFirewallAuth(
+            headers,
+            authBody,
+            [200],
+          );
+          expect(recovered.body).toMatchObject({
+            headers: {
+              Authorization: "Bearer automatic-refreshed-access-token",
+            },
+            refreshedConnectors: [mcp.id],
+          });
+          expect(provider.tokenBodies[2]?.get("grant_type")).toBe(
+            "refresh_token",
+          );
+          expect(provider.tokenBodies[2]?.get("resource")).toBe(
+            provider.endpoint,
+          );
+        },
+      };
+      await verifyOutcome[refreshError]();
+    },
+  );
+
   it("maintains authoritative and unknown OAuth grants across refresh", async () => {
     const fw = createFirewallApi(context);
     const connectors = createConnectorBddApi(context);
@@ -995,6 +1183,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       orgId: actor.orgId,
       userId: actor.userId,
       connectorSlug: "test-oauth",
+      connectorId: connected.id,
       oauthScopes: ["legacy-requested"],
       oauthGrantedScopes: null,
     });

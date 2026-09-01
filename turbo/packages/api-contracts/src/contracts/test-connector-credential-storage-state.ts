@@ -197,6 +197,7 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       org_id: z.string(),
       user_id: z.string(),
       connector_slug: z.string(),
+      connector_id: z.uuid(),
       oauth_scopes: z.array(z.string()),
       oauth_granted_scopes: z.array(z.string()).nullable(),
     }),

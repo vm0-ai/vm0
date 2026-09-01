@@ -6,6 +6,7 @@ import { and, eq, exists } from "drizzle-orm";
 import { z } from "zod";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
+import type { OAuthClientMetadata } from "@modelcontextprotocol/client";
 import {
   isIntegrationManagedCustomConnector,
   isIntegrationManagedCustomConnectorProviderAdapter,
@@ -17,11 +18,17 @@ import {
   OAuthProviderHttpError,
 } from "@okouai/connectors/auth-providers/oauth/error";
 import { connectors } from "@okouai/db/schema/connector";
+import { customConnectorAccountOauthBindings } from "@okouai/db/schema/custom-connector-account-oauth-binding";
 import { orgCustomConnectorOauthConfigs } from "@okouai/db/schema/org-custom-connector-oauth-config";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { secrets } from "@okouai/db/schema/secret";
 
-import { badRequestMessage, conflict, notFound } from "../../lib/error";
+import {
+  badGateway,
+  badRequestMessage,
+  conflict,
+  notFound,
+} from "../../lib/error";
 import { nowDate } from "../../lib/time";
 import {
   connectorOAuthStateExpiresAt,
@@ -58,12 +65,25 @@ import {
   isCustomConnectorMcpEnabled,
 } from "./custom-connector-mcp-feature.service";
 import {
+  type ConnectorConnectionMutationResolution,
   replaceConnectorConnection,
   resolveConnectorConnectionMutation,
 } from "./connector-connection-write.service";
 import { connectorAccountSiblingWritesEnabled } from "./connector-account-mutation.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 import { mcpOAuthSafeFetch } from "./mcp-oauth-safe-fetch.service";
+import {
+  CustomConnectorAutomaticOAuthError,
+  isAutomaticOAuthInvalidClient,
+  isAutomaticOAuthInvalidGrant,
+  prepareCustomConnectorAutomaticOAuthAuthorization,
+  readCustomConnectorAutomaticOAuthBinding,
+  refreshCustomConnectorAutomaticOAuthToken,
+  retireCustomConnectorDcrRegistration,
+  type CustomConnectorAutomaticOAuthBinding,
+  type CustomConnectorAutomaticOAuthStateContext as PreparedCustomConnectorAutomaticOAuthStateContext,
+} from "./custom-connector-automatic-oauth.service";
+import { configuredOkouMcpOAuthClientMetadata } from "./mcp-oauth-client-metadata.service";
 
 const TOKEN_REFRESH_LEEWAY_MS = 60 * 1000;
 
@@ -100,7 +120,9 @@ const customConnectorAutomaticOAuthStateContextBaseSchema = z.object({
   issuer: oauthHttpsUrlSchema,
   resource: oauthHttpsUrlSchema,
   resourceMetadataUrl: oauthHttpsUrlSchema.nullable(),
+  authorizationEndpoint: oauthHttpsUrlSchema,
   tokenEndpoint: oauthHttpsUrlSchema,
+  authorizationResponseIssParameterSupported: z.boolean(),
   clientId: z.string().min(1),
   tokenEndpointAuthMethod: z.enum([
     "none",
@@ -138,10 +160,20 @@ export type CustomConnectorCustomOAuthStateContext = z.infer<
   typeof customConnectorCustomOAuthStateContextSchema
 >;
 
+type CustomConnectorAutomaticOAuthStateContext = z.infer<
+  typeof customConnectorAutomaticOAuthStateContextSchema
+>;
+
 export function isCustomConnectorCustomOAuthStateContext(
   context: CustomConnectorOAuthStateContext,
 ): context is CustomConnectorCustomOAuthStateContext {
   return context.oauthSetup !== "automatic";
+}
+
+export function isCustomConnectorAutomaticOAuthStateContext(
+  context: CustomConnectorOAuthStateContext,
+): context is CustomConnectorAutomaticOAuthStateContext {
+  return context.oauthSetup === "automatic";
 }
 
 const oauthTokenResponseSchema = z.object({
@@ -491,22 +523,264 @@ function isCustomOAuthConnector(
   );
 }
 
+function isAutomaticOAuthConnector(
+  connector: CustomConnectorRow,
+): connector is CustomConnectorRow & {
+  readonly kind: "mcp";
+  readonly authMode: "oauth";
+  readonly oauthSetup: "automatic";
+  readonly oauthConfig: null;
+} {
+  return (
+    connector.kind === "mcp" &&
+    connector.authMode === "oauth" &&
+    connector.oauthSetup === "automatic" &&
+    connector.oauthConfig === null
+  );
+}
+
+interface AutomaticOAuthClientPresentation {
+  readonly redirectUri: string;
+  readonly cimdClientId: string;
+  readonly dcrClientMetadata: OAuthClientMetadata;
+}
+
+interface StartCustomConnectorOAuth2Args {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly connectorId: string;
+  readonly redirectUri: string;
+  readonly publicBrand: PublicBrand;
+  readonly automaticOAuthClient?: AutomaticOAuthClientPresentation;
+  readonly agentId?: string;
+  readonly account: ConnectorAccountMutationIntent;
+  readonly feishuContext?: {
+    readonly installationId?: string;
+    readonly expectedOpenId?: string;
+  };
+}
+
+interface PreparedOAuthStart {
+  readonly oauthSetup: "custom" | "automatic";
+  readonly redirectUri: string;
+  readonly state: string;
+  readonly authorizationUrl: string;
+  readonly codeVerifier: string | null;
+  readonly oauthRequestedScopes: string | null;
+  readonly context: CustomConnectorOAuthStateContext;
+}
+
+function connectorConnectionMutationFailure(
+  resolution: ConnectorConnectionMutationResolution,
+) {
+  if (resolution.kind === "ready") {
+    return null;
+  }
+  return resolution.kind === "missing"
+    ? notFound("Connector account not found")
+    : conflict(
+        resolution.kind === "ambiguous"
+          ? "Multiple connector accounts require an exact choice"
+          : "Additional connector accounts are not enabled yet",
+      );
+}
+
+function prepareCustomOAuthStart(
+  connector: CustomConnectorRow & {
+    readonly authMode: "oauth";
+    readonly oauthSetup: "custom";
+    readonly oauthConfig: CustomConnectorOAuthConfigRow;
+  },
+  args: StartCustomConnectorOAuth2Args,
+): PreparedOAuthStart {
+  const state = generateConnectorOAuthState(args.publicBrand);
+  const codeVerifier =
+    connector.oauthConfig.pkceMethod === "S256" ? createPkceVerifier() : null;
+  return {
+    oauthSetup: "custom",
+    redirectUri: args.redirectUri,
+    state,
+    authorizationUrl: buildCustomConnectorOAuth2AuthorizationUrl({
+      config: connector.oauthConfig,
+      redirectUri: args.redirectUri,
+      state,
+      codeVerifier,
+    }),
+    codeVerifier,
+    oauthRequestedScopes: null,
+    context: {
+      oauthSetup: "custom",
+      connectorId: connector.id,
+      storageVersion: connector.storageVersion,
+      ...(connector.oauthConfig.providerAdapter === "feishu" &&
+      args.feishuContext
+        ? {
+            providerContext: {
+              provider: "feishu" as const,
+              completionTarget: "feishu" as const,
+              ...(args.feishuContext.installationId
+                ? { installationId: args.feishuContext.installationId }
+                : {}),
+              ...(args.feishuContext.expectedOpenId
+                ? { expectedOpenId: args.feishuContext.expectedOpenId }
+                : {}),
+            },
+          }
+        : {}),
+    },
+  };
+}
+
+async function prepareAutomaticOAuthStart(
+  context: {
+    readonly db: Db;
+    readonly connector: CustomConnectorRow & {
+      readonly kind: "mcp";
+      readonly authMode: "oauth";
+      readonly oauthSetup: "automatic";
+      readonly oauthConfig: null;
+    };
+    readonly args: StartCustomConnectorOAuth2Args;
+    readonly featureContext: FeatureSwitchContext;
+    readonly client: AutomaticOAuthClientPresentation;
+  },
+  signal: AbortSignal,
+) {
+  const { db, connector, args, featureContext, client } = context;
+  const preflight = await db.transaction(async (tx) => {
+    await lockCustomConnectorOAuth2CredentialContract({
+      db: tx,
+      orgId: args.orgId,
+      connectorId: connector.id,
+      storageVersion: connector.storageVersion,
+      oauthSetup: "automatic",
+    });
+    return await resolveConnectorConnectionMutation(tx, {
+      orgId: args.orgId,
+      userId: args.userId,
+      target: { kind: "custom", customConnectorId: connector.id },
+      mutation: args.account,
+      allowSiblings: connectorAccountSiblingWritesEnabled(featureContext),
+    });
+  });
+  signal.throwIfAborted();
+  const preflightFailure = connectorConnectionMutationFailure(preflight);
+  if (preflightFailure) {
+    return { ok: false as const, response: preflightFailure };
+  }
+  const state = generateConnectorOAuthState("okou");
+  const automatic = await settle(
+    prepareCustomConnectorAutomaticOAuthAuthorization(
+      {
+        db,
+        orgId: args.orgId,
+        customConnectorId: connector.id,
+        storageVersion: connector.storageVersion,
+        endpoint: connector.endpoint,
+        redirectUri: client.redirectUri,
+        state,
+        cimdClientId: client.cimdClientId,
+        dcrClientMetadata: client.dcrClientMetadata,
+        featureContext,
+      },
+      signal,
+    ),
+    signal,
+  );
+  if (!automatic.ok) {
+    const error = automatic.error;
+    if (!(error instanceof CustomConnectorAutomaticOAuthError)) {
+      throw error;
+    }
+    const response =
+      error.kind === "temporary"
+        ? badGateway(
+            "MCP OAuth provider is temporarily unavailable. Please try again.",
+          )
+        : badRequestMessage(
+            error.kind === "unsafe"
+              ? "MCP OAuth provider uses an unsafe URL"
+              : "MCP OAuth provider is not compatible with Automatic OAuth. Configure a Custom OAuth app instead.",
+          );
+    return { ok: false as const, response };
+  }
+  const prepared = automatic.value;
+  return {
+    ok: true as const,
+    value: {
+      oauthSetup: "automatic",
+      redirectUri: client.redirectUri,
+      state,
+      authorizationUrl: prepared.authorizationUrl,
+      codeVerifier: prepared.codeVerifier,
+      oauthRequestedScopes: prepared.requestedScope,
+      context:
+        prepared.context satisfies PreparedCustomConnectorAutomaticOAuthStateContext,
+    } satisfies PreparedOAuthStart,
+  };
+}
+
+async function persistCustomConnectorOAuthStart(
+  context: {
+    readonly db: Db;
+    readonly connector: CustomConnectorRow;
+    readonly args: StartCustomConnectorOAuth2Args;
+    readonly featureContext: FeatureSwitchContext;
+    readonly prepared: PreparedOAuthStart;
+  },
+  signal: AbortSignal,
+) {
+  const { db, connector, args, featureContext, prepared } = context;
+  const result = await db.transaction(async (tx) => {
+    await lockCustomConnectorOAuth2CredentialContract({
+      db: tx,
+      orgId: args.orgId,
+      connectorId: connector.id,
+      storageVersion: connector.storageVersion,
+      oauthSetup: prepared.oauthSetup,
+    });
+    const resolution = await resolveConnectorConnectionMutation(tx, {
+      orgId: args.orgId,
+      userId: args.userId,
+      target: { kind: "custom", customConnectorId: connector.id },
+      mutation: args.account,
+      allowSiblings:
+        !isIntegrationManagedCustomConnector(connector) &&
+        connectorAccountSiblingWritesEnabled(featureContext),
+    });
+    if (resolution.kind !== "ready") {
+      return { resolution, connectionId: null };
+    }
+    const oauthStateId = await insertConnectorOAuthState(tx, {
+      state: prepared.state,
+      customConnectorId: connector.id,
+      storageVersion: connector.storageVersion,
+      authMethod: "oauth",
+      userId: args.userId,
+      orgId: args.orgId,
+      agentId: args.agentId,
+      authorizeAgent: args.agentId !== undefined,
+      redirectUri: prepared.redirectUri,
+      authorizationUrl: prepared.authorizationUrl,
+      oauthRequestedScopes: prepared.oauthRequestedScopes,
+      codeVerifier: prepared.codeVerifier,
+      oauthContext: JSON.stringify(prepared.context),
+      accountMutation: args.account,
+      expiresAt: connectorOAuthStateExpiresAt(),
+    });
+    return {
+      resolution,
+      connectionId: args.account.intent === "add" ? oauthStateId : null,
+    };
+  });
+  signal.throwIfAborted();
+  return result;
+}
+
 export const startCustomConnectorOAuth2$ = command(
   async (
     { get, set },
-    args: {
-      readonly orgId: string;
-      readonly userId: string;
-      readonly connectorId: string;
-      readonly redirectUri: string;
-      readonly publicBrand: PublicBrand;
-      readonly agentId?: string;
-      readonly account: ConnectorAccountMutationIntent;
-      readonly feishuContext?: {
-        readonly installationId?: string;
-        readonly expectedOpenId?: string;
-      };
-    },
+    args: StartCustomConnectorOAuth2Args,
     signal: AbortSignal,
   ) => {
     const connector = await get(
@@ -519,7 +793,9 @@ export const startCustomConnectorOAuth2$ = command(
     if (!connector) {
       return notFound("Custom connector not found");
     }
-    if (!isCustomOAuthConnector(connector)) {
+    const customOAuth = isCustomOAuthConnector(connector);
+    const automaticOAuth = isAutomaticOAuthConnector(connector);
+    if (!customOAuth && !automaticOAuth) {
       return badRequestMessage(
         "Custom connector does not support OAuth 2.0 authentication",
       );
@@ -534,88 +810,50 @@ export const startCustomConnectorOAuth2$ = command(
     if (customConnectorOAuthMcpIsDisabled(connector, featureContext)) {
       return customConnectorMcpDisabledResponse();
     }
-    const providerAdapter = connector.oauthConfig.providerAdapter;
-    const redirectUri = args.redirectUri;
-    const state = generateConnectorOAuthState(args.publicBrand);
-    const codeVerifier =
-      connector.oauthConfig.pkceMethod === "S256" ? createPkceVerifier() : null;
-    const authorizationUrl = buildCustomConnectorOAuth2AuthorizationUrl({
-      config: connector.oauthConfig,
-      redirectUri,
-      state,
-      codeVerifier,
-    });
-    const context: CustomConnectorOAuthStateContext = {
-      oauthSetup: "custom",
-      connectorId: connector.id,
-      storageVersion: connector.storageVersion,
-      ...(providerAdapter === "feishu" && args.feishuContext
-        ? {
-            providerContext: {
-              provider: "feishu" as const,
-              completionTarget: "feishu" as const,
-              ...(args.feishuContext.installationId
-                ? { installationId: args.feishuContext.installationId }
-                : {}),
-              ...(args.feishuContext.expectedOpenId
-                ? { expectedOpenId: args.feishuContext.expectedOpenId }
-                : {}),
-            },
-          }
-        : {}),
-    };
-    const mutationStart = await set(writeDb$).transaction(async (tx) => {
-      await lockCustomConnectorOAuth2CredentialContract({
-        db: tx,
-        orgId: args.orgId,
-        connectorId: connector.id,
-        storageVersion: connector.storageVersion,
-      });
-      const resolution = await resolveConnectorConnectionMutation(tx, {
-        orgId: args.orgId,
-        userId: args.userId,
-        target: { kind: "custom", customConnectorId: connector.id },
-        mutation: args.account,
-        allowSiblings:
-          !isIntegrationManagedCustomConnector(connector) &&
-          connectorAccountSiblingWritesEnabled(featureContext),
-      });
-      if (resolution.kind !== "ready") {
-        return { resolution, connectionId: null };
+    if (automaticOAuth && !args.automaticOAuthClient) {
+      return badRequestMessage(
+        "Automatic OAuth client identity is unavailable",
+      );
+    }
+    let prepared: PreparedOAuthStart;
+    if (customOAuth) {
+      prepared = prepareCustomOAuthStart(connector, args);
+    } else if (automaticOAuth && args.automaticOAuthClient) {
+      const automatic = await prepareAutomaticOAuthStart(
+        {
+          db: set(writeDb$),
+          connector,
+          args,
+          featureContext,
+          client: args.automaticOAuthClient,
+        },
+        signal,
+      );
+      if (!automatic.ok) {
+        return automatic.response;
       }
-      const oauthStateId = await insertConnectorOAuthState(tx, {
-        state,
-        customConnectorId: connector.id,
-        storageVersion: connector.storageVersion,
-        authMethod: "oauth",
-        userId: args.userId,
-        orgId: args.orgId,
-        agentId: args.agentId,
-        authorizeAgent: args.agentId !== undefined,
-        redirectUri,
-        authorizationUrl,
-        codeVerifier,
-        oauthContext: JSON.stringify(context),
-        accountMutation: args.account,
-        expiresAt: connectorOAuthStateExpiresAt(),
-      });
-      return {
-        resolution,
-        connectionId: args.account.intent === "add" ? oauthStateId : null,
-      };
-    });
-    signal.throwIfAborted();
-    if (mutationStart.resolution.kind !== "ready") {
-      return mutationStart.resolution.kind === "missing"
-        ? notFound("Connector account not found")
-        : conflict(
-            mutationStart.resolution.kind === "ambiguous"
-              ? "Multiple connector accounts require an exact choice"
-              : "Additional connector accounts are not enabled yet",
-          );
+      prepared = automatic.value;
+    } else {
+      throw new Error("OAuth connector mode changed during authorization");
+    }
+    const mutationStart = await persistCustomConnectorOAuthStart(
+      {
+        db: set(writeDb$),
+        connector,
+        args,
+        featureContext,
+        prepared,
+      },
+      signal,
+    );
+    const mutationFailure = connectorConnectionMutationFailure(
+      mutationStart.resolution,
+    );
+    if (mutationFailure) {
+      return mutationFailure;
     }
     return {
-      authorizationUrl,
+      authorizationUrl: prepared.authorizationUrl,
       connectionId: mutationStart.connectionId ?? undefined,
     };
   },
@@ -791,6 +1029,7 @@ export async function lockCustomConnectorOAuth2CredentialContract(args: {
   readonly orgId: string;
   readonly connectorId: string;
   readonly storageVersion: number;
+  readonly oauthSetup?: "custom" | "automatic";
 }): Promise<{
   readonly providerAdapter: CustomConnectorOAuthProviderAdapter | null;
 }> {
@@ -820,7 +1059,9 @@ export async function lockCustomConnectorOAuth2CredentialContract(args: {
   if (
     !definition ||
     definition.authMode !== "oauth" ||
-    (definition.oauthSetup !== null && definition.oauthSetup !== "custom") ||
+    (args.oauthSetup === "automatic"
+      ? definition.oauthSetup !== "automatic"
+      : definition.oauthSetup !== null && definition.oauthSetup !== "custom") ||
     definition.storageVersion !== args.storageVersion
   ) {
     throw new Error(
@@ -841,6 +1082,19 @@ export async function storeCustomConnectorOAuth2Connection(
     readonly featureContext: FeatureSwitchContext;
     readonly account: ConnectorAccountMutationIntent;
     readonly insertConnectionId?: string;
+    readonly automaticOAuthBinding?: {
+      readonly issuer: string;
+      readonly resource: string;
+      readonly resourceMetadataUrl: string | null;
+      readonly tokenEndpoint: string;
+      readonly clientId: string;
+      readonly tokenEndpointAuthMethod:
+        | "none"
+        | "client_secret_basic"
+        | "client_secret_post";
+      readonly registrationMethod: "cimd" | "dcr";
+      readonly dcrRegistrationId: string | null;
+    };
   },
   signal: AbortSignal,
 ): Promise<
@@ -855,6 +1109,7 @@ export async function storeCustomConnectorOAuth2Connection(
       orgId: args.orgId,
       connectorId: args.connectorId,
       storageVersion: args.storageVersion,
+      oauthSetup: args.automaticOAuthBinding ? "automatic" : "custom",
     });
     signal.throwIfAborted();
     const resolution = await resolveConnectorConnectionMutation(tx, {
@@ -894,6 +1149,21 @@ export async function storeCustomConnectorOAuth2Connection(
               encrypted,
             }),
           );
+          await db
+            .delete(customConnectorAccountOauthBindings)
+            .where(
+              eq(
+                customConnectorAccountOauthBindings.connectorAccountId,
+                connectorId,
+              ),
+            );
+          if (args.automaticOAuthBinding) {
+            await db.insert(customConnectorAccountOauthBindings).values({
+              connectorAccountId: connectorId,
+              customConnectorId: args.connectorId,
+              ...args.automaticOAuthBinding,
+            });
+          }
         },
       },
       signal,
@@ -1078,7 +1348,11 @@ async function resolveCustomConnectorOAuth2AccessToken(
   args: ResolveCustomConnectorOAuth2AccessTokenArgs,
   signal: AbortSignal,
 ): Promise<CustomConnectorOAuth2AccessTokenResolution> {
-  if (args.connector.authMode !== "oauth" || !args.connector.oauthConfig) {
+  if (
+    args.connector.authMode !== "oauth" ||
+    args.connector.oauthSetup !== "custom" ||
+    !args.connector.oauthConfig
+  ) {
     return { kind: "unavailable" };
   }
   const oauthConfig = args.connector.oauthConfig;
@@ -1199,6 +1473,212 @@ async function resolveCustomConnectorOAuth2AccessToken(
   });
 }
 
+async function handleAutomaticOAuthRefreshFailure(args: {
+  readonly db: Db;
+  readonly connectionId: string;
+  readonly binding: CustomConnectorAutomaticOAuthBinding;
+  readonly error: unknown;
+}): Promise<{ readonly kind: "reconnect-required" }> {
+  if (
+    isAutomaticOAuthInvalidClient(args.error) &&
+    args.binding.registrationMethod === "dcr"
+  ) {
+    await retireCustomConnectorDcrRegistration(
+      args.db,
+      args.binding.dcrRegistration.id,
+    );
+    return { kind: "reconnect-required" };
+  }
+  if (
+    isAutomaticOAuthInvalidGrant(args.error) ||
+    isAutomaticOAuthInvalidClient(args.error) ||
+    (args.error instanceof CustomConnectorAutomaticOAuthError &&
+      args.error.kind === "binding-drift")
+  ) {
+    await markCustomConnectorNeedsReconnect(
+      args.db,
+      args.connectionId,
+      "authorization_expired_or_revoked",
+    );
+    return { kind: "reconnect-required" };
+  }
+  if (
+    args.error instanceof CustomConnectorAutomaticOAuthError &&
+    args.error.kind === "temporary"
+  ) {
+    throw new CustomConnectorOAuth2TokenRefreshError(args.error);
+  }
+  throw args.error;
+}
+
+async function refreshLockedAutomaticOAuthAccessToken(
+  context: {
+    readonly db: Db;
+    readonly args: ResolveCustomConnectorOAuth2AccessTokenArgs;
+    readonly connector: CustomConnectorRow & {
+      readonly kind: "mcp";
+      readonly authMode: "oauth";
+      readonly oauthSetup: "automatic";
+    };
+    readonly initialConnection: StoredConnection;
+    readonly initialAccessToken: ReturnType<typeof storedConnectionAccessToken>;
+  },
+  signal: AbortSignal,
+): Promise<CustomConnectorOAuth2AccessTokenResolution> {
+  const { db, args, connector, initialConnection, initialAccessToken } =
+    context;
+  const lockedConnection = await loadConnection({
+    db,
+    orgId: args.orgId,
+    userId: args.userId,
+    customConnectorId: connector.id,
+    memberConnectorId: args.memberConnectorId,
+    storageVersion: connector.storageVersion,
+    lockRow: true,
+  });
+  signal.throwIfAborted();
+  if (!lockedConnection) {
+    return { kind: "unavailable" };
+  }
+  const lockedAccessToken = storedConnectionAccessToken(lockedConnection);
+  const recoveredSinceInitialRead =
+    initialConnection.needsReconnect ||
+    initialAccessToken.kind !== "available" ||
+    (lockedAccessToken.kind === "available" &&
+      lockedAccessToken.encryptedAccessToken !==
+        initialAccessToken.encryptedAccessToken);
+  if (
+    !lockedConnection.needsReconnect &&
+    lockedAccessToken.kind === "available" &&
+    (!args.forceRefresh || recoveredSinceInitialRead) &&
+    connectionAccessTokenIsCurrent(lockedConnection)
+  ) {
+    return lockedAccessToken;
+  }
+  if (!lockedConnection.encryptedRefreshToken) {
+    await markCustomConnectorNeedsReconnect(
+      db,
+      lockedConnection.id,
+      "missing_refresh_token",
+    );
+    return { kind: "reconnect-required" };
+  }
+  const binding = await readCustomConnectorAutomaticOAuthBinding(
+    db,
+    lockedConnection.id,
+  );
+  signal.throwIfAborted();
+  if (!binding) {
+    await markCustomConnectorNeedsReconnect(
+      db,
+      lockedConnection.id,
+      "authorization_expired_or_revoked",
+    );
+    return { kind: "reconnect-required" };
+  }
+  if (
+    binding.registrationMethod === "dcr" &&
+    binding.dcrRegistration.expiresAt !== null &&
+    binding.dcrRegistration.expiresAt <= nowDate()
+  ) {
+    await retireCustomConnectorDcrRegistration(db, binding.dcrRegistration.id);
+    return { kind: "reconnect-required" };
+  }
+  const refreshToken = await decryptStoredSecretValue(
+    lockedConnection.encryptedRefreshToken,
+    args.featureContext,
+  );
+  signal.throwIfAborted();
+  const okouClientMetadata = configuredOkouMcpOAuthClientMetadata();
+  const [okouRedirectUri] = okouClientMetadata.redirect_uris;
+  if (!okouRedirectUri) {
+    throw new Error("Okou MCP OAuth callback is unavailable");
+  }
+  const refreshResult = await settle(
+    refreshCustomConnectorAutomaticOAuthToken(
+      {
+        db,
+        binding,
+        endpoint: connector.endpoint,
+        redirectUri: okouRedirectUri,
+        cimdClientId: okouClientMetadata.client_id,
+        refreshToken,
+        featureContext: args.featureContext,
+      },
+      signal,
+    ),
+    signal,
+  );
+  if (!refreshResult.ok) {
+    return await handleAutomaticOAuthRefreshFailure({
+      db,
+      connectionId: lockedConnection.id,
+      binding,
+      error: refreshResult.error,
+    });
+  }
+  const encryptedAccessToken = await replaceConnectionTokens({
+    db,
+    connectionId: lockedConnection.id,
+    orgId: args.orgId,
+    userId: args.userId,
+    token: refreshResult.value,
+    fallbackRefreshToken: refreshToken,
+    fallbackEncryptedIdToken: lockedConnection.encryptedIdToken ?? undefined,
+    featureContext: args.featureContext,
+  });
+  signal.throwIfAborted();
+  return {
+    kind: "available",
+    encryptedAccessToken,
+    tokenExpiresAt: refreshResult.value.expiresAt,
+    status: "refreshed",
+  };
+}
+
+async function resolveAutomaticCustomConnectorOAuth2AccessToken(
+  args: ResolveCustomConnectorOAuth2AccessTokenArgs,
+  signal: AbortSignal,
+): Promise<CustomConnectorOAuth2AccessTokenResolution> {
+  if (!isAutomaticOAuthConnector(args.connector)) {
+    return { kind: "unavailable" };
+  }
+  const connector = args.connector;
+  const connection = await loadConnection({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.userId,
+    customConnectorId: connector.id,
+    memberConnectorId: args.memberConnectorId,
+    storageVersion: connector.storageVersion,
+  });
+  signal.throwIfAborted();
+  if (!connection) {
+    return { kind: "unavailable" };
+  }
+  const accessToken = storedConnectionAccessToken(connection);
+  if (
+    !args.forceRefresh &&
+    !connection.needsReconnect &&
+    accessToken.kind === "available" &&
+    connectionAccessTokenIsCurrent(connection)
+  ) {
+    return accessToken;
+  }
+  return await args.db.transaction(async (tx) => {
+    return await refreshLockedAutomaticOAuthAccessToken(
+      {
+        db: tx,
+        args,
+        connector,
+        initialConnection: connection,
+        initialAccessToken: accessToken,
+      },
+      signal,
+    );
+  });
+}
+
 async function loadLiveCustomConnector(args: {
   readonly db: Db;
   readonly orgId: string;
@@ -1247,7 +1727,11 @@ export async function resolveCurrentCustomConnectorOAuth2AccessToken(
   if (!connector || connector.authMode !== "oauth") {
     return { kind: "unavailable" };
   }
-  return await resolveCustomConnectorOAuth2AccessToken(
+  const resolve =
+    connector.oauthSetup === "automatic"
+      ? resolveAutomaticCustomConnectorOAuth2AccessToken
+      : resolveCustomConnectorOAuth2AccessToken;
+  return await resolve(
     {
       ...args,
       connector,
