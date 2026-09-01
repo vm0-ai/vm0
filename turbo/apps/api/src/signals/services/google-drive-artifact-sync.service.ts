@@ -8,7 +8,9 @@ import type {
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agents } from "@okouai/db/schema/agent";
 import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatThreadConnectorSelections } from "@okouai/db/schema/chat-thread-connector-selection";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { hostedDeployments } from "@okouai/db/schema/hosted-site";
 import {
@@ -35,6 +37,7 @@ import {
   loadConnectorRuntimeSnapshot,
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
+import { resolveConnectorAccount } from "./connector-account-resolution.service";
 import {
   connectorCredentialRuntimeValueRef,
   loadConnectorCredentialConnection,
@@ -127,19 +130,71 @@ async function threadAllowsGoogleDriveArtifactSync(
   return authorization !== undefined;
 }
 
-async function loadDriveTokens(
+async function resolveDriveConnectorId(
   db: ReadonlyDb,
-  orgId: string,
-  userId: string,
-  featureSwitchContext: FeatureSwitchContext,
-  snapshot: ConnectorRuntimeSnapshot,
-): Promise<ConnectorTokens | null> {
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly threadId: string;
+  },
+): Promise<string | null> {
+  const [selection] = await db
+    .select({ connectorId: chatThreadConnectorSelections.connectorId })
+    .from(chatThreads)
+    .innerJoin(
+      agents,
+      and(eq(agents.id, chatThreads.agentId), eq(agents.orgId, args.orgId)),
+    )
+    .innerJoin(
+      chatThreadConnectorSelections,
+      and(
+        eq(chatThreadConnectorSelections.chatThreadId, chatThreads.id),
+        eq(chatThreadConnectorSelections.connectorSlug, "google-drive"),
+      ),
+    )
+    .where(
+      and(
+        eq(chatThreads.id, args.threadId),
+        eq(chatThreads.userId, args.userId),
+      ),
+    )
+    .limit(1);
+  const resolution = await resolveConnectorAccount(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    request: {
+      target: { kind: "builtin", connectorSlug: "google-drive" },
+      selection: selection
+        ? { kind: "exact", sourceId: selection.connectorId }
+        : { kind: "default" },
+    },
+  });
+  return resolution.kind === "resolved" ? resolution.account.connectorId : null;
+}
+
+async function loadDriveTokens(args: {
+  readonly db: ReadonlyDb;
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly orgId: string;
+  readonly snapshot: ConnectorRuntimeSnapshot;
+  readonly threadId: string;
+  readonly userId: string;
+}): Promise<ConnectorTokens | null> {
+  const connectorId = await resolveDriveConnectorId(args.db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    threadId: args.threadId,
+  });
+  if (connectorId === null) {
+    return null;
+  }
   const loaded = await loadConnectorCredentialConnection({
-    db,
-    snapshot,
-    orgId,
-    userId,
+    db: args.db,
+    snapshot: args.snapshot,
+    orgId: args.orgId,
+    userId: args.userId,
     connectorSlug: "google-drive",
+    connectorId,
   });
   if (loaded.kind !== "ok") {
     return null;
@@ -154,8 +209,8 @@ async function loadDriveTokens(
   }
   const values = await loadConnectorCredentialValues({
     connection,
-    db,
-    featureSwitchContext,
+    db: args.db,
+    featureSwitchContext: args.featureSwitchContext,
     valueRefs: [accessTokenValueRef],
   });
   const accessToken = values.get(accessTokenValueRef);
@@ -386,13 +441,14 @@ export function googleDriveArtifactStatusLookup(args: {
     };
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
-    const tokens = await loadDriveTokens(
+    const tokens = await loadDriveTokens({
       db,
-      args.orgId,
-      args.userId,
+      orgId: args.orgId,
+      userId: args.userId,
+      threadId: args.threadId,
       featureSwitchContext,
       snapshot,
-    );
+    });
     signal.throwIfAborted();
     if (!tokens || tokens.needsReconnect) {
       return { type: "disconnected" };
@@ -1085,13 +1141,14 @@ export const syncArtifactToGoogleDrive$ = command(
     };
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
-    const tokens = await loadDriveTokens(
+    const tokens = await loadDriveTokens({
       db,
-      args.orgId,
-      args.userId,
+      orgId: args.orgId,
+      userId: args.userId,
+      threadId: args.threadId,
       featureSwitchContext,
       snapshot,
-    );
+    });
     signal.throwIfAborted();
     if (!tokens || tokens.needsReconnect) {
       return badRequestMessage("Connect Google Drive before syncing artifacts");
