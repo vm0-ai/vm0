@@ -300,52 +300,29 @@ function clerkBootstrap(html) {
 
 function clerkCoreScript(html) {
   const script =
-    /<script\b[^>]*id="vm0-clerk-core-script"[^>]*><\/script>/iu.exec(html)?.[0];
+    /<script\b[^>]*id="vm0-clerk-core-script"[^>]*><\/script>/iu.exec(
+      html,
+    )?.[0];
   if (!script) {
     throw new Error("Clerk core script is unavailable");
   }
   return script;
 }
 
-function assertBootstrapAvatar(html, staticAssetsOrigin) {
+function assertBootstrapAvatar(html) {
   assert.doesNotMatch(html, /app-bootstrap-skeleton__avatar-placeholder/u);
-  const sourceByLayer = {
-    face: "face-r1-f1-h.svg",
-    hair: "hair-r1-h1-c5.svg",
-    head: "head-r1-s0.svg",
-  };
-  for (const layer of ["head", "face", "hair"]) {
-    assert.equal(
-      tagAttribute(
-        html,
-        "img",
-        "data-app-bootstrap-avatar-layer",
-        layer,
-        "src",
-      ),
-      `${staticAssetsOrigin}/platform/views/zero-page/assets/avatar-svg/${sourceByLayer[layer]}`,
-    );
-    assert.equal(
-      tagAttribute(
-        html,
-        "img",
-        "data-app-bootstrap-avatar-layer",
-        layer,
-        "decoding",
-      ),
-      "async",
-    );
-    assert.equal(
-      tagAttribute(
-        html,
-        "img",
-        "data-app-bootstrap-avatar-layer",
-        layer,
-        "fetchpriority",
-      ),
-      "low",
-    );
-  }
+  const avatar =
+    /<svg\b[^>]*class="app-bootstrap-skeleton__avatar-layers"[^>]*>[\s\S]*?<\/svg>/iu.exec(
+      html,
+    )?.[0];
+  assert.ok(avatar, "bootstrap avatar must remain inline");
+  assert.equal(parseAttributes(avatar).get("viewBox"), "0 0 480 480");
+  assert.equal([...avatar.matchAll(/<path\b/giu)].length, 10);
+  assert.match(avatar, /id="bootstrap-avatar-head-clip"/u);
+  assert.match(avatar, /id="bootstrap-avatar-face-clip"/u);
+  assert.match(avatar, /id="bootstrap-avatar-hair-clip"/u);
+  assert.doesNotMatch(html, /data-app-bootstrap-avatar-layer/u);
+  assert.doesNotMatch(html, /assets\/avatar-svg\//u);
 }
 
 async function requestAppPage(origin, apiOrigin = "") {
@@ -402,7 +379,7 @@ assert.ok(
     "https://static.vm0.io/platform/icon.svg",
   ),
 );
-assertBootstrapAvatar(vm0Page.html, "https://static.vm0.io");
+assertBootstrapAvatar(vm0Page.html);
 assert.equal(clerkCoreScript(vm0Page.html), expectedClerkCoreScript);
 assert.equal(clerkBootstrap(vm0Page.html), expectedClerkBootstrap);
 
@@ -448,7 +425,7 @@ assert.ok(
     (href) => href === "https://static.okou.io",
   ),
 );
-assertBootstrapAvatar(okouPage.html, "https://static.okou.io");
+assertBootstrapAvatar(okouPage.html);
 assert.equal(clerkCoreScript(okouPage.html), expectedClerkCoreScript);
 assert.equal(clerkBootstrap(okouPage.html), expectedClerkBootstrap);
 
