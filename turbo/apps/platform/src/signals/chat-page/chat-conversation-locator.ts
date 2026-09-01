@@ -800,6 +800,7 @@ function createJump(
         {
           behavior: "smooth",
           viewportOffsetTop: container.clientHeight * JUMP_VIEWPORT_RATIO,
+          preloadPreviousRenderWindow: true,
         },
         signal,
       );

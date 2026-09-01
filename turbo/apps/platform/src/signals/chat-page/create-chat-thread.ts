@@ -2560,14 +2560,17 @@ function createChatThreadMessagePipeline(
       );
     },
   );
-  const ensureVisibleEventTreesAfterScroll$ =
-    createEnsureVisibleEventTreesAfterScroll(
-      renderWindow.ensureVisibleEventTrees$,
-    );
+  const afterPositionChanged$ = createEnsureVisibleEventTreesAfterScroll(
+    renderWindow.ensureVisibleEventTrees$,
+  );
   const scroll = createChatThreadScrollSignals(
     threadId,
     position,
-    ensureVisibleEventTreesAfterScroll$,
+    {
+      afterThreadScrollPositionChanged$: afterPositionChanged$,
+      preloadPreviousRenderWindowForEvent$:
+        renderWindow.preloadPreviousRenderWindowForEvent$,
+    },
     chatEvents.chatEvents$,
     initialEventsReadyView$,
   );
@@ -2721,23 +2724,20 @@ function setThreadRenderWindowState(
   return next;
 }
 
-function scrollTargetStartIndex(
+function eventRunStartIndex(
   groups: readonly ChatEventGroup[],
-  position: ThreadScrollPosition | null,
+  eventId: string,
 ): number | null {
-  if (position === null) {
-    return null;
-  }
   const targetGroupIndex = groups.findIndex((group) => {
     return group.events.some((event) => {
-      return event.id === position.targetEventId;
+      return event.id === eventId;
     });
   });
   if (targetGroupIndex === -1) {
     return null;
   }
   const targetRunId = groups[targetGroupIndex]?.events.find((event) => {
-    return event.id === position.targetEventId;
+    return event.id === eventId;
   })?.runId;
   let startIndex = targetGroupIndex;
   while (
@@ -2749,12 +2749,16 @@ function scrollTargetStartIndex(
   ) {
     startIndex--;
   }
-  // A positive viewport inset needs content before the target. Preload one
-  // established window so the smooth scroll cannot cross the top load-more
-  // threshold and replace its layout halfway through the animation.
-  return position.viewportOffsetTop > 0
-    ? previousRenderWindowStartIndex(groups, startIndex)
-    : startIndex;
+  return startIndex;
+}
+
+function scrollTargetStartIndex(
+  groups: readonly ChatEventGroup[],
+  position: ThreadScrollPosition | null,
+): number | null {
+  return position === null
+    ? null
+    : eventRunStartIndex(groups, position.targetEventId);
 }
 
 interface ChatRenderWindowOptions {
@@ -2767,6 +2771,68 @@ interface ChatRenderWindowOptions {
     [readonly ChatEvent[], AbortSignal]
   >;
   readonly initialEventsReady$: State<boolean>;
+}
+
+interface PreloadPreviousRenderWindowOptions {
+  readonly threadId: string;
+  readonly allRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>;
+  readonly ensureVisibleEventTrees$: Command<
+    Promise<void>,
+    [boolean, AbortSignal]
+  >;
+}
+
+function createPreloadPreviousRenderWindowForEvent({
+  threadId,
+  allRenderedChatGroups$,
+  ensureVisibleEventTrees$,
+}: PreloadPreviousRenderWindowOptions): Command<
+  Promise<void>,
+  [string, AbortSignal]
+> {
+  return command(
+    async (
+      { get, set },
+      eventId: string,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const groups = await get(allRenderedChatGroups$);
+      signal.throwIfAborted();
+      const targetStartIndex = eventRunStartIndex(groups, eventId);
+      if (targetStartIndex === null) {
+        return;
+      }
+      const preloadStartIndex = previousRenderWindowStartIndex(
+        groups,
+        targetStartIndex,
+      );
+      const current = renderWindowStateForThread(
+        get(renderWindowStateByThreadId$),
+        threadId,
+      );
+      const requestedStartIndex = renderWindowStartIndex(
+        groups,
+        current.cursorGroupId,
+      );
+      const nextStartIndex = Math.min(requestedStartIndex, preloadStartIndex);
+      if (nextStartIndex < requestedStartIndex) {
+        set(
+          renderWindowStateByThreadId$,
+          setThreadRenderWindowState(
+            get(renderWindowStateByThreadId$),
+            threadId,
+            {
+              cursorGroupId: groups[nextStartIndex]?.beginEventId ?? null,
+            },
+          ),
+        );
+      }
+      // Locator jumps need stable content above the destination before their
+      // smooth-scroll request commits. Persist this one-time expansion in the
+      // cursor instead of deriving it from every live scroll position.
+      await set(ensureVisibleEventTrees$, false, signal);
+    },
+  );
 }
 
 function createChatRenderWindow({
@@ -2830,6 +2896,13 @@ function createChatRenderWindow({
       await richContentReady;
     },
   );
+
+  const preloadPreviousRenderWindowForEvent$ =
+    createPreloadPreviousRenderWindowForEvent({
+      threadId,
+      allRenderedChatGroups$,
+      ensureVisibleEventTrees$,
+    });
 
   const loadMoreRenderedChatGroups$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
@@ -2899,6 +2972,7 @@ function createChatRenderWindow({
     visibleRenderedChatGroups$,
     visibleRenderedChatGroupsReady$,
     ensureVisibleEventTrees$,
+    preloadPreviousRenderWindowForEvent$,
     loadMoreRenderedChatGroups$,
     resetRenderedChatGroupsIfAtBottom$,
   };

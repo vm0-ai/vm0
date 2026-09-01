@@ -190,7 +190,11 @@ const resolvePaneThread$ = command(
         ? set(
             thread.scrollToEvent$,
             initialEventId,
-            { behavior: "instant", viewportOffsetTop: 0 },
+            {
+              behavior: "instant",
+              viewportOffsetTop: 0,
+              preloadPreviousRenderWindow: false,
+            },
             signal,
           )
         : Promise.resolve(),
