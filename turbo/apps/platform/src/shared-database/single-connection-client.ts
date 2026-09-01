@@ -140,6 +140,17 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
     this.requireBridge().reloadComputed(computedKey);
   }
 
+  async setToken(
+    recoveryId: string,
+    token: string | null,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const bridge = this.requireBridge();
+    await this.runWithReload(() => {
+      return bridge.setToken(recoveryId, token, signal);
+    }, signal);
+  }
+
   private bindOwner(signal: AbortSignal): void {
     if (this.ownerSignal === signal) {
       return;

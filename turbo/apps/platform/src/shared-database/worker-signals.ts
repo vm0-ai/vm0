@@ -33,20 +33,24 @@ import type {
 } from "./protocol.ts";
 import {
   broadcastSharedDatabaseWorkerMessage$,
+  forceRefreshWorkerToken$,
   forwardChatThreadReadCursorUpdated$,
+  getWorkerToken$,
   heartbeatConnection$,
   initializeWorkerCredentialContext$,
   reloadComputedForConnections$,
   reloadConnections$,
   requireConnectionSignal$,
+  setWorkerToken$,
   updateRealtimeStatusForConnections$,
-  updateWorkerCredentialIdentity$,
-  WorkerTokenRecovery,
   type ConnectionId,
   type WorkerBroadcastMessage,
 } from "./worker-context.ts";
 import { SharedDatabaseWorkerRuntime } from "./worker-runtime.ts";
-import { createSharedDatabaseContractClientFactory } from "./worker-client.ts";
+import {
+  createSharedDatabaseContractClientFactory,
+  type SharedDatabaseAuthRecovery,
+} from "./worker-client.ts";
 
 const STALE_CONNECTION_AFTER_MS = 3 * 60 * 1000;
 
@@ -71,16 +75,16 @@ export interface InitializeCredentialStoreOptions {
   readonly onForceUpgrade: () => void;
 }
 
-interface SharedDatabaseWorkerHeartbeat {
-  readonly identity: SharedDatabaseIdentity;
-  readonly apiBaseUrl: string;
-  readonly vercelProtectionBypass?: string;
-}
-
 interface CredentialStoreResources {
   readonly controller: AbortController;
   readonly runtime: SharedDatabaseWorkerRuntime;
-  readonly tokenRecovery: WorkerTokenRecovery;
+  readonly authRecovery: SharedDatabaseAuthRecovery;
+}
+
+interface InitializeCredentialStoreResources {
+  readonly controller: AbortController;
+  readonly authRecovery: SharedDatabaseAuthRecovery;
+  readonly broadcast: (message: WorkerBroadcastMessage) => void;
 }
 
 function requireRuntime(
@@ -151,20 +155,16 @@ const installCredentialStore$ = command(
     signal.throwIfAborted();
     set(credentialControllerState$, resources.controller);
     set(workerRuntimeState$, resources.runtime);
-    set(
-      initializeWorkerCredentialContext$,
-      options.identity,
-      resources.tokenRecovery,
-    );
+    set(initializeWorkerCredentialContext$, options.identity);
     set(setApiClientRuntime$, {
       environment: "worker",
       apiBaseUrl: options.apiBaseUrl,
       getToken: (tokenSignal) => {
-        return resources.tokenRecovery.getToken(tokenSignal);
+        return resources.authRecovery.getToken(tokenSignal);
       },
       oauthApiBaseUrl: options.apiBaseUrl,
       reloadToken: (tokenSignal) => {
-        return resources.tokenRecovery.reloadToken(tokenSignal);
+        return resources.authRecovery.forceRefreshToken(tokenSignal);
       },
       ...(options.vercelProtectionBypass
         ? { vercelProtectionBypass: options.vercelProtectionBypass }
@@ -178,30 +178,30 @@ const installCredentialStore$ = command(
 export const initializeCredentialStore$ = command(
   (
     { get, set },
-    controller: AbortController,
+    resources: InitializeCredentialStoreResources,
     options: InitializeCredentialStoreOptions,
-    broadcast: (message: WorkerBroadcastMessage) => void,
     signal: AbortSignal,
   ): void => {
     signal.throwIfAborted();
     set(setRootSignal$, signal);
-    const tokenRecovery = new WorkerTokenRecovery(
-      options.identity.token,
-      broadcast,
-    );
     const runtime = new SharedDatabaseWorkerRuntime(
       {
         identity: options.identity,
         apiBaseUrl: options.apiBaseUrl,
         vercelProtectionBypass: options.vercelProtectionBypass,
-        emit: broadcast,
+        authRecovery: resources.authRecovery,
+        emit: resources.broadcast,
         createContractClient: get(sharedDatabaseClientFactory$),
       },
       signal,
     );
     set(
       installCredentialStore$,
-      { controller, runtime, tokenRecovery },
+      {
+        controller: resources.controller,
+        runtime,
+        authRecovery: resources.authRecovery,
+      },
       options,
       signal,
     );
@@ -216,12 +216,20 @@ export function createSharedDatabaseCredentialStore(
   store.set(initializeAppVersion$, options.appVersion);
   const credentialController = createChildAbortController(workerSignal);
   const credentialSignal = credentialController.signal;
+  const authRecovery: SharedDatabaseAuthRecovery = {
+    getToken: (signal) => {
+      return store.set(getWorkerToken$, signal);
+    },
+    forceRefreshToken: (signal) => {
+      return store.set(forceRefreshWorkerToken$, signal);
+    },
+  };
   const broadcast = (message: WorkerBroadcastMessage): void => {
     store.set(broadcastSharedDatabaseWorkerMessage$, message);
   };
   store.set(
     initializeCredentialStore$,
-    credentialController,
+    { controller: credentialController, authRecovery, broadcast },
     {
       ...options,
       onForceUpgrade: () => {
@@ -234,7 +242,6 @@ export function createSharedDatabaseCredentialStore(
         );
       },
     },
-    broadcast,
     credentialSignal,
   );
   return store;
@@ -434,19 +441,12 @@ export const startCredentialStoreDaemons$ = command(
 
 export const heartbeatSharedDatabaseWorker$ = command(
   (
-    { get, set },
+    { set },
     connectionId: ConnectionId,
-    heartbeat: SharedDatabaseWorkerHeartbeat,
     signal: AbortSignal,
   ): SharedDatabaseHeartbeatResult => {
     set(heartbeatConnection$, connectionId, signal, STALE_CONNECTION_AFTER_MS);
-    set(updateWorkerCredentialIdentity$, heartbeat.identity);
-    set(setAuthenticatedIdentity$, Promise.resolve(heartbeat.identity));
-    return requireRuntime(get(workerRuntimeState$)).heartbeat(
-      heartbeat.identity,
-      heartbeat.apiBaseUrl,
-      heartbeat.vercelProtectionBypass,
-    );
+    return { clientReconnected: false };
   },
 );
 
@@ -478,27 +478,31 @@ type ReloadComputedMessage = Extract<
   SharedDatabaseClientMessage,
   { readonly type: "reload-computed" }
 >;
+type SetTokenMessage = Extract<
+  SharedDatabaseClientMessage,
+  { readonly type: "set-token" }
+>;
 
 export const heartbeatStoreMessage$ = command(
   (
     { set },
     connectionId: ConnectionId,
-    message: HeartbeatMessage,
-    identity: SharedDatabaseIdentity,
+    _message: HeartbeatMessage,
     signal: AbortSignal,
   ): SharedDatabaseHeartbeatResult => {
-    return set(
-      heartbeatSharedDatabaseWorker$,
-      connectionId,
-      {
-        identity,
-        apiBaseUrl: message.apiBaseUrl,
-        ...(message.vercelProtectionBypass
-          ? { vercelProtectionBypass: message.vercelProtectionBypass }
-          : {}),
-      },
-      signal,
-    );
+    return set(heartbeatSharedDatabaseWorker$, connectionId, signal);
+  },
+);
+
+export const setTokenStoreMessage$ = command(
+  (
+    { set },
+    connectionId: ConnectionId,
+    message: SetTokenMessage,
+    signal: AbortSignal,
+  ): void => {
+    set(requireConnectionSignal$, connectionId, signal);
+    set(setWorkerToken$, connectionId, message.recoveryId, message.token);
   },
 );
 

@@ -1,13 +1,15 @@
-import {
-  initClient,
-  trpcRestFetchApi,
-  validateResponse,
-  type ApiFetcherArgs,
-  type AppRouter,
-  type InitClientArgs,
-  type InitClientReturn,
+import type {
+  AppRouter,
+  InitClientArgs,
+  InitClientReturn,
 } from "@okouai/api-contracts/contracts/trpc-contract";
-import { addClientHeaders } from "../signals/client-headers.ts";
+
+import { createAuthedContractClient } from "../signals/api-client-base.ts";
+
+export interface SharedDatabaseAuthRecovery {
+  readonly getToken: (signal: AbortSignal) => Promise<string | null>;
+  readonly forceRefreshToken: (signal: AbortSignal) => Promise<string | null>;
+}
 
 export type SharedDatabaseContractClient<TContract extends AppRouter> =
   InitClientReturn<TContract, InitClientArgs>;
@@ -15,7 +17,8 @@ export type SharedDatabaseContractClient<TContract extends AppRouter> =
 export type SharedDatabaseContractClientFactory = <TContract extends AppRouter>(
   contract: TContract,
   baseUrl: string,
-  getToken: () => string,
+  authRecovery: SharedDatabaseAuthRecovery,
+  rootSignal: AbortSignal,
   getVercelProtectionBypass: () => string | undefined,
 ) => SharedDatabaseContractClient<TContract>;
 
@@ -25,34 +28,24 @@ export function createSharedDatabaseContractClientFactory(
   return <TContract extends AppRouter>(
     contract: TContract,
     baseUrl: string,
-    getToken: () => string,
+    authRecovery: SharedDatabaseAuthRecovery,
+    rootSignal: AbortSignal,
     getVercelProtectionBypass: () => string | undefined,
   ): SharedDatabaseContractClient<TContract> => {
-    return initClient(contract, {
+    return createAuthedContractClient(contract, {
       baseUrl,
-      jsonQuery: false,
-      validateResponse: false,
-      api: async (args: ApiFetcherArgs) => {
-        const headers = new Headers(args.headers);
-        headers.set("Authorization", `Bearer ${getToken()}`);
-        const vercelProtectionBypass = getVercelProtectionBypass();
-        if (vercelProtectionBypass) {
-          headers.set("X-Vercel-Protection-Bypass", vercelProtectionBypass);
-        }
-        addClientHeaders(headers, clientVersion);
-        const response = await trpcRestFetchApi({
-          ...args,
-          fetchOptions: {
-            ...args.fetchOptions,
-            credentials: "include",
-          },
-          headers,
-        });
-        return validateResponse({
-          appRoute: args.route,
-          response,
-        });
+      clientVersion,
+      getToken: (signal) => {
+        return authRecovery.getToken(signal);
       },
+      getRootSignal: () => {
+        return rootSignal;
+      },
+      getVercelProtectionBypass,
+      reloadToken: (signal) => {
+        return authRecovery.forceRefreshToken(signal);
+      },
+      validateResponse: true,
     });
   };
 }
