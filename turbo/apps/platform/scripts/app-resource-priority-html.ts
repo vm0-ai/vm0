@@ -1,6 +1,7 @@
 import type { Plugin } from "vite";
 
 const CRITICAL_STYLE_ID = "app-bootstrap-critical-styles";
+const AFTER_FIRST_PAINT_SCRIPT_ID = "vm0-after-first-paint";
 
 function matchingTags(
   htmlSource: string,
@@ -31,23 +32,6 @@ function singleAssetTag(
   return tags[0];
 }
 
-function withFetchPriority(tag: string, priority: "high" | "low"): string {
-  if (/\sfetchpriority=/u.test(tag)) {
-    return tag.replace(
-      /\sfetchpriority="[^"]*"/u,
-      ` fetchpriority="${priority}"`,
-    );
-  }
-
-  const startTagEnd = tag.indexOf(">");
-  if (startTagEnd === -1) {
-    throw new Error(
-      `Generated asset tag is missing its closing bracket: ${tag}`,
-    );
-  }
-  return `${tag.slice(0, startTagEnd)} fetchpriority="${priority}"${tag.slice(startTagEnd)}`;
-}
-
 function removeTag(htmlSource: string, tag: string): string {
   const firstIndex = htmlSource.indexOf(tag);
   const lastIndex = htmlSource.lastIndexOf(tag);
@@ -57,7 +41,80 @@ function removeTag(htmlSource: string, tag: string): string {
   return `${htmlSource.slice(0, firstIndex)}${htmlSource.slice(firstIndex + tag.length)}`;
 }
 
-function prioritizeApplicationResources(htmlSource: string): string {
+function hrefFromLink(tag: string): string {
+  const match = /\shref="([^"]+)"/u.exec(tag);
+  if (!match?.[1]) {
+    throw new Error(`Generated link tag is missing href: ${tag}`);
+  }
+  return match[1];
+}
+
+function srcFromScript(tag: string): string {
+  const match = /\ssrc="([^"]+)"/u.exec(tag);
+  if (!match?.[1]) {
+    throw new Error(`Generated script tag is missing src: ${tag}`);
+  }
+  return match[1];
+}
+
+function inlineJson(value: unknown): string {
+  const json = JSON.stringify(value);
+  if (json === undefined) {
+    throw new Error("Application resource metadata is not serializable");
+  }
+  return json.replaceAll("<", String.raw`\u003c`);
+}
+
+function afterFirstPaintScript(resources: {
+  readonly applicationModule: string;
+  readonly modulePreloads: readonly string[];
+  readonly stylesheet: string;
+}): string {
+  return `    <script id="${AFTER_FIRST_PAINT_SCRIPT_ID}">
+      (function () {
+        var resources = ${inlineJson(resources)};
+
+        function appendModulePreload(source) {
+          var preload = document.createElement("link");
+          preload.rel = "modulepreload";
+          preload.href = source;
+          preload.crossOrigin = "anonymous";
+          preload.fetchPriority = "low";
+          document.head.appendChild(preload);
+        }
+
+        function appendApplicationModule() {
+          var application = document.createElement("script");
+          application.type = "module";
+          application.src = resources.applicationModule;
+          application.crossOrigin = "anonymous";
+          application.fetchPriority = "low";
+          document.body.appendChild(application);
+        }
+
+        function activateApplicationResources() {
+          var stylesheet = document.createElement("link");
+          stylesheet.rel = "stylesheet";
+          stylesheet.href = resources.stylesheet;
+          stylesheet.crossOrigin = "anonymous";
+          stylesheet.fetchPriority = "high";
+          stylesheet.onload = appendApplicationModule;
+          document.head.appendChild(stylesheet);
+
+          appendModulePreload(resources.applicationModule);
+          for (var i = 0; i < resources.modulePreloads.length; i += 1) {
+            appendModulePreload(resources.modulePreloads[i]);
+          }
+        }
+
+        requestAnimationFrame(function () {
+          requestAnimationFrame(activateApplicationResources);
+        });
+      })();
+    </script>`;
+}
+
+function deferApplicationResourcesUntilFirstPaint(htmlSource: string): string {
   const linkTagPattern = /<link\b[^>]*>/gu;
   const scriptTagPattern = /<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/giu;
   const stylesheet = singleAssetTag(
@@ -109,42 +166,32 @@ function prioritizeApplicationResources(htmlSource: string): string {
   if (criticalStyleEnd === -1) {
     throw new Error("Critical application stylesheet is missing </style>");
   }
-  const headResources = [
-    withFetchPriority(stylesheet, "high"),
-    withFetchPriority(runtimePreload, "low"),
-    withFetchPriority(vendorPreload, "low"),
-  ]
-    .map((tag) => {
-      return `    ${tag}`;
-    })
-    .join("\n");
-  const criticalStyleInsertion = criticalStyleEnd + "</style>".length;
-  prioritizedHtml = `${prioritizedHtml.slice(0, criticalStyleInsertion)}\n${headResources}${prioritizedHtml.slice(criticalStyleInsertion)}`;
 
   const bodyEnd = prioritizedHtml.lastIndexOf("</body>");
   if (bodyEnd === -1) {
     throw new Error("Application HTML is missing </body>");
   }
-  const lowPriorityApplicationModule = withFetchPriority(
-    applicationModule,
-    "low",
-  );
+  const bootstrapScript = afterFirstPaintScript({
+    applicationModule: srcFromScript(applicationModule),
+    modulePreloads: [hrefFromLink(runtimePreload), hrefFromLink(vendorPreload)],
+    stylesheet: hrefFromLink(stylesheet),
+  });
   const bodyClosingLineStart = prioritizedHtml.lastIndexOf("\n", bodyEnd) + 1;
   if (prioritizedHtml.slice(bodyClosingLineStart, bodyEnd).trim()) {
-    return `${prioritizedHtml.slice(0, bodyEnd)}${lowPriorityApplicationModule}${prioritizedHtml.slice(bodyEnd)}`;
+    return `${prioritizedHtml.slice(0, bodyEnd)}${bootstrapScript}${prioritizedHtml.slice(bodyEnd)}`;
   }
-  return `${prioritizedHtml.slice(0, bodyClosingLineStart)}    ${lowPriorityApplicationModule}\n${prioritizedHtml.slice(bodyClosingLineStart)}`;
+  return `${prioritizedHtml.slice(0, bodyClosingLineStart)}${bootstrapScript}\n${prioritizedHtml.slice(bodyClosingLineStart)}`;
 }
 
-export function applicationResourcePriorityHtmlPlugin(): Plugin {
+export function applicationAfterFirstPaintHtmlPlugin(): Plugin {
   return {
     apply: "build",
     enforce: "post",
-    name: "platform-application-resource-priority-html",
+    name: "platform-application-after-first-paint-html",
     transformIndexHtml: {
       order: "post",
       handler(htmlSource) {
-        return prioritizeApplicationResources(htmlSource);
+        return deferApplicationResourcesUntilFirstPaint(htmlSource);
       },
     },
   };

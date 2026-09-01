@@ -7,7 +7,7 @@ import { URL } from "node:url";
 
 import { build, loadConfigFromFile } from "vite";
 
-import { applicationResourcePriorityHtmlPlugin } from "./app-resource-priority-html.ts";
+import { applicationAfterFirstPaintHtmlPlugin } from "./app-resource-priority-html.ts";
 import {
   RAW_JAVASCRIPT_OUTPUT_LIMIT_BYTES,
   VENDOR_MODULE_PATTERN,
@@ -368,46 +368,40 @@ function clerkDiscoveryFixture(): string {
 function assertClerkDiscoveryOrder(htmlSource: string): void {
   const clerkCoreIndex = htmlSource.indexOf('id="vm0-clerk-core-script"');
   const clerkBootstrapIndex = htmlSource.indexOf('data-vm0-clerk-bootstrap=""');
-  const appModuleIndex = htmlSource.indexOf('<script type="module"');
+  const afterFirstPaintIndex = htmlSource.indexOf('id="vm0-after-first-paint"');
   assert.notEqual(clerkCoreIndex, -1);
   assert.ok(clerkBootstrapIndex > clerkCoreIndex);
-  assert.ok(appModuleIndex > clerkBootstrapIndex);
+  assert.ok(afterFirstPaintIndex > clerkBootstrapIndex);
 }
 
-function assertApplicationResourcePriority(htmlSource: string): void {
+function assertApplicationResourcesStartAfterFirstPaint(
+  htmlSource: string,
+): void {
   const criticalStyleIndex = htmlSource.indexOf(
     '<style id="app-bootstrap-critical-styles">',
   );
-  const stylesheetIndex = htmlSource.indexOf('rel="stylesheet"');
-  const runtimePreloadIndex = htmlSource.indexOf("assets/rolldown-runtime-");
-  const vendorPreloadIndex = htmlSource.indexOf("assets/vendor-");
   const clerkCoreIndex = htmlSource.indexOf('id="vm0-clerk-core-script"');
   const skeletonIndex = htmlSource.indexOf('id="app-bootstrap-skeleton"');
-  const appModuleIndex = htmlSource.indexOf('<script type="module"');
+  const bootstrapIndex = htmlSource.indexOf('id="vm0-after-first-paint"');
   const bodyEndIndex = htmlSource.indexOf("</body>");
 
   assert.ok(criticalStyleIndex !== -1);
-  assert.ok(stylesheetIndex > criticalStyleIndex);
-  assert.ok(runtimePreloadIndex > stylesheetIndex);
-  assert.ok(vendorPreloadIndex > runtimePreloadIndex);
-  assert.ok(clerkCoreIndex > vendorPreloadIndex);
-  assert.ok(appModuleIndex > skeletonIndex);
-  assert.ok(bodyEndIndex > appModuleIndex);
-  assert.match(
-    htmlSource,
-    /<link rel="stylesheet"[^>]*fetchpriority="high"[^>]*>/u,
-  );
+  assert.ok(clerkCoreIndex > criticalStyleIndex);
+  assert.ok(bootstrapIndex > skeletonIndex);
+  assert.ok(bodyEndIndex > bootstrapIndex);
+  assert.equal((htmlSource.match(/<script type="module"/gu) ?? []).length, 0);
   assert.equal(
-    (
-      htmlSource.match(
-        /<link rel="modulepreload"[^>]*fetchpriority="low"[^>]*>/gu,
-      ) ?? []
-    ).length,
-    2,
+    (htmlSource.match(/<link rel="modulepreload"/gu) ?? []).length,
+    0,
   );
+  assert.equal((htmlSource.match(/<link rel="stylesheet"/gu) ?? []).length, 0);
+  assert.match(htmlSource, /stylesheet\.fetchPriority = "high"/u);
+  assert.match(htmlSource, /preload\.fetchPriority = "low"/u);
+  assert.match(htmlSource, /application\.fetchPriority = "low"/u);
+  assert.match(htmlSource, /stylesheet\.onload = appendApplicationModule/u);
   assert.match(
     htmlSource,
-    /<script type="module"[^>]*fetchpriority="low"[^>]*><\/script>/u,
+    /requestAnimationFrame\(function \(\) \{\s*requestAnimationFrame\(activateApplicationResources\);/u,
   );
 }
 
@@ -469,7 +463,7 @@ await test("emits the fixed page topology and one external worker", async () => 
       },
       plugins: [
         applicationJavaScriptBundlePlugin(),
-        applicationResourcePriorityHtmlPlugin(),
+        applicationAfterFirstPaintHtmlPlugin(),
       ],
       worker: {
         plugins: () => {
@@ -528,9 +522,7 @@ await test("emits the fixed page topology and one external worker", async () => 
     assert.ok(html?.type === "asset");
     const htmlSource = String(html.source);
     assertClerkDiscoveryOrder(htmlSource);
-    assert.equal((htmlSource.match(/<script type="module"/gu) ?? []).length, 1);
-    assert.equal((htmlSource.match(/rel="modulepreload"/gu) ?? []).length, 2);
-    assertApplicationResourcePriority(htmlSource);
+    assertApplicationResourcesStartAfterFirstPaint(htmlSource);
     assert.ok(
       result.output.some((item) => {
         return item.type === "asset" && item.fileName.endsWith(".json");
