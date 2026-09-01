@@ -6,7 +6,10 @@ import {
   type ConnectorAccountConnection,
 } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
-import { testStripeAutomationEventFixtureContract } from "@okouai/api-contracts/contracts/test-stripe-automation-events";
+import {
+  testStripeAutomationEventFixtureContract,
+  type TestStripeAutomationEventFixtureAction,
+} from "@okouai/api-contracts/contracts/test-stripe-automation-events";
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
 import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -123,8 +126,9 @@ async function connectStripeOAuth(
 async function addStripeOAuthAccount(
   actor: ApiTestUser,
   displayName: string,
+  accountId: string,
 ): Promise<ConnectorAccountConnection> {
-  mockStripeConnectorOAuth({ accountId: STRIPE_ACCOUNT_ID, livemode: true });
+  mockStripeConnectorOAuth({ accountId, livemode: true });
   const started = await connectors.startOauth(
     actor,
     "stripe",
@@ -155,6 +159,30 @@ async function addStripeOAuthAccount(
     throw new Error(`Expected Stripe account ${displayName}`);
   }
   return account;
+}
+
+async function reconnectStripeOAuthAccount(
+  actor: ApiTestUser,
+  connectorId: string,
+  accountId: string,
+  livemode: boolean,
+): Promise<void> {
+  mockStripeConnectorOAuth({ accountId, livemode });
+  const started = await connectors.startOauth(
+    actor,
+    "stripe",
+    "oauth",
+    undefined,
+    { intent: "reconnect", connectionId: connectorId },
+  );
+  const state = new URL(started.authorizationUrl).searchParams.get("state");
+  if (!state) {
+    throw new Error("Expected Stripe OAuth reconnect state");
+  }
+  await connectors.completeOauthCallback("stripe", {
+    code: `stripe-workflow-reconnect-${randomUUID()}`,
+    state,
+  });
 }
 
 async function setupScenario(
@@ -336,14 +364,7 @@ async function executeAutomation(scenario: Scenario) {
 
 async function applyDeliveryFixture(
   scenario: Scenario,
-  action:
-    | "corrupt-latest-snapshot"
-    | "hold-latest-claim"
-    | "expire-latest-retry-window"
-    | "make-latest-due"
-    | "fail-next-ingress-for-automation"
-    | "fail-next-queue-admission-for-automation"
-    | "clear-forced-failures",
+  action: TestStripeAutomationEventFixtureAction,
 ): Promise<void> {
   const response = await accept(
     setupApp({ context, routes: testStripeAutomationEventRoutes })(
@@ -691,8 +712,226 @@ describe("Stripe automation event webhook", () => {
     );
   });
 
-  it("orders distinct ingress, thread, and default Stripe accounts", async () => {
+  it("creates against the thread account and repairs after its Live reconnect", async () => {
+    const originalAccountId = `acct_stripe_create_original_${randomUUID()}`;
+    const threadAccountId = `acct_stripe_create_thread_${randomUUID()}`;
+    const scenario = await setupScenario({ accountId: originalAccountId });
+    const orgId = scenario.actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected an organization-scoped workflow owner");
+    }
+    await connectors.updateFeatureSwitches(scenario.actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    await runs.enableAgentConnectors(scenario.actor, scenario.agentId, [
+      "stripe",
+    ]);
+    const threadAccount = await addStripeOAuthAccount(
+      scenario.actor,
+      "Creation thread account",
+      threadAccountId,
+    );
+    mocks.clerk.session(scenario.actor.userId, orgId);
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(),
+        params: { id: scenario.chatThreadId },
+        body: {
+          connectionId: threadAccount.id,
+          target: { kind: "builtin", connectorSlug: "stripe" },
+        },
+      }),
+      [200],
+    );
+    await deleteAutomation(scenario);
+
+    mocks.clerk.session(scenario.actor.userId, orgId);
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "stripe-invoice-paid",
+          eventConfig: { provider: "stripe", event: "invoice_paid" },
+          enabled: true,
+        },
+      }),
+      [201],
+    );
+    expect(created.body).toMatchObject({
+      chatThreadId: scenario.chatThreadId,
+      eventConfig: {
+        connectorId: threadAccount.id,
+        stripeAccountId: threadAccountId,
+        mode: "live",
+      },
+    });
+    const recreatedScenario = { ...scenario, automationId: created.body.id };
+
+    await reconnectStripeOAuthAccount(
+      scenario.actor,
+      threadAccount.id,
+      threadAccountId,
+      false,
+    );
+    await postStripeAutomationEvent(
+      invoicePaidEvent({
+        accountId: originalAccountId,
+        eventId: "evt_thread_creation_default_fallback",
+      }),
+    );
+    await postStripeAutomationEvent(
+      invoicePaidEvent({
+        accountId: threadAccountId,
+        eventId: "evt_thread_creation_non_live",
+      }),
+    );
+    expect((await executeAutomation(recreatedScenario)).body).toStrictEqual(
+      NO_EXECUTION,
+    );
+
+    await reconnectStripeOAuthAccount(
+      scenario.actor,
+      threadAccount.id,
+      threadAccountId,
+      true,
+    );
+    const repairedEventId = "evt_thread_creation_repaired";
+    await postStripeAutomationEvent(
+      invoicePaidEvent({
+        accountId: threadAccountId,
+        eventId: repairedEventId,
+      }),
+    );
+    expect((await executeAutomation(recreatedScenario)).body).toStrictEqual(
+      EXECUTED_EXECUTION,
+    );
+    const claim = await claimScenarioRun(recreatedScenario, repairedEventId);
+    expect(
+      Object.values(claim.secretConnectorMetadataMap ?? {}),
+    ).toContainEqual(expect.objectContaining({ sourceId: threadAccount.id }));
+    const selections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: authHeaders(),
+        params: { id: scenario.chatThreadId },
+      }),
+      [200],
+    );
+    expect(selections.body.selections).toStrictEqual([
+      {
+        connectionId: threadAccount.id,
+        target: { kind: "builtin", connectorSlug: "stripe" },
+      },
+    ]);
+  });
+
+  it("repairs a null legacy account projection before webhook ingress", async () => {
     const scenario = await setupScenario();
+    await applyDeliveryFixture(scenario, "clear-automation-account-projection");
+
+    await postStripeAutomationEvent(
+      invoicePaidEvent({ eventId: "evt_legacy_projection_ingress" }),
+    );
+
+    expect((await executeAutomation(scenario)).body).toStrictEqual(
+      EXECUTED_EXECUTION,
+    );
+  });
+
+  it("repairs a null legacy account projection before delivery", async () => {
+    const scenario = await setupScenario();
+    await postStripeAutomationEvent(
+      invoicePaidEvent({ eventId: "evt_legacy_projection_delivery" }),
+    );
+    await applyDeliveryFixture(scenario, "clear-automation-account-projection");
+
+    expect((await executeAutomation(scenario)).body).toStrictEqual(
+      EXECUTED_EXECUTION,
+    );
+  });
+
+  it("reprojects to the default account when the thread selection is cleared", async () => {
+    const originalAccountId = `acct_stripe_clear_original_${randomUUID()}`;
+    const threadAccountId = `acct_stripe_clear_thread_${randomUUID()}`;
+    const defaultAccountId = `acct_stripe_clear_default_${randomUUID()}`;
+    const scenario = await setupScenario({ accountId: originalAccountId });
+    const orgId = scenario.actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected an organization-scoped workflow owner");
+    }
+    await connectors.updateFeatureSwitches(scenario.actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    await runs.enableAgentConnectors(scenario.actor, scenario.agentId, [
+      "stripe",
+    ]);
+    const threadAccount = await addStripeOAuthAccount(
+      scenario.actor,
+      "Cleared thread account",
+      threadAccountId,
+    );
+    const defaultAccount = await addStripeOAuthAccount(
+      scenario.actor,
+      "Cleared default account",
+      defaultAccountId,
+    );
+    mocks.clerk.session(scenario.actor.userId, orgId);
+    await accept(
+      connectorAccountsClient().setDefault({
+        headers: authHeaders(),
+        params: { connectionId: defaultAccount.id },
+        body: { target: { kind: "builtin", connectorSlug: "stripe" } },
+      }),
+      [200],
+    );
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(),
+        params: { id: scenario.chatThreadId },
+        body: {
+          connectionId: threadAccount.id,
+          target: { kind: "builtin", connectorSlug: "stripe" },
+        },
+      }),
+      [200],
+    );
+    await accept(
+      chatThreadConnectorSelectionsClient().clear({
+        headers: authHeaders(),
+        params: { id: scenario.chatThreadId },
+        body: { kind: "builtin", connectorSlug: "stripe" },
+      }),
+      [204],
+    );
+
+    await postStripeAutomationEvent(
+      invoicePaidEvent({
+        accountId: threadAccountId,
+        eventId: "evt_cleared_thread_source",
+      }),
+    );
+    expect((await executeAutomation(scenario)).body).toStrictEqual(
+      NO_EXECUTION,
+    );
+
+    await postStripeAutomationEvent(
+      invoicePaidEvent({
+        accountId: defaultAccountId,
+        eventId: "evt_cleared_default_source",
+      }),
+    );
+    expect((await executeAutomation(scenario)).body).toStrictEqual(
+      EXECUTED_EXECUTION,
+    );
+  });
+
+  it("source-gates ingress before preserving run connector fallback order", async () => {
+    const originalAccountId = `acct_stripe_original_${randomUUID()}`;
+    const threadAccountId = `acct_stripe_thread_${randomUUID()}`;
+    const defaultAccountId = `acct_stripe_default_${randomUUID()}`;
+    const scenario = await setupScenario({ accountId: originalAccountId });
+    const seenRunIds = new Set<string>();
     const orgId = scenario.actor.orgId;
     if (!orgId) {
       throw new Error("Expected an organization-scoped workflow owner");
@@ -706,10 +945,12 @@ describe("Stripe automation event webhook", () => {
     const threadAccount = await addStripeOAuthAccount(
       scenario.actor,
       "Thread account",
+      threadAccountId,
     );
     const defaultAccount = await addStripeOAuthAccount(
       scenario.actor,
       "Default account",
+      defaultAccountId,
     );
     mocks.clerk.session(scenario.actor.userId, orgId);
     await accept(
@@ -766,24 +1007,35 @@ describe("Stripe automation event webhook", () => {
       ]),
     );
 
-    const seenRunIds = new Set<string>();
-    const sourceEventId = "evt_connector_priority_source";
+    const oldSourceEventId = "evt_connector_projection_old_source";
     await postStripeAutomationEvent(
-      invoicePaidEvent({ eventId: sourceEventId }),
+      invoicePaidEvent({
+        accountId: originalAccountId,
+        eventId: oldSourceEventId,
+      }),
+    );
+    expect((await executeAutomation(scenario)).body).toStrictEqual(
+      NO_EXECUTION,
+    );
+
+    const threadEventId = "evt_connector_projection_thread";
+    await postStripeAutomationEvent(
+      invoicePaidEvent({ accountId: threadAccountId, eventId: threadEventId }),
     );
     expect((await executeAutomation(scenario)).body).toStrictEqual(
       EXECUTED_EXECUTION,
     );
-    const sourceClaim = await claimUnseenScenarioRun(scenario, seenRunIds);
+    const threadClaim = await claimUnseenScenarioRun(scenario, seenRunIds);
     expect(
-      Object.values(sourceClaim.secretConnectorMetadataMap ?? {}),
-    ).toContainEqual(
-      expect.objectContaining({ sourceId: scenario.connector.id }),
-    );
+      Object.values(threadClaim.secretConnectorMetadataMap ?? {}),
+    ).toContainEqual(expect.objectContaining({ sourceId: threadAccount.id }));
 
-    const threadEventId = "evt_connector_priority_thread";
+    const defaultFallbackEventId = "evt_connector_projection_default";
     await postStripeAutomationEvent(
-      invoicePaidEvent({ eventId: threadEventId }),
+      invoicePaidEvent({
+        accountId: threadAccountId,
+        eventId: defaultFallbackEventId,
+      }),
     );
     expect((await executeAutomation(scenario)).body).toStrictEqual(
       EXECUTED_EXECUTION,
@@ -791,49 +1043,10 @@ describe("Stripe automation event webhook", () => {
     await setConnectorAccountState(context, {
       orgId,
       userId: scenario.actor.userId,
-      connectorId: scenario.connector.id,
+      connectorId: threadAccount.id,
       needsReconnect: true,
       storageVersion: 1,
     });
-    await completeScenarioRun(sourceClaim);
-    const threadClaim = await claimUnseenScenarioRun(scenario, seenRunIds);
-    const threadSourceId = Object.values(
-      threadClaim.secretConnectorMetadataMap ?? {},
-    ).find((metadata) => {
-      return metadata.sourceType === "connector";
-    })?.sourceId;
-    expect(threadSourceId).toBe(threadAccount.id);
-
-    await setConnectorAccountState(context, {
-      orgId,
-      userId: scenario.actor.userId,
-      connectorId: scenario.connector.id,
-      needsReconnect: false,
-      storageVersion: 3,
-    });
-    const defaultEventId = "evt_connector_priority_default";
-    await postStripeAutomationEvent(
-      invoicePaidEvent({ eventId: defaultEventId }),
-    );
-    expect((await executeAutomation(scenario)).body).toStrictEqual(
-      EXECUTED_EXECUTION,
-    );
-    await Promise.all([
-      setConnectorAccountState(context, {
-        orgId,
-        userId: scenario.actor.userId,
-        connectorId: scenario.connector.id,
-        needsReconnect: true,
-        storageVersion: 1,
-      }),
-      setConnectorAccountState(context, {
-        orgId,
-        userId: scenario.actor.userId,
-        connectorId: threadAccount.id,
-        needsReconnect: true,
-        storageVersion: 1,
-      }),
-    ]);
     await completeScenarioRun(threadClaim);
     const defaultClaim = await claimUnseenScenarioRun(scenario, seenRunIds);
     expect(
@@ -843,13 +1056,16 @@ describe("Stripe automation event webhook", () => {
     await setConnectorAccountState(context, {
       orgId,
       userId: scenario.actor.userId,
-      connectorId: scenario.connector.id,
+      connectorId: threadAccount.id,
       needsReconnect: false,
       storageVersion: 3,
     });
-    const unavailableEventId = "evt_connector_priority_unavailable";
+    const unavailableEventId = "evt_connector_projection_unavailable";
     await postStripeAutomationEvent(
-      invoicePaidEvent({ eventId: unavailableEventId }),
+      invoicePaidEvent({
+        accountId: threadAccountId,
+        eventId: unavailableEventId,
+      }),
     );
     expect((await executeAutomation(scenario)).body).toStrictEqual(
       EXECUTED_EXECUTION,
@@ -858,7 +1074,7 @@ describe("Stripe automation event webhook", () => {
       setConnectorAccountState(context, {
         orgId,
         userId: scenario.actor.userId,
-        connectorId: scenario.connector.id,
+        connectorId: threadAccount.id,
         needsReconnect: true,
         storageVersion: 1,
       }),
@@ -874,9 +1090,6 @@ describe("Stripe automation event webhook", () => {
     const unavailableClaim = await claimUnseenScenarioRun(scenario, seenRunIds);
     const unavailableMetadata = Object.values(
       unavailableClaim.secretConnectorMetadataMap ?? {},
-    );
-    expect(unavailableMetadata).not.toContainEqual(
-      expect.objectContaining({ sourceId: scenario.connector.id }),
     );
     expect(unavailableMetadata).not.toContainEqual(
       expect.objectContaining({ sourceId: threadAccount.id }),
@@ -1391,6 +1604,42 @@ describe("Stripe automation event webhook", () => {
         lastDeliveryStatus: "skipped",
         warning: null,
       });
+      expect(result.inputEvents).toHaveLength(0);
+    });
+
+    it("when the thread account selection changes", async () => {
+      const { scenario } =
+        await setupPendingLifecycleDelivery("thread_selection");
+      const orgId = scenario.actor.orgId;
+      if (!orgId) {
+        throw new Error("Expected an organization-scoped workflow owner");
+      }
+      await connectors.updateFeatureSwitches(scenario.actor, {
+        [FeatureSwitchKey.ConnectorAccounts]: true,
+      });
+      await runs.enableAgentConnectors(scenario.actor, scenario.agentId, [
+        "stripe",
+      ]);
+      const replacementAccount = await addStripeOAuthAccount(
+        scenario.actor,
+        "Replacement thread account",
+        `acct_stripe_thread_replacement_${randomUUID()}`,
+      );
+      mocks.clerk.session(scenario.actor.userId, orgId);
+      await accept(
+        chatThreadConnectorSelectionsClient().update({
+          headers: authHeaders(),
+          params: { id: scenario.chatThreadId },
+          body: {
+            connectionId: replacementAccount.id,
+            target: { kind: "builtin", connectorSlug: "stripe" },
+          },
+        }),
+        [200],
+      );
+
+      const result = await executeLifecycleDelivery(scenario);
+      expect(result.execution).toStrictEqual(TERMINALLY_SKIPPED_EXECUTION);
       expect(result.inputEvents).toHaveLength(0);
     });
 

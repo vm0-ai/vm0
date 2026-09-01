@@ -27,7 +27,7 @@ import {
 } from "./connector-catalog-runtime.service";
 import { lockConnectorAccountTarget } from "./auth-state-lock.service";
 import { listConnectorAccountsByIds } from "./connector-account-lifecycle.service";
-import { reprojectGmailAutomationsForOwner } from "./gmail-automation-account.service";
+import { reprojectWorkflowAutomationsForOwner } from "./workflow-automation-account-projection.service";
 
 interface OwnedChatThread {
   readonly agentId: string;
@@ -474,6 +474,7 @@ export async function updateChatThreadConnectorSelection(
     readonly chatThreadId: string;
     readonly selection: ConnectorAccountSelection;
   },
+  signal: AbortSignal,
 ): Promise<UpdateChatThreadConnectorSelectionResult> {
   return await db.transaction(async (tx) => {
     const thread = await loadOwnedChatThread(tx, args);
@@ -494,12 +495,11 @@ export async function updateChatThreadConnectorSelection(
       throw new Error("Expected one prepared connector selection");
     }
     const updated = await upsertSelection(tx, args.chatThreadId, selection);
-    if (
-      selection.target.kind === "builtin" &&
-      selection.target.connectorSlug === "gmail"
-    ) {
-      await reprojectGmailAutomationsForOwner(tx, args);
-    }
+    await reprojectWorkflowAutomationsForOwner(
+      tx,
+      { ...args, target: selection.target },
+      signal,
+    );
     return {
       kind: "updated",
       selection: updated,
@@ -515,6 +515,7 @@ export async function clearChatThreadConnectorSelection(
     readonly chatThreadId: string;
     readonly target: ConnectorAccountTarget;
   },
+  signal: AbortSignal,
 ): Promise<ClearChatThreadConnectorSelectionResult> {
   return await db.transaction(async (tx) => {
     const thread = await loadOwnedChatThread(tx, args);
@@ -538,12 +539,7 @@ export async function clearChatThreadConnectorSelection(
               ),
         ),
       );
-    if (
-      args.target.kind === "builtin" &&
-      args.target.connectorSlug === "gmail"
-    ) {
-      await reprojectGmailAutomationsForOwner(tx, args);
-    }
+    await reprojectWorkflowAutomationsForOwner(tx, args, signal);
     return { kind: "cleared" };
   });
 }

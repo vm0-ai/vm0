@@ -442,37 +442,54 @@ describe("Stripe invoice-paid workflow automation readiness", () => {
     expect(enabled.body.enabled).toBeTruthy();
   });
 
-  it.each([
-    {
-      name: "different account",
-      accountId: "acct_different_workflow",
-      livemode: true,
-      message: /delete and recreate/u,
-    },
-    {
-      name: "Test mode",
-      accountId: STRIPE_ACCOUNT_ID,
-      livemode: false,
-      message: /require Live mode/u,
-    },
-  ])("fails closed after a $name public OAuth reconnect", async (reconnect) => {
+  it("reprojects after a Live OAuth external account change", async () => {
     const scenario = await setupScenario();
     const initial = await connectStripeOAuth(scenario.actor);
     const created = await accept(
       createStripeAutomationRequest(scenario),
       [201],
     );
-    const reconnected = await connectStripeOAuth(scenario.actor, reconnect);
+    const reconnected = await connectStripeOAuth(scenario.actor, {
+      accountId: "acct_different_workflow",
+      livemode: true,
+    });
+    expect(reconnected.connector.id).toBe(initial.connector.id);
+
+    const enabled = await accept(
+      enableStripeAutomationRequest(scenario, created.body.id),
+      [200],
+    );
+    expect(enabled.body).toMatchObject({
+      enabled: true,
+      eventConfig: {
+        connectorId: initial.connector.id,
+        stripeAccountId: "acct_different_workflow",
+        mode: "live",
+      },
+    });
+  });
+
+  it("fails closed after a Test-mode public OAuth reconnect", async () => {
+    const scenario = await setupScenario();
+    const initial = await connectStripeOAuth(scenario.actor);
+    const created = await accept(
+      createStripeAutomationRequest(scenario),
+      [201],
+    );
+    const reconnected = await connectStripeOAuth(scenario.actor, {
+      accountId: STRIPE_ACCOUNT_ID,
+      livemode: false,
+    });
     expect(reconnected.connector.id).toBe(initial.connector.id);
 
     const rejected = await accept(
       enableStripeAutomationRequest(scenario, created.body.id),
       [400],
     );
-    expect(rejected.body.error.message).toMatch(reconnect.message);
+    expect(rejected.body.error.message).toMatch(/require Live mode/u);
   });
 
-  it("does not rebind after connector deletion and recreation", async () => {
+  it("reprojects after connector deletion and recreation", async () => {
     const scenario = await setupScenario();
     const initial = await connectStripeOAuth(scenario.actor);
     const created = await accept(
@@ -489,11 +506,18 @@ describe("Stripe invoice-paid workflow automation readiness", () => {
     });
     expect(replacement.connector.id).not.toBe(initial.connector.id);
 
-    const rejected = await accept(
+    const enabled = await accept(
       enableStripeAutomationRequest(scenario, created.body.id),
-      [400],
+      [200],
     );
-    expect(rejected.body.error.message).toMatch(/delete and recreate/u);
+    expect(enabled.body).toMatchObject({
+      enabled: true,
+      eventConfig: {
+        connectorId: replacement.connector.id,
+        stripeAccountId: STRIPE_ACCOUNT_ID,
+        mode: "live",
+      },
+    });
   });
 
   it("returns an explicit immutable error from the update route", async () => {

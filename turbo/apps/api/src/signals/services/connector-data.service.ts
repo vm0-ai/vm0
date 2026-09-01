@@ -86,7 +86,6 @@ import {
 import { cleanupGoogleCalendarWatchesForConnector } from "./google-calendar-automation-event.service";
 import { cleanupGoogleFormsWatchesForConnector } from "./google-forms-automation-event.service";
 import { reconcileConnectorAccountState } from "./connector-account-state.service";
-import { reprojectGmailAutomationsForOwner } from "./gmail-automation-account.service";
 import { prepareConnectorAccountDeletion } from "./connector-account-lifecycle.service";
 import { resolveConnectorAccount } from "./connector-account-resolution.service";
 import {
@@ -99,6 +98,7 @@ import {
   connectorAccountSiblingWritesEnabled,
   normalizeConnectorAccountMutation,
 } from "./connector-account-mutation.service";
+import { reprojectWorkflowAutomationsForOwner } from "./workflow-automation-account-projection.service";
 
 const log = logger("api:connector-data");
 const oauthScopesSchema = z.array(z.string());
@@ -904,13 +904,18 @@ async function prepareBuiltinConnectorAccountDeletion(
     readonly connectorSlug: string;
     readonly connectionId: string;
   },
+  signal: AbortSignal,
 ) {
-  return await prepareConnectorAccountDeletion(db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    target: { kind: "builtin", connectorSlug: args.connectorSlug },
-    connectionId: args.connectionId,
-  });
+  return await prepareConnectorAccountDeletion(
+    db,
+    {
+      orgId: args.orgId,
+      userId: args.userId,
+      target: { kind: "builtin", connectorSlug: args.connectorSlug },
+      connectionId: args.connectionId,
+    },
+    signal,
+  );
 }
 
 function completedConnectorDeletionResult(
@@ -966,10 +971,14 @@ async function deleteConnectorAccountLocalState(
     };
   }
   const existing = account.connector;
-  const deletion = await prepareBuiltinConnectorAccountDeletion(tx, {
-    ...args,
-    connectionId: existing.id,
-  });
+  const deletion = await prepareBuiltinConnectorAccountDeletion(
+    tx,
+    {
+      ...args,
+      connectionId: existing.id,
+    },
+    signal,
+  );
   signal.throwIfAborted();
   if (deletion.kind !== "ready") {
     return {
@@ -2043,6 +2052,26 @@ interface CommitConnectorTokenConnectionArgs {
   readonly insertConnectionId?: string;
 }
 
+async function reprojectConnectedWorkflowAutomations(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorSlug: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  await reprojectWorkflowAutomationsForOwner(
+    args.db,
+    {
+      orgId: args.orgId,
+      userId: args.userId,
+      target: { kind: "builtin", connectorSlug: args.connectorSlug },
+    },
+    signal,
+  );
+}
+
 async function commitConnectorTokenConnection(
   args: CommitConnectorTokenConnectionArgs,
   signal: AbortSignal,
@@ -2155,12 +2184,10 @@ async function commitConnectorTokenConnection(
     },
     signal,
   );
-  if (args.runtimeMethod.connectorSlug === "gmail") {
-    await reprojectGmailAutomationsForOwner(args.db, {
-      orgId: args.orgId,
-      userId: args.userId,
-    });
-  }
+  await reprojectConnectedWorkflowAutomations(
+    { ...args, connectorSlug: args.runtimeMethod.connectorSlug },
+    signal,
+  );
 
   return {
     status: "connected",

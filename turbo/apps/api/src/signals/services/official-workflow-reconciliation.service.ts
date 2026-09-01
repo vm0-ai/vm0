@@ -27,7 +27,6 @@ import {
   reconcileAutomationEventWatchReconfiguration,
 } from "./automation-event-watch-lifecycle.service";
 import { lockConnectorAccountTarget } from "./auth-state-lock.service";
-import { resolveGmailAutomationConnectorId } from "./gmail-automation-account.service";
 import { OFFICIAL_WORKFLOW_CATALOG_ACTIVATION_LOCK } from "./official-workflow-constants";
 import {
   readAcceptedOfficialWorkflowCatalog,
@@ -59,6 +58,7 @@ import {
 } from "./workflow-automation.service";
 import { lockWorkflowWebhookAutomationTierEligibleForOrg } from "./workflow-webhook-automation-entitlement.service";
 import type { WorkflowMember } from "./workflow-data.service";
+import { resolveWorkflowAutomationConnectorId } from "./workflow-automation-account.service";
 
 const DORMANT_CREATION_LEASE_MS = 5 * 60 * 1000;
 
@@ -143,10 +143,16 @@ function eventWatchFailureMessage(result: {
     : "Official Workflow event-watch reconciliation failed";
 }
 
-function isGmailAutomationEventType(eventType: string | null): boolean {
-  return (
-    eventType === "gmail-new-message" || eventType === "gmail-label-applied"
-  );
+function accountConnectorSlug(
+  eventType: string | null,
+): "gmail" | "stripe" | null {
+  if (
+    eventType === "gmail-new-message" ||
+    eventType === "gmail-label-applied"
+  ) {
+    return "gmail";
+  }
+  return eventType === "stripe-invoice-paid" ? "stripe" : null;
 }
 
 async function lockOfficialAutomationAccountProjection(
@@ -162,21 +168,37 @@ async function lockOfficialAutomationAccountProjection(
   | { readonly kind: "not-required" }
   | { readonly kind: "locked"; readonly eventConnectorId: string | null }
 > {
-  const currentUsesGmail = isGmailAutomationEventType(args.currentEventType);
-  const nextUsesGmail = isGmailAutomationEventType(args.nextEventType);
-  if (!currentUsesGmail && !nextUsesGmail) {
+  const currentConnectorSlug = accountConnectorSlug(args.currentEventType);
+  const nextConnectorSlug = accountConnectorSlug(args.nextEventType);
+  const connectorSlugs = [currentConnectorSlug, nextConnectorSlug]
+    .filter((slug): slug is "gmail" | "stripe" => {
+      return slug !== null;
+    })
+    .filter((slug, index, values) => {
+      return values.indexOf(slug) === index;
+    })
+    .sort();
+  if (connectorSlugs.length === 0) {
     return { kind: "not-required" };
   }
-  await lockConnectorAccountTarget(db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    target: { kind: "builtin", connectorSlug: "gmail" },
-  });
+  for (const connectorSlug of connectorSlugs) {
+    await lockConnectorAccountTarget(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      target: { kind: "builtin", connectorSlug },
+    });
+  }
   return {
     kind: "locked",
-    eventConnectorId: nextUsesGmail
-      ? await resolveGmailAutomationConnectorId(db, args)
-      : null,
+    eventConnectorId:
+      nextConnectorSlug === null
+        ? null
+        : await resolveWorkflowAutomationConnectorId(db, {
+            orgId: args.orgId,
+            userId: args.userId,
+            workflowId: args.workflowId,
+            connectorSlug: nextConnectorSlug,
+          }),
   };
 }
 
