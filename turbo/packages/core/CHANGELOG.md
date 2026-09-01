@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.607.0](https://github.com/vm0-ai/vm0/compare/core-v8.606.1...core-v8.607.0) (2026-09-01)
+
+
+### Features
+
+* **platform:** translate selected chat text ([#30818](https://github.com/vm0-ai/vm0/issues/30818)) ([37c2265](https://github.com/vm0-ai/vm0/commit/37c2265c1c600cbcc22b32224e376c5ae26cead3))
+* use transparent avatar cutouts in the intro video picker ([#30873](https://github.com/vm0-ai/vm0/issues/30873)) ([b176b5b](https://github.com/vm0-ai/vm0/commit/b176b5b46f223dd26d44e976e2299ed3f5bbfa8c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.389.0
+
 ## [8.606.1](https://github.com/vm0-ai/vm0/compare/core-v8.606.0...core-v8.606.1) (2026-09-01)
 
 

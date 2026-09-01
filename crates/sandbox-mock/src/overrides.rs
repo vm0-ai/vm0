@@ -6,9 +6,9 @@ use ::sandbox::*;
 use tokio_util::sync::CancellationToken;
 
 use crate::call_records::{
-    CopyFileCall, ExecCall, ExecMatcher, GuestStateRestoreCall, ProcessCancelCall,
-    ProcessControlCall, SessionHistoryIdentityVerifyCall, StartAgentProcessCall, StartProcessCall,
-    StorageManifestCall, WaitProcessCall, WriteFileCall, WriteFilesCall,
+    CodexSessionCleanupCall, CopyFileCall, ExecCall, ExecMatcher, GuestStateRestoreCall,
+    ProcessCancelCall, ProcessControlCall, SessionHistoryIdentityVerifyCall, StartAgentProcessCall,
+    StartProcessCall, StorageManifestCall, WaitProcessCall, WriteFileCall, WriteFilesCall,
 };
 use crate::lifecycle::{DestroyBehavior, LifecycleBehaviors, MockLifecycleGate};
 use crate::support::LockIgnoringPoison;
@@ -57,6 +57,8 @@ pub(crate) struct ExecOverrideState {
     pub(crate) storage_manifest_calls: Mutex<Vec<StorageManifestCall>>,
     /// Recorded fixed live identity verifier calls across attached sandboxes.
     pub(crate) session_history_identity_verify_calls: Mutex<Vec<SessionHistoryIdentityVerifyCall>>,
+    /// Recorded fixed reused-Codex cleanup calls across attached sandboxes.
+    pub(crate) codex_session_cleanup_calls: Mutex<Vec<CodexSessionCleanupCall>>,
     /// Recorded fixed guest-state restore calls across all attached sandboxes.
     pub(crate) guest_state_restore_calls: Mutex<Vec<GuestStateRestoreCall>>,
     /// FIFO behaviors for fixed guest-state restore operations.
@@ -497,6 +499,14 @@ impl MockSandboxOverrides {
     pub fn session_history_identity_verify_calls(&self) -> Vec<SessionHistoryIdentityVerifyCall> {
         self.exec
             .session_history_identity_verify_calls
+            .lock_ignoring_poison()
+            .clone()
+    }
+
+    /// Return fixed reused-Codex cleanup calls across all attached sandboxes.
+    pub fn codex_session_cleanup_calls(&self) -> Vec<CodexSessionCleanupCall> {
+        self.exec
+            .codex_session_cleanup_calls
             .lock_ignoring_poison()
             .clone()
     }

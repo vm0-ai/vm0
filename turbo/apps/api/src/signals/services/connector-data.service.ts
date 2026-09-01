@@ -87,6 +87,11 @@ import {
 } from "./gmail-automation-event.service";
 import { cleanupGoogleCalendarWatchesForConnector } from "./google-calendar-automation-event.service";
 import { cleanupGoogleFormsWatchesForConnector } from "./google-forms-automation-event.service";
+import {
+  deletePreparedGoogleMeetSubscriptionWithLifecycleLock,
+  prepareGoogleMeetSubscriptionDeleteForConnector,
+  type PendingGoogleMeetSubscriptionDelete,
+} from "./google-meet-automation-event.service";
 import { reconcileConnectorAccountState } from "./connector-account-state.service";
 import { prepareConnectorAccountDeletion } from "./connector-account-lifecycle.service";
 import { resolveConnectorAccount } from "./connector-account-resolution.service";
@@ -1097,6 +1102,7 @@ async function deleteConnectorAccountLocalState(
       kind: account.kind,
       pendingTokenRevoke: null,
       pendingGmailWatchStop: null,
+      pendingGoogleMeetSubscriptionDelete: null,
     };
   }
   const existing = account.connector;
@@ -1114,6 +1120,7 @@ async function deleteConnectorAccountLocalState(
       kind: deletion.kind,
       pendingTokenRevoke: null,
       pendingGmailWatchStop: null,
+      pendingGoogleMeetSubscriptionDelete: null,
     };
   }
 
@@ -1158,6 +1165,18 @@ async function deleteConnectorAccountLocalState(
           signal,
         )
       : null;
+  const pendingGoogleMeetSubscriptionDelete: PendingGoogleMeetSubscriptionDelete | null =
+    args.connectorSlug === "google-meet"
+      ? await prepareGoogleMeetSubscriptionDeleteForConnector(
+          {
+            db: tx,
+            orgId: args.orgId,
+            userId: args.userId,
+            connectorId: existing.id,
+          },
+          signal,
+        )
+      : null;
   if (args.connectorSlug !== "gmail") {
     await cleanupConnectorWatchesForDisconnect(
       tx,
@@ -1177,6 +1196,7 @@ async function deleteConnectorAccountLocalState(
     kind: "deleted" as const,
     pendingTokenRevoke,
     pendingGmailWatchStop,
+    pendingGoogleMeetSubscriptionDelete,
     deletion,
   };
 }
@@ -1240,6 +1260,26 @@ export const deleteConnectorLocalState$ = command(
       }
       if (!stopped.ok) {
         postCommitAbort ??= stopped.error;
+      }
+    }
+    if (deleteResult.pendingGoogleMeetSubscriptionDelete !== null) {
+      const deleted = await settleIncludingAbort(
+        bestEffort(
+          deletePreparedGoogleMeetSubscriptionWithLifecycleLock(
+            {
+              db: writeDb,
+              pending: deleteResult.pendingGoogleMeetSubscriptionDelete,
+            },
+            signal,
+          ),
+          signal,
+        ),
+      );
+      if (signal.aborted) {
+        postCommitAbort ??= signal.reason;
+      }
+      if (!deleted.ok) {
+        postCommitAbort ??= deleted.error;
       }
     }
     await finalizeConnectorStateChangeAfterCommit(

@@ -382,6 +382,11 @@ fn exec_start_accepts_every_valid_process_contract() {
             ExecLifecyclePolicy::OneShot,
             ExecControlPolicy::Disabled,
         ),
+        (
+            ExecProcessRole::CodexSessionCleanup,
+            ExecLifecyclePolicy::OneShot,
+            ExecControlPolicy::Disabled,
+        ),
     ] {
         let timeout = match lifecycle {
             ExecLifecyclePolicy::OneShot => ExecTimeoutPolicy::Duration { timeout_ms: 1 },
@@ -461,6 +466,19 @@ fn exec_start_encoder_rejects_every_invalid_process_contract() {
         ),
         (
             ExecProcessRole::SessionHistoryIdentityVerifier,
+            ExecLifecyclePolicy::OneShot,
+            ExecControlPolicy::Enabled {
+                control_nonce: NONCE,
+                sink: false,
+            },
+        ),
+        (
+            ExecProcessRole::CodexSessionCleanup,
+            ExecLifecyclePolicy::Supervised,
+            ExecControlPolicy::Disabled,
+        ),
+        (
+            ExecProcessRole::CodexSessionCleanup,
             ExecLifecyclePolicy::OneShot,
             ExecControlPolicy::Enabled {
                 control_nonce: NONCE,

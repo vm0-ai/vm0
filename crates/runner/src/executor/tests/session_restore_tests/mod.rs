@@ -4,7 +4,6 @@ mod identity;
 mod pi;
 mod validation;
 
-use sandbox::EXEC_OUTPUT_LIMIT_64_KIB;
 use sandbox_mock::MockSandbox;
 use sha2::{Digest, Sha256};
 use std::sync::Mutex;
@@ -161,63 +160,19 @@ async fn restore_session_in_fresh_sandbox(
 }
 
 fn assert_codex_cleanup_call(sandbox: &MockSandbox) {
-    let exec_calls = sandbox.exec_calls();
-    assert_eq!(exec_calls.len(), 1);
-    assert_eq!(
-        exec_calls[0].env_keys,
-        [
-            "OKOU_CODEX_RESTORE_SESSION_ID".to_string(),
-            "OKOU_CODEX_RESTORE_SESSION_FILENAME_KEY".to_string(),
-            "OKOU_CODEX_RESTORE_SESSION_PATH".to_string()
-        ]
-    );
-    assert_eq!(exec_calls[0].timeout, DEFAULT_EXEC_TIMEOUT);
-    assert_eq!(exec_calls[0].output_limits, EXEC_OUTPUT_LIMIT_64_KIB);
-    assert!(!exec_calls[0].sudo);
-    assert!(exec_calls[0].stdin_bytes.is_none());
-    assert!(exec_calls[0].cmd.contains("codex_home='/home/user/.codex'"));
-    assert!(exec_calls[0].cmd.contains("root=\"$codex_home/sessions\""));
-    assert!(exec_calls[0].cmd.contains("check_restore_dir_component"));
+    assert!(sandbox.exec_calls().is_empty());
+    let calls = sandbox.codex_session_cleanup_calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].session_id, CODEX_SESSION_ID);
+    let thread_id = guest_contracts::codex_thread_id::CodexThreadId::parse(CODEX_SESSION_ID)
+        .expect("test Codex session id");
     assert!(
-        exec_calls[0]
-            .cmd
-            .contains("check_restore_dir_component \"$codex_home\"")
+        guest_contracts::codex_session_path::is_canonical_codex_rollout_relative_path(
+            &calls[0].fallback_relative_path,
+            &thread_id,
+        )
     );
-    assert!(
-        exec_calls[0]
-            .cmd
-            .contains("codex restore directory is a symlink")
-    );
-    assert!(exec_calls[0].cmd.contains("scan_budget="));
-    assert!(
-        exec_calls[0]
-            .cmd
-            .contains("collect_matching_session_entries")
-    );
-    assert!(
-        exec_calls[0]
-            .cmd
-            .contains("find \"$root\" -mindepth 1 -printf '%y%p\\0'")
-    );
-    assert!(exec_calls[0].cmd.contains("canonical_logical_path"));
-    assert!(exec_calls[0].cmd.contains("candidate_ambiguous"));
-    assert!(
-        exec_calls[0]
-            .cmd
-            .contains("delete_matching_session_entries")
-    );
-    assert!(exec_calls[0].cmd.contains("xargs -0"));
-    assert!(exec_calls[0].cmd.contains("\\\\.jsonl\\\\.zst"));
-    assert!(exec_calls[0].cmd.contains("\\\\.jsonl\\\\.vm0tmp-"));
-    assert!(exec_calls[0].cmd.contains("id_no_dashes"));
-    assert!(
-        exec_calls[0]
-            .cmd
-            .contains("OKOU_CODEX_RESTORE_SESSION_FILENAME_KEY")
-    );
-    assert!(!exec_calls[0].cmd.contains("tr -d"));
-    assert!(!exec_calls[0].cmd.contains("-delete"));
-    assert!(!exec_calls[0].cmd.contains("for path in \"$dir\"/*"));
+    assert_eq!(calls[0].timeout, DEFAULT_EXEC_TIMEOUT);
 }
 
 fn capture_restore_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)

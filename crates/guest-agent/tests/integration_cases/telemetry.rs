@@ -548,7 +548,22 @@ async fn flush_reports_position_persistence_status_after_upload_then_recovers() 
     let metrics_log = paths.metrics_log_file();
     let metrics_pos = paths.telemetry_metrics_pos_file();
     let marker = "position-persistence-upload";
-    let metric = serde_json::json!({"name": "position-persistence-metric"});
+    let metric = serde_json::json!({
+        "ts": "2026-09-01T00:00:00.000Z",
+        "cpu": 91.25,
+        "cpu_steal_percent": 12.5,
+        "scheduled_lag_ms": 17,
+        "mem_used": 1024,
+        "mem_total": 2048,
+        "disk_used": 4096,
+        "disk_total": 8192,
+        "control_cpu_usage_usec": 101,
+        "control_cpu_nr_throttled": 2,
+        "control_cpu_throttled_usec": 3,
+        "workload_cpu_usage_usec": 201,
+        "workload_cpu_nr_throttled": 4,
+        "workload_cpu_throttled_usec": 5,
+    });
     ensure_parent_dir(system_log);
     ensure_parent_dir(system_log_pos);
     std::fs::write(system_log, format!("{marker}\n")).expect("system log should be written");

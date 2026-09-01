@@ -15,9 +15,9 @@ use guest_agent::metrics;
 use guest_agent::paths;
 use guest_agent::reuse_preparation;
 use guest_agent::run_context::GuestRuntime;
-use guest_agent::session_history_identity;
 use guest_agent::session_metadata;
 use guest_agent::telemetry::{Telemetry, UploadMode};
+use guest_agent::{codex_session_cleanup, session_history_identity};
 
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
@@ -160,6 +160,30 @@ fn helper_exit_code_from_args() -> Option<i32> {
                 Err(error) => {
                     eprintln!("{error}");
                     error.exit_code()
+                }
+            })
+        }
+        "cleanup-codex-session" => {
+            let Some(session_id) = args.next().and_then(|value| value.into_string().ok()) else {
+                return Some(1);
+            };
+            let Some(fallback_relative_path) =
+                args.next().and_then(|value| value.into_string().ok())
+            else {
+                return Some(1);
+            };
+            if args.next().is_some() {
+                return Some(1);
+            }
+            let request = guest_contracts::codex_session_cleanup::CodexSessionCleanupRequest {
+                session_id,
+                fallback_relative_path,
+            };
+            Some(match codex_session_cleanup::run(&request) {
+                Ok(exit_code) => exit_code,
+                Err(error) => {
+                    eprintln!("{error}");
+                    1
                 }
             })
         }
@@ -322,10 +346,17 @@ async fn run(runtime: GuestRuntime) -> i32 {
     record_sandbox_op("heartbeat_start", t.elapsed(), true, None);
 
     let t = Instant::now();
+    let metrics_sources = metrics::MetricsSources::new(
+        std::path::PathBuf::from("/proc/stat"),
+        runtime
+            .workload_containment
+            .as_ref()
+            .map(guest_agent::workload_containment::WorkloadContainment::cpu_stat_paths),
+    );
     let metrics_handle = tokio::spawn({
         let shutdown = shutdown.clone();
         let metrics_log_file = runtime.paths.metrics_log_file().to_string();
-        async move { metrics::metrics_loop_for_path(shutdown, metrics_log_file).await }
+        async move { metrics::metrics_loop_for_path(shutdown, metrics_log_file, metrics_sources).await }
     });
     log_info!(LOG_TAG, "Metrics collector started");
     record_sandbox_op("metrics_collector_start", t.elapsed(), true, None);

@@ -39,6 +39,11 @@ declare global {
     __appBootstrapStart?: number;
     /** Set when the entry module graph has finished evaluating. */
     __appBootstrapModuleReady?: number;
+    /**
+     * Reports whether the main stylesheet became active after crossing a
+     * rendering opportunity or failed to load.
+     */
+    __mainStylesheetLoaded?: Promise<"failed" | "loaded">;
   }
 }
 

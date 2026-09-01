@@ -45,12 +45,12 @@ import {
   type IntroVideoVisualBalance,
   type IntroVideoVoiceSelection,
   type IntroVideoWizardError,
+  INTRO_VIDEO_ASPECT_RATIO_LABEL,
   type IntroVideoWizardStep,
 } from "../../signals/okou-page/intro-video.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   AvatarLibraryContent,
-  AvatarLibraryToolbar,
   VoiceLibraryContent,
   VoiceLibraryToolbar,
 } from "./avatar-template-picker.tsx";
@@ -823,33 +823,25 @@ function AvatarPage({ composer }: { readonly composer: ComposerSignals }) {
   const { t } = useTranslation();
   const avatar = useGet(introVideoWizardSignals.avatar$);
   const setAvatar = useSet(introVideoWizardSignals.setAvatar$);
-  const setAspectRatio = useSet(introVideoWizardSignals.setAspectRatio$);
   const selectAvatarForVoice = useSet(
     composer.template.selectAvatarTemplateForVoice$,
   );
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h3 className="text-xl font-semibold tracking-tight text-foreground">
-            {t(($) => {
-              return $.chat.introVideo.avatar.heading;
-            })}
-          </h3>
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            {t(($) => {
-              return $.chat.introVideo.avatar.help;
-            })}
-          </p>
-        </div>
-        <AvatarLibraryToolbar
-          signals={composer}
-          onAspectRatioChange={setAspectRatio}
-        />
+      <div className="mb-5">
+        <h3 className="text-xl font-semibold tracking-tight text-foreground">
+          {t(($) => {
+            return $.chat.introVideo.avatar.heading;
+          })}
+        </h3>
+        <p className="mt-1.5 text-sm text-muted-foreground">
+          {t(($) => {
+            return $.chat.introVideo.avatar.help;
+          })}
+        </p>
       </div>
       {avatar ? <VisualBalanceSelector /> : null}
       <AvatarLibraryContent
-        signals={composer}
         selectedAvatarId={avatar?.id}
         onSelect={(nextAvatar) => {
           setAvatar(nextAvatar);
@@ -1002,7 +994,6 @@ function ReviewPage({ source }: { readonly source: IntroVideoSource }) {
   const { t } = useTranslation();
   const avatar = useGet(introVideoWizardSignals.avatar$);
   const voice = useGet(introVideoWizardSignals.voice$);
-  const aspectRatio = useGet(introVideoWizardSignals.aspectRatio$);
   const instructions = useGet(introVideoWizardSignals.instructions$);
   const setInstructions = useSet(introVideoWizardSignals.setInstructions$);
   return (
@@ -1022,7 +1013,7 @@ function ReviewPage({ source }: { readonly source: IntroVideoSource }) {
           label={t(($) => {
             return $.chat.introVideo.review.source;
           })}
-          value={`${source.name} · ${aspectRatio === "portrait" ? "9:16" : "16:9"}`}
+          value={`${source.name} · ${INTRO_VIDEO_ASPECT_RATIO_LABEL}`}
           icon={
             source.kind === "document" ? (
               <FileText size={18} />

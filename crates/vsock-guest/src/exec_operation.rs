@@ -66,7 +66,7 @@ use vsock_proto::{
 use vsock_proto::MSG_EXEC_RESULT;
 
 use crate::agent_command::{
-    GuestAgentProgram, spawn_agent_command_with_pipes,
+    GuestAgentProgram, spawn_agent_command_with_pipes, spawn_codex_session_cleanup_with_pipes,
     spawn_session_history_identity_verifier_with_pipes,
 };
 use crate::drain::{
@@ -252,6 +252,8 @@ pub(crate) struct ExecOperationWorkerRequest {
     guest_agent_program: GuestAgentProgram,
     session_history_identity_verify_request:
         Option<guest_contracts::session_history_identity::SessionHistoryIdentityVerifyRequest>,
+    codex_session_cleanup_request:
+        Option<guest_contracts::codex_session_cleanup::CodexSessionCleanupRequest>,
     process_containment_mode: ProcessContainmentMode,
     drain_deadline: Duration,
 }
@@ -262,6 +264,7 @@ impl ExecOperationWorkerRequest {
             ExecProcessRole::Workload => "contained_workload",
             ExecProcessRole::Agent => "controlled_agent",
             ExecProcessRole::SessionHistoryIdentityVerifier => "session_history_identity_verifier",
+            ExecProcessRole::CodexSessionCleanup => "codex_session_cleanup",
         }
     }
 
@@ -278,6 +281,10 @@ impl ExecOperationWorkerRequest {
                 ExecProcessRole::SessionHistoryIdentityVerifier,
                 ExecOperationLifecycle::Supervised,
             ) => "invalid",
+            (ExecProcessRole::CodexSessionCleanup, ExecOperationLifecycle::OneShot) => {
+                "cleanup_codex_session"
+            }
+            (ExecProcessRole::CodexSessionCleanup, ExecOperationLifecycle::Supervised) => "invalid",
         }
     }
 
@@ -326,31 +333,32 @@ impl ExecOperationWorkerRequest {
                 "exec control policy requires supervised lifecycle",
             ));
         }
-        let session_history_identity_verify_request = match decoded.role {
-            ExecProcessRole::Agent => {
-                if !decoded.command.is_empty() {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "Agent process cannot select a command",
-                    ));
+        let (session_history_identity_verify_request, codex_session_cleanup_request) =
+            match decoded.role {
+                ExecProcessRole::Agent => {
+                    if !decoded.command.is_empty() {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "Agent process cannot select a command",
+                        ));
+                    }
+                    if decoded.sudo {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "Agent process cannot select sudo execution",
+                        ));
+                    }
+                    if decoded.stdin_bytes.is_some() {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "Agent process cannot provide stdin",
+                        ));
+                    }
+                    (None, None)
                 }
-                if decoded.sudo {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "Agent process cannot select sudo execution",
-                    ));
-                }
-                if decoded.stdin_bytes.is_some() {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "Agent process cannot provide stdin",
-                    ));
-                }
-                None
-            }
-            ExecProcessRole::SessionHistoryIdentityVerifier => {
-                validate_session_history_identity_verifier_contract(&decoded)?;
-                let request = serde_json::from_str::<
+                ExecProcessRole::SessionHistoryIdentityVerifier => {
+                    validate_session_history_identity_verifier_contract(&decoded)?;
+                    let request = serde_json::from_str::<
                     guest_contracts::session_history_identity::SessionHistoryIdentityVerifyRequest,
                 >(decoded.command)
                 .map_err(|_| {
@@ -359,16 +367,35 @@ impl ExecOperationWorkerRequest {
                         "session history identity verifier payload is invalid",
                     )
                 })?;
-                request.validate().map_err(|_| {
-                    io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "session history identity verifier payload is invalid",
-                    )
-                })?;
-                Some(request)
-            }
-            ExecProcessRole::Workload => None,
-        };
+                    request.validate().map_err(|_| {
+                        io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "session history identity verifier payload is invalid",
+                        )
+                    })?;
+                    (Some(request), None)
+                }
+                ExecProcessRole::CodexSessionCleanup => {
+                    validate_codex_session_cleanup_contract(&decoded)?;
+                    let request = serde_json::from_str::<
+                        guest_contracts::codex_session_cleanup::CodexSessionCleanupRequest,
+                    >(decoded.command)
+                    .map_err(|_| {
+                        io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "Codex session cleanup payload is invalid",
+                        )
+                    })?;
+                    request.validate().map_err(|_| {
+                        io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "Codex session cleanup payload is invalid",
+                        )
+                    })?;
+                    (None, Some(request))
+                }
+                ExecProcessRole::Workload => (None, None),
+            };
 
         Ok(Self {
             seq,
@@ -392,6 +419,7 @@ impl ExecOperationWorkerRequest {
             exec_control_bootstrap_endpoint: None,
             guest_agent_program,
             session_history_identity_verify_request,
+            codex_session_cleanup_request,
             process_containment_mode,
             drain_deadline,
         })
@@ -421,7 +449,8 @@ impl ExecOperationWorkerRequest {
         match (self.role, self.exec_control_bootstrap_endpoint.is_some()) {
             (ExecProcessRole::Workload, false)
             | (ExecProcessRole::Agent, true)
-            | (ExecProcessRole::SessionHistoryIdentityVerifier, false) => Ok(()),
+            | (ExecProcessRole::SessionHistoryIdentityVerifier, false)
+            | (ExecProcessRole::CodexSessionCleanup, false) => Ok(()),
             (ExecProcessRole::Workload, true) => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "workload process received an Agent control bootstrap endpoint",
@@ -433,6 +462,10 @@ impl ExecOperationWorkerRequest {
             (ExecProcessRole::SessionHistoryIdentityVerifier, true) => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "session history identity verifier received a control bootstrap endpoint",
+            )),
+            (ExecProcessRole::CodexSessionCleanup, true) => Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Codex session cleanup received a control bootstrap endpoint",
             )),
         }
     }
@@ -465,6 +498,36 @@ fn validate_session_history_identity_verifier_contract(
         Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "session history identity verifier process contract is invalid",
+        ))
+    }
+}
+
+fn validate_codex_session_cleanup_contract(
+    decoded: &vsock_proto::DecodedExecStart<'_>,
+) -> io::Result<()> {
+    use guest_contracts::codex_session_cleanup::{
+        CODEX_SESSION_CLEANUP_DIAGNOSTIC_LABEL, CODEX_SESSION_CLEANUP_OUTPUT_LIMIT_BYTES,
+    };
+
+    let fixed_capture = ExecOutputPolicy::Capture {
+        limit_bytes: CODEX_SESSION_CLEANUP_OUTPUT_LIMIT_BYTES,
+    };
+    let valid = decoded.lifecycle == ExecLifecyclePolicy::OneShot
+        && decoded.control == ExecControlPolicy::Disabled
+        && !decoded.command.is_empty()
+        && decoded.env.is_empty()
+        && !decoded.sudo
+        && decoded.label == CODEX_SESSION_CLEANUP_DIAGNOSTIC_LABEL
+        && decoded.stdout == fixed_capture
+        && decoded.stderr == fixed_capture
+        && decoded.expected_exit_codes.is_empty()
+        && decoded.stdin_bytes.is_none();
+    if valid {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Codex session cleanup process contract is invalid",
         ))
     }
 }
@@ -1441,6 +1504,18 @@ fn run_exec_operation_worker<S>(
                 &request.guest_agent_program,
             )
         }
+        ExecProcessRole::CodexSessionCleanup => {
+            let Some(cleanup_request) = request.codex_session_cleanup_request.as_ref() else {
+                let _ = process_containment.cleanup(ProcessContainmentCleanupMode::Forced);
+                completion.start_failed("Codex session cleanup payload is missing");
+                return;
+            };
+            spawn_codex_session_cleanup_with_pipes(
+                cleanup_request,
+                process_containment,
+                &request.guest_agent_program,
+            )
+        }
     };
     let spawned = match spawn_result {
         Ok(spawned) => spawned,
@@ -1453,6 +1528,9 @@ fn run_exec_operation_worker<S>(
                 ExecProcessRole::Agent => format!("Failed to execute controlled Agent: {e}"),
                 ExecProcessRole::SessionHistoryIdentityVerifier => {
                     format!("Failed to execute session history identity verifier: {e}")
+                }
+                ExecProcessRole::CodexSessionCleanup => {
+                    format!("Failed to execute Codex session cleanup: {e}")
                 }
             };
             completion.start_failed(&diagnostic);
@@ -2332,6 +2410,7 @@ mod tests {
             exec_control_bootstrap_endpoint: None,
             guest_agent_program: GuestAgentProgram::production(),
             session_history_identity_verify_request: None,
+            codex_session_cleanup_request: None,
             process_containment_mode: ProcessContainmentMode::BuildConfigured,
             drain_deadline: EXEC_OUTPUT_DRAIN_DEADLINE,
         }

@@ -44,6 +44,7 @@ import type { Db, ReadonlyDb } from "../external/db";
 import { safeJsonParse, settle } from "../utils";
 import { lockConnectorAccountTarget } from "./auth-state-lock.service";
 import { reprojectWorkflowAutomationsForOwner } from "./workflow-automation-account-projection.service";
+import { invalidateNotionPendingEventsForConnector } from "./notion-automation-account.service";
 import { isConnectorCatalogUnavailableError } from "./connector-catalog-reader.service";
 import {
   connectorCredentialStorageIsCompatible,
@@ -956,6 +957,12 @@ export async function prepareConnectorAccountDeletion(
     promotedDefaultConnectionId = sibling.id;
   }
 
+  if (
+    args.target.kind === "builtin" &&
+    args.target.connectorSlug === "notion"
+  ) {
+    await invalidateNotionPendingEventsForConnector(db, args.connectionId);
+  }
   await reprojectWorkflowAutomationsForOwner(db, args, signal);
 
   return {

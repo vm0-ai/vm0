@@ -382,31 +382,6 @@
       fetchpriority="low"
       onload="this.media = 'all'"
     />
-    <script>
-      (function () {
-        var hostname = window.location.hostname;
-        var isProductionHost =
-          hostname === "vm0.ai" ||
-          hostname.endsWith(".vm0.ai") ||
-          hostname === "okou.ai" ||
-          hostname.endsWith(".okou.ai");
-        if (!isProductionHost) return;
-
-        window.dataLayer = window.dataLayer || [];
-        window.gtag = function () {
-          window.dataLayer.push(arguments);
-        };
-        window.gtag("js", new Date());
-        window.gtag("config", "AW-18144854014");
-        window.gtag("config", "AW-18407336975");
-
-        var gtagScript = document.createElement("script");
-        gtagScript.async = true;
-        gtagScript.src =
-          "https://www.googletagmanager.com/gtag/js?id=AW-18144854014";
-        document.head.appendChild(gtagScript);
-      })();
-    </script>
     <script type="module" src="/src/main.ts" fetchpriority="low"></script>
   </body>
 </html>

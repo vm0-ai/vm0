@@ -336,11 +336,13 @@ describe("chat start cards", () => {
       screen.findByText("Choose an avatar"),
     ).resolves.toBeInTheDocument();
     expect(screen.queryByText("Skip avatar")).toBeNull();
-    expect(dialog.querySelector("[data-avatar-catalog-toolbar]")).toHaveClass(
-      "w-auto",
-      "justify-start",
-    );
-    click(await screen.findByLabelText("Select template Alex"));
+    // The wizard offers a curated cutout set instead of the paged JoggAI
+    // catalog, so it has no aspect-ratio or catalog filter toolbar.
+    expect(dialog.querySelector("[data-avatar-catalog-toolbar]")).toBeNull();
+    expect(
+      dialog.querySelector("[data-intro-video-avatar-grid]"),
+    ).not.toBeNull();
+    click(await screen.findByLabelText("Select template Amara"));
     expect(
       screen.getByText("How would you like the visual balance?"),
     ).toBeInTheDocument();
@@ -403,7 +405,14 @@ describe("chat start cards", () => {
         "Create a polished intro video from the attached source.",
       );
       expect(sentPrompt).toContain("- Source: launch.pdf");
-      expect(sentPrompt).toContain("- Avatar: Alex (1)");
+      expect(sentPrompt).toContain("- Avatar: Amara (1785)");
+      expect(sentPrompt).toContain("- Aspect ratio: 16:9");
+      expect(sentPrompt).toContain(
+        "- Avatar cutout (transparent still): https://static.vm0.io/platform/avatars/intro-video/v1/1785.webp",
+      );
+      expect(sentPrompt).toContain(
+        "- Avatar background: transparent WebM (JoggAI screen_style 3, which requires captions off)",
+      );
       expect(sentPrompt).toContain("- Voice: No voiceover");
       expect(sentPrompt).toContain(
         "- Visual balance: Avatar-led (presenter on screen most of the time)",

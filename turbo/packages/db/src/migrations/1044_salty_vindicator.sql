@@ -1,0 +1,3 @@
+ALTER TABLE "notion_workflow_pending_events" ADD COLUMN "connector_id" uuid;--> statement-breakpoint
+ALTER TABLE "notion_workflow_pending_events" ADD CONSTRAINT "notion_workflow_pending_events_connector_id_connectors_id_fk" FOREIGN KEY ("connector_id") REFERENCES "public"."connectors"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "idx_notion_pending_events_connector" ON "notion_workflow_pending_events" USING btree ("connector_id");

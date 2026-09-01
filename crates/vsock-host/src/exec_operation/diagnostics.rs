@@ -104,6 +104,7 @@ impl ExecOperationDiagnostic {
             ExecProcessRole::Workload => "contained_workload",
             ExecProcessRole::Agent => "controlled_agent",
             ExecProcessRole::SessionHistoryIdentityVerifier => "session_history_identity_verifier",
+            ExecProcessRole::CodexSessionCleanup => "codex_session_cleanup",
         };
         let operation_kind = match (role, supervised) {
             (ExecProcessRole::Workload, false) => "exec",
@@ -114,6 +115,8 @@ impl ExecOperationDiagnostic {
                 "verify_session_history_identity"
             }
             (ExecProcessRole::SessionHistoryIdentityVerifier, true) => "invalid",
+            (ExecProcessRole::CodexSessionCleanup, false) => "cleanup_codex_session",
+            (ExecProcessRole::CodexSessionCleanup, true) => "invalid",
         };
         Self {
             seq,

@@ -153,7 +153,7 @@ function row(threadId: string, seqId: number): ChatEventRow {
 
 function bridgeEvents(): SharedDatabaseBridgeEvents {
   return {
-    authenticationRequired: vi.fn<() => void>(),
+    authenticationRequired: vi.fn<(recoveryId: string) => void>(),
     databaseInvalidated: vi.fn<(dataKey: SharedDatabaseDataKey) => void>(),
     databaseReconnected: vi.fn<() => void>(),
     computedReloaded: vi.fn<(computedKey: ComputedKey) => void>(),
@@ -201,8 +201,9 @@ async function installProtocolBridge(): Promise<{
 }
 
 describe("shared database MessagePort protocol", () => {
-  it("logs app and worker bridge traffic without exposing heartbeat credentials", async () => {
+  it("logs app and worker bridge traffic without exposing credentials", async () => {
     const token = "secret-heartbeat-token";
+    const refreshedToken = "secret-refreshed-token";
     const vercelProtectionBypass = "secret-vercel-bypass";
     context.mocks.api(authContract.me, ({ request, respond }) => {
       expect(request.headers.get("authorization")).toBe(`Bearer ${token}`);
@@ -239,6 +240,10 @@ describe("shared database MessagePort protocol", () => {
     await expect(
       bridge.heartbeat({ token, vercelProtectionBypass }, owner.signal),
     ).resolves.toStrictEqual({ clientReconnected: false });
+    const recoveryId = crypto.randomUUID();
+    await expect(
+      bridge.setToken(recoveryId, refreshedToken, owner.signal),
+    ).resolves.toBeUndefined();
 
     const redactedHeartbeat = expect.objectContaining({
       type: "heartbeat",
@@ -256,6 +261,22 @@ describe("shared database MessagePort protocol", () => {
       expect.any(String),
       redactedHeartbeat,
     );
+    const redactedTokenUpdate = expect.objectContaining({
+      type: "set-token",
+      recoveryId,
+      token: "[redacted]",
+    });
+    expect(consoleLog).toHaveBeenCalledWith(
+      "[D][SharedWorkerBridge]",
+      "send message to worker",
+      redactedTokenUpdate,
+    );
+    expect(consoleLog).toHaveBeenCalledWith(
+      "[D][SharedWorkerBridge]",
+      "got message from app",
+      expect.any(String),
+      redactedTokenUpdate,
+    );
     expect(consoleLog).toHaveBeenCalledWith(
       "[D][SharedWorkerBridge]",
       "send message to app",
@@ -269,6 +290,7 @@ describe("shared database MessagePort protocol", () => {
     );
     const serializedLogs = JSON.stringify(consoleLog.mock.calls);
     expect(serializedLogs).not.toContain(token);
+    expect(serializedLogs).not.toContain(refreshedToken);
     expect(serializedLogs).not.toContain(vercelProtectionBypass);
 
     owner.abort();
@@ -505,167 +527,28 @@ describe("shared database MessagePort protocol", () => {
     });
   });
 
-  it("reloads and disconnects only the MessagePort whose credential changes", async () => {
+  it("authenticates only the initial heartbeat and recovers through set-token", async () => {
+    let heartbeatAuthenticationRequests = 0;
     context.mocks.api(authContract.me, ({ request, respond }) => {
-      const secondCredential =
-        request.headers.get("authorization") === "Bearer second-token";
+      heartbeatAuthenticationRequests += 1;
+      expect(request.headers.get("authorization")).toBe("Bearer first-token");
       return respond(200, {
         userId: identity().userId,
         email: "message-port@example.com",
-        orgId: secondCredential ? "second-org" : identity().orgId,
+        orgId: identity().orgId,
       });
     });
-    const workerContext = new SharedDatabaseWorkerContext(
-      context.signal,
-      WORKER_APP_VERSION,
-    );
-    const [movingPlatformPort, movingWorkerPort] = messagePortPair();
-    new SharedDatabaseMessagePortServer(
-      workerContext,
-      movingWorkerPort,
-      context.signal,
-    );
-    const movingEvents = bridgeEvents();
-    const movingBridge = new MessagePortSharedDatabaseBridge(
-      movingPlatformPort,
-      location.origin,
-      movingEvents,
-    );
-    const [keeperPlatformPort, keeperWorkerPort] = messagePortPair();
-    new SharedDatabaseMessagePortServer(
-      workerContext,
-      keeperWorkerPort,
-      context.signal,
-    );
-    const keeperEvents = bridgeEvents();
-    const keeperBridge = new MessagePortSharedDatabaseBridge(
-      keeperPlatformPort,
-      location.origin,
-      keeperEvents,
-    );
-    const movingOwner = createChildAbortController(context.signal);
-    const keeperOwner = createChildAbortController(context.signal);
-
-    await movingBridge.heartbeat({ token: "first-token" }, movingOwner.signal);
-    await keeperBridge.heartbeat({ token: "keeper-token" }, keeperOwner.signal);
-    expect(workerContext.credentialStoreCount()).toBe(1);
-    const key = dataKey(crypto.randomUUID());
-    const oldRow = row(key.threadId, 1);
-    const oldRequestGate = context.mocks.deferred<void>();
-    const oldRequestHandlerFinished = context.mocks.deferred<void>();
-    let oldRequestStarted = false;
-    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
-      return respond(404, {
-        error: {
-          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
-          message: "Chat event snapshot not found",
-        },
-      });
-    });
-    context.mocks.api(
-      chatThreadEventsContract.rows,
-      async ({ query, respond }) => {
-        if (query.sinceSeqId > 0) {
-          return respond(200, chatEventRowsResponse([], query));
-        }
-        oldRequestStarted = true;
-        await oldRequestGate.promise;
-        oldRequestHandlerFinished.resolve(undefined);
-        return respond(200, chatEventRowsResponse([oldRow], query));
-      },
-    );
-    const oldRequest = movingBridge.query(
-      { dataKey: key, afterSeqId: null, consistency: "catch-up" },
-      movingOwner.signal,
-    );
-    await vi.waitFor(() => {
-      expect(oldRequestStarted).toBeTruthy();
-    });
-    const oldQueryMessage = movingPlatformPort.postedMessages.find(
-      (message) => {
-        return (
-          typeof message === "object" &&
-          message !== null &&
-          "type" in message &&
-          message.type === "query"
-        );
-      },
-    ) as
-      | Extract<SharedDatabaseClientMessage, { readonly type: "query" }>
-      | undefined;
-    expect(oldQueryMessage).toBeDefined();
-    if (!oldQueryMessage) {
-      throw new Error("Expected the old credential query message");
-    }
-
-    const changedHeartbeat = movingBridge.heartbeat(
-      { token: "second-token" },
-      movingOwner.signal,
-    );
-    await vi.waitFor(() => {
-      expect(movingEvents.reloadRequired).toHaveBeenCalledOnce();
-      expect(movingWorkerPort.closed).toBeTruthy();
-      expect(workerContext.credentialStoreCount()).toBe(1);
-    });
-    expect(keeperEvents.reloadRequired).not.toHaveBeenCalled();
-    expect(keeperWorkerPort.closed).toBeFalsy();
-    await expect(
-      keeperBridge.query(
-        {
-          dataKey: dataKey(crypto.randomUUID()),
-          afterSeqId: null,
-          consistency: "cache-only",
-        },
-        keeperOwner.signal,
-      ),
-    ).resolves.toStrictEqual([]);
-
-    oldRequestGate.resolve(undefined);
-    await oldRequestHandlerFinished.promise;
-    const [secondPlatformPort, secondWorkerPort] = messagePortPair();
-    new SharedDatabaseMessagePortServer(
-      workerContext,
-      secondWorkerPort,
-      context.signal,
-    );
-    const secondBridge = new MessagePortSharedDatabaseBridge(
-      secondPlatformPort,
-      location.origin,
-      bridgeEvents(),
-    );
-    const secondOwner = createChildAbortController(context.signal);
-    await secondBridge.heartbeat({ token: "second-token" }, secondOwner.signal);
-    expect(secondWorkerPort.closed).toBeFalsy();
-    expect(workerContext.credentialStoreCount()).toBe(2);
-    const oldResponses = movingWorkerPort.postedMessages.filter((message) => {
-      return (
-        typeof message === "object" &&
-        message !== null &&
-        "requestId" in message &&
-        message.requestId === oldQueryMessage.requestId
-      );
-    });
-    expect(oldResponses).toStrictEqual([]);
-
-    movingOwner.abort(new DOMException("App reloaded", "AbortError"));
-    await expect(oldRequest).rejects.toMatchObject({ name: "AbortError" });
-    await expect(changedHeartbeat).rejects.toMatchObject({
-      name: "AbortError",
-    });
-    secondOwner.abort();
-    keeperOwner.abort();
-    await vi.waitFor(() => {
-      expect(workerContext.credentialStoreCount()).toBe(0);
-    });
-  });
-
-  it("refreshes the token without reloading a same-credential MessagePort", async () => {
-    installHeartbeatAuthentication();
     const authorizationHeaders: (string | null)[] = [];
     context.mocks.api(
       chatThreadEventsContract.snapshot,
       ({ request, respond }) => {
-        authorizationHeaders.push(request.headers.get("authorization"));
+        const authorization = request.headers.get("authorization");
+        authorizationHeaders.push(authorization);
+        if (authorization === "Bearer first-token") {
+          return respond(401, {
+            error: { code: "UNAUTHORIZED", message: "token expired" },
+          });
+        }
         return respond(404, {
           error: {
             code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
@@ -691,16 +574,25 @@ describe("shared database MessagePort protocol", () => {
       workerPort,
       context.signal,
     );
-    const events = bridgeEvents();
-    const bridge = new MessagePortSharedDatabaseBridge(
+    const owner = createChildAbortController(context.signal);
+    let bridge: MessagePortSharedDatabaseBridge | null = null;
+    const events: SharedDatabaseBridgeEvents = {
+      ...bridgeEvents(),
+      authenticationRequired: async (recoveryId) => {
+        if (!bridge) {
+          throw new Error("Shared database bridge was not initialized");
+        }
+        await bridge.setToken(recoveryId, "refreshed-token", owner.signal);
+      },
+    };
+    bridge = new MessagePortSharedDatabaseBridge(
       platformPort,
       location.origin,
       events,
     );
-    const owner = createChildAbortController(context.signal);
 
     await bridge.heartbeat({ token: "first-token" }, owner.signal);
-    await bridge.heartbeat({ token: "refreshed-token" }, owner.signal);
+    await bridge.heartbeat({ token: "heartbeat-token" }, owner.signal);
     await expect(
       bridge.query(
         {
@@ -712,9 +604,9 @@ describe("shared database MessagePort protocol", () => {
       ),
     ).resolves.toStrictEqual([]);
 
-    expect(authorizationHeaders.length).toBeGreaterThan(0);
+    expect(heartbeatAuthenticationRequests).toBe(1);
     expect(new Set(authorizationHeaders)).toStrictEqual(
-      new Set(["Bearer refreshed-token"]),
+      new Set(["Bearer first-token", "Bearer refreshed-token"]),
     );
     expect(events.reloadRequired).not.toHaveBeenCalled();
     expect(workerPort.closed).toBeFalsy();
@@ -730,7 +622,7 @@ describe("shared database MessagePort protocol", () => {
     const statuses: SharedDatabaseConnectionStatus[] = [];
     const invalidations: SharedDatabaseDataKey[] = [];
     let reconnects = 0;
-    let authenticationRequests = 0;
+    const authenticationRequests: string[] = [];
     const computedReloads: ComputedKey[] = [];
     const readCursorUpdates: unknown[] = [];
     let reloads = 0;
@@ -740,8 +632,8 @@ describe("shared database MessagePort protocol", () => {
       platformPort,
       location.origin,
       {
-        authenticationRequired: () => {
-          authenticationRequests += 1;
+        authenticationRequired: (recoveryId) => {
+          authenticationRequests.push(recoveryId);
         },
         databaseInvalidated: (invalidatedKey) => {
           invalidations.push(invalidatedKey);
@@ -803,7 +695,8 @@ describe("shared database MessagePort protocol", () => {
 
     serverPort.postMessage({ type: "invalidate", dataKey: key });
     serverPort.postMessage({ type: "reconnect" });
-    serverPort.postMessage({ type: "authentication-required" });
+    const recoveryId = crypto.randomUUID();
+    serverPort.postMessage({ type: "authentication-required", recoveryId });
     const indicatorPayload = {
       threadId: crypto.randomUUID(),
       lastReadAt: null,
@@ -822,7 +715,7 @@ describe("shared database MessagePort protocol", () => {
       expect(invalidations).toStrictEqual([key]);
       expect(reconnects).toBe(1);
       expect(statuses).toStrictEqual(["disconnected"]);
-      expect(authenticationRequests).toBe(1);
+      expect(authenticationRequests).toStrictEqual([recoveryId]);
       expect(readCursorUpdates).toStrictEqual([indicatorPayload]);
       expect(computedReloads).toStrictEqual(["chat-thread-indicators"]);
       expect(reloads).toBe(1);
