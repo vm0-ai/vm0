@@ -84,6 +84,26 @@ describe("Pi agent model adapter", () => {
     ).toBeNull();
   });
 
+  it("limits priority requests to OpenAI Responses", () => {
+    expect(
+      resolvePiAgentModel({
+        ...OPENAI_TERRA,
+        api: "openai-responses",
+        serviceTier: "priority",
+      }),
+    ).not.toBeNull();
+    expect(
+      resolvePiAgentModel({
+        provider: "openrouter",
+        baseUrl: "https://openrouter.ai/api/v1",
+        apiKey: "test-key",
+        model: "openai/gpt-5.6-terra",
+        api: "openai-completions",
+        serviceTier: "priority",
+      }),
+    ).toBeNull();
+  });
+
   it("keeps legacy transport defaults and the DeepSeek Responses adapter", () => {
     expect(resolvePiAgentModel(OPENAI_TERRA)?.api).toBe("openai-completions");
     expect(

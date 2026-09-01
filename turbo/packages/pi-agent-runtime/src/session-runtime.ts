@@ -15,18 +15,30 @@ import {
 import type { PiPreheatedResourceSnapshot } from "./api-types";
 import { piAgentStream, resolvePiAgentModel } from "./model";
 import { piPreheatedResourceLoaderOptions } from "./resources";
-import type { PiAgentModelConfig } from "./types";
+import type { PiAgentModelConfig, PiAgentServiceTier } from "./types";
+
+function requestScopedPiAgentStream(
+  serviceTier: PiAgentServiceTier | undefined,
+): typeof piAgentStream {
+  if (serviceTier === undefined) {
+    return piAgentStream;
+  }
+  return (model, context, options) => {
+    return piAgentStream(model, context, { ...options, serviceTier });
+  };
+}
 
 function registeredModelConfig(
   model: NonNullable<ReturnType<typeof resolvePiAgentModel>>,
   apiKey: string,
+  serviceTier: PiAgentServiceTier | undefined,
 ) {
   return {
     name: model.provider,
     baseUrl: model.baseUrl,
     apiKey,
     api: model.api,
-    streamSimple: piAgentStream,
+    streamSimple: requestScopedPiAgentStream(serviceTier),
     models: [
       {
         id: model.id,
@@ -100,7 +112,7 @@ export async function createPiAgentSessionForRuntime(args: {
   });
   modelRuntime.registerProvider(
     args.model.provider,
-    registeredModelConfig(model, args.model.apiKey),
+    registeredModelConfig(model, args.model.apiKey, args.model.serviceTier),
   );
   const services = await createAgentSessionServices({
     cwd: args.cwd,

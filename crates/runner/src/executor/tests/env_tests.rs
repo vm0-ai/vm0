@@ -1639,6 +1639,14 @@ fn pi_execution_context_rejects_invalid_model_fields_before_sandbox() {
             "{pointer} produced unexpected error: {error}"
         );
     }
+
+    let mut context = pi_context_for_test();
+    context.pi_model_config.as_mut().unwrap()["serviceTier"] = json!("fast");
+    let error = validate_context_for_test(&context).unwrap_err();
+    assert!(
+        error.contains("Pi model config is invalid"),
+        "serviceTier produced unexpected error: {error}"
+    );
 }
 
 #[test]

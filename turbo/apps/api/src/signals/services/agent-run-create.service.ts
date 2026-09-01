@@ -8244,7 +8244,10 @@ function resolvePreparedPiModelConfig(args: {
   if (!args.createArgs.piExecution) {
     return undefined;
   }
-  const config = resolvePiSandboxModelConfig(args.modelProvider);
+  const config = resolvePiSandboxModelConfig(
+    args.modelProvider,
+    args.createArgs.codexServiceTier,
+  );
   if (!config) {
     throw new Error(
       "Selected Pi execution requires a supported Pi model provider configuration",

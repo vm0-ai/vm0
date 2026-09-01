@@ -396,7 +396,7 @@ describe("Pi sandbox execution contract", () => {
     rawSize: 1024,
   };
 
-  it("accepts optional Terra runtime fields while preserving legacy configs", () => {
+  it("accepts optional Terra runtime policy while preserving legacy configs", () => {
     expect(piModelConfigSchema.parse(piStoredContext.piModelConfig)).toEqual(
       piStoredContext.piModelConfig,
     );
@@ -407,10 +407,27 @@ describe("Pi sandbox execution contract", () => {
         model: "gpt-5.6-terra",
         api: "openai-responses",
         thinkingLevel: "low",
+        serviceTier: "priority",
         apiKeyEnv: "OPENAI_API_KEY",
         credentialSecretName: "OPENAI_API_KEY",
       }),
-    ).toMatchObject({ api: "openai-responses", thinkingLevel: "low" });
+    ).toMatchObject({
+      api: "openai-responses",
+      thinkingLevel: "low",
+      serviceTier: "priority",
+    });
+    expect(
+      piModelConfigSchema.safeParse({
+        provider: "openai",
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-5.6-terra",
+        api: "openai-responses",
+        thinkingLevel: "low",
+        serviceTier: "fast",
+        apiKeyEnv: "OPENAI_API_KEY",
+        credentialSecretName: "OPENAI_API_KEY",
+      }).success,
+    ).toBe(false);
   });
 
   it("accepts manifest v1 as the implicit start-at-1 contract", () => {

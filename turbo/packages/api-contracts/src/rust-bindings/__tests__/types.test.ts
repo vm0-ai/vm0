@@ -280,6 +280,7 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain("pub enum PiModelConfigProvider {");
     expect(firstRender).toContain("pub enum PiModelConfigApi {");
     expect(firstRender).toContain("pub enum PiModelConfigThinkingLevel {");
+    expect(firstRender).toContain("pub enum PiModelConfigServiceTier {");
     expect(firstRender).toContain("pub enum PiModelConfigApiKeyEnv {");
     expect(firstRender).toContain(
       "pub http_headers: Option<std::collections::BTreeMap<String, String>>",
@@ -471,6 +472,9 @@ describe("Rust type bindings", () => {
         },
         thinkingLevel: {
           enum: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
+        },
+        serviceTier: {
+          enum: ["priority"],
         },
       },
     });

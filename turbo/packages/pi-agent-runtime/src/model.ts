@@ -1,6 +1,10 @@
 import { streamSimple as streamSimpleCodex } from "@earendil-works/pi-ai/api/openai-codex-responses";
 import { streamSimple } from "@earendil-works/pi-ai/api/openai-completions";
-import { streamSimple as streamSimpleResponses } from "@earendil-works/pi-ai/api/openai-responses";
+import {
+  stream as streamResponses,
+  streamSimple as streamSimpleResponses,
+} from "@earendil-works/pi-ai/api/openai-responses";
+import { buildBaseOptions } from "@earendil-works/pi-ai/api/simple-options";
 import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
 import { moonshotaiProvider } from "@earendil-works/pi-ai/providers/moonshotai";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
@@ -12,14 +16,15 @@ import type {
   AssistantMessageEventStream,
   Context,
   Model,
-  SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
+import { clampThinkingLevel } from "@earendil-works/pi-ai";
 
 import type {
   PiAgentApi,
   PiAgentModelConfig,
   PiOpenAICompatibleProvider,
 } from "./types";
+import type { PiAgentStreamOptions } from "./stream-options";
 
 type PiCatalogProvider = Exclude<PiOpenAICompatibleProvider, "codex">;
 
@@ -131,11 +136,36 @@ function codexJwtShape(accountId: string): string {
   return `${header}.${payload}.vm0-placeholder`;
 }
 
+function streamSimpleResponsesWithPolicy(
+  model: Model<"openai-responses">,
+  context: Context,
+  options?: PiAgentStreamOptions,
+): AssistantMessageEventStream {
+  const base = buildBaseOptions(model, context, options, options?.apiKey);
+  const clampedReasoning =
+    options?.reasoning === undefined
+      ? undefined
+      : clampThinkingLevel(model, options.reasoning);
+  return streamResponses(model, context, {
+    ...base,
+    reasoningEffort: clampedReasoning === "off" ? undefined : clampedReasoning,
+    serviceTier: options?.serviceTier,
+  });
+}
+
 export const piAgentStream = (
   model: Model<Api>,
   context: Context,
-  options?: SimpleStreamOptions,
+  options?: PiAgentStreamOptions,
 ): AssistantMessageEventStream => {
+  if (
+    options?.serviceTier !== undefined &&
+    (model.provider !== "openai" || model.api !== "openai-responses")
+  ) {
+    throw new Error(
+      "Pi priority service tier requires the OpenAI Responses transport",
+    );
+  }
   if (model.api === "openai-codex-responses") {
     const apiKey = options?.apiKey;
     const jwtApiKey =
@@ -149,7 +179,14 @@ export const piAgentStream = (
     );
   }
   if (model.api === "openai-responses") {
-    return streamSimpleResponses(
+    if (options?.serviceTier === undefined) {
+      return streamSimpleResponses(
+        model as Model<"openai-responses">,
+        context,
+        options,
+      );
+    }
+    return streamSimpleResponsesWithPolicy(
       model as Model<"openai-responses">,
       context,
       options,
@@ -170,7 +207,11 @@ export function resolvePiAgentModel(
       .find((candidate) => {
         return candidate.id === config.model;
       });
-    if (!source || (config.api !== undefined && source.api !== config.api)) {
+    if (
+      !source ||
+      (config.api !== undefined && source.api !== config.api) ||
+      config.serviceTier !== undefined
+    ) {
       return null;
     }
     return {
@@ -198,7 +239,10 @@ export function resolvePiAgentModel(
     headers: source.headers,
   };
   if (config.provider === "deepseek") {
-    if (config.api !== undefined && config.api !== "openai-responses") {
+    if (
+      (config.api !== undefined && config.api !== "openai-responses") ||
+      config.serviceTier !== undefined
+    ) {
       return null;
     }
     return { ...base, api: "openai-responses" };
@@ -206,7 +250,9 @@ export function resolvePiAgentModel(
   const api = config.api ?? "openai-completions";
   if (
     !supportedPiApi(source.api) ||
-    (config.api && source.api !== config.api)
+    (config.api && source.api !== config.api) ||
+    (config.serviceTier !== undefined &&
+      (config.provider !== "openai" || api !== "openai-responses"))
   ) {
     return null;
   }

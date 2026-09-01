@@ -151,6 +151,14 @@ pub mod runners {
             Max,
         }
 
+        /// Provider request service tiers supported by the Pi runtime.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigServiceTier {
+            /// OpenAI priority service tier.
+            #[serde(rename = "priority")]
+            Priority,
+        }
+
         /// Environment variables supported for Pi provider credentials.
         #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
         pub enum PiModelConfigApiKeyEnv {
@@ -181,6 +189,9 @@ pub mod runners {
             /// Explicit Pi thinking level. Legacy payloads omit this field and retain Pi's medium default.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub thinking_level: Option<PiModelConfigThinkingLevel>,
+            /// Per-run provider request service tier. Legacy and standard payloads omit this field.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub service_tier: Option<PiModelConfigServiceTier>,
             /// Environment variable containing the provider key.
             pub api_key_env: PiModelConfigApiKeyEnv,
             /// API-owned credential secret backing the environment entry.

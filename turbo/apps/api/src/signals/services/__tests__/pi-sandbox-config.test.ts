@@ -26,6 +26,29 @@ describe("Pi sandbox model configuration", () => {
     });
   });
 
+  it("translates built-in OpenAI Terra fast mode to priority", () => {
+    expect(
+      resolvePiSandboxModelConfig(
+        {
+          type: "built-in",
+          concreteType: "openai-api-key",
+          environment: { OPENAI_MODEL: "gpt-5.6-terra" },
+          selectedModel: "gpt-5.6-terra",
+        },
+        "fast",
+      ),
+    ).toStrictEqual({
+      provider: "openai",
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-5.6-terra",
+      api: "openai-responses",
+      thinkingLevel: "low",
+      serviceTier: "priority",
+      apiKeyEnv: "OPENAI_API_KEY",
+      credentialSecretName: "OPENAI_API_KEY",
+    });
+  });
+
   it("resolves the built-in OpenRouter Terra fallback route", () => {
     expect(
       resolvePiSandboxModelConfig({
@@ -46,6 +69,23 @@ describe("Pi sandbox model configuration", () => {
       apiKeyEnv: "OPENAI_API_KEY",
       credentialSecretName: "OPENROUTER_API_KEY",
     });
+  });
+
+  it("classifies fast Terra on OpenRouter as Pi-incompatible", () => {
+    expect(
+      resolvePiSandboxModelConfig(
+        {
+          type: "built-in",
+          concreteType: "openrouter-codex",
+          environment: {
+            OPENAI_BASE_URL: "https://openrouter.ai/api/v1",
+            OPENAI_MODEL: "openai/gpt-5.6-terra",
+          },
+          selectedModel: "gpt-5.6-terra",
+        },
+        "fast",
+      ),
+    ).toBeNull();
   });
 
   it("classifies a provider base mismatch as Pi-incompatible", () => {

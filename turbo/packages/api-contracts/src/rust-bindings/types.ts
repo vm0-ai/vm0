@@ -227,6 +227,9 @@ export const rustTypeBindings = [
           thinkingLevel: [
             "Explicit Pi thinking level. Legacy payloads omit this field and retain Pi's medium default.",
           ],
+          serviceTier: [
+            "Per-run provider request service tier. Legacy and standard payloads omit this field.",
+          ],
           apiKeyEnv: ["Environment variable containing the provider key."],
           credentialSecretName: [
             "API-owned credential secret backing the environment entry.",
@@ -265,6 +268,15 @@ export const rustTypeBindings = [
           high: ["High thinking."],
           xhigh: ["Extra-high thinking."],
           max: ["Maximum thinking."],
+        },
+      },
+      {
+        rustTypeName: "PiModelConfigServiceTier",
+        rustDoc: [
+          "Provider request service tiers supported by the Pi runtime.",
+        ],
+        variants: {
+          priority: ["OpenAI priority service tier."],
         },
       },
       {

@@ -925,6 +925,9 @@ export const piModelConfigSchema = z
     thinkingLevel: z
       .enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"])
       .optional(),
+    // Per-run provider request policy. This is not Pi session identity or
+    // persisted Pi JSONL metadata.
+    serviceTier: z.enum(["priority"]).optional(),
     apiKeyEnv: z.enum([
       "ANTHROPIC_AUTH_TOKEN",
       "OPENAI_API_KEY",

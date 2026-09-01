@@ -427,6 +427,7 @@ async function startOwnershipTransferHost(args: {
   readonly baseSessionSha256: string | null;
   readonly providerBaseUrl: string;
   readonly model?: "deepseek" | "terra";
+  readonly serviceTier?: "priority";
 }): Promise<{
   readonly host: RpcHost;
   readonly handoffServer: Server;
@@ -516,6 +517,7 @@ async function startOwnershipTransferHost(args: {
       ...(terra
         ? { api: "openai-responses" as const, thinkingLevel: "low" as const }
         : {}),
+      ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
       apiKeyEnv: "OPENAI_API_KEY",
       credentialSecretName: terra ? "OPENAI_API_KEY" : "DEEPSEEK_API_KEY",
     }),
@@ -546,7 +548,7 @@ describe("sandbox Pi agent loop", () => {
     ).resolves.toEqual(CONFIG);
   });
 
-  it("reads optional Terra transport and thinking fields from the launch config", async () => {
+  it("reads optional Terra transport and request policy from the launch config", async () => {
     const env = piEnv({ OKOU_RUN_ID: RUN_ID });
     env.OKOU_PI_MODEL_CONFIG = JSON.stringify({
       provider: "openai",
@@ -554,6 +556,7 @@ describe("sandbox Pi agent loop", () => {
       model: "gpt-5.6-terra",
       api: "openai-responses",
       thinkingLevel: "low",
+      serviceTier: "priority",
       apiKeyEnv: "OPENAI_API_KEY",
       credentialSecretName: "OPENAI_API_KEY",
     });
@@ -565,6 +568,7 @@ describe("sandbox Pi agent loop", () => {
         model: "gpt-5.6-terra",
         api: "openai-responses",
         thinkingLevel: "low",
+        serviceTier: "priority",
         apiKey: "test-api-key",
       },
     });
@@ -677,6 +681,7 @@ describe("sandbox Pi agent loop", () => {
         baseSessionSha256: null,
         providerBaseUrl: provider.baseUrl,
         model: "terra",
+        serviceTier: "priority",
       });
       host = started.host;
       handoffServer = started.handoffServer;
@@ -699,6 +704,9 @@ describe("sandbox Pi agent loop", () => {
       );
       expect(continuationBody).toContain("rs_terra_okou_handoff");
       expect(occurrences(continuationBody, prompt)).toBe(1);
+      expect(continuationRequest.body).toMatchObject({
+        service_tier: "priority",
+      });
       continuationRequest.respond("Terra Okou handoff complete");
       await host.waitFor((record) => {
         return record.type === "agent_settled";
@@ -709,6 +717,8 @@ describe("sandbox Pi agent loop", () => {
       expect(provider.requests).toHaveLength(1);
       const persisted = await readFile(String(state.sessionFile), "utf8");
       expect(occurrences(persisted, prompt)).toBe(1);
+      expect(persisted).not.toContain("serviceTier");
+      expect(persisted).not.toContain("service_tier");
       expect(persisted).toContain("api-terra-read-call");
       expect(persisted).toContain(
         "Terra tool output from the sandbox filesystem",
@@ -727,7 +737,7 @@ describe("sandbox Pi agent loop", () => {
     }
   }, 30_000);
 
-  it("runs the sandbox-first prompt exactly once through AgentSession", async () => {
+  it("keeps standard Terra tierless on the sandbox-first AgentSession call", async () => {
     const root = await mkdtemp(join(tmpdir(), "vm0-pi-sandbox-first-rpc-"));
     const prompt = "execute this sandbox-owned first turn once";
     const provider = await ProviderHarness.start();
@@ -742,6 +752,7 @@ describe("sandbox Pi agent loop", () => {
         mode: "sandbox-first",
         baseSessionSha256: null,
         providerBaseUrl: provider.baseUrl,
+        model: "terra",
       });
       host = started.host;
       handoffServer = started.handoffServer;
@@ -758,6 +769,7 @@ describe("sandbox Pi agent loop", () => {
       host.send({ id: "sandbox-first", type: "prompt", message: prompt });
       const request = await provider.nextRequest();
       expect(occurrences(JSON.stringify(request.body), prompt)).toBe(1);
+      expect(request.body).not.toHaveProperty("service_tier");
       request.respond("sandbox-first complete");
       await host.waitFor((record) => {
         return record.type === "agent_settled";
@@ -779,7 +791,7 @@ describe("sandbox Pi agent loop", () => {
     }
   }, 20_000);
 
-  it("lets sandbox-first AgentSession compact H0 before the original prompt", async () => {
+  it("keeps priority on compaction and the original AgentSession prompt", async () => {
     const root = await mkdtemp(join(tmpdir(), "vm0-pi-compaction-rpc-"));
     const priorPrompt = "prior context that requires official compaction";
     const prompt = "run this original prompt after official compaction";
@@ -853,6 +865,8 @@ describe("sandbox Pi agent loop", () => {
         mode: "sandbox-first",
         baseSessionSha256: createHash("sha256").update(h0).digest("hex"),
         providerBaseUrl: provider.baseUrl,
+        model: "terra",
+        serviceTier: "priority",
       });
       host = started.host;
       handoffServer = started.handoffServer;
@@ -864,10 +878,14 @@ describe("sandbox Pi agent loop", () => {
       const compactionBody = JSON.stringify(compactionRequest.body);
       expect(compactionBody).toContain(priorPrompt);
       expect(compactionBody).not.toContain(prompt);
+      expect(compactionRequest.body).toMatchObject({
+        service_tier: "priority",
+      });
       compactionRequest.respond(compactionSummary);
 
       const promptRequest = await provider.nextRequest();
       expect(occurrences(JSON.stringify(promptRequest.body), prompt)).toBe(1);
+      expect(promptRequest.body).toMatchObject({ service_tier: "priority" });
       promptRequest.respond(finalAnswer);
       await host.waitFor((record) => {
         return record.type === "agent_settled";
