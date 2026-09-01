@@ -822,6 +822,74 @@ describe("Google Forms Pub/Sub webhook", () => {
     await flushWaitUntilForTest();
   });
 
+  it("rebinds watches after clearing a selection and changing the default account", async () => {
+    const {
+      first,
+      second,
+      firstConnector,
+      firstWatchId,
+      secondConnector,
+      secondWatchId,
+      formsApi,
+    } = await setupGoogleFormsMultiAccountAutomations();
+
+    await accept(
+      chatThreadConnectorSelectionsClient().clear({
+        headers: authHeaders(),
+        params: { id: second.chatThreadId },
+        body: { kind: "builtin", connectorSlug: "google-forms" },
+      }),
+      [204],
+    );
+    const cleared = await accept(
+      automationsClient().get({
+        headers: authHeaders(),
+        params: { id: second.automationId },
+      }),
+      [200],
+    );
+    if (
+      cleared.body.kind !== "event" ||
+      cleared.body.eventType !== "google-forms-response-submitted"
+    ) {
+      throw new Error("Expected a cleared Google Forms automation selection");
+    }
+    expect(cleared.body.eventConfig.connectorId).toBe(firstConnector.id);
+    expect(formsApi.stoppedWatchIds).toStrictEqual([secondWatchId]);
+
+    await accept(
+      connectorAccountsClient().setDefault({
+        headers: authHeaders(),
+        params: { connectionId: secondConnector.id },
+        body: {
+          target: { kind: "builtin", connectorSlug: "google-forms" },
+        },
+      }),
+      [200],
+    );
+    for (const automation of [first, second]) {
+      const defaulted = await accept(
+        automationsClient().get({
+          headers: authHeaders(),
+          params: { id: automation.automationId },
+        }),
+        [200],
+      );
+      if (
+        defaulted.body.kind !== "event" ||
+        defaulted.body.eventType !== "google-forms-response-submitted"
+      ) {
+        throw new Error("Expected a defaulted Google Forms automation");
+      }
+      expect(defaulted.body.eventConfig.connectorId).toBe(secondConnector.id);
+    }
+    expect(formsApi.watchIds).toHaveLength(3);
+    expect(formsApi.stoppedWatchIds).toStrictEqual([
+      secondWatchId,
+      firstWatchId,
+    ]);
+  });
+
   it("repairs watches after account replacement, deletion, and re-add", async () => {
     const {
       actor,
