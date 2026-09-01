@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/official-workflow-catalog";
 import {
   testOfficialWorkflowCatalogStateContract,
   type TestOfficialWorkflowCatalogStateActionBody,
@@ -23,7 +24,7 @@ import {
 } from "@okouai/db/schema/workflow";
 import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { command } from "ccstate";
-import { and, asc, count, eq, inArray, like, or } from "drizzle-orm";
+import { and, asc, count, eq, inArray, like, or, sql } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import { testOverride } from "../../lib/singleton";
@@ -57,6 +58,7 @@ const DEPLOYED_TEST_STORAGE_NAMES = [
   getOfficialWorkflowDefinitionStorageName("connector-doctor"),
   getOfficialWorkflowDefinitionStorageName("morning-brief"),
 ] as const;
+const PREVIOUS_SCHEMA_RELEASE_ID = "f".repeat(64);
 
 interface DormantMaterializationPause {
   readonly reached: ReturnType<typeof createDeferredPromise<void>>;
@@ -170,6 +172,31 @@ async function cleanupTestState(db: Db, signal: AbortSignal): Promise<void> {
         ),
       ),
     );
+  signal.throwIfAborted();
+}
+
+async function seedPreviousSchemaRelease(
+  db: Db,
+  signal: AbortSignal,
+): Promise<void> {
+  const previousSchemaVersion = OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION - 1;
+  if (previousSchemaVersion < 1) {
+    throw new Error("Official Workflow catalog has no previous schema version");
+  }
+  const payload = JSON.stringify({
+    schemaVersion: previousSchemaVersion,
+    definitions: [],
+  });
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`
+      INSERT INTO ${officialWorkflowCatalogReleases} (id, payload)
+      VALUES (${PREVIOUS_SCHEMA_RELEASE_ID}, ${payload}::jsonb)
+    `);
+    await tx.insert(officialWorkflowCatalogState).values({
+      authority: "official",
+      acceptedReleaseId: PREVIOUS_SCHEMA_RELEASE_ID,
+    });
+  });
   signal.throwIfAborted();
 }
 
@@ -724,6 +751,10 @@ const officialWorkflowCatalogTestStateRoute$ = command(
     const db = set(writeDb$);
     if (bodyResult.data.action === "cleanup") {
       await cleanupTestState(db, signal);
+      return await stateResponse(db, undefined, null, signal);
+    }
+    if (bodyResult.data.action === "seed-previous-schema-release") {
+      await seedPreviousSchemaRelease(db, signal);
       return await stateResponse(db, undefined, null, signal);
     }
     if (

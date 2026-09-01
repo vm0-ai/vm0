@@ -55,13 +55,6 @@ function scheduleBlueprint(
     key,
     parameters: [
       {
-        key: "time-zone",
-        type: "string",
-        format: "timezone",
-        required: true,
-        derivation: { kind: "user-timezone" },
-      },
-      {
         key: "include-weekends",
         type: "boolean",
         required: false,
@@ -73,7 +66,6 @@ function scheduleBlueprint(
       schedule: {
         type: "cron",
         cronExpression,
-        timezone: { parameter: "time-zone" },
       },
     },
     runtime: { resultEmail: false },
@@ -353,6 +345,31 @@ beforeEach(async () => {
 });
 
 describe.sequential("Official Workflow catalog release boundary", () => {
+  it("replaces a previous schema release through the current source boundary", async () => {
+    const seeded = await stateAction({
+      action: "seed-previous-schema-release",
+    });
+    expect(seeded.body).toMatchObject({
+      catalog: null,
+      counts: { releases: 1 },
+    });
+
+    const synced = await syncCatalog(catalog([]));
+    expect(synced.body).toMatchObject({
+      outcome: "accepted",
+      diagnostics: [],
+    });
+
+    const state = await readState();
+    expect(state.body.catalog).toMatchObject({
+      releaseId: synced.body.releaseId,
+      payload: {
+        schemaVersion: OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION,
+        definitions: [],
+      },
+    });
+  });
+
   it("authenticates sync and accepts an idempotent empty initial catalog", async () => {
     const unauthorized = await syncCatalogUnauthorized(catalog([]));
     expect(unauthorized.status).toBe(401);
@@ -421,21 +438,12 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       blueprints: [
         {
           key: "daily-delivery",
-          parameters: [
-            {
-              key: "timezone",
-              type: "string",
-              format: "timezone",
-              required: true,
-              derivation: { kind: "user-timezone" },
-            },
-          ],
+          parameters: [],
           desiredState: {
             kind: "schedule",
             schedule: {
               type: "cron",
               cronExpression: "0 7 * * *",
-              timezone: { parameter: "timezone" },
             },
           },
           runtime: { resultEmail: true },
@@ -448,21 +456,12 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       blueprints: [
         {
           key: "weekly-check",
-          parameters: [
-            {
-              key: "timezone",
-              type: "string",
-              format: "timezone",
-              required: true,
-              derivation: { kind: "user-timezone" },
-            },
-          ],
+          parameters: [],
           desiredState: {
             kind: "schedule",
             schedule: {
               type: "cron",
               cronExpression: "0 9 * * 1",
-              timezone: { parameter: "timezone" },
             },
           },
           runtime: { resultEmail: false },
@@ -1068,11 +1067,11 @@ describe.sequential("Official Workflow catalog release boundary", () => {
               ...scheduleBlueprint("daily"),
               parameters: [
                 {
-                  key: "time-zone",
+                  key: "callback-url",
                   type: "string",
-                  format: "text",
+                  format: "url",
                   required: true,
-                  derivation: { kind: "user-timezone" },
+                  default: "not-a-url",
                 },
               ],
             },
