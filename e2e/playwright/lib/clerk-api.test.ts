@@ -298,6 +298,44 @@ test("does not replay non-idempotent user creation", async () => {
   );
 });
 
+test("does not replay a create whose response is lost after it was sent", async () => {
+  await withClerkServer(
+    (request, response) => {
+      if (request.method === "POST" && request.url === "/v1/users") {
+        requestSocketFailure(response);
+        return;
+      }
+      sendJson(response, 404, { errors: [] });
+    },
+    async (requests) => {
+      const error = await captureError(async () => {
+        await createUser("lost-response@example.com");
+      });
+
+      assert.match(
+        error.message,
+        /^create Clerk user request failed after 1 attempt: /,
+      );
+      assert.match(error.message, /UND_ERR_SOCKET/);
+      assert.equal(countRequests(requests, "POST", "/v1/users"), 1);
+    },
+  );
+});
+
+test("reissues a create whose connection was never established", async () => {
+  await withUnreachableClerkServer(async () => {
+    const error = await captureError(async () => {
+      await createUser("unreachable@example.com");
+    });
+
+    assert.match(
+      error.message,
+      /^create Clerk user request failed after 4 attempts: /,
+    );
+    assert.match(error.message, /ECONNREFUSED/);
+  });
+});
+
 test("collects all pages before generation cleanup and isolates roles", async () => {
   const currentPlaywrightEmail =
     "test-job+clerk_test+4000-2+playwright-deadbeef@vm0-e2e.ai";
@@ -911,6 +949,41 @@ async function withClerkServer(
         await closeServer(server);
       }
     },
+  );
+}
+
+/**
+ * Binds and releases a loopback port so the Clerk base URL points at a port
+ * nothing listens on. Every connection is then refused before a request byte
+ * can be written, which is the failure the create path is allowed to reissue.
+ */
+async function withUnreachableClerkServer(
+  run: () => Promise<void>,
+): Promise<void> {
+  const server = createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+
+  const address = server.address();
+  await closeServer(server);
+  if (!address || typeof address === "string") {
+    throw new Error("Expected Clerk test server to listen on a TCP port");
+  }
+
+  await withEnvironmentAsync(
+    {
+      CLERK_API_TEST_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
+      CLERK_SECRET_KEY: "sk_test_fixture",
+      JOB_REF: "test-job",
+      GITHUB_RUN_ID: "4000",
+      GITHUB_RUN_ATTEMPT: "2",
+    },
+    run,
   );
 }
 
