@@ -5217,6 +5217,18 @@
         },
         "title": "Idioma"
       },
+      "morningBrief": {
+        "conflict": "O Morning Brief está temporariamente indisponível porque o estado da instalação está inconsistente. Tente novamente quando a reconciliação terminar.",
+        "description": "Receba um e-mail diário às 7h no seu fuso horário com prioridades do Gmail, GitHub, Calendar e Chats não lidos.",
+        "loading": "Carregando as configurações do Morning Brief...",
+        "missingDefaultAgent": "Escolha um Agent padrão utilizável antes de ativar o Morning Brief.",
+        "missingTimezone": "Defina um fuso horário válido antes de ativar o Morning Brief.",
+        "multipleInstallations": "Existem várias instalações do Morning Brief. Resolva o conflito antes de alterar esta preferência.",
+        "nextEmail": "Próximo e-mail: {{date}} ({{timezone}})",
+        "retry": "Tentar novamente",
+        "retryMessage": "Não foi possível carregar ou atualizar as configurações do Morning Brief. Tente novamente para continuar.",
+        "title": "Resumo matinal"
+      },
       "pageDescription": "Gerencie suas preferências de aparência e de execução dos agentes",
       "pageTitle": "Preferências",
       "send": {

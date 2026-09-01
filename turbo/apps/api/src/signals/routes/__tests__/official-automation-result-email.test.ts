@@ -17,6 +17,7 @@ import {
   clearResultEmailUserStateFixture,
   completeResultEmailRunWithoutCallbacksFixture,
   holdResultEmailClaimBoundaryFixture,
+  markWorkflowAsMorningBriefResultEmailFixture,
   readResultEmailPreferenceFixture,
 } from "../../../test-fixtures/official-automation-result-email";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -343,6 +344,64 @@ describe.sequential("Official Automation result email callbacks", () => {
     );
     await runs.requestCancelRun(scenario.actor, agentRun.body.runId, [200]);
     await flushWaitUntilForTest();
+  });
+
+  it("links Morning Brief management to Preferences without changing account unsubscribe", async () => {
+    const scenario = await setupScenario();
+    const runId = await startRun(scenario, "https://app.okou.ai");
+    await seedResultCallback({
+      runId,
+      automationId: scenario.automationId,
+      publicBrand: "okou",
+      workflowName: "Morning Brief",
+    });
+    await completeResultEmailRunWithoutCallbacksFixture(runId);
+    await markWorkflowAsMorningBriefResultEmailFixture(scenario.workflowId);
+    await accept(
+      executionClient().interruptResultEmailCallback({
+        body: { run_id: runId },
+      }),
+      [200],
+    );
+    const source = await outbox.findSourceState({
+      sourceRunId: runId,
+      sourceWorkflowAutomationId: scenario.automationId,
+    });
+    const item = source.items[0];
+    if (!item) {
+      throw new Error("Expected a Morning Brief result email");
+    }
+    const manageUrl =
+      "https://app.okou.ai/settings?tab=timezone&focus=morning-brief";
+    const accountUnsubscribeUrl = `https://app.okou.ai/email/unsubscribe?token=${unsubscribeToken(
+      scenario.actor.userId,
+    )}`;
+    expect(item.template).toMatchObject({
+      template: "official-automation-result",
+      props: { manageUrl },
+    });
+    expect(item.headers).toStrictEqual({
+      "List-Unsubscribe": `<https://api.okou.ai/api/email/unsubscribe?token=${unsubscribeToken(
+        scenario.actor.userId,
+      )}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    });
+
+    await expect(outbox.drainItems([item.id])).resolves.toBe(1);
+    const send = context.mocks.resend.send.mock.calls[0]?.[0];
+    const html =
+      typeof send === "object" &&
+      send !== null &&
+      "html" in send &&
+      typeof send.html === "string"
+        ? send.html
+        : "";
+    expect(html).toContain(
+      'href="https://app.okou.ai/settings?tab=timezone&amp;focus=morning-brief"',
+    );
+    expect(html).toContain(
+      `>Manage this automation</a> &middot; <a href="${accountUnsubscribeUrl}"`,
+    );
   });
 
   it("retries independently of Run success and renders bounded Okou Markdown multipart output for a VM0 snapshot", async () => {

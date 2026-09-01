@@ -5158,6 +5158,18 @@
         },
         "title": "भाषा"
       },
+      "morningBrief": {
+        "conflict": "इंस्टॉलेशन स्थिति असंगत होने के कारण Morning Brief अस्थायी रूप से उपलब्ध नहीं है। मिलान पूरा होने पर फिर से कोशिश करें।",
+        "description": "अपने समय क्षेत्र में हर दिन सुबह 7:00 बजे Gmail, GitHub, Calendar और बिना पढ़े Chats की प्राथमिकताओं वाला ईमेल पाएँ।",
+        "loading": "Morning Brief सेटिंग लोड हो रही हैं...",
+        "missingDefaultAgent": "Morning Brief चालू करने से पहले उपयोग योग्य डिफ़ॉल्ट Agent चुनें।",
+        "missingTimezone": "Morning Brief चालू करने से पहले एक मान्य समय क्षेत्र सेट करें।",
+        "multipleInstallations": "Morning Brief के कई इंस्टॉलेशन मौजूद हैं। इस प्राथमिकता को बदलने से पहले विरोध हल करें।",
+        "nextEmail": "अगला ईमेल: {{date}} ({{timezone}})",
+        "retry": "फिर से कोशिश करें",
+        "retryMessage": "Morning Brief सेटिंग लोड या अपडेट नहीं हो सकीं। जारी रखने के लिए फिर से कोशिश करें।",
+        "title": "सुबह की संक्षिप्त जानकारी"
+      },
       "pageDescription": "अपनी उपस्थिति और एजेंट रनटाइम प्राथमिकताएँ प्रबंधित करें।",
       "pageTitle": "प्राथमिकताएँ",
       "send": {

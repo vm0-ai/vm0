@@ -5150,6 +5150,18 @@
         },
         "title": "Bahasa"
       },
+      "morningBrief": {
+        "conflict": "Morning Brief untuk sementara tidak tersedia karena status instalasinya tidak konsisten. Coba lagi setelah rekonsiliasi selesai.",
+        "description": "Dapatkan email harian pukul 07.00 di zona waktu Anda dengan prioritas dari Gmail, GitHub, Calendar, dan Chats yang belum dibaca.",
+        "loading": "Memuat pengaturan Morning Brief...",
+        "missingDefaultAgent": "Pilih Agent default yang dapat digunakan sebelum mengaktifkan Morning Brief.",
+        "missingTimezone": "Tetapkan zona waktu yang valid sebelum mengaktifkan Morning Brief.",
+        "multipleInstallations": "Ada beberapa instalasi Morning Brief. Selesaikan konflik sebelum mengubah preferensi ini.",
+        "nextEmail": "Email berikutnya: {{date}} ({{timezone}})",
+        "retry": "Coba lagi",
+        "retryMessage": "Pengaturan Morning Brief tidak dapat dimuat atau diperbarui. Coba lagi untuk melanjutkan.",
+        "title": "Brief Pagi"
+      },
       "pageDescription": "Kelola tampilan dan preferensi runtime agen Anda",
       "pageTitle": "Preferensi",
       "send": {

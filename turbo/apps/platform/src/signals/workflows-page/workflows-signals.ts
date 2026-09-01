@@ -33,6 +33,7 @@ import {
   type WorkflowAutomationSummary,
   type WorkflowUpdateRequest,
 } from "@okouai/api-contracts/contracts/workflows";
+import { MORNING_BRIEF_OFFICIAL_DEFINITION_NAME } from "@okouai/api-contracts/contracts/morning-brief-preference";
 
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
@@ -735,6 +736,14 @@ export const reloadWorkflows$ = command(({ set }) => {
   set(internalWorkflowConnectorReadiness$, null);
 });
 
+export function isMorningBriefWorkflow(
+  workflow: Pick<WorkflowSummary, "official">,
+): boolean {
+  return (
+    workflow.official?.definitionName === MORNING_BRIEF_OFFICIAL_DEFINITION_NAME
+  );
+}
+
 /** The current agent detail route's visible workflows. */
 export const currentAgentVisibleWorkflows$ = computed(
   async (get): Promise<readonly WorkflowSummary[]> => {
@@ -745,7 +754,9 @@ export const currentAgentVisibleWorkflows$ = computed(
     }
     const client = get(apiClient$)(workflowsCollectionContract);
     const result = await accept(client.list({ query: { agentId } }), [200]);
-    return result.body;
+    return result.body.filter((workflow) => {
+      return !isMorningBriefWorkflow(workflow);
+    });
   },
 );
 
@@ -755,14 +766,18 @@ export const allVisibleWorkflows$ = computed(
     const locale = get(locale$);
     const client = get(apiClient$)(workflowsCollectionContract);
     const result = await accept(client.list({ query: {} }), [200]);
-    return [...result.body].sort((a, b) => {
-      if (a.visibility !== b.visibility) {
-        return a.visibility === "public" ? -1 : 1;
-      }
-      const aTitle = a.displayName ?? a.name;
-      const bTitle = b.displayName ?? b.name;
-      return aTitle.localeCompare(bTitle, locale);
-    });
+    return result.body
+      .filter((workflow) => {
+        return !isMorningBriefWorkflow(workflow);
+      })
+      .sort((a, b) => {
+        if (a.visibility !== b.visibility) {
+          return a.visibility === "public" ? -1 : 1;
+        }
+        const aTitle = a.displayName ?? a.name;
+        const bTitle = b.displayName ?? b.name;
+        return aTitle.localeCompare(bTitle, locale);
+      });
   },
 );
 
@@ -775,22 +790,26 @@ export const allWorkflowAutomationEntries$ = computed(
       automationClient.listWorkspace(),
       [200],
     );
-    return [...automationResult.body].sort((a, b) => {
-      if (a.automation.enabled !== b.automation.enabled) {
-        return a.automation.enabled ? -1 : 1;
-      }
-      const aNext = a.automation.nextRunAt ?? "";
-      const bNext = b.automation.nextRunAt ?? "";
-      if (aNext && bNext && aNext !== bNext) {
-        return aNext.localeCompare(bNext);
-      }
-      if (aNext !== bNext) {
-        return aNext ? -1 : 1;
-      }
-      const aTitle = a.workflow.displayName ?? a.workflow.name;
-      const bTitle = b.workflow.displayName ?? b.workflow.name;
-      return aTitle.localeCompare(bTitle, locale);
-    });
+    return automationResult.body
+      .filter((entry) => {
+        return !isMorningBriefWorkflow(entry.workflow);
+      })
+      .sort((a, b) => {
+        if (a.automation.enabled !== b.automation.enabled) {
+          return a.automation.enabled ? -1 : 1;
+        }
+        const aNext = a.automation.nextRunAt ?? "";
+        const bNext = b.automation.nextRunAt ?? "";
+        if (aNext && bNext && aNext !== bNext) {
+          return aNext.localeCompare(bNext);
+        }
+        if (aNext !== bNext) {
+          return aNext ? -1 : 1;
+        }
+        const aTitle = a.workflow.displayName ?? a.workflow.name;
+        const bTitle = b.workflow.displayName ?? b.workflow.name;
+        return aTitle.localeCompare(bTitle, locale);
+      });
   },
 );
 

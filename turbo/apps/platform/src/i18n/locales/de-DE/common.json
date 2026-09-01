@@ -5158,6 +5158,18 @@
         },
         "title": "Sprache"
       },
+      "morningBrief": {
+        "conflict": "Morning Brief ist vorübergehend nicht verfügbar, da der Installationsstatus inkonsistent ist. Versuchen Sie es erneut, wenn die Abstimmung abgeschlossen ist.",
+        "description": "Erhalten Sie täglich um 7:00 Uhr in Ihrer Zeitzone eine E-Mail mit Prioritäten aus Gmail, GitHub, Kalender und ungelesenen Chats.",
+        "loading": "Morning-Brief-Einstellungen werden geladen...",
+        "missingDefaultAgent": "Wählen Sie einen verwendbaren Standard-Agenten aus, bevor Sie Morning Brief aktivieren.",
+        "missingTimezone": "Legen Sie eine gültige Zeitzone fest, bevor Sie Morning Brief aktivieren.",
+        "multipleInstallations": "Es sind mehrere Morning-Brief-Installationen vorhanden. Beheben Sie den Konflikt, bevor Sie diese Einstellung ändern.",
+        "nextEmail": "Nächste E-Mail: {{date}} ({{timezone}})",
+        "retry": "Erneut versuchen",
+        "retryMessage": "Die Morning-Brief-Einstellungen konnten nicht geladen oder aktualisiert werden. Versuchen Sie es erneut.",
+        "title": "Morgenbrief"
+      },
       "pageDescription": "Verwalten Sie Ihr Erscheinungsbild und die Laufzeiteinstellungen Ihres Agenten",
       "pageTitle": "Präferenzen",
       "send": {
