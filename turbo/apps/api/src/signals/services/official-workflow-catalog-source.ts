@@ -90,21 +90,12 @@ export const OFFICIAL_WORKFLOW_SOURCE_CATALOG: OfficialWorkflowSourceCatalog =
         blueprints: [
           {
             key: "daily-delivery",
-            parameters: [
-              {
-                key: "timezone",
-                type: "string",
-                format: "timezone",
-                required: true,
-                derivation: { kind: "user-timezone" },
-              },
-            ],
+            parameters: [],
             desiredState: {
               kind: "schedule",
               schedule: {
                 type: "cron",
                 cronExpression: "0 7 * * *",
-                timezone: { parameter: "timezone" },
               },
             },
             runtime: { resultEmail: true },
@@ -125,21 +116,12 @@ export const OFFICIAL_WORKFLOW_SOURCE_CATALOG: OfficialWorkflowSourceCatalog =
         blueprints: [
           {
             key: "weekly-check",
-            parameters: [
-              {
-                key: "timezone",
-                type: "string",
-                format: "timezone",
-                required: true,
-                derivation: { kind: "user-timezone" },
-              },
-            ],
+            parameters: [],
             desiredState: {
               kind: "schedule",
               schedule: {
                 type: "cron",
                 cronExpression: "0 9 * * 1",
-                timezone: { parameter: "timezone" },
               },
             },
             runtime: { resultEmail: false },

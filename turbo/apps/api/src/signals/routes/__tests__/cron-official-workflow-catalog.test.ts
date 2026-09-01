@@ -55,13 +55,6 @@ function scheduleBlueprint(
     key,
     parameters: [
       {
-        key: "time-zone",
-        type: "string",
-        format: "timezone",
-        required: true,
-        derivation: { kind: "user-timezone" },
-      },
-      {
         key: "include-weekends",
         type: "boolean",
         required: false,
@@ -73,7 +66,6 @@ function scheduleBlueprint(
       schedule: {
         type: "cron",
         cronExpression,
-        timezone: { parameter: "time-zone" },
       },
     },
     runtime: { resultEmail: false },
@@ -421,21 +413,12 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       blueprints: [
         {
           key: "daily-delivery",
-          parameters: [
-            {
-              key: "timezone",
-              type: "string",
-              format: "timezone",
-              required: true,
-              derivation: { kind: "user-timezone" },
-            },
-          ],
+          parameters: [],
           desiredState: {
             kind: "schedule",
             schedule: {
               type: "cron",
               cronExpression: "0 7 * * *",
-              timezone: { parameter: "timezone" },
             },
           },
           runtime: { resultEmail: true },
@@ -448,21 +431,12 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       blueprints: [
         {
           key: "weekly-check",
-          parameters: [
-            {
-              key: "timezone",
-              type: "string",
-              format: "timezone",
-              required: true,
-              derivation: { kind: "user-timezone" },
-            },
-          ],
+          parameters: [],
           desiredState: {
             kind: "schedule",
             schedule: {
               type: "cron",
               cronExpression: "0 9 * * 1",
-              timezone: { parameter: "timezone" },
             },
           },
           runtime: { resultEmail: false },
@@ -1081,7 +1055,7 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       ],
     });
     expect(invalidParameter.body.diagnostics).toContainEqual(
-      expect.objectContaining({ code: "invalid-parameter-declaration" }),
+      expect.objectContaining({ code: "invalid-candidate" }),
     );
 
     const unknownRuntimeSetting = await syncCatalog({

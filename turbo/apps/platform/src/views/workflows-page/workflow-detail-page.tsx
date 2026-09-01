@@ -270,6 +270,7 @@ import {
   createOfficialWorkflowConfigurationForm,
   OfficialWorkflowConfigurationFields,
   officialWorkflowConfigurationComplete,
+  officialWorkflowHasConfigurableParameters,
 } from "./official-workflow-configuration.tsx";
 
 const AUTOMATION_FIELD_CLASS = "h-8 px-2 text-xs";
@@ -1584,15 +1585,20 @@ function OfficialWorkflowInstallationSettings({
   const installation =
     installationLoadable.state === "hasData" ? installationLoadable.data : null;
   const definition = installation?.definition;
+  const canReconfigure =
+    definition === undefined ||
+    officialWorkflowHasConfigurableParameters(definition.blueprints);
   return (
     <>
-      <OfficialWorkflowReconfigureCard
-        detail={detail}
-        definition={definition}
-        loading={installationLoadable.state === "loading"}
-      />
+      {canReconfigure ? (
+        <OfficialWorkflowReconfigureCard
+          detail={detail}
+          definition={definition}
+          loading={installationLoadable.state === "loading"}
+        />
+      ) : null}
       <OfficialWorkflowUninstallCard />
-      {definition ? (
+      {definition && canReconfigure ? (
         <OfficialWorkflowReconfigureDialog
           detail={detail}
           definition={definition}
@@ -1612,10 +1618,6 @@ function OfficialWorkflowReconfigureCard({
   readonly loading: boolean;
 }) {
   const setForm = useSet(setOfficialWorkflowConfigurationForm$);
-  const preferences = useLastResolved(userPreferences$);
-  const userTimezone =
-    preferences?.timezone ??
-    new Intl.DateTimeFormat().resolvedOptions().timeZone;
   const description = definition
     ? i18n.t(($) => {
         return $.workflows.official.reconfigureDescription;
@@ -1638,9 +1640,7 @@ function OfficialWorkflowReconfigureCard({
             variant="outline"
             size="sm"
             className="zero-btn-morandi h-9 rounded-lg"
-            disabled={
-              !definition || definition.blueprints.length === 0 || loading
-            }
+            disabled={!definition || loading}
             onClick={() => {
               if (!definition) {
                 return;
@@ -1655,7 +1655,6 @@ function OfficialWorkflowReconfigureCard({
                   agentId: detail.agentId,
                   blueprints: definition.blueprints,
                   automations: detail.automations,
-                  userTimezone,
                 }),
               );
             }}

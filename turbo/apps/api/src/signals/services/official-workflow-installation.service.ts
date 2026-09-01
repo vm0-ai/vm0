@@ -299,6 +299,8 @@ function resolveParameterBindings(
       parameter.type === "string" &&
       parameter.derivation?.kind === "user-timezone"
     ) {
+      // Immutable accepted revisions published before owner-timezone schedule
+      // defaults still resolve through their historical parameter contract.
       if (!userTimezone || !isValidTimeZone(userTimezone)) {
         return {
           ok: false,
@@ -370,6 +372,37 @@ function materializeTemplate(
   return { ok: true, value };
 }
 
+function withOwnerScheduleTimezone(
+  desiredState: Record<string, unknown>,
+  userTimezone: string | null,
+  blueprintKey: string,
+):
+  | { readonly ok: true; readonly value: Record<string, unknown> }
+  | { readonly ok: false; readonly message: string } {
+  if (
+    desiredState.kind !== "schedule" ||
+    !isJsonObject(desiredState.schedule) ||
+    (desiredState.schedule.type !== "cron" &&
+      desiredState.schedule.type !== "once") ||
+    desiredState.schedule.timezone !== undefined
+  ) {
+    return { ok: true, value: desiredState };
+  }
+  if (!userTimezone || !isValidTimeZone(userTimezone)) {
+    return {
+      ok: false,
+      message: `A valid user timezone preference is required for Blueprint: ${blueprintKey}`,
+    };
+  }
+  return {
+    ok: true,
+    value: {
+      ...desiredState,
+      schedule: { ...desiredState.schedule, timezone: userTimezone },
+    },
+  };
+}
+
 function resolveBlueprint(
   blueprint: OfficialWorkflowAcceptedBlueprint,
   supplied: OfficialWorkflowBlueprintBindings,
@@ -403,7 +436,15 @@ function resolveBlueprint(
   if (!isJsonObject(desired.value)) {
     return { ok: false, message: `Invalid Blueprint: ${blueprint.key}` };
   }
-  const { autonomyBudget, ...createDesiredState } = desired.value;
+  const desiredWithTimezone = withOwnerScheduleTimezone(
+    desired.value,
+    userTimezone,
+    blueprint.key,
+  );
+  if (!desiredWithTimezone.ok) {
+    return desiredWithTimezone;
+  }
+  const { autonomyBudget, ...createDesiredState } = desiredWithTimezone.value;
   if (
     autonomyBudget !== undefined &&
     (typeof autonomyBudget !== "number" ||
@@ -521,6 +562,8 @@ export function resolveOfficialWorkflowBlueprintForReconciliation(
       userTimezone !== null &&
       isValidTimeZone(userTimezone)
     ) {
+      // See resolveParameterBindings: this branch only serves immutable legacy
+      // accepted revisions until they are reconciled to a current Definition.
       value = userTimezone;
     }
     if (value === undefined) {

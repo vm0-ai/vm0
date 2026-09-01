@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  officialWorkflowAcceptedBlueprintSchema,
+  officialWorkflowBlueprintSchema,
+} from "../official-workflow-catalog";
+import {
   officialWorkflowCatalogDetailSchema,
   officialWorkflowInstallationDefinitionSchema,
 } from "../official-workflows";
@@ -80,6 +84,40 @@ describe("Official Workflow product contracts", () => {
         ...definition,
         lifecycle: "unavailable",
       }).success,
+    ).toBe(false);
+  });
+
+  it("reads legacy accepted timezone derivations without allowing new source declarations", () => {
+    const legacyBlueprint = {
+      key: "daily-brief",
+      parameters: [
+        {
+          key: "timezone",
+          type: "string" as const,
+          format: "timezone" as const,
+          required: true,
+          derivation: { kind: "user-timezone" as const },
+        },
+      ],
+      desiredState: {
+        kind: "schedule" as const,
+        schedule: {
+          type: "cron" as const,
+          cronExpression: "0 8 * * *",
+          timezone: { parameter: "timezone" },
+        },
+      },
+      runtime: { resultEmail: true },
+    };
+
+    expect(
+      officialWorkflowAcceptedBlueprintSchema.safeParse({
+        ...legacyBlueprint,
+        fingerprint: FINGERPRINT,
+      }).success,
+    ).toBe(true);
+    expect(
+      officialWorkflowBlueprintSchema.safeParse(legacyBlueprint).success,
     ).toBe(false);
   });
 });

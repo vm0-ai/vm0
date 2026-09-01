@@ -26,10 +26,6 @@ export type OfficialWorkflowLifecycle = z.infer<
   typeof officialWorkflowLifecycleSchema
 >;
 
-const officialWorkflowUserTimezoneDerivationSchema = z
-  .object({ kind: z.literal("user-timezone") })
-  .strict();
-
 const officialWorkflowParameterBaseShape = {
   key: officialWorkflowParameterKeySchema,
   required: z.boolean(),
@@ -43,7 +39,6 @@ const officialWorkflowStringParameterSchema = z
       .enum(["text", "uuid", "timezone", "date-time", "url"])
       .default("text"),
     default: z.string().optional(),
-    derivation: officialWorkflowUserTimezoneDerivationSchema.optional(),
   })
   .strict();
 
@@ -120,7 +115,7 @@ export const officialWorkflowScheduleTemplateSchema = z.discriminatedUnion(
       .object({
         type: z.literal("cron"),
         cronExpression: templatedStringSchema,
-        timezone: templatedStringSchema,
+        timezone: templatedStringSchema.optional(),
       })
       .strict(),
     z
@@ -133,7 +128,7 @@ export const officialWorkflowScheduleTemplateSchema = z.discriminatedUnion(
       .object({
         type: z.literal("once"),
         atTime: templatedStringSchema,
-        timezone: templatedStringSchema,
+        timezone: templatedStringSchema.optional(),
       })
       .strict(),
   ],
@@ -271,8 +266,30 @@ export type OfficialWorkflowArtifactReference = z.infer<
   typeof officialWorkflowArtifactReferenceSchema
 >;
 
+const legacyOfficialWorkflowUserTimezoneDerivationSchema = z
+  .object({ kind: z.literal("user-timezone") })
+  .strict();
+
+// Accepted revisions are immutable persisted data. Revisions published before
+// schedule timezones became owner defaults can still contain this field, while
+// current source Definitions cannot declare it through the source schema above.
+const acceptedOfficialWorkflowStringParameterSchema =
+  officialWorkflowStringParameterSchema.extend({
+    derivation: legacyOfficialWorkflowUserTimezoneDerivationSchema.optional(),
+  });
+
+const acceptedOfficialWorkflowInstallationParameterSchema =
+  z.discriminatedUnion("type", [
+    acceptedOfficialWorkflowStringParameterSchema,
+    officialWorkflowIntegerParameterSchema,
+    officialWorkflowBooleanParameterSchema,
+  ]);
+
 export const officialWorkflowAcceptedBlueprintSchema =
-  officialWorkflowBlueprintSchema.extend({ fingerprint: fingerprintSchema });
+  officialWorkflowBlueprintSchema.extend({
+    parameters: z.array(acceptedOfficialWorkflowInstallationParameterSchema),
+    fingerprint: fingerprintSchema,
+  });
 export type OfficialWorkflowAcceptedBlueprint = z.infer<
   typeof officialWorkflowAcceptedBlueprintSchema
 >;

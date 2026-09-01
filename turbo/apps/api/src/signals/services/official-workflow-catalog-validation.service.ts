@@ -345,6 +345,20 @@ function resolveTemplateValue(
   return value;
 }
 
+function withValidationScheduleTimezone(value: unknown): unknown {
+  if (!isJsonObject(value) || !isJsonObject(value.schedule)) {
+    return value;
+  }
+  const schedule = value.schedule;
+  if (
+    (schedule.type === "cron" || schedule.type === "once") &&
+    schedule.timezone === undefined
+  ) {
+    return { ...value, schedule: { ...schedule, timezone: "UTC" } };
+  }
+  return value;
+}
+
 function canonicalizeSetLikeArrays(
   value: OfficialWorkflowTemplateJsonValue,
 ): OfficialWorkflowTemplateJsonValue {
@@ -576,32 +590,6 @@ function validateBlueprintParameters(
       );
     }
     parameters.set(parameter.key, parameter);
-    if (
-      parameter.type === "string" &&
-      parameter.derivation !== undefined &&
-      parameter.format !== "timezone"
-    ) {
-      args.diagnostics.push(
-        diagnostic(
-          "invalid-parameter-declaration",
-          [...parameterPath, "derivation"],
-          args.context,
-        ),
-      );
-    }
-    if (
-      parameter.type === "string" &&
-      parameter.default !== undefined &&
-      parameter.derivation !== undefined
-    ) {
-      args.diagnostics.push(
-        diagnostic(
-          "invalid-parameter-declaration",
-          parameterPath,
-          args.context,
-        ),
-      );
-    }
     if (parameter.type === "string" && !stringDefaultIsValid(parameter)) {
       args.diagnostics.push(
         diagnostic(
@@ -658,9 +646,11 @@ function validateBlueprintDesiredState(
       );
     }
   }
-  const desiredState = resolveTemplateValue(
-    blueprint.desiredState as OfficialWorkflowTemplateJsonValue,
-    parameters,
+  const desiredState = withValidationScheduleTimezone(
+    resolveTemplateValue(
+      blueprint.desiredState as OfficialWorkflowTemplateJsonValue,
+      parameters,
+    ),
   );
   let structurallyValid = false;
   if (isJsonObject(desiredState)) {

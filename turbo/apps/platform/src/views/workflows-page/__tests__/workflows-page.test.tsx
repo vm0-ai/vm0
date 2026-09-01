@@ -1570,12 +1570,11 @@ describe("workflows routes", () => {
     expect(queryButtonByText("Install")).toBeNull();
   });
 
-  it("preselects the default Agent and installs every Blueprint with typed parameters", async () => {
+  it("preselects the default Agent and hides legacy derived timezone parameters", async () => {
     const definition = officialCatalogDetail();
     const installBodies: unknown[] = [];
     mockAgentPageApis();
     context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
-    context.mocks.data.userPreferences({ timezone: "UTC" });
     mockWorkflowApis([officialSalesResearch()]);
     context.mocks.api(officialWorkflowsContract.get, ({ respond }) => {
       return respond(200, definition);
@@ -1608,9 +1607,7 @@ describe("workflows routes", () => {
     );
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Research Bot")).toBeInTheDocument();
-    expect(within(dialog).getByLabelText("time-zone (required)")).toHaveValue(
-      "UTC",
-    );
+    expect(within(dialog).queryByLabelText("time-zone (required)")).toBeNull();
     expect(
       within(dialog).getByLabelText("interval-seconds (required)"),
     ).toHaveValue(3600);
@@ -1639,7 +1636,6 @@ describe("workflows routes", () => {
             {
               blueprintKey: "daily",
               bindings: [
-                { key: "time-zone", value: "UTC" },
                 { key: "interval-seconds", value: 7200 },
                 { key: "include-weekends", value: true },
               ],
@@ -2638,6 +2634,49 @@ describe("workflow detail page", () => {
     expect(buttonByText("Uninstall")).toBeEnabled();
   });
 
+  it("omits reconfiguration when the Definition has no configurable parameters", async () => {
+    const workflow = officialSalesResearch();
+    const definition = officialCatalogDetail();
+    const parameterlessBlueprints = definition.blueprints.map((blueprint) => {
+      return {
+        ...blueprint,
+        parameters: [],
+        desiredState: {
+          kind: "schedule" as const,
+          schedule: {
+            type: "cron" as const,
+            cronExpression: "0 8 * * *",
+          },
+        },
+      };
+    });
+    let installationRead = false;
+    mockWorkflowApis([workflow]);
+    context.mocks.api(
+      officialWorkflowInstallationsContract.get,
+      ({ respond }) => {
+        installationRead = true;
+        return respond(200, {
+          workflow,
+          definition: {
+            name: definition.name,
+            revision: definition.revision,
+            lifecycle: "active",
+            blueprints: parameterlessBlueprints,
+          },
+        });
+      },
+    );
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("info"));
+
+    await waitFor(() => {
+      expect(installationRead).toBeTruthy();
+      expect(queryButtonByText("Reconfigure")).toBeNull();
+    });
+    expect(buttonByText("Uninstall")).toBeEnabled();
+  });
+
   it.each([
     ["current", "Current · intended on"],
     ["reconciling", "Reconciling · intended on"],
@@ -2710,9 +2749,7 @@ describe("workflow detail page", () => {
     expect(
       within(dialog).getByLabelText("interval-seconds (required)"),
     ).toHaveValue(3600);
-    fireEvent.change(within(dialog).getByLabelText("time-zone (required)"), {
-      target: { value: "Asia/Shanghai" },
-    });
+    expect(within(dialog).queryByLabelText("time-zone (required)")).toBeNull();
     fireEvent.change(
       within(dialog).getByLabelText("interval-seconds (required)"),
       { target: { value: "1800" } },
@@ -2731,7 +2768,6 @@ describe("workflow detail page", () => {
             {
               blueprintKey: "daily",
               bindings: [
-                { key: "time-zone", value: "Asia/Shanghai" },
                 { key: "interval-seconds", value: 1800 },
                 { key: "include-weekends", value: true },
               ],
@@ -2790,7 +2826,6 @@ describe("workflow detail page", () => {
     const installationReads: string[] = [];
     const reconfigureRequests: unknown[] = [];
     mockAgentPageApis();
-    context.mocks.data.userPreferences({ timezone: "UTC" });
     mockWorkflowApis(workflows);
     context.mocks.api(
       officialWorkflowInstallationsContract.get,
@@ -2848,10 +2883,9 @@ describe("workflow detail page", () => {
       }),
     );
     const firstDialog = await screen.findByRole("dialog");
-    fireEvent.change(
-      within(firstDialog).getByLabelText("time-zone (required)"),
-      { target: { value: "Asia/Shanghai" } },
-    );
+    expect(
+      within(firstDialog).queryByLabelText("time-zone (required)"),
+    ).toBeNull();
     fireEvent.change(
       within(firstDialog).getByLabelText("interval-seconds (required)"),
       { target: { value: "1800" } },
@@ -2878,8 +2912,8 @@ describe("workflow detail page", () => {
     click(buttonByText("Reconfigure"));
     const secondDialog = await screen.findByRole("dialog");
     expect(
-      within(secondDialog).getByLabelText("time-zone (required)"),
-    ).toHaveValue("America/New_York");
+      within(secondDialog).queryByLabelText("time-zone (required)"),
+    ).toBeNull();
     expect(
       within(secondDialog).getByLabelText("interval-seconds (required)"),
     ).toHaveValue(7200);
@@ -2888,10 +2922,6 @@ describe("workflow detail page", () => {
         name: "include-weekends (required)",
       }),
     ).toHaveTextContent("Yes");
-    fireEvent.change(
-      within(secondDialog).getByLabelText("time-zone (required)"),
-      { target: { value: "Europe/London" } },
-    );
     click(buttonByText("Reconfigure", secondDialog));
 
     await waitFor(() => {
@@ -2905,7 +2935,6 @@ describe("workflow detail page", () => {
                 bindings: [
                   { key: "interval-seconds", value: 7200 },
                   { key: "include-weekends", value: true },
-                  { key: "time-zone", value: "Europe/London" },
                 ],
               },
             ],

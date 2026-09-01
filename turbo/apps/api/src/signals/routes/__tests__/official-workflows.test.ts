@@ -144,13 +144,6 @@ function scheduledBlueprint(resultEmail = false): OfficialWorkflowBlueprint {
     key: "daily",
     parameters: [
       {
-        key: "time-zone",
-        type: "string",
-        format: "timezone",
-        required: true,
-        derivation: { kind: "user-timezone" },
-      },
-      {
         key: "cron-expression",
         type: "string",
         format: "text",
@@ -169,7 +162,6 @@ function scheduledBlueprint(resultEmail = false): OfficialWorkflowBlueprint {
       schedule: {
         type: "cron",
         cronExpression: { parameter: "cron-expression" },
-        timezone: { parameter: "time-zone" },
       },
       autonomyBudget: 4,
     },
@@ -216,13 +208,6 @@ function onceBlueprint(resultEmail = false): OfficialWorkflowBlueprint {
         required: true,
       },
       {
-        key: "time-zone",
-        type: "string",
-        format: "timezone",
-        required: true,
-        derivation: { kind: "user-timezone" },
-      },
-      {
         key: "callback-url",
         type: "string",
         format: "url",
@@ -240,7 +225,6 @@ function onceBlueprint(resultEmail = false): OfficialWorkflowBlueprint {
       schedule: {
         type: "once",
         atTime: { parameter: "at-time" },
-        timezone: { parameter: "time-zone" },
       },
     },
     runtime: { resultEmail },
@@ -407,13 +391,6 @@ function evolvedScheduledBlueprint(): OfficialWorkflowBlueprint {
     key: "daily",
     parameters: [
       {
-        key: "time-zone",
-        type: "string",
-        format: "timezone",
-        required: true,
-        derivation: { kind: "user-timezone" },
-      },
-      {
         key: "cron-expression",
         type: "string",
         format: "text",
@@ -432,7 +409,6 @@ function evolvedScheduledBlueprint(): OfficialWorkflowBlueprint {
       schedule: {
         type: "cron",
         cronExpression: { parameter: "cron-expression" },
-        timezone: { parameter: "time-zone" },
       },
       autonomyBudget: { parameter: "autonomy-budget" },
     },
@@ -518,20 +494,12 @@ function pulseOnceBlueprint(atTime: string): OfficialWorkflowBlueprint {
         required: false,
         default: atTime,
       },
-      {
-        key: "time-zone",
-        type: "string",
-        format: "timezone",
-        required: true,
-        derivation: { kind: "user-timezone" },
-      },
     ],
     desiredState: {
       kind: "schedule",
       schedule: {
         type: "once",
         atTime: { parameter: "at-time" },
-        timezone: { parameter: "time-zone" },
       },
     },
     runtime: { resultEmail: false },
@@ -1356,7 +1324,7 @@ describe.sequential("Official Workflow installations", () => {
         blueprintKey: "daily-delivery",
         reconciliationStatus: "current",
         intendedEnabled: true,
-        parameterBindings: [{ key: "timezone", value: "Asia/Shanghai" }],
+        parameterBindings: [],
       },
     });
     if (!morningBriefAutomation) {
@@ -1414,7 +1382,7 @@ describe.sequential("Official Workflow installations", () => {
         blueprintKey: "weekly-check",
         reconciliationStatus: "current",
         intendedEnabled: true,
-        parameterBindings: [{ key: "timezone", value: "Asia/Shanghai" }],
+        parameterBindings: [],
       },
     });
     if (!connectorDoctorAutomation?.chatThreadId) {
@@ -1448,6 +1416,71 @@ describe.sequential("Official Workflow installations", () => {
       officialBlueprintKey: "weekly-check",
       officialResultEmailEnabled: false,
     });
+  });
+
+  it("requires a Preference timezone only when a schedule Blueprint omits one", async () => {
+    installCatalogStorageFixture();
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+    const defaultTimezoneDefinition = `api-test-default-timezone-${suffix}`;
+    const fixedTimezoneDefinition = `api-test-fixed-timezone-${suffix}`;
+    const fixedTimezoneBlueprint: OfficialWorkflowBlueprint = {
+      ...scheduledBlueprint(),
+      desiredState: {
+        kind: "schedule",
+        schedule: {
+          type: "cron",
+          cronExpression: "0 8 * * *",
+          timezone: "UTC",
+        },
+        autonomyBudget: 4,
+      },
+    };
+    await syncCatalog(
+      catalog([
+        activeDefinition(defaultTimezoneDefinition, [scheduledBlueprint()]),
+        activeDefinition(fixedTimezoneDefinition, [fixedTimezoneBlueprint]),
+      ]),
+    );
+
+    const { actor } = await workflowBdd.setupWorkflowOrg();
+    const { agentId } = await workflowBdd.createAgent(actor);
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await bdd.deleteAgent(actor, agentId);
+      await cleanupCatalog();
+    });
+    const headers = authHeaders(actor);
+    await setOfficialWorkflowsEnabled(actor, true);
+
+    const missingPreference = await accept(
+      officialClient().install({
+        headers,
+        params: { definitionName: defaultTimezoneDefinition },
+        body: {
+          agentId,
+          blueprints: [{ blueprintKey: "daily", bindings: [] }],
+        },
+      }),
+      [400],
+    );
+    expect(missingPreference.body.error.message).toBe(
+      "A valid user timezone preference is required for Blueprint: daily",
+    );
+
+    const fixedTimezone = await accept(
+      officialClient().install({
+        headers,
+        params: { definitionName: fixedTimezoneDefinition },
+        body: {
+          agentId,
+          blueprints: [{ blueprintKey: "daily", bindings: [] }],
+        },
+      }),
+      [201],
+    );
+    expect(fixedTimezone.body.workflow.automations).toMatchObject([
+      { schedule: { type: "cron", timezone: "UTC" } },
+    ]);
   });
 
   it("guards access and validates concurrent installations through public boundaries", async () => {
@@ -1969,13 +2002,12 @@ describe.sequential("Official Workflow installations", () => {
         reconciliationStatus: "current",
         intendedEnabled: true,
         parameterBindings: expect.arrayContaining([
-          { key: "time-zone", value: "Asia/Shanghai" },
           { key: "cron-expression", value: "0 7 * * *" },
           { key: "include-weekends", value: true },
         ]),
       },
     });
-    expect(dailyAutomation.official?.parameterBindings).toHaveLength(3);
+    expect(dailyAutomation.official?.parameterBindings).toHaveLength(2);
     await expect(
       readWorkflowAutomationAutonomyFixture(context, dailyAutomation.id),
     ).resolves.toMatchObject({
@@ -3575,7 +3607,6 @@ describe.sequential("Official Workflow installations", () => {
         intendedEnabled: false,
         reconciliationStatus: "current",
         parameterBindings: expect.arrayContaining([
-          { key: "time-zone", value: "Asia/Shanghai" },
           { key: "cron-expression", value: "0 6 * * *" },
           { key: "autonomy-budget", value: 7 },
         ]),
