@@ -30,12 +30,15 @@ const SESSION_HISTORY_READY_EVENT: &str = "vm0_mock_codex_session_history_ready"
 const WAIT_ON_TURN_STEER_READY_FILE: &str = ".vm0-mock-codex-turn-steer-ready";
 const WAIT_ON_TURN_STEER_READY_EVENT: &str = "vm0_mock_codex_turn_steer_ready";
 const WAIT_ON_TURN_STEER_RELEASE_SOCKET: &str = ".vm0-mock-codex-turn-steer-release.sock";
+const EVENT_DELIVERY_LARGE_RELEASE_SOCKET: &str =
+    ".vm0-mock-codex-event-delivery-large-release.sock";
 const TURN_INTERRUPT_READY_FILE: &str = ".vm0-mock-codex-turn-interrupt-ready";
 const TURN_INTERRUPT_READY_EVENT: &str = "vm0_mock_codex_turn_interrupt_ready";
 const NOTIFICATION_OVERFLOW_COUNT: usize = 129;
 const STDOUT_STREAM_CHUNK_BYTES: usize = 8 * 1024;
 const EVENT_DELIVERY_FLOOD_COUNT: usize = 640;
-const EVENT_DELIVERY_LARGE_EVENT_COUNT: usize = 10;
+// One in-flight payload plus seven queued payloads crosses the shared 16 MiB budget.
+const EVENT_DELIVERY_LARGE_EVENT_COUNT: usize = 8;
 const EVENT_DELIVERY_LARGE_EVENT_BYTES: usize = 2 * 1024 * 1024;
 const SECONDARY_THREAD_ID: &str = "00000000-0000-4000-8000-000000000def";
 const SECONDARY_ITEM_STARTED_AT_MS: u64 = 1_700_000_000_000;
@@ -463,6 +466,10 @@ impl AppServerState {
             write_json_line(output, &turn_completed_notification(&thread_id, &turn_id))?;
         }
         if self.scenario == Scenario::RuntimeLargeEventFlood {
+            let home = std::env::var_os("HOME")
+                .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))?;
+            let release =
+                UnixListener::bind(PathBuf::from(home).join(EVENT_DELIVERY_LARGE_RELEASE_SOCKET))?;
             write_json_line(output, &turn_started_notification(&thread_id, &turn_id))?;
             for index in 0..EVENT_DELIVERY_LARGE_EVENT_COUNT {
                 write_json_line(
@@ -473,6 +480,9 @@ impl AppServerState {
                         EVENT_DELIVERY_LARGE_EVENT_BYTES,
                     ),
                 )?;
+                if index == 0 {
+                    release.accept()?;
+                }
                 thread::sleep(std::time::Duration::from_millis(50));
             }
             write_json_line(output, &turn_completed_notification(&thread_id, &turn_id))?;
