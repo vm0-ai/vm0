@@ -2154,10 +2154,9 @@ describe("CHAT-01 chat thread read state", () => {
       content: firstContent,
       signal: context.signal,
     });
-    const secondInsert = await insertChatEventTransactionFixture({
+    const secondInsert = insertChatEventTransactionFixture({
       threadId,
       content: secondContent,
-      signal: context.signal,
     });
     onTestFinished(async () => {
       held.release();
@@ -2165,11 +2164,17 @@ describe("CHAT-01 chat thread read state", () => {
     });
 
     // Every API test file in a shard shares one database, so a total waiter
-    // count is not owned by this test. Assert that this test's own writer is
-    // the backend the uncommitted holder blocks.
+    // count is not owned by this test. Poll until this test's own writer is the
+    // backend the uncommitted holder blocks. Reading the writer pid
+    // synchronously keeps a stalled writer inside the poll budget instead of
+    // hanging the test.
     await expect
-      .poll(() => {
-        return held.blocksBackend(secondInsert.backendPid);
+      .poll(async () => {
+        const writerPid = secondInsert.backendPid();
+        if (writerPid === undefined) {
+          return false;
+        }
+        return await held.blocksBackend(writerPid);
       })
       .toBe(true);
     const beforeCommit = await chat.listThreadEvents(owner, threadId);

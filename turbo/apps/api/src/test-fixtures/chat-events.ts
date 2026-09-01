@@ -2691,18 +2691,19 @@ export async function holdRunOutputMaterializationRowFixture(args: {
 
 /**
  * Inserts one event with reservation and persistence in one transaction. The
- * backend pid resolves before the sequence reservation runs, so a concurrent
- * holder can observe that this writer is the backend waiting on it.
+ * backend pid is published as soon as the writer transaction opens, before the
+ * sequence reservation can block, so a concurrent holder can observe that this
+ * writer is the backend waiting on it. The accessor is synchronous so a caller
+ * never waits on the writer outside its own polling budget.
  */
-export async function insertChatEventTransactionFixture(args: {
+export function insertChatEventTransactionFixture(args: {
   readonly threadId: string;
   readonly content: string;
-  readonly signal: AbortSignal;
-}): Promise<{
-  readonly backendPid: number;
+}): {
+  readonly backendPid: () => number | undefined;
   readonly inserted: Promise<{ readonly id: string; readonly seqId: number }>;
-}> {
-  const started = createDeferredPromise<number>(args.signal);
+} {
+  let openedBackendPid: number | undefined;
   const inserted = db().transaction(async (tx) => {
     const pidRows = await executeRawRows(
       tx,
@@ -2715,7 +2716,7 @@ export async function insertChatEventTransactionFixture(args: {
     if (!writerPid) {
       throw new Error("Expected the chat-message insert writer pid");
     }
-    started.resolve(writerPid);
+    openedBackendPid = writerPid;
     const event = await insertChatEvent(tx, {
       chatThreadId: args.threadId,
       eventType: "output.message",
@@ -2727,7 +2728,12 @@ export async function insertChatEventTransactionFixture(args: {
     }
     return event;
   });
-  return { backendPid: await started.promise, inserted };
+  return {
+    backendPid: () => {
+      return openedBackendPid;
+    },
+    inserted,
+  };
 }
 
 /**
