@@ -11,6 +11,7 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { createDeferredPromise } from "../../utils";
 import {
   clearNotionAutomationConnectorProjection,
   clearNotionPendingConnectorProjection,
@@ -1465,6 +1466,74 @@ describe("POST /api/webhooks/notion", () => {
       skipped: 1,
     });
 
+    const racingEvent = notionPageEvent({
+      entities,
+      type: "page.created",
+      timestamp: "2026-07-06T13:01:00.000Z",
+    });
+    await expect(
+      postNotionWebhook({
+        rawBody: racingEvent.rawBody,
+        signature: notionSignature(racingEvent.rawBody),
+      }),
+    ).resolves.toMatchObject({ body: { pending: 1 } });
+    const notionReadStarted = createDeferredPromise<void>(context.signal);
+    const releaseNotionRead = createDeferredPromise<void>(context.signal);
+    server.use(
+      http.get(
+        `https://api.notion.com/v1/pages/${entities.childPageId}`,
+        async ({ request }) => {
+          expect(request.headers.get("authorization")).toBe(
+            "Bearer notion-second-access-token",
+          );
+          notionReadStarted.resolve();
+          await releaseNotionRead.promise;
+          return HttpResponse.json(
+            {
+              object: "error",
+              status: 500,
+              code: "internal_server_error",
+              message: "Notion is temporarily unavailable",
+            },
+            { status: 500 },
+          );
+        },
+      ),
+    );
+    mockNow(new Date("2026-07-06T13:20:00.000Z"));
+    const racingExecutionPromise = executeDueWorkflowAutomations(
+      created.body.id,
+    );
+    await notionReadStarted.promise;
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(),
+        params: { id: created.body.chatThreadId },
+        body: {
+          connectionId: firstAccount.id,
+          target: { kind: "builtin", connectorSlug: "notion" },
+        },
+      }),
+      [200],
+    );
+    releaseNotionRead.resolve();
+    const racingExecution = await racingExecutionPromise;
+    expect(racingExecution.body).toStrictEqual({
+      success: true,
+      executed: 0,
+      skipped: 1,
+    });
+    await expectAutomationConnector(firstAccount.id);
+    mockNow(new Date("2026-07-06T13:40:00.000Z"));
+    const staleRetryExecution = await executeDueWorkflowAutomations(
+      created.body.id,
+    );
+    expect(staleRetryExecution.body).toStrictEqual({
+      success: true,
+      executed: 0,
+      skipped: 0,
+    });
+
     mockNotionConnectorOAuth({
       accessToken: "notion-second-reconnected-token",
       ownerId: "notion-user-2",
@@ -1487,12 +1556,23 @@ describe("POST /api/webhooks/notion", () => {
       code: "notion-reconnect-code",
       state: reconnectState,
     });
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(),
+        params: { id: created.body.chatThreadId },
+        body: {
+          connectionId: secondAccount.id,
+          target: { kind: "builtin", connectorSlug: "notion" },
+        },
+      }),
+      [200],
+    );
     await expectAutomationConnector(secondAccount.id);
 
     const currentEvent = notionPageEvent({
       entities,
       type: "page.created",
-      timestamp: "2026-07-06T13:01:00.000Z",
+      timestamp: "2026-07-06T13:41:00.000Z",
     });
     await expect(
       postNotionWebhook({
@@ -1503,7 +1583,7 @@ describe("POST /api/webhooks/notion", () => {
     configureNotionChildPageMock(entities, undefined, {
       accessToken: "notion-second-reconnected-token",
     });
-    mockNow(new Date("2026-07-06T13:20:00.000Z"));
+    mockNow(new Date("2026-07-06T14:00:00.000Z"));
     const currentExecution = await executeDueWorkflowAutomations(
       created.body.id,
     );

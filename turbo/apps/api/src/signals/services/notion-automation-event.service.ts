@@ -2185,7 +2185,12 @@ async function retryPendingEvent(
       runAfter: new Date(now() + NOTION_PENDING_RETRY_MS),
       updatedAt: nowDate(),
     })
-    .where(eq(notionWorkflowPendingEvents.id, args.pending.id));
+    .where(
+      and(
+        eq(notionWorkflowPendingEvents.id, args.pending.id),
+        eq(notionWorkflowPendingEvents.status, "running"),
+      ),
+    );
   signal.throwIfAborted();
 }
 
