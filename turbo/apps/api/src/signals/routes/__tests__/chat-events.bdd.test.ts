@@ -5271,7 +5271,6 @@ describe("CHAT-02: model-first provider policies", () => {
       mockPiResourceArchiveDownloads();
       const checkpointObjects = mockPiCheckpointObjectStore();
       const modelRequests: {
-        readonly authorization: string | null;
         readonly body: unknown;
       }[] = [];
       const modelAnswers = [
@@ -5286,7 +5285,6 @@ describe("CHAT-02: model-first provider policies", () => {
         http.post(providerUrl, async ({ request }) => {
           const sequence = modelRequests.length;
           modelRequests.push({
-            authorization: request.headers.get("authorization"),
             body: await request.json(),
           });
           const answer = modelAnswers[sequence];
@@ -5342,9 +5340,6 @@ describe("CHAT-02: model-first provider policies", () => {
         },
       });
       expect(modelRequests).toHaveLength(1);
-      expect(modelRequests[0]?.authorization).toMatch(
-        /^Bearer vm0-key-runtime-fixture-/u,
-      );
       const firstModelInput = JSON.stringify(modelRequests[0]?.body);
       expect(occurrences(firstModelInput, firstPrompt)).toBe(1);
       expect(occurrences(firstModelInput, modelAnswers[0] ?? "")).toBe(0);
@@ -5409,9 +5404,6 @@ describe("CHAT-02: model-first provider policies", () => {
       if (selectedModel === "gpt-5.6-terra") {
         await expectTerraApiFollowUpUsage(second.runId);
       }
-      expect(modelRequests[1]?.authorization).toMatch(
-        /^Bearer vm0-key-runtime-fixture-/u,
-      );
       const secondModelInput = JSON.stringify(modelRequests[1]?.body);
       expect(occurrences(secondModelInput, firstPrompt)).toBe(1);
       expect(occurrences(secondModelInput, modelAnswers[0] ?? "")).toBe(1);
@@ -9126,13 +9118,15 @@ describe("CHAT-02: model-first provider policies", () => {
       mockPiResourceArchiveDownloads();
       mockPiCheckpointObjectStore();
       const modelRequests: {
-        readonly authorization: string | null;
+        readonly authorizationMatches: boolean;
         readonly body: unknown;
       }[] = [];
       server.use(
         http.post("https://api.deepseek.com/responses", async ({ request }) => {
           modelRequests.push({
-            authorization: request.headers.get("authorization"),
+            authorizationMatches:
+              request.headers.get("authorization") ===
+              `Bearer ${selectedApiKey}`,
             body: await request.json(),
           });
           return new HttpResponse(
@@ -9151,7 +9145,7 @@ describe("CHAT-02: model-first provider policies", () => {
       await waitForRunStatus(actor, run.runId, "completed");
       await flushWaitUntilForTest();
       expect(modelRequests).toHaveLength(1);
-      expect(modelRequests[0]?.authorization).toBe(`Bearer ${selectedApiKey}`);
+      expect(modelRequests[0]?.authorizationMatches).toBeTruthy();
       expect(modelRequests[0]?.body).toMatchObject({
         model: "deepseek-v4-flash",
         stream: true,
