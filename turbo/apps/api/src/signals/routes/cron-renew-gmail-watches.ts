@@ -18,6 +18,8 @@ const renewGmailWatchesRoute$ = command(
       status: 200 as const,
       body: {
         success: true as const,
+        cleaned: result.cleaned,
+        cleanupFailed: result.cleanupFailed,
         renewed: result.renewed,
         failed: result.failed,
       },

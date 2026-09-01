@@ -6,6 +6,23 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 export const testGmailWatchRenewalContract = c.router({
+  cleanup: {
+    method: "POST",
+    path: "/api/test/gmail-watch-renewal/cleanup",
+    body: z.object({
+      provider_account_id: z.string().min(1),
+    }),
+    responses: {
+      200: z.object({
+        success: z.literal(true),
+        cleaned: z.number(),
+        failed: z.number(),
+      }),
+      400: apiErrorSchema,
+      404: z.string(),
+    },
+    summary: "Process one provider account's Gmail cleanup in API tests",
+  },
   renew: {
     method: "POST",
     path: "/api/test/gmail-watch-renewal/renew",

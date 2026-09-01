@@ -78,10 +78,9 @@ import {
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
 import {
-  prepareGmailWatchStopForConnector,
+  prepareGmailWatchCleanupIntentForConnector,
+  processGmailWatchCleanupIntent,
   reconcileGmailWatchesForUser,
-  stopPreparedGmailWatch,
-  type PendingGmailWatchStop,
 } from "./gmail-automation-event.service";
 import { cleanupGoogleCalendarWatchesForConnector } from "./google-calendar-automation-event.service";
 import { cleanupGoogleFormsWatchesForConnector } from "./google-forms-automation-event.service";
@@ -962,7 +961,7 @@ async function deleteConnectorAccountLocalState(
     return {
       kind: account.kind,
       pendingTokenRevoke: null,
-      pendingGmailWatchStop: null,
+      gmailWatchCleanupIntentId: null,
     };
   }
   const existing = account.connector;
@@ -975,7 +974,7 @@ async function deleteConnectorAccountLocalState(
     return {
       kind: deletion.kind,
       pendingTokenRevoke: null,
-      pendingGmailWatchStop: null,
+      gmailWatchCleanupIntentId: null,
     };
   }
 
@@ -1008,14 +1007,15 @@ async function deleteConnectorAccountLocalState(
   }
   signal.throwIfAborted();
 
-  const pendingGmailWatchStop: PendingGmailWatchStop | null =
-    args.connectorSlug === "gmail"
-      ? await prepareGmailWatchStopForConnector(
+  const gmailWatchCleanupIntentId: string | null =
+    args.connectorSlug === "gmail" && snapshot !== null
+      ? await prepareGmailWatchCleanupIntentForConnector(
           {
             db: tx,
             orgId: args.orgId,
             userId: args.userId,
             connectorId: existing.id,
+            snapshot,
           },
           signal,
         )
@@ -1038,7 +1038,7 @@ async function deleteConnectorAccountLocalState(
   return {
     kind: "deleted" as const,
     pendingTokenRevoke,
-    pendingGmailWatchStop,
+    gmailWatchCleanupIntentId,
     deletion,
   };
 }
@@ -1087,11 +1087,14 @@ export const deleteConnectorLocalState$ = command(
       return deleteResult.kind;
     }
 
-    if (deleteResult.pendingGmailWatchStop !== null) {
+    if (deleteResult.gmailWatchCleanupIntentId !== null) {
       const stopped = await settleIncludingAbort(
         bestEffort(
-          stopPreparedGmailWatch(
-            { db: writeDb, pending: deleteResult.pendingGmailWatchStop },
+          processGmailWatchCleanupIntent(
+            {
+              db: writeDb,
+              intentId: deleteResult.gmailWatchCleanupIntentId,
+            },
             signal,
           ),
           signal,

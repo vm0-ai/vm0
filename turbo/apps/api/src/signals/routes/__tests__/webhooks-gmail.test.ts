@@ -6,6 +6,7 @@ import {
   sign as signData,
 } from "node:crypto";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@okouai/api-contracts/contracts/model-providers";
+import { testGmailWatchRenewalContract } from "@okouai/api-contracts/contracts/test-gmail-watch-renewal";
 import {
   connectorAccountsContract,
   type ConnectorAccountMutationIntent,
@@ -21,7 +22,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
-import { mockNow, now } from "../../../lib/time";
+import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
@@ -50,6 +51,7 @@ import {
 import { createRouteMocks } from "./helpers/route-test";
 import { chatThreadRoutes } from "../chat-threads";
 import { connectorAccountRoutes } from "../connector-accounts";
+import { testGmailWatchRenewalRoutes } from "../test-gmail-watch-renewal";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 import { webhooksGmailRoutes } from "../webhooks-gmail";
 
@@ -106,6 +108,12 @@ function chatThreadConnectorSelectionsClient() {
 function connectorAccountsClient() {
   return setupApp({ context, routes: connectorAccountRoutes })(
     connectorAccountsContract,
+  );
+}
+
+function gmailWatchMaintenanceClient() {
+  return setupApp({ context, routes: testGmailWatchRenewalRoutes })(
+    testGmailWatchRenewalContract,
   );
 }
 
@@ -189,7 +197,9 @@ interface GmailWatchRecorder {
 }
 
 interface GmailWatchLifecycleRecorder {
+  readonly stoppedTokens: string[];
   readonly watchedTokens: string[];
+  readonly watchedTopics: string[];
   stopCalls: number;
 }
 
@@ -214,21 +224,29 @@ function configureGmailWatchMock(
 
 function configureGmailWatchLifecycleMock(args?: {
   readonly onStop?: () => void;
+  readonly stopSucceeds?: () => boolean;
   readonly waitForStop?: () => Promise<void> | null;
 }): GmailWatchLifecycleRecorder {
   const recorder: GmailWatchLifecycleRecorder = {
+    stoppedTokens: [],
     watchedTokens: [],
+    watchedTopics: [],
     stopCalls: 0,
   };
   server.use(
     http.post(
       "https://gmail.googleapis.com/gmail/v1/users/me/watch",
-      ({ request }) => {
+      async ({ request }) => {
         const authorization = request.headers.get("authorization");
         if (!authorization) {
           throw new Error("Expected Gmail watch authorization");
         }
         recorder.watchedTokens.push(authorization);
+        const body = (await request.json()) as unknown;
+        if (!isRecord(body) || typeof body.topicName !== "string") {
+          throw new Error("Expected Gmail watch topic");
+        }
+        recorder.watchedTopics.push(body.topicName);
         return HttpResponse.json({
           historyId: authorization.endsWith("second-access-token")
             ? "200"
@@ -239,12 +257,20 @@ function configureGmailWatchLifecycleMock(args?: {
     ),
     http.post(
       "https://gmail.googleapis.com/gmail/v1/users/me/stop",
-      async () => {
+      async ({ request }) => {
         recorder.stopCalls += 1;
+        const authorization = request.headers.get("authorization");
+        if (!authorization) {
+          throw new Error("Expected Gmail stop authorization");
+        }
+        recorder.stoppedTokens.push(authorization);
         args?.onStop?.();
         const waitForStop = args?.waitForStop?.();
         if (waitForStop) {
           await waitForStop;
+        }
+        if (args?.stopSucceeds?.()) {
+          return new HttpResponse(null, { status: 204 });
         }
         return HttpResponse.json({ error: "retry cleanup" }, { status: 500 });
       },
@@ -660,16 +686,17 @@ async function setupMultiAccountGmailFixture(): Promise<MultiAccountGmailTestFix
   });
   const firstEmail = uniqueGmailEmail();
   const secondEmail = uniqueGmailEmail();
+  const identitySuffix = randomUUID();
   const firstConnectorId = await connectGmail(
     fixture.actor,
     firstEmail,
-    "gmail-first-account",
+    `gmail-first-account-${identitySuffix}`,
     undefined,
     fixture.agentId,
   );
   const secondConnectorId = await addGmailAccount(fixture.actor, {
     gmailEmail: secondEmail,
-    subject: "gmail-second-account",
+    subject: `gmail-second-account-${identitySuffix}`,
     accessToken: "gmail-second-access-token",
     displayName: "Second Gmail",
     agentId: fixture.agentId,
@@ -1661,6 +1688,273 @@ describe("POST /api/webhooks/gmail", () => {
     expect(recorder.stopCalls).toBe(2);
   });
 
+  it("refreshes and retries durable Gmail cleanup after account deletion", async () => {
+    const startedAt = now();
+    mockNow(startedAt);
+    configureGmailEnv();
+    let stopSucceeds = false;
+    const recorder = configureGmailWatchLifecycleMock({
+      stopSucceeds: () => {
+        return stopSucceeds;
+      },
+    });
+    const { actor, agentId, workflowId } = await setupFixture();
+    await updateFeatureSwitchesForUser(context, actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    const providerAccountId = `gmail-cleanup-${randomUUID()}`;
+    const gmailEmail = uniqueGmailEmail();
+    const connectorId = await connectGmail(
+      actor,
+      gmailEmail,
+      providerAccountId,
+      undefined,
+      agentId,
+    );
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+
+    let refreshCalls = 0;
+    server.use(
+      http.post("https://oauth2.googleapis.com/token", async ({ request }) => {
+        const body = new URLSearchParams(await request.text());
+        expect(body.get("grant_type")).toBe("refresh_token");
+        expect(body.get("refresh_token")).toBe("gmail-refresh-token");
+        refreshCalls += 1;
+        return HttpResponse.json({
+          access_token: `gmail-cleanup-refreshed-${refreshCalls}`,
+          expires_in: 3600,
+          token_type: "Bearer",
+        });
+      }),
+    );
+    mockNow(startedAt + 2 * 60 * 60 * 1000);
+
+    const deleted = await accept(
+      connectorAccountsClient().delete({
+        headers: authHeaders(actor),
+        params: { connectionId: connectorId },
+        body: { target: { kind: "builtin", connectorSlug: "gmail" } },
+      }),
+      [200],
+    );
+    expect(deleted.body.deletedConnectionId).toBe(connectorId);
+    const remainingAccounts = await connectorsApi.listBuiltinConnectorAccounts(
+      actor,
+      "gmail",
+    );
+    expect(remainingAccounts).toStrictEqual([]);
+    expect(refreshCalls).toBe(1);
+    expect(recorder.stoppedTokens).toStrictEqual([
+      "Bearer gmail-cleanup-refreshed-1",
+    ]);
+    clearMockNow();
+    const staleNotification = await postGmailWebhook(
+      gmailPushBody({
+        emailAddress: gmailEmail,
+        historyId: 101,
+        messageId: `gmail-cleanup-stale-${randomUUID()}`,
+      }),
+    );
+    expectResponseStatus(staleNotification, 200);
+    expect(staleNotification.body).toStrictEqual({
+      success: true,
+      watchStates: 0,
+      dispatched: 0,
+      duplicates: 0,
+    });
+    mockNow(startedAt + 2 * 60 * 60 * 1000);
+
+    stopSucceeds = true;
+    const retried = await accept(
+      gmailWatchMaintenanceClient().cleanup({
+        body: { provider_account_id: providerAccountId },
+      }),
+      [200],
+    );
+    expect(retried.body).toStrictEqual({
+      success: true,
+      cleaned: 1,
+      failed: 0,
+    });
+    expect(refreshCalls).toBe(2);
+    expect(recorder.stoppedTokens).toStrictEqual([
+      "Bearer gmail-cleanup-refreshed-1",
+      "Bearer gmail-cleanup-refreshed-2",
+    ]);
+
+    const duplicate = await accept(
+      gmailWatchMaintenanceClient().cleanup({
+        body: { provider_account_id: providerAccountId },
+      }),
+      [200],
+    );
+    expect(duplicate.body).toStrictEqual({
+      success: true,
+      cleaned: 0,
+      failed: 0,
+    });
+    expect(recorder.stopCalls).toBe(2);
+  });
+
+  it("retires delayed cleanup when another identity watches a new topic", async () => {
+    configureGmailEnv();
+    const recorder = configureGmailWatchLifecycleMock();
+    const first = await setupFixture(
+      `gmail-cleanup-first-${randomUUID()}@example.test`,
+    );
+    await updateFeatureSwitchesForUser(context, first.actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    const gmailEmail = uniqueGmailEmail();
+    const providerAccountId = `gmail-shared-cleanup-${randomUUID()}`;
+    const firstConnectorId = await connectGmail(
+      first.actor,
+      gmailEmail,
+      providerAccountId,
+      undefined,
+      first.agentId,
+    );
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(first.actor),
+        params: { workflowId: first.workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+    await accept(
+      connectorAccountsClient().delete({
+        headers: authHeaders(first.actor),
+        params: { connectionId: firstConnectorId },
+        body: { target: { kind: "builtin", connectorSlug: "gmail" } },
+      }),
+      [200],
+    );
+    expect(recorder.stopCalls).toBe(1);
+
+    const replacementTopic = `${GMAIL_TOPIC_NAME}-replacement`;
+    mockOptionalEnv("GMAIL_PUBSUB_TOPIC_NAME", replacementTopic);
+    const second = await setupFixture(
+      `gmail-cleanup-second-${randomUUID()}@example.test`,
+    );
+    await connectGmail(
+      second.actor,
+      gmailEmail,
+      providerAccountId,
+      undefined,
+      second.agentId,
+    );
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(second.actor),
+        params: { workflowId: second.workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+    expect(recorder.watchedTopics).toStrictEqual([
+      GMAIL_TOPIC_NAME,
+      replacementTopic,
+    ]);
+
+    const retried = await accept(
+      gmailWatchMaintenanceClient().cleanup({
+        body: { provider_account_id: providerAccountId },
+      }),
+      [200],
+    );
+    expect(retried.body).toStrictEqual({
+      success: true,
+      cleaned: 1,
+      failed: 0,
+    });
+    expect(recorder.stopCalls).toBe(1);
+  });
+
+  it("retires Gmail cleanup after the provider watch expires", async () => {
+    const startedAt = Date.parse("2026-08-20T08:00:00.000Z");
+    mockNow(startedAt);
+    configureGmailEnv();
+    const recorder = configureGmailWatchLifecycleMock();
+    const { actor, agentId, workflowId } = await setupFixture(
+      `gmail-cleanup-expiry-${randomUUID()}@example.test`,
+    );
+    await updateFeatureSwitchesForUser(context, actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    const providerAccountId = `gmail-cleanup-expiry-${randomUUID()}`;
+    const connectorId = await connectGmail(
+      actor,
+      uniqueGmailEmail(),
+      providerAccountId,
+      undefined,
+      agentId,
+    );
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+    await accept(
+      connectorAccountsClient().delete({
+        headers: authHeaders(actor),
+        params: { connectionId: connectorId },
+        body: { target: { kind: "builtin", connectorSlug: "gmail" } },
+      }),
+      [200],
+    );
+    expect(recorder.stopCalls).toBe(1);
+
+    mockNow(startedAt + 8 * 24 * 60 * 60 * 1000);
+    const expired = await accept(
+      gmailWatchMaintenanceClient().cleanup({
+        body: { provider_account_id: providerAccountId },
+      }),
+      [200],
+    );
+    expect(expired.body).toStrictEqual({
+      success: true,
+      cleaned: 1,
+      failed: 0,
+    });
+    expect(recorder.stopCalls).toBe(1);
+
+    const retired = await accept(
+      gmailWatchMaintenanceClient().cleanup({
+        body: { provider_account_id: providerAccountId },
+      }),
+      [200],
+    );
+    expect(retired.body.cleaned).toBe(0);
+    expect(retired.body.failed).toBe(0);
+  });
+
   it("restores a Gmail watch after the last account is replaced", async () => {
     configureGmailEnv();
     const recorder = configureGmailWatchLifecycleMock();
@@ -1671,7 +1965,7 @@ describe("POST /api/webhooks/gmail", () => {
     const firstConnectorId = await connectGmail(
       actor,
       uniqueGmailEmail(),
-      "gmail-first-account",
+      `gmail-first-account-${randomUUID()}`,
       undefined,
       agentId,
     );

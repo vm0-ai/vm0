@@ -288,6 +288,41 @@ export async function loadConnectorCredentialValues(args: {
   return values;
 }
 
+export async function loadConnectorCredentialSecretCiphertexts(args: {
+  readonly connection: ConnectorCredentialConnection;
+  readonly db: ReadonlyDb;
+  readonly valueRefs: readonly string[];
+}): Promise<ReadonlyMap<string, string>> {
+  const refs = args.valueRefs.map(connectorStoredValueRef);
+  if (
+    refs.some((ref) => {
+      return ref.kind !== "secret";
+    })
+  ) {
+    throw new Error("Connector cleanup credentials must use secret storage");
+  }
+  const names = refs.map((ref) => {
+    return ref.name;
+  });
+  if (names.length === 0) {
+    return new Map();
+  }
+  const rows = await args.db
+    .select({ name: secrets.name, encryptedValue: secrets.encryptedValue })
+    .from(secrets)
+    .where(
+      connectorCredentialSecretReadCondition({
+        db: args.db,
+        groups: [{ access: args.connection.access, names }],
+      }),
+    );
+  return new Map(
+    rows.map((row) => {
+      return [`$secrets.${row.name}`, row.encryptedValue];
+    }),
+  );
+}
+
 function refreshTokenExpiresAt(
   expiresIn: number | undefined,
   defaultExpiresInMs: number | undefined,

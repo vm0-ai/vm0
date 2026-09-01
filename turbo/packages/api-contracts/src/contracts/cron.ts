@@ -229,6 +229,8 @@ const cronExecuteWorkflowAutomationsResponseSchema = z.object({
 
 const cronRenewGmailWatchesResponseSchema = z.object({
   success: z.literal(true),
+  cleaned: z.number(),
+  cleanupFailed: z.number(),
   renewed: z.number(),
   failed: z.number(),
 });

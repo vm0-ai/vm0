@@ -653,7 +653,11 @@ describe("okou workflow automations", () => {
       readonly refreshToken?: string;
     },
   ): Promise<string> {
-    mockGmailConnectorOAuth({ email, ...oauth });
+    mockGmailConnectorOAuth({
+      email,
+      subject: `gmail-${scenario.fixture.userId}`,
+      ...oauth,
+    });
     await wf.connectConnector(scenario.actor, "gmail");
     const connector = await connectorsApi.readConnectorBySlug(
       scenario.actor,
@@ -3516,7 +3520,7 @@ describe("okou workflow automations", () => {
     expect(stop.calls).toBe(2);
   });
 
-  it("stops a provider watch before connector credentials are removed", async () => {
+  it("stops a provider watch when the connector account is disconnected", async () => {
     const scenario = await setupFixture();
     await connectGmail(
       scenario,

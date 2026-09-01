@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   index,
   pgTable,
@@ -45,6 +46,38 @@ export const gmailWatchStates = pgTable(
         table.topicName,
       ),
       index("idx_gmail_watch_states_renewal").on(table.watchExpirationAt),
+    ];
+  },
+);
+
+export const gmailWatchCleanupIntents = pgTable(
+  "gmail_watch_cleanup_intents",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    mailboxKey: text("mailbox_key").notNull(),
+    providerAccountId: varchar("provider_account_id", { length: 255 }),
+    emailAddress: varchar("email_address", { length: 320 }).notNull(),
+    topicNames: text("topic_names").array().notNull(),
+    authMethod: varchar("auth_method", { length: 50 }).notNull(),
+    storageVersion: bigint("storage_version", { mode: "number" }).notNull(),
+    encryptedAccessToken: text("encrypted_access_token").notNull(),
+    encryptedRefreshToken: text("encrypted_refresh_token"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at"),
+    watchExpirationAt: timestamp("watch_expiration_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex("idx_gmail_watch_cleanup_intents_mailbox").on(
+        table.mailboxKey,
+      ),
+      index("idx_gmail_watch_cleanup_intents_expiration").on(
+        table.watchExpirationAt,
+      ),
+      index("idx_gmail_watch_cleanup_intents_provider_account").on(
+        table.providerAccountId,
+      ),
     ];
   },
 );
