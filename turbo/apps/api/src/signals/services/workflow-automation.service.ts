@@ -2419,12 +2419,13 @@ async function createGoogleMeetEventAutomationForWorkflow(
     ),
     rollback,
   );
-  signal.throwIfAborted();
-  if (subscriptionResult.kind === "ok") {
-    return { kind: "ok", summary };
+  if (subscriptionResult.kind !== "ok") {
+    await rollback();
+    signal.throwIfAborted();
+    return { kind: "bad-request", message: subscriptionResult.message };
   }
-  await rollback();
-  return { kind: "bad-request", message: subscriptionResult.message };
+  signal.throwIfAborted();
+  return { kind: "ok", summary };
 }
 
 async function createNotionEventAutomationForWorkflow(
