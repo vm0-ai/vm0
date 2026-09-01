@@ -17,9 +17,8 @@ use guest_contracts::session_history_identity::{
 use sandbox::{
     EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, GuestProcessCancelHandle,
     GuestProcessControlHandle, GuestProcessHandle, ProcessOutputMode, Sandbox,
-    StartAgentProcessRequest, StartProcessRequest,
+    SessionHistoryIdentityVerifyRequest, StartAgentProcessRequest,
 };
-use shell_quote::quote_shell_arg;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
@@ -63,8 +62,8 @@ use super::{
     JOB_TIMEOUT_EXIT_CODE, ResourceFailureDiagnostics, ResourceFailureKind, RunnerError,
     RunnerResult, SandboxReuseDisposition, SandboxReuseRejection, SandboxReuseResult,
     SandboxReuseTerminal, SessionHistoryRestoreFallback, SessionHistoryRestorePlan,
-    USER_ENV_FILE_ENV_KEY, agent_exit_failure_message, guest_runtime_dir, guest_runtime_path,
-    job_supervisor_timeout, job_terminal_wait_timeout, normalize_failure_exit_code,
+    agent_exit_failure_message, guest_runtime_dir, guest_runtime_path, job_supervisor_timeout,
+    job_terminal_wait_timeout, normalize_failure_exit_code,
 };
 use crate::active_input::ActiveInputSource;
 use crate::helper_exec::{helper_exec_succeeded, helper_exec_termination_label};
@@ -79,12 +78,14 @@ use crate::telemetry::{
 };
 use crate::types::{ExecutionContext, WorkspaceReuseResult};
 
-const AGENT_WRAPPER_STDERR_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
+const AGENT_START_STDERR_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
 const SESSION_HISTORY_DOWNLOAD_TELEMETRY_ERROR: &str = "session history download failed";
 const SESSION_HISTORY_DOWNLOAD_PHASE_TELEMETRY_ERROR: &str =
     "session history download phase failed";
 const SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR: &str =
     "session history materialization failed";
+const SESSION_HISTORY_IDENTITY_REUSE_VERIFY_TELEMETRY_ERROR: &str =
+    "session history identity reuse verification failed";
 const WORKSPACE_SESSION_HISTORY_PHASE_TELEMETRY_ERROR: &str =
     "workspace session history phase failed";
 const STORAGE_CACHE_POPULATE_FAILED: &str = "storage-cache-populate-failed";
@@ -427,40 +428,11 @@ async fn materialize_inline_resume_session(
     )))
 }
 
-pub(super) fn build_agent_start_command(run_agent_path: &str) -> String {
-    let run_agent_path = quote_shell_arg(run_agent_path);
-    format!(
-        "if [ ! -e {run_agent_path} ]; then \
-            printf '%s\\n' 'agent bootstrap failed: guest-agent is missing' >&2; \
-            exit 127; \
-        fi; \
-        if [ ! -f {run_agent_path} ]; then \
-            printf '%s\\n' 'agent bootstrap failed: guest-agent is not a regular file' >&2; \
-            exit 126; \
-        fi; \
-        if [ ! -x {run_agent_path} ]; then \
-            printf '%s\\n' 'agent bootstrap failed: guest-agent is not executable' >&2; \
-            exit 126; \
-        fi; \
-        exec {run_agent_path} 2>&1"
-    )
-}
-
-fn validate_agent_bootstrap_exec_boundary(
-    agent_cmd: &str,
-    env_pairs: &[(String, String)],
-) -> RunnerResult<()> {
-    let mut values = Vec::with_capacity(env_pairs.len() + 3);
+fn validate_agent_bootstrap_exec_boundary(env_pairs: &[(String, String)]) -> RunnerResult<()> {
+    let mut values = Vec::with_capacity(env_pairs.len() + 1);
     values.push(guest_contracts::exec_limits::ExecBoundaryValue::arg(
         "argv[0]",
-        "/bin/bash",
-    ));
-    values.push(guest_contracts::exec_limits::ExecBoundaryValue::arg(
-        "argv[1]", "-c",
-    ));
-    values.push(guest_contracts::exec_limits::ExecBoundaryValue::arg(
-        "argv[2] bootstrap command",
-        agent_cmd,
+        guest::RUN_AGENT,
     ));
     for (key, value) in env_pairs {
         values.push(guest_contracts::exec_limits::ExecBoundaryValue::env(
@@ -503,41 +475,27 @@ async fn verify_restored_session_identity_for_reuse(
     } = verification;
     let metadata_path = metadata_path.to_owned();
     let runtime_dir = runtime_dir.to_owned();
-    let command = build_final_identity_verify_command(
-        guest::RUN_AGENT,
-        &metadata_path,
-        framework.as_str(),
-        session_id_hash,
-        history_ref_kind.as_str(),
-        history_hash,
+    let session_id_hash = session_id_hash.to_owned();
+    let history_hash = history_hash.to_owned();
+    let request = SessionHistoryIdentityVerifyRequest {
+        metadata_path: &metadata_path,
+        runtime_dir: &runtime_dir,
+        framework: framework.as_str(),
+        session_id_hash: &session_id_hash,
+        history_ref_kind: history_ref_kind.as_str(),
+        history_hash: &history_hash,
         history_size_bytes,
-    );
-    verify_final_identity_metadata(sandbox, identity, command, &runtime_dir).await
+        timeout: SESSION_HISTORY_IDENTITY_VERIFY_TIMEOUT,
+    };
+    verify_final_identity_metadata(sandbox, identity, &request).await
 }
 
 async fn verify_final_identity_metadata(
     sandbox: &dyn Sandbox,
     identity: RestoredSessionIdentity,
-    command: String,
-    runtime_dir: &str,
+    request: &SessionHistoryIdentityVerifyRequest<'_>,
 ) -> Result<RestoredSessionIdentity, SessionHistoryIdentityReason> {
-    let env = [(
-        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
-        runtime_dir,
-    )];
-    let request = ExecRequest {
-        cmd: &command,
-        timeout: SESSION_HISTORY_IDENTITY_VERIFY_TIMEOUT,
-        env: &env,
-        sudo: false,
-        expected_exit_codes: &[],
-        stdin_bytes: None,
-        output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
-    };
-    match sandbox
-        .exec_with_diagnostic_label(&request, "session-history-identity-verify")
-        .await
-    {
+    match sandbox.verify_session_history_identity(request).await {
         Ok(result) if helper_exec_succeeded(&result) => Ok(identity),
         Ok(result) => Err(session_history_identity_reason_from_helper_result(&result)),
         Err(_) => Err(SessionHistoryIdentityReason::VerifyHelperExecError),
@@ -580,28 +538,6 @@ fn session_history_identity_reason_from_helper_result(
             SessionHistoryIdentityReason::VerifyHelperFailed
         }
     }
-}
-
-fn build_final_identity_verify_command(
-    run_agent_path: &str,
-    metadata_path: &str,
-    framework: &str,
-    session_id_hash: &str,
-    history_ref_kind: &str,
-    history_hash: &str,
-    history_size_bytes: u64,
-) -> String {
-    let args = [
-        quote_shell_arg(run_agent_path),
-        "verify-session-history-identity".to_string(),
-        quote_shell_arg(metadata_path),
-        quote_shell_arg(framework),
-        quote_shell_arg(session_id_hash),
-        quote_shell_arg(history_ref_kind),
-        quote_shell_arg(history_hash),
-        history_size_bytes.to_string(),
-    ];
-    args.join(" ")
 }
 
 async fn read_final_session_history_identity(
@@ -1714,7 +1650,18 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     let mut local_session_history_materializer = None;
     let mut session_history_materializer = match session_history_restore_plan {
         SessionHistoryRestorePlan::SkipVerified(identity) => {
-            match verify_restored_session_identity_for_reuse(sandbox, context, identity).await {
+            let verification_started = Instant::now();
+            let verification_result =
+                verify_restored_session_identity_for_reuse(sandbox, context, identity).await;
+            let verification_succeeded = verification_result.is_ok();
+            telemetry.record(
+                "session_history_identity_reuse_verify",
+                verification_started.elapsed(),
+                verification_succeeded,
+                (!verification_succeeded)
+                    .then_some(SESSION_HISTORY_IDENTITY_REUSE_VERIFY_TELEMETRY_ERROR),
+            );
+            match verification_result {
                 Ok(identity) => {
                     telemetry.record(
                         "session_history_identity_reuse_hit",
@@ -2113,8 +2060,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     let user_env_file = required_files.user_env_file;
     let run_payload_file = required_files.run_payload_file;
     debug_assert!(
-        !env_map.contains_key(USER_ENV_FILE_ENV_KEY)
-            && !env_map.contains_key(guest_contracts::env::RUN_PAYLOAD_FILE_ENV),
+        !env_map.contains_key("VM0_USER_ENV_FILE")
+            && !env_map.contains_key("VM0_RUN_PAYLOAD_FILE"),
         "legacy private payload pointers must be absent before canonical insertion"
     );
     if let Some(path) = user_env_file {
@@ -2135,11 +2082,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         .collect();
     info!(run_id = %context.run_id, count = env_refs.len(), "passing env vars via vsock");
 
-    // Spawn guest-agent with stdout streamed to the host via vsock. Its stderr
-    // is merged into stdout, while a small capture keeps shell or wrapper
-    // startup failures visible when the process exits before guest logging.
-    let agent_cmd = build_agent_start_command(guest::RUN_AGENT);
-    validate_agent_bootstrap_exec_boundary(&agent_cmd, &env_pairs)?;
+    // Spawn the fixed guest-agent executable with combined stdout/stderr
+    // streamed to the host. A small terminal capture remains available for
+    // bounded pre-start diagnostics.
+    validate_agent_bootstrap_exec_boundary(&env_pairs)?;
     info!(run_id = %context.run_id, "spawning agent");
 
     // Guest-agent receives JOB_TIMEOUT as the user execution budget. The
@@ -2149,15 +2095,11 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     let t = Instant::now();
     let handle = sandbox
         .start_agent_process(&StartAgentProcessRequest {
-            process: StartProcessRequest {
-                cmd: &agent_cmd,
-                timeout: job_supervisor_timeout(),
-                env: &env_refs,
-                sudo: false,
-                output: ProcessOutputMode::stream_with_stderr_capture(
-                    AGENT_WRAPPER_STDERR_CAPTURE_LIMIT_BYTES,
-                ),
-            },
+            timeout: job_supervisor_timeout(),
+            env: &env_refs,
+            output: ProcessOutputMode::stream_with_stderr_capture(
+                AGENT_START_STDERR_CAPTURE_LIMIT_BYTES,
+            ),
         })
         .await;
 
@@ -2763,10 +2705,9 @@ mod tests {
         let secret = "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
         let env_pairs = vec![("VM0_OVERSIZED".to_string(), secret.clone())];
 
-        let error =
-            validate_agent_bootstrap_exec_boundary("exec /usr/local/bin/guest-agent", &env_pairs)
-                .unwrap_err()
-                .to_string();
+        let error = validate_agent_bootstrap_exec_boundary(&env_pairs)
+            .unwrap_err()
+            .to_string();
 
         assert!(error.contains("guest-agent bootstrap argv/env too large"));
         assert!(error.contains("VM0_OVERSIZED"));
@@ -2780,25 +2721,21 @@ mod tests {
             .map(|index| (format!("VM0_CHUNK_{index}"), value.clone()))
             .collect();
 
-        let error =
-            validate_agent_bootstrap_exec_boundary("exec /usr/local/bin/guest-agent", &env_pairs)
-                .unwrap_err()
-                .to_string();
+        let error = validate_agent_bootstrap_exec_boundary(&env_pairs)
+            .unwrap_err()
+            .to_string();
 
         assert!(error.contains("argv/env aggregate too large"));
     }
 
     #[test]
-    fn bootstrap_exec_boundary_counts_shell_wrapper_dash_c_arg() {
-        let agent_cmd = "exec /usr/local/bin/guest-agent";
-        let shell_arg_bytes = exec_arg_aggregate_bytes("/bin/bash")
-            + exec_arg_aggregate_bytes("-c")
-            + exec_arg_aggregate_bytes(agent_cmd);
+    fn bootstrap_exec_boundary_counts_fixed_agent_executable_arg() {
+        let executable_arg_bytes = exec_arg_aggregate_bytes(guest::RUN_AGENT);
         let env_pairs = env_pairs_for_aggregate_bytes(
-            guest_contracts::exec_limits::EXECVE_ARG_ENV_MAX_BYTES + 1 - shell_arg_bytes,
+            guest_contracts::exec_limits::EXECVE_ARG_ENV_MAX_BYTES + 1 - executable_arg_bytes,
         );
 
-        let error = validate_agent_bootstrap_exec_boundary(agent_cmd, &env_pairs)
+        let error = validate_agent_bootstrap_exec_boundary(&env_pairs)
             .unwrap_err()
             .to_string();
 

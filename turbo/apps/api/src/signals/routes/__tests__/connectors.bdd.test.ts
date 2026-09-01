@@ -58,9 +58,12 @@ import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import {
   deleteCustomConnectorCredentialValues,
+  readAutomaticOAuthBindingState,
   readConnectorCredentialStorageState,
   readCustomConnectorCredentialStorageParent,
   readCustomConnectorOAuthStorageState,
+  seedAutomaticOAuthBindingState,
+  seedCustomConnectorOAuthStateContext,
   setConnectorDefaultState,
   setBuiltinOAuthScopeFacts,
   setCustomConnectorCredentialStorageState,
@@ -2246,6 +2249,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     );
     expect(created).toMatchObject({
       authMode: "oauth",
+      oauthSetup: "custom",
       storageVersion: 1,
       oauthConfig: {
         clientId,
@@ -2254,6 +2258,13 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       connected: false,
     });
     expectNoVisibleSecret(created, clientSecret);
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId: requiredOrgId(admin),
+        userId: admin.userId,
+        customConnectorId: created.id,
+      }),
+    ).resolves.toMatchObject({ definition_oauth_setup: null });
     const expectedGrant = {
       customConnectorId: created.id,
       permissionNames: ["chat:write"],
@@ -2943,6 +2954,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(created).toMatchObject({
       kind: "mcp",
       authMode: "oauth",
+      oauthSetup: "custom",
       endpoint: definition.endpoint,
       storageVersion: 1,
       connected: false,
@@ -3019,6 +3031,294 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     );
     await connectorsApi.deleteCustomConnector(admin, created.id);
     await bdd.deleteAgent(member, agent.agentId);
+  });
+
+  it("models Automatic OAuth without enabling incomplete production writes", async () => {
+    mockEnv("APP_URL", "https://app.vm0.test");
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+    });
+    const definition = {
+      kind: "mcp" as const,
+      displayName: "BDD Automatic OAuth",
+      endpoint: "https://automatic-mcp.example.test/server",
+      transport: "streamable-http" as const,
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth" as const,
+      oauthSetup: "automatic" as const,
+    };
+
+    const before = await connectorsApi.listCustomConnectors(admin);
+    const rejected = await connectorsApi.requestCreateCustomConnector(
+      admin,
+      definition,
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toBe(
+      "Automatic OAuth connector setup is not enabled yet",
+    );
+    await expect(
+      connectorsApi.listCustomConnectors(admin),
+    ).resolves.toHaveLength(before.length);
+
+    const customConnectorId = randomUUID();
+    const connectorAccountId = randomUUID();
+    const dcrRegistrationId = randomUUID();
+    const encryptedClientSecret = "encrypted-dcr-client-secret";
+    await seedAutomaticOAuthBindingState(context, {
+      orgId: requiredOrgId(admin),
+      userId: admin.userId,
+      customConnectorId,
+      connectorAccountId,
+      issuer: "https://issuer.example.test",
+      resource: definition.endpoint,
+      resourceMetadataUrl:
+        "https://automatic-mcp.example.test/.well-known/oauth-protected-resource",
+      tokenEndpoint: "https://issuer.example.test/token",
+      clientId: "automatic-dcr-client",
+      registration: {
+        method: "dcr",
+        registrationId: dcrRegistrationId,
+        tokenEndpointAuthMethod: "client_secret_basic",
+        encryptedClientSecret,
+      },
+    });
+
+    const persisted = await connectorsApi.readCustomConnector(
+      admin,
+      customConnectorId,
+    );
+    expect(persisted).toMatchObject({
+      id: customConnectorId,
+      kind: "mcp",
+      authMode: "oauth",
+      oauthSetup: "automatic",
+      connected: false,
+    });
+    expect(persisted).not.toHaveProperty("oauthConfig");
+    expectNoVisibleSecret(persisted, encryptedClientSecret);
+    await expect(
+      readAutomaticOAuthBindingState(context, connectorAccountId),
+    ).resolves.toStrictEqual({
+      exists: true,
+      valid: true,
+      registration_method: "dcr",
+      dcr_client_secret_present: true,
+    });
+
+    const cimdConnectorId = randomUUID();
+    const cimdAccountId = randomUUID();
+    await seedAutomaticOAuthBindingState(context, {
+      orgId: requiredOrgId(admin),
+      userId: admin.userId,
+      customConnectorId: cimdConnectorId,
+      connectorAccountId: cimdAccountId,
+      issuer: "https://cimd.example.test",
+      resource: "https://cimd-mcp.example.test/server",
+      resourceMetadataUrl: null,
+      tokenEndpoint: "https://cimd.example.test/token",
+      clientId: "https://app.vm0.test/.well-known/oauth-client",
+      registration: {
+        method: "cimd",
+        tokenEndpointAuthMethod: "none",
+      },
+    });
+    await expect(
+      readAutomaticOAuthBindingState(context, cimdAccountId),
+    ).resolves.toStrictEqual({
+      exists: true,
+      valid: true,
+      registration_method: "cimd",
+    });
+    await connectorsApi.deleteCustomConnector(admin, cimdConnectorId);
+
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: requiredOrgId(admin),
+      userId: admin.userId,
+      customConnectorId,
+      authMethod: "manual",
+      storageVersion: 1,
+    });
+    await expect(
+      readAutomaticOAuthBindingState(context, connectorAccountId),
+    ).resolves.toMatchObject({ exists: true, valid: false });
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: requiredOrgId(admin),
+      userId: admin.userId,
+      customConnectorId,
+      authMethod: "oauth",
+      storageVersion: 2,
+    });
+    await expect(
+      readAutomaticOAuthBindingState(context, connectorAccountId),
+    ).resolves.toMatchObject({ exists: true, valid: false });
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: requiredOrgId(admin),
+      userId: admin.userId,
+      customConnectorId,
+      authMethod: "oauth",
+      storageVersion: 1,
+    });
+    await expect(
+      readAutomaticOAuthBindingState(context, connectorAccountId),
+    ).resolves.toMatchObject({ exists: true, valid: true });
+
+    const validState = `automatic-oauth-${randomUUID()}`;
+    await seedCustomConnectorOAuthStateContext(context, {
+      state: validState,
+      orgId: requiredOrgId(admin),
+      userId: admin.userId,
+      customConnectorId,
+      storageVersion: 1,
+      redirectUri: "https://app.vm0.test/api/custom-connectors/oauth2/callback",
+      oauthContext: {
+        version: 1,
+        oauthSetup: "automatic",
+        connectorId: customConnectorId,
+        storageVersion: 1,
+        issuer: "https://issuer.example.test",
+        resource: definition.endpoint,
+        resourceMetadataUrl:
+          "https://automatic-mcp.example.test/.well-known/oauth-protected-resource",
+        tokenEndpoint: "https://issuer.example.test/token",
+        clientId: "automatic-dcr-client",
+        tokenEndpointAuthMethod: "client_secret_basic",
+        registrationMethod: "dcr",
+        dcrRegistrationId,
+      },
+    });
+    await expect(
+      readCustomConnectorOAuthStorageState(context, validState),
+    ).resolves.toMatchObject({
+      custom_oauth_state: {
+        context_valid: true,
+        oauth_setup: "automatic",
+      },
+    });
+    const callback =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        code: "automatic-oauth-code",
+        state: validState,
+      });
+    expect(callback.body).toStrictEqual({
+      status: "error",
+      message:
+        "Custom connector OAuth configuration changed - please try again",
+    });
+
+    const malformedState = `malformed-automatic-oauth-${randomUUID()}`;
+    await seedCustomConnectorOAuthStateContext(context, {
+      state: malformedState,
+      orgId: requiredOrgId(admin),
+      userId: admin.userId,
+      customConnectorId,
+      storageVersion: 1,
+      redirectUri: "https://app.vm0.test/api/custom-connectors/oauth2/callback",
+      oauthContext: {
+        oauthSetup: "automatic",
+        connectorId: customConnectorId,
+        storageVersion: 1,
+      },
+    });
+    await expect(
+      readCustomConnectorOAuthStorageState(context, malformedState),
+    ).resolves.toMatchObject({
+      custom_oauth_state: { context_valid: false },
+    });
+
+    const updated = await connectorsApi.updateCustomConnector(
+      admin,
+      customConnectorId,
+      {
+        ...definition,
+        oauthSetup: "custom",
+        oauthConfig: {
+          providerAdapter: "standard",
+          clientId: "static-oauth-client",
+          clientSecret: "static-oauth-secret",
+          authorizationUrl: "https://static-oauth.example.test/authorize",
+          tokenUrl: "https://static-oauth.example.test/token",
+          tokenEndpointAuthMethod: "client_secret_basic",
+          pkceMethod: "S256",
+          scopes: ["read"],
+          authorizationParams: {},
+        },
+      },
+    );
+    expect(updated).toMatchObject({
+      oauthSetup: "custom",
+      storageVersion: 2,
+      connected: false,
+    });
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId: requiredOrgId(admin),
+        userId: admin.userId,
+        customConnectorId,
+      }),
+    ).resolves.toMatchObject({
+      definition_oauth_setup: null,
+      connector: { storage_version: 1 },
+    });
+    await expect(
+      readAutomaticOAuthBindingState(context, connectorAccountId),
+    ).resolves.toStrictEqual({
+      exists: false,
+      valid: false,
+      registration_method: null,
+    });
+    const rejectedUpdate = await connectorsApi.requestUpdateCustomConnector(
+      admin,
+      customConnectorId,
+      definition,
+      [400],
+    );
+    expectApiError(rejectedUpdate.body);
+    expect(rejectedUpdate.body.error.message).toBe(
+      "Automatic OAuth connector setup is not enabled yet",
+    );
+    await expect(
+      connectorsApi.readCustomConnector(admin, customConnectorId),
+    ).resolves.toMatchObject({ oauthSetup: "custom", storageVersion: 2 });
+    await connectorsApi.deleteCustomConnector(admin, customConnectorId);
+
+    const invalidConnectorId = randomUUID();
+    const invalidAccountId = randomUUID();
+    await seedAutomaticOAuthBindingState(context, {
+      orgId: requiredOrgId(admin),
+      userId: admin.userId,
+      customConnectorId: invalidConnectorId,
+      connectorAccountId: invalidAccountId,
+      issuer: "ftp://issuer.example.test",
+      resource: definition.endpoint,
+      resourceMetadataUrl: null,
+      tokenEndpoint: "https://issuer.example.test/token",
+      clientId: "invalid-dcr-client",
+      registration: {
+        method: "dcr",
+        registrationId: randomUUID(),
+        tokenEndpointAuthMethod: "none",
+        encryptedClientSecret: null,
+      },
+    });
+    await expect(
+      readAutomaticOAuthBindingState(context, invalidAccountId),
+    ).resolves.toStrictEqual({
+      exists: true,
+      valid: false,
+      registration_method: "dcr",
+    });
+    await connectorsApi.deleteCustomConnector(admin, invalidConnectorId);
   });
 
   it("updates OAuth settings and preserves member OAuth data as incompatible", async () => {

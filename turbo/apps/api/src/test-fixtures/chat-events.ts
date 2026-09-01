@@ -18,21 +18,21 @@ import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context
 import { chatAgentphoneContext } from "@okouai/db/schema/chat-agentphone-context";
 import { chatFeishuContext } from "@okouai/db/schema/chat-feishu-context";
 import { chatGithubContext } from "@okouai/db/schema/chat-github-context";
-import { chatMorningBriefContext } from "@okouai/db/schema/chat-morning-brief-context";
 import { chatSlackContext } from "@okouai/db/schema/chat-slack-context";
 import { chatTeamsContext } from "@okouai/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@okouai/db/schema/chat-telegram-context";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { chatEvents } from "@okouai/db/schema/chat-event";
+import { chatEventSearchMessageWatermarks } from "@okouai/db/schema/chat-event-search";
 import { feishuChatIngress } from "@okouai/db/schema/feishu-chat-ingress";
 import { feishuOrgEvents } from "@okouai/db/schema/feishu-org-event";
-import { checkpoints } from "@okouai/db/schema/checkpoint";
 import { conversations } from "@okouai/db/schema/conversation";
 import { githubChatThreadRoutes } from "@okouai/db/schema/github-chat-thread-route";
 import { githubInstallations } from "@okouai/db/schema/github-installation";
 import { orgModelPolicies } from "@okouai/db/schema/org-model-policy";
 import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
+import { usageEvent } from "@okouai/db/schema/usage-event";
 import {
   and,
   asc,
@@ -189,9 +189,6 @@ interface ChatEventContextFixture {
   readonly githubMessageText: string | null;
   readonly githubTriggerReactionId: string | null;
   readonly githubTriggerCommentBody: string | null;
-  readonly morningBriefDeliveryId: string | null;
-  readonly morningBriefTimezone: string | null;
-  readonly morningBriefTriggeredAt: Date | null;
 }
 
 export async function readChatEventContextFixture(
@@ -291,9 +288,6 @@ export async function readChatEventContextFixture(
       githubMessageText: chatGithubContext.messageText,
       githubTriggerReactionId: chatGithubContext.triggerReactionId,
       githubTriggerCommentBody: chatGithubContext.triggerCommentBody,
-      morningBriefDeliveryId: chatMorningBriefContext.deliveryId,
-      morningBriefTimezone: chatMorningBriefContext.timezone,
-      morningBriefTriggeredAt: chatMorningBriefContext.triggeredAt,
     })
     .from(chatEvents)
     .leftJoin(chatAutomationContext, eq(chatAutomationContext.id, contextId))
@@ -303,10 +297,6 @@ export async function readChatEventContextFixture(
     .leftJoin(chatAgentphoneContext, eq(chatAgentphoneContext.id, contextId))
     .leftJoin(chatTelegramContext, eq(chatTelegramContext.id, contextId))
     .leftJoin(chatGithubContext, eq(chatGithubContext.id, contextId))
-    .leftJoin(
-      chatMorningBriefContext,
-      eq(chatMorningBriefContext.id, contextId),
-    )
     .where(eq(chatEvents.id, eventId))
     .limit(1);
   return event ?? null;
@@ -1006,20 +996,27 @@ export async function timeoutRunWithoutCallbacksFixture(args: {
   }
 }
 
-/**
- * Holds checkpoint reads after `/complete` has loaded its run but before its
- * terminal compare-and-set. Product APIs cannot pause at this race boundary.
- */
-export async function holdCheckpointReadsFixture(args: {
+/** Holds one unique run row so route tests can order lifecycle competitors. */
+export async function holdAgentRunRowLockFixture(args: {
+  readonly runId: string;
   readonly signal: AbortSignal;
 }): Promise<{
   readonly release: () => void;
   readonly done: Promise<void>;
-  readonly blockedWaiterCount: () => Promise<number>;
+  readonly waiterCount: () => Promise<number>;
 }> {
   const started = createDeferredPromise<number>(args.signal);
   const released = createDeferredPromise<void>(args.signal);
   const done = db().transaction(async (tx) => {
+    const [run] = await tx
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, args.runId))
+      .for("update")
+      .limit(1);
+    if (!run) {
+      throw new Error("Expected the agent run row to lock");
+    }
     const pidRows = await executeRawRows(
       tx,
       sql`
@@ -1029,9 +1026,8 @@ export async function holdCheckpointReadsFixture(args: {
     );
     const holderPid = pidRows[0]?.pid;
     if (!holderPid) {
-      throw new Error("Expected the checkpoint lock holder pid");
+      throw new Error("Expected the agent run row lock holder pid");
     }
-    await tx.execute(sql`LOCK TABLE ${checkpoints} IN ACCESS EXCLUSIVE MODE`);
     started.resolve(holderPid);
     await released.promise;
   });
@@ -1044,8 +1040,8 @@ export async function holdCheckpointReadsFixture(args: {
       }
     },
     done,
-    blockedWaiterCount: async () => {
-      return await directBlockedWaiterCount(holderPid);
+    waiterCount: () => {
+      return transitiveBlockedWaiterCount(holderPid);
     },
   };
 }
@@ -1631,6 +1627,64 @@ function isChatEventPhysicalDeletion(query: string): boolean {
   return query === 'lock table "chat_events" in access exclusive mode';
 }
 
+/**
+ * Holds the derived search watermark so route tests can deterministically
+ * order a projector and orphan cleanup at their shared discoverability anchor.
+ * Product APIs cannot pause while holding this projection-internal row lock.
+ */
+export async function holdChatEventSearchWatermarkRowLockFixture(args: {
+  readonly chatThreadId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const [watermark] = await tx
+      .select({
+        chatThreadId: chatEventSearchMessageWatermarks.chatThreadId,
+      })
+      .from(chatEventSearchMessageWatermarks)
+      .where(
+        eq(chatEventSearchMessageWatermarks.chatThreadId, args.chatThreadId),
+      )
+      .for("update")
+      .limit(1);
+    if (!watermark) {
+      throw new Error("Expected the chat search watermark row");
+    }
+    const pidRows = await executeRawRows(
+      tx,
+      sql`
+        SELECT pg_backend_pid() AS "pid"
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = pidRows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the chat search watermark lock holder pid");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      return await transitiveBlockedWaiterCount(holderPid);
+    },
+  };
+}
+
 async function directBlockedChatEventStatementCounts(owner: {
   readonly applicationName: string;
   readonly pid: number;
@@ -1889,6 +1943,71 @@ export async function holdOrgAdmissionLockFixture(args: {
     const holderPid = rows[0]?.pid;
     if (!holderPid) {
       throw new Error("Expected the admission lock holder pid");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    waiterCount: async () => {
+      const rows = await executeRawRows(
+        db(),
+        sql`
+          SELECT ${count()}::int AS "waiterCount"
+          FROM pg_locks AS waiting
+          WHERE waiting.locktype = 'advisory'
+            AND NOT waiting.granted
+            AND (waiting.classid, waiting.objid, waiting.objsubid) IN (
+              SELECT held.classid, held.objid, held.objsubid
+              FROM pg_locks AS held
+              WHERE held.locktype = 'advisory'
+                AND held.pid = ${holderPid}
+                AND held.granted
+            )
+        `,
+        waiterCountRowSchema,
+      );
+      return rows[0]?.waiterCount ?? 0;
+    },
+  };
+}
+
+/**
+ * Holds the production Pi API-first lifecycle key so BDDs can deterministically
+ * order publication and canonical cancellation without timing sleeps.
+ */
+export async function holdPiApiFirstTurnLifecycleLockFixture(args: {
+  readonly runId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly waiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const rows = await executeRawRows(
+      tx,
+      sql`
+        SELECT
+          pg_backend_pid() AS "pid",
+          pg_advisory_xact_lock(
+            hashtextextended(${`pi_api_first_turn:${args.runId}`}, 0)
+          )
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = rows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the Pi lifecycle lock holder pid");
     }
     started.resolve(holderPid);
     await released.promise;
@@ -2876,6 +2995,35 @@ export async function isVisibleChatEventFixture(
     .where(and(eq(chatEvents.id, eventId), visibleChatEventCondition(database)))
     .limit(1);
   return event !== undefined;
+}
+
+/**
+ * Usage-ledger rows have no production read endpoint. This test-only fixture is
+ * the narrow external-behavior exception needed to prove exactly-once billing
+ * without exposing internal billing records through a new product API.
+ */
+export async function readRunUsageEventsFixture(runId: string): Promise<
+  readonly {
+    readonly provider: string;
+    readonly category: string;
+    readonly quantity: number;
+    readonly status: string;
+    readonly creditsCharged: number | null;
+    readonly billingError: string | null;
+  }[]
+> {
+  return await db()
+    .select({
+      provider: usageEvent.provider,
+      category: usageEvent.category,
+      quantity: usageEvent.quantity,
+      status: usageEvent.status,
+      creditsCharged: usageEvent.creditsCharged,
+      billingError: usageEvent.billingError,
+    })
+    .from(usageEvent)
+    .where(eq(usageEvent.runId, runId))
+    .orderBy(usageEvent.category);
 }
 
 /**

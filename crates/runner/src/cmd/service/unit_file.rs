@@ -128,7 +128,7 @@ pub(super) fn validate_env_vars(vars: &[String]) -> RunnerResult<()> {
             ));
         }
         if !guest_contracts::env::is_shell_identifier_env_key(key) {
-            let key = guest_contracts::env::sanitize_user_env_key_for_diagnostic(key);
+            let key = guest_contracts::env::sanitize_env_key_for_diagnostic(key);
             return Err(RunnerError::Config(format!(
                 "invalid --env key {key:?}: expected [_A-Za-z][_A-Za-z0-9]*"
             )));

@@ -11,7 +11,6 @@ import { join } from "node:path";
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { HttpResponse, http } from "msw";
 import {
@@ -35,10 +34,6 @@ const SNAPSHOT_DOWNLOAD_URL =
 const CHAT_EVENT_SCHEMA_HEADERS = {
   [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
     CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
-};
-const PREVIOUS_CHAT_EVENT_SCHEMA_HEADERS = {
-  [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
-    PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString(),
 };
 const CACHE_SCHEMA_VERSION_FILE = ".okou-chat-event-schema-version";
 const CACHE_SCHEMA_VERSION_BODY = `${CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()}\n`;
@@ -94,7 +89,7 @@ describe("okou chat messages command", () => {
   }) as never);
 
   beforeEach(() => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
     vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_ID);
   });
@@ -139,7 +134,14 @@ describe("okou chat messages command", () => {
         expect(url.searchParams.get("sinceEventId")).toBe(snapshotLastRow.id);
         expect(url.searchParams.get("limit")).toBe("50");
         return HttpResponse.json(
-          { rows: [hotRow] },
+          {
+            rows: [hotRow],
+            cursor: {
+              lastEventId: hotRow.id,
+              lastSeqId: hotRow.seqId,
+            },
+            hasMore: false,
+          },
           { headers: CHAT_EVENT_SCHEMA_HEADERS },
         );
       }),
@@ -170,105 +172,12 @@ describe("okou chat messages command", () => {
     expect(output).toContain(join(threadDirectory, "event-SEQ_ID_3.json"));
   });
 
-  it("retries V6 once when an old API rejects V7 as ahead", async () => {
-    const outputDirectory = await createOutputDirectory();
-    const snapshotRow = rawEventRow(2);
-    const snapshotVersions: string[] = [];
-    const rowVersions: string[] = [];
-    server.use(
-      http.get(SNAPSHOT_URL, ({ request }) => {
-        const version = request.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER);
-        snapshotVersions.push(version ?? "missing");
-        if (version === CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()) {
-          return HttpResponse.json(
-            {
-              error: {
-                code: "CHAT_EVENT_SCHEMA_VERSION_AHEAD",
-                message:
-                  "The requested Chat Event schema version is newer than this API",
-              },
-            },
-            { status: 409 },
-          );
-        }
-        expect(version).toBe(PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString());
-        return HttpResponse.json(
-          {
-            url: SNAPSHOT_DOWNLOAD_URL,
-            expiresInSeconds: 900,
-            lastEventId: snapshotRow.id,
-            lastSeqId: snapshotRow.seqId,
-            projection: "tool-redacted",
-          },
-          { headers: PREVIOUS_CHAT_EVENT_SCHEMA_HEADERS },
-        );
-      }),
-      http.get(SNAPSHOT_DOWNLOAD_URL, () => {
-        return new HttpResponse(snapshotNdjson([snapshotRow]));
-      }),
-      http.get(ROWS_URL, ({ request }) => {
-        const version = request.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER);
-        rowVersions.push(version ?? "missing");
-        if (version === CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()) {
-          return HttpResponse.json(
-            {
-              error: {
-                code: "CHAT_EVENT_SCHEMA_VERSION_AHEAD",
-                message:
-                  "The requested Chat Event schema version is newer than this API",
-              },
-            },
-            { status: 409 },
-          );
-        }
-        expect(version).toBe(PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString());
-        return HttpResponse.json(
-          {
-            rows: [],
-            cursor: {
-              lastEventId: snapshotRow.id,
-              lastSeqId: snapshotRow.seqId,
-              projection: "tool-redacted",
-            },
-            hasMore: false,
-            projection: "tool-redacted",
-          },
-          { headers: PREVIOUS_CHAT_EVENT_SCHEMA_HEADERS },
-        );
-      }),
-    );
-
-    await chatCommand.parseAsync([
-      "node",
-      "cli",
-      "messages",
-      "--output-dir",
-      outputDirectory,
-    ]);
-
-    expect(snapshotVersions).toStrictEqual([
-      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
-      PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString(),
-    ]);
-    expect(rowVersions).toStrictEqual([
-      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
-      PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString(),
-    ]);
-    await expect(
-      readFile(
-        join(outputDirectory, THREAD_ID, CACHE_SCHEMA_VERSION_FILE),
-        "utf8",
-      ),
-    ).resolves.toBe(`${PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString()}\n`);
-  });
-
   it("persists an empty canonical snapshot and advances visible rows", async () => {
     const outputDirectory = await createOutputDirectory();
     const visibleRow = rawEventRow(4);
     const cursors: {
       readonly eventId: string | null;
       readonly seqId: string | null;
-      readonly projection: string | null;
     }[] = [];
     server.use(
       http.get(SNAPSHOT_URL, () => {
@@ -278,7 +187,6 @@ describe("okou chat messages command", () => {
             expiresInSeconds: 900,
             lastEventId: null,
             lastSeqId: 0,
-            projection: "tool-redacted",
           },
           { headers: CHAT_EVENT_SCHEMA_HEADERS },
         );
@@ -291,7 +199,6 @@ describe("okou chat messages command", () => {
         cursors.push({
           eventId: url.searchParams.get("sinceEventId"),
           seqId: url.searchParams.get("sinceSeqId"),
-          projection: url.searchParams.get("sinceProjection"),
         });
         return HttpResponse.json(
           {
@@ -299,10 +206,8 @@ describe("okou chat messages command", () => {
             cursor: {
               lastEventId: visibleRow.id,
               lastSeqId: visibleRow.seqId,
-              projection: "tool-redacted",
             },
             hasMore: false,
-            projection: "tool-redacted",
           },
           { headers: CHAT_EVENT_SCHEMA_HEADERS },
         );
@@ -321,20 +226,16 @@ describe("okou chat messages command", () => {
       {
         eventId: null,
         seqId: "0",
-        projection: null,
       },
     ]);
     const threadDirectory = join(outputDirectory, THREAD_ID);
     expect((await readdir(threadDirectory)).sort()).toStrictEqual([
       CACHE_SCHEMA_VERSION_FILE,
       "event-SEQ_ID_4.json",
-      "snapshot-tool-redacted-to-0.ndjson",
+      "snapshot-to-0.ndjson",
     ]);
     await expect(
-      readFile(
-        join(threadDirectory, "snapshot-tool-redacted-to-0.ndjson"),
-        "utf8",
-      ),
+      readFile(join(threadDirectory, "snapshot-to-0.ndjson"), "utf8"),
     ).resolves.toBe("");
   });
 
@@ -369,7 +270,14 @@ describe("okou chat messages command", () => {
           seqId,
         });
         return HttpResponse.json(
-          { rows: [rawEventRow(4)] },
+          {
+            rows: [rawEventRow(4)],
+            cursor: {
+              lastEventId: rawEventRow(4).id,
+              lastSeqId: 4,
+            },
+            hasMore: false,
+          },
           { headers: CHAT_EVENT_SCHEMA_HEADERS },
         );
       }),
@@ -433,7 +341,14 @@ describe("okou chat messages command", () => {
         cursors.push(cursor);
         expect(cursor).toBe("4");
         return HttpResponse.json(
-          { rows: [rawEventRow(7), rawEventRow(10)] },
+          {
+            rows: [rawEventRow(7), rawEventRow(10)],
+            cursor: {
+              lastEventId: rawEventRow(10).id,
+              lastSeqId: 10,
+            },
+            hasMore: false,
+          },
           { headers: CHAT_EVENT_SCHEMA_HEADERS },
         );
       }),
@@ -474,7 +389,14 @@ describe("okou chat messages command", () => {
       }),
       http.get(ROWS_URL, () => {
         return HttpResponse.json(
-          { rows: [rawEventRow(7), rawEventRow(6)] },
+          {
+            rows: [rawEventRow(7), rawEventRow(6)],
+            cursor: {
+              lastEventId: rawEventRow(6).id,
+              lastSeqId: 6,
+            },
+            hasMore: false,
+          },
           { headers: CHAT_EVENT_SCHEMA_HEADERS },
         );
       }),
@@ -513,7 +435,14 @@ describe("okou chat messages command", () => {
     );
     server.use(
       http.get(ROWS_URL, () => {
-        return HttpResponse.json({ rows: [] });
+        return HttpResponse.json({
+          rows: [],
+          cursor: {
+            lastEventId: rawEventRow(4).id,
+            lastSeqId: 4,
+          },
+          hasMore: false,
+        });
       }),
     );
 
@@ -531,69 +460,6 @@ describe("okou chat messages command", () => {
       "Unexpected Chat Event schema version null",
     );
     expect(mockExit).toHaveBeenCalledWith(1);
-  });
-
-  it("rebuilds an unversioned cache before interpreting its cursor", async () => {
-    const outputDirectory = await createOutputDirectory();
-    const threadDirectory = join(outputDirectory, THREAD_ID);
-    await mkdir(threadDirectory, { recursive: true });
-    await writeFile(
-      join(threadDirectory, "event-SEQ_ID_4.json"),
-      `${JSON.stringify(rawEventRow(4))}\n`,
-      "utf8",
-    );
-    await writeFile(join(threadDirectory, "notes.txt"), "keep me", "utf8");
-    const freshSnapshotRow = rawEventRow(10);
-    const rowCursors: string[] = [];
-    let snapshotRequests = 0;
-    server.use(
-      http.get(SNAPSHOT_URL, () => {
-        snapshotRequests += 1;
-        return HttpResponse.json(
-          {
-            url: SNAPSHOT_DOWNLOAD_URL,
-            expiresInSeconds: 900,
-            lastEventId: freshSnapshotRow.id,
-            lastSeqId: freshSnapshotRow.seqId,
-            projection: "tool-redacted",
-          },
-          { headers: CHAT_EVENT_SCHEMA_HEADERS },
-        );
-      }),
-      http.get(SNAPSHOT_DOWNLOAD_URL, () => {
-        return new HttpResponse(snapshotNdjson([freshSnapshotRow]));
-      }),
-      http.get(ROWS_URL, ({ request }) => {
-        const cursor = new URL(request.url).searchParams.get("sinceSeqId");
-        if (cursor === null) {
-          throw new Error("Expected a rows cursor");
-        }
-        rowCursors.push(cursor);
-        return HttpResponse.json(
-          { rows: [] },
-          { headers: CHAT_EVENT_SCHEMA_HEADERS },
-        );
-      }),
-    );
-
-    await chatCommand.parseAsync([
-      "node",
-      "cli",
-      "messages",
-      "--output-dir",
-      outputDirectory,
-    ]);
-
-    expect(snapshotRequests).toBe(1);
-    expect(rowCursors).toStrictEqual(["10"]);
-    expect((await readdir(threadDirectory)).sort()).toStrictEqual([
-      CACHE_SCHEMA_VERSION_FILE,
-      "notes.txt",
-      "snapshot-tool-redacted-to-10.ndjson",
-    ]);
-    await expect(
-      readFile(join(threadDirectory, CACHE_SCHEMA_VERSION_FILE), "utf8"),
-    ).resolves.toBe(CACHE_SCHEMA_VERSION_BODY);
   });
 
   it("rebuilds an expired local generation and preserves unmanaged files", async () => {
@@ -652,8 +518,16 @@ describe("okou chat messages command", () => {
           );
         }
         expect(seqId).toBe("10");
+        const row = rawEventRow(11);
         return HttpResponse.json(
-          { rows: [rawEventRow(11)] },
+          {
+            rows: [row],
+            cursor: {
+              lastEventId: row.id,
+              lastSeqId: row.seqId,
+            },
+            hasMore: false,
+          },
           { headers: CHAT_EVENT_SCHEMA_HEADERS },
         );
       }),

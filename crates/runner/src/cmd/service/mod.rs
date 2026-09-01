@@ -533,6 +533,13 @@ impl ActiveJobsGateOps for RealServiceUninstallOps {
     fn is_unit_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
         Box::pin(async move { is_unit_active(unit).await })
     }
+
+    fn read_unit_config_path<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, Option<PathBuf>> {
+        Box::pin(async move { read_unit_config_path(unit).await })
+    }
 }
 
 impl ServiceUninstallOps for RealServiceUninstallOps {
@@ -571,7 +578,7 @@ async fn uninstall_with_ops(
     ops.uninstall_unit(unit).await
 }
 
-fn readiness_base_dir_from_live_instances(
+fn selected_config_base_dir_from_live_instances(
     unit: &RunnerServiceUnit,
     config_path: &Path,
     instances: &[LiveRunnerInstance],
@@ -585,19 +592,20 @@ fn readiness_base_dir_from_live_instances(
         [instance] => Ok(Some(instance.base_dir.clone())),
         [] => Ok(None),
         _ => Err(RunnerError::Internal(format!(
-            "{} has multiple live runner instance records for readiness",
-            unit.unit_name()
+            "{} has multiple live runner instance records for selected config {}",
+            unit.unit_name(),
+            config_path.display()
         ))),
     }
 }
 
-async fn readiness_base_dir(
+async fn selected_config_base_dir(
     unit: &RunnerServiceUnit,
     config_path: &Path,
     home: &HomePaths,
 ) -> RunnerResult<Option<PathBuf>> {
     let instances = live_runner_instances::try_list(home).await?;
-    readiness_base_dir_from_live_instances(unit, config_path, &instances)
+    selected_config_base_dir_from_live_instances(unit, config_path, &instances)
 }
 
 fn wait_running_timeout_error(
@@ -636,7 +644,9 @@ async fn wait_running(args: ServiceWaitRunningArgs) -> RunnerResult<()> {
     }
 
     let unit = RunnerServiceUnit::from_suffix(&args.name)?;
-    let deadline = TokioInstant::now() + TokioDuration::from_secs(args.timeout_secs);
+    let deadline = TokioInstant::now()
+        .checked_add(TokioDuration::from_secs(args.timeout_secs))
+        .ok_or_else(|| RunnerError::Internal("--timeout-secs is too large".into()))?;
     let mut last_observation = "not checked".to_string();
     let home = HomePaths::new()?;
     let config_path = match read_unit_config_path_bounded(
@@ -685,19 +695,21 @@ async fn wait_running(args: ServiceWaitRunningArgs) -> RunnerResult<()> {
             )));
         }
 
-        let base_dir =
-            match tokio::time::timeout_at(deadline, readiness_base_dir(&unit, &config_path, &home))
-                .await
-            {
-                Ok(result) => result?,
-                Err(_) => {
-                    return Err(wait_running_timeout_error(
-                        args.timeout_secs,
-                        &unit,
-                        &last_observation,
-                    ));
-                }
-            };
+        let base_dir = match tokio::time::timeout_at(
+            deadline,
+            selected_config_base_dir(&unit, &config_path, &home),
+        )
+        .await
+        {
+            Ok(result) => result?,
+            Err(_) => {
+                return Err(wait_running_timeout_error(
+                    args.timeout_secs,
+                    &unit,
+                    &last_observation,
+                ));
+            }
+        };
         match base_dir {
             Some(base_dir) => {
                 let status = match tokio::time::timeout_at(
@@ -839,6 +851,11 @@ record_identity_and_stall() {
   exec sleep 60
 }
 
+if [ "$OKOU_RUN_SERVICE_WAIT_RUNNING_SCENARIO" = "overflow" ]; then
+  printf '%s\n' 'systemctl must not be called for an unrepresentable timeout' >&2
+  exit 2
+fi
+
 if [ "$OKOU_RUN_SERVICE_WAIT_RUNNING_SCENARIO" = "config-query" ]; then
   record_identity_and_stall
 fi
@@ -905,6 +922,11 @@ exit 2
     }
 
     #[tokio::test]
+    async fn wait_running_rejects_unrepresentable_timeout_before_systemctl() {
+        run_wait_running_timeout_scenario("overflow").await;
+    }
+
+    #[tokio::test]
     async fn wait_running_bounds_initial_systemctl_query() {
         run_wait_running_timeout_scenario("config-query").await;
     }
@@ -963,6 +985,7 @@ exit 2
         }
 
         let timeout_secs = match scenario.as_str() {
+            "overflow" => u64::MAX,
             "config-query" => 1,
             "active-query" => 2,
             unexpected => panic!("unexpected wait-running timeout scenario: {unexpected}"),
@@ -973,6 +996,11 @@ exit 2
             .unwrap_err()
             .to_string();
         let elapsed = started.elapsed();
+
+        if scenario == "overflow" {
+            assert_eq!(error, "internal error: --timeout-secs is too large");
+            return;
+        }
 
         assert!(
             error.contains(&format!(
@@ -1181,13 +1209,16 @@ profiles:
     }
 
     async fn assert_artifact_locks_held(home: &HomePaths) {
-        let rootfs_err = crate::lock::try_acquire(home.rootfs_lock(TEST_ROOTFS_HASH))
-            .await
-            .unwrap_err();
-        assert!(
-            rootfs_err.to_string().contains("lock is already held"),
-            "unexpected rootfs lock error: {rootfs_err}"
-        );
+        for path in [
+            home.legacy_rootfs_lock(TEST_ROOTFS_HASH),
+            home.rootfs_lock(TEST_ROOTFS_HASH),
+        ] {
+            let error = crate::lock::try_acquire(path).await.unwrap_err();
+            assert!(
+                error.to_string().contains("lock is already held"),
+                "unexpected rootfs lock error: {error}"
+            );
+        }
 
         let snapshot_err = crate::lock::try_acquire(home.snapshot_lock(TEST_SNAPSHOT_HASH))
             .await
@@ -1199,10 +1230,12 @@ profiles:
     }
 
     async fn assert_artifact_locks_released(home: &HomePaths) {
-        let rootfs_lock = crate::lock::try_acquire(home.rootfs_lock(TEST_ROOTFS_HASH))
-            .await
-            .unwrap();
-        drop(rootfs_lock);
+        for path in [
+            home.legacy_rootfs_lock(TEST_ROOTFS_HASH),
+            home.rootfs_lock(TEST_ROOTFS_HASH),
+        ] {
+            drop(crate::lock::try_acquire(path).await.unwrap());
+        }
 
         let snapshot_lock = crate::lock::try_acquire(home.snapshot_lock(TEST_SNAPSHOT_HASH))
             .await
@@ -1227,6 +1260,7 @@ profiles:
     struct FakeUninstallOps {
         events: Vec<&'static str>,
         gate_active_results: VecDeque<RunnerResult<bool>>,
+        gate_config_path: Option<PathBuf>,
     }
 
     impl ActiveJobsGateOps for FakeUninstallOps {
@@ -1240,6 +1274,14 @@ profiles:
                     .pop_front()
                     .expect("unexpected gate unit-active query"),
             ))
+        }
+
+        fn read_unit_config_path<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+        ) -> ServiceFuture<'a, Option<PathBuf>> {
+            self.events.push("gate_config_path");
+            Box::pin(std::future::ready(Ok(self.gate_config_path.clone())))
         }
     }
 
@@ -1277,11 +1319,23 @@ profiles:
     }
 
     #[tokio::test]
-    async fn uninstall_active_draining_jobs_refuses_before_service_mutation() {
+    async fn uninstall_uses_selected_config_base_dir_before_service_mutation() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
         let unit = service_unit();
-        let base_dir = home.runners_dir().join(unit.suffix());
+        let config_path = dir.path().join("selected-config.yaml");
+        let base_dir = home.runners_dir().join("runner-release");
+        let _live_instance = crate::live_runner_instances::publish(
+            &home,
+            crate::live_runner_instances::LiveRunnerInstanceMetadata {
+                config_path: config_path.clone(),
+                base_dir: base_dir.clone(),
+                runner_group: "test".to_string(),
+                subcommand: "start".to_string(),
+            },
+        )
+        .await
+        .unwrap();
         tokio::fs::create_dir_all(&base_dir).await.unwrap();
         let started_at = (chrono::Utc::now() - chrono::Duration::minutes(18))
             .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
@@ -1305,6 +1359,7 @@ profiles:
         let mut ops = FakeUninstallOps {
             events: Vec::new(),
             gate_active_results: VecDeque::from([Ok(true)]),
+            gate_config_path: Some(config_path),
         };
 
         let before_gate = chrono::Utc::now();
@@ -1313,7 +1368,10 @@ profiles:
             .unwrap_err();
         let after_gate = chrono::Utc::now();
 
-        assert_eq!(ops.events, ["acquire_lock", "gate_is_active"]);
+        assert_eq!(
+            ops.events,
+            ["acquire_lock", "gate_is_active", "gate_config_path"]
+        );
         let RunnerError::ActiveJobs(error) = error else {
             panic!("expected active-jobs refusal");
         };
@@ -1333,12 +1391,36 @@ profiles:
         assert!(error.draining);
     }
 
+    #[tokio::test]
+    async fn uninstall_fails_closed_when_gate_unit_state_is_unavailable() {
+        let unit = service_unit();
+        let home = HomePaths::with_root(PathBuf::from("/tmp/vm0-runner-test"));
+        let mut ops = FakeUninstallOps {
+            events: Vec::new(),
+            gate_active_results: VecDeque::from([Err(RunnerError::Internal(
+                "systemd unavailable".to_string(),
+            ))]),
+            gate_config_path: None,
+        };
+
+        let error = uninstall_with_ops(&unit, &home, false, &mut ops)
+            .await
+            .unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains("vm0-runner-test"));
+        assert!(message.contains("before service uninstall"));
+        assert!(message.contains("systemd unavailable"));
+        assert_eq!(ops.events, ["acquire_lock", "gate_is_active"]);
+    }
+
     #[test]
     fn readiness_base_dir_waits_without_live_record() {
         let unit = RunnerServiceUnit::from_suffix("pr-123-1").unwrap();
 
         let config_path = PathBuf::from("/vm0-runner/runners/pr-123/runner.yaml");
-        let base_dir = readiness_base_dir_from_live_instances(&unit, &config_path, &[]).unwrap();
+        let base_dir =
+            selected_config_base_dir_from_live_instances(&unit, &config_path, &[]).unwrap();
 
         assert_eq!(base_dir, None);
     }
@@ -1357,7 +1439,7 @@ profiles:
         ];
 
         let base_dir =
-            readiness_base_dir_from_live_instances(&unit, &config_path, &instances).unwrap();
+            selected_config_base_dir_from_live_instances(&unit, &config_path, &instances).unwrap();
 
         assert_eq!(base_dir, Some(actual_base_dir));
     }
@@ -1377,8 +1459,8 @@ profiles:
             ),
         ];
 
-        let error =
-            readiness_base_dir_from_live_instances(&unit, &config_path, &instances).unwrap_err();
+        let error = selected_config_base_dir_from_live_instances(&unit, &config_path, &instances)
+            .unwrap_err();
 
         assert!(
             error.to_string().contains("multiple live runner instance"),

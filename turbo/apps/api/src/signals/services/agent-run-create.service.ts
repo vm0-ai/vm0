@@ -238,15 +238,7 @@ import {
 } from "./agent-run-queue-payload.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import {
-  PRESENTATION_RUNBOOK_ARCHIVE_VERSION_ENV,
-  type PresentationRunbookArchiveVersion,
-} from "@okouai/core/resource-registry";
-import { INTRO_VIDEO_TEMPLATES_ENABLED_ENV } from "@okouai/core/intro-video-template-items";
-import {
-  resolvePiSandboxModelConfig,
-  shouldUsePiExecution,
-} from "./pi-sandbox-config";
+import { resolvePiSandboxModelConfig } from "./pi-sandbox-config";
 import {
   piResourceDiscoveryMounts,
   piResourceSnapshotDigest,
@@ -300,8 +292,6 @@ import type {
 import {
   claimQueueFirstRunAssociation,
   lockGoalQueueFirstRunSource,
-  recordQueueFirstClaimedRun,
-  recordQueueFirstFailedRun,
   resolveQueueFirstRunAdmission,
   type QueueFirstRunAdmission,
   type QueueFirstRunAssociation,
@@ -1007,6 +997,8 @@ export interface CreateAgentRunArgs {
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
   readonly queueFirstAssociation?: QueueFirstRunAssociation;
   readonly agentRunModelPin?: AgentRunModelPin;
+  /** Immutable Pi eligibility captured by the caller's admission snapshot. */
+  readonly piExecution: boolean;
   readonly timing?: ApiDispatchTimingCollector;
   readonly timingDimensions?: ApiDispatchTimingDimensions;
 }
@@ -1517,36 +1509,26 @@ function frameworkApiKeyEnv(framework: SupportedFramework): string {
   return framework === "codex" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY";
 }
 
-function autoMemoryMountPath(
-  framework: SupportedFramework,
-  usePiMemoryPath: boolean,
-): string {
-  if (usePiMemoryPath) {
-    return PI_MEMORY_ROOT;
-  }
+function autoMemoryMountPath(framework: SupportedFramework): string {
   return framework === "codex"
     ? CANONICAL_CODEX_MEMORY_MOUNT_PATH
     : CANONICAL_CLAUDE_MEMORY_MOUNT_PATH;
 }
 
-function autoMemoryArtifact(
-  framework: SupportedFramework,
-  usePiMemoryPath: boolean,
-): ContextArtifact {
+function autoMemoryArtifact(framework: SupportedFramework): ContextArtifact {
   return withAutoMemoryMissingRootPolicy({
     name: AUTO_MEMORY_ARTIFACT_NAME,
-    mountPath: autoMemoryMountPath(framework, usePiMemoryPath),
+    mountPath: autoMemoryMountPath(framework),
   });
 }
 
 function isCanonicalAutoMemoryArtifact(
   artifact: ContextArtifact,
   framework: SupportedFramework,
-  usePiMemoryPath: boolean,
 ): boolean {
   return (
     artifact.name === AUTO_MEMORY_ARTIFACT_NAME &&
-    artifact.mountPath === autoMemoryMountPath(framework, usePiMemoryPath)
+    artifact.mountPath === autoMemoryMountPath(framework)
   );
 }
 
@@ -1562,10 +1544,9 @@ function withAutoMemoryMissingRootPolicy(
 function withCanonicalAutoMemoryMissingRootPolicy(
   artifacts: readonly ContextArtifact[],
   framework: SupportedFramework,
-  usePiMemoryPath: boolean,
 ): readonly ContextArtifact[] {
   return artifacts.map((artifact) => {
-    return isCanonicalAutoMemoryArtifact(artifact, framework, usePiMemoryPath)
+    return isCanonicalAutoMemoryArtifact(artifact, framework)
       ? withAutoMemoryMissingRootPolicy(artifact)
       : artifact;
   });
@@ -1574,24 +1555,22 @@ function withCanonicalAutoMemoryMissingRootPolicy(
 function claimsAutoMemorySlot(
   artifact: ContextArtifact,
   framework: SupportedFramework,
-  usePiMemoryPath: boolean,
 ): boolean {
   return (
     artifact.name === AUTO_MEMORY_ARTIFACT_NAME ||
-    artifact.mountPath === autoMemoryMountPath(framework, usePiMemoryPath)
+    artifact.mountPath === autoMemoryMountPath(framework)
   );
 }
 
 function withoutSupersededAutoMemoryArtifacts(
   artifacts: readonly ContextArtifact[],
   framework: SupportedFramework,
-  usePiMemoryPath: boolean,
   slotOwnerIndex: number,
 ): readonly ContextArtifact[] {
   return artifacts.filter((artifact, index) => {
     return (
       index >= slotOwnerIndex ||
-      !isCanonicalAutoMemoryArtifact(artifact, framework, usePiMemoryPath)
+      !isCanonicalAutoMemoryArtifact(artifact, framework)
     );
   });
 }
@@ -1617,7 +1596,7 @@ function composeArtifacts(
 function artifactsForRun(args: {
   readonly resolved: ResolvedAgentExecution;
   readonly framework: SupportedFramework;
-  readonly usePiMemoryPath: boolean;
+  readonly includeAutoMemory: boolean;
   readonly bodyArtifacts: readonly ContextArtifact[] | undefined;
 }): RunArtifacts {
   const isContinuation = Boolean(args.resolved.agentSessionId);
@@ -1629,40 +1608,37 @@ function artifactsForRun(args: {
     : [...composeContextArtifacts, ...args.resolved.artifacts];
   const bodyArtifacts = args.bodyArtifacts ?? [];
   const artifacts = [...baseArtifacts, ...bodyArtifacts];
+  if (!args.includeAutoMemory) {
+    return {
+      artifacts: artifacts.filter((artifact) => {
+        return (
+          artifact.name !== AUTO_MEMORY_ARTIFACT_NAME &&
+          artifact.mountPath !== PI_MEMORY_ROOT
+        );
+      }),
+    };
+  }
 
   let autoMemorySlotArtifactIndex: number | undefined;
   for (let index = artifacts.length - 1; index >= 0; index -= 1) {
     const artifact = artifacts[index];
-    if (
-      artifact &&
-      claimsAutoMemorySlot(artifact, args.framework, args.usePiMemoryPath)
-    ) {
+    if (artifact && claimsAutoMemorySlot(artifact, args.framework)) {
       autoMemorySlotArtifactIndex = index;
       break;
     }
   }
   if (autoMemorySlotArtifactIndex === undefined) {
     return {
-      artifacts: [
-        ...artifacts,
-        autoMemoryArtifact(args.framework, args.usePiMemoryPath),
-      ],
+      artifacts: [...artifacts, autoMemoryArtifact(args.framework)],
     };
   }
 
   const slotOwner = artifacts[autoMemorySlotArtifactIndex]!;
-  if (
-    !isCanonicalAutoMemoryArtifact(
-      slotOwner,
-      args.framework,
-      args.usePiMemoryPath,
-    )
-  ) {
+  if (!isCanonicalAutoMemoryArtifact(slotOwner, args.framework)) {
     return {
       artifacts: withoutSupersededAutoMemoryArtifacts(
         artifacts,
         args.framework,
-        args.usePiMemoryPath,
         autoMemorySlotArtifactIndex,
       ),
     };
@@ -1672,7 +1648,6 @@ function artifactsForRun(args: {
     artifacts: withCanonicalAutoMemoryMissingRootPolicy(
       artifacts,
       args.framework,
-      args.usePiMemoryPath,
     ),
   };
 }
@@ -5344,7 +5319,7 @@ function buildConnectorPermissionBaseline(
     version: 1,
     catalogIdentity: snapshot.catalogIdentity,
     validationAuthority: {
-      backendVersion: validationAuthority.backendVersion,
+      backendVersion: validationAuthority.validatorVersion,
       buildCommitSha: validationAuthority.buildCommitSha,
     },
     connectors: Object.fromEntries(
@@ -5791,6 +5766,7 @@ function resumeSessionFromSnapshot(
 async function resolveLatestPiResumeSession(
   db: Db,
   chatThreadId: string,
+  agentSessionId: string,
 ): Promise<StoredExecutionContext["resumeSession"] | undefined> {
   const [snapshot] = await db
     .select({
@@ -5806,6 +5782,10 @@ async function resolveLatestPiResumeSession(
     .where(
       and(
         eq(agentRuns.chatThreadId, chatThreadId),
+        // Canonical chat-session rotation owns the Pi history generation.
+        // Restrict before ordering so a pre-rotation Pi checkpoint cannot
+        // cross an intervening harness boundary.
+        eq(agentRuns.sessionId, agentSessionId),
         eq(agentRuns.status, "completed"),
         isNotNull(agentRuns.triggerSource),
         eq(conversations.cliAgentType, "pi"),
@@ -6238,7 +6218,6 @@ interface LaunchRunRowsArgs {
   readonly officialWorkflowProvenance:
     | AgentRunOfficialWorkflowProvenance
     | undefined;
-  readonly chatToolActivityEnabled: boolean;
   readonly error: string | undefined;
 }
 
@@ -6286,7 +6265,6 @@ function launchRunValues(
     runnerGroup: args.runnerGroup ?? null,
     launchSnapshot: args.launchSnapshot,
     officialWorkflowProvenance: args.officialWorkflowProvenance ?? null,
-    chatToolActivityEnabled: args.chatToolActivityEnabled,
     completedAt: args.status === "failed" ? createdAt : null,
     error: args.error ?? null,
     ...metadata,
@@ -6382,38 +6360,30 @@ function storedConnectorRuntimeTargets(args: {
   ];
 }
 
-function presentationRunbookArchiveVersionForRun(
-  featureSwitchContext: FeatureSwitchContext,
-): PresentationRunbookArchiveVersion {
-  return isFeatureEnabled(
-    FeatureSwitchKey.LatestPresentationTemplates,
-    featureSwitchContext,
-  )
-    ? "latest"
-    : "previous";
-}
-
 function buildStoredPlatformEnvironment(args: {
   readonly platformEnvironment: Record<string, string> | undefined;
   readonly okouTokenPublicBrand: PublicBrand | undefined;
-  readonly featureSwitchContext: FeatureSwitchContext;
   readonly canonicalOkouRuntime: boolean;
 }): Record<string, string> {
   const platformEnvironment = {
     ...args.platformEnvironment,
     CLI_PKG_URL: cliPackageUrlForPublicBrand(args.okouTokenPublicBrand),
-    [INTRO_VIDEO_TEMPLATES_ENABLED_ENV]: isFeatureEnabled(
-      FeatureSwitchKey.IntroVideoTemplates,
-      args.featureSwitchContext,
-    )
-      ? "1"
-      : "0",
-    [PRESENTATION_RUNBOOK_ARCHIVE_VERSION_ENV]:
-      presentationRunbookArchiveVersionForRun(args.featureSwitchContext),
   };
   return args.canonicalOkouRuntime
     ? (withoutLegacyZeroEntries(platformEnvironment) ?? {})
     : platformEnvironment;
+}
+
+function buildStoredUntrustedEnvironment(args: {
+  readonly expandedEnvironment: Record<string, string> | null;
+  readonly canonicalOkouRuntime: boolean;
+}): Record<string, string> | null {
+  if (!args.canonicalOkouRuntime) {
+    return args.expandedEnvironment;
+  }
+  return (
+    withoutLegacyZeroEntries(args.expandedEnvironment ?? undefined) ?? null
+  );
 }
 
 async function buildStoredExecutionContextDraft(args: {
@@ -6471,20 +6441,18 @@ async function buildStoredExecutionContextDraft(args: {
   const platformEnvironment = buildStoredPlatformEnvironment({
     platformEnvironment: args.platformEnvironment,
     okouTokenPublicBrand: args.okouTokenPublicBrand,
-    featureSwitchContext: args.featureSwitchContext,
     canonicalOkouRuntime: args.includeOkouTokenSecret === true,
   });
-  // New API -> old runner: keep trusted entries in legacy environment until
-  // prior API rollback targets retire and old runners/sandboxes finish their
-  // up-to-two-hour drain. #28914 tracks removal after both gates are proven.
-  const environment = {
-    ...(args.includeOkouTokenSecret
-      ? withoutLegacyZeroEntries(expandedEnvironment ?? undefined)
-      : expandedEnvironment),
+  const environment = buildStoredUntrustedEnvironment({
+    expandedEnvironment,
+    canonicalOkouRuntime: args.includeOkouTokenSecret === true,
+  });
+  const effectiveEnvironment = {
+    ...environment,
     ...platformEnvironment,
   };
   const environmentKeyByValue = new Map<string, string>();
-  for (const [key, value] of Object.entries(environment)) {
+  for (const [key, value] of Object.entries(effectiveEnvironment)) {
     if (!environmentKeyByValue.has(value)) {
       environmentKeyByValue.set(value, key);
     }
@@ -6578,7 +6546,10 @@ function buildRunContextSnapshot(args: {
 }): RunContextAxiomSnapshot {
   const storedContext = args.builtContext.context;
   const sanitizedEnvironment = sanitizeEnvironment(
-    storedContext.environment,
+    {
+      ...storedContext.environment,
+      ...storedContext.platformEnvironment,
+    },
     args.builtContext.secretValues,
   );
   const cliAgentSessionId =
@@ -6977,6 +6948,7 @@ function storedExecutionContextWithPiResources(
 function preparePiLaunchResources(args: {
   readonly db: Db;
   readonly runId: string;
+  readonly agentSessionId: string;
   readonly apiStartTime: number;
   readonly storageMounts: StoredExecutionContext["storageMounts"];
   readonly piSandbox: PiModelConfig | undefined;
@@ -7002,7 +6974,11 @@ function preparePiLaunchResources(args: {
           "api_dispatch_prepare_pi_launch_resume_session",
           "nested",
           async () => {
-            return await resolveLatestPiResumeSession(args.db, chatThreadId);
+            return await resolveLatestPiResumeSession(
+              args.db,
+              chatThreadId,
+              args.agentSessionId,
+            );
           },
         );
         const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
@@ -7032,6 +7008,7 @@ function preparePiLaunchResources(args: {
             schemaVersion: 2,
             apiFirstTurn: {
               schemaVersion: 1,
+              ownershipTransfer: { schemaVersion: 1 },
               resourceSnapshotDigest: piResourceSnapshotDigest(
                 piResourceDiscoveryMounts(args.storageMounts),
               ),
@@ -7151,6 +7128,7 @@ function buildRunnerJobPayload(
       preparePiLaunchResources({
         db,
         runId: args.run.id,
+        agentSessionId: args.run.sessionId,
         apiStartTime: args.apiStartTime,
         storageMounts: builtContext.context.storageMounts,
         piSandbox: args.piSandbox,
@@ -7218,7 +7196,6 @@ function preparedLaunchRowsArgs(args: {
     launchSnapshot: args.commit.context.launchSnapshot,
     officialWorkflowProvenance:
       args.commit.context.officialWorkflowRun?.provenance,
-    chatToolActivityEnabled: args.commit.context.chatToolActivityEnabled,
     error: undefined,
   };
 }
@@ -7692,15 +7669,8 @@ async function persistFailedLaunch(
     runnerGroup: undefined,
     launchSnapshot: args.context.launchSnapshot,
     officialWorkflowProvenance: args.context.officialWorkflowRun?.provenance,
-    chatToolActivityEnabled: args.context.chatToolActivityEnabled,
     error: message,
   });
-  if (queueFirstClaim) {
-    await recordQueueFirstFailedRun(tx, {
-      claim: queueFirstClaim,
-      runId: args.identity.runId,
-    });
-  }
   return {
     kind: "failed",
     createdAt,
@@ -7976,12 +7946,6 @@ async function commitQueuedPreparedLaunch(
     commit: args,
     run: persisted.run,
   });
-  if (queueFirstClaim) {
-    await recordQueueFirstClaimedRun(tx, {
-      claim: queueFirstClaim,
-      runId: persisted.run.id,
-    });
-  }
   return {
     ...persisted,
     runnerJobPayload: payload,
@@ -8012,12 +7976,6 @@ async function commitPendingPreparedLaunch(
     commit: args,
     run: persisted.run,
   });
-  if (queueFirstClaim) {
-    await recordQueueFirstClaimedRun(tx, {
-      claim: queueFirstClaim,
-      runId: persisted.run.id,
-    });
-  }
   return {
     ...persisted,
     runnerJobPayload: payload,
@@ -8282,8 +8240,6 @@ interface PreparedRunContext {
   readonly officialWorkflowRun: OfficialWorkflowRunObservation | undefined;
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
-  /** Captured once and persisted; later event writers must not re-resolve it. */
-  readonly chatToolActivityEnabled: boolean;
   readonly imageRecognitionAvailable: boolean;
   /** Snapshotted onto the run row; see `resolveMediaModelsForRun`. */
   readonly selectedVideoModel: string;
@@ -8295,27 +8251,17 @@ interface FinalizedPreparedRunContext extends PreparedRunContext {
   readonly launchSnapshot: AgentRunLaunchSnapshot;
 }
 
-function isPiSandboxEnabledForRun(
-  createArgs: CreateAgentRunArgs,
-  featureSwitchContext: FeatureSwitchContext,
-): boolean {
-  return shouldUsePiExecution({
-    chatThreadId: createArgs.chatThreadId,
-    selectedModel: createArgs.selectedModelOverride,
-    triggerSource: createArgs.body.triggerSource,
-    featureSwitchContext,
-  });
-}
-
 function resolvePreparedPiModelConfig(args: {
   readonly createArgs: CreateAgentRunArgs;
-  readonly featureSwitchContext: FeatureSwitchContext;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
 }): PiModelConfig | undefined {
-  if (!isPiSandboxEnabledForRun(args.createArgs, args.featureSwitchContext)) {
+  if (!args.createArgs.piExecution) {
     return undefined;
   }
-  const config = resolvePiSandboxModelConfig(args.modelProvider);
+  const config = resolvePiSandboxModelConfig(
+    args.modelProvider,
+    args.createArgs.codexServiceTier,
+  );
   if (!config) {
     throw new Error(
       "Selected Pi execution requires a supported Pi model provider configuration",
@@ -9290,7 +9236,7 @@ function prepareRunOutputMetadata(args: {
   const artifacts = artifactsForRun({
     resolved: args.resolved,
     framework: args.framework,
-    usePiMemoryPath: args.piSandbox !== undefined,
+    includeAutoMemory: args.piSandbox === undefined,
     bodyArtifacts: args.body.artifacts,
   }).artifacts;
   return {
@@ -9479,13 +9425,8 @@ function prepareRunContext(
         resolved: bodyContext.resolved,
         modelProvider: runtimeContext.modelProvider,
       });
-      const chatToolActivityEnabled = isFeatureEnabled(
-        FeatureSwitchKey.ChatToolActivity,
-        bodyContext.featureSwitchContext,
-      );
       const piSandbox = resolvePreparedPiModelConfig({
         createArgs: args,
-        featureSwitchContext: bodyContext.featureSwitchContext,
         modelProvider: runtimeContext.modelProvider,
       });
 
@@ -9567,7 +9508,6 @@ function prepareRunContext(
         officialWorkflowRun,
         userTimezone,
         featureSwitchContext: bodyContext.featureSwitchContext,
-        chatToolActivityEnabled,
         selectedVideoModel,
         selectedImageModel,
         imageRecognitionAvailable: isImageRecognitionAvailableForRun({

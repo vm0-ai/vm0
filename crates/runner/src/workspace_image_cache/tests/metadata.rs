@@ -9,7 +9,7 @@ use super::super::{
     WorkspaceCacheTerminalStatus, WorkspaceImageCache, WorkspaceImageLeaseIdentity,
     WorkspaceImagePrepareRequest,
 };
-use super::support::{TEST_PROFILE_NAME, local_cache};
+use super::support::{TEST_PROFILE_NAME, local_cache, write_current_cache_entry};
 use crate::ids::RunId;
 use crate::paths::RunnerPaths;
 use crate::storage_fingerprints::StorageFingerprints;
@@ -121,55 +121,110 @@ async fn metadata_missing_current_present_is_not_a_cache_hit() {
     );
 }
 
-#[tokio::test]
-async fn metadata_validation_rejects_metadata_mismatch() {
-    let dir = tempfile::tempdir().unwrap();
-    let paths = RunnerPaths::new(dir.path().to_path_buf());
-    let cache = WorkspaceImageCache::new(paths.clone());
+async fn assert_metadata_validation_rejects(
+    mutate: impl FnOnce(&mut WorkspaceCacheMetadata) -> String,
+) {
+    let (_dir, _paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
-    let key = cache.scoped_cache_key(TEST_PROFILE_NAME, "sess-1", "/workspace", 1024);
-    fs::create_dir_all(cache.entry_paths(&key).entry_dir().to_path_buf())
-        .await
-        .unwrap();
-    let current = cache.entry_paths(&key).current_image().to_path_buf();
-    fs::write(&current, b"image").await.unwrap();
-    let current_metadata = fs::metadata(&current).await.unwrap();
-    cache
-        .write_metadata(
-            &key,
-            run_id,
-            WorkspaceCacheMetadata {
-                format_version: CACHE_FORMAT_VERSION,
-                cache_scope: String::new(),
-                profile_name: TEST_PROFILE_NAME.into(),
-                reuse_key: "other".into(),
-                working_dir: "/workspace".into(),
-                last_completed_at: local_timestamp(),
-                last_used_at: local_timestamp(),
-                last_terminal_status: WorkspaceCacheTerminalStatus::Success,
-                workspace_trust: WorkspaceTrust::Clean,
-                logical_image_size_bytes: 1024,
-                allocated_bytes: 1024,
-                current_image: WorkspaceImageFileIdentity::from_metadata(&current_metadata),
-                drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
-                storage_fingerprints: StorageFingerprints::default(),
-                state: WorkspaceCacheState::Current,
-            },
-        )
-        .await
-        .unwrap();
+    let reuse_key = "sess-metadata-validation";
+    let working_dir = "/workspace";
+    let key = write_current_cache_entry(
+        &cache,
+        run_id,
+        reuse_key,
+        working_dir,
+        "2026-05-01T00:00:00.000Z",
+        "2026-05-01T00:01:00.000Z",
+    )
+    .await;
+    let metadata_path = cache.entry_paths(&key).metadata().to_path_buf();
+    let mut metadata = cache.read_metadata_file(&metadata_path).await.unwrap();
+    let image_size_bytes = metadata.logical_image_size_bytes;
+    let expected_error = mutate(&mut metadata);
+    cache.write_metadata(&key, run_id, metadata).await.unwrap();
 
     let err = cache
         .read_valid_metadata(
-            cache.entry_paths(&key).metadata(),
+            &metadata_path,
             TEST_PROFILE_NAME,
-            "sess-1",
-            "/workspace",
-            1024,
+            reuse_key,
+            working_dir,
+            image_size_bytes,
         )
-        .await;
+        .await
+        .unwrap_err();
 
-    assert!(err.unwrap_err().to_string().contains("reuse key mismatch"));
+    assert!(
+        err.to_string().contains(&expected_error),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
+async fn metadata_validation_rejects_profile_mismatch() {
+    assert_metadata_validation_rejects(|metadata| {
+        metadata.profile_name = "vm0/other".into();
+        "profile mismatch".into()
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn metadata_validation_rejects_reuse_key_mismatch() {
+    assert_metadata_validation_rejects(|metadata| {
+        metadata.reuse_key = "other".into();
+        "reuse key mismatch".into()
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn metadata_validation_rejects_working_dir_mismatch() {
+    assert_metadata_validation_rejects(|metadata| {
+        metadata.working_dir = "/other".into();
+        "working dir mismatch".into()
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn metadata_validation_rejects_drive_layout_mismatch() {
+    assert_metadata_validation_rejects(|metadata| {
+        metadata.drive_layout = "workspace-drive-v0".into();
+        "drive layout workspace-drive-v0 does not match".into()
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn metadata_validation_rejects_logical_image_size_mismatch() {
+    assert_metadata_validation_rejects(|metadata| {
+        let expected_image_size = metadata.logical_image_size_bytes;
+        metadata.logical_image_size_bytes += 1;
+        format!(
+            "workspace metadata image size {} does not match {expected_image_size}",
+            metadata.logical_image_size_bytes
+        )
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn metadata_validation_rejects_dirty_state() {
+    assert_metadata_validation_rejects(|metadata| {
+        metadata.state = WorkspaceCacheState::Dirty;
+        "metadata is not reusable".into()
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn metadata_validation_rejects_invalid_state() {
+    assert_metadata_validation_rejects(|metadata| {
+        metadata.state = WorkspaceCacheState::Invalid;
+        "metadata is not reusable".into()
+    })
+    .await;
 }
 
 #[tokio::test]

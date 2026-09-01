@@ -8,13 +8,15 @@ import { and, eq, inArray, isNotNull, lt, lte, sql } from "drizzle-orm";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
+import type { Tx } from "../../lib/db-types";
 import { writeDb$, type Db } from "../external/db";
 import {
+  publishCancelToRunnerGroup,
+  publishChatThreadMessageCreatedSafely,
   publishThreadListChanged,
-  publishUserSignal,
 } from "../external/realtime";
 import { deleteS3Objects } from "../external/s3";
-import { settle, tapError } from "../utils";
+import { settle, settleIncludingAbort, tapError } from "../utils";
 import {
   dispatchCompleteSideEffects$,
   drainStaleQueues$,
@@ -35,6 +37,12 @@ import {
   type ThreadlessRunCleanupResult,
 } from "./threadless-run-cleanup.service";
 import { cleanupExpiredPiApiFirstTurnData$ } from "./pi-api-first-turn-cleanup.service";
+import { lockAgentRunCheckpointLifecycle } from "./agent-run-checkpoint-lifecycle-lock.service";
+import { lockChatQueueThread } from "./chat-event-queue.service";
+import {
+  finalizeActiveInputDelivery,
+  type FinalizeActiveInputDeliveryResult,
+} from "./active-input-delivery.service";
 
 const L = logger("CronCleanupSandboxes");
 
@@ -74,8 +82,11 @@ type CleanupSandboxesScope =
 interface StaleRun {
   readonly id: string;
   readonly orgId: string;
+  readonly userId: string;
   readonly status: string;
   readonly sandboxId: string | null;
+  readonly runnerGroup: string | null;
+  readonly chatThreadId: string | null;
   readonly lastHeartbeatAt: Date | null;
   readonly createdAt: Date;
   readonly composeName: string | null;
@@ -92,7 +103,38 @@ interface MaintenanceTerminalSideEffectsInput {
   readonly orgId: string;
   readonly error: string;
   readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
+  readonly deliveryNotification?: {
+    readonly userId: string;
+    readonly chatThreadId: string;
+    readonly chatEventsAppended: boolean;
+  };
 }
+
+interface LockedTimeoutRun {
+  readonly status: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly sandboxId: string | null;
+  readonly runnerGroup: string | null;
+  readonly chatThreadId: string | null;
+  readonly lastHeartbeatAt: Date | null;
+  readonly createdAt: Date;
+}
+
+interface CommittedTimeout {
+  readonly previousStatus: "pending" | "running";
+  readonly orgId: string;
+  readonly userId: string;
+  readonly sandboxId: string | null;
+  readonly runnerGroup: string | null;
+  readonly chatThreadId: string | null;
+  readonly finalization: FinalizeActiveInputDeliveryResult;
+}
+
+type TimeoutTransactionResult =
+  | { readonly kind: "retry"; readonly chatThreadId: string | null }
+  | { readonly kind: "skipped" }
+  | { readonly kind: "committed"; readonly timeout: CommittedTimeout };
 
 function staleRunCutoff(run: StaleRun, cutoffs: CleanupCutoffs): Date {
   if (run.status === "pending") {
@@ -109,13 +151,37 @@ function isExpiredRun(run: StaleRun, cutoffs: CleanupCutoffs): boolean {
 }
 
 async function publishQueueMarkerNotificationSafely(
+  orgId: string,
   notification: QueueMarkerRevokeNotification,
 ): Promise<void> {
-  await publishUserSignal(
-    [notification.userId],
-    `chatThreadMessageCreated:${notification.chatThreadId}`,
-  );
-  await publishThreadListChanged(notification.userId);
+  await publishChatThreadMessageCreatedSafely({
+    userId: notification.userId,
+    orgId,
+    threadId: notification.chatThreadId,
+  });
+  await publishThreadListChanged({ userId: notification.userId, orgId });
+}
+
+async function lockTimeoutRun(
+  tx: Tx,
+  runId: string,
+): Promise<LockedTimeoutRun | null> {
+  const [run] = await tx
+    .select({
+      status: agentRuns.status,
+      orgId: agentRuns.orgId,
+      userId: agentRuns.userId,
+      sandboxId: agentRuns.sandboxId,
+      runnerGroup: agentRuns.runnerGroup,
+      chatThreadId: agentRuns.chatThreadId,
+      lastHeartbeatAt: agentRuns.lastHeartbeatAt,
+      createdAt: agentRuns.createdAt,
+    })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .for("update", { of: agentRuns })
+    .limit(1);
+  return run ?? null;
 }
 
 const cleanupExportJobs$ = command(
@@ -222,7 +288,10 @@ const dispatchMaintenanceTerminalSideEffects$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     if (input.queueMarkerNotification) {
-      await publishQueueMarkerNotificationSafely(input.queueMarkerNotification);
+      await publishQueueMarkerNotificationSafely(
+        input.orgId,
+        input.queueMarkerNotification,
+      );
     }
 
     await set(
@@ -233,12 +302,110 @@ const dispatchMaintenanceTerminalSideEffects$ = command(
         orgId: input.orgId,
         status: "failed",
         error: input.error,
+        ...(input.deliveryNotification
+          ? { deliveryNotification: input.deliveryNotification }
+          : {}),
       },
       signal,
     );
     signal.throwIfAborted();
   },
 );
+
+async function commitStaleRunTimeout(
+  db: Db,
+  run: StaleRun,
+  cutoff: Date,
+  timeoutReason: string,
+  signal: AbortSignal,
+): Promise<CommittedTimeout | undefined> {
+  let expectedChatThreadId = run.chatThreadId;
+  while (true) {
+    const result = await db.transaction(
+      async (tx): Promise<TimeoutTransactionResult> => {
+        await lockAgentRunCheckpointLifecycle(tx, run.id);
+        signal.throwIfAborted();
+        const threadLocked =
+          expectedChatThreadId === null
+            ? false
+            : await lockChatQueueThread(tx, expectedChatThreadId);
+        signal.throwIfAborted();
+        const lockedRun = await lockTimeoutRun(tx, run.id);
+        signal.throwIfAborted();
+        if (!lockedRun) {
+          return { kind: "skipped" };
+        }
+        if (lockedRun.chatThreadId !== expectedChatThreadId) {
+          return { kind: "retry", chatThreadId: lockedRun.chatThreadId };
+        }
+        if (expectedChatThreadId !== null && !threadLocked) {
+          throw new Error("Agent run retained a missing chat thread");
+        }
+        if (
+          lockedRun.status !== run.status ||
+          (lockedRun.status !== "pending" && lockedRun.status !== "running")
+        ) {
+          return { kind: "skipped" };
+        }
+        const referenceTime = lockedRun.lastHeartbeatAt ?? lockedRun.createdAt;
+        if (referenceTime >= cutoff) {
+          return { kind: "skipped" };
+        }
+
+        const finalization =
+          lockedRun.status === "running" && lockedRun.chatThreadId !== null
+            ? await finalizeActiveInputDelivery(tx, {
+                runId: run.id,
+                chatThreadId: lockedRun.chatThreadId,
+                deliveredDeliveryIds: new Set<string>(),
+              })
+            : { finalized: false, chatEventsAppended: false };
+        signal.throwIfAborted();
+
+        const [updatedRun] = await tx
+          .update(agentRuns)
+          .set({
+            status: "timeout",
+            completedAt: nowDate(),
+            error: timeoutReason,
+          })
+          .where(
+            and(
+              eq(agentRuns.id, run.id),
+              eq(agentRuns.status, lockedRun.status),
+            ),
+          )
+          .returning({ id: agentRuns.id });
+        signal.throwIfAborted();
+        if (!updatedRun) {
+          throw new Error("Locked stale run lost its timeout transition");
+        }
+
+        await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, run.id));
+        signal.throwIfAborted();
+
+        return {
+          kind: "committed",
+          timeout: {
+            previousStatus: lockedRun.status,
+            orgId: lockedRun.orgId,
+            userId: lockedRun.userId,
+            sandboxId: lockedRun.sandboxId,
+            runnerGroup: lockedRun.runnerGroup,
+            chatThreadId: lockedRun.chatThreadId,
+            finalization,
+          },
+        };
+      },
+    );
+    signal.throwIfAborted();
+    if (result.kind === "retry") {
+      expectedChatThreadId = result.chatThreadId;
+      continue;
+    }
+    return result.kind === "committed" ? result.timeout : undefined;
+  }
+}
 
 const cleanupSingleRun$ = command(
   async (
@@ -253,51 +420,50 @@ const cleanupSingleRun$ = command(
         ? "Run timed out while pending (never started)"
         : "Run timed out (no heartbeat)";
     const cutoff = staleRunCutoff(run, cutoffs);
-
-    const updated = await db.transaction(async (tx) => {
-      const [updatedRun] = await tx
-        .update(agentRuns)
-        .set({
-          status: "timeout",
-          completedAt: nowDate(),
-          error: timeoutReason,
-        })
-        .where(
-          and(
-            eq(agentRuns.id, run.id),
-            eq(agentRuns.status, run.status),
-            lt(
-              sql`COALESCE(${agentRuns.lastHeartbeatAt}, ${agentRuns.createdAt})`,
-              sql.param(cutoff, agentRuns.createdAt),
-            ),
-          ),
-        )
-        .returning({ id: agentRuns.id });
-      signal.throwIfAborted();
-
-      if (!updatedRun) {
-        return undefined;
-      }
-
-      await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, run.id));
-      signal.throwIfAborted();
-
-      return updatedRun;
-    });
+    const committed = await commitStaleRunTimeout(
+      db,
+      run,
+      cutoff,
+      timeoutReason,
+      signal,
+    );
     signal.throwIfAborted();
 
-    if (!updated) {
+    if (!committed) {
       L.debug("Run already transitioned, skipping timeout", { runId: run.id });
       return undefined;
+    }
+
+    if (committed.previousStatus === "running" && committed.runnerGroup) {
+      const cancellation = await settleIncludingAbort(
+        publishCancelToRunnerGroup(committed.runnerGroup, run.id, "hard"),
+      );
+      signal.throwIfAborted();
+      if (!cancellation.ok) {
+        L.error("Failed to publish timeout cancel to runner group", {
+          runId: run.id,
+          runnerGroup: committed.runnerGroup,
+          error: cancellation.error,
+        });
+      }
     }
 
     await set(
       dispatchMaintenanceTerminalSideEffects$,
       {
         runId: run.id,
-        orgId: run.orgId,
+        orgId: committed.orgId,
         error: timeoutReason,
         queueMarkerNotification: null,
+        ...(committed.chatThreadId !== null
+          ? {
+              deliveryNotification: {
+                userId: committed.userId,
+                chatThreadId: committed.chatThreadId,
+                chatEventsAppended: committed.finalization.chatEventsAppended,
+              },
+            }
+          : {}),
       },
       signal,
     );
@@ -308,7 +474,7 @@ const cleanupSingleRun$ = command(
     L.debug("Cleaned up expired run", {
       runId: run.id,
       status: run.status,
-      sandboxId: run.sandboxId,
+      sandboxId: committed.sandboxId,
       composeName: run.composeName,
       isDebug,
       referenceTime: referenceTime.toISOString(),
@@ -316,7 +482,7 @@ const cleanupSingleRun$ = command(
 
     return {
       runId: run.id,
-      sandboxId: run.sandboxId,
+      sandboxId: committed.sandboxId,
       status: "cleaned",
       reason: timeoutReason,
     };
@@ -524,8 +690,11 @@ export const cleanupSandboxes$ = command(
       .select({
         id: agentRuns.id,
         orgId: agentRuns.orgId,
+        userId: agentRuns.userId,
         status: agentRuns.status,
         sandboxId: agentRuns.sandboxId,
+        runnerGroup: agentRuns.runnerGroup,
+        chatThreadId: agentRuns.chatThreadId,
         lastHeartbeatAt: agentRuns.lastHeartbeatAt,
         createdAt: agentRuns.createdAt,
         composeName: agents.name,

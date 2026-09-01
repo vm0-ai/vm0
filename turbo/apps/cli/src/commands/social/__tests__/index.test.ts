@@ -41,6 +41,8 @@ const catalogSchema = z.object({
         .object({
           resultField: z.string(),
           retrieval: z.object({ kind: z.string() }).loose(),
+          reportedTotalField: z.string().optional(),
+          providerLimit: z.object({ kind: z.string() }).loose().optional(),
         })
         .nullable(),
       billing: z.object({ kind: z.string() }).loose(),
@@ -50,11 +52,21 @@ const catalogSchema = z.object({
 
 type Collection =
   | null
-  | { readonly state: "complete"; readonly itemsReturned: number }
-  | { readonly state: "provider_limited"; readonly itemsReturned: number }
+  | {
+      readonly state: "complete";
+      readonly itemsReturned: number;
+      readonly reportedTotal?: number;
+    }
+  | {
+      readonly state: "provider_limited";
+      readonly itemsReturned: number;
+      readonly reason?: string;
+      readonly reportedTotal?: number;
+    }
   | {
       readonly state: "more";
       readonly itemsReturned: number;
+      readonly reportedTotal?: number;
       readonly nextInput:
         | { readonly cursor: string }
         | { readonly page: number };
@@ -121,6 +133,7 @@ function failedDownloadResponse(status: "provider_failed" | "artifact_failed") {
 }
 
 describe("okou social command", () => {
+  const originalExitCode = process.exitCode;
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")
@@ -136,7 +149,7 @@ describe("okou social command", () => {
 
   beforeEach(async () => {
     await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-zero-token");
     for (const command of socialCommand.commands) {
       command.setOptionValue("input", undefined);
@@ -156,6 +169,7 @@ describe("okou social command", () => {
     mockConsoleError.mockClear();
     mockStderrWrite.mockClear();
     mockExit.mockClear();
+    process.exitCode = originalExitCode;
     vi.unstubAllEnvs();
     await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
   });
@@ -230,6 +244,19 @@ describe("okou social command", () => {
     expect(search?.collection).toStrictEqual({
       resultField: "results",
       retrieval: { kind: "provider_limited" },
+      providerLimit: { kind: "no_pagination" },
+    });
+    const comments = catalog.tools.find((tool) => {
+      return tool.name === "tiktok_comments";
+    });
+    expect(comments?.collection).toMatchObject({
+      reportedTotalField: "commentCount",
+    });
+    const reelsSearch = catalog.tools.find((tool) => {
+      return tool.name === "instagram_reels_search";
+    });
+    expect(reelsSearch?.collection).toMatchObject({
+      providerLimit: { kind: "max_page", maxPage: 2 },
     });
 
     const summary = catalog.tools.find((tool) => {
@@ -254,6 +281,8 @@ describe("okou social command", () => {
     expect(output()).toContain("Output schema:");
     expect(output()).toContain("instagram_comments");
     expect(output()).toContain("Collection: comments (cursor)");
+    expect(output()).toContain("Reported total: commentCount");
+    expect(output()).toContain("Provider limit: no pagination");
   });
 
   it("calls a tool with typed JSON input", async () => {
@@ -481,6 +510,65 @@ describe("okou social command", () => {
       itemsReturned: 2,
       billingQuantity: 2,
       creditsCharged: 6,
+    });
+  });
+
+  it("reports provider completeness evidence in full retrieval output", async () => {
+    server.use(
+      http.post("http://localhost:3000/api/social/request", () => {
+        return HttpResponse.json(
+          socialResponse(
+            "tiktok_comments",
+            {
+              state: "provider_limited",
+              itemsReturned: 2,
+              reason: "reported_total_exceeds_page",
+              reportedTotal: 100,
+            },
+            {
+              comments: [{ id: "1" }, { id: "2" }],
+              commentCount: 100,
+              hasMore: false,
+              cursor: null,
+            },
+          ),
+        );
+      }),
+    );
+
+    await socialCommand.parseAsync([
+      "node",
+      "cli",
+      "call",
+      "tiktok_comments",
+      "--input",
+      '{"url":"https://tiktok.com/@example/video/123"}',
+      "--all",
+      "--json",
+    ]);
+
+    const records = mockConsoleLog.mock.calls.map(([value]) => {
+      return JSON.parse(String(value)) as Record<string, unknown>;
+    });
+    expect(records[0]).toMatchObject({
+      kind: "page",
+      response: {
+        collection: {
+          state: "provider_limited",
+          reason: "reported_total_exceeds_page",
+          reportedTotal: 100,
+        },
+      },
+    });
+    expect(records[1]).toStrictEqual({
+      kind: "summary",
+      completion: "provider_limited",
+      pages: 1,
+      itemsReturned: 2,
+      billingQuantity: 1,
+      creditsCharged: 3,
+      providerLimitedReason: "reported_total_exceeds_page",
+      reportedTotal: 100,
     });
   });
 
@@ -1013,19 +1101,74 @@ describe("okou social command", () => {
     {
       caseName: "a free provider failure",
       status: "provider_failed" as const,
-      message: "failed before billing",
+      billed: "no",
+      retryable: "no",
     },
     {
       caseName: "a billed artifact failure",
       status: "artifact_failed" as const,
-      message: "was billed but artifact materialization failed",
+      billed: "yes",
+      retryable: "yes",
     },
-  ])("reports $caseName accurately", async ({ status, message }) => {
+  ])(
+    "reports $caseName with complete diagnostics",
+    async ({ status, billed, retryable }) => {
+      server.use(
+        http.post("http://localhost:3000/api/social/downloads", () => {
+          return HttpResponse.json(failedDownloadResponse(status), {
+            status: 202,
+          });
+        }),
+      );
+
+      await expect(
+        socialCommand.parseAsync([
+          "node",
+          "cli",
+          "download",
+          "youtube",
+          "https://youtu.be/public-video",
+          "--max-duration",
+          "600",
+        ]),
+      ).rejects.toThrow("process.exit called");
+
+      const error = errorOutput();
+      expect(error).toContain(
+        "Download ID: 6bdc3449-41ef-4624-a525-45bce09c67f0",
+      );
+      expect(error).toContain(`Status: ${status}`);
+      expect(error).toContain("Platform: youtube");
+      expect(error).toContain("Requested quality: 720p");
+      expect(error).toContain("Requested format: mp4");
+      expect(error).toContain("Error code:");
+      expect(error).toContain("Error:");
+      expect(error).toContain(`Retryable: ${retryable}`);
+      expect(error).toContain(`Billed: ${billed}`);
+      if (status === "artifact_failed") {
+        expect(error).toContain(
+          "Resume: okou social download --resume 6bdc3449-41ef-4624-a525-45bce09c67f0",
+        );
+      } else {
+        expect(error).not.toContain("Resume:");
+      }
+      expect(mockExit).toHaveBeenCalledWith(1);
+    },
+  );
+
+  it("prints one compact terminal response for JSON failures", async () => {
+    const response = {
+      ...failedDownloadResponse("provider_failed"),
+      error: {
+        code: "SOCIALKIT_PROVIDER_duration_limit_exceeded",
+        message: "Video exceeds the requested duration limit",
+        retryable: false,
+        billed: false,
+      },
+    };
     server.use(
       http.post("http://localhost:3000/api/social/downloads", () => {
-        return HttpResponse.json(failedDownloadResponse(status), {
-          status: 202,
-        });
+        return HttpResponse.json(response, { status: 202 });
       }),
     );
 
@@ -1038,12 +1181,106 @@ describe("okou social command", () => {
         "https://youtu.be/public-video",
         "--max-duration",
         "600",
+        "--json",
       ]),
     ).rejects.toThrow("process.exit called");
 
-    expect(errorOutput()).toContain(message);
+    expect(mockConsoleLog).toHaveBeenCalledTimes(1);
+    expect(output()).toBe(JSON.stringify(response));
+    expect(JSON.parse(output()) as unknown).toStrictEqual(response);
+    expect(errorOutput()).toContain(
+      "Error code: SOCIALKIT_PROVIDER_duration_limit_exceeded",
+    );
     expect(mockExit).toHaveBeenCalledWith(1);
   });
+
+  it("prints the exact corrected resume command for mixed arguments", async () => {
+    await expect(
+      socialCommand.parseAsync([
+        "node",
+        "cli",
+        "download",
+        "youtube",
+        "https://youtu.be/public-video",
+        "--resume",
+        "6bdc3449-41ef-4624-a525-45bce09c67f0",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(errorOutput()).toContain(
+      "use: okou social download --resume 6bdc3449-41ef-4624-a525-45bce09c67f0",
+    );
+  });
+
+  it.each([
+    {
+      signal: "SIGINT" as const,
+      secondSignal: "SIGTERM" as const,
+      exitCode: 130,
+    },
+    {
+      signal: "SIGTERM" as const,
+      secondSignal: "SIGINT" as const,
+      exitCode: 143,
+    },
+  ])(
+    "prints recovery guidance and cleans up after $signal",
+    async ({ signal, secondSignal, exitCode }) => {
+      let statusRequestStarted = false;
+      const initialSigintListeners = process.listenerCount("SIGINT");
+      const initialSigtermListeners = process.listenerCount("SIGTERM");
+      server.use(
+        http.get(
+          "http://localhost:3000/api/social/downloads/6bdc3449-41ef-4624-a525-45bce09c67f0",
+          async ({ request }) => {
+            statusRequestStarted = true;
+            await new Promise<void>((resolve) => {
+              if (request.signal.aborted) {
+                resolve();
+                return;
+              }
+              request.signal.addEventListener(
+                "abort",
+                () => {
+                  resolve();
+                },
+                { once: true },
+              );
+            });
+            return HttpResponse.error();
+          },
+        ),
+      );
+
+      const command = socialCommand.parseAsync([
+        "node",
+        "cli",
+        "download",
+        "--resume",
+        "6bdc3449-41ef-4624-a525-45bce09c67f0",
+        "--json",
+      ]);
+      await vi.waitFor(() => {
+        expect(statusRequestStarted).toBeTruthy();
+      });
+      process.emit(signal, signal);
+      process.emit(secondSignal, secondSignal);
+      await command;
+
+      expect(output()).toBe("");
+      expect(mockConsoleError).toHaveBeenCalledTimes(2);
+      expect(errorOutput()).toContain(
+        `continues on the server after ${signal}`,
+      );
+      expect(errorOutput()).toContain(
+        "Resume: okou social download --resume 6bdc3449-41ef-4624-a525-45bce09c67f0",
+      );
+      expect(process.exitCode).toBe(exitCode);
+      expect(mockExit).not.toHaveBeenCalled();
+      expect(process.listenerCount("SIGINT")).toBe(initialSigintListeners);
+      expect(process.listenerCount("SIGTERM")).toBe(initialSigtermListeners);
+    },
+  );
 
   it("documents typed discovery, calls, billing, and security boundaries", () => {
     const tools = socialCommand.commands.find((command) => {
@@ -1069,13 +1306,19 @@ describe("okou social command", () => {
     const download = socialCommand.commands.find((command) => {
       return command.name() === "download";
     });
+    const downloadHelp = download?.helpInformation() ?? "";
     expect(socialHelp).toContain("Use Okou Social public data services");
     expect(tools?.helpInformation()).toContain(
       "List typed Okou Social tools and their schemas",
     );
     expect(call?.helpInformation()).toContain("Call a typed Okou Social tool");
-    expect(download?.helpInformation()).toContain("--max-duration");
-    expect(download?.helpInformation()).toContain("--resume");
+    expect(downloadHelp).toContain("--max-duration");
+    expect(downloadHelp).toContain("--resume");
+    expect(downloadHelp).toContain("default: 720p");
+    expect(downloadHelp).toContain("default: mp4");
+    expect(downloadHelp.replace(/\s+/gu, " ")).toContain(
+      "billing uses completed duration",
+    );
     expect(socialHelp).toContain("38 typed tools");
     expect(socialHelp).toContain("okou social tools --json");
     expect(socialHelp).toContain("youtube_summarize");

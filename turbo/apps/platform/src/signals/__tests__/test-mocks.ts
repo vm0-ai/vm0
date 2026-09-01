@@ -5,6 +5,7 @@ import {
   deferNextAblySubscribe,
   getAuthTokenHistory,
   hasChannelSubscription,
+  hasChannelSubscriptionOnChannel,
   hasSubscription,
   hasSubscriptionOnChannel,
   rejectAblySubscribe,
@@ -16,6 +17,9 @@ import {
   triggerAblyFailure,
   triggerAblyReauth,
   triggerAblyReconnect,
+  triggerSharedWorkerAblyConnectionState,
+  triggerSharedWorkerAblyFailure,
+  triggerSharedWorkerAblyReconnect,
 } from "../../mocks/ably.ts";
 import { setMockAgents } from "../../mocks/handlers/api-agents.ts";
 import { setMockRedeemResponse } from "../../mocks/handlers/api-billing.ts";
@@ -46,10 +50,6 @@ import {
   mockUploadPending,
   mockUploadSuccess,
 } from "../../mocks/upload-helpers.ts";
-import {
-  resetMockClerkAuthComponentMounted,
-  setMockClerkAuthComponentMounted,
-} from "../../test/mocks/clerk-react.ts";
 import { createDeferredPromise } from "../utils.ts";
 
 interface WindowOpenCall {
@@ -116,6 +116,10 @@ interface BrowserDownloadMock {
   readonly blobForUrl: (url: string) => Blob | null;
   readonly downloads: BrowserDownload[];
   readonly revokedUrls: string[];
+}
+
+interface BrowserServiceWorkerMock {
+  readonly dispatchMessage: (data: unknown) => void;
 }
 
 interface ImageDimensionsMockValue {
@@ -295,6 +299,9 @@ export function createTestMocks(getSignal: () => AbortSignal) {
           return query === "(display-mode: standalone)" ? enabled : false;
         });
       },
+      serviceWorker: (): BrowserServiceWorkerMock => {
+        return mockServiceWorker(getSignal());
+      },
       userAgent: (ua: string): void => {
         vi.spyOn(navigator, "userAgent", "get").mockReturnValue(ua);
       },
@@ -465,6 +472,10 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       triggerConnectionState: triggerAblyConnectionState,
       triggerFailure: triggerAblyFailure,
       triggerReconnect: triggerAblyReconnect,
+      triggerSharedWorkerConnectionState:
+        triggerSharedWorkerAblyConnectionState,
+      triggerSharedWorkerFailure: triggerSharedWorkerAblyFailure,
+      triggerSharedWorkerReconnect: triggerSharedWorkerAblyReconnect,
       triggerReauth: triggerAblyReauth,
       triggerConnectionClosed: triggerAblyConnectionClosed,
       rejectSubscribe: (topic: string, message: string) => {
@@ -472,20 +483,10 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       },
       rejectNextSubscribe: rejectNextAblySubscribe,
       hasChannelSubscription,
+      hasChannelSubscriptionOnChannel,
       hasSubscription,
       hasSubscriptionOnChannel,
       getAuthTokenHistory,
-    },
-    clerk: {
-      deferAuthComponentMount: () => {
-        setMockClerkAuthComponentMounted(false);
-        restoreOnAbort(getSignal(), resetMockClerkAuthComponentMounted);
-        return {
-          mount: () => {
-            setMockClerkAuthComponentMounted(true);
-          },
-        };
-      },
     },
     deferred: <T>() => {
       return createDeferredPromise<T>(getSignal());
@@ -543,14 +544,32 @@ function mockMatchMedia(matches: boolean | ((query: string) => boolean)): void {
       matches: typeof matches === "function" ? matches(query) : matches,
       media: query,
       onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
+      addListener: vi.fn<MediaQueryList["addListener"]>(),
+      removeListener: vi.fn<MediaQueryList["removeListener"]>(),
+      addEventListener: vi.fn<MediaQueryList["addEventListener"]>(),
+      removeEventListener: vi.fn<MediaQueryList["removeEventListener"]>(),
+      dispatchEvent: vi.fn<MediaQueryList["dispatchEvent"]>(),
     };
     return mediaQueryList;
   });
+}
+
+function mockServiceWorker(signal: AbortSignal): BrowserServiceWorkerMock {
+  const serviceWorker = new EventTarget();
+  const descriptor = defineWindowProperty(
+    navigator,
+    "serviceWorker",
+    serviceWorker,
+  );
+  restoreOnAbort(signal, () => {
+    restoreWindowProperty(navigator, "serviceWorker", descriptor);
+  });
+
+  return {
+    dispatchMessage(data: unknown): void {
+      serviceWorker.dispatchEvent(new MessageEvent("message", { data }));
+    },
+  };
 }
 
 function mockClipboardWriteText(): ClipboardWriteMock {

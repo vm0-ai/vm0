@@ -7,8 +7,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::call_records::{
     CopyFileCall, ExecCall, ExecMatcher, GuestStateRestoreCall, ProcessCancelCall,
-    ProcessControlCall, StartProcessCall, StorageManifestCall, WaitProcessCall, WriteFileCall,
-    WriteFilesCall,
+    ProcessControlCall, SessionHistoryIdentityVerifyCall, StartAgentProcessCall, StartProcessCall,
+    StorageManifestCall, WaitProcessCall, WriteFileCall, WriteFilesCall,
 };
 use crate::lifecycle::{DestroyBehavior, LifecycleBehaviors, MockLifecycleGate};
 use crate::support::LockIgnoringPoison;
@@ -55,6 +55,8 @@ pub(crate) struct ExecOverrideState {
     pub(crate) calls: Mutex<Vec<ExecCall>>,
     /// Recorded fixed storage-manifest calls across all attached sandboxes.
     pub(crate) storage_manifest_calls: Mutex<Vec<StorageManifestCall>>,
+    /// Recorded fixed live identity verifier calls across attached sandboxes.
+    pub(crate) session_history_identity_verify_calls: Mutex<Vec<SessionHistoryIdentityVerifyCall>>,
     /// Recorded fixed guest-state restore calls across all attached sandboxes.
     pub(crate) guest_state_restore_calls: Mutex<Vec<GuestStateRestoreCall>>,
     /// FIFO behaviors for fixed guest-state restore operations.
@@ -176,7 +178,7 @@ pub(crate) struct ProcessOverrideState {
     pub(crate) start_process_calls: Mutex<Vec<StartProcessCall>>,
     /// Recorded start_agent_process calls across all sandboxes built from this
     /// override set.
-    pub(crate) start_agent_process_calls: Mutex<Vec<StartProcessCall>>,
+    pub(crate) start_agent_process_calls: Mutex<Vec<StartAgentProcessCall>>,
     /// FIFO queue of stdout chunk batches emitted by factory-created
     /// sandboxes during streaming start_process calls.
     pub(crate) start_process_stdout_chunks: Mutex<VecDeque<Vec<ProcessOutputChunk>>>,
@@ -487,6 +489,14 @@ impl MockSandboxOverrides {
     pub fn storage_manifest_calls(&self) -> Vec<StorageManifestCall> {
         self.exec
             .storage_manifest_calls
+            .lock_ignoring_poison()
+            .clone()
+    }
+
+    /// Return fixed live session-history identity verifier calls.
+    pub fn session_history_identity_verify_calls(&self) -> Vec<SessionHistoryIdentityVerifyCall> {
+        self.exec
+            .session_history_identity_verify_calls
             .lock_ignoring_poison()
             .clone()
     }
@@ -831,7 +841,7 @@ impl MockSandboxOverrides {
 
     /// Return recorded start-Agent-process calls across all sandboxes built
     /// from this override set.
-    pub fn start_agent_process_calls(&self) -> Vec<StartProcessCall> {
+    pub fn start_agent_process_calls(&self) -> Vec<StartAgentProcessCall> {
         self.process
             .start_agent_process_calls
             .lock_ignoring_poison()

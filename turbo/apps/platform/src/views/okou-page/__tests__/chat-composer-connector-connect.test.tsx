@@ -5,6 +5,8 @@ import {
   type PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import {
+  customConnectorHttpResponseSchema,
+  customConnectorMcpResponseSchema,
   customConnectorValuesContract,
   customConnectorsContract,
   type CustomConnectorHttpResponse,
@@ -105,7 +107,7 @@ function buttonByText(text: string, container: ParentNode): HTMLElement {
 function customConnector(
   overrides: Partial<CustomConnectorHttpResponse> = {},
 ): CustomConnectorHttpResponse {
-  return {
+  return customConnectorHttpResponseSchema.parse({
     kind: "http",
     id: "33333333-3333-4333-8333-333333333333",
     storageVersion: 1,
@@ -134,13 +136,14 @@ function customConnector(
     createdAt: "2026-07-30T00:00:00.000Z",
     updatedAt: "2026-07-30T00:00:00.000Z",
     ...overrides,
-  };
+  });
 }
 
 function managedFeishuConnector(
   overrides: Partial<CustomConnectorHttpResponse> = {},
 ): CustomConnectorHttpResponse {
-  return customConnector({
+  return customConnectorHttpResponseSchema.parse({
+    ...customConnector(),
     id: "55555555-5555-4555-8555-555555555555",
     slug: "_feishu-00000000-0000-4000-8000-000000000055",
     displayName: "Feishu",
@@ -153,6 +156,7 @@ function managedFeishuConnector(
       },
     ],
     authMode: "oauth",
+    oauthSetup: "custom",
     permissionBundleRef: "builtin:feishu@1",
     oauthConfig: {
       providerAdapter: "feishu",
@@ -173,7 +177,7 @@ function managedFeishuConnector(
 function mcpCustomConnector(
   overrides: Partial<CustomConnectorMcpResponse> = {},
 ): CustomConnectorMcpResponse {
-  return {
+  return customConnectorMcpResponseSchema.parse({
     kind: "mcp",
     id: "44444444-4444-4444-8444-444444444444",
     storageVersion: 1,
@@ -205,7 +209,7 @@ function mcpCustomConnector(
     createdAt: "2026-08-11T00:00:00.000Z",
     updatedAt: "2026-08-11T00:00:00.000Z",
     ...overrides,
-  };
+  });
 }
 
 function mockCatalog(
@@ -290,6 +294,43 @@ beforeEach(() => {
 });
 
 describe("chat composer connector connection", () => {
+  it("loads connector data only after the connector menu is opened", async () => {
+    const user = userEvent.setup({ delay: null });
+    let discoveryRequests = 0;
+    let customConnectorRequests = 0;
+    mockThread();
+    context.mocks.api(connectorCatalogContract.discovery, ({ respond }) => {
+      discoveryRequests += 1;
+      return respond(200, { connectors: [], totalConnectorCount: 0 });
+    });
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      customConnectorRequests += 1;
+      return respond(200, { connectors: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    expect(discoveryRequests).toBe(0);
+    expect(customConnectorRequests).toBe(0);
+
+    await user.click(within(composer).getByLabelText("Connectors"));
+
+    await waitFor(() => {
+      expect(discoveryRequests).toBe(1);
+      expect(customConnectorRequests).toBe(1);
+      expect(within(composer).getByLabelText("Connectors")).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
+    });
+  });
+
   it("makes connector permissions interactive on the first click", async () => {
     const user = userEvent.setup({ delay: null });
     mockThread();
@@ -304,9 +345,11 @@ describe("chat composer connector connection", () => {
     const composer = composerElementFrom(
       await screen.findByPlaceholderText(PLACEHOLDER),
     );
-    const connectorsTrigger = within(composer).getByLabelText("Connectors");
-    await user.click(connectorsTrigger);
-    expect(connectorsTrigger).toHaveAttribute("aria-expanded", "true");
+    const connectorsTrigger = () => {
+      return within(composer).getByLabelText("Connectors");
+    };
+    await user.click(connectorsTrigger());
+    expect(connectorsTrigger()).toHaveAttribute("aria-expanded", "true");
 
     await user.click(
       await screen.findByLabelText("Configure Axiom permissions"),
@@ -316,7 +359,7 @@ describe("chat composer connector connection", () => {
       name: /Axiom permissions/u,
     });
     await waitFor(() => {
-      expect(connectorsTrigger).toHaveAttribute("aria-expanded", "false");
+      expect(connectorsTrigger()).toHaveAttribute("aria-expanded", "false");
       expect(screen.queryByText("Add connectors")).not.toBeInTheDocument();
     });
 
@@ -340,7 +383,7 @@ describe("chat composer connector connection", () => {
     await waitFor(() => {
       expect(permissionsDialog).not.toBeInTheDocument();
     });
-    expect(connectorsTrigger).toHaveAttribute("aria-expanded", "false");
+    expect(connectorsTrigger()).toHaveAttribute("aria-expanded", "false");
   });
 
   it("places the account action before connector permissions", async () => {
@@ -603,8 +646,10 @@ describe("chat composer connector connection", () => {
     const composer = composerElementFrom(
       await screen.findByPlaceholderText(PLACEHOLDER),
     );
-    const connectorsButton = within(composer).getByLabelText("Connectors");
-    await user.click(connectorsButton);
+    const connectorsButton = () => {
+      return within(composer).getByLabelText("Connectors");
+    };
+    await user.click(connectorsButton());
     const defaultMode = await screen.findByLabelText(
       "GitHub · Using default account: Work",
     );
@@ -634,7 +679,7 @@ describe("chat composer connector connection", () => {
     await waitFor(() => {
       expect(screen.queryByText("Account for this chat")).toBeNull();
     });
-    expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
+    expect(connectorsButton()).toHaveAttribute("aria-expanded", "true");
 
     await user.click(defaultMode);
     await expect(
@@ -644,7 +689,7 @@ describe("chat composer connector connection", () => {
     await waitFor(() => {
       expect(screen.queryByText("Account for this chat")).toBeNull();
     });
-    expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
+    expect(connectorsButton()).toHaveAttribute("aria-expanded", "true");
 
     await user.click(defaultMode);
     await expect(
@@ -672,7 +717,7 @@ describe("chat composer connector connection", () => {
     await waitFor(() => {
       expect(screen.queryByText("Account for this chat")).toBeNull();
     });
-    expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
+    expect(connectorsButton()).toHaveAttribute("aria-expanded", "true");
     expect(selectedWorkMode).toHaveClass("text-muted-foreground");
     expect(selectedWorkMode).not.toHaveClass("border");
 
@@ -684,7 +729,7 @@ describe("chat composer connector connection", () => {
     await waitFor(() => {
       expect(screen.queryByText("Account for this chat")).toBeNull();
     });
-    expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
+    expect(connectorsButton()).toHaveAttribute("aria-expanded", "true");
     expect(selectedWorkMode).toHaveFocus();
 
     await user.click(selectedWorkMode);
@@ -695,7 +740,7 @@ describe("chat composer connector connection", () => {
     await waitFor(() => {
       expect(screen.queryByText("Account for this chat")).toBeNull();
     });
-    expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
+    expect(connectorsButton()).toHaveAttribute("aria-expanded", "true");
     await expect(
       screen.findByLabelText("GitHub · Selected account: Personal"),
     ).resolves.toHaveClass("text-muted-foreground");
@@ -713,13 +758,13 @@ describe("chat composer connector connection", () => {
     await expect(
       screen.findByLabelText("GitHub · Using default account: Work"),
     ).resolves.toBeInTheDocument();
-    expect(connectorsButton).toHaveAttribute("aria-expanded", "true");
+    expect(connectorsButton()).toHaveAttribute("aria-expanded", "true");
     expect(authorizationWrites).toBe(1);
     expect(summaryReads).toBe(summaryReadsBeforeSelection);
 
     await user.click(document.body);
     await waitFor(() => {
-      expect(connectorsButton).toHaveAttribute("aria-expanded", "false");
+      expect(connectorsButton()).toHaveAttribute("aria-expanded", "false");
     });
   });
 

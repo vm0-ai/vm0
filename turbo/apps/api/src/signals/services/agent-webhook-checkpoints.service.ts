@@ -12,9 +12,9 @@ import {
   webhookCheckpointsPrepareHistoryContract,
 } from "@okouai/api-contracts/contracts/webhooks";
 import {
-  MemoryPiSession,
+  inspectPiSessionJsonl,
   UnsupportedPiSessionVersionError,
-} from "@okouai/pi-agent-runtime/node";
+} from "@okouai/pi-agent-runtime/api";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { blobs } from "@okouai/db/schema/blob";
@@ -50,17 +50,45 @@ import {
 import { lockAgentRunCheckpointLifecycle } from "./agent-run-checkpoint-lifecycle-lock.service";
 import { safeSync, settle } from "../utils";
 
-type CheckpointCreateBody = z.infer<
+export type AgentCheckpointBody = z.infer<
   typeof webhookCheckpointsContract.create.body
 >;
 type PrepareHistoryBody = z.infer<
   typeof webhookCheckpointsPrepareHistoryContract.prepare.body
 >;
 
+export interface AgentCheckpointInput {
+  readonly auth: SandboxAuth;
+  readonly body: AgentCheckpointBody;
+}
+
 interface CheckpointAuthInput<TBody> {
   readonly auth: SandboxAuth;
   readonly body: TBody;
 }
+
+export interface PreparedAgentCheckpoint {
+  readonly piValidation?: {
+    readonly chatThreadId: string | null;
+    readonly runSessionId: string;
+  };
+}
+
+export type AgentCheckpointErrorResponse =
+  | ReturnType<typeof badRequestMessage>
+  | ReturnType<typeof notFound>;
+
+type AgentCheckpointPreparation =
+  | { readonly ok: true; readonly prepared: PreparedAgentCheckpoint }
+  | {
+      readonly ok: false;
+      readonly response: AgentCheckpointErrorResponse;
+    };
+
+type AgentCheckpointPersistenceSource =
+  | "standalone-webhook"
+  | "combined-completion"
+  | "pi-api-first-turn";
 
 interface CheckpointRunContext {
   readonly agentSessionConversationId: string | null;
@@ -82,6 +110,9 @@ interface PreparedSessionHistoryBlob {
   readonly insertedNewBlob: boolean;
 }
 
+type SessionHistoryBlobReadDb = Pick<Db, "select">;
+type SessionHistoryBlobWriteDb = Pick<Db, "insert" | "select" | "update">;
+
 const L = logger("webhooks:agent:checkpoints");
 
 class PiCheckpointValidationError extends Error {}
@@ -91,14 +122,14 @@ function piCheckpointError(code: string, message: string): never {
 }
 
 function responseArtifacts(
-  snapshots: CheckpointCreateBody["artifactSnapshots"],
-): CheckpointCreateBody["artifactSnapshots"] | undefined {
+  snapshots: AgentCheckpointBody["artifactSnapshots"],
+): AgentCheckpointBody["artifactSnapshots"] | undefined {
   return snapshots && snapshots.length > 0 ? snapshots : undefined;
 }
 
 function checkpointStorageMounts(args: {
   readonly runStorageMounts: readonly PersistedStorageMount[] | null;
-  readonly artifactSnapshots: CheckpointCreateBody["artifactSnapshots"];
+  readonly artifactSnapshots: AgentCheckpointBody["artifactSnapshots"];
 }): PersistedStorageMount[] {
   if (args.runStorageMounts === null) {
     throw new Error("Agent run is missing canonical Storage mounts");
@@ -138,7 +169,7 @@ function checkpointStorageMounts(args: {
 
 async function loadCheckpointRunContext(
   db: Db,
-  input: CheckpointAuthInput<CheckpointCreateBody>,
+  input: AgentCheckpointInput,
 ): Promise<CheckpointRunContext | undefined> {
   const [run] = await db
     .select({
@@ -166,7 +197,7 @@ async function loadCheckpointRunContext(
 
 async function lockCheckpointRunContext(
   tx: Tx,
-  input: CheckpointAuthInput<CheckpointCreateBody>,
+  input: AgentCheckpointInput,
 ): Promise<CheckpointRunContext | undefined> {
   const [run] = await tx
     .select({
@@ -354,7 +385,7 @@ function validatePiCheckpointSession(
   }
   const parsed = safeSync(() => {
     const jsonl = new TextDecoder("utf-8", { fatal: true }).decode(raw);
-    return MemoryPiSession.fromJsonl(jsonl);
+    return inspectPiSessionJsonl(jsonl);
   });
   if ("error" in parsed) {
     return piCheckpointError(
@@ -367,13 +398,13 @@ function validatePiCheckpointSession(
     );
   }
   const session = parsed.ok;
-  if (session.getSessionId() !== sessionId) {
+  if (session.sessionId !== sessionId) {
     return piCheckpointError(
       "PI_H2_SESSION_MISMATCH",
       "Pi H2 native session id does not match the launch session",
     );
   }
-  if (!session.isSettledCheckpoint()) {
+  if (!session.isSettledCheckpoint) {
     return piCheckpointError(
       "PI_H2_NOT_SETTLED",
       "Pi H2 is not a settled native session checkpoint",
@@ -415,7 +446,7 @@ const validatePiCheckpoint$ = command(async function validatePiCheckpoint(
 });
 
 async function loadSessionHistoryBlobMetadata(
-  db: Db,
+  db: SessionHistoryBlobReadDb,
   hash: string,
 ): Promise<SessionHistoryBlobMetadata | undefined> {
   const [blob] = await db
@@ -432,7 +463,7 @@ async function loadSessionHistoryBlobMetadata(
 
 async function ensureSessionHistoryBlobMetadata(
   args: {
-    readonly db: Db;
+    readonly db: SessionHistoryBlobWriteDb;
     readonly body: PrepareHistoryBody;
     readonly requestedEncoding: string;
   },
@@ -501,22 +532,6 @@ export const prepareCheckpointHistoryUpload$ = command(
     signal: AbortSignal,
   ) => {
     const db = set(writeDb$);
-    const [run] = await db
-      .select({ id: agentRuns.id })
-      .from(agentRuns)
-      .where(
-        and(
-          eq(agentRuns.id, input.body.runId),
-          eq(agentRuns.userId, input.auth.userId),
-        ),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (!run) {
-      return notFound("Agent run not found");
-    }
-
     const requestedEncoding =
       input.body.encoding ?? SESSION_HISTORY_ENCODING_IDENTITY;
     if (
@@ -527,14 +542,50 @@ export const prepareCheckpointHistoryUpload$ = command(
         "Identity session history encodedSize must match rawSize",
       );
     }
-    const { blob, insertedNewBlob } = await ensureSessionHistoryBlobMetadata(
-      {
-        db,
-        body: input.body,
-        requestedEncoding,
-      },
-      signal,
-    );
+
+    const admission = await db.transaction(async (tx) => {
+      await lockAgentRunCheckpointLifecycle(tx, input.body.runId);
+      signal.throwIfAborted();
+      const [run] = await tx
+        .select({ status: agentRuns.status })
+        .from(agentRuns)
+        .where(
+          and(
+            eq(agentRuns.id, input.body.runId),
+            eq(agentRuns.userId, input.auth.userId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      signal.throwIfAborted();
+      if (!run) {
+        return { kind: "not-found" } as const;
+      }
+      const status = runStatusSchema.parse(run.status);
+      if (status === "timeout") {
+        return { kind: "timeout", status } as const;
+      }
+      return {
+        kind: "admitted",
+        prepared: await ensureSessionHistoryBlobMetadata(
+          {
+            db: tx,
+            body: input.body,
+            requestedEncoding,
+          },
+          signal,
+        ),
+      } as const;
+    });
+    signal.throwIfAborted();
+
+    if (admission.kind === "not-found") {
+      return notFound("Agent run not found");
+    }
+    if (admission.kind === "timeout") {
+      return badRequestMessage(checkpointRunStateError(admission.status));
+    }
+    const { blob, insertedNewBlob } = admission.prepared;
 
     if (blob.rawSize !== input.body.rawSize) {
       return badRequestMessage(
@@ -607,7 +658,7 @@ const validatePiH2$ = command(async function validatePiH2(
   { set },
   db: Db,
   run: CheckpointRunContext,
-  body: CheckpointCreateBody,
+  body: AgentCheckpointBody,
   signal: AbortSignal,
 ): Promise<string | null> {
   if (body.cliAgentType !== "pi") {
@@ -643,7 +694,7 @@ interface CheckpointSuccessIdentity {
 
 function checkpointSuccessResponse(
   identity: CheckpointSuccessIdentity,
-  body: CheckpointCreateBody,
+  body: AgentCheckpointBody,
 ) {
   return {
     status: 200 as const,
@@ -657,6 +708,14 @@ function checkpointSuccessResponse(
   };
 }
 
+type AgentCheckpointSuccessResponse = ReturnType<
+  typeof checkpointSuccessResponse
+>;
+
+type AgentCheckpointResponse =
+  | AgentCheckpointSuccessResponse
+  | AgentCheckpointErrorResponse;
+
 function isActivePiCheckpointStatus(status: RunStatus): boolean {
   return status === "pending" || status === "running";
 }
@@ -667,7 +726,7 @@ function isPiCheckpointRun(run: CheckpointRunContext): boolean {
 
 function piCheckpointTypeError(
   run: CheckpointRunContext,
-  body: CheckpointCreateBody,
+  body: AgentCheckpointBody,
 ): string | null {
   if (isPiCheckpointRun(run) === (body.cliAgentType === "pi")) {
     return null;
@@ -681,7 +740,15 @@ function piCheckpointRunStateError(status: RunStatus): string {
   return `[${code}] Pi H2 cannot become canonical while the run status is ${status}`;
 }
 
-interface ExistingPiCheckpoint {
+function checkpointRunStateError(status: RunStatus): string {
+  return `[CHECKPOINT_RUN_TERMINAL] Checkpoint cannot become canonical while the run status is ${status}`;
+}
+
+function standaloneCheckpointRunStateError(status: RunStatus): string {
+  return `[CHECKPOINT_RUN_NOT_SETTLED] Standalone checkpoint cannot persist while the run status is ${status}`;
+}
+
+interface ExistingCheckpoint {
   readonly checkpointId: string;
   readonly conversationId: string;
   readonly historyHash: string | null;
@@ -690,10 +757,10 @@ interface ExistingPiCheckpoint {
   readonly type: string | null;
 }
 
-async function loadExistingPiCheckpoint(
+async function loadExistingCheckpoint(
   tx: Tx,
   runId: string,
-): Promise<ExistingPiCheckpoint | undefined> {
+): Promise<ExistingCheckpoint | undefined> {
   const [existing] = await tx
     .select({
       checkpointId: checkpoints.id,
@@ -727,7 +794,7 @@ type PiCheckpointAdmission =
 async function admitPiCheckpoint(
   tx: Tx,
   run: CheckpointRunContext,
-  body: CheckpointCreateBody,
+  body: AgentCheckpointBody,
   storageMounts: readonly PersistedStorageMount[],
 ): Promise<PiCheckpointAdmission> {
   const active = isActivePiCheckpointStatus(run.status);
@@ -735,7 +802,7 @@ async function admitPiCheckpoint(
     return { kind: "error", message: piCheckpointRunStateError(run.status) };
   }
 
-  const existing = await loadExistingPiCheckpoint(tx, body.runId);
+  const existing = await loadExistingCheckpoint(tx, body.runId);
   if (!existing) {
     return active
       ? { kind: "write" }
@@ -772,7 +839,7 @@ async function admitPiCheckpoint(
 async function persistAgentCheckpoint(
   tx: Tx,
   run: CheckpointRunContext,
-  body: CheckpointCreateBody,
+  body: AgentCheckpointBody,
   options: {
     storageMounts: PersistedStorageMount[];
     deferSessionPromotion: boolean;
@@ -899,91 +966,281 @@ async function persistAgentCheckpoint(
   );
 }
 
-async function commitAgentCheckpoint(
-  db: Db,
-  input: CheckpointAuthInput<CheckpointCreateBody>,
-  piValidated: boolean,
+async function exactCheckpointRetryResponse(
+  tx: Tx,
+  run: CheckpointRunContext,
+  body: AgentCheckpointBody,
+  storageMounts: readonly PersistedStorageMount[],
   signal: AbortSignal,
-) {
-  return await db.transaction(async (tx) => {
-    await lockAgentRunCheckpointLifecycle(tx, input.body.runId);
-    signal.throwIfAborted();
-    const run = await lockCheckpointRunContext(tx, input);
-    signal.throwIfAborted();
-    if (!run) {
-      return notFound("Agent run not found");
-    }
+): Promise<AgentCheckpointSuccessResponse | undefined> {
+  const existing = await loadExistingCheckpoint(tx, body.runId);
+  signal.throwIfAborted();
+  const exactRetry =
+    existing?.type === body.cliAgentType &&
+    existing.sessionId === body.cliAgentSessionId &&
+    existing.historyHash === (body.cliAgentSessionHistoryHash ?? null) &&
+    isDeepStrictEqual(existing.storageMounts, storageMounts);
+  if (!exactRetry) {
+    return undefined;
+  }
+  return checkpointSuccessResponse(
+    {
+      agentSessionId: run.sessionId,
+      checkpointId: existing.checkpointId,
+      conversationId: existing.conversationId,
+    },
+    body,
+  );
+}
 
-    const storageMounts = checkpointStorageMounts({
-      runStorageMounts: run.storageMounts,
-      artifactSnapshots: input.body.artifactSnapshots,
-    });
-    const typeError = piCheckpointTypeError(run, input.body);
-    if (typeError) {
-      return badRequestMessage(typeError);
-    }
-    const piRun = isPiCheckpointRun(run);
-    if (piRun) {
-      const admission = await admitPiCheckpoint(
-        tx,
-        run,
-        input.body,
-        storageMounts,
-      );
-      signal.throwIfAborted();
-      if (admission.kind === "error") {
-        return badRequestMessage(admission.message);
-      }
-      if (admission.kind === "response") {
-        return admission.response;
-      }
-      if (!piValidated) {
-        return badRequestMessage(
-          "[PI_H2_RUN_STATE_CHANGED] Pi H2 must be retried after the run became active",
-        );
-      }
-    }
+function isUnsettledCheckpointStatus(status: RunStatus): boolean {
+  return status === "queued" || status === "pending" || status === "running";
+}
 
-    return await persistAgentCheckpoint(
+async function standaloneCheckpointAdmissionResponse(
+  tx: Tx,
+  run: CheckpointRunContext,
+  body: AgentCheckpointBody,
+  storageMounts: readonly PersistedStorageMount[],
+  signal: AbortSignal,
+): Promise<AgentCheckpointResponse | undefined> {
+  if (isUnsettledCheckpointStatus(run.status)) {
+    return badRequestMessage(standaloneCheckpointRunStateError(run.status));
+  }
+  if (isPiCheckpointRun(run) || run.status !== "completed") {
+    return undefined;
+  }
+
+  const exactRetry = await exactCheckpointRetryResponse(
+    tx,
+    run,
+    body,
+    storageMounts,
+    signal,
+  );
+  return (
+    exactRetry ??
+    badRequestMessage(
+      "[CHECKPOINT_ALREADY_COMMITTED] Final checkpoint does not exactly match the completed run",
+    )
+  );
+}
+
+export async function persistAgentCheckpointInTransaction(
+  tx: Tx,
+  input: AgentCheckpointInput,
+  prepared: PreparedAgentCheckpoint,
+  signal: AbortSignal,
+  options: {
+    readonly source: AgentCheckpointPersistenceSource;
+  },
+): Promise<AgentCheckpointResponse> {
+  const run = await lockCheckpointRunContext(tx, input);
+  signal.throwIfAborted();
+  if (!run) {
+    return notFound("Agent run not found");
+  }
+
+  const storageMounts = checkpointStorageMounts({
+    runStorageMounts: run.storageMounts,
+    artifactSnapshots: input.body.artifactSnapshots,
+  });
+  const typeError = piCheckpointTypeError(run, input.body);
+  if (typeError) {
+    return badRequestMessage(typeError);
+  }
+  const piRun = isPiCheckpointRun(run);
+  if (!piRun && run.status === "timeout") {
+    return badRequestMessage(checkpointRunStateError(run.status));
+  }
+  if (options.source === "standalone-webhook") {
+    const response = await standaloneCheckpointAdmissionResponse(
       tx,
       run,
       input.body,
-      {
-        storageMounts,
-        deferSessionPromotion: piRun,
-      },
+      storageMounts,
       signal,
     );
-  });
+    if (response) {
+      return response;
+    }
+  }
+  if (
+    options.source === "combined-completion" &&
+    (run.status === "completed" ||
+      run.status === "failed" ||
+      run.status === "cancelled")
+  ) {
+    const exactRetry = await exactCheckpointRetryResponse(
+      tx,
+      run,
+      input.body,
+      storageMounts,
+      signal,
+    );
+    if (exactRetry) {
+      return exactRetry;
+    }
+    if (run.status === "completed") {
+      return badRequestMessage(
+        "[CHECKPOINT_ALREADY_COMMITTED] Final checkpoint does not exactly match the completed run",
+      );
+    }
+  }
+  if (piRun) {
+    const admission = await admitPiCheckpoint(
+      tx,
+      run,
+      input.body,
+      storageMounts,
+    );
+    signal.throwIfAborted();
+    if (admission.kind === "error") {
+      return badRequestMessage(admission.message);
+    }
+    if (admission.kind === "response") {
+      return admission.response;
+    }
+    if (
+      !prepared.piValidation ||
+      prepared.piValidation.chatThreadId !== run.chatThreadId ||
+      prepared.piValidation.runSessionId !== run.sessionId
+    ) {
+      return badRequestMessage(
+        "[PI_H2_RUN_STATE_CHANGED] Pi H2 must be retried after the run became active",
+      );
+    }
+  }
+
+  return await persistAgentCheckpoint(
+    tx,
+    run,
+    input.body,
+    {
+      storageMounts,
+      deferSessionPromotion: piRun,
+    },
+    signal,
+  );
 }
 
-export const createAgentCheckpoint$ = command(
+export const prepareAgentCheckpointPersistence$ = command(
   async (
     { set },
-    input: CheckpointAuthInput<CheckpointCreateBody>,
+    input: AgentCheckpointInput,
+    options: {
+      readonly source: AgentCheckpointPersistenceSource;
+    },
     signal: AbortSignal,
-  ) => {
+  ): Promise<AgentCheckpointPreparation> => {
     const db = set(writeDb$);
     const run = await loadCheckpointRunContext(db, input);
     signal.throwIfAborted();
 
     if (!run) {
-      return notFound("Agent run not found");
+      return { ok: false, response: notFound("Agent run not found") };
     }
 
     const typeError = piCheckpointTypeError(run, input.body);
     if (typeError) {
-      return badRequestMessage(typeError);
+      return { ok: false, response: badRequestMessage(typeError) };
     }
-    const piRun = isPiCheckpointRun(run);
-    const piNeedsValidation = piRun && isActivePiCheckpointStatus(run.status);
+    if (
+      options.source === "standalone-webhook" &&
+      isUnsettledCheckpointStatus(run.status)
+    ) {
+      return {
+        ok: false,
+        response: badRequestMessage(
+          standaloneCheckpointRunStateError(run.status),
+        ),
+      };
+    }
+    const piNeedsValidation =
+      isPiCheckpointRun(run) && isActivePiCheckpointStatus(run.status);
     if (piNeedsValidation) {
       const piError = await set(validatePiH2$, db, run, input.body, signal);
       if (piError) {
-        return badRequestMessage(piError);
+        return { ok: false, response: badRequestMessage(piError) };
       }
     }
 
-    return await commitAgentCheckpoint(db, input, piNeedsValidation, signal);
+    return {
+      ok: true,
+      prepared: piNeedsValidation
+        ? {
+            piValidation: {
+              chatThreadId: run.chatThreadId,
+              runSessionId: run.sessionId,
+            },
+          }
+        : {},
+    };
+  },
+);
+
+async function commitAgentCheckpoint(
+  db: Db,
+  input: AgentCheckpointInput,
+  prepared: PreparedAgentCheckpoint,
+  signal: AbortSignal,
+  source: AgentCheckpointPersistenceSource,
+): Promise<AgentCheckpointResponse> {
+  return await db.transaction(async (tx) => {
+    await lockAgentRunCheckpointLifecycle(tx, input.body.runId);
+    signal.throwIfAborted();
+    return await persistAgentCheckpointInTransaction(
+      tx,
+      input,
+      prepared,
+      signal,
+      { source },
+    );
+  });
+}
+
+export const createAgentCheckpoint$ = command(
+  async ({ set }, input: AgentCheckpointInput, signal: AbortSignal) => {
+    const db = set(writeDb$);
+    const preparation = await set(
+      prepareAgentCheckpointPersistence$,
+      input,
+      { source: "standalone-webhook" },
+      signal,
+    );
+    if (!preparation.ok) {
+      return preparation.response;
+    }
+
+    return await commitAgentCheckpoint(
+      db,
+      input,
+      preparation.prepared,
+      signal,
+      "standalone-webhook",
+    );
+  },
+);
+
+export const createPiApiFirstTurnCheckpoint$ = command(
+  async ({ set }, input: AgentCheckpointInput, signal: AbortSignal) => {
+    const db = set(writeDb$);
+    const preparation = await set(
+      prepareAgentCheckpointPersistence$,
+      input,
+      { source: "pi-api-first-turn" },
+      signal,
+    );
+    if (!preparation.ok) {
+      return preparation.response;
+    }
+
+    return await commitAgentCheckpoint(
+      db,
+      input,
+      preparation.prepared,
+      signal,
+      "pi-api-first-turn",
+    );
   },
 );

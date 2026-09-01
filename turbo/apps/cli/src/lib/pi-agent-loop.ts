@@ -12,7 +12,10 @@ import {
   type PiAgentModelConfig,
 } from "@okouai/pi-agent-runtime/node";
 
-import { resolvePiApiFirstTurnHandoff } from "./pi-api-first-turn-handoff";
+import {
+  resolvePiApiFirstTurnHandoff,
+  type PiApiFirstTurnBoundaryControl,
+} from "./pi-api-first-turn-handoff";
 
 const RUN_ID_ENV = "OKOU_RUN_ID";
 const PI_SESSION_ID_ENV = "OKOU_PI_SESSION_ID";
@@ -54,12 +57,11 @@ async function readLaunchPayload(
 }
 
 async function writePiApiFirstTurnBoundaryControl(
-  sandboxEventSequenceStart: number,
+  control: PiApiFirstTurnBoundaryControl,
 ): Promise<void> {
   const line = `${JSON.stringify({
     type: PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE,
-    schemaVersion: 1,
-    sandboxEventSequenceStart,
+    ...control,
   })}\n`;
   await new Promise<void>((resolve, reject) => {
     process.stdout.write(line, (error) => {
@@ -103,7 +105,23 @@ export async function piSandboxAgentConfigFromEnv(
   };
 }
 
-/** Run the official sandbox-owned Pi RPC host until guest-agent closes stdin. */
+/**
+ * Resolve the API-first handoff and run the official sandbox-owned Pi RPC host.
+ *
+ * The handoff resolver validates the immutable manifest, authoritative session,
+ * and ownership mode. Manifest V1/V2 handoffs retain their schema V1
+ * private control and pending-tool startup. Manifest V3 emits a schema V2
+ * control carrying the explicit ownership mode. This host writes that control
+ * before entering `runPiOfficialRpcMode`.
+ *
+ * The guest-agent consumes that control record before admitting any official
+ * Pi RPC record, so the control is not an agent event, Chat event, transcript
+ * line, or public delivery. `runPiOfficialRpcMode` owns the official RPC
+ * command/record stream; guest-agent owns its stdin and keeps it open through
+ * `agent_settled`, closing it only after terminal handling and active-input
+ * quiescence. The host consequently remains in official RPC mode until the
+ * guest closes stdin.
+ */
 export async function runPiSandboxAgentLoop(args: {
   readonly config: PiSandboxAgentConfig;
   readonly cwd?: string;
@@ -116,7 +134,7 @@ export async function runPiSandboxAgentLoop(args: {
     sessionDir,
     sessionId: args.config.sessionId,
   });
-  await writePiApiFirstTurnBoundaryControl(handoff.sandboxEventSequenceStart);
+  await writePiApiFirstTurnBoundaryControl(handoff.boundaryControl);
   return await runPiOfficialRpcMode({
     sessionId: args.config.sessionId,
     sessionDir,
@@ -125,5 +143,6 @@ export async function runPiSandboxAgentLoop(args: {
     model: args.config.model,
     appendSystemPrompt: args.config.launchPayload.appendSystemPrompt,
     sessionFile: handoff.sessionFile,
+    ownershipTransferMode: handoff.ownershipTransferMode,
   });
 }

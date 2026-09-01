@@ -65,7 +65,6 @@ describe("chatEvents schema", () => {
     ).toStrictEqual([
       "chat_events_control_interrupt_run_id_unique",
       "chat_events_input_automation_context_idx",
-      "chat_events_output_tool_thread_seq_idx",
       "chat_events_pending_queue_idx",
       "chat_events_revokes_event_id_not_null_unique",
       "chat_events_run_event_seq_unique",
@@ -87,7 +86,6 @@ describe("chatEvents schema", () => {
         "chat_events_goal_open_payload_check",
         "chat_events_goal_close_payload_check",
         "chat_events_goal_marker_payload_check",
-        "chat_events_output_tool_payload_check",
       ]),
     );
     const officialWorkflowQueueClaimCheck = config.checks.find((check) => {
@@ -117,30 +115,6 @@ describe("chatEvents schema", () => {
     );
   });
 
-  it("enforces the strict output.tool payload at the storage boundary", () => {
-    const config = getTableConfig(chatEvents);
-    const payloadCheck = config.checks.find((check) => {
-      return check.name === "chat_events_output_tool_payload_check";
-    });
-    expect(payloadCheck).toBeDefined();
-    if (!payloadCheck) {
-      throw new Error("Missing output.tool payload check");
-    }
-    const payloadSql = new PgDialect().sqlToQuery(payloadCheck.value).sql;
-
-    expect(payloadSql).toContain("toolUseId");
-    expect(payloadSql).toContain("action");
-    expect(payloadSql).toContain("status");
-    expect(payloadSql).toContain("summary");
-    expect(payloadSql).toContain("'run', 'read', 'write', 'edit'");
-    expect(payloadSql).toContain("'pending', 'success', 'error', 'cancelled'");
-    expect(payloadSql).toContain("-\n              'toolUseId'");
-    expect(payloadSql).toContain("= '{}'::jsonb");
-    expect(payloadSql).toContain("char_length");
-    expect(payloadSql).toContain("<= 240");
-    expect(payloadSql.match(/position\(E'/gu)).toHaveLength(2);
-  });
-
   it("keeps run references after runs are deleted", () => {
     const foreignKeys = getTableConfig(chatEvents).foreignKeys.map(
       (foreignKey) => {
@@ -166,14 +140,12 @@ describe("chatEvents schema", () => {
 });
 
 describe("chatEventSnapshots schema", () => {
-  it("stores independent full and tool-redacted heads with shared objects", () => {
+  it("constrains pointers to the current canonical snapshot shape", () => {
     const config = getTableConfig(chatEventSnapshots);
 
-    expect(chatEventSnapshots.projection.notNull).toBe(true);
     expect(chatEventSnapshots.terminalEventId.notNull).toBe(false);
     expect(chatEventSnapshots.terminalSeqId.notNull).toBe(false);
-    expect(chatEventSnapshots.projection.hasDefault).toBe(true);
-    expect(chatEventSnapshots.projection.default).toBe("full");
+    expect(chatEventSnapshots.archiveSchemaVersion.default).toBe(7);
     expect(
       config.indexes.map((index) => {
         return { name: index.config.name, unique: index.config.unique };
@@ -185,7 +157,7 @@ describe("chatEventSnapshots schema", () => {
           unique: false,
         },
         {
-          name: "chat_event_snapshots_thread_version_projection_unique",
+          name: "chat_event_snapshots_thread_version_unique",
           unique: true,
         },
       ]),
@@ -196,9 +168,8 @@ describe("chatEventSnapshots schema", () => {
       }),
     ).toEqual(
       expect.arrayContaining([
-        "chat_event_snapshots_projection_check",
+        "chat_event_snapshots_archive_schema_version_check",
         "chat_event_snapshots_terminal_cursor_check",
-        "chat_event_snapshots_canonical_projection_check",
       ]),
     );
   });

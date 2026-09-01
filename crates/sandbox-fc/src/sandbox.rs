@@ -18,8 +18,8 @@ use sandbox::{
     SandboxFinalExecParkSubstage, SandboxFinalExecParkSubstageOutcome, SandboxIdleTransition,
     SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,
     SandboxParkNonReusableReason, SandboxParkOutcome, SandboxStartObserver, SandboxStartStage,
-    SevereMemoryRetentionDiagnostics, StartAgentProcessRequest, StartProcessRequest,
-    StorageManifestRequest, WriteFileEntry,
+    SessionHistoryIdentityVerifyRequest, SevereMemoryRetentionDiagnostics,
+    StartAgentProcessRequest, StartProcessRequest, StorageManifestRequest, WriteFileEntry,
 };
 use tokio::io::AsyncRead;
 use tokio::sync::{mpsc, watch};
@@ -613,6 +613,15 @@ impl SandboxNetwork {
     pub(crate) fn has_lease(&self) -> bool {
         self.lease.is_some()
     }
+}
+
+struct ProcessStartContractRequest<'a> {
+    command: &'a str,
+    timeout_ms: u32,
+    env: &'a [(&'a str, &'a str)],
+    sudo: bool,
+    output: ProcessOutputMode,
+    label: &'a str,
 }
 
 impl FirecrackerSandbox {
@@ -1852,7 +1861,7 @@ fn exec_capture_request<'a>(
 impl FirecrackerSandbox {
     async fn start_process_with_contract(
         &self,
-        request: &StartProcessRequest<'_>,
+        request: ProcessStartContractRequest<'_>,
         operation: SandboxOperation,
         role: ExecProcessRole,
         control: SupervisedExecControl,
@@ -1865,11 +1874,11 @@ impl FirecrackerSandbox {
             vsock
                 .start_supervised_process(SupervisedExecRequest {
                     role,
-                    timeout: process_timeout_policy(request.timeout_ms()),
-                    command: request.cmd,
+                    timeout: process_timeout_policy(request.timeout_ms),
+                    command: request.command,
                     env: request.env,
                     sudo: request.sudo,
-                    label: request.cmd,
+                    label: request.label,
                     stdout: process_stdout_policy(request.output),
                     stderr: process_stderr_policy(request.output),
                     expected_exit_codes: &[],
@@ -2482,6 +2491,33 @@ impl Sandbox for FirecrackerSandbox {
         .await
     }
 
+    async fn verify_session_history_identity(
+        &self,
+        request: &SessionHistoryIdentityVerifyRequest<'_>,
+    ) -> sandbox::Result<ExecResult> {
+        let operation = SandboxOperation::VerifySessionHistoryIdentity;
+        let timeout_ms = request.timeout_ms();
+
+        self.run_bounded_guest_operation(operation, |guest| async move {
+            validate_exec_capture_timeout(timeout_ms)?;
+            guest
+                .verify_session_history_identity(vsock_host::SessionHistoryIdentityVerifyRequest {
+                    metadata_path: request.metadata_path,
+                    runtime_dir: request.runtime_dir,
+                    framework: request.framework,
+                    session_id_hash: request.session_id_hash,
+                    history_ref_kind: request.history_ref_kind,
+                    history_hash: request.history_hash,
+                    history_size_bytes: request.history_size_bytes,
+                    timeout_ms,
+                    wait_timeout: Duration::from_millis(u64::from(timeout_ms) + 5_000),
+                })
+                .await
+                .and_then(exec_result_from_operation_result)
+        })
+        .await
+    }
+
     async fn restore_guest_state(
         &self,
         request: &GuestStateRestoreRequest<'_>,
@@ -2608,7 +2644,14 @@ impl Sandbox for FirecrackerSandbox {
     ) -> sandbox::Result<GuestProcessHandle> {
         let (process, _) = self
             .start_process_with_contract(
-                request,
+                ProcessStartContractRequest {
+                    command: request.cmd,
+                    timeout_ms: request.timeout_ms(),
+                    env: request.env,
+                    sudo: request.sudo,
+                    output: request.output,
+                    label: request.cmd,
+                },
                 SandboxOperation::StartProcess,
                 ExecProcessRole::Workload,
                 SupervisedExecControl::Disabled,
@@ -2623,7 +2666,14 @@ impl Sandbox for FirecrackerSandbox {
     ) -> sandbox::Result<GuestAgentProcessHandle> {
         let (process, timing) = self
             .start_process_with_contract(
-                &request.process,
+                ProcessStartContractRequest {
+                    command: "",
+                    timeout_ms: request.timeout_ms(),
+                    env: request.env,
+                    sudo: false,
+                    output: request.output,
+                    label: "guest-agent",
+                },
                 SandboxOperation::StartAgentProcess,
                 ExecProcessRole::Agent,
                 SupervisedExecControl::Enabled { sink: true },

@@ -1,7 +1,6 @@
 """Tests for compiled built-in registry core-cache behavior and lifecycle."""
 
 import os
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -350,7 +349,6 @@ class TestRegistryBuiltinCoreCache:
                 registry_path=str(path),
                 builtin_firewall_catalog_cache_path=str(cache_path),
             ),
-            patch.object(registry.ctx, "log", MagicMock(), create=True),
         ):
             valid_context = registry.get_sandbox_context("10.200.0.1", str(path))
             omitted_context = registry.get_sandbox_context("10.200.0.2", str(path))

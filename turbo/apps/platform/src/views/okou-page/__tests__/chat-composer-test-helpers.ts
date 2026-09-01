@@ -28,7 +28,10 @@ import {
   type BillingStatusResponse,
 } from "@okouai/api-contracts/contracts/billing";
 import { expect, vi } from "vitest";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../../signals/__tests__/test-helpers.ts";
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { composerOverflowConnectorSlugs } from "../../../mocks/handlers/connector-catalog-fixtures.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
@@ -86,7 +89,7 @@ export function expectTextBefore(firstText: string, secondText: string): void {
   ).toBeTruthy();
 }
 
-export function queryTabByText(text: string): HTMLElement | null {
+function queryTabByText(text: string): HTMLElement | null {
   return (
     queryAllByRoleFast("tab").find((candidate) => {
       return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
@@ -367,13 +370,17 @@ export function mockThread(options?: {
     });
   });
   context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
-    return respond(200, {
-      rows: mockChatEventRows(
-        normalizeMockChatEvents(options?.messages ?? []),
-      ).filter((row) => {
-        return row.seqId > query.sinceSeqId;
-      }),
-    });
+    return respond(
+      200,
+      chatEventRowsResponse(
+        mockChatEventRows(
+          normalizeMockChatEvents(options?.messages ?? []),
+        ).filter((row) => {
+          return row.seqId > query.sinceSeqId;
+        }),
+        query,
+      ),
+    );
   });
 }
 
@@ -545,8 +552,10 @@ export function mockUrlObjectMethods(
     URL,
     "revokeObjectURL",
   );
-  const createObjectURL = vi.fn(createObjectURLImplementation);
-  const revokeObjectURL = vi.fn();
+  const createObjectURL = vi.fn<typeof URL.createObjectURL>(
+    createObjectURLImplementation,
+  );
+  const revokeObjectURL = vi.fn<typeof URL.revokeObjectURL>();
   Object.defineProperties(URL, {
     createObjectURL: {
       configurable: true,

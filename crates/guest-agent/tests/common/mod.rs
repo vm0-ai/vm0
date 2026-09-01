@@ -21,7 +21,7 @@ pub(crate) mod process_session;
 mod system_log;
 
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
-use serde_json::Value;
+use serde_json::{Value, json};
 use shell_quote::quote_shell_arg;
 use std::collections::HashMap;
 use std::ffi::{CString, OsStr};
@@ -72,6 +72,10 @@ pub const MOCK_CODEX_SESSION_HISTORY_READY_EVENT: &str = "vm0_mock_codex_session
 pub const MOCK_CODEX_TURN_STEER_READY_FILE: &str = ".vm0-mock-codex-turn-steer-ready";
 pub const MOCK_CODEX_TURN_STEER_READY_EVENT: &str = "vm0_mock_codex_turn_steer_ready";
 pub const MOCK_CODEX_TURN_STEER_RELEASE_SOCKET: &str = ".vm0-mock-codex-turn-steer-release.sock";
+pub const MOCK_CODEX_ACTIVE_TURN_READY_FILE: &str = ".vm0-mock-codex-active-turn-ready";
+pub const MOCK_CODEX_ACTIVE_TURN_READY_EVENT: &str = "vm0_mock_codex_active_turn_ready";
+pub const MOCK_CODEX_TURN_INTERRUPT_READY_FILE: &str = ".vm0-mock-codex-turn-interrupt-ready";
+pub const MOCK_CODEX_TURN_INTERRUPT_READY_EVENT: &str = "vm0_mock_codex_turn_interrupt_ready";
 pub const MOCK_POST_RESULT_READY_EVENT: &str = "vm0_mock_post_result_ready";
 pub const MOCK_POST_RESULT_ACTIVITY_ONE_EVENT: &str = "vm0_mock_post_result_activity_1_ready";
 pub const MOCK_POST_RESULT_ACTIVITY_TWO_EVENT: &str = "vm0_mock_post_result_activity_2_ready";
@@ -1047,31 +1051,31 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
         guest_contracts::env::API_URL_ENV,
         guest_contracts::env::CANONICAL_API_URL_ENV,
         guest_contracts::env::RUN_ID_ENV,
-        guest_contracts::env::API_TOKEN_ENV,
+        "VM0_API_TOKEN",
         guest_contracts::env::CANONICAL_API_TOKEN_ENV,
-        guest_contracts::env::SANDBOX_ID_ENV,
+        "VM0_SANDBOX_ID",
         guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
-        guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
+        "VM0_SANDBOX_REUSE_RESULT",
         guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
-        guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV,
+        "VM0_WORKSPACE_REUSE_RESULT",
         guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
         guest_contracts::env::PROMPT_ENV,
         guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
         guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
-        guest_contracts::env::RESUME_SESSION_ID_ENV,
+        "VM0_RESUME_SESSION_ID",
         guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
-        guest_contracts::env::API_START_TIME_ENV,
+        "VM0_API_START_TIME",
         guest_contracts::env::CANONICAL_API_START_TIME_ENV,
-        guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
+        "VM0_AGENT_EXECUTION_TIMEOUT_SECS",
         guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
         guest_contracts::env::SECRET_VALUES_ENV,
         guest_contracts::env::DISALLOWED_TOOLS_ENV,
         guest_contracts::env::TOOLS_ENV,
         guest_contracts::env::SETTINGS_ENV,
         guest_contracts::env::CLI_AGENT_TYPE_ENV,
-        guest_contracts::env::USER_ENV_FILE_ENV,
+        "VM0_USER_ENV_FILE",
         guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
-        guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
+        "VM0_RUN_PAYLOAD_FILE",
         guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
         guest_contracts::env::ARTIFACTS_ENV,
         guest_contracts::env::FEATURE_FLAGS_ENV,
@@ -1274,6 +1278,17 @@ pub fn read_codex_session_history_events_for_runtime(
         .lines()
         .map(|line| serde_json::from_str(line).map_err(Into::into))
         .collect()
+}
+
+pub fn expected_codex_turn_usage() -> Value {
+    json!({
+        "input_tokens": 12,
+        "cached_input_tokens": 3,
+        "cache_write_input_tokens": 3,
+        "output_tokens": 24,
+        "reasoning_output_tokens": 7,
+        "total_tokens": 36
+    })
 }
 
 /// Configure the process environment for one mock-Claude CLI integration-test

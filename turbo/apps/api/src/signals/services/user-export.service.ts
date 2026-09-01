@@ -55,6 +55,7 @@ import {
   buildOneClickUnsubscribeUrl,
   buildUnsubscribeHeaders,
   buildUnsubscribeUrl,
+  EMAIL_PUBLIC_BRAND,
 } from "./email-common.service";
 import {
   normalizeSessionHistoryBlobEncoding,
@@ -820,12 +821,7 @@ function collectConversationMessages(
 
     for (const thread of threads) {
       const rows = await get(
-        readCurrentChatEventHistory(
-          runtime,
-          thread.id,
-          "tool-redacted",
-          signal,
-        ),
+        readCurrentChatEventHistory(runtime, thread.id, signal),
       );
       signal.throwIfAborted();
 
@@ -1098,7 +1094,6 @@ function enqueueExportReadyEmail(
     readonly downloadUrl: string;
     readonly expiresAt: Date;
     readonly artifactCount: number;
-    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Computed<Promise<void>> {
@@ -1112,11 +1107,8 @@ function enqueueExportReadyEmail(
     signal.throwIfAborted();
 
     const email = await get(getCachedUserEmail(runtime, args.userId, signal));
-    const unsubscribeUrl = buildUnsubscribeUrl(args.userId, args.publicBrand);
-    const oneClickUnsubscribeUrl = buildOneClickUnsubscribeUrl(
-      args.userId,
-      args.publicBrand,
-    );
+    const unsubscribeUrl = buildUnsubscribeUrl(args.userId);
+    const oneClickUnsubscribeUrl = buildOneClickUnsubscribeUrl(args.userId);
     const formattedExpiry = args.expiresAt.toLocaleDateString("en-US", {
       year: "numeric",
       month: "long",
@@ -1124,13 +1116,10 @@ function enqueueExportReadyEmail(
     });
 
     await runtime.db.insert(emailOutbox).values({
-      fromAddress: buildFromAddress(
-        args.publicBrand === "okou" ? "okou" : "vm0",
-        args.publicBrand,
-      ),
+      fromAddress: buildFromAddress(),
       toAddresses: email,
       subject: DATA_EXPORT_READY_SUBJECT,
-      publicBrand: args.publicBrand,
+      publicBrand: EMAIL_PUBLIC_BRAND,
       headers: buildUnsubscribeHeaders(oneClickUnsubscribeUrl),
       template: {
         template: "data-export-ready",
@@ -1218,7 +1207,6 @@ const runExportJob$ = command(async function runExportJob(
         downloadUrl,
         expiresAt,
         artifactCount: 0,
-        publicBrand: args.publicBrand,
       },
       signal,
     ),

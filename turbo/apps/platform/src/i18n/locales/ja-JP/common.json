@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Codex エラー",
       "commandStatus": "コマンド {{status}}",
+      "contextCompaction": "コンテキストを圧縮しました",
       "error": "エラー: {{error}}",
       "fileChangeKind": "変更",
       "fileOperationCompleted": "ファイル操作が完了しました",
@@ -27,6 +28,12 @@
       },
       "status": "ステータス: {{status}}",
       "statusDetail": "ステータス: {{status}}",
+      "subAgentActivity": {
+        "completed": "サブエージェントが完了しました",
+        "interacted": "サブエージェントと対話しました",
+        "interrupted": "サブエージェントを中断しました",
+        "started": "サブエージェントを開始しました"
+      },
       "turnFailed": "ターンに失敗しました",
       "turnStatus": "ターン: {{status}}",
       "warning": "[警告] {{message}}",
@@ -363,51 +370,6 @@
     }
   },
   "appShell": {
-    "browserUpgrade": {
-      "browser": {
-        "action": "ブラウザを更新する",
-        "description": "{{assistantName}} は、現在のブラウザのバージョンをサポートしていません。続行するにはブラウザを更新してください。",
-        "title": "続行するにはブラウザを更新してください"
-      },
-      "chrome": {
-        "action": "Chrome を更新します",
-        "description": "{{assistantName}} は、現在のブラウザのバージョンをサポートしていません。続行するには、Chrome を更新してください。",
-        "title": "続行するには Chrome を更新してください"
-      },
-      "chromium": {
-        "action": "Chromium を更新します",
-        "description": "{{assistantName}} は、現在のブラウザのバージョンをサポートしていません。続行するには、Chromium を更新してください。",
-        "title": "続行するには Chromium を更新してください"
-      },
-      "ios": {
-        "action": "iOS を更新します",
-        "description": "{{assistantName}} は、現在のブラウザのバージョンをサポートしていません。続行するには、iOS を更新してください。",
-        "title": "続行するには iOS を更新してください"
-      },
-      "safari": {
-        "action": "Safari を更新します",
-        "description": "{{assistantName}} は、現在のブラウザのバージョンをサポートしていません。続行するには、Safari を更新してください。",
-        "title": "続行するには Safari を更新してください"
-      }
-    },
-    "loading": {
-      "ariaLabel": "ワークスペースを読み込み中",
-      "messages": {
-        "almostThere": "もうすぐです...",
-        "brewingIdeas": "アイデアを練っています...",
-        "connectingDots": "点と点をつないでいます...",
-        "gettingReady": "準備しています...",
-        "loadingWorkspace": "ワークスペースを読み込んでいます...",
-        "spinningTeam": "チームを立ち上げています...",
-        "tuningInstruments": "楽器を調整しています...",
-        "warmingNeurons": "ニューラルネットワークを準備しています..."
-      }
-    },
-    "logoAlt": "{{brandName}}",
-    "metadata": {
-      "description": "{{assistantName}}は{{brandName}}のAIコワーカーです。{{assistantName}}にメッセージを送るか、Webでチャットできます。リサーチ、メール、ドキュメント、Slack、GitHub、Notionなど、100以上のツールを利用できます。",
-      "title": "{{assistantName}} — {{brandName}}のAIコワーカー"
-    },
     "shortcutHelp": {
       "close": "キーボードショートカットを閉じる",
       "description": "このページで利用可能なショートカット",
@@ -653,8 +615,8 @@
       "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} 枚",
       "importedSlides_other": "{{count}} 枚",
-      "introVideo": "イントロビデオ",
       "multiAccent": "マルチアクセント",
+      "needPro": "Pro が必要",
       "nextSlide": "次のスライドをプレビューする",
       "noMatches": "一致しません",
       "placeholder": "{{title}} Web サイトのプレビュー プレースホルダー",
@@ -671,7 +633,6 @@
       "searchConnector": "テンプレートを検索",
       "searchConnectors": "テンプレートを検索",
       "selected": "テンプレート: {{title}}",
-      "selectIntroVideo": "イントロビデオ テンプレート {{title}} を選択してください",
       "selectStyle": "スタイル {{style}} を選択してください",
       "selectTemplate": "テンプレート {{title}} を選択します",
       "selectVideo": "ビデオ テンプレート {{title}} を選択してください",
@@ -708,6 +669,7 @@
       "tryDifferentSearch": "別の検索を試してください。",
       "use": "使用する",
       "useThisTemplate": "このテンプレートを使用してください",
+      "viewVideoPlans": "動画テンプレート {{title}} のプランを表示",
       "visibility": {
         "change": "変更",
         "changeLabel": "テンプレートの公開範囲を変更",
@@ -1894,18 +1856,17 @@
       "agentSuggestions": "エージェント",
       "configureModel": "モデルの構成",
       "createWorkflow": "ワークフローの作成",
+      "imageModelForThisChat": "このチャットの画像モデル",
       "message": "メッセージ",
+      "modelForThisChat": "このチャットのモデル",
       "placeholder": "ワークフローの自動化、タスクの管理を依頼してください...",
       "selectedModelUnavailable": "選択されたモデルは使用できません。送信する前に設定してください。",
       "selectedModelUnavailableToast": "選択したモデルは利用できません",
       "selectModel": "モデルを選択してください",
-      "setAsDefault": "デフォルトに設定",
-      "temporaryFastModeDisabledNotice": "この実行では一時的に高速モードが無効です",
-      "temporaryFastModeEnabledNotice": "この実行では一時的に高速モードが有効です",
-      "temporaryImageModelNotice": "画像モデルを一時的に {{model}} に切り替えました",
-      "temporaryModelNotice": "一時的に {{model}} に切り替えました",
-      "temporaryVideoModelNotice": "動画モデルを一時的に {{model}} に切り替えました",
+      "temporarilySwitchTo": "一時的な切り替え先",
       "threadSuggestions": "チャットスレッド",
+      "useForFutureChats": "今後のチャットでも使用",
+      "videoModelForThisChat": "このチャットの動画モデル",
       "visualAttachmentsUnsupported": "{{modelName}} は画像またはビデオを認識できません。ビジョン対応モデルに切り替えて取り付けてください。",
       "workflows": {
         "empty": "一致するワークフローがありません",
@@ -1933,6 +1894,20 @@
       "offline": "オフライン",
       "unsupportedIntelMac": "AppleシリコンMacが必要です",
       "yourComputer": "あなたのコンピュータ"
+    },
+    "connectorAccountSwitch": {
+      "accountFallback": "コネクターアカウント",
+      "actionFailed": "アカウントを切り替えられませんでした。もう一度お試しください。",
+      "customConnector": "カスタムコネクター",
+      "loadFailed": "このコネクターアカウントを読み込めませんでした。",
+      "reconnectRequired": "再接続が必要です。以降の実行では既存のフォールバックが使用される場合があります。",
+      "retry": "再試行",
+      "selected": "{{account}}に切り替えました",
+      "switch": "切り替える",
+      "switching": "切り替え中...",
+      "title": "{{account}}に切り替えますか？",
+      "unavailableDescription": "このアカウントは存在しないか、このコネクターでは利用できません。",
+      "unavailableTitle": "アカウントを利用できません"
     },
     "connectors": {
       "accountForThread": "このスレッドのアカウント",
@@ -1970,10 +1945,13 @@
         "capacityTitle": "{{framework}} モデルは混雑しています",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "続ける",
         "resetAndTryAgain": "リセットして再試行",
         "resetsAt": "{{time}} にリセット",
         "selectModel": "モデルを切り替える",
         "tryAgain": "もう一度試す",
+        "unavailableDescription": "このモデルは接続中の ChatGPT アカウントではサポートされていません。続行するには別のモデルに切り替えてください。",
+        "unavailableTitle": "選択したモデルは利用できません",
         "usageDescription": "使用制限がリセットされた後に続行するか、今すぐ別のモデルに切り替えられます。",
         "usageTitle": "{{framework}} の使用制限に達しました"
       },
@@ -2004,6 +1982,100 @@
       "sent": "転送しました",
       "threads": "チャット",
       "title": "転送先"
+    },
+    "introVideo": {
+      "avatar": {
+        "heading": "アバターを選択",
+        "help": "プレゼンターを選ぶか、アバターなしで続行します",
+        "none": "アバターなし",
+        "visualBalanceAvatarLed": "アバター中心 — ナレーターをほとんどの時間画面に表示",
+        "visualBalanceBalanced": "バランス型 — 両方を同じくらい表示",
+        "visualBalanceBRollLed": "映像素材中心 — スライドやビジュアルを重視",
+        "visualBalanceHeading": "映像のバランスをどうしますか？"
+      },
+      "cardDescription": "ファイルや画面録画を完成した動画に変換",
+      "description": "素材を追加し、必要に応じてアバターと音声を選んで、チャットスレッドで動画を作成します。",
+      "errors": {
+        "recordingEmpty": "録画が空でした。もう一度お試しください。",
+        "recordingFailed": "画面録画を開始できませんでした。最新の Chrome でもう一度お試しください。",
+        "recordingPermission": "共有対象が選択されませんでした。準備ができたらタブ、ウィンドウ、または画面を選択してください。",
+        "recordingShareEnded": "録画開始前に画面共有が終了しました。",
+        "recordingUnsupported": "このブラウザは画面録画に対応していません。",
+        "sendFailed": "チャットスレッドを作成できませんでした。素材はローカルに保存され、バックアップとしてダウンロードされました。",
+        "uploadFailed": "素材をアップロードできませんでした。ローカルに保存され、バックアップとしてダウンロードされました。"
+      },
+      "footer": {
+        "back": "戻る",
+        "createInChat": "チャットで作成",
+        "download": "素材をダウンロード",
+        "next": "次へ",
+        "startRecording": "画面を選んで開始",
+        "stopRecording": "録画を停止"
+      },
+      "recording": {
+        "chooseSurface": "タブ、ウィンドウ、または画面を選択",
+        "countdown": "カウントダウン終了後に録画を開始します",
+        "description": "Chrome が共有対象を確認します。3 秒のカウントダウンが終わるまで録画は始まりません。",
+        "heading": "画面を録画",
+        "localNote": "Chrome の共有バーまたはこの画面から停止できます。チャットスレッドが作成されるまで録画はローカルに保持されます。",
+        "microphone": "マイク",
+        "microphoneHelp": "操作を見せながらナレーションを追加",
+        "recordingLocally": "ローカルで録画中",
+        "systemAudio": "システム音声",
+        "systemAudioHelp": "利用できる音声は Chrome とシステムによって異なります"
+      },
+      "review": {
+        "avatar": "アバター",
+        "heading": "イントロビデオを確認",
+        "help": "新しいチャットスレッドに送る設定を確認してください",
+        "instructions": "編集指示",
+        "source": "素材",
+        "voice": "音声"
+      },
+      "source": {
+        "chatDescription": "今すぐスレッドを開き、Zero と動画を作り上げます",
+        "chatDetail": "素材、アバター、音声は後からチャットで追加できます",
+        "chatTitle": "チャットから開始",
+        "documentDescription": "コンテンツをナレーション付きイントロビデオに変換",
+        "documentFormats": "PPTX、PPT、PDF、DOC、DOCX",
+        "documentTitle": "スライドまたは文書をアップロード",
+        "dropDescription": "スライド、文書、または録画",
+        "dropTitle": "素材をここにドロップ",
+        "heading": "どのように始めますか？",
+        "help": "手元の素材を追加するか、画面を録画するか、作りたい動画を言葉で説明してください",
+        "recordDescription": "タブ、ウィンドウ、または画面全体を選択",
+        "recordDetail": "3 秒のカウントダウン後に開始",
+        "recordTitle": "画面を録画",
+        "videoDescription": "AI がテンポ、フレーミング、ナレーションを整えます",
+        "videoFormats": "MP4、MOV、WEBM",
+        "videoTitle": "録画をアップロード"
+      },
+      "sourceReview": {
+        "format": "形式",
+        "heading": "素材の準備ができました",
+        "help": "続行する前にファイルを確認してください",
+        "inBrowser": "このブラウザ内",
+        "inTab": "このタブを閉じるまで",
+        "replace": "素材を置き換える",
+        "saved": "保存先",
+        "source": "素材"
+      },
+      "steps": {
+        "avatar": "アバター",
+        "label": "イントロビデオの手順",
+        "review": "確認",
+        "source": "素材",
+        "voice": "音声"
+      },
+      "title": "イントロビデオを作成",
+      "voice": {
+        "heading": "音声を選択",
+        "help": "続行する前にサンプルを再生できます",
+        "none": "ナレーションなし",
+        "noneDescription": "ナレーションを使わず字幕中心の動画を作成",
+        "original": "元の音声",
+        "originalDescription": "アップロードした動画または録画の音声を維持"
+      }
     },
     "mail": {
       "bcc": "BCC",
@@ -2251,7 +2323,6 @@
     "templates": {
       "categories": {
         "illustration": "イラストレーション",
-        "introVideo": "イントロビデオ",
         "presentation": "プレゼンテーション",
         "video": "ビデオ",
         "website": "ウェブサイト",
@@ -2310,48 +2381,6 @@
     "toasts": {
       "copied": "コピーされました",
       "deleted": "チャットが削除されました"
-    },
-    "toolActivity": {
-      "categories": {
-        "changes": {
-          "pending": {
-            "plural": "複数のファイルを変更中",
-            "singular": "ファイルを変更中"
-          },
-          "terminal": {
-            "plural": "複数のファイルを変更",
-            "singular": "ファイルを変更"
-          }
-        },
-        "read": {
-          "pending": {
-            "plural": "複数のファイルを読み取り中",
-            "singular": "ファイルを読み取り中"
-          },
-          "terminal": {
-            "plural": "複数のファイルを読み取り",
-            "singular": "ファイルを読み取り"
-          }
-        },
-        "run": {
-          "pending": {
-            "plural": "複数のコマンドを実行中",
-            "singular": "コマンドを実行中"
-          },
-          "terminal": {
-            "plural": "複数のコマンドを実行",
-            "singular": "コマンドを実行"
-          }
-        }
-      },
-      "collapse": "ツールアクティビティを折りたたむ",
-      "expand": "ツールアクティビティを展開",
-      "status": {
-        "cancelled": "キャンセル済み",
-        "error": "失敗",
-        "pending": "進行中",
-        "success": "完了"
-      }
     },
     "voice": {
       "checkingLimit": "音声入力制限を確認する",
@@ -3252,7 +3281,8 @@
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "リクエストが失敗しました"
+      "requestFailed": "リクエストが失敗しました",
+      "sharedDatabaseUnavailable": "アプリで問題が発生しました。少し待ってから、ページを更新してもう一度お試しください。"
     },
     "realtime": {
       "degraded": "ライブアップデートで問題が発生しました。ページを更新してください。",
@@ -3281,15 +3311,6 @@
       "doneTitle": "購読解除済み",
       "errorBody": "この購読解除リンクは無効であるか、期限切れです。メール通知は設定で管理できます。",
       "errorTitle": "何か問題が発生しました"
-    },
-    "morningBriefUnsubscribe": {
-      "documentTitle": "モーニングブリーフ",
-      "doneBody": "毎日の Morning Brief メールは受信されなくなります。設定でいつでもオンに戻すことができます。",
-      "doneTitle": "モーニングブリーフがオフになりました",
-      "errorBody": "購読解除リンクが無効か不完全です。最新の Morning Brief メールを開いて購読解除リンクを使用するか、設定で設定を管理します。",
-      "errorTitle": "このリンクは無効です",
-      "loadingLabel": "購読解除ステータスを読み込んでいます",
-      "managePreferences": "設定の管理"
     },
     "pwaInstall": {
       "banner": "{{assistantName}} をインストールするとエクスペリエンスが向上します",
@@ -5133,16 +5154,6 @@
         },
         "title": "言語"
       },
-      "morningBrief": {
-        "description": "接続されている GitHub、Gmail、Google Calendar からのスケジュール、アクション アイテム、更新情報を含む毎日午前 7 時のメール",
-        "nextEmail": "次のメール: {{date}}",
-        "nextEmailInTimezone": "次のメール: {{date}} ({{timezone}})",
-        "notScheduled": "次のメール: まだスケジュールされていません — スイッチをオフにしてからオンにし、スケジュールを変更してください",
-        "sending": "送信中...",
-        "sendNow": "今すぐ送信",
-        "title": "モーニングブリーフ",
-        "triggeredToast": "モーニング ブリーフがトリガーされ、すぐにメールが届きます"
-      },
       "pageDescription": "外観とエージェントの実行時の設定を管理する",
       "pageTitle": "設定",
       "send": {
@@ -5359,10 +5370,14 @@
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
-    "notFoundDescription": "この共有された会話は存在しません。",
+    "handoffDescription": "{{assistantName}} がコンテキストを新しいチャットに引き継ぎます",
+    "handoffPrompt": "この共有された会話を私と続けてください: {{url}}",
+    "makeConversationYours": "この会話を自分のものに",
     "notFoundTitle": "共有された会話が見つかりません",
-    "tryOkou": "{{assistantName}}を試す"
+    "share": "共有",
+    "signIn": "ログイン",
+    "signUp": "新規登録",
+    "tryItYourself": "自分で試す"
   },
   "usage": {
     "displayNames": {
@@ -6118,7 +6133,7 @@
       "browse": "公式を探す",
       "chooseValue": "値を選択",
       "copySucceededUninstallFailed": "コピーは準備できましたが、元の公式ワークフローをアンインストールできませんでした。",
-      "description": "vm0 が管理・保守するワークフローをインストールします。",
+      "description": "Okou Official Team が管理・保守するワークフローをインストールします。",
       "empty": "利用可能な公式ワークフローはありません。",
       "includedAutomations": "含まれる自動化",
       "install": "インストール",

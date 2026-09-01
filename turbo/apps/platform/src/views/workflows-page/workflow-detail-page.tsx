@@ -168,6 +168,7 @@ import {
   setWorkflowCopyForm$,
   setWorkflowAutomationCreateDialog$,
   setWorkflowAutomationEnabled$,
+  scrollTargetedWorkflowAutomationIntoViewRef$,
   updateWorkflowGithubWebhookAutomation$,
   updateWorkflowGithubWorkflowRunCompletedAutomation$,
   updateWorkflowGmailNewMessageAutomation$,
@@ -201,6 +202,7 @@ import {
   type GmailTextOperator,
   workflowMetadataPatch$,
   workflowConnectorReadiness$,
+  targetedWorkflowAutomationId$,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import {
   currentOfficialWorkflowInstallation$,
@@ -10039,22 +10041,27 @@ function officialIntendedStateLabel(enabled: boolean): string {
       });
 }
 
+interface AutomationRowProps {
+  readonly automation: WorkflowAutomationSummary;
+  readonly canOperate: boolean;
+  readonly canEditStructure: boolean;
+  readonly displayTimezone: string;
+  readonly showDivider: boolean;
+}
+
 function AutomationRow({
   automation,
   canOperate,
   canEditStructure,
   displayTimezone,
   showDivider,
-}: {
-  readonly automation: WorkflowAutomationSummary;
-  readonly canOperate: boolean;
-  readonly canEditStructure: boolean;
-  readonly displayTimezone: string;
-  readonly showDivider: boolean;
-}) {
+}: AutomationRowProps) {
+  const targetedAutomationId = useGet(targetedWorkflowAutomationId$);
+  const scrollRef = useSet(scrollTargetedWorkflowAutomationIntoViewRef$);
   const editingAutomationId = useGet(editingWorkflowAutomationId$);
   const setEditingAutomationId = useSet(setEditingWorkflowAutomationId$);
   const editing = editingAutomationId === automation.id;
+  const targeted = targetedAutomationId === automation.id;
   const title = workflowScheduleTitle(automation, displayTimezone);
   const subtitle = workflowAutomationSubtitle(automation);
   const stripeAutomation =
@@ -10066,8 +10073,12 @@ function AutomationRow({
   return (
     <>
       <div
+        ref={targeted ? scrollRef : undefined}
+        data-automation-id={automation.id}
+        aria-current={targeted ? "true" : undefined}
         className={cn(
           "group grid min-w-0 grid-cols-1 gap-3 px-5 py-4 transition-colors first:rounded-t-2xl last:rounded-b-2xl hover:bg-state-hover sm:grid-cols-[minmax(0,1.2fr)_minmax(9rem,0.9fr)_minmax(13.5rem,1.1fr)_auto_7.75rem] sm:items-center sm:gap-4",
+          targeted && "bg-state-selected ring-2 ring-inset ring-ring",
           !automation.enabled && "opacity-75",
         )}
       >

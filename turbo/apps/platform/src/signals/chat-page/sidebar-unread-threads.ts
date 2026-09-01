@@ -16,8 +16,8 @@ type UnreadSnapshot = readonly { threadId: string; unreadAt: string }[];
 
 /**
  * Server unread snapshot for the current agent. Refetched alongside the
- * indicator counter. Thread-list changes and read-cursor updates both
- * invalidate this shared counter through Ably.
+ * indicator counter. Shared thread-list synchronization and user-channel
+ * read-cursor updates both invalidate this shared counter.
  */
 const fetchedUnreads$ = computed(async (get): Promise<UnreadSnapshot> => {
   get(reloadChatIndicatorsCounter$);

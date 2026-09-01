@@ -435,7 +435,7 @@ async function executeDueWorkflowAutomations(
 }
 
 /**
- * Time poller over `zero_workflow_automations`, run from the
+ * Time poller over `workflow_automations`, run from the
  * execute-workflow-automations cron route. Mirrors the automation poller: scan
  * enabled automations whose `next_run_at` is due, optimistic-lock claim the due
  * row, then fire a run that injects

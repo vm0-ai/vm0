@@ -1,13 +1,13 @@
 /**
  * Conversation locator
  *
- * A tick rail beside a long chat thread. One tick per rendered turn, evenly
+ * A tick rail beside a long chat thread. One tick per visible turn, evenly
  * spaced; hovering magnifies neighbouring ticks, names the turn under the
  * cursor in a floating preview, and clicking jumps to it.
  *
- * Turn geometry is read from the DOM rather than the group signals, the same
- * way `chat-thread-scroll.ts` reads its anchors: only rendered turns can be
- * pointed at, and the paged renderer decides what is rendered.
+ * The turn sequence comes from the complete, non-virtual chat projection.
+ * The DOM contributes geometry only for the currently rendered window; a jump
+ * asks the thread scroll signals to reveal an off-window event before landing.
  */
 
 import {
@@ -19,8 +19,26 @@ import {
   type State,
 } from "ccstate";
 import { animationFrame, timeout } from "signal-timers";
+import {
+  applyCompletedWorkExpansion,
+  buildCompletedWorkFolding,
+  chatEventDisplayError,
+  completedWorkExpandedKeys$,
+  completedWorkExpandedKeysForScrollTarget,
+  isRenderableAssistantEvent,
+} from "./completed-work-folding.ts";
 import { logger } from "../log.ts";
-import { onRef, resetSignal } from "../utils.ts";
+import { messageDocumentToDisplayText } from "../okou-page/user-message-document-codec.ts";
+import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
+import type { ChatEventGroup, EnrichedChatEvent } from "./chat-event.ts";
+import {
+  buildRunGroupFolding,
+  runGroupExpansionOverrides$,
+} from "./run-group-folding.ts";
+import type {
+  ScrollToEventOptions,
+  ThreadScrollPosition,
+} from "./chat-thread-scroll.ts";
 
 const L = logger("ConversationLocator");
 
@@ -59,9 +77,24 @@ const TICK_METRICS = {
   assistant: { base: 12, grow: 2.5 },
 } as const;
 
+/**
+ * Resting width of the viewport band. The band grows by exactly as much as the
+ * widest tick it covers, so a magnified bar never spills out of the frame that
+ * is supposed to contain it.
+ */
+export const BAND_BASE_WIDTH_PX = 32;
+
 const GROUP_SELECTOR = '[data-role="user"], [data-role="assistant"]';
+const SCROLL_ANCHOR_SELECTOR = "[data-chat-scroll-anchor-event-id]";
 
 export type LocatorRole = keyof typeof TICK_METRICS;
+
+export interface LocatorTurn {
+  readonly eventId: string;
+  readonly role: LocatorRole;
+  readonly text: string;
+  readonly createdAt: string | undefined;
+}
 
 interface LocatorTick {
   readonly turnIndex: number;
@@ -90,9 +123,6 @@ export interface LocatorPreview {
   readonly text: string;
   /** ISO timestamp of the turn, or undefined when it carries none. */
   readonly createdAt: string | undefined;
-  /** 1-based, for the "12/32" counter. */
-  readonly position: number;
-  readonly total: number;
 }
 
 export interface ChatConversationLocatorSignals {
@@ -105,7 +135,9 @@ export interface ChatConversationLocatorSignals {
   readonly preview$: Computed<LocatorPreview | null>;
   /** True while the pointer is over the rail. */
   readonly engaged$: Computed<boolean>;
-  readonly jumpToTurn$: Command<void, [number]>;
+  /** Complete folded turn sequence, independent of the DOM render window. */
+  readonly visibleTurns$: Computed<readonly LocatorTurn[]>;
+  readonly jumpToTurn$: Command<Promise<void>, [number, AbortSignal]>;
 }
 
 function emptyLayout(): LocatorLayout {
@@ -121,24 +153,37 @@ function emptyLayout(): LocatorLayout {
 
 interface DomTurn {
   readonly element: HTMLElement;
-  readonly role: LocatorRole;
-  /** ISO timestamp stamped on the turn wrapper, absent on optimistic rows. */
-  readonly createdAt: string | undefined;
+  readonly eventId: string;
   /** Offset inside the scroll content, not the offsetParent chain. */
   readonly top: number;
   readonly height: number;
 }
 
+interface IndexedDomTurn extends DomTurn {
+  readonly turnIndex: number;
+}
+
+interface LocatorMeasurement {
+  readonly renderedTurns: readonly DomTurn[];
+  readonly scrollTop: number;
+  readonly clientHeight: number;
+  readonly scrollHeight: number;
+  readonly railHeight: number;
+}
+
+interface ResolvedLocatorLayout {
+  readonly layout: LocatorLayout;
+  readonly windowStart: number;
+}
+
 interface LocatorStore {
   readonly rail$: State<HTMLElement | null>;
   readonly previewElement$: State<HTMLElement | null>;
-  readonly layout$: State<LocatorLayout>;
+  readonly measurement$: State<LocatorMeasurement>;
   readonly preview$: State<LocatorPreview | null>;
   readonly engaged$: State<boolean>;
   readonly windowStart$: State<number>;
   readonly pagedByReader$: State<boolean>;
-  /** Last measurement, reused while only the scroll offset changes. */
-  turns: DomTurn[];
 }
 
 /** Per-binding pointer and scheduling bookkeeping. */
@@ -157,10 +202,6 @@ interface RailRuntime {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
-}
-
-function roleOf(element: HTMLElement): LocatorRole {
-  return element.dataset.role === "user" ? "user" : "assistant";
 }
 
 /**
@@ -188,10 +229,16 @@ function readTurns(container: HTMLElement): DomTurn[] {
     if (rect.height === 0) {
       continue;
     }
+    const anchor = element.matches(SCROLL_ANCHOR_SELECTOR)
+      ? element
+      : element.querySelector<HTMLElement>(SCROLL_ANCHOR_SELECTOR);
+    const eventId = anchor?.dataset.chatScrollAnchorEventId;
+    if (!eventId) {
+      continue;
+    }
     turns.push({
       element,
-      role: roleOf(element),
-      createdAt: element.dataset.turnCreatedAt,
+      eventId,
       top: rect.top - containerTop + scrollTop,
       height: rect.height,
     });
@@ -199,27 +246,159 @@ function readTurns(container: HTMLElement): DomTurn[] {
   return turns;
 }
 
-/** The message body alone — tool chrome and action labels are not a preview. */
-function previewTextFor(element: HTMLElement): string {
-  const bubble = element.querySelector<HTMLElement>(
-    ".zero-chat-bubble-user, .zero-chat-bubble-assistant",
+function normalizePreviewText(value: string | null | undefined): string {
+  return value?.replace(/\s+/gu, " ").trim() ?? "";
+}
+
+function userMessageForLocator(event: EnrichedChatEvent) {
+  return "userMessage" in event ? event.userMessage : undefined;
+}
+
+function userMessageAnnotationForLocator(event: EnrichedChatEvent) {
+  return userMessageForLocator(event)?.parts.find((part) => {
+    return part.type === "automation" || part.type === "goal";
+  });
+}
+
+function rejectedGoalForLocator(event: EnrichedChatEvent): boolean {
+  return (
+    event.eventType === "input.rejected" &&
+    userMessageAnnotationForLocator(event)?.type === "goal"
   );
-  return (bubble ?? element).textContent?.replace(/\s+/gu, " ").trim() ?? "";
+}
+
+function userPreviewText(event: EnrichedChatEvent): string {
+  const messageText = normalizePreviewText(
+    messageDocumentToDisplayText(userMessageForLocator(event)),
+  );
+  if (messageText) {
+    return messageText;
+  }
+  const annotation = userMessageAnnotationForLocator(event);
+  if (annotation?.type === "goal") {
+    return normalizePreviewText(annotation.goalBrief);
+  }
+  if (annotation?.type === "automation") {
+    const brief = normalizePreviewText(annotation.automationBrief);
+    return brief || normalizePreviewText(annotation.workflowName);
+  }
+  return normalizePreviewText(event.content);
+}
+
+function assistantPreviewText(event: EnrichedChatEvent): string {
+  return normalizePreviewText(chatEventDisplayError(event) ?? event.content);
+}
+
+function activeGroupsForLocator(
+  groups: readonly ChatEventGroup[],
+): ChatEventGroup[] {
+  return groups.flatMap((group) => {
+    if (group.role === "assistant") {
+      return [group];
+    }
+    const activeEvents = group.events.filter((event) => {
+      return !event.isQueued;
+    });
+    const beginEventId = activeEvents[0]?.id;
+    return beginEventId === undefined
+      ? []
+      : [{ ...group, beginEventId, events: activeEvents }];
+  });
+}
+
+function turnsFromGroups(groups: readonly ChatEventGroup[]): LocatorTurn[] {
+  return groups.flatMap((group): LocatorTurn[] => {
+    if (group.role === "user") {
+      return group.events.flatMap((event) => {
+        return rejectedGoalForLocator(event)
+          ? []
+          : [
+              {
+                eventId: event.id,
+                role: "user" as const,
+                text: userPreviewText(event),
+                createdAt: event.createdAt,
+              },
+            ];
+      });
+    }
+    const event = group.events.find(isRenderableAssistantEvent);
+    return event === undefined
+      ? []
+      : [
+          {
+            eventId: event.id,
+            role: "assistant" as const,
+            text: assistantPreviewText(event),
+            createdAt:
+              group.events.find((candidate) => {
+                return candidate.id === group.beginEventId;
+              })?.createdAt ?? group.events[0]?.createdAt,
+          },
+        ];
+  });
+}
+
+function createVisibleTurns(
+  allChatGroups$: Computed<readonly ChatEventGroup[]>,
+  threadScrollPosition$: Computed<ThreadScrollPosition | null>,
+): Computed<readonly LocatorTurn[]> {
+  return computed((get): readonly LocatorTurn[] => {
+    const activeGroups = activeGroupsForLocator(get(allChatGroups$));
+    const targetEventId = get(threadScrollPosition$)?.targetEventId ?? null;
+    const runGroupFolding = buildRunGroupFolding(
+      activeGroups,
+      get(runGroupExpansionOverrides$),
+      targetEventId,
+    );
+    const runGroupVisibleGroups =
+      runGroupFolding?.visibleGroups ?? activeGroups;
+    const completedWorkFolding = buildCompletedWorkFolding(
+      runGroupVisibleGroups,
+    );
+    const completedWorkExpandedKeys = completedWorkExpandedKeysForScrollTarget(
+      completedWorkFolding,
+      get(completedWorkExpandedKeys$),
+      targetEventId,
+    );
+    return turnsFromGroups(
+      applyCompletedWorkExpansion(
+        runGroupVisibleGroups,
+        completedWorkFolding,
+        completedWorkExpandedKeys,
+      ),
+    );
+  });
+}
+
+function indexedDomTurns(
+  turns: readonly LocatorTurn[],
+  renderedTurns: readonly DomTurn[],
+): IndexedDomTurn[] {
+  const indexByEventId = new Map(
+    turns.map((turn, turnIndex) => {
+      return [turn.eventId, turnIndex] as const;
+    }),
+  );
+  return renderedTurns.flatMap((turn) => {
+    const turnIndex = indexByEventId.get(turn.eventId);
+    return turnIndex === undefined ? [] : [{ ...turn, turnIndex }];
+  });
 }
 
 function currentTurnIndex(
-  turns: readonly DomTurn[],
+  turns: readonly IndexedDomTurn[],
   scrollTop: number,
   clientHeight: number,
 ): number {
   const focus = scrollTop + clientHeight * CURRENT_TURN_VIEWPORT_RATIO;
-  let best = 0;
+  let best = turns[0]?.turnIndex ?? 0;
   let bestDistance = Number.POSITIVE_INFINITY;
-  for (const [index, turn] of turns.entries()) {
+  for (const turn of turns) {
     const distance = Math.abs(turn.top + turn.height / 2 - focus);
     if (distance < bestDistance) {
       bestDistance = distance;
-      best = index;
+      best = turn.turnIndex;
     }
   }
   return best;
@@ -283,7 +462,7 @@ function windowGeometry(
 }
 
 function buildTicks(
-  turns: readonly DomTurn[],
+  turns: readonly LocatorTurn[],
   geometry: WindowGeometry,
   current: number,
 ): LocatorTick[] {
@@ -309,17 +488,22 @@ function buildTicks(
 }
 
 function buildBand(
-  turns: readonly DomTurn[],
+  turns: readonly IndexedDomTurn[],
   geometry: WindowGeometry,
   scrollTop: number,
   clientHeight: number,
 ): { bandTop: number; bandHeight: number } {
   const { windowStart, windowCount, pitch, origin } = geometry;
   const viewportBottom = scrollTop + clientHeight;
+  const turnByIndex = new Map(
+    turns.map((turn) => {
+      return [turn.turnIndex, turn] as const;
+    }),
+  );
   let first = -1;
   let last = -1;
   for (let offset = 0; offset < windowCount; offset += 1) {
-    const turn = turns[windowStart + offset];
+    const turn = turnByIndex.get(windowStart + offset);
     if (!turn) {
       continue;
     }
@@ -346,13 +530,28 @@ function tickNodes(rail: HTMLElement): HTMLElement[] {
   return [...rail.querySelectorAll<HTMLElement>("[data-locator-tick]")];
 }
 
-function resetTickWidths(rail: HTMLElement): void {
+/**
+ * The band is the frame around the ticks inside the viewport, so it widens by
+ * whatever its widest tick gained rather than by a growth of its own: one
+ * dimension, one source, and the bars stay enclosed at every magnification.
+ */
+function writeBandWidth(rail: HTMLElement, growth: number): void {
+  const band = rail.querySelector<HTMLElement>(
+    "[data-conversation-locator-band]",
+  );
+  if (band) {
+    band.style.width = `${(BAND_BASE_WIDTH_PX + growth).toFixed(2)}px`;
+  }
+}
+
+function resetRailWidths(rail: HTMLElement): void {
   for (const node of tickNodes(rail)) {
     const role: LocatorRole =
       node.dataset.locatorTick === "user" ? "user" : "assistant";
     node.style.width = `${TICK_METRICS[role].base}px`;
     delete node.dataset.locatorHot;
   }
+  writeBandWidth(rail, 0);
 }
 
 /**
@@ -370,6 +569,8 @@ function applyMagnification(
     MAGNIFY_SIGMA_MIN_PX,
     layout.pitch * MAGNIFY_SIGMA_RATIO,
   );
+  const bandBottom = layout.bandTop + layout.bandHeight;
+  let bandGrowth = 0;
   let nearest = -1;
   let nearestDistance = Number.POSITIVE_INFINITY;
   for (const [index, tick] of layout.ticks.entries()) {
@@ -386,7 +587,11 @@ function applyMagnification(
     const metrics = TICK_METRICS[tick.role];
     const width = metrics.base * (1 + weight * metrics.grow);
     node.style.width = `${width.toFixed(2)}px`;
+    if (tick.y >= layout.bandTop && tick.y <= bandBottom) {
+      bandGrowth = Math.max(bandGrowth, width - metrics.base);
+    }
   }
+  writeBandWidth(rail, bandGrowth);
 
   // Anywhere inside the group the nearest tick is at most half a pitch away,
   // so only overshooting the first or last tick misses.
@@ -405,13 +610,76 @@ function createStore(): LocatorStore {
   return {
     rail$: state<HTMLElement | null>(null),
     previewElement$: state<HTMLElement | null>(null),
-    layout$: state<LocatorLayout>(emptyLayout()),
+    measurement$: state<LocatorMeasurement>({
+      renderedTurns: [],
+      scrollTop: 0,
+      clientHeight: 0,
+      scrollHeight: 0,
+      railHeight: 0,
+    }),
     preview$: state<LocatorPreview | null>(null),
     engaged$: state(false),
     windowStart$: state(0),
     pagedByReader$: state(false),
-    turns: [],
   };
+}
+
+function createResolvedLayout(
+  store: LocatorStore,
+  visibleTurns$: Computed<readonly LocatorTurn[]>,
+): Computed<ResolvedLocatorLayout> {
+  return computed((get): ResolvedLocatorLayout => {
+    const turns = get(visibleTurns$);
+    const measurement = get(store.measurement$);
+    const renderedTurnCount = measurement.renderedTurns.length;
+    // A virtual window's scrollHeight covers only its DOM slice. Scale that
+    // measured slice to the complete turn count before applying the physical
+    // screen-length floor.
+    const estimatedScrollHeight =
+      renderedTurnCount === 0
+        ? measurement.scrollHeight
+        : Math.max(
+            measurement.scrollHeight,
+            (measurement.scrollHeight * turns.length) / renderedTurnCount,
+          );
+    const enoughScroll =
+      measurement.clientHeight > 0 &&
+      estimatedScrollHeight >= measurement.clientHeight * SHOW_MIN_SCREENS;
+    if (turns.length < SHOW_MIN_TURNS || !enoughScroll) {
+      return {
+        layout: { ...emptyLayout(), turnCount: turns.length },
+        windowStart: 0,
+      };
+    }
+
+    const renderedTurns = indexedDomTurns(turns, measurement.renderedTurns);
+    const current = currentTurnIndex(
+      renderedTurns,
+      measurement.scrollTop,
+      measurement.clientHeight,
+    );
+    const geometry = windowGeometry(
+      turns.length,
+      measurement.railHeight,
+      current,
+      get(store.pagedByReader$) ? get(store.windowStart$) : null,
+    );
+    return {
+      layout: {
+        visible: true,
+        ticks: buildTicks(turns, geometry, current),
+        pitch: geometry.pitch,
+        ...buildBand(
+          renderedTurns,
+          geometry,
+          measurement.scrollTop,
+          measurement.clientHeight,
+        ),
+        turnCount: turns.length,
+      },
+      windowStart: geometry.windowStart,
+    };
+  });
 }
 
 /**
@@ -428,62 +696,54 @@ function createRecompute(
     if (!container || !rail) {
       return;
     }
-    if (remeasure) {
-      store.turns = readTurns(container);
-    }
-    const turns = store.turns;
-    const enoughScroll =
-      container.clientHeight > 0 &&
-      container.scrollHeight >= container.clientHeight * SHOW_MIN_SCREENS;
-    if (turns.length < SHOW_MIN_TURNS || !enoughScroll) {
-      set(store.layout$, { ...emptyLayout(), turnCount: turns.length });
+    const previous = get(store.measurement$);
+    const next: LocatorMeasurement = {
+      renderedTurns: remeasure ? readTurns(container) : previous.renderedTurns,
+      scrollTop: container.scrollTop,
+      clientHeight: container.clientHeight,
+      scrollHeight: container.scrollHeight,
+      railHeight: rail.clientHeight,
+    };
+    if (
+      next.renderedTurns === previous.renderedTurns &&
+      next.scrollTop === previous.scrollTop &&
+      next.clientHeight === previous.clientHeight &&
+      next.scrollHeight === previous.scrollHeight &&
+      next.railHeight === previous.railHeight
+    ) {
       return;
     }
-
-    const current = currentTurnIndex(
-      turns,
-      container.scrollTop,
-      container.clientHeight,
-    );
-    const geometry = windowGeometry(
-      turns.length,
-      rail.clientHeight,
-      current,
-      get(store.pagedByReader$) ? get(store.windowStart$) : null,
-    );
-    if (geometry.windowStart !== get(store.windowStart$)) {
-      set(store.windowStart$, geometry.windowStart);
-    }
-    set(store.layout$, {
-      visible: true,
-      ticks: buildTicks(turns, geometry, current),
-      pitch: geometry.pitch,
-      ...buildBand(
-        turns,
-        geometry,
-        container.scrollTop,
-        container.clientHeight,
-      ),
-      turnCount: turns.length,
-    });
+    set(store.measurement$, next);
   });
 }
 
-function createPaint(store: LocatorStore) {
+function createLayout(
+  resolvedLayout$: Computed<ResolvedLocatorLayout>,
+): Computed<LocatorLayout> {
+  return computed((get): LocatorLayout => {
+    return get(resolvedLayout$).layout;
+  });
+}
+
+function createPaint(
+  store: LocatorStore,
+  visibleTurns$: Computed<readonly LocatorTurn[]>,
+  layout$: Computed<LocatorLayout>,
+) {
   return command(({ get, set }, pointerY: number | null) => {
     const rail = get(store.rail$);
-    const layout = get(store.layout$);
+    const layout = get(layout$);
     if (!rail || !layout.visible) {
       return;
     }
     if (pointerY === null) {
-      resetTickWidths(rail);
+      resetRailWidths(rail);
       set(store.preview$, null);
       return;
     }
     const nearest = applyMagnification(rail, layout, pointerY);
     const tick = nearest === null ? undefined : layout.ticks[nearest];
-    const turn = tick ? store.turns[tick.turnIndex] : undefined;
+    const turn = tick ? get(visibleTurns$)[tick.turnIndex] : undefined;
     const shown = get(store.preview$);
     if (!tick || !turn) {
       if (shown) {
@@ -491,54 +751,84 @@ function createPaint(store: LocatorStore) {
       }
       return;
     }
-    if (shown?.turnIndex === tick.turnIndex) {
+    if (
+      shown?.turnIndex === tick.turnIndex &&
+      shown.role === tick.role &&
+      shown.text === turn.text &&
+      shown.createdAt === turn.createdAt
+    ) {
       return;
     }
     set(store.preview$, {
       turnIndex: tick.turnIndex,
       role: tick.role,
-      text: previewTextFor(turn.element),
+      text: turn.text,
       createdAt: turn.createdAt,
-      position: tick.turnIndex + 1,
-      total: layout.turnCount,
     });
   });
 }
 
 function createJump(
-  store: LocatorStore,
   threadId: string,
+  visibleTurns$: Computed<readonly LocatorTurn[]>,
   scrollContainer$: Computed<HTMLElement | null>,
-  signal: AbortSignal,
+  scrollToEvent$: Command<
+    Promise<void>,
+    [string, ScrollToEventOptions, AbortSignal]
+  >,
 ) {
   const resetLandedSignal$ = resetSignal();
 
-  return command(({ get, set }, turnIndex: number) => {
-    const container = get(scrollContainer$);
-    const turn = store.turns[turnIndex];
-    if (!container || !turn) {
-      return;
-    }
-    L.debug("jump to turn", { threadId, turnIndex });
-    container.scrollTo({
-      top: Math.max(0, turn.top - container.clientHeight * JUMP_VIEWPORT_RATIO),
-      behavior: "smooth",
-    });
-    const landedSignal = set(resetLandedSignal$, signal);
-    turn.element.dataset.locatorLanded = "";
-    const clearLanded = () => {
-      delete turn.element.dataset.locatorLanded;
-    };
-    landedSignal.addEventListener("abort", clearLanded, { once: true });
-    timeout(
-      () => {
-        landedSignal.removeEventListener("abort", clearLanded);
-        clearLanded();
-      },
-      LANDED_MARK_MS,
-      { signal: landedSignal },
-    );
-  });
+  return command(
+    async (
+      { get, set },
+      turnIndex: number,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const turn = get(visibleTurns$)[turnIndex];
+      if (!turn) {
+        return;
+      }
+      const container = get(scrollContainer$);
+      if (!container) {
+        return;
+      }
+      L.debug("jump to turn", { threadId, turnIndex, eventId: turn.eventId });
+      await set(
+        scrollToEvent$,
+        turn.eventId,
+        {
+          behavior: "smooth",
+          viewportOffsetTop: container.clientHeight * JUMP_VIEWPORT_RATIO,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+      const committedContainer = get(scrollContainer$);
+      const landedElement = committedContainer
+        ? readTurns(committedContainer).find((candidate) => {
+            return candidate.eventId === turn.eventId;
+          })?.element
+        : undefined;
+      if (!landedElement) {
+        return;
+      }
+      const landedSignal = set(resetLandedSignal$, signal);
+      landedElement.dataset.locatorLanded = "";
+      const clearLanded = () => {
+        delete landedElement.dataset.locatorLanded;
+      };
+      landedSignal.addEventListener("abort", clearLanded, { once: true });
+      timeout(
+        () => {
+          landedSignal.removeEventListener("abort", clearLanded);
+          clearLanded();
+        },
+        LANDED_MARK_MS,
+        { signal: landedSignal },
+      );
+    },
+  );
 }
 
 /**
@@ -590,7 +880,6 @@ function createFollowStep(store: LocatorStore) {
 
 function createLeaveRail(
   store: LocatorStore,
-  recompute$: Command<void, [boolean]>,
   paint$: Command<void, [number | null]>,
 ) {
   return command(({ get, set }) => {
@@ -600,19 +889,18 @@ function createLeaveRail(
     // rail; leaving hands it back to the reading position.
     if (get(store.pagedByReader$)) {
       set(store.pagedByReader$, false);
-      set(recompute$, false);
     }
   });
 }
 
 function createClickJump(
   store: LocatorStore,
-  jumpToTurn$: Command<void, [number]>,
+  jumpToTurn$: Command<Promise<void>, [number, AbortSignal]>,
 ) {
-  return command(({ get, set }) => {
+  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
     const preview = get(store.preview$);
     if (preview) {
-      set(jumpToTurn$, preview.turnIndex);
+      await set(jumpToTurn$, preview.turnIndex, signal);
     }
   });
 }
@@ -620,30 +908,33 @@ function createClickJump(
 /** Returns true when the rail took the wheel, so the caller can repaint. */
 function createPageWindow(
   store: LocatorStore,
-  recompute$: Command<void, [boolean]>,
+  resolvedLayout$: Computed<ResolvedLocatorLayout>,
 ) {
   return command(({ get, set }, steps: number) => {
-    const layout = get(store.layout$);
+    const { layout, windowStart } = get(resolvedLayout$);
     if (!layout.visible || layout.turnCount <= MAX_TICKS) {
       return false;
     }
-    const start = get(store.windowStart$);
-    const next = clamp(start + steps, 0, layout.turnCount - MAX_TICKS);
-    if (next === start) {
+    const next = clamp(windowStart + steps, 0, layout.turnCount - MAX_TICKS);
+    if (next === windowStart) {
       return false;
     }
     set(store.pagedByReader$, true);
     set(store.windowStart$, next);
-    set(recompute$, false);
     return true;
   });
 }
 
-/** True while the rail owns the wheel instead of the page. */
-function createOwnsWheel(store: LocatorStore) {
-  return command(({ get }) => {
-    const layout = get(store.layout$);
-    return layout.visible && layout.turnCount > MAX_TICKS;
+/** True when the rail can move in this wheel event's direction. */
+function createCanPageWindow(resolvedLayout$: Computed<ResolvedLocatorLayout>) {
+  return command(({ get }, deltaY: number) => {
+    const { layout, windowStart } = get(resolvedLayout$);
+    if (!layout.visible || layout.turnCount <= MAX_TICKS || deltaY === 0) {
+      return false;
+    }
+    return deltaY < 0
+      ? windowStart > 0
+      : windowStart < layout.turnCount - MAX_TICKS;
   });
 }
 
@@ -651,7 +942,7 @@ interface RailHandlers {
   readonly pointerEnter: () => void;
   readonly pointerMove: (event: PointerEvent) => void;
   readonly pointerLeave: () => void;
-  readonly click: () => void;
+  readonly click: (event: MouseEvent) => void;
   readonly wheel: (event: WheelEvent) => void;
   readonly scroll: () => void;
   readonly contentResize: () => void;
@@ -732,9 +1023,9 @@ interface RailCommands {
   readonly paint$: Command<void, [number | null]>;
   readonly followStep$: Command<void, [HTMLElement, RailRuntime]>;
   readonly leaveRail$: Command<void, []>;
-  readonly clickJump$: Command<void, []>;
+  readonly clickJump$: Command<Promise<void>, [AbortSignal]>;
   readonly pageWindow$: Command<boolean, [number]>;
-  readonly ownsWheel$: Command<boolean, []>;
+  readonly canPageWindow$: Command<boolean, [number]>;
 }
 
 function createRailOnRef(
@@ -811,11 +1102,12 @@ function createRailOnRef(
           runtime.wheelTravel = 0;
           set(commands.leaveRail$);
         },
-        click: () => {
-          set(commands.clickJump$);
-        },
+        click: onDomEventFn<MouseEvent>(async () => {
+          await set(commands.clickJump$, signal);
+        }),
         wheel: (event) => {
-          if (!set(commands.ownsWheel$)) {
+          if (!set(commands.canPageWindow$, event.deltaY)) {
+            runtime.wheelTravel = 0;
             return;
           }
           event.preventDefault();
@@ -854,7 +1146,13 @@ function createRailOnRef(
           runtime.followRunning = false;
           detachListeners?.();
           set(store.rail$, null);
-          set(store.layout$, emptyLayout());
+          set(store.measurement$, {
+            renderedTurns: [],
+            scrollTop: 0,
+            clientHeight: 0,
+            scrollHeight: 0,
+            railHeight: 0,
+          });
           set(store.preview$, null);
           set(store.engaged$, false);
           L.debug("rail unbound", { threadId });
@@ -880,42 +1178,58 @@ function createPreviewOnRef(store: LocatorStore) {
   );
 }
 
-export function createChatConversationLocatorSignals(
-  {
-    threadId,
-    scrollContainer$,
-  }: {
-    threadId: string;
-    scrollContainer$: Computed<HTMLElement | null>;
-  },
-  signal: AbortSignal,
-): ChatConversationLocatorSignals {
+export function createChatConversationLocatorSignals({
+  threadId,
+  scrollContainer$,
+  scrollToEvent$,
+  allChatGroups$,
+  threadScrollPosition$,
+}: {
+  threadId: string;
+  scrollContainer$: Computed<HTMLElement | null>;
+  scrollToEvent$: Command<
+    Promise<void>,
+    [string, ScrollToEventOptions, AbortSignal]
+  >;
+  allChatGroups$: Computed<readonly ChatEventGroup[]>;
+  threadScrollPosition$: Computed<ThreadScrollPosition | null>;
+}): ChatConversationLocatorSignals {
   const store = createStore();
+  const visibleTurns$ = createVisibleTurns(
+    allChatGroups$,
+    threadScrollPosition$,
+  );
+  const resolvedLayout$ = createResolvedLayout(store, visibleTurns$);
+  const layout$ = createLayout(resolvedLayout$);
   const recompute$ = createRecompute(store, scrollContainer$);
-  const paint$ = createPaint(store);
-  const jumpToTurn$ = createJump(store, threadId, scrollContainer$, signal);
+  const paint$ = createPaint(store, visibleTurns$, layout$);
+  const jumpToTurn$ = createJump(
+    threadId,
+    visibleTurns$,
+    scrollContainer$,
+    scrollToEvent$,
+  );
   const railOnRef$ = createRailOnRef(store, threadId, scrollContainer$, {
     recompute$,
     paint$,
     followStep$: createFollowStep(store),
-    leaveRail$: createLeaveRail(store, recompute$, paint$),
+    leaveRail$: createLeaveRail(store, paint$),
     clickJump$: createClickJump(store, jumpToTurn$),
-    pageWindow$: createPageWindow(store, recompute$),
-    ownsWheel$: createOwnsWheel(store),
+    pageWindow$: createPageWindow(store, resolvedLayout$),
+    canPageWindow$: createCanPageWindow(resolvedLayout$),
   });
 
   return {
     railOnRef$,
     previewOnRef$: createPreviewOnRef(store),
-    layout$: computed((get) => {
-      return get(store.layout$);
-    }),
+    layout$,
     preview$: computed((get) => {
       return get(store.preview$);
     }),
     engaged$: computed((get) => {
       return get(store.engaged$);
     }),
+    visibleTurns$,
     jumpToTurn$,
   };
 }

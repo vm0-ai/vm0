@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import {
   connectorExternalCodeSessionStartResponseSchema,
@@ -22,6 +23,7 @@ import { connectorsSearchContract } from "../connectors";
 import {
   customConnectorListResponseSchema,
   customConnectorResponseSchema,
+  createCustomConnectorBodySchema,
 } from "../custom-connectors";
 import {
   applyUserPermissionGrantsRequestSchema,
@@ -266,7 +268,51 @@ describe("custom connector response contracts", () => {
       },
     } as const;
 
+    expect(customConnectorResponseSchema.parse(payload)).toStrictEqual({
+      ...payload,
+      oauthSetup: "custom",
+    });
+
+    expect(
+      customConnectorResponseSchema.parse({
+        ...payload,
+        oauthSetup: "custom",
+      }),
+    ).toStrictEqual({ ...payload, oauthSetup: "custom" });
+  });
+
+  it("keeps automatic OAuth additive for previous response clients", () => {
+    const previousAuthResponseSchema = z.object({
+      authMode: z.enum(["manual", "oauth"]),
+      oauthConfig: z.object({}).passthrough().optional(),
+    });
+    const payload = {
+      id: "00000000-0000-4000-a000-000000000006",
+      slug: "_example-mcp",
+      displayName: "Example MCP",
+      kind: "mcp",
+      fields: [],
+      headerInjections: [],
+      queryInjections: [],
+      authMode: "oauth",
+      oauthSetup: "automatic",
+      permissionBundleRef: null,
+      skillMarkdown: null,
+      storageVersion: 1,
+      connected: false,
+      missingRequiredFields: [],
+      configuredFieldKeys: [],
+      createdAt: "2026-08-11T00:00:00.000Z",
+      updatedAt: "2026-08-11T00:00:00.000Z",
+      endpoint: "https://mcp.example.test",
+      transport: "streamable-http",
+      prefixTemplates: [],
+    } as const;
+
     expect(customConnectorResponseSchema.parse(payload)).toStrictEqual(payload);
+    expect(previousAuthResponseSchema.parse(payload)).toStrictEqual({
+      authMode: "oauth",
+    });
   });
 
   it("rejects responses without an auth mode", () => {
@@ -304,6 +350,94 @@ describe("custom connector response contracts", () => {
 });
 
 describe("connector client request contracts", () => {
+  const definitionBase = {
+    displayName: "Example MCP",
+    kind: "mcp" as const,
+    endpoint: "https://mcp.example.test",
+    transport: "streamable-http" as const,
+    fields: [],
+    headerInjections: [],
+    queryInjections: [],
+  };
+
+  it("normalizes legacy custom OAuth writes and accepts automatic MCP writes", () => {
+    const oauthConfig = {
+      providerAdapter: "standard" as const,
+      clientId: "oauth-client-id",
+      clientSecret: "oauth-client-secret",
+      authorizationUrl: "https://example.test/oauth/authorize",
+      tokenUrl: "https://example.test/oauth/token",
+      tokenEndpointAuthMethod: "client_secret_post" as const,
+      pkceMethod: "S256" as const,
+      scopes: ["read"],
+      authorizationParams: {},
+    };
+
+    expect(
+      createCustomConnectorBodySchema.parse({
+        ...definitionBase,
+        authMode: "oauth",
+        oauthConfig,
+      }),
+    ).toMatchObject({ authMode: "oauth", oauthConfig });
+    expect(
+      createCustomConnectorBodySchema.parse({
+        ...definitionBase,
+        authMode: "oauth",
+        oauthSetup: "automatic",
+      }),
+    ).toMatchObject({ authMode: "oauth", oauthSetup: "automatic" });
+  });
+
+  it("keeps additive request fields forward-compatible", () => {
+    expect(
+      createCustomConnectorBodySchema.parse({
+        ...definitionBase,
+        authMode: "manual",
+        futureOption: true,
+      }),
+    ).not.toHaveProperty("futureOption");
+  });
+
+  it("rejects ambiguous OAuth setup variants", () => {
+    const automatic = {
+      ...definitionBase,
+      authMode: "oauth",
+      oauthSetup: "automatic",
+    } as const;
+
+    expect(() => {
+      createCustomConnectorBodySchema.parse({
+        ...automatic,
+        oauthConfig: {
+          providerAdapter: "standard",
+          clientId: "oauth-client-id",
+          clientSecret: "oauth-client-secret",
+          authorizationUrl: "https://example.test/oauth/authorize",
+          tokenUrl: "https://example.test/oauth/token",
+          tokenEndpointAuthMethod: "client_secret_post",
+          pkceMethod: "S256",
+          scopes: [],
+          authorizationParams: {},
+        },
+      });
+    }).toThrow();
+    expect(() => {
+      createCustomConnectorBodySchema.parse({
+        ...automatic,
+        kind: "http",
+        prefixTemplates: ["https://api.example.test"],
+      });
+    }).toThrow();
+    expect(() => {
+      createCustomConnectorBodySchema.parse({
+        ...definitionBase,
+        authMode: "manual",
+        oauthSetup: "custom",
+      });
+    }).toThrow();
+  });
+
   it("accepts canonical connector check requests", () => {
     const base = {
       mode: "url" as const,

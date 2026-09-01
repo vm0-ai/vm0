@@ -42,9 +42,9 @@ import type { UserPermissionGrantExpiresIn } from "@okouai/api-contracts/contrac
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicyValue,
-} from "@okouai/connectors/firewall-types";
-import { r2ImageTransformUrl } from "@okouai/core";
-import { Skeleton, cn } from "@okouai/ui";
+} from "@okouai/connectors/firewall-contracts";
+import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
+import { Button, Skeleton, cn } from "@okouai/ui";
 import {
   useGet,
   useLastLoadable,
@@ -71,6 +71,7 @@ import {
 } from "../../signals/okou-page/attachment-chips.ts";
 import { BrowserSessionCard } from "./browser-session-card.tsx";
 import { BankingActionCard } from "./banking-action-card.tsx";
+import { ConnectorAccountActionCard } from "./connector-account-action-card.tsx";
 import { MailDraftCard } from "./mail-draft-card.tsx";
 
 type ChatImagePreviewLinkProps = {
@@ -285,6 +286,9 @@ export function MarkdownCardView({ card }: { card: MarkdownCardRef }) {
     }
     case "connector-action": {
       return <ConnectorActionCard signals={card.signals} />;
+    }
+    case "connector-account-action": {
+      return <ConnectorAccountActionCard signals={card.signals} />;
     }
     case "permission-action": {
       return <PermissionActionCard signals={card.signals} />;
@@ -589,6 +593,13 @@ function ComputerUseAuthorizationCard({
 
 function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
   const { t } = useTranslation();
+  const pageSignal = useGet(pageSignal$);
+  const open = useSet(signals.open$);
+
+  const handleClick = () => {
+    detach(open(pageSignal), Reason.DomCallback);
+  };
+
   return (
     <div
       data-testid="plan-upgrade-card"
@@ -611,17 +622,15 @@ function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
           </div>
         </div>
       </div>
-      <a
-        href={signals.href}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-state-hover sm:w-auto"
+      <Button
+        type="button"
+        onClick={handleClick}
+        className="w-full shrink-0 sm:w-auto"
       >
         {t(($) => {
           return $.chat.billing.comparePlans;
         })}
-        <ArrowUpRight size={15} />
-      </a>
+      </Button>
     </div>
   );
 }

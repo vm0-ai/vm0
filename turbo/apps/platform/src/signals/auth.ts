@@ -1,6 +1,8 @@
-import { Clerk } from "@clerk/clerk-js";
-import { ui } from "@clerk/ui";
 import { command, computed, state } from "ccstate";
+import {
+  startClerkBrowserRuntime,
+  type ClerkBrowserRuntime,
+} from "../lib/clerk-runtime.ts";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 import {
   clearPostHogUser,
@@ -12,18 +14,23 @@ import {
 import { appendCapturedPreviewBypassToUrl } from "../lib/preview-bypass-cookie.ts";
 import {
   derivePlatformServiceOrigin,
-  isProductionSatelliteHostname,
-  PRODUCTION_SATELLITE_HOSTNAME,
+  isOkouProductionHostname,
   type PlatformService,
   resolvePlatformEnvironment,
   resolvePlatformRuntimeConfig,
 } from "../lib/platform-host.ts";
+import {
+  resolveClerkProductionSatelliteDomain,
+  resolveClerkProductionTopology,
+  type ClerkProductionDomain,
+  VM0_CLERK_PRIMARY_APP_ORIGIN,
+} from "../lib/clerk-production-topology.ts";
 import { resolveBrandNameForHostname, type BrandName } from "./branding.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
 import { createAuthRecovery, setupForegroundCatchUp$ } from "./auth-retry.ts";
+import { authRecovery$, setAuthRecovery$ } from "./auth-context.ts";
 import { writeConnectionDiagnostic$ } from "./connection-diagnostics.ts";
 import { sessionStorageSignals } from "./external/session-storage.ts";
-import { rootSignal$ } from "./root-signal.ts";
 
 const reload$ = state(0);
 const clerkVersion$ = state(0);
@@ -31,14 +38,17 @@ const clerkVersion$ = state(0);
 const ATTRIBUTION_SOURCE_PARAM = "vm0_source";
 const HOMEPAGE_ATTRIBUTION_VALUE = "homepage";
 const VM0_ONBOARDING_PATH = "/onboarding";
-const CLERK_PRIMARY_APP_ORIGIN = "https://app.vm0.ai";
 const CLERK_SATELLITE_REDIRECT_ORIGIN_PATTERN =
   /^https:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*okou\.ai(?::\d+)?$/i;
+const PRODUCTION_VM0_AUTH_REDIRECT_ORIGINS = [
+  VM0_CLERK_PRIMARY_APP_ORIGIN,
+  "https://www.vm0.ai",
+] as const;
 
 type AllowedAuthRedirectOrigin = string | RegExp;
 
 interface ClerkSatelliteConfig {
-  readonly domain: typeof PRODUCTION_SATELLITE_HOSTNAME;
+  readonly domain: ClerkProductionDomain;
   readonly isSatellite: true;
   readonly satelliteAutoSync: true;
 }
@@ -87,7 +97,16 @@ const MAX_URL_PORT = 65_535;
 export function deriveServiceOrigin(
   currentOrigin: string,
   service: Extract<PlatformService, "www" | "app" | "api">,
+  publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey,
 ): string {
+  const currentUrl = new URL(currentOrigin);
+  if (
+    isOkouProductionHostname(currentUrl.hostname) &&
+    resolveClerkProductionTopology(publishableKey).primaryBrand === "okou"
+  ) {
+    currentUrl.hostname = `${service}.okou.ai`;
+    return currentUrl.origin;
+  }
   return derivePlatformServiceOrigin(currentOrigin, service);
 }
 
@@ -106,24 +125,40 @@ function resolveAppOrigin(): string {
 }
 
 export function resolveClerkSatelliteConfig(): ClerkSatelliteConfig | null {
-  if (
-    typeof location === "undefined" ||
-    !isProductionSatelliteHostname(location.hostname)
-  ) {
+  if (typeof location === "undefined") {
+    return null;
+  }
+
+  const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
+  const domain = resolveClerkProductionSatelliteDomain(
+    location.hostname,
+    publishableKey,
+  );
+  if (!domain) {
     return null;
   }
 
   return {
-    domain: PRODUCTION_SATELLITE_HOSTNAME,
+    domain,
     isSatellite: true,
     satelliteAutoSync: true,
   };
 }
 
 function resolveAuthOrigin(): string {
-  return resolveClerkSatelliteConfig()
-    ? CLERK_PRIMARY_APP_ORIGIN
+  const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
+  return resolveClerkProductionSatelliteDomain(
+    location.hostname,
+    publishableKey,
+  )
+    ? resolveClerkProductionTopology(publishableKey).primaryAppOrigin
     : resolveAppOrigin();
+}
+
+export function resolvePrimaryClerkUserProfileUrl(): string {
+  return resolveClerkProductionTopology(
+    resolvePlatformRuntimeConfig().clerkPublishableKey,
+  ).primaryUserProfileUrl;
 }
 
 function parseUrl(value: string): URL | null {
@@ -196,7 +231,10 @@ export function getAllowedAuthRedirectOrigins(): AllowedAuthRedirectOrigin[] {
   }
   const productionOrigins =
     resolvePlatformEnvironment() === "production"
-      ? [CLERK_PRIMARY_APP_ORIGIN, CLERK_SATELLITE_REDIRECT_ORIGIN_PATTERN]
+      ? [
+          ...PRODUCTION_VM0_AUTH_REDIRECT_ORIGINS,
+          CLERK_SATELLITE_REDIRECT_ORIGIN_PATTERN,
+        ]
       : [];
   return [
     ...new Set([
@@ -361,83 +399,83 @@ export function buildSignInRedirectUrl(
   return redirectUrl?.toString() ?? resolveAppUrl();
 }
 
-export const clerkUi$ = computed(() => {
-  return ui;
-});
+const internalClerkRuntime$ = state<Promise<ClerkBrowserRuntime> | undefined>(
+  undefined,
+);
+export const initClerkRuntime$ = command(
+  ({ set }, signal: AbortSignal): void => {
+    signal.throwIfAborted();
+    const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
+    const satelliteConfig = resolveClerkSatelliteConfig();
+    markBootstrapClerkLoadStarted();
+    set(
+      internalClerkRuntime$,
+      startClerkBrowserRuntime(
+        {
+          domain: satelliteConfig?.domain,
+          loadOptions: {
+            ...(satelliteConfig
+              ? {
+                  isSatellite: true,
+                  satelliteAutoSync: satelliteConfig.satelliteAutoSync,
+                }
+              : {}),
+            afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
+            signInUrl: resolveAppAuthUrl("/sign-in"),
+            signUpUrl: resolveAppAuthUrl("/sign-up"),
+          },
+          publishableKey,
+        },
+        signal,
+      ),
+    );
+  },
+);
 
-/**
- * Construct Clerk synchronously so the React provider can subscribe before
- * loading starts. Passing an already-loaded instance can make the provider
- * miss Clerk's ready event and leave hosted auth UI in its loading fallback.
- */
-export const clerkInstance$ = computed(() => {
-  const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
-  const satelliteConfig = resolveClerkSatelliteConfig();
-
-  const { ClerkUI } = ui;
-  if (!ClerkUI) {
-    throw new Error("Clerk UI module did not provide its renderer");
+const clerkRuntime$ = computed((get) => {
+  const runtime = get(internalClerkRuntime$);
+  if (!runtime) {
+    throw new Error("Clerk runtime was not initialized during bootstrap");
   }
-
-  const clerkInstance = satelliteConfig
-    ? new Clerk(publishableKey, { domain: satelliteConfig.domain })
-    : new Clerk(publishableKey);
-
-  // @clerk/react subscribes to status in a passive effect without requesting
-  // the current value. If Clerk loads first, that leaves its context stuck at
-  // "loading". Make every status subscription replay the latest value.
-  const subscribeToStatus = clerkInstance.on.bind(clerkInstance);
-  clerkInstance.on = (event, handler, options) => {
-    subscribeToStatus(event, handler, { ...options, notify: true });
-  };
-
-  // Both VM0 signals and @clerk/react need the loaded instance. Share the
-  // first load instead of issuing concurrent bootstrap requests.
-  const loadClerk = clerkInstance.load.bind(clerkInstance);
-  let loadPromise: Promise<void> | undefined;
-  clerkInstance.load = (options) => {
-    loadPromise ??= loadClerk(options);
-    return loadPromise;
-  };
-
-  return clerkInstance;
+  return runtime;
 });
 
-/**
- * Loaded Clerk instance for consumers that need authentication state.
- */
+/** Clerk core is available once its browser script has initialized. */
+export const clerkInstance$ = computed(async (get) => {
+  const runtime = await get(clerkRuntime$);
+  return runtime.clerk;
+});
+
+/** Loaded Clerk instance for consumers that need authentication state. */
 export const clerk$ = computed(async (get) => {
-  const clerkInstance = get(clerkInstance$);
-  const satelliteConfig = resolveClerkSatelliteConfig();
-  markBootstrapClerkLoadStarted();
-  await clerkInstance.load({
-    ui,
-    ...(satelliteConfig
-      ? {
-          isSatellite: true,
-          satelliteAutoSync: satelliteConfig.satelliteAutoSync,
-        }
-      : {}),
-    signInUrl: resolveAppAuthUrl("/sign-in"),
-    signUpUrl: resolveAppAuthUrl("/sign-up"),
-    afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
-  });
+  const runtime = await get(clerkRuntime$);
+  await runtime.loaded;
   markBootstrapClerkLoadCompleted();
 
-  return clerkInstance;
+  return runtime.clerk;
 });
 
-export const authRecovery$ = computed(async (get) => {
-  const clerk = await get(clerk$);
-  return createAuthRecovery(clerk, () => {
-    return get(rootSignal$);
-  });
-});
+export const initAuthRecovery$ = command(
+  ({ get, set }, signal: AbortSignal): void => {
+    signal.throwIfAborted();
+    const clerkPromise = get(clerk$);
+    set(
+      setAuthRecovery$,
+      (async () => {
+        const clerk = await clerkPromise;
+        signal.throwIfAborted();
+        return createAuthRecovery(clerk, signal);
+      })(),
+    );
+  },
+);
+
+export { authRecovery$ };
 
 /**
  * Command to setup Clerk authentication listeners.
- * This command initializes the Clerk instance and sets up a listener
- * for authentication state changes.
+ * The runtime starts during bootstrap; this command waits for it and installs
+ * authentication state listeners.
  */
 export const setupClerk$ = command(
   async ({ set, get }, signal: AbortSignal) => {
@@ -560,13 +598,6 @@ export const user$ = computed(async (get) => {
   return clerk.user ?? undefined;
 });
 
-/**
- * Stable cache ownership for authenticated pages.
- *
- * Route setup guarantees both values before page data is loaded. Keeping this
- * invariant here prevents cache-backed data sources from independently
- * treating a missing Clerk value as an empty cache or a remote-only mode.
- */
 export const authenticatedIdentity$ = computed(async (get) => {
   const clerk = await get(clerk$);
   if (!clerk.user || !clerk.organization) {
@@ -579,6 +610,13 @@ export const authenticatedIdentity$ = computed(async (get) => {
   };
 });
 
+/**
+ * Stable cache ownership for authenticated pages.
+ *
+ * Route setup guarantees both values before page data is loaded. Keeping this
+ * invariant here prevents cache-backed data sources from independently
+ * treating a missing Clerk value as an empty cache or a remote-only mode.
+ */
 export const currentUserInfo$ = computed(async (get) => {
   get(clerkVersion$);
   const clerk = await get(clerk$);

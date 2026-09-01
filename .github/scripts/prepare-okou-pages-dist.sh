@@ -41,8 +41,14 @@ if [[ -n "$preview_api_origin" ]]; then
 fi
 
 find "$pages_dist" -type f -name '*.map' -delete
+if grep -Fq \
+  'https://static.okou.io/okou-app/assets/' \
+  "${pages_dist}/index.html"; then
+  rm -rf "${pages_dist}/assets"
+fi
 rm -f \
   "${pages_dist}/.gitkeep" \
   "${pages_dist}/manifest.json" \
+  "${pages_dist}/mockServiceWorker.js" \
   "${pages_dist}/ready.json"
 cp -a "${pages_config_dir}/." "$pages_dist/"

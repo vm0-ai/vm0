@@ -27,6 +27,7 @@ import { logTemplateUsage } from "../../lib/template-usage-log";
 import type { GenerationTemplateIdentity } from "@okouai/core/generation-template-identity";
 import { lockChatQueueThread } from "./chat-event-queue.service";
 import { replaceLoadedChatEvent } from "./chat-event.service";
+import { lockPiApiFirstTurnLifecycle } from "./pi-api-first-turn-lifecycle.service";
 
 interface ActiveInputDeliveryScope {
   readonly runId: string;
@@ -258,6 +259,7 @@ async function transitionReservation(
   scope: ActiveInputDeliveryScope,
   prepared: PreparedReservation,
 ): Promise<ReserveTransitionResult> {
+  await lockPiApiFirstTurnLifecycle(tx, scope.runId);
   if (!(await lockChatQueueThread(tx, scope.chatThreadId))) {
     return { outcome: "forbidden" };
   }
@@ -501,7 +503,7 @@ function sourceIsPendingForRun(
     return false;
   }
   if (source.eventType === "input.prompt") {
-    return source.contextType !== "morning_brief";
+    return true;
   }
   return (
     source.eventType === "input.budget" &&
@@ -860,7 +862,7 @@ async function recordActiveInputDeliveryReceiptTransition(
   };
 }
 
-export async function finalizeActiveInputDeliveryForCompletion(
+export async function finalizeActiveInputDelivery(
   tx: ActiveInputDeliveryTransaction,
   args: ActiveInputDeliveryIdentity & {
     readonly deliveredDeliveryIds: ReadonlySet<string>;

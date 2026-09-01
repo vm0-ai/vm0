@@ -36,8 +36,6 @@ function createMockPreferences(
     sendMode: "enter",
     theme: "system",
     colorTheme: "blue-horizon",
-    morningBriefEnabled: false,
-    morningBriefNextRunAt: null,
     captureNetworkBodiesRemaining: 0,
     ...overrides,
   };
@@ -165,7 +163,10 @@ describe("preferences page", () => {
     });
     context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
       capturedBodies.push(body as Record<string, unknown>);
-      storedPreferences = { ...storedPreferences, ...body };
+      storedPreferences = {
+        ...storedPreferences,
+        ...body,
+      };
       return respond(200, storedPreferences);
     });
 
@@ -214,7 +215,10 @@ describe("preferences page", () => {
     });
     context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
       capturedBodies.push(body as Record<string, unknown>);
-      storedPreferences = { ...storedPreferences, ...body };
+      storedPreferences = {
+        ...storedPreferences,
+        ...body,
+      };
       return respond(200, storedPreferences);
     });
 
@@ -235,33 +239,6 @@ describe("preferences page", () => {
         "true",
       );
     });
-  });
-
-  it("keeps appearance choices local when served by an older API", async () => {
-    const capturedBodies: Record<string, unknown>[] = [];
-    const oldPreferences = createMockPreferences();
-    delete oldPreferences.theme;
-    delete oldPreferences.colorTheme;
-    context.store.set(themeStorage.set$, "system");
-    context.mocks.api(userPreferencesContract.get, ({ respond }) => {
-      return respond(200, oldPreferences);
-    });
-    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
-      capturedBodies.push(body as Record<string, unknown>);
-      return respond(200, { ...oldPreferences, ...body });
-    });
-
-    renderPreferencesPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Theme")).toBeInTheDocument();
-    });
-    click(getSegmentByText("Dark"));
-
-    await waitFor(() => {
-      expect(document.documentElement).toHaveAttribute("data-theme", "dark");
-    });
-    expect(capturedBodies).toStrictEqual([]);
   });
 
   it("saves send mode and time zone preference changes", async () => {

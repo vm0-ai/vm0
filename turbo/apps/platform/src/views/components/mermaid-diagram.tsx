@@ -7,6 +7,21 @@ import type { MermaidDiagramSignals } from "../../signals/mermaid-diagram.ts";
 import { openImageLightbox$ } from "../../signals/okou-page/attachment-chips.ts";
 import { IconTooltipButton } from "./icon-tooltip.tsx";
 
+function MermaidCodeBlock({ signals }: { signals: MermaidDiagramSignals }) {
+  return (
+    <pre>
+      <code className="language-mermaid">{signals.code}</code>
+      <CopyButton
+        type="button"
+        text={signals.code}
+        showTooltip={false}
+        className="copied"
+        data-code={signals.code}
+      />
+    </pre>
+  );
+}
+
 /**
  * Renders a ```mermaid fenced block as a diagram from its signals.
  *
@@ -28,18 +43,7 @@ export function MermaidDiagramView({
   const image = loadable.state === "hasData" ? loadable.data : null;
 
   if (loadable.state !== "loading" && image === null) {
-    return (
-      <pre>
-        <code className="language-mermaid">{signals.code}</code>
-        <CopyButton
-          type="button"
-          text={signals.code}
-          showTooltip={false}
-          className="copied"
-          data-code={signals.code}
-        />
-      </pre>
-    );
+    return <MermaidCodeBlock signals={signals} />;
   }
 
   return (

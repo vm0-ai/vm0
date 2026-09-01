@@ -1,5 +1,5 @@
 import { captureDesktopNativeHelperError } from "./sentry-main";
-import { writeSync } from "node:fs";
+import { openAsBlob, writeSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -7,6 +7,7 @@ import {
   app,
   BrowserWindow,
   dialog,
+  globalShortcut,
   ipcMain,
   Menu,
   net,
@@ -46,6 +47,10 @@ import {
 import { isComputerUseSetupRequired } from "./computer-use-startup-gate";
 import { ComputerUseRuntimeController } from "./computer-use-runtime-controller";
 import { DeveloperToolsController } from "./desktop-developer-tools-controller";
+import { DesktopRecorderController } from "./desktop-recorder-controller";
+import { createRecorderNativeBackend } from "./desktop-recorder-native";
+import { deliverRecording } from "./desktop-recorder-delivery";
+import { STOP_SCREEN_RECORDING_ACCELERATOR } from "./desktop-recorder-types";
 import {
   getComputerUsePermissionState,
   probeComputerUseAutomationPermission,
@@ -116,12 +121,6 @@ import {
   isDesktopRendererUrl,
 } from "./desktop-renderer-url";
 import { decideWindowOpen, isAllowedAppNavigation } from "./window-policy";
-import { DesktopZeroMigrationController } from "./desktop-zero-migration";
-import { ZERO_MIGRATION_BRIDGE_CONFIG } from "./desktop-zero-migration-config";
-import {
-  installDesktopZeroMigrationIpc,
-  notifyDesktopZeroMigrationChanged,
-} from "./desktop-zero-migration-electron";
 
 const config = resolveDesktopConfig();
 const desktopApiBaseUrl = resolveComputerUseApiBaseUrl(config.platformUrl);
@@ -149,6 +148,7 @@ const DESKTOP_SIGN_OUT_STORAGES = [
   "serviceworkers",
   "cachestorage",
 ] as const;
+const SCREEN_RECORDING_POLL_INTERVAL_MS = 1000;
 const MAC_ACCESSIBILITY_SETTINGS_URL =
   "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
 const MAC_SCREEN_RECORDING_SETTINGS_URL =
@@ -158,8 +158,6 @@ let appIsQuitting = false;
 let computerUseNativeBackendDisposed = false;
 let desktopTray: DesktopTrayController | null = null;
 let keepAwakeController: DesktopKeepAwakeController | null = null;
-let zeroMigrationController: DesktopZeroMigrationController | null = null;
-let zeroMigrationPolicyTimer: ReturnType<typeof setInterval> | null = null;
 
 const desktopIdentity: DesktopIdentityInfo = {
   product: config.identity.product,
@@ -212,6 +210,43 @@ const quitConfirmation = new DesktopQuitConfirmationController({
     app.quit();
   },
 });
+const screenRecorder = new DesktopRecorderController({
+  createBackend: () => createRecorderNativeBackend(),
+  createOutputPath: () =>
+    path.join(
+      app.getPath("userData"),
+      "recordings",
+      `screen-recording-${Date.now().toString()}.mp4`,
+    ),
+  canDeliver: async () => {
+    const auth = await getAuthSession().getAuthState();
+    return auth.status === "signed_in" && auth.organization !== null;
+  },
+  deliver: async (recording) => {
+    const auth = await getAuthSession().getAuthState();
+    if (auth.status !== "signed_in") {
+      throw new Error("Sign in to Okou to upload the recording");
+    }
+    return await deliverRecording(recording, {
+      apiBaseUrl: desktopApiBaseUrl,
+      appUrl: config.platformUrl.toString(),
+      userId: auth.user.userId,
+      fetchWithSessionAuth: (url, init) =>
+        getAuthSession().fetchWithSessionAuth(url, init),
+      fetchUpload: (url, init) => fetch(url, init),
+      // Streams from disk rather than buffering a whole video in memory.
+      readFile: (filePath) => openAsBlob(filePath),
+    });
+  },
+  openReview: (reviewUrl) => {
+    openExternal(reviewUrl);
+  },
+  onChange: notifyScreenRecorderChanged,
+  logError: (error) => {
+    console.warn("Desktop screen recording teardown failed", error);
+  },
+});
+let screenRecordingPollTimer: NodeJS.Timeout | null = null;
 const developerTools = new DeveloperToolsController({
   fetchFeatureSwitches: () =>
     getAuthSession().fetchWithSessionAuth(
@@ -220,6 +255,9 @@ const developerTools = new DeveloperToolsController({
   setFilesystemPluginFeatureEnabled: (enabled) => {
     filesystemPluginManager?.setFeatureEnabled(enabled);
     mcpPluginManager?.setFeatureEnabled(enabled);
+  },
+  setScreenRecordingFeatureEnabled: (enabled) => {
+    screenRecorder.setFeatureEnabled(enabled);
   },
   onChange: notifyDeveloperToolsChanged,
   logRefreshError: (error) => {
@@ -241,6 +279,55 @@ function refreshDesktopTray(): void {
   desktopTray?.refresh();
 }
 
+/**
+ * Keeps the poll timer and the global stop shortcut alive exactly while a
+ * capture is running.
+ *
+ * The helper protocol has no push channel, so a source disappearing — the
+ * display being unplugged — only surfaces through polling. The shortcut is
+ * registered just for the duration so it is not held hostage the rest of the
+ * time, and it exists because the recording controls live in the menu bar
+ * rather than in an overlay that the capture would record.
+ */
+function notifyScreenRecorderChanged(): void {
+  refreshDesktopTray();
+
+  const isRecording = screenRecorder.getState().status === "recording";
+  if (isRecording === (screenRecordingPollTimer !== null)) {
+    return;
+  }
+
+  if (isRecording) {
+    screenRecordingPollTimer = setInterval(() => {
+      void screenRecorder.refreshRecordingStatus().catch((error: unknown) => {
+        console.warn("Desktop screen recording status refresh failed", error);
+      });
+    }, SCREEN_RECORDING_POLL_INTERVAL_MS);
+    if (
+      !globalShortcut.register(
+        STOP_SCREEN_RECORDING_ACCELERATOR,
+        stopScreenRecordingFromShortcut,
+      )
+    ) {
+      console.warn(
+        "Unable to register the screen recording stop shortcut",
+        STOP_SCREEN_RECORDING_ACCELERATOR,
+      );
+    }
+    return;
+  }
+
+  clearInterval(screenRecordingPollTimer ?? undefined);
+  screenRecordingPollTimer = null;
+  globalShortcut.unregister(STOP_SCREEN_RECORDING_ACCELERATOR);
+}
+
+function stopScreenRecordingFromShortcut(): void {
+  void screenRecorder.stop().catch((error: unknown) => {
+    console.error("Desktop screen recording stop failed", error);
+  });
+}
+
 function refreshDesktopTrayAuth(): void {
   desktopTray?.refreshAuth();
 }
@@ -254,9 +341,7 @@ function notifyComputerUseChanged(): void {
   );
   notifyDesktopComputerUseChanged();
   refreshDesktopTray();
-  if (!zeroMigrationController?.shouldSuppressAutoStart()) {
-    computerUseAutoStart.restartRecoverableRuntimeState();
-  }
+  computerUseAutoStart.restartRecoverableRuntimeState();
 }
 
 function notifyAuthChanged(): void {
@@ -536,15 +621,6 @@ function createComputerUseHostRuntime(): ComputerUseHostRuntime {
 async function startComputerUseRuntime(
   options: { readonly userInitiated?: boolean } = {},
 ): Promise<DesktopComputerUseState> {
-  if (zeroMigrationController?.allowUserInitiatedStart() === false) {
-    return getComputerUseBridgeState();
-  }
-  if (zeroMigrationController?.shouldSuppressAutoStart()) {
-    if (options.userInitiated !== true) {
-      return getComputerUseBridgeState();
-    }
-    zeroMigrationController.clearForUserInitiatedStart();
-  }
   await computerUseController.start(options);
   return getComputerUseBridgeState();
 }
@@ -664,76 +740,6 @@ function installDesktopDeveloperTools(): void {
   );
 }
 
-function installZeroMigration(): void {
-  zeroMigrationController = new DesktopZeroMigrationController({
-    enabled:
-      config.environment === "production" &&
-      app.isPackaged &&
-      !isDesktopSmokeTestEnabled(process.env),
-    product: config.identity.product,
-    appVersion: app.getVersion(),
-    preferencesPath: desktopPreferencesPath(),
-    drainAndStopZero: async () => {
-      await computerUseController.drainAndStop();
-    },
-    startZero: async () => {
-      await computerUseController.start({ userInitiated: true });
-    },
-    openDownload: async (url) => {
-      await shell.openExternal(url);
-    },
-    fetchPolicy: (signal) => {
-      const headers = new Headers();
-      addDesktopClientHeaders(headers);
-      return fetch(
-        new URL(ZERO_MIGRATION_BRIDGE_CONFIG.policyPath, desktopApiBaseUrl),
-        { headers, signal },
-      );
-    },
-    quitZero: () => {
-      quitConfirmation.allowQuitWithoutConfirmation();
-      app.quit();
-    },
-    onChange: notifyDesktopZeroMigrationChanged,
-    onAttention: () => {
-      void createMainWindow();
-    },
-    logPolicyError: (error) => {
-      console.warn("Unable to refresh Zero migration policy", error);
-    },
-  });
-  const controller = zeroMigrationController;
-  installDesktopZeroMigrationIpc(
-    {
-      getState: () => controller.getState(),
-      remindLater: () => controller.remindLater(),
-      beginMigration: () => controller.beginMigration(),
-      resumeZero: () => controller.resumeZero(),
-      quitZero: () => controller.quitZero(),
-    },
-    { rendererUrl: localRendererUrl },
-  );
-}
-
-function startZeroMigrationPolicyRefresh(): void {
-  const controller = zeroMigrationController;
-  if (!controller || zeroMigrationPolicyTimer) {
-    return;
-  }
-  zeroMigrationPolicyTimer = setInterval(() => {
-    void controller.refreshPolicy();
-  }, ZERO_MIGRATION_BRIDGE_CONFIG.policyRefreshIntervalMs);
-  zeroMigrationPolicyTimer.unref();
-}
-
-function stopZeroMigrationPolicyRefresh(): void {
-  if (!zeroMigrationPolicyTimer) {
-    return;
-  }
-  clearInterval(zeroMigrationPolicyTimer);
-  zeroMigrationPolicyTimer = null;
-}
-
 function refreshComputerUsePermissionsForState(): void {
   void refreshComputerUsePermissionState()
     .catch((error) => {
@@ -845,6 +851,16 @@ function installTray(): void {
     },
     setKeepAwakeEnabled: async (enabled) => {
       setKeepAwakeEnabled(enabled);
+    },
+    getRecorderState: () => screenRecorder.getState(),
+    startScreenRecording: async () => {
+      await screenRecorder.startMainDisplayRecording();
+    },
+    stopScreenRecording: async () => {
+      await screenRecorder.stop();
+    },
+    retryScreenRecordingDelivery: async () => {
+      await screenRecorder.retryDelivery();
     },
     quit: () => {
       requestDesktopQuit();
@@ -1115,7 +1131,6 @@ interface DesktopSmokeBridgeState {
   readonly auth: boolean;
   readonly computerUse: boolean;
   readonly developerTools: boolean;
-  readonly zeroMigration: boolean;
   readonly identity: DesktopIdentityInfo | null;
 }
 
@@ -1144,8 +1159,6 @@ function isDesktopSmokeBridgeState(
     typeof value.computerUse === "boolean" &&
     "developerTools" in value &&
     typeof value.developerTools === "boolean" &&
-    "zeroMigration" in value &&
-    typeof value.zeroMigration === "boolean" &&
     "identity" in value &&
     (value.identity === null || isDesktopIdentityInfo(value.identity))
   );
@@ -1158,7 +1171,6 @@ async function verifyDesktopSmokeBridge(): Promise<void> {
       auth: typeof window.vm0DesktopAuth === "object",
       computerUse: typeof window.vm0DesktopComputerUse === "object",
       developerTools: typeof window.vm0DesktopDeveloperTools === "object",
-      zeroMigration: typeof window.vm0DesktopZeroMigration === "object",
       identity: window.vm0DesktopIdentity ?? null,
     })`,
     true,
@@ -1175,7 +1187,6 @@ async function verifyDesktopSmokeBridge(): Promise<void> {
     !state.auth ||
     !state.computerUse ||
     !state.developerTools ||
-    !state.zeroMigration ||
     !state.identity ||
     state.identity.product !== desktopIdentity.product ||
     state.identity.brandName !== desktopIdentity.brandName ||
@@ -1308,10 +1319,7 @@ async function maybeStartComputerUseAfterAuth(): Promise<void> {
   notifyAuthChanged();
   const permissions = await refreshComputerUsePermissionState();
   notifyComputerUseChanged();
-  if (
-    hasRequiredComputerUsePermissions(permissions) &&
-    !zeroMigrationController?.shouldSuppressAutoStart()
-  ) {
+  if (hasRequiredComputerUsePermissions(permissions)) {
     await computerUseController.start({ userInitiated: true });
   }
 }
@@ -1410,9 +1418,9 @@ if (!hasSingleInstanceLock) {
       return;
     }
 
-    stopZeroMigrationPolicyRefresh();
     appIsQuitting = true;
     releaseKeepAwake();
+    globalShortcut.unregisterAll();
     if (!computerUseController.quitStopRequired()) {
       disposeComputerUseNativeBackend();
       return;
@@ -1433,11 +1441,8 @@ if (!hasSingleInstanceLock) {
     installKeepAwake();
     installComputerUse();
     installDesktopDeveloperTools();
-    installZeroMigration();
     const desktopAuthSession = getAuthSession();
     installDesktopAuth();
-    await zeroMigrationController?.refreshPolicy();
-    startZeroMigrationPolicyRefresh();
     refreshComputerUsePermissionsForState();
     developerTools.requestRefresh();
     installTray();
@@ -1470,10 +1475,6 @@ if (!hasSingleInstanceLock) {
       logAuthError: logDesktopAuthError,
       logLaunchError: logComputerUseLaunchError,
     });
-
-    if (zeroMigrationController?.shouldOpenWindowOnLaunch()) {
-      await createMainWindow();
-    }
 
     app.on("activate", () => {
       void createMainWindow();

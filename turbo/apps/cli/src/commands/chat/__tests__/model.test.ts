@@ -56,7 +56,7 @@ const MODEL_POLICIES_RESPONSE = {
       model: "deepseek-v4-flash",
       modelLabel: "DeepSeek V4 Flash",
       isDefault: false,
-      defaultProviderType: "vm0",
+      defaultProviderType: "built-in",
       credentialScope: "org",
       modelProviderId: null,
       routeStatus: "valid",
@@ -79,7 +79,7 @@ describe("okou chat model command", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     chalk.level = 0;
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
     vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_ID);
   });
@@ -132,7 +132,7 @@ describe("okou chat model command", () => {
     expect(output).toContain("Chat thread loaded");
     expect(output).toContain("Model:  Claude Sonnet 5 (claude-sonnet-5)");
     expect(output).toContain("Switchable models:");
-    expect(output).toContain("provider: built-in (Built-in model; vm0)");
+    expect(output).toContain("provider: built-in (Built-in model; built-in)");
     expect(output).toContain(`okou chat model --thread ${THREAD_ID} <model>`);
   });
 

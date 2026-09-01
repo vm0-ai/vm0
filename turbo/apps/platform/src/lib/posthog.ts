@@ -4,10 +4,13 @@ import { isStandalonePwa } from "./keyboard-dismiss-gesture.ts";
 import { resolvePlatformRuntimeConfig } from "./platform-host.ts";
 
 const RUNTIME_CONFIG = resolvePlatformRuntimeConfig();
+const POSTHOG_HOST = RUNTIME_CONFIG.postHogHost;
 const POSTHOG_KEY = RUNTIME_CONFIG.postHogKey;
 
 export const AUTH_V2_DIAGNOSTIC_EVENT = "auth_v2_diagnostic";
 const AUTH_V2_DIAGNOSTIC_DISTINCT_ID = "auth-v2";
+export const APP_FIRST_SKELETON_PAINT_EVENT = "app_first_skeleton_paint";
+const APP_FIRST_SKELETON_PAINT_DISTINCT_ID = "app-bootstrap";
 
 export type AuthV2DiagnosticFlow = "sign-in" | "sign-up" | "unknown";
 
@@ -161,13 +164,48 @@ function authV2DiagnosticErrorCategory(
   }
 }
 
+function finiteNonNegativeNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined;
+}
+
 function sanitizePostHogCaptureResult(
   captureResult: CaptureResult | null,
 ): CaptureResult | null {
-  if (
-    captureResult === null ||
-    captureResult.event !== AUTH_V2_DIAGNOSTIC_EVENT
-  ) {
+  if (captureResult === null) {
+    return null;
+  }
+  if (captureResult.event === APP_FIRST_SKELETON_PAINT_EVENT) {
+    const properties = captureResult.properties;
+    const sanitizedProperties: Record<string, boolean | number | string> = {
+      $process_person_profile: false,
+      distinct_id: APP_FIRST_SKELETON_PAINT_DISTINCT_ID,
+      paint_metric: "first-contentful-paint",
+      public_brand: RUNTIME_CONFIG.publicBrand,
+      token: POSTHOG_KEY ?? "",
+    };
+    for (const name of [
+      "navigation_response_end_ms",
+      "navigation_response_start_ms",
+      "response_end_to_skeleton_paint_ms",
+      "skeleton_paint_ms",
+    ]) {
+      const value = finiteNonNegativeNumber(properties[name]);
+      if (value !== undefined) {
+        sanitizedProperties[name] = value;
+      }
+    }
+    return {
+      event: APP_FIRST_SKELETON_PAINT_EVENT,
+      properties: sanitizedProperties,
+      ...(captureResult.timestamp
+        ? { timestamp: captureResult.timestamp }
+        : {}),
+      uuid: captureResult.uuid,
+    };
+  }
+  if (captureResult.event !== AUTH_V2_DIAGNOSTIC_EVENT) {
     return captureResult;
   }
   const properties = captureResult.properties;
@@ -188,20 +226,20 @@ function sanitizePostHogCaptureResult(
   };
 }
 
-function runPostHog(action: (key: string) => void): void {
-  if (!POSTHOG_KEY) {
+function runPostHog(action: (key: string, host: string) => void): void {
+  if (!POSTHOG_KEY || !POSTHOG_HOST) {
     return;
   }
-  action(POSTHOG_KEY);
+  action(POSTHOG_KEY, POSTHOG_HOST);
 }
 
 export function initPostHog(): void {
-  runPostHog((key) => {
+  runPostHog((key, host) => {
     posthog.init(key, {
       // First-party reverse proxy (Cloudflare-fronted): forwards /static assets,
       // /flags, ingest and replay (/s) to PostHog US so ad blockers do not drop
       // events. Shared with so.vm0.ai for one ingest domain.
-      api_host: "https://j.vm0.ai",
+      api_host: host,
       ui_host: "https://us.posthog.com",
       autocapture: false,
       capture_pageview: false,
@@ -221,6 +259,59 @@ export function initPostHog(): void {
         }
         return { ...properties, public_brand: RUNTIME_CONFIG.publicBrand };
       },
+    });
+  });
+}
+
+function navigationTimingEntry(): PerformanceNavigationTiming | undefined {
+  return performance
+    .getEntriesByType("navigation")
+    .find((entry): entry is PerformanceNavigationTiming => {
+      return (
+        entry.entryType === "navigation" &&
+        "responseStart" in entry &&
+        "responseEnd" in entry
+      );
+    });
+}
+
+function firstContentfulPaintTime(): number | undefined {
+  return performance.getEntriesByType("paint").find((entry) => {
+    return entry.name === "first-contentful-paint";
+  })?.startTime;
+}
+
+/**
+ * Capture an anonymous, allowlisted measurement of the navigation response and
+ * the first frame that can contain the inline bootstrap skeleton.
+ */
+export function captureFirstSkeletonPaint(): void {
+  const navigation = navigationTimingEntry();
+  if (!navigation) {
+    return;
+  }
+  const responseStart = finiteNonNegativeNumber(navigation.responseStart);
+  const responseEnd = finiteNonNegativeNumber(navigation.responseEnd);
+  const skeletonPaint = finiteNonNegativeNumber(firstContentfulPaintTime());
+  if (
+    responseStart === undefined ||
+    responseEnd === undefined ||
+    skeletonPaint === undefined ||
+    responseEnd < responseStart ||
+    skeletonPaint < responseEnd
+  ) {
+    return;
+  }
+
+  runPostHog(() => {
+    posthog.capture(APP_FIRST_SKELETON_PAINT_EVENT, {
+      navigation_response_end_ms: Math.round(responseEnd),
+      navigation_response_start_ms: Math.round(responseStart),
+      paint_metric: "first-contentful-paint",
+      response_end_to_skeleton_paint_ms: Math.round(
+        skeletonPaint - responseEnd,
+      ),
+      skeleton_paint_ms: Math.round(skeletonPaint),
     });
   });
 }
@@ -275,7 +366,6 @@ export function captureTaskCompletedSuccessfully(): void {
 
 export type ChatThreadMetadataShortcutOutcome =
   | "hit"
-  | "older-payload"
   | "not-found"
   | "transport-failure";
 
@@ -410,10 +500,28 @@ const BOOTSTRAP_CLERK_LOAD_STARTED_MARK = "vm0:bootstrap:clerk-load-started";
 const BOOTSTRAP_CLERK_LOAD_COMPLETED_MARK =
   "vm0:bootstrap:clerk-load-completed";
 
+function resetBootstrapClerkLoadMarks(): void {
+  performance.clearMarks(BOOTSTRAP_CLERK_LOAD_STARTED_MARK);
+  performance.clearMarks(BOOTSTRAP_CLERK_LOAD_COMPLETED_MARK);
+
+  const bootstrap = window.__vm0ClerkBootstrap;
+  const startedAt = bootstrap?.clerkLoadStartedAt;
+  if (typeof startedAt === "number" && Number.isFinite(startedAt)) {
+    performance.mark(BOOTSTRAP_CLERK_LOAD_STARTED_MARK, {
+      startTime: startedAt,
+    });
+  }
+  const completedAt = bootstrap?.clerkLoadCompletedAt;
+  if (typeof completedAt === "number" && Number.isFinite(completedAt)) {
+    performance.mark(BOOTSTRAP_CLERK_LOAD_COMPLETED_MARK, {
+      startTime: completedAt,
+    });
+  }
+}
+
 export const initBootstrapPhaseTiming$ = command(
   ({ set }, signal: AbortSignal) => {
-    performance.clearMarks(BOOTSTRAP_CLERK_LOAD_STARTED_MARK);
-    performance.clearMarks(BOOTSTRAP_CLERK_LOAD_COMPLETED_MARK);
+    resetBootstrapClerkLoadMarks();
     set(bootstrapPhaseTimingState$, {
       initialVisibilityState: document.visibilityState,
       wasHidden: document.visibilityState !== "visible",

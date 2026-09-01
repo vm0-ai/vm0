@@ -12,7 +12,6 @@ import { cronConnectorCatalogRoutes } from "./routes/cron-connector-catalog";
 import { cronOfficialWorkflowCatalogRoutes } from "./routes/cron-official-workflow-catalog";
 import { cronConnectorOauthStateCleanupRoutes } from "./routes/cron-connector-oauth-state-cleanup";
 import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
-import { cronExecuteMorningBriefsRoutes } from "./routes/cron-execute-morning-briefs";
 import { cronExecuteWorkflowAutomationsRoutes } from "./routes/cron-execute-workflow-automations";
 import { cronMonitorChatEventQueueRoutes } from "./routes/cron-monitor-chat-event-queue";
 import { cronRenewGmailWatchesRoutes } from "./routes/cron-renew-gmail-watches";
@@ -30,15 +29,11 @@ import { cronSyncSkillsRoutes } from "./routes/cron-sync-skills";
 import { cronTelegramCleanupRoutes } from "./routes/cron-telegram-cleanup";
 import { desktopAuthRoutes } from "./routes/desktop-auth";
 import { desktopUpdateRoutes } from "./routes/desktop-updates";
-import { emailMorningBriefUnsubscribeRoutes } from "./routes/email-morning-brief-unsubscribe";
-import { morningBriefRoutes } from "./routes/morning-brief";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
 import { healthRoutes } from "./routes/health";
 import { buildInfoRoutes } from "./routes/build-info";
-import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
 import { modelStatsRoutes } from "./routes/model-stats";
-import { presentationImagesRoutes } from "./routes/presentation-images";
 import { registryResourceDownloadRoutes } from "./routes/registry-resources-download";
 import { runnersRoutes } from "./routes/runners";
 import { userExportRoutes } from "./routes/user-export";
@@ -105,6 +100,7 @@ import { logsRoutes } from "./routes/logs";
 import { mailRoutes } from "./routes/mail";
 import { mapsRoutes } from "./routes/maps";
 import { mcpConnectorsRoutes } from "./routes/mcp-connectors";
+import { mcpOAuthClientMetadataRoutes } from "./routes/mcp-oauth-client-metadata";
 import { weatherRoutes } from "./routes/weather";
 import { modelPoliciesRoutes } from "./routes/model-policies";
 import { modelProviderGatewayRoutes } from "./routes/model-provider-gateways";
@@ -204,7 +200,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cliAuthRoutes,
   ...desktopAuthRoutes,
   ...desktopUpdateRoutes,
-  ...healthAuthProbeRoutes,
   ...githubOauthRoutes,
   ...userExportRoutes,
   ...webhooksClerkRoutes,
@@ -236,7 +231,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronOfficialWorkflowCatalogRoutes,
   ...cronConnectorOauthStateCleanupRoutes,
   ...cronDrainEmailOutboxRoutes,
-  ...cronExecuteMorningBriefsRoutes,
   ...cronExecuteWorkflowAutomationsRoutes,
   ...cronMonitorChatEventQueueRoutes,
   ...cronRenewGmailWatchesRoutes,
@@ -252,8 +246,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronSteerRunTimeBudgetRoutes,
   ...cronSyncSkillsRoutes,
   ...cronTelegramCleanupRoutes,
-  ...emailMorningBriefUnsubscribeRoutes,
-  ...morningBriefRoutes,
   ...emailUnsubscribeRoutes,
   ...agentDraftRoutes,
   ...agentInstructionsRoutes,
@@ -303,6 +295,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...mailRoutes,
   ...mapsRoutes,
   ...mcpConnectorsRoutes,
+  ...mcpOAuthClientMetadataRoutes,
   ...weatherRoutes,
   ...scrapeRoutes,
   ...peopleSearchRoutes,
@@ -393,6 +386,5 @@ export const ROUTES: readonly RouteEntry[] = [
   ...usageMembersRoutes,
   ...usageRecordRoutes,
   ...modelStatsRoutes,
-  ...presentationImagesRoutes,
   ...runnersRoutes,
 ];

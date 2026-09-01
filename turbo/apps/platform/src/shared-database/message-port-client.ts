@@ -1,5 +1,7 @@
 import {
+  chatThreadIndicatorsSchema,
   parseSharedDatabaseQueryResult,
+  type ChatThreadIndicators,
   type SharedDatabaseDataKey,
   type SharedDatabaseQuery,
   type SharedDatabaseQueryResult,
@@ -11,44 +13,50 @@ import type {
   SharedDatabasePortLike,
 } from "./bridge.ts";
 import {
+  sharedDatabaseHeartbeatResultSchema,
   sharedDatabaseWorkerMessageSchema,
   type SharedDatabaseClientMessage,
+  type SharedDatabaseHeartbeatResult,
 } from "./protocol.ts";
-import { createDeferredPromise, onRejection } from "../signals/utils.ts";
+import { createDeferredPromise, onDomEventFn } from "../signals/utils.ts";
 
 interface PendingRequest {
   readonly resolve: (value: unknown) => void;
   readonly reject: (reason: unknown) => void;
 }
 
-interface Subscription {
-  readonly dataKey: SharedDatabaseDataKey;
-  readonly callback: () => void;
-}
-
 export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
   private readonly pendingRequests = new Map<string, PendingRequest>();
-  private readonly subscriptions = new Map<string, Subscription>();
   private readonly handleMessage: (event: MessageEvent<unknown>) => void;
   private ownerSignal: AbortSignal | null = null;
   private closed = false;
+  private closeReason: unknown = new Error("Shared database bridge is closed");
 
   constructor(
     private readonly port: SharedDatabasePortLike,
     private readonly apiBaseUrl: string,
     private readonly events: SharedDatabaseBridgeEvents,
   ) {
-    this.handleMessage = (event) => {
+    this.handleMessage = onDomEventFn(async (event) => {
       const message = sharedDatabaseWorkerMessageSchema.parse(event.data);
-      if (message.type === "append") {
-        const subscription = this.subscriptions.get(message.subscriptionId);
-        if (subscription) {
-          subscription.callback();
-        }
+      if (message.type === "invalidate") {
+        await this.events.databaseInvalidated(message.dataKey);
+        return;
+      }
+      if (message.type === "reconnect") {
+        await this.events.databaseReconnected();
         return;
       }
       if (message.type === "reload-required") {
         this.events.reloadRequired();
+        return;
+      }
+      if (message.type === "authentication-required") {
+        this.events.authenticationRequired();
+        return;
+      }
+      if (message.type === "indicators-invalidated") {
+        this.events.indicatorsInvalidated(message.payload);
         return;
       }
       if (message.type === "status") {
@@ -67,7 +75,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
         return;
       }
       pending.resolve(message.value);
-    };
+    });
     this.port.addEventListener("message", this.handleMessage);
     this.port.start();
   }
@@ -75,13 +83,13 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
   async heartbeat(
     heartbeat: SharedDatabaseHeartbeat,
     signal: AbortSignal,
-  ): Promise<void> {
+  ): Promise<SharedDatabaseHeartbeatResult> {
     this.bindOwner(signal);
-    await this.request(
+    const value = await this.request(
       {
         type: "heartbeat",
         requestId: crypto.randomUUID(),
-        identity: heartbeat.identity,
+        token: heartbeat.token,
         apiBaseUrl: this.apiBaseUrl,
         ...(heartbeat.vercelProtectionBypass
           ? { vercelProtectionBypass: heartbeat.vercelProtectionBypass }
@@ -89,6 +97,29 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
       },
       signal,
     );
+    return sharedDatabaseHeartbeatResultSchema.parse(value);
+  }
+
+  fail(reason: unknown): void {
+    this.close(reason, false);
+  }
+
+  async indicators(signal: AbortSignal): Promise<ChatThreadIndicators> {
+    const value = await this.request(
+      {
+        type: "get-indicators",
+        requestId: crypto.randomUUID(),
+      },
+      signal,
+    );
+    return chatThreadIndicatorsSchema.parse(value);
+  }
+
+  reloadIndicators(): void {
+    if (this.closed) {
+      throw this.closeReason;
+    }
+    this.port.postMessage({ type: "reload-indicators" });
   }
 
   async query<TKey extends SharedDatabaseDataKey>(
@@ -106,38 +137,6 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     return parseSharedDatabaseQueryResult(query.dataKey, value);
   }
 
-  async on(
-    dataKey: SharedDatabaseDataKey,
-    callback: () => void,
-    signal: AbortSignal,
-  ): Promise<void> {
-    signal.throwIfAborted();
-    const subscriptionId = crypto.randomUUID();
-    this.subscriptions.set(subscriptionId, { dataKey, callback });
-    const unsubscribe = () => {
-      this.subscriptions.delete(subscriptionId);
-      if (!this.closed) {
-        this.port.postMessage({ type: "unsubscribe", subscriptionId });
-      }
-    };
-    signal.addEventListener("abort", unsubscribe, { once: true });
-    await onRejection(
-      this.request(
-        {
-          type: "subscribe",
-          requestId: crypto.randomUUID(),
-          subscriptionId,
-          dataKey,
-        },
-        signal,
-      ),
-      () => {
-        signal.removeEventListener("abort", unsubscribe);
-        unsubscribe();
-      },
-    );
-  }
-
   private bindOwner(signal: AbortSignal): void {
     if (this.ownerSignal === signal) {
       return;
@@ -150,7 +149,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     signal.addEventListener(
       "abort",
       () => {
-        this.close(signal.reason);
+        this.close(signal.reason, false);
       },
       { once: true },
     );
@@ -159,21 +158,20 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
   private request(
     message: Extract<
       SharedDatabaseClientMessage,
-      { readonly type: "heartbeat" | "query" | "subscribe" }
+      {
+        readonly type: "heartbeat" | "query" | "get-indicators";
+      }
     >,
     signal: AbortSignal,
   ): Promise<unknown> {
     signal.throwIfAborted();
     if (this.closed) {
-      throw new Error("Shared database bridge is closed");
+      throw this.closeReason;
     }
     const deferred = createDeferredPromise<unknown>(signal);
     const requestId = message.requestId;
     const abort = () => {
       this.pendingRequests.delete(requestId);
-      if (!this.closed) {
-        this.port.postMessage({ type: "cancel", requestId });
-      }
     };
     const finish = (callback: (value: unknown) => void) => {
       return (value: unknown) => {
@@ -192,19 +190,21 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     return deferred.promise;
   }
 
-  private close(reason: unknown): void {
+  private close(reason: unknown, reportDisconnected = true): void {
     if (this.closed) {
       return;
     }
     this.closed = true;
+    this.closeReason = reason;
     this.port.postMessage({ type: "disconnect" });
     this.port.removeEventListener("message", this.handleMessage);
     this.port.close();
-    this.subscriptions.clear();
     for (const pending of this.pendingRequests.values()) {
       pending.reject(reason);
     }
     this.pendingRequests.clear();
-    this.events.statusChanged("disconnected");
+    if (reportDisconnected) {
+      this.events.statusChanged("disconnected");
+    }
   }
 }

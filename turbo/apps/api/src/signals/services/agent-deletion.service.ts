@@ -140,6 +140,7 @@ async function deleteAgentInTransaction(tx: Tx, args: DeleteAgentArgs) {
       ownerUserId: workflowAutomations.ownerUserId,
       eventType: workflowAutomations.eventType,
       eventConfig: workflowAutomations.eventConfig,
+      eventConnectorId: workflowAutomations.eventConnectorId,
     })
     .from(workflowAutomations)
     .innerJoin(workflows, eq(workflowAutomations.workflowId, workflows.id))

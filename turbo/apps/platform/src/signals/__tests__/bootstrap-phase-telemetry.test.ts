@@ -1,12 +1,14 @@
 import { waitFor } from "@testing-library/react";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { detachedSetupPage, setupPage } from "../../__tests__/page-helper.ts";
 import {
+  APP_FIRST_SKELETON_PAINT_EVENT,
   BOOTSTRAP_PHASE_TIMING_EVENT,
   type BootstrapThreadMetadataSource,
+  captureFirstSkeletonPaint,
+  initPostHog,
 } from "../../lib/posthog.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { detachedNavigateTo$ } from "../route.ts";
@@ -21,7 +23,21 @@ type Identify = (
   distinctId: string,
   properties?: Record<string, unknown>,
 ) => void;
-type Init = (key: string, config?: Record<string, unknown>) => void;
+interface CapturedPostHogEvent {
+  readonly event: string;
+  readonly properties: Record<string, unknown>;
+  readonly timestamp?: string;
+  readonly uuid: string;
+  readonly [property: string]: unknown;
+}
+
+type BeforeSend = (
+  event: CapturedPostHogEvent | null,
+) => CapturedPostHogEvent | null;
+type Init = (
+  key: string,
+  config?: { readonly before_send?: BeforeSend },
+) => void;
 type Register = (properties: Record<string, unknown>) => void;
 type Reset = () => void;
 type Unregister = (property: string) => void;
@@ -52,10 +68,6 @@ vi.mock("posthog-js/dist/module.slim", () => {
 
 const context = testContext();
 const THREAD_ID = "b0000000-0000-4000-a000-000000000901";
-
-function disabledSharedDatabase(): Partial<Record<FeatureSwitchKey, boolean>> {
-  return { [FeatureSwitchKey.SharedChatDatabase]: false };
-}
 
 beforeEach(() => {
   posthog.capture.mockClear();
@@ -104,14 +116,101 @@ function mockEmptyThreadMetadata(): void {
 }
 
 describe("bootstrap phase telemetry", () => {
+  it("captures response-to-skeleton paint from navigation and FCP entries", () => {
+    const navigationEntry = {
+      entryType: "navigation",
+      name: "https://private.example/path?token=private",
+      responseEnd: 86.6,
+      responseStart: 41.2,
+    } as PerformanceNavigationTiming;
+    const paintEntry = {
+      entryType: "paint",
+      name: "first-contentful-paint",
+      startTime: 98.4,
+    } as PerformanceEntry;
+    const entriesSpy = vi
+      .spyOn(performance, "getEntriesByType")
+      .mockImplementation((entryType) => {
+        if (entryType === "navigation") {
+          return [navigationEntry];
+        }
+        if (entryType === "paint") {
+          return [paintEntry];
+        }
+        return [];
+      });
+
+    try {
+      captureFirstSkeletonPaint();
+    } finally {
+      entriesSpy.mockRestore();
+    }
+
+    expect(posthog.capture).toHaveBeenCalledWith(
+      APP_FIRST_SKELETON_PAINT_EVENT,
+      {
+        navigation_response_end_ms: 87,
+        navigation_response_start_ms: 41,
+        paint_metric: "first-contentful-paint",
+        response_end_to_skeleton_paint_ms: 12,
+        skeleton_paint_ms: 98,
+      },
+    );
+    expect(JSON.stringify(posthog.capture.mock.lastCall)).not.toContain(
+      "private.example",
+    );
+  });
+
+  it("strips identifiers, URLs, and arbitrary paint properties at ingest", () => {
+    initPostHog();
+    const [, config] = posthog.init.mock.lastCall ?? [];
+    const beforeSend = config?.before_send;
+    if (!beforeSend) {
+      throw new Error("PostHog before_send was not configured");
+    }
+
+    const sanitized = beforeSend({
+      event: APP_FIRST_SKELETON_PAINT_EVENT,
+      properties: {
+        $current_url: "https://private.example/path?token=private",
+        arbitrary_payload: { secret: "private" },
+        distinct_id: "user_private",
+        navigation_response_end_ms: 87,
+        navigation_response_start_ms: 41,
+        paint_metric: "first-contentful-paint",
+        response_end_to_skeleton_paint_ms: 12,
+        skeleton_paint_ms: 98,
+        token: "attacker_private",
+      },
+      timestamp: "2026-08-31T00:00:00.000Z",
+      uuid: "event_public_uuid",
+    });
+
+    expect(sanitized).toStrictEqual({
+      event: APP_FIRST_SKELETON_PAINT_EVENT,
+      properties: {
+        $process_person_profile: false,
+        distinct_id: "app-bootstrap",
+        navigation_response_end_ms: 87,
+        navigation_response_start_ms: 41,
+        paint_metric: "first-contentful-paint",
+        public_brand: "vm0",
+        response_end_to_skeleton_paint_ms: 12,
+        skeleton_paint_ms: 98,
+        token: "phc_bootstrap_phase_telemetry_test",
+      },
+      timestamp: "2026-08-31T00:00:00.000Z",
+      uuid: "event_public_uuid",
+    });
+    expect(JSON.stringify(sanitized)).not.toContain("private");
+  });
+
   it("captures bounded bootstrap and cold thread metadata phases", async () => {
     mockEmptyThreadMetadata();
 
     await setupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      cachedFeatureSwitches: disabledSharedDatabase(),
-      featureSwitches: disabledSharedDatabase(),
       withoutRender: true,
     });
 
@@ -184,8 +283,6 @@ describe("bootstrap phase telemetry", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      cachedFeatureSwitches: disabledSharedDatabase(),
-      featureSwitches: disabledSharedDatabase(),
       withoutRender: true,
     });
     await snapshotRequested.promise;

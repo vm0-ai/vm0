@@ -47,7 +47,7 @@ mod workspace_session_history_materializer;
 pub(crate) use crate::restored_session_identity::RestoredSessionIdentity;
 pub(crate) use cli_framework::effective_cli_framework;
 pub(crate) use guest_state::{
-    is_shell_safe_guest_timezone_name, restore_guest_state_with_intent,
+    GuestTimezoneSyncOutcome, is_shell_safe_guest_timezone_name, restore_guest_state_with_intent,
     restore_guest_state_with_timezone, try_sync_guest_timezone_intent,
 };
 pub(crate) use session_history_cpu::SessionHistoryCpuPool;
@@ -119,7 +119,6 @@ const EXIT_SIGNAL_KILL: i32 = 9;
 const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 const AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT: Duration = Duration::from_secs(5);
 const AGENT_ENV_KEY_DIAGNOSTIC_LIMIT: usize = 128;
-const AGENT_ENV_KEY_MAX_CHARS: usize = 128;
 const SMALL_GUEST_FILE_MAX_BYTES: u64 = 64 * 1024;
 const GUEST_LOG_COPY_MAX_BYTES: u64 = 64 * 1024 * 1024;
 const STDOUT_STREAM_LIMIT_MARKER: &[u8] =
@@ -145,7 +144,6 @@ const BOOTSTRAP_SENSITIVE_ENV_KEYS: &[&str] = &[
     "LD_AUDIT",
     "NODE_OPTIONS",
 ];
-const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::USER_ENV_FILE_ENV;
 const AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT: &str =
     include_str!("../../scripts/agent-abnormal-exit-diagnostics.sh");
 
@@ -218,20 +216,23 @@ pub struct JobParams {
 
 #[derive(Clone)]
 pub(crate) struct SandboxPreparedNotifier {
-    callback: Arc<dyn Fn(RunId, SandboxId) -> BoxFuture<'static, ()> + Send + Sync>,
+    callback: Arc<dyn Fn(RunId, SandboxId) -> BoxFuture<'static, RunnerResult<()>> + Send + Sync>,
 }
 
 impl SandboxPreparedNotifier {
     pub(crate) fn new(
-        callback: impl Fn(RunId, SandboxId) -> BoxFuture<'static, ()> + Send + Sync + 'static,
+        callback: impl Fn(RunId, SandboxId) -> BoxFuture<'static, RunnerResult<()>>
+        + Send
+        + Sync
+        + 'static,
     ) -> Self {
         Self {
             callback: Arc::new(callback),
         }
     }
 
-    async fn notify(&self, run_id: RunId, sandbox_id: SandboxId) {
-        (self.callback)(run_id, sandbox_id).await;
+    async fn notify(&self, run_id: RunId, sandbox_id: SandboxId) -> RunnerResult<()> {
+        (self.callback)(run_id, sandbox_id).await
     }
 }
 
@@ -615,7 +616,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
         .record(&context, params, &mut telemetry);
 
     record_reuse_result(&mut telemetry, dispatch.reuse_result);
-    record_api_latency("api_to_vm_start", &context, &mut telemetry);
+    record_api_latency("api_to_sandbox_start", &context, &mut telemetry);
 
     let sandbox_id = dispatch.id.to_string();
     let outcome = match validate_execution_context_before_sandbox(
@@ -726,7 +727,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
         .record(&context, params, &mut telemetry);
 
     record_reuse_result(&mut telemetry, SandboxReuseResult::Reused);
-    record_api_latency("api_to_vm_start", &context, &mut telemetry);
+    record_api_latency("api_to_sandbox_start", &context, &mut telemetry);
 
     let sandbox_id = idle_sandbox.sandbox_id();
     let ReusableIdleSandboxParts {

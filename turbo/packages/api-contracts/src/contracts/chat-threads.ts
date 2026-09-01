@@ -1,11 +1,8 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { chatEventRowSchema } from "./chat-event-rows";
-import {
-  CHAT_EVENT_SCHEMA_VERSION_HEADER,
-  CHAT_EVENT_SNAPSHOT_PROJECTIONS,
-} from "./chat-event-schema-version";
-import { CHAT_EVENT_TYPES, outputToolPayloadSchema } from "./chat-events";
+import { CHAT_EVENT_SCHEMA_VERSION_HEADER } from "./chat-event-schema-version";
+import { CHAT_EVENT_TYPES } from "./chat-events";
 import {
   connectorAccountConnectionSchema,
   connectorAccountSelectionSchema,
@@ -32,9 +29,6 @@ const c = initContract();
 const chatEventReadHeadersSchema = authHeadersSchema.extend({
   [CHAT_EVENT_SCHEMA_VERSION_HEADER]: z.string(),
 });
-const chatEventSnapshotProjectionSchema = z.enum(
-  CHAT_EVENT_SNAPSHOT_PROJECTIONS,
-);
 const chatEventCursorSchema = z.union([
   z
     .object({
@@ -46,18 +40,12 @@ const chatEventCursorSchema = z.union([
     .object({
       lastEventId: z.string().uuid(),
       lastSeqId: z.number().int().positive(),
-      projection: chatEventSnapshotProjectionSchema.optional(),
     })
     .strict(),
 ]);
 const chatEventSnapshotResponseBaseSchema = z.object({
   url: z.string().url(),
   expiresInSeconds: z.number().int().positive(),
-  /**
-   * New app/CLI -> old API fallback. Remove with #29362 after the old API
-   * leaves rollback and contexts pinned to this client have drained.
-   */
-  projection: chatEventSnapshotProjectionSchema.optional(),
 });
 const chatEventSnapshotResponseSchema = z.union([
   chatEventSnapshotResponseBaseSchema.extend({
@@ -437,15 +425,6 @@ const videoGenerationTemplateRequestSchema = z.object({
   }),
 });
 
-const introVideoGenerationTemplateRequestSchema = z.object({
-  type: z.literal("intro-video"),
-  selection: z
-    .object({
-      templateId: z.string().min(1),
-    })
-    .strict(),
-});
-
 const illustrationGenerationTemplateRequestSchema = z.object({
   type: z.literal("illustration"),
   selection: z.object({
@@ -472,7 +451,6 @@ const websiteGenerationTemplateRequestSchema = z.object({
 const generationTemplateRequestSchema = z.discriminatedUnion("type", [
   presentationGenerationTemplateRequestSchema,
   videoGenerationTemplateRequestSchema,
-  introVideoGenerationTemplateRequestSchema,
   illustrationGenerationTemplateRequestSchema,
   workflowGenerationTemplateRequestSchema,
   websiteGenerationTemplateRequestSchema,
@@ -585,12 +563,6 @@ const userMessageInputPartSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
-      type: z.literal("morning_brief"),
-      briefDate: z.string(),
-    })
-    .strict(),
-  z
-    .object({
       type: z.literal("file"),
       fileId: z.string().min(1),
       filenameSnapshot: z.string().min(1),
@@ -653,8 +625,7 @@ const userMessageDocumentSchema = z
               return (
                 part.type === "source" ||
                 part.type === "automation" ||
-                part.type === "goal" ||
-                part.type === "morning_brief"
+                part.type === "goal"
               );
             }).length <= 1
           );
@@ -687,8 +658,7 @@ const userMessageInputDocumentSchema = z
               return (
                 part.type === "source" ||
                 part.type === "automation" ||
-                part.type === "goal" ||
-                part.type === "morning_brief"
+                part.type === "goal"
               );
             }).length <= 1
           );
@@ -753,18 +723,18 @@ export function parseChatFollowupsContent(
 export function resolveChatEventRecommendedFollowups(event: {
   readonly content: string | null;
 }): readonly ChatRecommendedFollowup[] {
-  const document = parseChatFollowupsContent(event.content);
-  return document?.followups ?? [];
+  const content = parseChatFollowupsContent(event.content);
+  return content?.followups ?? [];
 }
 
 export function serializeChatFollowupsContent(
   followups: readonly ChatRecommendedFollowup[],
 ): string {
-  const document: ChatFollowupsContentDocument = {
+  const content: ChatFollowupsContentDocument = {
     version: 1,
     followups: [...followups],
   };
-  return JSON.stringify(chatFollowupsContentDocumentSchema.parse(document));
+  return JSON.stringify(chatFollowupsContentDocumentSchema.parse(content));
 }
 
 const inputPromptEventSchema = chatEventBaseSchema
@@ -841,14 +811,6 @@ const outputFollowupsEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("output.followups"),
     content: z.string(),
-  })
-  .strict();
-
-const outputToolEventSchema = chatEventBaseSchema
-  .extend({
-    eventType: z.literal("output.tool"),
-    content: z.null(),
-    ...outputToolPayloadSchema.shape,
   })
   .strict();
 
@@ -977,7 +939,6 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   outputErrorEventSchema,
   outputThinkingEventSchema,
   outputFollowupsEventSchema,
-  outputToolEventSchema,
   runQueuedEventSchema,
   runDequeuedEventSchema,
   runCompletedEventSchema,
@@ -1014,18 +975,11 @@ const chatThreadMetadataSchema = z.object({
   title: z.string().nullable(),
   selectedModel: z.string().nullable(),
   serviceTier: chatThreadServiceTierSchema.nullable(),
-  /**
-   * Rolling new app -> old API compatibility for the metadata shortcut. Keep
-   * these fields optional while the older API is serving or remains a rollback
-   * target; remove the optionality only after that rollback window closes. The
-   * app falls back to the event-sourced projection until then. Follow-up:
-   * #29576.
-   */
-  pinnedAt: z.string().nullable().optional(),
-  computerUseHostId: z.string().uuid().nullable().optional(),
-  cloudBrowserEnabled: z.boolean().optional(),
-  selectedVideoModel: z.string().nullable().optional(),
-  selectedImageModel: z.string().nullable().optional(),
+  pinnedAt: z.string().nullable(),
+  computerUseHostId: z.string().uuid().nullable(),
+  cloudBrowserEnabled: z.boolean(),
+  selectedVideoModel: z.string().nullable(),
+  selectedImageModel: z.string().nullable(),
 });
 
 const chatThreadDraftSchema = z
@@ -1768,7 +1722,14 @@ const chatSearchResultSchema = z.object({
   agentName: z.string(),
   matchedMessage: chatSearchMessageSchema,
   matchedRanges: z.array(chatSearchMatchRangeSchema),
+  /**
+   * Deprecated rollout compatibility; always empty. Remove with #30468 after
+   * old web/app builds (up to two days) and pre-change commit-addressed CLI
+   * contexts (up to two hours queued plus two hours executing and bounded
+   * finalization) have drained.
+   */
   contextBefore: z.array(chatSearchMessageSchema),
+  /** @see contextBefore */
   contextAfter: z.array(chatSearchMessageSchema),
 });
 
@@ -1778,8 +1739,7 @@ const chatSearchResultSchema = z.object({
  * query schema below) and chat-message search is a lookup tool, not a bulk
  * export. Callers that hit `hasMore=true` should narrow the query (add
  * `agentId`, `since`, or a more specific `keyword`) rather than paginate. If
- * genuine pagination is ever needed, introduce `nextCursor` here — the
- * contract has no external consumers yet, so adding it later is safe.
+ * genuine pagination is ever needed, introduce `nextCursor` here.
  */
 const chatSearchResponseSchema = z.object({
   results: z.array(chatSearchResultSchema),
@@ -1801,8 +1761,6 @@ export const chatSearchContract = c.router({
       agentId: z.string().uuid().optional(),
       since: z.coerce.number().optional(),
       limit: z.coerce.number().min(1).max(50).default(20),
-      before: z.coerce.number().min(0).max(10).default(0),
-      after: z.coerce.number().min(0).max(10).default(0),
     }),
     responses: {
       200: chatSearchResponseSchema,
@@ -1858,26 +1816,14 @@ export const chatThreadEventsContract = c.router({
       z.object({
         sinceSeqId: z.coerce.number().int().positive(),
         sinceEventId: z.string().uuid(),
-        /**
-         * V5/V6 app and CLI -> V7 API fallback. Remove with #29362 after the
-         * V7 app floor is live and V5/V6 queued or claimed contexts drain.
-         */
-        sinceProjection: chatEventSnapshotProjectionSchema.optional(),
         limit: z.coerce.number().min(1).max(50).default(50),
       }),
     ]),
     responses: {
       200: z.object({
         rows: z.array(chatEventRowSchema),
-        /**
-         * New app/CLI -> old API fallback. Remove with #29362 after the old API
-         * leaves rollback and contexts pinned to this client have drained.
-         */
-        cursor: chatEventCursorSchema.optional(),
-        /** Same bounded old-API fallback and removal gate as `cursor`. */
-        hasMore: z.boolean().optional(),
-        /** Same bounded old-API fallback and removal gate as `cursor`. */
-        projection: chatEventSnapshotProjectionSchema.optional(),
+        cursor: chatEventCursorSchema,
+        hasMore: z.boolean(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
@@ -1972,7 +1918,6 @@ export {
   userMessageDocumentSchema,
   presentationGenerationTemplateRequestSchema,
   videoGenerationTemplateRequestSchema,
-  introVideoGenerationTemplateRequestSchema,
   illustrationGenerationTemplateRequestSchema,
   websiteGenerationTemplateRequestSchema,
   chatEventSchema,
@@ -2007,7 +1952,7 @@ export type UserMessagePart = z.infer<typeof userMessagePartSchema>;
 export type UserMessageDocument = z.infer<typeof userMessageDocumentSchema>;
 export type LegacyThreadGenerationTemplateType = Exclude<
   GenerationTemplateType,
-  "intro-video" | "workflow" | "website"
+  "workflow" | "website"
 >;
 /**
  * Legacy generation template shape retained for older thread-level storage.
@@ -2031,9 +1976,6 @@ export type AvatarGenerationOptions = z.infer<
 >;
 export type VideoGenerationTemplateRequest = z.infer<
   typeof videoGenerationTemplateRequestSchema
->;
-export type IntroVideoGenerationTemplateRequest = z.infer<
-  typeof introVideoGenerationTemplateRequestSchema
 >;
 export type IllustrationGenerationTemplateRequest = z.infer<
   typeof illustrationGenerationTemplateRequestSchema
@@ -2086,7 +2028,6 @@ export type ChatFollowupsEvent = Extract<
   ChatEvent,
   { eventType: "output.followups" }
 >;
-export type ChatToolEvent = Extract<ChatEvent, { eventType: "output.tool" }>;
 export type ChatUsageEvent = Extract<
   ChatEvent,
   { eventType: "usage.recorded" }

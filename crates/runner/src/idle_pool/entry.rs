@@ -373,6 +373,36 @@ impl ReusableIdleSandbox {
             guest_state_prepared,
         }
     }
+
+    pub(crate) fn into_destroy_job(
+        self,
+        factory: Arc<Box<dyn SandboxFactory>>,
+        budget_lease: BudgetLease,
+        reason: &'static str,
+    ) -> IdleDestroyJob {
+        let Self {
+            sandbox,
+            metadata,
+            workspace_promotion,
+            guest_state_prepared: _,
+        } = self;
+        let IdleSandboxMetadata {
+            reuse_key,
+            profile_name,
+            ..
+        } = metadata;
+        IdleDestroyJob {
+            payload: IdleSandboxResources {
+                sandbox,
+                factory,
+                workspace_promotion,
+            }
+            .into_destroy_payload(WorkspacePromotionPolicy::AbandonUnpublished(reason)),
+            budget_lease,
+            reuse_key,
+            profile_name,
+        }
+    }
 }
 
 /// Physical resources needed to destroy an idle sandbox, without its budget lease.
@@ -720,6 +750,10 @@ impl IdleEntry {
 }
 
 impl ReservedIdleSandbox {
+    pub(crate) fn sandbox_id(&self) -> SandboxId {
+        self.entry.metadata.sandbox_id
+    }
+
     pub fn reuse_key(&self) -> &str {
         self.entry.reuse_key()
     }

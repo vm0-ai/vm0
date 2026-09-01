@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { initContract } from "./base";
 import { connectorRuntimeTargetsSchema } from "./runners";
-import { CHAT_EVENT_SNAPSHOT_PROJECTIONS } from "./chat-event-schema-version";
 
 const c = initContract();
 
@@ -104,6 +103,10 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     mode: z.enum(["remove", "invalid"]),
   }),
   z.object({
+    action: z.literal("enable-queued-pi-ownership-transfer"),
+    run_id: z.uuid(),
+  }),
+  z.object({
     action: z.literal("mutate-runner-job-connector-permission-baseline"),
     run_id: z.uuid(),
     mode: z.enum([
@@ -156,7 +159,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("read-chat-event-snapshot-head"),
     thread_id: z.uuid(),
-    projection: z.enum(CHAT_EVENT_SNAPSHOT_PROJECTIONS).optional(),
   }),
   z.object({
     action: z.literal("read-chat-event-rows-as-previous-api"),
@@ -168,29 +170,11 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     count: z.int().positive(),
   }),
   z.object({
-    action: z.literal("set-chat-event-snapshot-head-version"),
+    action: z.literal("update-chat-event-snapshot-head"),
     thread_id: z.uuid(),
-    archive_schema_version: z.int().positive(),
     object_key: z.string().optional(),
     last_seq_id: z.int().nonnegative().optional(),
     last_event_id: z.uuid().optional(),
-    projection: z.enum(CHAT_EVENT_SNAPSHOT_PROJECTIONS).optional(),
-  }),
-  z.object({
-    action: z.literal("simulate-chat-event-snapshot-rolling-deploy"),
-    thread_id: z.uuid(),
-    v7_pointer: z.object({
-      object_key: z.string(),
-      last_event_id: z.uuid(),
-      last_seq_id: z.int().positive(),
-      terminal_event_id: z.uuid().nullable(),
-      terminal_seq_id: z.int().nonnegative().nullable(),
-    }),
-    v6_pointer: z.object({
-      object_key: z.string(),
-      last_event_id: z.uuid(),
-      last_seq_id: z.int().positive(),
-    }),
   }),
   z.object({
     action: z.literal("clear-run-api-start"),
@@ -207,10 +191,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("read-run-launch-snapshot"),
-    run_id: z.uuid(),
-  }),
-  z.object({
-    action: z.literal("read-run-chat-tool-activity-decision"),
     run_id: z.uuid(),
   }),
   z.object({
@@ -311,6 +291,12 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     profile: z.string(),
   }),
   z.object({
+    action: z.literal(
+      "clear-workflow-automation-event-connector-as-previous-api",
+    ),
+    automation_id: z.uuid(),
+  }),
+  z.object({
     action: z.literal("set-custom-connector-auth-template-fixture"),
     connector_id: z.uuid(),
     value_template: z.string(),
@@ -372,7 +358,6 @@ export const testRuntimeStateActionResponseSchema = z.object({
       }),
     )
     .optional(),
-  deleted_chat_event_rows: z.int().nonnegative().optional(),
   api_started_at: z.string().nullable().optional(),
   run_time_budget: z
     .object({
@@ -392,13 +377,6 @@ export const testRuntimeStateActionResponseSchema = z.object({
         .strict()
         .nullable(),
     })
-    .optional(),
-  run_chat_tool_activity_decision: z
-    .object({
-      run_id: z.uuid(),
-      chat_tool_activity_enabled: z.boolean(),
-    })
-    .nullable()
     .optional(),
   official_workflow_run_state: z
     .object({

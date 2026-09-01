@@ -1064,10 +1064,10 @@ describe("AUTH-02/ORG-01: run-scoped agent tokens on org routes", () => {
     const poll = await runs.pollRunner(runnerGroup);
     expect(poll.body.job?.runId).toBe(created.runId);
     const claim = await runs.claimRunnerJob(created.runId);
-    const okouToken = claim.environment?.OKOU_TOKEN;
+    const okouToken = claim.platformEnvironment.OKOU_TOKEN;
     if (!okouToken) {
       throw new Error(
-        "Expected claim.environment.OKOU_TOKEN to carry the run-scoped Okou token",
+        "Expected claim.platformEnvironment.OKOU_TOKEN to carry the run-scoped Okou token",
       );
     }
     expect(okouToken).toMatch(/^vm0_sandbox_/);

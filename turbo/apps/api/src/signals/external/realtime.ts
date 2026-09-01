@@ -31,6 +31,10 @@ function getOrgChannelName(orgId: string): string {
   return `org:${orgId}`;
 }
 
+function getUserOrgChannelName(userId: string, orgId: string): string {
+  return `user-org:${userId}:${orgId}`;
+}
+
 function getBuiltInGenerationEventName(generationId: string): string {
   return `built-in-generation:${generationId}`;
 }
@@ -59,6 +63,7 @@ export async function createPlatformRealtimeToken(
   };
   if (orgId !== undefined) {
     capability[getOrgChannelName(orgId)] = ["subscribe"];
+    capability[getUserOrgChannelName(userId, orgId)] = ["subscribe"];
   }
   const tokenRequest = await ablyClient().auth.createTokenRequest({
     capability,
@@ -110,6 +115,26 @@ async function publishUserSignalNow(
   L.debug(`Published "${topic}" to ${userIds.length} user(s)`);
 }
 
+async function publishChatDatabaseSignalNow(
+  target: { readonly userId: string; readonly orgId: string },
+  topic: string,
+  payload: unknown,
+): Promise<void> {
+  const channelName = getUserOrgChannelName(target.userId, target.orgId);
+  const client = ablyClient();
+  await client.channels.get(channelName).publish(topic, payload);
+  L.debug(`Published "${topic}" to ${channelName}`);
+}
+
+function publishChatDatabaseSignal(
+  target: { readonly userId: string; readonly orgId: string },
+  topic: string,
+  payload: unknown = null,
+): Promise<void> {
+  waitUntil(bestEffort(publishChatDatabaseSignalNow(target, topic, payload)));
+  return Promise.resolve();
+}
+
 /**
  * Schedule a per-user invalidation/notification signal.
  *
@@ -137,19 +162,50 @@ export async function publishUserPreferenceChangedForUserSafely(
 }
 
 /**
- * Fire the user-level "thread list shape changed" signal. The sidebar
- * subscribes to this topic and reloads the full list on any delivery —
- * payload is intentionally empty because the server is authoritative and
- * the client already has a cheap list endpoint to re-fetch.
+ * Fire the per-user-org "thread list shape changed" signal. The SharedWorker
+ * consumes this topic to invalidate its local thread-event view; the App then
+ * reloads derived thread and indicator state. The payload is intentionally
+ * empty because the server is authoritative.
  */
-export async function publishThreadListChanged(userId: string): Promise<void> {
-  await publishUserSignal([userId], "threadListChanged");
+export async function publishThreadListChanged(target: {
+  readonly userId: string;
+  readonly orgId: string;
+}): Promise<void> {
+  await publishChatDatabaseSignal(target, "threadListChanged");
 }
 
-export async function publishThreadListChangedSafely(
-  userId: string,
+export async function publishThreadListChangedSafely(target: {
+  readonly userId: string;
+  readonly orgId: string;
+}): Promise<void> {
+  await publishThreadListChanged(target);
+}
+
+type ChatThreadReadCursorUpdatedPayload =
+  | {
+      readonly agentId: string;
+      readonly threadId: string;
+      readonly lastReadAt: string | null;
+    }
+  | {
+      readonly agentId: string;
+      readonly threadIds: readonly string[];
+    };
+
+/**
+ * Notify every tab for one user-org that authoritative chat read state changed.
+ * The SharedWorker forwards the payload so tabs can clear matching optimistic
+ * read marks before reloading their indicator snapshots.
+ */
+export async function publishChatThreadReadCursorUpdatedSafely(
+  target: { readonly userId: string; readonly orgId: string },
+  payload: ChatThreadReadCursorUpdatedPayload,
 ): Promise<void> {
-  await publishThreadListChanged(userId);
+  await publishChatDatabaseSignal(
+    target,
+    "chatThreadReadCursorUpdated",
+    payload,
+  );
 }
 
 /**
@@ -195,15 +251,18 @@ export async function publishChatThreadDetailChangedSafely(
  *
  * Best-effort: a failed publish must not fail the mutation that triggered it.
  */
-export async function publishChatThreadMessageCreatedSafely(
-  userId: string,
-  threadId: string,
-  syncThroughSeqId?: number,
-): Promise<void> {
-  await publishUserSignal(
-    [userId],
-    `chatThreadMessageCreated:${threadId}`,
-    syncThroughSeqId === undefined ? null : { syncThroughSeqId },
+export async function publishChatThreadMessageCreatedSafely(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly threadId: string;
+  readonly syncThroughSeqId?: number;
+}): Promise<void> {
+  await publishChatDatabaseSignal(
+    args,
+    `chatThreadMessageCreated:${args.threadId}`,
+    args.syncThroughSeqId === undefined
+      ? null
+      : { syncThroughSeqId: args.syncThroughSeqId },
   );
 }
 

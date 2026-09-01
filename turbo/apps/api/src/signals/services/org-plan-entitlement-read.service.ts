@@ -33,7 +33,7 @@ const CAPABILITY_SELECTION = {
   memberInvitationAllowed: orgPlanEntitlements.memberInvitationAllowed,
   autoRechargeAllowed: orgPlanEntitlements.autoRechargeAllowed,
   supportByok: orgPlanEntitlements.supportByok,
-  restrictedVm0Models: orgPlanEntitlements.restrictedVm0Models,
+  restrictedBuiltInModels: orgPlanEntitlements.restrictedBuiltInModels,
   videoGenerationAllowed: orgPlanEntitlements.videoGenerationAllowed,
   workflowWebhookAutomationAllowed:
     orgPlanEntitlements.workflowWebhookTriggerAllowed,
@@ -87,8 +87,17 @@ export async function loadOrgPlanCapabilities(
     }
     throw new Error(`Missing org plan entitlement for ${orgId}`);
   }
+
+  if (capabilities.restrictedBuiltInModels === null) {
+    throw new Error(
+      `Unexpected NULL restricted_built_in_models for org plan entitlement ${orgId}`,
+    );
+  }
+
+  const { restrictedBuiltInModels, ...runtimeCapabilities } = capabilities;
   return {
-    ...capabilities,
+    ...runtimeCapabilities,
+    restrictedVm0Models: restrictedBuiltInModels,
     status: runtimeStatusForEntitlement(capabilities.status),
   };
 }

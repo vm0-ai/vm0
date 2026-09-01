@@ -25,6 +25,8 @@ from typing import Literal, NoReturn
 from mitmproxy import connection, ctx, http, tcp, tls
 from mitmproxy.addonmanager import Loader
 
+import addon_process_logging
+
 # --- Sub-module imports ---
 #
 # auth_base_forwarder/body_capture/connector_diagnostics/connector_intent/content_length/
@@ -243,6 +245,10 @@ def configure(updated: set[str]) -> None:
     model_provider_failure.configure_reporting(
         api_url=get_api_url(),
         bearer_credential=os.environ.get(model_provider_failure.RUNNER_AUTH_ENV, ""),
+    )
+    usage.configure_model_usage_observation_reporting(
+        api_url=get_api_url(),
+        runner_token=os.environ.get(model_provider_failure.RUNNER_AUTH_ENV, ""),
     )
     if "vm0_usage_flush_interval_seconds" in updated:
         usage.configure_usage_buffer(
@@ -1169,6 +1175,7 @@ def _current_firewall_authorization_classification(
             metadata_keys.HTTP_REQUEST_START_MONOTONIC,
             metadata_keys.WEBSOCKET_UPGRADE_REQUEST,
             metadata_keys.AWS_SIGV4_REQUEST_INSPECTION,
+            metadata_keys.RESPONSE_ENCODING_NEGOTIATION,
         )
         if key in flow.metadata
     }
@@ -1359,7 +1366,10 @@ async def request(flow: http.HTTPFlow) -> None:
             _start_request_timing(flow)
 
         if classification.kind == "no_client_ip":
-            ctx.log.warn("No client IP available, passing through")
+            addon_process_logging.emit_addon_process_event(
+                "warn",
+                "No client IP available, passing through",
+            )
             return
         if isinstance(classification, request_classification.BlockingRequestClassification):
             if isinstance(classification, request_classification.PublicDestinationDenied):
@@ -1509,8 +1519,10 @@ def _maybe_normalize_accept_encoding_for_body_inspection(
     if _is_websocket_upgrade_request(flow):
         flow.metadata[metadata_keys.WEBSOCKET_UPGRADE_REQUEST] = True
     if _expects_http_response_body_usage_inspection(flow, allow, sandbox_info):
-        response_encoding_negotiation.normalize_accept_encoding_for_body_inspection(
-            flow.request.headers
+        flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] = (
+            response_encoding_negotiation.normalize_accept_encoding_for_body_inspection(
+                flow.request.headers
+            )
         )
 
 
@@ -1674,6 +1686,7 @@ def _release_terminal_flow_state(
     flow.metadata.pop(metadata_keys.FIREWALL_AUTH_PROBE_FAILURE, None)
     release_aws_sigv4_request_inspection(flow)
     flow.metadata.pop(metadata_keys.WEBSOCKET_UPGRADE_REQUEST, None)
+    flow.metadata.pop(metadata_keys.RESPONSE_ENCODING_NEGOTIATION, None)
     request_streaming.release_request_stream_state(flow)
     connector_diagnostics.release_flow_state(flow)
     codex_model_catalog_cache.release_flow_state(flow)
@@ -1946,6 +1959,9 @@ def _handle_error(flow: http.HTTPFlow) -> None:
         )
         log_entry["error"] = error_msg
 
+        if flow_metadata.should_capture_body(flow.metadata):
+            body_capture.add_capture_fields(flow, log_entry, response_incomplete=True)
+
         log_http_network_entry(network_log_path, log_entry, raw_url)
 
     # Report proxy-extracted usage for model provider responses.
@@ -1982,7 +1998,7 @@ def done():
     The runner flush lifecycle waits for any active SIGUSR1 delivery worker,
     retries buffered usage and retained diagnostic reports, drains accepted
     requests, and closes admission before this hook shuts down the usage
-    executor. It also performs a final JSONL marker observation and joins the
+    executors. It also performs a final JSONL marker observation and joins the
     marker watcher before the JSONL writer stops. Any retryable usage outcome
     retained by completed workers is then retried synchronously.
     Auth.base forwarding does not need to finish running work during shutdown.
@@ -1991,16 +2007,16 @@ def done():
     upstream work without joining daemon workers or waiting for slow upstream
     responses. JSONL writer shutdown is also bounded and best-effort; if it times
     out, process shutdown continues with accepted log entries possibly still
-    pending. After joining the usage executor, retained billing and diagnostic
-    work is drained through synchronous delivery. Model-provider failure delivery
-    stops admission and receives one bounded drain window.
+    pending. After joining the usage executors, retained billing, observation,
+    and diagnostic work is drained through synchronous delivery. Model-provider
+    failure delivery stops admission and receives one bounded drain window.
     """
     try:
         runner_flush_lifecycle.drain_and_close()
     finally:
         try:
             try:
-                usage.webhook.usage_executor.shutdown(wait=True)
+                usage.webhook.shutdown_delivery_executors(wait=True)
                 runner_flush_lifecycle.drain_delivery_work_after_executor_shutdown()
             finally:
                 auth_base_forwarder.shutdown_forward_request_workers(wait=False)

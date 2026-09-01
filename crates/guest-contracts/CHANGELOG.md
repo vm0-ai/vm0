@@ -1,5 +1,66 @@
 # Changelog
 
+## [0.12.17](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.16...guest-contracts-v0.12.17) (2026-09-01)
+
+
+### Refactoring
+
+* **rust:** share environment-key diagnostic sanitizer ([#30750](https://github.com/vm0-ai/vm0/issues/30750)) ([d7d08f2](https://github.com/vm0-ai/vm0/commit/d7d08f2b128021bf9ee3a6d352fffc1c344c5f5d))
+
+## [0.12.16](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.15...guest-contracts-v0.12.16) (2026-09-01)
+
+
+### Refactoring
+
+* **runtime:** require canonical platform environment ([#30728](https://github.com/vm0-ai/vm0/issues/30728)) ([aaf4999](https://github.com/vm0-ai/vm0/commit/aaf49990f7b94eca4615242555bbf131986373cb))
+
+## [0.12.15](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.14...guest-contracts-v0.12.15) (2026-09-01)
+
+
+### Performance Improvements
+
+* **runner:** launch reuse identity verifier without shell ([#30644](https://github.com/vm0-ai/vm0/issues/30644)) ([3ea790e](https://github.com/vm0-ai/vm0/commit/3ea790e5a8bca85854debfe537a89a66c4520445))
+
+## [0.12.14](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.13...guest-contracts-v0.12.14) (2026-08-30)
+
+
+### Refactoring
+
+* **guest:** retire api url root legacy reader ([#30293](https://github.com/vm0-ai/vm0/issues/30293)) ([acf0976](https://github.com/vm0-ai/vm0/commit/acf09762659b1c0c112e51948b2dda9670fe5240))
+* **guest:** retire timing tuning legacy readers ([#30303](https://github.com/vm0-ai/vm0/issues/30303)) ([27477c4](https://github.com/vm0-ai/vm0/commit/27477c4cea651fc86fbea0194bd438946e6581ad))
+
+## [0.12.13](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.12...guest-contracts-v0.12.13) (2026-08-30)
+
+
+### Refactoring
+
+* **guest:** retire api token legacy reader ([#30292](https://github.com/vm0-ai/vm0/issues/30292)) ([7d0c3ad](https://github.com/vm0-ai/vm0/commit/7d0c3ad45d1361c0ee6463f8cc46feb00780e8f4))
+* **guest:** retire execution timeout legacy reader ([#30301](https://github.com/vm0-ai/vm0/issues/30301)) ([e5fba4b](https://github.com/vm0-ai/vm0/commit/e5fba4b8fa0ed5c1a769e71ac40053798c08abd7)), closes [#30289](https://github.com/vm0-ai/vm0/issues/30289) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **guest:** retire private payload legacy readers ([#30307](https://github.com/vm0-ai/vm0/issues/30307)) ([1059893](https://github.com/vm0-ai/vm0/commit/10598930135c5e6def894ae799064a5ef794d2c1))
+
+## [0.12.12](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.11...guest-contracts-v0.12.12) (2026-08-30)
+
+
+### Refactoring
+
+* **guest:** cut managed CLI API URL writer to canonical alias ([#30285](https://github.com/vm0-ai/vm0/issues/30285)) ([a9a071e](https://github.com/vm0-ai/vm0/commit/a9a071e78fb317292b8c712f2b5543949dcb5982)), closes [#30277](https://github.com/vm0-ai/vm0/issues/30277) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **guest:** retire legacy tool cgroup reader ([#30278](https://github.com/vm0-ai/vm0/issues/30278)) ([416b413](https://github.com/vm0-ai/vm0/commit/416b41325cd6a19c62e4f006b7ef7a4af2aca4cb)), closes [#30276](https://github.com/vm0-ai/vm0/issues/30276) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+
+## [0.12.11](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.10...guest-contracts-v0.12.11) (2026-08-29)
+
+
+### Refactoring
+
+* **runner:** finish vm-to-sandbox terminology cleanup ([#30171](https://github.com/vm0-ai/vm0/issues/30171)) ([22d9b2e](https://github.com/vm0-ai/vm0/commit/22d9b2ebfdb9f9d3910eb8b30f8d2679aaed3081))
+
+## [0.12.10](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.9...guest-contracts-v0.12.10) (2026-08-28)
+
+
+### Refactoring
+
+* **guest-agent:** remove legacy root cgroup readers ([#30112](https://github.com/vm0-ai/vm0/issues/30112)) ([8d594fa](https://github.com/vm0-ai/vm0/commit/8d594fa8ce223e5040a0c0edcfae2aacf1a03307)), closes [#30103](https://github.com/vm0-ai/vm0/issues/30103) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **runner:** cut guest API URL writer to canonical alias ([#30105](https://github.com/vm0-ai/vm0/issues/30105)) ([f3bb3c5](https://github.com/vm0-ai/vm0/commit/f3bb3c589879d6782f7942afff00b8e9af242706))
+
 ## [0.12.9](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.8...guest-contracts-v0.12.9) (2026-08-28)
 
 

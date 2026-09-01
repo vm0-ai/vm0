@@ -1,16 +1,24 @@
 export { resumePiApiFirstTurn, runPiOfficialRpcMode } from "./rpc";
+export type { PiSandboxOwnershipTransferMode } from "./rpc";
 export {
+  createPiApiFirstTurnOwnership,
+  createPiSessionJsonl,
   runPiApiFirstTurn,
-  UnsupportedPiResourceSnapshotError,
-} from "./api-turn";
-export type { PiApiFirstTurnResult } from "./api-turn";
+} from "./api";
+export { MemoryPiSession } from "./session-memory";
 export {
-  MemoryPiSession,
+  PiApiFirstTurnCompactionRequiredError,
+  UnsupportedPiResourceSnapshotError,
   UnsupportedPiSessionVersionError,
-} from "./session-memory";
+} from "./errors";
 export type {
+  PiApiFirstTurnResult,
   PiPreheatedAgentsFile,
   PiPreheatedResourceSnapshot,
   PiPreheatedSkill,
-} from "./resources";
+} from "./api-types";
+export type {
+  PiApiFirstTurnOwnership,
+  PiApiFirstTurnOwnershipStage,
+} from "./provider-ownership";
 export * from "./index";

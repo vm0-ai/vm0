@@ -131,6 +131,7 @@ describe("AUTH-02: CLI device authorization", () => {
     expect(me.body).toStrictEqual({
       userId: actor.userId,
       email: actor.email,
+      orgId: actor.orgId,
     });
 
     const reused = await authDevice.requestCliToken(started.device_code, [400]);
@@ -327,6 +328,7 @@ describe("AUTH-02: platform realtime token", () => {
     const capability = JSON.stringify({
       [`user:${actor.userId}`]: ["subscribe"],
       [`org:${actor.orgId}`]: ["subscribe"],
+      [`user-org:${actor.userId}:${actor.orgId}`]: ["subscribe"],
     });
     context.mocks.ably.createTokenRequest.mockResolvedValueOnce({
       keyName: "ably-key",
@@ -348,6 +350,7 @@ describe("AUTH-02: platform realtime token", () => {
       capability: {
         [`user:${actor.userId}`]: ["subscribe"],
         [`org:${actor.orgId}`]: ["subscribe"],
+        [`user-org:${actor.userId}:${actor.orgId}`]: ["subscribe"],
       },
       ttl: 60 * 60 * 1000,
       clientId: actor.userId,

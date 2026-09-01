@@ -105,6 +105,22 @@ describe("zero instructions tab", () => {
     });
   });
 
+  it("loads markdown links without creating editable link marks", async () => {
+    prepareAgentInstructions("[Runbook](https://example.com/runbook)");
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}?tab=instructions`,
+    });
+
+    await waitForResearchAgentPage();
+    await waitFor(() => {
+      const editor = document.querySelector('[contenteditable="true"]');
+      expect(editor?.textContent).toContain("Runbook");
+      expect(editor?.querySelector("a")).toBeNull();
+    });
+  });
+
   it("formats and saves edited instructions", async () => {
     const user = userEvent.setup({ delay: null });
     let savedInstructions = "Review release notes";

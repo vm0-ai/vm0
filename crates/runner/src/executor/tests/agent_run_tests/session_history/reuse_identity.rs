@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use guest_contracts::session_history_identity::{
     FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES,
@@ -23,8 +24,8 @@ use super::{
 };
 use crate::executor::agent_run::{RunControls, RunStart, run_in_sandbox};
 use crate::executor::tests::agent_run_tests::support::{
-    assert_no_action, assert_successful_action_once, claude_history_path, claude_history_source,
-    final_identity_runtime_paths,
+    assert_failed_action_error_once, assert_no_action, assert_successful_action_once,
+    claude_history_path, claude_history_source, final_identity_runtime_paths,
 };
 use crate::executor::tests::support::{
     RUN_IN_SANDBOX_TEST_TIMEOUT, create_overridden_sandbox, minimal_context, sandbox_exec_error,
@@ -41,6 +42,9 @@ use crate::types::{
     ResumeSession, ResumeSessionHistory, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
     ResumeSessionHistoryRefKind, SandboxReuseResult,
 };
+
+const SESSION_HISTORY_IDENTITY_REUSE_VERIFY_ERROR: &str =
+    "session history identity reuse verification failed";
 
 fn context_with_checkpointed_session_identity(
     session_id: &str,
@@ -147,8 +151,14 @@ async fn assert_checkpointed_final_identity_helper_failure_falls_back(
     assert!(result.failure.is_none());
     assert!(result.reusable_session_identity.is_none());
     history_mock.assert_calls_async(1).await;
-    assert_eq!(sandbox.exec_calls().len(), 1);
+    assert_eq!(sandbox.session_history_identity_verify_calls().len(), 1);
+    assert!(sandbox.exec_calls().is_empty());
     let ops = telemetry.pending_ops_snapshot();
+    assert_failed_action_error_once(
+        &ops,
+        "session_history_identity_reuse_verify",
+        SESSION_HISTORY_IDENTITY_REUSE_VERIFY_ERROR,
+    );
     assert_successful_action(&ops, expected_reason_action);
     assert_successful_action(&ops, "session_history_restore_fallback_stale_idle_identity");
     assert!(
@@ -249,31 +259,21 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
         read_calls[0].max_bytes,
         FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES + 1
     );
-    let exec_calls = sandbox.exec_calls();
-    assert_eq!(exec_calls.len(), 1);
-    for call in exec_calls {
-        assert!(call.cmd.contains("verify-session-history-identity"));
-        assert!(call.cmd.contains(previous_metadata_path));
-        assert!(call.cmd.contains(metadata.framework.as_str()));
-        assert!(call.cmd.contains(&metadata.session_id_hash));
-        assert!(call.cmd.contains(metadata.history_ref_kind.as_str()));
-        assert!(call.cmd.contains(&metadata.history_hash));
-        assert!(call.cmd.contains(&metadata.history_size_bytes.to_string()));
-        assert_eq!(
-            call.env_keys,
-            vec![guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV]
-        );
-        assert!(
-            !call
-                .env_keys
-                .iter()
-                .any(|key| { key == "VM0_GUEST_RUNTIME_DIR" })
-        );
-        assert!(!call.sudo);
-        assert!(call.stdin_bytes.is_none());
-    }
+    let verify_calls = sandbox.session_history_identity_verify_calls();
+    assert_eq!(verify_calls.len(), 1);
+    let call = &verify_calls[0];
+    assert_eq!(call.metadata_path, previous_metadata_path);
+    assert_eq!(call.runtime_dir, previous_runtime_dir);
+    assert_eq!(call.framework, metadata.framework.as_str());
+    assert_eq!(call.session_id_hash, metadata.session_id_hash);
+    assert_eq!(call.history_ref_kind, metadata.history_ref_kind.as_str());
+    assert_eq!(call.history_hash, metadata.history_hash);
+    assert_eq!(call.history_size_bytes, metadata.history_size_bytes);
+    assert_eq!(call.timeout, Duration::from_secs(5));
+    assert!(sandbox.exec_calls().is_empty());
     history_mock.assert_calls_async(0).await;
     let ops = telemetry.pending_ops_snapshot();
+    assert_successful_action_once(&ops, "session_history_identity_reuse_verify");
     assert!(
         ops.iter()
             .any(|op| op.0 == "session_history_identity_reuse_hit" && op.1),
@@ -330,7 +330,8 @@ async fn run_in_sandbox_drops_checkpointed_identity_when_agent_is_cancelled() {
     })
     .await
     .expect("run should verify the checkpointed identity before starting the agent");
-    assert_eq!(overrides.exec_calls().len(), 1);
+    assert_eq!(overrides.session_history_identity_verify_calls().len(), 1);
+    assert!(overrides.exec_calls().is_empty());
 
     cancel.cancel();
 
@@ -344,7 +345,8 @@ async fn run_in_sandbox_drops_checkpointed_identity_when_agent_is_cancelled() {
         Some(EXIT_SIGKILL)
     );
     assert!(result.reusable_session_identity.is_none());
-    assert_eq!(overrides.exec_calls().len(), 1);
+    assert_eq!(overrides.session_history_identity_verify_calls().len(), 1);
+    assert!(overrides.exec_calls().is_empty());
     assert!(overrides.start_agent_process_calls().is_empty());
     assert!(overrides.wait_process_calls().is_empty());
     assert!(overrides.process_cancel_calls().is_empty());
@@ -392,13 +394,8 @@ async fn run_in_sandbox_drops_checkpointed_identity_when_agent_exits_nonzero() {
         Some(42)
     );
     assert!(result.reusable_session_identity.is_none());
-    let exec_calls = overrides.exec_calls();
-    assert_eq!(exec_calls.len(), 1);
-    assert!(
-        exec_calls[0]
-            .cmd
-            .contains("verify-session-history-identity")
-    );
+    assert_eq!(overrides.session_history_identity_verify_calls().len(), 1);
+    assert!(overrides.exec_calls().is_empty());
     let ops = telemetry.pending_ops_snapshot();
     assert!(
         ops.iter()
@@ -529,15 +526,21 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_reports
 
     assert!(result.failure.is_none());
     assert!(result.reusable_session_identity.is_none());
-    let exec_calls = sandbox.exec_calls();
-    assert_eq!(exec_calls.len(), 1);
-    assert!(exec_calls[0].cmd.contains(&metadata_path));
+    let verify_calls = sandbox.session_history_identity_verify_calls();
+    assert_eq!(verify_calls.len(), 1);
+    assert_eq!(verify_calls[0].metadata_path, metadata_path);
+    assert!(sandbox.exec_calls().is_empty());
     history_mock.assert_calls_async(1).await;
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
     assert_eq!(writes[0].path, claude_history_path(session_id));
     assert_eq!(writes[0].content, history);
     let ops = telemetry.pending_ops_snapshot();
+    assert_failed_action_error_once(
+        &ops,
+        "session_history_identity_reuse_verify",
+        SESSION_HISTORY_IDENTITY_REUSE_VERIFY_ERROR,
+    );
     assert_successful_action(
         &ops,
         "session_history_identity_verify_helper_history_mismatch",
@@ -621,8 +624,14 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_exec_er
     assert!(result.failure.is_none());
     assert!(result.reusable_session_identity.is_none());
     history_mock.assert_calls_async(1).await;
-    assert_eq!(sandbox.exec_calls().len(), 1);
+    assert_eq!(sandbox.session_history_identity_verify_calls().len(), 1);
+    assert!(sandbox.exec_calls().is_empty());
     let ops = telemetry.pending_ops_snapshot();
+    assert_failed_action_error_once(
+        &ops,
+        "session_history_identity_reuse_verify",
+        SESSION_HISTORY_IDENTITY_REUSE_VERIFY_ERROR,
+    );
     assert_successful_action(&ops, "session_history_identity_verify_helper_exec_error");
     assert_successful_action(&ops, "session_history_restore_fallback_stale_idle_identity");
     assert!(
@@ -740,6 +749,11 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
     );
     assert_eq!(writes[0].content, history);
     let ops = telemetry.pending_ops_snapshot();
+    assert_failed_action_error_once(
+        &ops,
+        "session_history_identity_reuse_verify",
+        SESSION_HISTORY_IDENTITY_REUSE_VERIFY_ERROR,
+    );
     assert_successful_action(&ops, "session_history_identity_verify_request_mismatch");
     assert!(
         ops.iter()

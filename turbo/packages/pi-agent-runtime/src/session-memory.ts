@@ -8,7 +8,6 @@ import type {
   Message,
   Model,
   ModelThinkingLevel,
-  SimpleStreamOptions,
   StreamFunction,
   Tool,
 } from "@earendil-works/pi-ai";
@@ -25,21 +24,31 @@ import {
   type SessionHeader,
 } from "@earendil-works/pi-coding-agent";
 
+import { UnsupportedPiSessionVersionError } from "./errors";
+import type { PiApiFirstTurnOwnership } from "./provider-ownership";
+import type { PiAgentStreamOptions } from "./stream-options";
+
 interface CreateMemoryPiSessionOptions {
   readonly cwd: string;
   readonly id: string;
   readonly parentSession?: string;
+  readonly timestamp?: string;
 }
 
 interface RunPiFirstModelTurnOptions<TApi extends Api = Api> {
   readonly model: Model<TApi>;
   readonly session: MemoryPiSession;
-  readonly stream: StreamFunction<TApi, SimpleStreamOptions>;
+  readonly stream: StreamFunction<TApi, PiAgentStreamOptions>;
   readonly systemPrompt: string;
   readonly tools: readonly Tool[];
   readonly prompt: string;
+  readonly thinkingLevel?: ModelThinkingLevel;
   readonly timestamp?: number;
-  readonly streamOptions?: Omit<SimpleStreamOptions, "sessionId">;
+  readonly streamOptions?: Omit<PiAgentStreamOptions, "sessionId">;
+  readonly ownership: PiApiFirstTurnOwnership;
+  readonly providerRequestBoundary?: (
+    markProviderRequestMayHaveStarted: () => void,
+  ) => Promise<void>;
 }
 
 interface PiModelTurnResult {
@@ -63,8 +72,6 @@ type NewMemorySessionEntry =
 // this default when opening a new session, and when opening an older session
 // that has messages but no explicit thinking_level_change entry.
 const PI_DEFAULT_THINKING_LEVEL: ModelThinkingLevel = "medium";
-
-export class UnsupportedPiSessionVersionError extends Error {}
 
 function assertSessionHeader(entry: FileEntry | undefined): SessionHeader {
   if (entry?.type !== "session" || typeof entry.id !== "string") {
@@ -122,7 +129,7 @@ export class MemoryPiSession {
       type: "session",
       version: CURRENT_SESSION_VERSION,
       id: options.id,
-      timestamp: new Date().toISOString(),
+      timestamp: options.timestamp ?? new Date().toISOString(),
       cwd: options.cwd,
       parentSession: options.parentSession,
     };
@@ -187,7 +194,10 @@ export class MemoryPiSession {
   }
 
   /** Mirror the official Pi SDK's persisted model and thinking defaults. */
-  prepareModelTurn<TApi extends Api>(model: Model<TApi>): void {
+  prepareModelTurn<TApi extends Api>(
+    model: Model<TApi>,
+    thinkingLevel: ModelThinkingLevel = PI_DEFAULT_THINKING_LEVEL,
+  ): void {
     const branch = this.#activeBranch();
     const hasMessages = branch.some((entry) => {
       return entry.type === "message";
@@ -202,16 +212,21 @@ export class MemoryPiSession {
     const hasThinkingEntry = branch.some((entry) => {
       return entry.type === "thinking_level_change";
     });
-    if (!hasMessages || !hasThinkingEntry) {
+    if (!hasThinkingEntry) {
       this.#appendEntry({
         type: "thinking_level_change",
-        thinkingLevel: clampThinkingLevel(model, PI_DEFAULT_THINKING_LEVEL),
+        thinkingLevel: clampThinkingLevel(model, thinkingLevel),
       });
     }
   }
 
   buildSessionContext(): SessionContext {
     return buildSessionContext(this.#entries, this.#leafId);
+  }
+
+  /** Return the canonical active branch used by Pi's public session helpers. */
+  getBranchEntries(): SessionEntry[] {
+    return this.#activeBranch();
   }
 
   hasPendingToolCalls(): boolean {
@@ -258,7 +273,7 @@ export class MemoryPiSession {
 
 function piReasoningLevel(
   context: SessionContext,
-): SimpleStreamOptions["reasoning"] {
+): PiAgentStreamOptions["reasoning"] {
   switch (context.thinkingLevel) {
     case "minimal":
     case "low":
@@ -292,7 +307,7 @@ function piAssistantRequiresHandoff(message: AssistantMessage): boolean {
 export async function runPiFirstModelTurn<TApi extends Api>(
   options: RunPiFirstModelTurnOptions<TApi>,
 ): Promise<PiModelTurnResult> {
-  options.session.prepareModelTurn(options.model);
+  options.session.prepareModelTurn(options.model, options.thinkingLevel);
   options.session.appendMessage({
     role: "user",
     content: options.prompt,
@@ -304,6 +319,18 @@ export async function runPiFirstModelTurn<TApi extends Api>(
     messages: convertToLlm(sessionContext.messages),
     tools: [...options.tools],
   };
+  if (options.providerRequestBoundary) {
+    await options.providerRequestBoundary(() => {
+      options.ownership.markProviderRequestMayHaveStarted();
+    });
+    if (options.ownership.stage !== "provider-may-have-started") {
+      throw new Error(
+        "Pi provider request boundary returned without claiming ownership",
+      );
+    }
+  } else {
+    options.ownership.markProviderRequestMayHaveStarted();
+  }
   const responseStream = options.stream(options.model, context, {
     ...options.streamOptions,
     reasoning:

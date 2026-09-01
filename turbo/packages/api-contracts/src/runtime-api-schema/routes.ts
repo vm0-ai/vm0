@@ -4,6 +4,7 @@ import {
   runnersConnectorRuntimeSyncContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
+  runnersModelUsageObservationsContract,
   runnersModelProviderFailuresContract,
   runnersPollContract,
 } from "../contracts/runners";
@@ -14,7 +15,6 @@ import {
   webhookEventsContract,
   webhookFirewallAuthContract,
   webhookHeartbeatContract,
-  webhookModelUsageObservationContract,
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
   webhookTelemetryContract,
@@ -76,6 +76,11 @@ export const runtimeApiRouteBindings = [
     route: runnersModelProviderFailuresContract.report,
   },
   {
+    id: "runners.modelUsageObservations",
+    owner: "mitm-addon",
+    route: runnersModelUsageObservationsContract.report,
+  },
+  {
     id: "webhooks.agent.events",
     owner: "guest-agent",
     route: webhookEventsContract.send,
@@ -124,10 +129,5 @@ export const runtimeApiRouteBindings = [
     id: "webhooks.agent.usageEvent",
     owner: "mitm-addon",
     route: webhookUsageEventContract.send,
-  },
-  {
-    id: "webhooks.agent.modelUsageObservation",
-    owner: "mitm-addon",
-    route: webhookModelUsageObservationContract.send,
   },
 ] as const satisfies readonly RuntimeApiRouteBinding[];

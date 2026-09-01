@@ -73,12 +73,12 @@
       rescue:
         - name: Stop failed target runner service with runner cleanup
           command: "{{ bin_dir }}/runner service stop --name {{ runner_release }} --force --cleanup failed-start"
+          failed_when: false
 
         - name: Fail promote after target runner readiness failure
           fail:
             msg: >-
-              Runner {{ runner_release }} failed readiness or health checks and
-              was stopped to avoid leaving a non-admitting service running.
+              Runner {{ runner_release }} failed readiness or health checks.
 
     # ========================================
     # Phase 5: Drain old runners + Cleanup

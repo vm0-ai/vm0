@@ -31,7 +31,7 @@ export type PresentationTemplateVisibility =
  *
  * The compiled package is not referenced by a column: it is the storage named
  * `presentation-template@{id}`, derived from the row id the same way
- * `zero_workflows` derives `custom-skill@{workflowId}`. One authoritative
+ * `workflows` derives `custom-skill@{workflowId}`. One authoritative
  * location, nothing to keep in sync.
  *
  * `source_storage_key` and `page_keys` reference independently owned objects

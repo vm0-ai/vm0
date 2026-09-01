@@ -35,7 +35,7 @@
         "src/main.ts",
         "i18next.config.ts",
         "scripts/bench-p90-reporter.ts",
-        "scripts/check-stable-chunks.node.ts",
+        "scripts/check-build-config.node.ts",
         "src/**/__benches__/**/*.bench.tsx",
         "**/*.{test,spec}.ts?(x)"
       ],
@@ -49,9 +49,7 @@
       ],
       "ignoreDependencies": [
         "@sentry/cli",
-        "@solana/web3.js",
         "idb",
-        "katex",
         "tailwindcss",
         "typescript-eslint",
         "@tailwindcss/typography"

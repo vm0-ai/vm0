@@ -7,6 +7,11 @@ import {
   type State,
 } from "ccstate";
 import { Editor, Extension, Node, type JSONContent } from "@tiptap/core";
+import { Document } from "@tiptap/extension-document";
+import { HardBreak } from "@tiptap/extension-hard-break";
+import { Paragraph } from "@tiptap/extension-paragraph";
+import { Text } from "@tiptap/extension-text";
+import { Dropcursor, Gapcursor, UndoRedo } from "@tiptap/extensions";
 import { Slice, type Node as ProseMirrorNode } from "@tiptap/pm/model";
 import {
   Plugin,
@@ -17,7 +22,6 @@ import {
   type Transaction,
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type NodeView } from "@tiptap/pm/view";
-import { StarterKit } from "@tiptap/starter-kit";
 import { createCompositionGate, type CompositionGate } from "@okouai/ui";
 import {
   generationTemplateRequestSchema,
@@ -226,7 +230,6 @@ export type ComposerTemplateAttachmentType =
   | "presentation"
   | "illustration"
   | "video"
-  | "intro-video"
   | "avatar"
   | "workflow"
   | "website";
@@ -731,7 +734,6 @@ function templateAttachmentNodeAttributes(
     (type !== "presentation" &&
       type !== "illustration" &&
       type !== "video" &&
-      type !== "intro-video" &&
       type !== "avatar" &&
       type !== "workflow" &&
       type !== "website") ||
@@ -752,7 +754,7 @@ function templateAttachmentNodeAttributes(
 function templateAttachmentPreviewLabel(
   attachment: ComposerTemplateAttachment,
 ): string {
-  if (attachment.type === "video" || attachment.type === "intro-video") {
+  if (attachment.type === "video") {
     return i18n.t(
       ($) => {
         return $.chat.templates.previewVideo;
@@ -795,7 +797,7 @@ function templateAttachmentPreviewLabel(
 function templateAttachmentRemoveLabel(
   attachment: ComposerTemplateAttachment,
 ): string {
-  if (attachment.type === "video" || attachment.type === "intro-video") {
+  if (attachment.type === "video") {
     return i18n.t(
       ($) => {
         return $.chat.templates.removeVideo;
@@ -851,11 +853,6 @@ function templateAttachmentTypeLabel(
   if (type === "video") {
     return i18n.t(($) => {
       return $.chat.templates.categories.video;
-    });
-  }
-  if (type === "intro-video") {
-    return i18n.t(($) => {
-      return $.chat.templates.categories.introVideo;
     });
   }
   if (type === "avatar") {
@@ -1280,7 +1277,6 @@ function isComposerTemplateAttachmentType(
     value === "presentation" ||
     value === "illustration" ||
     value === "video" ||
-    value === "intro-video" ||
     value === "avatar" ||
     value === "workflow" ||
     value === "website"
@@ -1529,22 +1525,17 @@ const WorkflowHighlight = Extension.create<
   },
 });
 
-const STARTER_KIT = StarterKit.configure({
-  bold: false,
-  italic: false,
-  strike: false,
-  code: false,
-  codeBlock: false,
-  heading: false,
-  bulletList: false,
-  orderedList: false,
-  listItem: false,
-  blockquote: false,
-  horizontalRule: false,
-  link: false,
-  underline: false,
-  trailingNode: false,
-});
+function createWorkflowComposerBaseExtensions() {
+  return [
+    Document,
+    Dropcursor,
+    Gapcursor,
+    HardBreak,
+    UndoRedo,
+    Paragraph,
+    Text,
+  ];
+}
 
 function isWorkflowHighlightStorage(
   value: unknown,
@@ -1757,7 +1748,7 @@ function createWorkflowEditor(
   return new Editor({
     element: null,
     extensions: [
-      STARTER_KIT,
+      ...createWorkflowComposerBaseExtensions(),
       createTemplateAttachmentNode(runtime),
       createInlineTemplateNode(runtime),
       createFeedbackItemNode(runtime),

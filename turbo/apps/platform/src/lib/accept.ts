@@ -1,13 +1,27 @@
 import { CLIENT_FORCE_UPGRADE_STATUS } from "@okouai/api-contracts/contracts/client-headers";
-import { toast } from "@okouai/ui/components/ui/sonner";
 import { isAbortError, onRejection } from "../signals/utils.ts";
 import { ApiError } from "./api-error.ts";
 import { isNetworkRequestError } from "./network-error.ts";
-import { i18n } from "../i18n/index.ts";
+
+export const ACCEPT_ERROR_EVENT = "okou-accept-error";
+
+export interface AcceptErrorEventDetail {
+  readonly kind: "http-status" | "message" | "request-failed";
+  readonly show: boolean;
+  readonly status?: number;
+  message?: string;
+}
+
+function presentAcceptError(detail: AcceptErrorEventDetail): void {
+  globalThis.dispatchEvent(
+    new CustomEvent<AcceptErrorEventDetail>(ACCEPT_ERROR_EVENT, { detail }),
+  );
+}
 
 function extractError(
   body: unknown,
   status: number,
+  show: boolean,
 ): { message: string; code: string } {
   if (
     body !== null &&
@@ -23,25 +37,32 @@ function extractError(
       "code" in body.error && typeof body.error.code === "string"
         ? body.error.code
         : "UNKNOWN";
-    return { message: body.error.message, code };
+    const detail: AcceptErrorEventDetail = {
+      kind: "message",
+      message: body.error.message,
+      show,
+    };
+    presentAcceptError(detail);
+    return { message: detail.message ?? body.error.message, code };
   }
+  const detail: AcceptErrorEventDetail = {
+    kind: "http-status",
+    show,
+    status,
+  };
+  presentAcceptError(detail);
   return {
-    message: i18n.t(
-      ($) => {
-        return $.global.errors.httpStatus;
-      },
-      { status },
-    ),
+    message: detail.message ?? `${Error.name}: ${status}`,
     code: "UNKNOWN",
   };
 }
 
-function requestErrorMessage(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : i18n.t(($) => {
-        return $.global.errors.requestFailed;
-      });
+function presentRequestError(error: unknown): void {
+  const detail: AcceptErrorEventDetail =
+    error instanceof Error
+      ? { kind: "message", message: error.message, show: true }
+      : { kind: "request-failed", show: true };
+  presentAcceptError(detail);
 }
 
 interface AcceptOptions {
@@ -77,21 +98,18 @@ async function accept<
     if (!isAbortError(error)) {
       signal?.throwIfAborted();
       if (showErrorToast && !isNetworkRequestError(error)) {
-        toast.error(requestErrorMessage(error));
+        presentRequestError(error);
       }
     }
   });
   if ((codes as number[]).includes(result.status)) {
     return result as Extract<T, { status: S }>;
   }
-  const { message, code } = extractError(result.body, result.status);
-  if (
+  const show =
     showErrorToast &&
     result.status !== 401 &&
-    result.status !== CLIENT_FORCE_UPGRADE_STATUS
-  ) {
-    toast.error(message);
-  }
+    result.status !== CLIENT_FORCE_UPGRADE_STATUS;
+  const { message, code } = extractError(result.body, result.status, show);
   throw new ApiError(message, code, result.status);
 }
 

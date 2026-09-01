@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { artifactCatalogContract } from "@okouai/api-contracts/contracts/artifact-catalog";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { click, fill } from "../../../__tests__/page-helper.ts";
+import { createChatEvent } from "../../../mocks/mock-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
@@ -311,7 +312,6 @@ describe("chat lifecycle", () => {
   it("shows recommended follow-ups after an appended follow-up event", async () => {
     const assistantReply = "I can turn this into a launch package.";
     const followupPrompt = "Create a presentation outline";
-    const createdTopic = `chatThreadMessageCreated:${FOLLOWUP_THREAD_ID}`;
     const completedMarker: MockChatEventInput = {
       id: "00000000-0000-4000-8000-000000004001",
       eventType: "run.completed" as const,
@@ -373,12 +373,10 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByText(assistantReply)).toBeInTheDocument();
       expect(queryButtonByText(followupPrompt)).not.toBeInTheDocument();
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
     });
-    expect(context.mocks.ably.hasSubscription(createdTopic)).toBeFalsy();
 
     chatEvents.push(followupsEvent);
-    context.mocks.ably.trigger(createdTopic, {});
+    createChatEvent(FOLLOWUP_THREAD_ID, {});
 
     await waitFor(() => {
       expect(buttonByText(followupPrompt)).toBeInTheDocument();

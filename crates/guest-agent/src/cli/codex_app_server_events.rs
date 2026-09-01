@@ -13,20 +13,22 @@
 //! duplicate partial content. Other configured opt-out methods likewise do not
 //! emit, and unknown methods are ignored for forward compatibility.
 //!
-//! Item starts are deliberately asymmetric. Command execution starts become
-//! JSONL `item.started` events, while reasoning and agent-message starts are
-//! captured separately as first-output timing metadata. Other item starts are
-//! ignored. Completed items with known types receive strict, type-specific
-//! normalization. Unknown completed types use a bounded, shallow, and lossy
-//! projection: names become snake case, scalar values and scalar members of
-//! shallow collections are retained, deeper collections are dropped, and
-//! top-level fields and collections beyond fixed limits are omitted.
+//! Item starts are deliberately asymmetric. Command execution, collaboration,
+//! and context-compaction starts become JSONL `item.started` events, while
+//! reasoning and agent-message starts are captured separately as first-output
+//! timing metadata. Other item starts are ignored. Completed items with known
+//! types receive strict, type-specific normalization. Unknown completed types
+//! use a bounded, shallow, and lossy projection: names become snake case,
+//! scalar values and scalar members of shallow collections are retained, deeper
+//! collections are dropped, and top-level fields and collections beyond fixed
+//! limits are omitted.
 //!
 //! Statuses, file-change patch kinds, and error fields are normalized into the
 //! legacy JSONL and failure-diagnostic shapes rather than preserving their raw
 //! app-server representation.
 
 use guest_contracts::epoch_milliseconds::is_plausible_epoch_milliseconds;
+use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use super::codex_app_server::ServerNotification;
@@ -71,6 +73,116 @@ pub(super) struct CodexOutputItemStart {
     pub(super) kind: CodexOutputItemKind,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct CodexTokenUsage {
+    input_tokens: i64,
+    cached_input_tokens: i64,
+    cache_write_input_tokens: i64,
+    output_tokens: i64,
+    reasoning_output_tokens: i64,
+    total_tokens: i64,
+}
+
+impl CodexTokenUsage {
+    fn is_non_negative(self) -> bool {
+        self.input_tokens >= 0
+            && self.cached_input_tokens >= 0
+            && self.cache_write_input_tokens >= 0
+            && self.output_tokens >= 0
+            && self.reasoning_output_tokens >= 0
+            && self.total_tokens >= 0
+    }
+
+    fn checked_sub(self, baseline: Self, method: &str) -> Result<Self, CodexAppServerEventError> {
+        let difference = |latest: i64, prior: i64| {
+            latest
+                .checked_sub(prior)
+                .filter(|value| *value >= 0)
+                .ok_or_else(|| invalid_field_for_method(method, "tokenUsage.total"))
+        };
+        Ok(Self {
+            input_tokens: difference(self.input_tokens, baseline.input_tokens)?,
+            cached_input_tokens: difference(
+                self.cached_input_tokens,
+                baseline.cached_input_tokens,
+            )?,
+            cache_write_input_tokens: difference(
+                self.cache_write_input_tokens,
+                baseline.cache_write_input_tokens,
+            )?,
+            output_tokens: difference(self.output_tokens, baseline.output_tokens)?,
+            reasoning_output_tokens: difference(
+                self.reasoning_output_tokens,
+                baseline.reasoning_output_tokens,
+            )?,
+            total_tokens: difference(self.total_tokens, baseline.total_tokens)?,
+        })
+    }
+
+    fn into_value(self) -> Value {
+        json!({
+            "input_tokens": self.input_tokens,
+            "cached_input_tokens": self.cached_input_tokens,
+            "cache_write_input_tokens": self.cache_write_input_tokens,
+            "output_tokens": self.output_tokens,
+            "reasoning_output_tokens": self.reasoning_output_tokens,
+            "total_tokens": self.total_tokens,
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct CodexTokenUsageUpdate {
+    pub(super) thread_id: String,
+    pub(super) turn_id: String,
+    total: CodexTokenUsage,
+    last: CodexTokenUsage,
+}
+
+#[derive(Debug, Default)]
+pub(super) struct CodexTurnUsageTracker {
+    baseline: Option<CodexTokenUsage>,
+    latest: Option<CodexTokenUsage>,
+}
+
+impl CodexTurnUsageTracker {
+    pub(super) fn observe_replay(&mut self, update: CodexTokenUsageUpdate) {
+        self.baseline = Some(update.total);
+    }
+
+    pub(super) fn observe_current(
+        &mut self,
+        update: CodexTokenUsageUpdate,
+    ) -> Result<(), CodexAppServerEventError> {
+        let baseline = match self.baseline {
+            Some(baseline) => baseline,
+            None => {
+                let baseline = update
+                    .total
+                    .checked_sub(update.last, "thread/tokenUsage/updated")?;
+                self.baseline = Some(baseline);
+                baseline
+            }
+        };
+        update
+            .total
+            .checked_sub(baseline, "thread/tokenUsage/updated")?;
+        self.latest = Some(update.total);
+        Ok(())
+    }
+
+    pub(super) fn usage(&self) -> Result<Option<Value>, CodexAppServerEventError> {
+        let (Some(baseline), Some(latest)) = (self.baseline, self.latest) else {
+            return Ok(None);
+        };
+        latest
+            .checked_sub(baseline, "thread/tokenUsage/updated")
+            .map(CodexTokenUsage::into_value)
+            .map(Some)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum TurnStatus {
     Completed,
@@ -96,6 +208,98 @@ enum ItemStatus {
     Completed,
     Failed,
     Declined,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CollabAgentTool {
+    SpawnAgent,
+    SendInput,
+    ResumeAgent,
+    Wait,
+    CloseAgent,
+    SendMessage,
+    FollowupTask,
+    InterruptAgent,
+    ListAgents,
+}
+
+impl CollabAgentTool {
+    fn normalized(self) -> &'static str {
+        match self {
+            Self::SpawnAgent => "spawn_agent",
+            Self::SendInput => "send_input",
+            Self::ResumeAgent => "resume_agent",
+            Self::Wait => "wait",
+            Self::CloseAgent => "close_agent",
+            Self::SendMessage => "send_message",
+            Self::FollowupTask => "followup_task",
+            Self::InterruptAgent => "interrupt_agent",
+            Self::ListAgents => "list_agents",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CollabAgentToolCallStatus {
+    InProgress,
+    Completed,
+    Failed,
+    Interrupted,
+}
+
+impl CollabAgentToolCallStatus {
+    fn normalized(self) -> &'static str {
+        match self {
+            Self::InProgress => "in_progress",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Interrupted => "interrupted",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SubAgentActivityKind {
+    Started,
+    Interacted,
+    Interrupted,
+    Completed,
+}
+
+impl SubAgentActivityKind {
+    fn normalized(self) -> &'static str {
+        match self {
+            Self::Started => "started",
+            Self::Interacted => "interacted",
+            Self::Interrupted => "interrupted",
+            Self::Completed => "completed",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CollabAgentStatus {
+    PendingInit,
+    Running,
+    Interrupted,
+    Completed,
+    Errored,
+    Shutdown,
+    NotFound,
+}
+
+impl CollabAgentStatus {
+    fn normalized(self) -> &'static str {
+        match self {
+            Self::PendingInit => "pending_init",
+            Self::Running => "running",
+            Self::Interrupted => "interrupted",
+            Self::Completed => "completed",
+            Self::Errored => "errored",
+            Self::Shutdown => "shutdown",
+            Self::NotFound => "not_found",
+        }
+    }
 }
 
 impl ItemStatus {
@@ -146,8 +350,14 @@ pub(super) fn notification_thread_id(notification: &ServerNotification) -> Optio
     let params = notification.params.as_ref()?;
     let thread_id = match notification.method.as_str() {
         "thread/started" => params.pointer("/thread/id"),
-        "turn/started" | "turn/completed" | "turn/plan/updated" | "item/started"
-        | "item/completed" | "error" | "warning" => params.get("threadId"),
+        "turn/started"
+        | "turn/completed"
+        | "turn/plan/updated"
+        | "item/started"
+        | "item/completed"
+        | "thread/tokenUsage/updated"
+        | "error"
+        | "warning" => params.get("threadId"),
         _ => None,
     }?;
     thread_id.as_str().filter(|thread_id| !thread_id.is_empty())
@@ -220,6 +430,43 @@ pub(super) fn notification_to_codex_event(
     }
 }
 
+pub(super) fn codex_token_usage_update(
+    notification: &ServerNotification,
+) -> Result<Option<CodexTokenUsageUpdate>, CodexAppServerEventError> {
+    if notification.method != "thread/tokenUsage/updated" {
+        return Ok(None);
+    }
+
+    let params = required_params_object(notification)?;
+    let thread_id =
+        required_non_empty_string_key(params, &notification.method, "threadId", "threadId")?;
+    let turn_id = required_non_empty_string_key(params, &notification.method, "turnId", "turnId")?;
+    let token_usage =
+        required_object_key(params, &notification.method, "tokenUsage", "tokenUsage")?;
+    let total = required_token_usage(
+        required_object_key(
+            token_usage,
+            &notification.method,
+            "total",
+            "tokenUsage.total",
+        )?,
+        &notification.method,
+        "tokenUsage.total",
+    )?;
+    let last = required_token_usage(
+        required_object_key(token_usage, &notification.method, "last", "tokenUsage.last")?,
+        &notification.method,
+        "tokenUsage.last",
+    )?;
+
+    Ok(Some(CodexTokenUsageUpdate {
+        thread_id: thread_id.to_string(),
+        turn_id: turn_id.to_string(),
+        total,
+        last,
+    }))
+}
+
 fn map_thread_started(
     notification: &ServerNotification,
 ) -> Result<Value, CodexAppServerEventError> {
@@ -287,8 +534,20 @@ fn map_turn_completed(
         "turn".to_string(),
         normalize_turn(turn, &notification.method, status)?,
     );
-    copy_optional_field(&mut event, "usage", params, "usage");
     Ok(Value::Object(event))
+}
+
+fn required_token_usage(
+    usage: &Map<String, Value>,
+    method: &str,
+    field: &'static str,
+) -> Result<CodexTokenUsage, CodexAppServerEventError> {
+    let usage = serde_json::from_value::<CodexTokenUsage>(Value::Object(usage.clone()))
+        .map_err(|_error| invalid_field_for_method(method, field))?;
+    usage
+        .is_non_negative()
+        .then_some(usage)
+        .ok_or_else(|| invalid_field_for_method(method, field))
 }
 
 fn map_turn_plan_updated(
@@ -449,14 +708,32 @@ fn normalize_item(
     let item_type = required_non_empty_string_key(item, method, "type", "item.type")?;
     match (method, item_type) {
         ("item/started", "commandExecution") => normalize_command_execution(item, method).map(Some),
+        ("item/started", "collabAgentToolCall") => {
+            normalize_collab_agent_tool_call(item, method).map(Some)
+        }
+        ("item/started", "contextCompaction") => {
+            normalize_context_compaction(item, method).map(Some)
+        }
         ("item/started", _) => Ok(None),
         ("item/completed", "agentMessage") => normalize_agent_message(item, method).map(Some),
         ("item/completed", "plan") => normalize_plan(item, method).map(Some),
         ("item/completed", "reasoning") => normalize_reasoning(item, method).map(Some),
+        ("item/completed", "functionCallOutput") => {
+            normalize_function_call_output(item, method).map(Some)
+        }
         ("item/completed", "commandExecution") => {
             normalize_command_execution(item, method).map(Some)
         }
         ("item/completed", "fileChange") => normalize_file_change(item, method).map(Some),
+        ("item/completed", "collabAgentToolCall") => {
+            normalize_collab_agent_tool_call(item, method).map(Some)
+        }
+        ("item/completed", "subAgentActivity") => {
+            normalize_sub_agent_activity(item, method).map(Some)
+        }
+        ("item/completed", "contextCompaction") => {
+            normalize_context_compaction(item, method).map(Some)
+        }
         ("item/completed", _) => normalize_generic_completed_item(item, method).map(Some),
         _ => Ok(None),
     }
@@ -537,6 +814,22 @@ fn normalize_command_execution(
     Ok(Value::Object(normalized))
 }
 
+fn normalize_function_call_output(
+    item: &Map<String, Value>,
+    method: &str,
+) -> Result<Value, CodexAppServerEventError> {
+    let mut normalized = base_item(item, method, "function_call_output")?;
+    let name = required_string_key(item, method, "name", "item.name")?;
+    normalized.insert("name".to_string(), Value::String(name.to_string()));
+    copy_optional_field(&mut normalized, "namespace", item, "namespace");
+    let output = item
+        .get("output")
+        .filter(|output| matches!(output, Value::String(_) | Value::Array(_)))
+        .ok_or_else(|| invalid_field_for_method(method, "item.output"))?;
+    normalized.insert("output".to_string(), output.clone());
+    Ok(Value::Object(normalized))
+}
+
 fn normalize_file_change(
     item: &Map<String, Value>,
     method: &str,
@@ -554,6 +847,128 @@ fn normalize_file_change(
         .map(|change| normalize_file_update_change(change, method))
         .collect::<Result<Vec<_>, _>>()?;
     normalized.insert("changes".to_string(), Value::Array(changes));
+    Ok(Value::Object(normalized))
+}
+
+fn normalize_collab_agent_tool_call(
+    item: &Map<String, Value>,
+    method: &str,
+) -> Result<Value, CodexAppServerEventError> {
+    let mut normalized = base_item(item, method, "collab_agent_tool_call")?;
+    let tool = required_collab_agent_tool_key(item, method, "tool", "item.tool")?;
+    let status = required_collab_agent_tool_call_status_key(item, method, "status", "item.status")?;
+    validate_collab_agent_tool_call_status_for_method(method, status)?;
+    let sender_thread_id =
+        required_non_empty_string_key(item, method, "senderThreadId", "item.senderThreadId")?;
+    let receiver_thread_ids = required_non_empty_string_array_key(
+        item,
+        method,
+        "receiverThreadIds",
+        "item.receiverThreadIds",
+    )?;
+    let prompt = required_nullable_string_key(item, method, "prompt", "item.prompt")?;
+    let model = required_nullable_string_key(item, method, "model", "item.model")?;
+    let reasoning_effort =
+        required_nullable_string_key(item, method, "reasoningEffort", "item.reasoningEffort")?;
+    if reasoning_effort.is_some_and(|value| value.is_empty()) {
+        return Err(invalid_field_for_method(method, "item.reasoningEffort"));
+    }
+    let agents_states = required_object_key(item, method, "agentsStates", "item.agentsStates")?;
+
+    normalized.insert(
+        "tool".to_string(),
+        Value::String(tool.normalized().to_string()),
+    );
+    normalized.insert(
+        "status".to_string(),
+        Value::String(status.normalized().to_string()),
+    );
+    normalized.insert(
+        "sender_thread_id".to_string(),
+        Value::String(sender_thread_id.to_string()),
+    );
+    normalized.insert(
+        "receiver_thread_ids".to_string(),
+        Value::Array(receiver_thread_ids),
+    );
+    normalized.insert(
+        "prompt".to_string(),
+        prompt.map_or(Value::Null, |value| Value::String(value.to_string())),
+    );
+    normalized.insert(
+        "model".to_string(),
+        model.map_or(Value::Null, |value| Value::String(value.to_string())),
+    );
+    normalized.insert(
+        "reasoning_effort".to_string(),
+        reasoning_effort.map_or(Value::Null, |value| Value::String(value.to_string())),
+    );
+    normalized.insert(
+        "agents_states".to_string(),
+        normalize_collab_agent_states(agents_states, method)?,
+    );
+    Ok(Value::Object(normalized))
+}
+
+fn normalize_sub_agent_activity(
+    item: &Map<String, Value>,
+    method: &str,
+) -> Result<Value, CodexAppServerEventError> {
+    let mut normalized = base_item(item, method, "sub_agent_activity")?;
+    let kind = required_sub_agent_activity_kind_key(item, method, "kind", "item.kind")?;
+    let agent_thread_id =
+        required_non_empty_string_key(item, method, "agentThreadId", "item.agentThreadId")?;
+    let agent_path = required_non_empty_string_key(item, method, "agentPath", "item.agentPath")?;
+    normalized.insert(
+        "kind".to_string(),
+        Value::String(kind.normalized().to_string()),
+    );
+    normalized.insert(
+        "agent_thread_id".to_string(),
+        Value::String(agent_thread_id.to_string()),
+    );
+    normalized.insert(
+        "agent_path".to_string(),
+        Value::String(agent_path.to_string()),
+    );
+    Ok(Value::Object(normalized))
+}
+
+fn normalize_context_compaction(
+    item: &Map<String, Value>,
+    method: &str,
+) -> Result<Value, CodexAppServerEventError> {
+    base_item(item, method, "context_compaction").map(Value::Object)
+}
+
+fn normalize_collab_agent_states(
+    states: &Map<String, Value>,
+    method: &str,
+) -> Result<Value, CodexAppServerEventError> {
+    let mut normalized = Map::new();
+    for (thread_id, state) in states {
+        if thread_id.trim().is_empty() {
+            return Err(invalid_field_for_method(method, "item.agentsStates"));
+        }
+        let state = state
+            .as_object()
+            .ok_or_else(|| invalid_field_for_method(method, "item.agentsStates[]"))?;
+        let status = required_collab_agent_status_key(
+            state,
+            method,
+            "status",
+            "item.agentsStates[].status",
+        )?;
+        let message =
+            required_nullable_string_key(state, method, "message", "item.agentsStates[].message")?;
+        normalized.insert(
+            thread_id.to_string(),
+            json!({
+                "status": status.normalized(),
+                "message": message,
+            }),
+        );
+    }
     Ok(Value::Object(normalized))
 }
 
@@ -657,6 +1072,35 @@ fn normalize_error_object(error: &Map<String, Value>) -> Value {
     );
     copy_optional_field(&mut normalized, "connectors", error, "connectors");
     copy_optional_field(&mut normalized, "failureReason", error, "failureReason");
+    if let Some(misalignment) = error.get("misalignment") {
+        normalized.insert(
+            "misalignment".to_string(),
+            normalize_optional_misalignment(misalignment),
+        );
+    }
+    Value::Object(normalized)
+}
+
+fn normalize_optional_misalignment(misalignment: &Value) -> Value {
+    let Value::Object(misalignment) = misalignment else {
+        return misalignment.clone();
+    };
+    let mut normalized = Map::new();
+    copy_first_optional_field(
+        &mut normalized,
+        "error_type",
+        misalignment,
+        &["error_type", "errorType"],
+    );
+    copy_first_optional_field(
+        &mut normalized,
+        "detailed_explanation",
+        misalignment,
+        &["detailed_explanation", "detailedExplanation"],
+    );
+    if let Some(steer) = misalignment.get("steer") {
+        normalized.insert("steer".to_string(), steer.clone());
+    }
     Value::Object(normalized)
 }
 
@@ -833,6 +1277,43 @@ fn optional_nullable_string_key<'a>(
         .ok_or_else(|| invalid_field_for_method(method, field))
 }
 
+fn required_nullable_string_key<'a>(
+    object: &'a Map<String, Value>,
+    method: &str,
+    key: &str,
+    field: &'static str,
+) -> Result<Option<&'a str>, CodexAppServerEventError> {
+    let value = object
+        .get(key)
+        .ok_or_else(|| missing_field(method, field))?;
+    if value.is_null() {
+        return Ok(None);
+    }
+    value
+        .as_str()
+        .map(Some)
+        .ok_or_else(|| invalid_field_for_method(method, field))
+}
+
+fn required_non_empty_string_array_key(
+    object: &Map<String, Value>,
+    method: &str,
+    key: &str,
+    field: &'static str,
+) -> Result<Vec<Value>, CodexAppServerEventError> {
+    required_array_key(object, method, key, field)?
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| Value::String(value.to_string()))
+                .ok_or_else(|| invalid_field_for_method(method, field))
+        })
+        .collect()
+}
+
 fn optional_nullable_non_empty_string_key<'a>(
     object: &'a Map<String, Value>,
     method: &str,
@@ -918,8 +1399,95 @@ fn required_item_status_key(
     parse_item_status(status).ok_or_else(|| invalid_field_for_method(method, field))
 }
 
+fn required_collab_agent_tool_key(
+    object: &Map<String, Value>,
+    method: &str,
+    key: &str,
+    field: &'static str,
+) -> Result<CollabAgentTool, CodexAppServerEventError> {
+    match required_string_key(object, method, key, field)? {
+        "spawnAgent" => Ok(CollabAgentTool::SpawnAgent),
+        "sendInput" => Ok(CollabAgentTool::SendInput),
+        "resumeAgent" => Ok(CollabAgentTool::ResumeAgent),
+        "wait" => Ok(CollabAgentTool::Wait),
+        "closeAgent" => Ok(CollabAgentTool::CloseAgent),
+        "sendMessage" => Ok(CollabAgentTool::SendMessage),
+        "followupTask" => Ok(CollabAgentTool::FollowupTask),
+        "interruptAgent" => Ok(CollabAgentTool::InterruptAgent),
+        "listAgents" => Ok(CollabAgentTool::ListAgents),
+        _ => Err(invalid_field_for_method(method, field)),
+    }
+}
+
+fn required_collab_agent_tool_call_status_key(
+    object: &Map<String, Value>,
+    method: &str,
+    key: &str,
+    field: &'static str,
+) -> Result<CollabAgentToolCallStatus, CodexAppServerEventError> {
+    match required_string_key(object, method, key, field)? {
+        "inProgress" => Ok(CollabAgentToolCallStatus::InProgress),
+        "completed" => Ok(CollabAgentToolCallStatus::Completed),
+        "failed" => Ok(CollabAgentToolCallStatus::Failed),
+        "interrupted" => Ok(CollabAgentToolCallStatus::Interrupted),
+        _ => Err(invalid_field_for_method(method, field)),
+    }
+}
+
+fn required_sub_agent_activity_kind_key(
+    object: &Map<String, Value>,
+    method: &str,
+    key: &str,
+    field: &'static str,
+) -> Result<SubAgentActivityKind, CodexAppServerEventError> {
+    match required_string_key(object, method, key, field)? {
+        "started" => Ok(SubAgentActivityKind::Started),
+        "interacted" => Ok(SubAgentActivityKind::Interacted),
+        "interrupted" => Ok(SubAgentActivityKind::Interrupted),
+        "completed" => Ok(SubAgentActivityKind::Completed),
+        _ => Err(invalid_field_for_method(method, field)),
+    }
+}
+
+fn required_collab_agent_status_key(
+    object: &Map<String, Value>,
+    method: &str,
+    key: &str,
+    field: &'static str,
+) -> Result<CollabAgentStatus, CodexAppServerEventError> {
+    match required_string_key(object, method, key, field)? {
+        "pendingInit" => Ok(CollabAgentStatus::PendingInit),
+        "running" => Ok(CollabAgentStatus::Running),
+        "interrupted" => Ok(CollabAgentStatus::Interrupted),
+        "completed" => Ok(CollabAgentStatus::Completed),
+        "errored" => Ok(CollabAgentStatus::Errored),
+        "shutdown" => Ok(CollabAgentStatus::Shutdown),
+        "notFound" => Ok(CollabAgentStatus::NotFound),
+        _ => Err(invalid_field_for_method(method, field)),
+    }
+}
+
 fn optional_item_status_key(object: &Map<String, Value>, key: &str) -> Option<ItemStatus> {
     object.get(key)?.as_str().and_then(parse_item_status)
+}
+
+fn validate_collab_agent_tool_call_status_for_method(
+    method: &str,
+    status: CollabAgentToolCallStatus,
+) -> Result<(), CodexAppServerEventError> {
+    match (method, status) {
+        ("item/started", CollabAgentToolCallStatus::InProgress) => Ok(()),
+        (
+            "item/completed",
+            CollabAgentToolCallStatus::Completed
+            | CollabAgentToolCallStatus::Failed
+            | CollabAgentToolCallStatus::Interrupted,
+        ) => Ok(()),
+        ("item/started" | "item/completed", _) => {
+            Err(invalid_field_for_method(method, "item.status"))
+        }
+        _ => Ok(()),
+    }
 }
 
 fn parse_item_status(status: &str) -> Option<ItemStatus> {
@@ -1169,7 +1737,7 @@ mod tests {
     }
 
     #[test]
-    fn successful_turn_completed_stays_turn_completed() {
+    fn turn_completed_does_not_read_non_contract_usage() {
         let event = mapped_event(
             "turn/completed",
             json!({
@@ -1198,9 +1766,47 @@ mod tests {
                     "started_at": 10,
                     "completed_at": 20,
                     "duration_ms": 1000
-                },
-                "usage": {"input_tokens": 1}
+                }
             })
+        );
+    }
+
+    #[test]
+    fn token_usage_update_rejects_negative_count() {
+        let error = codex_token_usage_update(&notification(
+            "thread/tokenUsage/updated",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "tokenUsage": {
+                    "total": {
+                        "inputTokens": -1,
+                        "cachedInputTokens": 0,
+                        "cacheWriteInputTokens": 0,
+                        "outputTokens": 0,
+                        "reasoningOutputTokens": 0,
+                        "totalTokens": 0
+                    },
+                    "last": {
+                        "inputTokens": 0,
+                        "cachedInputTokens": 0,
+                        "cacheWriteInputTokens": 0,
+                        "outputTokens": 0,
+                        "reasoningOutputTokens": 0,
+                        "totalTokens": 0
+                    },
+                    "modelContextWindow": 258400
+                }
+            }),
+        ))
+        .expect_err("negative token usage should fail");
+
+        assert_eq!(
+            error,
+            CodexAppServerEventError::InvalidField {
+                method: "thread/tokenUsage/updated".to_string(),
+                field: "tokenUsage.total"
+            }
         );
     }
 
@@ -1239,6 +1845,33 @@ mod tests {
                 message:
                     "selected model is at capacity. please try a different model. (retry later)"
                         .to_string(),
+                failure_reason: Some(FailureReason::ProviderOverloaded),
+            })
+        );
+    }
+
+    #[test]
+    fn failed_turn_completed_classifies_rate_limit_for_diagnostics() {
+        let event = mapped_event(
+            "turn/completed",
+            json!({
+                "threadId": "thread-1",
+                "turn": {
+                    "id": "turn-1",
+                    "status": "failed",
+                    "error": {
+                        "message": "Rate limit exceeded.",
+                        "codexErrorInfo": "rateLimitExceeded"
+                    }
+                }
+            }),
+        );
+
+        assert_eq!(
+            events::masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(events::CodexFailureDiagnostic {
+                event_type: "turn.completed",
+                message: "Rate limit exceeded.".to_string(),
                 failure_reason: Some(FailureReason::ProviderOverloaded),
             })
         );
@@ -1287,7 +1920,12 @@ mod tests {
                     "status": "failed",
                     "error": {
                         "message": "This request violates the provider's alignment policy.",
-                        "codexErrorInfo": "misalignmentPolicyViolation"
+                        "codexErrorInfo": "misalignmentPolicyViolation",
+                        "misalignment": {
+                            "errorType": "policy_violation",
+                            "detailedExplanation": "Try a safer direction.",
+                            "steer": {"message": "Continue with a safe alternative."}
+                        }
                     },
                     "startedAt": 10,
                     "completedAt": 20,
@@ -1299,6 +1937,14 @@ mod tests {
         assert_eq!(
             event["turn"]["error"]["codex_error_info"],
             "misalignmentPolicyViolation"
+        );
+        assert_eq!(
+            event["turn"]["error"]["misalignment"],
+            json!({
+                "error_type": "policy_violation",
+                "detailed_explanation": "Try a safer direction.",
+                "steer": {"message": "Continue with a safe alternative."}
+            })
         );
         assert_eq!(
             events::masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
@@ -1696,6 +2342,42 @@ mod tests {
         assert_eq!(event["item"]["duration_ms"], 50);
         assert_eq!(event["item"]["arguments"], json!({"owner": "vm0-ai"}));
         assert_eq!(event["item"]["large"], json!([1, 2, 3]));
+    }
+
+    #[test]
+    fn function_call_output_preserves_structured_output() {
+        let event = mapped_event(
+            "item/completed",
+            json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "completedAtMs": 42,
+                "item": {
+                    "type": "functionCallOutput",
+                    "id": "function-output-1",
+                    "name": "lookup",
+                    "namespace": "tools",
+                    "output": [
+                        {"type": "input_text", "text": "result"},
+                        {"type": "input_image", "image_url": "data:image/png;base64,AA=="}
+                    ]
+                }
+            }),
+        );
+
+        assert_eq!(
+            event["item"],
+            json!({
+                "type": "function_call_output",
+                "id": "function-output-1",
+                "name": "lookup",
+                "namespace": "tools",
+                "output": [
+                    {"type": "input_text", "text": "result"},
+                    {"type": "input_image", "image_url": "data:image/png;base64,AA=="}
+                ]
+            })
+        );
     }
 
     #[test]

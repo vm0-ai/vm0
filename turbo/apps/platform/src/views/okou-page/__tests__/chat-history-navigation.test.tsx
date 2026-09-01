@@ -1,3 +1,4 @@
+import { chatEventRowsResponse } from "../../../signals/__tests__/test-helpers.ts";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -11,15 +12,14 @@ import {
   type ChatThreadEvent,
   type ChatEvent,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../../signals/okou-page/sidebar-state.ts";
 import { pathname$ } from "../../../signals/route.ts";
-import { click, fill } from "../../../__tests__/page-helper.ts";
 import {
-  mockChatLifecycle,
-  PLACEHOLDER,
-  sendMessageInUI,
-} from "./chat-test-helpers.ts";
+  click,
+  fill,
+  setupPageAndWaitForContent,
+} from "../../../__tests__/page-helper.ts";
+import { PLACEHOLDER, sendMessageInUI } from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
 import {
   context,
@@ -32,6 +32,7 @@ import {
   AGENT_CHAT_PATH,
   makeRunGroupMessages,
   makeEvent,
+  mockChatLifecycleWithoutBrowserSession,
   mockKeyboardNavigationThreads,
   buttonByText,
   buttonByLabel,
@@ -42,6 +43,15 @@ import {
   setScrollMetrics,
   mockResizeObserver,
 } from "./chat-lifecycle-test-helpers.ts";
+
+const SHARED_DATABASE_REALTIME_CHANNEL = "user-org:test-user-123:org_default";
+type RenameRequest = (threadId: string, title: string) => void;
+
+function mockNoThreadEvents(): void {
+  context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+    return respond(200, chatEventRowsResponse([], query));
+  });
+}
 
 describe("chat lifecycle", () => {
   it("renders new messages after a payload-less created event", async () => {
@@ -64,7 +74,7 @@ describe("chat lifecycle", () => {
     } satisfies ChatEvent;
     let exposeNewMessage = false;
 
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Live message regression",
     });
@@ -78,32 +88,35 @@ describe("chat lifecycle", () => {
       const events = exposeNewMessage
         ? [initialMessage, newMessage]
         : [initialMessage];
-      return respond(200, {
-        rows: mockChatEventRows(events).filter((row) => {
-          return row.seqId > query.sinceSeqId;
-        }),
-      });
+      return respond(
+        200,
+        chatEventRowsResponse(
+          mockChatEventRows(events).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
+          query,
+        ),
+      );
     });
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
       return respond(200, { lastReadAt: null, unreads: [] });
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    await setupPageAndWaitForContent({
+      context,
+      path: `/chats/${threadId}`,
+      sharedWorkerTestTransport: "message-port",
+    });
 
     await waitFor(() => {
       expect(screen.getByText(initialMessage.content)).toBeInTheDocument();
     });
-    await waitFor(() => {
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-    });
-    expect(
-      context.mocks.ably.hasSubscription(
-        `chatThreadMessageCreated:${threadId}`,
-      ),
-    ).toBeFalsy();
 
     exposeNewMessage = true;
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+    context.mocks.ably.triggerOnChannel(
+      SHARED_DATABASE_REALTIME_CHANNEL,
+      `chatThreadMessageCreated:${threadId}`,
+    );
 
     await waitFor(() => {
       expect(screen.getByText(newMessage.content)).toBeInTheDocument();
@@ -135,25 +148,29 @@ describe("chat lifecycle", () => {
     let persistedMessage: ChatEvent | null = null;
     let exposePersistedMessage = false;
 
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Optimistic realtime reconciliation",
     });
     context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       if (query.sinceSeqId === initialMessage.seqId) {
         if (!exposePersistedMessage || persistedMessage === null) {
-          return respond(200, { rows: [] });
+          return respond(200, chatEventRowsResponse([], query));
         }
       }
       const events: ChatEvent[] = [initialMessage];
       if (exposePersistedMessage && persistedMessage !== null) {
         events.push(persistedMessage, acknowledgement);
       }
-      return respond(200, {
-        rows: mockChatEventRows(events).filter((row) => {
-          return row.seqId > query.sinceSeqId;
-        }),
-      });
+      return respond(
+        200,
+        chatEventRowsResponse(
+          mockChatEventRows(events).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
+          query,
+        ),
+      );
     });
     context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
       const clientEventId = body.clientEventId;
@@ -181,14 +198,15 @@ describe("chat lifecycle", () => {
       });
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    await setupPageAndWaitForContent({
+      context,
+      path: `/chats/${threadId}`,
+      sharedWorkerTestTransport: "message-port",
+    });
 
     await expect(
       screen.findByText(initialMessage.content),
     ).resolves.toBeInTheDocument();
-    await waitFor(() => {
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-    });
 
     await sendMessageInUI(user, chatComposerTextarea(), prompt);
     await waitFor(() => {
@@ -197,7 +215,10 @@ describe("chat lifecycle", () => {
     });
 
     exposePersistedMessage = true;
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+    context.mocks.ably.triggerOnChannel(
+      SHARED_DATABASE_REALTIME_CHANNEL,
+      `chatThreadMessageCreated:${threadId}`,
+    );
 
     await expect(
       screen.findByText(acknowledgement.content),
@@ -254,9 +275,18 @@ describe("chat lifecycle", () => {
       runId,
       revokesEventId: pendingSteer.id,
     } satisfies ChatEvent;
+    const replacementAcknowledgement = {
+      id: "00000000-0000-4000-8000-000000000764",
+      threadId,
+      eventType: "output.message" as const,
+      content: "Steer delivery synchronized",
+      createdAt: "2026-06-09T10:00:04.000Z",
+      seqId: 5,
+      runId,
+    } satisfies ChatEvent;
     let exposeReplacement = false;
 
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Durable steer projection",
       activeRunIds: [runId],
@@ -266,29 +296,41 @@ describe("chat lifecycle", () => {
         initialUser,
         activeReply,
         pendingSteer,
-        ...(exposeReplacement ? [deliveredSteer] : []),
+        ...(exposeReplacement
+          ? [deliveredSteer, replacementAcknowledgement]
+          : []),
       ];
-      return respond(200, {
-        rows: mockChatEventRows(events).filter((row) => {
-          return row.seqId > query.sinceSeqId;
-        }),
-      });
+      return respond(
+        200,
+        chatEventRowsResponse(
+          mockChatEventRows(events).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
+          query,
+        ),
+      );
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    await setupPageAndWaitForContent({
+      context,
+      path: `/chats/${threadId}`,
+      sharedWorkerTestTransport: "message-port",
+    });
 
     await waitFor(() => {
       expect(screen.getAllByText(prompt)).toHaveLength(1);
     });
     expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
-    await waitFor(() => {
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-    });
-
     exposeReplacement = true;
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+    context.mocks.ably.triggerOnChannel(
+      SHARED_DATABASE_REALTIME_CHANNEL,
+      `chatThreadMessageCreated:${threadId}`,
+    );
 
     await waitFor(() => {
+      expect(
+        screen.getByText(replacementAcknowledgement.content),
+      ).toBeInTheDocument();
       expect(screen.getAllByText(prompt)).toHaveLength(1);
     });
     expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
@@ -333,10 +375,10 @@ describe("chat lifecycle", () => {
             : sidebarInitialMessage;
         if (query.sinceSeqId === initialMessage.seqId) {
           if (params.threadId !== KEYBOARD_NEXT_THREAD_ID) {
-            return respond(200, { rows: [] });
+            return respond(200, chatEventRowsResponse([], query));
           }
           if (!exposeSidebarMessage) {
-            return respond(200, { rows: [] });
+            return respond(200, chatEventRowsResponse([], query));
           }
         }
         const events = [
@@ -346,20 +388,25 @@ describe("chat lifecycle", () => {
             ? [sidebarNewMessage]
             : []),
         ];
-        return respond(200, {
-          rows: mockChatEventRows(events).filter((row) => {
-            return row.seqId > query.sinceSeqId;
-          }),
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            mockChatEventRows(events).filter((row) => {
+              return row.seqId > query.sinceSeqId;
+            }),
+            query,
+          ),
+        );
       },
     );
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
       return respond(200, { lastReadAt: null, unreads: [] });
     });
 
-    detachedSetupPage({
+    await setupPageAndWaitForContent({
       context,
       path: `/chats/${KEYBOARD_CURRENT_THREAD_ID}?sidebar=${KEYBOARD_NEXT_THREAD_ID}`,
+      sharedWorkerTestTransport: "message-port",
     });
 
     await waitFor(() => {
@@ -367,21 +414,11 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText(sidebarInitialMessage.content),
       ).toBeInTheDocument();
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
     });
-    expect(
-      context.mocks.ably.hasSubscription(
-        `chatThreadMessageCreated:${KEYBOARD_CURRENT_THREAD_ID}`,
-      ),
-    ).toBeFalsy();
-    expect(
-      context.mocks.ably.hasSubscription(
-        `chatThreadMessageCreated:${KEYBOARD_NEXT_THREAD_ID}`,
-      ),
-    ).toBeFalsy();
 
     exposeSidebarMessage = true;
-    context.mocks.ably.trigger(
+    context.mocks.ably.triggerOnChannel(
+      SHARED_DATABASE_REALTIME_CHANNEL,
       `chatThreadMessageCreated:${KEYBOARD_NEXT_THREAD_ID}`,
     );
 
@@ -397,7 +434,7 @@ describe("chat lifecycle", () => {
   it("keeps chat scroll controls responsive to buttons and keyboard", async () => {
     mockResizeObserver();
     const threadId = "b0000000-0000-4000-a000-000000000722";
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Scroll history",
       chatEvents: Array.from({ length: 8 }, (_, index) => {
@@ -497,7 +534,7 @@ describe("chat lifecycle", () => {
       };
     });
 
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Render window",
       chatEvents,
@@ -547,7 +584,7 @@ describe("chat lifecycle", () => {
 
   it("counts a folded tail run group as one item in the initial chat window", async () => {
     const threadId = "e5000000-0000-4000-a000-000000000002";
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Tail run group window",
       chatEvents: [
@@ -607,7 +644,7 @@ describe("chat lifecycle", () => {
           }
         : message;
     });
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Structured run group label",
       chatEvents: messages,
@@ -632,7 +669,7 @@ describe("chat lifecycle", () => {
 
   it("keeps the item before a folded middle run group in the initial chat window", async () => {
     const threadId = "e5000000-0000-4000-a000-000000000004";
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Middle run group window",
       chatEvents: [
@@ -673,65 +710,58 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("moves between chat threads with keyboard shortcuts", async () => {
+  it("moves to the previous chat with a page shortcut from the composer", async () => {
     mockResizeObserver();
     mockKeyboardNavigationThreads();
+    mockNoThreadEvents();
 
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
     });
 
-    const chatList = await screen.findByTestId("chat-list-column");
-    await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
-      expect(
-        within(chatList).getByText("Previous keyboard thread"),
-      ).toBeInTheDocument();
-      expect(
-        within(chatList).getByText("Next keyboard thread"),
-      ).toBeInTheDocument();
-    });
+    await screen.findByPlaceholderText(PLACEHOLDER);
 
-    const threadRegion = screen.getByLabelText("Chat thread");
-    threadRegion.focus();
-    fireEvent.keyDown(threadRegion, {
+    const composer = chatComposerTextarea();
+    composer.focus();
+    fireEvent.keyDown(composer, {
       key: "ArrowUp",
       ctrlKey: true,
       shiftKey: true,
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Previous thread launch note"),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(
+        "Previous keyboard thread",
+      );
     });
     expect(context.store.get(pathname$)).toBe(
       `/chats/${KEYBOARD_PREV_THREAD_ID}`,
     );
+  });
 
-    const previousThreadRegion = screen.getByLabelText("Chat thread");
-    previousThreadRegion.focus();
-    fireEvent.keyDown(previousThreadRegion, {
-      key: "ArrowDown",
-      ctrlKey: true,
-      shiftKey: true,
+  it("keeps shifted slash editable before opening shortcut help outside the composer", async () => {
+    mockResizeObserver();
+    mockKeyboardNavigationThreads();
+    mockNoThreadEvents();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/b0000000-0000-4000-a000-000000000708",
     });
 
-    await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
-    });
-    expect(context.store.get(pathname$)).toBe(
-      `/chats/${KEYBOARD_CURRENT_THREAD_ID}`,
-    );
+    await screen.findByLabelText("Chat thread");
+    await screen.findByPlaceholderText(PLACEHOLDER);
 
-    const currentThreadRegion = screen.getByLabelText("Chat thread");
-    currentThreadRegion.focus();
-    fireEvent.keyDown(currentThreadRegion, { key: "?", shiftKey: true });
+    const composer = chatComposerTextarea();
+    composer.focus();
+    fireEvent.keyDown(composer, { key: "?", shiftKey: true });
+
+    expect(screen.queryByText("Keyboard Shortcuts")).not.toBeInTheDocument();
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    fireEvent.keyDown(threadRegion, { key: "?", shiftKey: true });
 
     await waitFor(() => {
       expect(screen.getByText("Keyboard Shortcuts")).toBeInTheDocument();
@@ -744,31 +774,14 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("keeps shifted slash editable in the chat composer", async () => {
+  it("aligns the next thread shortcut to the sidebar bottom from the composer", async () => {
     mockResizeObserver();
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(performance.now());
+      return 1;
+    });
     mockKeyboardNavigationThreads();
-
-    detachedSetupPage({
-      context,
-      path: "/chats/b0000000-0000-4000-a000-000000000708",
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
-    });
-
-    const composer = chatComposerTextarea();
-    composer.focus();
-    fireEvent.keyDown(composer, { key: "?", shiftKey: true });
-
-    expect(screen.queryByText("Keyboard Shortcuts")).not.toBeInTheDocument();
-  });
-
-  it("moves between chat threads with page shortcuts from the composer", async () => {
-    mockResizeObserver();
-    mockKeyboardNavigationThreads({ leadingThreadCount: 20 });
+    mockNoThreadEvents();
 
     detachedSetupPage({
       context,
@@ -777,14 +790,11 @@ describe("chat lifecycle", () => {
 
     const chatList = await screen.findByTestId("chat-list-column");
     await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
+      expect(chatComposerTextarea()).toBeInTheDocument();
       expect(
         within(chatList).getByTestId("sidebar-chat-threads-virtual-list"),
       ).toBeInTheDocument();
     });
-
     const sidebarScrollArea = within(chatList).getByTestId(
       "sidebar-scroll-area",
     );
@@ -795,17 +805,17 @@ describe("chat lifecycle", () => {
       },
       scrollHeight: {
         configurable: true,
-        value: CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 24,
+        value: CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 3,
       },
       scrollTop: {
         configurable: true,
-        value: CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 20,
+        value: 0,
         writable: true,
       },
     });
     fireEvent.scroll(sidebarScrollArea);
 
-    let composer = chatComposerTextarea();
+    const composer = chatComposerTextarea();
     composer.focus();
     fireEvent.keyDown(composer, {
       key: "ArrowDown",
@@ -814,26 +824,13 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Next thread launch note")).toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(sidebarScrollArea.scrollTop).toBe(
-        CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 21,
+      expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(
+        "Next keyboard thread",
       );
-    });
-
-    composer = chatComposerTextarea();
-    composer.focus();
-    fireEvent.keyDown(composer, {
-      key: "ArrowUp",
-      ctrlKey: true,
-      shiftKey: true,
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
+      expect(context.store.get(pathname$)).toBe(
+        `/chats/${KEYBOARD_NEXT_THREAD_ID}`,
+      );
+      expect(sidebarScrollArea.scrollTop).toBe(CHAT_THREAD_VIRTUAL_ROW_HEIGHT);
     });
   });
 
@@ -1014,12 +1011,12 @@ describe("chat lifecycle", () => {
       updatedAt: "2026-06-01T00:00:00.000Z",
       pinnedAt: null,
     };
-    const lifecycle = mockChatLifecycle(context, {
+    const lifecycle = mockChatLifecycleWithoutBrowserSession({
       threadId: EVENT_SOURCED_RENAME_THREAD_ID,
       threadTitle: "Thread detail should stay pending",
     });
     lifecycle.setThreadList([thread]);
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     let persistedRenameEvent: ChatThreadEvent | null = null;
 
     context.mocks.api(chatThreadByIdContract.get, ({ never }) => {
@@ -1075,9 +1072,13 @@ describe("chat lifecycle", () => {
       },
     );
 
+    // Thread detail never responds in this scenario, so page bootstrap has no
+    // settled completion to await. Readiness comes from the rendered thread
+    // instead, per the `detachedSetupPage` contract.
     detachedSetupPage({
       context,
       path: `/chats/${EVENT_SOURCED_RENAME_THREAD_ID}`,
+      sharedWorkerTestTransport: "message-port",
     });
 
     const threadRegion = await screen.findByLabelText("Chat thread");
@@ -1108,7 +1109,19 @@ describe("chat lifecycle", () => {
     });
 
     expect(document.title).toBe(`${originalTitle} | VM0`);
-    triggerAblyEvent("threadListChanged");
+    // A publish on an unsubscribed channel is dropped silently, so wait for the
+    // shared database subscription before triggering the thread list refresh.
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(
+          SHARED_DATABASE_REALTIME_CHANNEL,
+        ),
+      ).toBeTruthy();
+    });
+    context.mocks.ably.triggerOnChannel(
+      SHARED_DATABASE_REALTIME_CHANNEL,
+      "threadListChanged",
+    );
     await waitFor(() => {
       expect(document.title).toBe(`${renamedTitle} | VM0`);
     });
@@ -1117,7 +1130,7 @@ describe("chat lifecycle", () => {
   it("keeps F2 rename available after creating a chat from the agent composer", async () => {
     const user = userEvent.setup({ delay: null });
     mockResizeObserver();
-    mockChatLifecycle(context);
+    mockChatLifecycleWithoutBrowserSession();
 
     detachedSetupPage({ context, path: AGENT_CHAT_PATH });
 
@@ -1208,9 +1221,10 @@ describe("chat lifecycle", () => {
   });
 
   it("adds an emoji to the current chat from the Shift+F2 picker", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentDetailTitle: null });
+    mockNoThreadEvents();
     context.mocks.api(
       chatThreadRenameContract.rename,
       ({ body, params, respond }) => {
@@ -1224,10 +1238,8 @@ describe("chat lifecycle", () => {
       path: "/chats/b0000000-0000-4000-a000-000000000708",
     });
 
+    await screen.findByPlaceholderText(PLACEHOLDER);
     await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
       expect(
         screen.getAllByText("Current keyboard thread").length,
       ).toBeGreaterThan(0);
@@ -1249,7 +1261,7 @@ describe("chat lifecycle", () => {
   });
 
   it("adds an emoji to the current chat directly with Ctrl+Shift+1", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentDetailTitle: null });
     context.mocks.api(
@@ -1290,7 +1302,7 @@ describe("chat lifecycle", () => {
   });
 
   it("adds an emoji to the focused side chat directly with Ctrl+Shift+1", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentDetailTitle: null });
     context.mocks.api(
@@ -1334,7 +1346,7 @@ describe("chat lifecycle", () => {
   });
 
   it("adds an emoji from the composer with Ctrl+Shift+1", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentDetailTitle: null });
     context.mocks.api(
@@ -1374,7 +1386,7 @@ describe("chat lifecycle", () => {
   });
 
   it("clears the current chat emoji directly with Ctrl+Shift+0", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({
       currentTitle: "🔥 Current keyboard thread",
@@ -1415,7 +1427,7 @@ describe("chat lifecycle", () => {
 
   it("keeps shifted digit input editable in the chat composer", async () => {
     const user = userEvent.setup({ delay: null });
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentDetailTitle: null });
     context.mocks.api(
@@ -1451,6 +1463,7 @@ describe("chat lifecycle", () => {
     mockKeyboardNavigationThreads({
       currentTitle: "🔥 Current keyboard thread",
     });
+    mockNoThreadEvents();
 
     detachedSetupPage({
       context,
@@ -1458,9 +1471,6 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
       expect(screen.getByLabelText("Change icon")).toHaveTextContent("🔥");
     });
 
@@ -1500,11 +1510,12 @@ describe("chat lifecycle", () => {
   });
 
   it("replaces the current chat emoji from the Shift+F2 picker", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({
       currentTitle: "🔥   Current keyboard thread",
     });
+    mockNoThreadEvents();
     context.mocks.api(
       chatThreadRenameContract.rename,
       ({ body, params, respond }) => {
@@ -1519,9 +1530,6 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
       expect(document.title).toBe("🔥   Current keyboard thread | VM0");
       expect(screen.getByLabelText("Change icon")).toHaveTextContent("🔥");
       expect(screen.getByText("Current keyboard thread")).toBeInTheDocument();
@@ -1543,11 +1551,12 @@ describe("chat lifecycle", () => {
   });
 
   it("clears the current chat emoji from the picker Remove button", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({
       currentTitle: "🔥 Current keyboard thread",
     });
+    mockNoThreadEvents();
     context.mocks.api(
       chatThreadRenameContract.rename,
       ({ body, params, respond }) => {
@@ -1581,9 +1590,10 @@ describe("chat lifecycle", () => {
   });
 
   it("does not clear the emoji when the chat has no other title text", async () => {
-    const renameRequest = vi.fn();
+    const renameRequest = vi.fn<RenameRequest>();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentTitle: "🔥" });
+    mockNoThreadEvents();
     context.mocks.api(
       chatThreadRenameContract.rename,
       ({ body, params, respond }) => {

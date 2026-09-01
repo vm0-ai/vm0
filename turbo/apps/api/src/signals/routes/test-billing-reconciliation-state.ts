@@ -7,6 +7,7 @@ import {
 } from "@okouai/api-contracts/contracts/test-billing-reconciliation-state";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 import { orgConcurrencySubscriptions } from "@okouai/db/schema/org-concurrency-subscription";
+import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-canonical-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import { orgUsageAllowanceEntitlements } from "@okouai/db/schema/org-usage-allowance";
@@ -184,7 +185,7 @@ async function insertOrganizationFixtures(
   times: FixtureTimes,
   mode: FixtureMode,
 ): Promise<void> {
-  await tx.insert(orgMetadata).values(
+  await tx.insert(orgMetadataCanonicalWrites).values(
     fixtures.map((fixture) => {
       switch (fixture.kind) {
         case "plan-subscription": {

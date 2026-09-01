@@ -1,6 +1,10 @@
 import { streamSimple as streamSimpleCodex } from "@earendil-works/pi-ai/api/openai-codex-responses";
 import { streamSimple } from "@earendil-works/pi-ai/api/openai-completions";
-import { streamSimple as streamSimpleResponses } from "@earendil-works/pi-ai/api/openai-responses";
+import {
+  stream as streamResponses,
+  streamSimple as streamSimpleResponses,
+} from "@earendil-works/pi-ai/api/openai-responses";
+import { buildBaseOptions } from "@earendil-works/pi-ai/api/simple-options";
 import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
 import { moonshotaiProvider } from "@earendil-works/pi-ai/providers/moonshotai";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
@@ -12,10 +16,15 @@ import type {
   AssistantMessageEventStream,
   Context,
   Model,
-  SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
+import { clampThinkingLevel } from "@earendil-works/pi-ai";
 
-import type { PiAgentModelConfig, PiOpenAICompatibleProvider } from "./types";
+import type {
+  PiAgentApi,
+  PiAgentModelConfig,
+  PiOpenAICompatibleProvider,
+} from "./types";
+import type { PiAgentStreamOptions } from "./stream-options";
 
 type PiCatalogProvider = Exclude<PiOpenAICompatibleProvider, "codex">;
 
@@ -46,6 +55,40 @@ function sourceModel(
   return providerModels(provider).find((candidate) => {
     return candidate.id === model;
   });
+}
+
+function supportedPiApi(api: Api): api is PiAgentApi {
+  return (
+    api === "openai-completions" ||
+    api === "openai-responses" ||
+    api === "openai-codex-responses"
+  );
+}
+
+/** Resolve the VM0-supported transport for a model in Pi's native catalog. */
+export function resolvePiAgentModelApi(args: {
+  readonly provider: PiOpenAICompatibleProvider;
+  readonly model: string;
+}): PiAgentApi | null {
+  if (args.provider === "codex") {
+    const source = openaiCodexProvider()
+      .getModels()
+      .find((candidate) => {
+        return candidate.id === args.model;
+      });
+    return source && supportedPiApi(source.api) ? source.api : null;
+  }
+
+  const source = sourceModel(args.provider, args.model);
+  if (!source) {
+    return null;
+  }
+  // Preserve the existing VM0 DeepSeek Responses adapter contract even though
+  // the upstream catalog describes these models as Chat Completions models.
+  if (args.provider === "deepseek") {
+    return "openai-responses";
+  }
+  return supportedPiApi(source.api) ? source.api : null;
 }
 
 // The firewall placeholder is not a real ChatGPT JWT. Pi's Codex transport
@@ -93,11 +136,36 @@ function codexJwtShape(accountId: string): string {
   return `${header}.${payload}.vm0-placeholder`;
 }
 
+function streamSimpleResponsesWithPolicy(
+  model: Model<"openai-responses">,
+  context: Context,
+  options?: PiAgentStreamOptions,
+): AssistantMessageEventStream {
+  const base = buildBaseOptions(model, context, options, options?.apiKey);
+  const clampedReasoning =
+    options?.reasoning === undefined
+      ? undefined
+      : clampThinkingLevel(model, options.reasoning);
+  return streamResponses(model, context, {
+    ...base,
+    reasoningEffort: clampedReasoning === "off" ? undefined : clampedReasoning,
+    serviceTier: options?.serviceTier,
+  });
+}
+
 export const piAgentStream = (
   model: Model<Api>,
   context: Context,
-  options?: SimpleStreamOptions,
+  options?: PiAgentStreamOptions,
 ): AssistantMessageEventStream => {
+  if (
+    options?.serviceTier !== undefined &&
+    (model.provider !== "openai" || model.api !== "openai-responses")
+  ) {
+    throw new Error(
+      "Pi priority service tier requires the OpenAI Responses transport",
+    );
+  }
   if (model.api === "openai-codex-responses") {
     const apiKey = options?.apiKey;
     const jwtApiKey =
@@ -111,7 +179,14 @@ export const piAgentStream = (
     );
   }
   if (model.api === "openai-responses") {
-    return streamSimpleResponses(
+    if (options?.serviceTier === undefined) {
+      return streamSimpleResponses(
+        model as Model<"openai-responses">,
+        context,
+        options,
+      );
+    }
+    return streamSimpleResponsesWithPolicy(
       model as Model<"openai-responses">,
       context,
       options,
@@ -132,13 +207,18 @@ export function resolvePiAgentModel(
       .find((candidate) => {
         return candidate.id === config.model;
       });
-    return source
-      ? {
-          ...source,
-          provider: config.provider,
-          baseUrl: config.baseUrl,
-        }
-      : null;
+    if (
+      !source ||
+      (config.api !== undefined && source.api !== config.api) ||
+      config.serviceTier !== undefined
+    ) {
+      return null;
+    }
+    return {
+      ...source,
+      provider: config.provider,
+      baseUrl: config.baseUrl,
+    };
   }
 
   const source = sourceModel(config.provider, config.model);
@@ -159,12 +239,31 @@ export function resolvePiAgentModel(
     headers: source.headers,
   };
   if (config.provider === "deepseek") {
+    if (
+      (config.api !== undefined && config.api !== "openai-responses") ||
+      config.serviceTier !== undefined
+    ) {
+      return null;
+    }
     return { ...base, api: "openai-responses" };
   }
-  const completionsModel = { ...base, api: "openai-completions" as const };
-  return source.api === "openai-completions"
-    ? { ...completionsModel, compat: source.compat }
-    : completionsModel;
+  const api = config.api ?? "openai-completions";
+  if (
+    !supportedPiApi(source.api) ||
+    (config.api && source.api !== config.api) ||
+    (config.serviceTier !== undefined &&
+      (config.provider !== "openai" || api !== "openai-responses"))
+  ) {
+    return null;
+  }
+  const model = { ...base, api };
+  return source.api === api
+    ? {
+        ...model,
+        samplingParams: source.samplingParams,
+        compat: source.compat,
+      }
+    : model;
 }
 
 export function isPiAgentModelSupported(config: PiAgentModelConfig): boolean {

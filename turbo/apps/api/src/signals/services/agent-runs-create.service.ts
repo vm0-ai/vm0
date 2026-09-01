@@ -188,6 +188,8 @@ interface CreateAgentRunCommandArgs {
   readonly requiredOfficialWorkflowIds?: readonly string[];
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
   readonly agentRunModelPin?: AgentRunModelPin;
+  /** Immutable Pi eligibility captured by the caller's admission snapshot. */
+  readonly piExecution: boolean;
   readonly timing?: ApiDispatchTimingCollector;
   readonly agentRunPreCreateSource?: AgentRunPreCreateSource;
 }
@@ -229,6 +231,34 @@ export function setOfficialWorkflowBootstrapRequirementHookForTest(
 
 export function clearOfficialWorkflowBootstrapRequirementHookForTest(): void {
   officialWorkflowBootstrapRequirementHook.clear();
+}
+
+export interface AgentRunPiExecutionSnapshot {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly chatThreadId: string | undefined;
+  readonly piExecution: boolean;
+  readonly threadSessionCliAgentType: string | null | undefined;
+}
+
+type AgentRunPiExecutionSnapshotHook = (
+  snapshot: AgentRunPiExecutionSnapshot,
+) => Promise<void>;
+
+const agentRunPiExecutionSnapshotHook = testOverride<
+  AgentRunPiExecutionSnapshotHook | undefined
+>(() => {
+  return undefined;
+});
+
+export function setAgentRunPiExecutionSnapshotHookForTest(
+  hook: AgentRunPiExecutionSnapshotHook,
+): void {
+  agentRunPiExecutionSnapshotHook.set(hook);
+}
+
+export function clearAgentRunPiExecutionSnapshotHookForTest(): void {
+  agentRunPiExecutionSnapshotHook.clear();
 }
 
 function assertThreadBoundAgentRunHasQueueAssociation(
@@ -334,7 +364,7 @@ function buildIntegrationToolsPrompt(
         "- Email send confirmation: on the round that follows a send, confirm the send against Gmail before reporting it — read the draft's thread with `GET /gmail/v1/users/me/threads/<gmail-thread-id>` and verify the message carries the `SENT` label. Never assume the user sent the email.",
         "- Email reply tracking: after a send is confirmed, check whether a Gmail automation already tracks replies for this conversation — `okou workflow list` shows the workflows, and `okou workflow automation list <workflow>` shows one workflow's triggers. When none tracks it, tell the user you can watch for the reply and set it up with the `workflow-setup` skill as a `gmail-new-message` automation narrowed to that recipient and subject. Create it only after the user agrees.",
         "- Email reply handling: when a tracked reply arrives, summarize it for the user, and when a response is warranted prepare the follow-up as a new linked Gmail draft. Never send a reply automatically; the user always sends.",
-        "- Diagrams in web chat: ```mermaid fenced code blocks are rendered as diagrams in the chat message itself, and the user can still open the source. When the user asks for a flowchart, sequence, state, ER, class, architecture, mindmap, gantt, or timeline diagram without naming a format, answer with a mermaid block by default. Never draw box-and-arrow diagrams as ASCII art, and do not generate an image or publish an HTML page for a diagram unless the user asked for that format or mermaid cannot express the diagram.",
+        "- Diagrams in web chat: only Mermaid flowchart/graph syntax is supported. ```mermaid fenced flowcharts are rendered in the chat message, and the user can still open the source. Use a Mermaid block by default for flowcharts and for other diagram requests that can reasonably be represented as a flowchart. Do not emit Mermaid sequence, state, ER, class, architecture, mindmap, gantt, timeline, or other diagram types; use a flowchart representation or concise prose/table instead. Never draw box-and-arrow diagrams as ASCII art, and do not generate an image or publish an HTML page unless the user asked for that format or a flowchart cannot express the diagram.",
         ...localFileContextLines,
       ];
     }
@@ -387,6 +417,7 @@ function buildAgentToolsPrompt(args: {
   readonly triggerSource: TriggerSource;
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
+  readonly connectorAccountsEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
 }): string {
   const okouCliCommand = `npx --yes --package="\${CLI_PKG_URL}" okou`;
@@ -436,6 +467,12 @@ function buildAgentToolsPrompt(args: {
     "- Current weather, forecasts, and recent history: use `okou weather --help`.",
     "- Static web artifacts can be published with `okou host <dir> --site <slug> [--spa]`; for HTML presentations, include `--artifact-kind presentation-html`; run `okou host --help` for details.",
     "- Third-party services (GitHub, Slack, Notion, 100+ more) are accessed via connectors that expose environment names like `GH_TOKEN`. Find: `okou connector search <keyword>`. List connected: `okou connector list`. Inspect: `okou connector status <slug>`.",
+    ...(args.connectorAccountsEnabled
+      ? [
+          "- Connector accounts: inspect the current account with `okou connector status <slug> --json` and list alternatives with `okou connector account list <slug> --json`. Use only an exact `connectionId` returned by these commands; never invent an ID or reuse one from another connector.",
+          "- Request one account switch in the current web chat with `okou connector account switch-request <slug> --connection-id <uuid> --callback-prompt <prompt>`. This changes only the current thread's override for future runs, not the current run or global default. Keep the callback prompt concise and do not include secrets because it is included in the URL. Share the returned link and end the turn; Okou starts the callback round only after the user confirms and the selection succeeds.",
+        ]
+      : []),
     "- Custom connectors: when the user wants to add their own custom connector, run `okou connector custom -h` first and follow its guidance.",
     "- Model availability and provider routing are workspace model settings, separate from connectors. Use `okou model ls` to list allowed models, `okou model switch` for model-switching guidance, and `okou model-provider ls` to inspect built-in/BYOK routing.",
     "- Credit diagnostics: use `okou doctor credit` when a run or generation fails with insufficient credits, when the user asks how to recharge, or before buying credits. It reports the org balance, tier, purchase eligibility, current user admin status, and org admins. If it says credit purchases are unavailable, do not run `okou credit`.",
@@ -513,6 +550,7 @@ function buildAppendSystemPrompt(args: {
   readonly triggerSource: TriggerSource;
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
+  readonly connectorAccountsEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
 }): string {
   const identity = buildAgentIdentityPrompt(args.agent, args.publicBrand);
@@ -523,6 +561,7 @@ function buildAppendSystemPrompt(args: {
       triggerSource: args.triggerSource,
       cloudBrowserEnabled: args.cloudBrowserEnabled,
       bankingEnabled: args.bankingEnabled,
+      connectorAccountsEnabled: args.connectorAccountsEnabled,
       presentationTemplatesEnabled: args.presentationTemplatesEnabled,
     }),
     buildCurrentUserPrompt(args.userInfo),
@@ -702,6 +741,7 @@ function createRunBody(args: {
   readonly appendSystemPrompt: string | undefined;
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
+  readonly connectorAccountsEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
 }) {
   const triggerSource = args.triggerSource ?? "web";
@@ -712,6 +752,7 @@ function createRunBody(args: {
     triggerSource,
     cloudBrowserEnabled: args.cloudBrowserEnabled,
     bankingEnabled: args.bankingEnabled,
+    connectorAccountsEnabled: args.connectorAccountsEnabled,
     presentationTemplatesEnabled: args.presentationTemplatesEnabled,
   });
   return {
@@ -911,6 +952,10 @@ function buildZeroCreateAgentRunArgs(args: {
         FeatureSwitchKey.Banking,
         args.featureSwitchContext,
       ),
+      connectorAccountsEnabled: isFeatureEnabled(
+        FeatureSwitchKey.ConnectorAccounts,
+        args.featureSwitchContext,
+      ),
       presentationTemplatesEnabled: isFeatureEnabled(
         FeatureSwitchKey.PresentationTemplates,
         args.featureSwitchContext,
@@ -965,6 +1010,7 @@ function buildZeroCreateAgentRunArgs(args: {
     ...(command.agentRunModelPin
       ? { agentRunModelPin: command.agentRunModelPin }
       : {}),
+    piExecution: command.piExecution,
     ...("queueFirstAssociation" in command
       ? { queueFirstAssociation: command.queueFirstAssociation }
       : {}),
@@ -1179,6 +1225,15 @@ const createAgentRunInternal$ = command(
       });
       signal.throwIfAborted();
     }
+
+    await agentRunPiExecutionSnapshotHook.get()?.({
+      userId: args.auth.userId,
+      orgId: args.auth.orgId,
+      chatThreadId: args.chatThreadId,
+      piExecution: args.piExecution,
+      threadSessionCliAgentType: args.threadSessionRoute?.cliAgentType,
+    });
+    signal.throwIfAborted();
 
     const {
       userInfo,

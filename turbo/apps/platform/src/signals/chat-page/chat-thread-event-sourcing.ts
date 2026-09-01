@@ -1,35 +1,24 @@
 import { command, computed, state, type Computed } from "ccstate";
 import {
   chatThreadMetadataContract,
-  chatThreadsContract,
-  type ChatThreadsContract,
   type ChatThreadEvent,
   type ChatThreadMetadata,
   type ChatThreadSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
-import type {
-  InitClientArgs,
-  InitClientReturn,
-} from "@okouai/api-contracts/contracts/trpc-contract";
 import { accept } from "../../lib/accept.ts";
 import {
   captureChatThreadMetadataShortcut$,
   type ChatThreadMetadataShortcutOutcome,
 } from "../../lib/posthog.ts";
 import { activeRoute$ } from "../active-route.ts";
-import { authenticatedIdentity$ } from "../auth.ts";
 import { apiClient$ } from "../api-client.ts";
 import { foregroundReady$ } from "../auth-retry.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
-import { createIdbChatThreadEventStores } from "../external/idb-chat-thread-event-store.ts";
-import { chatIdb$ } from "../external/chat-idb-store.ts";
-import { logger } from "../log.ts";
-import { setAblyLoop$ } from "../realtime.ts";
+import { subscribeRealtimeReadyCatchUp$ } from "../realtime.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import { pathParams$ } from "../route.ts";
 import {
-  bestEffort,
   createChildAbortController,
   createDeferredPromise,
   settle,
@@ -40,23 +29,11 @@ import type {
   ChatThreadEventDataKey,
   ChatThreadEventQueryResult,
 } from "../../shared-database/data-key.ts";
-import { CHAT_THREAD_EVENT_LOG_SNAPSHOT_REBASE_THRESHOLD } from "../../shared-database/event-log-policy.ts";
-import {
-  onSharedDatabase$,
-  queryChatThreadEventSharedDatabase$,
-} from "../shared-database.ts";
-import { sharedDatabaseModeEnabled$ } from "../shared-database-mode.ts";
-import { enqueueSharedDatabaseInvalidation$ } from "../shared-database-invalidation-queue.ts";
+import { queryChatThreadEventSharedDatabase$ } from "../shared-database.ts";
 import type {
   ChatThreadEventView,
   OptimisticChatThreadEvent,
 } from "./chat-thread-event-types.ts";
-
-const L = logger("ChatThreadEventSourcing");
-
-type Stores = ReturnType<typeof createIdbChatThreadEventStores>;
-type ChatThreadsClient = InitClientReturn<ChatThreadsContract, InitClientArgs>;
-type ChatThreadEventSyncMode = "incremental" | "snapshot-rebase";
 
 interface ChatThreadEventData {
   readonly snapshot: readonly ChatThreadSnapshotProjection[];
@@ -74,22 +51,6 @@ interface ChatThreadEventState {
   readonly events: readonly ChatThreadEvent[];
   readonly latestEventId: string | null;
   readonly latestSeqId: number | null;
-}
-
-interface ChatThreadEventUpdate {
-  readonly state: ChatThreadEventState;
-  readonly replacementSnapshot: ChatThreadSnapshotData | null;
-  readonly newEvents: readonly ChatThreadEvent[];
-}
-
-interface ChatThreadEventCursor {
-  readonly eventId: string;
-  readonly seqId: number;
-}
-
-interface ChatThreadEventSyncResult {
-  readonly eventCount: number;
-  readonly snapshotReplaced: boolean;
 }
 
 export interface ThreadMeta {
@@ -249,303 +210,9 @@ function filterUnsettledOptimisticChatThreadEvents(
   });
 }
 
-async function readChatThreadEventState(
-  store: Stores,
-  signal?: AbortSignal,
-): Promise<ChatThreadEventState> {
-  const [snapshot, eventLog] = await Promise.all([
-    store.readStore.readSnapshot(signal),
-    store.readStore.readEventLog(signal),
-  ]);
-  return {
-    snapshot,
-    events: eventLog.events,
-    latestEventId: eventLog.latestEventId ?? snapshot?.latestEventId ?? null,
-    latestSeqId: eventLog.latestSeqId ?? snapshot?.latestSeqId ?? null,
-  };
-}
-
-const chatThreadEventStores$ = computed((get): Stores => {
-  const dbPromise = get(chatIdb$);
-  return createIdbChatThreadEventStores(() => {
-    return dbPromise;
-  });
+const sharedChatThreadEventDataKey$ = computed((): ChatThreadEventDataKey => {
+  return { kind: "chat-thread-event" };
 });
-
-const lastEventCursor$ = computed((get): ChatThreadEventCursor | null => {
-  const state = get(chatThreadEventState$);
-  if (state.latestEventId === null || state.latestSeqId === null) {
-    return null;
-  }
-  return {
-    eventId: state.latestEventId,
-    seqId: state.latestSeqId,
-  };
-});
-
-function snapshotCursor(
-  snapshot: ChatThreadSnapshotData,
-): ChatThreadEventCursor | null {
-  return snapshot.latestEventId === null || snapshot.latestSeqId === null
-    ? null
-    : {
-        eventId: snapshot.latestEventId,
-        seqId: snapshot.latestSeqId,
-      };
-}
-
-function eventCursor(event: ChatThreadEvent): ChatThreadEventCursor {
-  return {
-    eventId: event.id,
-    seqId: event.seqId,
-  };
-}
-
-async function fetchRemoteSnapshot(
-  client: ChatThreadsClient,
-  mode: ChatThreadEventSyncMode,
-  signal?: AbortSignal,
-): Promise<ChatThreadSnapshotData> {
-  const result = await accept(
-    client.snapshot({ fetchOptions: { signal } }),
-    [200],
-    signal,
-    { showErrorToast: mode !== "snapshot-rebase" },
-  );
-  signal?.throwIfAborted();
-  return {
-    chatThreads: result.body.chatThreads,
-    latestEventId: result.body.latestEventId,
-    latestSeqId: result.body.latestSeqId,
-  };
-}
-
-async function fetchRemoteEvents(
-  client: ChatThreadsClient,
-  cursor: ChatThreadEventCursor | null,
-  mode: ChatThreadEventSyncMode,
-  signal?: AbortSignal,
-) {
-  const request = client.events({
-    query: cursor ? { sinceSeqId: cursor.seqId } : {},
-    fetchOptions: { signal },
-  });
-  return await accept(request, [200, 410], signal, {
-    showErrorToast: mode !== "snapshot-rebase",
-  });
-}
-
-function createChatThreadEventUpdate(
-  snapshot: ChatThreadSnapshotData,
-  events: readonly ChatThreadEvent[],
-  cursor: ChatThreadEventCursor | null,
-  snapshotReplaced: boolean,
-  newEvents: readonly ChatThreadEvent[],
-): ChatThreadEventUpdate | null {
-  if (!snapshotReplaced && newEvents.length === 0) {
-    return null;
-  }
-  return {
-    state: {
-      snapshot,
-      events,
-      latestEventId: cursor?.eventId ?? null,
-      latestSeqId: cursor?.seqId ?? null,
-    },
-    replacementSnapshot: snapshotReplaced ? snapshot : null,
-    newEvents,
-  };
-}
-
-async function fetchChatThreadEventUpdate(
-  currentState: ChatThreadEventState,
-  initialCursor: ChatThreadEventCursor | null,
-  client: ChatThreadsClient,
-  mode: ChatThreadEventSyncMode,
-  signal?: AbortSignal,
-): Promise<ChatThreadEventUpdate | null> {
-  let snapshot = currentState.snapshot;
-  let events = currentState.events;
-  let cursor = initialCursor;
-  let snapshotReplaced = false;
-  let newEvents: readonly ChatThreadEvent[] = [];
-
-  if (mode === "snapshot-rebase" || !snapshot || cursor === null) {
-    snapshot = await fetchRemoteSnapshot(client, mode, signal);
-    events = [];
-    cursor = snapshotCursor(snapshot);
-    snapshotReplaced = true;
-  }
-
-  for (let page = 0; page < 20; page++) {
-    const result = await fetchRemoteEvents(client, cursor, mode, signal);
-    signal?.throwIfAborted();
-
-    if (result.status === 410) {
-      L.debug("events cursor expired, reloading snapshot");
-      snapshot = await fetchRemoteSnapshot(client, mode, signal);
-      events = [];
-      newEvents = [];
-      cursor = snapshotCursor(snapshot);
-      snapshotReplaced = true;
-      continue;
-    }
-
-    const pageEvents: readonly ChatThreadEvent[] = result.body.events;
-    if (pageEvents.length > 0) {
-      events = [...events, ...pageEvents];
-      newEvents = [...newEvents, ...pageEvents];
-      cursor = eventCursor(pageEvents[pageEvents.length - 1]!);
-    }
-
-    if (!result.body.hasMore || result.body.events.length === 0) {
-      return createChatThreadEventUpdate(
-        snapshot,
-        events,
-        cursor,
-        snapshotReplaced,
-        newEvents,
-      );
-    }
-  }
-  return createChatThreadEventUpdate(
-    snapshot,
-    events,
-    cursor,
-    snapshotReplaced,
-    newEvents,
-  );
-}
-
-const initializeChatThreadEventState$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const store = get(chatThreadEventStores$);
-    const state = await readChatThreadEventState(store, signal);
-    signal.throwIfAborted();
-    set(chatThreadEventState$, state);
-    set(reconcileOptimisticChatThreadEvents$, {
-      snapshot: state.snapshot?.chatThreads ?? [],
-      events: state.events,
-    });
-    set(syncCurrentChatThreadDocumentTitle$, signal);
-    const loaded = get(initialLocalChatThreadEventsLoadedDeferred$);
-    if (!loaded.settled()) {
-      loaded.resolve();
-    }
-  },
-);
-
-const syncChatThreadEvents$ = command(
-  async (
-    { get, set },
-    mode: ChatThreadEventSyncMode,
-    signal: AbortSignal,
-  ): Promise<ChatThreadEventSyncResult> => {
-    if (mode === "incremental") {
-      set(markChatThreadEventSyncPending$);
-    }
-    const store = get(chatThreadEventStores$);
-    const state = get(chatThreadEventState$);
-    const client = get(apiClient$)(chatThreadsContract);
-    const update = await fetchChatThreadEventUpdate(
-      state,
-      get(lastEventCursor$),
-      client,
-      mode,
-      signal,
-    );
-    signal.throwIfAborted();
-    let result: ChatThreadEventSyncResult;
-    if (!update) {
-      result = {
-        eventCount: state.events.length,
-        snapshotReplaced: false,
-      };
-    } else {
-      const persistableNewEvents = update.newEvents;
-      if (update.replacementSnapshot) {
-        await store.writeStore.replaceFromSnapshot(
-          update.replacementSnapshot,
-          persistableNewEvents,
-          signal,
-        );
-      } else {
-        await store.writeStore.upsertEvents(persistableNewEvents, signal);
-      }
-      signal.throwIfAborted();
-      set(chatThreadEventState$, update.state);
-      set(reconcileOptimisticChatThreadEvents$, {
-        snapshot: update.state.snapshot?.chatThreads ?? [],
-        events: update.state.events,
-      });
-      set(syncCurrentChatThreadDocumentTitle$, signal);
-      result = {
-        eventCount: update.state.events.length,
-        snapshotReplaced: update.replacementSnapshot !== null,
-      };
-    }
-
-    set(clearBootstrapThreadMeta$);
-
-    if (mode === "incremental") {
-      const synced = get(initialRemoteChatThreadEventsSyncedDeferred$);
-      if (!synced.settled()) {
-        synced.resolve();
-      }
-      set(resolveNextChatThreadEventSync$);
-    }
-    return result;
-  },
-);
-
-const syncLegacyEventDrivenChatThreads$ = command(
-  async ({ set }, signal: AbortSignal): Promise<void> => {
-    await set(syncChatThreadEvents$, "incremental", signal);
-  },
-);
-
-const subscribeLegacyEventDrivenChatThreads$ = command(
-  async ({ set }, signal: AbortSignal): Promise<void> => {
-    let initialSnapshotRebasePending = true;
-    const syncOnThreadListChanged$ = command(
-      async ({ set }, signal: AbortSignal): Promise<boolean> => {
-        const result = await set(syncChatThreadEvents$, "incremental", signal);
-        if (initialSnapshotRebasePending) {
-          initialSnapshotRebasePending = false;
-          if (
-            !result.snapshotReplaced &&
-            result.eventCount > CHAT_THREAD_EVENT_LOG_SNAPSHOT_REBASE_THRESHOLD
-          ) {
-            await bestEffort(
-              set(syncChatThreadEvents$, "snapshot-rebase", signal),
-              signal,
-            );
-          }
-        }
-        return false;
-      },
-    );
-
-    await set(initializeChatThreadEventState$, signal);
-    signal.throwIfAborted();
-    await set(
-      setAblyLoop$,
-      {
-        topic: "threadListChanged",
-        loopCommand$: syncOnThreadListChanged$,
-        options: { runOnSubscribe: true },
-      },
-      signal,
-    );
-  },
-);
-
-const sharedChatThreadEventDataKey$ = computed(
-  async (get): Promise<ChatThreadEventDataKey> => {
-    const { userId, orgId } = await get(authenticatedIdentity$);
-    return { kind: "chat-thread-event", userId, orgId };
-  },
-);
 
 const applySharedChatThreadEventResult$ = command(
   (
@@ -628,16 +295,12 @@ const syncSharedEventDrivenChatThreads$ = command(
 
 const subscribeSharedEventDrivenChatThreads$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const dataKey = await get(sharedChatThreadEventDataKey$);
-    signal.throwIfAborted();
-    await set(
-      onSharedDatabase$,
-      dataKey,
-      () => {
-        set(enqueueSharedDatabaseInvalidation$, dataKey);
-      },
+    set(
+      subscribeRealtimeReadyCatchUp$,
+      syncSharedEventDrivenChatThreads$,
       signal,
     );
+    const dataKey = await get(sharedChatThreadEventDataKey$);
     signal.throwIfAborted();
     const cached = await set(
       queryChatThreadEventSharedDatabase$,
@@ -650,27 +313,10 @@ const subscribeSharedEventDrivenChatThreads$ = command(
   },
 );
 
-export const syncEventDrivenChatThreads$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    await set(
-      get(sharedDatabaseModeEnabled$)
-        ? syncSharedEventDrivenChatThreads$
-        : syncLegacyEventDrivenChatThreads$,
-      signal,
-    );
-  },
-);
+export const syncEventDrivenChatThreads$ = syncSharedEventDrivenChatThreads$;
 
-export const subscribeEventDrivenChatThreads$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    await set(
-      get(sharedDatabaseModeEnabled$)
-        ? subscribeSharedEventDrivenChatThreads$
-        : subscribeLegacyEventDrivenChatThreads$,
-      signal,
-    );
-  },
-);
+export const subscribeEventDrivenChatThreads$ =
+  subscribeSharedEventDrivenChatThreads$;
 
 const chatThreadsSnapshot$ = computed((get) => {
   return get(chatThreadEventState$).snapshot?.chatThreads ?? [];
@@ -753,16 +399,7 @@ export function threadMeta(threadId: string) {
   });
 }
 
-function remoteThreadMeta(metadata: ChatThreadMetadata): ThreadMeta | null {
-  if (
-    metadata.pinnedAt === undefined ||
-    metadata.computerUseHostId === undefined ||
-    metadata.cloudBrowserEnabled === undefined ||
-    metadata.selectedVideoModel === undefined ||
-    metadata.selectedImageModel === undefined
-  ) {
-    return null;
-  }
+function remoteThreadMeta(metadata: ChatThreadMetadata): ThreadMeta {
   return {
     id: metadata.id,
     agentId: metadata.agentId,
@@ -796,10 +433,7 @@ const fetchRemoteThreadMeta$ = command(
     if (result.status === 404) {
       return { meta: null, outcome: "not-found" };
     }
-    const meta = remoteThreadMeta(result.body);
-    return meta?.id === threadId
-      ? { meta, outcome: "hit" }
-      : { meta: null, outcome: "older-payload" };
+    return { meta: remoteThreadMeta(result.body), outcome: "hit" };
   },
 );
 

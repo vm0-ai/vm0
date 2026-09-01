@@ -55,6 +55,7 @@ use guest_contracts::process_containment::{
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::{HomePaths, RootfsPaths, SnapshotPaths};
 use crate::profile;
+use crate::rootfs_lock::{self, RootfsLockGuard};
 
 /// 0 means auto-detect from host CPU and memory at startup.
 pub(crate) const DEFAULT_MAX_CONCURRENT: usize = 0;
@@ -98,8 +99,8 @@ pub struct RunnerConfig {
     /// least one entry; each profile name is also checked for format.
     pub profiles: BTreeMap<String, ProfileConfig>,
     /// Control-plane endpoint and auth token. May be omitted in the YAML if
-    /// `--api-url` / `--token` (or the corresponding canonical or legacy
-    /// environment aliases) are supplied at `start` time.
+    /// `--api-url` / `--token` (or the corresponding canonical environment
+    /// variables) are supplied at `start` time.
     pub server: Option<ServerConfig>,
 }
 
@@ -167,10 +168,9 @@ impl Default for SandboxConfig {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct ServerConfig {
     /// Base URL of the vm0 API (e.g. `https://api.example.com`). Overridable
-    /// via `--api-url` / `OKOU_API_BACKEND_URL` / `VM0_API_BACKEND_URL`.
+    /// via `--api-url` / `OKOU_API_BACKEND_URL`.
     pub url: String,
-    /// Runner auth token. Overridable via `--token` / `OKOU_RUNNER_TOKEN`, with
-    /// `VM0_RUNNER_TOKEN` retained as a temporary legacy alias.
+    /// Runner auth token. Overridable via `--token` / `OKOU_RUNNER_TOKEN`.
     pub token: String,
 }
 
@@ -290,8 +290,9 @@ pub(crate) fn validate_runner_hostname(value: &str) -> RunnerResult<()> {
 
 /// Validate and normalize the runner API base URL.
 ///
-/// The URL is later copied into guest-visible config and log-adjacent paths,
-/// so reject components that can carry credentials or other sensitive values.
+/// The URL is used for authenticated requests and later copied into
+/// guest-visible config and log-adjacent paths, so require HTTPS outside the
+/// loopback development boundary and reject sensitive URL components.
 pub(crate) fn normalize_api_base_url(value: &str) -> RunnerResult<String> {
     let mut parsed = url::Url::parse(value)
         .map_err(|_| RunnerError::Config("server.url must be an absolute http(s) URL".into()))?;
@@ -336,6 +337,19 @@ pub(crate) fn normalize_api_base_url(value: &str) -> RunnerResult<String> {
         parsed
             .set_host(Some(&host))
             .map_err(|_| RunnerError::Config("server.url has an invalid host".into()))?;
+    }
+
+    let host_is_loopback = match parsed.host() {
+        Some(url::Host::Domain(host)) => host == "localhost",
+        Some(url::Host::Ipv4(address)) => address.is_loopback(),
+        Some(url::Host::Ipv6(address)) => address.is_loopback(),
+        None => false,
+    };
+    if parsed.scheme() == "http" && !host_is_loopback {
+        return Err(RunnerError::Config(
+            "server.url must use https unless its host is localhost or a loopback IP address"
+                .into(),
+        ));
     }
 
     Ok(parsed.as_str().trim_end_matches('/').to_string())
@@ -414,7 +428,7 @@ async fn validate_profile_snapshot_artifacts(
 }
 
 pub(crate) struct LockedProfileImageArtifacts {
-    _rootfs_locks: Vec<Flock<File>>,
+    _rootfs_locks: Vec<RootfsLockGuard>,
     _snapshot_locks: Vec<Flock<File>>,
     snapshot_paths: SnapshotPaths,
 }
@@ -441,7 +455,7 @@ impl LockedProfileImageArtifactPaths {
 }
 
 pub(crate) struct LockedRunnerImageArtifacts {
-    _rootfs_locks: Vec<Flock<File>>,
+    _rootfs_locks: Vec<RootfsLockGuard>,
     _snapshot_locks: Vec<Flock<File>>,
     profile_paths: BTreeMap<String, LockedProfileImageArtifactPaths>,
 }
@@ -500,7 +514,7 @@ pub(crate) async fn lock_and_validate_runner_image_artifacts(
 
     let mut rootfs_locks = Vec::with_capacity(rootfs_hashes.len());
     for hash in rootfs_hashes {
-        rootfs_locks.push(crate::lock::acquire_shared(home.rootfs_lock(hash)).await?);
+        rootfs_locks.push(rootfs_lock::acquire_shared(home, hash).await?);
     }
 
     let mut rootfs_paths = BTreeMap::new();
@@ -685,5 +699,4 @@ impl RunnerConfig {
 }
 
 #[cfg(test)]
-#[path = "config_tests.rs"]
 mod tests;

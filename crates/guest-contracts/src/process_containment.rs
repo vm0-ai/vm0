@@ -59,12 +59,11 @@ pub const WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV: &str = "VM0_WORKLOAD_CGROUP_PROCS_
 /// uses cloned descriptors only from CLI-child `pre_exec` hooks.
 pub const CANONICAL_WORKLOAD_CGROUP_PROCS_ENV: &str = "OKOU_WORKLOAD_CGROUP_PROCS_ENDPOINT";
 
-/// Legacy tool-placement endpoint spelling retained for downstream rollback.
+/// Retired tool-placement endpoint spelling retained for boundary scrubbing.
 ///
 /// Guest Agent no longer reads this spelling from the root bootstrap, but
-/// still scrubs it after capturing the canonical pair. `guest-tool-exec` and
-/// the managed mock launcher continue reading it from rollback-retained managed
-/// CLI children until the downstream cleanup gates in #28914 are complete.
+/// still scrubs it after capturing the canonical pair. Root-bootstrap and child
+/// environment tests also name it to prove stale input is removed or ignored.
 pub const TOOL_CGROUP_PROCS_ENDPOINT_ENV: &str = "VM0_TOOL_CGROUP_PROCS_ENDPOINT";
 
 /// Canonical alias for [`TOOL_CGROUP_PROCS_ENDPOINT_ENV`].
@@ -75,10 +74,9 @@ pub const TOOL_CGROUP_PROCS_ENDPOINT_ENV: &str = "VM0_TOOL_CGROUP_PROCS_ENDPOINT
 /// used by [`TOOL_EXEC_PATH`] to request a unique tool cgroup before executing
 /// user code.
 ///
-/// `guest-tool-exec` retains [`TOOL_CGROUP_PROCS_ENDPOINT_ENV`] as a rollback
-/// fallback until the downstream-writer cutover is released, pre-cutover Guest
-/// runtimes and reusable sandboxes are drained, the observation and rollback
-/// windows are complete, and legacy reads are zero under #28914.
+/// `guest-tool-exec` and the managed mock launcher consult only this spelling;
+/// [`TOOL_CGROUP_PROCS_ENDPOINT_ENV`] remains a retired-key identifier rather
+/// than a downstream compatibility input.
 pub const CANONICAL_TOOL_CGROUP_PROCS_ENV: &str = "OKOU_TOOL_CGROUP_PROCS_ENDPOINT";
 
 /// Smallest Runner profile vCPU count validated for workload containment.
@@ -316,7 +314,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cgroup_placement_environment_contracts_preserve_legacy_aliases() {
+    fn cgroup_placement_environment_contracts_preserve_retired_keys() {
         assert_eq!(
             WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
             "VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT"

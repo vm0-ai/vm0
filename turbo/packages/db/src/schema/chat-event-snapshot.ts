@@ -10,16 +10,14 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type { ChatEventSnapshotProjection } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { chatThreads } from "./chat-thread";
 
 /**
- * Version pointers for immutable R2 Chat Event Snapshot objects. A thread has
- * at most one pointer per Chat Event schema version and projection. Updating a pointer first
- * uploads a new content-addressed object, then atomically replaces the cursor
- * and object key. Snapshot refreshes reuse the stored prefix and append only
- * Raw Events after its cursor; full PostgreSQL rebuilds are valid only when a
- * thread has never had a Snapshot.
+ * Pointers for immutable, canonical R2 Chat Event Snapshot objects. Updating a
+ * pointer first uploads a new content-addressed object, then atomically
+ * replaces the cursor and object key. Snapshot refreshes reuse the stored
+ * prefix and append only Raw Events after its cursor; full PostgreSQL rebuilds
+ * are valid only when a thread has never had a Snapshot.
  */
 export const chatEventSnapshots = pgTable(
   "chat_event_snapshots",
@@ -33,7 +31,7 @@ export const chatEventSnapshots = pgTable(
         { onDelete: "cascade" },
       )
       .notNull(),
-    /** Highest physical stream position covered, including projection-omitted rows. */
+    /** Highest physical stream position covered, including body-omitted rows. */
     lastSeqId: bigint("last_seq_id", { mode: "number" }).notNull(),
     /** Last physical event observed through the coverage watermark. */
     lastEventId: uuid("last_event_id").notNull(),
@@ -41,14 +39,11 @@ export const chatEventSnapshots = pgTable(
     terminalEventId: uuid("terminal_event_id"),
     /** Sequence position paired with terminal_event_id, or zero for an empty V7 body. */
     terminalSeqId: bigint("terminal_seq_id", { mode: "number" }),
-    /** Version of the NDJSON line shape inside the archive object. */
-    archiveSchemaVersion: integer("archive_schema_version").notNull(),
-    /** Existing pointers are the full projection; redacted pointers are explicit. */
-    projection: text("projection")
-      .$type<ChatEventSnapshotProjection>()
-      .default("full")
+    /** Current NDJSON line-shape version, retained as a publication invariant. */
+    archiveSchemaVersion: integer("archive_schema_version")
+      .default(7)
       .notNull(),
-    /** Multiple projections may safely reference the same content-addressed object. */
+    /** Immutable content-addressed object referenced by this pointer. */
     objectKey: text("object_key").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
@@ -56,38 +51,24 @@ export const chatEventSnapshots = pgTable(
     return [
       index("chat_event_snapshots_thread_idx").on(table.chatThreadId),
       index("chat_event_snapshots_object_key_idx").on(table.objectKey),
-      uniqueIndex("chat_event_snapshots_thread_version_projection_unique").on(
+      uniqueIndex("chat_event_snapshots_thread_version_unique").on(
         table.chatThreadId,
         table.archiveSchemaVersion,
-        table.projection,
       ),
       check(
-        "chat_event_snapshots_projection_check",
-        sql`${table.projection} IN ('full', 'tool-redacted')`,
+        "chat_event_snapshots_archive_schema_version_check",
+        sql`${table.archiveSchemaVersion} = 7`,
       ),
       check(
         "chat_event_snapshots_terminal_cursor_check",
         sql`(
-          ${table.archiveSchemaVersion} < 7
-          AND ${table.terminalEventId} IS NULL
-          AND ${table.terminalSeqId} IS NULL
+          ${table.terminalEventId} IS NULL
+          AND ${table.terminalSeqId} = 0
         ) OR (
-          ${table.archiveSchemaVersion} >= 7
-          AND (
-            (
-              ${table.terminalEventId} IS NULL
-              AND ${table.terminalSeqId} = 0
-            ) OR (
-              ${table.terminalEventId} IS NOT NULL
-              AND ${table.terminalSeqId} > 0
-              AND ${table.terminalSeqId} <= ${table.lastSeqId}
-            )
-          )
+          ${table.terminalEventId} IS NOT NULL
+          AND ${table.terminalSeqId} > 0
+          AND ${table.terminalSeqId} <= ${table.lastSeqId}
         )`,
-      ),
-      check(
-        "chat_event_snapshots_canonical_projection_check",
-        sql`${table.archiveSchemaVersion} < 7 OR ${table.projection} = 'tool-redacted'`,
       ),
     ];
   },

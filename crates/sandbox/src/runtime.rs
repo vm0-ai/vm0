@@ -27,7 +27,7 @@ pub trait SandboxRuntime: Send + Sync {
 
     /// Return the host interface pattern that runner-managed DNS should bind.
     ///
-    /// Backends that create VM-facing host interfaces can return a scoped
+    /// Backends that create sandbox-facing host interfaces can return a scoped
     /// pattern here so dnsmasq avoids listening on unrelated host interfaces.
     /// When this returns a pattern, the caller must start DNS and call
     /// [`Self::activate_dns_readiness`] before creating factories.

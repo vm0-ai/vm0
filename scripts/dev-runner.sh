@@ -226,7 +226,7 @@ cmd_exec() {
   COMMAND="${3:?Usage: $0 exec <run-id> <command...>}"
   shift 3
   COMMAND="$COMMAND $*"
-  log "Executing in VM $RUN_ID: $COMMAND"
+  log "Executing in sandbox $RUN_ID: $COMMAND"
   ESCAPED_COMMAND=$(printf '%q' "$COMMAND")
   ssh_cmd "$RUNNER_BIN exec $RUN_ID -- $ESCAPED_COMMAND"
 }

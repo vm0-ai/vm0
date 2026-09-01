@@ -10,6 +10,7 @@ import type {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { ChatClipboardPayload } from "../okou-page/clipboard.ts";
 import type { ChatEventGroup } from "./chat-event.ts";
+import type { ChatEvent } from "./chat-event-types.ts";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
 import type { HeaderAutomationSignals } from "./header-automation-menu.ts";
 import type { ThreadSidebarSignals } from "./thread-sidebar.ts";
@@ -18,6 +19,7 @@ import type { EditorDocumentSnapshot } from "../okou-page/user-message-document-
 import type {
   createChatThreadScrollSignals,
   ReadyScrollAfterRenderRequest,
+  ScrollToEventOptions,
   ThreadScrollPosition,
 } from "./chat-thread-scroll.ts";
 import type { AssistantErrorRecovery } from "./assistant-error-recovery.ts";
@@ -93,6 +95,10 @@ export interface MessageListSignals {
     [AbortSignal]
   >;
   readonly resetRenderedChatGroupsIfAtBottom$: Command<void, []>;
+  readonly retryRichEventTree$: Command<
+    Promise<void>,
+    [ChatEvent, AbortSignal]
+  >;
   readonly artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>;
   readonly reloadArtifacts$: Command<void, []>;
 }
@@ -156,6 +162,10 @@ export interface ChatPanelSignals {
   /** The mounted scroll viewport, for readers that measure it themselves. */
   readonly scrollContainer$: Computed<HTMLElement | null>;
   readonly threadScrollPosition$: Computed<ThreadScrollPosition | null>;
+  readonly scrollToEvent$: Command<
+    Promise<void>,
+    [string, ScrollToEventOptions, AbortSignal]
+  >;
   readonly scrollTo$: Command<void, [ThreadScrollPosition]>;
   readonly scrollToBottom$: Command<Promise<void>, [AbortSignal]>;
   readonly scrollToTop$: Command<Promise<void>, [AbortSignal]>;
@@ -207,6 +217,10 @@ export interface ChatPanelSignals {
     [AbortSignal]
   >;
   readonly resetRenderedChatGroupsIfAtBottom$: Command<void, []>;
+  readonly retryRichEventTree$: Command<
+    Promise<void>,
+    [ChatEvent, AbortSignal]
+  >;
   readonly subscribeChatThread$: Command<Promise<void>, [AbortSignal]>;
   // -- Thinking indicator ---------------------------------------------------
   readonly blockColors$: Computed<[string, string, string]>;

@@ -287,6 +287,110 @@ assert_failure \
   bash "$release_target_script"
 [ ! -s "$multiple_release_target_output" ] || fail "ambiguous release SHAs must not publish an output"
 
+release_tags_script="${tmp_dir}/resolve-release-tags.sh"
+ruby -e '
+  require "json"
+  require "yaml"
+  workflow = YAML.safe_load(File.read(ARGV[0]), aliases: true)
+  release_job = workflow.fetch("jobs").fetch("release-please")
+  release_tags_step = release_job.fetch("steps").find { |step| step["id"] == "release-tags" }
+  raise "missing current release tag resolver step" unless release_tags_step
+
+  resolver_env = release_tags_step.fetch("env")
+  unless resolver_env.keys == ["RELEASE_TAGS", "DESKTOP_RELEASE_CREATED", "DESKTOP_VERSION"]
+    raise "release tag resolver environment has unexpected inputs"
+  end
+
+  projection = resolver_env.fetch("RELEASE_TAGS")
+  projected_paths = projection.scan(/steps\.release\.outputs\[\x27([^\x27]+)--tag_name\x27\]/).flatten
+  output_reference_count = projection.scan(/steps\.release\.outputs/).length
+  unless output_reference_count == projected_paths.length
+    raise "release bodies, changelogs, and complete outputs must not enter the release tag resolver environment"
+  end
+
+  configured_paths = JSON.parse(File.read(ARGV[1])).fetch("packages").keys
+  missing_paths = configured_paths - projected_paths
+  unknown_paths = projected_paths - configured_paths
+  duplicate_paths = projected_paths.group_by(&:itself).select { |_, paths| paths.length > 1 }.keys
+  unless missing_paths.empty? && unknown_paths.empty? && duplicate_paths.empty?
+    raise "release tag projection mismatch: missing=#{missing_paths.sort}, unknown=#{unknown_paths.sort}, duplicates=#{duplicate_paths.sort}"
+  end
+
+  desktop_release_created = "$" + "{{ steps.release.outputs[\x27turbo/apps/desktop--release_created\x27] }}"
+  desktop_version = "$" + "{{ steps.release.outputs[\x27turbo/apps/desktop--version\x27] }}"
+  unless resolver_env.fetch("DESKTOP_RELEASE_CREATED") == desktop_release_created &&
+      resolver_env.fetch("DESKTOP_VERSION") == desktop_version
+    raise "release tag resolver must derive the Okou Desktop tag from the Desktop release outputs"
+  end
+
+  puts release_tags_step.fetch("run")
+' \
+  "${repo_root}/.github/workflows/release-please.yml" \
+  "${repo_root}/release-please-config.json" \
+  >"$release_tags_script"
+
+release_tags_output="${tmp_dir}/release-tags.output"
+RELEASE_TAGS='[null,"","api-v1.2.3","app-v4.5.6"]' \
+  DESKTOP_RELEASE_CREATED='' \
+  DESKTOP_VERSION='' \
+  GITHUB_OUTPUT="$release_tags_output" \
+  bash "$release_tags_script"
+grep -Fqx 'tags=["api-v1.2.3","app-v4.5.6"]' "$release_tags_output" || \
+  fail "release tag resolver did not publish the current release tags"
+
+desktop_release_tags_output="${tmp_dir}/desktop-release-tags.output"
+RELEASE_TAGS='["desktop-v4.5.6"]' \
+  DESKTOP_RELEASE_CREATED=true \
+  DESKTOP_VERSION=4.5.6 \
+  GITHUB_OUTPUT="$desktop_release_tags_output" \
+  bash "$release_tags_script"
+grep -Fqx 'tags=["desktop-v4.5.6","okou-desktop-v4.5.6"]' "$desktop_release_tags_output" || \
+  fail "release tag resolver did not publish the derived Okou Desktop tag"
+
+missing_release_tags_output="${tmp_dir}/missing-release-tags.output"
+assert_failure \
+  "release-please returned no release tag" \
+  env \
+  RELEASE_TAGS='[null,""]' \
+  DESKTOP_RELEASE_CREATED='' \
+  DESKTOP_VERSION='' \
+  GITHUB_OUTPUT="$missing_release_tags_output" \
+  bash "$release_tags_script"
+[ ! -s "$missing_release_tags_output" ] || fail "missing release tags must not publish an output"
+
+non_string_release_tags_output="${tmp_dir}/non-string-release-tags.output"
+assert_failure \
+  "release-please returned non-string release tag" \
+  env \
+  RELEASE_TAGS='["api-v1.2.3",123]' \
+  DESKTOP_RELEASE_CREATED='' \
+  DESKTOP_VERSION='' \
+  GITHUB_OUTPUT="$non_string_release_tags_output" \
+  bash "$release_tags_script"
+[ ! -s "$non_string_release_tags_output" ] || fail "non-string release tags must not publish an output"
+
+invalid_release_tags_output="${tmp_dir}/invalid-release-tags.output"
+assert_failure \
+  "release-please returned invalid release tag" \
+  env \
+  RELEASE_TAGS='["not-a-version-tag"]' \
+  DESKTOP_RELEASE_CREATED='' \
+  DESKTOP_VERSION='' \
+  GITHUB_OUTPUT="$invalid_release_tags_output" \
+  bash "$release_tags_script"
+[ ! -s "$invalid_release_tags_output" ] || fail "invalid release tags must not publish an output"
+
+duplicate_release_tags_output="${tmp_dir}/duplicate-release-tags.output"
+assert_failure \
+  "release-please returned duplicate release tags: api-v1.2.3" \
+  env \
+  RELEASE_TAGS='["api-v1.2.3","api-v1.2.3"]' \
+  DESKTOP_RELEASE_CREATED='' \
+  DESKTOP_VERSION='' \
+  GITHUB_OUTPUT="$duplicate_release_tags_output" \
+  bash "$release_tags_script"
+[ ! -s "$duplicate_release_tags_output" ] || fail "duplicate release tags must not publish an output"
+
 ruby -e '
   require "yaml"
   rollback_config = YAML.safe_load(File.read(ARGV[0]), aliases: true)
@@ -349,15 +453,17 @@ ruby -e '
   raise "production queue must wait for release detection" unless queue_needs.include?("detect-release-commit")
   release_target_output = "$" + "{{ steps.release-target.outputs.sha }}"
   raise "release job must expose the resolved release target" unless release_job.fetch("outputs").fetch("release_target") == release_target_output
+  release_tags_output = "$" + "{{ steps.release-tags.outputs.tags }}"
+  raise "release job must expose the current release tags" unless release_job.fetch("outputs").fetch("release_tags") == release_tags_output
   raise "release workflow must not use the triggering workflow SHA as a release target" if File.read(ARGV[1]).include?("github.event.workflow_run.head_sha")
 
   expected_target = "$" + "{{ needs.release-please.outputs.release_target }}"
-  desktop_target = "desktop-v" + "$" + "{{ needs.release-please.outputs.desktop_version }}"
+  expected_tags = "$" + "{{ needs.release-please.outputs.release_tags }}"
+  workflow_source = "$" + "{{ github.sha }}"
   checkout_ref_exceptions = {
     "queue-production-deploy" => "main",
     "refresh-release-pull-request" => "main",
-    "publish-desktop-update-manifest" => desktop_target,
-    "update-rollback-dashboard" => "main",
+    "update-rollback-dashboard" => workflow_source,
   }
   release.each do |job_name, job|
     checkout_steps = job.fetch("steps", []).select do |step|
@@ -377,7 +483,17 @@ ruby -e '
   schema_step = release.fetch("deploy-api-schema").fetch("steps").find { |step| step["name"] == "Publish Runtime API Schema" }
   raise "Runtime API Schema must use the resolved release target" unless schema_step.fetch("env").fetch("RELEASE_SHA") == expected_target
   dashboard_step = release.fetch("update-rollback-dashboard").fetch("steps").find { |step| step["name"] == "Update rollback dashboard issue" }
+  dashboard_job = release.fetch("update-rollback-dashboard")
+  dashboard_needs = Array(dashboard_job.fetch("needs"))
+  raise "rollback dashboard must wait for Desktop promotion" unless dashboard_needs.include?("promote-desktop-release")
+  dashboard_condition = dashboard_job.fetch("if")
+  unless dashboard_condition.include?("needs.release-please.outputs.desktop_release_created != \x27true\x27") &&
+      dashboard_condition.include?("needs.promote-desktop-release.result == \x27success\x27")
+    raise "rollback dashboard must require successful applicable Desktop promotion"
+  end
   raise "rollback dashboard must use the resolved release target" unless dashboard_step.fetch("env").fetch("RELEASE_TARGET") == expected_target
+  raise "rollback dashboard must use the current release tags" unless dashboard_step.fetch("env").fetch("RELEASE_TAGS") == expected_tags
+  raise "rollback dashboard must pass the current release tags to the helper" unless dashboard_step.fetch("run").include?("\"$RELEASE_TAGS\"")
 
   artifact_fetch_helper = "fetch-okou-app-artifact.sh"
   release_app_step = release.fetch("promote-app-production").fetch("steps").find { |step| step["id"] == "pages-production" }

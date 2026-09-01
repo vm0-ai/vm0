@@ -14,7 +14,9 @@ import {
   type WorkflowCreateRequest,
   type WorkflowUpdateRequest,
 } from "@okouai/api-contracts/contracts/workflows";
+import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   getCustomSkillStorageName,
   VOLUME_ORG_USER_ID,
@@ -38,10 +40,15 @@ import {
   type ApiTestUserOptions,
 } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
+import {
+  createConnectorBddApi,
+  mockGmailConnectorOAuth,
+} from "./helpers/api-bdd-connectors";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
+import { chatThreadRoutes } from "../chat-threads";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 import { workflowsRoutes } from "../workflows";
 import { testSystemStoragePresignedUrlCacheStateRoutes } from "../test-system-storage-presigned-url-cache-state";
@@ -118,6 +125,12 @@ function collectionClient() {
 function detailClient() {
   return setupApp({ context, routes: workflowsRoutes })(
     workflowsDetailContract,
+  );
+}
+
+function chatThreadConnectorSelectionsClient() {
+  return setupApp({ context, routes: chatThreadRoutes })(
+    chatThreadConnectorSelectionContract,
   );
 }
 
@@ -1538,6 +1551,161 @@ describe("workflows", () => {
         );
       }),
     ).toBeTruthy();
+  });
+
+  it("rebinds copied Gmail automations to the target thread default account", async () => {
+    const actor = user();
+    if (!actor.orgId) {
+      throw new Error("Expected Gmail workflow copy actor to belong to an org");
+    }
+    await api.grantProEntitlement(actor, { tier: "team" });
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      {
+        [FeatureSwitchKey.ConnectorAccounts]: true,
+      },
+    );
+    const sourceAgent = await createAgent(actor, {
+      displayName: "Gmail Copy Source Agent",
+      visibility: "private",
+    });
+    const targetAgent = await createAgent(actor, {
+      displayName: "Gmail Copy Target Agent",
+      visibility: "private",
+    });
+    const workflow = await createWorkflow(actor, {
+      agentId: sourceAgent.agentId,
+      name: `gmail-copy-${randomUUID().slice(0, 8)}`,
+      instruction: "# Gmail copy source",
+    });
+
+    mockOptionalEnv(
+      "GMAIL_PUBSUB_TOPIC_NAME",
+      "projects/vm0-ai-488909/topics/gmail-events",
+    );
+    const watchedTokens: string[] = [];
+    server.use(
+      http.post(
+        "https://gmail.googleapis.com/gmail/v1/users/me/watch",
+        ({ request }) => {
+          const authorization = request.headers.get("authorization");
+          if (!authorization) {
+            throw new Error("Expected Gmail watch authorization");
+          }
+          watchedTokens.push(authorization);
+          return HttpResponse.json({
+            historyId: String(watchedTokens.length),
+            expiration: "4102444800000",
+          });
+        },
+      ),
+      http.post("https://gmail.googleapis.com/gmail/v1/users/me/stop", () => {
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    const firstEmail = `gmail-copy-first-${randomUUID()}@example.test`;
+    mockGmailConnectorOAuth({
+      accessToken: "gmail-copy-first-token",
+      email: firstEmail,
+      subject: `gmail-copy-first-${randomUUID()}`,
+    });
+    const firstStart = await connectorApi.startOauth(
+      actor,
+      "gmail",
+      "oauth",
+      sourceAgent.agentId,
+    );
+    const firstState = new URL(firstStart.authorizationUrl).searchParams.get(
+      "state",
+    );
+    if (!firstState) {
+      throw new Error("Expected first Gmail OAuth state");
+    }
+    await connectorApi.completeOauthCallback("gmail", {
+      code: "gmail-copy-first-code",
+      state: firstState,
+    });
+
+    const secondEmail = `gmail-copy-second-${randomUUID()}@example.test`;
+    mockGmailConnectorOAuth({
+      accessToken: "gmail-copy-second-token",
+      email: secondEmail,
+      subject: `gmail-copy-second-${randomUUID()}`,
+    });
+    const secondStart = await connectorApi.startOauth(
+      actor,
+      "gmail",
+      "oauth",
+      sourceAgent.agentId,
+      { intent: "add", displayName: "Gmail Copy Second" },
+    );
+    const secondState = new URL(secondStart.authorizationUrl).searchParams.get(
+      "state",
+    );
+    if (!secondState) {
+      throw new Error("Expected second Gmail OAuth state");
+    }
+    await connectorApi.completeOauthCallback("gmail", {
+      code: "gmail-copy-second-code",
+      state: secondState,
+    });
+    const accounts = await connectorApi.listBuiltinConnectorAccounts(
+      actor,
+      "gmail",
+    );
+    const secondAccount = accounts.find((account) => {
+      return account.externalEmail === secondEmail;
+    });
+    if (!secondAccount) {
+      throw new Error("Expected second Gmail account");
+    }
+
+    const automation = await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+    if (automation.body.kind !== "event" || !automation.body.chatThreadId) {
+      throw new Error("Expected Gmail automation thread");
+    }
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(actor),
+        params: { id: automation.body.chatThreadId },
+        body: {
+          connectionId: secondAccount.id,
+          target: { kind: "builtin", connectorSlug: "gmail" },
+        },
+      }),
+      [200],
+    );
+    expect(watchedTokens).toStrictEqual([
+      "Bearer gmail-copy-first-token",
+      "Bearer gmail-copy-second-token",
+    ]);
+
+    await accept(
+      detailClient().copy({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: { toAgentId: targetAgent.agentId },
+      }),
+      [201],
+    );
+    expect(watchedTokens).toStrictEqual([
+      "Bearer gmail-copy-first-token",
+      "Bearer gmail-copy-second-token",
+      "Bearer gmail-copy-first-token",
+    ]);
   });
 
   it("inherits copied automation budgets from agent callers and rejects exhausted runs", async () => {

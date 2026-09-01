@@ -1,4 +1,45 @@
-//! Owned claimed-job waiting before a finalizing predecessor publishes reuse.
+//! A claimed finalizing successor waits for the exact sandbox its predecessor may publish.
+//!
+//! A finalizing successor is claimed before the predecessor has finished finalizing and is
+//! allowed to wait for a direct handoff without reserving fresh capacity. The predecessor's
+//! `ActiveRunReuseState` drives the wait:
+//!
+//! - `Pending` means that publication or handoff is still possible.
+//! - `ExactSandboxPublished` means that the successor may reserve the exact idle entry.
+//! - `ExactSandboxHandedOff` means that the exact entry was handed off. A live request for this
+//!   successor receives its candidate before fallback; otherwise the successor uses fallback
+//!   resources.
+//! - `NoExactSandbox` and `Released` mean that no exact predecessor resource will be published,
+//!   so the successor must use fallback resources.
+//!
+//! While the predecessor is `Pending`, the successor requests one direct handoff. Handoff
+//! acceptance is allowed until the later of the predecessor preference deadline and the claim's
+//! return time plus `FINALIZING_HANDOFF_ACCEPTANCE_GRACE`. An accepted handoff, including a
+//! candidate that was already delivered, wins a deadline race. Cancellation is checked with
+//! priority; if a candidate was delivered before the receiver was closed, the handoff request
+//! recovers it so this module can destroy it rather than lose ownership.
+//!
+//! Every exact resource is reserved for the claimed successor's reuse key, profile, device
+//! limits, and history-generation run ID. A handed-off candidate is checked against the
+//! successor and history-generation identities before activation. Reserved candidates are
+//! rolled back on cancellation, while identity mismatches, activation failures, preparation
+//! errors, and panics destroy or recover the candidate through the activation guards before the
+//! claimed job is completed without a sandbox. Finalizing handoff outcomes are recorded even
+//! when there is no executor to emit ordinary job telemetry.
+//!
+//! When no direct or published exact resource is available, fallback first retries matching idle
+//! exact reuse, then consumes retiring idle capacity, and finally uses fresh budget capacity.
+//! Retiring leases are retained while the loop waits for capacity. The wait observes both budget
+//! availability and idle-pool changes: either can make the next exact or fresh-resource attempt
+//! viable, while cancellation exits through the same no-sandbox completion path. The admission
+//! timing and ownership contract is exercised by `tests/main_loop/admission.rs`, including
+//! `finalizing_handoff_grace_starts_when_claim_returns`,
+//! `finalizing_immediate_handoff_reuses_matching_sandbox_past_preference_deadline`, and
+//! `competing_finalizing_successors_reserve_exact_generation_once`. The no-executor and
+//! activation-failure telemetry paths are covered by `tests/main_loop/telemetry.rs`, including
+//! `cancelled_finalizing_handoff_flushes_outcome_without_executor`,
+//! `finalizing_handoff_activation_failure_is_not_reported_as_accepted`, and
+//! `published_exact_activation_failure_is_reported_as_activation_failed`.
 
 use std::panic::AssertUnwindSafe;
 use std::time::{Duration, Instant};
@@ -10,11 +51,12 @@ use tracing::info;
 use super::active_runs::{ActiveRunHandoffRequest, ActiveRunReuseState};
 use super::factory_lifecycle::SharedFactory;
 use super::idle_lifecycle::{
-    IdlePressureRequest, IdlePressureSelection, select_idle_entry_for_pressure,
+    IdlePressureRequest, IdlePressureSelection, ReservedIdleActivation,
+    select_idle_entry_for_pressure,
 };
 use super::job_discovery::{
-    ClaimedJobSetup, FinalizingAdmission, ReadyClaimedResource, ReservedActivation,
-    ReservedActivationRequest, activate_reserved_idle, build_spawn_job_request,
+    ClaimedActivationGuard, ClaimedJobSetup, FinalizingAdmission, ReadyClaimedResource,
+    ReservedActivation, ReservedActivationRequest, activate_reserved_idle, build_spawn_job_request,
     reserve_reusable_idle_for_spawn, rollback_reserved_idle_for_spawn,
 };
 use super::job_spawn::{SpawnContext, run_job};
@@ -24,7 +66,7 @@ use crate::executor::{
     ExecutionFailure, FinalizingHandoffOutcome, RunnerPreSpawnPhase, RunnerPreSpawnTiming,
     validate_resume_session_id,
 };
-use crate::idle_pool::{FinalizingHandoffCandidate, ReservedIdleSandbox};
+use crate::idle_pool::FinalizingHandoffCandidate;
 use crate::ids::RunId;
 use crate::provider::ClaimedJob;
 use crate::resource_budget::{BudgetLease, ResourceBudget};
@@ -50,7 +92,7 @@ pub(super) struct FinalizingClaimRequest {
 
 enum FinalizingWaitOutcome {
     Handoff(Box<FinalizingHandoffCandidate>),
-    Exact(Box<ReservedIdleSandbox>),
+    Exact(ReservedIdleActivation),
     Fallback {
         reason: &'static str,
         handoff_outcome: FinalizingHandoffOutcome,
@@ -73,7 +115,7 @@ impl FinalizingWaitOutcome {
 
 enum FinalizingResource {
     Handoff(Box<FinalizingHandoffCandidate>),
-    Exact(Box<ReservedIdleSandbox>),
+    Exact(ReservedIdleActivation),
     Fresh(BudgetLease),
 }
 
@@ -169,7 +211,7 @@ async fn run_finalizing_claim(
         Ok(Ok(resource)) => resource,
         Ok(Err(failure)) => {
             if let Some(reservation) = reserved_exact.take() {
-                rollback_reserved_idle_for_spawn(*reservation, &ctx).await;
+                rollback_reserved_idle_for_spawn(reservation, &ctx).await;
             }
             return complete_claimed_without_sandbox(
                 claimed,
@@ -183,7 +225,7 @@ async fn run_finalizing_claim(
         }
         Err(payload) => {
             if let Some(reservation) = reserved_exact.take() {
-                rollback_reserved_idle_for_spawn(*reservation, &ctx).await;
+                rollback_reserved_idle_for_spawn(reservation, &ctx).await;
             }
             let cancellation = complete_claimed_without_sandbox(
                 claimed,
@@ -206,6 +248,8 @@ async fn run_finalizing_claim(
         claimed.context().reuse_key().map(str::to_owned),
         profile_name.clone(),
     );
+    let cancellation_handle = cancellation.handle();
+    let mut activation_transfer_guard = None;
     let ready = match resource {
         FinalizingResource::Fresh(active_lease) => ReadyClaimedResource {
             reuse_entry: None,
@@ -214,8 +258,26 @@ async fn run_finalizing_claim(
             idle_snapshot: None,
         },
         FinalizingResource::Exact(reservation) => {
+            let transfer_guard = cancellation_handle.transfer_guard().await;
+            if cancellation_handle.is_cancelled() {
+                drop(transfer_guard);
+                drop(active_run_guard);
+                rollback_reserved_idle_for_spawn(reservation, &ctx).await;
+                pre_spawn_timing
+                    .record_finalizing_handoff_outcome(FinalizingHandoffOutcome::ActivationFailed);
+                return complete_claimed_without_sandbox(
+                    claimed,
+                    cancellation,
+                    ExecutionFailure::cancelled(),
+                    None,
+                    pre_spawn_timing.finalizing_handoff_outcome(),
+                    &ctx,
+                )
+                .await;
+            }
+            activation_transfer_guard = Some(transfer_guard);
             match activate_reserved_idle(
-                *reservation,
+                reservation,
                 ReservedActivationRequest {
                     run_id,
                     profile_name: &profile_name,
@@ -251,6 +313,7 @@ async fn run_finalizing_claim(
                     reuse_result,
                     error,
                 } => {
+                    drop(activation_transfer_guard.take());
                     drop(active_run_guard);
                     pre_spawn_timing.record_finalizing_handoff_outcome(
                         FinalizingHandoffOutcome::ActivationFailed,
@@ -296,6 +359,26 @@ async fn run_finalizing_claim(
                         .await;
                     }
                 };
+            let idle_snapshot = ctx.idle_pool.lock().await.status_snapshot();
+            let reservation = ReservedIdleActivation::new(reservation, idle_snapshot);
+            let transfer_guard = cancellation_handle.transfer_guard().await;
+            if cancellation_handle.is_cancelled() {
+                drop(transfer_guard);
+                drop(active_run_guard);
+                rollback_reserved_idle_for_spawn(reservation, &ctx).await;
+                pre_spawn_timing
+                    .record_finalizing_handoff_outcome(FinalizingHandoffOutcome::ActivationFailed);
+                return complete_claimed_without_sandbox(
+                    claimed,
+                    cancellation,
+                    ExecutionFailure::cancelled(),
+                    None,
+                    pre_spawn_timing.finalizing_handoff_outcome(),
+                    &ctx,
+                )
+                .await;
+            }
+            activation_transfer_guard = Some(transfer_guard);
             match activate_reserved_idle(
                 reservation,
                 ReservedActivationRequest {
@@ -333,6 +416,7 @@ async fn run_finalizing_claim(
                     reuse_result,
                     error,
                 } => {
+                    drop(activation_transfer_guard.take());
                     drop(active_run_guard);
                     pre_spawn_timing.record_finalizing_handoff_outcome(
                         FinalizingHandoffOutcome::ActivationFailed,
@@ -352,7 +436,7 @@ async fn run_finalizing_claim(
             }
         }
     };
-    let request = build_spawn_job_request(
+    let mut activation = ClaimedActivationGuard::new(
         ClaimedJobSetup {
             claimed,
             cancellation,
@@ -368,14 +452,38 @@ async fn run_finalizing_claim(
             active_run_guard,
         },
         &ctx,
-    )
-    .await;
+    );
+    let request = match AssertUnwindSafe(build_spawn_job_request(&mut activation, &ctx))
+        .catch_unwind()
+        .await
+    {
+        Ok(Ok(request)) => request,
+        Ok(Err(error)) => {
+            return activation
+                .recover(
+                    "active_status_persistence_failed",
+                    format!("persist active runner ownership: {error}"),
+                )
+                .await;
+        }
+        Err(panic) => {
+            let cancellation = activation
+                .recover(
+                    "activation_setup_panicked",
+                    "claimed activation setup panicked".to_owned(),
+                )
+                .await;
+            cancellation.unregister().await;
+            std::panic::resume_unwind(panic);
+        }
+    };
+    drop(activation_transfer_guard);
     run_job(request, ctx).await
 }
 
 async fn prepare_finalizing_resource(
     request: FinalizingPreparation<'_>,
-    reserved_exact: &mut Option<Box<ReservedIdleSandbox>>,
+    reserved_exact: &mut Option<ReservedIdleActivation>,
 ) -> Result<FinalizingResource, Box<ExecutionFailure>> {
     let FinalizingPreparation {
         claimed,
@@ -462,9 +570,17 @@ async fn prepare_finalizing_resource(
     }
 }
 
+/// Wait for a direct predecessor handoff, a published exact reservation, or the fallback point.
+///
+/// The handoff request is one-shot and is created before observing the predecessor state so a
+/// successor that was claimed early can race publication safely. The claim-relative grace period
+/// extends the predecessor preference deadline, but only an unaccepted request expires there; an
+/// accepted handoff is still received. A cancellation can recover a candidate already sent over
+/// the request, and the caller owns destroying that candidate or rolling back an exact
+/// reservation returned through `reserved_exact`.
 async fn wait_for_finalizing_resource(
     request: FinalizingWait<'_>,
-    reserved_exact: &mut Option<Box<ReservedIdleSandbox>>,
+    reserved_exact: &mut Option<ReservedIdleActivation>,
 ) -> FinalizingWaitOutcome {
     let FinalizingWait {
         run_id,
@@ -522,11 +638,10 @@ async fn wait_for_finalizing_resource(
                 Some(admission.history_generation_run_id),
                 ctx,
             )
-            .await
-            .map(Box::new);
+            .await;
             if cancel.is_cancelled() {
                 if let Some(reservation) = reserved_exact.take() {
-                    rollback_reserved_idle_for_spawn(*reservation, ctx).await;
+                    rollback_reserved_idle_for_spawn(reservation, ctx).await;
                     ctx.reuse_state_notify.notify_one();
                 }
                 return FinalizingWaitOutcome::cancelled(None);
@@ -601,6 +716,11 @@ async fn wait_for_finalizing_resource(
     }
 }
 
+/// Receive a delivered candidate while preserving ownership when cancellation races delivery.
+///
+/// The returned handoff candidate is not activated yet. If cancellation wins after the sender
+/// has delivered it, this returns it as `Cancelled` so the caller destroys it; a successful return
+/// transfers the candidate to the activation path for identity validation and reservation.
 async fn receive_finalizing_handoff(
     request: &mut ActiveRunHandoffRequest,
     run_id: RunId,
@@ -629,6 +749,14 @@ async fn receive_finalizing_handoff(
     FinalizingWaitOutcome::Handoff(candidate)
 }
 
+/// Acquire capacity after the predecessor can no longer provide an exact direct handoff.
+///
+/// Each loop first reserves a matching exact idle entry, then tries retained retiring leases and
+/// rechecks exact reuse before accepting fresh budget capacity. Idle entries selected for pressure
+/// are either returned as exact reservations or converted into retiring leases; they are never
+/// counted twice. When neither source can make progress, the loop waits for cancellation, budget
+/// availability, or an idle-pool change and retries. A cancellation or other failure returns
+/// without a resource so the outer claim path can complete the job and release retained leases.
 async fn acquire_fallback_resource(
     request: FinalizingFallback<'_>,
 ) -> Result<FinalizingResource, Box<ExecutionFailure>> {
@@ -754,7 +882,7 @@ async fn reserve_fallback_exact(
     device_rate_limits: &Option<sandbox::DeviceRateLimits>,
     history_generation_run_id: RunId,
     ctx: &SpawnContext,
-) -> Result<Option<Box<ReservedIdleSandbox>>, Box<ExecutionFailure>> {
+) -> Result<Option<ReservedIdleActivation>, Box<ExecutionFailure>> {
     let Some(reservation) = reserve_reusable_idle_for_spawn(
         reuse_key,
         profile_name,
@@ -766,24 +894,30 @@ async fn reserve_fallback_exact(
     else {
         return Ok(None);
     };
-    accept_fallback_exact(cancellation, Box::new(reservation), ctx)
+    accept_fallback_exact(cancellation, reservation, ctx)
         .await
         .map(Some)
 }
 
 async fn accept_fallback_exact(
     cancellation: &RunCancellationRegistration,
-    reservation: Box<ReservedIdleSandbox>,
+    reservation: ReservedIdleActivation,
     ctx: &SpawnContext,
-) -> Result<Box<ReservedIdleSandbox>, Box<ExecutionFailure>> {
+) -> Result<ReservedIdleActivation, Box<ExecutionFailure>> {
     if cancellation.token().is_cancelled() {
-        rollback_reserved_idle_for_spawn(*reservation, ctx).await;
+        rollback_reserved_idle_for_spawn(reservation, ctx).await;
         ctx.reuse_state_notify.notify_one();
         return Err(ExecutionFailure::cancelled().into());
     }
     Ok(reservation)
 }
 
+/// Complete a claimed finalizing successor without activating a sandbox.
+///
+/// This path is used for cancellation, preparation and activation failures, identity mismatches,
+/// and recovered panics after their resource cleanup has run. It always completes with no sandbox
+/// and flushes the supplied finalizing handoff outcome directly because no executor is running to
+/// emit that telemetry.
 async fn complete_claimed_without_sandbox(
     claimed: ClaimedJob,
     cancellation: RunCancellationRegistration,

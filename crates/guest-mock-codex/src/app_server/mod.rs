@@ -15,6 +15,8 @@ use std::thread;
 
 const INVALID_REQUEST: i64 = -32600;
 const METHOD_NOT_FOUND: i64 = -32601;
+const ACTIVE_TURN_READY_FILE: &str = ".vm0-mock-codex-active-turn-ready";
+const ACTIVE_TURN_READY_EVENT: &str = "vm0_mock_codex_active_turn_ready";
 
 /// Run the mock Codex app server over process stdio.
 ///
@@ -80,6 +82,7 @@ struct AppServerThread {
     artifact_thread_id: String,
     active_turn_id: Option<String>,
     thread_request_has_runtime_workspace_roots: bool,
+    thread_request_excludes_turns: bool,
     thread_request_model: Option<String>,
     thread_request_model_provider: Option<String>,
     rollout_timestamp: DateTime<Utc>,
@@ -164,6 +167,7 @@ impl AppServerState {
             "thread/resume" => self.handle_thread_resume(id, params, output),
             "turn/start" => self.handle_turn_start(id, params, output),
             "turn/steer" => self.handle_turn_steer(id, params, output),
+            "turn/interrupt" => self.handle_turn_interrupt(id, params, output),
             "mock/inputs" => self.handle_mock_inputs(id, output),
             "mock/state" => self.handle_mock_state(id, output),
             "mock/complete-split-notification" => {
@@ -209,6 +213,17 @@ impl AppServerState {
             ));
         }
 
+        if self.scenario.waits_for_turn_interrupt() && self.pending_response.is_none() {
+            let home = std::env::var_os("HOME")
+                .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))?;
+            std::fs::write(
+                std::path::PathBuf::from(home).join(ACTIVE_TURN_READY_FILE),
+                ACTIVE_TURN_READY_EVENT,
+            )?;
+            self.server_request_responses.push(message);
+            return Ok(ServerAction::Continue);
+        }
+
         let Some(pending) = self.pending_response.take() else {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -234,6 +249,7 @@ impl AppServerState {
         &mut self,
         thread_id: String,
         thread_request_has_runtime_workspace_roots: bool,
+        thread_request_excludes_turns: bool,
         thread_request_model: Option<String>,
         thread_request_model_provider: Option<String>,
         rollout_timestamp: DateTime<Utc>,
@@ -248,6 +264,7 @@ impl AppServerState {
             artifact_thread_id,
             active_turn_id: None,
             thread_request_has_runtime_workspace_roots,
+            thread_request_excludes_turns,
             thread_request_model,
             thread_request_model_provider,
             rollout_timestamp,

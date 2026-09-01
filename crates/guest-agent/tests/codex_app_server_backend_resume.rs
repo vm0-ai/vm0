@@ -24,11 +24,11 @@ async fn codex_app_server_backend_resumes_existing_thread_id()
             common::CodexAppServerEnvConfig {
                 run_id: "codex-app-server-backend-resume-test",
                 prompt: "drive the app-server resume backend",
-                scenario: Some("runtime-turn-complete"),
+                scenario: Some("runtime-turn-usage-resume-replay"),
                 resume_session_id: Some(resume_thread_id),
             },
         )?;
-        std::env::remove_var(guest_contracts::env::RESUME_SESSION_ID_ENV);
+        std::env::remove_var("VM0_RESUME_SESSION_ID");
         std::env::set_var(
             guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
             resume_thread_id,
@@ -57,9 +57,26 @@ async fn codex_app_server_backend_resumes_existing_thread_id()
         events[0].get("thread_id").and_then(Value::as_str),
         Some(canonical_resume_thread_id)
     );
+    let completed = events
+        .iter()
+        .find(|event| event.get("type").and_then(Value::as_str) == Some("turn.completed"))
+        .ok_or("missing turn.completed event")?;
+    assert_eq!(completed["usage"], common::expected_codex_turn_usage());
 
     let stored_id = std::fs::read_to_string(runtime.paths.session_id_file())?;
     assert_eq!(stored_id, canonical_resume_thread_id);
+
+    let session_events = common::read_codex_session_history_events_for_runtime(&runtime)?;
+    let input_event = session_events
+        .iter()
+        .find(|event| event.get("type").and_then(Value::as_str) == Some("mock.app_server.input"))
+        .ok_or("missing mock app-server input event")?;
+    assert_eq!(
+        input_event
+            .get("thread_request_excludes_turns")
+            .and_then(Value::as_bool),
+        Some(true)
+    );
 
     Ok(())
 }

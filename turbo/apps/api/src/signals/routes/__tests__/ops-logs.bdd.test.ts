@@ -1496,18 +1496,16 @@ describe("OPS-01: user data export", () => {
     const claim = await runs.claimRunnerJob(run.runId);
     const headers = { authorization: `Bearer ${claim.sandboxToken}` };
 
-    await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: run.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-export-historyless-${run.runId}`,
-        cliAgentSessionHistoryDisposition: "discarded_oversized",
+        exitCode: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-export-historyless-${run.runId}`,
+          cliAgentSessionHistoryDisposition: "discarded_oversized",
+        },
       },
-      headers,
-      [200],
-    );
-    await webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 0 },
       headers,
       [200],
     );
@@ -1592,22 +1590,16 @@ describe("OPS-01: user data export", () => {
       existing: false,
       encoding: "gzip",
     });
-    const checkpoint = await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: run.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-export-session-${run.runId}`,
-        cliAgentSessionHistoryHash: historyHash,
+        exitCode: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-export-session-${run.runId}`,
+          cliAgentSessionHistoryHash: historyHash,
+        },
       },
-      headers,
-      [200],
-    );
-    if (checkpoint.status !== 200) {
-      throw new Error("Expected gzip history checkpoint to succeed");
-    }
-    expect(checkpoint.body.conversationId).not.toBe("");
-    await webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 0 },
       headers,
       [200],
     );
@@ -1693,22 +1685,16 @@ describe("OPS-01: user data export", () => {
       existing: false,
       encoding: "zstd",
     });
-    const checkpoint = await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: run.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-export-zstd-session-${run.runId}`,
-        cliAgentSessionHistoryHash: historyHash,
+        exitCode: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-export-zstd-session-${run.runId}`,
+          cliAgentSessionHistoryHash: historyHash,
+        },
       },
-      headers,
-      [200],
-    );
-    if (checkpoint.status !== 200) {
-      throw new Error("Expected zstd history checkpoint to succeed");
-    }
-    expect(checkpoint.body.conversationId).not.toBe("");
-    await webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 0 },
       headers,
       [200],
     );
@@ -1785,21 +1771,16 @@ describe("OPS-01: user data export", () => {
       headers,
       [200],
     );
-    const checkpoint = await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: run.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-export-corrupt-session-${run.runId}`,
-        cliAgentSessionHistoryHash: historyHash,
+        exitCode: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-export-corrupt-session-${run.runId}`,
+          cliAgentSessionHistoryHash: historyHash,
+        },
       },
-      headers,
-      [200],
-    );
-    if (checkpoint.status !== 200) {
-      throw new Error("Expected gzip history checkpoint to succeed");
-    }
-    await webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 0 },
       headers,
       [200],
     );
@@ -1867,21 +1848,16 @@ describe("OPS-01: user data export", () => {
       headers,
       [200],
     );
-    const checkpoint = await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: run.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-export-corrupt-zstd-session-${run.runId}`,
-        cliAgentSessionHistoryHash: historyHash,
+        exitCode: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-export-corrupt-zstd-session-${run.runId}`,
+          cliAgentSessionHistoryHash: historyHash,
+        },
       },
-      headers,
-      [200],
-    );
-    if (checkpoint.status !== 200) {
-      throw new Error("Expected zstd history checkpoint to succeed");
-    }
-    await webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 0 },
       headers,
       [200],
     );
@@ -1946,21 +1922,16 @@ describe("OPS-01: user data export", () => {
       headers,
       [200],
     );
-    const checkpoint = await webhooks.requestAgentCheckpoint(
+    await webhooks.requestAgentComplete(
       {
         runId: run.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-export-oversized-session-${run.runId}`,
-        cliAgentSessionHistoryHash: historyHash,
+        exitCode: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-export-oversized-session-${run.runId}`,
+          cliAgentSessionHistoryHash: historyHash,
+        },
       },
-      headers,
-      [200],
-    );
-    if (checkpoint.status !== 200) {
-      throw new Error("Expected gzip history checkpoint to succeed");
-    }
-    await webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 0 },
       headers,
       [200],
     );

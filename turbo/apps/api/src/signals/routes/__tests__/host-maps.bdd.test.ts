@@ -21,7 +21,7 @@ legacy zero-host.test.ts and zero-maps.test.ts route tests:
   and complete response bodies; maps org-credit row asserts are
   replaced by billing-status deltas.
 - The run-artifact chain uses the run's real Okou token from the runner claim
-  (`claim.environment.OKOU_TOKEN`) instead of seeding runs and rewriting
+  (`claim.platformEnvironment.OKOU_TOKEN`) instead of seeding runs and rewriting
   deployment rows.
 - Maps gates (NOT_CONFIGURED / 402 / invalid location) stay owned by
   billing-usage-media.bdd.test.ts BILL-02; the slug-suffix reuse and
@@ -953,10 +953,10 @@ describe("CHAIN-BILLING-MEDIA/FILE-01: run-scoped agent-token attribution", () =
 
     // The default agent compose maps OKOU_TOKEN from the run secrets, so the
     // claimed execution context exposes the real run-scoped Okou token.
-    const okouToken = claim.environment?.OKOU_TOKEN;
+    const okouToken = claim.platformEnvironment.OKOU_TOKEN;
     if (!okouToken) {
       throw new Error(
-        "Expected claim.environment.OKOU_TOKEN to carry the run-scoped Okou token",
+        "Expected claim.platformEnvironment.OKOU_TOKEN to carry the run-scoped Okou token",
       );
     }
     expect(okouToken).toMatch(/^vm0_sandbox_/);

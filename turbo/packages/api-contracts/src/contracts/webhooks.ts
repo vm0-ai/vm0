@@ -7,10 +7,12 @@ import {
   RESUME_SESSION_HISTORY_MAX_BYTES,
   runnerHostnameSchema,
   runnerVersionSchema,
+  sandboxReuseResultSchema,
   sessionHistoryDownloadSourceSchema,
   sessionHistoryEncodingSchema,
   sessionHistorySizeBucketSchema,
   secretConnectorMetadataMapSchema,
+  workspaceReuseResultSchema,
 } from "./runners";
 import { eventSequenceNumberSchema, networkLogEntrySchema } from "./runs";
 import {
@@ -18,6 +20,13 @@ import {
   storageChangesSchema,
   storageManifestFilesSchema,
 } from "./storages";
+
+export {
+  sandboxReuseResultSchema,
+  workspaceReuseResultSchema,
+  type SandboxReuseResult,
+  type WorkspaceReuseResult,
+} from "./runners";
 
 const c = initContract();
 
@@ -359,48 +368,6 @@ export const webhookBuiltInGenerationJoggAiContract = c.router({
   },
 });
 
-/**
- * Sandbox reuse outcome. One enum value per code branch in the runner's
- * reuse-decision block. `reused` means the sandbox was unparked from the idle
- * pool; the remaining variants describe why reuse did not happen.
- *
- * `featureDisabled` is legacy: written by older runners while reuse was gated
- * by the `sandboxReuse` feature flag (removed when reuse went to full rollout
- * in #10744). Retained here so historical `agent_runs.sandbox_reuse_result`
- * rows still parse on read. The runner no longer emits it.
- *
- * `noSessionId` is also legacy: preceding runners use it for multiple causes,
- * so historical rows cannot identify the exact non-reuse reason.
- */
-export const sandboxReuseResultSchema = z.enum([
-  "reused",
-  "featureDisabled",
-  "noSessionId",
-  "noReuseKey",
-  "poolMiss",
-  "profileMismatch",
-  "deviceLimitMismatch",
-  "unparkFailed",
-]);
-
-export type SandboxReuseResult = z.infer<typeof sandboxReuseResultSchema>;
-
-/** Final workspace reuse outcome after sandbox preparation has settled. */
-export const workspaceReuseResultSchema = z.enum([
-  "reused",
-  "sandboxReused",
-  "cacheMiss",
-  "noReuseKey",
-  "invalidWorkingDir",
-  "lockBusy",
-  "invalidMetadata",
-  "diskPressure",
-  "notConfigured",
-  "sandboxPrepareFallback",
-]);
-
-export type WorkspaceReuseResult = z.infer<typeof workspaceReuseResultSchema>;
-
 const currentSandboxReuseMissSchema = z.enum([
   "noReuseKey",
   "poolMiss",
@@ -435,6 +402,72 @@ const activeInputDeliveryIdsSchema = z
     });
   });
 
+/**
+ * Artifact snapshots schema — canonical
+ * `Array<{name, version, mountPath, missingRootPolicy?}>` form. Legacy
+ * `Record<name, version>` support was removed in #10913 after the DB
+ * migration and guest-agent writer flip completed.
+ */
+const artifactSnapshotsSchema = z.array(
+  z.object({
+    name: z.string(),
+    version: z.string(),
+    mountPath: z.string(),
+    missingRootPolicy: artifactMissingRootPolicySchema.optional(),
+  }),
+);
+
+/**
+ * Volume versions snapshot schema
+ */
+const volumeVersionsSnapshotSchema = z.object({
+  versions: z.record(z.string(), z.string()),
+});
+
+const checkpointMetadataShape = {
+  cliAgentType: z.string().min(1, "cliAgentType is required"),
+  cliAgentSessionId: z.string().min(1, "cliAgentSessionId is required"),
+  cliAgentSessionHistoryHash: sha256HexSchema.optional(),
+  cliAgentSessionHistoryDisposition: z
+    .enum(["discarded_oversized", "unavailable"])
+    .optional(),
+  // Multi-artifact snapshots are folded into canonical checkpoint mounts
+  // and projected back into the legacy response shape.
+  artifactSnapshots: artifactSnapshotsSchema.optional(),
+  volumeVersionsSnapshot: volumeVersionsSnapshotSchema.optional(),
+} as const;
+
+function requireCheckpointHistory(
+  body: {
+    readonly cliAgentSessionHistoryHash?: string;
+    readonly cliAgentSessionHistoryDisposition?: string;
+  },
+  context: z.RefinementCtx,
+): void {
+  const hasHash = body.cliAgentSessionHistoryHash !== undefined;
+  const hasDisposition = body.cliAgentSessionHistoryDisposition !== undefined;
+  if (hasHash === hasDisposition) {
+    context.addIssue({
+      code: "custom",
+      path: ["cliAgentSessionHistoryHash"],
+      message: "Exactly one session history hash or disposition is required",
+    });
+  }
+}
+
+const webhookCheckpointMetadataSchema = z
+  .object(checkpointMetadataShape)
+  .strict()
+  .superRefine(requireCheckpointHistory);
+
+const webhookCheckpointCreateBodySchema = z
+  .object({
+    runId: z.string().min(1, "runId is required"),
+    ...checkpointMetadataShape,
+  })
+  .strict()
+  .superRefine(requireCheckpointHistory);
+
 const webhookCompleteBodySchema = z
   .object({
     runId: z.string().min(1, "runId is required"),
@@ -442,12 +475,13 @@ const webhookCompleteBodySchema = z
     error: z.string().optional(),
     lastEventSequence: eventSequenceNumberSchema.optional(),
     // Sandbox id the run executed against. Optional because a run that fails
-    // before VM creation has no sandbox. Persisted to agent_runs.sandbox_id;
+    // before sandbox creation has no sandbox. Persisted to agent_runs.sandbox_id;
     // the 255-char cap matches the DB column (defense in depth).
     sandboxId: z.string().max(255).optional(),
     sandboxReuseResult: sandboxReuseResultSchema.optional(),
     workspaceReuseResult: workspaceReuseResultSchema.optional(),
     activeInputDeliveryIds: activeInputDeliveryIdsSchema.optional(),
+    checkpoint: webhookCheckpointMetadataSchema.optional(),
   })
   .superRefine((body, context) => {
     const workspaceResult = body.workspaceReuseResult;
@@ -482,28 +516,6 @@ const agentEventSchema = z
     sequenceNumber: eventSequenceNumberSchema,
   })
   .passthrough();
-
-/**
- * Artifact snapshots schema — canonical
- * `Array<{name, version, mountPath, missingRootPolicy?}>` form. Legacy
- * `Record<name, version>` support was removed in #10913 after the DB
- * migration and guest-agent writer flip completed.
- */
-const artifactSnapshotsSchema = z.array(
-  z.object({
-    name: z.string(),
-    version: z.string(),
-    mountPath: z.string(),
-    missingRootPolicy: artifactMissingRootPolicySchema.optional(),
-  }),
-);
-
-/**
- * Volume versions snapshot schema
- */
-const volumeVersionsSnapshotSchema = z.object({
-  versions: z.record(z.string(), z.string()),
-});
 
 const firewallAuthErrorSchema = z.object({
   error: z.object({
@@ -675,34 +687,7 @@ export const webhookCheckpointsContract = c.router({
     method: "POST",
     path: "/api/webhooks/agent/checkpoints",
     headers: authHeadersSchema,
-    body: z
-      .object({
-        runId: z.string().min(1, "runId is required"),
-        cliAgentType: z.string().min(1, "cliAgentType is required"),
-        cliAgentSessionId: z.string().min(1, "cliAgentSessionId is required"),
-        cliAgentSessionHistoryHash: sha256HexSchema.optional(),
-        cliAgentSessionHistoryDisposition: z
-          .enum(["discarded_oversized", "unavailable"])
-          .optional(),
-        // Multi-artifact snapshots are folded into canonical checkpoint mounts
-        // and projected back into the legacy response shape.
-        artifactSnapshots: artifactSnapshotsSchema.optional(),
-        volumeVersionsSnapshot: volumeVersionsSnapshotSchema.optional(),
-      })
-      .strict()
-      .superRefine((body, ctx) => {
-        const hasHash = body.cliAgentSessionHistoryHash !== undefined;
-        const hasDisposition =
-          body.cliAgentSessionHistoryDisposition !== undefined;
-        if (hasHash === hasDisposition) {
-          ctx.addIssue({
-            code: "custom",
-            path: ["cliAgentSessionHistoryHash"],
-            message:
-              "Exactly one session history hash or disposition is required",
-          });
-        }
-      }),
+    body: webhookCheckpointCreateBodySchema,
     responses: {
       200: z.object({
         checkpointId: z.string(),
@@ -861,6 +846,31 @@ export type RunnerPreSpawnConcurrencyBucket = z.infer<
   typeof runnerPreSpawnConcurrencyBucketSchema
 >;
 
+const runnerResourceBudgetUtilizationBucketSchema = z.enum([
+  "0_25",
+  "26_50",
+  "51_75",
+  "76_100",
+  "over_100",
+]);
+
+export type RunnerResourceBudgetUtilizationBucket = z.infer<
+  typeof runnerResourceBudgetUtilizationBucketSchema
+>;
+
+const runnerResourceBudgetLeaseCountBucketSchema = z.enum([
+  "0",
+  "1",
+  "2",
+  "3_4",
+  "5_8",
+  "9_plus",
+]);
+
+export type RunnerResourceBudgetLeaseCountBucket = z.infer<
+  typeof runnerResourceBudgetLeaseCountBucketSchema
+>;
+
 /**
  * Sandbox operation schema for internal sandbox operations (init, storage, cli, checkpoint, cleanup)
  */
@@ -876,6 +886,12 @@ const sandboxOperationSchema = z.object({
   sandbox_reuse_result: sandboxReuseResultSchema.optional(),
   runner_pre_spawn_concurrency_bucket:
     runnerPreSpawnConcurrencyBucketSchema.optional(),
+  runner_resource_budget_vcpu_utilization_bucket:
+    runnerResourceBudgetUtilizationBucketSchema.optional(),
+  runner_resource_budget_memory_utilization_bucket:
+    runnerResourceBudgetUtilizationBucketSchema.optional(),
+  runner_resource_budget_lease_count_bucket:
+    runnerResourceBudgetLeaseCountBucketSchema.optional(),
   encoding: sessionHistoryEncodingSchema.optional(),
   session_history_raw_size_bucket: sessionHistorySizeBucketSchema.optional(),
   session_history_encoded_size_bucket:
@@ -1095,77 +1111,4 @@ export const webhookUsageEventContract = c.router({
   },
 });
 
-const webhookModelUsageObservationItemSchema = z
-  .object({
-    idempotencyKey: z.uuid(),
-    model: z.string().min(1).max(255),
-    inputTokens: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-    outputTokens: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-    cacheReadInputTokens: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-    cacheCreationInputTokens: z
-      .number()
-      .int()
-      .min(0)
-      .max(Number.MAX_SAFE_INTEGER),
-  })
-  .strict()
-  .refine(
-    (event) => {
-      return (
-        event.inputTokens > 0 ||
-        event.outputTokens > 0 ||
-        event.cacheReadInputTokens > 0 ||
-        event.cacheCreationInputTokens > 0
-      );
-    },
-    { message: "At least one token counter must be positive" },
-  );
-
-const webhookModelUsageObservationBodySchema = z
-  .object({
-    runId: z.string().min(1, "runId is required"),
-    events: z.array(webhookModelUsageObservationItemSchema).min(1).max(100),
-  })
-  .strict()
-  .superRefine((body, ctx) => {
-    const idempotencyKeys = new Set<string>();
-    body.events.forEach((event, index) => {
-      if (idempotencyKeys.has(event.idempotencyKey)) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["events", index, "idempotencyKey"],
-          message: "Idempotency keys must be unique within a request",
-        });
-      }
-      idempotencyKeys.add(event.idempotencyKey);
-    });
-  });
-
-/**
- * Compact model usage observation contract for
- * /api/webhooks/agent/model-usage-observation
- *
- * Each immutable event carries the four counters consumed by model rankings.
- */
-export const webhookModelUsageObservationContract = c.router({
-  send: {
-    method: "POST",
-    path: "/api/webhooks/agent/model-usage-observation",
-    headers: authHeadersSchema,
-    body: webhookModelUsageObservationBodySchema,
-    responses: {
-      200: z.object({
-        success: z.boolean(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Receive compact model usage observation data from sandbox",
-  },
-});
-
 export type WebhookUsageEventContract = typeof webhookUsageEventContract;
-export type WebhookModelUsageObservationContract =
-  typeof webhookModelUsageObservationContract;

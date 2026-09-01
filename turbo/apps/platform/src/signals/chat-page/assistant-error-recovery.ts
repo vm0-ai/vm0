@@ -2,11 +2,13 @@ import { hasChatEventBodyContent } from "./chat-event-body-blocks.ts";
 import { command, computed, type Computed } from "ccstate";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isChatEventContentTextType } from "@okouai/api-contracts/contracts/chat-events";
+import { getCodexChatGptAccountUnsupportedModel } from "@okouai/api-contracts/contracts/errors";
 import type { ModelProviderFramework } from "@okouai/api-contracts/contracts/model-provider-types";
 import {
   isSupportedRunModel,
   type ModelProviderResponse,
   type OrgModelPoliciesResponse,
+  type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
@@ -18,7 +20,10 @@ import type { ChatEventSignals } from "./chat-event-signals.ts";
 import { threadMeta } from "./chat-thread-event-sourcing.ts";
 import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
 
-export type AssistantErrorRecoveryKind = "usage-limit" | "model-capacity";
+export type AssistantErrorRecoveryKind =
+  | "usage-limit"
+  | "model-capacity"
+  | "model-unavailable";
 export type AssistantErrorRecoveryScope = "framework" | "model";
 export type AssistantErrorRecoveryWindow =
   | "five-hour"
@@ -35,11 +40,11 @@ export interface AssistantErrorRecovery {
   readonly limitWindow: AssistantErrorRecoveryWindow | null;
   readonly retryAt: string | null;
   readonly retryLabel: string | null;
-  readonly retryHint: "after-reset" | "few-minutes";
+  readonly failedModel: SupportedRunModel | null;
   readonly actions: {
     readonly tryAgain: {
       readonly notBefore: string | null;
-    };
+    } | null;
     readonly resetAndTryAgain: {
       readonly resetsRemaining: number;
     } | null;
@@ -54,6 +59,7 @@ interface ClassifiedAssistantError {
   readonly scope: AssistantErrorRecoveryScope;
   readonly limitWindow: AssistantErrorRecoveryWindow | null;
   readonly retryLabel: string | null;
+  readonly failedModel: SupportedRunModel | null;
 }
 
 interface SubscriptionReset {
@@ -61,7 +67,7 @@ interface SubscriptionReset {
   readonly limitWindow: AssistantErrorRecoveryWindow;
 }
 
-const RETRY_PROMPT = "try again";
+const CONTINUE_PROMPT = "continue";
 
 function normalizedProviderMessage(error: string): string {
   return error.replace(/\s+/gu, " ").trim();
@@ -99,6 +105,22 @@ function classifyAssistantError(
 ): ClassifiedAssistantError | null {
   const normalized = normalizedProviderMessage(error);
   const retryLabel = resetLabelFromProviderMessage(normalized);
+  const unsupportedModel = getCodexChatGptAccountUnsupportedModel(error);
+
+  if (unsupportedModel !== undefined) {
+    return {
+      sourceEventId: event.id,
+      providerMessage: error,
+      kind: "model-unavailable",
+      framework: "codex",
+      scope: "model",
+      limitWindow: null,
+      retryLabel: null,
+      failedModel: isSupportedRunModel(unsupportedModel)
+        ? unsupportedModel
+        : null,
+    };
+  }
 
   if (
     /selected model is at capacity\.? please try a different model/iu.test(
@@ -113,6 +135,7 @@ function classifyAssistantError(
       scope: "model",
       limitWindow: null,
       retryLabel: null,
+      failedModel: null,
     };
   }
 
@@ -131,6 +154,7 @@ function classifyAssistantError(
       scope: "model",
       limitWindow: null,
       retryLabel: null,
+      failedModel: null,
     };
   }
 
@@ -144,6 +168,7 @@ function classifyAssistantError(
       scope: modelScoped ? "model" : "framework",
       limitWindow: modelScoped ? "model" : "unknown",
       retryLabel,
+      failedModel: null,
     };
   }
 
@@ -157,6 +182,7 @@ function classifyAssistantError(
       scope: limitWindow === "model" ? "model" : "framework",
       limitWindow,
       retryLabel,
+      failedModel: null,
     };
   }
 
@@ -284,13 +310,16 @@ function createAssistantErrorRecoveryComputed(
   selectedModel$: Computed<string | null>,
 ) {
   return computed(async (get): Promise<AssistantErrorRecovery | null> => {
-    if (!get(featureSwitch$)[FeatureSwitchKey.ChatErrorRecovery]) {
-      return null;
-    }
     const classified = latestAssistantRecoveryCandidate(
       await get(visibleRenderedChatGroups$),
     );
     if (!classified) {
+      return null;
+    }
+    if (
+      classified.kind !== "model-unavailable" &&
+      !get(featureSwitch$)[FeatureSwitchKey.ChatErrorRecovery]
+    ) {
       return null;
     }
 
@@ -340,12 +369,13 @@ function createAssistantErrorRecoveryComputed(
       ...classified,
       limitWindow,
       retryAt,
-      retryHint:
-        classified.kind === "usage-limit" ? "after-reset" : "few-minutes",
       actions: {
-        tryAgain: {
-          notBefore: retryAt,
-        },
+        tryAgain:
+          classified.kind === "model-unavailable"
+            ? null
+            : {
+                notBefore: retryAt,
+              },
         resetAndTryAgain,
       },
     };
@@ -365,15 +395,15 @@ export function createAssistantErrorRecoverySignals(deps: {
     deps.visibleRenderedChatGroups$,
     selectedModel$,
   );
-  const sendRetryMessage$ = command(
+  const sendContinueMessage$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
       const meta = get(threadMeta$);
       if (!meta) {
         return false;
       }
-      const userMessage = textToMessageDocument(RETRY_PROMPT);
+      const userMessage = textToMessageDocument(CONTINUE_PROMPT);
       if (!userMessage) {
-        throw new Error("Failed to serialize retry message");
+        throw new Error("Failed to serialize continue message");
       }
       const modelSelection = isSupportedRunModel(meta.selectedModel)
         ? {
@@ -394,7 +424,7 @@ export function createAssistantErrorRecoverySignals(deps: {
           kind: "input",
           delivery: "run",
           agentId: meta.agentId,
-          prompt: RETRY_PROMPT,
+          prompt: CONTINUE_PROMPT,
           hasTextContent: true,
           userMessage,
           ...(runOptions ? { runOptions } : {}),
@@ -411,10 +441,10 @@ export function createAssistantErrorRecoverySignals(deps: {
     async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
       const recovery = await get(assistantErrorRecovery$);
       signal.throwIfAborted();
-      if (!recovery) {
+      if (!recovery?.actions.tryAgain) {
         return false;
       }
-      return await set(sendRetryMessage$, signal);
+      return await set(sendContinueMessage$, signal);
     },
   );
   const resetCodexSubscriptionAndRetry$ = command(
@@ -429,7 +459,7 @@ export function createAssistantErrorRecoverySignals(deps: {
       if (result.outcome === "noCredit") {
         return false;
       }
-      return await set(sendRetryMessage$, signal);
+      return await set(sendContinueMessage$, signal);
     },
   );
 

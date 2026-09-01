@@ -40,17 +40,15 @@ function desktopNotarizeOptions() {
     };
   }
 
-  if (
-    !process.env.OKOU_DESKTOP_NOTARIZE_API_KEY_PATH &&
-    !process.env.VM0_DESKTOP_NOTARIZE_API_KEY_PATH
-  ) {
-    return {
-      keychainProfile: DEFAULT_NOTARIZE_KEYCHAIN_PROFILE,
-      keychain: DEFAULT_NOTARIZE_KEYCHAIN,
-    };
+  const apiEnvironment = resolveDesktopNotarizeApiEnvironment();
+  if (apiEnvironment) {
+    return apiEnvironment;
   }
 
-  return resolveDesktopNotarizeApiEnvironment();
+  return {
+    keychainProfile: DEFAULT_NOTARIZE_KEYCHAIN_PROFILE,
+    keychain: DEFAULT_NOTARIZE_KEYCHAIN,
+  };
 }
 
 const { identity: desktopIdentity } = resolveDesktopBuildConfig();

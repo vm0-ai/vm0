@@ -2,10 +2,11 @@ import { command, computed, state, type Command } from "ccstate";
 import { match } from "path-to-regexp";
 import type { RoutePath } from "./route-paths";
 import { clerk$, needsOrgSelection$, resolveAppAuthUrl } from "./auth.ts";
-import { pathname, pushState, replaceState, search } from "./location.ts";
+import { hash, pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { clearPage$ } from "./react-router.ts";
 import { rootSignal$ } from "./root-signal.ts";
+import { waitForAuthenticatedServices$ } from "./auth-context.ts";
 import {
   bestEffort,
   detach,
@@ -37,6 +38,11 @@ export const pathname$ = computed((get) => {
 export const searchParams$ = computed((get) => {
   get(reloadPathname$);
   return new URLSearchParams(search());
+});
+
+export const hash$ = computed((get) => {
+  get(reloadPathname$);
+  return hash();
 });
 
 export const historyState$ = computed((get) => {
@@ -366,6 +372,8 @@ export const setupAuthPageWrapper = (
       return;
     }
 
+    await set(waitForAuthenticatedServices$, signal);
+    signal.throwIfAborted();
     await set(setupPageWrapper(fn), signal);
   });
 };

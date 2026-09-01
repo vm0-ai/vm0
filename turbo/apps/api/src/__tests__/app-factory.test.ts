@@ -1091,7 +1091,7 @@ describe("createApp", () => {
   });
 
   describe("web client compatibility", () => {
-    it("force-upgrades pre-account-explicit app clients before removed connector route matching", async () => {
+    it("force-upgrades app clients below the user-org realtime floor before route matching", async () => {
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,
@@ -1100,11 +1100,11 @@ describe("createApp", () => {
         method: "DELETE",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.781.0",
+          [CLIENT_VERSION_HEADER]: "0.812.2",
         },
       });
 
-      expect(MINIMUM_WEB_CLIENT_VERSION).toBe("0.781.1");
+      expect(MINIMUM_WEB_CLIENT_VERSION).toBe("0.812.3");
       expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
       await expect(response.json()).resolves.toStrictEqual({
         error: "Client update required",
@@ -1152,7 +1152,7 @@ describe("createApp", () => {
       expect(response.headers.get("cache-control")).toBe("no-store");
     });
 
-    it("allows the canonical custom connector grants floor", async () => {
+    it("allows the canonical web client floor", async () => {
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,
@@ -1168,7 +1168,7 @@ describe("createApp", () => {
       expect(response.status).toBe(200);
     });
 
-    it("allows app clients newer than the canonical grants floor", async () => {
+    it("allows app clients newer than the canonical floor", async () => {
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,

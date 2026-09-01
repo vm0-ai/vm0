@@ -1825,12 +1825,16 @@ const runAgentForTeams$ = command(
       return { kind: "ignored" };
     }
 
-    await publishChatThreadMessageCreatedSafely(
-      args.connection.userId,
-      persisted.chatThreadId,
-    );
+    await publishChatThreadMessageCreatedSafely({
+      userId: args.connection.userId,
+      orgId: args.installation.orgId,
+      threadId: persisted.chatThreadId,
+    });
     signal.throwIfAborted();
-    await publishThreadListChangedSafely(args.connection.userId);
+    await publishThreadListChangedSafely({
+      userId: args.connection.userId,
+      orgId: args.installation.orgId,
+    });
     signal.throwIfAborted();
     await set(
       drainChatThreadQueueForThread$,

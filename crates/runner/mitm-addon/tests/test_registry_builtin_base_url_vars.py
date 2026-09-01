@@ -1,13 +1,16 @@
 """Tests for registry built-in base URL variable resolution."""
 
 import json
+from collections.abc import Iterator
 from unittest.mock import MagicMock
 
 import pytest
 
+import builtin_firewall_cache
 import builtin_host_policy
 import registry
 from tests.builtin_firewall_cache_helpers import serialize_builtin_firewall_catalog_cache
+from tests.process_log_helpers import capture_addon_process_events
 from tests.registry_helpers import (
     assert_invalid_builtin_sandbox,
     write_trusted_catalog_cache_text,
@@ -25,13 +28,12 @@ class _RegistryOptions:
 
 
 @pytest.fixture(autouse=True)
-def registry_ctx(monkeypatch) -> MagicMock:
+def registry_ctx(monkeypatch) -> Iterator[MagicMock]:
     options = _RegistryOptions()
-    log = MagicMock()
-    monkeypatch.setattr(registry.ctx, "options", options, raising=False)
-    monkeypatch.setattr(registry.ctx, "log", log, raising=False)
+    monkeypatch.setattr(builtin_firewall_cache.ctx, "options", options, raising=False)
     _TEST_BUILTIN_FIREWALLS.clear()
-    return log
+    with capture_addon_process_events() as log:
+        yield log
 
 
 def install_test_builtin_firewall(
@@ -109,7 +111,7 @@ def write_builtin_firewall_registry(
     firewall = cache_firewall or _TEST_BUILTIN_FIREWALLS.get(name) or _builtin_firewall(name)
     cache_path = _cache_path_for_registry(path)
     _write_catalog_cache(cache_path, {firewall["name"]: firewall})
-    registry.ctx.options.vm0_builtin_firewall_catalog_cache_path = str(cache_path)
+    builtin_firewall_cache.ctx.options.vm0_builtin_firewall_catalog_cache_path = str(cache_path)
 
 
 class TestRegistryBuiltinBaseUrlVars:
@@ -1033,7 +1035,7 @@ class TestRegistryBuiltinBaseUrlVars:
         )
         cache_path = _cache_path_for_registry(path)
         _write_catalog_cache(cache_path, {"zendesk": _builtin_firewall("zendesk")})
-        registry.ctx.options.vm0_builtin_firewall_catalog_cache_path = str(cache_path)
+        builtin_firewall_cache.ctx.options.vm0_builtin_firewall_catalog_cache_path = str(cache_path)
 
         invalid_sandbox = assert_invalid_builtin_sandbox(path)
         assert "ZENDESK_SUBDOMAIN" in invalid_sandbox.message

@@ -129,6 +129,9 @@ describe("chat localization", () => {
     await expect(
       screen.findByText("Ask me to automate workflows, manage tasks..."),
     ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText("Send a message to start the conversation"),
+    ).resolves.toBeInTheDocument();
     const editor = await findComposerEditor();
     await user.click(editor);
     await user.keyboard(authoredDraft);

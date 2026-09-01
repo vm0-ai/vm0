@@ -1,7 +1,9 @@
 import type {
   Attribute,
   AttributeData,
+  BrowserClerk,
   ClerkAPIError,
+  CreateOrganizationParams,
   PasswordValidation,
 } from "@clerk/react/types";
 import { vi } from "vitest";
@@ -554,9 +556,6 @@ function clearMockedAuth() {
   clerkListeners.length = 0;
   mockedClerk.on = defaultClerkStatusOn;
   mockedClerk.signOut.mockReset();
-  mockedClerk.openSignIn.mockReset();
-  mockedClerk.openUserProfile.mockReset();
-  mockedClerk.closeUserProfile.mockReset();
   mockedClerk.setActive.mockReset();
   mockedClerk.setActive.mockImplementation(defaultSetActiveImpl);
   mockedClerk.createOrganization.mockReset();
@@ -1051,10 +1050,9 @@ const initialize =
     (publishableKey: string, options?: { readonly domain?: string }) => void
   >();
 
-interface MockedUserProfileOptions {
-  apiKeysProps?: { hide?: boolean };
-  getContainer?: () => HTMLElement | null;
-}
+type MockedCreateOrganization = (
+  params: CreateOrganizationParams,
+) => Promise<{ readonly id: string }>;
 
 export const mockedClerk = {
   initialize,
@@ -1188,14 +1186,9 @@ export const mockedClerk = {
     };
   },
   handleRedirectCallback,
-  signOut: vi.fn(() => {
+  signOut: vi.fn<BrowserClerk["signOut"]>(() => {
     return Promise.resolve();
   }),
-  openSignIn: vi.fn(() => {
-    return Promise.resolve();
-  }),
-  openUserProfile: vi.fn<(options?: MockedUserProfileOptions) => void>(),
-  closeUserProfile: vi.fn<() => void>(),
   load: mockedClerkLoad,
   on: defaultClerkStatusOn,
   addListener: (
@@ -1210,18 +1203,20 @@ export const mockedClerk = {
       }
     };
   },
-  redirectToSignIn: vi.fn(),
+  redirectToSignIn: vi.fn<BrowserClerk["redirectToSignIn"]>(),
   buildSignInUrl: vi.fn<typeof defaultBuildSignInUrlImpl>(
     defaultBuildSignInUrlImpl,
   ),
   // Production-instance behavior: the URL passes through unchanged. Dev
   // instances append the __clerk_db_jwt session handoff parameter.
-  buildUrlWithAuth: vi.fn(defaultBuildUrlWithAuthImpl),
+  buildUrlWithAuth: vi.fn<typeof defaultBuildUrlWithAuthImpl>(
+    defaultBuildUrlWithAuthImpl,
+  ),
   buildUserProfileUrl: vi.fn<typeof defaultBuildUserProfileUrlImpl>(
     defaultBuildUserProfileUrlImpl,
   ),
   setActive: vi.fn<typeof defaultSetActiveImpl>(defaultSetActiveImpl),
-  createOrganization: vi.fn((_params: { name: string; slug: string }) => {
+  createOrganization: vi.fn<MockedCreateOrganization>(() => {
     return Promise.resolve({ id: "new-org-id" });
   }),
 };

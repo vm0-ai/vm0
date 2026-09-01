@@ -389,11 +389,6 @@ export default [
     // exceptions. Route tests cover constructible behavior, while these exact
     // transition inputs are not available through production APIs.
     files: [
-      // Provider wrapper decoding, surrogate-safe bounds, and opaque UUIDv5
-      // identities are exact pure contracts required by #29367. Route tests
-      // cover their persisted behavior, while this corpus pins the parser and
-      // namespace values independently from database state.
-      "src/signals/services/__tests__/agent-tool-event-normalization.test.ts",
       // Content hashes are a byte-identical cryptographic contract shared with
       // guest-agent; route behavior cannot pin the serializer's full corpus.
       "src/signals/services/__tests__/storage-content-hash.service.test.ts",
@@ -401,20 +396,16 @@ export default [
       // with the sandbox runtime; route output cannot expose its full virtual
       // filesystem, ignore-rule, and precedence matrix.
       "src/signals/services/__tests__/pi-resource-snapshot.service.test.ts",
+      // Terra route activation is explicitly deferred. This compatibility
+      // slice must pin the pre-admission provider/transport contract before a
+      // production endpoint can expose Pi-owned Terra behavior.
+      "src/signals/services/__tests__/pi-sandbox-config.test.ts",
       "src/signals/services/__tests__/connector-catalog-rejection-authority.test.ts",
       "src/signals/services/__tests__/connector-authorization-provider-state.test.ts",
       // Preview job-ref aliases are process environment state, and both Stripe
       // metadata entry points must share one value-free resolution matrix that
       // cannot be observed completely through a single production API route.
       "src/signals/services/__tests__/stripe-preview-metadata.service.test.ts",
-      // A pre-migration schema cannot be constructed through a production API.
-      // This focused transaction validates the rollout contract against real
-      // PostgreSQL tables before and after the autonomy-budget columns exist.
-      "src/signals/services/__tests__/autonomy-budget-rollout.test.ts",
-      // A pre-0835 table cannot be constructed through a production API. This
-      // focused transaction proves Calendar watch reads and initial writes stay
-      // legal on both sides of the transition-column migration.
-      "src/signals/services/__tests__/google-calendar-watch-rollout.test.ts",
       // A physical relation versus a compatibility view cannot be selected
       // through the production API. This focused PostgreSQL test proves the
       // exact Agent Draft writer through both rollout targets.
@@ -528,11 +519,6 @@ export default [
       // Central test lifecycle owns connection-pool teardown; it does not
       // construct or assert API behavior.
       "src/__tests__/test-context.ts",
-      // Provider wrapper decoding, surrogate-safe bounds, and opaque UUIDv5
-      // identities are exact pure contracts required by #29367. Route tests
-      // cover their persisted behavior, while this corpus pins the parser and
-      // namespace values independently from database state.
-      "src/signals/services/__tests__/agent-tool-event-normalization.test.ts",
       // A finite event-type matrix locks persisted payload rendering and
       // policy lookup byte-for-byte; individual provider routes cannot cover
       // every lookup-table row without duplicating the contract under test.
@@ -544,18 +530,13 @@ export default [
       // with the sandbox runtime; route output cannot expose its full virtual
       // filesystem, ignore-rule, and precedence matrix.
       "src/signals/services/__tests__/pi-resource-snapshot.service.test.ts",
+      // Terra route activation is explicitly deferred, so its pre-admission
+      // provider/transport compatibility matrix has no endpoint boundary yet.
+      "src/signals/services/__tests__/pi-sandbox-config.test.ts",
       // Preview job-ref aliases are process environment state, and both Stripe
       // metadata entry points must share one value-free resolution matrix that
       // cannot be observed completely through a single production API route.
       "src/signals/services/__tests__/stripe-preview-metadata.service.test.ts",
-      // A pre-migration schema cannot be constructed through a production API.
-      // This focused transaction validates the rollout contract against real
-      // PostgreSQL tables before and after the autonomy-budget columns exist.
-      "src/signals/services/__tests__/autonomy-budget-rollout.test.ts",
-      // A pre-0835 table cannot be constructed through a production API. This
-      // focused transaction proves Calendar watch reads and initial writes stay
-      // legal on both sides of the transition-column migration.
-      "src/signals/services/__tests__/google-calendar-watch-rollout.test.ts",
       // A physical relation versus a compatibility view cannot be selected
       // through the production API. This focused PostgreSQL test proves the
       // exact Agent Draft writer through both rollout targets.

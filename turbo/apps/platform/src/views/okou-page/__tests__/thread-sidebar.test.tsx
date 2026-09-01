@@ -36,7 +36,9 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
+import { createChatEvent } from "../../../mocks/mock-helpers.ts";
 import {
+  chatEventRowsResponse,
   testContext,
   warmMermaidParser,
 } from "../../../signals/__tests__/test-helpers.ts";
@@ -292,11 +294,15 @@ function setupChatThread({
         return { ...message, threadId: message.threadId ?? THREAD_ID };
       }),
     );
-    return respond(200, {
-      rows: mockChatEventRows(events).filter((row) => {
-        return row.seqId > query.sinceSeqId;
-      }),
-    });
+    return respond(
+      200,
+      chatEventRowsResponse(
+        mockChatEventRows(events).filter((row) => {
+          return row.seqId > query.sinceSeqId;
+        }),
+        query,
+      ),
+    );
   });
   context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
     return respond(200, {
@@ -316,9 +322,7 @@ function setupChatThread({
       if (syncThroughSeqId === undefined) {
         throw new Error("Published chat messages need a seqId");
       }
-      context.mocks.ably.trigger(`chatThreadMessageCreated:${THREAD_ID}`, {
-        syncThroughSeqId,
-      });
+      createChatEvent(THREAD_ID, { syncThroughSeqId });
     },
   };
 }
@@ -1443,9 +1447,8 @@ describe("thread-owned utility sidebar", () => {
       messages: [],
     });
 
-    await waitFor(() => {
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-    });
+    await screen.findAllByRole("navigation", { name: "Sidebar" });
+    await screen.findByRole("textbox", { name: "Message" });
     fixture.publishMessages([
       {
         id: "c0000000-0000-4000-a000-000000000054",
@@ -1506,10 +1509,6 @@ describe("thread-owned utility sidebar", () => {
     await waitFor(() => {
       expect(screen.queryByLabelText("Live browser")).not.toBeInTheDocument();
     });
-    await waitFor(() => {
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-    });
-
     fixture.publishMessages([
       {
         id: "msg-browser-still-running",
@@ -1541,9 +1540,6 @@ describe("thread-owned utility sidebar", () => {
     await openArtifactsFromHeader();
     await screen.findByTestId("thread-sidebar-artifacts");
 
-    await waitFor(() => {
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-    });
     fixture.publishMessages([
       {
         id: "c0000000-0000-4000-a000-000000000056",

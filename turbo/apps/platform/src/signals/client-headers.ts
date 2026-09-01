@@ -5,21 +5,11 @@ import {
   CLIENT_TYPE_HEADER,
   CLIENT_VERSION_HEADER,
 } from "@okouai/api-contracts/contracts/client-headers";
+const clientSessionId =
+  globalThis.window?.__vm0ClerkBootstrap?.clientSessionId ??
+  crypto.randomUUID();
 
-import { getBuildVersion } from "../lib/build-info.ts";
-
-function readClientVersion(): string {
-  const version = getBuildVersion();
-  if (version === null) {
-    throw new Error("VITE_APP_VERSION is required for client headers");
-  }
-  return version;
-}
-
-const clientVersion = readClientVersion();
-const clientSessionId = crypto.randomUUID();
-
-function createClientHeaders(): Record<string, string> {
+function createClientHeaders(clientVersion: string): Record<string, string> {
   return {
     [CLIENT_VERSION_HEADER]: clientVersion,
     [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
@@ -28,8 +18,13 @@ function createClientHeaders(): Record<string, string> {
   };
 }
 
-export function addClientHeaders(headers: Headers): void {
-  for (const [key, value] of Object.entries(createClientHeaders())) {
+export function addClientHeaders(
+  headers: Headers,
+  clientVersion: string,
+): void {
+  for (const [key, value] of Object.entries(
+    createClientHeaders(clientVersion),
+  )) {
     headers.set(key, value);
   }
 }

@@ -68,9 +68,9 @@ function buttonByLabel(label: string): HTMLButtonElement {
 
 describe("auth v2 presentation", () => {
   it("provides branded landmarks, descriptions, announcements, and initial focus", async () => {
-    setBrowserUrl("https://app.vm0.ai/v2/sign-in");
+    setBrowserUrl("https://app.vm0.ai/sign-in");
 
-    detachedSetupPage({ context, path: "/v2/sign-in" });
+    detachedSetupPage({ context, path: "/sign-in" });
 
     await screen.findByRole("heading", {
       level: 1,
@@ -124,9 +124,9 @@ describe("auth v2 presentation", () => {
   });
 
   it("keeps password controls in their accessible region", async () => {
-    setBrowserUrl("https://app.vm0.ai/v2/sign-up");
+    setBrowserUrl("https://app.vm0.ai/sign-up");
 
-    detachedSetupPage({ context, path: "/v2/sign-up" });
+    detachedSetupPage({ context, path: "/sign-up" });
 
     await screen.findByLabelText("Password");
     const region = screen.getByTestId("app-auth-v2");
@@ -139,11 +139,11 @@ describe("auth v2 presentation", () => {
   it("keeps link actions at WCAG AA contrast in both themes", async () => {
     const user = userEvent.setup();
     context.mocks.browser.matchMedia(false);
-    setBrowserUrl("https://app.vm0.ai/v2/sign-in");
+    setBrowserUrl("https://app.vm0.ai/sign-in");
 
     detachedSetupPage({
       context,
-      path: "/v2/sign-in",
+      path: "/sign-in",
       session: null,
       user: null,
     });
@@ -174,9 +174,9 @@ describe("auth v2 presentation", () => {
   it("toggles themes with pointer and keyboard input while preserving focus", async () => {
     const user = userEvent.setup();
     context.mocks.browser.matchMedia(false);
-    setBrowserUrl("https://app.vm0.ai/v2/sign-in");
+    setBrowserUrl("https://app.vm0.ai/sign-in");
 
-    detachedSetupPage({ context, path: "/v2/sign-in" });
+    detachedSetupPage({ context, path: "/sign-in" });
 
     await screen.findByRole("heading", {
       name: "Sign in to VM0",
@@ -206,11 +206,11 @@ describe("auth v2 presentation", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Light theme enabled");
   });
 
-  it("localizes the Okou presentation boundary through platform resources", async () => {
+  it("localizes Okou app copy while keeping document metadata English", async () => {
     useJapaneseLocale();
-    setBrowserUrl("https://app.okou.ai/v2/sign-up");
+    setBrowserUrl("https://app.okou.ai/sign-up");
 
-    detachedSetupPage({ context, path: "/v2/sign-up" });
+    detachedSetupPage({ context, path: "/sign-up" });
 
     await screen.findByLabelText("メールアドレス");
     const heading = screen.getByRole("heading", {
@@ -223,14 +223,14 @@ describe("auth v2 presentation", () => {
     expect(linkByLabel("Okou のホームに移動")).toHaveAttribute("href", "/");
     expect(screen.queryByTestId("auth-v2-brand-logo")).not.toBeInTheDocument();
     expect(heading).toBeVisible();
-    expect(document.title).toBe("サインアップ | Okou");
+    expect(document.title).toBe("Sign up | Okou");
   });
 
   it("substitutes the Okou brand in a non-English Auth v2 template", async () => {
     useGermanLocale();
-    setBrowserUrl("https://app.okou.ai/v2/sign-up");
+    setBrowserUrl("https://app.okou.ai/sign-up");
 
-    detachedSetupPage({ context, path: "/v2/sign-up" });
+    detachedSetupPage({ context, path: "/sign-up" });
 
     await screen.findByLabelText("E-Mail-Adresse");
     expect(

@@ -28,6 +28,7 @@ export function workflowAutomationColumns() {
     kind: workflowAutomations.kind,
     eventType: workflowAutomations.eventType,
     eventConfig: workflowAutomations.eventConfig,
+    eventConnectorId: workflowAutomations.eventConnectorId,
     scheduleType: workflowAutomations.scheduleType,
     cronExpression: workflowAutomations.cronExpression,
     intervalSeconds: workflowAutomations.intervalSeconds,

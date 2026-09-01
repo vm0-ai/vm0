@@ -1,11 +1,3 @@
-import { initTRPC } from "@trpc/server";
-import { z } from "zod";
-
-const t = initTRPC.create({
-  allowOutsideOfServer: true,
-  isServer: !("window" in globalThis),
-});
-
 const noBodySymbol: unique symbol = Symbol("vm0.noBody");
 const typeSymbol: unique symbol = Symbol("vm0.type");
 
@@ -166,10 +158,6 @@ type ClientRouteInput<TSpec extends AppRouteSpec> =
     ? ClientRouteRequest<TSpec> | undefined
     : ClientRouteRequest<TSpec>;
 
-export interface ContractProcedure {
-  readonly _contractProcedure?: never;
-}
-
 export type RouteTypeSlots<TSpec extends AppRouteSpec> = {
   readonly serverRequest: ServerRouteRequest<TSpec>;
   readonly clientRequest: ClientRouteInput<TSpec>;
@@ -196,7 +184,6 @@ type RuntimeRouteSpec = {
 
 export type AppRoute<TTypes extends AnyRouteTypeSlots = AnyRouteTypeSlots> =
   RuntimeRouteSpec & {
-    readonly procedure: ContractProcedure;
     readonly __types?: TTypes;
   };
 
@@ -361,20 +348,6 @@ export function validateResponse<
   return { ...response, body };
 }
 
-function createProcedure(spec: AppRouteSpec) {
-  const procedure = t.procedure
-    .input(z.custom<unknown>())
-    .output(z.custom<unknown>());
-
-  const resolver = (): never => {
-    throw new Error("Contract procedures are type carriers only");
-  };
-
-  return spec.method === "GET"
-    ? procedure.query(resolver)
-    : procedure.mutation(resolver);
-}
-
 type RouteFromSpec<TSpec extends AppRouteSpec> = TSpec &
   AppRoute<RouteTypeSlots<TSpec>>;
 
@@ -413,12 +386,7 @@ export function initContract(): {
 } {
   return {
     router: (spec) => {
-      return mapRecordValues<typeof spec, RouterFromSpec<typeof spec>>(
-        spec,
-        (_name, route) => {
-          return { ...route, procedure: createProcedure(route) };
-        },
-      );
+      return spec;
     },
     noBody: () => {
       return { [noBodySymbol]: true };

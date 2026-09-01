@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { timestampQueryNumberSchema } from "./base";
-import { firewallPoliciesSchema } from "@okouai/connectors/firewall-types";
+import { firewallPoliciesSchema } from "@okouai/connectors/firewall-contracts";
 import {
   modelProviderWriteTypeSchema,
   type ModelProviderWriteType,

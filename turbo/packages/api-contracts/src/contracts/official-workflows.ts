@@ -29,10 +29,7 @@ export type OfficialWorkflowCatalogSummary = z.infer<
 
 export const officialWorkflowCatalogDetailSchema =
   officialWorkflowCatalogSummarySchema.extend({
-    // New App -> old API fallback. Current APIs always return this field;
-    // remove the optional parser in #29991 after pre-P4 APIs are no longer
-    // serving or retained for rollback.
-    lifecycle: officialWorkflowLifecycleSchema.optional(),
+    lifecycle: officialWorkflowLifecycleSchema,
     workflow: officialWorkflowExecutableSchema,
   });
 export type OfficialWorkflowCatalogDetail = z.infer<

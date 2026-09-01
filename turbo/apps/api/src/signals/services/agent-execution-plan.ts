@@ -19,8 +19,6 @@ export const APPLICATION_OWNED_AGENT_EXECUTION_PLAN = {
       "CLI_PKG_URL",
       "OKOU_AGENT_ID",
       "OKOU_APP_URL",
-      "OKOU_INTRO_VIDEO_TEMPLATES_ENABLED",
-      "OKOU_PRESENTATION_RUNBOOK_ARCHIVE_VERSION",
       "OKOU_TOKEN",
     ],
     legacySerializedBindings: {

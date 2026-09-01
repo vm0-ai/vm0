@@ -80,7 +80,7 @@ function rewritePairedTag(html, tagName, handler) {
       : tagName === "head"
         ? /<head([^>]*)>([\s\S]*?)<\/head>/iu
         : /<title([^>]*)>([\s\S]*?)<\/title>/iu;
-  return html.replace(pattern, (tag, attributeSource, innerContent) => {
+  return html.replace(pattern, (_tag, attributeSource, innerContent) => {
     const state = applyHandler({
       attributes: parseAttributes(attributeSource),
       handler,
@@ -165,17 +165,42 @@ const [indexTemplate, manifestTemplate, workerModule] = await Promise.all([
 const worker = workerModule.default;
 const sharedThreadId = "10000000-0000-4000-8000-000000000001";
 const previewOrigin = "https://pr-25304-api.vm6.ai";
+const clerkJsVersion = "6.25.8";
+const previewClerkHost = "informed-calf-6.clerk.accounts.dev";
+const productionClerkHost = "clerk.vm0.ai";
+const previewClerkPublishableKey = publishableKey("test", previewClerkHost);
+const productionClerkPublishableKey = publishableKey(
+  "live",
+  productionClerkHost,
+);
+const clerkBrowserScriptUrl = `https://cdn.jsdelivr.net/npm/@clerk/clerk-js@${clerkJsVersion}/dist/clerk.browser.js`;
+const builtIndexTemplate = indexTemplate
+  .replaceAll(
+    "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%",
+    previewClerkPublishableKey,
+  )
+  .replaceAll(
+    "%VITE_CLERK_PUBLISHABLE_KEY_PROD%",
+    productionClerkPublishableKey,
+  )
+  .replaceAll("__VM0_CLERK_BROWSER_SCRIPT_URL__", clerkBrowserScriptUrl);
+const expectedClerkCoreScript = clerkCoreScript(builtIndexTemplate);
+const expectedClerkBootstrap = clerkBootstrap(builtIndexTemplate);
 const vm0Description =
   "VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.";
 const okouDescription =
   "Okou, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.";
+
+function publishableKey(environment, host) {
+  return `pk_${environment}_${Buffer.from(`${host}$`).toString("base64")}`;
+}
 
 function requestUrl(input) {
   return new URL(input instanceof Request ? input.url : input.toString());
 }
 
 function assetEnvironment(apiOrigin = "") {
-  const indexHtml = indexTemplate.replace(
+  const indexHtml = builtIndexTemplate.replace(
     '<meta name="vm0-api-origin" content="" />',
     `<meta name="vm0-api-origin" content="${apiOrigin}" />`,
   );
@@ -262,6 +287,44 @@ function htmlAttribute(html, attributeName) {
   return tag ? (parseAttributes(tag).get(attributeName) ?? null) : null;
 }
 
+function clerkBootstrap(html) {
+  const bootstrap =
+    /<script\b[^>]*data-vm0-clerk-bootstrap=""[^>]*>[\s\S]*?<\/script>/iu.exec(
+      html,
+    )?.[0];
+  if (!bootstrap) {
+    throw new Error("Clerk bootstrap script is unavailable");
+  }
+  return bootstrap;
+}
+
+function clerkCoreScript(html) {
+  const script =
+    /<script\b[^>]*id="vm0-clerk-core-script"[^>]*><\/script>/iu.exec(
+      html,
+    )?.[0];
+  if (!script) {
+    throw new Error("Clerk core script is unavailable");
+  }
+  return script;
+}
+
+function assertBootstrapAvatar(html) {
+  assert.doesNotMatch(html, /app-bootstrap-skeleton__avatar-placeholder/u);
+  const avatar =
+    /<svg\b[^>]*class="app-bootstrap-skeleton__avatar-layers"[^>]*>[\s\S]*?<\/svg>/iu.exec(
+      html,
+    )?.[0];
+  assert.ok(avatar, "bootstrap avatar must remain inline");
+  assert.equal(parseAttributes(avatar).get("viewBox"), "0 0 480 480");
+  assert.equal([...avatar.matchAll(/<path\b/giu)].length, 10);
+  assert.match(avatar, /id="bootstrap-avatar-head-clip"/u);
+  assert.match(avatar, /id="bootstrap-avatar-face-clip"/u);
+  assert.match(avatar, /id="bootstrap-avatar-hair-clip"/u);
+  assert.doesNotMatch(html, /data-app-bootstrap-avatar-layer/u);
+  assert.doesNotMatch(html, /assets\/avatar-svg\//u);
+}
+
 async function requestAppPage(origin, apiOrigin = "") {
   const response = await worker.fetch(
     new Request(`${origin}/settings/profile`),
@@ -316,10 +379,9 @@ assert.ok(
     "https://static.vm0.io/platform/icon.svg",
   ),
 );
-assert.equal(
-  tagAttribute(vm0Page.html, "img", "alt", "", "src"),
-  "https://static.vm0.io/platform/icon.svg",
-);
+assertBootstrapAvatar(vm0Page.html);
+assert.equal(clerkCoreScript(vm0Page.html), expectedClerkCoreScript);
+assert.equal(clerkBootstrap(vm0Page.html), expectedClerkBootstrap);
 
 const okouPage = await requestAppPage("https://app.okou.ai");
 assert.equal(
@@ -363,10 +425,9 @@ assert.ok(
     (href) => href === "https://static.okou.io",
   ),
 );
-assert.equal(
-  tagAttribute(okouPage.html, "img", "alt", "", "src"),
-  "https://static.okou.io/platform/icon.svg",
-);
+assertBootstrapAvatar(okouPage.html);
+assert.equal(clerkCoreScript(okouPage.html), expectedClerkCoreScript);
+assert.equal(clerkBootstrap(okouPage.html), expectedClerkBootstrap);
 
 const okouPreview = await requestAppPage(
   "https://3508a2f5.okou-app.pages.dev",
@@ -381,6 +442,9 @@ assert.equal(
   metaContent(okouPreview.html, "name", "vm0-api-origin"),
   previewOrigin,
 );
+assert.equal(clerkBootstrap(okouPreview.html), expectedClerkBootstrap);
+assert.equal(clerkCoreScript(okouPreview.html), expectedClerkCoreScript);
+assert.equal(okouPreview.html.includes("/npm/@clerk/ui@"), false);
 
 const untrustedSuffix = await requestAppPage("https://okou.ai.evil.example");
 assert.equal(htmlAttribute(untrustedSuffix.html, "data-app-brand-name"), "VM0");
@@ -413,6 +477,44 @@ const staticAsset = await worker.fetch(
 assert.equal(await staticAsset.text(), "export const app = true;");
 assert.equal(staticAsset.headers.get("etag"), '"asset-etag"');
 assert.equal(staticAsset.headers.get("x-robots-tag"), null);
+
+let proxiedAssetRequest = null;
+globalThis.fetch = (input) => {
+  proxiedAssetRequest = input instanceof Request ? input : new Request(input);
+  return Promise.resolve(
+    new Response("export const worker = true;", {
+      headers: {
+        "cache-control": "public, max-age=31536000, immutable",
+        "content-type": "application/javascript",
+      },
+    }),
+  );
+};
+const proxiedAsset = await worker.fetch(
+  new Request(
+    "https://app.okou.ai/okou-app/assets/shared-database-worker-AbCd1234.js",
+    {
+      headers: {
+        Authorization: "Bearer secret",
+        Cookie: "session=secret",
+        Range: "bytes=0-1023",
+      },
+    },
+  ),
+  assetEnvironment(),
+);
+assert.equal(
+  proxiedAssetRequest?.url,
+  "https://static.okou.io/okou-app/assets/shared-database-worker-AbCd1234.js",
+);
+assert.equal(proxiedAssetRequest?.headers.get("range"), "bytes=0-1023");
+assert.equal(proxiedAssetRequest?.headers.get("authorization"), null);
+assert.equal(proxiedAssetRequest?.headers.get("cookie"), null);
+assert.equal(await proxiedAsset.text(), "export const worker = true;");
+assert.equal(
+  proxiedAsset.headers.get("cache-control"),
+  "public, max-age=31536000, immutable",
+);
 
 async function requestSharedPage({
   appOrigin,

@@ -5,7 +5,7 @@
 # Load from bats tests with: load '../../helpers/browser'
 #
 # Required env vars:
-#   VM0_API_BACKEND_URL  — Target API backend URL (e.g., https://api.vm7.ai:8443)
+#   OKOU_API_BACKEND_URL — Target API backend URL (e.g., https://api.vm7.ai:8443)
 #
 # Optional env vars:
 #   E2E_ACCOUNT  — Test email address (auto-generated if empty)
@@ -105,14 +105,36 @@ open_browser_page() {
 }
 
 # ---------------------------------------------------------------------------
+# resolve_e2e_api_backend_url — Resolve the staged E2E API URL contract
+# Repository E2E writers are canonical-only during this compatibility stage.
+# Keep VM0_API_BACKEND_URL as a development, preview, and operational rollback
+# input until its documented support cutoff is approved and no supported
+# rollback or invocation contract needs it. The removal gate is tracked by
+# #28914. The resolved value is preserved byte-for-byte and never logged.
+# ---------------------------------------------------------------------------
+resolve_e2e_api_backend_url() {
+  local canonical_value="${OKOU_API_BACKEND_URL:-}"
+  local legacy_value="${VM0_API_BACKEND_URL:-}"
+
+  if [[ -n "$canonical_value" && -n "$legacy_value" && "$canonical_value" != "$legacy_value" ]]; then
+    echo "E2E API backend URL aliases conflict: canonical_key=OKOU_API_BACKEND_URL legacy_key=VM0_API_BACKEND_URL state=conflict" >&2
+    return 1
+  fi
+
+  E2E_API_BACKEND_URL="${canonical_value:-$legacy_value}"
+  if [[ -z "$E2E_API_BACKEND_URL" ]]; then
+    echo "E2E API backend URL is required: canonical_key=OKOU_API_BACKEND_URL legacy_key=VM0_API_BACKEND_URL state=missing" >&2
+    return 1
+  fi
+  export E2E_API_BACKEND_URL
+}
+
+# ---------------------------------------------------------------------------
 # browser_setup — Validate environment, initialize shared state
 # Call this in setup_file() before any browser interactions.
 # ---------------------------------------------------------------------------
 browser_setup() {
-  if [[ -z "${VM0_API_BACKEND_URL:-}" ]]; then
-    echo "VM0_API_BACKEND_URL is required but not set" >&2
-    return 1
-  fi
+  resolve_e2e_api_backend_url || return
 
   if ! command -v agent-browser &>/dev/null; then
     echo "agent-browser is not installed. Install with: npm install -g agent-browser" >&2
@@ -148,7 +170,7 @@ seed_preview_bypass_cookies() {
   fi
 
   local base_url
-  for base_url in "$VM0_API_BACKEND_URL" "${OKOU_AUTH_URL:-}"; do
+  for base_url in "$E2E_API_BACKEND_URL" "${OKOU_AUTH_URL:-}"; do
     if [[ -z "$base_url" ]]; then
       continue
     fi
@@ -402,12 +424,11 @@ wait_for_sign_in_email_code_ready() {
 }
 
 # ---------------------------------------------------------------------------
-# accept_legal_consent — Check legal consent checkbox if present
-# Clerk renders this when legal_consent_enabled is on. Safe to call always.
+# accept_legal_consent — Accept legal consent when the auth form requires it
 # ---------------------------------------------------------------------------
 accept_legal_consent() {
-  if [[ "$(agent_browser_on_page get count 'input[name="legalAccepted"]')" -gt 0 ]]; then
-    agent_browser_on_page check 'input[name="legalAccepted"]'
+  if [[ "$(agent_browser_on_page get count '[role="checkbox"]')" -gt 0 ]]; then
+    agent_browser_on_page find role checkbox click
   fi
 }
 
@@ -415,6 +436,10 @@ accept_legal_consent() {
 # click_continue — Click form "Continue" button (not "Continue with Google")
 # ---------------------------------------------------------------------------
 click_continue() {
+  wait_for_browser_target --fn \
+    "Array.from(document.querySelectorAll('button')).some(
+      (button) => button.textContent?.trim() === 'Continue' && !button.disabled
+    )"
   agent_browser_on_page find role button click --name "Continue" --exact
 }
 
@@ -579,7 +604,7 @@ delete_e2e_account_if_exists() {
 }
 
 # ---------------------------------------------------------------------------
-# derive_app_url — Derive platform app URL from VM0_API_BACKEND_URL
+# derive_app_url — Derive platform app URL from E2E_API_BACKEND_URL
 # Local:  https://api.vm7.ai:8443  → https://app.vm7.ai:8443
 # CI:     https://pr-123-api.vm0-dev.com → https://pr-123-app.vm0-dev.com
 # ---------------------------------------------------------------------------
@@ -589,7 +614,7 @@ derive_app_url() {
     return
   fi
 
-  local source="${VM0_API_BACKEND_URL}"
+  local source="${E2E_API_BACKEND_URL}"
   source="${source/\/\/api./\/\/app.}"
   source="${source/-api./-app.}"
   source="${source/\/\/www./\/\/app.}"

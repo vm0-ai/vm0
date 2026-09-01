@@ -3,11 +3,15 @@ import type {
   SharedDatabaseIdentity,
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
+  ChatThreadIndicators,
 } from "./data-key.ts";
-import type { SharedDatabaseConnectionStatus } from "./protocol.ts";
+import type {
+  SharedDatabaseConnectionStatus,
+  SharedDatabaseHeartbeatResult,
+} from "./protocol.ts";
 
 export interface SharedDatabaseHeartbeat {
-  readonly identity: SharedDatabaseIdentity;
+  readonly token: SharedDatabaseIdentity["token"];
   readonly vercelProtectionBypass?: string;
 }
 
@@ -15,20 +19,23 @@ export interface SharedDatabaseBridge {
   heartbeat(
     heartbeat: SharedDatabaseHeartbeat,
     signal: AbortSignal,
-  ): Promise<void>;
+  ): Promise<SharedDatabaseHeartbeatResult>;
+  indicators(signal: AbortSignal): Promise<ChatThreadIndicators>;
+  reloadIndicators(): void;
   query<TKey extends SharedDatabaseDataKey>(
     query: SharedDatabaseQuery<TKey>,
     signal: AbortSignal,
   ): Promise<SharedDatabaseQueryResult<TKey>>;
-  on(
-    dataKey: SharedDatabaseDataKey,
-    callback: () => void,
-    signal: AbortSignal,
-  ): Promise<void>;
 }
 
 export interface SharedDatabaseBridgeEvents {
+  readonly authenticationRequired: () => void;
+  readonly databaseInvalidated: (
+    dataKey: SharedDatabaseDataKey,
+  ) => void | Promise<void>;
+  readonly databaseReconnected: () => void | Promise<void>;
   readonly reloadRequired: () => void;
+  readonly indicatorsInvalidated: (payload: unknown) => void;
   readonly statusChanged: (status: SharedDatabaseConnectionStatus) => void;
 }
 
@@ -39,6 +46,7 @@ export interface SharedDatabasePortLike {
   addEventListener(
     type: "message",
     listener: (event: MessageEvent<unknown>) => void,
+    options?: AddEventListenerOptions | boolean,
   ): void;
   removeEventListener(
     type: "message",

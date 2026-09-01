@@ -3,13 +3,14 @@ import type {
   CustomConnectorHttpResponse,
   CustomConnectorResponse,
 } from "@okouai/api-contracts/contracts/custom-connectors";
+import { customConnectorHttpResponseSchema } from "@okouai/api-contracts/contracts/custom-connectors";
 import type { McpConnector } from "@okouai/api-contracts/contracts/mcp-connectors";
 import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 
 export function customConnector(
   overrides: Partial<CustomConnectorHttpResponse> = {},
 ): CustomConnectorHttpResponse {
-  return {
+  return customConnectorHttpResponseSchema.parse({
     kind: "http",
     id: "33333333-3333-4333-8333-333333333333",
     slug: "_acme-search",
@@ -38,7 +39,7 @@ export function customConnector(
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
-  };
+  });
 }
 
 export function stubCustomConnectors(

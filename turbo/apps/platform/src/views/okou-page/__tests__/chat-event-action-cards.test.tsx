@@ -1,11 +1,19 @@
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import {
+  connectorAccountsContract,
+  type ConnectorAccountConnection,
+  type ConnectorAccountSelection,
+} from "@okouai/api-contracts/contracts/connector-accounts";
+import {
   bankingUserContract,
   type BankingAccessRequestStatusResponse,
   type BankingAgentGrantRequest,
   type BankingConnectSessionRequest,
 } from "@okouai/api-contracts/contracts/banking";
-import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import {
+  chatThreadConnectorSelectionContract,
+  chatThreadEventsContract,
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   connectorManualGrantContract,
   connectorNoAuthGrantContract,
@@ -29,6 +37,7 @@ import {
   type AgentCustomConnectorGrant,
 } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import {
+  customConnectorHttpResponseSchema,
   customConnectorValuesContract,
   customConnectorsContract,
   type CustomConnectorHttpResponse,
@@ -38,9 +47,9 @@ import {
   userPermissionGrantsContract,
   type UserPermissionGrantResponse,
 } from "@okouai/api-contracts/contracts/user-permission-grants";
-import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-types";
+import { UNKNOWN_PERMISSION_GRANT } from "@okouai/connectors/firewall-contracts";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
@@ -51,14 +60,61 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../mocks/ably.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { PLACEHOLDER, mockChatLifecycle } from "./chat-test-helpers.ts";
+import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../../signals/__tests__/test-helpers.ts";
+import {
+  PLACEHOLDER,
+  mockChatLifecycle,
+  sendMessageInUI,
+} from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
 
 const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "e4000000-0000-4000-a000-000000000001";
+
+function connectorAccount(
+  overrides: Partial<ConnectorAccountConnection> = {},
+): ConnectorAccountConnection {
+  return {
+    id: "a1000000-0000-4000-a000-000000000001",
+    target: { kind: "builtin", connectorSlug: "github" },
+    authMethod: "oauth",
+    displayName: "Work",
+    isDefault: false,
+    externalId: null,
+    externalUsername: "octocat",
+    externalEmail: "work@example.com",
+    oauthScopes: ["repo"],
+    connectionStatus: "connected",
+    reconnectReason: null,
+    tokenExpiresAt: null,
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-02T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function connectorAccountActionUrl(
+  threadId: string,
+  account: ConnectorAccountConnection,
+  callbackPrompt: string,
+): string {
+  const params = new URLSearchParams({
+    kind: account.target.kind,
+    threadId,
+    callbackPrompt,
+  });
+  if (account.target.kind === "builtin") {
+    params.set("connectorSlug", account.target.connectorSlug);
+  } else {
+    params.set("customConnectorId", account.target.customConnectorId);
+  }
+  return `${window.location.origin}/agents/${AGENT_ID}/connector-accounts/${account.id}/select?${params.toString()}`;
+}
 
 function catalogPermissionDetail(
   overrides: Partial<PublicConnectorCatalogPermissionDetail> &
@@ -204,10 +260,35 @@ function mockAgentConnectorAuthorizations(
   });
 }
 
+function mockConnectorAccountActionAuthorization(
+  target: ConnectorAccountConnection["target"],
+  authorized = true,
+): void {
+  context.mocks.api(userConnectorsContract.get, ({ respond }) => {
+    return respond(200, {
+      enabledConnectorSlugs:
+        authorized && target.kind === "builtin" ? [target.connectorSlug] : [],
+    });
+  });
+  context.mocks.api(agentCustomConnectorsContract.get, ({ respond }) => {
+    return respond(200, {
+      grants:
+        authorized && target.kind === "custom"
+          ? [
+              {
+                customConnectorId: target.customConnectorId,
+                permissionNames: [],
+              },
+            ]
+          : [],
+    });
+  });
+}
+
 function customConnector(
   overrides: Partial<CustomConnectorHttpResponse> = {},
 ): CustomConnectorHttpResponse {
-  return {
+  return customConnectorHttpResponseSchema.parse({
     kind: "http",
     id: "33333333-3333-4333-8333-333333333333",
     storageVersion: 1,
@@ -236,7 +317,7 @@ function customConnector(
     createdAt: "2026-06-09T10:00:00Z",
     updatedAt: "2026-06-09T10:00:00Z",
     ...overrides,
-  };
+  });
 }
 
 function mcpCustomConnector(): CustomConnectorMcpResponse {
@@ -373,6 +454,759 @@ function selectMailText(element: HTMLElement): void {
 }
 
 describe("chat event action cards", () => {
+  it("switches the thread account before continuing from repeated cards", async () => {
+    const threadId = "e4000000-0000-4000-a000-000000000021";
+    const account = connectorAccount();
+    mockConnectorAccountActionAuthorization(account.target);
+    const callbackPrompt = "Continue with the selected GitHub account";
+    const actionUrl = connectorAccountActionUrl(
+      threadId,
+      account,
+      callbackPrompt,
+    );
+    const equivalentActionUrl = `${window.location.origin}/agents/${AGENT_ID.toUpperCase()}/connector-accounts/${account.id.toUpperCase()}/select?callbackPrompt=${encodeURIComponent(callbackPrompt)}&threadId=${threadId.toUpperCase()}&connectorSlug=github&kind=builtin&presentation=ignored`;
+    let selections: ConnectorAccountSelection[] = [];
+    let selectedConnections: ConnectorAccountConnection[] = [];
+    let updateBody: ConnectorAccountSelection | null = null;
+    const actionOrder: string[] = [];
+    let resolveSelectionUpdate = (): void => {
+      throw new Error("Selection update did not start");
+    };
+
+    context.mocks.api(
+      connectorAccountsContract.connection,
+      ({ params, query, respond }) => {
+        expect(params.connectionId).toBe(account.id);
+        expect(query).toStrictEqual(account.target);
+        return respond(200, account);
+      },
+    );
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.get,
+      ({ params, respond }) => {
+        expect(params.id).toBe(threadId);
+        return respond(200, { selections, selectedConnections });
+      },
+    );
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.update,
+      async ({ deferred, params, body, respond }) => {
+        expect(params.id).toBe(threadId);
+        actionOrder.push("selection");
+        const selectionUpdate = deferred<void>();
+        resolveSelectionUpdate = () => {
+          selectionUpdate.resolve();
+        };
+        await selectionUpdate.promise;
+        updateBody = body;
+        selections = [body];
+        selectedConnections = [account];
+        return respond(200, body);
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Connector account switch",
+      chatEvents: [
+        {
+          id: `${threadId}-message`,
+          role: "assistant",
+          content: `${actionUrl}\n\n${equivalentActionUrl}`,
+          runId: `${threadId}-run`,
+          createdAt: "2026-08-31T10:00:00.000Z",
+        },
+      ],
+      onSendRequest: ({ prompt }) => {
+        actionOrder.push("callback");
+        expect(prompt).toBe(callbackPrompt);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const cards = await screen.findAllByTestId(
+      "connector-account-action-card",
+      undefined,
+      { timeout: 10_000 },
+    );
+    expect(cards).toHaveLength(2);
+    for (const card of cards) {
+      expect(card).toHaveTextContent("Switch to Work?");
+      expect(card).toHaveTextContent("github · work@example.com");
+      expect(card).not.toHaveTextContent("The current run will not change.");
+      await waitFor(() => {
+        const icon = card.querySelector("img");
+        if (!(icon instanceof HTMLImageElement)) {
+          throw new Error("GitHub connector icon not found");
+        }
+        expect(icon).toHaveAttribute(
+          "src",
+          "https://icons.example.test/github.svg",
+        );
+      });
+    }
+
+    const firstCard = cards[0];
+    const secondCard = cards[1];
+    if (!firstCard || !secondCard) {
+      throw new Error("Expected repeated connector account action cards");
+    }
+    act(() => {
+      buttonByText("Switch", firstCard).click();
+      buttonByText("Switch", secondCard).click();
+    });
+
+    await waitFor(() => {
+      expect(actionOrder).toStrictEqual(["selection"]);
+      for (const card of cards) {
+        expect(buttonByText("Switching...", card)).toBeDisabled();
+      }
+    });
+    resolveSelectionUpdate();
+
+    await waitFor(() => {
+      expect(updateBody).toStrictEqual({
+        connectionId: account.id,
+        target: account.target,
+      });
+      expect(actionOrder).toStrictEqual(["selection", "callback"]);
+      for (const card of cards) {
+        expect(card).toHaveTextContent("Switched to Work");
+        expect(queryAllByRoleFast("button", card)).toStrictEqual([]);
+      }
+    });
+  });
+
+  it("renders an already-selected account without another action", async () => {
+    const threadId = "e4000000-0000-4000-a000-000000000022";
+    const customConnectorId = "a2000000-0000-4000-a000-000000000022";
+    const account = connectorAccount({
+      id: "a1000000-0000-4000-a000-000000000022",
+      target: { kind: "custom", customConnectorId },
+    });
+    mockConnectorAccountActionAuthorization(account.target);
+    const selection = {
+      connectionId: account.id,
+      target: account.target,
+    } satisfies ConnectorAccountSelection;
+    const callbackPrompt = "Continue the original task";
+    const actionUrl = `${window.location.origin}/agents/${AGENT_ID.toUpperCase()}/connector-accounts/${account.id.toUpperCase()}/select?kind=custom&customConnectorId=${customConnectorId.toUpperCase()}&threadId=${threadId.toUpperCase()}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
+    let updateCount = 0;
+    const sentPrompts: string[] = [];
+
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          customConnector({
+            id: customConnectorId,
+            slug: "_acme-search",
+            displayName: "Acme Search",
+          }),
+        ],
+      });
+    });
+    context.mocks.api(
+      connectorAccountsContract.connection,
+      ({ query, respond }) => {
+        expect(query).toStrictEqual({ kind: "custom", customConnectorId });
+        return respond(200, account);
+      },
+    );
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          selections: [selection],
+          selectedConnections: [account],
+        });
+      },
+    );
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.update,
+      ({ body, respond }) => {
+        updateCount += 1;
+        return respond(200, body);
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Selected connector account",
+      chatEvents: [
+        {
+          id: `${threadId}-message`,
+          role: "assistant",
+          content: actionUrl,
+          runId: `${threadId}-run`,
+          createdAt: "2026-08-31T10:00:00.000Z",
+        },
+      ],
+      onSendRequest: ({ prompt }) => {
+        sentPrompts.push(prompt);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const card = await screen.findByTestId(
+      "connector-account-action-card",
+      undefined,
+      { timeout: 10_000 },
+    );
+    expect(card).toHaveTextContent("Switched to Work");
+    expect(card).toHaveTextContent(
+      `Custom connector · ${customConnectorId.slice(0, 8)} · work@example.com`,
+    );
+    await waitFor(() => {
+      const icon = card.querySelector('[aria-label="Acme Search"]');
+      expect(icon).toHaveTextContent("A");
+    });
+    expect(queryAllByRoleFast("button", card)).toStrictEqual([]);
+    expect(updateCount).toBe(0);
+    expect(sentPrompts).toStrictEqual([]);
+  });
+
+  it("keeps an account switch available when connector icon metadata fails", async () => {
+    const threadId = "e4000000-0000-4000-a000-000000000031";
+    const account = connectorAccount({
+      id: "a1000000-0000-4000-a000-000000000031",
+    });
+    mockConnectorAccountActionAuthorization(account.target);
+    let catalogReadCount = 0;
+    context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
+      catalogReadCount += 1;
+      return respond(500, {
+        error: {
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Connector catalog unavailable",
+        },
+      });
+    });
+    context.mocks.api(connectorAccountsContract.connection, ({ respond }) => {
+      return respond(200, account);
+    });
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.get,
+      ({ respond }) => {
+        return respond(200, { selections: [], selectedConnections: [] });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Connector icon fallback",
+      chatEvents: [
+        {
+          id: `${threadId}-message`,
+          role: "assistant",
+          content: connectorAccountActionUrl(threadId, account, "Continue"),
+          runId: `${threadId}-run`,
+          createdAt: "2026-08-31T10:00:00.000Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const card = await screen.findByTestId(
+      "connector-account-action-card",
+      undefined,
+      { timeout: 10_000 },
+    );
+    await waitFor(() => {
+      expect(catalogReadCount).toBe(1);
+      expect(buttonByText("Switch", card)).toBeEnabled();
+      expect(
+        within(card).getByRole("img", {
+          name: "Connector icon unavailable",
+        }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("renders a hallucinated or cross-target account as unavailable", async () => {
+    const threadId = "e4000000-0000-4000-a000-000000000023";
+    const account = connectorAccount({
+      id: "a1000000-0000-4000-a000-000000000023",
+    });
+    mockConnectorAccountActionAuthorization(account.target);
+    context.mocks.api(connectorAccountsContract.connection, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "NOT_FOUND",
+          message: "Connector account not found",
+        },
+      });
+    });
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.get,
+      ({ respond }) => {
+        return respond(200, { selections: [], selectedConnections: [] });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Unavailable connector account",
+      chatEvents: [
+        {
+          id: `${threadId}-message`,
+          role: "assistant",
+          content: connectorAccountActionUrl(threadId, account, "Continue"),
+          runId: `${threadId}-run`,
+          createdAt: "2026-08-31T10:00:00.000Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const card = await screen.findByTestId(
+      "connector-account-action-card-unavailable",
+      undefined,
+      { timeout: 10_000 },
+    );
+    expect(card).toHaveTextContent("Account unavailable");
+    expect(card).toHaveTextContent(
+      "This account does not exist or is not available for this connector.",
+    );
+    expect(queryAllByRoleFast("button", card)).toStrictEqual([]);
+  });
+
+  it("renders an account outside the current agent scope as unavailable", async () => {
+    const threadId = "e4000000-0000-4000-a000-000000000026";
+    const account = connectorAccount({
+      id: "a1000000-0000-4000-a000-000000000026",
+    });
+    let accountReadCount = 0;
+    let updateCount = 0;
+    const sentPrompts: string[] = [];
+    mockConnectorAccountActionAuthorization(account.target, false);
+    context.mocks.api(connectorAccountsContract.connection, ({ respond }) => {
+      accountReadCount += 1;
+      return respond(200, account);
+    });
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.update,
+      ({ body, respond }) => {
+        updateCount += 1;
+        return respond(200, body);
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Unauthorized connector account",
+      chatEvents: [
+        {
+          id: `${threadId}-message`,
+          role: "assistant",
+          content: connectorAccountActionUrl(threadId, account, "Continue"),
+          runId: `${threadId}-run`,
+          createdAt: "2026-08-31T10:00:00.000Z",
+        },
+      ],
+      onSendRequest: ({ prompt }) => {
+        sentPrompts.push(prompt);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const card = await screen.findByTestId(
+      "connector-account-action-card-unavailable",
+      undefined,
+      { timeout: 10_000 },
+    );
+    expect(card).toHaveTextContent("Account unavailable");
+    expect(queryAllByRoleFast("button", card)).toStrictEqual([]);
+    expect(accountReadCount).toBe(0);
+    expect(updateCount).toBe(0);
+    expect(sentPrompts).toStrictEqual([]);
+  });
+
+  it("renders a feature-disabled account switch as unavailable", async () => {
+    const threadId = "e4000000-0000-4000-a000-000000000029";
+    const account = connectorAccount({
+      id: "a1000000-0000-4000-a000-000000000029",
+    });
+    let accountReadCount = 0;
+    mockConnectorAccountActionAuthorization(account.target);
+    context.mocks.api(connectorAccountsContract.connection, ({ respond }) => {
+      accountReadCount += 1;
+      return respond(200, account);
+    });
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.get,
+      ({ respond }) => {
+        return respond(200, { selections: [], selectedConnections: [] });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Feature-disabled connector account",
+      chatEvents: [
+        {
+          id: `${threadId}-message`,
+          role: "assistant",
+          content: connectorAccountActionUrl(threadId, account, "Continue"),
+          runId: `${threadId}-run`,
+          createdAt: "2026-08-31T10:00:00.000Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: false },
+    });
+
+    const card = await screen.findByTestId(
+      "connector-account-action-card-unavailable",
+      undefined,
+      { timeout: 10_000 },
+    );
+    expect(card).toHaveTextContent("Account unavailable");
+    expect(queryAllByRoleFast("button", card)).toStrictEqual([]);
+    expect(accountReadCount).toBe(0);
+  });
+
+  it("retries a failed account read and shows reconnect status", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e4000000-0000-4000-a000-000000000030";
+    const account = connectorAccount({
+      id: "a1000000-0000-4000-a000-000000000030",
+      connectionStatus: "reconnect-required",
+      reconnectReason: "authorization_expired_or_revoked",
+    });
+    let accountReadCount = 0;
+    let accountReadStarted = false;
+    let releaseAccountRead = (): void => {
+      throw new Error("Account read did not start");
+    };
+    mockConnectorAccountActionAuthorization(account.target);
+    context.mocks.api(
+      connectorAccountsContract.connection,
+      async ({ deferred, respond }) => {
+        accountReadCount += 1;
+        if (accountReadCount === 1) {
+          const accountRead = deferred<void>();
+          releaseAccountRead = () => {
+            accountRead.resolve();
+          };
+          accountReadStarted = true;
+          await accountRead.promise;
+          return respond(500, {
+            error: {
+              code: "INTERNAL_SERVER_ERROR",
+              message: "Connector account read failed",
+            },
+          });
+        }
+        return respond(200, account);
+      },
+    );
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.get,
+      ({ respond }) => {
+        return respond(200, { selections: [], selectedConnections: [] });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Reconnect connector account",
+      chatEvents: [
+        {
+          id: `${threadId}-message`,
+          role: "assistant",
+          content: connectorAccountActionUrl(threadId, account, "Continue"),
+          runId: `${threadId}-run`,
+          createdAt: "2026-08-31T10:00:00.000Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    await expect(
+      screen.findByTestId("connector-account-action-card-loading"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(accountReadStarted).toBeTruthy();
+    });
+    releaseAccountRead();
+
+    const errorCard = await screen.findByTestId(
+      "connector-account-action-card-error",
+    );
+    expect(errorCard).toHaveTextContent(
+      "Couldn't load this connector account.",
+    );
+    await user.click(buttonByText("Retry", errorCard));
+
+    const card = await screen.findByTestId("connector-account-action-card");
+    expect(accountReadCount).toBe(2);
+    expect(card).toHaveTextContent("Switch to Work?");
+    expect(card).toHaveTextContent(
+      "Reconnect required. Later runs may use the existing fallback.",
+    );
+  });
+
+  it("retries a rejected selection from another repeated card", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e4000000-0000-4000-a000-000000000024";
+    const account = connectorAccount({
+      id: "a1000000-0000-4000-a000-000000000024",
+    });
+    mockConnectorAccountActionAuthorization(account.target);
+    const sentPrompts: string[] = [];
+    let selections: ConnectorAccountSelection[] = [];
+    let selectedConnections: ConnectorAccountConnection[] = [];
+    let updateCount = 0;
+    context.mocks.api(connectorAccountsContract.connection, ({ respond }) => {
+      return respond(200, account);
+    });
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.get,
+      ({ respond }) => {
+        return respond(200, { selections, selectedConnections });
+      },
+    );
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.update,
+      ({ body, respond }) => {
+        updateCount += 1;
+        if (updateCount === 1) {
+          return respond(400, {
+            error: {
+              code: "BAD_REQUEST",
+              message: "Connector account selection is no longer valid",
+            },
+          });
+        }
+        selections = [body];
+        selectedConnections = [account];
+        return respond(200, body);
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Stale connector account",
+      chatEvents: [
+        {
+          id: `${threadId}-message`,
+          role: "assistant",
+          content: `${connectorAccountActionUrl(threadId, account, "Continue")}\n\n${connectorAccountActionUrl(threadId, account, "Continue")}`,
+          runId: `${threadId}-run`,
+          createdAt: "2026-08-31T10:00:00.000Z",
+        },
+      ],
+      onSendRequest: ({ prompt }) => {
+        sentPrompts.push(prompt);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const cards = await screen.findAllByTestId(
+      "connector-account-action-card",
+      undefined,
+      { timeout: 10_000 },
+    );
+    expect(cards).toHaveLength(2);
+    const firstCard = cards[0];
+    const secondCard = cards[1];
+    if (!firstCard || !secondCard) {
+      throw new Error("Expected repeated connector account action cards");
+    }
+    await user.click(buttonByText("Switch", firstCard));
+
+    await waitFor(() => {
+      expect(firstCard).toHaveTextContent(
+        "Couldn't switch accounts. Try again.",
+      );
+      expect(buttonByText("Retry", firstCard)).toBeEnabled();
+      expect(sentPrompts).toStrictEqual([]);
+    });
+
+    await user.click(buttonByText("Retry", secondCard));
+
+    await waitFor(() => {
+      expect(updateCount).toBe(2);
+      expect(sentPrompts).toStrictEqual(["Continue"]);
+      for (const card of cards) {
+        expect(card).not.toHaveTextContent(
+          "Couldn't switch accounts. Try again.",
+        );
+        expect(card).toHaveTextContent("Switched to Work");
+        expect(queryAllByRoleFast("button", card)).toStrictEqual([]);
+      }
+    });
+  });
+
+  it("refreshes a mounted account card after a thread-detail change", async () => {
+    const threadId = "e4000000-0000-4000-a000-000000000025";
+    const account = connectorAccount({
+      id: "a1000000-0000-4000-a000-000000000025",
+    });
+    mockConnectorAccountActionAuthorization(account.target);
+    let selections: ConnectorAccountSelection[] = [];
+    let selectedConnections: ConnectorAccountConnection[] = [];
+    context.mocks.api(connectorAccountsContract.connection, ({ respond }) => {
+      return respond(200, account);
+    });
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.get,
+      ({ respond }) => {
+        return respond(200, { selections, selectedConnections });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Realtime connector account",
+      chatEvents: [
+        {
+          id: `${threadId}-message`,
+          role: "assistant",
+          content: connectorAccountActionUrl(threadId, account, "Continue"),
+          runId: `${threadId}-run`,
+          createdAt: "2026-08-31T10:00:00.000Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const card = await screen.findByTestId(
+      "connector-account-action-card",
+      undefined,
+      { timeout: 10_000 },
+    );
+    expect(card).not.toHaveTextContent("Switched to Work");
+    await waitFor(() => {
+      expect(
+        hasSubscription(`chatThreadDetailChanged:${threadId}`),
+      ).toBeTruthy();
+    });
+
+    selections = [{ connectionId: account.id, target: account.target }];
+    selectedConnections = [account];
+    triggerAblyEvent(`chatThreadDetailChanged:${threadId}`);
+
+    await waitFor(() => {
+      expect(card).toHaveTextContent("Switched to Work");
+      expect(queryAllByRoleFast("button", card)).toStrictEqual([]);
+    });
+
+    selections = [];
+    selectedConnections = [];
+    triggerAblyEvent(`chatThreadDetailChanged:${threadId}`);
+
+    await waitFor(() => {
+      expect(card).toHaveTextContent("Switch to Work?");
+      expect(buttonByText("Switch", card)).toBeEnabled();
+    });
+  });
+
+  it("registers a realtime account card in an optimistic thread", async () => {
+    const user = userEvent.setup({ delay: null });
+    const account = connectorAccount({
+      id: "a1000000-0000-4000-a000-000000000028",
+      displayName: "Realtime account",
+    });
+    let optimisticThreadId: string | undefined;
+    mockConnectorAccountActionAuthorization(account.target);
+    context.mocks.api(
+      connectorAccountsContract.connection,
+      ({ params, respond }) => {
+        expect(params.connectionId).toBe(account.id);
+        return respond(200, account);
+      },
+    );
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.get,
+      ({ params, respond }) => {
+        expect(params.id).toBe(optimisticThreadId);
+        return respond(200, { selections: [], selectedConnections: [] });
+      },
+    );
+    context.mocks.api(browserContract.get, ({ respond }) => {
+      return respond(404, {
+        error: { code: "NOT_FOUND", message: "Browser not found" },
+      });
+    });
+    const lifecycle = mockChatLifecycle(context, {
+      threadTitle: "Optimistic connector account card",
+      onThreadCreate: ({ clientThreadId }) => {
+        optimisticThreadId = clientThreadId;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER);
+    });
+    await sendMessageInUI(user, textarea, "Start with my selected account");
+    await waitFor(() => {
+      expect(optimisticThreadId).toBeDefined();
+      expect(
+        screen.getByText("Start with my selected account"),
+      ).toBeInTheDocument();
+    });
+    if (!optimisticThreadId) {
+      throw new Error("Expected an optimistic thread identifier");
+    }
+
+    lifecycle.completeRun(
+      connectorAccountActionUrl(
+        optimisticThreadId,
+        account,
+        "Continue optimistic task",
+      ),
+    );
+
+    const card = await screen.findByTestId(
+      "connector-account-action-card",
+      undefined,
+      { timeout: 10_000 },
+    );
+    expect(card).toHaveTextContent("Switch to Realtime account?");
+  });
+
   it("renders an unconnected banking request with the compact action card layout", async () => {
     const threadId = "e4000000-0000-4000-a000-000000000005";
     const reason = "Review recent expenses";
@@ -409,7 +1243,9 @@ describe("chat event action cards", () => {
       featureSwitches: { [FeatureSwitchKey.Banking]: true },
     });
 
-    const card = await screen.findByTestId("banking-action-card");
+    const card = await screen.findByTestId("banking-action-card", undefined, {
+      timeout: 10_000,
+    });
     expect(card).toHaveClass("min-h-[88px]", "p-3", "sm:flex-row");
     expect(card).toHaveTextContent("Banking access request");
     expect(card).toHaveTextContent(`Zero · ${reason}`);
@@ -480,7 +1316,9 @@ describe("chat event action cards", () => {
       featureSwitches: { [FeatureSwitchKey.Banking]: true },
     });
 
-    const card = await screen.findByTestId("banking-action-card");
+    const card = await screen.findByTestId("banking-action-card", undefined, {
+      timeout: 10_000,
+    });
     const popup = new Window();
     Object.defineProperty(popup, "opener", {
       configurable: true,
@@ -601,7 +1439,9 @@ describe("chat event action cards", () => {
       featureSwitches: { [FeatureSwitchKey.Banking]: true },
     });
 
-    const card = await screen.findByTestId("banking-action-card");
+    const card = await screen.findByTestId("banking-action-card", undefined, {
+      timeout: 10_000,
+    });
     await user.click(
       within(card).getByRole("checkbox", { name: /Everyday Checking/u }),
     );
@@ -1531,20 +2371,24 @@ describe("chat event action cards", () => {
       chatThreadEventsContract.rows,
       ({ params, query, respond }) => {
         if (params.threadId !== rightThreadId || query.sinceSeqId >= 1) {
-          return respond(200, { rows: [] });
+          return respond(200, chatEventRowsResponse([], query));
         }
-        return respond(200, {
-          rows: mockChatEventRows([
-            {
-              id: "c0000000-0000-4000-a000-000000000034",
-              threadId: rightThreadId,
-              eventType: "output.message",
-              seqId: 1,
-              content: `https://app.vm0.ai/mail/drafts/${mailDraftId}`,
-              createdAt,
-            },
-          ]),
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            mockChatEventRows([
+              {
+                id: "c0000000-0000-4000-a000-000000000034",
+                threadId: rightThreadId,
+                eventType: "output.message",
+                seqId: 1,
+                content: `https://app.vm0.ai/mail/drafts/${mailDraftId}`,
+                createdAt,
+              },
+            ]),
+            query,
+          ),
+        );
       },
     );
 
@@ -3328,7 +4172,11 @@ describe("chat event action cards", () => {
       path: "/chats/e4000000-0000-4000-a000-000000000017",
     });
 
-    const permissionCard = await screen.findByTestId("permission-action-card");
+    const permissionCard = await screen.findByTestId(
+      "permission-action-card",
+      {},
+      { timeout: 3000 },
+    );
     await waitForButtonByText("Confirm", permissionCard);
     expect(
       within(permissionCard).queryByText("Already allowed"),
@@ -3797,14 +4645,12 @@ describe("chat event action cards", () => {
       });
 
       const card = await screen.findByTestId("plan-upgrade-card");
-      expect(linkByText("Compare plans", card)).toHaveAttribute(
-        "href",
-        "/?settings=billing&billingView=plans",
-      );
+      expect(buttonByText("Compare plans", card)).toBeInTheDocument();
     },
   );
 
-  it("renders trusted plan links as upgrade cards", async () => {
+  it("opens billing plans from trusted plan upgrade cards", async () => {
+    const user = userEvent.setup({ delay: null });
     const absoluteUrl =
       "https://app.vm0.ai/?settings=billing&billingView=plans";
     const relativeUrl = "/?settings=billing&billingView=plans";
@@ -3875,8 +4721,7 @@ describe("chat event action cards", () => {
       ),
     ).toBeInTheDocument();
     for (const card of cards) {
-      const comparePlansLink = linkByText("Compare plans", card);
-      expect(comparePlansLink).toHaveAttribute("href", relativeUrl);
+      expect(buttonByText("Compare plans", card)).toBeInTheDocument();
     }
     expect(linkByText("Untrusted plan", document)).toHaveAttribute(
       "href",
@@ -3898,6 +4743,10 @@ describe("chat event action cards", () => {
       "href",
       creditUrl,
     );
+    await user.click(buttonByText("Compare plans", cards[0]!));
+    await expect(
+      screen.findByRole("dialog", { name: "Choose a plan" }),
+    ).resolves.toBeInTheDocument();
   });
 
   it("does not cancel stale permission loading when a confirmed grant reloads cards", async () => {

@@ -107,7 +107,7 @@ async function claimDispatchedRun(runnerGroup: string): Promise<{
     sandboxToken: claim.sandboxToken,
     prompt: claim.prompt,
     appendSystemPrompt: claim.appendSystemPrompt ?? "",
-    okouToken: claim.environment?.OKOU_TOKEN,
+    okouToken: claim.platformEnvironment.OKOU_TOKEN,
   };
 }
 
@@ -142,25 +142,21 @@ async function completeSandboxRun(
       [200],
     );
   }
-  if (exitCode === 0) {
-    // Successful completion requires a checkpoint, like a real sandbox.
-    await webhooks.requestAgentCheckpoint(
-      {
-        runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: agentPhoneCliAgentSessionIdForRun(runId),
-        cliAgentSessionHistoryHash: createHash("sha256")
-          .update(`bdd agentphone history ${runId}`)
-          .digest("hex"),
-      },
-      sandboxHeaders,
-      [200],
-    );
-  }
   await webhooks.requestAgentComplete(
     {
       runId,
       exitCode,
+      ...(exitCode === 0
+        ? {
+            checkpoint: {
+              cliAgentType: "claude-code" as const,
+              cliAgentSessionId: agentPhoneCliAgentSessionIdForRun(runId),
+              cliAgentSessionHistoryHash: createHash("sha256")
+                .update(`bdd agentphone history ${runId}`)
+                .digest("hex"),
+            },
+          }
+        : {}),
       ...(options.error === undefined ? {} : { error: options.error }),
       ...(options.resultText === undefined ? {} : { lastEventSequence: 0 }),
     },
@@ -1290,7 +1286,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     });
     await runs.heartbeatRunner(runnerGroup);
     const claim = await runs.claimRunnerJob(run.runId);
-    const okouToken = claim.environment?.OKOU_TOKEN;
+    const okouToken = claim.platformEnvironment.OKOU_TOKEN;
     if (!okouToken) {
       throw new Error("Expected the claimed run to expose OKOU_TOKEN");
     }

@@ -16,14 +16,28 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  MemoryPiSession,
-  runPiFirstModelTurn,
-  UnsupportedPiSessionVersionError,
-} from "./session-memory";
+import { MemoryPiSession, runPiFirstModelTurn } from "./session-memory";
+import { UnsupportedPiSessionVersionError } from "./errors";
+import { createPiApiFirstTurnOwnership } from "./provider-ownership";
 
 const SESSION_ID = "00000000-0000-4000-8000-000000000123";
 const temporaryDirectories: string[] = [];
+
+function promiseWithResolvers<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+  readonly reject: (reason?: unknown) => void;
+} {
+  return (
+    Promise as PromiseConstructor & {
+      withResolvers<TValue>(): {
+        readonly promise: Promise<TValue>;
+        readonly resolve: (value: TValue) => void;
+        readonly reject: (reason?: unknown) => void;
+      };
+    }
+  ).withResolvers<T>();
+}
 
 async function temporaryDirectory(): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "pi-memory-session-"));
@@ -40,6 +54,50 @@ afterEach(async () => {
 });
 
 describe("MemoryPiSession", () => {
+  it("commits the durable provider boundary before invoking transport", async () => {
+    const memory = MemoryPiSession.create({
+      cwd: "/home/user/workspace",
+      id: SESSION_ID,
+    });
+    const faux = createFauxCore({
+      api: "provider-boundary-test",
+      provider: "provider-boundary-test",
+    });
+    const ownership = createPiApiFirstTurnOwnership();
+    const boundaryEntered = promiseWithResolvers<void>();
+    const releaseBoundary = promiseWithResolvers<void>();
+    faux.setResponses([
+      () => {
+        expect(ownership.stage).toBe("provider-may-have-started");
+        return fauxAssistantMessage("boundary committed");
+      },
+    ]);
+
+    const turn = runPiFirstModelTurn({
+      model: faux.getModel(),
+      session: memory,
+      stream: faux.streamSimple,
+      systemPrompt: "system",
+      prompt: "cross the durable provider boundary",
+      tools: [],
+      ownership,
+      providerRequestBoundary: async (markProviderRequestMayHaveStarted) => {
+        expect(ownership.stage).toBe("pre-provider");
+        boundaryEntered.resolve();
+        await releaseBoundary.promise;
+        markProviderRequestMayHaveStarted();
+      },
+    });
+
+    await boundaryEntered.promise;
+    expect(faux.state.callCount).toBe(0);
+    expect(ownership.stage).toBe("pre-provider");
+    releaseBoundary.resolve();
+    await expect(turn).resolves.toMatchObject({ handoffRequired: false });
+    expect(faux.state.callCount).toBe(1);
+    expect(ownership.stage).toBe("provider-may-have-started");
+  });
+
   it("round-trips native Pi JSONL and appends one API model turn", async () => {
     const directory = await temporaryDirectory();
     const nativeSession = SessionManager.create(
@@ -70,8 +128,10 @@ describe("MemoryPiSession", () => {
       api: "memory-test",
       provider: "memory-test",
     });
+    const ownership = createPiApiFirstTurnOwnership();
     faux.setResponses([
       (context, options) => {
+        expect(ownership.stage).toBe("provider-may-have-started");
         modelContext = context;
         expect(options?.sessionId).toBe(SESSION_ID);
         return fauxAssistantMessage(
@@ -94,9 +154,11 @@ describe("MemoryPiSession", () => {
           parameters: Type.Object({ path: Type.String() }),
         },
       ],
+      ownership,
     });
 
     expect(turn.handoffRequired).toBe(true);
+    expect(ownership.stage).toBe("provider-may-have-started");
     expect(faux.state.callCount).toBe(1);
     expect(modelContext?.systemPrompt).toBe("preheated Pi system prompt");
     expect(
@@ -143,8 +205,10 @@ describe("MemoryPiSession", () => {
       },
     };
     let requestedReasoning: string | undefined;
+    const ownership = createPiApiFirstTurnOwnership();
     faux.setResponses([
       (_context, options) => {
+        expect(ownership.stage).toBe("provider-may-have-started");
         requestedReasoning = options?.reasoning;
         return fauxAssistantMessage(
           fauxToolCall("read", { path: "/etc/os-release" }),
@@ -167,6 +231,7 @@ describe("MemoryPiSession", () => {
           parameters: Type.Object({ path: Type.String() }),
         },
       ],
+      ownership,
     });
 
     expect(requestedReasoning).toBe("high");
@@ -196,6 +261,145 @@ describe("MemoryPiSession", () => {
       MemoryPiSession.fromJsonl(memory.toJsonl()).buildSessionContext()
         .thinkingLevel,
     ).toBe("high");
+  });
+
+  it("uses configured low thinking for a fresh API-first session without replacing its explicit entry", async () => {
+    const memory = MemoryPiSession.create({
+      cwd: "/home/user/workspace",
+      id: SESSION_ID,
+    });
+    const faux = createFauxCore({
+      api: "memory-terra-reasoning-test",
+      provider: "openai",
+      models: [
+        {
+          id: "gpt-5.6-terra",
+          reasoning: true,
+          input: ["text", "image"],
+          cost: { input: 2, output: 12, cacheRead: 0.2, cacheWrite: 2.5 },
+          contextWindow: 272_000,
+          maxTokens: 128_000,
+        },
+      ],
+    });
+    const requestedReasoning: Array<string | undefined> = [];
+    faux.setResponses([
+      (_context, options) => {
+        requestedReasoning.push(options?.reasoning);
+        return fauxAssistantMessage("first Terra answer", { timestamp: 2 });
+      },
+      (_context, options) => {
+        requestedReasoning.push(options?.reasoning);
+        return fauxAssistantMessage("second Terra answer", { timestamp: 4 });
+      },
+    ]);
+
+    await runPiFirstModelTurn({
+      model: faux.getModel(),
+      session: memory,
+      stream: faux.streamSimple,
+      systemPrompt: "system",
+      prompt: "first Terra prompt",
+      thinkingLevel: "low",
+      timestamp: 1,
+      tools: [],
+      ownership: createPiApiFirstTurnOwnership(),
+    });
+    await runPiFirstModelTurn({
+      model: faux.getModel(),
+      session: memory,
+      stream: faux.streamSimple,
+      systemPrompt: "system",
+      prompt: "second Terra prompt",
+      thinkingLevel: "high",
+      timestamp: 3,
+      tools: [],
+      ownership: createPiApiFirstTurnOwnership(),
+    });
+
+    expect(requestedReasoning).toStrictEqual(["low", "low"]);
+    const thinkingEntries = memory
+      .toJsonl()
+      .trim()
+      .split("\n")
+      .map((line) => {
+        return JSON.parse(line) as {
+          type: string;
+          thinkingLevel?: string;
+        };
+      })
+      .filter((entry) => {
+        return entry.type === "thinking_level_change";
+      });
+    expect(thinkingEntries).toStrictEqual([
+      expect.objectContaining({ thinkingLevel: "low" }),
+    ]);
+  });
+
+  it("keeps an explicit thinking entry authoritative before the first message", () => {
+    const memory = MemoryPiSession.create({
+      cwd: "/home/user/workspace",
+      id: SESSION_ID,
+    });
+    const faux = createFauxCore({
+      api: "memory-existing-reasoning-test",
+      provider: "openai",
+      models: [
+        {
+          id: "gpt-5.6-terra",
+          reasoning: true,
+          input: ["text", "image"],
+          cost: { input: 2, output: 12, cacheRead: 0.2, cacheWrite: 2.5 },
+          contextWindow: 272_000,
+          maxTokens: 128_000,
+        },
+      ],
+    });
+
+    memory.prepareModelTurn(faux.getModel(), "high");
+    memory.prepareModelTurn(faux.getModel(), "low");
+
+    expect(memory.buildSessionContext().thinkingLevel).toBe("high");
+    expect(
+      memory
+        .toJsonl()
+        .trim()
+        .split("\n")
+        .map((line) => {
+          return JSON.parse(line) as { type: string };
+        })
+        .filter((entry) => {
+          return entry.type === "thinking_level_change";
+        }),
+    ).toHaveLength(1);
+  });
+
+  it("moves ownership before a synchronous provider transport failure", async () => {
+    const memory = MemoryPiSession.create({
+      cwd: "/home/user/workspace",
+      id: SESSION_ID,
+    });
+    const faux = createFauxCore({
+      api: "memory-failure-test",
+      provider: "memory-failure-test",
+    });
+    const ownership = createPiApiFirstTurnOwnership();
+
+    await expect(
+      runPiFirstModelTurn({
+        model: faux.getModel(),
+        session: memory,
+        stream: () => {
+          expect(ownership.stage).toBe("provider-may-have-started");
+          throw new Error("provider transport failed");
+        },
+        systemPrompt: "system",
+        prompt: "must not be replayed",
+        tools: [],
+        ownership,
+      }),
+    ).rejects.toThrow("provider transport failed");
+    expect(ownership.stage).toBe("provider-may-have-started");
   });
 
   it("uses Pi migrations and compacted-context projection", async () => {

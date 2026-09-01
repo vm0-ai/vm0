@@ -14,6 +14,7 @@ import {
 import { connectors } from "@okouai/db/schema/connector";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
+import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-canonical-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { bench } from "vitest";
 import {
@@ -42,8 +43,8 @@ import {
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
   type ConnectorCatalogArtifact,
   type ConnectorCatalogArtifactConnector,
-} from "../../services/connector-catalog-artifacts/artifacts";
-import { encodeConnectorCatalogSnapshot } from "../../services/connector-catalog-artifacts/loader";
+} from "@okouai/connectors/connector-catalog/artifacts/artifacts";
+import { encodeConnectorCatalogSnapshot } from "@okouai/connectors/connector-catalog/artifacts/loader";
 import { connectorCatalogSource } from "../../services/connector-catalog-source";
 import { currentConnectorCatalogValidatorIdentity } from "../../services/connector-catalog-validator-authority";
 import { normalizeRunMetadata } from "../../services/agent-run-metadata-write.service";
@@ -640,7 +641,7 @@ async function seedSideEffectFreeGetData(
     context.signal,
   );
 
-  await db.insert(orgMetadata).values({
+  await db.insert(orgMetadataCanonicalWrites).values({
     orgId: fixture.orgId,
     credits: 125_000,
     tier: "pro",

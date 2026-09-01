@@ -15,8 +15,8 @@ describe("user preferences contract", () => {
       supportedLocales: ["en-US", "pt-BR", "id-ID"],
       pinnedAgentIds: [],
       sendMode: "enter",
-      morningBriefEnabled: false,
-      morningBriefNextRunAt: null,
+      theme: null,
+      colorTheme: null,
       captureNetworkBodiesRemaining: 0,
     });
 
@@ -30,8 +30,8 @@ describe("user preferences contract", () => {
       supportedLocales: [...SUPPORTED_USER_LOCALES],
       pinnedAgentIds: [],
       sendMode: "enter",
-      morningBriefEnabled: false,
-      morningBriefNextRunAt: null,
+      theme: null,
+      colorTheme: null,
       captureNetworkBodiesRemaining: 0,
     });
 
@@ -47,8 +47,8 @@ describe("user preferences contract", () => {
         supportedLocales: ["en-US", "pt-BR", "ja-JP"],
         pinnedAgentIds: [],
         sendMode: "enter",
-        morningBriefEnabled: false,
-        morningBriefNextRunAt: null,
+        theme: null,
+        colorTheme: null,
         captureNetworkBodiesRemaining: 0,
       }),
     ).toMatchObject({
@@ -66,8 +66,8 @@ describe("user preferences contract", () => {
         supportedLocales: ["en-US", "pt-BR", "ja-JP", "ko-KR"],
         pinnedAgentIds: [],
         sendMode: "enter",
-        morningBriefEnabled: false,
-        morningBriefNextRunAt: null,
+        theme: null,
+        colorTheme: null,
         captureNetworkBodiesRemaining: 0,
       }),
     ).toMatchObject({
@@ -85,8 +85,8 @@ describe("user preferences contract", () => {
         supportedLocales: ["en-US", "pt-BR", "ja-JP", "es-ES"],
         pinnedAgentIds: [],
         sendMode: "enter",
-        morningBriefEnabled: false,
-        morningBriefNextRunAt: null,
+        theme: null,
+        colorTheme: null,
         captureNetworkBodiesRemaining: 0,
       }),
     ).toMatchObject({
@@ -106,8 +106,8 @@ describe("user preferences contract", () => {
       supportedLocales: ["en-US", "it-IT"],
       pinnedAgentIds: [],
       sendMode: "enter",
-      morningBriefEnabled: false,
-      morningBriefNextRunAt: null,
+      theme: null,
+      colorTheme: null,
       captureNetworkBodiesRemaining: 0,
     });
 
@@ -135,8 +135,8 @@ describe("user preferences contract", () => {
       supportedLocales: [...SUPPORTED_USER_LOCALES],
       pinnedAgentIds: [],
       sendMode: "enter",
-      morningBriefEnabled: false,
-      morningBriefNextRunAt: null,
+      theme: null,
+      colorTheme: null,
       captureNetworkBodiesRemaining: 0,
     });
 

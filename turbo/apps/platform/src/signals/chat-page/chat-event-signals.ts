@@ -3,7 +3,6 @@ import type {
   ChatRunOptionsRequest,
   UserMessageDocument,
   UserMessageInputDocument,
-  ChatEvent as PersistedChatEvent,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { ChatEvent } from "./chat-event-types.ts";
 import {
@@ -20,10 +19,7 @@ import {
 } from "./chat-thread-event-sourcing.ts";
 import { registerActiveChatEventSignals$ } from "./chat-event-signal-registry.ts";
 import { logger } from "../log.ts";
-import {
-  chatEventDebugSummaries,
-  chatEventTraceTime,
-} from "./chat-event-debug.ts";
+import { chatEventTraceTime } from "./chat-event-debug.ts";
 import { withSelectedModelAnnotation } from "./model-selection-request.ts";
 
 const L = logger("ChatEventSignals");
@@ -46,8 +42,7 @@ export function withOptimisticAgentRunSource(
         return (
           part.type !== "source" &&
           part.type !== "automation" &&
-          part.type !== "goal" &&
-          part.type !== "morning_brief"
+          part.type !== "goal"
         );
       }),
       {
@@ -374,48 +369,21 @@ function createSendChatEvent(
 function createChatEventSetup({
   threadId,
   initializeIndexedDbEvents$,
-  mergePersistentEvents$,
   syncRemoteEvents$,
 }: {
   readonly threadId: string;
   readonly initializeIndexedDbEvents$: Command<Promise<void>, [AbortSignal]>;
-  readonly mergePersistentEvents$: Command<
-    Promise<void>,
-    [PersistedChatEvent[], AbortSignal]
-  >;
   readonly syncRemoteEvents$: Command<Promise<void>, [AbortSignal]>;
 }): {
   readonly setup$: Command<Promise<void>, [AbortSignal]>;
   readonly catchUp$: Command<Promise<void>, [AbortSignal]>;
 } {
-  const receive$ = command(
-    async (
-      { set },
-      events: readonly PersistedChatEvent[],
-      signal: AbortSignal,
-    ): Promise<void> => {
-      L.debug("receive synced chat events", {
-        traceTime: chatEventTraceTime(),
-        threadId,
-        count: events.length,
-        events: chatEventDebugSummaries(events),
-      });
-      await set(mergePersistentEvents$, [...events], signal);
-      signal.throwIfAborted();
-    },
-  );
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
 
   const setup$ = command(
     async ({ set }, signal: AbortSignal): Promise<void> => {
-      set(
-        registerActiveChatEventSignals$,
-        threadId,
-        receive$,
-        syncRemoteEvents$,
-        signal,
-      );
+      set(registerActiveChatEventSignals$, threadId, syncRemoteEvents$, signal);
       await set(initializeIndexedDbEvents$, signal);
       signal.throwIfAborted();
     },
@@ -455,7 +423,6 @@ export function createChatEventSignals(threadId: string): ChatEventSignals {
   const setup = createChatEventSetup({
     threadId,
     initializeIndexedDbEvents$: events.initializeIndexedDbEvents$,
-    mergePersistentEvents$: events.mergePersistentEvents$,
     syncRemoteEvents$: events.syncRemoteEvents$,
   });
   return {

@@ -284,7 +284,11 @@ fn codex_error_failure_reason(error: Option<&Value>) -> Option<FailureReason> {
 
 fn codex_error_info_failure_reason(error: &Value) -> Option<FailureReason> {
     match codex_error_info_variant(error)? {
-        "serverOverloaded" => Some(FailureReason::ProviderOverloaded),
+        "contextWindowExceeded" => Some(FailureReason::ContextWindowExceeded),
+        "rateLimitExceeded" | "serverOverloaded" => Some(FailureReason::ProviderOverloaded),
+        "responseStreamConnectionFailed" | "responseStreamDisconnected" => {
+            Some(FailureReason::ResponseConnectionLost)
+        }
         "usageLimitExceeded" => Some(FailureReason::UsageLimit),
         "cyberPolicy" | "misalignmentPolicyViolation" => Some(FailureReason::SafetyPolicyRefusal),
         _ => None,
@@ -1156,7 +1160,7 @@ mod tests {
     // Note: end-to-end coverage of session metadata capture (including both
     // the Claude `system/init` branch and the codex `thread.started`
     // branch) lives in the integration test suites:
-    //   - `tests/integration/events.rs::send_event_extracts_claude_session_id`
+    //   - `tests/integration_cases/events.rs::send_event_extracts_claude_session_id`
     //   - `tests/codex_session_resume.rs` (codex variant)
     // The Claude/Codex helpers are private; their contracts are
     // exercised transitively through `send_event`.

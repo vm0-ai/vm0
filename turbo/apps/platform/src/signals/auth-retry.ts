@@ -6,7 +6,7 @@
  * of the app.
  */
 import { command, computed, state, type Command } from "ccstate";
-import type { Clerk } from "@clerk/clerk-js";
+import type { BrowserClerk as Clerk } from "@clerk/shared/types";
 import { now } from "../lib/time.ts";
 import {
   connectionDiagnosticError,
@@ -23,9 +23,15 @@ import {
 
 type ClerkLike = Pick<Clerk, "session" | "addListener">;
 
+function runtimeVisibilityState(): DocumentVisibilityState {
+  return typeof document === "undefined"
+    ? "visible"
+    : globalThis.document.visibilityState;
+}
+
 export interface AuthRecovery {
-  readonly getToken: (signal?: AbortSignal) => Promise<string | null>;
-  readonly forceRefreshToken: (signal?: AbortSignal) => Promise<string | null>;
+  readonly getToken: (signal: AbortSignal) => Promise<string | null>;
+  readonly forceRefreshToken: (signal: AbortSignal) => Promise<string | null>;
 }
 
 const FOREGROUND_CATCH_UP_REQUEST_EVENT = "request-catch-up";
@@ -99,11 +105,11 @@ const runTrackedForegroundCatchUp$ = command(
   ): Promise<void> => {
     const catchUpResult = await settle(
       (async () => {
-        if (document.visibilityState !== "visible") {
+        if (runtimeVisibilityState() !== "visible") {
           publishConnectionDiagnostic({
             details: {
               skipReason: "hidden",
-              visibilityState: document.visibilityState,
+              visibilityState: runtimeVisibilityState(),
             },
             event: "foreground.skipped",
             phase: "instant",
@@ -180,7 +186,7 @@ function publishForegroundRequest(
     details: {
       skipReason,
       trigger,
-      visibilityState: document.visibilityState,
+      visibilityState: runtimeVisibilityState(),
     },
     event: "foreground.request",
     phase: "instant",
@@ -188,7 +194,7 @@ function publishForegroundRequest(
 }
 
 export const requestForegroundCatchUp$ = command(({ get }) => {
-  if (document.visibilityState !== "visible") {
+  if (runtimeVisibilityState() !== "visible") {
     publishForegroundRequest("realtime-connected", "hidden");
     return;
   }
@@ -203,14 +209,13 @@ export const requestForegroundCatchUp$ = command(({ get }) => {
  */
 export function createAuthRecovery(
   clerk: ClerkLike,
-  getRootSignal: () => AbortSignal,
+  rootSignal: AbortSignal,
 ): AuthRecovery {
   let forceRefreshPromise: Promise<string | null> | null = null;
   let forceRefreshSpanId: string | null = null;
 
-  const forceRefreshToken = (signal?: AbortSignal): Promise<string | null> => {
+  const forceRefreshToken = (signal: AbortSignal): Promise<string | null> => {
     if (!forceRefreshPromise) {
-      const rootSignal = getRootSignal();
       const spanId = createConnectionDiagnosticSpanId();
       const startedAtMs = now();
       publishConnectionDiagnostic({
@@ -240,7 +245,7 @@ export function createAuthRecovery(
   };
 
   return {
-    getToken: (signal?: AbortSignal) => {
+    getToken: (signal: AbortSignal) => {
       if (forceRefreshPromise) {
         return waitForAuthRecovery(forceRefreshPromise, signal);
       }
@@ -248,10 +253,7 @@ export function createAuthRecovery(
       if (session !== undefined) {
         return readSettledClerkToken(session, signal);
       }
-      const rootSignal = getRootSignal();
-      const tokenSignal = signal
-        ? AbortSignal.any([rootSignal, signal])
-        : rootSignal;
+      const tokenSignal = AbortSignal.any([rootSignal, signal]);
       return readToken(clerk, tokenSignal);
     },
     forceRefreshToken,
@@ -263,8 +265,11 @@ function setupForegroundRequestListeners(
   blockUntilForeground: () => void,
   signal: AbortSignal,
 ): void {
+  if (typeof document === "undefined" || typeof window === "undefined") {
+    return;
+  }
   const handleVisibilityChange = (): void => {
-    if (document.visibilityState !== "visible") {
+    if (runtimeVisibilityState() !== "visible") {
       blockUntilForeground();
       return;
     }
@@ -272,22 +277,26 @@ function setupForegroundRequestListeners(
     catchUpTarget.dispatchEvent(new Event(FOREGROUND_CATCH_UP_REQUEST_EVENT));
   };
   const requestCatchUp = (trigger: "focus" | "online"): void => {
-    if (document.visibilityState === "visible") {
+    if (runtimeVisibilityState() === "visible") {
       publishForegroundRequest(trigger);
       catchUpTarget.dispatchEvent(new Event(FOREGROUND_CATCH_UP_REQUEST_EVENT));
     }
   };
-  document.addEventListener("visibilitychange", handleVisibilityChange, {
-    signal,
-  });
-  window.addEventListener(
+  globalThis.document.addEventListener(
+    "visibilitychange",
+    handleVisibilityChange,
+    {
+      signal,
+    },
+  );
+  globalThis.window.addEventListener(
     "focus",
     () => {
       requestCatchUp("focus");
     },
     { signal },
   );
-  window.addEventListener(
+  globalThis.window.addEventListener(
     "online",
     () => {
       requestCatchUp("online");
@@ -318,7 +327,7 @@ export const setupForegroundCatchUp$ = command(
         hiddenReadySpanId = createConnectionDiagnosticSpanId();
         hiddenReadyStartedAtMs = now();
         publishConnectionDiagnostic({
-          details: { visibilityState: document.visibilityState },
+          details: { visibilityState: runtimeVisibilityState() },
           event: "foreground.visibility-wait",
           phase: "start",
           spanId: hiddenReadySpanId,
@@ -331,7 +340,7 @@ export const setupForegroundCatchUp$ = command(
     };
 
     const markForegroundReady = (): void => {
-      if (document.visibilityState !== "visible") {
+      if (runtimeVisibilityState() !== "visible") {
         blockUntilForeground();
         return;
       }
@@ -340,7 +349,7 @@ export const setupForegroundCatchUp$ = command(
       }
       if (hiddenReadySpanId !== null && hiddenReadyStartedAtMs !== null) {
         publishConnectionDiagnostic({
-          details: { visibilityState: document.visibilityState },
+          details: { visibilityState: runtimeVisibilityState() },
           durationMs: now() - hiddenReadyStartedAtMs,
           event: "foreground.visibility-wait",
           phase: "finish",
@@ -353,7 +362,7 @@ export const setupForegroundCatchUp$ = command(
       set(foregroundReadyState$, settledForegroundReady());
     };
 
-    if (document.visibilityState === "visible") {
+    if (runtimeVisibilityState() === "visible") {
       markForegroundReady();
     } else {
       blockUntilForeground();
@@ -384,7 +393,7 @@ export const setupForegroundCatchUp$ = command(
 
           return (
             requestRevision === requestedVisibilityRevision ||
-            document.visibilityState !== "visible"
+            runtimeVisibilityState() !== "visible"
           );
         },
         0,
@@ -519,9 +528,9 @@ async function readToken(
 
 async function readSettledClerkToken(
   session: SettledClerkSession,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<string | null> {
-  signal?.throwIfAborted();
+  signal.throwIfAborted();
   if (session === null) {
     return null;
   }
@@ -530,11 +539,8 @@ async function readSettledClerkToken(
 
 function waitForAuthRecovery<T>(
   recovery: Promise<T>,
-  signal: AbortSignal | undefined,
+  signal: AbortSignal,
 ): Promise<T> {
-  if (!signal) {
-    return recovery;
-  }
   signal.throwIfAborted();
   const aborted = createDeferredPromise<never>(signal);
   return withCleanup(Promise.race([recovery, aborted.promise]), () => {

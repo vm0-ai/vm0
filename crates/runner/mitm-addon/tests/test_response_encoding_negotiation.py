@@ -42,13 +42,33 @@ _BROWSER_USER_AGENT = (
         ),
         pytest.param(
             [("Accept-Encoding", "gzip, zstd, br")],
-            ["gzip"],
-            id="drops-unsafe-keeps-gzip",
+            ["gzip, br"],
+            id="drops-zstd-keeps-stream-decodable-codings",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip;q=0, deflate;q=0.5, identity;q=1")],
             ["deflate;q=0.5, identity;q=1"],
             id="drops-safe-q-zero",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip;q=1., zstd")],
+            ["gzip;q=1."],
+            id="accepts-q-one-zero-digit-fraction",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip;q=0., gzip;q=1, zstd")],
+            ["identity"],
+            id="rejects-q-zero-zero-digit-fraction",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip;q=0.5, identity;q=0., zstd")],
+            ["gzip;q=0.5, identity;q=0"],
+            id="preserves-identity-zero-digit-fraction-rejection",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip, *;q=0., zstd")],
+            ["gzip, identity;q=0"],
+            id="preserves-wildcard-zero-digit-fraction-rejection",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip, identity;q=0, zstd")],
@@ -62,8 +82,8 @@ _BROWSER_USER_AGENT = (
         ),
         pytest.param(
             [("Accept-Encoding", "zstd, br, *")],
-            ["identity"],
-            id="unsafe-only-falls-back-to-identity",
+            ["br"],
+            id="drops-zstd-and-wildcard-keeps-brotli",
         ),
         pytest.param(
             [("Accept-Encoding", "identity;q=0, zstd")],
@@ -77,27 +97,27 @@ _BROWSER_USER_AGENT = (
         ),
         pytest.param(
             [("Accept-Encoding", "zstd, br, *;q=0.5, identity;q=0")],
-            ["gzip;q=0.5, deflate;q=0.5, identity;q=0"],
+            ["br, gzip;q=0.5, deflate;q=0.5, identity;q=0"],
             id="wildcard-allows-safe-compression-when-identity-rejected",
         ),
         pytest.param(
             [("Accept-Encoding", "zstd, br, *, identity;q=0")],
-            ["gzip, deflate, identity;q=0"],
+            ["br, gzip, deflate, identity;q=0"],
             id="wildcard-default-q-allows-safe-compression-when-identity-rejected",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip;q=0, zstd, *;q=0.5, identity;q=0")],
-            ["deflate;q=0.5, identity;q=0"],
+            ["deflate;q=0.5, br;q=0.5, identity;q=0"],
             id="wildcard-safe-compression-respects-explicit-safe-rejection",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip;q=0.2, zstd, *;q=0.8, identity;q=0")],
-            ["gzip;q=0.2, deflate;q=0.8, identity;q=0"],
+            ["gzip;q=0.2, deflate;q=0.8, br;q=0.8, identity;q=0"],
             id="wildcard-adds-missing-safe-compression-after-explicit-safe-coding",
         ),
         pytest.param(
             [("Accept-Encoding", "deflate, br"), ("Accept-Encoding", "*;q=0.5, identity;q=0")],
-            ["deflate, gzip;q=0.5, identity;q=0"],
+            ["deflate, br, gzip;q=0.5, identity;q=0"],
             id="wildcard-adds-missing-safe-compression-across-header-fields",
         ),
         pytest.param(
@@ -107,8 +127,8 @@ _BROWSER_USER_AGENT = (
                     "gzip;q=0, deflate;q=0, zstd, *;q=0.5, identity;q=0",
                 )
             ],
-            ["gzip;q=0, deflate;q=0, zstd, *;q=0.5, identity;q=0"],
-            id="wildcard-keeps-original-when-all-safe-codings-rejected",
+            ["br;q=0.5, identity;q=0"],
+            id="wildcard-adds-brotli-when-zlib-codings-are-rejected",
         ),
         pytest.param(
             [("Accept-Encoding", "*;q=0.5, *;q=0, identity;q=0, zstd")],
@@ -117,7 +137,7 @@ _BROWSER_USER_AGENT = (
         ),
         pytest.param(
             [("Accept-Encoding", "GZip;q=1, zstd"), ("Accept-Encoding", "deflate;q=0.5, br")],
-            ["gzip;q=1, deflate;q=0.5"],
+            ["gzip;q=1, deflate;q=0.5, br"],
             id="case-insensitive-and-multiple-fields",
         ),
         pytest.param(
@@ -224,11 +244,57 @@ def test_normalize_accept_encoding_for_body_inspection(
 ) -> None:
     request_headers = headers(*header_pairs)
 
+    response_encoding_negotiation.normalize_accept_encoding_for_body_inspection(request_headers)
+    assert request_headers.get_all(_ACCEPT_ENCODING) == values
+
+
+@pytest.mark.parametrize(
+    ("header_pairs", "outcome"),
+    [
+        pytest.param([], "rewritten_stream_decodable", id="absent"),
+        pytest.param(
+            [("Accept-Encoding", "gzip")],
+            "already_stream_decodable",
+            id="already-safe",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip, zstd")],
+            "rewritten_stream_decodable",
+            id="unsafe-coding-removed",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip;q=bogus, br")],
+            "rewritten_stream_decodable",
+            id="malformed-coding-rewritten",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "br, zstd, *;q=0.5, identity;q=0")],
+            "rewritten_stream_decodable",
+            id="wildcard-expanded",
+        ),
+        pytest.param(
+            [
+                (
+                    "Accept-Encoding",
+                    "gzip;q=0, deflate;q=0, br;q=0, identity;q=0",
+                )
+            ],
+            "preserved_client_constraints",
+            id="all-safe-representations-rejected",
+        ),
+    ],
+)
+def test_normalization_reports_bounded_negotiation_outcome(
+    headers,
+    header_pairs: list[tuple[str, str]],
+    outcome: response_encoding_negotiation.ResponseEncodingNegotiationOutcome,
+) -> None:
+    request_headers = headers(*header_pairs)
+
     assert (
         response_encoding_negotiation.normalize_accept_encoding_for_body_inspection(request_headers)
-        is None
+        == outcome
     )
-    assert request_headers.get_all(_ACCEPT_ENCODING) == values
 
 
 def test_explicit_normalized_encodings_create_stream_decode_sessions(headers) -> None:
@@ -236,7 +302,7 @@ def test_explicit_normalized_encodings_create_stream_decode_sessions(headers) ->
     request_headers = headers(
         (
             _ACCEPT_ENCODING,
-            ", ".join((*supported_encodings, "br", "zstd")),
+            ", ".join((*supported_encodings, "zstd")),
         )
     )
 
@@ -257,7 +323,7 @@ def test_explicit_normalized_encodings_create_stream_decode_sessions(headers) ->
 
 
 def test_wildcard_expansion_uses_stream_decoder_capability_order(headers) -> None:
-    request_headers = headers((_ACCEPT_ENCODING, "br, zstd, *;q=0.5, identity;q=0"))
+    request_headers = headers((_ACCEPT_ENCODING, "zstd, *;q=0.5, identity;q=0"))
 
     response_encoding_negotiation.normalize_accept_encoding_for_body_inspection(request_headers)
 
@@ -321,6 +387,7 @@ def _connector_registry(
     path: str,
     billable: bool,
     capture_network_bodies: bool = False,
+    include_encrypted_secrets: bool = True,
 ) -> Path:
     sandbox_fields: dict[str, object] = {}
     if capture_network_bodies:
@@ -343,6 +410,7 @@ def _connector_registry(
                 "unknownPolicy": "deny",
             },
             billable_firewalls=[firewall_name] if billable else None,
+            include_encrypted_secrets=include_encrypted_secrets,
             sandbox_fields=sandbox_fields,
         ),
     )
@@ -396,8 +464,11 @@ async def test_observable_model_provider_request_normalizes_accept_encoding_befo
         await mitm_addon.request(flow)
 
     auth_fetch.assert_awaited_once()
-    assert flow.request.headers[_ACCEPT_ENCODING] == "gzip"
+    assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, br"
     assert flow.request.headers["Authorization"] == "Bearer x"
+    assert (
+        flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] == "rewritten_stream_decodable"
+    )
 
 
 async def test_observable_model_provider_without_accept_encoding_sets_identity(
@@ -424,6 +495,9 @@ async def test_observable_model_provider_without_accept_encoding_sets_identity(
         await mitm_addon.request(flow)
 
     assert flow.request.headers[_ACCEPT_ENCODING] == "identity"
+    assert (
+        flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] == "rewritten_stream_decodable"
+    )
 
 
 async def test_billable_connector_with_response_parser_normalizes_accept_encoding(
@@ -456,6 +530,9 @@ async def test_billable_connector_with_response_parser_normalizes_accept_encodin
         await mitm_addon.request(flow)
 
     assert flow.request.headers[_ACCEPT_ENCODING] == "deflate"
+    assert (
+        flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] == "rewritten_stream_decodable"
+    )
 
 
 async def test_billable_connector_without_response_parser_keeps_accept_encoding(
@@ -488,6 +565,7 @@ async def test_billable_connector_without_response_parser_keeps_accept_encoding(
         await mitm_addon.request(flow)
 
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
+    assert metadata_keys.RESPONSE_ENCODING_NEGOTIATION not in flow.metadata
 
 
 async def test_non_observable_model_provider_keeps_accept_encoding(
@@ -514,6 +592,7 @@ async def test_non_observable_model_provider_keeps_accept_encoding(
         await mitm_addon.request(flow)
 
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
+    assert metadata_keys.RESPONSE_ENCODING_NEGOTIATION not in flow.metadata
 
 
 async def test_header_phase_stream_safe_auth_normalizes_accept_encoding_before_auth(
@@ -547,12 +626,55 @@ async def test_header_phase_stream_safe_auth_normalizes_accept_encoding_before_a
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
         await await_requestheaders_result(requestheaders_result)
-        assert flow.request.headers[_ACCEPT_ENCODING] == "gzip"
+        assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, br"
         assert flow.request.headers["Authorization"] == "Bearer x"
+        assert (
+            flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION]
+            == "rewritten_stream_decodable"
+        )
         await mitm_addon.request(flow)
 
     auth_fetch.assert_awaited_once()
-    assert flow.request.headers[_ACCEPT_ENCODING] == "gzip"
+    assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, br"
+
+
+async def test_header_phase_auth_fallback_restores_encoding_negotiation(
+    tmp_path: Path,
+    real_flow: Callable[..., http.HTTPFlow],
+    headers: Callable[..., http.Headers],
+    mitm_ctx,
+    fake_firewall_headers,
+) -> None:
+    reg_path = _connector_registry(
+        tmp_path,
+        firewall_name=_X_FIREWALL_NAME,
+        host=_X_HOST,
+        path=_X_PATH,
+        billable=True,
+        capture_network_bodies=True,
+        include_encrypted_secrets=False,
+    )
+    original_accept_encoding = "gzip, zstd, br"
+    flow = _request_flow(
+        real_flow,
+        headers,
+        host=_X_HOST,
+        path=_X_PATH,
+        method="GET",
+        accept_encoding=original_accept_encoding,
+        extra_headers=(("Content-Length", str(mitm_addon.STREAM_BUFFER_LIMIT + 1)),),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        await await_requestheaders_result(requestheaders_result)
+
+    auth_fetch.assert_not_called()
+    assert flow.request.headers[_ACCEPT_ENCODING] == original_accept_encoding
+    assert metadata_keys.RESPONSE_ENCODING_NEGOTIATION not in flow.metadata
 
 
 async def test_header_phase_websocket_auth_fallback_restores_upgrade_marker(
@@ -608,6 +730,7 @@ async def test_header_phase_websocket_auth_fallback_restores_upgrade_marker(
 
     auth_fetch.assert_not_called()
     assert metadata_keys.WEBSOCKET_UPGRADE_REQUEST not in flow.metadata
+    assert metadata_keys.RESPONSE_ENCODING_NEGOTIATION not in flow.metadata
     assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
 
@@ -700,6 +823,7 @@ async def test_model_provider_websocket_upgrade_injects_auth_and_keeps_accept_en
     assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == ""
     assert flow.request.headers["Authorization"] == "Bearer x"
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
+    assert metadata_keys.RESPONSE_ENCODING_NEGOTIATION not in flow.metadata
 
 
 @pytest.mark.parametrize(
@@ -736,6 +860,7 @@ async def test_response_bodyless_usage_inspected_methods_keep_accept_encoding(
 
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
     assert flow.request.headers["Authorization"] == "Bearer x"
+    assert metadata_keys.RESPONSE_ENCODING_NEGOTIATION not in flow.metadata
 
 
 @pytest.mark.parametrize(
@@ -866,7 +991,7 @@ async def test_invalid_websocket_upgrade_normalizes_accept_encoding(
     ):
         await mitm_addon.request(flow)
 
-    assert flow.request.headers[_ACCEPT_ENCODING] == "gzip"
+    assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, br"
 
 
 async def test_invalid_websocket_upgrade_method_normalizes_accept_encoding(
@@ -898,7 +1023,7 @@ async def test_invalid_websocket_upgrade_method_normalizes_accept_encoding(
     ):
         await mitm_addon.request(flow)
 
-    assert flow.request.headers[_ACCEPT_ENCODING] == "gzip"
+    assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, br"
 
 
 @pytest.mark.parametrize("http_version", ["HTTP/1.0", "HTTP/2.0", "HTTP/3"])
@@ -933,7 +1058,7 @@ async def test_invalid_websocket_upgrade_http_version_normalizes_accept_encoding
     ):
         await mitm_addon.request(flow)
 
-    assert flow.request.headers[_ACCEPT_ENCODING] == "gzip"
+    assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, br"
 
 
 async def test_browser_passthrough_keeps_accept_encoding_for_parser_connector(
@@ -968,3 +1093,4 @@ async def test_browser_passthrough_keeps_accept_encoding_for_parser_connector(
 
     auth_fetch.assert_not_called()
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
+    assert metadata_keys.RESPONSE_ENCODING_NEGOTIATION not in flow.metadata

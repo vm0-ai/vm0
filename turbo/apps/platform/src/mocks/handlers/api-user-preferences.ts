@@ -23,8 +23,6 @@ let mockPreferences: UserPreferencesResponse = {
   sendMode: "enter",
   theme: "system",
   colorTheme: "blue-horizon",
-  morningBriefEnabled: false,
-  morningBriefNextRunAt: null,
   captureNetworkBodiesRemaining: 0,
 };
 
@@ -52,8 +50,6 @@ export function resetMockUserPreferences(): void {
     sendMode: "enter",
     theme: "system",
     colorTheme: "blue-horizon",
-    morningBriefEnabled: false,
-    morningBriefNextRunAt: null,
     captureNetworkBodiesRemaining: 0,
   };
 }

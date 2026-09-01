@@ -296,24 +296,6 @@ describe("chat thread generation template contract", () => {
         ],
       }),
     ).toMatchObject({ success: true });
-    expect(
-      userMessageDocumentSchema.safeParse({
-        version: 1,
-        parts: [
-          { type: "goal", goalBrief: "Finish the rollout" },
-          { type: "morning_brief", briefDate: "2026-08-05" },
-        ],
-      }),
-    ).toMatchObject({ success: false });
-    expect(
-      userMessageDocumentSchema.safeParse({
-        version: 1,
-        parts: [
-          { type: "text", text: "Generate my Morning Brief" },
-          { type: "morning_brief", briefDate: "2026-08-05" },
-        ],
-      }),
-    ).toMatchObject({ success: true });
   });
 
   it("accepts an internal agent-run source annotation", () => {
@@ -543,29 +525,6 @@ describe("chat thread generation template contract", () => {
         },
       },
     });
-  });
-
-  it("accepts intro-video template selections as their own type", () => {
-    const parsed = generationTemplateRequestSchema.safeParse({
-      type: "intro-video",
-      selection: {
-        templateId: "intro-video-template:interview",
-      },
-    });
-
-    expect(parsed.success).toBe(true);
-  });
-
-  it("rejects video-envelope fields on intro-video selections", () => {
-    const parsed = generationTemplateRequestSchema.safeParse({
-      type: "intro-video",
-      selection: {
-        templateId: "intro-video-template:interview",
-        stylePresetId: "intro-video-template:interview",
-      },
-    });
-
-    expect(parsed.success).toBe(false);
   });
 
   it("rejects empty workflow template ids", () => {

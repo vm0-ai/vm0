@@ -345,10 +345,10 @@ describe("MISC-04: model providers, policies, and logs visible state", () => {
     const initialProviders = await api.listModelProviders(admin);
     expect(initialProviders.body.modelProviders).toStrictEqual([]);
 
-    const deniedProvider = await api.upsertVm0Provider(member, [403]);
+    const deniedProvider = await api.upsertBuiltInProvider(member, [403]);
     expectApiError(deniedProvider.body);
 
-    const createdProvider = await api.upsertVm0Provider(admin, [201]);
+    const createdProvider = await api.upsertBuiltInProvider(admin, [201]);
     expect(createdProvider.body).toMatchObject({
       created: true,
       provider: { type: "built-in" },
@@ -377,7 +377,7 @@ describe("MISC-04: model providers, policies, and logs visible state", () => {
       policies.policies.length,
     );
 
-    await api.deleteVm0Provider(admin, [204]);
+    await api.deleteBuiltInProvider(admin, [204]);
     const afterDelete = await api.listModelProviders(admin);
     expect(
       afterDelete.body.modelProviders.some((provider) => {

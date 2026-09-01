@@ -2,6 +2,7 @@ import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connecto
 import { connectorCatalogContract } from "@okouai/api-contracts/contracts/connector-catalog";
 import { describe, expect, it } from "vitest";
 
+import { setupBootstrap } from "../../../__tests__/page-helper.ts";
 import { accept } from "../../../lib/accept.ts";
 import { apiClient$ } from "../../../signals/api-client.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -14,8 +15,8 @@ const GOOGLE_ADS_REQUESTED_SCOPES = [
   "https://www.googleapis.com/auth/userinfo.email",
 ] as const;
 
-function connectorCatalogClient() {
-  void context.mocks;
+async function connectorCatalogClient() {
+  await setupBootstrap({ context, path: "/error" });
   return context.store.get(apiClient$)(connectorCatalogContract);
 }
 
@@ -40,7 +41,8 @@ describe("api connectors mock handlers", () => {
       new Map([[connector.id, GOOGLE_ADS_REQUESTED_SCOPES]]),
     );
 
-    const response = await accept(connectorCatalogClient().status(), [200]);
+    const client = await connectorCatalogClient();
+    const response = await accept(client.status(), [200]);
     expect(
       response.body.connectors.find((candidate) => {
         return candidate.slug === connector.slug;
@@ -69,7 +71,8 @@ describe("api connectors mock handlers", () => {
     };
     context.mocks.data.connectors([connector]);
 
-    const response = await accept(connectorCatalogClient().status(), [200]);
+    const client = await connectorCatalogClient();
+    const response = await accept(client.status(), [200]);
     expect(
       response.body.connectors.find((candidate) => {
         return candidate.slug === connector.slug;

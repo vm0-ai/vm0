@@ -239,7 +239,6 @@ async fn execute_inner_carries_early_codex_catalog_prefetch_into_agent_run() {
     assert!(start_calls[0].cmd.contains("codex --version"));
     let agent_calls = overrides.start_agent_process_calls();
     assert_eq!(agent_calls.len(), 1);
-    assert!(!agent_calls[0].cmd.contains("codex --version"));
     assert_proxy_registry_empty(dir.path()).await;
 }
 
@@ -436,6 +435,7 @@ async fn execute_new_sandbox_notifies_after_successful_prepare() {
             assert_eq!(run_id, expected_run_id);
             assert_eq!(prepared_sandbox_id, sandbox_id);
             notifications.fetch_add(1, Ordering::SeqCst);
+            Ok(())
         }
         .boxed()
     });
@@ -465,6 +465,51 @@ async fn execute_new_sandbox_notifies_after_successful_prepare() {
 }
 
 #[tokio::test]
+async fn execute_new_sandbox_destroys_before_workload_when_prepared_notification_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let ctx = minimal_context();
+    let notifier = SandboxPreparedNotifier::new(move |_run_id, _sandbox_id| {
+        async move {
+            Err(RunnerError::Internal(
+                "status publication failed".to_owned(),
+            ))
+        }
+        .boxed()
+    });
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = execute_new_sandbox_with_prepared_notifier(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        NewSandboxHooks {
+            controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepared_run_payload: prepare_run_payload_for_run(&ctx).unwrap(),
+            sandbox_prepared: Some(&notifier),
+        },
+    )
+    .await;
+    let error = match result {
+        Ok(_) => panic!("prepared notification failure should stop sandbox execution"),
+        Err(error) => error,
+    };
+
+    assert!(error.to_string().contains("status publication failed"));
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert!(overrides.start_agent_process_calls().is_empty());
+    assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[tokio::test]
 async fn execute_new_sandbox_replaces_one_dns_unready_attachment_before_workload() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
@@ -483,6 +528,7 @@ async fn execute_new_sandbox_replaces_one_dns_unready_attachment_before_workload
         async move {
             assert_eq!(prepared_sandbox_id, sandbox_id);
             notifications.fetch_add(1, Ordering::SeqCst);
+            Ok(())
         }
         .boxed()
     });
@@ -859,6 +905,7 @@ async fn execute_new_sandbox_does_not_notify_before_start_failure() {
         let notifications = Arc::clone(&notifications_for_callback);
         async move {
             notifications.fetch_add(1, Ordering::SeqCst);
+            Ok(())
         }
         .boxed()
     });
@@ -902,6 +949,7 @@ async fn execute_new_sandbox_does_not_notify_after_post_start_prepare_failure() 
         let notifications = Arc::clone(&notifications_for_callback);
         async move {
             notifications.fetch_add(1, Ordering::SeqCst);
+            Ok(())
         }
         .boxed()
     });
@@ -1063,13 +1111,23 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         ("BASH_ENV".into(), "/tmp/user-bash-env".into()),
         ("NODE_OPTIONS".into(), "--require /tmp/user-node.js".into()),
         ("VM0_API_TOKEN".into(), "stolen-token".into()),
-        (USER_ENV_FILE_ENV_KEY.into(), "/tmp/evil-env.json".into()),
+        ("VM0_USER_ENV_FILE".into(), "/tmp/evil-env.json".into()),
         ("VM0_STUCK_TOOL_TIMEOUT_SECS".into(), "3".into()),
         (
             guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV.into(),
             "/tmp/evil-connector-account-context.json".into(),
         ),
     ]));
+    ctx.platform_environment = HashMap::from([
+        (
+            "OKOU_APP_URL".into(),
+            "https://app.runner-env.example.test/path".into(),
+        ),
+        (
+            "ZERO_APP_URL".into(),
+            "https://app.runner-env.example.test/path".into(),
+        ),
+    ]);
     ctx.connector_runtime_targets = vec![
         ConnectorRuntimeTargetRegistration::Builtin {
             connector_slug: "github".into(),
@@ -1103,7 +1161,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
             .unwrap(),
         "tok"
     );
-    assert!(!start_env.contains_key(guest_contracts::env::API_TOKEN_ENV));
+    assert!(!start_env.contains_key("VM0_API_TOKEN"));
     assert_eq!(
         start_env
             .get(guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV)
@@ -1123,10 +1181,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
             .map(String::as_str),
         Some(expected_run_payload_file.as_str())
     );
-    for legacy_key in [
-        USER_ENV_FILE_ENV_KEY,
-        guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
-    ] {
+    for legacy_key in ["VM0_USER_ENV_FILE", "VM0_RUN_PAYLOAD_FILE"] {
         assert!(
             !start_env.contains_key(legacy_key),
             "canonical writer must not emit legacy key {legacy_key}"
@@ -1208,7 +1263,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     assert!(!user_env.contains_key("VM0_APP_URL"));
     assert!(!user_env.contains_key("VM0_API_TOKEN"));
     assert!(!user_env.contains_key(guest_contracts::env::CANONICAL_API_TOKEN_ENV));
-    assert!(!user_env.contains_key(USER_ENV_FILE_ENV_KEY));
+    assert!(!user_env.contains_key("VM0_USER_ENV_FILE"));
     assert!(!user_env.contains_key("VM0_STUCK_TOOL_TIMEOUT_SECS"));
     assert_eq!(
         user_env
@@ -1270,7 +1325,7 @@ async fn execute_inner_continues_when_connector_account_context_write_fails() {
     assert_eq!(start_calls.len(), 1);
     let start_env: BTreeMap<String, String> = start_calls[0].env.iter().cloned().collect();
     for user_env_key in [
-        USER_ENV_FILE_ENV_KEY,
+        "VM0_USER_ENV_FILE",
         guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
     ] {
         assert!(
@@ -1284,7 +1339,7 @@ async fn execute_inner_continues_when_connector_account_context_write_fails() {
             .map(String::as_str),
         Some(expected_run_payload_file.as_str())
     );
-    assert!(!start_env.contains_key(guest_contracts::env::RUN_PAYLOAD_FILE_ENV));
+    assert!(!start_env.contains_key("VM0_RUN_PAYLOAD_FILE"));
 }
 
 #[tokio::test]

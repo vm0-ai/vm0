@@ -1,12 +1,16 @@
 {
   "name": "@okouai/pi-agent-runtime",
-  "version": "1.6.0",
+  "version": "1.10.0",
   "private": true,
   "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./src/index.ts"
+    },
+    "./api": {
+      "types": "./dist/api.d.ts",
+      "import": "./src/api.ts"
     },
     "./node": {
       "types": "./dist/node.d.ts",
@@ -17,7 +21,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && pnpm run check-public-declarations",
+    "check-public-declarations": "node scripts/check-public-declarations.mjs",
     "check-types": "tsc --noEmit"
   },
   "dependencies": {

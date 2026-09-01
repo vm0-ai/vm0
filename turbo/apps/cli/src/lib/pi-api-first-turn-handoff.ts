@@ -7,8 +7,12 @@ import {
   piApiFirstTurnManifestSchema,
   type PiApiFirstTurnConfig,
   type PiApiFirstTurnManifest,
+  type PiApiFirstTurnOwnershipTransferMode,
 } from "@okouai/api-contracts/contracts/runners";
-import { MemoryPiSession } from "@okouai/pi-agent-runtime/node";
+import {
+  inspectPiSessionJsonl,
+  type PiSessionInspection,
+} from "@okouai/pi-agent-runtime/api";
 
 const MANIFEST_MAX_BYTES = 16 * 1024;
 const INITIAL_POLL_DELAY_MS = 100;
@@ -23,6 +27,7 @@ type PiApiFirstTurnHandoffErrorCode =
   | "PI_HANDOFF_H1_TOO_LARGE"
   | "PI_HANDOFF_H1_WRITE_FAILED"
   | "PI_HANDOFF_MANIFEST_INVALID"
+  | "PI_HANDOFF_MANIFEST_UNSUPPORTED"
   | "PI_HANDOFF_MANIFEST_TIMEOUT"
   | "PI_HANDOFF_SEQUENCE_MISMATCH"
   | "PI_HANDOFF_SESSION_MISMATCH";
@@ -41,9 +46,21 @@ class PiApiFirstTurnHandoffError extends Error {
   }
 }
 
+export type PiApiFirstTurnBoundaryControl =
+  | {
+      readonly schemaVersion: 1;
+      readonly sandboxEventSequenceStart: number;
+    }
+  | {
+      readonly schemaVersion: 2;
+      readonly sandboxEventSequenceStart: number;
+      readonly ownershipTransferMode: PiApiFirstTurnOwnershipTransferMode;
+    };
+
 interface PiApiFirstTurnHandoff {
   readonly sessionFile: string;
-  readonly sandboxEventSequenceStart: number;
+  readonly boundaryControl: PiApiFirstTurnBoundaryControl;
+  readonly ownershipTransferMode: PiApiFirstTurnOwnershipTransferMode;
 }
 
 export interface HandoffRuntime {
@@ -233,16 +250,32 @@ function validateManifestIdentity(args: {
   }
 }
 
-function validatedSandboxEventSequenceStart(args: {
+function validatedBoundaryControl(args: {
   readonly config: PiApiFirstTurnConfig;
   readonly manifest: PiApiFirstTurnManifest;
-}): number {
+}): PiApiFirstTurnBoundaryControl {
+  if (args.manifest.schemaVersion === 3) {
+    if (args.config.ownershipTransfer?.schemaVersion !== 1) {
+      throw new PiApiFirstTurnHandoffError(
+        "PI_HANDOFF_MANIFEST_UNSUPPORTED",
+        "Pi ownership-transfer manifest was not enabled for this Sandbox",
+      );
+    }
+    return {
+      schemaVersion: 2,
+      sandboxEventSequenceStart: args.manifest.sandboxEventSequenceStart,
+      ownershipTransferMode: args.manifest.mode,
+    };
+  }
   // API-written manifests and commit-addressed CLIs overlap across queued runs
   // and the two-hour runner drain. Remove v1 after #29618 is live on every Pi
   // runner, pre-v2 work has drained, and no retained rollback API emits v1;
   // tracked by #29612.
   if (args.manifest.schemaVersion === 2) {
-    return args.manifest.sandboxEventSequenceStart;
+    return {
+      schemaVersion: 1,
+      sandboxEventSequenceStart: args.manifest.sandboxEventSequenceStart,
+    };
   }
   if (args.config.sandboxEventSequenceStart !== 1) {
     throw new PiApiFirstTurnHandoffError(
@@ -250,7 +283,61 @@ function validatedSandboxEventSequenceStart(args: {
       "Pi API first-turn manifest boundary does not match the launch",
     );
   }
-  return 1;
+  return { schemaVersion: 1, sandboxEventSequenceStart: 1 };
+}
+
+function ownershipTransferMode(
+  manifest: PiApiFirstTurnManifest,
+): PiApiFirstTurnOwnershipTransferMode {
+  return manifest.schemaVersion === 3
+    ? manifest.mode
+    : "pending-tool-continuation";
+}
+
+function validateSessionMode(args: {
+  readonly inspection: PiSessionInspection;
+  readonly manifest: PiApiFirstTurnManifest;
+  readonly mode: PiApiFirstTurnOwnershipTransferMode;
+}): void {
+  switch (args.mode) {
+    case "sandbox-first": {
+      const baseHash = args.manifest.baseSession.sha256;
+      const isAuthoritativeH0 =
+        baseHash === null
+          ? args.inspection.messageCount === 0
+          : args.manifest.session.sha256 === baseHash &&
+            args.inspection.isSettledCheckpoint;
+      if (!isAuthoritativeH0) {
+        throw new PiApiFirstTurnHandoffError(
+          "PI_HANDOFF_H1_INVALID",
+          "Pi sandbox-first transfer does not contain the authoritative H0",
+        );
+      }
+      return;
+    }
+    case "pending-tool-continuation": {
+      if (!args.inspection.hasPendingToolCalls) {
+        throw new PiApiFirstTurnHandoffError(
+          "PI_HANDOFF_H1_INVALID",
+          "Pi API first-turn H1 contains no pending Sandbox tool calls",
+        );
+      }
+      return;
+    }
+    case "settled-session-continuation": {
+      if (
+        !args.inspection.isSettledCheckpoint ||
+        args.inspection.messageCount === 0 ||
+        args.manifest.session.sha256 === args.manifest.baseSession.sha256
+      ) {
+        throw new PiApiFirstTurnHandoffError(
+          "PI_HANDOFF_H1_INVALID",
+          "Pi settled-session transfer does not contain a completed API H1",
+        );
+      }
+      return;
+    }
+  }
 }
 
 async function restoreSession(args: {
@@ -259,6 +346,7 @@ async function restoreSession(args: {
   readonly runtime: HandoffRuntime;
   readonly sessionDir: string;
   readonly sessionId: string;
+  readonly mode: PiApiFirstTurnOwnershipTransferMode;
 }): Promise<string> {
   validateManifestIdentity(args);
   let response: Response;
@@ -309,10 +397,10 @@ async function restoreSession(args: {
     );
   }
 
-  let session: MemoryPiSession;
+  let session: PiSessionInspection;
   try {
     const jsonl = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    session = MemoryPiSession.fromJsonl(jsonl);
+    session = inspectPiSessionJsonl(jsonl);
   } catch (error) {
     throw new PiApiFirstTurnHandoffError(
       "PI_HANDOFF_H1_INVALID",
@@ -320,18 +408,17 @@ async function restoreSession(args: {
       { cause: error },
     );
   }
-  if (session.getSessionId() !== args.sessionId) {
+  if (session.sessionId !== args.sessionId) {
     throw new PiApiFirstTurnHandoffError(
       "PI_HANDOFF_SESSION_MISMATCH",
       "Pi API first-turn H1 session id does not match the launch",
     );
   }
-  if (!session.hasPendingToolCalls()) {
-    throw new PiApiFirstTurnHandoffError(
-      "PI_HANDOFF_H1_INVALID",
-      "Pi API first-turn H1 contains no pending Sandbox tool calls",
-    );
-  }
+  validateSessionMode({
+    inspection: session,
+    manifest: args.manifest,
+    mode: args.mode,
+  });
 
   const sessionFile = join(
     args.sessionDir,
@@ -361,18 +448,21 @@ export async function resolvePiApiFirstTurnHandoff(args: {
 }): Promise<PiApiFirstTurnHandoff> {
   const runtime = args.runtime ?? defaultRuntime;
   const manifest = await pollManifest(args.config, runtime);
-  const sandboxEventSequenceStart = validatedSandboxEventSequenceStart({
+  const boundaryControl = validatedBoundaryControl({
     config: args.config,
     manifest,
   });
+  const mode = ownershipTransferMode(manifest);
   return {
+    boundaryControl,
+    ownershipTransferMode: mode,
     sessionFile: await restoreSession({
       config: args.config,
       manifest,
       runtime,
       sessionDir: args.sessionDir,
       sessionId: args.sessionId,
+      mode,
     }),
-    sandboxEventSequenceStart,
   };
 }

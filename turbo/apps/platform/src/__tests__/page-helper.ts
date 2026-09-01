@@ -18,18 +18,25 @@ import {
   mockPushState,
   mockReplaceState,
   pushState,
+  setHash,
   setPathname,
   setSearch,
 } from "../signals/location";
 import { vi } from "vitest";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { authContract } from "@okouai/api-contracts/contracts/auth";
 import { getAllFeatureStates } from "@okouai/core/feature-switch";
 import { setMockFeatureSwitches } from "../mocks/handlers/api-feature-switches.helpers";
 import { FEATURE_SWITCH_CACHE_KEY } from "../signals/external/feature-switch-state";
 import { localStorageSignals } from "../signals/external/local-storage";
 import { setDebugLoggerLocalStorage$ } from "../signals/bootstrap/loggers";
 import { detach, Reason } from "../signals/utils";
-import { SharedWorkerTestBootstrap } from "../shared-database/test-bridge.ts";
+import {
+  setupSharedWorkerTestBootstrap$,
+  type SharedWorkerTestTransport,
+} from "../shared-database/test-bridge.ts";
+
+export const TEST_APP_VERSION = "0.540.0";
 
 const {
   set$: setFeatureSwitchCacheLocalStorage$,
@@ -81,15 +88,18 @@ function ensureTestLocalStorage(): void {
   });
 }
 
-export async function setupPage(options: {
+export interface SetupBootstrapOptions {
+  appVersion?: string;
   context: TestContext;
   path: string;
+  beforeBootstrap?: (signal: AbortSignal) => void;
   user?: {
     id: string;
     fullName: string;
     email?: string;
     firstName?: string;
     imageUrl?: string;
+    createdAt?: Date;
     createOrganizationEnabled?: boolean;
     createOrganizationsLimit?: number | null;
     clientSessions?: MockedClientSession[];
@@ -110,13 +120,28 @@ export async function setupPage(options: {
   cachedFeatureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   afterSharedDatabaseWorkerHeartbeat?: () => Promise<void>;
+  sharedWorkerAppVersion?: string;
+  sharedWorkerTestTransport?: SharedWorkerTestTransport;
+}
+
+export interface SetupPageOptions extends SetupBootstrapOptions {
   withoutRender?: boolean;
-}) {
+}
+
+/**
+ * Run the production bootstrap lifecycle. Signal tests omit `render`; page
+ * tests provide the Router setup through `setupPage` below.
+ */
+export async function setupBootstrap(
+  options: SetupBootstrapOptions,
+  render: () => void = () => {},
+): Promise<void> {
   ensureTestLocalStorage();
   // setupPage exercises the shared MSW fixture data even when a test does not
   // customize a handler. Start the lazy mock lifecycle so abort resets any
   // fixture mutations made by the application during this test.
   void options.context.mocks;
+  options.beforeBootstrap?.(options.context.signal);
   createPushStateMock(options.context.signal);
   pushState({}, "", options.path);
 
@@ -150,22 +175,12 @@ export async function setupPage(options: {
     setFeatureSwitchCacheForTest$,
     cachedFeatureSwitches,
   );
-  if (cachedFeatureSwitches[FeatureSwitchKey.SharedChatDatabase]) {
-    new SharedWorkerTestBootstrap(
-      options.context.store,
-      options.context.workerStore,
-      options.context.signal,
-      options.afterSharedDatabaseWorkerHeartbeat,
-    );
-  }
-
-  mockUser(
+  const testUser =
     options.user !== undefined
       ? options.user
-      : {
-          id: "test-user-123",
-          fullName: "Test User",
-        },
+      : { id: "test-user-123", fullName: "Test User" };
+  mockUser(
+    testUser,
     options.session ?? {
       token: "test-token",
     },
@@ -182,6 +197,31 @@ export async function setupPage(options: {
       memberships: [{ id: defaultOrgId }],
     });
   }
+  if (testUser) {
+    options.context.mocks.api(authContract.me, ({ respond }) => {
+      return respond(200, {
+        userId: testUser.id,
+        email: testUser.email ?? "test@example.com",
+        orgId: activeOrgId ?? null,
+      });
+    });
+  }
+  options.context.store.set(
+    setupSharedWorkerTestBootstrap$,
+    {
+      appVersion: options.sharedWorkerAppVersion ?? TEST_APP_VERSION,
+      workerStore: options.context.workerStore,
+      identity:
+        testUser && activeOrgId
+          ? { userId: testUser.id, orgId: activeOrgId }
+          : null,
+      transport: options.sharedWorkerTestTransport ?? "direct",
+      ...(options.afterSharedDatabaseWorkerHeartbeat
+        ? { afterHeartbeat: options.afterSharedDatabaseWorkerHeartbeat }
+        : {}),
+    },
+    options.context.signal,
+  );
   clearMockedAuthOnAbort(options.context.signal);
   options.context.signal.addEventListener(
     "abort",
@@ -196,19 +236,27 @@ export async function setupPage(options: {
   // act" warnings are suppressed in setup.ts.
   await options.context.store.set(
     bootstrap$,
-    () => {
-      setupRouter(options.context.store, (element) => {
-        if (options.withoutRender) {
-          return;
-        }
-        const { unmount } = render(element);
-        options.context.signal.addEventListener("abort", () => {
-          unmount();
-        });
-      });
+    options.appVersion ?? TEST_APP_VERSION,
+    render,
+    (daemon) => {
+      options.context.track(daemon);
     },
     options.context.signal,
   );
+}
+
+export async function setupPage(options: SetupPageOptions): Promise<void> {
+  await setupBootstrap(options, () => {
+    setupRouter(options.context.store, (element) => {
+      if (options.withoutRender) {
+        return;
+      }
+      const { unmount } = render(element);
+      options.context.signal.addEventListener("abort", () => {
+        unmount();
+      });
+    });
+  });
 }
 
 /**
@@ -225,6 +273,56 @@ export async function setupPage(options: {
  */
 export function detachedSetupPage(options: Parameters<typeof setupPage>[0]) {
   detach(setupPage(options), Reason.Entrance, "test");
+}
+
+function waitForPageContent(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let skeletonMounted = false;
+    const observer = new MutationObserver(checkPageContent);
+
+    function cleanup(): void {
+      observer.disconnect();
+      signal.removeEventListener("abort", handleAbort);
+    }
+
+    function handleAbort(): void {
+      cleanup();
+      reject(signal.reason);
+    }
+
+    function checkPageContent(): void {
+      const skeleton = document.querySelector('[data-testid="app-skeleton"]');
+      skeletonMounted ||= skeleton !== null;
+      if (
+        skeletonMounted &&
+        (skeleton === null || skeleton.getAttribute("aria-hidden") === "true")
+      ) {
+        cleanup();
+        resolve();
+      }
+    }
+
+    observer.observe(document.body, {
+      attributeFilter: ["aria-hidden"],
+      attributes: true,
+      childList: true,
+      subtree: true,
+    });
+    signal.addEventListener("abort", handleAbort, { once: true });
+    checkPageContent();
+  });
+}
+
+/**
+ * Start the real page bootstrap and resolve when the loading surface gives
+ * way to user-visible page content. Long-running page daemons stay detached.
+ */
+export async function setupPageAndWaitForContent(
+  options: Parameters<typeof setupPage>[0],
+): Promise<void> {
+  const contentReady = waitForPageContent(options.context.signal);
+  detachedSetupPage(options);
+  await contentReady;
 }
 
 // Helper to create a browser history mock that updates mockLocation.
@@ -244,6 +342,7 @@ function createPushStateMock(signal: AbortSignal) {
   const updateLocation = (entry: HistoryEntry) => {
     setPathname(entry.url.pathname, signal);
     setSearch(entry.url.search, signal);
+    setHash(entry.url.hash, signal);
   };
 
   const fn = vi.fn<typeof window.history.pushState>(

@@ -4,11 +4,7 @@ import {
   type GoogleAdsConversionMilestone,
 } from "@okouai/api-contracts/contracts/acquisition-attribution";
 
-import {
-  clearMockedAuthOnAbort,
-  mockOrganization,
-  mockUser,
-} from "../../__tests__/mock-auth.ts";
+import { setupBootstrap } from "../../__tests__/page-helper.ts";
 import { syncGoogleAdsConversionMilestones$ } from "../bootstrap/google-ads-conversion-milestones.ts";
 import { testContext } from "./test-helpers.ts";
 
@@ -17,21 +13,22 @@ const context = testContext();
 type GtagFn = (...args: unknown[]) => void;
 type WindowWithGtag = Window & { gtag?: GtagFn };
 
-function mockSignedInUser(userId = "test-user-123"): void {
-  mockUser(
-    {
+async function setupSignedInBootstrap(userId = "test-user-123"): Promise<void> {
+  await setupBootstrap({
+    context,
+    path: "/error",
+    user: {
       id: userId,
       fullName: "Test User",
       email: "test@example.com",
       createdAt: new Date("2026-08-25T00:00:00.000Z"),
     },
-    { token: "test-token" },
-  );
-  mockOrganization({
-    activeOrg: { id: "org_default", name: "Default Org" },
-    memberships: [{ id: "org_default" }],
+    session: { token: "test-token" },
+    org: {
+      activeOrg: { id: "org_default", name: "Default Org" },
+      memberships: [{ id: "org_default" }],
+    },
   });
-  clearMockedAuthOnAbort(context.signal);
 }
 
 const MILESTONE_CASES: readonly {
@@ -96,7 +93,6 @@ function installGtagMock(): ReturnType<typeof vi.fn<GtagFn>> {
 
 describe("google ads conversion milestone sync", () => {
   it("baselines existing milestones and emits only newly achieved ones", async () => {
-    mockSignedInUser();
     const gtag = installGtagMock();
     let milestones: readonly GoogleAdsConversionMilestone[] = [
       {
@@ -111,7 +107,7 @@ describe("google ads conversion milestone sync", () => {
       },
     );
 
-    await context.store.set(syncGoogleAdsConversionMilestones$, context.signal);
+    await setupSignedInBootstrap();
     expect(gtag).not.toHaveBeenCalled();
 
     milestones = [
@@ -137,7 +133,6 @@ describe("google ads conversion milestone sync", () => {
     "emits $kind with the configured action and value",
     async ({ kind, sendTo, value }) => {
       const userId = `test-user-${kind}`;
-      mockSignedInUser(userId);
       const gtag = installGtagMock();
       let milestones: readonly GoogleAdsConversionMilestone[] = [];
       context.mocks.api(
@@ -147,10 +142,7 @@ describe("google ads conversion milestone sync", () => {
         },
       );
 
-      await context.store.set(
-        syncGoogleAdsConversionMilestones$,
-        context.signal,
-      );
+      await setupSignedInBootstrap(userId);
       expect(gtag).not.toHaveBeenCalled();
 
       const transactionId = `transaction-${kind}-${userId}`;

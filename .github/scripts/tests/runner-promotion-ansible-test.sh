@@ -164,6 +164,7 @@ if ! PATH="$test_bin:$PATH" \
     -i "$inventory" \
     --forks 2 \
     -e "data_dir=$data_dir" \
+    -e "runner_host_env_file=$tmp/host.env" \
     -e "runner_version=999.0.0" \
     -e "runner_target=$runner_target" \
     "$promote_playbook" >"$tmp/promote-output" 2>&1; then

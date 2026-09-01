@@ -5,7 +5,6 @@ import type {
   TestRuntimeStateActionBody,
   TestRuntimeStateActionResponse,
 } from "@okouai/api-contracts/contracts/test-runtime-state";
-import type { ChatEventSnapshotProjection } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { onTestFinished } from "vitest";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
@@ -751,58 +750,22 @@ export async function readRunUploadedFileSources(
   return response.uploaded_file_sources ?? [];
 }
 
-export async function setChatEventSnapshotHeadVersion(
+export async function updateChatEventSnapshotHead(
   context: TestContext,
   threadId: string,
-  archiveSchemaVersion: number,
-  ...[objectKey, lastSeqId, projection, lastEventId]: [
+  ...[objectKey, lastSeqId, lastEventId]: [
     objectKey?: string,
     lastSeqId?: number,
-    projection?: ChatEventSnapshotProjection,
     lastEventId?: string,
   ]
 ): Promise<void> {
   await postAction(context, {
-    action: "set-chat-event-snapshot-head-version",
+    action: "update-chat-event-snapshot-head",
     thread_id: threadId,
-    archive_schema_version: archiveSchemaVersion,
     ...(objectKey === undefined ? {} : { object_key: objectKey }),
     ...(lastSeqId === undefined ? {} : { last_seq_id: lastSeqId }),
     ...(lastEventId === undefined ? {} : { last_event_id: lastEventId }),
-    ...(projection === undefined ? {} : { projection }),
   });
-}
-
-export async function simulateChatEventSnapshotRollingDeploy(
-  context: TestContext,
-  args: {
-    readonly threadId: string;
-    readonly v7Pointer: {
-      readonly object_key: string;
-      readonly last_event_id: string;
-      readonly last_seq_id: number;
-      readonly terminal_event_id: string | null;
-      readonly terminal_seq_id: number | null;
-    };
-    readonly v6Pointer: {
-      readonly object_key: string;
-      readonly last_event_id: string;
-      readonly last_seq_id: number;
-    };
-  },
-): Promise<number> {
-  const response = await postAction(context, {
-    action: "simulate-chat-event-snapshot-rolling-deploy",
-    thread_id: args.threadId,
-    v7_pointer: args.v7Pointer,
-    v6_pointer: args.v6Pointer,
-  });
-  if (response.deleted_chat_event_rows === undefined) {
-    throw new Error(
-      "simulateChatEventSnapshotRollingDeploy missing deleted row count",
-    );
-  }
-  return response.deleted_chat_event_rows;
 }
 
 export async function advanceChatEventSequenceAsPreviousApi(
@@ -820,35 +783,17 @@ export async function advanceChatEventSequenceAsPreviousApi(
 export async function readChatEventSnapshotHead(
   context: TestContext,
   threadId: string,
-  projection?: ChatEventSnapshotProjection,
 ): Promise<
   NonNullable<TestRuntimeStateActionResponse["chat_event_snapshot_head"]>
 > {
   const response = await postAction(context, {
     action: "read-chat-event-snapshot-head",
     thread_id: threadId,
-    ...(projection === undefined ? {} : { projection }),
   });
   if (!response.chat_event_snapshot_head) {
     throw new Error("readChatEventSnapshotHead missing snapshot head");
   }
   return response.chat_event_snapshot_head;
-}
-
-export async function readRunChatToolActivityDecision(
-  context: TestContext,
-  runId: string,
-): Promise<
-  NonNullable<TestRuntimeStateActionResponse["run_chat_tool_activity_decision"]>
-> {
-  const response = await postAction(context, {
-    action: "read-run-chat-tool-activity-decision",
-    run_id: runId,
-  });
-  if (!response.run_chat_tool_activity_decision) {
-    throw new Error("readRunChatToolActivityDecision missing run");
-  }
-  return response.run_chat_tool_activity_decision;
 }
 
 export async function insertHostedSiteAsPreviousApi(
@@ -1029,5 +974,15 @@ export async function setBrowserTabSnapshotAsPreviousApi(
     action: "set-browser-tab-snapshot-as-previous-api",
     thread_id: args.threadId,
     tab_urls: [...args.tabUrls],
+  });
+}
+
+export async function clearWorkflowAutomationEventConnectorAsPreviousApi(
+  context: TestContext,
+  automationId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "clear-workflow-automation-event-connector-as-previous-api",
+    automation_id: automationId,
   });
 }

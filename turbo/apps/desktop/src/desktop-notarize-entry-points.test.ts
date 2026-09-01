@@ -28,22 +28,18 @@ const canonicalAliases = {
   keyId: "OKOU_DESKTOP_NOTARIZE_API_KEY_ID",
   issuer: "OKOU_DESKTOP_NOTARIZE_API_ISSUER",
 } as const;
-const legacyAliases = {
+const retiredAliases = {
   keyPath: "VM0_DESKTOP_NOTARIZE_API_KEY_PATH",
   keyId: "VM0_DESKTOP_NOTARIZE_API_KEY_ID",
   issuer: "VM0_DESKTOP_NOTARIZE_API_ISSUER",
 } as const;
-const allAliases = [
+const credentialAliases = [
   ...Object.values(canonicalAliases),
-  ...Object.values(legacyAliases),
+  ...Object.values(retiredAliases),
 ];
 const canonicalKeychainAliases = {
   profile: "OKOU_DESKTOP_NOTARIZE_KEYCHAIN_PROFILE",
   path: "OKOU_DESKTOP_NOTARIZE_KEYCHAIN",
-} as const;
-const legacyKeychainAliases = {
-  profile: "VM0_DESKTOP_NOTARIZE_KEYCHAIN_PROFILE",
-  path: "VM0_DESKTOP_NOTARIZE_KEYCHAIN",
 } as const;
 const canonicalSigningIdentityAlias = "OKOU_DESKTOP_SIGNING_IDENTITY";
 const legacySigningIdentityAlias = "VM0_DESKTOP_SIGNING_IDENTITY";
@@ -103,15 +99,13 @@ export async function notarize(options) {
   const mode = process.env.TEST_NOTARIZE_MODE;
   let credentialsAreUnchanged = false;
   if (mode === "api") {
-    const prefix =
-      process.env.TEST_EXPECTED_API_SOURCE === "legacy-only" ? "VM0" : "OKOU";
     credentialsAreUnchanged =
       options.appleApiKey ===
-        process.env[prefix + "_DESKTOP_NOTARIZE_API_KEY_PATH"] &&
+        process.env.OKOU_DESKTOP_NOTARIZE_API_KEY_PATH &&
       options.appleApiKeyId ===
-        process.env[prefix + "_DESKTOP_NOTARIZE_API_KEY_ID"] &&
+        process.env.OKOU_DESKTOP_NOTARIZE_API_KEY_ID &&
       options.appleApiIssuer ===
-        process.env[prefix + "_DESKTOP_NOTARIZE_API_ISSUER"] &&
+        process.env.OKOU_DESKTOP_NOTARIZE_API_ISSUER &&
       options.keychainProfile === undefined &&
       options.keychain === undefined;
   } else if (mode === "default-keychain") {
@@ -151,12 +145,19 @@ type CredentialCase =
   | "absent"
   | "empty"
   | "canonical-only"
-  | "legacy-only"
-  | "dual"
-  | "conflict"
-  | "mixed"
-  | "incomplete";
-type SuccessfulSource = "canonical-only" | "legacy-only" | "dual";
+  | "canonical-and-retired"
+  | "retired-only"
+  | IncompleteCredentialCase;
+
+const incompleteCredentialCases = [
+  "key-path-only",
+  "key-id-only",
+  "issuer-only",
+  "without-key-path",
+  "without-key-id",
+  "without-issuer",
+] as const;
+type IncompleteCredentialCase = (typeof incompleteCredentialCases)[number];
 
 interface SigningIdentityInput {
   readonly canonical?: string;
@@ -165,9 +166,7 @@ interface SigningIdentityInput {
 
 interface KeychainEnvironmentInput {
   readonly canonicalProfile?: string;
-  readonly legacyProfile?: string;
   readonly canonicalPath?: string;
-  readonly legacyPath?: string;
 }
 
 interface CredentialValues {
@@ -175,6 +174,17 @@ interface CredentialValues {
   readonly keyId: string;
   readonly issuer: string;
 }
+
+const incompleteCredentialFields: Readonly<
+  Record<IncompleteCredentialCase, readonly (keyof CredentialValues)[]>
+> = {
+  "key-path-only": ["keyPath"],
+  "key-id-only": ["keyId"],
+  "issuer-only": ["issuer"],
+  "without-key-path": ["keyId", "issuer"],
+  "without-key-id": ["keyPath", "issuer"],
+  "without-issuer": ["keyPath", "keyId"],
+};
 
 interface TestHarness {
   readonly directory: string;
@@ -218,7 +228,7 @@ function credentialValues(directory: string): CredentialValues {
 
 function assignCredentialValues(
   environment: NodeJS.ProcessEnv,
-  aliases: typeof canonicalAliases | typeof legacyAliases,
+  aliases: typeof canonicalAliases | typeof retiredAliases,
   values: CredentialValues,
 ): void {
   environment[aliases.keyPath] = values.keyPath;
@@ -235,39 +245,28 @@ function applyCredentialCase(
     return [];
   }
   if (credentialCase === "empty") {
-    for (const alias of allAliases) {
+    for (const alias of credentialAliases) {
       environment[alias] = "";
     }
     return [];
   }
 
   const canonical = credentialValues(directory);
-  const legacy =
-    credentialCase === "dual" ? canonical : credentialValues(directory);
+  const retired = credentialValues(directory);
   if (credentialCase === "canonical-only") {
     assignCredentialValues(environment, canonicalAliases, canonical);
-    for (const alias of Object.values(legacyAliases)) {
-      environment[alias] = "";
-    }
-  } else if (credentialCase === "legacy-only") {
-    assignCredentialValues(environment, legacyAliases, legacy);
-    for (const alias of Object.values(canonicalAliases)) {
-      environment[alias] = "";
-    }
-  } else if (credentialCase === "dual" || credentialCase === "conflict") {
+  } else if (credentialCase === "canonical-and-retired") {
     assignCredentialValues(environment, canonicalAliases, canonical);
-    assignCredentialValues(environment, legacyAliases, legacy);
-  } else if (credentialCase === "mixed") {
-    environment[canonicalAliases.keyPath] = canonical.keyPath;
-    environment[legacyAliases.keyId] = legacy.keyId;
-    environment[legacyAliases.issuer] = legacy.issuer;
+    assignCredentialValues(environment, retiredAliases, retired);
+  } else if (credentialCase === "retired-only") {
+    assignCredentialValues(environment, retiredAliases, retired);
   } else {
-    environment[canonicalAliases.keyPath] = canonical.keyPath;
-    environment[canonicalAliases.keyId] = canonical.keyId;
-    environment[canonicalAliases.issuer] = "";
+    for (const field of incompleteCredentialFields[credentialCase]) {
+      environment[canonicalAliases[field]] = canonical[field];
+    }
   }
 
-  return allAliases.flatMap((alias) => {
+  return credentialAliases.flatMap((alias) => {
     const value = environment[alias];
     return value ? [value] : [];
   });
@@ -294,9 +293,7 @@ function applyKeychainEnvironmentInput(
 ): readonly string[] {
   const valuesByAlias = [
     [canonicalKeychainAliases.profile, input.canonicalProfile],
-    [legacyKeychainAliases.profile, input.legacyProfile],
     [canonicalKeychainAliases.path, input.canonicalPath],
-    [legacyKeychainAliases.path, input.legacyPath],
   ] as const;
   for (const [alias, value] of valuesByAlias) {
     if (value !== undefined) {
@@ -336,7 +333,6 @@ function runForge(
   credentialCase: CredentialCase,
   options: {
     readonly notarize?: boolean;
-    readonly source?: SuccessfulSource;
     readonly keychainMode?: "default-keychain" | "custom-keychain";
     readonly keychainInput?: KeychainEnvironmentInput;
     readonly expectedKeychainProfile?: string;
@@ -367,7 +363,7 @@ function runForge(
   const keychainInput: KeychainEnvironmentInput =
     options.keychainInput ??
     (options.keychainMode === "custom-keychain"
-      ? { legacyProfile: defaultCustomKeychainProfile }
+      ? { canonicalProfile: defaultCustomKeychainProfile }
       : {});
   const keychainValues = applyKeychainEnvironmentInput(
     environment,
@@ -378,19 +374,19 @@ function runForge(
     environment,
     signingIdentity,
   );
-  const configuredSigningIdentity =
-    signingIdentity.canonical ?? signingIdentity.legacy;
   const expectedSigningIdentity =
-    configuredSigningIdentity ??
+    signingIdentity.canonical ??
     (environment.CI === "true" ? "-" : developerIdApplicationIdentity);
   environment.TEST_EXPECTED_SIGNING_IDENTITY = expectedSigningIdentity;
   environment.TEST_EXPECTED_IDENTITY_VALIDATION =
     expectedSigningIdentity === "-" ? "false" : "true";
   environment.TEST_EXPECTED_SIGNING_TIMESTAMP =
     expectedSigningIdentity === "-" ? "none" : "absent";
-  if (options.source) {
+  if (
+    credentialCase === "canonical-only" ||
+    credentialCase === "canonical-and-retired"
+  ) {
     environment.TEST_NOTARIZE_MODE = "api";
-    environment.TEST_EXPECTED_API_SOURCE = options.source;
   }
   if (options.keychainMode) {
     environment.TEST_NOTARIZE_MODE = options.keychainMode;
@@ -399,7 +395,6 @@ function runForge(
     environment.TEST_EXPECTED_KEYCHAIN_PROFILE =
       options.expectedKeychainProfile ??
       keychainInput.canonicalProfile ??
-      keychainInput.legacyProfile ??
       defaultCustomKeychainProfile;
     environment.TEST_EXPECTED_KEYCHAIN =
       options.expectedKeychain ?? environment.TEST_EXPECTED_DEFAULT_KEYCHAIN;
@@ -454,26 +449,18 @@ function runPackagedAppHelper(
     credentialCase,
   );
   const signingIdentity = options.signingIdentity ?? {
-    legacy: ` ${randomUUID()} `,
+    canonical: ` ${randomUUID()} `,
   };
   const signingIdentityValues = applySigningIdentityInput(
     environment,
     signingIdentity,
   );
-  const expectedSigningIdentity =
-    signingIdentity.canonical ?? signingIdentity.legacy;
+  const expectedSigningIdentity = signingIdentity.canonical;
   if (expectedSigningIdentity !== undefined) {
     environment.TEST_EXPECTED_SIGNING_IDENTITY = expectedSigningIdentity;
   }
   environment.TEST_EXPECTED_IDENTITY_VALIDATION = "true";
   environment.TEST_EXPECTED_SIGNING_TIMESTAMP = "absent";
-  if (
-    credentialCase === "canonical-only" ||
-    credentialCase === "legacy-only" ||
-    credentialCase === "dual"
-  ) {
-    environment.TEST_EXPECTED_API_SOURCE = credentialCase;
-  }
 
   const processResult = spawnSync(
     process.execPath,
@@ -499,39 +486,6 @@ function runPackagedAppHelper(
   };
 }
 
-function sourceEvents(result: EntryPointResult): readonly string[] {
-  return result.process.stdout
-    .split("\n")
-    .filter((line) => line.startsWith("desktop_notarize_api_env_source "));
-}
-
-function keychainSourceEvents(result: EntryPointResult): readonly string[] {
-  return result.process.stdout
-    .split("\n")
-    .filter((line) => line.startsWith("desktop_notarize_keychain_env_source "));
-}
-
-function signingIdentitySourceEvents(
-  result: EntryPointResult,
-): readonly string[] {
-  return result.process.stdout
-    .split("\n")
-    .filter((line) => line.startsWith("desktop_signing_identity_env_source "));
-}
-
-function expectSigningIdentitySource(
-  result: EntryPointResult,
-  source: SuccessfulSource | undefined,
-): void {
-  expect(signingIdentitySourceEvents(result)).toStrictEqual(
-    source
-      ? [
-          `desktop_signing_identity_env_source key=${canonicalSigningIdentityAlias} source=${source}`,
-        ]
-      : [],
-  );
-}
-
 function expectNoSensitiveValueDisclosure(result: EntryPointResult): void {
   const output = result.process.stdout + result.process.stderr;
   for (const value of result.sensitiveValues) {
@@ -540,26 +494,23 @@ function expectNoSensitiveValueDisclosure(result: EntryPointResult): void {
   expect(output.includes("length=")).toBe(false);
 }
 
-function expectSuccessfulApiEntryPoint(
-  result: EntryPointResult,
-  source: SuccessfulSource,
-): void {
+function expectSuccessfulApiEntryPoint(result: EntryPointResult): void {
   expect(result.process.status === 0).toBe(true);
   expect(result.trace).toBe("sign\nnotarize\n");
-  expect(sourceEvents(result)).toStrictEqual([
-    `desktop_notarize_api_env_source source=${source}`,
-  ]);
   expectNoSensitiveValueDisclosure(result);
 }
 
 function expectFailedBeforeExternalSideEffects(
   result: EntryPointResult,
-  state: "absent" | "conflict" | "mixed" | "incomplete",
+  state: "absent" | "incomplete",
 ): void {
   expect(result.process.status === 1).toBe(true);
   expect(result.trace).toBe("");
-  expect(sourceEvents(result)).toStrictEqual([]);
-  expect(result.process.stderr.includes(`state=${state}`)).toBe(true);
+  expect(result.process.stderr).toContain(
+    state === "absent"
+      ? "Desktop notarization API environment is required: state=absent"
+      : "Desktop notarization API credentials are incomplete: state=incomplete",
+  );
   expectNoSensitiveValueDisclosure(result);
 }
 
@@ -572,68 +523,50 @@ afterEach(() => {
 describe("Desktop Forge notarization entry point", () => {
   const precedenceProfile = ` precedence-profile-${randomUUID()} `;
 
-  it.each([
-    ["canonical-only", "canonical-only"],
-    ["legacy-only", "legacy-only"],
-    ["dual", "dual"],
-  ] as const)(
-    "uses one complete %s API credential set",
-    (credentialCase, source) => {
-      expectSuccessfulApiEntryPoint(
-        runForge(credentialCase, { source }),
-        source,
+  it("uses one complete canonical API credential set byte-for-byte", () => {
+    expectSuccessfulApiEntryPoint(runForge("canonical-only"));
+  });
+
+  it("keeps canonical credentials authoritative over hostile retired values", () => {
+    expectSuccessfulApiEntryPoint(runForge("canonical-and-retired"));
+  });
+
+  it.each(incompleteCredentialCases)(
+    "rejects the incomplete canonical %s shape before signing",
+    (credentialCase) => {
+      expectFailedBeforeExternalSideEffects(
+        runForge(credentialCase),
+        "incomplete",
       );
     },
   );
 
-  it.each([
-    ["conflict", "conflict"],
-    ["mixed", "mixed"],
-    ["incomplete", "incomplete"],
-  ] as const)(
-    "rejects %s API credentials before signing",
-    (credentialCase, state) => {
-      expectFailedBeforeExternalSideEffects(runForge(credentialCase), state);
-    },
-  );
-
-  it.each(["absent", "empty"] as const)(
-    "keeps the default Keychain profile when API aliases are %s",
+  it.each(["absent", "empty", "retired-only"] as const)(
+    "keeps the default Keychain profile when API credentials are %s",
     (credentialCase) => {
       const result = runForge(credentialCase, {
         keychainMode: "default-keychain",
       });
       expect(result.process.status === 0).toBe(true);
       expect(result.trace).toBe("sign\nnotarize\n");
-      expect(sourceEvents(result)).toStrictEqual([]);
+      expectNoSensitiveValueDisclosure(result);
     },
   );
 
   it.each([
-    ["conflict", { canonicalProfile: precedenceProfile }, "canonical-only"],
-    ["mixed", { legacyProfile: precedenceProfile }, "legacy-only"],
-    [
-      "incomplete",
-      {
-        canonicalProfile: precedenceProfile,
-        legacyProfile: precedenceProfile,
-      },
-      "dual",
-    ],
+    ["canonical and retired API credentials", "canonical-and-retired"],
+    ["retired-only API credentials", "retired-only"],
+    ["incomplete canonical API credentials", "key-path-only"],
   ] as const)(
-    "keeps a custom Keychain profile ahead of %s API aliases",
-    (credentialCase, keychainInput, source) => {
+    "keeps a custom Keychain profile ahead of %s",
+    (_, credentialCase) => {
       const result = runForge(credentialCase, {
         keychainMode: "custom-keychain",
-        keychainInput,
+        keychainInput: { canonicalProfile: precedenceProfile },
         expectedKeychainProfile: precedenceProfile,
       });
       expect(result.process.status === 0).toBe(true);
       expect(result.trace).toBe("sign\nnotarize\n");
-      expect(sourceEvents(result)).toStrictEqual([]);
-      expect(keychainSourceEvents(result)).toStrictEqual([
-        `desktop_notarize_keychain_env_source key=${canonicalKeychainAliases.profile} source=${source}`,
-      ]);
       expectNoSensitiveValueDisclosure(result);
     },
   );
@@ -643,13 +576,10 @@ describe("Desktop Forge notarization entry point", () => {
       notarize: false,
       keychainInput: {
         canonicalProfile: randomUUID(),
-        legacyProfile: randomUUID(),
       },
     });
     expect(result.process.status === 0).toBe(true);
     expect(result.trace).toBe("sign\n");
-    expect(sourceEvents(result)).toStrictEqual([]);
-    expect(keychainSourceEvents(result)).toStrictEqual([]);
     expectNoSensitiveValueDisclosure(result);
   });
 });
@@ -658,65 +588,37 @@ describe("Desktop Forge Keychain notarization environment entry point", () => {
   const sharedProfile = ` profile-${randomUUID()} `;
   const sharedPath = ` /tmp/keychain-${randomUUID()} `;
   const canonicalPath = `/tmp/canonical-keychain-${randomUUID()}`;
-  const legacyPath = `/tmp/legacy-keychain-${randomUUID()}`;
+
+  it("passes the canonical profile through byte-for-byte", () => {
+    const result = runForge("absent", {
+      keychainMode: "custom-keychain",
+      keychainInput: { canonicalProfile: sharedProfile },
+      expectedKeychainProfile: sharedProfile,
+    });
+
+    expect(result.process.status, result.process.stderr).toBe(0);
+    expect(result.trace).toBe("sign\nnotarize\n");
+    expectNoSensitiveValueDisclosure(result);
+  });
 
   it.each([
-    [
-      "canonical-only",
-      { canonicalProfile: sharedProfile, legacyProfile: " \t " },
-      "canonical-only",
-    ],
-    [
-      "legacy-only",
-      { canonicalProfile: "", legacyProfile: sharedProfile },
-      "legacy-only",
-    ],
-    [
-      "byte-equal dual",
-      { canonicalProfile: sharedProfile, legacyProfile: sharedProfile },
-      "dual",
-    ],
-  ] as const)(
-    "passes the %s profile through byte-for-byte",
-    (_, keychainInput, source) => {
-      const result = runForge("absent", {
-        keychainMode: "custom-keychain",
-        keychainInput,
-        expectedKeychainProfile: sharedProfile,
-      });
-
-      expect(result.process.status, result.process.stderr).toBe(0);
-      expect(result.trace).toBe("sign\nnotarize\n");
-      expect(sourceEvents(result)).toStrictEqual([]);
-      expect(keychainSourceEvents(result)).toStrictEqual([
-        `desktop_notarize_keychain_env_source key=${canonicalKeychainAliases.profile} source=${source}`,
-      ]);
-      expectNoSensitiveValueDisclosure(result);
-    },
-  );
-
-  it.each([
-    ["absent", { canonicalPath, legacyPath }],
+    ["absent", { canonicalPath }],
     [
       "empty",
       {
         canonicalProfile: "",
-        legacyProfile: "",
         canonicalPath,
-        legacyPath,
       },
     ],
     [
       "whitespace-only",
       {
         canonicalProfile: " \t ",
-        legacyProfile: "\n ",
         canonicalPath,
-        legacyPath,
       },
     ],
   ] as const)(
-    "ignores unequal path-only aliases when profiles are %s",
+    "ignores the canonical path when the canonical profile is %s",
     (_, keychainInput) => {
       const result = runForge("absent", {
         keychainMode: "default-keychain",
@@ -725,16 +627,14 @@ describe("Desktop Forge Keychain notarization environment entry point", () => {
 
       expect(result.process.status, result.process.stderr).toBe(0);
       expect(result.trace).toBe("sign\nnotarize\n");
-      expect(sourceEvents(result)).toStrictEqual([]);
-      expect(keychainSourceEvents(result)).toStrictEqual([]);
       expectNoSensitiveValueDisclosure(result);
     },
   );
 
   it.each([
     ["absent", {}],
-    ["empty", { canonicalPath: "", legacyPath: "" }],
-    ["whitespace-only", { canonicalPath: " \t ", legacyPath: "\n " }],
+    ["empty", { canonicalPath: "" }],
+    ["whitespace-only", { canonicalPath: " \t " }],
   ] as const)(
     "uses the default path when selected-profile paths are %s",
     (_, pathInput) => {
@@ -749,131 +649,60 @@ describe("Desktop Forge Keychain notarization environment entry point", () => {
 
       expect(result.process.status, result.process.stderr).toBe(0);
       expect(result.trace).toBe("sign\nnotarize\n");
-      expect(keychainSourceEvents(result)).toStrictEqual([
-        `desktop_notarize_keychain_env_source key=${canonicalKeychainAliases.profile} source=canonical-only`,
-      ]);
       expectNoSensitiveValueDisclosure(result);
     },
   );
 
-  it.each([
-    [
-      "canonical-only",
-      { canonicalPath: sharedPath, legacyPath: " \t " },
-      "canonical-only",
-    ],
-    [
-      "legacy-only",
-      { canonicalPath: "", legacyPath: sharedPath },
-      "legacy-only",
-    ],
-    [
-      "byte-equal dual",
-      { canonicalPath: sharedPath, legacyPath: sharedPath },
-      "dual",
-    ],
-  ] as const)(
-    "trims the selected %s path before use",
-    (_, pathInput, source) => {
-      const result = runForge("absent", {
-        keychainMode: "custom-keychain",
-        keychainInput: {
-          canonicalProfile: sharedProfile,
-          ...pathInput,
-        },
-        expectedKeychainProfile: sharedProfile,
-        expectedKeychain: sharedPath.trim(),
-      });
-
-      expect(result.process.status, result.process.stderr).toBe(0);
-      expect(result.trace).toBe("sign\nnotarize\n");
-      expect(keychainSourceEvents(result)).toStrictEqual([
-        `desktop_notarize_keychain_env_source key=${canonicalKeychainAliases.profile} source=canonical-only`,
-        `desktop_notarize_keychain_env_source key=${canonicalKeychainAliases.path} source=${source}`,
-      ]);
-      expectNoSensitiveValueDisclosure(result);
-    },
-  );
-
-  it("rejects conflicting profile aliases before external effects", () => {
-    const profile = `profile-${randomUUID()}`;
-    const result = runForge("conflict", {
-      keychainMode: "custom-keychain",
-      keychainInput: {
-        canonicalProfile: profile,
-        legacyProfile: ` ${profile} `,
-      },
-    });
-
-    expect(result.process.status).toBe(1);
-    expect(result.trace).toBe("");
-    expect(sourceEvents(result)).toStrictEqual([]);
-    expect(keychainSourceEvents(result)).toStrictEqual([]);
-    expect(result.process.stderr).toContain(
-      `Desktop notarization Keychain environment aliases conflict: canonical_key=${canonicalKeychainAliases.profile} legacy_key=${legacyKeychainAliases.profile} state=conflict`,
-    );
-    expectNoSensitiveValueDisclosure(result);
-  });
-
-  it("rejects conflicting path aliases only under a selected profile", () => {
-    const result = runForge("conflict", {
+  it("trims the selected canonical path before use", () => {
+    const result = runForge("absent", {
       keychainMode: "custom-keychain",
       keychainInput: {
         canonicalProfile: sharedProfile,
-        canonicalPath,
-        legacyPath: ` ${canonicalPath} `,
+        canonicalPath: sharedPath,
       },
       expectedKeychainProfile: sharedProfile,
+      expectedKeychain: sharedPath.trim(),
     });
 
-    expect(result.process.status).toBe(1);
-    expect(result.trace).toBe("");
-    expect(sourceEvents(result)).toStrictEqual([]);
-    expect(keychainSourceEvents(result)).toStrictEqual([
-      `desktop_notarize_keychain_env_source key=${canonicalKeychainAliases.profile} source=canonical-only`,
-    ]);
-    expect(result.process.stderr).toContain(
-      `Desktop notarization Keychain environment aliases conflict: canonical_key=${canonicalKeychainAliases.path} legacy_key=${legacyKeychainAliases.path} state=conflict`,
-    );
+    expect(result.process.status, result.process.stderr).toBe(0);
+    expect(result.trace).toBe("sign\nnotarize\n");
     expectNoSensitiveValueDisclosure(result);
   });
 
-  it("ignores unequal path-only aliases when API mode is selected", () => {
+  it("ignores a path without a profile when API mode is selected", () => {
     const result = runForge("canonical-only", {
-      source: "canonical-only",
-      keychainInput: { canonicalPath, legacyPath },
+      keychainInput: { canonicalPath },
     });
 
-    expectSuccessfulApiEntryPoint(result, "canonical-only");
-    expect(keychainSourceEvents(result)).toStrictEqual([]);
+    expectSuccessfulApiEntryPoint(result);
   });
 });
 
 describe("Desktop Forge signing identity entry point", () => {
-  const sharedIdentity = ` ${randomUUID()} `;
+  const canonicalIdentity = ` ${randomUUID()} `;
+  const hostileRetiredIdentity = `retired-${randomUUID()}`;
 
-  it.each([
-    ["canonical-only", { canonical: sharedIdentity }, "canonical-only"],
-    ["legacy-only", { legacy: sharedIdentity }, "legacy-only"],
-    [
-      "byte-equal dual",
-      { canonical: sharedIdentity, legacy: sharedIdentity },
-      "dual",
-    ],
-  ] as const)(
-    "passes the %s identity through unchanged",
-    (_, input, source) => {
-      const result = runForge("absent", {
-        notarize: false,
-        signingIdentity: input,
-      });
+  it("passes the canonical identity through unchanged", () => {
+    const result = runForge("absent", {
+      notarize: false,
+      signingIdentity: { canonical: canonicalIdentity },
+    });
 
-      expect(result.process.status, result.process.stderr).toBe(0);
-      expect(result.trace).toBe("sign\n");
-      expectSigningIdentitySource(result, source);
-      expectNoSensitiveValueDisclosure(result);
-    },
-  );
+    expect(result.process.status, result.process.stderr).toBe(0);
+    expect(result.trace).toBe("sign\n");
+    expectNoSensitiveValueDisclosure(result);
+  });
+
+  it("does not replace an explicit-empty canonical identity", () => {
+    const result = runForge("absent", {
+      notarize: false,
+      signingIdentity: { canonical: "" },
+    });
+
+    expect(result.process.status, result.process.stderr).toBe(0);
+    expect(result.trace).toBe("sign\n");
+    expectNoSensitiveValueDisclosure(result);
+  });
 
   it.each([
     ["CI", true],
@@ -889,73 +718,63 @@ describe("Desktop Forge signing identity entry point", () => {
 
       expect(result.process.status, result.process.stderr).toBe(0);
       expect(result.trace).toBe("sign\n");
-      expectSigningIdentitySource(result, undefined);
       expectNoSensitiveValueDisclosure(result);
     },
   );
 
-  it.each([
-    ["canonical-only", { canonical: "" }, "canonical-only"],
-    ["legacy-only", { legacy: "" }, "legacy-only"],
-    ["byte-equal dual", { canonical: "", legacy: "" }, "dual"],
-  ] as const)(
-    "does not replace an explicit-empty %s identity",
-    (_, input, source) => {
-      const result = runForge("absent", {
-        notarize: false,
-        signingIdentity: input,
-      });
-
-      expect(result.process.status, result.process.stderr).toBe(0);
-      expect(result.trace).toBe("sign\n");
-      expectSigningIdentitySource(result, source);
-      expectNoSensitiveValueDisclosure(result);
-    },
-  );
-
-  it("rejects conflicting aliases before signing", () => {
+  it("treats retired-only input as absent", () => {
     const result = runForge("absent", {
       notarize: false,
-      signingIdentity: { canonical: "", legacy: ` ${randomUUID()} ` },
+      signingIdentity: { legacy: hostileRetiredIdentity },
     });
 
-    expect(result.process.status).toBe(1);
-    expect(result.trace).toBe("");
-    expectSigningIdentitySource(result, undefined);
-    expect(result.process.stderr).toContain(
-      `Desktop signing identity environment aliases conflict: canonical_key=${canonicalSigningIdentityAlias} legacy_key=${legacySigningIdentityAlias} state=conflict`,
-    );
+    expect(result.process.status, result.process.stderr).toBe(0);
+    expect(result.trace).toBe("sign\n");
+    expectNoSensitiveValueDisclosure(result);
+  });
+
+  it("uses the canonical identity unchanged with hostile retired input", () => {
+    const result = runForge("absent", {
+      notarize: false,
+      signingIdentity: {
+        canonical: canonicalIdentity,
+        legacy: hostileRetiredIdentity,
+      },
+    });
+
+    expect(result.process.status, result.process.stderr).toBe(0);
+    expect(result.trace).toBe("sign\n");
     expectNoSensitiveValueDisclosure(result);
   });
 });
 
 describe("packaged Desktop signing and notarization entry point", () => {
-  it.each([
-    ["canonical-only", "canonical-only"],
-    ["legacy-only", "legacy-only"],
-    ["dual", "dual"],
-  ] as const)(
-    "uses one complete %s API credential set",
-    (credentialCase, source) => {
-      expectSuccessfulApiEntryPoint(
+  it("uses one complete canonical API credential set byte-for-byte", () => {
+    expectSuccessfulApiEntryPoint(runPackagedAppHelper("canonical-only"));
+  });
+
+  it("keeps canonical credentials authoritative over hostile retired values", () => {
+    expectSuccessfulApiEntryPoint(
+      runPackagedAppHelper("canonical-and-retired"),
+    );
+  });
+
+  it.each(incompleteCredentialCases)(
+    "rejects the incomplete canonical %s shape before signing",
+    (credentialCase) => {
+      expectFailedBeforeExternalSideEffects(
         runPackagedAppHelper(credentialCase),
-        source,
+        "incomplete",
       );
     },
   );
 
-  it.each([
-    ["conflict", "conflict"],
-    ["mixed", "mixed"],
-    ["incomplete", "incomplete"],
-    ["absent", "absent"],
-    ["empty", "absent"],
-  ] as const)(
+  it.each(["absent", "empty", "retired-only"] as const)(
     "rejects %s API credentials before signing",
-    (credentialCase, state) => {
+    (credentialCase) => {
       expectFailedBeforeExternalSideEffects(
         runPackagedAppHelper(credentialCase),
-        state,
+        "absent",
       );
     },
   );
@@ -966,7 +785,6 @@ describe("packaged Desktop signing and notarization entry point", () => {
     });
     expect(result.process.status === 1).toBe(true);
     expect(result.trace).toBe("");
-    expect(sourceEvents(result)).toStrictEqual([]);
     expect(
       result.process.stderr.includes(
         "Expected a Zero Computer Use.app directory",
@@ -981,7 +799,6 @@ describe("packaged Desktop signing and notarization entry point", () => {
     });
     expect(result.process.status === 1).toBe(true);
     expect(result.trace).toBe("");
-    expect(sourceEvents(result)).toStrictEqual([]);
     expect(
       result.process.stderr.includes(
         "Usage: sign-and-notarize-packaged-app.mjs",
@@ -992,59 +809,38 @@ describe("packaged Desktop signing and notarization entry point", () => {
 });
 
 describe("packaged Desktop signing identity entry point", () => {
-  const sharedIdentity = ` ${randomUUID()} `;
+  const canonicalIdentity = ` ${randomUUID()} `;
+  const hostileRetiredIdentity = `retired-${randomUUID()}`;
 
   it.each([
-    ["canonical-only", { canonical: sharedIdentity }, "canonical-only"],
-    ["legacy-only", { legacy: sharedIdentity }, "legacy-only"],
+    ["canonical-only", { canonical: canonicalIdentity }],
     [
-      "byte-equal dual",
-      { canonical: sharedIdentity, legacy: sharedIdentity },
-      "dual",
+      "canonical with hostile retired input",
+      {
+        canonical: canonicalIdentity,
+        legacy: hostileRetiredIdentity,
+      },
     ],
-  ] as const)(
-    "passes the %s identity through unchanged",
-    (_, input, source) => {
-      const result = runPackagedAppHelper("canonical-only", {
-        signingIdentity: input,
-      });
-
-      expectSuccessfulApiEntryPoint(result, "canonical-only");
-      expectSigningIdentitySource(result, source);
-    },
-  );
-
-  it("keeps the existing required-variable failure when both aliases are absent", () => {
+  ] as const)("passes the %s identity through unchanged", (_, input) => {
     const result = runPackagedAppHelper("canonical-only", {
-      signingIdentity: {},
+      signingIdentity: input,
     });
 
-    expect(result.process.status).toBe(1);
-    expect(result.trace).toBe("");
-    expect(sourceEvents(result)).toStrictEqual([
-      "desktop_notarize_api_env_source source=canonical-only",
-    ]);
-    expectSigningIdentitySource(result, undefined);
-    expect(result.process.stderr).toContain(
-      "OKOU_DESKTOP_SIGNING_IDENTITY is required",
-    );
-    expectNoSensitiveValueDisclosure(result);
+    expectSuccessfulApiEntryPoint(result);
   });
 
   it.each([
-    ["canonical-only", { canonical: "" }, "canonical-only"],
-    ["legacy-only", { legacy: "" }, "legacy-only"],
-    ["byte-equal dual", { canonical: "", legacy: "" }, "dual"],
+    ["absent", {}],
+    ["retired-only", { legacy: hostileRetiredIdentity }],
   ] as const)(
-    "keeps the existing required-variable failure for an explicit-empty %s identity",
-    (_, input, source) => {
+    "keeps the required-variable failure for %s canonical input",
+    (_, input) => {
       const result = runPackagedAppHelper("canonical-only", {
         signingIdentity: input,
       });
 
       expect(result.process.status).toBe(1);
       expect(result.trace).toBe("");
-      expectSigningIdentitySource(result, source);
       expect(result.process.stderr).toContain(
         "OKOU_DESKTOP_SIGNING_IDENTITY is required",
       );
@@ -1052,16 +848,18 @@ describe("packaged Desktop signing identity entry point", () => {
     },
   );
 
-  it("rejects conflicting aliases before signing or notarization", () => {
+  it("keeps the required-variable failure for an explicit-empty canonical identity", () => {
     const result = runPackagedAppHelper("canonical-only", {
-      signingIdentity: { canonical: "", legacy: ` ${randomUUID()} ` },
+      signingIdentity: {
+        canonical: "",
+        legacy: hostileRetiredIdentity,
+      },
     });
 
     expect(result.process.status).toBe(1);
     expect(result.trace).toBe("");
-    expectSigningIdentitySource(result, undefined);
     expect(result.process.stderr).toContain(
-      `Desktop signing identity environment aliases conflict: canonical_key=${canonicalSigningIdentityAlias} legacy_key=${legacySigningIdentityAlias} state=conflict`,
+      "OKOU_DESKTOP_SIGNING_IDENTITY is required",
     );
     expectNoSensitiveValueDisclosure(result);
   });

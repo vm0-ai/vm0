@@ -1,18 +1,18 @@
 import { command, computed, state, type Command } from "ccstate";
 import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
-import {
-  Realtime,
-  type ChannelStateChange,
-  type ConnectionStateChange,
-  type InboundMessage,
-  type RealtimeChannel,
+import type {
+  ChannelStateChange,
+  ConnectionStateChange,
+  InboundMessage,
+  RealtimeChannel,
 } from "ably";
-import { toast } from "@okouai/ui/components/ui/sonner";
 import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
+import { createAblyRealtime, type AblyRealtime } from "../lib/ably-realtime.ts";
 import { now } from "../lib/time.ts";
 import { apiClient$ } from "./api-client.ts";
-import { authenticatedIdentity$ } from "./auth.ts";
+import { apiClientRuntime$ } from "./api-client-runtime.ts";
+import { runtimeAuthenticatedIdentity$ } from "./auth-context.ts";
 import {
   requestForegroundCatchUp$,
   subscribeForegroundCatchUp$,
@@ -35,7 +35,6 @@ import {
   withCleanup,
 } from "./utils.ts";
 import { logger } from "./log.ts";
-import { i18n } from "../i18n/index.ts";
 
 const L = logger("Realtime");
 const REALTIME_TRANSIENT_RETRY_DELAYS_MS = [
@@ -48,11 +47,30 @@ const realtimeBackgroundCloseDelayMs = IN_VITEST
   : REALTIME_BACKGROUND_CLOSE_GRACE_MS;
 
 function isDocumentVisible(): boolean {
-  return document.visibilityState === "visible";
+  return (
+    typeof document === "undefined" ||
+    globalThis.document.visibilityState === "visible"
+  );
 }
 
-type RealtimeConnectionState = ConnectionStateChange["current"];
+export type RealtimeConnectionState = ConnectionStateChange["current"];
 type RealtimeChannelState = ChannelStateChange["current"];
+
+export interface RealtimeConnectionUpdate {
+  readonly state: RealtimeConnectionState;
+  readonly reconnected: boolean;
+}
+
+function realtimeConnectionUpdate(
+  stateChange: ConnectionStateChange,
+  initialConnectionComplete: boolean,
+): RealtimeConnectionUpdate {
+  return {
+    state: stateChange.current,
+    reconnected:
+      initialConnectionComplete && stateChange.current === "connected",
+  };
+}
 
 function connectionStateDetails(
   stateChange: ConnectionStateChange,
@@ -80,17 +98,22 @@ function channelStateDetails(
 }
 
 const realtimeDegradedToastShown$ = state(false);
+const realtimeDegradedNotifier$ = state<(() => void) | null>(null);
+
+export const setRealtimeDegradedNotifier$ = command(
+  ({ set }, notify: () => void): void => {
+    set(realtimeDegradedNotifier$, () => {
+      return notify;
+    });
+  },
+);
 
 const notifyRealtimeDegraded$ = command(({ get, set }) => {
   if (get(realtimeDegradedToastShown$)) {
     return;
   }
   set(realtimeDegradedToastShown$, true);
-  toast.error(
-    i18n.t(($) => {
-      return $.global.realtime.degraded;
-    }),
-  );
+  get(realtimeDegradedNotifier$)?.();
 });
 
 type ChannelCallback = (message: InboundMessage) => void;
@@ -112,20 +135,66 @@ interface StableRealtimeChannel {
 }
 
 interface RealtimeSession {
-  readonly ably: Realtime;
+  readonly ably: AblyRealtime;
   readonly channels: RealtimeSessionChannels;
   readonly close: () => void;
 }
 
-type RealtimeChannelScope = "user" | "org";
+type RealtimeChannelScope = "user" | "org" | "credential";
 
 interface RealtimeSessionChannels {
+  readonly credential: StableRealtimeChannel;
   readonly user: StableRealtimeChannel;
   readonly org: StableRealtimeChannel;
 }
 
 const internalRealtimeSession$ = state<RealtimeSession | null>(null);
 const realtimeStateRevision$ = state(0);
+type RealtimeConnectionStateListener = (
+  update: RealtimeConnectionUpdate,
+) => void;
+const realtimeConnectionStateListeners$ = state<
+  ReadonlySet<RealtimeConnectionStateListener>
+>(new Set());
+
+const notifyRealtimeConnectionState$ = command(
+  ({ get }, update: RealtimeConnectionUpdate): void => {
+    for (const listener of get(realtimeConnectionStateListeners$)) {
+      listener(update);
+    }
+  },
+);
+
+export const subscribeRealtimeConnectionState$ = command(
+  (
+    { get, set },
+    listener: RealtimeConnectionStateListener,
+    signal: AbortSignal,
+  ): void => {
+    signal.throwIfAborted();
+    set(realtimeConnectionStateListeners$, (listeners) => {
+      return new Set([...listeners, listener]);
+    });
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(realtimeConnectionStateListeners$, (listeners) => {
+          const updatedListeners = new Set(listeners);
+          updatedListeners.delete(listener);
+          return updatedListeners;
+        });
+      },
+      { once: true },
+    );
+    const session = get(internalRealtimeSession$);
+    if (session) {
+      listener({
+        state: session.ably.connection.state,
+        reconnected: false,
+      });
+    }
+  },
+);
 
 interface RealtimeSubscriptionSnapshot {
   readonly channelState: RealtimeChannelState | null;
@@ -190,7 +259,7 @@ const runRealtimeReadyCatchUp$ = command(
 
 interface PendingAblySubscription {
   readonly scope: RealtimeChannelScope;
-  topic: string;
+  topic: string | null;
   signal: AbortSignal;
   channelDeferred: ReturnType<
     typeof createDeferredPromise<StableRealtimeChannel>
@@ -215,11 +284,11 @@ interface RealtimeLoopArgs {
 interface RealtimePayloadLoopArgs {
   readonly channel: StableRealtimeChannel;
   readonly topic: string | null;
-  readonly passMessage?: boolean;
   readonly loopCommand$: Command<
     Promise<boolean> | boolean,
     [unknown, AbortSignal]
   >;
+  readonly includeMessage?: boolean;
   readonly catchUpCommand$?: Command<Promise<boolean> | boolean, [AbortSignal]>;
   readonly options?: RealtimeSubscribeOptions;
 }
@@ -232,21 +301,15 @@ interface SetAblyLoopArgs {
 }
 
 interface SetAblyPayloadLoopArgs {
-  readonly topic: string;
+  readonly scope?: RealtimeChannelScope;
+  readonly topic: string | null;
   readonly loopCommand$: Command<
     Promise<boolean> | boolean,
     [unknown, AbortSignal]
   >;
+  readonly includeMessage?: boolean;
   readonly catchUpCommand$?: Command<Promise<boolean> | boolean, [AbortSignal]>;
   readonly options?: RealtimeSubscribeOptions;
-}
-
-interface SetAblyMessageLoopArgs {
-  readonly loopCommand$: Command<
-    Promise<boolean> | boolean,
-    [unknown, AbortSignal]
-  >;
-  readonly catchUpCommand$?: Command<Promise<boolean> | boolean, [AbortSignal]>;
 }
 
 interface RealtimePayloadLoopState {
@@ -574,13 +637,13 @@ const runWithChannelPayload$ = command(
     const {
       channel,
       topic,
-      passMessage,
       loopCommand$,
+      includeMessage,
       catchUpCommand$,
       options,
     } = args;
     signal.throwIfAborted();
-    const subscriptionLabel = topic ?? "all user channel messages";
+    const subscriptionLabel = topic ?? "channel";
     const state: RealtimePayloadLoopState = {
       deferred: createDeferredPromise(signal),
       poked: false,
@@ -609,7 +672,7 @@ const runWithChannelPayload$ = command(
         return;
       }
       L.debug("got queued message from topic", subscriptionLabel, message);
-      state.pendingPayloads.push(passMessage ? message : message.data);
+      state.pendingPayloads.push(includeMessage ? message : message.data);
       pokeLoop();
     };
     await subscribeChannel(
@@ -932,43 +995,57 @@ function createStableRealtimeChannel(
 }
 
 interface ConnectedRealtimeChannels {
+  readonly credential: RealtimeChannel;
   readonly user: RealtimeChannel;
   readonly org: RealtimeChannel;
 }
 
 function connectedRealtimeChannels(
-  ably: Realtime,
+  ably: AblyRealtime,
   userId: string,
   orgId: string,
 ): ConnectedRealtimeChannels {
   return {
+    credential: ably.channels.get(`user-org:${userId}:${orgId}`),
     user: ably.channels.get(`user:${userId}`),
     org: ably.channels.get(`org:${orgId}`),
   };
 }
 
+function publishRealtimeDiagnostic(
+  enabled: boolean,
+  event: Parameters<typeof publishConnectionDiagnostic>[0],
+): void {
+  if (enabled) {
+    publishConnectionDiagnostic(event);
+  }
+}
+
 function observeRealtimeChannels(
   channels: ConnectedRealtimeChannels,
   onStateChange: () => void,
+  diagnosticsEnabled: boolean,
 ): () => void {
   const handleStateChange = (stateChange: ChannelStateChange): void => {
     onStateChange();
-    publishConnectionDiagnostic({
+    publishRealtimeDiagnostic(diagnosticsEnabled, {
       details: channelStateDetails(stateChange),
       event: "realtime.channel",
       phase: "instant",
     });
   };
+  channels.credential.on(handleStateChange);
   channels.user.on(handleStateChange);
   channels.org.on(handleStateChange);
   return () => {
+    channels.credential.off(handleStateChange);
     channels.user.off(handleStateChange);
     channels.org.off(handleStateChange);
   };
 }
 
 interface ConnectedRealtimeClient {
-  readonly ably: Realtime;
+  readonly ably: AblyRealtime;
   readonly channels: ConnectedRealtimeChannels;
   readonly close: () => void;
 }
@@ -978,19 +1055,20 @@ const connectRealtimeClient$ = command(
     { get, set },
     signal: AbortSignal,
   ): Promise<ConnectedRealtimeClient> => {
-    const identity = await get(authenticatedIdentity$);
+    const identity = await get(runtimeAuthenticatedIdentity$);
     signal.throwIfAborted();
+    const diagnosticsEnabled = get(apiClientRuntime$).environment === "app";
     const createClient = get(apiClient$);
     const client = createClient(platformRealtimeTokenContract);
-    const ably = new Realtime({
+    const ably = createAblyRealtime({
       // Ably TokenRequest is single-use — see lib/ably-auth.ts for why
       // every invocation must fetch a freshly-signed request.
-      authCallback: createAblyAuthCallback(client, signal),
+      authCallback: createAblyAuthCallback(client, signal, diagnosticsEnabled),
       autoConnect: true,
       disconnectedRetryTimeout: 5000,
       suspendedRetryTimeout: 15_000,
     });
-    publishConnectionDiagnostic({
+    publishRealtimeDiagnostic(diagnosticsEnabled, {
       details: { connectionState: ably.connection.state },
       event: "realtime.client",
       phase: "instant",
@@ -999,15 +1077,20 @@ const connectRealtimeClient$ = command(
     const handleConnectionStateChange = (
       stateChange: ConnectionStateChange,
     ): void => {
+      const update = realtimeConnectionUpdate(
+        stateChange,
+        initialConnectionComplete,
+      );
       set(realtimeStateRevision$, (revision) => {
         return revision + 1;
       });
-      publishConnectionDiagnostic({
+      set(notifyRealtimeConnectionState$, update);
+      publishRealtimeDiagnostic(diagnosticsEnabled, {
         details: connectionStateDetails(stateChange),
         event: "realtime.connection",
         phase: "instant",
       });
-      if (initialConnectionComplete && stateChange.current === "connected") {
+      if (diagnosticsEnabled && update.reconnected) {
         L.debug("reconnected, requesting foreground catch-up");
         set(requestForegroundCatchUp$);
       }
@@ -1044,7 +1127,7 @@ const connectRealtimeClient$ = command(
 
     const initialConnectionSpanId = createConnectionDiagnosticSpanId();
     const initialConnectionStartedAtMs = now();
-    publishConnectionDiagnostic({
+    publishRealtimeDiagnostic(diagnosticsEnabled, {
       details: { connectionState: ably.connection.state },
       event: "realtime.initial-connection",
       phase: "start",
@@ -1052,7 +1135,7 @@ const connectRealtimeClient$ = command(
     });
     const initialConnectionResult = await settle(deferred.promise, signal);
     if (!initialConnectionResult.ok) {
-      publishConnectionDiagnostic({
+      publishRealtimeDiagnostic(diagnosticsEnabled, {
         details: {
           ...connectionDiagnosticError(initialConnectionResult.error),
           connectionState: ably.connection.state,
@@ -1065,7 +1148,7 @@ const connectRealtimeClient$ = command(
       closeConnection();
       throw initialConnectionResult.error;
     }
-    publishConnectionDiagnostic({
+    publishRealtimeDiagnostic(diagnosticsEnabled, {
       details: { connectionState: ably.connection.state },
       durationMs: now() - initialConnectionStartedAtMs,
       event: "realtime.initial-connection",
@@ -1079,12 +1162,16 @@ const connectRealtimeClient$ = command(
       identity.userId,
       identity.orgId,
     );
-    const stopObservingChannels = observeRealtimeChannels(channels, () => {
-      set(realtimeStateRevision$, (revision) => {
-        return revision + 1;
-      });
-    });
-    publishConnectionDiagnostic({
+    const stopObservingChannels = observeRealtimeChannels(
+      channels,
+      () => {
+        set(realtimeStateRevision$, (revision) => {
+          return revision + 1;
+        });
+      },
+      diagnosticsEnabled,
+    );
+    publishRealtimeDiagnostic(diagnosticsEnabled, {
       details: { channelState: channels.user.state },
       event: "realtime.channel",
       phase: "instant",
@@ -1096,11 +1183,7 @@ const connectRealtimeClient$ = command(
     };
     signal.removeEventListener("abort", closeConnection);
     signal.addEventListener("abort", close, { once: true });
-    return {
-      ably,
-      channels,
-      close,
-    };
+    return { ably, channels, close };
   },
 );
 
@@ -1113,7 +1196,7 @@ const cancelRealtimeClose$ = command(({ set }, signal: AbortSignal): void => {
 });
 
 const closeRealtimeWhileHidden$ = command(({ get, set }) => {
-  if (document.visibilityState === "visible") {
+  if (isDocumentVisible()) {
     return;
   }
   const session = get(internalRealtimeSession$);
@@ -1121,6 +1204,7 @@ const closeRealtimeWhileHidden$ = command(({ get, set }) => {
     return;
   }
   L.debug("page hidden, closing realtime connection");
+  session.channels.credential.suspend();
   session.channels.user.suspend();
   session.channels.org.suspend();
   session.close();
@@ -1141,6 +1225,7 @@ const updateRealtimeVisibility$ = command(
       return;
     }
     L.debug("page hidden, pausing realtime subscriptions");
+    session.channels.credential.pauseSubscriptions();
     session.channels.user.pauseSubscriptions();
     session.channels.org.pauseSubscriptions();
     set(realtimeCloseDue$, false);
@@ -1158,7 +1243,7 @@ const updateRealtimeVisibility$ = command(
 
 const foregroundRealtimeCatchUp$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    if (document.visibilityState === "visible") {
+    if (isDocumentVisible()) {
       set(cancelRealtimeClose$, signal);
     }
     const session = get(internalRealtimeSession$);
@@ -1213,6 +1298,7 @@ const foregroundRealtimeCatchUp$ = command(
       const replaceResult = await settle(
         onRejection(
           Promise.all([
+            session.channels.credential.replace(connected.channels.credential),
             session.channels.user.replace(connected.channels.user),
             session.channels.org.replace(connected.channels.org),
           ]),
@@ -1260,7 +1346,8 @@ const foregroundRealtimeCatchUp$ = command(
       });
     }
 
-    if (document.visibilityState !== "visible") {
+    if (!isDocumentVisible()) {
+      session.channels.credential.pauseSubscriptions();
       session.channels.user.pauseSubscriptions();
       session.channels.org.pauseSubscriptions();
       if (get(realtimeCloseDue$)) {
@@ -1270,6 +1357,7 @@ const foregroundRealtimeCatchUp$ = command(
     }
 
     await Promise.all([
+      session.channels.credential.resumeSubscriptions(),
       session.channels.user.resumeSubscriptions(),
       session.channels.org.resumeSubscriptions(),
     ]);
@@ -1287,6 +1375,7 @@ const foregroundRealtimeCatchUp$ = command(
  */
 export const setupRealtime$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    const isAppRuntime = get(apiClientRuntime$).environment === "app";
     const rejectPendingSubscriptions = (reason?: unknown) => {
       const pendingSubscriptions = get(pendingAblySubscriptions$);
       if (pendingSubscriptions.length === 0) {
@@ -1315,6 +1404,7 @@ export const setupRealtime$ = command(
     );
     signal.throwIfAborted();
     const channels: RealtimeSessionChannels = {
+      credential: createStableRealtimeChannel(connected.channels.credential),
       user: createStableRealtimeChannel(connected.channels.user),
       org: createStableRealtimeChannel(connected.channels.org),
     };
@@ -1323,14 +1413,22 @@ export const setupRealtime$ = command(
       channels,
       close: connected.close,
     });
+    set(notifyRealtimeConnectionState$, {
+      state: connected.ably.connection.state,
+      reconnected: false,
+    });
     set(subscribeForegroundCatchUp$, foregroundRealtimeCatchUp$, signal);
-    const handleVisibilityChange = onDomEventFn(async () => {
-      await set(updateRealtimeVisibility$, signal);
-    });
-    document.addEventListener("visibilitychange", handleVisibilityChange, {
-      signal,
-    });
-    handleVisibilityChange(new Event("visibilitychange"));
+    if (isAppRuntime && typeof document !== "undefined") {
+      const handleVisibilityChange = onDomEventFn(async () => {
+        await set(updateRealtimeVisibility$, signal);
+      });
+      globalThis.document.addEventListener(
+        "visibilitychange",
+        handleVisibilityChange,
+        { signal },
+      );
+      handleVisibilityChange(new Event("visibilitychange"));
+    }
 
     const pendingSubscriptions = get(pendingAblySubscriptions$);
     if (pendingSubscriptions.length > 0) {
@@ -1373,7 +1471,7 @@ const realtimeChannel$ = command(
   async (
     { get, set },
     scope: RealtimeChannelScope,
-    topic: string,
+    topic: string | null,
     signal: AbortSignal,
   ): Promise<StableRealtimeChannel> => {
     signal.throwIfAborted();
@@ -1428,41 +1526,27 @@ export const setAblyLoop$ = command(
 export const setAblyPayloadLoop$ = command(
   async (
     { set },
-    { topic, loopCommand$, catchUpCommand$, options }: SetAblyPayloadLoopArgs,
+    {
+      scope = "user",
+      topic,
+      loopCommand$,
+      includeMessage,
+      catchUpCommand$,
+      options,
+    }: SetAblyPayloadLoopArgs,
     signal: AbortSignal,
   ) => {
-    const channel = await set(realtimeChannel$, "user", topic, signal);
-    signal.throwIfAborted();
-    await set(
-      runWithChannelPayload$,
-      { channel, topic, loopCommand$, catchUpCommand$, options },
-      signal,
-    );
-    signal.throwIfAborted();
-  },
-);
-
-export const setAblyMessageLoop$ = command(
-  async (
-    { set },
-    { loopCommand$, catchUpCommand$ }: SetAblyMessageLoopArgs,
-    signal: AbortSignal,
-  ) => {
-    const channel = await set(
-      realtimeChannel$,
-      "user",
-      "all user channel messages",
-      signal,
-    );
+    const channel = await set(realtimeChannel$, scope, topic, signal);
     signal.throwIfAborted();
     await set(
       runWithChannelPayload$,
       {
         channel,
-        topic: null,
-        passMessage: true,
+        topic,
         loopCommand$,
+        includeMessage,
         catchUpCommand$,
+        options,
       },
       signal,
     );

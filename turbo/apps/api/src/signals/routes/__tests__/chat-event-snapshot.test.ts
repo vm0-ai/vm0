@@ -1,12 +1,14 @@
-import { randomUUID } from "node:crypto";
-import { gunzipSync } from "node:zlib";
+import { createHash, randomUUID } from "node:crypto";
+import { gunzipSync, gzipSync } from "node:zlib";
 
 import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
-import { chatEventRowSchema } from "@okouai/api-contracts/contracts/chat-event-rows";
+import {
+  chatEventRowSchema,
+  type ChatEventRow,
+} from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import {
   chatThreadEventsContract,
@@ -14,8 +16,6 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
 import { testChatEventSnapshotContract } from "@okouai/api-contracts/contracts/test-chat-event-snapshot";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { createStore } from "ccstate";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -36,19 +36,13 @@ import {
   writeFakeChatEventObject,
 } from "./helpers/fake-chat-event-r2";
 import {
+  readChatEventRowsAsPreviousApiFixture,
   readChatEventSnapshotHead,
-  setChatEventSnapshotHeadVersion,
+  updateChatEventSnapshotHead,
 } from "./helpers/runtime-state";
 import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
-import {
-  seedRetentionOutputEvent$,
-  seedRetentionOutputEvents$,
-  seedRetentionToolEvent$,
-} from "../../../test-fixtures/chat-event-retention";
 
 const context = testContext();
-const store = createStore();
 const bdd = createBddApi(context);
 const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
@@ -59,6 +53,38 @@ const trackFakeChatEventObject = createFixtureTracker(
 
 const R2_GC_SLOT_MS = 10 * 60 * 1000;
 const R2_GC_SHARD_GROUP_COUNT = 16 ** 2;
+
+function sanitizedLegacyControlRevokeLine(row: ChatEventRow): string {
+  const invalidFields = [
+    ...(row.eventType === "control.revoke" ? [] : ["eventType"]),
+    ...(row.runId === null ? [] : ["runId"]),
+    ...(row.revokesEventId === null ? ["revokesEventId"] : []),
+    ...(row.contextType === "morning_brief" ? [] : ["contextType"]),
+    ...(row.contextId === row.revokesEventId ? [] : ["contextId"]),
+    ...(row.payload === null ? [] : ["payload"]),
+    ...(row.runEventSequenceNumber === null ? [] : ["runEventSequenceNumber"]),
+    ...(row.runEventId === null ? [] : ["runEventId"]),
+  ];
+  if (invalidFields.length > 0) {
+    throw new Error(
+      `Expected an exact historical queue-discard row; invalid fields: ${invalidFields.join(", ")}`,
+    );
+  }
+  return `${JSON.stringify({
+    id: row.id,
+    chatThreadId: row.chatThreadId,
+    runId: null,
+    revokesEventId: row.revokesEventId,
+    eventType: "control.revoke",
+    payload: null,
+    contextType: "morning_brief",
+    contextId: row.contextId,
+    runEventSequenceNumber: null,
+    runEventId: null,
+    seqId: row.seqId,
+    createdAt: row.createdAt,
+  })}\n`;
+}
 
 function mockR2GcWindowForKey(key: string, after: Date): Date {
   const prefixStart = "chat-events/".length;
@@ -146,32 +172,6 @@ async function sendNoCreditMessage(
   return sent.body.threadId;
 }
 
-async function replaceHeadWithRetiredVersion(
-  threadId: string,
-): Promise<string> {
-  const head = await readChatEventSnapshotHead(
-    context,
-    threadId,
-    "tool-redacted",
-  );
-  const body = readFakeChatEventObject(head.object_key);
-  if (body === undefined) {
-    throw new Error("Expected a current snapshot object");
-  }
-  const retiredKey = `chat-events/${threadId}/retired-v3-${randomUUID()}.ndjson.gz`;
-  writeFakeChatEventObject(retiredKey, body);
-  await trackFakeChatEventObject(Promise.resolve(retiredKey));
-  await setChatEventSnapshotHeadVersion(
-    context,
-    threadId,
-    3,
-    retiredKey,
-    undefined,
-    "tool-redacted",
-  );
-  return retiredKey;
-}
-
 describe("chat event snapshot read endpoints", () => {
   beforeEach(() => {
     installFakeChatEventR2(context);
@@ -232,7 +232,6 @@ describe("chat event snapshot read endpoints", () => {
       expiresInSeconds: 900,
       lastEventId: head.last_event_id,
       lastSeqId: head.last_seq_id,
-      projection: "tool-redacted",
     });
 
     const snapshotObject = readFakeChatEventObject(head.object_key);
@@ -264,7 +263,7 @@ describe("chat event snapshot read endpoints", () => {
     });
 
     await expect(
-      readChatEventSnapshotHead(context, threadId, "tool-redacted"),
+      readChatEventSnapshotHead(context, threadId),
     ).resolves.toMatchObject({
       archive_schema_version: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       last_event_id: head.last_event_id,
@@ -285,6 +284,642 @@ describe("chat event snapshot read endpoints", () => {
       error: { code: "NOT_FOUND", message: "Chat thread not found" },
     });
   }, 60_000);
+
+  it("repairs retired Morning Brief documents and context-carrying revocations before cold download", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Morning Brief archive repair agent",
+    });
+    const markers = Array.from({ length: 5 }, (_, index) => {
+      return `morning-brief-history-${(index + 1).toString()}-${randomUUID()}`;
+    });
+    let threadId: string | undefined;
+    for (const marker of markers) {
+      threadId = await sendNoCreditMessage(owner, {
+        agentId: agent.agentId,
+        ...(threadId === undefined ? {} : { threadId }),
+        prompt: marker,
+      });
+    }
+    if (threadId === undefined) {
+      throw new Error("Expected a historical Morning Brief thread");
+    }
+
+    await projectChatEventSearch(threadId);
+    await runSnapshotCron([threadId]);
+    const originalHead = await readChatEventSnapshotHead(context, threadId);
+    const originalObject = readFakeChatEventObject(originalHead.object_key);
+    if (originalObject === undefined) {
+      throw new Error("Expected an original Chat Event Snapshot object");
+    }
+    const originalRows = gunzipSync(originalObject)
+      .toString("utf8")
+      .trimEnd()
+      .split("\n")
+      .map((line) => {
+        return chatEventRowSchema.parse(JSON.parse(line));
+      });
+    const promptRows = originalRows.filter((row) => {
+      return row.eventType === "input.prompt";
+    });
+    expect(promptRows).toHaveLength(5);
+
+    const runIds = markers.map(() => {
+      return randomUUID();
+    });
+    const historicalDocuments: readonly UserMessageDocument[] = [
+      {
+        version: 1,
+        parts: [
+          {
+            type: "source",
+            kind: "github",
+            href: "https://github.com/vm0-ai/vm0/issues/30675",
+          },
+          { type: "text", text: "Summarize today's priorities." },
+        ],
+      },
+      {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId: "historical-file",
+            filenameSnapshot: "priorities.pdf",
+            contentType: "application/pdf",
+          },
+          { type: "text", text: "Include the attached priorities." },
+        ],
+      },
+      {
+        version: 1,
+        parts: [
+          {
+            type: "chat_thread",
+            threadId,
+            titleSnapshot: "Launch planning",
+          },
+          { type: "text", text: "Carry forward the launch decisions." },
+        ],
+      },
+      {
+        version: 1,
+        parts: [
+          {
+            type: "template",
+            titleSnapshot: "Editorial illustration",
+            template: {
+              type: "illustration",
+              selection: { illustrationStyleId: "editorial" },
+            },
+          },
+          {
+            type: "text",
+            text: "Illustrate the highest-priority update.",
+          },
+        ],
+      },
+      {
+        version: 1,
+        parts: [
+          {
+            type: "feedback",
+            quote: "The owner is still unclear.",
+            note: [{ type: "text", text: "Name the owner." }],
+          },
+          { type: "text", text: "Finish the ownership summary." },
+        ],
+      },
+    ];
+    const promptIndexById = new Map(
+      promptRows.map((row, index) => {
+        return [row.id, index] as const;
+      }),
+    );
+    const contextOnlyRow = originalRows.find((row) => {
+      return row.eventType === "input.rejected";
+    });
+    if (contextOnlyRow === undefined) {
+      throw new Error("Expected a context-only historical rejection row");
+    }
+    const contextCarryingRevokeRow = originalRows.find((row) => {
+      return row.eventType === "input.rejected" && row.id !== contextOnlyRow.id;
+    });
+    if (
+      contextCarryingRevokeRow === undefined ||
+      contextCarryingRevokeRow.revokesEventId === null
+    ) {
+      throw new Error("Expected a historical revocation source row");
+    }
+    const expectedRows = originalRows.map((row): ChatEventRow => {
+      if (row.id === contextCarryingRevokeRow.id) {
+        return chatEventRowSchema.parse({
+          ...row,
+          eventType: "control.revoke",
+          payload: null,
+          contextType: "web",
+          contextId: null,
+          runEventSequenceNumber: null,
+          runEventId: null,
+        });
+      }
+      const promptIndex = promptIndexById.get(row.id);
+      if (promptIndex === undefined) {
+        return row.id === contextOnlyRow.id
+          ? chatEventRowSchema.parse({
+              ...row,
+              contextType: "web",
+              contextId: null,
+            })
+          : row;
+      }
+      const historicalDocument = historicalDocuments[promptIndex];
+      const runId = runIds[promptIndex];
+      if (historicalDocument === undefined || runId === undefined) {
+        throw new Error("Expected a complete historical shape fixture");
+      }
+      return chatEventRowSchema.parse({
+        ...row,
+        runId,
+        revokesEventId:
+          promptIndex === 1 ? (promptRows[0]?.id ?? null) : row.revokesEventId,
+        contextType: "web",
+        contextId: null,
+        payload: {
+          ...row.payload,
+          userMessage: historicalDocument,
+        },
+      });
+    });
+    for (const row of expectedRows) {
+      chatEventFromRow(row);
+    }
+
+    const staleRows = expectedRows.map((row): ChatEventRow => {
+      if (row.id === contextCarryingRevokeRow.id) {
+        return chatEventRowSchema.parse({
+          ...row,
+          contextType: "morning_brief",
+          contextId: row.revokesEventId,
+        });
+      }
+      const promptIndex = promptIndexById.get(row.id);
+      if (promptIndex !== undefined) {
+        const userMessage = historicalDocuments[promptIndex];
+        if (userMessage === undefined) {
+          throw new Error("Expected a historical document fixture");
+        }
+        return chatEventRowSchema.parse({
+          ...row,
+          contextType: "morning_brief",
+          contextId: row.id,
+          payload: {
+            ...row.payload,
+            userMessage: {
+              ...userMessage,
+              parts: [
+                ...userMessage.parts,
+                {
+                  type: "morning_brief",
+                  briefDate: `2026-08-${(20 + promptIndex).toString()}`,
+                },
+              ],
+            },
+          },
+        });
+      }
+      return row.id === contextOnlyRow.id
+        ? chatEventRowSchema.parse({
+            ...row,
+            contextType: "morning_brief",
+            contextId: row.id,
+          })
+        : row;
+    });
+    const staleArchive = Buffer.from(
+      staleRows
+        .map((row) => {
+          return row.id === contextCarryingRevokeRow.id
+            ? sanitizedLegacyControlRevokeLine(row)
+            : `${JSON.stringify(row)}\n`;
+        })
+        .join(""),
+    );
+    const staleContextCarryingRevoke = staleRows.find((row) => {
+      return row.id === contextCarryingRevokeRow.id;
+    });
+    if (staleContextCarryingRevoke === undefined) {
+      throw new Error("Expected the byte-exact historical queue-discard row");
+    }
+    const byteExactRevokeLine = sanitizedLegacyControlRevokeLine(
+      staleContextCarryingRevoke,
+    );
+    expect(
+      staleArchive.includes(Buffer.from(byteExactRevokeLine)),
+    ).toBeTruthy();
+    const staleBody = gzipSync(staleArchive);
+    const staleObjectKey = `chat-events/${threadId}/${originalHead.last_seq_id.toString()}-${createHash("sha256").update(staleBody).digest("hex")}.ndjson.gz`;
+    writeFakeChatEventObject(staleObjectKey, staleBody);
+    await trackFakeChatEventObject(Promise.resolve(staleObjectKey));
+    await updateChatEventSnapshotHead(context, threadId, staleObjectKey);
+
+    const hotMarker = `hot-after-snapshot-${randomUUID()}`;
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      threadId,
+      prompt: hotMarker,
+    });
+    const canonicalRowsBeforeRepair =
+      await readChatEventRowsAsPreviousApiFixture(context, threadId);
+
+    const download = await accept(
+      eventsClient().snapshot({
+        headers: authenticate(owner),
+        params: { threadId },
+      }),
+      [200],
+    );
+    const repairedHead = await readChatEventSnapshotHead(context, threadId);
+    expect(repairedHead.object_key).toMatch(
+      new RegExp(
+        `^chat-events/${threadId}/${originalHead.last_seq_id.toString()}-r1-[0-9a-f]{64}\\.ndjson\\.gz$`,
+        "u",
+      ),
+    );
+    expect(repairedHead.object_key).not.toBe(staleObjectKey);
+    expect(readFakeChatEventObject(staleObjectKey)).toStrictEqual(staleBody);
+
+    const repairedObject = readFakeChatEventObject(repairedHead.object_key);
+    if (repairedObject === undefined) {
+      throw new Error("Expected a repaired Chat Event Snapshot object");
+    }
+    const repairedRows = gunzipSync(repairedObject)
+      .toString("utf8")
+      .trimEnd()
+      .split("\n")
+      .map((line) => {
+        return chatEventRowSchema.parse(JSON.parse(line));
+      });
+    expect(repairedRows).toStrictEqual(expectedRows);
+    expect(JSON.stringify(repairedRows)).not.toContain("morning_brief");
+    expect(
+      repairedRows.map((row) => {
+        return {
+          id: row.id,
+          eventType: row.eventType,
+          seqId: row.seqId,
+          runId: row.runId,
+          revokesEventId: row.revokesEventId,
+          payload: row.payload,
+        };
+      }),
+    ).toStrictEqual(
+      expectedRows.map((row) => {
+        return {
+          id: row.id,
+          eventType: row.eventType,
+          seqId: row.seqId,
+          runId: row.runId,
+          revokesEventId: row.revokesEventId,
+          payload: row.payload,
+        };
+      }),
+    );
+    expect(
+      repairedRows.find((row) => {
+        return row.id === contextCarryingRevokeRow.id;
+      }),
+    ).toMatchObject({
+      eventType: "control.revoke",
+      payload: null,
+      contextType: "web",
+      contextId: null,
+      revokesEventId: contextCarryingRevokeRow.revokesEventId,
+    });
+
+    const projectedSnapshot = repairedRows.map(chatEventFromRow);
+    const projectedPrompts = projectedSnapshot.filter((event) => {
+      return event.eventType === "input.prompt";
+    });
+    expect(
+      projectedPrompts.map((event) => {
+        return event.runId;
+      }),
+    ).toStrictEqual(runIds);
+    expect(
+      projectedPrompts.map((event) => {
+        return event.userMessage;
+      }),
+    ).toStrictEqual(historicalDocuments);
+
+    if (download.body.lastEventId === null) {
+      throw new Error("Expected a non-empty repaired Snapshot cursor");
+    }
+    const hot = await accept(
+      eventsClient().rows({
+        headers: authenticate(owner),
+        params: { threadId },
+        query: {
+          sinceEventId: download.body.lastEventId,
+          sinceSeqId: download.body.lastSeqId,
+        },
+      }),
+      [200],
+    );
+    const projectedColdHistory = [
+      ...projectedSnapshot,
+      ...hot.body.rows.map(chatEventFromRow),
+    ];
+    expect(JSON.stringify(projectedColdHistory)).toContain(hotMarker);
+    await expect(
+      readChatEventRowsAsPreviousApiFixture(context, threadId),
+    ).resolves.toStrictEqual(canonicalRowsBeforeRepair);
+
+    const replay = await accept(
+      eventsClient().snapshot({
+        headers: authenticate(owner),
+        params: { threadId },
+      }),
+      [200],
+    );
+    expect(replay.body).toStrictEqual(download.body);
+    await expect(
+      readChatEventSnapshotHead(context, threadId),
+    ).resolves.toStrictEqual(repairedHead);
+    expect(readFakeChatEventObject(repairedHead.object_key)).toStrictEqual(
+      repairedObject,
+    );
+  }, 90_000);
+
+  it("fails closed without moving the pointer for malformed or future archive shapes", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Malformed Morning Brief archive agent",
+    });
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `malformed-morning-brief-${randomUUID()}`,
+    });
+    await projectChatEventSearch(threadId);
+    await runSnapshotCron([threadId]);
+    const originalHead = await readChatEventSnapshotHead(context, threadId);
+    const originalObject = readFakeChatEventObject(originalHead.object_key);
+    if (originalObject === undefined) {
+      throw new Error("Expected a Snapshot object for the malformed fixture");
+    }
+    const rows = gunzipSync(originalObject)
+      .toString("utf8")
+      .trimEnd()
+      .split("\n")
+      .map((line) => {
+        return chatEventRowSchema.parse(JSON.parse(line));
+      });
+    const prompt = rows.find((row) => {
+      return row.eventType === "input.prompt";
+    });
+    if (prompt === undefined) {
+      throw new Error("Expected a malformed historical prompt fixture");
+    }
+    const staleRows = rows.map((row) => {
+      return row.id === prompt.id
+        ? chatEventRowSchema.parse({
+            ...row,
+            contextType: "morning_brief",
+            contextId: row.id,
+            payload: {
+              ...row.payload,
+              userMessage: {
+                version: 1,
+                parts: [
+                  { type: "text", text: "Preserve this visible prompt." },
+                  {
+                    type: "morning_brief",
+                    briefDate: "2026-08-24",
+                    unexpected: true,
+                  },
+                ],
+              },
+            },
+          })
+        : row;
+    });
+    const staleBody = gzipSync(
+      Buffer.from(
+        staleRows
+          .map((row) => {
+            return `${JSON.stringify(row)}\n`;
+          })
+          .join(""),
+      ),
+    );
+    const staleObjectKey = `chat-events/${threadId}/${originalHead.last_seq_id.toString()}-${createHash("sha256").update(staleBody).digest("hex")}.ndjson.gz`;
+    writeFakeChatEventObject(staleObjectKey, staleBody);
+    await trackFakeChatEventObject(Promise.resolve(staleObjectKey));
+    await updateChatEventSnapshotHead(context, threadId, staleObjectKey);
+    const staleHead = await readChatEventSnapshotHead(context, threadId);
+
+    await expect(
+      eventsClient().snapshot({
+        headers: authenticate(owner),
+        params: { threadId },
+      }),
+    ).rejects.toThrow("Unknown response status 500");
+    await expect(
+      readChatEventSnapshotHead(context, threadId),
+    ).resolves.toStrictEqual(staleHead);
+
+    const rejected = rows.find((row) => {
+      return row.eventType === "input.rejected";
+    });
+    if (rejected === undefined || rejected.revokesEventId === null) {
+      throw new Error("Expected a malformed historical revocation fixture");
+    }
+    const broadControlBody = gzipSync(
+      Buffer.from(
+        rows
+          .map((row) => {
+            return `${JSON.stringify(
+              row.id === rejected.id
+                ? chatEventRowSchema.parse({
+                    ...row,
+                    eventType: "control.revoke",
+                    payload: {},
+                    contextType: "morning_brief",
+                    contextId: row.revokesEventId,
+                  })
+                : row,
+            )}\n`;
+          })
+          .join(""),
+      ),
+    );
+    const broadControlKey = `chat-events/${threadId}/${originalHead.last_seq_id.toString()}-${createHash("sha256").update(broadControlBody).digest("hex")}.ndjson.gz`;
+    writeFakeChatEventObject(broadControlKey, broadControlBody);
+    await trackFakeChatEventObject(Promise.resolve(broadControlKey));
+    await updateChatEventSnapshotHead(context, threadId, broadControlKey);
+    const broadControlHead = await readChatEventSnapshotHead(context, threadId);
+    await expect(
+      eventsClient().snapshot({
+        headers: authenticate(owner),
+        params: { threadId },
+      }),
+    ).rejects.toThrow("Unknown response status 500");
+    await expect(
+      readChatEventSnapshotHead(context, threadId),
+    ).resolves.toStrictEqual(broadControlHead);
+
+    const futureObjectKey = `chat-events/${threadId}/${originalHead.last_seq_id.toString()}-r2-${createHash("sha256").update(originalObject).digest("hex")}.ndjson.gz`;
+    writeFakeChatEventObject(futureObjectKey, originalObject);
+    await trackFakeChatEventObject(Promise.resolve(futureObjectKey));
+    await updateChatEventSnapshotHead(context, threadId, futureObjectKey);
+    const futureHead = await readChatEventSnapshotHead(context, threadId);
+    await expect(
+      eventsClient().snapshot({
+        headers: authenticate(owner),
+        params: { threadId },
+      }),
+    ).rejects.toThrow("Unknown response status 500");
+    await expect(
+      readChatEventSnapshotHead(context, threadId),
+    ).resolves.toStrictEqual(futureHead);
+  }, 60_000);
+
+  it("classifies legacy Snapshot decode failures without logging row data", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Snapshot decode classification agent",
+    });
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `snapshot-decode-classification-${randomUUID()}`,
+    });
+    await projectChatEventSearch(threadId);
+    await runSnapshotCron([threadId]);
+    const originalHead = await readChatEventSnapshotHead(context, threadId);
+    const originalObject = readFakeChatEventObject(originalHead.object_key);
+    if (originalObject === undefined) {
+      throw new Error("Expected a Snapshot object for decode classification");
+    }
+    const originalBody = gunzipSync(originalObject);
+    const originalRows = originalBody
+      .toString("utf8")
+      .trimEnd()
+      .split("\n")
+      .map((line) => {
+        return chatEventRowSchema.parse(JSON.parse(line));
+      });
+    const inputRow = originalRows.find((row) => {
+      return row.eventType === "input.prompt";
+    });
+    const firstRow = originalRows[0];
+    if (inputRow === undefined || firstRow === undefined) {
+      throw new Error("Expected complete Snapshot decode fixtures");
+    }
+    const encodeRows = (rows: readonly unknown[]): Buffer => {
+      return Buffer.from(
+        rows
+          .map((row) => {
+            return `${JSON.stringify(row)}\n`;
+          })
+          .join(""),
+      );
+    };
+    const rawRowBody = Buffer.from(
+      `${JSON.stringify({ ...firstRow, unexpected: true })}\n`,
+    );
+    const projectionBody = encodeRows(
+      originalRows.map((row) => {
+        return row.id === inputRow.id ? { ...row, payload: null } : row;
+      }),
+    );
+    const prefixBody = encodeRows(
+      originalRows.map((row) => {
+        return row.id === firstRow.id
+          ? { ...row, chatThreadId: randomUUID() }
+          : row;
+      }),
+    );
+    const terminalBody = encodeRows(originalRows.slice(0, -1));
+    const invalidGzip = Buffer.from("sanitized invalid gzip fixture");
+    const cases = [
+      {
+        failureClass: "checksum",
+        object: originalObject,
+        keyDigest: createHash("sha256")
+          .update("different sanitized checksum fixture")
+          .digest("hex"),
+      },
+      {
+        failureClass: "gzip",
+        object: invalidGzip,
+        keyDigest: createHash("sha256").update(invalidGzip).digest("hex"),
+      },
+      {
+        failureClass: "raw_row",
+        object: gzipSync(rawRowBody),
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(projectionBody),
+      },
+      {
+        failureClass: "prefix",
+        object: gzipSync(prefixBody),
+      },
+      {
+        failureClass: "terminal",
+        object: gzipSync(terminalBody),
+      },
+    ] as const;
+
+    for (const testCase of cases) {
+      const digest =
+        "keyDigest" in testCase
+          ? testCase.keyDigest
+          : createHash("sha256").update(testCase.object).digest("hex");
+      const objectKey = `chat-events/${threadId}/${originalHead.last_seq_id.toString()}-${digest}.ndjson.gz`;
+      writeFakeChatEventObject(objectKey, testCase.object);
+      await trackFakeChatEventObject(Promise.resolve(objectKey));
+      await updateChatEventSnapshotHead(context, threadId, objectKey);
+      const staleHead = await readChatEventSnapshotHead(context, threadId);
+      context.mocks.axiomLogging.warn.mockClear();
+
+      await expect(
+        eventsClient().snapshot({
+          headers: authenticate(owner),
+          params: { threadId },
+        }),
+      ).rejects.toThrow("Unknown response status 500");
+      await expect(
+        readChatEventSnapshotHead(context, threadId),
+      ).resolves.toStrictEqual(staleHead);
+      expect(readFakeChatEventObject(objectKey)).toStrictEqual(testCase.object);
+
+      const skipLog = context.mocks.axiomLogging.warn.mock.calls.find(
+        ([message, fields]) => {
+          return (
+            message === "Skipped Chat Event Snapshot pointer" &&
+            (fields as Record<string, unknown> | undefined)?.type ===
+              "chat_event_snapshot_head_skipped"
+          );
+        },
+      );
+      const fields = skipLog?.[1];
+      if (typeof fields !== "object" || fields === null) {
+        throw new Error("Expected a bounded Snapshot decode failure log");
+      }
+      expect(fields).toMatchObject({
+        type: "chat_event_snapshot_head_skipped",
+        chatThreadId: threadId,
+        reason: "undecodable",
+        failureClass: testCase.failureClass,
+        context: "api:cron:snapshot-chat-events",
+      });
+      expect(Object.keys(fields).sort()).toStrictEqual(
+        ["chatThreadId", "context", "failureClass", "reason", "type"].sort(),
+      );
+    }
+  }, 90_000);
 
   it("applies the same schema-version errors to Snapshot and Raw Event reads", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
@@ -340,7 +975,7 @@ describe("chat event snapshot read endpoints", () => {
         code: "CHAT_EVENT_SCHEMA_VERSION_INVALID",
       },
       {
-        version: "4",
+        version: (CURRENT_CHAT_EVENT_SCHEMA_VERSION - 1).toString(),
         status: 426,
         message: "The requested Chat Event schema version is retired",
         code: "CHAT_EVENT_SCHEMA_VERSION_RETIRED",
@@ -411,18 +1046,18 @@ describe("chat event snapshot read endpoints", () => {
     }
     const firstSeqId = firstRow.seqId;
 
-    const v5Input = fromStart.body.rows
+    const canonicalInput = fromStart.body.rows
       .map((row) => {
         return chatEventFromRow(row);
       })
       .find((event) => {
         return event.eventType === "input.prompt";
       });
-    if (v5Input?.eventType !== "input.prompt") {
-      throw new Error("Expected the V5 feedback input");
+    if (canonicalInput?.eventType !== "input.prompt") {
+      throw new Error("Expected the canonical feedback input");
     }
     expect(
-      v5Input.userMessage.parts.find((part) => {
+      canonicalInput.userMessage.parts.find((part) => {
         return part.type === "feedback";
       }),
     ).toMatchObject({
@@ -435,13 +1070,20 @@ describe("chat event snapshot read endpoints", () => {
       eventsClient().rows({
         headers: authenticate(owner),
         params: { threadId },
-        query: { sinceSeqId: firstSeqId, sinceEventId: firstRow.id },
+        query: {
+          sinceSeqId: firstSeqId,
+          sinceEventId: firstRow.id,
+        },
       }),
       [200],
     );
     expect(rows.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe(
       CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
     );
+    expect(rows.body.cursor).toStrictEqual({
+      lastEventId: rows.body.rows.at(-1)?.id,
+      lastSeqId: rows.body.rows.at(-1)?.seqId,
+    });
     for (const row of rows.body.rows) {
       chatEventRowSchema.parse(row);
       expect(row.chatThreadId).toBe(threadId);
@@ -484,7 +1126,10 @@ describe("chat event snapshot read endpoints", () => {
       eventsClient().rows({
         headers: authenticate(owner),
         params: { threadId },
-        query: { sinceSeqId: firstSeqId, sinceEventId: randomUUID() },
+        query: {
+          sinceSeqId: firstSeqId,
+          sinceEventId: randomUUID(),
+        },
       }),
       [410],
     );
@@ -499,7 +1144,10 @@ describe("chat event snapshot read endpoints", () => {
       eventsClient().rows({
         headers: authenticate(owner),
         params: { threadId },
-        query: { sinceSeqId: 999_999, sinceEventId: randomUUID() },
+        query: {
+          sinceSeqId: 999_999,
+          sinceEventId: randomUUID(),
+        },
       }),
       [410],
     );
@@ -508,367 +1156,6 @@ describe("chat event snapshot read endpoints", () => {
         message: "Chat events cursor has expired",
         code: "CHAT_EVENTS_EXPIRED",
       },
-    });
-  }, 60_000);
-
-  it("hides and restores retained tool rows across Snapshot and physical Raw Event cursors", async () => {
-    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
-    if (!owner.orgId) {
-      throw new Error("Expected the tool projection owner to have an org");
-    }
-    const featureActor = { ...owner, orgId: owner.orgId };
-    const agent = await bdd.createAgent(owner, {
-      displayName: "Tool projection agent",
-    });
-    const threadId = await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      prompt: `tool-projection-before-${randomUUID()}`,
-    });
-    await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      threadId,
-      prompt: `tool-projection-after-${randomUUID()}`,
-    });
-    const toolEventId = await store.set(
-      seedRetentionToolEvent$,
-      {
-        chatThreadId: threadId,
-        toolUseId: "tool-use-projection-test",
-        summary: "Read the projection fixture",
-      },
-      context.signal,
-    );
-    await updateFeatureSwitchesForUser(context, featureActor, {
-      [FeatureSwitchKey.ChatToolActivity]: true,
-    });
-    const previousVersionHeaders = {
-      ...authenticate(owner),
-      [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
-        PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString(),
-    };
-    const full = await accept(
-      eventsClient().rows({
-        headers: previousVersionHeaders,
-        params: { threadId },
-        query: { sinceSeqId: 0 },
-      }),
-      [200],
-    );
-    expect(full.body.projection).toBe("full");
-    const toolIndex = full.body.rows.findIndex((row) => {
-      return row.id === toolEventId;
-    });
-    expect(toolIndex).toBeGreaterThan(0);
-    const toolRow = full.body.rows[toolIndex];
-    const previousRow = full.body.rows[toolIndex - 1];
-    if (toolRow?.eventType !== "output.tool" || previousRow === undefined) {
-      throw new Error("Expected a tool row with a physical predecessor");
-    }
-    expect(toolRow.payload).toStrictEqual({
-      toolUseId: "tool-use-projection-test",
-      action: "read",
-      status: "success",
-      summary: "Read the projection fixture",
-    });
-    await projectChatEventSearch(threadId);
-    await runSnapshotCron([threadId]);
-    await setChatEventSnapshotHeadVersion(
-      context,
-      threadId,
-      PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
-      undefined,
-      toolRow.seqId,
-      "tool-redacted",
-      toolRow.id,
-    );
-    const migrated = await runSnapshotCron([threadId]);
-    expect(migrated).toMatchObject({
-      canonicalSnapshotHeads: 1,
-      pendingCanonicalSnapshotMigrations: 0,
-      nonCurrentSnapshotHeads: 1,
-    });
-    const canonicalHead = await readChatEventSnapshotHead(
-      context,
-      threadId,
-      "tool-redacted",
-    );
-    expect(canonicalHead).toMatchObject({
-      archive_schema_version: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-      last_event_id: toolRow.id,
-      last_seq_id: toolRow.seqId,
-      terminal_event_id: previousRow.id,
-      terminal_seq_id: previousRow.seqId,
-      snapshot_count: 2,
-    });
-    const canonicalObject = readFakeChatEventObject(canonicalHead.object_key);
-    if (canonicalObject === undefined) {
-      throw new Error("Expected a canonical V7 Snapshot object");
-    }
-    expect(gunzipSync(canonicalObject).toString("utf8")).not.toContain(
-      toolEventId,
-    );
-
-    const redactedDownload = await accept(
-      eventsClient().snapshot({
-        headers: authenticate(owner),
-        params: { threadId },
-      }),
-      [200],
-    );
-    expect(redactedDownload.body).toMatchObject({
-      projection: "tool-redacted",
-      lastEventId: previousRow.id,
-      lastSeqId: previousRow.seqId,
-    });
-
-    const omittedPhysicalPage = await accept(
-      eventsClient().rows({
-        headers: authenticate(owner),
-        params: { threadId },
-        query: {
-          sinceSeqId: previousRow.seqId,
-          sinceEventId: previousRow.id,
-          limit: 1,
-        },
-      }),
-      [200],
-    );
-    expect(omittedPhysicalPage.body.rows).toStrictEqual([]);
-    expect(omittedPhysicalPage.body.hasMore).toBeFalsy();
-    expect(omittedPhysicalPage.body.cursor).toStrictEqual({
-      lastEventId: previousRow.id,
-      lastSeqId: previousRow.seqId,
-      projection: "tool-redacted",
-    });
-    const omittedCursor = omittedPhysicalPage.body.cursor;
-    if (
-      omittedCursor === undefined ||
-      omittedCursor.lastEventId === null ||
-      omittedCursor.projection === undefined
-    ) {
-      throw new Error("Expected the canonical V7 logical cursor");
-    }
-    await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      threadId,
-      prompt: `tool-projection-new-tail-${randomUUID()}`,
-    });
-    const afterTool = await accept(
-      eventsClient().rows({
-        headers: authenticate(owner),
-        params: { threadId },
-        query: {
-          sinceSeqId: omittedCursor.lastSeqId,
-          sinceEventId: omittedCursor.lastEventId,
-          sinceProjection: omittedCursor.projection,
-          limit: 1,
-        },
-      }),
-      [200],
-    );
-    expect(afterTool.body.rows[0]?.seqId).toBeGreaterThan(toolRow.seqId);
-    expect(afterTool.body.rows[0]?.eventType).not.toBe("output.tool");
-
-    const restoredDownload = await accept(
-      eventsClient().snapshot({
-        headers: authenticate(owner),
-        params: { threadId },
-      }),
-      [200],
-    );
-    expect(restoredDownload.body.projection).toBe("tool-redacted");
-    expect(gunzipSync(canonicalObject).toString("utf8")).not.toContain(
-      toolEventId,
-    );
-    await expect(
-      readChatEventSnapshotHead(context, threadId, "full"),
-    ).rejects.toThrow("missing snapshot head");
-
-    const v5Headers = {
-      ...authenticate(owner),
-      [CHAT_EVENT_SCHEMA_VERSION_HEADER]: "5",
-    };
-    const v5Download = await accept(
-      eventsClient().snapshot({
-        headers: v5Headers,
-        params: { threadId },
-      }),
-      [200],
-    );
-    expect(v5Download.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe("5");
-    expect(v5Download.body.projection).toBe("tool-redacted");
-    if (v5Download.body.lastEventId === null) {
-      throw new Error("Expected a non-empty V5 compatibility Snapshot");
-    }
-    const v5Rows = await accept(
-      eventsClient().rows({
-        headers: v5Headers,
-        params: { threadId },
-        query: {
-          sinceSeqId: v5Download.body.lastSeqId,
-          sinceEventId: v5Download.body.lastEventId,
-          sinceProjection: "tool-redacted",
-        },
-      }),
-      [200],
-    );
-    expect(v5Rows.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe("5");
-    expect(v5Rows.body.projection).toBe("tool-redacted");
-    expect(
-      v5Rows.body.rows.some((row) => {
-        return row.eventType === "output.tool";
-      }),
-    ).toBeFalsy();
-  }, 60_000);
-
-  it("pages V5 by visible rows across a redacted tool range", async () => {
-    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
-    if (!owner.orgId) {
-      throw new Error("Expected the V5 pagination owner to have an org");
-    }
-    const agent = await bdd.createAgent(owner, {
-      displayName: "V5 visible pagination agent",
-    });
-    const threadId = await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      prompt: `v5-visible-pagination-${randomUUID()}`,
-    });
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...owner, orgId: owner.orgId },
-      { [FeatureSwitchKey.ChatToolActivity]: true },
-    );
-
-    const baseline = await accept(
-      eventsClient().rows({
-        headers: authenticate(owner),
-        params: { threadId },
-        query: { sinceSeqId: 0 },
-      }),
-      [200],
-    );
-    const baselineCursor = baseline.body.rows.at(-1);
-    if (baselineCursor === undefined) {
-      throw new Error("Expected a baseline chat event row");
-    }
-
-    const firstVisibleIds = await store.set(
-      seedRetentionOutputEvents$,
-      { chatThreadId: threadId, count: 25 },
-      context.signal,
-    );
-    const toolEventId = await store.set(
-      seedRetentionToolEvent$,
-      {
-        chatThreadId: threadId,
-        toolUseId: "v5-pagination-hidden-tool",
-        summary: "Read the V5 pagination fixture",
-      },
-      context.signal,
-    );
-    const secondVisibleIds = await store.set(
-      seedRetentionOutputEvents$,
-      { chatThreadId: threadId, count: 25 },
-      context.signal,
-    );
-    const laterVisibleId = await store.set(
-      seedRetentionOutputEvent$,
-      {
-        chatThreadId: threadId,
-        content: "Visible after the mixed physical range",
-      },
-      context.signal,
-    );
-    const v5Headers = {
-      ...authenticate(owner),
-      [CHAT_EVENT_SCHEMA_VERSION_HEADER]: "5",
-    };
-
-    const firstPage = await accept(
-      eventsClient().rows({
-        headers: v5Headers,
-        params: { threadId },
-        query: {
-          sinceSeqId: baselineCursor.seqId,
-          sinceEventId: baselineCursor.id,
-          limit: 50,
-        },
-      }),
-      [200],
-    );
-    expect(firstPage.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe("5");
-    expect(firstPage.body.projection).toBe("tool-redacted");
-    expect(
-      firstPage.body.rows.map((row) => {
-        return row.id;
-      }),
-    ).toStrictEqual([...firstVisibleIds, ...secondVisibleIds]);
-    expect(firstPage.body.rows).toHaveLength(50);
-    expect(
-      firstPage.body.rows.map((row) => {
-        return row.id;
-      }),
-    ).not.toContain(toolEventId);
-
-    const lastVisibleRow = firstPage.body.rows.at(-1);
-    if (lastVisibleRow === undefined) {
-      throw new Error("Expected a full V5 visible page");
-    }
-    const secondPage = await accept(
-      eventsClient().rows({
-        headers: v5Headers,
-        params: { threadId },
-        query: {
-          sinceSeqId: lastVisibleRow.seqId,
-          sinceEventId: lastVisibleRow.id,
-          limit: 50,
-        },
-      }),
-      [200],
-    );
-    expect(
-      secondPage.body.rows.map((row) => {
-        return row.id;
-      }),
-    ).toStrictEqual([laterVisibleId]);
-    expect(secondPage.body.rows[0]?.eventType).toBe("output.message");
-    expect(secondPage.body.rows).toHaveLength(1);
-  }, 60_000);
-
-  it("preserves and skips the only Snapshot when no lossless upgrade exists", async () => {
-    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
-    const agent = await bdd.createAgent(owner, {
-      displayName: "Snapshot fail-closed agent",
-    });
-    const threadId = await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      prompt: `snapshot-fail-closed-${randomUUID()}`,
-    });
-
-    await projectChatEventSearch(threadId);
-    await runSnapshotCron([threadId]);
-    const retiredKey = await replaceHeadWithRetiredVersion(threadId);
-
-    const unavailable = await accept(
-      eventsClient().snapshot({
-        headers: authenticate(owner),
-        params: { threadId },
-      }),
-      [404],
-    );
-    expect(unavailable.body.error.code).toBe("CHAT_EVENT_SNAPSHOT_NOT_FOUND");
-    await expect(runSnapshotCron([threadId])).resolves.toMatchObject({
-      snapshots: 0,
-      archivedEvents: 0,
-      skippedUnsupportedHeads: 1,
-    });
-    expect(readFakeChatEventObject(retiredKey)).toBeDefined();
-    await expect(
-      readChatEventSnapshotHead(context, threadId, "tool-redacted"),
-    ).resolves.toMatchObject({
-      archive_schema_version: 3,
-      object_key: retiredKey,
-      snapshot_count: 1,
     });
   }, 60_000);
 
@@ -946,9 +1233,7 @@ describe("chat event snapshot read endpoints", () => {
 
     const result = await runSnapshotCron([], keys);
 
-    expect(
-      result.retiredSnapshotReferencesDeleted + result.r2ObjectsDeleted,
-    ).toBe(1000);
+    expect(result.r2ObjectsDeleted).toBe(1000);
     const remaining = keys.filter((key) => {
       return readFakeChatEventObject(key) !== undefined;
     });

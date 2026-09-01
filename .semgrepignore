@@ -4,3 +4,6 @@ turbo/scripts/rebuild-snapshots-from-db.ts
 
 # Devcontainer Dockerfile — remoteUser in devcontainer.json handles non-root execution
 docker/toolchain/Dockerfile
+
+# Pinned vendored Mermaid build — generated minified code is verified by SHA-256
+turbo/packages/mermaid-flowchart/dist/

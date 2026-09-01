@@ -8,7 +8,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -16,6 +16,7 @@ import jsonl_writer
 import logging_utils
 import runner_flush_lifecycle
 import usage
+from tests.process_log_helpers import capture_addon_process_events
 
 _RUNNER_USAGE_STATE_ID = "runner-state"
 _DEFAULT_JSONL_FLUSH_REQUEST_ID = "jsonl-request-1"
@@ -115,7 +116,7 @@ class TestRunnerJsonlFlush:
         logging_utils.log_network_entry(str(log_path), {"action": "ALLOW"})
 
         with (
-            patch.object(logging_utils.ctx, "log", MagicMock(), create=True),
+            capture_addon_process_events(),
             running_jsonl_flush_worker(runner_jsonl_flush_files),
         ):
             runner_jsonl_flush_files.write_jsonl_flush_request()
@@ -164,11 +165,9 @@ class TestRunnerJsonlFlush:
         self, runner_jsonl_flush_files: RunnerJsonlFlushFiles
     ):
         log_path = runner_jsonl_flush_files.write_jsonl_flush_request()
-        log = MagicMock()
-
         with (
             patch.object(logging_utils, "flush_log_path", side_effect=RuntimeError("secret")),
-            patch.object(runner_flush_lifecycle.ctx, "log", log, create=True),
+            capture_addon_process_events() as log,
         ):
             runner_flush_lifecycle._flush_jsonl_for_runner_request(
                 runner_jsonl_flush_files.jsonl_flush_request_path,
@@ -196,7 +195,6 @@ class TestRunnerJsonlFlush:
         append_started = threading.Event()
         release_append = threading.Event()
         original_append_lines = jsonl_writer._append_lines
-        log = MagicMock()
 
         def append_lines(path: str, lines: list[bytes]) -> None:
             append_started.set()
@@ -218,7 +216,7 @@ class TestRunnerJsonlFlush:
                 "flush_log_path",
                 wraps=logging_utils.flush_log_path,
             ) as flush_log_path,
-            patch.object(runner_flush_lifecycle.ctx, "log", log, create=True),
+            capture_addon_process_events() as log,
         ):
             try:
                 logging_utils.log_network_entry(str(log_path), {"action": "ALLOW"})
@@ -250,7 +248,7 @@ class TestRunnerJsonlFlush:
 
         with (
             patch.object(logging_utils, "flush_log_path") as flush_log_path,
-            patch.object(runner_flush_lifecycle.ctx, "log", MagicMock(), create=True),
+            capture_addon_process_events(),
             running_jsonl_flush_worker(runner_jsonl_flush_files),
         ):
             wait_for_jsonl_flush_state(runner_jsonl_flush_files)
@@ -266,7 +264,7 @@ class TestRunnerJsonlFlush:
         log_path = runner_jsonl_flush_files.write_jsonl_flush_request()
 
         with (
-            patch.object(runner_flush_lifecycle.ctx, "log", MagicMock(), create=True),
+            capture_addon_process_events(),
             patch.object(
                 logging_utils,
                 "flush_log_path",
@@ -312,7 +310,7 @@ class TestRunnerJsonlFlush:
                 "flush_log_path",
                 wraps=logging_utils.flush_log_path,
             ) as flush_log_path,
-            patch.object(runner_flush_lifecycle.ctx, "log", MagicMock(), create=True),
+            capture_addon_process_events(),
             patch.object(Path, "replace", new=fail_first_state_replace),
             running_jsonl_flush_worker(runner_jsonl_flush_files),
         ):

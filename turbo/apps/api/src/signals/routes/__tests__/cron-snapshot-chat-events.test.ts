@@ -10,12 +10,10 @@ import {
   version as uuidVersion,
   v5 as uuidv5,
 } from "uuid";
-import { createStore } from "ccstate";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import { seedRetentionToolEvent$ } from "../../../test-fixtures/chat-event-retention";
 import { createDeferredPromise } from "../../utils";
 import { cronSnapshotChatEventsRoutes } from "../cron-snapshot-chat-events";
 import { testChatEventSearchProjectionRoutes } from "../test-chat-event-search-projection";
@@ -31,24 +29,21 @@ import {
 import {
   advanceChatEventSequenceAsPreviousApi,
   readChatEventSnapshotHead,
-  setChatEventSnapshotHeadVersion,
-  simulateChatEventSnapshotRollingDeploy,
+  updateChatEventSnapshotHead,
 } from "./helpers/runtime-state";
 
 const context = testContext();
-const store = createStore();
 const bdd = createBddApi(context);
 const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 
-const RETIRED_ARCHIVE_SCHEMA_VERSION = 3;
 const DUPLICATE_EVENT_ID_NAMESPACE = "46842b1d-a596-47fb-86b3-4f51962751c7";
 const DUPLICATE_EVENT_ID_WARNING =
   "Normalized duplicate chat event IDs in snapshot";
 const SNAPSHOT_COMPLETED_MESSAGE = "Completed chat event snapshot";
 const SNAPSHOT_COMPLETED_TYPE = "chat_event_snapshot_completed";
 const OBJECT_KEY_PATTERN =
-  /^chat-events\/([0-9a-f-]{36})\/(\d+)-([0-9a-f]{64})\.ndjson\.gz$/;
+  /^chat-events\/([0-9a-f-]{36})\/(\d+)-r1-([0-9a-f]{64})\.ndjson\.gz$/;
 
 type RecordedPut = RecordedChatEventPut;
 
@@ -161,7 +156,7 @@ interface ArchivedLine {
   readonly createdAt: string;
 }
 
-const ARCHIVE_V5_KEYS = [
+const CANONICAL_ARCHIVE_KEYS = [
   "chatThreadId",
   "contextId",
   "contextType",
@@ -277,7 +272,7 @@ function expectArchiveInvariants(
   const lastLine = lines[lines.length - 1];
   expect(lastLine?.seqId).toBe(lastPhysicalSeqId ?? Number(match?.[2]));
   for (const [index, line] of lines.entries()) {
-    expect(Object.keys(line).sort()).toStrictEqual(ARCHIVE_V5_KEYS);
+    expect(Object.keys(line).sort()).toStrictEqual(CANONICAL_ARCHIVE_KEYS);
     expect(line.chatThreadId).toBe(threadId);
     expect(Number.isInteger(line.seqId)).toBeTruthy();
     expect(Number.isNaN(Date.parse(line.createdAt))).toBeFalsy();
@@ -390,178 +385,6 @@ describe("cron snapshot chat events", () => {
 
     await runSnapshotCron([threadId]);
     expect(putsForThread(threadId)).toHaveLength(2);
-  }, 60_000);
-
-  it("continues the canonical redacted tail without creating a full pointer", async () => {
-    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
-    const agent = await bdd.createAgent(owner, {
-      displayName: "Retired full snapshot agent",
-    });
-    const threadId = await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      prompt: `retired-full-prefix-${randomUUID()}`,
-    });
-    await projectChatEventSearch(threadId);
-    await runSnapshotCron([threadId]);
-    const initialRedactedHead = await readChatEventSnapshotHead(
-      context,
-      threadId,
-      "tool-redacted",
-    );
-    await expect(
-      readChatEventSnapshotHead(context, threadId, "full"),
-    ).rejects.toThrow("missing snapshot head");
-
-    await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      threadId,
-      prompt: `retired-full-tail-${randomUUID()}`,
-    });
-    await projectChatEventSearch(threadId);
-    await runSnapshotCron([threadId]);
-
-    const refreshedRedactedHead = await readChatEventSnapshotHead(
-      context,
-      threadId,
-      "tool-redacted",
-    );
-    expect(refreshedRedactedHead.last_seq_id).toBeGreaterThan(
-      initialRedactedHead.last_seq_id,
-    );
-    await expect(
-      readChatEventSnapshotHead(context, threadId, "full"),
-    ).rejects.toThrow("missing snapshot head");
-    expect(putsForThread(threadId)).toHaveLength(2);
-  }, 60_000);
-
-  it("publishes canonical V7 from V6 redacted history and retains V6", async () => {
-    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
-    const agent = await bdd.createAgent(owner, {
-      displayName: "Snapshot V6 upgrade agent",
-    });
-    const marker = `snapshot-upgrade-${randomUUID()}`;
-    const threadId = await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      prompt: `${marker}-prefix`,
-    });
-    await projectChatEventSearch(threadId);
-    await runSnapshotCron([threadId]);
-
-    await setChatEventSnapshotHeadVersion(context, threadId, 6);
-    const toolEventId = await store.set(
-      seedRetentionToolEvent$,
-      {
-        chatThreadId: threadId,
-        toolUseId: "snapshot-v5-upgrade-tool",
-        summary: "Read the V5 upgrade fixture",
-      },
-      context.signal,
-    );
-    await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      threadId,
-      prompt: `${marker}-tail`,
-    });
-    await projectChatEventSearch(threadId);
-
-    const upgraded = await runSnapshotCron([threadId]);
-    expect(upgraded).toMatchObject({
-      success: true,
-      canonicalSnapshotHeads: 1,
-      pendingCanonicalSnapshotMigrations: 0,
-      nonCurrentSnapshotHeads: 1,
-    });
-    const redactedHead = await readChatEventSnapshotHead(
-      context,
-      threadId,
-      "tool-redacted",
-    );
-    expect(redactedHead.archive_schema_version).toBe(
-      CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-    );
-    expect(redactedHead.snapshot_count).toBe(2);
-    const redactedObject = putsForThread(threadId)
-      .filter((put) => {
-        return put.key === redactedHead.object_key;
-      })
-      .at(-1);
-    if (redactedObject === undefined) {
-      throw new Error("Expected the upgraded canonical snapshot object");
-    }
-    const redactedBody = gunzipSync(redactedObject.body).toString("utf8");
-    expect(redactedBody).toContain(`${marker}-prefix`);
-    expect(redactedBody).toContain(`${marker}-tail`);
-    expect(redactedBody).not.toContain(toolEventId);
-    await expect(
-      readChatEventSnapshotHead(context, threadId, "full"),
-    ).rejects.toThrow("missing snapshot head");
-  }, 60_000);
-
-  it("rebuilds a lagging V7 head from the furthest immutable V6 prefix", async () => {
-    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
-    const agent = await bdd.createAgent(owner, {
-      displayName: "Rolling V7 source selection agent",
-    });
-    const prefixMarker = `rolling-v7-prefix-${randomUUID()}`;
-    const retainedTailMarker = `rolling-v6-tail-${randomUUID()}`;
-    const threadId = await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      prompt: prefixMarker,
-    });
-    await projectChatEventSearch(threadId);
-    await runSnapshotCron([threadId]);
-    const v7Prefix = await readChatEventSnapshotHead(
-      context,
-      threadId,
-      "tool-redacted",
-    );
-
-    await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      threadId,
-      prompt: retainedTailMarker,
-    });
-    await projectChatEventSearch(threadId);
-    await runSnapshotCron([threadId]);
-    const v6Authority = await readChatEventSnapshotHead(
-      context,
-      threadId,
-      "tool-redacted",
-    );
-    expect(v6Authority.last_seq_id).toBeGreaterThan(v7Prefix.last_seq_id);
-
-    const deletedRows = await simulateChatEventSnapshotRollingDeploy(context, {
-      threadId,
-      v7Pointer: v7Prefix,
-      v6Pointer: v6Authority,
-    });
-    expect(deletedRows).toBeGreaterThan(0);
-
-    const converged = await runSnapshotCron([threadId]);
-    expect(converged).toMatchObject({
-      canonicalSnapshotHeads: 1,
-      pendingCanonicalSnapshotMigrations: 0,
-    });
-    const canonical = await readChatEventSnapshotHead(
-      context,
-      threadId,
-      "tool-redacted",
-    );
-    expect(canonical).toMatchObject({
-      archive_schema_version: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-      last_seq_id: v6Authority.last_seq_id,
-      terminal_seq_id: v6Authority.terminal_seq_id,
-      snapshot_count: 2,
-    });
-    const canonicalObject = putsForThread(threadId).find((put) => {
-      return put.key === canonical.object_key;
-    });
-    if (canonicalObject === undefined) {
-      throw new Error("Expected the canonical rolling-deploy Snapshot object");
-    }
-    const canonicalBody = gunzipSync(canonicalObject.body).toString("utf8");
-    expect(canonicalBody).toContain(prefixMarker);
-    expect(canonicalBody).toContain(retainedTailMarker);
   }, 60_000);
 
   it("keeps no-conflict prefix and tail bytes and observability unchanged", async () => {
@@ -710,16 +533,14 @@ describe("cron snapshot chat events", () => {
     expect(firstFixture.occurrenceSeqIds).toStrictEqual(
       secondFixture.occurrenceSeqIds.slice(0, 2),
     );
-    await setChatEventSnapshotHeadVersion(
+    await updateChatEventSnapshotHead(
       context,
       firstThreadId,
-      CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       firstFixture.objectKey,
     );
-    await setChatEventSnapshotHeadVersion(
+    await updateChatEventSnapshotHead(
       context,
       secondThreadId,
-      CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       secondFixture.objectKey,
     );
 
@@ -773,11 +594,7 @@ describe("cron snapshot chat events", () => {
     }
     expect(secondRetryPut.key).toBe(firstRetryPut.key);
     expect(secondRetryPut.body).toStrictEqual(firstRetryPut.body);
-    const retryHead = await readChatEventSnapshotHead(
-      context,
-      firstThreadId,
-      "tool-redacted",
-    );
+    const retryHead = await readChatEventSnapshotHead(context, firstThreadId);
     expect(retryHead).toMatchObject({
       archive_schema_version: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
       snapshot_count: 1,
@@ -835,7 +652,6 @@ describe("cron snapshot chat events", () => {
       duplicateEventIdConflicts: 1,
       duplicateEventIdsRemapped: 2,
       duplicateEventReferencesRemapped: 2,
-      nonCurrentSnapshotHeads: 0,
     });
     expectSnapshotCompletion({
       duplicateEventIdConflictThreads: 1,
@@ -1042,12 +858,7 @@ describe("cron snapshot chat events", () => {
       displayName: "Fail-closed snapshot agent",
     });
     const fixtures: { readonly kind: string; readonly threadId: string }[] = [];
-    for (const kind of [
-      "unsupported",
-      "unreadable",
-      "undecodable",
-      "incomplete",
-    ]) {
+    for (const kind of ["unreadable", "undecodable", "incomplete"]) {
       const threadId = await sendNoCreditMessage(owner, {
         agentId: agent.agentId,
         prompt: `${kind}-${randomUUID()}`,
@@ -1065,27 +876,19 @@ describe("cron snapshot chat events", () => {
       if (initialPut === undefined) {
         throw new Error("Expected an initial snapshot object");
       }
-      if (fixture.kind === "unsupported") {
-        await setChatEventSnapshotHeadVersion(
-          context,
-          fixture.threadId,
-          RETIRED_ARCHIVE_SCHEMA_VERSION,
-        );
-      } else if (fixture.kind === "unreadable") {
+      if (fixture.kind === "unreadable") {
         const missingObjectKey = `chat-events/${fixture.threadId}/missing-${randomUUID()}.ndjson.gz`;
-        await setChatEventSnapshotHeadVersion(
+        await updateChatEventSnapshotHead(
           context,
           fixture.threadId,
-          CURRENT_CHAT_EVENT_SCHEMA_VERSION,
           missingObjectKey,
         );
       } else if (fixture.kind === "undecodable") {
         writeFakeChatEventObject(initialPut.key, Buffer.from("not-gzip"));
       } else {
-        await setChatEventSnapshotHeadVersion(
+        await updateChatEventSnapshotHead(
           context,
           fixture.threadId,
-          CURRENT_CHAT_EVENT_SCHEMA_VERSION,
           undefined,
           0,
         );
@@ -1115,7 +918,6 @@ describe("cron snapshot chat events", () => {
       skippedUnreadableHeads: 1,
       skippedUndecodableHeads: 1,
       skippedIncompleteHeads: 1,
-      skippedUnsupportedHeads: 1,
       unreadableParents: 2,
     });
 

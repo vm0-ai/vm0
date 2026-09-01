@@ -1,22 +1,18 @@
 import { command } from "ccstate";
 import {
   webhookHeartbeatContract,
-  webhookModelUsageObservationContract,
   webhookTelemetryContract,
   webhookUsageEventContract,
   type RunnerPreSpawnConcurrencyBucket,
+  type RunnerResourceBudgetLeaseCountBucket,
+  type RunnerResourceBudgetUtilizationBucket,
   type RunnerStartupPath,
   type SandboxReuseResult,
 } from "@okouai/api-contracts/contracts/webhooks";
 import { agentRuns } from "@okouai/db/schema/agent-run";
-import { modelUsageObservation } from "@okouai/db/schema/model-usage-observation";
 import { usageEvent } from "@okouai/db/schema/usage-event";
-import { and, eq, isNotNull } from "drizzle-orm";
-import {
-  isBuiltInModelProviderType,
-  isSupportedRunModel,
-  normalizeRunModelId,
-} from "@okouai/api-contracts/contracts/model-providers";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
@@ -53,6 +49,9 @@ interface SandboxOperationDimensionInput {
   readonly runner_startup_path?: RunnerStartupPath;
   readonly sandbox_reuse_result?: SandboxReuseResult;
   readonly runner_pre_spawn_concurrency_bucket?: RunnerPreSpawnConcurrencyBucket;
+  readonly runner_resource_budget_vcpu_utilization_bucket?: RunnerResourceBudgetUtilizationBucket;
+  readonly runner_resource_budget_memory_utilization_bucket?: RunnerResourceBudgetUtilizationBucket;
+  readonly runner_resource_budget_lease_count_bucket?: RunnerResourceBudgetLeaseCountBucket;
   readonly encoding?: string;
   readonly session_history_raw_size_bucket?: string;
   readonly session_history_encoded_size_bucket?: string;
@@ -68,6 +67,31 @@ interface SandboxOperationDimensionInput {
 interface SandboxRunnerDimensionInput {
   readonly runnerHostname?: string;
   readonly runnerVersion?: string;
+}
+
+function runnerResourceBudgetDimensions(
+  op: SandboxOperationDimensionInput,
+): Record<string, string> {
+  return {
+    ...(op.runner_resource_budget_vcpu_utilization_bucket
+      ? {
+          runner_resource_budget_vcpu_utilization_bucket:
+            op.runner_resource_budget_vcpu_utilization_bucket,
+        }
+      : {}),
+    ...(op.runner_resource_budget_memory_utilization_bucket
+      ? {
+          runner_resource_budget_memory_utilization_bucket:
+            op.runner_resource_budget_memory_utilization_bucket,
+        }
+      : {}),
+    ...(op.runner_resource_budget_lease_count_bucket
+      ? {
+          runner_resource_budget_lease_count_bucket:
+            op.runner_resource_budget_lease_count_bucket,
+        }
+      : {}),
+  };
 }
 
 function sandboxOperationDimensions(
@@ -95,6 +119,7 @@ function sandboxOperationDimensions(
             op.runner_pre_spawn_concurrency_bucket,
         }
       : {}),
+    ...runnerResourceBudgetDimensions(op),
     ...(op.encoding ? { encoding: op.encoding } : {}),
     ...(op.session_history_raw_size_bucket
       ? {
@@ -167,7 +192,13 @@ const heartbeat$ = command(async ({ get, set }, signal: AbortSignal) => {
   const result = await db
     .update(agentRuns)
     .set({ lastHeartbeatAt: nowDate() })
-    .where(and(eq(agentRuns.id, body.runId), eq(agentRuns.userId, auth.userId)))
+    .where(
+      and(
+        eq(agentRuns.id, body.runId),
+        eq(agentRuns.userId, auth.userId),
+        inArray(agentRuns.status, ["pending", "running"]),
+      ),
+    )
     .returning({ id: agentRuns.id });
   signal.throwIfAborted();
 
@@ -264,76 +295,6 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
     body: { success: true },
   };
 });
-
-const modelUsageObservationBody$ = bodyResultOf(
-  webhookModelUsageObservationContract.send,
-);
-const modelUsageObservation$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const bodyResult = await get(modelUsageObservationBody$);
-    signal.throwIfAborted();
-    if (!bodyResult.ok) {
-      return bodyResult.response;
-    }
-
-    const body = bodyResult.data;
-    if (!getSandboxAuthForRun(body.runId, get(authorization$))) {
-      return unauthorizedRunMismatch;
-    }
-
-    const db = set(writeDb$);
-    const [runModelContext] = await db
-      .select({
-        selectedModel: agentRuns.selectedModel,
-      })
-      .from(agentRuns)
-      .where(
-        and(eq(agentRuns.id, body.runId), isNotNull(agentRuns.triggerSource)),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (!runModelContext) {
-      return notFound("Run not found");
-    }
-
-    const observedAt = nowDate();
-    const observationValues = body.events.flatMap((event) => {
-      const canonicalModel = normalizeRunModelId(
-        runModelContext.selectedModel ?? event.model,
-      );
-      if (!isSupportedRunModel(canonicalModel)) {
-        return [];
-      }
-      return [
-        {
-          model: canonicalModel,
-          inputTokens: event.inputTokens,
-          outputTokens: event.outputTokens,
-          cacheReadInputTokens: event.cacheReadInputTokens,
-          cacheCreationInputTokens: event.cacheCreationInputTokens,
-          observedAt,
-          idempotencyKey: event.idempotencyKey,
-        },
-      ];
-    });
-
-    if (observationValues.length > 0) {
-      await db
-        .insert(modelUsageObservation)
-        .values(observationValues)
-        .onConflictDoNothing({
-          target: [modelUsageObservation.idempotencyKey],
-        });
-    }
-    signal.throwIfAborted();
-
-    return {
-      status: 200 as const,
-      body: { success: true },
-    };
-  },
-);
 
 const telemetryBody$ = bodyResultOf(webhookTelemetryContract.send);
 const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
@@ -464,10 +425,6 @@ export const webhooksAgentHealthUsageTelemetryRoutes: readonly RouteEntry[] = [
   {
     route: webhookUsageEventContract.send,
     handler: usageEvent$,
-  },
-  {
-    route: webhookModelUsageObservationContract.send,
-    handler: modelUsageObservation$,
   },
   {
     route: webhookTelemetryContract.send,

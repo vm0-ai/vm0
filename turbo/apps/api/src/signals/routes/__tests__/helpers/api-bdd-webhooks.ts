@@ -10,7 +10,6 @@ import {
   webhookCompleteContract,
   webhookEventsContract,
   webhookHeartbeatContract,
-  webhookModelUsageObservationContract,
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
   webhookStripeContract,
@@ -27,6 +26,7 @@ import { env, mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
 import { server } from "../../../../mocks/server";
 import { generateSandboxToken } from "../../../auth/tokens";
+import type { UsagePricingResolution } from "../../../context/usage-pricing-resolution";
 import { mockStripeClient } from "../../../external/stripe-client";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";
@@ -74,9 +74,6 @@ type AgentTelemetryBody = z.infer<
 >;
 type AgentUsageEventBody = z.infer<
   (typeof webhookUsageEventContract.send)["body"]
->;
-type AgentModelUsageObservationV2Body = z.infer<
-  (typeof webhookModelUsageObservationContract.send)["body"]
 >;
 type AgentStoragePrepareBody = z.infer<
   (typeof webhookStoragesPrepareContract.prepare)["body"]
@@ -572,16 +569,41 @@ export function createWebhookCallbackApi(context: TestContext) {
       headers: SandboxWebhookHeaders,
       statuses: readonly (200 | 400 | 401 | 404 | 500)[],
       signal?: AbortSignal,
+      usagePricingResolution?: UsagePricingResolution,
     ) {
-      const client = signal
-        ? setupAppWithRoutes({
-            context,
-            routes: webhooksAgentCompleteRoutes,
-            signal,
-          })(webhookCompleteContract)
-        : setupApp({ context, routes: webhooksAgentCompleteRoutes })(
-            webhookCompleteContract,
+      const historyHash = body.checkpoint?.cliAgentSessionHistoryHash;
+      if (historyHash !== undefined) {
+        const sessionHistoryBlob = registerKnownSessionHistoryBlob(
+          context,
+          body.runId,
+          historyHash,
+        );
+        if (sessionHistoryBlob && statuses.includes(200)) {
+          await accept(
+            setupApp({ context, routes: webhooksAgentCheckpointsRoutes })(
+              webhookCheckpointsPrepareHistoryContract,
+            ).prepare({
+              headers,
+              body: {
+                runId: body.runId,
+                hash: historyHash,
+                rawSize: sessionHistoryBlob.byteLength,
+                encodedSize: sessionHistoryBlob.byteLength,
+                encoding: "identity",
+              },
+            }),
+            [200],
           );
+        }
+      }
+      const client = setupAppWithRoutes({
+        context,
+        routes: webhooksAgentCompleteRoutes,
+        ...(signal === undefined ? {} : { signal }),
+        ...(usagePricingResolution === undefined
+          ? {}
+          : { usagePricingResolution }),
+      })(webhookCompleteContract);
       return await accept(
         client.complete({
           headers,
@@ -764,14 +786,16 @@ export function createWebhookCallbackApi(context: TestContext) {
       body: AgentUsageEventBody,
       headers: SandboxWebhookHeaders,
       statuses: readonly (200 | 400 | 401 | 404 | 500)[],
+      usagePricingResolution?: UsagePricingResolution,
     ) {
       return await accept(
-        setupApp({ context, routes: webhooksAgentHealthUsageTelemetryRoutes })(
-          webhookUsageEventContract,
-        ).send({
-          headers,
-          body,
-        }),
+        setupApp({
+          context,
+          routes: webhooksAgentHealthUsageTelemetryRoutes,
+          ...(usagePricingResolution === undefined
+            ? {}
+            : { usagePricingResolution }),
+        })(webhookUsageEventContract).send({ headers, body }),
         statuses,
       );
     },
@@ -787,38 +811,6 @@ export function createWebhookCallbackApi(context: TestContext) {
         ).send({
           headers,
           body: body as AgentUsageEventBody,
-        }),
-        statuses,
-      );
-    },
-
-    async requestAgentModelUsageObservationV2(
-      body: AgentModelUsageObservationV2Body,
-      headers: SandboxWebhookHeaders,
-      statuses: readonly (200 | 400 | 401 | 404 | 500)[],
-    ) {
-      return await accept(
-        setupApp({ context, routes: webhooksAgentHealthUsageTelemetryRoutes })(
-          webhookModelUsageObservationContract,
-        ).send({
-          headers,
-          body,
-        }),
-        statuses,
-      );
-    },
-
-    async requestAgentModelUsageObservationV2Unchecked(
-      body: unknown,
-      headers: SandboxWebhookHeaders,
-      statuses: readonly (400 | 401 | 404 | 500)[],
-    ) {
-      return await accept(
-        setupApp({ context, routes: webhooksAgentHealthUsageTelemetryRoutes })(
-          webhookModelUsageObservationContract,
-        ).send({
-          headers,
-          body: body as AgentModelUsageObservationV2Body,
         }),
         statuses,
       );

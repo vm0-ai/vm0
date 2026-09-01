@@ -1,4 +1,4 @@
-import type { Clerk } from "@clerk/clerk-js";
+import type { PlatformClerk as Clerk } from "../../lib/clerk-runtime.ts";
 import type {
   ClerkAPIError,
   SignInResource,

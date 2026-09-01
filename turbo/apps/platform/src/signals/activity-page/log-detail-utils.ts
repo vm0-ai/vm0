@@ -398,6 +398,8 @@ const FALLBACK_CONTENT_SEQUENCE_OFFSET_SCALE = 1_000_000;
 interface ToolResultMeta {
   bytes?: number | null;
   durationMs?: number | null;
+  fallbackToolName?: string;
+  fallbackInput?: Record<string, unknown>;
 }
 
 interface GroupingEventData {
@@ -508,9 +510,13 @@ function toToolResultMeta(value: unknown): ToolResultMeta | undefined {
   ) {
     meta.durationMs = value.durationMs;
   }
-  return meta.bytes === undefined && meta.durationMs === undefined
-    ? undefined
-    : meta;
+  if (typeof value.fallbackToolName === "string") {
+    meta.fallbackToolName = value.fallbackToolName;
+  }
+  if (isRecord(value.fallbackInput)) {
+    meta.fallbackInput = value.fallbackInput;
+  }
+  return Object.keys(meta).length > 0 ? meta : undefined;
 }
 
 interface SeenSequenceEvents {
@@ -789,6 +795,10 @@ function processToolResult(params: {
   }
 
   // Orphan tool_result - create standalone group
+  const fallbackToolName = stringValue(toolMeta?.fallbackToolName);
+  const fallbackInput = isRecord(toolMeta?.fallbackInput)
+    ? toolMeta.fallbackInput
+    : {};
   grouped.push({
     type: "assistant",
     sequenceNumber: fallbackSequenceNumber,
@@ -796,11 +806,15 @@ function processToolResult(params: {
     toolOperations: [
       {
         toolUseId: toolUseId ?? fallbackToolUseIdValue,
-        toolName: i18n.t(($) => {
-          return $.activity.events.unknownTool;
-        }),
-        keyParam: "",
-        input: {},
+        toolName:
+          fallbackToolName ??
+          i18n.t(($) => {
+            return $.activity.events.unknownTool;
+          }),
+        keyParam: fallbackToolName
+          ? extractKeyParam(fallbackToolName, fallbackInput)
+          : "",
+        input: fallbackInput,
         result: {
           content,
           isError: resultContent.is_error === true,

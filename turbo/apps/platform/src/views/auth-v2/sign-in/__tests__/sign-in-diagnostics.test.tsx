@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import type { PostHog } from "posthog-js/dist/module.slim";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -13,11 +14,6 @@ import {
 import { AUTH_V2_DIAGNOSTIC_EVENT } from "../../../../lib/posthog.ts";
 import { testContext } from "../../../../signals/__tests__/test-helpers.ts";
 
-type Capture = (
-  eventName: string,
-  properties?: Record<string, unknown>,
-) => void;
-
 const { apiOriginMarker, posthog } = vi.hoisted(() => {
   vi.stubEnv("VITE_POSTHOG_KEY", "phc_auth_v2_recovery_diagnostics_test");
   window.location.href = "https://app.vm0.ai/";
@@ -28,12 +24,12 @@ const { apiOriginMarker, posthog } = vi.hoisted(() => {
   return {
     apiOriginMarker,
     posthog: {
-      capture: vi.fn<Capture>(),
-      identify: vi.fn(),
-      init: vi.fn(),
-      register: vi.fn(),
-      reset: vi.fn(),
-      unregister: vi.fn(),
+      capture: vi.fn<PostHog["capture"]>(),
+      identify: vi.fn<PostHog["identify"]>(),
+      init: vi.fn<PostHog["init"]>(),
+      register: vi.fn<PostHog["register"]>(),
+      reset: vi.fn<PostHog["reset"]>(),
+      unregister: vi.fn<PostHog["unregister"]>(),
     },
   };
 });
@@ -161,7 +157,7 @@ describe("auth v2 password recovery diagnostics", () => {
         );
       }
 
-      const path = "/v2/sign-in";
+      const path = "/sign-in";
       context.mocks.browser.url(`https://app.vm0.ai${path}`);
       mockSignInResource({ status: "needs_identifier" });
       detachedSetupPage({

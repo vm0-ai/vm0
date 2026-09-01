@@ -2,20 +2,19 @@
 
 Exports:
 
-- Bounded streaming usage decoding for gzip, deflate; one-shot
+- Bounded streaming usage decoding for gzip, deflate, br; one-shot
   decompression for gzip, deflate, br, zstd.
 - Request and response network-log capture decoding that hides failed bodies.
 - JSON usage decompression with diagnostic error classification.
 """
 
-import contextlib
 import zlib
 from collections.abc import Callable
 from typing import Literal, NamedTuple
 
 import brotli  # type: ignore[import-untyped]
 import zstandard
-from mitmproxy import ctx, http
+from mitmproxy import http
 
 from body_limits import (
     DEFAULT_BODY_DECODE_LIMIT,
@@ -43,7 +42,7 @@ _STREAM_ZLIB_WBITS_BY_ENCODING = {
     "gzip": 16 + zlib.MAX_WBITS,
     "deflate": zlib.MAX_WBITS,
 }
-_STREAM_DECODABLE_CONTENT_ENCODINGS = (*_STREAM_ZLIB_WBITS_BY_ENCODING, "identity")
+_STREAM_DECODABLE_CONTENT_ENCODINGS = (*_STREAM_ZLIB_WBITS_BY_ENCODING, "br", "identity")
 _SUPPORTED_ONE_SHOT_BODY_ENCODINGS = frozenset({"gzip", "deflate", "br", "zstd"})
 
 
@@ -77,18 +76,6 @@ class StreamDecodeSession(NamedTuple):
 
     feed: _StreamDecodeFeed
     finish_error: _StreamDecodeFinishError
-
-
-def _log_streaming_decode_error(encoding_label: str, exc: Exception) -> None:
-    with contextlib.suppress(AttributeError):
-        # ctx.log unavailable outside mitmproxy runtime
-        ctx.log.debug(f"Streaming decompression failed ({encoding_label}): {exc}")
-
-
-def _log_streaming_decode_skipped(reason: str) -> None:
-    with contextlib.suppress(AttributeError):
-        # ctx.log unavailable outside mitmproxy runtime
-        ctx.log.debug(f"Streaming decompression skipped: {reason}")
 
 
 def _feed_chunks(feed: _StreamDecodeFeed, data: bytes, max_decoded_chunk: int) -> None:
@@ -148,14 +135,13 @@ def _create_zlib_stream_decode_session(
             )
             try:
                 decoded = obj.decompress(data, max_length=max_length)
-            except zlib.error as exc:
+            except zlib.error:
                 if pending_decoded:
                     feed(bytes(pending_decoded))
                     if should_continue is not None and not should_continue():
                         inspection_stopped = True
                         return
                 decode_error = INVALID_COMPRESSED_BODY
-                _log_streaming_decode_error(encoding_label, exc)
                 return
             if probing_for_additional_output and decoded:
                 if pending_decoded:
@@ -207,8 +193,75 @@ def _create_zlib_stream_decode_session(
     return StreamDecodeSession(decode, finish_error)
 
 
+def _create_brotli_stream_decode_session(
+    feed: _StreamDecodeFeed,
+    *,
+    max_decoded_chunk: int,
+    should_continue: _StreamDecodeShouldContinue | None,
+) -> StreamDecodeSession:
+    obj = brotli.Decompressor()
+    compressed_bytes_seen = 0
+    decode_error: str | None = None
+    decoded_bytes_emitted = 0
+    inspection_stopped = False
+    saw_input = False
+
+    def decode(chunk: bytes) -> None:
+        nonlocal compressed_bytes_seen, decode_error, decoded_bytes_emitted
+        nonlocal inspection_stopped, saw_input
+        if decode_error is not None or inspection_stopped:
+            return
+        if chunk:
+            saw_input = True
+            compressed_bytes_seen += len(chunk)
+
+        pending_input = chunk
+        while True:
+            allowed_decoded_bytes = max(
+                STREAM_DECODE_EXPANSION_GRACE,
+                compressed_bytes_seen * STREAM_DECODE_MAX_EXPANSION_RATIO,
+            )
+            remaining_decoded_bytes = allowed_decoded_bytes - decoded_bytes_emitted
+            try:
+                decoded = obj.process(
+                    pending_input,
+                    output_buffer_limit=min(max_decoded_chunk, remaining_decoded_bytes + 1),
+                )
+            except brotli.error:
+                decode_error = INVALID_COMPRESSED_BODY
+                return
+            pending_input = b""
+
+            accepted = decoded[:remaining_decoded_bytes]
+            for offset in range(0, len(accepted), max_decoded_chunk):
+                decoded_chunk = accepted[offset : offset + max_decoded_chunk]
+                decoded_bytes_emitted += len(decoded_chunk)
+                feed(decoded_chunk)
+                if should_continue is not None and not should_continue():
+                    inspection_stopped = True
+                    return
+            if len(decoded) > remaining_decoded_bytes:
+                decode_error = DECODED_BODY_LIMIT_EXCEEDED
+                return
+            if obj.is_finished():
+                return
+            if not decoded and obj.can_accept_more_data():
+                return
+
+    def finish_error() -> str | None:
+        if decode_error is not None:
+            return decode_error
+        if inspection_stopped:
+            return None
+        if saw_input and not obj.is_finished():
+            return INCOMPLETE_COMPRESSED_BODY
+        return None
+
+    return StreamDecodeSession(decode, finish_error)
+
+
 def stream_decodable_content_encodings() -> tuple[str, ...]:
-    """Return ordered content codings supported by bounded streaming decode."""
+    """Return ordered content codings supported by streaming inspection."""
     return _STREAM_DECODABLE_CONTENT_ENCODINGS
 
 
@@ -217,8 +270,6 @@ def _stream_decode_skip_reason(encoding: str) -> str | None:
         return None
     if encoding == "zstd":
         return "zstd streaming output cannot be hard-bounded"
-    if encoding == "br":
-        return "brotli streaming output cannot be bounded"
     return "unsupported content encoding"
 
 
@@ -230,11 +281,7 @@ def stream_decode_skip_reason(headers: http.Headers) -> str | None:
 
 def can_stream_decode_usage(headers: http.Headers) -> bool:
     """Return whether usage parsers can safely consume this response stream."""
-    reason = stream_decode_skip_reason(headers)
-    if reason is None:
-        return True
-    _log_streaming_decode_skipped(reason)
-    return False
+    return stream_decode_skip_reason(headers) is None
 
 
 def can_decode_json_usage_body(headers: http.Headers) -> bool:
@@ -254,11 +301,20 @@ def create_stream_decode_session(
 
     Usage parsers are bounded-state scanners and may need to inspect long
     responses, so this helper does not enforce a fixed total decoded-byte cap.
-    For gzip and deflate, one response-scoped budget bounds cumulative decoded
-    output to the larger of the streaming grace or compressed bytes seen times
-    the maximum expansion ratio. The budget is shared across callbacks and
-    concatenated members. Each decoded parser chunk is bounded independently.
-    Returns None when a content encoding cannot be safely decoded incrementally.
+    For compressed encodings, one response-scoped budget bounds cumulative
+    decoded output to the larger of the streaming grace or compressed bytes
+    seen times the maximum expansion ratio. The budget is shared across
+    callbacks and concatenated zlib members. Each decoded parser chunk is
+    bounded independently.
+
+    Brotli 1.2's ``output_buffer_limit`` is a soft allocation threshold and a
+    call may return more bytes than requested. Supporting Brotli streaming
+    intentionally accepts that transient overshoot. Returned output is still
+    split before parser delivery and charged against the response-scoped
+    expansion budget, but this helper does not promise a byte-exact bound on
+    the Brotli binding's temporary output allocation.
+
+    Returns None when a content encoding cannot be decoded incrementally.
 
     The returned session exposes ``finish_error()`` so billing paths can reject
     parser state from compressed streams that never reached a valid frame/member
@@ -289,6 +345,12 @@ def create_stream_decode_session(
                 inspection_stopped = True
 
         return StreamDecodeSession(feed_until_stopped, _no_stream_decode_error)
+    if encoding == "br":
+        return _create_brotli_stream_decode_session(
+            feed,
+            max_decoded_chunk=max_decoded_chunk,
+            should_continue=should_continue,
+        )
     return _create_zlib_stream_decode_session(
         feed,
         encoding_label=encoding,
@@ -329,9 +391,7 @@ def decompress_body(
     body returns ``b""`` — callers that short-circuit via ``if not body`` rely
     on that (see #10287).
     """
-    result = _decode_body_bounded(data, headers, max_output=max_output)
-    _log_body_decompression_failure(result, headers)
-    return result.body
+    return _decode_body_bounded(data, headers, max_output=max_output).body
 
 
 def _decode_single_zlib_stream_for_network_log_capture(
@@ -452,16 +512,6 @@ def decode_response_body_for_network_log_capture(
     if encoding == "zstd":
         return _decode_zstd_for_network_log_capture(data, max_output)
     return None
-
-
-def _log_body_decompression_failure(result: _BodyDecodeResult, headers: http.Headers) -> None:
-    if result.failed and result.error is not None:
-        with contextlib.suppress(AttributeError):
-            # ctx.log unavailable outside mitmproxy runtime
-            ctx.log.debug(
-                "Decompression failed "
-                f"({headers.get('content-encoding', '').strip().lower()}): {result.error}"
-            )
 
 
 def _decompress_zlib_best_effort_bounded(
@@ -597,8 +647,6 @@ def _decompress_zlib_json_usage_body(
     data: bytes,
     encoding: Literal["gzip", "deflate"],
     max_output: int,
-    *,
-    log_errors: bool,
 ) -> tuple[bytes, str | None]:
     if max_output <= 0:
         return b"", DECODED_BODY_LIMIT_EXCEEDED if data else None
@@ -616,11 +664,7 @@ def _decompress_zlib_json_usage_body(
             member_data = input_cursor.take()
             try:
                 decoded = obj.decompress(member_data, max_length=remaining_output + 1)
-            except zlib.error as exc:
-                if log_errors:
-                    with contextlib.suppress(AttributeError):
-                        # ctx.log unavailable outside mitmproxy runtime
-                        ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
+            except zlib.error:
                 return b"", INVALID_COMPRESSED_BODY
 
             if len(decoded) > remaining_output:
@@ -679,8 +723,6 @@ def _validate_complete_zstd_frames(data: bytes, max_output: int) -> str | None:
 def _decompress_zstd_json_usage_body(
     data: bytes,
     max_output: int,
-    *,
-    log_errors: bool,
 ) -> tuple[bytes, str | None]:
     if max_output <= 0:
         return b"", DECODED_BODY_LIMIT_EXCEEDED if data else None
@@ -690,11 +732,7 @@ def _decompress_zstd_json_usage_body(
             body = reader.read(max_output)
             # Force validation of any trailing frame without accumulating it.
             extra = reader.read(1)
-    except zstandard.ZstdError as exc:
-        if log_errors:
-            with contextlib.suppress(AttributeError):
-                # ctx.log unavailable outside mitmproxy runtime
-                ctx.log.debug(f"Decompression failed (zstd): {exc}")
+    except zstandard.ZstdError:
         return b"", INVALID_COMPRESSED_BODY
 
     if extra:
@@ -706,15 +744,12 @@ def _decode_supported_body_with_complete_status(
     data: bytes,
     encoding: str,
     max_output: int,
-    *,
-    log_errors: bool = True,
 ) -> tuple[bytes, str | None]:
     if encoding in ("gzip", "deflate"):
         return _decompress_zlib_json_usage_body(
             data,
             encoding,
             max_output,
-            log_errors=log_errors,
         )
     if encoding == "br":
         try:
@@ -723,11 +758,7 @@ def _decode_supported_body_with_complete_status(
                 max_output,
                 validate_complete_input=True,
             )
-        except brotli.error as exc:
-            if log_errors:
-                with contextlib.suppress(AttributeError):
-                    # ctx.log unavailable outside mitmproxy runtime
-                    ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
+        except brotli.error:
             return b"", INVALID_COMPRESSED_BODY
         if limited:
             return body, DECODED_BODY_LIMIT_EXCEEDED
@@ -735,7 +766,7 @@ def _decode_supported_body_with_complete_status(
             return body, INCOMPLETE_COMPRESSED_BODY
         return body, None
     if encoding == "zstd":
-        return _decompress_zstd_json_usage_body(data, max_output, log_errors=log_errors)
+        return _decompress_zstd_json_usage_body(data, max_output)
     raise ValueError(f"unsupported content encoding: {encoding}")
 
 
@@ -768,8 +799,6 @@ def decompress_json_usage_body(
     data: bytes,
     headers: http.Headers,
     max_output: int = LARGE_RESPONSE_DECOMPRESS_LIMIT,
-    *,
-    log_errors: bool = True,
 ) -> tuple[bytes, str | None]:
     """Decompress a JSON usage response body with an observable empty-prefix error.
 
@@ -779,8 +808,6 @@ def decompress_json_usage_body(
     needs to distinguish a valid compressed empty response from an incomplete
     compressed frame that produced no JSON bytes.
 
-    Set ``log_errors`` to ``False`` when decoding on a worker thread where the
-    mitmproxy logging context must not be accessed.
     """
     encoding = headers.get("content-encoding", "").strip().lower()
     if encoding in _SUPPORTED_ONE_SHOT_BODY_ENCODINGS:
@@ -788,7 +815,6 @@ def decompress_json_usage_body(
             data,
             encoding,
             max_output,
-            log_errors=log_errors,
         )
     if encoding and encoding != "identity" and data:
         return b"", "unsupported content encoding"

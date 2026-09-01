@@ -72,6 +72,7 @@ import {
 } from "@okouai/api-contracts/contracts/uploads";
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
+import type { UsagePricingResolution } from "../../../context/usage-pricing-resolution";
 import {
   buildArtifactKey,
   sanitizeArtifactFilename,
@@ -140,6 +141,11 @@ type BddSendEventBody =
       readonly clientEventId?: string;
     };
 
+interface RequestSendEventOptions {
+  readonly publicBrand?: PublicBrand;
+  readonly usagePricingResolution?: UsagePricingResolution;
+}
+
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
   return actor
     ? {
@@ -170,11 +176,11 @@ function authenticate(
 function authenticateChatEvent(
   context: TestContext,
   actor: ApiTestUser | null,
-  schemaVersion: number = CURRENT_CHAT_EVENT_SCHEMA_VERSION,
 ) {
   return {
     ...authenticate(context, actor),
-    [CHAT_EVENT_SCHEMA_VERSION_HEADER]: schemaVersion.toString(),
+    [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
   };
 }
 
@@ -355,10 +361,6 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function threadComputerUseHostClient() {
     return chatFilesApp(context)(chatThreadComputerUseHostContract);
-  }
-
-  function chatEventsClient() {
-    return chatFilesApp(context)(chatEventsContract);
   }
 
   function chatSearchClient() {
@@ -1069,13 +1071,11 @@ export function createChatFilesBddApi(context: TestContext) {
         | { readonly sinceSeqId?: 0; readonly sinceEventId?: never }
         | { readonly sinceSeqId: number; readonly sinceEventId: string }
       ) = {},
-      schemaVersion: number = CURRENT_CHAT_EVENT_SCHEMA_VERSION,
     ): Promise<{ readonly events: readonly ChatEvent[] }> {
       return {
         events: await readProjectedChatEvents(context, {
           threadId,
           headers: authenticate(context, actor),
-          schemaVersion,
           ...query,
         }),
       };
@@ -1123,11 +1123,10 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       threadId: string,
       cursor: ChatEventCursor = { lastEventId: null, lastSeqId: 0 },
-      schemaVersion: number = CURRENT_CHAT_EVENT_SCHEMA_VERSION,
     ) {
       const response = await accept(
         threadEventsClient().rows({
-          headers: authenticateChatEvent(context, actor, schemaVersion),
+          headers: authenticateChatEvent(context, actor),
           params: { threadId },
           query:
             cursor.lastEventId === null
@@ -1135,9 +1134,6 @@ export function createChatFilesBddApi(context: TestContext) {
               : {
                   sinceSeqId: cursor.lastSeqId,
                   sinceEventId: cursor.lastEventId,
-                  ...(cursor.projection === undefined
-                    ? {}
-                    : { sinceProjection: cursor.projection }),
                 },
         }),
         [200],
@@ -1230,8 +1226,6 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly agentId?: string;
         readonly since?: number;
         readonly limit?: number;
-        readonly before?: number;
-        readonly after?: number;
       } = {},
     ): Promise<ChatSearchResponse> {
       const response = await accept(
@@ -1251,8 +1245,6 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly agentId?: string;
         readonly since?: number;
         readonly limit?: number;
-        readonly before?: number;
-        readonly after?: number;
       },
       statuses: readonly (200 | 400 | 401 | 403)[],
     ) {
@@ -1326,14 +1318,18 @@ export function createChatFilesBddApi(context: TestContext) {
         | 429
         | 503
       )[],
+      options: RequestSendEventOptions = {},
       signal?: AbortSignal,
-      publicBrand: PublicBrand = "vm0",
     ) {
-      const client = signal
-        ? setupAppWithRoutes({ context, routes: chatFilesRoutes, signal })(
-            chatEventsContract,
-          )
-        : chatEventsClient();
+      const publicBrand = options.publicBrand ?? "vm0";
+      const client = setupAppWithRoutes({
+        context,
+        routes: chatFilesRoutes,
+        ...(signal === undefined ? {} : { signal }),
+        ...(options.usagePricingResolution === undefined
+          ? {}
+          : { usagePricingResolution: options.usagePricingResolution }),
+      })(chatEventsContract);
       const defaultModel =
         "prompt" in body &&
         body.threadId === undefined &&

@@ -10,8 +10,8 @@ use tokio::sync::Notify;
 use crate::error::{Result, SandboxError, SandboxIdleTransition};
 use crate::types::{
     CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestAgentProcessHandle,
-    GuestProcessHandle, GuestStateRestoreRequest, ProcessExit, StartAgentProcessRequest,
-    StartProcessRequest, StorageManifestRequest, WriteFileEntry,
+    GuestProcessHandle, GuestStateRestoreRequest, ProcessExit, SessionHistoryIdentityVerifyRequest,
+    StartAgentProcessRequest, StartProcessRequest, StorageManifestRequest, WriteFileEntry,
 };
 
 /// Eligibility result after a sandbox successfully reaches the parked state.
@@ -498,7 +498,7 @@ pub trait SandboxFinalExecParkObserver: Send {
 /// Production backends must make dropping an active sandbox a best-effort
 /// emergency cleanup path. If runner-side code unwinds before calling
 /// [`SandboxFactory::destroy()`](crate::SandboxFactory::destroy), `Drop`
-/// must not silently leave a VM process and associated host resources alive.
+/// must not silently leave a backing process and associated host resources alive.
 /// This fallback is only a safety net: callers must not treat drop-triggered
 /// cleanup as proof that explicit destroy completed.
 #[async_trait]
@@ -509,7 +509,7 @@ pub trait Sandbox: Send + Sync + Any {
     /// process. Used in logs, metrics, and socket/path derivation.
     fn id(&self) -> &str;
     /// The network-visible source IP address for this sandbox.
-    /// Used as the key for proxy VM registration.
+    /// Used as the key for proxy sandbox registration.
     fn source_ip(&self) -> &str;
     /// Host-side PID of the sandbox backing process (e.g. firecracker).
     /// Used for host diagnostics like OOM detection.
@@ -735,6 +735,24 @@ pub trait Sandbox: Send + Sync + Any {
         &self,
         request: &StorageManifestRequest<'_>,
     ) -> Result<ExecResult>;
+
+    /// Verify live final session-history identity through the provider's fixed
+    /// Guest Agent helper operation.
+    ///
+    /// Implementations select the executable and fixed subcommand and must not
+    /// expose arbitrary command, environment, sudo, stdin, output, or lifecycle
+    /// authority. Helper and transport failures remain ordinary typed results
+    /// or sandbox errors for the lifecycle owner to fail closed.
+    async fn verify_session_history_identity(
+        &self,
+        _request: &SessionHistoryIdentityVerifyRequest<'_>,
+    ) -> Result<ExecResult> {
+        Err(SandboxError::Operation {
+            operation: crate::SandboxOperation::VerifySessionHistoryIdentity,
+            reason: crate::SandboxOperationReason::Other,
+            message: "fixed session history identity verifier is unsupported".to_string(),
+        })
+    }
 
     /// Restore snapshot-sensitive clock, CRNG, and optional timezone state
     /// through the provider's fixed guest helper operation.

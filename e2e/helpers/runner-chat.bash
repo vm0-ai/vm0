@@ -20,6 +20,8 @@ require_runner_api_credentials() {
     runner_api_token >/dev/null && runner_api_url >/dev/null
 }
 
+# Returns the Vercel log search for one host and path without a status term,
+# so callers decide whether to narrow the search by response status.
 _runner_api_vercel_logs_url_prefix() {
     local base="$1"
     local path="$2"
@@ -33,8 +35,26 @@ _runner_api_vercel_logs_url_prefix() {
     request_path_search="${request_path//%/%25}"
     request_path_search="${request_path_search//\//%2F}"
     request_path_search="${request_path_search//:/%3A}"
-    printf 'https://vercel.com/vm0/vm0-api/logs?search=requestHost%%3A%s+requestPath%%3A%s+status%%3A' \
+    printf 'https://vercel.com/okou/vm0-api/logs?search=requestHost%%3A%s+requestPath%%3A%s' \
         "$request_host_search" "$request_path_search"
+}
+
+# A request that carries neither a method override nor a body is a plain GET,
+# and only a plain GET may be sent again: the API may already have applied a
+# write whose response never arrived.
+_runner_api_request_is_repeatable() {
+    local arg
+    for arg in "$@"; do
+        case "$arg" in
+            -X* | --request | --request=* | \
+                -d* | --data | --data=* | --data-* | \
+                -F* | --form | --form=* | \
+                -T* | --upload-file | --upload-file=*)
+                return 1
+                ;;
+        esac
+    done
+    return 0
 }
 
 runner_api_curl() {
@@ -50,7 +70,7 @@ runner_api_curl() {
     vercel_logs_url_prefix="$(_runner_api_vercel_logs_url_prefix \
         "$base" "$path")"
     vercel_logs_url_prefix_write_out="${vercel_logs_url_prefix//%/%%}"
-    vercel_log_write_out="%{onerror}%{stderr}Vercel logs: ${vercel_logs_url_prefix_write_out}%{http_code}&timeline=past12Hours\n"
+    vercel_log_write_out="%{onerror}%{stderr}Vercel logs: ${vercel_logs_url_prefix_write_out}+status%%3A%{http_code}&timeline=past12Hours\n"
 
     local -a headers=(
         -H "Authorization: Bearer $token"
@@ -62,18 +82,57 @@ runner_api_curl() {
         )
     fi
 
-    local curl_status=0
-    curl --fail-with-body --silent --show-error \
-        --write-out "$vercel_log_write_out" \
-        --connect-timeout "${E2E_CURL_CONNECT_TIMEOUT_SECONDS:-10}" \
-        --max-time "${E2E_CURL_MAX_TIME_SECONDS:-30}" \
-        "${headers[@]}" \
-        "$@" \
-        "$request_url" || curl_status=$?
+    # curl exits `28` when the connect/transfer budget expires before the
+    # deployment answers anything, while `--fail-with-body` reports a served
+    # HTTP error as `22`. Only `28` means the request produced no response, so
+    # only `28` is sent again, and only for a repeatable request. Each attempt
+    # is buffered so a partial body is replaced rather than concatenated.
+    local no_response_status=28
+    local max_attempts=1
+    if _runner_api_request_is_repeatable "$@"; then
+        max_attempts=2
+    fi
+
+    # Command substitution strips trailing newlines, so the exit status is
+    # appended behind a marker and read back from the last occurrence. That
+    # keeps the emitted response byte-for-byte identical to an unbuffered curl.
+    local exit_marker=$'\nRUNNER_API_CURL_EXIT:'
+    local body="" curl_status=0 attempt
+    for ((attempt = 1; attempt <= max_attempts; attempt += 1)); do
+        body="$(
+            curl --fail-with-body --silent --show-error \
+                --write-out "$vercel_log_write_out" \
+                --connect-timeout "${E2E_CURL_CONNECT_TIMEOUT_SECONDS:-10}" \
+                --max-time "${E2E_CURL_MAX_TIME_SECONDS:-30}" \
+                "${headers[@]}" \
+                "$@" \
+                "$request_url"
+            printf '%s%d' "$exit_marker" "$?"
+        )"
+        curl_status="${body##*"$exit_marker"}"
+        body="${body%"$exit_marker"*}"
+
+        if ((curl_status != no_response_status)) ||
+            ((attempt == max_attempts)); then
+            break
+        fi
+        printf 'runner_api_curl retrying %s after no response (attempt %d of %d)\n' \
+            "$diagnostic_url" "$attempt" "$max_attempts" >&2
+    done
+
+    printf '%s' "$body"
 
     if ((curl_status != 0)); then
         printf 'runner_api_curl failed: url=%s curl_status=%d\n' \
             "$diagnostic_url" "$curl_status" >&2
+        if ((curl_status == no_response_status)); then
+            # A stalled request carries no status, so the status-filtered
+            # search above finds nothing even when the API completed the
+            # request late.
+            printf 'runner_api_curl received no response from %s within %ss across %d attempt(s); the API may have answered after the client gave up: %s&timeline=past12Hours\n' \
+                "$diagnostic_url" "${E2E_CURL_MAX_TIME_SECONDS:-30}" \
+                "$attempt" "$vercel_logs_url_prefix" >&2
+        fi
     fi
     return "$curl_status"
 }
@@ -93,7 +152,7 @@ runner_chat_event_rows() {
         fi
         response="$(runner_api_curl \
             "$request_path" \
-            -H "X-Chat-Event-Schema-Version: 5")" || return
+            -H "X-Chat-Event-Schema-Version: 7")" || return
         rows="$(jq -ce \
             '.rows | if type == "array" then . else error("invalid rows") end' \
             <<<"$response")" || {
@@ -223,7 +282,7 @@ delete_runner_agent_for_stage0_teardown() {
         base="$(runner_api_url)" || return 1
         vercel_logs_url_prefix="$(_runner_api_vercel_logs_url_prefix \
             "$base" "$request_path")"
-        printf 'Vercel logs: %s%s&timeline=past12Hours\n' \
+        printf 'Vercel logs: %s+status%%3A%s&timeline=past12Hours\n' \
             "$vercel_logs_url_prefix" "$http_status" >&2
         return 1
     done

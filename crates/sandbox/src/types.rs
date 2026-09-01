@@ -92,6 +92,30 @@ pub struct StorageManifestRequest<'a> {
     pub timeout: Duration,
 }
 
+/// Request for the fixed live session-history identity verifier.
+///
+/// The provider selects the executable, subcommand, process identity,
+/// containment, output bounds, and transport lifecycle. Callers supply only
+/// the identity values consumed by that helper.
+pub struct SessionHistoryIdentityVerifyRequest<'a> {
+    /// Absolute path to the final identity metadata inside the guest.
+    pub metadata_path: &'a str,
+    /// Absolute canonical runtime directory exposed to the helper.
+    pub runtime_dir: &'a str,
+    /// Stable CLI framework spelling expected by the helper.
+    pub framework: &'a str,
+    /// SHA-256 hash of the expected normalized session identifier.
+    pub session_id_hash: &'a str,
+    /// Stable history-reference-kind spelling expected by the helper.
+    pub history_ref_kind: &'a str,
+    /// SHA-256 hash of the expected final session-history bytes.
+    pub history_hash: &'a str,
+    /// Exact expected final session-history byte length.
+    pub history_size_bytes: u64,
+    /// Guest-side helper timeout.
+    pub timeout: Duration,
+}
+
 /// Timezone behavior for a fixed guest-state restore operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum GuestStateRestoreTimezone<'a> {
@@ -132,6 +156,16 @@ impl GuestStateRestoreRequest<'_> {
 }
 
 impl StorageManifestRequest<'_> {
+    /// Return the timeout as milliseconds, saturating at `u32::MAX`.
+    ///
+    /// Non-zero sub-millisecond durations round up to 1ms so callers do not
+    /// accidentally turn a bounded operation into a zero-timeout request.
+    pub fn timeout_ms(&self) -> u32 {
+        duration_ms(self.timeout)
+    }
+}
+
+impl SessionHistoryIdentityVerifyRequest<'_> {
     /// Return the timeout as milliseconds, saturating at `u32::MAX`.
     ///
     /// Non-zero sub-millisecond durations round up to 1ms so callers do not
@@ -182,14 +216,18 @@ impl StartProcessRequest<'_> {
 /// Agent startup is intentionally separate from ordinary supervised process
 /// startup so generic callers cannot select the controlled Agent topology.
 pub struct StartAgentProcessRequest<'a> {
-    /// Common process startup fields.
-    pub process: StartProcessRequest<'a>,
+    /// Guest-side Agent supervisor timeout.
+    pub timeout: Duration,
+    /// Environment variables passed to the fixed Guest Agent executable.
+    pub env: &'a [(&'a str, &'a str)],
+    /// Buffered or streamed Agent output behavior.
+    pub output: ProcessOutputMode,
 }
 
 impl StartAgentProcessRequest<'_> {
     /// Return the timeout as milliseconds, saturating at `u32::MAX`.
     pub fn timeout_ms(&self) -> u32 {
-        self.process.timeout_ms()
+        duration_ms(self.timeout)
     }
 }
 
@@ -883,7 +921,7 @@ pub struct GuestAgentProcessHandle {
 /// Provider-neutral timing captured at the controlled Agent readiness boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GuestAgentStartTiming {
-    /// Host monotonic instant when the guest shell was spawned.
+    /// Host monotonic instant when the guest controlled process was spawned.
     pub shell_started_at: Instant,
     /// Host monotonic instant when Agent runtime placement was confirmed.
     pub ready_at: Instant,
@@ -891,9 +929,12 @@ pub struct GuestAgentStartTiming {
     pub containment_create: Duration,
     /// Guest time spent creating workload and tool placement brokers.
     pub placement_broker_setup: Duration,
-    /// Guest time spent spawning the supervised shell.
+    /// Guest time spent launching the controlled process.
+    ///
+    /// The `shell_spawn` name remains stable for timing-series compatibility;
+    /// direct Agent launch does not execute a shell.
     pub shell_spawn: Duration,
-    /// Guest time from shell spawn through confirmed runtime placement.
+    /// Guest time from controlled-process launch through confirmed placement.
     pub bootstrap_ready_wait: Duration,
 }
 
@@ -1192,15 +1233,11 @@ mod tests {
     }
 
     #[test]
-    fn start_agent_process_timeout_uses_common_process_request() {
+    fn start_agent_process_timeout_rounds_nonzero_submillisecond_up() {
         let req = StartAgentProcessRequest {
-            process: StartProcessRequest {
-                cmd: "true",
-                timeout: Duration::from_nanos(1),
-                env: &[],
-                sudo: false,
-                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
-            },
+            timeout: Duration::from_nanos(1),
+            env: &[],
+            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
         };
         assert_eq!(req.timeout_ms(), 1);
     }

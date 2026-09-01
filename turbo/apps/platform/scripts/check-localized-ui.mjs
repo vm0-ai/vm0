@@ -123,22 +123,6 @@ function getInternalAllowedLiterals() {
       "SharedWorker browser identifier, not user-visible UI copy",
     ],
     [
-      "src/lib/stable-chunks.ts\u0000vendor-foundation",
-      "Rolldown output chunk identifier, not user-visible UI copy",
-    ],
-    [
-      "src/lib/stable-chunks.ts\u0000vendor-auth",
-      "Rolldown output chunk identifier, not user-visible UI copy",
-    ],
-    [
-      "src/lib/stable-chunks.ts\u0000vendor-content",
-      "Rolldown output chunk identifier, not user-visible UI copy",
-    ],
-    [
-      "src/lib/stable-chunks.ts\u0000vendor-services",
-      "Rolldown output chunk identifier, not user-visible UI copy",
-    ],
-    [
       "src/signals/okou-page/tiptap-workflow-composer.ts\u0000paragraph+",
       "Tiptap document schema expression",
     ],
@@ -149,10 +133,6 @@ function getInternalAllowedLiterals() {
     [
       "src/views/okou-page/tiptap-instructions-editor.tsx\u0000baselineMarkdown",
       "Tiptap storage plugin identifier",
-    ],
-    [
-      "src/views/okou-page/tiptap-instructions-editor.tsx\u0000lowlightHighlight",
-      "Tiptap extension identifier",
     ],
   ];
 }
@@ -287,11 +267,45 @@ function getFileAllowedLiterals() {
   ];
 }
 
+function getLocaleIndependentShellAllowedLiterals() {
+  return [
+    [
+      "src/views/okou-page/app-skeleton.tsx\u0000Loading",
+      "locale-independent accessibility label for the copy-free app skeleton",
+    ],
+    [
+      "src/views/unsupported-browser-page.tsx\u0000Update your browser to continue",
+      "English-only browser compatibility shell outside localized app bootstrap",
+    ],
+    [
+      "src/views/unsupported-browser-page.tsx\u0000Update Chrome to continue",
+      "English-only browser compatibility shell outside localized app bootstrap",
+    ],
+    [
+      "src/views/unsupported-browser-page.tsx\u0000Update Chromium to continue",
+      "English-only browser compatibility shell outside localized app bootstrap",
+    ],
+    [
+      "src/views/unsupported-browser-page.tsx\u0000Update iOS to continue",
+      "English-only browser compatibility shell outside localized app bootstrap",
+    ],
+    [
+      "src/views/unsupported-browser-page.tsx\u0000Update Safari to continue",
+      "English-only browser compatibility shell outside localized app bootstrap",
+    ],
+    [
+      "src/views/unsupported-browser-page.tsx\u0000does not support your current browser version. Update your browser to continue.",
+      "English-only browser compatibility shell outside localized app bootstrap",
+    ],
+  ];
+}
+
 function getAllowedLiterals() {
   return new Map([
     ...getInternalAllowedLiterals(),
     ...getConnectorAllowedLiterals(),
     ...getFileAllowedLiterals(),
+    ...getLocaleIndependentShellAllowedLiterals(),
   ]);
 }
 

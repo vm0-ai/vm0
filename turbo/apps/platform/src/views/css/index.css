@@ -1,9 +1,5 @@
-/* Import Noto Sans and JetBrains Mono from Google Fonts - must be first */
-@import url("https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
-
 @import "tailwindcss";
 @import "@okouai/ui/styles/globals.css";
-@import "katex/dist/katex.min.css";
 
 @plugin "@tailwindcss/typography";
 @custom-variant pointer-coarse (@media (pointer: coarse));
@@ -1360,18 +1356,6 @@ body {
 .wmde-markdown pre tt {
   background-color: transparent;
   border: 0;
-}
-
-/* --- Math --------------------------------------------------------------- */
-.wmde-markdown .katex {
-  color: hsl(var(--foreground));
-}
-
-.wmde-markdown .katex-display {
-  max-width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 2px 0;
 }
 
 /* Code block scrollbar */

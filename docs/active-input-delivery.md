@@ -50,9 +50,27 @@ latency.
 ## Terminal Status and Quiescence
 
 A terminal run status does not by itself prove that the old consumer is gone.
-Cancellation is visible immediately, and heartbeat timeout records an unknown
-consumer state, but neither path releases a reservation. Cooperative Guest
-completion and Runner post-exit completion are the existing quiescence signals.
+Cancellation is visible immediately. Heartbeat timeout still records an unknown
+consumer state, but its transaction now settles any running chat delivery with
+an empty receipt set before committing `timeout`. After commit, the API sends a
+best-effort hard cancellation to the owning Runner group. Pending-run timeout
+does not perform delivery settlement or Runner cancellation because no consumer
+has claimed the run.
+
+### Post-timeout Webhook Admission
+
+While timeout still represents an uncertain consumer state, runtime mutation
+webhooks stop creating new canonical work for that run. Heartbeat returns `404`,
+event batches retain their existing sequence acknowledgement but are ignored,
+and new checkpoint or checkpoint-history preparation requests return `400`.
+Late completion returns the existing `200` failed acknowledgement without
+persisting checkpoint, event watermark, reuse metadata, delivery receipts, or a
+different terminal status. The existing completed Pi checkpoint exact-retry
+behavior is unchanged.
+
+Usage events and telemetry remain accepted after timeout because they report
+work that may already have happened. Storage and firewall admission remain
+separate rollout stages.
 
 Codex execution timeout and cancellation first allow an in-flight `turn/steer`
 to settle within the bounded sink window. A successful response still persists
@@ -62,26 +80,68 @@ only then closes the local sink operation and finalizes receipts. The
 unconfirmed delivery ID remains absent from completion, so the existing
 completion transaction releases or expires it only after consumer-stop proof.
 
-An open delivery is therefore a non-expiring thread-ordering barrier. The queue
-scheduler cannot skip its source events or launch later input on the same
-thread, even after cancellation recovery becomes stale. Once completion settles
-the delivery, released prompts return to their original FIFO position and the
-post-commit scheduler may create the successor run.
+Until completion or timeout cleanup settles it, an open delivery is a
+non-expiring thread-ordering barrier. The queue scheduler cannot skip its source
+events or launch later input on the same thread, even after cancellation
+recovery becomes stale. Released prompts return to their original FIFO position
+and the post-commit scheduler may create the successor run.
 
 ## Transaction Boundary
 
-Reservation, direct receipt, and completion finalization serialize database
-state in this order:
+Reservation and direct receipt serialize database state in this order:
 
 1. chat thread;
 2. agent run;
 3. delivery and delivery items;
 4. source and revoking chat events.
 
-Completion finalizes the delivery and applies or observes the terminal run
-state in one short transaction. Realtime publication, callbacks, usage work,
-and queue drain run only after commit. A first late finalization drains the
-thread without replaying the run's ordinary terminal callbacks or billing work.
+Completion and heartbeat-timeout finalization take the run's checkpoint
+lifecycle advisory lock before the same thread, run, delivery, and event order.
+They finalize the delivery and apply or observe the terminal run state in one
+short transaction. The shared lock order decides whether direct receipt or
+terminal finalization committed first.
+
+Realtime publication, callbacks, usage work, and queue drain run only after
+commit. A first late finalization drains the thread without replaying the run's
+ordinary terminal callbacks or billing work.
+
+### Final Checkpoint Completion
+
+The bundled Guest prepares final checkpoint metadata and sends it in
+`/api/webhooks/agent/complete`. Session history and artifact bytes are uploaded
+before that request; completion carries their validated identities and storage
+snapshots together with the event watermark, active-input delivery IDs, and
+sandbox reuse metadata. The API then persists the checkpoint, promotes the
+eligible canonical AgentSession conversation, settles active-input delivery,
+and applies the terminal run state in the same database transaction.
+
+The nested checkpoint omits `runId`; the completion request's outer `runId` and
+sandbox authorization remain authoritative. Invalid checkpoint metadata rejects
+the combined request without partially finalizing delivery or changing the run
+status. Repeating a committed combined request is idempotent, and a later
+checkpoint-less Runner completion observes the first terminal result.
+
+Successful execution and successful recovery send one combined completion and
+do not post the prepared checkpoint to the standalone route. Combined reporting
+uses the checkpoint retry budget. Mandatory success-path failure produces a
+nonzero Guest result, while recovery remains best-effort. Explicit cancellation
+still sends one checkpoint-less completion when checkpoint preparation or the
+combined request is not acknowledged. Local session-history reconciliation
+happens only after the combined request is acknowledged.
+
+The standalone checkpoint route rejects `queued`, `pending`, and `running` runs.
+It accepts an exact retry of a completed final checkpoint and retains the
+existing bounded recovery behavior for failed or cancelled runs. Checkpoint-less
+completion remains supported for the unchanged Runner fallback; a clean success
+without a checkpoint still follows the missing-checkpoint failure path.
+
+After the combined Guest/Runner artifact reaches production, record its traffic
+promotion boundary, stop the outgoing Runner target from claiming new work, and
+wait for its existing Guest runs to drain. This immutable-timeout API release
+must not merge until the recorded cutover is at least 7,200 seconds old and no
+pre-cutover `pending` or `running` cohort remains. That gate ensures no outgoing
+Guest still depends on active standalone checkpoint persistence when the new
+admission rule reaches production.
 
 ## Compatibility
 

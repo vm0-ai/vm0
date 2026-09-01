@@ -1,6 +1,7 @@
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agents } from "@okouai/db/schema/agent";
 import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -178,6 +179,7 @@ export async function admitWorkflowAutomationEvent(
 
 export interface PendingWorkflowQueueEvent {
   readonly id: string;
+  readonly orgId: string;
   readonly userId: string;
   readonly automationId: string | null;
   readonly chatThreadId: string;
@@ -209,6 +211,7 @@ export async function loadNextWorkflowQueueEvent(
     const [event] = await tx
       .select({
         id: chatEvents.id,
+        orgId: agents.orgId,
         userId: chatThreads.userId,
         automationId: chatAutomationContext.automationId,
         automationKind: workflowAutomations.kind,
@@ -222,6 +225,7 @@ export async function loadNextWorkflowQueueEvent(
       })
       .from(chatEvents)
       .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
+      .innerJoin(agents, eq(agents.id, chatThreads.agentId))
       .leftJoin(
         chatAutomationContext,
         and(

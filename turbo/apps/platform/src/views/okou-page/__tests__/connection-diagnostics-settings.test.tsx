@@ -11,6 +11,7 @@ import {
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+const PAGE_REALTIME_CHANNEL = "user:test-user-123";
 
 function latestClipboardWrite(writes: readonly string[]): string {
   const latest = writes.at(-1);
@@ -124,6 +125,7 @@ describe("connection diagnostics settings", () => {
 
     act(() => {
       context.mocks.ably.triggerConnectionState("disconnected", {
+        channelName: PAGE_REALTIME_CHANNEL,
         code: 80_003,
         message:
           "request for user_test-user-123 and person@example.test failed at https://realtime.example.test/client/123e4567-e89b-42d3-a456-426614174000",
@@ -175,6 +177,7 @@ describe("connection diagnostics settings", () => {
       for (let index = 0; index < 510; index += 1) {
         context.mocks.ably.triggerConnectionState(
           index % 2 === 0 ? "disconnected" : "suspended",
+          { channelName: PAGE_REALTIME_CHANNEL },
         );
       }
     });

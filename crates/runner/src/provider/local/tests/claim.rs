@@ -46,6 +46,7 @@ async fn claim_maps_secret_environment_into_context_and_masking() {
     let secret_values = ctx.secret_values.as_ref().unwrap();
     let local_secret_env_keys = ctx.local_secret_env_keys.as_ref().unwrap();
 
+    assert!(ctx.platform_environment.is_empty());
     assert_eq!(
         environment.get("ANTHROPIC_MODEL").map(String::as_str),
         Some("claude-haiku-4-5")

@@ -99,10 +99,6 @@ export type UserMessageRenderPart =
       readonly part: UserMessagePartOfType<"goal">;
     }
   | {
-      readonly type: "morning_brief";
-      readonly part: UserMessagePartOfType<"morning_brief">;
-    }
-  | {
       readonly type: "file";
       readonly part: UserMessagePartOfType<"file">;
       readonly signals: ArtifactSignals;
@@ -125,6 +121,8 @@ export interface UserMessageRenderDocument {
 export type EnrichedChatEvent = ChatEvent & {
   /** The parsed body, present once the event entered the render window. */
   tree: Root | undefined;
+  /** The current rich body failed to load and can be retried locally. */
+  richContentError: boolean;
   isQueued: boolean;
   userMessageRenderDocument: UserMessageRenderDocument | undefined;
 };

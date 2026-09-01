@@ -155,23 +155,24 @@ def _anthropic_lifecycle_observer(
     return observe
 
 
-def _maybe_log_response_encoding_inspection_risk(
+def _log_response_encoding_fail_closed(
     flow: http.HTTPFlow,
     response: http.Response,
 ) -> None:
-    if not http_response_classification.can_have_body(flow, response):
-        return
     skip_reason = body_decoding.stream_decode_skip_reason(response.headers)
     if skip_reason is None:
-        return
+        raise RuntimeError("fail-closed response encoding is stream-decodable")
     log_usage_underbilling(
         flow_metadata.proxy_log_path(flow.metadata),
-        "Response encoding prevents incremental usage inspection",
+        "Response encoding has no bounded usage accounting path",
         "response_encoding_not_stream_decodable",
         "risk",
         run_id=flow_metadata.run_id(flow.metadata),
         firewall_name=flow_metadata.firewall_name(flow.metadata),
+        firewall_billable=flow_metadata.is_firewall_billable(flow.metadata),
         status_code=response.status_code,
+        inspection_disposition="fail_closed",
+        request_encoding_negotiation=flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION],
         decode_skip_reason=skip_reason,
     )
 
@@ -263,8 +264,6 @@ def _configure_response_inspection_stream(
                 )
             decode_session = _make_response_decode_session(parser_fn, response.headers)
             if decode_session is None:
-                if is_observable_model_provider:
-                    _maybe_log_response_encoding_inspection_risk(flow, response)
                 if failure_observer is not None:
                     model_provider_failure.register_response_finish(
                         flow,
@@ -344,8 +343,6 @@ def _configure_response_inspection_stream(
             should_continue=extractor.accepts_more_input,
         )
         if decode_session is None:
-            if is_observable_model_provider:
-                _maybe_log_response_encoding_inspection_risk(flow, response)
             if failure_observer is not None:
                 model_provider_failure.register_response_finish(
                     flow,
@@ -412,8 +409,6 @@ def _configure_response_inspection_stream(
             _HTTP_STATUS_OK_MIN <= response.status_code < _HTTP_STATUS_REDIRECT_MIN
             and usage.has_connector_response_parser(firewall_name)
         )
-        if requires_response_inspection:
-            _maybe_log_response_encoding_inspection_risk(flow, response)
         needs_buffered_fallback = (
             http_response_classification.can_have_body(flow, response)
             and body_decoding.can_decode_json_usage_body(response.headers)
@@ -453,6 +448,21 @@ def _configure_response_inspection_stream(
 
 
 def is_confirmed_websocket_upgrade_response(flow: http.HTTPFlow) -> bool:
+    """Return whether ``flow`` completed a confirmed WebSocket upgrade.
+
+    Confirmation requires a response with status 101, the exact ``True``
+    value for ``WEBSOCKET_UPGRADE_REQUEST``, response ``Upgrade`` and
+    ``Connection`` field values containing the ``websocket`` and ``upgrade``
+    list tokens, singleton request ``Sec-WebSocket-Key`` and response
+    ``Sec-WebSocket-Accept`` fields, an ASCII request key, and a matching
+    RFC-generated accept token. Missing or malformed values fail closed and
+    return ``False``.
+
+    For an observable OpenAI Responses model-provider flow, ``True`` is the
+    signal for WebSocket usage activation and allows tracked-flow release to
+    wait for ``websocket_end()``; ``False`` follows ordinary HTTP terminal
+    handling.
+    """
     response = flow.response
     if response is None:
         return False
@@ -512,6 +522,7 @@ def configure_response_stream(flow: http.HTTPFlow) -> None:
     failure_observer = model_provider_failure.configure_response_observer(flow)
     setup = _configure_response_inspection_stream(flow, failure_observer)
     if setup.reject_uninspectable:
+        _log_response_encoding_fail_closed(flow, flow.response)
         _reject_uninspectable_response(flow)
         return
 

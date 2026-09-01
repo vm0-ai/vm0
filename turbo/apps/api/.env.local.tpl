@@ -102,9 +102,6 @@ BYTEPLUS_API_KEY=op://Development/byteplus/BYTEPLUS_API_KEY
 # Optional: BytePlus voice input STT
 BYTEPLUS_STT_API_KEY=op://Development/byteplus/BYTEPLUS_STT_API_KEY
 
-# Optional: Unsplash presentation image resolution
-UNSPLASH_ACCESS_KEY=op://Development/unsplash/UNSPLASH_ACCESS_KEY
-
 # Optional: Airtable OAuth Connector
 AIRTABLE_OAUTH_CLIENT_ID=op://Development/airtable/AIRTABLE_OAUTH_CLIENT_ID
 AIRTABLE_OAUTH_CLIENT_SECRET=op://Development/airtable/AIRTABLE_OAUTH_CLIENT_SECRET
@@ -246,6 +243,7 @@ WEBFLOW_OAUTH_CLIENT_SECRET=op://Development/webflow/WEBFLOW_OAUTH_CLIENT_SECRET
 
 # Optional: Stripe OAuth Connector
 STRIPE_OAUTH_CLIENT_ID=op://Development/stripe/STRIPE_OAUTH_CLIENT_ID
+STRIPE_OAUTH_CLIENT_SECRET=op://Development/stripe/STRIPE_OAUTH_CLIENT_SECRET
 
 # Optional: Stripe Billing (Vercel AI Gateway metering)
 STRIPE_VERCEL_GATEWAY_REPORT_ACCESS_KEY=op://Development/stripe/STRIPE_VERCEL_GATEWAY_REPORT_ACCESS_KEY

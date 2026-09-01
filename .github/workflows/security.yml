@@ -127,7 +127,7 @@ jobs:
           SEMGREP_SCAN_MODE: ${{ github.event_name == 'push' && 'full' || 'diff' }}
 
       - name: Upload Semgrep SARIF
-        uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         if: always() && github.event_name != 'merge_group'
         with:
           sarif_file: semgrep-results-for-code-scanning.sarif
@@ -144,7 +144,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           languages: javascript-typescript
           trap-caching: false
@@ -152,7 +152,7 @@ jobs:
           CODEQL_ACTION_OVERLAY_DATABASE_CACHE: false
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           category: codeql
 
@@ -261,6 +261,9 @@ jobs:
             .github/scripts/fetch-okou-desktop-artifact.sh \
             .github/scripts/list-okou-pages-preview-pr-numbers.sh \
             .github/scripts/pass-release-pr-ci-gates.sh \
+            .github/scripts/publish-okou-app-assets.sh \
+            .github/scripts/verify-okou-app-assets.sh \
+            .github/scripts/verify-okou-app-runtime.sh \
             .github/scripts/reconcile-and-start-runner-groups.sh \
             .github/scripts/reconcile-runner-binary-groups.sh \
             .github/actions/report-memory-peak/report.sh \
@@ -268,7 +271,6 @@ jobs:
             .github/scripts/run-semgrep.sh \
             .github/scripts/runner-behavior-*.sh \
             .github/scripts/smoke-okou-cli-artifact.sh \
-            .github/scripts/validate-desktop-migration-policy.sh \
             .github/scripts/verify-okou-cli-artifact.sh \
             .github/scripts/verify-okou-desktop-artifact.sh \
             .github/scripts/with-runner-lifecycle-lock.sh \
@@ -288,6 +290,9 @@ jobs:
             .github/scripts/tests/deploy-cli-local-test.sh \
             .github/scripts/tests/deploy-okou-pages-test.sh \
             .github/scripts/tests/deploy-okou-pages-workflow-test.sh \
+            .github/scripts/tests/publish-okou-app-assets-test.sh \
+            .github/scripts/tests/verify-okou-app-assets-test.sh \
+            .github/scripts/tests/verify-okou-app-runtime-test.sh \
             .github/scripts/tests/download-verified-test.sh \
             .github/scripts/tests/fetch-okou-desktop-artifact-test.sh \
             .github/scripts/tests/list-okou-pages-preview-pr-numbers-test.sh \
@@ -308,7 +313,6 @@ jobs:
             .github/scripts/tests/semgrep-results-test.sh \
             .github/scripts/tests/runner-behavior-agent-ready-benchmark-test.sh \
             .github/scripts/tests/runner-behavior-durable-test.sh \
-            .github/scripts/tests/validate-desktop-migration-policy-test.sh \
             e2e/scripts/ensure-stripe-cli.sh \
             e2e/helpers/browser.bash \
             e2e/helpers/trace-cli.sh \

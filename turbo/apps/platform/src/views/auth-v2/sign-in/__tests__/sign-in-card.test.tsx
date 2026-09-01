@@ -109,21 +109,13 @@ function setupSignInPage(
   options: SetupSignInPageOptions = {},
 ): void {
   mockSignInResource(state);
-  const url = new URL(options.url ?? "https://app.vm0.ai/v2/sign-in");
+  const url = new URL(options.url ?? "https://app.vm0.ai/sign-in");
   context.mocks.browser.url(url.toString());
   detachedSetupPage({
     context,
     path: `${url.pathname}${url.search}${url.hash}`,
     session: null,
     user: options.user ?? null,
-  });
-}
-
-function useGermanLocale(): void {
-  document.documentElement.lang = "de-DE";
-  context.mocks.data.userPreferences({
-    locale: "de-DE",
-    supportedLocales: ["de-DE", "en-US"],
   });
 }
 
@@ -158,11 +150,10 @@ async function waitForRoleElement(
   return element;
 }
 
-function navigateToLegacySignIn(): void {
+function navigateToSignUp(): void {
   // These cases exercise teardown after address-bar navigation. JSDOM cannot
-  // perform a document navigation, and the removed fallback leaves no rendered
-  // control for this transition, so invoke the production router command.
-  context.store.set(detachedNavigateTo$, ROUTES.signIn);
+  // perform a document navigation, so invoke the production router command.
+  context.store.set(detachedNavigateTo$, ROUTES.signUp);
 }
 
 function expectFieldErrorAssociation(
@@ -198,8 +189,8 @@ function signUpSwitchContext(): {
   ]);
   const hash = `#/factor-one?step=code&redirect_url=${encodeURIComponent(redirectUrl)}`;
   return {
-    expectedHref: `/v2/sign-up?${searchParams.toString()}${hash}`,
-    url: `https://app.vm0.ai/v2/sign-in?${searchParams.toString()}${hash}`,
+    expectedHref: `/sign-up?${searchParams.toString()}${hash}`,
+    url: `https://app.vm0.ai/sign-in?${searchParams.toString()}${hash}`,
   };
 }
 
@@ -226,6 +217,124 @@ async function submitIdentifier(
   await waitFor(() => {
     expect(mockedClerk.clientSignInCreate).toHaveBeenCalledWith({ identifier });
   });
+}
+
+function mockExpiredVerificationAttempt(): void {
+  mockedClerk.signInPrepareFirstFactor.mockResolvedValue(
+    currentSignInResource(),
+  );
+  mockedClerk.signInAttemptFirstFactor.mockRejectedValue({
+    errors: [
+      {
+        code: "verification_expired",
+        longMessage: "Sensitive provider detail must not be rendered.",
+      },
+    ],
+  });
+}
+
+async function openVerificationCodeStep(
+  method: string,
+  title: string,
+): Promise<HTMLElement> {
+  fireEvent.click(await waitForRoleElement("button", method));
+
+  const codeInput = await screen.findByLabelText("Verification code");
+  expect(screen.getByRole("heading", { level: 1, name: title })).toBeVisible();
+  expect(screen.getAllByRole("heading")).toHaveLength(1);
+  expect(roleElement("button", "Back")).toBeUndefined();
+  return codeInput;
+}
+
+async function recoverExpiredCodeWithOneResend(
+  codeInput: HTMLElement,
+): Promise<void> {
+  fireEvent.change(codeInput, { target: { value: "123456" } });
+  fireEvent.submit(containingForm(codeInput));
+
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(
+    "This verification code has expired. Request a new code.",
+  );
+  expect(document.activeElement).toBe(alert);
+  expectFieldErrorAssociation(codeInput, alert);
+  expect(
+    screen.queryByText("Sensitive provider detail must not be rendered."),
+  ).toBeNull();
+
+  fireEvent.change(codeInput, { target: { value: "654321" } });
+  await waitFor(() => {
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+  expect(codeInput).toHaveValue("654321");
+  expectNoFieldErrorAssociation(codeInput);
+
+  fireEvent.submit(containingForm(codeInput));
+  const retryAlert = await screen.findByRole("alert");
+  expect(document.activeElement).toBe(retryAlert);
+  expectFieldErrorAssociation(codeInput, retryAlert);
+
+  const resend = await waitForRoleElement(
+    "button",
+    "Didn't receive a code? Resend",
+  );
+  expect(resend).toBeEnabled();
+  fireEvent.click(resend);
+  fireEvent.click(resend);
+
+  await waitFor(() => {
+    expect(mockedClerk.signInPrepareFirstFactor).toHaveBeenCalledTimes(2);
+  });
+  await waitFor(() => {
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expectNoFieldErrorAssociation(codeInput);
+  });
+  expect(codeInput).toHaveValue("");
+}
+
+interface RestoredPreparedStepOptions {
+  readonly cooldownIdentity: string;
+  readonly factor: MockedSignInFactor;
+  readonly strategy: "email_code" | "reset_password_email_code";
+}
+
+async function setupRestoredPreparedStep(
+  options: RestoredPreparedStepOptions,
+): Promise<void> {
+  const startedAt = Date.parse("2026-08-25T08:00:00.000Z");
+  mockNow(startedAt + 1000, context.signal);
+  context.store.set(
+    signInResendCooldownStorage.set$,
+    JSON.stringify({
+      deadlineMs: startedAt + 30_000,
+      identity: options.cooldownIdentity,
+    }),
+  );
+  mockPreparedFirstFactor(options.strategy);
+  setupSignInPage({
+    identifier: "person@example.com",
+    status: "needs_first_factor",
+    supportedFirstFactors: [options.factor, passwordFactor()],
+  });
+
+  await expect(
+    screen.findByLabelText("Verification code"),
+  ).resolves.toBeVisible();
+  await expect(
+    waitForRoleElement("button", "Didn't receive a code? Resend (29)"),
+  ).resolves.toBeDisabled();
+  expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByLabelText("Toggle theme"));
+  expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
+}
+
+async function editRestoredIdentifier(): Promise<void> {
+  fireEvent.click(await waitForRoleElement("button", "Edit identifier"));
+  await expect(screen.findByLabelText("Email address")).resolves.toHaveValue(
+    "person@example.com",
+  );
+  expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
 }
 
 describe("auth v2 sign-in flow", () => {
@@ -706,7 +815,7 @@ describe("auth v2 sign-in flow", () => {
     setupSignInPage(
       { status: "needs_identifier" },
       {
-        url: `https://app.vm0.ai/v2/sign-in?${authSearch.toString()}${authHash}`,
+        url: `https://app.vm0.ai/sign-in?${authSearch.toString()}${authHash}`,
       },
     );
 
@@ -720,7 +829,7 @@ describe("auth v2 sign-in flow", () => {
       );
     });
     expect(mockedClerk.signInAuthenticateWithRedirect).toHaveBeenCalledWith({
-      redirectUrl: `/v2/sign-in/sso-callback?${authSearch.toString()}${authHash}`,
+      redirectUrl: `/sign-in/sso-callback?${authSearch.toString()}${authHash}`,
       redirectUrlComplete: redirectUrl,
       strategy: "oauth_google",
     });
@@ -746,7 +855,7 @@ describe("auth v2 sign-in flow", () => {
         status: "complete",
       },
       {
-        url: `https://app.vm0.ai/v2/sign-in/sso-callback?redirect_url=${encodeURIComponent(redirectUrl)}`,
+        url: `https://app.vm0.ai/sign-in/sso-callback?redirect_url=${encodeURIComponent(redirectUrl)}`,
       },
     );
 
@@ -756,7 +865,7 @@ describe("auth v2 sign-in flow", () => {
     });
     expect(mockedClerk.handleRedirectCallback).toHaveBeenCalledWith(
       expect.objectContaining({
-        firstFactorUrl: expect.stringContaining("/v2/sign-in/factor-one"),
+        firstFactorUrl: expect.stringContaining("/sign-in/factor-one"),
         reloadResource: "signIn",
         signInFallbackRedirectUrl: redirectUrl,
         signInForceRedirectUrl: redirectUrl,
@@ -888,10 +997,10 @@ describe("auth v2 sign-in flow", () => {
       throw new Error("Expected Google One Tap callbacks to be registered");
     }
 
-    navigateToLegacySignIn();
+    navigateToSignUp();
     await expect(
-      screen.findByTestId("clerk-sign-in"),
-    ).resolves.toBeInTheDocument();
+      screen.findByRole("region", { name: "Create your account" }),
+    ).resolves.toBeVisible();
     await waitFor(() => {
       expect(mockedGoogleOneTap.cancel).toHaveBeenCalledTimes(1);
     });
@@ -917,7 +1026,7 @@ describe("auth v2 sign-in flow", () => {
 
     setupSignInPage(
       { status: "needs_identifier" },
-      { url: "https://app.vm0.ai/v2/sign-in/factor-one" },
+      { url: "https://app.vm0.ai/sign-in/factor-one" },
     );
 
     await expect(
@@ -928,60 +1037,77 @@ describe("auth v2 sign-in flow", () => {
     expect(mockedClerk.clientSignInCreate).not.toHaveBeenCalled();
   });
 
-  it("retries Google One Tap after a script failure and back navigation", async () => {
-    context.mocks.browser.fedCm();
-    mockAuthV2Capabilities({
-      googleOAuth: true,
-      googleOneTapClientId: "google-client-id",
-    });
-    const failedScript = createStalledGoogleOneTapScript();
-    setupSignInPage({ status: "needs_identifier" });
-
-    // Script loading is a browser resource boundary and cannot be triggered
-    // through a rendered control, so dispatch its terminal event directly.
-    await screen.findByLabelText("Email address");
-    fireEvent.error(failedScript);
-
-    await waitFor(() => {
-      expect(failedScript).not.toBeInTheDocument();
-    });
-    await expect(screen.findByRole("alert")).resolves.toBeVisible();
-
-    navigateToLegacySignIn();
-    await expect(
-      screen.findByTestId("clerk-sign-in"),
-    ).resolves.toBeInTheDocument();
-
-    const retryScript = createStalledGoogleOneTapScript();
-    act(() => {
-      window.history.back();
-    });
-    await screen.findByLabelText("Email address");
-    expect(retryScript).not.toBe(failedScript);
-
-    mockGoogleOneTapCredential("retry-google-one-tap-token");
-    mockedClerk.clientSignInCreate.mockImplementation((params) => {
-      if (params.strategy === "google_one_tap") {
-        return Promise.resolve(
-          moveSignInTo({
-            createdSessionId: "session_one_tap_retry",
-            status: "complete",
-          }),
-        );
-      }
-      return Promise.resolve(currentSignInResource());
-    });
-    fireEvent.load(retryScript);
-
-    await waitFor(() => {
-      expect(mockedClerk.clientSignInCreate).toHaveBeenCalledWith({
-        signUpIfMissing: false,
-        strategy: "google_one_tap",
-        token: "retry-google-one-tap-token",
+  it.each([
+    { event: "error" as const, name: "script load failure" },
+    { event: "load" as const, name: "script initialization failure" },
+  ])(
+    "silently falls back after a Google One Tap $name and retries after back navigation",
+    async ({ event }) => {
+      context.mocks.browser.fedCm();
+      mockAuthV2Capabilities({
+        googleOAuth: true,
+        googleOneTapClientId: "google-client-id",
       });
-      expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
-    });
-  });
+      const failedScript = createStalledGoogleOneTapScript();
+      setupSignInPage({ status: "needs_identifier" });
+
+      // Script loading is a browser resource boundary and cannot be triggered
+      // through a rendered control, so dispatch its terminal event directly.
+      await screen.findByLabelText("Email address");
+      await act(async () => {
+        if (event === "error") {
+          fireEvent.error(failedScript);
+        } else {
+          fireEvent.load(failedScript);
+        }
+        await Promise.resolve();
+      });
+
+      expect(failedScript).not.toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      await expect(
+        screen.findByLabelText("Email address"),
+      ).resolves.toBeEnabled();
+      await expect(
+        waitForRoleElement("button", "Continue with Google"),
+      ).resolves.toBeEnabled();
+
+      navigateToSignUp();
+      await expect(
+        screen.findByRole("region", { name: "Create your account" }),
+      ).resolves.toBeVisible();
+
+      const retryScript = createStalledGoogleOneTapScript();
+      act(() => {
+        window.history.back();
+      });
+      await screen.findByLabelText("Email address");
+      expect(retryScript).not.toBe(failedScript);
+
+      mockGoogleOneTapCredential("retry-google-one-tap-token");
+      mockedClerk.clientSignInCreate.mockImplementation((params) => {
+        if (params.strategy === "google_one_tap") {
+          return Promise.resolve(
+            moveSignInTo({
+              createdSessionId: "session_one_tap_retry",
+              status: "complete",
+            }),
+          );
+        }
+        return Promise.resolve(currentSignInResource());
+      });
+      fireEvent.load(retryScript);
+
+      await waitFor(() => {
+        expect(mockedClerk.clientSignInCreate).toHaveBeenCalledWith({
+          signUpIfMissing: false,
+          strategy: "google_one_tap",
+          token: "retry-google-one-tap-token",
+        });
+        expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
+      });
+    },
+  );
 
   it.each([
     {
@@ -1548,170 +1674,77 @@ describe("auth v2 sign-in flow", () => {
     });
   });
 
-  it.each([
-    {
-      factors: [emailCodeFactor()],
-      method: "Email code to p***@example.com",
-      name: "email verification",
-      recovery: false,
-      title: "Check your email",
-    },
-    {
-      factors: [passwordFactor(), passwordResetFactor()],
-      method: "Reset your password",
-      name: "password reset",
-      recovery: true,
-      title: "Reset password",
-    },
-  ])("recovers an expired $name code with one resend", async (testCase) => {
-    mockedClerk.signInPrepareFirstFactor.mockResolvedValue(
-      currentSignInResource(),
-    );
-    mockedClerk.signInAttemptFirstFactor.mockRejectedValue({
-      errors: [
-        {
-          code: "verification_expired",
-          longMessage: "Sensitive provider detail must not be rendered.",
-        },
-      ],
-    });
-
+  it("recovers an expired email verification code with one resend", async () => {
+    mockExpiredVerificationAttempt();
     setupSignInPage({ status: "needs_identifier" });
-    await submitIdentifier("person@example.com", testCase.factors);
-    if (testCase.recovery) {
-      fireEvent.click(await waitForRoleElement("button", "Forgot password?"));
-      await expect(
-        screen.findByRole("heading", { name: "Forgot Password?" }),
-      ).resolves.toBeVisible();
-      expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
-    }
-    fireEvent.click(await waitForRoleElement("button", testCase.method));
+    await submitIdentifier("person@example.com", [emailCodeFactor()]);
 
-    const codeInput = await screen.findByLabelText("Verification code");
-    expect(
-      screen.getByRole("heading", { level: 1, name: testCase.title }),
-    ).toBeVisible();
-    expect(screen.getAllByRole("heading")).toHaveLength(1);
-    if (testCase.recovery) {
-      expect(roleElement("button", "Back")).toBeUndefined();
-      expect(roleElement("button", "Use another method")).toBeUndefined();
-    } else {
-      await expect(
-        waitForRoleElement("button", "Use another method"),
-      ).resolves.toBeVisible();
-      expect(roleElement("button", "Back")).toBeUndefined();
-    }
-    fireEvent.change(codeInput, { target: { value: "123456" } });
-    fireEvent.submit(containingForm(codeInput));
-
-    const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent(
-      "This verification code has expired. Request a new code.",
+    const codeInput = await openVerificationCodeStep(
+      "Email code to p***@example.com",
+      "Check your email",
     );
-    expect(document.activeElement).toBe(alert);
-    expectFieldErrorAssociation(codeInput, alert);
-    expect(
-      screen.queryByText("Sensitive provider detail must not be rendered."),
-    ).toBeNull();
+    await expect(
+      waitForRoleElement("button", "Use another method"),
+    ).resolves.toBeVisible();
 
-    fireEvent.change(codeInput, { target: { value: "654321" } });
-    await waitFor(() => {
-      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    });
-    expect(codeInput).toHaveValue("654321");
-    expectNoFieldErrorAssociation(codeInput);
-
-    fireEvent.submit(containingForm(codeInput));
-    const retryAlert = await screen.findByRole("alert");
-    expect(document.activeElement).toBe(retryAlert);
-    expectFieldErrorAssociation(codeInput, retryAlert);
-
-    const resend = await waitForRoleElement(
-      "button",
-      "Didn't receive a code? Resend",
-    );
-    expect(resend).toBeEnabled();
-    fireEvent.click(resend);
-    fireEvent.click(resend);
-
-    await waitFor(() => {
-      expect(mockedClerk.signInPrepareFirstFactor).toHaveBeenCalledTimes(2);
-    });
-    await waitFor(() => {
-      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-      expectNoFieldErrorAssociation(codeInput);
-    });
-    expect(codeInput).toHaveValue("");
+    await recoverExpiredCodeWithOneResend(codeInput);
   });
 
-  it.each([
-    {
+  it("recovers an expired password reset code with one resend", async () => {
+    mockExpiredVerificationAttempt();
+    setupSignInPage({ status: "needs_identifier" });
+    await submitIdentifier("person@example.com", [
+      passwordFactor(),
+      passwordResetFactor(),
+    ]);
+
+    fireEvent.click(await waitForRoleElement("button", "Forgot password?"));
+    await expect(
+      screen.findByRole("heading", { name: "Forgot Password?" }),
+    ).resolves.toBeVisible();
+    expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
+
+    const codeInput = await openVerificationCodeStep(
+      "Reset your password",
+      "Reset password",
+    );
+    expect(roleElement("button", "Use another method")).toBeUndefined();
+
+    await recoverExpiredCodeWithOneResend(codeInput);
+  });
+
+  it("restores a prepared email-code step and its editable identifier without another initial dispatch", async () => {
+    await setupRestoredPreparedStep({
       cooldownIdentity: "email-code:email_primary",
       factor: emailCodeFactor(),
-      name: "email-code",
-      showsMethodChooser: true,
-      strategy: "email_code" as const,
-    },
-    {
+      strategy: "email_code",
+    });
+
+    fireEvent.click(await waitForRoleElement("button", "Use another method"));
+    await expect(
+      screen.findByRole("heading", { name: "Use another method" }),
+    ).resolves.toBeVisible();
+    fireEvent.click(await waitForRoleElement("button", "Back"));
+    await expect(
+      screen.findByLabelText("Verification code"),
+    ).resolves.toBeVisible();
+    expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
+
+    await editRestoredIdentifier();
+  });
+
+  it("restores a prepared password-reset-code step and its editable identifier without another initial dispatch", async () => {
+    await setupRestoredPreparedStep({
       cooldownIdentity: "password-reset:email_primary",
       factor: passwordResetFactor(),
-      name: "password-reset-code",
-      showsMethodChooser: false,
-      strategy: "reset_password_email_code" as const,
-    },
-  ])(
-    "restores a prepared $name step and its editable identifier without another initial dispatch",
-    async (testCase) => {
-      const startedAt = Date.parse("2026-08-25T08:00:00.000Z");
-      mockNow(startedAt + 1000, context.signal);
-      context.store.set(
-        signInResendCooldownStorage.set$,
-        JSON.stringify({
-          deadlineMs: startedAt + 30_000,
-          identity: testCase.cooldownIdentity,
-        }),
-      );
-      mockPreparedFirstFactor(testCase.strategy);
-      setupSignInPage({
-        identifier: "person@example.com",
-        status: "needs_first_factor",
-        supportedFirstFactors: [testCase.factor, passwordFactor()],
-      });
+      strategy: "reset_password_email_code",
+    });
 
-      await expect(
-        screen.findByLabelText("Verification code"),
-      ).resolves.toBeVisible();
-      await expect(
-        waitForRoleElement("button", "Didn't receive a code? Resend (29)"),
-      ).resolves.toBeDisabled();
-      expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
+    expect(roleElement("button", "Back")).toBeUndefined();
+    expect(roleElement("button", "Use another method")).toBeUndefined();
 
-      fireEvent.click(screen.getByLabelText("Toggle theme"));
-      expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
-      if (testCase.showsMethodChooser) {
-        fireEvent.click(
-          await waitForRoleElement("button", "Use another method"),
-        );
-        await expect(
-          screen.findByRole("heading", { name: "Use another method" }),
-        ).resolves.toBeVisible();
-        fireEvent.click(await waitForRoleElement("button", "Back"));
-        await expect(
-          screen.findByLabelText("Verification code"),
-        ).resolves.toBeVisible();
-        expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
-      } else {
-        expect(roleElement("button", "Back")).toBeUndefined();
-        expect(roleElement("button", "Use another method")).toBeUndefined();
-      }
-
-      fireEvent.click(await waitForRoleElement("button", "Edit identifier"));
-      await expect(
-        screen.findByLabelText("Email address"),
-      ).resolves.toHaveValue("person@example.com");
-      expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
-    },
-  );
+    await editRestoredIdentifier();
+  });
 
   it("keeps an edited restored identifier authoritative over a stale resource snapshot", async () => {
     const factors = [emailCodeFactor(), passwordFactor()];
@@ -1790,11 +1823,10 @@ describe("auth v2 sign-in flow", () => {
     const passwordInput = await screen.findByLabelText("Password");
     fireEvent.change(passwordInput, { target: { value: "route-secret" } });
 
-    navigateToLegacySignIn();
+    navigateToSignUp();
     await expect(
-      screen.findByTestId("clerk-sign-in"),
-    ).resolves.toBeInTheDocument();
-    expect(screen.getByTestId("clerk-google-one-tap")).toBeInTheDocument();
+      screen.findByRole("region", { name: "Create your account" }),
+    ).resolves.toBeVisible();
 
     act(() => {
       window.history.back();
@@ -1804,9 +1836,6 @@ describe("auth v2 sign-in flow", () => {
     );
 
     await expect(screen.findByLabelText("Password")).resolves.toHaveValue("");
-    expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
-    expect(document.querySelector('[class*="cl-"]')).not.toBeInTheDocument();
   });
 
   it("runs the password-reset code and new-password sequence", async () => {
@@ -2118,7 +2147,7 @@ describe("auth v2 sign-in flow", () => {
     });
     setupSignInPage(
       { status: "needs_identifier" },
-      { url: "https://app.okou.ai/v2/sign-in" },
+      { url: "https://app.okou.ai/sign-in" },
     );
 
     const identifierInput = await screen.findByLabelText("Email address");
@@ -2137,17 +2166,16 @@ describe("auth v2 sign-in flow", () => {
     );
   });
 
-  it("substitutes the Okou brand in German entry and password subtitles", async () => {
-    useGermanLocale();
+  it("substitutes the Okou brand during English startup and password flow", async () => {
     setupSignInPage(
       { status: "needs_identifier" },
-      { url: "https://app.okou.ai/v2/sign-in" },
+      { url: "https://app.okou.ai/sign-in" },
     );
 
-    const identifierInput = await screen.findByLabelText("E-Mail-Adresse");
+    const identifierInput = await screen.findByLabelText("Email address");
     expect(
-      screen.getByRole("region", { name: "Bei Okou anmelden" }),
-    ).toHaveAccessibleDescription("weiter zu Okou");
+      screen.getByRole("region", { name: "Sign in to Okou" }),
+    ).toHaveAccessibleDescription("Welcome back! Please sign in to continue");
 
     const nextResource = moveSignInTo({
       status: "needs_first_factor",
@@ -2159,10 +2187,12 @@ describe("auth v2 sign-in flow", () => {
     });
     fireEvent.submit(containingForm(identifierInput));
 
-    await screen.findByLabelText("Passwort");
+    await screen.findByLabelText("Password");
     expect(
-      screen.getByRole("region", { name: "Geben Sie Ihr Passwort ein" }),
-    ).toHaveAccessibleDescription("weiter zu Okou");
+      screen.getByRole("region", { name: "Enter your password" }),
+    ).toHaveAccessibleDescription(
+      "Enter the password associated with your account",
+    );
     expect(document.body).not.toHaveTextContent("{{brandName}}");
   });
 
@@ -2177,9 +2207,8 @@ describe("auth v2 sign-in flow", () => {
     const signUp = await waitForRoleElement("link", "Sign up");
     expect(signUp).toHaveAttribute(
       "href",
-      "/v2/sign-up?redirect_url=https%3A%2F%2Fapp.vm0.ai",
+      "/sign-up?redirect_url=https%3A%2F%2Fapp.vm0.ai",
     );
-    expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
 
     fireEvent.click(await waitForRoleElement("button", "Use another method"));
     await expect(screen.findByLabelText("Email address")).resolves.toHaveValue(
@@ -2204,7 +2233,6 @@ describe("auth v2 sign-in flow", () => {
         return candidate.textContent?.trim() === "Sign up";
       }),
     ).toHaveLength(1);
-    expect(screen.queryByTestId("clerk-sign-up")).not.toBeInTheDocument();
   });
 
   it("does not render the ordinary sign-up switch while completing", async () => {

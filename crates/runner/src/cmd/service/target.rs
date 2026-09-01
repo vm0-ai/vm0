@@ -74,24 +74,13 @@ impl RunnerServiceUnit {
     ///
     /// Accepts `service-vm0-runner-<suffix>.lock` only when `<suffix>` passes
     /// the same validation as [`Self::from_suffix`]. Historical lock names
-    /// that use the reserved wrapper but fail current validation remain
-    /// classified by [`Self::is_reserved_lock_file_name`] for rolling compatibility.
+    /// that fail current validation are rejected.
     pub(crate) fn from_lock_file_name(file_name: &str) -> Option<Self> {
         let unit_name = file_name
             .strip_prefix(LOCK_PREFIX)?
             .strip_suffix(LOCK_SUFFIX)?;
         let suffix = unit_name.strip_prefix(UNIT_PREFIX)?;
         Self::from_suffix(suffix).ok()
-    }
-
-    /// Return whether a filename belongs to the reserved service-lock namespace.
-    ///
-    /// This intentionally recognizes the broad `service-*.lock` wrapper used
-    /// by historical runners, even when the enclosed unit name fails current
-    /// validation. General lock GC must preserve those paths while older
-    /// runner binaries can overlap with the current version.
-    pub(crate) fn is_reserved_lock_file_name(file_name: &str) -> bool {
-        file_name.starts_with(LOCK_PREFIX) && file_name.ends_with(LOCK_SUFFIX)
     }
 
     /// Return the validated suffix before adding the `vm0-runner-` prefix or
@@ -238,24 +227,5 @@ mod tests {
             RunnerServiceUnit::from_lock_file_name("workspace-image-cache-v1.0.0.lock").is_none()
         );
         assert!(RunnerServiceUnit::from_lock_file_name("service-vm0-runner-UPPER.lock").is_none());
-    }
-
-    #[test]
-    fn reserved_lock_file_name_classifier_preserves_historical_namespace() {
-        assert!(RunnerServiceUnit::is_reserved_lock_file_name(
-            "service-vm0-runner-v1.0.0.lock"
-        ));
-        assert!(RunnerServiceUnit::is_reserved_lock_file_name(
-            "service-vm0-runner-OLD_NAME.lock"
-        ));
-        assert!(RunnerServiceUnit::is_reserved_lock_file_name(
-            "service-.lock"
-        ));
-        assert!(!RunnerServiceUnit::is_reserved_lock_file_name(
-            "workspace-image-cache-v1.0.0.lock"
-        ));
-        assert!(!RunnerServiceUnit::is_reserved_lock_file_name(
-            "service-vm0-runner-v1.0.0"
-        ));
     }
 }

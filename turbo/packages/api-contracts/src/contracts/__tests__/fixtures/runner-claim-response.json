@@ -28,8 +28,7 @@
   },
   "environment": {
     "FIXTURE_API_KEY": "fixture-placeholder-not-a-secret",
-    "FIXTURE_MODEL": "fixture-model",
-    "OKOU_AGENT_ID": "fixture-agent-id"
+    "FIXTURE_MODEL": "fixture-model"
   },
   "platformEnvironment": {
     "OKOU_AGENT_ID": "fixture-agent-id"

@@ -1,9 +1,6 @@
 /** Typed append-only commands for the canonical ChatEvent stream. */
 import { randomUUID } from "node:crypto";
-import {
-  isValidChatEventRevocation,
-  type OutputToolPayload,
-} from "@okouai/api-contracts/contracts/chat-events";
+import { isValidChatEventRevocation } from "@okouai/api-contracts/contracts/chat-events";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { ChatFeishuMessageFiles } from "@okouai/db/jsonb-contracts/chat-feishu-context";
 import type {
@@ -22,7 +19,6 @@ import {
 } from "@okouai/db/schema/chat-event";
 import { chatFeishuContext } from "@okouai/db/schema/chat-feishu-context";
 import { chatGithubContext } from "@okouai/db/schema/chat-github-context";
-import { chatMorningBriefContext } from "@okouai/db/schema/chat-morning-brief-context";
 import { chatSlackContext } from "@okouai/db/schema/chat-slack-context";
 import { chatTeamsContext } from "@okouai/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@okouai/db/schema/chat-telegram-context";
@@ -68,7 +64,6 @@ type ChatEventDisplayContext =
       readonly teamsContext?: never;
       readonly telegramContext?: never;
       readonly githubContext?: never;
-      readonly morningBriefContext?: never;
       readonly agentphoneContext?: never;
     }
   | {
@@ -91,7 +86,6 @@ type ChatEventDisplayContext =
       readonly teamsContext?: never;
       readonly telegramContext?: never;
       readonly githubContext?: never;
-      readonly morningBriefContext?: never;
       readonly agentphoneContext?: never;
     }
   | {
@@ -120,7 +114,6 @@ type ChatEventDisplayContext =
       };
       readonly telegramContext?: never;
       readonly githubContext?: never;
-      readonly morningBriefContext?: never;
       readonly agentphoneContext?: never;
     }
   | {
@@ -145,7 +138,6 @@ type ChatEventDisplayContext =
         readonly senderLanguage: string | null;
       };
       readonly githubContext?: never;
-      readonly morningBriefContext?: never;
       readonly agentphoneContext?: never;
     }
   | {
@@ -164,7 +156,6 @@ type ChatEventDisplayContext =
         readonly triggerCommentBody: string | null;
         readonly publicBrand: PublicBrand;
       };
-      readonly morningBriefContext?: never;
       readonly agentphoneContext?: never;
     }
   | {
@@ -173,20 +164,6 @@ type ChatEventDisplayContext =
       readonly teamsContext?: never;
       readonly telegramContext?: never;
       readonly githubContext?: never;
-      readonly morningBriefContext: {
-        readonly deliveryId: string;
-        readonly timezone: string;
-        readonly triggeredAt: Date;
-      };
-      readonly agentphoneContext?: never;
-    }
-  | {
-      readonly slackContext?: never;
-      readonly feishuContext?: never;
-      readonly teamsContext?: never;
-      readonly telegramContext?: never;
-      readonly githubContext?: never;
-      readonly morningBriefContext?: never;
       readonly agentphoneContext: {
         readonly messageText: string;
         readonly threadContext: string;
@@ -209,7 +186,6 @@ type ChatEventDisplayContext =
       readonly teamsContext?: never;
       readonly telegramContext?: never;
       readonly githubContext?: never;
-      readonly morningBriefContext?: never;
       readonly agentphoneContext?: never;
     };
 
@@ -305,14 +281,6 @@ type OutputFollowupsEvent = ChatEventIdentity & {
   readonly content: string;
 };
 
-type OutputToolEvent = ChatEventIdentity &
-  ChatEventOutputSequence &
-  OutputToolPayload & {
-    readonly eventType: "output.tool";
-    readonly runId: string;
-    readonly content?: null;
-  };
-
 type RunQueuedEvent = ChatEventIdentity & {
   readonly eventType: "run.queued";
   readonly runId: string;
@@ -399,7 +367,6 @@ export type NewChatEvent =
   | OutputErrorEvent
   | OutputThinkingEvent
   | OutputFollowupsEvent
-  | OutputToolEvent
   | RunQueuedEvent
   | RunDequeuedEvent
   | RunCompletedEvent
@@ -584,14 +551,6 @@ type NewDisplayContext =
       readonly connectorSourceId: string | null;
       readonly publicBrand: PublicBrand;
       readonly triggerBrief: string | null;
-    }
-  | {
-      readonly type: "morning_brief";
-      readonly id: string;
-      readonly chatThreadId: string;
-      readonly deliveryId: string;
-      readonly timezone: string;
-      readonly triggeredAt: Date;
     };
 
 function newAutomationDisplayContext(
@@ -713,17 +672,6 @@ function newDisplayContext(
     };
   }
 
-  const morningBriefContext =
-    "morningBriefContext" in values ? values.morningBriefContext : undefined;
-  if (morningBriefContext !== undefined) {
-    return {
-      type: "morning_brief",
-      id: eventId,
-      chatThreadId: values.chatThreadId,
-      ...morningBriefContext,
-    };
-  }
-
   const agentphoneContext =
     "agentphoneContext" in values ? values.agentphoneContext : undefined;
   if (agentphoneContext !== undefined) {
@@ -777,21 +725,6 @@ function replacementContext(
     pointer: displayContextPointer(displayContext),
     displayContext,
   };
-}
-
-async function insertMorningBriefContext(
-  tx: ChatEventWriteTransaction,
-  context: Extract<NewDisplayContext, { readonly type: "morning_brief" }>,
-  createdAt: Date,
-): Promise<void> {
-  await tx.insert(chatMorningBriefContext).values({
-    id: context.id,
-    chatThreadId: context.chatThreadId,
-    deliveryId: context.deliveryId,
-    timezone: context.timezone,
-    triggeredAt: context.triggeredAt,
-    createdAt,
-  });
 }
 
 async function insertAgentphoneDisplayContext(
@@ -980,9 +913,6 @@ async function insertDisplayContext(
     });
     return;
   }
-  if (context.type === "morning_brief") {
-    return insertMorningBriefContext(tx, context, createdAt);
-  }
 }
 
 function canonicalChatEventPayload(
@@ -994,15 +924,6 @@ function canonicalChatEventPayload(
   const error = "error" in values ? values.error : undefined;
   const usagePayload =
     "usagePayload" in values ? values.usagePayload : undefined;
-  const toolPayload =
-    values.eventType === "output.tool"
-      ? {
-          toolUseId: values.toolUseId,
-          action: values.action,
-          status: values.status,
-          summary: values.summary,
-        }
-      : {};
   const payload: ChatEventPayload = {
     ...(content === null || content === undefined ? {} : { content }),
     ...(userMessage === null || userMessage === undefined
@@ -1013,7 +934,6 @@ function canonicalChatEventPayload(
     ...(usagePayload === null || usagePayload === undefined
       ? {}
       : { usage: usagePayload }),
-    ...toolPayload,
   };
   return Object.keys(payload).length === 0 ? null : payload;
 }

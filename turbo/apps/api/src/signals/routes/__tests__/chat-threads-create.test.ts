@@ -16,6 +16,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import {
   createConnectorBddApi,
@@ -794,6 +795,35 @@ describe("POST /api/zero/chat-threads", () => {
       [200],
     );
     expect(afterDisconnect.body.selections).toStrictEqual([]);
+  });
+
+  it("routes thread-list invalidations only to the user-org channel", async () => {
+    const fixture = await seedAgent();
+    const token = okouToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["chat-thread:read", "chat-thread:write"],
+    });
+
+    await accept(
+      threadsClient().create({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          agentId: fixture.agentId,
+          model: WORKSPACE_DEFAULT_MODEL,
+        },
+      }),
+      [201],
+    );
+    await flushWaitUntilForTest();
+    expect(context.mocks.ably.channelGet.mock.calls).toStrictEqual([
+      [`user-org:${fixture.userId}:${fixture.orgId}`],
+    ]);
+    expect(context.mocks.ably.publish).toHaveBeenCalledOnce();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "threadListChanged",
+      null,
+    );
   });
 
   it("creates a titled thread with ZERO_TOKEN chat-thread:write capability", async () => {

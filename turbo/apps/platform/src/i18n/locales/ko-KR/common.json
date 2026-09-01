@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Codex 오류",
       "commandStatus": "명령 {{status}}",
+      "contextCompaction": "컨텍스트 압축 완료",
       "error": "오류: {{error}}",
       "fileChangeKind": "변경",
       "fileOperationCompleted": "파일 작업 완료",
@@ -27,6 +28,12 @@
       },
       "status": "상태: {{status}}",
       "statusDetail": "상태: {{status}}",
+      "subAgentActivity": {
+        "completed": "하위 에이전트 완료",
+        "interacted": "하위 에이전트와 상호 작용",
+        "interrupted": "하위 에이전트 중단",
+        "started": "하위 에이전트 시작"
+      },
       "turnFailed": "턴 실패",
       "turnStatus": "턴 {{status}}",
       "warning": "[경고] {{message}}",
@@ -363,51 +370,6 @@
     }
   },
   "appShell": {
-    "browserUpgrade": {
-      "browser": {
-        "action": "브라우저 업데이트",
-        "description": "{{assistantName}}는 현재 브라우저 버전을 지원하지 않습니다. 계속하려면 브라우저를 업데이트하세요.",
-        "title": "계속하려면 브라우저를 업데이트하세요"
-      },
-      "chrome": {
-        "action": "Chrome 업데이트",
-        "description": "{{assistantName}}는 현재 Chrome 버전을 지원하지 않습니다. 계속하려면 Chrome을 업데이트하세요.",
-        "title": "계속하려면 Chrome을 업데이트하세요"
-      },
-      "chromium": {
-        "action": "Chromium 업데이트",
-        "description": "{{assistantName}}는 현재 Chromium 버전을 지원하지 않습니다. 계속하려면 Chromium을 업데이트하세요.",
-        "title": "계속하려면 Chromium을 업데이트하세요"
-      },
-      "ios": {
-        "action": "iOS 업데이트",
-        "description": "{{assistantName}}는 현재 iOS 버전을 지원하지 않습니다. 계속하려면 iOS를 업데이트하세요.",
-        "title": "계속하려면 iOS를 업데이트하세요"
-      },
-      "safari": {
-        "action": "Safari 업데이트",
-        "description": "{{assistantName}}는 현재 Safari 버전을 지원하지 않습니다. 계속하려면 Safari를 업데이트하세요.",
-        "title": "계속하려면 Safari를 업데이트하세요"
-      }
-    },
-    "loading": {
-      "ariaLabel": "워크스페이스를 불러오는 중",
-      "messages": {
-        "almostThere": "거의 완료되었습니다...",
-        "brewingIdeas": "아이디어를 구상 중...",
-        "connectingDots": "연결 중...",
-        "gettingReady": "준비 중...",
-        "loadingWorkspace": "워크스페이스를 불러오는 중...",
-        "spinningTeam": "팀을 구성하는 중...",
-        "tuningInstruments": "도구를 조율하는 중...",
-        "warmingNeurons": "뉴런을 예열하는 중..."
-      }
-    },
-    "logoAlt": "{{brandName}}",
-    "metadata": {
-      "description": "{{assistantName}}는 {{brandName}}의 AI 팀원입니다. {{assistantName}}에 텍스트를 보내거나 웹에서 채팅하세요 — 리서치, 이메일, 문서, Slack, GitHub, Notion 및 100개 이상의 도구를 지원합니다.",
-      "title": "{{assistantName}} — {{brandName}}의 AI 팀원"
-    },
     "shortcutHelp": {
       "close": "단축키 닫기",
       "description": "이 페이지에서 사용 가능한 단축키",
@@ -653,8 +615,8 @@
       "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}}장",
       "importedSlides_other": "{{count}}장",
-      "introVideo": "인트로 비디오",
       "multiAccent": "다중 악센트",
+      "needPro": "Pro 필요",
       "nextSlide": "다음 슬라이드 미리보기",
       "noMatches": "일치하는 항목 없음",
       "placeholder": "{{title}} 웹사이트 미리보기 자리 표시자",
@@ -671,7 +633,6 @@
       "searchConnector": "템플릿 검색",
       "searchConnectors": "템플릿 검색",
       "selected": "템플릿: {{title}}",
-      "selectIntroVideo": "인트로 비디오 템플릿 선택 {{title}}",
       "selectStyle": "스타일 선택 {{style}}",
       "selectTemplate": "템플릿 선택 {{title}}",
       "selectVideo": "비디오 템플릿 선택 {{title}}",
@@ -708,6 +669,7 @@
       "tryDifferentSearch": "다른 검색어를 시도해 보세요.",
       "use": "사용",
       "useThisTemplate": "이 템플릿 사용",
+      "viewVideoPlans": "동영상 템플릿 {{title}}의 요금제 보기",
       "visibility": {
         "change": "변경",
         "changeLabel": "템플릿 공개 범위 변경",
@@ -1894,18 +1856,17 @@
       "agentSuggestions": "에이전트",
       "configureModel": "모델 구성",
       "createWorkflow": "워크플로 생성",
+      "imageModelForThisChat": "이 채팅의 이미지 모델",
       "message": "메시지",
+      "modelForThisChat": "이 채팅의 모델",
       "placeholder": "워크플로 자동화, 작업 관리 등을 요청하세요...",
       "selectedModelUnavailable": "선택한 모델을 사용할 수 없습니다. 전송 전에 구성하세요.",
       "selectedModelUnavailableToast": "선택한 모델을 사용할 수 없습니다",
       "selectModel": "모델 선택",
-      "setAsDefault": "기본값으로 설정",
-      "temporaryFastModeDisabledNotice": "이 실행에서는 빠른 모드가 일시적으로 비활성화되었습니다",
-      "temporaryFastModeEnabledNotice": "이 실행에서는 빠른 모드가 일시적으로 활성화되었습니다",
-      "temporaryImageModelNotice": "이미지 모델을 일시적으로 {{model}}(으)로 전환함",
-      "temporaryModelNotice": "일시적으로 {{model}}(으)로 전환됨",
-      "temporaryVideoModelNotice": "동영상 모델을 일시적으로 {{model}}(으)로 전환함",
+      "temporarilySwitchTo": "임시로 전환할 모델",
       "threadSuggestions": "채팅 스레드",
+      "useForFutureChats": "향후 채팅에도 사용",
+      "videoModelForThisChat": "이 채팅의 동영상 모델",
       "visualAttachmentsUnsupported": "{{modelName}}은 이미지나 비디오를 인식할 수 없습니다. 첨부하려면 비전 기능이 있는 모델로 전환하세요.",
       "workflows": {
         "empty": "일치하는 워크플로가 없습니다",
@@ -1933,6 +1894,20 @@
       "offline": "오프라인",
       "unsupportedIntelMac": "Apple 실리콘 Mac 필요",
       "yourComputer": "내 컴퓨터"
+    },
+    "connectorAccountSwitch": {
+      "accountFallback": "커넥터 계정",
+      "actionFailed": "계정을 전환할 수 없습니다. 다시 시도하세요.",
+      "customConnector": "사용자 지정 커넥터",
+      "loadFailed": "이 커넥터 계정을 불러올 수 없습니다.",
+      "reconnectRequired": "다시 연결해야 합니다. 이후 실행에서는 기존 대체 계정을 사용할 수 있습니다.",
+      "retry": "다시 시도",
+      "selected": "{{account}}(으)로 전환됨",
+      "switch": "전환",
+      "switching": "전환 중...",
+      "title": "{{account}}(으)로 전환하시겠습니까?",
+      "unavailableDescription": "이 계정은 존재하지 않거나 이 커넥터에서 사용할 수 없습니다.",
+      "unavailableTitle": "계정을 사용할 수 없음"
     },
     "connectors": {
       "accountForThread": "이 스레드의 계정",
@@ -1970,10 +1945,13 @@
         "capacityTitle": "{{framework}} 모델이 혼잡합니다",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "계속",
         "resetAndTryAgain": "재설정하고 다시 시도",
         "resetsAt": "{{time}}에 재설정",
         "selectModel": "모델 전환",
         "tryAgain": "다시 시도",
+        "unavailableDescription": "이 모델은 연결된 ChatGPT 계정에서 지원되지 않습니다. 계속하려면 다른 모델로 전환하세요.",
+        "unavailableTitle": "선택한 모델을 사용할 수 없습니다",
         "usageDescription": "사용량 한도가 재설정되면 계속하거나 지금 다른 모델로 전환할 수 있습니다.",
         "usageTitle": "{{framework}} 한도에 도달했습니다"
       },
@@ -2004,6 +1982,100 @@
       "sent": "전달했습니다",
       "threads": "채팅",
       "title": "전달 대상"
+    },
+    "introVideo": {
+      "avatar": {
+        "heading": "아바타 선택",
+        "help": "발표자를 선택하거나 아바타 없이 계속하세요",
+        "none": "아바타 없음",
+        "visualBalanceAvatarLed": "아바타 중심 — 내레이터가 대부분 화면에 표시됨",
+        "visualBalanceBalanced": "균형 있는 구성 — 둘 다 같은 비중으로 표시",
+        "visualBalanceBRollLed": "시각 자료 중심 — 슬라이드와 비주얼에 집중",
+        "visualBalanceHeading": "화면 구성을 어떻게 배분할까요?"
+      },
+      "cardDescription": "파일이나 화면 녹화를 완성된 영상으로 변환",
+      "description": "소스를 추가하고 선택적으로 아바타와 음성을 고른 뒤 채팅 스레드에서 영상을 만드세요.",
+      "errors": {
+        "recordingEmpty": "녹화 내용이 비어 있습니다. 다시 시도해 주세요.",
+        "recordingFailed": "화면 녹화를 시작할 수 없습니다. 최신 Chrome에서 다시 시도해 주세요.",
+        "recordingPermission": "공유할 항목이 선택되지 않았습니다. 준비되면 탭, 창 또는 화면을 선택하세요.",
+        "recordingShareEnded": "녹화가 시작되기 전에 화면 공유가 종료되었습니다.",
+        "recordingUnsupported": "이 브라우저에서는 화면 녹화를 지원하지 않습니다.",
+        "sendFailed": "채팅 스레드를 만들 수 없습니다. 소스는 로컬에 저장되어 있으며 백업으로 다운로드되었습니다.",
+        "uploadFailed": "소스를 업로드할 수 없습니다. 로컬에 저장되어 있으며 백업으로 다운로드되었습니다."
+      },
+      "footer": {
+        "back": "뒤로",
+        "createInChat": "채팅에서 만들기",
+        "download": "소스 다운로드",
+        "next": "다음",
+        "startRecording": "화면 선택 후 시작",
+        "stopRecording": "녹화 중지"
+      },
+      "recording": {
+        "chooseSurface": "탭, 창 또는 화면 선택",
+        "countdown": "카운트다운이 끝난 뒤 녹화가 시작됩니다",
+        "description": "Chrome에서 공유 대상을 묻습니다. 3초 카운트다운이 끝난 뒤에만 녹화가 시작됩니다.",
+        "heading": "화면 녹화",
+        "localNote": "Chrome 공유 바 또는 이 화면에서 중지할 수 있습니다. 채팅 스레드를 만들기 전까지 녹화는 로컬에 유지됩니다.",
+        "microphone": "마이크",
+        "microphoneHelp": "시연하면서 내레이션 추가",
+        "recordingLocally": "로컬에서 녹화 중",
+        "systemAudio": "시스템 오디오",
+        "systemAudioHelp": "사용 가능한 소스는 Chrome과 시스템에 따라 다릅니다"
+      },
+      "review": {
+        "avatar": "아바타",
+        "heading": "인트로 영상 검토",
+        "help": "새 채팅 스레드로 전달할 선택 사항을 확인하세요",
+        "instructions": "편집 지침",
+        "source": "소스",
+        "voice": "음성"
+      },
+      "source": {
+        "chatDescription": "지금 스레드를 열고 Zero와 함께 영상을 구체화하세요",
+        "chatDetail": "소스, 아바타 또는 음성은 나중에 채팅에서 추가할 수 있습니다",
+        "chatTitle": "채팅에서 시작",
+        "documentDescription": "콘텐츠를 내레이션이 있는 인트로 영상으로 변환",
+        "documentFormats": "PPTX, PPT, PDF, DOC, DOCX",
+        "documentTitle": "슬라이드 또는 문서 업로드",
+        "dropDescription": "슬라이드, 문서 또는 녹화",
+        "dropTitle": "여기에 소스 놓기",
+        "heading": "어떻게 시작할까요?",
+        "help": "가지고 있는 자료를 추가하거나 화면을 녹화하거나 원하는 영상을 직접 설명하세요",
+        "recordDescription": "탭, 창 또는 전체 화면 선택",
+        "recordDetail": "3초 카운트다운 후 시작",
+        "recordTitle": "화면 녹화",
+        "videoDescription": "AI가 속도, 프레이밍, 내레이션을 다듬습니다",
+        "videoFormats": "MP4, MOV, WEBM",
+        "videoTitle": "녹화 업로드"
+      },
+      "sourceReview": {
+        "format": "형식",
+        "heading": "소스가 준비되었습니다",
+        "help": "계속하기 전에 파일을 확인하세요",
+        "inBrowser": "이 브라우저에",
+        "inTab": "이 탭을 닫을 때까지",
+        "replace": "소스 교체",
+        "saved": "저장 위치",
+        "source": "소스"
+      },
+      "steps": {
+        "avatar": "아바타",
+        "label": "인트로 영상 단계",
+        "review": "검토",
+        "source": "소스",
+        "voice": "음성"
+      },
+      "title": "인트로 영상 만들기",
+      "voice": {
+        "heading": "음성 선택",
+        "help": "계속하기 전에 샘플을 미리 들어보세요",
+        "none": "내레이션 없음",
+        "noneDescription": "내레이션 없이 자막 중심의 영상 만들기",
+        "original": "원본 오디오",
+        "originalDescription": "업로드한 영상이나 녹화의 오디오 유지"
+      }
     },
     "mail": {
       "bcc": "숨은 참조",
@@ -2251,7 +2323,6 @@
     "templates": {
       "categories": {
         "illustration": "일러스트",
-        "introVideo": "인트로 비디오",
         "presentation": "프레젠테이션",
         "video": "비디오",
         "website": "웹사이트",
@@ -2310,48 +2381,6 @@
     "toasts": {
       "copied": "복사됨",
       "deleted": "채팅 삭제됨"
-    },
-    "toolActivity": {
-      "categories": {
-        "changes": {
-          "pending": {
-            "plural": "여러 파일 변경 중",
-            "singular": "파일 변경 중"
-          },
-          "terminal": {
-            "plural": "여러 파일 변경",
-            "singular": "파일 변경"
-          }
-        },
-        "read": {
-          "pending": {
-            "plural": "여러 파일 읽는 중",
-            "singular": "파일 읽는 중"
-          },
-          "terminal": {
-            "plural": "여러 파일 읽음",
-            "singular": "파일 읽음"
-          }
-        },
-        "run": {
-          "pending": {
-            "plural": "여러 명령 실행 중",
-            "singular": "명령 실행 중"
-          },
-          "terminal": {
-            "plural": "여러 명령 실행",
-            "singular": "명령 실행"
-          }
-        }
-      },
-      "collapse": "도구 활동 접기",
-      "expand": "도구 활동 펼치기",
-      "status": {
-        "cancelled": "취소됨",
-        "error": "실패",
-        "pending": "진행 중",
-        "success": "완료"
-      }
     },
     "voice": {
       "checkingLimit": "음성 입력 제한 확인 중",
@@ -3252,7 +3281,8 @@
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "요청 실패"
+      "requestFailed": "요청 실패",
+      "sharedDatabaseUnavailable": "앱에 문제가 발생했습니다. 잠시 기다린 후 페이지를 새로고침하여 다시 시도하세요."
     },
     "realtime": {
       "degraded": "실시간 업데이트에 문제가 발생했습니다. 페이지를 새로고침하세요.",
@@ -3281,15 +3311,6 @@
       "doneTitle": "구독이 취소되었습니다",
       "errorBody": "이 구독 취소 링크가 유효하지 않거나 만료되었습니다. 설정에서 이메일 알림을 관리할 수 있습니다.",
       "errorTitle": "문제가 발생했습니다"
-    },
-    "morningBriefUnsubscribe": {
-      "documentTitle": "모닝 브리프",
-      "doneBody": "일일 모닝 브리프 이메일을 더 이상 받지 않습니다. 설정에서 언제든 다시 켤 수 있습니다.",
-      "doneTitle": "모닝 브리프가 꺼졌습니다",
-      "errorBody": "구독 취소 링크가 유효하지 않거나 불완전합니다. 최신 모닝 브리프 이메일에서 구독 취소 링크를 사용하거나 설정에서 환경설정을 관리하세요.",
-      "errorTitle": "이 링크는 유효하지 않습니다",
-      "loadingLabel": "구독 취소 상태를 불러오는 중입니다",
-      "managePreferences": "환경설정 관리"
     },
     "pwaInstall": {
       "banner": "더 나은 경험을 위해 {{assistantName}}를 설치하세요",
@@ -5133,16 +5154,6 @@
         },
         "title": "언어"
       },
-      "morningBrief": {
-        "description": "매일 오전 7시에 일정, 작업 항목, 연결된 GitHub, Gmail, Google 캘린더 업데이트를 이메일로 받기",
-        "nextEmail": "다음 이메일: {{date}}",
-        "nextEmailInTimezone": "다음 이메일: {{date}} ({{timezone}})",
-        "notScheduled": "다음 이메일: 아직 예약되지 않음 — 스위치를 껐다 켜서 다시 예약하세요",
-        "sending": "전송 중...",
-        "sendNow": "지금 보내기",
-        "title": "모닝 브리프",
-        "triggeredToast": "모닝 브리프가 실행되어 곧 이메일이 도착합니다"
-      },
       "pageDescription": "외관 및 에이전트 실행 환경설정을 관리하세요",
       "pageTitle": "환경설정",
       "send": {
@@ -5359,10 +5370,14 @@
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
-    "notFoundDescription": "이 공유된 대화는 존재하지 않습니다.",
+    "handoffDescription": "{{assistantName}}가 컨텍스트를 새 채팅으로 가져갑니다",
+    "handoffPrompt": "이 공유 대화를 저와 계속하세요: {{url}}",
+    "makeConversationYours": "이 대화를 내 것으로",
     "notFoundTitle": "공유된 대화를 찾을 수 없습니다",
-    "tryOkou": "{{assistantName}} 사용해 보기"
+    "share": "공유",
+    "signIn": "로그인",
+    "signUp": "회원가입",
+    "tryItYourself": "직접 사용해 보기"
   },
   "usage": {
     "displayNames": {
@@ -6118,7 +6133,7 @@
       "browse": "공식 워크플로 둘러보기",
       "chooseValue": "값 선택",
       "copySucceededUninstallFailed": "복사본은 준비되었지만 원본 공식 워크플로를 제거하지 못했습니다.",
-      "description": "vm0에서 관리하고 유지하는 워크플로를 설치합니다.",
+      "description": "Okou Official Team에서 관리하고 유지하는 워크플로를 설치합니다.",
       "empty": "사용 가능한 공식 워크플로가 없습니다.",
       "includedAutomations": "포함된 자동화",
       "install": "설치",

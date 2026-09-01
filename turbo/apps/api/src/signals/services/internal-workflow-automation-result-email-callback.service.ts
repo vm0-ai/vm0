@@ -4,8 +4,9 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import { emailOutbox } from "@okouai/db/schema/email-outbox";
 import { officialAutomationResultEmailClaims } from "@okouai/db/schema/official-automation-result-email-claim";
 import { users } from "@okouai/db/schema/user";
+import { workflowAutomations } from "@okouai/db/schema/workflow";
 import { command, createStore } from "ccstate";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
@@ -16,7 +17,7 @@ import {
   buildFromAddress,
   buildOneClickUnsubscribeUrl,
   buildUnsubscribeHeaders,
-  buildUnsubscribeUrl,
+  EMAIL_PUBLIC_BRAND,
   getUserEmail,
   OFFICIAL_AUTOMATION_RESULT_EMAIL_SUBJECT_MAX_CHARACTERS,
   OFFICIAL_AUTOMATION_RESULT_EMAIL_TEXT_MAX_CHARACTERS,
@@ -94,6 +95,35 @@ function boundedResultText(output: string | undefined): string {
   );
 }
 
+interface WorkflowAutomationManageUrlArgs {
+  readonly automationId: string;
+  readonly userId: string;
+  readonly productUrl: string;
+}
+
+async function workflowAutomationManageUrl(
+  db: Db,
+  args: WorkflowAutomationManageUrlArgs,
+  signal: AbortSignal,
+): Promise<string> {
+  const [automation] = await db
+    .select({ workflowId: workflowAutomations.workflowId })
+    .from(workflowAutomations)
+    .where(
+      and(
+        eq(workflowAutomations.id, args.automationId),
+        eq(workflowAutomations.ownerUserId, args.userId),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  return automation
+    ? `${args.productUrl}/workflows/${encodeURIComponent(
+        automation.workflowId,
+      )}/automations?automationId=${encodeURIComponent(args.automationId)}`
+    : `${args.productUrl}/workflows`;
+}
+
 export async function handleWorkflowAutomationResultEmailInternalCallback(
   db: Db,
   envelope: InternalRunCallbackEnvelope,
@@ -137,9 +167,16 @@ export async function handleWorkflowAutomationResultEmailInternalCallback(
   }
 
   const output = await getRunOutputText(db, envelope.runId, signal);
-  const publicBrand = payload.data.publicBrand;
-  const productUrl = appUrlForPublicBrand(env("APP_URL"), publicBrand);
-  const manageUrl = buildUnsubscribeUrl(run.userId, publicBrand);
+  const productUrl = appUrlForPublicBrand(env("APP_URL"), EMAIL_PUBLIC_BRAND);
+  const manageUrl = await workflowAutomationManageUrl(
+    db,
+    {
+      automationId: payload.data.automationId,
+      userId: run.userId,
+      productUrl,
+    },
+    signal,
+  );
   const enqueued = await db.transaction(async (tx) => {
     // Linearize the final preference decision with enqueue. Both explicit
     // unsubscribe and complaint handling upsert this same row, so their write
@@ -183,22 +220,20 @@ export async function handleWorkflowAutomationResultEmailInternalCallback(
 
     await tx.insert(emailOutbox).values({
       id: claim.emailOutboxId,
-      fromAddress: buildFromAddress(
-        publicBrand === "okou" ? "okou" : "zero",
-        publicBrand,
-      ),
+      fromAddress: buildFromAddress(),
       toAddresses: userEmail,
       subject: resultEmailSubject(payload.data.workflowName),
-      headers: buildUnsubscribeHeaders(
-        buildOneClickUnsubscribeUrl(run.userId, publicBrand),
-      ),
-      publicBrand,
+      headers: buildUnsubscribeHeaders(buildOneClickUnsubscribeUrl(run.userId)),
+      publicBrand: EMAIL_PUBLIC_BRAND,
       template: {
         template: "official-automation-result",
         props: {
           title: resultEmailTitle(payload.data.workflowName),
           resultText: boundedResultText(output),
           runUrl: `${productUrl}/activities/${encodeURIComponent(envelope.runId)}`,
+          // Keep the persisted props shape rollout-compatible while changing
+          // manageUrl from the legacy account unsubscribe destination to the
+          // originating automation deep link.
           manageUrl,
         },
       },

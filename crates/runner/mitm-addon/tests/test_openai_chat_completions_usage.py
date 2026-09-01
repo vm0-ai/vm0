@@ -507,7 +507,7 @@ class TestOpenAIChatCompletionsUsage:
             "tokens.output": 5,
         }
 
-    def test_brotli_json_uses_buffered_fallback(
+    def test_brotli_json_uses_streaming_parser(
         self,
         tmp_path,
         real_flow,
@@ -525,9 +525,11 @@ class TestOpenAIChatCompletionsUsage:
         compressed = brotli.compress(body)
 
         mitm_addon.responseheaders(flow)
-        assert "model_json_usage_finish" not in flow.metadata
-        assert response_stream(flow)(compressed) == compressed
-        assert flow.metadata[metadata_keys.STREAM_BUFFER] == bytearray(compressed)
+        assert "model_json_usage_finish" in flow.metadata
+        midpoint = len(compressed) // 2
+        assert response_stream(flow)(compressed[:midpoint]) == compressed[:midpoint]
+        assert response_stream(flow)(compressed[midpoint:]) == compressed[midpoint:]
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
 
         webhook = _run_response(flow, self._usage_webhook_api)
 

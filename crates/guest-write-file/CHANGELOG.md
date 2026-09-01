@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.1.116](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.115...guest-write-file-v0.1.116) (2026-09-01)
+
+## [0.1.115](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.114...guest-write-file-v0.1.115) (2026-09-01)
+
+## [0.1.114](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.113...guest-write-file-v0.1.114) (2026-09-01)
+
+## [0.1.113](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.112...guest-write-file-v0.1.113) (2026-09-01)
+
+## [0.1.112](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.111...guest-write-file-v0.1.112) (2026-08-31)
+
+## [0.1.111](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.110...guest-write-file-v0.1.111) (2026-08-31)
+
+## [0.1.110](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.109...guest-write-file-v0.1.110) (2026-08-30)
+
+## [0.1.109](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.108...guest-write-file-v0.1.109) (2026-08-30)
+
+## [0.1.108](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.107...guest-write-file-v0.1.108) (2026-08-30)
+
+## [0.1.107](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.106...guest-write-file-v0.1.107) (2026-08-29)
+
+## [0.1.106](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.105...guest-write-file-v0.1.106) (2026-08-28)
+
 ## [0.1.105](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.104...guest-write-file-v0.1.105) (2026-08-28)
 
 ## [0.1.104](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.103...guest-write-file-v0.1.104) (2026-08-28)

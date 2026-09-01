@@ -739,8 +739,6 @@ export function AccountDropdown({
     userInfoLoadable.state === "hasData" ? userInfoLoadable.data : undefined;
   const features = useLastResolved(featureSwitch$);
   const labEnabled = features?.[FeatureSwitchKey.Lab] ?? false;
-  const authV2AddAccountEnabled =
-    features?.[FeatureSwitchKey.AuthV2AddAccount] ?? false;
   const subscriptionsEnabled =
     features?.[FeatureSwitchKey.SidebarSubscriptionUsage] ?? false;
   // The account mark aligns with the rounded-square workspace logo in the rail.
@@ -817,20 +815,10 @@ export function AccountDropdown({
   };
 
   const handleAddAccount = () => {
-    if (authV2AddAccountEnabled) {
-      detach(
-        openAuthV2AddAccountDialog(pageSignal),
-        Reason.DomCallback,
-        "open auth v2 add account dialog",
-      );
-      return;
-    }
     detach(
-      clerk?.openSignIn({
-        fallbackRedirectUrl: "/",
-        forceRedirectUrl: "/",
-      }),
+      openAuthV2AddAccountDialog(pageSignal),
       Reason.DomCallback,
+      "open auth v2 add account dialog",
     );
   };
 

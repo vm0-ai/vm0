@@ -2,7 +2,6 @@ use std::io;
 use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::thread;
 use std::time::{Duration, Instant};
 
 use process_control_ipc::{ControlRequest, ControlResponseStatus};
@@ -10,6 +9,7 @@ use vsock_proto::{ExecControlNonce, ExecControlStatus, MSG_EXEC_CONTROL_RESULT};
 
 use crate::error::to_io_error;
 use crate::log::log;
+use crate::threading::{SystemThreadSpawner, ThreadSpawner};
 use crate::writer::GuestWriter;
 
 use super::sink::{ControlSinkState, ControlStreamLockError, PendingControlSlot};
@@ -50,15 +50,27 @@ pub(super) fn try_forward(
     request: OwnedExecControlRequest,
     writer: GuestWriter,
 ) -> Option<(ExecControlStatus, String)> {
+    try_forward_with_spawner(sink, request, writer, SystemThreadSpawner)
+}
+
+pub(super) fn try_forward_with_spawner<S>(
+    sink: Arc<ControlSinkState>,
+    request: OwnedExecControlRequest,
+    writer: GuestWriter,
+    spawner: S,
+) -> Option<(ExecControlStatus, String)>
+where
+    S: ThreadSpawner,
+{
     let pending_slot = match sink.reserve_pending_slot() {
         Ok(pending_slot) => pending_slot,
         Err(error) => return Some(error),
     };
 
-    match thread::Builder::new()
-        .name(THREAD_EXEC_CONTROL_FORWARD.to_owned())
-        .spawn(move || forward_control_request(sink, pending_slot, request, writer))
-    {
+    match spawner.spawn_unit(
+        THREAD_EXEC_CONTROL_FORWARD,
+        Box::new(move || forward_control_request(sink, pending_slot, request, writer)),
+    ) {
         Ok(_) => None,
         Err(error) => Some((
             ExecControlStatus::SinkError,

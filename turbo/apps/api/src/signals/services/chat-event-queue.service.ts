@@ -65,7 +65,6 @@ function pendingActiveInputPromptCondition(db: ChatQueueReadDb) {
   return and(
     chatEventTypeIn(["input.prompt"]),
     isNull(chatEvents.runId),
-    sql`${chatEvents.contextType} IS DISTINCT FROM 'morning_brief'`,
     unrevokedQueueEventCondition(db),
   );
 }

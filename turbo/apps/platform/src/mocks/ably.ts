@@ -14,6 +14,11 @@ import { createDeferredPromise } from "../signals/utils.ts";
  */
 
 type Callback = (message: { name: string; data: unknown }) => void;
+type ChatDatabaseEventListener = (message: {
+  readonly name: string;
+  readonly data: unknown;
+}) => void;
+type ChatDatabaseRecoveryListener = () => void;
 
 type AuthCallbackError = string | { message?: string } | null;
 type AuthCallbackToken = unknown;
@@ -77,6 +82,8 @@ let nextSubscribeGate: {
   readonly release: ReturnType<typeof createDeferredPromise<void>>;
 } | null = null;
 const realtimeInstances = new Set<Realtime>();
+const chatDatabaseEventListeners = new Set<ChatDatabaseEventListener>();
+const chatDatabaseRecoveryListeners = new Set<ChatDatabaseRecoveryListener>();
 const subscribeErrors = new Map<
   string,
   {
@@ -85,11 +92,15 @@ const subscribeErrors = new Map<
   }
 >();
 
-function invokeAuthCallback(cb: AuthCallback): Promise<AuthCallbackToken> {
-  const deferred = createDeferredPromise<AuthCallbackToken>(
-    AbortSignal.any([]),
-  );
+function invokeAuthCallback(
+  cb: AuthCallback,
+  signal: AbortSignal = AbortSignal.any([]),
+): Promise<AuthCallbackToken> {
+  const deferred = createDeferredPromise<AuthCallbackToken>(signal);
   cb({}, (error, token) => {
+    if (deferred.settled()) {
+      return;
+    }
     if (error) {
       const message =
         typeof error === "string" ? error : (error.message ?? "auth error");
@@ -243,6 +254,7 @@ export class Realtime {
   readonly channels: { get: (_name: string) => FakeChannel };
 
   private readonly channelsByName = new Map<string, FakeChannel>();
+  private readonly authController = new AbortController();
 
   private readonly connectedOnceListeners = new Set<ConnectionEventListener>();
   private readonly failedOnceListeners = new Set<ConnectionEventListener>();
@@ -314,7 +326,7 @@ export class Realtime {
 
     if (config?.authCallback) {
       capturedAuthCallback = config.authCallback;
-      invokeAuthCallback(config.authCallback)
+      invokeAuthCallback(config.authCallback, this.authController.signal)
         .then(() => {
           this.connect();
         })
@@ -334,6 +346,9 @@ export class Realtime {
     if (this.connection.state === "closed") {
       return;
     }
+    this.authController.abort(
+      new DOMException("Ably client closed", "AbortError"),
+    );
     this.transition("closing");
     for (const channel of this.channelsByName.values()) {
       channel.clear();
@@ -447,17 +462,66 @@ export class Realtime {
   }
 }
 
-/** Fire a server-side publish on every connected Realtime instance. */
+export { Realtime as BaseRealtime };
+export const FetchRequest = Symbol("FetchRequest");
+export const WebSocketTransport = Symbol("WebSocketTransport");
+export const XHRPolling = Symbol("XHRPolling");
+
+function isSharedDatabaseRealtimeTopic(topic: string): boolean {
+  return (
+    topic === "chatThreadReadCursorUpdated" ||
+    topic === "threadListChanged" ||
+    topic.startsWith("chatThreadMessageCreated:")
+  );
+}
+
+/** Fire a server-side publish using the production topic-to-channel routing. */
 export function triggerAblyEvent(topic: string, data?: unknown): void {
+  const channelPrefix = isSharedDatabaseRealtimeTopic(topic)
+    ? "user-org:"
+    : "user:";
   for (const realtime of realtimeInstances) {
     if (realtime.connection.state === "connected") {
       for (const [channelName, channel] of realtime.namedChannels()) {
-        if (channelName.startsWith("user:")) {
+        if (channelName.startsWith(channelPrefix)) {
           channel.trigger(topic, data);
         }
       }
     }
   }
+}
+
+/** Fire a chat-database publish on every connected user-org channel. */
+export function triggerChatDatabaseEvent(topic: string, data?: unknown): void {
+  const message = { name: topic, data };
+  for (const listener of chatDatabaseEventListeners) {
+    listener(message);
+  }
+  for (const realtime of realtimeInstances) {
+    if (realtime.connection.state === "connected") {
+      for (const [channelName, channel] of realtime.namedChannels()) {
+        if (channelName.startsWith("user-org:")) {
+          channel.trigger(topic, data);
+        }
+      }
+    }
+  }
+}
+
+/** Forward mock chat-database publishes to a direct worker test host. */
+export function subscribeChatDatabaseEvents(
+  listener: ChatDatabaseEventListener,
+  signal: AbortSignal,
+): void {
+  signal.throwIfAborted();
+  chatDatabaseEventListeners.add(listener);
+  signal.addEventListener(
+    "abort",
+    () => {
+      chatDatabaseEventListeners.delete(listener);
+    },
+    { once: true },
+  );
 }
 
 /** Fire a server-side publish on one named channel. */
@@ -488,12 +552,43 @@ export function getAuthTokenHistory(): readonly AuthCallbackToken[] {
 
 /** Fire a reconnect event on every connected Realtime instance. */
 export function triggerAblyReconnect(): void {
+  for (const listener of chatDatabaseRecoveryListeners) {
+    listener();
+  }
   for (const realtime of realtimeInstances) {
     realtime.reconnect();
   }
 }
 
-export function triggerAblyConnectionState(
+function requireSharedWorkerRealtime(): Realtime {
+  for (const realtime of realtimeInstances) {
+    if (realtime.connection.state === "closed") {
+      continue;
+    }
+    const ownsSharedDatabaseEvents = [...realtime.namedChannels()].some(
+      ([channelName, channel]) => {
+        return (
+          channelName.startsWith("user-org:") &&
+          channel.hasChannelSubscription()
+        );
+      },
+    );
+    if (ownsSharedDatabaseEvents) {
+      return realtime;
+    }
+  }
+  throw new Error(
+    "SharedWorker Ably action triggered before its database subscription",
+  );
+}
+
+/** Reconnect only the Realtime client that owns SharedWorker database events. */
+export function triggerSharedWorkerAblyReconnect(): void {
+  requireSharedWorkerRealtime().reconnect();
+}
+
+/** Transition only the Realtime client that owns SharedWorker database events. */
+export function triggerSharedWorkerAblyConnectionState(
   state: "connected" | "disconnected" | "suspended",
   options: {
     readonly code?: number;
@@ -502,11 +597,64 @@ export function triggerAblyConnectionState(
     readonly statusCode?: number;
   } = {},
 ): void {
+  requireSharedWorkerRealtime().transitionTo(
+    state,
+    {
+      code: options.code,
+      message: options.message,
+      statusCode: options.statusCode,
+    },
+    options.retryIn,
+  );
+}
+
+/** Fail only the Realtime client that owns SharedWorker database events. */
+export function triggerSharedWorkerAblyFailure(
+  message = "connection failed",
+): void {
+  requireSharedWorkerRealtime().fail(message);
+}
+
+/** Forward mock realtime recovery to a direct worker test host. */
+export function subscribeChatDatabaseRecovery(
+  listener: ChatDatabaseRecoveryListener,
+  signal: AbortSignal,
+): void {
+  signal.throwIfAborted();
+  chatDatabaseRecoveryListeners.add(listener);
+  signal.addEventListener(
+    "abort",
+    () => {
+      chatDatabaseRecoveryListeners.delete(listener);
+    },
+    { once: true },
+  );
+}
+
+export function triggerAblyConnectionState(
+  state: "connected" | "disconnected" | "suspended",
+  options: {
+    readonly channelName?: string;
+    readonly code?: number;
+    readonly message?: string;
+    readonly retryIn?: number;
+    readonly statusCode?: number;
+  } = {},
+): void {
   let activeRealtime: Realtime | null = null;
   for (const realtime of realtimeInstances) {
-    if (realtime.connection.state !== "closed") {
-      activeRealtime = realtime;
+    if (realtime.connection.state === "closed") {
+      continue;
     }
+    if (options.channelName) {
+      const channel = realtime.getExistingChannel(options.channelName);
+      if (!channel || channel.state === "initialized") {
+        continue;
+      }
+      activeRealtime = realtime;
+      break;
+    }
+    activeRealtime = realtime;
   }
   activeRealtime?.transitionTo(
     state,
@@ -605,9 +753,24 @@ export function hasChannelSubscription(): boolean {
   return false;
 }
 
+export function hasChannelSubscriptionOnChannel(channelName: string): boolean {
+  for (const realtime of realtimeInstances) {
+    if (
+      realtime.connection.state === "connected" &&
+      realtime.getExistingChannel(channelName)?.hasChannelSubscription() ===
+        true
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** Reset all subscriptions and captured auth state between tests. */
 export function resetAblySubscriptions(): void {
   triggerAblyConnectionClosed();
+  chatDatabaseEventListeners.clear();
+  chatDatabaseRecoveryListeners.clear();
   capturedAuthCallback = null;
   tokenBodies = [];
   nextSubscribeError = null;

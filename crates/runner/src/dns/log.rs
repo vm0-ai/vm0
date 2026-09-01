@@ -16,11 +16,31 @@ use crate::network_log_manager::NetworkLogManager;
 const DNS_READINESS_LOG_SCAN_MAX_BYTES: u64 = 64 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The outcome of inspecting the network-log segment for one DNS readiness attempt.
+///
+/// The status describes the quality and completeness of the bytes that were readable; it does
+/// not turn either observation flag into proof that the corresponding event did or did not occur
+/// elsewhere.
+///
+/// `as_str` exposes these variants as `complete`, `truncated`, `invalid_offset`, `malformed`, and
+/// `unavailable` for the structured `scan_status` warning field.
 pub(crate) enum DnsReadinessLogScanStatus {
+    /// The file was missing, or the complete attempt segment was readable within the scan bound
+    /// and contained no malformed non-whitespace rows.
     Complete,
+    /// The attempt segment was larger than 64 KiB, so only its first 64 KiB were inspected.
+    ///
+    /// This status takes precedence over [`Self::Malformed`] when the inspected prefix also
+    /// contains malformed rows. The observation flags can still be true for matching rows found
+    /// in that prefix.
     Truncated,
+    /// The file was shorter than the attempt-local offset captured before sandbox start.
     InvalidOffset,
+    /// At least one non-whitespace row in an otherwise bounded readable segment was not valid
+    /// JSON. Valid rows in the same segment still contribute to the observation flags.
     Malformed,
+    /// The file could not be opened or inspected because of an I/O failure, or the caller could
+    /// not provide an attempt-local offset.
     Unavailable,
 }
 
@@ -37,13 +57,30 @@ impl DnsReadinessLogScanStatus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Evidence found while inspecting one attempt-local portion of the DNS network log.
+///
+/// The flags describe only the readable segment passed to
+/// `inspect_readiness_log_segment`. A `false` flag means that the corresponding evidence was not
+/// observed in that bounded segment; it is not proof of absence from the full log, from an
+/// unreadable portion of the file, or from the DNS request path.
 pub(crate) struct DnsReadinessLogObservation {
+    /// Whether a `type = "dns"` row for `DNS_READINESS_HOSTNAME` with `dns_event = "query"` was
+    /// observed in the inspected segment.
     pub(crate) query_observed: bool,
+    /// Whether a matching row with `dns_event = "reply"`, `"cached"`, or `"config"` was observed
+    /// in the inspected segment.
     pub(crate) result_observed: bool,
+    /// Describes whether the inspected segment was complete, truncated, malformed, invalidly
+    /// offset, or unavailable.
     pub(crate) status: DnsReadinessLogScanStatus,
 }
 
 impl DnsReadinessLogObservation {
+    /// Return an observation for a segment that could not be inspected.
+    ///
+    /// Both event flags are false because no evidence was readable, and callers must interpret
+    /// them together with the `Unavailable` status rather than as evidence that no DNS event
+    /// occurred.
     pub(crate) fn unavailable() -> Self {
         Self {
             query_observed: false,
@@ -53,7 +90,7 @@ impl DnsReadinessLogObservation {
     }
 }
 
-/// Tail dnsmasq stderr and write DNS log entries to per-VM network JSONL.
+/// Tail dnsmasq stderr and write DNS log entries to per-sandbox network JSONL.
 ///
 /// dnsmasq `--log-queries=extra --log-facility=-` outputs lines like:
 /// ```text
@@ -107,6 +144,29 @@ async fn handle_dns_line(network_log_manager: &NetworkLogManager, line: &str) {
     }
 }
 
+/// Inspect the network-log segment attributable to one sandbox-start attempt.
+///
+/// The production caller captures `start_offset` from the network-log file before starting the
+/// sandbox. After a start failure, it drains and closes the network-log session with
+/// `NetworkLogSession::close_for_upload` and then calls this function, so inspection covers the
+/// bytes from that attempt-local offset through the file length observed at inspection time.
+///
+/// At most the first 64 KiB of the attempt segment are read. Only valid JSON rows whose `type`
+/// is `"dns"` and whose `host` is `DNS_READINESS_HOSTNAME` contribute evidence. A `dns_event` of
+/// `"query"` sets `query_observed`; `"reply"`, `"cached"`, and `"config"` set
+/// `result_observed`. Other valid rows and whitespace-only lines are ignored. A malformed
+/// non-whitespace row is recorded without stopping the scan, so valid observations from other
+/// rows remain available.
+///
+/// A missing file returns `Complete` with both flags false. A file shorter than `start_offset`
+/// returns `InvalidOffset` with both flags false. Other open, metadata, seek, or read failures
+/// return `Unavailable` with both flags false. For a readable segment, `Truncated` takes
+/// precedence over `Malformed`; an otherwise valid segment returns `Complete`.
+///
+/// The returned flags describe only the readable bounded segment. In particular, `false` means
+/// that evidence was not observed there, not that it is absent from the full attempt or from an
+/// unavailable part of the path. The executor uses this result for diagnostics only; it does not
+/// change the original sandbox error, cleanup result, or retry decision.
 pub(crate) async fn inspect_readiness_log_segment(
     path: &Path,
     start_offset: u64,

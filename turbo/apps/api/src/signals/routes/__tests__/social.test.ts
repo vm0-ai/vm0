@@ -822,6 +822,7 @@ describe("managed SocialKit route", () => {
     expect(response.body.collection).toStrictEqual({
       state: "provider_limited",
       itemsReturned: 10,
+      reason: "no_pagination",
     });
     await expect(credits(actor)).resolves.toBe(0);
   });
@@ -866,13 +867,21 @@ describe("managed SocialKit route", () => {
         path: "/instagram/reels-search",
         query: { query: "cats", page: "2" },
         data: { items: [{ id: "2" }], hasMore: true },
-        expected: { state: "provider_limited", itemsReturned: 1 },
+        expected: {
+          state: "provider_limited",
+          itemsReturned: 1,
+          reason: "provider_ceiling",
+        },
       },
       {
         path: "/linkedin/company-posts",
         query: { url: "https://linkedin.com/company/example", limit: "50" },
         data: { posts: [{ id: "1" }] },
-        expected: { state: "provider_limited", itemsReturned: 1 },
+        expected: {
+          state: "provider_limited",
+          itemsReturned: 1,
+          reason: "no_pagination",
+        },
       },
     ] as const;
 
@@ -892,6 +901,125 @@ describe("managed SocialKit route", () => {
 
       expect(response.body.collection).toStrictEqual(testCase.expected);
     }
+  });
+
+  it("uses reported comment totals to prevent false completion", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    await fundActor(actor);
+    const pricing = await setupConfiguredPricing();
+    const beforeCredits = await credits(actor);
+    const request = requestForPath("/tiktok/comments", {
+      url: "https://tiktok.com/@example/video/123",
+      limit: 10,
+    });
+
+    server.use(
+      providerHandler("GET", "/tiktok/comments", () => {
+        return HttpResponse.json(
+          providerResponse({
+            videoId: "123",
+            comments: [{ id: "1" }, { id: "2" }],
+            commentCount: 100,
+            hasMore: false,
+            cursor: null,
+          }),
+        );
+      }),
+    );
+    const limited = await accept(
+      client(pricing.resolution)(socialContract).request({
+        headers: authenticate(actor),
+        body: request,
+      }),
+      [200],
+    );
+    expect(limited.body.collection).toStrictEqual({
+      state: "provider_limited",
+      itemsReturned: 2,
+      reason: "reported_total_exceeds_page",
+      reportedTotal: 100,
+    });
+
+    server.use(
+      providerHandler("GET", "/tiktok/comments", () => {
+        return HttpResponse.json(
+          providerResponse({
+            videoId: "123",
+            comments: [{ id: "1" }, { id: "2" }],
+            commentCount: 2,
+            hasMore: false,
+            cursor: null,
+          }),
+        );
+      }),
+    );
+    const complete = await accept(
+      client(pricing.resolution)(socialContract).request({
+        headers: authenticate(actor),
+        body: request,
+      }),
+      [200],
+    );
+    expect(complete.body.collection).toStrictEqual({
+      state: "complete",
+      itemsReturned: 2,
+      reportedTotal: 2,
+    });
+
+    server.use(
+      providerHandler("GET", "/tiktok/comments", () => {
+        return HttpResponse.json(
+          providerResponse({
+            videoId: "123",
+            comments: [{ id: "1" }, { id: "2" }],
+            commentCount: 1,
+            hasMore: false,
+            cursor: null,
+          }),
+        );
+      }),
+    );
+    const malformed = await accept(
+      client(pricing.resolution)(socialContract).request({
+        headers: authenticate(actor),
+        body: request,
+      }),
+      [502],
+    );
+    expectApiError(malformed.body);
+    expect(malformed.body.error.code).toBe("SOCIALKIT_INVALID_RESPONSE");
+
+    server.use(
+      providerHandler("GET", "/tiktok/comments", () => {
+        return HttpResponse.json(
+          providerResponse({
+            videoId: "123",
+            comments: [{ id: "1" }],
+            commentCount: 100,
+            hasMore: true,
+            cursor: "next-page",
+          }),
+        );
+      }),
+    );
+    const continued = await accept(
+      client(pricing.resolution)(socialContract).request({
+        headers: authenticate(actor),
+        body: request,
+      }),
+      [200],
+    );
+    expect(continued.body.collection).toStrictEqual({
+      state: "more",
+      itemsReturned: 1,
+      reportedTotal: 100,
+      nextInput: { cursor: "next-page" },
+    });
+
+    expect(beforeCredits - (await credits(actor))).toBe(
+      3 * SOCIALKIT_REQUEST_CREDITS,
+    );
   });
 
   it("preflights the maximum result-metered quantity before provider work", async () => {
@@ -2515,7 +2643,7 @@ describe("managed SocialKit route", () => {
     await expect(credits(actor)).resolves.toBe(creditsAfterFailure);
   });
 
-  it("marks provider download failures free and terminal", async () => {
+  it("preserves bounded provider download diagnostics", async () => {
     const actor = createBddApi(context).user();
     configureProvider();
     const pricing = await setupConfiguredPricing();
@@ -2533,6 +2661,11 @@ describe("managed SocialKit route", () => {
         return HttpResponse.json({
           jobId: providerJobId,
           status: "failed",
+          errorCode: "duration_limit_exceeded",
+          error: "Video exceeds the max_duration=60s limit",
+          retryable: false,
+          downloadUrl: "https://temporary.socialkit.test/private-video",
+          accessKey: "test-socialkit-key",
         });
       }),
     );
@@ -2560,14 +2693,203 @@ describe("managed SocialKit route", () => {
       [200],
     );
 
-    expect(failed.body.status).toBe("provider_failed");
-    expect(failed.body.billing).toBeNull();
-    expect(failed.body.error).toMatchObject({
-      billed: false,
-      retryable: false,
+    expect(failed.body).toMatchObject({
+      status: "provider_failed",
+      billing: null,
+      error: {
+        code: "SOCIALKIT_PROVIDER_duration_limit_exceeded",
+        message: "Video exceeds the max_duration=60s limit",
+        billed: false,
+        retryable: false,
+      },
     });
+    expect(JSON.stringify(failed.body)).not.toContain("downloadUrl");
+    expect(JSON.stringify(failed.body)).not.toContain("test-socialkit-key");
     await expect(credits(actor)).resolves.toBe(beforeCredits);
   });
+
+  it.each([
+    {
+      caseName: "legacy failure without diagnostics",
+      providerFailure: {
+        status: "failed",
+      },
+      expectedCode: "SOCIALKIT_DOWNLOAD_FAILED",
+    },
+    {
+      caseName: "malformed provider code",
+      providerFailure: {
+        status: "failed",
+        errorCode: "invalid provider code",
+        error: "The provider could not prepare the download",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_DOWNLOAD_FAILED",
+    },
+    {
+      caseName: "oversized provider code",
+      providerFailure: {
+        status: "failed",
+        errorCode: "x".repeat(129),
+        error: "The provider could not prepare the download",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_DOWNLOAD_FAILED",
+    },
+    {
+      caseName: "oversized provider message",
+      providerFailure: {
+        status: "failed",
+        errorCode: "oversized_failure",
+        error: "x".repeat(501),
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_DOWNLOAD_FAILED",
+    },
+    {
+      caseName: "provider URL",
+      providerFailure: {
+        status: "failed",
+        errorCode: "private_failure",
+        error: "Download failed at https://temporary.socialkit.test/file",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_private_failure",
+    },
+    {
+      caseName: "configured provider credential",
+      providerFailure: {
+        status: "failed",
+        errorCode: "credential_failure",
+        error: "Provider failed with test-socialkit-key",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_credential_failure",
+    },
+    {
+      caseName: "credential assignment",
+      providerFailure: {
+        status: "failed",
+        errorCode: "authorization_failure",
+        error: "Authorization: Bearer different-provider-secret",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_authorization_failure",
+    },
+    {
+      caseName: "stack frame",
+      providerFailure: {
+        status: "failed",
+        errorCode: "stack_failure",
+        error: "Provider failed at worker (/srv/provider.js:1:2)",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_stack_failure",
+    },
+    {
+      caseName: "ASCII multiline provider message",
+      providerFailure: {
+        status: "failed",
+        errorCode: "multiline_failure",
+        error: "Provider failure\nwith hidden next line",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_multiline_failure",
+    },
+    {
+      caseName: "C1 control provider message",
+      providerFailure: {
+        status: "failed",
+        errorCode: "control_failure",
+        error: "Provider failure\u0085with hidden next line",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_control_failure",
+    },
+    {
+      caseName: "unicode multiline provider message",
+      providerFailure: {
+        status: "failed",
+        errorCode: "multiline_failure",
+        error: "Provider failure\u2028with hidden next line",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_multiline_failure",
+    },
+    {
+      caseName: "unicode paragraph separator provider message",
+      providerFailure: {
+        status: "failed",
+        errorCode: "multiline_failure",
+        error: "Provider failure\u2029with hidden next line",
+        retryable: false,
+      },
+      expectedCode: "SOCIALKIT_PROVIDER_multiline_failure",
+    },
+  ])(
+    "uses a safe fallback for $caseName",
+    async ({ providerFailure, expectedCode }) => {
+      const actor = createBddApi(context).user();
+      configureProvider();
+      const pricing = await setupConfiguredPricing();
+      await fundActor(actor);
+      const beforeCredits = await credits(actor);
+      const providerJobId = `provider-safe-fallback-${randomUUID()}`;
+      server.use(
+        http.post(`${SOCIALKIT_BASE}/v2/tiktok/download`, () => {
+          return HttpResponse.json({
+            jobId: providerJobId,
+            status: "queued",
+          });
+        }),
+        http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
+          return HttpResponse.json({
+            jobId: providerJobId,
+            ...providerFailure,
+          });
+        }),
+      );
+      const socialClient = client(pricing.resolution)(socialContract);
+
+      const created = await accept(
+        socialClient.createDownload({
+          headers: authenticate(actor),
+          body: {
+            platform: "tiktok",
+            url: "https://www.tiktok.com/@public/video/1",
+            maxDuration: 60,
+            quality: "720p",
+            format: "mp4",
+          },
+        }),
+        [202],
+      );
+      await flushWaitUntilForTest();
+      const failed = await accept(
+        socialClient.getDownload({
+          headers: authenticate(actor),
+          params: { downloadId: created.body.downloadId },
+        }),
+        [200],
+      );
+
+      expect(failed.body).toMatchObject({
+        status: "provider_failed",
+        billing: null,
+        error: {
+          code: expectedCode,
+          message: "SocialKit could not prepare the download",
+          billed: false,
+          retryable: false,
+        },
+      });
+      const serialized = JSON.stringify(failed.body);
+      expect(serialized).not.toContain("temporary.socialkit.test");
+      expect(serialized).not.toContain("test-socialkit-key");
+      expect(serialized).not.toContain("provider.js");
+      await expect(credits(actor)).resolves.toBe(beforeCredits);
+    },
+  );
 
   it("rejects a ready response for a different platform without billing", async () => {
     const actor = createBddApi(context).user();

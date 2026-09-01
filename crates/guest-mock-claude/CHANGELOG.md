@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.21.112](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.111...guest-mock-claude-v0.21.112) (2026-09-01)
+
+## [0.21.111](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.110...guest-mock-claude-v0.21.111) (2026-09-01)
+
+## [0.21.110](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.109...guest-mock-claude-v0.21.110) (2026-09-01)
+
+## [0.21.109](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.108...guest-mock-claude-v0.21.109) (2026-08-31)
+
+## [0.21.108](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.107...guest-mock-claude-v0.21.108) (2026-08-30)
+
+## [0.21.107](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.106...guest-mock-claude-v0.21.107) (2026-08-30)
+
+## [0.21.106](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.105...guest-mock-claude-v0.21.106) (2026-08-30)
+
+## [0.21.105](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.104...guest-mock-claude-v0.21.105) (2026-08-30)
+
+
+### Refactoring
+
+* **guest:** retire legacy tool cgroup reader ([#30278](https://github.com/vm0-ai/vm0/issues/30278)) ([416b413](https://github.com/vm0-ai/vm0/commit/416b41325cd6a19c62e4f006b7ef7a4af2aca4cb)), closes [#30276](https://github.com/vm0-ai/vm0/issues/30276) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+
+## [0.21.104](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.103...guest-mock-claude-v0.21.104) (2026-08-29)
+
+## [0.21.103](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.102...guest-mock-claude-v0.21.103) (2026-08-28)
+
 ## [0.21.102](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.101...guest-mock-claude-v0.21.102) (2026-08-28)
 
 ## [0.21.101](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.100...guest-mock-claude-v0.21.101) (2026-08-28)

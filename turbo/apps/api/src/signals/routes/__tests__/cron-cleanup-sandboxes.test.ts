@@ -238,6 +238,7 @@ async function insertRunFixture(args?: {
   readonly triggerSource?: TriggerSource;
   readonly userId?: string;
   readonly orgId?: string;
+  readonly runnerGroup?: string;
 }): Promise<RunFixture> {
   const response = await postCronCleanupState({
     action: "seed-run",
@@ -257,6 +258,7 @@ async function insertRunFixture(args?: {
     trigger_source: args?.triggerSource,
     user_id: args?.userId,
     org_id: args?.orgId,
+    runner_group: args?.runnerGroup,
   });
   return {
     runId: stringField(response, "run_id"),
@@ -1007,11 +1009,46 @@ describe("sandbox cleanup", () => {
     });
   });
 
+  it("keeps a stale running run active when its heartbeat commits first", async () => {
+    const fixture = await trackRun(
+      insertRunFixture({
+        status: "running",
+        createdAt: minutesAgo(10),
+        lastHeartbeatAt: minutesAgo(3),
+      }),
+    );
+    const headers = {
+      authorization: `Bearer ${generateSandboxToken(
+        fixture.userId,
+        fixture.runId,
+        fixture.orgId,
+      )}`,
+    };
+
+    await webhooks.requestAgentHeartbeat(
+      { runId: fixture.runId },
+      headers,
+      [200],
+    );
+    const response = await cleanupRegisteredFixtures();
+
+    expect(response.body.results).toHaveLength(0);
+    await expect(findRun(fixture.runId)).resolves.toMatchObject({
+      status: "running",
+      error: null,
+    });
+  });
+
   it("exposes a pending-run timeout as terminal to connector runtime sync", async () => {
     const fixture = await trackRun(
-      insertRunFixture({ status: "pending", createdAt: minutesAgo(6) }),
+      insertRunFixture({
+        status: "pending",
+        createdAt: minutesAgo(6),
+        runnerGroup: "vm0/test",
+      }),
     );
     await insertRunnerJobEntry(fixture, farFuture());
+    context.mocks.ably.publish.mockClear();
 
     const response = await cleanupRegisteredFixtures();
 
@@ -1030,6 +1067,11 @@ describe("sandbox cleanup", () => {
       error: "Run timed out while pending (never started)",
     });
     await expect(findRunnerJob(fixture.runId)).resolves.toBeNull();
+    expect(
+      context.mocks.ably.publish.mock.calls.filter(([channel]) => {
+        return channel === "cancel";
+      }),
+    ).toHaveLength(0);
 
     const sync = await accept(
       setupApp({ context, routes: runnersRoutes })(
@@ -1098,8 +1140,10 @@ describe("sandbox cleanup", () => {
         status: "running",
         createdAt: minutesAgo(1),
         lastHeartbeatAt: minutesAgo(3),
+        runnerGroup: "vm0/test",
       }),
     );
+    context.mocks.ably.publish.mockClear();
 
     const response = await cleanupRegisteredFixtures();
 
@@ -1117,6 +1161,19 @@ describe("sandbox cleanup", () => {
       status: "timeout",
       error: "Run timed out (no heartbeat)",
     });
+    expect(
+      context.mocks.ably.publish.mock.calls.filter(([channel]) => {
+        return channel === "cancel";
+      }),
+    ).toStrictEqual([["cancel", { runId: fixture.runId, mode: "hard" }]]);
+
+    const duplicate = await cleanupRegisteredFixtures();
+    expect(duplicate.body.results).toHaveLength(0);
+    expect(
+      context.mocks.ably.publish.mock.calls.filter(([channel]) => {
+        return channel === "cancel";
+      }),
+    ).toHaveLength(1);
   });
 
   it("does not cleanup completed runs even when they are old", async () => {

@@ -42,10 +42,14 @@ import {
   fill,
   holdElementAnimations,
   queryAllByRoleFast,
+  setupPageAndWaitForContent,
 } from "../../../__tests__/page-helper.ts";
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { emptySearchImg } from "../platform-assets.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../../signals/__tests__/test-helpers.ts";
 import { pathname, search } from "../../../signals/location.ts";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { setChatPageImageModelSelection$ } from "../../../signals/okou-page/chat-page.ts";
@@ -55,6 +59,10 @@ import {
 } from "../../../signals/okou-page/sidebar-state.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
+import {
+  changeChatThreadList,
+  changeChatThreadReadCursor,
+} from "../../../mocks/mock-helpers.ts";
 
 // The composer editor is mounted on first paint and mounted again once page
 // bootstrap settles, so an element captured too early is detached before a test
@@ -678,6 +686,60 @@ describe("zero sidebar", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("refreshes rendered unread indicators from shared thread invalidations", async () => {
+    prepareAgents();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Remote unread conversation"),
+    ]);
+    let hasUnread = false;
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, {
+        agents: hasUnread ? { [AGENT_ID]: "unread" } : {},
+        threads: hasUnread ? { [EXISTING_THREAD_ID]: "unread" } : {},
+      });
+    });
+    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+      return respond(200, {
+        unreads: hasUnread
+          ? [
+              {
+                threadId: EXISTING_THREAD_ID,
+                unreadAt: "2026-03-10T00:05:00Z",
+              },
+            ]
+          : [],
+      });
+    });
+
+    await setupPageAndWaitForContent({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      sharedWorkerTestTransport: "message-port",
+    });
+
+    const nav = await waitFor(() => {
+      const current = mobileSidebar();
+      expect(within(current).getByText("Zero")).toBeInTheDocument();
+      return current;
+    });
+    const agentRow = agentRowByName(nav, "Zero");
+    const threadRow = await waitFor(() => {
+      return threadRowByTitle("Remote unread conversation");
+    });
+    await waitFor(() => {
+      expect(within(agentRow).queryByLabelText("Unread")).toBeNull();
+      expect(within(threadRow).queryByLabelText("Unread")).toBeNull();
+    });
+
+    hasUnread = true;
+    changeChatThreadList();
+
+    await waitFor(() => {
+      expect(within(agentRow).getByLabelText("Unread")).toBeInTheDocument();
+      expect(within(threadRow).getByLabelText("Unread")).toBeInTheDocument();
+    });
+  });
+
   it("keeps the sidebar responsive when a draft membership request rejects", async () => {
     prepareDefaultAgent();
     const draftResponse = context.mocks.deferred<void>();
@@ -933,26 +995,30 @@ describe("zero sidebar", () => {
     context.mocks.api(
       chatThreadEventsContract.rows,
       ({ params, query, respond }) => {
-        return respond(200, {
-          rows: mockChatEventRows(
-            params.threadId === INCIDENT_THREAD_ID
-              ? [
-                  {
-                    id: "incident-message-1",
-                    threadId: INCIDENT_THREAD_ID,
-                    eventType: "run.completed" as const,
-                    runId: "mock-run",
-                    content: null,
-                    runLifecycleEvent: "completed" as const,
-                    seqId: 1,
-                    createdAt: "2026-03-10T00:05:00Z",
-                  },
-                ]
-              : [],
-          ).filter((row) => {
-            return row.seqId > query.sinceSeqId;
-          }),
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            mockChatEventRows(
+              params.threadId === INCIDENT_THREAD_ID
+                ? [
+                    {
+                      id: "incident-message-1",
+                      threadId: INCIDENT_THREAD_ID,
+                      eventType: "run.completed" as const,
+                      runId: "mock-run",
+                      content: null,
+                      runLifecycleEvent: "completed" as const,
+                      seqId: 1,
+                      createdAt: "2026-03-10T00:05:00Z",
+                    },
+                  ]
+                : [],
+            ).filter((row) => {
+              return row.seqId > query.sinceSeqId;
+            }),
+            query,
+          ),
+        );
       },
     );
     context.mocks.api(
@@ -984,12 +1050,7 @@ describe("zero sidebar", () => {
 
     markReadDeferred.resolve();
 
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscription("chatThreadReadCursorUpdated"),
-      ).toBeTruthy();
-    });
-    context.mocks.ably.trigger("chatThreadReadCursorUpdated", {
+    changeChatThreadReadCursor({
       threadId: INCIDENT_THREAD_ID,
       agentId: AGENT_ID,
       lastReadAt: null,
@@ -2423,7 +2484,7 @@ describe("zero sidebar", () => {
     expect(
       within(dialog).queryByText("Planning deploy"),
     ).not.toBeInTheDocument();
-    const messageResult = highlighted.closest("[cmdk-item]");
+    const messageResult = highlighted.closest('[role="option"]');
     if (!(messageResult instanceof HTMLElement)) {
       throw new Error("Message search result not found");
     }
@@ -2556,7 +2617,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("keeps the chat list owner without carrying rows across agent scopes", async () => {
+  it("keeps the chat list owner when switching to a pinned agent chat", async () => {
     prepareAgents();
     const supportUnreadGate = context.mocks.deferred<void>();
     context.mocks.data.userPreferences({
@@ -2631,7 +2692,7 @@ describe("zero sidebar", () => {
     });
 
     await waitFor(() => {
-      expect(pathname()).toBe(`/chats/${INCIDENT_THREAD_ID}`);
+      expect(pathname()).toBe(`/agents/${SUPPORT_AGENT_ID}/chat`);
       expect(
         within(sidebar()).queryByText("Research kickoff"),
       ).not.toBeInTheDocument();
@@ -2647,7 +2708,7 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("falls back to the pinned agent chat when the next pinned agent has no thread", async () => {
+  it("opens the pinned agent chat even when the next agent has a thread", async () => {
     prepareAgents();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
@@ -2659,7 +2720,14 @@ describe("zero sidebar", () => {
         agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
       },
     );
-    mockSidebarThreadStory([researchThread]);
+    const supportThread = createThread(
+      INCIDENT_THREAD_ID,
+      "Support escalation",
+      {
+        agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
+      },
+    );
+    mockSidebarThreadStory([researchThread, supportThread]);
 
     setupSidebarPage({ context, path: `/chats/${RESEARCH_THREAD_ID}` });
 
@@ -2803,19 +2871,14 @@ describe("zero sidebar", () => {
     });
 
     let unreadAgentIds = [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID];
-    let unreadAgentRequests = 0;
-    mockUnreadAgents(
-      () => {
-        return unreadAgentIds;
-      },
-      () => {
-        unreadAgentRequests += 1;
-      },
-    );
+    mockUnreadAgents(() => {
+      return unreadAgentIds;
+    });
 
-    setupSidebarPage({
+    await setupPageAndWaitForContent({
       context,
       path: `/agents/${AGENT_ID}/chat`,
+      sharedWorkerTestTransport: "message-port",
     });
 
     const nav = await waitFor(() => {
@@ -2892,18 +2955,12 @@ describe("zero sidebar", () => {
       expect(within(supportDialogRow).getByLabelText("Unread")).toBeVisible();
     });
 
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscription("chatThreadReadCursorUpdated"),
-      ).toBeTruthy();
-    });
     unreadAgentIds = [SUPPORT_AGENT_ID];
-    context.mocks.ably.trigger("chatThreadReadCursorUpdated", {
+    changeChatThreadReadCursor({
       agentId: RESEARCH_AGENT_ID,
     });
 
     await waitFor(() => {
-      expect(unreadAgentRequests).toBeGreaterThan(1);
       expect(
         within(researchSidebarRow).queryByLabelText("Unread"),
       ).not.toBeInTheDocument();
@@ -3753,7 +3810,7 @@ describe("zero sidebar", () => {
 
     const rowFor = async (title: string): Promise<HTMLElement> => {
       const row = (await within(dialog).findByText(title)).closest(
-        "[cmdk-item]",
+        '[role="option"]',
       );
       if (!(row instanceof HTMLElement)) {
         throw new Error(`no spotlight row for ${title}`);
@@ -4001,7 +4058,7 @@ describe("zero sidebar", () => {
     });
 
     // The user temporarily switched the landing composer image model without
-    // pressing "Set as default". A blank thread must not pin that pick; it
+    // pressing "Use this for future chats". A blank thread must not pin that pick; it
     // stays unpinned (null) so it follows the live member default.
     context.store.set(setChatPageImageModelSelection$, "fal-ai/flux-pro/v1.1");
 
@@ -4066,8 +4123,8 @@ describe("zero sidebar", () => {
           ],
           pinnedAgentIds: refreshPinnedAgentIds,
           sendMode: "enter",
-          morningBriefEnabled: false,
-          morningBriefNextRunAt: null,
+          theme: "system",
+          colorTheme: "blue-horizon",
           captureNetworkBodiesRemaining: 0,
         });
       },
@@ -4423,8 +4480,8 @@ describe("zero sidebar", () => {
         ],
         pinnedAgentIds: [...nextPinnedAgentIds],
         sendMode: "enter",
-        morningBriefEnabled: false,
-        morningBriefNextRunAt: null,
+        theme: "system",
+        colorTheme: "blue-horizon",
         captureNetworkBodiesRemaining: 0,
       });
     });
@@ -4522,9 +4579,9 @@ describe("zero sidebar", () => {
       within(rail).getByLabelText("Onde Zero trabalha"),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Abrir menu")).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Abrir artefatos no celular"),
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Abrir artefatos no celular"),
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByLabelText("Abrir automações no celular"),
     ).toBeInTheDocument();
@@ -4574,9 +4631,9 @@ describe("zero sidebar", () => {
     expect(within(rail).getByText("アーティファクト")).toBeInTheDocument();
     expect(within(rail).getByLabelText("Zeroの連携先")).toBeInTheDocument();
     expect(screen.getByLabelText("メニューを開く")).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("モバイルでアーティファクトを開く"),
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("モバイルでアーティファクトを開く"),
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByLabelText("モバイルでオートメーションを開く"),
     ).toBeInTheDocument();
@@ -4630,9 +4687,9 @@ describe("zero sidebar", () => {
       within(rail).getByLabelText("Dónde trabaja Zero"),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Abrir menú")).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Abrir artefactos en móvil"),
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Abrir artefactos en móvil"),
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByLabelText("Abrir automatizaciones en móvil"),
     ).toBeInTheDocument();

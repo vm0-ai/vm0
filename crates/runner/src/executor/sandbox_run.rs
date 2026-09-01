@@ -805,6 +805,15 @@ impl SandboxPrepareError {
             invalidate_consumed_workspace_cache: false,
         }
     }
+
+    fn fatal_after_cleanup(error: RunnerError, cleanup_completed: bool) -> Self {
+        Self {
+            error,
+            retry: SandboxPrepareRetry::None,
+            cleanup_completed,
+            invalidate_consumed_workspace_cache: false,
+        }
+    }
 }
 
 pub(super) async fn prepare_workspace_image(
@@ -1286,8 +1295,41 @@ async fn create_started_sandbox(
     };
     telemetry.record(WORKSPACE_DRIVE_MOUNT, mount_duration, true, None);
     record_workspace_drive_mount_guest_exec(telemetry, guest_duration, true);
-    if let Some(notifier) = sandbox_prepared {
-        notifier.notify(context.run_id, sandbox_id).await;
+    if let Some(notifier) = sandbox_prepared
+        && let Err(error) = notifier.notify(context.run_id, sandbox_id).await
+    {
+        if let Some(prepared_guest_runtime) = prepared_guest_runtime.take() {
+            prepared_guest_runtime
+                .finish(sandbox.as_ref(), telemetry)
+                .await;
+        }
+        let unregister_completed = match unregister_proxy_registry(
+            config,
+            &source_ip,
+            context.run_id,
+        )
+        .await
+        {
+            Ok(()) => true,
+            Err(unregister_error) => {
+                warn!(
+                    run_id = %context.run_id,
+                    error = %unregister_error,
+                    "failed to unregister sandbox from proxy after ownership publication failure"
+                );
+                false
+            }
+        };
+        network_log_session
+            .close_for_upload(context.run_id, &config.network_log_drain)
+            .await;
+        let destroy_completed = destroy_sandbox_panic_safe(factory, sandbox)
+            .await
+            .is_completed();
+        return Err(SandboxPrepareError::fatal_after_cleanup(
+            error,
+            unregister_completed && destroy_completed,
+        ));
     }
 
     Ok(PreparedSandboxRun {

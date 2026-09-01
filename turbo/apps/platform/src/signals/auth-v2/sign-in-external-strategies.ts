@@ -1,4 +1,4 @@
-import type { Clerk } from "@clerk/clerk-js";
+import type { PlatformClerk as Clerk } from "../../lib/clerk-runtime.ts";
 import type { SignInResource } from "@clerk/react/types";
 
 import { createDeferredPromise, settle, withCleanup } from "../utils.ts";
@@ -78,7 +78,7 @@ function supportsGoogleOneTapFedCm(): boolean {
 
 function loadGoogleIdentityApi(
   signal: AbortSignal,
-): Promise<GoogleIdentityApi> {
+): Promise<GoogleIdentityApi | null> {
   signal.throwIfAborted();
   const loadedApi = googleIdentityApi();
   if (loadedApi) {
@@ -95,17 +95,17 @@ function loadGoogleIdentityApi(
     script.src = GOOGLE_IDENTITY_SCRIPT_URL;
   }
 
-  const deferred = createDeferredPromise<GoogleIdentityApi>(signal);
+  const deferred = createDeferredPromise<GoogleIdentityApi | null>(signal);
   const handleLoad = (): void => {
     const api = googleIdentityApi();
     if (api) {
       deferred.resolve(api);
       return;
     }
-    deferred.reject(new Error("Google Identity Services did not initialize"));
+    deferred.resolve(null);
   };
   const handleError = (): void => {
-    deferred.reject(new Error("Google Identity Services could not be loaded"));
+    deferred.resolve(null);
   };
   const cleanup = (): void => {
     script.removeEventListener("load", handleLoad);
@@ -276,6 +276,9 @@ export async function requestGoogleOneTapCredential(
 ): Promise<string | null> {
   const api = await loadGoogleIdentityApi(signal);
   signal.throwIfAborted();
+  if (!api) {
+    return null;
+  }
   const credential = createDeferredPromise<string | null>(signal);
   const finish = (value: string | null): void => {
     if (!credential.settled()) {

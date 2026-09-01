@@ -12,7 +12,6 @@ import type {
 import { env } from "./env";
 import {
   OFFICIAL_SLACK_APP_NAME,
-  OFFICIAL_SLACK_LEGACY_COMMAND,
   OFFICIAL_SLACK_PRIMARY_COMMAND,
   officialSlackBotMention,
 } from "./slack-official-app";
@@ -216,7 +215,7 @@ function buildAppHomeUsageBlocks(options: AppHomeOptions): SlackBlocks {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*Commands*\n\u2022 \`${OFFICIAL_SLACK_PRIMARY_COMMAND} connect\` - Connect to ${assistantName}\n\u2022 \`${OFFICIAL_SLACK_PRIMARY_COMMAND} disconnect\` - Disconnect from ${assistantName}\n\u2022 \`${OFFICIAL_SLACK_LEGACY_COMMAND}\` - Legacy alias`,
+        text: `*Commands*\n\u2022 \`${OFFICIAL_SLACK_PRIMARY_COMMAND} connect\` - Connect to ${assistantName}\n\u2022 \`${OFFICIAL_SLACK_PRIMARY_COMMAND} disconnect\` - Disconnect from ${assistantName}`,
       },
     },
     {
@@ -358,7 +357,7 @@ export function buildHelpMessage(
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*Commands*\n\u2022 \`${OFFICIAL_SLACK_PRIMARY_COMMAND} connect\` - Connect to ${assistantName}${switchLine}${modelLine}\n\u2022 \`${OFFICIAL_SLACK_PRIMARY_COMMAND} disconnect\` - Disconnect from ${assistantName}\n\u2022 \`${OFFICIAL_SLACK_LEGACY_COMMAND}\` - Legacy alias`,
+        text: `*Commands*\n\u2022 \`${OFFICIAL_SLACK_PRIMARY_COMMAND} connect\` - Connect to ${assistantName}${switchLine}${modelLine}\n\u2022 \`${OFFICIAL_SLACK_PRIMARY_COMMAND} disconnect\` - Disconnect from ${assistantName}`,
       },
     },
     {

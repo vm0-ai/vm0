@@ -32,7 +32,7 @@ describe("preview bypass cookie", () => {
   });
 
   it("writes the cookie when the bypass query is present", () => {
-    const setCookie = vi.fn();
+    const setCookie = vi.fn<(cookie: string) => void>();
 
     expect(
       writePreviewBypassCookie(

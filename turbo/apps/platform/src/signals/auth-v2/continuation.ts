@@ -1,4 +1,4 @@
-import type { Clerk } from "@clerk/clerk-js";
+import type { BrowserClerk as Clerk } from "@clerk/shared/types";
 import type {
   SessionResource,
   SignedInSessionResource,
@@ -446,10 +446,7 @@ export function isAuthV2ContinuationLocation(
   pathname: string,
   hash: string,
 ): boolean {
-  const pathPrefixes = [
-    `${ROUTES.signInV2}/tasks/`,
-    `${ROUTES.signUpV2}/tasks/`,
-  ];
+  const pathPrefixes = [`${ROUTES.signIn}/tasks/`, `${ROUTES.signUp}/tasks/`];
   const hashPath = hash.startsWith("#") ? hash.slice(1) : hash;
   return (
     pathPrefixes.some((prefix) => {

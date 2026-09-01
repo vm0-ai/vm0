@@ -4,7 +4,11 @@ import {
   testOfficialWorkflowCatalogStateContract,
   type TestOfficialWorkflowCatalogStateActionBody,
 } from "@okouai/api-contracts/contracts/test-official-workflow-catalog-state";
-import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@okouai/core/storage-names";
+import {
+  getOfficialWorkflowDefinitionStorageName,
+  SYSTEM_ORG_ID,
+  VOLUME_ORG_USER_ID,
+} from "@okouai/core/storage-names";
 import {
   officialWorkflowCatalogReleases,
   officialWorkflowCatalogState,
@@ -19,7 +23,7 @@ import {
 } from "@okouai/db/schema/workflow";
 import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { command } from "ccstate";
-import { and, asc, count, eq, like } from "drizzle-orm";
+import { and, asc, count, eq, inArray, like, or } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import { testOverride } from "../../lib/singleton";
@@ -49,6 +53,10 @@ const actionBody$ = bodyResultOf(
   testOfficialWorkflowCatalogStateContract.action,
 );
 const TEST_STORAGE_NAME_PATTERN = "official-workflow@api-test-%";
+const DEPLOYED_TEST_STORAGE_NAMES = [
+  getOfficialWorkflowDefinitionStorageName("connector-doctor"),
+  getOfficialWorkflowDefinitionStorageName("morning-brief"),
+] as const;
 
 interface DormantMaterializationPause {
   readonly reached: ReturnType<typeof createDeferredPromise<void>>;
@@ -156,7 +164,10 @@ async function cleanupTestState(db: Db, signal: AbortSignal): Promise<void> {
       and(
         eq(storages.orgId, SYSTEM_ORG_ID),
         eq(storages.userId, VOLUME_ORG_USER_ID),
-        like(storages.name, TEST_STORAGE_NAME_PATTERN),
+        or(
+          like(storages.name, TEST_STORAGE_NAME_PATTERN),
+          inArray(storages.name, DEPLOYED_TEST_STORAGE_NAMES),
+        ),
       ),
     );
   signal.throwIfAborted();
@@ -174,7 +185,10 @@ async function catalogCounts(db: Db, signal: AbortSignal) {
           and(
             eq(storages.orgId, SYSTEM_ORG_ID),
             eq(storages.userId, VOLUME_ORG_USER_ID),
-            like(storages.name, TEST_STORAGE_NAME_PATTERN),
+            or(
+              like(storages.name, TEST_STORAGE_NAME_PATTERN),
+              inArray(storages.name, DEPLOYED_TEST_STORAGE_NAMES),
+            ),
           ),
         ),
       db
@@ -185,7 +199,10 @@ async function catalogCounts(db: Db, signal: AbortSignal) {
           and(
             eq(storages.orgId, SYSTEM_ORG_ID),
             eq(storages.userId, VOLUME_ORG_USER_ID),
-            like(storages.name, TEST_STORAGE_NAME_PATTERN),
+            or(
+              like(storages.name, TEST_STORAGE_NAME_PATTERN),
+              inArray(storages.name, DEPLOYED_TEST_STORAGE_NAMES),
+            ),
           ),
         ),
     ]);

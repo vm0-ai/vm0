@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.18.45](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.44...vsock-proto-v0.18.45) (2026-09-01)
+
+
+### Documentation
+
+* **vsock-proto:** correct message allocation range ([#30689](https://github.com/vm0-ai/vm0/issues/30689)) ([67a437d](https://github.com/vm0-ai/vm0/commit/67a437d4d65f2893b5b0e3cd559911af98ef7463))
+
+## [0.18.44](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.43...vsock-proto-v0.18.44) (2026-09-01)
+
+
+### Performance Improvements
+
+* **runner:** launch reuse identity verifier without shell ([#30644](https://github.com/vm0-ai/vm0/issues/30644)) ([3ea790e](https://github.com/vm0-ai/vm0/commit/3ea790e5a8bca85854debfe537a89a66c4520445))
+
+## [0.18.43](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.42...vsock-proto-v0.18.43) (2026-08-31)
+
+
+### Performance Improvements
+
+* **vsock-proto:** encode storage results directly ([#30553](https://github.com/vm0-ai/vm0/issues/30553)) ([fc1a863](https://github.com/vm0-ai/vm0/commit/fc1a8634de0cd471b6fffca0ab324d420f0a45a3))
+
+## [0.18.42](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.41...vsock-proto-v0.18.42) (2026-08-31)
+
+
+### Documentation
+
+* **vsock-proto:** document guest storage manifest request constraints ([#30456](https://github.com/vm0-ai/vm0/issues/30456)) ([f1a688a](https://github.com/vm0-ai/vm0/commit/f1a688ade7bbe5d7de975147f2521a4676357ee6))
+
+## [0.18.41](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.40...vsock-proto-v0.18.41) (2026-08-28)
+
+
+### Documentation
+
+* **rust:** document exec-start process contracts ([#30083](https://github.com/vm0-ai/vm0/issues/30083)) ([598b61b](https://github.com/vm0-ai/vm0/commit/598b61b22a54af2f711ab05c7ed09431d0924ceb))
+
 ## [0.18.40](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.39...vsock-proto-v0.18.40) (2026-08-28)
 
 

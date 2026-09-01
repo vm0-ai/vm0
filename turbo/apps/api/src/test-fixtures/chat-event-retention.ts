@@ -1,13 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
-import {
-  CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION,
-  CHAT_EVENT_SNAPSHOT_PROJECTIONS,
-  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  type ChatEventSnapshotProjection,
-} from "@okouai/api-contracts/contracts/chat-event-schema-version";
-import { and, desc, eq, inArray, lte, max, ne } from "drizzle-orm";
+import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import { and, desc, eq, inArray, lte, max } from "drizzle-orm";
 import {
   activeInputDeliveries,
   activeInputDeliveryItems,
@@ -24,7 +19,6 @@ import { db } from "../lib/db";
 import { nowDate } from "../lib/time";
 import { writeDb$ } from "../signals/external/db";
 import { lockChatEventRetention } from "../signals/services/chat-event-retention-lock.service";
-import { cleanChatToolActivity } from "../signals/services/chat-tool-activity-cleanup.service";
 import {
   insertChatEvent,
   insertChatEvents,
@@ -64,36 +58,6 @@ export const seedRetentionOutputEvent$ = command(
     signal.throwIfAborted();
     if (inserted === null) {
       throw new Error("Expected retention output event insertion");
-    }
-    return inserted.id;
-  },
-);
-
-export const seedRetentionToolEvent$ = command(
-  async (
-    { set },
-    args: {
-      readonly chatThreadId: string;
-      readonly runId?: string;
-      readonly toolUseId?: string;
-      readonly summary?: string;
-    },
-    signal: AbortSignal,
-  ): Promise<string> => {
-    const inserted = await set(writeDb$).transaction(async (tx) => {
-      return await insertChatEvent(tx, {
-        chatThreadId: args.chatThreadId,
-        eventType: "output.tool",
-        runId: args.runId ?? randomUUID(),
-        toolUseId: args.toolUseId ?? `tool-use-${randomUUID()}`,
-        action: "read",
-        status: "success",
-        summary: args.summary ?? "Read the requested file",
-      });
-    });
-    signal.throwIfAborted();
-    if (inserted === null) {
-      throw new Error("Expected retention tool event insertion");
     }
     return inserted.id;
   },
@@ -359,10 +323,8 @@ export const coverRetentionThread$ = command(
     { set },
     args: {
       readonly chatThreadId: string;
-      readonly archiveSchemaVersion?: number;
       readonly snapshotLastSeqId?: number;
       readonly indexedSeqId?: number;
-      readonly snapshotProjections?: readonly ChatEventSnapshotProjection[];
     },
     signal: AbortSignal,
   ): Promise<number> => {
@@ -391,76 +353,49 @@ export const coverRetentionThread$ = command(
     if (terminal === undefined) {
       throw new Error("Expected retention fixture snapshot terminal event");
     }
-    const archiveSchemaVersion =
-      args.archiveSchemaVersion ?? CURRENT_CHAT_EVENT_SCHEMA_VERSION;
     const digest = createHash("sha256")
       .update(
-        `${args.chatThreadId}:${lastSeqId.toString()}:${archiveSchemaVersion.toString()}`,
+        `${args.chatThreadId}:${lastSeqId.toString()}:${CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()}`,
       )
       .digest("hex");
     const objectKey = `chat-events/${args.chatThreadId}/${lastSeqId.toString()}-${digest}.ndjson.gz`;
-    const projections =
-      args.snapshotProjections ??
-      (archiveSchemaVersion >= CURRENT_CHAT_EVENT_SCHEMA_VERSION
-        ? [CANONICAL_CHAT_EVENT_SNAPSHOT_PROJECTION]
-        : CHAT_EVENT_SNAPSHOT_PROJECTIONS);
-    for (const projection of projections) {
-      const [retainedTerminal] = await database
-        .select({ id: chatEvents.id, seqId: chatEvents.seqId })
-        .from(chatEvents)
-        .where(
-          and(
-            eq(chatEvents.chatThreadId, args.chatThreadId),
-            lte(chatEvents.seqId, lastSeqId),
-            projection === "tool-redacted"
-              ? ne(chatEvents.eventType, "output.tool")
-              : undefined,
+    const [head] = await database
+      .select({ id: chatEventSnapshots.id })
+      .from(chatEventSnapshots)
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, args.chatThreadId),
+          eq(
+            chatEventSnapshots.archiveSchemaVersion,
+            CURRENT_CHAT_EVENT_SCHEMA_VERSION,
           ),
-        )
-        .orderBy(desc(chatEvents.seqId))
-        .limit(1);
-      signal.throwIfAborted();
-      const terminalCursor =
-        archiveSchemaVersion >= CURRENT_CHAT_EVENT_SCHEMA_VERSION
-          ? {
-              terminalEventId: retainedTerminal?.id ?? null,
-              terminalSeqId: retainedTerminal?.seqId ?? 0,
-            }
-          : { terminalEventId: null, terminalSeqId: null };
-      const [head] = await database
-        .select({ id: chatEventSnapshots.id })
-        .from(chatEventSnapshots)
-        .where(
-          and(
-            eq(chatEventSnapshots.chatThreadId, args.chatThreadId),
-            eq(chatEventSnapshots.archiveSchemaVersion, archiveSchemaVersion),
-            eq(chatEventSnapshots.projection, projection),
-          ),
-        )
-        .limit(1);
-      signal.throwIfAborted();
-      if (head === undefined) {
-        await database.insert(chatEventSnapshots).values({
-          chatThreadId: args.chatThreadId,
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+    const terminalCursor = {
+      terminalEventId: terminal.id,
+      terminalSeqId: terminal.seqId,
+    };
+    if (head === undefined) {
+      await database.insert(chatEventSnapshots).values({
+        chatThreadId: args.chatThreadId,
+        lastSeqId,
+        lastEventId: terminal.id,
+        ...terminalCursor,
+        archiveSchemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+        objectKey,
+      });
+    } else {
+      await database
+        .update(chatEventSnapshots)
+        .set({
           lastSeqId,
           lastEventId: terminal.id,
           ...terminalCursor,
-          archiveSchemaVersion,
-          projection,
           objectKey,
-        });
-      } else {
-        await database
-          .update(chatEventSnapshots)
-          .set({
-            lastSeqId,
-            lastEventId: terminal.id,
-            ...terminalCursor,
-            archiveSchemaVersion,
-            objectKey,
-          })
-          .where(eq(chatEventSnapshots.id, head.id));
-      }
+        })
+        .where(eq(chatEventSnapshots.id, head.id));
     }
     await database
       .insert(chatEventSearchMessageWatermarks)
@@ -509,56 +444,6 @@ export const readRetentionEvents$ = command(
   },
 );
 
-export const readRetentionSnapshotHeads$ = command(
-  async (
-    { set },
-    chatThreadId: string,
-    signal: AbortSignal,
-  ): Promise<
-    readonly {
-      readonly archiveSchemaVersion: number;
-      readonly lastEventId: string;
-      readonly lastSeqId: number;
-      readonly objectKey: string;
-      readonly projection: ChatEventSnapshotProjection;
-    }[]
-  > => {
-    const rows = await set(writeDb$)
-      .select({
-        archiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
-        lastEventId: chatEventSnapshots.lastEventId,
-        lastSeqId: chatEventSnapshots.lastSeqId,
-        objectKey: chatEventSnapshots.objectKey,
-        projection: chatEventSnapshots.projection,
-      })
-      .from(chatEventSnapshots)
-      .where(eq(chatEventSnapshots.chatThreadId, chatThreadId));
-    signal.throwIfAborted();
-    return rows;
-  },
-);
-
-export const failRetentionToolCleanupAfterMutation$ = command(
-  async (
-    { set },
-    chatThreadIds: readonly string[],
-    signal: AbortSignal,
-  ): Promise<void> => {
-    await set(writeDb$).transaction(async (tx) => {
-      await cleanChatToolActivity(
-        tx,
-        {
-          kind: "fixtures",
-          chatThreadIds,
-          toolCleanupFailAfterMutation: true,
-        },
-        signal,
-      );
-    });
-    signal.throwIfAborted();
-  },
-);
-
 export const setRetentionRunStatus$ = command(
   async (
     { set },
@@ -583,41 +468,6 @@ export async function holdChatEventRetentionLockFixture(
     await lockChatEventRetention(tx);
     started.resolve(undefined);
     await released.promise;
-  });
-  await started.promise;
-  return {
-    release: () => {
-      if (!released.settled()) {
-        released.resolve(undefined);
-      }
-    },
-    done,
-  };
-}
-
-/** Hold the thread row lock while a stale writer's tool event is uncommitted. */
-export async function holdRetentionToolWriterFixture(
-  chatThreadId: string,
-  signal: AbortSignal,
-): Promise<{ readonly release: () => void; readonly done: Promise<string> }> {
-  const started = createDeferredPromise<void>(signal);
-  const released = createDeferredPromise<void>(signal);
-  const done = db().transaction(async (tx) => {
-    const inserted = await insertChatEvent(tx, {
-      chatThreadId,
-      eventType: "output.tool",
-      runId: randomUUID(),
-      toolUseId: `stale-writer-${randomUUID()}`,
-      action: "read",
-      status: "success",
-      summary: "Stale writer tool activity",
-    });
-    if (inserted === null) {
-      throw new Error("Expected stale writer tool event insertion");
-    }
-    started.resolve(undefined);
-    await released.promise;
-    return inserted.id;
   });
   await started.promise;
   return {

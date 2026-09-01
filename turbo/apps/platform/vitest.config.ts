@@ -16,23 +16,29 @@ export default defineConfig({
       ),
       // Mock ably in tests so setupRealtime$ creates a fake channel and
       // setAblyLoop$ uses the real subscribe/deferred code path.
+      "ably/modular": path.resolve(__dirname, "./src/mocks/ably.ts"),
       ably: path.resolve(__dirname, "./src/mocks/ably.ts"),
       // Mock idb in tests so IndexedDB operations fall through to the
       // remote (MSW-mocked) path on openDB rejection in happy-dom.
       idb: path.resolve(__dirname, "./src/mocks/idb.ts"),
-      // Stub mermaid rendering in tests: the real renderer needs the SVG
+      // Stub Mermaid rendering in tests: the real renderer needs the SVG
       // measurement APIs of a browser layout engine, which happy-dom does not
       // implement. Parsing has no such needs, so the stub delegates it to the
-      // real module via `mermaid-real`.
-      mermaid: path.resolve(__dirname, "./src/mocks/mermaid.ts"),
-      "mermaid-real": path.resolve(
+      // real supported-diagrams module via `mermaid-lite-real`.
+      "@okouai/mermaid-lite": path.resolve(__dirname, "./src/mocks/mermaid.ts"),
+      "mermaid-lite-real": path.resolve(
         __dirname,
-        "./node_modules/mermaid/dist/mermaid.core.mjs",
+        "../../packages/mermaid-lite/dist/mermaid.esm.min.mjs",
       ),
+      "virtual:shared-database-worker": `${path.resolve(
+        __dirname,
+        "./src/shared-database-worker.ts",
+      )}?sharedworker&url`,
       "idb-real": path.resolve(__dirname, "./node_modules/idb/build/index.js"),
     },
   },
   define: {
+    __OKOU_APP_VERSION__: JSON.stringify("0.540.0"),
     "import.meta.env.VITE_MOCK_LOG_DETAIL": JSON.stringify(""),
   },
   test: {
@@ -54,6 +60,18 @@ export default defineConfig({
           // NotSupportedError instead of initiating a network request. The
           // error is suppressed in setup.ts.
           disableIframePageLoading: true,
+          // Prevent happy-dom from making real TCP connections for
+          // `<link rel="stylesheet">` hrefs. Tests that parse index.html into a
+          // live document connect its Google Fonts stylesheet link, and
+          // happy-dom starts a fetch that no test owns or awaits. Vitest only
+          // aborts it when it tears the window down after the whole file, and
+          // destroying the socket mid-TLS-write surfaces as an uncaught
+          // `write ECANCELED Canceled because of SSL destruction`.
+          disableCSSFileLoading: true,
+          // Report the skipped stylesheet load as a `load` event instead of a
+          // console error plus `error` event, so disabling the fetch does not
+          // trade a leaked socket for teardown noise.
+          handleDisabledFileLoadingAsSuccess: true,
         },
       },
     },

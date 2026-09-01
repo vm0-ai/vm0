@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.1.29](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.28...guest-tool-exec-v0.1.29) (2026-09-01)
+
+## [0.1.28](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.27...guest-tool-exec-v0.1.28) (2026-09-01)
+
+## [0.1.27](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.26...guest-tool-exec-v0.1.27) (2026-09-01)
+
+## [0.1.26](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.25...guest-tool-exec-v0.1.26) (2026-08-30)
+
+## [0.1.25](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.24...guest-tool-exec-v0.1.25) (2026-08-30)
+
+## [0.1.24](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.23...guest-tool-exec-v0.1.24) (2026-08-30)
+
+
+### Refactoring
+
+* **guest:** retire legacy tool cgroup reader ([#30278](https://github.com/vm0-ai/vm0/issues/30278)) ([416b413](https://github.com/vm0-ai/vm0/commit/416b41325cd6a19c62e4f006b7ef7a4af2aca4cb)), closes [#30276](https://github.com/vm0-ai/vm0/issues/30276) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+
+## [0.1.23](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.22...guest-tool-exec-v0.1.23) (2026-08-29)
+
+## [0.1.22](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.21...guest-tool-exec-v0.1.22) (2026-08-28)
+
 ## [0.1.21](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.20...guest-tool-exec-v0.1.21) (2026-08-28)
 
 ## [0.1.20](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.19...guest-tool-exec-v0.1.20) (2026-08-28)

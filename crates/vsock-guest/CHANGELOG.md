@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.19.135](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.134...vsock-guest-v0.19.135) (2026-09-01)
+
+## [0.19.134](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.133...vsock-guest-v0.19.134) (2026-09-01)
+
+## [0.19.133](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.132...vsock-guest-v0.19.133) (2026-09-01)
+
+## [0.19.132](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.131...vsock-guest-v0.19.132) (2026-09-01)
+
+
+### Performance Improvements
+
+* **runner:** launch reuse identity verifier without shell ([#30644](https://github.com/vm0-ai/vm0/issues/30644)) ([3ea790e](https://github.com/vm0-ai/vm0/commit/3ea790e5a8bca85854debfe537a89a66c4520445))
+
+## [0.19.131](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.130...vsock-guest-v0.19.131) (2026-08-31)
+
+## [0.19.130](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.129...vsock-guest-v0.19.130) (2026-08-31)
+
+## [0.19.129](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.128...vsock-guest-v0.19.129) (2026-08-30)
+
+## [0.19.128](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.127...vsock-guest-v0.19.128) (2026-08-30)
+
+## [0.19.127](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.126...vsock-guest-v0.19.127) (2026-08-30)
+
+## [0.19.126](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.125...vsock-guest-v0.19.126) (2026-08-29)
+
+
+### Refactoring
+
+* **runner:** finish vm-to-sandbox terminology cleanup ([#30171](https://github.com/vm0-ai/vm0/issues/30171)) ([22d9b2e](https://github.com/vm0-ai/vm0/commit/22d9b2ebfdb9f9d3910eb8b30f8d2679aaed3081))
+
+## [0.19.125](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.124...vsock-guest-v0.19.125) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** launch guest agent without shell bootstrap ([#30153](https://github.com/vm0-ai/vm0/issues/30153)) ([b2409fe](https://github.com/vm0-ai/vm0/commit/b2409fed8caa794a4e7d604f7d4c64559a385737))
+
+## [0.19.124](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.123...vsock-guest-v0.19.124) (2026-08-28)
+
+
+### Refactoring
+
+* **guest-agent:** remove legacy process-control endpoint reader ([#30130](https://github.com/vm0-ai/vm0/issues/30130)) ([57157de](https://github.com/vm0-ai/vm0/commit/57157de35208c779837373ce8cca6baf601d605b))
+
 ## [0.19.123](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.122...vsock-guest-v0.19.123) (2026-08-28)
 
 ## [0.19.122](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.121...vsock-guest-v0.19.122) (2026-08-28)

@@ -226,6 +226,7 @@ function buildQueueFirstGoalRunInput(args: {
       modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
       selectedModel: modelPin.selectedModel,
     },
+    piExecution: false,
     dispatchFailedCallbacks: args.dispatchFailedCallbacks,
     timing: args.timing,
   };
@@ -327,7 +328,11 @@ async function publishGoalQueueChanged(
   event: PendingGoalQueueEvent,
   signal: AbortSignal,
 ): Promise<void> {
-  await publishChatThreadMessageCreatedSafely(event.userId, event.chatThreadId);
+  await publishChatThreadMessageCreatedSafely({
+    userId: event.userId,
+    orgId: event.orgId,
+    threadId: event.chatThreadId,
+  });
   signal.throwIfAborted();
 }
 

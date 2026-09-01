@@ -24,7 +24,6 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { withBuiltInModelRuntimeRouteUnavailableForTest } from "../../../test-fixtures/built-in-model-runtime-route";
 import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
 import {
-  holdCheckpointReadsFixture,
   holdChatEventInsertTransactionFixture,
   holdGoalThreadLockFixture,
   holdModelPolicyReadsFixture,
@@ -298,13 +297,7 @@ async function startChatRun(
       : { revokesEventId: body.revokesEventId }),
     ...(selectedModel === undefined ? {} : { model: selectedModel }),
   };
-  const sent = await chat.requestSendEvent(
-    actor,
-    requestBody,
-    [201],
-    undefined,
-    options?.publicBrand,
-  );
+  const sent = await chat.requestSendEvent(actor, requestBody, [201], options);
   if (sent.status !== 201) {
     throw new Error("Expected the entitled chat send to create a run");
   }
@@ -610,29 +603,24 @@ async function goalRunIds(threadId: string): Promise<readonly string[]> {
   return (await readGoalQueueStateFixture(threadId)).runIds;
 }
 
-async function checkpointChatRun(
-  runId: string,
-  sandboxHeaders: { readonly authorization: string },
-): Promise<void> {
+function chatRunCheckpoint(runId: string): {
+  readonly cliAgentType: "claude-code";
+  readonly cliAgentSessionId: string;
+  readonly cliAgentSessionHistoryHash: string;
+} {
   const historyHash = createHash("sha256")
     .update(`bdd chat session history ${runId}`)
     .digest("hex");
-  await webhooks.requestAgentCheckpoint(
-    {
-      runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId: cliAgentSessionIdForChatRun(runId),
-      cliAgentSessionHistoryHash: historyHash,
-    },
-    sandboxHeaders,
-    [200],
-  );
+  return {
+    cliAgentType: "claude-code",
+    cliAgentSessionId: cliAgentSessionIdForChatRun(runId),
+    cliAgentSessionHistoryHash: historyHash,
+  };
 }
 
 /**
- * Checkpoint + exitCode-0 complete. Completing without a checkpoint routes to
- * the missing-checkpoint handler and FAILS the run, so every successful chat
- * round checkpoints first.
+ * Atomically checkpoint + exitCode-0 complete. Completing without a checkpoint
+ * routes to the missing-checkpoint handler and FAILS the run.
  */
 async function completeChatRunOk(
   runId: string,
@@ -654,11 +642,11 @@ async function completeChatRunOk(
       [200],
     );
   }
-  await checkpointChatRun(runId, sandboxHeaders);
   await webhooks.requestAgentComplete(
     {
       runId,
       exitCode: 0,
+      checkpoint: chatRunCheckpoint(runId),
       ...(lastEventSequence === undefined ? {} : { lastEventSequence }),
     },
     sandboxHeaders,
@@ -3013,7 +3001,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
     await flushWaitUntilForTest();
   }, 90_000);
 
-  it("records recovery when completion races the cancellation transition", async () => {
+  it("records recovery when checkpointed completion follows cancellation", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const run = await startChatRun(actor, {
@@ -3021,36 +3009,23 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       prompt: "race completion with cancellation",
     });
     const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
-    await checkpointChatRun(run.runId, sandboxHeaders);
     const queuedEventId = await queueChatEvent(actor, {
       agentId,
       threadId: run.threadId,
       prompt: "continue after the concurrent completion",
     });
     await flushWaitUntilForTest();
-    const checkpointGate = await holdCheckpointReadsFixture({
-      signal: context.signal,
-    });
-    onTestFinished(async () => {
-      checkpointGate.release();
-      await checkpointGate.done;
-    });
-
-    const [completion] = await Promise.all([
-      webhooks.requestAgentComplete(
-        { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
-        sandboxHeaders,
-        [200],
-      ),
-      (async () => {
-        await expect
-          .poll(checkpointGate.blockedWaiterCount)
-          .toBeGreaterThanOrEqual(1);
-        await api.requestCancelRun(actor, run.runId, [200]);
-        checkpointGate.release();
-        await checkpointGate.done;
-      })(),
-    ]);
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const completion = await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 0,
+        lastEventSequence: 0,
+        checkpoint: chatRunCheckpoint(run.runId),
+      },
+      sandboxHeaders,
+      [200],
+    );
     expect(completion.body).toStrictEqual({
       success: true,
       status: "failed",
@@ -4278,8 +4253,7 @@ describe("CHAT-02: drain-time admission failure", () => {
           clientEventId: queuedEventId,
         },
         [201],
-        undefined,
-        publicBrand,
+        { publicBrand },
       );
       if ("error" in queued.body) {
         throw new Error(queued.body.error.message);
@@ -4377,8 +4351,7 @@ describe("CHAT-02: drain-time admission failure", () => {
           clientEventId: queuedEventId,
         },
         [201],
-        undefined,
-        publicBrand,
+        { publicBrand },
       );
       if ("error" in retried.body) {
         throw new Error(retried.body.error.message);

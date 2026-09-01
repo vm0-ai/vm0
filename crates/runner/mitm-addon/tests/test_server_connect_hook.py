@@ -297,6 +297,26 @@ def test_server_connect_retargets_api_allow_host(registry_file, mitm_ctx, api_ur
     assert binding.kinds == frozenset(("api_allow",))
 
 
+def test_server_connect_does_not_bind_malformed_platform_api_url(
+    registry_file,
+    mitm_ctx,
+    malformed_platform_api_url,
+):
+    data = _data(
+        client_ip="10.200.0.1",
+        sni="api.vm0.ai",
+    )
+
+    with mitm_ctx(
+        registry_path=str(registry_file),
+        api_url=malformed_platform_api_url,
+    ):
+        mitm_addon.server_connect(data)
+
+    assert data.server.address == ("203.0.113.10", 443)
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+
 def test_server_connect_treats_api_hostname_on_other_port_as_connector(
     tmp_path,
     mitm_ctx,

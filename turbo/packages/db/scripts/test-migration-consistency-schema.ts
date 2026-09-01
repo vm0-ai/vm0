@@ -42,6 +42,11 @@ import {
 import { NON_TRANSACTIONAL_MIGRATION_MARKER } from "./migration-runner";
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
 import { validateAgentDraftsCompatibilityRelation } from "./test-agent-drafts-compatibility-relation";
+import {
+  CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_FUNCTION,
+  CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_TRIGGER,
+  validateChatSearchDeleteCompatibility,
+} from "./test-chat-search-delete-compatibility";
 import { validateAgentRunMetadataStage2Index } from "./test-agent-run-metadata-stage-2-index";
 import {
   validateAgentRunMetadataStage2Final,
@@ -62,12 +67,41 @@ import { validatePermanentAgentRunBuiltInModelKeyState } from "./test-agent-run-
 import { validatePermanentBuiltInModelCooldownState } from "./test-built-in-model-cooldown-permanent";
 import { validatePermanentBuiltInModelKeyState } from "./test-built-in-model-keys-permanent";
 import { validatePermanentBuiltInProviderDiscriminatorState } from "./test-built-in-provider-discriminator-permanent";
+import { validateBuiltInProviderDiscriminatorContract } from "./test-built-in-provider-discriminator-contract";
 import { validateBuiltInProviderDiscriminatorMigration } from "./test-built-in-provider-discriminator-migration";
 import { validateConnectorAccountExpansion } from "./test-connector-account-expansion";
 import { validateConnectorAuthorizationAccountMutationPresence } from "./test-connector-authorization-account-mutation-presence";
 import { validateCustomGatewayProviderTypes } from "./test-custom-gateway-provider-types";
 import { validateFeishuMemberConnectorReconciliation } from "./test-feishu-member-connector-reconciliation";
 import { validateOkouDebugFeatureSwitchKeyRename } from "./test-okou-debug-feature-switch-key-rename";
+import {
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_BACKFILL_MIGRATION,
+  validateOrgMetadataAcquisitionFirstPartySourceBackfill,
+  validateOrgMetadataAcquisitionFirstPartySourceBackfillOnRegeneratedSchema,
+} from "./test-org-metadata-acquisition-first-party-source-backfill";
+import { validateOrgMetadataAcquisitionFirstPartySourceExpansion } from "./test-org-metadata-acquisition-first-party-source-expansion";
+import {
+  installOrgMetadataAcquisitionFirstPartySourceArtifactsOnRegeneratedSchema,
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_MIGRATION,
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_FUNCTION,
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_TRIGGER,
+  validatePermanentOrgMetadataAcquisitionFirstPartySourceState,
+} from "./test-org-metadata-acquisition-first-party-source-permanent";
+import { validateOrgPlanEntitlementRestrictionExpansion } from "./test-org-plan-entitlement-restriction-expansion";
+import {
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_BACKFILL_MIGRATION,
+  validateOrgPlanEntitlementRestrictionBackfill,
+  validateOrgPlanEntitlementRestrictionBackfillOnRegeneratedSchema,
+} from "./test-org-plan-entitlement-restriction-backfill";
+import { validateOrgPlanEntitlementRestrictionNotNull } from "./test-org-plan-entitlement-restriction-not-null";
+import {
+  installOrgPlanEntitlementRestrictionArtifactsOnRegeneratedSchema,
+  ORG_METADATA_PLAN_ENTITLEMENT_PERMANENT_FUNCTION,
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_MIGRATION,
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_FUNCTION,
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_TRIGGER,
+  validatePermanentOrgPlanEntitlementRestrictionState,
+} from "./test-org-plan-entitlement-restriction-permanent";
 import { validateSlackOfficialBrandMigration } from "./test-slack-official-brand-migration";
 import { validatePermanentSlackPublicBrandState } from "./test-slack-public-brand-permanent";
 import { validateWorkflowCompatibilityViews } from "./test-workflow-compatibility-views";
@@ -2321,42 +2355,15 @@ type PermanentFunction = {
 // Exported from a database built by the existing migration chain. Extension-owned
 // pgcrypto and vector functions are deliberately absent from the function list.
 const EXPECTED_PERMANENT_TRIGGERS = [
+  // Temporary #30453 old-API/new-DB delete bridge. Remove with #30468 after
+  // the pre-#30453 API artifact is no longer eligible for rollback.
+  CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_TRIGGER,
   {
     definition:
       "CREATE TRIGGER chat_events_reject_update BEFORE UPDATE ON public.chat_events FOR EACH ROW EXECUTE FUNCTION reject_chat_event_source_update()",
     schemaName: "public",
     tableName: "chat_events",
     triggerName: "chat_events_reject_update",
-  },
-  // Temporary #29910 old-writer/new-DB bridges. Remove only with #28368's
-  // separately reviewed legacy-acceptor contract after the production drain.
-  {
-    definition:
-      "CREATE TRIGGER canonicalize_agent_run_builtin_provider BEFORE INSERT OR UPDATE OF model_provider ON public.agent_runs FOR EACH ROW EXECUTE FUNCTION canonicalize_agent_run_builtin_provider()",
-    schemaName: "public",
-    tableName: "agent_runs",
-    triggerName: "canonicalize_agent_run_builtin_provider",
-  },
-  {
-    definition:
-      "CREATE TRIGGER canonicalize_chat_thread_builtin_provider BEFORE INSERT OR UPDATE OF model_provider_type ON public.chat_threads FOR EACH ROW EXECUTE FUNCTION canonicalize_chat_thread_builtin_provider()",
-    schemaName: "public",
-    tableName: "chat_threads",
-    triggerName: "canonicalize_chat_thread_builtin_provider",
-  },
-  {
-    definition:
-      "CREATE TRIGGER canonicalize_model_provider_builtin_type BEFORE INSERT OR UPDATE ON public.model_providers FOR EACH ROW EXECUTE FUNCTION canonicalize_model_provider_builtin_type()",
-    schemaName: "public",
-    tableName: "model_providers",
-    triggerName: "canonicalize_model_provider_builtin_type",
-  },
-  {
-    definition:
-      "CREATE TRIGGER canonicalize_org_model_policy_builtin_provider BEFORE INSERT OR UPDATE OF default_provider_type, model_provider_id, model_provider_surface_id ON public.org_model_policies FOR EACH ROW EXECUTE FUNCTION canonicalize_org_model_policy_builtin_provider()",
-    schemaName: "public",
-    tableName: "org_model_policies",
-    triggerName: "canonicalize_org_model_policy_builtin_provider",
   },
   {
     definition:
@@ -2435,6 +2442,12 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "org_metadata",
     triggerName: "ensure_legacy_org_metadata_plan_entitlement",
   },
+  // Temporary #30379 expand/mirror bridge. Remove only with #28368 after the
+  // backfill, canonical application/reporting switch, and rollback gates pass.
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_TRIGGER,
+  // Temporary #30162 expand/mirror bridge. Remove only with #28368 after the
+  // canonical reader/writer switch, backfill, and rollback drain are accepted.
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_TRIGGER,
   {
     definition:
       "CREATE TRIGGER sync_legacy_org_plan_entitlement_can_buy_credits BEFORE INSERT OR UPDATE OF plan_key ON public.org_plan_entitlements FOR EACH ROW EXECUTE FUNCTION sync_legacy_org_plan_entitlement_can_buy_credits()",
@@ -2489,35 +2502,8 @@ const EXPECTED_PERMANENT_TRIGGERS = [
 ] as const satisfies readonly PermanentTrigger[];
 
 const EXPECTED_PERMANENT_FUNCTIONS = [
-  // Same temporary #29910 bridge and #28368 removal gate as the triggers.
-  {
-    bodyHash: "08ccacae72d432c06fecb49b4f01dcbf",
-    functionName: "canonicalize_agent_run_builtin_provider",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "8184f2daa343c7eb811308c17a6a2b65",
-    functionName: "canonicalize_chat_thread_builtin_provider",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "90eafccc4fe3a0ffa32dec184c340e77",
-    functionName: "canonicalize_model_provider_builtin_type",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "dfd0098b8afe609bbbcd336b22f6ec3b",
-    functionName: "canonicalize_org_model_policy_builtin_provider",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
+  // Same temporary #30453 bridge and #30468 removal gate as its trigger.
+  CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_FUNCTION,
   {
     bodyHash: "6b1b5ad47ec35bcbaad3fa95d86ef027",
     functionName: "allocate_legacy_chat_thread_event_seq_id",
@@ -2526,7 +2512,7 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     schemaName: "public",
   },
   {
-    bodyHash: "4886a7314cbaa815a4f8290a16a2f528",
+    bodyHash: "3d78e7fdc88339a81ea83a1dff647a4b",
     functionName: "assert_org_custom_connector_oauth_mode",
     identityArguments: "target_connector_id uuid, target_org_id text",
     kind: "f",
@@ -2575,13 +2561,9 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     kind: "f",
     schemaName: "public",
   },
-  {
-    bodyHash: "903925177de13d29257fec494957b1cd",
-    functionName: "ensure_legacy_org_metadata_plan_entitlement",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
+  ORG_METADATA_PLAN_ENTITLEMENT_PERMANENT_FUNCTION,
+  // Same temporary #30379 bridge and #28368 removal gate as its trigger.
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_FUNCTION,
   {
     bodyHash: "7740cf65befb5e06a73e1f21bcfdd5cc",
     functionName: "fill_legacy_chat_thread_snapshot_event_seq_id",
@@ -2603,6 +2585,8 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     kind: "f",
     schemaName: "public",
   },
+  // Same temporary #30162 bridge and #28368 removal gate as its trigger.
+  ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_FUNCTION,
   {
     bodyHash: "daf97695043bdbafd864f7ff7a8f8d5d",
     functionName: "sync_legacy_org_plan_entitlement_can_buy_credits",
@@ -3653,6 +3637,13 @@ async function validateCustomConnectorOauthModeConstraints(
     manualConnectorId: "72000000-0000-4000-8000-000000000001",
     oauthConnectorId: "72000000-0000-4000-8000-000000000002",
     invalidOauthConnectorId: "72000000-0000-4000-8000-000000000003",
+    invalidCustomConnectorId: "72000000-0000-4000-8000-000000000004",
+    automaticConnectorId: "72000000-0000-4000-8000-000000000005",
+    automaticAccountId: "72000000-0000-4000-8000-000000000006",
+    dcrRegistrationId: "72000000-0000-4000-8000-000000000007",
+    otherAutomaticConnectorId: "72000000-0000-4000-8000-000000000008",
+    otherAutomaticAccountId: "72000000-0000-4000-8000-000000000009",
+    legacyOauthConnectorId: "72000000-0000-4000-8000-000000000010",
   } as const;
   const insertConnector = `
     INSERT INTO "org_custom_connectors" (
@@ -3710,6 +3701,64 @@ async function validateCustomConnectorOauthModeConstraints(
       'none'
     )
   `;
+  const insertAutomaticConnector = `
+    INSERT INTO "org_custom_connectors" (
+      "id",
+      "org_id",
+      "slug",
+      "display_name",
+      "fields",
+      "header_injections",
+      "query_injections",
+      "auth_mode",
+      "oauth_setup",
+      "mcp_endpoint",
+      "mcp_transport",
+      "created_by"
+    )
+    VALUES (
+      $1,
+      $2,
+      $3,
+      $4,
+      '[]'::jsonb,
+      '[{"name":"Authorization","valueTemplate":"Bearer {{oauth.access_token}}"}]'::jsonb,
+      '[]'::jsonb,
+      'oauth',
+      'automatic',
+      'https://mcp.example.test',
+      'streamable-http',
+      $5
+    )
+  `;
+  const insertCustomConnectorWithoutConfig = `
+    INSERT INTO "org_custom_connectors" (
+      "id",
+      "org_id",
+      "slug",
+      "display_name",
+      "prefix_templates",
+      "fields",
+      "header_injections",
+      "query_injections",
+      "auth_mode",
+      "oauth_setup",
+      "created_by"
+    )
+    VALUES (
+      $1,
+      $2,
+      $3,
+      $4,
+      '["https://api.example.test/"]'::jsonb,
+      '[]'::jsonb,
+      '[{"name":"Authorization","valueTemplate":"Bearer {{oauth.access_token}}"}]'::jsonb,
+      '[]'::jsonb,
+      'oauth',
+      'custom',
+      $5
+    )
+  `;
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
 
@@ -3737,11 +3786,48 @@ async function validateCustomConnectorOauthModeConstraints(
       fixture.orgId,
     ]);
     await client.query("COMMIT");
+    await client.query(
+      `
+        UPDATE "org_custom_connectors"
+        SET "oauth_setup" = 'custom'
+        WHERE "id" = $1
+      `,
+      [fixture.oauthConnectorId],
+    );
+
+    await client.query("BEGIN");
+    await client.query(insertConnector, [
+      fixture.legacyOauthConnectorId,
+      fixture.orgId,
+      "_migration_legacy_oauth",
+      "Migration Legacy OAuth Connector",
+      "oauth",
+      fixture.createdBy,
+    ]);
+    await client.query(insertOauthConfig, [
+      fixture.legacyOauthConnectorId,
+      fixture.orgId,
+    ]);
+    await client.query("COMMIT");
+
+    await client.query(insertAutomaticConnector, [
+      fixture.automaticConnectorId,
+      fixture.orgId,
+      "_migration_automatic_oauth",
+      "Migration Automatic OAuth Connector",
+      fixture.createdBy,
+    ]);
+    await client.query(insertAutomaticConnector, [
+      fixture.otherAutomaticConnectorId,
+      fixture.orgId,
+      "_migration_other_automatic_oauth",
+      "Migration Other Automatic OAuth Connector",
+      fixture.createdBy,
+    ]);
 
     await expectDeferredDatabaseError(client, {
       code: "23514",
-      messageIncludes:
-        "custom connector auth mode and OAuth config do not match",
+      messageIncludes: "custom connector OAuth setup and config do not match",
       statements: [
         {
           query: insertConnector,
@@ -3758,8 +3844,7 @@ async function validateCustomConnectorOauthModeConstraints(
     });
     await expectDeferredDatabaseError(client, {
       code: "23514",
-      messageIncludes:
-        "custom connector auth mode and OAuth config do not match",
+      messageIncludes: "custom connector OAuth setup and config do not match",
       statements: [
         {
           query: insertOauthConfig,
@@ -3769,13 +3854,12 @@ async function validateCustomConnectorOauthModeConstraints(
     });
     await expectDeferredDatabaseError(client, {
       code: "23514",
-      messageIncludes:
-        "custom connector auth mode and OAuth config do not match",
+      messageIncludes: "custom connector OAuth setup and config do not match",
       statements: [
         {
           query: `
             UPDATE "org_custom_connectors"
-            SET "auth_mode" = 'manual'
+            SET "auth_mode" = 'manual', "oauth_setup" = NULL
             WHERE "id" = $1
           `,
           values: [fixture.oauthConnectorId],
@@ -3784,8 +3868,7 @@ async function validateCustomConnectorOauthModeConstraints(
     });
     await expectDeferredDatabaseError(client, {
       code: "23514",
-      messageIncludes:
-        "custom connector auth mode and OAuth config do not match",
+      messageIncludes: "custom connector OAuth setup and config do not match",
       statements: [
         {
           query: `
@@ -3797,19 +3880,275 @@ async function validateCustomConnectorOauthModeConstraints(
       ],
     });
 
+    // The API version preceding #30487 does not include oauth_setup in this
+    // update. Its exact statement sequence must remain legal after migration.
+    await client.query("BEGIN");
+    await client.query(
+      `
+        UPDATE "org_custom_connectors"
+        SET "auth_mode" = 'manual'
+        WHERE "id" = $1
+      `,
+      [fixture.legacyOauthConnectorId],
+    );
+    await client.query(
+      `
+        DELETE FROM "org_custom_connector_oauth_configs"
+        WHERE "connector_id" = $1
+      `,
+      [fixture.legacyOauthConnectorId],
+    );
+    await client.query("COMMIT");
+    const legacyTransition = await client.query<{
+      authMode: string;
+      oauthSetup: string | null;
+    }>(
+      `
+        SELECT
+          "auth_mode" AS "authMode",
+          "oauth_setup" AS "oauthSetup"
+        FROM "org_custom_connectors"
+        WHERE "id" = $1
+      `,
+      [fixture.legacyOauthConnectorId],
+    );
+    assert.deepEqual(legacyTransition.rows, [
+      { authMode: "manual", oauthSetup: null },
+    ]);
+
+    await expectDeferredDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "custom connector OAuth setup and config do not match",
+      statements: [
+        {
+          query: insertCustomConnectorWithoutConfig,
+          values: [
+            fixture.invalidCustomConnectorId,
+            fixture.orgId,
+            "_migration_invalid_custom_oauth",
+            "Migration Invalid Custom OAuth Connector",
+            fixture.createdBy,
+          ],
+        },
+      ],
+    });
+    await expectDeferredDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "custom connector OAuth setup and config do not match",
+      statements: [
+        {
+          query: insertOauthConfig,
+          values: [fixture.automaticConnectorId, fixture.orgId],
+        },
+      ],
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      query: `
+        UPDATE "org_custom_connectors"
+        SET "oauth_setup" = 'custom'
+        WHERE "id" = $1
+      `,
+      values: [fixture.manualConnectorId],
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      query: `
+        UPDATE "org_custom_connectors"
+        SET "mcp_endpoint" = NULL, "mcp_transport" = NULL
+        WHERE "id" = $1
+      `,
+      values: [fixture.automaticConnectorId],
+    });
+
+    await client.query(
+      `
+        INSERT INTO "connectors" (
+          "id", "custom_connector_id", "auth_method", "storage_version",
+          "user_id", "org_id"
+        )
+        VALUES ($1, $2, 'oauth', 1, $3, $4)
+      `,
+      [
+        fixture.automaticAccountId,
+        fixture.automaticConnectorId,
+        fixture.createdBy,
+        fixture.orgId,
+      ],
+    );
+    await client.query(
+      `
+        INSERT INTO "connectors" (
+          "id", "custom_connector_id", "auth_method", "storage_version",
+          "user_id", "org_id"
+        )
+        VALUES ($1, $2, 'oauth', 1, $3, $4)
+      `,
+      [
+        fixture.otherAutomaticAccountId,
+        fixture.otherAutomaticConnectorId,
+        fixture.createdBy,
+        fixture.orgId,
+      ],
+    );
+    await client.query(
+      `
+        INSERT INTO "org_custom_connector_dcr_registrations" (
+          "id", "org_id", "custom_connector_id", "issuer", "client_id",
+          "encrypted_client_secret", "token_endpoint_auth_method",
+          "registered_scopes", "redirect_uri", "issued_at", "expires_at"
+        )
+        VALUES (
+          $1, $2, $3, 'https://issuer.example.test', 'dcr-client',
+          'encrypted-dcr-secret', 'client_secret_basic', ARRAY['read'],
+          'https://app.example.test/api/custom-connectors/oauth2/callback',
+          '2026-08-31T00:00:00Z', '2026-09-01T00:00:00Z'
+        )
+      `,
+      [fixture.dcrRegistrationId, fixture.orgId, fixture.automaticConnectorId],
+    );
+    await expectDatabaseError(client, {
+      code: "23505",
+      query: `
+        INSERT INTO "org_custom_connector_dcr_registrations" (
+          "org_id", "custom_connector_id", "issuer", "client_id",
+          "token_endpoint_auth_method", "registered_scopes", "redirect_uri",
+          "issued_at"
+        )
+        VALUES (
+          $1, $2, 'https://issuer.example.test', 'duplicate-client', 'none',
+          ARRAY[]::text[],
+          'https://app.example.test/api/custom-connectors/oauth2/callback',
+          '2026-08-31T00:00:00Z'
+        )
+      `,
+      values: [fixture.orgId, fixture.automaticConnectorId],
+    });
+    await expectDatabaseError(client, {
+      code: "23503",
+      query: `
+        INSERT INTO "custom_connector_account_oauth_bindings" (
+          "connector_account_id", "custom_connector_id", "issuer", "resource",
+          "token_endpoint", "client_id", "token_endpoint_auth_method",
+          "registration_method", "dcr_registration_id"
+        )
+        VALUES (
+          $1, $2, 'https://issuer.example.test', 'https://mcp.example.test',
+          'https://issuer.example.test/token', 'dcr-client',
+          'client_secret_basic', 'dcr', $3
+        )
+      `,
+      values: [
+        fixture.otherAutomaticAccountId,
+        fixture.otherAutomaticConnectorId,
+        fixture.dcrRegistrationId,
+      ],
+    });
+    await client.query(
+      `
+        INSERT INTO "custom_connector_account_oauth_bindings" (
+          "connector_account_id", "custom_connector_id", "issuer", "resource",
+          "token_endpoint", "client_id", "token_endpoint_auth_method",
+          "registration_method"
+        )
+        VALUES (
+          $1, $2, 'https://cimd.example.test', 'https://other-mcp.example.test',
+          'https://cimd.example.test/token', 'cimd-client', 'none', 'cimd'
+        )
+      `,
+      [fixture.otherAutomaticAccountId, fixture.otherAutomaticConnectorId],
+    );
+    await expectDatabaseError(client, {
+      code: "23514",
+      query: `
+        UPDATE "custom_connector_account_oauth_bindings"
+        SET "token_endpoint_auth_method" = 'client_secret_post'
+        WHERE "connector_account_id" = $1
+      `,
+      values: [fixture.otherAutomaticAccountId],
+    });
+    await client.query(
+      `
+        INSERT INTO "custom_connector_account_oauth_bindings" (
+          "connector_account_id", "custom_connector_id", "issuer", "resource",
+          "resource_metadata_url", "token_endpoint", "client_id",
+          "token_endpoint_auth_method", "registration_method", "dcr_registration_id"
+        )
+        VALUES (
+          $1, $2, 'https://issuer.example.test', 'https://mcp.example.test',
+          'https://mcp.example.test/.well-known/oauth-protected-resource',
+          'https://issuer.example.test/token', 'dcr-client',
+          'client_secret_basic', 'dcr', $3
+        )
+      `,
+      [
+        fixture.automaticAccountId,
+        fixture.automaticConnectorId,
+        fixture.dcrRegistrationId,
+      ],
+    );
+    const account = await client.query<{ auth_method: string }>(
+      `SELECT "auth_method" FROM "connectors" WHERE "id" = $1`,
+      [fixture.automaticAccountId],
+    );
+    assert.equal(account.rows[0]?.auth_method, "oauth");
+    await expectDatabaseError(client, {
+      code: "23514",
+      query: `
+        UPDATE "org_custom_connector_dcr_registrations"
+        SET "expires_at" = "issued_at"
+        WHERE "id" = $1
+      `,
+      values: [fixture.dcrRegistrationId],
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      query: `
+        UPDATE "custom_connector_account_oauth_bindings"
+        SET "registration_method" = 'cimd'
+        WHERE "connector_account_id" = $1
+      `,
+      values: [fixture.automaticAccountId],
+    });
+    await client.query(`DELETE FROM "connectors" WHERE "id" = $1`, [
+      fixture.automaticAccountId,
+    ]);
+    const deletedBinding = await client.query(
+      `
+        SELECT 1 FROM "custom_connector_account_oauth_bindings"
+        WHERE "connector_account_id" = $1
+      `,
+      [fixture.automaticAccountId],
+    );
+    assert.equal(deletedBinding.rowCount, 0);
+
     await client.query(
       `
         DELETE FROM "org_custom_connectors"
-        WHERE "id" IN ($1, $2)
+        WHERE "id" IN ($1, $2, $3, $4, $5)
       `,
-      [fixture.manualConnectorId, fixture.oauthConnectorId],
+      [
+        fixture.manualConnectorId,
+        fixture.oauthConnectorId,
+        fixture.automaticConnectorId,
+        fixture.otherAutomaticConnectorId,
+        fixture.legacyOauthConnectorId,
+      ],
     );
+    const deletedRegistration = await client.query(
+      `
+        SELECT 1 FROM "org_custom_connector_dcr_registrations"
+        WHERE "id" = $1
+      `,
+      [fixture.dcrRegistrationId],
+    );
+    assert.equal(deletedRegistration.rowCount, 0);
   } finally {
     await client.end();
   }
 
   console.log(
-    "   ✅ Deferred constraints accept complete modes and reject mismatched OAuth configuration\n",
+    "   ✅ OAuth setup variants, old-writer transitions, bindings, and cascades preserve strict ownership\n",
   );
 }
 
@@ -10585,225 +10924,6 @@ async function validateCustomConnectorSecretPlaceholderCanonicalization(): Promi
   }
 }
 
-const CHAT_EVENT_SNAPSHOT_CONTRACTION_PREVIOUS_MIGRATION =
-  "0927_backfill_zero_agent_default_avatar";
-const CHAT_EVENT_SNAPSHOT_CONTRACTION_PREPARE_MIGRATION =
-  "0928_contract_chat_event_snapshots";
-const CHAT_EVENT_SNAPSHOT_CONTRACTION_FINAL_MIGRATION = "0929_cold_azazel";
-
-async function validateChatEventSnapshotContraction(): Promise<void> {
-  console.log("=== Validate Chat Event Snapshot contraction ===\n");
-  const testDb = "migration_chat_event_snapshot_contract";
-  const testDbUrl = createTestDbUrl(testDb);
-  const composeId = "00000000-0000-4000-8000-000000092700";
-  const threadIds = [
-    "00000000-0000-4000-8000-000000092701",
-    "00000000-0000-4000-8000-000000092702",
-    "00000000-0000-4000-8000-000000092703",
-    "00000000-0000-4000-8000-000000092704",
-  ] as const;
-  const expectedPreparedIds = [
-    "00000000-0000-4000-8000-000000092712",
-    "00000000-0000-4000-8000-000000092721",
-    "00000000-0000-4000-8000-000000092732",
-    "00000000-0000-4000-8000-000000092742",
-  ] as const;
-  const raceWinnerId = "00000000-0000-4000-8000-000000092713";
-
-  await createDatabase(testDb);
-  try {
-    await runMigrationsUpToTag(
-      testDbUrl,
-      CHAT_EVENT_SNAPSHOT_CONTRACTION_PREVIOUS_MIGRATION,
-    );
-    const client = new Client({ connectionString: testDbUrl });
-    await client.connect();
-    try {
-      await client.query(
-        `
-          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
-          VALUES ($1, 'snapshot-contract-user', 'snapshot-contract', 'snapshot-contract-org')
-        `,
-        [composeId],
-      );
-      await client.query(
-        `
-          INSERT INTO "chat_threads" (
-            "id", "user_id", "agent_compose_id", "title",
-            "last_chat_event_seq_id"
-          )
-          SELECT
-            "thread_id",
-            'snapshot-contract-user',
-            $1,
-            'snapshot contract ' || "ordinal"::text,
-            100
-          FROM unnest($2::uuid[]) WITH ORDINALITY
-            AS "fixture"("thread_id", "ordinal")
-        `,
-        [composeId, [...threadIds]],
-      );
-      await client.query(
-        `
-          INSERT INTO "chat_event_snapshots" (
-            "id", "chat_thread_id", "parent_snapshot_id", "last_seq_id",
-            "last_event_id", "archive_schema_version", "object_key",
-            "is_head", "created_at"
-          ) VALUES
-            ('00000000-0000-4000-8000-000000092711', $1, NULL, 10,
-              '00000000-0000-4000-8000-000000092811', 5,
-              'snapshot-contract/watermark-low', true,
-              '2026-08-15 04:00:00'),
-            ('00000000-0000-4000-8000-000000092712', $1,
-              '00000000-0000-4000-8000-000000092711', 20,
-              '00000000-0000-4000-8000-000000092812', 5,
-              'snapshot-contract/watermark-high', false,
-              '2026-08-15 03:00:00'),
-            ('00000000-0000-4000-8000-000000092729', $2, NULL, 30,
-              '00000000-0000-4000-8000-000000092829', 5,
-              'snapshot-contract/equal-non-head', false,
-              '2026-08-15 05:00:00'),
-            ('00000000-0000-4000-8000-000000092721', $2, NULL, 30,
-              '00000000-0000-4000-8000-000000092821', 5,
-              'snapshot-contract/equal-head', true,
-              '2026-08-15 02:00:00'),
-            ('00000000-0000-4000-8000-000000092731', $3, NULL, 40,
-              '00000000-0000-4000-8000-000000092831', 5,
-              'snapshot-contract/equal-created-old', false,
-              '2026-08-15 01:00:00'),
-            ('00000000-0000-4000-8000-000000092732', $3, NULL, 40,
-              '00000000-0000-4000-8000-000000092832', 5,
-              'snapshot-contract/equal-created-new', false,
-              '2026-08-15 02:00:00'),
-            ('00000000-0000-4000-8000-000000092741', $4, NULL, 50,
-              '00000000-0000-4000-8000-000000092841', 5,
-              'snapshot-contract/equal-id-low', false,
-              '2026-08-15 01:00:00'),
-            ('00000000-0000-4000-8000-000000092742', $4, NULL, 50,
-              '00000000-0000-4000-8000-000000092842', 5,
-              'snapshot-contract/equal-id-high', false,
-              '2026-08-15 01:00:00')
-        `,
-        [...threadIds],
-      );
-
-      await applyMigrationsUpToTag(
-        client,
-        CHAT_EVENT_SNAPSHOT_CONTRACTION_PREPARE_MIGRATION,
-      );
-      const prepared = await client.query<{ id: string }>(`
-        SELECT "id" FROM "chat_event_snapshots" ORDER BY "chat_thread_id"
-      `);
-      assert.deepEqual(
-        prepared.rows.map((row) => {
-          return row.id;
-        }),
-        expectedPreparedIds,
-      );
-
-      await client.query(
-        `
-          INSERT INTO "chat_event_snapshots" (
-            "id", "chat_thread_id", "parent_snapshot_id", "last_seq_id",
-            "last_event_id", "archive_schema_version", "object_key",
-            "is_head", "created_at"
-          ) VALUES ($1, $2, $3, 25, $4, 5, $5, true, $6)
-        `,
-        [
-          raceWinnerId,
-          threadIds[0],
-          expectedPreparedIds[0],
-          "00000000-0000-4000-8000-000000092813",
-          "snapshot-contract/race-high",
-          "2026-08-15 05:00:00",
-        ],
-      );
-
-      await applyMigrationsUpToTag(
-        client,
-        CHAT_EVENT_SNAPSHOT_CONTRACTION_FINAL_MIGRATION,
-      );
-      const contracted = await client.query<{
-        id: string;
-        lastEventId: string;
-      }>(`
-        SELECT "id", "last_event_id" AS "lastEventId"
-        FROM "chat_event_snapshots"
-        ORDER BY "chat_thread_id"
-      `);
-      assert.deepEqual(contracted.rows, [
-        {
-          id: raceWinnerId,
-          lastEventId: "00000000-0000-4000-8000-000000092813",
-        },
-        {
-          id: expectedPreparedIds[1],
-          lastEventId: "00000000-0000-4000-8000-000000092821",
-        },
-        {
-          id: expectedPreparedIds[2],
-          lastEventId: "00000000-0000-4000-8000-000000092832",
-        },
-        {
-          id: expectedPreparedIds[3],
-          lastEventId: "00000000-0000-4000-8000-000000092842",
-        },
-      ]);
-
-      const columns = await client.query<{
-        columnName: string;
-        isNullable: "NO" | "YES";
-      }>(`
-        SELECT
-          "column_name" AS "columnName",
-          "is_nullable" AS "isNullable"
-        FROM "information_schema"."columns"
-        WHERE "table_schema" = 'public'
-          AND "table_name" = 'chat_event_snapshots'
-          AND "column_name" IN (
-            'last_event_id', 'parent_snapshot_id', 'is_head'
-          )
-        ORDER BY "column_name"
-      `);
-      assert.deepEqual(columns.rows, [
-        { columnName: "last_event_id", isNullable: "NO" },
-      ]);
-      await assert.rejects(
-        client.query(
-          `
-            INSERT INTO "chat_event_snapshots" (
-              "chat_thread_id", "last_seq_id", "last_event_id",
-              "archive_schema_version", "object_key"
-            ) VALUES ($1, 26, $2, 5, 'snapshot-contract/duplicate-final')
-          `,
-          [threadIds[0], "00000000-0000-4000-8000-000000092814"],
-        ),
-        (error: unknown) => {
-          return (
-            typeof error === "object" &&
-            error !== null &&
-            "code" in error &&
-            error.code === "23505"
-          );
-        },
-      );
-
-      console.log(
-        "   ✅ greatest Snapshot watermark wins deterministic dedupe",
-      );
-      console.log("   ✅ equal watermarks preserve the existing reader order");
-      console.log("   ✅ contraction closes writes after online preparation");
-      console.log(
-        "   ✅ terminal cursor and thread/version constraints hold\n",
-      );
-    } finally {
-      await client.end();
-    }
-  } finally {
-    await dropDatabase(testDb);
-  }
-}
-
 async function validateUsagePackPendingSnapshotSerializationMigration(): Promise<void> {
   console.log(
     "=== Phase 1.30: Validate usage-pack pending snapshot serialization ===\n",
@@ -10972,7 +11092,6 @@ async function main(): Promise<void> {
     await validateConnectionScopedVariableUniqueness();
     await validateInactiveRunModelFinalization();
     await validateCustomConnectorSecretPlaceholderCanonicalization();
-    await validateChatEventSnapshotContraction();
     await validateAgentRunMetadataStage2Preflight();
     await validateAgentRunMetadataStage2Lock();
     await validateAgentRunMetadataStage2Index();
@@ -10989,8 +11108,19 @@ async function main(): Promise<void> {
     await validateOkouDebugFeatureSwitchKeyRename();
     await validateSlackOfficialBrandMigration();
     await validateAgentDraftsCompatibilityRelation();
+    await validateChatSearchDeleteCompatibility(dbUrl.toString());
     await validateWorkflowCompatibilityViews();
     await validateBuiltInProviderDiscriminatorMigration(dbUrl.toString());
+    await validateBuiltInProviderDiscriminatorContract(dbUrl.toString());
+    await validateOrgMetadataAcquisitionFirstPartySourceExpansion(
+      dbUrl.toString(),
+    );
+    await validateOrgMetadataAcquisitionFirstPartySourceBackfill(
+      dbUrl.toString(),
+    );
+    await validateOrgPlanEntitlementRestrictionExpansion(dbUrl.toString());
+    await validateOrgPlanEntitlementRestrictionBackfill(dbUrl.toString());
+    await validateOrgPlanEntitlementRestrictionNotNull(dbUrl.toString());
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -11011,6 +11141,8 @@ async function main(): Promise<void> {
     await validateCanonicalIntegrationIdentitySchema(dbUrl1);
     await validatePermanentAgentRunBuiltInModelKeyState(dbUrl1);
     await validatePermanentTriggerAndFunctionInventory(dbUrl1);
+    await validatePermanentOrgMetadataAcquisitionFirstPartySourceState(dbUrl1);
+    await validatePermanentOrgPlanEntitlementRestrictionState(dbUrl1);
     await validatePermanentBuiltInProviderDiscriminatorState(dbUrl1);
     await validateActiveLegacyDatabaseIdentityInventory(dbUrl1);
     await validatePermanentArtifactTriggerBehavior(dbUrl1);
@@ -11030,6 +11162,36 @@ async function main(): Promise<void> {
 
     // Step 2: Backup and regenerate migrations
     console.log("=== Phase 3: Test regenerated migrations ===\n");
+    const orgMetadataAcquisitionFirstPartySourceMigrationSql =
+      await fs.readFile(
+        path.join(
+          MIGRATIONS_DIR,
+          `${ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_MIGRATION}.sql`,
+        ),
+        "utf8",
+      );
+    const orgMetadataAcquisitionFirstPartySourceBackfillMigrationSql =
+      await fs.readFile(
+        path.join(
+          MIGRATIONS_DIR,
+          `${ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_BACKFILL_MIGRATION}.sql`,
+        ),
+        "utf8",
+      );
+    const orgPlanEntitlementRestrictionMigrationSql = await fs.readFile(
+      path.join(
+        MIGRATIONS_DIR,
+        `${ORG_PLAN_ENTITLEMENT_RESTRICTION_MIGRATION}.sql`,
+      ),
+      "utf8",
+    );
+    const orgPlanEntitlementRestrictionBackfillMigrationSql = await fs.readFile(
+      path.join(
+        MIGRATIONS_DIR,
+        `${ORG_PLAN_ENTITLEMENT_RESTRICTION_BACKFILL_MIGRATION}.sql`,
+      ),
+      "utf8",
+    );
     await backupMigrations();
     migrationsBackedUp = true;
     await generateFreshMigrations();
@@ -11039,6 +11201,24 @@ async function main(): Promise<void> {
     const dbUrl2 = createTestDbUrl(TEST_DB_2);
     await runMigrations(dbUrl2);
     console.log("   ✅ Fresh migrations applied successfully\n");
+    await installOrgMetadataAcquisitionFirstPartySourceArtifactsOnRegeneratedSchema(
+      dbUrl2,
+      orgMetadataAcquisitionFirstPartySourceMigrationSql,
+    );
+    await validateOrgMetadataAcquisitionFirstPartySourceBackfillOnRegeneratedSchema(
+      dbUrl2,
+      orgMetadataAcquisitionFirstPartySourceBackfillMigrationSql,
+    );
+    await installOrgPlanEntitlementRestrictionArtifactsOnRegeneratedSchema(
+      dbUrl2,
+      orgPlanEntitlementRestrictionMigrationSql,
+    );
+    await validateOrgPlanEntitlementRestrictionBackfillOnRegeneratedSchema(
+      dbUrl2,
+      orgPlanEntitlementRestrictionBackfillMigrationSql,
+    );
+    await validatePermanentOrgMetadataAcquisitionFirstPartySourceState(dbUrl2);
+    await validatePermanentOrgPlanEntitlementRestrictionState(dbUrl2);
     await validatePermanentAgentRunBuiltInModelKeyState(dbUrl2);
     await validatePermanentBuiltInModelCooldownState(dbUrl2);
     await validatePermanentBuiltInModelKeyState(dbUrl2);
@@ -11082,6 +11262,9 @@ async function main(): Promise<void> {
         "   ✅ Old run creation paths synchronize metadata into agent_runs",
       );
       console.log("   ✅ Agent-run model-key canonical schemas match");
+      console.log(
+        "   ✅ Org plan restriction expansion, backfill, NOT NULL, and mirror invariants match",
+      );
       console.log("   ✅ Permanent trigger and function inventories match");
       console.log(
         "   ✅ Permanent artifact triggers preserve cascade, queue, and scope behavior",

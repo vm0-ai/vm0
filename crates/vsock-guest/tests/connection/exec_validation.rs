@@ -1,5 +1,13 @@
+use std::fs;
 use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
+use std::path::PathBuf;
 
+use guest_contracts::session_history_identity::{
+    SESSION_HISTORY_IDENTITY_VERIFY_DIAGNOSTIC_LABEL,
+    SESSION_HISTORY_IDENTITY_VERIFY_OUTPUT_LIMIT_BYTES, SessionHistoryFramework,
+    SessionHistoryIdentityExpectation, SessionHistoryIdentityVerifyRequest, SessionHistoryRefKind,
+};
 use vsock_proto::{
     self, ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy, ExecTermination,
     ExecTimeoutPolicy, MSG_ERROR, MSG_EXEC_CONTROL, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED,
@@ -8,6 +16,43 @@ use vsock_proto::{
 
 use super::exec_helpers::{EXEC_CONTROL_NONCE, send_exec_control};
 use super::support::*;
+
+fn session_history_identity_verify_payload(metadata_path: &str, runtime_dir: &str) -> String {
+    serde_json::to_string(&SessionHistoryIdentityVerifyRequest {
+        metadata_path: metadata_path.to_owned(),
+        runtime_dir: runtime_dir.to_owned(),
+        expectation: SessionHistoryIdentityExpectation::new(
+            SessionHistoryFramework::ClaudeCode,
+            "a".repeat(64),
+            SessionHistoryRefKind::Blob,
+            "b".repeat(64),
+            42,
+        )
+        .unwrap(),
+    })
+    .unwrap()
+}
+
+fn verifier_exec_request<'a>(command: &'a str) -> vsock_proto::ExecStartEncodeRequest<'a> {
+    vsock_proto::ExecStartEncodeRequest {
+        lifecycle: ExecLifecyclePolicy::OneShot,
+        role: vsock_proto::ExecProcessRole::SessionHistoryIdentityVerifier,
+        timeout: ExecTimeoutPolicy::Duration { timeout_ms: 5000 },
+        command,
+        env: &[],
+        sudo: false,
+        label: SESSION_HISTORY_IDENTITY_VERIFY_DIAGNOSTIC_LABEL,
+        stdout: ExecOutputPolicy::Capture {
+            limit_bytes: SESSION_HISTORY_IDENTITY_VERIFY_OUTPUT_LIMIT_BYTES,
+        },
+        stderr: ExecOutputPolicy::Capture {
+            limit_bytes: SESSION_HISTORY_IDENTITY_VERIFY_OUTPUT_LIMIT_BYTES,
+        },
+        expected_exit_codes: &[],
+        control: ExecControlPolicy::Disabled,
+        stdin_bytes: None,
+    }
+}
 
 #[test]
 fn malformed_exec_control_payload_returns_error_and_keeps_connection_open() {
@@ -125,6 +170,156 @@ fn exec_operation_rejects_invalid_one_shot_start_policies() {
 }
 
 #[test]
+fn controlled_agent_rejects_command_sudo_and_stdin_authority() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    for (seq, command, sudo, stdin_bytes, expected) in [
+        (
+            130,
+            "printf should-not-run",
+            false,
+            None,
+            "Agent process cannot select a command",
+        ),
+        (
+            131,
+            "",
+            true,
+            None,
+            "Agent process cannot select sudo execution",
+        ),
+        (
+            132,
+            "",
+            false,
+            Some(b"stdin".as_slice()),
+            "Agent process cannot provide stdin",
+        ),
+    ] {
+        send_exec_start_request(
+            &mut host_stream,
+            seq,
+            vsock_proto::ExecStartEncodeRequest {
+                lifecycle: ExecLifecyclePolicy::Supervised,
+                role: vsock_proto::ExecProcessRole::Agent,
+                timeout: ExecTimeoutPolicy::None,
+                command,
+                env: &[],
+                sudo,
+                label: "controlled-agent-authority-test",
+                stdout: ExecOutputPolicy::Discard,
+                stderr: ExecOutputPolicy::Discard,
+                expected_exit_codes: &[],
+                control: ExecControlPolicy::Enabled {
+                    control_nonce: [seq as u8; 16],
+                    sink: true,
+                },
+                stdin_bytes,
+            },
+        );
+        assert_eq!(read_error_response(&mut host_stream, seq), expected);
+    }
+
+    assert_ping_pong(&mut host_stream, 133);
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn session_history_identity_verifier_directly_launches_fixed_helper_arguments() {
+    let agent_path = unique_tmp_path("session-history-identity-verifier", ".sh");
+    fs::write(
+        agent_path.as_str(),
+        r#"#!/bin/sh
+printf 'runtime=%s\n' "$OKOU_GUEST_RUNTIME_DIR"
+printf 'args'
+for arg in "$@"; do printf ' <%s>' "$arg"; done
+printf '\n'
+"#,
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(agent_path.as_str()).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(agent_path.as_str(), permissions).unwrap();
+    let metadata_path = "/tmp/final identity;printf should-not-run";
+    let runtime_dir = "/tmp/runtime $(printf should-not-run)";
+    let payload = session_history_identity_verify_payload(metadata_path, runtime_dir);
+    let (handle, mut host_stream) =
+        start_guest_connection_with_guest_agent_program(PathBuf::from(agent_path.as_str()));
+
+    send_exec_start_request(&mut host_stream, 137, verifier_exec_request(&payload));
+    let (chunks, result) = read_exec_result(&mut host_stream, 137);
+
+    assert!(chunks.is_empty());
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    let stdout = String::from_utf8(result.stdout.unwrap()).unwrap();
+    assert_eq!(
+        stdout,
+        format!(
+            "runtime={runtime_dir}\nargs <verify-session-history-identity> <{metadata_path}> <claude-code> <{}> <blob> <{}> <42>\n",
+            "a".repeat(64),
+            "b".repeat(64),
+        )
+    );
+    assert_eq!(result.stderr, Some(Vec::new()));
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn session_history_identity_verifier_rejects_generic_exec_authority() {
+    enum Mutation {
+        Environment,
+        Sudo,
+        Stdin,
+        Label,
+        Output,
+        ExpectedExit,
+    }
+
+    let payload = session_history_identity_verify_payload("/tmp/metadata", "/tmp/runtime");
+    let (handle, mut host_stream) = start_guest_connection();
+
+    for (seq, mutate) in [
+        (138, Mutation::Environment),
+        (139, Mutation::Sudo),
+        (140, Mutation::Stdin),
+        (141, Mutation::Label),
+        (142, Mutation::Output),
+        (143, Mutation::ExpectedExit),
+    ] {
+        let mut request = verifier_exec_request(&payload);
+        let env = [("UNTRUSTED", "value")];
+        let expected_exit_codes = [7];
+        match mutate {
+            Mutation::Environment => request.env = &env,
+            Mutation::Sudo => request.sudo = true,
+            Mutation::Stdin => request.stdin_bytes = Some(b"stdin"),
+            Mutation::Label => request.label = "caller-selected-label",
+            Mutation::Output => request.stdout = ExecOutputPolicy::Discard,
+            Mutation::ExpectedExit => request.expected_exit_codes = &expected_exit_codes,
+        }
+        send_exec_start_request(&mut host_stream, seq, request);
+        assert_eq!(
+            read_error_response(&mut host_stream, seq),
+            "session history identity verifier process contract is invalid"
+        );
+    }
+
+    send_exec_start_request(
+        &mut host_stream,
+        144,
+        verifier_exec_request("{\"unexpected\":true}"),
+    );
+    assert_eq!(
+        read_error_response(&mut host_stream, 144),
+        "session history identity verifier payload is invalid"
+    );
+
+    assert_ping_pong(&mut host_stream, 145);
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn exec_operation_rejects_output_policies_that_cannot_fit_protocol_frames_without_running() {
     let capture_marker = unique_tmp_path("exec-operation-huge-capture-policy", ".marker");
     let stream_marker = unique_tmp_path("exec-operation-huge-stream-policy", ".marker");
@@ -197,6 +392,59 @@ fn exec_operation_invalid_env_returns_start_failed_without_leaking_value() {
     );
     assert!(!result.diagnostic.contains(secret));
 
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn controlled_agent_rejects_invalid_environment_without_starting() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    for (seq, key, value, expected) in [
+        (
+            134,
+            "BAD;KEY",
+            "do-not-print-this-key-secret",
+            "invalid environment variable name",
+        ),
+        (
+            135,
+            "VALID_KEY",
+            "do-not-print-this-value-secret\0",
+            "environment variable value contains NUL bytes",
+        ),
+    ] {
+        send_exec_start_request(
+            &mut host_stream,
+            seq,
+            vsock_proto::ExecStartEncodeRequest {
+                lifecycle: ExecLifecyclePolicy::Supervised,
+                role: vsock_proto::ExecProcessRole::Agent,
+                timeout: ExecTimeoutPolicy::None,
+                command: "",
+                env: &[(key, value)],
+                sudo: false,
+                label: "controlled-agent-invalid-environment",
+                stdout: ExecOutputPolicy::Discard,
+                stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+                expected_exit_codes: &[],
+                control: ExecControlPolicy::Enabled {
+                    control_nonce: [seq as u8; 16],
+                    sink: true,
+                },
+                stdin_bytes: None,
+            },
+        );
+
+        let msg = read_message(&mut host_stream);
+        assert_eq!(msg.msg_type, vsock_proto::MSG_EXEC_RESULT);
+        assert_eq!(msg.seq, seq);
+        let result = vsock_proto::decode_exec_result(&msg.payload).unwrap();
+        assert_eq!(result.termination, ExecTermination::StartFailed);
+        assert!(result.diagnostic.contains(expected));
+        assert!(!result.diagnostic.contains("do-not-print-this"));
+    }
+
+    assert_ping_pong(&mut host_stream, 136);
     finish_guest_connection(handle, host_stream);
 }
 

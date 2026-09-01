@@ -420,7 +420,12 @@ def _set_body_fields(
     log_entry[f"{side}_body_encoding"] = encoding
 
 
-def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
+def add_capture_fields(
+    flow: http.HTTPFlow,
+    log_entry: dict,
+    *,
+    response_incomplete: bool = False,
+) -> None:
     """Add capture-mode request/response fields to ``log_entry`` in place.
 
     # [NETWORK_LOG_FIELDS] — capture-only fields in the shared network log schema.
@@ -462,6 +467,11 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
 
     Request bodies prefer request streaming metadata when requestheaders()
     installed a safe capped stream before mitmproxy buffered the body.
+
+    ``response_incomplete`` marks response capture as semantically incomplete
+    when a terminal error interrupts delivery. It is separate from the stream
+    buffer's size-limit truncation state so an arbitrary interrupted UTF-8
+    prefix preserves its exact bytes.
 
     Response bodies prefer streaming metadata from
     ``response_streaming.configure_response_stream()`` because that path keeps a
@@ -507,9 +517,12 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
                     max_output=BODY_CAPTURE_LIMIT + 1,
                 )
                 if request_body is None:
-                    if request_stream_body.truncated or request_stream_incomplete:
-                        log_entry["request_body_truncated"] = True
-                    log_entry["request_body_encoding"] = "binary"
+                    _set_body_capture_failure(
+                        log_entry,
+                        "request",
+                        raw_request_body,
+                        truncated=request_stream_body.truncated or request_stream_incomplete,
+                    )
                 else:
                     _set_body_fields(
                         log_entry,
@@ -557,7 +570,7 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
                 log_entry,
                 "response",
                 raw_response_body,
-                truncated=stream_truncated,
+                truncated=stream_truncated or response_incomplete,
             )
             return
 
@@ -578,7 +591,7 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
                 log_entry,
                 "response",
                 raw_response_body,
-                truncated=stream_truncated,
+                truncated=stream_truncated or response_incomplete,
             )
             return
         res_ct = response_dependency_headers.get("content-type", "")
@@ -588,5 +601,6 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
             "response",
             body,
             res_ct,
+            already_truncated=response_incomplete,
             truncated_at_limit=stream_truncated,
         )

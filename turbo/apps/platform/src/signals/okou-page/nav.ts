@@ -5,8 +5,6 @@ import { localStorageSignals } from "../external/local-storage.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
-import { activeRoute$ } from "../active-route.ts";
-import { eventDrivenChatThreads$ } from "../chat-page/chat-thread-event-sourcing.ts";
 import { setChatShortcutHelpOpen$ } from "../chat-page/chat-shortcut-help.ts";
 import {
   openAgentListDialog$,
@@ -61,39 +59,6 @@ function adjacentPinnedAgentId(
   ]!.agentId;
 }
 
-const firstChatThreadIdForAgent$ = command(
-  async ({ get }, agentId: string, signal: AbortSignal) => {
-    const threads = await get(eventDrivenChatThreads$);
-    signal.throwIfAborted();
-    for (const thread of threads) {
-      if (thread.agentId === agentId) {
-        return thread.id;
-      }
-    }
-    return null;
-  },
-);
-
-const navigateToAgentChat$ = command(({ set }, agentId: string) => {
-  set(detachedNavigateTo$, "/agents/:agentId/chat", {
-    pathParams: { agentId },
-  });
-});
-
-const navigateToPinnedAgent$ = command(
-  async ({ get, set }, agentId: string, signal: AbortSignal) => {
-    if (get(activeRoute$) === "chat") {
-      const threadId = await set(firstChatThreadIdForAgent$, agentId, signal);
-      signal.throwIfAborted();
-      if (threadId) {
-        set(navigateToChat$, threadId);
-        return;
-      }
-    }
-    set(navigateToAgentChat$, agentId);
-  },
-);
-
 const navigateAdjacentPinnedAgent$ = command(
   async (
     { get, set },
@@ -111,7 +76,9 @@ const navigateAdjacentPinnedAgent$ = command(
     if (!targetAgentId) {
       return;
     }
-    await set(navigateToPinnedAgent$, targetAgentId, signal);
+    set(detachedNavigateTo$, "/agents/:agentId/chat", {
+      pathParams: { agentId: targetAgentId },
+    });
   },
 );
 

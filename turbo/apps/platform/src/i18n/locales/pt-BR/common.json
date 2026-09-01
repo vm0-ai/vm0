@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Erro do Codex",
       "commandStatus": "Comando {{status}}",
+      "contextCompaction": "Contexto compactado",
       "error": "Erro: {{error}}",
       "fileChangeKind": "alteração",
       "fileOperationCompleted": "Operação de arquivo concluída",
@@ -29,6 +30,12 @@
       },
       "status": "Status: {{status}}",
       "statusDetail": "status: {{status}}",
+      "subAgentActivity": {
+        "completed": "Subagente concluído",
+        "interacted": "Interação com o subagente",
+        "interrupted": "Subagente interrompido",
+        "started": "Subagente iniciado"
+      },
       "turnFailed": "A interação falhou",
       "turnStatus": "Interação {{status}}",
       "warning": "[aviso] {{message}}",
@@ -377,51 +384,6 @@
     }
   },
   "appShell": {
-    "browserUpgrade": {
-      "browser": {
-        "action": "Atualizar navegador",
-        "description": "O {{assistantName}} não oferece suporte à versão atual do seu navegador. Atualize o navegador para continuar.",
-        "title": "Atualize seu navegador para continuar"
-      },
-      "chrome": {
-        "action": "Atualizar Chrome",
-        "description": "O {{assistantName}} não oferece suporte à versão atual do seu navegador. Atualize o Chrome para continuar.",
-        "title": "Atualize o Chrome para continuar"
-      },
-      "chromium": {
-        "action": "Atualizar Chromium",
-        "description": "O {{assistantName}} não oferece suporte à versão atual do seu navegador. Atualize o Chromium para continuar.",
-        "title": "Atualize o Chromium para continuar"
-      },
-      "ios": {
-        "action": "Atualizar iOS",
-        "description": "O {{assistantName}} não oferece suporte à versão atual do seu navegador. Atualize o iOS para continuar.",
-        "title": "Atualize o iOS para continuar"
-      },
-      "safari": {
-        "action": "Atualizar Safari",
-        "description": "O {{assistantName}} não oferece suporte à versão atual do seu navegador. Atualize o Safari para continuar.",
-        "title": "Atualize o Safari para continuar"
-      }
-    },
-    "loading": {
-      "ariaLabel": "Carregando seu espaço de trabalho",
-      "messages": {
-        "almostThere": "Quase lá...",
-        "brewingIdeas": "Preparando algumas ideias...",
-        "connectingDots": "Ligando os pontos...",
-        "gettingReady": "Preparando tudo...",
-        "loadingWorkspace": "Carregando seu espaço de trabalho...",
-        "spinningTeam": "Reunindo a equipe...",
-        "tuningInstruments": "Ajustando os instrumentos...",
-        "warmingNeurons": "Aquecendo os neurônios..."
-      }
-    },
-    "logoAlt": "{{brandName}}",
-    "metadata": {
-      "description": "{{assistantName}} é seu colega de IA da {{brandName}}. Envie uma mensagem para o {{assistantName}} ou converse pela web — pesquise, envie e-mails, crie documentos e use Slack, GitHub, Notion e mais de 100 ferramentas.",
-      "title": "{{assistantName}} — Seu colega de IA da {{brandName}}"
-    },
     "shortcutHelp": {
       "close": "Fechar atalhos de teclado",
       "description": "Atalhos disponíveis nesta página",
@@ -673,8 +635,8 @@
       "importedSlides_one": "{{count}} slide",
       "importedSlides_many": "{{count}} slides",
       "importedSlides_other": "{{count}} slides",
-      "introVideo": "Vídeo de introdução",
       "multiAccent": "Várias cores de destaque",
+      "needPro": "Requer Pro",
       "nextSlide": "Visualizar próximo slide",
       "noMatches": "Nenhum resultado",
       "placeholder": "Espaço reservado para visualização do site {{title}}",
@@ -691,7 +653,6 @@
       "searchConnector": "Buscar modelos",
       "searchConnectors": "Buscar modelos",
       "selected": "Modelo: {{title}}",
-      "selectIntroVideo": "Selecionar modelo de vídeo de introdução {{title}}",
       "selectStyle": "Selecionar estilo {{style}}",
       "selectTemplate": "Selecionar modelo {{title}}",
       "selectVideo": "Selecionar modelo de vídeo {{title}}",
@@ -728,6 +689,7 @@
       "tryDifferentSearch": "Tente outra busca.",
       "use": "Usar",
       "useThisTemplate": "Usar este modelo",
+      "viewVideoPlans": "Ver planos para o modelo de vídeo {{title}}",
       "visibility": {
         "change": "Alterar",
         "changeLabel": "Alterar a visibilidade do modelo",
@@ -1927,18 +1889,17 @@
       "agentSuggestions": "Agentes",
       "configureModel": "Configurar modelo",
       "createWorkflow": "Criar fluxo de trabalho",
+      "imageModelForThisChat": "Modelo de imagem para este chat",
       "message": "Mensagem",
+      "modelForThisChat": "Modelo para este chat",
       "placeholder": "Peça para automatizar fluxos de trabalho, gerenciar tarefas...",
       "selectedModelUnavailable": "O modelo selecionado não está disponível. Configure-o antes de enviar.",
       "selectedModelUnavailableToast": "O modelo selecionado não está disponível",
       "selectModel": "Selecionar modelo",
-      "setAsDefault": "Definir como padrão",
-      "temporaryFastModeDisabledNotice": "O modo rápido está temporariamente desativado para esta execução",
-      "temporaryFastModeEnabledNotice": "O modo rápido está temporariamente ativado para esta execução",
-      "temporaryImageModelNotice": "Alternado temporariamente para {{model}} em imagens",
-      "temporaryModelNotice": "Alternado temporariamente para {{model}}",
-      "temporaryVideoModelNotice": "Alternado temporariamente para {{model}} em vídeo",
+      "temporarilySwitchTo": "Mudar temporariamente para",
       "threadSuggestions": "Conversas",
+      "useForFutureChats": "Usar este modelo em chats futuros",
+      "videoModelForThisChat": "Modelo de vídeo para este chat",
       "visualAttachmentsUnsupported": "{{modelName}} não reconhece imagens nem vídeos. Troque para um modelo com visão para anexá-los.",
       "workflows": {
         "empty": "Nenhum fluxo de trabalho correspondente",
@@ -1966,6 +1927,20 @@
       "offline": "Offline",
       "unsupportedIntelMac": "O {{assistantName}} Computer Use não é compatível com Macs com processador Intel.",
       "yourComputer": "Seu computador"
+    },
+    "connectorAccountSwitch": {
+      "accountFallback": "Conta do conector",
+      "actionFailed": "Não foi possível mudar de conta. Tente novamente.",
+      "customConnector": "Conector personalizado",
+      "loadFailed": "Não foi possível carregar esta conta do conector.",
+      "reconnectRequired": "É necessário reconectar. Execuções posteriores podem usar a alternativa existente.",
+      "retry": "Tentar novamente",
+      "selected": "Conta alterada para {{account}}",
+      "switch": "Mudar",
+      "switching": "Mudando...",
+      "title": "Mudar para {{account}}?",
+      "unavailableDescription": "Esta conta não existe ou não está disponível para este conector.",
+      "unavailableTitle": "Conta indisponível"
     },
     "connectors": {
       "accountForThread": "Conta para esta conversa",
@@ -2004,10 +1979,13 @@
         "capacityTitle": "O modelo {{framework}} está ocupado",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "Continuar",
         "resetAndTryAgain": "Redefinir e tentar novamente",
         "resetsAt": "Redefine {{time}}",
         "selectModel": "Trocar modelo",
         "tryAgain": "Tentar novamente",
+        "unavailableDescription": "Este modelo não é compatível com a conta do ChatGPT conectada. Troque para outro modelo para continuar.",
+        "unavailableTitle": "O modelo selecionado não está disponível",
         "usageDescription": "Você pode continuar quando o limite de uso for redefinido ou trocar de modelo agora.",
         "usageTitle": "Limite do {{framework}} atingido"
       },
@@ -2040,6 +2018,100 @@
       "sent": "Encaminhado com sucesso",
       "threads": "Conversas",
       "title": "Encaminhar para"
+    },
+    "introVideo": {
+      "avatar": {
+        "heading": "Escolha um avatar",
+        "help": "Escolha um apresentador ou continue sem um",
+        "none": "Sem avatar",
+        "visualBalanceAvatarLed": "Foco no avatar — o narrador fica na tela na maior parte do tempo",
+        "visualBalanceBalanced": "Mix equilibrado — o mesmo tempo para ambos",
+        "visualBalanceBRollLed": "Foco nos recursos visuais — prioridade para slides e imagens",
+        "visualBalanceHeading": "Como você prefere o equilíbrio visual?"
+      },
+      "cardDescription": "Transforme um arquivo ou gravação de tela em um vídeo finalizado",
+      "description": "Adicione uma fonte, escolha um avatar e uma voz opcionais e crie o vídeo em uma conversa.",
+      "errors": {
+        "recordingEmpty": "A gravação ficou vazia. Tente novamente.",
+        "recordingFailed": "Não foi possível iniciar a gravação de tela. Tente novamente em uma versão recente do Chrome.",
+        "recordingPermission": "Nada foi compartilhado. Escolha uma guia, janela ou tela quando estiver pronto.",
+        "recordingShareEnded": "O compartilhamento de tela terminou antes do início da gravação.",
+        "recordingUnsupported": "Este navegador não oferece suporte à gravação de tela.",
+        "sendFailed": "Não foi possível criar a conversa. Sua fonte continua salva localmente e foi baixada como backup.",
+        "uploadFailed": "Não foi possível enviar a fonte. Ela continua salva localmente e foi baixada como backup."
+      },
+      "footer": {
+        "back": "Voltar",
+        "createInChat": "Criar na conversa",
+        "download": "Baixar fonte",
+        "next": "Avançar",
+        "startRecording": "Escolher tela e iniciar",
+        "stopRecording": "Parar gravação"
+      },
+      "recording": {
+        "chooseSurface": "Escolha uma guia, janela ou tela",
+        "countdown": "A gravação começa após a contagem regressiva",
+        "description": "O Chrome perguntará o que compartilhar. A gravação só começa após o fim da contagem regressiva de três segundos.",
+        "heading": "Grave sua tela",
+        "localNote": "Você pode parar pela barra de compartilhamento do Chrome ou voltar aqui. A gravação permanece local até a conversa ser criada.",
+        "microphone": "Microfone",
+        "microphoneHelp": "Adicione narração enquanto demonstra",
+        "recordingLocally": "Gravando localmente",
+        "systemAudio": "Áudio do sistema",
+        "systemAudioHelp": "As fontes disponíveis dependem do Chrome e do seu sistema"
+      },
+      "review": {
+        "avatar": "Avatar",
+        "heading": "Revise seu vídeo de introdução",
+        "help": "Confirme as escolhas que o Zero receberá na nova conversa",
+        "instructions": "Instruções de edição",
+        "source": "Fonte",
+        "voice": "Voz"
+      },
+      "source": {
+        "chatDescription": "Abra uma conversa agora e desenvolva o vídeo com o Zero",
+        "chatDetail": "Adicione uma fonte, avatar ou voz depois na conversa",
+        "chatTitle": "Começar na conversa",
+        "documentDescription": "Transforme seu conteúdo em um vídeo de introdução narrado",
+        "documentFormats": "PPTX, PPT, PDF, DOC, DOCX",
+        "documentTitle": "Enviar slides ou documento",
+        "dropDescription": "Slides, documentos ou gravações",
+        "dropTitle": "Solte uma fonte aqui",
+        "heading": "Como você quer começar?",
+        "help": "Adicione algo que já tem, grave sua tela ou descreva o vídeo com suas próprias palavras",
+        "recordDescription": "Escolha uma guia, janela ou a tela inteira",
+        "recordDetail": "Começa após uma contagem regressiva de três segundos",
+        "recordTitle": "Gravar sua tela",
+        "videoDescription": "Deixe a IA melhorar o ritmo, o enquadramento e a narração",
+        "videoFormats": "MP4, MOV, WEBM",
+        "videoTitle": "Enviar uma gravação"
+      },
+      "sourceReview": {
+        "format": "Formato",
+        "heading": "Sua fonte está pronta",
+        "help": "Confira o arquivo antes de continuar",
+        "inBrowser": "Neste navegador",
+        "inTab": "Até esta guia ser fechada",
+        "replace": "Substituir fonte",
+        "saved": "Salvo",
+        "source": "Fonte"
+      },
+      "steps": {
+        "avatar": "Avatar",
+        "label": "Etapas do vídeo de introdução",
+        "review": "Revisar",
+        "source": "Fonte",
+        "voice": "Voz"
+      },
+      "title": "Criar um vídeo de introdução",
+      "voice": {
+        "heading": "Escolha uma voz",
+        "help": "Ouça uma amostra antes de continuar",
+        "none": "Sem narração",
+        "noneDescription": "Crie um vídeo guiado por legendas sem narração",
+        "original": "Áudio original",
+        "originalDescription": "Mantenha o áudio do vídeo ou da gravação enviados"
+      }
     },
     "mail": {
       "bcc": "cco",
@@ -2299,7 +2371,6 @@
     "templates": {
       "categories": {
         "illustration": "Ilustração",
-        "introVideo": "Vídeo de introdução",
         "presentation": "Apresentação",
         "video": "Vídeo",
         "website": "Site",
@@ -2358,48 +2429,6 @@
     "toasts": {
       "copied": "Copiado",
       "deleted": "Conversa excluída"
-    },
-    "toolActivity": {
-      "categories": {
-        "changes": {
-          "pending": {
-            "plural": "Alterando arquivos",
-            "singular": "Alterando um arquivo"
-          },
-          "terminal": {
-            "plural": "Arquivos alterados",
-            "singular": "Arquivo alterado"
-          }
-        },
-        "read": {
-          "pending": {
-            "plural": "Lendo arquivos",
-            "singular": "Lendo um arquivo"
-          },
-          "terminal": {
-            "plural": "Arquivos lidos",
-            "singular": "Arquivo lido"
-          }
-        },
-        "run": {
-          "pending": {
-            "plural": "Executando comandos",
-            "singular": "Executando um comando"
-          },
-          "terminal": {
-            "plural": "Comandos executados",
-            "singular": "Comando executado"
-          }
-        }
-      },
-      "collapse": "Recolher atividade de ferramentas",
-      "expand": "Expandir atividade de ferramentas",
-      "status": {
-        "cancelled": "Cancelado",
-        "error": "Falhou",
-        "pending": "Em andamento",
-        "success": "Concluído"
-      }
     },
     "voice": {
       "checkingLimit": "Verificando limite da entrada de voz",
@@ -3311,7 +3340,8 @@
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "Falha na solicitação"
+      "requestFailed": "Falha na solicitação",
+      "sharedDatabaseUnavailable": "O app encontrou um problema. Aguarde um momento e atualize a página para tentar novamente."
     },
     "realtime": {
       "degraded": "As atualizações em tempo real encontraram um problema. Atualize a página.",
@@ -3340,15 +3370,6 @@
       "doneTitle": "Inscrição cancelada",
       "errorBody": "Este link de cancelamento de inscrição é inválido ou expirou. Você pode gerenciar as notificações por e-mail nas Configurações.",
       "errorTitle": "Algo deu errado"
-    },
-    "morningBriefUnsubscribe": {
-      "documentTitle": "Morning Brief",
-      "doneBody": "Você não receberá mais o e-mail diário do Morning Brief. Você pode reativá-lo a qualquer momento nas Configurações.",
-      "doneTitle": "Morning Brief desativado",
-      "errorBody": "O link de cancelamento de inscrição é inválido ou incompleto. Abra o último e-mail do Morning Brief e use seu link de cancelamento de inscrição, ou gerencie a preferência nas Configurações.",
-      "errorTitle": "Este link é inválido",
-      "loadingLabel": "Carregando status de cancelamento de inscrição",
-      "managePreferences": "Gerenciar preferências"
     },
     "pwaInstall": {
       "banner": "Instale o {{assistantName}} para uma experiência melhor",
@@ -5200,16 +5221,6 @@
         },
         "title": "Idioma"
       },
-      "morningBrief": {
-        "description": "Um e-mail diário às 7h com sua agenda, itens de ação e atualizações do GitHub, Gmail e Google Calendar conectados",
-        "nextEmail": "Próximo e-mail: {{date}}",
-        "nextEmailInTimezone": "Próximo e-mail: {{date}} ({{timezone}})",
-        "notScheduled": "Próximo e-mail: ainda não agendado — desative e ative novamente para reagendar",
-        "sending": "Enviando...",
-        "sendNow": "Enviar agora",
-        "title": "Resumo matinal",
-        "triggeredToast": "Resumo matinal acionado; o e-mail chegará em breve"
-      },
       "pageDescription": "Gerencie suas preferências de aparência e de execução dos agentes",
       "pageTitle": "Preferências",
       "send": {
@@ -5426,10 +5437,14 @@
     }
   },
   "sharedThread": {
-    "brand": "{{brandName}}",
-    "notFoundDescription": "Esta conversa compartilhada não existe.",
+    "handoffDescription": "{{assistantName}} leva o contexto para uma nova conversa",
+    "handoffPrompt": "Continue esta conversa compartilhada comigo: {{url}}",
+    "makeConversationYours": "Torne esta conversa sua",
     "notFoundTitle": "Conversa compartilhada não encontrada",
-    "tryOkou": "Experimentar o {{assistantName}}"
+    "share": "Compartilhar",
+    "signIn": "Entrar",
+    "signUp": "Criar conta",
+    "tryItYourself": "Experimente você mesmo"
   },
   "usage": {
     "displayNames": {
@@ -6192,7 +6207,7 @@
       "browse": "Explorar oficiais",
       "chooseValue": "Escolha um valor",
       "copySucceededUninstallFailed": "A cópia está pronta, mas não foi possível desinstalar o fluxo de trabalho oficial original.",
-      "description": "Instale fluxos de trabalho gerenciados e mantidos pela vm0.",
+      "description": "Instale fluxos de trabalho gerenciados e mantidos pela Okou Official Team.",
       "empty": "Nenhum fluxo de trabalho oficial está disponível.",
       "includedAutomations": "Automações incluídas",
       "install": "Instalar",

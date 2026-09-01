@@ -16,6 +16,7 @@ import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { exportJobs } from "@okouai/db/schema/export-job";
+import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-canonical-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { hostedDeployments, hostedSites } from "@okouai/db/schema/hosted-site";
 import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
@@ -145,7 +146,7 @@ async function seedRunForAction(
   }
 
   await db
-    .insert(orgMetadata)
+    .insert(orgMetadataCanonicalWrites)
     .values({
       orgId,
       tier: "free",
@@ -184,6 +185,7 @@ async function seedRunForAction(
       createdAt: readDate(body, "created_at") ?? undefined,
       completedAt: readNullableDate(body, "completed_at"),
       lastHeartbeatAt: readNullableDate(body, "last_heartbeat_at"),
+      runnerGroup: readOptionalString(body, "runner_group"),
       cancellationRecoveryCompleted: readOptionalBoolean(
         body,
         "cancellation_recovery_completed",
@@ -603,6 +605,7 @@ async function seedRunnerJobForAction(
     executionContext: {
       storageMounts: [],
       environment: null,
+      platformEnvironment: {},
       resumeSession: null,
       encryptedSecrets: null,
       cliAgentType: "claude-code",
@@ -648,6 +651,7 @@ async function seedQueueEntryForAction(
         executionContext: {
           storageMounts: [],
           environment: null,
+          platformEnvironment: {},
           secretValueEnvironmentKeys: null,
           resumeSession: null,
           encryptedSecrets: null,
@@ -919,6 +923,50 @@ async function getExportJobForAction(
   return actionOk({ export_job: job ?? null });
 }
 
+const TEST_TERMINAL_RUN_STATUSES = [
+  "completed",
+  "failed",
+  "cancelled",
+  "timeout",
+] as const;
+
+async function transitionRunTerminalForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const runId = readString(body, "run_id");
+  const status = readString(body, "status");
+  if (!runId) {
+    return actionBadRequest("run_id is required");
+  }
+  const terminalStatus = TEST_TERMINAL_RUN_STATUSES.find((candidate) => {
+    return candidate === status;
+  });
+  if (!terminalStatus) {
+    return actionBadRequest("terminal status is required");
+  }
+  const [updated] = await db
+    .update(agentRuns)
+    .set({
+      status: terminalStatus,
+      completedAt: nowDate(),
+      error:
+        terminalStatus === "completed"
+          ? null
+          : `Run entered ${terminalStatus} in endpoint integration fixture`,
+    })
+    .where(
+      and(
+        eq(agentRuns.id, runId),
+        inArray(agentRuns.status, ["pending", "running"]),
+      ),
+    )
+    .returning({ id: agentRuns.id });
+  signal.throwIfAborted();
+  return updated ? actionOk() : actionBadRequest("active run not found");
+}
+
 const cronCleanupSandboxesActionHandlers = {
   "seed-run": seedRunForAction,
   "seed-run-ownership": seedRunOwnershipForAction,
@@ -937,6 +985,7 @@ const cronCleanupSandboxesActionHandlers = {
   "get-queue-entry": getQueueEntryForAction,
   "get-queue-marker-revoker": getQueueMarkerRevokerForAction,
   "get-export-job": getExportJobForAction,
+  "transition-run-terminal": transitionRunTerminalForAction,
 } satisfies Record<
   CronCleanupSandboxesAction,
   CronCleanupSandboxesActionHandler

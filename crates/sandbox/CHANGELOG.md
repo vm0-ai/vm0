@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.19.61](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.60...sandbox-v0.19.61) (2026-09-01)
+
+
+### Performance Improvements
+
+* **runner:** launch reuse identity verifier without shell ([#30644](https://github.com/vm0-ai/vm0/issues/30644)) ([3ea790e](https://github.com/vm0-ai/vm0/commit/3ea790e5a8bca85854debfe537a89a66c4520445))
+
+## [0.19.60](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.59...sandbox-v0.19.60) (2026-08-29)
+
+
+### Refactoring
+
+* **runner:** finish vm-to-sandbox terminology cleanup ([#30171](https://github.com/vm0-ai/vm0/issues/30171)) ([22d9b2e](https://github.com/vm0-ai/vm0/commit/22d9b2ebfdb9f9d3910eb8b30f8d2679aaed3081))
+
+## [0.19.59](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.58...sandbox-v0.19.59) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** launch guest agent without shell bootstrap ([#30153](https://github.com/vm0-ai/vm0/issues/30153)) ([b2409fe](https://github.com/vm0-ai/vm0/commit/b2409fed8caa794a4e7d604f7d4c64559a385737))
+
+## [0.19.58](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.57...sandbox-v0.19.58) (2026-08-28)
+
+
+### Bug Fixes
+
+* **sandbox:** preserve process handle must-use diagnostics ([#30094](https://github.com/vm0-ai/vm0/issues/30094)) ([4db19fd](https://github.com/vm0-ai/vm0/commit/4db19fdc7ceffb7ddba056888c1851c82b2a09a6))
+
 ## [0.19.57](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.56...sandbox-v0.19.57) (2026-08-28)
 
 

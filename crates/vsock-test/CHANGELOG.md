@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.9.266](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.265...vsock-test-v0.9.266) (2026-09-01)
+
+## [0.9.265](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.264...vsock-test-v0.9.265) (2026-09-01)
+
+## [0.9.264](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.263...vsock-test-v0.9.264) (2026-09-01)
+
+## [0.9.263](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.262...vsock-test-v0.9.263) (2026-09-01)
+
+## [0.9.262](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.261...vsock-test-v0.9.262) (2026-08-31)
+
+## [0.9.261](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.260...vsock-test-v0.9.261) (2026-08-31)
+
+## [0.9.260](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.259...vsock-test-v0.9.260) (2026-08-30)
+
+## [0.9.259](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.258...vsock-test-v0.9.259) (2026-08-30)
+
+## [0.9.258](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.257...vsock-test-v0.9.258) (2026-08-30)
+
+## [0.9.257](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.256...vsock-test-v0.9.257) (2026-08-29)
+
+## [0.9.256](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.255...vsock-test-v0.9.256) (2026-08-28)
+
+## [0.9.255](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.254...vsock-test-v0.9.255) (2026-08-28)
+
 ## [0.9.254](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.253...vsock-test-v0.9.254) (2026-08-28)
 
 ## [0.9.253](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.252...vsock-test-v0.9.253) (2026-08-28)

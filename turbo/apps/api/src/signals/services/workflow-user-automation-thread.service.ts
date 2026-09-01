@@ -53,7 +53,7 @@ export async function disableThreadBoundWorkflowAutomations(
 ): Promise<
   readonly Pick<
     typeof workflowAutomations.$inferSelect,
-    "orgId" | "ownerUserId" | "eventType" | "eventConfig"
+    "orgId" | "ownerUserId" | "eventType" | "eventConfig" | "eventConnectorId"
   >[]
 > {
   // Automation creation locks the same binding before it returns. Taking that
@@ -93,10 +93,11 @@ export async function disableThreadBoundWorkflowAutomations(
       ownerUserId: workflowAutomations.ownerUserId,
       eventType: workflowAutomations.eventType,
       eventConfig: workflowAutomations.eventConfig,
+      eventConnectorId: workflowAutomations.eventConnectorId,
     });
 }
 
-export async function createAutomationChatThread(
+async function createAutomationChatThread(
   db: ChatThreadEventTransaction,
   args: {
     readonly userId: string;

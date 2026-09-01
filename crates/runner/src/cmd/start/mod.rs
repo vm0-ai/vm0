@@ -80,7 +80,7 @@ use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
 use crate::runner_process_identity::RunnerProcessIdentity;
-use crate::status::{StatusTracker, remove_stale_status_file};
+use crate::status::{StatusResult, StatusTracker, remove_stale_status_file};
 use crate::workspace_image_cache::{
     WorkspaceCacheChange, WorkspaceCacheWatcher, WorkspaceImageCache,
 };
@@ -169,6 +169,38 @@ async fn sleep_until_optional_instant(deadline: Option<Instant>) {
     }
 }
 
+enum RoutineHeartbeatTrigger {
+    Interval(tokio::time::Interval),
+    #[cfg(test)]
+    Manual(mpsc::UnboundedReceiver<()>),
+}
+
+impl RoutineHeartbeatTrigger {
+    fn interval() -> Self {
+        let mut interval = tokio::time::interval_at(
+            tokio::time::Instant::now() + HEARTBEAT_PERIOD,
+            HEARTBEAT_PERIOD,
+        );
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        Self::Interval(interval)
+    }
+
+    async fn tick(&mut self) {
+        match self {
+            Self::Interval(interval) => {
+                interval.tick().await;
+            }
+            #[cfg(test)]
+            Self::Manual(receiver) => {
+                receiver
+                    .recv()
+                    .await
+                    .expect("manual routine heartbeat sender should remain open");
+            }
+        }
+    }
+}
+
 type WorkspaceCacheChangeFuture = BoxFuture<
     'static,
     (
@@ -205,6 +237,19 @@ fn workspace_cache_gc_future(cache: WorkspaceImageCache) -> WorkspaceCacheGcFutu
 async fn next_workspace_cache_gc(
     future: &mut Option<WorkspaceCacheGcFuture>,
 ) -> RunnerResult<Option<u64>> {
+    match future {
+        Some(future) => future.await,
+        None => std::future::pending().await,
+    }
+}
+
+type StatusRetryFuture = BoxFuture<'static, StatusResult<()>>;
+
+fn status_retry_future(status: Arc<StatusTracker>) -> StatusRetryFuture {
+    Box::pin(async move { status.retry_unpublished_snapshot().await })
+}
+
+async fn next_status_retry(future: &mut Option<StatusRetryFuture>) -> StatusResult<()> {
     match future {
         Some(future) => future.await,
         None => std::future::pending().await,
@@ -265,19 +310,11 @@ pub struct StartArgs {
     /// Path to runner.yaml config file
     #[arg(long, short)]
     pub(crate) config: PathBuf,
-    /// vm0 API URL (overrides config; `OKOU_API_BACKEND_URL`; legacy: `VM0_API_BACKEND_URL`)
-    #[arg(
-        long,
-        env = crate::operator_api_url::clap_environment_name(),
-        hide_env_values = true
-    )]
+    /// vm0 API URL (overrides config; `OKOU_API_BACKEND_URL`)
+    #[arg(long, env = "OKOU_API_BACKEND_URL", hide_env_values = true)]
     api_url: Option<String>,
-    /// Runner authentication token (overrides config; `OKOU_RUNNER_TOKEN`; legacy: `VM0_RUNNER_TOKEN`)
-    #[arg(
-        long,
-        env = crate::runner_token::clap_environment_name(),
-        hide_env_values = true
-    )]
+    /// Runner authentication token (overrides config; `OKOU_RUNNER_TOKEN`)
+    #[arg(long, env = "OKOU_RUNNER_TOKEN", hide_env_values = true)]
     token: Option<String>,
     /// Use local file queue provider instead of API (for testing)
     #[arg(long)]
@@ -336,7 +373,12 @@ async fn publish_live_runner_instance_or_shutdown_startup_resources(
             }
             resources.kmsg_handle.stop().await;
             resources.memory_prefetch.drain().await;
-            resources.status.set_mode(RunnerMode::Stopped).await;
+            if let Err(status_error) = resources.status.set_mode(RunnerMode::Stopped).await {
+                warn!(
+                    error = %status_error,
+                    "failed to persist stopped status after live runner publication failure"
+                );
+            }
             Err(e)
         }
     }
@@ -357,7 +399,9 @@ async fn shutdown_startup_resources_after_startup_failure(
     }
     resources.kmsg_handle.stop().await;
     resources.memory_prefetch.drain().await;
-    resources.status.set_mode(RunnerMode::Stopped).await;
+    if let Err(error) = resources.status.set_mode(RunnerMode::Stopped).await {
+        warn!(%error, context, "failed to persist stopped status after startup failure");
+    }
 }
 
 async fn abort_signal_handler_task(handler_task: SignalHandlerTask, context: &'static str) {
@@ -414,20 +458,7 @@ async fn run_start_with_home(
         server.token = token;
     }
 
-    // Validate required server fields
-    if server.url.is_empty() {
-        return Err(RunnerError::Config(format!(
-            "server.url is required (set in config or via --api-url / {} / {})",
-            crate::operator_api_url::CANONICAL_ENV,
-            crate::operator_api_url::LEGACY_ENV
-        )));
-    }
-    server.url = config::normalize_api_base_url(&server.url)?;
-    if server.token.is_empty() {
-        return Err(RunnerError::Config(
-            "server.token is required (set in config or via --token / OKOU_RUNNER_TOKEN / VM0_RUNNER_TOKEN)".into(),
-        ));
-    }
+    let server = validate_server_config_for_start(server)?;
 
     let runner_host_env = crate::host_env::read_runner_host_env()?;
     let config::SandboxConfig {
@@ -541,12 +572,69 @@ async fn run_start_with_home(
         None
     };
 
-    // Start background prefetch of snapshot memory for all profiles.
-    let mut memory_prefetch = prefetch::MemoryPrefetchTasks::spawn(
-        resource_locks
-            .profile_paths()
-            .map(|(_, profile_paths)| profile_paths.snapshot_paths().memory()),
+    // Resource budget from host resources + config.
+    let host_cpus = host::cpu_count()?;
+    let host_memory_mb = u32::try_from(host::memory_mb()?).map_err(|_| {
+        RunnerError::Internal("host memory exceeds supported runner capacity".into())
+    })?;
+    let pre_spawn_capacity = host::pre_spawn_cpu_capacity(host_cpus)?;
+    let pre_spawn_vcpu_tokens = pre_spawn_capacity.tokens();
+    let pre_spawn_admission = PreSpawnAdmission::new(pre_spawn_vcpu_tokens)?;
+    let budget = Arc::new(ResourceBudget::new(
+        host_cpus as u32,
+        host_memory_mb,
+        concurrency_factor,
+        max_concurrent,
+    ));
+    info!(
+        host_cpus,
+        host_memory_mb,
+        concurrency_factor,
+        concurrency_factor_source = concurrency_factor_source.label(),
+        yaml_concurrency_factor,
+        max_concurrent,
+        effective_vcpu = budget.effective_vcpu(),
+        effective_memory_mb = budget.effective_memory_mb(),
+        profiles = runner_config.profiles.len(),
+        "resource budget initialized"
     );
+    match pre_spawn_capacity {
+        host::PreSpawnCpuCapacity::ExactPhysical(_) => {
+            info!(
+                capacity_source = "physical_topology",
+                pre_spawn_vcpu_tokens = pre_spawn_admission.total_tokens(),
+                host_logical_cpus = host_cpus,
+                "pre-spawn admission initialized"
+            );
+        }
+        host::PreSpawnCpuCapacity::ConservativeLogical(_) => {
+            warn!(
+                capacity_source = "logical_cpu_fallback",
+                reason = "topology directories are absent for all online CPUs",
+                pre_spawn_vcpu_tokens = pre_spawn_admission.total_tokens(),
+                host_logical_cpus = host_cpus,
+                "pre-spawn admission initialized"
+            );
+        }
+    }
+
+    let memory_prefetch_candidates = resource_locks
+        .profile_paths()
+        .map(|(name, profile_paths)| {
+            let profile = runner_config.profiles.get(name).ok_or_else(|| {
+                RunnerError::Internal(format!(
+                    "missing runner profile for locked image artifacts {name}"
+                ))
+            })?;
+            Ok(prefetch::MemoryPrefetchCandidate {
+                path: profile_paths.snapshot_paths().memory(),
+                memory_mb: profile.memory_mb,
+            })
+        })
+        .collect::<RunnerResult<Vec<_>>>()?;
+    let memory_prefetch_budget_mb = u64::from(budget.effective_memory_mb().min(host_memory_mb));
+    let mut memory_prefetch =
+        prefetch::MemoryPrefetchTasks::spawn(memory_prefetch_candidates, memory_prefetch_budget_mb);
 
     // Compute the smallest profile resources for budget pre-check.
     // When budget is exhausted for all profiles, we wait instead of polling.
@@ -589,49 +677,6 @@ async fn run_start_with_home(
     let kmsg_handle = kmsg_log::spawn(network_log_manager.clone())
         .map_err(|e| RunnerError::Internal(format!("kmsg monitor: {e}")))?;
 
-    // Resource budget from host resources + config.
-    let host_cpus = host::cpu_count()?;
-    let host_memory_mb = host::memory_mb()?;
-    let pre_spawn_capacity = host::pre_spawn_cpu_capacity(host_cpus)?;
-    let pre_spawn_vcpu_tokens = pre_spawn_capacity.tokens();
-    let pre_spawn_admission = PreSpawnAdmission::new(pre_spawn_vcpu_tokens)?;
-    let budget = Arc::new(ResourceBudget::new(
-        host_cpus as u32,
-        host_memory_mb as u32,
-        concurrency_factor,
-        max_concurrent,
-    ));
-    info!(
-        host_cpus,
-        host_memory_mb,
-        concurrency_factor,
-        concurrency_factor_source = concurrency_factor_source.label(),
-        yaml_concurrency_factor,
-        max_concurrent,
-        effective_vcpu = budget.effective_vcpu(),
-        effective_memory_mb = budget.effective_memory_mb(),
-        profiles = runner_config.profiles.len(),
-        "resource budget initialized"
-    );
-    match pre_spawn_capacity {
-        host::PreSpawnCpuCapacity::ExactPhysical(_) => {
-            info!(
-                capacity_source = "physical_topology",
-                pre_spawn_vcpu_tokens = pre_spawn_admission.total_tokens(),
-                host_logical_cpus = host_cpus,
-                "pre-spawn admission initialized"
-            );
-        }
-        host::PreSpawnCpuCapacity::ConservativeLogical(_) => {
-            warn!(
-                capacity_source = "logical_cpu_fallback",
-                reason = "topology directories are absent for all online CPUs",
-                pre_spawn_vcpu_tokens = pre_spawn_admission.total_tokens(),
-                host_logical_cpus = host_cpus,
-                "pre-spawn admission initialized"
-            );
-        }
-    }
     let io_limit_resolution =
         crate::io_limits::resolve_io_limits(&runner_config.profiles, &budget, &runner_host_env);
     let device_rate_limits = io_limit_resolution.device_rate_limits();
@@ -914,6 +959,7 @@ async fn run_start_with_home(
             test_observer: StartLoopTestObserver::default(),
             before_initial_workspace_cache_scan: None,
             after_initial_workspace_cache_scan: None,
+            manual_routine_heartbeat_rx: None,
         },
     };
 
@@ -923,6 +969,24 @@ async fn run_start_with_home(
         tracing::warn!(error = %e, "failed to remove live runner instance record");
     }
     run_result
+}
+
+fn validate_server_config_for_start(
+    mut server: config::ServerConfig,
+) -> RunnerResult<config::ServerConfig> {
+    if server.url.is_empty() {
+        return Err(RunnerError::Config(
+            "server.url is required (set in config or via --api-url / OKOU_API_BACKEND_URL)".into(),
+        ));
+    }
+    server.url = config::normalize_api_base_url(&server.url)?;
+    if server.token.is_empty() {
+        return Err(RunnerError::Config(
+            "server.token is required (set in config or via --token / OKOU_RUNNER_TOKEN)".into(),
+        ));
+    }
+
+    Ok(server)
 }
 
 struct RunConfig {
@@ -1013,6 +1077,7 @@ struct RunTestHooks {
     test_observer: StartLoopTestObserver,
     before_initial_workspace_cache_scan: Option<StartLoopTestGate>,
     after_initial_workspace_cache_scan: Option<StartLoopTestGate>,
+    manual_routine_heartbeat_rx: Option<mpsc::UnboundedReceiver<()>>,
 }
 
 enum SignalSource {
@@ -1035,6 +1100,7 @@ enum StartLoopEvent {
     DestroyTasksDrainEntered,
     DestroyTasksDrainCompleted,
     FinalizingCapacityWaitEntered { run_id: RunId },
+    ReservedPreparingCommitted { run_id: RunId },
     ActiveRunStatusPublished { run_id: RunId },
     BeforeIdlePoolOwnershipTransfer { run_id: RunId },
     SandboxParkedForReuse { run_id: RunId, reuse_key: String },
@@ -1081,6 +1147,7 @@ struct StartLoopTestObserver {
 struct StartLoopTestObserverInner {
     events: std::sync::Mutex<Vec<StartLoopEvent>>,
     notify: tokio::sync::Notify,
+    reserved_preparing_gate: std::sync::Mutex<Option<StartLoopTestGate>>,
 }
 
 #[cfg(test)]
@@ -1201,6 +1268,29 @@ impl StartLoopTestObserver {
         self.record(StartLoopEvent::ActiveRunStatusPublished { run_id });
     }
 
+    fn gate_reserved_preparing_commit(&self) -> StartLoopTestGate {
+        let gate = StartLoopTestGate::default();
+        *self
+            .inner
+            .reserved_preparing_gate
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(gate.clone());
+        gate
+    }
+
+    async fn notify_reserved_preparing_committed(&self, run_id: RunId) {
+        self.record(StartLoopEvent::ReservedPreparingCommitted { run_id });
+        let gate = self
+            .inner
+            .reserved_preparing_gate
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        if let Some(gate) = gate {
+            gate.enter_and_wait().await;
+        }
+    }
+
     fn active_run_status_was_published(&self, run_id: RunId) -> bool {
         self.inner
             .events
@@ -1217,7 +1307,7 @@ impl StartLoopTestObserver {
             })
     }
 
-    fn notify_vm_parked_for_reuse(&self, run_id: RunId, reuse_key: String) {
+    fn notify_sandbox_parked_for_reuse(&self, run_id: RunId, reuse_key: String) {
         self.record(StartLoopEvent::SandboxParkedForReuse { run_id, reuse_key });
     }
 
@@ -1303,7 +1393,7 @@ impl StartLoopTestObserver {
         .await
     }
 
-    async fn wait_vm_parked_for_reuse(&self, run_id: RunId, timeout: Duration) -> String {
+    async fn wait_sandbox_parked_for_reuse(&self, run_id: RunId, timeout: Duration) -> String {
         self.wait_for(timeout, "sandbox parked for reuse", |event| match event {
             StartLoopEvent::SandboxParkedForReuse {
                 run_id: observed_run_id,
@@ -1417,6 +1507,7 @@ mod start_loop_observer_tests {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum OuterJobPanicPoint {
     ClaimedWithoutSandbox,
+    ClaimedActivation,
     ActiveOrUnknown,
     IdlePoolOwned,
     HandoffOwned,
@@ -1533,7 +1624,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         signals,
         orphan_reap,
         #[cfg(test)]
-        test_hooks,
+        mut test_hooks,
     } = config;
     let SandboxRuntimeConfig {
         mut runtime,
@@ -1565,7 +1656,27 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let lifecycle = signal.lifecycle;
     let mut signal_handler_task = signal.handler_task;
 
-    shared.status.write_initial().await;
+    if let Err(error) = shared.status.write_initial().await {
+        shutdown_startup_resources_after_startup_failure(
+            StartupFailureResources {
+                provider: provider_state.provider.as_ref(),
+                runtime: Some(runtime.as_mut()),
+                mitm: &mut mitm,
+                kmsg_handle,
+                dns_handle,
+                memory_prefetch: &mut memory_prefetch,
+                status: shared.status.as_ref(),
+            },
+            "initial_status_persistence_failure",
+        )
+        .await;
+        if let Some(handler_task) = signal_handler_task.take() {
+            abort_signal_handler_task(handler_task, "initial_status_persistence_failure").await;
+        }
+        return Err(RunnerError::Internal(format!(
+            "persist initial runner status: {error}"
+        )));
+    }
 
     if let Err(e) = provider_state.provider.prepare_startup_readiness().await {
         let startup_readiness_cancelled = provider_state.cancel.is_cancelled();
@@ -1627,7 +1738,40 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         }
     };
     let startup_mode = lifecycle.mark_startup_ready();
-    shared.status.set_mode(startup_mode).await;
+    if let Err(error) = shared.status.set_mode(startup_mode).await {
+        handle_stopping_signal(
+            "startup status persistence failure",
+            &provider_state.cancel,
+            &provider_state.cancel_tokens,
+            &lifecycle,
+        )
+        .await;
+        if let Err(factory_error) = shutdown_factory_instances(&mut factories, None).await {
+            warn!(
+                error = %factory_error,
+                "failed to shut down factories after startup status persistence failure"
+            );
+        }
+        shutdown_startup_resources_after_startup_failure(
+            StartupFailureResources {
+                provider: provider_state.provider.as_ref(),
+                runtime: Some(runtime.as_mut()),
+                mitm: &mut mitm,
+                kmsg_handle,
+                dns_handle,
+                memory_prefetch: &mut memory_prefetch,
+                status: shared.status.as_ref(),
+            },
+            "startup_status_persistence_failure",
+        )
+        .await;
+        if let Some(handler_task) = signal_handler_task.take() {
+            abort_signal_handler_task(handler_task, "startup_status_persistence_failure").await;
+        }
+        return Err(RunnerError::Internal(format!(
+            "persist ready runner status: {error}"
+        )));
+    }
 
     let mut jobs: JoinSet<RunCancellationRegistration> = JoinSet::new();
 
@@ -1659,13 +1803,17 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     );
 
     // -----------------------------------------------------------------------
-    // Heartbeat interval — same first-tick delay as above.
+    // Heartbeat interval — same first-tick delay as above. Integration tests
+    // inject manual ticks so their assertions do not advance unrelated Runner
+    // timers.
     // -----------------------------------------------------------------------
-    let mut heartbeat_tick = tokio::time::interval_at(
-        tokio::time::Instant::now() + HEARTBEAT_PERIOD,
-        HEARTBEAT_PERIOD,
-    );
-    heartbeat_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    #[cfg(test)]
+    let mut heartbeat_tick = match test_hooks.manual_routine_heartbeat_rx.take() {
+        Some(receiver) => RoutineHeartbeatTrigger::Manual(receiver),
+        None => RoutineHeartbeatTrigger::interval(),
+    };
+    #[cfg(not(test))]
+    let mut heartbeat_tick = RoutineHeartbeatTrigger::interval();
 
     // -----------------------------------------------------------------------
     // Main loop
@@ -1805,6 +1953,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     workspace_cache_reconciliation_tick
         .set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut workspace_cache_gc_fut = None;
+    let mut status_retry_fut = None;
     let mut draining_idle_pool_drained = false;
     let mut pending_finalizing_candidate = None;
     let mut terminal_error = None;
@@ -1812,7 +1961,19 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         let mode = *mode_rx.borrow_and_update();
         if mode != current_mode {
             current_mode = mode;
-            shared.status.set_mode(mode).await;
+            if let Err(error) = shared.status.set_mode(mode).await {
+                handle_stopping_signal(
+                    "status persistence failure",
+                    &provider_state.cancel,
+                    &provider_state.cancel_tokens,
+                    &lifecycle,
+                )
+                .await;
+                terminal_error = Some(RunnerError::Internal(format!(
+                    "persist runner mode {mode:?}: {error}"
+                )));
+                break;
+            }
         }
         if mode != RunnerMode::Running {
             pending_finalizing_candidate = None;
@@ -2023,6 +2184,12 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     ),
                 }
             }
+            result = next_status_retry(&mut status_retry_fut) => {
+                status_retry_fut = None;
+                if let Err(error) = result {
+                    warn!(%error, "failed to retry unpublished runner status");
+                }
+            }
             _ = workspace_cache_gc_tick.tick() => {
                 if workspace_cache_gc_fut.is_none()
                     && let Some(cache) = exec_config.workspace_cache.clone()
@@ -2123,6 +2290,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             _ = heartbeat_tick.tick() => {
                 let live_mode = *mode_rx.borrow();
                 heartbeat.request(live_mode)?;
+                if status_retry_fut.is_none() {
+                    status_retry_fut = Some(status_retry_future(Arc::clone(&shared.status)));
+                }
                 #[cfg(test)]
                 test_hooks
                     .test_observer
@@ -2216,6 +2386,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
     let phase = teardown.phase_start("heartbeat_drain");
     heartbeat.drain().await;
+    if let Some(retry) = status_retry_fut.take()
+        && let Err(error) = retry.await
+    {
+        warn!(%error, "failed to finish runner status retry during teardown");
+    }
     let final_heartbeat_sequence = heartbeat.into_next_snapshot_sequence();
     teardown.phase_complete("heartbeat_drain", phase);
 
@@ -2414,7 +2589,12 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     teardown.phase_complete("memory_prefetch_drain", phase);
 
     let phase = teardown.phase_start("status_stopped");
-    shared.status.set_mode(RunnerMode::Stopped).await;
+    if let Err(error) = shared.status.set_mode(RunnerMode::Stopped).await {
+        warn!(%error, "failed to persist final stopped runner status");
+    }
+    if let Err(error) = shared.status.retry_unpublished_snapshot().await {
+        warn!(%error, "failed to publish final runner status snapshot");
+    }
     teardown.phase_complete("status_stopped", phase);
     info!(total_teardown_ms = teardown.elapsed_ms(), "runner stopped");
 

@@ -141,13 +141,7 @@ async function sendChatRun(
   },
   publicBrand: PublicBrand = "vm0",
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
-  const sent = await chat.requestSendEvent(
-    actor,
-    body,
-    [201],
-    undefined,
-    publicBrand,
-  );
+  const sent = await chat.requestSendEvent(actor, body, [201], { publicBrand });
   if (sent.status !== 201 || sent.body.runId === null) {
     throw new Error("Expected chat send to create a run");
   }
@@ -170,9 +164,11 @@ async function claimChatRun(
 }
 
 function okouTokenFromClaim(claim: RunnerClaim): string {
-  const token = claim.environment?.OKOU_TOKEN;
+  const token = claim.platformEnvironment.OKOU_TOKEN;
   if (!token || !token.startsWith("vm0_sandbox_")) {
-    throw new Error("Expected the claim environment to carry an OKOU_TOKEN");
+    throw new Error(
+      "Expected the claim platform environment to carry an OKOU_TOKEN",
+    );
   }
   return token;
 }
@@ -200,18 +196,16 @@ async function completeChatRunOk(
   const historyHash = createHash("sha256")
     .update(`bdd artifacts history ${runId}`)
     .digest("hex");
-  await webhooks.requestAgentCheckpoint(
+  await webhooks.requestAgentComplete(
     {
       runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId: `bdd-cli-${runId}`,
-      cliAgentSessionHistoryHash: historyHash,
+      exitCode: 0,
+      checkpoint: {
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cli-${runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
     },
-    sandboxHeaders,
-    [200],
-  );
-  await webhooks.requestAgentComplete(
-    { runId, exitCode: 0 },
     sandboxHeaders,
     [200],
   );

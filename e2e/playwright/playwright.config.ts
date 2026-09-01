@@ -2,12 +2,11 @@ import dotenv from "dotenv";
 import { defineConfig, devices } from "@playwright/test";
 import path from "node:path";
 
+import { resolveApiBackendUrl } from "./api-backend-url";
+
 dotenv.config({ path: path.join(__dirname, "../.env.local") });
 
-const apiUrl = process.env.VM0_API_BACKEND_URL;
-if (!apiUrl) {
-  throw new Error("VM0_API_BACKEND_URL environment variable is required");
-}
+const apiUrl = resolveApiBackendUrl();
 
 type PublicService = "api" | "app" | "www";
 
@@ -47,8 +46,6 @@ export function deriveAppUrl(sourceUrl: string): string {
 export const STORAGE_STATE = path.join(__dirname, ".auth/storage-state.json");
 const appUrl = deriveAppUrl(apiUrl);
 const retainBlobReport = process.env.PLAYWRIGHT_PROJECT !== "auth-v2";
-const vercelAutomationBypassSecret =
-  process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
 
 export default defineConfig({
   testDir: "./tests",
@@ -61,9 +58,6 @@ export default defineConfig({
   timeout: 120_000,
   use: {
     baseURL: appUrl,
-    extraHTTPHeaders: vercelAutomationBypassSecret
-      ? { "x-vercel-protection-bypass": vercelAutomationBypassSecret }
-      : undefined,
     ignoreHTTPSErrors: true,
     trace: "on-first-retry",
     ...devices["Desktop Chrome"],

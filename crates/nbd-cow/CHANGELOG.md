@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.82](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.81...nbd-cow-v0.4.82) (2026-08-28)
+
+
+### Refactoring
+
+* **rust:** forbid path attributes ([#30129](https://github.com/vm0-ai/vm0/issues/30129)) ([c46da3e](https://github.com/vm0-ai/vm0/commit/c46da3ea8fb48b7595bc582036a1f28a0d676f5f))
+
 ## [0.4.81](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.80...nbd-cow-v0.4.81) (2026-08-28)
 
 

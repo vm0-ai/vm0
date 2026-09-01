@@ -531,7 +531,7 @@ async fn park_panic_destroys_sandbox_reports_completion_and_releases_budget() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn pool_full_rejected_vm_keeps_budget_until_destroy_and_completion() {
+async fn pool_full_rejected_sandbox_keeps_budget_until_destroy_and_completion() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let destroy_gate = MockLifecycleGate::new();
     overrides.set_destroy_lifecycle_gate(destroy_gate.clone());

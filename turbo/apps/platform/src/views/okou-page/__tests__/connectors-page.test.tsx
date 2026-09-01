@@ -1,6 +1,8 @@
 import { CLIENT_FORCE_UPGRADE_STATUS } from "@okouai/api-contracts/contracts/client-headers";
 import {
   customConnectorByIdContract,
+  customConnectorHttpResponseSchema,
+  customConnectorMcpResponseSchema,
   customConnectorOAuth2Contract,
   customConnectorValuesContract,
   customConnectorsContract,
@@ -48,6 +50,7 @@ import { CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY } from "@okouai/conne
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
+import { compile } from "tailwindcss";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -333,7 +336,7 @@ async function setupAwsExternalCodeConnection(): Promise<{
 function customConnector(
   overrides: Partial<CustomConnectorHttpResponse>,
 ): CustomConnectorHttpResponse {
-  return {
+  return customConnectorHttpResponseSchema.parse({
     kind: "http",
     id: "33333333-3333-4333-8333-333333333333",
     slug: "acme-search",
@@ -362,13 +365,13 @@ function customConnector(
     createdAt: "2026-02-01T00:00:00Z",
     updatedAt: "2026-02-01T00:00:00Z",
     ...overrides,
-  };
+  });
 }
 
 function mcpCustomConnector(
   overrides: Partial<CustomConnectorMcpResponse> = {},
 ): CustomConnectorMcpResponse {
-  return {
+  return customConnectorMcpResponseSchema.parse({
     kind: "mcp",
     id: "44444444-4444-4444-8444-444444444444",
     slug: "_acme-mcp",
@@ -400,7 +403,7 @@ function mcpCustomConnector(
     createdAt: "2026-08-10T00:00:00.000Z",
     updatedAt: "2026-08-10T00:00:00.000Z",
     ...overrides,
-  };
+  });
 }
 
 function publicCustomConnectorOAuthConfig(
@@ -510,14 +513,14 @@ function mockCustomConnectorStory(): {
         if (connector.id !== params.id) {
           return connector;
         }
-        updated = {
+        updated = customConnectorHttpResponseSchema.parse({
           ...connector,
           connected: true,
           missingRequiredFields: [],
           configuredFieldKeys: body.values.map((value) => {
             return value.key;
           }),
-        };
+        });
         return updated;
       });
       if (!updated) {
@@ -560,21 +563,25 @@ function mockCustomConnectorStory(): {
         if (connector.id !== params.id) {
           return connector;
         }
-        updated = {
+        const authMode = body.authMode ?? connector.authMode;
+        if (authMode !== "manual") {
+          throw new Error("Expected a manual HTTP custom connector update");
+        }
+        updated = customConnectorHttpResponseSchema.parse({
           ...connector,
           displayName: body.displayName,
           prefixTemplates: body.prefixTemplates,
           fields: body.fields,
           headerInjections: body.headerInjections,
           queryInjections: body.queryInjections,
-          authMode: body.authMode ?? connector.authMode,
+          authMode,
           storageVersion: body.storageVersion ?? connector.storageVersion,
           ...(body.oauthConfig
             ? {
                 oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
               }
             : {}),
-        };
+        });
         return updated;
       });
       if (!updated) {
@@ -615,17 +622,10 @@ async function expectConnectorCardsVisible(expected: {
   readonly asana: boolean;
 }): Promise<void> {
   await waitFor(() => {
-    if (expected.github) {
-      expect(queryConnectorCardByLabel("GitHub")).toBeInTheDocument();
-    } else {
-      expect(queryConnectorCardByLabel("GitHub")).not.toBeInTheDocument();
-    }
-
-    if (expected.asana) {
-      expect(queryConnectorCardByLabel("Asana")).toBeInTheDocument();
-    } else {
-      expect(queryConnectorCardByLabel("Asana")).not.toBeInTheDocument();
-    }
+    expect({
+      github: queryConnectorCardByLabel("GitHub") !== null,
+      asana: queryConnectorCardByLabel("Asana") !== null,
+    }).toStrictEqual(expected);
   });
 }
 
@@ -865,6 +865,7 @@ describe("connectors page", () => {
 
   it("localizes the catalog, reconnect state, and access management in Portuguese", async () => {
     document.documentElement.lang = "pt-BR";
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
     const researchAgentId = "c0000000-0000-4000-a000-000000000001";
     mockConnectors([
       { connectorSlug: "github", externalUsername: "octocat" },
@@ -882,11 +883,7 @@ describe("connectors page", () => {
       return respond(200, []);
     });
 
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
-    });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await expect(
       screen.findByRole("heading", { name: "Conectores" }),
@@ -929,6 +926,7 @@ describe("connectors page", () => {
 
   it("localizes the AI catalog subcategories in Portuguese", async () => {
     document.documentElement.lang = "pt-BR";
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
     mockConnectors([]);
     mockPublicConnectorStatus(
       [
@@ -1334,11 +1332,7 @@ describe("connectors page", () => {
       },
     );
 
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
-    });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       const card = connectorCardByLabel("Meta Ads");
@@ -1787,12 +1781,28 @@ describe("connectors page", () => {
   });
 
   it("paginates a feature-on account manager", async () => {
-    const accounts = mockGitHubConnectorAccounts(101);
+    const accounts = mockGitHubConnectorAccounts(8);
+    // The server projects rows away before slicing, so a page can hold fewer
+    // connections than the requested limit and still report a next cursor.
+    // Serving short pages walks the same three-page cursor chain the client
+    // follows for a full connector, without rendering hundreds of rows.
+    const serverPageSize = 3;
+    const accountQueries: {
+      readonly limit: number;
+      readonly cursor: string | null;
+    }[] = [];
     context.mocks.api(
       connectorAccountsContract.connections,
       ({ query, respond }) => {
+        accountQueries.push({
+          limit: query.limit,
+          cursor: query.cursor ?? null,
+        });
         const start = query.cursor ? Number(query.cursor) : 0;
-        const page = accounts.slice(start, start + query.limit);
+        const page = accounts.slice(
+          start,
+          start + Math.min(query.limit, serverPageSize),
+        );
         const next = start + page.length;
         return respond(200, {
           connections: page,
@@ -1808,17 +1818,39 @@ describe("connectors page", () => {
 
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
     const dialog = await screen.findByRole("dialog", { name: "GitHub" });
-    expect(within(dialog).queryByText("Work 50")).toBeNull();
+    expect(within(dialog).getByText("Work 7")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Work 4")).toBeNull();
     click(buttonByText("Load more", dialog));
     await waitFor(() => {
-      expect(within(dialog).getByText("Work 50")).toBeInTheDocument();
+      expect(within(dialog).getByText("Work 4")).toBeInTheDocument();
     });
+    expect(within(dialog).getByText("Work 7")).toBeInTheDocument();
     click(buttonByText("Load more", dialog));
+    // The last page carries an account of its own, so waiting for that account
+    // pins the assertions below to the render that consumed it. Waiting on the
+    // "Load more" label instead would pass mid-request, while the button still
+    // reads "Loading more".
     await waitFor(() => {
-      expect(queryButtonByText("Load more", dialog)).toBeNull();
       expect(within(dialog).getByText("Work 1")).toBeInTheDocument();
-      expect(within(dialog).getAllByText("Account #00000000")).toHaveLength(1);
     });
+    expect(queryButtonByText("Load more", dialog)).toBeNull();
+    expect(within(dialog).getByText("Work 7")).toBeInTheDocument();
+    expect(within(dialog).getByText("Work 4")).toBeInTheDocument();
+    expect(within(dialog).getAllByText("Account #00000000")).toHaveLength(1);
+    const requestedLimits = new Set(
+      accountQueries.map((query) => {
+        return query.limit;
+      }),
+    );
+    expect(
+      accountQueries.map((query) => {
+        return query.cursor;
+      }),
+    ).toStrictEqual([null, "3", "6"]);
+    // One bounded limit per request, wider than the whole fixture: every extra
+    // page came from following the server cursor, not from a client-side slice.
+    expect([...requestedLimits]).toHaveLength(1);
+    expect([...requestedLimits][0]).toBeGreaterThan(accounts.length);
   });
 
   it("debounces feature-on account manager searches", async () => {
@@ -2605,6 +2637,52 @@ describe("connectors page", () => {
     });
   });
 
+  it("keeps the expanded category menu above connector access controls", async () => {
+    mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
+    context.mocks.api(userConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledConnectorSlugs: [] });
+    });
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    const categoryMenuItem = await screen.findByTestId(
+      "connector-category-menu-ai",
+    );
+    categoryMenuItem.focus();
+    expect(categoryMenuItem).toHaveFocus();
+
+    const categoryMenuLayer = categoryMenuItem.closest("aside");
+    const accessControl = within(connectorCardByLabel("GitHub")).getByLabelText(
+      "Manage GitHub access",
+    );
+    const accessControlLayer = accessControl.parentElement;
+    if (
+      !(categoryMenuLayer instanceof HTMLElement) ||
+      !(accessControlLayer instanceof HTMLElement)
+    ) {
+      throw new Error("Connector stacking layers not found");
+    }
+
+    const tailwindCompiler = await compile("@tailwind utilities;");
+    const styleElement = document.createElement("style");
+    styleElement.textContent = tailwindCompiler.build([
+      ...categoryMenuLayer.classList,
+      ...accessControlLayer.classList,
+    ]);
+    document.head.append(styleElement);
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        styleElement.remove();
+      },
+      { once: true },
+    );
+
+    expect(Number(getComputedStyle(categoryMenuLayer).zIndex)).toBeGreaterThan(
+      Number(getComputedStyle(accessControlLayer).zIndex),
+    );
+  });
+
   it("filters connectors by slug", async () => {
     mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
 
@@ -2767,16 +2845,18 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: false },
+      featureSwitches: { [FeatureSwitchKey.MailchimpConnector]: false },
     });
 
     const searchInput = await screen.findByPlaceholderText("Find connectors");
-    await fill(searchInput, "meta");
+    await fill(searchInput, "mailchimp");
 
     await expect(
       screen.findByText(/No connectors matching/),
     ).resolves.toBeInTheDocument();
-    expect(screen.queryByLabelText("Connect Meta Ads")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Connect Mailchimp"),
+    ).not.toBeInTheDocument();
   });
 
   it("refreshes connector discovery when connector feature switches change", async () => {
@@ -2785,11 +2865,11 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: false },
+      featureSwitches: { [FeatureSwitchKey.MailchimpConnector]: false },
     });
 
     const searchInput = await screen.findByPlaceholderText("Find connectors");
-    await fill(searchInput, "meta");
+    await fill(searchInput, "mailchimp");
 
     await expect(
       screen.findByText(/No connectors matching/),
@@ -2797,18 +2877,18 @@ describe("connectors page", () => {
 
     context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
       return respond(200, {
-        switches: { [FeatureSwitchKey.MetaAdsConnector]: true },
-        effectiveSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
+        switches: { [FeatureSwitchKey.MailchimpConnector]: true },
+        effectiveSwitches: { [FeatureSwitchKey.MailchimpConnector]: true },
       });
     });
     await context.store.set(
       setFeatureSwitch$,
-      { [FeatureSwitchKey.MetaAdsConnector]: true },
+      { [FeatureSwitchKey.MailchimpConnector]: true },
       context.signal,
     );
 
     await expect(
-      screen.findByLabelText("Connect Meta Ads"),
+      screen.findByLabelText("Connect Mailchimp"),
     ).resolves.toBeInTheDocument();
   });
 
@@ -3166,11 +3246,7 @@ describe("connectors page", () => {
       },
     );
 
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
-    });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await fill(await screen.findByPlaceholderText("Find connectors"), "meta");
     click(await screen.findByLabelText("Connect Meta Ads"));
@@ -3204,6 +3280,7 @@ describe("connectors page", () => {
     ["outlook-mail", "Outlook Mail"],
     ["sentry", "Sentry"],
     ["server-authored-oauth", "Server-authored OAuth"],
+    ["slack", "Slack"],
     ["strava", "Strava"],
     ["todoist", "Todoist"],
     ["vercel", "Vercel"],
@@ -3253,49 +3330,6 @@ describe("connectors page", () => {
       });
     },
   );
-
-  it("keeps denylisted OAuth connectors on their legacy callback", async () => {
-    mockConnectors([]);
-    mockPublicConnectorStatus([
-      publicStatusItem({
-        connectorSlug: "slack",
-        label: "Slack",
-        authMethods: [
-          {
-            id: "oauth",
-            label: "OAuth",
-            description: null,
-            grantKind: "auth-code",
-            manualFields: [],
-            startOptions: [],
-          },
-        ],
-        singleAuthCodeAuthMethodId: "oauth",
-      }),
-    ]);
-    const authWindow = createMockAuthWindow();
-    context.mocks.browser.open(authWindow);
-    context.mocks.api(
-      connectorOauthStartContract.start,
-      ({ body, params, respond }) => {
-        expect(params.connectorSlug).toBe("slack");
-        expect(body.callbackTarget).toBeUndefined();
-        return respond(200, {
-          authorizationUrl: "https://oauth.test/slack/authorize",
-        });
-      },
-    );
-
-    detachedSetupPage({ context, path: "/connectors" });
-
-    click(await screen.findByLabelText("Connect Slack"));
-
-    await waitFor(() => {
-      expect(authWindow.location.href).toBe(
-        "https://oauth.test/slack/authorize",
-      );
-    });
-  });
 
   it("routes a feature-on OpenID account addition from catalog metadata", async () => {
     const connectorSlug = "server-authored-steam";
@@ -5487,6 +5521,9 @@ describe("connectors page", () => {
       if (body.kind !== "mcp") {
         throw new Error("Expected an MCP custom connector create");
       }
+      if ((body.authMode ?? "manual") !== "manual") {
+        throw new Error("Expected a manual MCP custom connector create");
+      }
       createBodies.push(body);
       connector = mcpCustomConnector({
         displayName: body.displayName,
@@ -5494,7 +5531,7 @@ describe("connectors page", () => {
         fields: body.fields,
         headerInjections: body.headerInjections,
         queryInjections: body.queryInjections,
-        authMode: body.authMode ?? "manual",
+        authMode: "manual",
         storageVersion: body.storageVersion ?? 1,
         connected: false,
         missingRequiredFields: ["secret"],
@@ -5508,18 +5545,22 @@ describe("connectors page", () => {
         if (body.kind !== "mcp" || !connector) {
           throw new Error("Expected an existing MCP custom connector update");
         }
+        if ((body.authMode ?? connector.authMode) !== "manual") {
+          throw new Error("Expected a manual MCP custom connector update");
+        }
         updateBodies.push(body);
-        connector = {
+        const updatedConnector = customConnectorMcpResponseSchema.parse({
           ...connector,
           displayName: body.displayName,
           endpoint: body.endpoint,
           fields: body.fields,
           headerInjections: body.headerInjections,
           queryInjections: body.queryInjections,
-          authMode: body.authMode ?? connector.authMode,
+          authMode: "manual",
           storageVersion: body.storageVersion ?? connector.storageVersion,
-        };
-        return respond(200, connector);
+        });
+        connector = updatedConnector;
+        return respond(200, updatedConnector);
       },
     );
     context.mocks.api(
@@ -5796,6 +5837,7 @@ describe("connectors page", () => {
         headerInjections: body.headerInjections,
         queryInjections: body.queryInjections,
         authMode: "oauth",
+        oauthSetup: "custom",
         oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
         storageVersion: body.storageVersion ?? 1,
         connected: false,
@@ -5819,6 +5861,7 @@ describe("connectors page", () => {
           headerInjections: body.headerInjections,
           queryInjections: body.queryInjections,
           authMode: "oauth",
+          oauthSetup: "custom",
           oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
           storageVersion: body.storageVersion ?? connector.storageVersion,
         };
@@ -6213,6 +6256,7 @@ describe("connectors page", () => {
         },
       ],
       authMode: "oauth",
+      oauthSetup: "custom",
       permissionBundleRef: "builtin:feishu@1",
       oauthConfig: {
         providerAdapter: "feishu",
@@ -6278,6 +6322,9 @@ describe("connectors page", () => {
       return respond(200, { connectors: connector ? [connector] : [] });
     });
     context.mocks.api(customConnectorsContract.create, ({ body, respond }) => {
+      if (body.authMode !== "oauth" || !body.oauthConfig) {
+        throw new Error("Expected an OAuth HTTP custom connector create");
+      }
       createdBodies.push(body);
       connector = customConnector({
         displayName: body.displayName,
@@ -6285,7 +6332,8 @@ describe("connectors page", () => {
         fields: body.fields ?? [],
         headerInjections: body.headerInjections ?? [],
         queryInjections: body.queryInjections ?? [],
-        authMode: body.authMode,
+        authMode: "oauth",
+        oauthSetup: "custom",
         storageVersion: body.storageVersion,
         ...(body.oauthConfig
           ? {
@@ -6306,22 +6354,27 @@ describe("connectors page", () => {
         if (!connector) {
           throw new Error("Expected custom connector to exist");
         }
-        connector = {
+        if (body.authMode !== "oauth" || !body.oauthConfig) {
+          throw new Error("Expected an OAuth HTTP custom connector update");
+        }
+        const updatedConnector = customConnectorHttpResponseSchema.parse({
           ...connector,
           displayName: body.displayName,
           prefixTemplates: body.prefixTemplates,
           fields: body.fields,
           headerInjections: body.headerInjections,
           queryInjections: body.queryInjections,
-          authMode: body.authMode ?? connector.authMode,
+          authMode: "oauth",
+          oauthSetup: "custom",
           storageVersion: body.storageVersion ?? connector.storageVersion,
           ...(body.oauthConfig
             ? {
                 oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
               }
             : {}),
-        };
-        return respond(200, connector);
+        });
+        connector = updatedConnector;
+        return respond(200, updatedConnector);
       },
     );
     context.mocks.api(
@@ -7063,6 +7116,7 @@ describe("connectors page", () => {
         },
       ],
       authMode: "oauth",
+      oauthSetup: "custom",
       oauthConfig: {
         providerAdapter: "standard",
         clientId: "acme-client",

@@ -42,6 +42,11 @@ import {
   expectCanonicalStorageManifest,
 } from "./helpers/api-bdd-runs";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
+import {
+  transitionRunToTerminal,
+  transitionRunToTimeout,
+  type TestTerminalRunStatus,
+} from "./helpers/api-bdd-run-timeout";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createUserConfigBddApi } from "./helpers/api-bdd-user-config";
 import {
@@ -61,6 +66,12 @@ import {
 } from "./helpers/connector-credential-storage-state";
 
 const context = testContext();
+const TERMINAL_RUN_STATUSES = [
+  "completed",
+  "failed",
+  "cancelled",
+  "timeout",
+] as const satisfies readonly TestTerminalRunStatus[];
 const api = createWebhookCallbackApi(context);
 const store = createStore();
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
@@ -111,6 +122,42 @@ function orgOf(actor: ApiTestUser): string {
     throw new Error("Expected an org-scoped actor");
   }
   return actor.orgId;
+}
+
+async function sandboxStorageWriteFixture(label: string) {
+  const bdd = createBddApi(context);
+  const runs = createRunsApi(context);
+  const actor = bdd.user();
+  bdd.acceptAgentStorageWrites();
+  runs.acceptStorageDownloads();
+  runs.acceptTelemetryIngest();
+  const runnerGroup = runs.configureRunnerGroup();
+  await runs.heartbeatRunner(runnerGroup);
+  await runs.grantProEntitlement(actor);
+  await runs.ensureOrgModelProvider(actor);
+  const agent = await bdd.createAgent(actor, {
+    displayName: `BDD sandbox storage ${label}`,
+    visibility: "private",
+  });
+  const run = await runs.createRun(actor, {
+    agentId: agent.agentId,
+    prompt: `write ${label} from the sandbox`,
+    modelProvider: "anthropic-api-key",
+  });
+  const claim = await runs.claimRunnerJob(run.runId);
+  const manifest = expectCanonicalStorageManifest(claim.storageManifest);
+  const mount = manifest?.storageMounts.find((candidate) => {
+    return candidate.writeback === true;
+  });
+  if (!mount) {
+    throw new Error("Expected a canonical writeback mount");
+  }
+  return {
+    actor,
+    runId: run.runId,
+    mount,
+    headers: { authorization: `Bearer ${claim.sandboxToken}` },
+  };
 }
 
 function oauthStateFromAuthorizationUrl(authorizationUrl: string): string {
@@ -2096,6 +2143,9 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
             duration_ms: 12,
             success: true,
             runner_pre_spawn_concurrency_bucket: "3_4",
+            runner_resource_budget_vcpu_utilization_bucket: "51_75",
+            runner_resource_budget_memory_utilization_bucket: "76_100",
+            runner_resource_budget_lease_count_bucket: "5_8",
           },
         ],
       },
@@ -2113,6 +2163,9 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
           runner_hostname: "prod-1.aws.vm3.ai",
           runner_version: "0.168.14",
           runner_pre_spawn_concurrency_bucket: "3_4",
+          runner_resource_budget_vcpu_utilization_bucket: "51_75",
+          runner_resource_budget_memory_utilization_bucket: "76_100",
+          runner_resource_budget_lease_count_bucket: "5_8",
         }),
       ],
     );
@@ -2246,27 +2299,6 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     expectApiError(mismatchedUsageEvent.body);
     expect(mismatchedUsageEvent.body.error.code).toBe("UNAUTHORIZED");
 
-    const mismatchedCompactModelUsage =
-      await api.requestAgentModelUsageObservationV2(
-        {
-          runId,
-          events: [
-            {
-              idempotencyKey: randomUUID(),
-              model: "claude-sonnet-4-6",
-              inputTokens: 1,
-              outputTokens: 0,
-              cacheReadInputTokens: 0,
-              cacheCreationInputTokens: 0,
-            },
-          ],
-        },
-        mismatchedHeaders,
-        [401],
-      );
-    expectApiError(mismatchedCompactModelUsage.body);
-    expect(mismatchedCompactModelUsage.body.error.code).toBe("UNAUTHORIZED");
-
     const malformedTelemetryBody = await api.requestAgentTelemetryUnchecked(
       {},
       headers,
@@ -2304,48 +2336,6 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     );
     expectApiError(missingUsageRun.body);
     expect(missingUsageRun.body.error.code).toBe("NOT_FOUND");
-
-    const malformedCompactModelUsage =
-      await api.requestAgentModelUsageObservationV2Unchecked(
-        {
-          runId,
-          events: [
-            {
-              idempotencyKey: randomUUID(),
-              model: "claude-sonnet-4-6",
-              inputTokens: 0,
-              outputTokens: 0,
-              cacheReadInputTokens: 0,
-              cacheCreationInputTokens: 0,
-            },
-          ],
-        },
-        headers,
-        [400],
-      );
-    expectApiError(malformedCompactModelUsage.body);
-    expect(malformedCompactModelUsage.body.error.code).toBe("BAD_REQUEST");
-
-    const missingCompactModelUsageRun =
-      await api.requestAgentModelUsageObservationV2(
-        {
-          runId,
-          events: [
-            {
-              idempotencyKey: randomUUID(),
-              model: "claude-sonnet-4-6",
-              inputTokens: 1,
-              outputTokens: 0,
-              cacheReadInputTokens: 0,
-              cacheCreationInputTokens: 0,
-            },
-          ],
-        },
-        headers,
-        [404],
-      );
-    expectApiError(missingCompactModelUsageRun.body);
-    expect(missingCompactModelUsageRun.body.error.code).toBe("NOT_FOUND");
 
     const malformedTelemetryBucket = await api.requestAgentTelemetryUnchecked(
       {
@@ -2923,6 +2913,332 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
     await runs.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await runs.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+  });
+});
+
+describe("WHCB-10: timeout closes sandbox storage write authority", () => {
+  it.each(TERMINAL_RUN_STATUSES)(
+    "rejects prepare before issuing upload URLs after %s",
+    async (status) => {
+      const fixture = await sandboxStorageWriteFixture("timeout prepare");
+      const signedUrlCalls = context.mocks.s3.getSignedUrl.mock.calls.length;
+
+      const terminal = await transitionRunToTerminal(
+        context,
+        fixture.runId,
+        status,
+      );
+      expect(terminal.body.ok).toBeTruthy();
+
+      const prepared = await api.requestAgentStoragePrepare(
+        {
+          runId: fixture.runId,
+          storageId: fixture.mount.storageId,
+          files: [
+            {
+              path: `${status}.txt`,
+              hash: createHash("sha256").update(status).digest("hex"),
+              size: 1,
+            },
+          ],
+        },
+        fixture.headers,
+        [404],
+      );
+      expectApiError(prepared.body);
+      expect(prepared.body.error.code).toBe("NOT_FOUND");
+      expect(context.mocks.s3.getSignedUrl).toHaveBeenCalledTimes(
+        signedUrlCalls,
+      );
+    },
+  );
+
+  it("keeps prepare-then-timeout commit completely write-free", async () => {
+    const fixture = await sandboxStorageWriteFixture("timeout commit");
+    const storages = createStoragesBddApi(context);
+    const parentVersionId = fixture.mount.versionId;
+    const files = [
+      {
+        path: "timeout.txt",
+        hash: createHash("sha256")
+          .update(`timeout ${fixture.runId}`)
+          .digest("hex"),
+        size: 2048,
+      },
+    ];
+    const prepared = await api.requestAgentStoragePrepare(
+      {
+        runId: fixture.runId,
+        storageId: fixture.mount.storageId,
+        parentVersionId,
+        files,
+      },
+      fixture.headers,
+      [200],
+    );
+    if (prepared.status !== 200) {
+      throw new Error("Expected storage prepare to succeed before timeout");
+    }
+    const before = await storages.inspectWriteback({
+      storageId: fixture.mount.storageId,
+      versionId: prepared.body.versionId,
+      runId: fixture.runId,
+      parentVersionId,
+    });
+    expect(before.version).toBeNull();
+    expect(before.lineageCount).toBe(0);
+
+    const timeout = await transitionRunToTimeout(context, fixture.runId);
+    expect(timeout.body.ok).toBeTruthy();
+    const s3Calls = context.mocks.s3.send.mock.calls.length;
+
+    const committed = await api.requestAgentStorageCommit(
+      {
+        runId: fixture.runId,
+        storageId: fixture.mount.storageId,
+        versionId: prepared.body.versionId,
+        parentVersionId,
+        files,
+        message: "must not commit after timeout",
+      },
+      fixture.headers,
+      [404],
+    );
+    expectApiError(committed.body);
+    expect(committed.body.error.code).toBe("NOT_FOUND");
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(s3Calls);
+    await expect(
+      storages.inspectWriteback({
+        storageId: fixture.mount.storageId,
+        versionId: prepared.body.versionId,
+        runId: fixture.runId,
+        parentVersionId,
+      }),
+    ).resolves.toStrictEqual(before);
+  });
+
+  it("acknowledges a proven committed retry after timeout without writes", async () => {
+    const fixture = await sandboxStorageWriteFixture("timeout exact retry");
+    const storages = createStoragesBddApi(context);
+    const parentVersionId = fixture.mount.versionId;
+    const files = [
+      {
+        path: "committed.txt",
+        hash: createHash("sha256")
+          .update(`committed ${fixture.runId}`)
+          .digest("hex"),
+        size: 4096,
+      },
+    ];
+    const message = "committed before timeout";
+    const prepared = await api.requestAgentStoragePrepare(
+      {
+        runId: fixture.runId,
+        storageId: fixture.mount.storageId,
+        parentVersionId,
+        files,
+      },
+      fixture.headers,
+      [200],
+    );
+    if (prepared.status !== 200) {
+      throw new Error("Expected storage prepare to succeed before timeout");
+    }
+    await api.requestAgentStorageCommit(
+      {
+        runId: fixture.runId,
+        storageId: fixture.mount.storageId,
+        versionId: prepared.body.versionId,
+        parentVersionId,
+        files,
+        message,
+      },
+      fixture.headers,
+      [200],
+    );
+    const before = await storages.inspectWriteback({
+      storageId: fixture.mount.storageId,
+      versionId: prepared.body.versionId,
+      runId: fixture.runId,
+      parentVersionId,
+    });
+    expect(before.version).not.toBeNull();
+    expect(before.lineageCount).toBe(1);
+
+    const timeout = await transitionRunToTimeout(context, fixture.runId);
+    expect(timeout.body.ok).toBeTruthy();
+
+    const retried = await api.requestAgentStorageCommit(
+      {
+        runId: fixture.runId,
+        storageId: fixture.mount.storageId,
+        versionId: prepared.body.versionId,
+        parentVersionId,
+        files,
+        message,
+      },
+      fixture.headers,
+      [200],
+    );
+    if (retried.status !== 200) {
+      throw new Error("Expected exact committed retry to succeed");
+    }
+    expect(retried.body).toMatchObject({
+      success: true,
+      versionId: prepared.body.versionId,
+      size: 4096,
+      fileCount: 1,
+      deduplicated: true,
+    });
+    await expect(
+      storages.inspectWriteback({
+        storageId: fixture.mount.storageId,
+        versionId: prepared.body.versionId,
+        runId: fixture.runId,
+        parentVersionId,
+      }),
+    ).resolves.toStrictEqual(before);
+  });
+
+  it("keeps a deduplicated head move provable after timeout", async () => {
+    const fixture = await sandboxStorageWriteFixture(
+      "timeout deduplicated retry",
+    );
+    const storages = createStoragesBddApi(context);
+    const initialVersionId = fixture.mount.versionId;
+    const restoredFiles = [
+      {
+        path: "restored.txt",
+        hash: createHash("sha256")
+          .update(`restored ${fixture.runId}`)
+          .digest("hex"),
+        size: 1024,
+      },
+    ];
+    const restoredMessage = "restored before timeout";
+    const restoredPrepare = await api.requestAgentStoragePrepare(
+      {
+        runId: fixture.runId,
+        storageId: fixture.mount.storageId,
+        parentVersionId: initialVersionId,
+        files: restoredFiles,
+      },
+      fixture.headers,
+      [200],
+    );
+    if (restoredPrepare.status !== 200) {
+      throw new Error("Expected restored version prepare to succeed");
+    }
+    await api.requestAgentStorageCommit(
+      {
+        runId: fixture.runId,
+        storageId: fixture.mount.storageId,
+        versionId: restoredPrepare.body.versionId,
+        parentVersionId: initialVersionId,
+        files: restoredFiles,
+        message: restoredMessage,
+      },
+      fixture.headers,
+      [200],
+    );
+
+    const replacementFiles = [
+      {
+        path: "replacement.txt",
+        hash: createHash("sha256")
+          .update(`replacement ${fixture.runId}`)
+          .digest("hex"),
+        size: 4096,
+      },
+    ];
+    const replacementPrepare = await api.requestAgentStoragePrepare(
+      {
+        runId: fixture.runId,
+        storageId: fixture.mount.storageId,
+        parentVersionId: restoredPrepare.body.versionId,
+        files: replacementFiles,
+      },
+      fixture.headers,
+      [200],
+    );
+    if (replacementPrepare.status !== 200) {
+      throw new Error("Expected replacement version prepare to succeed");
+    }
+    await api.requestAgentStorageCommit(
+      {
+        runId: fixture.runId,
+        storageId: fixture.mount.storageId,
+        versionId: replacementPrepare.body.versionId,
+        parentVersionId: restoredPrepare.body.versionId,
+        files: replacementFiles,
+        message: "replacement before restore",
+      },
+      fixture.headers,
+      [200],
+    );
+
+    const restored = await api.requestAgentStorageCommit(
+      {
+        runId: fixture.runId,
+        storageId: fixture.mount.storageId,
+        versionId: restoredPrepare.body.versionId,
+        parentVersionId: replacementPrepare.body.versionId,
+        files: restoredFiles,
+        message: restoredMessage,
+      },
+      fixture.headers,
+      [200],
+    );
+    if (restored.status !== 200) {
+      throw new Error("Expected deduplicated head move to succeed");
+    }
+    expect(restored.body).toMatchObject({
+      success: true,
+      versionId: restoredPrepare.body.versionId,
+      size: 1024,
+      fileCount: 1,
+      deduplicated: true,
+    });
+
+    const before = await storages.inspectWriteback({
+      storageId: fixture.mount.storageId,
+      versionId: restoredPrepare.body.versionId,
+      runId: fixture.runId,
+      parentVersionId: replacementPrepare.body.versionId,
+    });
+    expect(before.storage).toMatchObject({
+      headVersionId: restoredPrepare.body.versionId,
+      size: 1024,
+      fileCount: 1,
+    });
+    expect(before.lineageCount).toBe(1);
+
+    const timeout = await transitionRunToTimeout(context, fixture.runId);
+    expect(timeout.body.ok).toBeTruthy();
+    const retried = await api.requestAgentStorageCommit(
+      {
+        runId: fixture.runId,
+        storageId: fixture.mount.storageId,
+        versionId: restoredPrepare.body.versionId,
+        parentVersionId: replacementPrepare.body.versionId,
+        files: restoredFiles,
+        message: restoredMessage,
+      },
+      fixture.headers,
+      [200],
+    );
+    if (retried.status !== 200) {
+      throw new Error("Expected deduplicated exact retry to succeed");
+    }
+    expect(retried.body.deduplicated).toBeTruthy();
+    await expect(
+      storages.inspectWriteback({
+        storageId: fixture.mount.storageId,
+        versionId: restoredPrepare.body.versionId,
+        runId: fixture.runId,
+        parentVersionId: replacementPrepare.body.versionId,
+      }),
+    ).resolves.toStrictEqual(before);
   });
 });
 

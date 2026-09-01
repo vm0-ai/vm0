@@ -1,35 +1,48 @@
+import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
+import {
+  CHAT_EVENT_SCHEMA_VERSION_HEADER,
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import {
   chatThreadsContract,
   chatThreadEventsContract,
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
-import {
-  CHAT_EVENT_SCHEMA_VERSION_HEADER,
-  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-} from "@okouai/api-contracts/contracts/chat-event-schema-version";
-import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
 import { openDB } from "idb";
 import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
-import { testContext } from "../../signals/__tests__/test-helpers.ts";
 import { CHAT_IDB_VERSION } from "../../signals/external/chat-idb-schema.ts";
+import {
+  chatEventRowsResponse,
+  testContext,
+} from "../../signals/__tests__/test-helpers.ts";
 import { createChildAbortController } from "../../signals/utils.ts";
 import type {
   ChatEventDataKey,
   ChatThreadEventDataKey,
+  SharedDatabaseDataKey,
   SharedDatabaseIdentity,
   SharedDatabaseQuery,
+  SharedDatabaseQueryResult,
 } from "../data-key.ts";
-import type { SharedDatabaseWorkerMessage } from "../protocol.ts";
+import type { SharedDatabasePortLike } from "../bridge.ts";
+import { SharedDatabaseWorkerContext } from "../worker-host-context.ts";
 import {
-  bootstrapSharedDatabaseWorker$,
-  connectSharedDatabaseWorkerClient$,
+  registerConnection$,
+  connectionControllers$,
+  connectionPorts$,
+  type WorkerBroadcastMessage,
+} from "../worker-context.ts";
+import { SharedDatabaseWorkerRuntime } from "../worker-runtime.ts";
+import { createSharedDatabaseContractClientFactory } from "../worker-client.ts";
+import {
+  createSharedDatabaseCredentialStore,
+  disposeSharedDatabaseCredentialStore$,
   heartbeatSharedDatabaseWorker$,
   querySharedDatabaseWorker$,
-  subscribeSharedDatabaseWorker$,
+  startCredentialStoreDaemons$,
 } from "../worker-signals.ts";
 
 vi.mock("idb", async () => {
@@ -39,44 +52,56 @@ vi.mock("idb", async () => {
 const context = testContext();
 const SNAPSHOT_URL = "https://r2.example.com/shared-worker-chat-events.ndjson";
 const CREATED_AT = "2026-08-14T08:00:00.000Z";
+const WORKER_APP_VERSION = "shared-worker-store-version";
+const AGENT_ID = "c0000000-0000-4000-a000-000000000920";
+const THREAD_ID = "b0000000-0000-4000-a000-000000000920";
 
-function chatEventSchemaVersionResponseHeaders(): Record<string, string> {
-  return {
-    [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
-      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
-  };
+class CollectingPort implements SharedDatabasePortLike {
+  readonly messages: WorkerBroadcastMessage[] = [];
+
+  postMessage(value: unknown): void {
+    this.messages.push(value as WorkerBroadcastMessage);
+  }
+
+  start(): void {}
+
+  close(): void {}
+
+  addEventListener(
+    _type: "message",
+    _listener: (event: MessageEvent<unknown>) => void,
+  ): void {}
+
+  removeEventListener(
+    _type: "message",
+    _listener: (event: MessageEvent<unknown>) => void,
+  ): void {}
 }
 
-type WorkerEvent = Extract<
-  SharedDatabaseWorkerMessage,
-  { readonly type: "append" | "reload-required" | "status" }
->;
-
-function identity(): SharedDatabaseIdentity {
+function identity(
+  overrides: Partial<SharedDatabaseIdentity> = {},
+): SharedDatabaseIdentity {
   return {
     userId: `shared-worker-user-${context.resourceId}`,
     orgId: `shared-worker-org-${context.resourceId}`,
     token: "initial-token",
+    ...overrides,
   };
 }
 
+function realtimeChannel(current: SharedDatabaseIdentity = identity()): string {
+  return `user-org:${current.userId}:${current.orgId}`;
+}
+
 function chatEventKey(threadId: string): ChatEventDataKey {
-  const current = identity();
   return {
     kind: "chat-event",
-    userId: current.userId,
-    orgId: current.orgId,
     threadId,
   };
 }
 
 function chatThreadEventKey(): ChatThreadEventDataKey {
-  const current = identity();
-  return {
-    kind: "chat-thread-event",
-    userId: current.userId,
-    orgId: current.orgId,
-  };
+  return { kind: "chat-thread-event" };
 }
 
 function chatEventRow(threadId: string, seqId: number): ChatEventRow {
@@ -95,9 +120,6 @@ function chatEventRow(threadId: string, seqId: number): ChatEventRow {
     createdAt: CREATED_AT,
   };
 }
-
-const AGENT_ID = "c0000000-0000-4000-a000-000000000920";
-const THREAD_ID = "b0000000-0000-4000-a000-000000000920";
 
 function snapshotThread(title: string): ChatThreadSnapshotProjection {
   return {
@@ -138,67 +160,151 @@ function snapshotNdjson(rows: readonly ChatEventRow[]): string {
     .join("\n")}\n`;
 }
 
-async function connectRuntime(
-  events: WorkerEvent[] = [],
+interface RuntimeFixture {
+  readonly events: WorkerBroadcastMessage[];
+  readonly runtime: SharedDatabaseWorkerRuntime;
+}
+
+function startRuntime(
+  currentIdentity: SharedDatabaseIdentity = identity(),
   vercelProtectionBypass?: string,
-): Promise<string> {
-  const clientId = crypto.randomUUID();
-  context.workerStore.set(bootstrapSharedDatabaseWorker$, context.signal);
-  context.workerStore.set(
-    connectSharedDatabaseWorkerClient$,
-    clientId,
-    (event) => {
-      events.push(event);
-    },
-  );
-  await context.workerStore.set(
-    heartbeatSharedDatabaseWorker$,
-    clientId,
+): RuntimeFixture {
+  const events: WorkerBroadcastMessage[] = [];
+  const runtime = new SharedDatabaseWorkerRuntime(
     {
-      identity: identity(),
+      identity: currentIdentity,
       apiBaseUrl: location.origin,
-      ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
+      vercelProtectionBypass,
+      emit: (event) => {
+        events.push(event);
+      },
+      createContractClient:
+        createSharedDatabaseContractClientFactory(WORKER_APP_VERSION),
     },
     context.signal,
   );
-  return clientId;
+  runtime.heartbeat(currentIdentity, location.origin, vercelProtectionBypass);
+  return { events, runtime };
 }
 
-async function query<TKey extends ChatEventDataKey | ChatThreadEventDataKey>(
-  clientId: string,
-  value: SharedDatabaseQuery<TKey>,
+async function queryRuntime<TKey extends SharedDatabaseDataKey>(
+  runtime: SharedDatabaseWorkerRuntime,
+  query: SharedDatabaseQuery<TKey>,
   signal: AbortSignal = context.signal,
-) {
-  return await context.workerStore.set(
-    querySharedDatabaseWorker$,
-    clientId,
-    value,
-    signal,
-  );
+): Promise<SharedDatabaseQueryResult<TKey>> {
+  return await runtime.query(query, signal);
 }
 
 describe("shared database worker runtime", () => {
-  it("forwards the dedicated Preview bypass to every API contract request", async () => {
+  it("owns independent connection controllers, signals, and ports inside one credential Store", () => {
+    const store = createSharedDatabaseCredentialStore(
+      {
+        appVersion: WORKER_APP_VERSION,
+        identity: identity(),
+        apiBaseUrl: location.origin,
+        vercelProtectionBypass: undefined,
+      },
+      context.signal,
+    );
+    const firstController = createChildAbortController(context.signal);
+    const secondController = createChildAbortController(context.signal);
+    const firstPort = new CollectingPort();
+    const secondPort = new CollectingPort();
+    const firstSignal = store.set(
+      registerConnection$,
+      "first-connection",
+      firstController,
+      firstPort,
+      firstController.signal,
+    );
+    const firstControllers = store.get(connectionControllers$);
+    const secondSignal = store.set(
+      registerConnection$,
+      "second-connection",
+      secondController,
+      secondPort,
+      secondController.signal,
+    );
+
+    expect(firstSignal).not.toBe(secondSignal);
+    expect(firstControllers).toStrictEqual(
+      new Map([["first-connection", firstController]]),
+    );
+    expect(store.get(connectionControllers$)).toStrictEqual(
+      new Map([
+        ["first-connection", firstController],
+        ["second-connection", secondController],
+      ]),
+    );
+    expect(store.get(connectionPorts$)).toStrictEqual(
+      new Map([
+        ["first-connection", firstPort],
+        ["second-connection", secondPort],
+      ]),
+    );
+
+    firstController.abort(
+      new DOMException("first connection closed", "AbortError"),
+    );
+    expect(firstSignal.aborted).toBeTruthy();
+    expect(secondSignal.aborted).toBeFalsy();
+    expect(
+      store.get(connectionControllers$).has("first-connection"),
+    ).toBeFalsy();
+    expect(store.get(connectionPorts$).has("first-connection")).toBeFalsy();
+
+    store.set(disposeSharedDatabaseCredentialStore$);
+    expect(secondSignal.aborted).toBeTruthy();
+    expect(store.get(connectionControllers$).size).toBe(0);
+    expect(store.get(connectionPorts$).size).toBe(0);
+  });
+
+  it("keeps credential Stores isolated in the SharedWorker context", () => {
+    const workerContext = new SharedDatabaseWorkerContext(
+      context.signal,
+      WORKER_APP_VERSION,
+    );
+    const firstIdentity = identity();
+    const secondIdentity = identity({
+      orgId: `${identity().orgId}-second`,
+      token: "second-token",
+    });
+    const firstController = createChildAbortController(context.signal);
+    const secondController = createChildAbortController(context.signal);
+    const { binding: firstBinding } = workerContext.bindConnection({
+      connectionId: "first-connection",
+      connectionController: firstController,
+      port: new CollectingPort(),
+      identity: firstIdentity,
+      apiBaseUrl: location.origin,
+      vercelProtectionBypass: undefined,
+    });
+    const { binding: secondBinding } = workerContext.bindConnection({
+      connectionId: "second-connection",
+      connectionController: secondController,
+      port: new CollectingPort(),
+      identity: secondIdentity,
+      apiBaseUrl: location.origin,
+      vercelProtectionBypass: undefined,
+    });
+
+    expect(firstBinding.store).not.toBe(secondBinding.store);
+    expect(workerContext.credentialStoreCount()).toBe(2);
+
+    firstController.abort();
+    expect(workerContext.credentialStoreCount()).toBe(1);
+    secondController.abort();
+    expect(workerContext.credentialStoreCount()).toBe(0);
+  });
+
+  it("forwards the Preview bypass to every API contract request", async () => {
     const bypassByRoute = new Map<string, (string | null)[]>();
     const recordBypass = (route: string, request: Request): void => {
+      expect(request.headers.get("x-client-version")).toBe(WORKER_APP_VERSION);
       const values = bypassByRoute.get(route) ?? [];
       values.push(request.headers.get("x-vercel-protection-bypass"));
       bypassByRoute.set(route, values);
     };
-    context.mocks.api(
-      platformRealtimeTokenContract.create,
-      ({ request, respond }) => {
-        recordBypass("realtime-token", request);
-        return respond(200, {
-          keyName: "mock-key",
-          clientId: "test-user-123",
-          timestamp: Date.parse(CREATED_AT),
-          capability: '{"*":["*"]}',
-          nonce: "mock-nonce",
-          mac: "mock-mac",
-        });
-      },
-    );
     context.mocks.api(
       chatThreadEventsContract.snapshot,
       ({ request, respond }) => {
@@ -211,10 +317,13 @@ describe("shared database worker runtime", () => {
         });
       },
     );
-    context.mocks.api(chatThreadEventsContract.rows, ({ request, respond }) => {
-      recordBypass("chat-event-rows", request);
-      return respond(200, { rows: [] });
-    });
+    context.mocks.api(
+      chatThreadEventsContract.rows,
+      ({ query, request, respond }) => {
+        recordBypass("chat-event-rows", request);
+        return respond(200, chatEventRowsResponse([], query));
+      },
+    );
     context.mocks.api(chatThreadsContract.snapshot, ({ request, respond }) => {
       recordBypass("chat-thread-snapshot", request);
       return respond(200, {
@@ -228,24 +337,13 @@ describe("shared database worker runtime", () => {
       return respond(200, { events: [], hasMore: false });
     });
 
-    const clientId = await connectRuntime([], "preview-secret");
-    context.workerStore.set(
-      subscribeSharedDatabaseWorker$,
-      clientId,
-      crypto.randomUUID(),
-      chatThreadEventKey(),
-    );
-    await vi.waitFor(() => {
-      expect(bypassByRoute.get("realtime-token")).toStrictEqual([
-        "preview-secret",
-      ]);
-    });
-    await query(clientId, {
+    const { runtime } = startRuntime(identity(), "preview-secret");
+    await queryRuntime(runtime, {
       dataKey: chatEventKey(crypto.randomUUID()),
       afterSeqId: null,
       consistency: "catch-up",
     });
-    await query(clientId, {
+    await queryRuntime(runtime, {
       dataKey: chatThreadEventKey(),
       afterSeqId: null,
       consistency: "catch-up",
@@ -257,7 +355,6 @@ describe("shared database worker runtime", () => {
         "chat-event-snapshot",
         "chat-thread-events",
         "chat-thread-snapshot",
-        "realtime-token",
       ].sort(),
     );
     for (const values of bypassByRoute.values()) {
@@ -270,46 +367,8 @@ describe("shared database worker runtime", () => {
     }
   });
 
-  it("omits the Preview bypass outside Preview", async () => {
-    const observedBypassHeaders: (string | null)[] = [];
-    context.mocks.api(
-      chatThreadEventsContract.snapshot,
-      ({ request, respond }) => {
-        observedBypassHeaders.push(
-          request.headers.get("x-vercel-protection-bypass"),
-        );
-        return respond(404, {
-          error: {
-            code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
-            message: "Chat event snapshot not found",
-          },
-        });
-      },
-    );
-    context.mocks.api(chatThreadEventsContract.rows, ({ request, respond }) => {
-      observedBypassHeaders.push(
-        request.headers.get("x-vercel-protection-bypass"),
-      );
-      return respond(200, { rows: [] });
-    });
-
-    const clientId = await connectRuntime();
-    await query(clientId, {
-      dataKey: chatEventKey(crypto.randomUUID()),
-      afterSeqId: null,
-      consistency: "catch-up",
-    });
-
-    expect(observedBypassHeaders.length).toBeGreaterThanOrEqual(2);
-    expect(
-      observedBypassHeaders.every((value) => {
-        return value === null;
-      }),
-    ).toBeTruthy();
-  });
-
   it("keeps full cache-only queries for both datasets off the network", async () => {
-    const clientId = await connectRuntime();
+    const { runtime } = startRuntime();
     let networkRequests = 0;
     context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
       networkRequests += 1;
@@ -320,9 +379,9 @@ describe("shared database worker runtime", () => {
         },
       });
     });
-    context.mocks.api(chatThreadEventsContract.rows, ({ respond }) => {
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       networkRequests += 1;
-      return respond(200, { rows: [] });
+      return respond(200, chatEventRowsResponse([], query));
     });
     context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
       networkRequests += 1;
@@ -338,183 +397,27 @@ describe("shared database worker runtime", () => {
     });
 
     await expect(
-      query(clientId, {
+      queryRuntime(runtime, {
         dataKey: chatEventKey(crypto.randomUUID()),
         afterSeqId: null,
         consistency: "cache-only",
       }),
     ).resolves.toStrictEqual([]);
     await expect(
-      query(clientId, {
+      queryRuntime(runtime, {
         dataKey: chatThreadEventKey(),
         afterSeqId: null,
         consistency: "cache-only",
       }),
     ).resolves.toStrictEqual({ snapshot: null, events: [] });
-
     expect(networkRequests).toBe(0);
   });
 
-  it("catches up both datasets after delayed first Ably attachment", async () => {
-    const workerEvents: WorkerEvent[] = [];
-    const clientId = await connectRuntime(workerEvents);
-    const eventDataKey = chatEventKey(crypto.randomUUID());
-    const threadDataKey = chatThreadEventKey();
-    const firstRow = chatEventRow(eventDataKey.threadId, 1);
-    const secondRow = chatEventRow(eventDataKey.threadId, 2);
-    const renamedEvent = renamedThreadEvent(2, "new title");
-    let availableRows: readonly ChatEventRow[] = [firstRow];
-    let availableThreadEvents: readonly ChatThreadEvent[] = [];
-
-    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
-      return respond(404, {
-        error: {
-          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
-          message: "Chat event snapshot not found",
-        },
-      });
-    });
-    context.mocks.api(
-      chatThreadEventsContract.rows,
-      ({ query: requestQuery, respond }) => {
-        return respond(200, {
-          rows: availableRows.filter((row) => {
-            return row.seqId > requestQuery.sinceSeqId;
-          }),
-        });
-      },
-    );
-    context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
-      return respond(200, {
-        chatThreads: [snapshotThread("old title")],
-        latestEventId: crypto.randomUUID(),
-        latestSeqId: 1,
-      });
-    });
-    context.mocks.api(
-      chatThreadsContract.events,
-      ({ query: requestQuery, respond }) => {
-        return respond(200, {
-          events: availableThreadEvents.filter((event) => {
-            return (
-              requestQuery.sinceSeqId === undefined ||
-              event.seqId > requestQuery.sinceSeqId
-            );
-          }),
-          hasMore: false,
-        });
-      },
-    );
-
-    const attachment = context.mocks.ably.deferNextSubscribe();
-    context.workerStore.set(
-      subscribeSharedDatabaseWorker$,
-      clientId,
-      crypto.randomUUID(),
-      eventDataKey,
-    );
-    context.workerStore.set(
-      subscribeSharedDatabaseWorker$,
-      clientId,
-      crypto.randomUUID(),
-      threadDataKey,
-    );
-    await attachment.started;
-
-    await expect(
-      query(clientId, {
-        dataKey: eventDataKey,
-        afterSeqId: null,
-        consistency: "catch-up",
-      }),
-    ).resolves.toStrictEqual([firstRow]);
-    await expect(
-      query(clientId, {
-        dataKey: threadDataKey,
-        afterSeqId: null,
-        consistency: "catch-up",
-      }),
-    ).resolves.toStrictEqual({
-      snapshot: {
-        chatThreads: [snapshotThread("old title")],
-        latestEventId: expect.any(String),
-        latestSeqId: 1,
-      },
-      events: [],
-    });
-    const appendCountBeforeAttach = workerEvents.filter((event) => {
-      return event.type === "append";
-    }).length;
-
-    availableRows = [firstRow, secondRow];
-    availableThreadEvents = [renamedEvent];
-    attachment.attach();
-
-    await vi.waitFor(() => {
-      expect(
-        workerEvents.filter((event) => {
-          return event.type === "append";
-        }),
-      ).toHaveLength(appendCountBeforeAttach + 2);
-    });
-    await expect(
-      query(clientId, {
-        dataKey: eventDataKey,
-        afterSeqId: null,
-        consistency: "cache-only",
-      }),
-    ).resolves.toStrictEqual([firstRow, secondRow]);
-    await expect(
-      query(clientId, {
-        dataKey: threadDataKey,
-        afterSeqId: null,
-        consistency: "cache-only",
-      }),
-    ).resolves.toStrictEqual({
-      snapshot: {
-        chatThreads: [snapshotThread("old title")],
-        latestEventId: expect.any(String),
-        latestSeqId: 1,
-      },
-      events: [renamedEvent],
-    });
-  });
-
-  it("keeps a failed first Ably attachment disconnected", async () => {
-    const workerEvents: WorkerEvent[] = [];
-    const clientId = await connectRuntime(workerEvents);
-    let snapshotRequests = 0;
-    context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
-      snapshotRequests += 1;
-      return respond(200, {
-        chatThreads: [],
-        latestEventId: null,
-        latestSeqId: null,
-      });
-    });
-    context.mocks.ably.rejectNextSubscribe("channel attach failed");
-
-    context.workerStore.set(
-      subscribeSharedDatabaseWorker$,
-      clientId,
-      crypto.randomUUID(),
-      chatThreadEventKey(),
-    );
-
-    await vi.waitFor(() => {
-      expect(workerEvents.at(-1)).toMatchObject({
-        type: "status",
-        status: "disconnected",
-      });
-    });
-    expect(snapshotRequests).toBe(0);
-  });
-
-  it("rejects a missing ChatEvent response schema version", async () => {
-    const clientId = await connectRuntime();
-    const dataKey = chatEventKey(crypto.randomUUID());
+  it("rejects missing and mismatched ChatEvent response schema versions", async () => {
+    const missing = startRuntime().runtime;
+    const missingKey = chatEventKey(crypto.randomUUID());
     context.mocks.http.get(
-      `*/api/chat-threads/${dataKey.threadId}/event-snapshot`,
+      `*/api/chat-threads/${missingKey.threadId}/event-snapshot`,
       () => {
         return HttpResponse.json(
           {
@@ -527,19 +430,16 @@ describe("shared database worker runtime", () => {
         );
       },
     );
-
     await expect(
-      query(clientId, {
-        dataKey,
+      queryRuntime(missing, {
+        dataKey: missingKey,
         afterSeqId: null,
         consistency: "catch-up",
       }),
     ).rejects.toThrow("Unexpected Chat Event schema version null");
-  });
 
-  it("rejects a mismatched ChatEvent response schema version", async () => {
-    const clientId = await connectRuntime();
-    const dataKey = chatEventKey(crypto.randomUUID());
+    const mismatched = startRuntime().runtime;
+    const mismatchedKey = chatEventKey(crypto.randomUUID());
     context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
       return respond(404, {
         error: {
@@ -549,20 +449,23 @@ describe("shared database worker runtime", () => {
       });
     });
     context.mocks.http.get(
-      `*/api/chat-threads/${dataKey.threadId}/event-rows`,
+      `*/api/chat-threads/${mismatchedKey.threadId}/event-rows`,
       () => {
         return HttpResponse.json(
-          { rows: [] },
+          {
+            rows: [],
+            cursor: { lastEventId: null, lastSeqId: 0 },
+            hasMore: false,
+          },
           {
             headers: { [CHAT_EVENT_SCHEMA_VERSION_HEADER]: "999" },
           },
         );
       },
     );
-
     await expect(
-      query(clientId, {
-        dataKey,
+      queryRuntime(mismatched, {
+        dataKey: mismatchedKey,
         afterSeqId: null,
         consistency: "catch-up",
       }),
@@ -570,13 +473,11 @@ describe("shared database worker runtime", () => {
   });
 
   it("loads a ChatEvent snapshot plus tail and serves strict cursor reads from cache", async () => {
-    const workerEvents: WorkerEvent[] = [];
-    const clientId = await connectRuntime(workerEvents);
+    const { runtime } = startRuntime();
     const dataKey = chatEventKey(crypto.randomUUID());
     const snapshotRow = chatEventRow(dataKey.threadId, 2);
     const tailRow = chatEventRow(dataKey.threadId, 3);
     const requestedSeqIds: number[] = [];
-
     context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
       return respond(200, {
         url: SNAPSHOT_URL,
@@ -590,37 +491,29 @@ describe("shared database worker runtime", () => {
     });
     context.mocks.api(
       chatThreadEventsContract.rows,
-      ({ query: requestQuery, respond }) => {
+      ({ query, query: requestQuery, respond }) => {
         requestedSeqIds.push(requestQuery.sinceSeqId);
-        return respond(200, {
-          rows: requestQuery.sinceSeqId === 2 ? [tailRow] : [],
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            requestQuery.sinceSeqId === 2 ? [tailRow] : [],
+            query,
+          ),
+        );
       },
-    );
-    context.workerStore.set(
-      subscribeSharedDatabaseWorker$,
-      clientId,
-      crypto.randomUUID(),
-      dataKey,
     );
 
     await expect(
-      query(clientId, {
+      queryRuntime(runtime, {
         dataKey,
         afterSeqId: null,
         consistency: "catch-up",
       }),
     ).resolves.toStrictEqual([snapshotRow, tailRow]);
-    expect(requestedSeqIds).toStrictEqual([2, 3, 3]);
-    expect(
-      workerEvents.filter((event) => {
-        return event.type === "append";
-      }),
-    ).toHaveLength(1);
-
+    expect(requestedSeqIds).toStrictEqual([2, 3]);
     const requestCount = requestedSeqIds.length;
     await expect(
-      query(clientId, {
+      queryRuntime(runtime, {
         dataKey,
         afterSeqId: 2,
         consistency: "cache-only",
@@ -629,258 +522,204 @@ describe("shared database worker runtime", () => {
     expect(requestedSeqIds).toHaveLength(requestCount);
   });
 
-  it("shares catch-up work while allowing one caller to cancel its wait", async () => {
-    const clientId = await connectRuntime();
-    const dataKey = chatEventKey(crypto.randomUUID());
-    const row = chatEventRow(dataKey.threadId, 1);
-    const firstPage = context.mocks.deferred<void>();
-    const requestedSeqIds: number[] = [];
-
-    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
-      return respond(404, {
-        error: {
-          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
-          message: "Chat event snapshot not found",
-        },
-      });
-    });
-    context.mocks.api(
-      chatThreadEventsContract.rows,
-      async ({ query: requestQuery, respond }) => {
-        requestedSeqIds.push(requestQuery.sinceSeqId);
-        if (requestQuery.sinceSeqId === 0) {
-          await firstPage.promise;
-          return respond(200, { rows: [row] });
-        }
-        return respond(200, { rows: [] });
+  it("runs concurrent connection requests independently and aborts only one connection", async () => {
+    const store = createSharedDatabaseCredentialStore(
+      {
+        appVersion: WORKER_APP_VERSION,
+        identity: identity(),
+        apiBaseUrl: location.origin,
+        vercelProtectionBypass: undefined,
       },
-    );
-
-    const cancelled = createChildAbortController(context.signal);
-    const first = query(
-      clientId,
-      { dataKey, afterSeqId: null, consistency: "catch-up" },
-      cancelled.signal,
-    );
-    const second = query(clientId, {
-      dataKey,
-      afterSeqId: null,
-      consistency: "catch-up",
-    });
-
-    await vi.waitFor(() => {
-      expect(requestedSeqIds).toStrictEqual([0]);
-    });
-    cancelled.abort(new DOMException("caller left", "AbortError"));
-    await expect(first).rejects.toMatchObject({ name: "AbortError" });
-    firstPage.resolve(undefined);
-
-    await expect(second).resolves.toStrictEqual([row]);
-    expect(requestedSeqIds).toStrictEqual([0, 1]);
-  });
-
-  it("coalesces repeated Ably notifications and writes before append", async () => {
-    const workerEvents: WorkerEvent[] = [];
-    const clientId = await connectRuntime(workerEvents);
-    const dataKey = chatEventKey(crypto.randomUUID());
-    const firstRow = chatEventRow(dataKey.threadId, 1);
-    const secondRow = chatEventRow(dataKey.threadId, 2);
-    const thirdRow = chatEventRow(dataKey.threadId, 3);
-    let availableRows: readonly ChatEventRow[] = [firstRow];
-    const requestedSeqIds: number[] = [];
-    const realtimePageStarted = context.mocks.deferred<void>();
-    const releaseRealtimePage = context.mocks.deferred<void>();
-    let holdRealtimePage = false;
-
-    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
-      return respond(404, {
-        error: {
-          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
-          message: "Chat event snapshot not found",
-        },
-      });
-    });
-    context.mocks.api(
-      chatThreadEventsContract.rows,
-      async ({ query: requestQuery, respond }) => {
-        requestedSeqIds.push(requestQuery.sinceSeqId);
-        const rows = availableRows.filter((row) => {
-          return row.seqId > requestQuery.sinceSeqId;
-        });
-        if (holdRealtimePage && requestQuery.sinceSeqId === 1) {
-          realtimePageStarted.resolve(undefined);
-          await releaseRealtimePage.promise;
-        }
-        return respond(200, { rows });
-      },
-    );
-    context.workerStore.set(
-      subscribeSharedDatabaseWorker$,
-      clientId,
-      crypto.randomUUID(),
-      dataKey,
-    );
-    await query(clientId, {
-      dataKey,
-      afterSeqId: null,
-      consistency: "catch-up",
-    });
-
-    availableRows = [firstRow, secondRow];
-    holdRealtimePage = true;
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${dataKey.threadId}`);
-    await realtimePageStarted.promise;
-    availableRows = [firstRow, secondRow, thirdRow];
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${dataKey.threadId}`);
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${dataKey.threadId}`);
-    releaseRealtimePage.resolve(undefined);
-
-    await vi.waitFor(() => {
-      expect(
-        workerEvents.filter((event) => {
-          return event.type === "append";
-        }),
-      ).toHaveLength(3);
-    });
-    expect(requestedSeqIds).toStrictEqual([0, 1, 1, 1, 2]);
-    await expect(
-      query(clientId, {
-        dataKey,
-        afterSeqId: 1,
-        consistency: "cache-only",
-      }),
-    ).resolves.toStrictEqual([secondRow, thirdRow]);
-  });
-
-  it("retries one failed realtime catch-up without another notification", async () => {
-    const workerEvents: WorkerEvent[] = [];
-    const clientId = await connectRuntime(workerEvents);
-    const dataKey = chatEventKey(crypto.randomUUID());
-    const firstRow = chatEventRow(dataKey.threadId, 1);
-    const secondRow = chatEventRow(dataKey.threadId, 2);
-    let availableRows: readonly ChatEventRow[] = [firstRow];
-    let failNextPage = false;
-    let failedRequests = 0;
-
-    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
-      return respond(404, {
-        error: {
-          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
-          message: "Chat event snapshot not found",
-        },
-      });
-    });
-    context.mocks.http.get(
-      `*/api/chat-threads/${dataKey.threadId}/event-rows`,
-      ({ request }) => {
-        if (failNextPage) {
-          failNextPage = false;
-          failedRequests += 1;
-          return HttpResponse.json(
-            { error: { code: "INTERNAL_ERROR", message: "try again" } },
-            {
-              status: 500,
-              headers: chatEventSchemaVersionResponseHeaders(),
-            },
-          );
-        }
-        const sinceSeqId = Number(
-          new URL(request.url).searchParams.get("sinceSeqId"),
-        );
-        return HttpResponse.json(
-          {
-            rows: availableRows.filter((row) => {
-              return row.seqId > sinceSeqId;
-            }),
-          },
-          { headers: chatEventSchemaVersionResponseHeaders() },
-        );
-      },
-    );
-
-    context.workerStore.set(
-      subscribeSharedDatabaseWorker$,
-      clientId,
-      crypto.randomUUID(),
-      dataKey,
-    );
-    await vi.waitFor(async () => {
-      await expect(
-        query(clientId, {
-          dataKey,
-          afterSeqId: null,
-          consistency: "cache-only",
-        }),
-      ).resolves.toStrictEqual([firstRow]);
-    });
-    const appendCountBeforeNotification = workerEvents.filter((event) => {
-      return event.type === "append";
-    }).length;
-
-    availableRows = [firstRow, secondRow];
-    failNextPage = true;
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${dataKey.threadId}`);
-
-    await vi.waitFor(() => {
-      expect(
-        workerEvents.filter((event) => {
-          return event.type === "append";
-        }),
-      ).toHaveLength(appendCountBeforeNotification + 1);
-    });
-    expect(failedRequests).toBe(1);
-    await expect(
-      query(clientId, {
-        dataKey,
-        afterSeqId: 1,
-        consistency: "cache-only",
-      }),
-    ).resolves.toStrictEqual([secondRow]);
-  });
-
-  it("does not report a disconnected realtime session as connected on heartbeat", async () => {
-    const workerEvents: WorkerEvent[] = [];
-    const clientId = await connectRuntime(workerEvents);
-    context.workerStore.set(
-      subscribeSharedDatabaseWorker$,
-      clientId,
-      crypto.randomUUID(),
-      chatThreadEventKey(),
-    );
-    await vi.waitFor(() => {
-      expect(workerEvents.at(-1)).toMatchObject({
-        type: "status",
-        status: "connected",
-      });
-    });
-
-    context.mocks.ably.triggerConnectionState("disconnected");
-    await vi.waitFor(() => {
-      expect(workerEvents.at(-1)).toMatchObject({
-        type: "status",
-        status: "disconnected",
-      });
-    });
-    await context.workerStore.set(
-      heartbeatSharedDatabaseWorker$,
-      clientId,
-      { identity: identity(), apiBaseUrl: location.origin },
       context.signal,
     );
-    expect(workerEvents.at(-1)).toMatchObject({
-      type: "status",
-      status: "disconnected",
+    const firstController = createChildAbortController(context.signal);
+    const secondController = createChildAbortController(context.signal);
+    const firstSignal = store.set(
+      registerConnection$,
+      "first-connection",
+      firstController,
+      new CollectingPort(),
+      firstController.signal,
+    );
+    const secondSignal = store.set(
+      registerConnection$,
+      "second-connection",
+      secondController,
+      new CollectingPort(),
+      secondController.signal,
+    );
+    store.set(
+      heartbeatSharedDatabaseWorker$,
+      "first-connection",
+      { identity: identity(), apiBaseUrl: location.origin },
+      firstSignal,
+    );
+    const dataKey = chatEventKey(crypto.randomUUID());
+    const remoteRow = chatEventRow(dataKey.threadId, 1);
+    const firstPage = context.mocks.deferred<void>();
+    let initialPageRequests = 0;
+    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+          message: "Chat event snapshot not found",
+        },
+      });
     });
+    context.mocks.api(
+      chatThreadEventsContract.rows,
+      async ({ query, respond }) => {
+        if (query.sinceSeqId === 0) {
+          initialPageRequests += 1;
+          await firstPage.promise;
+          return respond(200, chatEventRowsResponse([remoteRow], query));
+        }
+        return respond(200, chatEventRowsResponse([], query));
+      },
+    );
+    const request = {
+      dataKey,
+      afterSeqId: null,
+      consistency: "catch-up" as const,
+    };
+
+    const first = store.set(
+      querySharedDatabaseWorker$,
+      "first-connection",
+      request,
+      firstSignal,
+    );
+    const second = store.set(
+      querySharedDatabaseWorker$,
+      "second-connection",
+      request,
+      secondSignal,
+    );
+    await vi.waitFor(() => {
+      expect(initialPageRequests).toBe(2);
+    });
+    firstController.abort(
+      new DOMException("first connection closed", "AbortError"),
+    );
+    await expect(first).rejects.toMatchObject({ name: "AbortError" });
+    expect(secondSignal.aborted).toBeFalsy();
+
+    firstPage.resolve(undefined);
+    await expect(second).resolves.toStrictEqual([remoteRow]);
+    expect(initialPageRequests).toBe(2);
+  });
+
+  it("broadcasts semantic realtime invalidations without fetching data", async () => {
+    const store = createSharedDatabaseCredentialStore(
+      {
+        appVersion: WORKER_APP_VERSION,
+        identity: identity(),
+        apiBaseUrl: location.origin,
+        vercelProtectionBypass: undefined,
+      },
+      context.signal,
+    );
+    const firstController = createChildAbortController(context.signal);
+    const secondController = createChildAbortController(context.signal);
+    const firstPort = new CollectingPort();
+    const secondPort = new CollectingPort();
+    const firstSignal = store.set(
+      registerConnection$,
+      "first-connection",
+      firstController,
+      firstPort,
+      firstController.signal,
+    );
+    store.set(
+      registerConnection$,
+      "second-connection",
+      secondController,
+      secondPort,
+      secondController.signal,
+    );
+    let chatEventRequests = 0;
+    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+      chatEventRequests += 1;
+      return respond(404, {
+        error: {
+          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+          message: "Chat event snapshot not found",
+        },
+      });
+    });
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      chatEventRequests += 1;
+      return respond(200, chatEventRowsResponse([], query));
+    });
+    const initialAttachment = context.mocks.ably.deferNextSubscribe();
+    store.set(
+      heartbeatSharedDatabaseWorker$,
+      "first-connection",
+      { identity: identity(), apiBaseUrl: location.origin },
+      firstSignal,
+    );
+    store.set(startCredentialStoreDaemons$, (daemon) => {
+      context.track(daemon);
+    });
+    await initialAttachment.started;
+    for (const port of [firstPort, secondPort]) {
+      expect(
+        port.messages.some((message) => {
+          return message.type === "reconnect";
+        }),
+      ).toBeFalsy();
+    }
+    initialAttachment.attach();
+    await vi.waitFor(() => {
+      expect(
+        context.mocks.ably.hasChannelSubscriptionOnChannel(realtimeChannel()),
+      ).toBeTruthy();
+    });
+    for (const port of [firstPort, secondPort]) {
+      expect(port.messages).not.toContainEqual({ type: "reconnect" });
+    }
+    const threadId = crypto.randomUUID();
+
+    context.mocks.ably.triggerOnChannel(
+      realtimeChannel(),
+      `chatThreadMessageCreated:${threadId}`,
+    );
+
+    await vi.waitFor(() => {
+      for (const port of [firstPort, secondPort]) {
+        expect(port.messages).toContainEqual({
+          type: "invalidate",
+          dataKey: chatEventKey(threadId),
+        });
+      }
+    });
+    const readCursorPayload = {
+      threadId,
+      lastReadAt: null,
+    };
+    context.mocks.ably.triggerOnChannel(
+      realtimeChannel(),
+      "chatThreadReadCursorUpdated",
+      readCursorPayload,
+    );
+    await vi.waitFor(() => {
+      for (const port of [firstPort, secondPort]) {
+        expect(port.messages).toContainEqual({
+          type: "indicators-invalidated",
+          payload: readCursorPayload,
+        });
+      }
+    });
+    expect(chatEventRequests).toBe(0);
   });
 
   it("transparently rebuilds ChatEvent cache after cursor expiry", async () => {
-    const clientId = await connectRuntime();
+    const { runtime } = startRuntime();
     const dataKey = chatEventKey(crypto.randomUUID());
     const oldRow = chatEventRow(dataKey.threadId, 1);
     const rebuiltRow = chatEventRow(dataKey.threadId, 10);
     const tailRow = chatEventRow(dataKey.threadId, 11);
     let expired = false;
-
     context.mocks.api(
       chatThreadEventsContract.snapshot,
       ({ request, respond }) => {
@@ -909,14 +748,18 @@ describe("shared database worker runtime", () => {
     let returnedExpiry = false;
     context.mocks.api(
       chatThreadEventsContract.rows,
-      ({ request, query: requestQuery, respond }) => {
+      ({ query, request, query: requestQuery, respond }) => {
         expect(request.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe(
           CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
         );
         if (!expired) {
-          return respond(200, {
-            rows: requestQuery.sinceSeqId === 0 ? [oldRow] : [],
-          });
+          return respond(
+            200,
+            chatEventRowsResponse(
+              requestQuery.sinceSeqId === 0 ? [oldRow] : [],
+              query,
+            ),
+          );
         }
         if (requestQuery.sinceSeqId === 1 && !returnedExpiry) {
           returnedExpiry = true;
@@ -927,28 +770,31 @@ describe("shared database worker runtime", () => {
             },
           });
         }
-        return respond(200, {
-          rows: requestQuery.sinceSeqId === 10 ? [tailRow] : [],
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            requestQuery.sinceSeqId === 10 ? [tailRow] : [],
+            query,
+          ),
+        );
       },
     );
 
-    await query(clientId, {
+    await queryRuntime(runtime, {
       dataKey,
       afterSeqId: null,
       consistency: "catch-up",
     });
     expired = true;
-
     await expect(
-      query(clientId, {
+      queryRuntime(runtime, {
         dataKey,
         afterSeqId: oldRow.seqId,
         consistency: "catch-up",
       }),
     ).resolves.toStrictEqual([rebuiltRow, tailRow]);
     await expect(
-      query(clientId, {
+      queryRuntime(runtime, {
         dataKey,
         afterSeqId: null,
         consistency: "cache-only",
@@ -957,13 +803,12 @@ describe("shared database worker runtime", () => {
   });
 
   it("transparently replaces the ChatThreadEvent baseline after cursor expiry", async () => {
-    const clientId = await connectRuntime();
+    const { runtime } = startRuntime();
     const dataKey = chatThreadEventKey();
     const oldEvent = renamedThreadEvent(2, "old title");
     const currentEvent = renamedThreadEvent(11, "current title");
     let snapshotVersion = 1;
     let returnExpiry = false;
-
     context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
       const current = snapshotVersion === 1;
       return respond(200, {
@@ -974,38 +819,34 @@ describe("shared database worker runtime", () => {
         latestSeqId: current ? 1 : 10,
       });
     });
-    context.mocks.api(
-      chatThreadsContract.events,
-      ({ query: requestQuery, respond }) => {
-        if (returnExpiry && requestQuery.sinceSeqId === oldEvent.seqId) {
-          returnExpiry = false;
-          return respond(410, {
-            error: {
-              code: "CHAT_THREAD_EVENTS_EXPIRED",
-              message: "Chat thread events cursor has expired",
-            },
-          });
-        }
-        if (snapshotVersion === 1) {
-          return respond(200, { events: [oldEvent], hasMore: false });
-        }
-        return respond(200, {
-          events: requestQuery.sinceSeqId === 10 ? [currentEvent] : [],
-          hasMore: false,
+    context.mocks.api(chatThreadsContract.events, ({ query, respond }) => {
+      if (returnExpiry && query.sinceSeqId === oldEvent.seqId) {
+        returnExpiry = false;
+        return respond(410, {
+          error: {
+            code: "CHAT_THREAD_EVENTS_EXPIRED",
+            message: "Chat thread events cursor has expired",
+          },
         });
-      },
-    );
+      }
+      if (snapshotVersion === 1) {
+        return respond(200, { events: [oldEvent], hasMore: false });
+      }
+      return respond(200, {
+        events: query.sinceSeqId === 10 ? [currentEvent] : [],
+        hasMore: false,
+      });
+    });
 
-    await query(clientId, {
+    await queryRuntime(runtime, {
       dataKey,
       afterSeqId: null,
       consistency: "catch-up",
     });
     snapshotVersion = 2;
     returnExpiry = true;
-
     await expect(
-      query(clientId, {
+      queryRuntime(runtime, {
         dataKey,
         afterSeqId: oldEvent.seqId,
         consistency: "catch-up",
@@ -1020,9 +861,8 @@ describe("shared database worker runtime", () => {
     });
   });
 
-  it("compacts a valid ChatThreadEvent cache above the event-log bound", async () => {
-    const workerEvents: WorkerEvent[] = [];
-    const clientId = await connectRuntime(workerEvents);
+  it("rebases a valid ChatThreadEvent cache above the event-log bound on demand", async () => {
+    const { runtime } = startRuntime();
     const dataKey = chatThreadEventKey();
     const eventLog = Array.from({ length: 101 }, (_, index) => {
       return renamedThreadEvent(index + 1, `title ${index + 1}`);
@@ -1031,7 +871,6 @@ describe("shared database worker runtime", () => {
     let compactSnapshotAvailable = false;
     let snapshotRequests = 0;
     const requestedSeqIds: (number | undefined)[] = [];
-
     context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
       snapshotRequests += 1;
       return compactSnapshotAvailable
@@ -1046,42 +885,20 @@ describe("shared database worker runtime", () => {
             latestSeqId: null,
           });
     });
-    context.mocks.api(
-      chatThreadsContract.events,
-      ({ query: requestQuery, respond }) => {
-        requestedSeqIds.push(requestQuery.sinceSeqId);
-        return respond(200, {
-          events: requestQuery.sinceSeqId === undefined ? eventLog : [],
-          hasMore: false,
-        });
-      },
-    );
+    context.mocks.api(chatThreadsContract.events, ({ query, respond }) => {
+      requestedSeqIds.push(query.sinceSeqId);
+      return respond(200, {
+        events: query.sinceSeqId === undefined ? eventLog : [],
+        hasMore: false,
+      });
+    });
 
-    await expect(
-      query(clientId, {
-        dataKey,
-        afterSeqId: null,
-        consistency: "catch-up",
-      }),
-    ).resolves.toStrictEqual({
-      snapshot: {
-        chatThreads: [snapshotThread("initial title")],
-        latestEventId: null,
-        latestSeqId: null,
-      },
-      events: eventLog,
+    await queryRuntime(runtime, {
+      dataKey,
+      afterSeqId: null,
+      consistency: "catch-up",
     });
     compactSnapshotAvailable = true;
-    context.workerStore.set(
-      subscribeSharedDatabaseWorker$,
-      clientId,
-      crypto.randomUUID(),
-      dataKey,
-    );
-
-    await vi.waitFor(() => {
-      expect(snapshotRequests).toBe(2);
-    });
     const compacted = {
       snapshot: {
         chatThreads: [snapshotThread("title 101")],
@@ -1091,26 +908,28 @@ describe("shared database worker runtime", () => {
       events: [],
     };
     await expect(
-      query(clientId, {
+      queryRuntime(runtime, {
+        dataKey,
+        afterSeqId: null,
+        consistency: "catch-up",
+      }),
+    ).resolves.toStrictEqual(compacted);
+    await expect(
+      queryRuntime(runtime, {
         dataKey,
         afterSeqId: null,
         consistency: "cache-only",
       }),
     ).resolves.toStrictEqual(compacted);
+    expect(snapshotRequests).toBe(2);
     expect(requestedSeqIds).toStrictEqual([undefined, 101, 101]);
-    expect(
-      workerEvents.filter((event) => {
-        return event.type === "append";
-      }),
-    ).toHaveLength(0);
   });
 
   it("rejects when a fresh ChatThreadEvent snapshot cursor is already expired", async () => {
-    const clientId = await connectRuntime();
+    const { runtime } = startRuntime();
     const dataKey = chatThreadEventKey();
     let snapshotRequests = 0;
     let eventRequests = 0;
-
     context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
       snapshotRequests += 1;
       return respond(200, {
@@ -1130,7 +949,7 @@ describe("shared database worker runtime", () => {
     });
 
     await expect(
-      query(clientId, {
+      queryRuntime(runtime, {
         dataKey,
         afterSeqId: null,
         consistency: "catch-up",
@@ -1142,25 +961,18 @@ describe("shared database worker runtime", () => {
     expect(eventRequests).toBe(1);
   });
 
-  it("returns remote rows and notifies after versionchange makes IDB writes fail", async () => {
-    const workerEvents: WorkerEvent[] = [];
-    const clientId = await connectRuntime(workerEvents);
+  it("returns remote rows after versionchange makes IndexedDB writes fail", async () => {
+    const currentIdentity = identity();
+    const { events, runtime } = startRuntime(currentIdentity);
     const dataKey = chatEventKey(crypto.randomUUID());
     const remoteRow = chatEventRow(dataKey.threadId, 1);
-    context.workerStore.set(
-      subscribeSharedDatabaseWorker$,
-      clientId,
-      crypto.randomUUID(),
-      dataKey,
-    );
-    await query(clientId, {
+    await queryRuntime(runtime, {
       dataKey,
       afterSeqId: null,
       consistency: "cache-only",
     });
-
     const upgradedDb = await openDB(
-      `vm0-chat-${dataKey.userId}-${dataKey.orgId}`,
+      `vm0-chat-${currentIdentity.userId}-${currentIdentity.orgId}`,
       CHAT_IDB_VERSION + 1,
     );
     context.signal.addEventListener("abort", () => {
@@ -1168,12 +980,11 @@ describe("shared database worker runtime", () => {
     });
     await vi.waitFor(() => {
       expect(
-        workerEvents.filter((event) => {
+        events.filter((event) => {
           return event.type === "reload-required";
         }),
       ).toHaveLength(1);
     });
-
     context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
       return respond(404, {
         error: {
@@ -1182,130 +993,64 @@ describe("shared database worker runtime", () => {
         },
       });
     });
-    context.mocks.api(chatThreadEventsContract.rows, ({ respond }) => {
-      return respond(200, { rows: [remoteRow] });
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      return respond(200, chatEventRowsResponse([remoteRow], query));
     });
 
     await expect(
-      query(clientId, {
+      queryRuntime(runtime, {
         dataKey,
         afterSeqId: null,
         consistency: "catch-up",
       }),
     ).resolves.toStrictEqual([remoteRow]);
-    expect(
-      workerEvents.filter((event) => {
-        return event.type === "append";
-      }),
-    ).toHaveLength(1);
     await expect(
-      query(clientId, {
+      queryRuntime(runtime, {
         dataKey,
         afterSeqId: null,
         consistency: "cache-only",
       }),
     ).resolves.toStrictEqual([]);
-
-    await expect(
-      query(clientId, {
-        dataKey,
-        afterSeqId: remoteRow.seqId,
-        consistency: "catch-up",
-      }),
-    ).resolves.toStrictEqual([]);
-    expect(
-      workerEvents.filter((event) => {
-        return event.type === "append";
-      }),
-    ).toHaveLength(1);
   });
 
-  it("notifies only once when degraded ChatThreadEvent writes keep failing", async () => {
-    const workerEvents: WorkerEvent[] = [];
-    const clientId = await connectRuntime(workerEvents);
-    const dataKey = chatThreadEventKey();
-    const snapshotEventId = crypto.randomUUID();
-    context.workerStore.set(
-      subscribeSharedDatabaseWorker$,
-      clientId,
-      crypto.randomUUID(),
-      dataKey,
-    );
-    await query(clientId, {
-      dataKey,
-      afterSeqId: null,
-      consistency: "cache-only",
-    });
-
-    const upgradedDb = await openDB(
-      `vm0-chat-${dataKey.userId}-${dataKey.orgId}`,
-      CHAT_IDB_VERSION + 1,
-    );
-    context.signal.addEventListener("abort", () => {
-      upgradedDb.close();
-    });
-    await vi.waitFor(() => {
-      expect(
-        workerEvents.filter((event) => {
-          return event.type === "reload-required";
-        }),
-      ).toHaveLength(1);
-    });
-
-    context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
-      return respond(200, {
-        chatThreads: [snapshotThread("degraded snapshot")],
-        latestEventId: snapshotEventId,
-        latestSeqId: 1,
-      });
-    });
-    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
-      return respond(200, { events: [], hasMore: false });
-    });
-
-    const expected = {
-      snapshot: {
-        chatThreads: [snapshotThread("degraded snapshot")],
-        latestEventId: snapshotEventId,
-        latestSeqId: 1,
+  it("blocks a credential on 401 until heartbeat supplies a new token", async () => {
+    const store = createSharedDatabaseCredentialStore(
+      {
+        appVersion: WORKER_APP_VERSION,
+        identity: identity(),
+        apiBaseUrl: location.origin,
+        vercelProtectionBypass: undefined,
       },
-      events: [],
-    };
-    await expect(
-      query(clientId, {
-        dataKey,
-        afterSeqId: null,
-        consistency: "catch-up",
-      }),
-    ).resolves.toStrictEqual(expected);
-    await expect(
-      query(clientId, {
-        dataKey,
-        afterSeqId: 1,
-        consistency: "catch-up",
-      }),
-    ).resolves.toStrictEqual(expected);
-    expect(
-      workerEvents.filter((event) => {
-        return event.type === "append";
-      }),
-    ).toHaveLength(1);
-  });
-
-  it("blocks on 401 until heartbeat supplies a different token", async () => {
-    const workerEvents: WorkerEvent[] = [];
-    const clientId = await connectRuntime(workerEvents);
+      context.signal,
+    );
+    const firstPort = new CollectingPort();
+    const secondPort = new CollectingPort();
+    const firstController = createChildAbortController(context.signal);
+    const secondController = createChildAbortController(context.signal);
+    const firstSignal = store.set(
+      registerConnection$,
+      "first-connection",
+      firstController,
+      firstPort,
+      firstController.signal,
+    );
+    const secondSignal = store.set(
+      registerConnection$,
+      "second-connection",
+      secondController,
+      secondPort,
+      secondController.signal,
+    );
+    store.set(
+      heartbeatSharedDatabaseWorker$,
+      "first-connection",
+      { identity: identity(), apiBaseUrl: location.origin },
+      firstSignal,
+    );
     const dataKey = chatEventKey(crypto.randomUUID());
     const recoveredRow = chatEventRow(dataKey.threadId, 1);
     let authorized = false;
     const authorizationHeaders: (string | null)[] = [];
-    context.workerStore.set(
-      subscribeSharedDatabaseWorker$,
-      clientId,
-      crypto.randomUUID(),
-      dataKey,
-    );
-
     context.mocks.api(
       chatThreadEventsContract.snapshot,
       ({ request, respond }) => {
@@ -1325,70 +1070,74 @@ describe("shared database worker runtime", () => {
     );
     context.mocks.api(
       chatThreadEventsContract.rows,
-      ({ request, query: requestQuery, respond }) => {
+      ({ query, request, respond }) => {
         authorizationHeaders.push(request.headers.get("authorization"));
-        return respond(200, {
-          rows: requestQuery.sinceSeqId === 0 ? [recoveredRow] : [],
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            query.sinceSeqId === 0 ? [recoveredRow] : [],
+            query,
+          ),
+        );
       },
     );
+    const request = {
+      dataKey,
+      afterSeqId: null,
+      consistency: "catch-up" as const,
+    };
 
     await expect(
-      query(clientId, {
-        dataKey,
-        afterSeqId: null,
-        consistency: "catch-up",
-      }),
+      store.set(
+        querySharedDatabaseWorker$,
+        "first-connection",
+        request,
+        firstSignal,
+      ),
     ).rejects.toMatchObject({ name: "SharedDatabaseAuthBlockedError" });
     expect(authorizationHeaders).toStrictEqual(["Bearer initial-token"]);
+    for (const port of [firstPort, secondPort]) {
+      expect(
+        port.messages.filter((event) => {
+          return event.type === "authentication-required";
+        }),
+      ).toHaveLength(1);
+    }
 
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${dataKey.threadId}`);
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(authorizationHeaders).toStrictEqual(["Bearer initial-token"]);
-
-    await context.workerStore.set(
+    store.set(
       heartbeatSharedDatabaseWorker$,
-      clientId,
+      "second-connection",
       { identity: identity(), apiBaseUrl: location.origin },
-      context.signal,
+      secondSignal,
     );
     await expect(
-      query(clientId, {
-        dataKey,
-        afterSeqId: null,
-        consistency: "catch-up",
-      }),
+      store.set(
+        querySharedDatabaseWorker$,
+        "second-connection",
+        request,
+        secondSignal,
+      ),
     ).rejects.toMatchObject({ name: "SharedDatabaseAuthBlockedError" });
     expect(authorizationHeaders).toStrictEqual(["Bearer initial-token"]);
 
     authorized = true;
-    await context.workerStore.set(
+    store.set(
       heartbeatSharedDatabaseWorker$,
-      clientId,
+      "first-connection",
       {
-        identity: { ...identity(), token: "replacement-token" },
+        identity: identity({ token: "replacement-token" }),
         apiBaseUrl: location.origin,
       },
-      context.signal,
+      firstSignal,
     );
-    expect(authorizationHeaders).toStrictEqual([
-      "Bearer initial-token",
-      "Bearer replacement-token",
-      "Bearer replacement-token",
-      "Bearer replacement-token",
-    ]);
     await expect(
-      query(clientId, {
-        dataKey,
-        afterSeqId: null,
-        consistency: "cache-only",
-      }),
+      store.set(
+        querySharedDatabaseWorker$,
+        "first-connection",
+        request,
+        firstSignal,
+      ),
     ).resolves.toStrictEqual([recoveredRow]);
-    expect(
-      workerEvents.filter((event) => {
-        return event.type === "append";
-      }),
-    ).toHaveLength(1);
+    expect(authorizationHeaders).toContain("Bearer replacement-token");
   });
 });

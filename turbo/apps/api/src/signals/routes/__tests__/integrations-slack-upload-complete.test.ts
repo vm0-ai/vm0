@@ -109,20 +109,15 @@ async function completeRun(args: {
   const historyHash = createHash("sha256")
     .update(`canonical Slack upload ${args.runId}`)
     .digest("hex");
-  await webhooks.requestAgentCheckpoint(
-    {
-      runId: args.runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId: `canonical-slack-${args.runId}`,
-      cliAgentSessionHistoryHash: historyHash,
-    },
-    { authorization },
-    [200],
-  );
   await webhooks.requestAgentComplete(
     {
       runId: args.runId,
       exitCode: 0,
+      checkpoint: {
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `canonical-slack-${args.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
       ...(args.lastEventSequence === undefined
         ? stagedOutputEvents.length === 0
           ? {}

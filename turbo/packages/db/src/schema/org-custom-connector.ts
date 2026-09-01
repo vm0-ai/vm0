@@ -31,6 +31,7 @@ export type {
 
 export type OrgCustomConnectorAuthMode = "manual" | "oauth";
 export type OrgCustomConnectorMcpTransport = "streamable-http";
+export type OrgCustomConnectorOAuthSetup = "custom" | "automatic";
 
 /**
  * Org-defined custom connectors (v1 of the connector gallery).
@@ -66,6 +67,9 @@ export const orgCustomConnectors = pgTable(
       .$type<OrgCustomConnectorAuthMode>()
       .notNull()
       .default("manual"),
+    oauthSetup: varchar("oauth_setup", {
+      length: 16,
+    }).$type<OrgCustomConnectorOAuthSetup>(),
     enabled: boolean("enabled").notNull().default(true),
     permissionBundleRef: varchar("permission_bundle_ref", { length: 128 }),
     mcpEndpoint: text("mcp_endpoint"),
@@ -106,6 +110,31 @@ export const orgCustomConnectors = pgTable(
       check(
         "chk_org_custom_connectors_auth_mode",
         sql`${table.authMode} IN ('manual', 'oauth')`,
+      ),
+      check(
+        "chk_org_custom_connectors_oauth_setup",
+        sql`(
+          (
+            ${table.authMode} = 'manual'
+            AND ${table.oauthSetup} IS NULL
+          ) OR (
+            ${table.authMode} = 'oauth'
+            AND (
+              ${table.oauthSetup} IS NULL
+              OR ${table.oauthSetup} IN ('custom', 'automatic')
+            )
+          )
+        )`,
+      ),
+      check(
+        "chk_org_custom_connectors_automatic_oauth_mcp",
+        sql`(
+          ${table.oauthSetup} IS DISTINCT FROM 'automatic'
+          OR (
+            ${table.mcpEndpoint} IS NOT NULL
+            AND ${table.mcpTransport} = 'streamable-http'
+          )
+        )`,
       ),
       check(
         "chk_org_custom_connectors_mcp",

@@ -11,6 +11,7 @@ import {
   type AgentCustomConnectorGrant,
 } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import {
+  customConnectorHttpResponseSchema,
   customConnectorOAuth2Contract,
   customConnectorValuesContract,
   customConnectorsContract,
@@ -212,7 +213,7 @@ function connectedConnectorResponse(args: {
 function customConnector(
   overrides: Partial<CustomConnectorHttpResponse> = {},
 ): CustomConnectorHttpResponse {
-  return {
+  return customConnectorHttpResponseSchema.parse({
     kind: "http",
     id: "33333333-3333-4333-8333-333333333333",
     storageVersion: 1,
@@ -241,7 +242,7 @@ function customConnector(
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
     ...overrides,
-  };
+  });
 }
 
 function mcpCustomConnector(): CustomConnectorMcpResponse {
@@ -527,6 +528,7 @@ describe("directed connector connect page", () => {
       slug: "_acme-oauth",
       displayName: "Acme OAuth",
       authMode: "oauth",
+      oauthSetup: "custom",
       fields: [],
       missingRequiredFields: ["oauth"],
       headerInjections: [
@@ -621,6 +623,7 @@ describe("directed connector connect page", () => {
       slug: "_acme-oauth-reconnect",
       displayName: "Acme OAuth Reconnect",
       authMode: "oauth",
+      oauthSetup: "custom",
       connected: true,
       connectedAccountId: connectionId,
       connectedAccountUpdatedAt,
@@ -711,6 +714,7 @@ describe("directed connector connect page", () => {
       slug: "_acme-permissioned-oauth",
       displayName: "Acme Permissioned OAuth",
       authMode: "oauth",
+      oauthSetup: "custom",
       fields: [],
       missingRequiredFields: ["oauth"],
       permissionBundleRef: "builtin:feishu@1",

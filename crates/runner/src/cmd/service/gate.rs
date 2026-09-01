@@ -4,24 +4,18 @@ use crate::error::{ActiveJobsError, RunnerError, RunnerResult};
 use crate::ids::RunId;
 use crate::paths::HomePaths;
 use crate::status_file::{self, StatusFileReadError, StatusForGate};
-use tracing::{info, warn};
+use tracing::info;
 
-use super::ServiceFuture;
 use super::diagnostic::status_field_preview;
 use super::target::RunnerServiceUnit;
+use super::{ServiceFuture, selected_config_base_dir};
 
 pub(super) trait ActiveJobsGateOps {
     fn is_unit_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool>;
-}
-
-/// Resolve the runner's base_dir from its service name suffix and the caller's
-/// runner home using the project-wide `runners/<suffix>/` convention.
-///
-/// This matches `ansible/playbooks/build-runner.yml` and the `--runner-dirname`
-/// default in `runner config`. In production the home is
-/// `/var/lib/vm0-runner`; tests can supply an isolated home root.
-fn runner_base_dir(home: &HomePaths, unit: &RunnerServiceUnit) -> PathBuf {
-    home.runners_dir().join(unit.suffix())
+    fn read_unit_config_path<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, Option<PathBuf>>;
 }
 
 /// Parsed snapshot of the runner's status.json.
@@ -158,8 +152,7 @@ pub(super) async fn read_runner_status(
 ///
 /// ## Transient / race handling
 ///
-/// Each of these conditions returns `Ok(())` to let the operator through,
-/// erring on the side of "stop is usable" over "gate is strict":
+/// Each of these conditions returns `Ok(())` to let the operator through:
 ///
 /// 1. **Dead / crashed runner** — if the systemd unit is inactive, the
 ///    on-disk `active_runs` may be stale (runner was SIGKILLed before it
@@ -170,9 +163,13 @@ pub(super) async fn read_runner_status(
 ///    `run_with_config`) and systemd noticing the process has exited
 ///    (marking the unit inactive). Without this, the gate could spuriously
 ///    refuse a stop issued during that window.
-/// 3. **Status file unreadable / malformed** — missing file, permission
-///    denied, JSON parse error, bad `started_at`: warn-log and fall
-///    through. Matches the acceptance criteria.
+///
+/// Once systemd confirms that the unit is active, the gate fails closed unless
+/// the unit's selected config resolves to one verified live Runner record and
+/// that record's status is readable. Without that correlation, the gate cannot
+/// prove that teardown is safe. `--force` remains the explicit override.
+/// A systemd query error is likewise unknown state rather than confirmed
+/// inactivity, so it fails closed before selected-config or status inspection.
 ///
 /// When the runner's `mode == "draining"`, we still refuse but flip the
 /// `draining` flag so the error renders a wait-or-force message (the
@@ -206,27 +203,38 @@ pub(super) async fn check_active_jobs_gate(
     }
 
     // (1) Dead-runner short-circuit.
-    let active = ops.is_unit_active(unit).await.unwrap_or_else(|e| {
-        warn!(unit = %unit.unit_name(), error = %e, "cannot check unit state — skipping active-jobs gate");
-        false
-    });
+    let active = ops.is_unit_active(unit).await.map_err(|error| {
+        RunnerError::Internal(format!(
+            "cannot determine whether {} is active while checking active jobs before service {command_name}: {error}; retry or pass --force to override the active-jobs gate",
+            unit.unit_name()
+        ))
+    })?;
     if !active {
         return Ok(());
     }
 
-    let base_dir = runner_base_dir(home, unit);
-    let status = match read_runner_status(&base_dir).await {
-        Ok(status) => status,
-        Err(e) => {
-            warn!(
-                unit = %unit.unit_name(),
-                base_dir = %base_dir.display(),
-                error = %e,
-                "cannot read status.json — skipping active-jobs gate"
-            );
-            return Ok(());
-        }
-    };
+    let config_path = ops.read_unit_config_path(unit).await?.ok_or_else(|| {
+        RunnerError::Internal(format!(
+            "{} does not select a runner --config path; refusing service {command_name} while the unit is active; retry or pass --force to override the active-jobs gate",
+            unit.unit_name()
+        ))
+    })?;
+    let base_dir = selected_config_base_dir(unit, &config_path, home)
+        .await?
+        .ok_or_else(|| {
+            RunnerError::Internal(format!(
+                "cannot resolve a live runner instance for {} from selected config {}; refusing service {command_name} while the unit is active; retry or pass --force to override the active-jobs gate",
+                unit.unit_name(),
+                config_path.display()
+            ))
+        })?;
+    let status = read_runner_status(&base_dir).await.map_err(|error| {
+        RunnerError::Internal(format!(
+            "cannot read status.json for {} at {} while checking active jobs before service {command_name}: {error}; retry or pass --force to override the active-jobs gate",
+            unit.unit_name(),
+            base_dir.display()
+        ))
+    })?;
 
     match decide_gate(&status) {
         GateDecision::Bypass => Ok(()),
@@ -251,15 +259,24 @@ mod tests {
 
     struct FakeGateOps {
         active_results: VecDeque<RunnerResult<bool>>,
+        config_results: VecDeque<RunnerResult<Option<PathBuf>>>,
         active_queries: usize,
+        config_queries: usize,
     }
 
     impl FakeGateOps {
         fn from_results(results: impl IntoIterator<Item = RunnerResult<bool>>) -> Self {
             Self {
                 active_results: results.into_iter().collect(),
+                config_results: VecDeque::new(),
                 active_queries: 0,
+                config_queries: 0,
             }
+        }
+
+        fn with_config_path(mut self, config_path: Option<PathBuf>) -> Self {
+            self.config_results.push_back(Ok(config_path));
+            self
         }
     }
 
@@ -275,6 +292,18 @@ mod tests {
                 .expect("unexpected unit-active query");
             Box::pin(std::future::ready(result))
         }
+
+        fn read_unit_config_path<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+        ) -> ServiceFuture<'a, Option<PathBuf>> {
+            self.config_queries += 1;
+            let result = self
+                .config_results
+                .pop_front()
+                .expect("unexpected unit-config query");
+            Box::pin(std::future::ready(result))
+        }
     }
 
     fn service_unit() -> RunnerServiceUnit {
@@ -283,6 +312,24 @@ mod tests {
 
     fn fake_home(dir: &tempfile::TempDir) -> HomePaths {
         HomePaths::with_root(dir.path().join("vm0-runner"))
+    }
+
+    async fn publish_test_live_runner(
+        home: &HomePaths,
+        config_path: &Path,
+        base_dir: &Path,
+    ) -> crate::live_runner_instances::LiveRunnerInstanceHandle {
+        crate::live_runner_instances::publish(
+            home,
+            crate::live_runner_instances::LiveRunnerInstanceMetadata {
+                config_path: config_path.to_path_buf(),
+                base_dir: base_dir.to_path_buf(),
+                runner_group: "test".to_string(),
+                subcommand: "start".to_string(),
+            },
+        )
+        .await
+        .unwrap()
     }
 
     // -----------------------------------------------------------------
@@ -594,51 +641,142 @@ mod tests {
             .unwrap();
 
         assert_eq!(ops.active_queries, 0);
+        assert_eq!(ops.config_queries, 0);
     }
 
     #[tokio::test]
-    async fn check_active_jobs_gate_bypasses_unavailable_unit_state() {
+    async fn check_active_jobs_gate_bypasses_confirmed_inactive_unit_state() {
         let dir = tempfile::tempdir().unwrap();
         let home = fake_home(&dir);
         let unit = service_unit();
+        let mut ops = FakeGateOps::from_results([Ok(false)]);
 
-        for result in [
-            Ok(false),
-            Err(RunnerError::Internal("systemd unavailable".to_string())),
-        ] {
-            let mut ops = FakeGateOps::from_results([result]);
-
-            check_active_jobs_gate(&unit, &home, false, "stop", &mut ops)
-                .await
-                .unwrap();
-
-            assert_eq!(ops.active_queries, 1);
-        }
-    }
-
-    #[tokio::test]
-    async fn check_active_jobs_gate_bypasses_missing_and_malformed_status() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = fake_home(&dir);
-        let unit = service_unit();
-
-        let mut missing_ops = FakeGateOps::from_results([Ok(true)]);
-        check_active_jobs_gate(&unit, &home, false, "stop", &mut missing_ops)
+        check_active_jobs_gate(&unit, &home, false, "stop", &mut ops)
             .await
             .unwrap();
 
-        let base_dir = runner_base_dir(&home, &unit);
+        assert_eq!(ops.active_queries, 1);
+        assert_eq!(ops.config_queries, 0);
+    }
+
+    #[tokio::test]
+    async fn check_active_jobs_gate_fails_closed_for_unavailable_unit_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = fake_home(&dir);
+        let unit = service_unit();
+        let mut ops = FakeGateOps::from_results([Err(RunnerError::Internal(
+            "systemd unavailable".to_string(),
+        ))]);
+
+        let error = check_active_jobs_gate(&unit, &home, false, "stop", &mut ops)
+            .await
+            .unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains("cannot determine whether vm0-runner-test is active"));
+        assert!(message.contains("before service stop"));
+        assert!(message.contains("systemd unavailable"));
+        assert!(message.contains("--force"));
+        assert_eq!(ops.active_queries, 1);
+        assert_eq!(ops.config_queries, 0);
+    }
+
+    #[tokio::test]
+    async fn check_active_jobs_gate_fails_closed_for_missing_and_malformed_status() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = fake_home(&dir);
+        let unit = service_unit();
+        let config_path = dir.path().join("selected-config.yaml");
+        let base_dir = home.runners_dir().join("runner-release");
+        let _live_instance = publish_test_live_runner(&home, &config_path, &base_dir).await;
+
+        let mut missing_ops =
+            FakeGateOps::from_results([Ok(true)]).with_config_path(Some(config_path.clone()));
+        let missing_error = check_active_jobs_gate(&unit, &home, false, "stop", &mut missing_ops)
+            .await
+            .unwrap_err();
+        assert!(
+            missing_error
+                .to_string()
+                .contains("cannot read status.json")
+        );
+
         tokio::fs::create_dir_all(&base_dir).await.unwrap();
         tokio::fs::write(base_dir.join("status.json"), "not json")
             .await
             .unwrap();
 
-        let mut malformed_ops = FakeGateOps::from_results([Ok(true)]);
-        check_active_jobs_gate(&unit, &home, false, "stop", &mut malformed_ops)
+        let mut malformed_ops =
+            FakeGateOps::from_results([Ok(true)]).with_config_path(Some(config_path));
+        let malformed_error =
+            check_active_jobs_gate(&unit, &home, false, "stop", &mut malformed_ops)
+                .await
+                .unwrap_err();
+        assert!(
+            malformed_error
+                .to_string()
+                .contains("cannot read status.json")
+        );
+
+        assert_eq!(missing_ops.active_queries, 1);
+        assert_eq!(missing_ops.config_queries, 1);
+        assert_eq!(malformed_ops.active_queries, 1);
+        assert_eq!(malformed_ops.config_queries, 1);
+    }
+
+    #[tokio::test]
+    async fn check_active_jobs_gate_uses_selected_config_base_dir_for_safe_status() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = fake_home(&dir);
+        let unit = service_unit();
+        let config_path = dir.path().join("selected-config.yaml");
+        let base_dir = home.runners_dir().join("runner-release");
+        let _live_instance = publish_test_live_runner(&home, &config_path, &base_dir).await;
+        tokio::fs::create_dir_all(&base_dir).await.unwrap();
+        tokio::fs::write(
+            base_dir.join("status.json"),
+            r#"{"mode":"running","active_runs":[],"started_at":"2026-04-13T00:00:00Z"}"#,
+        )
+        .await
+        .unwrap();
+        let mut ops = FakeGateOps::from_results([Ok(true)]).with_config_path(Some(config_path));
+
+        check_active_jobs_gate(&unit, &home, false, "stop", &mut ops)
             .await
             .unwrap();
 
-        assert_eq!(missing_ops.active_queries, 1);
-        assert_eq!(malformed_ops.active_queries, 1);
+        assert_eq!(ops.active_queries, 1);
+        assert_eq!(ops.config_queries, 1);
+    }
+
+    #[tokio::test]
+    async fn check_active_jobs_gate_fails_closed_without_selected_config_or_live_record() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = fake_home(&dir);
+        let unit = service_unit();
+
+        let mut no_config_ops = FakeGateOps::from_results([Ok(true)]).with_config_path(None);
+        let no_config_error =
+            check_active_jobs_gate(&unit, &home, false, "uninstall", &mut no_config_ops)
+                .await
+                .unwrap_err();
+        assert!(
+            no_config_error
+                .to_string()
+                .contains("does not select a runner --config path")
+        );
+
+        let config_path = dir.path().join("selected-config.yaml");
+        let mut no_record_ops =
+            FakeGateOps::from_results([Ok(true)]).with_config_path(Some(config_path));
+        let no_record_error =
+            check_active_jobs_gate(&unit, &home, false, "uninstall", &mut no_record_ops)
+                .await
+                .unwrap_err();
+        assert!(
+            no_record_error
+                .to_string()
+                .contains("cannot resolve a live runner instance")
+        );
     }
 }

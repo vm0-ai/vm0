@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 WORKFLOW="${REPO_ROOT}/.github/workflows/turbo.yml"
+TURBO_CONFIG="${REPO_ROOT}/turbo/turbo.json"
 RUNNER_START_HELPER="${REPO_ROOT}/.github/scripts/reconcile-and-start-runner-groups.sh"
 RUNNER_TESTS="${REPO_ROOT}/e2e/tests/03-runner"
 REAL_CLAUDE_TEST="${RUNNER_TESTS}/run-t10-real-claude-smoke.bats"
@@ -20,6 +21,17 @@ fail() {
   echo "FAIL: $1" >&2
   exit 1
 }
+
+for api_backend_url_key in OKOU_API_BACKEND_URL VM0_API_BACKEND_URL; do
+  api_backend_url_key_count="$(
+    jq --arg key "$api_backend_url_key" \
+      '[.globalEnv[] | select(. == $key)] | length' \
+      "$TURBO_CONFIG"
+  )"
+  if [[ "$api_backend_url_key_count" -ne 1 ]]; then
+    fail "Turbo must pass through each E2E API backend URL alias exactly once"
+  fi
+done
 
 grep -Fq ".github/scripts/reconcile-and-start-runner-groups.sh" "$WORKFLOW" ||
   fail "runner deployment must invoke the lifecycle-locked start helper"
@@ -86,12 +98,26 @@ workflow = YAML.load_file(ARGV.fetch(0))
 jobs = workflow.fetch("jobs")
 prepare = jobs.fetch("prepare")
 stripe_listener = jobs.fetch("deploy-stripe-listener")
+browser = jobs.fetch("cli-e2e-02-browser")
 playwright = jobs.fetch("cli-e2e-02-playwright")
 playwright_finalizer = jobs.fetch("cli-e2e-02-playwright-finalize")
 account_prepare = jobs.fetch("cli-e2e-03-runner-prepare")
 bootstrap = jobs.fetch("cli-e2e-03-runner-bootstrap")
 runner = jobs.fetch("cli-e2e-03-runner")
 account_cleanup = jobs.fetch("cli-e2e-03-runner-cleanup")
+expected_api_backend_url = "${{ needs.deploy-api.outputs.preview-url }}"
+assert_canonical_api_backend_url = lambda do |step, name|
+  environment = step.fetch("env")
+  unless environment["OKOU_API_BACKEND_URL"] == expected_api_backend_url &&
+      !environment.key?("VM0_API_BACKEND_URL")
+    raise "#{name} must receive only the canonical API preview URL"
+  end
+end
+browser_run = browser.fetch("steps").find do |step|
+  step["name"] == "Run browser E2E tests"
+end
+raise "missing browser E2E execution" unless browser_run
+assert_canonical_api_backend_url.call(browser_run, "browser E2E")
 pnpm_setup_action =
   "pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86"
 pnpm_version = "10.33.4"
@@ -168,6 +194,7 @@ unless playwright_run&.fetch("shell") == "bash" &&
       "${{ matrix.project }}"
   raise "each Playwright lane must select its matrix project"
 end
+assert_canonical_api_backend_url.call(playwright_run, "Playwright E2E")
 unless playwright_run.fetch("run").include?(
     'if [[ "$PLAYWRIGHT_PROJECT" == "auth-v2" ]]',
   ) && playwright_run.fetch("run").include?("__clerk_db_jwt") &&
@@ -357,6 +384,7 @@ token_step = account_prepare.fetch("steps").find do |step|
   step["name"] == "Generate runner E2E API tokens"
 end
 raise "missing runner E2E token generation" unless token_step
+assert_canonical_api_backend_url.call(token_step, "runner token generation")
 unless token_step.fetch("run").end_with?("runner-token.ts /tmp")
   raise "runner E2E tokens must use the public device-flow entry point"
 end
@@ -405,6 +433,12 @@ unless Array(bootstrap["needs"]).include?("cli-e2e-03-runner-prepare")
   raise "runner bootstrap must wait for the token artifact"
 end
 bootstrap_steps = bootstrap.fetch("steps")
+legacy_provider_writer = bootstrap_steps.find do |step|
+  step.fetch("run", "").match?(/defaultProviderType:\s*"vm0"/)
+end
+if legacy_provider_writer
+  raise "runner bootstrap policy writers must not emit the legacy vm0 provider discriminator"
+end
 unless bootstrap_steps.any? do |step|
     step["uses"]&.start_with?("actions/checkout@")
   end
@@ -446,6 +480,7 @@ unless model_defaults_script.include?("/api/model-policies") &&
     model_defaults_script.include?("/api/user-model-preference") &&
     model_defaults_script.include?("deepseek-v4-flash") &&
     model_defaults_script.include?("gpt-5.6-luna") &&
+    model_defaults_script.scan('defaultProviderType: "built-in"').length == 2 &&
     model_defaults_script.include?('{"selectedModel":null,"serviceTier":null}')
   raise "runner bootstrap must reset the limited-free model defaults"
 end
@@ -542,7 +577,7 @@ end
 if claude_script.include?("claude-sonnet-4-6")
   raise "real Claude bootstrap must not retain the Sonnet 4.6 pin"
 end
-unless claude_script.include?('defaultProviderType: "vm0"') &&
+unless claude_script.include?('defaultProviderType: "built-in"') &&
     claude_script.include?("modelProviderId: null")
   raise "real Claude bootstrap must use the built-in provider"
 end
@@ -729,6 +764,10 @@ gate_step = jobs.fetch("ci-gate-turbo").fetch("steps").find do |step|
 end
 raise "missing Turbo CI gate validation" unless gate_step
 gate_script = gate_step.fetch("run")
+if gate_script.include?('[ "$result" = "cancelled" ]') ||
+    gate_script.include?("cancelled by concurrency group, allowed")
+  raise "CI gate must reject cancelled required jobs"
+end
 unless gate_script.include?("RUNNER_E2E_SKIP_ALLOWED=\"true\"") &&
     gate_script.include?("needs.prepare.outputs.turbo-runner-consumer-needed")
   raise "CI gate must restore the runner-specific E2E skip policy"

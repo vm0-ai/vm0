@@ -4,8 +4,19 @@ import { getConnectorAuthProviderRegistrationCapabilities } from "../auth-provid
 import { isConnectorDirectOkouOauthCallbackReady } from "../app-oauth-callback";
 
 const DIRECT_OKOU_READY_CONNECTORS = [
+  "ahrefs",
   "box",
+  "cal-com",
+  "canva",
+  "close",
   "cloudflare",
+  "copper",
+  "datadog",
+  "deel",
+  "docusign",
+  "dropbox",
+  "figma",
+  "garmin-connect",
   "gmail",
   "google-ads",
   "google-analytics",
@@ -20,13 +31,23 @@ const DIRECT_OKOU_READY_CONNECTORS = [
   "google-search-console",
   "google-sheets",
   "hubspot",
+  "mailchimp",
+  "mercury",
   "meta-ads",
   "microsoft-365",
+  "neon",
   "notion",
   "outlook-calendar",
   "outlook-mail",
+  "posthog",
+  "reddit",
+  "slack",
+  "spotify",
+  "supabase",
   "tiktok-ads",
+  "webflow",
   "youtube",
+  "zoom",
 ] as const;
 
 describe("direct Okou OAuth callback readiness", () => {
@@ -56,7 +77,7 @@ describe("direct Okou OAuth callback readiness", () => {
     },
   );
 
-  it.each(["github", "slack", "test-oauth"])(
+  it.each(["github", "quickbooks", "test-oauth"])(
     "keeps %s on its existing callback",
     (connectorSlug) => {
       expect(isConnectorDirectOkouOauthCallbackReady(connectorSlug)).toBe(

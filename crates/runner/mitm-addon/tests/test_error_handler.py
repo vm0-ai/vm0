@@ -241,10 +241,69 @@ class TestErrorHandler:
         assert entry["status"] == 0
         assert entry["request_size"] == len(b"partial request")
         assert entry["error"] == "connection reset by peer"
+        assert entry["request_headers"] == {
+            "Host": "***",
+            "Authorization": "***",
+        }
+        assert entry["request_body"] == "partial request"
+        assert entry["request_body_encoding"] == "utf-8"
+        assert entry["request_body_truncated"] is True
         assert "firewall_error" not in entry
         assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
         assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
         assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
+        assert flow.request.stream is False
+
+    def test_error_captures_partial_streamed_response_before_cleanup(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        flow = real_flow(
+            with_response=False,
+            host="api.example.com",
+        )
+        log_path = tmp_path / "network.jsonl"
+        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = str(log_path)
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.example.com/"
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.CAPTURE_BODY] = True
+        http_network_log.set_target(
+            flow,
+            url="https://api.example.com/",
+            host="api.example.com",
+            port=443,
+        )
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map(
+                {
+                    "content-type": "text/plain",
+                    "set-cookie": "session=secret",
+                }
+            ),
+        )
+
+        mitm_addon.responseheaders(flow)
+        assert response_stream(flow)(b"partial response") == b"partial response"
+        flow.error = Error("connection reset by peer")
+
+        with mitm_ctx():
+            mitm_addon.error(flow)
+
+        [entry] = read_jsonl_entries_after_flush(log_path)
+        assert entry["status"] == 0
+        assert entry["error"] == "connection reset by peer"
+        assert entry["response_headers"] == {
+            "content-type": "text/plain",
+            "set-cookie": "***",
+        }
+        assert entry["response_body"] == "partial response"
+        assert entry["response_body_encoding"] == "utf-8"
+        assert entry["response_body_truncated"] is True
+        assert metadata_keys.RESPONSE_STREAM_STATE not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
+        assert flow.response.stream is False
 
     async def test_browser_connector_candidate_error_keeps_original_error(
         self, tmp_path, real_flow, mitm_ctx, headers
@@ -479,6 +538,18 @@ class TestErrorHandler:
         assert entry["latency_ms"] > 0
         assert_utc_millisecond_timestamp(entry["timestamp"])
         assert flow.metadata[metadata_keys.ORIGINAL_URL] == raw_url
+        assert {
+            "request_headers",
+            "request_headers_truncated",
+            "request_body",
+            "request_body_encoding",
+            "request_body_truncated",
+            "response_headers",
+            "response_headers_truncated",
+            "response_body",
+            "response_body_encoding",
+            "response_body_truncated",
+        }.isdisjoint(entry)
 
     def test_error_log_omits_url_when_json_escaping_exceeds_line_budget(
         self, tmp_path, real_flow, mitm_ctx
@@ -733,7 +804,7 @@ class TestErrorHandler:
         requests_by_path = {request.path: request for request in webhook.requests}
         assert set(requests_by_path) == {
             "/api/webhooks/agent/usage-event",
-            "/api/webhooks/agent/model-usage-observation",
+            "/api/runners/model-usage-observations",
         }
         body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
         assert body["runId"] == "run-int-002"
@@ -750,10 +821,8 @@ class TestErrorHandler:
         ]
         billing_key = body["events"][0]["idempotencyKey"]
         uuid.UUID(billing_key)
-        observation_body = requests_by_path[
-            "/api/webhooks/agent/model-usage-observation"
-        ].json_body()
-        assert observation_body["runId"] == "run-int-002"
+        observation_body = requests_by_path["/api/runners/model-usage-observations"].json_body()
+        assert set(observation_body) == {"events"}
         assert [
             {key: value for key, value in event.items() if key != "idempotencyKey"}
             for event in observation_body["events"]

@@ -1,4 +1,9 @@
-"""Bound decoded WebSocket messages before mitmproxy's addon hooks."""
+"""Bound decoded WebSocket messages before mitmproxy's addon hooks.
+
+See the [WebSocket framing contract](../../../../docs/testing/mitm-addon-testing.md)
+for the limits, lifecycle invariants, and version-re-audit boundary for this
+private adaptation.
+"""
 
 from __future__ import annotations
 

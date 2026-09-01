@@ -1,10 +1,8 @@
 import { command, computed, state } from "ccstate";
-import {
-  setAblyLoop$,
-  setAblyPayloadLoop$,
-  subscribeRealtimeReadyCatchUp$,
-} from "./realtime.ts";
+import { subscribeRealtimeReadyCatchUp$ } from "./realtime.ts";
 import { clearOptimisticReadMark$ } from "./chat-page/optimistic-chat-thread-read-marks.ts";
+import { apiClientRuntime$ } from "./api-client-runtime.ts";
+import { reloadSharedDatabaseIndicators$ } from "./shared-database-bridge-state.ts";
 
 const internalReloadChatIndicators$ = state(0);
 
@@ -12,20 +10,21 @@ export const reloadChatIndicatorsCounter$ = computed((get) => {
   return get(internalReloadChatIndicators$);
 });
 
-export const reloadChatIndicators$ = command(({ set }) => {
+export const reloadChatIndicatorsLocally$ = command(({ set }) => {
   set(internalReloadChatIndicators$, (n) => {
     return n + 1;
   });
 });
 
-const reloadChatIndicatorsFromRealtime$ = command(({ set }) => {
-  set(reloadChatIndicators$);
-  return false;
+export const reloadChatIndicators$ = command(({ get, set }) => {
+  if (get(apiClientRuntime$).environment === "app") {
+    set(reloadSharedDatabaseIndicators$);
+  }
+  set(reloadChatIndicatorsLocally$);
 });
 
-const reloadChatIndicatorsFromReadCursor$ = command(
-  ({ set }, payload: unknown, signal: AbortSignal) => {
-    signal.throwIfAborted();
+export const invalidateChatIndicatorsFromRealtime$ = command(
+  ({ set }, payload: unknown) => {
     if (
       typeof payload === "object" &&
       payload !== null &&
@@ -36,8 +35,7 @@ const reloadChatIndicatorsFromReadCursor$ = command(
     ) {
       set(clearOptimisticReadMark$, payload.threadId);
     }
-    set(reloadChatIndicators$);
-    return false;
+    set(reloadChatIndicatorsLocally$);
   },
 );
 
@@ -45,43 +43,6 @@ const reloadChatIndicatorsOnForeground$ = command(
   ({ set }, signal: AbortSignal) => {
     signal.throwIfAborted();
     set(reloadChatIndicators$);
-  },
-);
-
-/**
- * Subscribe to the user-level `threadListChanged` topic and invalidate the
- * indicator snapshot. Event-sourced thread data has its own incremental
- * subscription.
- *
- * Loop command returns false so it keeps listening until the signal aborts.
- * Isolated in its own file to avoid an import cycle when `route.ts` wires
- * this into the per-page setup wrapper.
- */
-export const subscribeThreadListChanged$ = command(
-  async ({ set }, signal: AbortSignal) => {
-    await set(
-      setAblyLoop$,
-      {
-        topic: "threadListChanged",
-        loopCommand$: reloadChatIndicatorsFromRealtime$,
-        options: { runOnForegroundCatchUp: false },
-      },
-      signal,
-    );
-  },
-);
-
-export const subscribeChatThreadReadCursorUpdated$ = command(
-  async ({ set }, signal: AbortSignal) => {
-    await set(
-      setAblyPayloadLoop$,
-      {
-        topic: "chatThreadReadCursorUpdated",
-        loopCommand$: reloadChatIndicatorsFromReadCursor$,
-        options: { runOnForegroundCatchUp: false },
-      },
-      signal,
-    );
   },
 );
 

@@ -124,7 +124,7 @@ async function executeNewAppNoSecretProviderWrite(
   args: {
     readonly orgId: string;
     readonly proposedId: string;
-    readonly requestType: "vm0" | "built-in";
+    readonly requestType: "built-in";
     readonly selectedModel: string;
   },
 ): Promise<{
@@ -192,7 +192,6 @@ async function validateBridgeAndBackfill(baseUrl: string): Promise<void> {
     preBridgeLockProbeProvider: "00000000-0000-4000-8000-000000299144",
     preBridgeProposedProvider: "00000000-0000-4000-8000-000000299136",
     preBridgeSecondProposedProvider: "00000000-0000-4000-8000-000000299137",
-    preBridgeLegacyProposedProvider: "00000000-0000-4000-8000-000000299138",
     preBridgeNewProvider: "00000000-0000-4000-8000-000000299139",
     postBridgeProposedProvider: "00000000-0000-4000-8000-000000299140",
   } as const;
@@ -293,7 +292,7 @@ async function validateBridgeAndBackfill(baseUrl: string): Promise<void> {
           executeNewAppNoSecretProviderWrite(db, {
             orgId: "provider-migration-org-prebridge-upsert",
             proposedId: ids.preBridgeLockProbeProvider,
-            requestType: "vm0",
+            requestType: "built-in",
             selectedModel: "gpt-5.6-terra",
           }),
           (error: unknown) => {
@@ -359,45 +358,6 @@ async function validateBridgeAndBackfill(baseUrl: string): Promise<void> {
         type: "built-in",
       },
     });
-    const legacyLockClient = new Client({ connectionString: databaseUrl });
-    await legacyLockClient.connect();
-    let legacyRequestPreBridgeUpsert:
-      | Awaited<ReturnType<typeof executeNewAppNoSecretProviderWrite>>
-      | undefined;
-    try {
-      await legacyLockClient.query("BEGIN");
-      await legacyLockClient.query(
-        `SELECT pg_advisory_xact_lock(hashtext($1))`,
-        [
-          "model_provider_state:provider-migration-org-prebridge-upsert:__org__:vm0",
-        ],
-      );
-      await client.query("SET lock_timeout = '100ms'");
-      try {
-        legacyRequestPreBridgeUpsert = await executeNewAppNoSecretProviderWrite(
-          db,
-          {
-            orgId: "provider-migration-org-prebridge-upsert",
-            proposedId: ids.preBridgeLegacyProposedProvider,
-            requestType: "vm0",
-            selectedModel: "gpt-5.6-sol",
-          },
-        );
-      } finally {
-        await client.query("RESET lock_timeout");
-        await legacyLockClient.query("ROLLBACK");
-      }
-    } finally {
-      await legacyLockClient.end();
-    }
-    assert.deepEqual(legacyRequestPreBridgeUpsert, {
-      created: false,
-      provider: {
-        id: ids.preBridgeProvider,
-        selectedModel: "gpt-5.6-sol",
-        type: "built-in",
-      },
-    });
     const createdPreBridgeUpsert = await executeNewAppNoSecretProviderWrite(
       db,
       {
@@ -438,7 +398,7 @@ async function validateBridgeAndBackfill(baseUrl: string): Promise<void> {
         count: 1,
         id: ids.preBridgeProvider,
         planType: "preserved-plan",
-        selectedModel: "gpt-5.6-sol",
+        selectedModel: "gpt-5.6-luna",
         type: "built-in",
       },
     ]);
@@ -477,7 +437,7 @@ async function validateBridgeAndBackfill(baseUrl: string): Promise<void> {
     const postBridgeUpsert = await executeNewAppNoSecretProviderWrite(db, {
       orgId: "provider-migration-org-prebridge-upsert",
       proposedId: ids.postBridgeProposedProvider,
-      requestType: "vm0",
+      requestType: "built-in",
       selectedModel: "gpt-5.6-sol",
     });
     assert.deepEqual(postBridgeUpsert, {
@@ -518,10 +478,10 @@ async function validateBridgeAndBackfill(baseUrl: string): Promise<void> {
       "   ✅ new-app/before-bridge built-in SQL is accepted by the expanded schema",
     );
     console.log(
-      "   ✅ canonical, repeated, and legacy-request app upserts keep one pre-bridge row, its original id, and accurate created state",
+      "   ✅ canonical and repeated app upserts keep one pre-bridge row, its original id, and accurate created state",
     );
     console.log(
-      "   ✅ legacy-shaped app writes take only the canonical built-in provider-state advisory lock",
+      "   ✅ canonical app writes take the built-in provider-state advisory lock",
     );
     console.log(
       "   ✅ the same new-app SQL remains one-row/id-preserving with the database bridge installed",

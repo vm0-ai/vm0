@@ -16,13 +16,16 @@ import {
   setupRealtime$,
   realtimeSubscriptionSnapshot$,
   setAblyLoop$,
-  setAblyMessageLoop$,
   setAblyPayloadLoop$,
+  setRealtimeDegradedNotifier$,
   subscribeRealtimeReadyCatchUp$,
 } from "../realtime.ts";
-import { setupClerk$ } from "../auth.ts";
+import { initAuthRecovery$, initClerkRuntime$, setupClerk$ } from "../auth.ts";
+import { initializeAppVersion$ } from "../app-version.ts";
 import { foregroundReady$ } from "../auth-retry.ts";
 import { setRootSignal$ } from "../root-signal.ts";
+import { setApiClientRuntime$ } from "../api-client-runtime.ts";
+import { setAuthenticatedIdentity$ } from "../auth-context.ts";
 import { subscribeChatThreadRealtime$ } from "../chat-page/chat-thread-remote-signals.ts";
 import { testContext } from "./test-helpers.ts";
 import { reloadFeatureSwitch$ } from "../external/feature-switch.ts";
@@ -32,7 +35,18 @@ import { subscribePresentationTemplatesChanged$ } from "../okou-page/presentatio
 const context = testContext();
 
 beforeEach(() => {
+  context.store.set(initializeAppVersion$, __OKOU_APP_VERSION__);
   context.store.set(setRootSignal$, context.signal);
+  context.store.set(setApiClientRuntime$, {
+    environment: "app",
+    apiBaseUrl: location.origin,
+    oauthApiBaseUrl: location.origin,
+  });
+  context.store.set(initClerkRuntime$, context.signal);
+  context.store.set(initAuthRecovery$, context.signal);
+  context.store.set(setRealtimeDegradedNotifier$, () => {
+    toast.error("Realtime connection degraded");
+  });
 });
 
 const finishLoop$ = command((_ctx, _signal: AbortSignal) => {
@@ -67,6 +81,14 @@ function mockSignedInUser(): void {
     activeOrg: { id: "test-org-123", name: "Test Organization" },
     memberships: [{ id: "test-org-123" }],
   });
+  context.store.set(
+    setAuthenticatedIdentity$,
+    Promise.resolve({
+      userId: "test-user-123",
+      orgId: "test-org-123",
+      email: "test@example.com",
+    }),
+  );
 }
 
 async function setupAuthAndRealtime(): Promise<void> {
@@ -1180,156 +1202,6 @@ describe("realtime signals", () => {
       expect(catchUps).toBe(2);
     });
     expect(payloads).toStrictEqual([{ connectorSlug: "gmail" }]);
-  });
-
-  it("serializes user-channel messages received while the handler is in flight", async () => {
-    mockSignedInUser();
-    const subscriber = testSubscriber();
-    const firstRunCanFinish = context.mocks.deferred<void>();
-    const handledNames: (string | undefined)[] = [];
-    let activeHandlers = 0;
-    let maxActiveHandlers = 0;
-    const loop$ = command(
-      async (_ctx, message: unknown, signal: AbortSignal): Promise<boolean> => {
-        activeHandlers += 1;
-        maxActiveHandlers = Math.max(maxActiveHandlers, activeHandlers);
-        handledNames.push(
-          typeof message === "object" &&
-            message !== null &&
-            "name" in message &&
-            typeof message.name === "string"
-            ? message.name
-            : undefined,
-        );
-        if (handledNames.length === 1) {
-          await firstRunCanFinish.promise;
-          signal.throwIfAborted();
-        }
-        activeHandlers -= 1;
-        return false;
-      },
-    );
-
-    await context.store.set(setupRealtime$, context.signal);
-    const loopPromise = context.store.set(
-      setAblyMessageLoop$,
-      { loopCommand$: loop$ },
-      subscriber.signal,
-    );
-
-    await waitFor(() => {
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-    });
-    context.mocks.ably.trigger("chatThreadMessageCreated:thread-1");
-    await waitFor(() => {
-      expect(handledNames).toStrictEqual(["chatThreadMessageCreated:thread-1"]);
-    });
-
-    context.mocks.ably.trigger("chatThreadMessageCreated:thread-2");
-    expect(handledNames).toStrictEqual(["chatThreadMessageCreated:thread-1"]);
-    firstRunCanFinish.resolve();
-
-    await waitFor(() => {
-      expect(handledNames).toStrictEqual([
-        "chatThreadMessageCreated:thread-1",
-        "chatThreadMessageCreated:thread-2",
-      ]);
-    });
-    expect(maxActiveHandlers).toBe(1);
-
-    subscriber.abort(abortError("verify subscription cleanup"));
-    await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
-    expect(context.mocks.ably.hasChannelSubscription()).toBeFalsy();
-  });
-
-  it("runs user-channel catch-up on reconnect without a queued message", async () => {
-    mockSignedInUser();
-    const subscriber = testSubscriber();
-    const handledMessages: unknown[] = [];
-    let catchUps = 0;
-    const loop$ = command(
-      (_ctx, message: unknown, _signal: AbortSignal): boolean => {
-        handledMessages.push(message);
-        return false;
-      },
-    );
-    const catchUp$ = command((_ctx, _signal: AbortSignal): boolean => {
-      catchUps += 1;
-      return false;
-    });
-
-    await setupAuthAndRealtime();
-    const loopPromise = context.store.set(
-      setAblyMessageLoop$,
-      {
-        loopCommand$: loop$,
-        catchUpCommand$: catchUp$,
-      },
-      subscriber.signal,
-    );
-    context.track(loopPromise);
-
-    await waitFor(() => {
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-    });
-    context.mocks.ably.triggerReconnect();
-
-    await waitFor(() => {
-      expect(catchUps).toBe(1);
-    });
-    expect(handledMessages).toStrictEqual([]);
-  });
-
-  it("waits for the next reconnect after user-channel catch-up fails", async () => {
-    mockSignedInUser();
-    const subscriber = testSubscriber();
-    const handledMessages: unknown[] = [];
-    const toastError = vi.spyOn(toast, "error").mockReturnValue("toast-id");
-    let catchUps = 0;
-    const loop$ = command(
-      (_ctx, message: unknown, _signal: AbortSignal): boolean => {
-        handledMessages.push(message);
-        return false;
-      },
-    );
-    const catchUp$ = command((_ctx, _signal: AbortSignal): boolean => {
-      catchUps += 1;
-      if (catchUps === 1) {
-        throw new Error("catch-up failed");
-      }
-      return false;
-    });
-
-    await setupAuthAndRealtime();
-    const loopPromise = context.store.set(
-      setAblyMessageLoop$,
-      {
-        loopCommand$: loop$,
-        catchUpCommand$: catchUp$,
-      },
-      subscriber.signal,
-    );
-    context.track(loopPromise);
-
-    await waitFor(() => {
-      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-    });
-    context.mocks.ably.triggerReconnect();
-
-    await waitFor(() => {
-      expect(toastError).toHaveBeenCalledTimes(1);
-    });
-    expect(catchUps).toBe(1);
-
-    context.mocks.ably.trigger("chatThreadMessageCreated:thread-1");
-    await waitFor(() => {
-      expect(handledMessages).toHaveLength(1);
-    });
-
-    context.mocks.ably.triggerReconnect();
-    await waitFor(() => {
-      expect(catchUps).toBe(2);
-    });
   });
 
   it("retries a payload notification after a transient handler error", async () => {

@@ -11,12 +11,14 @@ import { publishThreadListChanged } from "../external/realtime";
 import { nowDate } from "../../lib/time";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { appendChatThreadEvent } from "../services/chat-thread-event.service";
+import { chatThreadOrganizationCondition } from "../services/chat-thread-organization.service";
 import type { RouteEntry } from "../route-entry";
 
 async function threadExists(params: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;
+  readonly orgId: string;
 }): Promise<boolean> {
   const [thread] = await params.db
     .select({ id: chatThreads.id })
@@ -25,6 +27,7 @@ async function threadExists(params: {
       and(
         eq(chatThreads.id, params.threadId),
         eq(chatThreads.userId, params.userId),
+        chatThreadOrganizationCondition(params.db, params.orgId),
       ),
     )
     .limit(1);
@@ -72,6 +75,7 @@ const updateComputerUseHostInner$ = command(
         db,
         threadId: params.id,
         userId: auth.userId,
+        orgId: auth.orgId,
       }))
     ) {
       return notFound("Chat thread not found");
@@ -113,6 +117,7 @@ const updateComputerUseHostInner$ = command(
           and(
             eq(chatThreads.id, params.id),
             eq(chatThreads.userId, auth.userId),
+            chatThreadOrganizationCondition(tx, auth.orgId),
             isNotNull(chatThreads.agentId),
           ),
         )
@@ -143,7 +148,7 @@ const updateComputerUseHostInner$ = command(
       return notFound("Chat thread not found");
     }
 
-    await publishThreadListChanged(auth.userId);
+    await publishThreadListChanged({ userId: auth.userId, orgId: auth.orgId });
     signal.throwIfAborted();
 
     return { status: 204 as const, body: undefined };

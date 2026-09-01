@@ -9,16 +9,14 @@ mod common;
 
 use std::fs::File;
 use std::io::{self, Write};
-use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd};
+use std::os::fd::FromRawFd;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
 use shell_quote::quote_shell_arg;
-use tokio::io::unix::AsyncFd;
 use vsock_host::{ExecOwnedCapturedOutput, SupervisedExecControl, SupervisedExecRequest};
 use vsock_proto::{ExecOutputPolicy, ExecOutputStream, ExecTermination, ExecTimeoutPolicy};
 
@@ -176,17 +174,15 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
     ];
 
     common::ensure_canonical_workspace_for_test()?;
-    let connection = start_host_and_guest(tmp.path()).await?;
-    let command = cgroup_isolated_guest_agent_wrapper_command(guest_agent);
-    let sudo = needs_sudo_for_canonical_workspace();
+    let connection = start_host_and_guest(tmp.path(), PathBuf::from(guest_agent)).await?;
     let mut handle = connection
         .host()
         .start_supervised_exec(SupervisedExecRequest {
             role: vsock_proto::ExecProcessRole::Agent,
             timeout: ExecTimeoutPolicy::Duration { timeout_ms: 30_000 },
-            command: &command,
+            command: "",
             env: &env,
-            sudo,
+            sudo: false,
             label: "guest-agent-process-control-channel",
             stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 1024 * 1024,
@@ -322,17 +318,15 @@ async fn process_control_enabled_plain_run_does_not_wait_for_stdin_eof() -> Test
     ];
 
     common::ensure_canonical_workspace_for_test()?;
-    let connection = start_host_and_guest(tmp.path()).await?;
-    let command = guest_agent_wrapper_command(guest_agent);
-    let sudo = needs_sudo_for_canonical_workspace();
+    let connection = start_host_and_guest(tmp.path(), PathBuf::from(guest_agent)).await?;
     let handle = connection
         .host()
         .start_supervised_exec(SupervisedExecRequest {
             role: vsock_proto::ExecProcessRole::Agent,
             timeout: ExecTimeoutPolicy::Duration { timeout_ms: 30_000 },
-            command: &command,
+            command: "",
             env: &env,
-            sudo,
+            sudo: false,
             label: "guest-agent-process-control-plain-run",
             stdout: ExecOutputPolicy::Capture {
                 limit_bytes: 1024 * 1024,
@@ -398,7 +392,7 @@ async fn collect_stdout_until(
     })?
 }
 
-async fn start_host_and_guest(dir: &Path) -> TestResult<ConnectionHarness> {
+async fn start_host_and_guest(dir: &Path, guest_agent: PathBuf) -> TestResult<ConnectionHarness> {
     let base_path = dir.join("vsock").to_string_lossy().to_string();
     let listener_path = format!("{base_path}_1000");
     let listener = PathBuf::from(&listener_path);
@@ -408,7 +402,7 @@ async fn start_host_and_guest(dir: &Path) -> TestResult<ConnectionHarness> {
     });
 
     let listener_ready: io::Result<()> = tokio::select! {
-        ready = wait_for_path(&listener, Duration::from_secs(5)) => ready,
+        ready = common::wait_for_path(&listener, Duration::from_secs(5)) => ready,
         completed = &mut host_task => {
             match completed {
                 Ok(Ok(host)) => {
@@ -428,7 +422,7 @@ async fn start_host_and_guest(dir: &Path) -> TestResult<ConnectionHarness> {
 
     let guest = thread::spawn(move || {
         let stream = vsock_guest::connect_unix(&listener_path)?;
-        vsock_guest::handle_connection(stream)
+        vsock_guest::handle_connection_with_test_guest_agent_program(stream, guest_agent)
     });
 
     let host = match host_task.await? {
@@ -465,103 +459,9 @@ fn captured_output_lossy(output: &ExecOwnedCapturedOutput) -> String {
     }
 }
 
-async fn wait_for_path(path: &Path, timeout: Duration) -> io::Result<()> {
-    tokio::time::timeout(timeout, wait_for_path_event(path))
-        .await
-        .map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::TimedOut,
-                format!("timed out waiting for {}", path.display()),
-            )
-        })?
-}
-
-async fn wait_for_path_event(path: &Path) -> io::Result<()> {
-    if tokio::fs::try_exists(path).await? {
-        return Ok(());
-    }
-
-    let dir = path.parent().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("path has no parent directory: {}", path.display()),
-        )
-    })?;
-    let inotify = Inotify::init(InitFlags::IN_NONBLOCK)
-        .map_err(|error| io::Error::other(format!("inotify init: {error}")))?;
-    inotify
-        .add_watch(dir, AddWatchFlags::IN_CREATE | AddWatchFlags::IN_MOVED_TO)
-        .map_err(|error| io::Error::other(format!("inotify watch: {error}")))?;
-
-    if tokio::fs::try_exists(path).await? {
-        return Ok(());
-    }
-
-    let async_fd = async_inotify_fd(inotify)?;
-    loop {
-        let mut guard = async_fd.readable().await?;
-        drain_inotify_fd(async_fd.get_ref().as_fd());
-        guard.clear_ready();
-
-        if tokio::fs::try_exists(path).await? {
-            return Ok(());
-        }
-    }
-}
-
-fn async_inotify_fd(inotify: Inotify) -> io::Result<AsyncFd<OwnedFd>> {
-    let fd: OwnedFd = inotify.into();
-    AsyncFd::new(fd).map_err(|error| io::Error::other(format!("AsyncFd: {error}")))
-}
-
-fn drain_inotify_fd(fd: std::os::fd::BorrowedFd<'_>) {
-    let mut buf = [0u8; 4096];
-    loop {
-        // SAFETY: fd is a valid non-blocking inotify descriptor borrowed from
-        // AsyncFd. The stack buffer is valid for the requested byte length.
-        let result = unsafe { libc::read(fd.as_raw_fd(), buf.as_mut_ptr().cast(), buf.len()) };
-        if result <= 0 {
-            break;
-        }
-    }
-}
-
 fn join_guest(guest: thread::JoinHandle<io::Result<()>>) -> TestResult<()> {
     guest
         .join()
         .map_err(|_| io::Error::other("guest thread panicked"))??;
     Ok(())
-}
-
-fn guest_agent_wrapper_command(guest_agent: &str) -> String {
-    quote_shell_arg(guest_agent)
-}
-
-fn cgroup_isolated_guest_agent_wrapper_command(guest_agent: &str) -> String {
-    // The test process can itself run under vm0 and inherit an incomplete
-    // cgroup bootstrap pair. Keep this unmanaged fixture isolated from it.
-    format!(
-        "unset {} {} {} {}; exec {}",
-        guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
-        guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
-        guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
-        guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
-        quote_shell_arg(guest_agent)
-    )
-}
-
-fn needs_sudo_for_canonical_workspace() -> bool {
-    let parent = Path::new("/home/user");
-    if parent.exists() {
-        return !path_is_writable(parent);
-    }
-    !path_is_writable(Path::new("/home"))
-}
-
-fn path_is_writable(path: &Path) -> bool {
-    let Ok(c_path) = std::ffi::CString::new(path.as_os_str().as_bytes()) else {
-        return false;
-    };
-    // SAFETY: c_path is a valid NUL-terminated path.
-    unsafe { libc::access(c_path.as_ptr(), libc::W_OK) == 0 }
 }

@@ -9,7 +9,6 @@ import {
   type ChatEventUserMessage,
 } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { morningBriefDeliveries } from "@okouai/db/schema/morning-brief";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { workflowAutomations } from "@okouai/db/schema/workflow";
 import {
@@ -111,9 +110,6 @@ export function queuedUserMessageTriggerSource(
     case "agent_run": {
       return "agent";
     }
-    case "morning_brief": {
-      return "automation-schedule";
-    }
     case "automation":
     case "goal": {
       throw new Error(
@@ -154,6 +150,7 @@ export interface QueuedUserMessage {
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
   readonly selectedModel: string | null;
   readonly contextType: QueuedUserMessageContextType;
+  readonly contextId: string | null;
   readonly autonomyBudget:
     | ChildAutonomyBudget
     | { readonly kind: "unavailable"; readonly message: string };
@@ -165,7 +162,6 @@ export type QueueFirstRunAssociation =
       readonly threadId: string;
       readonly eventId: string;
       readonly admissionTime: number;
-      readonly morningBriefDeliveryId?: string;
     }
   | {
       readonly kind: "automation_event";
@@ -190,7 +186,6 @@ export type QueueFirstRunClaimResult =
   | {
       readonly kind: "claimed";
       readonly createdAt: Date;
-      readonly morningBriefDeliveryId?: string;
     }
   | { readonly kind: "lost" };
 
@@ -746,17 +741,6 @@ export async function claimQueueFirstRunAssociation(
         return { kind: "lost" };
       }
 
-      if (
-        args.kind === "user_message" &&
-        !(await lockUnclaimedMorningBriefDelivery(
-          db,
-          args.morningBriefDeliveryId,
-        ))
-      ) {
-        outcome = "lost";
-        return { kind: "lost" };
-      }
-
       const claimed = await args.timing.measure(
         "api_dispatch_persist_queue_first_replacement",
         "nested",
@@ -780,95 +764,12 @@ export async function claimQueueFirstRunAssociation(
       return {
         kind: "claimed",
         createdAt: claimed.createdAt,
-        ...(args.kind === "user_message" && args.morningBriefDeliveryId
-          ? { morningBriefDeliveryId: args.morningBriefDeliveryId }
-          : {}),
       };
     },
     () => {
       return { queue_first_claim_result: outcome };
     },
   );
-}
-
-async function lockUnclaimedMorningBriefDelivery(
-  db: DbTransaction,
-  deliveryId: string | undefined,
-): Promise<boolean> {
-  if (!deliveryId) {
-    return true;
-  }
-  const [delivery] = await db
-    .select({ runId: morningBriefDeliveries.runId })
-    .from(morningBriefDeliveries)
-    .where(eq(morningBriefDeliveries.id, deliveryId))
-    .for("update")
-    .limit(1);
-  return delivery?.runId === null;
-}
-
-/**
- * Finish queue-claim side effects that reference the newly inserted run row.
- * The caller invokes this in the same final-admission transaction immediately
- * after run persistence so the delivery foreign key and queue claim commit
- * atomically.
- */
-export async function recordQueueFirstClaimedRun(
-  db: DbTransaction,
-  args: {
-    readonly claim: Extract<
-      QueueFirstRunClaimResult,
-      { readonly kind: "claimed" }
-    >;
-    readonly runId: string;
-  },
-): Promise<void> {
-  if (!args.claim.morningBriefDeliveryId) {
-    return;
-  }
-  const [delivery] = await db
-    .update(morningBriefDeliveries)
-    .set({
-      status: "running",
-      runId: args.runId,
-      updatedAt: sql`now()`,
-    })
-    .where(eq(morningBriefDeliveries.id, args.claim.morningBriefDeliveryId))
-    .returning({ id: morningBriefDeliveries.id });
-  if (!delivery) {
-    throw new Error("Failed to record the admitted morning brief run");
-  }
-}
-
-/**
- * A failed queue-first launch still owns the queue claim and run foreign key,
- * but must never make the Morning Brief delivery look active.
- */
-export async function recordQueueFirstFailedRun(
-  db: DbTransaction,
-  args: {
-    readonly claim: Extract<
-      QueueFirstRunClaimResult,
-      { readonly kind: "claimed" }
-    >;
-    readonly runId: string;
-  },
-): Promise<void> {
-  if (!args.claim.morningBriefDeliveryId) {
-    return;
-  }
-  const [delivery] = await db
-    .update(morningBriefDeliveries)
-    .set({
-      status: "failed",
-      runId: args.runId,
-      updatedAt: sql`now()`,
-    })
-    .where(eq(morningBriefDeliveries.id, args.claim.morningBriefDeliveryId))
-    .returning({ id: morningBriefDeliveries.id });
-  if (!delivery) {
-    throw new Error("Failed to record the failed morning brief run");
-  }
 }
 
 /**
@@ -920,77 +821,86 @@ export async function discardUnclaimedUserMessage(
  * assistant replacements that explain a permanent integration admission
  * failure.
  */
+interface FailQueuedUserMessageArgs {
+  readonly threadId: string;
+  readonly eventId: string;
+  readonly assistantContent: string;
+  readonly errorMarker: string;
+  readonly currentTime: Date;
+}
+
+async function failQueuedUserMessageInTransaction(
+  tx: DbTransaction,
+  args: FailQueuedUserMessageArgs,
+): Promise<{ readonly assistantEventId: string } | null> {
+  if (!(await lockUserMessageQueueThread(tx, args.threadId))) {
+    return null;
+  }
+  if (
+    (await loadNextUnclaimedQueuedUserMessageId(tx, args.threadId)) !==
+    args.eventId
+  ) {
+    return null;
+  }
+
+  const [queued] = await tx
+    .select({
+      userMessage: canonicalChatEventUserMessage(),
+      createdAt: chatEvents.createdAt,
+    })
+    .from(chatEvents)
+    .where(
+      and(
+        eq(chatEvents.id, args.eventId),
+        eq(chatEvents.chatThreadId, args.threadId),
+        chatEventTypeIn(["input.prompt"]),
+        isNull(chatEvents.runId),
+      ),
+    )
+    .for("update", { of: chatEvents })
+    .limit(1);
+  if (!queued) {
+    return null;
+  }
+  if (!queued.userMessage) {
+    throw new Error("Queued input event is missing userMessage");
+  }
+  const terminalAt = new Date(
+    Math.max(args.currentTime.getTime(), queued.createdAt.getTime() + 1),
+  );
+
+  const replacement = await replaceChatEvent(tx, args.eventId, {
+    chatThreadId: args.threadId,
+    eventType: "input.rejected",
+    userMessage: queued.userMessage,
+    runId: null,
+    error: args.errorMarker,
+    createdAt: terminalAt,
+  });
+  if (!replacement) {
+    return null;
+  }
+
+  const assistant = await insertChatEvent(tx, {
+    chatThreadId: args.threadId,
+    eventType: "output.error",
+    content: args.assistantContent,
+    runId: null,
+    error: args.errorMarker,
+    createdAt: new Date(terminalAt.getTime() + 1),
+  });
+  if (!assistant) {
+    throw new Error("Failed to append integration admission error");
+  }
+  await touchChatThreadLastMessageAt(tx, args.threadId, assistant.createdAt);
+  return { assistantEventId: assistant.id };
+}
+
 export async function failQueuedUserMessage(
   db: Db,
-  args: {
-    readonly threadId: string;
-    readonly eventId: string;
-    readonly assistantContent: string;
-    readonly errorMarker: string;
-    readonly currentTime: Date;
-  },
+  args: FailQueuedUserMessageArgs,
 ): Promise<{ readonly assistantEventId: string } | null> {
   return await db.transaction(async (tx) => {
-    if (!(await lockUserMessageQueueThread(tx, args.threadId))) {
-      return null;
-    }
-    if (
-      (await loadNextUnclaimedQueuedUserMessageId(tx, args.threadId)) !==
-      args.eventId
-    ) {
-      return null;
-    }
-
-    const [queued] = await tx
-      .select({
-        userMessage: canonicalChatEventUserMessage(),
-        createdAt: chatEvents.createdAt,
-      })
-      .from(chatEvents)
-      .where(
-        and(
-          eq(chatEvents.id, args.eventId),
-          eq(chatEvents.chatThreadId, args.threadId),
-          chatEventTypeIn(["input.prompt"]),
-          isNull(chatEvents.runId),
-        ),
-      )
-      .for("update", { of: chatEvents })
-      .limit(1);
-    if (!queued) {
-      return null;
-    }
-    if (!queued.userMessage) {
-      throw new Error("Queued input event is missing userMessage");
-    }
-    const terminalAt = new Date(
-      Math.max(args.currentTime.getTime(), queued.createdAt.getTime() + 1),
-    );
-
-    const replacement = await replaceChatEvent(tx, args.eventId, {
-      chatThreadId: args.threadId,
-      eventType: "input.rejected",
-      userMessage: queued.userMessage,
-      runId: null,
-      error: args.errorMarker,
-      createdAt: terminalAt,
-    });
-    if (!replacement) {
-      return null;
-    }
-
-    const assistant = await insertChatEvent(tx, {
-      chatThreadId: args.threadId,
-      eventType: "output.error",
-      content: args.assistantContent,
-      runId: null,
-      error: args.errorMarker,
-      createdAt: new Date(terminalAt.getTime() + 1),
-    });
-    if (!assistant) {
-      throw new Error("Failed to append integration admission error");
-    }
-    await touchChatThreadLastMessageAt(tx, args.threadId, assistant.createdAt);
-    return { assistantEventId: assistant.id };
+    return await failQueuedUserMessageInTransaction(tx, args);
   });
 }

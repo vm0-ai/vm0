@@ -391,9 +391,6 @@ describe("home route", () => {
     });
     context.track(setupPromise);
     await onboardingRequestStarted.promise;
-    await waitFor(() => {
-      expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(1);
-    });
 
     context.store.set(detachedNavigateTo$, ROUTES.skeleton, { replace: true });
     await waitFor(() => {

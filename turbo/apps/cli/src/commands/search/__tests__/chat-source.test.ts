@@ -40,7 +40,7 @@ describe("okou search --source chat", () => {
     // Clear any prior spy call history before each test so assertions only
     // see calls made by the current case.
     vi.clearAllMocks();
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
     // Commander retains collector state across parseAsync calls on the
     // same command instance. Reset before each case.
@@ -61,7 +61,7 @@ describe("okou search --source chat", () => {
     expect(errors).toContain("Query cannot be empty");
   });
 
-  it("renders chat search results grouped by thread", async () => {
+  it("renders only the matched message grouped by thread", async () => {
     server.use(
       http.get("http://localhost:3000/api/chat/search", () => {
         return HttpResponse.json({
@@ -72,8 +72,12 @@ describe("okou search --source chat", () => {
               matchedMessage: makeMessage({
                 content: "OOM killed the build",
               }),
-              contextBefore: [],
-              contextAfter: [],
+              contextBefore: [
+                makeMessage({ content: "context before", seqId: 2 }),
+              ],
+              contextAfter: [
+                makeMessage({ content: "context after", seqId: 3 }),
+              ],
             },
           ],
           hasMore: false,
@@ -87,6 +91,8 @@ describe("okou search --source chat", () => {
     expect(logs).toContain("thread-abc");
     expect(logs).toContain("my-agent");
     expect(logs).toContain("OOM killed the build");
+    expect(logs).not.toContain("context before");
+    expect(logs).not.toContain("context after");
   });
 
   it("tolerates invalid chat message timestamps", async () => {
@@ -137,30 +143,6 @@ describe("okou search --source chat", () => {
     expect(logs).toContain("--since 30d");
   });
 
-  it("passes keyword and -C context to API", async () => {
-    let capturedUrl: URL | undefined;
-    server.use(
-      http.get("http://localhost:3000/api/chat/search", ({ request }) => {
-        capturedUrl = new URL(request.url);
-        return HttpResponse.json({ results: [], hasMore: false });
-      }),
-    );
-
-    await searchCommand.parseAsync([
-      "node",
-      "cli",
-      "error",
-      "--source",
-      "chat",
-      "-C",
-      "3",
-    ]);
-
-    expect(capturedUrl?.searchParams.get("keyword")).toBe("error");
-    expect(capturedUrl?.searchParams.get("before")).toBe("3");
-    expect(capturedUrl?.searchParams.get("after")).toBe("3");
-  });
-
   it("passes epoch --since to API instead of the default search window", async () => {
     let capturedUrl: URL | undefined;
     server.use(
@@ -181,31 +163,6 @@ describe("okou search --source chat", () => {
     ]);
 
     expect(capturedUrl?.searchParams.get("since")).toBe("0");
-  });
-
-  it("passes -A and -B independently", async () => {
-    let capturedUrl: URL | undefined;
-    server.use(
-      http.get("http://localhost:3000/api/chat/search", ({ request }) => {
-        capturedUrl = new URL(request.url);
-        return HttpResponse.json({ results: [], hasMore: false });
-      }),
-    );
-
-    await searchCommand.parseAsync([
-      "node",
-      "cli",
-      "error",
-      "--source",
-      "chat",
-      "-A",
-      "5",
-      "-B",
-      "2",
-    ]);
-
-    expect(capturedUrl?.searchParams.get("before")).toBe("2");
-    expect(capturedUrl?.searchParams.get("after")).toBe("5");
   });
 
   it("passes --agent as agentId filter to API", async () => {
@@ -283,42 +240,7 @@ describe("okou search --source chat", () => {
     expect(errors).toContain("--limit must be between 1 and 50");
   });
 
-  it("rejects --before-context outside the 0..10 range", async () => {
-    await expect(
-      searchCommand.parseAsync([
-        "node",
-        "cli",
-        "hello",
-        "--source",
-        "chat",
-        "--before-context",
-        "99",
-      ]),
-    ).rejects.toThrow("process.exit called");
-
-    const errors = mockConsoleError.mock.calls.flat().join("\n");
-    expect(errors).toContain("--before-context must be between 0 and 10");
-  });
-
-  it("rejects partial numeric context and limit values", async () => {
-    await expect(
-      searchCommand.parseAsync([
-        "node",
-        "cli",
-        "hello",
-        "--source",
-        "chat",
-        "-C",
-        "2x",
-      ]),
-    ).rejects.toThrow("process.exit called");
-
-    let errors = mockConsoleError.mock.calls.flat().join("\n");
-    expect(errors).toContain("--context must be between 0 and 10");
-
-    mockConsoleError.mockClear();
-    searchCommand.setOptionValue("source", []);
-
+  it("rejects partial numeric limit values", async () => {
     await expect(
       searchCommand.parseAsync([
         "node",
@@ -331,26 +253,8 @@ describe("okou search --source chat", () => {
       ]),
     ).rejects.toThrow("process.exit called");
 
-    errors = mockConsoleError.mock.calls.flat().join("\n");
+    let errors = mockConsoleError.mock.calls.flat().join("\n");
     expect(errors).toContain("--limit must be between 1 and 50");
-
-    mockConsoleError.mockClear();
-    searchCommand.setOptionValue("source", []);
-
-    await expect(
-      searchCommand.parseAsync([
-        "node",
-        "cli",
-        "hello",
-        "--source",
-        "chat",
-        "-C",
-        "",
-      ]),
-    ).rejects.toThrow("process.exit called");
-
-    errors = mockConsoleError.mock.calls.flat().join("\n");
-    expect(errors).toContain("--context must be between 0 and 10");
 
     mockConsoleError.mockClear();
     searchCommand.setOptionValue("source", []);

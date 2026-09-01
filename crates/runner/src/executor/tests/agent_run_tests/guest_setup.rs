@@ -40,10 +40,7 @@ async fn run_in_sandbox_folds_timezone_sync_into_fixed_restore_operation() {
     let exec_calls = sandbox.exec_calls();
     let standalone_timezone_calls = exec_calls
         .iter()
-        .filter(|call| {
-            call.cmd
-                .starts_with("if test -f /usr/share/zoneinfo/Asia/Shanghai")
-        })
+        .filter(|call| call.cmd == "/sbin/guest-reseed --sync-timezone Asia/Shanghai")
         .collect::<Vec<_>>();
     assert!(
         standalone_timezone_calls.is_empty(),
@@ -78,9 +75,9 @@ async fn run_in_sandbox_runs_standalone_timezone_sync_without_restore_exec() {
 
     let exec_calls = sandbox.exec_calls();
     assert!(
-        exec_calls.iter().any(|call| call
-            .cmd
-            .starts_with("if test -f /usr/share/zoneinfo/Asia/Shanghai")),
+        exec_calls
+            .iter()
+            .any(|call| call.cmd == "/sbin/guest-reseed --sync-timezone Asia/Shanghai"),
         "fresh path should keep standalone timezone sync; calls: {exec_calls:?}"
     );
     assert!(sandbox.guest_state_restore_calls().is_empty());

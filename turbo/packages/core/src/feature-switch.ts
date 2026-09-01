@@ -143,11 +143,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Webflow site management connector",
     enabled: false,
   },
-  [FeatureSwitchKey.MetaAdsConnector]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Enable the Meta Ads Manager connector",
-    enabled: true,
-  },
   [FeatureSwitchKey.PosthogConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the PostHog analytics connector",
@@ -178,6 +173,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Spotify connector integration",
     enabled: false,
   },
+  [FeatureSwitchKey.StripeMarketplaceOAuthConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Show Stripe Marketplace OAuth as a sign-in option for the Stripe connector.",
+    enabled: false,
+  },
   [FeatureSwitchKey.OkouDebug]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -197,39 +198,16 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.AuthV2AddAccount]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Use the custom Auth v2 sign-in flow when adding another account.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.MorningBrief]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable the daily 7:00 local-time Morning Brief email built from GitHub, Gmail, and Google Calendar.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ManualMorningBrief]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show a Send now button in Settings that triggers a Morning Brief immediately for testing.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.NotionWorkflowAutomations]: {
     maintainer: "lancy@vm0.ai",
     description:
       "Enable Notion event workflow automations, starting with child pages created under a configured parent page.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: {
     maintainer: "lancy@vm0.ai",
     description: "Enable Google Forms response workflow automations.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: {
     maintainer: "lancy@vm0.ai",
@@ -291,12 +269,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Send preview chat runs through real agent CLIs instead of preview mock runners.",
     enabled: false,
   },
-  [FeatureSwitchKey.IntroVideoTemplates]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Expose intro-video templates and their implementation-specific authoring flows.",
-    enabled: false,
-  },
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -311,11 +283,21 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.LatestPresentationTemplates]: {
+  [FeatureSwitchKey.IntroVideo]: {
     maintainer: "bingjie@vm0.ai",
     description:
-      "Use the latest built-in presentation template archives, direct-HTML authoring guidance, and seedream4 image generation instead of the pre-cutover renderer release.",
-    enabled: true,
+      "Show the guided intro video upload, screen recording, avatar, and voice workflow in new chat.",
+    enabled: false,
+    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
+  },
+  [FeatureSwitchKey.DesktopScreenRecording]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable Okou Desktop screen recording: native capture, click track, and delivery back into the intro video workflow.",
+    enabled: false,
+    // Scoped to the maintainer while the native capture helper is still
+    // unproven outside CI; widen once it has run on real hardware.
+    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
   [FeatureSwitchKey.ChatConversationLocator]: {
     maintainer: "tongx@vm0.ai",
@@ -343,22 +325,9 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatToolActivity]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Generate and deliver redacted tool activity events in Chat history.",
-    enabled: false,
-  },
   [FeatureSwitchKey.BuiltInModelProviderFallback]: {
     maintainer: "liangyou@vm0.ai",
     description: "Select healthy fallback routes for built-in platform models.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.SharedChatDatabase]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Share canonical ChatEvent and ChatThreadEvent synchronization across same-revision browser tabs.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -370,13 +339,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // Scoped to the maintainer rather than the whole staff org while the
     // flatten and two-file send are still unexercised outside tests.
     enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
-  },
-  [FeatureSwitchKey.ChatForward]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the Forward action in the assistant text-selection pill.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.BuiltInWelcomeThread]: {
     maintainer: "ming@vm0.ai",
@@ -448,12 +410,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.TeamsIntegration]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Show standalone Microsoft Teams integration settings, connect flows, and Works page entry points.",
-    enabled: true,
-  },
   [FeatureSwitchKey.FeishuIntegration]: {
     maintainer: "linghan@vm0.ai",
     description:
@@ -480,6 +436,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable remote Streamable HTTP MCP definitions for organization Custom Connectors.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };
 

@@ -82,7 +82,6 @@ function WelcomeThreadMessage() {
     },
   );
   const tree = parseMarkdownTree(source, {
-    mathEnabled: false,
     mermaid: true,
   });
   embedMermaidSignals(tree, (code) => {

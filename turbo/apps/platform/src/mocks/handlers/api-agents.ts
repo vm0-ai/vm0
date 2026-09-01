@@ -266,7 +266,11 @@ export const apiAgentsHandlers = [
 
   // GET /api/chat-threads/:threadId/event-rows
   mockApi(chatThreadEventsContract.rows, ({ respond }) => {
-    return respond(200, { rows: [] });
+    return respond(200, {
+      rows: [],
+      cursor: { lastEventId: null, lastSeqId: 0 },
+      hasMore: false,
+    });
   }),
 
   // GET /api/chat-threads/:threadId/artifacts

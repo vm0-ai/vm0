@@ -3,25 +3,80 @@ import { fileURLToPath } from "node:url";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 
 import { devArtifactFetchProxy } from "./dev-artifact-fetch-proxy.ts";
 import platformPackage from "./package.json";
-import { createStableChunkName } from "./src/lib/stable-chunks.ts";
+import { clerkCoreHtmlPlugin } from "./scripts/clerk-html.ts";
+import {
+  VENDOR_MODULE_PATTERN,
+  applicationJavaScriptBundlePlugin,
+  singleWorkerJavaScriptBundlePlugin,
+} from "./scripts/single-bundle.ts";
+import { workerDomGlobalsPlugin } from "./scripts/worker-dom-globals.ts";
 
-process.env.VITE_APP_VERSION = platformPackage.version;
+const APP_ASSET_BASE = "https://static.okou.io/okou-app/";
+const APP_GIT_COMMIT_SHA = process.env.OKOU_APP_GIT_COMMIT_SHA ?? "";
+const APP_VERSION = process.env.OKOU_APP_VERSION ?? platformPackage.version;
 
-const stableChunkName = createStableChunkName(
-  fileURLToPath(new URL("./src/main.ts", import.meta.url)),
-);
+const runtimeBuildInfoHtmlPlugin = {
+  name: "platform-runtime-build-info-html",
+  transformIndexHtml() {
+    return [
+      {
+        tag: "meta",
+        attrs: {
+          name: "okou-app-git-commit-sha",
+          content: APP_GIT_COMMIT_SHA,
+        },
+        injectTo: "head-prepend",
+      },
+      {
+        tag: "meta",
+        attrs: { name: "okou-app-version", content: APP_VERSION },
+        injectTo: "head-prepend",
+      },
+    ];
+  },
+} satisfies Plugin;
 
-export default defineConfig({
-  base: "/",
+export default defineConfig(({ command }) => ({
+  base: command === "build" ? APP_ASSET_BASE : "/",
+  define: {
+    __OKOU_APP_VERSION__: JSON.stringify(APP_VERSION),
+  },
+  experimental: {
+    renderBuiltUrl(filename, { hostType, type }) {
+      if (
+        hostType === "js" &&
+        type === "asset" &&
+        /^assets\/shared-database-worker-[^/]+\.js$/u.test(filename)
+      ) {
+        const workerPath = new URL(filename, APP_ASSET_BASE).pathname;
+        return { runtime: `location.origin + ${JSON.stringify(workerPath)}` };
+      }
+    },
+  },
   envPrefix: ["VITE_", "PUBLIC_"],
+  resolve: {
+    alias: {
+      "virtual:shared-database-worker": `${fileURLToPath(
+        new URL("./src/shared-database-worker.ts", import.meta.url),
+      )}?sharedworker&url`,
+    },
+  },
+  worker: {
+    plugins: () => {
+      return [workerDomGlobalsPlugin(), singleWorkerJavaScriptBundlePlugin()];
+    },
+  },
   plugins: [
     tailwindcss(),
     react(),
     devArtifactFetchProxy(),
+    clerkCoreHtmlPlugin(APP_VERSION),
+    runtimeBuildInfoHtmlPlugin,
+    applicationJavaScriptBundlePlugin(),
     // Sentry source map upload (production builds only)
     process.env.SENTRY_AUTH_TOKEN &&
       sentryVitePlugin({
@@ -47,18 +102,18 @@ export default defineConfig({
     sourcemap: !!process.env.SENTRY_AUTH_TOKEN,
     rolldownOptions: {
       output: {
+        // Keep third-party modules and the pinned generated Mermaid package in
+        // one cache-stable vendor chunk. The application entry and Rolldown
+        // runtime remain separate chunks, while the SharedWorker is an asset.
         codeSplitting: {
-          groups: [{ name: stableChunkName }],
-        },
-        // Mangle identifiers for smaller bundles while preserving runtime
-        // function and class names for framework semantics and diagnostics.
-        keepNames: true,
-        minify: {
-          compress: true,
-          mangle: true,
-          codegen: true,
+          groups: [
+            {
+              name: "vendor",
+              test: VENDOR_MODULE_PATTERN,
+            },
+          ],
         },
       },
     },
   },
-});
+}));

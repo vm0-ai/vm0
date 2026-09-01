@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { cliTokens } from "@okouai/db/schema/cli-tokens";
 import { orgCache } from "@okouai/db/schema/org-cache";
 import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
+import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-canonical-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { userCache } from "@okouai/db/schema/user-cache";
 import { command, computed, type Computed } from "ccstate";
@@ -173,7 +174,7 @@ async function ensureTestOrgBillingRow(
   orgId: string,
 ): Promise<void> {
   await writeDb
-    .insert(orgMetadata)
+    .insert(orgMetadataCanonicalWrites)
     .values({
       orgId,
       tier: "pro",
@@ -181,7 +182,7 @@ async function ensureTestOrgBillingRow(
       updatedAt: nowDate(),
     })
     .onConflictDoUpdate({
-      target: orgMetadata.orgId,
+      target: orgMetadataCanonicalWrites.orgId,
       set: {
         tier: "pro",
         credits: sql`

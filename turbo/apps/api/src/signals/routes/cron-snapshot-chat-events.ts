@@ -15,13 +15,10 @@ interface ChatEventSnapshotCompletionCounters {
   readonly skippedUnreadableHeads: number;
   readonly skippedUndecodableHeads: number;
   readonly skippedIncompleteHeads: number;
-  readonly skippedUnsupportedHeads: number;
   readonly duplicateEventIdConflictThreads: number;
   readonly duplicateEventIdConflicts: number;
   readonly duplicateEventIdsRemapped: number;
   readonly duplicateEventReferencesRemapped: number;
-  readonly canonicalSnapshotHeads: number;
-  readonly pendingCanonicalSnapshotMigrations: number;
 }
 
 export function recordChatEventSnapshotCompleted(
@@ -40,15 +37,11 @@ export function recordChatEventSnapshotCompleted(
       skippedUnreadableHeads: counters.skippedUnreadableHeads,
       skippedUndecodableHeads: counters.skippedUndecodableHeads,
       skippedIncompleteHeads: counters.skippedIncompleteHeads,
-      skippedUnsupportedHeads: counters.skippedUnsupportedHeads,
       duplicateEventIdConflictThreads: counters.duplicateEventIdConflictThreads,
       duplicateEventIdConflicts: counters.duplicateEventIdConflicts,
       duplicateEventIdsRemapped: counters.duplicateEventIdsRemapped,
       duplicateEventReferencesRemapped:
         counters.duplicateEventReferencesRemapped,
-      canonicalSnapshotHeads: counters.canonicalSnapshotHeads,
-      pendingCanonicalSnapshotMigrations:
-        counters.pendingCanonicalSnapshotMigrations,
     },
   ]);
 }

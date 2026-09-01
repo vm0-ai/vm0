@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
-  INTRO_VIDEO_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
@@ -73,7 +72,7 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.status).toBe("invalid");
   });
 
-  it("builds runbook presentation guidance for a selected runbook package", () => {
+  it("builds direct-HTML presentation guidance with the VM0 image batch command", () => {
     const item = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
 
     const result = buildGenerationTemplatePrompt({
@@ -96,48 +95,17 @@ describe("buildGenerationTemplatePrompt", () => {
       "okou resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
     );
     expect(result.prompt).toContain(
-      "./generated/resources/playful-launch/AGENT_RUNBOOK.md",
-    );
-    expect(result.prompt).toContain('"colorSystem": "carnival"');
-    expect(result.prompt).toContain(
-      "Keep all slides and visible content in index.html; render the first slide without JavaScript",
-    );
-    expect(result.prompt).toContain(
-      "okou host <output-dir> --site <slug> --artifact-kind presentation-html",
-    );
-    expect(result.prompt).not.toContain("Design system:");
-    expect(result.prompt).not.toContain("Selected design system");
-    expect(result.prompt).not.toContain("okou generate presentation");
-    expect(result.prompt).not.toContain("presentation-images.sh");
-  });
-
-  it("switches the built-in presentation package to direct-HTML authoring and the VM0 image batch command", () => {
-    const item = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-
-    const result = buildGenerationTemplatePrompt(
-      {
-        type: "presentation",
-        selection: {
-          templateId: item.templateId,
-          colorSystemId: item.colorSystemId,
-        },
-      },
-      { latestPresentationTemplatesEnabled: true },
-    );
-
-    expect(result.status).toBe("resolved");
-    if (result.status !== "resolved") {
-      return;
-    }
-    expect(result.prompt).toContain(
-      "okou resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
-    );
-    expect(result.prompt).toContain(
       "./generated/resources/playful-launch/SKILL.md",
     );
     expect(result.prompt).toContain("Color system token: carnival");
     expect(result.prompt).toContain(
       "follow its template, authoring, and verification instructions",
+    );
+    expect(result.prompt).toContain(
+      "Keep all slides and visible content in index.html; render the first slide without JavaScript",
+    );
+    expect(result.prompt).toContain(
+      "okou host <output-dir> --site <slug> --artifact-kind presentation-html",
     );
     const imageWorkflowLines = result.prompt.split("\n").filter((line) => {
       return line.startsWith("- Image workflow:");
@@ -157,18 +125,6 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(
       imageWorkflow.indexOf("okou generate image-batch wait <state-dir>"),
     ).toBeLessThan(imageWorkflow.indexOf("<state-dir>/results.tsv"));
-    // The package this side pulls carries no renderer, so naming the previous
-    // entrypoint or its deck JSON would send the run down a path that does not
-    // exist in the archive it just downloaded.
-    expect(result.prompt).not.toContain("AGENT_RUNBOOK.md");
-    expect(result.prompt).not.toContain("presentation-images.sh");
-    expect(result.prompt).not.toContain('"colorSystem"');
-    expect(result.prompt).not.toContain("color-systems/");
-    expect(result.prompt).not.toContain("data-color-system");
-    expect(result.prompt).not.toContain("design-system.md");
-    expect(result.prompt).not.toContain("layouts/_shell.html");
-    expect(result.prompt).not.toContain("decoration/PLACEMENT.md");
-    expect(result.prompt).not.toContain("tools/run.sh");
   });
 
   it("points a private template at its mounted package and forbids an intermediate representation", () => {
@@ -346,7 +302,7 @@ describe("buildGenerationTemplatePrompt", () => {
     if (result.status !== "resolved") {
       return;
     }
-    expect(result.prompt).toContain('"colorSystem": "carnival"');
+    expect(result.prompt).toContain("Color system token: carnival");
   });
 
   it("builds illustration template guidance", () => {
@@ -416,41 +372,6 @@ describe("buildGenerationTemplatePrompt", () => {
       "read its SKILL.md before final generation",
     );
     expect(result.prompt).toContain("without `--template`");
-  });
-
-  it("gates and resolves an intro-video template through its implementation", () => {
-    const item = INTRO_VIDEO_TEMPLATE_ITEMS[0]!;
-    const selection = {
-      type: "intro-video" as const,
-      selection: { templateId: item.id },
-    };
-
-    expect(buildGenerationTemplatePrompt(selection)).toStrictEqual({
-      status: "invalid",
-      message: "Unknown intro-video template",
-    });
-
-    const result = buildGenerationTemplatesPrompt([selection], {
-      introVideoTemplatesEnabled: true,
-    });
-    expect(result.status).toBe("resolved");
-    if (result.status !== "resolved") {
-      return;
-    }
-    expect(result.prompt).toContain("## Template #1 (intro-video)");
-    expect(result.prompt).toContain(`Template: ${item.title} (${item.id})`);
-    expect(result.prompt).toContain("Implementation: HyperFrames");
-    expect(result.prompt).toContain("Official workflow: faceless-explainer");
-    expect(result.prompt).toContain(
-      "heygen-com/hyperframes@6eaa2cb64b280c51cadb3843ce190f6f0b7493cc",
-    );
-    expect(result.prompt).toContain("Pinned runtime: hyperframes@0.8.14");
-    expect(result.prompt).toContain(
-      `okou generate intro-video --template ${item.id}`,
-    );
-    expect(result.prompt).toContain(
-      "Do not substitute direct built-in text-to-video generation",
-    );
   });
 
   it("reads avatar options from the flat fields older bundles wrote", () => {

@@ -15,8 +15,12 @@ import { browserContract } from "@okouai/api-contracts/contracts/browser";
 import {
   detachedSetupPage,
   queryAllByRoleFast,
+  setupPageAndWaitForContent,
 } from "../../../__tests__/page-helper.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  chatEventRowsResponse,
+} from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import {
   mockChatEventRows,
@@ -84,7 +88,7 @@ describe("user messages", () => {
       ],
     });
 
-    detachedSetupPage({
+    await setupPageAndWaitForContent({
       context,
       path: `/chats/${threadId}`,
     });
@@ -702,13 +706,17 @@ describe("user messages", () => {
       chatThreadEventsContract.rows,
       ({ params, query, respond }) => {
         if (params.threadId !== threadId) {
-          return respond(200, { rows: [] });
+          return respond(200, chatEventRowsResponse([], query));
         }
-        return respond(200, {
-          rows: mockChatEventRows(sourceEvents).filter((row) => {
-            return row.seqId > query.sinceSeqId;
-          }),
-        });
+        return respond(
+          200,
+          chatEventRowsResponse(
+            mockChatEventRows(sourceEvents).filter((row) => {
+              return row.seqId > query.sinceSeqId;
+            }),
+            query,
+          ),
+        );
       },
     );
 
@@ -742,9 +750,11 @@ describe("user messages", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders Morning Brief metadata outside the message body", async () => {
+  it("renders migrated historical brief content as ordinary Chat history", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000760";
+    const runId = "d0000000-0000-4000-a000-000000000760";
     const prompt = "Generate my Morning Brief for 2026-08-05.";
+    const result = "Your visible historical brief is ready.";
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Morning Brief",
@@ -753,30 +763,27 @@ describe("user messages", () => {
           id: "00000000-0000-4000-8000-000000000760",
           role: "user",
           content: null,
+          runId,
           userMessage: {
             version: 1,
-            parts: [
-              { type: "text", text: prompt },
-              { type: "morning_brief", briefDate: "2026-08-05" },
-            ],
+            parts: [{ type: "text", text: prompt }],
           },
           createdAt: "2026-08-05T07:00:00Z",
+        },
+        {
+          id: "00000000-0000-4000-8000-000000000761",
+          role: "assistant",
+          content: result,
+          runId,
+          createdAt: "2026-08-05T07:00:01Z",
         },
       ],
     });
 
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-    });
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-    const annotation = await screen.findByLabelText("Morning Brief");
-    const messageBody = await waitFor(() => {
-      const element = document.querySelector("[data-structured-user-message]");
-      expect(element).toBeInstanceOf(HTMLElement);
-      return element as HTMLElement;
-    });
-    expect(messageBody.textContent).toBe(prompt);
-    expect(messageBody).not.toContainElement(annotation);
+    await expect(screen.findByText(prompt)).resolves.toBeInTheDocument();
+    await expect(screen.findByText(result)).resolves.toBeInTheDocument();
+    expect(screen.queryByLabelText("Morning Brief")).not.toBeInTheDocument();
   });
 });

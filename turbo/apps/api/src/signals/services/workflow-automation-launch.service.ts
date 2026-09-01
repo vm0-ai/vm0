@@ -536,6 +536,7 @@ async function recordWorkflowAutomationRunStart(
   const { automation, chatThreadId } = args.due;
   await finalizeClaimedRunUserMessage({
     db,
+    orgId: automation.orgId,
     threadId: chatThreadId,
     userId: automation.ownerUserId,
     runId,
@@ -592,6 +593,18 @@ async function checkQueuedWorkflowLaunchReadiness(
       signal,
     )) ?? null
   );
+}
+
+function workflowAutomationAgentRunAuth(automation: {
+  readonly orgId: string;
+  readonly ownerUserId: string;
+}) {
+  return {
+    orgId: automation.orgId,
+    orgRole: "member" as const,
+    userId: automation.ownerUserId,
+    tokenType: "session" as const,
+  };
 }
 
 export const launchQueuedWorkflowAutomation$ = command(
@@ -654,12 +667,7 @@ export const launchQueuedWorkflowAutomation$ = command(
     const result = await set(
       createQueueFirstAgentRun$,
       {
-        auth: {
-          orgId: automation.orgId,
-          orgRole: "member",
-          userId: automation.ownerUserId,
-          tokenType: "session",
-        },
+        auth: workflowAutomationAgentRunAuth(automation),
         body: {
           prompt: runInput.prompt,
           agentId,
@@ -699,6 +707,7 @@ export const launchQueuedWorkflowAutomation$ = command(
           modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
           selectedModel: modelPin.selectedModel,
         },
+        piExecution: false,
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
         timing,
       },

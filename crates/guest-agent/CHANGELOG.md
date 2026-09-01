@@ -1,5 +1,142 @@
 # Changelog
 
+## [0.83.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.3...guest-agent-v0.83.4) (2026-09-01)
+
+
+### Documentation
+
+* **guest-agent:** document GuestPaths accessors ([#30739](https://github.com/vm0-ai/vm0/issues/30739)) ([38f621d](https://github.com/vm0-ai/vm0/commit/38f621d5d176432080af367c5d3958ed4555ce69))
+
+
+### Refactoring
+
+* **rust:** share environment-key diagnostic sanitizer ([#30750](https://github.com/vm0-ai/vm0/issues/30750)) ([d7d08f2](https://github.com/vm0-ai/vm0/commit/d7d08f2b128021bf9ee3a6d352fffc1c344c5f5d))
+
+## [0.83.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.2...guest-agent-v0.83.3) (2026-09-01)
+
+## [0.83.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.1...guest-agent-v0.83.2) (2026-09-01)
+
+## [0.83.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.0...guest-agent-v0.83.1) (2026-09-01)
+
+
+### Performance Improvements
+
+* **runner:** launch reuse identity verifier without shell ([#30644](https://github.com/vm0-ai/vm0/issues/30644)) ([3ea790e](https://github.com/vm0-ai/vm0/commit/3ea790e5a8bca85854debfe537a89a66c4520445))
+
+## [0.83.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.27...guest-agent-v0.83.0) (2026-08-31)
+
+
+### Features
+
+* **codex:** preserve thread item semantics ([#30579](https://github.com/vm0-ai/vm0/issues/30579)) ([31b1be9](https://github.com/vm0-ai/vm0/commit/31b1be9fd870504252b4277e3480442170963426))
+* **pi:** add versioned sandbox ownership transfers ([#30607](https://github.com/vm0-ai/vm0/issues/30607)) ([dbc4e02](https://github.com/vm0-ai/vm0/commit/dbc4e02e9360749162d2bcf3fd1726f12a8e521f))
+
+## [0.82.27](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.26...guest-agent-v0.82.27) (2026-08-31)
+
+
+### Documentation
+
+* **guest-agent:** explain artifact checkpoint pipeline invariants ([#30497](https://github.com/vm0-ai/vm0/issues/30497)) ([b0a5845](https://github.com/vm0-ai/vm0/commit/b0a5845751afbf1e9a548b7baecb0e6df83cabe2))
+
+
+### Refactoring
+
+* **guest-agent:** remove retired bootstrap alias carrier ([#30517](https://github.com/vm0-ai/vm0/issues/30517)) ([c6df725](https://github.com/vm0-ai/vm0/commit/c6df725f46661ae72db0f4c9ef1d7703b43cc239))
+
+## [0.82.26](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.25...guest-agent-v0.82.26) (2026-08-31)
+
+## [0.82.25](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.24...guest-agent-v0.82.25) (2026-08-31)
+
+
+### Bug Fixes
+
+* **guest-agent:** atomically persist checkpoint completion ([#30384](https://github.com/vm0-ai/vm0/issues/30384)) ([f54e213](https://github.com/vm0-ai/vm0/commit/f54e213e05c57ae39beecc27fa706b98fc96b791))
+
+## [0.82.24](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.23...guest-agent-v0.82.24) (2026-08-31)
+
+
+### Bug Fixes
+
+* **guest-agent:** classify structured codex errors ([#30377](https://github.com/vm0-ai/vm0/issues/30377)) ([b33d3f4](https://github.com/vm0-ai/vm0/commit/b33d3f402c7574605a292b11eb2db80e8b8f388e))
+
+## [0.82.23](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.22...guest-agent-v0.82.23) (2026-08-30)
+
+
+### Documentation
+
+* **rust:** document GuestConfig field contracts ([#30359](https://github.com/vm0-ai/vm0/issues/30359)) ([d0ebfde](https://github.com/vm0-ai/vm0/commit/d0ebfde1ae2639216cb879841457e5d4b40a5664))
+
+## [0.82.22](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.21...guest-agent-v0.82.22) (2026-08-30)
+
+
+### Bug Fixes
+
+* interrupt active codex turns before shutdown ([#30344](https://github.com/vm0-ai/vm0/issues/30344)) ([2270569](https://github.com/vm0-ai/vm0/commit/2270569209f12ec58078cee520878409b4f15041))
+* preserve codex per-turn token usage ([#30337](https://github.com/vm0-ai/vm0/issues/30337)) ([c9ef6c1](https://github.com/vm0-ai/vm0/commit/c9ef6c1e407cf07ca71a1ac7bc0bfccfad3bf205))
+
+## [0.82.21](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.20...guest-agent-v0.82.21) (2026-08-30)
+
+
+### Refactoring
+
+* **guest:** retire api url root legacy reader ([#30293](https://github.com/vm0-ai/vm0/issues/30293)) ([acf0976](https://github.com/vm0-ai/vm0/commit/acf09762659b1c0c112e51948b2dda9670fe5240))
+* **guest:** retire timing tuning legacy readers ([#30303](https://github.com/vm0-ai/vm0/issues/30303)) ([27477c4](https://github.com/vm0-ai/vm0/commit/27477c4cea651fc86fbea0194bd438946e6581ad))
+
+## [0.82.20](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.19...guest-agent-v0.82.20) (2026-08-30)
+
+
+### Refactoring
+
+* **guest:** retire api token legacy reader ([#30292](https://github.com/vm0-ai/vm0/issues/30292)) ([7d0c3ad](https://github.com/vm0-ai/vm0/commit/7d0c3ad45d1361c0ee6463f8cc46feb00780e8f4))
+* **guest:** retire execution timeout legacy reader ([#30301](https://github.com/vm0-ai/vm0/issues/30301)) ([e5fba4b](https://github.com/vm0-ai/vm0/commit/e5fba4b8fa0ed5c1a769e71ac40053798c08abd7)), closes [#30289](https://github.com/vm0-ai/vm0/issues/30289) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **guest:** retire private payload legacy readers ([#30307](https://github.com/vm0-ai/vm0/issues/30307)) ([1059893](https://github.com/vm0-ai/vm0/commit/10598930135c5e6def894ae799064a5ef794d2c1))
+
+## [0.82.19](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.18...guest-agent-v0.82.19) (2026-08-30)
+
+
+### Documentation
+
+* **rust:** document Pi RPC lifecycle and event projection ([#30258](https://github.com/vm0-ai/vm0/issues/30258)) ([e8c2fc8](https://github.com/vm0-ai/vm0/commit/e8c2fc85f241138a17cf021108ad5e8163928464))
+
+
+### Refactoring
+
+* **guest:** cut managed CLI API URL writer to canonical alias ([#30285](https://github.com/vm0-ai/vm0/issues/30285)) ([a9a071e](https://github.com/vm0-ai/vm0/commit/a9a071e78fb317292b8c712f2b5543949dcb5982)), closes [#30277](https://github.com/vm0-ai/vm0/issues/30277) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+
+## [0.82.18](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.17...guest-agent-v0.82.18) (2026-08-29)
+
+
+### Refactoring
+
+* remove chat tool activity ([#30215](https://github.com/vm0-ai/vm0/issues/30215)) ([c475f9e](https://github.com/vm0-ai/vm0/commit/c475f9e59935ec292acd8b35ceb66e1f59708866))
+
+## [0.82.17](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.16...guest-agent-v0.82.17) (2026-08-29)
+
+## [0.82.16](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.15...guest-agent-v0.82.16) (2026-08-28)
+
+
+### Performance Improvements
+
+* **runner:** launch guest agent without shell bootstrap ([#30153](https://github.com/vm0-ai/vm0/issues/30153)) ([b2409fe](https://github.com/vm0-ai/vm0/commit/b2409fed8caa794a4e7d604f7d4c64559a385737))
+
+## [0.82.15](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.14...guest-agent-v0.82.15) (2026-08-28)
+
+
+### Refactoring
+
+* **rust:** forbid path attributes ([#30129](https://github.com/vm0-ai/vm0/issues/30129)) ([c46da3e](https://github.com/vm0-ai/vm0/commit/c46da3ea8fb48b7595bc582036a1f28a0d676f5f))
+
+## [0.82.14](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.13...guest-agent-v0.82.14) (2026-08-28)
+
+
+### Refactoring
+
+* **guest-agent:** centralize codex startup policy fixture ([#30089](https://github.com/vm0-ai/vm0/issues/30089)) ([b656e9a](https://github.com/vm0-ai/vm0/commit/b656e9a4dc3d450b9c7bec511c79edd5c020b99e))
+* **guest-agent:** remove legacy process-control endpoint reader ([#30130](https://github.com/vm0-ai/vm0/issues/30130)) ([57157de](https://github.com/vm0-ai/vm0/commit/57157de35208c779837373ce8cca6baf601d605b))
+* **guest-agent:** remove legacy root cgroup readers ([#30112](https://github.com/vm0-ai/vm0/issues/30112)) ([8d594fa](https://github.com/vm0-ai/vm0/commit/8d594fa8ce223e5040a0c0edcfae2aacf1a03307)), closes [#30103](https://github.com/vm0-ai/vm0/issues/30103) [#28914](https://github.com/vm0-ai/vm0/issues/28914)
+* **guest-agent:** reuse file-size limit guard ([#30135](https://github.com/vm0-ai/vm0/issues/30135)) ([1986eea](https://github.com/vm0-ai/vm0/commit/1986eea95d66a5e65a1f1022dee6b2f89502e099))
+* **runner:** cut guest API URL writer to canonical alias ([#30105](https://github.com/vm0-ai/vm0/issues/30105)) ([f3bb3c5](https://github.com/vm0-ai/vm0/commit/f3bb3c589879d6782f7942afff00b8e9af242706))
+
 ## [0.82.13](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.12...guest-agent-v0.82.13) (2026-08-28)
 
 ## [0.82.12](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.11...guest-agent-v0.82.12) (2026-08-28)

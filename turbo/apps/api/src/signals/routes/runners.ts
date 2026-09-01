@@ -9,6 +9,7 @@ import {
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
+  runnersModelUsageObservationsContract,
   runnersModelProviderFailuresContract,
   runnersPollContract,
   runnerVersionSchema,
@@ -34,6 +35,7 @@ import { agentSessions } from "@okouai/db/schema/agent-session";
 import { agents } from "@okouai/db/schema/agent";
 import { blobs } from "@okouai/db/schema/blob";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
+import { modelUsageObservation } from "@okouai/db/schema/model-usage-observation";
 import {
   runnerState,
   type RunnerHeldSandboxState as PersistedRunnerHeldSandboxState,
@@ -54,6 +56,10 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { z } from "zod";
+import {
+  isSupportedRunModel,
+  normalizeRunModelId,
+} from "@okouai/api-contracts/contracts/model-providers";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -804,6 +810,9 @@ const claimBody$ = bodyResultOf(runnersJobClaimContract.claim);
 const modelProviderFailureBody$ = bodyResultOf(
   runnersModelProviderFailuresContract.report,
 );
+const modelUsageObservationsBody$ = bodyResultOf(
+  runnersModelUsageObservationsContract.report,
+);
 const connectorRuntimeSyncBody$ = bodyResultOf(
   runnersConnectorRuntimeSyncContract.sync,
 );
@@ -1295,15 +1304,16 @@ function preparedSecretValuesForRunner(
     return { status: "resolved", secretValues: null };
   }
 
+  const environment = {
+    ...storedContext.environment,
+    ...storedContext.platformEnvironment,
+  };
   const secretValues: string[] = [];
   for (const key of keys) {
-    if (
-      !storedContext.environment ||
-      !Object.hasOwn(storedContext.environment, key)
-    ) {
+    if (!Object.hasOwn(environment, key)) {
       return { status: "invalid-keys" };
     }
-    const value = storedContext.environment[key];
+    const value = environment[key];
     if (typeof value !== "string") {
       return { status: "invalid-keys" };
     }
@@ -1330,9 +1340,12 @@ async function secretValuesForRunner(
       return null;
     }
 
-    const envValues = storedContext.environment
-      ? new Set(Object.values(storedContext.environment))
-      : new Set<string>();
+    const envValues = new Set(
+      Object.values({
+        ...storedContext.environment,
+        ...storedContext.platformEnvironment,
+      }),
+    );
     return Object.values(secretsMap).filter((value) => {
       return envValues.has(value);
     });
@@ -2652,6 +2665,61 @@ const modelProviderFailureInner$ = command(
   },
 );
 
+const modelUsageObservationsInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = await set(runnerAuth$, get(authorization$), signal);
+    signal.throwIfAborted();
+    if (!auth) {
+      return unauthorizedAuthenticationRequired;
+    }
+    if (auth.type !== "official-runner") {
+      return forbidden(
+        "Only official runners can report model usage observations",
+      );
+    }
+
+    const body = await get(modelUsageObservationsBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+
+    const observedAt = nowDate();
+    const observationValues = body.data.events.flatMap((event) => {
+      const canonicalModel = normalizeRunModelId(event.model);
+      if (!isSupportedRunModel(canonicalModel)) {
+        return [];
+      }
+      return [
+        {
+          model: canonicalModel,
+          inputTokens: event.inputTokens,
+          outputTokens: event.outputTokens,
+          cacheReadInputTokens: event.cacheReadInputTokens,
+          cacheCreationInputTokens: event.cacheCreationInputTokens,
+          observedAt,
+          idempotencyKey: event.idempotencyKey,
+        },
+      ];
+    });
+
+    if (observationValues.length > 0) {
+      await set(writeDb$)
+        .insert(modelUsageObservation)
+        .values(observationValues)
+        .onConflictDoNothing({
+          target: [modelUsageObservation.idempotencyKey],
+        });
+    }
+    signal.throwIfAborted();
+
+    return {
+      status: 200 as const,
+      body: { success: true },
+    };
+  },
+);
+
 const runnerRealtimeTokenBody$ = bodyResultOf(
   runnerRealtimeTokenContract.create,
 );
@@ -2871,10 +2939,11 @@ const recordActiveInputDeliveryReceiptInner$ = command(
       return forbidden("Active input delivery is not available");
     }
     if (result.replacementsAppended) {
-      await publishChatThreadMessageCreatedSafely(
-        auth.userId,
-        result.chatThreadId,
-      );
+      await publishChatThreadMessageCreatedSafely({
+        userId: auth.userId,
+        orgId: auth.orgId,
+        threadId: result.chatThreadId,
+      });
       signal.throwIfAborted();
       await notifyRunningChatRunOfPendingInput(
         set(writeDb$),
@@ -2902,6 +2971,10 @@ export const runnersRoutes: readonly RouteEntry[] = [
   {
     route: runnersModelProviderFailuresContract.report,
     handler: modelProviderFailureInner$,
+  },
+  {
+    route: runnersModelUsageObservationsContract.report,
+    handler: modelUsageObservationsInner$,
   },
   {
     route: runnersActiveInputsContract.reserve,

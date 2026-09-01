@@ -4,14 +4,14 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createMermaidDiagramRegistry } from "../../../signals/mermaid-diagram.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { Markdown } from "../markdown.tsx";
+import { Markdown } from "../rich-markdown.tsx";
 
 const context = testContext();
 
 function html(source: string): string {
   const { container } = render(
     <StoreProvider value={context.store}>
-      <Markdown source={source} mediaPreview mathEnabled />
+      <Markdown source={source} mediaPreview />
     </StoreProvider>,
   );
   return container.innerHTML;
@@ -68,7 +68,7 @@ describe("parse-in-render markdown", () => {
   });
 
   // Only command-prepared trees turn mermaid fences into diagrams; a surface
-  // that parses during render keeps the fence as a highlighted code block.
+  // that parses during render keeps the fence as a plain code block.
   it("keeps mermaid fences as code without a preparing command", () => {
     const rendered = html("```mermaid\ngraph TD; A-->B;\n```");
 

@@ -18,6 +18,8 @@ const INFLATE_HYSTERESIS_MIB: i64 = 128;
 /// Deflate when `available_memory` (`MemAvailable`) drops below target by this
 /// much (MiB).
 /// Smaller than inflate hysteresis — respond faster to guest memory pressure.
+/// Crossing this boundary releases the entire active balloon target so Guest
+/// control liveness does not depend on the amount previously reclaimed.
 const DEFLATE_HYSTERESIS_MIB: i64 = 64;
 /// Guest available-memory pressure boundary used by both the continuous
 /// controller and one-shot idle park inflation.
@@ -301,14 +303,20 @@ async fn tick(client: &ApiClient, max_inflate: u32, tick_count: u64) {
         return;
     }
 
-    // Deflate decision: use available_memory (includes reclaimable cache)
+    // Deflate decision: use available_memory (includes reclaimable cache).
+    //
+    // Inflation is deliberately gradual to avoid creating pressure, but
+    // pressure relief must not depend on physical convergence before the
+    // controller can request more. An actual-relative partial target can stay
+    // pinned when Firecracker's actual size stalls, retaining most of the
+    // balloon while control work competes with workload reclaim. Request the
+    // full active allocation back in one policy action; Firecracker still owns
+    // the physical deflation progress.
     if let Some(available_mib) = available_mib
         && available_mib < PRESSURE_AVAILABLE_MIB
     {
-        let deficit = (TARGET_FREE_MIB - available_mib) as u32;
-        let candidate_target = current.saturating_sub(deficit);
-        let new_target = stats.target_mib.min(candidate_target);
-        if new_target < stats.target_mib {
+        let new_target = 0;
+        if stats.target_mib != new_target {
             info!(current, new_target, available_mib, "balloon deflate");
             if let Err(e) = client.patch_balloon(new_target).await {
                 warn!(error = %e, "balloon deflate failed");
@@ -641,7 +649,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tick_deflates_on_low_available_memory() {
+    async fn tick_releases_full_balloon_on_low_available_memory() {
         // available_memory = 128 MiB, below deflate threshold (192 MiB).
         // free_memory = 50 MiB (also low, no inflate).
         let stats = r#"{"target_mib":512,"actual_mib":512,"target_pages":131072,"actual_pages":131072,"free_memory":52428800,"available_memory":134217728}"#;
@@ -650,9 +658,22 @@ mod tests {
         let body = patch.unwrap();
         let amount = patch_amount_mib(&body);
         assert_eq!(
-            amount, 384,
-            "expected deflate target for 128 MiB available memory, got {amount}"
+            amount, 0,
+            "expected full pressure relief for 128 MiB available memory, got {amount}"
         );
+    }
+
+    #[tokio::test]
+    async fn tick_releases_high_retention_near_pressure_boundary() {
+        // A 4-GiB Guest can retain 3584 MiB. Just below the 192-MiB pressure
+        // boundary, the retired policy requested only partial relief. When
+        // physical actual stalled behind that pending target, its
+        // actual-relative candidate could not continue toward zero.
+        let stats = r#"{"target_mib":3584,"actual_mib":3584,"target_pages":917504,"actual_pages":917504,"free_memory":52428800,"available_memory":200278016}"#;
+        let patch = run_tick_with_mock(stats, 3584)
+            .await
+            .expect("expected PATCH releasing high balloon retention");
+        assert_eq!(patch_amount_mib(&patch), 0);
     }
 
     #[tokio::test]
@@ -669,31 +690,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tick_advances_pending_deflate_to_more_aggressive_candidate() {
-        // The 400 MiB target is below actual but above the 372 MiB
-        // actual-relative candidate, so the controller should advance it.
+    async fn tick_completes_pending_partial_deflate_on_pressure() {
+        // A partial deflate target from an older controller must not retain a
+        // multi-tick pressure path after the new policy takes ownership.
         let stats = r#"{"target_mib":400,"actual_mib":500,"target_pages":102400,"actual_pages":128000,"free_memory":52428800,"available_memory":134217728}"#;
         let patch = run_tick_with_mock(stats, 1536)
             .await
-            .expect("expected PATCH advancing pending deflation");
-        assert_eq!(patch_amount_mib(&patch), 372);
+            .expect("expected PATCH completing pending deflation");
+        assert_eq!(patch_amount_mib(&patch), 0);
     }
 
     #[tokio::test]
     async fn tick_reverses_pending_inflate_on_low_available_memory() {
-        // A target above actual means inflation is in flight. A new deflate
-        // signal should cross the actual size immediately: 500 - 128 = 372.
+        // A target above actual means inflation is in flight. Guest pressure
+        // must reverse it directly to full relief.
         let stats = r#"{"target_mib":1000,"actual_mib":500,"target_pages":256000,"actual_pages":128000,"free_memory":52428800,"available_memory":134217728}"#;
         let patch = run_tick_with_mock(stats, 1536)
             .await
             .expect("expected PATCH reversing pending inflation");
-        assert_eq!(patch_amount_mib(&patch), 372);
+        assert_eq!(patch_amount_mib(&patch), 0);
     }
 
     #[tokio::test]
-    async fn tick_deflate_saturates_when_deficit_exceeds_current() {
-        // available_memory = 0 MiB, so deficit is 256 MiB.
-        // current balloon is only 100 MiB, so target should saturate at 0.
+    async fn tick_releases_low_retention_on_pressure() {
+        // Full relief also applies when the retained balloon is smaller than
+        // the old deficit-sized step.
         let stats = r#"{"target_mib":100,"actual_mib":100,"target_pages":25600,"actual_pages":25600,"free_memory":0,"available_memory":0}"#;
         let patch = run_tick_with_mock(stats, 1536).await;
         assert!(patch.is_some(), "expected PATCH call for deflate");
@@ -701,7 +722,7 @@ mod tests {
         let amount = patch_amount_mib(&body);
         assert_eq!(
             amount, 0,
-            "expected saturated deflate target of 0, got {amount}"
+            "expected full pressure-relief target of 0, got {amount}"
         );
     }
 
