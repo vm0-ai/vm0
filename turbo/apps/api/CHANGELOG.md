@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.519.1](https://github.com/vm0-ai/vm0/compare/api-v1.519.0...api-v1.519.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **pi:** keep one eligibility snapshot ([#30658](https://github.com/vm0-ai/vm0/issues/30658)) ([81b4bb3](https://github.com/vm0-ai/vm0/commit/81b4bb379d5e55eaaca473232ab486a339d12374))
+
 ## [1.519.0](https://github.com/vm0-ai/vm0/compare/api-v1.518.1...api-v1.519.0) (2026-08-31)
 
 
