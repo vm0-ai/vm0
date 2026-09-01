@@ -17,6 +17,7 @@ import type {
   PlatformUserPermissionGrant,
 } from "../../signals/connector-domain.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { openThreadArtifact$ } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
 import {
   applyUserPermissionGrant$,
   findPermissionInMetadata,
@@ -324,6 +325,7 @@ function ArtifactCardView({
   const { t } = useTranslation();
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
+  const openThreadArtifact = useSet(openThreadArtifact$);
   const openLightbox = (url: string): void => {
     openImageLightbox({ threadId, url });
   };
@@ -394,6 +396,12 @@ function ArtifactCardView({
         contentType: contentTypeForBodyPreviewKind(signals.kind),
         ...(previewImagePending ? { previewImagePending: true } : {}),
         ...(previewImageUrl ? { previewImageUrl } : {}),
+      }}
+      onPreviewFile={() => {
+        openThreadArtifact(threadId, {
+          filename: signals.filename,
+          url: signals.url,
+        });
       }}
       previewImageLoad={signals.previewImageLoad}
       text$={signals.text$}
