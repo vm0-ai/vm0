@@ -1,5 +1,5 @@
 import { waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage, setupPage } from "../../__tests__/page-helper.ts";
 import {
@@ -154,10 +154,9 @@ describe("platform auth URLs", () => {
   });
 
   it("uses Okou auth and the VM0 root satellite after the cutover", () => {
-    vi.stubEnv(
-      "VITE_CLERK_PUBLISHABLE_KEY_PROD",
-      "pk_live_Y2xlcmsuYXBwLm9rb3UuYWkk",
-    );
+    Reflect.set(window, "__vm0ClerkBootstrap", {
+      productionSatelliteDomain: "vm0.ai",
+    });
     try {
       setBrowserUrl("https://app.okou.ai/agents");
       expect(resolveAppAuthUrl("/sign-in")).toBe("https://app.okou.ai/sign-in");
@@ -172,7 +171,7 @@ describe("platform auth URLs", () => {
         satelliteAutoSync: true,
       });
     } finally {
-      vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PROD", "test_production_key");
+      Reflect.deleteProperty(window, "__vm0ClerkBootstrap");
     }
   });
 

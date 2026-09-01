@@ -20,6 +20,7 @@ import {
   resolvePlatformRuntimeConfig,
 } from "../lib/platform-host.ts";
 import {
+  CURRENT_CLERK_PRODUCTION_SATELLITE_DOMAIN,
   resolveClerkProductionSatelliteDomain,
   resolveClerkProductionTopology,
   type ClerkProductionDomain,
@@ -97,17 +98,27 @@ const MAX_URL_PORT = 65_535;
 export function deriveServiceOrigin(
   currentOrigin: string,
   service: Extract<PlatformService, "www" | "app" | "api">,
-  publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey,
+  satelliteDomain = resolveConfiguredProductionSatelliteDomain(),
 ): string {
   const currentUrl = new URL(currentOrigin);
   if (
     isOkouProductionHostname(currentUrl.hostname) &&
-    resolveClerkProductionTopology(publishableKey).primaryBrand === "okou"
+    resolveClerkProductionTopology(satelliteDomain).primaryBrand === "okou"
   ) {
     currentUrl.hostname = `${service}.okou.ai`;
     return currentUrl.origin;
   }
   return derivePlatformServiceOrigin(currentOrigin, service);
+}
+
+function resolveConfiguredProductionSatelliteDomain(): ClerkProductionDomain {
+  if (typeof window === "undefined") {
+    return CURRENT_CLERK_PRODUCTION_SATELLITE_DOMAIN;
+  }
+  return (
+    window.__vm0ClerkBootstrap?.productionSatelliteDomain ??
+    CURRENT_CLERK_PRODUCTION_SATELLITE_DOMAIN
+  );
 }
 
 // The WWW origin sibling of the current host.
@@ -129,10 +140,9 @@ export function resolveClerkSatelliteConfig(): ClerkSatelliteConfig | null {
     return null;
   }
 
-  const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
   const domain = resolveClerkProductionSatelliteDomain(
     location.hostname,
-    publishableKey,
+    resolveConfiguredProductionSatelliteDomain(),
   );
   if (!domain) {
     return null;
@@ -146,18 +156,18 @@ export function resolveClerkSatelliteConfig(): ClerkSatelliteConfig | null {
 }
 
 function resolveAuthOrigin(): string {
-  const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
+  const satelliteDomain = resolveConfiguredProductionSatelliteDomain();
   return resolveClerkProductionSatelliteDomain(
     location.hostname,
-    publishableKey,
+    satelliteDomain,
   )
-    ? resolveClerkProductionTopology(publishableKey).primaryAppOrigin
+    ? resolveClerkProductionTopology(satelliteDomain).primaryAppOrigin
     : resolveAppOrigin();
 }
 
 export function resolvePrimaryClerkUserProfileUrl(): string {
   return resolveClerkProductionTopology(
-    resolvePlatformRuntimeConfig().clerkPublishableKey,
+    resolveConfiguredProductionSatelliteDomain(),
   ).primaryUserProfileUrl;
 }
 

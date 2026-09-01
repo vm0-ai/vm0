@@ -183,6 +183,7 @@ const builtIndexTemplate = indexTemplate
     "%VITE_CLERK_PUBLISHABLE_KEY_PROD%",
     productionClerkPublishableKey,
   )
+  .replaceAll("__VM0_CLERK_PRODUCTION_SATELLITE_DOMAIN__", "app.okou.ai")
   .replaceAll("__VM0_CLERK_BROWSER_SCRIPT_URL__", clerkBrowserScriptUrl);
 const expectedClerkCoreScript = clerkCoreScript(builtIndexTemplate);
 const expectedClerkBootstrap = clerkBootstrap(builtIndexTemplate);

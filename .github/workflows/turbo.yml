@@ -1430,6 +1430,7 @@ jobs:
       - name: Prepare Cloudflare Pages preview
         id: pages-preview
         env:
+          CLERK_PRODUCTION_SATELLITE_DOMAIN: ${{ vars.CLERK_PRODUCTION_SATELLITE_DOMAIN || 'app.okou.ai' }}
           ARTIFACT_EXISTS: ${{ steps.existing.outputs.exists }}
           ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
           PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
