@@ -29,7 +29,15 @@ export const webFilesContract = c.router({
     headers: authHeadersSchema,
     query: z.object({ file_id: z.string().min(1) }),
     responses: {
-      200: z.object({ url: z.string() }),
+      200: z.object({
+        url: z.string(),
+        /**
+         * Stable public artifacts URL for the same object, suitable for a link
+         * handed to someone else. Optional so a web client that already knows
+         * about it keeps rendering attachments against an API that does not.
+         */
+        publicUrl: z.string().optional(),
+      }),
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,

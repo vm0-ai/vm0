@@ -12,6 +12,7 @@ export const apiWebFilesHandlers = [
   mockApi(webFilesContract.fileUrl, ({ query, respond }) => {
     return respond(200, {
       url: `https://cdn.vm0.io/artifacts/${query.file_id}`,
+      publicUrl: `https://cdn.vm0.io/artifacts/${query.file_id}`,
     });
   }),
 ];
