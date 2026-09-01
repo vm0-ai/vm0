@@ -483,7 +483,7 @@ describe("shared database worker runtime", () => {
       }),
     ).resolves.toStrictEqual([]);
     expect(transaction).toHaveBeenCalledTimes(2);
-    expect(close).toHaveBeenCalledTimes(1);
+    expect(close).toHaveBeenCalledTimes(2);
   });
 
   it("rejects missing and mismatched ChatEvent response schema versions", async () => {

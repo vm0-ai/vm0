@@ -938,7 +938,14 @@ export class SharedDatabaseWorkerRuntime {
     }
     this.discardDatabase(firstConnection.entry);
     const retryConnection = await this.getDatabaseConnection(signal);
-    return await run(retryConnection.database);
+    const retryResult = await settle(run(retryConnection.database), signal);
+    if (retryResult.ok) {
+      return retryResult.value;
+    }
+    if (isRecoverableChatIdbTransactionError(retryResult.error)) {
+      this.discardDatabase(retryConnection.entry);
+    }
+    throw retryResult.error;
   }
 
   private discardDatabase(entry: ChatDatabaseEntry): void {
