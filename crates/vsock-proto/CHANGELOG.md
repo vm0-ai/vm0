@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.45](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.44...vsock-proto-v0.18.45) (2026-09-01)
+
+
+### Documentation
+
+* **vsock-proto:** correct message allocation range ([#30689](https://github.com/vm0-ai/vm0/issues/30689)) ([67a437d](https://github.com/vm0-ai/vm0/commit/67a437d4d65f2893b5b0e3cd559911af98ef7463))
+
 ## [0.18.44](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.43...vsock-proto-v0.18.44) (2026-09-01)
 
 

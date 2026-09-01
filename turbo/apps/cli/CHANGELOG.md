@@ -1,5 +1,25 @@
 # Changelog
 
+## [9.301.2](https://github.com/vm0-ai/vm0/compare/cli-v9.301.1...cli-v9.301.2) (2026-09-01)
+
+
+### Bug Fixes
+
+* **social:** report provider-limited collection pages ([#30704](https://github.com/vm0-ai/vm0/issues/30704)) ([2ad3efe](https://github.com/vm0-ai/vm0/commit/2ad3efe0a379aa42375041a971213c408c496c5b))
+
+
+### Refactoring
+
+* **db:** contract legacy vm0 provider compatibility ([#30708](https://github.com/vm0-ai/vm0/issues/30708)) ([7ab758f](https://github.com/vm0-ai/vm0/commit/7ab758fea24f304dd1bdd25ca7a24457e20419e8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.384.2
+    * @okouai/core bumped to 8.605.5
+
 ## [9.301.1](https://github.com/vm0-ai/vm0/compare/cli-v9.301.0...cli-v9.301.1) (2026-09-01)
 
 
