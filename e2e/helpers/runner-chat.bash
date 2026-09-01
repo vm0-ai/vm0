@@ -35,7 +35,7 @@ _runner_api_vercel_logs_url_prefix() {
     request_path_search="${request_path//%/%25}"
     request_path_search="${request_path_search//\//%2F}"
     request_path_search="${request_path_search//:/%3A}"
-    printf 'https://vercel.com/vm0/vm0-api/logs?search=requestHost%%3A%s+requestPath%%3A%s' \
+    printf 'https://vercel.com/okou/vm0-api/logs?search=requestHost%%3A%s+requestPath%%3A%s' \
         "$request_host_search" "$request_path_search"
 }
 
