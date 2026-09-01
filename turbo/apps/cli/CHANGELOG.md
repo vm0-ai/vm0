@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.304.1](https://github.com/vm0-ai/vm0/compare/cli-v9.304.0...cli-v9.304.1) (2026-09-01)
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#30915](https://github.com/vm0-ai/vm0/issues/30915)) ([c81a649](https://github.com/vm0-ai/vm0/commit/c81a649369a47cfd3daf0735f93980f0ec43e64d))
+
 ## [9.304.0](https://github.com/vm0-ai/vm0/compare/cli-v9.303.3...cli-v9.304.0) (2026-09-01)
 
 
