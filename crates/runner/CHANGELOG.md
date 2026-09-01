@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.182.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.1...runner-rs-v0.182.2) (2026-09-01)
+
+
+### Refactoring
+
+* **runner:** retire operator environment aliases ([#30615](https://github.com/vm0-ai/vm0/issues/30615)) ([3e19b65](https://github.com/vm0-ai/vm0/commit/3e19b65f258ea31fcf143e84fdb81c67726f190c))
+
 ## [0.182.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.0...runner-rs-v0.182.1) (2026-08-31)
 
 
