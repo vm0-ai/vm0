@@ -108,6 +108,10 @@ mod tests {
     use std::os::unix::fs::symlink;
     use std::os::unix::net::UnixListener as StdUnixListener;
 
+    fn resolver_tempdir() -> tempfile::TempDir {
+        tempfile::tempdir_in("/tmp").unwrap()
+    }
+
     fn bind_control_socket_for_test(sandbox_dir: &Path) -> (PathBuf, StdUnixListener) {
         std::fs::create_dir_all(sandbox_dir).unwrap();
         let control_sock = SockPaths::new(sandbox_dir.to_path_buf()).control_sock();
@@ -117,7 +121,7 @@ mod tests {
 
     #[test]
     fn resolve_control_socket_missing_parent_returns_connection() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = resolver_tempdir();
         let missing = dir.path().join("missing");
 
         let err = resolve_control_socket_in(&missing, "nonexistent-id-12345").unwrap_err();
@@ -127,7 +131,7 @@ mod tests {
 
     #[test]
     fn resolve_control_socket_full_id_missing_parent_returns_connection() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = resolver_tempdir();
         let missing = dir.path().join("missing");
         let sandbox_id = SandboxId::new_v4();
 
@@ -138,7 +142,7 @@ mod tests {
 
     #[test]
     fn resolve_control_socket_empty_parent_returns_not_found() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = resolver_tempdir();
         let sock_parent = dir.path().join("sock");
         std::fs::create_dir(&sock_parent).unwrap();
 
@@ -149,7 +153,7 @@ mod tests {
 
     #[test]
     fn resolve_control_socket_full_id_returns_exact_socket_path() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = resolver_tempdir();
         let sock_parent = dir.path().join("sock");
         let sandbox_id = SandboxId::new_v4();
 
@@ -165,7 +169,7 @@ mod tests {
 
     #[test]
     fn resolve_control_socket_full_id_uses_canonical_socket_dir() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = resolver_tempdir();
         let sock_parent = dir.path().join("sock");
         let sandbox_id = SandboxId::new_v4();
         let (control_sock, _listener) =
@@ -179,7 +183,7 @@ mod tests {
 
     #[test]
     fn resolve_control_socket_full_id_ignores_sibling_socket_check_error() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = resolver_tempdir();
         let sock_parent = dir.path().join("sock");
         let sandbox_id = SandboxId::new_v4();
 
@@ -197,7 +201,7 @@ mod tests {
 
     #[test]
     fn resolve_control_socket_full_id_without_socket_returns_not_found() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = resolver_tempdir();
         let sock_parent = dir.path().join("sock");
         let sandbox_id = SandboxId::new_v4();
         std::fs::create_dir_all(sock_parent.join(sandbox_id.to_string())).unwrap();
@@ -209,7 +213,7 @@ mod tests {
 
     #[test]
     fn resolve_control_socket_full_id_without_socket_ignores_prefix_sibling() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = resolver_tempdir();
         let sock_parent = dir.path().join("sock");
         let sandbox_id = SandboxId::new_v4();
         let (_sibling_control_sock, _sibling_listener) =
@@ -222,7 +226,7 @@ mod tests {
 
     #[test]
     fn resolve_control_socket_full_id_socket_check_error_returns_connection() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = resolver_tempdir();
         let sock_parent = dir.path().join("sock");
         let sandbox_id = SandboxId::new_v4();
         let sandbox_dir = sock_parent.join(sandbox_id.to_string());
@@ -240,7 +244,7 @@ mod tests {
 
     #[test]
     fn resolve_control_socket_single_match_returns_socket_path() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = resolver_tempdir();
         let sock_parent = dir.path().join("sock");
         let running_id = "sandbox-aa-live";
         let stale_id = "sandbox-aa-stale";
@@ -258,7 +262,7 @@ mod tests {
 
     #[test]
     fn resolve_control_socket_prefix_socket_check_error_returns_connection() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = resolver_tempdir();
         let sock_parent = dir.path().join("sock");
         let sandbox_dir = sock_parent.join("sandbox-aa-loop");
         std::fs::create_dir_all(&sandbox_dir).unwrap();
@@ -275,7 +279,7 @@ mod tests {
 
     #[test]
     fn resolve_control_socket_prefix_socket_check_error_prevents_partial_match() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = resolver_tempdir();
         let sock_parent = dir.path().join("sock");
         let (_valid_control_sock, _listener) =
             bind_control_socket_for_test(&sock_parent.join("sandbox-aa-live"));
@@ -294,7 +298,7 @@ mod tests {
 
     #[test]
     fn resolve_control_socket_prefix_ignores_non_utf8_entries() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = resolver_tempdir();
         let sock_parent = dir.path().join("sock");
         let (control_sock, _listener) =
             bind_control_socket_for_test(&sock_parent.join("sandbox-aa-live"));
@@ -309,7 +313,7 @@ mod tests {
 
     #[test]
     fn resolve_control_socket_prefix_ignores_matching_non_directory_entries() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = resolver_tempdir();
         let sock_parent = dir.path().join("sock");
         let (control_sock, _listener) =
             bind_control_socket_for_test(&sock_parent.join("sandbox-aa-live"));
@@ -322,7 +326,7 @@ mod tests {
 
     #[test]
     fn resolve_control_socket_prefix_ignores_matching_symlinked_directories() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = resolver_tempdir();
         let sock_parent = dir.path().join("sock");
         let (control_sock, _listener) =
             bind_control_socket_for_test(&sock_parent.join("sandbox-aa-live"));
@@ -341,7 +345,7 @@ mod tests {
 
     #[test]
     fn resolve_control_socket_multiple_matches_returns_ambiguous() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = resolver_tempdir();
         let sock_parent = dir.path().join("sock");
         let sandbox_a = "sandbox-aa-1";
         let sandbox_b = "sandbox-aa-2";
