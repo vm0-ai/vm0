@@ -1214,10 +1214,10 @@ function ChatThreadEmojiPicker({
       <div
         className={cn(
           "flex items-center gap-2 px-2 pt-2",
-          // Pull the first section title up towards the search field. The title
-          // keeps its own box height so the fade under it is unchanged; only
-          // the gap above it closes.
-          railEnabled ? "pb-1" : "pb-2",
+          // In rail mode every section carries its own top margin, so this row
+          // adds nothing: the first title then sits the same 16px below the
+          // search field as every later title sits below the grid above it.
+          railEnabled ? "pb-0" : "pb-2",
         )}
       >
         <div className="relative flex-1">
@@ -1271,7 +1271,7 @@ function ChatThreadEmojiPreview() {
   const preview = useGet(chatThreadEmojiPreview$);
 
   return (
-    <div className="flex h-10 shrink-0 items-center gap-2 border-t border-border px-3">
+    <div className="flex h-10 shrink-0 items-center gap-2 border-t border-border px-2">
       {preview ? (
         <>
           <span aria-hidden="true" className="zero-emoji text-lg leading-none">
@@ -1440,17 +1440,23 @@ function ChatThreadEmojiSection({
     <div
       id={chatThreadEmojiSectionId(categoryKey)}
       data-chat-thread-emoji-section={categoryKey}
+      // The pinned title's fade has to sit below its text, so the space that
+      // separates it from the previous grid cannot come from the sticky box
+      // itself. Carry it here instead, at twice the 8px left under the label,
+      // so the title reads as a heading for its own grid and not as a caption
+      // for the one above it.
+      className={cn(pinnedTitle && "mt-3")}
     >
       <div
         className={cn(
-          "flex items-baseline justify-between gap-2 px-1 pb-1 pt-2",
+          "flex items-baseline justify-between gap-2 pb-1 pt-2",
           // Fade to transparent at the lower edge so emoji dissolve as they
-          // scroll under the pinned title instead of colliding with it.
-          // pt-1/pb-3 shifts the label up towards the search field while
-          // keeping the box — and so the painted fade — the same 32px tall as
-          // the pt-2/pb-2 it replaces.
+          // scroll under the pinned title instead of colliding with it. The
+          // fade has to live below the text, so pb-2 doubles as the gap to the
+          // grid; from-75% keeps the whole label — descenders included — on the
+          // solid part of that 28px box rather than over the fading part.
           pinnedTitle &&
-            "sticky top-0 z-10 bg-gradient-to-b from-popover from-60% to-transparent pb-3 pt-1",
+            "sticky top-0 z-10 bg-gradient-to-b from-popover from-75% to-transparent pb-2 pt-1",
         )}
       >
         <span className="text-xs font-medium text-muted-foreground">
