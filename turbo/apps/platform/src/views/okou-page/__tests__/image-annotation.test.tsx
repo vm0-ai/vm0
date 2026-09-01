@@ -32,7 +32,7 @@ function mockAgentChatPage(): void {
       model: "claude-sonnet-4-6",
       modelLabel: "Claude Sonnet 4.6",
       isDefault: true,
-      defaultProviderType: "vm0",
+      defaultProviderType: "built-in",
       credentialScope: "org",
     }),
   ]);

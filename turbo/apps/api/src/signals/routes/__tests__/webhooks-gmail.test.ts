@@ -398,7 +398,7 @@ async function configureWorkspaceModelProvider(
       {
         ...workspacePolicy,
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
       },

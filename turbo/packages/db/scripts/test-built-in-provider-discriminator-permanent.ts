@@ -29,17 +29,52 @@ export async function validatePermanentBuiltInProviderDiscriminatorState(
     defaultPolicy: "00000000-0000-4000-8000-000000299105",
     provider: "00000000-0000-4000-8000-000000299106",
     proposedProvider: "00000000-0000-4000-8000-000000299107",
-    secondProposedProvider: "00000000-0000-4000-8000-000000299108",
-    historicalProvider: "00000000-0000-4000-8000-000000299109",
-    duplicateProvider: "00000000-0000-4000-8000-000000299110",
-    invalidPolicy: "00000000-0000-4000-8000-000000299111",
-    preexistingLegacyProvider: "00000000-0000-4000-8000-000000299112",
-    preexistingLegacyProposedProvider: "00000000-0000-4000-8000-000000299113",
+    historicalProvider: "00000000-0000-4000-8000-000000299108",
+    invalidPolicy: "00000000-0000-4000-8000-000000299109",
   } as const;
-  const orgId = "org-provider-discriminator-permanent-29910";
-  const userId = "user-provider-discriminator-permanent-29910";
+  const orgId = "org-provider-discriminator-permanent-30671";
+  const userId = "user-provider-discriminator-permanent-30671";
 
   try {
+    const residuals = await client.query<{ count: number }>(`
+      SELECT (
+        (SELECT count(*) FROM "agent_runs" WHERE "model_provider" = 'vm0') +
+        (SELECT count(*) FROM "chat_threads" WHERE "model_provider_type" = 'vm0') +
+        (SELECT count(*) FROM "org_model_policies" WHERE "default_provider_type" = 'vm0') +
+        (SELECT count(*) FROM "model_providers" WHERE "type" = 'vm0')
+      )::integer AS "count"
+    `);
+    assert.deepEqual(residuals.rows, [{ count: 0 }]);
+
+    const bridgeObjects = await client.query<{ count: number }>(`
+      SELECT (
+        (
+          SELECT count(*)
+          FROM "pg_trigger"
+          WHERE "tgname" IN (
+            'canonicalize_agent_run_builtin_provider',
+            'canonicalize_chat_thread_builtin_provider',
+            'canonicalize_model_provider_builtin_type',
+            'canonicalize_org_model_policy_builtin_provider'
+          )
+            AND NOT "tgisinternal"
+        ) + (
+          SELECT count(*)
+          FROM "pg_proc" AS "function"
+          JOIN "pg_namespace" AS "namespace"
+            ON "namespace"."oid" = "function"."pronamespace"
+          WHERE "namespace"."nspname" = 'public'
+            AND "function"."proname" IN (
+              'canonicalize_agent_run_builtin_provider',
+              'canonicalize_chat_thread_builtin_provider',
+              'canonicalize_model_provider_builtin_type',
+              'canonicalize_org_model_policy_builtin_provider'
+            )
+        )
+      )::integer AS "count"
+    `);
+    assert.deepEqual(bridgeObjects.rows, [{ count: 0 }]);
+
     await client.query(
       `INSERT INTO "agent_sessions" ("id", "user_id", "org_id") VALUES ($1, $2, $3)`,
       [ids.session, userId, orgId],
@@ -50,7 +85,7 @@ export async function validatePermanentBuiltInProviderDiscriminatorState(
         INSERT INTO "agent_runs" (
           "id", "user_id", "org_id", "session_id", "status", "prompt",
           "trigger_source", "autonomy_budget", "model_provider"
-        ) VALUES ($1, $2, $3, $4, 'pending', 'old app/new DB run', 'chat', 0, 'vm0')
+        ) VALUES ($1, $2, $3, $4, 'pending', 'canonical run', 'chat', 0, 'built-in')
         RETURNING "id"::text AS "id", "model_provider" AS "type"
       `,
       [ids.run, userId, orgId, ids.session],
@@ -60,7 +95,7 @@ export async function validatePermanentBuiltInProviderDiscriminatorState(
     const thread = await client.query<{ id: string; type: string }>(
       `
         INSERT INTO "chat_threads" ("id", "user_id", "model_provider_type")
-        VALUES ($1, $2, 'vm0')
+        VALUES ($1, $2, 'built-in')
         RETURNING "id"::text AS "id", "model_provider_type" AS "type"
       `,
       [ids.thread, userId],
@@ -71,7 +106,7 @@ export async function validatePermanentBuiltInProviderDiscriminatorState(
       `
         INSERT INTO "org_model_policies" (
           "id", "org_id", "model", "default_provider_type"
-        ) VALUES ($1, $2, 'gpt-5.6-sol', 'vm0')
+        ) VALUES ($1, $2, 'gpt-5.6-sol', 'built-in')
         RETURNING "id"::text AS "id", "default_provider_type" AS "type"
       `,
       [ids.policy, orgId],
@@ -90,113 +125,41 @@ export async function validatePermanentBuiltInProviderDiscriminatorState(
       { id: ids.defaultPolicy, type: "built-in" },
     ]);
 
-    await client.query(
-      `ALTER TABLE "model_providers" DISABLE TRIGGER "canonicalize_model_provider_builtin_type"`,
-    );
-    try {
-      await client.query(
-        `
-          INSERT INTO "model_providers" (
-            "id", "org_id", "user_id", "type", "selected_model"
-          ) VALUES ($1, $2, 'preexisting-legacy-provider-user-29910', 'vm0', 'gpt-5.6-luna')
-        `,
-        [ids.preexistingLegacyProvider, orgId],
-      );
-    } finally {
-      await client.query(
-        `ALTER TABLE "model_providers" ENABLE TRIGGER "canonicalize_model_provider_builtin_type"`,
-      );
-    }
-
-    const preexistingLegacyUpsert = await client.query<{
-      id: string;
-      type: string;
-    }>(
+    const canonicalInsert = await client.query<{ id: string; type: string }>(
       `
         INSERT INTO "model_providers" (
           "id", "org_id", "user_id", "type", "selected_model"
-        ) VALUES ($1, $2, 'preexisting-legacy-provider-user-29910', 'vm0', 'gpt-5.6-sol')
-        ON CONFLICT ("org_id", "user_id", "type") DO UPDATE
-        SET "selected_model" = EXCLUDED."selected_model"
-        RETURNING "id"::text AS "id", "type"
-      `,
-      [ids.preexistingLegacyProposedProvider, orgId],
-    );
-    assert.deepEqual(preexistingLegacyUpsert.rows, [
-      { id: ids.preexistingLegacyProvider, type: "built-in" },
-    ]);
-
-    const legacyUpsert = await client.query<{ id: string; type: string }>(
-      `
-        INSERT INTO "model_providers" (
-          "id", "org_id", "user_id", "type", "selected_model"
-        ) VALUES ($1, $2, $3, 'vm0', 'gpt-5.6-luna')
-        ON CONFLICT ("org_id", "user_id", "type") DO UPDATE
-        SET "selected_model" = EXCLUDED."selected_model"
+        ) VALUES ($1, $2, $3, 'built-in', 'gpt-5.6-luna')
         RETURNING "id"::text AS "id", "type"
       `,
       [ids.provider, orgId, userId],
     );
-    assert.deepEqual(legacyUpsert.rows, [
+    assert.deepEqual(canonicalInsert.rows, [
       { id: ids.provider, type: "built-in" },
     ]);
 
-    const canonicalUpsert = await client.query<{ id: string; type: string }>(
+    const canonicalUpsert = await client.query<{
+      id: string;
+      selectedModel: string;
+      type: string;
+    }>(
       `
         INSERT INTO "model_providers" (
           "id", "org_id", "user_id", "type", "selected_model"
         ) VALUES ($1, $2, $3, 'built-in', 'gpt-5.6-sol')
         ON CONFLICT ("org_id", "user_id", "type") DO UPDATE
         SET "selected_model" = EXCLUDED."selected_model"
-        RETURNING "id"::text AS "id", "type"
+        RETURNING
+          "id"::text AS "id",
+          "selected_model" AS "selectedModel",
+          "type"
       `,
       [ids.proposedProvider, orgId, userId],
     );
     assert.deepEqual(canonicalUpsert.rows, [
-      { id: ids.provider, type: "built-in" },
-    ]);
-
-    const secondLegacyUpsert = await client.query<{
-      id: string;
-      type: string;
-    }>(
-      `
-        INSERT INTO "model_providers" (
-          "id", "org_id", "user_id", "type", "selected_model"
-        ) VALUES ($1, $2, $3, 'vm0', 'gpt-5.6-terra')
-        ON CONFLICT ("org_id", "user_id", "type") DO UPDATE
-        SET "selected_model" = EXCLUDED."selected_model"
-        RETURNING "id"::text AS "id", "type"
-      `,
-      [ids.secondProposedProvider, orgId, userId],
-    );
-    assert.deepEqual(secondLegacyUpsert.rows, [
-      { id: ids.provider, type: "built-in" },
-    ]);
-
-    const providerIdentity = await client.query<{
-      count: number;
-      id: string;
-      selectedModel: string;
-      type: string;
-    }>(
-      `
-        SELECT
-          count(*) OVER ()::integer AS "count",
-          "id"::text AS "id",
-          "selected_model" AS "selectedModel",
-          "type"
-        FROM "model_providers"
-        WHERE "org_id" = $1 AND "user_id" = $2
-          AND "type" IN ('vm0', 'built-in')
-      `,
-      [orgId, userId],
-    );
-    assert.deepEqual(providerIdentity.rows, [
       {
-        count: 1,
         id: ids.provider,
-        selectedModel: "gpt-5.6-terra",
+        selectedModel: "gpt-5.6-sol",
         type: "built-in",
       },
     ]);
@@ -206,7 +169,7 @@ export async function validatePermanentBuiltInProviderDiscriminatorState(
         INSERT INTO "model_providers" ("id", "org_id", "user_id", "type")
         VALUES ($1, $2, $3, 'VM0')
       `,
-      [ids.historicalProvider, orgId, "historical-provider-user-29910"],
+      [ids.historicalProvider, orgId, "historical-provider-user-30671"],
     );
     const historical = await client.query<{ type: string }>(
       `SELECT "type" FROM "model_providers" WHERE "id" = $1`,
@@ -217,27 +180,10 @@ export async function validatePermanentBuiltInProviderDiscriminatorState(
     await assert.rejects(
       client.query(
         `
-          INSERT INTO "model_providers" ("id", "org_id", "user_id", "type")
-          VALUES ($1, $2, $3, 'vm0')
-        `,
-        [ids.duplicateProvider, orgId, userId],
-      ),
-      (error: unknown) => {
-        return (
-          databaseErrorField(error, "code") === "23505" &&
-          databaseErrorField(error, "constraint") ===
-            "idx_model_providers_org_user_type"
-        );
-      },
-    );
-
-    await assert.rejects(
-      client.query(
-        `
           INSERT INTO "org_model_policies" (
             "id", "org_id", "model", "default_provider_type",
             "model_provider_id"
-          ) VALUES ($1, $2, 'gpt-5.5', 'vm0', $3)
+          ) VALUES ($1, $2, 'gpt-5.5', 'built-in', $3)
         `,
         [ids.invalidPolicy, orgId, ids.provider],
       ),
@@ -280,17 +226,27 @@ export async function validatePermanentBuiltInProviderDiscriminatorState(
       /default_provider_type.*vm0/u,
     );
 
+    const indexState = await client.query<{ count: number }>(`
+      SELECT count(*)::integer AS "count"
+      FROM "pg_index" AS "index"
+      JOIN "pg_class" AS "relation"
+        ON "relation"."oid" = "index"."indexrelid"
+      WHERE "index"."indrelid" = 'public.model_providers'::regclass
+        AND "relation"."relname" = 'idx_model_providers_org_user_type'
+        AND "index"."indisunique"
+        AND "index"."indpred" IS NULL
+        AND pg_get_indexdef("index"."indexrelid") = 'CREATE UNIQUE INDEX idx_model_providers_org_user_type ON public.model_providers USING btree (org_id, user_id, type)'
+    `);
+    assert.deepEqual(indexState.rows, [{ count: 1 }]);
+
     console.log(
-      "   ✅ old-app SQL is canonicalized on all four persisted surfaces",
+      "   ✅ permanent data and catalog state contain no exact vm0 discriminator or rollback bridge",
     );
     console.log(
-      "   ✅ pre-existing vm0 plus alternating alias upserts retain one model_providers row and its original id",
+      "   ✅ canonical built-in inserts, defaults, checks, and identity-preserving upserts remain enforced",
     );
     console.log(
-      "   ✅ exact-value matching preserves other historical provider spellings",
-    );
-    console.log(
-      "   ✅ canonical default/check semantics and the rollback bridge remain enforced\n",
+      "   ✅ exact-value contraction preserves other historical provider spellings\n",
     );
   } finally {
     await client.query(`DELETE FROM "org_model_policies" WHERE "org_id" = $1`, [

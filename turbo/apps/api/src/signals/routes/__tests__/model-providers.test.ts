@@ -10,7 +10,7 @@ import { webhookFirewallAuthContract } from "@okouai/api-contracts/contracts/web
 import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
 import { accept, testContext } from "../../../__tests__/test-context";
-import { setupApp } from "../../../__tests__/test-helpers";
+import { setupApp, setupRawAppRequest } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { now, withMockNowForTest } from "../../../lib/time";
 import { generateSandboxToken } from "../../auth/tokens";
@@ -1093,25 +1093,23 @@ describe("POST /api/model-providers", () => {
     ).toBeFalsy();
   });
 
-  it("accepts the vm0 alias and creates a canonical no-secret org provider", async () => {
+  it("rejects the exact vm0 provider discriminator", async () => {
     const fixture = uniqueOrgUser("zmp-vm0");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context, routes: modelProvidersRoutes })(
-      modelProvidersMainContract,
-    );
+    const response = await setupRawAppRequest({
+      context,
+      routes: modelProvidersRoutes,
+    })("/api/model-providers", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer clerk-session",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ type: "vm0" }),
+    });
 
-    const response = await accept(
-      client.upsert({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { type: "vm0" },
-      }),
-      [201],
-    );
-
-    expect(response.body.provider.type).toBe("built-in");
-    expect(response.body.provider.secretName).toBeNull();
-    expect(response.body.provider.authMethod).toBeNull();
-    expect(response.body.provider.selectedModel).toBeNull();
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({ error: { code: "BAD_REQUEST" } });
   });
 
   it("handles codex auth_json paste", async () => {

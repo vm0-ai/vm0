@@ -1590,7 +1590,7 @@ describe("GET/PUT /api/model-policies", () => {
     });
   });
 
-  it("accepts legacy policy input and emits the canonical provider type", async () => {
+  it("rejects the exact vm0 provider discriminator", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
 
@@ -1608,14 +1608,9 @@ describe("GET/PUT /api/model-policies", () => {
       }),
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(400);
     expect(response.body).toMatchObject({
-      policies: [
-        {
-          model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-          defaultProviderType: "built-in",
-        },
-      ],
+      error: { code: "BAD_REQUEST" },
     });
   });
 
@@ -1629,7 +1624,7 @@ describe("GET/PUT /api/model-policies", () => {
           {
             model: "claude-haiku-4-5",
             isDefault: true,
-            defaultProviderType: "vm0",
+            defaultProviderType: "built-in",
             credentialScope: "org",
             modelProviderId: null,
           },

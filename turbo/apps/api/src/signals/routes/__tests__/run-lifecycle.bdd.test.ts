@@ -652,7 +652,7 @@ async function expectBuiltInModelRunRuntimeRoute(
     modelProvider: "built-in",
     selectedModel,
     modelRuntimeProvider: getVm0ConcreteProviderType(selectedModel),
-    modelRuntimeModel: getProviderRuntimeModel("vm0", selectedModel),
+    modelRuntimeModel: getProviderRuntimeModel("built-in", selectedModel),
     builtInModelKeyId: expect.any(String),
     builtInModelKeyVendor: getVm0Vendor(selectedModel),
   });
@@ -5552,7 +5552,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await setRunModelRuntimeRouteFixture({
       runId: resumed.runId,
       modelRuntimeProvider: "openai-api-key",
-      modelRuntimeModel: getProviderRuntimeModel("vm0", selectedModel),
+      modelRuntimeModel: getProviderRuntimeModel("built-in", selectedModel),
     });
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: randomUUID(),

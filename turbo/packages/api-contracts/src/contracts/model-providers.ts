@@ -10,16 +10,11 @@ import {
 } from "./model-price-tiers";
 import {
   MODEL_PROVIDER_TYPE_IDS,
-  MODEL_PROVIDER_WRITE_INPUT_TYPE_IDS,
   isBuiltInModelProviderType,
-  normalizeModelProviderWriteType,
   type ModelProviderFramework,
   type ModelProviderType,
 } from "./model-provider-types";
-export {
-  isBuiltInModelProviderType,
-  normalizeModelProviderWriteType,
-} from "./model-provider-types";
+export { isBuiltInModelProviderType } from "./model-provider-types";
 export {
   getModelProviderFirewall,
   getModelProviderPiChatCompletionsUrl,
@@ -237,8 +232,8 @@ export function getDefaultOrgModelPolicySeed(
  * Mapping from VM0 built-in model names to their concrete provider type and vendor.
  * Used at build-context time to resolve the meta-provider to a real provider.
  *
- * NOTE: Defined before MODEL_PROVIDER_TYPES so the vm0 entry can derive its
- * models list from this mapping via Object.keys().
+ * NOTE: Defined before MODEL_PROVIDER_TYPES so the built-in entry can derive
+ * its models list from this mapping via Object.keys().
  */
 export const VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS = {
   "anthropic-api-key": { vendor: "anthropic" },
@@ -902,7 +897,6 @@ export const MODEL_PROVIDER_TYPES = {
     framework: "codex" as const,
     label: "Custom Gateway (OpenAI Responses)",
   },
-  vm0: BUILT_IN_MODEL_PROVIDER_CONFIG,
   "built-in": BUILT_IN_MODEL_PROVIDER_CONFIG,
 } as const satisfies Record<ModelProviderType, unknown>;
 
@@ -1081,15 +1075,13 @@ const HIDDEN_PROVIDER_TYPES: ReadonlySet<ModelProviderType> = new Set(
 export function getSelectableProviderTypes(): ModelProviderType[] {
   return (Object.keys(MODEL_PROVIDER_TYPES) as ModelProviderType[]).filter(
     (type) => {
-      return type !== "vm0" && !HIDDEN_PROVIDER_TYPES.has(type);
+      return !HIDDEN_PROVIDER_TYPES.has(type);
     },
   );
 }
 
 export const modelProviderTypeSchema = z.enum(MODEL_PROVIDER_TYPE_IDS);
-export const modelProviderWriteTypeSchema = z
-  .enum(MODEL_PROVIDER_WRITE_INPUT_TYPE_IDS)
-  .transform(normalizeModelProviderWriteType);
+export const modelProviderWriteTypeSchema = z.enum(MODEL_PROVIDER_TYPE_IDS);
 
 export const modelProviderFrameworkSchema = z.enum(["claude-code", "codex"]);
 
@@ -1317,9 +1309,9 @@ export function isCustomGatewayProviderType(type: ModelProviderType): boolean {
  *
  * A custom gateway type resolves to no base URL here, which must not be read
  * as "the vendor default endpoint" — that would make a self-hosted gateway
- * look interchangeable with anthropic-api-key, openai-api-key, or vm0. It is
- * compatible only with itself; whether two runs used the same surface is a
- * separate question, answered by the surface id the caller also holds.
+ * look interchangeable with anthropic-api-key, openai-api-key, or built-in.
+ * It is compatible only with itself; whether two runs used the same surface
+ * is a separate question, answered by the surface id the caller also holds.
  */
 export function areProvidersCompatible(
   a: ModelProviderType,

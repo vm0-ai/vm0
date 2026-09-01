@@ -26,7 +26,6 @@ type FirewallSupportedProvider = Exclude<
   | "azure-foundry"
   | "custom-anthropic-messages"
   | "custom-openai-responses"
-  | "vm0"
   | "built-in"
 >;
 type LegacySingleSecretProvider = Exclude<

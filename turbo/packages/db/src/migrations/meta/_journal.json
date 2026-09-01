@@ -1611,6 +1611,13 @@
       "when": 1788189025684,
       "tag": "1037_morning_brief_phase_b_cleanup",
       "breakpoints": true
+    },
+    {
+      "idx": 1038,
+      "version": "7",
+      "when": 1788231052832,
+      "tag": "1038_contract_legacy_vm0_provider",
+      "breakpoints": true
     }
   ]
 }
