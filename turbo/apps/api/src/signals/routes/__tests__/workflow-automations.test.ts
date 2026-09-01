@@ -136,6 +136,8 @@ const GOOGLE_FORMS_PUSH_SERVICE_ACCOUNT =
   "gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com";
 const GOOGLE_FORM_ID = "1FAIpQLScGoogleFormsAutomationTest";
 const GOOGLE_FORM_URL = `https://docs.google.com/forms/d/${GOOGLE_FORM_ID}/edit`;
+const SECOND_GOOGLE_FORM_ID = "1FAIpQLScSecondGoogleFormsAutomationTest";
+const SECOND_GOOGLE_FORM_URL = `https://docs.google.com/forms/d/${SECOND_GOOGLE_FORM_ID}/edit`;
 const GOOGLE_FORM_SEED_CURSOR = "2026-08-05T09:30:00.123456Z";
 const NOTION_PARENT_PAGE_ID = "11111111-1111-4111-8111-111111111111";
 const NOTION_PARENT_PAGE_URL =
@@ -206,6 +208,7 @@ interface GoogleFormsWatchRecorder {
 function configureGoogleFormsCreationMock(args?: {
   readonly unpublished?: boolean;
   readonly expireTime?: string;
+  readonly formIds?: readonly string[];
 }): GoogleFormsWatchRecorder {
   const recorder: GoogleFormsWatchRecorder = {
     watchIds: [],
@@ -224,12 +227,16 @@ function configureGoogleFormsCreationMock(args?: {
     http.get(
       "https://forms.googleapis.com/v1/forms/:formId",
       ({ request, params }) => {
-        expect(params.formId).toBe(GOOGLE_FORM_ID);
+        const formId = params.formId;
+        if (typeof formId !== "string") {
+          throw new Error("Expected a Google Forms form id");
+        }
+        expect(args?.formIds ?? [GOOGLE_FORM_ID]).toContain(formId);
         expect(request.headers.get("authorization")).toBe(
           "Bearer google-forms-access-token",
         );
         return HttpResponse.json({
-          formId: GOOGLE_FORM_ID,
+          formId,
           info: { title: "Customer survey" },
           publishSettings: args?.unpublished
             ? { publishState: {} }
@@ -1885,6 +1892,123 @@ describe("okou workflow automations", () => {
     });
     expect(renewCalls).toBe(1);
     expect(watch.createCalls).toBe(1);
+  });
+
+  it("does not count a stopped Google Forms watch as renewed", async () => {
+    mockEnv("CRON_SECRET", CRON_SECRET);
+    const scenario = await setupFixture();
+    await enableGoogleFormsWorkflowAutomations(scenario.fixture);
+    await connectGoogleForms(scenario);
+    configureGoogleFormsCreationMock();
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-forms-response-submitted",
+          eventConfig: {
+            provider: "google-forms",
+            event: "response_submitted",
+            formUrl: GOOGLE_FORM_URL,
+          },
+        },
+      }),
+      [201],
+    );
+    let deleteCalls = 0;
+    server.use(
+      http.delete(
+        /^https:\/\/forms\.googleapis\.com\/v1\/forms\/[^/]+\/watches\/[^/]+$/,
+        () => {
+          deleteCalls += 1;
+          return HttpResponse.json(
+            { error: { code: 500, status: "INTERNAL" } },
+            { status: 500 },
+          );
+        },
+      ),
+    );
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    server.use(
+      http.delete(
+        /^https:\/\/forms\.googleapis\.com\/v1\/forms\/[^/]+\/watches\/[^/]+$/,
+        () => {
+          deleteCalls += 1;
+          return HttpResponse.json({});
+        },
+      ),
+    );
+
+    const reconciled = await accept(
+      renewGoogleFormsWatchesClient().renew({
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      }),
+      [200],
+    );
+
+    expect(reconciled.body).toMatchObject({ success: true, renewed: 0 });
+    expect(deleteCalls).toBe(2);
+  });
+
+  it("attempts to stop every Google Forms watch on disconnect", async () => {
+    const scenario = await setupFixture();
+    const second = await createAgentWithWorkflow(scenario, {
+      workflowName: `second-${WORKFLOW_NAME}`,
+    });
+    await enableGoogleFormsWorkflowAutomations(scenario.fixture);
+    await connectGoogleForms(scenario);
+    configureGoogleFormsCreationMock({
+      formIds: [GOOGLE_FORM_ID, SECOND_GOOGLE_FORM_ID],
+    });
+    const createAutomation = async (workflowId: string, formUrl: string) => {
+      await accept(
+        automationsClient().create({
+          headers: authHeaders(),
+          params: { workflowId },
+          body: {
+            kind: "event",
+            eventType: "google-forms-response-submitted",
+            eventConfig: {
+              provider: "google-forms",
+              event: "response_submitted",
+              formUrl,
+            },
+          },
+        }),
+        [201],
+      );
+    };
+    await createAutomation(scenario.workflowId, GOOGLE_FORM_URL);
+    await createAutomation(second.workflowId, SECOND_GOOGLE_FORM_URL);
+    let deleteCalls = 0;
+    server.use(
+      http.delete(
+        /^https:\/\/forms\.googleapis\.com\/v1\/forms\/[^/]+\/watches\/[^/]+$/,
+        () => {
+          deleteCalls += 1;
+          return deleteCalls === 1
+            ? HttpResponse.json(
+                { error: { code: 500, status: "INTERNAL" } },
+                { status: 500 },
+              )
+            : HttpResponse.json({});
+        },
+      ),
+    );
+
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+      scenario.actor,
+      "google-forms",
+    );
+
+    expect(deleteCalls).toBe(2);
   });
 
   it("treats the Google Forms missing-watch 403 as successful teardown", async () => {

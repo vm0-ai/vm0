@@ -544,7 +544,7 @@ describe("Google Forms Pub/Sub webhook", () => {
     await flushWaitUntilForTest();
   });
 
-  it("isolates the same form across two accounts owned by one user", async () => {
+  async function setupGoogleFormsMultiAccountAutomations() {
     configureEnvironment();
     const formsApi = configureFormsApi([
       "google-forms-access-token",
@@ -633,13 +633,15 @@ describe("Google Forms Pub/Sub webhook", () => {
     };
     const first = await createAutomation(firstWorkflowId);
     const second = await createAutomation(secondWorkflowId);
+    const firstChatThreadId = first.body.chatThreadId;
+    const secondChatThreadId = second.body.chatThreadId;
     if (
       first.body.kind !== "event" ||
       first.body.eventType !== "google-forms-response-submitted" ||
       second.body.kind !== "event" ||
       second.body.eventType !== "google-forms-response-submitted" ||
-      !first.body.chatThreadId ||
-      !second.body.chatThreadId
+      !firstChatThreadId ||
+      !secondChatThreadId
     ) {
       throw new Error("Expected Google Forms automation chat threads");
     }
@@ -653,7 +655,7 @@ describe("Google Forms Pub/Sub webhook", () => {
     await accept(
       chatThreadConnectorSelectionsClient().update({
         headers: authHeaders(),
-        params: { id: second.body.chatThreadId },
+        params: { id: secondChatThreadId },
         body: {
           connectionId: secondConnector.id,
           target: { kind: "builtin", connectorSlug: "google-forms" },
@@ -681,7 +683,44 @@ describe("Google Forms Pub/Sub webhook", () => {
     if (!firstWatchId || !secondWatchId) {
       throw new Error("Expected one watch per Google Forms account");
     }
+    return {
+      first: { chatThreadId: firstChatThreadId },
+      second: { chatThreadId: secondChatThreadId },
+      firstWatchId,
+      secondWatchId,
+      secondConnector,
+      formsApi,
+    };
+  }
 
+  it("rejects the previous account watch after a switch", async () => {
+    const { first, second, firstWatchId } =
+      await setupGoogleFormsMultiAccountAutomations();
+    const firstPush = await postWebhook(
+      formsPushBody("pubsub-first-account", firstWatchId),
+    );
+    expect(firstPush).toMatchObject({
+      status: 200,
+      body: { watchStates: 1, dispatched: 1 },
+    });
+    const firstEvents = await workflows.readThreadEvents(first.chatThreadId);
+    const secondEvents = await workflows.readThreadEvents(second.chatThreadId);
+    expect(
+      firstEvents.filter((event) => {
+        return event.eventType === "input.prompt";
+      }),
+    ).toHaveLength(1);
+    expect(
+      secondEvents.filter((event) => {
+        return event.eventType === "input.prompt";
+      }),
+    ).toHaveLength(0);
+    await flushWaitUntilForTest();
+  });
+
+  it("routes the selected account with exact credentials", async () => {
+    const { formsApi, first, second, secondConnector, secondWatchId } =
+      await setupGoogleFormsMultiAccountAutomations();
     const secondPush = await postWebhook(
       formsPushBody("pubsub-second-account", secondWatchId),
     );
@@ -696,12 +735,8 @@ describe("Google Forms Pub/Sub webhook", () => {
       "Bearer google-forms-second-access-token",
     );
 
-    const firstEvents = await workflows.readThreadEvents(
-      first.body.chatThreadId,
-    );
-    const secondEvents = await workflows.readThreadEvents(
-      second.body.chatThreadId,
-    );
+    const firstEvents = await workflows.readThreadEvents(first.chatThreadId);
+    const secondEvents = await workflows.readThreadEvents(second.chatThreadId);
     expect(
       firstEvents.filter((event) => {
         return event.eventType === "input.prompt";

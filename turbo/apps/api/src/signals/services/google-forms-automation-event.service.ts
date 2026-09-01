@@ -1020,12 +1020,11 @@ async function reconcileGoogleFormsWatchState(
   });
 }
 
-async function reconcileGoogleFormsWatchesForOwner(
+async function prepareGoogleFormsWatchesForOwner(
   args: {
     readonly db: Db;
     readonly orgId: string;
     readonly userId: string;
-    readonly renewBefore?: Date;
   },
   signal: AbortSignal,
 ): Promise<boolean> {
@@ -1101,7 +1100,20 @@ async function reconcileGoogleFormsWatchesForOwner(
     signal.throwIfAborted();
     succeeded &&= ensured.kind === "ok";
   }
+  return succeeded;
+}
 
+async function reconcileGoogleFormsWatchesForOwner(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly renewBefore?: Date;
+  },
+  signal: AbortSignal,
+): Promise<boolean> {
+  let succeeded = await prepareGoogleFormsWatchesForOwner(args, signal);
+  signal.throwIfAborted();
   const states = await args.db
     .select()
     .from(googleFormsWatchStates)
@@ -1177,6 +1189,7 @@ export async function stopPreparedGoogleFormsWatches(
   pending: PendingGoogleFormsWatchStop,
   signal: AbortSignal,
 ): Promise<void> {
+  let failed = false;
   for (const watch of pending.watches) {
     const deleted = await deleteGoogleFormsWatch(
       {
@@ -1188,8 +1201,11 @@ export async function stopPreparedGoogleFormsWatches(
     );
     signal.throwIfAborted();
     if (deleted.kind !== "ok" && !missingGoogleFormsWatch(deleted)) {
-      throw new Error("Failed to stop Google Forms watch");
+      failed = true;
     }
+  }
+  if (failed) {
+    throw new Error("Failed to stop one or more Google Forms watches");
   }
 }
 
@@ -2006,11 +2022,14 @@ export const renewGoogleFormsWatches$ = command(
     let renewed = 0;
     let failed = 0;
     for (const owner of owners.values()) {
-      const beforeStates = await db
-        .select({
-          id: googleFormsWatchStates.id,
-          watchId: googleFormsWatchStates.watchId,
-        })
+      const prepared = await prepareGoogleFormsWatchesForOwner(
+        { db, ...owner },
+        signal,
+      );
+      signal.throwIfAborted();
+      failed += prepared ? 0 : 1;
+      const states = await db
+        .select()
         .from(googleFormsWatchStates)
         .where(
           and(
@@ -2024,17 +2043,16 @@ export const renewGoogleFormsWatches$ = command(
         )
         .orderBy(asc(googleFormsWatchStates.expireTime));
       signal.throwIfAborted();
-      const succeeded = await reconcileGoogleFormsWatchesForOwner(
-        {
-          db,
-          ...owner,
-          renewBefore,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
-      renewed += succeeded ? beforeStates.length : 0;
-      failed += succeeded ? 0 : 1;
+      for (const state of states) {
+        const result = await reconcileGoogleFormsWatchState(
+          { db, state, renewBefore },
+          signal,
+        );
+        signal.throwIfAborted();
+        renewed +=
+          result.kind === "renewed" || result.kind === "created" ? 1 : 0;
+        failed += result.kind === "failed" ? 1 : 0;
+      }
     }
     return { renewed, failed };
   },
