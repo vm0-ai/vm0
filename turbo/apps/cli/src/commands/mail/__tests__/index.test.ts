@@ -147,8 +147,6 @@ describe("okou mail", () => {
           });
         },
       ),
-      mailCatalog(),
-      ...stubAgentContext(["gmail"]),
     );
 
     await mailCommand.parseAsync(["node", "cli", "list"]);
@@ -161,6 +159,7 @@ describe("okou mail", () => {
     expect(listOutput).toContain("outlook");
     expect(listOutput).toContain("unavailable");
 
+    server.use(mailCatalog(), ...stubAgentContext(["gmail"]));
     mockConsoleLog.mockClear();
     await mailCommand.parseAsync([
       "node",

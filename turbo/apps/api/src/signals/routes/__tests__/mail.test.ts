@@ -466,8 +466,12 @@ describe("POST /api/mail/drafts/link", () => {
       connectorId: selectedConnectorId,
       connectorSlug: "gmail",
     });
+    const orgId = fixture.actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected an organization-scoped mail fixture");
+    }
     await setConnectorAccountState(context, {
-      orgId: fixture.actor.orgId ?? "",
+      orgId,
       userId: fixture.actor.userId,
       connectorId: selectedConnectorId,
       needsReconnect: true,
