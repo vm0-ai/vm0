@@ -29,9 +29,11 @@ import {
   annotationCanRedo$,
   annotationCanUndo$,
   annotationDraft$,
+  annotationDirty$,
   annotationDrag$,
   annotationInk$,
   annotationSelectedMarkId$,
+  annotationSelectedNoteId$,
   annotationSessionTarget$,
   annotationStroke$,
   annotationSurface$,
@@ -44,13 +46,17 @@ import {
   removeAnnotationMark$,
   removeSelectedAnnotationMark$,
   selectAnnotationMark$,
+  selectAnnotationNote$,
   setAnnotationInk$,
   setAnnotationMarkNote$,
   setAnnotationStroke$,
   setAnnotationDrag$,
   setAnnotationTool$,
+  ANNOTATION_RESIZE_EDGES,
   markOrdinal,
   moveAnnotationMarkRect$,
+  moveAnnotationNoteBox$,
+  noteOnImage,
   nextMarkOrdinal,
   resetAnnotationZoom$,
   undoAnnotation$,
@@ -58,12 +64,17 @@ import {
   type AnnotationDrag,
   type AnnotationInk,
   type AnnotationPoint,
+  type AnnotationResizeEdge,
   type AnnotationStroke,
   type AnnotationTarget,
   type AnnotationTool,
 } from "../../signals/okou-page/image-annotation.ts";
 import { useResolvedAttachmentUrl } from "./attachment-resource.ts";
-import { markInk, MarkShape } from "./image-annotation-marks.tsx";
+import {
+  markInk,
+  MarkNoteLabel,
+  MarkShape,
+} from "./image-annotation-marks.tsx";
 
 const TOOLS: readonly { tool: AnnotationTool; icon: typeof Square }[] = [
   { tool: "box", icon: Square },
@@ -502,6 +513,9 @@ function EditorFooter() {
   const { t } = useTranslation();
   const close = useSet(closeAnnotationEditor$);
   const commit = useSet(commitAnnotation$);
+  // Nothing drawn, nothing to attach — an enabled button here promises an edit
+  // the session does not have.
+  const dirty = useGet(annotationDirty$);
 
   return (
     <div className="flex h-14 shrink-0 items-center gap-3 border-t border-border bg-card px-4">
@@ -516,7 +530,7 @@ function EditorFooter() {
           return $.chat.actions.cancel;
         })}
       </Button>
-      <Button type="button" size="sm" onClick={commit}>
+      <Button type="button" size="sm" disabled={!dirty} onClick={commit}>
         {t(($) => {
           return $.artifacts.annotation.attach;
         })}
@@ -612,13 +626,16 @@ interface StrokeHandlers {
   onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onPointerMove: (
     event: ReactPointerEvent<HTMLDivElement>,
-    moveRect: (
-      id: string,
+    applyDrag: (
+      drag: AnnotationDrag,
       rect: { x: number; y: number; width: number; height: number },
     ) => void,
   ) => void;
   onPointerUp: () => void;
 }
+
+/** Narrower than this and the note wraps to one word a line. */
+const MIN_NOTE_DRAG_WIDTH = 0.1;
 
 function draggedRect(drag: AnnotationDrag, point: AnnotationPoint) {
   const dx = point.x - drag.origin.x;
@@ -634,12 +651,38 @@ function draggedRect(drag: AnnotationDrag, point: AnnotationPoint) {
     };
   }
 
-  const left = drag.corner === "tl" || drag.corner === "bl";
-  const top = drag.corner === "tl" || drag.corner === "tr";
-  const x1 = left ? start.x + dx : start.x;
-  const y1 = top ? start.y + dy : start.y;
-  const x2 = left ? start.x + start.width : start.x + start.width + dx;
-  const y2 = top ? start.y + start.height : start.y + start.height + dy;
+  if (drag.mode === "note-move") {
+    return {
+      x: clamp01(start.x + dx),
+      y: clamp01(start.y + dy),
+      width: start.width,
+      height: 0,
+    };
+  }
+
+  if (drag.mode === "note-resize") {
+    // Only the width is stored; the height follows from how the text wraps.
+    return {
+      x: start.x,
+      y: start.y,
+      width: Math.max(MIN_NOTE_DRAG_WIDTH, start.width + dx),
+      height: 0,
+    };
+  }
+
+  // An edge grip moves one side; a corner grip moves two. Anything the grip
+  // does not touch keeps its start value, so dragging the top edge cannot
+  // shift the box sideways.
+  const corner = drag.corner ?? "br";
+  const movesLeft = corner === "tl" || corner === "bl" || corner === "l";
+  const movesRight = corner === "tr" || corner === "br" || corner === "r";
+  const movesTop = corner === "tl" || corner === "tr" || corner === "t";
+  const movesBottom = corner === "bl" || corner === "br" || corner === "b";
+
+  const x1 = movesLeft ? start.x + dx : start.x;
+  const y1 = movesTop ? start.y + dy : start.y;
+  const x2 = movesRight ? start.x + start.width + dx : start.x + start.width;
+  const y2 = movesBottom ? start.y + start.height + dy : start.y + start.height;
   return {
     x: clamp01(Math.min(x1, x2)),
     y: clamp01(Math.min(y1, y2)),
@@ -658,6 +701,7 @@ function useStrokeHandlers(): StrokeHandlers {
   const setDrag = useSet(setAnnotationDrag$);
   const addMark = useSet(addAnnotationMark$);
   const selectMark = useSet(selectAnnotationMark$);
+  const selectNote = useSet(selectAnnotationNote$);
 
   const pointAt = (event: ReactPointerEvent<HTMLDivElement>) => {
     const rect = surface?.getBoundingClientRect();
@@ -680,16 +724,17 @@ function useStrokeHandlers(): StrokeHandlers {
       // Starting a stroke on bare canvas also clears the selection, so the
       // handles and note of the previous mark do not linger over a new one.
       selectMark(null);
+      selectNote(null);
       event.currentTarget.setPointerCapture(event.pointerId);
       setStroke({ tool, from: point, to: point, points: [point] });
     },
-    onPointerMove: (event, moveRect) => {
+    onPointerMove: (event, applyDrag) => {
       const point = pointAt(event);
       if (!point) {
         return;
       }
       if (drag) {
-        moveRect(drag.markId, draggedRect(drag, point));
+        applyDrag(drag, draggedRect(drag, point));
         return;
       }
       if (!stroke) {
@@ -722,9 +767,7 @@ function useStrokeHandlers(): StrokeHandlers {
   };
 }
 
-const RESIZE_CORNERS = ["tl", "tr", "bl", "br"] as const;
-
-type ResizeCorner = (typeof RESIZE_CORNERS)[number];
+type ResizeCorner = AnnotationResizeEdge;
 
 function rectOf(mark: ImageAnnotationMark) {
   if (mark.shape === "box") {
@@ -737,15 +780,76 @@ function rectOf(mark: ImageAnnotationMark) {
 }
 
 function cornerCursor(corner: ResizeCorner): string {
-  return corner === "tl" || corner === "br"
-    ? "cursor-nwse-resize"
-    : "cursor-nesw-resize";
+  switch (corner) {
+    case "tl":
+    case "br": {
+      return "cursor-nwse-resize";
+    }
+    case "tr":
+    case "bl": {
+      return "cursor-nesw-resize";
+    }
+    case "t":
+    case "b": {
+      return "cursor-ns-resize";
+    }
+    case "l":
+    case "r": {
+      return "cursor-ew-resize";
+    }
+  }
+}
+
+/**
+ * Edges first so the corner dots paint over their ends — otherwise the strip
+ * covering the top edge would swallow the grab on both top corners.
+ */
+const ORDERED_HANDLES = [...ANNOTATION_RESIZE_EDGES].sort((a, b) => {
+  return a.length - b.length;
+});
+
+/** Where a grip sits on the mark, as a fraction of its own box. */
+function handleAnchor(corner: ResizeCorner): { fx: number; fy: number } {
+  const fx = corner.includes("l") ? 0 : corner.includes("r") ? 1 : 0.5;
+  const fy = corner.includes("t") ? 0 : corner.includes("b") ? 1 : 0.5;
+  return { fx, fy };
+}
+
+/** A note is resized on one axis only, so it gets one grip on its right edge. */
+function NoteWidthHandle({
+  mark,
+  onGrab,
+}: {
+  mark: ImageAnnotationMark;
+  onGrab: (event: ReactPointerEvent<HTMLElement>) => void;
+}) {
+  const note = noteOnImage(mark);
+  if (!note) {
+    return null;
+  }
+  return (
+    <span
+      role="presentation"
+      onPointerDown={onGrab}
+      style={{
+        left: percent(note.box.x + note.box.width),
+        top: percent(note.box.y),
+      }}
+      className="absolute -ml-[5px] mt-1.5 h-2.5 w-2.5 cursor-ew-resize rounded-full border border-border bg-background shadow-sm"
+      data-testid="annotation-note-width-handle"
+    />
+  );
 }
 
 /**
  * Handles only appear for marks that have a rectangle. A freehand stroke or an
  * arrow can still be selected and deleted; resizing them would mean editing
  * every point, which is not what a handle promises.
+ *
+ * Only the corners are drawn. The edges are grabbable too — dragging one
+ * changes width or height alone — but four dots and four bars around a small
+ * box is more furniture than the shape underneath, so the edges are invisible
+ * strips that only announce themselves through the cursor.
  */
 function ResizeHandles({
   mark,
@@ -761,11 +865,10 @@ function ResizeHandles({
 
   return (
     <>
-      {RESIZE_CORNERS.map((corner) => {
-        const x =
-          corner === "tl" || corner === "bl" ? rect.x : rect.x + rect.width;
-        const y =
-          corner === "tl" || corner === "tr" ? rect.y : rect.y + rect.height;
+      {ORDERED_HANDLES.map((corner) => {
+        const { fx, fy } = handleAnchor(corner);
+        const horizontal = corner === "t" || corner === "b";
+        const vertical = corner === "l" || corner === "r";
         return (
           <span
             key={corner}
@@ -773,10 +876,20 @@ function ResizeHandles({
             onPointerDown={(event) => {
               onGrab(corner, event);
             }}
-            style={{ left: percent(x), top: percent(y) }}
+            style={{
+              left: percent(rect.x + rect.width * fx),
+              top: percent(rect.y + rect.height * fy),
+              ...(horizontal ? { width: percent(rect.width) } : {}),
+              ...(vertical ? { height: percent(rect.height) } : {}),
+            }}
             className={cn(
-              "absolute -ml-[5px] -mt-[5px] h-2.5 w-2.5 rounded-sm border border-border bg-background shadow-sm",
+              "absolute",
               cornerCursor(corner),
+              horizontal && "-mt-[5px] h-2.5 -translate-x-1/2",
+              vertical && "-ml-[5px] w-2.5 -translate-y-1/2",
+              !horizontal &&
+                !vertical &&
+                "-ml-[5px] -mt-[5px] h-2.5 w-2.5 rounded-full border border-border bg-background shadow-sm",
             )}
             data-testid={`annotation-handle-${corner}`}
           />
@@ -784,6 +897,108 @@ function ResizeHandles({
       })}
     </>
   );
+}
+
+/**
+ * Every note printed on the image, plus the grips for the one being placed.
+ *
+ * It owns its own selection and drag so that moving a sentence into clear space
+ * never disturbs the mark it explains — the two are edited independently.
+ */
+function NoteLayer({ marks }: { marks: readonly ImageAnnotationMark[] }) {
+  const selectedNoteId = useGet(annotationSelectedNoteId$);
+  const selectNote = useSet(selectAnnotationNote$);
+  const surface = useGet(annotationSurface$);
+  const beginDrag = useSet(setAnnotationDrag$);
+
+  const selectedNote = marks.find((mark) => {
+    return mark.id === selectedNoteId && noteOnImage(mark) !== null;
+  });
+
+  const grabNote = (
+    mark: ImageAnnotationMark,
+    mode: "note-move" | "note-resize",
+    event: ReactPointerEvent<HTMLElement>,
+  ) => {
+    // The label sits on the drawing surface, so without this the grab also
+    // starts a new stroke on the canvas underneath it.
+    event.stopPropagation();
+    selectNote(mark.id);
+    const note = noteOnImage(mark);
+    const bounds = surface?.getBoundingClientRect();
+    if (!note || !bounds || bounds.width === 0) {
+      return;
+    }
+    beginDrag({
+      markId: mark.id,
+      mode,
+      origin: {
+        x: (event.clientX - bounds.left) / bounds.width,
+        y: (event.clientY - bounds.top) / bounds.height,
+      },
+      startRect: { ...note.box, height: 0 },
+    });
+  };
+
+  return (
+    <>
+      {marks.map((mark) => {
+        return (
+          <MarkNoteLabel
+            key={`${mark.id}-note`}
+            mark={mark}
+            selected={mark.id === selectedNoteId}
+            onSelect={() => {
+              selectNote(mark.id);
+            }}
+            onGrab={(event) => {
+              grabNote(mark, "note-move", event);
+            }}
+          />
+        );
+      })}
+      {selectedNote && (
+        <NoteWidthHandle
+          mark={selectedNote}
+          onGrab={(event) => {
+            grabNote(selectedNote, "note-resize", event);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/** Starts a resize from whichever grip was grabbed on the selected mark. */
+function useGrabHandle(
+  selectedMark: ImageAnnotationMark | undefined,
+): (corner: ResizeCorner, event: ReactPointerEvent<HTMLElement>) => void {
+  const surface = useGet(annotationSurface$);
+  const beginDrag = useSet(setAnnotationDrag$);
+
+  return (corner, event) => {
+    // The handle sits on the drawing surface, so without this the grab also
+    // starts a new stroke underneath the mark being resized.
+    event.stopPropagation();
+    if (!selectedMark) {
+      return;
+    }
+    const rect = rectOf(selectedMark);
+    const bounds = surface?.getBoundingClientRect();
+    if (!rect || !bounds || bounds.width === 0) {
+      return;
+    }
+    beginDrag({
+      markId: selectedMark.id,
+      mode: "resize",
+      corner,
+      origin: {
+        x: (event.clientX - bounds.left) / bounds.width,
+        y: (event.clientY - bounds.top) / bounds.height,
+      },
+      startRect: rect,
+    });
+  };
 }
 
 function EditorStage({ filename, url }: { filename: string; url: string }) {
@@ -796,6 +1011,7 @@ function EditorStage({ filename, url }: { filename: string; url: string }) {
   const selectMark = useSet(selectAnnotationMark$);
   const bindSurface = useSet(bindAnnotationSurface$);
   const moveRect = useSet(moveAnnotationMarkRect$);
+  const moveNoteBox = useSet(moveAnnotationNoteBox$);
   const handlers = useStrokeHandlers();
 
   const box = surface?.getBoundingClientRect();
@@ -807,32 +1023,18 @@ function EditorStage({ filename, url }: { filename: string; url: string }) {
   const selectedMark = annotation.marks.find((mark) => {
     return mark.id === selectedId;
   });
+  const grabHandle = useGrabHandle(selectedMark);
 
-  const grabHandle = (
-    corner: ResizeCorner,
-    event: ReactPointerEvent<HTMLElement>,
+  // One pointer move, two things it might be dragging.
+  const applyDrag = (
+    drag: AnnotationDrag,
+    rect: { x: number; y: number; width: number; height: number },
   ) => {
-    // The handle sits on the drawing surface, so without this the grab also
-    // starts a new stroke underneath the mark being resized.
-    event.stopPropagation();
-    if (!selectedMark) {
+    if (drag.mode === "note-move" || drag.mode === "note-resize") {
+      moveNoteBox(drag.markId, { x: rect.x, y: rect.y, width: rect.width });
       return;
     }
-    const rect = rectOf(selectedMark);
-    const bounds = surface?.getBoundingClientRect();
-    if (!rect || !bounds || bounds.width === 0) {
-      return;
-    }
-    handlers.beginDrag({
-      markId: selectedMark.id,
-      mode: "resize",
-      corner,
-      origin: {
-        x: (event.clientX - bounds.left) / bounds.width,
-        y: (event.clientY - bounds.top) / bounds.height,
-      },
-      startRect: rect,
-    });
+    moveRect(drag.markId, rect);
   };
 
   const grabMark = (
@@ -864,7 +1066,7 @@ function EditorStage({ filename, url }: { filename: string; url: string }) {
           ref={bindSurface}
           onPointerDown={handlers.onPointerDown}
           onPointerMove={(event) => {
-            handlers.onPointerMove(event, moveRect);
+            handlers.onPointerMove(event, applyDrag);
           }}
           onPointerUp={handlers.onPointerUp}
           style={{ touchAction: "none" }}
@@ -890,7 +1092,6 @@ function EditorStage({ filename, url }: { filename: string; url: string }) {
                 mark={mark}
                 ordinal={markOrdinal(mark, index)}
                 aspect={aspect}
-                selected={mark.id === selectedId}
                 onSelect={() => {
                   selectMark(mark.id);
                 }}
@@ -900,6 +1101,7 @@ function EditorStage({ filename, url }: { filename: string; url: string }) {
               />
             );
           })}
+          <NoteLayer marks={annotation.marks} />
           {selectedMark && (
             <ResizeHandles mark={selectedMark} onGrab={grabHandle} />
           )}
