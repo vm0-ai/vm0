@@ -634,9 +634,6 @@ interface StrokeHandlers {
   onPointerUp: () => void;
 }
 
-/** Narrower than this and the note wraps to one word a line. */
-const MIN_NOTE_DRAG_WIDTH = 0.1;
-
 function draggedRect(drag: AnnotationDrag, point: AnnotationPoint) {
   const dx = point.x - drag.origin.x;
   const dy = point.y - drag.origin.y;
@@ -662,12 +659,9 @@ function draggedRect(drag: AnnotationDrag, point: AnnotationPoint) {
 
   if (drag.mode === "note-resize") {
     // Only the width is stored; the height follows from how the text wraps.
-    return {
-      x: start.x,
-      y: start.y,
-      width: Math.max(MIN_NOTE_DRAG_WIDTH, start.width + dx),
-      height: 0,
-    };
+    // The floor and the image bounds belong to `clampNoteBox`, so there is one
+    // owner of what a legal note box is.
+    return { x: start.x, y: start.y, width: start.width + dx, height: 0 };
   }
 
   // An edge grip moves one side; a corner grip moves two. Anything the grip
@@ -947,7 +941,6 @@ function NoteLayer({ marks }: { marks: readonly ImageAnnotationMark[] }) {
           <MarkNoteLabel
             key={`${mark.id}-note`}
             mark={mark}
-            selected={mark.id === selectedNoteId}
             onSelect={() => {
               selectNote(mark.id);
             }}

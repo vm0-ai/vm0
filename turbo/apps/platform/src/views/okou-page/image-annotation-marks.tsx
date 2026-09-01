@@ -224,12 +224,10 @@ export function MarkShape({
  */
 export function MarkNoteLabel({
   mark,
-  selected = false,
   onSelect,
   onGrab,
 }: {
   mark: ImageAnnotationMark;
-  selected?: boolean;
   onSelect?: () => void;
   onGrab?: (event: ReactPointerEvent<HTMLElement>) => void;
 }) {
@@ -254,12 +252,11 @@ export function MarkNoteLabel({
         left: percent(note.box.x),
         top: percent(note.box.y),
         width: percent(note.box.width),
-        color: markInk(mark),
+        color: note.ink,
         // An image can be any colour under the text, so the label carries its
         // own ground rather than relying on a halo to separate it.
         background: NOTE_GROUND,
-        borderColor: markInk(mark),
-        ...(selected ? { outline: `2px solid ${markInk(mark)}` } : {}),
+        borderColor: note.ink,
       }}
     >
       <span className="block whitespace-pre-wrap break-words rounded-md border px-1.5 py-1 text-[11px] font-semibold leading-snug">

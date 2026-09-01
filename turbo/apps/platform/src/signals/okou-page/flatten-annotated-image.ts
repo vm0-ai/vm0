@@ -234,27 +234,28 @@ function drawNote(
 
   const boxWidth = note.box.width * scale.width;
   const lines = wrapNote(context, note.text, boxWidth - padding * 2);
-  const x = note.box.x * scale.width;
-  const y = note.box.y * scale.height;
   const boxHeight = lines.length * lineHeight + padding * 2;
+  const x = note.box.x * scale.width;
+  // The box is clamped in normalized space before it gets here, but the height
+  // is only known once the text has wrapped. A long note near the bottom would
+  // still run past the edge and be cropped out of the image the model reads.
+  const y = Math.max(
+    0,
+    Math.min(note.box.y * scale.height, scale.height - boxHeight),
+  );
 
   context.fillStyle = NOTE_GROUND;
-  context.strokeStyle = markInkOf(mark);
+  context.strokeStyle = note.ink;
   context.lineWidth = px(scale, HALO_WIDTH_UNITS);
   context.beginPath();
   context.roundRect(x, y, boxWidth, boxHeight, px(scale, CORNER_RADIUS_UNITS));
   context.fill();
   context.stroke();
 
-  context.fillStyle = markInkOf(mark);
+  context.fillStyle = note.ink;
   for (const [index, line] of lines.entries()) {
     context.fillText(line, x + padding, y + padding + index * lineHeight);
   }
-}
-
-/** The ink a note is printed in, which is the ink of the mark it explains. */
-function markInkOf(mark: ImageAnnotationMark): string {
-  return "ink" in mark ? mark.ink : REDACT_FILL;
 }
 
 function drawMark(

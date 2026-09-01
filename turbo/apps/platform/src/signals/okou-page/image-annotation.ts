@@ -323,12 +323,18 @@ export const bindAnnotationSurface$ = onRef<HTMLElement>(
 const internalSession$ = state<AnnotationSession | null>(null);
 const internalTool$ = state<AnnotationTool>("box");
 const internalInk$ = state<AnnotationInk>(DEFAULT_ANNOTATION_INK);
-const internalSelectedMarkId$ = state<string | null>(null);
 /**
- * The note label being edited in place, held separately from the mark so that
- * dragging a sentence into clear space does not also move the box it explains.
+ * What is currently held: a mark, or the note label of a mark. One signal
+ * rather than two, because the two are mutually exclusive and holding that
+ * invariant by hand across every clear site is how a stale grip survives an
+ * operation that was supposed to drop the selection.
  */
-const internalSelectedNoteId$ = state<string | null>(null);
+interface AnnotationSelection {
+  readonly kind: "mark" | "note";
+  readonly id: string;
+}
+
+const internalSelection$ = state<AnnotationSelection | null>(null);
 
 export const annotationSessionTarget$ = computed((get) => {
   return get(internalSession$)?.target ?? null;
@@ -351,20 +357,17 @@ export const annotationInk$ = computed((get) => {
 });
 
 export const annotationSelectedMarkId$ = computed((get) => {
-  return get(internalSelectedMarkId$);
+  const selection = get(internalSelection$);
+  return selection?.kind === "mark" ? selection.id : null;
 });
 
 export const annotationSelectedNoteId$ = computed((get) => {
-  return get(internalSelectedNoteId$);
+  const selection = get(internalSelection$);
+  return selection?.kind === "note" ? selection.id : null;
 });
 
 export const selectAnnotationNote$ = command(({ set }, id: string | null) => {
-  set(internalSelectedNoteId$, id);
-  // A note and its mark are two different things to hold; selecting one has to
-  // let go of the other or both sets of handles sit on the image at once.
-  if (id !== null) {
-    set(internalSelectedMarkId$, null);
-  }
+  set(internalSelection$, id === null ? null : { kind: "note", id });
 });
 
 export const moveAnnotationNoteBox$ = command(
@@ -381,7 +384,7 @@ export const moveAnnotationNoteBox$ = command(
           ) {
             return mark;
           }
-          return { ...mark, noteBox: box };
+          return { ...mark, noteBox: clampNoteBox(box) };
         }),
       };
     });
@@ -415,15 +418,13 @@ export const openAnnotationEditor$ = command(
     set(internalTool$, "box");
     set(internalZoom$, 1);
     set(internalInk$, DEFAULT_ANNOTATION_INK);
-    set(internalSelectedMarkId$, null);
-    set(internalSelectedNoteId$, null);
+    set(internalSelection$, null);
   },
 );
 
 export const closeAnnotationEditor$ = command(({ set }) => {
   set(internalSession$, null);
-  set(internalSelectedMarkId$, null);
-  set(internalSelectedNoteId$, null);
+  set(internalSelection$, null);
   set(internalStroke$, null);
   set(internalDrag$, null);
   set(internalZoom$, 1);
@@ -433,8 +434,7 @@ export const setAnnotationTool$ = command(({ set }, tool: AnnotationTool) => {
   set(internalTool$, tool);
   // Picking a drawing tool is a statement about the next mark, not the one
   // currently selected, so the selection drops with its handles.
-  set(internalSelectedMarkId$, null);
-  set(internalSelectedNoteId$, null);
+  set(internalSelection$, null);
 });
 
 export const setAnnotationInk$ = command(({ get, set }, ink: AnnotationInk) => {
@@ -442,7 +442,7 @@ export const setAnnotationInk$ = command(({ get, set }, ink: AnnotationInk) => {
 
   // Recolouring the active mark is what makes the swatch feel like a property
   // of the selection rather than a mode for the next stroke.
-  const selectedId = get(internalSelectedMarkId$);
+  const selectedId = get(annotationSelectedMarkId$);
   if (selectedId === null) {
     return;
   }
@@ -464,8 +464,7 @@ export const setAnnotationInk$ = command(({ get, set }, ink: AnnotationInk) => {
 });
 
 export const selectAnnotationMark$ = command(({ set }, id: string | null) => {
-  set(internalSelectedMarkId$, id);
-  set(internalSelectedNoteId$, null);
+  set(internalSelection$, id === null ? null : { kind: "mark", id });
 });
 
 /** Every mutation goes through here, so undo never has to be implemented twice. */
@@ -500,7 +499,7 @@ export const addAnnotationMark$ = command(
         ],
       };
     });
-    set(internalSelectedMarkId$, mark.id);
+    set(internalSelection$, { kind: "mark", id: mark.id });
   },
 );
 
@@ -513,14 +512,15 @@ export const removeAnnotationMark$ = command(({ get, set }, id: string) => {
       }),
     };
   });
-  if (get(internalSelectedMarkId$) === id) {
-    set(internalSelectedMarkId$, null);
+  // The note belongs to the mark, so removing the mark drops either hold.
+  if (get(internalSelection$)?.id === id) {
+    set(internalSelection$, null);
   }
 });
 
 /** Deletes whatever is selected. Bound to Delete/Backspace in the editor. */
 export const removeSelectedAnnotationMark$ = command(({ get, set }) => {
-  const id = get(internalSelectedMarkId$);
+  const id = get(annotationSelectedMarkId$);
   if (id === null) {
     return;
   }
@@ -611,17 +611,40 @@ export function defaultNoteBox(mark: ImageAnnotationMark): {
     MAX_NOTE_WIDTH,
     Math.max(MIN_NOTE_WIDTH, bounds.width),
   );
+  const below = bounds.y + bounds.height + NOTE_GAP;
+  // A mark low in the image has no room under it, and a note printed past the
+  // bottom edge is cropped out of the flattened copy — silently, because the
+  // text still travels in the prompt. Put it above the mark instead.
+  const y = below > 1 - NOTE_ROOM ? bounds.y - NOTE_GAP - NOTE_ROOM : below;
+  return clampNoteBox({ x: bounds.x, y, width });
+}
+
+/**
+ * Roughly one line of note plus its padding, in normalized units. Used to
+ * decide whether a note fits below its mark before the text is measured.
+ */
+const NOTE_ROOM = 0.06;
+
+/** Keeps a note inside the image, so the flatten cannot crop it away. */
+export function clampNoteBox(box: { x: number; y: number; width: number }): {
+  x: number;
+  y: number;
+  width: number;
+} {
+  const width = Math.min(MAX_NOTE_WIDTH, Math.max(MIN_NOTE_WIDTH, box.width));
   return {
-    x: Math.min(bounds.x, 1 - width),
-    y: Math.min(bounds.y + bounds.height + NOTE_GAP, 1),
+    x: Math.min(Math.max(0, box.x), Math.max(0, 1 - width)),
+    y: Math.min(Math.max(0, box.y), Math.max(0, 1 - NOTE_ROOM)),
     width,
   };
 }
 
 /** The note text of a mark that can carry one drawn on the image. */
-export function noteOnImage(
-  mark: ImageAnnotationMark,
-): { text: string; box: { x: number; y: number; width: number } } | null {
+export function noteOnImage(mark: ImageAnnotationMark): {
+  text: string;
+  ink: string;
+  box: { x: number; y: number; width: number };
+} | null {
   if (
     mark.shape === "text" ||
     mark.shape === "redact" ||
@@ -633,7 +656,9 @@ export function noteOnImage(
   if (!text) {
     return null;
   }
-  return { text, box: mark.noteBox ?? defaultNoteBox(mark) };
+  // Every shape that reaches here declares `ink` as required, so the colour is
+  // read from the narrowed mark rather than guessed by a caller.
+  return { text, ink: mark.ink, box: mark.noteBox ?? defaultNoteBox(mark) };
 }
 
 export const setAnnotationMarkNote$ = command(
@@ -672,8 +697,7 @@ export const undoAnnotation$ = command(({ get, set }) => {
     present: previous,
     future: [session.present, ...session.future],
   });
-  set(internalSelectedMarkId$, null);
-  set(internalSelectedNoteId$, null);
+  set(internalSelection$, null);
 });
 
 export const redoAnnotation$ = command(({ get, set }) => {
@@ -689,7 +713,7 @@ export const redoAnnotation$ = command(({ get, set }) => {
     present: next,
     future: session.future.slice(1),
   });
-  set(internalSelectedMarkId$, null);
+  set(internalSelection$, null);
 });
 
 /**

@@ -494,6 +494,47 @@ describe("composer image annotation", () => {
   });
 
   /**
+   * A note printed past the bottom edge is cropped out of the flattened image
+   * and nobody finds out, because the text still travels in the prompt. A mark
+   * with no room under it has to put its note above itself instead.
+   */
+  it("keeps the note of a bottom-edge mark inside the image", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context);
+    mockAgentChatPage();
+    mockDraftWithImage(null);
+
+    setup(true);
+
+    await user.click(
+      await screen.findByLabelText("Open image preview for billing-page.png"),
+    );
+    await user.click(await screen.findByTestId("artifact-dialog-annotate"));
+    await screen.findByTestId("image-annotation-editor");
+
+    // A box hugging the bottom of a 400x300 surface.
+    await dragOnSurface({ fromX: 40, fromY: 250, toX: 200, toY: 296 });
+    await user.click(await screen.findByTestId("annotation-mark-1"));
+    await user.type(
+      await screen.findByPlaceholderText("Say what should change here"),
+      "This row is cut off",
+    );
+
+    const label = await waitFor(() => {
+      const found = screen.getByTestId(/^annotation-note-label-/u);
+      return found;
+    });
+    const top = Number.parseFloat(label.style.top);
+    const left = Number.parseFloat(label.style.left);
+    const width = Number.parseFloat(label.style.width);
+    expect(top).toBeLessThan(100);
+    expect(top).toBeGreaterThanOrEqual(0);
+    // Placed above the mark rather than under it, and still on the image.
+    expect(top).toBeLessThan(83);
+    expect(left + width).toBeLessThanOrEqual(100);
+  });
+
+  /**
    * A corner grip changes both dimensions; an edge grip changes one. Dragging
    * the top edge sideways must not slide the box across the image.
    */
