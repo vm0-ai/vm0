@@ -2212,6 +2212,78 @@ async function loadEnabledGoogleCalendarTargets(
   return [...targets.values()];
 }
 
+async function loadMissingGoogleCalendarWatchTargets(db: Db): Promise<
+  readonly {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorId: string;
+    readonly calendarId: string;
+  }[]
+> {
+  const consumers = await db
+    .select({
+      orgId: workflowAutomations.orgId,
+      userId: workflowAutomations.ownerUserId,
+      connectorId: workflowAutomations.eventConnectorId,
+      eventType: workflowAutomations.eventType,
+      eventConfig: workflowAutomations.eventConfig,
+    })
+    .from(workflowAutomations)
+    .where(
+      and(
+        eq(workflowAutomations.enabled, true),
+        eq(workflowAutomations.kind, "event"),
+        isNotNull(workflowAutomations.eventConnectorId),
+        inArray(workflowAutomations.eventType, [
+          ...GOOGLE_CALENDAR_EVENT_TYPES,
+        ]),
+      ),
+    );
+  const states = await db
+    .select({
+      connectorId: googleCalendarWatchStates.connectorId,
+      calendarId: googleCalendarWatchStates.calendarId,
+    })
+    .from(googleCalendarWatchStates);
+  const existingKeys = new Set(
+    states.map((state) => {
+      return `${state.connectorId}\n${state.calendarId}`;
+    }),
+  );
+  const missing = new Map<
+    string,
+    {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly connectorId: string;
+      readonly calendarId: string;
+    }
+  >();
+  for (const consumer of consumers) {
+    if (consumer.connectorId === null) {
+      continue;
+    }
+    const config = parseGoogleCalendarEventAutomationConfig({
+      eventType: consumer.eventType,
+      eventConfig: consumer.eventConfig,
+    });
+    if (!config) {
+      continue;
+    }
+    const watchKey = `${consumer.connectorId}\n${config.calendarId}`;
+    if (existingKeys.has(watchKey)) {
+      continue;
+    }
+    missing.set(watchKey, {
+      orgId: consumer.orgId,
+      userId: consumer.userId,
+      connectorId: consumer.connectorId,
+      calendarId: config.calendarId,
+    });
+  }
+  return [...missing.values()];
+}
+
 export async function prepareGoogleCalendarWatchStopForConnector(
   args: {
     readonly db: Db;
@@ -3230,6 +3302,24 @@ export const renewGoogleCalendarWatches$ = command(
         log.warn("Google Calendar watch repair failed", {
           provider: "google_calendar",
           action: "repair",
+          result: "provider_error",
+        });
+      }
+    }
+
+    const missingTargets = await loadMissingGoogleCalendarWatchTargets(db);
+    signal.throwIfAborted();
+    for (const target of missingTargets) {
+      const ensured = await ensureGoogleCalendarWatchForUser(
+        { db, ...target },
+        signal,
+      );
+      signal.throwIfAborted();
+      if (ensured.kind !== "ok") {
+        failed += 1;
+        log.warn("Google Calendar watch repair failed", {
+          provider: "google_calendar",
+          action: "ensure_missing",
           result: "provider_error",
         });
       }
