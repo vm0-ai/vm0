@@ -1,8 +1,10 @@
 import {
   publicSocialErrorCode,
   publicSocialErrorMessage,
+  projectPublicSocialResponse,
   redactSocialProviderIdentity,
   socialContract,
+  socialKitResponseSchema,
 } from "@okouai/api-contracts/contracts/social";
 import { command } from "ccstate";
 
@@ -45,7 +47,16 @@ function redactAgentSocialResponse<T>(response: T): T {
   }
 
   const body = response.body;
-  const publicBody = redactSocialProviderIdentity(body);
+  const socialResponse = socialKitResponseSchema.safeParse(body);
+  const projection = socialResponse.success
+    ? projectPublicSocialResponse(socialResponse.data)
+    : undefined;
+  if (projection && !projection.ok) {
+    throw new Error("Validated Okou Social response cannot be projected");
+  }
+  const publicBody = projection?.ok
+    ? projection.response
+    : redactSocialProviderIdentity(body);
   if (!isRecord(publicBody)) {
     return response;
   }

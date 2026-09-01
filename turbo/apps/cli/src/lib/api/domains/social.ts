@@ -1,9 +1,12 @@
 import {
+  findManagedSocialKitTool,
+  projectPublicSocialResponse,
   socialContract,
   socialKitErrorSchema,
   publicSocialErrorCode,
   publicSocialErrorMessage,
   redactSocialProviderIdentity,
+  socialKitRequestSchema,
   type SocialKitDownloadRequest,
   type SocialKitDownloadResponse,
   type SocialKitRequest,
@@ -71,6 +74,29 @@ function handlePublicSocialError(
   );
 }
 
+function effectivePublicSocialRequest(
+  body: SocialKitRequest,
+): SocialKitRequest {
+  const tool = findManagedSocialKitTool(body.tool);
+  const collection = tool?.collection;
+  if (!collection || collection.effectiveLimit === undefined) {
+    return body;
+  }
+  const requestedLimit = Object.entries(body.input).find(([key]) => {
+    return key === "limit";
+  })?.[1];
+  const limit =
+    typeof requestedLimit === "number"
+      ? Math.min(requestedLimit, collection.effectiveLimit)
+      : collection.defaultLimit;
+  return limit === undefined
+    ? body
+    : socialKitRequestSchema.parse({
+        tool: body.tool,
+        input: { ...body.input, limit },
+      });
+}
+
 export async function callSocialKit(
   body: SocialKitRequest,
 ): Promise<SocialKitResponse> {
@@ -78,11 +104,15 @@ export async function callSocialKit(
   const client = initClient(socialContract, config);
   const result = await client.request({
     headers: {},
-    body,
+    body: effectivePublicSocialRequest(body),
     fetchOptions: { signal: AbortSignal.timeout(SOCIALKIT_API_TIMEOUT_MS) },
   });
   if (result.status === 200) {
-    return result.body;
+    const projection = projectPublicSocialResponse(result.body);
+    if (!projection.ok) {
+      throw new Error("Okou Social returned an inconsistent result");
+    }
+    return projection.response;
   }
   handlePublicSocialError(result, "Okou Social request failed");
 }
