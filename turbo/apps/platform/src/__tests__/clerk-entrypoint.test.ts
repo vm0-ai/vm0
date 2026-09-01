@@ -21,6 +21,7 @@ vi.unmock("@clerk/shared/loadClerkJsScript");
 
 const PREVIEW_FRONTEND_API_HOST = "informed-calf-6.clerk.accounts.dev";
 const PRODUCTION_FRONTEND_API_HOST = "clerk.vm0.ai";
+const OKOU_PRODUCTION_FRONTEND_API_HOST = "clerk.app.okou.ai";
 const PRODUCTION_SATELLITE_DOMAIN = "app.okou.ai";
 const CLERK_BOOTSTRAP_SELECTOR = "script[data-vm0-clerk-bootstrap]";
 const CLERK_CORE_SCRIPT_ID = "vm0-clerk-core-script";
@@ -68,6 +69,7 @@ interface ClerkPageOptions {
   readonly apiOriginMarker?: string | null;
   readonly cookie?: string;
   readonly path?: string;
+  readonly productionPublishableKey?: string;
   readonly url?: string;
 }
 
@@ -85,6 +87,10 @@ const PRODUCTION_PUBLISHABLE_KEY = publishableKey(
   "live",
   PRODUCTION_FRONTEND_API_HOST,
 );
+const OKOU_PRODUCTION_PUBLISHABLE_KEY = publishableKey(
+  "live",
+  OKOU_PRODUCTION_FRONTEND_API_HOST,
+);
 
 function expectedClerkScriptUrl(): string {
   return `https://cdn.jsdelivr.net/npm/@clerk/clerk-js@${CLERK_JS_VERSION}/dist/clerk.browser.js`;
@@ -94,12 +100,17 @@ function expectedFallbackClerkScriptUrl(host: string): string {
   return `https://${host}/npm/@clerk/clerk-js@${CLERK_JS_VERSION}/dist/clerk.browser.js`;
 }
 
-function stubClerkBuildEnvironment(): void {
+function stubClerkBuildEnvironment(
+  productionPublishableKey = PRODUCTION_PUBLISHABLE_KEY,
+): void {
   vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PREVIEW", PREVIEW_PUBLISHABLE_KEY);
-  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PROD", PRODUCTION_PUBLISHABLE_KEY);
+  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PROD", productionPublishableKey);
 }
 
-function builtIndexHtml(appVersion = TEST_APP_VERSION): string {
+function builtIndexHtml(
+  appVersion = TEST_APP_VERSION,
+  productionPublishableKey = PRODUCTION_PUBLISHABLE_KEY,
+): string {
   return transformClerkCoreScriptUrls(
     indexHtml
       .replaceAll(
@@ -108,7 +119,7 @@ function builtIndexHtml(appVersion = TEST_APP_VERSION): string {
       )
       .replaceAll(
         "%VITE_CLERK_PUBLISHABLE_KEY_PROD%",
-        PRODUCTION_PUBLISHABLE_KEY,
+        productionPublishableKey,
       ),
     {
       appVersion,
@@ -150,9 +161,12 @@ function executeClerkBootstrap(html: string): void {
 
 function captureClerkBootstrapScript(
   url: string,
-  options: Pick<ClerkPageOptions, "apiOriginMarker" | "cookie"> = {},
+  options: Pick<
+    ClerkPageOptions,
+    "apiOriginMarker" | "cookie" | "productionPublishableKey"
+  > = {},
 ): HTMLScriptElement {
-  stubClerkBuildEnvironment();
+  stubClerkBuildEnvironment(options.productionPublishableKey);
   context.mocks.browser.url(url, {
     apiOriginMarker: options.apiOriginMarker,
   });
@@ -170,7 +184,10 @@ function captureClerkBootstrapScript(
     },
     { once: true },
   );
-  const html = builtIndexHtml();
+  const html = builtIndexHtml(
+    TEST_APP_VERSION,
+    options.productionPublishableKey,
+  );
   const clerkScript = createClerkCoreScript(html);
   const scriptUrl = clerkScript.src;
   clerkScript.removeAttribute("src");
@@ -184,7 +201,7 @@ function captureClerkBootstrapScript(
 function startClerkPage(
   options: ClerkPageOptions = {},
 ): ClerkEntrypointHarness {
-  stubClerkBuildEnvironment();
+  stubClerkBuildEnvironment(options.productionPublishableKey);
   const requests: ClerkScriptRequest[] = [];
   const clerkLoaderWatchingEarlyScript = context.mocks.deferred<void>();
   const retryStarted = context.mocks.deferred<void>();
@@ -234,7 +251,10 @@ function startClerkPage(
           return observeScript(appendToBody, node);
         });
 
-      const html = builtIndexHtml();
+      const html = builtIndexHtml(
+        TEST_APP_VERSION,
+        options.productionPublishableKey,
+      );
       const staticClerkScript = createClerkCoreScript(html);
       document.head.appendChild(staticClerkScript);
       earlyScript = staticClerkScript;
@@ -417,6 +437,7 @@ describe("platform Clerk entrypoint", () => {
     {
       authOrigin: "https://pr-30199-app.omby.ai",
       domain: null,
+      productionPublishableKey: PRODUCTION_PUBLISHABLE_KEY,
       publishableKey: PREVIEW_PUBLISHABLE_KEY,
       scriptUrl: expectedClerkScriptUrl(),
       url: "https://pr-30199-app.omby.ai/",
@@ -424,6 +445,7 @@ describe("platform Clerk entrypoint", () => {
     {
       authOrigin: "https://app.vm0.ai",
       domain: null,
+      productionPublishableKey: PRODUCTION_PUBLISHABLE_KEY,
       publishableKey: PRODUCTION_PUBLISHABLE_KEY,
       scriptUrl: expectedClerkScriptUrl(),
       url: "https://app.vm0.ai/",
@@ -431,21 +453,48 @@ describe("platform Clerk entrypoint", () => {
     {
       authOrigin: "https://app.vm0.ai",
       domain: PRODUCTION_SATELLITE_DOMAIN,
+      productionPublishableKey: PRODUCTION_PUBLISHABLE_KEY,
       publishableKey: PRODUCTION_PUBLISHABLE_KEY,
       scriptUrl: expectedClerkScriptUrl(),
       url: "https://app.okou.ai/",
     },
     {
+      authOrigin: "https://app.okou.ai",
+      domain: null,
+      productionPublishableKey: OKOU_PRODUCTION_PUBLISHABLE_KEY,
+      publishableKey: OKOU_PRODUCTION_PUBLISHABLE_KEY,
+      scriptUrl: expectedClerkScriptUrl(),
+      url: "https://app.okou.ai/",
+    },
+    {
+      authOrigin: "https://app.okou.ai",
+      domain: "vm0.ai",
+      productionPublishableKey: OKOU_PRODUCTION_PUBLISHABLE_KEY,
+      publishableKey: OKOU_PRODUCTION_PUBLISHABLE_KEY,
+      scriptUrl: expectedClerkScriptUrl(),
+      url: "https://app.vm0.ai/",
+    },
+    {
       authOrigin: "https://okou.ai.evil.example",
       domain: null,
+      productionPublishableKey: PRODUCTION_PUBLISHABLE_KEY,
       publishableKey: PREVIEW_PUBLISHABLE_KEY,
       scriptUrl: expectedClerkScriptUrl(),
       url: "https://okou.ai.evil.example/",
     },
   ])(
     "selects the Clerk core configuration on $url",
-    ({ authOrigin, domain, publishableKey, scriptUrl, url }) => {
-      const script = captureClerkBootstrapScript(url);
+    ({
+      authOrigin,
+      domain,
+      productionPublishableKey,
+      publishableKey,
+      scriptUrl,
+      url,
+    }) => {
+      const script = captureClerkBootstrapScript(url, {
+        productionPublishableKey,
+      });
       const bootstrap = window.__vm0ClerkBootstrap;
       if (!bootstrap) {
         throw new Error("Clerk bootstrap did not expose its shared state");
