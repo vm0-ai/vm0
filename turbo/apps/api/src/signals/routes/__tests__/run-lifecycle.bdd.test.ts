@@ -18381,7 +18381,8 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     const ownedRequests: Promise<unknown>[] = [];
     onTestFinished(async () => {
       lifecycleGate.release();
-      await Promise.all([lifecycleGate.done, ...ownedRequests]);
+      await Promise.all(ownedRequests);
+      await lifecycleGate.done;
     });
     const completion = webhooks.requestAgentComplete(
       {

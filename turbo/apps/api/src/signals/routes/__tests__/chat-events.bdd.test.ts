@@ -7935,7 +7935,8 @@ describe("CHAT-02: model-first provider policies", () => {
     const ownedRequests: Promise<unknown>[] = [];
     onTestFinished(async () => {
       lifecycleGate.release();
-      await Promise.all([lifecycleGate.done, ...ownedRequests]);
+      await Promise.all(ownedRequests);
+      await lifecycleGate.done;
     });
     const racedCompletion = webhooks.requestAgentComplete(
       { runId: racedHandoff.runId, exitCode: 0 },
