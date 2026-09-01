@@ -73,8 +73,8 @@ const webhooksApi = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 
 const WORKFLOW_NAME = "workflow-queue-workflow";
-const NO_BUILT_IN_MODEL_KEY_MESSAGE =
-  "No model provider configured: no built-in model key is configured";
+const BUILT_IN_MODEL_ROUTES_UNAVAILABLE_MESSAGE =
+  "Every built-in model route for this model is temporarily unavailable";
 
 function it(name: string, test: () => Promise<void>, timeout?: number): void {
   vitestTest(
@@ -509,7 +509,7 @@ async function expectSweepLeftQueueUntouched(
 }
 
 describe("workflow queue", () => {
-  it("rejects a goal continuation with neutral built-in model copy when the key is unavailable", async () => {
+  it("rejects a goal continuation when every built-in route is unavailable", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
     await chatCallbacks.updateOrgModelPolicies(scenario.actor, [
@@ -555,14 +555,14 @@ describe("workflow queue", () => {
     if (rejected?.eventType !== "input.rejected") {
       throw new Error("Expected the goal continuation to be rejected");
     }
-    expect(rejected.error).toBe(NO_BUILT_IN_MODEL_KEY_MESSAGE);
+    expect(rejected.error).toBe(BUILT_IN_MODEL_ROUTES_UNAVAILABLE_MESSAGE);
     expect(rejected.error).not.toContain("VM0");
     await expect(
       readGoalQueueStateFixture(automation.threadId),
     ).resolves.toMatchObject({ runIds: [] });
   });
 
-  it("rejects a workflow automation with neutral built-in model copy when the key is unavailable", async () => {
+  it("rejects a workflow automation when every built-in route is unavailable", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
     await chatCallbacks.updateOrgModelPolicies(scenario.actor, [
@@ -601,7 +601,7 @@ describe("workflow queue", () => {
     if (rejected?.eventType !== "input.rejected") {
       throw new Error("Expected the workflow automation to be rejected");
     }
-    expect(rejected.error).toBe(NO_BUILT_IN_MODEL_KEY_MESSAGE);
+    expect(rejected.error).toBe(BUILT_IN_MODEL_ROUTES_UNAVAILABLE_MESSAGE);
     expect(rejected.error).not.toContain("VM0");
     await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(0);
   });

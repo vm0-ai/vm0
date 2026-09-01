@@ -6,8 +6,8 @@ import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.
 import { sentryLogContext } from "../lib/sentry-config.ts";
 import { i18n } from "../i18n/index.ts";
 import { resolveApiBaseForTarget } from "./api-base.ts";
-import { authRecovery$ } from "./auth.ts";
-import type { AuthRecovery } from "./auth-retry.ts";
+import { clerk$, reloadToken$ } from "./auth.ts";
+import { readClerkToken } from "./clerk-token.ts";
 import { invalidateChatIndicatorsFromRealtime$ } from "./chat-thread-list-reload.ts";
 import {
   syncActiveChatEvents$,
@@ -15,7 +15,13 @@ import {
 } from "./chat-page/chat-event-signal-registry.ts";
 import { syncEventDrivenChatThreads$ } from "./chat-page/chat-thread-event-sourcing.ts";
 import { logger } from "./log.ts";
-import { jsonParseOr, onDomEventFn, setLoop } from "./utils.ts";
+import {
+  createDeferredPromise,
+  jsonParseOr,
+  onRejection,
+  onDomEventFn,
+  setLoop,
+} from "./utils.ts";
 import { MessagePortSharedDatabaseBridge } from "../shared-database/message-port-client.ts";
 import { AuthRecoveringSharedDatabaseBridge } from "../shared-database/auth-recovering-client.ts";
 import type {
@@ -26,6 +32,7 @@ import { SingleConnectionSharedDatabaseBridge } from "../shared-database/single-
 import {
   heartbeatSharedDatabase$,
   installSharedDatabaseBridge$,
+  setBridgeConnected$,
   sharedDatabaseBridgeInstalled$,
 } from "./shared-database-bridge-state.ts";
 import { setSharedDatabaseConnectionStatus$ } from "./shared-database.ts";
@@ -245,30 +252,43 @@ export const prepareSharedDatabaseBridge$ = command(
   },
 );
 
-export const setupSharedDatabaseBridge$ = command(
+type BridgeConnection = ReturnType<typeof createDeferredPromise<void>>;
+
+const connectSharedDatabaseBridge$ = command(
   async (
     { get, set },
-    authRecovery: AuthRecovery,
+    connected: BridgeConnection,
     signal: AbortSignal,
-  ): Promise<void> => {
-    signal.throwIfAborted();
+  ): Promise<string | null> => {
     if (get(sharedDatabaseBridgeInstalled$)) {
-      return;
+      connected.resolve(undefined);
+      return null;
     }
-    await set(prepareSharedDatabaseBridge$, signal);
-    const prepared = get(preparedSharedDatabaseBridgeState$);
-    if (!prepared) {
-      throw new Error("Shared database bridge was not prepared");
+
+    const prepare = set(prepareSharedDatabaseBridge$, signal);
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    if (!clerk.user || !clerk.organization) {
+      await prepare;
+      signal.throwIfAborted();
+      return null;
     }
-    const token = await authRecovery.getToken(signal);
+    const [, token] = await Promise.all([
+      prepare,
+      readClerkToken(clerk, signal),
+    ]);
     signal.throwIfAborted();
     if (!token) {
       throw new Error("Clerk token is required for the shared database");
     }
+    const prepared = get(preparedSharedDatabaseBridgeState$);
+    if (!prepared) {
+      throw new Error("Shared database bridge was not prepared");
+    }
     const bridge = new AuthRecoveringSharedDatabaseBridge(
       prepared.bridge,
       async (recoverySignal) => {
-        return await authRecovery.forceRefreshToken(recoverySignal);
+        return await set(reloadToken$, recoverySignal);
       },
       signal,
     );
@@ -291,15 +311,40 @@ export const setupSharedDatabaseBridge$ = command(
       },
       signal,
     );
+    signal.throwIfAborted();
+    connected.resolve(undefined);
+    return token;
+  },
+);
+
+export const setupSharedDatabaseBridge$ = command(
+  async ({ set }, signal: AbortSignal): Promise<void> => {
+    signal.throwIfAborted();
+    const connected = createDeferredPromise<void>(signal);
+    set(setBridgeConnected$, connected.promise);
+    const token = await onRejection(
+      set(connectSharedDatabaseBridge$, connected, signal),
+      (error) => {
+        if (!connected.settled()) {
+          connected.reject(error);
+        }
+      },
+    );
+    signal.throwIfAborted();
+    if (!token) {
+      return;
+    }
+    await set(runSharedDatabaseHeartbeatLoop$, token, signal);
+    signal.throwIfAborted();
   },
 );
 
 export const heartbeatSharedDatabaseNow$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const authRecovery = await get(authRecovery$);
+    const clerk = await get(clerk$);
     signal.throwIfAborted();
 
-    const token = await authRecovery.getToken(signal);
+    const token = await readClerkToken(clerk, signal);
     signal.throwIfAborted();
     if (!token) {
       return;
@@ -318,15 +363,8 @@ export const heartbeatSharedDatabaseNow$ = command(
   },
 );
 
-export const runSharedDatabaseHeartbeatLoop$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const authRecovery = await get(authRecovery$);
-    signal.throwIfAborted();
-    const token = await authRecovery.getToken(signal);
-    signal.throwIfAborted();
-    if (!token) {
-      return;
-    }
+const runSharedDatabaseHeartbeatLoop$ = command(
+  async ({ set }, token: string, signal: AbortSignal): Promise<void> => {
     const heartbeatNow = onDomEventFn(async () => {
       await set(heartbeatSharedDatabaseNow$, signal);
     });

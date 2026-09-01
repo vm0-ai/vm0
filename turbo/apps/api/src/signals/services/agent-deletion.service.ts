@@ -7,7 +7,6 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 
 import { db$, writeDb$ } from "../external/db";
 import type { Tx } from "../../lib/db-types";
-import { deleteS3Objects, listS3ObjectsUnderPrefix } from "../external/s3";
 import { env } from "../../lib/env";
 import { conflict } from "../../lib/error";
 import { isLockNotAvailable } from "../../lib/pg-errors";
@@ -16,6 +15,7 @@ import { settle } from "../utils";
 import { lockCanonicalAgentMutation } from "./agent-mutation-lock.service";
 import { removeAgentInstructionsStorageInTransaction } from "./agent-instructions-storage-transaction.service";
 import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecycle.service";
+import { purgeDeletedStoragePrefix$ } from "./storage-prefix-purge.service";
 
 export function agentExistsInOrg(args: {
   readonly orgId: string;
@@ -165,7 +165,7 @@ async function deleteAgentInTransaction(tx: Tx, args: DeleteAgentArgs) {
 }
 
 export const deleteAgentById$ = command(
-  async ({ get, set }, args: DeleteAgentArgs, signal: AbortSignal) => {
+  async ({ set }, args: DeleteAgentArgs, signal: AbortSignal) => {
     const writeDb = set(writeDb$);
 
     const transaction = await settle(
@@ -211,20 +211,14 @@ export const deleteAgentById$ = command(
     signal.throwIfAborted();
 
     if (result.s3Prefix) {
-      const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-      const objects = await get(
-        listS3ObjectsUnderPrefix(bucket, result.s3Prefix),
+      await set(
+        purgeDeletedStoragePrefix$,
+        {
+          bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
+          s3Prefix: result.s3Prefix,
+        },
+        signal,
       );
-      signal.throwIfAborted();
-      await get(
-        deleteS3Objects(
-          bucket,
-          objects.map((obj) => {
-            return obj.key;
-          }),
-        ),
-      );
-      signal.throwIfAborted();
     }
 
     return undefined;

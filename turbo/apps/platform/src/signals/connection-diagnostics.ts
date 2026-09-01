@@ -6,7 +6,6 @@ const MAX_CONNECTION_DIAGNOSTIC_EVENTS = 500;
 const CONNECTION_DIAGNOSTIC_EVENT = "vm0:connection-diagnostic";
 
 export type ConnectionDiagnosticEventName =
-  | "auth.refresh"
   | "foreground.catch-up"
   | "foreground.request"
   | "foreground.skipped"

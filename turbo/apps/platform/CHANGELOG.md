@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.820.0](https://github.com/vm0-ai/vm0/compare/app-v0.819.1...app-v0.820.0) (2026-09-01)
+
+
+### Features
+
+* graduate built-in model provider fallback ([#30861](https://github.com/vm0-ai/vm0/issues/30861)) ([be446a6](https://github.com/vm0-ai/vm0/commit/be446a6678a6fe32d6df9788b2b17550ebddd8b4))
+
+
+### Bug Fixes
+
+* **platform:** retry recoverable indexeddb transactions ([#30856](https://github.com/vm0-ai/vm0/issues/30856)) ([40afc95](https://github.com/vm0-ai/vm0/commit/40afc95afdd206ba78cfff193e9f26f127dd789a))
+
+
+### Refactoring
+
+* **platform:** simplify authenticated bootstrap ([#30840](https://github.com/vm0-ai/vm0/issues/30840)) ([eb30f9c](https://github.com/vm0-ai/vm0/commit/eb30f9c0aff0eeacdb01836f964fd79fa9c0925b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.387.0
+    * @okouai/core bumped to 8.606.0
+
+## [0.819.1](https://github.com/vm0-ai/vm0/compare/app-v0.819.0...app-v0.819.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **app:** use Okou status page for Instatus widget ([#30850](https://github.com/vm0-ai/vm0/issues/30850)) ([60060e6](https://github.com/vm0-ai/vm0/commit/60060e6ec616b48fe76eb6a42997ce00fe126cc8))
+
+
+### Performance Improvements
+
+* **platform:** prioritize bootstrap resources for first paint ([#30819](https://github.com/vm0-ai/vm0/issues/30819)) ([b975002](https://github.com/vm0-ai/vm0/commit/b975002c4d52073de866c9ef1ba5d08c5bcfb276))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.386.1
+    * @okouai/core bumped to 8.605.10
+
 ## [0.819.0](https://github.com/vm0-ai/vm0/compare/app-v0.818.0...app-v0.819.0) (2026-09-01)
 
 

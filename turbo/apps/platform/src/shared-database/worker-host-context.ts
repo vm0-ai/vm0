@@ -1,7 +1,6 @@
 import type { Store } from "ccstate";
 
-import { captureSentryLogError } from "../lib/sentry-config.ts";
-import { isAbortError, withCleanup } from "../signals/utils.ts";
+import { detach, Reason } from "../signals/utils.ts";
 import type { SharedDatabasePortLike } from "./bridge.ts";
 import {
   sharedDatabaseCredentialId,
@@ -39,7 +38,6 @@ interface BindSharedDatabaseConnectionOptions {
 
 export class SharedDatabaseWorkerContext {
   private readonly credentialStores = new Map<string, Store>();
-  private readonly credentialDaemonTasks = new Set<Promise<void>>();
 
   constructor(
     private readonly workerSignal: AbortSignal,
@@ -98,9 +96,10 @@ export class SharedDatabaseWorkerContext {
     if (!store) {
       throw new Error("Shared database credential Store was not found");
     }
-    store.set(startCredentialStoreDaemons$, (daemon) => {
-      this.ownCredentialDaemon(daemon);
-    });
+    const daemon = store.set(startCredentialStoreDaemons$);
+    if (daemon) {
+      detach(daemon, Reason.Daemon, "shared database credential realtime");
+    }
   }
 
   credentialStoreCount(): number {
@@ -121,23 +120,5 @@ export class SharedDatabaseWorkerContext {
     }
     this.credentialStores.delete(credentialId);
     store.set(disposeSharedDatabaseCredentialStore$);
-  }
-
-  private ownCredentialDaemon(daemon: Promise<void>): void {
-    const owned = withCleanup(this.observeCredentialDaemon(daemon), () => {
-      this.credentialDaemonTasks.delete(owned);
-    });
-    this.credentialDaemonTasks.add(owned);
-  }
-
-  private async observeCredentialDaemon(daemon: Promise<void>): Promise<void> {
-    const [result] = await Promise.allSettled([daemon]);
-    if (result?.status !== "rejected" || isAbortError(result.reason)) {
-      return;
-    }
-    captureSentryLogError("SharedDatabaseWorker", [
-      "credential daemon failed",
-      result.reason,
-    ]);
   }
 }

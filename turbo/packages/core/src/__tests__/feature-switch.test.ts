@@ -27,9 +27,6 @@ describe("isFeatureEnabled", () => {
 
   it("should return false for disabled switch without context", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.BuiltInModelProviderFallback, {}),
-    ).toBe(false);
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -123,9 +120,6 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.BuiltInModelProviderFallback]).toBe(
-      true,
-    );
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
@@ -151,9 +145,6 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.BuiltInModelProviderFallback]).toBe(
-      false,
-    );
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,

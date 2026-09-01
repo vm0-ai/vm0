@@ -3,10 +3,7 @@ import { command, computed, createStore, state, type Store } from "ccstate";
 
 import { setApiClientRuntime$ } from "../signals/api-client-runtime.ts";
 import { appVersion$, initializeAppVersion$ } from "../signals/app-version.ts";
-import {
-  setAuthenticatedIdentity$,
-  setAuthRecovery$,
-} from "../signals/auth-context.ts";
+import { setAuthenticatedIdentity$ } from "../signals/auth-context.ts";
 import { reloadChatIndicators$ } from "../signals/chat-thread-list-reload.ts";
 import {
   setAblyLoop$,
@@ -38,7 +35,7 @@ import {
   requireConnectionSignal$,
   updateRealtimeStatusForConnections$,
   updateWorkerCredentialIdentity$,
-  WorkerAuthRecovery,
+  WorkerTokenRecovery,
   type ConnectionId,
   type WorkerBroadcastMessage,
 } from "./worker-context.ts";
@@ -77,10 +74,8 @@ interface SharedDatabaseWorkerHeartbeat {
 interface CredentialStoreResources {
   readonly controller: AbortController;
   readonly runtime: SharedDatabaseWorkerRuntime;
-  readonly authRecovery: WorkerAuthRecovery;
+  readonly tokenRecovery: WorkerTokenRecovery;
 }
-
-export type CredentialStoreDaemonOwner = (daemon: Promise<void>) => void;
 
 function requireRuntime(
   runtime: SharedDatabaseWorkerRuntime | null,
@@ -153,18 +148,23 @@ const installCredentialStore$ = command(
     set(
       initializeWorkerCredentialContext$,
       options.identity,
-      resources.authRecovery,
+      resources.tokenRecovery,
     );
     set(setApiClientRuntime$, {
       environment: "worker",
       apiBaseUrl: options.apiBaseUrl,
+      getToken: (tokenSignal) => {
+        return resources.tokenRecovery.getToken(tokenSignal);
+      },
       oauthApiBaseUrl: options.apiBaseUrl,
+      reloadToken: (tokenSignal) => {
+        return resources.tokenRecovery.reloadToken(tokenSignal);
+      },
       ...(options.vercelProtectionBypass
         ? { vercelProtectionBypass: options.vercelProtectionBypass }
         : {}),
       onForceUpgrade: options.onForceUpgrade,
     });
-    set(setAuthRecovery$, Promise.resolve(resources.authRecovery));
     set(setAuthenticatedIdentity$, Promise.resolve(options.identity));
   },
 );
@@ -179,7 +179,7 @@ export const initializeCredentialStore$ = command(
   ): void => {
     signal.throwIfAborted();
     set(setRootSignal$, signal);
-    const authRecovery = new WorkerAuthRecovery(
+    const tokenRecovery = new WorkerTokenRecovery(
       options.identity.token,
       broadcast,
     );
@@ -195,7 +195,7 @@ export const initializeCredentialStore$ = command(
     );
     set(
       installCredentialStore$,
-      { controller, runtime, authRecovery },
+      { controller, runtime, tokenRecovery },
       options,
       signal,
     );
@@ -377,13 +377,13 @@ const runCredentialStoreDaemons$ = command(
 );
 
 export const startCredentialStoreDaemons$ = command(
-  ({ get, set }, ownDaemon: CredentialStoreDaemonOwner): void => {
+  ({ get, set }): Promise<void> | null => {
     if (get(credentialStoreDaemonsStartedState$)) {
-      return;
+      return null;
     }
     const signal = get(rootSignal$);
     set(credentialStoreDaemonsStartedState$, true);
-    ownDaemon(set(runCredentialStoreDaemons$, signal));
+    return set(runCredentialStoreDaemons$, signal);
   },
 );
 

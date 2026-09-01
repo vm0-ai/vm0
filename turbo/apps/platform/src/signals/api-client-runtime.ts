@@ -1,12 +1,25 @@
 import { command, computed, state } from "ccstate";
+import type { ClerkTokenSource } from "./clerk-token.ts";
 
-export interface ApiClientRuntime {
-  readonly environment: "app" | "worker";
+interface ApiClientRuntimeBase {
   readonly apiBaseUrl: string;
   readonly oauthApiBaseUrl: string;
   readonly vercelProtectionBypass?: string;
   readonly onForceUpgrade?: () => void;
 }
+
+interface AppApiClientRuntime extends ApiClientRuntimeBase {
+  readonly clerk: Promise<ClerkTokenSource>;
+  readonly environment: "app";
+}
+
+interface WorkerApiClientRuntime extends ApiClientRuntimeBase {
+  readonly environment: "worker";
+  readonly getToken: (signal: AbortSignal) => Promise<string | null>;
+  readonly reloadToken: (signal: AbortSignal) => Promise<string | null>;
+}
+
+export type ApiClientRuntime = AppApiClientRuntime | WorkerApiClientRuntime;
 
 const internalApiClientRuntime$ = state<ApiClientRuntime | undefined>(
   undefined,

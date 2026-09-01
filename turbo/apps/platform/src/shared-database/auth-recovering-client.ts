@@ -54,7 +54,7 @@ export class AuthRecoveringSharedDatabaseBridge implements SharedDatabaseBridge 
 
   constructor(
     private readonly bridge: SharedDatabaseBridge,
-    private readonly forceRefreshToken: (
+    private readonly reloadToken: (
       signal: AbortSignal,
     ) => Promise<string | null>,
     private readonly rootSignal: AbortSignal,
@@ -166,7 +166,7 @@ export class AuthRecoveringSharedDatabaseBridge implements SharedDatabaseBridge 
   private async runAuthenticationRecovery(
     rejectedHeartbeat: SharedDatabaseHeartbeat,
   ): Promise<boolean> {
-    const token = await this.forceRefreshToken(this.rootSignal);
+    const token = await this.reloadToken(this.rootSignal);
     this.rootSignal.throwIfAborted();
     if (!token || token === rejectedHeartbeat.token) {
       return false;

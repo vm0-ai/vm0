@@ -3,7 +3,6 @@ import { authContract } from "@okouai/api-contracts/contracts/auth";
 import { accept } from "../lib/accept.ts";
 import { captureSentryLogError } from "../lib/sentry-config.ts";
 import { createAuthedContractClient } from "../signals/api-client-base.ts";
-import type { AuthRecovery } from "../signals/auth-retry.ts";
 import { logger } from "../signals/log.ts";
 import {
   createChildAbortController,
@@ -53,31 +52,18 @@ function serializedError(error: unknown): { name: string; message: string } {
   return { name: Error.name, message: String(error) };
 }
 
-function fixedTokenAuthRecovery(token: string): AuthRecovery {
-  return {
-    getToken: (signal) => {
-      signal.throwIfAborted();
-      return Promise.resolve(token);
-    },
-    forceRefreshToken: (signal) => {
-      signal.throwIfAborted();
-      return Promise.resolve(null);
-    },
-  };
-}
-
 async function authenticateHeartbeat(
   message: Extract<SharedDatabaseClientMessage, { readonly type: "heartbeat" }>,
   clientVersion: string,
   onForceUpgrade: () => void,
   signal: AbortSignal,
 ): Promise<SharedDatabaseIdentity> {
-  const authRecovery = fixedTokenAuthRecovery(message.token);
   const client = createAuthedContractClient(authContract, {
     baseUrl: message.apiBaseUrl,
     clientVersion,
-    getAuthRecovery: () => {
-      return Promise.resolve(authRecovery);
+    getToken: (requestSignal) => {
+      requestSignal.throwIfAborted();
+      return Promise.resolve(message.token);
     },
     getRootSignal: () => {
       return signal;
