@@ -1037,7 +1037,7 @@ describe("auth v2 sign-in flow", () => {
     expect(mockedClerk.clientSignInCreate).not.toHaveBeenCalled();
   });
 
-  it("retries Google One Tap after a script failure and back navigation", async () => {
+  it("silently falls back after a Google One Tap script failure and retries after back navigation", async () => {
     context.mocks.browser.fedCm();
     mockAuthV2Capabilities({
       googleOAuth: true,
@@ -1049,12 +1049,19 @@ describe("auth v2 sign-in flow", () => {
     // Script loading is a browser resource boundary and cannot be triggered
     // through a rendered control, so dispatch its terminal event directly.
     await screen.findByLabelText("Email address");
-    fireEvent.error(failedScript);
-
-    await waitFor(() => {
-      expect(failedScript).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.error(failedScript);
+      await Promise.resolve();
     });
-    await expect(screen.findByRole("alert")).resolves.toBeVisible();
+
+    expect(failedScript).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Email address"),
+    ).resolves.toBeEnabled();
+    await expect(
+      waitForRoleElement("button", "Continue with Google"),
+    ).resolves.toBeEnabled();
 
     navigateToSignUp();
     await expect(
