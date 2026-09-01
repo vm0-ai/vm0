@@ -66,10 +66,10 @@ export const setupAuthenticatedDaemons$ = command(
 
     const authRecovery = await get(authRecovery$);
     signal.throwIfAborted();
-    const appRealtimeDaemons = set(runAppRealtimeDaemons$, signal);
-    ownDaemon(appRealtimeDaemons);
     await set(setupSharedDatabaseBridge$, authRecovery, signal);
     signal.throwIfAborted();
+    const appRealtimeDaemons = set(runAppRealtimeDaemons$, signal);
+    ownDaemon(appRealtimeDaemons);
     set(authenticatedServicesInstalled$, true);
   },
 );

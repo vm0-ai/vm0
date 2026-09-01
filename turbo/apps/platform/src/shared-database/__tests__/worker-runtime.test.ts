@@ -658,12 +658,9 @@ describe("shared database worker runtime", () => {
       { identity: identity(), apiBaseUrl: location.origin },
       firstSignal,
     );
-    const credentialStoreReady = store.set(
-      startCredentialStoreDaemons$,
-      (daemon) => {
-        context.track(daemon);
-      },
-    );
+    store.set(startCredentialStoreDaemons$, (daemon) => {
+      context.track(daemon);
+    });
     await initialAttachment.started;
     for (const port of [firstPort, secondPort]) {
       expect(
@@ -673,7 +670,6 @@ describe("shared database worker runtime", () => {
       ).toBeFalsy();
     }
     initialAttachment.attach();
-    await credentialStoreReady;
     await vi.waitFor(() => {
       expect(
         context.mocks.ably.hasChannelSubscriptionOnChannel(realtimeChannel()),

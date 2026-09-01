@@ -71,6 +71,7 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
   private bridge: SharedDatabaseBridge | null = null;
   private connectionController: AbortController | null = null;
   private ownerSignal: AbortSignal | null = null;
+  private preparation: Promise<void> | null = null;
   private reloadRequested = false;
 
   constructor(
@@ -86,12 +87,28 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
     };
   }
 
+  prepare(signal: AbortSignal): Promise<void> {
+    this.bindOwner(signal);
+    if (this.bridge) {
+      return Promise.resolve();
+    }
+    if (this.preparation) {
+      return this.preparation;
+    }
+    if (this.reloadRequested) {
+      return this.waitForReload(signal);
+    }
+    const preparation = this.prepareTransport(signal);
+    this.preparation = preparation;
+    return preparation;
+  }
+
   async heartbeat(
     heartbeat: SharedDatabaseHeartbeat,
     signal: AbortSignal,
   ): Promise<SharedDatabaseHeartbeatResult> {
-    this.bindOwner(signal);
-    const bridge = await this.createBridgeOrReload(signal);
+    await this.prepare(signal);
+    const bridge = this.requireBridge();
     return await this.runWithReload(() => {
       return bridge.heartbeat(
         heartbeat,
@@ -132,15 +149,7 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
     this.ownerSignal = signal;
   }
 
-  private async createBridgeOrReload(
-    signal: AbortSignal,
-  ): Promise<SharedDatabaseBridge> {
-    if (this.bridge) {
-      return this.bridge;
-    }
-    if (this.reloadRequested) {
-      return await this.waitForReload(signal);
-    }
+  private async prepareTransport(signal: AbortSignal): Promise<void> {
     signal.throwIfAborted();
     const controller = createChildAbortController(this.requireOwnerSignal());
     this.options.events.statusChanged("connecting");
@@ -152,10 +161,8 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
       controller.abort(created.error);
       return await this.requestReload(signal);
     }
-    const bridge = created.value;
     this.connectionController = controller;
-    this.bridge = bridge;
-    return bridge;
+    this.bridge = created.value;
   }
 
   private async constructBridge(

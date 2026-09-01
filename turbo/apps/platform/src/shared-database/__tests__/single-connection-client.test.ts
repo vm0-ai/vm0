@@ -119,6 +119,32 @@ function query() {
 }
 
 describe("single-connection shared database bridge", () => {
+  it("prepares one transport before the initial heartbeat", async () => {
+    const bridges: FakeBridge[] = [];
+    const statuses: SharedDatabaseConnectionStatus[] = [];
+    const bridge = new SingleConnectionSharedDatabaseBridge({
+      createBridge: () => {
+        const created = new FakeBridge();
+        bridges.push(created);
+        return created;
+      },
+      events: createEvents(statuses),
+    });
+    const owner = createChildAbortController(context.signal);
+
+    await bridge.prepare(owner.signal);
+
+    expect(bridges).toHaveLength(1);
+    expect(bridges[0]!.heartbeatCalls).toBe(0);
+    expect(statuses).toStrictEqual(["connecting"]);
+
+    await bridge.heartbeat(heartbeat(), owner.signal);
+
+    expect(bridges).toHaveLength(1);
+    expect(bridges[0]!.heartbeatCalls).toBe(1);
+    owner.abort();
+  });
+
   it("requests a reload when transport construction fails synchronously", async () => {
     const statuses: SharedDatabaseConnectionStatus[] = [];
     const events = createEvents(statuses);

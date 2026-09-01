@@ -160,6 +160,15 @@ const sharedDatabaseBridgeHostState$ = state<SharedDatabaseBridgeHost>({
   createBridge: createBrowserSharedDatabaseBridge,
 });
 
+interface PreparedSharedDatabaseBridge {
+  readonly apiBaseUrl: string;
+  readonly authenticationRequiredTarget: EventTarget;
+  readonly bridge: SingleConnectionSharedDatabaseBridge;
+}
+
+const preparedSharedDatabaseBridgeState$ =
+  state<PreparedSharedDatabaseBridge | null>(null);
+
 const syncSharedDatabaseInvalidation$ = command(
   async (
     { set },
@@ -189,25 +198,18 @@ export const setSharedDatabaseBridgeHostForTest$ = command(
   },
 );
 
-export const setupSharedDatabaseBridge$ = command(
-  async (
-    { get, set },
-    authRecovery: AuthRecovery,
-    signal: AbortSignal,
-  ): Promise<void> => {
+export const prepareSharedDatabaseBridge$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
     signal.throwIfAborted();
-    if (get(sharedDatabaseBridgeInstalled$)) {
+    const existing = get(preparedSharedDatabaseBridgeState$);
+    if (existing) {
+      await existing.bridge.prepare(signal);
       return;
-    }
-    const token = await authRecovery.getToken(signal);
-    signal.throwIfAborted();
-    if (!token) {
-      throw new Error("Clerk token is required for the shared database");
     }
     const apiBaseUrl = resolveApiBaseForTarget("api");
     const bridgeHost = get(sharedDatabaseBridgeHostState$);
     const authenticationRequiredTarget = new EventTarget();
-    const singleConnectionBridge = new SingleConnectionSharedDatabaseBridge({
+    const bridge = new SingleConnectionSharedDatabaseBridge({
       createBridge: (events, connectionSignal) => {
         return bridgeHost.createBridge(apiBaseUrl, events, connectionSignal);
       },
@@ -234,22 +236,52 @@ export const setupSharedDatabaseBridge$ = command(
         },
       },
     });
+    set(preparedSharedDatabaseBridgeState$, {
+      apiBaseUrl,
+      authenticationRequiredTarget,
+      bridge,
+    });
+    await bridge.prepare(signal);
+  },
+);
+
+export const setupSharedDatabaseBridge$ = command(
+  async (
+    { get, set },
+    authRecovery: AuthRecovery,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    signal.throwIfAborted();
+    if (get(sharedDatabaseBridgeInstalled$)) {
+      return;
+    }
+    await set(prepareSharedDatabaseBridge$, signal);
+    const prepared = get(preparedSharedDatabaseBridgeState$);
+    if (!prepared) {
+      throw new Error("Shared database bridge was not prepared");
+    }
+    const token = await authRecovery.getToken(signal);
+    signal.throwIfAborted();
+    if (!token) {
+      throw new Error("Clerk token is required for the shared database");
+    }
     const bridge = new AuthRecoveringSharedDatabaseBridge(
-      singleConnectionBridge,
+      prepared.bridge,
       async (recoverySignal) => {
         return await authRecovery.forceRefreshToken(recoverySignal);
       },
       signal,
     );
-    authenticationRequiredTarget.addEventListener(
+    prepared.authenticationRequiredTarget.addEventListener(
       AUTHENTICATION_REQUIRED_EVENT,
       onDomEventFn(async () => {
         await bridge.authenticationRequired();
       }),
       { signal },
     );
-    const vercelProtectionBypass =
-      getCapturedPreviewBypassForTarget(apiBaseUrl);
+    const vercelProtectionBypass = getCapturedPreviewBypassForTarget(
+      prepared.apiBaseUrl,
+    );
     await set(
       installSharedDatabaseBridge$,
       bridge,
