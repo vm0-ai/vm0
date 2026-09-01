@@ -13,6 +13,7 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
+import type { z } from "zod";
 
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
@@ -296,6 +297,50 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
+type TelemetryBody = z.infer<(typeof webhookTelemetryContract.send)["body"]>;
+type TelemetryMetric = NonNullable<TelemetryBody["metrics"]>[number];
+
+function telemetryMetricEvent(
+  metric: TelemetryMetric,
+  runId: string,
+  userId: string,
+): Record<string, unknown> {
+  return {
+    _time: metric.ts,
+    runId,
+    userId,
+    cpu: metric.cpu,
+    ...(metric.cpu_steal_percent === undefined
+      ? {}
+      : { cpu_steal_percent: metric.cpu_steal_percent }),
+    ...(metric.scheduled_lag_ms === undefined
+      ? {}
+      : { scheduled_lag_ms: metric.scheduled_lag_ms }),
+    mem_used: metric.mem_used,
+    mem_total: metric.mem_total,
+    disk_used: metric.disk_used,
+    disk_total: metric.disk_total,
+    ...(metric.control_cpu_usage_usec === undefined
+      ? {}
+      : { control_cpu_usage_usec: metric.control_cpu_usage_usec }),
+    ...(metric.control_cpu_nr_throttled === undefined
+      ? {}
+      : { control_cpu_nr_throttled: metric.control_cpu_nr_throttled }),
+    ...(metric.control_cpu_throttled_usec === undefined
+      ? {}
+      : { control_cpu_throttled_usec: metric.control_cpu_throttled_usec }),
+    ...(metric.workload_cpu_usage_usec === undefined
+      ? {}
+      : { workload_cpu_usage_usec: metric.workload_cpu_usage_usec }),
+    ...(metric.workload_cpu_nr_throttled === undefined
+      ? {}
+      : { workload_cpu_nr_throttled: metric.workload_cpu_nr_throttled }),
+    ...(metric.workload_cpu_throttled_usec === undefined
+      ? {}
+      : { workload_cpu_throttled_usec: metric.workload_cpu_throttled_usec }),
+  };
+}
+
 const telemetryBody$ = bodyResultOf(webhookTelemetryContract.send);
 const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
   const bodyResult = await get(telemetryBody$);
@@ -349,16 +394,7 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
     telemetryBatches.push({
       dataset: getDatasetName(SANDBOX_TELEMETRY_METRICS_DATASET),
       events: body.metrics.map((metric) => {
-        return {
-          _time: metric.ts,
-          runId: body.runId,
-          userId: auth.userId,
-          cpu: metric.cpu,
-          mem_used: metric.mem_used,
-          mem_total: metric.mem_total,
-          disk_used: metric.disk_used,
-          disk_total: metric.disk_total,
-        };
+        return telemetryMetricEvent(metric, body.runId, auth.userId);
       }),
     });
   }
