@@ -1,4 +1,5 @@
 import Foundation
+import ScreenCaptureKit
 
 /// Why a capture stream ended without the app asking it to.
 public enum StreamStopReason: Equatable, Sendable {
@@ -11,14 +12,16 @@ public enum StreamStopReason: Equatable, Sendable {
 }
 
 public enum StreamStopClassifier {
-    /// `SCStreamErrorUserStopped`. macOS reports the user ending the share
-    /// through its own indicator as an `SCStreamError`, so the only thing
-    /// separating "finished" from "broken" is this code.
-    public static let userStoppedErrorCode = -3817
+    /// macOS reports the user ending the share through its own indicator as an
+    /// `SCStreamError`, so the only thing separating "finished" from "broken"
+    /// is this code. Taken from the SDK rather than written out, because a
+    /// mistyped literal would classify every user stop as a fault and silently
+    /// restore the bug this classifier exists to fix.
+    public static let userStoppedErrorCode = SCStreamError.Code.userStopped.rawValue
 
     /// `SCStreamError` values live in this domain; codes from anywhere else
     /// carry no such guarantee and are treated as faults.
-    public static let streamErrorDomain = "com.apple.ScreenCaptureKit.SCStreamErrorDomain"
+    public static let streamErrorDomain = SCStreamError.errorDomain
 
     public static func classify(domain: String, code: Int) -> StreamStopReason {
         guard domain == streamErrorDomain, code == userStoppedErrorCode else {

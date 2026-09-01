@@ -17,7 +17,7 @@ struct StreamStopReasonTests {
 
     @Test
     func treatsEveryOtherStreamErrorAsAFault() {
-        // A closed window or an unplugged display arrives in the same domain
+        // A revoked, declined, or broken capture arrives in the same domain
         // with a different code, and must not be reported as a clean finish.
         #expect(StreamStopClassifier.classify(domain: domain, code: -3801) == .failed)
         #expect(StreamStopClassifier.classify(domain: domain, code: 0) == .failed)

@@ -167,7 +167,6 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     private var timebase = mach_timebase_info_data_t()
 
     private var state: RecorderSessionState = .ready
-    private var failure: HelperFailure?
     /// Set when the stream ended without `stop` being called. The session stays
     /// finalizable so the partial recording and its click track are still
     /// written; only the reported status changes.
@@ -456,12 +455,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             "status": reportedStatusLocked(),
             "elapsedMs": Int(elapsedSecondsLocked() * 1000),
         ]
-        if let failure {
-            described["error"] = [
-                "code": failure.code,
-                "message": failure.message,
-            ]
-        } else if let externalStop, externalStop.reason == .failed {
+        if let externalStop, externalStop.reason == .failed {
             described["error"] = [
                 "code": "source_lost",
                 "message": externalStop.message,
@@ -722,21 +716,25 @@ private func handleStart(_ request: [String: Any]) throws -> [String: Any] {
 private func handleStop(_ request: [String: Any]) throws -> [String: Any] {
     let sessionId = try requiredString(request, "sessionId")
     let session = try sessionStore.session(sessionId)
-    let result = try session.stop()
-    sessionStore.remove(sessionId)
-    return result
+    // `stop` reaches its terminal state before any of the work that can throw,
+    // so a finalize that fails partway leaves a session that can never be
+    // stopped again. Releasing on the way out either way is what keeps the
+    // store bounded; the caller gives up on a rejected stop and never retries.
+    defer {
+        if session.isTerminal {
+            sessionStore.remove(sessionId)
+        }
+    }
+    return try session.stop()
 }
 
 private func handleState(_ request: [String: Any]) throws -> [String: Any] {
     let sessionId = try requiredString(request, "sessionId")
     let session = try sessionStore.session(sessionId)
-    let described = session.describedState()
-    if session.isTerminal {
-        // A session that failed on the delegate queue is never stopped by the
-        // caller, so releasing it here is what keeps the store bounded.
-        sessionStore.remove(sessionId)
-    }
-    return described
+    // A stream that ended on its own is reported here but deliberately left in
+    // the store: it still holds the frames the user captured, and only `stop`
+    // can finalize them. `handleStop` is what releases it.
+    return session.describedState()
 }
 
 private func handle(_ request: [String: Any]) throws -> [String: Any] {

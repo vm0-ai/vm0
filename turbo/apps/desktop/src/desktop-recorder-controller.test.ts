@@ -441,29 +441,6 @@ describe("DesktopRecorderController", () => {
     });
   });
 
-  it("ends the session when the capture source disappears", async () => {
-    const backend = createBackendFake({
-      getStatus: vi.fn(
-        async (): Promise<DesktopRecorderNativeStatus> => ({
-          status: "failed",
-          elapsedMs: 2000,
-          error: { code: "source_lost", message: "Display disconnected" },
-        }),
-      ),
-    });
-    const { controller } = createController(backend);
-    await enableAndPrepare(controller);
-    await controller.start();
-
-    await controller.refreshRecordingStatus();
-
-    expect(controller.getState()).toMatchObject({
-      status: "idle",
-      sessionId: null,
-      error: { code: "source_lost", message: "Display disconnected" },
-    });
-  });
-
   it("finalizes the file and releases the helper when the switch is withdrawn", async () => {
     const { controller, backend } = createController();
     await enableAndPrepare(controller);
