@@ -139,13 +139,8 @@
       #app-bootstrap-skeleton {
         position: fixed;
         inset: 0;
-        /* Fixed insets follow WebKit's reachable layout viewport. Avoid the
-           standalone viewport unit, which can resolve after first paint. */
         z-index: 60;
         box-sizing: border-box;
-        display: flex;
-        align-items: center;
-        justify-content: center;
         background: #fdfdfe;
         opacity: 1;
         transition: opacity 300ms ease;
@@ -162,7 +157,8 @@
 
       .app-bootstrap-skeleton__content {
         position: fixed;
-        top: var(--app-bootstrap-skeleton-center-y, 50dvh);
+        /* Small viewport units stay stable during iOS standalone launch. */
+        top: 50svh;
         left: 50%;
         transform: translate(-50%, -50%);
       }
@@ -710,24 +706,6 @@
         gtagScript.src =
           "https://www.googletagmanager.com/gtag/js?id=AW-18144854014";
         document.head.appendChild(gtagScript);
-      })();
-    </script>
-    <script>
-      (function () {
-        var skeleton = document.getElementById("app-bootstrap-skeleton");
-        // iOS standalone can expand the fixed containing viewport one frame
-        // after launch. Pin the content to the initially reachable viewport
-        // so that later geometry resolution cannot visibly recenter it.
-        var viewportHeight =
-          window.visualViewport && window.visualViewport.height > 0
-            ? window.visualViewport.height
-            : window.innerHeight;
-        if (viewportHeight > 0) {
-          skeleton.style.setProperty(
-            "--app-bootstrap-skeleton-center-y",
-            viewportHeight / 2 + "px",
-          );
-        }
       })();
     </script>
   </body>
