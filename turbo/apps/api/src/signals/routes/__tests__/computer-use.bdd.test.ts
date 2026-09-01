@@ -1691,32 +1691,4 @@ describe("FILE-03 desktop computer-use runtime", () => {
     }
     expect(resweep.body.cleaned).toBe(0);
   });
-
-  // #28466 moved this contract to `/api/computer-use/**`. The heartbeat is the
-  // busiest path in the family and its caller is an installed Desktop build
-  // that hardcodes the branded form and updates on its owner's schedule, so
-  // the `MIGRATED_BRANDED_PATHS` rows have to keep both branded paths
-  // registered. The registration-level assertions live in
-  // `migrated-branded-paths.test.ts`; this is the executed request that proves
-  // an old build still reaches the handler and gets its host back.
-  it("serves the migrated heartbeat on the neutral path and both branded paths", async () => {
-    const actor = bdd.user({ orgId: `org_${randomUUID()}` });
-    const host = await api.startComputerUseHost(actor, {
-      hostName: "Studio Mac",
-    });
-
-    const responses = [];
-    for (const path of [
-      "/api/computer-use/heartbeat",
-      "/api/okou/computer-use/heartbeat",
-      "/api/zero/computer-use/heartbeat",
-    ]) {
-      responses.push(
-        await api.requestComputerUseHeartbeatAtPath(host.hostToken, path),
-      );
-    }
-
-    const served = { status: 200, body: { ok: true, hostId: host.hostId } };
-    expect(responses).toStrictEqual([served, served, served]);
-  });
 });
