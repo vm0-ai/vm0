@@ -301,7 +301,7 @@ function validateCustomConnectorAuthWrite(
     readonly oauthConfig?: CustomConnectorOAuthConfigInput;
   },
   context: z.RefinementCtx,
-  allowAutomatic: boolean,
+  connectorKind: "http" | "mcp",
 ): void {
   const authMode = value.authMode ?? "manual";
   if (authMode === "none") {
@@ -330,7 +330,7 @@ function validateCustomConnectorAuthWrite(
         path: ["fields"],
       });
     }
-    if (allowAutomatic && value.fields.length > 0) {
+    if (connectorKind === "mcp" && value.fields.length > 0) {
       context.addIssue({
         code: "custom",
         message: "No-auth MCP connectors cannot include fields",
@@ -360,7 +360,7 @@ function validateCustomConnectorAuthWrite(
     return;
   }
   if (value.oauthSetup === "automatic") {
-    if (!allowAutomatic) {
+    if (connectorKind !== "mcp") {
       context.addIssue({
         code: "custom",
         message: "Automatic OAuth requires an MCP connector",
@@ -398,7 +398,7 @@ const customConnectorHttpDefinitionWriteCoreSchema =
 
 const customConnectorHttpDefinitionWriteSchema =
   customConnectorHttpDefinitionWriteCoreSchema.superRefine((value, context) => {
-    validateCustomConnectorAuthWrite(value, context, false);
+    validateCustomConnectorAuthWrite(value, context, "http");
   });
 
 export const customConnectorHttpCreateBodySchema =
@@ -407,7 +407,7 @@ export const customConnectorHttpCreateBodySchema =
       slug: z.string().optional(),
     })
     .superRefine((value, context) => {
-      validateCustomConnectorAuthWrite(value, context, false);
+      validateCustomConnectorAuthWrite(value, context, "http");
     });
 
 export const customConnectorMcpCreateBodySchema =
@@ -421,7 +421,7 @@ export const customConnectorMcpCreateBodySchema =
       prefixTemplates: z.never().optional(),
     })
     .superRefine((value, context) => {
-      validateCustomConnectorAuthWrite(value, context, true);
+      validateCustomConnectorAuthWrite(value, context, "mcp");
     });
 
 export const createCustomConnectorBodySchema = z.union([
@@ -445,7 +445,7 @@ export const customConnectorMcpUpdateBodySchema =
       prefixTemplates: z.never().optional(),
     })
     .superRefine((value, context) => {
-      validateCustomConnectorAuthWrite(value, context, true);
+      validateCustomConnectorAuthWrite(value, context, "mcp");
     });
 
 export const updateCustomConnectorBodySchema = z.union([
