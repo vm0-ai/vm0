@@ -345,6 +345,31 @@ beforeEach(async () => {
 });
 
 describe.sequential("Official Workflow catalog release boundary", () => {
+  it("replaces a previous schema release through the current source boundary", async () => {
+    const seeded = await stateAction({
+      action: "seed-previous-schema-release",
+    });
+    expect(seeded.body).toMatchObject({
+      catalog: null,
+      counts: { releases: 1 },
+    });
+
+    const synced = await syncCatalog(catalog([]));
+    expect(synced.body).toMatchObject({
+      outcome: "accepted",
+      diagnostics: [],
+    });
+
+    const state = await readState();
+    expect(state.body.catalog).toMatchObject({
+      releaseId: synced.body.releaseId,
+      payload: {
+        schemaVersion: OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION,
+        definitions: [],
+      },
+    });
+  });
+
   it("authenticates sync and accepts an idempotent empty initial catalog", async () => {
     const unauthorized = await syncCatalogUnauthorized(catalog([]));
     expect(unauthorized.status).toBe(401);

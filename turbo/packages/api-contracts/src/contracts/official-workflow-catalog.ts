@@ -19,7 +19,7 @@ export type {
   OfficialWorkflowBlueprintBindings,
 } from "./official-workflow-bindings";
 
-export const OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION = 1 as const;
+export const OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION = 2 as const;
 
 export const officialWorkflowLifecycleSchema = z.enum(["active", "retired"]);
 export type OfficialWorkflowLifecycle = z.infer<
