@@ -195,9 +195,6 @@ runs:
         github_app_private_key="$(resolve_repo_alias repo_secret OKOU_GITHUB_APP_PRIVATE_KEY VM0_GITHUB_APP_PRIVATE_KEY)"
         machine_secret_key="$(resolve_repo_alias repo_secret OKOU_MACHINE_SECRET_KEY VM0_MACHINE_SECRET_KEY "API machine secret")"
         api_backend_url="$INPUT_API_BACKEND_URL"
-        if [[ "$INPUT_ENVIRONMENT" == "production" && -z "$api_backend_url" ]]; then
-          api_backend_url="$(resolve_repo_alias repo_var OKOU_API_BACKEND_URL VM0_API_BACKEND_URL "API backend URL")"
-        fi
 
         : > "$env_file"
 
