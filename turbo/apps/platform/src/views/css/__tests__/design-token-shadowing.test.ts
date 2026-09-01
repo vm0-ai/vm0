@@ -18,8 +18,6 @@ function intentionalShadows(): string[] {
     // The Zero nav sits on its own surface: lighter than the design system's
     // sidebar in light mode, darker in dark mode.
     "--color-sidebar",
-    // The nav's brand mark is drawn on that surface rather than filled with it.
-    "--color-sidebar-primary",
   ];
 }
 

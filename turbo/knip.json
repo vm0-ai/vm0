@@ -51,8 +51,7 @@
         "@sentry/cli",
         "idb",
         "tailwindcss",
-        "typescript-eslint",
-        "@tailwindcss/typography"
+        "typescript-eslint"
       ]
     },
     "apps/host-worker": {
