@@ -49,6 +49,14 @@ const HISTORICAL_USAGE: MockTokenUsage = MockTokenUsage {
     reasoning_output_tokens: 10,
     total_tokens: 150,
 };
+const HISTORICAL_LAST_USAGE: MockTokenUsage = MockTokenUsage {
+    input_tokens: 6,
+    cached_input_tokens: 1,
+    cache_write_input_tokens: 1,
+    output_tokens: 12,
+    reasoning_output_tokens: 2,
+    total_tokens: 18,
+};
 const FIRST_RESPONSE_USAGE: MockTokenUsage = MockTokenUsage {
     input_tokens: 7,
     cached_input_tokens: 2,
@@ -627,7 +635,7 @@ pub(super) fn historical_token_usage_notification(thread_id: &str) -> Value {
         thread_id,
         HISTORICAL_TURN_ID,
         HISTORICAL_USAGE,
-        HISTORICAL_USAGE,
+        HISTORICAL_LAST_USAGE,
     )
 }
 
