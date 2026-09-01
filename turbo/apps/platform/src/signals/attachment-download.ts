@@ -33,7 +33,9 @@ export const downloadAttachment$ = command(
       classifyChatAttachment({
         filename: attachment.filename,
         url: resourceUrl,
-      }) === "file",
+      }) === "file"
+        ? "native"
+        : "blob",
     );
   },
 );

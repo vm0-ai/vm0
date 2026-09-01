@@ -3504,8 +3504,9 @@ describe("zero attachment chips", () => {
       expect(browser.downloads).toHaveLength(1);
     });
     expect(browser.downloads[0]).toMatchObject({
+      url: presignedFileUrl("attachment-presentation"),
       filename: "quarterly-plan.pptx",
-      blob: expect.any(Blob),
+      blob: null,
     });
     expect(screen.queryByText("Download failed")).not.toBeInTheDocument();
   });

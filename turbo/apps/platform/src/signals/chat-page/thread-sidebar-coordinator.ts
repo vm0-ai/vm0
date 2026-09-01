@@ -205,31 +205,6 @@ const materializeArtifactRef$ = command(
 );
 
 /**
- * Open a message artifact in the sidebar owned by the thread that rendered
- * its card. Unlike the page-global lightbox promotion path, this preserves
- * the originating pane when two chats are open side by side.
- */
-export const openThreadArtifact$ = command(
-  ({ get, set }, threadId: string, input: ArtifactRefInput) => {
-    const thread = [get(currentLeftThread$), get(currentRightThread$)].find(
-      (candidate) => {
-        return candidate?.threadId === threadId;
-      },
-    );
-    if (!thread || thread.signal.aborted) {
-      return;
-    }
-    set(openOnThread$, thread, {
-      type: "artifact",
-      source: {
-        kind: "attachment",
-        ref: set(materializeArtifactRef$, input, thread.signal),
-      },
-    });
-  },
-);
-
-/**
  * Promote a message attachment from the lightbox into split view. The lightbox
  * is page-global, so the main (left) thread hosts the sidebar.
  */

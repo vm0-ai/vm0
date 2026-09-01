@@ -248,19 +248,18 @@ export async function downloadAttachmentUrl(
   url: string,
   signal: AbortSignal = AbortSignal.any([]),
   filename = attachmentFilenameFromUrl(url),
-  nativeFileFallback = false,
+  mode: "blob" | "native" = "blob",
 ): Promise<void> {
+  if (mode === "native") {
+    signal.throwIfAborted();
+    // Generic files intentionally use native browser delivery. Previewable
+    // media keeps the blob path so a download cannot replace the chat page.
+    triggerAnchorDownload(publicAttachmentUrl(url), filename);
+    return;
+  }
   const blob = await fetchBlobForDownload(url, signal);
   if (blob !== null) {
     triggerBlobDownload(blob, filename);
-    return;
-  }
-  if (nativeFileFallback) {
-    // Preview deployments can use a CDN whose CORS policy does not include
-    // the ephemeral app origin. Generic files still download correctly via
-    // native browser navigation, while previewable media keeps the blob-only
-    // path so a failed download never opens the asset in place.
-    triggerAnchorDownload(publicAttachmentUrl(url), filename);
     return;
   }
   toast.error(
