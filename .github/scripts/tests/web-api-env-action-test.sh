@@ -137,32 +137,6 @@ assert_api_backend_url_aliases_absent() {
   assert_env_key_absent "$env_file" VM0_API_BACKEND_URL
 }
 
-assert_api_backend_url_source_state() {
-  local output="$1"
-  local state="$2"
-  local expected
-  local source_lines
-  expected="::notice::API backend URL source canonical_key=OKOU_API_BACKEND_URL legacy_key=VM0_API_BACKEND_URL state=${state}"
-  source_lines="$(grep -F "API backend URL source" <<< "$output" || true)"
-  if [[ "$source_lines" != "$expected" ]]; then
-    fail "unexpected API backend URL source evidence for ${state}"
-  fi
-}
-
-assert_api_backend_url_source_evidence_absent() {
-  local output="$1"
-  assert_not_contains "$output" "API backend URL source"
-}
-
-assert_api_backend_url_values_absent_from_output() {
-  local output="$1"
-  shift
-  local value
-  for value in "$@"; do
-    assert_not_contains "$output" "$value"
-  done
-}
-
 assert_machine_secret_canonical_only() {
   local env_file="$1"
   local expected="$2"
@@ -379,8 +353,7 @@ run_action() {
   local github_app_secrets_json="${8:-}"
   local input_job_ref="${9-pr-123}"
   local input_api_backend_url="${10-https://pr-123-api-backend.vm0.test}"
-  local api_backend_repo_vars_json="${11:-}"
-  local machine_secret_repo_secrets_json="${12:-}"
+  local machine_secret_repo_secrets_json="${11:-}"
   local action_script="${test_dir}/web-api-env-action.sh"
   local github_output="${test_dir}/github-output"
   local repo_vars_json
@@ -393,20 +366,12 @@ run_action() {
     github_app_secrets_json="{}"
   fi
 
-  repo_vars_json='{"GH_OAUTH_CLIENT_ID":"github-gh-client-id","SLACK_OAUTH_CLIENT_ID":"github-slack-client-id","VM0_API_BACKEND_URL":"https://api.github.test","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-var","FINICITY_PARTNER_ID":"github-finicity-partner-id","POSTHOG_KEY":"github-posthog-key","POSTHOG_HOST":"https://posthog.github.test","ATOM_URL":"https://atom.github.test","STRIPE_OAUTH_CLIENT_ID":"ca_test_connect_client","STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID":"bpc_test_concurrency","MICROSOFT_TEAMS_BOT_APP_ID":"github-teams-bot-app-id","MICROSOFT_TEAMS_APP_TENANT_ID":"github-teams-app-tenant-id","OKOU_PRICE_PRO":"price_test_pro","OKOU_PRICE_TEAM":"price_test_team","OKOU_PRICE_USAGE_PACK_PLAN_PRO":"price_test_usage_pack_plan_pro","OKOU_PRICE_USAGE_PACK_PLAN_TEAM":"price_test_usage_pack_plan_team","OKOU_PRICE_USAGE_PACK_20":"price_test_usage_pack_20","OKOU_PRICE_USAGE_PACK_50":"price_test_usage_pack_50","OKOU_PRICE_USAGE_PACK_100":"price_test_usage_pack_100","OKOU_PRICE_USAGE_PACK_200":"price_test_usage_pack_200","ATOM_GRANT_PRICE":"price_test_atom_grant","OKOU_PRICE_CUSTOM_CREDITS":"price_test_custom_credits","OKOU_PRICE_CUSTOM_CREDIT_UNIT":"price_test_custom_credit_unit","OKOU_PRICE_CONCURRENCY":"price_test_concurrency","GMAIL_PUBSUB_TOPIC_NAME":"projects/github/topics/gmail","GMAIL_PUBSUB_PUSH_AUDIENCE":"https://api.github.test/api/webhooks/gmail","GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL":"gmail-push@github.test","GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME":"projects/github/topics/google-workspace-events","GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_AUDIENCE":"https://api.github.test/api/webhooks/google-workspace-events","GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL":"workspace-events-push@github.test"}'
+  repo_vars_json='{"GH_OAUTH_CLIENT_ID":"github-gh-client-id","SLACK_OAUTH_CLIENT_ID":"github-slack-client-id","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-var","FINICITY_PARTNER_ID":"github-finicity-partner-id","POSTHOG_KEY":"github-posthog-key","POSTHOG_HOST":"https://posthog.github.test","ATOM_URL":"https://atom.github.test","STRIPE_OAUTH_CLIENT_ID":"ca_test_connect_client","STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID":"bpc_test_concurrency","MICROSOFT_TEAMS_BOT_APP_ID":"github-teams-bot-app-id","MICROSOFT_TEAMS_APP_TENANT_ID":"github-teams-app-tenant-id","OKOU_PRICE_PRO":"price_test_pro","OKOU_PRICE_TEAM":"price_test_team","OKOU_PRICE_USAGE_PACK_PLAN_PRO":"price_test_usage_pack_plan_pro","OKOU_PRICE_USAGE_PACK_PLAN_TEAM":"price_test_usage_pack_plan_team","OKOU_PRICE_USAGE_PACK_20":"price_test_usage_pack_20","OKOU_PRICE_USAGE_PACK_50":"price_test_usage_pack_50","OKOU_PRICE_USAGE_PACK_100":"price_test_usage_pack_100","OKOU_PRICE_USAGE_PACK_200":"price_test_usage_pack_200","ATOM_GRANT_PRICE":"price_test_atom_grant","OKOU_PRICE_CUSTOM_CREDITS":"price_test_custom_credits","OKOU_PRICE_CUSTOM_CREDIT_UNIT":"price_test_custom_credit_unit","OKOU_PRICE_CONCURRENCY":"price_test_concurrency","GMAIL_PUBSUB_TOPIC_NAME":"projects/github/topics/gmail","GMAIL_PUBSUB_PUSH_AUDIENCE":"https://api.github.test/api/webhooks/gmail","GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL":"gmail-push@github.test","GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME":"projects/github/topics/google-workspace-events","GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_AUDIENCE":"https://api.github.test/api/webhooks/google-workspace-events","GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL":"workspace-events-push@github.test"}'
   repo_vars_json="$(jq -c '. + {OKOU_PUBLIC_ARTIFACTS_BASE_URL: "https://cdn.okou.test", OKOU_PUBLIC_HOST_DOMAIN: "okou.app", OKOU_HOST_SCHEME: "https", OKOU_ONE_TIME_CAMPAIGN: "test-campaign", VM0_DEFAULT_AGENT: "hostile-retired-default-agent"}' <<< "$repo_vars_json")"
   repo_secrets_json='{"GH_OAUTH_CLIENT_SECRET":"github-gh-client-secret","SLACK_OAUTH_CLIENT_SECRET":"github-slack-client-secret","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-secret","OKOU_MAPS_GOOGLE_MAPS_TOKEN":"github-google-maps-token","OKOU_WEATHER_GOOGLE_WEATHER_TOKEN":"github-google-weather-token","OKOU_FINANCE_APIDOJO_TOKEN":"github-apidojo-token","OKOU_SEO_DATAFORSEO_LOGIN":"github-dataforseo-login","OKOU_SEO_DATAFORSEO_PASSWORD":"github-dataforseo-password","OKOU_BROWSER_USE_API_KEY":"github-browser-use-api-key","OKOU_SCRAPE_FIRECRAWL_TOKEN":"github-firecrawl-token","OKOU_WEB_SEARCH_PERPLEXITY_TOKEN":"github-perplexity-token","OKOU_SOCIAL_SOCIALKIT_TOKEN":"github-socialkit-token","STEAM_WEB_API_KEY":"github-steam-web-api-key","FINICITY_APP_KEY":"github-finicity-app-key","FINICITY_APP_SECRET":"github-finicity-app-secret","VM0_MACHINE_SECRET_KEY":"github-atom-machine-secret","MICROSOFT_TEAMS_BOT_APP_PASSWORD":"github-teams-bot-app-password","VERCEL_AUTOMATION_BYPASS_SECRET":"github-vercel-bypass-secret","CLOUDFLARE_BROWSER_RENDERING_API_TOKEN":"github-cloudflare-browser-rendering-token","ARTIFACT_PREVIEW_WAF_SECRET":"github-artifact-preview-waf-secret","JOGGAI_WEBHOOK_SECRET":"github-joggai-webhook-secret","STRIPE_WEBHOOK_SECRET":"github-stripe-billing-webhook-secret","STRIPE_AUTOMATION_WEBHOOK_SECRET":"github-stripe-automation-webhook-secret"}'
   if [[ "$branded_config" == "empty" ]]; then
     repo_vars_json="$(jq -c 'with_entries(select(.key | startswith("OKOU_") | not))' <<< "$repo_vars_json")"
     repo_secrets_json="$(jq -c 'with_entries(select(.key | startswith("OKOU_") | not))' <<< "$repo_secrets_json")"
-  fi
-  if [[ -n "$api_backend_repo_vars_json" ]]; then
-    repo_vars_json="$(
-      jq -c \
-        --argjson api_backend_vars "$api_backend_repo_vars_json" \
-        'del(.OKOU_API_BACKEND_URL, .VM0_API_BACKEND_URL) + $api_backend_vars' \
-        <<< "$repo_vars_json"
-    )"
   fi
   repo_vars_json="$(jq -c --argjson github_app_vars "$github_app_vars_json" '. + $github_app_vars' <<< "$repo_vars_json")"
   repo_secrets_json="$(jq -c --argjson github_app_secrets "$github_app_secrets_json" '. + $github_app_secrets' <<< "$repo_secrets_json")"
@@ -454,24 +419,6 @@ run_github_app_action() {
     "$repo_secrets_json"
 }
 
-run_api_backend_url_action() {
-  local test_dir="$1"
-  local repo_vars_json="$2"
-  local input_api_backend_url="${3-}"
-  run_action \
-    "$(build_doppler_secrets_json)" \
-    "$test_dir" \
-    api \
-    production \
-    "https://static.vm0.io/okou-cli/test-sha/package.tgz" \
-    canonical \
-    "" \
-    "" \
-    pr-123 \
-    "$input_api_backend_url" \
-    "$repo_vars_json"
-}
-
 run_machine_secret_action() {
   local test_dir="$1"
   local input_app="$2"
@@ -488,7 +435,6 @@ run_machine_secret_action() {
     "" \
     pr-123 \
     "https://pr-123-api-backend.vm0.test" \
-    "" \
     "$repo_secrets_json"
 }
 
@@ -508,25 +454,6 @@ assert_machine_secret_source_case() {
   assert_machine_secret_source_state "$output" "$state"
   assert_machine_secret_values_absent_from_output "$output" "$expected"
   assert_machine_secret_canonical_only "$env_file" "$expected"
-}
-
-assert_api_backend_url_fallback_case() {
-  local state="$1"
-  local repo_vars_json="$2"
-  local expected="$3"
-  local test_dir
-  local output
-  local env_file
-  test_dir="$(mktemp -d)"
-  TEMP_DIRS+=("$test_dir")
-  output="$(run_api_backend_url_action "$test_dir" "$repo_vars_json" 2>&1)"
-  env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${test_dir}/github-output")"
-  assert_contains "$output" "Rendered"
-  assert_api_backend_url_source_state "$output" "$state"
-  assert_api_backend_url_values_absent_from_output "$output" "$expected"
-  assert_api_backend_url_canonical_only "$env_file" "$expected"
-  assert_env_value "$env_file" FEISHU_CALLBACK_BASE_URL "$expected"
-  assert_env_value "$env_file" FINICITY_WEBHOOK_BASE_URL "$expected"
 }
 
 if grep -En 'add_(var|secret) [A-Z0-9_]+_OAUTH_CLIENT_(ID|SECRET)' "$ACTION"; then
@@ -679,70 +606,46 @@ assert_machine_secret_source_state "$machine_secret_web_output" canonical-only
 assert_machine_secret_values_absent_from_output "$machine_secret_web_output" " web-isolated-machine-secret "
 assert_machine_secret_aliases_absent "$machine_secret_web_env_file"
 
-assert_api_backend_url_fallback_case \
-  canonical-only \
-  '{"OKOU_API_BACKEND_URL":"https://canonical-api.example.test"}' \
-  "https://canonical-api.example.test"
-assert_api_backend_url_fallback_case \
-  legacy-only \
-  '{"VM0_API_BACKEND_URL":"https://legacy-api.example.test"}' \
-  "https://legacy-api.example.test"
-assert_api_backend_url_fallback_case \
-  dual \
-  '{"OKOU_API_BACKEND_URL":"https://dual-api.example.test","VM0_API_BACKEND_URL":"https://dual-api.example.test"}' \
-  "https://dual-api.example.test"
-
-api_backend_url_conflict_dir="$(mktemp -d)"
-TEMP_DIRS+=("$api_backend_url_conflict_dir")
-status=0
-api_backend_url_conflict_output="$(
-  run_api_backend_url_action \
-    "$api_backend_url_conflict_dir" \
-    '{"OKOU_API_BACKEND_URL":"https://canonical-conflict.example.test","VM0_API_BACKEND_URL":"https://legacy-conflict.example.test"}' \
-    2>&1
-)" || status=$?
-if [[ "$status" -eq 0 ]]; then
-  fail "expected conflicting API backend URL aliases to fail"
-fi
-expected_api_backend_url_conflict="::error::API backend URL source conflict canonical_key=OKOU_API_BACKEND_URL legacy_key=VM0_API_BACKEND_URL state=conflict"
-api_backend_url_conflict_lines="$(grep -F "API backend URL source" <<< "$api_backend_url_conflict_output" || true)"
-if [[ "$api_backend_url_conflict_lines" != "$expected_api_backend_url_conflict" ]]; then
-  fail "unexpected API backend URL conflict evidence"
-fi
-assert_api_backend_url_values_absent_from_output \
-  "$api_backend_url_conflict_output" \
-  "https://canonical-conflict.example.test" \
-  "https://legacy-conflict.example.test"
-assert_file_absent "${api_backend_url_conflict_dir}/github-output"
-assert_file_absent "${api_backend_url_conflict_dir}/web-api-api-production.env"
-
 api_backend_url_explicit_dir="$(mktemp -d)"
 TEMP_DIRS+=("$api_backend_url_explicit_dir")
 api_backend_url_explicit_output="$(
-  run_api_backend_url_action \
+  run_action \
+    "$(build_doppler_secrets_json)" \
     "$api_backend_url_explicit_dir" \
-    '{"OKOU_API_BACKEND_URL":"https://ignored-canonical.example.test","VM0_API_BACKEND_URL":"https://ignored-legacy.example.test"}' \
+    api \
+    production \
+    "https://static.vm0.io/okou-cli/test-sha/package.tgz" \
+    canonical \
+    "" \
+    "" \
+    pr-123 \
     "https://explicit-api.example.test" \
     2>&1
 )"
 api_backend_url_explicit_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${api_backend_url_explicit_dir}/github-output")"
 assert_contains "$api_backend_url_explicit_output" "Rendered"
-assert_api_backend_url_source_evidence_absent "$api_backend_url_explicit_output"
-assert_api_backend_url_values_absent_from_output \
-  "$api_backend_url_explicit_output" \
-  "https://explicit-api.example.test" \
-  "https://ignored-canonical.example.test" \
-  "https://ignored-legacy.example.test"
 assert_api_backend_url_canonical_only "$api_backend_url_explicit_env_file" "https://explicit-api.example.test"
 assert_env_value "$api_backend_url_explicit_env_file" FEISHU_CALLBACK_BASE_URL "https://explicit-api.example.test"
 assert_env_value "$api_backend_url_explicit_env_file" FINICITY_WEBHOOK_BASE_URL "https://explicit-api.example.test"
 
 api_backend_url_absent_dir="$(mktemp -d)"
 TEMP_DIRS+=("$api_backend_url_absent_dir")
-api_backend_url_absent_output="$(run_api_backend_url_action "$api_backend_url_absent_dir" '{}' 2>&1)"
+api_backend_url_absent_output="$(
+  run_action \
+    "$(build_doppler_secrets_json)" \
+    "$api_backend_url_absent_dir" \
+    api \
+    production \
+    "https://static.vm0.io/okou-cli/test-sha/package.tgz" \
+    canonical \
+    "" \
+    "" \
+    pr-123 \
+    "" \
+    2>&1
+)"
 api_backend_url_absent_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${api_backend_url_absent_dir}/github-output")"
 assert_contains "$api_backend_url_absent_output" "Rendered"
-assert_api_backend_url_source_evidence_absent "$api_backend_url_absent_output"
 assert_api_backend_url_aliases_absent "$api_backend_url_absent_env_file"
 assert_env_value "$api_backend_url_absent_env_file" FEISHU_CALLBACK_BASE_URL ""
 assert_env_value "$api_backend_url_absent_env_file" FINICITY_WEBHOOK_BASE_URL ""
