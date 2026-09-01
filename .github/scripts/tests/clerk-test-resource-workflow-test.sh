@@ -23,11 +23,9 @@ if JOB_REF="invalid_ref" bash -c \
 fi
 
 canonical_api_url="https://canonical.example.test/Exact/Path/?query=a%20b#fragment"
-legacy_api_url="https://legacy.example.test/Exact/Path/?query=a%20b#fragment"
 # The child shell, not this test process, expands the quoted assertions.
 # shellcheck disable=SC2016
-if ! env -u VM0_API_BACKEND_URL \
-  OKOU_API_BACKEND_URL="$canonical_api_url" \
+if ! OKOU_API_BACKEND_URL="$canonical_api_url" \
   EXPECTED_API_BACKEND_URL="$canonical_api_url" \
   bash -c '
     source "$1"
@@ -37,70 +35,29 @@ if ! env -u VM0_API_BACKEND_URL \
   echo "browser helper did not preserve the canonical-only API URL" >&2
   exit 1
 fi
-# The child shell, not this test process, expands the quoted assertions.
-# shellcheck disable=SC2016
-if ! env -u OKOU_API_BACKEND_URL \
-  VM0_API_BACKEND_URL="$legacy_api_url" \
-  EXPECTED_API_BACKEND_URL="$legacy_api_url" \
-  bash -c '
-    source "$1"
-    resolve_e2e_api_backend_url
-    [[ "$E2E_API_BACKEND_URL" == "$EXPECTED_API_BACKEND_URL" ]]
-  ' _ "$browser_helper"; then
-  echo "browser helper did not preserve the legacy-only API URL" >&2
-  exit 1
-fi
-if ! OKOU_API_BACKEND_URL="$canonical_api_url" \
-  VM0_API_BACKEND_URL="$canonical_api_url" \
-  EXPECTED_API_BACKEND_URL="$canonical_api_url" \
-  bash -c '
-    source "$1"
-    resolve_e2e_api_backend_url
-    [[ "$E2E_API_BACKEND_URL" == "$EXPECTED_API_BACKEND_URL" ]]
-  ' _ "$browser_helper"; then
-  echo "browser helper did not accept equal API URL aliases" >&2
-  exit 1
-fi
 
-expected_missing_api_url="E2E API backend URL is required: canonical_key=OKOU_API_BACKEND_URL legacy_key=VM0_API_BACKEND_URL state=missing"
-api_alias_status=0
+expected_missing_api_url="E2E API backend URL is required: canonical_key=OKOU_API_BACKEND_URL state=missing"
+api_url_status=0
 # The child shell expands the quoted helper path after bash receives it.
 # shellcheck disable=SC2016
 missing_api_url_output="$(
-  env -u OKOU_API_BACKEND_URL -u VM0_API_BACKEND_URL \
+  env -u OKOU_API_BACKEND_URL \
     bash -c 'source "$1"; resolve_e2e_api_backend_url' \
     _ "$browser_helper" 2>&1
-)" || api_alias_status=$?
-if [[ "$api_alias_status" -ne 1 || "$missing_api_url_output" != "$expected_missing_api_url" ]]; then
+)" || api_url_status=$?
+if [[ "$api_url_status" -ne 1 || "$missing_api_url_output" != "$expected_missing_api_url" ]]; then
   echo "browser helper did not reject an absent API URL with a fixed diagnostic" >&2
   exit 1
 fi
 
-api_alias_status=0
+api_url_status=0
 empty_api_url_output="$(
-  OKOU_API_BACKEND_URL="" VM0_API_BACKEND_URL="" \
+  OKOU_API_BACKEND_URL="" \
     bash -c 'source "$1"; resolve_e2e_api_backend_url' \
     _ "$browser_helper" 2>&1
-)" || api_alias_status=$?
-if [[ "$api_alias_status" -ne 1 || "$empty_api_url_output" != "$expected_missing_api_url" ]]; then
+)" || api_url_status=$?
+if [[ "$api_url_status" -ne 1 || "$empty_api_url_output" != "$expected_missing_api_url" ]]; then
   echo "browser helper did not reject an empty API URL with a fixed diagnostic" >&2
-  exit 1
-fi
-
-expected_conflicting_api_url="E2E API backend URL aliases conflict: canonical_key=OKOU_API_BACKEND_URL legacy_key=VM0_API_BACKEND_URL state=conflict"
-api_alias_status=0
-conflicting_api_url_output="$(
-  OKOU_API_BACKEND_URL="$canonical_api_url" \
-    VM0_API_BACKEND_URL="$legacy_api_url" \
-    bash -c 'source "$1"; resolve_e2e_api_backend_url' \
-    _ "$browser_helper" 2>&1
-)" || api_alias_status=$?
-if [[ "$api_alias_status" -ne 1 || "$conflicting_api_url_output" != "$expected_conflicting_api_url" ]]; then
-  echo "browser helper did not reject unequal API URL aliases" >&2
-  exit 1
-fi
-if [[ "$conflicting_api_url_output" == *"$canonical_api_url"* || "$conflicting_api_url_output" == *"$legacy_api_url"* ]]; then
-  echo "browser helper exposed an API URL value in its conflict diagnostic" >&2
   exit 1
 fi
 
@@ -125,28 +82,52 @@ done
 
 browser_page_call_log="$(mktemp)"
 otp_call_log="$(mktemp)"
-api_alias_side_effect_log="$(mktemp)"
-trap 'rm -f "$browser_page_call_log" "$otp_call_log" "$api_alias_side_effect_log"' EXIT
+api_url_side_effect_log="$(mktemp)"
+trap 'rm -f "$browser_page_call_log" "$otp_call_log" "$api_url_side_effect_log"' EXIT
 
-api_alias_status=0
-conflicting_setup_output="$(
-  OKOU_API_BACKEND_URL="$canonical_api_url" \
-    VM0_API_BACKEND_URL="$legacy_api_url" \
-    API_ALIAS_SIDE_EFFECT_LOG="$api_alias_side_effect_log" \
+api_url_status=0
+# The child shell, not this test process, expands the quoted side-effect log.
+# shellcheck disable=SC2016
+missing_setup_output="$(
+  env -u OKOU_API_BACKEND_URL \
+    API_URL_SIDE_EFFECT_LOG="$api_url_side_effect_log" \
     bash -c '
       source "$1"
       agent-browser() {
-        printf "called\n" >> "$API_ALIAS_SIDE_EFFECT_LOG"
+        printf "called\n" >> "$API_URL_SIDE_EFFECT_LOG"
       }
       browser_setup
     ' _ "$browser_helper" 2>&1
-)" || api_alias_status=$?
-if [[ "$api_alias_status" -ne 1 || "$conflicting_setup_output" != "$expected_conflicting_api_url" ]]; then
-  echo "browser setup did not fail closed on unequal API URL aliases" >&2
+)" || api_url_status=$?
+if [[ "$api_url_status" -ne 1 || "$missing_setup_output" != "$expected_missing_api_url" ]]; then
+  echo "browser setup did not fail closed on an absent API URL" >&2
   exit 1
 fi
-if [[ -s "$api_alias_side_effect_log" ]]; then
-  echo "browser setup reached agent-browser before rejecting unequal API URL aliases" >&2
+if [[ -s "$api_url_side_effect_log" ]]; then
+  echo "browser setup reached agent-browser before rejecting an absent API URL" >&2
+  exit 1
+fi
+
+api_url_status=0
+# The child shell, not this test process, expands the quoted side-effect log.
+# shellcheck disable=SC2016
+empty_setup_output="$(
+  OKOU_API_BACKEND_URL="" \
+    API_URL_SIDE_EFFECT_LOG="$api_url_side_effect_log" \
+    bash -c '
+      source "$1"
+      agent-browser() {
+        printf "called\n" >> "$API_URL_SIDE_EFFECT_LOG"
+      }
+      browser_setup
+    ' _ "$browser_helper" 2>&1
+)" || api_url_status=$?
+if [[ "$api_url_status" -ne 1 || "$empty_setup_output" != "$expected_missing_api_url" ]]; then
+  echo "browser setup did not fail closed on an empty API URL" >&2
+  exit 1
+fi
+if [[ -s "$api_url_side_effect_log" ]]; then
+  echo "browser setup reached agent-browser before rejecting an empty API URL" >&2
   exit 1
 fi
 
