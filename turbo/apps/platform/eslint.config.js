@@ -1,14 +1,47 @@
+import { createHash } from "node:crypto";
+import { globSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { config as baseConfig, oxlint } from "@okouai/eslint-config/base";
 import ccstatePlugin from "@okouai/eslint-rules/ccstate";
 import pluginReactHooks from "eslint-plugin-react-hooks";
 import pluginReact from "eslint-plugin-react";
+
+const eslintCacheInputPaths = globSync(
+  [
+    "eslint.config.js",
+    "package.json",
+    "../../packages/eslint-config/*.js",
+    "../../packages/eslint-config/package.json",
+    "../../packages/eslint-rules/package.json",
+    "../../packages/eslint-rules/src/ccstate/index.ts",
+    "../../packages/eslint-rules/src/ccstate/utils.ts",
+    "../../packages/eslint-rules/src/ccstate/rules/*.ts",
+    "../../pnpm-lock.yaml",
+    "../../turbo.json",
+  ],
+  { cwd: import.meta.dirname },
+).sort();
+const eslintCacheHash = createHash("sha256");
+
+for (const inputPath of eslintCacheInputPaths) {
+  eslintCacheHash.update(inputPath).update("\0");
+  eslintCacheHash
+    .update(readFileSync(resolve(import.meta.dirname, inputPath)))
+    .update("\0");
+}
+
+const eslintCacheFingerprint = eslintCacheHash.digest("hex");
 
 /** @type {import("eslint").Linter.Config[]} */
 export default [
   ...baseConfig,
   {
     ...pluginReact.configs.flat.recommended,
-    settings: { react: { version: "detect" } },
+    settings: {
+      react: { version: "detect" },
+      "vm0/eslint-cache-fingerprint": eslintCacheFingerprint,
+    },
   },
   {
     plugins: {
