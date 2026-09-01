@@ -20,7 +20,6 @@ sorted_assets="$(mktemp)"
 trap 'rm -f "$layout_files" "$pending_assets" "$sorted_assets"' EXIT
 
 declare -a app_files=()
-declare -a after_first_paint_files=()
 declare -a vendor_files=()
 declare -a runtime_files=()
 declare -a worker_files=()
@@ -28,7 +27,6 @@ find "$OKOU_APP_ASSETS_DIRECTORY" -type f -name '*.js' -print0 > "$layout_files"
 while IFS= read -r -d '' source_path; do
   relative_path="${source_path#"$OKOU_APP_ASSETS_DIRECTORY"/}"
   case "$relative_path" in
-    bootstrap-after-first-paint-*.js) after_first_paint_files+=("$relative_path") ;;
     vendor-*.js) vendor_files+=("$relative_path") ;;
     rolldown-runtime-*.js) runtime_files+=("$relative_path") ;;
     shared-database-worker-*.js) worker_files+=("$relative_path") ;;
@@ -38,24 +36,21 @@ done < "$layout_files"
 
 if ((
   ${#app_files[@]} != 1 ||
-  ${#after_first_paint_files[@]} != 1 ||
   ${#vendor_files[@]} != 1 ||
   ${#runtime_files[@]} != 1 ||
   ${#worker_files[@]} != 1
 )); then
-  echo "Expected exactly one app, after-first-paint bootstrap, vendor, Rolldown runtime, and SharedWorker JavaScript asset" >&2
-  printf 'app=%s after-first-paint=%s vendor=%s runtime=%s worker=%s\n' \
+  echo "Expected exactly one app, vendor, Rolldown runtime, and SharedWorker JavaScript asset" >&2
+  printf 'app=%s vendor=%s runtime=%s worker=%s\n' \
     "${app_files[*]:-none}" \
-    "${after_first_paint_files[*]:-none}" \
     "${vendor_files[*]:-none}" \
     "${runtime_files[*]:-none}" \
     "${worker_files[*]:-none}" >&2
   exit 1
 fi
 
-printf 'App bundle layout: app=%s after-first-paint=%s vendor=%s runtime=%s worker=%s\n' \
+printf 'App bundle layout: app=%s vendor=%s runtime=%s worker=%s\n' \
   "${app_files[0]}" \
-  "${after_first_paint_files[0]}" \
   "${vendor_files[0]}" \
   "${runtime_files[0]}" \
   "${worker_files[0]}"

@@ -91,11 +91,7 @@ import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupExportPage$ } from "./export-page/export-page-setup.ts";
 import { initSlackOrg$ as handleSlackRedirect$ } from "./okou-page/slack.ts";
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
-import {
-  hideAppSkeleton$,
-  initBootstrapSkeleton$,
-  startSkeletonCycling$,
-} from "./app-skeleton.ts";
+import { hideAppSkeleton$, initBootstrapSkeleton$ } from "./app-skeleton.ts";
 import { setupRedeemCampaignPage$ } from "./redeem-campaign/redeem-campaign-page-setup.ts";
 import { updatePage$ } from "./react-router.ts";
 import { NotFoundPage } from "../views/not-found-page.tsx";
@@ -568,7 +564,6 @@ export const bootstrap$ = command(
     await Promise.all([
       set(setupAuthenticatedBootstrap$, ownDaemon, signal),
       set(setupRoutes$, signal),
-      set(startSkeletonCycling$, signal),
       set(setupGlobalMethod$, signal),
       set(registerServiceWorker$, signal),
       set(setupNotificationListener$, signal),

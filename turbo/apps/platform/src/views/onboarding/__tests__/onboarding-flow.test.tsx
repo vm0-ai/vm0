@@ -375,7 +375,7 @@ describe("onboarding flow", () => {
     );
   });
 
-  it("renders the workflow catalog and preview in Brazilian Portuguese", async () => {
+  it("renders Portuguese workflow copy with English document metadata", async () => {
     usePortugueseLocale();
     mockOnboardingNeeded();
     detachedSetupPage({ context, path: "/onboarding" });
@@ -385,7 +385,7 @@ describe("onboarding flow", () => {
         name: "O que você quer fazer primeiro",
       }),
     ).resolves.toBeInTheDocument();
-    expect(document.title).toBe("Bem-vindo ao VM0 | VM0");
+    expect(document.title).toBe("Welcome to VM0 | VM0");
 
     click(
       screen.getByRole("radio", {
@@ -421,7 +421,7 @@ describe("onboarding flow", () => {
     expect(within(preview).getByText("Zero revisa a mudança")).toBeVisible();
   });
 
-  it("renders localized onboarding template titles in Brazilian Portuguese", async () => {
+  it("renders Portuguese onboarding templates with English document metadata", async () => {
     usePortugueseLocale();
     mockOnboardingNeeded();
     detachedSetupPage({
@@ -438,7 +438,7 @@ describe("onboarding flow", () => {
     expect(
       buttonByAriaLabel("Selecionar modelo de apresentação Sunburst playroom"),
     ).toBeInTheDocument();
-    expect(document.title).toBe("Escolha um modelo de apresentação | VM0");
+    expect(document.title).toBe("Choose a presentation template | VM0");
   });
 
   it("exposes the workspace switcher in the onboarding shell", async () => {

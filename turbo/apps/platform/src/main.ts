@@ -1,5 +1,6 @@
 import "./lib/preview-bypass-cookie-bootstrap.ts";
 import "./lib/accept-browser.ts";
+import { browserUpgradeForUserAgent } from "./lib/browser-support.ts";
 import { initSentry } from "./lib/sentry.ts";
 import { captureFirstSkeletonPaint, initPostHog } from "./lib/posthog.ts";
 import { initPlausible } from "./lib/plausible.ts";
@@ -8,13 +9,14 @@ import "./polyfill.ts";
 import { createRoot } from "react-dom/client";
 import { createStore } from "ccstate";
 import { bootstrap$ } from "./signals/bootstrap.ts";
+import { resolveAssistantNameForHostname } from "./signals/branding.ts";
 import { detach, Reason, resetSignal } from "./signals/utils.ts";
 import { setupRouter } from "./views/main.tsx";
+import { renderUnsupportedBrowserPage } from "./views/unsupported-browser-page.tsx";
 
 // (no-op Platform release marker refreshed again on 2026-07-31)
 
 function startApplication(): void {
-  window.__appBootstrapModuleReady = performance.now();
   const resetRootSignal$ = resetSignal();
   const resetViewportSettleSignal$ = resetSignal();
 
@@ -66,6 +68,18 @@ function startApplication(): void {
   detach(main(), Reason.Entrance, "main");
 }
 
-if (window.__vm0BrowserSupported === true) {
+window.__appBootstrapModuleReady = performance.now();
+const browserUpgrade = browserUpgradeForUserAgent(navigator.userAgent);
+if (browserUpgrade) {
+  const rootElement = document.getElementById("root");
+  if (!rootElement) {
+    throw new Error("can't find root el to render unsupported browser page");
+  }
+  renderUnsupportedBrowserPage(
+    rootElement,
+    resolveAssistantNameForHostname(location.hostname),
+    browserUpgrade,
+  );
+} else {
   startApplication();
 }

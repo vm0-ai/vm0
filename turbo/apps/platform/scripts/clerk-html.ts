@@ -21,16 +21,13 @@ export function clerkCoreHtmlPlugin(appVersion: string): Plugin {
   return {
     name: "platform-clerk-core-html",
     configResolved(config) {
+      requiredEnvironmentValue(
+        config.env,
+        "VITE_CLERK_PUBLISHABLE_KEY_PREVIEW",
+      );
+      requiredEnvironmentValue(config.env, "VITE_CLERK_PUBLISHABLE_KEY_PROD");
       options = {
         appVersion,
-        previewPublishableKey: requiredEnvironmentValue(
-          config.env,
-          "VITE_CLERK_PUBLISHABLE_KEY_PREVIEW",
-        ),
-        productionPublishableKey: requiredEnvironmentValue(
-          config.env,
-          "VITE_CLERK_PUBLISHABLE_KEY_PROD",
-        ),
       };
     },
     transformIndexHtml: {
