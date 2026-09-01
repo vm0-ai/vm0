@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.525.3](https://github.com/vm0-ai/vm0/compare/api-v1.525.2...api-v1.525.3) (2026-09-01)
+
+
+### Bug Fixes
+
+* **api:** repair model-annotated legacy snapshots ([#30912](https://github.com/vm0-ai/vm0/issues/30912)) ([40e8aea](https://github.com/vm0-ai/vm0/commit/40e8aea0009937c60146f7caa7698cefcde95b43))
+
 ## [1.525.2](https://github.com/vm0-ai/vm0/compare/api-v1.525.1...api-v1.525.2) (2026-09-01)
 
 
