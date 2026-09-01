@@ -212,6 +212,7 @@ describe("lab page", () => {
 
   it("shows the Lab controls in Brazilian Portuguese", async () => {
     document.documentElement.lang = "pt-BR";
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
     context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
       return respond(200, { switches: {}, effectiveSwitches: {} });
     });
@@ -222,7 +223,7 @@ describe("lab page", () => {
       expect(
         screen.getByRole("heading", { name: "Laboratório" }),
       ).toBeInTheDocument();
-      expect(document.title).toBe("Laboratório | VM0");
+      expect(document.title).toBe("Lab | VM0");
     });
     expect(
       screen.getByText("Ative ou desative recursos experimentais."),
