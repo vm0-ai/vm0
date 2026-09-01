@@ -170,6 +170,41 @@ function appUrl(publicBrand: PublicBrand): string {
   return appUrlForPublicBrand(env("APP_URL"), publicBrand);
 }
 
+function officialAutomationResultUnsubscribeUrl(
+  headers: Readonly<Record<string, string>> | undefined,
+  publicBrand: PublicBrand,
+): string {
+  const listUnsubscribe = headers?.["List-Unsubscribe"];
+  if (
+    !listUnsubscribe ||
+    !listUnsubscribe.startsWith("<") ||
+    !listUnsubscribe.endsWith(">")
+  ) {
+    throw new Error(
+      "Official Automation result email is missing its List-Unsubscribe URL",
+    );
+  }
+  const oneClickUrl = new URL(listUnsubscribe.slice(1, -1));
+  if (
+    oneClickUrl.protocol !== "https:" ||
+    !oneClickUrl.pathname.endsWith("/api/email/unsubscribe")
+  ) {
+    throw new Error(
+      "Official Automation result email has an invalid List-Unsubscribe URL",
+    );
+  }
+  const token = oneClickUrl.searchParams.get("token");
+  if (!token) {
+    throw new Error(
+      "Official Automation result email is missing its unsubscribe token",
+    );
+  }
+
+  const unsubscribeUrl = new URL(`${appUrl(publicBrand)}/email/unsubscribe`);
+  unsubscribeUrl.searchParams.set("token", token);
+  return unsubscribeUrl.toString();
+}
+
 function getFromDomain(publicBrand: PublicBrand): string {
   const domain = env("RESEND_FROM_DOMAIN");
   if (!domain) {
@@ -262,6 +297,7 @@ interface RenderedEmailTemplate {
 function renderTemplate(
   template: EmailTemplate,
   publicBrand: PublicBrand,
+  headers: Readonly<Record<string, string>> | undefined,
 ): RenderedEmailTemplate {
   switch (template.template) {
     case "data-export-ready": {
@@ -304,6 +340,7 @@ function renderTemplate(
       const rendered = renderOfficialAutomationResultEmail(
         template.props,
         publicBrand,
+        officialAutomationResultUnsubscribeUrl(headers, publicBrand),
       );
       if (rendered.fallback) {
         log.warn("Official Automation result email used fallback renderer", {
@@ -331,7 +368,11 @@ async function sendEmailDirect(options: {
   | { readonly ok: false; readonly error: string }
 > {
   const resend = getResendClient();
-  const rendered = renderTemplate(options.template, options.publicBrand);
+  const rendered = renderTemplate(
+    options.template,
+    options.publicBrand,
+    options.headers,
+  );
   const { data, error } = await resend.emails.send({
     from: options.from,
     to: typeof options.to === "string" ? options.to : [...options.to],

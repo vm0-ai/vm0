@@ -213,9 +213,27 @@ function officialAutomationResultEmailHtml(
   props: OfficialAutomationResultEmailRenderProps,
   publicBrand: PublicBrand,
   resultBodyHtml: string,
+  unsubscribeUrl: string,
 ): string {
   const presentation = publicBrandPresentation(publicBrand);
   const assistantMark = publicBrand === "okou" ? "O" : "0";
+  // During the API rollout and rollback window, persisted outbox rows from
+  // the previous callback still carry the account-level confirmation URL in
+  // manageUrl. Remove after those API targets and rows drain; tracked by
+  // #30592. Until then, preserve their old footer instead of mislabelling a
+  // global unsubscribe as automation management.
+  const legacyManageUrl = new URL(props.manageUrl).pathname.endsWith(
+    "/email/unsubscribe",
+  );
+  const footer = legacyManageUrl
+    ? `This result was sent by an Official Automation. <a href="${escapeHtml(
+        props.manageUrl,
+      )}" style="${LINK_STYLE}">Manage email preferences</a>.`
+    : `This result was sent by an Official Workflow automation.<br><a href="${escapeHtml(
+        props.manageUrl,
+      )}" style="${LINK_STYLE}">Manage this automation</a> &middot; <a href="${escapeHtml(
+        unsubscribeUrl,
+      )}" style="${LINK_STYLE}">Unsubscribe</a>`;
 
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"></head><body style="margin:0;padding:0;background-color:#ffffff;color:#202124;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.55;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;border-collapse:collapse;background-color:#ffffff"><tr><td align="left" style="padding:24px 20px 40px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:680px;border-collapse:collapse;text-align:left"><tr><td><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 24px"><tr><td width="40" height="40" align="center" valign="middle" bgcolor="#ed4e01" style="width:40px;height:40px;border-radius:10px;color:#ffffff;font-size:17px;font-weight:700;line-height:40px;mso-line-height-rule:exactly">${assistantMark}</td><td valign="middle" style="padding-left:12px;line-height:1.4"><strong>${escapeHtml(
     presentation.assistantName,
@@ -225,9 +243,7 @@ function officialAutomationResultEmailHtml(
     props.runUrl,
   )}" style="${LINK_STYLE};font-weight:600">View run in ${escapeHtml(
     presentation.assistantName,
-  )} &rarr;</a></p><hr style="height:1px;margin:0 0 20px;border:0;background-color:#e4e6e8"><p style="margin:0;color:#737373;font-size:12px;line-height:1.45">This result was sent by an Official Automation. <a href="${escapeHtml(
-    props.manageUrl,
-  )}" style="${LINK_STYLE}">Manage email preferences</a>.</p></td></tr></table></td></tr></table></body></html>`;
+  )} &rarr;</a></p><hr style="height:1px;margin:0 0 20px;border:0;background-color:#e4e6e8"><p style="margin:0;color:#737373;font-size:12px;line-height:1.45">${footer}</p></td></tr></table></td></tr></table></body></html>`;
 }
 
 function plainTextFromHtml(html: string): string {
@@ -237,6 +253,7 @@ function plainTextFromHtml(html: string): string {
 export function renderOfficialAutomationResultEmail(
   props: OfficialAutomationResultEmailRenderProps,
   publicBrand: PublicBrand,
+  unsubscribeUrl: string,
 ): RenderedOfficialAutomationResultEmail {
   let attemptedHtmlBytes: number | null = null;
   let fallbackReason: OfficialAutomationResultEmailFallback["reason"] =
@@ -247,6 +264,7 @@ export function renderOfficialAutomationResultEmail(
       props,
       publicBrand,
       markdownRenderer.render(props.resultText),
+      unsubscribeUrl,
     );
     const htmlBytes = Buffer.byteLength(html, "utf8");
     if (htmlBytes <= OFFICIAL_AUTOMATION_RESULT_EMAIL_HTML_MAX_BYTES) {
@@ -277,6 +295,7 @@ export function renderOfficialAutomationResultEmail(
     `<pre style="margin:0;font-family:inherit;font-size:14px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word">${escapeHtml(
       props.resultText,
     )}</pre>`,
+    unsubscribeUrl,
   );
   const fallbackHtmlBytes = Buffer.byteLength(fallbackHtml, "utf8");
   if (fallbackHtmlBytes > OFFICIAL_AUTOMATION_RESULT_EMAIL_HTML_MAX_BYTES) {

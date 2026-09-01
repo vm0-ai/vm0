@@ -470,7 +470,19 @@ describe.sequential("Official Automation result email callbacks", () => {
       props: {
         resultText: expect.stringContaining("[Result truncated]"),
         runUrl: `https://app.okou.ai/activities/${runId}`,
+        manageUrl: `https://app.okou.ai/workflows/${scenario.workflowId}/automations?automationId=${scenario.automationId}`,
       },
+    });
+    const automationUrl = `https://app.okou.ai/workflows/${scenario.workflowId}/automations?automationId=${scenario.automationId}`;
+    const accountUnsubscribeUrl = `https://app.okou.ai/email/unsubscribe?token=${unsubscribeToken(
+      scenario.actor.userId,
+    )}`;
+    expect(automationUrl).not.toContain("token=");
+    expect(item.headers).toStrictEqual({
+      "List-Unsubscribe": `<https://api.okou.ai/api/email/unsubscribe?token=${unsubscribeToken(
+        scenario.actor.userId,
+      )}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
     });
 
     await expect(outbox.drainItems([item.id])).resolves.toBe(1);
@@ -531,7 +543,15 @@ describe.sequential("Official Automation result email callbacks", () => {
     }
     expect(html).toContain("[Result truncated]");
     expect(html).toContain(`https://app.okou.ai/activities/${runId}`);
-    expect(html).toContain("https://app.okou.ai/email/unsubscribe");
+    expect(html).toContain(
+      "This result was sent by an Official Workflow automation.<br>",
+    );
+    expect(html).toContain(`href="${automationUrl}"`);
+    expect(html).toContain(
+      `>Manage this automation</a> &middot; <a href="${accountUnsubscribeUrl}"`,
+    );
+    expect(html).toContain(">Unsubscribe</a>");
+    expect(automationUrl).not.toBe(accountUnsubscribeUrl);
     expect(Buffer.byteLength(html, "utf8")).toBeLessThanOrEqual(96 * 1024);
 
     const text =
@@ -548,7 +568,9 @@ describe.sequential("Official Automation result email callbacks", () => {
     expect(text).toContain(longPlainText);
     expect(text).toContain("[Result truncated]");
     expect(text).toContain(`https://app.okou.ai/activities/${runId}`);
-    expect(text).toContain("https://app.okou.ai/email/unsubscribe");
+    expect(text).toContain(
+      `This result was sent by an Official Workflow automation.\nManage this automation [${automationUrl}] · Unsubscribe [${accountUnsubscribeUrl}]`,
+    );
   });
 
   it("falls back after pathological Markdown expansion and sends one bounded multipart email", async () => {
@@ -616,6 +638,35 @@ describe.sequential("Official Automation result email callbacks", () => {
       status: "sent",
       attempts: 1,
     });
+  });
+
+  it("keeps the existing automation switch separate from account-level unsubscribe", async () => {
+    const scenario = await setupScenario();
+    await clearResultEmailUserStateFixture(scenario.actor.userId);
+    await expect(
+      readResultEmailPreferenceFixture(scenario.actor.userId),
+    ).resolves.toBeNull();
+
+    const disabled = await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: scenario.automationId },
+      }),
+      [200],
+    );
+
+    expect(disabled.body.enabled).toBeFalsy();
+    await expect(
+      readResultEmailPreferenceFixture(scenario.actor.userId),
+    ).resolves.toBeNull();
+
+    await misc.requestEmailUnsubscribe(
+      unsubscribeToken(scenario.actor.userId),
+      [200],
+    );
+    await expect(
+      readResultEmailPreferenceFixture(scenario.actor.userId),
+    ).resolves.toBeTruthy();
   });
 
   it("keeps suppression at send and leaves a successful Run unchanged", async () => {
