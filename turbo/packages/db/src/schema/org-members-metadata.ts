@@ -11,6 +11,7 @@ import {
 import type { OrgMembersPinnedAgentIds } from "@okouai/db/jsonb-contracts/org-members-metadata";
 import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import type {
+  ChatTranslationLanguage,
   ColorTheme,
   ThemePreference,
 } from "@okouai/api-contracts/contracts/user-preferences";
@@ -26,6 +27,9 @@ export const orgMembersMetadata = pgTable(
     userId: text("user_id").notNull(),
     timezone: text("timezone"),
     locale: text("locale"),
+    translationLanguage: text(
+      "translation_language",
+    ).$type<ChatTranslationLanguage>(),
     onboardingRole: text("onboarding_role"),
     pinnedAgentIds: jsonb("pinned_agent_ids")
       .$type<OrgMembersPinnedAgentIds>()
