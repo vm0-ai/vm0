@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.302.0](https://github.com/vm0-ai/vm0/compare/cli-v9.301.3...cli-v9.302.0) (2026-09-01)
+
+
+### Features
+
+* **api:** model automatic oauth for mcp connectors ([#30636](https://github.com/vm0-ai/vm0/issues/30636)) ([b33d6c2](https://github.com/vm0-ai/vm0/commit/b33d6c26e6df23aad23f9460124a203b11309a36))
+* request connector account switches in chat ([#30602](https://github.com/vm0-ai/vm0/issues/30602)) ([4108626](https://github.com/vm0-ai/vm0/commit/4108626240e47072c6eeb3658a12fff649a57f87))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.385.0
+    * @okouai/core bumped to 8.605.7
+
 ## [9.301.3](https://github.com/vm0-ai/vm0/compare/cli-v9.301.2...cli-v9.301.3) (2026-09-01)
 
 

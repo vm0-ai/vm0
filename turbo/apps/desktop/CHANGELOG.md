@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.40.3](https://github.com/vm0-ai/vm0/compare/desktop-v0.40.2...desktop-v0.40.3) (2026-09-01)
+
+
+### Bug Fixes
+
+* **desktop:** treat a user-ended screen share as a finished recording ([#30715](https://github.com/vm0-ai/vm0/issues/30715)) ([791822c](https://github.com/vm0-ai/vm0/commit/791822ca530522984ee7b8a0beda77f6e32dccc1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.385.0
+
 ## [0.40.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.40.1...desktop-v0.40.2) (2026-09-01)
 
 

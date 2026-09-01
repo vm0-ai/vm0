@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.520.0](https://github.com/vm0-ai/vm0/compare/api-v1.519.4...api-v1.520.0) (2026-09-01)
+
+
+### Features
+
+* **api:** model automatic oauth for mcp connectors ([#30636](https://github.com/vm0-ai/vm0/issues/30636)) ([b33d6c2](https://github.com/vm0-ai/vm0/commit/b33d6c26e6df23aad23f9460124a203b11309a36))
+* request connector account switches in chat ([#30602](https://github.com/vm0-ai/vm0/issues/30602)) ([4108626](https://github.com/vm0-ai/vm0/commit/4108626240e47072c6eeb3658a12fff649a57f87))
+
+
+### Bug Fixes
+
+* **api:** repair legacy snapshot revocation rows ([#30754](https://github.com/vm0-ai/vm0/issues/30754)) ([027642e](https://github.com/vm0-ai/vm0/commit/027642e96bb07f4290e8de1c2cd13b46219f6018))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.385.0
+    * @okouai/core bumped to 8.605.7
+    * @okouai/db bumped to 1.229.0
+
 ## [1.519.4](https://github.com/vm0-ai/vm0/compare/api-v1.519.3...api-v1.519.4) (2026-09-01)
 
 

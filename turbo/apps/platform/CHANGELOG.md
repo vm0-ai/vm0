@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.816.0](https://github.com/vm0-ai/vm0/compare/app-v0.815.4...app-v0.816.0) (2026-09-01)
+
+
+### Features
+
+* **api:** model automatic oauth for mcp connectors ([#30636](https://github.com/vm0-ai/vm0/issues/30636)) ([b33d6c2](https://github.com/vm0-ai/vm0/commit/b33d6c26e6df23aad23f9460124a203b11309a36))
+* request connector account switches in chat ([#30602](https://github.com/vm0-ai/vm0/issues/30602)) ([4108626](https://github.com/vm0-ai/vm0/commit/4108626240e47072c6eeb3658a12fff649a57f87))
+
+
+### Bug Fixes
+
+* **api:** repair legacy snapshot revocation rows ([#30754](https://github.com/vm0-ai/vm0/issues/30754)) ([027642e](https://github.com/vm0-ai/vm0/commit/027642e96bb07f4290e8de1c2cd13b46219f6018))
+* **platform:** include root turbo jsonc in eslint cache key ([#30746](https://github.com/vm0-ai/vm0/issues/30746)) ([6941eaf](https://github.com/vm0-ai/vm0/commit/6941eafded66b53f713f45253b7bee1a9989e8fb))
+
+
+### Performance Improvements
+
+* **platform:** cache repeated eslint runs ([#30711](https://github.com/vm0-ai/vm0/issues/30711)) ([e49160b](https://github.com/vm0-ai/vm0/commit/e49160b41afcf045098d29399dad96a7ab48d734))
+* **platform:** reuse i18n extraction during lint ([#30720](https://github.com/vm0-ai/vm0/issues/30720)) ([458f16d](https://github.com/vm0-ai/vm0/commit/458f16d985756b6149249a6d86f1d2d2c11c4cdc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.385.0
+    * @okouai/core bumped to 8.605.7
+
 ## [0.815.4](https://github.com/vm0-ai/vm0/compare/app-v0.815.3...app-v0.815.4) (2026-09-01)
 
 

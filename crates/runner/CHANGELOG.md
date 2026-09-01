@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.182.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.5...runner-rs-v0.182.6) (2026-09-01)
+
+
+### Documentation
+
+* **python:** document confirmed WebSocket response validation ([#30737](https://github.com/vm0-ai/vm0/issues/30737)) ([18c1f56](https://github.com/vm0-ai/vm0/commit/18c1f56367b0d2199aa6cada97decfcdf3e67ac7))
+* **python:** document WebSocket framing bounds and lifecycle contract ([#30738](https://github.com/vm0-ai/vm0/issues/30738)) ([f05213b](https://github.com/vm0-ai/vm0/commit/f05213b4127b10ef285b096b22d23b20f7975a64))
+
+
+### Refactoring
+
+* **rust:** share environment-key diagnostic sanitizer ([#30750](https://github.com/vm0-ai/vm0/issues/30750)) ([d7d08f2](https://github.com/vm0-ai/vm0/commit/d7d08f2b128021bf9ee3a6d352fffc1c344c5f5d))
+
 ## [0.182.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.4...runner-rs-v0.182.5) (2026-09-01)
 
 
