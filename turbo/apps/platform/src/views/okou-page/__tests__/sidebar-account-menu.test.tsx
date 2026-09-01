@@ -1299,7 +1299,7 @@ describe("zero sidebar account menu", () => {
 
   it("keeps the VM0 satellite on the existing hosted profile after cutover", async () => {
     Reflect.set(window, "__vm0ClerkBootstrap", {
-      productionSatelliteDomain: "vm0.ai",
+      productionPrimaryAppDomain: "app.okou.ai",
     });
     try {
       context.mocks.browser.url("https://app.vm0.ai/");

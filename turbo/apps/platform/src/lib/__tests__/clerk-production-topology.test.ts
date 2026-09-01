@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
-  normalizeClerkProductionSatelliteDomain,
+  normalizeClerkProductionPrimaryAppDomain,
   resolveClerkProductionSatelliteDomain,
   resolveClerkProductionTopology,
 } from "../clerk-production-topology.ts";
 
-const CURRENT_SATELLITE_DOMAIN = "app.okou.ai";
-const CUTOVER_SATELLITE_DOMAIN = "vm0.ai";
+const CURRENT_PRIMARY_APP_DOMAIN = "app.vm0.ai";
+const CUTOVER_PRIMARY_APP_DOMAIN = "app.okou.ai";
 
 describe("clerk production topology", () => {
   it("keeps the deployed VM0 primary topology for the current satellite", () => {
     expect(
-      resolveClerkProductionTopology(CURRENT_SATELLITE_DOMAIN),
+      resolveClerkProductionTopology(CURRENT_PRIMARY_APP_DOMAIN),
     ).toStrictEqual({
       primaryAppOrigin: "https://app.vm0.ai",
       primaryBrand: "vm0",
@@ -20,20 +20,20 @@ describe("clerk production topology", () => {
     expect(
       resolveClerkProductionSatelliteDomain(
         "app.okou.ai",
-        CURRENT_SATELLITE_DOMAIN,
+        CURRENT_PRIMARY_APP_DOMAIN,
       ),
     ).toBe("app.okou.ai");
     expect(
       resolveClerkProductionSatelliteDomain(
         "app.vm0.ai",
-        CURRENT_SATELLITE_DOMAIN,
+        CURRENT_PRIMARY_APP_DOMAIN,
       ),
     ).toBeNull();
   });
 
   it("switches VM0 hosts to the root satellite when Okou is primary", () => {
     expect(
-      resolveClerkProductionTopology(CUTOVER_SATELLITE_DOMAIN),
+      resolveClerkProductionTopology(CUTOVER_PRIMARY_APP_DOMAIN),
     ).toStrictEqual({
       primaryAppOrigin: "https://app.okou.ai",
       primaryBrand: "okou",
@@ -42,32 +42,32 @@ describe("clerk production topology", () => {
     expect(
       resolveClerkProductionSatelliteDomain(
         "app.okou.ai",
-        CUTOVER_SATELLITE_DOMAIN,
+        CUTOVER_PRIMARY_APP_DOMAIN,
       ),
     ).toBeNull();
     expect(
       resolveClerkProductionSatelliteDomain(
         "app.vm0.ai",
-        CUTOVER_SATELLITE_DOMAIN,
+        CUTOVER_PRIMARY_APP_DOMAIN,
       ),
     ).toBe("vm0.ai");
     expect(
       resolveClerkProductionSatelliteDomain(
         "www.vm0.ai",
-        CUTOVER_SATELLITE_DOMAIN,
+        CUTOVER_PRIMARY_APP_DOMAIN,
       ),
     ).toBe("vm0.ai");
     expect(
       resolveClerkProductionSatelliteDomain(
         "vm0.ai.evil.example",
-        CUTOVER_SATELLITE_DOMAIN,
+        CUTOVER_PRIMARY_APP_DOMAIN,
       ),
     ).toBeNull();
   });
 
   it("falls back to the rollback-safe current topology for an unknown value", () => {
-    expect(normalizeClerkProductionSatelliteDomain("invalid-domain")).toBe(
-      CURRENT_SATELLITE_DOMAIN,
+    expect(normalizeClerkProductionPrimaryAppDomain("invalid-domain")).toBe(
+      CURRENT_PRIMARY_APP_DOMAIN,
     );
     expect(resolveClerkProductionTopology("invalid-domain")).toMatchObject({
       primaryAppOrigin: "https://app.vm0.ai",

@@ -31,7 +31,7 @@ interface VM0ClerkBootstrap {
   readonly loadOptions: VM0ClerkBootstrapLoadOptions;
   loaded?: Promise<void>;
   onboardingStatusPromise?: Promise<VM0ClerkBootstrapOnboardingStatus | null>;
-  readonly productionSatelliteDomain: "app.okou.ai" | "vm0.ai";
+  readonly productionPrimaryAppDomain: "app.okou.ai" | "app.vm0.ai";
   readonly publishableKey: string;
 }
 

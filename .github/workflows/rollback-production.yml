@@ -156,7 +156,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATIC_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
-          CLERK_PRODUCTION_SATELLITE_DOMAIN: ${{ vars.CLERK_PRODUCTION_SATELLITE_DOMAIN || 'app.okou.ai' }}
+          CLERK_PRODUCTION_PRIMARY_APP_DOMAIN: ${{ vars.CLERK_PRODUCTION_PRIMARY_APP_DOMAIN || 'app.vm0.ai' }}
           R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
           R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
           TARGET_COMMIT: ${{ needs.resolve-target.outputs.target_commit }}

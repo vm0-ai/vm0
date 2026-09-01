@@ -1,11 +1,14 @@
 export const OKOU_CLERK_PRIMARY_APP_ORIGIN = "https://app.okou.ai";
 export const VM0_CLERK_PRIMARY_APP_ORIGIN = "https://app.vm0.ai";
 
-export const CURRENT_CLERK_PRODUCTION_SATELLITE_DOMAIN = "app.okou.ai";
-export const CUTOVER_CLERK_PRODUCTION_SATELLITE_DOMAIN = "vm0.ai";
+export const CURRENT_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN = "app.vm0.ai";
+export const CUTOVER_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN = "app.okou.ai";
 const CLERK_PRIMARY_USER_PROFILE_URL = "https://accounts.vm0.ai/user";
 
 export type ClerkProductionDomain = "app.okou.ai" | "vm0.ai";
+export type ClerkProductionPrimaryAppDomain =
+  | typeof CURRENT_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN
+  | typeof CUTOVER_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN;
 
 interface ClerkProductionTopology {
   readonly primaryAppOrigin:
@@ -19,23 +22,23 @@ function isDomainOrSubdomain(hostname: string, domain: string): boolean {
   return hostname === domain || hostname.endsWith(`.${domain}`);
 }
 
-export function normalizeClerkProductionSatelliteDomain(
+export function normalizeClerkProductionPrimaryAppDomain(
   value: unknown,
-): ClerkProductionDomain {
-  return value === CUTOVER_CLERK_PRODUCTION_SATELLITE_DOMAIN
-    ? CUTOVER_CLERK_PRODUCTION_SATELLITE_DOMAIN
-    : CURRENT_CLERK_PRODUCTION_SATELLITE_DOMAIN;
+): ClerkProductionPrimaryAppDomain {
+  return value === CUTOVER_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN
+    ? CUTOVER_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN
+    : CURRENT_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN;
 }
 
 // The Clerk instance and publishable key remain on clerk.vm0.ai. The explicit
-// satellite-domain deployment value is the source of truth for which app owns
+// primary-app deployment value is the source of truth for which app owns
 // primary auth. Unknown values fail closed to the currently deployed topology.
 export function resolveClerkProductionTopology(
-  satelliteDomain: unknown,
+  primaryAppDomain: unknown,
 ): ClerkProductionTopology {
   if (
-    normalizeClerkProductionSatelliteDomain(satelliteDomain) ===
-    CUTOVER_CLERK_PRODUCTION_SATELLITE_DOMAIN
+    normalizeClerkProductionPrimaryAppDomain(primaryAppDomain) ===
+    CUTOVER_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN
   ) {
     return {
       primaryAppOrigin: OKOU_CLERK_PRIMARY_APP_ORIGIN,
@@ -53,12 +56,17 @@ export function resolveClerkProductionTopology(
 
 export function resolveClerkProductionSatelliteDomain(
   hostname: string,
-  satelliteDomain: unknown,
+  primaryAppDomain: unknown,
 ): ClerkProductionDomain | null {
   const normalizedHostname = hostname.toLowerCase();
-  const normalizedSatelliteDomain =
-    normalizeClerkProductionSatelliteDomain(satelliteDomain);
-  return isDomainOrSubdomain(normalizedHostname, normalizedSatelliteDomain)
-    ? normalizedSatelliteDomain
+  if (
+    normalizeClerkProductionPrimaryAppDomain(primaryAppDomain) ===
+    CUTOVER_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN
+  ) {
+    return isDomainOrSubdomain(normalizedHostname, "vm0.ai") ? "vm0.ai" : null;
+  }
+
+  return isDomainOrSubdomain(normalizedHostname, "app.okou.ai")
+    ? "app.okou.ai"
     : null;
 }

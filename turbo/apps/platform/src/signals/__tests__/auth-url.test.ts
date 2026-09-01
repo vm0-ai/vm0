@@ -155,7 +155,7 @@ describe("platform auth URLs", () => {
 
   it("uses Okou auth and the VM0 root satellite after the cutover", () => {
     Reflect.set(window, "__vm0ClerkBootstrap", {
-      productionSatelliteDomain: "vm0.ai",
+      productionPrimaryAppDomain: "app.okou.ai",
     });
     try {
       setBrowserUrl("https://app.okou.ai/agents");

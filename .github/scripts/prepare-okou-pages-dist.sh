@@ -9,14 +9,14 @@ fi
 canonical_dist="$1"
 pages_dist="$2"
 preview_api_origin="${3:-}"
-production_satellite_domain="${CLERK_PRODUCTION_SATELLITE_DOMAIN:-app.okou.ai}"
+production_primary_app_domain="${CLERK_PRODUCTION_PRIMARY_APP_DOMAIN:-app.vm0.ai}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 pages_config_dir="${script_dir}/../pages/okou-app"
 
-case "$production_satellite_domain" in
-  app.okou.ai | vm0.ai) ;;
+case "$production_primary_app_domain" in
+  app.vm0.ai | app.okou.ai) ;;
   *)
-    echo "invalid Clerk production satellite domain: ${production_satellite_domain}" >&2
+    echo "invalid Clerk production primary app domain: ${production_primary_app_domain}" >&2
     exit 1
     ;;
 esac
@@ -33,10 +33,10 @@ fi
 
 cp -a "${canonical_dist}/." "$pages_dist/"
 
-clerk_satellite_domain_marker="__VM0_CLERK_PRODUCTION_SATELLITE_DOMAIN__"
-if grep -Fq "$clerk_satellite_domain_marker" "${pages_dist}/index.html"; then
+clerk_primary_app_domain_marker="__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__"
+if grep -Fq "$clerk_primary_app_domain_marker" "${pages_dist}/index.html"; then
   sed -i \
-    "s|${clerk_satellite_domain_marker}|${production_satellite_domain}|g" \
+    "s|${clerk_primary_app_domain_marker}|${production_primary_app_domain}|g" \
     "${pages_dist}/index.html"
 fi
 

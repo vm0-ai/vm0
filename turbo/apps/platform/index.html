@@ -225,23 +225,28 @@
         var publishableKey = production
           ? "%VITE_CLERK_PUBLISHABLE_KEY_PROD%"
           : "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%";
-        var productionSatelliteDomain =
-          "__VM0_CLERK_PRODUCTION_SATELLITE_DOMAIN__" === "vm0.ai"
-            ? "vm0.ai"
-            : "app.okou.ai";
-        var okouPrimary = productionSatelliteDomain === "vm0.ai";
+        var productionPrimaryAppDomain =
+          "__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__" === "app.okou.ai"
+            ? "app.okou.ai"
+            : "app.vm0.ai";
+        var okouPrimary = productionPrimaryAppDomain === "app.okou.ai";
         var satelliteDomain = null;
         if (
           production &&
-          isDomainOrSubdomain(hostname, productionSatelliteDomain)
+          okouPrimary &&
+          isDomainOrSubdomain(hostname, "vm0.ai")
         ) {
-          satelliteDomain = productionSatelliteDomain;
+          satelliteDomain = "vm0.ai";
+        } else if (
+          production &&
+          !okouPrimary &&
+          isDomainOrSubdomain(hostname, "app.okou.ai")
+        ) {
+          satelliteDomain = "app.okou.ai";
         }
         var satellite = satelliteDomain !== null;
         var authOrigin = satellite
-          ? okouPrimary
-            ? "https://app.okou.ai"
-            : "https://app.vm0.ai"
+          ? "https://" + productionPrimaryAppDomain
           : location.origin;
         var loadOptions = {
           afterSignOutUrl: new URL("/sign-in", authOrigin).toString(),
@@ -265,7 +270,7 @@
           clientSessionId: clientSessionId,
           domain: satelliteDomain || undefined,
           loadOptions: loadOptions,
-          productionSatelliteDomain: productionSatelliteDomain,
+          productionPrimaryAppDomain: productionPrimaryAppDomain,
           publishableKey: publishableKey,
         };
         window.__vm0ClerkBootstrap = bootstrap;

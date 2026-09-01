@@ -20,10 +20,11 @@ import {
   resolvePlatformRuntimeConfig,
 } from "../lib/platform-host.ts";
 import {
-  CURRENT_CLERK_PRODUCTION_SATELLITE_DOMAIN,
+  CURRENT_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN,
   resolveClerkProductionSatelliteDomain,
   resolveClerkProductionTopology,
   type ClerkProductionDomain,
+  type ClerkProductionPrimaryAppDomain,
   VM0_CLERK_PRIMARY_APP_ORIGIN,
 } from "../lib/clerk-production-topology.ts";
 import { resolveBrandNameForHostname, type BrandName } from "./branding.ts";
@@ -98,12 +99,12 @@ const MAX_URL_PORT = 65_535;
 export function deriveServiceOrigin(
   currentOrigin: string,
   service: Extract<PlatformService, "www" | "app" | "api">,
-  satelliteDomain = resolveConfiguredProductionSatelliteDomain(),
+  primaryAppDomain = resolveConfiguredProductionPrimaryAppDomain(),
 ): string {
   const currentUrl = new URL(currentOrigin);
   if (
     isOkouProductionHostname(currentUrl.hostname) &&
-    resolveClerkProductionTopology(satelliteDomain).primaryBrand === "okou"
+    resolveClerkProductionTopology(primaryAppDomain).primaryBrand === "okou"
   ) {
     currentUrl.hostname = `${service}.okou.ai`;
     return currentUrl.origin;
@@ -111,13 +112,13 @@ export function deriveServiceOrigin(
   return derivePlatformServiceOrigin(currentOrigin, service);
 }
 
-function resolveConfiguredProductionSatelliteDomain(): ClerkProductionDomain {
+function resolveConfiguredProductionPrimaryAppDomain(): ClerkProductionPrimaryAppDomain {
   if (typeof window === "undefined") {
-    return CURRENT_CLERK_PRODUCTION_SATELLITE_DOMAIN;
+    return CURRENT_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN;
   }
   return (
-    window.__vm0ClerkBootstrap?.productionSatelliteDomain ??
-    CURRENT_CLERK_PRODUCTION_SATELLITE_DOMAIN
+    window.__vm0ClerkBootstrap?.productionPrimaryAppDomain ??
+    CURRENT_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN
   );
 }
 
@@ -142,7 +143,7 @@ export function resolveClerkSatelliteConfig(): ClerkSatelliteConfig | null {
 
   const domain = resolveClerkProductionSatelliteDomain(
     location.hostname,
-    resolveConfiguredProductionSatelliteDomain(),
+    resolveConfiguredProductionPrimaryAppDomain(),
   );
   if (!domain) {
     return null;
@@ -156,18 +157,18 @@ export function resolveClerkSatelliteConfig(): ClerkSatelliteConfig | null {
 }
 
 function resolveAuthOrigin(): string {
-  const satelliteDomain = resolveConfiguredProductionSatelliteDomain();
+  const primaryAppDomain = resolveConfiguredProductionPrimaryAppDomain();
   return resolveClerkProductionSatelliteDomain(
     location.hostname,
-    satelliteDomain,
+    primaryAppDomain,
   )
-    ? resolveClerkProductionTopology(satelliteDomain).primaryAppOrigin
+    ? resolveClerkProductionTopology(primaryAppDomain).primaryAppOrigin
     : resolveAppOrigin();
 }
 
 export function resolvePrimaryClerkUserProfileUrl(): string {
   return resolveClerkProductionTopology(
-    resolveConfiguredProductionSatelliteDomain(),
+    resolveConfiguredProductionPrimaryAppDomain(),
   ).primaryUserProfileUrl;
 }
 

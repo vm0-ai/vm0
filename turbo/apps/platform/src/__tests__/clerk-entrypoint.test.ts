@@ -21,8 +21,8 @@ vi.unmock("@clerk/shared/loadClerkJsScript");
 
 const PREVIEW_FRONTEND_API_HOST = "informed-calf-6.clerk.accounts.dev";
 const PRODUCTION_FRONTEND_API_HOST = "clerk.vm0.ai";
-const PRODUCTION_SATELLITE_DOMAIN = "app.okou.ai";
-const CUTOVER_SATELLITE_DOMAIN = "vm0.ai";
+const CURRENT_PRIMARY_APP_DOMAIN = "app.vm0.ai";
+const CUTOVER_PRIMARY_APP_DOMAIN = "app.okou.ai";
 const CLERK_BOOTSTRAP_SELECTOR = "script[data-vm0-clerk-bootstrap]";
 const CLERK_CORE_SCRIPT_ID = "vm0-clerk-core-script";
 const CLERK_SCRIPT_SELECTOR = "script[data-clerk-js-script]";
@@ -70,9 +70,9 @@ interface ClerkPageOptions {
   readonly cookie?: string;
   readonly path?: string;
   readonly productionPublishableKey?: string;
-  readonly productionSatelliteDomain?:
-    | typeof CUTOVER_SATELLITE_DOMAIN
-    | typeof PRODUCTION_SATELLITE_DOMAIN;
+  readonly productionPrimaryAppDomain?:
+    | typeof CURRENT_PRIMARY_APP_DOMAIN
+    | typeof CUTOVER_PRIMARY_APP_DOMAIN;
   readonly url?: string;
 }
 
@@ -108,7 +108,7 @@ function stubClerkBuildEnvironment(
 function builtIndexHtml(
   appVersion = TEST_APP_VERSION,
   productionPublishableKey = PRODUCTION_PUBLISHABLE_KEY,
-  productionSatelliteDomain = PRODUCTION_SATELLITE_DOMAIN,
+  productionPrimaryAppDomain = CURRENT_PRIMARY_APP_DOMAIN,
 ): string {
   return transformClerkCoreScriptUrls(
     indexHtml
@@ -118,8 +118,8 @@ function builtIndexHtml(
       )
       .replaceAll("%VITE_CLERK_PUBLISHABLE_KEY_PROD%", productionPublishableKey)
       .replaceAll(
-        "__VM0_CLERK_PRODUCTION_SATELLITE_DOMAIN__",
-        productionSatelliteDomain,
+        "__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__",
+        productionPrimaryAppDomain,
       ),
     {
       appVersion,
@@ -166,7 +166,7 @@ function captureClerkBootstrapScript(
     | "apiOriginMarker"
     | "cookie"
     | "productionPublishableKey"
-    | "productionSatelliteDomain"
+    | "productionPrimaryAppDomain"
   > = {},
 ): HTMLScriptElement {
   stubClerkBuildEnvironment(options.productionPublishableKey);
@@ -190,7 +190,7 @@ function captureClerkBootstrapScript(
   const html = builtIndexHtml(
     TEST_APP_VERSION,
     options.productionPublishableKey,
-    options.productionSatelliteDomain,
+    options.productionPrimaryAppDomain,
   );
   const clerkScript = createClerkCoreScript(html);
   const scriptUrl = clerkScript.src;
@@ -258,7 +258,7 @@ function startClerkPage(
       const html = builtIndexHtml(
         TEST_APP_VERSION,
         options.productionPublishableKey,
-        options.productionSatelliteDomain,
+        options.productionPrimaryAppDomain,
       );
       const staticClerkScript = createClerkCoreScript(html);
       document.head.appendChild(staticClerkScript);
@@ -443,7 +443,7 @@ describe("platform Clerk entrypoint", () => {
     },
     {
       authOrigin: "https://app.vm0.ai",
-      domain: PRODUCTION_SATELLITE_DOMAIN,
+      domain: "app.okou.ai",
       publishableKey: PRODUCTION_PUBLISHABLE_KEY,
       scriptUrl: expectedClerkScriptUrl(),
       url: "https://app.okou.ai/",
@@ -451,7 +451,7 @@ describe("platform Clerk entrypoint", () => {
     {
       authOrigin: "https://app.okou.ai",
       domain: null,
-      productionSatelliteDomain: CUTOVER_SATELLITE_DOMAIN,
+      productionPrimaryAppDomain: CUTOVER_PRIMARY_APP_DOMAIN,
       publishableKey: PRODUCTION_PUBLISHABLE_KEY,
       scriptUrl: expectedClerkScriptUrl(),
       url: "https://app.okou.ai/",
@@ -459,7 +459,7 @@ describe("platform Clerk entrypoint", () => {
     {
       authOrigin: "https://app.okou.ai",
       domain: "vm0.ai",
-      productionSatelliteDomain: CUTOVER_SATELLITE_DOMAIN,
+      productionPrimaryAppDomain: CUTOVER_PRIMARY_APP_DOMAIN,
       publishableKey: PRODUCTION_PUBLISHABLE_KEY,
       scriptUrl: expectedClerkScriptUrl(),
       url: "https://app.vm0.ai/",
@@ -476,14 +476,14 @@ describe("platform Clerk entrypoint", () => {
     ({
       authOrigin,
       domain,
-      productionSatelliteDomain,
+      productionPrimaryAppDomain,
       publishableKey,
       scriptUrl,
       url,
     }) => {
       const script = captureClerkBootstrapScript(url, {
-        productionSatelliteDomain:
-          productionSatelliteDomain as ClerkPageOptions["productionSatelliteDomain"],
+        productionPrimaryAppDomain:
+          productionPrimaryAppDomain as ClerkPageOptions["productionPrimaryAppDomain"],
       });
       const bootstrap = window.__vm0ClerkBootstrap;
       if (!bootstrap) {
@@ -506,8 +506,8 @@ describe("platform Clerk entrypoint", () => {
       expect(script.onload).toStrictEqual(expect.any(Function));
       expect(script.type).toBe("text/javascript");
       expect(bootstrap.publishableKey).toBe(publishableKey);
-      expect(bootstrap.productionSatelliteDomain).toBe(
-        productionSatelliteDomain ?? PRODUCTION_SATELLITE_DOMAIN,
+      expect(bootstrap.productionPrimaryAppDomain).toBe(
+        productionPrimaryAppDomain ?? CURRENT_PRIMARY_APP_DOMAIN,
       );
       expect(bootstrap.domain ?? null).toBe(domain);
       expect(bootstrap.loadOptions).toStrictEqual({
@@ -629,7 +629,7 @@ describe("platform Clerk entrypoint", () => {
       authOrigin: "https://app.vm0.ai",
       bypass: null,
       cookie: undefined,
-      domain: PRODUCTION_SATELLITE_DOMAIN,
+      domain: "app.okou.ai",
       expectedRequestUrl: "https://api.okou.ai/api/onboarding/status",
       expectedScriptUrl: expectedClerkScriptUrl(),
       url: "https://app.okou.ai/",

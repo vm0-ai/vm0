@@ -85,13 +85,13 @@ rollback_verification_step = find_step(
 )
 
 shared_script = "bash .github/scripts/deploy-okou-pages.sh"
-satellite_domain_expression = (
-    "${{ vars.CLERK_PRODUCTION_SATELLITE_DOMAIN || 'app.okou.ai' }}"
+primary_app_domain_expression = (
+    "${{ vars.CLERK_PRODUCTION_PRIMARY_APP_DOMAIN || 'app.vm0.ai' }}"
 )
 for step in (prepare_preview_step, prepare_release_step, rollback_prepare_step):
-    if step.get("env", {}).get("CLERK_PRODUCTION_SATELLITE_DOMAIN") != satellite_domain_expression:
+    if step.get("env", {}).get("CLERK_PRODUCTION_PRIMARY_APP_DOMAIN") != primary_app_domain_expression:
         raise RuntimeError(
-            f"step {step.get('name')} must inject the Clerk production satellite domain"
+            f"step {step.get('name')} must inject the Clerk production primary app domain"
         )
 require_fragments(
     build_step,
