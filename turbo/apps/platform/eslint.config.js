@@ -11,19 +11,28 @@ const eslintCacheInputPaths = globSync(
   [
     "eslint.config.js",
     "package.json",
-    "../../packages/eslint-config/*.js",
-    "../../packages/eslint-config/package.json",
-    "../../packages/eslint-rules/package.json",
-    "../../packages/eslint-rules/src/ccstate/index.ts",
-    "../../packages/eslint-rules/src/ccstate/utils.ts",
-    "../../packages/eslint-rules/src/ccstate/rules/*.ts",
+    "../../package.json",
     "../../pnpm-lock.yaml",
+    "../../pnpm-workspace.yaml",
     "../../turbo.json",
+    "../../{apps,packages}/*/turbo.{json,jsonc}",
+    "../../packages/eslint-config/**/*.{js,cjs,mjs,json}",
+    "../../packages/eslint-rules/package.json",
+    "../../packages/eslint-rules/src/ccstate/**/*.ts",
   ],
-  { cwd: import.meta.dirname },
+  {
+    cwd: import.meta.dirname,
+    exclude: [
+      "../../packages/eslint-config/**/*.node.js",
+      "../../packages/eslint-rules/src/ccstate/__tests__/**",
+    ],
+  },
 ).sort();
 const eslintCacheHash = createHash("sha256");
 
+// Cached results must only depend on the linted file, its calculated config,
+// and the inputs above. Add new external inputs here before enabling a rule
+// that reads them; type-aware or other cross-file rules need broader invalidation.
 for (const inputPath of eslintCacheInputPaths) {
   eslintCacheHash.update(inputPath).update("\0");
   eslintCacheHash
