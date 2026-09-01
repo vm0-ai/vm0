@@ -2292,6 +2292,14 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       connected: false,
       storageVersion: 2,
     });
+    const blockedNoneUpdate = await connectorsApi.requestUpdateCustomConnector(
+      admin,
+      http.id,
+      httpDefinition,
+      [403],
+    );
+    expectApiError(blockedNoneUpdate.body);
+    expect(blockedNoneUpdate.body.error.code).toBe("FORBIDDEN");
 
     await connectorsApi.disconnectSingleCustomConnectorAccount(admin, http.id);
     await connectorsApi.disconnectSingleCustomConnectorAccount(admin, mcp.id);

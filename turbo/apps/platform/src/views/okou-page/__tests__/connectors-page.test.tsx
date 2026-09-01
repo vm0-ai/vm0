@@ -5673,6 +5673,74 @@ describe("connectors page", () => {
     },
   );
 
+  it("preserves HTTP destination variables when editing a no-auth custom connector", async () => {
+    const connector = customConnector({
+      displayName: "Regional public API",
+      prefixTemplates: ["https://{{variables.region}}.public.example.test/"],
+      fields: [
+        {
+          key: "region",
+          label: "Region",
+          kind: "variable",
+          required: true,
+        },
+      ],
+      headerInjections: [],
+      queryInjections: [],
+      authMode: "none",
+      connected: false,
+      missingRequiredFields: ["region"],
+      configuredFieldKeys: [],
+    });
+    const updateBodies: UpdateCustomConnectorBody[] = [];
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.agents([]);
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(
+      customConnectorByIdContract.update,
+      ({ body, respond }) => {
+        updateBodies.push(body);
+        return respond(200, connector);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors?tab=custom",
+      featureSwitches: {
+        [FeatureSwitchKey.CustomConnectorNoAuth]: true,
+      },
+    });
+
+    await screen.findByText(connector.displayName);
+    click(screen.getByLabelText("More options"));
+    click(await screen.findByText("Edit"));
+    const editDialog = await screen.findByRole("dialog", {
+      name: "Edit custom connector",
+    });
+    click(buttonByText("Save", editDialog));
+
+    await waitFor(() => {
+      expect(updateBodies).toStrictEqual([
+        {
+          displayName: connector.displayName,
+          prefixTemplates: connector.prefixTemplates,
+          fields: connector.fields,
+          headerInjections: [],
+          queryInjections: [],
+          authMode: "none",
+          storageVersion: connector.storageVersion,
+        },
+      ]);
+    });
+  });
+
   it("manages a manual MCP custom connector through the settings lifecycle", async () => {
     const researchAgentId = "c0000000-0000-4000-a000-000000000061";
     const supportAgentId = "c0000000-0000-4000-a000-000000000062";
