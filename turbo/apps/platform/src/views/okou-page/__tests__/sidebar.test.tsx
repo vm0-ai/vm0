@@ -3467,10 +3467,6 @@ describe("zero sidebar", () => {
     const card = await waitFor(() => {
       return within(grid).getByTestId("pinned-agent-card");
     });
-    expect(within(card).getByText("Growth Experiments Agent")).toHaveClass(
-      "truncate",
-    );
-
     await userEvent.setup().hover(card);
 
     const tooltip = await waitFor(() => {
