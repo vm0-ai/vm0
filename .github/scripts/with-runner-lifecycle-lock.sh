@@ -8,10 +8,15 @@ Usage: with-runner-lifecycle-lock.sh <command> [args...]
 Acquires the per-runner-namespace lifecycle lock on every configured metal
 host, runs the command while every lock is held, then releases the locks.
 
+Each remote holder keeps the lock only while this script keeps heartbeating
+over the same SSH channel, so a holder that loses its owner releases the lock
+instead of blocking the host until the transport is reaped.
+
 Required env:
   JOB_REF, METAL_HOSTS, METAL_USER
 Optional env:
   RUNNER_LIFECYCLE_LOCK_TIMEOUT_SECONDS (default: 480)
+  RUNNER_LIFECYCLE_LOCK_LEASE_SECONDS (default: 150)
 USAGE
 }
 
@@ -55,6 +60,18 @@ if [[ ! "$lock_timeout" =~ ^[1-9][0-9]*$ ]] || [ "$lock_timeout" -gt 3600 ]; the
 fi
 ready_timeout=$((lock_timeout + 30))
 
+# A remote holder cannot observe a half-open SSH transport, so it releases the
+# lock once this many seconds pass without a heartbeat from its owner.
+lease_timeout=${RUNNER_LIFECYCLE_LOCK_LEASE_SECONDS:-150}
+if [[ ! "$lease_timeout" =~ ^[1-9][0-9]*$ ]] || [ "$lease_timeout" -lt 5 ] ||
+  [ "$lease_timeout" -gt 3600 ]; then
+  echo "runner lifecycle lock lease must be an integer from 5 through 3600 seconds" >&2
+  exit 2
+fi
+# Five heartbeats per lease keep a busy CI host from expiring a live holder.
+# The validated five-second floor above keeps this interval at one second or more.
+heartbeat_interval=$((lease_timeout / 5))
+
 normalized_hosts=$(
   printf '%s\n' "$METAL_HOSTS" |
     tr ',' '\n' |
@@ -82,6 +99,7 @@ state_dir=$(mktemp -d)
 declare -a lock_fds=()
 declare -a lock_hosts=()
 declare -a lock_pids=()
+declare -a heartbeat_pids=()
 command_pid=""
 locks_released=false
 
@@ -100,6 +118,15 @@ terminate_command() {
   command_pid=""
 }
 
+stop_heartbeats() {
+  local pid
+  for pid in "${heartbeat_pids[@]}"; do
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+  done
+  heartbeat_pids=()
+}
+
 release_locks() {
   if $locks_released; then
     return 0
@@ -107,6 +134,9 @@ release_locks() {
   locks_released=true
 
   local index status=0
+  # Heartbeat writers hold the release descriptors, so the remote holders only
+  # see end-of-input once every writer is gone.
+  stop_heartbeats
   for ((index = ${#lock_fds[@]} - 1; index >= 0; index--)); do
     close_fd "${lock_fds[$index]}"
   done
@@ -151,7 +181,7 @@ for host in "${hosts[@]}"; do
 
   lock_path="/var/lock/vm0-runner-lifecycle-${JOB_REF}.lock"
   remote="${METAL_USER}@${host}"
-  remote_command="exec sudo flock --exclusive --timeout ${lock_timeout} ${lock_path} bash -c 'printf \"%s\\n\" VM0_RUNNER_LIFECYCLE_LOCK_ACQUIRED; cat >/dev/null'"
+  remote_command="exec sudo flock --exclusive --timeout ${lock_timeout} ${lock_path} bash -c 'printf \"%s\\n\" VM0_RUNNER_LIFECYCLE_LOCK_ACQUIRED; while IFS= read -r -t ${lease_timeout} _; do :; done'"
   # The validated host, timeout, and lock path select the remote lock. The
   # command itself is static and receives no untrusted shell fragments.
   # shellcheck disable=SC2029
@@ -208,6 +238,22 @@ for host in "${hosts[@]}"; do
   fi
 
   rm -f "$ready_fifo" "$release_fifo" "$marker_file"
+
+  # Start heartbeating before the next host is acquired: a lock taken early
+  # must not expire while a later host is still waiting for its own lock.
+  # `sleep` runs without the release descriptor so stopping this writer frees
+  # the descriptor immediately.
+  (
+    for inherited_fd in "${lock_fds[@]}"; do
+      close_fd "$inherited_fd"
+    done
+    while :; do
+      sleep "$heartbeat_interval" {release_fd}>&-
+      printf '%s\n' VM0_RUNNER_LIFECYCLE_LOCK_HEARTBEAT >&"$release_fd" || exit 0
+    done
+  ) &
+  heartbeat_pids+=("$!")
+
   lock_fds+=("$release_fd")
   lock_hosts+=("$host")
   lock_pids+=("$ssh_pid")
@@ -232,12 +278,18 @@ if [ "$completed_pid" = "$command_pid" ]; then
   command_pid=""
   command_status=$completed_status
 else
-  echo "runner lifecycle lock was lost while the protected command was running" >&2
+  lost_index=""
+  lost_host="an unidentified host"
   for index in "${!lock_pids[@]}"; do
-    if [ "${lock_pids[$index]}" = "$completed_pid" ] && [ -s "${state_dir}/${index}.err" ]; then
-      sed 's/^/  /' "${state_dir}/${index}.err" >&2
+    if [ "${lock_pids[$index]}" = "$completed_pid" ]; then
+      lost_index=$index
+      lost_host="${lock_hosts[$index]}"
     fi
   done
+  echo "runner lifecycle lock on ${lost_host} was lost while the protected command was running" >&2
+  if [ -n "$lost_index" ] && [ -s "${state_dir}/${lost_index}.err" ]; then
+    sed 's/^/  /' "${state_dir}/${lost_index}.err" >&2
+  fi
   terminate_command
   command_status=1
 fi

@@ -57,14 +57,22 @@ cat >"${fake_bin}/ssh" <<'SH'
 set -euo pipefail
 
 remote=$1
+remote_command=$2
 host=${remote#*@}
 if [ -n "${MOCK_SSH_ATTEMPT_FIFO:-}" ]; then
   printf '%s\n' "${MOCK_OWNER:-unknown}" >"$MOCK_SSH_ATTEMPT_FIFO"
 fi
 mkdir -p "$MOCK_LOCK_ROOT"
 lock_file="${MOCK_LOCK_ROOT}/${host}-${JOB_REF}.lock"
-exec flock --exclusive --timeout 5 "$lock_file" \
-  bash -c 'printf "%s\n" VM0_RUNNER_LIFECYCLE_LOCK_ACQUIRED; cat >/dev/null'
+
+# Run the holder the script actually asks for, minus the privilege escalation
+# and the absolute lock path that only exist on a metal host.
+local_command=${remote_command#exec sudo }
+local_command=${local_command//"/var/lock/vm0-runner-lifecycle-${JOB_REF}.lock"/$lock_file}
+if [ -n "${MOCK_HOLDER_COMMAND_FILE:-}" ]; then
+  printf '%s\n' "$local_command" >"$MOCK_HOLDER_COMMAND_FILE"
+fi
+exec bash -c "$local_command"
 SH
 
 cat >"${fake_bin}/ansible-playbook" <<'SH'
@@ -174,5 +182,84 @@ background_pids=()
 
 [ "$(cat "$order_log")" = $'delete\nstart' ] ||
   fail "cleanup and late start did not serialize in ownership order"
+
+# A protected command that outlives the lease must keep its lock: the owner
+# heartbeats over the same channel that carries the release signal.
+lease_seconds=5
+holder_command_file="${tmp_dir}/holder-command"
+lease_lock_root="${tmp_dir}/lease-locks"
+mkdir -p "$lease_lock_root"
+
+PATH="${fake_bin}:$PATH" \
+  JOB_REF=pr-77 \
+  METAL_HOSTS=metal-lease.example.test \
+  METAL_USER=runner \
+  MOCK_LOCK_ROOT="$lease_lock_root" \
+  MOCK_HOLDER_COMMAND_FILE="$holder_command_file" \
+  RUNNER_LIFECYCLE_LOCK_TIMEOUT_SECONDS=5 \
+  RUNNER_LIFECYCLE_LOCK_LEASE_SECONDS="$lease_seconds" \
+  timeout "$((lease_seconds * 4))" "$lock_script" sleep "$((lease_seconds * 2))" \
+  >"${tmp_dir}/lease.out" 2>"${tmp_dir}/lease.err" || {
+  sed 's/^/  /' "${tmp_dir}/lease.err" >&2
+  fail "heartbeats did not keep the lock while the protected command ran"
+}
+! grep -q "was lost while the protected command was running" "${tmp_dir}/lease.err" ||
+  fail "the lease expired under an owner that was still heartbeating"
+
+lease_lock_file="${lease_lock_root}/metal-lease.example.test-pr-77.lock"
+flock --exclusive --timeout 5 "$lease_lock_file" true ||
+  fail "the lock was still held after the protected command completed"
+
+# Every host keeps its own heartbeat writer, so releasing must still reach
+# end-of-input on each channel once the protected command finishes.
+multi_lock_root="${tmp_dir}/multi-locks"
+mkdir -p "$multi_lock_root"
+PATH="${fake_bin}:$PATH" \
+  JOB_REF=pr-78 \
+  METAL_HOSTS=metal-one.example.test,metal-two.example.test \
+  METAL_USER=runner \
+  MOCK_LOCK_ROOT="$multi_lock_root" \
+  RUNNER_LIFECYCLE_LOCK_TIMEOUT_SECONDS=5 \
+  RUNNER_LIFECYCLE_LOCK_LEASE_SECONDS="$lease_seconds" \
+  timeout "$lease_seconds" "$lock_script" true \
+  >"${tmp_dir}/multi.out" 2>"${tmp_dir}/multi.err" || {
+  sed 's/^/  /' "${tmp_dir}/multi.err" >&2
+  fail "a multi-host lock did not release promptly after its protected command"
+}
+for multi_host in metal-one.example.test metal-two.example.test; do
+  flock --exclusive --timeout 5 \
+    "${multi_lock_root}/${multi_host}-pr-78.lock" true ||
+    fail "the lock on ${multi_host} was still held after release"
+done
+
+# An orphaned holder never sees end-of-input on a half-open transport, so the
+# lease is the only thing that stops it from blocking the host indefinitely.
+[ -s "$holder_command_file" ] || fail "the mock did not record the remote holder command"
+IFS= read -r holder_command <"$holder_command_file"
+orphan_fifo="${tmp_dir}/orphan-stdin"
+mkfifo "$orphan_fifo"
+exec {orphan_fd}<>"$orphan_fifo"
+bash -c "$holder_command" <"$orphan_fifo" >"${tmp_dir}/orphan.out" 2>&1 &
+orphan_pid=$!
+background_pids+=("$orphan_pid")
+
+orphan_marker=$(
+  # shellcheck disable=SC2016
+  timeout 5 bash -c '
+    until [ -s "$1" ]; do sleep 0.1; done
+    IFS= read -r line <"$1"
+    printf "%s\n" "$line"
+  ' bash "${tmp_dir}/orphan.out"
+) || fail "the orphaned holder never acquired the lock"
+[ "$orphan_marker" = "VM0_RUNNER_LIFECYCLE_LOCK_ACQUIRED" ] ||
+  fail "the orphaned holder reported an invalid acquisition marker"
+flock --exclusive --timeout 1 "$lease_lock_file" true &&
+  fail "the orphaned holder did not actually hold the lock"
+
+flock --exclusive --timeout "$((lease_seconds * 3))" "$lease_lock_file" true ||
+  fail "the orphaned holder kept the lock past its lease"
+wait "$orphan_pid" || fail "the orphaned holder exited abnormally"
+background_pids=()
+exec {orphan_fd}>&-
 
 echo "runner-lifecycle-lock-test: ok"
