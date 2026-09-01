@@ -5149,17 +5149,14 @@
       "debug": {
         "builtInModelCooldown": {
           "cancelAction": "Annulla cooldown",
-          "cancelDescription": "L'annullamento di questo cooldown globale rende immediatamente disponibile la route per tutti i workspace in cui è attivo il fallback dei modelli integrati.",
+          "cancelDescription": "L'annullamento di questo cooldown globale rende immediatamente disponibile la route per tutti i workspace.",
           "cancelling": "Annullamento...",
           "cancelTitle": "Annullare il cooldown globale?",
           "cancelWarning": "Un errore successivo idoneo può riportare questa route in cooldown.",
           "description": "Esamina le route dei modelli integrati temporaneamente escluse dalla selezione di fallback.",
-          "disabled": "disattivato",
-          "disabledExplanation": "Il fallback dei modelli integrati è disattivato per questo workspace, quindi questi cooldown globali vengono attualmente ignorati qui.",
           "empty": "Al momento nessuna route di modello integrato è in cooldown globale.",
-          "enabled": "attivato",
           "globalActive": "cooldown globali attivi",
-          "globalExplanation": "I cooldown sono uno stato operativo globale. Possono influire su questo workspace solo quando il fallback dei modelli integrati è attivato qui.",
+          "globalExplanation": "I cooldown sono uno stato operativo globale e influiscono su tutti i workspace che utilizzano modelli integrati.",
           "keepCooldown": "Mantieni cooldown",
           "loading": "Caricamento della diagnostica dei cooldown dei modelli integrati...",
           "providerType": "Tipo di provider",
@@ -5168,8 +5165,7 @@
           "title": "Fallback dei modelli integrati",
           "unavailable": "La diagnostica dei cooldown dei modelli integrati non è disponibile.",
           "unavailableUntil": "Non disponibile fino a",
-          "upstreamModel": "Modello upstream",
-          "workspaceFallback": "fallback del workspace"
+          "upstreamModel": "Modello upstream"
         },
         "capture": {
           "description": "Cattura i nomi delle intestazioni HTTP, i valori delle intestazioni sicure selezionate e i corpi nei log di rete per il debug.",

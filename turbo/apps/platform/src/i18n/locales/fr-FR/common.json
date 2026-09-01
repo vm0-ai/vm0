@@ -5149,17 +5149,14 @@
       "debug": {
         "builtInModelCooldown": {
           "cancelAction": "Annuler le délai d'attente",
-          "cancelDescription": "L'annulation de ce délai d'attente global rend immédiatement la route disponible pour tous les espaces de travail où le secours des modèles intégrés est activé.",
+          "cancelDescription": "L'annulation de ce délai d'attente global rend immédiatement la route disponible pour tous les espaces de travail.",
           "cancelling": "Annulation...",
           "cancelTitle": "Annuler le délai d'attente global ?",
           "cancelWarning": "Un échec ultérieur répondant aux critères peut remettre cette route en délai d'attente.",
           "description": "Inspectez les routes de modèles intégrés temporairement exclues de la sélection de secours.",
-          "disabled": "désactivé",
-          "disabledExplanation": "Le secours des modèles intégrés est désactivé pour cet espace de travail. Ces délais d'attente globaux y sont donc actuellement ignorés.",
           "empty": "Aucune route de modèle intégré n'est actuellement soumise à un délai d'attente global.",
-          "enabled": "activé",
           "globalActive": "délais d'attente globaux actifs",
-          "globalExplanation": "Les délais d'attente constituent un état opérationnel global. Ils ne peuvent affecter cet espace de travail que lorsque le secours des modèles intégrés y est activé.",
+          "globalExplanation": "Les délais d'attente constituent un état opérationnel global et affectent tous les espaces de travail qui utilisent des modèles intégrés.",
           "keepCooldown": "Conserver le délai d'attente",
           "loading": "Chargement du diagnostic des délais d'attente des modèles intégrés...",
           "providerType": "Type de fournisseur",
@@ -5168,8 +5165,7 @@
           "title": "Secours des modèles intégrés",
           "unavailable": "Le diagnostic des délais d'attente des modèles intégrés n'est pas disponible.",
           "unavailableUntil": "Indisponible jusqu'au",
-          "upstreamModel": "Modèle en amont",
-          "workspaceFallback": "secours de l'espace de travail"
+          "upstreamModel": "Modèle en amont"
         },
         "capture": {
           "description": "Capturer les noms d'en-têtes HTTP, les valeurs d'en-têtes sûres sélectionnées et les corps dans les journaux réseau pour le débogage.",
