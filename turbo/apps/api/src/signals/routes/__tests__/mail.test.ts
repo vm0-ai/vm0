@@ -28,6 +28,7 @@ import {
   seedBuiltinThreadConnectorSelection,
   seedCustomConnectorRuntimeConnectors,
   seedCustomThreadConnectorSelection,
+  setConnectorAccountState,
   setBuiltinOAuthScopeFacts,
   setConnectorDefaultState,
   setConnectorCredentialStorageState,
@@ -176,10 +177,12 @@ interface GmailDraftTestState {
 }
 
 function mockGmailDraftApi(options?: {
+  readonly accessToken?: string;
   readonly inlineImageData?: boolean;
   readonly regularAttachmentData?: boolean;
   readonly textAttachmentData?: boolean;
 }): GmailDraftTestState {
+  const accessToken = options?.accessToken ?? "gmail-mail-card-token";
   const state: GmailDraftTestState = {
     exists: true,
     insufficientScope: false,
@@ -197,7 +200,7 @@ function mockGmailDraftApi(options?: {
     http.get(`${GMAIL_API_BASE}/drafts/:draftId`, ({ params, request }) => {
       expect(params.draftId).toBe(GMAIL_DRAFT_ID);
       expect(request.headers.get("authorization")).toBe(
-        "Bearer gmail-mail-card-token",
+        `Bearer ${accessToken}`,
       );
       expect(new URL(request.url).searchParams.get("format")).toBe("full");
       state.draftReadCount += 1;
@@ -289,7 +292,7 @@ function mockGmailDraftApi(options?: {
         expect(params.messageId).toBe(GMAIL_MESSAGE_ID);
         expect(params.attachmentId).toBe(currentImageAttachmentId);
         expect(request.headers.get("authorization")).toBe(
-          "Bearer gmail-mail-card-token",
+          `Bearer ${accessToken}`,
         );
         return HttpResponse.json({
           size: GMAIL_IMAGE_BYTES.byteLength,
@@ -384,7 +387,112 @@ async function setGmailOAuthScopeFacts(
   });
 }
 
+async function addGmailAccount(
+  fixture: Awaited<ReturnType<typeof seedGmailMailCardFixture>>,
+  args: {
+    readonly accessToken: string;
+    readonly email: string;
+    readonly subject: string;
+  },
+): Promise<string> {
+  await connectors.updateFeatureSwitches(fixture.actor, {
+    [FeatureSwitchKey.ConnectorAccounts]: true,
+  });
+  mockGmailConnectorOAuth(args);
+  const start = await connectors.startOauth(
+    fixture.actor,
+    "gmail",
+    "oauth",
+    fixture.agent.agentId,
+    { intent: "add", displayName: "Selected Gmail" },
+  );
+  const state = new URL(start.authorizationUrl).searchParams.get("state");
+  if (!state) {
+    throw new Error("Expected Gmail OAuth state");
+  }
+  await connectors.completeOauthCallback("gmail", {
+    code: "selected-gmail-code",
+    state,
+  });
+  const account = (
+    await connectors.listBuiltinConnectorAccounts(fixture.actor, "gmail")
+  ).find((candidate) => {
+    return candidate.externalEmail === args.email;
+  });
+  if (!account) {
+    throw new Error("Expected the selected Gmail account");
+  }
+  return account.id;
+}
+
 describe("POST /api/mail/drafts/link", () => {
+  it("uses the thread-selected Gmail account without probing the default", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    const selectedAccessToken = "selected-gmail-token";
+    const selectedConnectorId = await addGmailAccount(fixture, {
+      accessToken: selectedAccessToken,
+      email: "selected@example.com",
+      subject: "selected-gmail-account",
+    });
+    await seedBuiltinThreadConnectorSelection(context, {
+      chatThreadId: fixture.thread.id,
+      connectorId: selectedConnectorId,
+      connectorSlug: "gmail",
+    });
+    const gmail = mockGmailDraftApi({ accessToken: selectedAccessToken });
+
+    const linked = await linkDraft(fixture);
+    expect(gmail.draftReadCount).toBe(1);
+
+    await accept(
+      client().getDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [200],
+    );
+    expect(gmail.draftReadCount).toBe(2);
+  });
+
+  it("does not fall back from a reconnect-required thread selection", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    const selectedConnectorId = await addGmailAccount(fixture, {
+      accessToken: "unavailable-selected-gmail-token",
+      email: "unavailable-selected@example.com",
+      subject: "unavailable-selected-gmail-account",
+    });
+    await seedBuiltinThreadConnectorSelection(context, {
+      chatThreadId: fixture.thread.id,
+      connectorId: selectedConnectorId,
+      connectorSlug: "gmail",
+    });
+    await setConnectorAccountState(context, {
+      orgId: fixture.actor.orgId ?? "",
+      userId: fixture.actor.userId,
+      connectorId: selectedConnectorId,
+      needsReconnect: true,
+    });
+    const gmail = mockGmailDraftApi({
+      accessToken: "unavailable-selected-gmail-token",
+    });
+
+    const response = await accept(
+      client().linkDraft({
+        headers: authHeaders(),
+        body: {
+          threadId: fixture.thread.id,
+          agentId: fixture.agent.agentId,
+          gmailDraftId: GMAIL_DRAFT_ID,
+        },
+      }),
+      [409],
+    );
+    expect(response.body.error.message).toBe(
+      "Connect and authorize Gmail for this agent first",
+    );
+    expect(gmail.draftReadCount).toBe(0);
+  });
+
   it("uses a healthy Gmail connection with unknown historical grants", async () => {
     const fixture = await seedGmailMailCardFixture();
     await setGmailOAuthScopeFacts(fixture, null);
