@@ -537,14 +537,16 @@ describe("chat event action cards", () => {
       expect(card).toHaveTextContent("Switch to Work?");
       expect(card).toHaveTextContent("github · work@example.com");
       expect(card).not.toHaveTextContent("The current run will not change.");
-      const icon = card.querySelector("img");
-      if (!(icon instanceof HTMLImageElement)) {
-        throw new Error("GitHub connector icon not found");
-      }
-      expect(icon).toHaveAttribute(
-        "src",
-        "https://icons.example.test/github.svg",
-      );
+      await waitFor(() => {
+        const icon = card.querySelector("img");
+        if (!(icon instanceof HTMLImageElement)) {
+          throw new Error("GitHub connector icon not found");
+        }
+        expect(icon).toHaveAttribute(
+          "src",
+          "https://icons.example.test/github.svg",
+        );
+      });
     }
 
     const firstCard = cards[0];
@@ -661,11 +663,74 @@ describe("chat event action cards", () => {
     expect(card).toHaveTextContent(
       `Custom connector · ${customConnectorId.slice(0, 8)} · work@example.com`,
     );
-    const icon = card.querySelector('[aria-label="Acme Search"]');
-    expect(icon).toHaveTextContent("A");
+    await waitFor(() => {
+      const icon = card.querySelector('[aria-label="Acme Search"]');
+      expect(icon).toHaveTextContent("A");
+    });
     expect(queryAllByRoleFast("button", card)).toStrictEqual([]);
     expect(updateCount).toBe(0);
     expect(sentPrompts).toStrictEqual([]);
+  });
+
+  it("keeps an account switch available when connector icon metadata fails", async () => {
+    const threadId = "e4000000-0000-4000-a000-000000000031";
+    const account = connectorAccount({
+      id: "a1000000-0000-4000-a000-000000000031",
+    });
+    mockConnectorAccountActionAuthorization(account.target);
+    let catalogReadCount = 0;
+    context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
+      catalogReadCount += 1;
+      return respond(500, {
+        error: {
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Connector catalog unavailable",
+        },
+      });
+    });
+    context.mocks.api(connectorAccountsContract.connection, ({ respond }) => {
+      return respond(200, account);
+    });
+    context.mocks.api(
+      chatThreadConnectorSelectionContract.get,
+      ({ respond }) => {
+        return respond(200, { selections: [], selectedConnections: [] });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Connector icon fallback",
+      chatEvents: [
+        {
+          id: `${threadId}-message`,
+          role: "assistant",
+          content: connectorAccountActionUrl(threadId, account, "Continue"),
+          runId: `${threadId}-run`,
+          createdAt: "2026-08-31T10:00:00.000Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    const card = await screen.findByTestId(
+      "connector-account-action-card",
+      undefined,
+      { timeout: 10_000 },
+    );
+    await waitFor(() => {
+      expect(catalogReadCount).toBe(1);
+      expect(buttonByText("Switch", card)).toBeEnabled();
+      expect(
+        within(card).getByRole("img", {
+          name: "Connector icon unavailable",
+        }),
+      ).toBeInTheDocument();
+    });
   });
 
   it("renders a hallucinated or cross-target account as unavailable", async () => {

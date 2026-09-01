@@ -59,7 +59,6 @@ export type ConnectorAccountActionStatus =
   | {
       readonly kind: "ready";
       readonly account: ConnectorAccountConnection;
-      readonly connector: ConnectorAccountActionConnector;
       readonly selected: boolean;
     };
 
@@ -70,6 +69,7 @@ export type ConnectorAccountActionConfirmationState =
 
 export interface ConnectorAccountActionSignals extends ConnectorAccountActionDescriptor {
   readonly status$: Computed<Promise<ConnectorAccountActionStatus>>;
+  readonly connector$: Computed<Promise<ConnectorAccountActionConnector>>;
   readonly confirmationState$: Computed<ConnectorAccountActionConfirmationState>;
   readonly refresh$: Command<void, []>;
   readonly confirm$: Command<Promise<void>, [AbortSignal]>;
@@ -202,6 +202,28 @@ function createConnectorAccountActionSignals(
   const confirmationState$ = computed((get) => {
     return get(internalConfirmationState$);
   });
+  const connector$ = computed(
+    async (get): Promise<ConnectorAccountActionConnector> => {
+      const target = descriptor.selection.target;
+      if (target.kind === "builtin") {
+        return {
+          kind: "builtin",
+          icon: (await get(connectorCatalogStatusBySlug$)).get(
+            target.connectorSlug,
+          )?.icon,
+        };
+      }
+      const customConnectorId = target.customConnectorId;
+      return {
+        kind: "custom",
+        id: customConnectorId,
+        displayName:
+          (await get(customConnectors$)).find((candidate) => {
+            return candidate.id === customConnectorId;
+          })?.displayName ?? null,
+      };
+    },
+  );
   const status$ = computed(
     async (get): Promise<ConnectorAccountActionStatus> => {
       get(reload$);
@@ -223,32 +245,10 @@ function createConnectorAccountActionSignals(
       if (result.status === 404) {
         return { kind: "unavailable" };
       }
-      const preferencePromise = get(connector.accounts.preferenceState$);
-      const target = descriptor.selection.target;
-      let presentation: ConnectorAccountActionConnector;
-      if (target.kind === "builtin") {
-        presentation = {
-          kind: "builtin",
-          icon: (await get(connectorCatalogStatusBySlug$)).get(
-            target.connectorSlug,
-          )?.icon,
-        };
-      } else {
-        const customConnectorId = target.customConnectorId;
-        presentation = {
-          kind: "custom",
-          id: customConnectorId,
-          displayName:
-            (await get(customConnectors$)).find((candidate) => {
-              return candidate.id === customConnectorId;
-            })?.displayName ?? null,
-        };
-      }
-      const preference = await preferencePromise;
+      const preference = await get(connector.accounts.preferenceState$);
       return {
         kind: "ready",
         account: result.body,
-        connector: presentation,
         selected: selectionIsCurrent(
           preference.selections,
           descriptor.selection,
@@ -308,6 +308,7 @@ function createConnectorAccountActionSignals(
   return {
     ...descriptor,
     status$,
+    connector$,
     confirmationState$,
     refresh$,
     confirm$,

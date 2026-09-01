@@ -138,6 +138,7 @@ function ReadyConnectorAccountActionCard({
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const confirmationState = useGet(signals.confirmationState$);
+  const connectorLoadable = useLastLoadable(signals.connector$);
   const [, confirm] = useLoadableSet(signals.confirm$);
   const selected = status.selected;
   const switching = confirmationState === "loading";
@@ -153,13 +154,18 @@ function ReadyConnectorAccountActionCard({
     return $.chat.connectorAccountSwitch.customConnector;
   });
   const target = accountTargetLabel(status.account, customConnectorLabel);
+  const connector =
+    connectorLoadable.state === "hasData" ? connectorLoadable.data : null;
   const connectorIcon =
-    status.connector.kind === "builtin" ? (
-      <ConnectorIcon icon={status.connector.icon} size={22} />
-    ) : (
+    connector?.kind === "custom" ? (
       <CustomConnectorIcon
-        id={status.connector.id}
-        displayName={status.connector.displayName ?? customConnectorLabel}
+        id={connector.id}
+        displayName={connector.displayName ?? customConnectorLabel}
+        size={22}
+      />
+    ) : (
+      <ConnectorIcon
+        icon={connector?.kind === "builtin" ? connector.icon : undefined}
         size={22}
       />
     );

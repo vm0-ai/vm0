@@ -292,8 +292,10 @@ values are untrusted claims. Before reading the account, the card resolves the
 current agent's connector authorization and rejects an unauthorized target.
 It then reads the exact account from the API and uses only the live account
 metadata plus the current catalog or custom-connector metadata for presentation,
-including the connector's own icon. A missing, cross-owner, wrong-target, or
-unauthorized account renders an inert unavailable card.
+including the connector's own icon. If that presentation metadata cannot load,
+the card keeps the account action available with the standard connector fallback
+icon. A missing, cross-owner, wrong-target, or unauthorized account renders an
+inert unavailable card.
 
 Confirmation writes the exact account selection to the current thread before
 starting the callback round. The selection endpoint resolves the externally
