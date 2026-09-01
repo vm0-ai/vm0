@@ -7,8 +7,6 @@ import {
 
 export const SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME =
   "SharedDatabaseClientNotConnectedError";
-export const SHARED_DATABASE_AUTH_BLOCKED_ERROR_NAME =
-  "SharedDatabaseAuthBlockedError";
 
 export const sharedDatabaseHeartbeatResultSchema = z
   .object({ clientReconnected: z.boolean() })
@@ -49,6 +47,15 @@ const reloadIndicatorsRequestSchema = z
   .object({ type: z.literal("reload-indicators") })
   .strict();
 
+const setTokenRequestSchema = z
+  .object({
+    type: z.literal("set-token"),
+    requestId: requestIdSchema,
+    recoveryId: requestIdSchema,
+    token: z.string().min(1).nullable(),
+  })
+  .strict();
+
 const disconnectRequestSchema = z
   .object({ type: z.literal("disconnect") })
   .strict();
@@ -58,6 +65,7 @@ export const sharedDatabaseClientMessageSchema = z.discriminatedUnion("type", [
   queryRequestSchema,
   indicatorsRequestSchema,
   reloadIndicatorsRequestSchema,
+  setTokenRequestSchema,
   disconnectRequestSchema,
 ]);
 
@@ -117,7 +125,10 @@ const reloadRequiredMessageSchema = z
   .strict();
 
 const authenticationRequiredMessageSchema = z
-  .object({ type: z.literal("authentication-required") })
+  .object({
+    type: z.literal("authentication-required"),
+    recoveryId: requestIdSchema,
+  })
   .strict();
 
 const indicatorsInvalidatedMessageSchema = z

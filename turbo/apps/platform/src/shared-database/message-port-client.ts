@@ -57,7 +57,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
         return;
       }
       if (message.type === "authentication-required") {
-        this.events.authenticationRequired();
+        await this.events.authenticationRequired(message.recoveryId);
         return;
       }
       if (message.type === "indicators-invalidated") {
@@ -127,6 +127,22 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     this.emit({ type: "reload-indicators" });
   }
 
+  async setToken(
+    recoveryId: string,
+    token: string | null,
+    signal: AbortSignal,
+  ): Promise<void> {
+    await this.request(
+      {
+        type: "set-token",
+        requestId: crypto.randomUUID(),
+        recoveryId,
+        token,
+      },
+      signal,
+    );
+  }
+
   async query<TKey extends SharedDatabaseDataKey>(
     query: SharedDatabaseQuery<TKey>,
     signal: AbortSignal,
@@ -164,7 +180,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     message: Extract<
       SharedDatabaseClientMessage,
       {
-        readonly type: "heartbeat" | "query" | "get-indicators";
+        readonly type: "heartbeat" | "query" | "get-indicators" | "set-token";
       }
     >,
     signal: AbortSignal,

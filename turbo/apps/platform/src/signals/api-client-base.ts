@@ -20,6 +20,7 @@ interface AuthedClientOptions {
   readonly getRootSignal: () => AbortSignal;
   readonly getVercelProtectionBypass: () => string | undefined;
   readonly onForceUpgrade?: () => void;
+  readonly validateResponse?: boolean;
   readonly resolvePath?: (
     path: string,
     ctx: { method: string },
@@ -81,7 +82,7 @@ export function createAuthedContractClient<T extends AppRouter>(
         return response;
       }
 
-      if (IN_VITEST) {
+      if (IN_VITEST || options.validateResponse) {
         return validateResponse({
           appRoute: args.route,
           response,

@@ -11,10 +11,7 @@ import {
   settle,
 } from "../signals/utils.ts";
 import type { SharedDatabasePortLike } from "./bridge.ts";
-import {
-  sharedDatabaseCredentialId,
-  type SharedDatabaseIdentity,
-} from "./data-key.ts";
+import type { SharedDatabaseIdentity } from "./data-key.ts";
 import {
   redactSharedDatabaseClientMessageForLog,
   sharedDatabaseClientMessageSchema,
@@ -32,6 +29,7 @@ import {
   indicatorsStoreMessage$,
   queryStoreMessage$,
   reloadIndicatorsStoreMessage$,
+  setTokenStoreMessage$,
 } from "./worker-signals.ts";
 
 type RequestMessage = Extract<
@@ -235,6 +233,14 @@ export class SharedDatabaseMessagePortServer {
           message,
         );
       }
+      case "set-token": {
+        return store.set(
+          setTokenStoreMessage$,
+          this.connectionId,
+          message,
+          signal,
+        );
+      }
     }
   }
 
@@ -245,6 +251,10 @@ export class SharedDatabaseMessagePortServer {
     >,
     signal: AbortSignal,
   ): Promise<SharedDatabaseHeartbeatResult> {
+    const currentBinding = this.binding;
+    if (currentBinding) {
+      return this.heartbeatBoundConnection(currentBinding, message, signal);
+    }
     const identity = await authenticateHeartbeat(
       message,
       this.context.appVersion,
@@ -255,19 +265,6 @@ export class SharedDatabaseMessagePortServer {
       signal,
     );
     signal.throwIfAborted();
-    const credentialId = sharedDatabaseCredentialId(identity);
-    const currentBinding = this.binding;
-    if (currentBinding) {
-      if (currentBinding.credentialId !== credentialId) {
-        return this.reloadAfterCredentialChange();
-      }
-      return this.heartbeatBoundConnection(
-        currentBinding,
-        message,
-        identity,
-        signal,
-      );
-    }
     const update = this.context.bindConnection({
       connectionId: this.connectionId,
       connectionController: this.connectionController,
@@ -278,7 +275,7 @@ export class SharedDatabaseMessagePortServer {
     });
     const { binding, signal: credentialConnectionSignal } = update;
     this.setCredentialBinding(binding, credentialConnectionSignal);
-    return this.heartbeatBoundConnection(binding, message, identity, signal);
+    return this.heartbeatBoundConnection(binding, message, signal);
   }
 
   private heartbeatBoundConnection(
@@ -287,7 +284,6 @@ export class SharedDatabaseMessagePortServer {
       SharedDatabaseClientMessage,
       { readonly type: "heartbeat" }
     >,
-    identity: SharedDatabaseIdentity,
     signal: AbortSignal,
   ): SharedDatabaseHeartbeatResult {
     const credentialConnectionSignal = this.credentialConnectionSignal;
@@ -298,7 +294,6 @@ export class SharedDatabaseMessagePortServer {
       heartbeatStoreMessage$,
       this.connectionId,
       message,
-      identity,
       credentialConnectionSignal,
     );
     this.context.startCredentialStoreDaemons(binding.credentialId);
@@ -306,25 +301,6 @@ export class SharedDatabaseMessagePortServer {
     credentialConnectionSignal.throwIfAborted();
     this.credentialReady = true;
     return result;
-  }
-
-  private reloadAfterCredentialChange(): never {
-    const reason = new DOMException(
-      "Shared database MessagePort credential changed",
-      "AbortError",
-    );
-    this.connectionSignal.removeEventListener(
-      "abort",
-      this.handleConnectionAbort,
-    );
-    this.credentialConnectionSignal?.removeEventListener(
-      "abort",
-      this.handleCredentialConnectionAbort,
-    );
-    this.connectionController.abort(reason);
-    this.emit({ type: "reload-required" });
-    this.disconnect("credential-changed");
-    throw reason;
   }
 
   private setCredentialBinding(

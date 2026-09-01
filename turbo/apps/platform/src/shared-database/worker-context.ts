@@ -3,7 +3,6 @@ import { command, computed, state } from "ccstate";
 import { now } from "../lib/time.ts";
 import { logger } from "../signals/log.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
-import type { AuthRecovery } from "../signals/auth-retry.ts";
 import { createDeferredPromise, withCleanup } from "../signals/utils.ts";
 import type { SharedDatabasePortLike } from "./bridge.ts";
 import type { SharedDatabaseIdentity } from "./data-key.ts";
@@ -29,50 +28,14 @@ export type WorkerBroadcastMessage = Extract<
   }
 >;
 
-interface TokenWaiter {
-  readonly rejectedToken: string;
+interface ActiveWorkerAuthRecovery {
+  readonly recoveryId: string;
+  readonly pendingConnectionIds: ReadonlySet<ConnectionId>;
   readonly deferred: ReturnType<typeof createDeferredPromise<string | null>>;
-}
-
-export class WorkerAuthRecovery implements AuthRecovery {
-  private readonly waiters = new Set<TokenWaiter>();
-
-  constructor(
-    private token: string,
-    private readonly broadcast: (message: WorkerBroadcastMessage) => void,
-  ) {}
-
-  getToken(signal: AbortSignal): Promise<string> {
-    signal.throwIfAborted();
-    return Promise.resolve(this.token);
-  }
-
-  forceRefreshToken(signal: AbortSignal): Promise<string | null> {
-    signal.throwIfAborted();
-    this.broadcast({ type: "authentication-required" });
-    const waiter: TokenWaiter = {
-      rejectedToken: this.token,
-      deferred: createDeferredPromise<string | null>(signal),
-    };
-    this.waiters.add(waiter);
-    return withCleanup(waiter.deferred.promise, () => {
-      this.waiters.delete(waiter);
-    });
-  }
-
-  updateToken(token: string): void {
-    this.token = token;
-    for (const waiter of this.waiters) {
-      if (waiter.rejectedToken !== token && !waiter.deferred.settled()) {
-        waiter.deferred.resolve(token);
-      }
-    }
-  }
 }
 
 interface WorkerCredentialContext {
   readonly identity: SharedDatabaseIdentity;
-  readonly authRecovery: WorkerAuthRecovery;
 }
 
 const internalWorkerCredentialContext$ = state<WorkerCredentialContext | null>(
@@ -87,6 +50,10 @@ const connectionPortsState$ = state<
 const connectionLastHeartbeatAtState$ = state<
   ReadonlyMap<ConnectionId, number>
 >(new Map());
+// ccstate keeps this value isolated inside each credential Store.
+const activeWorkerAuthRecoveryState$ = state<ActiveWorkerAuthRecovery | null>(
+  null,
+);
 
 function requireWorkerCredentialContext(
   context: WorkerCredentialContext | null,
@@ -106,16 +73,6 @@ function deleteMapKey<TKey, TValue>(
   return next;
 }
 
-export const workerCredentialIdentity$ = computed((get) => {
-  return requireWorkerCredentialContext(get(internalWorkerCredentialContext$))
-    .identity;
-});
-
-export const workerAuthRecovery$ = computed((get) => {
-  return requireWorkerCredentialContext(get(internalWorkerCredentialContext$))
-    .authRecovery;
-});
-
 export const connectionControllers$ = computed((get) => {
   return get(connectionControllersState$);
 });
@@ -129,34 +86,11 @@ export const credentialStoreConnectionCount$ = computed((get): number => {
 });
 
 export const initializeWorkerCredentialContext$ = command(
-  (
-    { get, set },
-    identity: SharedDatabaseIdentity,
-    authRecovery: WorkerAuthRecovery,
-  ): void => {
+  ({ get, set }, identity: SharedDatabaseIdentity): void => {
     if (get(internalWorkerCredentialContext$) !== null) {
       throw new Error("Worker credential context is already initialized");
     }
-    set(internalWorkerCredentialContext$, { identity, authRecovery });
-  },
-);
-
-export const updateWorkerCredentialIdentity$ = command(
-  ({ get, set }, identity: SharedDatabaseIdentity): void => {
-    const context = requireWorkerCredentialContext(
-      get(internalWorkerCredentialContext$),
-    );
-    if (
-      context.identity.userId !== identity.userId ||
-      context.identity.orgId !== identity.orgId
-    ) {
-      throw new Error("Worker credential Store identity cannot change");
-    }
-    context.authRecovery.updateToken(identity.token);
-    set(internalWorkerCredentialContext$, {
-      identity,
-      authRecovery: context.authRecovery,
-    });
+    set(internalWorkerCredentialContext$, { identity });
   },
 );
 
@@ -169,8 +103,111 @@ export const broadcastSharedDatabaseWorkerMessage$ = command(
   },
 );
 
+function waitForWorkerAuthRecovery<T>(
+  recovery: Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  signal.throwIfAborted();
+  const aborted = createDeferredPromise<never>(signal);
+  return withCleanup(Promise.race([recovery, aborted.promise]), () => {
+    if (!aborted.settled()) {
+      aborted.reject(new DOMException("Auth recovery settled", "AbortError"));
+    }
+  });
+}
+
+export const getWorkerToken$ = command(
+  ({ get }, signal: AbortSignal): Promise<string | null> => {
+    const activeRecovery = get(activeWorkerAuthRecoveryState$);
+    if (activeRecovery) {
+      return waitForWorkerAuthRecovery(activeRecovery.deferred.promise, signal);
+    }
+    signal.throwIfAborted();
+    return Promise.resolve(
+      requireWorkerCredentialContext(get(internalWorkerCredentialContext$))
+        .identity.token,
+    );
+  },
+);
+
+export const forceRefreshWorkerToken$ = command(
+  ({ get, set }, signal: AbortSignal): Promise<string | null> => {
+    signal.throwIfAborted();
+    let activeRecovery = get(activeWorkerAuthRecoveryState$);
+    if (!activeRecovery) {
+      const pendingConnectionIds = new Set(get(connectionPortsState$).keys());
+      if (pendingConnectionIds.size === 0) {
+        return Promise.resolve(null);
+      }
+      const recoveryId = crypto.randomUUID();
+      activeRecovery = {
+        recoveryId,
+        pendingConnectionIds,
+        deferred: createDeferredPromise<string | null>(get(rootSignal$)),
+      };
+      set(activeWorkerAuthRecoveryState$, activeRecovery);
+      set(broadcastSharedDatabaseWorkerMessage$, {
+        type: "authentication-required",
+        recoveryId,
+      });
+    }
+    return waitForWorkerAuthRecovery(activeRecovery.deferred.promise, signal);
+  },
+);
+
+const completeWorkerAuthRecoveryWithoutToken$ = command(
+  ({ get, set }, connectionId: ConnectionId): void => {
+    const activeRecovery = get(activeWorkerAuthRecoveryState$);
+    if (!activeRecovery?.pendingConnectionIds.has(connectionId)) {
+      return;
+    }
+    const pendingConnectionIds = new Set(activeRecovery.pendingConnectionIds);
+    pendingConnectionIds.delete(connectionId);
+    if (pendingConnectionIds.size > 0) {
+      set(activeWorkerAuthRecoveryState$, {
+        ...activeRecovery,
+        pendingConnectionIds,
+      });
+      return;
+    }
+    set(activeWorkerAuthRecoveryState$, null);
+    activeRecovery.deferred.resolve(null);
+  },
+);
+
+export const setWorkerToken$ = command(
+  (
+    { get, set },
+    connectionId: ConnectionId,
+    recoveryId: string,
+    token: string | null,
+  ): void => {
+    const activeRecovery = get(activeWorkerAuthRecoveryState$);
+    if (
+      !activeRecovery ||
+      activeRecovery.recoveryId !== recoveryId ||
+      !activeRecovery.pendingConnectionIds.has(connectionId)
+    ) {
+      return;
+    }
+    if (token !== null) {
+      const context = requireWorkerCredentialContext(
+        get(internalWorkerCredentialContext$),
+      );
+      set(internalWorkerCredentialContext$, {
+        identity: { ...context.identity, token },
+      });
+      set(activeWorkerAuthRecoveryState$, null);
+      activeRecovery.deferred.resolve(token);
+      return;
+    }
+    set(completeWorkerAuthRecoveryWithoutToken$, connectionId);
+  },
+);
+
 const removeConnection$ = command(
   ({ get, set }, connectionId: ConnectionId): void => {
+    set(completeWorkerAuthRecoveryWithoutToken$, connectionId);
     set(
       connectionControllersState$,
       deleteMapKey(get(connectionControllersState$), connectionId),

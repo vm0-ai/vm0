@@ -22,6 +22,11 @@ export interface SharedDatabaseBridge {
   ): Promise<SharedDatabaseHeartbeatResult>;
   indicators(signal: AbortSignal): Promise<ChatThreadIndicators>;
   reloadIndicators(): void;
+  setToken(
+    recoveryId: string,
+    token: string | null,
+    signal: AbortSignal,
+  ): Promise<void>;
   query<TKey extends SharedDatabaseDataKey>(
     query: SharedDatabaseQuery<TKey>,
     signal: AbortSignal,
@@ -29,7 +34,7 @@ export interface SharedDatabaseBridge {
 }
 
 export interface SharedDatabaseBridgeEvents {
-  readonly authenticationRequired: () => void;
+  readonly authenticationRequired: (recoveryId: string) => void | Promise<void>;
   readonly databaseInvalidated: (
     dataKey: SharedDatabaseDataKey,
   ) => void | Promise<void>;
