@@ -299,6 +299,24 @@ export function withApiNamespaceAliases(
  * `.github/workflows/` for both of its branded forms; treat a hit as a caller
  * to repoint in the same commit, not as evidence the row is still owed. That
  * grep returns nothing today, and this note is here so it stays that way.
+ *
+ * #30668 then took the four Slack rows whose producer moved, leaving 58. Every
+ * removal before it waited for a caller to drain; these four retired because
+ * the thing emitting the branded URL was repointed, which is a stronger reading
+ * than either a silence or an observed cutover — the branded form has no
+ * producer left rather than no recent caller. The Slack app console holds the
+ * three webhook URLs and `routes/slack-oauth.ts` emits the callback's
+ * `redirect_uri`; the rows they serve carry the detail.
+ *
+ * That distinction is the rule worth keeping, because the same sweep proposed
+ * two more rows and neither survived it. A producer that emits a URL per
+ * request is bounded by its own deploy; a producer that hands a URL to a person
+ * is not, because the link outlives every deploy in a message, a bookmark or a
+ * search index. `slack/oauth/install` and `slack/oauth/connect` are the second
+ * kind, and `slack/oauth/install` proves it: its `zero` form was still taking
+ * browser and crawler requests ten hours after the deploy that was supposed to
+ * have drained it. Ask which of the two a producer is before reading a deploy
+ * as a drain.
  */
 type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
 
@@ -635,17 +653,33 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // which #28709 kept only the Slack rows — the Teams and Feishu connect and
   // OAuth-start rows had no request on either branded form in the retained
   // window. The paths a provider console holds were not in this slice; they
-  // moved later, and their rows are at the end of this table.
+  // moved in #28600, and #30668 retired every one of those rows.
   //
   // These rows hold two surfaces open. A released web or app build keeps the
   // branded path it was compiled against until a refresh loads a build that
   // derives the neutral one, the ~2 day window in `docs/fallback.md` section 7.
-  // The OAuth-start paths have a second holder that no client version bounds: a
-  // connect or install link the API handed out earlier lives in a Slack message
-  // a user can still click, and `/api/okou/slack/oauth/install` is measured
-  // traffic listed in `LEGACY_ZERO_PATHS` above, which after this move only
-  // these rows can serve. Removal follows the #26701 evidence gate like every
-  // other row, not either clock.
+  // The OAuth-start paths have a second holder that no client version bounds:
+  // `buildSlackInstallUrl` and `buildSlackConnectUrl` in
+  // `services/slack-data.service.ts` hand a link to a user, and that link lives
+  // in a Slack message, a bookmark or a search index for as long as its holder
+  // keeps it. Both producers emit the neutral path today, which bounds the
+  // links minted from now on and nothing about the ones already out there.
+  //
+  // #30668 measured that holder directly rather than reasoning about it.
+  // `/api/zero/slack/oauth/install` took 24 requests across the retained
+  // window on `api.vm0.ai`, the last at 2026-09-01 01:05:54Z — ten hours after
+  // the #30551 deploy that was supposed to have drained it — from search
+  // crawlers, the `vm0-seo-health` monitor and browser user agents on distinct
+  // addresses, every one answered 307. The branded install URL is published
+  // somewhere a crawler can reach, so it has no drain window at all.
+  //
+  // `slack/oauth/connect` took no request on any of its three forms in that
+  // window, the neutral one included, so its branded silence measures a call
+  // rate rather than a drain and cannot retire it — the rule the table header
+  // states, reached the same way `computer-use/hosts/start` reaches it.
+  //
+  // Removal follows the #26701 evidence gate like every other row, not either
+  // clock.
   "/api/slack/channels": [
     "/api/okou/slack/channels",
     "/api/zero/slack/channels",
@@ -896,42 +930,33 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/feishu/events/:installationId",
     "/api/zero/feishu/events/:installationId",
   ],
-  // #28600, the last branded contract paths: the Slack OAuth callback and the
-  // three inbound Slack webhooks. They were the final entries of the console
-  // table #28283 added, which this slice deletes — the set of registered paths
-  // is unchanged by the move, because the contract now declares the path that
-  // table used to add and these rows name the two branded forms it used to
-  // declare and derive.
+  // #28600 added the last branded contract paths — the Slack OAuth callback and
+  // the three inbound Slack webhooks — and #30668 removed all four. They are
+  // the first rows in this table to retire because their producer moved rather
+  // than because a caller drained, and each producer is now the neutral path:
   //
-  // The Slack app configuration holds one URL per endpoint and no drain window:
-  // it keeps posting to whatever is registered until an operator edits it, so
-  // all three forms stay served until #26701's evidence rules retire a row.
-  // Nothing in this repository produces the three webhook URLs — they exist
-  // only in that configuration — so the move needed no producer change.
-  "/api/integrations/slack/oauth/callback": [
-    "/api/okou/slack/oauth/callback",
-    // Not drain-window compatibility. `callbackRedirectUri` in
-    // `routes/slack-oauth.ts` emits this exact path as the `redirect_uri` sent
-    // to Slack, and Slack rejects a token exchange whose redirect URI is not
-    // registered in the app configuration. So this row is an active producer
-    // target: it can only be retired together with the emitted value, once the
-    // Slack app configuration is confirmed to hold the final path. Do not prune
-    // it for looking like a stale `/api/zero/` alias, or every authorization
-    // breaks the moment it lands.
-    "/api/zero/slack/oauth/callback",
-  ],
-  "/api/webhooks/slack/events": [
-    "/api/okou/slack/events",
-    "/api/zero/slack/events",
-  ],
-  "/api/webhooks/slack/commands": [
-    "/api/okou/slack/commands",
-    "/api/zero/slack/commands",
-  ],
-  "/api/webhooks/slack/interactive": [
-    "/api/okou/slack/interactive",
-    "/api/zero/slack/interactive",
-  ],
+  // - The Slack app console `A0AD6KS3D32` holds one URL per endpoint, so
+  //   repointing Event Subscriptions, Interactivity and the `/okou` command at
+  //   `api.okou.ai/api/webhooks/slack/*` left the branded forms with no holder
+  //   at all. Slack returned `Verified` for the events URL, and the log shows
+  //   the cutover in one step: `/api/zero/slack/events` took 53 requests ending
+  //   2026-08-31 08:54:51Z, `/api/webhooks/slack/events` took its first at
+  //   08:46:30Z and is still taking them. `slack/commands` crossed over the
+  //   same way; `slack/interactive` is low enough rate that neither form is
+  //   informative on its own, and it retires on the console change it shares
+  //   with the other two rather than on its silence.
+  // - `callbackRedirectUri` in `routes/slack-oauth.ts` emits the callback as
+  //   the `redirect_uri` sent to Slack, and #30551 deployed it emitting
+  //   `/api/integrations/slack/oauth/callback` at 2026-08-31 15:01Z. The
+  //   registered redirect URL was added to the console first, so no
+  //   authorization was ever sent a URI the console did not hold. Unlike a
+  //   handed-out link, a `redirect_uri` is computed per request, so the deploy
+  //   bounds the branded form to authorizations already in flight; both branded
+  //   forms took no request in the retained window.
+  //
+  // What is left of the Slack surface in this table is client-driven and stays:
+  // the messaging and file rows above, `slack/channels`, and the two OAuth-start
+  // paths whose links a user still holds.
 };
 
 /**
