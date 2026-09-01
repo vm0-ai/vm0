@@ -939,12 +939,13 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   //   repointing Event Subscriptions, Interactivity and the `/okou` command at
   //   `api.okou.ai/api/webhooks/slack/*` left the branded forms with no holder
   //   at all. Slack returned `Verified` for the events URL, and the log shows
-  //   the cutover in one step: `/api/zero/slack/events` took 53 requests ending
-  //   2026-08-31 08:54:51Z, `/api/webhooks/slack/events` took its first at
-  //   08:46:30Z and is still taking them. `slack/commands` crossed over the
-  //   same way; `slack/interactive` is low enough rate that neither form is
-  //   informative on its own, and it retires on the console change it shares
-  //   with the other two rather than on its silence.
+  //   the delivery arriving at the new one rather than only the old one going
+  //   quiet: every neutral webhook path took requests from `user_agent:
+  //   Slackbot 1.0`, Slack's own infrastructure, on 2026-08-31 — `events` from
+  //   08:56:33Z and still every few minutes, `commands` at 09:02:28Z,
+  //   `interactive` at 08:58:28Z. `/api/zero/slack/events` took its last of 53
+  //   requests at 08:54:51Z. None of the three needs a silence argument: the
+  //   holder was observed posting somewhere else.
   // - `callbackRedirectUri` in `routes/slack-oauth.ts` emits the callback as
   //   the `redirect_uri` sent to Slack, and #30551 deployed it emitting
   //   `/api/integrations/slack/oauth/callback` at 2026-08-31 15:01Z. The
