@@ -1,5 +1,25 @@
 # Changelog
 
+## [9.302.1](https://github.com/vm0-ai/vm0/compare/cli-v9.302.0...cli-v9.302.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **social:** make transcript errors truthful and provider-neutral ([#30732](https://github.com/vm0-ai/vm0/issues/30732)) ([f3c3e3d](https://github.com/vm0-ai/vm0/commit/f3c3e3daa7e4ccbb215a769fa5fb37489c325993))
+
+
+### Refactoring
+
+* **cli:** retire legacy API backend URL input ([#30774](https://github.com/vm0-ai/vm0/issues/30774)) ([048eec2](https://github.com/vm0-ai/vm0/commit/048eec26c20d2fbf86f9671ac6f274cab5617007))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.385.1
+    * @okouai/core bumped to 8.605.8
+
 ## [9.302.0](https://github.com/vm0-ai/vm0/compare/cli-v9.301.3...cli-v9.302.0) (2026-09-01)
 
 
