@@ -32,13 +32,15 @@ probe_evidence="$(mktemp)"
 trap 'rm -f "$layout_files" "$document_body" "$curl_error" "$probe_evidence"' EXIT
 
 declare -a app_files=()
+declare -a stylesheet_files=()
 declare -a vendor_files=()
 declare -a runtime_files=()
 declare -a worker_files=()
-find "$assets_directory" -type f -name '*.js' -print0 > "$layout_files"
+find "$assets_directory" -type f \( -name '*.js' -o -name '*.css' \) -print0 > "$layout_files"
 while IFS= read -r -d '' source_path; do
   relative_path="${source_path#"$assets_directory"/}"
   case "$relative_path" in
+    index-*.css) stylesheet_files+=("$relative_path") ;;
     vendor-*.js) vendor_files+=("$relative_path") ;;
     rolldown-runtime-*.js) runtime_files+=("$relative_path") ;;
     shared-database-worker-*.js) worker_files+=("$relative_path") ;;
@@ -48,15 +50,17 @@ done < "$layout_files"
 
 if ((
   ${#app_files[@]} != 1 ||
+  ${#stylesheet_files[@]} != 1 ||
   ${#vendor_files[@]} != 1 ||
   ${#runtime_files[@]} != 1 ||
   ${#worker_files[@]} != 1
 )); then
-  echo "Expected exactly one app, vendor, Rolldown runtime, and SharedWorker JavaScript asset" >&2
+  echo "Expected exactly one app stylesheet plus one app, vendor, Rolldown runtime, and SharedWorker JavaScript asset" >&2
   exit 1
 fi
 
 app_asset_url="${public_assets_url}/${app_files[0]}"
+stylesheet_asset_url="${public_assets_url}/${stylesheet_files[0]}"
 vendor_asset_url="${public_assets_url}/${vendor_files[0]}"
 runtime_asset_url="${public_assets_url}/${runtime_files[0]}"
 worker_asset_url="${app_url}/okou-app/assets/${worker_files[0]}"
@@ -86,9 +90,11 @@ for ((attempt = 1; attempt <= document_max_attempts; attempt++)); do
       "$canonical_document" \
       "$app_asset_url" \
       "$runtime_asset_url" \
-      "$vendor_asset_url" 2>"$probe_evidence" <<'PY'
+      "$vendor_asset_url" \
+      "$stylesheet_asset_url" 2>"$probe_evidence" <<'PY'
 from html.parser import HTMLParser
 from pathlib import Path
+import json
 import re
 import sys
 
@@ -96,6 +102,8 @@ COMMIT_SHA_META_NAME = "okou-app-git-commit-sha"
 VERSION_META_NAME = "okou-app-version"
 RUNTIME_META_NAMES = {COMMIT_SHA_META_NAME, VERSION_META_NAME}
 COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+AFTER_FIRST_PAINT_SCRIPT_ID = "vm0-after-first-paint"
+DEFERRED_RESOURCES_SCRIPT_ID = "vm0-deferred-application-resources"
 
 
 class AppDocumentParser(HTMLParser):
@@ -103,6 +111,9 @@ class AppDocumentParser(HTMLParser):
         super().__init__()
         self.module_scripts: list[str] = []
         self.module_preloads: list[str] = []
+        self.after_first_paint_script_count = 0
+        self.deferred_resource_scripts: list[str] = []
+        self.capturing_deferred_resources = False
         self.runtime_metadata: dict[str, list[str | None]] = {
             name: [] for name in RUNTIME_META_NAMES
         }
@@ -111,6 +122,15 @@ class AppDocumentParser(HTMLParser):
         self, tag: str, attrs: list[tuple[str, str | None]]
     ) -> None:
         attributes = dict(attrs)
+        if tag == "script" and attributes.get("id") == AFTER_FIRST_PAINT_SCRIPT_ID:
+            self.after_first_paint_script_count += 1
+        if (
+            tag == "script"
+            and attributes.get("id") == DEFERRED_RESOURCES_SCRIPT_ID
+            and attributes.get("type") == "application/json"
+        ):
+            self.deferred_resource_scripts.append("")
+            self.capturing_deferred_resources = True
         if tag == "script" and attributes.get("type") == "module":
             source = attributes.get("src")
             if source:
@@ -123,6 +143,14 @@ class AppDocumentParser(HTMLParser):
             name = attributes["name"]
             if name is not None:
                 self.runtime_metadata[name].append(attributes.get("content"))
+
+    def handle_data(self, data: str) -> None:
+        if self.capturing_deferred_resources:
+            self.deferred_resource_scripts[-1] += data
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "script" and self.capturing_deferred_resources:
+            self.capturing_deferred_resources = False
 
 
 def parse_document(path: str) -> AppDocumentParser:
@@ -149,6 +177,18 @@ def runtime_metadata(parser: AppDocumentParser, label: str) -> dict[str, str]:
     return metadata
 
 
+def deferred_resources(parser: AppDocumentParser, label: str) -> dict[str, object]:
+    scripts = parser.deferred_resource_scripts
+    if len(scripts) != 1:
+        raise RuntimeError(
+            f"Expected exactly one {label} deferred resource metadata script, got {len(scripts)}"
+        )
+    resources = json.loads(scripts[0])
+    if not isinstance(resources, dict):
+        raise RuntimeError(f"Invalid {label} deferred resource metadata")
+    return resources
+
+
 parser = parse_document(sys.argv[1])
 canonical_parser = parse_document(sys.argv[2])
 expected_metadata = runtime_metadata(canonical_parser, "canonical")
@@ -158,17 +198,38 @@ if observed_metadata != expected_metadata:
         f"Expected runtime build metadata {expected_metadata}, got {observed_metadata}"
     )
 
-expected_script = [sys.argv[3]]
-expected_preloads = {sys.argv[4], sys.argv[5]}
-if parser.module_scripts != expected_script:
-    raise RuntimeError(
-        f"Expected one CDN app module script {expected_script}, got {parser.module_scripts}"
-    )
-if len(parser.module_preloads) != 2 or set(parser.module_preloads) != expected_preloads:
-    raise RuntimeError(
-        f"Expected CDN runtime/vendor modulepreloads {sorted(expected_preloads)}, "
-        f"got {parser.module_preloads}"
-    )
+expected_script = sys.argv[3]
+expected_stylesheet = sys.argv[6]
+expected_resources = {
+    "applicationModule": expected_script,
+    "modulePreloads": [sys.argv[4], sys.argv[5]],
+    "stylesheet": expected_stylesheet,
+}
+for document_parser, label in (
+    (canonical_parser, "canonical"),
+    (parser, "served"),
+):
+    if document_parser.after_first_paint_script_count != 1:
+        raise RuntimeError(
+            f"Expected exactly one {label} after-first-paint scheduler, "
+            f"got {document_parser.after_first_paint_script_count}"
+        )
+    if document_parser.module_scripts:
+        raise RuntimeError(
+            f"Expected no statically discovered {label} app modules, "
+            f"got {document_parser.module_scripts}"
+        )
+    if document_parser.module_preloads:
+        raise RuntimeError(
+            f"Expected no statically discovered {label} module preloads, "
+            f"got {document_parser.module_preloads}"
+        )
+    observed_resources = deferred_resources(document_parser, label)
+    if observed_resources != expected_resources:
+        raise RuntimeError(
+            f"Expected {label} deferred resources {expected_resources}, "
+            f"got {observed_resources}"
+        )
 PY
     then
       break
@@ -211,6 +272,7 @@ PY
 done
 
 for asset_url in \
+  "$stylesheet_asset_url" \
   "$app_asset_url" \
   "$vendor_asset_url" \
   "$runtime_asset_url"; do
@@ -249,7 +311,8 @@ if [[ "$worker_status" != "206" ]]; then
   exit 1
 fi
 
-printf 'Verified app runtime: app=%s vendor=%s runtime=%s worker=%s\n' \
+printf 'Verified app runtime: stylesheet=%s app=%s vendor=%s runtime=%s worker=%s\n' \
+  "$stylesheet_asset_url" \
   "$app_asset_url" \
   "$vendor_asset_url" \
   "$runtime_asset_url" \

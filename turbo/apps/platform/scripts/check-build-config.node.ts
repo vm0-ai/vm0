@@ -382,12 +382,16 @@ function assertApplicationResourcesStartAfterFirstPaint(
   );
   const clerkCoreIndex = htmlSource.indexOf('id="vm0-clerk-core-script"');
   const skeletonIndex = htmlSource.indexOf('id="app-bootstrap-skeleton"');
+  const resourceMetadataIndex = htmlSource.indexOf(
+    'id="vm0-deferred-application-resources"',
+  );
   const bootstrapIndex = htmlSource.indexOf('id="vm0-after-first-paint"');
   const bodyEndIndex = htmlSource.indexOf("</body>");
 
   assert.ok(criticalStyleIndex !== -1);
   assert.ok(clerkCoreIndex > criticalStyleIndex);
-  assert.ok(bootstrapIndex > skeletonIndex);
+  assert.ok(resourceMetadataIndex > skeletonIndex);
+  assert.ok(bootstrapIndex > resourceMetadataIndex);
   assert.ok(bodyEndIndex > bootstrapIndex);
   assert.equal((htmlSource.match(/<script type="module"/gu) ?? []).length, 0);
   assert.equal(
@@ -399,6 +403,7 @@ function assertApplicationResourcesStartAfterFirstPaint(
   assert.match(htmlSource, /preload\.fetchPriority = "low"/u);
   assert.match(htmlSource, /application\.fetchPriority = "low"/u);
   assert.match(htmlSource, /stylesheet\.onload = appendApplicationModule/u);
+  assert.match(htmlSource, /JSON\.parse\(resourceMetadata\.textContent\)/u);
   assert.match(
     htmlSource,
     /requestAnimationFrame\(function \(\) \{\s*requestAnimationFrame\(activateApplicationResources\);/u,

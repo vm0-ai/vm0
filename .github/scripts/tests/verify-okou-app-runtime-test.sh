@@ -20,6 +20,7 @@ fail() {
 
 for file_name in \
   app-AbCd1234.js \
+  index-QrSt7890.css \
   vendor-EfGh5678.js \
   rolldown-runtime-IjKl9012.js \
   shared-database-worker-MnOp3456.js; do
@@ -30,18 +31,16 @@ cat > "$html_source" <<'HTML'
 <!doctype html>
 <meta name="okou-app-git-commit-sha" content="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">
 <meta name="okou-app-version" content="0.812.5">
-<script type="module" crossorigin src="https://static.test/okou-app/assets/app-AbCd1234.js"></script>
-<link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/rolldown-runtime-IjKl9012.js">
-<link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/vendor-EfGh5678.js">
+<script id="vm0-deferred-application-resources" type="application/json">{"applicationModule":"https://static.test/okou-app/assets/app-AbCd1234.js","modulePreloads":["https://static.test/okou-app/assets/rolldown-runtime-IjKl9012.js","https://static.test/okou-app/assets/vendor-EfGh5678.js"],"stylesheet":"https://static.test/okou-app/assets/index-QrSt7890.css"}</script>
+<script id="vm0-after-first-paint"></script>
 HTML
 
 cat > "$old_html_source" <<'HTML'
 <!doctype html>
 <meta name="okou-app-git-commit-sha" content="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb">
 <meta name="okou-app-version" content="0.812.4">
-<script type="module" crossorigin src="https://static.test/okou-app/assets/app-Old12345.js"></script>
-<link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/rolldown-runtime-Old12345.js">
-<link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/vendor-Old12345.js">
+<script id="vm0-deferred-application-resources" type="application/json">{"applicationModule":"https://static.test/okou-app/assets/app-Old12345.js","modulePreloads":["https://static.test/okou-app/assets/rolldown-runtime-Old12345.js","https://static.test/okou-app/assets/vendor-Old12345.js"],"stylesheet":"https://static.test/okou-app/assets/index-Old12345.css"}</script>
+<script id="vm0-after-first-paint"></script>
 HTML
 
 cat > "${fake_bin}/curl" <<'BASH'
@@ -102,10 +101,11 @@ output="$({
 } 2>&1)"
 
 grep -Fq \
-  'Verified app runtime: app=https://static.test/okou-app/assets/app-AbCd1234.js vendor=https://static.test/okou-app/assets/vendor-EfGh5678.js runtime=https://static.test/okou-app/assets/rolldown-runtime-IjKl9012.js worker=https://app.test/okou-app/assets/shared-database-worker-MnOp3456.js' \
+  'Verified app runtime: stylesheet=https://static.test/okou-app/assets/index-QrSt7890.css app=https://static.test/okou-app/assets/app-AbCd1234.js vendor=https://static.test/okou-app/assets/vendor-EfGh5678.js runtime=https://static.test/okou-app/assets/rolldown-runtime-IjKl9012.js worker=https://app.test/okou-app/assets/shared-database-worker-MnOp3456.js' \
   <<< "$output" || fail "runtime verification summary is incorrect"
 for expected_url in \
   https://app.test/sign-up \
+  https://static.test/okou-app/assets/index-QrSt7890.css \
   https://static.test/okou-app/assets/app-AbCd1234.js \
   https://static.test/okou-app/assets/vendor-EfGh5678.js \
   https://static.test/okou-app/assets/rolldown-runtime-IjKl9012.js \
@@ -222,7 +222,7 @@ fi
 grep -Fq 'SharedWorker same-origin proxy returned HTTP 200' \
   "${test_root}/worker-failure.log" || fail "worker failure was not identified"
 
-sed -i '/vendor-EfGh5678/d' "$html_source"
+sed -i 's/vendor-EfGh5678/vendor-Missing00/' "$html_source"
 : > "$curl_log"
 : > "$sleep_log"
 if PATH="${fake_bin}:$PATH" \
@@ -233,9 +233,9 @@ if PATH="${fake_bin}:$PATH" \
     https://app.test \
     https://static.test/okou-app/assets \
     "$assets_directory" > "${test_root}/html-failure.log" 2>&1; then
-  fail "missing vendor preload did not fail HTML verification"
+  fail "incorrect deferred vendor did not fail HTML verification"
 fi
-grep -Fq 'Expected CDN runtime/vendor modulepreloads' \
+grep -Fq 'Expected canonical deferred resources' \
   "${test_root}/html-failure.log" || fail "HTML failure was not identified"
 grep -Fq 'App runtime document did not converge for https://app.test after probe 1/1' \
   "${test_root}/html-failure.log" ||

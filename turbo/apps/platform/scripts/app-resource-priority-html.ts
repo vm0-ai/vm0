@@ -2,6 +2,7 @@ import type { Plugin } from "vite";
 
 const CRITICAL_STYLE_ID = "app-bootstrap-critical-styles";
 const AFTER_FIRST_PAINT_SCRIPT_ID = "vm0-after-first-paint";
+const DEFERRED_RESOURCES_SCRIPT_ID = "vm0-deferred-application-resources";
 
 function matchingTags(
   htmlSource: string,
@@ -70,9 +71,14 @@ function afterFirstPaintScript(resources: {
   readonly modulePreloads: readonly string[];
   readonly stylesheet: string;
 }): string {
-  return `    <script id="${AFTER_FIRST_PAINT_SCRIPT_ID}">
+  return `    <script id="${DEFERRED_RESOURCES_SCRIPT_ID}" type="application/json">${inlineJson(resources)}</script>
+    <script id="${AFTER_FIRST_PAINT_SCRIPT_ID}">
       (function () {
-        var resources = ${inlineJson(resources)};
+        var resourceMetadata = document.getElementById("${DEFERRED_RESOURCES_SCRIPT_ID}");
+        if (!resourceMetadata) {
+          throw new Error("Deferred application resource metadata is unavailable");
+        }
+        var resources = JSON.parse(resourceMetadata.textContent);
 
         function appendModulePreload(source) {
           var preload = document.createElement("link");
