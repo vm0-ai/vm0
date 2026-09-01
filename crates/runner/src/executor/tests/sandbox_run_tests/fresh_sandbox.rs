@@ -1118,6 +1118,16 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
             "/tmp/evil-connector-account-context.json".into(),
         ),
     ]));
+    ctx.platform_environment = HashMap::from([
+        (
+            "OKOU_APP_URL".into(),
+            "https://app.runner-env.example.test/path".into(),
+        ),
+        (
+            "ZERO_APP_URL".into(),
+            "https://app.runner-env.example.test/path".into(),
+        ),
+    ]);
     ctx.connector_runtime_targets = vec![
         ConnectorRuntimeTargetRegistration::Builtin {
             connector_slug: "github".into(),
