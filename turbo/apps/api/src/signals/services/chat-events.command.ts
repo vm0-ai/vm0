@@ -3389,6 +3389,7 @@ function buildCreateAgentRunArgs(params: {
       modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
       selectedModel: modelPin.selectedModel,
     },
+    piExecution: prepared.piExecution,
     threadSessionRoute: {
       selectedModel: modelPin.selectedModel,
       modelProvider: providerAdmission.effectiveModelProvider ?? null,

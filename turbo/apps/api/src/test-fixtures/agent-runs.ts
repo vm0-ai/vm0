@@ -413,6 +413,7 @@ export async function createDirectRunFixture(args: {
       orgId: args.orgId,
       apiStartTime: now(),
       modelProviderType: body.modelProviderType,
+      piExecution: false,
       testOnlyResolveDirectRun: resolveDirectRun,
       connectorScope: connectorScope ?? {
         allowedConnectorSlugs: [],

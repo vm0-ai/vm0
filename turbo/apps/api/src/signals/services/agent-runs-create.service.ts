@@ -188,6 +188,8 @@ interface CreateAgentRunCommandArgs {
   readonly requiredOfficialWorkflowIds?: readonly string[];
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
   readonly agentRunModelPin?: AgentRunModelPin;
+  /** Immutable Pi eligibility captured by the caller's admission snapshot. */
+  readonly piExecution: boolean;
   readonly timing?: ApiDispatchTimingCollector;
   readonly agentRunPreCreateSource?: AgentRunPreCreateSource;
 }
@@ -229,6 +231,34 @@ export function setOfficialWorkflowBootstrapRequirementHookForTest(
 
 export function clearOfficialWorkflowBootstrapRequirementHookForTest(): void {
   officialWorkflowBootstrapRequirementHook.clear();
+}
+
+export interface AgentRunPiExecutionSnapshot {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly chatThreadId: string | undefined;
+  readonly piExecution: boolean;
+  readonly threadSessionCliAgentType: string | null | undefined;
+}
+
+type AgentRunPiExecutionSnapshotHook = (
+  snapshot: AgentRunPiExecutionSnapshot,
+) => Promise<void>;
+
+const agentRunPiExecutionSnapshotHook = testOverride<
+  AgentRunPiExecutionSnapshotHook | undefined
+>(() => {
+  return undefined;
+});
+
+export function setAgentRunPiExecutionSnapshotHookForTest(
+  hook: AgentRunPiExecutionSnapshotHook,
+): void {
+  agentRunPiExecutionSnapshotHook.set(hook);
+}
+
+export function clearAgentRunPiExecutionSnapshotHookForTest(): void {
+  agentRunPiExecutionSnapshotHook.clear();
 }
 
 function assertThreadBoundAgentRunHasQueueAssociation(
@@ -965,6 +995,7 @@ function buildZeroCreateAgentRunArgs(args: {
     ...(command.agentRunModelPin
       ? { agentRunModelPin: command.agentRunModelPin }
       : {}),
+    piExecution: command.piExecution,
     ...("queueFirstAssociation" in command
       ? { queueFirstAssociation: command.queueFirstAssociation }
       : {}),
@@ -1179,6 +1210,15 @@ const createAgentRunInternal$ = command(
       });
       signal.throwIfAborted();
     }
+
+    await agentRunPiExecutionSnapshotHook.get()?.({
+      userId: args.auth.userId,
+      orgId: args.auth.orgId,
+      chatThreadId: args.chatThreadId,
+      piExecution: args.piExecution,
+      threadSessionCliAgentType: args.threadSessionRoute?.cliAgentType,
+    });
+    signal.throwIfAborted();
 
     const {
       userInfo,
