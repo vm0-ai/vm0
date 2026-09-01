@@ -72,6 +72,8 @@ pub const MOCK_CODEX_SESSION_HISTORY_READY_EVENT: &str = "vm0_mock_codex_session
 pub const MOCK_CODEX_TURN_STEER_READY_FILE: &str = ".vm0-mock-codex-turn-steer-ready";
 pub const MOCK_CODEX_TURN_STEER_READY_EVENT: &str = "vm0_mock_codex_turn_steer_ready";
 pub const MOCK_CODEX_TURN_STEER_RELEASE_SOCKET: &str = ".vm0-mock-codex-turn-steer-release.sock";
+pub const MOCK_CODEX_EVENT_DELIVERY_LARGE_RELEASE_SOCKET: &str =
+    ".vm0-mock-codex-event-delivery-large-release.sock";
 pub const MOCK_CODEX_ACTIVE_TURN_READY_FILE: &str = ".vm0-mock-codex-active-turn-ready";
 pub const MOCK_CODEX_ACTIVE_TURN_READY_EVENT: &str = "vm0_mock_codex_active_turn_ready";
 pub const MOCK_CODEX_TURN_INTERRUPT_READY_FILE: &str = ".vm0-mock-codex-turn-interrupt-ready";
