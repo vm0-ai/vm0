@@ -1,7 +1,10 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -23,6 +26,56 @@ describe("app skeleton", () => {
     bootstrapSkeleton.dispatchEvent(new Event("transitionend"));
 
     expect(document.getElementById("app-bootstrap-skeleton")).toBeNull();
+  });
+
+  it("keeps the inline loading surface until the main stylesheet is ready", async () => {
+    const stylesheetLoaded = context.mocks.deferred<"failed" | "loaded">();
+    vi.stubGlobal("__mainStylesheetLoaded", stylesheetLoaded.promise);
+    const bootstrapSkeleton = document.createElement("div");
+    bootstrapSkeleton.id = "app-bootstrap-skeleton";
+    document.body.append(bootstrapSkeleton);
+
+    detachedSetupPage({ context, path: "/_/error" });
+
+    await waitFor(() => {
+      expect(queryAllByRoleFast("link")).not.toHaveLength(0);
+    });
+    expect(bootstrapSkeleton).not.toHaveAttribute("aria-hidden");
+
+    stylesheetLoaded.resolve("loaded");
+
+    await waitFor(() => {
+      expect(bootstrapSkeleton).toHaveAttribute("aria-hidden", "true");
+    });
+
+    bootstrapSkeleton.dispatchEvent(new Event("transitionend"));
+    expect(document.getElementById("app-bootstrap-skeleton")).toBeNull();
+  });
+
+  it("keeps the inline loading surface when the main stylesheet fails", async () => {
+    const stylesheetLoaded = context.mocks.deferred<"failed" | "loaded">();
+    vi.stubGlobal("__mainStylesheetLoaded", stylesheetLoaded.promise);
+    const bootstrapSkeleton = document.createElement("div");
+    bootstrapSkeleton.id = "app-bootstrap-skeleton";
+    document.body.append(bootstrapSkeleton);
+
+    // A stylesheet network failure happens before the app exposes a page
+    // interaction, so the build-installed promise is this scenario's
+    // production boundary. The page still enters through its real bootstrap.
+    detachedSetupPage({ context, path: "/_/error" });
+
+    await waitFor(() => {
+      expect(queryAllByRoleFast("link")).not.toHaveLength(0);
+    });
+
+    stylesheetLoaded.resolve("failed");
+    await stylesheetLoaded.promise;
+
+    expect(bootstrapSkeleton).not.toHaveAttribute("aria-hidden");
+    expect(document.getElementById("app-bootstrap-skeleton")).toBe(
+      bootstrapSkeleton,
+    );
+    bootstrapSkeleton.remove();
   });
 
   it("unmounts the app skeleton after its fade-out completes", async () => {

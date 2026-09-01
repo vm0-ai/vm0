@@ -1,6 +1,8 @@
 import type { Plugin } from "vite";
 
 const CRITICAL_STYLE_ID = "app-bootstrap-critical-styles";
+const MAIN_STYLESHEET_ID = "vm0-main-stylesheet";
+const MAIN_STYLESHEET_LOADER_SCRIPT_ID = "vm0-main-stylesheet-loader";
 
 function matchingTags(
   htmlSource: string,
@@ -46,6 +48,46 @@ function withFetchPriority(tag: string, priority: "high" | "low"): string {
     );
   }
   return `${tag.slice(0, startTagEnd)} fetchpriority="${priority}"${tag.slice(startTagEnd)}`;
+}
+
+function mainStylesheetPreload(tag: string): string {
+  return withFetchPriority(
+    tag.replace(
+      /\srel="stylesheet"/u,
+      ` id="${MAIN_STYLESHEET_ID}" rel="preload" as="style"`,
+    ),
+    "high",
+  );
+}
+
+function mainStylesheetLoaderScript(): string {
+  return `<script id="${MAIN_STYLESHEET_LOADER_SCRIPT_ID}">
+      (function () {
+        var stylesheet = document.getElementById("${MAIN_STYLESHEET_ID}");
+        window.__mainStylesheetLoaded = new Promise(function (resolve) {
+          stylesheet.addEventListener(
+            "load",
+            function () {
+              stylesheet.rel = "stylesheet";
+              stylesheet.removeAttribute("as");
+              requestAnimationFrame(function () {
+                requestAnimationFrame(function () {
+                  resolve("loaded");
+                });
+              });
+            },
+            { once: true },
+          );
+          stylesheet.addEventListener(
+            "error",
+            function () {
+              resolve("failed");
+            },
+            { once: true },
+          );
+        });
+      })();
+    </script>`;
 }
 
 function removeTag(htmlSource: string, tag: string): string {
@@ -110,7 +152,8 @@ function prioritizeApplicationResources(htmlSource: string): string {
     throw new Error("Critical application stylesheet is missing </style>");
   }
   const headResources = [
-    withFetchPriority(stylesheet, "high"),
+    mainStylesheetPreload(stylesheet),
+    mainStylesheetLoaderScript(),
     withFetchPriority(runtimePreload, "low"),
     withFetchPriority(vendorPreload, "low"),
   ]
