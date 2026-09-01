@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.40.5...desktop-v0.41.0) (2026-09-01)
+
+
+### Features
+
+* **video:** add click-driven desktop camera workflow ([#30801](https://github.com/vm0-ai/vm0/issues/30801)) ([89d135a](https://github.com/vm0-ai/vm0/commit/89d135aaac7429a70dd77680af4adf6c9c60897a))
+
 ## [0.40.5](https://github.com/vm0-ai/vm0/compare/desktop-v0.40.4...desktop-v0.40.5) (2026-09-01)
 
 

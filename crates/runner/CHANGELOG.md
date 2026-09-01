@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.182.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.8...runner-rs-v0.182.9) (2026-09-01)
+
+
+### Refactoring
+
+* **runner:** remove legacy rootfs lock bridge ([#30815](https://github.com/vm0-ai/vm0/issues/30815)) ([6630ad1](https://github.com/vm0-ai/vm0/commit/6630ad14ec0dab594b8744fca483e35fc2941925))
+
 ## [0.182.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.7...runner-rs-v0.182.8) (2026-09-01)
 
 ## [0.182.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.6...runner-rs-v0.182.7) (2026-09-01)

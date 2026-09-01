@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.819.0](https://github.com/vm0-ai/vm0/compare/app-v0.818.0...app-v0.819.0) (2026-09-01)
+
+
+### Features
+
+* **video:** add click-driven desktop camera workflow ([#30801](https://github.com/vm0-ai/vm0/issues/30801)) ([89d135a](https://github.com/vm0-ai/vm0/commit/89d135aaac7429a70dd77680af4adf6c9c60897a))
+
+
+### Bug Fixes
+
+* **platform:** reveal full pinned agent name on hover ([#30799](https://github.com/vm0-ai/vm0/issues/30799)) ([530c47d](https://github.com/vm0-ai/vm0/commit/530c47df5d33367961b4ed7537b23d2b3c3483f0))
+
+
+### Refactoring
+
+* **platform:** simplify bootstrap monitoring ([#30762](https://github.com/vm0-ai/vm0/issues/30762)) ([d20dca5](https://github.com/vm0-ai/vm0/commit/d20dca525001914cdfc7cb8a141e638cb38bf744))
+
 ## [0.818.0](https://github.com/vm0-ai/vm0/compare/app-v0.817.1...app-v0.818.0) (2026-09-01)
 
 
