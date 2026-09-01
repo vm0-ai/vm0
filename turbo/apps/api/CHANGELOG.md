@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.519.4](https://github.com/vm0-ai/vm0/compare/api-v1.519.3...api-v1.519.4) (2026-09-01)
+
+
+### Refactoring
+
+* **runtime:** require canonical platform environment ([#30728](https://github.com/vm0-ai/vm0/issues/30728)) ([aaf4999](https://github.com/vm0-ai/vm0/commit/aaf49990f7b94eca4615242555bbf131986373cb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.384.3
+    * @okouai/core bumped to 8.605.6
+    * @okouai/db bumped to 1.228.31
+    * @okouai/pi-agent-runtime bumped to 1.10.0
+
 ## [1.519.3](https://github.com/vm0-ai/vm0/compare/api-v1.519.2...api-v1.519.3) (2026-09-01)
 
 

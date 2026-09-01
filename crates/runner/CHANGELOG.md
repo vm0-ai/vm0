@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.182.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.4...runner-rs-v0.182.5) (2026-09-01)
+
+
+### Refactoring
+
+* **runtime:** require canonical platform environment ([#30728](https://github.com/vm0-ai/vm0/issues/30728)) ([aaf4999](https://github.com/vm0-ai/vm0/commit/aaf49990f7b94eca4615242555bbf131986373cb))
+
 ## [0.182.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.3...runner-rs-v0.182.4) (2026-09-01)
 
 

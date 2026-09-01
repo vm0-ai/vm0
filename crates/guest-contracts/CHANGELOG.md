@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.16](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.15...guest-contracts-v0.12.16) (2026-09-01)
+
+
+### Refactoring
+
+* **runtime:** require canonical platform environment ([#30728](https://github.com/vm0-ai/vm0/issues/30728)) ([aaf4999](https://github.com/vm0-ai/vm0/commit/aaf49990f7b94eca4615242555bbf131986373cb))
+
 ## [0.12.15](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.14...guest-contracts-v0.12.15) (2026-09-01)
 
 

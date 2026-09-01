@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.815.4](https://github.com/vm0-ai/vm0/compare/app-v0.815.3...app-v0.815.4) (2026-09-01)
+
+
+### Performance Improvements
+
+* **platform:** inline the bootstrap avatar ([#30718](https://github.com/vm0-ai/vm0/issues/30718)) ([1d51f40](https://github.com/vm0-ai/vm0/commit/1d51f40ce7f710b50873ab0700e3c5f924863885))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.384.3
+    * @okouai/core bumped to 8.605.6
+
 ## [0.815.3](https://github.com/vm0-ai/vm0/compare/app-v0.815.2...app-v0.815.3) (2026-09-01)
 
 
