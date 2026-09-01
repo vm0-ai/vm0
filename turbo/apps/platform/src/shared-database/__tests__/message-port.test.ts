@@ -199,8 +199,9 @@ async function installProtocolBridge(): Promise<{
 }
 
 describe("shared database MessagePort protocol", () => {
-  it("logs app and worker bridge traffic without exposing heartbeat credentials", async () => {
+  it("logs app and worker bridge traffic without exposing credentials", async () => {
     const token = "secret-heartbeat-token";
+    const refreshedToken = "secret-refreshed-token";
     const vercelProtectionBypass = "secret-vercel-bypass";
     context.mocks.api(authContract.me, ({ request, respond }) => {
       expect(request.headers.get("authorization")).toBe(`Bearer ${token}`);
@@ -237,6 +238,10 @@ describe("shared database MessagePort protocol", () => {
     await expect(
       bridge.heartbeat({ token, vercelProtectionBypass }, owner.signal),
     ).resolves.toStrictEqual({ clientReconnected: false });
+    const recoveryId = crypto.randomUUID();
+    await expect(
+      bridge.setToken(recoveryId, refreshedToken, owner.signal),
+    ).resolves.toBeUndefined();
 
     const redactedHeartbeat = expect.objectContaining({
       type: "heartbeat",
@@ -254,6 +259,22 @@ describe("shared database MessagePort protocol", () => {
       expect.any(String),
       redactedHeartbeat,
     );
+    const redactedTokenUpdate = expect.objectContaining({
+      type: "set-token",
+      recoveryId,
+      token: "[redacted]",
+    });
+    expect(consoleLog).toHaveBeenCalledWith(
+      "[D][SharedWorkerBridge]",
+      "send message to worker",
+      redactedTokenUpdate,
+    );
+    expect(consoleLog).toHaveBeenCalledWith(
+      "[D][SharedWorkerBridge]",
+      "got message from app",
+      expect.any(String),
+      redactedTokenUpdate,
+    );
     expect(consoleLog).toHaveBeenCalledWith(
       "[D][SharedWorkerBridge]",
       "send message to app",
@@ -267,6 +288,7 @@ describe("shared database MessagePort protocol", () => {
     );
     const serializedLogs = JSON.stringify(consoleLog.mock.calls);
     expect(serializedLogs).not.toContain(token);
+    expect(serializedLogs).not.toContain(refreshedToken);
     expect(serializedLogs).not.toContain(vercelProtectionBypass);
 
     owner.abort();

@@ -76,6 +76,12 @@ export type SharedDatabaseClientMessage = z.infer<
 export function redactSharedDatabaseClientMessageForLog(
   message: SharedDatabaseClientMessage,
 ): SharedDatabaseClientMessage {
+  if (message.type === "set-token") {
+    return {
+      ...message,
+      token: message.token === null ? null : "[redacted]",
+    };
+  }
   if (message.type !== "heartbeat") {
     return message;
   }
