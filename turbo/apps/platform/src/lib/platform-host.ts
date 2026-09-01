@@ -35,7 +35,6 @@ const OKOU_ROOT_DOMAINS = [
 const PREVIEW_API_DOMAIN = "vm6.ai";
 const PRODUCTION_HOSTED_SITE_DOMAINS = ["sites.vm0.io", "okou.app"] as const;
 const PREVIEW_HOSTED_SITE_DOMAINS = ["sites.vm7.io"] as const;
-export const PRODUCTION_SATELLITE_HOSTNAME = "app.okou.ai";
 const PLATFORM_SERVICE_LABELS = ["platform", "app", "www", "api"] as const;
 
 function browserHostname(): string | null {
@@ -68,14 +67,6 @@ function resolvePlatformPublicBrand(
 export function isOkouProductionHostname(hostname: string): boolean {
   const normalizedHostname = hostname.toLowerCase();
   return isDomainOrSubdomain(normalizedHostname, OKOU_PRODUCTION_DOMAIN);
-}
-
-export function isProductionSatelliteHostname(hostname: string): boolean {
-  const normalizedHostname = hostname.toLowerCase();
-  return (
-    normalizedHostname === PRODUCTION_SATELLITE_HOSTNAME ||
-    normalizedHostname.endsWith(`.${PRODUCTION_SATELLITE_HOSTNAME}`)
-  );
 }
 
 function isProductionHostname(hostname: string): boolean {

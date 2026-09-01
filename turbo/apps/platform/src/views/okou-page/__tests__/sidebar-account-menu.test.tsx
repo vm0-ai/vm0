@@ -1297,6 +1297,38 @@ describe("zero sidebar account menu", () => {
     );
   });
 
+  it("links the VM0 satellite to the Okou hosted user profile after cutover", async () => {
+    vi.stubEnv(
+      "VITE_CLERK_PUBLISHABLE_KEY_PROD",
+      "pk_live_Y2xlcmsuYXBwLm9rb3UuYWkk",
+    );
+    try {
+      context.mocks.browser.url("https://app.vm0.ai/");
+      prepareDefaultAgent();
+
+      detachedSetupPage({
+        context,
+        path: `/agents/${AGENT_ID}/chat`,
+        user: {
+          id: "test-user-123",
+          fullName: "Alex Rivera",
+          email: "alex.rivera@example.test",
+        },
+      });
+
+      const menu = await openAccountMenu();
+      click(within(menu).getByText("Settings"));
+
+      await screen.findByRole("dialog", { name: "Settings" });
+      expect(linkByText("Manage")).toHaveAttribute(
+        "href",
+        "https://accounts.app.okou.ai/user",
+      );
+    } finally {
+      vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PROD", "test_production_key");
+    }
+  });
+
   it("hides debug settings when OkouDebug is disabled", async () => {
     prepareDefaultAgent();
 

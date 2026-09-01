@@ -14,12 +14,17 @@ import {
 import { appendCapturedPreviewBypassToUrl } from "../lib/preview-bypass-cookie.ts";
 import {
   derivePlatformServiceOrigin,
-  isProductionSatelliteHostname,
-  PRODUCTION_SATELLITE_HOSTNAME,
+  isOkouProductionHostname,
   type PlatformService,
   resolvePlatformEnvironment,
   resolvePlatformRuntimeConfig,
 } from "../lib/platform-host.ts";
+import {
+  resolveClerkProductionSatelliteDomain,
+  resolveClerkProductionTopology,
+  type ClerkProductionDomain,
+  VM0_CLERK_PRIMARY_APP_ORIGIN,
+} from "../lib/clerk-production-topology.ts";
 import { resolveBrandNameForHostname, type BrandName } from "./branding.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
 import { createAuthRecovery, setupForegroundCatchUp$ } from "./auth-retry.ts";
@@ -33,14 +38,17 @@ const clerkVersion$ = state(0);
 const ATTRIBUTION_SOURCE_PARAM = "vm0_source";
 const HOMEPAGE_ATTRIBUTION_VALUE = "homepage";
 const VM0_ONBOARDING_PATH = "/onboarding";
-const CLERK_PRIMARY_APP_ORIGIN = "https://app.vm0.ai";
 const CLERK_SATELLITE_REDIRECT_ORIGIN_PATTERN =
   /^https:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*okou\.ai(?::\d+)?$/i;
+const PRODUCTION_VM0_AUTH_REDIRECT_ORIGINS = [
+  VM0_CLERK_PRIMARY_APP_ORIGIN,
+  "https://www.vm0.ai",
+] as const;
 
 type AllowedAuthRedirectOrigin = string | RegExp;
 
 interface ClerkSatelliteConfig {
-  readonly domain: typeof PRODUCTION_SATELLITE_HOSTNAME;
+  readonly domain: ClerkProductionDomain;
   readonly isSatellite: true;
   readonly satelliteAutoSync: true;
 }
@@ -89,7 +97,16 @@ const MAX_URL_PORT = 65_535;
 export function deriveServiceOrigin(
   currentOrigin: string,
   service: Extract<PlatformService, "www" | "app" | "api">,
+  publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey,
 ): string {
+  const currentUrl = new URL(currentOrigin);
+  if (
+    isOkouProductionHostname(currentUrl.hostname) &&
+    resolveClerkProductionTopology(publishableKey).primaryBrand === "okou"
+  ) {
+    currentUrl.hostname = `${service}.okou.ai`;
+    return currentUrl.origin;
+  }
   return derivePlatformServiceOrigin(currentOrigin, service);
 }
 
@@ -108,24 +125,40 @@ function resolveAppOrigin(): string {
 }
 
 export function resolveClerkSatelliteConfig(): ClerkSatelliteConfig | null {
-  if (
-    typeof location === "undefined" ||
-    !isProductionSatelliteHostname(location.hostname)
-  ) {
+  if (typeof location === "undefined") {
+    return null;
+  }
+
+  const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
+  const domain = resolveClerkProductionSatelliteDomain(
+    location.hostname,
+    publishableKey,
+  );
+  if (!domain) {
     return null;
   }
 
   return {
-    domain: PRODUCTION_SATELLITE_HOSTNAME,
+    domain,
     isSatellite: true,
     satelliteAutoSync: true,
   };
 }
 
 function resolveAuthOrigin(): string {
-  return resolveClerkSatelliteConfig()
-    ? CLERK_PRIMARY_APP_ORIGIN
+  const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
+  return resolveClerkProductionSatelliteDomain(
+    location.hostname,
+    publishableKey,
+  )
+    ? resolveClerkProductionTopology(publishableKey).primaryAppOrigin
     : resolveAppOrigin();
+}
+
+export function resolvePrimaryClerkUserProfileUrl(): string {
+  return resolveClerkProductionTopology(
+    resolvePlatformRuntimeConfig().clerkPublishableKey,
+  ).primaryUserProfileUrl;
 }
 
 function parseUrl(value: string): URL | null {
@@ -198,7 +231,10 @@ export function getAllowedAuthRedirectOrigins(): AllowedAuthRedirectOrigin[] {
   }
   const productionOrigins =
     resolvePlatformEnvironment() === "production"
-      ? [CLERK_PRIMARY_APP_ORIGIN, CLERK_SATELLITE_REDIRECT_ORIGIN_PATTERN]
+      ? [
+          ...PRODUCTION_VM0_AUTH_REDIRECT_ORIGINS,
+          CLERK_SATELLITE_REDIRECT_ORIGIN_PATTERN,
+        ]
       : [];
   return [
     ...new Set([
