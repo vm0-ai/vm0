@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.524.0](https://github.com/vm0-ai/vm0/compare/api-v1.523.0...api-v1.524.0) (2026-09-01)
+
+
+### Features
+
+* **connectors:** route github oauth callback directly to okou ([#30870](https://github.com/vm0-ai/vm0/issues/30870)) ([1afb5b8](https://github.com/vm0-ai/vm0/commit/1afb5b8246d5b19d6f6eb1c9aa65ee5cf81edb0d)), closes [#30867](https://github.com/vm0-ai/vm0/issues/30867)
+* support automatic oauth for mcp connectors ([#30858](https://github.com/vm0-ai/vm0/issues/30858)) ([716e3b0](https://github.com/vm0-ai/vm0/commit/716e3b08c1d41a12f0686bb0363343650d194d89))
+
+
+### Bug Fixes
+
+* **api:** use workflow account for connector readiness ([#30853](https://github.com/vm0-ai/vm0/issues/30853)) ([1996ef4](https://github.com/vm0-ai/vm0/commit/1996ef4b0589eb6c7f7e3564be552348810c94f0))
+
+
+### Refactoring
+
+* **api:** remove unused connector endpoints ([#30848](https://github.com/vm0-ai/vm0/issues/30848)) ([e47044b](https://github.com/vm0-ai/vm0/commit/e47044b558f264448ed1793012e3e6ad63b8d8a8))
+* remove built-in fallback rollout state ([#30876](https://github.com/vm0-ai/vm0/issues/30876)) ([ddab7f4](https://github.com/vm0-ai/vm0/commit/ddab7f4cf55cead3540347247d2ea0b0f156c01b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.388.0
+    * @okouai/connectors bumped to 3.2.0
+    * @okouai/core bumped to 8.606.1
+    * @okouai/db bumped to 1.229.5
+
 ## [1.523.0](https://github.com/vm0-ai/vm0/compare/api-v1.522.2...api-v1.523.0) (2026-09-01)
 
 

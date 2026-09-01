@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.182.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.11...runner-rs-v0.182.12) (2026-09-01)
+
+
+### Bug Fixes
+
+* **runner:** fail closed on incomplete config image refs ([#30864](https://github.com/vm0-ai/vm0/issues/30864)) ([12c40b1](https://github.com/vm0-ai/vm0/commit/12c40b1007d66e3dd7fc0584a82091fa1f754c03))
+
 ## [0.182.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.10...runner-rs-v0.182.11) (2026-09-01)
 
 
