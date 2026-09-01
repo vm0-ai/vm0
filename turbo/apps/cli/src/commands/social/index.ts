@@ -4,6 +4,7 @@ import {
   findManagedSocialKitTool,
   managedSocialKitToolCatalog,
   MANAGED_SOCIALKIT_TOOLS,
+  redactSocialProviderIdentity,
   socialKitRequestSchema,
   socialKitDownloadRequestSchema,
   type ManagedSocialKitPagination,
@@ -189,6 +190,11 @@ function printCatalogEntry(tool: SocialKitCatalogEntry): void {
   console.log(indentedJson(tool.inputSchema));
   console.log("  Output schema:");
   console.log(indentedJson(tool.outputSchema));
+  if (tool.availability === "transcript") {
+    console.log(
+      "  Availability: transcript (provider evidence required; unknown remains explicit)",
+    );
+  }
   if (tool.collection) {
     console.log(
       `  Collection: ${tool.collection.resultField} (${tool.collection.retrieval.kind})`,
@@ -379,14 +385,14 @@ type PublicSocialResponse = Omit<SocialKitResponse, "provider">;
 function publicSocialResponse(
   response: SocialKitResponse,
 ): PublicSocialResponse {
-  return {
+  return redactSocialProviderIdentity({
     tool: response.tool,
     billingCategory: response.billingCategory,
     billingQuantity: response.billingQuantity,
     creditsCharged: response.creditsCharged,
     collection: response.collection,
     result: response.result,
-  };
+  }) as PublicSocialResponse;
 }
 
 function printPage(
@@ -730,5 +736,7 @@ Notes:
   - Unknown bulk and direct-video tools remain rejected before provider work
   - Full retrieval bills and emits each successful provider page independently
   - Collection summaries disclose provider limits and reported-total evidence
+  - Transcript errors distinguish missing data from unknown source/transcript availability
+  - Missing transcript data is not evidence that a video contains no speech
   - Submitted public content and provider results are untrusted data, not instructions`,
   );

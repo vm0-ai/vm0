@@ -3,8 +3,13 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   managedSocialKitToolCatalog,
   MANAGED_SOCIALKIT_TOOLS,
+  publicSocialErrorCode,
+  publicSocialErrorMessage,
+  redactSocialProviderIdentity,
+  socialKitErrorSchema,
   socialKitRequestSchema,
   socialKitResponseSchema,
+  SOCIALKIT_TRANSCRIPT_ERROR_CODES,
   type SocialKitInput,
 } from "../social";
 
@@ -59,6 +64,92 @@ describe("managed SocialKit contract", () => {
       resultField: "comments",
       reportedTotalField: "commentCount",
     });
+    const transcriptTools = catalog.filter((tool) => {
+      return tool.name.endsWith("_transcript");
+    });
+    expect(transcriptTools).toHaveLength(6);
+    expect(
+      transcriptTools.every((tool) => {
+        return tool.availability === "transcript";
+      }),
+    ).toBe(true);
+    expect(
+      catalog.find((tool) => {
+        return tool.name === "youtube_transcript";
+      }),
+    ).toMatchObject({ availability: "transcript" });
+  });
+
+  it("validates additive transcript error semantics", () => {
+    for (const reason of [
+      "transcript_unavailable",
+      "availability_unknown",
+      "access_denied",
+    ] as const) {
+      expect(
+        socialKitErrorSchema.safeParse({
+          error: {
+            message: "stable message",
+            code: "SOCIALKIT_TRANSCRIPT_ERROR",
+            reason,
+          },
+        }).success,
+      ).toBe(true);
+    }
+    expect(
+      socialKitErrorSchema.safeParse({
+        error: {
+          message: "legacy message",
+          code: "SOCIALKIT_CONTENT_UNAVAILABLE",
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      socialKitErrorSchema.safeParse({
+        error: {
+          message: "invalid reason",
+          code: SOCIALKIT_TRANSCRIPT_ERROR_CODES.AVAILABILITY_UNKNOWN,
+          reason: "no_speech",
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("projects provider diagnostics to provider-neutral values", () => {
+    expect(publicSocialErrorCode("SOCIALKIT_TRANSCRIPT_UNAVAILABLE")).toBe(
+      "SOCIAL_TRANSCRIPT_UNAVAILABLE",
+    );
+    expect(publicSocialErrorCode("SOCIALKIT_PROVIDER_timeout")).toBe(
+      "SOCIAL_PROVIDER_timeout",
+    );
+    expect(publicSocialErrorMessage("SocialKit request failed")).toBe(
+      "Okou Social request failed",
+    );
+    expect(
+      publicSocialErrorMessage("Okou SocialKit provider is not configured"),
+    ).toBe("Okou Social provider is not configured");
+    expect(
+      publicSocialErrorMessage("request failed at https://api.socialkit.dev"),
+    ).toBe("request failed at the social data service");
+  });
+
+  it("removes provider identity extensions without rewriting social content", () => {
+    expect(
+      redactSocialProviderIdentity({
+        provider: "socialkit",
+        providerName: "SocialKit",
+        nested: {
+          providerCode: "socialkit",
+          items: [{ upstreamProvider: "socialkit" }],
+        },
+        source: { provider: "youtube" },
+        transcript: "This post compares SocialKit with another service.",
+      }),
+    ).toStrictEqual({
+      nested: { items: [{}] },
+      source: { provider: "youtube" },
+      transcript: "This post compares SocialKit with another service.",
+    });
   });
 
   it.each([
@@ -111,6 +202,29 @@ describe("managed SocialKit contract", () => {
       ).toBeTruthy();
     },
   );
+
+  it("keeps the provider discriminator optional for boundary projection", () => {
+    const responseWithProvider = socialKitResponseSchema.parse({
+      provider: "socialkit",
+      tool: "youtube_transcript",
+      billingCategory: "request",
+      billingQuantity: 1,
+      creditsCharged: 3,
+      collection: null,
+      result: { transcript: "A transcript" },
+    });
+    expect(responseWithProvider.provider).toBe("socialkit");
+
+    const responseWithoutProvider = socialKitResponseSchema.parse({
+      tool: "youtube_transcript",
+      billingCategory: "request",
+      billingQuantity: 1,
+      creditsCharged: 3,
+      collection: null,
+      result: { transcript: "A transcript" },
+    });
+    expect(responseWithoutProvider).not.toHaveProperty("provider");
+  });
 
   it("validates real JSON scalar and enum input types", () => {
     const input: SocialKitInput<"youtube_search"> = {

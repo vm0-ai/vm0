@@ -1,4 +1,9 @@
-import { socialContract } from "@okouai/api-contracts/contracts/social";
+import {
+  publicSocialErrorCode,
+  publicSocialErrorMessage,
+  redactSocialProviderIdentity,
+  socialContract,
+} from "@okouai/api-contracts/contracts/social";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -21,19 +26,70 @@ const socialKitDownloadBody$ = bodyResultOf(socialContract.createDownload);
 const socialKitDownloadPathParams$ = pathParamsOf(socialContract.getDownload);
 const socialKitDownloadNotFound = notFound("SocialKit download not found");
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isAgentFacing(auth: { readonly tokenType: string }): boolean {
+  return auth.tokenType === "agent" || auth.tokenType === "sandbox";
+}
+
+/**
+ * Remove upstream implementation details at the agent boundary. Internal
+ * services keep the provider key for billing, reconciliation, and logs, but
+ * neither the provider identity nor its diagnostics belong in agent context.
+ */
+function redactAgentSocialResponse<T>(response: T): T {
+  if (!isRecord(response) || !isRecord(response.body)) {
+    return response;
+  }
+
+  const body = response.body;
+  const publicBody = redactSocialProviderIdentity(body);
+  if (!isRecord(publicBody)) {
+    return response;
+  }
+  const error = publicBody.error;
+  if (!isRecord(error)) {
+    return { ...response, body: publicBody } as T;
+  }
+
+  const sanitizedBody = {
+    ...publicBody,
+    error: {
+      ...error,
+      ...(typeof error.code === "string"
+        ? { code: publicSocialErrorCode(error.code) }
+        : {}),
+      ...(typeof error.message === "string"
+        ? { message: publicSocialErrorMessage(error.message) }
+        : {}),
+    },
+  };
+  return { ...response, body: sanitizedBody } as T;
+}
+
+function agentSafeResponse<T>(
+  auth: { readonly tokenType: string },
+  response: T,
+): T {
+  return isAgentFacing(auth) ? redactAgentSocialResponse(response) : response;
+}
+
 const socialKitRequestInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const bodyResult = await get(socialKitRequestBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
-      return bodyResult.response;
+      return agentSafeResponse(auth, bodyResult.response);
     }
-    return await set(
+    const response = await set(
       socialKitRequest$,
       { auth, body: bodyResult.data },
       signal,
     );
+    return agentSafeResponse(auth, response);
   },
 );
 
@@ -43,7 +99,7 @@ const createSocialKitDownloadInner$ = command(
     const bodyResult = await get(socialKitDownloadBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
-      return bodyResult.response;
+      return agentSafeResponse(auth, bodyResult.response);
     }
     const publicBrand =
       auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
@@ -64,7 +120,7 @@ const createSocialKitDownloadInner$ = command(
         ),
       );
     }
-    return response;
+    return agentSafeResponse(auth, response);
   },
 );
 
@@ -82,7 +138,7 @@ const getSocialKitDownloadInner$ = command(
       signal,
     );
     if (!response) {
-      return socialKitDownloadNotFound;
+      return agentSafeResponse(auth, socialKitDownloadNotFound);
     }
     if (
       response.status === "processing" ||
@@ -97,7 +153,7 @@ const getSocialKitDownloadInner$ = command(
         ),
       );
     }
-    return { status: 200 as const, body: response };
+    return agentSafeResponse(auth, { status: 200 as const, body: response });
   },
 );
 

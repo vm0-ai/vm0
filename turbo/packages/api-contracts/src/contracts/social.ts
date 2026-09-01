@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   MANAGED_SOCIALKIT_BILLING_CATEGORY,
   MANAGED_SOCIALKIT_TOOLS,
+  socialKitTranscriptErrorReasonSchema,
   type ManagedSocialKitTool,
   type ManagedSocialKitToolName,
   socialKitRequestSchema,
@@ -16,19 +17,96 @@ export {
   MANAGED_SOCIALKIT_BILLING_CATEGORY,
   MANAGED_SOCIALKIT_TOOLS,
   SOCIALKIT_MAX_INPUT_VALUE_CHARS,
+  SOCIALKIT_TRANSCRIPT_ERROR_CODES,
+  socialKitTranscriptErrorReasonSchema,
   socialKitRequestSchema,
   type ManagedSocialKitCollection,
   type ManagedSocialKitPagination,
   type ManagedSocialKitReportedTotalField,
   type ManagedSocialKitResultField,
   type ManagedSocialKitTool,
+  type ManagedSocialKitToolAvailability,
   type ManagedSocialKitToolDefinition,
   type ManagedSocialKitToolCatalogEntry,
   type ManagedSocialKitToolName,
+  type SocialKitTranscriptErrorCode,
+  type SocialKitTranscriptErrorReason,
   type SocialKitRequest,
 } from "./social-tools";
 
 const c = initContract();
+
+export const socialKitErrorSchema = apiErrorSchema.extend({
+  error: apiErrorSchema.shape.error.extend({
+    reason: socialKitTranscriptErrorReasonSchema.optional(),
+  }),
+});
+
+export type SocialKitErrorResponse = z.infer<typeof socialKitErrorSchema>;
+
+/**
+ * Keep upstream implementation details out of agent-visible diagnostics.
+ *
+ * The API still accepts and stores the internal provider codes for server-side
+ * accounting and backwards-compatible handling. Callers that render data to
+ * an agent should pass codes and messages through these projections first.
+ */
+export function publicSocialErrorCode(code: string): string {
+  return code.replace(/socialkit/giu, "SOCIAL");
+}
+
+export function publicSocialErrorMessage(message: string): string {
+  return message
+    .replace(
+      /\b(?:https?:\/\/)?(?:api\.)?socialkit\.dev\b/giu,
+      "the social data service",
+    )
+    .replace(/\bokou\s+socialkit\b/giu, "Okou Social")
+    .replace(/\bsocialkit\b/giu, "Okou Social");
+}
+
+const SOCIAL_PROVIDER_IDENTITY_KEYS = ["backend", "service", "source"] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isSocialProviderIdentityKey(key: string): boolean {
+  const normalized = key.replace(/[\s_-]/gu, "").toLowerCase();
+  return (
+    normalized.includes("provider") ||
+    normalized.includes("vendor") ||
+    SOCIAL_PROVIDER_IDENTITY_KEYS.some((candidate) => {
+      return candidate === normalized;
+    })
+  );
+}
+
+/**
+ * Remove provider identity extensions from JSON-shaped agent output without
+ * rewriting arbitrary social content that happens to mention the provider.
+ */
+export function redactSocialProviderIdentity(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(redactSocialProviderIdentity);
+  }
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  const redacted: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(value)) {
+    if (
+      isSocialProviderIdentityKey(key) &&
+      typeof nested === "string" &&
+      /socialkit(?:\.dev)?/iu.test(nested)
+    ) {
+      continue;
+    }
+    redacted[key] = redactSocialProviderIdentity(nested);
+  }
+  return redacted;
+}
 
 export const socialKitDownloadPlatformSchema = z.enum([
   "youtube",
@@ -184,7 +262,11 @@ export type SocialKitResult<Name extends ManagedSocialKitToolName> = z.infer<
 type SocialKitResponseFor<Tool extends ManagedSocialKitTool> =
   Tool extends ManagedSocialKitTool
     ? {
-        readonly provider: "socialkit";
+        /**
+         * The provider discriminator is retained for session/API compatibility.
+         * Agent-facing routes project it out before serialization.
+         */
+        readonly provider?: "socialkit";
         readonly tool: Tool["name"];
         readonly billingCategory: typeof MANAGED_SOCIALKIT_BILLING_CATEGORY;
         readonly billingQuantity: number;
@@ -198,7 +280,9 @@ export type SocialKitResponse = SocialKitResponseFor<ManagedSocialKitTool>;
 
 function responseVariant<Tool extends ManagedSocialKitTool>(tool: Tool) {
   return z.object({
-    provider: z.literal("socialkit"),
+    // Optional so the agent boundary can remove the internal discriminator
+    // while older session clients may continue sending/receiving it.
+    provider: z.literal("socialkit").optional(),
     tool: z.literal(tool.name),
     billingCategory: z.literal(MANAGED_SOCIALKIT_BILLING_CATEGORY),
     billingQuantity: z.number().int().positive(),
@@ -239,13 +323,13 @@ export const socialContract = c.router({
     body: socialKitRequestSchema,
     responses: {
       200: socialKitResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      402: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      502: apiErrorSchema,
-      503: apiErrorSchema,
+      400: socialKitErrorSchema,
+      401: socialKitErrorSchema,
+      402: socialKitErrorSchema,
+      403: socialKitErrorSchema,
+      404: socialKitErrorSchema,
+      502: socialKitErrorSchema,
+      503: socialKitErrorSchema,
     },
     summary: "Call a typed Okou Social tool",
   },
