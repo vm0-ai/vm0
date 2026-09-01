@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.182.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.9...runner-rs-v0.182.10) (2026-09-01)
+
+
+### Bug Fixes
+
+* **runner:** recheck firecracker warnings by stable identity ([#30844](https://github.com/vm0-ai/vm0/issues/30844)) ([77ab680](https://github.com/vm0-ai/vm0/commit/77ab6800c311aef9d3b207346ce987be7ff8b02b))
+
+
+### Documentation
+
+* **mitm-addon:** document flow metadata key linter ([#30836](https://github.com/vm0-ai/vm0/issues/30836)) ([4193c47](https://github.com/vm0-ai/vm0/commit/4193c4773e5088d795bc8281ffa975ff940c5b1d))
+
 ## [0.182.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.8...runner-rs-v0.182.9) (2026-09-01)
 
 

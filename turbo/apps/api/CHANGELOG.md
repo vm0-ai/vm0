@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.522.2](https://github.com/vm0-ai/vm0/compare/api-v1.522.1...api-v1.522.2) (2026-09-01)
+
+
+### Bug Fixes
+
+* **official-workflows:** restore catalog schema cutovers ([#30834](https://github.com/vm0-ai/vm0/issues/30834)) ([4dc5580](https://github.com/vm0-ai/vm0/commit/4dc55802b7a9941a34515d48e81965f9975c6663))
+* **social:** normalize TikTok collection semantics ([#30838](https://github.com/vm0-ai/vm0/issues/30838)) ([5720a7a](https://github.com/vm0-ai/vm0/commit/5720a7a38766172840802151fef77e73111d5d14))
+
+
+### Refactoring
+
+* **api:** drop the web and cli driven compatibility rows ([#30817](https://github.com/vm0-ai/vm0/issues/30817)) ([aa1276f](https://github.com/vm0-ai/vm0/commit/aa1276f5951bb83449286bbc83381355aa3ba692))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.386.1
+    * @okouai/core bumped to 8.605.10
+    * @okouai/db bumped to 1.229.3
+
 ## [1.522.1](https://github.com/vm0-ai/vm0/compare/api-v1.522.0...api-v1.522.1) (2026-09-01)
 
 

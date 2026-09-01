@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.303.1](https://github.com/vm0-ai/vm0/compare/cli-v9.303.0...cli-v9.303.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **social:** normalize TikTok collection semantics ([#30838](https://github.com/vm0-ai/vm0/issues/30838)) ([5720a7a](https://github.com/vm0-ai/vm0/commit/5720a7a38766172840802151fef77e73111d5d14))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.386.1
+    * @okouai/core bumped to 8.605.10
+
 ## [9.303.0](https://github.com/vm0-ai/vm0/compare/cli-v9.302.2...cli-v9.303.0) (2026-09-01)
 
 
