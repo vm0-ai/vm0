@@ -3,6 +3,12 @@ import type {
   DesktopComputerUseState,
 } from "./computer-use-types";
 import type { DesktopIdentity } from "./config";
+import type {
+  DesktopRecorderArea,
+  DesktopRecorderCaptureRequest,
+  DesktopRecorderSourceList,
+  DesktopRecorderState,
+} from "./desktop-recorder-types";
 
 export interface DesktopAuthUser {
   readonly userId: string;
@@ -93,6 +99,23 @@ export interface DesktopDeveloperToolsApi {
   readonly subscribe: (callback: () => void) => () => void;
 }
 
+export interface DesktopRecorderApi {
+  readonly getState: () => Promise<DesktopRecorderState>;
+  readonly listSources: () => Promise<DesktopRecorderSourceList>;
+  readonly startCapture: (
+    request: DesktopRecorderCaptureRequest,
+  ) => Promise<void>;
+  readonly selectArea: () => Promise<DesktopRecorderArea | null>;
+  readonly completeAreaSelection: (
+    area: DesktopRecorderArea | null,
+  ) => Promise<void>;
+  readonly pause: () => Promise<void>;
+  readonly resume: () => Promise<void>;
+  readonly discard: () => Promise<void>;
+  readonly stop: () => Promise<void>;
+  readonly cancel: () => Promise<void>;
+}
+
 export type DesktopIdentityInfo = Pick<
   DesktopIdentity,
   "brandName" | "displayName" | "product"
@@ -104,6 +127,7 @@ declare global {
     vm0DesktopComputerUse?: DesktopComputerUseApi;
     vm0DesktopDeveloperTools?: DesktopDeveloperToolsApi;
     vm0DesktopIdentity?: DesktopIdentityInfo;
+    vm0DesktopRecorder?: DesktopRecorderApi;
   }
 }
 

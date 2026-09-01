@@ -22,8 +22,6 @@
     <link vite-ignore rel="manifest" href="/manifest.webmanifest" />
     <link rel="preconnect" href="https://cdn.vm0.io" crossorigin />
     <link rel="preconnect" href="https://static.vm0.io" crossorigin />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="apple-touch-icon"
       sizes="180x180"
@@ -101,7 +99,7 @@
         if (t === "dark") document.documentElement.classList.add("dark");
       })();
     </script>
-    <style>
+    <style id="app-bootstrap-critical-styles">
       :root {
         --zero-viewport-height: 100dvh;
       }
@@ -297,7 +295,6 @@
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.ts"></script>
     <div
       id="app-bootstrap-skeleton"
       role="status"
@@ -379,6 +376,9 @@
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      media="print"
+      fetchpriority="low"
+      onload="this.media = 'all'"
     />
     <script>
       (function () {
@@ -405,5 +405,6 @@
         document.head.appendChild(gtagScript);
       })();
     </script>
+    <script type="module" src="/src/main.ts" fetchpriority="low"></script>
   </body>
 </html>

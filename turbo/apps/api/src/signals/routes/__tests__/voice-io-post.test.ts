@@ -327,7 +327,7 @@ function sttForm(file?: File): FormData {
 async function readAudioQuota(fixture: VoiceFixture): Promise<unknown> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   const app = createVoiceIoTestApp();
-  const response = await app.request("/api/zero/voice-io/quota", {
+  const response = await app.request("/api/voice-io/quota", {
     method: "GET",
     headers: authHeaders(),
   });
@@ -368,7 +368,7 @@ function mockBytePlusStt(text: string): void {
   );
 }
 
-describe("POST /api/zero/voice-io/*", () => {
+describe("POST /api/voice-io/*", () => {
   beforeEach(() => {
     context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
@@ -397,7 +397,7 @@ describe("POST /api/zero/voice-io/*", () => {
     await seedBehaviorCount(fixture, sttDailyRateKey(), PRO_DAILY_RATE_LIMIT);
 
     const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/quota", {
+    const response = await app.request("/api/voice-io/quota", {
       method: "GET",
       headers: authHeaders(),
     });
@@ -1058,7 +1058,7 @@ describe("POST /api/zero/voice-io/*", () => {
 
   it("returns 401 from /speech when unauthenticated", async () => {
     const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/speech", {
+    const response = await app.request("/api/voice-io/speech", {
       method: "POST",
       body: JSON.stringify({ text: "hello" }),
     });
@@ -1081,7 +1081,7 @@ describe("POST /api/zero/voice-io/*", () => {
     );
 
     const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/speech", {
+    const response = await app.request("/api/voice-io/speech", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ text: "   " }),
@@ -1106,7 +1106,7 @@ describe("POST /api/zero/voice-io/*", () => {
     );
 
     const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/speech", {
+    const response = await app.request("/api/voice-io/speech", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ text: "hello", voice: "unknown" }),
@@ -1133,7 +1133,7 @@ describe("POST /api/zero/voice-io/*", () => {
     );
 
     const app = createVoiceIoTestApp(usagePricingResolution);
-    const response = await app.request("/api/zero/voice-io/speech", {
+    const response = await app.request("/api/voice-io/speech", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ text: "hello" }),
@@ -1163,7 +1163,7 @@ describe("POST /api/zero/voice-io/*", () => {
     );
 
     const app = createVoiceIoTestApp(usagePricingResolution);
-    const response = await app.request("/api/zero/voice-io/speech", {
+    const response = await app.request("/api/voice-io/speech", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ text: "hello" }),
@@ -1217,7 +1217,7 @@ describe("POST /api/zero/voice-io/*", () => {
       publicBrand: "okou",
     });
     const app = createVoiceIoTestApp(usagePricingResolution);
-    const response = await app.request("/api/zero/voice-io/speech", {
+    const response = await app.request("/api/voice-io/speech", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -1322,7 +1322,7 @@ describe("POST /api/zero/voice-io/*", () => {
       runId,
     });
     const app = createVoiceIoTestApp(usagePricingResolution);
-    const response = await app.request("/api/zero/voice-io/speech", {
+    const response = await app.request("/api/voice-io/speech", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({ text: "hello", voice: "nova" }),
@@ -1362,7 +1362,7 @@ describe("POST /api/zero/voice-io/*", () => {
     );
 
     const app = createVoiceIoTestApp(usagePricingResolution);
-    const response = await app.request("/api/zero/voice-io/speech", {
+    const response = await app.request("/api/voice-io/speech", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ text: "hello" }),

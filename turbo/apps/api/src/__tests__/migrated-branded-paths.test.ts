@@ -4,12 +4,8 @@ import { z } from "zod";
 
 import { createAppWithRoutes } from "../app-factory-core";
 import { ROUTES } from "../signals/route";
-import { billingStatusRoutes } from "../signals/routes/billing-status";
 import { orgReadRoutes } from "../signals/routes/org-read";
-import { slackChannelsRoutes } from "../signals/routes/slack-channels";
-import { slackConnectRoutes } from "../signals/routes/slack-connect";
 import { slackOauthRoutes } from "../signals/routes/slack-oauth";
-import { voiceIoQuotaRoutes } from "../signals/routes/voice-io-quota";
 import {
   assertUniqueRouteRegistrations,
   type RouteEntry,
@@ -108,164 +104,13 @@ const BRANDED_PATHS_OWED = [
 // unchanged, so an expectation taken from either asserts nothing. Each slice
 // appends its own rows.
 const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
-  // #28421
-  "/api/me/model-providers": [
-    "/api/okou/me/model-providers",
-    "/api/zero/me/model-providers",
-  ],
-  "/api/onboarding/status": [
-    "/api/okou/onboarding/status",
-    "/api/zero/onboarding/status",
-  ],
-  "/api/team": ["/api/okou/team", "/api/zero/team"],
-  "/api/user-model-preference": [
-    "/api/okou/user-model-preference",
-    "/api/zero/user-model-preference",
-  ],
-  "/api/user-preferences": [
-    "/api/okou/user-preferences",
-    "/api/zero/user-preferences",
-  ],
-  // #28415
-  // #28416
-  // #28419
-  // #28420: chat-thread drafts and unreads, agent/thread indicators, and signup
-  // attribution.
-  "/api/attribution/signup": [
-    "/api/okou/attribution/signup",
-    "/api/zero/attribution/signup",
-  ],
-  "/api/chat-thread-drafts": [
-    "/api/okou/chat-thread-drafts",
-    "/api/zero/chat-thread-drafts",
-  ],
-  "/api/chat-thread-unreads": [
-    "/api/okou/chat-thread-unreads",
-    "/api/zero/chat-thread-unreads",
-  ],
-  "/api/indicators": ["/api/okou/indicators", "/api/zero/indicators"],
   // #28422
   "/api/logs/:id": ["/api/okou/logs/:id", "/api/zero/logs/:id"],
-  "/api/realtime/token": [
-    "/api/okou/realtime/token",
-    "/api/zero/realtime/token",
-  ],
-  // #28459: chat threads, chat events and search, shared threads,
-  // per-thread browser sessions and goals, thread workflow automations,
-  // queue position, and the X image share.
-  "/api/chat-threads": ["/api/okou/chat-threads", "/api/zero/chat-threads"],
-  "/api/chat-threads/:id": [
-    "/api/okou/chat-threads/:id",
-    "/api/zero/chat-threads/:id",
-  ],
-  "/api/chat-threads/:id/draft": [
-    "/api/okou/chat-threads/:id/draft",
-    "/api/zero/chat-threads/:id/draft",
-  ],
-  "/api/chat-threads/:id/mark-read": [
-    "/api/okou/chat-threads/:id/mark-read",
-    "/api/zero/chat-threads/:id/mark-read",
-  ],
-  "/api/chat-threads/:id/pin": [
-    "/api/okou/chat-threads/:id/pin",
-    "/api/zero/chat-threads/:id/pin",
-  ],
-  "/api/chat-threads/:threadId/artifacts": [
-    "/api/okou/chat-threads/:threadId/artifacts",
-    "/api/zero/chat-threads/:threadId/artifacts",
-  ],
-  "/api/chat-threads/:threadId/browser": [
-    "/api/okou/chat-threads/:threadId/browser",
-    "/api/zero/chat-threads/:threadId/browser",
-  ],
-  "/api/chat-threads/:threadId/event-rows": [
-    "/api/okou/chat-threads/:threadId/event-rows",
-    "/api/zero/chat-threads/:threadId/event-rows",
-  ],
-  "/api/chat-threads/:threadId/event-snapshot": [
-    "/api/okou/chat-threads/:threadId/event-snapshot",
-    "/api/zero/chat-threads/:threadId/event-snapshot",
-  ],
-  "/api/chat-threads/:threadId/workflow-automations": [
-    "/api/okou/chat-threads/:threadId/workflow-automations",
-    "/api/zero/chat-threads/:threadId/workflow-automations",
-  ],
-  "/api/chat-threads/events": [
-    "/api/okou/chat-threads/events",
-    "/api/zero/chat-threads/events",
-  ],
-  "/api/chat-threads/snapshot": [
-    "/api/okou/chat-threads/snapshot",
-    "/api/zero/chat-threads/snapshot",
-  ],
-  "/api/chat/events": ["/api/okou/chat/events", "/api/zero/chat/events"],
-  // #28457: the billing surface.
-  "/api/billing/status": [
-    "/api/okou/billing/status",
-    "/api/zero/billing/status",
-  ],
-  // #28466
-  "/api/computer-use/audit-events": [
-    "/api/okou/computer-use/audit-events",
-    "/api/zero/computer-use/audit-events",
-  ],
-  "/api/computer-use/host/commands/:commandId/complete": [
-    "/api/okou/computer-use/host/commands/:commandId/complete",
-    "/api/zero/computer-use/host/commands/:commandId/complete",
-  ],
-  "/api/computer-use/hosts": [
-    "/api/okou/computer-use/hosts",
-    "/api/zero/computer-use/hosts",
-  ],
-  // #28423
-  "/api/integrations/slack": [
-    "/api/okou/integrations/slack",
-    "/api/zero/integrations/slack",
-  ],
-  "/api/integrations/slack/connect": [
-    "/api/okou/integrations/slack/connect",
-    "/api/zero/integrations/slack/connect",
-  ],
-  "/api/integrations/slack/message": [
-    "/api/okou/integrations/slack/message",
-    "/api/zero/integrations/slack/message",
-  ],
-  "/api/integrations/slack/upload-file/complete": [
-    "/api/okou/integrations/slack/upload-file/complete",
-    "/api/zero/integrations/slack/upload-file/complete",
-  ],
-  "/api/integrations/slack/upload-file/init": [
-    "/api/okou/integrations/slack/upload-file/init",
-    "/api/zero/integrations/slack/upload-file/init",
-  ],
-  "/api/integrations/slack/upload-file/materialize": [
-    "/api/okou/integrations/slack/upload-file/materialize",
-    "/api/zero/integrations/slack/upload-file/materialize",
-  ],
-  // #28460: the connector catalog, the connector connections, the custom
-  // connectors, the model provider connections, and the user permission grants.
-  "/api/connector-catalog/:connectorSlug": [
-    "/api/okou/connector-catalog/:connectorSlug",
-    "/api/zero/connector-catalog/:connectorSlug",
-  ],
-  "/api/connector-catalog/status": [
-    "/api/okou/connector-catalog/status",
-    "/api/zero/connector-catalog/status",
-  ],
-  "/api/custom-connectors": [
-    "/api/okou/custom-connectors",
-    "/api/zero/custom-connectors",
-  ],
   // #28464: the Slack, Teams, and Feishu connect and OAuth-start routes. The
   // paths a provider console holds are not in this slice and stay branded;
   // they are covered by `provider-console-paths.test.ts`. #30812 removed
-  // `slack/oauth/connect`: unlike its `slack/oauth/install` sibling, no page
-  // publishes a connect link, and the crawlers that keep finding the branded
-  // install form found no form of connect in the same window.
-  "/api/slack/channels": [
-    "/api/okou/slack/channels",
-    "/api/zero/slack/channels",
-  ],
+  // `slack/oauth/connect` and #30807 removed `slack/channels`, leaving the one
+  // OAuth-start path a marketing landing page published.
   "/api/slack/oauth/install": [
     "/api/okou/slack/oauth/install",
     "/api/zero/slack/oauth/install",
@@ -282,54 +127,16 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   ],
   // #28462: feature switches, model policies, org model providers and their
   // device-auth sessions, the org profile and membership routes, and the usage
-  // reads.
-  "/api/model-policies": [
-    "/api/okou/model-policies",
-    "/api/zero/model-policies",
-  ],
+  // reads. #30804 removed `feature-switches` and #30807 removed
+  // `model-policies`, leaving the org profile.
   "/api/org": ["/api/okou/org", "/api/zero/org"],
-  // #28461
-  "/api/agents/:id": ["/api/okou/agents/:id", "/api/zero/agents/:id"],
-  "/api/agents/:id/custom-connectors": [
-    "/api/okou/agents/:id/custom-connectors",
-    "/api/zero/agents/:id/custom-connectors",
-  ],
-  "/api/agents/:id/draft": [
-    "/api/okou/agents/:id/draft",
-    "/api/zero/agents/:id/draft",
-  ],
-  "/api/agents/:id/user-connectors": [
-    "/api/okou/agents/:id/user-connectors",
-    "/api/zero/agents/:id/user-connectors",
-  ],
+  // #28461. #30807 removed the four per-agent rows.
   "/api/workflows": ["/api/okou/workflows", "/api/zero/workflows"],
-  // #28545 moved the Teams OAuth callback off `FINAL_PROVIDER_CONSOLE_PATHS`
-  // once the Microsoft consoles held the final URL, and the slice has no rows
-  // left. #28917 removed the Teams bot ingress, whose branded forms nothing
-  // holds once the Azure Bot messaging endpoint moved, and #30812 removed the
-  // callback. `/api/zero/teams/oauth/callback` was emitted on purpose by the
-  // VM0 brand, which made it a producer target rather than drain-window
-  // compatibility and is why #28917 kept it against its own inventory; #30667
-  // unified that producer onto the canonical path, and a `redirect_uri` is
-  // computed per request, so the deploy bounded the branded form to
-  // authorizations already in flight.
-  // #28463: avatar video, banking, browser authorization requests, inbound
-  // email, the GitHub user-connect start, mail drafts, people search,
-  // presentation templates, the Strapi webhook, uploads, video-io, voice-io and
-  // the web file reads.
-  "/api/voice-io/quota": [
-    "/api/okou/voice-io/quota",
-    "/api/zero/voice-io/quota",
-  ],
-  "/api/voice-io/speech": [
-    "/api/okou/voice-io/speech",
-    "/api/zero/voice-io/speech",
-  ],
   // #28544: the two Feishu routes that left `FINAL_PROVIDER_CONSOLE_PATHS`.
-  // Both branded forms used to be the declared paths, so these rows are the
-  // only thing registering them now — the events one is what keeps the two
-  // production Feishu installations delivering to the URL each of them holds in
-  // its own Feishu app console.
+  // Both branded forms used to be the declared paths, so this row is the only
+  // thing registering them now — it is what keeps the two production Feishu
+  // installations delivering to the URL each of them holds in its own Feishu
+  // app console.
   "/api/webhooks/feishu/events/:installationId": [
     "/api/okou/feishu/events/:installationId",
     "/api/zero/feishu/events/:installationId",
@@ -342,6 +149,9 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   // four once their producers moved: the Slack app console now holds the
   // neutral webhook URLs, and `routes/slack-oauth.ts` emits the neutral
   // callback as its `redirect_uri`.
+  // #30807 then removed forty-four rows as a class: no source in `turbo/`
+  // emits a branded literal outside tests, and the Computer Use family that an
+  // installed Desktop build does hardcode had already been settled by #30804.
 };
 
 function missingBrandedPaths(
@@ -494,90 +304,6 @@ describe("branded paths for migrated neutral routes", () => {
     }
   });
 
-  // The #28423 twin: the integration control plane, driven through the same
-  // production app factory. The registration assertion above rebuilds the
-  // composition itself and so cannot see how `createAppWithRoutes` wires it —
-  // if `withMigratedBrandedPaths` were dropped from or reordered in that chain,
-  // every branded integration path would 404 here while that assertion still
-  // passed. Requests are unauthenticated, so the status is whatever the auth
-  // layer returns; the point is that all three forms reach the same handler.
-  it("serves the migrated integration paths through the production app factory", async () => {
-    context.mocks.clerk.authenticateRequest.mockResolvedValue({
-      isAuthenticated: false,
-    });
-
-    // One GET per contract file this slice moved that still has a row, written
-    // out rather than read back from `MIGRATED_BRANDED_PATHS`. #28917 removed
-    // the Feishu and Strapi connect rows on zero-traffic evidence and #28916
-    // removed the Teams connect row on cutover evidence, so those three are no
-    // longer driven here.
-    const families = [
-      { routes: slackConnectRoutes, suffix: "integrations/slack/connect" },
-    ];
-
-    for (const { routes, suffix } of families) {
-      const app = createAppWithRoutes({ signal: context.signal, routes });
-
-      async function statusFor(path: string): Promise<number> {
-        const response = await app.request(`${REQUEST_ORIGIN}${path}`);
-        return response.status;
-      }
-
-      const neutral = await statusFor(`/api/${suffix}`);
-      const okou = await statusFor(`/api/okou/${suffix}`);
-      const zero = await statusFor(`/api/zero/${suffix}`);
-
-      expect({ suffix, neutral, okou, zero }).toStrictEqual({
-        suffix,
-        neutral,
-        okou: neutral,
-        zero: neutral,
-      });
-      expect(neutral).not.toBe(404);
-    }
-  });
-
-  // The #28463 twin of the two assertions above. A row is matched on
-  // `entry.route.path` alone. Every branded path below exists only because of
-  // a table row, and the request goes through the app factory production wires,
-  // so a row that never reaches the registration chain fails here rather than
-  // 404ing a released CLI or platform build. The POST arm this loop used to
-  // carry went with `uploads/prepare` in #28974 and `web/file-url` went with
-  // #28916, so the loop is down to the one voice-io GET and the request builder
-  // no longer branches on a method.
-  it("serves the migrated product paths through the production app factory", async () => {
-    context.mocks.clerk.authenticateRequest.mockResolvedValue({
-      isAuthenticated: false,
-    });
-
-    const endpoints = [
-      { routes: voiceIoQuotaRoutes, suffix: "voice-io/quota" },
-    ] as const;
-
-    for (const { routes, suffix } of endpoints) {
-      const app = createAppWithRoutes({ signal: context.signal, routes });
-
-      async function statusFor(path: string): Promise<number> {
-        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
-          method: "GET",
-        });
-        return response.status;
-      }
-
-      const neutral = await statusFor(`/api/${suffix}`);
-      const okou = await statusFor(`/api/okou/${suffix}`);
-      const zero = await statusFor(`/api/zero/${suffix}`);
-
-      expect({ suffix, neutral, okou, zero }).toStrictEqual({
-        suffix,
-        neutral,
-        okou: neutral,
-        zero: neutral,
-      });
-      expect(neutral).not.toBe(404);
-    }
-  });
-
   // Hono keeps both registrations for a duplicated path and answers with the
   // first, so a colliding row would take a handler over instead of failing.
   // The synthetic case above proves the error is raised; this one runs the real
@@ -606,8 +332,9 @@ describe("branded paths for migrated neutral routes", () => {
   // `uploads/prepare` and left 88, #28916 kept when it took the 26 cut-over
   // rows that left 62, #30668 kept when it took the four Slack rows whose
   // producer moved and left 58, #30804 kept when it took the four Computer Use
-  // host rows and `feature-switches` and left 53, and #30812 kept when it took
-  // the Teams OAuth callback and the Slack connect start and left 51. None of
+  // host rows and `feature-switches` and left 53, #30812 kept when it took
+  // the Teams OAuth callback and the Slack connect start and left 51, and
+  // #30807 kept when it took forty-four rows as a class and left 7. None of
   // them left a case asserting the removed rows now 404: `docs/fallback.md`
   // section 1 rules that class out, and the route table already proves the
   // registration is gone.
@@ -622,68 +349,28 @@ describe("branded paths for migrated neutral routes", () => {
   // whole table. Raise the number only with that evidence; an unexplained edit
   // here is the failure this is for.
   it("holds the branded rows this suite has evidence for and no others", () => {
-    const MIGRATED_BRANDED_ROW_COUNT = 51;
+    const MIGRATED_BRANDED_ROW_COUNT = 7;
 
     expect(Object.keys(MIGRATED_ROUTE_PATHS)).toHaveLength(
       MIGRATED_BRANDED_ROW_COUNT,
     );
   });
 
-  // The #28457 twin of the two assertions above, for the billing slice. Every
-  // caller of these routes in this repository derives its URL from the
-  // contract, so a request-level case is the only place a dropped row shows
-  // up as the 404 a released client would get. Requests are unauthenticated,
-  // so the status is whatever the auth layer returns — the point is that all
-  // three forms reach the same handler instead of falling through to 404.
-  it("serves the migrated billing paths through the production app factory", async () => {
-    context.mocks.clerk.authenticateRequest.mockResolvedValue({
-      isAuthenticated: false,
-    });
-
-    const families = [
-      { routes: billingStatusRoutes, method: "GET", suffix: "billing/status" },
-    ] as const;
-
-    for (const { routes, method, suffix } of families) {
-      const app = createAppWithRoutes({ signal: context.signal, routes });
-
-      async function statusFor(path: string): Promise<number> {
-        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
-          method,
-          headers: { "content-type": "application/json" },
-        });
-        return response.status;
-      }
-
-      const neutral = await statusFor(`/api/${suffix}`);
-      const okou = await statusFor(`/api/okou/${suffix}`);
-      const zero = await statusFor(`/api/zero/${suffix}`);
-
-      expect({ suffix, neutral, okou, zero }).toStrictEqual({
-        suffix,
-        neutral,
-        okou: neutral,
-        zero: neutral,
-      });
-      expect(neutral).not.toBe(404);
-    }
-  });
-
   // The #28464 twin of the two assertions above, driven through the app factory
-  // production uses rather than over the route table. Every path is a GET a
-  // released web build, or an install link already sitting in a Slack message,
-  // still asks for. The status is whatever the handler returns without
-  // credentials or provider configuration; the point is that all three forms
-  // reach the same handler instead of falling through to 404. #30812 dropped
-  // `slack/oauth/connect` from the list, because no page publishes a connect
-  // link for anyone to be holding.
+  // production uses rather than over the route table. The one path left is an
+  // install link already sitting in a Slack message, a bookmark or a search
+  // index, which is the holder no deploy bounds. The status is whatever the
+  // handler returns without credentials or provider configuration; the point is
+  // that all three forms reach the same handler instead of falling through to
+  // 404. #30812 dropped `slack/oauth/connect` from the list, because no page
+  // publishes a connect link for anyone to be holding, and #30807 dropped
+  // `slack/channels`, the one a released web build derived from a contract.
   it("serves the migrated IM connect paths through the production app factory", async () => {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
     });
 
     const families = [
-      { routes: slackChannelsRoutes, suffix: "slack/channels" },
       { routes: slackOauthRoutes, suffix: "slack/oauth/install" },
     ];
 

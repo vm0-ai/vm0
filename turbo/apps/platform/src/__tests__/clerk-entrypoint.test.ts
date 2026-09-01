@@ -317,10 +317,10 @@ describe("platform Clerk entrypoint", () => {
     expect(bootstrap.compareDocumentPosition(mainScript)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
-    expect(mainScript.compareDocumentPosition(skeleton)).toBe(
+    expect(skeleton.compareDocumentPosition(fontStylesheet)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
-    expect(skeleton.compareDocumentPosition(fontStylesheet)).toBe(
+    expect(fontStylesheet.compareDocumentPosition(mainScript)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
     expect(html).not.toContain("__VM0_");
@@ -336,6 +336,7 @@ describe("platform Clerk entrypoint", () => {
     expect(criticalStyles.textContent).toContain(
       "@keyframes app-bootstrap-skeleton-avatar-pulse",
     );
+    expect(criticalStyles.id).toBe("app-bootstrap-critical-styles");
     expect(externalSkeletonImages).toHaveLength(0);
     expect(inlineAvatar).toBeInstanceOf(SVGSVGElement);
     expect(inlineAvatar?.querySelectorAll("path").length).toBeGreaterThan(0);
@@ -343,6 +344,14 @@ describe("platform Clerk entrypoint", () => {
     expect(skeleton).toHaveTextContent("");
     expect(fontStylesheet.rel).toBe("stylesheet");
     expect(fontStylesheet.hasAttribute("as")).toBeFalsy();
+    expect(fontStylesheet.media).toBe("print");
+    expect(fontStylesheet.getAttribute("fetchpriority")).toBe("low");
+    expect(fontStylesheet.getAttribute("onload")).toBe("this.media = 'all'");
+    expect(
+      parsedDocument.querySelector(
+        'link[rel="preconnect"][href*="fonts.googleapis.com"], link[rel="preconnect"][href*="fonts.gstatic.com"]',
+      ),
+    ).toBeNull();
     expect(html.indexOf("data-vm0-clerk-bootstrap")).toBeLessThan(
       html.indexOf('type="module" src="/src/main.ts"'),
     );

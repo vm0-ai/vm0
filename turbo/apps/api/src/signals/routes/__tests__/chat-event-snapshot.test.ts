@@ -1170,8 +1170,8 @@ describe("chat event snapshot read endpoints", () => {
       routes: chatThreadRoutes,
     });
     const missingVersionPaths = [
-      `/api/okou/chat-threads/${threadId}/event-snapshot`,
-      `/api/okou/chat-threads/${threadId}/event-rows?sinceSeqId=0`,
+      `/api/chat-threads/${threadId}/event-snapshot`,
+      `/api/chat-threads/${threadId}/event-rows?sinceSeqId=0`,
     ];
     for (const path of missingVersionPaths) {
       const response = await rawRequest(path, {
