@@ -31,6 +31,7 @@ import {
   reconcileAutomationEventWatchReconfiguration,
 } from "./automation-event-watch-lifecycle.service";
 import { lockConnectorAccountTarget } from "./auth-state-lock.service";
+import { notionConfigWithConnectorId } from "./notion-automation-account.service";
 import { OFFICIAL_WORKFLOW_CATALOG_ACTIVATION_LOCK } from "./official-workflow-constants";
 import {
   readAcceptedOfficialWorkflowCatalog,
@@ -155,12 +156,19 @@ function eventWatchFailureMessage(result: {
 
 function accountConnectorSlug(
   eventType: string | null,
-): "gmail" | "stripe" | null {
+): "gmail" | "notion" | "stripe" | null {
   if (
     eventType === "gmail-new-message" ||
     eventType === "gmail-label-applied"
   ) {
     return "gmail";
+  }
+  if (
+    eventType === "notion-child-page-created" ||
+    eventType === "notion-database-item-created" ||
+    eventType === "notion-page-content-updated"
+  ) {
+    return "notion";
   }
   return eventType === "stripe-invoice-paid" ? "stripe" : null;
 }
@@ -179,7 +187,7 @@ async function lockOfficialAutomationAccountProjection(
   | { readonly kind: "not-required" }
   | {
       readonly kind: "locked";
-      readonly connectorSlug: "gmail" | "stripe" | null;
+      readonly connectorSlug: "gmail" | "notion" | "stripe" | null;
       readonly eventConnectorId: string | null;
       readonly stripeBinding: StripeAutomationBinding | null;
     }
@@ -187,7 +195,7 @@ async function lockOfficialAutomationAccountProjection(
   const currentConnectorSlug = accountConnectorSlug(args.currentEventType);
   const nextConnectorSlug = accountConnectorSlug(args.nextEventType);
   const connectorSlugs = [currentConnectorSlug, nextConnectorSlug]
-    .filter((slug): slug is "gmail" | "stripe" => {
+    .filter((slug): slug is "gmail" | "notion" | "stripe" => {
       return slug !== null;
     })
     .filter((slug, index, values) => {
@@ -684,6 +692,16 @@ async function restoreFailedReconfiguration(
     ) {
       return null;
     }
+    const restoredNotionConfig =
+      accountProjection.kind === "locked" &&
+      accountProjection.eventConnectorId !== null &&
+      accountConnectorSlug(args.persisted.previous.eventType) === "notion"
+        ? notionConfigWithConnectorId(
+            args.persisted.previous.eventType,
+            args.persisted.previous.eventConfig,
+            accountProjection.eventConnectorId,
+          )
+        : null;
     const currentTime = nowDate();
     const restorePatch = officialAutomationRestorePatch(
       args.persisted.previous,
@@ -699,7 +717,12 @@ async function restoreFailedReconfiguration(
       .set({
         ...restorePatch,
         ...(accountProjection.kind === "locked"
-          ? { eventConnectorId: accountProjection.eventConnectorId }
+          ? {
+              eventConnectorId: accountProjection.eventConnectorId,
+              ...(restoredNotionConfig === null
+                ? {}
+                : { eventConfig: restoredNotionConfig }),
+            }
           : {}),
         ...(stripeBinding
           ? {

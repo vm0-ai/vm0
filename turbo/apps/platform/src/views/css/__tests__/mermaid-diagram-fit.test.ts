@@ -6,7 +6,7 @@ const BOX_SELECTOR = ".wmde-markdown .mermaid-diagram-expand";
 const TRIGGER_SELECTOR =
   ".wmde-markdown .mermaid-block > .icon-tooltip-trigger";
 const IMAGE_SELECTOR = ".wmde-markdown .mermaid-diagram-image";
-const INSET_CHILDREN_SELECTOR = `${IMAGE_SELECTOR},\n.wmde-markdown .mermaid-diagram-pending,\n.wmde-markdown .mermaid-diagram-invalid`;
+const INSET_CHILDREN_SELECTOR = `${IMAGE_SELECTOR},\n.wmde-markdown .mermaid-diagram-pending`;
 
 function readPixels(rule: string, pattern: RegExp): number {
   const match = pattern.exec(rule);

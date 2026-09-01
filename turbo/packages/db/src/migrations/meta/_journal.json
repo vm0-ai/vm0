@@ -1653,6 +1653,13 @@
       "when": 1788253114804,
       "tag": "1043_add_chat_translation_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 1044,
+      "version": "7",
+      "when": 1788270255725,
+      "tag": "1044_salty_vindicator",
+      "breakpoints": true
     }
   ]
 }

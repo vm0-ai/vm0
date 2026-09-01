@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 
 import type { NotionWorkflowPendingEventContextJson } from "@okouai/db/jsonb-contracts/notion-event";
 
+import { connectors } from "./connector";
 import { workflowAutomations } from "./workflow";
 
 export type { NotionWorkflowPendingEventContext } from "@okouai/db/jsonb-contracts/notion-event";
@@ -79,6 +80,12 @@ export const notionWorkflowPendingEvents = pgTable(
         },
         { onDelete: "cascade" },
       ),
+    connectorId: uuid("connector_id").references(
+      () => {
+        return connectors.id;
+      },
+      { onDelete: "set null" },
+    ),
     pageId: uuid("page_id").notNull(),
     scopeType: varchar("scope_type", { length: 32 })
       .$type<NotionWorkflowPendingEventScopeType>()
@@ -117,6 +124,7 @@ export const notionWorkflowPendingEvents = pgTable(
         .on(table.automationId, table.pageId, table.eventFamily)
         .where(sql`status IN ('pending', 'running')`),
       index("idx_notion_pending_events_due").on(table.status, table.runAfter),
+      index("idx_notion_pending_events_connector").on(table.connectorId),
       index("idx_notion_pending_events_page_pending").on(
         table.pageId,
         table.status,

@@ -1767,6 +1767,43 @@ export function createConnectorBddApi(context: TestContext) {
       return response.body.connections;
     },
 
+    async setDefaultBuiltinConnectorAccount(
+      actor: ApiTestUser,
+      connectorSlug: ConnectorSlug,
+      connectionId: string,
+    ): Promise<ConnectorAccountConnection> {
+      const client = setupApp({ context, routes: connectorAccountRoutes })(
+        connectorAccountsContract,
+      );
+      const response = await accept(
+        client.setDefault({
+          headers: authenticate(actor),
+          params: { connectionId },
+          body: { target: { kind: "builtin", connectorSlug } },
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async deleteBuiltinConnectorAccount(
+      actor: ApiTestUser,
+      connectorSlug: ConnectorSlug,
+      connectionId: string,
+    ): Promise<void> {
+      const client = setupApp({ context, routes: connectorAccountRoutes })(
+        connectorAccountsContract,
+      );
+      await accept(
+        client.delete({
+          headers: authenticate(actor),
+          params: { connectionId },
+          body: { target: { kind: "builtin", connectorSlug } },
+        }),
+        [200],
+      );
+    },
+
     async listCustomConnectorAccounts(
       actor: ApiTestUser,
       connectorId: string,

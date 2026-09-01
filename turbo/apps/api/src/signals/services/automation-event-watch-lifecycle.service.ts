@@ -21,6 +21,10 @@ import {
   ensureGoogleFormsWatchForUser,
   reconcileGoogleFormsWatchesForUser,
 } from "./google-forms-automation-event.service";
+import {
+  ensureGoogleMeetTranscriptGeneratedSubscriptionForUser,
+  reconcileGoogleMeetSubscriptionsForUser,
+} from "./google-meet-automation-event.service";
 
 interface AutomationEventWatchAutomation {
   readonly orgId: string;
@@ -49,6 +53,11 @@ type AutomationEventWatchTarget =
       readonly userId: string;
       readonly formId: string;
       readonly connectorId: string;
+    }
+  | {
+      readonly provider: "google_meet";
+      readonly orgId: string;
+      readonly userId: string;
     };
 
 function googleCalendarId(
@@ -104,6 +113,13 @@ function automationEventWatchTarget(
       connectorId: config.data.connectorId,
     };
   }
+  if (automation.eventType === "google-meet-transcript-generated") {
+    return {
+      provider: "google_meet",
+      orgId: automation.orgId,
+      userId: automation.ownerUserId,
+    };
+  }
   const calendarId = googleCalendarId(automation);
   if (calendarId === null) {
     return null;
@@ -122,6 +138,9 @@ function targetKey(target: AutomationEventWatchTarget): string {
   }
   if (target.provider === "google_forms") {
     return `google_forms:${target.userId}:${target.formId}`;
+  }
+  if (target.provider === "google_meet") {
+    return `google_meet:${target.orgId}:${target.userId}`;
   }
   return `google_calendar:${target.orgId}:${target.userId}:${target.calendarId}`;
 }
@@ -168,6 +187,18 @@ export async function reconcileAutomationEventWatches(
       succeeded &&= reconciled;
       continue;
     }
+    if (target.provider === "google_meet") {
+      const reconciled = await reconcileGoogleMeetSubscriptionsForUser(
+        {
+          db: args.db,
+          orgId: target.orgId,
+          userId: target.userId,
+        },
+        signal,
+      );
+      succeeded &&= reconciled;
+      continue;
+    }
     const reconciled = await reconcileGoogleCalendarWatchesForUser(
       {
         db: args.db,
@@ -206,6 +237,11 @@ export async function reconcileAutomationEventWatchInventoryForOwner(
     signal,
   );
   signal.throwIfAborted();
+  const meet = await reconcileGoogleMeetSubscriptionsForUser(
+    { db, orgId: args.orgId, userId: args.userId },
+    signal,
+  );
+  signal.throwIfAborted();
   const forms = await db
     .selectDistinct({ formId: googleFormsWatchStates.formId })
     .from(googleFormsWatchStates)
@@ -216,7 +252,7 @@ export async function reconcileAutomationEventWatchInventoryForOwner(
       ),
     );
   signal.throwIfAborted();
-  let succeeded = gmail && calendar;
+  let succeeded = gmail && calendar && meet;
   for (const form of forms) {
     const reconciled = await reconcileGoogleFormsWatchesForUser(
       {
@@ -253,11 +289,14 @@ async function ensureNonFormsTarget(
   allowStagedOfficialTarget: boolean,
   signal: AbortSignal,
 ): Promise<AutomationEventWatchReconfigurationResult> {
-  const result =
-    target.provider === "gmail"
-      ? target.connectorId === null
+  let result:
+    | { readonly kind: "ok" }
+    | { readonly kind: "bad_request"; readonly message: string };
+  if (target.provider === "gmail") {
+    result =
+      target.connectorId === null
         ? {
-            kind: "bad_request" as const,
+            kind: "bad_request",
             message: "Connect Gmail before using Gmail event automations",
           }
         : await ensureGmailWatchForUser(
@@ -270,18 +309,30 @@ async function ensureNonFormsTarget(
               allowStagedOfficialTarget,
             },
             signal,
-          )
-      : await ensureGoogleCalendarWatchForUser(
-          {
-            db,
-            orgId: target.orgId,
-            userId: target.userId,
-            calendarId: target.calendarId,
-            forceRefresh: false,
-            allowStagedOfficialTarget,
-          },
-          signal,
-        );
+          );
+  } else if (target.provider === "google_meet") {
+    result = await ensureGoogleMeetTranscriptGeneratedSubscriptionForUser(
+      {
+        db,
+        orgId: target.orgId,
+        userId: target.userId,
+        allowStagedOfficialTarget,
+      },
+      signal,
+    );
+  } else {
+    result = await ensureGoogleCalendarWatchForUser(
+      {
+        db,
+        orgId: target.orgId,
+        userId: target.userId,
+        calendarId: target.calendarId,
+        forceRefresh: false,
+        allowStagedOfficialTarget,
+      },
+      signal,
+    );
+  }
   signal.throwIfAborted();
   return result.kind === "ok"
     ? result
