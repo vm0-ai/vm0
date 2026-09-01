@@ -54,6 +54,9 @@ const trackFakeChatEventObject = createFixtureTracker(
 
 const R2_GC_SLOT_MS = 10 * 60 * 1000;
 const R2_GC_SHARD_GROUP_COUNT = 16 ** 2;
+const RETIRED_MORNING_BRIEF_CUTOVER_ERROR = "legacy_morning_brief_cutover";
+const RETIRED_MORNING_BRIEF_CUTOVER_MESSAGE =
+  "This legacy Morning Brief was stopped during the Official Workflow cutover.";
 
 function sanitizedLegacyControlRevokeLine(row: ChatEventRow): string {
   const invalidFields = [
@@ -222,6 +225,97 @@ function sanitizedLegacyContextlessMorningBriefClaimLines(
     })}\n`;
   };
   return { root: encode(root), claim: encode(claim) };
+}
+
+function isSanitizedContextlessMorningBriefRetirement(
+  row: ChatEventRow,
+  root: ChatEventRow,
+): boolean {
+  return (
+    row.id !== root.id &&
+    row.chatThreadId === root.chatThreadId &&
+    row.eventType === "input.rejected" &&
+    row.runId === null &&
+    row.revokesEventId === root.id &&
+    row.contextType === "morning_brief" &&
+    row.contextId === null &&
+    row.runEventSequenceNumber === null &&
+    row.runEventId === null &&
+    row.seqId > root.seqId &&
+    row.createdAt > root.createdAt &&
+    row.payload !== null &&
+    Object.keys(row.payload).length === 2 &&
+    row.payload.error === RETIRED_MORNING_BRIEF_CUTOVER_ERROR &&
+    isDeepStrictEqual(row.payload.userMessage, root.payload?.userMessage)
+  );
+}
+
+function isSanitizedContextlessMorningBriefRetirementCompanion(
+  row: ChatEventRow,
+  retirement: ChatEventRow,
+): boolean {
+  return (
+    row.id !== retirement.id &&
+    row.chatThreadId === retirement.chatThreadId &&
+    row.eventType === "output.error" &&
+    row.runId === null &&
+    row.revokesEventId === null &&
+    row.contextType === null &&
+    row.contextId === null &&
+    row.runEventSequenceNumber === null &&
+    row.runEventId === null &&
+    row.seqId === retirement.seqId + 1 &&
+    Date.parse(row.createdAt) === Date.parse(retirement.createdAt) + 1 &&
+    row.payload !== null &&
+    Object.keys(row.payload).length === 2 &&
+    row.payload.content === RETIRED_MORNING_BRIEF_CUTOVER_MESSAGE &&
+    row.payload.error === RETIRED_MORNING_BRIEF_CUTOVER_ERROR
+  );
+}
+
+function sanitizedLegacyContextlessMorningBriefRetirementLines(
+  root: ChatEventRow,
+  retirement: ChatEventRow,
+  companion: ChatEventRow,
+): {
+  readonly root: string;
+  readonly retirement: string;
+  readonly companion: string;
+} {
+  if (
+    !isSanitizedContextlessMorningBriefRoot(root) ||
+    !isSanitizedContextlessMorningBriefRetirement(retirement, root) ||
+    !isSanitizedContextlessMorningBriefRetirementCompanion(
+      companion,
+      retirement,
+    )
+  ) {
+    throw new Error("Expected an exact historical contextless retirement");
+  }
+  chatEventFromRow(root);
+  chatEventFromRow(retirement);
+  chatEventFromRow(companion);
+  const encode = (row: ChatEventRow): string => {
+    return `${JSON.stringify({
+      id: row.id,
+      chatThreadId: row.chatThreadId,
+      runId: row.runId,
+      revokesEventId: row.revokesEventId,
+      eventType: row.eventType,
+      payload: row.payload,
+      contextType: row.contextType,
+      contextId: row.contextId,
+      runEventSequenceNumber: row.runEventSequenceNumber,
+      runEventId: row.runEventId,
+      seqId: row.seqId,
+      createdAt: row.createdAt,
+    })}\n`;
+  };
+  return {
+    root: encode(root),
+    retirement: encode(retirement),
+    companion: encode(companion),
+  };
 }
 
 function mockR2GcWindowForKey(key: string, after: Date): Date {
@@ -473,7 +567,7 @@ describe("chat event snapshot read endpoints", () => {
     const agent = await bdd.createAgent(owner, {
       displayName: "Morning Brief archive repair agent",
     });
-    const markers = Array.from({ length: 5 }, (_, index) => {
+    const markers = Array.from({ length: 6 }, (_, index) => {
       return `morning-brief-history-${(index + 1).toString()}-${randomUUID()}`;
     });
     let threadId: string | undefined;
@@ -505,7 +599,7 @@ describe("chat event snapshot read endpoints", () => {
     const promptRows = originalRows.filter((row) => {
       return row.eventType === "input.prompt";
     });
-    expect(promptRows).toHaveLength(5);
+    expect(promptRows).toHaveLength(6);
 
     const runIds = markers.map(() => {
       return randomUUID();
@@ -574,6 +668,15 @@ describe("chat event snapshot read endpoints", () => {
           { type: "text", text: "Finish the ownership summary." },
         ],
       },
+      {
+        version: 1,
+        parts: [
+          {
+            type: "text",
+            text: "Preserve the terminal cutover explanation.",
+          },
+        ],
+      },
     ];
     const promptIndexById = new Map(
       promptRows.map((row, index) => {
@@ -605,6 +708,10 @@ describe("chat event snapshot read endpoints", () => {
       rejectionRows[4],
       revocationFixtureMessage,
     );
+    const contextlessRetirementRow = requiredRevokingRow(
+      rejectionRows[5],
+      revocationFixtureMessage,
+    );
     const contextlessRootRow = requiredPromptRow(
       originalRows.find((row) => {
         return row.id === contextlessClaimRow.revokesEventId;
@@ -617,6 +724,21 @@ describe("chat event snapshot read endpoints", () => {
       }),
       "Expected the historical chained root prompt",
     );
+    const contextlessRetirementRootRow = requiredPromptRow(
+      originalRows.find((row) => {
+        return row.id === contextlessRetirementRow.revokesEventId;
+      }),
+      "Expected the historical contextless retirement root prompt",
+    );
+    const contextlessRetirementCompanionRow = requiredValue(
+      originalRows.find((row) => {
+        return (
+          row.eventType === "output.error" &&
+          row.seqId === contextlessRetirementRow.seqId + 1
+        );
+      }),
+      "Expected the historical contextless retirement companion",
+    );
     const contextlessRootPromptIndex = promptIndexById.get(
       contextlessRootRow.id,
     );
@@ -625,6 +747,15 @@ describe("chat event snapshot read endpoints", () => {
         ? undefined
         : historicalDocuments[contextlessRootPromptIndex],
       "Expected the contextless root document",
+    );
+    const contextlessRetirementRootPromptIndex = promptIndexById.get(
+      contextlessRetirementRootRow.id,
+    );
+    const contextlessRetirementDocument = requiredValue(
+      contextlessRetirementRootPromptIndex === undefined
+        ? undefined
+        : historicalDocuments[contextlessRetirementRootPromptIndex],
+      "Expected the contextless retirement document",
     );
     const expectedRows = originalRows.map((row): ChatEventRow => {
       if (row.id === contextlessClaimRow.id) {
@@ -662,6 +793,38 @@ describe("chat event snapshot read endpoints", () => {
           runEventId: null,
         });
       }
+      if (row.id === contextlessRetirementRow.id) {
+        return chatEventRowSchema.parse({
+          ...row,
+          eventType: "input.rejected",
+          runId: null,
+          revokesEventId: contextlessRetirementRootRow.id,
+          contextType: "web",
+          contextId: null,
+          payload: {
+            userMessage: contextlessRetirementDocument,
+            error: RETIRED_MORNING_BRIEF_CUTOVER_ERROR,
+          },
+          runEventSequenceNumber: null,
+          runEventId: null,
+        });
+      }
+      if (row.id === contextlessRetirementCompanionRow.id) {
+        return chatEventRowSchema.parse({
+          ...row,
+          eventType: "output.error",
+          runId: null,
+          revokesEventId: null,
+          contextType: null,
+          contextId: null,
+          payload: {
+            content: RETIRED_MORNING_BRIEF_CUTOVER_MESSAGE,
+            error: RETIRED_MORNING_BRIEF_CUTOVER_ERROR,
+          },
+          runEventSequenceNumber: null,
+          runEventId: null,
+        });
+      }
       const promptIndex = promptIndexById.get(row.id);
       if (promptIndex !== undefined) {
         const historicalDocument = historicalDocuments[promptIndex];
@@ -672,7 +835,9 @@ describe("chat event snapshot read endpoints", () => {
         return chatEventRowSchema.parse({
           ...row,
           runId:
-            row.id === contextlessRootRow.id || row.id === chainedRootRow.id
+            row.id === contextlessRootRow.id ||
+            row.id === chainedRootRow.id ||
+            row.id === contextlessRetirementRootRow.id
               ? null
               : runId,
           contextType: "web",
@@ -717,7 +882,9 @@ describe("chat event snapshot read endpoints", () => {
     const staleRows = expectedRows.map((row): ChatEventRow => {
       if (
         row.id === contextlessRootRow.id ||
-        row.id === contextlessClaimRow.id
+        row.id === contextlessClaimRow.id ||
+        row.id === contextlessRetirementRootRow.id ||
+        row.id === contextlessRetirementRow.id
       ) {
         return chatEventRowSchema.parse({
           ...row,
@@ -818,13 +985,25 @@ describe("chat event snapshot read endpoints", () => {
     const staleChainedRoot = staleRows.find((row) => {
       return row.id === chainedRootRow.id;
     });
+    const staleContextlessRetirementRoot = staleRows.find((row) => {
+      return row.id === contextlessRetirementRootRow.id;
+    });
+    const staleContextlessRetirement = staleRows.find((row) => {
+      return row.id === contextlessRetirementRow.id;
+    });
+    const staleContextlessRetirementCompanion = staleRows.find((row) => {
+      return row.id === contextlessRetirementCompanionRow.id;
+    });
     if (
       staleDirectControlRevoke === undefined ||
       staleContextlessRoot === undefined ||
       staleContextlessClaim === undefined ||
       staleChainedRejection === undefined ||
       staleChainedControlRevoke === undefined ||
-      staleChainedRoot === undefined
+      staleChainedRoot === undefined ||
+      staleContextlessRetirementRoot === undefined ||
+      staleContextlessRetirement === undefined ||
+      staleContextlessRetirementCompanion === undefined
     ) {
       throw new Error("Expected byte-exact historical revocation rows");
     }
@@ -841,6 +1020,12 @@ describe("chat event snapshot read endpoints", () => {
         staleContextlessRoot,
         staleContextlessClaim,
       );
+    const byteExactContextlessRetirementLines =
+      sanitizedLegacyContextlessMorningBriefRetirementLines(
+        staleContextlessRetirementRoot,
+        staleContextlessRetirement,
+        staleContextlessRetirementCompanion,
+      );
     const staleArchive = Buffer.from(
       staleRows
         .map((row) => {
@@ -852,6 +1037,15 @@ describe("chat event snapshot read endpoints", () => {
           }
           if (row.id === directControlRevokeRow.id) {
             return byteExactDirectRevokeLine;
+          }
+          if (row.id === contextlessRetirementRootRow.id) {
+            return byteExactContextlessRetirementLines.root;
+          }
+          if (row.id === contextlessRetirementRow.id) {
+            return byteExactContextlessRetirementLines.retirement;
+          }
+          if (row.id === contextlessRetirementCompanionRow.id) {
+            return byteExactContextlessRetirementLines.companion;
           }
           return row.id === chainedControlRevokeRow.id
             ? byteExactChainedRevokeLine
@@ -869,6 +1063,13 @@ describe("chat event snapshot read endpoints", () => {
       staleArchive.includes(
         Buffer.from(
           `${byteExactContextlessClaimLines.root}${byteExactContextlessClaimLines.claim}`,
+        ),
+      ),
+    ).toBeTruthy();
+    expect(
+      staleArchive.includes(
+        Buffer.from(
+          `${byteExactContextlessRetirementLines.root}${byteExactContextlessRetirementLines.retirement}${byteExactContextlessRetirementLines.companion}`,
         ),
       ),
     ).toBeTruthy();
@@ -916,7 +1117,11 @@ describe("chat event snapshot read endpoints", () => {
         return chatEventRowSchema.parse(JSON.parse(line));
       });
     expect(repairedRows).toStrictEqual(expectedRows);
-    expect(JSON.stringify(repairedRows)).not.toContain("morning_brief");
+    expect(
+      repairedRows.some((row) => {
+        return row.contextType === "morning_brief";
+      }),
+    ).toBeFalsy();
     expect(
       repairedRows.map((row) => {
         return {
@@ -990,6 +1195,52 @@ describe("chat event snapshot read endpoints", () => {
       contextId: null,
       payload: { userMessage: contextlessDocument },
     });
+    expect(
+      repairedRows.find((row) => {
+        return row.id === contextlessRetirementRootRow.id;
+      }),
+    ).toMatchObject({
+      eventType: "input.prompt",
+      runId: null,
+      revokesEventId: null,
+      contextType: "web",
+      contextId: null,
+      payload: { userMessage: contextlessRetirementDocument },
+    });
+    expect(
+      repairedRows.find((row) => {
+        return row.id === contextlessRetirementRow.id;
+      }),
+    ).toMatchObject({
+      eventType: "input.rejected",
+      runId: null,
+      revokesEventId: contextlessRetirementRootRow.id,
+      contextType: "web",
+      contextId: null,
+      payload: {
+        userMessage: contextlessRetirementDocument,
+        error: RETIRED_MORNING_BRIEF_CUTOVER_ERROR,
+      },
+      runEventSequenceNumber: null,
+      runEventId: null,
+    });
+    expect(
+      repairedRows.find((row) => {
+        return row.id === contextlessRetirementCompanionRow.id;
+      }),
+    ).toMatchObject({
+      eventType: "output.error",
+      runId: null,
+      revokesEventId: null,
+      contextType: null,
+      contextId: null,
+      payload: {
+        content: RETIRED_MORNING_BRIEF_CUTOVER_MESSAGE,
+        error: RETIRED_MORNING_BRIEF_CUTOVER_ERROR,
+      },
+      runEventSequenceNumber: null,
+      runEventId: null,
+    });
 
     const projectedSnapshot = repairedRows.map(chatEventFromRow);
     const projectedPrompts = projectedSnapshot.filter((event) => {
@@ -998,7 +1249,7 @@ describe("chat event snapshot read endpoints", () => {
     const expectedPromptRows = expectedRows.filter((row) => {
       return row.eventType === "input.prompt";
     });
-    expect(expectedPromptRows).toHaveLength(6);
+    expect(expectedPromptRows).toHaveLength(7);
     expect(
       projectedPrompts.map((event) => {
         return {
@@ -1230,12 +1481,20 @@ describe("chat event snapshot read endpoints", () => {
     const rejectedRow = rejectedRows[0];
     const semanticRootRow = inputRows[1];
     const semanticTerminalRow = rejectedRows[1];
+    const contextlessRetirementCompanionSource = originalRows.find((row) => {
+      return (
+        rejectedRow !== undefined &&
+        row.eventType === "output.error" &&
+        row.seqId === rejectedRow.seqId + 1
+      );
+    });
     const firstRow = originalRows[0];
     if (
       inputRow === undefined ||
       rejectedRow === undefined ||
       semanticRootRow === undefined ||
       semanticTerminalRow === undefined ||
+      contextlessRetirementCompanionSource === undefined ||
       rejectedRow.seqId >= semanticRootRow.seqId ||
       semanticRootRow.seqId >= semanticTerminalRow.seqId ||
       firstRow === undefined
@@ -1290,12 +1549,45 @@ describe("chat event snapshot read endpoints", () => {
       runEventSequenceNumber: null,
       runEventId: null,
     });
+    const contextlessRetirement = chatEventRowSchema.parse({
+      ...rejectedRow,
+      runId: null,
+      revokesEventId: contextlessRoot.id,
+      eventType: "input.rejected",
+      payload: {
+        userMessage: contextlessDocument,
+        error: RETIRED_MORNING_BRIEF_CUTOVER_ERROR,
+      },
+      contextType: "morning_brief",
+      contextId: null,
+      runEventSequenceNumber: null,
+      runEventId: null,
+    });
+    const contextlessRetirementCompanion = chatEventRowSchema.parse({
+      ...contextlessRetirementCompanionSource,
+      runId: null,
+      revokesEventId: null,
+      eventType: "output.error",
+      payload: {
+        content: RETIRED_MORNING_BRIEF_CUTOVER_MESSAGE,
+        error: RETIRED_MORNING_BRIEF_CUTOVER_ERROR,
+      },
+      contextType: null,
+      contextId: null,
+      runEventSequenceNumber: null,
+      runEventId: null,
+    });
     if (
       contextlessRoot.seqId >= contextlessClaim.seqId ||
       contextlessRoot.createdAt >= contextlessClaim.createdAt
     ) {
       throw new Error("Expected an ordered contextless claim fixture");
     }
+    sanitizedLegacyContextlessMorningBriefRetirementLines(
+      contextlessRoot,
+      contextlessRetirement,
+      contextlessRetirementCompanion,
+    );
     const contextlessRows = (
       root: ChatEventRow,
       claim: ChatEventRow,
@@ -1309,6 +1601,25 @@ describe("chat event snapshot read endpoints", () => {
           return claim;
         }
         return row.id === additionalRevoker?.id ? additionalRevoker : row;
+      });
+    };
+    const contextlessRetirementRows = (
+      root: ChatEventRow,
+      retirement: ChatEventRow,
+      companion: ChatEventRow,
+      additionalRow?: ChatEventRow,
+    ): readonly ChatEventRow[] => {
+      return originalRows.map((row) => {
+        if (row.id === root.id) {
+          return root;
+        }
+        if (row.id === retirement.id) {
+          return retirement;
+        }
+        if (row.id === companion.id) {
+          return companion;
+        }
+        return row.id === additionalRow?.id ? additionalRow : row;
       });
     };
     const missingPredecessorBody = encodeRows(
@@ -1380,6 +1691,143 @@ describe("chat event snapshot read endpoints", () => {
           : row;
       }),
     );
+    const missingRetirementPredecessorBody = encodeRows(
+      contextlessRetirementRows(
+        contextlessRoot,
+        chatEventRowSchema.parse({
+          ...contextlessRetirement,
+          revokesEventId: randomUUID(),
+        }),
+        contextlessRetirementCompanion,
+      ),
+    );
+    const missingRetirementCompanionBody = encodeRows(
+      contextlessRetirementRows(
+        contextlessRoot,
+        contextlessRetirement,
+        contextlessRetirementCompanionSource,
+      ),
+    );
+    const mismatchedRetirementDocumentBody = encodeRows(
+      contextlessRetirementRows(
+        contextlessRoot,
+        chatEventRowSchema.parse({
+          ...contextlessRetirement,
+          payload: {
+            userMessage: {
+              version: 1,
+              parts: [
+                {
+                  type: "text",
+                  text: "Sanitized mismatched cutover prompt.",
+                },
+              ],
+            },
+            error: RETIRED_MORNING_BRIEF_CUTOVER_ERROR,
+          },
+        }),
+        contextlessRetirementCompanion,
+      ),
+    );
+    const crossThreadRetirementBody = encodeRows(
+      contextlessRetirementRows(
+        contextlessRoot,
+        chatEventRowSchema.parse({
+          ...contextlessRetirement,
+          chatThreadId: randomUUID(),
+        }),
+        contextlessRetirementCompanion,
+      ),
+    );
+    const malformedRetirementCompanionBody = encodeRows(
+      contextlessRetirementRows(
+        contextlessRoot,
+        contextlessRetirement,
+        chatEventRowSchema.parse({
+          ...contextlessRetirementCompanion,
+          runEventSequenceNumber: 1,
+        }),
+      ),
+    );
+    const futureRetirementBody = encodeRows(
+      contextlessRetirementRows(
+        contextlessRoot,
+        chatEventRowSchema.parse({
+          ...contextlessRetirement,
+          runEventId: "legacy-cutover:future",
+        }),
+        contextlessRetirementCompanion,
+      ),
+    );
+    const ambiguousRetirementBody = encodeRows(
+      contextlessRetirementRows(
+        contextlessRoot,
+        contextlessRetirement,
+        contextlessRetirementCompanion,
+        chatEventRowSchema.parse({
+          ...semanticRootRow,
+          revokesEventId: contextlessRoot.id,
+        }),
+      ),
+    );
+    const duplicateRetirementIdBody = encodeRows(
+      originalRows.map((row) => {
+        if (row.id === contextlessRoot.id) {
+          return contextlessRoot;
+        }
+        if (row.id === contextlessRetirement.id) {
+          return contextlessRetirement;
+        }
+        if (row.id === contextlessRetirementCompanion.id) {
+          return contextlessRetirementCompanion;
+        }
+        return row.id === semanticRootRow.id
+          ? chatEventRowSchema.parse({
+              ...semanticRootRow,
+              id: contextlessRoot.id,
+            })
+          : row;
+      }),
+    );
+    const reorderedRetirementRoot = chatEventRowSchema.parse({
+      ...semanticRootRow,
+      runId: null,
+      revokesEventId: null,
+      eventType: "input.prompt",
+      payload: { userMessage: contextlessDocument },
+      contextType: "morning_brief",
+      contextId: null,
+      runEventSequenceNumber: null,
+      runEventId: null,
+    });
+    const reorderedRetirement = chatEventRowSchema.parse({
+      ...contextlessRetirement,
+      revokesEventId: reorderedRetirementRoot.id,
+    });
+    const reorderedRetirementRows = originalRows.map((row): ChatEventRow => {
+      if (row.id === reorderedRetirement.id) {
+        return reorderedRetirement;
+      }
+      if (row.id === contextlessRetirementCompanion.id) {
+        return contextlessRetirementCompanion;
+      }
+      if (row.id === reorderedRetirementRoot.id) {
+        return reorderedRetirementRoot;
+      }
+      return row.id === semanticTerminalRow.id
+        ? chatEventRowSchema.parse({
+            ...semanticTerminalRow,
+            revokesEventId: randomUUID(),
+          })
+        : row;
+    });
+    expect(
+      reorderedRetirementRows.every((row, index) => {
+        const prior = reorderedRetirementRows[index - 1];
+        return prior === undefined || row.seqId > prior.seqId;
+      }),
+    ).toBeTruthy();
+    const reorderedRetirementBody = encodeRows(reorderedRetirementRows);
     const unresolvedRevokeBody = encodeRows(
       originalRows.map((row) => {
         return row.id === rejectedRow.id
@@ -1508,6 +1956,60 @@ describe("chat event snapshot read endpoints", () => {
       {
         failureClass: "projection",
         object: gzipSync(duplicateContextlessIdBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(missingRetirementPredecessorBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(missingRetirementCompanionBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(mismatchedRetirementDocumentBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(crossThreadRetirementBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(malformedRetirementCompanionBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(futureRetirementBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(ambiguousRetirementBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(duplicateRetirementIdBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(reorderedRetirementBody),
         projectionSubstage: "retired_context",
         projectionVariant: "missing_context_id",
       },

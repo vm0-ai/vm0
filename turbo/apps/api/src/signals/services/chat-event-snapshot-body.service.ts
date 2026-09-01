@@ -10,6 +10,9 @@ import { safeJsonParse, safeSync } from "../utils";
 
 const RETIRED_MORNING_BRIEF_CONTEXT = "morning_brief";
 const RETIRED_MORNING_BRIEF_PART = "morning_brief";
+const RETIRED_MORNING_BRIEF_CUTOVER_ERROR = "legacy_morning_brief_cutover";
+const RETIRED_MORNING_BRIEF_CUTOVER_MESSAGE =
+  "This legacy Morning Brief was stopped during the Official Workflow cutover.";
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 
 interface MorningBriefSnapshotRepair {
@@ -199,6 +202,116 @@ function contextlessMorningBriefClaimIds(
   return acceptedIds;
 }
 
+function hasExactContextlessMorningBriefRetirementPayload(
+  row: ChatEventRow,
+  root: ChatEventRow,
+): boolean {
+  const payload = row.payload;
+  return (
+    payload !== null &&
+    Object.keys(payload).length === 2 &&
+    payload.error === RETIRED_MORNING_BRIEF_CUTOVER_ERROR &&
+    payload.userMessage !== undefined &&
+    isDeepStrictEqual(payload.userMessage, root.payload?.userMessage)
+  );
+}
+
+function isExactContextlessMorningBriefRetirement(
+  row: ChatEventRow,
+  root: ChatEventRow,
+): boolean {
+  return (
+    row.id !== root.id &&
+    row.chatThreadId === root.chatThreadId &&
+    row.eventType === "input.rejected" &&
+    row.runId === null &&
+    row.revokesEventId === root.id &&
+    row.contextType === RETIRED_MORNING_BRIEF_CONTEXT &&
+    row.contextId === null &&
+    row.runEventSequenceNumber === null &&
+    row.runEventId === null &&
+    root.seqId < row.seqId &&
+    root.createdAt < row.createdAt &&
+    hasExactContextlessMorningBriefRetirementPayload(row, root)
+  );
+}
+
+function isExactContextlessMorningBriefRetirementCompanion(
+  row: ChatEventRow,
+  retirement: ChatEventRow,
+): boolean {
+  const payload = row.payload;
+  return (
+    row.id !== retirement.id &&
+    row.chatThreadId === retirement.chatThreadId &&
+    row.eventType === "output.error" &&
+    row.runId === null &&
+    row.revokesEventId === null &&
+    row.contextType === null &&
+    row.contextId === null &&
+    row.runEventSequenceNumber === null &&
+    row.runEventId === null &&
+    row.seqId === retirement.seqId + 1 &&
+    Date.parse(row.createdAt) === Date.parse(retirement.createdAt) + 1 &&
+    payload !== null &&
+    Object.keys(payload).length === 2 &&
+    payload.content === RETIRED_MORNING_BRIEF_CUTOVER_MESSAGE &&
+    payload.error === RETIRED_MORNING_BRIEF_CUTOVER_ERROR
+  );
+}
+
+function contextlessMorningBriefRetirementIds(
+  rows: readonly ChatEventRow[],
+): ReadonlySet<string> {
+  const uniqueRowsById = new Map<string, ChatEventRow | null>();
+  const uniqueRowsBySeqId = new Map<number, ChatEventRow | null>();
+  const soleRevokerByTargetId = new Map<string, ChatEventRow | null>();
+  for (const row of rows) {
+    uniqueRowsById.set(row.id, uniqueRowsById.has(row.id) ? null : row);
+    uniqueRowsBySeqId.set(
+      row.seqId,
+      uniqueRowsBySeqId.has(row.seqId) ? null : row,
+    );
+    if (row.revokesEventId !== null) {
+      soleRevokerByTargetId.set(
+        row.revokesEventId,
+        soleRevokerByTargetId.has(row.revokesEventId) ? null : row,
+      );
+    }
+  }
+
+  const acceptedIds = new Set<string>();
+  for (const root of rows) {
+    if (
+      !isExactContextlessMorningBriefRoot(root) ||
+      uniqueRowsById.get(root.id) !== root
+    ) {
+      continue;
+    }
+    const retirement = soleRevokerByTargetId.get(root.id);
+    if (
+      retirement === undefined ||
+      retirement === null ||
+      uniqueRowsById.get(retirement.id) !== retirement ||
+      !isExactContextlessMorningBriefRetirement(retirement, root)
+    ) {
+      continue;
+    }
+    const companion = uniqueRowsBySeqId.get(retirement.seqId + 1);
+    if (
+      companion === undefined ||
+      companion === null ||
+      uniqueRowsById.get(companion.id) !== companion ||
+      !isExactContextlessMorningBriefRetirementCompanion(companion, retirement)
+    ) {
+      continue;
+    }
+    acceptedIds.add(root.id);
+    acceptedIds.add(retirement.id);
+  }
+  return acceptedIds;
+}
+
 function isExactRetiredMorningBriefRoot(
   row: ChatEventRow,
   root: ChatEventRow | null | undefined,
@@ -300,7 +413,7 @@ function assertCurrentProjection(row: ChatEventRow): void {
 function repairMorningBriefRow(
   row: ChatEventRow,
   priorRowsById: ReadonlyMap<string, ChatEventRow | null>,
-  contextlessClaimIds: ReadonlySet<string>,
+  contextlessRepairIds: ReadonlySet<string>,
 ): {
   readonly row: ChatEventRow;
   readonly removedDocumentParts: number;
@@ -333,14 +446,16 @@ function repairMorningBriefRow(
     return { row, removedDocumentParts: 0 };
   }
   // Before Morning Brief context rows existed, queue claim wrote an ordered,
-  // run-owned replacement prompt that revoked a run-less root and copied its
-  // exact document. Migration 0836 later classified both prompts while
-  // intentionally preserving their null context IDs. Accept only that complete
-  // archive-local pair; never derive or synthesize an ID. This persisted-state
-  // compatibility is limited to immutable legacy V7 Snapshots. Remove it after
-  // all surviving V7 heads converge to r1 and the retired writer rollback
-  // window closes; removal is tracked by #30369 and #28905.
-  if (row.contextId === null && !contextlessClaimIds.has(row.id)) {
+  // run-owned replacement prompt. The Phase A drain fallback also wrote an
+  // ordered run-less rejection plus its adjacent error companion. Both writers
+  // revoked a run-less root and copied its exact document. Migration 0836 later
+  // classified the affected inputs while intentionally preserving their null
+  // context IDs. Accept only those complete archive-local relationships; never
+  // derive or synthesize an ID. This persisted-state compatibility is limited
+  // to immutable legacy V7 Snapshots. Remove it after all surviving V7 heads
+  // converge to r1 and the retired writer rollback window closes; removal is
+  // tracked by #30369 and #28905.
+  if (row.contextId === null && !contextlessRepairIds.has(row.id)) {
     failProjection("retired_context", "missing_context_id");
   }
   if (legacyParts.length > 1) {
@@ -407,7 +522,10 @@ export function repairMorningBriefPhaseBSnapshot(
   }
   const rows: ChatEventRow[] = [];
   const priorRowsById = new Map<string, ChatEventRow | null>();
-  const contextlessClaimIds = contextlessMorningBriefClaimIds(decodedRows);
+  const contextlessRepairIds = new Set([
+    ...contextlessMorningBriefClaimIds(decodedRows),
+    ...contextlessMorningBriefRetirementIds(decodedRows),
+  ]);
   const repairedLines = rawLines.map((raw, index) => {
     const row = decodedRows[index];
     if (row === undefined) {
@@ -416,7 +534,7 @@ export function repairMorningBriefPhaseBSnapshot(
     const repaired = repairMorningBriefRow(
       row,
       priorRowsById,
-      contextlessClaimIds,
+      contextlessRepairIds,
     );
     rows.push(repaired.row);
     priorRowsById.set(row.id, priorRowsById.has(row.id) ? null : row);
