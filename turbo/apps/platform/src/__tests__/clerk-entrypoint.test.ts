@@ -338,6 +338,8 @@ describe("platform Clerk entrypoint", () => {
     }
 
     expect(clerkCore.nextElementSibling).toBe(bootstrap);
+    expect(clerkCore.parentElement).toBe(parsedDocument.head);
+    expect(bootstrap.parentElement).toBe(parsedDocument.head);
     expect(clerkCore.compareDocumentPosition(bootstrap)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );

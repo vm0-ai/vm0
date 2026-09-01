@@ -273,6 +273,26 @@ await test("rejects worker chunks with imports or forbidden packages", () => {
   );
 });
 
+function clerkDiscoveryFixture(): string {
+  return [
+    "<!doctype html><html><head>",
+    '<script id="vm0-clerk-core-script" src="https://cdn.example.test/clerk.js" defer></script>',
+    '<script data-vm0-clerk-bootstrap="">window.__clerkConfigured = true;</script>',
+    "</head><body>",
+    '<script type="module" src="/src/main.js"></script>',
+    "</body></html>",
+  ].join("");
+}
+
+function assertClerkDiscoveryOrder(htmlSource: string): void {
+  const clerkCoreIndex = htmlSource.indexOf('id="vm0-clerk-core-script"');
+  const clerkBootstrapIndex = htmlSource.indexOf('data-vm0-clerk-bootstrap=""');
+  const appModuleIndex = htmlSource.indexOf('<script type="module"');
+  assert.notEqual(clerkCoreIndex, -1);
+  assert.ok(clerkBootstrapIndex > clerkCoreIndex);
+  assert.ok(appModuleIndex > clerkBootstrapIndex);
+}
+
 await test("emits the fixed page topology and one external worker", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "okou-app-bundles-"));
   const sourceDirectory = path.join(root, "src");
@@ -283,10 +303,7 @@ await test("emits the fixed page topology and one external worker", async () => 
     await mkdir(sourceDirectory, { recursive: true });
     await mkdir(vendorDirectory, { recursive: true });
     await mkdir(mermaidDirectory, { recursive: true });
-    await writeFile(
-      path.join(root, "index.html"),
-      '<script type="module" src="/src/main.js"></script>',
-    );
+    await writeFile(path.join(root, "index.html"), clerkDiscoveryFixture());
     await writeFile(
       path.join(sourceDirectory, "main.js"),
       'import SharedDatabaseWorker from "./shared-database-worker.js?sharedworker"; import localeUrl from "./locale.json?url"; import mermaid from "../packages/mermaid-lite/dist/mermaid.esm.min.mjs"; import vendor from "fixture-vendor"; new SharedDatabaseWorker({ name: "test" }); console.log(localeUrl, mermaid.value, vendor.value);',
@@ -385,6 +402,7 @@ await test("emits the fixed page topology and one external worker", async () => 
     });
     assert.ok(html?.type === "asset");
     const htmlSource = String(html.source);
+    assertClerkDiscoveryOrder(htmlSource);
     assert.equal((htmlSource.match(/<script type="module"/gu) ?? []).length, 1);
     assert.equal((htmlSource.match(/rel="modulepreload"/gu) ?? []).length, 2);
     assert.match(htmlSource, /assets\/vendor-[^/]+\.js/u);
