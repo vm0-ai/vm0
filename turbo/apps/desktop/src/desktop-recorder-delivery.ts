@@ -47,6 +47,12 @@ interface PreparedUpload {
   readonly uploadHeaders: Record<string, string>;
 }
 
+interface UploadedFile {
+  readonly id: string;
+  readonly name: string;
+  readonly size: number;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -114,7 +120,7 @@ async function uploadFile(
   deps: RecorderDeliveryDependencies,
   filePath: string,
   contentType: string,
-): Promise<string> {
+): Promise<UploadedFile> {
   const name = path.basename(filePath);
   const body = await deps.readFile(filePath);
   const prepared = await prepareUpload(deps, {
@@ -150,7 +156,7 @@ async function uploadFile(
       ),
     );
   }
-  return prepared.id;
+  return { id: prepared.id, name, size: body.size };
 }
 
 /**
@@ -167,25 +173,35 @@ export async function deliverRecording(
   recording: DesktopRecorderRecording,
   deps: RecorderDeliveryDependencies,
 ): Promise<DeliveredRecording> {
-  const videoUploadId = await uploadFile(
+  const videoUpload = await uploadFile(
     deps,
     recording.videoPath,
     VIDEO_CONTENT_TYPE,
   );
-  const clickTrackUploadId = await uploadFile(
+  const clickTrackUpload = await uploadFile(
     deps,
     recording.clickTrackPath,
     CLICK_TRACK_CONTENT_TYPE,
   );
 
   const reviewUrl = new URL("/", deps.appUrl);
-  reviewUrl.searchParams.set("intro-video-recording", videoUploadId);
-  reviewUrl.searchParams.set("intro-video-clicks", clickTrackUploadId);
+  reviewUrl.searchParams.set("intro-video-recording", videoUpload.id);
+  reviewUrl.searchParams.set("intro-video-recording-name", videoUpload.name);
+  reviewUrl.searchParams.set(
+    "intro-video-recording-size",
+    videoUpload.size.toString(),
+  );
+  reviewUrl.searchParams.set("intro-video-clicks", clickTrackUpload.id);
+  reviewUrl.searchParams.set("intro-video-clicks-name", clickTrackUpload.name);
+  reviewUrl.searchParams.set(
+    "intro-video-clicks-size",
+    clickTrackUpload.size.toString(),
+  );
   reviewUrl.searchParams.set("intro-video-user", deps.userId);
 
   return {
-    videoUploadId,
-    clickTrackUploadId,
+    videoUploadId: videoUpload.id,
+    clickTrackUploadId: clickTrackUpload.id,
     reviewUrl: reviewUrl.toString(),
   };
 }
