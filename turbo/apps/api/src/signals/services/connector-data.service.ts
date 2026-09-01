@@ -95,6 +95,7 @@ import {
 import {
   deletePreparedGoogleMeetSubscriptionWithLifecycleLock,
   prepareGoogleMeetSubscriptionDeleteForConnector,
+  reconcileGoogleMeetSubscriptionsForUser,
   type PendingGoogleMeetSubscriptionDelete,
 } from "./google-meet-automation-event.service";
 import { reconcileConnectorAccountState } from "./connector-account-state.service";
@@ -999,6 +1000,11 @@ async function reconcileAccountBoundAutomationWatches(
       reconcileGoogleFormsWatchesForUser({ db, ...args }, signal),
       signal,
     );
+  } else if (args.connectorSlug === "google-meet") {
+    await bestEffort(
+      reconcileGoogleMeetSubscriptionsForUser({ db, ...args }, signal),
+      signal,
+    );
   }
 }
 
@@ -1383,6 +1389,15 @@ export const deleteConnectorLocalState$ = command(
     if (args.connectorSlug === "google-forms") {
       await bestEffort(
         reconcileGoogleFormsWatchesForUser(
+          { db: writeDb, orgId: args.orgId, userId: args.userId },
+          signal,
+        ),
+        signal,
+      );
+    }
+    if (args.connectorSlug === "google-meet") {
+      await bestEffort(
+        reconcileGoogleMeetSubscriptionsForUser(
           { db: writeDb, orgId: args.orgId, userId: args.userId },
           signal,
         ),

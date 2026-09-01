@@ -57,6 +57,7 @@ type AutomationEventWatchTarget =
       readonly provider: "google_meet";
       readonly orgId: string;
       readonly userId: string;
+      readonly connectorId: string;
     };
 
 function googleCalendarId(
@@ -117,10 +118,14 @@ function automationEventWatchTarget(
     };
   }
   if (automation.eventType === "google-meet-transcript-generated") {
+    if (automation.eventConnectorId === null) {
+      return null;
+    }
     return {
       provider: "google_meet",
       orgId: automation.orgId,
       userId: automation.ownerUserId,
+      connectorId: automation.eventConnectorId,
     };
   }
   const calendarId = googleCalendarId(automation);
@@ -143,7 +148,7 @@ function targetKey(target: AutomationEventWatchTarget): string {
     return `google_forms:${target.orgId}:${target.userId}`;
   }
   if (target.provider === "google_meet") {
-    return `google_meet:${target.orgId}:${target.userId}`;
+    return `google_meet:${target.orgId}:${target.userId}:${target.connectorId}`;
   }
   return `google_calendar:${target.orgId}:${target.userId}:${target.calendarId}`;
 }
@@ -299,6 +304,7 @@ async function ensureNonFormsTarget(
         db,
         orgId: target.orgId,
         userId: target.userId,
+        connectorId: target.connectorId,
         allowStagedOfficialTarget,
       },
       signal,
