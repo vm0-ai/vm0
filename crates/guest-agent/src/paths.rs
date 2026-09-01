@@ -112,58 +112,189 @@ impl GuestPaths {
             .map(Self::from_runtime_dir)
     }
 
+    /// Return the runtime directory captured when these paths were built.
+    ///
+    /// This returns the run root as a borrowed [`Path`]. The accessor only
+    /// returns the captured path; it does not create, validate, or otherwise
+    /// access filesystem entries.
     pub fn runtime_dir(&self) -> &Path {
         &self.runtime_dir
     }
 
+    /// Return the run-root `session-id` path.
+    ///
+    /// The private text file stores the first observed, non-authoritative
+    /// CLI-agent session ID. This accessor returns a borrowed `&str` and only
+    /// derives the path; it does not create, validate, or otherwise access the
+    /// file. See the canonical [session-id path helper][session_id_file] for
+    /// the shared runtime layout.
+    ///
+    /// [session_id_file]: guest_contracts::runtime_paths::session_id_file
     pub fn session_id_file(&self) -> &str {
         &self.session_id_file
     }
 
+    /// Return the run-root `checkpoint-error` path.
+    ///
+    /// The private text file contains a non-empty checkpoint or guest error
+    /// message when one is recorded. This accessor returns a borrowed `&str`
+    /// and only derives the path; it does not create, validate, or otherwise
+    /// access the file. See the canonical [checkpoint-error path helper][checkpoint_error_file]
+    /// for the shared runtime layout.
+    ///
+    /// [checkpoint_error_file]: guest_contracts::runtime_paths::checkpoint_error_file
     pub fn checkpoint_error_file(&self) -> &str {
         &self.checkpoint_error_file
     }
 
+    /// Return the run-root `final-session-history-identity.json` path.
+    ///
+    /// The JSON file stores the metadata used to verify the final session
+    /// history identity. This accessor returns a borrowed `&str` and only
+    /// derives the path; it does not create, validate, or otherwise access the
+    /// file. See the canonical [final-session-history identity path helper][final_session_history_identity_file]
+    /// for the shared runtime layout.
+    ///
+    /// [final_session_history_identity_file]:
+    ///     guest_contracts::runtime_paths::final_session_history_identity_file
     pub fn final_session_history_identity_file(&self) -> &str {
         &self.final_session_history_identity_file
     }
 
+    /// Return the run-root `failure-diagnostic.json` path.
+    ///
+    /// The file contains the structured JSON diagnostic for a guest failure.
+    /// This accessor returns a borrowed `&str` and only derives the path; it
+    /// does not create, validate, or otherwise access the file. See the
+    /// canonical [failure-diagnostic path helper][failure_diagnostic_file] for
+    /// the shared runtime layout.
+    ///
+    /// [failure_diagnostic_file]: guest_contracts::runtime_paths::failure_diagnostic_file
     pub fn failure_diagnostic_file(&self) -> &str {
         &self.failure_diagnostic_file
     }
 
+    /// Return the private run-root `claude-append-system-prompt` path.
+    ///
+    /// This transient plain-text file carries an appended system prompt to the
+    /// Claude CLI child without putting the prompt in its argument vector.
+    /// This accessor returns a borrowed `&str` and only derives the path; it
+    /// does not create, validate, or otherwise access the file. See the
+    /// canonical [Claude prompt path helper][claude_append_system_prompt_file]
+    /// for the shared runtime layout.
+    ///
+    /// [claude_append_system_prompt_file]:
+    ///     guest_contracts::runtime_paths::claude_append_system_prompt_file
     pub fn claude_append_system_prompt_file(&self) -> &str {
         &self.claude_append_system_prompt_file
     }
 
+    /// Return the private `pi-launch-payload/payload.json` path.
+    ///
+    /// This transient JSON file carries launch inputs to the Pi CLI child.
+    /// This accessor returns a borrowed `&str` and only derives the path; it
+    /// does not create, validate, or otherwise access the file. See the
+    /// canonical [Pi launch payload path helper][pi_launch_payload_file] for
+    /// the shared runtime layout.
+    ///
+    /// [pi_launch_payload_file]: guest_contracts::runtime_paths::pi_launch_payload_file
     pub fn pi_launch_payload_file(&self) -> &str {
         &self.pi_launch_payload_file
     }
 
+    /// Return the `logs/system.log` path.
+    ///
+    /// This stream contains structured guest system-log text, one line per
+    /// emitted log entry; it is not a JSONL stream. This accessor returns a
+    /// borrowed `&str` and only derives the path; it does not create, validate,
+    /// or otherwise access the file. See the canonical [system log path helper][system_log_file]
+    /// for the shared runtime layout.
+    ///
+    /// [system_log_file]: guest_contracts::runtime_paths::system_log_file
     pub fn system_log_file(&self) -> &str {
         &self.system_log_file
     }
 
+    /// Return the `logs/agent.jsonl` path.
+    ///
+    /// This best-effort JSONL stream contains the AI agent's local stdout
+    /// transcript. This accessor returns a borrowed `&str` and only derives the
+    /// path; it does not create, validate, or otherwise access the file. See
+    /// the canonical [agent log path helper][agent_log_file] for the shared
+    /// runtime layout.
+    ///
+    /// [agent_log_file]: guest_contracts::runtime_paths::agent_log_file
     pub fn agent_log_file(&self) -> &str {
         &self.agent_log_file
     }
 
+    /// Return the `logs/metrics.jsonl` path.
+    ///
+    /// This JSONL stream contains periodic CPU, memory, and disk snapshots.
+    /// This accessor returns a borrowed `&str` and only derives the path; it
+    /// does not create, validate, or otherwise access the file. See the
+    /// canonical [metrics log path helper][metrics_log_file] for the shared
+    /// runtime layout.
+    ///
+    /// [metrics_log_file]: guest_contracts::runtime_paths::metrics_log_file
     pub fn metrics_log_file(&self) -> &str {
         &self.metrics_log_file
     }
 
+    /// Return the `logs/sandbox-ops.jsonl` path.
+    ///
+    /// This JSONL stream contains sandbox-operation timing records. This
+    /// accessor returns a borrowed `&str` and only derives the path; it does
+    /// not create, validate, or otherwise access the file. See the canonical
+    /// [sandbox operations log path helper][sandbox_ops_log_file] for the
+    /// shared runtime layout.
+    ///
+    /// [sandbox_ops_log_file]: guest_contracts::runtime_paths::sandbox_ops_log_file
     pub fn sandbox_ops_file(&self) -> &str {
         &self.sandbox_ops_file
     }
 
+    /// Return the `telemetry/system-log.pos` path.
+    ///
+    /// This file stores the decimal-text read/upload offset for
+    /// [`Self::system_log_file`], separately from the log stream itself. This
+    /// accessor returns a borrowed `&str` and only derives the path; it does
+    /// not create, validate, or otherwise access the file. See the canonical
+    /// [system-log telemetry position helper][telemetry_system_log_pos_file]
+    /// for the shared runtime layout.
+    ///
+    /// [telemetry_system_log_pos_file]:
+    ///     guest_contracts::runtime_paths::telemetry_system_log_pos_file
     pub fn telemetry_system_log_pos_file(&self) -> &str {
         &self.telemetry_system_log_pos_file
     }
 
+    /// Return the `telemetry/metrics.pos` path.
+    ///
+    /// This file stores the decimal-text read/upload offset for
+    /// [`Self::metrics_log_file`], separately from the log stream itself. This
+    /// accessor returns a borrowed `&str` and only derives the path; it does
+    /// not create, validate, or otherwise access the file. See the canonical
+    /// [metrics telemetry position helper][telemetry_metrics_pos_file] for the
+    /// shared runtime layout.
+    ///
+    /// [telemetry_metrics_pos_file]:
+    ///     guest_contracts::runtime_paths::telemetry_metrics_pos_file
     pub fn telemetry_metrics_pos_file(&self) -> &str {
         &self.telemetry_metrics_pos_file
     }
 
+    /// Return the `telemetry/sandbox-ops.pos` path.
+    ///
+    /// This file stores the decimal-text read/upload offset for
+    /// [`Self::sandbox_ops_file`], separately from the log stream itself. This
+    /// accessor returns a borrowed `&str` and only derives the path; it does
+    /// not create, validate, or otherwise access the file. See the canonical
+    /// [sandbox operations telemetry position helper][telemetry_sandbox_ops_pos_file]
+    /// for the shared runtime layout.
+    ///
+    /// [telemetry_sandbox_ops_pos_file]:
+    ///     guest_contracts::runtime_paths::telemetry_sandbox_ops_pos_file
     pub fn telemetry_sandbox_ops_pos_file(&self) -> &str {
         &self.telemetry_sandbox_ops_pos_file
     }
