@@ -7,6 +7,10 @@ import {
   VIDEO_TEMPLATE_ITEMS,
 } from "../../lib/platform-template-items.ts";
 import { derivePlatformServiceOrigin } from "../../lib/platform-host.ts";
+import {
+  platformWelcomeSlackThreadImg,
+  platformWelcomeTeamWorkflowImg,
+} from "../../lib/static-assets.ts";
 import { parseMarkdownTree } from "../../lib/markdown/pipeline.ts";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 import { assistantName$ } from "../../signals/branding.ts";
@@ -76,7 +80,9 @@ function WelcomeThreadMessage() {
       inviteUrl,
       presentationPreviewUrl: welcomePresentation.previewImage,
       presentationUrl: welcomePresentation.embedUrl,
+      slackImageUrl: platformWelcomeSlackThreadImg,
       slideCount: welcomePresentation.slideCount ?? 15,
+      teamImageUrl: platformWelcomeTeamWorkflowImg,
       videoUrl: welcomeVideo.previewVideo,
       worksUrl,
     },

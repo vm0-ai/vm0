@@ -14,6 +14,12 @@ export function platformStaticAssetUrl(path: string) {
 export const platformEmptyPrivateAgentsImg = platformStaticAssetUrl(
   "views/agents-page/assets/empty-private-agents-9a8d7e3750b6.png",
 );
+export const platformWelcomeTeamWorkflowImg = platformStaticAssetUrl(
+  "views/zero-page/assets/welcome-team-workflow-d867ca2e846f.webp",
+);
+export const platformWelcomeSlackThreadImg = platformStaticAssetUrl(
+  "views/zero-page/assets/welcome-slack-thread-16c86937c216.webp",
+);
 export const platformVm0LogoImg = platformStaticAssetUrl(
   "assets/vm0-logo-56cf3090a186.svg",
 );

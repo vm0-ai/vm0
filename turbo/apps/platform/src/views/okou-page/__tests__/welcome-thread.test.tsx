@@ -77,6 +77,16 @@ describe("built-in welcome thread", () => {
     expect(
       within(content).getByRole("heading", { name: "Talk to me in Slack" }),
     ).toBeInTheDocument();
+    expect(
+      within(content).getByRole("img", {
+        name: "One finished result becoming a workflow the whole team can reuse",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(content).getByRole("img", {
+        name: "A conversation with Zero continuing in a threaded reply",
+      }),
+    ).toBeInTheDocument();
     expect(within(content).getByText("/okou")).toBeInTheDocument();
     const slackSetupLink = queryAllByRoleFast("link", content).find(
       (candidate) => {
