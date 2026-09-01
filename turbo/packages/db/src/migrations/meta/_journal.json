@@ -1632,6 +1632,13 @@
       "when": 1788240847406,
       "tag": "1040_custom_connector_automatic_oauth",
       "breakpoints": true
+    },
+    {
+      "idx": 1041,
+      "version": "7",
+      "when": 1788246932464,
+      "tag": "1041_contract_legacy_org_plan_entitlement_restriction",
+      "breakpoints": true
     }
   ]
 }

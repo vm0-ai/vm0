@@ -69,26 +69,8 @@ function orgPlanEntitlementColumnsAfterModelRestriction() {
   };
 }
 
-function legacyModelRestrictionColumn() {
-  return boolean("restricted_vm0_models").notNull().default(true);
-}
-
 function canonicalModelRestrictionColumn() {
   return boolean("restricted_built_in_models").notNull();
-}
-
-/**
- * Previous-release insert projection used by mixed-version statement tests.
- *
- * Active application writers use the canonical projection below. This legacy
- * shape remains available only to prove that rollback statements stay valid.
- */
-export function orgPlanEntitlementLegacyColumns() {
-  return {
-    ...orgPlanEntitlementColumnsBeforeModelRestriction(),
-    restrictedVm0Models: legacyModelRestrictionColumn(),
-    ...orgPlanEntitlementColumnsAfterModelRestriction(),
-  };
 }
 
 /**
@@ -115,7 +97,6 @@ export const orgPlanEntitlements = pgTable(
   "org_plan_entitlements",
   {
     ...orgPlanEntitlementColumnsBeforeModelRestriction(),
-    restrictedVm0Models: legacyModelRestrictionColumn(),
     ...orgPlanEntitlementColumnsAfterModelRestriction(),
     restrictedBuiltInModels: canonicalModelRestrictionColumn(),
   },

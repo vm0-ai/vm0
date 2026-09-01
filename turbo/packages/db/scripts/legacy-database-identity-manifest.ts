@@ -79,19 +79,6 @@ const acquisitionDisposition = {
     "#28368 may remove the bridge or contract acquisition_vm0_source only after writer-stop, exact parity, the 7-day reporting-reader audit, rollback drain, and replayed/regenerated catalog-contract verification all pass.",
 } as const satisfies ManifestDisposition;
 
-const entitlementDisposition = {
-  classification: "migrate",
-  reason:
-    "The legacy entitlement column, updated org-metadata helper, and temporary mirror bridge still encode the retired built-in-model brand during the canonical expand release.",
-  ownerIssue: "#28368",
-  writerStopCondition:
-    "A separately reviewed switch makes the canonical built-in-model entitlement field the only active application reader and writer while the mirror bridge remains available for rollback.",
-  drainEvidence:
-    "After a bounded backfill, exact MaskDB queries show zero canonical NULL, mismatched, or legacy-only entitlement rows, and a 7-day API and billing audit shows zero legacy readers or writers.",
-  removalGate:
-    "#28368 may remove the mirror bridge, replace the helper again, or contract the legacy field only after the switch, backfill, rollback drain, 7-day zero-reader/writer audit, and exact replayed catalog verification all pass.",
-} as const satisfies ManifestDisposition;
-
 const publicBrandDisposition = {
   classification: "retain",
   reason:
@@ -151,31 +138,6 @@ const nonWorkflowPhysicalEntries = [
       },
     ],
     acquisitionDisposition,
-  ),
-  ...physicalEntries(
-    [
-      {
-        key: "column:public.org_plan_entitlements.restricted_vm0_models",
-        kind: "column",
-        sources: SNAPSHOT_AND_CATALOG,
-      },
-      {
-        key: "function:public.ensure_legacy_org_metadata_plan_entitlement()",
-        kind: "function",
-        sources: CATALOG_ONLY,
-      },
-      {
-        key: "function:public.sync_org_plan_entitlement_model_restrictions_1023()",
-        kind: "function",
-        sources: CATALOG_ONLY,
-      },
-      {
-        key: "trigger:public.org_plan_entitlements.sync_org_plan_entitlement_model_restrictions_1023",
-        kind: "trigger",
-        sources: CATALOG_ONLY,
-      },
-    ],
-    entitlementDisposition,
   ),
   ...physicalEntries(
     [
