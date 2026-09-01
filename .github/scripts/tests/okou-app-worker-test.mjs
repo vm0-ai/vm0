@@ -168,15 +168,12 @@ const previewOrigin = "https://pr-25304-api.vm6.ai";
 const clerkJsVersion = "6.25.8";
 const previewClerkHost = "informed-calf-6.clerk.accounts.dev";
 const productionClerkHost = "clerk.vm0.ai";
-const clerkSatelliteDomain = "app.okou.ai";
 const previewClerkPublishableKey = publishableKey("test", previewClerkHost);
 const productionClerkPublishableKey = publishableKey(
   "live",
   productionClerkHost,
 );
-const previewClerkScriptUrl = clerkScriptUrl(previewClerkHost);
-const productionClerkScriptUrl = clerkScriptUrl(productionClerkHost);
-const satelliteClerkScriptUrl = clerkScriptUrl(`clerk.${clerkSatelliteDomain}`);
+const clerkBrowserScriptUrl = `https://cdn.jsdelivr.net/npm/@clerk/clerk-js@${clerkJsVersion}/dist/clerk.browser.js`;
 const builtIndexTemplate = indexTemplate
   .replaceAll(
     "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%",
@@ -186,9 +183,8 @@ const builtIndexTemplate = indexTemplate
     "%VITE_CLERK_PUBLISHABLE_KEY_PROD%",
     productionClerkPublishableKey,
   )
-  .replaceAll("__VM0_CLERK_PREVIEW_SCRIPT_URL__", previewClerkScriptUrl)
-  .replaceAll("__VM0_CLERK_PRODUCTION_SCRIPT_URL__", productionClerkScriptUrl)
-  .replaceAll("__VM0_CLERK_SATELLITE_SCRIPT_URL__", satelliteClerkScriptUrl);
+  .replaceAll("__VM0_CLERK_BROWSER_SCRIPT_URL__", clerkBrowserScriptUrl);
+const expectedClerkCoreScript = clerkCoreScript(builtIndexTemplate);
 const expectedClerkBootstrap = clerkBootstrap(builtIndexTemplate);
 const vm0Description =
   "VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.";
@@ -197,10 +193,6 @@ const okouDescription =
 
 function publishableKey(environment, host) {
   return `pk_${environment}_${Buffer.from(`${host}$`).toString("base64")}`;
-}
-
-function clerkScriptUrl(host) {
-  return `https://${host}/npm/@clerk/clerk-js@${clerkJsVersion}/dist/clerk.browser.js`;
 }
 
 function requestUrl(input) {
@@ -306,6 +298,15 @@ function clerkBootstrap(html) {
   return bootstrap;
 }
 
+function clerkCoreScript(html) {
+  const script =
+    /<script\b[^>]*id="vm0-clerk-core-script"[^>]*><\/script>/iu.exec(html)?.[0];
+  if (!script) {
+    throw new Error("Clerk core script is unavailable");
+  }
+  return script;
+}
+
 function assertBootstrapAvatar(html, staticAssetsOrigin) {
   assert.doesNotMatch(html, /app-bootstrap-skeleton__avatar-placeholder/u);
   const sourceByLayer = {
@@ -402,6 +403,7 @@ assert.ok(
   ),
 );
 assertBootstrapAvatar(vm0Page.html, "https://static.vm0.io");
+assert.equal(clerkCoreScript(vm0Page.html), expectedClerkCoreScript);
 assert.equal(clerkBootstrap(vm0Page.html), expectedClerkBootstrap);
 
 const okouPage = await requestAppPage("https://app.okou.ai");
@@ -447,6 +449,7 @@ assert.ok(
   ),
 );
 assertBootstrapAvatar(okouPage.html, "https://static.okou.io");
+assert.equal(clerkCoreScript(okouPage.html), expectedClerkCoreScript);
 assert.equal(clerkBootstrap(okouPage.html), expectedClerkBootstrap);
 
 const okouPreview = await requestAppPage(
@@ -463,6 +466,7 @@ assert.equal(
   previewOrigin,
 );
 assert.equal(clerkBootstrap(okouPreview.html), expectedClerkBootstrap);
+assert.equal(clerkCoreScript(okouPreview.html), expectedClerkCoreScript);
 assert.equal(okouPreview.html.includes("/npm/@clerk/ui@"), false);
 
 const untrustedSuffix = await requestAppPage("https://okou.ai.evil.example");

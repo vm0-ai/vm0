@@ -200,6 +200,13 @@
   </head>
   <body>
     <div id="root"></div>
+    <script
+      id="vm0-clerk-core-script"
+      src="__VM0_CLERK_BROWSER_SCRIPT_URL__"
+      crossorigin="anonymous"
+      defer
+      type="text/javascript"
+    ></script>
     <script data-vm0-clerk-bootstrap="">
       (function () {
         // Keep host, API-origin, and preview-bypass selection aligned with
@@ -230,16 +237,6 @@
         var publishableKey = production
           ? "%VITE_CLERK_PUBLISHABLE_KEY_PROD%"
           : "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%";
-        var scriptUrl = satellite
-          ? "__VM0_CLERK_SATELLITE_SCRIPT_URL__"
-          : production
-            ? "__VM0_CLERK_PRODUCTION_SCRIPT_URL__"
-            : "__VM0_CLERK_PREVIEW_SCRIPT_URL__";
-        var preconnect = document.createElement("link");
-        preconnect.rel = "preconnect";
-        preconnect.href = new URL(scriptUrl).origin;
-        preconnect.crossOrigin = "anonymous";
-        document.head.appendChild(preconnect);
         var authOrigin = satellite ? "https://app.vm0.ai" : location.origin;
         var loadOptions = {
           afterSignOutUrl: new URL("/sign-in", authOrigin).toString(),
@@ -595,10 +592,8 @@
         }
         window.addEventListener("pagehide", abortOnFinalPageHide);
 
-        var script = document.createElement("script");
-        script.async = false;
-        script.defer = true;
-        script.crossOrigin = "anonymous";
+        var script = document.getElementById("vm0-clerk-core-script");
+        if (!script) throw new Error("Clerk core script is unavailable");
         script.dataset.clerkJsScript = "";
         script.dataset.clerkPublishableKey = publishableKey;
         if (satellite) {
@@ -608,9 +603,6 @@
           script.remove();
         };
         script.onload = startClerk;
-        script.src = scriptUrl;
-        script.type = "text/javascript";
-        document.head.appendChild(script);
       })();
     </script>
     <script type="module" src="/src/main.ts"></script>
