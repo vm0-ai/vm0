@@ -54,6 +54,38 @@ const trackFakeChatEventObject = createFixtureTracker(
 const R2_GC_SLOT_MS = 10 * 60 * 1000;
 const R2_GC_SHARD_GROUP_COUNT = 16 ** 2;
 
+function sanitizedLegacyControlRevokeLine(row: ChatEventRow): string {
+  const invalidFields = [
+    ...(row.eventType === "control.revoke" ? [] : ["eventType"]),
+    ...(row.runId === null ? [] : ["runId"]),
+    ...(row.revokesEventId === null ? ["revokesEventId"] : []),
+    ...(row.contextType === "morning_brief" ? [] : ["contextType"]),
+    ...(row.contextId === row.revokesEventId ? [] : ["contextId"]),
+    ...(row.payload === null ? [] : ["payload"]),
+    ...(row.runEventSequenceNumber === null ? [] : ["runEventSequenceNumber"]),
+    ...(row.runEventId === null ? [] : ["runEventId"]),
+  ];
+  if (invalidFields.length > 0) {
+    throw new Error(
+      `Expected an exact historical queue-discard row; invalid fields: ${invalidFields.join(", ")}`,
+    );
+  }
+  return `${JSON.stringify({
+    id: row.id,
+    chatThreadId: row.chatThreadId,
+    runId: null,
+    revokesEventId: row.revokesEventId,
+    eventType: "control.revoke",
+    payload: null,
+    contextType: "morning_brief",
+    contextId: row.contextId,
+    runEventSequenceNumber: null,
+    runEventId: null,
+    seqId: row.seqId,
+    createdAt: row.createdAt,
+  })}\n`;
+}
+
 function mockR2GcWindowForKey(key: string, after: Date): Date {
   const prefixStart = "chat-events/".length;
   const shardGroup = Number.parseInt(
@@ -253,7 +285,7 @@ describe("chat event snapshot read endpoints", () => {
     });
   }, 60_000);
 
-  it("repairs all five retired Morning Brief archive shapes before cold download", async () => {
+  it("repairs retired Morning Brief documents and context-carrying revocations before cold download", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Morning Brief archive repair agent",
@@ -370,7 +402,27 @@ describe("chat event snapshot read endpoints", () => {
     if (contextOnlyRow === undefined) {
       throw new Error("Expected a context-only historical rejection row");
     }
+    const contextCarryingRevokeRow = originalRows.find((row) => {
+      return row.eventType === "input.rejected" && row.id !== contextOnlyRow.id;
+    });
+    if (
+      contextCarryingRevokeRow === undefined ||
+      contextCarryingRevokeRow.revokesEventId === null
+    ) {
+      throw new Error("Expected a historical revocation source row");
+    }
     const expectedRows = originalRows.map((row): ChatEventRow => {
+      if (row.id === contextCarryingRevokeRow.id) {
+        return chatEventRowSchema.parse({
+          ...row,
+          eventType: "control.revoke",
+          payload: null,
+          contextType: "web",
+          contextId: null,
+          runEventSequenceNumber: null,
+          runEventId: null,
+        });
+      }
       const promptIndex = promptIndexById.get(row.id);
       if (promptIndex === undefined) {
         return row.id === contextOnlyRow.id
@@ -404,6 +456,13 @@ describe("chat event snapshot read endpoints", () => {
     }
 
     const staleRows = expectedRows.map((row): ChatEventRow => {
+      if (row.id === contextCarryingRevokeRow.id) {
+        return chatEventRowSchema.parse({
+          ...row,
+          contextType: "morning_brief",
+          contextId: row.revokesEventId,
+        });
+      }
       const promptIndex = promptIndexById.get(row.id);
       if (promptIndex !== undefined) {
         const userMessage = historicalDocuments[promptIndex];
@@ -437,15 +496,28 @@ describe("chat event snapshot read endpoints", () => {
           })
         : row;
     });
-    const staleBody = gzipSync(
-      Buffer.from(
-        staleRows
-          .map((row) => {
-            return `${JSON.stringify(row)}\n`;
-          })
-          .join(""),
-      ),
+    const staleArchive = Buffer.from(
+      staleRows
+        .map((row) => {
+          return row.id === contextCarryingRevokeRow.id
+            ? sanitizedLegacyControlRevokeLine(row)
+            : `${JSON.stringify(row)}\n`;
+        })
+        .join(""),
     );
+    const staleContextCarryingRevoke = staleRows.find((row) => {
+      return row.id === contextCarryingRevokeRow.id;
+    });
+    if (staleContextCarryingRevoke === undefined) {
+      throw new Error("Expected the byte-exact historical queue-discard row");
+    }
+    const byteExactRevokeLine = sanitizedLegacyControlRevokeLine(
+      staleContextCarryingRevoke,
+    );
+    expect(
+      staleArchive.includes(Buffer.from(byteExactRevokeLine)),
+    ).toBeTruthy();
+    const staleBody = gzipSync(staleArchive);
     const staleObjectKey = `chat-events/${threadId}/${originalHead.last_seq_id.toString()}-${createHash("sha256").update(staleBody).digest("hex")}.ndjson.gz`;
     writeFakeChatEventObject(staleObjectKey, staleBody);
     await trackFakeChatEventObject(Promise.resolve(staleObjectKey));
@@ -494,21 +566,36 @@ describe("chat event snapshot read endpoints", () => {
       repairedRows.map((row) => {
         return {
           id: row.id,
+          eventType: row.eventType,
           seqId: row.seqId,
           runId: row.runId,
           revokesEventId: row.revokesEventId,
+          payload: row.payload,
         };
       }),
     ).toStrictEqual(
       expectedRows.map((row) => {
         return {
           id: row.id,
+          eventType: row.eventType,
           seqId: row.seqId,
           runId: row.runId,
           revokesEventId: row.revokesEventId,
+          payload: row.payload,
         };
       }),
     );
+    expect(
+      repairedRows.find((row) => {
+        return row.id === contextCarryingRevokeRow.id;
+      }),
+    ).toMatchObject({
+      eventType: "control.revoke",
+      payload: null,
+      contextType: "web",
+      contextId: null,
+      revokesEventId: contextCarryingRevokeRow.revokesEventId,
+    });
 
     const projectedSnapshot = repairedRows.map(chatEventFromRow);
     const projectedPrompts = projectedSnapshot.filter((event) => {
@@ -547,9 +634,24 @@ describe("chat event snapshot read endpoints", () => {
     await expect(
       readChatEventRowsAsPreviousApiFixture(context, threadId),
     ).resolves.toStrictEqual(canonicalRowsBeforeRepair);
+
+    const replay = await accept(
+      eventsClient().snapshot({
+        headers: authenticate(owner),
+        params: { threadId },
+      }),
+      [200],
+    );
+    expect(replay.body).toStrictEqual(download.body);
+    await expect(
+      readChatEventSnapshotHead(context, threadId),
+    ).resolves.toStrictEqual(repairedHead);
+    expect(readFakeChatEventObject(repairedHead.object_key)).toStrictEqual(
+      repairedObject,
+    );
   }, 90_000);
 
-  it("fails closed without moving the pointer for an unexpected retired archive part", async () => {
+  it("fails closed without moving the pointer for malformed or future archive shapes", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Malformed Morning Brief archive agent",
@@ -625,7 +727,199 @@ describe("chat event snapshot read endpoints", () => {
     await expect(
       readChatEventSnapshotHead(context, threadId),
     ).resolves.toStrictEqual(staleHead);
+
+    const rejected = rows.find((row) => {
+      return row.eventType === "input.rejected";
+    });
+    if (rejected === undefined || rejected.revokesEventId === null) {
+      throw new Error("Expected a malformed historical revocation fixture");
+    }
+    const broadControlBody = gzipSync(
+      Buffer.from(
+        rows
+          .map((row) => {
+            return `${JSON.stringify(
+              row.id === rejected.id
+                ? chatEventRowSchema.parse({
+                    ...row,
+                    eventType: "control.revoke",
+                    payload: {},
+                    contextType: "morning_brief",
+                    contextId: row.revokesEventId,
+                  })
+                : row,
+            )}\n`;
+          })
+          .join(""),
+      ),
+    );
+    const broadControlKey = `chat-events/${threadId}/${originalHead.last_seq_id.toString()}-${createHash("sha256").update(broadControlBody).digest("hex")}.ndjson.gz`;
+    writeFakeChatEventObject(broadControlKey, broadControlBody);
+    await trackFakeChatEventObject(Promise.resolve(broadControlKey));
+    await updateChatEventSnapshotHead(context, threadId, broadControlKey);
+    const broadControlHead = await readChatEventSnapshotHead(context, threadId);
+    await expect(
+      eventsClient().snapshot({
+        headers: authenticate(owner),
+        params: { threadId },
+      }),
+    ).rejects.toThrow("Unknown response status 500");
+    await expect(
+      readChatEventSnapshotHead(context, threadId),
+    ).resolves.toStrictEqual(broadControlHead);
+
+    const futureObjectKey = `chat-events/${threadId}/${originalHead.last_seq_id.toString()}-r2-${createHash("sha256").update(originalObject).digest("hex")}.ndjson.gz`;
+    writeFakeChatEventObject(futureObjectKey, originalObject);
+    await trackFakeChatEventObject(Promise.resolve(futureObjectKey));
+    await updateChatEventSnapshotHead(context, threadId, futureObjectKey);
+    const futureHead = await readChatEventSnapshotHead(context, threadId);
+    await expect(
+      eventsClient().snapshot({
+        headers: authenticate(owner),
+        params: { threadId },
+      }),
+    ).rejects.toThrow("Unknown response status 500");
+    await expect(
+      readChatEventSnapshotHead(context, threadId),
+    ).resolves.toStrictEqual(futureHead);
   }, 60_000);
+
+  it("classifies legacy Snapshot decode failures without logging row data", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Snapshot decode classification agent",
+    });
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `snapshot-decode-classification-${randomUUID()}`,
+    });
+    await projectChatEventSearch(threadId);
+    await runSnapshotCron([threadId]);
+    const originalHead = await readChatEventSnapshotHead(context, threadId);
+    const originalObject = readFakeChatEventObject(originalHead.object_key);
+    if (originalObject === undefined) {
+      throw new Error("Expected a Snapshot object for decode classification");
+    }
+    const originalBody = gunzipSync(originalObject);
+    const originalRows = originalBody
+      .toString("utf8")
+      .trimEnd()
+      .split("\n")
+      .map((line) => {
+        return chatEventRowSchema.parse(JSON.parse(line));
+      });
+    const inputRow = originalRows.find((row) => {
+      return row.eventType === "input.prompt";
+    });
+    const firstRow = originalRows[0];
+    if (inputRow === undefined || firstRow === undefined) {
+      throw new Error("Expected complete Snapshot decode fixtures");
+    }
+    const encodeRows = (rows: readonly unknown[]): Buffer => {
+      return Buffer.from(
+        rows
+          .map((row) => {
+            return `${JSON.stringify(row)}\n`;
+          })
+          .join(""),
+      );
+    };
+    const rawRowBody = Buffer.from(
+      `${JSON.stringify({ ...firstRow, unexpected: true })}\n`,
+    );
+    const projectionBody = encodeRows(
+      originalRows.map((row) => {
+        return row.id === inputRow.id ? { ...row, payload: null } : row;
+      }),
+    );
+    const prefixBody = encodeRows(
+      originalRows.map((row) => {
+        return row.id === firstRow.id
+          ? { ...row, chatThreadId: randomUUID() }
+          : row;
+      }),
+    );
+    const terminalBody = encodeRows(originalRows.slice(0, -1));
+    const invalidGzip = Buffer.from("sanitized invalid gzip fixture");
+    const cases = [
+      {
+        failureClass: "checksum",
+        object: originalObject,
+        keyDigest: createHash("sha256")
+          .update("different sanitized checksum fixture")
+          .digest("hex"),
+      },
+      {
+        failureClass: "gzip",
+        object: invalidGzip,
+        keyDigest: createHash("sha256").update(invalidGzip).digest("hex"),
+      },
+      {
+        failureClass: "raw_row",
+        object: gzipSync(rawRowBody),
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(projectionBody),
+      },
+      {
+        failureClass: "prefix",
+        object: gzipSync(prefixBody),
+      },
+      {
+        failureClass: "terminal",
+        object: gzipSync(terminalBody),
+      },
+    ] as const;
+
+    for (const testCase of cases) {
+      const digest =
+        "keyDigest" in testCase
+          ? testCase.keyDigest
+          : createHash("sha256").update(testCase.object).digest("hex");
+      const objectKey = `chat-events/${threadId}/${originalHead.last_seq_id.toString()}-${digest}.ndjson.gz`;
+      writeFakeChatEventObject(objectKey, testCase.object);
+      await trackFakeChatEventObject(Promise.resolve(objectKey));
+      await updateChatEventSnapshotHead(context, threadId, objectKey);
+      const staleHead = await readChatEventSnapshotHead(context, threadId);
+      context.mocks.axiomLogging.warn.mockClear();
+
+      await expect(
+        eventsClient().snapshot({
+          headers: authenticate(owner),
+          params: { threadId },
+        }),
+      ).rejects.toThrow("Unknown response status 500");
+      await expect(
+        readChatEventSnapshotHead(context, threadId),
+      ).resolves.toStrictEqual(staleHead);
+      expect(readFakeChatEventObject(objectKey)).toStrictEqual(testCase.object);
+
+      const skipLog = context.mocks.axiomLogging.warn.mock.calls.find(
+        ([message, fields]) => {
+          return (
+            message === "Skipped Chat Event Snapshot pointer" &&
+            (fields as Record<string, unknown> | undefined)?.type ===
+              "chat_event_snapshot_head_skipped"
+          );
+        },
+      );
+      const fields = skipLog?.[1];
+      if (typeof fields !== "object" || fields === null) {
+        throw new Error("Expected a bounded Snapshot decode failure log");
+      }
+      expect(fields).toMatchObject({
+        type: "chat_event_snapshot_head_skipped",
+        chatThreadId: threadId,
+        reason: "undecodable",
+        failureClass: testCase.failureClass,
+        context: "api:cron:snapshot-chat-events",
+      });
+      expect(Object.keys(fields).sort()).toStrictEqual(
+        ["chatThreadId", "context", "failureClass", "reason", "type"].sort(),
+      );
+    }
+  }, 90_000);
 
   it("applies the same schema-version errors to Snapshot and Raw Event reads", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
