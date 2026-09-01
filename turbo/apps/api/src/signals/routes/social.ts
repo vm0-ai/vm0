@@ -1,6 +1,7 @@
 import {
   publicSocialErrorCode,
   publicSocialErrorMessage,
+  redactSocialProviderIdentity,
   socialContract,
 } from "@okouai/api-contracts/contracts/social";
 import { command } from "ccstate";
@@ -33,48 +34,6 @@ function isAgentFacing(auth: { readonly tokenType: string }): boolean {
   return auth.tokenType === "agent" || auth.tokenType === "sandbox";
 }
 
-const PROVIDER_IDENTITY_KEYS = ["backend", "service", "source"] as const;
-
-function isProviderIdentityKey(key: string): boolean {
-  const normalized = key.replace(/[\s_-]/gu, "").toLowerCase();
-  return (
-    normalized.includes("provider") ||
-    normalized.includes("vendor") ||
-    PROVIDER_IDENTITY_KEYS.some((candidate) => {
-      return candidate === normalized;
-    })
-  );
-}
-
-/**
- * Remove provider identity fields from JSON-shaped result extensions too.
- * Social result schemas intentionally preserve unknown JSON fields, so a
- * provider can otherwise reintroduce its own name below the response envelope.
- * Object-valued download metadata is retained; only identity strings are
- * removed.
- */
-function redactProviderIdentity(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(redactProviderIdentity);
-  }
-  if (!isRecord(value)) {
-    return value;
-  }
-
-  const redacted: Record<string, unknown> = {};
-  for (const [key, nested] of Object.entries(value)) {
-    if (
-      isProviderIdentityKey(key) &&
-      typeof nested === "string" &&
-      /socialkit(?:\.dev)?/iu.test(nested)
-    ) {
-      continue;
-    }
-    redacted[key] = redactProviderIdentity(nested);
-  }
-  return redacted;
-}
-
 /**
  * Remove upstream implementation details at the agent boundary. Internal
  * services keep the provider key for billing, reconciliation, and logs, but
@@ -86,7 +45,7 @@ function redactAgentSocialResponse<T>(response: T): T {
   }
 
   const body = response.body;
-  const publicBody = redactProviderIdentity(body);
+  const publicBody = redactSocialProviderIdentity(body);
   if (!isRecord(publicBody)) {
     return response;
   }

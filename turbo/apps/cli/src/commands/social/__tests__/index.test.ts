@@ -301,6 +301,12 @@ describe("okou social command", () => {
       {
         query: "typed tools",
         results: [{ title: "Typed result", views: 10 }],
+        providerName: "SocialKit",
+        nested: {
+          providerCode: "socialkit",
+          items: [{ upstreamProvider: "socialkit" }],
+        },
+        source: { provider: "youtube" },
       },
     );
     server.use(
@@ -327,9 +333,15 @@ describe("okou social command", () => {
       tool: "youtube_search",
       input: { query: "typed tools", limit: 10, cache: false },
     });
-    expect(mockConsoleLog).toHaveBeenCalledWith(
-      JSON.stringify(publicSocialResponseFixture(response)),
-    );
+    expect(JSON.parse(output()) as unknown).toStrictEqual({
+      ...publicSocialResponseFixture(response),
+      result: {
+        query: "typed tools",
+        results: [{ title: "Typed result", views: 10 }],
+        nested: { items: [{}] },
+        source: { provider: "youtube" },
+      },
+    });
     expect(output()).not.toMatch(/socialkit/iu);
   });
 

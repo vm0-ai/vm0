@@ -1442,6 +1442,7 @@ export {
   socialKitErrorSchema,
   publicSocialErrorCode,
   publicSocialErrorMessage,
+  redactSocialProviderIdentity,
   socialKitRequestSchema,
   socialKitResponseSchema,
   socialKitTranscriptErrorReasonSchema,

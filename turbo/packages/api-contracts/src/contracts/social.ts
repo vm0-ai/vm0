@@ -65,6 +65,49 @@ export function publicSocialErrorMessage(message: string): string {
     .replace(/\bsocialkit\b/giu, "Okou Social");
 }
 
+const SOCIAL_PROVIDER_IDENTITY_KEYS = ["backend", "service", "source"] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isSocialProviderIdentityKey(key: string): boolean {
+  const normalized = key.replace(/[\s_-]/gu, "").toLowerCase();
+  return (
+    normalized.includes("provider") ||
+    normalized.includes("vendor") ||
+    SOCIAL_PROVIDER_IDENTITY_KEYS.some((candidate) => {
+      return candidate === normalized;
+    })
+  );
+}
+
+/**
+ * Remove provider identity extensions from JSON-shaped agent output without
+ * rewriting arbitrary social content that happens to mention the provider.
+ */
+export function redactSocialProviderIdentity(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(redactSocialProviderIdentity);
+  }
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  const redacted: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(value)) {
+    if (
+      isSocialProviderIdentityKey(key) &&
+      typeof nested === "string" &&
+      /socialkit(?:\.dev)?/iu.test(nested)
+    ) {
+      continue;
+    }
+    redacted[key] = redactSocialProviderIdentity(nested);
+  }
+  return redacted;
+}
+
 export const socialKitDownloadPlatformSchema = z.enum([
   "youtube",
   "tiktok",

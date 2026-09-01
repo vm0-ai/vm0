@@ -3,6 +3,7 @@ import {
   socialKitErrorSchema,
   publicSocialErrorCode,
   publicSocialErrorMessage,
+  redactSocialProviderIdentity,
   type SocialKitDownloadRequest,
   type SocialKitDownloadResponse,
   type SocialKitRequest,
@@ -21,15 +22,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function publicSocialDownloadResponse(
   response: SocialKitDownloadResponse,
 ): SocialKitDownloadResponse {
-  if (!response.error) {
-    return response;
+  const publicResponse = redactSocialProviderIdentity(
+    response,
+  ) as SocialKitDownloadResponse;
+  if (!publicResponse.error) {
+    return publicResponse;
   }
   return {
-    ...response,
+    ...publicResponse,
     error: {
-      ...response.error,
-      code: publicSocialErrorCode(response.error.code),
-      message: publicSocialErrorMessage(response.error.message),
+      ...publicResponse.error,
+      code: publicSocialErrorCode(publicResponse.error.code),
+      message: publicSocialErrorMessage(publicResponse.error.message),
     },
   };
 }

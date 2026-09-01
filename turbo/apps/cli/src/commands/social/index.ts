@@ -4,6 +4,7 @@ import {
   findManagedSocialKitTool,
   managedSocialKitToolCatalog,
   MANAGED_SOCIALKIT_TOOLS,
+  redactSocialProviderIdentity,
   socialKitRequestSchema,
   socialKitDownloadRequestSchema,
   type ManagedSocialKitPagination,
@@ -384,14 +385,14 @@ type PublicSocialResponse = Omit<SocialKitResponse, "provider">;
 function publicSocialResponse(
   response: SocialKitResponse,
 ): PublicSocialResponse {
-  return {
+  return redactSocialProviderIdentity({
     tool: response.tool,
     billingCategory: response.billingCategory,
     billingQuantity: response.billingQuantity,
     creditsCharged: response.creditsCharged,
     collection: response.collection,
     result: response.result,
-  };
+  }) as PublicSocialResponse;
 }
 
 function printPage(

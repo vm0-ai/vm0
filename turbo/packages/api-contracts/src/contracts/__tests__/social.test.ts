@@ -5,6 +5,7 @@ import {
   MANAGED_SOCIALKIT_TOOLS,
   publicSocialErrorCode,
   publicSocialErrorMessage,
+  redactSocialProviderIdentity,
   socialKitErrorSchema,
   socialKitRequestSchema,
   socialKitResponseSchema,
@@ -130,6 +131,25 @@ describe("managed SocialKit contract", () => {
     expect(
       publicSocialErrorMessage("request failed at https://api.socialkit.dev"),
     ).toBe("request failed at the social data service");
+  });
+
+  it("removes provider identity extensions without rewriting social content", () => {
+    expect(
+      redactSocialProviderIdentity({
+        provider: "socialkit",
+        providerName: "SocialKit",
+        nested: {
+          providerCode: "socialkit",
+          items: [{ upstreamProvider: "socialkit" }],
+        },
+        source: { provider: "youtube" },
+        transcript: "This post compares SocialKit with another service.",
+      }),
+    ).toStrictEqual({
+      nested: { items: [{}] },
+      source: { provider: "youtube" },
+      transcript: "This post compares SocialKit with another service.",
+    });
   });
 
   it.each([
