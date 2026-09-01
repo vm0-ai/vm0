@@ -1214,10 +1214,11 @@ function ChatThreadEmojiPicker({
       <div
         className={cn(
           "flex items-center gap-2 px-2 pt-2",
-          // In rail mode every section carries its own top margin, so this row
-          // adds nothing: the first title then sits the same 16px below the
-          // search field as every later title sits below the grid above it.
-          railEnabled ? "pb-0" : "pb-2",
+          // The gap below the field belongs to this row, because a search hides
+          // the sections and puts a bare result grid under it. 12px here plus
+          // the title's own pt-1 puts the first title the same 16px below the
+          // field as every later title sits below the grid above it.
+          railEnabled ? "pb-3" : "pb-2",
         )}
       >
         <div className="relative flex-1">
@@ -1444,8 +1445,9 @@ function ChatThreadEmojiSection({
       // separates it from the previous grid cannot come from the sticky box
       // itself. Carry it here instead, at twice the 8px left under the label,
       // so the title reads as a heading for its own grid and not as a caption
-      // for the one above it.
-      className={cn(pinnedTitle && "mt-3")}
+      // for the one above it. The first section has no grid above it — the
+      // search row already spaces it off the field.
+      className={cn(pinnedTitle && "mt-3 first:mt-0")}
     >
       <div
         className={cn(
