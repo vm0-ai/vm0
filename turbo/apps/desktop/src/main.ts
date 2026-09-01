@@ -50,6 +50,8 @@ import { DeveloperToolsController } from "./desktop-developer-tools-controller";
 import { DesktopRecorderController } from "./desktop-recorder-controller";
 import { createRecorderNativeBackend } from "./desktop-recorder-native";
 import { deliverRecording } from "./desktop-recorder-delivery";
+import { installDesktopRecorderIpc } from "./desktop-recorder-electron";
+import { DesktopRecorderWindows } from "./desktop-recorder-windows";
 import { STOP_SCREEN_RECORDING_ACCELERATOR } from "./desktop-recorder-types";
 import {
   getComputerUsePermissionState,
@@ -116,6 +118,7 @@ import {
 } from "./desktop-window-lifecycle";
 import { buildDesktopWindowChromeOptions } from "./desktop-window-chrome";
 import {
+  desktopRecorderUrl,
   desktopRendererFilePath,
   desktopRendererUrl,
   isDesktopRendererUrl,
@@ -138,6 +141,7 @@ const desktopAuthSelectOrgUrl = buildDesktopAuthSelectOrgUrl(
 );
 const desktopAuthTokenUrl = buildDesktopAuthTokenUrl(config.webUrl);
 const localRendererUrl = desktopRendererUrl();
+const localRecorderUrl = desktopRecorderUrl("bar");
 const ZERO_FEATURE_SWITCHES_PATH = "/api/feature-switches";
 const noAllowedAppOrigins: ReadonlySet<string> = new Set();
 const ELECTRON_ERR_ABORTED = -3;
@@ -292,12 +296,24 @@ function refreshDesktopTray(): void {
 function notifyScreenRecorderChanged(): void {
   refreshDesktopTray();
 
-  const isRecording = screenRecorder.getState().status === "recording";
-  if (isRecording === (screenRecordingPollTimer !== null)) {
+  const status = screenRecorder.getState().status;
+  // Paused still holds the capture open, so the poll, the stop shortcut and the
+  // on-screen controls all stay alive for it.
+  const isCapturing = status === "recording" || status === "paused";
+
+  // The controller belongs to a live capture and nothing else. Deciding that
+  // here rather than at each call site is what dismisses it when a recording
+  // ends from the tray, the shortcut, the system indicator, or a failure — and
+  // what takes it off screen the moment a finish starts uploading.
+  if (!isCapturing) {
+    recorderWindows?.hideController();
+  }
+
+  if (isCapturing === (screenRecordingPollTimer !== null)) {
     return;
   }
 
-  if (isRecording) {
+  if (isCapturing) {
     screenRecordingPollTimer = setInterval(() => {
       void screenRecorder.refreshRecordingStatus().catch((error: unknown) => {
         console.warn("Desktop screen recording status refresh failed", error);
@@ -730,6 +746,60 @@ function installComputerUse(): void {
   );
 }
 
+let recorderWindows: DesktopRecorderWindows | null = null;
+
+function getRecorderWindows(): DesktopRecorderWindows {
+  recorderWindows ??= new DesktopRecorderWindows({
+    preloadPath: preloadPath(),
+    sessionPartition: config.sessionPartition,
+    logError: (error) => {
+      console.error("Desktop recorder overlay failed", error);
+    },
+  });
+  return recorderWindows;
+}
+
+function installDesktopRecorder(): void {
+  installDesktopRecorderIpc(
+    {
+      getState: () => screenRecorder.getState(),
+      listSources: () => screenRecorder.listSources(),
+      startCapture: async (request) => {
+        const windows = getRecorderWindows();
+        const area = request.sourceKind === "area" ? request.area : null;
+        await screenRecorder.prepare({
+          sourceId:
+            request.sourceKind === "window"
+              ? request.sourceId
+              : windows.captureDisplaySourceId(),
+          sourceKind: request.sourceKind,
+          systemAudio: request.systemAudio,
+          microphone: request.microphone,
+          ...(area ? { area } : {}),
+        });
+        await screenRecorder.start();
+        // The bar has done its job; leaving it up would put it in the capture.
+        windows.hideBar();
+        windows.showController(area);
+      },
+      pause: () => screenRecorder.pause(),
+      resume: () => screenRecorder.resume(),
+      discard: () => screenRecorder.discard(),
+      stop: async () => {
+        await screenRecorder.stop();
+      },
+      selectArea: () => getRecorderWindows().selectArea(),
+      completeAreaSelection: (area) => {
+        getRecorderWindows().completeAreaSelection(area);
+      },
+      cancel: () => {
+        getRecorderWindows().hideBar();
+      },
+    },
+    { recorderUrl: localRecorderUrl },
+  );
+}
+
 function installDesktopDeveloperTools(): void {
   installDesktopDeveloperToolsIpc(
     {
@@ -854,7 +924,7 @@ function installTray(): void {
     },
     getRecorderState: () => screenRecorder.getState(),
     startScreenRecording: async () => {
-      await screenRecorder.startMainDisplayRecording();
+      getRecorderWindows().showBar();
     },
     stopScreenRecording: async () => {
       await screenRecorder.stop();
@@ -1441,6 +1511,7 @@ if (!hasSingleInstanceLock) {
     installKeepAwake();
     installComputerUse();
     installDesktopDeveloperTools();
+    installDesktopRecorder();
     const desktopAuthSession = getAuthSession();
     installDesktopAuth();
     refreshComputerUsePermissionsForState();

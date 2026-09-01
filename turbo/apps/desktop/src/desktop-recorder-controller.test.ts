@@ -35,11 +35,21 @@ function createBackendFake(
 ): RecorderNativeBackend {
   return {
     dispose: vi.fn(),
-    listSources: vi.fn(async () => [
-      { id: "display:1", kind: "display" as const, title: "Built-in Display" },
-    ]),
+    listSources: vi.fn(async () => ({
+      sources: [
+        {
+          id: "display:1",
+          kind: "display" as const,
+          title: "Built-in Display",
+        },
+      ],
+      supportsMicrophone: true,
+    })),
     prepare: vi.fn(async () => PREPARED),
     start: vi.fn(async () => {}),
+    pause: vi.fn(async () => {}),
+    resume: vi.fn(async () => {}),
+    discard: vi.fn(async () => {}),
     stop: vi.fn(async () => RECORDING),
     getStatus: vi.fn(
       async (): Promise<DesktopRecorderNativeStatus> => ({
@@ -97,6 +107,7 @@ async function enableAndPrepare(controller: DesktopRecorderController) {
     sourceId: "display:1",
     sourceKind: "display",
     systemAudio: true,
+    microphone: false,
   });
 }
 
@@ -140,51 +151,6 @@ describe("DesktopRecorderController", () => {
     });
   });
 
-  it("prepares and starts the main display in one step", async () => {
-    const { controller, backend } = createController();
-    controller.setFeatureEnabled(true);
-
-    await controller.startMainDisplayRecording();
-
-    expect(backend.prepare).toHaveBeenCalledWith({
-      sourceId: "display:1",
-      sourceKind: "display",
-      systemAudio: true,
-    });
-    expect(controller.getState().status).toBe("recording");
-  });
-
-  it("ignores windows when picking the main display", async () => {
-    const backend = createBackendFake({
-      listSources: vi.fn(async () => [
-        { id: "window:42", kind: "window" as const, title: "Safari" },
-        { id: "display:7", kind: "display" as const, title: "Studio Display" },
-      ]),
-    });
-    const { controller } = createController(backend);
-    controller.setFeatureEnabled(true);
-
-    await controller.startMainDisplayRecording();
-
-    expect(backend.prepare).toHaveBeenCalledWith(
-      expect.objectContaining({ sourceId: "display:7" }),
-    );
-  });
-
-  it("reports when there is no display to record", async () => {
-    const backend = createBackendFake({
-      listSources: vi.fn(async () => []),
-    });
-    const { controller } = createController(backend);
-    controller.setFeatureEnabled(true);
-
-    await expect(controller.startMainDisplayRecording()).rejects.toThrow(
-      "No display is available to record",
-    );
-    expect(backend.prepare).not.toHaveBeenCalled();
-    expect(controller.getState().status).toBe("idle");
-  });
-
   it("uploads the finished recording and opens it for review", async () => {
     const { controller, deliver, openReview } = createController();
     await enableAndPrepare(controller);
@@ -206,9 +172,14 @@ describe("DesktopRecorderController", () => {
     });
     controller.setFeatureEnabled(true);
 
-    await expect(controller.startMainDisplayRecording()).rejects.toThrow(
-      "Cannot record while signed out of Okou",
-    );
+    await expect(
+      controller.prepare({
+        sourceId: "display:1",
+        sourceKind: "display",
+        systemAudio: true,
+        microphone: false,
+      }),
+    ).rejects.toThrow("Cannot record while signed out of Okou");
     expect(backend.prepare).not.toHaveBeenCalled();
     expect(controller.getState()).toMatchObject({
       status: "idle",
@@ -269,6 +240,50 @@ describe("DesktopRecorderController", () => {
     );
   });
 
+  it("pauses and resumes a running capture", async () => {
+    const { controller, backend } = createController();
+    await enableAndPrepare(controller);
+    await controller.start();
+
+    await controller.pause();
+    expect(backend.pause).toHaveBeenCalledWith("session-1");
+    expect(controller.getState().status).toBe("paused");
+
+    await controller.resume();
+    expect(backend.resume).toHaveBeenCalledWith("session-1");
+    expect(controller.getState().status).toBe("recording");
+  });
+
+  it("stops a paused capture without resuming it first", async () => {
+    const { controller } = createController();
+    await enableAndPrepare(controller);
+    await controller.start();
+    await controller.pause();
+
+    await expect(controller.stop()).resolves.toEqual(RECORDING);
+    expect(controller.getState().status).toBe("idle");
+  });
+
+  it("keeps nothing to deliver after a discard", async () => {
+    const { controller, backend, deliver } = createController();
+    await enableAndPrepare(controller);
+    await controller.start();
+
+    await controller.discard();
+
+    expect(backend.discard).toHaveBeenCalledWith("session-1");
+    expect(deliver).not.toHaveBeenCalled();
+    // A discarded recording must not be reachable through a later retry.
+    expect(controller.getState()).toMatchObject({
+      status: "idle",
+      sessionId: null,
+      lastRecording: null,
+    });
+    await expect(controller.retryDelivery()).rejects.toThrow(
+      "There is no recording to deliver",
+    );
+  });
+
   it("rejects starting before a session is prepared", async () => {
     const { controller } = createController();
     controller.setFeatureEnabled(true);
@@ -291,6 +306,7 @@ describe("DesktopRecorderController", () => {
         sourceId: "display:1",
         sourceKind: "display",
         systemAudio: true,
+        microphone: false,
       }),
     ).rejects.toThrow("Screen Recording permission required");
     expect(controller.getState().status).toBe("idle");
@@ -299,6 +315,7 @@ describe("DesktopRecorderController", () => {
       sourceId: "display:1",
       sourceKind: "display",
       systemAudio: true,
+      microphone: false,
     });
     expect(controller.getState().status).toBe("ready");
   });

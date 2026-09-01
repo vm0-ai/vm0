@@ -43,6 +43,47 @@ private func optionalBool(_ request: [String: Any], _ key: String) -> Bool {
     return (request[key] as? Bool) ?? false
 }
 
+private func requiredArea(_ request: [String: Any]) throws -> AreaRect {
+    guard
+        let area = request["area"] as? [String: Any],
+        let x = area["x"] as? Double,
+        let y = area["y"] as? Double,
+        let width = area["width"] as? Double,
+        let height = area["height"] as? Double
+    else {
+        throw HelperFailure(
+            code: "capture_failed",
+            message: "Recording an area requires an area rectangle in screen points"
+        )
+    }
+    return AreaRect(x: x, y: y, width: width, height: height)
+}
+
+private func displayArea(_ display: SCDisplay) -> AreaRect {
+    return AreaRect(
+        x: display.frame.origin.x,
+        y: display.frame.origin.y,
+        width: display.frame.width,
+        height: display.frame.height
+    )
+}
+
+private func resolveDisplay(
+    _ content: SCShareableContent,
+    sourceId: String
+) throws -> SCDisplay {
+    guard
+        let rawID = UInt32(sourceId.replacingOccurrences(of: "display:", with: "")),
+        let display = content.displays.first(where: { $0.displayID == rawID })
+    else {
+        throw HelperFailure(
+            code: "source_lost",
+            message: "Display is no longer available: \(sourceId)"
+        )
+    }
+    return display
+}
+
 // MARK: - Source discovery
 
 private func shareableContent(timeout: TimeInterval = 10) throws -> SCShareableContent {
@@ -115,6 +156,16 @@ private func backingScaleFactor(forDisplayID displayID: CGDirectDisplayID) -> Do
     return 1
 }
 
+/// ScreenCaptureKit only gained microphone capture in macOS 15. On 14 the
+/// recorder has no way to reach the microphone that shares the video's clock,
+/// so the option is reported as unsupported rather than half-implemented.
+private func microphoneSupported() -> Bool {
+    if #available(macOS 15.0, *) {
+        return true
+    }
+    return false
+}
+
 private func handleSources() throws -> [String: Any] {
     let content = try shareableContent()
     var sources: [[String: Any]] = []
@@ -143,7 +194,10 @@ private func handleSources() throws -> [String: Any] {
         sources.append(source)
     }
 
-    return ["sources": sources]
+    return [
+        "sources": sources,
+        "supportsMicrophone": microphoneSupported(),
+    ]
 }
 
 /// Capture rate for the stream, and the rate the click track reports so a
@@ -160,7 +214,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     private let configuration: SCStreamConfiguration
     private let geometry: CaptureGeometry
     private let outputSize: OutputSize
-    private let capturesAudio: Bool
+    private let audioPlan: AudioTrackPlan
     private let sampleQueue = DispatchQueue(label: "ai.okou.recorder.samples")
 
     private let clickTracker = ClickTrackRecorder()
@@ -174,11 +228,13 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     private var stream: SCStream?
     private var writer: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
-    private var audioInput: AVAssetWriterInput?
+    private var systemAudioInput: AVAssetWriterInput?
+    private var microphoneInput: AVAssetWriterInput?
     private var outputURL: URL?
     private var sessionStartedAt: CMTime?
     private var latestSampleAt: CMTime?
     private var clickTimeline: ClickTimeline?
+    private var pauseTimeline = PauseTimeline()
     private var startedAtUnixMs = 0
 
     init(
@@ -187,14 +243,14 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         configuration: SCStreamConfiguration,
         geometry: CaptureGeometry,
         outputSize: OutputSize,
-        capturesAudio: Bool
+        audioPlan: AudioTrackPlan
     ) {
         self.id = id
         self.filter = filter
         self.configuration = configuration
         self.geometry = geometry
         self.outputSize = outputSize
-        self.capturesAudio = capturesAudio
+        self.audioPlan = audioPlan
         super.init()
         mach_timebase_info(&timebase)
     }
@@ -223,6 +279,23 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             "heightPoints": geometry.heightPoints,
             "scale": geometry.scale,
         ]
+    }
+
+    private func addAudioTrack(to assetWriter: AVAssetWriter) -> AVAssetWriterInput? {
+        let input = AVAssetWriterInput(
+            mediaType: .audio,
+            outputSettings: [
+                AVFormatIDKey: kAudioFormatMPEG4AAC,
+                AVNumberOfChannelsKey: 2,
+                AVSampleRateKey: 48000,
+            ]
+        )
+        input.expectsMediaDataInRealTime = true
+        guard assetWriter.canAdd(input) else {
+            return nil
+        }
+        assetWriter.add(input)
+        return input
     }
 
     func start(outputPath: String) throws {
@@ -257,22 +330,10 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         }
         assetWriter.add(video)
 
-        var audio: AVAssetWriterInput?
-        if capturesAudio {
-            let input = AVAssetWriterInput(
-                mediaType: .audio,
-                outputSettings: [
-                    AVFormatIDKey: kAudioFormatMPEG4AAC,
-                    AVNumberOfChannelsKey: 2,
-                    AVSampleRateKey: 48000,
-                ]
-            )
-            input.expectsMediaDataInRealTime = true
-            if assetWriter.canAdd(input) {
-                assetWriter.add(input)
-                audio = input
-            }
-        }
+        // One writer input per requested track, so system audio and narration
+        // stay separable in the finished file.
+        let systemAudio = audioPlan.systemAudio ? addAudioTrack(to: assetWriter) : nil
+        let microphone = audioPlan.microphone ? addAudioTrack(to: assetWriter) : nil
 
         let captureStream = SCStream(
             filter: filter,
@@ -284,10 +345,17 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             type: .screen,
             sampleHandlerQueue: sampleQueue
         )
-        if capturesAudio {
+        if audioPlan.systemAudio {
             try captureStream.addStreamOutput(
                 self,
                 type: .audio,
+                sampleHandlerQueue: sampleQueue
+            )
+        }
+        if audioPlan.microphone, #available(macOS 15.0, *) {
+            try captureStream.addStreamOutput(
+                self,
+                type: .microphone,
                 sampleHandlerQueue: sampleQueue
             )
         }
@@ -303,7 +371,8 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         lock.lock()
         writer = assetWriter
         videoInput = video
-        audioInput = audio
+        systemAudioInput = systemAudio
+        microphoneInput = microphone
         stream = captureStream
         outputURL = url
         lock.unlock()
@@ -333,6 +402,61 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         clickTracker.start()
     }
 
+    func pause() throws {
+        try transition(.pause)
+        lock.lock()
+        if let start = sessionStartedAt, let latest = latestSampleAt {
+            pauseTimeline.pause(
+                at: max(0, CMTimeGetSeconds(CMTimeSubtract(latest, start)))
+            )
+        }
+        lock.unlock()
+    }
+
+    func resume() throws {
+        try transition(.resume)
+        lock.lock()
+        if let start = sessionStartedAt, let latest = latestSampleAt {
+            pauseTimeline.resume(
+                at: max(0, CMTimeGetSeconds(CMTimeSubtract(latest, start)))
+            )
+        }
+        lock.unlock()
+    }
+
+    /// Ends the capture and removes what was written. Nothing is handed back,
+    /// so a discarded recording cannot be delivered by mistake.
+    func discard() throws {
+        try transition(.discard)
+        clickTracker.stop()
+
+        lock.lock()
+        let captureStream = stream
+        let assetWriter = writer
+        let url = outputURL
+        stream = nil
+        writer = nil
+        videoInput = nil
+        systemAudioInput = nil
+        microphoneInput = nil
+        lock.unlock()
+
+        if let captureStream {
+            let semaphore = DispatchSemaphore(value: 0)
+            captureStream.stopCapture { _ in
+                semaphore.signal()
+            }
+            _ = semaphore.wait(timeout: .now() + 10)
+        }
+        assetWriter?.cancelWriting()
+        if let url {
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(
+                at: url.deletingPathExtension().appendingPathExtension("clicks.json")
+            )
+        }
+    }
+
     func stop() throws -> [String: Any] {
         try transition(.stop)
         clickTracker.stop()
@@ -353,18 +477,21 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         lock.lock()
         let assetWriter = writer
         let video = videoInput
-        let audio = audioInput
+        let systemAudio = systemAudioInput
+        let microphone = microphoneInput
         let url = outputURL
         let duration = elapsedSecondsLocked()
         let timeline = clickTimeline
         let startedAt = startedAtUnixMs
         writer = nil
         videoInput = nil
-        audioInput = nil
+        systemAudioInput = nil
+        microphoneInput = nil
         lock.unlock()
 
         video?.markAsFinished()
-        audio?.markAsFinished()
+        systemAudio?.markAsFinished()
+        microphone?.markAsFinished()
 
         if let assetWriter {
             let semaphore = DispatchSemaphore(value: 0)
@@ -419,6 +546,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             timeline.map {
                 clickTracker.track(
                     timeline: $0,
+                    pauses: pauseTimeline,
                     geometry: geometry,
                     outputSize: outputSize
                 )
@@ -491,11 +619,48 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         }
     }
 
+    /// Routes a sample to the track it belongs to. Microphone samples arrive on
+    /// their own output type, so they must not be appended to the system audio
+    /// track or the two would be interleaved into one.
+    private func writerInputLocked(for type: SCStreamOutputType) -> AVAssetWriterInput? {
+        if type == .screen {
+            return videoInput
+        }
+        if #available(macOS 15.0, *), type == .microphone {
+            return microphoneInput
+        }
+        return systemAudioInput
+    }
+
+    /// Rewrites a sample's presentation time without touching its payload.
+    private func retimedSampleBuffer(
+        _ sampleBuffer: CMSampleBuffer,
+        to presentationTime: CMTime
+    ) -> CMSampleBuffer? {
+        var timing = CMSampleTimingInfo(
+            duration: CMSampleBufferGetDuration(sampleBuffer),
+            presentationTimeStamp: presentationTime,
+            decodeTimeStamp: .invalid
+        )
+        var copy: CMSampleBuffer?
+        let status = CMSampleBufferCreateCopyWithNewTiming(
+            allocator: kCFAllocatorDefault,
+            sampleBuffer: sampleBuffer,
+            sampleTimingEntryCount: 1,
+            sampleTimingArray: &timing,
+            sampleBufferOut: &copy
+        )
+        return status == noErr ? copy : nil
+    }
+
     private func elapsedSecondsLocked() -> Double {
         guard let start = sessionStartedAt, let latest = latestSampleAt else {
             return 0
         }
-        return max(0, CMTimeGetSeconds(CMTimeSubtract(latest, start)))
+        let captureSeconds = max(0, CMTimeGetSeconds(CMTimeSubtract(latest, start)))
+        // Report how long the recording is, not how long ago it started, so a
+        // paused capture stops advancing its clock.
+        return max(0, captureSeconds - pauseTimeline.pausedSecondsBefore(captureSeconds))
     }
 
     /// Records that the stream ended on its own.
@@ -573,13 +738,33 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             }
         }
         latestSampleAt = timestamp
-        let input = type == .screen ? videoInput : audioInput
+        let input = writerInputLocked(for: type)
+        let start = sessionStartedAt
+        let timeline = pauseTimeline
         lock.unlock()
 
-        guard let input, input.isReadyForMoreMediaData else {
+        guard let input, input.isReadyForMoreMediaData, let start else {
             return
         }
-        input.append(sampleBuffer)
+        // Frames keep arriving while paused; they are dropped, and everything
+        // after a pause is shifted back so the movie has no frozen stretch.
+        let captureSeconds = CMTimeGetSeconds(CMTimeSubtract(timestamp, start))
+        guard let mediaSeconds = timeline.mediaTime(forCaptureTime: captureSeconds)
+        else {
+            return
+        }
+        guard
+            let retimed = retimedSampleBuffer(
+                sampleBuffer,
+                to: CMTimeAdd(
+                    start,
+                    CMTime(seconds: mediaSeconds, preferredTimescale: 600)
+                )
+            )
+        else {
+            return
+        }
+        input.append(retimed)
     }
 }
 
@@ -630,27 +815,52 @@ private func handlePrepare(_ request: [String: Any]) throws -> [String: Any] {
     let sourceId = try requiredString(request, "sourceId")
     let sourceKind = try requiredString(request, "sourceKind")
     let systemAudio = optionalBool(request, "systemAudio")
+    let microphone = optionalBool(request, "microphone")
+    let audioPlan = AudioTrackPolicy.plan(
+        systemAudio: systemAudio,
+        microphone: microphone,
+        microphoneSupported: microphoneSupported()
+    )
     let content = try shareableContent()
 
     let filter: SCContentFilter
     let geometry: CaptureGeometry
 
+    var croppedArea: AreaRect?
+
     if sourceKind == "display" {
-        guard
-            let rawID = UInt32(sourceId.replacingOccurrences(of: "display:", with: "")),
-            let display = content.displays.first(where: { $0.displayID == rawID })
-        else {
-            throw HelperFailure(
-                code: "source_lost",
-                message: "Display is no longer available: \(sourceId)"
-            )
-        }
+        let display = try resolveDisplay(content, sourceId: sourceId)
         filter = SCContentFilter(display: display, excludingWindows: [])
         geometry = CaptureGeometry(
             originX: display.frame.origin.x,
             originY: display.frame.origin.y,
             widthPoints: display.frame.width,
             heightPoints: display.frame.height,
+            scale: backingScaleFactor(forDisplayID: display.displayID)
+        )
+    } else if sourceKind == "area" {
+        // An area is a display capture with a crop: ScreenCaptureKit has no
+        // region filter, so the whole display is filtered and `sourceRect`
+        // narrows it.
+        let display = try resolveDisplay(content, sourceId: sourceId)
+        let requested = try requiredArea(request)
+        guard
+            let area = CaptureAreaPolicy.clamp(requested, toDisplay: displayArea(display))
+        else {
+            throw HelperFailure(
+                code: "capture_failed",
+                message: "The selected area is not on this display, or is too small to record"
+            )
+        }
+        croppedArea = area
+        filter = SCContentFilter(display: display, excludingWindows: [])
+        // The geometry describes the crop, not the display, so clicks map into
+        // the cropped frame rather than the full screen.
+        geometry = CaptureGeometry(
+            originX: area.x,
+            originY: area.y,
+            widthPoints: area.width,
+            heightPoints: area.height,
             scale: backingScaleFactor(forDisplayID: display.displayID)
         )
     } else if sourceKind == "window" {
@@ -685,7 +895,23 @@ private func handlePrepare(_ request: [String: Any]) throws -> [String: Any] {
     configuration.minimumFrameInterval = CMTime(value: 1, timescale: captureFrameRate)
     configuration.showsCursor = true
     configuration.queueDepth = 6
-    configuration.capturesAudio = systemAudio
+    configuration.capturesAudio = audioPlan.systemAudio
+    if audioPlan.microphone, #available(macOS 15.0, *) {
+        configuration.captureMicrophone = true
+    }
+    if let croppedArea {
+        let display = try resolveDisplay(content, sourceId: sourceId)
+        let relative = CaptureAreaPolicy.relativeToDisplay(
+            croppedArea,
+            display: displayArea(display)
+        )
+        configuration.sourceRect = CGRect(
+            x: relative.x,
+            y: relative.y,
+            width: relative.width,
+            height: relative.height
+        )
+    }
 
     let session = RecorderSession(
         id: sessionStore.nextSessionID(),
@@ -693,7 +919,7 @@ private func handlePrepare(_ request: [String: Any]) throws -> [String: Any] {
         configuration: configuration,
         geometry: geometry,
         outputSize: outputSize,
-        capturesAudio: systemAudio
+        audioPlan: audioPlan
     )
     sessionStore.insert(session)
 
@@ -728,6 +954,26 @@ private func handleStop(_ request: [String: Any]) throws -> [String: Any] {
     return try session.stop()
 }
 
+private func handlePause(_ request: [String: Any]) throws -> [String: Any] {
+    let session = try sessionStore.session(try requiredString(request, "sessionId"))
+    try session.pause()
+    return [:]
+}
+
+private func handleResume(_ request: [String: Any]) throws -> [String: Any] {
+    let session = try sessionStore.session(try requiredString(request, "sessionId"))
+    try session.resume()
+    return [:]
+}
+
+private func handleDiscard(_ request: [String: Any]) throws -> [String: Any] {
+    let sessionId = try requiredString(request, "sessionId")
+    let session = try sessionStore.session(sessionId)
+    try session.discard()
+    sessionStore.remove(sessionId)
+    return [:]
+}
+
 private func handleState(_ request: [String: Any]) throws -> [String: Any] {
     let sessionId = try requiredString(request, "sessionId")
     let session = try sessionStore.session(sessionId)
@@ -752,6 +998,12 @@ private func handle(_ request: [String: Any]) throws -> [String: Any] {
         return try handlePrepare(payload)
     case "recorder.start":
         return try handleStart(payload)
+    case "recorder.pause":
+        return try handlePause(payload)
+    case "recorder.resume":
+        return try handleResume(payload)
+    case "recorder.discard":
+        return try handleDiscard(payload)
     case "recorder.stop":
         return try handleStop(payload)
     case "recorder.state":
