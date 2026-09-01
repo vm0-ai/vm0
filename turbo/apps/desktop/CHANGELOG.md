@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.42.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.41.0...desktop-v0.42.0) (2026-09-01)
+
+
+### Features
+
+* **desktop:** choose, record, pause and discard from floating controls ([#30743](https://github.com/vm0-ai/vm0/issues/30743)) ([341b39d](https://github.com/vm0-ai/vm0/commit/341b39dbd5bf870f5c853d4459fbb71fac6ae48b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.386.1
+
 ## [0.41.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.40.5...desktop-v0.41.0) (2026-09-01)
 
 

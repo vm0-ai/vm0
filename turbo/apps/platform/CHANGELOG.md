@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.819.1](https://github.com/vm0-ai/vm0/compare/app-v0.819.0...app-v0.819.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **app:** use Okou status page for Instatus widget ([#30850](https://github.com/vm0-ai/vm0/issues/30850)) ([60060e6](https://github.com/vm0-ai/vm0/commit/60060e6ec616b48fe76eb6a42997ce00fe126cc8))
+
+
+### Performance Improvements
+
+* **platform:** prioritize bootstrap resources for first paint ([#30819](https://github.com/vm0-ai/vm0/issues/30819)) ([b975002](https://github.com/vm0-ai/vm0/commit/b975002c4d52073de866c9ef1ba5d08c5bcfb276))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.386.1
+    * @okouai/core bumped to 8.605.10
+
 ## [0.819.0](https://github.com/vm0-ai/vm0/compare/app-v0.818.0...app-v0.819.0) (2026-09-01)
 
 
