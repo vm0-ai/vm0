@@ -62,6 +62,6 @@ pub use types::{
     GuestProcessWaiter, GuestStateRestoreRequest, GuestStateRestoreTimezone, ProcessControlAck,
     ProcessControlFailureKind, ProcessControlGuestStatus, ProcessControlOutcome,
     ProcessControlWriteState, ProcessExit, ProcessOutputChunk, ProcessOutputMode,
-    ProcessOutputReceiver, StartAgentProcessRequest, StartProcessRequest, StorageManifestRequest,
-    WriteFileEntry,
+    ProcessOutputReceiver, SessionHistoryIdentityVerifyRequest, StartAgentProcessRequest,
+    StartProcessRequest, StorageManifestRequest, WriteFileEntry,
 };

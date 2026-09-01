@@ -12,6 +12,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{ChildStderr, ChildStdout, Command, Stdio};
 
+use guest_contracts::session_history_identity::SessionHistoryIdentityVerifyRequest;
+
 use crate::process_containment::{ExecProcessContainment, ProcessContainmentCleanupMode};
 use crate::shell_command::{SpawnedCommand, spawn_command_in_containment};
 
@@ -48,6 +50,50 @@ pub(crate) fn spawn_agent_command_with_pipes(
     spawn_agent_executable_with_pipes(program.executable(), env, process_containment)
 }
 
+pub(crate) fn spawn_session_history_identity_verifier_with_pipes(
+    request: &SessionHistoryIdentityVerifyRequest,
+    process_containment: ExecProcessContainment,
+    program: &GuestAgentProgram,
+) -> io::Result<SpawnedCommand> {
+    request
+        .validate()
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error.to_string()))?;
+    let history_size_bytes = request.expectation.history_size_bytes.to_string();
+    let spawn_result = (|| {
+        validate_agent_executable(program.executable())?;
+        let mut command = Command::new(program.executable());
+        command
+            .arg("verify-session-history-identity")
+            .arg(&request.metadata_path)
+            .arg(request.expectation.framework.as_str())
+            .arg(&request.expectation.session_id_hash)
+            .arg(request.expectation.history_ref_kind.as_str())
+            .arg(&request.expectation.history_hash)
+            .arg(&history_size_bytes)
+            .env_clear()
+            .env(
+                guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
+                &request.runtime_dir,
+            )
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        crate::user::configure_guest_agent_command_environment(&mut command)?;
+        spawn_command_in_containment(&mut command, false, &process_containment)
+    })();
+
+    match spawn_result {
+        Ok(child) => Ok(SpawnedCommand {
+            child,
+            env_script: None,
+            process_containment,
+        }),
+        Err(error) => {
+            let _ = process_containment.cleanup(ProcessContainmentCleanupMode::Forced);
+            Err(error)
+        }
+    }
+}
+
 fn spawn_agent_executable_with_pipes(
     executable: &Path,
     env: &[(&str, &str)],
@@ -67,7 +113,7 @@ fn spawn_agent_executable_with_pipes(
             .envs(env.iter().copied())
             .stdout(Stdio::from(output_writer))
             .stderr(Stdio::from(output_stderr));
-        crate::user::configure_agent_command_environment(&mut command)?;
+        crate::user::configure_guest_agent_command_environment(&mut command)?;
         let mut child = spawn_command_in_containment(&mut command, false, &process_containment)?;
         child.stdout = Some(ChildStdout::from(output_reader));
         child.stderr = Some(ChildStderr::from(diagnostic_reader));

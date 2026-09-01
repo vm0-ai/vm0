@@ -103,12 +103,17 @@ impl ExecOperationDiagnostic {
         let process_class = match role {
             ExecProcessRole::Workload => "contained_workload",
             ExecProcessRole::Agent => "controlled_agent",
+            ExecProcessRole::SessionHistoryIdentityVerifier => "session_history_identity_verifier",
         };
         let operation_kind = match (role, supervised) {
             (ExecProcessRole::Workload, false) => "exec",
             (ExecProcessRole::Workload, true) => "start_process",
             (ExecProcessRole::Agent, true) => "start_agent_process",
             (ExecProcessRole::Agent, false) => "invalid",
+            (ExecProcessRole::SessionHistoryIdentityVerifier, false) => {
+                "verify_session_history_identity"
+            }
+            (ExecProcessRole::SessionHistoryIdentityVerifier, true) => "invalid",
         };
         Self {
             seq,
