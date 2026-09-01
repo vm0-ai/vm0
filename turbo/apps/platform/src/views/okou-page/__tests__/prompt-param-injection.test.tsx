@@ -1,11 +1,13 @@
 import { act, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { HttpResponse } from "msw";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
 } from "@okouai/core";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import type { OrgModelPolicy } from "@okouai/api-contracts/contracts/model-providers";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -69,6 +71,174 @@ describe("prompt query parameter injection", () => {
 
     expect(textarea).toHaveTextContent("Set up a daily report");
   });
+
+  it("prefills a desktop recording handoff with both uploaded files", async () => {
+    let fileUrlRequests = 0;
+    context.mocks.http.get("/api/web/file-url", ({ request }) => {
+      fileUrlRequests += 1;
+      const id = new URL(request.url).searchParams.get("file_id");
+      return HttpResponse.json({
+        url: `https://resolved.example/${id ?? "missing"}`,
+      });
+    });
+    const params = new URLSearchParams({
+      "intro-video-recording": "video-upload-id",
+      "intro-video-recording-name": "demo.mp4",
+      "intro-video-recording-size": "1024",
+      "intro-video-clicks": "events-upload-id",
+      "intro-video-clicks-name": "demo.clicks.json",
+      "intro-video-clicks-size": "512",
+      "intro-video-user": "test-user-123",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/?${params.toString()}`,
+      featureSwitches: {
+        [FeatureSwitchKey.IntroVideo]: true,
+        [FeatureSwitchKey.DesktopScreenRecording]: true,
+      },
+    });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await waitFor(() => {
+      expect(textarea).toHaveTextContent(
+        "Create a polished intro video from this desktop screen recording.",
+      );
+      expect(textarea).not.toHaveTextContent("okou video camera");
+      expect(context.store.get(talkDraft$).attachments$).toBeDefined();
+    });
+    const draft = context.store.get(talkDraft$);
+    const attachments = context.store.get(draft.attachments$);
+    expect(
+      attachments.map((attachment) => {
+        return {
+          filename: attachment.filename,
+          size: attachment.size,
+        };
+      }),
+    ).toStrictEqual([
+      { filename: "demo.mp4", size: 1024 },
+      { filename: "demo.clicks.json", size: 512 },
+    ]);
+    const fileInfos = await Promise.all(
+      attachments.map((attachment) => {
+        return context.store.get(attachment.fileInfo$);
+      }),
+    );
+    expect(fileInfos).toStrictEqual([
+      {
+        id: "video-upload-id",
+        url: "https://resolved.example/video-upload-id",
+        contentType: "video/mp4",
+      },
+      {
+        id: "events-upload-id",
+        url: "https://resolved.example/events-upload-id",
+        contentType: "application/json",
+      },
+    ]);
+    expect(
+      context.store.get(searchParams$).has("intro-video-recording"),
+    ).toBeFalsy();
+    expect(context.store.get(draft.agentInstructions$)).toContain(
+      "<intro_video_workflow>",
+    );
+    expect(context.store.get(draft.agentInstructions$)).toContain(
+      "okou video camera",
+    );
+    expect(fileUrlRequests).toBe(2);
+  });
+
+  it.each([
+    {
+      disabledSwitch: "intro video",
+      featureSwitches: {
+        [FeatureSwitchKey.IntroVideo]: false,
+        [FeatureSwitchKey.DesktopScreenRecording]: true,
+      },
+    },
+    {
+      disabledSwitch: "desktop screen recording",
+      featureSwitches: {
+        [FeatureSwitchKey.IntroVideo]: true,
+        [FeatureSwitchKey.DesktopScreenRecording]: false,
+      },
+    },
+  ])(
+    "leaves a desktop recording handoff untouched when $disabledSwitch is disabled",
+    async ({ featureSwitches }) => {
+      const params = new URLSearchParams({
+        "intro-video-recording": "video-upload-id",
+        "intro-video-recording-name": "demo.mp4",
+        "intro-video-recording-size": "1024",
+        "intro-video-clicks": "events-upload-id",
+        "intro-video-clicks-name": "demo.clicks.json",
+        "intro-video-clicks-size": "512",
+        "intro-video-user": "test-user-123",
+      });
+
+      detachedSetupPage({
+        context,
+        path: `/agents/c0000000-0000-4000-a000-000000000001/chat?${params.toString()}`,
+        featureSwitches,
+      });
+
+      const textarea = await waitFor(() => {
+        return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+      });
+      const draft = context.store.get(talkDraft$);
+
+      expect(textarea).not.toHaveTextContent("okou video camera");
+      expect(context.store.get(draft.attachments$)).toHaveLength(0);
+      expect(
+        context.store.get(searchParams$).get("intro-video-recording"),
+      ).toBe("video-upload-id");
+    },
+  );
+
+  it.each([
+    {
+      disabledSwitch: "intro video",
+      featureSwitches: {
+        [FeatureSwitchKey.IntroVideo]: false,
+        [FeatureSwitchKey.DesktopScreenRecording]: true,
+      },
+    },
+    {
+      disabledSwitch: "desktop screen recording",
+      featureSwitches: {
+        [FeatureSwitchKey.IntroVideo]: true,
+        [FeatureSwitchKey.DesktopScreenRecording]: false,
+      },
+    },
+  ])(
+    "does not forward the root desktop handoff when $disabledSwitch is disabled",
+    async ({ featureSwitches }) => {
+      const params = new URLSearchParams({
+        "intro-video-recording": "video-upload-id",
+        "intro-video-clicks": "events-upload-id",
+        "intro-video-user": "test-user-123",
+      });
+
+      detachedSetupPage({
+        context,
+        path: `/?${params.toString()}`,
+        featureSwitches,
+      });
+
+      await expect(
+        screen.findByPlaceholderText(PLACEHOLDER),
+      ).resolves.toBeInTheDocument();
+      const draft = context.store.get(talkDraft$);
+      expect(context.store.get(draft.attachments$)).toHaveLength(0);
+      expect(
+        context.store.get(searchParams$).has("intro-video-recording"),
+      ).toBeFalsy();
+    },
+  );
 
   it("starts an optimistic chat from the prompt route", async () => {
     let runPrompt: string | undefined;

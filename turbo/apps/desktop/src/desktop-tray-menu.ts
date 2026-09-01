@@ -64,7 +64,7 @@ interface DesktopTrayMenuState {
   readonly auth: DesktopAuthState | null;
   readonly authLoading?: boolean;
   readonly authError: string | null;
-  /** Absent while the `desktopScreenRecording` switch is off. */
+  /** Absent unless intro video and native screen recording are both enabled. */
   readonly recorder?: DesktopRecorderState;
 }
 

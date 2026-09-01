@@ -15,6 +15,7 @@ import {
   type IntroVideoSourceKind,
 } from "../external/intro-video-draft-store.ts";
 import type { ComposerSignals } from "./composer-signals.ts";
+import { INTRO_VIDEO_AGENT_INSTRUCTIONS } from "./intro-video-agent-instructions.ts";
 import {
   createDeferredPromise,
   onRef,
@@ -323,8 +324,6 @@ function buildIntroVideoPrompt(args: {
     "",
     "Editing direction:",
     direction,
-    "",
-    "Analyze the source first, remove idle time, emphasize important actions, and use smooth camera pushes around clicks when they improve clarity.",
   ].join("\n");
 }
 
@@ -993,6 +992,7 @@ function createSubmissionCommands(
     ): Promise<boolean> => {
       set(internal.busy$, true);
       set(internal.error$, null);
+      set(composer.draft.setAgentInstructions$, INTRO_VIDEO_AGENT_INSTRUCTIONS);
       set(
         composer.draft.setDraftInput$,
         "Help me create an intro video. Ask me for the source, audience, avatar, voice, and editing direction before generating it.",
@@ -1026,6 +1026,7 @@ function createSubmissionCommands(
       if (!(await set(uploadSourceIfNeeded$, composer, source, signal))) {
         return false;
       }
+      set(composer.draft.setAgentInstructions$, INTRO_VIDEO_AGENT_INSTRUCTIONS);
       set(
         composer.draft.setDraftInput$,
         buildIntroVideoPrompt({

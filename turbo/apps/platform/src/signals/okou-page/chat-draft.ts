@@ -420,6 +420,8 @@ export interface DraftSignals {
   readInput$: Command<string, []>;
   setInput$: Command<void, [string]>;
   appendInput$: Command<void, [string]>;
+  agentInstructions$: Computed<string | null>;
+  setAgentInstructions$: Command<void, [string | null]>;
   setInputSyncTarget$: Command<void, [DraftInputSyncTarget | null]>;
   takeRestoredUserMessage$: Command<UserMessageDocument | null, []>;
   readEditorDocument$: Command<EditorDocumentSnapshot | null, []>;
@@ -505,7 +507,9 @@ export function createRestoredAttachment(
       [200, 404],
       signal,
     );
-    return resolved.status === 404 ? null : persistedInfo;
+    return resolved.status === 404
+      ? null
+      : { ...persistedInfo, url: persistedInfo.url || resolved.body.url };
   });
 
   const cancel$ = command(() => {
@@ -688,6 +692,7 @@ function createPruneUnavailableAttachments(
 function createDraftLifecycleSignals({
   draftInput,
   draftDocument,
+  internalAgentInstructions$,
   internalGenerationTemplate$,
   internalAttachments$,
   internalDragOver$,
@@ -695,6 +700,7 @@ function createDraftLifecycleSignals({
 }: {
   draftInput: ReturnType<typeof createDraftInputSignals>;
   draftDocument: ReturnType<typeof createDraftDocumentSignals>;
+  internalAgentInstructions$: State<string | null>;
   internalGenerationTemplate$: State<GenerationTemplateRequest | undefined>;
   internalAttachments$: State<ChatAttachment[]>;
   internalDragOver$: State<boolean>;
@@ -707,6 +713,7 @@ function createDraftLifecycleSignals({
     set(draftInput.setInput$, "");
     set(draftDocument.setRestoredUserMessage$, null);
     set(draftDocument.setEditorDocument$, null);
+    set(internalAgentInstructions$, null);
     set(internalGenerationTemplate$, undefined);
     const attachments = get(internalAttachments$);
     for (const attachment of attachments) {
@@ -726,6 +733,7 @@ function createDraftLifecycleSignals({
     ): Promise<boolean> => {
       set(draftDocument.setEditorDocument$, null);
       set(draftDocument.setRestoredUserMessage$, value.userMessage);
+      set(internalAgentInstructions$, null);
       set(internalGenerationTemplate$, value.generationTemplate);
       set(internalAttachments$, value.attachments);
       set(draftInput.setInput$, value.content);
@@ -745,11 +753,21 @@ function createDraftLifecycleSignals({
 export function createDraftSignals(): DraftSignals {
   const draftInput = createDraftInputSignals();
   const draftDocument = createDraftDocumentSignals();
+  const internalAgentInstructions$ = state<string | null>(null);
   const internalGenerationTemplate$ = state<
     GenerationTemplateRequest | undefined
   >(undefined);
   const internalAttachments$ = state<ChatAttachment[]>([]);
   const internalDragOver$ = state(false);
+
+  const agentInstructions$ = computed((get) => {
+    return get(internalAgentInstructions$);
+  });
+  const setAgentInstructions$ = command(
+    ({ set }, value: string | null): void => {
+      set(internalAgentInstructions$, value);
+    },
+  );
 
   const generationTemplate$ = computed((get) => {
     return get(internalGenerationTemplate$);
@@ -835,6 +853,7 @@ export function createDraftSignals(): DraftSignals {
   const { clear$, seed$ } = createDraftLifecycleSignals({
     draftInput,
     draftDocument,
+    internalAgentInstructions$,
     internalGenerationTemplate$,
     internalAttachments$,
     internalDragOver$,
@@ -843,6 +862,8 @@ export function createDraftSignals(): DraftSignals {
 
   return {
     ...draftInput,
+    agentInstructions$,
+    setAgentInstructions$,
     takeRestoredUserMessage$: draftDocument.takeRestoredUserMessage$,
     readEditorDocument$: draftDocument.readEditorDocument$,
     setEditorDocument$: draftDocument.setEditorDocument$,
