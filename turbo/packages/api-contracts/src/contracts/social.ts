@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   MANAGED_SOCIALKIT_BILLING_CATEGORY,
   MANAGED_SOCIALKIT_TOOLS,
+  socialKitTranscriptErrorReasonSchema,
   type ManagedSocialKitTool,
   type ManagedSocialKitToolName,
   socialKitRequestSchema,
@@ -16,19 +17,32 @@ export {
   MANAGED_SOCIALKIT_BILLING_CATEGORY,
   MANAGED_SOCIALKIT_TOOLS,
   SOCIALKIT_MAX_INPUT_VALUE_CHARS,
+  SOCIALKIT_TRANSCRIPT_ERROR_CODES,
+  socialKitTranscriptErrorReasonSchema,
   socialKitRequestSchema,
   type ManagedSocialKitCollection,
   type ManagedSocialKitPagination,
   type ManagedSocialKitReportedTotalField,
   type ManagedSocialKitResultField,
   type ManagedSocialKitTool,
+  type ManagedSocialKitToolAvailability,
   type ManagedSocialKitToolDefinition,
   type ManagedSocialKitToolCatalogEntry,
   type ManagedSocialKitToolName,
+  type SocialKitTranscriptErrorCode,
+  type SocialKitTranscriptErrorReason,
   type SocialKitRequest,
 } from "./social-tools";
 
 const c = initContract();
+
+export const socialKitErrorSchema = apiErrorSchema.extend({
+  error: apiErrorSchema.shape.error.extend({
+    reason: socialKitTranscriptErrorReasonSchema.optional(),
+  }),
+});
+
+export type SocialKitErrorResponse = z.infer<typeof socialKitErrorSchema>;
 
 export const socialKitDownloadPlatformSchema = z.enum([
   "youtube",
@@ -239,13 +253,13 @@ export const socialContract = c.router({
     body: socialKitRequestSchema,
     responses: {
       200: socialKitResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      402: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      502: apiErrorSchema,
-      503: apiErrorSchema,
+      400: socialKitErrorSchema,
+      401: socialKitErrorSchema,
+      402: socialKitErrorSchema,
+      403: socialKitErrorSchema,
+      404: socialKitErrorSchema,
+      502: socialKitErrorSchema,
+      503: socialKitErrorSchema,
     },
     summary: "Call a typed Okou Social tool",
   },

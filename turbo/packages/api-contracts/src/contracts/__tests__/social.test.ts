@@ -3,8 +3,10 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   managedSocialKitToolCatalog,
   MANAGED_SOCIALKIT_TOOLS,
+  socialKitErrorSchema,
   socialKitRequestSchema,
   socialKitResponseSchema,
+  SOCIALKIT_TRANSCRIPT_ERROR_CODES,
   type SocialKitInput,
 } from "../social";
 
@@ -59,6 +61,55 @@ describe("managed SocialKit contract", () => {
       resultField: "comments",
       reportedTotalField: "commentCount",
     });
+    const transcriptTools = catalog.filter((tool) => {
+      return tool.name.endsWith("_transcript");
+    });
+    expect(transcriptTools).toHaveLength(6);
+    expect(
+      transcriptTools.every((tool) => {
+        return tool.availability === "transcript";
+      }),
+    ).toBe(true);
+    expect(
+      catalog.find((tool) => {
+        return tool.name === "youtube_transcript";
+      }),
+    ).toMatchObject({ availability: "transcript" });
+  });
+
+  it("validates additive transcript error semantics", () => {
+    for (const reason of [
+      "transcript_unavailable",
+      "availability_unknown",
+      "access_denied",
+    ] as const) {
+      expect(
+        socialKitErrorSchema.safeParse({
+          error: {
+            message: "stable message",
+            code: "SOCIALKIT_TRANSCRIPT_ERROR",
+            reason,
+          },
+        }).success,
+      ).toBe(true);
+    }
+    expect(
+      socialKitErrorSchema.safeParse({
+        error: {
+          message: "legacy message",
+          code: "SOCIALKIT_CONTENT_UNAVAILABLE",
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      socialKitErrorSchema.safeParse({
+        error: {
+          message: "invalid reason",
+          code: SOCIALKIT_TRANSCRIPT_ERROR_CODES.AVAILABILITY_UNKNOWN,
+          reason: "no_speech",
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it.each([

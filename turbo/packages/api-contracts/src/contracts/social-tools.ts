@@ -3,6 +3,27 @@ import { z } from "zod";
 export const SOCIALKIT_MAX_INPUT_VALUE_CHARS = 4_096;
 export const MANAGED_SOCIALKIT_BILLING_CATEGORY = "request";
 
+export const SOCIALKIT_TRANSCRIPT_ERROR_CODES = {
+  TRANSCRIPT_UNAVAILABLE: "SOCIALKIT_TRANSCRIPT_UNAVAILABLE",
+  AVAILABILITY_UNKNOWN: "SOCIALKIT_TRANSCRIPT_AVAILABILITY_UNKNOWN",
+  ACCESS_DENIED: "SOCIALKIT_TRANSCRIPT_ACCESS_DENIED",
+} as const;
+
+export type SocialKitTranscriptErrorCode =
+  (typeof SOCIALKIT_TRANSCRIPT_ERROR_CODES)[keyof typeof SOCIALKIT_TRANSCRIPT_ERROR_CODES];
+
+export const socialKitTranscriptErrorReasonSchema = z.enum([
+  "transcript_unavailable",
+  "availability_unknown",
+  "access_denied",
+]);
+
+export type SocialKitTranscriptErrorReason = z.infer<
+  typeof socialKitTranscriptErrorReasonSchema
+>;
+
+export type ManagedSocialKitToolAvailability = "transcript";
+
 export type ManagedSocialKitResultField =
   | "comments"
   | "items"
@@ -38,6 +59,7 @@ export interface ManagedSocialKitToolDefinition<
   readonly resultSchema: ResultSchema;
   readonly maxLimit?: number;
   readonly collection?: ManagedSocialKitCollection;
+  readonly availability?: ManagedSocialKitToolAvailability;
 }
 
 function defineTool<
@@ -711,6 +733,7 @@ export const MANAGED_SOCIALKIT_TOOLS = [
     path: "/linkedin/transcript",
     inputSchema: urlInput(),
     resultSchema: linkedinTranscriptResultSchema,
+    availability: "transcript",
   }),
   defineTool({
     name: "twitter_profile",
@@ -752,6 +775,7 @@ export const MANAGED_SOCIALKIT_TOOLS = [
     path: "/twitter/transcript",
     inputSchema: urlInput(),
     resultSchema: videoTranscriptResultSchema,
+    availability: "transcript",
   }),
   defineTool({
     name: "facebook_stats",
@@ -773,6 +797,7 @@ export const MANAGED_SOCIALKIT_TOOLS = [
     path: "/facebook/transcript",
     inputSchema: urlInput(),
     resultSchema: facebookTranscriptResultSchema,
+    availability: "transcript",
   }),
   defineTool({
     name: "facebook_comments",
@@ -816,6 +841,7 @@ export const MANAGED_SOCIALKIT_TOOLS = [
     path: "/instagram/transcript",
     inputSchema: urlInput(),
     resultSchema: videoTranscriptResultSchema,
+    availability: "transcript",
   }),
   defineTool({
     name: "instagram_comments",
@@ -918,6 +944,7 @@ export const MANAGED_SOCIALKIT_TOOLS = [
     path: "/tiktok/transcript",
     inputSchema: urlInput(),
     resultSchema: videoTranscriptResultSchema,
+    availability: "transcript",
   }),
   defineTool({
     name: "tiktok_channel_stats",
@@ -1005,6 +1032,7 @@ export const MANAGED_SOCIALKIT_TOOLS = [
     path: "/youtube/transcript",
     inputSchema: urlInput(),
     resultSchema: videoTranscriptResultSchema,
+    availability: "transcript",
   }),
   defineTool({
     name: "youtube_stats",
@@ -1154,6 +1182,7 @@ export interface ManagedSocialKitToolCatalogEntry {
   readonly description: string;
   readonly inputSchema: z.core.JSONSchema.BaseSchema;
   readonly outputSchema: z.core.JSONSchema.BaseSchema;
+  readonly availability?: ManagedSocialKitToolAvailability;
 }
 
 export function managedSocialKitToolCatalog(): readonly ManagedSocialKitToolCatalogEntry[] {
@@ -1163,6 +1192,7 @@ export function managedSocialKitToolCatalog(): readonly ManagedSocialKitToolCata
       description: tool.description,
       inputSchema: z.toJSONSchema(tool.inputSchema),
       outputSchema: z.toJSONSchema(tool.resultSchema),
+      ...(tool.availability ? { availability: tool.availability } : {}),
     };
   });
 }

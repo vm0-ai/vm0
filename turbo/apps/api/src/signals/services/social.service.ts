@@ -2,9 +2,11 @@ import {
   findManagedSocialKitTool,
   MANAGED_SOCIALKIT_BILLING_CATEGORY,
   SOCIALKIT_MAX_INPUT_VALUE_CHARS,
+  SOCIALKIT_TRANSCRIPT_ERROR_CODES,
   type ManagedSocialKitPagination,
   type ManagedSocialKitReportedTotalField,
   type ManagedSocialKitTool,
+  type SocialKitTranscriptErrorReason,
   type SocialKitCollectionProviderLimitedReason,
   type SocialKitRequest,
   type SocialKitResponse,
@@ -39,6 +41,7 @@ interface SocialKitErrorResponse {
     readonly error: {
       readonly message: string;
       readonly code: string;
+      readonly reason?: SocialKitTranscriptErrorReason;
     };
   };
 }
@@ -77,20 +80,35 @@ type SocialKitCommandResponse =
   | SocialKitErrorResponse
   | ManagedUsageErrorResponse;
 
-function errorBody(message: string, code: string) {
-  return { error: { message, code } };
+function errorBody(
+  message: string,
+  code: string,
+  reason?: SocialKitTranscriptErrorReason,
+) {
+  return {
+    error: {
+      message,
+      code,
+      ...(reason ? { reason } : {}),
+    },
+  };
 }
 
 function errorResponse(
   status: ErrorStatus,
   message: string,
   code: string,
+  reason?: SocialKitTranscriptErrorReason,
 ): SocialKitErrorResponse {
-  return { status, body: errorBody(message, code) };
+  return { status, body: errorBody(message, code, reason) };
 }
 
-function badGateway(message: string, code: string): SocialKitErrorResponse {
-  return errorResponse(502, message, code);
+function badGateway(
+  message: string,
+  code: string,
+  reason?: SocialKitTranscriptErrorReason,
+): SocialKitErrorResponse {
+  return errorResponse(502, message, code, reason);
 }
 
 function errorResult(error: SocialKitErrorResponse): SocialKitErrorResult {
@@ -110,10 +128,68 @@ function providerErrorMessage(body: unknown): string | undefined {
     : undefined;
 }
 
+const MAX_PROVIDER_ERROR_MESSAGE_CHARS = 256;
+const TRANSCRIPT_NO_DATA_MESSAGE = "no transcript available for this video";
+const TRANSCRIPT_AMBIGUOUS_MESSAGE =
+  "video not found or transcript not available";
+const TRANSCRIPT_ACCESS_DENIED_MESSAGE =
+  "access denied - transcript may be disabled";
+
+function normalizedProviderErrorMessage(body: unknown): string | undefined {
+  const message = providerErrorMessage(body)?.trim();
+  if (!message || message.length > MAX_PROVIDER_ERROR_MESSAGE_CHARS) {
+    return undefined;
+  }
+  return message.toLowerCase();
+}
+
+function transcriptProviderHttpError(
+  status: number,
+  body: unknown,
+): SocialKitErrorResponse | undefined {
+  const message = normalizedProviderErrorMessage(body);
+  if (status === 404) {
+    switch (message) {
+      case TRANSCRIPT_NO_DATA_MESSAGE: {
+        return errorResponse(
+          404,
+          "A transcript is not available for this video",
+          SOCIALKIT_TRANSCRIPT_ERROR_CODES.TRANSCRIPT_UNAVAILABLE,
+          "transcript_unavailable",
+        );
+      }
+      case TRANSCRIPT_AMBIGUOUS_MESSAGE:
+      default: {
+        return errorResponse(
+          404,
+          "SocialKit could not establish whether the source or transcript is unavailable",
+          SOCIALKIT_TRANSCRIPT_ERROR_CODES.AVAILABILITY_UNKNOWN,
+          "availability_unknown",
+        );
+      }
+    }
+  }
+  if (status === 403 && message === TRANSCRIPT_ACCESS_DENIED_MESSAGE) {
+    return badGateway(
+      "SocialKit denied transcript access; transcript availability is unknown",
+      SOCIALKIT_TRANSCRIPT_ERROR_CODES.ACCESS_DENIED,
+      "access_denied",
+    );
+  }
+  return undefined;
+}
+
 function providerHttpError(
   status: number,
   body: unknown,
+  tool: ManagedSocialKitTool,
 ): SocialKitErrorResponse {
+  if (tool.availability === "transcript") {
+    const transcriptError = transcriptProviderHttpError(status, body);
+    if (transcriptError) {
+      return transcriptError;
+    }
+  }
   switch (status) {
     case 400: {
       return errorResponse(
@@ -277,7 +353,11 @@ async function fetchSocialKit(
       });
     }
     return errorResult(
-      providerHttpError(settled.value.response.status, settled.value.body),
+      providerHttpError(
+        settled.value.response.status,
+        settled.value.body,
+        tool,
+      ),
     );
   }
   return { kind: "body", body: settled.value.body };

@@ -37,6 +37,7 @@ const catalogSchema = z.object({
       description: z.string(),
       inputSchema: jsonSchema,
       outputSchema: jsonSchema,
+      availability: z.literal("transcript").optional(),
       collection: z
         .object({
           resultField: z.string(),
@@ -246,6 +247,10 @@ describe("okou social command", () => {
       retrieval: { kind: "provider_limited" },
       providerLimit: { kind: "no_pagination" },
     });
+    const transcript = catalog.tools.find((tool) => {
+      return tool.name === "youtube_transcript";
+    });
+    expect(transcript?.availability).toBe("transcript");
     const comments = catalog.tools.find((tool) => {
       return tool.name === "tiktok_comments";
     });
@@ -283,6 +288,9 @@ describe("okou social command", () => {
     expect(output()).toContain("Collection: comments (cursor)");
     expect(output()).toContain("Reported total: commentCount");
     expect(output()).toContain("Provider limit: no pagination");
+    expect(output()).toContain(
+      "Availability: transcript (provider evidence required; unknown remains explicit)",
+    );
   });
 
   it("calls a tool with typed JSON input", async () => {
@@ -881,6 +889,66 @@ describe("okou social command", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
+  it.each([
+    {
+      status: 404,
+      code: "SOCIALKIT_TRANSCRIPT_UNAVAILABLE",
+      message: "A transcript is not available for this video",
+      title: "Transcript unavailable",
+      guidance: "not evidence that the video contains no speech",
+      reason: "transcript_unavailable",
+    },
+    {
+      status: 404,
+      code: "SOCIALKIT_TRANSCRIPT_AVAILABILITY_UNKNOWN",
+      message:
+        "SocialKit could not establish whether the source or transcript is unavailable",
+      title: "Transcript availability unknown",
+      guidance: "not evidence that the video contains no speech",
+      reason: "availability_unknown",
+    },
+    {
+      status: 502,
+      code: "SOCIALKIT_TRANSCRIPT_ACCESS_DENIED",
+      message:
+        "SocialKit denied transcript access; transcript availability is unknown",
+      title: "Transcript access denied",
+      guidance: "not a vm0 authentication failure",
+      reason: "access_denied",
+    },
+  ])("renders transcript guidance for $code", async (testCase) => {
+    server.use(
+      http.post("http://localhost:3000/api/social/request", () => {
+        return HttpResponse.json(
+          {
+            error: {
+              message: testCase.message,
+              code: testCase.code,
+              reason: testCase.reason,
+            },
+          },
+          { status: testCase.status },
+        );
+      }),
+    );
+
+    await expect(
+      socialCommand.parseAsync([
+        "node",
+        "cli",
+        "call",
+        "youtube_transcript",
+        "--input",
+        '{"url":"https://youtu.be/example"}',
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(errorOutput()).toContain(testCase.title);
+    expect(errorOutput()).toContain(testCase.guidance);
+    expect(errorOutput()).not.toContain("404:");
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
   it("uses public branding for a malformed API error", async () => {
     server.use(
       http.post("http://localhost:3000/api/social/request", () => {
@@ -1327,6 +1395,9 @@ describe("okou social command", () => {
     expect(socialHelp).toContain("Unknown bulk and direct-video tools");
     expect(socialHelp).toContain(
       "Full retrieval bills and emits each successful provider page independently",
+    );
+    expect(socialHelp).toContain(
+      "Missing transcript data is not evidence that a video contains no speech",
     );
   });
 });

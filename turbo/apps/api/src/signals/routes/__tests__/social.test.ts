@@ -15,6 +15,7 @@ import {
   findManagedSocialKitTool,
   MANAGED_SOCIALKIT_BILLING_CATEGORY,
   MANAGED_SOCIALKIT_TOOLS,
+  SOCIALKIT_TRANSCRIPT_ERROR_CODES,
   socialContract,
   socialKitRequestSchema,
   type SocialKitRequest,
@@ -1356,7 +1357,7 @@ describe("managed SocialKit route", () => {
         404,
         "raw missing content payload",
         404,
-        "SOCIALKIT_CONTENT_UNAVAILABLE",
+        "SOCIALKIT_TRANSCRIPT_AVAILABILITY_UNKNOWN",
         noWarnings,
       ],
       [
@@ -1401,6 +1402,120 @@ describe("managed SocialKit route", () => {
       expect(JSON.stringify(body)).not.toContain(providerMessage);
       expect(managedSocialKitWarningCalls()).toStrictEqual(expectedWarnings);
     }
+    await expect(credits(actor)).resolves.toBe(beforeCredits);
+  });
+
+  it("classifies documented transcript availability signals without billing or retries", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    let providerRequests = 0;
+    const cases = [
+      {
+        status: 404,
+        message: "  NO TRANSCRIPT AVAILABLE FOR THIS VIDEO  ",
+        expectedStatus: 404,
+        expectedCode: SOCIALKIT_TRANSCRIPT_ERROR_CODES.TRANSCRIPT_UNAVAILABLE,
+        expectedReason: "transcript_unavailable",
+        expectedMessage: "A transcript is not available for this video",
+      },
+      {
+        status: 404,
+        message: "Video not found or transcript not available",
+        expectedStatus: 404,
+        expectedCode: SOCIALKIT_TRANSCRIPT_ERROR_CODES.AVAILABILITY_UNKNOWN,
+        expectedReason: "availability_unknown",
+        expectedMessage:
+          "SocialKit could not establish whether the source or transcript is unavailable",
+      },
+      {
+        status: 404,
+        message: "provider changed this wording",
+        expectedStatus: 404,
+        expectedCode: SOCIALKIT_TRANSCRIPT_ERROR_CODES.AVAILABILITY_UNKNOWN,
+        expectedReason: "availability_unknown",
+        expectedMessage:
+          "SocialKit could not establish whether the source or transcript is unavailable",
+      },
+      {
+        status: 403,
+        message: "Access denied - transcript may be disabled",
+        expectedStatus: 502,
+        expectedCode: SOCIALKIT_TRANSCRIPT_ERROR_CODES.ACCESS_DENIED,
+        expectedReason: "access_denied",
+        expectedMessage:
+          "SocialKit denied transcript access; transcript availability is unknown",
+      },
+      {
+        status: 404,
+        message: undefined,
+        expectedStatus: 404,
+        expectedCode: SOCIALKIT_TRANSCRIPT_ERROR_CODES.AVAILABILITY_UNKNOWN,
+        expectedReason: "availability_unknown",
+        expectedMessage:
+          "SocialKit could not establish whether the source or transcript is unavailable",
+      },
+    ] as const;
+
+    for (const testCase of cases) {
+      server.use(
+        providerHandler("GET", "/youtube/transcript", () => {
+          providerRequests += 1;
+          return HttpResponse.json(
+            testCase.message === undefined
+              ? { success: false }
+              : { message: testCase.message },
+            { status: testCase.status },
+          );
+        }),
+      );
+      const response = await rawSocialRequest(actor, DEFAULT_SOCIAL_REQUEST, {
+        usagePricingResolution: pricing.resolution,
+      });
+      const body: unknown = await response.json();
+
+      expect(response.status).toBe(testCase.expectedStatus);
+      expect(body).toMatchObject({
+        error: {
+          code: testCase.expectedCode,
+          reason: testCase.expectedReason,
+          message: testCase.expectedMessage,
+        },
+      });
+      if (testCase.message !== undefined) {
+        expect(JSON.stringify(body)).not.toContain(testCase.message.trim());
+      }
+    }
+
+    let nonTranscriptRequests = 0;
+    server.use(
+      providerHandler("GET", "/linkedin/profile", () => {
+        nonTranscriptRequests += 1;
+        return HttpResponse.json(
+          { message: "Video not found or transcript not available" },
+          { status: 404 },
+        );
+      }),
+    );
+    const nonTranscriptResponse = await rawSocialRequest(
+      actor,
+      requestForPath("/linkedin/profile", {
+        url: "https://linkedin.com/in/example",
+      }),
+      { usagePricingResolution: pricing.resolution },
+    );
+    const nonTranscriptBody: unknown = await nonTranscriptResponse.json();
+    expect(nonTranscriptResponse.status).toBe(404);
+    expect(nonTranscriptBody).toMatchObject({
+      error: {
+        code: "SOCIALKIT_CONTENT_UNAVAILABLE",
+      },
+    });
+    expect(nonTranscriptBody).not.toHaveProperty("error.reason");
+    expect(providerRequests).toBe(cases.length);
+    expect(nonTranscriptRequests).toBe(1);
     await expect(credits(actor)).resolves.toBe(beforeCredits);
   });
 

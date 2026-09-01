@@ -1,6 +1,6 @@
-import { apiErrorSchema } from "@okouai/api-contracts/contracts/errors";
 import {
   socialContract,
+  socialKitErrorSchema,
   type SocialKitDownloadRequest,
   type SocialKitDownloadResponse,
   type SocialKitRequest,
@@ -16,7 +16,7 @@ function handlePublicSocialError(
   result: { readonly status: number; readonly body: unknown },
   defaultMessage: string,
 ): never {
-  const parsed = apiErrorSchema.safeParse(result.body);
+  const parsed = socialKitErrorSchema.safeParse(result.body);
   if (!parsed.success) {
     handleError(result, defaultMessage);
   }
