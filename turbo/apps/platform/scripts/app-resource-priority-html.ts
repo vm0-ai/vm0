@@ -72,7 +72,7 @@ function mainStylesheetLoaderScript(): string {
               stylesheet.removeAttribute("as");
               requestAnimationFrame(function () {
                 requestAnimationFrame(function () {
-                  resolve();
+                  resolve("loaded");
                 });
               });
             },
@@ -81,8 +81,7 @@ function mainStylesheetLoaderScript(): string {
           stylesheet.addEventListener(
             "error",
             function () {
-              console.error("Failed to load the main application stylesheet");
-              resolve();
+              resolve("failed");
             },
             { once: true },
           );

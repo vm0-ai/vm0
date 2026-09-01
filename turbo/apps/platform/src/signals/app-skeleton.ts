@@ -32,7 +32,10 @@ export async function hideBootstrapSkeleton(
 ): Promise<void> {
   const mainStylesheetLoaded = window.__mainStylesheetLoaded;
   if (mainStylesheetLoaded) {
-    await mainStylesheetLoaded;
+    const mainStylesheetStatus = await mainStylesheetLoaded;
+    if (mainStylesheetStatus === "failed") {
+      throw new Error("Failed to load the main application stylesheet");
+    }
   }
   signal?.throwIfAborted();
 

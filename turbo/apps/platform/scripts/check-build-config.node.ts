@@ -409,11 +409,11 @@ function assertApplicationResourcePriority(htmlSource: string): void {
   assert.match(htmlSource, /stylesheet\.rel = "stylesheet"/u);
   assert.match(
     htmlSource,
-    /requestAnimationFrame\(function \(\) \{\s*requestAnimationFrame\(function \(\) \{\s*resolve\(\);/u,
+    /requestAnimationFrame\(function \(\) \{\s*requestAnimationFrame\(function \(\) \{\s*resolve\("loaded"\);/u,
   );
   assert.match(
     htmlSource,
-    /"error",\s*function \(\) \{\s*console\.error\("Failed to load the main application stylesheet"\);\s*resolve\(\);/u,
+    /"error",\s*function \(\) \{\s*resolve\("failed"\);/u,
   );
   assert.equal(
     (

@@ -40,10 +40,10 @@ declare global {
     /** Set when the entry module graph has finished evaluating. */
     __appBootstrapModuleReady?: number;
     /**
-     * Resolves after the main stylesheet is active and has crossed a rendering
-     * opportunity, or after its preload fails so bootstrap can fail open.
+     * Reports whether the main stylesheet became active after crossing a
+     * rendering opportunity or failed to load.
      */
-    __mainStylesheetLoaded?: Promise<void>;
+    __mainStylesheetLoaded?: Promise<"failed" | "loaded">;
   }
 }
 
