@@ -34,3 +34,22 @@ export function okouMcpOAuthClientMetadata(
   };
   return metadata;
 }
+
+export function okouMcpOAuthDynamicClientMetadata(
+  request: Request,
+): OAuthClientMetadata {
+  const metadata = okouMcpOAuthClientMetadata(request);
+  return {
+    client_name: metadata.client_name,
+    client_uri: metadata.client_uri,
+    redirect_uris: metadata.redirect_uris,
+    grant_types: metadata.grant_types,
+    response_types: metadata.response_types,
+    application_type: metadata.application_type,
+  };
+}
+
+export function configuredOkouMcpOAuthClientMetadata(): OkouMcpOAuthClientMetadata &
+  OAuthClientMetadata {
+  return okouMcpOAuthClientMetadata(new Request(env("APP_URL")));
+}

@@ -605,6 +605,7 @@ export const customConnectorOAuth2Contract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
       500: apiErrorSchema,
+      502: apiErrorSchema,
     },
     summary: "Start OAuth 2.0 for a custom connector",
   },
@@ -617,6 +618,7 @@ export const customConnectorOAuth2Contract = c.router({
         state: z.string().optional(),
         error: z.string().optional(),
         error_description: z.string().optional(),
+        iss: z.string().optional(),
         responseMode: z.literal("json").optional(),
       })
       .catchall(z.string()),
