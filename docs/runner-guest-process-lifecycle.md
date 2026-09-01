@@ -27,7 +27,8 @@ bounded-helper placement, or an arbitrary containment policy.
 | DNS `getent ahostsv4` | Bounded setup helper selected only by the typed DNS handler | Bounded hostname and deadline; no caller-selected program | Guest root in an owned process group | Single-active DNS worker, operation guard, kill, and reap | Required for a fresh sandbox; serial before Agent start |
 | `guest-reseed --restore-state` | Bounded setup helper selected only by the typed guest-state handler | Typed time, entropy, and timezone request with a deadline | Guest root in an owned process group | Single-active restore worker, operation guard, kill, and reap | Required state preparation; serial before Agent start |
 | `guest-write-file` single, batch, and private variants | Bounded setup helper selected only by typed file handlers | Typed path/content request with handler validation and deadline | Guest root in an owned process group | File worker, operation guard, kill, and reap | Required when its prepared input exists; serial before Agent start |
-| Generic one-shot shell operations, including mount, timezone, cleanup, and verification fallbacks | Contained workload selected by `Sandbox::exec` | Caller command and environment are untrusted workload input | Per-operation `workload` cgroup with the standard CPU, memory, PID, and OOM policy | Exec worker and `ExecProcessContainment`; terminal result or forced cleanup removes descendants and hierarchy | Required or optional by caller; serial when part of preparation |
+| `guest-agent cleanup-codex-session` and its fixed shell helper | Bounded setup helper selected only by `Sandbox::cleanup_codex_session` | Canonical thread ID and matching relative rollout path; fixed Codex home, 16,384-entry scan budget, program, and environment | Sandbox user in an owned process group | Exec worker and `ExecProcessContainment`; natural or forced cleanup kills and reaps the complete group | Required only for an actually reused Codex sandbox; serial before restored history publication and Agent start |
+| Generic one-shot shell operations, including mount, timezone, cleanup fallbacks, and verification fallbacks | Contained workload selected by `Sandbox::exec` | Caller command and environment are untrusted workload input | Per-operation `workload` cgroup with the standard CPU, memory, PID, and OOM policy | Exec worker and `ExecProcessContainment`; terminal result or forced cleanup removes descendants and hierarchy | Required or optional by caller; serial when part of preparation |
 | `guest-download --manifest-stdin` | Contained workload selected only by the typed storage-manifest handler | User-influenced manifest, download, extraction, cache, and filesystem work | Per-operation `workload` cgroup with the standard workload policy | Storage worker, operation guard, output drains, and containment cleanup | Required when storage preparation is requested; serial, with deferred background fill allowed only after Agent readiness |
 | Codex model-catalog prefetch | Contained workload selected by ordinary `Sandbox::start_process` | Fixed prefetch shell, but network response and process execution remain workload data | Per-operation `workload` cgroup; no Agent control or placement capability | Prefetch task owns process wait/cancel; guest exec worker owns containment cleanup | Optional and deferrable; may run concurrently with later preparation and Agent start |
 | Agent wrapper shell and Guest Agent | Controlled Agent selected only by `Sandbox::start_agent_process` | Runner constructs the command/environment; the Agent subsequently handles user-controlled work | Per-operation `control` cgroup; the outer containment owns the standard workload resource hierarchy | Runner owns the typed process handle, readiness timing, and mandatory control capability; guest control registry, placement brokers, exec worker, and containment own guest cleanup | Required final pre-spawn operation; `exec_started` records shell spawn and `exec_agent_ready` completes the typed Agent start |
@@ -78,10 +79,13 @@ responsible for graceful or forced cleanup and hierarchy removal.
 
 Storage remains contained even though it has a typed entry point because its
 download, extraction, cache, and filesystem work is user influenced. The DNS,
-state, and file helpers use process groups at guest root only because their
-typed handlers select fixed programs, validate bounded inputs, enforce
-single-active admission and deadlines, and own kill/reap. That authority is
-not available through generic exec APIs.
+state, and file helpers use process groups at guest root; reused Codex cleanup
+uses a process group as the sandbox user. Their typed handlers select fixed
+programs, validate bounded inputs before containment selection, enforce
+deadlines, and own kill/reap. Codex cleanup additionally fixes the target home,
+scan budget, environment, and helper script while retaining independent Runner
+validation of its path output. That authority is not available through generic
+exec APIs, and generic cleanup and storage operations retain workload cgroups.
 
 ## Agent Start Timing
 

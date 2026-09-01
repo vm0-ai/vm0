@@ -35,6 +35,7 @@ fn restore_session_skips_codex_cleanup_in_fresh_sandbox() {
         run_restore_session(restore_session_in_fresh_sandbox(&sandbox, &ctx, &session)).unwrap();
 
     assert!(sandbox.exec_calls().is_empty());
+    assert!(sandbox.codex_session_cleanup_calls().is_empty());
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
     assert_eq!(writes[0].path, CODEX_CANONICAL_ROLLOUT_PATH);

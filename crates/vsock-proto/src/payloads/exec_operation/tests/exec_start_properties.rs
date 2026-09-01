@@ -281,6 +281,11 @@ fn process_contract_strategy()
             ExecLifecyclePolicy::OneShot,
             ExecControlPolicy::Disabled,
         )),
+        Just((
+            ExecProcessRole::CodexSessionCleanup,
+            ExecLifecyclePolicy::OneShot,
+            ExecControlPolicy::Disabled,
+        )),
     ]
 }
 

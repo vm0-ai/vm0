@@ -1,16 +1,17 @@
-# Codex restore cleanup contract
+# Fixed Codex restore cleanup contract
 #
-# This helper is embedded by the runner and runs before history restoration
-# only when an idle sandbox is reused. It is destructive within the canonical
-# $codex_home/sessions tree: matching regular files and symlinks are removed,
-# while unrelated entries and directories are preserved.
+# This helper is embedded by guest-agent and launched only through the fixed
+# reused-Codex cleanup operation before history restoration. It is destructive
+# within the canonical $codex_home/sessions tree: matching regular files and
+# symlinks are removed, while unrelated entries and directories are preserved.
 #
 # OKOU_CODEX_RESTORE_SESSION_ID and
 # OKOU_CODEX_RESTORE_SESSION_FILENAME_KEY identify the dashed and undashed
-# session-name forms. OKOU_CODEX_RESTORE_SESSION_PATH supplies the caller's
-# canonical sessions/YYYY/MM/DD restore path. The helper validates these
-# inputs' shape and the session root's directory components before scanning;
-# Rust independently validates any logical path returned by the helper.
+# session-name forms. OKOU_CODEX_RESTORE_SESSION_PATH supplies the validated
+# canonical sessions/YYYY/MM/DD restore path. The fixed guest entry point owns
+# these values, the Codex home, and the scan budget. The helper validates their
+# shape and the session root's directory components before scanning; Rust
+# independently validates any logical path returned by the helper.
 #
 # The collection pass walks the whole sessions tree, not only the fallback date
 # directory, and is bounded by OKOU_CODEX_SESSION_CLEANUP_SCAN_BUDGET (default
