@@ -4,6 +4,24 @@ const DEFAULT_CLERK_API_BASE = "https://api.clerk.com/v1";
 const CLERK_PAGE_LIMIT = 500;
 const CLERK_RETRY_DELAYS_MS = [500, 1_500, 3_500] as const;
 const CLERK_MAX_RETRY_AFTER_MS = 30_000;
+/**
+ * Syscall and undici codes that can only be raised while the connection is
+ * still being established, so no request byte reached Clerk and replaying a
+ * non-idempotent create cannot duplicate a resource. `ECONNRESET`,
+ * `UND_ERR_SOCKET` and the header/body timeouts are deliberately absent: they
+ * can surface after the request was written and the response was lost.
+ */
+const CLERK_CONNECT_FAILURE_CODES = new Set([
+  "EADDRNOTAVAIL",
+  "EAI_AGAIN",
+  "ECONNREFUSED",
+  "EHOSTDOWN",
+  "EHOSTUNREACH",
+  "ENETDOWN",
+  "ENETUNREACH",
+  "ENOTFOUND",
+  "UND_ERR_CONNECT_TIMEOUT",
+]);
 const CLERK_BULK_REQUEST_PACE_MS = 110;
 const CLERK_TEST_DOMAIN = "vm0-e2e.ai";
 const CLERK_TEST_MARKER = "clerk_test";
@@ -97,6 +115,10 @@ interface ClerkCleanupResources {
 
 interface RetryableClerkRequestInit extends RequestInit {
   readonly method: "GET" | "DELETE" | "PATCH";
+}
+
+interface CreateClerkRequestInit extends RequestInit {
+  readonly method: "POST";
 }
 
 type ClerkCleanupSelection =
@@ -250,7 +272,7 @@ export function parseClerkTestOrganizationMetadata(
 }
 
 export async function createUser(email: string): Promise<string> {
-  const response = await requestClerk("create Clerk user", "/users", {
+  const response = await requestClerkCreate("create Clerk user", "/users", {
     method: "POST",
     headers: getClerkHeaders(),
     body: JSON.stringify({
@@ -274,7 +296,7 @@ export async function createOrganization(
   role: ClerkTestRole,
 ): Promise<string> {
   const owner = currentClerkTestOwner(role);
-  const response = await requestClerk(
+  const response = await requestClerkCreate(
     "create Clerk organization",
     "/organizations",
     {
@@ -763,16 +785,31 @@ async function paceClerkBulkRequest(
   await wait(CLERK_BULK_REQUEST_PACE_MS);
 }
 
-async function requestClerk(
+/**
+ * Creates are not idempotent, so a lost response must never be replayed. A
+ * failure raised while the connection was still being established is the one
+ * exception: Clerk never saw the request, so the create can be reissued. Every
+ * other transport failure, and every HTTP error response, is surfaced as-is.
+ */
+async function requestClerkCreate(
   operation: string,
   path: string,
-  init: RequestInit,
+  init: CreateClerkRequestInit,
 ): Promise<Response> {
   const url = `${getClerkApiBase()}${path}`;
-  try {
-    return await fetch(url, init);
-  } catch (cause) {
-    throw new Error(`${operation} request failed`, { cause });
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await fetch(url, init);
+    } catch (cause) {
+      const delayMs = CLERK_RETRY_DELAYS_MS[attempt];
+      if (delayMs === undefined || !isClerkConnectFailure(cause)) {
+        throw new Error(
+          `${operation} request failed after ${formatAttemptCount(attempt + 1)}: ${describeClerkTransportCause(cause)}`,
+          { cause },
+        );
+      }
+      await waitBeforeClerkRetry(delayMs);
+    }
   }
 }
 
@@ -789,9 +826,12 @@ async function requestClerkWithRetry(
     } catch (cause) {
       const fallbackDelayMs = CLERK_RETRY_DELAYS_MS[attempt];
       if (fallbackDelayMs === undefined) {
-        throw new Error(`${operation} request failed`, { cause });
+        throw new Error(
+          `${operation} request failed after ${formatAttemptCount(attempt + 1)}: ${describeClerkTransportCause(cause)}`,
+          { cause },
+        );
       }
-      await wait(fallbackDelayMs);
+      await waitBeforeClerkRetry(fallbackDelayMs);
       continue;
     }
 
@@ -808,9 +848,84 @@ async function requestClerkWithRetry(
       return response;
     }
     await response.body?.cancel();
-    await wait(delayMs);
+    await waitBeforeClerkRetry(delayMs);
   }
   throw new Error(`${operation} exhausted its retry budget`);
+}
+
+/**
+ * `TypeError: fetch failed` never names the syscall that failed, and the
+ * per-address `AggregateError` undici nests underneath it prints as an empty
+ * line in CI, so a DNS failure, a refused connection and a TLS failure are
+ * indistinguishable in the log. Flatten the chain into the thrown message for
+ * the same reason `formatErrorReport` rescues a nested runner credential cause.
+ */
+function describeClerkTransportCause(cause: unknown): string {
+  if (!(cause instanceof Error)) {
+    return String(cause);
+  }
+
+  const head = `${clerkTransportCode(cause) ?? cause.name}${cause.message ? `: ${cause.message}` : ""}`;
+  const nested = clerkTransportCauses(cause).map(describeClerkTransportCause);
+  return nested.length === 0 ? head : `${head} [${nested.join("; ")}]`;
+}
+
+/**
+ * `fetch` reports every transport failure as an uncoded `TypeError`, and undici
+ * reports a lost address race as an `AggregateError` holding one error per
+ * address, so the decision has to walk the whole chain. Every leaf must be a
+ * connection-establishment failure before a create may be reissued.
+ */
+function isClerkConnectFailure(cause: unknown): boolean {
+  if (!(cause instanceof Error)) {
+    return false;
+  }
+
+  const code = clerkTransportCode(cause);
+  if (code !== undefined) {
+    return CLERK_CONNECT_FAILURE_CODES.has(code);
+  }
+
+  const nested = clerkTransportCauses(cause);
+  return (
+    nested.length > 0 &&
+    nested.every((nestedCause) => isClerkConnectFailure(nestedCause))
+  );
+}
+
+function clerkTransportCauses(error: Error): readonly unknown[] {
+  const nested: unknown[] = [];
+  const aggregated: unknown = isRecord(error) ? error.errors : undefined;
+  if (Array.isArray(aggregated)) {
+    for (const aggregatedError of aggregated) {
+      nested.push(aggregatedError);
+    }
+  }
+  if (error.cause !== undefined) {
+    nested.push(error.cause);
+  }
+  return nested;
+}
+
+function clerkTransportCode(error: Error): string | undefined {
+  const code: unknown = isRecord(error) ? error.code : undefined;
+  return typeof code === "string" ? code : undefined;
+}
+
+function formatAttemptCount(attempts: number): string {
+  return `${attempts} attempt${attempts === 1 ? "" : "s"}`;
+}
+
+/**
+ * The local Clerk fixture server refuses or answers a connection immediately,
+ * so tests assert the attempt sequence without paying the production backoff.
+ * `paceClerkBulkRequest` skips its pacing under the same fixture switch.
+ */
+async function waitBeforeClerkRetry(delayMs: number): Promise<void> {
+  if (process.env.CLERK_API_TEST_BASE_URL) {
+    return;
+  }
+  await wait(delayMs);
 }
 
 function isTransientClerkStatus(status: number): boolean {
