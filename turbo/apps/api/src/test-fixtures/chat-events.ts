@@ -1872,6 +1872,20 @@ async function pidIsBlocked(waiterPid: number): Promise<boolean> {
   return rows[0]?.blocked ?? false;
 }
 
+async function pidIsDirectlyBlockedBy(
+  waiterPid: number,
+  holderPid: number,
+): Promise<boolean> {
+  const rows = await executeRawRows(
+    db(),
+    sql`
+      SELECT ${holderPid} = ANY(pg_blocking_pids(${waiterPid})) AS "blocked"
+    `,
+    blockedByPidRowSchema,
+  );
+  return rows[0]?.blocked ?? false;
+}
+
 /**
  * Acquires bdd-scoped ownership of the platform-managed vm0 API key pool for
  * one vendor.
@@ -2570,6 +2584,7 @@ export async function holdChatEventInsertTransactionFixture(args: {
   readonly release: () => void;
   readonly done: Promise<void>;
   readonly blockedWaiterCount: () => Promise<number>;
+  readonly blocks: (waiterPid: number) => Promise<boolean>;
 }> {
   const started = createDeferredPromise<{
     readonly pid: number;
@@ -2612,6 +2627,9 @@ export async function holdChatEventInsertTransactionFixture(args: {
     done,
     blockedWaiterCount: async () => {
       return await transitiveBlockedWaiterCount(pid);
+    },
+    blocks: async (waiterPid) => {
+      return await pidIsDirectlyBlockedBy(waiterPid, pid);
     },
   };
 }
@@ -2666,23 +2684,48 @@ export async function holdRunOutputMaterializationRowFixture(args: {
   };
 }
 
-/** Inserts one event with reservation and persistence in one transaction. */
-export async function insertChatEventTransactionFixture(args: {
+/** Starts one event insert with reservation and persistence in one transaction. */
+export async function startChatEventInsertTransactionFixture(args: {
   readonly threadId: string;
   readonly content: string;
-}): Promise<{ readonly id: string; readonly seqId: number }> {
-  const event = await db().transaction(async (tx) => {
-    return await insertChatEvent(tx, {
-      chatThreadId: args.threadId,
-      eventType: "output.message",
-      content: args.content,
-      runId: null,
-    });
-  });
-  if (!event) {
-    throw new Error("Expected the chat-message insert");
-  }
-  return event;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly pid: number;
+  readonly done: Promise<{ readonly id: string; readonly seqId: number }>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const done = onRejection(
+    db().transaction(async (tx) => {
+      const pidRows = await executeRawRows(
+        tx,
+        sql`
+          SELECT pg_backend_pid() AS "pid"
+        `,
+        databasePidRowSchema,
+      );
+      const pid = pidRows[0]?.pid;
+      if (!pid) {
+        throw new Error("Expected the chat-message insert pid");
+      }
+      started.resolve(pid);
+      const event = await insertChatEvent(tx, {
+        chatThreadId: args.threadId,
+        eventType: "output.message",
+        content: args.content,
+        runId: null,
+      });
+      if (!event) {
+        throw new Error("Expected the chat-message insert");
+      }
+      return event;
+    }),
+    (error) => {
+      if (!started.settled()) {
+        started.reject(error);
+      }
+    },
+  );
+  return { pid: await started.promise, done };
 }
 
 /**

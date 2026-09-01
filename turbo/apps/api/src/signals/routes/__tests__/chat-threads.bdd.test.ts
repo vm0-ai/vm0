@@ -37,8 +37,8 @@ import {
 } from "../../../test-fixtures/system-config-seeds";
 import {
   holdChatEventInsertTransactionFixture,
-  insertChatEventTransactionFixture,
   insertOutputEventWithConflictingLegacyPayloadFixture,
+  startChatEventInsertTransactionFixture,
 } from "../../../test-fixtures/chat-events";
 import {
   holdChatThreadEventInsertTransactionFixture,
@@ -2154,16 +2154,21 @@ describe("CHAT-01 chat thread read state", () => {
       content: firstContent,
       signal: context.signal,
     });
-    const secondInsert = insertChatEventTransactionFixture({
+    const secondInsert = await startChatEventInsertTransactionFixture({
       threadId,
       content: secondContent,
+      signal: context.signal,
     });
     onTestFinished(async () => {
       held.release();
-      await Promise.allSettled([held.done, secondInsert]);
+      await Promise.allSettled([held.done, secondInsert.done]);
     });
 
-    await expect.poll(held.blockedWaiterCount).toBe(1);
+    await expect
+      .poll(() => {
+        return held.blocks(secondInsert.pid);
+      })
+      .toBe(true);
     const beforeCommit = await chat.listThreadEvents(owner, threadId);
     expect(
       beforeCommit.events.some((message) => {
@@ -2176,7 +2181,7 @@ describe("CHAT-01 chat thread read state", () => {
 
     held.release();
     await held.done;
-    const second = await secondInsert;
+    const second = await secondInsert.done;
     const committed = await chat.listThreadEvents(owner, threadId);
     const concurrentRows = committed.events.filter((message) => {
       return message.id === held.event.id || message.id === second.id;
