@@ -1660,6 +1660,20 @@
       "when": 1788270255725,
       "tag": "1044_salty_vindicator",
       "breakpoints": true
+    },
+    {
+      "idx": 1045,
+      "version": "7",
+      "when": 1788276269016,
+      "tag": "1045_isolate_google_forms_watches_by_account",
+      "breakpoints": true
+    },
+    {
+      "idx": 1046,
+      "version": "7",
+      "when": 1788276313289,
+      "tag": "1046_sync_google_forms_watch_account_index",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,7 @@ import type { ConnectorAccountTarget } from "@okouai/api-contracts/contracts/con
 
 import type { Db } from "../external/db";
 import { reprojectGmailAutomationsForOwner } from "./gmail-automation-account.service";
+import { reprojectGoogleFormsAutomationsForOwner } from "./google-forms-automation-account.service";
 import { reprojectNotionAutomationsForOwner } from "./notion-automation-account.service";
 import { reprojectStripeInvoicePaidAutomationsForOwner } from "./stripe-invoice-paid-workflow-automation.service";
 
@@ -24,6 +25,11 @@ export async function reprojectWorkflowAutomationsForOwner(
   }
   if (args.target.connectorSlug === "notion") {
     await reprojectNotionAutomationsForOwner(db, args);
+    signal.throwIfAborted();
+    return;
+  }
+  if (args.target.connectorSlug === "google-forms") {
+    await reprojectGoogleFormsAutomationsForOwner(db, args);
     signal.throwIfAborted();
     return;
   }
