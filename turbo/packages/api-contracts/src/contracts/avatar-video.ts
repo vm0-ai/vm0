@@ -11,11 +11,23 @@ export const avatarVideoAspectRatioSchema = z.enum([
   "landscape",
   "square",
 ]);
+/**
+ * JoggAI background style.
+ *
+ * - `1` renders the avatar over its baked-in scene
+ * - `2` renders it over a green screen (MP4, keyed downstream)
+ * - `3` renders it with a real alpha channel (WebM)
+ *
+ * JoggAI's v1 documentation states that the alpha-channel WebM is only produced
+ * when captions are disabled. The v2 endpoint this client calls does not repeat
+ * that constraint, so it is honoured as a default rather than enforced here.
+ */
 export const avatarVideoScreenStyleSchema = z.union([
   z.literal(1),
   z.literal(2),
   z.literal(3),
 ]);
+export const AVATAR_VIDEO_TRANSPARENT_SCREEN_STYLE = 3;
 export const avatarVideoVoiceIdSchema = z
   .string()
   .trim()

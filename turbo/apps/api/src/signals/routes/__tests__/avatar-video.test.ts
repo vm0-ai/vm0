@@ -653,4 +653,40 @@ describe("JoggAI built-in avatar video routes", () => {
       `${TEST_BUCKET}/${audioKey}`,
     );
   });
+
+  it("disables captions by default for a transparent background", async () => {
+    const fixture = await seedAvatarVideoFixture();
+    let observedBody: unknown = null;
+    server.use(
+      http.post(JOGGAI_CREATE_URL, async ({ request }) => {
+        observedBody = await request.json();
+        return HttpResponse.json({
+          code: 0,
+          msg: "Success",
+          data: { video_id: "jogg-transparent-video" },
+        });
+      }),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await createAvatarVideoTestApp(
+      fixture.usagePricingResolution,
+    ).request("/api/avatar-video/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        avatarId: 1790,
+        voiceId: "en-US-AvaNeural",
+        script: "Welcome to vm0",
+        screenStyle: 3,
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(observedBody).toMatchObject({
+      avatar: { avatar_type: 0, avatar_id: 1790 },
+      screen_style: 3,
+      caption: false,
+    });
+  });
 });

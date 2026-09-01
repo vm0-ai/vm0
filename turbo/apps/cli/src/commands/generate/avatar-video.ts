@@ -430,7 +430,7 @@ export const avatarVideoCommand = new Command()
   )
   .option(
     "--screen-style <style>",
-    "Screen style: 1 full screen, 2 split screen, or 3 picture in picture",
+    "Background: 1 scene, 2 green screen, or 3 transparent WebM (alpha)",
     parseScreenStyle,
     1,
   )
