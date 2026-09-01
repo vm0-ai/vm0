@@ -226,6 +226,7 @@ function buildQueueFirstGoalRunInput(args: {
       modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
       selectedModel: modelPin.selectedModel,
     },
+    piExecution: false,
     dispatchFailedCallbacks: args.dispatchFailedCallbacks,
     timing: args.timing,
   };

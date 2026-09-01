@@ -41,19 +41,11 @@ pub struct ConfigArgs {
     #[arg(long, default_value_t = DEFAULT_CONCURRENCY_FACTOR)]
     concurrency_factor: f64,
 
-    /// vm0 API URL (`OKOU_API_BACKEND_URL`; legacy: `VM0_API_BACKEND_URL`)
-    #[arg(
-        long,
-        env = crate::operator_api_url::clap_environment_name(),
-        hide_env_values = true
-    )]
+    /// vm0 API URL (`OKOU_API_BACKEND_URL`)
+    #[arg(long, env = "OKOU_API_BACKEND_URL", hide_env_values = true)]
     api_url: String,
-    /// Runner authentication token (`OKOU_RUNNER_TOKEN`; legacy: `VM0_RUNNER_TOKEN`)
-    #[arg(
-        long,
-        env = crate::runner_token::clap_environment_name(),
-        hide_env_values = true
-    )]
+    /// Runner authentication token (`OKOU_RUNNER_TOKEN`)
+    #[arg(long, env = "OKOU_RUNNER_TOKEN", hide_env_values = true)]
     token: String,
 }
 

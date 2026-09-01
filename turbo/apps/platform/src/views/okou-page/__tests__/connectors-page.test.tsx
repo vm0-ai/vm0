@@ -859,6 +859,7 @@ describe("connectors page", () => {
 
   it("localizes the catalog, reconnect state, and access management in Portuguese", async () => {
     document.documentElement.lang = "pt-BR";
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
     const researchAgentId = "c0000000-0000-4000-a000-000000000001";
     mockConnectors([
       { connectorSlug: "github", externalUsername: "octocat" },
@@ -919,6 +920,7 @@ describe("connectors page", () => {
 
   it("localizes the AI catalog subcategories in Portuguese", async () => {
     document.documentElement.lang = "pt-BR";
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
     mockConnectors([]);
     mockPublicConnectorStatus(
       [

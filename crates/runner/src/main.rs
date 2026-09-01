@@ -36,7 +36,6 @@ mod network_log_manager;
 mod network_log_process;
 mod network_logs;
 mod object_download_policy;
-mod operator_api_url;
 mod org_name;
 mod parent_death;
 mod paths;
@@ -56,7 +55,6 @@ mod run_cancellation;
 mod run_resolution;
 mod runner_dirname;
 mod runner_process_identity;
-mod runner_token;
 mod runtime_overrides;
 mod state_file;
 mod status;
@@ -76,7 +74,7 @@ mod workspace_promotion;
 use std::path::Path;
 use std::process::ExitCode;
 
-use clap::{FromArgMatches, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use tracing_subscriber::Layer as _;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::fmt::writer::MakeWriterExt;
@@ -90,51 +88,6 @@ const RUNNER_FMT_MAX_LEVEL: LevelFilter = LevelFilter::INFO;
 struct Cli {
     #[command(subcommand)]
     command: Command,
-}
-
-impl Cli {
-    fn parse_with_environment_aliases() -> Self {
-        Self::try_parse_with_environment_aliases_from(std::env::args_os())
-            .unwrap_or_else(|error| error.exit())
-    }
-
-    fn try_parse_with_environment_aliases_from<I, T>(args: I) -> Result<Self, clap::Error>
-    where
-        I: IntoIterator<Item = T>,
-        T: Into<std::ffi::OsString> + Clone,
-    {
-        let mut matches = <Self as clap::CommandFactory>::command().try_get_matches_from(args)?;
-        let api_url_from_environment = matches.subcommand().is_some_and(|(name, subcommand)| {
-            matches!(name, "config" | "start")
-                && subcommand.value_source("api_url")
-                    == Some(clap::parser::ValueSource::EnvVariable)
-        });
-        let cli = Self::from_arg_matches_mut(&mut matches)
-            .map_err(|error| error.format(&mut <Self as clap::CommandFactory>::command()))?;
-        if matches!(&cli.command, Command::Config(_) | Command::Start(_))
-            && runner_token::environment_aliases_conflict()
-        {
-            return Err(<Self as clap::CommandFactory>::command().error(
-                clap::error::ErrorKind::ArgumentConflict,
-                format!(
-                    "{} and {} cannot both be set",
-                    runner_token::CANONICAL_ENV,
-                    runner_token::LEGACY_ENV
-                ),
-            ));
-        }
-        if api_url_from_environment && operator_api_url::environment_aliases_conflict() {
-            return Err(<Self as clap::CommandFactory>::command().error(
-                clap::error::ErrorKind::ArgumentConflict,
-                format!(
-                    "{} and {} contain conflicting values",
-                    operator_api_url::CANONICAL_ENV,
-                    operator_api_url::LEGACY_ENV
-                ),
-            ));
-        }
-        Ok(cli)
-    }
 }
 
 #[derive(Subcommand)]
@@ -262,7 +215,7 @@ async fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let cli = Cli::parse_with_environment_aliases();
+    let cli = Cli::parse();
 
     let runner_hostname = match &cli.command {
         Command::Start(args) => runner_hostname_from_config(&args.config),
@@ -349,115 +302,78 @@ mod tests {
     };
     use clap::CommandFactory;
 
-    const HELP_TOKEN_CHILD_SCENARIO_ENV: &str = "RUNNER_HELP_TOKEN_CHILD_SCENARIO";
-    const HELP_TOKEN_CHILD_TEST: &str = "tests::runner_help_hides_token_environment_values_child";
-    const TOKEN_ALIAS_CHILD_SCENARIO_ENV: &str = "RUNNER_TOKEN_ALIAS_CHILD_SCENARIO";
-    const TOKEN_ALIAS_CHILD_TEST: &str = "tests::runner_token_environment_aliases_child";
-    const HELP_API_URL_CHILD_SCENARIO_ENV: &str = "RUNNER_HELP_API_URL_CHILD_SCENARIO";
-    const HELP_API_URL_CHILD_TEST: &str =
-        "tests::runner_help_hides_api_url_environment_values_child";
-    const API_URL_ALIAS_CHILD_SCENARIO_ENV: &str = "RUNNER_API_URL_ALIAS_CHILD_SCENARIO";
-    const API_URL_ALIAS_CHILD_TEST: &str = "tests::runner_api_url_environment_aliases_child";
+    const HELP_OPERATOR_ENV_CHILD_SCENARIO_ENV: &str = "RUNNER_HELP_OPERATOR_ENV_CHILD_SCENARIO";
+    const HELP_OPERATOR_ENV_CHILD_TEST: &str =
+        "tests::runner_help_hides_operator_environment_values_child";
+    const OPERATOR_ENV_CHILD_SCENARIO_ENV: &str = "RUNNER_OPERATOR_ENV_CHILD_SCENARIO";
+    const OPERATOR_ENV_CHILD_TEST: &str = "tests::runner_operator_environment_child";
     const API_URL_NORMALIZATION_CHILD_SCENARIO_ENV: &str =
         "RUNNER_API_URL_NORMALIZATION_CHILD_SCENARIO";
     const API_URL_NORMALIZATION_CHILD_TEST: &str =
         "tests::runner_api_url_environment_normalization_child";
-    const CANONICAL_TOKEN_SENTINEL: &str = "canonical-sentinel-runner-token";
-    const LEGACY_TOKEN_SENTINEL: &str = "legacy-sentinel-runner-token";
-    const FLAG_TOKEN_SENTINEL: &str = "flag-sentinel-runner-token";
+    const API_URL_ENV: &str = "OKOU_API_BACKEND_URL";
+    const TOKEN_ENV: &str = "OKOU_RUNNER_TOKEN";
+    const LEGACY_API_URL_ENV: &str = "VM0_API_BACKEND_URL";
+    const LEGACY_TOKEN_ENV: &str = "VM0_RUNNER_TOKEN";
+    const CANONICAL_TOKEN_SENTINEL: &str = "  canonical-sentinel-runner-token  ";
+    const LEGACY_TOKEN_SENTINEL: &str = "  legacy-sentinel-runner-token  ";
+    const FLAG_TOKEN_SENTINEL: &str = "  flag-sentinel-runner-token  ";
     const CANONICAL_API_URL_SENTINEL: &str =
         "https://canonical-api-url-sentinel.example.test/canonical/";
     const LEGACY_API_URL_SENTINEL: &str = "https://legacy-api-url-sentinel.example.test/legacy/";
-    const EQUAL_API_URL_SENTINEL: &str = "https://equal-api-url-sentinel.example.test/equal/";
     const FLAG_API_URL_SENTINEL: &str = "https://flag-api-url-sentinel.example.test/flag/";
 
-    fn token_alias_child_env(case: &str) -> Vec<(&'static str, Option<&'static str>)> {
-        let mut env = match case.strip_prefix("flag-").unwrap_or(case) {
+    fn operator_child_env(case: &str) -> Vec<(&'static str, Option<&'static str>)> {
+        match case {
             "canonical" => vec![
-                (runner_token::CANONICAL_ENV, Some(CANONICAL_TOKEN_SENTINEL)),
-                (runner_token::LEGACY_ENV, None),
+                (API_URL_ENV, Some(CANONICAL_API_URL_SENTINEL)),
+                (TOKEN_ENV, Some(CANONICAL_TOKEN_SENTINEL)),
+                (LEGACY_API_URL_ENV, None),
+                (LEGACY_TOKEN_ENV, None),
             ],
-            "legacy" => vec![
-                (runner_token::CANONICAL_ENV, None),
-                (runner_token::LEGACY_ENV, Some(LEGACY_TOKEN_SENTINEL)),
+            "canonical-with-legacy" | "flags-with-canonical-and-legacy" => vec![
+                (API_URL_ENV, Some(CANONICAL_API_URL_SENTINEL)),
+                (TOKEN_ENV, Some(CANONICAL_TOKEN_SENTINEL)),
+                (LEGACY_API_URL_ENV, Some(LEGACY_API_URL_SENTINEL)),
+                (LEGACY_TOKEN_ENV, Some(LEGACY_TOKEN_SENTINEL)),
             ],
-            "conflict" => vec![
-                (runner_token::CANONICAL_ENV, Some(CANONICAL_TOKEN_SENTINEL)),
-                (runner_token::LEGACY_ENV, Some(LEGACY_TOKEN_SENTINEL)),
+            "legacy-only" | "flags-with-legacy" => vec![
+                (API_URL_ENV, None),
+                (TOKEN_ENV, None),
+                (LEGACY_API_URL_ENV, Some(LEGACY_API_URL_SENTINEL)),
+                (LEGACY_TOKEN_ENV, Some(LEGACY_TOKEN_SENTINEL)),
             ],
-            "config-file" => vec![
-                (runner_token::CANONICAL_ENV, None),
-                (runner_token::LEGACY_ENV, None),
+            "legacy-api-only" => vec![
+                (API_URL_ENV, None),
+                (TOKEN_ENV, Some(CANONICAL_TOKEN_SENTINEL)),
+                (LEGACY_API_URL_ENV, Some(LEGACY_API_URL_SENTINEL)),
+                (LEGACY_TOKEN_ENV, None),
             ],
-            unexpected => panic!("unexpected runner token alias case: {unexpected}"),
-        };
-        env.extend([
-            (operator_api_url::CANONICAL_ENV, None),
-            (operator_api_url::LEGACY_ENV, None),
-        ]);
-        env
+            "legacy-token-only" => vec![
+                (API_URL_ENV, Some(CANONICAL_API_URL_SENTINEL)),
+                (TOKEN_ENV, None),
+                (LEGACY_API_URL_ENV, None),
+                (LEGACY_TOKEN_ENV, Some(LEGACY_TOKEN_SENTINEL)),
+            ],
+            "none" => vec![
+                (API_URL_ENV, None),
+                (TOKEN_ENV, None),
+                (LEGACY_API_URL_ENV, None),
+                (LEGACY_TOKEN_ENV, None),
+            ],
+            unexpected => panic!("unexpected Runner operator environment case: {unexpected}"),
+        }
     }
 
-    fn api_url_alias_child_env(case: &str) -> Vec<(&'static str, Option<&'static str>)> {
-        let mut env = match case.strip_prefix("flag-").unwrap_or(case) {
-            "canonical" => vec![
-                (
-                    operator_api_url::CANONICAL_ENV,
-                    Some(CANONICAL_API_URL_SENTINEL),
-                ),
-                (operator_api_url::LEGACY_ENV, None),
-            ],
-            "legacy" => vec![
-                (operator_api_url::CANONICAL_ENV, None),
-                (operator_api_url::LEGACY_ENV, Some(LEGACY_API_URL_SENTINEL)),
-            ],
-            "equal" => vec![
-                (
-                    operator_api_url::CANONICAL_ENV,
-                    Some(EQUAL_API_URL_SENTINEL),
-                ),
-                (operator_api_url::LEGACY_ENV, Some(EQUAL_API_URL_SENTINEL)),
-            ],
-            "conflict" => vec![
-                (
-                    operator_api_url::CANONICAL_ENV,
-                    Some(CANONICAL_API_URL_SENTINEL),
-                ),
-                (operator_api_url::LEGACY_ENV, Some(LEGACY_API_URL_SENTINEL)),
-            ],
-            "neither" => vec![
-                (operator_api_url::CANONICAL_ENV, None),
-                (operator_api_url::LEGACY_ENV, None),
-            ],
-            unexpected => panic!("unexpected Runner API URL alias case: {unexpected}"),
-        };
-        env.extend([
-            (runner_token::CANONICAL_ENV, None),
-            (runner_token::LEGACY_ENV, None),
-        ]);
-        env
-    }
-
-    fn api_url_source_child_env(
-        source: &str,
+    fn api_url_normalization_child_env(
         value: &'static str,
     ) -> Vec<(&'static str, Option<&'static str>)> {
-        let mut env = match source {
-            "canonical" => vec![
-                (operator_api_url::CANONICAL_ENV, Some(value)),
-                (operator_api_url::LEGACY_ENV, None),
-            ],
-            "legacy" => vec![
-                (operator_api_url::CANONICAL_ENV, None),
-                (operator_api_url::LEGACY_ENV, Some(value)),
-            ],
-            unexpected => panic!("unexpected Runner API URL source: {unexpected}"),
-        };
-        env.extend([
-            (runner_token::CANONICAL_ENV, None),
-            (runner_token::LEGACY_ENV, None),
-        ]);
-        env
+        vec![
+            (API_URL_ENV, Some(value)),
+            (TOKEN_ENV, Some(CANONICAL_TOKEN_SENTINEL)),
+            (LEGACY_API_URL_ENV, Some(LEGACY_API_URL_SENTINEL)),
+            (LEGACY_TOKEN_ENV, Some(LEGACY_TOKEN_SENTINEL)),
+        ]
     }
 
     fn api_url_normalization_input(case: &str) -> &'static str {
@@ -472,21 +388,23 @@ mod tests {
         }
     }
 
-    fn assert_api_url_alias_values_hidden(output: &str) {
+    fn assert_operator_values_hidden(output: &str) {
         for sentinel in [
             CANONICAL_API_URL_SENTINEL,
             LEGACY_API_URL_SENTINEL,
-            EQUAL_API_URL_SENTINEL,
             FLAG_API_URL_SENTINEL,
+            CANONICAL_TOKEN_SENTINEL,
+            LEGACY_TOKEN_SENTINEL,
+            FLAG_TOKEN_SENTINEL,
         ] {
             assert!(
                 !output.contains(sentinel),
-                "Runner API URL diagnostics must not expose {sentinel}: {output}"
+                "Runner operator diagnostics must not expose {sentinel}: {output}"
             );
         }
     }
 
-    fn runner_token_cli_args(subcommand: &str, case: &str) -> Vec<&'static str> {
+    fn runner_operator_cli_args(subcommand: &str, with_flags: bool) -> Vec<&'static str> {
         let mut args = match subcommand {
             "config" => vec![
                 "runner",
@@ -501,43 +419,27 @@ mod tests {
                 "vm0/test",
                 "--runner-dirname",
                 "runner-test",
-                "--api-url",
-                "https://api.example.test",
             ],
             "start" => vec!["runner", "start", "--config", "/tmp/runner.yaml"],
-            unexpected => panic!("unexpected runner token subcommand: {unexpected}"),
+            unexpected => panic!("unexpected Runner operator subcommand: {unexpected}"),
         };
-        if case.starts_with("flag-") {
-            args.extend(["--token", FLAG_TOKEN_SENTINEL]);
+        if with_flags {
+            args.extend([
+                "--api-url",
+                FLAG_API_URL_SENTINEL,
+                "--token",
+                FLAG_TOKEN_SENTINEL,
+            ]);
         }
         args
     }
 
-    fn runner_api_url_cli_args(subcommand: &str, case: &str) -> Vec<&'static str> {
-        let mut args = match subcommand {
-            "config" => vec![
-                "runner",
-                "config",
-                "--profile",
-                "vm0/default",
-                "--rootfs-hash",
-                "rootfs-hash",
-                "--snapshot-hash",
-                "snapshot-hash",
-                "--group",
-                "vm0/test",
-                "--runner-dirname",
-                "runner-test",
-                "--token",
-                "runner-token",
-            ],
-            "start" => vec!["runner", "start", "--config", "/tmp/runner.yaml"],
-            unexpected => panic!("unexpected Runner API URL subcommand: {unexpected}"),
-        };
-        if case.starts_with("flag-") {
-            args.extend(["--api-url", FLAG_API_URL_SENTINEL]);
+    fn parsed_operator_sources(cli: &Cli) -> (Option<&str>, Option<&str>) {
+        match &cli.command {
+            Command::Config(args) => (Some(args.api_url_for_test()), Some(args.token_for_test())),
+            Command::Start(args) => (args.api_url_for_test(), args.token_for_test()),
+            _ => panic!("Runner operator scenario parsed an unexpected subcommand"),
         }
-        args
     }
 
     #[test]
@@ -618,211 +520,63 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn runner_help_hides_token_environment_values() {
+    async fn runner_help_advertises_only_canonical_operator_environment() {
         for subcommand in ["config", "start"] {
-            for case in ["canonical", "legacy", "conflict"] {
-                let scenario = format!("{subcommand}:{case}");
-                let child_env = token_alias_child_env(case);
-                run_ignored_child_test(
-                    HELP_TOKEN_CHILD_TEST,
-                    (HELP_TOKEN_CHILD_SCENARIO_ENV, &scenario),
-                    &child_env,
-                    Duration::from_secs(5),
-                )
-                .await;
-            }
+            let child_env = operator_child_env("canonical-with-legacy");
+            run_ignored_child_test(
+                HELP_OPERATOR_ENV_CHILD_TEST,
+                (HELP_OPERATOR_ENV_CHILD_SCENARIO_ENV, subcommand),
+                &child_env,
+                Duration::from_secs(5),
+            )
+            .await;
         }
     }
 
     #[test]
-    #[ignore = "spawned by runner_help_hides_token_environment_values"]
-    fn runner_help_hides_token_environment_values_child() {
-        let Ok(scenario) = std::env::var(HELP_TOKEN_CHILD_SCENARIO_ENV) else {
+    #[ignore = "spawned by runner_help_advertises_only_canonical_operator_environment"]
+    fn runner_help_hides_operator_environment_values_child() {
+        let Ok(subcommand) = std::env::var(HELP_OPERATOR_ENV_CHILD_SCENARIO_ENV) else {
             return;
         };
-        if !ignored_child_test_env_guard_enabled((HELP_TOKEN_CHILD_SCENARIO_ENV, &scenario)) {
+        if !ignored_child_test_env_guard_enabled((
+            HELP_OPERATOR_ENV_CHILD_SCENARIO_ENV,
+            &subcommand,
+        )) {
             return;
         }
-        let (subcommand, case) = scenario
-            .split_once(':')
-            .expect("runner help token scenario must contain subcommand and alias case");
-        let subcommand = match subcommand {
-            "config" => "config",
-            "start" => "start",
-            unexpected => panic!("unexpected runner help token scenario: {unexpected}"),
-        };
-        assert!(
-            matches!(case, "canonical" | "legacy" | "conflict"),
-            "unexpected runner help token alias case: {case}"
-        );
+        assert!(matches!(subcommand.as_str(), "config" | "start"));
 
-        let error = Cli::try_parse_with_environment_aliases_from(["runner", subcommand, "--help"])
-            .err()
-            .expect("runner subcommand help should exit through clap");
-        assert_eq!(
-            error.kind(),
-            clap::error::ErrorKind::DisplayHelp,
-            "{subcommand} --help should produce clap help"
-        );
-        let help = error.to_string();
-        assert!(
-            help.contains(runner_token::CANONICAL_ENV),
-            "{subcommand} help should identify the canonical token environment variable"
-        );
-        assert!(
-            help.contains(runner_token::LEGACY_ENV),
-            "{subcommand} help should identify the legacy token environment variable"
-        );
-        assert!(
-            !help.contains(CANONICAL_TOKEN_SENTINEL) && !help.contains(LEGACY_TOKEN_SENTINEL),
-            "{subcommand} help should hide both token environment values"
-        );
-    }
-
-    #[tokio::test]
-    async fn runner_config_and_start_resolve_token_environment_aliases() {
-        for subcommand in ["config", "start"] {
-            for case in [
-                "canonical",
-                "legacy",
-                "flag-canonical",
-                "flag-legacy",
-                "conflict",
-                "config-file",
-            ] {
-                if subcommand == "config" && case == "config-file" {
-                    continue;
-                }
-                let scenario = format!("{subcommand}:{case}");
-                let child_env = token_alias_child_env(case);
-                run_ignored_child_test(
-                    TOKEN_ALIAS_CHILD_TEST,
-                    (TOKEN_ALIAS_CHILD_SCENARIO_ENV, &scenario),
-                    &child_env,
-                    Duration::from_secs(5),
-                )
-                .await;
-            }
-        }
-    }
-
-    #[test]
-    #[ignore = "spawned by runner_config_and_start_resolve_token_environment_aliases"]
-    fn runner_token_environment_aliases_child() {
-        let Ok(scenario) = std::env::var(TOKEN_ALIAS_CHILD_SCENARIO_ENV) else {
-            return;
-        };
-        if !ignored_child_test_env_guard_enabled((TOKEN_ALIAS_CHILD_SCENARIO_ENV, &scenario)) {
-            return;
-        }
-        let (subcommand, case) = scenario
-            .split_once(':')
-            .expect("runner token scenario must contain subcommand and alias case");
-        let parsed =
-            Cli::try_parse_with_environment_aliases_from(runner_token_cli_args(subcommand, case));
-
-        if case == "conflict" {
-            let error = parsed
-                .err()
-                .expect("both runner token environment aliases must conflict");
-            assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
-            let output = error.to_string();
-            assert!(output.contains(runner_token::CANONICAL_ENV));
-            assert!(output.contains(runner_token::LEGACY_ENV));
-            assert!(
-                !output.contains(CANONICAL_TOKEN_SENTINEL)
-                    && !output.contains(LEGACY_TOKEN_SENTINEL)
-                    && !output.contains(FLAG_TOKEN_SENTINEL),
-                "runner token alias conflict must not expose token values: {output}"
-            );
-            return;
-        }
-
-        let cli = parsed.unwrap_or_else(|error| panic!("parse runner {scenario}: {error}"));
-        let token = match &cli.command {
-            Command::Config(args) => Some(args.token_for_test()),
-            Command::Start(args) => args.token_for_test(),
-            _ => panic!("runner token scenario parsed an unexpected subcommand: {scenario}"),
-        };
-        let expected = match case {
-            "canonical" => Some(CANONICAL_TOKEN_SENTINEL),
-            "legacy" => Some(LEGACY_TOKEN_SENTINEL),
-            "flag-canonical" | "flag-legacy" => Some(FLAG_TOKEN_SENTINEL),
-            "config-file" => None,
-            unexpected => panic!("unexpected runner token scenario case: {unexpected}"),
-        };
-        assert_eq!(token, expected, "unexpected token source for {scenario}");
-    }
-
-    #[tokio::test]
-    async fn runner_help_hides_api_url_environment_values() {
-        for subcommand in ["config", "start"] {
-            for case in ["canonical", "legacy", "equal", "conflict"] {
-                let scenario = format!("{subcommand}:{case}");
-                let child_env = api_url_alias_child_env(case);
-                run_ignored_child_test(
-                    HELP_API_URL_CHILD_TEST,
-                    (HELP_API_URL_CHILD_SCENARIO_ENV, &scenario),
-                    &child_env,
-                    Duration::from_secs(5),
-                )
-                .await;
-            }
-        }
-    }
-
-    #[test]
-    #[ignore = "spawned by runner_help_hides_api_url_environment_values"]
-    fn runner_help_hides_api_url_environment_values_child() {
-        let Ok(scenario) = std::env::var(HELP_API_URL_CHILD_SCENARIO_ENV) else {
-            return;
-        };
-        if !ignored_child_test_env_guard_enabled((HELP_API_URL_CHILD_SCENARIO_ENV, &scenario)) {
-            return;
-        }
-        let (subcommand, case) = scenario
-            .split_once(':')
-            .expect("Runner API URL help scenario must contain subcommand and alias case");
-        assert!(matches!(subcommand, "config" | "start"));
-        assert!(matches!(
-            case,
-            "canonical" | "legacy" | "equal" | "conflict"
-        ));
-
-        let error = Cli::try_parse_with_environment_aliases_from(["runner", subcommand, "--help"])
+        let error = Cli::try_parse_from(["runner", subcommand.as_str(), "--help"])
             .err()
             .expect("runner subcommand help should exit through Clap");
         assert_eq!(error.kind(), clap::error::ErrorKind::DisplayHelp);
         let help = error.to_string();
-        assert!(
-            help.contains(operator_api_url::CANONICAL_ENV),
-            "{subcommand} help should identify the canonical API URL environment variable"
-        );
-        assert!(
-            help.contains(operator_api_url::LEGACY_ENV),
-            "{subcommand} help should identify the legacy API URL environment variable"
-        );
-        assert_api_url_alias_values_hidden(&help);
+        assert!(help.contains(API_URL_ENV));
+        assert!(help.contains(TOKEN_ENV));
+        assert!(!help.contains(LEGACY_API_URL_ENV));
+        assert!(!help.contains(LEGACY_TOKEN_ENV));
+        assert_operator_values_hidden(&help);
     }
 
     #[tokio::test]
-    async fn runner_config_and_start_resolve_api_url_environment_aliases() {
+    async fn runner_config_and_start_use_canonical_operator_sources() {
         for subcommand in ["config", "start"] {
             for case in [
                 "canonical",
-                "legacy",
-                "equal",
-                "conflict",
-                "flag-canonical",
-                "flag-legacy",
-                "flag-conflict",
-                "neither",
+                "canonical-with-legacy",
+                "flags-with-legacy",
+                "flags-with-canonical-and-legacy",
+                "legacy-api-only",
+                "legacy-token-only",
+                "legacy-only",
+                "none",
             ] {
                 let scenario = format!("{subcommand}:{case}");
-                let child_env = api_url_alias_child_env(case);
+                let child_env = operator_child_env(case);
                 run_ignored_child_test(
-                    API_URL_ALIAS_CHILD_TEST,
-                    (API_URL_ALIAS_CHILD_SCENARIO_ENV, &scenario),
+                    OPERATOR_ENV_CHILD_TEST,
+                    (OPERATOR_ENV_CHILD_SCENARIO_ENV, &scenario),
                     &child_env,
                     Duration::from_secs(5),
                 )
@@ -832,109 +586,90 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "spawned by runner_config_and_start_resolve_api_url_environment_aliases"]
-    fn runner_api_url_environment_aliases_child() {
-        let Ok(scenario) = std::env::var(API_URL_ALIAS_CHILD_SCENARIO_ENV) else {
+    #[ignore = "spawned by runner_config_and_start_use_canonical_operator_sources"]
+    fn runner_operator_environment_child() {
+        let Ok(scenario) = std::env::var(OPERATOR_ENV_CHILD_SCENARIO_ENV) else {
             return;
         };
-        if !ignored_child_test_env_guard_enabled((API_URL_ALIAS_CHILD_SCENARIO_ENV, &scenario)) {
+        if !ignored_child_test_env_guard_enabled((OPERATOR_ENV_CHILD_SCENARIO_ENV, &scenario)) {
             return;
         }
         let (subcommand, case) = scenario
             .split_once(':')
-            .expect("Runner API URL scenario must contain subcommand and alias case");
-        let parsed =
-            Cli::try_parse_with_environment_aliases_from(runner_api_url_cli_args(subcommand, case));
+            .expect("Runner operator scenario must contain subcommand and case");
+        let parsed = Cli::try_parse_from(runner_operator_cli_args(
+            subcommand,
+            case.starts_with("flags-"),
+        ));
 
-        if case == "conflict" {
+        let canonical_source_missing = matches!(
+            case,
+            "legacy-api-only" | "legacy-token-only" | "legacy-only" | "none"
+        );
+        if subcommand == "config" && canonical_source_missing {
             let error = parsed
                 .err()
-                .expect("unequal Runner API URL environment aliases must conflict");
-            assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
-            let output = error.to_string();
-            assert!(output.contains(operator_api_url::CANONICAL_ENV));
-            assert!(output.contains(operator_api_url::LEGACY_ENV));
-            assert_api_url_alias_values_hidden(&output);
-            return;
-        }
-        if subcommand == "config" && case == "neither" {
-            let error = parsed
-                .err()
-                .expect("runner config should still require an API URL source");
+                .expect("runner config should require canonical operator sources");
             assert_eq!(
                 error.kind(),
                 clap::error::ErrorKind::MissingRequiredArgument
             );
-            assert_api_url_alias_values_hidden(&error.to_string());
+            assert_operator_values_hidden(&error.to_string());
             return;
         }
 
         let cli = parsed.unwrap_or_else(|error| panic!("parse runner {scenario}: {error}"));
-        let api_url = match &cli.command {
-            Command::Config(args) => Some(args.api_url_for_test()),
-            Command::Start(args) => args.api_url_for_test(),
-            _ => panic!("Runner API URL scenario parsed an unexpected subcommand: {scenario}"),
-        };
+        let actual = parsed_operator_sources(&cli);
         let expected = match case {
-            "canonical" => Some(CANONICAL_API_URL_SENTINEL),
-            "legacy" => Some(LEGACY_API_URL_SENTINEL),
-            "equal" => Some(EQUAL_API_URL_SENTINEL),
-            "flag-canonical" | "flag-legacy" | "flag-conflict" => Some(FLAG_API_URL_SENTINEL),
-            "neither" => None,
-            unexpected => panic!("unexpected Runner API URL scenario case: {unexpected}"),
+            "canonical" | "canonical-with-legacy" => (
+                Some(CANONICAL_API_URL_SENTINEL),
+                Some(CANONICAL_TOKEN_SENTINEL),
+            ),
+            "flags-with-legacy" | "flags-with-canonical-and-legacy" => {
+                (Some(FLAG_API_URL_SENTINEL), Some(FLAG_TOKEN_SENTINEL))
+            }
+            "legacy-api-only" => (None, Some(CANONICAL_TOKEN_SENTINEL)),
+            "legacy-token-only" => (Some(CANONICAL_API_URL_SENTINEL), None),
+            "legacy-only" | "none" => (None, None),
+            unexpected => panic!("unexpected Runner operator case: {unexpected}"),
         };
-        assert_eq!(
-            api_url, expected,
-            "unexpected API URL source for {scenario}"
-        );
+        assert_eq!(actual, expected, "unexpected sources for {scenario}");
     }
 
     #[tokio::test]
-    async fn runner_api_url_environment_aliases_use_existing_normalization() {
-        for source in ["canonical", "legacy"] {
-            for case in [
-                "invalid-scheme",
-                "missing-host",
-                "userinfo",
-                "query",
-                "fragment",
-                "trailing-slash",
-            ] {
-                let scenario = format!("{source}:{case}");
-                let child_env = api_url_source_child_env(source, api_url_normalization_input(case));
-                run_ignored_child_test(
-                    API_URL_NORMALIZATION_CHILD_TEST,
-                    (API_URL_NORMALIZATION_CHILD_SCENARIO_ENV, &scenario),
-                    &child_env,
-                    Duration::from_secs(5),
-                )
-                .await;
-            }
+    async fn runner_canonical_api_url_environment_uses_existing_normalization() {
+        for case in [
+            "invalid-scheme",
+            "missing-host",
+            "userinfo",
+            "query",
+            "fragment",
+            "trailing-slash",
+        ] {
+            let child_env = api_url_normalization_child_env(api_url_normalization_input(case));
+            run_ignored_child_test(
+                API_URL_NORMALIZATION_CHILD_TEST,
+                (API_URL_NORMALIZATION_CHILD_SCENARIO_ENV, case),
+                &child_env,
+                Duration::from_secs(5),
+            )
+            .await;
         }
     }
 
     #[test]
-    #[ignore = "spawned by runner_api_url_environment_aliases_use_existing_normalization"]
+    #[ignore = "spawned by runner_canonical_api_url_environment_uses_existing_normalization"]
     fn runner_api_url_environment_normalization_child() {
-        let Ok(scenario) = std::env::var(API_URL_NORMALIZATION_CHILD_SCENARIO_ENV) else {
+        let Ok(case) = std::env::var(API_URL_NORMALIZATION_CHILD_SCENARIO_ENV) else {
             return;
         };
-        if !ignored_child_test_env_guard_enabled((
-            API_URL_NORMALIZATION_CHILD_SCENARIO_ENV,
-            &scenario,
-        )) {
+        if !ignored_child_test_env_guard_enabled((API_URL_NORMALIZATION_CHILD_SCENARIO_ENV, &case))
+        {
             return;
         }
-        let (source, case) = scenario
-            .split_once(':')
-            .expect("Runner API URL normalization scenario must contain source and case");
-        assert!(matches!(source, "canonical" | "legacy"));
-        let input = api_url_normalization_input(case);
-        let cli = Cli::try_parse_with_environment_aliases_from(runner_api_url_cli_args(
-            "config",
-            "canonical",
-        ))
-        .unwrap_or_else(|error| panic!("parse Runner API URL normalization scenario: {error}"));
+        let input = api_url_normalization_input(&case);
+        let cli = Cli::try_parse_from(runner_operator_cli_args("config", false))
+            .unwrap_or_else(|error| panic!("parse Runner API URL normalization scenario: {error}"));
         let Command::Config(args) = cli.command else {
             panic!("Runner API URL normalization scenario parsed an unexpected subcommand");
         };
@@ -949,7 +684,7 @@ mod tests {
             return;
         }
 
-        let expected = match case {
+        let expected = match case.as_str() {
             "invalid-scheme" => "http or https",
             "missing-host" => "absolute http(s) URL",
             "userinfo" => "credentials",

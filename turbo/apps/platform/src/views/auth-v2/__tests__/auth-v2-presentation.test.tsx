@@ -206,7 +206,7 @@ describe("auth v2 presentation", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Light theme enabled");
   });
 
-  it("localizes the Okou presentation boundary through platform resources", async () => {
+  it("localizes Okou app copy while keeping document metadata English", async () => {
     useJapaneseLocale();
     setBrowserUrl("https://app.okou.ai/sign-up");
 
@@ -223,7 +223,7 @@ describe("auth v2 presentation", () => {
     expect(linkByLabel("Okou のホームに移動")).toHaveAttribute("href", "/");
     expect(screen.queryByTestId("auth-v2-brand-logo")).not.toBeInTheDocument();
     expect(heading).toBeVisible();
-    expect(document.title).toBe("サインアップ | Okou");
+    expect(document.title).toBe("Sign up | Okou");
   });
 
   it("substitutes the Okou brand in a non-English Auth v2 template", async () => {

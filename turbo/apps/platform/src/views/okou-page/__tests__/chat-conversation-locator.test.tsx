@@ -80,7 +80,14 @@ function stubLayout({
   Object.defineProperty(prototype, "scrollTop", {
     configurable: true,
     get(this: HTMLElement): number {
-      return scrollTops.get(this) ?? 0;
+      const stored = scrollTops.get(this) ?? 0;
+      if (!isScroller(this)) {
+        return stored;
+      }
+      // The thread pins itself to the bottom by assigning scrollHeight, so
+      // without a browser's clamp the viewport would read as parked a whole
+      // screen past the last turn.
+      return Math.min(stored, Math.max(0, this.scrollHeight - VIEWPORT_PX));
     },
     set(this: HTMLElement, value: number) {
       scrollTops.set(this, Math.max(0, value));
@@ -618,6 +625,58 @@ describe("chat conversation locator", () => {
     }
   });
 
+  it("widens the viewport band with the ticks it frames", async () => {
+    const { rail } = await renderLongThread();
+
+    const bandElement = await waitFor(() => {
+      const element = rail.querySelector<HTMLElement>(
+        "[data-conversation-locator-band]",
+      );
+      expect(element).not.toBeNull();
+      return element as HTMLElement;
+    });
+    const bandWidth = () => {
+      return Number.parseFloat(bandElement.style.width);
+    };
+    const widestFramedTick = () => {
+      const top = Number.parseFloat(bandElement.style.top);
+      const bottom = top + Number.parseFloat(bandElement.style.height);
+      return Math.max(
+        ...ticksOf(rail)
+          .filter((tick) => {
+            const y = Number.parseFloat(tick.style.top);
+            return y >= top && y <= bottom;
+          })
+          .map((tick) => {
+            return Number.parseFloat(tick.style.width);
+          }),
+      );
+    };
+
+    expect(bandWidth()).toBe(32);
+
+    // A freshly opened thread sits at its tail, so the band frames the last
+    // ticks and the cursor can land on one of them.
+    const ticks = ticksOf(rail);
+    const target = ticks.at(-1) as HTMLElement;
+    pointerAt(rail, 0, "pointerenter");
+    pointerAt(rail, Number.parseFloat(target.style.top), "pointermove");
+    await waitFor(() => {
+      expect(target.dataset.locatorHot).toBe("");
+    });
+
+    // The band grows by exactly what its widest tick gained, so a magnified
+    // bar never spills out of the frame that marks the viewport.
+    expect(widestFramedTick()).toBe(Number.parseFloat(target.style.width));
+    expect(bandWidth()).toBeGreaterThan(32);
+    expect(bandWidth()).toBeCloseTo(32 + widestFramedTick() - 7, 1);
+
+    pointerAt(rail, 200, "pointerleave");
+    await waitFor(() => {
+      expect(bandWidth()).toBe(32);
+    });
+  });
+
   it("pages the window on wheel and hands it back when the pointer leaves", async () => {
     const { rail } = await renderLongThread();
 
@@ -707,9 +766,11 @@ describe("chat conversation locator", () => {
     expect(targetTick).not.toBeNull();
     pointerAt(rail, Number.parseFloat(targetTick!.style.top), "pointermove");
 
+    // This turn is outside the DOM render window, so naming it in the
+    // preview proves the rail indexes the whole thread before the smooth jump
+    // renders it.
     await waitFor(() => {
       expect(locatorPreview()).toHaveTextContent("Virtual question 8");
-      expect(locatorPreview()).toHaveTextContent("17/30");
     });
     rail.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 

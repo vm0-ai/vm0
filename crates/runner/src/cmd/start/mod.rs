@@ -310,19 +310,11 @@ pub struct StartArgs {
     /// Path to runner.yaml config file
     #[arg(long, short)]
     pub(crate) config: PathBuf,
-    /// vm0 API URL (overrides config; `OKOU_API_BACKEND_URL`; legacy: `VM0_API_BACKEND_URL`)
-    #[arg(
-        long,
-        env = crate::operator_api_url::clap_environment_name(),
-        hide_env_values = true
-    )]
+    /// vm0 API URL (overrides config; `OKOU_API_BACKEND_URL`)
+    #[arg(long, env = "OKOU_API_BACKEND_URL", hide_env_values = true)]
     api_url: Option<String>,
-    /// Runner authentication token (overrides config; `OKOU_RUNNER_TOKEN`; legacy: `VM0_RUNNER_TOKEN`)
-    #[arg(
-        long,
-        env = crate::runner_token::clap_environment_name(),
-        hide_env_values = true
-    )]
+    /// Runner authentication token (overrides config; `OKOU_RUNNER_TOKEN`)
+    #[arg(long, env = "OKOU_RUNNER_TOKEN", hide_env_values = true)]
     token: Option<String>,
     /// Use local file queue provider instead of API (for testing)
     #[arg(long)]
@@ -983,25 +975,16 @@ fn validate_server_config_for_start(
     mut server: config::ServerConfig,
 ) -> RunnerResult<config::ServerConfig> {
     if server.url.is_empty() {
-        return Err(RunnerError::Config(format!(
-            "server.url is required (set in config or via --api-url / {} / {})",
-            crate::operator_api_url::CANONICAL_ENV,
-            crate::operator_api_url::LEGACY_ENV
-        )));
+        return Err(RunnerError::Config(
+            "server.url is required (set in config or via --api-url / OKOU_API_BACKEND_URL)".into(),
+        ));
     }
     server.url = config::normalize_api_base_url(&server.url)?;
     if server.token.is_empty() {
         return Err(RunnerError::Config(
-            "server.token is required (set in config or via --token / OKOU_RUNNER_TOKEN / VM0_RUNNER_TOKEN)".into(),
+            "server.token is required (set in config or via --token / OKOU_RUNNER_TOKEN)".into(),
         ));
     }
-
-    info!(
-        target: crate::axiom_layer::OPERATOR_ENV_ALIAS_STATES_TARGET,
-        api_url_alias_state = crate::operator_api_url::environment_alias_state_label(),
-        runner_token_alias_state = crate::runner_token::environment_alias_state_label(),
-        "runner operator environment alias states"
-    );
 
     Ok(server)
 }

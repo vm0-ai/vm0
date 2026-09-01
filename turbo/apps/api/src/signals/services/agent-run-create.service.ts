@@ -238,10 +238,7 @@ import {
 } from "./agent-run-queue-payload.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import {
-  resolvePiSandboxModelConfig,
-  shouldUsePiExecution,
-} from "./pi-sandbox-config";
+import { resolvePiSandboxModelConfig } from "./pi-sandbox-config";
 import {
   piResourceDiscoveryMounts,
   piResourceSnapshotDigest,
@@ -1000,6 +997,8 @@ export interface CreateAgentRunArgs {
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
   readonly queueFirstAssociation?: QueueFirstRunAssociation;
   readonly agentRunModelPin?: AgentRunModelPin;
+  /** Immutable Pi eligibility captured by the caller's admission snapshot. */
+  readonly piExecution: boolean;
   readonly timing?: ApiDispatchTimingCollector;
   readonly timingDimensions?: ApiDispatchTimingDimensions;
 }
@@ -8238,26 +8237,11 @@ interface FinalizedPreparedRunContext extends PreparedRunContext {
   readonly launchSnapshot: AgentRunLaunchSnapshot;
 }
 
-function isPiSandboxEnabledForRun(
-  createArgs: CreateAgentRunArgs,
-  featureSwitchContext: FeatureSwitchContext,
-): boolean {
-  return shouldUsePiExecution({
-    chatThreadId: createArgs.chatThreadId,
-    modelProviderType: createArgs.agentRunModelPin?.modelProvider,
-    selectedModel: createArgs.agentRunModelPin?.selectedModel,
-    codexServiceTier: createArgs.codexServiceTier,
-    triggerSource: createArgs.body.triggerSource,
-    featureSwitchContext,
-  });
-}
-
 function resolvePreparedPiModelConfig(args: {
   readonly createArgs: CreateAgentRunArgs;
-  readonly featureSwitchContext: FeatureSwitchContext;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
 }): PiModelConfig | undefined {
-  if (!isPiSandboxEnabledForRun(args.createArgs, args.featureSwitchContext)) {
+  if (!args.createArgs.piExecution) {
     return undefined;
   }
   const config = resolvePiSandboxModelConfig(args.modelProvider);
@@ -9426,7 +9410,6 @@ function prepareRunContext(
       });
       const piSandbox = resolvePreparedPiModelConfig({
         createArgs: args,
-        featureSwitchContext: bodyContext.featureSwitchContext,
         modelProvider: runtimeContext.modelProvider,
       });
 

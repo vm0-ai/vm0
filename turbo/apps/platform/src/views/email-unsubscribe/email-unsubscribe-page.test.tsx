@@ -13,6 +13,7 @@ const context = testContext();
 
 function usePortugueseLocale(): void {
   document.documentElement.lang = "pt-BR";
+  context.mocks.data.userPreferences({ locale: "pt-BR" });
   context.signal.addEventListener(
     "abort",
     () => {
@@ -33,7 +34,7 @@ function buttonByText(text: string): HTMLElement {
 }
 
 describe("email unsubscribe page", () => {
-  it("confirms an unsubscribe in Brazilian Portuguese", async () => {
+  it("renders Portuguese app copy with English document metadata", async () => {
     usePortugueseLocale();
     context.mocks.api(emailUnsubscribeContract.unsubscribe, ({ respond }) => {
       return respond(200, { unsubscribed: true });
@@ -52,7 +53,7 @@ describe("email unsubscribe page", () => {
     await expect(
       screen.findByText("Inscrição cancelada"),
     ).resolves.toBeInTheDocument();
-    expect(document.title).toBe("Cancelar inscrição | VM0");
+    expect(document.title).toBe("Unsubscribe | VM0");
   });
 
   it("unsubscribes from system emails after confirmation", async () => {

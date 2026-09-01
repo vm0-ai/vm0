@@ -267,11 +267,45 @@ function getFileAllowedLiterals() {
   ];
 }
 
+function getLocaleIndependentShellAllowedLiterals() {
+  return [
+    [
+      "src/views/okou-page/app-skeleton.tsx\u0000Loading",
+      "locale-independent accessibility label for the copy-free app skeleton",
+    ],
+    [
+      "src/views/unsupported-browser-page.tsx\u0000Update your browser to continue",
+      "English-only browser compatibility shell outside localized app bootstrap",
+    ],
+    [
+      "src/views/unsupported-browser-page.tsx\u0000Update Chrome to continue",
+      "English-only browser compatibility shell outside localized app bootstrap",
+    ],
+    [
+      "src/views/unsupported-browser-page.tsx\u0000Update Chromium to continue",
+      "English-only browser compatibility shell outside localized app bootstrap",
+    ],
+    [
+      "src/views/unsupported-browser-page.tsx\u0000Update iOS to continue",
+      "English-only browser compatibility shell outside localized app bootstrap",
+    ],
+    [
+      "src/views/unsupported-browser-page.tsx\u0000Update Safari to continue",
+      "English-only browser compatibility shell outside localized app bootstrap",
+    ],
+    [
+      "src/views/unsupported-browser-page.tsx\u0000does not support your current browser version. Update your browser to continue.",
+      "English-only browser compatibility shell outside localized app bootstrap",
+    ],
+  ];
+}
+
 function getAllowedLiterals() {
   return new Map([
     ...getInternalAllowedLiterals(),
     ...getConnectorAllowedLiterals(),
     ...getFileAllowedLiterals(),
+    ...getLocaleIndependentShellAllowedLiterals(),
   ]);
 }
 

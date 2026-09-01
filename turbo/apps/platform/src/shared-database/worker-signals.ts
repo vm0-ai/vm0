@@ -20,11 +20,7 @@ import {
   type RealtimeConnectionState,
 } from "../signals/realtime.ts";
 import { rootSignal$, setRootSignal$ } from "../signals/root-signal.ts";
-import {
-  createChildAbortController,
-  createDeferredPromise,
-  settle,
-} from "../signals/utils.ts";
+import { createChildAbortController, settle } from "../signals/utils.ts";
 import { chatThreadIndicators$ } from "../signals/chat-page/chat-thread-indicators.ts";
 import type {
   ChatThreadIndicators,
@@ -57,7 +53,7 @@ const STALE_CONNECTION_AFTER_MS = 3 * 60 * 1000;
 
 const credentialControllerState$ = state<AbortController | null>(null);
 const workerRuntimeState$ = state<SharedDatabaseWorkerRuntime | null>(null);
-const credentialStoreDaemonsReadyState$ = state<Promise<void> | null>(null);
+const credentialStoreDaemonsStartedState$ = state(false);
 const sharedDatabaseClientFactory$ = computed((get) => {
   return createSharedDatabaseContractClientFactory(get(appVersion$));
 });
@@ -264,11 +260,7 @@ export const recoverCredentialStoreAfterRealtimeReconnect$ = command(
 );
 
 const runCredentialStoreDaemons$ = command(
-  async (
-    { set },
-    ready: ReturnType<typeof createDeferredPromise<void>>,
-    signal: AbortSignal,
-  ): Promise<void> => {
+  async ({ set }, signal: AbortSignal): Promise<void> => {
     set(
       subscribeRealtimeConnectionState$,
       ({ state, reconnected }) => {
@@ -281,12 +273,10 @@ const runCredentialStoreDaemons$ = command(
     );
     const setup = await settle(set(setupRealtime$, signal), signal);
     if (!setup.ok) {
-      if (!ready.settled()) {
-        ready.reject(setup.error);
-      }
       set(updateSharedDatabaseRealtimeStatus$, "failed");
       return;
     }
+    let initiallySubscribed = false;
     const subscriptions = await settle(
       Promise.all([
         set(
@@ -298,8 +288,8 @@ const runCredentialStoreDaemons$ = command(
             includeMessage: true,
             options: {
               onSubscribed: () => {
-                if (!ready.settled()) {
-                  ready.resolve();
+                if (!initiallySubscribed) {
+                  initiallySubscribed = true;
                   return;
                 }
                 set(broadcastSharedDatabaseReconnect$);
@@ -315,25 +305,19 @@ const runCredentialStoreDaemons$ = command(
     );
     signal.throwIfAborted();
     if (!subscriptions.ok) {
-      if (!ready.settled()) {
-        ready.reject(subscriptions.error);
-      }
       set(updateSharedDatabaseRealtimeStatus$, "failed");
     }
   },
 );
 
 export const startCredentialStoreDaemons$ = command(
-  ({ get, set }, ownDaemon: CredentialStoreDaemonOwner): Promise<void> => {
-    const existing = get(credentialStoreDaemonsReadyState$);
-    if (existing) {
-      return existing;
+  ({ get, set }, ownDaemon: CredentialStoreDaemonOwner): void => {
+    if (get(credentialStoreDaemonsStartedState$)) {
+      return;
     }
     const signal = get(rootSignal$);
-    const ready = createDeferredPromise<void>(signal);
-    set(credentialStoreDaemonsReadyState$, ready.promise);
-    ownDaemon(set(runCredentialStoreDaemons$, ready, signal));
-    return ready.promise;
+    set(credentialStoreDaemonsStartedState$, true);
+    ownDaemon(set(runCredentialStoreDaemons$, signal));
   },
 );
 

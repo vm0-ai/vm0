@@ -11,7 +11,6 @@ curl_log="${test_root}/curl.log"
 sleep_log="${test_root}/sleep.log"
 html_source="${test_root}/index.html"
 old_html_source="${test_root}/old-index.html"
-blocking_html_source="${test_root}/blocking-index.html"
 mkdir -p "$assets_directory" "$fake_bin"
 
 fail() {
@@ -21,7 +20,6 @@ fail() {
 
 for file_name in \
   app-AbCd1234.js \
-  bootstrap-after-first-paint-123456789abc.js \
   vendor-EfGh5678.js \
   rolldown-runtime-IjKl9012.js \
   shared-database-worker-MnOp3456.js; do
@@ -32,20 +30,18 @@ cat > "$html_source" <<'HTML'
 <!doctype html>
 <meta name="okou-app-git-commit-sha" content="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">
 <meta name="okou-app-version" content="0.812.5">
-<link crossorigin href="https://static.test/okou-app/assets/app-AbCd1234.js" data-vm0-app-entry="">
-<link crossorigin href="https://static.test/okou-app/assets/rolldown-runtime-IjKl9012.js" data-vm0-app-module-preload="">
-<link crossorigin href="https://static.test/okou-app/assets/vendor-EfGh5678.js" data-vm0-app-module-preload="">
-<link crossorigin href="https://static.test/okou-app/assets/bootstrap-after-first-paint-123456789abc.js" data-vm0-after-first-paint-entry="">
+<script type="module" crossorigin src="https://static.test/okou-app/assets/app-AbCd1234.js"></script>
+<link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/rolldown-runtime-IjKl9012.js">
+<link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/vendor-EfGh5678.js">
 HTML
 
 cat > "$old_html_source" <<'HTML'
 <!doctype html>
 <meta name="okou-app-git-commit-sha" content="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb">
 <meta name="okou-app-version" content="0.812.4">
-<link crossorigin href="https://static.test/okou-app/assets/app-Old12345.js" data-vm0-app-entry="">
-<link crossorigin href="https://static.test/okou-app/assets/rolldown-runtime-Old12345.js" data-vm0-app-module-preload="">
-<link crossorigin href="https://static.test/okou-app/assets/vendor-Old12345.js" data-vm0-app-module-preload="">
-<link crossorigin href="https://static.test/okou-app/assets/bootstrap-after-first-paint-Old12345.js" data-vm0-after-first-paint-entry="">
+<script type="module" crossorigin src="https://static.test/okou-app/assets/app-Old12345.js"></script>
+<link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/rolldown-runtime-Old12345.js">
+<link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/vendor-Old12345.js">
 HTML
 
 cat > "${fake_bin}/curl" <<'BASH'
@@ -106,12 +102,11 @@ output="$({
 } 2>&1)"
 
 grep -Fq \
-  'Verified app runtime: app=https://static.test/okou-app/assets/app-AbCd1234.js after-first-paint=https://static.test/okou-app/assets/bootstrap-after-first-paint-123456789abc.js vendor=https://static.test/okou-app/assets/vendor-EfGh5678.js runtime=https://static.test/okou-app/assets/rolldown-runtime-IjKl9012.js worker=https://app.test/okou-app/assets/shared-database-worker-MnOp3456.js' \
+  'Verified app runtime: app=https://static.test/okou-app/assets/app-AbCd1234.js vendor=https://static.test/okou-app/assets/vendor-EfGh5678.js runtime=https://static.test/okou-app/assets/rolldown-runtime-IjKl9012.js worker=https://app.test/okou-app/assets/shared-database-worker-MnOp3456.js' \
   <<< "$output" || fail "runtime verification summary is incorrect"
 for expected_url in \
   https://app.test/sign-up \
   https://static.test/okou-app/assets/app-AbCd1234.js \
-  https://static.test/okou-app/assets/bootstrap-after-first-paint-123456789abc.js \
   https://static.test/okou-app/assets/vendor-EfGh5678.js \
   https://static.test/okou-app/assets/rolldown-runtime-IjKl9012.js \
   https://app.test/okou-app/assets/shared-database-worker-MnOp3456.js; do
@@ -226,24 +221,6 @@ if PATH="${fake_bin}:$PATH" \
 fi
 grep -Fq 'SharedWorker same-origin proxy returned HTTP 200' \
   "${test_root}/worker-failure.log" || fail "worker failure was not identified"
-
-cp "$html_source" "$blocking_html_source"
-printf '%s\n' \
-  '<script type="module" src="https://static.test/okou-app/assets/app-AbCd1234.js"></script>' \
-  >> "$blocking_html_source"
-if PATH="${fake_bin}:$PATH" \
-  MOCK_CURL_LOG="$curl_log" \
-  MOCK_HTML_SOURCE="$blocking_html_source" \
-  MOCK_SLEEP_LOG="$sleep_log" \
-  bash "$script" \
-    https://app.test \
-    https://static.test/okou-app/assets \
-    "$assets_directory" > "${test_root}/blocking-html-failure.log" 2>&1; then
-  fail "static app module script did not fail HTML verification"
-fi
-grep -Fq 'Expected deferred app execution without static module scripts' \
-  "${test_root}/blocking-html-failure.log" ||
-  fail "static app module failure was not identified"
 
 sed -i '/vendor-EfGh5678/d' "$html_source"
 : > "$curl_log"

@@ -89,9 +89,7 @@ export function AuthShell({ authBrand, children }: AuthShellProps) {
         ) : (
           <img
             src={theme === "dark" ? platformVm0LogoImg : platformVm0LogoDarkImg}
-            alt={t(($) => {
-              return $.appShell.logoAlt;
-            })}
+            alt={authBrand.brandName}
             crossOrigin="anonymous"
             width={82}
             height={20}

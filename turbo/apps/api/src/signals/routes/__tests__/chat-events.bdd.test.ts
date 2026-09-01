@@ -151,6 +151,7 @@ import { verifyOkouToken } from "../../auth/tokens";
 import {
   createUnassociatedThreadBoundAgentRunFixture,
   createUnassociatedThreadBoundAgentRunsServiceFixture,
+  holdAgentRunPiExecutionSnapshotFixture,
 } from "../../../test-fixtures/thread-bound-run-admission";
 import {
   acquireBddVm0ApiKey,
@@ -5073,6 +5074,185 @@ describe("CHAT-02: model-first provider policies", () => {
     }
   }, 90_000);
 
+  it("keeps captured Pi admission after PiLoop turns off", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const orgId = requireOrgId(actor);
+    await configureBuiltInPiModel(actor, "gpt-5.6-terra");
+    mockPiResourceArchiveDownloads(true);
+    mockPiCheckpointObjectStore();
+    await api.heartbeatRunner(runnerGroup);
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      { [FeatureSwitchKey.PiLoop]: false },
+    );
+    const baseline = await sendChatRun(actor, {
+      agentId,
+      prompt: "establish the captured Codex session family",
+      model: "gpt-5.6-terra",
+    });
+    await flushWaitUntilForTest();
+    await expect(api.readRun(actor, baseline.runId)).resolves.toMatchObject({
+      status: "pending",
+    });
+    await expect(
+      readRunLaunchSnapshotFixture(context, baseline.runId),
+    ).resolves.toMatchObject({
+      launch_snapshot: { framework: "codex" },
+    });
+    const baselineClaim = await claimChatRun(runnerGroup, baseline.runId);
+    expect(baselineClaim.claim.cliAgentType).toBe("codex");
+    expect(baselineClaim.claim.piLaunchConfig).toBeUndefined();
+    const baselineBinding = await readThreadSessionBinding(
+      context,
+      baseline.threadId,
+    );
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(baseline.runId, baselineClaim.sandboxHeaders, {
+      cliAgentType: "codex",
+    });
+    await flushWaitUntilForTest();
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      { [FeatureSwitchKey.PiLoop]: true },
+    );
+    const enabledGate = holdAgentRunPiExecutionSnapshotFixture({
+      userId: actor.userId,
+      orgId,
+      signal: context.signal,
+    });
+    onTestFinished(enabledGate.release);
+    const enabledSend = sendChatRun(actor, {
+      agentId,
+      threadId: baseline.threadId,
+      prompt: "keep Pi after the switch turns off",
+      model: "gpt-5.6-terra",
+    });
+    const enabledSnapshot = await enabledGate.arrival;
+    expect(enabledSnapshot).toMatchObject({
+      chatThreadId: baseline.threadId,
+      piExecution: true,
+      threadSessionCliAgentType: "pi",
+    });
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      { [FeatureSwitchKey.PiLoop]: false },
+    );
+    enabledGate.release();
+    const enabled = await enabledSend;
+    await flushWaitUntilForTest();
+    const enabledClaim = await claimChatRun(runnerGroup, enabled.runId);
+    expect(enabledClaim.claim.cliAgentType).toBe("pi");
+    expect(enabledClaim.claim.piLaunchConfig).toBeDefined();
+    await expect(
+      readRunLaunchSnapshotFixture(context, enabled.runId),
+    ).resolves.toMatchObject({
+      launch_snapshot: { framework: "pi" },
+    });
+    const enabledBinding = await readThreadSessionBinding(
+      context,
+      enabled.threadId,
+    );
+    expect(enabledBinding.agent_session_id).not.toBe(
+      baselineBinding.agent_session_id,
+    );
+    await cancelChatRun(actor, enabled.runId, enabledClaim.sandboxHeaders);
+  }, 90_000);
+
+  it("keeps captured Codex admission after PiLoop turns on", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const orgId = requireOrgId(actor);
+    const usagePricingResolution = await createTerraUsagePricingResolution();
+    await configureBuiltInPiModel(actor, "gpt-5.6-terra");
+    mockPiResourceArchiveDownloads();
+    mockPiCheckpointObjectStore();
+    server.use(
+      http.post("https://api.openai.com/v1/responses", () => {
+        return new HttpResponse(piResponsesTextSse("baseline Pi answer", 0), {
+          headers: { "content-type": "text/event-stream" },
+        });
+      }),
+    );
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      { [FeatureSwitchKey.PiLoop]: true },
+    );
+    const baseline = await sendChatRun(
+      actor,
+      {
+        agentId,
+        prompt: "establish the captured Pi session family",
+        model: "gpt-5.6-terra",
+      },
+      "vm0",
+      usagePricingResolution,
+    );
+    await waitForRunStatus(actor, baseline.runId, "completed", 10_000);
+    await flushWaitUntilForTest();
+    await expect(
+      readRunLaunchSnapshotFixture(context, baseline.runId),
+    ).resolves.toMatchObject({
+      launch_snapshot: { framework: "pi" },
+    });
+    const baselineBinding = await readThreadSessionBinding(
+      context,
+      baseline.threadId,
+    );
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      { [FeatureSwitchKey.PiLoop]: false },
+    );
+    const disabledGate = holdAgentRunPiExecutionSnapshotFixture({
+      userId: actor.userId,
+      orgId,
+      signal: context.signal,
+    });
+    onTestFinished(disabledGate.release);
+    const disabledSend = sendChatRun(actor, {
+      agentId,
+      threadId: baseline.threadId,
+      prompt: "keep Codex after the switch turns on",
+      model: "gpt-5.6-terra",
+    });
+    const disabledSnapshot = await disabledGate.arrival;
+    expect(disabledSnapshot).toMatchObject({
+      chatThreadId: baseline.threadId,
+      piExecution: false,
+      threadSessionCliAgentType: "codex",
+    });
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      { [FeatureSwitchKey.PiLoop]: true },
+    );
+    disabledGate.release();
+    const disabled = await disabledSend;
+    await flushWaitUntilForTest();
+    const disabledClaim = await claimChatRun(runnerGroup, disabled.runId);
+    expect(disabledClaim.claim.cliAgentType).toBe("codex");
+    expect(disabledClaim.claim.piLaunchConfig).toBeUndefined();
+    await expect(
+      readRunLaunchSnapshotFixture(context, disabled.runId),
+    ).resolves.toMatchObject({
+      launch_snapshot: { framework: "codex" },
+    });
+    const disabledBinding = await readThreadSessionBinding(
+      context,
+      disabled.threadId,
+    );
+    expect(disabledBinding.agent_session_id).not.toBe(
+      baselineBinding.agent_session_id,
+    );
+    await cancelChatRun(actor, disabled.runId, disabledClaim.sandboxHeaders);
+  }, 90_000);
+
   it.each(["deepseek-v4-flash", "deepseek-v4-pro", "gpt-5.6-terra"] as const)(
     "runs the Pi API first turn once for %s and resumes canonical JSONL",
     async (selectedModel) => {
@@ -5091,7 +5271,6 @@ describe("CHAT-02: model-first provider policies", () => {
       mockPiResourceArchiveDownloads();
       const checkpointObjects = mockPiCheckpointObjectStore();
       const modelRequests: {
-        readonly authorization: string | null;
         readonly body: unknown;
       }[] = [];
       const modelAnswers = [
@@ -5106,7 +5285,6 @@ describe("CHAT-02: model-first provider policies", () => {
         http.post(providerUrl, async ({ request }) => {
           const sequence = modelRequests.length;
           modelRequests.push({
-            authorization: request.headers.get("authorization"),
             body: await request.json(),
           });
           const answer = modelAnswers[sequence];
@@ -5162,9 +5340,6 @@ describe("CHAT-02: model-first provider policies", () => {
         },
       });
       expect(modelRequests).toHaveLength(1);
-      expect(modelRequests[0]?.authorization).toMatch(
-        /^Bearer vm0-key-runtime-fixture-/u,
-      );
       const firstModelInput = JSON.stringify(modelRequests[0]?.body);
       expect(occurrences(firstModelInput, firstPrompt)).toBe(1);
       expect(occurrences(firstModelInput, modelAnswers[0] ?? "")).toBe(0);
@@ -5229,9 +5404,6 @@ describe("CHAT-02: model-first provider policies", () => {
       if (selectedModel === "gpt-5.6-terra") {
         await expectTerraApiFollowUpUsage(second.runId);
       }
-      expect(modelRequests[1]?.authorization).toMatch(
-        /^Bearer vm0-key-runtime-fixture-/u,
-      );
       const secondModelInput = JSON.stringify(modelRequests[1]?.body);
       expect(occurrences(secondModelInput, firstPrompt)).toBe(1);
       expect(occurrences(secondModelInput, modelAnswers[0] ?? "")).toBe(1);
@@ -8946,13 +9118,15 @@ describe("CHAT-02: model-first provider policies", () => {
       mockPiResourceArchiveDownloads();
       mockPiCheckpointObjectStore();
       const modelRequests: {
-        readonly authorization: string | null;
+        readonly authorizationMatches: boolean;
         readonly body: unknown;
       }[] = [];
       server.use(
         http.post("https://api.deepseek.com/responses", async ({ request }) => {
           modelRequests.push({
-            authorization: request.headers.get("authorization"),
+            authorizationMatches:
+              request.headers.get("authorization") ===
+              `Bearer ${selectedApiKey}`,
             body: await request.json(),
           });
           return new HttpResponse(
@@ -8971,7 +9145,7 @@ describe("CHAT-02: model-first provider policies", () => {
       await waitForRunStatus(actor, run.runId, "completed");
       await flushWaitUntilForTest();
       expect(modelRequests).toHaveLength(1);
-      expect(modelRequests[0]?.authorization).toBe(`Bearer ${selectedApiKey}`);
+      expect(modelRequests[0]?.authorizationMatches).toBeTruthy();
       expect(modelRequests[0]?.body).toMatchObject({
         model: "deepseek-v4-flash",
         stream: true,

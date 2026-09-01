@@ -560,8 +560,7 @@ export function triggerAblyReconnect(): void {
   }
 }
 
-/** Reconnect only the Realtime client that owns SharedWorker database events. */
-export function triggerSharedWorkerAblyReconnect(): void {
+function requireSharedWorkerRealtime(): Realtime {
   for (const realtime of realtimeInstances) {
     if (realtime.connection.state === "closed") {
       continue;
@@ -575,13 +574,45 @@ export function triggerSharedWorkerAblyReconnect(): void {
       },
     );
     if (ownsSharedDatabaseEvents) {
-      realtime.reconnect();
-      return;
+      return realtime;
     }
   }
   throw new Error(
-    "SharedWorker Ably reconnect triggered before its database subscription",
+    "SharedWorker Ably action triggered before its database subscription",
   );
+}
+
+/** Reconnect only the Realtime client that owns SharedWorker database events. */
+export function triggerSharedWorkerAblyReconnect(): void {
+  requireSharedWorkerRealtime().reconnect();
+}
+
+/** Transition only the Realtime client that owns SharedWorker database events. */
+export function triggerSharedWorkerAblyConnectionState(
+  state: "connected" | "disconnected" | "suspended",
+  options: {
+    readonly code?: number;
+    readonly message?: string;
+    readonly retryIn?: number;
+    readonly statusCode?: number;
+  } = {},
+): void {
+  requireSharedWorkerRealtime().transitionTo(
+    state,
+    {
+      code: options.code,
+      message: options.message,
+      statusCode: options.statusCode,
+    },
+    options.retryIn,
+  );
+}
+
+/** Fail only the Realtime client that owns SharedWorker database events. */
+export function triggerSharedWorkerAblyFailure(
+  message = "connection failed",
+): void {
+  requireSharedWorkerRealtime().fail(message);
 }
 
 /** Forward mock realtime recovery to a direct worker test host. */
