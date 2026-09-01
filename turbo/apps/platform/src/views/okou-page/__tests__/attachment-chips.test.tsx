@@ -3410,6 +3410,30 @@ describe("zero attachment chips", () => {
     expect(screen.queryByLabelText("Share")).toBeNull();
   });
 
+  it("shares a public artifact by its cdn url", async () => {
+    const clipboard = context.mocks.browser.clipboardWriteText();
+    context.mocks.browser.blobDownload();
+    await setupBodyLinkPreviews();
+
+    click(screen.getByLabelText("Open markdown preview for release-notes.md"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
+    });
+
+    // An artifact that already carries a public address shares that address
+    // directly, without waiting on the private-attachment resolution.
+    const shareLink = screen.getByLabelText("Share");
+    expect(shareLink).toHaveAttribute("href", BODY_LINK_PREVIEWS.markdown);
+
+    click(shareLink);
+
+    await waitFor(() => {
+      expect(screen.getByText("Link copied")).toBeInTheDocument();
+    });
+    expect(clipboard.writes).toStrictEqual([BODY_LINK_PREVIEWS.markdown]);
+  });
+
   it("opens canonical text previews and downloads a private presentation from its presigned url", async () => {
     const releaseNotesUrl = canonicalUserMessageFileUrl("attachment-markdown");
     const browser = context.mocks.browser.blobDownload();

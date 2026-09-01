@@ -33,8 +33,15 @@ export const webFilesContract = c.router({
         url: z.string(),
         /**
          * Stable public artifacts URL for the same object, suitable for a link
-         * handed to someone else. Optional so a web client that already knows
-         * about it keeps rendering attachments against an API that does not.
+         * handed to someone else.
+         *
+         * Rollout fallback, surface new web/app -> old API: this route also
+         * resolves the URL attachments render from, and the contract client
+         * rejects a response missing a required field. Keeping `publicUrl`
+         * optional means a newly promoted app reaching an API deployed before
+         * this field loses only the share action instead of all attachment
+         * rendering. Make it required once that API is no longer serving and is
+         * no longer retained as a rollback target; follow-up #30847.
          */
         publicUrl: z.string().optional(),
       }),
