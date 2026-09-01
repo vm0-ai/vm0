@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getActiveOrg, getActiveToken, getApiUrl, getToken } from "../config";
+import {
+  getActiveOrg,
+  getActiveToken,
+  getApiUrl,
+  getCliPublicBrand,
+  getToken,
+} from "../config";
 
 function buildFakeZeroJwt(payload: Record<string, unknown>): string {
   const header = Buffer.from(
@@ -78,36 +84,62 @@ describe("Okou configuration", () => {
     await expect(getActiveOrg()).resolves.toBeUndefined();
   });
 
-  it("prefers OKOU_API_BACKEND_URL when both backend names are set", async () => {
+  it("adds https to a canonical API URL without a protocol", async () => {
     vi.stubEnv("OKOU_API_BACKEND_URL", "canonical.example.test");
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://legacy.example.test");
 
     await expect(getApiUrl()).resolves.toBe("https://canonical.example.test");
   });
 
+  it.each([
+    "http://canonical.example.test/",
+    "https://canonical.example.test/",
+  ])("preserves the configured API URL %s", async (canonicalUrl) => {
+    vi.stubEnv("OKOU_API_BACKEND_URL", canonicalUrl);
+
+    await expect(getApiUrl()).resolves.toBe(canonicalUrl);
+  });
+
   it.each([undefined, ""])(
-    "uses VM0_API_BACKEND_URL when OKOU_API_BACKEND_URL is %s",
+    "defaults routing to the production API when the canonical URL is %s",
     async (canonicalUrl) => {
       vi.stubEnv("OKOU_API_BACKEND_URL", canonicalUrl);
-      vi.stubEnv("VM0_API_BACKEND_URL", "preview.vm0.ai");
 
-      await expect(getApiUrl()).resolves.toBe("https://preview.vm0.ai");
+      await expect(getApiUrl()).resolves.toBe("https://api.okou.ai");
     },
   );
 
-  it("preserves configured protocols and trailing slashes", async () => {
-    vi.stubEnv("OKOU_API_BACKEND_URL", "http://canonical.example.test/");
+  it("prefers the run-token public brand over the configured API URL", () => {
+    vi.stubEnv(
+      "OKOU_TOKEN",
+      buildFakeZeroJwt({
+        scope: "okou",
+        capabilities: [],
+        publicBrand: "okou",
+      }),
+    );
+    vi.stubEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
 
-    await expect(getApiUrl()).resolves.toBe("http://canonical.example.test/");
+    expect(getCliPublicBrand()).toBe("okou");
   });
 
-  it("uses VM0_API_BACKEND_URL for routing", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "preview.vm0.ai");
+  it.each([
+    ["api.vm0.ai", "vm0"],
+    ["https://api.okou.ai", "okou"],
+  ] as const)(
+    "selects the %s API URL brand as %s",
+    (canonicalUrl, expectedBrand) => {
+      vi.stubEnv("OKOU_API_BACKEND_URL", canonicalUrl);
 
-    await expect(getApiUrl()).resolves.toBe("https://preview.vm0.ai");
-  });
+      expect(getCliPublicBrand()).toBe(expectedBrand);
+    },
+  );
 
-  it("defaults routing to the production API", async () => {
-    await expect(getApiUrl()).resolves.toBe("https://api.okou.ai");
-  });
+  it.each([undefined, ""])(
+    "defaults the public brand to Okou when the canonical URL is %s",
+    (canonicalUrl) => {
+      vi.stubEnv("OKOU_API_BACKEND_URL", canonicalUrl);
+
+      expect(getCliPublicBrand()).toBe("okou");
+    },
+  );
 });

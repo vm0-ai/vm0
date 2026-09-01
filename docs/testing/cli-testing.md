@@ -33,15 +33,17 @@ Product CLI requests read `OKOU_TOKEN` and nothing else. `getToken()` in
 `src/lib/api/config.ts` delegates to `getOkouToken()` in `src/lib/okou-env.ts`,
 which reads only `OKOU_TOKEN`. The retired `ZERO_TOKEN` and `VM0_TOKEN` names
 are not honored, and there is no fallback to them when `OKOU_TOKEN` is unset or
-empty. Routing is the one place a legacy name survives: `getApiUrl()` prefers
-`OKOU_API_BACKEND_URL` and falls back to `VM0_API_BACKEND_URL`.
+empty. Routing reads only `OKOU_API_BACKEND_URL`; when it is unset or empty,
+the CLI defaults to `https://api.okou.ai`. A configured host without a protocol
+receives `https://`, while an explicit protocol and trailing slash are
+preserved.
 
 Set the canonical token explicitly together with the API URL:
 
 ```typescript
 beforeEach(() => {
   vi.stubEnv("OKOU_TOKEN", "test-okou-token");
-  vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+  vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 });
 
 afterEach(() => {
