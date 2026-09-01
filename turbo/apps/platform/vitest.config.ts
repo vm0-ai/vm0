@@ -60,6 +60,18 @@ export default defineConfig({
           // NotSupportedError instead of initiating a network request. The
           // error is suppressed in setup.ts.
           disableIframePageLoading: true,
+          // Prevent happy-dom from making real TCP connections for
+          // `<link rel="stylesheet">` hrefs. Tests that parse index.html into a
+          // live document connect its Google Fonts stylesheet link, and
+          // happy-dom starts a fetch that no test owns or awaits. Vitest only
+          // aborts it when it tears the window down after the whole file, and
+          // destroying the socket mid-TLS-write surfaces as an uncaught
+          // `write ECANCELED Canceled because of SSL destruction`.
+          disableCSSFileLoading: true,
+          // Report the skipped stylesheet load as a `load` event instead of a
+          // console error plus `error` event, so disabling the fetch does not
+          // trade a leaked socket for teardown noise.
+          handleDisabledFileLoadingAsSuccess: true,
         },
       },
     },
