@@ -2727,6 +2727,7 @@
     "custom": {
       "connect": {
         "configured": "Configurato",
+        "connect": "Connetti",
         "connecting": "Connessione…",
         "continue": "Continua",
         "continueToProvider": "Proseguire presso il provider per autorizzare l'accesso.",
@@ -2759,6 +2760,8 @@
         "mcpEndpointHint": "(Streamable HTTP, solo HTTPS)",
         "mcpEndpointPlaceholder": "https://mcp.acme.com/server",
         "newClientSecret": "Nuovo segreto del cliente",
+        "noAuthentication": "Nessuna autenticazione",
+        "noAuthenticationDescription": "Connettiti senza inviare credenziali o dati di autenticazione.",
         "none": "Nessuno",
         "oauthChangesDisconnect": "La modifica delle impostazioni OAuth o delle credenziali del client disconnette le connessioni OAuth esistenti.",
         "oauthDescription": "Configura un'app OAuth che i membri possono autorizzare.",
@@ -2775,6 +2778,7 @@
         "redirectHint": "(Registra questo URL nell'applicazione OAuth del provider.)",
         "redirectUrl": "Reindirizza URL",
         "removeApiAuthentication": "Rimuovi l'autenticazione API",
+        "removeNoAuthentication": "Rimuovi \"Nessuna autenticazione\"",
         "removeOauth": "Rimuovi OAuth 2.0",
         "scopes": "Ambiti",
         "scopesHint": "(uno per riga)",

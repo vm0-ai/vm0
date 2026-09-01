@@ -2671,6 +2671,7 @@
     "custom": {
       "connect": {
         "configured": "設定済み",
+        "connect": "接続",
         "connecting": "接続中…",
         "continue": "続ける",
         "continueToProvider": "プロバイダーに進み、アクセスを承認します。",
@@ -2703,6 +2704,8 @@
         "mcpEndpointHint": "(Streamable HTTP、HTTPS のみ)",
         "mcpEndpointPlaceholder": "https://mcp.acme.com/server",
         "newClientSecret": "新しいクライアントシークレット",
+        "noAuthentication": "認証なし",
+        "noAuthenticationDescription": "認証情報や認証データを送信せずに接続します。",
         "none": "なし",
         "oauthChangesDisconnect": "OAuth 設定またはクライアント認証情報を変更すると、既存の OAuth 接続が切断されます。",
         "oauthDescription": "メンバーが承認できるように 1 つの OAuth アプリを構成します。",
@@ -2719,6 +2722,7 @@
         "redirectHint": "(この URL をプロバイダーの OAuth アプリケーションに登録します。)",
         "redirectUrl": "リダイレクトURL",
         "removeApiAuthentication": "API認証を削除する",
+        "removeNoAuthentication": "「認証なし」を削除",
         "removeOauth": "OAuth 2.0 を削除する",
         "scopes": "スコープ",
         "scopesHint": "(1 行に 1 つ)",

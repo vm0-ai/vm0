@@ -254,6 +254,7 @@ function customConnectorStoredConnectionIsConnected(
   return (
     credentialStatus === "available" &&
     (connection.definitionAuthMethod === "manual" ||
+      connection.definitionAuthMethod === "none" ||
       connection.oauthAccessTokenId !== null)
   );
 }

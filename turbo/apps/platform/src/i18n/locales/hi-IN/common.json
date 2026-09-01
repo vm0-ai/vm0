@@ -2679,6 +2679,7 @@
     "custom": {
       "connect": {
         "configured": "कॉन्फ़िगर किया गया",
+        "connect": "कनेक्ट करें",
         "connecting": "कनेक्ट हो रहा है...",
         "continue": "जारी रखना",
         "continueToProvider": "पहुंच को अधिकृत करने के लिए प्रोवाइडर के पास जाना जारी रखें।",
@@ -2711,6 +2712,8 @@
         "mcpEndpointHint": "(Streamable HTTP, केवल HTTPS)",
         "mcpEndpointPlaceholder": "https://mcp.acme.com/server",
         "newClientSecret": "नए ग्राहक का रहस्य",
+        "noAuthentication": "कोई प्रमाणीकरण नहीं",
+        "noAuthenticationDescription": "क्रेडेंशियल या प्रमाणीकरण डेटा भेजे बिना कनेक्ट करें।",
         "none": "कोई नहीं",
         "oauthChangesDisconnect": "OAuth सेटिंग्स या क्लाइंट क्रेडेंशियल बदलने से मौजूदा OAuth कनेक्शन डिस्कनेक्ट हो जाते हैं।",
         "oauthDescription": "सदस्यों को अधिकृत करने के लिए एक OAuth ऐप कॉन्फ़िगर करें।",
@@ -2727,6 +2730,7 @@
         "redirectHint": "(इस URL को प्रोवाइडर के OAuth एप्लिकेशन में पंजीकृत करें।)",
         "redirectUrl": "URL को पुनर्निर्देशित करें",
         "removeApiAuthentication": "API प्रमाणीकरण हटाएँ",
+        "removeNoAuthentication": "“कोई प्रमाणीकरण नहीं” हटाएँ",
         "removeOauth": "OAuth 2.0 हटाएँ",
         "scopes": "स्कोप्स",
         "scopesHint": "(प्रति पंक्ति एक)",
