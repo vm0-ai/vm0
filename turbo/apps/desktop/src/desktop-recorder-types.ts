@@ -27,7 +27,19 @@ export interface DesktopRecorderError {
   readonly message: string;
 }
 
+/** What `listSources` can enumerate. An area is a crop, not a listable source. */
 export type DesktopRecorderSourceKind = "display" | "window";
+
+/** What a capture can be aimed at. */
+export type DesktopRecorderCaptureKind = DesktopRecorderSourceKind | "area";
+
+/** A selected region in global screen points, top-left origin. */
+export interface DesktopRecorderArea {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
 
 export interface DesktopRecorderSource {
   readonly id: string;
@@ -74,8 +86,14 @@ export interface DesktopRecorderState {
 
 export interface DesktopRecorderPrepareRequest {
   readonly sourceId: string;
-  readonly sourceKind: DesktopRecorderSourceKind;
+  readonly sourceKind: DesktopRecorderCaptureKind;
   readonly systemAudio: boolean;
+  /**
+   * Required when `sourceKind` is `"area"`, and `sourceId` then names the
+   * display the region was drawn on. ScreenCaptureKit has no region filter, so
+   * the display is captured and this crops it.
+   */
+  readonly area?: DesktopRecorderArea;
 }
 
 export interface DesktopRecorderPrepareResult {

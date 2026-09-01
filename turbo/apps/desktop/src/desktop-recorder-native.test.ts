@@ -155,6 +155,68 @@ async function readRequests(
     .map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
+describe("area capture", () => {
+  it("sends the selected region and reports the cropped geometry", async () => {
+    const { helperPath, requestLogPath } = await createHelper({
+      "recorder.prepare": {
+        result: {
+          sessionId: "session-1",
+          width: 800,
+          height: 400,
+          geometry: {
+            originX: 1600,
+            originY: -100,
+            widthPoints: 400,
+            heightPoints: 200,
+            scale: 2,
+          },
+        },
+      },
+    });
+    const backend = createBackend(helperPath);
+
+    const prepared = await backend.prepare({
+      sourceId: "display:1",
+      sourceKind: "area",
+      systemAudio: false,
+      area: { x: 1600, y: -100, width: 400, height: 200 },
+    });
+
+    const requests = await readRequests(requestLogPath);
+    expect(requests[0]?.payload).toEqual({
+      sourceId: "display:1",
+      sourceKind: "area",
+      systemAudio: false,
+      area: { x: 1600, y: -100, width: 400, height: 200 },
+    });
+    // The geometry describes the crop, not the display, so a click track built
+    // from it lands in the cropped frame.
+    expect(prepared.geometry).toEqual({
+      originX: 1600,
+      originY: -100,
+      widthPoints: 400,
+      heightPoints: 200,
+      scale: 2,
+    });
+  });
+
+  it("leaves the area out of a whole-display capture", async () => {
+    const { helperPath, requestLogPath } = await createHelper({
+      "recorder.prepare": PREPARE,
+    });
+    const backend = createBackend(helperPath);
+
+    await backend.prepare({
+      sourceId: "display:1",
+      sourceKind: "display",
+      systemAudio: true,
+    });
+
+    const requests = await readRequests(requestLogPath);
+    expect(requests[0]?.payload).not.toHaveProperty("area");
+  });
+});
+
 async function rejection(promise: Promise<unknown>): Promise<Error> {
   try {
     await promise;

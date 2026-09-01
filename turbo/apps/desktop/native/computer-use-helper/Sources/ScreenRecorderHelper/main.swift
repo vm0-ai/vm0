@@ -43,6 +43,47 @@ private func optionalBool(_ request: [String: Any], _ key: String) -> Bool {
     return (request[key] as? Bool) ?? false
 }
 
+private func requiredArea(_ request: [String: Any]) throws -> AreaRect {
+    guard
+        let area = request["area"] as? [String: Any],
+        let x = area["x"] as? Double,
+        let y = area["y"] as? Double,
+        let width = area["width"] as? Double,
+        let height = area["height"] as? Double
+    else {
+        throw HelperFailure(
+            code: "capture_failed",
+            message: "Recording an area requires an area rectangle in screen points"
+        )
+    }
+    return AreaRect(x: x, y: y, width: width, height: height)
+}
+
+private func displayArea(_ display: SCDisplay) -> AreaRect {
+    return AreaRect(
+        x: display.frame.origin.x,
+        y: display.frame.origin.y,
+        width: display.frame.width,
+        height: display.frame.height
+    )
+}
+
+private func resolveDisplay(
+    _ content: SCShareableContent,
+    sourceId: String
+) throws -> SCDisplay {
+    guard
+        let rawID = UInt32(sourceId.replacingOccurrences(of: "display:", with: "")),
+        let display = content.displays.first(where: { $0.displayID == rawID })
+    else {
+        throw HelperFailure(
+            code: "source_lost",
+            message: "Display is no longer available: \(sourceId)"
+        )
+    }
+    return display
+}
+
 // MARK: - Source discovery
 
 private func shareableContent(timeout: TimeInterval = 10) throws -> SCShareableContent {
@@ -606,22 +647,41 @@ private func handlePrepare(_ request: [String: Any]) throws -> [String: Any] {
     let filter: SCContentFilter
     let geometry: CaptureGeometry
 
+    var croppedArea: AreaRect?
+
     if sourceKind == "display" {
-        guard
-            let rawID = UInt32(sourceId.replacingOccurrences(of: "display:", with: "")),
-            let display = content.displays.first(where: { $0.displayID == rawID })
-        else {
-            throw HelperFailure(
-                code: "source_lost",
-                message: "Display is no longer available: \(sourceId)"
-            )
-        }
+        let display = try resolveDisplay(content, sourceId: sourceId)
         filter = SCContentFilter(display: display, excludingWindows: [])
         geometry = CaptureGeometry(
             originX: display.frame.origin.x,
             originY: display.frame.origin.y,
             widthPoints: display.frame.width,
             heightPoints: display.frame.height,
+            scale: backingScaleFactor(forDisplayID: display.displayID)
+        )
+    } else if sourceKind == "area" {
+        // An area is a display capture with a crop: ScreenCaptureKit has no
+        // region filter, so the whole display is filtered and `sourceRect`
+        // narrows it.
+        let display = try resolveDisplay(content, sourceId: sourceId)
+        let requested = try requiredArea(request)
+        guard
+            let area = CaptureAreaPolicy.clamp(requested, toDisplay: displayArea(display))
+        else {
+            throw HelperFailure(
+                code: "capture_failed",
+                message: "The selected area is not on this display, or is too small to record"
+            )
+        }
+        croppedArea = area
+        filter = SCContentFilter(display: display, excludingWindows: [])
+        // The geometry describes the crop, not the display, so clicks map into
+        // the cropped frame rather than the full screen.
+        geometry = CaptureGeometry(
+            originX: area.x,
+            originY: area.y,
+            widthPoints: area.width,
+            heightPoints: area.height,
             scale: backingScaleFactor(forDisplayID: display.displayID)
         )
     } else if sourceKind == "window" {
@@ -657,6 +717,19 @@ private func handlePrepare(_ request: [String: Any]) throws -> [String: Any] {
     configuration.showsCursor = true
     configuration.queueDepth = 6
     configuration.capturesAudio = systemAudio
+    if let croppedArea {
+        let display = try resolveDisplay(content, sourceId: sourceId)
+        let relative = CaptureAreaPolicy.relativeToDisplay(
+            croppedArea,
+            display: displayArea(display)
+        )
+        configuration.sourceRect = CGRect(
+            x: relative.x,
+            y: relative.y,
+            width: relative.width,
+            height: relative.height
+        )
+    }
 
     let session = RecorderSession(
         id: sessionStore.nextSessionID(),

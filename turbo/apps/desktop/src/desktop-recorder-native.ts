@@ -382,6 +382,7 @@ export function createRecorderNativeBackend(
         sourceId: request.sourceId,
         sourceKind: request.sourceKind,
         systemAudio: request.systemAudio,
+        ...(request.area ? { area: request.area } : {}),
       });
       const geometry = isRecord(result.geometry) ? result.geometry : {};
       return {
