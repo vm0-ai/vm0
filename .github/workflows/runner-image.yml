@@ -16,7 +16,9 @@ jobs:
     name: Cancel superseded merge-group CI
     if: github.event_name == 'merge_group'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Checkout, plus the script's 180s discovery ceiling and its 420s
+    # terminal-state barrier, so the job never dies before the barrier it owns.
+    timeout-minutes: 12
     permissions:
       actions: write
       contents: read
