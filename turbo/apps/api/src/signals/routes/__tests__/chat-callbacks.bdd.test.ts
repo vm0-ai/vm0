@@ -52,6 +52,7 @@ import {
   generateDataKeyOutput,
   useSecretKmsProbe,
 } from "./helpers/secret-kms-probe";
+import { seedVm0BuiltInModelKey } from "./helpers/runtime-state";
 import { testBrowserReconcileRoutes } from "../test-browser-reconcile";
 import { goalsRoutes } from "../goals";
 
@@ -88,6 +89,10 @@ const GOAL_SCHEDULER_TIMING_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_goal_drain_scheduler_workflow_drain",
   "api_dispatch_pre_create_zero_goal_drain_scheduler_goal_handoff",
 ] as const;
+const GOAL_DRAIN_BUILT_IN_MODEL_CONTEXT_TIMING_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_goal_drain_model_context_reload_fallback_feature_switches",
+  "api_dispatch_pre_create_zero_goal_drain_model_context_resolve_built_in_route",
+] as const;
 const GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap",
   ...GOAL_SCHEDULER_TIMING_ACTION_TYPES,
@@ -95,6 +100,8 @@ const GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_goal_drain_load_event",
   "api_dispatch_pre_create_zero_goal_drain_load_target",
   "api_dispatch_pre_create_zero_goal_drain_resolve_model_context",
+  "api_dispatch_pre_create_zero_goal_drain_model_context_load_initial_feature_switches",
+  "api_dispatch_pre_create_zero_goal_drain_model_context_resolve_persisted_model_policy",
   "api_dispatch_pre_create_zero_goal_drain_build_run_input",
   "api_dispatch_pre_create_zero_goal_drain_handoff_run",
 ] as const;
@@ -863,8 +870,15 @@ function isGoalSchedulerTimingAction(actionType: string): boolean {
 async function expectGoalDrainPreCreateTiming(args: {
   readonly runId: string;
   readonly schedulerOrigin: "chat_callback" | "terminal_callback_fallback";
+  readonly builtInModelContext: boolean;
   readonly forbiddenValues: readonly string[];
 }): Promise<void> {
+  const expectedActionTypes = [
+    ...GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES,
+    ...(args.builtInModelContext
+      ? GOAL_DRAIN_BUILT_IN_MODEL_CONTEXT_TIMING_ACTION_TYPES
+      : []),
+  ];
   await expect
     .poll(() => {
       const observed = new Set(
@@ -872,7 +886,7 @@ async function expectGoalDrainPreCreateTiming(args: {
           return event.op_type;
         }),
       );
-      return GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES.filter((actionType) => {
+      return expectedActionTypes.filter((actionType) => {
         return !observed.has(actionType);
       });
     })
@@ -880,10 +894,8 @@ async function expectGoalDrainPreCreateTiming(args: {
 
   const allEvents = sandboxOperationEventsForRun(args.runId);
   const goalDrainEvents = goalDrainPreCreateTimingEventsForRun(args.runId);
-  expect(goalDrainEvents).toHaveLength(
-    GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES.length,
-  );
-  for (const actionType of GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES) {
+  expect(goalDrainEvents).toHaveLength(expectedActionTypes.length);
+  for (const actionType of expectedActionTypes) {
     const matchingEvents = timingEventsForAction(goalDrainEvents, actionType);
     expect(matchingEvents).toHaveLength(1);
     const event = matchingEvents[0];
@@ -1826,6 +1838,16 @@ describe("CHAT-02: completed chat callback", () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     await enableGoalWorkflows(actor);
+    await seedVm0BuiltInModelKey(context, "claude-sonnet-5");
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-5",
+        isDefault: true,
+        defaultProviderType: "built-in",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -1883,6 +1905,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await expectGoalDrainPreCreateTiming({
       runId: goalContinuation.runId,
       schedulerOrigin: "chat_callback",
+      builtInModelContext: true,
       forbiddenValues: [
         goalBrief,
         goalObjective,
@@ -1977,6 +2000,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await expectGoalDrainPreCreateTiming({
       runId: continuation.runId,
       schedulerOrigin: "terminal_callback_fallback",
+      builtInModelContext: false,
       forbiddenValues: [
         goalBrief,
         actor.userId,
