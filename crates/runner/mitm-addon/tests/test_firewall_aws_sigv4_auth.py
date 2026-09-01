@@ -125,6 +125,59 @@ async def test_re_signs_header_sigv4_request_to_reference_signature(
     assert "x-amz-security-token" not in flow.request.headers
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        pytest.param("/../x", id="leading-parent"),
+        pytest.param("/../../x", id="multiple-leading-parents"),
+        pytest.param("/a/../../x", id="over-traversal"),
+    ],
+)
+async def test_re_signs_header_sigv4_request_with_leading_dot_segments(
+    path: str,
+    real_flow,
+    headers,
+    tmp_path,
+    mitm_ctx,
+):
+    auth_response = aws_auth_response(include_session_token=False)
+    api_entry = aws_api_entry(base="https://iam.amazonaws.com", include_session_token=False)
+    flow = real_flow(
+        with_response=False,
+        host="iam.amazonaws.com",
+        path=path,
+        method="GET",
+        request_headers=headers(
+            ("Host", "iam.amazonaws.com"),
+            ("X-Amz-Date", "20150830T123600Z"),
+            (
+                "Authorization",
+                aws_sigv4_authorization(
+                    date="20150830",
+                    service="iam",
+                ),
+            ),
+        ),
+    )
+
+    result = await handle_firewall_request_with_auth_endpoint(
+        flow,
+        tmp_path,
+        mitm_ctx,
+        auth_response=auth_response,
+        allow=aws_allow(
+            api_entry,
+            permission="leading-dot-segments",
+            rule="GET /{path+}",
+            rel_path=path,
+        ),
+    )
+
+    assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+    assert flow.response is None
+    assert flow.request.url == f"https://iam.amazonaws.com{path}"
+
+
 async def test_re_signs_header_sigv4_request_with_encoded_path(
     real_flow,
     headers,
