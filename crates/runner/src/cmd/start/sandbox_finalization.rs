@@ -1984,7 +1984,11 @@ mod tests {
         let exec_calls = sandbox.exec_calls();
         assert_eq!(exec_calls.len(), 1);
         assert!(exec_calls[0].sudo);
-        assert!(exec_calls[0].cmd.contains("fsfreeze --freeze"));
+        assert!(
+            exec_calls[0]
+                .cmd
+                .contains("\"$workspace_fsfreeze_path\" --freeze")
+        );
     }
 
     #[tokio::test]
@@ -2106,7 +2110,11 @@ mod tests {
                 assert!(promoted);
                 let exec_calls = sandbox.exec_calls();
                 assert_eq!(exec_calls.len(), 1);
-                assert!(exec_calls[0].cmd.contains("fsfreeze --freeze"));
+                assert!(
+                    exec_calls[0]
+                        .cmd
+                        .contains("\"$workspace_fsfreeze_path\" --freeze")
+                );
                 assert!(!exec_calls[0].cmd.contains("export-session-history-sidecar"));
                 let checkout = cache
                     .prepare(WorkspaceImagePrepareRequest {
@@ -2824,7 +2832,11 @@ mod tests {
 
         let exec_calls = overrides.exec_calls();
         assert_eq!(exec_calls.len(), 1);
-        assert!(exec_calls[0].cmd.contains("fsfreeze --freeze"));
+        assert!(
+            exec_calls[0]
+                .cmd
+                .contains("\"$workspace_fsfreeze_path\" --freeze")
+        );
         assert_eq!(overrides.destroy_call_count(), 1);
         assert!(cache.held_workspace_states().await.is_empty());
         assert_eq!(fixture.idle_pool.lock().await.len(), 0);
