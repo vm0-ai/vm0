@@ -1,5 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import {
@@ -8,6 +9,7 @@ import {
   chatThreadMetadataContract,
   chatThreadMarkReadContract,
   chatThreadsContract,
+  type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { browserContract } from "@okouai/api-contracts/contracts/browser";
 
@@ -664,5 +666,329 @@ describe("okou chat thread IndexedDB fallback", () => {
     expect(emptyThread.wasShown()).toBeFalsy();
     expect(uncoveredLoadingGap).toBeFalsy();
     expect(releaseMarkRead.settled()).toBeFalsy();
+  });
+
+  it("renders repaired Morning Brief history through cold Snapshot, hot rows, and IndexedDB", async () => {
+    prepareDefaultAgent();
+    mockCurrentThreadDetail();
+    mockSidebarThread();
+    const runtimeDb = await primeChatDb();
+    const snapshotUrl =
+      "https://r2.example.com/chat-events/morning-brief-r1.ndjson.gz";
+    const historicalDocuments: readonly UserMessageDocument[] = [
+      {
+        version: 1,
+        parts: [
+          {
+            type: "source",
+            kind: "github",
+            href: "https://github.com/vm0-ai/vm0/issues/30675",
+          },
+          { type: "text", text: "Summarize today's priorities." },
+        ],
+      },
+      {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId: "historical-file",
+            filenameSnapshot: "priorities.pdf",
+            contentType: "application/pdf",
+          },
+          { type: "text", text: "Include the attached priorities." },
+        ],
+      },
+      {
+        version: 1,
+        parts: [
+          {
+            type: "chat_thread",
+            threadId: OTHER_THREAD_ID,
+            titleSnapshot: "Launch planning",
+          },
+          { type: "text", text: "Carry forward the launch decisions." },
+        ],
+      },
+      {
+        version: 1,
+        parts: [
+          {
+            type: "template",
+            titleSnapshot: "Editorial illustration",
+            template: {
+              type: "illustration",
+              selection: { illustrationStyleId: "editorial" },
+            },
+          },
+          {
+            type: "text",
+            text: "Illustrate the highest-priority update.",
+          },
+        ],
+      },
+      {
+        version: 1,
+        parts: [
+          {
+            type: "feedback",
+            quote: "The owner is still unclear.",
+            note: [{ type: "text", text: "Name the owner." }],
+          },
+          { type: "text", text: "Finish the ownership summary." },
+        ],
+      },
+    ];
+    const snapshotRows: ChatEventRow[] = [];
+    const revokedSourceMarkers: string[] = [];
+    let seqId = 0;
+    const appendRow = (args: {
+      readonly eventType: ChatEventRow["eventType"];
+      readonly payload: ChatEventRow["payload"];
+      readonly runId: string | null;
+      readonly revokesEventId?: string | null;
+      readonly contextType?: string | null;
+    }): ChatEventRow => {
+      seqId += 1;
+      const row = {
+        id: `00000000-0000-4000-8000-${seqId.toString().padStart(12, "0")}`,
+        chatThreadId: THREAD_ID,
+        runId: args.runId,
+        revokesEventId: args.revokesEventId ?? null,
+        eventType: args.eventType,
+        payload: args.payload,
+        contextType: args.contextType ?? null,
+        contextId: null,
+        runEventSequenceNumber: null,
+        runEventId: null,
+        seqId,
+        createdAt: `2026-08-24T07:00:${seqId.toString().padStart(2, "0")}Z`,
+      } satisfies ChatEventRow;
+      snapshotRows.push(row);
+      return row;
+    };
+    const terminalStates = [
+      "completed",
+      "failed",
+      "completed",
+      "cancelled",
+    ] as const;
+    for (const [index, terminalState] of terminalStates.entries()) {
+      const sourceMarker = `Superseded Morning Brief source ${(
+        index + 1
+      ).toString()}`;
+      revokedSourceMarkers.push(sourceMarker);
+      const source = appendRow({
+        eventType: "input.prompt",
+        runId: null,
+        contextType: "web",
+        payload: {
+          userMessage: {
+            version: 1,
+            parts: [{ type: "text", text: sourceMarker }],
+          },
+        },
+      });
+      const runId = `run-morning-brief-history-${(index + 1).toString()}`;
+      appendRow({
+        eventType: "input.prompt",
+        runId,
+        revokesEventId: source.id,
+        contextType: "web",
+        payload: { userMessage: historicalDocuments[index] },
+      });
+      if (terminalState === "completed") {
+        appendRow({
+          eventType: "output.message",
+          runId,
+          payload: {
+            content: `Visible assistant result ${(index + 1).toString()}`,
+          },
+        });
+      } else {
+        appendRow({
+          eventType: "output.error",
+          runId,
+          payload: {
+            error: `Visible ${terminalState} result ${(index + 1).toString()}`,
+          },
+        });
+      }
+      appendRow({
+        eventType: `run.${terminalState}`,
+        runId,
+        payload:
+          terminalState === "completed"
+            ? null
+            : { error: `terminal_${terminalState}` },
+      });
+    }
+    const rejectedSourceMarker = "Superseded Morning Brief source 5";
+    revokedSourceMarkers.push(rejectedSourceMarker);
+    const rejectedSource = appendRow({
+      eventType: "input.prompt",
+      runId: null,
+      contextType: "web",
+      payload: {
+        userMessage: {
+          version: 1,
+          parts: [{ type: "text", text: rejectedSourceMarker }],
+        },
+      },
+    });
+    appendRow({
+      eventType: "input.rejected",
+      runId: null,
+      revokesEventId: rejectedSource.id,
+      contextType: "web",
+      payload: {
+        userMessage: historicalDocuments[4],
+        error: "Historical Morning Brief rejection",
+      },
+    });
+    const terminalSnapshotRow = snapshotRows.at(-1);
+    if (terminalSnapshotRow === undefined) {
+      throw new Error("Expected repaired historical Snapshot rows");
+    }
+
+    const hotRows: ChatEventRow[] = [];
+    const appendHotRow = (args: {
+      readonly eventType: ChatEventRow["eventType"];
+      readonly payload: ChatEventRow["payload"];
+      readonly runId: string | null;
+    }): void => {
+      seqId += 1;
+      hotRows.push({
+        id: `00000000-0000-4000-8000-${seqId.toString().padStart(12, "0")}`,
+        chatThreadId: THREAD_ID,
+        runId: args.runId,
+        revokesEventId: null,
+        eventType: args.eventType,
+        payload: args.payload,
+        contextType: args.eventType === "input.prompt" ? "web" : null,
+        contextId: null,
+        runEventSequenceNumber: null,
+        runEventId: null,
+        seqId,
+        createdAt: `2026-08-24T07:00:${seqId.toString().padStart(2, "0")}Z`,
+      });
+    };
+    const hotRunId = "run-hot-after-repair";
+    appendHotRow({
+      eventType: "input.prompt",
+      runId: hotRunId,
+      payload: {
+        userMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "Current hot Chat message" }],
+        },
+      },
+    });
+    appendHotRow({
+      eventType: "output.message",
+      runId: hotRunId,
+      payload: { content: "Current hot assistant result" },
+    });
+    appendHotRow({
+      eventType: "run.completed",
+      runId: hotRunId,
+      payload: null,
+    });
+    for (const row of [...snapshotRows, ...hotRows]) {
+      chatEventFromRow(row);
+    }
+
+    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+      return respond(200, {
+        url: snapshotUrl,
+        expiresInSeconds: 900,
+        lastEventId: terminalSnapshotRow.id,
+        lastSeqId: terminalSnapshotRow.seqId,
+      });
+    });
+    context.mocks.http.get(snapshotUrl, () => {
+      return new Response(
+        `${snapshotRows
+          .map((row) => {
+            return JSON.stringify(row);
+          })
+          .join("\n")}\n`,
+      );
+    });
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      return respond(200, chatEventRowsResponse(hotRows, query));
+    });
+    context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
+      return respond(200, {
+        lastReadAt: hotRows.at(-1)?.createdAt ?? null,
+        unreads: [],
+      });
+    });
+
+    setupChatPage();
+
+    const visibleUserMessages = [
+      "Summarize today's priorities.",
+      "Include the attached priorities.",
+      "Carry forward the launch decisions.",
+      "Illustrate the highest-priority update.",
+      "Finish the ownership summary.",
+      "Current hot Chat message",
+    ];
+    const renderedMessages = await Promise.all(
+      visibleUserMessages.map(async (message) => {
+        return await screen.findByText(message, {}, { timeout: 5000 });
+      }),
+    );
+    await expect(
+      screen.findByText("Visible assistant result 1"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText("Visible assistant result 3"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText("Current hot assistant result"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open pdf preview for priorities.pdf"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Open chat Launch planning")).toHaveAttribute(
+      "href",
+      `/chats/${OTHER_THREAD_ID}`,
+    );
+    expect(
+      screen.getByTitle("Illustration · Editorial illustration"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("The owner is still unclear.")).toBeInTheDocument();
+    for (const marker of revokedSourceMarkers) {
+      expect(screen.queryByText(marker)).not.toBeInTheDocument();
+    }
+    expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent("Morning Brief");
+    for (let index = 1; index < renderedMessages.length; index++) {
+      expect(
+        renderedMessages[index - 1]?.compareDocumentPosition(
+          renderedMessages[index]!,
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+
+    await waitFor(async () => {
+      const storedRows = (await runtimeDb.getAll(
+        CHAT_EVENT_ROWS_STORE,
+      )) as ChatEventRow[];
+      expect(storedRows).toHaveLength(snapshotRows.length + hotRows.length);
+      expect(JSON.stringify(storedRows)).not.toContain("morning_brief");
+      expect(
+        storedRows.some((row) => {
+          return row.runId === "run-morning-brief-history-1";
+        }),
+      ).toBeTruthy();
+      expect(
+        storedRows.some((row) => {
+          return row.revokesEventId === snapshotRows[0]?.id;
+        }),
+      ).toBeTruthy();
+    });
   });
 });
