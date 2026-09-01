@@ -2,7 +2,9 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
   managedSocialKitToolCatalog,
+  MANAGED_SOCIAL_UNSUPPORTED_CAPABILITIES,
   MANAGED_SOCIALKIT_TOOLS,
+  projectPublicSocialResponse,
   publicSocialErrorCode,
   publicSocialErrorMessage,
   redactSocialProviderIdentity,
@@ -78,6 +80,243 @@ describe("managed SocialKit contract", () => {
         return tool.name === "youtube_transcript";
       }),
     ).toMatchObject({ availability: "transcript" });
+  });
+
+  it("publishes reviewed TikTok collection constraints and capability boundaries", () => {
+    const catalog = managedSocialKitToolCatalog();
+
+    expect(
+      catalog.find((tool) => {
+        return tool.name === "tiktok_search";
+      }),
+    ).toMatchObject({
+      collection: {
+        resultField: "results",
+        retrieval: { kind: "cursor" },
+        defaultLimit: 10,
+        requestMaxLimit: 100,
+        effectiveLimit: 10,
+        itemContract: "tiktok_video",
+        pageSize: {
+          kind: "provider_controlled",
+          mayDifferFromRequestLimit: true,
+        },
+        emptyResult: {
+          reliability: "unreliable",
+          outcome: "provider_limited",
+          retry: "none",
+          billing: "successful_request",
+        },
+      },
+      billing: {
+        kind: "items",
+        itemsPerUnit: 50,
+        quantityBasis: "effective_request_limit",
+      },
+      outputSchema: {
+        properties: {
+          results: {
+            items: {
+              properties: {
+                videoId: { type: "string" },
+                description: { type: "string" },
+                thumbnail: { type: "string" },
+                views: { type: "integer", minimum: 0 },
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(
+      catalog.find((tool) => {
+        return tool.name === "tiktok_hashtag_search";
+      })?.collection,
+    ).toMatchObject({ defaultLimit: 20, effectiveLimit: 20 });
+    expect(
+      catalog.find((tool) => {
+        return tool.name === "tiktok_channel_videos";
+      })?.collection,
+    ).toMatchObject({ defaultLimit: 30, effectiveLimit: 30 });
+    expect(MANAGED_SOCIAL_UNSUPPORTED_CAPABILITIES).toStrictEqual([
+      expect.objectContaining({ capability: "follower_list" }),
+      expect.objectContaining({ capability: "following_list" }),
+      expect.objectContaining({ capability: "comment_replies" }),
+    ]);
+    expect(
+      JSON.stringify({
+        tools: catalog,
+        unsupportedCapabilities: MANAGED_SOCIAL_UNSUPPORTED_CAPABILITIES,
+      }),
+    ).not.toMatch(/socialkit/iu);
+  });
+
+  it("projects TikTok collections to stable provider-neutral video fields", () => {
+    const rawSearch = socialKitResponseSchema.parse({
+      provider: "socialkit",
+      tool: "tiktok_search",
+      billingCategory: "request",
+      billingQuantity: 1,
+      creditsCharged: 3,
+      collection: {
+        state: "more",
+        itemsReturned: 1,
+        nextInput: { cursor: "next" },
+      },
+      result: {
+        query: "launch",
+        results: [
+          {
+            id: "video-1",
+            desc: "Launch day",
+            url: "https://www.tiktok.com/@example/video/1",
+            createTime: 1_700_000_000,
+            textLanguage: "en",
+            subtitleInfos: [{ languageCode: "eng-US", title: "English" }],
+            author: {
+              id: "author-1",
+              uniqueId: "example",
+              nickname: "Example",
+              avatar: "https://example.com/avatar.jpg",
+              verified: true,
+            },
+            stats: {
+              views: 100,
+              likes: 20,
+              comments: 3,
+              shares: 4,
+              saves: 5,
+            },
+            video: {
+              cover: "https://example.com/cover.jpg",
+              duration: 12,
+            },
+            providerName: "SocialKit",
+          },
+        ],
+        hasMore: true,
+        cursor: "next",
+      },
+    });
+
+    const projection = projectPublicSocialResponse(rawSearch);
+    expect(projection.ok).toBe(true);
+    if (!projection.ok || projection.response.tool !== "tiktok_search") {
+      throw new Error("Expected a projected TikTok search response");
+    }
+    expect(projection.response).not.toHaveProperty("provider");
+    expect(projection.response.result.results?.[0]).toMatchObject({
+      videoId: "video-1",
+      description: "Launch day",
+      url: "https://www.tiktok.com/@example/video/1",
+      thumbnail: "https://example.com/cover.jpg",
+      duration: 12,
+      publishedAt: "2023-11-14T22:13:20.000Z",
+      views: 100,
+      likes: 20,
+      comments: 3,
+      shares: 4,
+      collects: 5,
+      language: "en",
+      subtitles: [{ languageCode: "eng-US", title: "English" }],
+      author: {
+        id: "author-1",
+        username: "example",
+        displayName: "Example",
+      },
+    });
+    expect(projection.response.result.results?.[0]).not.toHaveProperty(
+      "providerName",
+    );
+    expect(JSON.stringify(projection.response)).not.toMatch(/socialkit/iu);
+
+    const rawChannel = socialKitResponseSchema.parse({
+      provider: "socialkit",
+      tool: "tiktok_channel_videos",
+      billingCategory: "request",
+      billingQuantity: 1,
+      creditsCharged: 3,
+      collection: { state: "complete", itemsReturned: 1 },
+      result: {
+        results: [
+          {
+            videoId: "video-2",
+            description: "Channel video",
+            url: "https://www.tiktok.com/@example/video/2",
+            thumbnail: "https://example.com/channel.jpg",
+            duration: 9,
+            createTime: "2026-08-31T00:00:00Z",
+            views: 9,
+          },
+        ],
+        hasMore: false,
+        cursor: null,
+      },
+    });
+    const channelProjection = projectPublicSocialResponse(rawChannel);
+    expect(channelProjection.ok).toBe(true);
+    if (
+      !channelProjection.ok ||
+      channelProjection.response.tool !== "tiktok_channel_videos"
+    ) {
+      throw new Error("Expected a projected TikTok channel response");
+    }
+    expect(channelProjection.response.result.results?.[0]).toMatchObject({
+      videoId: "video-2",
+      description: "Channel video",
+      publishedAt: "2026-08-31T00:00:00Z",
+    });
+  });
+
+  it("marks unreliable empty searches uncertain and rejects conflicting aliases", () => {
+    const emptyResponse = socialKitResponseSchema.parse({
+      provider: "socialkit",
+      tool: "tiktok_hashtag_search",
+      billingCategory: "request",
+      billingQuantity: 1,
+      creditsCharged: 3,
+      collection: { state: "complete", itemsReturned: 0 },
+      result: {
+        hashtag: "launch",
+        results: [],
+        hasMore: false,
+        cursor: null,
+      },
+    });
+    const emptyProjection = projectPublicSocialResponse(emptyResponse);
+    expect(emptyProjection).toMatchObject({
+      ok: true,
+      response: {
+        collection: {
+          state: "provider_limited",
+          itemsReturned: 0,
+          uncertainty: { reason: "unreliable_empty_result" },
+        },
+      },
+    });
+
+    const conflictingResponse = socialKitResponseSchema.parse({
+      provider: "socialkit",
+      tool: "tiktok_search",
+      billingCategory: "request",
+      billingQuantity: 1,
+      creditsCharged: 3,
+      collection: { state: "complete", itemsReturned: 1 },
+      result: {
+        results: [
+          {
+            id: "source-id",
+            videoId: "contradictory-id",
+            desc: "Result",
+          },
+        ],
+        hasMore: false,
+        cursor: null,
+      },
+    });
+    expect(projectPublicSocialResponse(conflictingResponse)).toStrictEqual({
+      ok: false,
+    });
   });
 
   it("validates additive transcript error semantics", () => {

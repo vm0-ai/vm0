@@ -399,6 +399,303 @@ describe("managed SocialKit route", () => {
     expect(providerRequests).toBe(1);
   });
 
+  it("applies reviewed TikTok limits while preserving raw session results", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    const observed: { readonly path: string; readonly limit: string | null }[] =
+      [];
+    server.use(
+      http.get(/^https:\/\/api\.socialkit\.dev\/tiktok\//u, ({ request }) => {
+        const url = new URL(request.url);
+        observed.push({
+          path: url.pathname,
+          limit: url.searchParams.get("limit"),
+        });
+        const resultCount =
+          url.pathname === "/tiktok/search"
+            ? 16
+            : url.pathname === "/tiktok/hashtag-search"
+              ? 30
+              : 24;
+        const data = {
+          results: Array.from({ length: resultCount }, (_, index) => {
+            return url.pathname === "/tiktok/channel-videos"
+              ? {
+                  videoId: `channel-video-${index}`,
+                  description: "Channel result",
+                  views: 30,
+                }
+              : {
+                  id: `${url.pathname}-video-${index}`,
+                  desc: "Raw nested result",
+                  stats: { views: 10 },
+                };
+          }),
+          hasMore: false,
+          cursor: null,
+        };
+        return HttpResponse.json(providerResponse(data));
+      }),
+    );
+
+    const search = await accept(
+      client(pricing.resolution)(socialContract).request({
+        headers: authenticate(actor),
+        body: {
+          tool: "tiktok_search",
+          input: { query: "launch", limit: 100 },
+        },
+      }),
+      [200],
+    );
+    const hashtag = await accept(
+      client(pricing.resolution)(socialContract).request({
+        headers: authenticate(actor),
+        body: {
+          tool: "tiktok_hashtag_search",
+          input: { hashtag: "launch" },
+        },
+      }),
+      [200],
+    );
+    const channel = await accept(
+      client(pricing.resolution)(socialContract).request({
+        headers: authenticate(actor),
+        body: {
+          tool: "tiktok_channel_videos",
+          input: { url: "https://www.tiktok.com/@example", limit: 100 },
+        },
+      }),
+      [200],
+    );
+
+    expect(observed).toStrictEqual([
+      { path: "/tiktok/search", limit: "10" },
+      { path: "/tiktok/hashtag-search", limit: "20" },
+      { path: "/tiktok/channel-videos", limit: "30" },
+    ]);
+    expect(search.body).toMatchObject({
+      provider: "socialkit",
+      collection: { state: "complete", itemsReturned: 16 },
+    });
+    const searchResults = search.body.result.results;
+    expect(Array.isArray(searchResults)).toBeTruthy();
+    if (!Array.isArray(searchResults)) {
+      throw new TypeError("Expected TikTok search results to be an array");
+    }
+    expect(searchResults).toHaveLength(16);
+    expect(searchResults[0]).toMatchObject({
+      id: "/tiktok/search-video-0",
+      desc: "Raw nested result",
+    });
+    expect(searchResults[0]).not.toHaveProperty("videoId");
+    expect(hashtag.body.provider).toBe("socialkit");
+    expect(channel.body.provider).toBe("socialkit");
+    expect(beforeCredits - (await credits(actor))).toBe(
+      3 * SOCIALKIT_REQUEST_CREDITS,
+    );
+  });
+
+  it("preflights and settles against the effective TikTok request limit", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await bootstrapOnboarding(actor);
+    await setActorCredits(actor, SOCIALKIT_REQUEST_CREDITS);
+    let observedLimit: string | null = null;
+    server.use(
+      http.get(`${SOCIALKIT_BASE}/tiktok/search`, ({ request }) => {
+        observedLimit = new URL(request.url).searchParams.get("limit");
+        return HttpResponse.json(
+          providerResponse({
+            results: Array.from({ length: 60 }, (_, index) => {
+              return { id: `video-${index}`, desc: "Result" };
+            }),
+            hasMore: false,
+            cursor: null,
+          }),
+        );
+      }),
+    );
+
+    const response = await accept(
+      client(pricing.resolution)(socialContract).request({
+        headers: authenticate(actor),
+        body: {
+          tool: "tiktok_search",
+          input: { query: "launch", limit: 100 },
+        },
+      }),
+      [200],
+    );
+
+    expect(observedLimit).toBe("10");
+    expect(response.body.collection).toMatchObject({
+      state: "complete",
+      itemsReturned: 60,
+    });
+    expect(response.body.billingQuantity).toBe(1);
+    await expect(credits(actor)).resolves.toBe(0);
+  });
+
+  it("projects TikTok agent results and exposes unreliable empty uncertainty without retry", async () => {
+    const actor = createBddApi(context).user();
+    if (!actor.orgId) {
+      throw new Error("Social test actor must belong to an organization");
+    }
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    const seconds = Math.floor(now() / 1000);
+    const token = signSandboxJwtForTests({
+      scope: "okou",
+      userId: actor.userId,
+      orgId: actor.orgId,
+      runId: randomUUID(),
+      capabilities: ["social:read"],
+      iat: seconds,
+      exp: seconds + 60,
+    });
+    let providerRequests = 0;
+    server.use(
+      http.get(`${SOCIALKIT_BASE}/tiktok/search`, ({ request }) => {
+        providerRequests += 1;
+        const query = new URL(request.url).searchParams.get("query");
+        return HttpResponse.json(
+          providerResponse(
+            query === "empty"
+              ? { results: [], hasMore: false, cursor: null }
+              : {
+                  results: [
+                    {
+                      id: "video-1",
+                      desc: "Canonical result",
+                      url: "https://www.tiktok.com/@example/video/1",
+                      author: {
+                        uniqueId: "example",
+                        nickname: "Example",
+                      },
+                      stats: {
+                        views: 100,
+                        likes: 20,
+                        comments: 3,
+                        shares: 4,
+                        saves: 5,
+                      },
+                      video: {
+                        cover: "https://example.com/cover.jpg",
+                        duration: 12,
+                      },
+                      providerName: "SocialKit",
+                    },
+                  ],
+                  hasMore: false,
+                  cursor: null,
+                },
+          ),
+        );
+      }),
+    );
+
+    const canonicalResponse = await rawSocialRequest(
+      null,
+      { tool: "tiktok_search", input: { query: "launch", limit: 100 } },
+      {
+        authorization: `Bearer ${token}`,
+        usagePricingResolution: pricing.resolution,
+      },
+    );
+    expect(canonicalResponse.status).toBe(200);
+    const canonicalBody = (await canonicalResponse.json()) as Record<
+      string,
+      unknown
+    >;
+    expect(canonicalBody).not.toHaveProperty("provider");
+    expect(canonicalBody).toMatchObject({
+      collection: { state: "complete", itemsReturned: 1 },
+      result: {
+        results: [
+          {
+            videoId: "video-1",
+            description: "Canonical result",
+            thumbnail: "https://example.com/cover.jpg",
+            duration: 12,
+            views: 100,
+            collects: 5,
+            author: { username: "example", displayName: "Example" },
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(canonicalBody)).not.toMatch(/socialkit/iu);
+    expect(providerRequests).toBe(1);
+
+    const emptyResponse = await rawSocialRequest(
+      null,
+      { tool: "tiktok_search", input: { query: "empty" } },
+      {
+        authorization: `Bearer ${token}`,
+        usagePricingResolution: pricing.resolution,
+      },
+    );
+    expect(emptyResponse.status).toBe(200);
+    await expect(emptyResponse.json()).resolves.toMatchObject({
+      collection: {
+        state: "provider_limited",
+        itemsReturned: 0,
+        uncertainty: { reason: "unreliable_empty_result" },
+      },
+      result: { results: [], hasMore: false, cursor: null },
+    });
+    expect(providerRequests).toBe(2);
+    expect(beforeCredits - (await credits(actor))).toBe(
+      2 * SOCIALKIT_REQUEST_CREDITS,
+    );
+  });
+
+  it("rejects conflicting TikTok aliases before usage settlement", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    let providerRequests = 0;
+    server.use(
+      http.get(`${SOCIALKIT_BASE}/tiktok/search`, () => {
+        providerRequests += 1;
+        return HttpResponse.json(
+          providerResponse({
+            results: [
+              {
+                id: "source-id",
+                videoId: "contradictory-id",
+                desc: "Result",
+              },
+            ],
+            hasMore: false,
+            cursor: null,
+          }),
+        );
+      }),
+    );
+
+    const response = await accept(
+      client(pricing.resolution)(socialContract).request({
+        headers: authenticate(actor),
+        body: { tool: "tiktok_search", input: { query: "launch" } },
+      }),
+      [502],
+    );
+
+    expectApiError(response.body);
+    expect(providerRequests).toBe(1);
+    await expect(credits(actor)).resolves.toBe(beforeCredits);
+  });
+
   it("accepts agent tokens and attributes usage to their run", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {
