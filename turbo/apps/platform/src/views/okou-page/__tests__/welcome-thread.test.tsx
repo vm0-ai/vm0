@@ -91,8 +91,20 @@ describe("built-in welcome thread", () => {
       within(page).getByRole("textbox", { name: "Message" }),
     ).toBeInTheDocument();
     await waitFor(() => {
-      // the collaboration loop plus the team-workflow and Slack-routing diagrams
-      expect(content.querySelectorAll(".mermaid-block")).toHaveLength(3);
+      expect(content.querySelector(".mermaid-block")).toBeInTheDocument();
+    });
+    expect(
+      within(content).getByTestId("welcome-team-diagram"),
+    ).toBeInTheDocument();
+    expect(
+      within(content).getByTestId("welcome-slack-diagram"),
+    ).toBeInTheDocument();
+    expect(within(content).getByText("A workflow")).toBeInTheDocument();
+    expect(
+      within(content).getByText("Zero replies in the thread"),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(content.querySelector("a[href^='okou://']")).toBeNull();
     });
   });
 

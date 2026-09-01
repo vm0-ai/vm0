@@ -7,7 +7,11 @@ import {
   VIDEO_TEMPLATE_ITEMS,
 } from "../../lib/platform-template-items.ts";
 import { derivePlatformServiceOrigin } from "../../lib/platform-host.ts";
-import { parseMarkdownTree } from "../../lib/markdown/pipeline.ts";
+import {
+  markdownCardKey,
+  parseMarkdownTree,
+} from "../../lib/markdown/pipeline.ts";
+import type { MarkdownCardRef } from "../../signals/chat-page/markdown-card-ref.ts";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 import { assistantName$ } from "../../signals/branding.ts";
 import {
@@ -24,6 +28,24 @@ import { ChatComposer } from "./chat-composer.tsx";
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 import { AgentAvatarImg } from "./sidebar-shared.tsx";
+
+/**
+ * Slot URLs the welcome copy stands its two schematics on. They never leave this
+ * document, so the scheme only has to be distinct from a real destination.
+ */
+const TEAM_DIAGRAM_SLOT = "okou://welcome-diagram/team";
+const SLACK_DIAGRAM_SLOT = "okou://welcome-diagram/slack";
+
+const WELCOME_DIAGRAM_CARDS: ReadonlyMap<string, MarkdownCardRef> = new Map([
+  [
+    markdownCardKey(TEAM_DIAGRAM_SLOT),
+    { kind: "welcome-diagram", diagram: "team" } satisfies MarkdownCardRef,
+  ],
+  [
+    markdownCardKey(SLACK_DIAGRAM_SLOT),
+    { kind: "welcome-diagram", diagram: "slack" } satisfies MarkdownCardRef,
+  ],
+]);
 
 const welcomeImage = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
 const welcomePresentation = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
@@ -76,12 +98,15 @@ function WelcomeThreadMessage() {
       inviteUrl,
       presentationPreviewUrl: welcomePresentation.previewImage,
       presentationUrl: welcomePresentation.embedUrl,
+      slackDiagramUrl: SLACK_DIAGRAM_SLOT,
       slideCount: welcomePresentation.slideCount ?? 15,
+      teamDiagramUrl: TEAM_DIAGRAM_SLOT,
       videoUrl: welcomeVideo.previewVideo,
       worksUrl,
     },
   );
   const tree = parseMarkdownTree(source, {
+    cards: WELCOME_DIAGRAM_CARDS,
     mermaid: true,
   });
   embedMermaidSignals(tree, (code) => {

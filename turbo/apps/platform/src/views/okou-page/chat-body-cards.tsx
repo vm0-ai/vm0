@@ -73,6 +73,10 @@ import { BrowserSessionCard } from "./browser-session-card.tsx";
 import { BankingActionCard } from "./banking-action-card.tsx";
 import { ConnectorAccountActionCard } from "./connector-account-action-card.tsx";
 import { MailDraftCard } from "./mail-draft-card.tsx";
+import {
+  WelcomeSlackDiagram,
+  WelcomeTeamDiagram,
+} from "./welcome-thread-diagrams.tsx";
 
 type ChatImagePreviewLinkProps = {
   alt: string;
@@ -298,6 +302,13 @@ export function MarkdownCardView({ card }: { card: MarkdownCardRef }) {
     }
     case "unavailable-action": {
       return <UnavailableActionCard />;
+    }
+    case "welcome-diagram": {
+      return card.diagram === "team" ? (
+        <WelcomeTeamDiagram />
+      ) : (
+        <WelcomeSlackDiagram />
+      );
     }
     case "computer-use-authorization": {
       return <ComputerUseAuthorizationCard signals={card.signals} />;

@@ -29,6 +29,11 @@ export type MarkdownCardRef =
   | { readonly kind: "banking-action"; readonly signals: BankingSignals }
   | { readonly kind: "unavailable-action" }
   | {
+      /** A schematic in the built-in welcome thread. Purely presentational. */
+      readonly kind: "welcome-diagram";
+      readonly diagram: "team" | "slack";
+    }
+  | {
       readonly kind: "computer-use-authorization";
       readonly signals: ComputerUseAuthorizationSignals;
     }
