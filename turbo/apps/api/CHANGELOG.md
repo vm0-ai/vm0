@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.525.4](https://github.com/vm0-ai/vm0/compare/api-v1.525.3...api-v1.525.4) (2026-09-01)
+
+
+### Bug Fixes
+
+* **api:** repair priority morning brief snapshot claims ([#30917](https://github.com/vm0-ai/vm0/issues/30917)) ([b21b3c6](https://github.com/vm0-ai/vm0/commit/b21b3c6571ca1d9a2d9b5f646257acd51da871d0))
+
 ## [1.525.3](https://github.com/vm0-ai/vm0/compare/api-v1.525.2...api-v1.525.3) (2026-09-01)
 
 
