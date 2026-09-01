@@ -3,7 +3,7 @@ import { generateKeyPairSync, randomUUID, sign as signData } from "node:crypto";
 
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
-import { cronRenewGoogleWorkspaceEventSubscriptionsContract } from "@okouai/api-contracts/contracts/cron";
+import { testGoogleMeetSubscriptionRenewalContract } from "@okouai/api-contracts/contracts/test-google-meet-subscription-renewal";
 import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
@@ -24,7 +24,7 @@ import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
 import { chatThreadRoutes } from "../chat-threads";
 import { connectorAccountRoutes } from "../connector-accounts";
-import { cronRenewGoogleWorkspaceEventSubscriptionsRoutes } from "../cron-renew-google-workspace-event-subscriptions";
+import { testGoogleMeetSubscriptionRenewalRoutes } from "../test-google-meet-subscription-renewal";
 import { webhooksGoogleWorkspaceEventsRoutes } from "../webhooks-google-workspace-events";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 
@@ -37,7 +37,6 @@ const PUSH_AUDIENCE = "https://api.vm0.ai/api/webhooks/google-workspace-events";
 const PUSH_SERVICE_ACCOUNT =
   "google-workspace-events-push@vm0-ai-488909.iam.gserviceaccount.com";
 const OIDC_CERT_KID = "google-workspace-events-test-key";
-const CRON_SECRET = "google-workspace-events-cron-secret";
 const oidcKeyPair = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const oidcPublicKeyPem = oidcKeyPair.publicKey.export({
   type: "spki",
@@ -97,8 +96,8 @@ function connectorAccountsClient() {
 function renewalClient() {
   return setupApp({
     context,
-    routes: cronRenewGoogleWorkspaceEventSubscriptionsRoutes,
-  })(cronRenewGoogleWorkspaceEventSubscriptionsContract);
+    routes: testGoogleMeetSubscriptionRenewalRoutes,
+  })(testGoogleMeetSubscriptionRenewalContract);
 }
 
 function encodeJwtPart(value: unknown): string {
@@ -565,7 +564,6 @@ describe("Google Workspace Events subscription lifecycle", () => {
   });
 
   it("fails closed and does not retry after provider delete failure", async () => {
-    mockEnv("CRON_SECRET", CRON_SECRET);
     const fixture = await setupFixture({ deleteStatus: 503 });
     const created = await createMeetAutomation(fixture);
     const subscriptionName = fixture.provider.createdNames[0];
@@ -593,7 +591,10 @@ describe("Google Workspace Events subscription lifecycle", () => {
 
     const renewed = await accept(
       renewalClient().renew({
-        headers: { authorization: `Bearer ${CRON_SECRET}` },
+        body: {
+          org_id: fixture.actor.orgId,
+          user_id: fixture.actor.userId,
+        },
       }),
       [200],
     );
@@ -745,7 +746,6 @@ describe("Google Workspace Events subscription lifecycle", () => {
   });
 
   it("renews a due subscription while an enabled consumer remains", async () => {
-    mockEnv("CRON_SECRET", CRON_SECRET);
     const fixture = await setupFixture({
       expireTime: new Date(now() + 30 * 60 * 1000).toISOString(),
     });
@@ -753,13 +753,19 @@ describe("Google Workspace Events subscription lifecycle", () => {
 
     const renewed = await accept(
       renewalClient().renew({
-        headers: { authorization: `Bearer ${CRON_SECRET}` },
+        body: {
+          org_id: fixture.actor.orgId,
+          user_id: fixture.actor.userId,
+        },
       }),
       [200],
     );
     const unchanged = await accept(
       renewalClient().renew({
-        headers: { authorization: `Bearer ${CRON_SECRET}` },
+        body: {
+          org_id: fixture.actor.orgId,
+          user_id: fixture.actor.userId,
+        },
       }),
       [200],
     );

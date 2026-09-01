@@ -1843,6 +1843,60 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
   },
 );
 
+interface GoogleMeetSubscriptionOwnerScope {
+  readonly orgId: string;
+  readonly userId: string;
+}
+
+interface GoogleMeetSubscriptionRenewalSummary {
+  readonly renewed: number;
+  readonly repaired: number;
+  readonly failed: number;
+}
+
+async function renewGoogleMeetSubscriptionScopes(
+  args: {
+    readonly db: Db;
+    readonly scopes: Iterable<GoogleMeetSubscriptionOwnerScope>;
+  },
+  signal: AbortSignal,
+): Promise<GoogleMeetSubscriptionRenewalSummary> {
+  let renewed = 0;
+  let repaired = 0;
+  let failed = 0;
+  for (const scope of args.scopes) {
+    const result = await reconcileGoogleMeetSubscriptionLifecycle(
+      {
+        db: args.db,
+        orgId: scope.orgId,
+        userId: scope.userId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (result.kind !== "ok") {
+      failed++;
+      continue;
+    }
+    renewed += result.action === "renewed" ? 1 : 0;
+    repaired += result.action === "created" ? 1 : 0;
+  }
+  return { renewed, repaired, failed };
+}
+
+export const renewGoogleMeetSubscriptionScope$ = command(
+  async (
+    { set },
+    scope: GoogleMeetSubscriptionOwnerScope,
+    signal: AbortSignal,
+  ): Promise<GoogleMeetSubscriptionRenewalSummary> => {
+    return await renewGoogleMeetSubscriptionScopes(
+      { db: set(writeDb$), scopes: [scope] },
+      signal,
+    );
+  },
+);
+
 export const renewGoogleWorkspaceEventSubscriptions$ = command(
   async ({ set }, signal: AbortSignal) => {
     const topicResult = googleWorkspaceEventsTopicName();
@@ -1886,35 +1940,14 @@ export const renewGoogleWorkspaceEventSubscriptions$ = command(
       );
     signal.throwIfAborted();
 
-    const scopes = new Map<
-      string,
-      { readonly orgId: string; readonly userId: string }
-    >();
+    const scopes = new Map<string, GoogleMeetSubscriptionOwnerScope>();
     for (const scope of [...states, ...automationRows]) {
       scopes.set(`${scope.orgId}\n${scope.userId}`, scope);
     }
 
-    let renewed = 0;
-    let repaired = 0;
-    let failed = 0;
-    for (const scope of scopes.values()) {
-      const result = await reconcileGoogleMeetSubscriptionLifecycle(
-        {
-          db,
-          orgId: scope.orgId,
-          userId: scope.userId,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
-      if (result.kind !== "ok") {
-        failed++;
-        continue;
-      }
-      renewed += result.action === "renewed" ? 1 : 0;
-      repaired += result.action === "created" ? 1 : 0;
-    }
-
-    return { renewed, repaired, failed };
+    return await renewGoogleMeetSubscriptionScopes(
+      { db, scopes: scopes.values() },
+      signal,
+    );
   },
 );
