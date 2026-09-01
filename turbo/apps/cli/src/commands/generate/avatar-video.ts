@@ -171,29 +171,29 @@ function parseVoiceAge(value: string): VoiceAge {
 function hasAvatarFilters(options: AvatarVideoCommandOptions): boolean {
   return Boolean(
     options.avatarStyle ||
-      options.avatarGender ||
-      options.avatarAge ||
-      options.avatarScene ||
-      options.avatarEthnicity,
+    options.avatarGender ||
+    options.avatarAge ||
+    options.avatarScene ||
+    options.avatarEthnicity,
   );
 }
 
 function hasVoiceFilters(options: AvatarVideoCommandOptions): boolean {
   return Boolean(
     options.voiceLanguage ||
-      options.voiceGender ||
-      options.voiceAge ||
-      options.voiceUseCase,
+    options.voiceGender ||
+    options.voiceAge ||
+    options.voiceUseCase,
   );
 }
 
 function hasGenerationInput(options: AvatarVideoCommandOptions): boolean {
   return Boolean(
     options.script ||
-      options.audioUrl ||
-      options.avatarId ||
-      options.voiceId ||
-      options.videoName,
+    options.audioUrl ||
+    options.avatarId ||
+    options.voiceId ||
+    options.videoName,
   );
 }
 

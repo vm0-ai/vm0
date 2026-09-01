@@ -30,6 +30,10 @@ import {
   cn,
 } from "@okouai/ui";
 import { readAvatarTemplateOptions } from "@okouai/core/avatar-template";
+import {
+  INTRO_VIDEO_AVATARS,
+  type IntroVideoAvatar,
+} from "@okouai/core/intro-video-avatars";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
@@ -45,10 +49,6 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { isSelectedAvatarTemplate } from "../../signals/okou-page/avatar-template-selection.ts";
 import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
-import {
-  INTRO_VIDEO_AVATARS,
-  type IntroVideoAvatar,
-} from "./intro-video-avatars.ts";
 
 const AVATAR_CARD_SHADOW =
   "shadow-[0_2px_12px_hsl(220_12%_50%/0.04),0_0_0_0.5px_hsl(220_12%_50%/0.02)]";
