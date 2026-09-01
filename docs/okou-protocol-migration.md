@@ -61,11 +61,12 @@ and the retirement needed no separate window. A token presenting the legacy
 `zero` scope now fails verification.
 
 The current CLI defaults to `https://api.okou.ai` and sends branded requests
-through `/api/okou/**`. Merging that host change requires the custom domain to
-have valid TLS and to reach the production API boundary; static App HTML,
-redirects, and an unreachable hostname do not pass the gate. The existing
-`VM0_API_BACKEND_URL` override remains available for development, previews,
-and operational rollback.
+through `/api/okou/**`. It reads only `OKOU_API_BACKEND_URL` for an explicit API
+override; when that variable is unset or empty, the production default remains
+in effect. Merging a host change requires the custom domain to have valid TLS
+and to reach the production API boundary; static App HTML, redirects, and an
+unreachable hostname do not pass the gate. Historical commit-addressed CLI
+artifacts remain immutable and retain the contracts they shipped with.
 
 Removing any other fallback reader, `/api/zero/**` route, historical artifact,
 callback, Desktop identity, or persisted object requires a separate drain gate.
@@ -79,8 +80,11 @@ drained.
 ## Rollback
 
 Roll the writer stop back to the Phase B release target above to restore dual
-emission. Roll the current CLI source back by selecting the last verified
-dual-reader commit-addressed artifact and restoring the previous API origin.
+emission. Operational rollback for the current Product CLI keeps the
+canonical-only API URL input: select a verified artifact and configure any
+previous API origin through `OKOU_API_BACKEND_URL`. Do not restore
+`VM0_API_BACKEND_URL`; its support cutoff is a product contract, not a rollout
+fallback.
 Leave both namespace routes, server-side environment readers, both Desktop
 identities, stored callbacks, queued contexts, and immutable historical
 artifacts in place. Restoring the `zero` token scope is not part of that
