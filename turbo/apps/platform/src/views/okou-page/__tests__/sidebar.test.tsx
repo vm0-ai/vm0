@@ -6,6 +6,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -3442,6 +3443,42 @@ describe("zero sidebar", () => {
     expect(unread).toHaveAttribute("role", "img");
   });
 
+  // A grid tile is a fifth of the sidebar wide, so the caption below the avatar
+  // is truncated to a few characters. Hovering has to spell the name out.
+  it("reveals the full pinned agent name on hover", async () => {
+    context.mocks.data.agents([
+      {
+        agentId: AGENT_ID,
+        ownerId: "test-user-123",
+        displayName: "Growth Experiments Agent",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        visibility: "public",
+      },
+    ]);
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    const card = await waitFor(() => {
+      return within(grid).getByTestId("pinned-agent-card");
+    });
+    await userEvent.setup().hover(card);
+
+    const tooltip = await waitFor(() => {
+      const popup = document.querySelector('[data-slot="tooltip-content"]');
+      if (!(popup instanceof HTMLElement)) {
+        throw new Error("Pinned agent tooltip is not open");
+      }
+      return popup;
+    });
+    expect(within(tooltip).getByText("Growth Experiments Agent")).toBeVisible();
+  });
+
   it("searches chats and messages in the three-column spotlight", async () => {
     prepareAgents();
     mockSidebarThreadStory([
@@ -4175,9 +4212,6 @@ describe("zero sidebar", () => {
     // Billing, so Pin closes the first row and the rest wrap after it.
     const fourthAgent = pinnedAgentLink(grid, "Operations Agent");
     const fifthAgent = pinnedAgentLink(grid, "Analytics Agent");
-
-    expect(fourthAgent).toHaveAttribute("title", "Operations Agent");
-    expect(fifthAgent).toHaveAttribute("title", "Analytics Agent");
 
     expect(
       fourthAgent.compareDocumentPosition(pinAgent) &

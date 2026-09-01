@@ -27,8 +27,6 @@ const CLERK_BOOTSTRAP_SELECTOR = "script[data-vm0-clerk-bootstrap]";
 const CLERK_CORE_SCRIPT_ID = "vm0-clerk-core-script";
 const CLERK_SCRIPT_SELECTOR = "script[data-clerk-js-script]";
 const TEST_APP_VERSION = "0.812.5-test";
-const CLERK_LOAD_COMPLETED_MARK = "vm0:bootstrap:clerk-load-completed";
-const CLERK_LOAD_STARTED_MARK = "vm0:bootstrap:clerk-load-started";
 
 const PREFETCHED_ONBOARDING_STATUS: OnboardingStatusResponse = {
   defaultAgentId: "c0000000-0000-4000-a000-000000000101",
@@ -182,8 +180,6 @@ function captureClerkBootstrapScript(
       window.dispatchEvent(new Event("pagehide"));
       Reflect.deleteProperty(globalThis, "Clerk");
       Reflect.deleteProperty(window, "__vm0ClerkBootstrap");
-      performance.clearMarks(CLERK_LOAD_STARTED_MARK);
-      performance.clearMarks(CLERK_LOAD_COMPLETED_MARK);
     },
     { once: true },
   );
@@ -285,8 +281,6 @@ function startClerkPage(
           }
           Reflect.deleteProperty(globalThis, "Clerk");
           Reflect.deleteProperty(window, "__vm0ClerkBootstrap");
-          performance.clearMarks(CLERK_LOAD_STARTED_MARK);
-          performance.clearMarks(CLERK_LOAD_COMPLETED_MARK);
         },
         { once: true },
       );
@@ -531,8 +525,6 @@ describe("platform Clerk entrypoint", () => {
     if (!bootstrap?.loaded || !bootstrap.onboardingStatusPromise) {
       throw new Error("Clerk bootstrap did not start its shared promises");
     }
-    const startedAt = bootstrap.clerkLoadStartedAt;
-    expect(startedAt).toStrictEqual(expect.any(Number));
     expect(mockedClerkLoad).toHaveBeenCalledOnce();
     expect(bootstrap.loaded).toBe(loadCanFinish.promise);
     const onboardingStatusPromise = bootstrap.onboardingStatusPromise;
@@ -550,18 +542,8 @@ describe("platform Clerk entrypoint", () => {
     loadCanFinish.resolve(undefined);
     await Promise.all([setup, bootstrap.onboardingStatusPromise]);
 
-    const completedAt = bootstrap.clerkLoadCompletedAt;
-    expect(completedAt).toStrictEqual(expect.any(Number));
     expect(bootstrap.loaded).toBeUndefined();
     expect(mockedClerkLoad).toHaveBeenCalledOnce();
-    expect(
-      performance.getEntriesByName(CLERK_LOAD_STARTED_MARK, "mark")[0]
-        ?.startTime,
-    ).toBe(startedAt);
-    expect(
-      performance.getEntriesByName(CLERK_LOAD_COMPLETED_MARK, "mark")[0]
-        ?.startTime,
-    ).toBe(completedAt);
   });
 
   it("does not start onboarding after a final pagehide during Clerk.load", async () => {

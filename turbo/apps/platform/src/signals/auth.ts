@@ -3,8 +3,6 @@ import { startClerkBrowserRuntime } from "../lib/clerk-runtime.ts";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 import {
   clearPostHogUser,
-  markBootstrapClerkLoadCompleted,
-  markBootstrapClerkLoadStarted,
   setPostHogOrganization,
   setPostHogUser,
 } from "../lib/posthog.ts";
@@ -411,7 +409,6 @@ export function buildSignInRedirectUrl(
 export const clerk$ = computed(async () => {
   const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
   const satelliteConfig = resolveClerkSatelliteConfig();
-  markBootstrapClerkLoadStarted();
   const runtime = await startClerkBrowserRuntime({
     domain: satelliteConfig?.domain,
     loadOptions: {
@@ -428,7 +425,6 @@ export const clerk$ = computed(async () => {
     publishableKey,
   });
   await runtime.loaded;
-  markBootstrapClerkLoadCompleted();
 
   return runtime.clerk;
 });

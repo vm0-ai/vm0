@@ -169,8 +169,9 @@ export function withApiNamespaceAliases(
  * shipped CLI, desktop or platform build emits a branded literal for any of
  * them. The desktop build's entire hardcoded surface is `auth/me`,
  * `computer-use/{heartbeat,host/*,hosts/start}`, `desktop/{updates,
- * migration-policy}`, `feature-switches` and `org`, and every one of those
- * rows is kept.
+ * migration-policy}`, `feature-switches` and `org`, and #28917 kept every one
+ * of those rows; #30804 later retired the Computer Use host rows and
+ * `feature-switches` from it.
  *
  * Three rows the #28917 inventory listed were held back, and each names a way
  * a zero-count reading fails:
@@ -210,10 +211,10 @@ export function withApiNamespaceAliases(
  * - A conditional endpoint is quiet for reasons that have nothing to do with a
  *   drain. `computer-use/host/commands/:commandId/complete` is called only when
  *   a write command finishes, so its silence measures how often that happened,
- *   not whether the caller of `host/commands/next` — which this table still
- *   holds — is still there. Read a row against the traffic of the loop it
- *   belongs to, not only against its own. This is #28917's call-rate rule
- *   reached from the other direction.
+ *   not whether the caller of `host/commands/next` — which this table held at
+ *   the time, and #30804 has since removed — is still there. Read a row against
+ *   the traffic of the loop it belongs to, not only against its own. This is
+ *   #28917's call-rate rule reached from the other direction.
  *
  * A production traffic sweep does not see this repository's own CI. E2E runs
  * against preview deployments, so a row called only by a workflow step or an
@@ -242,6 +243,44 @@ export function withApiNamespaceAliases(
  * browser and crawler requests ten hours after the deploy that was supposed to
  * have drained it. Ask which of the two a producer is before reading a deploy
  * as a drain.
+ *
+ * #30804 then took the four Computer Use host rows and `feature-switches`,
+ * leaving 53. Those five held the last branded traffic an installed Okou
+ * Desktop build produced, and the reading that retired them is neither a
+ * silence nor a repointed producer: every branded request in the window came
+ * from a machine that was already running a current build on the neutral paths
+ * on either side of it. Two addresses emitted all eighteen, one at
+ * `x_client_version` 0.38.2 over thirty-four seconds on 08-30 and one at
+ * 0.34.0 for a single `feature-switches` read on 09-01, and both addresses
+ * report 0.40.4 by the end of the window. An old build launched briefly beside
+ * a current one is not a caller with a window to wait out, which is why this
+ * removal is an owner decision — recorded on #30804 — rather than a drain.
+ *
+ * What that leaves for the next sweep to reuse: read `x_client_version`
+ * per address over the whole window, not only on the branded requests. A
+ * version far below the current one looks like a stranded install until the
+ * same address is seen on the current version an hour later. The host
+ * inventory does not settle it either — the two `computer_use_hosts` rows below
+ * 0.38.100 that were active in the same week sent no request in this window at
+ * all, and the versions that did send one have no row.
+ *
+ * #30812 then took `integrations/teams/oauth/callback` and
+ * `slack/oauth/connect`, leaving 51, and refines that rule in the direction the
+ * two of them expose. Which kind a producer is turns out to be a property of
+ * the link rather than of the function: `buildSlackConnectUrl` is the same
+ * shape as `buildSlackInstallUrl` and hands the same kind of URL to the same
+ * kind of person, and the difference between them is only that two marketing
+ * landing pages publish an install `href` and nothing publishes a connect one.
+ * So the second kind is retired by finding where the link was published rather
+ * than by waiting, and the evidence that settles it is a differential in one
+ * window: the crawler population that found `/api/zero/slack/oauth/install`
+ * twenty times found no form of `slack/oauth/connect` at all. The Teams
+ * callback is the first kind and drained on its deploy, `chat_teams_context`
+ * holding zero rows over the whole life of the integration.
+ *
+ * The retained window is now 4.4 days, 2026-08-27 22:19Z to 2026-09-01 08:48Z.
+ * It has not grown since #28917 measured 4.1, so the header's caution about
+ * what a silence can carry has not loosened.
  */
 type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
 
@@ -418,7 +457,7 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // endpoints, and an installed build updates on its owner's schedule rather
   // than on a deploy, so it has no window at all. The `zero` form carried
   // measured traffic of its own and was reachable through the blanket expansion
-  // until the contract moved. Both are owed on all seven remaining paths.
+  // until the contract moved. Both are owed on all three remaining paths.
   //
   // The slice had sixteen. #28709 removed the three authorization-request rows,
   // `commands/:commandId/plugin-content` and `plugin-commands` on zero-traffic
@@ -448,6 +487,22 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // them. Removal of these follows #26701's evidence rules like every other row
   // here.
   //
+  // #30804 removed `heartbeat`, `host/commands/next`, `hosts/start` and
+  // `host/stop` together, so #28917's reason for holding start and stop no
+  // longer applies: the loop they open and close is not registered on a branded
+  // form any more either. All four were still measured, and what retired them is
+  // what the measurement said about the caller rather than its size. Every
+  // branded request in the 2026-08-27 22:19Z to 2026-09-01 08:26Z window came
+  // from one address at `x_client_version` 0.38.2 inside thirty-four seconds
+  // on 08-30 — `feature-switches` 09:17:31, `hosts/start` 09:17:42, `heartbeat`
+  // and `host/commands/next` through 09:18:04, `host/stop` 09:18:05 — and that
+  // same address ran 0.38.106 through 0.40.4 on the neutral paths continuously
+  // either side of it, including 0.38.121 at that minute. It is an old build
+  // launched next to a current one, not an install that never updated, so there
+  // is no drain to wait for; the two colleagues who can launch it were told
+  // directly. The neutral paths carried 329,913 heartbeats and 155,949 command
+  // polls in the same window.
+  //
   // #28916 listed `audit-events` and `host/commands/:commandId/complete` for
   // removal and both were kept, for the mirror image of #28917's reason. All of
   // their branded traffic came from the desktop host loop, which sends no
@@ -455,10 +510,12 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // `x_client_type` — the same installed build this comment names, not the
   // anonymous caller an `x_client_type`-only grouping reported. `complete` is
   // worse than quiet: it is only called when a write command finishes, so its
-  // silence measures how often that happened while `host/commands/next`, which
-  // this table still holds for the same build, kept being polled. Removing it
-  // would 404 the completion half of a loop whose polling half is kept on
-  // purpose, which is the same failure `hosts/start` and `host/stop` avoid.
+  // silence measures how often that happened rather than whether its caller is
+  // there. #30804 did not list either one, so both stay; over-retention is the
+  // safe direction, and neither has been measured under the reading that
+  // retired the four rows above. `hosts` stays for a different caller
+  // altogether — the platform host list, 17,207 neutral requests in the same
+  // window, not the desktop host loop.
   //
   // A key holds its path parameter verbatim, because the lookup below matches
   // `entry.route.path` exactly rather than an expanded request path.
@@ -466,29 +523,13 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/okou/computer-use/audit-events",
     "/api/zero/computer-use/audit-events",
   ],
-  "/api/computer-use/heartbeat": [
-    "/api/okou/computer-use/heartbeat",
-    "/api/zero/computer-use/heartbeat",
-  ],
   "/api/computer-use/host/commands/:commandId/complete": [
     "/api/okou/computer-use/host/commands/:commandId/complete",
     "/api/zero/computer-use/host/commands/:commandId/complete",
   ],
-  "/api/computer-use/host/commands/next": [
-    "/api/okou/computer-use/host/commands/next",
-    "/api/zero/computer-use/host/commands/next",
-  ],
-  "/api/computer-use/host/stop": [
-    "/api/okou/computer-use/host/stop",
-    "/api/zero/computer-use/host/stop",
-  ],
   "/api/computer-use/hosts": [
     "/api/okou/computer-use/hosts",
     "/api/zero/computer-use/hosts",
-  ],
-  "/api/computer-use/hosts/start": [
-    "/api/okou/computer-use/hosts/start",
-    "/api/zero/computer-use/hosts/start",
   ],
   // #28423: the integration control plane and the CLI messaging and file
   // surfaces. The slice covered Feishu, Slack, Microsoft Teams, Telegram,
@@ -584,14 +625,14 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // These rows hold two surfaces open. A released web or app build keeps the
   // branded path it was compiled against until a refresh loads a build that
   // derives the neutral one, the ~2 day window in `docs/fallback.md` section 7.
-  // The OAuth-start paths have a second holder that no client version bounds:
-  // `buildSlackInstallUrl` and `buildSlackConnectUrl` in
-  // `services/slack-data.service.ts` hand a link to a user, and that link lives
-  // in a Slack message, a bookmark or a search index for as long as its holder
-  // keeps it. Both producers emit the neutral path today, which bounds the
-  // links minted from now on and nothing about the ones already out there.
-  // `/api/okou/slack/oauth/install` is also the measured traffic the
-  // legacy-path table #30667 deleted listed, which only these rows can serve.
+  // `slack/oauth/install` has a second holder that no client version bounds:
+  // `buildSlackInstallUrl` in `services/slack-data.service.ts` hands a link to a
+  // user, and that link lives in a Slack message, a bookmark or a search index
+  // for as long as its holder keeps it. The producer emits the neutral path
+  // today, which bounds the links minted from now on and nothing about the ones
+  // already out there. `/api/okou/slack/oauth/install` is also the measured
+  // traffic the legacy-path table #30667 deleted listed, which only this row
+  // can serve.
   //
   // #30668 measured that holder directly rather than reasoning about it.
   // `/api/zero/slack/oauth/install` took 24 requests across the retained
@@ -601,20 +642,24 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // addresses, every one answered 307. The branded install URL is published
   // somewhere a crawler can reach, so it has no drain window at all.
   //
-  // `slack/oauth/connect` took no request on any of its three forms in that
-  // window, the neutral one included, so its branded silence measures a call
-  // rate rather than a drain and cannot retire it — the rule the table header
-  // states, reached the same way `computer-use/hosts/start` reaches it.
+  // #30812 removed `slack/oauth/connect`, the sibling row, and the two are why
+  // "a producer hands a URL to a person" is a property of the link rather than
+  // of the function that builds it. `buildSlackConnectUrl` is the same shape as
+  // `buildSlackInstallUrl` and emits the same neutral path, but no page
+  // publishes a connect link: the two hardcoded `href`s that kept the branded
+  // install form alive are on the marketing landing pages, both
+  // `/api/slack/oauth/install`, and neither has a connect equivalent. The
+  // measurement is the differential rather than the silence — over the same
+  // 4.4-day window and the same crawler population that found
+  // `/api/zero/slack/oauth/install` twenty times, all three forms of
+  // `slack/oauth/connect` took zero requests, the neutral one included. A
+  // published branded link would have been found the same way.
   //
   // Removal follows the #26701 evidence gate like every other row, not either
   // clock.
   "/api/slack/channels": [
     "/api/okou/slack/channels",
     "/api/zero/slack/channels",
-  ],
-  "/api/slack/oauth/connect": [
-    "/api/okou/slack/oauth/connect",
-    "/api/zero/slack/oauth/connect",
   ],
   "/api/slack/oauth/install": [
     "/api/okou/slack/oauth/install",
@@ -649,9 +694,9 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   ],
   // #28462: feature switches, model policies, org-level model providers and
   // their device-auth sessions, the org profile and membership routes, and the
-  // usage reads, of which only feature switches, model policies and the org
-  // profile are still owed. Three surfaces hold these branded paths open, and
-  // the widest one is why the rows matter more here than in most slices:
+  // usage reads, of which only model policies and the org profile are still
+  // owed. Three surfaces held these branded paths open, and the widest one is
+  // why the rows matter more here than in most slices:
   //
   // - An installed desktop build, which hardcodes `/api/okou/org` and
   //   `/api/okou/feature-switches` rather than deriving them from a contract.
@@ -665,8 +710,21 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // #28917 removed the three `model-providers/codex/device-auth/sessions`
   // rows, the three `org/invite` rows, and `usage/members`. None of them has a
   // desktop caller — the installed build hardcodes only `/api/okou/org` and
-  // `/api/okou/feature-switches`, both kept — and every one was silent on both
-  // branded forms across the retained window.
+  // `/api/okou/feature-switches`, both kept then — and every one was silent on
+  // both branded forms across the retained window.
+  //
+  // #30804 removed `feature-switches` and kept `org`, which is the whole point
+  // of measuring the first surface per row rather than per slice. The desktop
+  // build hardcodes both, and in the 2026-08-27 22:19Z to 2026-09-01 08:26Z
+  // window both took branded requests from it — three on `feature-switches`,
+  // four on `org` — but only `org` has a second producer. A `CLI_PKG_URL`-pinned
+  // CLI at 9.279.3 read `/api/zero/org` on 08-31 03:58, 08-31 08:52 and 09-01
+  // 02:10, each answered 200, so that row still serves a caller with a live
+  // pinning window. The `feature-switches` requests came from the two desktop
+  // addresses alone — 0.38.2 at 08-30 09:17:31 and 0.34.0 at 09-01 03:11:31 —
+  // and both addresses were running 0.40.4 on the neutral path by the end of the
+  // window, so what the row was holding open was a briefly launched old build
+  // rather than an install still on its way to updating.
   //
   // #28916 removed the four that were not silent — the `model-providers`
   // collection, `org/logo`, `org/members` and `usage/record`. All four were
@@ -681,10 +739,6 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   //
   // A key holds its path parameter verbatim, because the lookup below matches
   // `entry.route.path` exactly rather than an expanded request path.
-  "/api/feature-switches": [
-    "/api/okou/feature-switches",
-    "/api/zero/feature-switches",
-  ],
   "/api/model-policies": [
     "/api/okou/model-policies",
     "/api/zero/model-policies",
@@ -738,38 +792,33 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     "/api/zero/agents/:id/user-connectors",
   ],
   "/api/workflows": ["/api/okou/workflows", "/api/zero/workflows"],
-  // #28545: the Microsoft console routes, the first rows whose branded forms a
-  // provider console holds rather than a released client. The Azure Bot
-  // messaging endpoint and the Microsoft identity platform redirect URIs now
-  // hold the final paths, so the contracts declare them and both branded forms
-  // are owed from here.
+  // #28545 added the Microsoft console routes, the first rows whose branded
+  // forms a provider console held rather than a released client, and #30812
+  // removed the last of them. #28917 took the slice's `webhooks/teams/bot` row
+  // once an operator had repointed the Azure Bot messaging endpoint at the
+  // neutral path, and #30812 took the OAuth callback.
   //
-  // What holds the branded forms open is not a released client but the
-  // Microsoft consoles themselves, which have no drain window: they keep
-  // sending to whatever URL is registered until an operator changes it.
-  // Removal follows #26701's evidence rules.
+  // The callback is the one row in this table whose producer moved and whose
+  // holder still had to drain, so it is worth keeping why both halves were
+  // needed. `callbackRedirectUri` in `routes/teams-oauth.ts` was
+  // brand-conditional and emitted `/api/zero/teams/oauth/callback` for the VM0
+  // brand, which made the row an active producer target no traffic sweep could
+  // retire — a quiet window meant nobody connected Teams under the VM0 brand
+  // that week, and the next person who did was sent there regardless. #28917
+  // listed the row for removal on that silence and it was held back for exactly
+  // that reason. #30667 unified the producer onto the canonical path, leaving
+  // only authorizations already in flight, and unlike a handed-out link a
+  // `redirect_uri` is computed per request: the deploy bounds it to the minutes
+  // an OAuth authorization stays valid, which had passed many times over by the
+  // time this row was removed.
   //
-  // #28917 removed the slice's `webhooks/teams/bot` row. #28545 records that an
-  // operator had already repointed the Azure Bot messaging endpoint at the
-  // neutral path before that slice landed, so nothing on the Microsoft side
-  // still holds either branded bot URL, and the retained window measured both
-  // silent. The OAuth callback row below stays for the reason its own comment
-  // gives.
-  "/api/integrations/teams/oauth/callback": [
-    "/api/okou/teams/oauth/callback",
-    // `callbackRedirectUri` in `routes/teams-oauth.ts` was brand-conditional
-    // and emitted this exact path for the VM0 brand, which made the row an
-    // active producer target no traffic sweep could retire: a quiet window
-    // meant nobody connected Teams under the VM0 brand that week, and the next
-    // person who did was sent here regardless. #28917 listed the row for
-    // removal on that silence and it was held back for exactly that reason.
-    //
-    // #30667 unified the producer onto the canonical path, so what this row
-    // now holds open is an authorization that started before that deploy and
-    // carries the legacy `redirect_uri` in its state. Removal follows #26701's
-    // evidence rules like every other row.
-    "/api/zero/teams/oauth/callback",
-  ],
+  // The window then measured both branded forms at one request — `curl/8.5.0`
+  // answered 400, which the table header's rules exclude and which carried no
+  // authorization anyway — against zero on the neutral path. No Teams message
+  // has ever been ingested: `chat_teams_context` holds zero rows, so no
+  // authorization has ever completed on either brand. The Microsoft app
+  // registration keeps both branded values, which costs nothing now that
+  // nothing is sent there.
   // #28463: avatar video generation, the per-token browser authorization
   // requests, mail drafts, the per-template presentation read, uploads,
   // voice-io quota and speech, and the web file-url read. The slice also

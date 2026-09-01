@@ -133,6 +133,7 @@ interface ComposerWorkflowSignals extends ComposerWorkflowEditorSignals {
 interface ComposerDraftSignals {
   readonly seed$: DraftSignals["seed$"];
   readonly setDraftInput$: Command<void, [string]>;
+  readonly setAgentInstructions$: DraftSignals["setAgentInstructions$"];
   readonly attachments$: Computed<ChatAttachment[]>;
   readonly attachmentUploadsReady$: Computed<boolean>;
   readonly uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
@@ -529,6 +530,7 @@ export function createComposerSignals(
     draft: {
       seed$: draft.seed$,
       setDraftInput$: draft.setInput$,
+      setAgentInstructions$: draft.setAgentInstructions$,
       attachments$: draft.attachments$,
       attachmentUploadsReady$: draft.attachmentUploadsReady$,
       uploadAttachment$: draft.uploadAttachment$,
@@ -785,8 +787,8 @@ function createComposerSubmissionSignals(
             signal,
           );
           signal.throwIfAborted();
-          const prompt = submission.prompt.trim();
-          if (prompt.length === 0) {
+          const visiblePrompt = submission.prompt.trim();
+          if (visiblePrompt.length === 0) {
             const attachments = get(draft.attachments$);
             if (attachments.length === 0) {
               return false;
@@ -808,6 +810,16 @@ function createComposerSubmissionSignals(
             return false;
           }
           const videoRunOptions = await set(readVideoRunOptions$, signal);
+          const agentInstructions = get(draft.agentInstructions$)?.trim();
+          const prompt = agentInstructions
+            ? [
+                agentInstructions,
+                "",
+                "<user_request>",
+                visiblePrompt,
+                "</user_request>",
+              ].join("\n")
+            : visiblePrompt;
           return await set(
             options.submitMessage$,
             action,

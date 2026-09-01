@@ -1,6 +1,4 @@
-import { useSet } from "ccstate-react";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
-import { appSkeletonVisibleEventRef$ } from "../../signals/app-skeleton.ts";
 import { getAvatarPresets } from "./avatars.ts";
 
 const firstAvatarPreset = getAvatarPresets()[0]!;
@@ -12,11 +10,8 @@ export function AppSkeleton({
   onHidden?: () => void;
   visible?: boolean;
 }) {
-  const visibleEventRef = useSet(appSkeletonVisibleEventRef$);
-
   return (
     <div
-      ref={visible ? visibleEventRef : undefined}
       data-testid="app-skeleton"
       aria-hidden={visible ? undefined : true}
       aria-label="Loading"

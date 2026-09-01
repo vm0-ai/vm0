@@ -898,7 +898,7 @@ async function resolveOfficialCopyMaterialization(
       blueprint,
       row.officialParameterBindings,
       [],
-      null,
+      row.timezone,
     );
     if (!resolved.ok) {
       return { kind: "conflict", message: OFFICIAL_COPY_RECONFIGURE_MESSAGE };

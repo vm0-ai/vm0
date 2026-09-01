@@ -31,6 +31,7 @@ const SOURCES: HelperBehavior = {
         bundleId: "ai.vm0.okou",
       },
     ],
+    supportsMicrophone: true,
   },
 };
 
@@ -155,6 +156,71 @@ async function readRequests(
     .map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
+describe("area capture", () => {
+  it("sends the selected region and reports the cropped geometry", async () => {
+    const { helperPath, requestLogPath } = await createHelper({
+      "recorder.prepare": {
+        result: {
+          sessionId: "session-1",
+          width: 800,
+          height: 400,
+          geometry: {
+            originX: 1600,
+            originY: -100,
+            widthPoints: 400,
+            heightPoints: 200,
+            scale: 2,
+          },
+        },
+      },
+    });
+    const backend = createBackend(helperPath);
+
+    const prepared = await backend.prepare({
+      sourceId: "display:1",
+      sourceKind: "area",
+      systemAudio: false,
+      microphone: false,
+      area: { x: 1600, y: -100, width: 400, height: 200 },
+    });
+
+    const requests = await readRequests(requestLogPath);
+    expect(requests[0]?.payload).toEqual({
+      sourceId: "display:1",
+      sourceKind: "area",
+      systemAudio: false,
+      microphone: false,
+      area: { x: 1600, y: -100, width: 400, height: 200 },
+    });
+    // The geometry describes the crop, not the display, so a click track built
+    // from it lands in the cropped frame.
+    expect(prepared.geometry).toEqual({
+      originX: 1600,
+      originY: -100,
+      widthPoints: 400,
+      heightPoints: 200,
+      scale: 2,
+    });
+  });
+
+  it("leaves the area out of a whole-display capture", async () => {
+    const { helperPath, requestLogPath } = await createHelper({
+      "recorder.prepare": PREPARE,
+    });
+    const backend = createBackend(helperPath);
+
+    await backend.prepare({
+      sourceId: "display:1",
+      sourceKind: "display",
+      systemAudio: true,
+      microphone: false,
+    });
+
+    const requests = await readRequests(requestLogPath);
+    expect(requests[0]?.payload).not.toHaveProperty("area");
+  });
+});
+
 async function rejection(promise: Promise<unknown>): Promise<Error> {
   try {
     await promise;
@@ -174,22 +240,25 @@ describe("createRecorderNativeBackend", () => {
     });
     const backend = createBackend(helperPath);
 
-    await expect(backend.listSources()).resolves.toEqual([
-      { id: "display:1", kind: "display", title: "Built-in Display" },
-      {
-        id: "window:42",
-        kind: "window",
-        title: "Okou",
-        appName: "Okou",
-        bundleId: "ai.vm0.okou",
-      },
-    ]);
+    await expect(backend.listSources()).resolves.toMatchObject({
+      sources: [
+        { id: "display:1", kind: "display", title: "Built-in Display" },
+        {
+          id: "window:42",
+          kind: "window",
+          title: "Okou",
+          appName: "Okou",
+          bundleId: "ai.vm0.okou",
+        },
+      ],
+    });
 
     await expect(
       backend.prepare({
         sourceId: "display:1",
         sourceKind: "display",
         systemAudio: true,
+        microphone: false,
       }),
     ).resolves.toEqual({
       sessionId: "session-1",
@@ -225,6 +294,7 @@ describe("createRecorderNativeBackend", () => {
       sourceId: "display:1",
       sourceKind: "display",
       systemAudio: true,
+      microphone: false,
     });
     expect(requests[2]?.payload).toEqual({
       sessionId: "session-1",
@@ -248,6 +318,7 @@ describe("createRecorderNativeBackend", () => {
         sourceId: "display:1",
         sourceKind: "display",
         systemAudio: false,
+        microphone: false,
       }),
     );
 
@@ -280,7 +351,9 @@ describe("createRecorderNativeBackend", () => {
     });
     const backend = createBackend(helperPath);
 
-    await expect(backend.listSources()).resolves.toHaveLength(2);
+    await expect(
+      backend.listSources().then((listed) => listed.sources),
+    ).resolves.toHaveLength(2);
   });
 
   it("rejects a response that is missing a required field", async () => {
@@ -292,6 +365,21 @@ describe("createRecorderNativeBackend", () => {
     expect(await rejection(backend.stop("session-1"))).toMatchObject({
       code: "capture_failed",
       message: "Screen recorder helper returned an invalid videoPath",
+    });
+  });
+
+  it("rejects a source list that omits the microphone capability", async () => {
+    const { helperPath } = await createHelper({
+      "recorder.sources": { result: { sources: [] } },
+    });
+    const backend = createBackend(helperPath);
+
+    // The helper ships in the same bundle as this code, so a response without
+    // the field is a broken helper rather than an older one. Failing here beats
+    // silently recording without the narration the user asked for.
+    expect(await rejection(backend.listSources())).toMatchObject({
+      code: "capture_failed",
+      message: "Screen recorder helper returned an invalid supportsMicrophone",
     });
   });
 
