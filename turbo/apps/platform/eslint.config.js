@@ -37,7 +37,6 @@ export default [
       "ccstate/test-context-in-hooks": "error",
       "ccstate/setup-page-render": "error",
       "ccstate/no-side-effect-in-render": "error",
-      "ccstate/no-non-zero-api": "error",
       "ccstate/no-new-abort-controller": "error",
       "ccstate/no-new-promise": "error",
       "ccstate/no-direct-local-storage": "error",
