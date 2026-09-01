@@ -405,7 +405,6 @@ function responsesListUrl(args: {
   readonly formId: string;
   readonly cursor?: string;
   readonly pageToken?: string;
-  readonly pageSize?: number;
 }): string {
   const url = new URL(formApiUrl(args.formId, "/responses"));
   url.searchParams.set("fields", GOOGLE_FORMS_RESPONSE_FIELDS);
@@ -414,9 +413,6 @@ function responsesListUrl(args: {
   }
   if (args.pageToken !== undefined) {
     url.searchParams.set("pageToken", args.pageToken);
-  }
-  if (args.pageSize !== undefined) {
-    url.searchParams.set("pageSize", String(args.pageSize));
   }
   return url.toString();
 }
