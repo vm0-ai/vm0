@@ -1994,11 +1994,7 @@
         "placementHeading": "Where should the presenter stand?",
         "placementLeft": "Left — the slide sits to the right",
         "placementOverlay": "Over the slide — the slide fills the frame",
-        "placementRight": "Right — the slide sits to the left",
-        "visualBalanceAvatarLed": "Avatar-led — narrator on screen most of the time",
-        "visualBalanceBalanced": "Balanced mix — equal time for both",
-        "visualBalanceBRollLed": "B-roll-led — focus on slides and visuals",
-        "visualBalanceHeading": "How would you like the visual balance?"
+        "placementRight": "Right — the slide sits to the left"
       },
       "cardDescription": "Turn a file or screen recording into a finished video",
       "description": "Add a source, choose an optional avatar and voice, then create the video in a chat thread.",

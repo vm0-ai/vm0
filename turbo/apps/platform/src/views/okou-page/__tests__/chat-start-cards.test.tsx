@@ -362,29 +362,6 @@ describe("chat start cards", () => {
     click(placementRight);
     expect(placementRight).toHaveAttribute("aria-pressed", "true");
     expect(placementLeft).toHaveAttribute("aria-pressed", "false");
-    expect(
-      screen.getByText("How would you like the visual balance?"),
-    ).toBeInTheDocument();
-    const avatarLed = buttonWithText(
-      "Avatar-led — narrator on screen most of the time",
-      dialog,
-      false,
-    );
-    const bRollLed = buttonWithText(
-      "B-roll-led — focus on slides and visuals",
-      dialog,
-      false,
-    );
-    const balanced = buttonWithText(
-      "Balanced mix — equal time for both",
-      dialog,
-    );
-    expect(avatarLed).toHaveAttribute("aria-pressed", "false");
-    expect(bRollLed).toHaveAttribute("aria-pressed", "false");
-    expect(balanced).toHaveAttribute("aria-pressed", "true");
-    click(avatarLed);
-    expect(avatarLed).toHaveAttribute("aria-pressed", "true");
-    expect(balanced).toHaveAttribute("aria-pressed", "false");
     click(buttonWithText("Next", dialog));
     await expect(
       screen.findByText("Choose a voice"),
@@ -405,9 +382,7 @@ describe("chat start cards", () => {
     await expect(
       screen.findByText("Review your intro video"),
     ).resolves.toBeInTheDocument();
-    expect(
-      screen.queryByText("How would you like the visual balance?"),
-    ).toBeNull();
+    expect(screen.queryByText("Where should the presenter stand?")).toBeNull();
     const createButton = buttonWithText("Create in chat", dialog);
     expect(createButton).toBeInTheDocument();
     expect(createButton).toBeEnabled();
@@ -434,9 +409,6 @@ describe("chat start cards", () => {
       );
       expect(sentPrompt).toContain("- Voice: No voiceover");
       expect(sentPrompt).toContain(
-        "- Visual balance: Avatar-led (presenter on screen most of the time)",
-      );
-      expect(sentPrompt).toContain(
         "- Presenter placement: Presenter on the right, slide on the left",
       );
       expect(sentPrompt).toContain(
@@ -459,7 +431,7 @@ describe("chat start cards", () => {
     });
   });
 
-  it("keeps visual balance out of the no-avatar intro video prompt", async () => {
+  it("keeps placement out of the no-avatar intro video prompt", async () => {
     const user = userEvent.setup({ delay: null });
     let sentPrompt: string | undefined;
     mockChatLifecycle(context, {
@@ -506,9 +478,6 @@ describe("chat start cards", () => {
     await expect(
       screen.findByText("Choose an avatar"),
     ).resolves.toBeInTheDocument();
-    expect(
-      screen.queryByText("How would you like the visual balance?"),
-    ).toBeNull();
     // Without a presenter the deck fills the frame on its own, so the
     // placement question is never asked.
     expect(screen.queryByText("Where should the presenter stand?")).toBeNull();
@@ -526,7 +495,6 @@ describe("chat start cards", () => {
 
     await waitFor(() => {
       expect(sentPrompt).toContain("- Avatar: No avatar");
-      expect(sentPrompt).not.toContain("- Visual balance:");
       expect(sentPrompt).not.toContain("- Presenter placement:");
     });
   });
@@ -563,12 +531,9 @@ describe("chat start cards", () => {
     ).resolves.toBeInTheDocument();
     click(await screen.findByLabelText("Select template Amara"));
 
-    // Placement positions the presenter against a rendered deck page, so it is
-    // only meaningful for a document source. Visual balance still applies.
+    // Placement positions the presenter against a rendered deck page, so a
+    // video source asks nothing beyond the presenter itself.
     expect(screen.queryByText("Where should the presenter stand?")).toBeNull();
-    expect(
-      screen.getByText("How would you like the visual balance?"),
-    ).toBeInTheDocument();
   });
 
   it("reattaches the source when chat creation is retried", async () => {

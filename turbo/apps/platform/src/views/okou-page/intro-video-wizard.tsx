@@ -44,7 +44,6 @@ import {
   introVideoWizardSignals,
   type IntroVideoPlacement,
   type IntroVideoSource,
-  type IntroVideoVisualBalance,
   type IntroVideoVoiceSelection,
   type IntroVideoWizardError,
   INTRO_VIDEO_ASPECT_RATIO_LABEL,
@@ -732,42 +731,6 @@ function SourceReviewPage({
   );
 }
 
-function VisualBalanceOption({
-  index,
-  label,
-  selected,
-  onSelect,
-}: {
-  readonly index: number;
-  readonly label: string;
-  readonly selected: boolean;
-  readonly onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      onClick={onSelect}
-      className={cn(
-        "flex min-w-0 items-center gap-3 rounded-xl border bg-card p-3 text-left text-sm transition-colors hover:border-foreground/20 hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        selected ? "border-primary bg-primary/[0.04]" : "border-border",
-      )}
-    >
-      <span
-        className={cn(
-          "grid size-8 shrink-0 place-items-center rounded-lg border text-xs font-medium",
-          selected
-            ? "border-primary bg-primary text-primary-foreground"
-            : "border-border bg-background text-muted-foreground",
-        )}
-      >
-        {selected ? <Check size={14} /> : index}
-      </span>
-      <span className="leading-5 text-foreground">{label}</span>
-    </button>
-  );
-}
-
 /**
  * Preview geometry for one placement, as percentages of the 16:9 output frame.
  *
@@ -924,59 +887,6 @@ function PlacementSelector({
   );
 }
 
-function VisualBalanceSelector() {
-  const { t } = useTranslation();
-  const visualBalance = useGet(introVideoWizardSignals.visualBalance$);
-  const setVisualBalance = useSet(introVideoWizardSignals.setVisualBalance$);
-  const options: readonly {
-    readonly label: string;
-    readonly value: IntroVideoVisualBalance;
-  }[] = [
-    {
-      label: t(($) => {
-        return $.chat.introVideo.avatar.visualBalanceAvatarLed;
-      }),
-      value: "avatar-led",
-    },
-    {
-      label: t(($) => {
-        return $.chat.introVideo.avatar.visualBalanceBRollLed;
-      }),
-      value: "b-roll-led",
-    },
-    {
-      label: t(($) => {
-        return $.chat.introVideo.avatar.visualBalanceBalanced;
-      }),
-      value: "balanced",
-    },
-  ];
-  return (
-    <section className="mb-5 rounded-xl border border-border bg-background p-4">
-      <h4 className="text-sm font-medium text-foreground">
-        {t(($) => {
-          return $.chat.introVideo.avatar.visualBalanceHeading;
-        })}
-      </h4>
-      <div className="mt-3 grid grid-cols-1 gap-2.5 lg:grid-cols-3">
-        {options.map((option, index) => {
-          return (
-            <VisualBalanceOption
-              key={option.value}
-              index={index + 1}
-              label={option.label}
-              selected={visualBalance === option.value}
-              onSelect={() => {
-                setVisualBalance(option.value);
-              }}
-            />
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
 function AvatarPage({ composer }: { readonly composer: ComposerSignals }) {
   const { t } = useTranslation();
   const avatar = useGet(introVideoWizardSignals.avatar$);
@@ -1002,7 +912,6 @@ function AvatarPage({ composer }: { readonly composer: ComposerSignals }) {
       {avatar && source?.kind === "document" ? (
         <PlacementSelector cutoutUrl={avatar.coverUrl} />
       ) : null}
-      {avatar ? <VisualBalanceSelector /> : null}
       <AvatarLibraryContent
         selectedAvatarId={avatar?.id}
         onSelect={(nextAvatar) => {

@@ -1991,11 +1991,7 @@
         "placementHeading": "発表者をどこに配置しますか？",
         "placementLeft": "左 — スライドは右側に配置",
         "placementOverlay": "スライドの上 — スライドが画面全体に広がる",
-        "placementRight": "右 — スライドは左側に配置",
-        "visualBalanceAvatarLed": "アバター中心 — ナレーターをほとんどの時間画面に表示",
-        "visualBalanceBalanced": "バランス型 — 両方を同じくらい表示",
-        "visualBalanceBRollLed": "映像素材中心 — スライドやビジュアルを重視",
-        "visualBalanceHeading": "映像のバランスをどうしますか？"
+        "placementRight": "右 — スライドは左側に配置"
       },
       "cardDescription": "ファイルや画面録画を完成した動画に変換",
       "description": "素材を追加し、必要に応じてアバターと音声を選んで、チャットスレッドで動画を作成します。",

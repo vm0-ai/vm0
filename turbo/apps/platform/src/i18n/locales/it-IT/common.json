@@ -2027,11 +2027,7 @@
         "placementHeading": "Dove deve stare il presentatore?",
         "placementLeft": "A sinistra — la slide sta a destra",
         "placementOverlay": "Sopra la slide — la slide riempie l'inquadratura",
-        "placementRight": "A destra — la slide sta a sinistra",
-        "visualBalanceAvatarLed": "Incentrato sull'avatar — il narratore resta sullo schermo per la maggior parte del tempo",
-        "visualBalanceBalanced": "Mix equilibrato — stesso tempo per entrambi",
-        "visualBalanceBRollLed": "Incentrato sui contenuti visivi — priorità a slide e immagini",
-        "visualBalanceHeading": "Come preferisci bilanciare gli elementi visivi?"
+        "placementRight": "A destra — la slide sta a sinistra"
       },
       "cardDescription": "Trasforma un file o una registrazione dello schermo in un video completo",
       "description": "Aggiungi una fonte, scegli facoltativamente avatar e voce, quindi crea il video in una chat.",
