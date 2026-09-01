@@ -1,24 +1,17 @@
 import { command, type Command } from "ccstate";
 import { createElement } from "react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { clerk$, watchOrgSwitch$ } from "./auth.ts";
 import {
-  initAuthRecovery$,
-  initClerkRuntime$,
-  watchOrgSwitch$,
-} from "./auth.ts";
-import {
-  type AuthenticatedDaemonOwner,
-  runAuthenticatedDaemons$,
+  runAuthenticatedRealtime$,
   setupAuthenticatedBootstrapData$,
-  setupAuthenticatedDaemons$,
 } from "./authenticated-daemons.ts";
 import { initTheme$, syncThemePreferences$ } from "./theme.ts";
 import { initializeAppVersion$ } from "./app-version.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
 import { setRootSignal$ } from "./root-signal.ts";
 import { setApiClientRuntime$ } from "./api-client-runtime.ts";
-import { setAuthenticatedServicesReady$ } from "./auth-context.ts";
-import { prepareSharedDatabaseBridge$ } from "./shared-database-browser.ts";
+import { setupSharedDatabaseBridge$ } from "./shared-database-browser.ts";
 import { resolveApiBaseForTarget, resolveOAuthApiBase } from "./api-base.ts";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import {
@@ -456,22 +449,6 @@ const setupRoutes$ = command(async ({ set }, signal: AbortSignal) => {
   await set(initRoutes$, ROUTE_CONFIG, signal);
 });
 
-const setupAuthenticatedBootstrap$ = command(
-  async (
-    { set },
-    ownDaemon: AuthenticatedDaemonOwner,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const servicesReady = set(setupAuthenticatedDaemons$, ownDaemon, signal);
-    set(setAuthenticatedServicesReady$, servicesReady);
-    await servicesReady;
-    signal.throwIfAborted();
-    ownDaemon(set(runAuthenticatedDaemons$, signal));
-    await set(setupAuthenticatedBootstrapData$, signal);
-    signal.throwIfAborted();
-  },
-);
-
 const setupFeatureSwitches$ = command(async ({ set }, signal: AbortSignal) => {
   await set(reloadFeatureSwitch$, signal);
   await set(syncLocalePreference$, signal);
@@ -516,37 +493,62 @@ const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
   );
 });
 
-export const bootstrap$ = command(
-  async (
-    { get, set },
-    appVersion: string,
-    render: () => void,
-    ownDaemon: AuthenticatedDaemonOwner,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    set(initializeAppVersion$, appVersion);
-    set(initBootstrapPhaseTiming$, signal);
-    set(captureInvitationRedirect$);
-    set(markBootstrapLocaleInitStarted$);
+const completeBootstrap$ = command(
+  async ({ set }, render: () => void, signal: AbortSignal): Promise<void> => {
     await set(initLocale$, signal);
     signal.throwIfAborted();
     set(markBootstrapLocaleInitCompleted$);
     set(initTheme$);
+
+    render();
+
+    set(handleSlackRedirect$);
+
+    await Promise.all([
+      set(setupAuthenticatedBootstrapData$, signal),
+      set(setupRoutes$, signal),
+      set(setupGlobalMethod$, signal),
+      set(registerServiceWorker$, signal),
+      set(setupNotificationListener$, signal),
+
+      set(setupGlobalKeyboardShortcuts$, signal),
+      set(watchOrgSwitch$, signal),
+      set(setupFeatureSwitches$, signal),
+    ]);
+
+    signal.throwIfAborted();
+  },
+);
+
+export interface BootstrapRuntime {
+  readonly authenticatedRealtimeDaemon: Promise<void>;
+  readonly ready: Promise<void>;
+  readonly sharedDatabaseDaemon: Promise<void>;
+}
+
+export const bootstrap$ = command(
+  (
+    { get, set },
+    appVersion: string,
+    render: () => void,
+    signal: AbortSignal,
+  ): BootstrapRuntime => {
+    set(initializeAppVersion$, appVersion);
+    set(initBootstrapPhaseTiming$, signal);
+    set(captureInvitationRedirect$);
+    set(markBootstrapLocaleInitStarted$);
     set(setRootSignal$, signal);
     const apiBaseUrl = resolveApiBaseForTarget("api");
     const vercelProtectionBypass =
       getCapturedPreviewBypassForTarget(apiBaseUrl);
     set(setApiClientRuntime$, {
+      clerk: get(clerk$),
       environment: "app",
       apiBaseUrl,
       oauthApiBaseUrl: resolveOAuthApiBase(),
       ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
     });
-    ownDaemon(set(prepareSharedDatabaseBridge$, signal));
-    set(initClerkRuntime$, signal);
-    set(initAuthRecovery$, signal);
     set(initBootstrapSkeleton$);
-
     set(setupLoggers$);
 
     // The cached effective switches already drive the first rendered frame.
@@ -559,22 +561,14 @@ export const bootstrap$ = command(
       enabled: get(featureSwitch$)[FeatureSwitchKey.OkouDebug] ?? false,
     });
 
-    render();
+    const sharedDatabaseDaemon = set(setupSharedDatabaseBridge$, signal);
+    const authenticatedRealtimeDaemon = set(runAuthenticatedRealtime$, signal);
+    const ready = set(completeBootstrap$, render, signal);
 
-    set(handleSlackRedirect$);
-
-    await Promise.all([
-      set(setupAuthenticatedBootstrap$, ownDaemon, signal),
-      set(setupRoutes$, signal),
-      set(setupGlobalMethod$, signal),
-      set(registerServiceWorker$, signal),
-      set(setupNotificationListener$, signal),
-
-      set(setupGlobalKeyboardShortcuts$, signal),
-      set(watchOrgSwitch$, signal),
-      set(setupFeatureSwitches$, signal),
-    ]);
-
-    signal.throwIfAborted();
+    return {
+      authenticatedRealtimeDaemon,
+      ready,
+      sharedDatabaseDaemon,
+    };
   },
 );

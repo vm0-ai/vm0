@@ -6,9 +6,9 @@ import { testContext } from "../signals/__tests__/test-helpers.ts";
 const context = testContext();
 
 const INSTATUS_SCRIPT_URL =
-  "https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en";
+  "https://api.dashboard.instatus.com/widget?host=status.okou.ai&code=02c0ef5a&locale=en";
 const INSTATUS_SCRIPT_INTEGRITY =
-  "sha384-ZW3eZwADOMdlg2fdvESPD7jguK16IC/edxNFakKs81D2lkNdi3BXRmx/g331lkD3";
+  "sha384-YU7+0Wj4uP1wkywaN92wj9+XhrCKLPHapq5vtxjnjEQU401q3xFgN4JNkMWcBHOW";
 
 function loadInstatusScripts(hostname: string): HTMLScriptElement[] {
   context.mocks.browser.url(`https://${hostname}/`);

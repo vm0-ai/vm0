@@ -6,14 +6,96 @@
 
 use crate::constants;
 use crate::error::AgentError;
-use crate::http::HttpClient;
+use crate::http::{
+    HttpAttemptFailureKind, HttpAttemptFinished, HttpAttemptObserver, HttpAttemptOutcome,
+    HttpAttemptStarted, HttpClient,
+};
 use guest_common::{log_error, log_info, log_warn};
+use guest_contracts::diagnostics::{
+    HeartbeatAttemptFailureKind, HeartbeatCompletedAttemptDiagnostic,
+    HeartbeatFailedCycleDiagnostic, HeartbeatFailureDiagnostic,
+};
 use serde_json::json;
+use std::sync::Mutex;
 use std::time::Duration;
-use tokio::time::MissedTickBehavior;
+use tokio::time::{Instant, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
+
+/// Terminal heartbeat control-path failure and its bounded HTTP evidence.
+#[derive(Debug)]
+pub struct HeartbeatFailure {
+    pub error: AgentError,
+    pub diagnostic: HeartbeatFailureDiagnostic,
+}
+
+impl std::fmt::Display for HeartbeatFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.error.fmt(formatter)
+    }
+}
+
+impl std::error::Error for HeartbeatFailure {}
+
+#[derive(Default)]
+struct HeartbeatAttemptCollector {
+    attempts: Mutex<Vec<HeartbeatCompletedAttemptDiagnostic>>,
+}
+
+impl HeartbeatAttemptCollector {
+    fn into_attempts(self) -> Vec<HeartbeatCompletedAttemptDiagnostic> {
+        self.attempts
+            .into_inner()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+impl HttpAttemptObserver for HeartbeatAttemptCollector {
+    fn attempt_started(&self, _attempt: HttpAttemptStarted) -> Result<(), AgentError> {
+        Ok(())
+    }
+
+    fn attempt_finished(&self, attempt: HttpAttemptFinished) -> Result<(), AgentError> {
+        let HttpAttemptOutcome::Failure {
+            kind,
+            http_status,
+            timeout_observed,
+            connect_observed,
+        } = attempt.outcome
+        else {
+            return Ok(());
+        };
+        let failure_kind = match kind {
+            HttpAttemptFailureKind::Timeout => HeartbeatAttemptFailureKind::Timeout,
+            HttpAttemptFailureKind::Connect => HeartbeatAttemptFailureKind::Connect,
+            HttpAttemptFailureKind::HttpStatus => HeartbeatAttemptFailureKind::HttpStatus,
+            HttpAttemptFailureKind::Transport => HeartbeatAttemptFailureKind::Transport,
+        };
+        self.attempts
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(HeartbeatCompletedAttemptDiagnostic {
+                attempt: attempt.attempt,
+                client_request_id: attempt.client_request_id,
+                elapsed_ms: attempt.elapsed_ms,
+                failure_kind,
+                http_status,
+                timeout_observed,
+                connect_observed,
+            });
+        Ok(())
+    }
+}
+
+fn elapsed_ms_since(scheduled_at: Instant) -> u64 {
+    u64::try_from(
+        Instant::now()
+            .saturating_duration_since(scheduled_at)
+            .as_millis(),
+    )
+    .unwrap_or(u64::MAX)
+}
 
 /// Run the heartbeat loop. Returns when:
 /// - The first heartbeat fails (returns `Err`)
@@ -27,7 +109,7 @@ pub async fn heartbeat_loop_for_run(
     run_id: String,
     http: HttpClient,
     shutdown: CancellationToken,
-) -> Result<(), AgentError> {
+) -> Result<(), HeartbeatFailure> {
     heartbeat_loop_for_run_with_interval(
         run_id,
         http,
@@ -59,27 +141,44 @@ pub async fn heartbeat_loop_for_run_with_interval(
     http: HttpClient,
     shutdown: CancellationToken,
     interval: Duration,
-) -> Result<(), AgentError> {
+) -> Result<(), HeartbeatFailure> {
     // No API token → local/test mode; heartbeat has no server to reach.
     if !http.has_api() {
         shutdown.cancelled().await;
         return Ok(());
     }
 
-    let heartbeat_url = http.heartbeat_url()?;
+    let heartbeat_url = http.heartbeat_url().map_err(|error| HeartbeatFailure {
+        error,
+        diagnostic: HeartbeatFailureDiagnostic {
+            failed_cycles: Vec::new(),
+        },
+    })?;
 
     let mut interval = tokio::time::interval(interval);
     // Drop timer debt after slow HTTP cycles and restore a full-period cadence.
     interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
     let mut is_first = true;
     let mut consecutive_failures: u32 = 0;
+    let mut failed_cycles = Vec::new();
 
     loop {
         tokio::select! {
             _ = shutdown.cancelled() => return Ok(()),
-            _ = interval.tick() => {
+            scheduled_at = interval.tick() => {
+                let scheduled_lag_ms = elapsed_ms_since(scheduled_at);
                 let payload = json!({ "runId": run_id.as_str() });
-                match http.post_json(heartbeat_url, &payload, constants::HTTP_MAX_ATTEMPTS).await {
+                let collector = HeartbeatAttemptCollector::default();
+                let heartbeat_result = http
+                    .post_json_observed(
+                        heartbeat_url,
+                        &payload,
+                        constants::HTTP_MAX_ATTEMPTS,
+                        &collector,
+                    )
+                    .await;
+                let attempts = collector.into_attempts();
+                match heartbeat_result {
                     Ok(_) => {
                         if is_first {
                             log_info!(LOG_TAG, "Heartbeat sent (initial)");
@@ -90,25 +189,40 @@ pub async fn heartbeat_loop_for_run_with_interval(
                         }
                         is_first = false;
                         consecutive_failures = 0;
+                        failed_cycles.clear();
                     }
                     Err(e) if is_first => {
+                        failed_cycles.push(HeartbeatFailedCycleDiagnostic {
+                            scheduled_lag_ms,
+                            attempts,
+                        });
                         log_error!(LOG_TAG, "Network connectivity check failed: {e}");
-                        return Err(AgentError::Execution(format!(
-                            "Network connectivity check failed - cannot reach API at {}",
-                            heartbeat_url
-                        )));
+                        return Err(HeartbeatFailure {
+                            error: AgentError::Execution(format!(
+                                "Network connectivity check failed - cannot reach API at {}",
+                                heartbeat_url
+                            )),
+                            diagnostic: HeartbeatFailureDiagnostic { failed_cycles },
+                        });
                     }
                     Err(e) => {
                         consecutive_failures += 1;
+                        failed_cycles.push(HeartbeatFailedCycleDiagnostic {
+                            scheduled_lag_ms,
+                            attempts,
+                        });
                         log_warn!(
                             LOG_TAG,
                             "Heartbeat failed ({consecutive_failures}/{}): {e}",
                             constants::MAX_CONSECUTIVE_HEARTBEAT_FAILURES,
                         );
                         if consecutive_failures >= constants::MAX_CONSECUTIVE_HEARTBEAT_FAILURES {
-                            return Err(AgentError::Execution(format!(
-                                "Heartbeat failed {consecutive_failures} consecutive times, terminating",
-                            )));
+                            return Err(HeartbeatFailure {
+                                error: AgentError::Execution(format!(
+                                    "Heartbeat failed {consecutive_failures} consecutive times, terminating",
+                                )),
+                                diagnostic: HeartbeatFailureDiagnostic { failed_cycles },
+                            });
                         }
                     }
                 }

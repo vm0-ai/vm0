@@ -92,11 +92,7 @@ describe("POST /api/test/runtime-state/action", () => {
       const startedAt = Date.UTC(2026, 7, 23, 0, 0, 0);
       const primaryCooldownUntil = new Date(startedAt + 60 * 1000);
       const primary = await withMockNowForTest(startedAt, async () => {
-        return await resolveVm0BuiltInModelRouteFixture(
-          context,
-          selectedModel,
-          true,
-        );
+        return await resolveVm0BuiltInModelRouteFixture(context, selectedModel);
       });
       if (!primary) {
         throw new Error(`Expected a primary route for ${selectedModel}`);
@@ -108,11 +104,7 @@ describe("POST /api/test/runtime-state/action", () => {
         primaryCooldownUntil,
       );
       const fallback = await withMockNowForTest(startedAt, async () => {
-        return await resolveVm0BuiltInModelRouteFixture(
-          context,
-          selectedModel,
-          true,
-        );
+        return await resolveVm0BuiltInModelRouteFixture(context, selectedModel);
       });
       if (!fallback || fallback.provider_type !== "openrouter-codex") {
         throw new Error(`Expected an OpenRouter fallback for ${selectedModel}`);
@@ -139,14 +131,6 @@ describe("POST /api/test/runtime-state/action", () => {
           modelProviderId: null,
         },
       ]);
-      await updateFeatureSwitchesForUser(
-        context,
-        { ...actor, orgId: actor.orgId },
-        {
-          [FeatureSwitchKey.BuiltInModelProviderFallback]: true,
-        },
-      );
-
       const sent = await withMockNowForTest(startedAt, async () => {
         return await chat.requestSendEvent(
           actor,
@@ -191,11 +175,7 @@ describe("POST /api/test/runtime-state/action", () => {
     await seedVm0BuiltInModelCandidateKeys(context, selectedModel);
     const startedAt = Date.UTC(2026, 8, 1, 0, 0, 0);
     const primary = await withMockNowForTest(startedAt, async () => {
-      return await resolveVm0BuiltInModelRouteFixture(
-        context,
-        selectedModel,
-        true,
-      );
+      return await resolveVm0BuiltInModelRouteFixture(context, selectedModel);
     });
     if (!primary || primary.provider_type !== "openai-api-key") {
       throw new Error("Expected the managed OpenAI Terra primary route");
@@ -207,11 +187,7 @@ describe("POST /api/test/runtime-state/action", () => {
       new Date(startedAt + 60_000),
     );
     const fallback = await withMockNowForTest(startedAt, async () => {
-      return await resolveVm0BuiltInModelRouteFixture(
-        context,
-        selectedModel,
-        true,
-      );
+      return await resolveVm0BuiltInModelRouteFixture(context, selectedModel);
     });
     if (!fallback || fallback.provider_type !== "openrouter-codex") {
       throw new Error("Expected the managed OpenRouter Terra fallback route");
@@ -242,7 +218,6 @@ describe("POST /api/test/runtime-state/action", () => {
       context,
       { ...actor, orgId: actor.orgId },
       {
-        [FeatureSwitchKey.BuiltInModelProviderFallback]: true,
         [FeatureSwitchKey.PiLoop]: true,
         [FeatureSwitchKey.CodexFastMode]: true,
       },
@@ -295,11 +270,7 @@ describe("POST /api/test/runtime-state/action", () => {
     const routeCooldownUntil = new Date(startedAt + 60 * 1000);
 
     const gptPrimary = await withMockNowForTest(startedAt, async () => {
-      return await resolveVm0BuiltInModelRouteFixture(
-        context,
-        "gpt-5.6-sol",
-        true,
-      );
+      return await resolveVm0BuiltInModelRouteFixture(context, "gpt-5.6-sol");
     });
     expect(gptPrimary).toMatchObject({
       provider_type: "openai-api-key",
@@ -316,11 +287,7 @@ describe("POST /api/test/runtime-state/action", () => {
       routeCooldownUntil,
     );
     const gptFallback = await withMockNowForTest(startedAt, async () => {
-      return await resolveVm0BuiltInModelRouteFixture(
-        context,
-        "gpt-5.6-sol",
-        true,
-      );
+      return await resolveVm0BuiltInModelRouteFixture(context, "gpt-5.6-sol");
     });
     expect(gptFallback?.provider_type).toBe("openrouter-codex");
     if (!gptFallback) {
@@ -336,22 +303,15 @@ describe("POST /api/test/runtime-state/action", () => {
 
     await withMockNowForTest(startedAt, async () => {
       await expect(
-        resolveVm0BuiltInModelRouteFixture(context, "gpt-5.6-sol", false),
-      ).resolves.toMatchObject({ provider_type: "openai-api-key" });
-      await expect(
-        resolveVm0BuiltInModelRouteFixture(context, "gpt-5.6-sol", true),
+        resolveVm0BuiltInModelRouteFixture(context, "gpt-5.6-sol"),
       ).resolves.toBeNull();
       await expect(
-        resolveVm0BuiltInModelRouteFixture(context, "gpt-5.6-terra", true),
+        resolveVm0BuiltInModelRouteFixture(context, "gpt-5.6-terra"),
       ).resolves.toMatchObject({ provider_type: "openai-api-key" });
     });
 
     const gptTerraPrimary = await withMockNowForTest(startedAt, async () => {
-      return await resolveVm0BuiltInModelRouteFixture(
-        context,
-        "gpt-5.6-terra",
-        true,
-      );
+      return await resolveVm0BuiltInModelRouteFixture(context, "gpt-5.6-terra");
     });
     if (!gptTerraPrimary) {
       throw new Error("Expected a primary GPT Terra route");
@@ -364,7 +324,7 @@ describe("POST /api/test/runtime-state/action", () => {
     );
     await withMockNowForTest(startedAt, async () => {
       await expect(
-        resolveVm0BuiltInModelRouteFixture(context, "gpt-5.6-terra", true),
+        resolveVm0BuiltInModelRouteFixture(context, "gpt-5.6-terra"),
       ).resolves.toMatchObject({ provider_type: "openrouter-codex" });
     });
 
@@ -372,7 +332,6 @@ describe("POST /api/test/runtime-state/action", () => {
       return await resolveVm0BuiltInModelRouteFixture(
         context,
         "claude-fable-5",
-        true,
       );
     });
     expect(claudePrimary?.provider_type).toBe("anthropic-api-key");
@@ -389,7 +348,6 @@ describe("POST /api/test/runtime-state/action", () => {
       return await resolveVm0BuiltInModelRouteFixture(
         context,
         "claude-fable-5",
-        true,
       );
     });
     expect(claudeFallback?.provider_type).toBe("openrouter-api-key");
@@ -421,13 +379,6 @@ describe("POST /api/test/runtime-state/action", () => {
     if (!actor.orgId) {
       throw new Error("Expected built-in fallback actor to have an org");
     }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.BuiltInModelProviderFallback]: true,
-      },
-    );
     const rejected = await withMockNowForTest(startedAt, async () => {
       return await chat.requestSendEvent(
         actor,
@@ -456,10 +407,10 @@ describe("POST /api/test/runtime-state/action", () => {
 
     await withMockNowForTest(routeCooldownUntil.getTime(), async () => {
       await expect(
-        resolveVm0BuiltInModelRouteFixture(context, "gpt-5.6-sol", true),
+        resolveVm0BuiltInModelRouteFixture(context, "gpt-5.6-sol"),
       ).resolves.toMatchObject({ provider_type: "openai-api-key" });
       await expect(
-        resolveVm0BuiltInModelRouteFixture(context, "claude-fable-5", true),
+        resolveVm0BuiltInModelRouteFixture(context, "claude-fable-5"),
       ).resolves.toMatchObject({ provider_type: "anthropic-api-key" });
     });
   });
@@ -469,11 +420,7 @@ describe("POST /api/test/runtime-state/action", () => {
     const startedAt = Date.UTC(2026, 7, 20, 2, 0, 0);
     await seedVm0BuiltInModelCandidateKeys(context, selectedModel);
     const primary = await withMockNowForTest(startedAt, async () => {
-      return await resolveVm0BuiltInModelRouteFixture(
-        context,
-        selectedModel,
-        true,
-      );
+      return await resolveVm0BuiltInModelRouteFixture(context, selectedModel);
     });
     if (!primary) {
       throw new Error("Expected a primary GPT Terra route");
@@ -487,7 +434,7 @@ describe("POST /api/test/runtime-state/action", () => {
     );
     await withMockNowForTest(startedAt, async () => {
       await expect(
-        resolveVm0BuiltInModelRouteFixture(context, selectedModel, true),
+        resolveVm0BuiltInModelRouteFixture(context, selectedModel),
       ).resolves.toMatchObject({ provider_type: "openrouter-codex" });
     });
 
@@ -498,7 +445,7 @@ describe("POST /api/test/runtime-state/action", () => {
     );
     await withMockNowForTest(startedAt, async () => {
       await expect(
-        resolveVm0BuiltInModelRouteFixture(context, selectedModel, true),
+        resolveVm0BuiltInModelRouteFixture(context, selectedModel),
       ).resolves.toMatchObject({ provider_type: "openai-api-key" });
     });
   });
@@ -560,7 +507,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         const primary = await resolveVm0BuiltInModelRouteFixture(
           context,
           claimed.selectedModel,
-          true,
         );
         if (!primary) {
           throw new Error("Expected a built-in model primary route");
@@ -596,21 +542,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
           runs.readRun(claimed.actor, claimed.runId),
         ).resolves.toMatchObject({ status: "running" });
         await expect(
-          resolveVm0BuiltInModelRouteFixture(
-            context,
-            claimed.selectedModel,
-            false,
-          ),
-        ).resolves.toMatchObject({
-          provider_type: primary.provider_type,
-          upstream_model: primary.upstream_model,
-        });
-        await expect(
-          resolveVm0BuiltInModelRouteFixture(
-            context,
-            claimed.selectedModel,
-            true,
-          ),
+          resolveVm0BuiltInModelRouteFixture(context, claimed.selectedModel),
         ).resolves.not.toMatchObject({
           provider_type: primary.provider_type,
           upstream_model: primary.upstream_model,
@@ -618,7 +550,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
 
         await seedVm0BuiltInModelCandidateKeys(context, "deepseek-v4-pro");
         await expect(
-          resolveVm0BuiltInModelRouteFixture(context, "deepseek-v4-pro", true),
+          resolveVm0BuiltInModelRouteFixture(context, "deepseek-v4-pro"),
         ).resolves.toMatchObject({ provider_type: "deepseek" });
 
         await withMockNowForTest(
@@ -628,7 +560,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
               resolveVm0BuiltInModelRouteFixture(
                 context,
                 claimed.selectedModel,
-                true,
               ),
             ).resolves.not.toMatchObject({
               provider_type: primary.provider_type,
@@ -643,7 +574,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
               resolveVm0BuiltInModelRouteFixture(
                 context,
                 claimed.selectedModel,
-                true,
               ),
             ).resolves.toMatchObject({
               provider_type: primary.provider_type,
@@ -662,7 +592,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     const primary = await resolveVm0BuiltInModelRouteFixture(
       context,
       claimed.selectedModel,
-      true,
     );
     if (!primary) {
       throw new Error("Expected a built-in model primary route");
@@ -681,11 +610,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         }),
       ).resolves.toStrictEqual({ outcome: "observed" });
       await expect(
-        resolveVm0BuiltInModelRouteFixture(
-          context,
-          claimed.selectedModel,
-          true,
-        ),
+        resolveVm0BuiltInModelRouteFixture(context, claimed.selectedModel),
       ).resolves.toMatchObject({
         provider_type: primary.provider_type,
         upstream_model: primary.upstream_model,
@@ -701,11 +626,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         }),
       ).resolves.toStrictEqual({ outcome: "recorded" });
       await expect(
-        resolveVm0BuiltInModelRouteFixture(
-          context,
-          claimed.selectedModel,
-          true,
-        ),
+        resolveVm0BuiltInModelRouteFixture(context, claimed.selectedModel),
       ).resolves.not.toMatchObject({
         provider_type: primary.provider_type,
         upstream_model: primary.upstream_model,
@@ -730,7 +651,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     const primary = await resolveVm0BuiltInModelRouteFixture(
       context,
       claimed.selectedModel,
-      true,
     );
     if (!primary) {
       throw new Error("Expected a built-in model primary route");
@@ -753,11 +673,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     // A resolver can capture time before the observation transaction commits.
     await withMockNowForTest(startedAt - 1, async () => {
       await expect(
-        resolveVm0BuiltInModelRouteFixture(
-          context,
-          claimed.selectedModel,
-          true,
-        ),
+        resolveVm0BuiltInModelRouteFixture(context, claimed.selectedModel),
       ).resolves.toMatchObject({
         provider_type: primary.provider_type,
         upstream_model: primary.upstream_model,
@@ -771,7 +687,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     const primary = await resolveVm0BuiltInModelRouteFixture(
       context,
       claimed.selectedModel,
-      true,
     );
     if (!primary) {
       throw new Error("Expected a built-in model primary route");
@@ -799,11 +714,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
     await withMockNowForTest(startedAt + 60_000, async () => {
       await expect(
-        resolveVm0BuiltInModelRouteFixture(
-          context,
-          claimed.selectedModel,
-          true,
-        ),
+        resolveVm0BuiltInModelRouteFixture(context, claimed.selectedModel),
       ).resolves.toMatchObject({
         provider_type: primary.provider_type,
         upstream_model: primary.upstream_model,
@@ -817,7 +728,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     const primary = await resolveVm0BuiltInModelRouteFixture(
       context,
       claimed.selectedModel,
-      true,
     );
     if (!primary) {
       throw new Error("Expected a built-in model primary route");
@@ -853,7 +763,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     const primary = await resolveVm0BuiltInModelRouteFixture(
       context,
       claimed.selectedModel,
-      true,
     );
     if (!primary) {
       throw new Error("Expected a built-in model primary route");
@@ -910,11 +819,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
     await withMockNowForTest(startedAt + 8 * 60_000, async () => {
       await expect(
-        resolveVm0BuiltInModelRouteFixture(
-          context,
-          claimed.selectedModel,
-          true,
-        ),
+        resolveVm0BuiltInModelRouteFixture(context, claimed.selectedModel),
       ).resolves.not.toMatchObject({
         provider_type: primary.provider_type,
         upstream_model: primary.upstream_model,
@@ -922,11 +827,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     });
     await withMockNowForTest(startedAt + 30 * 60_000, async () => {
       await expect(
-        resolveVm0BuiltInModelRouteFixture(
-          context,
-          claimed.selectedModel,
-          true,
-        ),
+        resolveVm0BuiltInModelRouteFixture(context, claimed.selectedModel),
       ).resolves.toMatchObject({
         provider_type: primary.provider_type,
         upstream_model: primary.upstream_model,
@@ -940,7 +841,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     const primary = await resolveVm0BuiltInModelRouteFixture(
       context,
       claimed.selectedModel,
-      true,
     );
     if (!primary) {
       throw new Error("Expected a built-in model primary route");
@@ -978,11 +878,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     });
     await withMockNowForTest(startedAt + 60_000, async () => {
       await expect(
-        resolveVm0BuiltInModelRouteFixture(
-          context,
-          claimed.selectedModel,
-          true,
-        ),
+        resolveVm0BuiltInModelRouteFixture(context, claimed.selectedModel),
       ).resolves.not.toMatchObject({
         provider_type: primary.provider_type,
         upstream_model: primary.upstream_model,
@@ -996,7 +892,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     const primary = await resolveVm0BuiltInModelRouteFixture(
       context,
       claimed.selectedModel,
-      true,
     );
     if (!primary) {
       throw new Error("Expected a built-in model primary route");
@@ -1047,7 +942,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
       const primary = await resolveVm0BuiltInModelRouteFixture(
         context,
         claimed.selectedModel,
-        true,
       );
       if (!primary) {
         throw new Error("Expected a built-in model primary route");
@@ -1099,11 +993,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
       });
       await withMockNowForTest(startedAt + cooldownExpiresAfterMs, async () => {
         await expect(
-          resolveVm0BuiltInModelRouteFixture(
-            context,
-            claimed.selectedModel,
-            true,
-          ),
+          resolveVm0BuiltInModelRouteFixture(context, claimed.selectedModel),
         ).resolves.toMatchObject({
           provider_type: primary.provider_type,
           upstream_model: primary.upstream_model,
@@ -1119,7 +1009,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
       const primary = await resolveVm0BuiltInModelRouteFixture(
         context,
         claimed.selectedModel,
-        true,
       );
       if (!primary) {
         throw new Error("Expected a built-in model primary route");
@@ -1145,11 +1034,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
         expiredDeadline,
       );
       await expect(
-        resolveVm0BuiltInModelRouteFixture(
-          context,
-          claimed.selectedModel,
-          true,
-        ),
+        resolveVm0BuiltInModelRouteFixture(context, claimed.selectedModel),
       ).resolves.toMatchObject({
         provider_type: primary.provider_type,
         upstream_model: primary.upstream_model,
@@ -1166,7 +1051,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     const primary = await resolveVm0BuiltInModelRouteFixture(
       context,
       claimed.selectedModel,
-      true,
     );
     if (!primary) {
       throw new Error("Expected a built-in model primary route");
@@ -1192,7 +1076,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
       const primary = await resolveVm0BuiltInModelRouteFixture(
         context,
         claimed.selectedModel,
-        true,
       );
       if (!primary) {
         throw new Error("Expected a built-in model primary route");
@@ -1230,11 +1113,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
 
       await withMockNowForTest(startedAt + 350_000, async () => {
         await expect(
-          resolveVm0BuiltInModelRouteFixture(
-            context,
-            claimed.selectedModel,
-            true,
-          ),
+          resolveVm0BuiltInModelRouteFixture(context, claimed.selectedModel),
         ).resolves.not.toMatchObject({
           provider_type: primary.provider_type,
           upstream_model: primary.upstream_model,
@@ -1242,11 +1121,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
       });
       await withMockNowForTest(startedAt + 401_000, async () => {
         await expect(
-          resolveVm0BuiltInModelRouteFixture(
-            context,
-            claimed.selectedModel,
-            true,
-          ),
+          resolveVm0BuiltInModelRouteFixture(context, claimed.selectedModel),
         ).resolves.toMatchObject({
           provider_type: primary.provider_type,
           upstream_model: primary.upstream_model,
@@ -1262,7 +1137,6 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
       const primary = await resolveVm0BuiltInModelRouteFixture(
         context,
         claimed.selectedModel,
-        true,
       );
       if (!primary) {
         throw new Error("Expected a built-in model primary route");
@@ -1384,11 +1258,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
       ).resolves.toStrictEqual({ outcome: "ignored" });
 
       await expect(
-        resolveVm0BuiltInModelRouteFixture(
-          context,
-          claimed.selectedModel,
-          true,
-        ),
+        resolveVm0BuiltInModelRouteFixture(context, claimed.selectedModel),
       ).resolves.toMatchObject({
         provider_type: primary.provider_type,
         upstream_model: primary.upstream_model,

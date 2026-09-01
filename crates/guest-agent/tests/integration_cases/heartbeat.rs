@@ -1,4 +1,5 @@
 use crate::support::*;
+use guest_contracts::diagnostics::HeartbeatAttemptFailureKind;
 use httpmock::prelude::*;
 use serde_json::json;
 use std::time::Duration;
@@ -207,9 +208,28 @@ async fn heartbeat_first_failure_fatal() {
     let heartbeat_calls = mock.calls_async().await;
     mock.delete_async().await;
 
-    let result = result.expect("initial-failure heartbeat loop should stop within 30 seconds");
-    assert!(result.is_err());
+    let failure = result
+        .expect("initial-failure heartbeat loop should stop within 30 seconds")
+        .expect_err("initial heartbeat failure should be terminal");
     assert_eq!(heartbeat_calls, 3);
+    assert_eq!(failure.diagnostic.failed_cycles.len(), 1);
+    let cycle = &failure.diagnostic.failed_cycles[0];
+    assert_eq!(cycle.attempts.len(), 3);
+    for (index, attempt) in cycle.attempts.iter().enumerate() {
+        assert_eq!(attempt.attempt, u32::try_from(index + 1).unwrap());
+        assert!(!attempt.client_request_id.is_empty());
+        assert_eq!(
+            attempt.failure_kind,
+            HeartbeatAttemptFailureKind::HttpStatus
+        );
+        assert_eq!(attempt.http_status, Some(500));
+        assert_eq!(attempt.timeout_observed, None);
+        assert_eq!(attempt.connect_observed, None);
+    }
+    assert_ne!(
+        cycle.attempts[0].client_request_id,
+        cycle.attempts[1].client_request_id
+    );
 }
 
 #[tokio::test]
@@ -253,8 +273,8 @@ async fn heartbeat_consecutive_failures_fatal() {
     mock.delete_async().await;
     shutdown.cancel();
 
-    assert!(result.is_err());
-    let err = result.unwrap_err().to_string();
+    let failure = result.expect_err("consecutive heartbeat failures should be terminal");
+    let err = failure.to_string();
     assert!(
         err.contains("consecutive"),
         "error should mention consecutive failures: {err}"
@@ -263,6 +283,14 @@ async fn heartbeat_consecutive_failures_fatal() {
     // 401 is a 4xx error -> post_json returns immediately (no internal retries),
     // so the sequence is one success followed by the fatal failure window.
     assert_eq!(heartbeat_calls, 4);
+    assert_eq!(failure.diagnostic.failed_cycles.len(), 3);
+    assert!(
+        failure
+            .diagnostic
+            .failed_cycles
+            .iter()
+            .all(|cycle| cycle.attempts.len() == 1)
+    );
 }
 
 #[tokio::test]
@@ -275,7 +303,9 @@ async fn heartbeat_recovery_resets_counter() {
     let mock = server.mock(|when, then| {
         when.method(POST).path("/api/webhooks/agent/heartbeat");
         then.respond_with(move |_req| match observer_for_mock.record() {
-            2 | 3 | 5 | 6 => json_http_response(401, json!({"error": {"message": "Run expired"}})),
+            2 | 3 | 5 | 6 | 7 => {
+                json_http_response(401, json!({"error": {"message": "Run expired"}}))
+            }
             _ => http_status(200),
         });
     });
@@ -292,31 +322,24 @@ async fn heartbeat_recovery_resets_counter() {
         .await
     });
 
-    // Sequence: success -> 2 failures -> success -> 2 failures -> success.
-    // Without recovery resetting the failure counter, the second failure pair
-    // would reach the fatal threshold before call 7.
-    observer
-        .wait_for(
-            7,
-            MOCK_CALL_TIMEOUT,
-            "heartbeat_recovery_resets_counter full sequence",
-        )
-        .await;
-
-    let heartbeat_calls = observer.calls();
-
-    // The loop should still be running. Stop it before deleting the mock so no
-    // background heartbeat can race with mock teardown.
-    shutdown.cancel();
+    // Sequence: success -> 2 failures -> recovery -> 3 failures. The terminal
+    // diagnostic must retain only the failures after recovery.
     let result = tokio::time::timeout(Duration::from_secs(30), handle)
         .await
         .expect("heartbeat_loop should exit within timeout")
         .expect("task should not panic");
+    let heartbeat_calls = observer.calls();
     mock.delete_async().await;
+    shutdown.cancel();
 
+    let failure = result.expect_err("three failures after recovery should be terminal");
+    assert_eq!(heartbeat_calls, 7);
+    assert_eq!(failure.diagnostic.failed_cycles.len(), 3);
     assert!(
-        result.is_ok(),
-        "heartbeat_loop should exit Ok after shutdown, not Err"
+        failure
+            .diagnostic
+            .failed_cycles
+            .iter()
+            .all(|cycle| cycle.attempts.len() == 1)
     );
-    assert!(heartbeat_calls >= 7);
 }

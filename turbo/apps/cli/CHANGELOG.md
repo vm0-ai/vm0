@@ -1,5 +1,35 @@
 # Changelog
 
+## [9.303.2](https://github.com/vm0-ai/vm0/compare/cli-v9.303.1...cli-v9.303.2) (2026-09-01)
+
+
+### Bug Fixes
+
+* **mail:** use thread gmail account for draft handoff ([#30846](https://github.com/vm0-ai/vm0/issues/30846)) ([99e2b42](https://github.com/vm0-ai/vm0/commit/99e2b42770617c62b57787973131d1002f0ebbbf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.387.0
+    * @okouai/core bumped to 8.606.0
+
+## [9.303.1](https://github.com/vm0-ai/vm0/compare/cli-v9.303.0...cli-v9.303.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **social:** normalize TikTok collection semantics ([#30838](https://github.com/vm0-ai/vm0/issues/30838)) ([5720a7a](https://github.com/vm0-ai/vm0/commit/5720a7a38766172840802151fef77e73111d5d14))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.386.1
+    * @okouai/core bumped to 8.605.10
+
 ## [9.303.0](https://github.com/vm0-ai/vm0/compare/cli-v9.302.2...cli-v9.303.0) (2026-09-01)
 
 

@@ -501,6 +501,11 @@ interface GoogleDriveConnectorOAuthOptions {
    * connector has no refresh path (Drive 401s then resolve to "unknown").
    */
   readonly omitRefreshToken?: boolean;
+  readonly userInfo?: {
+    readonly id: string;
+    readonly email: string;
+    readonly name: string;
+  };
   readonly refreshOutcome?:
     | { readonly type: "ok"; readonly accessToken: string }
     | { readonly type: "server-error" }
@@ -575,11 +580,13 @@ export function mockGoogleDriveConnectorOAuth(
       });
     }),
     http.get(GOOGLE_USERINFO_URL, () => {
-      return HttpResponse.json({
-        id: "bdd-drive-user-id",
-        email: "bdd-drive@example.test",
-        name: "BDD Drive User",
-      });
+      return HttpResponse.json(
+        options.userInfo ?? {
+          id: "bdd-drive-user-id",
+          email: "bdd-drive@example.test",
+          name: "BDD Drive User",
+        },
+      );
     }),
   );
   return recorded;
@@ -716,6 +723,7 @@ interface GoogleDriveArtifactUploadRecorder {
   readonly authorizationHeaders: (string | null)[];
   readonly contentLengthHeaders: (string | null)[];
   readonly contentTypeHeaders: (string | null)[];
+  readonly folderAuthorizationHeaders: (string | null)[];
   readonly folderQueries: string[];
 }
 
@@ -731,12 +739,16 @@ export function mockGoogleDriveArtifactUpload(
     authorizationHeaders: [],
     contentLengthHeaders: [],
     contentTypeHeaders: [],
+    folderAuthorizationHeaders: [],
     folderQueries: [],
   };
 
   server.use(
     http.get(GOOGLE_DRIVE_FILES_URL, ({ request }) => {
       const query = new URL(request.url).searchParams.get("q") ?? "";
+      recorded.folderAuthorizationHeaders.push(
+        request.headers.get("authorization"),
+      );
       recorded.folderQueries.push(query);
       const rootFolder = query.includes("'root' in parents");
       return HttpResponse.json({

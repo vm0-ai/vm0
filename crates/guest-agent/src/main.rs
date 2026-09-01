@@ -1293,6 +1293,7 @@ mod tests {
                 stderr_lines: Vec::new(),
                 last_event_sequence: None,
                 event_delivery: None,
+                heartbeat: None,
                 jsonl_result: Some(jsonl_result),
                 post_result_cleanup_jsonl_result: Some(cleanup_result),
                 failure_diagnostic: None,

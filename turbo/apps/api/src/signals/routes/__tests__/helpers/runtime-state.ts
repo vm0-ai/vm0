@@ -155,12 +155,10 @@ type BuiltInModelRuntimeRouteFixture = NonNullable<
 export async function resolveVm0BuiltInModelRouteFixture(
   context: TestContext,
   selectedModel: string,
-  fallbackEnabled: boolean,
 ): Promise<BuiltInModelRuntimeRouteFixture | null> {
   const response = await postAction(context, {
     action: "resolve-vm0-built-in-model-route",
     selected_model: selectedModel,
-    fallback_enabled: fallbackEnabled,
   });
   return response.built_in_model_route ?? null;
 }

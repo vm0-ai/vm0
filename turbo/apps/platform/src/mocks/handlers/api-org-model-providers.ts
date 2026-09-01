@@ -26,7 +26,7 @@ export function resetMockOrgModelProviders(): void {
 export const apiOrgModelProvidersHandlers = [
   mockApi(modelProviderCooldownDiagnosticsContract.get, ({ respond }) => {
     return respond(200, {
-      fallbackEnabled: false,
+      fallbackEnabled: true,
       activeCooldowns: [],
     });
   }),

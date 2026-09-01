@@ -256,7 +256,7 @@ describe("signup attribution Google Ads conversion", () => {
     expect(gtag).toHaveBeenCalledTimes(2);
   });
 
-  it("completes route setup after a final attribution failure and allows a later retry", async () => {
+  it("completes route setup without retrying a 401 and leaves later retries to callers", async () => {
     let attributionRequests = 0;
     storePaidSignupAttribution();
     context.mocks.api(
@@ -283,9 +283,13 @@ describe("signup attribution Google Ads conversion", () => {
       }),
     ).resolves.toBeUndefined();
 
+    expect(attributionRequests).toBe(1);
+
+    await expect(
+      context.store.set(recordSignupAttribution$, context.signal),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED", status: 401 });
     expect(attributionRequests).toBe(2);
 
-    await context.store.set(recordSignupAttribution$, context.signal);
     await context.store.set(recordSignupAttribution$, context.signal);
 
     expect(attributionRequests).toBe(3);

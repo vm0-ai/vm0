@@ -7,6 +7,7 @@ mod common;
 
 use guest_agent::error::AgentError;
 use guest_agent::masker::SecretMasker;
+use guest_contracts::diagnostics::CliTerminationReason;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -53,11 +54,29 @@ async fn codex_app_server_backend_heartbeat_interrupts_hung_turn_start()
     .await
     .expect("execute_cli should return promptly");
 
-    let error = result.expect_err("heartbeat failure should fail the app-server backend");
+    let result = result.expect("heartbeat failure should return a controlled result");
+    assert_eq!(result.exit_code, 1);
+    let error = result
+        .control_error
+        .as_ref()
+        .expect("heartbeat failure should retain the control error");
     let message = error.to_string();
     assert!(
         message.contains("heartbeat failed during app-server turn/start"),
         "unexpected error: {message}"
+    );
+    assert_eq!(
+        result
+            .cli_termination
+            .expect("heartbeat failure should attach termination details")
+            .reason,
+        CliTerminationReason::HeartbeatError
+    );
+    assert_eq!(
+        result
+            .heartbeat
+            .expect("heartbeat failure should retain HTTP evidence"),
+        common::test_heartbeat_failure_diagnostic()
     );
 
     Ok(())

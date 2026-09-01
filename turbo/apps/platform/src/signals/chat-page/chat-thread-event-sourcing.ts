@@ -13,7 +13,7 @@ import {
 } from "../../lib/posthog.ts";
 import { activeRoute$ } from "../active-route.ts";
 import { apiClient$ } from "../api-client.ts";
-import { foregroundReady$ } from "../auth-retry.ts";
+import { foregroundReady$ } from "../foreground-catch-up.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { subscribeRealtimeReadyCatchUp$ } from "../realtime.ts";
 import { rootSignal$ } from "../root-signal.ts";

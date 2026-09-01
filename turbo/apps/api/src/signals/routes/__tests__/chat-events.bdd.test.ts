@@ -5074,7 +5074,7 @@ describe("CHAT-02: model-first provider policies", () => {
     if (vm0Send.status === 503) {
       expectApiError(vm0Send.body);
       expect(vm0Send.body.error.message).toBe(
-        "No model provider configured: no built-in model key is configured",
+        "Every built-in model route for this model is temporarily unavailable",
       );
     } else {
       const vm0Body = vm0Send.body as { readonly runId: string | null };
