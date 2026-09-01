@@ -292,6 +292,84 @@ function sanitizedLegacyContextlessMorningBriefModelClaimLines(
   return { root: encode(root), claim: encode(claim) };
 }
 
+function isSanitizedContextlessMorningBriefDirectRunPrompt(
+  prompt: ChatEventRow,
+): boolean {
+  const projectedPrompt = chatEventFromRow(prompt);
+  if (
+    prompt.eventType !== "input.prompt" ||
+    projectedPrompt.eventType !== "input.prompt"
+  ) {
+    return false;
+  }
+  const modelPart = projectedPrompt.userMessage.parts.at(-1);
+  return (
+    prompt.runId !== null &&
+    prompt.revokesEventId === null &&
+    prompt.contextType === "morning_brief" &&
+    prompt.contextId === null &&
+    prompt.runEventSequenceNumber === null &&
+    prompt.runEventId === null &&
+    projectedPrompt.userMessage.parts.length > 1 &&
+    projectedPrompt.userMessage.parts.slice(0, -1).every((part) => {
+      return part.type !== "model";
+    }) &&
+    modelPart?.type === "model" &&
+    Object.keys(modelPart).length === 2 &&
+    modelPart.selectedModel.length > 0
+  );
+}
+
+function isSanitizedContextlessMorningBriefDirectRunTerminal(
+  terminal: ChatEventRow,
+  prompt: ChatEventRow,
+): boolean {
+  if (terminal.id === prompt.id || terminal.eventType !== "run.completed") {
+    return false;
+  }
+  return (
+    terminal.chatThreadId === prompt.chatThreadId &&
+    terminal.runId === prompt.runId &&
+    terminal.revokesEventId === null &&
+    terminal.contextType === null &&
+    terminal.contextId === null &&
+    terminal.runEventSequenceNumber === null &&
+    terminal.runEventId === null &&
+    terminal.seqId > prompt.seqId &&
+    terminal.createdAt > prompt.createdAt
+  );
+}
+
+function sanitizedLegacyContextlessMorningBriefDirectRunLines(
+  prompt: ChatEventRow,
+  terminal: ChatEventRow,
+): { readonly prompt: string; readonly terminal: string } {
+  if (
+    !isSanitizedContextlessMorningBriefDirectRunPrompt(prompt) ||
+    !isSanitizedContextlessMorningBriefDirectRunTerminal(terminal, prompt)
+  ) {
+    throw new Error("Expected an exact historical direct Morning Brief Run");
+  }
+  chatEventFromRow(terminal);
+  const encode = (row: ChatEventRow): string => {
+    return `${JSON.stringify({
+      id: row.id,
+      chatThreadId: row.chatThreadId,
+      runId: row.runId,
+      revokesEventId: row.revokesEventId,
+      eventType: row.eventType,
+      payload: row.payload,
+      contextType: row.contextType,
+      contextId: row.contextId,
+      runEventSequenceNumber: row.runEventSequenceNumber,
+      runEventId: row.runEventId,
+      seqId: row.seqId,
+      createdAt: row.createdAt,
+    })}\n`;
+  };
+  return { prompt: encode(prompt), terminal: encode(terminal) };
+}
+
 function isSanitizedContextlessMorningBriefRetirement(
   row: ChatEventRow,
   root: ChatEventRow,
@@ -632,7 +710,7 @@ describe("chat event snapshot read endpoints", () => {
     const agent = await bdd.createAgent(owner, {
       displayName: "Morning Brief archive repair agent",
     });
-    const markers = Array.from({ length: 8 }, (_, index) => {
+    const markers = Array.from({ length: 9 }, (_, index) => {
       return `morning-brief-history-${(index + 1).toString()}-${randomUUID()}`;
     });
     let threadId: string | undefined;
@@ -664,7 +742,7 @@ describe("chat event snapshot read endpoints", () => {
     const promptRows = originalRows.filter((row) => {
       return row.eventType === "input.prompt";
     });
-    expect(promptRows).toHaveLength(8);
+    expect(promptRows).toHaveLength(9);
 
     const runIds = markers.map(() => {
       return randomUUID();
@@ -672,6 +750,7 @@ describe("chat event snapshot read endpoints", () => {
     const contextlessClaimRunId = randomUUID();
     const contextlessModelClaimRunId = randomUUID();
     const contextlessPriorityModelClaimRunId = randomUUID();
+    const contextlessDirectRunId = randomUUID();
     const historicalDocuments: readonly UserMessageDocument[] = [
       {
         version: 1,
@@ -762,6 +841,15 @@ describe("chat event snapshot read endpoints", () => {
           },
         ],
       },
+      {
+        version: 1,
+        parts: [
+          {
+            type: "text",
+            text: "Preserve the pre-queue direct Morning Brief Run prompt.",
+          },
+        ],
+      },
     ];
     const promptIndexById = new Map(
       promptRows.map((row, index) => {
@@ -805,6 +893,10 @@ describe("chat event snapshot read endpoints", () => {
       rejectionRows[7],
       revocationFixtureMessage,
     );
+    const contextlessDirectRunTerminalRow = requiredRevokingRow(
+      rejectionRows[8],
+      revocationFixtureMessage,
+    );
     const contextlessRootRow = requiredPromptRow(
       originalRows.find((row) => {
         return row.id === contextlessClaimRow.revokesEventId;
@@ -834,6 +926,12 @@ describe("chat event snapshot read endpoints", () => {
         return row.id === contextlessPriorityModelClaimRow.revokesEventId;
       }),
       "Expected the historical contextless priority-model root prompt",
+    );
+    const contextlessDirectRunPromptRow = requiredPromptRow(
+      originalRows.find((row) => {
+        return row.id === contextlessDirectRunTerminalRow.revokesEventId;
+      }),
+      "Expected the historical direct Morning Brief Run prompt",
     );
     const contextlessRetirementCompanionRow = requiredValue(
       originalRows.find((row) => {
@@ -878,7 +976,68 @@ describe("chat event snapshot read endpoints", () => {
       historicalDocuments[contextlessPriorityModelClaimRootPromptIndex],
       "Expected the contextless priority-model claim document",
     );
+    const contextlessDirectRunPromptIndex = requiredValue(
+      promptIndexById.get(contextlessDirectRunPromptRow.id),
+      "Expected the direct Morning Brief Run prompt index",
+    );
+    const contextlessDirectRunDocument = requiredValue(
+      historicalDocuments[contextlessDirectRunPromptIndex],
+      "Expected the direct Morning Brief Run document",
+    );
+    const expectedSpecialRowsById = new Map<string, ChatEventRow>([
+      [
+        contextlessDirectRunPromptRow.id,
+        chatEventRowSchema.parse({
+          ...contextlessDirectRunPromptRow,
+          eventType: "input.prompt",
+          runId: contextlessDirectRunId,
+          revokesEventId: null,
+          contextType: "web",
+          contextId: null,
+          payload: {
+            userMessage: {
+              version: 1,
+              parts: [
+                ...contextlessDirectRunDocument.parts,
+                {
+                  type: "model",
+                  selectedModel: HISTORICAL_MORNING_BRIEF_SELECTED_MODEL,
+                },
+              ],
+            },
+          },
+          runEventSequenceNumber: null,
+          runEventId: null,
+        }),
+      ],
+      [
+        contextlessDirectRunTerminalRow.id,
+        chatEventRowSchema.parse({
+          ...contextlessDirectRunTerminalRow,
+          eventType: "run.completed",
+          runId: contextlessDirectRunId,
+          revokesEventId: null,
+          contextType: null,
+          contextId: null,
+          payload: null,
+          runEventSequenceNumber: null,
+          runEventId: null,
+        }),
+      ],
+      [
+        contextOnlyRow.id,
+        chatEventRowSchema.parse({
+          ...contextOnlyRow,
+          contextType: "web",
+          contextId: null,
+        }),
+      ],
+    ]);
     const expectedRows = originalRows.map((row): ChatEventRow => {
+      const expectedSpecialRow = expectedSpecialRowsById.get(row.id);
+      if (expectedSpecialRow !== undefined) {
+        return expectedSpecialRow;
+      }
       if (row.id === contextlessClaimRow.id) {
         return chatEventRowSchema.parse({
           ...row,
@@ -1037,13 +1196,7 @@ describe("chat event snapshot read endpoints", () => {
           },
         });
       }
-      return row.id === contextOnlyRow.id
-        ? chatEventRowSchema.parse({
-            ...row,
-            contextType: "web",
-            contextId: null,
-          })
-        : row;
+      return row;
     });
     for (const row of expectedRows) {
       chatEventFromRow(row);
@@ -1058,7 +1211,8 @@ describe("chat event snapshot read endpoints", () => {
         row.id === contextlessModelClaimRootRow.id ||
         row.id === contextlessModelClaimRow.id ||
         row.id === contextlessPriorityModelClaimRootRow.id ||
-        row.id === contextlessPriorityModelClaimRow.id
+        row.id === contextlessPriorityModelClaimRow.id ||
+        row.id === contextlessDirectRunPromptRow.id
       ) {
         return chatEventRowSchema.parse({
           ...row,
@@ -1192,6 +1346,18 @@ describe("chat event snapshot read endpoints", () => {
       }),
       "Expected a byte-exact contextless priority-model claim",
     );
+    const staleContextlessDirectRunPrompt = requiredValue(
+      staleRows.find((row) => {
+        return row.id === contextlessDirectRunPromptRow.id;
+      }),
+      "Expected a byte-exact direct Morning Brief Run prompt",
+    );
+    const staleContextlessDirectRunTerminal = requiredValue(
+      staleRows.find((row) => {
+        return row.id === contextlessDirectRunTerminalRow.id;
+      }),
+      "Expected a byte-exact direct Morning Brief Run terminal",
+    );
     if (
       staleDirectControlRevoke === undefined ||
       staleContextlessRoot === undefined ||
@@ -1236,6 +1402,11 @@ describe("chat event snapshot read endpoints", () => {
         HISTORICAL_MORNING_BRIEF_FAST_SELECTED_MODEL,
         HISTORICAL_MORNING_BRIEF_SERVICE_TIER,
       );
+    const byteExactContextlessDirectRunLines =
+      sanitizedLegacyContextlessMorningBriefDirectRunLines(
+        staleContextlessDirectRunPrompt,
+        staleContextlessDirectRunTerminal,
+      );
     const staleArchive = Buffer.from(
       staleRows
         .map((row) => {
@@ -1268,6 +1439,12 @@ describe("chat event snapshot read endpoints", () => {
           }
           if (row.id === contextlessPriorityModelClaimRow.id) {
             return byteExactContextlessPriorityModelClaimLines.claim;
+          }
+          if (row.id === contextlessDirectRunPromptRow.id) {
+            return byteExactContextlessDirectRunLines.prompt;
+          }
+          if (row.id === contextlessDirectRunTerminalRow.id) {
+            return byteExactContextlessDirectRunLines.terminal;
           }
           return row.id === chainedControlRevokeRow.id
             ? byteExactChainedRevokeLine
@@ -1306,6 +1483,13 @@ describe("chat event snapshot read endpoints", () => {
       staleArchive.includes(
         Buffer.from(
           `${byteExactContextlessModelClaimLines.root}${byteExactContextlessModelClaimLines.claim}`,
+        ),
+      ),
+    ).toBeTruthy();
+    expect(
+      staleArchive.includes(
+        Buffer.from(
+          `${byteExactContextlessDirectRunLines.prompt}${byteExactContextlessDirectRunLines.terminal}`,
         ),
       ),
     ).toBeTruthy();
@@ -1508,6 +1692,45 @@ describe("chat event snapshot read endpoints", () => {
     });
     expect(
       repairedRows.find((row) => {
+        return row.id === contextlessDirectRunPromptRow.id;
+      }),
+    ).toMatchObject({
+      eventType: "input.prompt",
+      runId: contextlessDirectRunId,
+      revokesEventId: null,
+      contextType: "web",
+      contextId: null,
+      payload: {
+        userMessage: {
+          version: 1,
+          parts: [
+            ...contextlessDirectRunDocument.parts,
+            {
+              type: "model",
+              selectedModel: HISTORICAL_MORNING_BRIEF_SELECTED_MODEL,
+            },
+          ],
+        },
+      },
+      runEventSequenceNumber: null,
+      runEventId: null,
+    });
+    expect(
+      repairedRows.find((row) => {
+        return row.id === contextlessDirectRunTerminalRow.id;
+      }),
+    ).toMatchObject({
+      eventType: "run.completed",
+      runId: contextlessDirectRunId,
+      revokesEventId: null,
+      contextType: null,
+      contextId: null,
+      payload: null,
+      runEventSequenceNumber: null,
+      runEventId: null,
+    });
+    expect(
+      repairedRows.find((row) => {
         return row.id === contextlessRetirementRootRow.id;
       }),
     ).toMatchObject({
@@ -1560,7 +1783,7 @@ describe("chat event snapshot read endpoints", () => {
     const expectedPromptRows = expectedRows.filter((row) => {
       return row.eventType === "input.prompt";
     });
-    expect(expectedPromptRows).toHaveLength(11);
+    expect(expectedPromptRows).toHaveLength(12);
     expect(
       projectedPrompts.map((event) => {
         return {
@@ -1891,6 +2114,40 @@ describe("chat event snapshot read endpoints", () => {
         },
       },
     });
+    const contextlessDirectRunId = randomUUID();
+    const contextlessDirectRunPrompt = chatEventRowSchema.parse({
+      ...inputRow,
+      runId: contextlessDirectRunId,
+      revokesEventId: null,
+      eventType: "input.prompt",
+      payload: {
+        userMessage: {
+          version: 1,
+          parts: [
+            ...contextlessDocument.parts,
+            {
+              type: "model",
+              selectedModel: HISTORICAL_MORNING_BRIEF_SELECTED_MODEL,
+            },
+          ],
+        },
+      },
+      contextType: "morning_brief",
+      contextId: null,
+      runEventSequenceNumber: null,
+      runEventId: null,
+    });
+    const contextlessDirectRunTerminal = chatEventRowSchema.parse({
+      ...rejectedRow,
+      runId: contextlessDirectRunId,
+      revokesEventId: null,
+      eventType: "run.completed",
+      payload: null,
+      contextType: null,
+      contextId: null,
+      runEventSequenceNumber: null,
+      runEventId: null,
+    });
     const contextlessRetirement = chatEventRowSchema.parse({
       ...rejectedRow,
       runId: null,
@@ -1940,6 +2197,10 @@ describe("chat event snapshot read endpoints", () => {
       HISTORICAL_MORNING_BRIEF_FAST_SELECTED_MODEL,
       HISTORICAL_MORNING_BRIEF_SERVICE_TIER,
     );
+    sanitizedLegacyContextlessMorningBriefDirectRunLines(
+      contextlessDirectRunPrompt,
+      contextlessDirectRunTerminal,
+    );
     const contextlessRows = (
       root: ChatEventRow,
       claim: ChatEventRow,
@@ -1970,6 +2231,21 @@ describe("chat event snapshot read endpoints", () => {
         }
         if (row.id === companion.id) {
           return companion;
+        }
+        return row.id === additionalRow?.id ? additionalRow : row;
+      });
+    };
+    const contextlessDirectRunRows = (
+      prompt: ChatEventRow,
+      terminal: ChatEventRow,
+      additionalRow?: ChatEventRow,
+    ): readonly ChatEventRow[] => {
+      return originalRows.map((row) => {
+        if (row.id === contextlessDirectRunPrompt.id) {
+          return prompt;
+        }
+        if (row.id === contextlessDirectRunTerminal.id) {
+          return terminal;
         }
         return row.id === additionalRow?.id ? additionalRow : row;
       });
@@ -2161,6 +2437,158 @@ describe("chat event snapshot read endpoints", () => {
             },
           },
         }),
+      ),
+    );
+    const missingDirectRunTerminalBody = encodeRows(
+      contextlessDirectRunRows(contextlessDirectRunPrompt, rejectedRow),
+    );
+    const crossThreadDirectRunTerminalBody = encodeRows(
+      contextlessDirectRunRows(
+        contextlessDirectRunPrompt,
+        chatEventRowSchema.parse({
+          ...contextlessDirectRunTerminal,
+          chatThreadId: randomUUID(),
+        }),
+      ),
+    );
+    const reorderedDirectRunTerminalBody = encodeRows(
+      contextlessDirectRunRows(
+        contextlessDirectRunPrompt,
+        chatEventRowSchema.parse({
+          ...contextlessDirectRunTerminal,
+          createdAt: contextlessDirectRunPrompt.createdAt,
+        }),
+      ),
+    );
+    const revokedDirectRunPromptBody = encodeRows(
+      contextlessDirectRunRows(
+        contextlessDirectRunPrompt,
+        contextlessDirectRunTerminal,
+        chatEventRowSchema.parse({
+          ...semanticRootRow,
+          revokesEventId: contextlessDirectRunPrompt.id,
+        }),
+      ),
+    );
+    const duplicateDirectRunPromptBody = encodeRows(
+      contextlessDirectRunRows(
+        contextlessDirectRunPrompt,
+        contextlessDirectRunTerminal,
+        chatEventRowSchema.parse({
+          ...semanticRootRow,
+          runId: contextlessDirectRunId,
+          revokesEventId: null,
+          eventType: "input.prompt",
+          payload: { userMessage: contextlessDocument },
+          contextType: "web",
+          contextId: null,
+          runEventSequenceNumber: null,
+          runEventId: null,
+        }),
+      ),
+    );
+    const duplicateDirectRunTerminalBody = encodeRows(
+      contextlessDirectRunRows(
+        contextlessDirectRunPrompt,
+        contextlessDirectRunTerminal,
+        chatEventRowSchema.parse({
+          ...semanticRootRow,
+          runId: contextlessDirectRunId,
+          revokesEventId: null,
+          eventType: "run.failed",
+          payload: { error: "Sanitized second terminal." },
+          contextType: null,
+          contextId: null,
+          runEventSequenceNumber: null,
+          runEventId: null,
+        }),
+      ),
+    );
+    const duplicateDirectRunIdBody = encodeRows(
+      originalRows.map((row) => {
+        if (row.id === contextlessDirectRunPrompt.id) {
+          return contextlessDirectRunPrompt;
+        }
+        if (row.id === contextlessDirectRunTerminal.id) {
+          return contextlessDirectRunTerminal;
+        }
+        return row.id === semanticRootRow.id
+          ? chatEventRowSchema.parse({
+              ...semanticRootRow,
+              id: contextlessDirectRunPrompt.id,
+            })
+          : row;
+      }),
+    );
+    const missingDirectRunModelBody = encodeRows(
+      contextlessDirectRunRows(
+        chatEventRowSchema.parse({
+          ...contextlessDirectRunPrompt,
+          payload: { userMessage: contextlessDocument },
+        }),
+        contextlessDirectRunTerminal,
+      ),
+    );
+    const malformedDirectRunModelBody = encodeRows(
+      contextlessDirectRunRows(
+        chatEventRowSchema.parse({
+          ...contextlessDirectRunPrompt,
+          payload: {
+            userMessage: {
+              version: 1,
+              parts: [
+                {
+                  type: "model",
+                  selectedModel: HISTORICAL_MORNING_BRIEF_SELECTED_MODEL,
+                },
+                ...contextlessDocument.parts,
+              ],
+            },
+          },
+        }),
+        contextlessDirectRunTerminal,
+      ),
+    );
+    const priorityDirectRunModelBody = encodeRows(
+      contextlessDirectRunRows(
+        chatEventRowSchema.parse({
+          ...contextlessDirectRunPrompt,
+          payload: {
+            userMessage: {
+              version: 1,
+              parts: [
+                ...contextlessDocument.parts,
+                {
+                  type: "model",
+                  selectedModel: HISTORICAL_MORNING_BRIEF_SELECTED_MODEL,
+                  serviceTier: "priority",
+                },
+              ],
+            },
+          },
+        }),
+        contextlessDirectRunTerminal,
+      ),
+    );
+    const futureDirectRunModelBody = encodeRows(
+      contextlessDirectRunRows(
+        chatEventRowSchema.parse({
+          ...contextlessDirectRunPrompt,
+          payload: {
+            userMessage: {
+              version: 1,
+              parts: [
+                ...contextlessDocument.parts,
+                {
+                  type: "model",
+                  selectedModel: HISTORICAL_MORNING_BRIEF_SELECTED_MODEL,
+                  writerRevision: 2,
+                },
+              ],
+            },
+          },
+        }),
+        contextlessDirectRunTerminal,
       ),
     );
     const missingRetirementPredecessorBody = encodeRows(
@@ -2476,6 +2904,72 @@ describe("chat event snapshot read endpoints", () => {
       {
         failureClass: "projection",
         object: gzipSync(futureModelClaimBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(missingDirectRunTerminalBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(crossThreadDirectRunTerminalBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(reorderedDirectRunTerminalBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(revokedDirectRunPromptBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(duplicateDirectRunPromptBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(duplicateDirectRunTerminalBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(duplicateDirectRunIdBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(missingDirectRunModelBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(malformedDirectRunModelBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(priorityDirectRunModelBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(futureDirectRunModelBody),
         projectionSubstage: "retired_context",
         projectionVariant: "missing_context_id",
       },
