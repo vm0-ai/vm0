@@ -1898,6 +1898,20 @@
       "unsupportedIntelMac": "Erfordert einen Apple Silicon Mac",
       "yourComputer": "Ihr Computer"
     },
+    "connectorAccountSwitch": {
+      "accountFallback": "Connector-Konto",
+      "actionFailed": "Kontowechsel fehlgeschlagen. Versuchen Sie es erneut.",
+      "customConnector": "Benutzerdefinierter Connector",
+      "loadFailed": "Dieses Connector-Konto konnte nicht geladen werden.",
+      "reconnectRequired": "Erneute Verbindung erforderlich. Spätere Läufe verwenden möglicherweise den vorhandenen Fallback.",
+      "retry": "Erneut versuchen",
+      "selected": "Zu {{account}} gewechselt",
+      "switch": "Wechseln",
+      "switching": "Wechseln...",
+      "title": "Zu {{account}} wechseln?",
+      "unavailableDescription": "Dieses Konto ist nicht vorhanden oder für diesen Connector nicht verfügbar.",
+      "unavailableTitle": "Konto nicht verfügbar"
+    },
     "connectors": {
       "accountForThread": "Konto für diesen Thread",
       "add": "{{connectorName}} hinzufügen",

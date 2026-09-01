@@ -1895,6 +1895,20 @@
       "unsupportedIntelMac": "Memerlukan Mac Apple silicon",
       "yourComputer": "Komputer Anda"
     },
+    "connectorAccountSwitch": {
+      "accountFallback": "Akun konektor",
+      "actionFailed": "Tidak dapat beralih akun. Coba lagi.",
+      "customConnector": "Konektor khusus",
+      "loadFailed": "Akun konektor ini tidak dapat dimuat.",
+      "reconnectRequired": "Perlu menghubungkan kembali. Proses berikutnya mungkin menggunakan cadangan yang ada.",
+      "retry": "Coba lagi",
+      "selected": "Beralih ke {{account}}",
+      "switch": "Beralih",
+      "switching": "Beralih...",
+      "title": "Beralih ke {{account}}?",
+      "unavailableDescription": "Akun ini tidak ada atau tidak tersedia untuk konektor ini.",
+      "unavailableTitle": "Akun tidak tersedia"
+    },
     "connectors": {
       "accountForThread": "Akun untuk utas ini",
       "add": "Tambahkan {{connectorName}}",

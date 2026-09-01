@@ -14806,6 +14806,59 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     await api.requestCancelRun(actor, gatedOn.runId, [200]);
   });
 
+  it("advertises connector account switching only while the feature is enabled", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: false,
+    });
+    const gatedOff = await api.createRun(actor, {
+      agentId,
+      prompt: "switch my connector account",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const gatedOffClaim = await api.claimRunnerJob(gatedOff.runId);
+    expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(
+      "okou connector account switch-request",
+    );
+    await api.requestCancelRun(actor, gatedOff.runId, [200]);
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    const gatedOn = await api.createRun(actor, {
+      agentId,
+      prompt: "switch my connector account",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
+    const appendSystemPrompt = gatedOnClaim.appendSystemPrompt ?? "";
+    expect(appendSystemPrompt).toContain(
+      "okou connector account list <slug> --json",
+    );
+    expect(appendSystemPrompt).toContain(
+      "Use only an exact `connectionId` returned by these commands",
+    );
+    expect(appendSystemPrompt).toContain(
+      "okou connector account switch-request <slug> --connection-id <uuid> --callback-prompt <prompt>",
+    );
+    expect(appendSystemPrompt).toContain(
+      "only the current thread's override for future runs",
+    );
+    expect(appendSystemPrompt).toContain(
+      "do not include secrets because it is included in the URL",
+    );
+    expect(appendSystemPrompt).toContain(
+      "only after the user confirms and the selection succeeds",
+    );
+
+    await api.requestCancelRun(actor, gatedOn.runId, [200]);
+  });
+
   it("advertises managed SEO tools by default", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();

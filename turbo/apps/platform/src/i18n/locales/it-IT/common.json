@@ -1928,6 +1928,20 @@
       "unsupportedIntelMac": "Richiede un Mac Apple Silicon",
       "yourComputer": "Il tuo computer"
     },
+    "connectorAccountSwitch": {
+      "accountFallback": "Account del connettore",
+      "actionFailed": "Impossibile cambiare account. Riprova.",
+      "customConnector": "Connettore personalizzato",
+      "loadFailed": "Impossibile caricare questo account del connettore.",
+      "reconnectRequired": "È necessario riconnettersi. Le esecuzioni successive potrebbero usare l'alternativa esistente.",
+      "retry": "Riprova",
+      "selected": "Passaggio a {{account}} completato",
+      "switch": "Cambia",
+      "switching": "Cambio in corso...",
+      "title": "Passare a {{account}}?",
+      "unavailableDescription": "Questo account non esiste o non è disponibile per questo connettore.",
+      "unavailableTitle": "Account non disponibile"
+    },
     "connectors": {
       "accountForThread": "Account per questo thread",
       "add": "Aggiungi {{connectorName}}",

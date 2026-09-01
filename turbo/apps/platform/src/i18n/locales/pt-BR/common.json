@@ -1928,6 +1928,20 @@
       "unsupportedIntelMac": "O {{assistantName}} Computer Use não é compatível com Macs com processador Intel.",
       "yourComputer": "Seu computador"
     },
+    "connectorAccountSwitch": {
+      "accountFallback": "Conta do conector",
+      "actionFailed": "Não foi possível mudar de conta. Tente novamente.",
+      "customConnector": "Conector personalizado",
+      "loadFailed": "Não foi possível carregar esta conta do conector.",
+      "reconnectRequired": "É necessário reconectar. Execuções posteriores podem usar a alternativa existente.",
+      "retry": "Tentar novamente",
+      "selected": "Conta alterada para {{account}}",
+      "switch": "Mudar",
+      "switching": "Mudando...",
+      "title": "Mudar para {{account}}?",
+      "unavailableDescription": "Esta conta não existe ou não está disponível para este conector.",
+      "unavailableTitle": "Conta indisponível"
+    },
     "connectors": {
       "accountForThread": "Conta para esta conversa",
       "add": "Adicionar {{connectorName}}",

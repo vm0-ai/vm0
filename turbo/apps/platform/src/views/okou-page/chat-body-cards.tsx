@@ -71,6 +71,7 @@ import {
 } from "../../signals/okou-page/attachment-chips.ts";
 import { BrowserSessionCard } from "./browser-session-card.tsx";
 import { BankingActionCard } from "./banking-action-card.tsx";
+import { ConnectorAccountActionCard } from "./connector-account-action-card.tsx";
 import { MailDraftCard } from "./mail-draft-card.tsx";
 
 type ChatImagePreviewLinkProps = {
@@ -285,6 +286,9 @@ export function MarkdownCardView({ card }: { card: MarkdownCardRef }) {
     }
     case "connector-action": {
       return <ConnectorActionCard signals={card.signals} />;
+    }
+    case "connector-account-action": {
+      return <ConnectorAccountActionCard signals={card.signals} />;
     }
     case "permission-action": {
       return <PermissionActionCard signals={card.signals} />;

@@ -1895,6 +1895,20 @@
       "unsupportedIntelMac": "AppleシリコンMacが必要です",
       "yourComputer": "あなたのコンピュータ"
     },
+    "connectorAccountSwitch": {
+      "accountFallback": "コネクターアカウント",
+      "actionFailed": "アカウントを切り替えられませんでした。もう一度お試しください。",
+      "customConnector": "カスタムコネクター",
+      "loadFailed": "このコネクターアカウントを読み込めませんでした。",
+      "reconnectRequired": "再接続が必要です。以降の実行では既存のフォールバックが使用される場合があります。",
+      "retry": "再試行",
+      "selected": "{{account}}に切り替えました",
+      "switch": "切り替える",
+      "switching": "切り替え中...",
+      "title": "{{account}}に切り替えますか？",
+      "unavailableDescription": "このアカウントは存在しないか、このコネクターでは利用できません。",
+      "unavailableTitle": "アカウントを利用できません"
+    },
     "connectors": {
       "accountForThread": "このスレッドのアカウント",
       "add": "{{connectorName}} を追加",
