@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
@@ -86,6 +86,8 @@ await test("passes complete resources for every locale and namespace", async (t)
 
 await test("fails before status when generated resources drift", async (t) => {
   const root = await createFixture(t);
+  const commonResource = join(root, "src/i18n/locales/en-US/common.json");
+  const resourceBeforeCheck = await readFile(commonResource, "utf8");
   await writeFile(
     join(root, "src/example.ts"),
     `
@@ -104,6 +106,7 @@ await test("fails before status when generated resources drift", async (t) => {
   );
   assert.match(result.stderr, /common\.json/);
   assert.doesNotMatch(result.stdout, /i18next Project Status/);
+  assert.equal(await readFile(commonResource, "utf8"), resourceBeforeCheck);
 });
 
 await test("fails for an empty required secondary translation", async (t) => {

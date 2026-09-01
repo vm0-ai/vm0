@@ -36,7 +36,7 @@ async function main(): Promise<void> {
 
   const { anyFileUpdated, hasErrors, results } = await runExtractor(
     extractorConfig,
-    { quiet: true },
+    { isDryRun: true, quiet: true },
   );
 
   if (anyFileUpdated || hasErrors) {
