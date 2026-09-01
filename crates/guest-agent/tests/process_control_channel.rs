@@ -363,6 +363,25 @@ async fn process_control_enabled_plain_run_does_not_wait_for_stdin_eof() -> Test
     Ok(())
 }
 
+#[tokio::test]
+async fn host_listener_startup_failure_is_preserved() -> TestResult<()> {
+    let tmp = tempfile::tempdir()?;
+    let overlong_listener_dir = tmp.path().join("x".repeat(108));
+    std::fs::create_dir(&overlong_listener_dir)?;
+
+    let error = match start_host_and_guest(&overlong_listener_dir, PathBuf::new()).await {
+        Ok(_) => return Err("overlong host listener path unexpectedly started".into()),
+        Err(error) => error,
+    };
+    let listener_error = error.downcast_ref::<io::Error>().ok_or_else(|| {
+        io::Error::other(format!("expected host listener io::Error, got {error}"))
+    })?;
+
+    assert_eq!(listener_error.kind(), io::ErrorKind::InvalidInput);
+
+    Ok(())
+}
+
 async fn collect_stdout_until(
     stdout_rx: &mut tokio::sync::mpsc::Receiver<vsock_host::ExecOutputEvent>,
     needle: &[u8],
@@ -401,10 +420,16 @@ async fn start_host_and_guest(dir: &Path, guest_agent: PathBuf) -> TestResult<Co
         vsock_host::VsockHost::wait_for_connection(&host_base_path, Duration::from_secs(5)).await
     });
 
-    let listener_ready: io::Result<()> = tokio::select! {
-        ready = common::wait_for_path(&listener, Duration::from_secs(5)) => ready,
+    tokio::select! {
+        ready = common::wait_for_path(&listener, Duration::from_secs(5)) => {
+            if let Err(error) = ready {
+                host_task.abort();
+                let _ = host_task.await;
+                return Err(error.into());
+            }
+        }
         completed = &mut host_task => {
-            match completed {
+            return match completed {
                 Ok(Ok(host)) => {
                     drop(host);
                     Err(io::Error::other("host accepted a guest before the test started one"))
@@ -412,12 +437,8 @@ async fn start_host_and_guest(dir: &Path, guest_agent: PathBuf) -> TestResult<Co
                 Ok(Err(error)) => Err(error),
                 Err(error) => Err(io::Error::other(format!("host listener task failed: {error}"))),
             }
+            .map_err(Into::into);
         }
-    };
-    if let Err(error) = listener_ready {
-        host_task.abort();
-        let _ = host_task.await;
-        return Err(error.into());
     }
 
     let guest = thread::spawn(move || {
