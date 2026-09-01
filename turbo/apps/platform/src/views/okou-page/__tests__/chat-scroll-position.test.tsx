@@ -423,6 +423,81 @@ function simpleUserEvents(
   });
 }
 
+function mockVirtualizedHistoryThread({
+  threadId,
+  prefix,
+}: {
+  readonly threadId: string;
+  readonly prefix: string;
+}): { readonly renderedStartIndex: () => number } {
+  const chatEvents: ChatEvent[] = Array.from({ length: 24 }, (_, index) => {
+    return {
+      id: `${prefix}-${index}`,
+      threadId,
+      eventType: "run.completed" as const,
+      content: `${prefix} reply ${index}`,
+      runId: `${prefix}-run-${index}`,
+      runLifecycleEvent: "completed",
+      createdAt: `2026-07-30T10:${String(index).padStart(2, "0")}:00Z`,
+      seqId: index + 1,
+    };
+  });
+  mockChatLifecycleWithoutBrowserSession({
+    threadId,
+    threadTitle: prefix,
+    chatEvents,
+  });
+  const renderedStartIndex = () => {
+    for (let index = 0; index <= 14; index++) {
+      if (
+        document.querySelector(
+          `[data-chat-scroll-anchor-event-id="${prefix}-${index}"]`,
+        )
+      ) {
+        return index;
+      }
+    }
+    return 14;
+  };
+  installChatLayout(
+    new Map([
+      [
+        threadId,
+        {
+          clientHeight: () => {
+            return 300;
+          },
+          scrollHeight: () => {
+            return 1200 + (14 - renderedStartIndex()) * 100;
+          },
+          eventRect: (eventId) => {
+            const index = Number(eventId.split("-").at(-1));
+            if (!Number.isFinite(index)) {
+              return undefined;
+            }
+            return {
+              top: 220 + (index - 14) * 100 + (14 - renderedStartIndex()) * 100,
+              height: 80,
+            };
+          },
+        },
+      ],
+    ]),
+  );
+  return { renderedStartIndex };
+}
+
+async function settleDetachedScrollWork(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 function mockLiveThread({
   threadId,
   initialEvents,
@@ -1456,6 +1531,78 @@ describe("chat scroll position", () => {
       expect(viewportOffsetTop("prepend-anchor-14")).toBe(-30);
       expect(container.scrollTop).toBe(1080);
     });
+  });
+
+  it("keeps a touch-driven history scroll on one prepend window", async () => {
+    const threadId = "e8000000-0000-4000-a000-000000000005";
+    const prefix = "touch-prepend";
+    const { renderedStartIndex } = mockVirtualizedHistoryThread({
+      threadId,
+      prefix,
+    });
+
+    await setupVisibleChatPage({ context, path: `/chats/${threadId}` });
+
+    const container = await waitFor(() => {
+      expect(screen.getByText(`${prefix} reply 23`)).toBeInTheDocument();
+      expect(renderedStartIndex()).toBe(14);
+      return chatScrollContainer();
+    });
+    fireEvent.touchStart(container, {
+      touches: [{ clientY: 500 }],
+    });
+    container.scrollTop = 80;
+    fireEvent.touchMove(container, {
+      touches: [{ clientY: 300 }],
+    });
+    fireEvent.scroll(container);
+
+    await screen.findByText(`${prefix} reply 4`);
+    await settleDetachedScrollWork();
+
+    expect(renderedStartIndex()).toBe(4);
+    expect(screen.queryByText(`${prefix} reply 3`)).toBeNull();
+    expect(viewportOffsetTop(`${prefix}-14`)).toBe(140);
+    fireEvent.touchEnd(container, { changedTouches: [{ clientY: 300 }] });
+  });
+
+  it("keeps momentum scrolling on the live history position", async () => {
+    const threadId = "e8000000-0000-4000-a000-000000000006";
+    const prefix = "momentum-prepend";
+    const { renderedStartIndex } = mockVirtualizedHistoryThread({
+      threadId,
+      prefix,
+    });
+
+    await setupVisibleChatPage({ context, path: `/chats/${threadId}` });
+
+    const container = await waitFor(() => {
+      expect(screen.getByText(`${prefix} reply 23`)).toBeInTheDocument();
+      expect(renderedStartIndex()).toBe(14);
+      return chatScrollContainer();
+    });
+    fireEvent.touchStart(container, {
+      touches: [{ clientY: 500 }],
+    });
+    container.scrollTop = 120;
+    fireEvent.touchMove(container, {
+      touches: [{ clientY: 300 }],
+    });
+    fireEvent.scroll(container);
+    fireEvent.touchEnd(container, { changedTouches: [{ clientY: 300 }] });
+
+    // Safari keeps moving the scroll container after touchend while momentum
+    // decays. This second scroll is browser-owned but still represents the
+    // reader's newest position.
+    container.scrollTop = 80;
+    fireEvent.scroll(container);
+
+    await screen.findByText(`${prefix} reply 4`);
+    await settleDetachedScrollWork();
+
+    expect(renderedStartIndex()).toBe(4);
+    expect(screen.queryByText(`${prefix} reply 3`)).toBeNull();
+    expect(viewportOffsetTop(`${prefix}-14`)).toBe(140);
   });
 
   it("restores a thread after its old DOM collapses", async () => {

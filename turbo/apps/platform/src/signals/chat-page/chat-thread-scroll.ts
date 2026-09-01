@@ -18,6 +18,7 @@ export interface ThreadScrollPosition {
 export interface ScrollToEventOptions {
   readonly behavior: ScrollBehavior;
   readonly viewportOffsetTop: number;
+  readonly preloadPreviousRenderWindow: boolean;
 }
 
 export interface ScrollAfterRenderRequest {
@@ -71,6 +72,17 @@ const threadScrollPositions$ = state(new Map<string, ThreadScrollPosition>());
 interface ThreadScrollPositionSignals {
   readonly threadScrollPosition$: Computed<ThreadScrollPosition | null>;
   readonly awayFromBottom$: Computed<boolean>;
+}
+
+interface ChatThreadScrollRenderWindow {
+  readonly afterThreadScrollPositionChanged$: Command<
+    Promise<void>,
+    [AbortSignal]
+  >;
+  readonly preloadPreviousRenderWindowForEvent$: Command<
+    Promise<void>,
+    [string, AbortSignal]
+  >;
 }
 
 /**
@@ -767,7 +779,7 @@ function createScrollContentOnRef(
 export function createChatThreadScrollSignals(
   threadId: string,
   position: ThreadScrollPositionSignals,
-  afterThreadScrollPositionChanged$: Command<Promise<void>, [AbortSignal]>,
+  renderWindow: ChatThreadScrollRenderWindow,
   chatEvents$: Computed<readonly ChatEvent[]>,
   initialEventsReady$: Computed<boolean>,
 ): ChatThreadScrollSignals {
@@ -781,7 +793,7 @@ export function createChatThreadScrollSignals(
   const scroll = createInternalScrollSignals(
     threadId,
     position,
-    afterThreadScrollPositionChanged$,
+    renderWindow.afterThreadScrollPositionChanged$,
   );
   const render = createRenderScrollSignals(threadId, scroll, runtime);
   const navigation = createScrollNavigationSignals(
@@ -819,6 +831,14 @@ export function createChatThreadScrollSignals(
       if (!eventExists) {
         L.debug("scroll target event not found", { threadId, eventId });
         return;
+      }
+      if (options.preloadPreviousRenderWindow) {
+        await set(
+          renderWindow.preloadPreviousRenderWindowForEvent$,
+          eventId,
+          signal,
+        );
+        signal.throwIfAborted();
       }
       const position: ThreadScrollPosition = {
         targetEventId: eventId,
