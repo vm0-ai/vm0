@@ -4682,6 +4682,20 @@
       "teamDescription": "Kembangkan tim Anda dengan 10 eksekusi paralel dan lebih banyak kredit."
     }
   },
+  "serviceStatus": {
+    "dismiss": "Tutup pembaruan layanan",
+    "label": "Pembaruan status layanan",
+    "statuses": {
+      "identified": "Masalah teridentifikasi",
+      "incident": "Insiden layanan",
+      "investigating": "Sedang diselidiki",
+      "maintenance": "Pemeliharaan",
+      "maintenanceInProgress": "Pemeliharaan sedang berlangsung",
+      "maintenanceScheduled": "Pemeliharaan terjadwal",
+      "monitoring": "Memantau pemulihan"
+    },
+    "viewUpdates": "Lihat pembaruan terbaru"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "Tambah akun",

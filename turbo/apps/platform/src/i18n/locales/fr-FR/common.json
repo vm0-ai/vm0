@@ -4746,6 +4746,20 @@
       "teamDescription": "Développez votre équipe avec 10 exécutions parallèles et plus de crédits."
     }
   },
+  "serviceStatus": {
+    "dismiss": "Masquer la mise à jour du service",
+    "label": "Mises à jour de l’état du service",
+    "statuses": {
+      "identified": "Problème identifié",
+      "incident": "Incident de service",
+      "investigating": "Investigation en cours",
+      "maintenance": "Maintenance",
+      "maintenanceInProgress": "Maintenance en cours",
+      "maintenanceScheduled": "Maintenance planifiée",
+      "monitoring": "Surveillance du rétablissement"
+    },
+    "viewUpdates": "Voir les dernières mises à jour"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "Ajouter un compte",

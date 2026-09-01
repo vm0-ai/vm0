@@ -4682,6 +4682,20 @@
       "teamDescription": "Scale your team with 10 parallel runs and more credits."
     }
   },
+  "serviceStatus": {
+    "dismiss": "Dismiss service update",
+    "label": "Service status updates",
+    "statuses": {
+      "identified": "Issue identified",
+      "incident": "Service incident",
+      "investigating": "Investigating",
+      "maintenance": "Maintenance",
+      "maintenanceInProgress": "Maintenance in progress",
+      "maintenanceScheduled": "Maintenance scheduled",
+      "monitoring": "Monitoring recovery"
+    },
+    "viewUpdates": "View latest updates"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "Add account",

@@ -4746,6 +4746,20 @@
       "teamDescription": "Amplía tu equipo con 10 ejecuciones paralelas y más créditos."
     }
   },
+  "serviceStatus": {
+    "dismiss": "Descartar actualización del servicio",
+    "label": "Actualizaciones del estado del servicio",
+    "statuses": {
+      "identified": "Problema identificado",
+      "incident": "Incidente del servicio",
+      "investigating": "Investigando",
+      "maintenance": "Mantenimiento",
+      "maintenanceInProgress": "Mantenimiento en curso",
+      "maintenanceScheduled": "Mantenimiento programado",
+      "monitoring": "Supervisando la recuperación"
+    },
+    "viewUpdates": "Ver las últimas actualizaciones"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "Añadir cuenta",
