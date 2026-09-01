@@ -37,7 +37,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("resolve-vm0-built-in-model-route"),
     selected_model: z.string(),
-    fallback_enabled: z.boolean(),
   }),
   z.object({
     action: z.literal("set-vm0-built-in-candidate-cooldown"),

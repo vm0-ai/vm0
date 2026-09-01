@@ -79,29 +79,12 @@ export function builtInModelRuntimeTarget(
   return target;
 }
 
-async function resolvePrimaryRoute(
-  db: Db,
-  selectedModel: string,
-): Promise<BuiltInModelRuntimeRoute | null> {
-  const target = builtInModelRuntimeTarget(selectedModel);
-  const [key] = await db
-    .select({ id: builtInModelKeys.id })
-    .from(builtInModelKeys)
-    .where(eq(builtInModelKeys.vendor, target.vendor))
-    .limit(1);
-  return key ? routeFromTarget(target, key) : null;
-}
-
 export async function resolveBuiltInModelRuntimeRoute(
   db: Db,
   selectedModel: string,
-  fallbackEnabled = false,
 ): Promise<BuiltInModelRuntimeRoute | null> {
   if (runtimeRouteUnavailableForTest(selectedModel)) {
     return null;
-  }
-  if (!fallbackEnabled) {
-    return await resolvePrimaryRoute(db, selectedModel);
   }
 
   const timestamp = nowDate();

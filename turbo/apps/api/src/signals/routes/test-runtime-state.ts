@@ -678,7 +678,6 @@ async function vm0BuiltInModelActionResponse(
       const route = await resolveBuiltInModelRuntimeRoute(
         db,
         body.selected_model,
-        body.fallback_enabled,
       );
       signal.throwIfAborted();
       return {

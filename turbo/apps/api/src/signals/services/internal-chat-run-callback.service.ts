@@ -2649,7 +2649,6 @@ async function resolveQueuedMessageModelRoute(args: {
   readonly orgId: string;
   readonly contextType: QueuedUserMessageContextType;
   readonly timing?: ChatCallbackPreCreateTimingCollector;
-  readonly fallbackEnabled: boolean;
 }): Promise<QueuedMessageModelRouteResolution> {
   const modelContext = await measureChatCallbackPreCreateTiming(
     args.timing,
@@ -2675,11 +2674,7 @@ async function resolveQueuedMessageModelRoute(args: {
   const selectedModel = modelContext.pin.selectedModel;
   const builtInModelRuntimeRoute =
     isBuiltInModelProviderType(effectiveModelProvider) && selectedModel
-      ? await resolveBuiltInModelRuntimeRoute(
-          args.db,
-          selectedModel,
-          args.fallbackEnabled,
-        )
+      ? await resolveBuiltInModelRuntimeRoute(args.db, selectedModel)
       : undefined;
   if (
     isBuiltInModelProviderType(effectiveModelProvider) &&
@@ -2687,12 +2682,9 @@ async function resolveQueuedMessageModelRoute(args: {
   ) {
     return {
       error: {
-        code: args.fallbackEnabled
-          ? "MODEL_PROVIDER_UNAVAILABLE"
-          : "PROVIDER_UNAVAILABLE",
-        message: args.fallbackEnabled
-          ? "Every built-in model route for this model is temporarily unavailable"
-          : "No model provider configured: no built-in model key is configured",
+        code: "MODEL_PROVIDER_UNAVAILABLE",
+        message:
+          "Every built-in model route for this model is temporarily unavailable",
       },
     };
   }
@@ -3219,10 +3211,6 @@ async function buildCreateQueuedChatRunInput(
     orgId: args.agent.orgId,
     contextType: args.queuedMessage.contextType,
     timing: args.timing,
-    fallbackEnabled: isFeatureEnabled(
-      FeatureSwitchKey.BuiltInModelProviderFallback,
-      featureSwitchContext,
-    ),
   });
   const userMessageProjection = queuedUserMessageProjection(
     args.queuedMessage.userMessage,

@@ -164,7 +164,7 @@ Evaluation has two layers (lowest to highest priority):
    `user_feature_switches` keyed by `(orgId, userId)`. Some switches are
    org-scoped and stored under the org sentinel user id (`ORG_SENTINEL_USER_ID`,
    `"__org__"`); `ORG_SCOPED_FEATURE_SWITCH_KEYS` currently holds
-   `ChatErrorRecovery`, `BuiltInModelProviderFallback`, and `PiLoop`. Written
+   `ChatErrorRecovery`, `PiLoop`, and `PresentationTemplates`. Written
    via the Lab page toggles or
    `window._vm0.featureSwitches.myFeature = true` (both call
    `POST /api/feature-switches`). Cleared via the Lab page "Reset all"
