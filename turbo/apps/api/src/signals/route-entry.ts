@@ -261,18 +261,26 @@ export function withApiNamespaceAliases(
  * bundle and a stale tab recovers on reload; and the CLI resolves from
  * `CLI_PKG_URL`, which the API deploy rewrites, so it swaps with the API.
  *
- * Measured over the retained window 2026-08-27 22:19Z to 2026-09-01 08:32Z with
- * `user_agent` containing `curl` excluded — that field held nothing but this
- * migration's own probes — the log carries seventeen distinct branded templates
- * in total and fifteen once `curl` is dropped, pulled without truncation and
- * matched with `:param` rewritten to `[^/]+`. Not one of them matches any of
- * the forty-three. Thirty-seven of the removed rows also had live neutral
- * traffic in the same window against zero branded, which is the crossover
- * reading #28916 relied on. The other six — `computer-use/audit-events`,
- * `slack/channels` and the four `integrations/slack` rows that are not the
- * status read — were silent on the neutral path too, so they retire on the
- * producer sweep rather than on a count, which is the distinction #30668
- * recorded.
+ * Measured over the retained window 2026-08-27 22:19:57Z to 2026-09-01
+ * 08:32:52Z with `user_agent` containing `curl` excluded — that field held
+ * nothing but this migration's own probes — the log carries seventeen distinct
+ * branded templates in total, fourteen of which took a request that is not
+ * `curl`, pulled without truncation and matched with `:param` rewritten to
+ * `[^/]+`. Not one of them matches any of the forty-three. Thirty-seven of the
+ * removed rows also had live neutral traffic in the same window against zero
+ * branded, which is the crossover reading #28916 relied on. The other six —
+ * `computer-use/audit-events`, `slack/channels` and the four
+ * `integrations/slack` rows that are not the status read — were silent on the
+ * neutral path too, so they retire on the producer sweep rather than on a
+ * count, which is the distinction #30668 recorded.
+ *
+ * The web surface also has a gate that can be checked rather than waited out.
+ * `lib/web-client-compatibility.json` holds the floor at `0.812.3`, and #28974
+ * recorded the App crossover at `0.780.0` — every build up to `0.779.x` called
+ * a branded form and every build from `0.780.0` called the neutral one. The
+ * floor already rejects every build that could emit a branded path with `426`,
+ * so the old-web-client gate in `docs/fallback.md` section 7 has passed rather
+ * than merely being assumed from the ~2 day bundle window.
  *
  * That sweep's inventory also listed
  * `computer-use/host/commands/:commandId/complete`, and it was held back for
@@ -286,8 +294,8 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // and every run row but the agent telemetry read; #28916 then removed the
   // catalog collection, push subscriptions and that agent telemetry read on
   // cutover evidence; and #30807 removed `realtime/token`, whose neutral path
-  // took 40,982 requests from the platform bundle in the same window its
-  // branded forms took none. `/api/zero/logs/:id` was not in that removal: it
+  // took 40,923 requests from 484 addresses in the same window its branded
+  // forms took none. `/api/zero/logs/:id` was not in that removal: it
   // took two requests inside the window from a caller reporting no client type.
   "/api/logs/:id": ["/api/okou/logs/:id", "/api/zero/logs/:id"],
   // #28466: the desktop Computer Use family, and the one place left in this
@@ -306,7 +314,7 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // agent side of the family, called by the CLI rather than by an installed
   // Desktop build. #30807 then removed `audit-events` and the `hosts`
   // collection, the two the Desktop build does not hardcode — `hosts` is a
-  // platform read that took 17,293 neutral requests from 397 addresses against
+  // platform read that took 17,255 neutral requests from 396 addresses against
   // zero branded, and `audit-events` has no caller in this repository at all,
   // which is why its neutral path is silent too.
   //
@@ -325,12 +333,12 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // and by #30807, whose class argument reaches every other row it listed. It
   // is called only when a write command finishes, so its silence measures how
   // often that happened rather than whether its caller is gone. The #30807
-  // window puts a number on it: 239 neutral completions against 156,270 neutral
-  // `host/commands/next`, so the four branded polls Desktop `okou` 0.38.2 sent
-  // in that window should produce 0.006 branded completions. Removing it would
-  // 404 the completion half of a loop whose polling half is kept on purpose,
-  // which is the failure `hosts/start` and `host/stop` avoid; #30804 is what
-  // retires the loop as a whole.
+  // window puts a number on it: 239 neutral completions against 156,191
+  // neutral `host/commands/next`, so the four branded polls Desktop `okou`
+  // 0.38.2 sent in that window should produce 0.006 branded completions.
+  // Removing it would 404 the completion half of a loop whose polling half is
+  // kept on purpose, which is the failure `hosts/start` and `host/stop` avoid;
+  // #30804 is what retires the loop as a whole.
   //
   // Four of these paths were served by the legacy-path table #30667 deleted
   // before this move and are served by these rows after it: the contract no
@@ -382,7 +390,7 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // crawlers, the `vm0-seo-health` monitor and browser user agents on distinct
   // addresses, every one answered 307. The branded install URL is published
   // somewhere a crawler can reach, so it has no drain window at all, and the
-  // #30807 window measured 21 more of them from 19 addresses.
+  // #30807 window measured 21 more non-`curl` requests on that form.
   //
   // `slack/oauth/connect` took no request on any of its three forms in either
   // window, the neutral one included, so its branded silence measures a call
@@ -447,7 +455,7 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // `model-providers` collection, `org/logo`, `org/members` and `usage/record`,
   // all four platform-held and cut over on 08-21; and #30807 removed
   // `model-policies`, which has no desktop caller and whose neutral path took
-  // 2,104 requests from the platform bundle and the CLI against zero branded.
+  // 2,100 requests from 297 addresses against zero branded.
   //
   // The CI bootstrap steps in `.github/workflows/turbo.yml` used to call
   // `/api/okou/model-providers` on purpose, to exercise the compatibility these
