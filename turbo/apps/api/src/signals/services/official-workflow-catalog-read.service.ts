@@ -1,4 +1,5 @@
 import {
+  OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION,
   officialWorkflowAcceptedRevisionSchema,
   officialWorkflowCatalogReleasePayloadSchema,
   officialWorkflowDefinitionRevisionPayloadSchema,
@@ -31,6 +32,21 @@ interface OfficialWorkflowRevisionRow {
   readonly storageName: string;
   readonly storageId: string;
   readonly storageVersion: string;
+}
+
+function catalogSchemaVersion(payload: unknown): number {
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    Array.isArray(payload) ||
+    !("schemaVersion" in payload) ||
+    typeof payload.schemaVersion !== "number" ||
+    !Number.isSafeInteger(payload.schemaVersion) ||
+    payload.schemaVersion < 1
+  ) {
+    throw new Error("Official Workflow catalog payload version is invalid");
+  }
+  return payload.schemaVersion;
 }
 
 function acceptedRevisionFromRow(
@@ -81,6 +97,11 @@ export async function readAcceptedOfficialWorkflowCatalog(
     .limit(1);
   signal?.throwIfAborted();
   if (!row) {
+    return null;
+  }
+  if (
+    catalogSchemaVersion(row.payload) < OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION
+  ) {
     return null;
   }
   return {

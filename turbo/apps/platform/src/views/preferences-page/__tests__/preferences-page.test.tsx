@@ -4,8 +4,12 @@ import {
   type UserPreferencesResponse,
   userPreferencesContract,
 } from "@okouai/api-contracts/contracts/user-preferences";
+import {
+  morningBriefPreferenceContract,
+  type MorningBriefPreferenceResponse,
+} from "@okouai/api-contracts/contracts/morning-brief-preference";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   MOCK_BACKEND_COMMIT_SHA,
@@ -290,6 +294,112 @@ describe("preferences page", () => {
           expect.objectContaining({ timezone: "America/New_York" }),
         ]),
       );
+    });
+  });
+
+  it("deep-links to Morning Brief and displays the persisted next run in its persisted time zone", async () => {
+    const scrollIntoView = vi.fn<HTMLElement["scrollIntoView"]>();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    const nextRunAt = "2030-01-02T23:30:00.000Z";
+    context.mocks.api(morningBriefPreferenceContract.get, ({ respond }) => {
+      return respond(200, {
+        enabled: true,
+        nextRunAt,
+        timezone: "Asia/Shanghai",
+        unavailableReason: null,
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/settings?tab=timezone&focus=morning-brief",
+    });
+
+    const card = await screen.findByTestId("morning-brief-preference");
+    const formatted = new Intl.DateTimeFormat("en-US", {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: "Asia/Shanghai",
+    }).format(new Date(nextRunAt));
+    expect(
+      screen.getByText(`Next email ${formatted} (Asia/Shanghai)`),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Morning Brief" })).toBeChecked();
+    expect(screen.queryByText("Send now")).not.toBeInTheDocument();
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "center" });
+    expect(card).toHaveFocus();
+  });
+
+  it("updates Morning Brief through the preference facade and renders actionable unavailable and conflict states", async () => {
+    const captured: boolean[] = [];
+    let preference: MorningBriefPreferenceResponse = {
+      enabled: false,
+      nextRunAt: null,
+      timezone: "Asia/Shanghai",
+      unavailableReason: null,
+    };
+    let conflicted = false;
+    context.mocks.api(morningBriefPreferenceContract.get, ({ respond }) => {
+      if (conflicted) {
+        return respond(409, {
+          error: {
+            code: "MORNING_BRIEF_MULTIPLE_INSTALLATIONS",
+            message: "conflict",
+          },
+        });
+      }
+      return respond(200, preference);
+    });
+    context.mocks.api(
+      morningBriefPreferenceContract.update,
+      ({ body, respond }) => {
+        captured.push(body.enabled);
+        if (!body.enabled) {
+          conflicted = true;
+          return respond(409, {
+            error: {
+              code: "MORNING_BRIEF_MULTIPLE_INSTALLATIONS",
+              message: "conflict",
+            },
+          });
+        }
+        preference = body.enabled
+          ? {
+              enabled: true,
+              nextRunAt: "2030-01-02T23:00:00.000Z",
+              timezone: "Asia/Shanghai",
+              unavailableReason: null,
+            }
+          : {
+              enabled: false,
+              nextRunAt: null,
+              timezone: "Asia/Shanghai",
+              unavailableReason: null,
+            };
+        return respond(200, preference);
+      },
+    );
+
+    detachedSetupPage({ context, path: "/settings?tab=timezone" });
+    click(await screen.findByRole("switch", { name: "Morning Brief" }));
+    await waitFor(() => {
+      expect(captured).toStrictEqual([true]);
+      expect(
+        screen.getByRole("switch", { name: "Morning Brief" }),
+      ).toBeChecked();
+    });
+
+    click(screen.getByRole("switch", { name: "Morning Brief" }));
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Multiple Morning Brief installations exist/),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("switch", { name: "Morning Brief" }),
+      ).toHaveAttribute("aria-disabled", "true");
     });
   });
 

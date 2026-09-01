@@ -1297,11 +1297,10 @@ describe("zero sidebar account menu", () => {
     );
   });
 
-  it("links the VM0 satellite to the Okou hosted user profile after cutover", async () => {
-    vi.stubEnv(
-      "VITE_CLERK_PUBLISHABLE_KEY_PROD",
-      "pk_live_Y2xlcmsuYXBwLm9rb3UuYWkk",
-    );
+  it("keeps the VM0 satellite on the existing hosted profile after cutover", async () => {
+    Reflect.set(window, "__vm0ClerkBootstrap", {
+      productionPrimaryAppDomain: "app.okou.ai",
+    });
     try {
       context.mocks.browser.url("https://app.vm0.ai/");
       prepareDefaultAgent();
@@ -1322,10 +1321,10 @@ describe("zero sidebar account menu", () => {
       await screen.findByRole("dialog", { name: "Settings" });
       expect(linkByText("Manage")).toHaveAttribute(
         "href",
-        "https://accounts.app.okou.ai/user",
+        "https://accounts.vm0.ai/user",
       );
     } finally {
-      vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PROD", "test_production_key");
+      Reflect.deleteProperty(window, "__vm0ClerkBootstrap");
     }
   });
 

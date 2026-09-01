@@ -5217,6 +5217,18 @@
         },
         "title": "Lingua"
       },
+      "morningBrief": {
+        "conflict": "Morning Brief non è temporaneamente disponibile perché lo stato dell'installazione non è coerente. Riprova al termine della riconciliazione.",
+        "description": "Ricevi ogni giorno alle 7:00, nel tuo fuso orario, un'email con le priorità da Gmail, GitHub, Calendar e Chats non lette.",
+        "loading": "Caricamento delle impostazioni di Morning Brief...",
+        "missingDefaultAgent": "Scegli un Agent predefinito utilizzabile prima di attivare Morning Brief.",
+        "missingTimezone": "Imposta un fuso orario valido prima di attivare Morning Brief.",
+        "multipleInstallations": "Esistono più installazioni di Morning Brief. Risolvi il conflitto prima di modificare questa preferenza.",
+        "nextEmail": "Prossima email: {{date}} ({{timezone}})",
+        "retry": "Riprova",
+        "retryMessage": "Non è stato possibile caricare o aggiornare le impostazioni di Morning Brief. Riprova per continuare.",
+        "title": "Riepilogo mattutino"
+      },
       "pageDescription": "Gestisci l'aspetto e le preferenze di esecuzione degli agenti",
       "pageTitle": "Preferenze",
       "send": {

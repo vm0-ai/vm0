@@ -3,7 +3,23 @@ use std::path::PathBuf;
 use ::sandbox::*;
 use async_trait::async_trait;
 
-/// A mock [`SnapshotProvider`] that returns dummy paths.
+/// A minimal `SnapshotProvider` for tests that need snapshot output wiring.
+///
+/// This mock intentionally does not create a reusable snapshot:
+///
+/// - It retains only `config.output_dir` from the snapshot configuration.
+/// - Its default `SnapshotProvider::create_snapshot` implementation returns
+///   `snapshot.bin`, `memory.bin`, and `cow.img` paths below `output_dir`, but
+///   does not create those files.
+/// - `PendingSnapshotPublish::commit` and `PendingSnapshotPublish::discard`
+///   have no filesystem side effects.
+/// - `SnapshotProvider::config_hash` always returns
+///   `mock-snapshot-config-hash`.
+/// - `SnapshotProvider::is_complete` always returns `false`, regardless of
+///   the supplied output directory.
+///
+/// Use it for output wiring and default publish-flow tests. It does not model
+/// reusable snapshots or cache-hit state.
 pub struct MockSnapshotProvider;
 
 struct MockPendingSnapshotPublish {

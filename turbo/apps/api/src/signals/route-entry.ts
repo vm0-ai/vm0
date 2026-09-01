@@ -169,8 +169,9 @@ export function withApiNamespaceAliases(
  * shipped CLI, desktop or platform build emits a branded literal for any of
  * them. The desktop build's entire hardcoded surface is `auth/me`,
  * `computer-use/{heartbeat,host/*,hosts/start}`, `desktop/{updates,
- * migration-policy}`, `feature-switches` and `org`, and every one of those
- * rows is kept.
+ * migration-policy}`, `feature-switches` and `org`, and #28917 kept every one
+ * of those rows; #30804 later retired the Computer Use host rows and
+ * `feature-switches` from it.
  *
  * Three rows the #28917 inventory listed were held back, and each names a way
  * a zero-count reading fails:
@@ -210,10 +211,10 @@ export function withApiNamespaceAliases(
  * - A conditional endpoint is quiet for reasons that have nothing to do with a
  *   drain. `computer-use/host/commands/:commandId/complete` is called only when
  *   a write command finishes, so its silence measures how often that happened,
- *   not whether the caller of `host/commands/next` — which this table still
- *   holds — is still there. Read a row against the traffic of the loop it
- *   belongs to, not only against its own. This is #28917's call-rate rule
- *   reached from the other direction.
+ *   not whether the caller of `host/commands/next` — which this table held at
+ *   the time, and #30804 has since removed — is still there. Read a row against
+ *   the traffic of the loop it belongs to, not only against its own. This is
+ *   #28917's call-rate rule reached from the other direction.
  *
  * A production traffic sweep does not see this repository's own CI. E2E runs
  * against preview deployments, so a row called only by a workflow step or an
@@ -243,30 +244,53 @@ export function withApiNamespaceAliases(
  * have drained it. Ask which of the two a producer is before reading a deploy
  * as a drain.
  *
- * #30807 then took forty-three rows at once and left 15. It is the first
- * removal argued as a class rather than row by row, and it rests on two facts
- * that hold for the whole set. No live source emits a branded path: a sweep of
- * `turbo/` outside tests, this file and `api-namespaces.ts` finds no
- * `/api/okou/**` or `/api/zero/**` string literal, and `packages/api-contracts`
- * declares no branded contract path at all after #28984, so every caller in
- * every shipped build derives the neutral path from a contract. The exception
- * is a build that hardcodes the path instead of deriving it, and there is
- * exactly one: the installed macOS Desktop app. Its entire branded surface at
- * `6c2036fa`, the commit before #28487 moved it, is `auth/me`, `org`,
- * `feature-switches`, the stable `desktop/updates` DMG and the five
- * `computer-use` host endpoints — and every row those name is kept. The two
- * remaining holders recover on their own: `apps/platform/public/sw.js`
- * registers only `install`, `push` and `notificationclick`, has no `fetch`
- * handler and never touches the Cache API, so no service worker can pin an old
- * bundle and a stale tab recovers on reload; and the CLI resolves from
- * `CLI_PKG_URL`, which the API deploy rewrites, so it swaps with the API.
+ * #30804 then took the four Computer Use host rows and `feature-switches`,
+ * leaving 53. Those five held the last branded traffic an installed Okou
+ * Desktop build produced, and the reading that retired them is neither a
+ * silence nor a repointed producer: every branded request in the window came
+ * from a machine that was already running a current build on the neutral paths
+ * on either side of it. Two addresses emitted all eighteen, one at
+ * `x_client_version` 0.38.2 over thirty-four seconds on 08-30 and one at
+ * 0.34.0 for a single `feature-switches` read on 09-01, and both addresses
+ * report 0.40.4 by the end of the window. An old build launched briefly beside
+ * a current one is not a caller with a window to wait out, which is why this
+ * removal is an owner decision — recorded on #30804 — rather than a drain.
+ *
+ * What that leaves for the next sweep to reuse: read `x_client_version`
+ * per address over the whole window, not only on the branded requests. A
+ * version far below the current one looks like a stranded install until the
+ * same address is seen on the current version an hour later. The host
+ * inventory does not settle it either — the two `computer_use_hosts` rows below
+ * 0.38.100 that were active in the same week sent no request in this window at
+ * all, and the versions that did send one have no row.
+ *
+ * #30807 then took forty-four rows at once and left 9. It is the first removal
+ * argued as a class rather than row by row, and it rests on two facts that hold
+ * for the whole set. No live source emits a branded path: a sweep of `turbo/`
+ * outside tests, this file and `api-namespaces.ts` finds no `/api/okou/**` or
+ * `/api/zero/**` string literal, and `packages/api-contracts` declares no
+ * branded contract path at all after #28984, so every caller in every shipped
+ * build derives the neutral path from a contract. The exception is a build that
+ * hardcodes the path instead of deriving it, and there is exactly one: the
+ * installed macOS Desktop app. Its entire branded surface at `6c2036fa`, the
+ * commit before #28487 moved it, is `auth/me`, `org`, `feature-switches`, the
+ * stable `desktop/updates` DMG and the five `computer-use` host endpoints.
+ * `org` and the `desktop/updates` rows are kept; `feature-switches` and four of
+ * the host endpoints went in #30804; and the fifth,
+ * `host/commands/:commandId/complete`, is the one row of this removal that
+ * needed #30804's reading rather than this one. The other two holders recover
+ * on their own: `apps/platform/public/sw.js` registers only `install`, `push`
+ * and `notificationclick`, has no `fetch` handler and never touches the Cache
+ * API, so no service worker can pin an old bundle and a stale tab recovers on
+ * reload; and the CLI resolves from `CLI_PKG_URL`, which the API deploy
+ * rewrites, so it swaps with the API.
  *
  * Measured over the retained window 2026-08-27 22:19:57Z to 2026-09-01
  * 08:32:52Z with `user_agent` containing `curl` excluded — that field held
  * nothing but this migration's own probes — the log carries seventeen distinct
  * branded templates in total, fourteen of which took a request that is not
  * `curl`, pulled without truncation and matched with `:param` rewritten to
- * `[^/]+`. Not one of them matches any of the forty-three. Thirty-seven of the
+ * `[^/]+`. Not one of them matches any of the forty-four. Thirty-eight of the
  * removed rows also had live neutral traffic in the same window against zero
  * branded, which is the crossover reading #28916 relied on. The other six —
  * `computer-use/audit-events`, `slack/channels` and the four
@@ -278,13 +302,28 @@ export function withApiNamespaceAliases(
  * `lib/web-client-compatibility.json` holds the floor at `0.812.3`, and #28974
  * recorded the App crossover at `0.780.0` — every build up to `0.779.x` called
  * a branded form and every build from `0.780.0` called the neutral one. The
- * floor already rejects every build that could emit a branded path with `426`,
+ * floor already answers every build that could emit a branded path with `426`,
  * so the old-web-client gate in `docs/fallback.md` section 7 has passed rather
  * than merely being assumed from the ~2 day bundle window.
  *
- * That sweep's inventory also listed
- * `computer-use/host/commands/:commandId/complete`, and it was held back for
- * the third time; the comment on the row itself carries the reason.
+ * The Computer Use family left the table entirely in that removal, and only one
+ * of its three remaining rows was a close call. `audit-events` has no caller in
+ * this repository at all, and `hosts` is the platform host list rather than the
+ * desktop host loop — 17,255 neutral requests from 396 addresses against zero
+ * branded — so the attribution the earlier comment gave them was wrong and
+ * neither needed a desktop argument. `host/commands/:commandId/complete` did.
+ * It is hardcoded in the Desktop build, and #28916 and #28917 both held it back
+ * because a conditional endpoint's silence measures a call rate: 239 neutral
+ * completions against 156,191 neutral `host/commands/next` puts the branded
+ * count the old build's four polls should produce at 0.006 requests, so zero
+ * proves nothing. #30804 is what settles it. The single address that sent any
+ * branded Computer Use request in this window, 80.251.209.110, ran 0.38.106
+ * through 0.40.4 on the neutral paths continuously across it and sent its
+ * neutral completions at 0.38.126 and 0.38.128, so the 0.38.2 build is one
+ * launched briefly beside a current one rather than a stranded install. #30804
+ * also removed both halves of the loop this row belongs to, so that build can
+ * no longer be handed a command to complete: the reader has outlived its
+ * producer, which is `docs/fallback.md` section 5, and it goes with the rest.
  */
 type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
 
@@ -295,78 +334,9 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // catalog collection, push subscriptions and that agent telemetry read on
   // cutover evidence; and #30807 removed `realtime/token`, whose neutral path
   // took 40,923 requests from 484 addresses in the same window its branded
-  // forms took none. `/api/zero/logs/:id` was not in that removal: it
-  // took two requests inside the window from a caller reporting no client type.
+  // forms took none. `/api/zero/logs/:id` was not in that removal: it took two
+  // requests inside the window from a caller reporting no client type.
   "/api/logs/:id": ["/api/okou/logs/:id", "/api/zero/logs/:id"],
-  // #28466: the desktop Computer Use family, and the one place left in this
-  // table where an installed build hardcodes a branded path rather than
-  // deriving it from a contract. `computer-use-host.ts` at `6c2036fa`, the
-  // commit before #28487 moved it, spells out the `okou` form of
-  // `computer-use/hosts/start`, `heartbeat`, `host/commands/next`,
-  // `host/commands/${commandId}/complete` and `host/stop`, and an installed
-  // build updates on its owner's schedule rather than on a deploy, so it has no
-  // window at all. Both branded forms are owed on all five.
-  //
-  // The slice had sixteen rows. #28709 removed the three authorization-request
-  // rows, `commands/:commandId/plugin-content` and `plugin-commands` on
-  // zero-traffic evidence, and #28711 removed `commands`, `commands/:commandId`,
-  // `commands/:commandId/screenshot` and `write-commands`: those four are the
-  // agent side of the family, called by the CLI rather than by an installed
-  // Desktop build. #30807 then removed `audit-events` and the `hosts`
-  // collection, the two the Desktop build does not hardcode — `hosts` is a
-  // platform read that took 17,255 neutral requests from 396 addresses against
-  // zero branded, and `audit-events` has no caller in this repository at all,
-  // which is why its neutral path is silent too.
-  //
-  // #28917 measured `hosts/start` and `host/stop` silent on both branded forms
-  // and kept them anyway, because for this family silence is not drain
-  // evidence. Both are hardcoded in every Desktop build up to 0.38.53, and
-  // those builds were still sending branded `heartbeat` and
-  // `host/commands/next` inside that window. Start and stop fire once per
-  // session, so at the measured rate the branded count they should produce is
-  // under one request: zero is what a fully live caller looks like there.
-  // Removing them would also strand a build that can still poll and heartbeat
-  // but can no longer open or close a session.
-  //
-  // `host/commands/:commandId/complete` is that reading reached from the other
-  // direction, and it has now been held back three times — by #28916, by #28917
-  // and by #30807, whose class argument reaches every other row it listed. It
-  // is called only when a write command finishes, so its silence measures how
-  // often that happened rather than whether its caller is gone. The #30807
-  // window puts a number on it: 239 neutral completions against 156,191
-  // neutral `host/commands/next`, so the four branded polls Desktop `okou`
-  // 0.38.2 sent in that window should produce 0.006 branded completions.
-  // Removing it would 404 the completion half of a loop whose polling half is
-  // kept on purpose, which is the failure `hosts/start` and `host/stop` avoid;
-  // #30804 is what retires the loop as a whole.
-  //
-  // Four of these paths were served by the legacy-path table #30667 deleted
-  // before this move and are served by these rows after it: the contract no
-  // longer declares a branded path for the expansion to derive. Removal of them
-  // follows #26701's evidence rules like every other row here.
-  //
-  // A key holds its path parameter verbatim, because the lookup below matches
-  // `entry.route.path` exactly rather than an expanded request path.
-  "/api/computer-use/heartbeat": [
-    "/api/okou/computer-use/heartbeat",
-    "/api/zero/computer-use/heartbeat",
-  ],
-  "/api/computer-use/host/commands/:commandId/complete": [
-    "/api/okou/computer-use/host/commands/:commandId/complete",
-    "/api/zero/computer-use/host/commands/:commandId/complete",
-  ],
-  "/api/computer-use/host/commands/next": [
-    "/api/okou/computer-use/host/commands/next",
-    "/api/zero/computer-use/host/commands/next",
-  ],
-  "/api/computer-use/host/stop": [
-    "/api/okou/computer-use/host/stop",
-    "/api/zero/computer-use/host/stop",
-  ],
-  "/api/computer-use/hosts/start": [
-    "/api/okou/computer-use/hosts/start",
-    "/api/zero/computer-use/hosts/start",
-  ],
   // #28464: the Slack, Teams, and Feishu connect and OAuth-start routes, of
   // which #28709 kept only the Slack rows and #30807 then removed
   // `slack/channels`, whose branded forms took nothing while every caller in
@@ -395,11 +365,10 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // `slack/oauth/connect` took no request on any of its three forms in either
   // window, the neutral one included, so its branded silence measures a call
   // rate rather than a drain and cannot retire it — the rule the table header
-  // states, reached the same way `computer-use/host/commands/:commandId/
-  // complete` reaches it. It also shares a producer with `slack/oauth/install`,
-  // whose landing-page buttons were only repointed at 07:04 on 2026-09-01 in
-  // `vm0-marketing#523`, so the #30807 window spans its fix and has no clean
-  // baseline.
+  // states. It also shares a producer with `slack/oauth/install`, whose
+  // landing-page buttons were only repointed at 07:04 on 2026-09-01 in
+  // `vm0-marketing#523`, so the #30807 window spans its fix and gives it no
+  // clean baseline.
   //
   // Removal follows the #26701 evidence gate like every other row, not either
   // clock.
@@ -428,7 +397,10 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // not be removed on the #26701 evidence rules alone: retiring the branded
   // forms needs the Desktop-side drain gate tracked by #26364. That is why
   // #28715 held them back, and why #30807's class argument does not reach them
-  // either — an installed application has no equivalent of a page refresh.
+  // either — the recovery it relies on is a page reload, and an installed
+  // application has no equivalent. #30804's reading does not reach them either:
+  // a download is a one-shot the owner starts by clicking, so nothing about
+  // this row's silence says whether an old install is still out there.
   //
   // Each key holds its path parameters verbatim, because the lookup below
   // matches `entry.route.path` exactly rather than an expanded request path.
@@ -442,31 +414,32 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   ],
   // #28462: feature switches, model policies, org-level model providers and
   // their device-auth sessions, the org profile and membership routes, and the
-  // usage reads, of which only feature switches and the org profile are still
-  // owed. What holds them is an installed desktop build, which hardcodes
-  // `/api/okou/org` and `/api/okou/feature-switches` rather than deriving them
-  // from a contract, and so has no window at all: it holds those paths until its
-  // user updates. Both were still taking branded requests from Desktop `okou`
-  // 0.38.2 and 0.34.0 through 2026-09-01, which is why #30807 left them here
-  // and #30804 handles `feature-switches` on its own evidence.
-  //
-  // #28917 removed the three `model-providers/codex/device-auth/sessions` rows,
-  // the three `org/invite` rows, and `usage/members`; #28916 removed the
+  // usage reads, of which only the org profile is still owed. #28917 removed
+  // the three `model-providers/codex/device-auth/sessions` rows, the three
+  // `org/invite` rows, and `usage/members`; #28916 removed the
   // `model-providers` collection, `org/logo`, `org/members` and `usage/record`,
   // all four platform-held and cut over on 08-21; and #30807 removed
-  // `model-policies`, which has no desktop caller and whose neutral path took
-  // 2,100 requests from 297 addresses against zero branded.
+  // `model-policies`, which no installed build hardcodes and whose neutral path
+  // took 2,100 requests from 297 addresses against zero branded.
+  //
+  // #30804 removed `feature-switches` and kept `org`, which is the whole point
+  // of measuring the first surface per row rather than per slice. The desktop
+  // build hardcodes both, and in the 2026-08-27 22:19Z to 2026-09-01 08:26Z
+  // window both took branded requests from it — three on `feature-switches`,
+  // four on `org` — but only `org` has a second producer. A `CLI_PKG_URL`-pinned
+  // CLI at 9.279.3 read `/api/zero/org` on 08-31 03:58, 08-31 08:52 and 09-01
+  // 02:10, each answered 200, so that row still serves a caller with a live
+  // pinning window. The `feature-switches` requests came from the two desktop
+  // addresses alone — 0.38.2 at 08-30 09:17:31 and 0.34.0 at 09-01 03:11:31 —
+  // and both addresses were running 0.40.4 on the neutral path by the end of the
+  // window, so what the row was holding open was a briefly launched old build
+  // rather than an install still on its way to updating.
   //
   // The CI bootstrap steps in `.github/workflows/turbo.yml` used to call
   // `/api/okou/model-providers` on purpose, to exercise the compatibility these
   // rows guarantee; #28916 repointed them at the neutral path along with the
-  // row itself, so no check depends on a row this table may retire. None of
-  // those windows is the removal condition — a row retires under #26701's
-  // evidence rules like every other row in this file.
-  "/api/feature-switches": [
-    "/api/okou/feature-switches",
-    "/api/zero/feature-switches",
-  ],
+  // row itself, so no check depends on a row this table may retire. A row
+  // retires under #26701's evidence rules like every other row in this file.
   "/api/org": ["/api/okou/org", "/api/zero/org"],
   // #28461: the agent reads and writes and the workflow and
   // workflow-automation management routes, of which only the workflow
@@ -530,9 +503,9 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
     // now holds open is an authorization that started before that deploy and
     // carries the legacy `redirect_uri` in its state. #30807 kept it out of its
     // class removal because its window spans that unification and so has no
-    // clean baseline; the single branded request it did measure came from this
-    // migration's own `curl` probe. Removal follows #26701's evidence rules
-    // like every other row.
+    // clean baseline yet; the single branded request it did measure came from
+    // this migration's own `curl` probe. Removal follows #26701's evidence
+    // rules like every other row.
     "/api/zero/teams/oauth/callback",
   ],
   // #28544: the Feishu routes that were classified as console-held without a

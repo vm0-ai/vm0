@@ -19,6 +19,7 @@ import {
   officialWorkflowInstallationsContract,
   officialWorkflowsContract,
 } from "@okouai/api-contracts/contracts/official-workflows";
+import { morningBriefPreferenceContract } from "@okouai/api-contracts/contracts/morning-brief-preference";
 import { testOfficialWorkflowCatalogStateContract } from "@okouai/api-contracts/contracts/test-official-workflow-catalog-state";
 import { testSystemStoragePresignedUrlCacheStateContract } from "@okouai/api-contracts/contracts/test-system-storage-presigned-url-cache-state";
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
@@ -76,6 +77,7 @@ import {
   cronOfficialWorkflowCatalogRoutes,
 } from "../cron-official-workflow-catalog";
 import { officialWorkflowRoutes } from "../official-workflows";
+import { morningBriefPreferenceRoutes } from "../morning-brief-preference";
 import { testOfficialWorkflowCatalogStateRoutes } from "../test-official-workflow-catalog-state";
 import { testSystemStoragePresignedUrlCacheStateRoutes } from "../test-system-storage-presigned-url-cache-state";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
@@ -144,13 +146,6 @@ function scheduledBlueprint(resultEmail = false): OfficialWorkflowBlueprint {
     key: "daily",
     parameters: [
       {
-        key: "time-zone",
-        type: "string",
-        format: "timezone",
-        required: true,
-        derivation: { kind: "user-timezone" },
-      },
-      {
         key: "cron-expression",
         type: "string",
         format: "text",
@@ -169,7 +164,6 @@ function scheduledBlueprint(resultEmail = false): OfficialWorkflowBlueprint {
       schedule: {
         type: "cron",
         cronExpression: { parameter: "cron-expression" },
-        timezone: { parameter: "time-zone" },
       },
       autonomyBudget: 4,
     },
@@ -216,13 +210,6 @@ function onceBlueprint(resultEmail = false): OfficialWorkflowBlueprint {
         required: true,
       },
       {
-        key: "time-zone",
-        type: "string",
-        format: "timezone",
-        required: true,
-        derivation: { kind: "user-timezone" },
-      },
-      {
         key: "callback-url",
         type: "string",
         format: "url",
@@ -240,7 +227,6 @@ function onceBlueprint(resultEmail = false): OfficialWorkflowBlueprint {
       schedule: {
         type: "once",
         atTime: { parameter: "at-time" },
-        timezone: { parameter: "time-zone" },
       },
     },
     runtime: { resultEmail },
@@ -407,13 +393,6 @@ function evolvedScheduledBlueprint(): OfficialWorkflowBlueprint {
     key: "daily",
     parameters: [
       {
-        key: "time-zone",
-        type: "string",
-        format: "timezone",
-        required: true,
-        derivation: { kind: "user-timezone" },
-      },
-      {
         key: "cron-expression",
         type: "string",
         format: "text",
@@ -432,7 +411,6 @@ function evolvedScheduledBlueprint(): OfficialWorkflowBlueprint {
       schedule: {
         type: "cron",
         cronExpression: { parameter: "cron-expression" },
-        timezone: { parameter: "time-zone" },
       },
       autonomyBudget: { parameter: "autonomy-budget" },
     },
@@ -518,20 +496,12 @@ function pulseOnceBlueprint(atTime: string): OfficialWorkflowBlueprint {
         required: false,
         default: atTime,
       },
-      {
-        key: "time-zone",
-        type: "string",
-        format: "timezone",
-        required: true,
-        derivation: { kind: "user-timezone" },
-      },
     ],
     desiredState: {
       kind: "schedule",
       schedule: {
         type: "once",
         atTime: { parameter: "at-time" },
-        timezone: { parameter: "time-zone" },
       },
     },
     runtime: { resultEmail: false },
@@ -808,6 +778,12 @@ async function cleanupCatalog() {
 function officialClient() {
   return setupApp({ context, routes: officialWorkflowRoutes })(
     officialWorkflowsContract,
+  );
+}
+
+function morningBriefPreferenceClient() {
+  return setupApp({ context, routes: morningBriefPreferenceRoutes })(
+    morningBriefPreferenceContract,
   );
 }
 
@@ -1276,6 +1252,286 @@ beforeEach(async () => {
   await cleanupCatalog();
 });
 
+describe.sequential("Morning Brief preference", () => {
+  it("installs idempotently without the Official Workflows feature and preserves identities across disable and re-enable", async () => {
+    installCatalogStorageFixture();
+    const synced = await syncDeployedCatalog();
+    expect(synced.body).toMatchObject({ outcome: "accepted", diagnostics: [] });
+
+    const { actor } = await workflowBdd.setupWorkflowOrg({
+      timezone: "Asia/Shanghai",
+    });
+    if (!actor.orgId) {
+      throw new Error("Expected organization-scoped actor");
+    }
+    const onboarding = await bdd.readOnboardingStatus(actor);
+    if (!onboarding.defaultAgentId) {
+      throw new Error("Expected a default Agent");
+    }
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await cleanupCatalog();
+    });
+    const headers = authHeaders(actor);
+    await setOfficialWorkflowsEnabled(actor, false);
+
+    const initial = await accept(
+      morningBriefPreferenceClient().get({ headers }),
+      [200],
+    );
+    expect(initial.body).toStrictEqual({
+      enabled: false,
+      nextRunAt: null,
+      timezone: "Asia/Shanghai",
+      unavailableReason: null,
+    });
+
+    const enabledResponses = await Promise.all([
+      accept(
+        morningBriefPreferenceClient().update({
+          headers,
+          body: { enabled: true },
+        }),
+        [200],
+      ),
+      accept(
+        morningBriefPreferenceClient().update({
+          headers,
+          body: { enabled: true },
+        }),
+        [200],
+      ),
+    ]);
+    for (const response of enabledResponses) {
+      expect(response.body).toMatchObject({
+        enabled: true,
+        nextRunAt: expect.any(String),
+        timezone: "Asia/Shanghai",
+        unavailableReason: null,
+      });
+    }
+
+    const installed = await accept(
+      workflowCollectionClient().list({ headers, query: {} }),
+      [200],
+    );
+    const morningBriefs = installed.body.filter((workflow) => {
+      return workflow.official?.definitionName === "morning-brief";
+    });
+    expect(morningBriefs).toHaveLength(1);
+    const morningBrief = morningBriefs[0];
+    if (!morningBrief) {
+      throw new Error("Expected one Morning Brief installation");
+    }
+    expect(morningBrief.agentId).toBe(onboarding.defaultAgentId);
+    const detail = await accept(
+      installationClient().get({
+        headers,
+        params: { workflowId: morningBrief.id },
+      }),
+      [200],
+    );
+    expect(detail.body.workflow.automations).toHaveLength(1);
+    const automation = detail.body.workflow.automations[0];
+    if (!automation?.chatThreadId) {
+      throw new Error("Expected Morning Brief automation identities");
+    }
+    expect(automation).toMatchObject({
+      kind: "schedule",
+      enabled: true,
+      schedule: {
+        type: "cron",
+        cronExpression: "0 7 * * *",
+        timezone: "Asia/Shanghai",
+      },
+      official: {
+        blueprintKey: "daily-delivery",
+        reconciliationStatus: "current",
+      },
+    });
+    const identities = {
+      workflowId: morningBrief.id,
+      automationId: automation.id,
+      chatThreadId: automation.chatThreadId,
+    };
+    await expect(
+      readWorkflowAutomationAutonomyFixture(context, automation.id),
+    ).resolves.toMatchObject({
+      officialBlueprintKey: "daily-delivery",
+      officialResultEmailEnabled: true,
+    });
+
+    const disabled = await accept(
+      morningBriefPreferenceClient().update({
+        headers,
+        body: { enabled: false },
+      }),
+      [200],
+    );
+    expect(disabled.body).toStrictEqual({
+      enabled: false,
+      nextRunAt: null,
+      timezone: "Asia/Shanghai",
+      unavailableReason: null,
+    });
+
+    const reenabled = await accept(
+      morningBriefPreferenceClient().update({
+        headers,
+        body: { enabled: true },
+      }),
+      [200],
+    );
+    expect(reenabled.body).toMatchObject({
+      enabled: true,
+      nextRunAt: expect.any(String),
+      timezone: "Asia/Shanghai",
+      unavailableReason: null,
+    });
+    const after = await accept(
+      installationClient().get({
+        headers,
+        params: { workflowId: morningBrief.id },
+      }),
+      [200],
+    );
+    expect(after.body.workflow.automations).toMatchObject([
+      {
+        id: identities.automationId,
+        chatThreadId: identities.chatThreadId,
+        enabled: true,
+      },
+    ]);
+    expect(after.body.workflow.id).toBe(identities.workflowId);
+  });
+
+  it("returns typed missing-timezone and missing-default-Agent states without mutation", async () => {
+    const missingTimezone = await workflowBdd.setupWorkflowOrg();
+    const timezoneHeaders = authHeaders(missingTimezone.actor);
+    const unavailableTimezone = await accept(
+      morningBriefPreferenceClient().get({ headers: timezoneHeaders }),
+      [200],
+    );
+    expect(unavailableTimezone.body).toMatchObject({
+      enabled: false,
+      unavailableReason: "missing-timezone",
+    });
+    const rejectedTimezone = await accept(
+      morningBriefPreferenceClient().update({
+        headers: timezoneHeaders,
+        body: { enabled: true },
+      }),
+      [400],
+    );
+    expect(rejectedTimezone.body.error.code).toBe(
+      "MORNING_BRIEF_MISSING_TIMEZONE",
+    );
+
+    const missingAgent = bdd.user();
+    await bdd.updateUserTimezone(missingAgent, "Asia/Shanghai");
+    const agentHeaders = authHeaders(missingAgent);
+    const unavailableAgent = await accept(
+      morningBriefPreferenceClient().get({ headers: agentHeaders }),
+      [200],
+    );
+    expect(unavailableAgent.body).toMatchObject({
+      enabled: false,
+      timezone: "Asia/Shanghai",
+      unavailableReason: "missing-default-agent",
+    });
+    const rejectedAgent = await accept(
+      morningBriefPreferenceClient().update({
+        headers: agentHeaders,
+        body: { enabled: true },
+      }),
+      [400],
+    );
+    expect(rejectedAgent.body.error.code).toBe(
+      "MORNING_BRIEF_MISSING_DEFAULT_AGENT",
+    );
+
+    for (const fixture of [missingTimezone.actor, missingAgent]) {
+      const listed = await accept(
+        workflowCollectionClient().list({
+          headers: authHeaders(fixture),
+          query: {},
+        }),
+        [200],
+      );
+      expect(
+        listed.body.filter((workflow) => {
+          return workflow.official?.definitionName === "morning-brief";
+        }),
+      ).toHaveLength(0);
+    }
+  });
+
+  it("fails closed when generic installations already exist across Agents", async () => {
+    installCatalogStorageFixture();
+    await syncDeployedCatalog();
+    const { actor } = await workflowBdd.setupWorkflowOrg({
+      timezone: "Asia/Shanghai",
+    });
+    if (!actor.orgId) {
+      throw new Error("Expected organization-scoped actor");
+    }
+    const onboarding = await bdd.readOnboardingStatus(actor);
+    if (!onboarding.defaultAgentId) {
+      throw new Error("Expected a default Agent");
+    }
+    const alternate = await workflowBdd.createAgent(actor);
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await bdd.deleteAgent(actor, alternate.agentId);
+      await cleanupCatalog();
+    });
+    await setOfficialWorkflowsEnabled(actor, true);
+    const headers = authHeaders(actor);
+    const installations = await Promise.all(
+      [onboarding.defaultAgentId, alternate.agentId].map(async (agentId) => {
+        return await accept(
+          officialClient().install({
+            headers,
+            params: { definitionName: "morning-brief" },
+            body: {
+              agentId,
+              blueprints: [{ blueprintKey: "daily-delivery", bindings: [] }],
+            },
+          }),
+          [201],
+        );
+      }),
+    );
+
+    const read = await accept(
+      morningBriefPreferenceClient().get({ headers }),
+      [409],
+    );
+    expect(read.body.error.code).toBe("MORNING_BRIEF_MULTIPLE_INSTALLATIONS");
+    const update = await accept(
+      morningBriefPreferenceClient().update({
+        headers,
+        body: { enabled: false },
+      }),
+      [409],
+    );
+    expect(update.body.error.code).toBe("MORNING_BRIEF_MULTIPLE_INSTALLATIONS");
+
+    for (const installation of installations) {
+      const unchanged = await accept(
+        installationClient().get({
+          headers,
+          params: { workflowId: installation.body.workflow.id },
+        }),
+        [200],
+      );
+      expect(unchanged.body.workflow.automations).toMatchObject([
+        { enabled: true },
+      ]);
+    }
+  });
+});
+
 describe.sequential("Official Workflow installations", () => {
   it("materializes the deployed Official Workflows through generic installation state", async () => {
     installCatalogStorageFixture();
@@ -1356,7 +1612,7 @@ describe.sequential("Official Workflow installations", () => {
         blueprintKey: "daily-delivery",
         reconciliationStatus: "current",
         intendedEnabled: true,
-        parameterBindings: [{ key: "timezone", value: "Asia/Shanghai" }],
+        parameterBindings: [],
       },
     });
     if (!morningBriefAutomation) {
@@ -1414,7 +1670,7 @@ describe.sequential("Official Workflow installations", () => {
         blueprintKey: "weekly-check",
         reconciliationStatus: "current",
         intendedEnabled: true,
-        parameterBindings: [{ key: "timezone", value: "Asia/Shanghai" }],
+        parameterBindings: [],
       },
     });
     if (!connectorDoctorAutomation?.chatThreadId) {
@@ -1448,6 +1704,71 @@ describe.sequential("Official Workflow installations", () => {
       officialBlueprintKey: "weekly-check",
       officialResultEmailEnabled: false,
     });
+  });
+
+  it("requires a Preference timezone only when a schedule Blueprint omits one", async () => {
+    installCatalogStorageFixture();
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+    const defaultTimezoneDefinition = `api-test-default-timezone-${suffix}`;
+    const fixedTimezoneDefinition = `api-test-fixed-timezone-${suffix}`;
+    const fixedTimezoneBlueprint: OfficialWorkflowBlueprint = {
+      ...scheduledBlueprint(),
+      desiredState: {
+        kind: "schedule",
+        schedule: {
+          type: "cron",
+          cronExpression: "0 8 * * *",
+          timezone: "UTC",
+        },
+        autonomyBudget: 4,
+      },
+    };
+    await syncCatalog(
+      catalog([
+        activeDefinition(defaultTimezoneDefinition, [scheduledBlueprint()]),
+        activeDefinition(fixedTimezoneDefinition, [fixedTimezoneBlueprint]),
+      ]),
+    );
+
+    const { actor } = await workflowBdd.setupWorkflowOrg();
+    const { agentId } = await workflowBdd.createAgent(actor);
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await bdd.deleteAgent(actor, agentId);
+      await cleanupCatalog();
+    });
+    const headers = authHeaders(actor);
+    await setOfficialWorkflowsEnabled(actor, true);
+
+    const missingPreference = await accept(
+      officialClient().install({
+        headers,
+        params: { definitionName: defaultTimezoneDefinition },
+        body: {
+          agentId,
+          blueprints: [{ blueprintKey: "daily", bindings: [] }],
+        },
+      }),
+      [400],
+    );
+    expect(missingPreference.body.error.message).toBe(
+      "A valid user timezone preference is required for Blueprint: daily",
+    );
+
+    const fixedTimezone = await accept(
+      officialClient().install({
+        headers,
+        params: { definitionName: fixedTimezoneDefinition },
+        body: {
+          agentId,
+          blueprints: [{ blueprintKey: "daily", bindings: [] }],
+        },
+      }),
+      [201],
+    );
+    expect(fixedTimezone.body.workflow.automations).toMatchObject([
+      { schedule: { type: "cron", timezone: "UTC" } },
+    ]);
   });
 
   it("guards access and validates concurrent installations through public boundaries", async () => {
@@ -1969,13 +2290,12 @@ describe.sequential("Official Workflow installations", () => {
         reconciliationStatus: "current",
         intendedEnabled: true,
         parameterBindings: expect.arrayContaining([
-          { key: "time-zone", value: "Asia/Shanghai" },
           { key: "cron-expression", value: "0 7 * * *" },
           { key: "include-weekends", value: true },
         ]),
       },
     });
-    expect(dailyAutomation.official?.parameterBindings).toHaveLength(3);
+    expect(dailyAutomation.official?.parameterBindings).toHaveLength(2);
     await expect(
       readWorkflowAutomationAutonomyFixture(context, dailyAutomation.id),
     ).resolves.toMatchObject({
@@ -3575,7 +3895,6 @@ describe.sequential("Official Workflow installations", () => {
         intendedEnabled: false,
         reconciliationStatus: "current",
         parameterBindings: expect.arrayContaining([
-          { key: "time-zone", value: "Asia/Shanghai" },
           { key: "cron-expression", value: "0 6 * * *" },
           { key: "autonomy-budget", value: 7 },
         ]),

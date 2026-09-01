@@ -2,6 +2,7 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import { officialAutomationResultEmailClaims } from "@okouai/db/schema/official-automation-result-email-claim";
 import { userCache } from "@okouai/db/schema/user-cache";
 import { users } from "@okouai/db/schema/user";
+import { workflows } from "@okouai/db/schema/workflow";
 import { and, count, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
@@ -43,6 +44,30 @@ export async function completeResultEmailRunWithoutCallbacksFixture(
     .returning({ id: agentRuns.id });
   if (rows.length !== 1) {
     throw new Error("Expected one result-email Run to complete");
+  }
+}
+
+export async function markWorkflowAsMorningBriefResultEmailFixture(
+  workflowId: string,
+): Promise<void> {
+  const rows = await db()
+    .update(workflows)
+    .set({
+      name: "morning-brief",
+      visibility: "private",
+      instruction: null,
+      displayName: null,
+      description: null,
+      officialDefinitionName: "morning-brief",
+      officialInstallationState: "installed",
+      updatedAt: nowDate(),
+    })
+    .where(eq(workflows.id, workflowId))
+    .returning({ id: workflows.id });
+  if (rows.length !== 1) {
+    throw new Error(
+      "Expected one result-email Workflow to become Morning Brief",
+    );
   }
 }
 

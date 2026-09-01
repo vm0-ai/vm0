@@ -17,6 +17,7 @@ printf '%s\n' \
   '  <meta name="okou-app-git-commit-sha" content="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">' \
   '  <meta name="okou-app-version" content="0.812.5">' \
   '</head>' \
+  '<script>window.testPrimary="__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__";</script>' \
   '<script type="module" src="https://static.okou.io/okou-app/assets/app-123.js"></script>' \
   > "${canonical_dist}/index.html"
 cp "${repo_root}/turbo/apps/platform/public/robots.txt" \
@@ -57,6 +58,7 @@ grep -Fq \
   "${pages_dist}/index.html"
 grep -Fq '<meta name="okou-app-version" content="0.812.5">' \
   "${pages_dist}/index.html"
+grep -Fq 'window.testPrimary="app.vm0.ai"' "${pages_dist}/index.html"
 grep -Fxq 'Allow: /' "${pages_dist}/robots.txt"
 ! grep -Fq 'Disallow:' "${pages_dist}/robots.txt"
 
@@ -87,6 +89,22 @@ grep -Fq \
   "${preview_pages_dist}/index.html"
 grep -Fq '<meta name="okou-app-version" content="0.812.5">' \
   "${preview_pages_dist}/index.html"
+
+cutover_pages_dist="${tmp_dir}/cutover-pages"
+mkdir -p "$cutover_pages_dist"
+CLERK_PRODUCTION_PRIMARY_APP_DOMAIN=app.okou.ai \
+  bash "$script" "$canonical_dist" "$cutover_pages_dist"
+grep -Fq 'window.testPrimary="app.okou.ai"' \
+  "${cutover_pages_dist}/index.html"
+
+invalid_satellite_dist="${tmp_dir}/invalid-satellite"
+mkdir -p "$invalid_satellite_dist"
+if CLERK_PRODUCTION_PRIMARY_APP_DOMAIN=evil.example \
+  bash "$script" "$canonical_dist" "$invalid_satellite_dist" \
+  >/dev/null 2>&1; then
+  echo "expected an invalid Clerk primary app domain to be rejected" >&2
+  exit 1
+fi
 
 invalid_origin_dist="${tmp_dir}/invalid-origin"
 mkdir -p "$invalid_origin_dist"

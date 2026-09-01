@@ -5150,6 +5150,18 @@
         },
         "title": "Language"
       },
+      "morningBrief": {
+        "conflict": "Morning Brief is temporarily unavailable because its installation state is inconsistent. Retry when reconciliation finishes.",
+        "description": "Get a daily email at 7:00 AM in your time zone with priorities from Gmail, GitHub, Calendar, and unread Chats.",
+        "loading": "Loading Morning Brief settings...",
+        "missingDefaultAgent": "Choose a usable default Agent before enabling Morning Brief.",
+        "missingTimezone": "Set a valid time zone before enabling Morning Brief.",
+        "multipleInstallations": "Multiple Morning Brief installations exist. Resolve the conflict before changing this preference.",
+        "nextEmail": "Next email {{date}} ({{timezone}})",
+        "retry": "Retry",
+        "retryMessage": "Morning Brief settings could not be loaded or updated. Retry to continue.",
+        "title": "Morning Brief"
+      },
       "pageDescription": "Manage your appearance and agent runtime preferences",
       "pageTitle": "Preferences",
       "send": {

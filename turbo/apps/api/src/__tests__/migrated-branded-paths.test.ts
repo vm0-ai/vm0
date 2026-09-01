@@ -4,7 +4,6 @@ import { z } from "zod";
 
 import { createAppWithRoutes } from "../app-factory-core";
 import { ROUTES } from "../signals/route";
-import { featureSwitchesRoutes } from "../signals/routes/feature-switches";
 import { orgReadRoutes } from "../signals/routes/org-read";
 import { slackOauthRoutes } from "../signals/routes/slack-oauth";
 import { teamsOauthRoutes } from "../signals/routes/teams-oauth";
@@ -108,30 +107,6 @@ const BRANDED_PATHS_OWED = [
 const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   // #28422
   "/api/logs/:id": ["/api/okou/logs/:id", "/api/zero/logs/:id"],
-  // #28466. #30807 removed the slice's `audit-events` and `hosts` rows, the two
-  // an installed Desktop build does not hardcode. What is left is the five host
-  // endpoints `computer-use-host.ts` spells out at `6c2036fa`, the commit before
-  // #28487 moved them.
-  "/api/computer-use/heartbeat": [
-    "/api/okou/computer-use/heartbeat",
-    "/api/zero/computer-use/heartbeat",
-  ],
-  "/api/computer-use/host/commands/:commandId/complete": [
-    "/api/okou/computer-use/host/commands/:commandId/complete",
-    "/api/zero/computer-use/host/commands/:commandId/complete",
-  ],
-  "/api/computer-use/host/commands/next": [
-    "/api/okou/computer-use/host/commands/next",
-    "/api/zero/computer-use/host/commands/next",
-  ],
-  "/api/computer-use/host/stop": [
-    "/api/okou/computer-use/host/stop",
-    "/api/zero/computer-use/host/stop",
-  ],
-  "/api/computer-use/hosts/start": [
-    "/api/okou/computer-use/hosts/start",
-    "/api/zero/computer-use/hosts/start",
-  ],
   // #28464: the Slack, Teams, and Feishu connect and OAuth-start routes. The
   // paths a provider console holds are not in this slice and stay branded;
   // they are covered by `provider-console-paths.test.ts`. #30807 removed
@@ -157,12 +132,8 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   ],
   // #28462: feature switches, model policies, org model providers and their
   // device-auth sessions, the org profile and membership routes, and the usage
-  // reads. #30807 removed `model-policies`; the two an installed desktop build
-  // hardcodes stay.
-  "/api/feature-switches": [
-    "/api/okou/feature-switches",
-    "/api/zero/feature-switches",
-  ],
+  // reads. #30804 removed `feature-switches` and #30807 removed
+  // `model-policies`, leaving the org profile.
   "/api/org": ["/api/okou/org", "/api/zero/org"],
   // #28461. #30807 removed the four per-agent rows.
   "/api/workflows": ["/api/okou/workflows", "/api/zero/workflows"],
@@ -195,10 +166,10 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   // four once their producers moved: the Slack app console now holds the
   // neutral webhook URLs, and `routes/slack-oauth.ts` emits the neutral
   // callback as its `redirect_uri`.
-  // #30807 then removed forty-three rows as a class: no source in `turbo/`
-  // emits a branded literal outside tests, and the one build that hardcodes a
-  // branded path instead of deriving it — the installed macOS Desktop app —
-  // names only rows this inventory still carries.
+  // #30807 then removed forty-four rows as a class: no source in `turbo/`
+  // emits a branded literal outside tests, and the Computer Use family that
+  // an installed Desktop build does hardcode had already been settled by
+  // #30804.
 };
 
 function missingBrandedPaths(
@@ -378,10 +349,11 @@ describe("branded paths for migrated neutral routes", () => {
   // kept when it took 53 more and left 89, #28974 kept when it took
   // `uploads/prepare` and left 88, #28916 kept when it took the 26 cut-over
   // rows that left 62, #30668 kept when it took the four Slack rows whose
-  // producer moved and left 58, and #30807 kept when it took forty-three rows
-  // as a class and left 15. None of them left a case asserting the
-  // removed rows now 404: `docs/fallback.md` section 1 rules that class out,
-  // and the route table already proves the registration is gone.
+  // producer moved and left 58, #30804 kept when it took the four Computer
+  // Use host rows and `feature-switches` and left 53, and #30807 kept when it
+  // took forty-four rows as a class and left 9. None of them left a case
+  // asserting the removed rows now 404: `docs/fallback.md` section 1 rules that
+  // class out, and the route table already proves the registration is gone.
   // What needs a test is the opposite direction — a row disappearing without
   // the request-log evidence #26701 requires — which is what this count and the
   // per-family cases catch.
@@ -393,7 +365,7 @@ describe("branded paths for migrated neutral routes", () => {
   // whole table. Raise the number only with that evidence; an unexplained edit
   // here is the failure this is for.
   it("holds the branded rows this suite has evidence for and no others", () => {
-    const MIGRATED_BRANDED_ROW_COUNT = 15;
+    const MIGRATED_BRANDED_ROW_COUNT = 9;
 
     expect(Object.keys(MIGRATED_ROUTE_PATHS)).toHaveLength(
       MIGRATED_BRANDED_ROW_COUNT,
@@ -443,21 +415,20 @@ describe("branded paths for migrated neutral routes", () => {
   });
 
   // The #28462 twin, driven through the same production app factory. An
-  // installed desktop build hardcodes `/api/okou/org` and
-  // `/api/okou/feature-switches` rather than deriving them from a contract, and
-  // it has no expiry window, so these are the two rows a dropped registration
-  // would strand longest. Requests are unauthenticated, so the status is
-  // whatever the auth layer returns — the point is that all three forms reach
-  // the same handler instead of falling through to 404.
-  it("serves the migrated org and feature-switch paths through the production app factory", async () => {
+  // installed desktop build hardcodes `/api/okou/org` rather than deriving it
+  // from a contract, and a `CLI_PKG_URL`-pinned CLI was still reading
+  // `/api/zero/org` when #30804 measured the table, so this is the row a
+  // dropped registration would strand longest. That slice also covered
+  // `feature-switches`, whose row #30804 retired, which is why only `org` is
+  // exercised here now. Requests are unauthenticated, so the status is whatever
+  // the auth layer returns — the point is that all three forms reach the same
+  // handler instead of falling through to 404.
+  it("serves the migrated org paths through the production app factory", async () => {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
     });
 
-    const families = [
-      { routes: orgReadRoutes, suffix: "org" },
-      { routes: featureSwitchesRoutes, suffix: "feature-switches" },
-    ];
+    const families = [{ routes: orgReadRoutes, suffix: "org" }];
 
     for (const { routes, suffix } of families) {
       const app = createAppWithRoutes({ signal: context.signal, routes });

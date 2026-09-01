@@ -55,13 +55,6 @@ function scheduleBlueprint(
     key,
     parameters: [
       {
-        key: "time-zone",
-        type: "string",
-        format: "timezone",
-        required: true,
-        derivation: { kind: "user-timezone" },
-      },
-      {
         key: "include-weekends",
         type: "boolean",
         required: false,
@@ -73,7 +66,6 @@ function scheduleBlueprint(
       schedule: {
         type: "cron",
         cronExpression,
-        timezone: { parameter: "time-zone" },
       },
     },
     runtime: { resultEmail: false },
@@ -353,6 +345,31 @@ beforeEach(async () => {
 });
 
 describe.sequential("Official Workflow catalog release boundary", () => {
+  it("replaces a previous schema release through the current source boundary", async () => {
+    const seeded = await stateAction({
+      action: "seed-previous-schema-release",
+    });
+    expect(seeded.body).toMatchObject({
+      catalog: null,
+      counts: { releases: 1 },
+    });
+
+    const synced = await syncCatalog(catalog([]));
+    expect(synced.body).toMatchObject({
+      outcome: "accepted",
+      diagnostics: [],
+    });
+
+    const state = await readState();
+    expect(state.body.catalog).toMatchObject({
+      releaseId: synced.body.releaseId,
+      payload: {
+        schemaVersion: OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION,
+        definitions: [],
+      },
+    });
+  });
+
   it("authenticates sync and accepts an idempotent empty initial catalog", async () => {
     const unauthorized = await syncCatalogUnauthorized(catalog([]));
     expect(unauthorized.status).toBe(401);
@@ -421,21 +438,12 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       blueprints: [
         {
           key: "daily-delivery",
-          parameters: [
-            {
-              key: "timezone",
-              type: "string",
-              format: "timezone",
-              required: true,
-              derivation: { kind: "user-timezone" },
-            },
-          ],
+          parameters: [],
           desiredState: {
             kind: "schedule",
             schedule: {
               type: "cron",
               cronExpression: "0 7 * * *",
-              timezone: { parameter: "timezone" },
             },
           },
           runtime: { resultEmail: true },
@@ -448,21 +456,12 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       blueprints: [
         {
           key: "weekly-check",
-          parameters: [
-            {
-              key: "timezone",
-              type: "string",
-              format: "timezone",
-              required: true,
-              derivation: { kind: "user-timezone" },
-            },
-          ],
+          parameters: [],
           desiredState: {
             kind: "schedule",
             schedule: {
               type: "cron",
               cronExpression: "0 9 * * 1",
-              timezone: { parameter: "timezone" },
             },
           },
           runtime: { resultEmail: false },
@@ -542,8 +541,13 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       files: [],
     });
     expect(
-      connectorDoctorInstruction.match(/okou doctor connectors --json/gu),
+      connectorDoctorInstruction.match(
+        /okou doctor connectors --agent "\$OKOU_AGENT_ID" --json/gu,
+      ),
     ).toHaveLength(1);
+    expect(connectorDoctorInstruction).not.toMatch(
+      /okou doctor connectors --json/gu,
+    );
     expect(connectorDoctorInstruction).toContain(
       "unique sandbox-local report file with `mktemp`",
     );
@@ -554,7 +558,16 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       `report_file="$(mktemp "\${TMPDIR:-/tmp}/connector-doctor.XXXXXX.json")"`,
     );
     expect(connectorDoctorInstruction).toContain(
-      'okou doctor connectors --json >"$report_file"',
+      `if [ -z "\${OKOU_AGENT_ID:-}" ]; then`,
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "status=failed reason=missing-agent-id",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      'okou doctor connectors --agent "$OKOU_AGENT_ID" --json >"$report_file"',
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "Require a non-empty `OKOU_AGENT_ID` before running the Doctor command",
     );
     expect(connectorDoctorInstruction).toContain(
       "do not rerun it, split it into per-workflow diagnoses, or call connector-readiness APIs separately",
@@ -570,6 +583,12 @@ describe.sequential("Official Workflow catalog release boundary", () => {
     );
     expect(connectorDoctorInstruction).toContain(
       "all five non-negative integer summary counts",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "every returned workflow's `agent.id` exactly matches the runtime `OKOU_AGENT_ID`",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "A missing runtime Agent identity or any cross-Agent workflow entry makes the diagnosis unavailable",
     );
     expect(connectorDoctorInstruction).toContain(
       "A truncated or empty file, invalid JSON, an unsupported schema version, a missing required field",
@@ -614,7 +633,13 @@ describe.sequential("Official Workflow catalog release boundary", () => {
     expect(connectorDoctorInstruction).toContain("Unknown is never healthy");
     expect(connectorDoctorInstruction).toContain("summary.checked === 0");
     expect(connectorDoctorInstruction).toContain(
-      "no effective visible workflows were available to check",
+      "Describe every valid report as covering effective workflows on the current Agent, including both public and private workflows hosted there",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "Never describe this Agent-scoped result as coverage across visible Agents",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "no effective workflows on the current Agent were available to check",
     );
     expect(connectorDoctorInstruction).toContain(
       "not an all-clear over diagnosed workflows",
@@ -623,10 +648,13 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       "summary.attention === 0`, and `summary.unknown === 0",
     );
     expect(connectorDoctorInstruction).toContain(
-      "aggregate covered effective visible workflows",
+      "aggregate covered effective workflows on the current Agent, including its public and private workflows",
     );
     expect(connectorDoctorInstruction).toContain(
-      "compact inventory of every checked entry in `workflows`, grouped by its returned Agent identity",
+      "compact inventory of every checked entry in `workflows`",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "Do not apply a visibility filter to any valid report branch",
     );
     expect(connectorDoctorInstruction).toContain(
       "page through a projection of every connector entry with a non-null action",
@@ -1068,11 +1096,11 @@ describe.sequential("Official Workflow catalog release boundary", () => {
               ...scheduleBlueprint("daily"),
               parameters: [
                 {
-                  key: "time-zone",
+                  key: "callback-url",
                   type: "string",
-                  format: "text",
+                  format: "url",
                   required: true,
-                  derivation: { kind: "user-timezone" },
+                  default: "not-a-url",
                 },
               ],
             },

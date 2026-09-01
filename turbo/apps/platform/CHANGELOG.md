@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.818.0](https://github.com/vm0-ai/vm0/compare/app-v0.817.1...app-v0.818.0) (2026-09-01)
+
+
+### Features
+
+* manage morning brief from preferences ([#30805](https://github.com/vm0-ai/vm0/issues/30805)) ([a95ce9e](https://github.com/vm0-ai/vm0/commit/a95ce9ec44cb77f06e05cd99c28f052ddcd6cff5))
+* **platform:** print mark notes on the image and slim the selection ([#30719](https://github.com/vm0-ai/vm0/issues/30719)) ([4e4d77f](https://github.com/vm0-ai/vm0/commit/4e4d77f12fdff0c5438c26294fb6c5749f17f68b))
+
+
+### Bug Fixes
+
+* **auth:** drive clerk cutover from primary app domain ([#30735](https://github.com/vm0-ai/vm0/issues/30735)) ([0fa7957](https://github.com/vm0-ai/vm0/commit/0fa795722080d2123e0564ba9006f8718b46e03d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.386.0
+    * @okouai/core bumped to 8.605.9
+
 ## [0.817.1](https://github.com/vm0-ai/vm0/compare/app-v0.817.0...app-v0.817.1) (2026-09-01)
 
 

@@ -133,6 +133,7 @@ import { browserRoutes } from "./routes/browser";
 import { browserAuthorizationRoutes } from "./routes/browser-authorization";
 import { workflowsRoutes } from "./routes/workflows";
 import { officialWorkflowRoutes } from "./routes/official-workflows";
+import { morningBriefPreferenceRoutes } from "./routes/morning-brief-preference";
 import { workflowAutomationsRoutes } from "./routes/workflow-automations";
 import { strapiIntegrationsRoutes } from "./routes/strapi-integrations";
 import { strapiEventsRoutes } from "./routes/strapi-events";
@@ -334,6 +335,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...userPermissionGrantsRoutes,
   ...userPreferencesRoutes,
   ...userModelPreferenceRoutes,
+  ...morningBriefPreferenceRoutes,
   ...workflowsRoutes,
   ...officialWorkflowRoutes,
   ...workflowAutomationsRoutes,
