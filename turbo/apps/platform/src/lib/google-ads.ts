@@ -6,9 +6,27 @@ const GOOGLE_TAG_SCRIPT_URL =
 type GoogleTag = (...args: unknown[]) => void;
 
 type GoogleAdsWindow = Window & {
-  dataLayer?: unknown[];
+  dataLayer?: IArguments[];
   gtag?: GoogleTag;
 };
+
+function createGoogleTagArguments(
+  args: readonly unknown[],
+  callee: GoogleTag,
+): IArguments {
+  const indexedArgs: Record<number, unknown> = {};
+  for (const [index, value] of args.entries()) {
+    indexedArgs[index] = value;
+  }
+  return Object.assign(indexedArgs, {
+    callee,
+    length: args.length,
+    [Symbol.iterator]: () => {
+      return args[Symbol.iterator]();
+    },
+    [Symbol.toStringTag]: "Arguments",
+  });
+}
 
 export function initGoogleAds(): void {
   const hostname = window.location.hostname.toLowerCase();
@@ -25,7 +43,7 @@ export function initGoogleAds(): void {
   const dataLayer = googleAdsWindow.dataLayer ?? [];
   googleAdsWindow.dataLayer = dataLayer;
   const gtag: GoogleTag = (...args) => {
-    dataLayer.push(args);
+    dataLayer.push(createGoogleTagArguments(args, gtag));
   };
   googleAdsWindow.gtag = gtag;
   gtag("js", nowDate());

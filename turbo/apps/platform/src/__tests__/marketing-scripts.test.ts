@@ -7,7 +7,7 @@ const GOOGLE_TAG_SCRIPT_URL =
   "https://www.googletagmanager.com/gtag/js?id=AW-18144854014";
 
 type MarketingWindow = Window & {
-  dataLayer?: unknown[][];
+  dataLayer?: IArguments[];
   gtag?: (...args: unknown[]) => void;
 };
 
@@ -58,6 +58,11 @@ describe("platform marketing scripts", () => {
         ["config", "AW-18144854014"],
         ["config", "AW-18407336975"],
       ]);
+      expect(
+        harness.marketingWindow.dataLayer?.every((entry) => {
+          return Object.prototype.toString.call(entry) === "[object Arguments]";
+        }),
+      ).toBeTruthy();
       expect(harness.requestedScripts).toStrictEqual([
         { async: true, url: GOOGLE_TAG_SCRIPT_URL },
       ]);

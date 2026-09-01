@@ -30,7 +30,7 @@ type WindowWithGtag = Window & {
 };
 
 type WindowWithMarketingQueue = WindowWithGtag & {
-  dataLayer?: unknown[][];
+  dataLayer?: IArguments[];
 };
 
 function executeMarketingEntrypoint(): WindowWithMarketingQueue {
