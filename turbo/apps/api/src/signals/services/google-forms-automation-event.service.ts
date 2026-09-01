@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { OAuth2Client } from "google-auth-library";
 import { command } from "ccstate";
-import { and, asc, eq, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, lte, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -769,6 +769,86 @@ async function upsertGoogleFormsCursor(args: {
     });
 }
 
+async function lockGoogleFormsCursorTarget(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly automationId: string;
+    readonly connectorId: string;
+    readonly formId: string;
+    readonly allowStagedOfficialTarget: boolean;
+  },
+): Promise<boolean> {
+  const [automation] = await db
+    .select({ id: workflowAutomations.id })
+    .from(workflowAutomations)
+    .where(
+      and(
+        eq(workflowAutomations.id, args.automationId),
+        eq(workflowAutomations.orgId, args.orgId),
+        eq(workflowAutomations.ownerUserId, args.userId),
+        eq(workflowAutomations.eventType, "google-forms-response-submitted"),
+        eq(workflowAutomations.eventConnectorId, args.connectorId),
+        sql`${workflowAutomations.eventConfig} ->> 'connectorId' = ${args.connectorId}`,
+        sql`${workflowAutomations.eventConfig} -> 'form' ->> 'id' = ${args.formId}`,
+        args.allowStagedOfficialTarget
+          ? or(
+              eq(workflowAutomations.enabled, true),
+              and(
+                eq(workflowAutomations.enabled, false),
+                eq(
+                  workflowAutomations.officialReconciliationStatus,
+                  "reconciling",
+                ),
+                isNotNull(workflowAutomations.officialBlueprintKey),
+              ),
+            )
+          : eq(workflowAutomations.enabled, true),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  return automation !== undefined;
+}
+
+async function seedGoogleFormsAutomationCursor(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly automationId: string;
+    readonly connectorId: string;
+    readonly formId: string;
+    readonly watchStateId: string;
+    readonly accessToken: string;
+    readonly seedCursor?: string;
+    readonly allowStagedOfficialTarget: boolean;
+  },
+  signal: AbortSignal,
+): Promise<"seeded" | "superseded" | "failed"> {
+  const cursor =
+    args.seedCursor === undefined
+      ? await newestGoogleFormResponseTime(args, signal)
+      : { kind: "ok" as const, value: args.seedCursor };
+  signal.throwIfAborted();
+  if (cursor.kind !== "ok") {
+    return "failed";
+  }
+  if (!(await lockGoogleFormsCursorTarget(args.db, args))) {
+    return "superseded";
+  }
+  signal.throwIfAborted();
+  await upsertGoogleFormsCursor({
+    db: args.db,
+    automationId: args.automationId,
+    watchStateId: args.watchStateId,
+    cursor: cursor.value,
+    currentTime: nowDate(),
+  });
+  return "seeded";
+}
+
 export async function ensureGoogleFormsWatchForUser(
   args: {
     readonly db: Db;
@@ -788,10 +868,7 @@ export async function ensureGoogleFormsWatchForUser(
     !optionalEnv("GOOGLE_FORMS_PUBSUB_PUSH_AUDIENCE") ||
     !optionalEnv("GOOGLE_FORMS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL")
   ) {
-    return {
-      kind: "bad_request",
-      message: PUBSUB_CONFIGURATION_ERROR,
-    };
+    return { kind: "bad_request", message: PUBSUB_CONFIGURATION_ERROR };
   }
   const access = await resolveGoogleFormsAccess(args, signal);
   signal.throwIfAborted();
@@ -868,30 +945,32 @@ export async function ensureGoogleFormsWatchForUser(
       state = inserted;
     }
     if (args.resetAutomationId !== undefined) {
-      const cursor =
-        args.seedCursor === undefined
-          ? await newestGoogleFormResponseTime(
-              {
-                accessToken: access.access.accessToken,
-                formId: args.formId,
-              },
-              signal,
-            )
-          : { kind: "ok" as const, value: args.seedCursor };
-      signal.throwIfAborted();
-      if (cursor.kind !== "ok") {
+      const seeded = await seedGoogleFormsAutomationCursor(
+        {
+          db: tx,
+          orgId: args.orgId,
+          userId: args.userId,
+          automationId: args.resetAutomationId,
+          connectorId: args.connectorId,
+          formId: args.formId,
+          watchStateId: state.id,
+          accessToken: access.access.accessToken,
+          ...(args.seedCursor === undefined
+            ? {}
+            : { seedCursor: args.seedCursor }),
+          allowStagedOfficialTarget: args.allowStagedOfficialTarget === true,
+        },
+        signal,
+      );
+      if (seeded === "failed") {
         return {
           kind: "bad_request",
           message: "Unable to seed the Google Forms response cursor",
         };
       }
-      await upsertGoogleFormsCursor({
-        db: tx,
-        automationId: args.resetAutomationId,
-        watchStateId: state.id,
-        cursor: cursor.value,
-        currentTime: nowDate(),
-      });
+      if (seeded === "superseded") {
+        return { kind: "ok", watchStateId: null };
+      }
     }
     return { kind: "ok", watchStateId: state.id };
   });

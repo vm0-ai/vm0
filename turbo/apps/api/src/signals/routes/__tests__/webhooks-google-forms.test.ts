@@ -388,7 +388,7 @@ describe("Google Forms Pub/Sub webhook", () => {
     await flushWaitUntilForTest();
   });
 
-  it("de-duplicates a retry and ignores an unknown watch id", async () => {
+  it("de-duplicates a retry", async () => {
     const { formsApi } = await setupGoogleFormsAutomation();
     const watchId = formsApi.watchIds[0];
     if (!watchId) {
@@ -410,10 +410,16 @@ describe("Google Forms Pub/Sub webhook", () => {
         duplicates: 1,
       },
     });
-    const fallback = await postWebhook(
-      formsPushBody("pubsub-forms-fallback", `missing-watch-${randomUUID()}`),
+    expect(formsApi.responseFilters).toHaveLength(2);
+    await flushWaitUntilForTest();
+  });
+
+  it("ignores an unknown watch id", async () => {
+    configureEnvironment();
+    const response = await postWebhook(
+      formsPushBody("pubsub-forms-unknown", `missing-watch-${randomUUID()}`),
     );
-    expect(fallback).toStrictEqual({
+    expect(response).toStrictEqual({
       status: 200,
       body: {
         success: true,
@@ -422,8 +428,6 @@ describe("Google Forms Pub/Sub webhook", () => {
         duplicates: 0,
       },
     });
-    expect(formsApi.responseFilters).toHaveLength(2);
-    await flushWaitUntilForTest();
   });
 
   it("routes a shared-form notification by watch id without fanout", async () => {
