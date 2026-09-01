@@ -15816,21 +15816,20 @@ describe("HOOK-01/RUN-03: terminal run callbacks dispatch on cancellation", () =
       prompt: "first cancellable chat run",
     });
     await api.requestCancelRun(actor, first.runId, [200]);
+    // Cancellation delivers its chat callback from the route's `waitUntil`
+    // work, so drain that work instead of polling for the appended event.
+    await flushWaitUntilForTest();
 
     const firstCancelled = await api.readRun(actor, first.runId);
     expect(firstCancelled.status).toBe("cancelled");
-    await expect
-      .poll(async () => {
-        const messages = await chat.listThreadEvents(actor, first.threadId);
-        return messages.events.some((message) => {
-          return (
-            message.eventType === "run.cancelled" &&
-            message.runId === first.runId &&
-            message.runLifecycleEvent === "cancelled"
-          );
-        });
-      })
-      .toBe(true);
+    const firstEvents = await chat.listThreadEvents(actor, first.threadId);
+    expect(firstEvents.events).toContainEqual(
+      expect.objectContaining({
+        eventType: "run.cancelled",
+        runId: first.runId,
+        runLifecycleEvent: "cancelled",
+      }),
+    );
     expect(routeRequests).toBe(0);
 
     const second = await sendChatRunMessage(actor, {
@@ -15839,21 +15838,18 @@ describe("HOOK-01/RUN-03: terminal run callbacks dispatch on cancellation", () =
       prompt: "second cancellable chat run",
     });
     await api.requestCancelRun(actor, second.runId, [200]);
+    await flushWaitUntilForTest();
 
     const secondCancelled = await api.readRun(actor, second.runId);
     expect(secondCancelled.status).toBe("cancelled");
-    await expect
-      .poll(async () => {
-        const messages = await chat.listThreadEvents(actor, first.threadId);
-        return messages.events.some((message) => {
-          return (
-            message.eventType === "run.cancelled" &&
-            message.runId === second.runId &&
-            message.runLifecycleEvent === "cancelled"
-          );
-        });
-      })
-      .toBe(true);
+    const secondEvents = await chat.listThreadEvents(actor, first.threadId);
+    expect(secondEvents.events).toContainEqual(
+      expect.objectContaining({
+        eventType: "run.cancelled",
+        runId: second.runId,
+        runLifecycleEvent: "cancelled",
+      }),
+    );
     expect(routeRequests).toBe(0);
 
     const third = await sendChatRunMessage(actor, {
@@ -15862,25 +15858,17 @@ describe("HOOK-01/RUN-03: terminal run callbacks dispatch on cancellation", () =
       prompt: "third cancellable chat run",
     });
     await api.requestCancelRun(actor, third.runId, [200]);
+    await flushWaitUntilForTest();
 
     const thirdCancelled = await api.readRun(actor, third.runId);
     expect(thirdCancelled.status).toBe("cancelled");
 
-    let cancelNote:
-      | Awaited<ReturnType<typeof chat.listThreadEvents>>["events"][number]
-      | undefined;
-    await expect
-      .poll(async () => {
-        const messages = await chat.listThreadEvents(actor, first.threadId);
-        cancelNote = messages.events.find((message) => {
-          return (
-            message.eventType === "run.cancelled" &&
-            message.runId === third.runId
-          );
-        });
-        return cancelNote?.eventType;
-      })
-      .toBe("run.cancelled");
+    const thirdEvents = await chat.listThreadEvents(actor, first.threadId);
+    const cancelNote = thirdEvents.events.find((message) => {
+      return (
+        message.eventType === "run.cancelled" && message.runId === third.runId
+      );
+    });
     if (!cancelNote || cancelNote.eventType !== "run.cancelled") {
       throw new Error(
         "Expected the delivered chat callback to append a cancellation event",
