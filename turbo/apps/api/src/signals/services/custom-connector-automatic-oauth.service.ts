@@ -268,6 +268,10 @@ function externalErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function temporaryUpstreamStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500;
+}
+
 function automaticOAuthRemoteFailure(
   operation: string,
   error: unknown,
@@ -277,7 +281,7 @@ function automaticOAuthRemoteFailure(
   }
   if (error instanceof RegistrationRejectedError) {
     return new CustomConnectorAutomaticOAuthError(
-      error.status >= 500 ? "temporary" : "incompatible",
+      temporaryUpstreamStatus(error.status) ? "temporary" : "incompatible",
       `MCP OAuth ${operation} failed`,
       error,
     );
@@ -307,7 +311,7 @@ function automaticOAuthRemoteFailure(
     code === "ENETUNREACH" ||
     code === "ENOTFOUND" ||
     code === "ETIMEDOUT" ||
-    /HTTP 5\d\d/u.test(message) ||
+    /HTTP (?:408|429|5\d\d)/u.test(message) ||
     /timed? ?out|aborted|socket|network/iu.test(message)
   ) {
     return new CustomConnectorAutomaticOAuthError(

@@ -3472,25 +3472,27 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(discoveryProvider.registrationBodies).toHaveLength(0);
     await connectorsApi.deleteCustomConnector(admin, discoveryConnector.id);
 
-    const dcrProvider = mockAutomaticMcpOAuthProvider(context, {
-      registration: "dcr",
-      dcrFailureStatus: 503,
-    });
-    const dcrConnector = await connectorsApi.createCustomConnector(admin, {
-      ...connectorBody,
-      displayName: "BDD Temporary Automatic DCR",
-    });
-    const dcrFailure = await connectorsApi.requestStartCustomConnectorOAuth2(
-      admin,
-      dcrConnector.id,
-      [502],
-    );
-    expectApiError(dcrFailure.body);
-    expect(dcrFailure.body.error).toMatchObject({
-      code: "UPSTREAM_UNAVAILABLE",
-    });
-    expect(dcrProvider.registrationBodies).toHaveLength(1);
-    await connectorsApi.deleteCustomConnector(admin, dcrConnector.id);
+    for (const status of [429, 503]) {
+      const dcrProvider = mockAutomaticMcpOAuthProvider(context, {
+        registration: "dcr",
+        dcrFailureStatus: status,
+      });
+      const dcrConnector = await connectorsApi.createCustomConnector(admin, {
+        ...connectorBody,
+        displayName: `BDD Temporary Automatic DCR ${status}`,
+      });
+      const dcrFailure = await connectorsApi.requestStartCustomConnectorOAuth2(
+        admin,
+        dcrConnector.id,
+        [502],
+      );
+      expectApiError(dcrFailure.body);
+      expect(dcrFailure.body.error).toMatchObject({
+        code: "UPSTREAM_UNAVAILABLE",
+      });
+      expect(dcrProvider.registrationBodies).toHaveLength(1);
+      await connectorsApi.deleteCustomConnector(admin, dcrConnector.id);
+    }
   });
 
   it.each([
