@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 
 import { command, computed, type Computed } from "ccstate";
 import {
+  AVATAR_VIDEO_TRANSPARENT_SCREEN_STYLE,
   avatarVideoGenerateRequestSchema,
   type AvatarVideoAvatarsQuery,
   type AvatarVideoVoicesQuery,
@@ -230,6 +231,10 @@ export function parseAvatarVideoOptions(
     return badRequest(parsed.error.issues[0]?.message ?? "Invalid request");
   }
   const inputType = parsed.data.script ? "script" : "audio";
+  const screenStyle = parsed.data.screenStyle ?? 1;
+  // JoggAI only emits the alpha-channel WebM when captions are off, so a
+  // transparent request defaults to no captions instead of the usual default.
+  const captionDefault = screenStyle !== AVATAR_VIDEO_TRANSPARENT_SCREEN_STYLE;
   return {
     avatarId: parsed.data.avatarId,
     voiceId: parsed.data.voiceId,
@@ -237,8 +242,8 @@ export function parseAvatarVideoOptions(
     script: parsed.data.script,
     audioUrl: parsed.data.audioUrl,
     aspectRatio: parsed.data.aspectRatio ?? "portrait",
-    screenStyle: parsed.data.screenStyle ?? 1,
-    caption: parsed.data.caption ?? true,
+    screenStyle,
+    caption: parsed.data.caption ?? captionDefault,
     videoName: parsed.data.videoName,
   };
 }

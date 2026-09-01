@@ -82,6 +82,14 @@ const VIDEO_EXTENSIONS = ["mov", "mp4", "webm"] as const;
 const DEFAULT_INSTRUCTIONS =
   "Create a concise 30 second product intro. Zoom in on important actions, remove pauses, and keep the pacing energetic.";
 const RECORDING_FILE_NAME = "Screen recording.webm";
+/**
+ * Aspect ratio reported to the agent for the raw avatar take.
+ *
+ * The wizard no longer asks for one: the take is composited by HyperFrames,
+ * which reframes it and decides the delivered aspect ratio. The value is still
+ * reported because it is what the avatar-video request is generated with.
+ */
+export const INTRO_VIDEO_ASPECT_RATIO_LABEL = "16:9";
 
 function createRecordingRuntime(): RecordingRuntime {
   return {
@@ -292,14 +300,12 @@ function voiceSelectionLabel(selection: IntroVideoVoiceSelection | null) {
 }
 
 function buildIntroVideoPrompt(args: {
-  readonly aspectRatio: "landscape" | "portrait";
   readonly avatar: AvatarVideoAvatar | null;
   readonly instructions: string;
   readonly source: IntroVideoSource;
   readonly visualBalance: IntroVideoVisualBalance;
   readonly voice: IntroVideoVoiceSelection | null;
 }): string {
-  const aspectRatio = args.aspectRatio === "portrait" ? "9:16" : "16:9";
   const avatar = args.avatar
     ? `${args.avatar.name} (${args.avatar.id})`
     : "No avatar";
@@ -315,11 +321,17 @@ function buildIntroVideoPrompt(args: {
     "Configuration:",
     `- Source: ${args.source.name}`,
     `- Source type: ${args.source.kind}`,
-    `- Aspect ratio: ${aspectRatio}`,
+    `- Aspect ratio: ${INTRO_VIDEO_ASPECT_RATIO_LABEL}`,
     `- Avatar: ${avatar}`,
     `- Voice: ${voiceSelectionLabel(args.voice)}`,
+    ...(args.avatar?.coverUrl
+      ? [`- Avatar cutout (transparent still): ${args.avatar.coverUrl}`]
+      : []),
     ...(args.avatar
-      ? [`- Visual balance: ${visualBalanceDescription[args.visualBalance]}`]
+      ? [
+          "- Avatar background: transparent WebM (JoggAI screen_style 3, which requires captions off)",
+          `- Visual balance: ${visualBalanceDescription[args.visualBalance]}`,
+        ]
       : []),
     "",
     "Editing direction:",
@@ -328,7 +340,6 @@ function buildIntroVideoPrompt(args: {
 }
 
 interface IntroVideoInternalState {
-  readonly aspectRatio$: State<"landscape" | "portrait">;
   readonly avatar$: State<AvatarVideoAvatar | null>;
   readonly busy$: State<boolean>;
   readonly countdown$: State<number>;
@@ -348,7 +359,6 @@ interface IntroVideoInternalState {
 
 function createIntroVideoInternalState(): IntroVideoInternalState {
   return {
-    aspectRatio$: state<"landscape" | "portrait">("landscape"),
     avatar$: state<AvatarVideoAvatar | null>(null),
     busy$: state(false),
     countdown$: state(3),
@@ -375,7 +385,6 @@ function exposeState<T>(signal: State<T>) {
 
 function createIntroVideoSelectors(internal: IntroVideoInternalState) {
   return {
-    aspectRatio$: exposeState(internal.aspectRatio$),
     avatar$: exposeState(internal.avatar$),
     busy$: exposeState(internal.busy$),
     countdown$: exposeState(internal.countdown$),
@@ -492,11 +501,6 @@ function createSelectionCommands(internal: IntroVideoInternalState) {
       set(internal.avatar$, avatar);
     },
   );
-  const setAspectRatio$ = command(
-    ({ set }, aspectRatio: "landscape" | "portrait"): void => {
-      set(internal.aspectRatio$, aspectRatio);
-    },
-  );
   const setVoice$ = command(
     ({ set }, voice: IntroVideoVoiceSelection | null): void => {
       set(internal.voice$, voice);
@@ -511,7 +515,6 @@ function createSelectionCommands(internal: IntroVideoInternalState) {
     },
   );
   return {
-    setAspectRatio$,
     setAvatar$,
     setInstructions$,
     setMicrophone$,
@@ -1030,7 +1033,6 @@ function createSubmissionCommands(
       set(
         composer.draft.setDraftInput$,
         buildIntroVideoPrompt({
-          aspectRatio: get(internal.aspectRatio$),
           avatar: get(internal.avatar$),
           instructions: get(internal.instructions$),
           source,

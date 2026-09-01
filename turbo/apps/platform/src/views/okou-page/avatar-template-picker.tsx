@@ -45,6 +45,10 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { isSelectedAvatarTemplate } from "../../signals/okou-page/avatar-template-selection.ts";
 import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
+import {
+  INTRO_VIDEO_AVATARS,
+  type IntroVideoAvatar,
+} from "./intro-video-avatars.ts";
 
 const AVATAR_CARD_SHADOW =
   "shadow-[0_2px_12px_hsl(220_12%_50%/0.04),0_0_0_0.5px_hsl(220_12%_50%/0.02)]";
@@ -437,12 +441,8 @@ function AvatarTemplateCard({
 
 function AvatarCatalogFilters({
   signals,
-  compact = false,
-  onAspectRatioChange,
 }: {
   readonly signals: ComposerSignals;
-  readonly compact?: boolean;
-  readonly onAspectRatioChange?: (value: "portrait" | "landscape") => void;
 }) {
   const { t } = useTranslation();
   const filters = useGet(signals.template.avatarTemplateFilters$);
@@ -461,16 +461,12 @@ function AvatarCatalogFilters({
   return (
     <div
       data-avatar-catalog-toolbar=""
-      className={cn(
-        "flex flex-wrap items-center gap-3",
-        compact ? "w-auto justify-start" : "w-full justify-between",
-      )}
+      className="flex w-full flex-wrap items-center justify-between gap-3"
     >
       <AvatarAspectRatioPicker
         value={filters.aspectRatio}
         onChange={(aspectRatio) => {
           setFilters({ ...filters, aspectRatio });
-          onAspectRatioChange?.(aspectRatio);
         }}
       />
       <CatalogFiltersPopover
@@ -1157,12 +1153,10 @@ function AvatarVoicePickerContent({
 function AvatarCatalogPickerContent({
   signals,
   value,
-  selectedAvatarId,
   onUse,
 }: {
   readonly signals: ComposerSignals;
   readonly value: GenerationTemplateRequest | undefined;
-  readonly selectedAvatarId?: number;
   readonly onUse: (avatar: AvatarVideoAvatar) => void;
 }) {
   const catalog = useLoadable(signals.template.avatarTemplateCatalogPage$);
@@ -1220,11 +1214,7 @@ function AvatarCatalogPickerContent({
                     key={avatar.id}
                     avatar={avatar}
                     aspectRatio={filters.aspectRatio}
-                    selected={
-                      selectedAvatarId === undefined
-                        ? isSelectedAvatarTemplate(avatar, value)
-                        : avatar.id === selectedAvatarId
-                    }
+                    selected={isSelectedAvatarTemplate(avatar, value)}
                     onSelect={onUse}
                   />
                 );
@@ -1260,39 +1250,107 @@ export function AvatarTemplatePickerToolbar({
   return <AvatarCatalogFilters signals={signals} />;
 }
 
-/** Avatar catalog surface shared by the template picker and intro-video flow. */
-export function AvatarLibraryToolbar({
-  signals,
-  onAspectRatioChange,
+function IntroVideoAvatarCard({
+  avatar,
+  selected,
+  onSelect,
 }: {
-  readonly signals: ComposerSignals;
-  readonly onAspectRatioChange: (value: "portrait" | "landscape") => void;
+  readonly avatar: IntroVideoAvatar;
+  readonly selected: boolean;
+  readonly onSelect: (avatar: IntroVideoAvatar) => void;
 }) {
+  const { t } = useTranslation();
   return (
-    <AvatarCatalogFilters
-      signals={signals}
-      compact
-      onAspectRatioChange={onAspectRatioChange}
-    />
+    <button
+      type="button"
+      aria-label={t(
+        ($) => {
+          return $.artifacts.templates.selectTemplate;
+        },
+        { title: avatar.name },
+      )}
+      aria-pressed={selected}
+      onClick={() => {
+        onSelect(avatar);
+      }}
+      className={cn(
+        avatarTemplateCardClass(selected),
+        "mb-4 w-full break-inside-avoid",
+      )}
+    >
+      <div
+        className="flex w-full items-end justify-center overflow-hidden bg-gradient-to-b from-card to-muted"
+        style={{
+          aspectRatio: `${avatar.cutoutWidth} / ${avatar.cutoutHeight}`,
+        }}
+      >
+        <img
+          src={avatar.coverUrl}
+          alt={avatar.name}
+          width={avatar.cutoutWidth}
+          height={avatar.cutoutHeight}
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+          className="h-full w-full object-contain"
+        />
+      </div>
+      <div className="flex min-h-11 items-center justify-between gap-2 px-3 py-2.5">
+        <p className="min-w-0 truncate text-sm font-semibold text-foreground">
+          {avatar.name}
+        </p>
+        {selected && (
+          <span
+            className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
+            aria-hidden="true"
+          >
+            <Check size={13} />
+          </span>
+        )}
+      </div>
+    </button>
   );
 }
 
+/**
+ * Presenter picker for the intro-video wizard.
+ *
+ * Unlike the generic avatar-video template picker this renders a fixed,
+ * curated set of background-removed cutouts instead of paging the JoggAI
+ * catalog, so there is no aspect-ratio choice and no catalog filtering. The
+ * cards keep their native aspect ratio in a masonry layout because the cutouts
+ * are framed anywhere between head-and-shoulders and full body.
+ */
 export function AvatarLibraryContent({
-  signals,
   selectedAvatarId,
   onSelect,
 }: {
-  readonly signals: ComposerSignals;
   readonly selectedAvatarId: number | undefined;
   readonly onSelect: (avatar: AvatarVideoAvatar) => void;
 }) {
   return (
-    <AvatarCatalogPickerContent
-      signals={signals}
-      value={undefined}
-      selectedAvatarId={selectedAvatarId}
-      onUse={onSelect}
-    />
+    <div
+      data-intro-video-avatar-grid=""
+      className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      {/*
+        The multi-column container is kept separate from the scroller and left
+        at auto height: a multicol box with a definite height overflows in the
+        inline direction, which would turn this into a horizontal scroller.
+      */}
+      <div className="columns-2 gap-4 sm:columns-3 lg:columns-4">
+        {INTRO_VIDEO_AVATARS.map((avatar) => {
+          return (
+            <IntroVideoAvatarCard
+              key={avatar.id}
+              avatar={avatar}
+              selected={avatar.id === selectedAvatarId}
+              onSelect={onSelect}
+            />
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
