@@ -406,6 +406,15 @@ function assertApplicationResourcesStartAfterFirstPaint(
   assert.match(htmlSource, /JSON\.parse\(resourceMetadata\.textContent\)/u);
   assert.match(
     htmlSource,
+    /PaintObserver\.supportedEntryTypes\.indexOf\("paint"\) !== -1/u,
+  );
+  assert.match(htmlSource, /entries\[i\]\.name === "first-contentful-paint"/u);
+  assert.match(
+    htmlSource,
+    /observer\.observe\(\{ type: "paint", buffered: true \}\)/u,
+  );
+  assert.match(
+    htmlSource,
     /requestAnimationFrame\(function \(\) \{\s*requestAnimationFrame\(activateApplicationResources\);/u,
   );
 }

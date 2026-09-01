@@ -113,6 +113,26 @@ function afterFirstPaintScript(resources: {
           }
         }
 
+        var PaintObserver = window.PerformanceObserver;
+        if (
+          PaintObserver &&
+          PaintObserver.supportedEntryTypes &&
+          PaintObserver.supportedEntryTypes.indexOf("paint") !== -1
+        ) {
+          var observer = new PaintObserver(function (entryList) {
+            var entries = entryList.getEntries();
+            for (var i = 0; i < entries.length; i += 1) {
+              if (entries[i].name === "first-contentful-paint") {
+                observer.disconnect();
+                activateApplicationResources();
+                return;
+              }
+            }
+          });
+          observer.observe({ type: "paint", buffered: true });
+          return;
+        }
+
         requestAnimationFrame(function () {
           requestAnimationFrame(activateApplicationResources);
         });
