@@ -57,6 +57,7 @@ import {
   workflowReloadVersion$,
 } from "./workflow-reload.ts";
 import type { PlatformWorkflowConnectorReadinessResponse } from "../connector-domain.ts";
+import { onRef } from "../utils.ts";
 
 type WorkflowDetailActionDialog = "copy" | "delete" | null;
 export type WorkflowDetailTab = "automations" | "instructions" | "info";
@@ -131,6 +132,7 @@ type WorkflowWebhookAutomationSummary = Extract<
 >;
 export type WorkflowAutomationEntry = WorkflowAutomationsListEntry;
 const WORKFLOW_DETAIL_FILE_PARAM = "file";
+const WORKFLOW_AUTOMATION_TARGET_PARAM = "automationId";
 
 function workflowDetailTabFromRoute(route: RouteKey | null): WorkflowDetailTab {
   switch (route) {
@@ -694,6 +696,17 @@ export const selectedWorkflowFilePath$ = computed((get) => {
     get(internalSelectedFilePath$)
   );
 });
+
+export const targetedWorkflowAutomationId$ = computed((get) => {
+  return get(searchParams$).get(WORKFLOW_AUTOMATION_TARGET_PARAM);
+});
+
+export const scrollTargetedWorkflowAutomationIntoViewRef$ = onRef(
+  command((_context, element: HTMLElement, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    element.scrollIntoView({ block: "center" });
+  }),
+);
 
 export const setSelectedWorkflowFilePath$ = command(
   ({ get, set }, path: string | null) => {
