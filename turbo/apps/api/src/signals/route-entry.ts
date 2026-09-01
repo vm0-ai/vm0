@@ -40,113 +40,38 @@ function routeEntryWithPath(entry: RouteEntry, path: string): RouteEntry {
 }
 
 /**
- * The legacy `/api/zero/**` paths this service owes callers, keyed by the
- * canonical `/api/okou/**` path of the contract that serves them. This table
- * is the source of truth for Phase A compatibility from #26487: an entry here
- * is compatibility kept deliberately, rather than a derivation nobody can
- * audit.
- *
- * The table is exhaustive. #28701 removed the blanket expansion that used to
- * keep every other `/api/zero/**` path resolving behind it, so a `/api/zero/**`
- * path is served only when this table or `MIGRATED_BRANDED_PATHS` names it, and
- * removing a row now retires the path rather than downgrading it to a reported
- * one.
- *
- * Keyed by path alone rather than by `METHOD path`: the evidence below is a
- * path template with no method attached, so restricting an entry to the single
- * method that happened to appear inside the retained window would 404 a
- * caller's other methods on the same path.
- *
- * Every remaining row belongs to a provider console — a Slack or Teams app
- * configuration holds the URL, not a client we control — so no deploy and no
- * client release drains it. #28701 narrowed the table to these six against the
- * 6.3 days `vm0-request-log-prod` retains, 2026-08-17 to 2026-08-23:
- *
- * - `slack/events`, `slack/oauth/install`, and `slack/oauth/callback` were
- *   still taking requests on the last day of the window, from 33 and 17
- *   distinct source addresses inside Slack's own infrastructure. That is what
- *   proves the Slack app configuration still points at the legacy paths.
- * - `slack/commands` and `slack/interactive` saw no traffic in the window and
- *   stay anyway: they live in the same Slack app configuration as the Event
- *   Subscriptions URL that is demonstrably still legacy, so their silence says
- *   nobody used a slash command that week, not that the configuration moved.
- * - `slack/oauth/callback` and `teams/oauth/callback` are also produced inside
- *   this repository, as `redirect_uri` values in `routes/slack-oauth.ts` and
- *   `routes/teams-oauth.ts`. The Teams row is held deliberately so that
- *   `api.vm0.ai` and `/api/zero/**` retire together, as recorded on #26701.
- *
- * The rows #28701 removed are still served, by `MIGRATED_BRANDED_PATHS`: each
- * of those contracts moved to a neutral path in a #28278 slice, and a row there
- * names both branded forms. A row here records that a path is owed rather than
- * which table serves it, which is why removing these twenty-five changed
- * nothing a caller can observe.
- */
-const LEGACY_ZERO_PATHS: Readonly<Record<string, string>> = {
-  "/api/okou/slack/events": "/api/zero/slack/events",
-  "/api/okou/slack/oauth/install": "/api/zero/slack/oauth/install",
-  "/api/okou/slack/oauth/callback": "/api/zero/slack/oauth/callback",
-  "/api/okou/slack/commands": "/api/zero/slack/commands",
-  "/api/okou/slack/interactive": "/api/zero/slack/interactive",
-  "/api/okou/teams/oauth/callback": "/api/zero/teams/oauth/callback",
-};
-
-interface BrandedPathForms {
-  readonly canonical: string;
-  readonly legacy: string;
-}
-
-/**
- * Splits a branded path into its canonical and legacy forms, so the table can
- * be keyed on the canonical path no matter which namespace the contract
- * happens to declare today.
- */
-function brandedPathForms(path: string): BrandedPathForms | undefined {
-  const aliases = apiNamespaceAliasPaths(path);
-  const canonical = aliases.find((alias) => {
-    return brandedApiNamespace(alias) === "okou";
-  });
-  const legacy = aliases.find((alias) => {
-    return brandedApiNamespace(alias) === "zero";
-  });
-  if (canonical === undefined || legacy === undefined) {
-    return undefined;
-  }
-  return { canonical, legacy };
-}
-
-/**
  * True when the expansion may register `aliasPath` for a contract declaring
  * `declaredPath`. The declared path and the canonical `/api/okou/**` form
- * always register; a derived `/api/zero/**` path registers only when
- * `LEGACY_ZERO_PATHS` names it.
+ * register; a derived `/api/zero/**` form never does.
  */
 function servesNamespaceAliasPath(
   declaredPath: string,
   aliasPath: string,
 ): boolean {
-  if (aliasPath === declaredPath) {
-    return true;
-  }
-  const forms = brandedPathForms(declaredPath);
-  if (!forms || aliasPath !== forms.legacy) {
-    return true;
-  }
-  return LEGACY_ZERO_PATHS[forms.canonical] === aliasPath;
+  return (
+    aliasPath === declaredPath || brandedApiNamespace(aliasPath) !== "zero"
+  );
 }
 
 /**
- * Registers the canonical `/api/okou/**` form of every branded contract path,
- * and the legacy `/api/zero/**` form only where `LEGACY_ZERO_PATHS` names it.
+ * Registers the canonical `/api/okou/**` form of every branded contract path.
+ * The legacy `/api/zero/**` form is never derived.
  *
  * Until #28701 this expansion derived the legacy form unconditionally and
- * marked the registrations the table did not list, so `createAppWithRoutes`
- * could report the first request that reached one. That fallback existed
- * because the request log retained about three days, which cannot tell a
- * drained caller apart from a weekly one, and narrowing on that evidence would
- * have silently 404ed a real client. The log retains 6.3 days now and #28701
- * measured the whole window, so the table names every legacy path still owed
- * and the derivation behind it is gone — the reporting was retired because it
- * had nothing left to find, not because it was unwanted.
+ * marked the registrations `LEGACY_ZERO_PATHS` did not list, so
+ * `createAppWithRoutes` could report the first request that reached one. That
+ * fallback existed because the request log retained about three days, which
+ * cannot tell a drained caller apart from a weekly one. #28701 measured the
+ * whole 6.3-day window instead, narrowed that table to the six paths a Slack or
+ * Teams app configuration still held, and dropped both the derivation and the
+ * reporting behind it.
+ *
+ * #30667 then removed the table itself. Each of its six paths is named directly
+ * by a `MIGRATED_BRANDED_PATHS` row below, so none of them lost a registration,
+ * and nothing in this repository produces a `/api/zero/**` URL any more — the
+ * last producer was `callbackRedirectUri` in `routes/teams-oauth.ts`, unified
+ * onto the canonical path in the same commit. A `/api/zero/**` path is now
+ * served only where that table names it.
  */
 export function withApiNamespaceAliases(
   routes: readonly RouteEntry[],
@@ -166,16 +91,15 @@ export function withApiNamespaceAliases(
  * The branded paths a migrated route still answers on, keyed by the neutral
  * canonical path its contract now declares.
  *
- * `LEGACY_ZERO_PATHS` cannot express this, which is why this is a second table
- * rather than more rows in that one. That table names the `/api/zero/**` form
- * the expansion above may derive for a contract that still declares a branded
- * path; this one names branded registrations for a contract that declares a
- * neutral one, including the `/api/okou/**` form the expansion cannot derive
- * either. `apiNamespaceAliasPaths` returns a neutral path unchanged, so once
- * #28278 moves a contract off `/api/okou/**` the expansion produces no branded
- * path for it and neither branded path is registered any more — published CLI
- * builds still calling the branded path would get a 404 with nothing in either
- * table able to say otherwise.
+ * This is the only table left that registers a branded path, and since #30667
+ * the only thing that registers a `/api/zero/**` path at all. It names branded
+ * registrations for a contract that declares a neutral path, including the
+ * `/api/okou/**` form the expansion above cannot derive.
+ * `apiNamespaceAliasPaths` returns a neutral path unchanged, so once #28278
+ * moves a contract off `/api/okou/**` the expansion produces no branded path
+ * for it and neither branded path is registered any more — published CLI builds
+ * still calling the branded path would get a 404 with nothing able to say
+ * otherwise.
  *
  * A migrated route generally owes both branded forms, so a value is a list
  * rather than a single path.
@@ -183,8 +107,8 @@ export function withApiNamespaceAliases(
  * Each #28278 slice adds the rows for the paths it moves, so a move and the
  * compatibility it owes land in one commit.
  *
- * Every row is compatibility debt under the same removal gate as
- * `LEGACY_ZERO_PATHS`: a row is removed only under #26701's evidence rules.
+ * Every row is compatibility debt under #26701's removal gate: a row is removed
+ * only under its evidence rules.
  * `vm0-request-log-prod` retained 6.3 days when #28701 read it, which is long
  * enough to name a caller that is still there and not long enough to prove a
  * silent row has no caller that returns.
@@ -252,9 +176,10 @@ export function withApiNamespaceAliases(
  * a zero-count reading fails:
  *
  * - `integrations/teams/oauth/callback`. `callbackRedirectUri` in
- *   `routes/teams-oauth.ts` still emits its `zero` form for the VM0 brand, so
- *   the row is an active producer target. No window can drain it and no count
- *   can retire it; see the comment on the row itself.
+ *   `routes/teams-oauth.ts` still emitted its `zero` form for the VM0 brand
+ *   then, so the row was an active producer target that no window could drain
+ *   and no count could retire. #30667 unified that producer onto the canonical
+ *   path; see the comment on the row itself.
  * - `computer-use/hosts/start` and `computer-use/host/stop`. Both are
  *   hardcoded in every Desktop build up to 0.38.53, and those builds were
  *   still sending branded `heartbeat` and `host/commands/next` inside this
@@ -454,8 +379,8 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // desktop, or platform build emits a branded literal for any of them, and
   // every caller derives its URL from a contract that has declared the neutral
   // path since #28457. `/api/zero/billing/concurrency-checkout/preview` was
-  // among the nine: it carried measured traffic when #28701 dropped its
-  // `LEGACY_ZERO_PATHS` row and these rows are what served it afterwards, but
+  // among the nine: it carried measured traffic when #28701 dropped its row
+  // from the legacy-path table, and these rows are what served it after, but
   // the retained window recorded no request on either branded form.
   //
   // #28916 then removed the six that were not silent — plan checkout, invoices,
@@ -498,11 +423,12 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // heartbeat but can no longer open or close a session.
   //
   // Four of these paths — `host/commands/next`, `audit-events`, `heartbeat`,
-  // and `hosts/start` — were served by `LEGACY_ZERO_PATHS` before this move and
-  // are served by these rows after it: the contract no longer declares a
-  // branded path for the expansion to derive. #28701 dropped their rows from
-  // that table once it was clear these rows are what serve them. Removal of
-  // these follows #26701's evidence rules like every other row here.
+  // and `hosts/start` — were served by the legacy-path table #30667 deleted
+  // before this move and are served by these rows after it: the contract no
+  // longer declares a branded path for the expansion to derive. #28701 dropped
+  // their rows from that table once it was clear these rows are what serve
+  // them. Removal of these follows #26701's evidence rules like every other row
+  // here.
   //
   // #28916 listed `audit-events` and `host/commands/:commandId/complete` for
   // removal and both were kept, for the mirror image of #28917's reason. All of
@@ -643,9 +569,9 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // The OAuth-start paths have a second holder that no client version bounds: a
   // connect or install link the API handed out earlier lives in a Slack message
   // a user can still click, and `/api/okou/slack/oauth/install` is measured
-  // traffic listed in `LEGACY_ZERO_PATHS` above, which after this move only
-  // these rows can serve. Removal follows the #26701 evidence gate like every
-  // other row, not either clock.
+  // traffic that the legacy-path table #30667 deleted also listed, which after
+  // this move only these rows can serve. Removal follows the #26701 evidence
+  // gate like every other row, not either clock.
   "/api/slack/channels": [
     "/api/okou/slack/channels",
     "/api/zero/slack/channels",
@@ -785,29 +711,27 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // What holds the branded forms open is not a released client but the
   // Microsoft consoles themselves, which have no drain window: they keep
   // sending to whatever URL is registered until an operator changes it.
-  // Removal follows #26701's evidence rules, and for the `zero` callback the
-  // ordering constraint recorded there.
+  // Removal follows #26701's evidence rules.
   //
   // #28917 removed the slice's `webhooks/teams/bot` row. #28545 records that an
   // operator had already repointed the Azure Bot messaging endpoint at the
   // neutral path before that slice landed, so nothing on the Microsoft side
   // still holds either branded bot URL, and the retained window measured both
   // silent. The OAuth callback row below stays for the reason its own comment
-  // gives, which is not a drain window and is not measurable in the log at all.
+  // gives.
   "/api/integrations/teams/oauth/callback": [
     "/api/okou/teams/oauth/callback",
-    // Not drain-window compatibility. `callbackRedirectUri` in
-    // `routes/teams-oauth.ts` is brand-conditional and still emits this exact
-    // path for the VM0 brand on purpose: it is registered in the Microsoft app
-    // registration, and #26701 records that it retires together with the
-    // `api.vm0.ai` brand host. So this row is an active producer target, not a
-    // leftover — do not prune it merely for being an `/api/zero/` path, or
-    // live VM0-brand connects lose the callback they were sent to.
+    // `callbackRedirectUri` in `routes/teams-oauth.ts` was brand-conditional
+    // and emitted this exact path for the VM0 brand, which made the row an
+    // active producer target no traffic sweep could retire: a quiet window
+    // meant nobody connected Teams under the VM0 brand that week, and the next
+    // person who did was sent here regardless. #28917 listed the row for
+    // removal on that silence and it was held back for exactly that reason.
     //
-    // A traffic sweep cannot retire this row: a quiet window means nobody
-    // connected Teams under the VM0 brand that week, and the next person who
-    // does is sent here regardless. #28917 listed this row for removal on that
-    // silence and it was held back for exactly this reason.
+    // #30667 unified the producer onto the canonical path, so what this row
+    // now holds open is an authorization that started before that deploy and
+    // carries the legacy `redirect_uri` in its state. Removal follows #26701's
+    // evidence rules like every other row.
     "/api/zero/teams/oauth/callback",
   ],
   // #28463: avatar video generation, the per-token browser authorization
