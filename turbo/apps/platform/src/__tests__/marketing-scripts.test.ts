@@ -1,20 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 
-import indexHtml from "../../index.html?raw";
+import { initGoogleAds } from "../lib/google-ads.ts";
 import { testContext } from "../signals/__tests__/test-helpers.ts";
 
 const GOOGLE_TAG_SCRIPT_URL =
   "https://www.googletagmanager.com/gtag/js?id=AW-18144854014";
 
 type MarketingWindow = Window & {
-  dataLayer?: IArguments[];
+  dataLayer?: unknown[][];
   gtag?: (...args: unknown[]) => void;
 };
-
-type MarketingEntrypointScript = (
-  windowObject: Window,
-  documentObject: Document,
-) => void;
 
 interface RequestedScript {
   readonly async: boolean;
@@ -27,20 +22,6 @@ interface MarketingHarness {
 }
 
 const context = testContext();
-
-function marketingEntrypointSource(): string {
-  const source = [...indexHtml.matchAll(/<script>([\s\S]*?)<\/script>/gi)]
-    .map((match) => {
-      return match[1];
-    })
-    .find((script) => {
-      return script?.includes('window.gtag("config", "AW-18407336975")');
-    });
-  if (source === undefined) {
-    throw new Error("Unable to locate the marketing loader in index.html");
-  }
-  return source;
-}
 
 function executeMarketingEntrypoint(hostname: string): MarketingHarness {
   const marketingWindow = window as MarketingWindow;
@@ -57,12 +38,7 @@ function executeMarketingEntrypoint(hostname: string): MarketingHarness {
     },
   );
 
-  const executeEntrypointScript = new Function(
-    "window",
-    "document",
-    `${marketingEntrypointSource()}\n//# sourceURL=platform-marketing-entrypoint-test.js`,
-  ) as MarketingEntrypointScript;
-  executeEntrypointScript(window, document);
+  initGoogleAds();
 
   return { marketingWindow, requestedScripts };
 }
