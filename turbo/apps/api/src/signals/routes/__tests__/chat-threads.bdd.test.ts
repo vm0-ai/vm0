@@ -549,13 +549,17 @@ async function completeThreadGoal(
   );
 }
 
+// Neutral throughout since #30807 retired the branded forms of every
+// chat-thread row; the earlier per-row notes below record which removal took
+// each of the others. A branded request would 404 before reaching the parameter
+// check these cases exist to exercise.
 const malformedChatThreadIdRequests = [
-  { method: "GET", path: "/api/zero/chat-threads/:id", paramName: "id" },
-  { method: "PATCH", path: "/api/zero/chat-threads/:id", paramName: "id" },
-  { method: "DELETE", path: "/api/zero/chat-threads/:id", paramName: "id" },
+  { method: "GET", path: "/api/chat-threads/:id", paramName: "id" },
+  { method: "PATCH", path: "/api/chat-threads/:id", paramName: "id" },
+  { method: "DELETE", path: "/api/chat-threads/:id", paramName: "id" },
   {
     method: "POST",
-    path: "/api/zero/chat-threads/:id/mark-read",
+    path: "/api/chat-threads/:id/mark-read",
     paramName: "id",
   },
   {
@@ -578,7 +582,7 @@ const malformedChatThreadIdRequests = [
     path: "/api/chat-threads/:id/computer-use-host",
     paramName: "id",
   },
-  { method: "POST", path: "/api/zero/chat-threads/:id/pin", paramName: "id" },
+  { method: "POST", path: "/api/chat-threads/:id/pin", paramName: "id" },
   // Neutral for the same reason as `computer-use-host` above.
   {
     method: "POST",
@@ -595,12 +599,12 @@ const malformedChatThreadIdRequests = [
   },
   {
     method: "GET",
-    path: "/api/zero/chat-threads/:id/artifacts",
+    path: "/api/chat-threads/:id/artifacts",
     paramName: "threadId",
   },
   {
     method: "POST",
-    path: "/api/zero/chat-threads/:id/artifacts",
+    path: "/api/chat-threads/:id/artifacts",
     paramName: "threadId",
   },
 ] as const;
@@ -626,12 +630,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
     });
-    const unauthenticated = await app.request(
-      "/api/zero/chat-threads/snapshot",
-      {
-        headers: { authorization: "Bearer clerk-session" },
-      },
-    );
+    const unauthenticated = await app.request("/api/chat-threads/snapshot", {
+      headers: { authorization: "Bearer clerk-session" },
+    });
     expect(unauthenticated.status).toBe(401);
     const unauthenticatedBody = (await unauthenticated.json()) as {
       readonly error: { readonly code: string };

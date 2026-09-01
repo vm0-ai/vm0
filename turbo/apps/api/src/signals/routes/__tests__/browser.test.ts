@@ -868,7 +868,7 @@ describe("okou browser route", () => {
     const copiedToAnotherThread = await createApp({
       signal: context.signal,
       routes: TEST_APP_ROUTES,
-    }).request(`/api/zero/chat-threads/${randomUUID()}/browser`, {
+    }).request(`/api/chat-threads/${randomUUID()}/browser`, {
       headers: firstBrowserHeaders,
     });
     expect(copiedToAnotherThread.status).toBe(404);

@@ -24,7 +24,7 @@ const context = testContext();
 const store = createStore();
 const mocks = createRouteMocks(context);
 const storages = createStoragesBddApi(context);
-const SLACK_CONNECT_PATH = "/api/zero/integrations/slack/connect";
+const SLACK_CONNECT_PATH = "/api/integrations/slack/connect";
 
 function userIdsFromClerkListArgs(args: unknown): readonly string[] {
   if (typeof args !== "object" || args === null || !("userId" in args)) {
@@ -85,7 +85,7 @@ function expectErrorCode(
   expect(body).toMatchObject({ error: { code } });
 }
 
-describe("GET /api/zero/integrations/slack/connect", () => {
+describe("GET /api/integrations/slack/connect", () => {
   const track = createFixtureTracker<SlackConnectFixture>((fixture) => {
     return store.set(deleteSlackConnectOrg$, fixture, context.signal);
   });
@@ -223,7 +223,7 @@ describe("GET /api/zero/integrations/slack/connect", () => {
   });
 });
 
-describe("POST /api/zero/integrations/slack/connect", () => {
+describe("POST /api/integrations/slack/connect", () => {
   const track = createFixtureTracker<SlackConnectFixture>((fixture) => {
     return store.set(deleteSlackConnectOrg$, fixture, context.signal);
   });

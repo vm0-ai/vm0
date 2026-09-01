@@ -1892,7 +1892,7 @@ async function requestSendEventRaw(
 ): Promise<{ readonly status: number; readonly body: unknown }> {
   const headers = sessionHeaders(actor);
   const app = createApp({ signal, routes: TEST_APP_ROUTES });
-  const response = await app.request("/api/zero/chat/events", {
+  const response = await app.request("/api/chat/events", {
     method: "POST",
     headers: { ...headers, "content-type": "application/json" },
     body: JSON.stringify(body),
