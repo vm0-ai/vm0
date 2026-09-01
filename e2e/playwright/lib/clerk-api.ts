@@ -871,14 +871,22 @@ function describeClerkTransportCause(cause: unknown): string {
 }
 
 /**
- * `fetch` reports every transport failure as an uncoded `TypeError`, and undici
- * reports a lost address race as an `AggregateError` holding one error per
- * address, so the decision has to walk the whole chain. Every leaf must be a
+ * `fetch` reports every transport failure as an uncoded `TypeError`, so the
+ * decision has to walk the whole chain. Every leaf must be a
  * connection-establishment failure before a create may be reissued.
  */
 function isClerkConnectFailure(cause: unknown): boolean {
   if (!(cause instanceof Error)) {
     return false;
+  }
+
+  // undici aggregates errors only while racing the addresses of one host, so
+  // the aggregation itself proves the failure happened before a request byte
+  // was written. Node stamps the shared per-address code onto the aggregate,
+  // and an all-addresses `ETIMEDOUT` race carries a code this set withholds
+  // from single errors because it can also fire on an established socket.
+  if (cause instanceof AggregateError) {
+    return true;
   }
 
   const code = clerkTransportCode(cause);
