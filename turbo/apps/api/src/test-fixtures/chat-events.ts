@@ -26,7 +26,6 @@ import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatEventSearchMessageWatermarks } from "@okouai/db/schema/chat-event-search";
 import { feishuChatIngress } from "@okouai/db/schema/feishu-chat-ingress";
 import { feishuOrgEvents } from "@okouai/db/schema/feishu-org-event";
-import { checkpoints } from "@okouai/db/schema/checkpoint";
 import { conversations } from "@okouai/db/schema/conversation";
 import { githubChatThreadRoutes } from "@okouai/db/schema/github-chat-thread-route";
 import { githubInstallations } from "@okouai/db/schema/github-installation";
@@ -997,20 +996,27 @@ export async function timeoutRunWithoutCallbacksFixture(args: {
   }
 }
 
-/**
- * Holds checkpoint reads after `/complete` has loaded its run but before its
- * terminal compare-and-set. Product APIs cannot pause at this race boundary.
- */
-export async function holdCheckpointReadsFixture(args: {
+/** Holds one unique run row so route tests can order lifecycle competitors. */
+export async function holdAgentRunRowLockFixture(args: {
+  readonly runId: string;
   readonly signal: AbortSignal;
 }): Promise<{
   readonly release: () => void;
   readonly done: Promise<void>;
-  readonly blockedWaiterCount: () => Promise<number>;
+  readonly waiterCount: () => Promise<number>;
 }> {
   const started = createDeferredPromise<number>(args.signal);
   const released = createDeferredPromise<void>(args.signal);
   const done = db().transaction(async (tx) => {
+    const [run] = await tx
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, args.runId))
+      .for("update")
+      .limit(1);
+    if (!run) {
+      throw new Error("Expected the agent run row to lock");
+    }
     const pidRows = await executeRawRows(
       tx,
       sql`
@@ -1020,9 +1026,8 @@ export async function holdCheckpointReadsFixture(args: {
     );
     const holderPid = pidRows[0]?.pid;
     if (!holderPid) {
-      throw new Error("Expected the checkpoint lock holder pid");
+      throw new Error("Expected the agent run row lock holder pid");
     }
-    await tx.execute(sql`LOCK TABLE ${checkpoints} IN ACCESS EXCLUSIVE MODE`);
     started.resolve(holderPid);
     await released.promise;
   });
@@ -1035,8 +1040,8 @@ export async function holdCheckpointReadsFixture(args: {
       }
     },
     done,
-    blockedWaiterCount: async () => {
-      return await directBlockedWaiterCount(holderPid);
+    waiterCount: () => {
+      return transitiveBlockedWaiterCount(holderPid);
     },
   };
 }

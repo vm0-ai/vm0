@@ -157,7 +157,7 @@ import {
   acquireBddVm0ApiKey,
   completeRunWithoutCallbacksFixture,
   deleteAgentRunFixture,
-  holdCheckpointReadsFixture,
+  holdAgentRunRowLockFixture,
   holdChatEventQueueItemFixture,
   holdChatThreadRowLockFixture,
   holdOrgAdmissionLockFixture,
@@ -7928,21 +7928,22 @@ describe("CHAT-02: model-first provider policies", () => {
       })
       .toBe(true);
     const racedClaim = await claimChatRun(runnerGroup, racedHandoff.runId);
-    const checkpointGate = await holdCheckpointReadsFixture({
+    const lifecycleGate = await holdAgentRunRowLockFixture({
+      runId: racedHandoff.runId,
       signal: context.signal,
     });
+    const ownedRequests: Promise<unknown>[] = [];
     onTestFinished(async () => {
-      checkpointGate.release();
-      await checkpointGate.done;
+      lifecycleGate.release();
+      await Promise.all([lifecycleGate.done, ...ownedRequests]);
     });
     const racedCompletion = webhooks.requestAgentComplete(
       { runId: racedHandoff.runId, exitCode: 0 },
       racedClaim.sandboxHeaders,
       [200],
     );
-    await expect
-      .poll(checkpointGate.blockedWaiterCount)
-      .toBeGreaterThanOrEqual(1);
+    ownedRequests.push(Promise.allSettled([racedCompletion]));
+    await expect.poll(lifecycleGate.waiterCount).toBe(1);
     const racedCheckpoint = webhooks.requestAgentCheckpoint(
       {
         runId: racedHandoff.runId,
@@ -7953,15 +7954,19 @@ describe("CHAT-02: model-first provider policies", () => {
       racedClaim.sandboxHeaders,
       [400],
     );
-    checkpointGate.release();
-    await checkpointGate.done;
-    await expect(racedCompletion).resolves.toMatchObject({
-      body: { success: true, status: "failed" },
-    });
-    const racedCheckpointResponse = await racedCheckpoint;
-    expect(JSON.stringify(racedCheckpointResponse.body)).toContain(
+    ownedRequests.push(Promise.allSettled([racedCheckpoint]));
+    const racedCheckpointResult = await racedCheckpoint;
+    expect(JSON.stringify(racedCheckpointResult.body)).toContain(
       "[CHECKPOINT_RUN_NOT_SETTLED]",
     );
+    lifecycleGate.release();
+    const [, racedCompletionResult] = await Promise.all([
+      lifecycleGate.done,
+      racedCompletion,
+    ] as const);
+    expect(racedCompletionResult).toMatchObject({
+      body: { success: true, status: "failed" },
+    });
     await waitForRunStatus(actor, racedHandoff.runId, "failed");
     await flushWaitUntilForTest();
     await expect(
