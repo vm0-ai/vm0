@@ -24,9 +24,10 @@ import type {
 } from "../data-key.ts";
 import { MessagePortSharedDatabaseBridge } from "../message-port-client.ts";
 import { SharedDatabaseMessagePortServer } from "../message-port-server.ts";
-import type {
-  SharedDatabaseClientMessage,
-  SharedDatabaseConnectionStatus,
+import {
+  redactSharedDatabaseClientMessageForLog,
+  type SharedDatabaseClientMessage,
+  type SharedDatabaseConnectionStatus,
 } from "../protocol.ts";
 import { SingleConnectionSharedDatabaseBridge } from "../single-connection-client.ts";
 import { SharedDatabaseWorkerContext } from "../worker-host-context.ts";
@@ -198,6 +199,24 @@ async function installProtocolBridge(): Promise<{
 }
 
 describe("shared database MessagePort protocol", () => {
+  it("redacts heartbeat credentials from bridge log messages", () => {
+    const message = {
+      type: "heartbeat",
+      requestId: crypto.randomUUID(),
+      token: "secret-heartbeat-token",
+      apiBaseUrl: location.origin,
+      vercelProtectionBypass: "secret-vercel-bypass",
+    } satisfies SharedDatabaseClientMessage;
+
+    expect(redactSharedDatabaseClientMessageForLog(message)).toStrictEqual({
+      ...message,
+      token: "[redacted]",
+      vercelProtectionBypass: "[redacted]",
+    });
+    expect(message.token).toBe("secret-heartbeat-token");
+    expect(message.vercelProtectionBypass).toBe("secret-vercel-bypass");
+  });
+
   it("completes the initial heartbeat before the credential realtime subscription", async () => {
     installHeartbeatAuthentication();
     const initialAttachment = context.mocks.ably.deferNextSubscribe();

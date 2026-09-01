@@ -16,6 +16,7 @@ import {
   type SharedDatabaseIdentity,
 } from "./data-key.ts";
 import {
+  redactSharedDatabaseClientMessageForLog,
   sharedDatabaseClientMessageSchema,
   SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME,
   type SharedDatabaseClientMessage,
@@ -385,7 +386,11 @@ export class SharedDatabaseMessagePortServer {
         return;
       }
       const message = parsed.data;
-      BridgeL.debug("got message from app", this.connectionId, message);
+      BridgeL.debug(
+        "got message from app",
+        this.connectionId,
+        redactSharedDatabaseClientMessageForLog(message),
+      );
       if (message.type === "disconnect") {
         this.disconnect("client-request");
         return;

@@ -13,6 +13,7 @@ import type {
   SharedDatabasePortLike,
 } from "./bridge.ts";
 import {
+  redactSharedDatabaseClientMessageForLog,
   sharedDatabaseHeartbeatResultSchema,
   sharedDatabaseWorkerMessageSchema,
   type SharedDatabaseClientMessage,
@@ -195,7 +196,10 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
   }
 
   private emit(message: SharedDatabaseClientMessage): void {
-    L.debug("send message to worker", message);
+    L.debug(
+      "send message to worker",
+      redactSharedDatabaseClientMessageForLog(message),
+    );
     this.port.postMessage(message);
   }
 
