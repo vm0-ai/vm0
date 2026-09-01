@@ -7,6 +7,7 @@ import type {
 } from "@okouai/api-contracts/contracts/official-workflow-catalog";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
+  googleFormsResponseSubmittedEventConfigSchema,
   stripeInvoicePaidEventConfigSchema,
   type StripeInvoicePaidEventConfig,
 } from "@okouai/api-contracts/contracts/workflows";
@@ -156,7 +157,7 @@ function eventWatchFailureMessage(result: {
 
 function accountConnectorSlug(
   eventType: string | null,
-): "gmail" | "notion" | "stripe" | null {
+): "gmail" | "google-forms" | "notion" | "stripe" | null {
   if (
     eventType === "gmail-new-message" ||
     eventType === "gmail-label-applied"
@@ -169,6 +170,9 @@ function accountConnectorSlug(
     eventType === "notion-page-content-updated"
   ) {
     return "notion";
+  }
+  if (eventType === "google-forms-response-submitted") {
+    return "google-forms";
   }
   return eventType === "stripe-invoice-paid" ? "stripe" : null;
 }
@@ -187,7 +191,12 @@ async function lockOfficialAutomationAccountProjection(
   | { readonly kind: "not-required" }
   | {
       readonly kind: "locked";
-      readonly connectorSlug: "gmail" | "notion" | "stripe" | null;
+      readonly connectorSlug:
+        | "gmail"
+        | "google-forms"
+        | "notion"
+        | "stripe"
+        | null;
       readonly eventConnectorId: string | null;
       readonly stripeBinding: StripeAutomationBinding | null;
     }
@@ -195,7 +204,7 @@ async function lockOfficialAutomationAccountProjection(
   const currentConnectorSlug = accountConnectorSlug(args.currentEventType);
   const nextConnectorSlug = accountConnectorSlug(args.nextEventType);
   const connectorSlugs = [currentConnectorSlug, nextConnectorSlug]
-    .filter((slug): slug is "gmail" | "notion" | "stripe" => {
+    .filter((slug): slug is "gmail" | "google-forms" | "notion" | "stripe" => {
       return slug !== null;
     })
     .filter((slug, index, values) => {
@@ -256,6 +265,14 @@ function accountProjectionMatchesPatch(
   }
   if (projection.eventConnectorId !== patch.eventConnectorId) {
     return false;
+  }
+  if (projection.connectorSlug === "google-forms") {
+    const config = googleFormsResponseSubmittedEventConfigSchema.safeParse(
+      patch.eventConfig,
+    );
+    return (
+      config.success && config.data.connectorId === projection.eventConnectorId
+    );
   }
   if (projection.connectorSlug !== "stripe") {
     return true;
