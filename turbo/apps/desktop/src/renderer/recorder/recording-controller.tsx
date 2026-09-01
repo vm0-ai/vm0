@@ -22,16 +22,26 @@ export function RecordingController(): React.ReactElement {
   const [paused, setPaused] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!recorder) {
       return;
     }
     const timer = setInterval(() => {
-      void recorder.getState().then((state) => {
-        setPaused(state.status === "paused");
-        setElapsedMs(state.elapsedMs);
-      });
+      void recorder
+        .getState()
+        .then((state) => {
+          setPaused(state.status === "paused");
+          setElapsedMs(state.elapsedMs);
+        })
+        .catch((pollError: unknown) => {
+          setError(
+            pollError instanceof Error
+              ? pollError.message
+              : "Lost track of the recording",
+          );
+        });
     }, 500);
     return () => {
       clearInterval(timer);
@@ -99,6 +109,8 @@ export function RecordingController(): React.ReactElement {
       >
         <Trash2 size={16} />
       </button>
+
+      {error ? <p className="recording-controller__error">{error}</p> : null}
     </div>
   );
 }

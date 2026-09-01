@@ -51,6 +51,20 @@ function requiredNumber(result: Record<string, unknown>, key: string): number {
   );
 }
 
+function requiredBoolean(
+  result: Record<string, unknown>,
+  key: string,
+): boolean {
+  const value = result[key];
+  if (typeof value === "boolean") {
+    return value;
+  }
+  throw new DesktopRecorderHelperError(
+    "capture_failed",
+    `Screen recorder helper returned an invalid ${key}`,
+  );
+}
+
 function optionalString(
   result: Record<string, unknown>,
   key: string,
@@ -309,8 +323,7 @@ function toSources(result: Record<string, unknown>): DesktopRecorderSourceList {
   });
   return {
     sources,
-    // Absent means unsupported: an older helper cannot record a microphone.
-    supportsMicrophone: result.supportsMicrophone === true,
+    supportsMicrophone: requiredBoolean(result, "supportsMicrophone"),
   };
 }
 

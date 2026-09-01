@@ -220,6 +220,7 @@
 
 .recording-controller {
   -webkit-app-region: drag;
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -316,4 +317,17 @@
 
 .area-selector__start:hover {
   background: #f76707;
+}
+
+.recording-controller__error {
+  position: absolute;
+  right: 14px;
+  bottom: -24px;
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgb(38 38 42 / 96%);
+  color: #ffb4a2;
+  font-size: 12px;
+  white-space: nowrap;
 }

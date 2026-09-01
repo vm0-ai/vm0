@@ -31,6 +31,7 @@ const SOURCES: HelperBehavior = {
         bundleId: "ai.vm0.okou",
       },
     ],
+    supportsMicrophone: true,
   },
 };
 
@@ -364,6 +365,21 @@ describe("createRecorderNativeBackend", () => {
     expect(await rejection(backend.stop("session-1"))).toMatchObject({
       code: "capture_failed",
       message: "Screen recorder helper returned an invalid videoPath",
+    });
+  });
+
+  it("rejects a source list that omits the microphone capability", async () => {
+    const { helperPath } = await createHelper({
+      "recorder.sources": { result: { sources: [] } },
+    });
+    const backend = createBackend(helperPath);
+
+    // The helper ships in the same bundle as this code, so a response without
+    // the field is a broken helper rather than an older one. Failing here beats
+    // silently recording without the narration the user asked for.
+    expect(await rejection(backend.listSources())).toMatchObject({
+      code: "capture_failed",
+      message: "Screen recorder helper returned an invalid supportsMicrophone",
     });
   });
 
