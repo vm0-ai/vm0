@@ -1,9 +1,27 @@
+/* Every overlay window is transparent, so the document behind the overlay must
+   paint nothing at all. A background anywhere in this chain — including the
+   root element — becomes an opaque sheet over the screen the user is choosing
+   from. */
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+}
+
 .recorder-body {
   margin: 0;
-  background: transparent;
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* Controls do not inherit type by default, and every overlay sets its font on
+   the surface the controls sit in. */
+button,
+select {
+  font: inherit;
 }
 
 /* The bar is draggable by its background so it can be moved off whatever it
@@ -16,7 +34,8 @@
   gap: 18px;
   box-sizing: border-box;
   width: 100%;
-  height: 100%;
+  /* Not the full window: the room below is where a failure message goes. */
+  height: 116px;
   padding: 0 22px 0 64px;
   border-radius: 18px;
   background: rgb(38 38 42 / 96%);
@@ -226,7 +245,8 @@
   gap: 10px;
   box-sizing: border-box;
   width: 100%;
-  height: 100%;
+  /* Not the full window: the room below is where a failure message goes. */
+  height: 60px;
   padding: 0 14px;
   border-radius: 14px;
   background: rgb(38 38 42 / 96%);

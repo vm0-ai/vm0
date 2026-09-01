@@ -1,6 +1,8 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import "../styles.css";
+// Deliberately not the app stylesheet: its `:root` paints an opaque page
+// background, which in a transparent overlay window covers the screen the user
+// is trying to see through.
 import "./recorder.css";
 import { AreaSelector } from "./area-selector";
 import { RecorderBar } from "./recorder-bar";
