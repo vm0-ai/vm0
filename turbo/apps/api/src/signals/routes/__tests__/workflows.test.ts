@@ -47,6 +47,10 @@ import {
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
+import {
+  setBuiltinOAuthScopeFacts,
+  setConnectorAccountState,
+} from "./helpers/connector-credential-storage-state";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { chatThreadRoutes } from "../chat-threads";
 import { workflowAutomationsRoutes } from "../workflow-automations";
@@ -371,6 +375,49 @@ async function connectManualGrant(
   return connector;
 }
 
+async function connectGmailAccount(
+  actor: ApiTestUser,
+  agentId: string,
+  args: {
+    readonly accessToken: string;
+    readonly email: string;
+    readonly subject: string;
+    readonly account?: { readonly intent: "add"; readonly displayName: string };
+  },
+) {
+  mockGmailConnectorOAuth({
+    accessToken: args.accessToken,
+    email: args.email,
+    subject: args.subject,
+  });
+  const start = await connectorApi.startOauth(
+    actor,
+    "gmail",
+    "oauth",
+    agentId,
+    args.account,
+  );
+  const state = new URL(start.authorizationUrl).searchParams.get("state");
+  if (!state) {
+    throw new Error("Expected Gmail OAuth state");
+  }
+  await connectorApi.completeOauthCallback("gmail", {
+    code: `gmail-readiness-${randomUUID()}`,
+    state,
+  });
+  const accounts = await connectorApi.listBuiltinConnectorAccounts(
+    actor,
+    "gmail",
+  );
+  const account = accounts.find((candidate) => {
+    return candidate.externalEmail === args.email;
+  });
+  if (!account) {
+    throw new Error(`Expected Gmail account ${args.email}`);
+  }
+  return account;
+}
+
 async function requestCreateWorkflow<
   TStatus extends 400 | 401 | 403 | 404 | 409,
 >(
@@ -582,6 +629,242 @@ describe("workflows", () => {
         },
         reason: "The workflow reads GitLab projects.",
         status: "connected",
+      },
+    ]);
+  });
+
+  it("uses workflow thread accounts for event and model connector readiness", async () => {
+    const actor = user();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization-scoped readiness actor");
+    }
+    await api.grantProEntitlement(actor, { tier: "team" });
+    await updateFeatureSwitchesForUser(
+      context,
+      { orgId: actor.orgId, userId: actor.userId },
+      {
+        [FeatureSwitchKey.ConnectorAccounts]: true,
+        [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
+      },
+    );
+    const agent = await createAgent(actor, {
+      displayName: "Account-aware Readiness Agent",
+      visibility: "private",
+    });
+
+    mockOptionalEnv(
+      "GMAIL_PUBSUB_TOPIC_NAME",
+      "projects/vm0-ai-488909/topics/gmail-events",
+    );
+    server.use(
+      http.post("https://gmail.googleapis.com/gmail/v1/users/me/watch", () => {
+        return HttpResponse.json({
+          historyId: "account-aware-readiness",
+          expiration: "4102444800000",
+        });
+      }),
+      http.post("https://gmail.googleapis.com/gmail/v1/users/me/stop", () => {
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    const defaultGmail = await connectGmailAccount(actor, agent.agentId, {
+      accessToken: "readiness-default-gmail-token",
+      email: `readiness-default-${randomUUID()}@example.test`,
+      subject: `readiness-default-${randomUUID()}`,
+    });
+    const selectedGmail = await connectGmailAccount(actor, agent.agentId, {
+      accessToken: "readiness-selected-gmail-token",
+      email: `readiness-selected-${randomUUID()}@example.test`,
+      subject: `readiness-selected-${randomUUID()}`,
+      account: { intent: "add", displayName: "Selected Gmail" },
+    });
+    expect(defaultGmail.isDefault).toBeTruthy();
+    expect(selectedGmail.isDefault).toBeFalsy();
+    await setBuiltinOAuthScopeFacts(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      connectorSlug: "gmail",
+      connectorId: selectedGmail.id,
+      oauthScopes: [],
+      oauthGrantedScopes: ["https://www.googleapis.com/auth/gmail.modify"],
+    });
+
+    const defaultRuntimeResult = await connectorApi.requestManualGrant(
+      actor,
+      "runtime",
+      "api-token",
+      { apiKey: "readiness-default-runtime-key" },
+      {
+        statuses: [200],
+        agentId: agent.agentId,
+        authorizeAgent: true,
+        account: { intent: "single-account" },
+      },
+    );
+    if (defaultRuntimeResult.status !== 200) {
+      throw new Error("Expected default Runtime account");
+    }
+    const selectedRuntimeResult = await connectorApi.requestManualGrant(
+      actor,
+      "runtime",
+      "api-token",
+      { apiKey: "readiness-selected-runtime-key" },
+      {
+        statuses: [200],
+        agentId: agent.agentId,
+        authorizeAgent: true,
+        account: { intent: "add", displayName: "Selected Runtime" },
+      },
+    );
+    if (selectedRuntimeResult.status !== 200) {
+      throw new Error("Expected selected Runtime account");
+    }
+    await api.enableAgentConnectors(actor, agent.agentId, ["gmail", "runtime"]);
+
+    const eventWorkflow = await createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: `event-account-readiness-${randomUUID().slice(0, 8)}`,
+      instruction: "Summarize new Gmail messages.",
+    });
+    const automation = await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId: eventWorkflow.body.id },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+    if (automation.body.kind !== "event" || !automation.body.chatThreadId) {
+      throw new Error("Expected Gmail automation thread");
+    }
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(actor),
+        params: { id: automation.body.chatThreadId },
+        body: {
+          connectionId: selectedGmail.id,
+          target: { kind: "builtin", connectorSlug: "gmail" },
+        },
+      }),
+      [200],
+    );
+    await setConnectorAccountState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      connectorId: selectedGmail.id,
+      needsReconnect: true,
+    });
+    mockConnectorReadinessModel([]);
+
+    const eventReconnect = await accept(
+      detailClient().connectorReadiness({
+        headers: authHeaders(actor),
+        params: { workflowId: eventWorkflow.body.id },
+      }),
+      [200],
+    );
+    expect(eventReconnect.body.connectors).toMatchObject([
+      {
+        connectorSlug: "gmail",
+        reason: "This workflow has a Gmail event automation.",
+        status: "reconnect-required",
+      },
+    ]);
+
+    await setConnectorAccountState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      connectorId: selectedGmail.id,
+      needsReconnect: false,
+    });
+    const eventScopeMismatch = await accept(
+      detailClient().connectorReadiness({
+        headers: authHeaders(actor),
+        params: { workflowId: eventWorkflow.body.id },
+      }),
+      [200],
+    );
+    expect(eventScopeMismatch.body.connectors).toMatchObject([
+      {
+        connectorSlug: "gmail",
+        reason: "This workflow has a Gmail event automation.",
+        status: "scope-mismatch",
+      },
+    ]);
+
+    await setConnectorAccountState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      connectorId: defaultRuntimeResult.body.id,
+      needsReconnect: true,
+    });
+    const modelWorkflow = await createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: `model-account-readiness-${randomUUID().slice(0, 8)}`,
+      instruction: "Read Runtime jobs.",
+    });
+    const modelThread = await accept(
+      detailClient().chatThread({
+        headers: authHeaders(actor),
+        params: { workflowId: modelWorkflow.body.id },
+      }),
+      [200],
+    );
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(actor),
+        params: { id: modelThread.body.chatThreadId },
+        body: {
+          connectionId: selectedRuntimeResult.body.id,
+          target: { kind: "builtin", connectorSlug: "runtime" },
+        },
+      }),
+      [200],
+    );
+    mockConnectorReadinessModel([
+      {
+        connectorSlug: "runtime",
+        reason: "The workflow reads Runtime jobs.",
+      },
+    ]);
+
+    const modelSelected = await accept(
+      detailClient().connectorReadiness({
+        headers: authHeaders(actor),
+        params: { workflowId: modelWorkflow.body.id },
+      }),
+      [200],
+    );
+    expect(modelSelected.body.connectors).toMatchObject([
+      {
+        connectorSlug: "runtime",
+        reason: "The workflow reads Runtime jobs.",
+        status: "connected",
+      },
+    ]);
+
+    const noThreadWorkflow = await createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: `default-account-readiness-${randomUUID().slice(0, 8)}`,
+      instruction: "Read Runtime jobs without a prepared thread.",
+    });
+    const defaultFallback = await accept(
+      detailClient().connectorReadiness({
+        headers: authHeaders(actor),
+        params: { workflowId: noThreadWorkflow.body.id },
+      }),
+      [200],
+    );
+    expect(defaultFallback.body.connectors).toMatchObject([
+      {
+        connectorSlug: "runtime",
+        reason: "The workflow reads Runtime jobs.",
+        status: "reconnect-required",
       },
     ]);
   });

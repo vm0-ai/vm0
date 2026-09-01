@@ -406,6 +406,7 @@ export async function setBuiltinOAuthScopeFacts(
     readonly orgId: string;
     readonly userId: string;
     readonly connectorSlug: string;
+    readonly connectorId?: string;
     readonly oauthScopes: readonly string[];
     readonly oauthGrantedScopes: readonly string[] | null;
   },
@@ -415,6 +416,9 @@ export async function setBuiltinOAuthScopeFacts(
     org_id: args.orgId,
     user_id: args.userId,
     connector_slug: args.connectorSlug,
+    ...(args.connectorId === undefined
+      ? {}
+      : { connector_id: args.connectorId }),
     oauth_scopes: [...args.oauthScopes],
     oauth_granted_scopes:
       args.oauthGrantedScopes === null ? null : [...args.oauthGrantedScopes],
