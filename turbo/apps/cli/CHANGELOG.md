@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.304.0](https://github.com/vm0-ai/vm0/compare/cli-v9.303.3...cli-v9.304.0) (2026-09-01)
+
+
+### Features
+
+* use transparent avatar cutouts in the intro video picker ([#30873](https://github.com/vm0-ai/vm0/issues/30873)) ([b176b5b](https://github.com/vm0-ai/vm0/commit/b176b5b46f223dd26d44e976e2299ed3f5bbfa8c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.389.0
+    * @okouai/core bumped to 8.607.0
+
 ## [9.303.3](https://github.com/vm0-ai/vm0/compare/cli-v9.303.2...cli-v9.303.3) (2026-09-01)
 
 

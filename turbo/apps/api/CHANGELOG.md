@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.525.0](https://github.com/vm0-ai/vm0/compare/api-v1.524.0...api-v1.525.0) (2026-09-01)
+
+
+### Features
+
+* **platform:** translate selected chat text ([#30818](https://github.com/vm0-ai/vm0/issues/30818)) ([37c2265](https://github.com/vm0-ai/vm0/commit/37c2265c1c600cbcc22b32224e376c5ae26cead3))
+* use transparent avatar cutouts in the intro video picker ([#30873](https://github.com/vm0-ai/vm0/issues/30873)) ([b176b5b](https://github.com/vm0-ai/vm0/commit/b176b5b46f223dd26d44e976e2299ed3f5bbfa8c))
+
+
+### Bug Fixes
+
+* **api:** bind notion automations to workflow accounts ([#30854](https://github.com/vm0-ai/vm0/issues/30854)) ([93b2fb7](https://github.com/vm0-ai/vm0/commit/93b2fb776be6b6e4dedb18ee98f6bd2351ab0b4c))
+* **api:** clean up unused google meet subscriptions ([#30874](https://github.com/vm0-ai/vm0/issues/30874)) ([c51ab2b](https://github.com/vm0-ai/vm0/commit/c51ab2b08ed8f2515bd6d77e93bcc98821f84b6d))
+* **api:** reject reordered legacy snapshot chains ([#30895](https://github.com/vm0-ai/vm0/issues/30895)) ([5f1496c](https://github.com/vm0-ai/vm0/commit/5f1496c724382c7979070c31b9fc8624c609f178))
+
+
+### Performance Improvements
+
+* **guest-agent:** expose control-path scheduling metrics ([#30890](https://github.com/vm0-ai/vm0/issues/30890)) ([1e7a196](https://github.com/vm0-ai/vm0/commit/1e7a1966f15351fb5f8019ebd29c2ee5ad2b4f96))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.389.0
+    * @okouai/core bumped to 8.607.0
+    * @okouai/db bumped to 1.230.0
+
 ## [1.524.0](https://github.com/vm0-ai/vm0/compare/api-v1.523.0...api-v1.524.0) (2026-09-01)
 
 
