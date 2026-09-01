@@ -57,6 +57,10 @@ import type {
 import type { WorkflowQueueAdmissionTransaction } from "./workflow-chat-event-queue.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { lockConnectorAccountTarget } from "./auth-state-lock.service";
+import {
+  notionConfigConnectorId,
+  reprojectNotionAutomationsForOwner,
+} from "./notion-automation-account.service";
 
 const log = logger("api:notion-automation-event");
 
@@ -1242,10 +1246,11 @@ async function insertNotionWebhookEvent(
   return inserted !== undefined;
 }
 
-async function loadNotionChildPageAutomations(
+async function queryNotionAutomations(
   args: {
     readonly db: Db;
   },
+  eventType: NotionAutomationEventType,
   signal: AbortSignal,
 ): Promise<readonly AutomationRow[]> {
   const rows = await args.db
@@ -1255,51 +1260,103 @@ async function loadNotionChildPageAutomations(
       and(
         eq(workflowAutomations.kind, "event"),
         eq(workflowAutomations.enabled, true),
-        eq(workflowAutomations.eventType, "notion-child-page-created"),
+        eq(workflowAutomations.eventType, eventType),
       ),
     );
   signal.throwIfAborted();
   return rows;
+}
+
+async function repairNotionAutomationProjections(
+  args: {
+    readonly db: Db;
+  },
+  automations: readonly AutomationRow[],
+  signal: AbortSignal,
+): Promise<boolean> {
+  const owners = new Map<
+    string,
+    { readonly orgId: string; readonly userId: string }
+  >();
+  for (const automation of automations) {
+    if (
+      automation.eventConnectorId !== null &&
+      notionConfigConnectorId(automation.eventType, automation.eventConfig) ===
+        automation.eventConnectorId
+    ) {
+      continue;
+    }
+    const owner = {
+      orgId: automation.orgId,
+      userId: automation.ownerUserId,
+    };
+    owners.set(`${owner.orgId}:${owner.userId}`, owner);
+  }
+  const orderedOwners = [...owners.values()].sort((left, right) => {
+    return (
+      left.orgId.localeCompare(right.orgId) ||
+      left.userId.localeCompare(right.userId)
+    );
+  });
+  for (const owner of orderedOwners) {
+    await args.db.transaction(async (tx) => {
+      await lockConnectorAccountTarget(tx, {
+        orgId: owner.orgId,
+        userId: owner.userId,
+        target: { kind: "builtin", connectorSlug: "notion" },
+      });
+      await reprojectNotionAutomationsForOwner(tx, owner);
+    });
+    signal.throwIfAborted();
+  }
+  return orderedOwners.length > 0;
+}
+
+async function loadCurrentNotionAutomations(
+  args: {
+    readonly db: Db;
+  },
+  eventType: NotionAutomationEventType,
+  signal: AbortSignal,
+): Promise<readonly AutomationRow[]> {
+  const automations = await queryNotionAutomations(args, eventType, signal);
+  if (!(await repairNotionAutomationProjections(args, automations, signal))) {
+    return automations;
+  }
+  return await queryNotionAutomations(args, eventType, signal);
+}
+
+async function loadNotionChildPageAutomations(
+  args: { readonly db: Db },
+  signal: AbortSignal,
+): Promise<readonly AutomationRow[]> {
+  return await loadCurrentNotionAutomations(
+    args,
+    "notion-child-page-created",
+    signal,
+  );
 }
 
 async function loadNotionDatabaseItemAutomations(
-  args: {
-    readonly db: Db;
-  },
+  args: { readonly db: Db },
   signal: AbortSignal,
 ): Promise<readonly AutomationRow[]> {
-  const rows = await args.db
-    .select(workflowAutomationColumns())
-    .from(workflowAutomations)
-    .where(
-      and(
-        eq(workflowAutomations.kind, "event"),
-        eq(workflowAutomations.enabled, true),
-        eq(workflowAutomations.eventType, "notion-database-item-created"),
-      ),
-    );
-  signal.throwIfAborted();
-  return rows;
+  return await loadCurrentNotionAutomations(
+    args,
+    "notion-database-item-created",
+    signal,
+  );
 }
 
 async function loadNotionPageContentUpdatedAutomations(
-  args: {
-    readonly db: Db;
-  },
+  args: { readonly db: Db },
   signal: AbortSignal,
 ): Promise<readonly AutomationRow[]> {
-  const rows = await args.db
-    .select(workflowAutomationColumns())
-    .from(workflowAutomations)
-    .where(
-      and(
-        eq(workflowAutomations.kind, "event"),
-        eq(workflowAutomations.enabled, true),
-        eq(workflowAutomations.eventType, "notion-page-content-updated"),
-      ),
-    );
-  signal.throwIfAborted();
-  return rows;
+  return await loadCurrentNotionAutomations(
+    args,
+    "notion-page-content-updated",
+    signal,
+  );
 }
 
 async function enqueueNotionChildPageEvents(
@@ -1457,28 +1514,6 @@ function pageContentUpdatedScopeParent(scope: NotionPageContentUpdatedScope): {
   return scope.type === "page"
     ? { title: scope.page.title, url: scope.page.url }
     : { title: scope.dataSource.title, url: scope.dataSource.url };
-}
-
-function notionConfigConnectorId(
-  eventType: string | null,
-  eventConfig: unknown,
-): string | null {
-  if (eventType === "notion-child-page-created") {
-    const config =
-      notionChildPageCreatedEventConfigSchema.safeParse(eventConfig);
-    return config.success ? config.data.connectorId : null;
-  }
-  if (eventType === "notion-database-item-created") {
-    const config =
-      notionDatabaseItemCreatedEventConfigSchema.safeParse(eventConfig);
-    return config.success ? config.data.connectorId : null;
-  }
-  if (eventType === "notion-page-content-updated") {
-    const config =
-      notionPageContentUpdatedEventConfigSchema.safeParse(eventConfig);
-    return config.success ? config.data.connectorId : null;
-  }
-  return null;
 }
 
 async function persistForCurrentNotionAutomation<T>(

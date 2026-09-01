@@ -11,7 +11,11 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { resetNotionWebhookVerification } from "../../../test-fixtures/workflow-notion";
+import {
+  clearNotionAutomationConnectorProjection,
+  clearNotionPendingConnectorProjection,
+  resetNotionWebhookVerification,
+} from "../../../test-fixtures/workflow-notion";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
@@ -203,6 +207,32 @@ function configureNotionChildPageMock(
             ...options.extraProperties,
           },
         });
+      },
+    ),
+  );
+}
+
+function configureNotionChildPageUnavailableMock(
+  entities: NotionEntities,
+  accessToken: string,
+): void {
+  server.use(
+    http.get(
+      `https://api.notion.com/v1/pages/${entities.childPageId}`,
+      ({ request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          `Bearer ${accessToken}`,
+        );
+        expect(request.headers.get("notion-version")).toBe("2026-03-11");
+        return HttpResponse.json(
+          {
+            object: "error",
+            status: 404,
+            code: "object_not_found",
+            message: "Could not find page",
+          },
+          { status: 404 },
+        );
       },
     ),
   );
@@ -1222,7 +1252,7 @@ describe("POST /api/webhooks/notion", () => {
     });
   });
 
-  it("follows the workflow thread Notion account and skips stale pending events", async () => {
+  it("repairs and follows the workflow thread Notion account lifecycle", async () => {
     const runnerGroup = runsApi.configureRunnerGroup();
     const scenario = await setupFixture();
     const { actor, agentId, fixture, workflowId, entities } = scenario;
@@ -1292,13 +1322,63 @@ describe("POST /api/webhooks/notion", () => {
     ) {
       throw new Error("Expected a thread-bound Notion automation");
     }
-    expect(created.body.eventConfig.connectorId).toBe(firstAccount.id);
+    const expectAutomationConnector = async (
+      connectorId: string,
+    ): Promise<void> => {
+      const automation = await wf.readAutomation(created.body.id);
+      if (
+        automation.kind !== "event" ||
+        automation.eventType !== "notion-child-page-created"
+      ) {
+        throw new Error("Expected the current Notion automation");
+      }
+      expect(automation.eventConfig).toMatchObject({ connectorId });
+    };
+    await expectAutomationConnector(firstAccount.id);
+
+    await connectorsApi.setDefaultBuiltinConnectorAccount(
+      actor,
+      "notion",
+      secondAccount.id,
+    );
+    await expectAutomationConnector(secondAccount.id);
+    await connectorsApi.setDefaultBuiltinConnectorAccount(
+      actor,
+      "notion",
+      firstAccount.id,
+    );
+    await expectAutomationConnector(firstAccount.id);
 
     await verifyNotionWebhook();
-    const staleEvent = notionPageEvent({
+    await clearNotionAutomationConnectorProjection(created.body.id);
+    const legacyAutomationEvent = notionPageEvent({
       entities,
       type: "page.created",
       timestamp: "2026-07-06T12:00:00.000Z",
+    });
+    await expect(
+      postNotionWebhook({
+        rawBody: legacyAutomationEvent.rawBody,
+        signature: notionSignature(legacyAutomationEvent.rawBody),
+      }),
+    ).resolves.toMatchObject({ body: { pending: 1 } });
+    await expectAutomationConnector(firstAccount.id);
+
+    await clearNotionPendingConnectorProjection(created.body.id);
+    mockNow(new Date("2026-07-06T12:20:00.000Z"));
+    const legacyPendingExecution = await executeDueWorkflowAutomations(
+      created.body.id,
+    );
+    expect(legacyPendingExecution.body).toStrictEqual({
+      success: true,
+      executed: 0,
+      skipped: 1,
+    });
+
+    const staleEvent = notionPageEvent({
+      entities,
+      type: "page.created",
+      timestamp: "2026-07-06T12:21:00.000Z",
     });
     await expect(
       postNotionWebhook({
@@ -1318,16 +1398,7 @@ describe("POST /api/webhooks/notion", () => {
       }),
       [200],
     );
-    const reprojected = await wf.readAutomation(created.body.id);
-    if (
-      reprojected.kind !== "event" ||
-      reprojected.eventType !== "notion-child-page-created"
-    ) {
-      throw new Error("Expected the reprojected Notion automation");
-    }
-    expect(reprojected.eventConfig).toMatchObject({
-      connectorId: secondAccount.id,
-    });
+    await expectAutomationConnector(secondAccount.id);
 
     const selectedEntities = newNotionEntities();
     configureNotionParentPageMock(
@@ -1361,7 +1432,7 @@ describe("POST /api/webhooks/notion", () => {
       connectorId: secondAccount.id,
     });
 
-    mockNow(new Date("2026-07-06T12:20:00.000Z"));
+    mockNow(new Date("2026-07-06T12:40:00.000Z"));
     const staleExecution = await executeDueWorkflowAutomations(created.body.id);
     expect(staleExecution.body).toStrictEqual({
       success: true,
@@ -1369,10 +1440,59 @@ describe("POST /api/webhooks/notion", () => {
       skipped: 0,
     });
 
+    const inaccessibleEvent = notionPageEvent({
+      entities,
+      type: "page.created",
+      timestamp: "2026-07-06T12:41:00.000Z",
+    });
+    await expect(
+      postNotionWebhook({
+        rawBody: inaccessibleEvent.rawBody,
+        signature: notionSignature(inaccessibleEvent.rawBody),
+      }),
+    ).resolves.toMatchObject({ body: { pending: 1 } });
+    configureNotionChildPageUnavailableMock(
+      entities,
+      "notion-second-access-token",
+    );
+    mockNow(new Date("2026-07-06T13:00:00.000Z"));
+    const inaccessibleExecution = await executeDueWorkflowAutomations(
+      created.body.id,
+    );
+    expect(inaccessibleExecution.body).toStrictEqual({
+      success: true,
+      executed: 0,
+      skipped: 1,
+    });
+
+    mockNotionConnectorOAuth({
+      accessToken: "notion-second-reconnected-token",
+      ownerId: "notion-user-2",
+      ownerName: "Second Notion User",
+    });
+    const reconnectOauth = await connectorsApi.startOauth(
+      actor,
+      "notion",
+      "oauth",
+      agentId,
+      { intent: "reconnect", connectionId: secondAccount.id },
+    );
+    const reconnectState = new URL(
+      reconnectOauth.authorizationUrl,
+    ).searchParams.get("state");
+    if (!reconnectState) {
+      throw new Error("Expected the Notion reconnect URL to include state");
+    }
+    await connectorsApi.completeOauthCallback("notion", {
+      code: "notion-reconnect-code",
+      state: reconnectState,
+    });
+    await expectAutomationConnector(secondAccount.id);
+
     const currentEvent = notionPageEvent({
       entities,
       type: "page.created",
-      timestamp: "2026-07-06T12:21:00.000Z",
+      timestamp: "2026-07-06T13:01:00.000Z",
     });
     await expect(
       postNotionWebhook({
@@ -1381,9 +1501,9 @@ describe("POST /api/webhooks/notion", () => {
       }),
     ).resolves.toMatchObject({ body: { pending: 1 } });
     configureNotionChildPageMock(entities, undefined, {
-      accessToken: "notion-second-access-token",
+      accessToken: "notion-second-reconnected-token",
     });
-    mockNow(new Date("2026-07-06T12:40:00.000Z"));
+    mockNow(new Date("2026-07-06T13:20:00.000Z"));
     const currentExecution = await executeDueWorkflowAutomations(
       created.body.id,
     );
@@ -1405,5 +1525,58 @@ describe("POST /api/webhooks/notion", () => {
     expect(
       Object.values(claim.secretConnectorMetadataMap ?? {}),
     ).toContainEqual(expect.objectContaining({ sourceId: secondAccount.id }));
+
+    await connectorsApi.deleteBuiltinConnectorAccount(
+      actor,
+      "notion",
+      secondAccount.id,
+    );
+    await expectAutomationConnector(firstAccount.id);
+
+    mockNotionConnectorOAuth({
+      accessToken: "notion-second-readded-token",
+      ownerId: "notion-user-2",
+      ownerName: "Second Notion User",
+    });
+    const readdOauth = await connectorsApi.startOauth(
+      actor,
+      "notion",
+      "oauth",
+      agentId,
+      { intent: "add", displayName: "Second Notion Re-added" },
+    );
+    const readdState = new URL(readdOauth.authorizationUrl).searchParams.get(
+      "state",
+    );
+    if (!readdState) {
+      throw new Error("Expected the Notion re-add URL to include state");
+    }
+    await connectorsApi.completeOauthCallback("notion", {
+      code: "notion-readd-code",
+      state: readdState,
+    });
+    const readdedAccounts = await connectorsApi.listBuiltinConnectorAccounts(
+      actor,
+      "notion",
+    );
+    const readdedAccount = readdedAccounts.find((account) => {
+      return account.externalId === "notion-user-2";
+    });
+    if (!readdedAccount) {
+      throw new Error("Expected the re-added Notion account");
+    }
+    expect(readdedAccount.id).not.toBe(secondAccount.id);
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(),
+        params: { id: created.body.chatThreadId },
+        body: {
+          connectionId: readdedAccount.id,
+          target: { kind: "builtin", connectorSlug: "notion" },
+        },
+      }),
+      [200],
+    );
+    await expectAutomationConnector(readdedAccount.id);
   });
 });

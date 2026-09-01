@@ -31,6 +31,7 @@ import {
   reconcileAutomationEventWatchReconfiguration,
 } from "./automation-event-watch-lifecycle.service";
 import { lockConnectorAccountTarget } from "./auth-state-lock.service";
+import { notionConfigWithConnectorId } from "./notion-automation-account.service";
 import { OFFICIAL_WORKFLOW_CATALOG_ACTIVATION_LOCK } from "./official-workflow-constants";
 import {
   readAcceptedOfficialWorkflowCatalog,
@@ -691,6 +692,16 @@ async function restoreFailedReconfiguration(
     ) {
       return null;
     }
+    const restoredNotionConfig =
+      accountProjection.kind === "locked" &&
+      accountProjection.eventConnectorId !== null &&
+      accountConnectorSlug(args.persisted.previous.eventType) === "notion"
+        ? notionConfigWithConnectorId(
+            args.persisted.previous.eventType,
+            args.persisted.previous.eventConfig,
+            accountProjection.eventConnectorId,
+          )
+        : null;
     const currentTime = nowDate();
     const restorePatch = officialAutomationRestorePatch(
       args.persisted.previous,
@@ -706,7 +717,12 @@ async function restoreFailedReconfiguration(
       .set({
         ...restorePatch,
         ...(accountProjection.kind === "locked"
-          ? { eventConnectorId: accountProjection.eventConnectorId }
+          ? {
+              eventConnectorId: accountProjection.eventConnectorId,
+              ...(restoredNotionConfig === null
+                ? {}
+                : { eventConfig: restoredNotionConfig }),
+            }
           : {}),
         ...(stripeBinding
           ? {

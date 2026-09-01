@@ -64,6 +64,28 @@ export function notionConfigWithConnectorId(
   return null;
 }
 
+export function notionConfigConnectorId(
+  eventType: string | null,
+  eventConfig: unknown,
+): string | null {
+  if (eventType === "notion-child-page-created") {
+    const config =
+      notionChildPageCreatedEventConfigSchema.safeParse(eventConfig);
+    return config.success ? config.data.connectorId : null;
+  }
+  if (eventType === "notion-database-item-created") {
+    const config =
+      notionDatabaseItemCreatedEventConfigSchema.safeParse(eventConfig);
+    return config.success ? config.data.connectorId : null;
+  }
+  if (eventType === "notion-page-content-updated") {
+    const config =
+      notionPageContentUpdatedEventConfigSchema.safeParse(eventConfig);
+    return config.success ? config.data.connectorId : null;
+  }
+  return null;
+}
+
 async function skipActivePendingEvents(
   db: Db,
   condition: ReturnType<typeof eq>,
@@ -138,7 +160,14 @@ export async function reprojectNotionAutomationsForOwner(
       ...args,
       workflowId: automation.workflowId,
     });
-    if (automation.eventConnectorId === eventConnectorId) {
+    if (
+      automation.eventConnectorId === eventConnectorId &&
+      (eventConnectorId === null ||
+        notionConfigConnectorId(
+          automation.eventType,
+          automation.eventConfig,
+        ) === eventConnectorId)
+    ) {
       continue;
     }
     const eventConfig =
