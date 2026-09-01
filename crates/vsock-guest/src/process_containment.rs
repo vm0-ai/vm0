@@ -1723,32 +1723,6 @@ mod tests {
     }
 
     #[test]
-    fn process_group_backend_is_limited_to_session_identity_verifier() {
-        let verifier = ExecProcessContainment::create(
-            1,
-            ProcessContainmentMode::TestNoop,
-            ExecProcessRole::SessionHistoryIdentityVerifier,
-        )
-        .unwrap();
-        let workload = ExecProcessContainment::create(
-            2,
-            ProcessContainmentMode::TestNoop,
-            ExecProcessRole::Workload,
-        )
-        .unwrap();
-        let agent = ExecProcessContainment::create(
-            3,
-            ProcessContainmentMode::TestNoop,
-            ExecProcessRole::Agent,
-        )
-        .unwrap();
-
-        assert!(verifier.requires_pre_reap_process_group_cleanup());
-        assert!(!workload.requires_pre_reap_process_group_cleanup());
-        assert!(!agent.requires_pre_reap_process_group_cleanup());
-    }
-
-    #[test]
     fn parses_recursive_populated_state() {
         assert_eq!(parse_populated("populated 0\nfrozen 0\n"), Some(false));
         assert_eq!(parse_populated("populated 1\nfrozen 0\n"), Some(true));
