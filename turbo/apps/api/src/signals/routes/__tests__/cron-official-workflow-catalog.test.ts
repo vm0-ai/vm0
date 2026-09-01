@@ -545,9 +545,60 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       connectorDoctorInstruction.match(/okou doctor connectors --json/gu),
     ).toHaveLength(1);
     expect(connectorDoctorInstruction).toContain(
+      "unique sandbox-local report file with `mktemp`",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "redirect its complete standard output directly into that file",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      `report_file="$(mktemp "\${TMPDIR:-/tmp}/connector-doctor.XXXXXX.json")"`,
+    );
+    expect(connectorDoctorInstruction).toContain(
+      'okou doctor connectors --json >"$report_file"',
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "do not rerun it, split it into per-workflow diagnoses, or call connector-readiness APIs separately",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "All later commands must be local parsers against that same sandbox file",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "Keep the file sandbox-local; do not upload, attach, or send it",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "use a non-emitting local `jq` check or equivalent local parser",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "all five non-negative integer summary counts",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "A truncated or empty file, invalid JSON, an unsupported schema version, a missing required field",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "any local parsing or projection failure makes the diagnosis unavailable",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "the first data-returning projection must contain only `schemaVersion` and `summary`",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "Never make a tool call that prints, reads, or returns the whole raw file",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "return at most 20 records per tool result",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "Use a count-only projection to determine whether paging is needed",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "advance explicit offsets until every projected record for that branch has been consumed",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "If the Doctor command or local capture fails",
+    );
+    expect(connectorDoctorInstruction).toContain(
       "sole source of diagnostic facts",
     );
-    expect(connectorDoctorInstruction).toContain("schemaVersion` is `1");
+    expect(connectorDoctorInstruction).toContain("schemaVersion === 1");
     expect(connectorDoctorInstruction).toContain(
       "identical `action.kind` and exact `action.url`",
     );
@@ -578,7 +629,13 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       "compact inventory of every checked entry in `workflows`, grouped by its returned Agent identity",
     );
     expect(connectorDoctorInstruction).toContain(
-      "command fails, its output is not valid JSON, or its schema version is unsupported",
+      "page through a projection of every connector entry with a non-null action",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "separately page through a projection of every connector whose status is `unavailable` and every workflow with a non-null `error`",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "Do not use `tee`, echo the raw output, switch to the human-readable CLI output, or depend on compact JSON whitespace or a higher tool-output limit",
     );
     expect(connectorDoctorInstruction).toContain(
       "Do not invoke connector or provider skills, third-party provider APIs",
@@ -590,7 +647,17 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       "Do not write to or mutate application or provider state",
     );
     expect(connectorDoctorInstruction).toContain(
+      "application-internal APIs, or application database tables",
+    );
+    expect(connectorDoctorInstruction).toContain(
       "Do not connect, reconnect, authorize, start OAuth flows, request permissions, create callbacks, mutate connectors",
+    );
+    expect(connectorDoctorInstruction).toContain("or follow repair links");
+    expect(connectorDoctorInstruction).toContain(
+      "Do not select or recommend models, and do not recommend workflow or Automation cleanup",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "Return only the Markdown report. The platform delivers it to the shared automation thread",
     );
     expect(connectorDoctorInstruction).toContain(
       "Do not send email or directly send any chat or other message",
