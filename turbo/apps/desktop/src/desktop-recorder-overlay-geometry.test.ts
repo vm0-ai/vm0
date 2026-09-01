@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   RECORDER_BAR_SIZE,
@@ -171,5 +172,41 @@ describe("recorderControllerBounds", () => {
     // Nowhere is outside the region, so overlapping is accepted rather than
     // leaving the user with no way to stop.
     expect(bounds.y + height).toBeLessThanOrEqual(display.y + display.height);
+  });
+});
+
+describe("overlay window sizes", () => {
+  const css = readFileSync(
+    new URL("./renderer/recorder/recorder.css", import.meta.url),
+    "utf8",
+  );
+
+  /** The height of an overlay's own surface, as the stylesheet sets it. */
+  function surfaceHeight(selector: string): number {
+    const start = css.indexOf(`${selector} {`);
+    const end = css.indexOf("}", start);
+    if (start === -1 || end === -1) {
+      throw new Error(`No rule found for ${selector}`);
+    }
+    const height = /height:\s*(\d+)px/.exec(css.slice(start, end));
+    if (!height?.[1]) {
+      throw new Error(`No fixed height found for ${selector}`);
+    }
+    return Number(height[1]);
+  }
+
+  // The window is what the system clips to. A message drawn below the surface
+  // but outside the window is not cut off or dimmed, it is never on screen, so
+  // a failed recording looks like a button that did nothing.
+  it("leaves room under the bar for the message a failure shows", () => {
+    expect(RECORDER_BAR_SIZE.height).toBeGreaterThan(
+      surfaceHeight(".recorder-bar"),
+    );
+  });
+
+  it("leaves room under the controller for the message a failure shows", () => {
+    expect(RECORDER_CONTROLLER_SIZE.height).toBeGreaterThan(
+      surfaceHeight(".recording-controller"),
+    );
   });
 });
