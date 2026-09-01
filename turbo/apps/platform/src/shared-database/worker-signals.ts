@@ -7,13 +7,9 @@ import {
   setAuthenticatedIdentity$,
   setAuthRecovery$,
 } from "../signals/auth-context.ts";
+import { reloadChatIndicators$ } from "../signals/chat-thread-list-reload.ts";
 import {
-  reloadChatIndicators$,
-  reloadChatIndicatorsFromRealtime$,
-  subscribeChatThreadReadCursorUpdated$,
-  subscribeThreadListChanged$,
-} from "../signals/chat-thread-list-reload.ts";
-import {
+  setAblyLoop$,
   setAblyPayloadLoop$,
   setupRealtime$,
   subscribeRealtimeConnectionState$,
@@ -94,6 +90,33 @@ function requireRuntime(
   }
   return runtime;
 }
+
+const workerChatThreadIndicators$ = computed(
+  async (get): Promise<ChatThreadIndicators> => {
+    const indicators = await get(chatThreadIndicators$);
+    const signal = get(rootSignal$);
+    signal.throwIfAborted();
+    const runtime = requireRuntime(get(workerRuntimeState$));
+    await Promise.all(
+      Object.entries(indicators.threads).flatMap(([threadId, indicator]) => {
+        if (indicator !== "unread") {
+          return [];
+        }
+        return [
+          runtime.query(
+            {
+              dataKey: { kind: "chat-event", threadId },
+              afterSeqId: null,
+              consistency: "catch-up",
+            },
+            signal,
+          ),
+        ];
+      }),
+    );
+    return indicators;
+  },
+);
 
 function sharedDatabaseConnectionStatus(
   state: RealtimeConnectionState,
@@ -251,11 +274,33 @@ export const handleSharedDatabaseRealtimeMessage$ = command(
   },
 );
 
+const reloadWorkerChatIndicators$ = command(
+  async (
+    { get, set },
+    payload: unknown,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    signal.throwIfAborted();
+    set(reloadChatIndicators$);
+    await get(workerChatThreadIndicators$);
+    signal.throwIfAborted();
+    set(invalidateConnectionIndicators$, payload);
+    return false;
+  },
+);
+
+const reloadWorkerChatIndicatorsFromRealtime$ = command(
+  async ({ set }, signal: AbortSignal): Promise<boolean> => {
+    return await set(reloadWorkerChatIndicators$, null, signal);
+  },
+);
+
 export const recoverCredentialStoreAfterRealtimeReconnect$ = command(
   ({ set }, signal: AbortSignal): void => {
     signal.throwIfAborted();
     set(broadcastSharedDatabaseReconnect$);
-    set(reloadChatIndicatorsFromRealtime$);
+    set(reloadChatIndicators$);
+    set(invalidateConnectionIndicators$, null);
   },
 );
 
@@ -298,8 +343,29 @@ const runCredentialStoreDaemons$ = command(
           },
           signal,
         ),
-        set(subscribeThreadListChanged$, signal),
-        set(subscribeChatThreadReadCursorUpdated$, signal),
+        set(
+          setAblyLoop$,
+          {
+            scope: "credential",
+            topic: "threadListChanged",
+            loopCommand$: reloadWorkerChatIndicatorsFromRealtime$,
+            options: {
+              runOnForegroundCatchUp: false,
+              runOnSubscribe: true,
+            },
+          },
+          signal,
+        ),
+        set(
+          setAblyPayloadLoop$,
+          {
+            scope: "credential",
+            topic: "chatThreadReadCursorUpdated",
+            loopCommand$: reloadWorkerChatIndicators$,
+            options: { runOnForegroundCatchUp: false },
+          },
+          signal,
+        ),
       ]),
       signal,
     );
@@ -353,7 +419,7 @@ export const querySharedDatabaseWorker$ = command(
 
 export const readWorkerChatThreadIndicators$ = command(
   async ({ get }, signal: AbortSignal): Promise<ChatThreadIndicators> => {
-    const indicators = await get(chatThreadIndicators$);
+    const indicators = await get(workerChatThreadIndicators$);
     signal.throwIfAborted();
     return indicators;
   },

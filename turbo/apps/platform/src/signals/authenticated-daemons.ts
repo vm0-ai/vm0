@@ -4,7 +4,6 @@ import { authRecovery$, clerk$, setupClerk$ } from "./auth.ts";
 import { setAuthenticatedIdentity$ } from "./auth-context.ts";
 import { setupChatIndicatorForegroundCatchUp$ } from "./chat-thread-list-reload.ts";
 import { subscribeEventDrivenChatThreads$ } from "./chat-page/chat-thread-event-sourcing.ts";
-import { prewarmSharedUnreadChatEvents$ } from "./chat-page/chat-event-background-sync.ts";
 import { setupUserPreferenceRealtime$ } from "./external/user-model-preference.ts";
 import { subscribePermissionUpdate$ } from "./permission-allow/permission-allow-signals.ts";
 import { setRealtimeDegradedNotifier$, setupRealtime$ } from "./realtime.ts";
@@ -83,7 +82,6 @@ export const setupAuthenticatedBootstrapData$ = command(
     await Promise.all([
       set(setupChatIndicatorForegroundCatchUp$, signal),
       set(subscribeEventDrivenChatThreads$, signal),
-      set(prewarmSharedUnreadChatEvents$, signal),
     ]);
   },
 );

@@ -90,22 +90,26 @@ async function seedChatEventCache(cachedRow: ChatEventRow): Promise<void> {
 }
 
 describe("shared database direct Platform bridge", () => {
-  it("renders cache first, catches up from its cursor, reacts to append, and prewarms unread", async () => {
+  it("renders cache first, reacts to append, and catches up unread threads in the background", async () => {
     const threadId = crypto.randomUUID();
     const unreadThreadId = crypto.randomUUID();
     const cachedRow = row(threadId, 1);
     const caughtUpRow = row(threadId, 2);
     const realtimeRow = row(threadId, 3);
+    const backgroundRow = row(threadId, 4);
     await seedChatEventCache(cachedRow);
 
     const initialPage = context.mocks.deferred<void>();
     let availableRows: readonly ChatEventRow[] = [caughtUpRow];
+    let indicatorThreads: Record<string, "unread"> = {
+      [unreadThreadId]: "unread",
+    };
     const requestedSeqIds: number[] = [];
     const prewarmedThreadIds: string[] = [];
     context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
       return respond(200, {
         agents: {},
-        threads: { [unreadThreadId]: "unread" },
+        threads: indicatorThreads,
       });
     });
     context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
@@ -203,14 +207,34 @@ describe("shared database direct Platform bridge", () => {
     ).toBeTruthy();
 
     owner.abort(new DOMException("chat closed", "AbortError"));
-    const requestsBeforeAbort = requestedSeqIds.length;
+    const prewarmedRequestsBeforeReload = prewarmedThreadIds.length;
+    availableRows = [caughtUpRow, realtimeRow, backgroundRow];
+    indicatorThreads = {
+      ...indicatorThreads,
+      [threadId]: "unread",
+    };
     context.mocks.ably.triggerOnChannel(
       realtimeChannel(),
       `chatThreadMessageCreated:${threadId}`,
     );
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(requestedSeqIds).toHaveLength(requestsBeforeAbort);
+    context.mocks.ably.triggerOnChannel(realtimeChannel(), "threadListChanged");
+    await vi.waitFor(() => {
+      expect(requestedSeqIds).toContain(3);
+      expect(prewarmedThreadIds.length).toBeGreaterThan(
+        prewarmedRequestsBeforeReload,
+      );
+    });
+
+    const requestsBeforeReopen = requestedSeqIds.length;
+    const reopenedOwner = createChildAbortController(context.signal);
+    const reopenedSignals = createChatEventSignals(threadId);
+    await context.store.set(reopenedSignals.setup$, reopenedOwner.signal);
+    expect(
+      context.store.get(reopenedSignals.chatEvents$).map((event) => {
+        return event.seqId;
+      }),
+    ).toStrictEqual([1, 2, 3, 4]);
+    expect(requestedSeqIds).toHaveLength(requestsBeforeReopen);
   });
 
   it("does not turn a healthy SharedWorker connection red when the tab is hidden", () => {
