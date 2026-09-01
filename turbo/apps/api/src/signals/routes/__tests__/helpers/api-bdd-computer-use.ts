@@ -32,10 +32,7 @@ import type { ComputerUseAnyPluginCallBody } from "@okouai/api-contracts/contrac
 
 import { now } from "../../../../lib/time";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
-import {
-  setupApp,
-  setupRawAppRequest,
-} from "../../../../__tests__/test-helpers";
+import { setupApp } from "../../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../../auth/tokens";
 import type { ApiTestUser } from "./api-bdd";
 import { createRouteMocks } from "./route-test";
@@ -549,28 +546,6 @@ export function createComputerUseBddApi(context: TestContext) {
           body: hostRuntimeBody(),
         }),
         statuses,
-      );
-    },
-
-    /**
-     * Heartbeats at an explicit path instead of through the contract client.
-     * The clients above build their URL from the path the contract declares,
-     * so after #28466 moved this contract to `/api/computer-use/heartbeat`
-     * they can no longer reach the branded paths an installed Desktop build
-     * still hardcodes — which is exactly what the `MIGRATED_BRANDED_PATHS`
-     * rows keep registered.
-     */
-    async requestComputerUseHeartbeatAtPath(hostToken: string, path: string) {
-      return await setupRawAppRequest({ context, routes: computerUseRoutes })(
-        path,
-        {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            ...hostHeaders(hostToken),
-          },
-          body: JSON.stringify(hostRuntimeBody()),
-        },
       );
     },
 

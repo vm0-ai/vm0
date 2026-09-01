@@ -252,7 +252,6 @@ function validParameterValue(
 function resolveParameterBindings(
   blueprint: OfficialWorkflowAcceptedBlueprint,
   supplied: OfficialWorkflowBlueprintBindings,
-  userTimezone: string | null,
 ):
   | {
       readonly ok: true;
@@ -293,19 +292,6 @@ function resolveParameterBindings(
     let value = suppliedByKey.get(parameter.key);
     if (value === undefined && parameter.default !== undefined) {
       value = parameter.default;
-    }
-    if (
-      value === undefined &&
-      parameter.type === "string" &&
-      parameter.derivation?.kind === "user-timezone"
-    ) {
-      if (!userTimezone || !isValidTimeZone(userTimezone)) {
-        return {
-          ok: false,
-          message: `A valid user timezone is required for parameter: ${blueprint.key}.${parameter.key}`,
-        };
-      }
-      value = userTimezone;
     }
     if (value === undefined) {
       if (parameter.required) {
@@ -370,18 +356,45 @@ function materializeTemplate(
   return { ok: true, value };
 }
 
+function withScheduleTimezoneDefault(
+  desiredState: Record<string, unknown>,
+  defaultTimezone: string | null,
+  blueprintKey: string,
+):
+  | { readonly ok: true; readonly value: Record<string, unknown> }
+  | { readonly ok: false; readonly message: string } {
+  if (
+    desiredState.kind !== "schedule" ||
+    !isJsonObject(desiredState.schedule) ||
+    (desiredState.schedule.type !== "cron" &&
+      desiredState.schedule.type !== "once") ||
+    desiredState.schedule.timezone !== undefined
+  ) {
+    return { ok: true, value: desiredState };
+  }
+  if (!defaultTimezone || !isValidTimeZone(defaultTimezone)) {
+    return {
+      ok: false,
+      message: `A valid user timezone preference is required for Blueprint: ${blueprintKey}`,
+    };
+  }
+  return {
+    ok: true,
+    value: {
+      ...desiredState,
+      schedule: { ...desiredState.schedule, timezone: defaultTimezone },
+    },
+  };
+}
+
 function resolveBlueprint(
   blueprint: OfficialWorkflowAcceptedBlueprint,
   supplied: OfficialWorkflowBlueprintBindings,
-  userTimezone: string | null,
+  defaultTimezone: string | null,
 ):
   | { readonly ok: true; readonly blueprint: ResolvedBlueprint }
   | { readonly ok: false; readonly message: string } {
-  const resolvedBindings = resolveParameterBindings(
-    blueprint,
-    supplied,
-    userTimezone,
-  );
+  const resolvedBindings = resolveParameterBindings(blueprint, supplied);
   if (!resolvedBindings.ok) {
     return resolvedBindings;
   }
@@ -403,7 +416,15 @@ function resolveBlueprint(
   if (!isJsonObject(desired.value)) {
     return { ok: false, message: `Invalid Blueprint: ${blueprint.key}` };
   }
-  const { autonomyBudget, ...createDesiredState } = desired.value;
+  const desiredWithTimezone = withScheduleTimezoneDefault(
+    desired.value,
+    defaultTimezone,
+    blueprint.key,
+  );
+  if (!desiredWithTimezone.ok) {
+    return desiredWithTimezone;
+  }
+  const { autonomyBudget, ...createDesiredState } = desiredWithTimezone.value;
   if (
     autonomyBudget !== undefined &&
     (typeof autonomyBudget !== "number" ||
@@ -441,7 +462,7 @@ function resolveBlueprint(
 /**
  * Resolve one current Blueprint from a prior Installation projection. Values
  * for removed or now-invalid parameter keys are deliberately discarded before
- * current defaults and derivations are applied.
+ * current defaults are applied.
  */
 function reconciliationParameterValues(
   blueprint: OfficialWorkflowAcceptedBlueprint,
@@ -496,7 +517,7 @@ export function resolveOfficialWorkflowBlueprintForReconciliation(
   blueprint: OfficialWorkflowAcceptedBlueprint,
   existing: readonly OfficialWorkflowParameterBinding[],
   overrides: readonly OfficialWorkflowParameterBinding[],
-  userTimezone: string | null,
+  defaultTimezone: string | null,
 ): OfficialWorkflowBlueprintReconciliationResolution {
   const parameterValues = reconciliationParameterValues(
     blueprint,
@@ -514,15 +535,6 @@ export function resolveOfficialWorkflowBlueprintForReconciliation(
     if (value === undefined && parameter.default !== undefined) {
       value = parameter.default;
     }
-    if (
-      value === undefined &&
-      parameter.type === "string" &&
-      parameter.derivation?.kind === "user-timezone" &&
-      userTimezone !== null &&
-      isValidTimeZone(userTimezone)
-    ) {
-      value = userTimezone;
-    }
     if (value === undefined) {
       if (parameter.required && unresolvedMessage === undefined) {
         unresolvedMessage = `Missing parameter: ${blueprint.key}.${parameter.key}`;
@@ -537,7 +549,7 @@ export function resolveOfficialWorkflowBlueprintForReconciliation(
   const resolved = resolveBlueprint(
     blueprint,
     { blueprintKey: blueprint.key, bindings },
-    userTimezone,
+    defaultTimezone,
   );
   return resolved.ok
     ? { ok: true, resolved: resolved.blueprint }
@@ -547,7 +559,7 @@ export function resolveOfficialWorkflowBlueprintForReconciliation(
 function resolveAllBlueprints(
   blueprints: readonly OfficialWorkflowAcceptedBlueprint[],
   supplied: readonly OfficialWorkflowBlueprintBindings[],
-  userTimezone: string | null,
+  defaultTimezone: string | null,
 ): ResolveResult {
   const suppliedByKey = new Map<string, OfficialWorkflowBlueprintBindings>();
   for (const entry of supplied) {
@@ -584,7 +596,7 @@ function resolveAllBlueprints(
     if (!entry) {
       throw new Error("Resolved Blueprint binding disappeared");
     }
-    const result = resolveBlueprint(blueprint, entry, userTimezone);
+    const result = resolveBlueprint(blueprint, entry, defaultTimezone);
     if (!result.ok) {
       return result;
     }

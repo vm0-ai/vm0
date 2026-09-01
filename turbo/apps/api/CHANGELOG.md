@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.522.0](https://github.com/vm0-ai/vm0/compare/api-v1.521.0...api-v1.522.0) (2026-09-01)
+
+
+### Features
+
+* manage morning brief from preferences ([#30805](https://github.com/vm0-ai/vm0/issues/30805)) ([a95ce9e](https://github.com/vm0-ai/vm0/commit/a95ce9ec44cb77f06e05cd99c28f052ddcd6cff5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.386.0
+    * @okouai/core bumped to 8.605.9
+    * @okouai/db bumped to 1.229.2
+
 ## [1.521.0](https://github.com/vm0-ai/vm0/compare/api-v1.520.1...api-v1.521.0) (2026-09-01)
 
 
