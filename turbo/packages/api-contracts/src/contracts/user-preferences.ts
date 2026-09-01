@@ -41,9 +41,31 @@ export const SUPPORTED_USER_LOCALES = [
 export const userLocaleSchema = z.enum(SUPPORTED_USER_LOCALES);
 export type UserLocale = z.infer<typeof userLocaleSchema>;
 
+export const CHAT_TRANSLATION_LANGUAGES = [
+  "en",
+  "zh-CN",
+  "zh-TW",
+  "ja",
+  "ko",
+  "es",
+  "fr",
+  "de",
+  "pt-BR",
+  "it",
+  "id",
+  "hi",
+] as const;
+export const chatTranslationLanguageSchema = z.enum(CHAT_TRANSLATION_LANGUAGES);
+export type ChatTranslationLanguage = z.infer<
+  typeof chatTranslationLanguageSchema
+>;
+
 export const userPreferencesResponseSchema = z.object({
   timezone: z.string().nullable(),
   locale: userLocaleSchema.nullable(),
+  // A new app can briefly reach an API rollback target from before this
+  // additive field existed. Remove after those targets are retired (#30862).
+  translationLanguage: chatTranslationLanguageSchema.nullable().optional(),
   supportedLocales: z.array(userLocaleSchema),
   // Pinned agents are exposed as membership only. The API returns a stable
   // canonical order and ignores client-provided order on writes.
@@ -62,6 +84,7 @@ export const updateUserPreferencesRequestSchema = z
   .object({
     timezone: z.string().min(1).optional(),
     locale: userLocaleSchema.optional(),
+    translationLanguage: chatTranslationLanguageSchema.optional(),
     // Membership update only; request order is not used for display ordering.
     pinnedAgentIds: z.array(z.string()).optional(),
     sendMode: sendModeSchema.optional(),
@@ -74,6 +97,7 @@ export const updateUserPreferencesRequestSchema = z
       return (
         data.timezone !== undefined ||
         data.locale !== undefined ||
+        data.translationLanguage !== undefined ||
         data.pinnedAgentIds !== undefined ||
         data.sendMode !== undefined ||
         data.theme !== undefined ||
