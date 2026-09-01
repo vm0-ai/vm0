@@ -22,6 +22,12 @@ const TURN_PX = 200;
 const LONG_TURN_COUNT = 30;
 const TURN_SELECTOR = '[data-role="user"], [data-role="assistant"]';
 
+interface RecordedScrollRequest {
+  readonly top: number;
+  readonly behavior: ScrollBehavior | undefined;
+  readonly renderedEventIds: readonly string[];
+}
+
 /**
  * happy-dom has no layout engine, so the locator would measure every element
  * as zero-sized and never open. This models the one layout it cares about: a
@@ -33,7 +39,7 @@ function stubLayout({
 }: {
   minimumScrollTurns?: number;
   turnHeight?: number;
-} = {}): void {
+} = {}): RecordedScrollRequest[] {
   const prototype = globalThis.HTMLElement.prototype;
   const rectDescriptor = Object.getOwnPropertyDescriptor(
     prototype,
@@ -47,8 +53,13 @@ function stubLayout({
     prototype,
     "scrollHeight",
   );
+  const scrollToDescriptor = Object.getOwnPropertyDescriptor(
+    prototype,
+    "scrollTo",
+  );
   const originalRect = prototype.getBoundingClientRect;
   const scrollTops = new WeakMap<HTMLElement, number>();
+  const scrollRequests: RecordedScrollRequest[] = [];
 
   const isScroller = (element: HTMLElement) => {
     return Object.hasOwn(element.dataset, "scrollContainer");
@@ -96,6 +107,33 @@ function stubLayout({
           this.querySelectorAll(TURN_SELECTOR).length,
         ) * turnHeight
       );
+    },
+  });
+  Object.defineProperty(prototype, "scrollTo", {
+    configurable: true,
+    value(
+      this: HTMLElement,
+      optionsOrX: ScrollToOptions | number,
+      y?: number,
+    ): void {
+      const top =
+        typeof optionsOrX === "number"
+          ? (y ?? this.scrollTop)
+          : (optionsOrX.top ?? this.scrollTop);
+      scrollRequests.push({
+        top,
+        behavior:
+          typeof optionsOrX === "number" ? undefined : optionsOrX.behavior,
+        renderedEventIds: [
+          ...this.querySelectorAll<HTMLElement>(
+            "[data-chat-scroll-anchor-event-id]",
+          ),
+        ].flatMap((element) => {
+          const eventId = element.dataset.chatScrollAnchorEventId;
+          return eventId ? [eventId] : [];
+        }),
+      });
+      this.scrollTop = top;
     },
   });
   Object.defineProperty(prototype, "getBoundingClientRect", {
@@ -147,10 +185,12 @@ function stubLayout({
       restore("getBoundingClientRect", rectDescriptor);
       restore("clientHeight", clientHeightDescriptor);
       restore("scrollHeight", scrollHeightDescriptor);
+      restore("scrollTo", scrollToDescriptor);
       Reflect.deleteProperty(prototype, "scrollTop");
     },
     { once: true },
   );
+  return scrollRequests;
 }
 
 function longConversation(): MockChatEventInput[] {
@@ -351,8 +391,9 @@ async function renderMeasuredThread({
 }): Promise<{
   rail: HTMLElement;
   resize: { automationAll: () => void };
+  scrollRequests: RecordedScrollRequest[];
 }> {
-  stubLayout({ minimumScrollTurns, turnHeight });
+  const scrollRequests = stubLayout({ minimumScrollTurns, turnHeight });
   const resize = mockResizeObserver();
   mockChatLifecycle(context, {
     threadId,
@@ -381,12 +422,13 @@ async function renderMeasuredThread({
   await waitFor(() => {
     expect(ticksOf(rail).length).toBeGreaterThan(0);
   });
-  return { rail, resize };
+  return { rail, resize, scrollRequests };
 }
 
 function renderLongThread(): Promise<{
   rail: HTMLElement;
   resize: { automationAll: () => void };
+  scrollRequests: RecordedScrollRequest[];
 }> {
   return renderMeasuredThread({
     threadId: GEOMETRY_THREAD_ID,
@@ -642,8 +684,8 @@ describe("chat conversation locator", () => {
     expect(boundaryWheel.defaultPrevented).toBeFalsy();
   });
 
-  it("lists and jumps to a turn outside the virtual render window", async () => {
-    const { rail } = await renderMeasuredThread({
+  it("renders a virtual-window target before requesting its smooth jump", async () => {
+    const { rail, scrollRequests } = await renderMeasuredThread({
       threadId: VIRTUAL_THREAD_ID,
       threadTitle: "Virtual locator turns",
       chatEvents: virtualConversation(),
@@ -653,40 +695,78 @@ describe("chat conversation locator", () => {
 
     expect(
       document.querySelector(
-        '[data-chat-scroll-anchor-event-id="locator-virtual-user-0"]',
+        '[data-chat-scroll-anchor-event-id="locator-virtual-user-8"]',
       ),
     ).toBeNull();
     expect(ticksOf(rail)).toHaveLength(24);
 
     pointerAt(rail, 0, "pointerenter");
-    rail.dispatchEvent(
-      new WheelEvent("wheel", {
-        bubbles: true,
-        cancelable: true,
-        deltaY: -3000,
-      }),
+    const targetTick = rail.querySelector<HTMLElement>(
+      '[data-locator-tick][data-turn-index="16"]',
     );
-    const firstTick = await waitFor(() => {
-      const tick = ticksOf(rail)[0];
-      expect(tick?.dataset.turnIndex).toBe("0");
-      return tick as HTMLElement;
-    });
-    pointerAt(rail, Number.parseFloat(firstTick.style.top), "pointermove");
+    expect(targetTick).not.toBeNull();
+    pointerAt(rail, Number.parseFloat(targetTick!.style.top), "pointermove");
 
     await waitFor(() => {
-      expect(locatorPreview()).toHaveTextContent("Virtual question 0");
-      expect(locatorPreview()).toHaveTextContent("1/30");
+      expect(locatorPreview()).toHaveTextContent("Virtual question 8");
+      expect(locatorPreview()).toHaveTextContent("17/30");
     });
     rail.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
-    await screen.findByText("Virtual question 0");
+    await screen.findByText("Virtual question 8");
     await waitFor(() => {
       const target = document.querySelector<HTMLElement>(
-        '[data-chat-scroll-anchor-event-id="locator-virtual-user-0"]',
+        '[data-chat-scroll-anchor-event-id="locator-virtual-user-8"]',
       );
       expect(target).not.toBeNull();
       expect(target).toHaveAttribute("data-locator-landed");
     });
+    expect(scrollRequests).toHaveLength(1);
+    expect(scrollRequests[0]).toMatchObject({
+      behavior: "smooth",
+      renderedEventIds: expect.arrayContaining([
+        "locator-virtual-user-3",
+        "locator-virtual-user-8",
+      ]),
+    });
+
+    const container = document.querySelector<HTMLElement>(
+      "[data-scroll-container]",
+    );
+    expect(container).not.toBeNull();
+    const finalScrollTop = scrollRequests[0]?.top;
+    expect(finalScrollTop).toBeDefined();
+    // Browsers can quantize a fractional smooth-scroll destination into a
+    // near-terminal pixel followed by the final rounded pixel. Both events
+    // still belong to the programmatic animation; neither may retarget the
+    // virtual render window as reader input.
+    container!.scrollTop = finalScrollTop! - 0.5;
+    fireEvent.scroll(container!);
+    container!.scrollTop = finalScrollTop!;
+    fireEvent.scroll(container!);
+    container!.dispatchEvent(new Event("scrollend"));
+    await Promise.resolve();
+    fireEvent.scroll(container!);
+    // The DOM listener detaches a command that crosses the position write,
+    // tree ensure, and React commit queues. Drain those owned microtasks so
+    // the assertion observes the settled render window without a test timer.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(
+      [
+        ...container!.querySelectorAll<HTMLElement>(
+          "[data-chat-scroll-anchor-event-id]",
+        ),
+      ].map((element) => {
+        return element.dataset.chatScrollAnchorEventId;
+      }),
+    ).toStrictEqual(scrollRequests[0]?.renderedEventIds);
   });
 
   it("keeps merged goal turns out of the locator until the group expands", async () => {
@@ -796,10 +876,11 @@ describe("chat conversation locator", () => {
     });
   });
 
-  it("marks the turn a click lands on", async () => {
-    const { rail } = await renderLongThread();
+  it("smoothly jumps to a turn at 28% of the viewport", async () => {
+    const { rail, scrollRequests } = await renderLongThread();
 
     const target = ticksOf(rail)[8] as HTMLElement;
+    const targetIndex = Number(target.dataset.turnIndex);
     pointerAt(rail, 0, "pointerenter");
     pointerAt(rail, Number.parseFloat(target.style.top), "pointermove");
     await waitFor(() => {
@@ -812,6 +893,15 @@ describe("chat conversation locator", () => {
         1,
       );
     });
+    expect(scrollRequests).toStrictEqual([
+      {
+        top: targetIndex * TURN_PX - VIEWPORT_PX * 0.28,
+        behavior: "smooth",
+        renderedEventIds: expect.arrayContaining([
+          `locator-long-${targetIndex}`,
+        ]),
+      },
+    ]);
   });
 
   it("moves the landed mark when a later jump replaces it", async () => {
