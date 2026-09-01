@@ -47,9 +47,16 @@ describe("instatus status notice", () => {
 
       detachedSetupPage({ context, path: "/" });
 
-      const incident = await screen.findByRole("status", {
-        name: "Investigating: Elevated API errors",
+      const incident = (
+        await screen.findAllByRole("status", {
+          name: "Investigating: Elevated API errors",
+        })
+      ).find((status) => {
+        return status.closest("aside.zero-pwa-fixed-cover") === null;
       });
+      if (!(incident instanceof HTMLElement)) {
+        throw new Error("Floating incident notice not found");
+      }
       const updatesLink = queryAllByRoleFast("link", incident).find((link) => {
         return link.textContent?.includes("View latest updates");
       });
@@ -58,10 +65,10 @@ describe("instatus status notice", () => {
         "https://status.okou.ai/incident-123",
       );
       await expect(
-        screen.findByRole("status", {
+        screen.findAllByRole("status", {
           name: "Maintenance scheduled: Database maintenance",
         }),
-      ).resolves.toBeInTheDocument();
+      ).resolves.not.toHaveLength(0);
 
       const dismissButton = queryAllByRoleFast("button", incident).find(
         (button) => {
@@ -82,6 +89,56 @@ describe("instatus status notice", () => {
       });
     },
   );
+
+  it("places the mobile status notice inside the expanded sidebar", async () => {
+    const user = userEvent.setup();
+    context.mocks.browser.url("https://app.okou.ai/");
+    mockActiveIssues();
+
+    detachedSetupPage({ context, path: "/" });
+
+    await screen.findAllByRole("status", {
+      name: "Investigating: Elevated API errors",
+    });
+    const openMenuButton = queryAllByRoleFast("button").find((button) => {
+      return button.getAttribute("aria-label") === "Open menu";
+    });
+    if (!(openMenuButton instanceof HTMLButtonElement)) {
+      throw new Error("Open menu button not found");
+    }
+    await user.click(openMenuButton);
+
+    const mobileSidebar = document.querySelector(
+      "aside.zero-pwa-fixed-cover[data-sidebar-expanded]",
+    );
+    if (!(mobileSidebar instanceof HTMLElement)) {
+      throw new Error("Expanded mobile sidebar not found");
+    }
+    const sidebarIncident = await waitFor(() => {
+      const status = mobileSidebar.querySelector(
+        '[role="status"][aria-label="Investigating: Elevated API errors"]',
+      );
+      if (!(status instanceof HTMLElement)) {
+        throw new Error("Mobile sidebar incident notice not found");
+      }
+      return status;
+    });
+    expect(sidebarIncident).toBeInTheDocument();
+    expect(
+      sidebarIncident.closest('[aria-label="Service status updates"]'),
+    ).not.toHaveClass("fixed");
+
+    const floatingIncident = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        '[role="status"][aria-label="Investigating: Elevated API errors"]',
+      ),
+    ).find((status) => {
+      return !mobileSidebar.contains(status);
+    });
+    expect(
+      floatingIncident?.closest('[aria-label="Service status updates"]'),
+    ).toHaveClass("max-md:hidden");
+  });
 
   it("does not request or render status updates on preview hosts", async () => {
     let requestCount = 0;

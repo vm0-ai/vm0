@@ -13,9 +13,11 @@ import {
 function InstatusIssueNotice({
   issue,
   onDismiss,
+  compact,
 }: {
   readonly issue: InstatusIssue;
   readonly onDismiss: (issueId: string) => void;
+  readonly compact: boolean;
 }) {
   const { t } = useTranslation();
   let statusLabel: string;
@@ -69,9 +71,11 @@ function InstatusIssueNotice({
       aria-label={`${statusLabel}: ${issue.title}`}
       className="zero-composer relative overflow-visible"
     >
-      <CardContent className="p-4">
+      <CardContent className={compact ? "p-3" : "p-4"}>
         <div className="flex items-start gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-primary">
+          <span
+            className={`${compact ? "size-8" : "size-9"} flex shrink-0 items-center justify-center rounded-lg bg-gray-50 text-primary`}
+          >
             <StatusIcon aria-hidden="true" size={18} />
           </span>
           <div className="min-w-0 flex-1">
@@ -118,7 +122,11 @@ function InstatusIssueNotice({
   );
 }
 
-export function InstatusStatusNotice() {
+export function InstatusStatusNotice({
+  placement = "floating",
+}: {
+  readonly placement?: "floating" | "sidebar";
+}) {
   const { t } = useTranslation();
   const issues = useLastResolved(visibleInstatusIssues$) ?? [];
   const dismissIssue = useSet(dismissInstatusIssue$);
@@ -133,12 +141,20 @@ export function InstatusStatusNotice() {
       aria-label={t(($) => {
         return $.serviceStatus.label;
       })}
-      className="zero-app pointer-events-none fixed inset-x-3 bottom-[calc(var(--sab,0px)+16px)] z-[2147483646] flex max-h-[calc(100dvh-32px)] flex-col gap-3 overflow-y-auto sm:left-6 sm:right-auto sm:w-[390px]"
+      className={
+        placement === "sidebar"
+          ? "mx-2 mt-2 flex max-h-[min(40dvh,320px)] shrink-0 flex-col gap-2 overflow-y-auto overscroll-contain md:hidden"
+          : "zero-app pointer-events-none fixed inset-x-3 bottom-[calc(var(--sab,0px)+16px)] z-[2147483646] flex max-h-[calc(100dvh-32px)] flex-col gap-3 overflow-y-auto max-md:hidden sm:left-6 sm:right-auto sm:w-[390px]"
+      }
     >
       {issues.map((issue) => {
         return (
           <div key={issue.id} className="pointer-events-auto">
-            <InstatusIssueNotice issue={issue} onDismiss={dismissIssue} />
+            <InstatusIssueNotice
+              issue={issue}
+              onDismiss={dismissIssue}
+              compact={placement === "sidebar"}
+            />
           </div>
         );
       })}

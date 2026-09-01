@@ -65,6 +65,7 @@ import {
   newChatThreadDisabled$,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
+import { InstatusStatusNotice } from "../components/instatus-status-notice.tsx";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
@@ -232,6 +233,7 @@ function ExpandedSidebar() {
     >
       <ExpandedHeader />
       <ExpandedMainNav />
+      <InstatusStatusNotice placement="sidebar" />
       <ExpandedUpgradeSection />
       <ExpandedFooter />
     </aside>
