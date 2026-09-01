@@ -1,8 +1,8 @@
 // Google Ads website-tag conversions. The gtag base snippet lives in
-// `apps/platform/index.html`; these are the event snippets for the conversion
-// actions that Google Ads uses as bidding signals. Legacy `UPLOAD_CLICKS`
-// actions remain server-only; the adsmarch website actions can also receive a
-// server-side Data Manager fallback with the same transaction ID.
+// `apps/platform/src/lib/google-ads.ts`; these are the event snippets for the
+// conversion actions that Google Ads uses as bidding signals. Legacy
+// `UPLOAD_CLICKS` actions remain server-only; the adsmarch website actions can
+// also receive a server-side Data Manager fallback with the same transaction ID.
 
 export const GOOGLE_ADS_SIGNUP_SEND_TO = "AW-18144854014/OlLBCNXGgqwcEP7_kcxD";
 export const GOOGLE_ADS_ONBOARDING_START_SEND_TO =

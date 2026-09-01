@@ -1,6 +1,7 @@
 import "./lib/preview-bypass-cookie-bootstrap.ts";
 import "./lib/accept-browser.ts";
 import { browserUpgradeForUserAgent } from "./lib/browser-support.ts";
+import { initGoogleAds } from "./lib/google-ads.ts";
 import { initInstatusWidget } from "./lib/instatus-widget.ts";
 import { initSentry } from "./lib/sentry.ts";
 import { captureFirstSkeletonPaint, initPostHog } from "./lib/posthog.ts";
@@ -78,6 +79,7 @@ function startApplication(): void {
 }
 
 window.__appBootstrapModuleReady = performance.now();
+initGoogleAds();
 initInstatusWidget();
 const browserUpgrade = browserUpgradeForUserAgent(navigator.userAgent);
 if (browserUpgrade) {
