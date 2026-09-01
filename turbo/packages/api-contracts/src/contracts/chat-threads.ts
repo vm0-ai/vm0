@@ -73,6 +73,19 @@ const annotationRectSchema = z.object({
 });
 
 /**
+ * Where a mark's note is drawn on the image, and how wide it wraps.
+ *
+ * The note is rendered into the flattened copy, not just sent as text, so the
+ * vision model reads the sentence in place next to the region it is about. The
+ * height follows from the wrapped text, so only the width is stored.
+ */
+const annotationNoteBoxSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  width: z.number(),
+});
+
+/**
  * Ink is stored as a literal hex rather than a palette enum: the palette is a
  * design decision that will move, and an enum would turn every future palette
  * edit into a read migration for annotations already sitting in the database.
@@ -104,6 +117,7 @@ const imageAnnotationMarkSchema = z.discriminatedUnion("shape", [
     rect: annotationRectSchema,
     ink: annotationInkSchema,
     note: z.string().optional(),
+    noteBox: annotationNoteBoxSchema.optional(),
   }),
   z.object({
     id: z.string(),
@@ -113,6 +127,7 @@ const imageAnnotationMarkSchema = z.discriminatedUnion("shape", [
     to: annotationPointSchema,
     ink: annotationInkSchema,
     note: z.string().optional(),
+    noteBox: annotationNoteBoxSchema.optional(),
   }),
   z.object({
     id: z.string(),
@@ -121,6 +136,7 @@ const imageAnnotationMarkSchema = z.discriminatedUnion("shape", [
     points: z.array(annotationPointSchema),
     ink: annotationInkSchema,
     note: z.string().optional(),
+    noteBox: annotationNoteBoxSchema.optional(),
   }),
   z.object({
     id: z.string(),

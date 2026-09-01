@@ -5,6 +5,8 @@ import type {
 import {
   HIGHLIGHT_FILL,
   markOrdinal,
+  NOTE_GROUND,
+  noteOnImage,
   REDACT_FILL,
   STROKE_HALO_INNER,
 } from "./image-annotation.ts";
@@ -22,6 +24,9 @@ const HALO_WIDTH_UNITS = 1;
 const PIN_RADIUS_UNITS = 11;
 const PIN_FONT_UNITS = 13;
 const TEXT_FONT_UNITS = 18;
+const NOTE_FONT_UNITS = 15;
+const NOTE_LINE_UNITS = 20;
+const NOTE_PADDING_UNITS = 6;
 const ARROW_HEAD_UNITS = 18;
 const CORNER_RADIUS_UNITS = 4;
 
@@ -174,6 +179,83 @@ function drawPin(
   context.textAlign = "center";
   context.textBaseline = "middle";
   context.fillText(String(ordinal), x, y);
+}
+
+/**
+ * Breaks `text` into lines that fit `maxWidth`, measuring with the font already
+ * set on the context. A word longer than the box (a URL, a long identifier) is
+ * left to overhang rather than being cut, because a truncated instruction is
+ * worse than an untidy one.
+ */
+function wrapNote(
+  context: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+): string[] {
+  const lines: string[] = [];
+  for (const paragraph of text.split("\n")) {
+    let line = "";
+    for (const word of paragraph.split(/\s+/u).filter(Boolean)) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (line && context.measureText(candidate).width > maxWidth) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = candidate;
+      }
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+
+/**
+ * Prints a mark's note onto the image next to the region it is about.
+ *
+ * This is the whole point of flattening rather than only sending the notes as
+ * prompt text: the model sees one picture, and the sentence has to be in it.
+ */
+function drawNote(
+  context: CanvasRenderingContext2D,
+  scale: Scale,
+  mark: ImageAnnotationMark,
+): void {
+  const note = noteOnImage(mark);
+  if (!note) {
+    return;
+  }
+
+  const fontSize = px(scale, NOTE_FONT_UNITS);
+  const lineHeight = px(scale, NOTE_LINE_UNITS);
+  const padding = px(scale, NOTE_PADDING_UNITS);
+  context.font = `600 ${fontSize}px "Noto Sans", system-ui, sans-serif`;
+  context.textAlign = "left";
+  context.textBaseline = "top";
+
+  const boxWidth = note.box.width * scale.width;
+  const lines = wrapNote(context, note.text, boxWidth - padding * 2);
+  const boxHeight = lines.length * lineHeight + padding * 2;
+  const x = note.box.x * scale.width;
+  // The box is clamped in normalized space before it gets here, but the height
+  // is only known once the text has wrapped. A long note near the bottom would
+  // still run past the edge and be cropped out of the image the model reads.
+  const y = Math.max(
+    0,
+    Math.min(note.box.y * scale.height, scale.height - boxHeight),
+  );
+
+  context.fillStyle = NOTE_GROUND;
+  context.strokeStyle = note.ink;
+  context.lineWidth = px(scale, HALO_WIDTH_UNITS);
+  context.beginPath();
+  context.roundRect(x, y, boxWidth, boxHeight, px(scale, CORNER_RADIUS_UNITS));
+  context.fill();
+  context.stroke();
+
+  context.fillStyle = note.ink;
+  for (const [index, line] of lines.entries()) {
+    context.fillText(line, x + padding, y + padding + index * lineHeight);
+  }
 }
 
 function drawMark(
@@ -344,6 +426,9 @@ export async function flattenAnnotatedImage(
   for (const [index, mark] of annotation.marks.entries()) {
     context.save();
     drawMark(context, scale, mark, markOrdinal(mark, index));
+    context.restore();
+    context.save();
+    drawNote(context, scale, mark);
     context.restore();
   }
 
