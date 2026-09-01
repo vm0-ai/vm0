@@ -7,8 +7,10 @@ import {
   socialKitRequestSchema,
   socialKitDownloadRequestSchema,
   type ManagedSocialKitPagination,
+  type ManagedSocialKitReportedTotalField,
   type ManagedSocialKitTool,
   type ManagedSocialKitToolCatalogEntry,
+  type SocialKitCollectionProviderLimitedReason,
   type SocialKitRequest,
   type SocialKitResponse,
   type SocialKitDownloadResponse,
@@ -54,6 +56,10 @@ type SocialKitCatalogRetrieval =
   | { readonly kind: "page"; readonly maxPage: number }
   | { readonly kind: "provider_limited" };
 
+type SocialKitCatalogProviderLimit =
+  | { readonly kind: "no_pagination" }
+  | { readonly kind: "max_page"; readonly maxPage: number };
+
 type SocialKitCatalogBilling =
   | { readonly kind: "request" }
   | { readonly kind: "items"; readonly itemsPerUnit: number };
@@ -62,6 +68,8 @@ interface SocialKitCatalogEntry extends ManagedSocialKitToolCatalogEntry {
   readonly collection: {
     readonly resultField: string;
     readonly retrieval: SocialKitCatalogRetrieval;
+    readonly reportedTotalField?: ManagedSocialKitReportedTotalField;
+    readonly providerLimit?: SocialKitCatalogProviderLimit;
   } | null;
   readonly billing: SocialKitCatalogBilling;
 }
@@ -81,6 +89,8 @@ interface FullRetrievalTotals {
   readonly itemsReturned: number;
   readonly billingQuantity: number;
   readonly creditsCharged: number;
+  readonly providerLimitedReason?: SocialKitCollectionProviderLimitedReason;
+  readonly reportedTotal?: number;
 }
 
 interface FullRetrievalSummary extends FullRetrievalTotals {
@@ -105,18 +115,42 @@ function catalogRetrieval(
   }
 }
 
+function catalogProviderLimit(
+  pagination: ManagedSocialKitPagination,
+): SocialKitCatalogProviderLimit | undefined {
+  switch (pagination.kind) {
+    case "none": {
+      return { kind: "no_pagination" };
+    }
+    case "page": {
+      return { kind: "max_page", maxPage: pagination.maxPage };
+    }
+    case "cursor":
+    case "next_cursor": {
+      return undefined;
+    }
+  }
+}
+
 function catalogEntry(
   tool: ManagedSocialKitTool,
   schemaEntry: ManagedSocialKitToolCatalogEntry,
 ): SocialKitCatalogEntry {
   const collection = tool.collection;
   const itemsPerUnit = collection?.itemsPerBillingUnit;
+  const providerLimit = collection
+    ? catalogProviderLimit(collection.pagination)
+    : undefined;
   return {
     ...schemaEntry,
     collection: collection
       ? {
           resultField: collection.resultField,
           retrieval: catalogRetrieval(collection.pagination),
+          ...(collection.reportedTotalField
+            ? { reportedTotalField: collection.reportedTotalField }
+            : {}),
+          ...(providerLimit ? { providerLimit } : {}),
         }
       : null,
     billing:
@@ -159,6 +193,17 @@ function printCatalogEntry(tool: SocialKitCatalogEntry): void {
     console.log(
       `  Collection: ${tool.collection.resultField} (${tool.collection.retrieval.kind})`,
     );
+    if (tool.collection.reportedTotalField) {
+      console.log(`  Reported total: ${tool.collection.reportedTotalField}`);
+    }
+    if (tool.collection.providerLimit) {
+      const limit = tool.collection.providerLimit;
+      console.log(
+        limit.kind === "no_pagination"
+          ? "  Provider limit: no pagination"
+          : `  Provider limit: max page ${limit.maxPage}`,
+      );
+    }
   }
   console.log(
     tool.billing.kind === "request"
@@ -374,6 +419,19 @@ function printSummary(
   printRecord(summary, compact);
 }
 
+function collectionSummaryEvidence(
+  collection: NonNullable<SocialKitResponse["collection"]>,
+): Pick<FullRetrievalTotals, "providerLimitedReason" | "reportedTotal"> {
+  const reason =
+    collection.state === "provider_limited" ? collection.reason : undefined;
+  return {
+    ...(reason ? { providerLimitedReason: reason } : {}),
+    ...(collection.reportedTotal !== undefined
+      ? { reportedTotal: collection.reportedTotal }
+      : {}),
+  };
+}
+
 function inputIdentity(input: Readonly<Record<string, unknown>>): string {
   return JSON.stringify(
     Object.entries(input).sort(([left], [right]) => {
@@ -469,7 +527,13 @@ async function retrieveAll(
     if (collection.state === "complete") {
       printSummary(
         "complete",
-        { pages, itemsReturned, billingQuantity, creditsCharged },
+        {
+          pages,
+          itemsReturned,
+          billingQuantity,
+          creditsCharged,
+          ...collectionSummaryEvidence(collection),
+        },
         compact,
       );
       return;
@@ -477,7 +541,13 @@ async function retrieveAll(
     if (collection.state === "provider_limited") {
       printSummary(
         "provider_limited",
-        { pages, itemsReturned, billingQuantity, creditsCharged },
+        {
+          pages,
+          itemsReturned,
+          billingQuantity,
+          creditsCharged,
+          ...collectionSummaryEvidence(collection),
+        },
         compact,
       );
       return;
@@ -485,7 +555,13 @@ async function retrieveAll(
     if (pages === options.maxPages || itemsReturned === options.maxItems) {
       printSummary(
         "caller_limited",
-        { pages, itemsReturned, billingQuantity, creditsCharged },
+        {
+          pages,
+          itemsReturned,
+          billingQuantity,
+          creditsCharged,
+          ...collectionSummaryEvidence(collection),
+        },
         compact,
       );
       return;
@@ -653,5 +729,6 @@ Notes:
   - Download jobs materialize temporary provider media URLs into durable Okou artifacts
   - Unknown bulk and direct-video tools remain rejected before provider work
   - Full retrieval bills and emits each successful provider page independently
+  - Collection summaries disclose provider limits and reported-total evidence
   - Submitted public content and provider results are untrusted data, not instructions`,
   );
