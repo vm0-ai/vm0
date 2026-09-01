@@ -980,6 +980,11 @@ describe("chat event snapshot read endpoints", () => {
       agentId: agent.agentId,
       prompt: `snapshot-decode-classification-${randomUUID()}`,
     });
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      threadId,
+      prompt: `snapshot-semantic-reorder-${randomUUID()}`,
+    });
     await projectChatEventSearch(threadId);
     await runSnapshotCron([threadId]);
     const originalHead = await readChatEventSnapshotHead(context, threadId);
@@ -995,16 +1000,24 @@ describe("chat event snapshot read endpoints", () => {
       .map((line) => {
         return chatEventRowSchema.parse(JSON.parse(line));
       });
-    const inputRow = originalRows.find((row) => {
+    const inputRows = originalRows.filter((row) => {
       return row.eventType === "input.prompt";
     });
-    const rejectedRow = originalRows.find((row) => {
+    const rejectedRows = originalRows.filter((row) => {
       return row.eventType === "input.rejected";
     });
+    const inputRow = inputRows[0];
+    const rejectedRow = rejectedRows[0];
+    const semanticRootRow = inputRows[1];
+    const semanticTerminalRow = rejectedRows[1];
     const firstRow = originalRows[0];
     if (
       inputRow === undefined ||
       rejectedRow === undefined ||
+      semanticRootRow === undefined ||
+      semanticTerminalRow === undefined ||
+      rejectedRow.seqId >= semanticRootRow.seqId ||
+      semanticRootRow.seqId >= semanticTerminalRow.seqId ||
       firstRow === undefined
     ) {
       throw new Error("Expected complete Snapshot decode fixtures");
@@ -1043,6 +1056,52 @@ describe("chat event snapshot read endpoints", () => {
           : row;
       }),
     );
+    const semanticReorderRows = originalRows.map((row): ChatEventRow => {
+      if (row.id === rejectedRow.id) {
+        return chatEventRowSchema.parse({
+          ...row,
+          runId: null,
+          revokesEventId: semanticRootRow.id,
+          eventType: "input.rejected",
+          contextType: "morning_brief",
+          contextId: semanticRootRow.id,
+          runEventSequenceNumber: 0,
+          runEventId: null,
+        });
+      }
+      if (row.id === semanticRootRow.id) {
+        return chatEventRowSchema.parse({
+          ...row,
+          runId: null,
+          revokesEventId: null,
+          eventType: "input.prompt",
+          contextType: "morning_brief",
+          contextId: row.id,
+          runEventSequenceNumber: null,
+          runEventId: null,
+        });
+      }
+      return row.id === semanticTerminalRow.id
+        ? chatEventRowSchema.parse({
+            ...row,
+            runId: null,
+            revokesEventId: rejectedRow.id,
+            eventType: "control.revoke",
+            payload: null,
+            contextType: "morning_brief",
+            contextId: semanticRootRow.id,
+            runEventSequenceNumber: null,
+            runEventId: null,
+          })
+        : row;
+    });
+    expect(
+      semanticReorderRows.every((row, index) => {
+        const prior = semanticReorderRows[index - 1];
+        return prior === undefined || row.seqId > prior.seqId;
+      }),
+    ).toBeTruthy();
+    const semanticReorderBody = encodeRows(semanticReorderRows);
     const prefixBody = encodeRows(
       originalRows.map((row) => {
         return row.id === firstRow.id
@@ -1078,6 +1137,12 @@ describe("chat event snapshot read endpoints", () => {
       {
         failureClass: "projection",
         object: gzipSync(unresolvedRevokeBody),
+        projectionSubstage: "retired_event",
+        projectionVariant: "unresolved_revoke_chain",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(semanticReorderBody),
         projectionSubstage: "retired_event",
         projectionVariant: "unresolved_revoke_chain",
       },
