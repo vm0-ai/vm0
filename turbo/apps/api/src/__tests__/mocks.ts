@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import type StripeSDK from "stripe";
 import type { LookupFunction } from "node:net";
 import { computed } from "ccstate";
@@ -53,8 +54,10 @@ type BrowserUseCdpCommandMock = Mock<
 interface RequestOptionsLike {
   readonly family?: number;
   readonly headers?: RequestInit["headers"];
+  readonly maxHeaderSize?: number;
   readonly method?: string;
   readonly lookup?: LookupFunction;
+  readonly signal?: AbortSignal;
 }
 
 type PinnedRequestCallback = (
@@ -778,9 +781,9 @@ async function mockPinnedRequestModule<TModule extends object>(
     }
     const [url, options, callback] = args;
     const req = new EventEmitter() as InstanceType<typeof EventEmitter> & {
-      end: (body?: string) => void;
+      end: (body?: string | Uint8Array) => void;
     };
-    req.end = (requestBody?: string) => {
+    req.end = (requestBody?: string | Uint8Array) => {
       queueMicrotask(() => {
         void (async () => {
           if (options.family === 4 || options.family === 6) {
@@ -826,10 +829,23 @@ async function mockPinnedRequestModule<TModule extends object>(
                 ? undefined
                 : requestBody,
             redirect: "manual",
+            signal: options.signal,
           });
           const headers: Record<string, string> = {};
           for (const [key, value] of fetched.headers) {
             headers[key] = value;
+          }
+          const responseHeaderBytes = Object.entries(headers).reduce(
+            (bytes, [name, value]) => {
+              return bytes + Buffer.byteLength(`${name}: ${value}\r\n`);
+            },
+            2,
+          );
+          if (
+            options.maxHeaderSize !== undefined &&
+            responseHeaderBytes > options.maxHeaderSize
+          ) {
+            throw new Error("Parse Error: Header overflow");
           }
           const body = fetched.body
             ? Readable.from([new Uint8Array(await fetched.arrayBuffer())])

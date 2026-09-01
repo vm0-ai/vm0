@@ -367,11 +367,211 @@ function occurrences(value: string, needle: string): number {
   return value.split(needle).length - 1;
 }
 
+function prepareDeepSeekModel(session: MemoryPiSession, baseUrl: string): void {
+  session.prepareModelTurn({
+    id: "deepseek-v4-flash",
+    name: "DeepSeek V4 Flash",
+    api: "openai-responses",
+    provider: "deepseek",
+    baseUrl,
+    reasoning: true,
+    thinkingLevelMap: {
+      minimal: null,
+      low: null,
+      medium: null,
+      high: "high",
+      max: "max",
+    },
+    input: ["text"],
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    },
+    contextWindow: 1_000_000,
+    maxTokens: 384_000,
+  });
+}
+
+function prepareTerraModel(session: MemoryPiSession, baseUrl: string): void {
+  session.prepareModelTurn(
+    {
+      id: "gpt-5.6-terra",
+      name: "GPT 5.6 Terra",
+      api: "openai-responses",
+      provider: "openai",
+      baseUrl,
+      reasoning: true,
+      input: ["text", "image"],
+      cost: {
+        input: 2,
+        output: 12,
+        cacheRead: 0.2,
+        cacheWrite: 2.5,
+      },
+      contextWindow: 272_000,
+      maxTokens: 128_000,
+    },
+    "low",
+  );
+}
+
+async function startOwnershipTransferHost(args: {
+  readonly root: string;
+  readonly jsonl: string;
+  readonly mode:
+    | "sandbox-first"
+    | "pending-tool-continuation"
+    | "settled-session-continuation";
+  readonly baseSessionSha256: string | null;
+  readonly providerBaseUrl: string;
+  readonly model?: "deepseek" | "terra";
+  readonly serviceTier?: "priority";
+}): Promise<{
+  readonly host: RpcHost;
+  readonly handoffServer: Server;
+}> {
+  const agentDir = join(args.root, ".pi", "agent");
+  const sessionDir = join(agentDir, "sessions", "--test--");
+  const manifest = {
+    schemaVersion: 3,
+    outcome: "ownership-transfer",
+    mode: args.mode,
+    baseSession: {
+      sessionId: SESSION_ID,
+      sha256: args.baseSessionSha256,
+    },
+    session: {
+      sessionId: SESSION_ID,
+      sha256: createHash("sha256").update(args.jsonl).digest("hex"),
+      rawSize: Buffer.byteLength(args.jsonl),
+    },
+    sandboxEventSequenceStart: 4,
+  };
+  const handoffServer = createServer((request, response) => {
+    if (request.url === "/manifest.json") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify(manifest));
+      return;
+    }
+    if (request.url === "/session.jsonl") {
+      response.writeHead(200, {
+        "content-type": "application/x-ndjson",
+        "content-length": String(Buffer.byteLength(args.jsonl)),
+      });
+      response.end(args.jsonl);
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+  await new Promise<void>((resolve, reject) => {
+    handoffServer.once("error", reject);
+    handoffServer.listen(0, "127.0.0.1", () => {
+      handoffServer.off("error", reject);
+      resolve();
+    });
+  });
+  const address = handoffServer.address();
+  if (address === null || typeof address === "string") {
+    throw new Error("Pi handoff test server has no TCP address");
+  }
+  const handoffBaseUrl = `http://127.0.0.1:${address.port}`;
+  const payloadFile = join(args.root, "launch-payload.json");
+  await mkdir(agentDir, { recursive: true });
+  await writeFile(
+    payloadFile,
+    JSON.stringify({
+      schemaVersion: 1,
+      appendSystemPrompt: null,
+      launchConfig: {
+        schemaVersion: 2,
+        apiFirstTurn: {
+          schemaVersion: 1,
+          resourceSnapshotDigest: "a".repeat(64),
+          manifestUrl: `${handoffBaseUrl}/manifest.json`,
+          sessionUrl: `${handoffBaseUrl}/session.jsonl`,
+          deadlineAt: Date.now() + 10_000,
+          baseSession: {
+            sessionId: SESSION_ID,
+            sha256: args.baseSessionSha256,
+          },
+          sandboxEventSequenceStart: 1,
+          ownershipTransfer: { schemaVersion: 1 },
+        },
+      },
+    }),
+    { mode: 0o600 },
+  );
+  const terra = args.model === "terra";
+  const env = {
+    ...process.env,
+    OKOU_RUN_ID: RUN_ID,
+    OKOU_PI_SESSION_ID: SESSION_ID,
+    OKOU_PI_LAUNCH_PAYLOAD_FILE: payloadFile,
+    OKOU_PI_MODEL_CONFIG: JSON.stringify({
+      provider: terra ? "openai" : "deepseek",
+      baseUrl: args.providerBaseUrl,
+      model: terra ? "gpt-5.6-terra" : "deepseek-v4-flash",
+      ...(terra
+        ? { api: "openai-responses" as const, thinkingLevel: "low" as const }
+        : {}),
+      ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
+      apiKeyEnv: "OPENAI_API_KEY",
+      credentialSecretName: terra ? "OPENAI_API_KEY" : "DEEPSEEK_API_KEY",
+    }),
+    OPENAI_API_KEY: "pi-ownership-transfer-test-key",
+  };
+  return {
+    host: new RpcHost({ cwd: args.root, agentDir, sessionDir, env }),
+    handoffServer,
+  };
+}
+
+async function closeServer(server: Server): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
 describe("sandbox Pi agent loop", () => {
   it("resolves the Pi session, launch payload file, and model credential", async () => {
     await expect(
       piSandboxAgentConfigFromEnv(piEnv({ OKOU_RUN_ID: RUN_ID })),
     ).resolves.toEqual(CONFIG);
+  });
+
+  it("reads optional Terra transport and request policy from the launch config", async () => {
+    const env = piEnv({ OKOU_RUN_ID: RUN_ID });
+    env.OKOU_PI_MODEL_CONFIG = JSON.stringify({
+      provider: "openai",
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-5.6-terra",
+      api: "openai-responses",
+      thinkingLevel: "low",
+      serviceTier: "priority",
+      apiKeyEnv: "OPENAI_API_KEY",
+      credentialSecretName: "OPENAI_API_KEY",
+    });
+
+    await expect(piSandboxAgentConfigFromEnv(env)).resolves.toMatchObject({
+      model: {
+        provider: "openai",
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-5.6-terra",
+        api: "openai-responses",
+        thinkingLevel: "low",
+        serviceTier: "priority",
+        apiKey: "test-api-key",
+      },
+    });
   });
 
   it("requires the run id", async () => {
@@ -418,52 +618,27 @@ describe("sandbox Pi agent loop", () => {
     }
   });
 
-  it("restores API H1, executes its pending tool, and continues without replaying the prompt", async () => {
-    const root = await mkdtemp(join(tmpdir(), "vm0-pi-handoff-rpc-"));
-    const agentDir = join(root, ".pi", "agent");
-    const sessionDir = join(agentDir, "sessions", "--test--");
-    const sourceFile = join(root, "handoff-source.txt");
-    const prompt = "read the handoff source exactly once";
+  it("restores Terra H1, executes its pending tool, and checkpoints H2", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vm0-pi-terra-handoff-rpc-"));
+    const sourceFile = join(root, "terra-handoff-source.txt");
+    const prompt = "read the Terra handoff source exactly once";
     const provider = await ProviderHarness.start();
     const memory = MemoryPiSession.create({ cwd: root, id: SESSION_ID });
-    memory.prepareModelTurn({
-      id: "deepseek-v4-flash",
-      name: "DeepSeek V4 Flash",
-      api: "openai-responses",
-      provider: "deepseek",
-      baseUrl: provider.baseUrl,
-      reasoning: true,
-      thinkingLevelMap: {
-        minimal: null,
-        low: null,
-        medium: null,
-        high: "high",
-        max: "max",
-      },
-      input: ["text"],
-      cost: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-      },
-      contextWindow: 1_000_000,
-      maxTokens: 384_000,
-    });
+    prepareTerraModel(memory, provider.baseUrl);
     memory.appendMessage({ role: "user", content: prompt, timestamp: 1 });
     memory.appendMessage({
       role: "assistant",
       content: [
         {
           type: "thinking",
-          thinking: "API-first reasoning preserved for the tool handoff",
+          thinking: "Terra reasoning preserved for the Okou handoff",
           thinkingSignature: JSON.stringify({
             type: "reasoning",
-            id: "rs_api_handoff",
+            id: "rs_terra_okou_handoff",
             content: [
               {
                 type: "reasoning_text",
-                text: "API-first reasoning preserved for the tool handoff",
+                text: "Terra reasoning preserved for the Okou handoff",
               },
             ],
             summary: [],
@@ -471,14 +646,14 @@ describe("sandbox Pi agent loop", () => {
         },
         {
           type: "toolCall",
-          id: "api-read-call",
+          id: "api-terra-read-call",
           name: "read",
           arguments: { path: sourceFile },
         },
       ],
       api: "openai-responses",
-      provider: "deepseek",
-      model: "deepseek-v4-flash",
+      provider: "openai",
+      model: "gpt-5.6-terra",
       usage: {
         input: 5,
         output: 3,
@@ -491,110 +666,48 @@ describe("sandbox Pi agent loop", () => {
       timestamp: 2,
     });
     const h1 = memory.toJsonl();
-    const manifest = {
-      schemaVersion: 2,
-      outcome: "handoff",
-      baseSession: { sessionId: SESSION_ID, sha256: null },
-      session: {
-        sessionId: SESSION_ID,
-        sha256: createHash("sha256").update(h1).digest("hex"),
-        rawSize: Buffer.byteLength(h1),
-      },
-      sandboxEventSequenceStart: 4,
-    };
-    const handoffServer = createServer((request, response) => {
-      if (request.url === "/manifest.json") {
-        response.writeHead(200, { "content-type": "application/json" });
-        response.end(JSON.stringify(manifest));
-        return;
-      }
-      if (request.url === "/session.jsonl") {
-        response.writeHead(200, {
-          "content-type": "application/x-ndjson",
-          "content-length": String(Buffer.byteLength(h1)),
-        });
-        response.end(h1);
-        return;
-      }
-      response.writeHead(404);
-      response.end();
-    });
     let host: RpcHost | undefined;
+    let handoffServer: Server | undefined;
 
     try {
-      await mkdir(agentDir, { recursive: true });
-      await writeFile(sourceFile, "tool output from the sandbox filesystem");
-      await new Promise<void>((resolve, reject) => {
-        handoffServer.once("error", reject);
-        handoffServer.listen(0, "127.0.0.1", () => {
-          handoffServer.off("error", reject);
-          resolve();
-        });
-      });
-      const address = handoffServer.address();
-      if (address === null || typeof address === "string") {
-        throw new Error("Pi handoff test server has no TCP address");
-      }
-      const handoffBaseUrl = `http://127.0.0.1:${address.port}`;
-      const payloadFile = join(root, "launch-payload.json");
       await writeFile(
-        payloadFile,
-        JSON.stringify({
-          schemaVersion: 1,
-          appendSystemPrompt: null,
-          launchConfig: {
-            schemaVersion: 2,
-            apiFirstTurn: {
-              schemaVersion: 1,
-              resourceSnapshotDigest: "a".repeat(64),
-              manifestUrl: `${handoffBaseUrl}/manifest.json`,
-              sessionUrl: `${handoffBaseUrl}/session.jsonl`,
-              deadlineAt: Date.now() + 10_000,
-              baseSession: { sessionId: SESSION_ID, sha256: null },
-              sandboxEventSequenceStart: 1,
-            },
-          },
-        }),
-        { mode: 0o600 },
+        sourceFile,
+        "Terra tool output from the sandbox filesystem",
       );
-      const env = {
-        ...process.env,
-        OKOU_RUN_ID: RUN_ID,
-        OKOU_PI_SESSION_ID: SESSION_ID,
-        OKOU_PI_LAUNCH_PAYLOAD_FILE: payloadFile,
-        OKOU_PI_MODEL_CONFIG: JSON.stringify({
-          provider: "deepseek",
-          baseUrl: provider.baseUrl,
-          model: "deepseek-v4-flash",
-          apiKeyEnv: "OPENAI_API_KEY",
-          credentialSecretName: "DEEPSEEK_API_KEY",
-        }),
-        OPENAI_API_KEY: "pi-handoff-test-key",
-      };
+      const started = await startOwnershipTransferHost({
+        root,
+        jsonl: h1,
+        mode: "pending-tool-continuation",
+        baseSessionSha256: null,
+        providerBaseUrl: provider.baseUrl,
+        model: "terra",
+        serviceTier: "priority",
+      });
+      host = started.host;
+      handoffServer = started.handoffServer;
 
-      host = new RpcHost({ cwd: root, agentDir, sessionDir, env });
-      const state = await host.state("handoff-state");
+      const state = await host.state("terra-handoff-state");
       expect(host.records[0]).toStrictEqual({
         type: "vm0_pi_api_first_turn_boundary",
-        schemaVersion: 1,
+        schemaVersion: 2,
         sandboxEventSequenceStart: 4,
+        ownershipTransferMode: "pending-tool-continuation",
       });
-      expect(state).toMatchObject({
-        sessionId: SESSION_ID,
-        messageCount: 2,
-      });
+      expect(state).toMatchObject({ sessionId: SESSION_ID, messageCount: 2 });
       expect(String(state.sessionFile)).toContain("api-first-turn-");
 
-      host.send({ id: "handoff", type: "prompt", message: prompt });
+      host.send({ id: "terra-handoff", type: "prompt", message: prompt });
       const continuationRequest = await provider.nextRequest();
       const continuationBody = JSON.stringify(continuationRequest.body);
       expect(continuationBody).toContain(
-        "tool output from the sandbox filesystem",
+        "Terra tool output from the sandbox filesystem",
       );
-      expect(continuationBody).toContain("rs_api_handoff");
-      expect(continuationBody).toContain("reasoning_text");
+      expect(continuationBody).toContain("rs_terra_okou_handoff");
       expect(occurrences(continuationBody, prompt)).toBe(1);
-      continuationRequest.respond("handoff continuation complete");
+      expect(continuationRequest.body).toMatchObject({
+        service_tier: "priority",
+      });
+      continuationRequest.respond("Terra Okou handoff complete");
       await host.waitFor((record) => {
         return record.type === "agent_settled";
       });
@@ -604,20 +717,342 @@ describe("sandbox Pi agent loop", () => {
       expect(provider.requests).toHaveLength(1);
       const persisted = await readFile(String(state.sessionFile), "utf8");
       expect(occurrences(persisted, prompt)).toBe(1);
-      expect(persisted).toContain("api-read-call");
-      expect(persisted).toContain("handoff continuation complete");
+      expect(persisted).not.toContain("serviceTier");
+      expect(persisted).not.toContain("service_tier");
+      expect(persisted).toContain("api-terra-read-call");
+      expect(persisted).toContain(
+        "Terra tool output from the sandbox filesystem",
+      );
+      expect(persisted).toContain("Terra Okou handoff complete");
+      expect(MemoryPiSession.fromJsonl(persisted).isSettledCheckpoint()).toBe(
+        true,
+      );
     } finally {
       await host?.terminate();
+      if (handoffServer) {
+        await closeServer(handoffServer);
+      }
       await provider.close();
-      await new Promise<void>((resolve, reject) => {
-        handoffServer.close((error) => {
-          if (error) {
-            reject(error);
-          } else {
-            resolve();
-          }
-        });
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it("keeps standard Terra tierless on the sandbox-first AgentSession call", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vm0-pi-sandbox-first-rpc-"));
+    const prompt = "execute this sandbox-owned first turn once";
+    const provider = await ProviderHarness.start();
+    const session = MemoryPiSession.create({ cwd: root, id: SESSION_ID });
+    let host: RpcHost | undefined;
+    let handoffServer: Server | undefined;
+
+    try {
+      const started = await startOwnershipTransferHost({
+        root,
+        jsonl: session.toJsonl(),
+        mode: "sandbox-first",
+        baseSessionSha256: null,
+        providerBaseUrl: provider.baseUrl,
+        model: "terra",
       });
+      host = started.host;
+      handoffServer = started.handoffServer;
+
+      const state = await host.state("sandbox-first-state");
+      expect(host.records[0]).toStrictEqual({
+        type: "vm0_pi_api_first_turn_boundary",
+        schemaVersion: 2,
+        sandboxEventSequenceStart: 4,
+        ownershipTransferMode: "sandbox-first",
+      });
+      expect(state).toMatchObject({ sessionId: SESSION_ID, messageCount: 0 });
+
+      host.send({ id: "sandbox-first", type: "prompt", message: prompt });
+      const request = await provider.nextRequest();
+      expect(occurrences(JSON.stringify(request.body), prompt)).toBe(1);
+      expect(request.body).not.toHaveProperty("service_tier");
+      request.respond("sandbox-first complete");
+      await host.waitFor((record) => {
+        return record.type === "agent_settled";
+      });
+      await host.close();
+      host = undefined;
+
+      expect(provider.requests).toHaveLength(1);
+      const persisted = await readFile(String(state.sessionFile), "utf8");
+      expect(occurrences(persisted, prompt)).toBe(1);
+      expect(persisted).toContain("sandbox-first complete");
+    } finally {
+      await host?.terminate();
+      if (handoffServer) {
+        await closeServer(handoffServer);
+      }
+      await provider.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("keeps priority on compaction and the original AgentSession prompt", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vm0-pi-compaction-rpc-"));
+    const priorPrompt = "prior context that requires official compaction";
+    const prompt = "run this original prompt after official compaction";
+    const compactionSummary = "official compacted context summary";
+    const finalAnswer = "sandbox answer after compaction";
+    const provider = await ProviderHarness.start();
+    const session = MemoryPiSession.create({ cwd: root, id: SESSION_ID });
+    prepareDeepSeekModel(session, provider.baseUrl);
+    session.appendMessage({ role: "user", content: priorPrompt, timestamp: 1 });
+    session.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "earlier answer to summarize" }],
+      api: "openai-responses",
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      usage: {
+        input: 5,
+        output: 3,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 8,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason: "stop",
+      timestamp: 2,
+    });
+    session.appendMessage({
+      role: "user",
+      content: "recent context ".repeat(8_000),
+      timestamp: 3,
+    });
+    session.appendMessage({
+      role: "assistant",
+      content: [
+        { type: "text", text: "recent answer retained after compaction" },
+      ],
+      api: "openai-responses",
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      usage: {
+        input: 983_617,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 983_617,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason: "stop",
+      timestamp: 4,
+    });
+    let host: RpcHost | undefined;
+    let handoffServer: Server | undefined;
+
+    try {
+      const h0 = session.toJsonl();
+      const started = await startOwnershipTransferHost({
+        root,
+        jsonl: h0,
+        mode: "sandbox-first",
+        baseSessionSha256: createHash("sha256").update(h0).digest("hex"),
+        providerBaseUrl: provider.baseUrl,
+        model: "terra",
+        serviceTier: "priority",
+      });
+      host = started.host;
+      handoffServer = started.handoffServer;
+
+      const state = await host.state("compaction-state");
+      host.send({ id: "compaction", type: "prompt", message: prompt });
+
+      const compactionRequest = await provider.nextRequest();
+      const compactionBody = JSON.stringify(compactionRequest.body);
+      expect(compactionBody).toContain(priorPrompt);
+      expect(compactionBody).not.toContain(prompt);
+      expect(compactionRequest.body).toMatchObject({
+        service_tier: "priority",
+      });
+      compactionRequest.respond(compactionSummary);
+
+      const promptRequest = await provider.nextRequest();
+      expect(occurrences(JSON.stringify(promptRequest.body), prompt)).toBe(1);
+      expect(promptRequest.body).toMatchObject({ service_tier: "priority" });
+      promptRequest.respond(finalAnswer);
+      await host.waitFor((record) => {
+        return record.type === "agent_settled";
+      });
+      const rpcRecords = [...host.records];
+      await host.close();
+      host = undefined;
+
+      expect(provider.requests).toHaveLength(2);
+      const persisted = await readFile(String(state.sessionFile), "utf8");
+      expect(occurrences(persisted, prompt)).toBe(1);
+      const entries = persisted
+        .trimEnd()
+        .split("\n")
+        .map((line) => {
+          return JSON.parse(line) as {
+            type?: string;
+            message?: {
+              role?: string;
+              content?: unknown;
+              usage?: unknown;
+            };
+            summary?: string;
+            usage?: unknown;
+          };
+        });
+      const compactions = entries.filter((entry) => {
+        return entry.type === "compaction";
+      });
+      expect(compactions).toHaveLength(1);
+      expect(compactions[0]).toMatchObject({
+        summary: compactionSummary,
+        usage: {
+          input: 5,
+          output: 3,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 8,
+        },
+      });
+      const lastAssistant = [...entries].reverse().find((entry) => {
+        return entry.type === "message" && entry.message?.role === "assistant";
+      });
+      expect(lastAssistant?.message).toMatchObject({
+        content: [{ type: "text", text: finalAnswer }],
+        usage: {
+          input: 5,
+          output: 3,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 8,
+        },
+      });
+      expect(
+        rpcRecords
+          .filter((record) => {
+            return String(record.type).startsWith("message_");
+          })
+          .some((record) => {
+            return JSON.stringify(record).includes(compactionSummary);
+          }),
+      ).toBeFalsy();
+    } finally {
+      await host?.terminate();
+      if (handoffServer) {
+        await closeServer(handoffServer);
+      }
+      await provider.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("acknowledges a settled transfer without replaying its original prompt", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vm0-pi-settled-rpc-"));
+    const originalPrompt = "the API already completed this prompt";
+    const continuation = "start the newly owned continuation";
+    const provider = await ProviderHarness.start();
+    const session = MemoryPiSession.create({ cwd: root, id: SESSION_ID });
+    prepareDeepSeekModel(session, provider.baseUrl);
+    session.appendMessage({
+      role: "user",
+      content: originalPrompt,
+      timestamp: 1,
+    });
+    session.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "API-first turn complete" }],
+      api: "openai-responses",
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      usage: {
+        input: 5,
+        output: 3,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 8,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason: "stop",
+      timestamp: 2,
+    });
+    let host: RpcHost | undefined;
+    let handoffServer: Server | undefined;
+
+    try {
+      const started = await startOwnershipTransferHost({
+        root,
+        jsonl: session.toJsonl(),
+        mode: "settled-session-continuation",
+        baseSessionSha256: null,
+        providerBaseUrl: provider.baseUrl,
+      });
+      host = started.host;
+      handoffServer = started.handoffServer;
+
+      const state = await host.state("settled-state");
+      expect(host.records[0]).toStrictEqual({
+        type: "vm0_pi_api_first_turn_boundary",
+        schemaVersion: 2,
+        sandboxEventSequenceStart: 4,
+        ownershipTransferMode: "settled-session-continuation",
+      });
+      expect(state).toMatchObject({ sessionId: SESSION_ID, messageCount: 2 });
+
+      host.send({
+        id: "settled-startup",
+        type: "prompt",
+        message: originalPrompt,
+      });
+      await host.waitFor((record) => {
+        return record.type === "response" && record.id === "settled-startup";
+      });
+      expect(provider.requests).toHaveLength(0);
+
+      host.send({
+        id: "settled-continuation",
+        type: "prompt",
+        message: continuation,
+      });
+      const request = await provider.nextRequest();
+      const requestBody = JSON.stringify(request.body);
+      expect(occurrences(requestBody, originalPrompt)).toBe(1);
+      expect(occurrences(requestBody, continuation)).toBe(1);
+      request.respond("settled continuation complete");
+      await host.waitFor((record) => {
+        return record.type === "agent_settled";
+      });
+      await host.close();
+      host = undefined;
+
+      expect(provider.requests).toHaveLength(1);
+      const persisted = await readFile(String(state.sessionFile), "utf8");
+      expect(occurrences(persisted, originalPrompt)).toBe(1);
+      expect(occurrences(persisted, continuation)).toBe(1);
+      expect(persisted).toContain("settled continuation complete");
+    } finally {
+      await host?.terminate();
+      if (handoffServer) {
+        await closeServer(handoffServer);
+      }
+      await provider.close();
       await rm(root, { recursive: true, force: true });
     }
   }, 20_000);

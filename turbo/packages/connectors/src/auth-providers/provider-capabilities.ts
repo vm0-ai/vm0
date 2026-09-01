@@ -1716,7 +1716,7 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
       client: {
         kind: "static-confidential-env",
         clientIdEnv: "STRIPE_OAUTH_CLIENT_ID",
-        clientSecretEnv: "STRIPE_SECRET_KEY",
+        clientSecretEnv: "STRIPE_OAUTH_CLIENT_SECRET",
       },
       grant: {
         kind: "auth-code",

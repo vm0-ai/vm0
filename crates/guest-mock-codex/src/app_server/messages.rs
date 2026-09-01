@@ -49,6 +49,14 @@ const HISTORICAL_USAGE: MockTokenUsage = MockTokenUsage {
     reasoning_output_tokens: 10,
     total_tokens: 150,
 };
+const HISTORICAL_LAST_USAGE: MockTokenUsage = MockTokenUsage {
+    input_tokens: 6,
+    cached_input_tokens: 1,
+    cache_write_input_tokens: 1,
+    output_tokens: 12,
+    reasoning_output_tokens: 2,
+    total_tokens: 18,
+};
 const FIRST_RESPONSE_USAGE: MockTokenUsage = MockTokenUsage {
     input_tokens: 7,
     cached_input_tokens: 2,
@@ -210,6 +218,180 @@ pub(super) fn assistant_item_completed_notification(
             }
         }
     })
+}
+
+fn item_notification(
+    method: &str,
+    thread_id: &str,
+    turn_id: &str,
+    timestamp_key: &str,
+    timestamp: i64,
+    item: Value,
+) -> Value {
+    json!({
+        "method": method,
+        "params": {
+            "threadId": thread_id,
+            "turnId": turn_id,
+            timestamp_key: timestamp,
+            "item": item,
+        }
+    })
+}
+
+pub(super) fn write_thread_item_notifications<W: Write>(
+    output: &mut W,
+    thread_id: &str,
+    turn_id: &str,
+) -> io::Result<()> {
+    write_json_line(output, &turn_started_notification(thread_id, turn_id))?;
+    let collab_id = "mock-collab-agent-tool-call";
+    write_json_line(
+        output,
+        &item_notification(
+            "item/started",
+            thread_id,
+            turn_id,
+            "startedAtMs",
+            1,
+            json!({
+                "id": collab_id,
+                "type": "collabAgentToolCall",
+                "tool": "spawnAgent",
+                "status": "inProgress",
+                "senderThreadId": thread_id,
+                "receiverThreadIds": ["mock-subagent-thread"],
+                "prompt": "inspect the adapter contract",
+                "model": "gpt-5",
+                "reasoningEffort": "high",
+                "agentsStates": {
+                    "mock-subagent-thread": {
+                        "status": "running",
+                        "message": null,
+                    }
+                }
+            }),
+        ),
+    )?;
+    write_json_line(
+        output,
+        &item_notification(
+            "item/completed",
+            thread_id,
+            turn_id,
+            "completedAtMs",
+            2,
+            json!({
+                "id": collab_id,
+                "type": "collabAgentToolCall",
+                "tool": "spawnAgent",
+                "status": "completed",
+                "senderThreadId": thread_id,
+                "receiverThreadIds": ["mock-subagent-thread"],
+                "prompt": "inspect the adapter contract",
+                "model": "gpt-5",
+                "reasoningEffort": "high",
+                "agentsStates": {
+                    "mock-subagent-thread": {
+                        "status": "completed",
+                        "message": "adapter contract inspected",
+                    }
+                }
+            }),
+        ),
+    )?;
+    for (index, kind) in ["started", "interacted", "interrupted", "completed"]
+        .into_iter()
+        .enumerate()
+    {
+        write_json_line(
+            output,
+            &item_notification(
+                "item/completed",
+                thread_id,
+                turn_id,
+                "completedAtMs",
+                i64::try_from(index).map_err(io::Error::other)? + 3,
+                json!({
+                    "id": format!("mock-subagent-activity-{kind}"),
+                    "type": "subAgentActivity",
+                    "kind": kind,
+                    "agentThreadId": "mock-subagent-thread",
+                    "agentPath": "/root/researcher",
+                }),
+            ),
+        )?;
+    }
+    let compaction_id = "mock-context-compaction";
+    write_json_line(
+        output,
+        &item_notification(
+            "item/started",
+            thread_id,
+            turn_id,
+            "startedAtMs",
+            7,
+            json!({ "id": compaction_id, "type": "contextCompaction" }),
+        ),
+    )?;
+    write_json_line(
+        output,
+        &item_notification(
+            "item/completed",
+            thread_id,
+            turn_id,
+            "completedAtMs",
+            8,
+            json!({ "id": compaction_id, "type": "contextCompaction" }),
+        ),
+    )?;
+    write_json_line(
+        output,
+        &item_notification(
+            "item/completed",
+            thread_id,
+            turn_id,
+            "completedAtMs",
+            9,
+            json!({
+                "id": "mock-future-item",
+                "type": "futureOperation",
+                "status": "completed",
+                "label": "future item remains generic",
+            }),
+        ),
+    )?;
+    write_json_line(output, &turn_completed_notification(thread_id, turn_id))
+}
+
+pub(super) fn write_malformed_thread_item_notification<W: Write>(
+    output: &mut W,
+    thread_id: &str,
+    turn_id: &str,
+) -> io::Result<()> {
+    write_json_line(output, &turn_started_notification(thread_id, turn_id))?;
+    write_json_line(
+        output,
+        &item_notification(
+            "item/completed",
+            thread_id,
+            turn_id,
+            "completedAtMs",
+            1,
+            json!({
+                "id": "mock-malformed-collab-item",
+                "type": "collabAgentToolCall",
+                "tool": "spawnAgent",
+                "status": "completed",
+                "senderThreadId": thread_id,
+                "receiverThreadIds": ["mock-subagent-thread"],
+                "prompt": null,
+                "model": null,
+                "reasoningEffort": "",
+                "agentsStates": {},
+            }),
+        ),
+    )
 }
 
 pub(super) fn write_oversized_delivery_notifications<W: Write>(
@@ -453,7 +635,7 @@ pub(super) fn historical_token_usage_notification(thread_id: &str) -> Value {
         thread_id,
         HISTORICAL_TURN_ID,
         HISTORICAL_USAGE,
-        HISTORICAL_USAGE,
+        HISTORICAL_LAST_USAGE,
     )
 }
 

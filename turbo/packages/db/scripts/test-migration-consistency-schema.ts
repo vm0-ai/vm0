@@ -42,6 +42,11 @@ import {
 import { NON_TRANSACTIONAL_MIGRATION_MARKER } from "./migration-runner";
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
 import { validateAgentDraftsCompatibilityRelation } from "./test-agent-drafts-compatibility-relation";
+import {
+  CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_FUNCTION,
+  CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_TRIGGER,
+  validateChatSearchDeleteCompatibility,
+} from "./test-chat-search-delete-compatibility";
 import { validateAgentRunMetadataStage2Index } from "./test-agent-run-metadata-stage-2-index";
 import {
   validateAgentRunMetadataStage2Final,
@@ -62,12 +67,26 @@ import { validatePermanentAgentRunBuiltInModelKeyState } from "./test-agent-run-
 import { validatePermanentBuiltInModelCooldownState } from "./test-built-in-model-cooldown-permanent";
 import { validatePermanentBuiltInModelKeyState } from "./test-built-in-model-keys-permanent";
 import { validatePermanentBuiltInProviderDiscriminatorState } from "./test-built-in-provider-discriminator-permanent";
+import { validateBuiltInProviderDiscriminatorContract } from "./test-built-in-provider-discriminator-contract";
 import { validateBuiltInProviderDiscriminatorMigration } from "./test-built-in-provider-discriminator-migration";
 import { validateConnectorAccountExpansion } from "./test-connector-account-expansion";
 import { validateConnectorAuthorizationAccountMutationPresence } from "./test-connector-authorization-account-mutation-presence";
 import { validateCustomGatewayProviderTypes } from "./test-custom-gateway-provider-types";
 import { validateFeishuMemberConnectorReconciliation } from "./test-feishu-member-connector-reconciliation";
 import { validateOkouDebugFeatureSwitchKeyRename } from "./test-okou-debug-feature-switch-key-rename";
+import {
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_BACKFILL_MIGRATION,
+  validateOrgMetadataAcquisitionFirstPartySourceBackfill,
+  validateOrgMetadataAcquisitionFirstPartySourceBackfillOnRegeneratedSchema,
+} from "./test-org-metadata-acquisition-first-party-source-backfill";
+import { validateOrgMetadataAcquisitionFirstPartySourceExpansion } from "./test-org-metadata-acquisition-first-party-source-expansion";
+import {
+  installOrgMetadataAcquisitionFirstPartySourceArtifactsOnRegeneratedSchema,
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_MIGRATION,
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_FUNCTION,
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_TRIGGER,
+  validatePermanentOrgMetadataAcquisitionFirstPartySourceState,
+} from "./test-org-metadata-acquisition-first-party-source-permanent";
 import { validateOrgPlanEntitlementRestrictionExpansion } from "./test-org-plan-entitlement-restriction-expansion";
 import {
   ORG_PLAN_ENTITLEMENT_RESTRICTION_BACKFILL_MIGRATION,
@@ -2336,79 +2355,15 @@ type PermanentFunction = {
 // Exported from a database built by the existing migration chain. Extension-owned
 // pgcrypto and vector functions are deliberately absent from the function list.
 const EXPECTED_PERMANENT_TRIGGERS = [
+  // Temporary #30453 old-API/new-DB delete bridge. Remove with #30468 after
+  // the pre-#30453 API artifact is no longer eligible for rollback.
+  CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_TRIGGER,
   {
     definition:
       "CREATE TRIGGER chat_events_reject_update BEFORE UPDATE ON public.chat_events FOR EACH ROW EXECUTE FUNCTION reject_chat_event_source_update()",
     schemaName: "public",
     tableName: "chat_events",
     triggerName: "chat_events_reject_update",
-  },
-  // Temporary #30264 rolling floor. Phase B removes all five triggers and
-  // functions after the released legacy zero-traffic observation gate.
-  {
-    definition:
-      "CREATE TRIGGER force_legacy_morning_brief_disabled_1029 BEFORE INSERT OR UPDATE OF morning_brief_enabled ON public.org_members_metadata FOR EACH ROW EXECUTE FUNCTION force_legacy_morning_brief_disabled_1029()",
-    schemaName: "public",
-    tableName: "org_members_metadata",
-    triggerName: "force_legacy_morning_brief_disabled_1029",
-  },
-  {
-    definition:
-      "CREATE TRIGGER pause_legacy_morning_brief_schedule_1029 BEFORE INSERT OR UPDATE OF next_run_at ON public.morning_brief_schedules FOR EACH ROW EXECUTE FUNCTION pause_legacy_morning_brief_schedule_1029()",
-    schemaName: "public",
-    tableName: "morning_brief_schedules",
-    triggerName: "pause_legacy_morning_brief_schedule_1029",
-  },
-  {
-    definition:
-      "CREATE TRIGGER reject_legacy_morning_brief_delivery_1029 BEFORE INSERT OR UPDATE OF status, run_id, input_key, output_key ON public.morning_brief_deliveries FOR EACH ROW EXECUTE FUNCTION reject_legacy_morning_brief_delivery_1029()",
-    schemaName: "public",
-    tableName: "morning_brief_deliveries",
-    triggerName: "reject_legacy_morning_brief_delivery_1029",
-  },
-  {
-    definition:
-      "CREATE TRIGGER reject_legacy_morning_brief_context_1029 BEFORE INSERT ON public.chat_morning_brief_context FOR EACH ROW EXECUTE FUNCTION reject_legacy_morning_brief_context_1029()",
-    schemaName: "public",
-    tableName: "chat_morning_brief_context",
-    triggerName: "reject_legacy_morning_brief_context_1029",
-  },
-  {
-    definition:
-      "CREATE TRIGGER reject_legacy_morning_brief_email_1029 BEFORE INSERT ON public.email_outbox FOR EACH ROW EXECUTE FUNCTION reject_legacy_morning_brief_email_1029()",
-    schemaName: "public",
-    tableName: "email_outbox",
-    triggerName: "reject_legacy_morning_brief_email_1029",
-  },
-  // Temporary #29910 old-writer/new-DB bridges. Remove only with #28368's
-  // separately reviewed legacy-acceptor contract after the production drain.
-  {
-    definition:
-      "CREATE TRIGGER canonicalize_agent_run_builtin_provider BEFORE INSERT OR UPDATE OF model_provider ON public.agent_runs FOR EACH ROW EXECUTE FUNCTION canonicalize_agent_run_builtin_provider()",
-    schemaName: "public",
-    tableName: "agent_runs",
-    triggerName: "canonicalize_agent_run_builtin_provider",
-  },
-  {
-    definition:
-      "CREATE TRIGGER canonicalize_chat_thread_builtin_provider BEFORE INSERT OR UPDATE OF model_provider_type ON public.chat_threads FOR EACH ROW EXECUTE FUNCTION canonicalize_chat_thread_builtin_provider()",
-    schemaName: "public",
-    tableName: "chat_threads",
-    triggerName: "canonicalize_chat_thread_builtin_provider",
-  },
-  {
-    definition:
-      "CREATE TRIGGER canonicalize_model_provider_builtin_type BEFORE INSERT OR UPDATE ON public.model_providers FOR EACH ROW EXECUTE FUNCTION canonicalize_model_provider_builtin_type()",
-    schemaName: "public",
-    tableName: "model_providers",
-    triggerName: "canonicalize_model_provider_builtin_type",
-  },
-  {
-    definition:
-      "CREATE TRIGGER canonicalize_org_model_policy_builtin_provider BEFORE INSERT OR UPDATE OF default_provider_type, model_provider_id, model_provider_surface_id ON public.org_model_policies FOR EACH ROW EXECUTE FUNCTION canonicalize_org_model_policy_builtin_provider()",
-    schemaName: "public",
-    tableName: "org_model_policies",
-    triggerName: "canonicalize_org_model_policy_builtin_provider",
   },
   {
     definition:
@@ -2487,6 +2442,9 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "org_metadata",
     triggerName: "ensure_legacy_org_metadata_plan_entitlement",
   },
+  // Temporary #30379 expand/mirror bridge. Remove only with #28368 after the
+  // backfill, canonical application/reporting switch, and rollback gates pass.
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_TRIGGER,
   // Temporary #30162 expand/mirror bridge. Remove only with #28368 after the
   // canonical reader/writer switch, backfill, and rollback drain are accepted.
   ORG_PLAN_ENTITLEMENT_RESTRICTION_PERMANENT_TRIGGER,
@@ -2544,71 +2502,8 @@ const EXPECTED_PERMANENT_TRIGGERS = [
 ] as const satisfies readonly PermanentTrigger[];
 
 const EXPECTED_PERMANENT_FUNCTIONS = [
-  // Same temporary #30264 bridge and phase-B removal gate as the triggers.
-  {
-    bodyHash: "44930ae5bfb57cee2cb3645f16abc8fb",
-    functionName: "force_legacy_morning_brief_disabled_1029",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "b888804c00096033c0d80b03ae7181f5",
-    functionName: "pause_legacy_morning_brief_schedule_1029",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "4d498817e1b718b455b034ae068a678b",
-    functionName: "reject_legacy_morning_brief_delivery_1029",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "a652f4bc6cc488ef084432476fda6113",
-    functionName: "reject_legacy_morning_brief_context_1029",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "0fedb75100b0bdde27915e5688d35fc0",
-    functionName: "reject_legacy_morning_brief_email_1029",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  // Same temporary #29910 bridge and #28368 removal gate as the triggers.
-  {
-    bodyHash: "08ccacae72d432c06fecb49b4f01dcbf",
-    functionName: "canonicalize_agent_run_builtin_provider",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "8184f2daa343c7eb811308c17a6a2b65",
-    functionName: "canonicalize_chat_thread_builtin_provider",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "90eafccc4fe3a0ffa32dec184c340e77",
-    functionName: "canonicalize_model_provider_builtin_type",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "dfd0098b8afe609bbbcd336b22f6ec3b",
-    functionName: "canonicalize_org_model_policy_builtin_provider",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
+  // Same temporary #30453 bridge and #30468 removal gate as its trigger.
+  CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_FUNCTION,
   {
     bodyHash: "6b1b5ad47ec35bcbaad3fa95d86ef027",
     functionName: "allocate_legacy_chat_thread_event_seq_id",
@@ -2667,6 +2562,8 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     schemaName: "public",
   },
   ORG_METADATA_PLAN_ENTITLEMENT_PERMANENT_FUNCTION,
+  // Same temporary #30379 bridge and #28368 removal gate as its trigger.
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_FUNCTION,
   {
     bodyHash: "7740cf65befb5e06a73e1f21bcfdd5cc",
     functionName: "fill_legacy_chat_thread_snapshot_event_seq_id",
@@ -10856,8 +10753,16 @@ async function main(): Promise<void> {
     await validateOkouDebugFeatureSwitchKeyRename();
     await validateSlackOfficialBrandMigration();
     await validateAgentDraftsCompatibilityRelation();
+    await validateChatSearchDeleteCompatibility(dbUrl.toString());
     await validateWorkflowCompatibilityViews();
     await validateBuiltInProviderDiscriminatorMigration(dbUrl.toString());
+    await validateBuiltInProviderDiscriminatorContract(dbUrl.toString());
+    await validateOrgMetadataAcquisitionFirstPartySourceExpansion(
+      dbUrl.toString(),
+    );
+    await validateOrgMetadataAcquisitionFirstPartySourceBackfill(
+      dbUrl.toString(),
+    );
     await validateOrgPlanEntitlementRestrictionExpansion(dbUrl.toString());
     await validateOrgPlanEntitlementRestrictionBackfill(dbUrl.toString());
     await validateOrgPlanEntitlementRestrictionNotNull(dbUrl.toString());
@@ -10881,6 +10786,7 @@ async function main(): Promise<void> {
     await validateCanonicalIntegrationIdentitySchema(dbUrl1);
     await validatePermanentAgentRunBuiltInModelKeyState(dbUrl1);
     await validatePermanentTriggerAndFunctionInventory(dbUrl1);
+    await validatePermanentOrgMetadataAcquisitionFirstPartySourceState(dbUrl1);
     await validatePermanentOrgPlanEntitlementRestrictionState(dbUrl1);
     await validatePermanentBuiltInProviderDiscriminatorState(dbUrl1);
     await validateActiveLegacyDatabaseIdentityInventory(dbUrl1);
@@ -10901,6 +10807,22 @@ async function main(): Promise<void> {
 
     // Step 2: Backup and regenerate migrations
     console.log("=== Phase 3: Test regenerated migrations ===\n");
+    const orgMetadataAcquisitionFirstPartySourceMigrationSql =
+      await fs.readFile(
+        path.join(
+          MIGRATIONS_DIR,
+          `${ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_MIGRATION}.sql`,
+        ),
+        "utf8",
+      );
+    const orgMetadataAcquisitionFirstPartySourceBackfillMigrationSql =
+      await fs.readFile(
+        path.join(
+          MIGRATIONS_DIR,
+          `${ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_BACKFILL_MIGRATION}.sql`,
+        ),
+        "utf8",
+      );
     const orgPlanEntitlementRestrictionMigrationSql = await fs.readFile(
       path.join(
         MIGRATIONS_DIR,
@@ -10924,6 +10846,14 @@ async function main(): Promise<void> {
     const dbUrl2 = createTestDbUrl(TEST_DB_2);
     await runMigrations(dbUrl2);
     console.log("   ✅ Fresh migrations applied successfully\n");
+    await installOrgMetadataAcquisitionFirstPartySourceArtifactsOnRegeneratedSchema(
+      dbUrl2,
+      orgMetadataAcquisitionFirstPartySourceMigrationSql,
+    );
+    await validateOrgMetadataAcquisitionFirstPartySourceBackfillOnRegeneratedSchema(
+      dbUrl2,
+      orgMetadataAcquisitionFirstPartySourceBackfillMigrationSql,
+    );
     await installOrgPlanEntitlementRestrictionArtifactsOnRegeneratedSchema(
       dbUrl2,
       orgPlanEntitlementRestrictionMigrationSql,
@@ -10932,6 +10862,7 @@ async function main(): Promise<void> {
       dbUrl2,
       orgPlanEntitlementRestrictionBackfillMigrationSql,
     );
+    await validatePermanentOrgMetadataAcquisitionFirstPartySourceState(dbUrl2);
     await validatePermanentOrgPlanEntitlementRestrictionState(dbUrl2);
     await validatePermanentAgentRunBuiltInModelKeyState(dbUrl2);
     await validatePermanentBuiltInModelCooldownState(dbUrl2);

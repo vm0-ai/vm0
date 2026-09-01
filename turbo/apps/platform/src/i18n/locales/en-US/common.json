@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Codex error",
       "commandStatus": "Command {{status}}",
+      "contextCompaction": "Compacted context",
       "error": "Error: {{error}}",
       "fileChangeKind": "change",
       "fileOperationCompleted": "File operation completed",
@@ -27,6 +28,12 @@
       },
       "status": "Status: {{status}}",
       "statusDetail": "status: {{status}}",
+      "subAgentActivity": {
+        "completed": "Completed subagent",
+        "interacted": "Interacted with subagent",
+        "interrupted": "Interrupted subagent",
+        "started": "Started subagent"
+      },
       "turnFailed": "Turn failed",
       "turnStatus": "Turn {{status}}",
       "warning": "[warning] {{message}}",
@@ -363,51 +370,6 @@
     }
   },
   "appShell": {
-    "browserUpgrade": {
-      "browser": {
-        "action": "Update browser",
-        "description": "{{assistantName}} does not support your current browser version. Update your browser to continue.",
-        "title": "Update your browser to continue"
-      },
-      "chrome": {
-        "action": "Update Chrome",
-        "description": "{{assistantName}} does not support your current browser version. Update Chrome to continue.",
-        "title": "Update Chrome to continue"
-      },
-      "chromium": {
-        "action": "Update Chromium",
-        "description": "{{assistantName}} does not support your current browser version. Update Chromium to continue.",
-        "title": "Update Chromium to continue"
-      },
-      "ios": {
-        "action": "Update iOS",
-        "description": "{{assistantName}} does not support your current browser version. Update iOS to continue.",
-        "title": "Update iOS to continue"
-      },
-      "safari": {
-        "action": "Update Safari",
-        "description": "{{assistantName}} does not support your current browser version. Update Safari to continue.",
-        "title": "Update Safari to continue"
-      }
-    },
-    "loading": {
-      "ariaLabel": "Loading your workspace",
-      "messages": {
-        "almostThere": "Almost there...",
-        "brewingIdeas": "Brewing some ideas...",
-        "connectingDots": "Connecting the dots...",
-        "gettingReady": "Getting things ready...",
-        "loadingWorkspace": "Loading your workspace...",
-        "spinningTeam": "Spinning up the team...",
-        "tuningInstruments": "Tuning the instruments...",
-        "warmingNeurons": "Warming up the neurons..."
-      }
-    },
-    "logoAlt": "{{brandName}}",
-    "metadata": {
-      "description": "{{assistantName}} is your AI coworker from {{brandName}}. Text {{assistantName}} or chat on the web — research, email, docs, Slack, GitHub, Notion, and 100+ tools.",
-      "title": "{{assistantName}} — Your AI coworker from {{brandName}}"
-    },
     "shortcutHelp": {
       "close": "Close keyboard shortcuts",
       "description": "Available shortcuts on this page",
@@ -655,6 +617,7 @@
       "importedSlides_one": "{{count}} slide",
       "importedSlides_other": "{{count}} slides",
       "multiAccent": "Multi-accent",
+      "needPro": "Need Pro",
       "nextSlide": "Preview next slide",
       "noMatches": "No matches",
       "placeholder": "{{title}} website preview placeholder",
@@ -707,6 +670,7 @@
       "tryDifferentSearch": "Try a different search.",
       "use": "Use",
       "useThisTemplate": "Use this template",
+      "viewVideoPlans": "View plans for video template {{title}}",
       "visibility": {
         "change": "Change",
         "changeLabel": "Change template visibility",
@@ -1934,6 +1898,20 @@
       "unsupportedIntelMac": "Requires an Apple silicon Mac",
       "yourComputer": "Your computer"
     },
+    "connectorAccountSwitch": {
+      "accountFallback": "Connector account",
+      "actionFailed": "Couldn't switch accounts. Try again.",
+      "customConnector": "Custom connector",
+      "loadFailed": "Couldn't load this connector account.",
+      "reconnectRequired": "Reconnect required. Later runs may use the existing fallback.",
+      "retry": "Retry",
+      "selected": "Switched to {{account}}",
+      "switch": "Switch",
+      "switching": "Switching...",
+      "title": "Switch to {{account}}?",
+      "unavailableDescription": "This account does not exist or is not available for this connector.",
+      "unavailableTitle": "Account unavailable"
+    },
     "connectors": {
       "accountForThread": "Account for this chat",
       "add": "Add {{connectorName}}",
@@ -1970,10 +1948,13 @@
         "capacityTitle": "{{framework}} model is busy",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "Continue",
         "resetAndTryAgain": "Reset and try again",
         "resetsAt": "Resets {{time}}",
         "selectModel": "Switch model",
         "tryAgain": "Try again",
+        "unavailableDescription": "This model isn't supported by the connected ChatGPT account. Switch to another model to continue.",
+        "unavailableTitle": "Selected model isn't available",
         "usageDescription": "You can continue when your usage limit resets, or switch models now.",
         "usageTitle": "{{framework}} limit reached"
       },
@@ -2009,7 +1990,11 @@
       "avatar": {
         "heading": "Choose an avatar",
         "help": "Choose a presenter or continue without one",
-        "none": "No avatar"
+        "none": "No avatar",
+        "visualBalanceAvatarLed": "Avatar-led — narrator on screen most of the time",
+        "visualBalanceBalanced": "Balanced mix — equal time for both",
+        "visualBalanceBRollLed": "B-roll-led — focus on slides and visuals",
+        "visualBalanceHeading": "How would you like the visual balance?"
       },
       "cardDescription": "Turn a file or screen recording into a finished video",
       "description": "Add a source, choose an optional avatar and voice, then create the video in a chat thread.",
@@ -2191,7 +2176,6 @@
       "loadingGoal": "Loading goal...",
       "message_one": "{{count}} message",
       "message_other": "{{count}} messages",
-      "morningBrief": "Morning Brief",
       "openGoalDetails": "Open goal details",
       "pendingAutomationEvent": "Pending automation event",
       "queuedMessage": "Queued message",
@@ -3293,7 +3277,8 @@
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "Request failed"
+      "requestFailed": "Request failed",
+      "sharedDatabaseUnavailable": "The app ran into a problem. Please wait a moment, then refresh the page to try again."
     },
     "realtime": {
       "degraded": "Live updates ran into a problem. Please refresh the page.",
@@ -6144,7 +6129,7 @@
       "browse": "Browse Official",
       "chooseValue": "Choose a value",
       "copySucceededUninstallFailed": "The copy is ready, but the original Official Workflow could not be uninstalled.",
-      "description": "Install managed workflows maintained by vm0.",
+      "description": "Install managed workflows maintained by the Okou Official Team.",
       "empty": "No Official Workflows are available.",
       "includedAutomations": "Included automations",
       "install": "Install",

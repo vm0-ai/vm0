@@ -7,10 +7,12 @@ import {
   RESUME_SESSION_HISTORY_MAX_BYTES,
   runnerHostnameSchema,
   runnerVersionSchema,
+  sandboxReuseResultSchema,
   sessionHistoryDownloadSourceSchema,
   sessionHistoryEncodingSchema,
   sessionHistorySizeBucketSchema,
   secretConnectorMetadataMapSchema,
+  workspaceReuseResultSchema,
 } from "./runners";
 import { eventSequenceNumberSchema, networkLogEntrySchema } from "./runs";
 import {
@@ -18,6 +20,13 @@ import {
   storageChangesSchema,
   storageManifestFilesSchema,
 } from "./storages";
+
+export {
+  sandboxReuseResultSchema,
+  workspaceReuseResultSchema,
+  type SandboxReuseResult,
+  type WorkspaceReuseResult,
+} from "./runners";
 
 const c = initContract();
 
@@ -358,48 +367,6 @@ export const webhookBuiltInGenerationJoggAiContract = c.router({
     summary: "Handle registered JoggAI built-in generation webhooks",
   },
 });
-
-/**
- * Sandbox reuse outcome. One enum value per code branch in the runner's
- * reuse-decision block. `reused` means the sandbox was unparked from the idle
- * pool; the remaining variants describe why reuse did not happen.
- *
- * `featureDisabled` is legacy: written by older runners while reuse was gated
- * by the `sandboxReuse` feature flag (removed when reuse went to full rollout
- * in #10744). Retained here so historical `agent_runs.sandbox_reuse_result`
- * rows still parse on read. The runner no longer emits it.
- *
- * `noSessionId` is also legacy: preceding runners use it for multiple causes,
- * so historical rows cannot identify the exact non-reuse reason.
- */
-export const sandboxReuseResultSchema = z.enum([
-  "reused",
-  "featureDisabled",
-  "noSessionId",
-  "noReuseKey",
-  "poolMiss",
-  "profileMismatch",
-  "deviceLimitMismatch",
-  "unparkFailed",
-]);
-
-export type SandboxReuseResult = z.infer<typeof sandboxReuseResultSchema>;
-
-/** Final workspace reuse outcome after sandbox preparation has settled. */
-export const workspaceReuseResultSchema = z.enum([
-  "reused",
-  "sandboxReused",
-  "cacheMiss",
-  "noReuseKey",
-  "invalidWorkingDir",
-  "lockBusy",
-  "invalidMetadata",
-  "diskPressure",
-  "notConfigured",
-  "sandboxPrepareFallback",
-]);
-
-export type WorkspaceReuseResult = z.infer<typeof workspaceReuseResultSchema>;
 
 const currentSandboxReuseMissSchema = z.enum([
   "noReuseKey",
@@ -879,6 +846,31 @@ export type RunnerPreSpawnConcurrencyBucket = z.infer<
   typeof runnerPreSpawnConcurrencyBucketSchema
 >;
 
+const runnerResourceBudgetUtilizationBucketSchema = z.enum([
+  "0_25",
+  "26_50",
+  "51_75",
+  "76_100",
+  "over_100",
+]);
+
+export type RunnerResourceBudgetUtilizationBucket = z.infer<
+  typeof runnerResourceBudgetUtilizationBucketSchema
+>;
+
+const runnerResourceBudgetLeaseCountBucketSchema = z.enum([
+  "0",
+  "1",
+  "2",
+  "3_4",
+  "5_8",
+  "9_plus",
+]);
+
+export type RunnerResourceBudgetLeaseCountBucket = z.infer<
+  typeof runnerResourceBudgetLeaseCountBucketSchema
+>;
+
 /**
  * Sandbox operation schema for internal sandbox operations (init, storage, cli, checkpoint, cleanup)
  */
@@ -894,6 +886,12 @@ const sandboxOperationSchema = z.object({
   sandbox_reuse_result: sandboxReuseResultSchema.optional(),
   runner_pre_spawn_concurrency_bucket:
     runnerPreSpawnConcurrencyBucketSchema.optional(),
+  runner_resource_budget_vcpu_utilization_bucket:
+    runnerResourceBudgetUtilizationBucketSchema.optional(),
+  runner_resource_budget_memory_utilization_bucket:
+    runnerResourceBudgetUtilizationBucketSchema.optional(),
+  runner_resource_budget_lease_count_bucket:
+    runnerResourceBudgetLeaseCountBucketSchema.optional(),
   encoding: sessionHistoryEncodingSchema.optional(),
   session_history_raw_size_bucket: sessionHistorySizeBucketSchema.optional(),
   session_history_encoded_size_bucket:

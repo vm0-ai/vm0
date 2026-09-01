@@ -2,9 +2,12 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
-import { initializeI18n } from "../../../i18n/index.ts";
-import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import {
+  click,
+  queryAllByRoleFast,
+  setupPageAndWaitForContent,
+} from "../../../__tests__/page-helper.ts";
+import { fillComposer, mockChatLifecycle } from "./chat-test-helpers.ts";
 import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
   billingStatus,
@@ -14,7 +17,6 @@ import {
 import {
   context,
   detachedSetupPage,
-  SERVER_QUEUED_RUN_THREAD_ID,
   expectTextBefore,
   mockServerQueuedThreadStories,
   buttonByText,
@@ -53,7 +55,7 @@ describe("chat lifecycle", () => {
       ],
     });
 
-    detachedSetupPage({
+    await setupPageAndWaitForContent({
       context,
       path: "/chats/e7000000-0000-4000-a000-000000000001",
     });
@@ -404,7 +406,7 @@ describe("chat lifecycle", () => {
 
   it("localizes managed API usage when completed work is folded", async () => {
     document.documentElement.lang = "pt-BR";
-    await initializeI18n("pt-BR");
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
     mockChatLifecycle(context, {
       threadId: "e7000000-0000-4000-a000-000000000006",
       chatEvents: [
@@ -615,80 +617,6 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Connector usage is ready.")).toBeInTheDocument();
       expect(screen.getAllByText("X").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("108").length).toBeGreaterThanOrEqual(1);
-    });
-  });
-
-  it("stops a server-queued run and recalls queued follow-up messages", async () => {
-    const interrupts: string[] = [];
-    const recalls: string[] = [];
-    mockChatLifecycle(context, {
-      threadId: SERVER_QUEUED_RUN_THREAD_ID,
-      chatEvents: [
-        {
-          id: "msg-server-queued-user",
-          role: "user",
-          content: "Start the server queued run",
-          runId: "run-server-queued",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-server-queue-marker",
-          role: "assistant",
-          content: null,
-          runId: "run-server-queued",
-          runEventId: "queue:queued",
-          createdAt: "2026-06-09T10:00:01Z",
-        },
-        {
-          id: "msg-server-queued-followup",
-          role: "user",
-          content: null,
-          userMessage: {
-            version: 1,
-            parts: [
-              {
-                type: "text",
-                text: "Follow up when the queued run starts",
-              },
-              { type: "morning_brief", briefDate: "2026-06-09" },
-            ],
-          },
-          runId: undefined,
-          createdAt: "2026-06-09T10:00:02Z",
-        },
-      ],
-      onInterruptEventAppend: (body) => {
-        interrupts.push(body.interruptsRunId);
-      },
-      onRecallEventAppend: (body) => {
-        recalls.push(body.revokesEventId);
-      },
-      activeRunIds: ["run-server-queued"],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${SERVER_QUEUED_RUN_THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Start the server queued run"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("Follow up when the queued run starts"),
-      ).toBeInTheDocument();
-      expect(screen.getByText("1 message waiting")).toBeInTheDocument();
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Stop"));
-
-    await waitFor(() => {
-      expect(interrupts).toContain("run-server-queued");
-      expect(recalls).toContain("msg-server-queued-followup");
-      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
-      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
     });
   });
 
@@ -1858,21 +1786,21 @@ describe("chat lifecycle", () => {
         model: "deepseek-v4-flash",
         modelLabel: "DeepSeek V4 Flash",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000969",
         model: "gpt-5.6-luna",
         modelLabel: "GPT 5.6 Luna",
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000970",
         model: "gpt-5.6-sol",
         modelLabel: "GPT 5.6 Sol",
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
       }),
     ]);
@@ -1907,7 +1835,7 @@ describe("chat lifecycle", () => {
     });
 
     const card = await screen.findByTestId("assistant-error-recovery");
-    click(within(card).getByRole("combobox", { name: "Switch model" }));
+    click(within(card).getByRole("combobox", { name: "DeepSeek V4 Flash" }));
 
     const deepseek = await screen.findByRole("option", {
       name: /DeepSeek V4 Flash/u,
@@ -1999,7 +1927,7 @@ describe("chat lifecycle", () => {
 
       const card = await screen.findByTestId("assistant-error-recovery");
       expect(within(card).getByText(resetText)).toBeInTheDocument();
-      click(within(card).getByRole("combobox", { name: "Switch model" }));
+      click(within(card).getByRole("combobox", { name: currentOption }));
 
       const alternative = await screen.findByRole("option", {
         name: otherOption,
@@ -2074,11 +2002,11 @@ describe("chat lifecycle", () => {
       }),
     );
     await waitFor(() => {
-      expect(retriedPrompt).toBe("try again");
+      expect(retriedPrompt).toBe("continue");
     });
   });
 
-  it("keeps the current model and alternatives for model capacity and retries", async () => {
+  it("shows the thread model and alternatives for model capacity and continues", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000792";
     let retriedPrompt: string | undefined;
     let retriedUserMessage: unknown;
@@ -2087,7 +2015,6 @@ describe("chat lifecycle", () => {
         id: "00000000-0000-4000-a000-000000000976",
         model: "claude-sonnet-4-6",
         modelLabel: "Claude Sonnet 4.6",
-        isDefault: true,
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000977",
@@ -2098,6 +2025,7 @@ describe("chat lifecycle", () => {
         id: "00000000-0000-4000-a000-000000000978",
         model: "gpt-5.6-sol",
         modelLabel: "GPT 5.6 Sol",
+        isDefault: true,
         defaultProviderType: "codex-oauth-token",
       }),
     ]);
@@ -2136,7 +2064,7 @@ describe("chat lifecycle", () => {
     });
 
     const card = await screen.findByTestId("assistant-error-recovery");
-    click(within(card).getByRole("combobox", { name: "Switch model" }));
+    click(within(card).getByRole("combobox", { name: "Claude Sonnet 4.6" }));
     const claudeOption = await screen.findByRole("option", {
       name: /Claude Opus 4.8/u,
     });
@@ -2149,14 +2077,188 @@ describe("chat lifecycle", () => {
     ).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: "Escape" });
-    click(buttonByText("Try again", card));
+    click(buttonByText("Continue", card));
     await waitFor(() => {
-      expect(retriedPrompt).toBe("try again");
+      expect(retriedPrompt).toBe("continue");
       expect(retriedUserMessage).toMatchObject({
         version: 1,
-        parts: [{ type: "text", text: "try again" }],
+        parts: [{ type: "text", text: "continue" }],
       });
     });
+  });
+
+  it("offers switch-only recovery when a ChatGPT account rejects the selected model", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000794";
+    const error =
+      '{"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The \'gpt-5.6-sol\' model is not supported when using Codex with a ChatGPT account."}}';
+    let updatedModel: string | undefined;
+    let sentPrompt: string | undefined;
+    let sentUserMessage: unknown;
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000979",
+        model: "gpt-5.6-sol",
+        modelLabel: "GPT 5.6 Sol",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000980",
+        model: "gpt-5.6-luna",
+        modelLabel: "GPT 5.6 Luna",
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([
+      buildProvider({
+        id: "00000000-0000-4000-a000-000000000981",
+        type: "codex-oauth-token",
+        framework: "codex",
+        secretName: null,
+        authMethod: "auth_json",
+        secretNames: ["CODEX_AUTH_JSON"],
+        planType: "plus",
+      }),
+    ]);
+    mockChatLifecycle(context, {
+      threadId,
+      selectedModel: "gpt-5.6-sol",
+      chatEvents: [
+        {
+          id: "unsupported-model-user",
+          role: "user",
+          content: "Continue",
+          runId: "unsupported-model-run",
+          createdAt: "2026-07-30T09:00:00Z",
+        },
+        {
+          id: "unsupported-model-failure",
+          role: "assistant",
+          content: null,
+          error,
+          runId: "unsupported-model-run",
+          runLifecycleEvent: "failed",
+          createdAt: "2026-07-30T09:00:01Z",
+        },
+      ],
+      onModelSelectionUpdate: (body) => {
+        updatedModel = body.modelSelection?.selectedModel;
+      },
+      onSendRequest: (body) => {
+        sentPrompt = body.prompt;
+        sentUserMessage = body.userMessage;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ChatErrorRecovery]: false },
+      path: `/chats/${threadId}`,
+    });
+
+    const card = await screen.findByTestId("assistant-error-recovery");
+    expect(
+      within(card).getByText("Selected model isn't available"),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByText(
+        "This model isn't supported by the connected ChatGPT account. Switch to another model to continue.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(card).queryByText(error)).not.toBeInTheDocument();
+    expect(within(card).queryByText("Try again")).not.toBeInTheDocument();
+    expect(
+      within(card).queryByText("Reset and try again"),
+    ).not.toBeInTheDocument();
+    expect(sentPrompt).toBeUndefined();
+
+    click(within(card).getByRole("combobox", { name: "GPT 5.6 Sol" }));
+    await expect(
+      screen.findByRole("option", { name: /GPT 5\.6 Luna/u }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: /GPT 5\.6 Sol/u }),
+    ).not.toBeInTheDocument();
+
+    click(screen.getByRole("option", { name: /GPT 5\.6 Luna/u }));
+    await waitFor(() => {
+      expect(updatedModel).toBe("gpt-5.6-luna");
+    });
+
+    const composer = await screen.findByRole("textbox", { name: "Message" });
+    const composerContainer = composer.closest<HTMLElement>(
+      "[data-chat-composer]",
+    );
+    if (!composerContainer) {
+      throw new Error("Expected chat composer container");
+    }
+    await waitFor(() => {
+      expect(
+        within(composerContainer).getByRole("combobox", {
+          name: "GPT 5.6 Luna",
+        }),
+      ).toBeInTheDocument();
+    });
+    expect(sentPrompt).toBeUndefined();
+
+    await fillComposer(composer, "Continue with another model");
+    click(
+      await waitFor(() => {
+        const sendButton = buttonByLabel("Send");
+        expect(sendButton).toBeEnabled();
+        return sendButton;
+      }),
+    );
+    await waitFor(() => {
+      expect(sentPrompt).toBe("Continue with another model");
+      expect(sentUserMessage).toMatchObject({
+        version: 1,
+        parts: expect.arrayContaining([
+          { type: "model", selectedModel: "gpt-5.6-luna" },
+        ]),
+      });
+    });
+  });
+
+  it("does not show model recovery for unsupported-model text without the provider envelope", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000795";
+    const error =
+      "The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account.";
+    mockChatLifecycle(context, {
+      threadId,
+      selectedModel: "gpt-5.6-sol",
+      chatEvents: [
+        {
+          id: "unsupported-model-near-miss-user",
+          role: "user",
+          content: "Continue",
+          runId: "unsupported-model-near-miss-run",
+          createdAt: "2026-07-30T09:00:00Z",
+        },
+        {
+          id: "unsupported-model-near-miss-failure",
+          role: "assistant",
+          content: null,
+          error,
+          runId: "unsupported-model-near-miss-run",
+          runLifecycleEvent: "failed",
+          createdAt: "2026-07-30T09:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ChatErrorRecovery]: false },
+      path: `/chats/${threadId}`,
+    });
+
+    await expect(screen.findByText(error)).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("assistant-error-recovery"),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps the provider error unchanged when recovery is disabled", async () => {

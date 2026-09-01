@@ -47,6 +47,14 @@ pub mod runners {
             pub sha256: Option<String>,
         }
 
+        /// Sandbox capability for the versioned Pi ownership-transfer manifest.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct PiLaunchConfigApiFirstTurnOwnershipTransfer {
+            /// Pi ownership-transfer capability version.
+            pub schema_version: i64,
+        }
+
         /// API-mediated first-turn configuration for Pi.
         #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -65,6 +73,9 @@ pub mod runners {
             pub base_session: PiLaunchConfigApiFirstTurnBaseSession,
             /// First sandbox event sequence number for the resumed session.
             pub sandbox_event_sequence_start: u64,
+            /// Optional proof that the selected Sandbox supports ownership-transfer manifests.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub ownership_transfer: Option<PiLaunchConfigApiFirstTurnOwnershipTransfer>,
         }
 
         /// API-owned launch configuration forwarded to Pi in the sandbox.
@@ -100,6 +111,54 @@ pub mod runners {
             Codex,
         }
 
+        /// OpenAI-compatible transports supported by Pi.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigApi {
+            /// OpenAI Chat Completions transport.
+            #[serde(rename = "openai-completions")]
+            OpenaiCompletions,
+            /// OpenAI Responses transport.
+            #[serde(rename = "openai-responses")]
+            OpenaiResponses,
+            /// ChatGPT Codex Responses transport.
+            #[serde(rename = "openai-codex-responses")]
+            OpenaiCodexResponses,
+        }
+
+        /// Thinking levels supported by Pi sessions.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigThinkingLevel {
+            /// Disable model thinking.
+            #[serde(rename = "off")]
+            Off,
+            /// Minimal thinking.
+            #[serde(rename = "minimal")]
+            Minimal,
+            /// Low thinking.
+            #[serde(rename = "low")]
+            Low,
+            /// Medium thinking.
+            #[serde(rename = "medium")]
+            Medium,
+            /// High thinking.
+            #[serde(rename = "high")]
+            High,
+            /// Extra-high thinking.
+            #[serde(rename = "xhigh")]
+            Xhigh,
+            /// Maximum thinking.
+            #[serde(rename = "max")]
+            Max,
+        }
+
+        /// Provider request service tiers supported by the Pi runtime.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigServiceTier {
+            /// OpenAI priority service tier.
+            #[serde(rename = "priority")]
+            Priority,
+        }
+
         /// Environment variables supported for Pi provider credentials.
         #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
         pub enum PiModelConfigApiKeyEnv {
@@ -124,6 +183,15 @@ pub mod runners {
             pub base_url: String,
             /// Provider model identifier.
             pub model: String,
+            /// Explicit Pi transport. Legacy payloads omit this field and retain the previous adapter behavior.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub api: Option<PiModelConfigApi>,
+            /// Explicit Pi thinking level. Legacy payloads omit this field and retain Pi's medium default.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub thinking_level: Option<PiModelConfigThinkingLevel>,
+            /// Per-run provider request service tier. Legacy and standard payloads omit this field.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub service_tier: Option<PiModelConfigServiceTier>,
             /// Environment variable containing the provider key.
             pub api_key_env: PiModelConfigApiKeyEnv,
             /// API-owned credential secret backing the environment entry.

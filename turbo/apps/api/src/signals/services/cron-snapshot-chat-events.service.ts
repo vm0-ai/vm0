@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 import { gunzip, gzip } from "node:zlib";
 
+import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
 import {
   chatEventRowSchema,
   type ChatEventRow,
@@ -44,7 +45,10 @@ import {
   prepareChatEventArchiveWithNormalizedIds,
   type DuplicateEventIdNormalizationStats,
 } from "./chat-event-snapshot-duplicate-id-normalization";
-import { decodeChatEventSnapshotBody } from "./chat-event-snapshot-body.service";
+import {
+  decodeChatEventSnapshotBody,
+  repairMorningBriefPhaseBSnapshot,
+} from "./chat-event-snapshot-body.service";
 
 const log = logger("api:cron:snapshot-chat-events");
 
@@ -94,6 +98,12 @@ interface SnapshotCandidate {
  */
 const ARCHIVE_CONTENT_TYPE = "application/x-ndjson";
 const ARCHIVE_CONTENT_ENCODING = "gzip";
+/** V7 wire shape is unchanged; this marks objects validated after Phase B. */
+const ARCHIVE_ROW_CONTRACT_REVISION = 1;
+const ARCHIVE_OBJECT_KEY_PREFIX_PATTERN = "^chat-events/[0-9a-f-]{36}/[0-9]+";
+const ARCHIVE_OBJECT_KEY_SUFFIX_PATTERN = "-[0-9a-f]{64}[.]ndjson[.]gz$";
+const LEGACY_ARCHIVE_OBJECT_KEY_PATTERN = `${ARCHIVE_OBJECT_KEY_PREFIX_PATTERN}${ARCHIVE_OBJECT_KEY_SUFFIX_PATTERN}`;
+const CURRENT_ARCHIVE_OBJECT_KEY_PATTERN = `${ARCHIVE_OBJECT_KEY_PREFIX_PATTERN}-r${ARCHIVE_ROW_CONTRACT_REVISION.toString()}${ARCHIVE_OBJECT_KEY_SUFFIX_PATTERN}`;
 const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
 /**
@@ -192,7 +202,17 @@ function chatEventSnapshotObjectKey(
   lastSeqId: number,
   contentSha256: string,
 ): string {
-  return `chat-events/${chatThreadId}/${lastSeqId}-${contentSha256}.ndjson.gz`;
+  return `chat-events/${chatThreadId}/${lastSeqId}-r${ARCHIVE_ROW_CONTRACT_REVISION.toString()}-${contentSha256}.ndjson.gz`;
+}
+
+export function isCurrentChatEventSnapshotObjectKey(
+  objectKey: string,
+): boolean {
+  return new RegExp(CURRENT_ARCHIVE_OBJECT_KEY_PATTERN, "u").test(objectKey);
+}
+
+export function isLegacyChatEventSnapshotObjectKey(objectKey: string): boolean {
+  return new RegExp(LEGACY_ARCHIVE_OBJECT_KEY_PATTERN, "u").test(objectKey);
 }
 
 interface CanonicalEventArchive {
@@ -429,14 +449,23 @@ async function decodeSnapshotPrefix(
     );
   }
   const decompressed = await gunzipAsync(compressed);
-  const rows = decodeChatEventSnapshotBody(decompressed);
+  const repaired = repairMorningBriefPhaseBSnapshot(decompressed);
+  const rows = repaired.rows;
   validateSnapshotPrefixRows(rows, args);
   const terminal = rows.at(-1);
   const terminalSeqId = terminal?.seqId ?? 0;
   const terminalEventId = terminal?.id ?? null;
   validateSnapshotPrefixTerminal(args, terminalSeqId, terminalEventId);
+  if (repaired.repairedContextRows > 0) {
+    log.debug("Repaired retired Morning Brief Chat Event Snapshot rows", {
+      type: "chat_event_snapshot_morning_brief_rows_repaired",
+      chatThreadId: args.chatThreadId,
+      repairedContextRows: repaired.repairedContextRows,
+      removedDocumentParts: repaired.removedDocumentParts,
+    });
+  }
   return {
-    body: decompressed,
+    body: repaired.body,
     terminalSeqId,
     terminalEventId,
   };
@@ -665,7 +694,8 @@ function isCurrentSnapshotWithoutTail(
 ): boolean {
   return (
     archiveEventCount === 0 &&
-    source?.schemaVersion === CURRENT_CHAT_EVENT_SCHEMA_VERSION
+    source?.schemaVersion === CURRENT_CHAT_EVENT_SCHEMA_VERSION &&
+    isCurrentChatEventSnapshotObjectKey(source.objectKey)
   );
 }
 
@@ -717,7 +747,11 @@ function prepareSnapshotArchive(
     candidate.chatThreadId,
     prepared.normalization,
   );
-  const preparedTerminal = decodeChatEventSnapshotBody(prepared.body).at(-1);
+  const preparedRows = decodeChatEventSnapshotBody(prepared.body);
+  for (const row of preparedRows) {
+    chatEventFromRow(row);
+  }
+  const preparedTerminal = preparedRows.at(-1);
   const terminalSeqId = preparedTerminal?.seqId ?? 0;
   if (terminalSeqId !== terminal.seqId) {
     throw new Error("Chat Event Snapshot normalization changed event ordering");
@@ -854,6 +888,33 @@ const archiveThread$ = command(async function archiveThread(
     prepared.normalization,
   );
 });
+
+/** Repair or extend one thread without running the global R2 garbage collector. */
+export const refreshChatEventSnapshotThread$ = command(
+  async (
+    { set },
+    chatThreadId: string,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const db = set(writeDb$);
+    const [candidate] = await loadSnapshotCandidates(db, [chatThreadId]);
+    signal.throwIfAborted();
+    if (candidate === undefined) {
+      return false;
+    }
+    const archived = await set(
+      archiveThread$,
+      {
+        db,
+        bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
+        candidate,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    return archived.archivedEvents !== null;
+  },
+);
 
 interface R2GcStats {
   readonly scanned: number;
@@ -1067,6 +1128,8 @@ async function loadSnapshotCandidates(
           sql`btrim(${currentSnapshot.objectKey}) = ''`,
           sql`NOT (${currentSnapshot.objectKey}
             ~ '-[0-9a-f]{64}[.]ndjson[.]gz$')`,
+          sql`${currentSnapshot.objectKey}
+            ~ ${LEGACY_ARCHIVE_OBJECT_KEY_PATTERN}`,
         ),
       ),
     )

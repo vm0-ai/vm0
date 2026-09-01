@@ -585,18 +585,16 @@ async function completeSandboxRun(args: {
       sandboxHeaders,
       [200],
     );
-    await webhooksApi.requestAgentCheckpoint(
+    await webhooksApi.requestAgentComplete(
       {
         runId: args.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId,
-        cliAgentSessionHistoryHash,
+        exitCode: args.exitCode,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId,
+          cliAgentSessionHistoryHash,
+        },
       },
-      sandboxHeaders,
-      [200],
-    );
-    await webhooksApi.requestAgentComplete(
-      { runId: args.runId, exitCode: args.exitCode },
       sandboxHeaders,
       [200],
     );

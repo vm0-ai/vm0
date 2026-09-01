@@ -140,12 +140,12 @@ importers:
       '@hono/otel':
         specifier: ^1.1.2
         version: 1.1.2(hono@4.13.0)
+      '@modelcontextprotocol/client':
+        specifier: ^2.0.0
+        version: 2.0.0
       '@okouai/api-contracts':
         specifier: workspace:*
         version: link:../../packages/api-contracts
-      '@okouai/connector-catalog-validation':
-        specifier: workspace:*
-        version: link:../../packages/connector-catalog-validation
       '@okouai/connectors':
         specifier: workspace:*
         version: link:../../packages/connectors
@@ -189,8 +189,8 @@ importers:
         specifier: ^8.0.0
         version: 8.0.0
       ccstate:
-        specifier: ^5.4.0
-        version: 5.4.0
+        specifier: ^5.5.0
+        version: 5.5.0
       croner:
         specifier: ^9.1.0
         version: 9.1.0
@@ -212,6 +212,9 @@ importers:
       ignore:
         specifier: ^7.0.5
         version: 7.0.5
+      markdown-it:
+        specifier: '>=14.2.0'
+        version: 14.2.0
       music-metadata:
         specifier: ^11.13.0
         version: 11.13.0
@@ -270,6 +273,9 @@ importers:
       '@types/html-to-text':
         specifier: ^9.0.4
         version: 9.0.4
+      '@types/markdown-it':
+        specifier: ^14.1.2
+        version: 14.1.2
       '@types/node':
         specifier: 24.3.0
         version: 24.3.0
@@ -424,11 +430,11 @@ importers:
         specifier: ^10.50.0
         version: 10.50.0(react@19.2.6)
       ccstate:
-        specifier: ^5.4.0
-        version: 5.4.0
+        specifier: ^5.5.0
+        version: 5.5.0
       ccstate-react:
-        specifier: ^5.4.0
-        version: 5.4.0(@types/react@19.2.14)(react@19.2.6)
+        specifier: ^5.5.0
+        version: 5.5.0(@types/react@19.2.14)(react@19.2.6)
       lucide-react:
         specifier: 1.30.0
         version: 1.30.0(react@19.2.6)
@@ -617,11 +623,11 @@ importers:
         specifier: ^2.21.0
         version: 2.21.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       ccstate:
-        specifier: ^5.4.0
-        version: 5.4.0
+        specifier: ^5.5.0
+        version: 5.5.0
       ccstate-react:
-        specifier: ^5.4.0
-        version: 5.4.0(@types/react@19.2.14)(react@19.2.6)
+        specifier: ^5.5.0
+        version: 5.5.0(@types/react@19.2.14)(react@19.2.6)
       hast-util-to-jsx-runtime:
         specifier: ^2.3.6
         version: 2.3.6
@@ -838,43 +844,6 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/coverage-v8@4.1.10)(@vitest/ui@4.1.10)(happy-dom@20.11.1)(msw@2.13.2(@types/node@24.3.0)(typescript@6.0.3))(vite@8.0.16(@types/node@24.3.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(tsx@4.21.0)(yaml@2.9.0))
 
-  packages/connector-catalog-validation:
-    dependencies:
-      '@okouai/api-contracts':
-        specifier: workspace:*
-        version: link:../api-contracts
-      '@okouai/connectors':
-        specifier: workspace:*
-        version: link:../connectors
-      '@okouai/core':
-        specifier: workspace:*
-        version: link:../core
-      zod:
-        specifier: 4.3.6
-        version: 4.3.6
-    devDependencies:
-      '@okouai/eslint-config':
-        specifier: workspace:*
-        version: link:../eslint-config
-      '@okouai/typescript-config':
-        specifier: workspace:*
-        version: link:../typescript-config
-      '@types/node':
-        specifier: 24.3.0
-        version: 24.3.0
-      eslint:
-        specifier: ^9.34.0
-        version: 9.39.4(jiti@2.7.0)
-      oxlint:
-        specifier: ^1.75.0
-        version: 1.75.0(oxlint-tsgolint@7.0.2001)
-      oxlint-tsgolint:
-        specifier: 7.0.2001
-        version: 7.0.2001
-      typescript:
-        specifier: 6.0.3
-        version: 6.0.3
-
   packages/connectors:
     dependencies:
       tr46:
@@ -1032,7 +1001,7 @@ importers:
         version: 7.0.1(eslint@9.39.4(jiti@2.7.0))
       eslint-plugin-turbo:
         specifier: ^2.8.14
-        version: 2.8.21(eslint@9.39.4(jiti@2.7.0))(turbo@2.10.12)
+        version: 2.8.21(eslint@9.39.4(jiti@2.7.0))(turbo@2.10.11)
       globals:
         specifier: ^16.3.0
         version: 16.5.0
@@ -4355,18 +4324,8 @@ packages:
     cpu: [x64]
     os: [darwin]
 
-  '@turbo/darwin-64@2.10.12':
-    resolution: {integrity: sha512-9nKgKoF6ZOUsM+or0OtNf+TTJSfGvDNP7ZFv/ZGWVwOSCkumyctQiTeHwB4UNljHTnC41AqylgbunLDHoccNrA==}
-    cpu: [x64]
-    os: [darwin]
-
   '@turbo/darwin-arm64@2.10.11':
     resolution: {integrity: sha512-R0a0CvGAeYYsBgPIgFNB3agGXh6qukjduNhFlwVVX1Ss2IdBJLXmgjytNGmo084bLKS0B6UdLRwKhXMHKKaObQ==}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@turbo/darwin-arm64@2.10.12':
-    resolution: {integrity: sha512-H4Elb1jqTZVeIC9bbcNwjSzemZ6RegoTOVHeuV5Osirt2Z8UguTyisMEkvZjPVZgMeN9J4ERZBFad40tFnkb7w==}
     cpu: [arm64]
     os: [darwin]
 
@@ -4375,18 +4334,8 @@ packages:
     cpu: [x64]
     os: [android, linux]
 
-  '@turbo/linux-64@2.10.12':
-    resolution: {integrity: sha512-lr7KIotukvjZwEXiFSYAeOH3BWzjFVBbSzTbv0fuGFsNukYyH0+g1hB5ecqnJkgkYU+KHEMG1edOhnjiKON1wQ==}
-    cpu: [x64]
-    os: [android, linux]
-
   '@turbo/linux-arm64@2.10.11':
     resolution: {integrity: sha512-eSP9+jjsSCBs2x0QpJZlp49dSD1EIMwXH7PsMIhdWk7w6IThhuKJ+jL95JQ2IW7tRjRmdh8gKcKQtrHLD5R5lA==}
-    cpu: [arm64]
-    os: [android, linux]
-
-  '@turbo/linux-arm64@2.10.12':
-    resolution: {integrity: sha512-f0pZDTtvzB5SuNwuXBaKbZHUCMCukgc8nMlHEuvLmj91Fzec+MEbr3cAvGNor5htEDqZnO6Lxt9N/GPI/77oGA==}
     cpu: [arm64]
     os: [android, linux]
 
@@ -4395,18 +4344,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@turbo/windows-64@2.10.12':
-    resolution: {integrity: sha512-SDOueJRjS/QcykWf2KCRtTLmIl5YMKsLbXkXQGhDwcTXvKXZiS5ih5lBl/gkwZIpYFjqA/rAlfMzlAFcVHNe0g==}
-    cpu: [x64]
-    os: [win32]
-
   '@turbo/windows-arm64@2.10.11':
     resolution: {integrity: sha512-m8tJkIrTrbQ9O1uHxV0GUq623Zg1678xGna8eMsy4KbygUX/wVFgdZDYV/AxyoyaW/U7nyKoBvaDVwm22p9xqA==}
-    cpu: [arm64]
-    os: [win32]
-
-  '@turbo/windows-arm64@2.10.12':
-    resolution: {integrity: sha512-0i0mVUa4kKk+/B3RwEwPMf9CB+T7ul56hn5FFHNA4VUNTOoLBEd6aNf3FaKfCatDNZ6cicCEf6if9QUTVyzzcA==}
     cpu: [arm64]
     os: [win32]
 
@@ -5166,8 +5105,8 @@ packages:
   ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
 
-  ccstate-react@5.4.0:
-    resolution: {integrity: sha512-2KKdNAV0IPUc+CNmOcPSD78tPOYU2aYZxbUYq0NnA0ZM5tpMSKFMqJ8wSfNyO15CyqYp7n5spH83vcGtLFtgyA==}
+  ccstate-react@5.5.0:
+    resolution: {integrity: sha512-ldDCSJyFRBil3zrE+O88RBSUJ60RRdcnsD2CKmyT2L6n6UPaI9qnqjb1HyiGKn+Unaz9c9JMWeDfwjh0f/gUhQ==}
     peerDependencies:
       '@types/react': '>=17.0.0'
       react: '>=17.0.0'
@@ -5177,8 +5116,8 @@ packages:
       react:
         optional: true
 
-  ccstate@5.4.0:
-    resolution: {integrity: sha512-8ezEsKjsOwyx5GrO+16fkavPCqDa/k5pAsZmdntjP9RJi/565qVQGm16tO3evmcMLJx35oD8PmvqD7afCnzvsg==}
+  ccstate@5.5.0:
+    resolution: {integrity: sha512-SevNGGZf0qgEDnQjcpHuPjkj03Og8/HG9ltp80aI4GRXSOQrSXfD2zbTgRXkAJxLq+cKfzvmVRPI7UmTQcighQ==}
 
   chai@6.2.2:
     resolution: {integrity: sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg==}
@@ -8876,10 +8815,6 @@ packages:
     resolution: {integrity: sha512-yQfwQVoRXwOuyX1LxiJFBFNg6VfuYh+/RyZLd82+isgyLkBXw3S5XRRzvcck1FAjSCG5sVyLd+O1eDMvYa3J7g==}
     hasBin: true
 
-  turbo@2.10.12:
-    resolution: {integrity: sha512-AswgMPnpOoaVZHrrSBejETzEbuIA69OVGwfkHwfrY0A23VjWXBANzgq9+OymWOHAIArB7D1+1z498WY8fGg1Jw==}
-    hasBin: true
-
   type-check@0.4.0:
     resolution: {integrity: sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==}
     engines: {node: '>= 0.8.0'}
@@ -9088,7 +9023,7 @@ packages:
     peerDependencies:
       '@types/node': 24.3.0
       '@vitejs/devtools': ^0.1.18
-      esbuild: '>=0.28.1'
+      esbuild: 0.28.1
       jiti: '>=1.21.0'
       less: ^4.0.0
       sass: ^1.70.0
@@ -12670,37 +12605,19 @@ snapshots:
   '@turbo/darwin-64@2.10.11':
     optional: true
 
-  '@turbo/darwin-64@2.10.12':
-    optional: true
-
   '@turbo/darwin-arm64@2.10.11':
-    optional: true
-
-  '@turbo/darwin-arm64@2.10.12':
     optional: true
 
   '@turbo/linux-64@2.10.11':
     optional: true
 
-  '@turbo/linux-64@2.10.12':
-    optional: true
-
   '@turbo/linux-arm64@2.10.11':
-    optional: true
-
-  '@turbo/linux-arm64@2.10.12':
     optional: true
 
   '@turbo/windows-64@2.10.11':
     optional: true
 
-  '@turbo/windows-64@2.10.12':
-    optional: true
-
   '@turbo/windows-arm64@2.10.11':
-    optional: true
-
-  '@turbo/windows-arm64@2.10.12':
     optional: true
 
   '@tybys/wasm-util@0.10.1':
@@ -13614,14 +13531,14 @@ snapshots:
 
   ccount@2.0.1: {}
 
-  ccstate-react@5.4.0(@types/react@19.2.14)(react@19.2.6):
+  ccstate-react@5.5.0(@types/react@19.2.14)(react@19.2.6):
     dependencies:
-      ccstate: 5.4.0
+      ccstate: 5.5.0
     optionalDependencies:
       '@types/react': 19.2.14
       react: 19.2.6
 
-  ccstate@5.4.0: {}
+  ccstate@5.5.0: {}
 
   chai@6.2.2: {}
 
@@ -14287,11 +14204,11 @@ snapshots:
       string.prototype.matchall: 4.0.12
       string.prototype.repeat: 1.0.0
 
-  eslint-plugin-turbo@2.8.21(eslint@9.39.4(jiti@2.7.0))(turbo@2.10.12):
+  eslint-plugin-turbo@2.8.21(eslint@9.39.4(jiti@2.7.0))(turbo@2.10.11):
     dependencies:
       dotenv: 16.0.3
       eslint: 9.39.4(jiti@2.7.0)
-      turbo: 2.10.12
+      turbo: 2.10.11
 
   eslint-scope@5.1.1:
     dependencies:
@@ -17813,15 +17730,6 @@ snapshots:
       '@turbo/linux-arm64': 2.10.11
       '@turbo/windows-64': 2.10.11
       '@turbo/windows-arm64': 2.10.11
-
-  turbo@2.10.12:
-    optionalDependencies:
-      '@turbo/darwin-64': 2.10.12
-      '@turbo/darwin-arm64': 2.10.12
-      '@turbo/linux-64': 2.10.12
-      '@turbo/linux-arm64': 2.10.12
-      '@turbo/windows-64': 2.10.12
-      '@turbo/windows-arm64': 2.10.12
 
   type-check@0.4.0:
     dependencies:

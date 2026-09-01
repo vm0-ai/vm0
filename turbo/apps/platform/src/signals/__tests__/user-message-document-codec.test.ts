@@ -280,13 +280,6 @@ describe("user message document codec", () => {
         version: 1,
         parts: [
           { type: "text", text: "Keep this text" },
-          { type: "morning_brief", briefDate: "2026-08-05" },
-        ],
-      },
-      {
-        version: 1,
-        parts: [
-          { type: "text", text: "Keep this text" },
           { type: "model", selectedModel: "claude-sonnet-4-6" },
         ],
       },

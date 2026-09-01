@@ -11,13 +11,8 @@ import type { ChatEvent as PersistedChatEvent } from "@okouai/api-contracts/cont
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { settle } from "../utils.ts";
 import { syncGoogleAdsConversionMilestones$ } from "../bootstrap/google-ads-conversion-milestones.ts";
-import { authenticatedIdentity$ } from "../auth.ts";
 import type { ChatEventDataKey } from "../../shared-database/data-key.ts";
-import {
-  onSharedDatabase$,
-  queryChatEventSharedDatabase$,
-} from "../shared-database.ts";
-import { enqueueSharedDatabaseInvalidation$ } from "../shared-database-invalidation-queue.ts";
+import { queryChatEventSharedDatabase$ } from "../shared-database.ts";
 import { notifyChatEventsChanged$ } from "./chat-event-change-registry.ts";
 import type { ChatEvent } from "./chat-event-types.ts";
 import {
@@ -128,9 +123,8 @@ function createSharedDatabaseEventSignals({
     [PersistedChatEvent[], AbortSignal]
   >;
 }) {
-  const dataKey$ = computed(async (get): Promise<ChatEventDataKey> => {
-    const { userId, orgId } = await get(authenticatedIdentity$);
-    return { kind: "chat-event", userId, orgId, threadId };
+  const dataKey$ = computed((): ChatEventDataKey => {
+    return { kind: "chat-event", threadId };
   });
   const load$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
@@ -182,23 +176,10 @@ function createSharedDatabaseEventSignals({
         }),
         signal,
       );
-    },
-  );
-  const subscribe$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      const dataKey = await get(dataKey$);
       signal.throwIfAborted();
-      await set(
-        onSharedDatabase$,
-        dataKey,
-        () => {
-          set(enqueueSharedDatabaseInvalidation$, dataKey);
-        },
-        signal,
-      );
     },
   );
-  return { load$, subscribe$, sync$ };
+  return { load$, sync$ };
 }
 
 export function createChatEventStorageSignals({
@@ -261,8 +242,6 @@ export function createChatEventStorageSignals({
   const syncRemoteEvents$ = sharedDatabase.sync$;
   const initializeIndexedDbEvents$ = command(
     async ({ set }, signal: AbortSignal): Promise<void> => {
-      await set(sharedDatabase.subscribe$, signal);
-      signal.throwIfAborted();
       await set(sharedDatabase.load$, signal);
     },
   );

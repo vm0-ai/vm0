@@ -143,11 +143,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Webflow site management connector",
     enabled: false,
   },
-  [FeatureSwitchKey.MetaAdsConnector]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Enable the Meta Ads Manager connector",
-    enabled: true,
-  },
   [FeatureSwitchKey.PosthogConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the PostHog analytics connector",
@@ -178,6 +173,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Spotify connector integration",
     enabled: false,
   },
+  [FeatureSwitchKey.StripeMarketplaceOAuthConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Show Stripe Marketplace OAuth as a sign-in option for the Stripe connector.",
+    enabled: false,
+  },
   [FeatureSwitchKey.OkouDebug]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -197,25 +198,16 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.AuthV2AddAccount]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Use the custom Auth v2 sign-in flow when adding another account.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.NotionWorkflowAutomations]: {
     maintainer: "lancy@vm0.ai",
     description:
       "Enable Notion event workflow automations, starting with child pages created under a configured parent page.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: {
     maintainer: "lancy@vm0.ai",
     description: "Enable Google Forms response workflow automations.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: {
     maintainer: "lancy@vm0.ai",
@@ -298,6 +290,15 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
+  [FeatureSwitchKey.DesktopScreenRecording]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable Okou Desktop screen recording: native capture, click track, and delivery back into the intro video workflow.",
+    enabled: false,
+    // Scoped to the maintainer while the native capture helper is still
+    // unproven outside CI; widen once it has run on real hardware.
+    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
+  },
   [FeatureSwitchKey.ChatConversationLocator]: {
     maintainer: "tongx@vm0.ai",
     description:
@@ -338,12 +339,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // Scoped to the maintainer rather than the whole staff org while the
     // flatten and two-file send are still unexercised outside tests.
     enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
-  },
-  [FeatureSwitchKey.ChatForward]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the Forward action in the assistant text-selection pill.",
-    enabled: true,
   },
   [FeatureSwitchKey.EmojiPickerCategoryRail]: {
     maintainer: "tongx@vm0.ai",
@@ -434,6 +429,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable remote Streamable HTTP MCP definitions for organization Custom Connectors.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };
 

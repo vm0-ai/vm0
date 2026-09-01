@@ -28,7 +28,7 @@ function runContextSnapshotForRun(runId: string): Record<string, unknown> {
 }
 
 describe("runner environment ownership", () => {
-  it("removes untrusted OKOU entries before dual-carrying platform environment", async () => {
+  it("separates trusted platform environment from untrusted entries", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsApi(context);
     const actor = bdd.user();
@@ -71,10 +71,8 @@ describe("runner environment ownership", () => {
     expect(claim.platformEnvironment).toMatchObject({
       CLI_PKG_URL: expect.any(String),
     });
-    for (const [key, value] of Object.entries(
-      claim.platformEnvironment ?? {},
-    )) {
-      expect(claim.environment?.[key]).toBe(value);
+    for (const key of Object.keys(claim.platformEnvironment)) {
+      expect(claim.environment).not.toHaveProperty(key);
     }
 
     const snapshot = runContextSnapshotForRun(run.runId);

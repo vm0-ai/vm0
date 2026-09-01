@@ -492,7 +492,7 @@ describe("artifact catalog page", () => {
   });
 
   it("localizes the catalog and filters without changing artifact titles", async () => {
-    document.documentElement.lang = "pt-BR";
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
     const requestedKinds: (string | undefined)[] = [];
     context.mocks.api(artifactCatalogContract.list, ({ query, respond }) => {
       requestedKinds.push(query.kind);

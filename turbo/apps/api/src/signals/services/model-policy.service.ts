@@ -12,7 +12,6 @@ import {
   isBuiltInModelProviderType,
   isModelSupportedByProvider,
   isLimitedFree1RestrictedRunModel,
-  normalizeModelProviderWriteType,
   type ModelProviderCredentialScope,
   type OrgModelPoliciesResponse,
   type OrgModelPolicy,
@@ -691,10 +690,9 @@ function serializePolicy(
     throw new Error("Stored org model policy contains unsupported values");
   }
 
-  const canonicalProviderType = normalizeModelProviderWriteType(providerType);
   const route = getRouteStatus({
     model,
-    providerType: canonicalProviderType,
+    providerType,
     credentialScope,
     modelProviderId: policy.modelProviderId ?? null,
     modelProviderSurfaceId: policy.modelProviderSurfaceId ?? null,
@@ -707,7 +705,7 @@ function serializePolicy(
     model,
     modelLabel: getCanonicalModelDisplayName(model),
     isDefault: policy.isDefault,
-    defaultProviderType: canonicalProviderType,
+    defaultProviderType: providerType,
     credentialScope,
     modelProviderId: policy.modelProviderId ?? null,
     modelProviderSurfaceId: policy.modelProviderSurfaceId ?? null,

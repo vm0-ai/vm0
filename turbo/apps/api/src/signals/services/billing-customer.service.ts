@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { sql, eq } from "drizzle-orm";
+import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-canonical-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 
 import { writeDb$ } from "../external/db";
@@ -56,14 +57,14 @@ export const getOrCreateStripeCustomer$ = command(
       signal.throwIfAborted();
 
       await tx
-        .insert(orgMetadata)
+        .insert(orgMetadataCanonicalWrites)
         .values({
           orgId: args.orgId,
           stripeCustomerId: customer.id,
           credits: 0,
         })
         .onConflictDoUpdate({
-          target: orgMetadata.orgId,
+          target: orgMetadataCanonicalWrites.orgId,
           set: { stripeCustomerId: customer.id, updatedAt: nowDate() },
         });
       signal.throwIfAborted();

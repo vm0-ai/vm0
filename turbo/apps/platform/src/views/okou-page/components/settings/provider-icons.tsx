@@ -1,7 +1,4 @@
-import {
-  isBuiltInModelProviderType,
-  type ModelProviderType,
-} from "@okouai/api-contracts/contracts/model-providers";
+import type { ModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 import { cn } from "@okouai/ui";
 import { settingsIconAssetUrl } from "./settings-icon-assets.ts";
 
@@ -18,7 +15,7 @@ const PROVIDER_ICONS: Readonly<Partial<Record<ModelProviderType, string>>> =
     "codex-oauth-token": settingsIconAssetUrl("openai"),
     "azure-foundry": settingsIconAssetUrl("azure"),
     "aws-bedrock": settingsIconAssetUrl("bedrock"),
-    vm0: settingsIconAssetUrl("vm0"),
+    "built-in": settingsIconAssetUrl("vm0"),
   });
 
 const DARK_INVERT_PROVIDER_ICONS: Readonly<
@@ -39,8 +36,7 @@ export function ProviderIcon({
   type: ModelProviderType;
   size?: number;
 }) {
-  const iconType = isBuiltInModelProviderType(type) ? "vm0" : type;
-  const icon = PROVIDER_ICONS[iconType];
+  const icon = PROVIDER_ICONS[type];
   if (!icon) {
     return <DefaultIcon size={size} />;
   }
@@ -52,7 +48,7 @@ export function ProviderIcon({
       alt=""
       className={cn(
         "shrink-0",
-        providerIconNeedsDarkInvert(iconType) && "zero-icon-mono",
+        providerIconNeedsDarkInvert(type) && "zero-icon-mono",
       )}
     />
   );

@@ -1,6 +1,6 @@
 [package]
 name = "sandbox-fc"
-version = "0.37.273"
+version = "0.37.278"
 edition.workspace = true
 
 [dependencies]
@@ -31,6 +31,7 @@ rustix = { workspace = true, features = ["process"] }
 
 [dev-dependencies]
 clap = { workspace = true, features = ["derive"] }
+proptest.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 tracing-test-support.workspace = true
 tracing-subscriber.workspace = true

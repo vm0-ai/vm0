@@ -17,7 +17,7 @@ const MODEL_POLICIES_RESPONSE = {
       model: "claude-sonnet-4-6",
       modelLabel: "Claude Sonnet 4.6",
       isDefault: true,
-      defaultProviderType: "vm0",
+      defaultProviderType: "built-in",
       credentialScope: "org",
       modelProviderId: null,
       routeStatus: "valid",
@@ -93,33 +93,12 @@ describe("okou model-provider command", () => {
     expect(logCalls).toContain("Model Provider Routes:");
     expect(logCalls).toContain("Claude Sonnet 4.6");
     expect(logCalls).toContain("provider: built-in");
-    expect(logCalls).toContain("provider type: vm0 (Built-in model)");
+    expect(logCalls).toContain("provider type: built-in (Built-in model)");
     expect(logCalls).toContain("GPT 5.6 Luna");
     expect(logCalls).toContain("provider: api key");
     expect(logCalls).toContain("GPT 5.5");
     expect(logCalls).toContain("provider: subscription");
     expect(logCalls).toContain("No personal subscription connected");
-  });
-
-  it("should render canonical built-in responses as the built-in route", async () => {
-    server.use(
-      http.get("http://localhost:3000/api/model-policies", () => {
-        return HttpResponse.json({
-          ...MODEL_POLICIES_RESPONSE,
-          policies: MODEL_POLICIES_RESPONSE.policies.map((policy, index) => {
-            return index === 0
-              ? { ...policy, defaultProviderType: "built-in" }
-              : policy;
-          }),
-        });
-      }),
-    );
-
-    await modelProviderCommand.parseAsync(["node", "cli", "ls"]);
-
-    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("provider: built-in");
-    expect(logCalls).toContain("provider type: built-in (Built-in model)");
   });
 
   it("should show web-app provider routing guidance in set help", async () => {

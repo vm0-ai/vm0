@@ -9,7 +9,6 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import { chatThreads } from "./chat-thread";
 
 const tsvectorColumn = customType<{ data: string }>({
   dataType() {
@@ -25,14 +24,7 @@ const tsvectorColumn = customType<{ data: string }>({
 export const chatEventSearchMessages = pgTable(
   "chat_event_search_messages",
   {
-    chatThreadId: uuid("chat_thread_id")
-      .references(
-        () => {
-          return chatThreads.id;
-        },
-        { onDelete: "cascade" },
-      )
-      .notNull(),
+    chatThreadId: uuid("chat_thread_id").notNull(),
     seqId: bigint("seq_id", { mode: "number" }).notNull(),
     runId: uuid("run_id"),
     userId: text("user_id").notNull(),
@@ -71,14 +63,7 @@ export const chatEventSearchMessages = pgTable(
 export const chatEventSearchMessageWatermarks = pgTable(
   "chat_event_search_message_watermarks",
   {
-    chatThreadId: uuid("chat_thread_id")
-      .primaryKey()
-      .references(
-        () => {
-          return chatThreads.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    chatThreadId: uuid("chat_thread_id").primaryKey(),
     indexedSeqId: bigint("indexed_seq_id", { mode: "number" }).notNull(),
   },
 );

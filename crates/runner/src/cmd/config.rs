@@ -41,19 +41,11 @@ pub struct ConfigArgs {
     #[arg(long, default_value_t = DEFAULT_CONCURRENCY_FACTOR)]
     concurrency_factor: f64,
 
-    /// vm0 API URL (`OKOU_API_BACKEND_URL`; legacy: `VM0_API_BACKEND_URL`)
-    #[arg(
-        long,
-        env = crate::operator_api_url::clap_environment_name(),
-        hide_env_values = true
-    )]
+    /// vm0 API URL (`OKOU_API_BACKEND_URL`)
+    #[arg(long, env = "OKOU_API_BACKEND_URL", hide_env_values = true)]
     api_url: String,
-    /// Runner authentication token (`OKOU_RUNNER_TOKEN`; legacy: `VM0_RUNNER_TOKEN`)
-    #[arg(
-        long,
-        env = crate::runner_token::clap_environment_name(),
-        hide_env_values = true
-    )]
+    /// Runner authentication token (`OKOU_RUNNER_TOKEN`)
+    #[arg(long, env = "OKOU_RUNNER_TOKEN", hide_env_values = true)]
     token: String,
 }
 
@@ -322,6 +314,22 @@ mod tests {
         assert!(
             !msg.contains("rootfs not found"),
             "API URL validation should happen before rootfs checks: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_config_rejects_cleartext_remote_api_url_before_filesystem_setup() {
+        let mut args = args_with_valid_image_hashes();
+        args.api_url = "http://api.example.com".into();
+
+        let err = run_config(args).await.unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("server.url"), "got: {msg}");
+        assert!(msg.contains("https"), "got: {msg}");
+        assert!(!msg.contains("api.example.com"), "got: {msg}");
+        assert!(
+            !msg.contains("rootfs not found"),
+            "API URL validation should happen before image checks: {msg}"
         );
     }
 

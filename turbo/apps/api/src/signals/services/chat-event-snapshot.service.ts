@@ -12,7 +12,12 @@ import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { env } from "../../lib/env";
 import { db$, type ReadonlyDb } from "../external/db";
 import { generatePresignedGetUrl } from "../external/s3";
-import { chatEventRowFromDbRow } from "./cron-snapshot-chat-events.service";
+import {
+  chatEventRowFromDbRow,
+  isCurrentChatEventSnapshotObjectKey,
+  isLegacyChatEventSnapshotObjectKey,
+  refreshChatEventSnapshotThread$,
+} from "./cron-snapshot-chat-events.service";
 
 const SNAPSHOT_URL_TTL_SECONDS = 900;
 /** Cursor that reads a thread from its very first event. */
@@ -203,7 +208,7 @@ export function chatThreadEventSnapshot(args: {
 }) {
   return command(
     async (
-      { get },
+      { get, set },
       signal: AbortSignal,
     ): Promise<ChatEventSnapshotDownload> => {
       const db = get(db$);
@@ -217,10 +222,28 @@ export function chatThreadEventSnapshot(args: {
         return { kind: "thread-not-found" } as const;
       }
 
-      const pointer = await currentSnapshotPointer(db, args.threadId);
+      let pointer = await currentSnapshotPointer(db, args.threadId);
       signal.throwIfAborted();
       if (pointer === null) {
         return { kind: "snapshot-not-found" };
+      }
+      if (!isCurrentChatEventSnapshotObjectKey(pointer.objectKey)) {
+        if (!isLegacyChatEventSnapshotObjectKey(pointer.objectKey)) {
+          throw new Error(
+            "Chat Event Snapshot has an unsupported contract revision",
+          );
+        }
+        await set(refreshChatEventSnapshotThread$, args.threadId, signal);
+        pointer = await currentSnapshotPointer(db, args.threadId);
+        signal.throwIfAborted();
+        if (
+          pointer === null ||
+          !isCurrentChatEventSnapshotObjectKey(pointer.objectKey)
+        ) {
+          throw new Error(
+            "Chat Event Snapshot contract repair did not publish",
+          );
+        }
       }
 
       const url = await get(

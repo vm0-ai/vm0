@@ -167,6 +167,7 @@ import {
   type AgentReferenceSignalsRegistry,
 } from "./agent-reference-signals.ts";
 import { createConnectorCardSignalsRegistry } from "./connector-action-block.ts";
+import { createConnectorAccountActionCardSignalsRegistry } from "./connector-account-action-block.ts";
 import { createPermissionCardSignalsRegistry } from "./permission-card-signals.ts";
 import { createBankingCardSignalsRegistry } from "./banking-action-block.ts";
 import { createComputerUseAuthorizationCardSignalsRegistry } from "./computer-use-authorization-block.ts";
@@ -239,7 +240,10 @@ import {
   userMessageFileAttachments,
 } from "./user-message-files.ts";
 import type { ChatForwardContext } from "./chat-forward.ts";
-import { createComposerConnectorSignals } from "../okou-page/connectors.ts";
+import {
+  createComposerConnectorSignals,
+  type ComposerConnectorSignals,
+} from "../okou-page/connectors.ts";
 
 const L = logger("ChatThread");
 const noOpComposerDraftSave$ = command(
@@ -1119,14 +1123,15 @@ function groupEventsForDisplay(events: EnrichedChatEvent[]): ChatEventGroup[] {
 function createRenderedChatGroups(
   semanticEvents$: Computed<SemanticChatEvent[]>,
 ) {
-  const transcriptEvents$ = createTranscriptEventsComputed(semanticEvents$);
+  const allChatGroups$ = computed((get): ChatEventGroup[] => {
+    return groupEventsForDisplay(
+      enrichedChatEventsFromSemantic(get(semanticEvents$)),
+    );
+  });
 
-  const allRenderedChatGroups$ = computed(
-    async (get): Promise<ChatEventGroup[]> => {
-      const events = await get(transcriptEvents$);
-      return groupEventsForDisplay(events);
-    },
-  );
+  const allRenderedChatGroups$ = computed((get): Promise<ChatEventGroup[]> => {
+    return Promise.resolve(get(allChatGroups$));
+  });
   const eventImageGroups$ = computed(
     async (get): Promise<EventImageGroupProjection[]> => {
       return (await get(allRenderedChatGroups$)).map((group) => {
@@ -1146,6 +1151,7 @@ function createRenderedChatGroups(
   );
 
   return {
+    allChatGroups$,
     allRenderedChatGroups$,
     eventImageGroups$,
   };
@@ -1232,9 +1238,6 @@ const registerUserMessageRenderPart$ = command(
       }
       case "goal": {
         return { type: "goal", part };
-      }
-      case "morning_brief": {
-        return { type: "morning_brief", part };
       }
       case "model": {
         return { type: "model", part };
@@ -1356,22 +1359,18 @@ function createRawEventsComputed(
   });
 }
 
-function createTranscriptEventsComputed(
-  semanticEvents$: Computed<SemanticChatEvent[]>,
-): Computed<Promise<EnrichedChatEvent[]>> {
-  return computed((get): Promise<EnrichedChatEvent[]> => {
-    return Promise.resolve(
-      get(semanticEvents$).map((entry) => {
-        const { event, isQueued, userMessageRenderDocument } = entry;
-        return {
-          ...event,
-          tree: entry.tree,
-          richContentError: entry.richContentError,
-          isQueued,
-          userMessageRenderDocument,
-        };
-      }),
-    );
+function enrichedChatEventsFromSemantic(
+  entries: readonly SemanticChatEvent[],
+): EnrichedChatEvent[] {
+  return entries.map((entry) => {
+    const { event, isQueued, userMessageRenderDocument } = entry;
+    return {
+      ...event,
+      tree: entry.tree,
+      richContentError: entry.richContentError,
+      isQueued,
+      userMessageRenderDocument,
+    };
   });
 }
 
@@ -1784,6 +1783,9 @@ interface EventTreeRegistries {
   readonly connectorCardSignals: ReturnType<
     typeof createConnectorCardSignalsRegistry
   >;
+  readonly connectorAccountActionCardSignals: ReturnType<
+    typeof createConnectorAccountActionCardSignalsRegistry
+  >;
   readonly permissionCardSignals: ReturnType<
     typeof createPermissionCardSignalsRegistry
   >;
@@ -1808,6 +1810,7 @@ function createCardRefRegistrar({
   chatActionContext,
   artifactCardSignals,
   connectorCardSignals,
+  connectorAccountActionCardSignals,
   permissionCardSignals,
   bankingCardSignals,
   computerUseAuthorizationCardSignals,
@@ -1829,6 +1832,15 @@ function createCardRefRegistrar({
           return {
             kind: descriptor.type,
             signals: set(connectorCardSignals.register$, descriptor.descriptor),
+          };
+        }
+        case "connector-account-action": {
+          return {
+            kind: descriptor.type,
+            signals: set(
+              connectorAccountActionCardSignals.register$,
+              descriptor.descriptor,
+            ),
           };
         }
         case "permission-action": {
@@ -2101,10 +2113,21 @@ function createEventTreeSignals(registries: EventTreeRegistries) {
 }
 
 function createPagedEventResources(
-  chatActionContext: ChatActionContext,
-  chatEvents$: Computed<ChatEvent[]>,
-  previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
-  browserLifecycleOptimisticEvents: BrowserLifecycleOptimisticEvents,
+  {
+    chatActionContext,
+    chatEvents$,
+    previewImageUrlsByUrl$,
+    browserLifecycleOptimisticEvents,
+    connector,
+  }: {
+    readonly chatActionContext: ChatActionContext;
+    readonly chatEvents$: Computed<ChatEvent[]>;
+    readonly previewImageUrlsByUrl$: Computed<
+      Promise<ReadonlyMap<string, string>>
+    >;
+    readonly browserLifecycleOptimisticEvents: BrowserLifecycleOptimisticEvents;
+    readonly connector: ComposerConnectorSignals;
+  },
   ownerSignal: AbortSignal,
 ) {
   const { threadId } = chatActionContext;
@@ -2120,6 +2143,8 @@ function createPagedEventResources(
   );
   const agentReferenceSignals = createAgentReferenceSignalsRegistry();
   const connectorCardSignals = createConnectorCardSignalsRegistry();
+  const connectorAccountActionCardSignals =
+    createConnectorAccountActionCardSignalsRegistry(connector);
   const permissionCardSignals = createPermissionCardSignalsRegistry();
   const bankingCardSignals = createBankingCardSignalsRegistry();
   const computerUseAuthorizationCardSignals =
@@ -2153,6 +2178,7 @@ function createPagedEventResources(
     chatActionContext,
     artifactCardSignals,
     connectorCardSignals,
+    connectorAccountActionCardSignals,
     permissionCardSignals,
     bankingCardSignals,
     computerUseAuthorizationCardSignals,
@@ -2478,10 +2504,12 @@ function createChatThreadMessagePipeline(
     chatActionContext,
     chatEvents,
     previewImageUrlsByUrl$,
+    connector,
   }: {
     chatActionContext: ChatActionContext;
     chatEvents: ChatEventSignals;
     previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
+    connector: ComposerConnectorSignals;
   },
   ownerSignal: AbortSignal,
 ) {
@@ -2491,10 +2519,13 @@ function createChatThreadMessagePipeline(
   // Position is created before scroll writers are wired to the render window.
   const position = createThreadScrollPositionSignals(threadId);
   const resources = createPagedEventResources(
-    chatActionContext,
-    chatEvents.chatEvents$,
-    previewImageUrlsByUrl$,
-    browserLifecycleOptimisticEvents,
+    {
+      chatActionContext,
+      chatEvents$: chatEvents.chatEvents$,
+      previewImageUrlsByUrl$,
+      browserLifecycleOptimisticEvents,
+      connector,
+    },
     ownerSignal,
   );
   const projections = createPagedEventProjections({
@@ -2504,6 +2535,9 @@ function createChatThreadMessagePipeline(
     eventTreeErrors$: resources.eventTreeErrors$,
   });
   const initialEventsReady$ = state(false);
+  const initialEventsReadyView$ = computed((get): boolean => {
+    return get(initialEventsReady$);
+  });
   const renderWindow = createChatRenderWindow({
     threadId,
     allRenderedChatGroups$: projections.allRenderedChatGroups$,
@@ -2534,6 +2568,8 @@ function createChatThreadMessagePipeline(
     threadId,
     position,
     ensureVisibleEventTreesAfterScroll$,
+    chatEvents.chatEvents$,
+    initialEventsReadyView$,
   );
   const effects = createEventChangeEffects(
     {
@@ -2545,9 +2581,6 @@ function createChatThreadMessagePipeline(
     },
     ownerSignal,
   );
-  const initialEventsReadyView$ = computed((get): boolean => {
-    return get(initialEventsReady$);
-  });
   const lifecycle = createChatEventPresentationLifecycle({
     chatEvents,
     afterEventsChange$: effects.afterEventsChange$,
@@ -2690,27 +2723,25 @@ function setThreadRenderWindowState(
 
 function scrollTargetStartIndex(
   groups: readonly ChatEventGroup[],
-  targetEventId: string | null,
+  position: ThreadScrollPosition | null,
 ): number | null {
-  if (targetEventId === null) {
+  if (position === null) {
     return null;
   }
   const targetGroupIndex = groups.findIndex((group) => {
     return group.events.some((event) => {
-      return event.id === targetEventId;
+      return event.id === position.targetEventId;
     });
   });
   if (targetGroupIndex === -1) {
     return null;
   }
   const targetRunId = groups[targetGroupIndex]?.events.find((event) => {
-    return event.id === targetEventId;
+    return event.id === position.targetEventId;
   })?.runId;
-  if (targetRunId === undefined) {
-    return targetGroupIndex;
-  }
   let startIndex = targetGroupIndex;
   while (
+    targetRunId !== undefined &&
     startIndex > 0 &&
     groups[startIndex - 1]?.events.some((event) => {
       return event.runId === targetRunId;
@@ -2718,7 +2749,12 @@ function scrollTargetStartIndex(
   ) {
     startIndex--;
   }
-  return startIndex;
+  // A positive viewport inset needs content before the target. Preload one
+  // established window so the smooth scroll cannot cross the top load-more
+  // threshold and replace its layout halfway through the animation.
+  return position.viewportOffsetTop > 0
+    ? previousRenderWindowStartIndex(groups, startIndex)
+    : startIndex;
 }
 
 interface ChatRenderWindowOptions {
@@ -2751,7 +2787,7 @@ function createChatRenderWindow({
       const requestedStartIndex = renderWindowStartIndex(groups, cursorGroupId);
       const targetStartIndex = scrollTargetStartIndex(
         groups,
-        get(threadScrollPosition$)?.targetEventId ?? null,
+        get(threadScrollPosition$),
       );
       return groups.slice(
         targetStartIndex === null
@@ -2809,7 +2845,7 @@ function createChatRenderWindow({
       );
       const targetStartIndex = scrollTargetStartIndex(
         groups,
-        get(threadScrollPosition$)?.targetEventId ?? null,
+        get(threadScrollPosition$),
       );
       const startIndex =
         targetStartIndex === null
@@ -4241,27 +4277,29 @@ function createChatPanelSignalsWithDraft(
     draft,
   );
   const feedback = createChatThreadFeedbackSignals(threadId, composer.feedback);
-  const messages: MessageListSignals = {
-    ...createChatThreadMessagePipeline(
-      {
-        chatActionContext: { threadId, agentId },
-        chatEvents,
-        previewImageUrlsByUrl$: createArtifactPreviewImageUrls(
-          artifact.artifacts$,
-        ),
-      },
-      signal,
-    ),
-    ...artifact,
-  };
-  const sharing = createChatThreadSharingSignals(threadId, messages.scroll);
-  const locator = createChatConversationLocatorSignals(
+  const messagePipeline = createChatThreadMessagePipeline(
     {
-      threadId,
-      scrollContainer$: messages.scroll.scrollContainer$,
+      chatActionContext: { threadId, agentId },
+      chatEvents,
+      previewImageUrlsByUrl$: createArtifactPreviewImageUrls(
+        artifact.artifacts$,
+      ),
+      connector: composer.connector,
     },
     signal,
   );
+  const messages: MessageListSignals = {
+    ...messagePipeline,
+    ...artifact,
+  };
+  const sharing = createChatThreadSharingSignals(threadId, messages.scroll);
+  const locator = createChatConversationLocatorSignals({
+    threadId,
+    scrollContainer$: messages.scroll.scrollContainer$,
+    scrollToEvent$: messages.scroll.scrollToEvent$,
+    allChatGroups$: messagePipeline.allChatGroups$,
+    threadScrollPosition$: messages.scroll.threadScrollPosition$,
+  });
   const runTracking = createRunTracking({
     threadId,
     setupChatEvents$: messages.setup$,
@@ -4287,6 +4325,7 @@ function createChatPanelSignalsWithDraft(
     scrollContainer$: messages.scroll.scrollContainer$,
     threadScrollPosition$: messages.scroll.threadScrollPosition$,
     awayFromBottom$: messages.scroll.awayFromBottom$,
+    scrollToEvent$: messages.scroll.scrollToEvent$,
     scrollTo$: messages.scroll.scrollTo$,
     scrollToTop$: messages.scroll.scrollToTop$,
     scrollToBottom$: messages.scroll.scrollToBottom$,

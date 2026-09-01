@@ -16,6 +16,7 @@ import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { exportJobs } from "@okouai/db/schema/export-job";
+import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-canonical-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { hostedDeployments, hostedSites } from "@okouai/db/schema/hosted-site";
 import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
@@ -145,7 +146,7 @@ async function seedRunForAction(
   }
 
   await db
-    .insert(orgMetadata)
+    .insert(orgMetadataCanonicalWrites)
     .values({
       orgId,
       tier: "free",
@@ -184,6 +185,7 @@ async function seedRunForAction(
       createdAt: readDate(body, "created_at") ?? undefined,
       completedAt: readNullableDate(body, "completed_at"),
       lastHeartbeatAt: readNullableDate(body, "last_heartbeat_at"),
+      runnerGroup: readOptionalString(body, "runner_group"),
       cancellationRecoveryCompleted: readOptionalBoolean(
         body,
         "cancellation_recovery_completed",
@@ -603,6 +605,7 @@ async function seedRunnerJobForAction(
     executionContext: {
       storageMounts: [],
       environment: null,
+      platformEnvironment: {},
       resumeSession: null,
       encryptedSecrets: null,
       cliAgentType: "claude-code",
@@ -648,6 +651,7 @@ async function seedQueueEntryForAction(
         executionContext: {
           storageMounts: [],
           environment: null,
+          platformEnvironment: {},
           secretValueEnvironmentKeys: null,
           resumeSession: null,
           encryptedSecrets: null,

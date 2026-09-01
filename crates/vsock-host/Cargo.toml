@@ -1,6 +1,6 @@
 [package]
 name = "vsock-host"
-version = "0.17.114"
+version = "0.17.119"
 edition.workspace = true
 description = "Vsock host client for Firecracker VM communication"
 
@@ -8,6 +8,7 @@ description = "Vsock host client for Firecracker VM communication"
 guest-contracts.workspace = true
 nix = { workspace = true, features = ["net"] }
 sandbox.workspace = true
+serde_json.workspace = true
 shell-quote.workspace = true
 tokio = { workspace = true, features = ["net", "io-util", "time", "rt", "macros", "sync", "fs"] }
 tracing = { workspace = true }

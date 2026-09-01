@@ -486,7 +486,7 @@ describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
     expect(drain).toBe(1);
     expect(context.mocks.resend.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        from: "Zero <vm0@mail.example.com>",
+        from: "Okou <okou@mail.example.com>",
         to,
         subject,
         html: expect.stringContaining("Your data export is ready"),

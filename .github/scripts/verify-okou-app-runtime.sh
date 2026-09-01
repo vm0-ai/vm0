@@ -9,10 +9,15 @@ fi
 app_url="${1%/}"
 public_assets_url="${2%/}"
 assets_directory="${3%/}"
+canonical_document="$(dirname "$assets_directory")/index.html"
 document_max_attempts="${OKOU_APP_RUNTIME_MAX_ATTEMPTS:-1}"
 
 if [[ ! -d "$assets_directory" ]]; then
   echo "app assets directory does not exist: $assets_directory" >&2
+  exit 1
+fi
+if [[ ! -f "$canonical_document" ]]; then
+  echo "canonical app document does not exist: $canonical_document" >&2
   exit 1
 fi
 if [[ ! "$document_max_attempts" =~ ^[1-9][0-9]*$ ]]; then
@@ -78,19 +83,29 @@ for ((attempt = 1; attempt <= document_max_attempts; attempt++)); do
     "$document_url" 2>"$curl_error"; then
     if python3 - \
       "$document_body" \
+      "$canonical_document" \
       "$app_asset_url" \
       "$runtime_asset_url" \
       "$vendor_asset_url" 2>"$probe_evidence" <<'PY'
 from html.parser import HTMLParser
 from pathlib import Path
+import re
 import sys
 
+COMMIT_SHA_META_NAME = "okou-app-git-commit-sha"
+VERSION_META_NAME = "okou-app-version"
+RUNTIME_META_NAMES = {COMMIT_SHA_META_NAME, VERSION_META_NAME}
+COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 
-class EntrypointParser(HTMLParser):
+
+class AppDocumentParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.module_scripts: list[str] = []
         self.module_preloads: list[str] = []
+        self.runtime_metadata: dict[str, list[str | None]] = {
+            name: [] for name in RUNTIME_META_NAMES
+        }
 
     def handle_starttag(
         self, tag: str, attrs: list[tuple[str, str | None]]
@@ -104,12 +119,47 @@ class EntrypointParser(HTMLParser):
             href = attributes.get("href")
             if href:
                 self.module_preloads.append(href)
+        if tag == "meta" and attributes.get("name") in RUNTIME_META_NAMES:
+            name = attributes["name"]
+            if name is not None:
+                self.runtime_metadata[name].append(attributes.get("content"))
 
 
-parser = EntrypointParser()
-parser.feed(Path(sys.argv[1]).read_text())
-expected_script = [sys.argv[2]]
-expected_preloads = {sys.argv[3], sys.argv[4]}
+def parse_document(path: str) -> AppDocumentParser:
+    parser = AppDocumentParser()
+    parser.feed(Path(path).read_text())
+    return parser
+
+
+def runtime_metadata(parser: AppDocumentParser, label: str) -> dict[str, str]:
+    metadata: dict[str, str] = {}
+    for name in RUNTIME_META_NAMES:
+        values = parser.runtime_metadata[name]
+        if len(values) != 1 or values[0] is None:
+            raise RuntimeError(
+                f"Expected exactly one {label} {name} meta tag with content, got {values}"
+            )
+        metadata[name] = values[0]
+    commit_sha = metadata[COMMIT_SHA_META_NAME]
+    version = metadata[VERSION_META_NAME]
+    if COMMIT_SHA_PATTERN.fullmatch(commit_sha) is None:
+        raise RuntimeError(f"Invalid {label} app commit SHA: {commit_sha}")
+    if not version.strip():
+        raise RuntimeError(f"Invalid {label} app version: {version}")
+    return metadata
+
+
+parser = parse_document(sys.argv[1])
+canonical_parser = parse_document(sys.argv[2])
+expected_metadata = runtime_metadata(canonical_parser, "canonical")
+observed_metadata = runtime_metadata(parser, "served")
+if observed_metadata != expected_metadata:
+    raise RuntimeError(
+        f"Expected runtime build metadata {expected_metadata}, got {observed_metadata}"
+    )
+
+expected_script = [sys.argv[3]]
+expected_preloads = {sys.argv[4], sys.argv[5]}
 if parser.module_scripts != expected_script:
     raise RuntimeError(
         f"Expected one CDN app module script {expected_script}, got {parser.module_scripts}"

@@ -2,6 +2,7 @@ import type { ArtifactSignals } from "./artifact-card-signals.ts";
 import type { BrowserSessionSignals } from "./browser-session-block.ts";
 import type { BankingSignals } from "./banking-action-block.ts";
 import type { ConnectorSignals } from "./connector-action-block.ts";
+import type { ConnectorAccountActionSignals } from "./connector-account-action-block.ts";
 import type { ComputerUseAuthorizationSignals } from "./computer-use-authorization-block.ts";
 import type { MailDraftSignals } from "./mail-draft.ts";
 import type { PermissionSignals } from "./permission-card-signals.ts";
@@ -20,6 +21,10 @@ export type MarkdownCardRef =
       readonly threadId: string;
     }
   | { readonly kind: "connector-action"; readonly signals: ConnectorSignals }
+  | {
+      readonly kind: "connector-account-action";
+      readonly signals: ConnectorAccountActionSignals;
+    }
   | { readonly kind: "permission-action"; readonly signals: PermissionSignals }
   | { readonly kind: "banking-action"; readonly signals: BankingSignals }
   | { readonly kind: "unavailable-action" }

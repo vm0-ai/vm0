@@ -1,4 +1,5 @@
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
+import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-canonical-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { sql } from "drizzle-orm";
 
@@ -25,7 +26,7 @@ async function grantOrgCredits(
   amount: number,
 ): Promise<void> {
   await tx
-    .insert(orgMetadata)
+    .insert(orgMetadataCanonicalWrites)
     .values({
       orgId,
       credits: amount,
@@ -33,7 +34,7 @@ async function grantOrgCredits(
       updatedAt: sql`now()`,
     })
     .onConflictDoUpdate({
-      target: orgMetadata.orgId,
+      target: orgMetadataCanonicalWrites.orgId,
       set: {
         credits: sql`${orgMetadata.credits} + ${amount}`,
         updatedAt: sql`now()`,

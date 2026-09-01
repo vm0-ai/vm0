@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.8](https://github.com/vm0-ai/vm0/compare/guest-reseed-v0.3.7...guest-reseed-v0.3.8) (2026-08-31)
+
+
+### Bug Fixes
+
+* **runner:** preserve exact-reuse timezone outcomes ([#30470](https://github.com/vm0-ai/vm0/issues/30470)) ([e5a37ee](https://github.com/vm0-ai/vm0/commit/e5a37ee36ae946feb2f606d868b5de64e6e49180))
+
 ## [0.3.7](https://github.com/vm0-ai/vm0/compare/guest-reseed-v0.3.6...guest-reseed-v0.3.7) (2026-08-26)
 
 

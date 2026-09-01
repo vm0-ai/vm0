@@ -1,15 +1,11 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import {
-  chatThreadByIdContract,
-  type UserMessageDocument,
-} from "@okouai/api-contracts/contracts/chat-threads";
+import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import type { OrgModelPolicy } from "@okouai/api-contracts/contracts/model-providers";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import { workflowsCollectionContract } from "@okouai/api-contracts/contracts/workflows";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@okouai/core";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
@@ -17,6 +13,7 @@ import {
   detachedSetupPage,
   fill,
   queryAllByRoleFast,
+  setupPageAndWaitForContent,
 } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
@@ -351,7 +348,7 @@ describe("chat inline feedback", () => {
       ],
     });
 
-    detachedSetupPage({
+    await setupPageAndWaitForContent({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
     });
@@ -401,7 +398,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
     });
 
     selectTextForInlineFeedback(await screen.findByText(selectedContent));
@@ -510,7 +506,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
     });
 
     selectTextForInlineFeedback(await screen.findByText(selectedContent));
@@ -640,7 +635,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
     });
 
     const assistantReply = await screen.findByText(selectedContent);
@@ -700,7 +694,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
     });
 
     selectTextForInlineFeedback(await screen.findByText(selectedContent));
@@ -838,7 +831,6 @@ describe("chat inline feedback", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.ChatForward]: false },
       path: `/chats/${FEEDBACK_THREAD_ID}`,
     });
 
@@ -857,12 +849,7 @@ describe("chat inline feedback", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Quote")).toBeInTheDocument();
-      expect(screen.queryByText("Forward")).not.toBeInTheDocument();
     });
-
-    const forwardEvent = dispatchDocumentShortcut("f");
-    expect(forwardEvent.defaultPrevented).toBeFalsy();
-    expect(screen.getByText("Quote")).toBeInTheDocument();
 
     await user.click(buttonByText("Copy"));
 
@@ -987,111 +974,6 @@ describe("chat inline feedback", () => {
         },
       ],
     });
-  });
-
-  it("restores queued Morning Brief feedback as a userMessage draft", async () => {
-    const user = userEvent.setup({ delay: null });
-    const threadId = "b0000000-0000-4000-a000-000000000706";
-    const assistantReply = "The rollout plan needs a clearer owner.";
-    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    const recalledUserMessage = {
-      version: 1,
-      parts: [
-        {
-          type: "template",
-          titleSnapshot: template.title,
-          template: {
-            type: "presentation",
-            selection: {
-              colorSystemId: "color-system:gold-luxe",
-              templateId: template.templateId,
-              previewUrl: template.embedUrl,
-            },
-          },
-        },
-        {
-          type: "feedback",
-          quote: assistantReply,
-          note: [
-            {
-              type: "text",
-              text: "Name the owner and explain the complete result.",
-            },
-          ],
-        },
-      ],
-    } satisfies UserMessageDocument;
-    const queuedUserMessage = {
-      version: 1,
-      parts: [
-        ...recalledUserMessage.parts,
-        { type: "morning_brief", briefDate: "2026-07-26" },
-      ],
-    } satisfies UserMessageDocument;
-
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Queued feedback",
-      chatEvents: [
-        {
-          id: "msg-queued-feedback-user",
-          role: "user",
-          content: "Review this rollout plan",
-          runId: "run-queued-feedback",
-          createdAt: "2026-07-26T10:00:00Z",
-        },
-        {
-          id: "msg-queued-feedback-assistant",
-          role: "assistant",
-          content: assistantReply,
-          runId: "run-queued-feedback",
-          createdAt: "2026-07-26T10:00:01Z",
-        },
-        {
-          id: "msg-queued-feedback-pending",
-          role: "user",
-          content: "invalidate",
-          userMessage: queuedUserMessage,
-          runId: undefined,
-          createdAt: "2026-07-26T10:00:02Z",
-        },
-      ],
-      activeRunIds: ["run-queued-feedback"],
-    });
-    context.mocks.api(chatThreadByIdContract.patch, ({ respond }) => {
-      return respond(204);
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-    });
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Queued message")).toBeInTheDocument();
-    });
-
-    await user.click(await screen.findByLabelText("Remove queued message"));
-
-    const composer = await findComposerEditor();
-    await waitFor(() => {
-      const inlineTemplate = composer.querySelector(
-        "[data-composer-inline-template]",
-      );
-      expect(inlineTemplate).toBeInTheDocument();
-      expect(inlineTemplate).toHaveTextContent(template.title);
-    });
-    await waitFor(() => {
-      const feedbackItem = composer.querySelector("[data-feedback-item]");
-      expect(feedbackItem).toHaveTextContent(assistantReply);
-      expect(feedbackItem).toHaveTextContent(
-        "Name the owner and explain the complete result.",
-      );
-    });
-    expect(composer).not.toHaveTextContent(
-      "Feedback on this part of your reply:",
-    );
-    expect(composer).not.toHaveTextContent(`> ${assistantReply}`);
   });
 
   it.each([
@@ -1318,7 +1200,7 @@ describe("chat inline feedback", () => {
       model: "claude-sonnet-4-6",
       modelLabel: "Claude Sonnet 4.6",
       isDefault: true,
-      defaultProviderType: "vm0",
+      defaultProviderType: "built-in",
       credentialScope: "org",
       modelProviderId: null,
       routeStatus: "valid",
@@ -1990,7 +1872,6 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
     });
 
     const assistantReplyElement = await screen.findByText(assistantReply);
@@ -2130,7 +2011,7 @@ describe("chat inline feedback", () => {
         model: "claude-sonnet-4-6",
         modelLabel: "Claude Sonnet 4.6",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
         routeStatus: "valid",

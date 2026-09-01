@@ -27,6 +27,7 @@ import {
   type AvatarVideoVoice,
   type AvatarVideoVoicesQuery,
 } from "@okouai/api-contracts/contracts/avatar-video";
+import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
 import { avatarTemplateStylePresetId } from "@okouai/core/avatar-template";
 import { setMockPresentationTemplates } from "../../../mocks/handlers/api-presentation-templates.ts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -64,6 +65,7 @@ import {
   expectInlineTemplateInComposer,
   composerInlineTemplates,
   appendAndSend,
+  billingStatus,
 } from "./chat-composer-test-helpers.ts";
 
 // Templates are sent as inline parts of the structured userMessage.
@@ -411,6 +413,9 @@ async function selectAvatarRecommendationFilters(
 
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
+  context.mocks.api(billingStatusContract.get, ({ respond }) => {
+    return respond(200, billingStatus("pro"));
+  });
   context.mocks.http.get("*/__vm0-dev-artifact-fetch", ({ request }) => {
     const requestedUrl = new URL(request.url).searchParams.get("url");
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
@@ -3119,90 +3124,6 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("restores a recalled Morning Brief message as an inline template", async () => {
-    const template = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
-    const selectedTemplate = {
-      type: "illustration",
-      selection: {
-        illustrationStyleId: template.illustrationStyleId,
-      },
-    } satisfies GenerationTemplateRequest;
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      chatEvents: [
-        {
-          id: "msg-template-active-user",
-          role: "user",
-          content: "Start an active illustration run",
-          runId: "run-template-active",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          id: "msg-template-active-assistant",
-          role: "assistant",
-          content: null,
-          runId: "run-template-active",
-          createdAt: "2026-06-09T10:00:01Z",
-        },
-        {
-          id: "msg-template-queued-user",
-          role: "user",
-          content: null,
-          runId: undefined,
-          userMessage: {
-            version: 1,
-            parts: [
-              {
-                type: "template",
-                titleSnapshot: template.title,
-                template: selectedTemplate,
-              },
-              {
-                type: "file",
-                fileId: "canonical-recalled-file",
-                filenameSnapshot: "canonical-note.txt",
-                contentType: "text/plain",
-              },
-              { type: "text", text: "Queue a recalled illustration" },
-              { type: "morning_brief", briefDate: "2026-06-09" },
-            ],
-          },
-          createdAt: "2026-06-09T10:00:02Z",
-        },
-      ],
-      activeRunIds: ["run-template-active"],
-    });
-
-    detachedSetupPage({
-      context,
-      featureSwitches: {},
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
-        "Queue a recalled illustration",
-      );
-    });
-
-    click(screen.getByLabelText("Remove queued message"));
-
-    const composer = await screen.findByRole("textbox", { name: "Message" });
-    await waitFor(() => {
-      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
-      expect(composer).toHaveTextContent("Queue a recalled illustration");
-      expect(
-        screen.getByLabelText("Remove canonical-note.txt"),
-      ).toBeInTheDocument();
-    });
-    // The template comes back as an inline node, and the morning-brief part is
-    // dropped from the restored draft.
-    await expectInlineTemplateInComposer(template.title);
-    expect(composer).not.toHaveTextContent("Morning Brief");
-    expect(screen.queryByText("legacy-note.txt")).not.toBeInTheDocument();
-  });
-
   it("keeps newer template selections visible after an inline template steer", async () => {
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
@@ -3279,6 +3200,53 @@ describe("chat composer templates", () => {
         }),
       ).toStrictEqual([videoStyle.title]);
     });
+  });
+
+  it("opens compare plans from video templates when the workspace cannot generate video", async () => {
+    const videoStyle = VIDEO_TEMPLATE_ITEMS[0]!;
+    const user = userEvent.setup({ delay: null });
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
+      return respond(200, billingStatus("limited-free-1"));
+    });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await user.click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await user.click(
+      await waitFor(() => {
+        return tabByText("Video");
+      }),
+    );
+
+    const upgrade = await waitFor(() => {
+      const found = queryAllByRoleFast("button").find((candidate) => {
+        return (
+          candidate.getAttribute("aria-label") ===
+          `View plans for video template ${videoStyle.title}`
+        );
+      });
+      if (found === undefined) {
+        throw new Error("Video template plan button not found");
+      }
+      return found;
+    });
+    expect(upgrade).toHaveTextContent("Need Pro");
+
+    await user.click(upgrade);
+
+    await expect(
+      screen.findByRole("heading", { name: "Choose a plan" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Template" })).toBeNull();
+    expect(composerInlineTemplates()).toHaveLength(0);
   });
 
   it("selects and sends a workflow template from the picker", async () => {
@@ -4179,6 +4147,69 @@ describe("chat composer templates", () => {
     await expectInlineTemplateInComposer("Fresh deck");
   });
 
+  it("drops a workspace template from an open picker once its owner makes it private", async () => {
+    const sharedTemplate = {
+      id: "3c7f1d84-5b2a-4e6f-8a90-1b2c3d4e5f61",
+      title: "Workspace brand",
+      sourceFilename: "workspace-brand.pptx",
+      coverUrl: "https://example.com/workspace-brand-cover.png",
+      pageCount: 6,
+      visibility: "public" as const,
+      canManage: false,
+      pageUrls: ["https://example.com/workspace-brand-cover.png"],
+      createdAt: "2026-08-23T03:00:00.000Z",
+      updatedAt: "2026-08-23T03:00:00.000Z",
+    };
+    setMockPresentationTemplates([sharedTemplate]);
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.PresentationTemplates]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    const dialog = await waitFor(() => {
+      const card = document.querySelector(
+        `[data-imported-presentation-template="${sharedTemplate.id}"]`,
+      );
+      if (!(card instanceof HTMLElement)) {
+        throw new Error("Shared template card not found");
+      }
+      return screen.getByRole("dialog");
+    });
+
+    // The owner takes the deck back: the row leaves this member's catalog and
+    // the workspace channel says so while the picker is still open.
+    setMockPresentationTemplates([]);
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscriptionOnChannel(
+          "org:org_default",
+          "presentationTemplatesChanged",
+        ),
+      ).toBeTruthy();
+    });
+    context.mocks.ably.triggerOnChannel(
+      "org:org_default",
+      "presentationTemplatesChanged",
+    );
+
+    await waitFor(() => {
+      expect(
+        dialog.querySelector(
+          `[data-imported-presentation-template="${sharedTemplate.id}"]`,
+        ),
+      ).toBeNull();
+    });
+    expect(screen.getByRole("dialog")).toBe(dialog);
+  });
+
   it("scrubs every uploaded slide and manages an owned template from its detail view", async () => {
     const user = userEvent.setup({ delay: null });
     const imageDecodes = controlImportedTemplateImageDecodes([
@@ -4772,20 +4803,32 @@ describe("chat composer templates", () => {
       ).toBe(remainingCard);
     });
 
-    // Once a successful catalog response confirms the deletion, its local
-    // tombstone is retired. A later authoritative response therefore wins
-    // instead of being hidden for the rest of the app session.
+    // A stale catalog response may finish after the delete refresh. The delete
+    // is permanent, so it must not resurrect the card or its preview cache.
     holdCatalogRefresh = false;
-    catalog = [deletedTemplate, remainingTemplate];
+    const refreshedRemainingTemplate = {
+      ...remainingTemplate,
+      title: "Keep this deck refreshed",
+      updatedAt: "2026-08-21T02:43:59.522Z",
+    };
+    catalog = [deletedTemplate, refreshedRemainingTemplate];
     context.mocks.ably.trigger("presentationTemplatesChanged");
     await waitFor(() => {
       expect(catalogRequestCount).toBe(3);
+      expect(screen.getByText("Keep this deck refreshed")).toBeInTheDocument();
       expect(
         dialog.querySelector(
           `[data-imported-presentation-template="${deletedTemplate.id}"]`,
         ),
-      ).toBeInTheDocument();
+      ).not.toBeInTheDocument();
     });
+    expect(
+      dialog.querySelector(
+        `[data-imported-presentation-template="${remainingTemplate.id}"]`,
+      ),
+    ).toBe(remainingCard);
+    expect(remainingCover).toBeInTheDocument();
+    expect(scrollContainer.scrollTop).toBe(187);
   });
 
   it("imports an uploaded deck as an ordinary chat message", async () => {

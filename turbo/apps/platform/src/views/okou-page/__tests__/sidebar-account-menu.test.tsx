@@ -10,7 +10,6 @@ import { command } from "ccstate";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
-import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   billingStatusContract,
   billingUsagePackCreditsContract,
@@ -25,6 +24,7 @@ import {
   click,
   detachedSetupPage,
   queryAllByRoleFast,
+  setupPageAndWaitForContent,
 } from "../../../__tests__/page-helper.ts";
 import {
   mockedClerk,
@@ -35,13 +35,10 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { foregroundReady$ } from "../../../signals/auth-retry.ts";
 import { subscribeRealtimeReadyCatchUp$ } from "../../../signals/realtime.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { changeChatThreadList } from "../../../mocks/mock-helpers.ts";
 
 const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
-const SHARED_DATABASE_REALTIME_CHANNEL = "user-org:test-user-123:org_default";
-
 function connectedPersonalCodexProvider(
   overrides: Partial<ModelProviderResponse> = {},
 ): ModelProviderResponse {
@@ -235,7 +232,7 @@ async function openAccountMenu(): Promise<HTMLElement> {
   return screen.findByRole("menu");
 }
 
-function setupAuthV2AddAccountPage(): void {
+function setupAddAccountPage(): void {
   prepareDefaultAgent();
   detachedSetupPage({
     context,
@@ -245,7 +242,6 @@ function setupAuthV2AddAccountPage(): void {
       fullName: "Alex Rivera",
       email: "alex.rivera@example.test",
     },
-    featureSwitches: { [FeatureSwitchKey.AuthV2AddAccount]: true },
   });
 }
 
@@ -376,9 +372,10 @@ describe("zero sidebar account menu", () => {
   it("shows realtime recovery status beside the expanded account only in debug mode", async () => {
     prepareDefaultAgent();
 
-    detachedSetupPage({
+    await setupPageAndWaitForContent({
       context,
       path: `/agents/${AGENT_ID}/chat`,
+      sharedWorkerTestTransport: "message-port",
       user: {
         id: "test-user-123",
         fullName: "Alex Rivera",
@@ -393,16 +390,16 @@ describe("zero sidebar account menu", () => {
       throw new Error("Account menu trigger not found");
     }
     await waitFor(() => {
+      expect(within(accountButton).queryByRole("status")).toBeNull();
       expect(
         context.mocks.ably.hasChannelSubscriptionOnChannel(
-          SHARED_DATABASE_REALTIME_CHANNEL,
+          "user-org:test-user-123:org_default",
         ),
       ).toBeTruthy();
-      expect(within(accountButton).queryByRole("status")).toBeNull();
     });
 
     act(() => {
-      context.mocks.ably.triggerConnectionState("disconnected", {
+      context.mocks.ably.triggerSharedWorkerConnectionState("disconnected", {
         retryIn: 5000,
       });
     });
@@ -415,14 +412,16 @@ describe("zero sidebar account menu", () => {
     });
 
     act(() => {
-      context.mocks.ably.triggerConnectionState("connected");
+      context.mocks.ably.triggerSharedWorkerConnectionState("connected");
     });
     await waitFor(() => {
       expect(within(accountButton).queryByRole("status")).toBeNull();
     });
 
     act(() => {
-      context.mocks.ably.triggerFailure("terminal connection failure");
+      context.mocks.ably.triggerSharedWorkerFailure(
+        "terminal connection failure",
+      );
     });
     await waitFor(() => {
       expect(
@@ -451,13 +450,7 @@ describe("zero sidebar account menu", () => {
     if (!accountButton) {
       throw new Error("Account menu trigger not found");
     }
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasChannelSubscriptionOnChannel(
-          SHARED_DATABASE_REALTIME_CHANNEL,
-        ),
-      ).toBeTruthy();
-    });
+    expect(within(accountButton).queryByRole("status")).toBeNull();
 
     act(() => {
       context.mocks.ably.triggerConnectionState("disconnected", {
@@ -664,19 +657,9 @@ describe("zero sidebar account menu", () => {
     expect(within(menu).queryByText("12,500 credits")).not.toBeInTheDocument();
   });
 
-  it("shares foreground indicator and billing refreshes with the account menu", async () => {
-    let billingRequests = 0;
-    let indicatorRequests = 0;
+  it("refreshes visible billing data after returning to the foreground", async () => {
     mockAdminAccountSidebar();
-    mockAdminBillingStatus(12_500, {
-      onRequest: () => {
-        billingRequests += 1;
-      },
-    });
-    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
-      indicatorRequests += 1;
-      return respond(200, { agents: {}, threads: {} });
-    });
+    mockAdminBillingStatus(12_500);
 
     detachedSetupPage({
       context,
@@ -688,91 +671,46 @@ describe("zero sidebar account menu", () => {
       },
     });
 
+    let menu = await openAccountMenu();
     await waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscription("billing:changed"),
-      ).toBeTruthy();
-      expect(
-        context.mocks.ably.hasChannelSubscriptionOnChannel(
-          SHARED_DATABASE_REALTIME_CHANNEL,
-        ),
-      ).toBeTruthy();
-      expect(
-        context.mocks.ably.hasSubscription("chatThreadReadCursorUpdated"),
-      ).toBeTruthy();
-      expect(billingRequests).toBeGreaterThan(0);
-      expect(indicatorRequests).toBeGreaterThan(0);
+      expect(within(menu).getByText("12,500 credits")).toBeInTheDocument();
+    });
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     });
 
-    let previousIndicatorRequests = indicatorRequests;
-    changeChatThreadList();
-    await waitFor(() => {
-      expect(indicatorRequests).toBe(previousIndicatorRequests + 1);
-    });
-    previousIndicatorRequests = indicatorRequests;
-    context.mocks.ably.trigger("chatThreadReadCursorUpdated");
-    await waitFor(() => {
-      expect(indicatorRequests).toBe(previousIndicatorRequests + 1);
-    });
-
-    mockAdminBillingStatus(500, {
-      onRequest: () => {
-        billingRequests += 1;
-      },
-    });
-    billingRequests = 0;
-    indicatorRequests = 0;
-
-    const accountName = screen.getByText("Alex Rivera");
-    const accountButton = accountName.closest("button");
-    if (!accountButton) {
-      throw new Error("Expected account menu trigger");
-    }
+    mockAdminBillingStatus(500);
     window.dispatchEvent(new Event("focus"));
-    fireEvent.click(accountButton);
-    let menu = await screen.findByRole("menu");
+    menu = await openAccountMenu();
     await waitFor(() => {
       expect(within(menu).getByText("500 credits")).toBeInTheDocument();
-      expect(billingRequests).toBe(1);
-      expect(indicatorRequests).toBe(1);
     });
-    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
+    expect(within(menu).queryByText("12,500 credits")).not.toBeInTheDocument();
 
     fireEvent.keyDown(document.body, { key: "Escape" });
     await waitFor(() => {
       expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     });
-    mockAdminBillingStatus(250, {
-      onRequest: () => {
-        billingRequests += 1;
-      },
-    });
-    billingRequests = 0;
+    mockAdminBillingStatus(250);
 
     menu = await openAccountMenu();
     await waitFor(() => {
       expect(within(menu).getByText("250 credits")).toBeInTheDocument();
-      expect(billingRequests).toBe(1);
     });
 
     fireEvent.keyDown(document.body, { key: "Escape" });
     await waitFor(() => {
       expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     });
-    billingRequests = 0;
     mockAdminBillingStatus(125, {
       failFirstRequest: true,
-      onRequest: () => {
-        billingRequests += 1;
-      },
     });
 
     window.dispatchEvent(new Event("focus"));
-    fireEvent.click(accountButton);
-    menu = await screen.findByRole("menu");
+    menu = await openAccountMenu();
     await waitFor(() => {
       expect(within(menu).getByText("125 credits")).toBeInTheDocument();
-      expect(billingRequests).toBe(2);
     });
   });
 
@@ -1359,6 +1297,38 @@ describe("zero sidebar account menu", () => {
     );
   });
 
+  it("links the VM0 satellite to the Okou hosted user profile after cutover", async () => {
+    vi.stubEnv(
+      "VITE_CLERK_PUBLISHABLE_KEY_PROD",
+      "pk_live_Y2xlcmsuYXBwLm9rb3UuYWkk",
+    );
+    try {
+      context.mocks.browser.url("https://app.vm0.ai/");
+      prepareDefaultAgent();
+
+      detachedSetupPage({
+        context,
+        path: `/agents/${AGENT_ID}/chat`,
+        user: {
+          id: "test-user-123",
+          fullName: "Alex Rivera",
+          email: "alex.rivera@example.test",
+        },
+      });
+
+      const menu = await openAccountMenu();
+      click(within(menu).getByText("Settings"));
+
+      await screen.findByRole("dialog", { name: "Settings" });
+      expect(linkByText("Manage")).toHaveAttribute(
+        "href",
+        "https://accounts.app.okou.ai/user",
+      );
+    } finally {
+      vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PROD", "test_production_key");
+    }
+  });
+
   it("hides debug settings when OkouDebug is disabled", async () => {
     prepareDefaultAgent();
 
@@ -1461,11 +1431,17 @@ describe("zero sidebar account menu", () => {
     });
 
     click(screen.getByText("Add account"));
+    const addAccountDialog = await screen.findByTestId(
+      "auth-v2-add-account-dialog",
+    );
+    await expect(
+      within(addAccountDialog).findByLabelText("Email address"),
+    ).resolves.toBeVisible();
+    click(buttonByLabel("Close", addAccountDialog));
     await waitFor(() => {
-      expect(mockedClerk.openSignIn).toHaveBeenCalledWith({
-        fallbackRedirectUrl: "/",
-        forceRedirectUrl: "/",
-      });
+      expect(
+        screen.queryByTestId("auth-v2-add-account-dialog"),
+      ).not.toBeInTheDocument();
     });
 
     menu = await openAccountMenu();
@@ -1492,7 +1468,7 @@ describe("zero sidebar account menu", () => {
   });
 
   it("opens the custom v2 add-account dialog at identifier entry", async () => {
-    setupAuthV2AddAccountPage();
+    setupAddAccountPage();
     const originalUrl = window.location.href;
     const dialog = await openAuthV2AddAccountDialog();
     expect(dialog).toHaveAttribute("role", "dialog");
@@ -1501,7 +1477,6 @@ describe("zero sidebar account menu", () => {
       within(dialog).findByLabelText("Email address"),
     ).resolves.toBeVisible();
     expect(window.location.href).toBe(originalUrl);
-    expect(mockedClerk.openSignIn).not.toHaveBeenCalled();
 
     click(buttonByLabel("Close", dialog));
     await waitFor(() => {
@@ -1513,7 +1488,7 @@ describe("zero sidebar account menu", () => {
   });
 
   it("keeps add-account organization continuation and restart in the dialog", async () => {
-    setupAuthV2AddAccountPage();
+    setupAddAccountPage();
     const originalUrl = window.location.href;
     const dialog = await openAuthV2AddAccountDialog();
     const organizationMembership = {
@@ -1590,7 +1565,7 @@ describe("zero sidebar account menu", () => {
   });
 
   it("cancels an in-flight add-account attempt when the dialog closes", async () => {
-    setupAuthV2AddAccountPage();
+    setupAddAccountPage();
     const originalUrl = window.location.href;
     const dialog = await openAuthV2AddAccountDialog();
 

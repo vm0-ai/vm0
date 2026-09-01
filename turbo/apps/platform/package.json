@@ -1,6 +1,6 @@
 {
   "name": "@okouai/app",
-  "version": "0.812.5",
+  "version": "0.815.4",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,11 +13,11 @@
     "i18n:check": "i18next-cli extract --ci --quiet && i18next-cli status",
     "generate:emoji-data": "node scripts/generate-chat-thread-emoji-data.node.mjs",
     "lint:emoji-data": "node scripts/generate-chat-thread-emoji-data.node.mjs --check",
-    "lint:build-config": "node --test scripts/check-production-minification.node.mjs && tsx --test scripts/check-single-bundle.node.ts",
+    "lint:build-config": "tsx --test scripts/check-build-config.node.ts",
     "lint:localized-ui": "node --test scripts/check-localized-ui.node.mjs && node scripts/check-localized-ui.mjs",
     "lint:static-assets": "node scripts/check-static-assets.mjs",
-    "lint": "pnpm lint:static-assets && pnpm lint:emoji-data && pnpm lint:localized-ui && pnpm lint:build-config && pnpm i18n:check && oxlint --deny-warnings && oxlint --type-aware -c ../../.oxlintrc.typeaware.json --deny-warnings && eslint . --max-warnings 0",
-    "check-types": "tsc -p tsconfig.production.json --noEmit && tsc -p tsconfig.tests.json --noEmit"
+    "lint": "pnpm lint:static-assets && pnpm lint:emoji-data && pnpm lint:localized-ui && pnpm lint:build-config && pnpm i18n:check && oxlint --deny-warnings && oxlint --type-aware -c ../../.oxlintrc.typeaware.json --deny-warnings && eslint . --max-warnings 0 --cache --cache-strategy content --cache-location .eslintcache",
+    "check-types": "tsc -p tsconfig.production.json --noEmit && tsc -p tsconfig.tests.json --noEmit && tsc -p tsconfig.build-config.json --noEmit"
   },
   "dependencies": {
     "@clerk/localizations": "^4.13.8",
@@ -51,8 +51,8 @@
     "@tiptap/pm": "3.21.0",
     "@tiptap/react": "3.21.0",
     "ably": "^2.21.0",
-    "ccstate": "^5.4.0",
-    "ccstate-react": "^5.4.0",
+    "ccstate": "^5.5.0",
+    "ccstate-react": "^5.5.0",
     "hast-util-to-jsx-runtime": "^2.3.6",
     "i18next": "^26.3.6",
     "idb": "~8.0.3",

@@ -2,7 +2,7 @@
 
 Exports:
 
-- Bounded streaming usage decoding for gzip, deflate; one-shot
+- Bounded streaming usage decoding for gzip, deflate, br; one-shot
   decompression for gzip, deflate, br, zstd.
 - Request and response network-log capture decoding that hides failed bodies.
 - JSON usage decompression with diagnostic error classification.
@@ -42,7 +42,7 @@ _STREAM_ZLIB_WBITS_BY_ENCODING = {
     "gzip": 16 + zlib.MAX_WBITS,
     "deflate": zlib.MAX_WBITS,
 }
-_STREAM_DECODABLE_CONTENT_ENCODINGS = (*_STREAM_ZLIB_WBITS_BY_ENCODING, "identity")
+_STREAM_DECODABLE_CONTENT_ENCODINGS = (*_STREAM_ZLIB_WBITS_BY_ENCODING, "br", "identity")
 _SUPPORTED_ONE_SHOT_BODY_ENCODINGS = frozenset({"gzip", "deflate", "br", "zstd"})
 
 
@@ -193,8 +193,75 @@ def _create_zlib_stream_decode_session(
     return StreamDecodeSession(decode, finish_error)
 
 
+def _create_brotli_stream_decode_session(
+    feed: _StreamDecodeFeed,
+    *,
+    max_decoded_chunk: int,
+    should_continue: _StreamDecodeShouldContinue | None,
+) -> StreamDecodeSession:
+    obj = brotli.Decompressor()
+    compressed_bytes_seen = 0
+    decode_error: str | None = None
+    decoded_bytes_emitted = 0
+    inspection_stopped = False
+    saw_input = False
+
+    def decode(chunk: bytes) -> None:
+        nonlocal compressed_bytes_seen, decode_error, decoded_bytes_emitted
+        nonlocal inspection_stopped, saw_input
+        if decode_error is not None or inspection_stopped:
+            return
+        if chunk:
+            saw_input = True
+            compressed_bytes_seen += len(chunk)
+
+        pending_input = chunk
+        while True:
+            allowed_decoded_bytes = max(
+                STREAM_DECODE_EXPANSION_GRACE,
+                compressed_bytes_seen * STREAM_DECODE_MAX_EXPANSION_RATIO,
+            )
+            remaining_decoded_bytes = allowed_decoded_bytes - decoded_bytes_emitted
+            try:
+                decoded = obj.process(
+                    pending_input,
+                    output_buffer_limit=min(max_decoded_chunk, remaining_decoded_bytes + 1),
+                )
+            except brotli.error:
+                decode_error = INVALID_COMPRESSED_BODY
+                return
+            pending_input = b""
+
+            accepted = decoded[:remaining_decoded_bytes]
+            for offset in range(0, len(accepted), max_decoded_chunk):
+                decoded_chunk = accepted[offset : offset + max_decoded_chunk]
+                decoded_bytes_emitted += len(decoded_chunk)
+                feed(decoded_chunk)
+                if should_continue is not None and not should_continue():
+                    inspection_stopped = True
+                    return
+            if len(decoded) > remaining_decoded_bytes:
+                decode_error = DECODED_BODY_LIMIT_EXCEEDED
+                return
+            if obj.is_finished():
+                return
+            if not decoded and obj.can_accept_more_data():
+                return
+
+    def finish_error() -> str | None:
+        if decode_error is not None:
+            return decode_error
+        if inspection_stopped:
+            return None
+        if saw_input and not obj.is_finished():
+            return INCOMPLETE_COMPRESSED_BODY
+        return None
+
+    return StreamDecodeSession(decode, finish_error)
+
+
 def stream_decodable_content_encodings() -> tuple[str, ...]:
-    """Return ordered content codings supported by bounded streaming decode."""
+    """Return ordered content codings supported by streaming inspection."""
     return _STREAM_DECODABLE_CONTENT_ENCODINGS
 
 
@@ -203,8 +270,6 @@ def _stream_decode_skip_reason(encoding: str) -> str | None:
         return None
     if encoding == "zstd":
         return "zstd streaming output cannot be hard-bounded"
-    if encoding == "br":
-        return "brotli streaming output cannot be bounded"
     return "unsupported content encoding"
 
 
@@ -236,11 +301,20 @@ def create_stream_decode_session(
 
     Usage parsers are bounded-state scanners and may need to inspect long
     responses, so this helper does not enforce a fixed total decoded-byte cap.
-    For gzip and deflate, one response-scoped budget bounds cumulative decoded
-    output to the larger of the streaming grace or compressed bytes seen times
-    the maximum expansion ratio. The budget is shared across callbacks and
-    concatenated members. Each decoded parser chunk is bounded independently.
-    Returns None when a content encoding cannot be safely decoded incrementally.
+    For compressed encodings, one response-scoped budget bounds cumulative
+    decoded output to the larger of the streaming grace or compressed bytes
+    seen times the maximum expansion ratio. The budget is shared across
+    callbacks and concatenated zlib members. Each decoded parser chunk is
+    bounded independently.
+
+    Brotli 1.2's ``output_buffer_limit`` is a soft allocation threshold and a
+    call may return more bytes than requested. Supporting Brotli streaming
+    intentionally accepts that transient overshoot. Returned output is still
+    split before parser delivery and charged against the response-scoped
+    expansion budget, but this helper does not promise a byte-exact bound on
+    the Brotli binding's temporary output allocation.
+
+    Returns None when a content encoding cannot be decoded incrementally.
 
     The returned session exposes ``finish_error()`` so billing paths can reject
     parser state from compressed streams that never reached a valid frame/member
@@ -271,6 +345,12 @@ def create_stream_decode_session(
                 inspection_stopped = True
 
         return StreamDecodeSession(feed_until_stopped, _no_stream_decode_error)
+    if encoding == "br":
+        return _create_brotli_stream_decode_session(
+            feed,
+            max_decoded_chunk=max_decoded_chunk,
+            should_continue=should_continue,
+        )
     return _create_zlib_stream_decode_session(
         feed,
         encoding_label=encoding,

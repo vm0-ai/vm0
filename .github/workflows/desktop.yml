@@ -732,9 +732,8 @@ jobs:
           bash .github/scripts/build-okou-desktop-artifact.sh \
             "$ARTIFACT_SHA" \
             "$DESKTOP_VERSION" \
-            "turbo/apps/desktop/out/Zero Computer Use-darwin-arm64/Zero Computer Use.app" \
-            /tmp/okou-desktop-artifact \
-            "turbo/apps/desktop/out/Okou-darwin-arm64/Okou.app"
+            "turbo/apps/desktop/out/Okou-darwin-arm64/Okou.app" \
+            /tmp/okou-desktop-artifact
 
       - name: Upload canonical Desktop artifact
         if: steps.existing.outputs.exists != 'true'
@@ -750,14 +749,6 @@ jobs:
           aws s3 rm "$artifact_uri/" \
             --endpoint-url "$r2_endpoint" \
             --recursive
-
-          aws s3api put-object \
-            --endpoint-url "$r2_endpoint" \
-            --bucket "$R2_BUCKET_NAME" \
-            --key "${ARTIFACT_PREFIX}/app.tar.gz" \
-            --body /tmp/okou-desktop-artifact/app.tar.gz \
-            --content-type application/gzip \
-            --cache-control "$cache_control"
 
           aws s3api put-object \
             --endpoint-url "$r2_endpoint" \

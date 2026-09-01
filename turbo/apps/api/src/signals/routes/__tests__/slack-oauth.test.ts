@@ -130,7 +130,7 @@ describe("Slack OAuth API routes", () => {
         "test-slack-client-id",
       );
       expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-        `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
+        `${WEB_ORIGIN}/api/integrations/slack/oauth/callback`,
       );
       const scopes = redirectUrl.searchParams.get("scope")?.split(",") ?? [];
       expect(scopes).toContain("app_mentions:read");
@@ -252,7 +252,7 @@ describe("Slack OAuth API routes", () => {
       expect(response.status).toBe(307);
       const redirectUrl = new URL(response.headers.get("location")!);
       expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-        `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
+        `${WEB_ORIGIN}/api/integrations/slack/oauth/callback`,
       );
     });
 
@@ -266,7 +266,7 @@ describe("Slack OAuth API routes", () => {
       const redirectUrl = new URL(response.headers.get("location")!);
       expect(redirectUrl.origin).toBe("https://slack.com");
       expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-        `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
+        `${WEB_ORIGIN}/api/integrations/slack/oauth/callback`,
       );
     });
 
@@ -304,7 +304,7 @@ describe("Slack OAuth API routes", () => {
       const redirectUrl = new URL(response.headers.get("location")!);
       expect(redirectUrl.origin).toBe("https://slack.com");
       expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-        `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
+        `${WEB_ORIGIN}/api/integrations/slack/oauth/callback`,
       );
     });
 
@@ -345,7 +345,7 @@ describe("Slack OAuth API routes", () => {
       expect(response.status).toBe(307);
       const redirectUrl = new URL(response.headers.get("location")!);
       expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-        `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
+        `${WEB_ORIGIN}/api/integrations/slack/oauth/callback`,
       );
       expect(redirectUrl.searchParams.get("user_scope")).toBe("identity.basic");
       expect(redirectUrl.searchParams.get("team")).toBe(
@@ -398,7 +398,7 @@ describe("Slack OAuth API routes", () => {
       expect(response.status).toBe(307);
       const redirectUrl = new URL(response.headers.get("location")!);
       expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-        `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
+        `${WEB_ORIGIN}/api/integrations/slack/oauth/callback`,
       );
     });
 
@@ -532,7 +532,7 @@ describe("Slack OAuth API routes", () => {
     });
   });
 
-  describe("GET /api/zero/slack/oauth/callback", () => {
+  describe("GET /api/integrations/slack/oauth/callback", () => {
     it("keeps the VM0 flow destination while storing the official Okou installation brand", async () => {
       const fixture = await track(
         store.set(
@@ -556,7 +556,7 @@ describe("Slack OAuth API routes", () => {
       });
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+        `/api/integrations/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
       );
 
       expect(response.status).toBe(307);
@@ -578,7 +578,7 @@ describe("Slack OAuth API routes", () => {
       });
       expect(context.mocks.slack.oauth.v2.access).toHaveBeenCalledWith(
         expect.objectContaining({
-          redirect_uri: `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
+          redirect_uri: `${WEB_ORIGIN}/api/integrations/slack/oauth/callback`,
         }),
       );
 
@@ -620,7 +620,7 @@ describe("Slack OAuth API routes", () => {
       });
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+        `/api/integrations/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
       );
 
       expect(response.status).toBe(307);
@@ -662,7 +662,7 @@ describe("Slack OAuth API routes", () => {
       });
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+        `/api/integrations/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
         {
           origin: API_ORIGIN,
           headers: { "x-vm0-web-origin": WEB_ORIGIN },
@@ -672,20 +672,20 @@ describe("Slack OAuth API routes", () => {
       expect(response.status).toBe(307);
       expect(context.mocks.slack.oauth.v2.access).toHaveBeenCalledWith(
         expect.objectContaining({
-          redirect_uri: `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
+          redirect_uri: `${WEB_ORIGIN}/api/integrations/slack/oauth/callback`,
         }),
       );
     });
 
     it("redirects direct API host callback requests to the canonical web route", async () => {
       const response = await appRequest(
-        "/api/zero/slack/oauth/callback?code=valid-code&state=state-123",
+        "/api/integrations/slack/oauth/callback?code=valid-code&state=state-123",
         { origin: API_ORIGIN },
       );
 
       expect(response.status).toBe(307);
       expect(response.headers.get("location")).toBe(
-        `${WEB_ORIGIN}/api/zero/slack/oauth/callback?code=valid-code&state=state-123`,
+        `${WEB_ORIGIN}/api/integrations/slack/oauth/callback?code=valid-code&state=state-123`,
       );
       expect(context.mocks.slack.oauth.v2.access).not.toHaveBeenCalled();
     });
@@ -702,7 +702,7 @@ describe("Slack OAuth API routes", () => {
       "rejects %s state using the trusted request brand",
       async (_caseName, stateQuery) => {
         const response = await appRequest(
-          `/api/zero/slack/oauth/callback?code=valid-code${stateQuery}`,
+          `/api/integrations/slack/oauth/callback?code=valid-code${stateQuery}`,
           { origin: "https://okou.ai" },
         );
 
@@ -717,7 +717,7 @@ describe("Slack OAuth API routes", () => {
 
     it("uses the trusted request brand for provider errors with malformed state", async () => {
       const response = await appRequest(
-        `/api/zero/slack/oauth/callback?error=access_denied&state=${encodeURIComponent("not-json")}`,
+        `/api/integrations/slack/oauth/callback?error=access_denied&state=${encodeURIComponent("not-json")}`,
         { origin: "https://okou.ai" },
       );
 
@@ -742,7 +742,7 @@ describe("Slack OAuth API routes", () => {
       const authorizationUrl = new URL(start.headers.get("location")!);
       expect(authorizationUrl.origin).toBe("https://slack.com");
       expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-        `${previewApiOrigin}/api/zero/slack/oauth/callback`,
+        `${previewApiOrigin}/api/integrations/slack/oauth/callback`,
       );
       const state = authorizationUrl.searchParams.get("state");
       if (!state) {
@@ -754,7 +754,7 @@ describe("Slack OAuth API routes", () => {
         error: "invalid_code",
       });
       const callback = await appRequest(
-        `/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+        `/api/integrations/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
         { origin: previewApiOrigin },
       );
 
@@ -764,7 +764,7 @@ describe("Slack OAuth API routes", () => {
       expect(callbackLocation.pathname).toBe("/slack/failed");
       expect(context.mocks.slack.oauth.v2.access).toHaveBeenCalledWith(
         expect.objectContaining({
-          redirect_uri: `${previewApiOrigin}/api/zero/slack/oauth/callback`,
+          redirect_uri: `${previewApiOrigin}/api/integrations/slack/oauth/callback`,
         }),
       );
     });
@@ -787,7 +787,7 @@ describe("Slack OAuth API routes", () => {
       });
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+        `/api/integrations/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
       );
 
       expect(response.status).toBe(307);
@@ -816,7 +816,7 @@ describe("Slack OAuth API routes", () => {
       );
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+        `/api/integrations/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
       );
 
       expect(response.status).toBe(500);
@@ -841,7 +841,7 @@ describe("Slack OAuth API routes", () => {
       });
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(VM0_INSTALL_STATE)}`,
+        `/api/integrations/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(VM0_INSTALL_STATE)}`,
       );
 
       expect(response.status).toBe(307);
@@ -865,7 +865,7 @@ describe("Slack OAuth API routes", () => {
       });
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/callback?code=expired-code&state=${encodeURIComponent(VM0_INSTALL_STATE)}`,
+        `/api/integrations/slack/oauth/callback?code=expired-code&state=${encodeURIComponent(VM0_INSTALL_STATE)}`,
       );
 
       expect(response.status).toBe(307);
@@ -886,7 +886,7 @@ describe("Slack OAuth API routes", () => {
       });
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(VM0_INSTALL_STATE)}`,
+        `/api/integrations/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(VM0_INSTALL_STATE)}`,
       );
 
       expect(response.status).toBe(307);
@@ -914,7 +914,7 @@ describe("Slack OAuth API routes", () => {
       });
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(VM0_INSTALL_STATE)}`,
+        `/api/integrations/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(VM0_INSTALL_STATE)}`,
       );
 
       expect(response.status).toBe(307);
@@ -955,7 +955,7 @@ describe("Slack OAuth API routes", () => {
       });
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+        `/api/integrations/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
       );
 
       expect(response.status).toBe(307);
@@ -1002,7 +1002,7 @@ describe("Slack OAuth API routes", () => {
       });
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/callback?code=reinstall-code&state=${encodeURIComponent(state)}`,
+        `/api/integrations/slack/oauth/callback?code=reinstall-code&state=${encodeURIComponent(state)}`,
       );
 
       expect(response.status).toBe(307);
@@ -1047,7 +1047,7 @@ describe("Slack OAuth API routes", () => {
         authedUserId: fixture.slackUserId,
       });
       await appRequest(
-        `/api/zero/slack/oauth/callback?code=first-code&state=${encodeURIComponent(state)}`,
+        `/api/integrations/slack/oauth/callback?code=first-code&state=${encodeURIComponent(state)}`,
       );
       mockOAuthSuccess({
         teamId: fixture.slackWorkspaceId,
@@ -1055,7 +1055,7 @@ describe("Slack OAuth API routes", () => {
       });
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/callback?code=second-code&state=${encodeURIComponent(state)}`,
+        `/api/integrations/slack/oauth/callback?code=second-code&state=${encodeURIComponent(state)}`,
       );
 
       expect(response.status).toBe(307);
@@ -1089,7 +1089,7 @@ describe("Slack OAuth API routes", () => {
       });
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+        `/api/integrations/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
       );
 
       expect(response.status).toBe(307);
@@ -1118,7 +1118,7 @@ describe("Slack OAuth API routes", () => {
       });
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+        `/api/integrations/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
       );
 
       expect(response.status).toBe(307);
@@ -1145,7 +1145,7 @@ describe("Slack OAuth API routes", () => {
       });
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/callback?code=connect-code&state=${encodeURIComponent(state)}`,
+        `/api/integrations/slack/oauth/callback?code=connect-code&state=${encodeURIComponent(state)}`,
       );
 
       expect(response.status).toBe(307);
@@ -1168,7 +1168,7 @@ describe("Slack OAuth API routes", () => {
       const state = JSON.stringify({ flow: "connect", publicBrand: "vm0" });
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/callback?code=connect-code&state=${encodeURIComponent(state)}`,
+        `/api/integrations/slack/oauth/callback?code=connect-code&state=${encodeURIComponent(state)}`,
       );
 
       expect(response.status).toBe(307);
@@ -1191,7 +1191,7 @@ describe("Slack OAuth API routes", () => {
       });
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/callback?code=expired-code&state=${encodeURIComponent(state)}`,
+        `/api/integrations/slack/oauth/callback?code=expired-code&state=${encodeURIComponent(state)}`,
       );
 
       expect(response.status).toBe(307);
@@ -1212,7 +1212,7 @@ describe("Slack OAuth API routes", () => {
       mockOAuthSuccess({ teamId: "T_MISSING", authedUserId: "U_MISSING" });
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/callback?code=connect-code&state=${encodeURIComponent(state)}`,
+        `/api/integrations/slack/oauth/callback?code=connect-code&state=${encodeURIComponent(state)}`,
       );
 
       expect(response.status).toBe(307);
@@ -1239,7 +1239,7 @@ describe("Slack OAuth API routes", () => {
       });
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/callback?code=connect-code&state=${encodeURIComponent(state)}`,
+        `/api/integrations/slack/oauth/callback?code=connect-code&state=${encodeURIComponent(state)}`,
       );
 
       expect(response.status).toBe(307);
@@ -1267,7 +1267,7 @@ describe("Slack OAuth API routes", () => {
       });
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/callback?code=reinstall-code&state=${encodeURIComponent(state)}`,
+        `/api/integrations/slack/oauth/callback?code=reinstall-code&state=${encodeURIComponent(state)}`,
       );
 
       expect(response.status).toBe(307);
@@ -1277,14 +1277,16 @@ describe("Slack OAuth API routes", () => {
     });
 
     it("returns 400 for missing callback code and redirects Slack errors", async () => {
-      const missingCode = await appRequest("/api/zero/slack/oauth/callback");
+      const missingCode = await appRequest(
+        "/api/integrations/slack/oauth/callback",
+      );
       expect(missingCode.status).toBe(400);
       await expect(missingCode.json()).resolves.toStrictEqual({
         error: "Missing authorization code",
       });
 
       const slackError = await appRequest(
-        "/api/zero/slack/oauth/callback?error=access_denied",
+        "/api/integrations/slack/oauth/callback?error=access_denied",
       );
       expect(slackError.status).toBe(307);
       expect(slackError.headers.get("location")).toBe(

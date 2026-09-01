@@ -13,7 +13,7 @@ const MODEL_POLICIES_RESPONSE = {
       model: "claude-sonnet-4-6",
       modelLabel: "Claude Sonnet 4.6",
       isDefault: true,
-      defaultProviderType: "vm0",
+      defaultProviderType: "built-in",
       credentialScope: "org",
       modelProviderId: null,
       routeStatus: "valid",
@@ -75,33 +75,12 @@ describe("okou model command", () => {
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("Allowed Models:");
     expect(logCalls).toContain("Claude Sonnet 4.6");
-    expect(logCalls).toContain("provider: built-in (Built-in model; vm0)");
+    expect(logCalls).toContain("provider: built-in (Built-in model; built-in)");
     expect(logCalls).toContain("price tier: $$");
     expect(logCalls).toContain("GPT 5.5");
     expect(logCalls).toContain("provider: api key");
     expect(logCalls).not.toContain("price tier: $$$");
     expect(logCalls).toContain("okou model-provider set --help");
-  });
-
-  it("should show canonical built-in responses with built-in pricing", async () => {
-    server.use(
-      http.get("http://localhost:3000/api/model-policies", () => {
-        return HttpResponse.json({
-          ...MODEL_POLICIES_RESPONSE,
-          policies: MODEL_POLICIES_RESPONSE.policies.map((policy, index) => {
-            return index === 0
-              ? { ...policy, defaultProviderType: "built-in" }
-              : policy;
-          }),
-        });
-      }),
-    );
-
-    await modelCommand.parseAsync(["node", "cli", "ls"]);
-
-    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("provider: built-in (Built-in model; built-in)");
-    expect(logCalls).toContain("price tier: $$");
   });
 
   it("should ignore the inherited legacy prompt when showing switch guidance", async () => {

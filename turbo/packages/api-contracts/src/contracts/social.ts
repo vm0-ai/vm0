@@ -19,6 +19,7 @@ export {
   socialKitRequestSchema,
   type ManagedSocialKitCollection,
   type ManagedSocialKitPagination,
+  type ManagedSocialKitReportedTotalField,
   type ManagedSocialKitResultField,
   type ManagedSocialKitTool,
   type ManagedSocialKitToolDefinition,
@@ -126,11 +127,28 @@ export type SocialKitDownloadResponse = z.infer<
   typeof socialKitDownloadResponseSchema
 >;
 
+export const socialKitCollectionProviderLimitedReasonSchema = z.enum([
+  "reported_total_exceeds_page",
+  "provider_ceiling",
+  "no_pagination",
+]);
+
+export type SocialKitCollectionProviderLimitedReason = z.infer<
+  typeof socialKitCollectionProviderLimitedReasonSchema
+>;
+
+const reportedTotalSchema = z
+  .number()
+  .int()
+  .nonnegative()
+  .refine(Number.isSafeInteger, "reported total must be a safe integer");
+
 const socialKitCollectionSchema = z
   .discriminatedUnion("state", [
     z.object({
       state: z.literal("more"),
       itemsReturned: z.number().int().nonnegative(),
+      reportedTotal: reportedTotalSchema.optional(),
       nextInput: z.union([
         z.object({ cursor: z.string().min(1) }).strict(),
         z.object({ page: z.number().int().positive() }).strict(),
@@ -139,10 +157,13 @@ const socialKitCollectionSchema = z
     z.object({
       state: z.literal("complete"),
       itemsReturned: z.number().int().nonnegative(),
+      reportedTotal: reportedTotalSchema.optional(),
     }),
     z.object({
       state: z.literal("provider_limited"),
       itemsReturned: z.number().int().nonnegative(),
+      reason: socialKitCollectionProviderLimitedReasonSchema.optional(),
+      reportedTotal: reportedTotalSchema.optional(),
     }),
   ])
   .nullable();

@@ -704,6 +704,7 @@ describe("AUTH-01 sandbox and agent bearers", () => {
     expect(sandboxMe).toStrictEqual({
       userId: sandboxActor.userId,
       email: sandboxActor.email,
+      orgId: sandboxActor.orgId,
     });
 
     cfg.mockClerkUsers([writeActor]);
@@ -713,6 +714,7 @@ describe("AUTH-01 sandbox and agent bearers", () => {
     expect(zeroWriteMe).toStrictEqual({
       userId: writeActor.userId,
       email: writeActor.email,
+      orgId: null,
     });
 
     cfg.mockClerkUsers([bareActor]);
@@ -722,6 +724,7 @@ describe("AUTH-01 sandbox and agent bearers", () => {
     expect(zeroBareMe).toStrictEqual({
       userId: bareActor.userId,
       email: bareActor.email,
+      orgId: null,
     });
   });
 
@@ -732,7 +735,11 @@ describe("AUTH-01 sandbox and agent bearers", () => {
 
     cfg.mockClerkUsers([admin]);
     const first = await cfg.readMe(admin);
-    expect(first).toStrictEqual({ userId: admin.userId, email: admin.email });
+    expect(first).toStrictEqual({
+      userId: admin.userId,
+      email: admin.email,
+      orgId: admin.orgId,
+    });
 
     const rotatedEmail = `rotated-${shortId()}@example.test`;
     cfg.mockClerkUsers([{ ...admin, email: rotatedEmail }]);

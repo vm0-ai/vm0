@@ -17,6 +17,7 @@ import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 import { modelProviders } from "@okouai/db/schema/model-provider";
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
+import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-canonical-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { orgModelPolicies } from "@okouai/db/schema/org-model-policy";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
@@ -483,7 +484,7 @@ async function seedOrgDefaultAgentForAction(
   signal.throwIfAborted();
 
   await db
-    .insert(orgMetadata)
+    .insert(orgMetadataCanonicalWrites)
     .values({
       orgId,
       defaultAgentId: agentId,
@@ -491,7 +492,7 @@ async function seedOrgDefaultAgentForAction(
       credits: 10_000,
     })
     .onConflictDoUpdate({
-      target: orgMetadata.orgId,
+      target: orgMetadataCanonicalWrites.orgId,
       set: { defaultAgentId: agentId, tier: "free", credits: 10_000 },
     });
   signal.throwIfAborted();
@@ -759,7 +760,7 @@ async function seedTelegramPostDefaultAgent(
   signal: AbortSignal,
 ): Promise<void> {
   await db
-    .insert(orgMetadata)
+    .insert(orgMetadataCanonicalWrites)
     .values({
       orgId: seed.orgId,
       defaultAgentId: seed.composeId,
@@ -767,7 +768,7 @@ async function seedTelegramPostDefaultAgent(
       credits: 100_000,
     })
     .onConflictDoUpdate({
-      target: orgMetadata.orgId,
+      target: orgMetadataCanonicalWrites.orgId,
       set: { defaultAgentId: seed.composeId, tier: "free", credits: 100_000 },
     });
   signal.throwIfAborted();
@@ -1510,7 +1511,7 @@ async function ensureStarterCreditGrant(
   }
 
   await tx
-    .insert(orgMetadata)
+    .insert(orgMetadataCanonicalWrites)
     .values({
       orgId,
       credits: STARTER_GRANT_AMOUNT,
@@ -1519,7 +1520,7 @@ async function ensureStarterCreditGrant(
       updatedAt: sql`now()`,
     })
     .onConflictDoUpdate({
-      target: orgMetadata.orgId,
+      target: orgMetadataCanonicalWrites.orgId,
       set: {
         credits: sql`${orgMetadata.credits} + ${STARTER_GRANT_AMOUNT}`,
         tier: "free",
@@ -1577,10 +1578,10 @@ async function seedDefaultAgent(
     await ensureStarterCreditGrant(tx, input.orgId, signal);
     signal.throwIfAborted();
     await tx
-      .insert(orgMetadata)
+      .insert(orgMetadataCanonicalWrites)
       .values({ orgId: input.orgId, defaultAgentId: agent.id })
       .onConflictDoUpdate({
-        target: orgMetadata.orgId,
+        target: orgMetadataCanonicalWrites.orgId,
         set: { defaultAgentId: agent.id, updatedAt: nowDate() },
       });
     signal.throwIfAborted();

@@ -2,7 +2,7 @@ import { chatEvents } from "@okouai/db/schema/chat-event";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { createStore } from "ccstate";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 
 import { db } from "../lib/db";
 import { dispatchFailedRunCallbacks } from "../signals/services/agent-run-callback.service";
@@ -81,15 +81,40 @@ export async function readGoalQueueStateFixture(threadId: string): Promise<{
 export async function drainChatThreadQueueFixture(args: {
   readonly threadId: string;
   readonly signal: AbortSignal;
+  readonly queueItemCreatedBefore?: Date;
 }): Promise<void> {
   await createStore().set(
     drainChatThreadQueueForThread$,
     {
       chatThreadId: args.threadId,
       dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+      queueItemCreatedBefore: args.queueItemCreatedBefore,
     },
     args.signal,
   );
+}
+
+/** Move one goal trigger before a stale-sweep cutoff. */
+export async function setGoalQueueEventCreatedAtFixture(args: {
+  readonly eventId: string;
+  readonly createdAt: Date;
+}): Promise<void> {
+  const updated = await db().transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL session_replication_role = replica`);
+    return await tx
+      .update(chatEvents)
+      .set({ createdAt: args.createdAt })
+      .where(
+        and(
+          eq(chatEvents.id, args.eventId),
+          eq(chatEvents.eventType, "input.goal"),
+        ),
+      )
+      .returning({ id: chatEvents.id });
+  });
+  if (updated.length !== 1) {
+    throw new Error("Expected one goal queue event to become historical");
+  }
 }
 
 /** Invalidate a goal without triggering a separate queue drain. */

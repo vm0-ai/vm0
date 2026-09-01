@@ -17,10 +17,6 @@ import {
   handleChatInternalCallbackWithoutCcstate,
 } from "./internal-chat-run-callback.service";
 import {
-  handleMorningBriefEmailInternalCallback,
-  handleMorningBriefEmailInternalCallback$,
-} from "./internal-morning-brief-run-callback.service";
-import {
   handleFeishuOrgInternalCallback$,
   handleFeishuOrgInternalCallbackWithoutCcstate,
 } from "./internal-feishu-org-run-callback.service";
@@ -182,13 +178,6 @@ const dispatchInternalCallback$ = command(
           success: false,
           error: "GitHub chat delivery callbacks are inline-only",
         };
-      }
-      case "morning-brief:email": {
-        return await set(
-          handleMorningBriefEmailInternalCallback$,
-          input.envelope,
-          signal,
-        );
       }
       case "feishu:org": {
         return await set(
@@ -604,12 +593,6 @@ async function dispatchInternalCallbackWithoutCcstate(
         success: false,
         error: "GitHub chat delivery callbacks are inline-only",
       };
-    }
-    case "morning-brief:email": {
-      return await handleMorningBriefEmailInternalCallback(
-        input.db,
-        callbackEnvelope(input),
-      );
     }
     case "feishu:org": {
       return await handleFeishuOrgInternalCallbackWithoutCcstate(

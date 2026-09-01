@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { expect, vi, type Mock } from "vitest";
+import { browserContract } from "@okouai/api-contracts/contracts/browser";
 import {
   chatThreadByIdContract,
   chatThreadArtifactsContract,
@@ -307,29 +308,33 @@ export function makeEvent(
   };
 }
 
+function mockNoBrowserSession(): void {
+  context.mocks.api(browserContract.get, ({ respond }) => {
+    return respond(404, {
+      error: {
+        code: "BROWSER_NOT_FOUND",
+        message: "Managed browser not found",
+      },
+    });
+  });
+}
+
+export function mockChatLifecycleWithoutBrowserSession(
+  options?: Parameters<typeof mockChatLifecycle>[1],
+): ReturnType<typeof mockChatLifecycle> {
+  mockNoBrowserSession();
+  return mockChatLifecycle(context, options);
+}
+
 export function mockKeyboardNavigationThreads({
-  leadingThreadCount = 0,
   currentTitle = "Current keyboard thread",
   currentDetailTitle = currentTitle,
 }: {
-  leadingThreadCount?: number;
   currentTitle?: string;
   currentDetailTitle?: string | null;
 } = {}): void {
-  const leadingFixtures = Array.from(
-    { length: leadingThreadCount },
-    (_, index) => {
-      const itemNumber = index + 1;
-      return {
-        id: `b0000000-0000-4000-a000-${String(720 + index).padStart(12, "0")}`,
-        title: `Leading keyboard thread ${itemNumber}`,
-        detailTitle: `Leading keyboard thread ${itemNumber}`,
-        message: `Leading thread launch note ${itemNumber}`,
-      };
-    },
-  );
+  mockNoBrowserSession();
   const threadFixtures = [
-    ...leadingFixtures,
     {
       id: KEYBOARD_PREV_THREAD_ID,
       title: "Previous keyboard thread",

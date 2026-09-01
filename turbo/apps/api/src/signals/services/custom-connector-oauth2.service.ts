@@ -1,7 +1,5 @@
 import { Buffer } from "node:buffer";
 import { createHash, randomBytes } from "node:crypto";
-import { isIP } from "node:net";
-import { request as httpsRequest } from "node:https";
 
 import { command } from "ccstate";
 import { and, eq, exists } from "drizzle-orm";
@@ -23,18 +21,13 @@ import { orgCustomConnectorOauthConfigs } from "@okouai/db/schema/org-custom-con
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { secrets } from "@okouai/db/schema/secret";
 
-import {
-  fetchHostHasBlockedAddress,
-  resolveFetchHostAddresses,
-  type ResolvedFetchAddress,
-} from "../../lib/blocked-fetch-host";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { nowDate } from "../../lib/time";
 import {
   connectorOAuthStateExpiresAt,
   generateConnectorOAuthState,
 } from "../../lib/connector-oauth-state";
-import { createDeferredPromise, safeJsonParse, settle } from "../utils";
+import { safeJsonParse, settle } from "../utils";
 import { writeDb$, type Db } from "../external/db";
 import {
   exchangeFeishuOAuthCode,
@@ -70,8 +63,8 @@ import {
 } from "./connector-connection-write.service";
 import { connectorAccountSiblingWritesEnabled } from "./connector-account-mutation.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
+import { mcpOAuthSafeFetch } from "./mcp-oauth-safe-fetch.service";
 
-const MAX_TOKEN_RESPONSE_BYTES = 64 * 1024;
 const TOKEN_REFRESH_LEEWAY_MS = 60 * 1000;
 
 const customConnectorOAuthStateContextSchema = z.object({
@@ -122,115 +115,6 @@ interface PublicHttpsResponse {
   readonly status: number;
   readonly contentType: string;
   readonly body: string;
-}
-
-function internalHostname(hostname: string): boolean {
-  const normalized = hostname.toLowerCase().replace(/\.$/u, "");
-  return (
-    normalized.length === 0 ||
-    normalized === "localhost" ||
-    normalized === "localhost.localdomain" ||
-    normalized.endsWith(".localhost") ||
-    normalized.endsWith(".local") ||
-    (isIP(normalized) === 0 && !normalized.includes("."))
-  );
-}
-
-function ipLiteralAddress(hostname: string): ResolvedFetchAddress | null {
-  const address =
-    hostname.startsWith("[") && hostname.endsWith("]")
-      ? hostname.slice(1, -1)
-      : hostname;
-  const family = isIP(address);
-  if (family === 0) {
-    return null;
-  }
-  return { address, family: family === 6 ? 6 : 4 };
-}
-
-async function resolvePublicHttpsAddress(
-  url: URL,
-): Promise<ResolvedFetchAddress> {
-  if (
-    url.protocol !== "https:" ||
-    url.username ||
-    url.password ||
-    internalHostname(url.hostname)
-  ) {
-    throw new Error("OAuth token URL is not allowed");
-  }
-  const literal = ipLiteralAddress(url.hostname);
-  const addresses = literal
-    ? [literal]
-    : await resolveFetchHostAddresses(url.hostname);
-  const address = addresses[0];
-  if (!address || fetchHostHasBlockedAddress(addresses)) {
-    throw new Error("OAuth token URL is not allowed");
-  }
-  return address;
-}
-
-async function postPublicHttpsForm(
-  url: URL,
-  form: URLSearchParams,
-  authorization: string | undefined,
-  signal: AbortSignal,
-): Promise<PublicHttpsResponse> {
-  const address = await resolvePublicHttpsAddress(url);
-  signal.throwIfAborted();
-  const body = form.toString();
-  const deferred = createDeferredPromise<PublicHttpsResponse>(signal);
-  const request = httpsRequest(
-    url,
-    {
-      family: address.family,
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/x-www-form-urlencoded",
-        "content-length": Buffer.byteLength(body).toString(),
-        ...(authorization ? { authorization } : {}),
-      },
-      lookup: (_hostname, _options, callback) => {
-        callback(null, address.address, address.family);
-      },
-      signal,
-    },
-    (response) => {
-      response.setEncoding("utf8");
-      let responseBody = "";
-      let responseBytes = 0;
-      response.on("data", (chunk: string) => {
-        responseBody += chunk;
-        responseBytes += Buffer.byteLength(chunk);
-        if (responseBytes > MAX_TOKEN_RESPONSE_BYTES && !deferred.settled()) {
-          deferred.reject(new Error("OAuth token response is too large"));
-          response.destroy();
-        }
-      });
-      response.on("error", (error) => {
-        if (!deferred.settled()) {
-          deferred.reject(error);
-        }
-      });
-      response.on("end", () => {
-        if (!deferred.settled()) {
-          deferred.resolve({
-            status: response.statusCode ?? 502,
-            contentType: response.headers["content-type"] ?? "",
-            body: responseBody,
-          });
-        }
-      });
-    },
-  );
-  request.on("error", (error) => {
-    if (!deferred.settled()) {
-      deferred.reject(error);
-    }
-  });
-  request.end(body);
-  return await deferred.promise;
 }
 
 function tokenResponseData(response: PublicHttpsResponse): unknown {
@@ -352,12 +236,21 @@ async function requestToken(
   signal: AbortSignal,
 ): Promise<OAuthTokenResult> {
   const authorization = tokenRequestAuthentication(args);
-  const response = await postPublicHttpsForm(
-    new URL(args.config.tokenUrl),
-    args.form,
-    authorization,
+  const fetched = await mcpOAuthSafeFetch(args.config.tokenUrl, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/x-www-form-urlencoded",
+      ...(authorization ? { authorization } : {}),
+    },
+    body: args.form,
     signal,
-  );
+  });
+  const response: PublicHttpsResponse = {
+    status: fetched.status,
+    contentType: fetched.headers.get("content-type") ?? "",
+    body: await fetched.text(),
+  };
   signal.throwIfAborted();
   return tokenResult(response);
 }

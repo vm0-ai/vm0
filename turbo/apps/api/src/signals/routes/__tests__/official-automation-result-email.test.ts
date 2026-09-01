@@ -216,22 +216,17 @@ async function completeRun(
   args: { readonly exitCode: number; readonly output?: string },
 ): Promise<void> {
   const reported = await claimAndReportOutput(scenario, runId, args.output);
-  await webhooks.requestAgentCheckpoint(
-    {
-      runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId: `official-result-email-${runId}`,
-      cliAgentSessionHistoryHash: createHash("sha256")
-        .update(`official result email history ${runId}`)
-        .digest("hex"),
-    },
-    reported.headers,
-    [200],
-  );
   await webhooks.requestAgentComplete(
     {
       runId,
       exitCode: args.exitCode,
+      checkpoint: {
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `official-result-email-${runId}`,
+        cliAgentSessionHistoryHash: createHash("sha256")
+          .update(`official result email history ${runId}`)
+          .digest("hex"),
+      },
       ...(reported.lastEventSequence === undefined
         ? {}
         : { lastEventSequence: reported.lastEventSequence }),
@@ -350,16 +345,60 @@ describe.sequential("Official Automation result email callbacks", () => {
     await flushWaitUntilForTest();
   });
 
-  it("retries independently of Run success, preserves brand, and renders bounded escaped output", async () => {
+  it("retries independently of Run success and renders bounded Okou Markdown multipart output for a VM0 snapshot", async () => {
     const scenario = await setupScenario();
     const runId = await startRun(scenario, "https://app.okou.ai");
-    const hostileOutput = `<script>alert("unsafe") & ${"😀".repeat(
-      9000,
-    )}</script>`;
+    const longPlainText = `LONG_PLAIN_TEXT_${"x".repeat(160)}`;
+    const hostileOutput = [
+      "## Priorities",
+      "",
+      "- **Reply** to the [customer](https://example.com/customer)",
+      "- [Email](MAILTO:user@example.com?subject=Hello)",
+      "- [javascript](jav&#x61;script:alert(1))",
+      "- [percent-obfuscated](java%73cript:alert(1))",
+      "- [data](data:text/html;base64,PHNjcmlwdD4=)",
+      "- [file](file:///etc/passwd)",
+      "- [cid](cid:tracking-pixel)",
+      "- [protocol-relative](//evil.example/path)",
+      "- [root-relative](/relative/path)",
+      "- [relative](../relative/path)",
+      "- [http](http://example.com/path)",
+      "- [other-scheme](ftp://example.com/file)",
+      "- [malformed-https](https://%zz.example/path)",
+      "- [non-absolute-https](https:relative/path)",
+      "- [empty-mailto](mailto:)",
+      "- ![tracking pixel](https://tracker.example/pixel.png)",
+      "",
+      "1. First ordered item",
+      "2. Second ordered item",
+      "",
+      "> A quoted decision",
+      "",
+      "Use `inlineCode()` here.",
+      "",
+      "```mermaid",
+      "graph TD",
+      "A[Start] --> B[Done]",
+      "```",
+      "",
+      "| Owner | Priority |",
+      "| --- | --- |",
+      "| Sales | High |",
+      "",
+      longPlainText,
+      "",
+      '<script>alert("unsafe") &</script>',
+      "<style>* { display:none }</style>",
+      '<img src="x" onerror="alert(1)">',
+      '<svg onload="alert(1)"><path /></svg>',
+      '<iframe srcdoc="unsafe"></iframe>',
+      '<div onclick="alert(1)">click</div>',
+      "😀".repeat(9000),
+    ].join("\n");
     const resultCallbackId = await seedResultCallback({
       runId,
       automationId: scenario.automationId,
-      publicBrand: "okou",
+      publicBrand: "vm0",
       workflowName: 'Official <script> & " result',
     });
 
@@ -389,7 +428,7 @@ describe.sequential("Official Automation result email callbacks", () => {
       }),
     ).resolves.toStrictEqual({ items: [], claim: null });
 
-    mockEnv("RESEND_FROM_DOMAIN", "mail.example.com");
+    mockEnv("RESEND_FROM_DOMAIN", "vm0.bot");
     const redrive = await accept(
       executionClient().dispatchCallbacks({
         body: { run_id: runId, status: "completed", dispatch_count: 8 },
@@ -415,13 +454,14 @@ describe.sequential("Official Automation result email callbacks", () => {
     const item = source.items[0]!;
     expect(source.claim?.email_outbox_id).toBe(item.id);
     expect(item).toMatchObject({
-      from_address: "Okou <okou@mail.example.com>",
+      from_address: "Okou <okou@okou.io>",
       to_addresses: scenario.actor.email,
       public_brand: "okou",
       status: "pending",
       source_run_id: runId,
       source_workflow_automation_id: scenario.automationId,
       headers: {
+        "List-Unsubscribe": `<https://api.okou.ai/api/email/unsubscribe?token=${unsubscribeToken(scenario.actor.userId)}>`,
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
       },
     });
@@ -431,16 +471,32 @@ describe.sequential("Official Automation result email callbacks", () => {
       props: {
         resultText: expect.stringContaining("[Result truncated]"),
         runUrl: `https://app.okou.ai/activities/${runId}`,
+        manageUrl: `https://app.okou.ai/workflows/${scenario.workflowId}/automations?automationId=${scenario.automationId}`,
       },
+    });
+    const automationUrl = `https://app.okou.ai/workflows/${scenario.workflowId}/automations?automationId=${scenario.automationId}`;
+    const accountUnsubscribeUrl = `https://app.okou.ai/email/unsubscribe?token=${unsubscribeToken(
+      scenario.actor.userId,
+    )}`;
+    expect(automationUrl).not.toContain("token=");
+    expect(item.headers).toStrictEqual({
+      "List-Unsubscribe": `<https://api.okou.ai/api/email/unsubscribe?token=${unsubscribeToken(
+        scenario.actor.userId,
+      )}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
     });
 
     await expect(outbox.drainItems([item.id])).resolves.toBe(1);
     expect(context.mocks.resend.send).toHaveBeenCalledTimes(1);
     const send = context.mocks.resend.send.mock.calls[0]?.[0];
     expect(send).toMatchObject({
-      from: "Okou <okou@mail.example.com>",
+      from: "Okou <okou@okou.io>",
       to: scenario.actor.email,
       subject: 'Official <script> & " result completed',
+      headers: {
+        "List-Unsubscribe": `<https://api.okou.ai/api/email/unsubscribe?token=${unsubscribeToken(scenario.actor.userId)}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      },
     });
     const html =
       typeof send === "object" &&
@@ -450,13 +506,175 @@ describe.sequential("Official Automation result email callbacks", () => {
         ? send.html
         : "";
     expect(html).not.toContain("<script>alert");
+    expect(html).not.toContain("<style>");
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("<svg");
+    expect(html).not.toContain("<iframe");
+    expect(html).not.toMatch(/<[^>]+\son(?:click|error|load)=/u);
+    expect(html).not.toContain("tracker.example");
     expect(html).toContain("&lt;script&gt;");
+    expect(html).toContain("&lt;style&gt;");
     expect(html).toContain("&amp;");
     expect(html).toContain("&quot;");
+    expect(html).toContain(">Priorities</h2>");
+    expect(html).toContain("<ul style=");
+    expect(html).toContain("<ol style=");
+    expect(html).toContain("<blockquote style=");
+    expect(html).toContain("<code style=");
+    expect(html).toContain("<pre style=");
+    expect(html).toContain("A[Start] --&gt; B[Done]");
+    expect(html).toContain('<table role="presentation" width="100%"');
+    expect(html).toContain("<th style=");
+    expect(html).toContain("<td style=");
+    expect(html).toContain("<strong style=");
+    expect(html).toContain('href="https://example.com/customer"');
+    expect(html).toContain('href="MAILTO:user@example.com?subject=Hello"');
+    for (const unsafeDestination of [
+      "javascript:",
+      "java%73cript:",
+      "data:",
+      "file:",
+      "cid:",
+      "//evil.example",
+      "/relative/path",
+      "../relative/path",
+      "http://",
+      "ftp://",
+      "https://%zz",
+      "https:relative",
+      "mailto:",
+    ]) {
+      expect(html).not.toContain(`href="${unsafeDestination}`);
+    }
     expect(html).toContain("[Result truncated]");
+    expect(html).toContain("Okou");
+    expect(html).not.toContain("Zero");
+    expect(html).not.toContain("VM0");
     expect(html).toContain(`https://app.okou.ai/activities/${runId}`);
-    expect(html).toContain("https://app.okou.ai/email/unsubscribe");
+    expect(html).toContain(
+      "This result was sent by an Official Workflow automation.<br>",
+    );
+    expect(html).toContain(`href="${automationUrl}"`);
+    expect(html).toContain(
+      `>Manage this automation</a> &middot; <a href="${accountUnsubscribeUrl}"`,
+    );
+    expect(html).toContain(">Unsubscribe</a>");
+    expect(automationUrl).not.toBe(accountUnsubscribeUrl);
     expect(Buffer.byteLength(html, "utf8")).toBeLessThanOrEqual(96 * 1024);
+
+    const text =
+      typeof send === "object" &&
+      send !== null &&
+      "text" in send &&
+      typeof send.text === "string"
+        ? send.text
+        : "";
+    expect(text).not.toBe("");
+    expect(text.toLowerCase()).toContain("priorities");
+    expect(text).toContain("Reply");
+    expect(text).toContain("https://example.com/customer");
+    expect(text).toContain(longPlainText);
+    expect(text).toContain("[Result truncated]");
+    expect(text).toContain(`https://app.okou.ai/activities/${runId}`);
+    expect(text).toContain(
+      `This result was sent by an Official Workflow automation.\nManage this automation [${automationUrl}] · Unsubscribe [${accountUnsubscribeUrl}]`,
+    );
+  });
+
+  it("falls back after pathological Markdown expansion and sends one bounded multipart email", async () => {
+    const scenario = await setupScenario();
+    const runId = await startRun(scenario, "https://app.okou.ai");
+    await seedResultCallback({
+      runId,
+      automationId: scenario.automationId,
+      publicBrand: "okou",
+    });
+    const pathologicalOutput = Array.from({ length: 2000 }, () => {
+      return "- x";
+    }).join("\n");
+    expect(Array.from(pathologicalOutput)).toHaveLength(7999);
+
+    await completeRun(scenario, runId, {
+      exitCode: 0,
+      output: pathologicalOutput,
+    });
+    expect((await runs.readRun(scenario.actor, runId)).status).toBe(
+      "completed",
+    );
+    await expect(resultCallbackState(scenario, runId)).resolves.toMatchObject([
+      { status: "delivered", attempts: 1 },
+    ]);
+
+    const source = await outbox.findSourceState({
+      sourceRunId: runId,
+      sourceWorkflowAutomationId: scenario.automationId,
+    });
+    const item = source.items[0];
+    if (!item) {
+      throw new Error("Expected pathological output to enqueue one email");
+    }
+    expect(item.template).toMatchObject({
+      template: "official-automation-result",
+      props: { resultText: pathologicalOutput },
+    });
+
+    await expect(outbox.drainItems([item.id])).resolves.toBe(1);
+    expect(context.mocks.resend.send).toHaveBeenCalledTimes(1);
+    const send = context.mocks.resend.send.mock.calls[0]?.[0];
+    const html =
+      typeof send === "object" &&
+      send !== null &&
+      "html" in send &&
+      typeof send.html === "string"
+        ? send.html
+        : "";
+    const text =
+      typeof send === "object" &&
+      send !== null &&
+      "text" in send &&
+      typeof send.text === "string"
+        ? send.text
+        : "";
+    expect(html).toContain("white-space:pre-wrap");
+    expect(html).not.toContain("<li");
+    expect(html).toContain("- x\n- x");
+    expect(Buffer.byteLength(html, "utf8")).toBeLessThanOrEqual(96 * 1024);
+    expect(text).toContain("- x\n- x");
+    expect(text).toContain(`https://app.okou.ai/activities/${runId}`);
+    expect(text).toContain("https://app.okou.ai/email/unsubscribe");
+    await expect(outbox.readItem(item.id)).resolves.toMatchObject({
+      status: "sent",
+      attempts: 1,
+    });
+  });
+
+  it("keeps the existing automation switch separate from account-level unsubscribe", async () => {
+    const scenario = await setupScenario();
+    await clearResultEmailUserStateFixture(scenario.actor.userId);
+    await expect(
+      readResultEmailPreferenceFixture(scenario.actor.userId),
+    ).resolves.toBeNull();
+
+    const disabled = await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: scenario.automationId },
+      }),
+      [200],
+    );
+
+    expect(disabled.body.enabled).toBeFalsy();
+    await expect(
+      readResultEmailPreferenceFixture(scenario.actor.userId),
+    ).resolves.toBeNull();
+
+    await misc.requestEmailUnsubscribe(
+      unsubscribeToken(scenario.actor.userId),
+      [200],
+    );
+    await expect(
+      readResultEmailPreferenceFixture(scenario.actor.userId),
+    ).resolves.toBeTruthy();
   });
 
   it("keeps suppression at send and leaves a successful Run unchanged", async () => {

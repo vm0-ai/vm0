@@ -4,10 +4,12 @@ use tracing::Level;
 use tracing_subscriber::prelude::*;
 
 use super::super::guest_state::{
-    restore_guest_state, restore_guest_state_with_timezone, sync_guest_timezone,
+    GuestTimezoneSyncOutcome, restore_guest_state, restore_guest_state_with_timezone,
+    sync_guest_timezone, try_sync_guest_timezone_intent,
 };
 use super::support::{CapturedEvent, CapturedEvents, minimal_context, sandbox_exec_error};
 use crate::error::RunnerError;
+use crate::guest_timezone::GuestTimezoneIntent;
 use crate::ids::RunId;
 use crate::types::ExecutionContext;
 
@@ -330,29 +332,56 @@ async fn sync_guest_timezone_accepts_common_timezone_name_shapes() {
 
         let calls = sandbox.exec_calls();
         assert_eq!(calls.len(), 1, "timezone {tz:?} should call guest exec");
-        assert!(
-            calls[0]
-                .cmd
-                .starts_with(&format!("if test -f /usr/share/zoneinfo/{tz}; then ")),
-            "unexpected timezone command: {}",
-            calls[0].cmd
+        assert_eq!(
+            calls[0].cmd,
+            format!("/sbin/guest-reseed --sync-timezone {tz}")
         );
-        assert!(
-            calls[0]
-                .cmd
-                .contains(&format!("echo '{tz}' > /etc/timezone")),
-            "unexpected timezone command: {}",
-            calls[0].cmd
-        );
-        assert!(
-            calls[0]
-                .cmd
-                .contains(&format!("echo 'TZ={tz}' >> /etc/environment")),
-            "unexpected timezone command: {}",
-            calls[0].cmd
-        );
-        assert!(calls[0].cmd.ends_with(" fi"));
+        assert!(!calls[0].cmd.contains("/etc/timezone"));
     }
+}
+
+#[tokio::test]
+async fn try_sync_guest_timezone_preserves_completed_outcomes() {
+    for (result, expected) in [
+        (
+            ExecResult::new(0, Vec::new(), Vec::new()),
+            GuestTimezoneSyncOutcome::Applied,
+        ),
+        (
+            ExecResult::new(0, Vec::new(), b"guest timezone unavailable".to_vec()),
+            GuestTimezoneSyncOutcome::Unavailable,
+        ),
+        (
+            ExecResult::new(
+                0,
+                Vec::new(),
+                b"guest timezone sync failed: write denied".to_vec(),
+            ),
+            GuestTimezoneSyncOutcome::Failed,
+        ),
+        (
+            ExecResult::new(2, Vec::new(), b"unexpected helper failure".to_vec()),
+            GuestTimezoneSyncOutcome::Failed,
+        ),
+    ] {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_exec_result(Ok(result));
+        let intent = GuestTimezoneIntent::Configured("Asia/Shanghai".into());
+
+        let outcome = try_sync_guest_timezone_intent(&sandbox, RunId::nil(), &intent)
+            .await
+            .unwrap();
+
+        assert_eq!(outcome, expected);
+    }
+
+    let sandbox = MockSandbox::new("test");
+    let outcome =
+        try_sync_guest_timezone_intent(&sandbox, RunId::nil(), &GuestTimezoneIntent::Unknown)
+            .await
+            .unwrap();
+    assert_eq!(outcome, GuestTimezoneSyncOutcome::NotRequested);
+    assert!(sandbox.exec_calls().is_empty());
 }
 
 #[tokio::test]

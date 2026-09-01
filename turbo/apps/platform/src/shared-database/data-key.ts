@@ -23,8 +23,6 @@ export type SharedDatabaseIdentity = z.infer<
 export const chatEventDataKeySchema = z
   .object({
     kind: z.literal("chat-event"),
-    userId: z.string().min(1),
-    orgId: z.string().min(1),
     threadId: z.string().min(1),
   })
   .strict();
@@ -32,8 +30,6 @@ export const chatEventDataKeySchema = z
 export const chatThreadEventDataKeySchema = z
   .object({
     kind: z.literal("chat-thread-event"),
-    userId: z.string().min(1),
-    orgId: z.string().min(1),
   })
   .strict();
 
@@ -47,6 +43,14 @@ export type ChatThreadEventDataKey = z.infer<
   typeof chatThreadEventDataKeySchema
 >;
 export type SharedDatabaseDataKey = z.infer<typeof sharedDatabaseDataKeySchema>;
+
+export type ScopedChatEventDataKey = ChatEventDataKey &
+  Pick<SharedDatabaseIdentity, "userId" | "orgId">;
+export type ScopedChatThreadEventDataKey = ChatThreadEventDataKey &
+  Pick<SharedDatabaseIdentity, "userId" | "orgId">;
+export type ScopedSharedDatabaseDataKey =
+  | ScopedChatEventDataKey
+  | ScopedChatThreadEventDataKey;
 
 const sharedDatabaseConsistencySchema = z.enum(["cache-only", "catch-up"]);
 
@@ -68,7 +72,18 @@ export interface SharedDatabaseQuery<TKey extends SharedDatabaseDataKey> {
   readonly consistency: SharedDatabaseConsistency;
 }
 
+export interface ScopedSharedDatabaseQuery<
+  TKey extends ScopedSharedDatabaseDataKey,
+> {
+  readonly dataKey: TKey;
+  readonly afterSeqId: number | null;
+  readonly consistency: SharedDatabaseConsistency;
+}
+
 const chatThreadSnapshotSchema = chatThreadsContract.snapshot.responses[200];
+export const chatThreadIndicatorsSchema =
+  chatThreadsContract.indicators.responses[200];
+export type ChatThreadIndicators = z.infer<typeof chatThreadIndicatorsSchema>;
 
 export const chatThreadEventQueryResultSchema = z
   .object({
@@ -109,17 +124,49 @@ export function parseSharedDatabaseQueryResult<
 }
 
 export function sharedDatabaseDataKeyId(
-  dataKey: SharedDatabaseDataKey,
+  dataKey: SharedDatabaseDataKey | ScopedSharedDatabaseDataKey,
 ): string {
   if (dataKey.kind === "chat-event") {
-    return JSON.stringify([
-      dataKey.kind,
-      dataKey.userId,
-      dataKey.orgId,
-      dataKey.threadId,
-    ]);
+    return JSON.stringify([dataKey.kind, dataKey.threadId]);
   }
-  return JSON.stringify([dataKey.kind, dataKey.userId, dataKey.orgId]);
+  return JSON.stringify([dataKey.kind]);
+}
+
+export function scopeSharedDatabaseDataKey(
+  dataKey: ChatEventDataKey,
+  identity: Pick<SharedDatabaseIdentity, "userId" | "orgId">,
+): ScopedChatEventDataKey;
+export function scopeSharedDatabaseDataKey(
+  dataKey: ChatThreadEventDataKey,
+  identity: Pick<SharedDatabaseIdentity, "userId" | "orgId">,
+): ScopedChatThreadEventDataKey;
+export function scopeSharedDatabaseDataKey(
+  dataKey: SharedDatabaseDataKey,
+  identity: Pick<SharedDatabaseIdentity, "userId" | "orgId">,
+): ScopedSharedDatabaseDataKey;
+export function scopeSharedDatabaseDataKey(
+  dataKey: SharedDatabaseDataKey,
+  identity: Pick<SharedDatabaseIdentity, "userId" | "orgId">,
+): ScopedSharedDatabaseDataKey {
+  return { ...dataKey, userId: identity.userId, orgId: identity.orgId };
+}
+
+export function unScopeSharedDatabaseDataKey(
+  dataKey: ScopedChatEventDataKey,
+): ChatEventDataKey;
+export function unScopeSharedDatabaseDataKey(
+  dataKey: ScopedChatThreadEventDataKey,
+): ChatThreadEventDataKey;
+export function unScopeSharedDatabaseDataKey(
+  dataKey: ScopedSharedDatabaseDataKey,
+): SharedDatabaseDataKey;
+export function unScopeSharedDatabaseDataKey(
+  dataKey: ScopedSharedDatabaseDataKey,
+): SharedDatabaseDataKey {
+  if (dataKey.kind === "chat-event") {
+    return { kind: dataKey.kind, threadId: dataKey.threadId };
+  }
+  return { kind: dataKey.kind };
 }
 
 export function sharedDatabaseCredentialId({

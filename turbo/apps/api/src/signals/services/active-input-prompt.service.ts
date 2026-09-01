@@ -263,7 +263,6 @@ async function loadIntegrationPromptMaterial(
     case "github":
     case "automation":
     case "goal":
-    case "morning_brief":
     case "agent_run": {
       return null;
     }

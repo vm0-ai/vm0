@@ -448,6 +448,21 @@ def _configure_response_inspection_stream(
 
 
 def is_confirmed_websocket_upgrade_response(flow: http.HTTPFlow) -> bool:
+    """Return whether ``flow`` completed a confirmed WebSocket upgrade.
+
+    Confirmation requires a response with status 101, the exact ``True``
+    value for ``WEBSOCKET_UPGRADE_REQUEST``, response ``Upgrade`` and
+    ``Connection`` field values containing the ``websocket`` and ``upgrade``
+    list tokens, singleton request ``Sec-WebSocket-Key`` and response
+    ``Sec-WebSocket-Accept`` fields, an ASCII request key, and a matching
+    RFC-generated accept token. Missing or malformed values fail closed and
+    return ``False``.
+
+    For an observable OpenAI Responses model-provider flow, ``True`` is the
+    signal for WebSocket usage activation and allows tracked-flow release to
+    wait for ``websocket_end()``; ``False`` follows ordinary HTTP terminal
+    handling.
+    """
     response = flow.response
     if response is None:
         return False

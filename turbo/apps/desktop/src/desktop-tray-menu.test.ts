@@ -4,6 +4,7 @@ import type {
   ComputerUseLocalCommandLogEntry,
   DesktopComputerUseState,
 } from "./computer-use-types";
+import type { DesktopRecorderState } from "./desktop-recorder-types";
 import {
   buildDesktopTrayMenuItems,
   type DesktopTrayMenuActions,
@@ -115,6 +116,9 @@ function trayActions(
     openAccessibilitySettings: vi.fn(),
     openScreenRecordingSettings: vi.fn(),
     setKeepAwakeEnabled: vi.fn(),
+    startScreenRecording: vi.fn(),
+    stopScreenRecording: vi.fn(),
+    retryScreenRecordingDelivery: vi.fn(),
     quit: vi.fn(),
     ...overrides,
   };
@@ -601,6 +605,147 @@ describe("desktop tray menu", () => {
 
     expect(
       findItem(menu, "2026/06/09 - App 0 - command-0 - Succeeded"),
+    ).toBeDefined();
+  });
+});
+
+describe("desktop tray screen recording section", () => {
+  function recorderState(
+    overrides: Partial<DesktopRecorderState> = {},
+  ): DesktopRecorderState {
+    return {
+      available: true,
+      status: "idle",
+      sessionId: null,
+      elapsedMs: 0,
+      error: null,
+      lastRecording: null,
+      ...overrides,
+    };
+  }
+
+  function menuFor(
+    recorder: DesktopRecorderState | undefined,
+    actions: DesktopTrayMenuActions = trayActions(),
+  ): readonly DesktopTrayMenuItem[] {
+    return buildDesktopTrayMenuItems(
+      {
+        computerUse: computerUseState(),
+        auth: signedInAuth,
+        authError: null,
+        recorder,
+      },
+      actions,
+    );
+  }
+
+  it("hides the section entirely while the feature switch is off", () => {
+    const menu = menuFor(undefined);
+
+    expect(
+      menu.some((item) => {
+        return item.label?.startsWith("Screen Recording");
+      }),
+    ).toBeFalsy();
+  });
+
+  it("hides the section when the recorder reports itself unavailable", () => {
+    const menu = menuFor(recorderState({ available: false }));
+
+    expect(
+      menu.some((item) => {
+        return item.label?.startsWith("Screen Recording");
+      }),
+    ).toBeFalsy();
+  });
+
+  it("offers the main display when idle", () => {
+    const actions = trayActions();
+    const menu = menuFor(recorderState(), actions);
+
+    const section = findItem(menu, "Screen Recording: Ready");
+    click(findItem(submenu(section), "Record Main Display"));
+
+    expect(actions.startScreenRecording).toHaveBeenCalledOnce();
+  });
+
+  it("counts elapsed time and stops from the shortcut-labelled item", () => {
+    const actions = trayActions();
+    const menu = menuFor(
+      recorderState({
+        status: "recording",
+        sessionId: "recorder-session-1",
+        elapsedMs: 125_400,
+      }),
+      actions,
+    );
+
+    const section = findItem(menu, "Screen Recording: 02:05");
+    click(findItem(submenu(section), "Stop Recording (⌃⇧R)"));
+
+    expect(actions.stopScreenRecording).toHaveBeenCalledOnce();
+    // Starting again mid-recording must not be reachable.
+    expect(
+      submenu(section).some((item) => {
+        return item.label === "Record Main Display";
+      }),
+    ).toBeFalsy();
+  });
+
+  it("pads the elapsed clock below one minute", () => {
+    const menu = menuFor(
+      recorderState({ status: "recording", elapsedMs: 7_200 }),
+    );
+
+    expect(findItem(menu, "Screen Recording: 00:07")).toBeDefined();
+  });
+
+  it("offers no action while the capture is still starting or saving", () => {
+    for (const status of ["preparing", "finalizing"] as const) {
+      const menu = menuFor(recorderState({ status }));
+      const label = status === "preparing" ? "Starting..." : "Saving...";
+      const section = findItem(menu, `Screen Recording: ${label}`);
+
+      expect(submenu(section)).toEqual([{ label, enabled: false }]);
+    }
+  });
+
+  it("surfaces a lost source and still allows starting over", () => {
+    const actions = trayActions();
+    const menu = menuFor(
+      recorderState({
+        error: { code: "source_lost", message: "Display disconnected" },
+      }),
+      actions,
+    );
+
+    const section = findItem(menu, "Screen Recording: Failed");
+    expect(findItem(submenu(section), "Display disconnected")).toBeDefined();
+    click(findItem(submenu(section), "Record Main Display"));
+    expect(actions.startScreenRecording).toHaveBeenCalledOnce();
+  });
+
+  it("shows where the finished recording was written", () => {
+    const menu = menuFor(
+      recorderState({
+        lastRecording: {
+          videoPath: "/Users/z/Library/recordings/screen-recording-1.mp4",
+          clickTrackPath:
+            "/Users/z/Library/recordings/screen-recording-1.clicks.json",
+          durationMs: 42_130,
+          sizeBytes: 8_912_345,
+          width: 1920,
+          height: 1200,
+        },
+      }),
+    );
+
+    const section = findItem(menu, "Screen Recording: Ready");
+    expect(
+      findItem(
+        submenu(section),
+        "Saved to /Users/z/Library/recordings/screen-recording-1.mp4",
+      ),
     ).toBeDefined();
   });
 });

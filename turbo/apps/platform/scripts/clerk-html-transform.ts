@@ -1,23 +1,11 @@
-import { clerkJSScriptUrl } from "@clerk/shared/loadClerkJsScript";
-
 import { CLERK_JS_VERSION } from "../src/lib/clerk-versions.ts";
 
-const PREVIEW_SCRIPT_URL_MARKER = "__VM0_CLERK_PREVIEW_SCRIPT_URL__";
-const PRODUCTION_SCRIPT_URL_MARKER = "__VM0_CLERK_PRODUCTION_SCRIPT_URL__";
-const SATELLITE_SCRIPT_URL_MARKER = "__VM0_CLERK_SATELLITE_SCRIPT_URL__";
-const PRODUCTION_SATELLITE_DOMAIN = "app.okou.ai";
+const CLERK_BROWSER_SCRIPT_URL_MARKER = "__VM0_CLERK_BROWSER_SCRIPT_URL__";
+const APP_VERSION_JSON_MARKER = "__VM0_APP_VERSION_JSON__";
+const CLERK_BROWSER_SCRIPT_URL = `https://cdn.jsdelivr.net/npm/@clerk/clerk-js@${CLERK_JS_VERSION}/dist/clerk.browser.js`;
 
 export interface ClerkCoreHtmlOptions {
-  readonly previewPublishableKey: string;
-  readonly productionPublishableKey: string;
-}
-
-function scriptUrl(publishableKey: string, domain?: string): string {
-  return clerkJSScriptUrl({
-    __internal_clerkJSVersion: CLERK_JS_VERSION,
-    domain,
-    publishableKey,
-  });
+  readonly appVersion: string;
 }
 
 export function transformClerkCoreScriptUrls(
@@ -26,15 +14,8 @@ export function transformClerkCoreScriptUrls(
 ): string {
   return html
     .replaceAll(
-      PREVIEW_SCRIPT_URL_MARKER,
-      scriptUrl(options.previewPublishableKey),
+      APP_VERSION_JSON_MARKER,
+      JSON.stringify(options.appVersion).replaceAll("<", String.raw`\u003c`),
     )
-    .replaceAll(
-      PRODUCTION_SCRIPT_URL_MARKER,
-      scriptUrl(options.productionPublishableKey),
-    )
-    .replaceAll(
-      SATELLITE_SCRIPT_URL_MARKER,
-      scriptUrl(options.productionPublishableKey, PRODUCTION_SATELLITE_DOMAIN),
-    );
+    .replaceAll(CLERK_BROWSER_SCRIPT_URL_MARKER, CLERK_BROWSER_SCRIPT_URL);
 }

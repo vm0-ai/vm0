@@ -10,6 +10,8 @@ export type ManagedSocialKitResultField =
   | "results"
   | "tweets";
 
+export type ManagedSocialKitReportedTotalField = "commentCount" | "count";
+
 export type ManagedSocialKitPagination =
   | { readonly kind: "cursor" }
   | { readonly kind: "next_cursor" }
@@ -20,6 +22,7 @@ export interface ManagedSocialKitCollection {
   readonly resultField: ManagedSocialKitResultField;
   readonly defaultLimit?: number;
   readonly itemsPerBillingUnit?: number;
+  readonly reportedTotalField?: ManagedSocialKitReportedTotalField;
   readonly pagination: ManagedSocialKitPagination;
 }
 
@@ -782,6 +785,7 @@ export const MANAGED_SOCIALKIT_TOOLS = [
       resultField: "comments",
       defaultLimit: 10,
       itemsPerBillingUnit: 50,
+      reportedTotalField: "commentCount",
       pagination: { kind: "cursor" },
     },
   }),
@@ -831,6 +835,7 @@ export const MANAGED_SOCIALKIT_TOOLS = [
       resultField: "comments",
       defaultLimit: 10,
       itemsPerBillingUnit: 50,
+      reportedTotalField: "commentCount",
       pagination: { kind: "cursor" },
     },
   }),
@@ -903,6 +908,7 @@ export const MANAGED_SOCIALKIT_TOOLS = [
       resultField: "comments",
       defaultLimit: 10,
       itemsPerBillingUnit: 50,
+      reportedTotalField: "commentCount",
       pagination: { kind: "cursor" },
     },
   }),

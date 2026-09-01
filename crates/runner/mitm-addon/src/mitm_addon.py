@@ -1959,6 +1959,9 @@ def _handle_error(flow: http.HTTPFlow) -> None:
         )
         log_entry["error"] = error_msg
 
+        if flow_metadata.should_capture_body(flow.metadata):
+            body_capture.add_capture_fields(flow, log_entry, response_incomplete=True)
+
         log_http_network_entry(network_log_path, log_entry, raw_url)
 
     # Report proxy-extracted usage for model provider responses.

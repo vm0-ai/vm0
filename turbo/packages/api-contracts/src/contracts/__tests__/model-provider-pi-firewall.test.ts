@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   getModelProviderPiChatCompletionsUrl,
+  getModelProviderPiEndpoint,
 } from "../model-provider-firewalls";
 
 /**
@@ -95,5 +96,35 @@ describe("model provider firewall covers the Pi sandbox request", () => {
     expect(firewallAuthBases("deepseek")).toStrictEqual([
       "https://api.deepseek.com/responses",
     ]);
+  });
+
+  it.each([
+    [
+      "openai-api-key",
+      "openai-responses",
+      "https://api.openai.com/v1",
+      "https://api.openai.com/v1/responses",
+    ],
+    [
+      "openrouter-codex",
+      "openai-completions",
+      "https://openrouter.ai/api/v1",
+      "https://openrouter.ai/api/v1/chat/completions",
+    ],
+  ] as const)(
+    "keeps the Terra %s %s runtime and exact firewall paths aligned",
+    (provider, api, baseUrl, inferenceUrl) => {
+      expect(getModelProviderPiEndpoint(provider, api)).toStrictEqual({
+        baseUrl,
+        inferenceUrl,
+      });
+      expect(firewallAuthBases(provider)).toContain(inferenceUrl);
+    },
+  );
+
+  it("rejects unsupported provider transports before runtime", () => {
+    expect(
+      getModelProviderPiEndpoint("openrouter-codex", "openai-codex-responses"),
+    ).toBeUndefined();
   });
 });

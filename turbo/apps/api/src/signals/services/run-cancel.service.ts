@@ -23,6 +23,10 @@ import {
 import { drainChatThreadQueueForRun$ } from "./chat-thread-queue-drain.service";
 import { processOrgUsageEvents$ } from "./credit-usage.service";
 import { drainOrgQueue$ } from "./agent-run-lifecycle.service";
+import {
+  abortPiApiFirstTurnAfterCanonicalCancellation,
+  lockPiApiFirstTurnLifecycle,
+} from "./pi-api-first-turn-lifecycle.service";
 
 const L = logger("RunCancel");
 
@@ -42,6 +46,22 @@ export interface CancelRunResult {
 
 type NotFoundResponse = ReturnType<typeof notFound>;
 type RunNotCancellableResponse = ReturnType<typeof runNotCancellable>;
+
+async function abortAfterCanonicalCancellation<T>(
+  transition: Promise<T>,
+): Promise<T> {
+  const result = await transition;
+  if (
+    typeof result === "object" &&
+    result !== null &&
+    "alreadyCancelled" in result &&
+    "runId" in result &&
+    typeof result.runId === "string"
+  ) {
+    abortPiApiFirstTurnAfterCanonicalCancellation(result.runId);
+  }
+  return result;
+}
 
 const ACTIVE_STATUSES = ["queued", "pending", "running"] as const;
 type ActiveStatus = (typeof ACTIVE_STATUSES)[number];
@@ -79,7 +99,8 @@ export const cancelRun$ = command(
     const apiStartTime = args.apiStartTime ?? now();
     const writeDb = set(writeDb$);
 
-    const result = await writeDb.transaction(async (tx) => {
+    const transition = writeDb.transaction(async (tx) => {
+      await lockPiApiFirstTurnLifecycle(tx, args.runId);
       const [run] = await tx
         .select({
           id: agentRuns.id,
@@ -160,6 +181,7 @@ export const cancelRun$ = command(
         alreadyCancelled: false,
       };
     });
+    const result = await abortAfterCanonicalCancellation(transition);
     signal.throwIfAborted();
 
     return result;

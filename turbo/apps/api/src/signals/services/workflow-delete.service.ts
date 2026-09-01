@@ -156,6 +156,7 @@ export const deleteWorkflow$ = command(
           ownerUserId: workflowAutomations.ownerUserId,
           eventType: workflowAutomations.eventType,
           eventConfig: workflowAutomations.eventConfig,
+          eventConnectorId: workflowAutomations.eventConnectorId,
         })
         .from(workflowAutomations)
         .where(eq(workflowAutomations.workflowId, workflow.id));

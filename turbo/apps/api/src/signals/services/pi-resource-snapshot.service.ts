@@ -17,7 +17,7 @@ import ignore, { type Ignore } from "ignore";
 
 import { extractBinaryFilesFromTarGz } from "../../lib/tar";
 import type { Db } from "../external/db";
-import { startUntrackedBestEffortCleanup } from "../utils";
+import { safeSync, settle, startUntrackedBestEffortCleanup } from "../utils";
 
 const RESOURCE_ARCHIVE_MAX_BYTES = 32 * 1024 * 1024;
 const RESOURCE_ARCHIVE_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
@@ -43,6 +43,15 @@ function decodePiDiscoveryText(content: Buffer): string {
 }
 
 export class UnsupportedPiResourceError extends Error {}
+
+export class PiResourceSnapshotPreparationError extends Error {}
+
+function resourcePreparationError(cause: unknown): Error {
+  return new PiResourceSnapshotPreparationError(
+    "Pi resource snapshot archive could not be prepared",
+    { cause },
+  );
+}
 
 function snapshotIdentity(mounts: readonly StoredStorageMountEntry[]): string {
   return JSON.stringify({
@@ -114,16 +123,39 @@ async function downloadArchive(
   if (!mount.archiveUrl) {
     return null;
   }
-  const expectedSize = expectedArchiveSize(mount);
-  const response = await fetch(mount.archiveUrl, {
-    cache: "no-store",
-    signal,
+  const expectedSize = safeSync(() => {
+    return expectedArchiveSize(mount);
   });
-  if (!response.ok) {
-    throw new Error(`Pi resource snapshot archive returned ${response.status}`);
+  if ("error" in expectedSize) {
+    throw resourcePreparationError(expectedSize.error);
   }
-  validateArchiveContentLength(response, expectedSize);
-  return await readArchiveBody(response, expectedSize);
+  const fetched = await settle(
+    fetch(mount.archiveUrl, {
+      cache: "no-store",
+      signal,
+    }),
+    signal,
+  );
+  if (!fetched.ok) {
+    throw resourcePreparationError(fetched.error);
+  }
+  const response = fetched.value;
+  if (!response.ok) {
+    throw resourcePreparationError(
+      new Error(`Pi resource snapshot archive returned ${response.status}`),
+    );
+  }
+  const validated = safeSync(() => {
+    validateArchiveContentLength(response, expectedSize.ok);
+  });
+  if ("error" in validated) {
+    throw resourcePreparationError(validated.error);
+  }
+  const body = await settle(readArchiveBody(response, expectedSize.ok), signal);
+  if (!body.ok) {
+    throw resourcePreparationError(body.error);
+  }
+  return body.value;
 }
 
 function expectedArchiveSize(mount: StoredStorageMountEntry): number {

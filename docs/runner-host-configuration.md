@@ -3,7 +3,7 @@
 ## Diagnostic Host Attribution
 
 `runner.yaml` may contain an optional `hostname` used only to identify the
-physical runner in claims, sandbox telemetry, and Runner Axiom warning/error
+physical runner in claims, sandbox telemetry, Runner Axiom warning/error
 events. Production automation writes the exact Ansible `inventory_hostname`;
 it does not derive the value from DNS or the operating system at runtime.
 
@@ -46,6 +46,20 @@ serving API instances drained. The current schema no longer contains
 telemetry/Axiom dimensions, and distinct hostnames on two hosts running one
 version. Remove any historical query fallback only after its bounded
 observation window expires.
+
+## Runner Operator Server Configuration
+
+`runner config` requires the control-plane URL and Runner token through the
+explicit `--api-url` and `--token` flags or the canonical
+`OKOU_API_BACKEND_URL` and `OKOU_RUNNER_TOKEN` environment variables.
+`runner start` accepts the same flags and canonical environment variables as
+overrides, then falls back to the `server` values in `runner.yaml`.
+
+The API URL must be an absolute HTTP(S) URL without credentials, a query
+string, or a fragment. The Runner normalizes the accepted URL before storing or
+using it. Clap help and diagnostics identify the supported environment names
+without displaying their values, and the token is preserved without trimming
+or logging it.
 
 The runner reads host-local overrides from `/etc/vm0-runner/host.env` once
 during startup. A missing file is equivalent to an empty file: the runner uses

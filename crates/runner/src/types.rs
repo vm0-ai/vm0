@@ -86,11 +86,8 @@ pub struct ExecutionContext {
     pub(crate) storage_manifest: Option<StorageManifest>,
     #[serde(default)]
     pub environment: Option<HashMap<String, String>>,
-    /// Trusted API-authored agent environment. Old API/stored claims omit it;
-    /// keep the default until prior API rollback targets and supported pre-field
-    /// contexts are gone. #28914 tracks that gate.
-    #[serde(default)]
-    pub platform_environment: Option<HashMap<String, String>>,
+    /// Trusted API-authored agent environment.
+    pub platform_environment: HashMap<String, String>,
     #[serde(default)]
     pub resume_session: Option<ResumeSession>,
     // Plain secret values used only for redaction. These are values, not names.
@@ -1819,31 +1816,6 @@ mod tests {
     }
 
     #[test]
-    fn execution_context_accepts_optional_platform_environment() {
-        let previous_api_response = json!({
-            "runId": "11111111-1111-4111-8111-111111111111",
-            "prompt": "hello",
-            "sandboxToken": "tok",
-            "cliAgentType": "claude-code",
-            "connectorRuntimeTargets": []
-        });
-        let previous_context: ExecutionContext =
-            serde_json::from_value(previous_api_response.clone()).unwrap();
-        assert!(previous_context.platform_environment.is_none());
-
-        let mut current_api_response = previous_api_response;
-        current_api_response["platformEnvironment"] = json!({
-            "OKOU_AGENT_ID": "trusted-agent-id"
-        });
-        let current_context: ExecutionContext =
-            serde_json::from_value(current_api_response).unwrap();
-        assert_eq!(
-            current_context.platform_environment.as_ref().unwrap()["OKOU_AGENT_ID"],
-            "trusted-agent-id"
-        );
-    }
-
-    #[test]
     fn execution_context_deserializes_pi_sandbox_resources() {
         let json = serde_json::json!({
             "runId": "11111111-1111-4111-8111-111111111111",
@@ -1873,6 +1845,7 @@ mod tests {
                 "apiKeyEnv": "OPENAI_API_KEY",
                 "credentialSecretName": "DEEPSEEK_API_KEY"
             },
+            "platformEnvironment": {},
             "connectorRuntimeTargets": []
         });
 
@@ -1905,6 +1878,7 @@ mod tests {
             "prompt": "hello",
             "sandboxToken": "tok",
             "cliAgentType": "claude-code",
+            "platformEnvironment": {},
             "connectorRuntimeTargets": [],
             "firewalls": [{
                 "name": "github",
@@ -1930,6 +1904,7 @@ mod tests {
             "prompt": "hello",
             "sandboxToken": "tok",
             "cliAgentType": "claude-code",
+            "platformEnvironment": {},
             "connectorRuntimeTargets": [],
             "firewalls": [{
                 "kind": "unknown",
@@ -2272,6 +2247,7 @@ mod tests {
             "sandboxToken": "tok",
             "cliAgentType": "claude_code",
             "billableFirewalls": [],
+            "platformEnvironment": {},
             "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
@@ -2287,6 +2263,7 @@ mod tests {
                 "sandboxToken": "tok",
                 "cliAgentType": "claude_code",
                 "billableFirewalls": [],
+                "platformEnvironment": {},
                 "connectorRuntimeTargets": [target]
             })
         };
@@ -2343,6 +2320,7 @@ mod tests {
                 "sessionHistory": "{}"
             },
             "billableFirewalls": [],
+            "platformEnvironment": {},
             "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
@@ -2376,6 +2354,7 @@ mod tests {
                 }
             },
             "billableFirewalls": [],
+            "platformEnvironment": {},
             "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
@@ -2409,6 +2388,7 @@ mod tests {
                 }
             },
             "billableFirewalls": [],
+            "platformEnvironment": {},
             "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
@@ -2446,6 +2426,7 @@ mod tests {
                 }
             },
             "billableFirewalls": [],
+            "platformEnvironment": {},
             "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
@@ -2477,6 +2458,7 @@ mod tests {
                 }
             },
             "billableFirewalls": [],
+            "platformEnvironment": {},
             "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
@@ -2500,6 +2482,7 @@ mod tests {
             "storageManifest": storage_manifest,
             "cliAgentType": "claude_code",
             "billableFirewalls": [],
+            "platformEnvironment": {},
             "connectorRuntimeTargets": []
         })
     }

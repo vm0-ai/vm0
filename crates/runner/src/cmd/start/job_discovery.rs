@@ -31,9 +31,10 @@ use super::ownership::{OwnershipTransitions, RunSandbox};
 use super::{OuterJobPanicPoint, maybe_panic_outer_job};
 use crate::config::ProfileConfig;
 use crate::executor::{
-    ExactReuseSpeculationTiming, RunnerPreSpawnOperationTiming, RunnerPreSpawnPhase,
-    RunnerPreSpawnTiming, SessionHistoryRestorePlanInput, build_session_history_restore_plan,
-    restore_guest_state_with_intent, try_sync_guest_timezone_intent, validate_resume_session_id,
+    ExactReuseSpeculationTiming, GuestTimezoneSyncOutcome, RunnerPreSpawnOperationTiming,
+    RunnerPreSpawnPhase, RunnerPreSpawnTiming, SessionHistoryRestorePlanInput,
+    build_session_history_restore_plan, restore_guest_state_with_intent,
+    try_sync_guest_timezone_intent, validate_resume_session_id,
 };
 use crate::guest_timezone::{GuestTimezoneAssumption, GuestTimezoneIntent};
 use crate::idle_pool::{
@@ -746,6 +747,9 @@ pub(super) async fn build_spawn_job_request(
     ctx: &SpawnContext,
 ) -> Result<SpawnJobRequest, StatusPersistenceError> {
     let setup = &mut *activation.setup;
+    setup
+        .pre_spawn_timing
+        .record_resource_budget_occupancy(&ctx.budget);
     let run_id = setup.claimed.context().run_id;
     let sandbox_id = activation.sandbox_id;
     #[cfg(test)]
@@ -1894,6 +1898,7 @@ async fn activate_speculated_exact(
     let claimed_timezone = GuestTimezoneIntent::from_context(context);
     let assumption = sandbox.guest_timezone_intent().compare(&claimed_timezone);
     let mut correction_duration = None;
+    let mut correction_succeeded = false;
     let guest_state_prepared = match assumption {
         GuestTimezoneAssumption::Match => true,
         GuestTimezoneAssumption::Mismatch => {
@@ -1907,7 +1912,9 @@ async fn activate_speculated_exact(
             .await;
             correction_duration = Some(correction_started_at.elapsed());
             match corrected {
-                Ok(Ok(())) => {}
+                Ok(Ok(outcome)) => {
+                    correction_succeeded = outcome == GuestTimezoneSyncOutcome::Applied;
+                }
                 Ok(Err(error)) => {
                     speculation_timing.timezone_correction =
                         correction_duration.map(|duration| RunnerPreSpawnOperationTiming {
@@ -1963,7 +1970,7 @@ async fn activate_speculated_exact(
     speculation_timing.timezone_correction =
         correction_duration.map(|duration| RunnerPreSpawnOperationTiming {
             duration,
-            succeeded: true,
+            succeeded: correction_succeeded,
         });
     speculation_timing.timezone_assumption = Some(assumption);
     pre_spawn_timing.record_exact_reuse_speculation(speculation_timing);

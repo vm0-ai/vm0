@@ -24,6 +24,30 @@ Return only the briefing as concise Markdown. Choose short headings and bullets 
 
 Do not read application database tables or use internal application APIs, signed input or output URLs, or callback endpoints. Do not send email, drafts, chat messages, or provider-side updates. The platform owns any result-email delivery after the run succeeds.`;
 
+const CONNECTOR_DOCTOR_INSTRUCTION = `# Connector Doctor
+
+Produce a concise Markdown connector-readiness report in this Official Workflow's shared automation thread.
+
+## Diagnose once
+
+Run \`okou doctor connectors --json\` exactly once per scheduled or manual run. Parse its standard output as JSON and accept it only when \`schemaVersion\` is \`1\`. Treat that one report as the sole source of diagnostic facts. Do not supplement, verify, or reinterpret it from any other source.
+
+If the command fails, its output is not valid JSON, or its schema version is unsupported, return a diagnosis-unavailable report under an **Unknown** heading. State the observed failure without claiming that any connector or workflow is healthy.
+
+## Report valid results
+
+- If \`summary.checked === 0\`, report that no effective visible workflows were available to check. Treat this as a distinct no-workflows result, not an all-clear over diagnosed workflows.
+- Group every connector entry with a non-null action by identical \`action.kind\` and exact \`action.url\`. Include the repair link once for each group, then list every affected workflow with the connector's returned readiness status and reason. Never merge entries whose exact URLs differ, even when their action kinds or connector labels match, because the URL identifies the target Agent.
+- Under **Unknown**, list every connector whose status is \`unavailable\` and every workflow with a non-null \`error\`. Include the returned workflow identity and reason or error message. Unknown is never healthy.
+- Emit a short all-clear only when \`summary.checked > 0\`, \`summary.attention === 0\`, and \`summary.unknown === 0\`. State that the aggregate covered effective visible workflows and include a compact inventory of every checked entry in \`workflows\`, grouped by its returned Agent identity. Use only workflow and Agent names or IDs present in the JSON.
+- Keep the report concise and include only facts, counts, statuses, reasons, and repair links present in the returned JSON.
+
+## Safety boundaries
+
+Do not invoke connector or provider skills, third-party provider APIs, \`okou connector list\`, \`okou connector status\`, \`okou connector check\`, application-internal APIs, or application database tables. Do not write to or mutate application or provider state. Do not connect, reconnect, authorize, start OAuth flows, request permissions, create callbacks, mutate connectors, or follow repair links. Do not select or recommend models, and do not recommend workflow or Automation cleanup.
+
+Return only the Markdown report. The platform delivers it to the shared automation thread. Do not send email or directly send any chat or other message.`;
+
 /**
  * The sole deployed source candidate. Every Definition uses the same validated
  * release boundary and immutable shared-artifact publication path.
@@ -63,6 +87,41 @@ export const OFFICIAL_WORKFLOW_SOURCE_CATALOG: OfficialWorkflowSourceCatalog =
               },
             },
             runtime: { resultEmail: true },
+          },
+        ],
+        presentation: { category: "productivity" },
+      },
+      {
+        name: "connector-doctor",
+        lifecycle: "active",
+        workflow: {
+          displayName: "Connector Doctor",
+          description:
+            "Diagnose connector readiness across your workflows and group exact repair actions.",
+          instruction: CONNECTOR_DOCTOR_INSTRUCTION,
+          files: [],
+        },
+        blueprints: [
+          {
+            key: "weekly-check",
+            parameters: [
+              {
+                key: "timezone",
+                type: "string",
+                format: "timezone",
+                required: true,
+                derivation: { kind: "user-timezone" },
+              },
+            ],
+            desiredState: {
+              kind: "schedule",
+              schedule: {
+                type: "cron",
+                cronExpression: "0 9 * * 1",
+                timezone: { parameter: "timezone" },
+              },
+            },
+            runtime: { resultEmail: false },
           },
         ],
         presentation: { category: "productivity" },

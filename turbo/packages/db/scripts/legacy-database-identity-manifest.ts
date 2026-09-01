@@ -69,14 +69,14 @@ function physicalEntries(
 const acquisitionDisposition = {
   classification: "migrate",
   reason:
-    "The acquisition attribution column still exposes a legacy product identity in current schema.",
+    "The legacy acquisition column and temporary mirror bridge remain rollback compatibility after active application authority moved to the canonical first-party-source column.",
   ownerIssue: "#28368",
   writerStopCondition:
-    "A separately reviewed dual-column release writes only the domain-approved canonical acquisition attribution column under #28368.",
+    "#30605 makes acquisition_first_party_source the only active application writer and in-repository acquisition reader while the mirror bridge remains installed for rollback.",
   drainEvidence:
-    "MaskDB has zero non-null legacy-only attribution rows after backfill and a 7-day reporting audit has zero readers of the legacy column.",
+    "The production-accepted bounded backfill has exact MaskDB parity with valid both-null rows preserved; the 7-day legacy reader/writer audit and rollback drain remain open.",
   removalGate:
-    "#28368 may contract the column only when both zero residual rows and the 7-day zero-reader reporting audit are recorded.",
+    "#28368 may remove the bridge or contract acquisition_vm0_source only after writer-stop, exact parity, the 7-day reporting-reader audit, rollback drain, and replayed/regenerated catalog-contract verification all pass.",
 } as const satisfies ManifestDisposition;
 
 const entitlementDisposition = {
@@ -90,19 +90,6 @@ const entitlementDisposition = {
     "After a bounded backfill, exact MaskDB queries show zero canonical NULL, mismatched, or legacy-only entitlement rows, and a 7-day API and billing audit shows zero legacy readers or writers.",
   removalGate:
     "#28368 may remove the mirror bridge, replace the helper again, or contract the legacy field only after the switch, backfill, rollback drain, 7-day zero-reader/writer audit, and exact replayed catalog verification all pass.",
-} as const satisfies ManifestDisposition;
-
-const providerDisposition = {
-  classification: "migrate",
-  reason:
-    "built-in is the canonical persisted provider discriminator after Phase D1, while the exact vm0 request/read alias and database rollback bridge remain active compatibility contracts.",
-  ownerIssue: "#28368",
-  writerStopCondition:
-    "The #29910 writer/default/backfill release is production-accepted and all supported application writers emit built-in on all four mutable surfaces.",
-  drainEvidence:
-    "Exact MaskDB counts on all four surfaces show zero mutable vm0 values and a 7-day production window shows zero supported legacy-provider writers.",
-  removalGate:
-    "#28368 may remove the vm0 acceptor only after the four zero-count queries, the 7-day zero-writer window, and a rollback build accepting built-in are recorded.",
 } as const satisfies ManifestDisposition;
 
 const publicBrandDisposition = {
@@ -152,6 +139,16 @@ const nonWorkflowPhysicalEntries = [
         kind: "column",
         sources: SNAPSHOT_AND_CATALOG,
       },
+      {
+        key: "function:public.sync_org_metadata_acquisition_first_party_source_1033()",
+        kind: "function",
+        sources: CATALOG_ONLY,
+      },
+      {
+        key: "trigger:public.org_metadata.sync_org_metadata_acquisition_first_party_source_1033",
+        kind: "trigger",
+        sources: CATALOG_ONLY,
+      },
     ],
     acquisitionDisposition,
   ),
@@ -182,39 +179,12 @@ const nonWorkflowPhysicalEntries = [
   ),
   ...physicalEntries(
     [
-      {
-        key: "function:public.canonicalize_agent_run_builtin_provider()",
-        kind: "function",
-        sources: CATALOG_ONLY,
-      },
-      {
-        key: "function:public.canonicalize_chat_thread_builtin_provider()",
-        kind: "function",
-        sources: CATALOG_ONLY,
-      },
-      {
-        key: "function:public.canonicalize_model_provider_builtin_type()",
-        kind: "function",
-        sources: CATALOG_ONLY,
-      },
-      {
-        key: "function:public.canonicalize_org_model_policy_builtin_provider()",
-        kind: "function",
-        sources: CATALOG_ONLY,
-      },
-    ],
-    providerDisposition,
-  ),
-  ...physicalEntries(
-    [
       "agentphone_user_links",
       "chat_automation_context",
       "chat_github_context",
       "email_outbox",
       "export_jobs",
       "feishu_org_installations",
-      "morning_brief_deliveries",
-      "morning_brief_schedules",
       "push_subscriptions",
       "shared_threads",
       "telegram_installations",
@@ -275,8 +245,6 @@ const publicBrandMembers = [
   "public.github_installations.public_brand = 'vm0'",
   "public.hosted_deployments.public_brand = 'vm0'",
   "public.hosted_sites.public_brand = 'vm0'",
-  "public.morning_brief_deliveries.public_brand = 'vm0'",
-  "public.morning_brief_schedules.public_brand = 'vm0'",
   "public.push_subscriptions.public_brand = 'vm0'",
   "public.shared_threads.public_brand = 'vm0'",
   "public.slack_chat_ingress.public_brand = 'vm0'",
@@ -289,18 +257,6 @@ const publicBrandMembers = [
 ] as const;
 
 const semanticFamilyEntries = [
-  {
-    ...providerDisposition,
-    key: "enum-discriminator-value:contract.model-provider = 'vm0'",
-    kind: "enum-discriminator-value",
-    members: [
-      "public.agent_runs.model_provider = 'vm0'",
-      "public.chat_threads.model_provider_type = 'vm0'",
-      "public.model_providers.type = 'vm0'",
-      "public.org_model_policies.default_provider_type = 'vm0'",
-    ],
-    sources: ["semantic-contract"],
-  },
   {
     ...publicBrandDisposition,
     key: "enum-discriminator-value:contract.public-brand = 'vm0'",

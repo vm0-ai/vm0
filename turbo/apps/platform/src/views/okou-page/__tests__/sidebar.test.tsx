@@ -42,6 +42,7 @@ import {
   fill,
   holdElementAnimations,
   queryAllByRoleFast,
+  setupPageAndWaitForContent,
 } from "../../../__tests__/page-helper.ts";
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { emptySearchImg } from "../platform-assets.ts";
@@ -58,7 +59,10 @@ import {
 } from "../../../signals/okou-page/sidebar-state.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
-import { changeChatThreadList } from "../../../mocks/mock-helpers.ts";
+import {
+  changeChatThreadList,
+  changeChatThreadReadCursor,
+} from "../../../mocks/mock-helpers.ts";
 
 // The composer editor is mounted on first paint and mounted again once page
 // bootstrap settles, so an element captured too early is detached before a test
@@ -86,7 +90,6 @@ const ARCHIVED_THREAD_ID = "b0000000-0000-4000-a000-000000000004";
 const RESEARCH_THREAD_ID = "b0000000-0000-4000-a000-000000000005";
 const WORKFLOW_ID = "d0000000-0000-4000-a000-000000000001";
 const ARTIFACT_ID = "a0000000-0000-4000-a000-000000000001";
-const SHARED_DATABASE_REALTIME_CHANNEL = "user-org:test-user-123:org_default";
 
 interface SidebarThread {
   readonly id: string;
@@ -689,9 +692,7 @@ describe("zero sidebar", () => {
       createThread(EXISTING_THREAD_ID, "Remote unread conversation"),
     ]);
     let hasUnread = false;
-    let indicatorRequests = 0;
     context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
-      indicatorRequests += 1;
       return respond(200, {
         agents: hasUnread ? { [AGENT_ID]: "unread" } : {},
         threads: hasUnread ? { [EXISTING_THREAD_ID]: "unread" } : {},
@@ -710,32 +711,30 @@ describe("zero sidebar", () => {
       });
     });
 
-    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    await setupPageAndWaitForContent({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      sharedWorkerTestTransport: "message-port",
+    });
 
     const nav = await waitFor(() => {
       const current = mobileSidebar();
       expect(within(current).getByText("Zero")).toBeInTheDocument();
-      expect(
-        context.mocks.ably.hasChannelSubscriptionOnChannel(
-          SHARED_DATABASE_REALTIME_CHANNEL,
-        ),
-      ).toBeTruthy();
       return current;
     });
     const agentRow = agentRowByName(nav, "Zero");
-    const threadRow = threadRowByTitle("Remote unread conversation");
+    const threadRow = await waitFor(() => {
+      return threadRowByTitle("Remote unread conversation");
+    });
     await waitFor(() => {
       expect(within(agentRow).queryByLabelText("Unread")).toBeNull();
       expect(within(threadRow).queryByLabelText("Unread")).toBeNull();
-      expect(indicatorRequests).toBeGreaterThan(0);
     });
 
-    const requestsBeforeInvalidation = indicatorRequests;
     hasUnread = true;
     changeChatThreadList();
 
     await waitFor(() => {
-      expect(indicatorRequests).toBeGreaterThan(requestsBeforeInvalidation);
       expect(within(agentRow).getByLabelText("Unread")).toBeInTheDocument();
       expect(within(threadRow).getByLabelText("Unread")).toBeInTheDocument();
     });
@@ -1051,12 +1050,7 @@ describe("zero sidebar", () => {
 
     markReadDeferred.resolve();
 
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscription("chatThreadReadCursorUpdated"),
-      ).toBeTruthy();
-    });
-    context.mocks.ably.trigger("chatThreadReadCursorUpdated", {
+    changeChatThreadReadCursor({
       threadId: INCIDENT_THREAD_ID,
       agentId: AGENT_ID,
       lastReadAt: null,
@@ -2901,19 +2895,14 @@ describe("zero sidebar", () => {
     });
 
     let unreadAgentIds = [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID];
-    let unreadAgentRequests = 0;
-    mockUnreadAgents(
-      () => {
-        return unreadAgentIds;
-      },
-      () => {
-        unreadAgentRequests += 1;
-      },
-    );
+    mockUnreadAgents(() => {
+      return unreadAgentIds;
+    });
 
-    setupSidebarPage({
+    await setupPageAndWaitForContent({
       context,
       path: `/agents/${AGENT_ID}/chat`,
+      sharedWorkerTestTransport: "message-port",
     });
 
     const nav = await waitFor(() => {
@@ -2990,18 +2979,12 @@ describe("zero sidebar", () => {
       expect(within(supportDialogRow).getByLabelText("Unread")).toBeVisible();
     });
 
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscription("chatThreadReadCursorUpdated"),
-      ).toBeTruthy();
-    });
     unreadAgentIds = [SUPPORT_AGENT_ID];
-    context.mocks.ably.trigger("chatThreadReadCursorUpdated", {
+    changeChatThreadReadCursor({
       agentId: RESEARCH_AGENT_ID,
     });
 
     await waitFor(() => {
-      expect(unreadAgentRequests).toBeGreaterThan(1);
       expect(
         within(researchSidebarRow).queryByLabelText("Unread"),
       ).not.toBeInTheDocument();
@@ -4166,8 +4149,6 @@ describe("zero sidebar", () => {
           sendMode: "enter",
           theme: "system",
           colorTheme: "blue-horizon",
-          morningBriefEnabled: false,
-          morningBriefNextRunAt: null,
           captureNetworkBodiesRemaining: 0,
         });
       },
@@ -4525,8 +4506,6 @@ describe("zero sidebar", () => {
         sendMode: "enter",
         theme: "system",
         colorTheme: "blue-horizon",
-        morningBriefEnabled: false,
-        morningBriefNextRunAt: null,
         captureNetworkBodiesRemaining: 0,
       });
     });
@@ -4624,9 +4603,9 @@ describe("zero sidebar", () => {
       within(rail).getByLabelText("Onde Zero trabalha"),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Abrir menu")).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Abrir artefatos no celular"),
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Abrir artefatos no celular"),
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByLabelText("Abrir automações no celular"),
     ).toBeInTheDocument();
@@ -4676,9 +4655,9 @@ describe("zero sidebar", () => {
     expect(within(rail).getByText("アーティファクト")).toBeInTheDocument();
     expect(within(rail).getByLabelText("Zeroの連携先")).toBeInTheDocument();
     expect(screen.getByLabelText("メニューを開く")).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("モバイルでアーティファクトを開く"),
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("モバイルでアーティファクトを開く"),
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByLabelText("モバイルでオートメーションを開く"),
     ).toBeInTheDocument();
@@ -4732,9 +4711,9 @@ describe("zero sidebar", () => {
       within(rail).getByLabelText("Dónde trabaja Zero"),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Abrir menú")).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Abrir artefactos en móvil"),
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Abrir artefactos en móvil"),
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByLabelText("Abrir automatizaciones en móvil"),
     ).toBeInTheDocument();

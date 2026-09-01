@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Codex त्रुटि",
       "commandStatus": "कमांड {{status}}",
+      "contextCompaction": "संदर्भ संकुचित किया गया",
       "error": "त्रुटि: {{error}}",
       "fileChangeKind": "परिवर्तन",
       "fileOperationCompleted": "फ़ाइल कार्रवाई पूरी हुई",
@@ -27,6 +28,12 @@
       },
       "status": "स्थिति: {{status}}",
       "statusDetail": "स्थिति: {{status}}",
+      "subAgentActivity": {
+        "completed": "उप-एजेंट पूरा हुआ",
+        "interacted": "उप-एजेंट से बातचीत की",
+        "interrupted": "उप-एजेंट बाधित हुआ",
+        "started": "उप-एजेंट शुरू हुआ"
+      },
       "turnFailed": "टर्न विफल",
       "turnStatus": "{{status}} चालू करें",
       "warning": "[चेतावनी] {{message}}",
@@ -363,51 +370,6 @@
     }
   },
   "appShell": {
-    "browserUpgrade": {
-      "browser": {
-        "action": "ब्राउज़र अपडेट करें",
-        "description": "{{assistantName}} आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए अपना ब्राउज़र अपडेट करें।",
-        "title": "जारी रखने के लिए अपना ब्राउज़र अपडेट करें"
-      },
-      "chrome": {
-        "action": "Chrome को अपडेट करें",
-        "description": "{{assistantName}} आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए Chrome को अपडेट करें।",
-        "title": "जारी रखने के लिए Chrome को अपडेट करें"
-      },
-      "chromium": {
-        "action": "Chromium को अपडेट करें",
-        "description": "{{assistantName}} आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए Chromium को अपडेट करें।",
-        "title": "जारी रखने के लिए Chromium को अपडेट करें"
-      },
-      "ios": {
-        "action": "iOS को अपडेट करें",
-        "description": "{{assistantName}} आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए iOS को अपडेट करें।",
-        "title": "जारी रखने के लिए iOS को अपडेट करें"
-      },
-      "safari": {
-        "action": "Safari को अपडेट करें",
-        "description": "{{assistantName}} आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए Safari को अपडेट करें।",
-        "title": "जारी रखने के लिए Safari को अपडेट करें"
-      }
-    },
-    "loading": {
-      "ariaLabel": "आपका वर्कस्पेस लोड हो रहा है",
-      "messages": {
-        "almostThere": "बस लगभग तैयार...",
-        "brewingIdeas": "कुछ नए विचार तैयार कर रहे हैं...",
-        "connectingDots": "कड़ियाँ जोड़ रहे हैं...",
-        "gettingReady": "सब कुछ तैयार कर रहे हैं...",
-        "loadingWorkspace": "आपका वर्कस्पेस लोड हो रहा है...",
-        "spinningTeam": "टीम को तैयार कर रहे हैं...",
-        "tuningInstruments": "उपकरणों को ट्यून कर रहे हैं...",
-        "warmingNeurons": "न्यूरॉन्स को सक्रिय कर रहे हैं..."
-      }
-    },
-    "logoAlt": "{{brandName}}",
-    "metadata": {
-      "description": "{{assistantName}}, {{brandName}} से आपका AI सहकर्मी है। {{assistantName}} को टेक्स्ट करें या वेब पर चैट करें — रिसर्च, ईमेल, दस्तावेज़, Slack, GitHub, Notion और 100+ टूल।",
-      "title": "{{assistantName}} — {{brandName}} से आपका AI सहकर्मी"
-    },
     "shortcutHelp": {
       "close": "कुंजीपटल शॉर्टकट बंद करें",
       "description": "इस पृष्ठ पर उपलब्ध शॉर्टकट",
@@ -655,6 +617,7 @@
       "importedSlides_one": "{{count}} स्लाइड",
       "importedSlides_other": "{{count}} स्लाइड",
       "multiAccent": "बहु-उच्चारण",
+      "needPro": "Pro चाहिए",
       "nextSlide": "अगली स्लाइड का पूर्वावलोकन करें",
       "noMatches": "कोई मेल नहीं",
       "placeholder": "{{title}} वेबसाइट पूर्वावलोकन प्लेसहोल्डर",
@@ -707,6 +670,7 @@
       "tryDifferentSearch": "भिन्न खोज का प्रयास करें.",
       "use": "उपयोग",
       "useThisTemplate": "इस टेम्पलेट का उपयोग करें",
+      "viewVideoPlans": "वीडियो टेम्पलेट {{title}} के लिए प्लान देखें",
       "visibility": {
         "change": "बदलें",
         "changeLabel": "टेम्पलेट की दृश्यता बदलें",
@@ -1934,6 +1898,20 @@
       "unsupportedIntelMac": "Apple सिलिकॉन Mac की आवश्यकता है",
       "yourComputer": "आपका कंप्यूटर"
     },
+    "connectorAccountSwitch": {
+      "accountFallback": "कनेक्टर खाता",
+      "actionFailed": "खाता स्विच नहीं किया जा सका। फिर से प्रयास करें।",
+      "customConnector": "कस्टम कनेक्टर",
+      "loadFailed": "यह कनेक्टर खाता लोड नहीं हो सका।",
+      "reconnectRequired": "फिर से कनेक्ट करना आवश्यक है। बाद के रन मौजूदा फ़ॉलबैक का उपयोग कर सकते हैं।",
+      "retry": "पुनः प्रयास करें",
+      "selected": "{{account}} पर स्विच किया गया",
+      "switch": "स्विच करें",
+      "switching": "स्विच हो रहा है...",
+      "title": "{{account}} पर स्विच करें?",
+      "unavailableDescription": "यह खाता मौजूद नहीं है या इस कनेक्टर के लिए उपलब्ध नहीं है।",
+      "unavailableTitle": "खाता उपलब्ध नहीं है"
+    },
     "connectors": {
       "accountForThread": "इस थ्रेड के लिए खाता",
       "add": "{{connectorName}} जोड़ें",
@@ -1970,10 +1948,13 @@
         "capacityTitle": "{{framework}} मॉडल व्यस्त है",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "जारी रखें",
         "resetAndTryAgain": "रीसेट करके फिर कोशिश करें",
         "resetsAt": "{{time}} पर रीसेट होगा",
         "selectModel": "मॉडल बदलें",
         "tryAgain": "फिर कोशिश करें",
+        "unavailableDescription": "यह मॉडल कनेक्ट किए गए ChatGPT खाते के साथ समर्थित नहीं है। जारी रखने के लिए कोई दूसरा मॉडल चुनें।",
+        "unavailableTitle": "चुना गया मॉडल उपलब्ध नहीं है",
         "usageDescription": "उपयोग सीमा रीसेट होने पर आप जारी रख सकते हैं, या अभी मॉडल बदलें।",
         "usageTitle": "{{framework}} की सीमा पूरी हो गई"
       },
@@ -2009,7 +1990,11 @@
       "avatar": {
         "heading": "अवतार चुनें",
         "help": "प्रस्तुतकर्ता चुनें या बिना अवतार के आगे बढ़ें",
-        "none": "कोई अवतार नहीं"
+        "none": "कोई अवतार नहीं",
+        "visualBalanceAvatarLed": "अवतार-केंद्रित — नैरेटर ज़्यादातर समय स्क्रीन पर रहे",
+        "visualBalanceBalanced": "संतुलित मिश्रण — दोनों को बराबर समय दें",
+        "visualBalanceBRollLed": "विज़ुअल-केंद्रित — स्लाइड और दृश्यों पर ध्यान दें",
+        "visualBalanceHeading": "आप विज़ुअल संतुलन कैसा रखना चाहेंगे?"
       },
       "cardDescription": "फ़ाइल या स्क्रीन रिकॉर्डिंग को तैयार वीडियो में बदलें",
       "description": "स्रोत जोड़ें, वैकल्पिक अवतार और आवाज़ चुनें, फिर चैट थ्रेड में वीडियो बनाएँ।",
@@ -2191,7 +2176,6 @@
       "loadingGoal": "लक्ष्य लोड हो रहा है...",
       "message_one": "{{count}} संदेश",
       "message_other": "{{count}} संदेश",
-      "morningBrief": "सुबह की संक्षिप्त जानकारी",
       "openGoalDetails": "लक्ष्य विवरण खोलें",
       "pendingAutomationEvent": "लंबित ऑटोमेशन कार्यक्रम",
       "queuedMessage": "पंक्तिबद्ध संदेश",
@@ -3301,7 +3285,8 @@
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "अनुरोध विफल रहा"
+      "requestFailed": "अनुरोध विफल रहा",
+      "sharedDatabaseUnavailable": "ऐप में कोई समस्या आ गई है। कृपया कुछ देर प्रतीक्षा करें, फिर दोबारा कोशिश करने के लिए पेज रीफ़्रेश करें।"
     },
     "realtime": {
       "degraded": "लाइव अपडेट में समस्या आई। कृपया पृष्ठ को ताज़ा करें.",
@@ -6152,7 +6137,7 @@
       "browse": "आधिकारिक वर्कफ़्लो देखें",
       "chooseValue": "मान चुनें",
       "copySucceededUninstallFailed": "कॉपी तैयार है, लेकिन मूल आधिकारिक वर्कफ़्लो को अनइंस्टॉल नहीं किया जा सका।",
-      "description": "vm0 द्वारा प्रबंधित वर्कफ़्लो इंस्टॉल करें।",
+      "description": "Okou Official Team द्वारा प्रबंधित वर्कफ़्लो इंस्टॉल करें।",
       "empty": "कोई आधिकारिक वर्कफ़्लो उपलब्ध नहीं है।",
       "includedAutomations": "शामिल ऑटोमेशन",
       "install": "इंस्टॉल करें",

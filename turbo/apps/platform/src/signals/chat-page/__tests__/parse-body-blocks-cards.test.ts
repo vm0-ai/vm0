@@ -10,8 +10,10 @@ import { parseBodyBlocks } from "../parse-body-blocks.ts";
  */
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "e4000000-0000-4000-a000-000000000001";
+const CONNECTION_ID = "a1000000-0000-4000-a000-000000000001";
 const CONNECTOR_URL = `${window.location.origin}/connectors/github/authorize?agentId=${AGENT_ID}`;
 const BANKING_URL = `${window.location.origin}/agents/${AGENT_ID}/banking?reason=Review+recent+expenses&threadId=${THREAD_ID}&callbackPrompt=Continue+the+expense+review`;
+const CONNECTOR_ACCOUNT_URL = `${window.location.origin}/agents/${AGENT_ID}/connector-accounts/${CONNECTION_ID}/select?kind=builtin&connectorSlug=github&threadId=${THREAD_ID}&callbackPrompt=Continue+with+GitHub`;
 
 function shapeOf(content: string): string {
   return parseBodyBlocks(content, {
@@ -73,5 +75,47 @@ describe("card recognition in a message body", () => {
     const url = `${window.location.origin}/agents/${AGENT_ID}/banking?threadId=${THREAD_ID}&callbackPrompt=Continue`;
 
     expect(shapeOf(url)).toBe("unavailable-action");
+  });
+
+  it("recognizes absolute, relative, and Markdown connector account actions", () => {
+    const relative = new URL(CONNECTOR_ACCOUNT_URL);
+    const relativeUrl = `${relative.pathname}${relative.search}`;
+
+    expect(shapeOf(CONNECTOR_ACCOUNT_URL)).toBe("connector-account-action");
+    expect(shapeOf(relativeUrl)).toBe("connector-account-action");
+    expect(shapeOf(`[Switch account](${relativeUrl})`)).toBe(
+      "connector-account-action",
+    );
+  });
+
+  it("makes malformed and ambiguous connector account targets unavailable", () => {
+    const malformedId = CONNECTOR_ACCOUNT_URL.replace(
+      CONNECTION_ID,
+      "invented-account",
+    );
+    const ambiguousTarget = `${CONNECTOR_ACCOUNT_URL}&customConnectorId=${CONNECTION_ID}`;
+
+    expect(shapeOf(malformedId)).toBe("unavailable-action");
+    expect(shapeOf(ambiguousTarget)).toBe("unavailable-action");
+  });
+
+  it("makes copied connector account actions unavailable in another context", () => {
+    const wrongAgent = CONNECTOR_ACCOUNT_URL.replace(
+      `/agents/${AGENT_ID}/`,
+      "/agents/c0000000-0000-4000-a000-000000000099/",
+    );
+    const wrongThread = CONNECTOR_ACCOUNT_URL.replace(
+      THREAD_ID,
+      "e4000000-0000-4000-a000-000000000099",
+    );
+
+    expect(shapeOf(wrongAgent)).toBe("unavailable-action");
+    expect(shapeOf(wrongThread)).toBe("unavailable-action");
+  });
+
+  it("leaves unknown connector account paths as Markdown", () => {
+    const unknown = CONNECTOR_ACCOUNT_URL.replace("/select?", "/rename?");
+
+    expect(shapeOf(unknown)).toBe(`markdown(${JSON.stringify(unknown)})`);
   });
 });

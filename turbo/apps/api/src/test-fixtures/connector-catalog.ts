@@ -18,17 +18,21 @@ import { nowDate } from "../lib/time";
 import {
   connectorCatalogArtifactSchema,
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-} from "@okouai/connector-catalog-validation/artifacts/artifacts";
-import { encodeConnectorCatalogSnapshot } from "@okouai/connector-catalog-validation/artifacts/loader";
+} from "@okouai/connectors/connector-catalog/artifacts/artifacts";
+import { encodeConnectorCatalogSnapshot } from "@okouai/connectors/connector-catalog/artifacts/loader";
 import {
   connectorCatalogFirewallConfig,
   validateConnectorCatalogArtifact,
-} from "@okouai/connector-catalog-validation/artifacts/relationships";
+} from "@okouai/connectors/connector-catalog/artifacts/relationships";
 import {
   connectorCatalogExecutableCapabilityState,
   connectorCatalogCompatibilityEvaluationSchema,
   persistConnectorCatalogCompatibility,
 } from "../signals/services/connector-catalog-compatibility.service";
+import {
+  clearConnectorCatalogExternalReaderIdentityReadHookForTest,
+  setConnectorCatalogExternalReaderIdentityReadHookForTest,
+} from "../signals/services/connector-catalog-external-reader.service";
 import {
   CONNECTOR_CATALOG_RUNTIME_PROJECTION_VERSION,
   clearConnectorCatalogRuntimeProjectionIdentityReadHookForTest,
@@ -245,6 +249,22 @@ export function setApiTestConnectorCatalogRuntimeProjectionIdentityReadHook(
 
 export function clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements(): void {
   clearConnectorCatalogRuntimeProjectionIdentityReadHookForTest();
+}
+
+export function setApiTestConnectorCatalogExternalReaderIdentityReplacements(
+  catalogVersions: readonly [first: string, second: string],
+): void {
+  const [firstCatalogVersion, secondCatalogVersion] = catalogVersions;
+  let nextCatalogVersion = firstCatalogVersion;
+  setConnectorCatalogExternalReaderIdentityReadHookForTest(async () => {
+    const catalogVersion = nextCatalogVersion;
+    nextCatalogVersion = secondCatalogVersion;
+    await installApiTestConnectorCatalog({ catalogVersion });
+  });
+}
+
+export function clearApiTestConnectorCatalogExternalReaderIdentityReplacements(): void {
+  clearConnectorCatalogExternalReaderIdentityReadHookForTest();
 }
 
 interface ApiTestConnectorCatalogIdentity {

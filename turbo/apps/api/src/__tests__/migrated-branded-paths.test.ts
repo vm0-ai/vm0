@@ -330,9 +330,10 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   // now that the Microsoft consoles hold the final URL. #28917 removed the
   // slice's other row, the Teams bot ingress, whose branded forms nothing holds
   // once the Azure Bot messaging endpoint moved. `/api/zero/teams/oauth/callback`
-  // is still emitted on purpose by the VM0 brand, so it is a producer target
-  // rather than drain-window compatibility; `route-entry.ts` records why on the
-  // row, and it is why #28917 kept this row against its own inventory.
+  // was emitted on purpose by the VM0 brand, which made it a producer target
+  // rather than drain-window compatibility and is why #28917 kept the row
+  // against its own inventory; #30667 unified that producer onto the canonical
+  // path, and `route-entry.ts` records what the row holds open now.
   "/api/integrations/teams/oauth/callback": [
     "/api/okou/teams/oauth/callback",
     "/api/zero/teams/oauth/callback",
@@ -361,28 +362,11 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   // #28565: the connector-account reads and writes and the managed SocialKit
   // request, the two contracts that were added while #28278 was in flight and
   // so appeared in no slice's inventory.
-  // #28600: the Slack OAuth callback and the three inbound Slack webhooks, the
-  // last contracts to leave the brand namespace. The Slack app configuration
-  // holds one URL per endpoint and cannot be repointed from this repository, so
-  // these rows are what keeps whichever form it holds answering; the callback's
-  // `zero` form is additionally the `redirect_uri` `routes/slack-oauth.ts`
-  // still emits.
-  "/api/integrations/slack/oauth/callback": [
-    "/api/okou/slack/oauth/callback",
-    "/api/zero/slack/oauth/callback",
-  ],
-  "/api/webhooks/slack/events": [
-    "/api/okou/slack/events",
-    "/api/zero/slack/events",
-  ],
-  "/api/webhooks/slack/commands": [
-    "/api/okou/slack/commands",
-    "/api/zero/slack/commands",
-  ],
-  "/api/webhooks/slack/interactive": [
-    "/api/okou/slack/interactive",
-    "/api/zero/slack/interactive",
-  ],
+  // #28600 added the Slack OAuth callback and the three inbound Slack webhooks,
+  // the last contracts to leave the brand namespace, and #30668 removed all
+  // four once their producers moved: the Slack app console now holds the
+  // neutral webhook URLs, and `routes/slack-oauth.ts` emits the neutral
+  // callback as its `redirect_uri`.
 };
 
 function missingBrandedPaths(
@@ -644,8 +628,9 @@ describe("branded paths for migrated neutral routes", () => {
   // That is the guard #28709 left behind when it took the table from 314 rows
   // to 184, #28711 kept when it took the 42 drained rows that left 142, #28917
   // kept when it took 53 more and left 89, #28974 kept when it took
-  // `uploads/prepare` and left 88, and #28916 kept when it took the 26
-  // cut-over rows that left 62. None of them left a case asserting the
+  // `uploads/prepare` and left 88, #28916 kept when it took the 26 cut-over
+  // rows that left 62, and #30668 kept when it took the four Slack rows whose
+  // producer moved and left 58. None of them left a case asserting the
   // removed rows now 404: `docs/fallback.md` section 1 rules that class out,
   // and the route table already proves the registration is gone.
   // What needs a test is the opposite direction — a row disappearing without
@@ -659,7 +644,7 @@ describe("branded paths for migrated neutral routes", () => {
   // whole table. Raise the number only with that evidence; an unexplained edit
   // here is the failure this is for.
   it("holds the branded rows this suite has evidence for and no others", () => {
-    const MIGRATED_BRANDED_ROW_COUNT = 62;
+    const MIGRATED_BRANDED_ROW_COUNT = 58;
 
     expect(Object.keys(MIGRATED_ROUTE_PATHS)).toHaveLength(
       MIGRATED_BRANDED_ROW_COUNT,
@@ -791,9 +776,9 @@ describe("branded paths for migrated neutral routes", () => {
   // The #28545 twin, and the one slice where the branded forms are held by a
   // provider console rather than by a released client: the Microsoft app
   // registration still lists both callback URLs, so a dropped row 404s
-  // Microsoft itself with no drain window to wait out. The `zero` form is also
-  // what `callbackRedirectUri` emits for the VM0 brand, so this row has a live
-  // producer as well as a console holder. #28917 removed the slice's bot row —
+  // Microsoft itself with no drain window to wait out. The `zero` form was also
+  // what `callbackRedirectUri` emitted for the VM0 brand until #30667 unified
+  // it onto the canonical path. #28917 removed the slice's bot row —
   // the Azure Bot messaging endpoint had already been repointed at the neutral
   // path — which is why only the callback is exercised here now. Requests carry
   // no credentials, so the status is whatever the handler returns before it has

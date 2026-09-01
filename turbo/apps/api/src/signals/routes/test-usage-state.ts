@@ -10,6 +10,7 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { connectors } from "@okouai/db/schema/connector";
+import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-canonical-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import {
   orgUsageAllowanceEntitlements,
@@ -154,7 +155,7 @@ async function seedUsageStateFixture(db: Db): Promise<UsageStateFixture> {
     orgId: `org_${randomUUID()}`,
     userId: `user_${randomUUID()}`,
   };
-  await db.insert(orgMetadata).values({
+  await db.insert(orgMetadataCanonicalWrites).values({
     orgId: fixture.orgId,
     tier: "free",
     credits: 10_000,

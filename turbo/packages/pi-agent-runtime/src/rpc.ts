@@ -16,6 +16,11 @@ import {
 import { createPiAgentSessionForRuntime } from "./session-runtime";
 import type { PiAgentModelConfig } from "./types";
 
+export type PiSandboxOwnershipTransferMode =
+  | "sandbox-first"
+  | "pending-tool-continuation"
+  | "settled-session-continuation";
+
 async function resolveSessionManager(args: {
   readonly cwd: string;
   readonly sessionDir: string;
@@ -175,13 +180,39 @@ export async function resumePiApiFirstTurn(
   await internal._runAgentPrompt(toolResults);
 }
 
-function installApiFirstTurnResume(session: AgentSession): void {
+function replaceFirstPrompt(
+  session: AgentSession,
+  continuation: () => Promise<void>,
+): void {
   const originalPrompt = session.prompt.bind(session);
   session.prompt = async (_text, options) => {
     session.prompt = originalPrompt;
     options?.preflightResult?.(true);
-    await resumePiApiFirstTurn(session);
+    await continuation();
   };
+}
+
+function installOwnershipTransferStartup(
+  session: AgentSession,
+  mode: PiSandboxOwnershipTransferMode,
+): void {
+  switch (mode) {
+    case "sandbox-first": {
+      return;
+    }
+    case "pending-tool-continuation": {
+      replaceFirstPrompt(session, async () => {
+        await resumePiApiFirstTurn(session);
+      });
+      return;
+    }
+    case "settled-session-continuation": {
+      replaceFirstPrompt(session, () => {
+        return Promise.resolve();
+      });
+      return;
+    }
+  }
 }
 
 /** Run Pi's official AgentSession RPC host until stdin closes. */
@@ -193,6 +224,7 @@ export async function runPiOfficialRpcMode(args: {
   readonly model: PiAgentModelConfig;
   readonly appendSystemPrompt: string | null;
   readonly sessionFile: string;
+  readonly ownershipTransferMode: PiSandboxOwnershipTransferMode;
 }): Promise<never> {
   const createRuntime = createRuntimeFactory(args);
   const sessionManager = await resolveSessionManager(args);
@@ -201,6 +233,6 @@ export async function runPiOfficialRpcMode(args: {
     agentDir: args.agentDir,
     sessionManager,
   });
-  installApiFirstTurnResume(runtime.session);
+  installOwnershipTransferStartup(runtime.session, args.ownershipTransferMode);
   return await runRpcMode(runtime);
 }

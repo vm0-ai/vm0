@@ -449,18 +449,6 @@ async function completeSlackTriggeredRun(args: {
   const sandboxHeaders = {
     authorization: `Bearer ${args.sandboxToken}`,
   };
-  await webhooks.requestAgentCheckpoint(
-    {
-      runId: args.runId,
-      cliAgentType: args.cliAgentType,
-      cliAgentSessionId: `bdd-slack-cli-${args.runId}`,
-      cliAgentSessionHistoryHash: createHash("sha256")
-        .update(`bdd slack history ${args.runId}`)
-        .digest("hex"),
-    },
-    sandboxHeaders,
-    [200],
-  );
   const assistantEvents =
     args.assistantText === undefined
       ? []
@@ -513,6 +501,13 @@ async function completeSlackTriggeredRun(args: {
     {
       runId: args.runId,
       exitCode: 0,
+      checkpoint: {
+        cliAgentType: args.cliAgentType,
+        cliAgentSessionId: `bdd-slack-cli-${args.runId}`,
+        cliAgentSessionHistoryHash: createHash("sha256")
+          .update(`bdd slack history ${args.runId}`)
+          .digest("hex"),
+      },
       ...(outputEvents.length > 0
         ? { lastEventSequence: outputEvents.length - 1 }
         : {}),
@@ -3530,7 +3525,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
       expect(helpJson).toContain(`<@${botUserId}> Slack Bot Help`);
       expect(helpJson).toContain("/okou switch");
       expect(helpJson).toContain("/okou model");
-      expect(helpJson).toContain("/zero");
       expect(helpJson).toContain(`<@${botUserId}>`);
     }
 
@@ -3545,17 +3539,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(vm0HostHelpJson).toContain(`<@${botUserId}> Slack Bot Help`);
     expect(vm0HostHelpJson).toContain("Connect to Zero");
     expect(vm0HostHelpJson).toContain(`<@${botUserId}>`);
-
-    const legacyHelp = await integrations.postSlackCommand({
-      teamId,
-      userId: slackUserId,
-      channelId: "C_BDD_CMD",
-      command: "/zero",
-      text: "help",
-    });
-    expect(JSON.stringify(legacyHelp)).toContain(
-      `<@${botUserId}> Slack Bot Help`,
-    );
 
     const alreadyConnected = await integrations.postSlackCommand({
       teamId,
@@ -3676,7 +3659,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(helpJson).toContain("/okou connect");
     expect(helpJson).not.toContain("/okou switch");
     expect(helpJson).not.toContain("/okou model");
-    expect(helpJson).toContain("/zero");
   });
 
   it("prompts for login when switching agents without a Slack connection", async () => {
@@ -4386,9 +4368,9 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const fastRunId = await pollSlackRun(runnerGroup);
     const fastClaim = await runs.claimRunnerJob(fastRunId);
     expect(fastClaim.cliAgentType).toBe("codex");
-    expect(fastClaim.environment?.OKOU_CODEX_SERVICE_TIER).toBe("fast");
+    expect(fastClaim.platformEnvironment.OKOU_CODEX_SERVICE_TIER).toBe("fast");
     expect(fastClaim.environment?.VM0_CODEX_SERVICE_TIER).toBeUndefined();
-    const fastOkouToken = fastClaim.environment?.OKOU_TOKEN;
+    const fastOkouToken = fastClaim.platformEnvironment.OKOU_TOKEN;
     if (!fastOkouToken) {
       throw new Error("Expected the Slack Fast run to expose OKOU_TOKEN");
     }
@@ -5506,9 +5488,9 @@ describe("INT-02: Telegram integration", () => {
     );
     const claim = await runs.claimRunnerJob(runId);
     expect(claim.cliAgentType).toBe("codex");
-    expect(claim.environment?.OKOU_CODEX_SERVICE_TIER).toBe("fast");
+    expect(claim.platformEnvironment.OKOU_CODEX_SERVICE_TIER).toBe("fast");
     expect(claim.environment?.VM0_CODEX_SERVICE_TIER).toBeUndefined();
-    const okouToken = claim.environment?.OKOU_TOKEN;
+    const okouToken = claim.platformEnvironment.OKOU_TOKEN;
     if (!okouToken) {
       throw new Error("Expected the Telegram Fast run to expose OKOU_TOKEN");
     }

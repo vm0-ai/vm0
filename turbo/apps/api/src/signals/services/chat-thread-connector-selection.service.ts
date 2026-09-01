@@ -27,6 +27,7 @@ import {
 } from "./connector-catalog-runtime.service";
 import { lockConnectorAccountTarget } from "./auth-state-lock.service";
 import { listConnectorAccountsByIds } from "./connector-account-lifecycle.service";
+import { reprojectGmailAutomationsForOwner } from "./gmail-automation-account.service";
 
 interface OwnedChatThread {
   readonly agentId: string;
@@ -492,9 +493,16 @@ export async function updateChatThreadConnectorSelection(
     if (!selection) {
       throw new Error("Expected one prepared connector selection");
     }
+    const updated = await upsertSelection(tx, args.chatThreadId, selection);
+    if (
+      selection.target.kind === "builtin" &&
+      selection.target.connectorSlug === "gmail"
+    ) {
+      await reprojectGmailAutomationsForOwner(tx, args);
+    }
     return {
       kind: "updated",
-      selection: await upsertSelection(tx, args.chatThreadId, selection),
+      selection: updated,
     };
   });
 }
@@ -513,6 +521,7 @@ export async function clearChatThreadConnectorSelection(
     if (!thread) {
       return { kind: "not_found" };
     }
+    await lockConnectorAccountTarget(tx, args);
     await tx
       .delete(chatThreadConnectorSelections)
       .where(
@@ -529,6 +538,12 @@ export async function clearChatThreadConnectorSelection(
               ),
         ),
       );
+    if (
+      args.target.kind === "builtin" &&
+      args.target.connectorSlug === "gmail"
+    ) {
+      await reprojectGmailAutomationsForOwner(tx, args);
+    }
     return { kind: "cleared" };
   });
 }

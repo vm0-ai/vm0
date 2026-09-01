@@ -56,6 +56,7 @@ import { apiTestS3PresignedUrl } from "../../../../__tests__/mocks";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now, withNowScopeForTest } from "../../../../lib/time";
 import { createDeferredPromise } from "../../../utils";
+import type { UsagePricingResolution } from "../../../context/usage-pricing-resolution";
 import {
   createDirectAgentExecutionFixture,
   createDirectRunFixture,
@@ -170,8 +171,15 @@ const runRoutes = [
   ...userPermissionGrantsRoutes,
 ] as const;
 
-function runApp(context: TestContext) {
-  return setupAppWithRoutes({ context, routes: runRoutes });
+function runApp(
+  context: TestContext,
+  usagePricingResolution?: UsagePricingResolution,
+) {
+  return setupAppWithRoutes({
+    context,
+    routes: runRoutes,
+    ...(usagePricingResolution === undefined ? {} : { usagePricingResolution }),
+  });
 }
 
 function clerkUserProfile(actor: ApiTestUser): ClerkUserProfile {
@@ -1166,9 +1174,13 @@ export function createRunsApi(context: TestContext) {
       actor: ApiTestUser | null,
       runId: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
+      usagePricingResolution?: UsagePricingResolution,
     ) {
       return await accept(
-        runApp(context)(runsCancelContract).cancel({
+        runApp(
+          context,
+          usagePricingResolution,
+        )(runsCancelContract).cancel({
           headers: authenticate(context, actor),
           params: { id: runId },
         }),

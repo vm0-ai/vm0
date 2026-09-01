@@ -2,7 +2,7 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
-import { runnerGroupSchema } from "./runners";
+import { runnerGroupSchema } from "./runner-primitives";
 
 const c = initContract();
 

@@ -14,7 +14,7 @@ import {
   type SandboxReuseResult,
   workspaceReuseResultSchema,
   type WorkspaceReuseResult,
-} from "@okouai/api-contracts/contracts/webhooks";
+} from "@okouai/api-contracts/contracts/runner-primitives";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";

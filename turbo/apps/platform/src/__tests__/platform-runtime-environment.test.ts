@@ -249,6 +249,7 @@ describe("portable platform runtime environment", () => {
     expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       publicBrand: "vm0",
+      postHogHost: "https://j.okou.io",
       vapidPublicKey: PRODUCTION_VAPID_KEY,
       clerkPublishableKey: PRODUCTION_CLERK_KEY,
     });
@@ -271,7 +272,7 @@ describe("portable platform runtime environment", () => {
     ]);
     expect(posthogInit).toHaveBeenCalledWith(
       POSTHOG_KEY,
-      expect.objectContaining({ api_host: "https://j.vm0.ai" }),
+      expect.objectContaining({ api_host: "https://j.okou.io" }),
     );
     const [, posthogConfig] = posthogInit.mock.lastCall ?? [];
     expect(

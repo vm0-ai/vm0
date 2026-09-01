@@ -976,3 +976,13 @@ export async function setBrowserTabSnapshotAsPreviousApi(
     tab_urls: [...args.tabUrls],
   });
 }
+
+export async function clearWorkflowAutomationEventConnectorAsPreviousApi(
+  context: TestContext,
+  automationId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "clear-workflow-automation-event-connector-as-previous-api",
+    automation_id: automationId,
+  });
+}

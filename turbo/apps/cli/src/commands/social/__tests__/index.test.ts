@@ -41,6 +41,8 @@ const catalogSchema = z.object({
         .object({
           resultField: z.string(),
           retrieval: z.object({ kind: z.string() }).loose(),
+          reportedTotalField: z.string().optional(),
+          providerLimit: z.object({ kind: z.string() }).loose().optional(),
         })
         .nullable(),
       billing: z.object({ kind: z.string() }).loose(),
@@ -50,11 +52,21 @@ const catalogSchema = z.object({
 
 type Collection =
   | null
-  | { readonly state: "complete"; readonly itemsReturned: number }
-  | { readonly state: "provider_limited"; readonly itemsReturned: number }
+  | {
+      readonly state: "complete";
+      readonly itemsReturned: number;
+      readonly reportedTotal?: number;
+    }
+  | {
+      readonly state: "provider_limited";
+      readonly itemsReturned: number;
+      readonly reason?: string;
+      readonly reportedTotal?: number;
+    }
   | {
       readonly state: "more";
       readonly itemsReturned: number;
+      readonly reportedTotal?: number;
       readonly nextInput:
         | { readonly cursor: string }
         | { readonly page: number };
@@ -232,6 +244,19 @@ describe("okou social command", () => {
     expect(search?.collection).toStrictEqual({
       resultField: "results",
       retrieval: { kind: "provider_limited" },
+      providerLimit: { kind: "no_pagination" },
+    });
+    const comments = catalog.tools.find((tool) => {
+      return tool.name === "tiktok_comments";
+    });
+    expect(comments?.collection).toMatchObject({
+      reportedTotalField: "commentCount",
+    });
+    const reelsSearch = catalog.tools.find((tool) => {
+      return tool.name === "instagram_reels_search";
+    });
+    expect(reelsSearch?.collection).toMatchObject({
+      providerLimit: { kind: "max_page", maxPage: 2 },
     });
 
     const summary = catalog.tools.find((tool) => {
@@ -256,6 +281,8 @@ describe("okou social command", () => {
     expect(output()).toContain("Output schema:");
     expect(output()).toContain("instagram_comments");
     expect(output()).toContain("Collection: comments (cursor)");
+    expect(output()).toContain("Reported total: commentCount");
+    expect(output()).toContain("Provider limit: no pagination");
   });
 
   it("calls a tool with typed JSON input", async () => {
@@ -483,6 +510,65 @@ describe("okou social command", () => {
       itemsReturned: 2,
       billingQuantity: 2,
       creditsCharged: 6,
+    });
+  });
+
+  it("reports provider completeness evidence in full retrieval output", async () => {
+    server.use(
+      http.post("http://localhost:3000/api/social/request", () => {
+        return HttpResponse.json(
+          socialResponse(
+            "tiktok_comments",
+            {
+              state: "provider_limited",
+              itemsReturned: 2,
+              reason: "reported_total_exceeds_page",
+              reportedTotal: 100,
+            },
+            {
+              comments: [{ id: "1" }, { id: "2" }],
+              commentCount: 100,
+              hasMore: false,
+              cursor: null,
+            },
+          ),
+        );
+      }),
+    );
+
+    await socialCommand.parseAsync([
+      "node",
+      "cli",
+      "call",
+      "tiktok_comments",
+      "--input",
+      '{"url":"https://tiktok.com/@example/video/123"}',
+      "--all",
+      "--json",
+    ]);
+
+    const records = mockConsoleLog.mock.calls.map(([value]) => {
+      return JSON.parse(String(value)) as Record<string, unknown>;
+    });
+    expect(records[0]).toMatchObject({
+      kind: "page",
+      response: {
+        collection: {
+          state: "provider_limited",
+          reason: "reported_total_exceeds_page",
+          reportedTotal: 100,
+        },
+      },
+    });
+    expect(records[1]).toStrictEqual({
+      kind: "summary",
+      completion: "provider_limited",
+      pages: 1,
+      itemsReturned: 2,
+      billingQuantity: 1,
+      creditsCharged: 3,
+      providerLimitedReason: "reported_total_exceeds_page",
+      reportedTotal: 100,
     });
   });
 

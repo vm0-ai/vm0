@@ -921,58 +921,6 @@ describe("initial thinking indicator", () => {
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });
 
-  it("keeps the thinking marker visible while a later Morning Brief is queued", async () => {
-    const threadId = "e1000000-0000-4000-a000-000000000017";
-    mockChatLifecycle(context, {
-      threadId,
-      chatEvents: [
-        {
-          id: "msg-thinking-queued-user",
-          eventType: "input.prompt" as const,
-          content: "Draft a launch checklist",
-          runId: "run-active",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-        {
-          id: "msg-thinking-queued-marker",
-          eventType: "output.thinking" as const,
-          content: null,
-          thinking: "Reviewing your request",
-          runId: "run-active",
-          createdAt: "2026-03-10T00:00:01Z",
-        },
-        {
-          id: "msg-thinking-queued-followup",
-          eventType: "input.prompt" as const,
-          content: null,
-          userMessage: {
-            version: 1,
-            parts: [
-              { type: "text", text: "Also include owners" },
-              { type: "morning_brief", briefDate: "2026-03-10" },
-            ],
-          },
-          runId: undefined,
-          createdAt: "2026-03-10T00:00:02Z",
-        },
-      ],
-      activeRunIds: ["run-active"],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-    });
-
-    const label = await screen.findByLabelText("Reviewing your request");
-    expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
-    await waitFor(() => {
-      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
-        "Also include owners",
-      );
-    });
-  });
-
   it("hides the thinking marker when the same run has assistant text", async () => {
     const threadId = "e1000000-0000-4000-a000-000000000018";
     mockChatLifecycle(context, {

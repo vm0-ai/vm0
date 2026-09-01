@@ -525,16 +525,9 @@ pub fn is_guest_agent_tuning_env_key(key: &str) -> bool {
 /// or integration contracts. Runner and local-submit code use this predicate to
 /// scrub or reject user-provided env keys before the guest-agent starts.
 pub fn is_runner_owned_env_key(key: &str) -> bool {
-    key.starts_with("OKOU_") || is_pre_platform_environment_runner_owned_env_key(key)
-}
-
-/// Returns whether `key` was runner-owned before `platformEnvironment` claims.
-///
-/// New runners use this only for old API claims or legitimately stored pre-field
-/// contexts. Remove it after previous API rollback targets, supported pre-field
-/// contexts, and old runners/sandboxes pass the #28914 drain gates.
-pub fn is_pre_platform_environment_runner_owned_env_key(key: &str) -> bool {
-    key.starts_with("VM0_") || EXPLICIT_RUNNER_OWNED_ENV_KEYS.contains(&key)
+    key.starts_with("OKOU_")
+        || key.starts_with("VM0_")
+        || EXPLICIT_RUNNER_OWNED_ENV_KEYS.contains(&key)
 }
 
 /// Escapes and bounds a user-controlled env key for diagnostics.
@@ -832,23 +825,6 @@ mod tests {
         assert!(is_runner_owned_env_key("OKOU_TOKEN"));
         assert!(is_runner_owned_env_key("OKOU_UNRELATED"));
         assert!(!is_runner_owned_env_key("CUSTOM_ENV"));
-    }
-
-    #[test]
-    fn pre_platform_environment_detection_preserves_previous_ownership() {
-        assert!(is_pre_platform_environment_runner_owned_env_key(RUN_ID_ENV));
-        assert!(is_pre_platform_environment_runner_owned_env_key(
-            "VM0_FUTURE_RUNNER_KEY"
-        ));
-        assert!(!is_pre_platform_environment_runner_owned_env_key(
-            "OKOU_TOKEN"
-        ));
-        assert!(!is_pre_platform_environment_runner_owned_env_key(
-            "OKOU_UNRELATED"
-        ));
-        assert!(!is_pre_platform_environment_runner_owned_env_key(
-            "CUSTOM_ENV"
-        ));
     }
 
     #[test]

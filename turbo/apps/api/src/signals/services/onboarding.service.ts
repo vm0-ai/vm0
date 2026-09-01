@@ -3,6 +3,7 @@ import type { OnboardingStatusResponse } from "@okouai/api-contracts/contracts/o
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentDisplayNameForPublicBrand } from "@okouai/core/public-brand";
 import { agents } from "@okouai/db/schema/agent";
+import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-canonical-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { and, eq } from "drizzle-orm";
 
@@ -29,14 +30,14 @@ type CompleteOnboardingResponse = {
 
 async function markOnboardingComplete(db: Db, orgId: string): Promise<void> {
   await db
-    .insert(orgMetadata)
+    .insert(orgMetadataCanonicalWrites)
     .values({
       orgId,
       onboardingComplete: true,
       updatedAt: nowDate(),
     })
     .onConflictDoUpdate({
-      target: orgMetadata.orgId,
+      target: orgMetadataCanonicalWrites.orgId,
       set: {
         onboardingComplete: true,
         updatedAt: nowDate(),

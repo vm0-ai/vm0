@@ -221,7 +221,7 @@ function SignUpLink({
     <Link
       className={className}
       options={signUpLinkOptions(signUpHref)}
-      pathname={ROUTES.signUpV2}
+      pathname={ROUTES.signUp}
     >
       {children}
     </Link>

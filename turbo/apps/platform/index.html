@@ -1,957 +1,12 @@
 <!doctype html>
-<html
-  lang="en-US"
-  translate="no"
-  data-app-brand-name="VM0"
-  data-app-head-managed="true"
->
+<html lang="en-US" translate="no" data-app-brand-name="VM0">
   <head>
+    <script>
+      window.__appBootstrapStart = performance.now();
+    </script>
     <title>AI Agents for Real Work — Your Trustworthy AI Teammate | VM0</title>
     <meta charset="UTF-8" />
     <meta name="vm0-api-origin" content="" />
-    <script data-vm0-clerk-bootstrap="">
-      (function () {
-        var hostname = location.hostname.toLowerCase();
-        var production =
-          hostname === "vm0.ai" ||
-          hostname.endsWith(".vm0.ai") ||
-          hostname === "okou.ai" ||
-          hostname.endsWith(".okou.ai");
-        var satellite =
-          hostname === "app.okou.ai" || hostname.endsWith(".app.okou.ai");
-        var publishableKey = production
-          ? "%VITE_CLERK_PUBLISHABLE_KEY_PROD%"
-          : "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%";
-        var scriptUrl = satellite
-          ? "__VM0_CLERK_SATELLITE_SCRIPT_URL__"
-          : production
-            ? "__VM0_CLERK_PRODUCTION_SCRIPT_URL__"
-            : "__VM0_CLERK_PREVIEW_SCRIPT_URL__";
-
-        var script = document.createElement("script");
-        script.async = false;
-        script.defer = true;
-        script.crossOrigin = "anonymous";
-        script.dataset.clerkJsScript = "";
-        script.dataset.clerkPublishableKey = publishableKey;
-        if (satellite) {
-          script.dataset.clerkDomain = "app.okou.ai";
-        }
-        script.onerror = function () {
-          script.remove();
-        };
-        script.src = scriptUrl;
-        script.type = "text/javascript";
-        document.head.appendChild(script);
-      })();
-    </script>
-    <style>
-      body {
-        margin: 0;
-      }
-
-      #root {
-        display: none;
-      }
-
-      .browser-upgrade {
-        background: #ffffff;
-        box-sizing: border-box;
-        color: #14171d;
-        display: flex;
-        font-family:
-          "Noto Sans",
-          system-ui,
-          -apple-system,
-          BlinkMacSystemFont,
-          "Segoe UI",
-          sans-serif;
-        align-items: center;
-        justify-content: center;
-        min-height: 100vh;
-        overflow: hidden;
-        padding: 24px;
-        position: relative;
-        width: 100%;
-      }
-
-      .browser-upgrade * {
-        box-sizing: border-box;
-      }
-
-      .browser-upgrade::before {
-        background-image: radial-gradient(
-          ellipse 120% 80% at 50% -20%,
-          rgba(248, 249, 251, 0.9),
-          transparent 50%
-        );
-        background-size: 100% 100%;
-        content: "";
-        inset: 0;
-        position: absolute;
-        z-index: 0;
-      }
-
-      [data-browser-supported="true"] #root {
-        display: block;
-      }
-
-      [data-browser-supported="true"] .browser-upgrade {
-        display: none;
-      }
-
-      .browser-upgrade__center {
-        position: relative;
-        width: 100%;
-        z-index: 1;
-      }
-
-      .browser-upgrade__panel {
-        background: #ffffff;
-        border: 0.7px solid #dce1e8;
-        border-radius: 16px;
-        box-shadow:
-          0 2px 12px rgba(113, 120, 133, 0.04),
-          0 0 0 0.5px rgba(113, 120, 133, 0.02);
-        display: flex;
-        flex-direction: column;
-        gap: 24px;
-        align-items: center;
-        margin: 0 auto;
-        max-width: 384px;
-        padding: 32px;
-        text-align: center;
-      }
-
-      .browser-upgrade__icon {
-        align-items: center;
-        display: flex;
-        height: 40px;
-        justify-content: center;
-        width: 40px;
-      }
-
-      .browser-upgrade__icon img {
-        display: block;
-        height: 40px;
-        width: 40px;
-      }
-
-      .browser-upgrade__copy {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-
-      .browser-upgrade h1 {
-        color: #14171d;
-        font-size: 16px;
-        font-weight: 600;
-        letter-spacing: 0;
-        line-height: 24px;
-        margin: 0;
-      }
-
-      .browser-upgrade p {
-        color: #5d6572;
-        font-size: 14px;
-        line-height: 22px;
-        margin: 0;
-      }
-
-      .browser-upgrade__actions {
-        width: 100%;
-      }
-
-      .browser-upgrade a {
-        background: #ed4e01;
-        border: 1px solid #ed4e01;
-        border-radius: 8px;
-        box-sizing: border-box;
-        color: #ffffff;
-        display: inline-block;
-        font-size: 14px;
-        font-weight: 600;
-        line-height: 20px;
-        min-height: 40px;
-        padding: 9px 14px;
-        text-align: center;
-        text-decoration: none;
-        width: 100%;
-      }
-
-      .browser-upgrade a:hover {
-        background: #d94600;
-        border-color: #d94600;
-      }
-
-      @media (max-width: 520px) {
-        .browser-upgrade__panel {
-          padding: 24px 20px;
-        }
-      }
-    </style>
-    <script>
-      // Resolve locale before any visible pre-bundle UI is constructed.
-      (function () {
-        var orgId = sessionStorage.getItem("clerk-active-org-id");
-        var cacheKey = orgId ? "vm0:locale:" + orgId : null;
-        var cached = cacheKey ? localStorage.getItem(cacheKey) : null;
-        // Prefer the workspace cache. Signed-out and first-time visitors use a
-        // supported browser language, with English as the fallback.
-        var browserLocale = /^ja(?:-|$)/i.test(navigator.language)
-          ? "ja-JP"
-          : /^ko(?:-|$)/i.test(navigator.language)
-            ? "ko-KR"
-            : /^id(?:-|$)/i.test(navigator.language)
-              ? "id-ID"
-              : /^de(?:-|$)/i.test(navigator.language)
-                ? "de-DE"
-                : /^es(?:-|$)/i.test(navigator.language)
-                  ? "es-ES"
-                  : /^it(?:-|$)/i.test(navigator.language)
-                    ? "it-IT"
-                    : /^fr(?:-|$)/i.test(navigator.language)
-                      ? "fr-FR"
-                      : /^hi(?:-|$)/i.test(navigator.language)
-                        ? "hi-IN"
-                        : /^pt(?:-|$)/i.test(navigator.language)
-                          ? "pt-BR"
-                          : "en-US";
-        var locale =
-          cached === "en-US" ||
-          cached === "pt-BR" ||
-          cached === "ja-JP" ||
-          cached === "ko-KR" ||
-          cached === "id-ID" ||
-          cached === "de-DE" ||
-          cached === "es-ES" ||
-          cached === "it-IT" ||
-          cached === "fr-FR" ||
-          cached === "hi-IN"
-            ? cached
-            : browserLocale;
-        var copyByLocale = {
-          "en-US": {
-            browserUpgrade: {
-              browser: {
-                actionLabel: "Update browser",
-                description:
-                  "{{assistantName}} does not support your current browser version. Update your browser to continue.",
-                title: "Update your browser to continue",
-              },
-              chrome: {
-                actionLabel: "Update Chrome",
-                description:
-                  "{{assistantName}} does not support your current browser version. Update Chrome to continue.",
-                title: "Update Chrome to continue",
-              },
-              chromium: {
-                actionLabel: "Update Chromium",
-                description:
-                  "{{assistantName}} does not support your current browser version. Update Chromium to continue.",
-                title: "Update Chromium to continue",
-              },
-              ios: {
-                actionLabel: "Update iOS",
-                description:
-                  "{{assistantName}} does not support your current browser version. Update iOS to continue.",
-                title: "Update iOS to continue",
-              },
-              safari: {
-                actionLabel: "Update Safari",
-                description:
-                  "{{assistantName}} does not support your current browser version. Update Safari to continue.",
-                title: "Update Safari to continue",
-              },
-            },
-            loading: {
-              ariaLabel: "Loading your workspace",
-              messages: [
-                "Warming up the neurons...",
-                "Brewing some ideas...",
-                "Getting things ready...",
-                "Almost there...",
-                "Loading your workspace...",
-                "Tuning the instruments...",
-                "Connecting the dots...",
-                "Spinning up the team...",
-              ],
-            },
-            metadata: {
-              description:
-                "{{assistantName}} is your AI coworker from {{brandName}}. Text {{assistantName}} or chat on the web — research, email, docs, Slack, GitHub, Notion, and 100+ tools.",
-              title: "{{assistantName}} — Your AI coworker from {{brandName}}",
-            },
-          },
-          "fr-FR": {
-            browserUpgrade: {
-              browser: {
-                actionLabel: "Mettre à jour le navigateur",
-                description:
-                  "{{assistantName}} ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour votre navigateur pour continuer.",
-                title: "Mettez à jour votre navigateur pour continuer",
-              },
-              chrome: {
-                actionLabel: "Mettre à jour Chrome",
-                description:
-                  "{{assistantName}} ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour Chrome pour continuer.",
-                title: "Mettez à jour Chrome pour continuer",
-              },
-              chromium: {
-                actionLabel: "Mettre à jour Chromium",
-                description:
-                  "{{assistantName}} ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour Chromium pour continuer.",
-                title: "Mettez à jour Chromium pour continuer",
-              },
-              ios: {
-                actionLabel: "Mettre à jour iOS",
-                description:
-                  "{{assistantName}} ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour iOS pour continuer.",
-                title: "Mettez à jour iOS pour continuer",
-              },
-              safari: {
-                actionLabel: "Mettre à jour Safari",
-                description:
-                  "{{assistantName}} ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour Safari pour continuer.",
-                title: "Mettez à jour Safari pour continuer",
-              },
-            },
-            loading: {
-              ariaLabel: "Chargement de votre espace de travail",
-              messages: [
-                "Initialisation des neurones...",
-                "Quelques idées sont en préparation...",
-                "Préparation en cours...",
-                "Presque prêt...",
-                "Chargement de votre espace de travail...",
-                "Accordage des instruments...",
-                "Connexion des idées...",
-                "Mise en place de l’équipe...",
-              ],
-            },
-            metadata: {
-              description:
-                "{{assistantName}} est votre coéquipier IA créé par {{brandName}}. Envoyez un message à {{assistantName}} ou discutez sur le web — recherche, e-mails, documents, Slack, GitHub, Notion et plus de 100 outils.",
-              title:
-                "{{assistantName}} — Votre coéquipier IA créé par {{brandName}}",
-            },
-          },
-          "pt-BR": {
-            browserUpgrade: {
-              browser: {
-                actionLabel: "Atualizar navegador",
-                description:
-                  "O {{assistantName}} não oferece suporte à versão atual do seu navegador. Atualize o navegador para continuar.",
-                title: "Atualize seu navegador para continuar",
-              },
-              chrome: {
-                actionLabel: "Atualizar Chrome",
-                description:
-                  "O {{assistantName}} não oferece suporte à versão atual do seu navegador. Atualize o Chrome para continuar.",
-                title: "Atualize o Chrome para continuar",
-              },
-              chromium: {
-                actionLabel: "Atualizar Chromium",
-                description:
-                  "O {{assistantName}} não oferece suporte à versão atual do seu navegador. Atualize o Chromium para continuar.",
-                title: "Atualize o Chromium para continuar",
-              },
-              ios: {
-                actionLabel: "Atualizar iOS",
-                description:
-                  "O {{assistantName}} não oferece suporte à versão atual do seu navegador. Atualize o iOS para continuar.",
-                title: "Atualize o iOS para continuar",
-              },
-              safari: {
-                actionLabel: "Atualizar Safari",
-                description:
-                  "O {{assistantName}} não oferece suporte à versão atual do seu navegador. Atualize o Safari para continuar.",
-                title: "Atualize o Safari para continuar",
-              },
-            },
-            loading: {
-              ariaLabel: "Carregando seu espaço de trabalho",
-              messages: [
-                "Aquecendo os neurônios...",
-                "Preparando algumas ideias...",
-                "Preparando tudo...",
-                "Quase lá...",
-                "Carregando seu espaço de trabalho...",
-                "Ajustando os instrumentos...",
-                "Ligando os pontos...",
-                "Reunindo a equipe...",
-              ],
-            },
-            metadata: {
-              description:
-                "{{assistantName}} é seu colega de IA da {{brandName}}. Envie uma mensagem para o {{assistantName}} ou converse pela web — pesquise, envie e-mails, crie documentos e use Slack, GitHub, Notion e mais de 100 ferramentas.",
-              title: "{{assistantName}} — Seu colega de IA da {{brandName}}",
-            },
-          },
-          "ja-JP": {
-            browserUpgrade: {
-              browser: {
-                actionLabel: "ブラウザを更新",
-                description:
-                  "現在のブラウザのバージョンは{{assistantName}}でサポートされていません。続行するにはブラウザを更新してください。",
-                title: "続行するにはブラウザを更新してください",
-              },
-              chrome: {
-                actionLabel: "Chromeを更新",
-                description:
-                  "現在のブラウザのバージョンは{{assistantName}}でサポートされていません。続行するにはChromeを更新してください。",
-                title: "続行するにはChromeを更新してください",
-              },
-              chromium: {
-                actionLabel: "Chromiumを更新",
-                description:
-                  "現在のブラウザのバージョンは{{assistantName}}でサポートされていません。続行するにはChromiumを更新してください。",
-                title: "続行するにはChromiumを更新してください",
-              },
-              ios: {
-                actionLabel: "iOSを更新",
-                description:
-                  "現在のブラウザのバージョンは{{assistantName}}でサポートされていません。続行するにはiOSを更新してください。",
-                title: "続行するにはiOSを更新してください",
-              },
-              safari: {
-                actionLabel: "Safariを更新",
-                description:
-                  "現在のブラウザのバージョンは{{assistantName}}でサポートされていません。続行するにはSafariを更新してください。",
-                title: "続行するにはSafariを更新してください",
-              },
-            },
-            loading: {
-              ariaLabel: "ワークスペースを読み込み中",
-              messages: [
-                "ニューラルネットワークを準備しています...",
-                "アイデアを練っています...",
-                "準備しています...",
-                "もうすぐです...",
-                "ワークスペースを読み込んでいます...",
-                "楽器を調整しています...",
-                "点と点をつないでいます...",
-                "チームを立ち上げています...",
-              ],
-            },
-            metadata: {
-              description:
-                "{{assistantName}}は{{brandName}}のAIコワーカーです。{{assistantName}}にメッセージを送るか、Webでチャットできます。リサーチ、メール、ドキュメント、Slack、GitHub、Notionなど、100以上のツールを利用できます。",
-              title: "{{assistantName}} — {{brandName}}のAIコワーカー",
-            },
-          },
-          "ko-KR": {
-            browserUpgrade: {
-              browser: {
-                actionLabel: "브라우저 업데이트",
-                description:
-                  "{{assistantName}}는 현재 브라우저 버전을 지원하지 않습니다. 계속하려면 브라우저를 업데이트하세요.",
-                title: "계속하려면 브라우저를 업데이트하세요",
-              },
-              chrome: {
-                actionLabel: "Chrome 업데이트",
-                description:
-                  "{{assistantName}}는 현재 Chrome 버전을 지원하지 않습니다. 계속하려면 Chrome을 업데이트하세요.",
-                title: "계속하려면 Chrome을 업데이트하세요",
-              },
-              chromium: {
-                actionLabel: "Chromium 업데이트",
-                description:
-                  "{{assistantName}}는 현재 Chromium 버전을 지원하지 않습니다. 계속하려면 Chromium을 업데이트하세요.",
-                title: "계속하려면 Chromium을 업데이트하세요",
-              },
-              ios: {
-                actionLabel: "iOS 업데이트",
-                description:
-                  "{{assistantName}}는 현재 iOS 버전을 지원하지 않습니다. 계속하려면 iOS를 업데이트하세요.",
-                title: "계속하려면 iOS를 업데이트하세요",
-              },
-              safari: {
-                actionLabel: "Safari 업데이트",
-                description:
-                  "{{assistantName}}는 현재 Safari 버전을 지원하지 않습니다. 계속하려면 Safari를 업데이트하세요.",
-                title: "계속하려면 Safari를 업데이트하세요",
-              },
-            },
-            loading: {
-              ariaLabel: "워크스페이스를 불러오는 중",
-              messages: [
-                "뉴런을 예열하는 중...",
-                "아이디어를 구상 중...",
-                "준비 중...",
-                "거의 완료되었습니다...",
-                "워크스페이스를 불러오는 중...",
-                "도구를 조율하는 중...",
-                "연결 중...",
-                "팀을 구성하는 중...",
-              ],
-            },
-            metadata: {
-              description:
-                "{{assistantName}}는 {{brandName}}의 AI 팀원입니다. {{assistantName}}에 텍스트를 보내거나 웹에서 채팅하세요 — 리서치, 이메일, 문서, Slack, GitHub, Notion 및 100개 이상의 도구를 지원합니다.",
-              title: "{{assistantName}} — {{brandName}}의 AI 팀원",
-            },
-          },
-          "id-ID": {
-            browserUpgrade: {
-              browser: {
-                actionLabel: "Perbarui browser",
-                description:
-                  "{{assistantName}} tidak mendukung versi browser Anda saat ini. Perbarui browser Anda untuk melanjutkan.",
-                title: "Perbarui browser Anda untuk melanjutkan",
-              },
-              chrome: {
-                actionLabel: "Perbarui Chrome",
-                description:
-                  "{{assistantName}} tidak mendukung versi Chrome Anda saat ini. Perbarui Chrome untuk melanjutkan.",
-                title: "Perbarui Chrome untuk melanjutkan",
-              },
-              chromium: {
-                actionLabel: "Perbarui Chromium",
-                description:
-                  "{{assistantName}} tidak mendukung versi Chromium Anda saat ini. Perbarui Chromium untuk melanjutkan.",
-                title: "Perbarui Chromium untuk melanjutkan",
-              },
-              ios: {
-                actionLabel: "Perbarui iOS",
-                description:
-                  "{{assistantName}} tidak mendukung versi iOS Anda saat ini. Perbarui iOS untuk melanjutkan.",
-                title: "Perbarui iOS untuk melanjutkan",
-              },
-              safari: {
-                actionLabel: "Perbarui Safari",
-                description:
-                  "{{assistantName}} tidak mendukung versi Safari Anda saat ini. Perbarui Safari untuk melanjutkan.",
-                title: "Perbarui Safari untuk melanjutkan",
-              },
-            },
-            loading: {
-              ariaLabel: "Memuat ruang kerja Anda",
-              messages: [
-                "Sedang memanaskan neuron...",
-                "Sedang meracik ide...",
-                "Sedang menyiapkan semuanya...",
-                "Hampir sampai...",
-                "Memuat ruang kerja Anda...",
-                "Sedang menyetel instrumen...",
-                "Sedang menghubungkan titik-titik...",
-                "Sedang menyiapkan tim...",
-              ],
-            },
-            metadata: {
-              description:
-                "{{assistantName}} adalah rekan kerja AI Anda dari {{brandName}}. Kirim pesan ke {{assistantName}} atau chat di web — riset, email, dokumen, Slack, GitHub, Notion, dan 100+ alat.",
-              title:
-                "{{assistantName}} — Rekan kerja AI Anda dari {{brandName}}",
-            },
-          },
-          "de-DE": {
-            browserUpgrade: {
-              browser: {
-                actionLabel: "Browser aktualisieren",
-                description:
-                  "{{assistantName}} unterstützt Ihre aktuelle Browserversion nicht. Aktualisieren Sie Ihren Browser, um fortzufahren.",
-                title: "Aktualisieren Sie Ihren Browser, um fortzufahren",
-              },
-              chrome: {
-                actionLabel: "Chrome aktualisieren",
-                description:
-                  "{{assistantName}} unterstützt Ihre aktuelle Browserversion nicht. Aktualisieren Sie Chrome, um fortzufahren.",
-                title: "Aktualisieren Sie Chrome, um fortzufahren",
-              },
-              chromium: {
-                actionLabel: "Chromium aktualisieren",
-                description:
-                  "{{assistantName}} unterstützt Ihre aktuelle Browserversion nicht. Aktualisieren Sie Chromium, um fortzufahren.",
-                title: "Aktualisieren Sie Chromium, um fortzufahren",
-              },
-              ios: {
-                actionLabel: "iOS aktualisieren",
-                description:
-                  "{{assistantName}} unterstützt Ihre aktuelle Browserversion nicht. Aktualisieren Sie iOS, um fortzufahren.",
-                title: "Aktualisieren Sie iOS, um fortzufahren",
-              },
-              safari: {
-                actionLabel: "Safari aktualisieren",
-                description:
-                  "{{assistantName}} unterstützt Ihre aktuelle Browserversion nicht. Aktualisieren Sie Safari, um fortzufahren.",
-                title: "Aktualisieren Sie Safari, um fortzufahren",
-              },
-            },
-            loading: {
-              ariaLabel: "Ihr Arbeitsbereich wird geladen",
-              messages: [
-                "Neuronen werden aufgewärmt...",
-                "Ideen werden entwickelt...",
-                "Alles wird vorbereitet...",
-                "Fast geschafft...",
-                "Ihr Arbeitsbereich wird geladen...",
-                "Instrumente werden gestimmt...",
-                "Punkte werden verbunden...",
-                "Das Team wird zusammengestellt...",
-              ],
-            },
-            metadata: {
-              description:
-                "{{assistantName}} ist Ihr KI-Kollege von {{brandName}}. Schreiben Sie {{assistantName}} oder chatten Sie im Web — für Recherche, E-Mails, Dokumente, Slack, GitHub, Notion und über 100 weitere Tools.",
-              title: "{{assistantName}} — Ihr KI-Kollege von {{brandName}}",
-            },
-          },
-          "es-ES": {
-            browserUpgrade: {
-              browser: {
-                actionLabel: "Actualizar navegador",
-                description:
-                  "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza el navegador para continuar.",
-                title: "Actualiza tu navegador para continuar",
-              },
-              chrome: {
-                actionLabel: "Actualizar Chrome",
-                description:
-                  "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza Chrome para continuar.",
-                title: "Actualiza Chrome para continuar",
-              },
-              chromium: {
-                actionLabel: "Actualizar Chromium",
-                description:
-                  "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza Chromium para continuar.",
-                title: "Actualiza Chromium para continuar",
-              },
-              ios: {
-                actionLabel: "Actualizar iOS",
-                description:
-                  "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza iOS para continuar.",
-                title: "Actualiza iOS para continuar",
-              },
-              safari: {
-                actionLabel: "Actualizar Safari",
-                description:
-                  "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza Safari para continuar.",
-                title: "Actualiza Safari para continuar",
-              },
-            },
-            loading: {
-              ariaLabel: "Cargando tu espacio de trabajo",
-              messages: [
-                "Activando las neuronas...",
-                "Preparando algunas ideas...",
-                "Dejándolo todo listo...",
-                "Ya casi está...",
-                "Cargando tu espacio de trabajo...",
-                "Afinando los instrumentos...",
-                "Conectando los puntos...",
-                "Reuniendo al equipo...",
-              ],
-            },
-            metadata: {
-              description:
-                "{{assistantName}} es tu compañero de IA de {{brandName}}. Escríbele a {{assistantName}} o chatea en la web: investiga, envía correos, crea documentos y usa Slack, GitHub, Notion y más de 100 herramientas.",
-              title: "{{assistantName}} — Tu compañero de IA de {{brandName}}",
-            },
-          },
-          "it-IT": {
-            browserUpgrade: {
-              browser: {
-                actionLabel: "Aggiorna browser",
-                description:
-                  "{{assistantName}} non supporta la versione attuale del tuo browser. Aggiorna il browser per continuare.",
-                title: "Aggiorna il browser per continuare",
-              },
-              chrome: {
-                actionLabel: "Aggiorna Chrome",
-                description:
-                  "{{assistantName}} non supporta la versione attuale del tuo browser. Aggiorna Chrome per continuare.",
-                title: "Aggiorna Chrome per continuare",
-              },
-              chromium: {
-                actionLabel: "Aggiorna Chromium",
-                description:
-                  "{{assistantName}} non supporta la versione attuale del tuo browser. Aggiorna Chromium per continuare.",
-                title: "Aggiorna Chromium per continuare",
-              },
-              ios: {
-                actionLabel: "Aggiorna iOS",
-                description:
-                  "{{assistantName}} non supporta la versione attuale del tuo browser. Aggiorna iOS per continuare.",
-                title: "Aggiorna iOS per continuare",
-              },
-              safari: {
-                actionLabel: "Aggiorna Safari",
-                description:
-                  "{{assistantName}} non supporta la versione attuale del tuo browser. Aggiorna Safari per continuare.",
-                title: "Aggiorna Safari per continuare",
-              },
-            },
-            loading: {
-              ariaLabel: "Caricamento dell'area di lavoro",
-              messages: [
-                "Riscaldamento dei neuroni...",
-                "Preparando qualche idea...",
-                "Preparando tutto...",
-                "Ci siamo quasi...",
-                "Caricamento dell'area di lavoro...",
-                "Accordando gli strumenti...",
-                "Unendo i puntini...",
-                "Radunando il team...",
-              ],
-            },
-            metadata: {
-              description:
-                "{{assistantName}} è il tuo collega AI di {{brandName}}. Scrivi a {{assistantName}} o chatta sul web — ricerca, email, documenti, Slack, GitHub, Notion e oltre 100 strumenti.",
-              title: "{{assistantName}} — Il tuo collega AI di {{brandName}}",
-            },
-          },
-          "hi-IN": {
-            browserUpgrade: {
-              browser: {
-                actionLabel: "ब्राउज़र अपडेट करें",
-                description:
-                  "{{assistantName}} आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए अपना ब्राउज़र अपडेट करें।",
-                title: "जारी रखने के लिए अपना ब्राउज़र अपडेट करें",
-              },
-              chrome: {
-                actionLabel: "Chrome को अपडेट करें",
-                description:
-                  "{{assistantName}} आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए Chrome को अपडेट करें।",
-                title: "जारी रखने के लिए Chrome को अपडेट करें",
-              },
-              chromium: {
-                actionLabel: "Chromium को अपडेट करें",
-                description:
-                  "{{assistantName}} आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए Chromium को अपडेट करें।",
-                title: "जारी रखने के लिए Chromium को अपडेट करें",
-              },
-              ios: {
-                actionLabel: "iOS को अपडेट करें",
-                description:
-                  "{{assistantName}} आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए iOS को अपडेट करें।",
-                title: "जारी रखने के लिए iOS को अपडेट करें",
-              },
-              safari: {
-                actionLabel: "Safari को अपडेट करें",
-                description:
-                  "{{assistantName}} आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए Safari को अपडेट करें।",
-                title: "जारी रखने के लिए Safari को अपडेट करें",
-              },
-            },
-            loading: {
-              ariaLabel: "आपका वर्कस्पेस लोड हो रहा है",
-              messages: [
-                "न्यूरॉन्स को सक्रिय कर रहे हैं...",
-                "कुछ नए विचार तैयार कर रहे हैं...",
-                "सब कुछ तैयार कर रहे हैं...",
-                "बस लगभग तैयार...",
-                "आपका वर्कस्पेस लोड हो रहा है...",
-                "उपकरणों को ट्यून कर रहे हैं...",
-                "कड़ियाँ जोड़ रहे हैं...",
-                "टीम को तैयार कर रहे हैं...",
-              ],
-            },
-            metadata: {
-              description:
-                "{{assistantName}}, {{brandName}} से आपका AI सहकर्मी है। {{assistantName}} को टेक्स्ट करें या वेब पर चैट करें — रिसर्च, ईमेल, दस्तावेज़, Slack, GitHub, Notion और 100+ टूल।",
-              title: "{{assistantName}} — {{brandName}} से आपका AI सहकर्मी",
-            },
-          },
-        };
-
-        var selectedCopy = copyByLocale[locale];
-        var brandName = document.documentElement.dataset.appBrandName;
-        if (brandName !== "VM0" && brandName !== "Okou") {
-          throw new Error("Invalid app brand name");
-        }
-        var assistantName = brandName === "Okou" ? "Okou" : "Zero";
-        var interpolateBrandCopy = function (value) {
-          return value
-            .replace(/\{\{assistantName\}\}/g, assistantName)
-            .replace(/\{\{brandName\}\}/g, brandName);
-        };
-        var browserUpgradeTargets = [
-          "browser",
-          "chrome",
-          "chromium",
-          "ios",
-          "safari",
-        ];
-        for (var i = 0; i < browserUpgradeTargets.length; i += 1) {
-          var target = selectedCopy.browserUpgrade[browserUpgradeTargets[i]];
-          target.description = interpolateBrandCopy(target.description);
-        }
-        selectedCopy.metadata.description = interpolateBrandCopy(
-          selectedCopy.metadata.description,
-        );
-        selectedCopy.metadata.title = interpolateBrandCopy(
-          selectedCopy.metadata.title,
-        );
-
-        window.__vm0PreBundleCopy = selectedCopy;
-        document.documentElement.lang = locale;
-        if (cacheKey) localStorage.setItem(cacheKey, locale);
-      })();
-    </script>
-    <script>
-      (function () {
-        var ua = navigator.userAgent || "";
-        var supported = true;
-        var copy = window.__vm0PreBundleCopy.browserUpgrade;
-        var upgradeTargetKind = "browser";
-        var upgradeTarget = {
-          actionLabel: copy.browser.actionLabel,
-          actionUrl: "https://www.google.com/chrome/",
-          description: copy.browser.description,
-          title: copy.browser.title,
-        };
-        var iosPattern = /\b(?:iPhone|iPad|iPod)\b.*\bOS (\d+)(?:_(\d+))?/;
-        var iosMatch = iosPattern.exec(ua);
-        var chromiumMatch = /\bChromium\/(\d+)/.exec(ua);
-        var chromeMatch = /\b(?:Chrome|CriOS|HeadlessChrome)\/(\d+)/.exec(ua);
-
-        if (iosMatch) {
-          upgradeTargetKind = "ios";
-          upgradeTarget = {
-            actionLabel: copy.ios.actionLabel,
-            actionUrl: "https://support.apple.com/HT204204",
-            description: copy.ios.description,
-            title: copy.ios.title,
-          };
-          var iosMajor = parseInt(iosMatch[1], 10);
-          var iosMinor = iosMatch[2] ? parseInt(iosMatch[2], 10) : 0;
-          if (!isNaN(iosMajor) && !isNaN(iosMinor)) {
-            supported = iosMajor > 16 || (iosMajor === 16 && iosMinor >= 4);
-          }
-        } else if (
-          (chromiumMatch || chromeMatch) &&
-          !/\b(?:Edg|OPR|SamsungBrowser)\//.test(ua)
-        ) {
-          var chromiumBrowser = !!chromiumMatch;
-          var chromiumCopy = chromiumBrowser ? copy.chromium : copy.chrome;
-          upgradeTargetKind = chromiumBrowser ? "chromium" : "chrome";
-          upgradeTarget = {
-            actionLabel: chromiumCopy.actionLabel,
-            actionUrl: chromiumBrowser
-              ? "https://www.chromium.org/getting-involved/download-chromium/"
-              : "https://www.google.com/chrome/",
-            description: chromiumCopy.description,
-            title: chromiumCopy.title,
-          };
-          var chromeMajor = parseInt(
-            chromiumBrowser ? chromiumMatch[1] : chromeMatch[1],
-            10,
-          );
-          if (!isNaN(chromeMajor)) {
-            supported = chromeMajor >= 111;
-          }
-        } else {
-          var safariMatch = /\bVersion\/(\d+)(?:\.(\d+))?.*\bSafari\//.exec(ua);
-          if (
-            safariMatch &&
-            !/\b(?:Chrome|CriOS|Chromium|Edg|OPR|FxiOS)\//.test(ua)
-          ) {
-            upgradeTargetKind = "safari";
-            upgradeTarget = {
-              actionLabel: copy.safari.actionLabel,
-              actionUrl: "https://support.apple.com/safari",
-              description: copy.safari.description,
-              title: copy.safari.title,
-            };
-            var safariMajor = parseInt(safariMatch[1], 10);
-            var safariMinor = safariMatch[2] ? parseInt(safariMatch[2], 10) : 0;
-            if (!isNaN(safariMajor) && !isNaN(safariMinor)) {
-              supported =
-                safariMajor > 16 || (safariMajor === 16 && safariMinor >= 4);
-            }
-          }
-        }
-
-        window.__vm0BrowserUpgrade = upgradeTarget;
-        window.__vm0BrowserSupported = supported;
-        document.documentElement.dataset.browserUpgradeTarget =
-          upgradeTargetKind;
-        document.documentElement.setAttribute(
-          "data-browser-supported",
-          supported ? "true" : "false",
-        );
-      })();
-    </script>
-    <script>
-      (function () {
-        var hostname = window.location.hostname;
-        var isProductionHost =
-          hostname === "vm0.ai" ||
-          hostname.endsWith(".vm0.ai") ||
-          hostname === "okou.ai" ||
-          hostname.endsWith(".okou.ai");
-        if (!isProductionHost) return;
-
-        window.dataLayer = window.dataLayer || [];
-        window.gtag = function () {
-          window.dataLayer.push(arguments);
-        };
-        window.gtag("js", new Date());
-        window.gtag("config", "AW-18144854014");
-        window.gtag("config", "AW-18407336975");
-
-        var initialized = false;
-
-        function loadMarketingScripts() {
-          var gtagScript = document.createElement("script");
-          gtagScript.async = true;
-          gtagScript.src =
-            "https://www.googletagmanager.com/gtag/js?id=AW-18144854014";
-          document.head.appendChild(gtagScript);
-
-          var linkedInPartnerId = "9378804";
-          window._linkedin_data_partner_ids =
-            window._linkedin_data_partner_ids || [];
-          window._linkedin_data_partner_ids.push(linkedInPartnerId);
-
-          (function (l) {
-            if (!l) {
-              window.lintrk = function (a, b) {
-                window.lintrk.q.push([a, b]);
-              };
-              window.lintrk.q = [];
-            }
-            var s = document.getElementsByTagName("script")[0];
-            var b = document.createElement("script");
-            b.type = "text/javascript";
-            b.async = true;
-            b.src = "https://snap.licdn.com/li.lms-analytics/insight.min.js";
-            s.parentNode.insertBefore(b, s);
-          })(window.lintrk);
-        }
-
-        function scheduleMarketingScripts() {
-          if (initialized) return;
-          initialized = true;
-
-          if (typeof window.requestIdleCallback === "function") {
-            window.requestIdleCallback(loadMarketingScripts, {
-              timeout: 1500,
-            });
-            return;
-          }
-
-          window.setTimeout(loadMarketingScripts, 0);
-        }
-
-        // Keep vendor work outside the first-content critical path. The
-        // 30-second guard exceeds the observed mobile P90 startup window and
-        // still bounds bootstraps that never reach real app content.
-        window.addEventListener(
-          "vm0:app-first-content-visible",
-          scheduleMarketingScripts,
-          { once: true },
-        );
-        window.setTimeout(scheduleMarketingScripts, 30000);
-      })();
-    </script>
-    <script>
-      // Mark <head> parse start as early as possible so we can measure the
-      // total white-screen duration up to the first `hideAppSkeleton$` call.
-      window.__appBootstrapStart = performance.now();
-    </script>
     <link
       rel="icon"
       type="image/svg+xml"
@@ -967,6 +22,8 @@
     <link vite-ignore rel="manifest" href="/manifest.webmanifest" />
     <link rel="preconnect" href="https://cdn.vm0.io" crossorigin />
     <link rel="preconnect" href="https://static.vm0.io" crossorigin />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="apple-touch-icon"
       sizes="180x180"
@@ -1015,25 +72,6 @@
       name="twitter:image"
       content="https://static.vm0.io/web/og-image.png"
     />
-    <script>
-      (function () {
-        if (document.documentElement.dataset.appHeadManaged === "true") return;
-
-        var copy = window.__vm0PreBundleCopy.metadata;
-        var metadata = [
-          ['meta[name="description"]', copy.description],
-          ['meta[property="og:description"]', copy.description],
-          ['meta[property="og:image:alt"]', copy.title],
-          ['meta[property="og:title"]', copy.title],
-          ['meta[name="twitter:description"]', copy.description],
-          ['meta[name="twitter:title"]', copy.title],
-        ];
-        for (var i = 0; i < metadata.length; i += 1) {
-          var element = document.querySelector(metadata[i][0]);
-          if (element) element.setAttribute("content", metadata[i][1]);
-        }
-      })();
-    </script>
     <meta name="google" content="notranslate" />
     <meta
       name="theme-color"
@@ -1063,238 +101,671 @@
         if (t === "dark") document.documentElement.classList.add("dark");
       })();
     </script>
-    <script type="module" src="/src/main.ts"></script>
-  </head>
-  <body>
-    <div class="browser-upgrade" role="status" aria-live="polite">
-      <div class="browser-upgrade__center">
-        <div class="browser-upgrade__panel">
-          <div class="browser-upgrade__icon" aria-hidden="true">
-            <img src="https://static.vm0.io/platform/icon.svg" alt="" />
-          </div>
-          <div class="browser-upgrade__copy">
-            <h1 id="browser-upgrade-title">Update your browser to continue</h1>
-            <p id="browser-upgrade-description">
-              Zero does not support your current browser version. Update your
-              browser to continue.
-            </p>
-          </div>
-          <div class="browser-upgrade__actions">
-            <a
-              id="browser-upgrade-action"
-              href="https://www.google.com/chrome/"
-            >
-              Update browser
-            </a>
-          </div>
-        </div>
-      </div>
-    </div>
-    <script>
-      (function () {
-        var target = window.__vm0BrowserUpgrade;
-        if (!target) return;
+    <style>
+      :root {
+        --zero-viewport-height: 100dvh;
+      }
 
-        var title = document.getElementById("browser-upgrade-title");
-        var description = document.getElementById(
-          "browser-upgrade-description",
-        );
-        var action = document.getElementById("browser-upgrade-action");
-
-        if (title) title.textContent = target.title;
-        if (description) description.textContent = target.description;
-        if (action) {
-          action.textContent = target.actionLabel;
-          action.href = target.actionUrl;
+      @supports (height: 100lvh) {
+        @media (display-mode: standalone) {
+          :root {
+            --zero-viewport-height: 100lvh;
+          }
         }
+      }
+
+      html,
+      body {
+        margin: 0;
+      }
+
+      html,
+      body,
+      #root {
+        width: 100%;
+        height: var(--zero-viewport-height);
+        min-height: var(--zero-viewport-height);
+        overflow: hidden;
+      }
+
+      #root {
+        display: block;
+        position: fixed;
+        top: 0;
+        right: 0;
+        left: 0;
+      }
+
+      #app-bootstrap-skeleton {
+        position: fixed;
+        inset: 0;
+        /* Fixed insets follow WebKit's reachable layout viewport. Avoid the
+           standalone viewport unit, which can resolve after first paint. */
+        z-index: 60;
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #fdfdfe;
+        opacity: 1;
+        transition: opacity 300ms ease;
+      }
+
+      [data-theme="dark"] #app-bootstrap-skeleton {
+        background: #19191b;
+      }
+
+      #app-bootstrap-skeleton.app-bootstrap-skeleton--hidden {
+        pointer-events: none;
+        opacity: 0;
+      }
+
+      .app-bootstrap-skeleton__content {
+        position: fixed;
+        top: var(--app-bootstrap-skeleton-center-y, 50dvh);
+        left: 50%;
+        transform: translate(-50%, -50%);
+      }
+
+      @keyframes app-bootstrap-skeleton-avatar-pulse {
+        50% {
+          opacity: 0.5;
+        }
+      }
+
+      .app-bootstrap-skeleton__avatar {
+        position: relative;
+        width: 64px;
+        height: 64px;
+        overflow: hidden;
+        border-radius: 9999px;
+        animation: app-bootstrap-skeleton-avatar-pulse 2s
+          cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+
+      .app-bootstrap-skeleton__avatar-layers {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        transform: scale(1.25);
+      }
+    </style>
+    <script
+      id="vm0-clerk-core-script"
+      src="__VM0_CLERK_BROWSER_SCRIPT_URL__"
+      crossorigin="anonymous"
+      defer
+      type="text/javascript"
+    ></script>
+    <script data-vm0-clerk-bootstrap="">
+      (function () {
+        // Keep host, API-origin, and preview-bypass selection aligned with
+        // platform-host.ts, api-base.ts, and preview-bypass-cookie.ts. The
+        // entrypoint integration suite pins all supported environment paths.
+        var APP_VERSION = __VM0_APP_VERSION_JSON__;
+        var CLIENT_REQUEST_ID_HEADER = "X-Client-Request-Id";
+        var CLIENT_SESSION_ID_HEADER = "X-Client-Session-Id";
+        var CLIENT_TYPE_HEADER = "X-Client-Type";
+        var CLIENT_VERSION_HEADER = "X-Client-Version";
+        var CLERK_LOAD_COMPLETED_MARK = "vm0:bootstrap:clerk-load-completed";
+        var CLERK_LOAD_STARTED_MARK = "vm0:bootstrap:clerk-load-started";
+        var OKOU_PAGES_PREVIEW_HOST_SUFFIX = ".okou-app.pages.dev";
+        var OKOU_PREVIEW_ROOT_DOMAIN = "omby.ai";
+        var PREVIEW_API_HOSTNAME_PATTERN =
+          /^(?:staging|pr-[0-9]+)-api\.vm6\.ai$/;
+        var PREVIEW_API_ROOT_DOMAIN = "vm6.ai";
+        var PROTECTION_BYPASS_NAME = "x-vercel-protection-bypass";
+        var hostname = location.hostname.toLowerCase();
+        var production =
+          hostname === "vm0.ai" ||
+          hostname.endsWith(".vm0.ai") ||
+          hostname === "okou.ai" ||
+          hostname.endsWith(".okou.ai");
+        var publishableKey = production
+          ? "%VITE_CLERK_PUBLISHABLE_KEY_PROD%"
+          : "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%";
+        var primaryClerkFrontendApi = clerkFrontendApi(publishableKey);
+        var okouPrimary = primaryClerkFrontendApi === "clerk.app.okou.ai";
+        var satelliteDomain = null;
+        if (
+          production &&
+          okouPrimary &&
+          isDomainOrSubdomain(hostname, "vm0.ai")
+        ) {
+          satelliteDomain = "vm0.ai";
+        } else if (
+          production &&
+          !okouPrimary &&
+          isDomainOrSubdomain(hostname, "app.okou.ai")
+        ) {
+          satelliteDomain = "app.okou.ai";
+        }
+        var satellite = satelliteDomain !== null;
+        var authOrigin = satellite
+          ? okouPrimary
+            ? "https://app.okou.ai"
+            : "https://app.vm0.ai"
+          : location.origin;
+        var loadOptions = {
+          afterSignOutUrl: new URL("/sign-in", authOrigin).toString(),
+          signInUrl: new URL("/sign-in", authOrigin).toString(),
+          signUpUrl: new URL("/sign-up", authOrigin).toString(),
+        };
+        if (satellite) {
+          loadOptions.isSatellite = true;
+          loadOptions.satelliteAutoSync = true;
+        }
+
+        var onboardingController = new AbortController();
+        var clientSessionId =
+          typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : undefined;
+        var bootstrap = {
+          abortOnboarding: function () {
+            onboardingController.abort();
+          },
+          clientSessionId: clientSessionId,
+          domain: satelliteDomain || undefined,
+          loadOptions: loadOptions,
+          publishableKey: publishableKey,
+        };
+        window.__vm0ClerkBootstrap = bootstrap;
+
+        function isDomainOrSubdomain(value, domain) {
+          return value === domain || value.endsWith("." + domain);
+        }
+
+        function clerkFrontendApi(key) {
+          var encoded = key.split("_")[2];
+          if (!encoded) return "";
+          try {
+            var decoded = atob(encoded);
+            return decoded.endsWith("$") ? decoded.slice(0, -1) : "";
+          } catch (_error) {
+            return "";
+          }
+        }
+
+        function rewriteServiceHostname(value, target) {
+          var labels = value.split(".");
+          var serviceLabelIndex = labels.length - 3;
+          if (serviceLabelIndex < 0) return value;
+
+          var serviceLabel = labels[serviceLabelIndex];
+          if (
+            serviceLabel === "platform" ||
+            serviceLabel === "app" ||
+            serviceLabel === "www" ||
+            serviceLabel === "api"
+          ) {
+            labels[serviceLabelIndex] = target;
+            return labels.join(".");
+          }
+
+          var suffixes = ["-platform", "-app", "-www", "-api"];
+          for (var i = 0; i < suffixes.length; i += 1) {
+            var suffix = suffixes[i];
+            if (serviceLabel.endsWith(suffix)) {
+              labels[serviceLabelIndex] =
+                serviceLabel.slice(0, -suffix.length) + "-" + target;
+              return labels.join(".");
+            }
+          }
+          return value;
+        }
+
+        function configuredApiOrigin() {
+          var marker = document.querySelector('meta[name="vm0-api-origin"]');
+          var configured = marker ? marker.content.trim() : "";
+
+          if (hostname === "app.vm0.ai" || hostname === "app.okou.ai") {
+            var expected =
+              hostname === "app.okou.ai"
+                ? "https://api.okou.ai"
+                : "https://api.vm0.ai";
+            if (configured !== expected) {
+              throw new Error(
+                "Production API origin marker does not match the app host",
+              );
+            }
+            return configured;
+          }
+
+          if (
+            location.protocol === "https:" &&
+            hostname.endsWith(OKOU_PAGES_PREVIEW_HOST_SUFFIX) &&
+            configured
+          ) {
+            var configuredUrl = new URL(configured);
+            if (
+              configuredUrl.protocol !== "https:" ||
+              configuredUrl.port !== "" ||
+              configuredUrl.username !== "" ||
+              configuredUrl.password !== "" ||
+              configuredUrl.pathname !== "/" ||
+              configuredUrl.search !== "" ||
+              configuredUrl.hash !== "" ||
+              !PREVIEW_API_HOSTNAME_PATTERN.test(configuredUrl.hostname)
+            ) {
+              throw new Error("Invalid Cloudflare Pages preview API origin");
+            }
+            return configuredUrl.origin;
+          }
+
+          return null;
+        }
+
+        function resolveApiOrigin() {
+          var configured = configuredApiOrigin();
+          if (configured) return configured;
+
+          var apiUrl = new URL(location.origin);
+          if (production) {
+            apiUrl.hostname = isDomainOrSubdomain(hostname, "okou.ai")
+              ? "api.okou.ai"
+              : "api.vm0.ai";
+            return apiUrl.origin;
+          }
+
+          apiUrl.hostname = rewriteServiceHostname(hostname, "api");
+          if (apiUrl.hostname.endsWith("." + OKOU_PREVIEW_ROOT_DOMAIN)) {
+            apiUrl.hostname =
+              apiUrl.hostname.slice(0, -(OKOU_PREVIEW_ROOT_DOMAIN.length + 1)) +
+              "." +
+              PREVIEW_API_ROOT_DOMAIN;
+          }
+          return apiUrl.origin;
+        }
+
+        function cookieValue(name) {
+          var segments = document.cookie.split(";");
+          for (var i = 0; i < segments.length; i += 1) {
+            var segment = segments[i];
+            var separatorIndex = segment.indexOf("=");
+            if (separatorIndex === -1) continue;
+            if (segment.slice(0, separatorIndex).trim() !== name) continue;
+            return decodeURIComponent(segment.slice(separatorIndex + 1).trim());
+          }
+          return null;
+        }
+
+        function previewBypass(apiOrigin) {
+          var targetHostname = new URL(apiOrigin).hostname.toLowerCase();
+          if (
+            !isDomainOrSubdomain(hostname, OKOU_PREVIEW_ROOT_DOMAIN) ||
+            !isDomainOrSubdomain(targetHostname, PREVIEW_API_ROOT_DOMAIN)
+          ) {
+            return null;
+          }
+
+          var sourcePrefix = hostname.slice(
+            0,
+            -(OKOU_PREVIEW_ROOT_DOMAIN.length + 1),
+          );
+          var targetPrefix = targetHostname.slice(
+            0,
+            -(PREVIEW_API_ROOT_DOMAIN.length + 1),
+          );
+          if (
+            !sourcePrefix.endsWith("-app") ||
+            targetPrefix !== sourcePrefix.slice(0, -4) + "-api"
+          ) {
+            return null;
+          }
+
+          var queryBypass = new URLSearchParams(location.search).get(
+            PROTECTION_BYPASS_NAME,
+          );
+          return queryBypass !== null
+            ? queryBypass
+            : cookieValue(PROTECTION_BYPASS_NAME);
+        }
+
+        function activeIdentity(clerk) {
+          var session = clerk.session;
+          var user = clerk.user;
+          var organization = clerk.organization;
+          if (!session || !user || !organization) return null;
+          return {
+            orgId: organization.id,
+            sessionId: session.id,
+            userId: user.id,
+          };
+        }
+
+        function identityMatches(clerk, identity) {
+          var current = activeIdentity(clerk);
+          return (
+            current !== null &&
+            current.orgId === identity.orgId &&
+            current.sessionId === identity.sessionId &&
+            current.userId === identity.userId
+          );
+        }
+
+        function waitForSignal(promise, signal) {
+          return new Promise(function (resolve, reject) {
+            if (signal.aborted) {
+              reject(signal.reason);
+              return;
+            }
+            function onAbort() {
+              reject(signal.reason);
+            }
+            signal.addEventListener("abort", onAbort, { once: true });
+            promise.then(
+              function (value) {
+                signal.removeEventListener("abort", onAbort);
+                resolve(value);
+              },
+              function (error) {
+                signal.removeEventListener("abort", onAbort);
+                reject(error);
+              },
+            );
+          });
+        }
+
+        function startOnboardingStatus(clerk) {
+          var signal = onboardingController.signal;
+          if (signal.aborted) return Promise.resolve(null);
+
+          var identity = activeIdentity(clerk);
+          if (!identity || !clientSessionId) return Promise.resolve(null);
+
+          var unsubscribe = clerk.addListener(function () {
+            var session = clerk.session;
+            var user = clerk.user;
+            var organization = clerk.organization;
+            if (
+              session === null ||
+              user === null ||
+              organization === null ||
+              (session !== undefined && session.id !== identity.sessionId) ||
+              (user !== undefined && user.id !== identity.userId) ||
+              (organization !== undefined && organization.id !== identity.orgId)
+            ) {
+              onboardingController.abort();
+            }
+          });
+
+          var request = waitForSignal(clerk.session.getToken(), signal).then(
+            function (token) {
+              if (!token || !identityMatches(clerk, identity)) return null;
+
+              var apiOrigin = resolveApiOrigin();
+              var headers = new Headers({
+                Authorization: "Bearer " + token,
+              });
+              headers.set(CLIENT_VERSION_HEADER, APP_VERSION);
+              headers.set(CLIENT_TYPE_HEADER, "App");
+              headers.set(CLIENT_SESSION_ID_HEADER, clientSessionId);
+              headers.set(CLIENT_REQUEST_ID_HEADER, crypto.randomUUID());
+              var bypass = previewBypass(apiOrigin);
+              if (bypass) headers.set(PROTECTION_BYPASS_NAME, bypass);
+
+              return fetch(
+                new URL("/api/onboarding/status", apiOrigin).toString(),
+                {
+                  credentials: "include",
+                  headers: headers,
+                  method: "GET",
+                  signal: signal,
+                },
+              ).then(function (response) {
+                if (response.status !== 200) {
+                  return {
+                    body: null,
+                    identity: identity,
+                    status: response.status,
+                  };
+                }
+                return response.json().then(function (body) {
+                  return {
+                    body: body,
+                    identity: identity,
+                    status: response.status,
+                  };
+                });
+              });
+            },
+          );
+
+          return request.then(
+            function (result) {
+              unsubscribe();
+              return result;
+            },
+            function (error) {
+              unsubscribe();
+              throw error;
+            },
+          );
+        }
+
+        function markClerkLoadCompleted() {
+          bootstrap.clerkLoadCompletedAt = performance.now();
+          if (
+            performance.getEntriesByName(CLERK_LOAD_COMPLETED_MARK, "mark")
+              .length === 0
+          ) {
+            performance.mark(CLERK_LOAD_COMPLETED_MARK, {
+              startTime: bootstrap.clerkLoadCompletedAt,
+            });
+          }
+        }
+
+        function startClerk() {
+          var clerk = window.Clerk;
+          if (
+            !clerk ||
+            typeof clerk.load !== "function" ||
+            typeof clerk.on !== "function"
+          ) {
+            return;
+          }
+          if (bootstrap.loaded) return;
+
+          var subscribeToStatus = clerk.on.bind(clerk);
+          clerk.on = function (event, handler, options) {
+            subscribeToStatus(
+              event,
+              handler,
+              Object.assign({}, options, { notify: true }),
+            );
+          };
+
+          var loadClerk = clerk.load.bind(clerk);
+          var loadPromise;
+          clerk.load = function (options) {
+            if (!loadPromise) loadPromise = loadClerk(options);
+            return loadPromise;
+          };
+
+          bootstrap.clerk = clerk;
+          bootstrap.clerkLoadStartedAt = performance.now();
+          if (
+            performance.getEntriesByName(CLERK_LOAD_STARTED_MARK, "mark")
+              .length === 0
+          ) {
+            performance.mark(CLERK_LOAD_STARTED_MARK, {
+              startTime: bootstrap.clerkLoadStartedAt,
+            });
+          }
+          bootstrap.loaded = clerk.load(loadOptions);
+          bootstrap.onboardingStatusPromise = bootstrap.loaded
+            .then(function () {
+              markClerkLoadCompleted();
+              return startOnboardingStatus(clerk);
+            })
+            .catch(function () {
+              return null;
+            });
+        }
+
+        function abortOnFinalPageHide(event) {
+          if (event.persisted) return;
+          bootstrap.abortOnboarding();
+          window.removeEventListener("pagehide", abortOnFinalPageHide);
+        }
+        window.addEventListener("pagehide", abortOnFinalPageHide);
+
+        var script = document.getElementById("vm0-clerk-core-script");
+        if (!script) throw new Error("Clerk core script is unavailable");
+        script.dataset.clerkJsScript = "";
+        script.dataset.clerkPublishableKey = publishableKey;
+        if (satellite) {
+          script.dataset.clerkDomain = satelliteDomain;
+        }
+        script.onerror = function () {
+          script.remove();
+        };
+        script.onload = startClerk;
       })();
     </script>
+  </head>
+  <body>
     <div id="root"></div>
+    <script type="module" src="/src/main.ts"></script>
     <div
       id="app-bootstrap-skeleton"
       role="status"
       aria-live="polite"
-      aria-label="Loading your workspace"
+      aria-label="Loading"
     >
-      <style>
-        :root {
-          --zero-viewport-height: 100dvh;
-        }
-        @supports (height: 100lvh) {
-          @media (display-mode: standalone) {
-            :root {
-              --zero-viewport-height: 100lvh;
-            }
-          }
-        }
-        html,
-        body {
-          margin: 0;
-        }
-        html,
-        body,
-        #root {
-          width: 100%;
-          height: var(--zero-viewport-height);
-          min-height: var(--zero-viewport-height);
-          overflow: hidden;
-        }
-        #root {
-          position: fixed;
-          top: 0;
-          right: 0;
-          left: 0;
-        }
-        #app-bootstrap-skeleton {
-          position: fixed;
-          inset: 0;
-          /* Fixed insets follow WebKit's reachable layout viewport. Avoid the
-             standalone viewport unit, which can resolve after first paint. */
-          z-index: 60;
-          box-sizing: border-box;
-          display: none;
-          align-items: center;
-          justify-content: center;
-          background: #fdfdfe;
-          color: rgba(20, 23, 29, 0.7);
-          font-family:
-            system-ui,
-            -apple-system,
-            BlinkMacSystemFont,
-            "Segoe UI",
-            sans-serif;
-          opacity: 1;
-          transition: opacity 300ms ease;
-        }
-        [data-browser-supported="true"] #app-bootstrap-skeleton {
-          display: flex;
-        }
-        [data-theme="dark"] #app-bootstrap-skeleton {
-          background: #19191b;
-          color: rgba(232, 233, 237, 0.7);
-        }
-        #app-bootstrap-skeleton.app-bootstrap-skeleton--hidden {
-          pointer-events: none;
-          opacity: 0;
-        }
-        .app-bootstrap-skeleton__content {
-          position: fixed;
-          top: var(--app-bootstrap-skeleton-center-y, 50dvh);
-          left: 50%;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 20px;
-          transform: translate(-50%, -50%);
-        }
-        .app-bootstrap-skeleton__avatar {
-          position: relative;
-          width: 64px;
-          height: 64px;
-          overflow: hidden;
-          border-radius: 9999px;
-        }
-        .app-bootstrap-skeleton__avatar-layers {
-          position: absolute;
-          inset: 0;
-          transform: scale(1.25);
-        }
-        .app-bootstrap-skeleton__avatar img {
-          position: absolute;
-          inset: 0;
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        }
-        .app-bootstrap-skeleton__message {
-          position: relative;
-          height: 24px;
-          font-size: 16px;
-          font-weight: 500;
-          line-height: 24px;
-        }
-        .app-bootstrap-skeleton__message p {
-          margin: 0;
-          white-space: nowrap;
-        }
-        .app-bootstrap-skeleton__message-spacer {
-          visibility: hidden;
-        }
-        .app-bootstrap-skeleton__message-static {
-          position: absolute;
-          top: 0;
-          left: 50%;
-          transform: translateX(-50%);
-        }
-        .app-bootstrap-skeleton__message-typewriter {
-          position: absolute;
-          inset: 0;
-          width: 0;
-          overflow: hidden;
-          border-right: 2px solid currentColor;
-          visibility: hidden;
-        }
-        @keyframes app-bootstrap-skeleton-hide-static {
-          0%,
-          99.9% {
-            opacity: 1;
-          }
-          100% {
-            opacity: 0;
-          }
-        }
-        @keyframes app-bootstrap-skeleton-show-typewriter {
-          0%,
-          99.9% {
-            visibility: hidden;
-          }
-          100% {
-            visibility: visible;
-          }
-        }
-        @keyframes app-bootstrap-skeleton-type {
-          from {
-            width: 0;
-          }
-          to {
-            width: 100%;
-          }
-        }
-        @keyframes app-bootstrap-skeleton-blink {
-          0%,
-          100% {
-            border-color: transparent;
-          }
-          50% {
-            border-color: currentColor;
-          }
-        }
-      </style>
       <div class="app-bootstrap-skeleton__content">
         <div class="app-bootstrap-skeleton__avatar" aria-hidden="true">
-          <div class="app-bootstrap-skeleton__avatar-layers">
-            <img data-app-bootstrap-avatar-layer="head" alt="" />
-            <img data-app-bootstrap-avatar-layer="face" alt="" />
-            <img data-app-bootstrap-avatar-layer="hair" alt="" />
-          </div>
-        </div>
-        <div class="app-bootstrap-skeleton__message">
-          <p class="app-bootstrap-skeleton__message-spacer" aria-hidden="true">
-            Brewing some ideas...
-          </p>
-          <p class="app-bootstrap-skeleton__message-static">
-            Warming up the neurons...
-          </p>
-          <p class="app-bootstrap-skeleton__message-typewriter">
-            Brewing some ideas...
-          </p>
+          <!-- First avatar preset: head-r1-s0 + face-r1-f1-h + hair-r1-h1-c5.
+               Keep it inline so bootstrap paint has no asset dependency. -->
+          <svg
+            class="app-bootstrap-skeleton__avatar-layers"
+            viewBox="0 0 480 480"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            focusable="false"
+          >
+            <g
+              fill-rule="evenodd"
+              clip-path="url(#bootstrap-avatar-head-clip)"
+              clip-rule="evenodd"
+            >
+              <path
+                fill="#edc183"
+                d="M231.5 118.3c6.2-.5 13.5 2.6 19.7 2.9 10.4.8 20.1 4.7 29.3 9.5 2 1.3 5.7 2.8 7.4 4.3q7.4 6.8 15.4 12.8c4.2 3 7.7 8.2 11.7 11.5 1.1.9 2.4 2.9 3.4 4l8.5 11.8c3 5.4 6.5 13.5 8.5 19.4.7 2.1 1 5.6 1.6 7.7a54 54 0 0 1 1.8 20.8c9-6 13.4-8.8 24.5-6.3 5.8 1.3 12.7 4.3 16 9.4q9.2 14.2 5.3 30.4a48 48 0 0 1-20.8 31.6c-5 3-8.9 4.3-13.8 7.7-4.2 0-5.4.4-9.4 1.7-1.4.2-3.2-.5-4.5-.5-.4 0-5.4.8-5.3.6-1 1.4-1.5 4.9-2.4 6.2-3.1 4-5 9.5-7.6 13.4-3.4 5-10 11.6-14.2 15.8-5 5-10 10.7-16 14.1-5.4 3.1-11.2 5.6-16.7 8.4-2.1 1.1-4.5 1.7-6.7 2.9-.6 1 1 5.6 1 7.7-1.3.7-7.4 3-7.4 3-5.2 4.3-9.8 4.2-15.9 6.2 0 1.4 0 1.8-1.2 2.8l-.7-.7.1-.4v-1.2l-3.8 1c-3.4-1.1-4.2-.1-7.2-.4s-8.4-1.4-11.2-2.4c-1.7.7-3.8 3-5 1.5-1-2.3-.4-7.8-.3-10.5q-.2-.5-.8-.6c-5.1-.2-9.9-.4-14.6-2.6-1.7.4-3.6 1-5.4.6a52 52 0 0 1-18-5.7c-7-3.7-14.6-6.7-20.7-12.2-1.8-1.7-4.4-3-6.1-5-3.9-4-6.5-9-10.4-13l-2.3-2.7a81 81 0 0 1-10.3-20.4c-1.1-3.3-3.2-6.6-4.4-9.8q-2.3-5.8-3.7-11.6c-.7-2.9-.6-6.6-1.2-9.4a63 63 0 0 1-.8-22.8c.4-2.6-.8-5.9-.4-8.8l1.8-9.6c1.8-14.1 4.2-27.4 9.7-40.6 1-2.5 4.2-7.2 5.7-9.8 10.1-16.8 22.3-30 37.6-42.1a94 94 0 0 1 18.6-10.4c6-2.3 12.9-3.6 19.1-6a85 85 0 0 1 22.5-4.2M204.8 356v.1m4.2-.7.5-.1zm22.5-.4-.4.3h-.2zm-29.4-.2v.3zm30.2-.1h-.1.8zm4.2-.1h.7zm-60.3-2-.5.2zm3.8-1.8h.2l.2.4-.2-.3zm81.5-3.8-.5-.2zm11.6-6.5-.3.1-1 .3q.8-.1 1.3-.4m-6.3-3.8.5.4zm-6.7-11.7-.5.3q-.5 0-.8.3zm.6-.5-.4-.2zm43.9-3.8.7-.8zm1.6-2v-.4zM246 318l-.2.1-.2.1h-.3zm53.3-2.7h.4zm-161.3-22-.2.4zl.2-.1zm128.4-6.6v.3l-1 .5-.4.1q.7 0 1.5-.6zm4.9-.4v.3l-1.2.7h-.2.2l1.2-.7zm47-2.5-.3.2zM127.5 281v.5zv-.2zm90.1-4q0 .7-.6 1.3l-.5.5-1 .8c.8-.7 2-1.6 2.1-2.6l-.2-.2zm-24.3-.4-.1.3-2.4 1 2.4-1zl-.3-.3zm-68.8-5q-.6.6-1.4 1h-.4.4l1.6-1zm.8-1.1v-.2zm118.3-.8 2-1.3zm76-1v.3zh-.2zm61.1-8.3-1 .5q.7-.2 1-.5m-124.6.4-.1.1zl.1-.1zm98-11.8-.6.5.4-.3zm.6-1-.1.2zM179 230.9c-.5.4-1.6 1-2.3 1.8l-.2.2c.7-.8 2-1.6 2.5-2m.2-.2-.5-.2zm7.1-4.5h-.3zm119.6-2.5.4.5-.1-.1q0-.3-.3-.4m-116-3-.5.5-.7.3q.8-.2 1.2-.9m57-35.8-.7.5zv-.2zm-18.2-3.8.2-.1zm1.5-1.2-.5.5zm83.4-2-.2.4zm-58-.3q0 .3-.3.5l-.2.2zm-78.3-1.9-.1.3-.9 2zm118.9-9.2-.3.3.2-.2M172 165l.2.3.3.3-.3-.3zl-.3-.1zm15.6-1-.3.5-.5.3-1 .4-.2.2.1-.2c.7-.3 1.6-.5 1.9-1.1l-.5-.4zm112-.1h.4zm-107.7-2.6-1.1.6zm-13-11.7.3.3.1.5q0-.5-.4-.8m105.5-4.2-.2.5zm-64.7-1.7h.6l1.2.3c.9 0 2.4.1 3.3.3l-2 .3h-.4q1 0 2.4-.3c-.9-.2-2.4-.3-3.3-.3zM198 141q.7-.4 1-.8l-.4.4zm-.5-9.9-1.8.3zm1.8 0"
+              />
+              <path
+                fill="#4b4746"
+                d="M271.4 367.4c4.2-1.3 11 1.2 14.7 3.4a49 49 0 0 1 17.6 20.7c1.2 3.6-.8 7.5.3 11 .1.4.3 1.8.2 2.1-1.7 4.3-3.3 11.3-6.5 14.4q-5.4 5.3-12.4 3.5c-1.6.6-2.7 1.2-4.2 2-4.7-.3-8.1-.2-12.6 1.4-.9-.9-1.3-1.6-2.5-1.6-2.6.1-4.7 1.8-7.3 1l-2-.3c-2.3 1.3-2.8-.2-4.7 0-2.6.5-8.9.1-11.2.6h-.2c-1.1 0-3.2.3-4 0-1.2 0-1.8.2-2.9.5-2.4.6-4-.1-6.3-.9.8-.8 2.7-.8 2.5-2.1v.3q-.1.6-.8.9l-.9.4-.8.5a4 4 0 0 0-2.4.2l-.6.2c-3 1-4.6.8-7.9.8-4 0-3.4 1.4-6.8-1.3q-3 .6-5.9 1.7c-1.9-.6-3.3-1-5-2l-3.1 1.4-5.6-1.3q-7.5-1.7-14.8-4.1c-.6-2.6-2-7.4-1.4-9.8 2.9-12 6.5-17 16.6-24.2q3.7-2.9 7.8-5.5c2.9-1.7 13.3-6.7 16.5-5.9q.4.2.9.1h.2c1.2 1.6 3.3-.8 5-1.5 2.8 1 8.2 2.1 11.2 2.4s3.8-.7 7.2.5l3.7-1c.3.7.2.8 0 1.5l.7.7c1.1-1 1.1-1.4 1.2-2.8 6.1-2 10.7-1.9 15.9-6.2 0 0 6-2.3 7.3-3zM222.3 425h.3zm1.4-.2-.8.1h.3zm38.7-3.8.3-.2zm-17.7-3.1-3.3 2.2q1.6-1.3 3.3-2.2m-34.5.3-.8.2zm48.6-2q.3 0 .5.3v.2l-.4.6-.3.3-.4.5h-.2.2c.6-.7 1-.9 1.1-1.6zm19 1.2-.3.3zm-31-.6-1.3.6.5-.2zm1.8-.8-.2.3zl-.2-.3zm-23.3-4.5q-.3 1.2-1 1.7l.3-.2zm38.4-.1-.4.2.2-.1zm1.9-2-.2.4-.8.8.8-.8zm.1-.6v-.6zm-23.5-1.3v.4l-1.3 1h-.2.2l1.3-1zm-54.5-6.7c.8 1 1.1 3.3.3 4.1.8-.8.5-3.1-.2-4l-.4-.2zm21-10.2c-.8.9-2.2 2-3.5 2 1.3 0 2.7-1.1 3.5-2v-.3zm-3.5 1.2h.7l-1.3-.1zm84.4-2.2-.2.3zm-90.7-3.4-.6.3zm3.6-1.2-.5.2zm.4-.6-.2.3zl-.2-.1zm11.4-3.2h.2zm62.8-1.9v1.3c-.3.2-.1.2-.6.2.5 0 .3 0 .6-.2zm2.1-.4-1.3.3h.2q.6 0 1-.3m1.4-1.4v.4zl-.6-.4zm-4.7-5.9"
+              />
+            </g>
+            <defs>
+              <clipPath id="bootstrap-avatar-head-clip">
+                <path fill="#fff" d="M0 0h480v480H0z" />
+              </clipPath>
+            </defs>
+            <g
+              fill-rule="evenodd"
+              clip-path="url(#bootstrap-avatar-face-clip)"
+              clip-rule="evenodd"
+            >
+              <path
+                fill="#4b4746"
+                d="M243.3 312.2c.4.7 0 2 0 2.8-.5 5.8-5.1 11.7-9.2 15.7a39 39 0 0 1-17.9 8.9c-8 .6-14-.6-20.3-5.6l-1.3-1.1c.5-2.1 1-7.2 2.7-8.3 2.3.6 4.9 2.2 7 2.9 2.6.8 8 2.2 10.6 2.4 1.5.1 9-2.4 10.3-3.4q5.5-3.6 10.5-8c2.2-2.2 4.2-5.4 7-6.6zm-63.2-72.5q1.2.4 2.3 1.2c3.1 8.3 5.6 17.8 8 26.4 2 6.5-7 10.7-10.1 15l-.2.2c-.1 6.3 1.8 7 6.6 10.3 2.7 0 9.6.4 11.7 2.1 1.2 2.7-2.8 5.3-4.8 6.3-4.2 2.2-9.6 3.8-14 1.6-5.4-2.6-6.4-7.1-8.3-12.3 2.6-10.2 3-12.7 10.9-19.9-1.3-5-2-9.1-4.3-14-.8-1.5-.7-5.4-1-7.3q-1.2-5.8 3.2-9.6m-45.7 12.2c0-13.3 22.3-9.5 30.4-7.6 3 .8 6 3.9 7.2 6.6l-.9 2.4q-.3 1.5-1.6 2c-.9 0-2.2-1-3.1-1.7l-.6.1c2.8 3.3 3 3.3 2.8 7.6a30 30 0 0 1-11.1 23.5q-5.6 4.4-12.3 1.8l-1-.2c-4.3-1.2-6.5-5.6-8.6-9 .6-3.2 0-5-.1-8l.3-10c.2-2.1 3-5.5 1.8-7.5-1-.3-1.5.4-2.9.4zm107.3-10.7c7.8-.3 12.5.4 20 2.9 3.3 1 3.6 1.7 5 4.6-.7 2-1.1 2.6-2.5 4.1-1.5-.4-4.2-1.3-5.7-1l-.1-.3c-3.4-.2-6-.8-9.3-1.4h-1.7l-.6.2c-2-.1-4.1-1.1-6.2-1.2l-1.2-1-.1.3c-.8.9-1.4.9-2.6 1.2 0 1.1 1 3.4 1.5 4.5a20 20 0 0 1 .7 13c.3 4.3-2.2 12.1-5.2 15.4-2.3 2.5-4.1 2.2-7 3-.4 0-4.3-1.6-5-1.8-3.8-8-5.1-18.7-2.6-27.5.3-1.1 2.5-4.7 2.2-5.6-2.7.2-8.1 3.3-10.1 1.3-.6-2.4 2.7-5.6 4.7-6.5 8.2-3.9 17-3.8 25.8-4.2m115.1-3.1c1 2.9 1.1.7 2.8 1.6v.6c-1.9 4-16.5 13.2-16.7 16.3.8.1 2-.5 2.7-.8 4.8 1.2 11.4.4 15.6 2.4 6 2.9.9 6.8-3.3 7.5-2.6.5-6.2.6-8.2 1.2-3.2-.6-4.9-.8-8 .3-4.7-2-14.3.8-17-4.2-.7-1.4 4.3-7.5 5.7-8.3 4-1.7 8-5.6 11.5-7.4 5-2.6 9.4-8.4 14.3-9.5zm-109.7 11.2.3.8zm-.8-.3h.2zm-11.1-48.1c2-.4 5.8-.2 7.9 0 4.5.5 9.2 7 8.5 11.4a2.6 2.6 0 0 1-3.5 2c-3-1-5.9-2.6-9-3.7-2-.7-4.4-.7-6.6-1.4a52 52 0 0 1-7.7 2.2c-1.1.2-1 .1-2.2.5q-3 1.5-5.7 3.4c-1.4 1.2-4.1 7.8-6.7 5.8-4.8-3.8 6.2-13.8 9-15.7a45 45 0 0 1 10.3-4.4l5.4-.1zm-81 2.1c8.2-.6 21.9 1 21.8 12.1 0 2-1 3.7-1.6 5.5-4.2-3-13.2-7.3-18.2-8.3-1.4-.4-2-.8-3.2-.1l-.2.8-.3.1c-6.1-2-10.2 5.5-15.6 7.2q-.4 0-.7-.4c-.3-1.4 1-4 1.7-5.3 3.5-6 9.9-9.7 16.4-11.6"
+              />
+              <path
+                fill="#fefefe"
+                d="M242 248c2 0 2.5-1 3.7.5 1.8-1 3.4 1 4.8-.5l2.6.2c3.4.8 3.9 1.4 5.3 3.3l.1.3c2 15.4-4.3 32.7-21.1 35.8-2.9.6-8.2-.6-10.8-2 3-.9 4.8-.6 7.1-3 3-3.4 5.5-11.2 5.2-15.5 1-4.3 1.1-9-.7-13-.5-1.1-1.5-3.4-1.5-4.5 1.3-.3 1.9-.3 2.7-1.4l1.1-.1zm-90.6 2c3.9.6 9 2.8 13 3.4.8.2.6 0 1.4.3 2.8 3.3 3 3.3 2.8 7.6a30 30 0 0 1-11.1 23.5q-5.6 4.4-12.3 1.8l.5-.3c9.3-5.2 9-23.8 7.3-32.8-.2-1-1.1-2.6-1.6-3.5"
+              />
+            </g>
+            <defs>
+              <clipPath id="bootstrap-avatar-face-clip">
+                <path fill="#fff" d="M0 0h480v480H0z" />
+              </clipPath>
+            </defs>
+            <g clip-path="url(#bootstrap-avatar-hair-clip)">
+              <path
+                fill="#e88033"
+                d="m233.3 82 3.9.3 6.7.2 7.2-.1 5.3.5c14 .4 27.4 3.8 40.4 9.1q3.1 1 6.2 2.3c2.3 1 4.4 2.6 6.7 3.6 2.9 1.4 6 2.4 8.8 4 3 1.5 6.5 4.2 9.4 5.7 5.5 3 9.6 5 14.4 9.3 5.5 4.8 9.2 9.7 13.4 15.6 1.6 2.2 4 4.5 5.6 6.8a71 71 0 0 1 12.5 27.2c.7 3.5-.1 7-.5 10.4 0 .7.7 2.6.6 3.1a81 81 0 0 1-12.6 30.7c-1.5 2.5-5.3 6-7.1 8.2-3.2 3.8-7.6 4.8-11.5 7.2-4.5 2.9-8.5 7-13.6 9.2-1 .5-2.7.3-3.8.7-2 .8-4.5 2-6.7 1.8-2.4 0-6.8-.3-8.5-2.3-5.1-6-2.6-13.3-4.3-20.3-.6-3-3.6-10.4-3.5-13v-.5a79 79 0 0 0-9.6-7.7 61 61 0 0 0-10.2-4.3c-1.6-.5-3.6-.5-5.3-1a65 65 0 0 0-32.1-.1c-4.4.6-10.6 2.4-14.6 4-1.8.7-6.6 1.6-8 2.4-3.9 2-7.4 7-10.7 9.9-3 2.6-6.9 5-10.2 7.3a81 81 0 0 1-12.7 6.3c-2.9 1-5 1-7.9 2.8-2 1.2-7.6.8-10 1.2-2.2.3-5.1.4-7.4.5q-9.4-.5-17.7-5c-3.3-1.8-5-3.5-8.6-5-5 3.2-7.3 6.3-13.5 6.6-7 .3-14-.8-19.3-6a21 21 0 0 1-4.9-6.4c-.6-3.7-1.3-5-3.3-8.2a25 25 0 0 1-2.5-11.1c0-3 2.2-1.7.4-5.5.2-1.9 1.5-4.3 1.8-6.4.3-1.8-.4-4.7 0-6.2 2.4-9.3 5.5-17.6 10-26 1.7-3.2 3-6.6 4.9-9.6a95 95 0 0 1 32.8-33c2.3-1.3 4.5-3.1 7-3.4 1.5-.2 1.6.2 2.7 1 .8-.3 1.5-1.3 2.2-1.8 1-.8 2.5-1 3.8-1.6 7.5-3 14.4-2 22.2-1 2-1 6-3.7 7.9-4.4 10.1-3.9 19.5-5.7 30.1-6.7l9.7-1c1.6 0 2.3.2 4-.2m87 126.5c1.7-.8 4.5-.5 5.2-1.4-.8-.2-4.2.4-5.6.4s-3.6 1.6-4.2 2.8c-.7.5-1 .6-1.3 1.3.7.2.6.1 1.3 0 2 .4 3.7-1.6 4.6-3.1M203 160.9q.6-3.6 3.2-6v-.3l-.8-.2c-.8.5-3.2 5.4-3 6.3zm114.7 62.5q.9.6 1.7.4l-3.2-2.7-1.3 2.2h.3l1.2-.8q.6.6 1.3.9m-1.5-25.7.8-.6-.5-.3q.1-1 1-1.7v-.5l-.2-.2c-.8.9-1.8 2-2 3l.2.3zm-12.7-47.4q1.1-.4 1.7-1.2l-.2-.1q-1.1.3-1.9 1zm-178 44.5c.6-.6.9-.6 1-1.4l-.2-.2c-.8.7-1 .6-1 1.4zm112-106.2c0 .8-.3 1.1 0 1.7l2-1.1.7-.4-.2-.2zm-48 103.2c.8-.6 1-.6 1.2-1.3l-.1-.3c-.9.7-1 .6-1.3 1.4zm85.8-61.8q-1.1.4-1.8 1.2v.4q1.2-.5 1.8-1.2zm45.3 103.5c-1.2-1-1.7-1-3.4-1 1.2.9 2 1 3.4 1m10.6-7c1 .7 1.1.7 2.3.6-.9-.7-1.1-.7-2.3-.5M309.8 105c1.2-.6 2-.9 3-1.8v-.5c-.8.4-2.9 1.3-3.2 2zm-198.9 70c.7-.4 1.3-.6 1.4-1.4-1 .4-1.2.3-1.5 1zm29-50.6q-1.1.3-1.8 1.2l.3.3q1-.5 1.7-1.4zm161.3-22c-1 .4-1.2.3-1.6 1l.3.5q1-.5 1.5-1.4zM140.7 205.2c.7-.5 1.7-1 2-1.6l-.3-.1c-.7.3-1.8.8-2.2 1.4l.2.3zm-29.5-45q-1.1.6-1.8 1.6l.3.2c.6-.5 1.6-1 1.9-1.7zm142.5-67.7q1.8 0 3.4-.3l.3-.4-.4-.1c-.9 0-3.1 0-3.7.4l.1.4z"
+              />
+              <path
+                fill="#4b4746"
+                d="m133 179.9-.4-.2c-1.4-.8-4.8-6.4-5-8.1-3.2-16.9 10.5-35.3 25.3-42 3-1.5 8-2.5 11-3.3 5 1.9 5.2 3.8 2 7.6-1.6.1-4.9 0-6.2.2a35 35 0 0 0-20.4 14.9c-2.3 3.4-4 4.1-4 8.8.1 13.2 10.6 15.6 21.6 15.7a37 37 0 0 0 16.4-6.2c2-1.6-.5-4.1-2-5.3.3-3-.4-6 .6-9.1 3.9-12 11-20.9 24.1-17.4a11 11 0 0 1 3.6 5.4c-.4 1.3-1.4 3.6-1.5 4.9.4.6.4.6.5 1.3a50 50 0 0 1-9.3 17.5c2 1.6 4 4 6.3 5 3.8 1.8 7.3.7 10.8 3 3.9-1.6 8.3-2.3 12.2-4 5.5-2.2 10.4-5.4 12.7-11.2a14 14 0 0 1-1.5-12.7 15 15 0 0 1-.3-5.3l2-2a33 33 0 0 1 9-7.7c7.2 1.2 11.5 3.3 10 11.3-1.2 5.6-4.2 8.9-6.3 13.7.9 1 1.3 1.6 2.4 2.5 1.8 0 3 .4 4.7 1 3.8 1.2 7.8 1.6 11.7 2.5q1.8.3 2.3 2c-.9 4-12 5.8-15.7 5.7-2.5 0-3.2 0-5.7.6-2.5-2.5-5-3.3-8.5-4.3-2.1 2.6-4.6 5.7-7.5 7.6-3.6 2.4-6.2 3.4-9.5 6.4-4.4 0-5.4 1.2-9.4 2.2l-1.6-.6c-1 .5-1.6 1.7-2.9 1.5-2.1-.2-1.5-1.6-4-1l-1.9 1-2.5-.9c-5-1.7-11-4.2-15.3-7q-1.5.6-2.8 1.7c-1 .7-2.3 2.2-3.3 2.8-1.1.8-1.7-.6-3.4.6s-2.7 2.7-4.3 3.7h-1.6c-1.2.2-2.8.9-4 1.2a18 18 0 0 1-8 .3c-1 .2-1.4 1.1-2.2 1.9-4.2-2-3.9-.8-6.8-1.6-1.1 0-2.8-1-3.8-1.7l-1 .6c-1.2-.2-4.4-2.6-6.6-3.5"
+              />
+              <path
+                fill="#e88033"
+                d="M367 286.2c4-3.3 6.4.4 7.6 4.1 1.3 4.8 1.6 8.6 1.9 13.5 0 1.4 1.4 3.7 1.6 5.2q.8 6.4 1.1 13c.6 4.8 2.1 13.2 1.2 18-.7 3.7-.3 4-.4 7.6-.4 10.2-2.7 21.4-5.8 31a59 59 0 0 1-9.8 15.3c-1 1.4-3.8 2-5 2.8-6.1 4.3-11.3 4.3-18.4 4-3.2 0-7.9-2.5-11-3.5-2.6-.8-5-.9-7-3-4.6 1.7-10 4.4-15 5.7-.8.2-3.2 0-3.6-.5-2.5-3.4-3-10.5-5.4-14.3q-.5-.8-1.2-1.5l-3.5-2.7q-2.4-2.4-5-4.6a39 39 0 0 0-17.5-5.5c-1.7-.2-3.8 2.1-5.8.6-1.3-2.5-.8-15 .2-17.7 3.6-9.3 21.4-11.8 28.8-16.7 4.3-2.7 8.8-7.9 13-11.1 1-.8 6.3-5 6.7-5.5 3-3.6 6.3-9.4 8.6-13.4 2-3.6 3.2-8.2 6.9-10.8 2-1.3 6.6-1.6 9-1.6 5.2 0 14-.7 18.3-3.9 2.8-2 4-3.7 7.4-5.4 1 0 1 .1 1.7.6zm-245.2 4c1.7-.4 3.3 3 4 4.1 2.1 4.3 3.4 8.7 5.5 13.1a86 86 0 0 0 9.1 15.4c2.5 3 6.2 6.5 8.7 9.6l10 9.7a112 112 0 0 0 17.8 8.8c3.7 1.5 7.5 3.5 11.4 4.6 3.2.9 6.3.9 9.5 1.2 1.5.2 4.8 2.4 6.3 2.3 4 0 7.3-2.4 11.5-.3 1 2.2.6 11.8-.2 14.4-2.5 7.8-4 6.4-10.7 7.7-1.4.3-7.3 3.7-9.2 4.7-3.6 2-6.3 2.8-9.8 5.6a35 35 0 0 1-11 6.8c-2-1-3.4.3-5.6.9l-2.2-.8c-5.6-2.2-11-.6-14.5-6.5l-3.8 1c-7.3 1.3-10-1.2-16.3-5-3.5-2-9-9.7-10.7-13.5-.6-1.3-.3-3.3-.8-4.7a99 99 0 0 1-5.2-26.7c-.1-3.3-1.4-9.8-1.2-12.9.5-8.8 0-31.1 4.9-38.2zm213 83.1-.3.4v-.1zm2-10.4-.3 1zl.3-.3zm-204.9-33.7v.6zm.3-.4-.2.2zm230.8-23v-.7zm-45.8-73.3c1.7 0 2.2-.1 3.4.9-1.5 0-2.2-.1-3.4-1m14-6c1.2-.2 1.4-.2 2.3.5-1.2.1-1.3 0-2.3-.5m-15-5.5c1 .7 2.2 2 3.2 2.7q-.8.2-1.7-.4-.7-.3-1.3-1l-1.2 1v-.2l-.3.1q.5-1.1 1.3-2.2m4.2-13.6c1.6-.1 4.3-.5 5-.4-.7.9-3.4.6-5 1.3h-.2c-1 1.6-2.6 3.6-4.6 3.2-.7.1-.6.2-1.3 0 .3-.7.6-.8 1.3-1.3l.1-.3c.8-1.1 2.8-2.6 4-2.5zm-177.9-4c-.2.7-1.2 1.2-2 1.7h-.2l-.2-.3c.4-.6 1.5-1 2.2-1.4zm175-8.9v.5q-.9.7-1 1.7l.5.3-.8.6h-.7l-.2-.3c.2-1 1.2-2.1 2-3zm-191-1.2c-.1.8-.4.8-1 1.4l-.3-.2c.2-.8.3-.7 1.1-1.4zm64.2-3c-.2.8-.4.8-1.2 1.4l-.2-.2c.3-.8.4-.7 1.3-1.4zm-38.2-6.4c.6-.1.4 0 .8.2-1 .2-1.4 1.1-2.2 1.9-4.2-2-3.9-.8-6.8-1.6 2-.2 6 0 8.2-.5M133 180c3.6-2.2 4.6 1 7.5 2.8v.1c-.4.4-.4.4-.9.6-1.2-.2-4.4-2.6-6.6-3.5m63.1 1q2.2-1.3 4.4-.1l-1.9 1zm-83.8-7.4q-.2 1-1.4 1.4v-.4c.2-.7.4-.6 1.4-1m-.7-13.2c-.3.6-1.3 1.2-1.9 1.7l-.3-.2q.6-1 1.8-1.6zm94.6-5.7.1.2a10 10 0 0 0-3.2 6.1l-.5-.2c-.3-1 2.1-5.8 2.9-6.3zM186 145c5.6 1.3 3.5 6 1.7 9.7-1 2-2 2.9-3.8 4-2.3-2.9-2.5-5-3.9-8.3 2-2.2 3.4-4 6-5.4m52.4 11q.7 0 1.3.3c.5.8.4.4.3 1.5-1.2-.6-1.4-.6-1.6-1.8m67-7q-.6 1-1.7 1.3c-.2 0 0 0-.4-.3q.7-.7 1.9-1zm-64.8-9.8c.8.5.6 3 1.9 5.1-1.4 2-1.7 2-2.7 4.3h-.3c-1-1.2-2-6.2-1.3-7.8.4-1 1.3-1.2 2.1-1.6zm-9-1.9c.2 2.2-1 5.4-1.7 7.4a15 15 0 0 1-.3-5.3zm44-7q-.7.9-1.8 1.3v-.4q.6-.7 1.7-1.2zM140 124.5q-.6 1-1.7 1.4l-.3-.3q.7-.9 1.8-1.2zm172.7-21.8v.5c-1 .9-1.8 1.2-3 1.8l-.2-.4c.3-.6 2.4-1.5 3.1-2zm-11.4-.2c-.2.6-1 1-1.5 1.4l-.3-.4c.4-.8.6-.7 1.6-1.1zm-44-10.6-.3.4c-1.2.3-2 .3-3.4.3h-.3l-.1-.4c.6-.4 2.8-.4 3.7-.4zM240 88.6l.2.2-.7.4-2 1.1c-.3-.6 0-.9 0-1.7z"
+              />
+            </g>
+            <defs>
+              <clipPath id="bootstrap-avatar-hair-clip">
+                <path fill="#fff" d="M0 0h480v480H0z" />
+              </clipPath>
+            </defs>
+          </svg>
         </div>
       </div>
     </div>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    />
     <script>
       (function () {
-        if (window.__vm0BrowserSupported !== true) return;
+        var hostname = window.location.hostname;
+        var isProductionHost =
+          hostname === "vm0.ai" ||
+          hostname.endsWith(".vm0.ai") ||
+          hostname === "okou.ai" ||
+          hostname.endsWith(".okou.ai");
+        if (!isProductionHost) return;
 
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = function () {
+          window.dataLayer.push(arguments);
+        };
+        window.gtag("js", new Date());
+        window.gtag("config", "AW-18144854014");
+        window.gtag("config", "AW-18407336975");
+
+        var initialized = false;
+
+        function loadMarketingScripts() {
+          var gtagScript = document.createElement("script");
+          gtagScript.async = true;
+          gtagScript.src =
+            "https://www.googletagmanager.com/gtag/js?id=AW-18144854014";
+          document.head.appendChild(gtagScript);
+        }
+
+        function scheduleMarketingScripts() {
+          if (initialized) return;
+          initialized = true;
+
+          if (typeof window.requestIdleCallback === "function") {
+            window.requestIdleCallback(loadMarketingScripts, {
+              timeout: 1500,
+            });
+            return;
+          }
+
+          window.setTimeout(loadMarketingScripts, 0);
+        }
+
+        // Keep vendor work outside the first-content critical path. The
+        // 30-second guard exceeds the observed mobile P90 startup window and
+        // still bounds bootstraps that never reach real app content.
+        window.addEventListener(
+          "vm0:app-first-content-visible",
+          scheduleMarketingScripts,
+          { once: true },
+        );
+        window.setTimeout(scheduleMarketingScripts, 30000);
+      })();
+    </script>
+    <script>
+      (function () {
         var skeleton = document.getElementById("app-bootstrap-skeleton");
         // iOS standalone can expand the fixed containing viewport one frame
         // after launch. Pin the content to the initially reachable viewport
@@ -1309,147 +780,6 @@
             viewportHeight / 2 + "px",
           );
         }
-        var loadingCopy = window.__vm0PreBundleCopy.loading;
-        var messages = loadingCopy.messages;
-        skeleton.setAttribute("aria-label", loadingCopy.ariaLabel);
-        var avatarPresets = [
-          {
-            rotation: 1,
-            skin: 0,
-            hairStyle: 1,
-            hairColor: 5,
-            expression: 1,
-            intensity: "h",
-          },
-          {
-            rotation: 2,
-            skin: 1,
-            hairStyle: 3,
-            hairColor: 3,
-            expression: 1,
-            intensity: "m",
-          },
-          {
-            rotation: 4,
-            skin: 2,
-            hairStyle: 5,
-            hairColor: 4,
-            expression: 3,
-            intensity: "d",
-          },
-          {
-            rotation: 3,
-            skin: 3,
-            hairStyle: 4,
-            hairColor: 1,
-            expression: 4,
-            intensity: "h",
-          },
-          {
-            rotation: 5,
-            skin: 4,
-            hairStyle: 2,
-            hairColor: 2,
-            expression: 5,
-            intensity: "m",
-          },
-        ];
-        var staticAssetBase =
-          document.documentElement.getAttribute("data-app-brand-name") ===
-          "Okou"
-            ? "https://static.okou.io"
-            : "https://static.vm0.io";
-        var avatarAssetBase =
-          staticAssetBase + "/platform/views/zero-page/assets/avatar-svg/";
-        var avatar =
-          avatarPresets[Math.floor(Math.random() * avatarPresets.length)];
-        var messageIndex = Math.floor(Math.random() * messages.length);
-        var staticMessage = skeleton.querySelector(
-          ".app-bootstrap-skeleton__message-static",
-        );
-        var spacerMessage = skeleton.querySelector(
-          ".app-bootstrap-skeleton__message-spacer",
-        );
-        var typewriterMessage = skeleton.querySelector(
-          ".app-bootstrap-skeleton__message-typewriter",
-        );
-
-        skeleton.querySelector('[data-app-bootstrap-avatar-layer="head"]').src =
-          avatarAssetBase +
-          "head-r" +
-          avatar.rotation +
-          "-s" +
-          avatar.skin +
-          ".svg";
-        skeleton.querySelector('[data-app-bootstrap-avatar-layer="face"]').src =
-          avatarAssetBase +
-          "face-r" +
-          avatar.rotation +
-          "-f" +
-          avatar.expression +
-          "-" +
-          avatar.intensity +
-          ".svg";
-        skeleton.querySelector('[data-app-bootstrap-avatar-layer="hair"]').src =
-          avatarAssetBase +
-          "hair-r" +
-          avatar.rotation +
-          "-h" +
-          avatar.hairStyle +
-          "-c" +
-          avatar.hairColor +
-          ".svg";
-
-        function typewriterAnimation(message, delay) {
-          return (
-            "app-bootstrap-skeleton-show-typewriter " +
-            delay +
-            "ms forwards, app-bootstrap-skeleton-type 1.5s steps(" +
-            message.length +
-            ") " +
-            delay +
-            "ms forwards, app-bootstrap-skeleton-blink 0.6s step-end " +
-            delay +
-            "ms infinite"
-          );
-        }
-
-        function setMessages(isFirst) {
-          var currentMessage = messages[messageIndex % messages.length];
-          var nextMessage = messages[(messageIndex + 1) % messages.length];
-          var nextTypewriterMessage = typewriterMessage.cloneNode(true);
-
-          staticMessage.textContent = currentMessage;
-          staticMessage.style.display = isFirst ? "block" : "none";
-          staticMessage.style.animation = isFirst
-            ? "app-bootstrap-skeleton-hide-static 800ms forwards"
-            : "none";
-          spacerMessage.textContent = nextMessage;
-          nextTypewriterMessage.textContent = nextMessage;
-          nextTypewriterMessage.style.animation = typewriterAnimation(
-            nextMessage,
-            isFirst ? 800 : 0,
-          );
-          typewriterMessage.replaceWith(nextTypewriterMessage);
-          typewriterMessage = nextTypewriterMessage;
-        }
-
-        setMessages(true);
-
-        var cycles = 0;
-        var interval = window.setInterval(function () {
-          if (!document.getElementById("app-bootstrap-skeleton")) {
-            window.clearInterval(interval);
-            return;
-          }
-
-          messageIndex += 1;
-          setMessages(false);
-          cycles += 1;
-          if (cycles >= 3) {
-            window.clearInterval(interval);
-          }
-        }, 4000);
       })();
     </script>
     <script>

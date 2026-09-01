@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Errore Codex",
       "commandStatus": "Comando {{status}}",
+      "contextCompaction": "Contesto compattato",
       "error": "Errore: {{error}}",
       "fileChangeKind": "modifica",
       "fileOperationCompleted": "Operazione sul file completata",
@@ -29,6 +30,12 @@
       },
       "status": "Stato: {{status}}",
       "statusDetail": "stato: {{status}}",
+      "subAgentActivity": {
+        "completed": "Subagente completato",
+        "interacted": "Interazione con il subagente",
+        "interrupted": "Subagente interrotto",
+        "started": "Subagente avviato"
+      },
       "turnFailed": "Turno non riuscito",
       "turnStatus": "Turno {{status}}",
       "warning": "[avviso] {{message}}",
@@ -377,51 +384,6 @@
     }
   },
   "appShell": {
-    "browserUpgrade": {
-      "browser": {
-        "action": "Aggiorna browser",
-        "description": "{{assistantName}} non supporta la versione corrente del browser. Aggiorna il tuo browser per continuare.",
-        "title": "Aggiorna il tuo browser per continuare"
-      },
-      "chrome": {
-        "action": "Aggiorna Chrome",
-        "description": "{{assistantName}} non supporta la versione corrente del browser. Aggiorna Chrome per continuare.",
-        "title": "Aggiorna Chrome per continuare"
-      },
-      "chromium": {
-        "action": "Aggiorna Chromium",
-        "description": "{{assistantName}} non supporta la versione corrente del browser. Aggiorna Chromium per continuare.",
-        "title": "Aggiorna Chromium per continuare"
-      },
-      "ios": {
-        "action": "Aggiorna iOS",
-        "description": "{{assistantName}} non supporta la versione corrente del browser. Aggiorna iOS per continuare.",
-        "title": "Aggiorna iOS per continuare"
-      },
-      "safari": {
-        "action": "Aggiorna Safari",
-        "description": "{{assistantName}} non supporta la versione corrente del browser. Aggiorna Safari per continuare.",
-        "title": "Aggiorna Safari per continuare"
-      }
-    },
-    "loading": {
-      "ariaLabel": "Caricamento dell'area di lavoro",
-      "messages": {
-        "almostThere": "Ci siamo quasi...",
-        "brewingIdeas": "Preparando alcune idee...",
-        "connectingDots": "Unendo i puntini...",
-        "gettingReady": "Preparando tutto...",
-        "loadingWorkspace": "Caricamento dell'area di lavoro...",
-        "spinningTeam": "Radunando il team...",
-        "tuningInstruments": "Accordando gli strumenti...",
-        "warmingNeurons": "Riscaldando i neuroni..."
-      }
-    },
-    "logoAlt": "{{brandName}}",
-    "metadata": {
-      "description": "{{assistantName}} è il tuo collega AI di {{brandName}}. Scrivi a {{assistantName}} o chatta sul web — ricerca, email, documenti, Slack, GitHub, Notion e oltre 100 strumenti.",
-      "title": "{{assistantName}} — Il tuo collega AI di {{brandName}}"
-    },
     "shortcutHelp": {
       "close": "Chiudi le scorciatoie da tastiera",
       "description": "Scorciatoie disponibili in questa pagina",
@@ -674,6 +636,7 @@
       "importedSlides_many": "{{count}} diapositive",
       "importedSlides_other": "{{count}} diapositive",
       "multiAccent": "Multiaccento",
+      "needPro": "Richiede Pro",
       "nextSlide": "Anteprima della diapositiva successiva",
       "noMatches": "Nessuna corrispondenza",
       "placeholder": "{{title}} segnaposto anteprima sito web",
@@ -726,6 +689,7 @@
       "tryDifferentSearch": "Prova una ricerca diversa.",
       "use": "Utilizzare",
       "useThisTemplate": "Usa questo modello",
+      "viewVideoPlans": "Visualizza i piani per il modello video {{title}}",
       "visibility": {
         "change": "Modifica",
         "changeLabel": "Modifica la visibilità del modello",
@@ -1964,6 +1928,20 @@
       "unsupportedIntelMac": "Richiede un Mac Apple Silicon",
       "yourComputer": "Il tuo computer"
     },
+    "connectorAccountSwitch": {
+      "accountFallback": "Account del connettore",
+      "actionFailed": "Impossibile cambiare account. Riprova.",
+      "customConnector": "Connettore personalizzato",
+      "loadFailed": "Impossibile caricare questo account del connettore.",
+      "reconnectRequired": "È necessario riconnettersi. Le esecuzioni successive potrebbero usare l'alternativa esistente.",
+      "retry": "Riprova",
+      "selected": "Passaggio a {{account}} completato",
+      "switch": "Cambia",
+      "switching": "Cambio in corso...",
+      "title": "Passare a {{account}}?",
+      "unavailableDescription": "Questo account non esiste o non è disponibile per questo connettore.",
+      "unavailableTitle": "Account non disponibile"
+    },
     "connectors": {
       "accountForThread": "Account per questo thread",
       "add": "Aggiungi {{connectorName}}",
@@ -2001,10 +1979,13 @@
         "capacityTitle": "Il modello {{framework}} è occupato",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "Continua",
         "resetAndTryAgain": "Reimposta e riprova",
         "resetsAt": "Ripristino alle {{time}}",
         "selectModel": "Cambia modello",
         "tryAgain": "Riprova",
+        "unavailableDescription": "Questo modello non è supportato dall'account ChatGPT collegato. Passa a un altro modello per continuare.",
+        "unavailableTitle": "Il modello selezionato non è disponibile",
         "usageDescription": "Puoi continuare quando il limite di utilizzo viene reimpostato oppure cambiare modello ora.",
         "usageTitle": "Limite di {{framework}} raggiunto"
       },
@@ -2042,7 +2023,11 @@
       "avatar": {
         "heading": "Scegli un avatar",
         "help": "Scegli un presentatore o continua senza avatar",
-        "none": "Nessun avatar"
+        "none": "Nessun avatar",
+        "visualBalanceAvatarLed": "Incentrato sull'avatar — il narratore resta sullo schermo per la maggior parte del tempo",
+        "visualBalanceBalanced": "Mix equilibrato — stesso tempo per entrambi",
+        "visualBalanceBRollLed": "Incentrato sui contenuti visivi — priorità a slide e immagini",
+        "visualBalanceHeading": "Come preferisci bilanciare gli elementi visivi?"
       },
       "cardDescription": "Trasforma un file o una registrazione dello schermo in un video completo",
       "description": "Aggiungi una fonte, scegli facoltativamente avatar e voce, quindi crea il video in una chat.",
@@ -2228,7 +2213,6 @@
       "message_one": "{{count}} messaggio",
       "message_many": "{{count}} messaggi",
       "message_other": "{{count}} messaggi",
-      "morningBrief": "Riepilogo mattutino",
       "openGoalDetails": "Apri i dettagli dell'obiettivo",
       "pendingAutomationEvent": "Evento di automazione in sospeso",
       "queuedMessage": "Messaggio in coda",
@@ -3352,7 +3336,8 @@
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "Richiesta non riuscita"
+      "requestFailed": "Richiesta non riuscita",
+      "sharedDatabaseUnavailable": "Si è verificato un problema nell'app. Attendi un momento, quindi aggiorna la pagina per riprovare."
     },
     "realtime": {
       "degraded": "Gli aggiornamenti in tempo reale hanno riscontrato un problema. Aggiorna la pagina.",
@@ -6218,7 +6203,7 @@
       "browse": "Sfoglia gli ufficiali",
       "chooseValue": "Scegli un valore",
       "copySucceededUninstallFailed": "La copia è pronta, ma non è stato possibile disinstallare il workflow ufficiale originale.",
-      "description": "Installa workflow gestiti e mantenuti da vm0.",
+      "description": "Installa workflow gestiti e mantenuti dall’Okou Official Team.",
       "empty": "Non sono disponibili workflow ufficiali.",
       "includedAutomations": "Automazioni incluse",
       "install": "Installa",

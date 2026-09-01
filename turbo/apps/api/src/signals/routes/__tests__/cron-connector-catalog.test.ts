@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 
+import { EVENT } from "@axiomhq/logging";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { cronConnectorCatalogContract } from "@okouai/api-contracts/contracts/cron";
 import { connectorsSlugCallbackContract } from "@okouai/api-contracts/contracts/connectors-slug-callback";
@@ -50,6 +51,8 @@ import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
   apiTestConnectorCatalogValidationAuthority,
+  clearApiTestConnectorCatalogExternalReaderIdentityReplacements,
+  corruptApiTestConnectorCatalogActiveSnapshotPayload,
   deleteApiTestConnectorCatalogCompatibility,
   deleteApiTestConnectorCatalogCompatibilityEvaluation,
   deleteApiTestConnectorCatalogRuntimeProjectionSet,
@@ -63,6 +66,7 @@ import {
   readApiTestConnectorCatalogRuntimeProjectionAuthority,
   readApiTestConnectorCatalogValidationAuthority,
   replaceApiTestConnectorCatalogStoredBytes,
+  setApiTestConnectorCatalogExternalReaderIdentityReplacements,
   setApiTestConnectorCatalogRuntimeProjectionAuthority,
   setApiTestConnectorCatalogValidationAuthority,
 } from "../../../test-fixtures/connector-catalog";
@@ -146,7 +150,7 @@ const DEFAULT_API_VERSION = apiPackage.version;
 const ZERO_DIGEST = `sha256:${"0".repeat(64)}`;
 const LEGACY_CONNECTOR_CATALOG_MAX_RAW_BYTES = 16 * 1024 * 1024;
 const EXPECTED_CAPABILITY_DIGEST =
-  "sha256:1bf96aab55b264a18add3139029db3f6502883ac97b16982d1fa4d668444bae7";
+  "sha256:d93687a2d56312f36c56e3232f93bc928cebbeb626c1de6fa51f0bbf09cb4c97";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SLACK_OAUTH_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
@@ -1469,6 +1473,57 @@ function runnerFirewallClient() {
   );
 }
 
+async function expectCatalogUnavailableRequestError(
+  reason: string,
+): Promise<void> {
+  const code = `CONNECTOR_CATALOG_UNAVAILABLE:${reason}`;
+  const response = await accept(
+    runnerFirewallClient().resolve({
+      headers: { authorization: OFFICIAL_RUNNER_AUTHORIZATION },
+      body: {},
+    }),
+    [500],
+  );
+
+  expect(response.body).toStrictEqual({ error: "Internal server error" });
+  const capturedError =
+    context.mocks.sentry.captureException.mock.calls.at(-1)?.[0];
+  expect(capturedError).toMatchObject({
+    name: "ExternalConnectorCatalogUnavailableError",
+    message: "Accepted external connector catalog is unavailable",
+    reason,
+    code,
+  });
+
+  const [message, fields] =
+    context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
+  expect(message).toBe(
+    "Unhandled request error: Accepted external connector catalog is unavailable",
+  );
+  const logFields = fields as Record<PropertyKey, unknown>;
+  expect(logFields).toMatchObject({
+    type: "unhandled_request_error",
+    errorSummary: "Accepted external connector catalog is unavailable",
+    method: "POST",
+    route: "/api/runners/builtin-firewalls/resolve",
+    errorCode: code,
+    error: expect.objectContaining({
+      name: "ExternalConnectorCatalogUnavailableError",
+      message: "Accepted external connector catalog is unavailable",
+      reason,
+      code,
+    }),
+  });
+  expect(logFields[EVENT]).toMatchObject({
+    source: "api",
+    type: "unhandled_request_error",
+    errorSummary: "Accepted external connector catalog is unavailable",
+    method: "POST",
+    route: "/api/runners/builtin-firewalls/resolve",
+    errorCode: code,
+  });
+}
+
 interface VolumeStorageState {
   readonly s3_prefix: string;
   readonly size: number;
@@ -1646,6 +1701,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  clearApiTestConnectorCatalogExternalReaderIdentityReplacements();
   setApiVersion(DEFAULT_API_VERSION);
   clearMockNow();
 });
@@ -1699,6 +1755,53 @@ describe("connector catalog cron authentication and initial state", () => {
       unresolvedBridgeCredentials: 0,
     });
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
+  });
+});
+
+describe("connector catalog unavailable request telemetry", () => {
+  it("classifies a missing current identity", async () => {
+    expect.hasAssertions();
+    configureSource();
+
+    await expectCatalogUnavailableRequestError("missing_current_identity");
+  });
+
+  it("classifies an invalid persisted compatibility evaluation", async () => {
+    expect.hasAssertions();
+    configureSource();
+    await installApiTestConnectorCatalog();
+    await invalidateApiTestConnectorCatalogCompatibility();
+
+    await expectCatalogUnavailableRequestError(
+      "invalid_compatibility_evaluation",
+    );
+  });
+
+  it("classifies a rejected persisted artifact", async () => {
+    expect.hasAssertions();
+    configureSource();
+    await installApiTestConnectorCatalog();
+    await corruptApiTestConnectorCatalogActiveSnapshotPayload();
+
+    await expectCatalogUnavailableRequestError(
+      "invalid_artifact:invalid-compression",
+    );
+  });
+
+  it("classifies a missing active snapshot after the identity retry", async () => {
+    expect.hasAssertions();
+    configureSource();
+    await installApiTestConnectorCatalog({
+      catalogVersion: "2026-08-31.identity-race-initial",
+    });
+    setApiTestConnectorCatalogExternalReaderIdentityReplacements([
+      "2026-08-31.identity-race-first-replacement",
+      "2026-08-31.identity-race-second-replacement",
+    ]);
+
+    await expectCatalogUnavailableRequestError(
+      "missing_active_snapshot_after_retry",
+    );
   });
 });
 
@@ -4612,6 +4715,7 @@ describe("connector catalog valid lifecycle", () => {
 
     const refreshEntered = deferredGate();
     const watchAuthorizations: string[] = [];
+    const stopAuthorizations: string[] = [];
     server.use(
       http.post(GOOGLE_OAUTH_TOKEN_URL, async ({ request }) => {
         const body = new URLSearchParams(await request.text());
@@ -4642,6 +4746,13 @@ describe("connector catalog valid lifecycle", () => {
             historyId: "100",
             expiration: String(now() + 7 * 24 * 60 * 60 * 1000),
           });
+        },
+      ),
+      http.post(
+        "https://gmail.googleapis.com/gmail/v1/users/me/stop",
+        ({ request }) => {
+          stopAuthorizations.push(request.headers.get("authorization") ?? "");
+          return new HttpResponse(null, { status: 204 });
         },
       ),
     );
@@ -4705,6 +4816,10 @@ describe("connector catalog valid lifecycle", () => {
       [201],
     );
     expect(watchAuthorizations).toStrictEqual([
+      "Bearer replacement-gmail-token",
+      "Bearer replacement-gmail-token",
+    ]);
+    expect(stopAuthorizations).toStrictEqual([
       "Bearer replacement-gmail-token",
     ]);
   });

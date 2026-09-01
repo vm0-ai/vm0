@@ -17,6 +17,9 @@ import {
   triggerAblyFailure,
   triggerAblyReauth,
   triggerAblyReconnect,
+  triggerSharedWorkerAblyConnectionState,
+  triggerSharedWorkerAblyFailure,
+  triggerSharedWorkerAblyReconnect,
 } from "../../mocks/ably.ts";
 import { setMockAgents } from "../../mocks/handlers/api-agents.ts";
 import { setMockRedeemResponse } from "../../mocks/handlers/api-billing.ts";
@@ -47,10 +50,6 @@ import {
   mockUploadPending,
   mockUploadSuccess,
 } from "../../mocks/upload-helpers.ts";
-import {
-  resetMockClerkAuthComponentMounted,
-  setMockClerkAuthComponentMounted,
-} from "../../test/mocks/clerk-react.ts";
 import { createDeferredPromise } from "../utils.ts";
 
 interface WindowOpenCall {
@@ -473,6 +472,10 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       triggerConnectionState: triggerAblyConnectionState,
       triggerFailure: triggerAblyFailure,
       triggerReconnect: triggerAblyReconnect,
+      triggerSharedWorkerConnectionState:
+        triggerSharedWorkerAblyConnectionState,
+      triggerSharedWorkerFailure: triggerSharedWorkerAblyFailure,
+      triggerSharedWorkerReconnect: triggerSharedWorkerAblyReconnect,
       triggerReauth: triggerAblyReauth,
       triggerConnectionClosed: triggerAblyConnectionClosed,
       rejectSubscribe: (topic: string, message: string) => {
@@ -484,17 +487,6 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       hasSubscription,
       hasSubscriptionOnChannel,
       getAuthTokenHistory,
-    },
-    clerk: {
-      deferAuthComponentMount: () => {
-        setMockClerkAuthComponentMounted(false);
-        restoreOnAbort(getSignal(), resetMockClerkAuthComponentMounted);
-        return {
-          mount: () => {
-            setMockClerkAuthComponentMounted(true);
-          },
-        };
-      },
     },
     deferred: <T>() => {
       return createDeferredPromise<T>(getSignal());

@@ -8,7 +8,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { writeDb$ } from "../external/db";
-import { publishUserSignal } from "../external/realtime";
+import { publishChatThreadReadCursorUpdatedSafely } from "../external/realtime";
 import { latestRunFinishEventSubquery } from "../services/chat-thread-read-state-query";
 import type { RouteEntry } from "../route-entry";
 
@@ -73,10 +73,13 @@ const markAgentReadInner$ = command(
     });
 
     if (updatedThreadIds.length > 0) {
-      await publishUserSignal([auth.userId], "chatThreadReadCursorUpdated", {
-        agentId: bodyResult.data.agentId,
-        threadIds: updatedThreadIds,
-      });
+      await publishChatThreadReadCursorUpdatedSafely(
+        { userId: auth.userId, orgId: auth.orgId },
+        {
+          agentId: bodyResult.data.agentId,
+          threadIds: updatedThreadIds,
+        },
+      );
       signal.throwIfAborted();
     }
 

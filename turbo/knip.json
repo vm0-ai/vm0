@@ -35,7 +35,7 @@
         "src/main.ts",
         "i18next.config.ts",
         "scripts/bench-p90-reporter.ts",
-        "scripts/check-single-bundle.node.ts",
+        "scripts/check-build-config.node.ts",
         "src/**/__benches__/**/*.bench.tsx",
         "**/*.{test,spec}.ts?(x)"
       ],
@@ -92,10 +92,6 @@
         "src/**/__tests__/**/*.{test,spec}.ts",
         "src/**/*.{test,spec}.ts"
       ],
-      "project": ["src/**/*.ts"]
-    },
-    "packages/connector-catalog-validation": {
-      "entry": [],
       "project": ["src/**/*.ts"]
     },
     "packages/api-contracts": {

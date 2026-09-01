@@ -37,7 +37,6 @@ import {
 } from "../../../test-fixtures/system-config-seeds";
 import {
   holdChatEventInsertTransactionFixture,
-  holdChatThreadRowLockFixture,
   insertChatEventTransactionFixture,
   insertOutputEventWithConflictingLegacyPayloadFixture,
 } from "../../../test-fixtures/chat-events";
@@ -222,9 +221,11 @@ async function claimChatRun(
 
 /** Sandbox-scoped Okou token issued to the run, exposed via the claim env. */
 function okouTokenFromClaim(claim: RunnerClaim): string {
-  const token = claim.environment?.OKOU_TOKEN;
+  const token = claim.platformEnvironment.OKOU_TOKEN;
   if (!token || !token.startsWith("vm0_sandbox_")) {
-    throw new Error("Expected the claim environment to carry an OKOU_TOKEN");
+    throw new Error(
+      "Expected the claim platform environment to carry an OKOU_TOKEN",
+    );
   }
   return token;
 }
@@ -297,20 +298,15 @@ async function completeChatRunOk(
   const historyHash = createHash("sha256")
     .update(`bdd chat thread history ${runId}`)
     .digest("hex");
-  await webhooks.requestAgentCheckpoint(
-    {
-      runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId: `bdd-cli-${runId}`,
-      cliAgentSessionHistoryHash: historyHash,
-    },
-    sandboxHeaders,
-    [200],
-  );
   await webhooks.requestAgentComplete(
     {
       runId,
       exitCode: 0,
+      checkpoint: {
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cli-${runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
       ...(stagedOutputEvents.length === 0
         ? {}
         : {
@@ -403,21 +399,55 @@ function expectDriveStatuses(
 
 /** Cheapest visible message writer: the no-credit send persists a searchable
  * user row plus a non-searchable output.error without creating a run. */
-async function sendNoCreditMessage(
+type NoCreditMessageBody = {
+  readonly agentId: string;
+  readonly threadId?: string;
+  readonly prompt: string;
+  readonly userMessage?: UserMessageInputDocument;
+};
+
+async function sendNoCreditMessageResult(
   actor: ApiTestUser,
-  body: {
-    readonly agentId: string;
-    readonly threadId?: string;
-    readonly prompt: string;
-    readonly userMessage?: UserMessageInputDocument;
-  },
-): Promise<string> {
+  body: NoCreditMessageBody,
+): Promise<{ readonly threadId: string; readonly createdAt: number }> {
   await api.ensureOrgModelProvider(actor);
   const sent = await chat.requestSendEvent(actor, body, [201]);
-  if (sent.status !== 201 || sent.body.runId !== null) {
+  if (
+    sent.status !== 201 ||
+    sent.body.runId !== null ||
+    sent.body.createdAt === undefined
+  ) {
     throw new Error("Expected a no-credit send without a run");
   }
-  return sent.body.threadId;
+  const createdAt = Date.parse(sent.body.createdAt);
+  if (!Number.isFinite(createdAt)) {
+    throw new Error("Expected the no-credit send to return a timestamp");
+  }
+  return { threadId: sent.body.threadId, createdAt };
+}
+
+async function sendNoCreditMessage(
+  actor: ApiTestUser,
+  body: NoCreditMessageBody,
+): Promise<string> {
+  return (await sendNoCreditMessageResult(actor, body)).threadId;
+}
+
+async function advanceNoCreditMessageCreatedAt(
+  actor: ApiTestUser,
+  agentId: string,
+  after: number,
+): Promise<number> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const filler = await sendNoCreditMessageResult(actor, {
+      agentId,
+      prompt: `timestamp boundary ${randomUUID()}`,
+    });
+    if (filler.createdAt > after) {
+      return filler.createdAt;
+    }
+  }
+  throw new Error("Expected the chat API timestamp to advance");
 }
 
 /**
@@ -1628,7 +1658,11 @@ describe("CHAT-01 chat thread read state", () => {
       activeRun.threadId,
     ]);
     context.mocks.ably.publish.mockClear();
+    context.mocks.ably.channelGet.mockClear();
     const firstRead = await chat.markThreadRead(owner, activeRun.threadId);
+    expect(context.mocks.ably.channelGet.mock.calls).toStrictEqual([
+      [`user-org:${owner.userId}:${owner.orgId}`],
+    ]);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "chatThreadReadCursorUpdated",
       {
@@ -1980,7 +2014,11 @@ describe("CHAT-01 chat thread read state", () => {
     );
 
     context.mocks.ably.publish.mockClear();
+    context.mocks.ably.channelGet.mockClear();
     await chat.markAgentThreadsRead(owner, agentA);
+    expect(context.mocks.ably.channelGet.mock.calls).toStrictEqual([
+      [`user-org:${owner.userId}:${owner.orgId}`],
+    ]);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "chatThreadReadCursorUpdated",
       {
@@ -2636,7 +2674,7 @@ describe("CHAT-01 chat search", () => {
     expect(forbidden.body.error.message).toContain("chat-event:read");
   });
 
-  it("searches own messages with filters and context", async () => {
+  it("searches own matched messages with filters", async () => {
     const orgId = `org_${randomUUID()}`;
     const owner = bdd.user({ orgId });
     const peer = bdd.user({ orgId });
@@ -2748,11 +2786,15 @@ describe("CHAT-01 chat search", () => {
     expect(crossOrg.results[0]?.chatThreadId).toBe(ownerThreadA);
 
     // The since filter keeps only messages at or after the boundary.
-    await sendNoCreditMessage(owner, {
+    const ancient = await sendNoCreditMessageResult(owner, {
       agentId: agentA.agentId,
       prompt: "ancient quokka spotted",
     });
-    const sinceBoundary = now();
+    const sinceBoundary = await advanceNoCreditMessageCreatedAt(
+      owner,
+      agentA.agentId,
+      ancient.createdAt,
+    );
     await sendNoCreditMessage(owner, {
       agentId: agentA.agentId,
       prompt: "recent quokka spotted",
@@ -2785,7 +2827,8 @@ describe("CHAT-01 chat search", () => {
       "agent A mentions narwhal",
     );
 
-    // Context windows around the match stay chronological.
+    // The old context request remains accepted during rollout, but only the
+    // matched message is returned.
     const contextThread = await sendNoCreditMessage(owner, {
       agentId: agentB.agentId,
       prompt: "context round one",
@@ -2801,49 +2844,15 @@ describe("CHAT-01 chat search", () => {
       prompt: "context round three",
     });
     await projectChatEventSearch();
-    const contextual = await chat.searchChat(owner, "okapi", {
-      before: 2,
-      after: 2,
-    });
+    const contextual = await chat.searchChat(owner, "okapi");
     expect(contextual.results).toHaveLength(1);
     const match = contextual.results[0];
     if (!match) {
       throw new Error("Expected one okapi match");
     }
     expect(match.matchedMessage.content).toBe("the okapi was here");
-    expect(
-      match.contextBefore.map((message) => {
-        return message.content;
-      }),
-    ).toStrictEqual(["context round one"]);
-    expect(
-      match.contextAfter.map((message) => {
-        return message.content;
-      }),
-    ).toStrictEqual(["context round three"]);
-    const matchedAt = Date.parse(match.matchedMessage.createdAt);
-    for (const message of match.contextBefore) {
-      expect(Date.parse(message.createdAt)).toBeLessThan(matchedAt);
-    }
-    for (const message of match.contextAfter) {
-      expect(Date.parse(message.createdAt)).toBeGreaterThan(matchedAt);
-    }
-    const beforeTimes = match.contextBefore.map((message) => {
-      return Date.parse(message.createdAt);
-    });
-    expect(
-      [...beforeTimes].sort((a, b) => {
-        return a - b;
-      }),
-    ).toStrictEqual(beforeTimes);
-    const afterTimes = match.contextAfter.map((message) => {
-      return Date.parse(message.createdAt);
-    });
-    expect(
-      [...afterTimes].sort((a, b) => {
-        return a - b;
-      }),
-    ).toStrictEqual(afterTimes);
+    expect(match.contextBefore).toStrictEqual([]);
+    expect(match.contextAfter).toStrictEqual([]);
 
     // hasMore flips when matches exceed the limit.
     await sendNoCreditMessage(owner, {
@@ -2864,7 +2873,7 @@ describe("CHAT-01 chat search", () => {
     expect(limited.hasMore).toBeTruthy();
   }, 60_000);
 
-  it("associates batched context windows across matches and threads", async () => {
+  it("returns batched matched messages without context across threads", async () => {
     const owner = bdd.user();
     bdd.acceptAgentStorageWrites();
     const agentA = await bdd.createAgent(owner, {
@@ -2877,53 +2886,25 @@ describe("CHAT-01 chat search", () => {
     const alphaPrompt = `${marker} needle alpha`;
     const betaPrompt = `${marker} needle beta`;
     const gammaPrompt = `${marker} needle gamma`;
-    const sharedPrompt = `${marker} shared bridge`;
 
     const threadA = await sendNoCreditMessage(owner, {
       agentId: agentA.agentId,
-      prompt: `${marker} first anchor`,
-    });
-    await sendNoCreditMessage(owner, {
-      agentId: agentA.agentId,
-      threadId: threadA,
       prompt: alphaPrompt,
-    });
-    await sendNoCreditMessage(owner, {
-      agentId: agentA.agentId,
-      threadId: threadA,
-      prompt: sharedPrompt,
     });
     await sendNoCreditMessage(owner, {
       agentId: agentA.agentId,
       threadId: threadA,
       prompt: betaPrompt,
     });
-    await sendNoCreditMessage(owner, {
-      agentId: agentA.agentId,
-      threadId: threadA,
-      prompt: `${marker} final anchor`,
-    });
 
     const threadB = await sendNoCreditMessage(owner, {
       agentId: agentB.agentId,
-      prompt: `${marker} second anchor`,
-    });
-    await sendNoCreditMessage(owner, {
-      agentId: agentB.agentId,
-      threadId: threadB,
       prompt: gammaPrompt,
-    });
-    await sendNoCreditMessage(owner, {
-      agentId: agentB.agentId,
-      threadId: threadB,
-      prompt: `${marker} second tail`,
     });
 
     await projectChatEventSearch();
     const contextual = await chat.searchChat(owner, `${marker} needle`, {
       limit: 3,
-      before: 2,
-      after: 2,
     });
     expect(contextual.hasMore).toBeFalsy();
     expect(
@@ -2948,102 +2929,9 @@ describe("CHAT-01 chat search", () => {
     expect(alpha.chatThreadId).toBe(threadA);
     expect(beta.chatThreadId).toBe(threadA);
     expect(gamma.chatThreadId).toBe(threadB);
-
-    const expectedContextLengths = new Map([
-      [alphaPrompt, { before: 1, after: 2 }],
-      [betaPrompt, { before: 2, after: 1 }],
-      [gammaPrompt, { before: 1, after: 1 }],
-    ]);
     for (const match of contextual.results) {
-      const expectedLengths = expectedContextLengths.get(
-        match.matchedMessage.content,
-      );
-      if (!expectedLengths) {
-        throw new Error("Unexpected batched chat-search match");
-      }
-      expect(match.contextBefore).toHaveLength(expectedLengths.before);
-      expect(match.contextAfter).toHaveLength(expectedLengths.after);
-      expect(
-        [...match.contextBefore, ...match.contextAfter].every((message) => {
-          return message.chatThreadId === match.chatThreadId;
-        }),
-      ).toBeTruthy();
-      expect(
-        [...match.contextBefore, ...match.contextAfter].some((message) => {
-          return (
-            message.chatThreadId === match.matchedMessage.chatThreadId &&
-            message.seqId === match.matchedMessage.seqId
-          );
-        }),
-      ).toBeFalsy();
-
-      const matchedAt = Date.parse(match.matchedMessage.createdAt);
-      const beforeTimes = match.contextBefore.map((message) => {
-        return Date.parse(message.createdAt);
-      });
-      const afterTimes = match.contextAfter.map((message) => {
-        return Date.parse(message.createdAt);
-      });
-      expect(
-        beforeTimes.every((createdAt) => {
-          return createdAt < matchedAt;
-        }),
-      ).toBeTruthy();
-      expect(
-        afterTimes.every((createdAt) => {
-          return createdAt > matchedAt;
-        }),
-      ).toBeTruthy();
-      expect(
-        [...beforeTimes].sort((left, right) => {
-          return left - right;
-        }),
-      ).toStrictEqual(beforeTimes);
-      expect(
-        [...afterTimes].sort((left, right) => {
-          return left - right;
-        }),
-      ).toStrictEqual(afterTimes);
-    }
-
-    const sharedAfterAlpha = alpha.contextAfter.filter((message) => {
-      return message.content === sharedPrompt;
-    });
-    const sharedBeforeBeta = beta.contextBefore.filter((message) => {
-      return message.content === sharedPrompt;
-    });
-    // The revoked queue-first duplicate stays hidden, while the visible row
-    // remains associated with both overlapping windows.
-    expect(sharedAfterAlpha).toHaveLength(1);
-    expect(sharedBeforeBeta).toHaveLength(1);
-    expect([
-      sharedAfterAlpha[0]?.chatThreadId,
-      sharedAfterAlpha[0]?.seqId,
-    ]).toStrictEqual([
-      sharedBeforeBeta[0]?.chatThreadId,
-      sharedBeforeBeta[0]?.seqId,
-    ]);
-
-    const beforeOnly = await chat.searchChat(owner, `${marker} needle`, {
-      limit: 3,
-      before: 1,
-      after: 0,
-    });
-    expect(beforeOnly.results).toHaveLength(3);
-    for (const match of beforeOnly.results) {
-      expect(match.contextBefore).toHaveLength(1);
-      expect(match.contextAfter).toStrictEqual([]);
-    }
-
-    const afterOnly = await chat.searchChat(owner, `${marker} needle`, {
-      limit: 3,
-      before: 0,
-      after: 1,
-    });
-    expect(afterOnly.results).toHaveLength(3);
-    for (const match of afterOnly.results) {
       expect(match.contextBefore).toStrictEqual([]);
-      expect(match.contextAfter).toHaveLength(1);
+      expect(match.contextAfter).toStrictEqual([]);
     }
   }, 60_000);
 });
@@ -3180,15 +3068,6 @@ describe("CHAT-01 chat search index", () => {
 
     const visibleHit = await chat.searchChat(actor, visibleNeedle);
     expect(visibleHit.results).toHaveLength(1);
-    const context = [
-      ...(visibleHit.results[0]?.contextBefore ?? []),
-      ...(visibleHit.results[0]?.contextAfter ?? []),
-    ];
-    expect(
-      context.some((message) => {
-        return message.content.includes(followupOnlyNeedle);
-      }),
-    ).toBeFalsy();
 
     const followupHit = await chat.searchChat(actor, followupOnlyNeedle);
     expect(followupHit.results).toStrictEqual([]);
@@ -3232,7 +3111,7 @@ describe("CHAT-01 chat search index", () => {
     expect(both.results).toHaveLength(2);
   }, 60_000);
 
-  it("continues when a selected thread is deleted during projection", async () => {
+  it("ignores a thread deleted before projection", async () => {
     const owner = bdd.user();
     bdd.acceptAgentStorageWrites();
     const agent = await bdd.createAgent(owner, {
@@ -3247,37 +3126,14 @@ describe("CHAT-01 chat search index", () => {
       agentId: agent.agentId,
       prompt: `${marker} beta`,
     });
-    const [blockedThreadId, deletedThreadId] = [threadA, threadB].sort();
-    if (!blockedThreadId || !deletedThreadId) {
-      throw new Error("Expected two chat threads");
-    }
-
-    const threadLock = await holdChatThreadRowLockFixture({
-      threadId: blockedThreadId,
-      signal: context.signal,
-    });
-    onTestFinished(async () => {
-      threadLock.release();
-      await threadLock.done;
-    });
-
-    const [tick] = await Promise.all([
-      projectChatEventSearch(),
-      (async () => {
-        await expect
-          .poll(threadLock.blockedWaiterCount)
-          .toBeGreaterThanOrEqual(1);
-        await chat.deleteThread(owner, deletedThreadId);
-        threadLock.release();
-        await threadLock.done;
-      })(),
-    ]);
+    await chat.deleteThread(owner, threadB);
+    const tick = await projectChatEventSearch();
     expect(tick.success).toBeTruthy();
 
     const found = await chat.searchChat(owner, marker);
     expect(found.results).toHaveLength(1);
-    expect(found.results[0]?.chatThreadId).toBe(blockedThreadId);
-    const deleted = await chat.requestReadThread(owner, deletedThreadId, [404]);
+    expect(found.results[0]?.chatThreadId).toBe(threadA);
+    const deleted = await chat.requestReadThread(owner, threadB, [404]);
     expectApiError(deleted.body);
   }, 60_000);
 
@@ -3296,19 +3152,29 @@ describe("CHAT-01 chat search index", () => {
       agentId: agentA.agentId,
       prompt: "旧的水豚记录一",
     });
-    await sendNoCreditMessage(owner, {
+    const oldMessage = await sendNoCreditMessageResult(owner, {
       agentId: agentA.agentId,
       prompt: "旧的水豚记录二",
     });
-    const sinceBoundary = now();
-    const recentThreadA = await sendNoCreditMessage(owner, {
+    const sinceBoundary = await advanceNoCreditMessageCreatedAt(
+      owner,
+      agentA.agentId,
+      oldMessage.createdAt,
+    );
+    const recentMessageA = await sendNoCreditMessageResult(owner, {
       agentId: agentA.agentId,
       prompt: "新的水豚记录",
     });
+    await advanceNoCreditMessageCreatedAt(
+      owner,
+      agentA.agentId,
+      recentMessageA.createdAt,
+    );
     const threadB = await sendNoCreditMessage(owner, {
       agentId: agentB.agentId,
       prompt: "另一个水豚记录",
     });
+    const recentThreadA = recentMessageA.threadId;
     const tick = await projectChatEventSearch();
     expect(tick.success).toBeTruthy();
 

@@ -102,7 +102,6 @@ export const chatEvents = pgTable(
       | "agentphone"
       | "automation"
       | "goal"
-      | "morning_brief"
       | "agent_run"
     >(),
     contextId: uuid("context_id"),
@@ -249,7 +248,6 @@ export const chatEvents = pgTable(
           'agentphone',
           'automation',
           'goal',
-          'morning_brief',
           'agent_run'
         )`,
       ),

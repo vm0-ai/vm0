@@ -17,11 +17,15 @@ import {
   realtimeSubscriptionSnapshot$,
   setAblyLoop$,
   setAblyPayloadLoop$,
+  setRealtimeDegradedNotifier$,
   subscribeRealtimeReadyCatchUp$,
 } from "../realtime.ts";
 import { initAuthRecovery$, initClerkRuntime$, setupClerk$ } from "../auth.ts";
+import { initializeAppVersion$ } from "../app-version.ts";
 import { foregroundReady$ } from "../auth-retry.ts";
 import { setRootSignal$ } from "../root-signal.ts";
+import { setApiClientRuntime$ } from "../api-client-runtime.ts";
+import { setAuthenticatedIdentity$ } from "../auth-context.ts";
 import { subscribeChatThreadRealtime$ } from "../chat-page/chat-thread-remote-signals.ts";
 import { testContext } from "./test-helpers.ts";
 import { reloadFeatureSwitch$ } from "../external/feature-switch.ts";
@@ -31,9 +35,18 @@ import { subscribePresentationTemplatesChanged$ } from "../okou-page/presentatio
 const context = testContext();
 
 beforeEach(() => {
+  context.store.set(initializeAppVersion$, __OKOU_APP_VERSION__);
   context.store.set(setRootSignal$, context.signal);
+  context.store.set(setApiClientRuntime$, {
+    environment: "app",
+    apiBaseUrl: location.origin,
+    oauthApiBaseUrl: location.origin,
+  });
   context.store.set(initClerkRuntime$, context.signal);
   context.store.set(initAuthRecovery$, context.signal);
+  context.store.set(setRealtimeDegradedNotifier$, () => {
+    toast.error("Realtime connection degraded");
+  });
 });
 
 const finishLoop$ = command((_ctx, _signal: AbortSignal) => {
@@ -68,6 +81,14 @@ function mockSignedInUser(): void {
     activeOrg: { id: "test-org-123", name: "Test Organization" },
     memberships: [{ id: "test-org-123" }],
   });
+  context.store.set(
+    setAuthenticatedIdentity$,
+    Promise.resolve({
+      userId: "test-user-123",
+      orgId: "test-org-123",
+      email: "test@example.com",
+    }),
+  );
 }
 
 async function setupAuthAndRealtime(): Promise<void> {

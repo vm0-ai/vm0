@@ -17,6 +17,7 @@ interface PlatformRuntimeConfig {
   readonly publicStaticAssetsBaseUrl: string;
   readonly zeroHostDomain: "sites.vm0.io" | "sites.vm7.io";
   readonly plausibleScriptUrl: string | null;
+  readonly postHogHost: string | null;
   readonly postHogKey: string | null;
   readonly sentryDsn: string | null;
   readonly vapidPublicKey: string | null;
@@ -34,7 +35,6 @@ const OKOU_ROOT_DOMAINS = [
 const PREVIEW_API_DOMAIN = "vm6.ai";
 const PRODUCTION_HOSTED_SITE_DOMAINS = ["sites.vm0.io", "okou.app"] as const;
 const PREVIEW_HOSTED_SITE_DOMAINS = ["sites.vm7.io"] as const;
-export const PRODUCTION_SATELLITE_HOSTNAME = "app.okou.ai";
 const PLATFORM_SERVICE_LABELS = ["platform", "app", "www", "api"] as const;
 
 function browserHostname(): string | null {
@@ -67,14 +67,6 @@ function resolvePlatformPublicBrand(
 export function isOkouProductionHostname(hostname: string): boolean {
   const normalizedHostname = hostname.toLowerCase();
   return isDomainOrSubdomain(normalizedHostname, OKOU_PRODUCTION_DOMAIN);
-}
-
-export function isProductionSatelliteHostname(hostname: string): boolean {
-  const normalizedHostname = hostname.toLowerCase();
-  return (
-    normalizedHostname === PRODUCTION_SATELLITE_HOSTNAME ||
-    normalizedHostname.endsWith(`.${PRODUCTION_SATELLITE_HOSTNAME}`)
-  );
 }
 
 function isProductionHostname(hostname: string): boolean {
@@ -203,6 +195,7 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
       plausibleScriptUrl: optionalBuildValue(
         import.meta.env.VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION,
       ),
+      postHogHost: "https://j.okou.io",
       postHogKey: optionalBuildValue(import.meta.env.VITE_POSTHOG_KEY),
       sentryDsn: optionalBuildValue(import.meta.env.VITE_SENTRY_DSN_PROD),
       vapidPublicKey: optionalBuildValue(
@@ -225,6 +218,7 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
       environment === "preview"
         ? optionalBuildValue(import.meta.env.VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW)
         : null,
+    postHogHost: null,
     postHogKey: null,
     sentryDsn: null,
     vapidPublicKey: optionalBuildValue(

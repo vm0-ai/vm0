@@ -6,10 +6,12 @@ import {
   chatThreadEventsContract,
   type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import { browserContract } from "@okouai/api-contracts/contracts/browser";
 import { IMAGE_RECOGNITION_MAX_FILE_BYTES } from "@okouai/api-contracts/contracts/image-recognition";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
-import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
+import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import {
+  fillComposer,
   mockChatLifecycle,
   PLACEHOLDER,
   sendMessageInUI,
@@ -32,6 +34,7 @@ import {
 import {
   mockChatEventRows,
   normalizeMockChatEvents,
+  type MockChatEventInput,
 } from "./chat-event-test-helpers.ts";
 
 interface TouchPoint {
@@ -126,6 +129,198 @@ async function setupKeyboardGestureChat({
     }
     return { composerEditor, composerScrollSurface, history };
   });
+}
+
+function mockThreadEventRows({
+  destinationThreadId,
+  sourceEvents,
+  destinationEvents,
+  destinationInitialGate,
+}: {
+  readonly destinationThreadId: string;
+  readonly sourceEvents: readonly MockChatEventInput[];
+  readonly destinationEvents: readonly MockChatEventInput[];
+  readonly destinationInitialGate?: Promise<void>;
+}): void {
+  context.mocks.api(
+    chatThreadEventsContract.rows,
+    async ({ params, query, respond }) => {
+      if (
+        params.threadId === destinationThreadId &&
+        query.sinceSeqId === 0 &&
+        destinationInitialGate
+      ) {
+        await destinationInitialGate;
+      }
+      const events =
+        params.threadId === destinationThreadId
+          ? destinationEvents
+          : sourceEvents;
+      return respond(
+        200,
+        chatEventRowsResponse(
+          mockChatEventRows(
+            normalizeMockChatEvents(
+              events.map((event) => {
+                return { ...event, threadId: params.threadId };
+              }),
+            ),
+          ).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
+          query,
+        ),
+      );
+    },
+  );
+}
+
+const THREAD_ISOLATION_SOURCE_ID = "b0000000-0000-4000-a000-000000000901";
+const THREAD_ISOLATION_DESTINATION_ID = "b0000000-0000-4000-a000-000000000902";
+
+function threadIsolationSourceEvents(): MockChatEventInput[] {
+  return [
+    {
+      id: "msg-existing-user",
+      seqId: 1,
+      role: "user",
+      runId: "run-existing",
+      content: "Existing context",
+      createdAt: "2026-03-10T00:00:00Z",
+    },
+    {
+      id: "msg-existing-assistant",
+      seqId: 2,
+      role: "assistant",
+      runId: "run-existing",
+      content: "Existing assistant answer",
+      createdAt: "2026-03-10T00:00:01Z",
+    },
+    {
+      id: "msg-existing-completed",
+      seqId: 3,
+      role: "assistant",
+      runId: "run-existing",
+      runLifecycleEvent: "completed",
+      content: null,
+      createdAt: "2026-03-10T00:00:02Z",
+    },
+  ];
+}
+
+function threadIsolationDestinationEvents(): MockChatEventInput[] {
+  return [
+    {
+      id: "msg-other-user",
+      seqId: 1,
+      role: "user",
+      runId: "run-other",
+      content: "Other thread context",
+      createdAt: "2026-03-10T00:00:00Z",
+    },
+    {
+      id: "msg-other-assistant",
+      seqId: 2,
+      role: "assistant",
+      runId: "run-other",
+      content: "Other thread answer",
+      createdAt: "2026-03-10T00:00:01Z",
+    },
+    {
+      id: "msg-other-completed",
+      seqId: 3,
+      role: "assistant",
+      runId: "run-other",
+      runLifecycleEvent: "completed",
+      content: null,
+      createdAt: "2026-03-10T00:00:02Z",
+    },
+  ];
+}
+
+function threadIsolationList() {
+  return [
+    {
+      id: THREAD_ISOLATION_SOURCE_ID,
+      title: "Long thread",
+      agent: { id: AGENT_ID, avatarUrl: null },
+      createdAt: "2026-03-10T00:00:00Z",
+      updatedAt: "2026-03-10T00:00:01Z",
+    },
+    {
+      id: THREAD_ISOLATION_DESTINATION_ID,
+      title: "Other thread",
+      agent: { id: AGENT_ID, avatarUrl: null },
+      createdAt: "2026-03-10T00:00:00Z",
+      updatedAt: "2026-03-10T00:00:00Z",
+    },
+  ];
+}
+
+interface CrossThreadPendingSubmissionSetup {
+  readonly threadContainer: HTMLElement;
+  readonly releaseDestinationEvents: () => void;
+}
+
+async function setupCrossThreadPendingSubmission(): Promise<CrossThreadPendingSubmissionSetup> {
+  const user = userEvent.setup({ delay: null });
+  const sendGate = context.mocks.deferred<void>();
+  const destinationInitialGate = context.mocks.deferred<void>();
+  const sourceEvents = threadIsolationSourceEvents();
+  const destinationEvents = threadIsolationDestinationEvents();
+  context.mocks.api(browserContract.get, ({ respond }) => {
+    return respond(404, {
+      error: { code: "BROWSER_NOT_FOUND", message: "Browser not found" },
+    });
+  });
+  const lifecycle = mockChatLifecycle(context, {
+    threadId: THREAD_ISOLATION_SOURCE_ID,
+    threadTitle: "Long thread",
+    sendGate: sendGate.promise,
+    chatEvents: sourceEvents,
+  });
+  lifecycle.setThreadList(threadIsolationList());
+  mockThreadEventRows({
+    destinationThreadId: THREAD_ISOLATION_DESTINATION_ID,
+    sourceEvents,
+    destinationEvents,
+    destinationInitialGate: destinationInitialGate.promise,
+  });
+
+  detachedSetupPage({
+    context,
+    path: `/chats/${THREAD_ISOLATION_SOURCE_ID}`,
+  });
+
+  await expect(
+    screen.findByText("Existing context"),
+  ).resolves.toBeInTheDocument();
+  const textarea = screen.getByPlaceholderText(
+    PLACEHOLDER,
+  ) as HTMLTextAreaElement;
+  await sendMessageInUI(user, textarea, "Pending follow-up");
+  await waitFor(() => {
+    expect(screen.getByText("Pending follow-up")).toBeInTheDocument();
+    expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+  });
+  const threadContainer = document.querySelector(
+    `[data-chat-thread-container-id="${THREAD_ISOLATION_SOURCE_ID}"]`,
+  );
+  if (!(threadContainer instanceof HTMLElement)) {
+    throw new Error("Chat thread container not found");
+  }
+  expectTextBefore(
+    document.body,
+    "Existing assistant answer",
+    "Pending follow-up",
+  );
+
+  return {
+    threadContainer,
+    releaseDestinationEvents: () => {
+      destinationInitialGate.resolve(undefined);
+    },
+  };
 }
 
 describe("chat lifecycle", () => {
@@ -525,7 +720,7 @@ describe("chat lifecycle", () => {
         model: "deepseek-v4-flash",
         modelLabel: "DeepSeek V4 Flash",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
         routeStatus: "valid",
@@ -608,7 +803,7 @@ describe("chat lifecycle", () => {
         model: "deepseek-v4-flash",
         modelLabel: "DeepSeek V4 Flash",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
         routeStatus: "valid",
@@ -686,7 +881,7 @@ describe("chat lifecycle", () => {
         model: "claude-sonnet-4-6",
         modelLabel: "Claude Sonnet 4.6",
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "built-in",
         credentialScope: "org",
         modelProviderId: null,
         routeStatus: "valid",
@@ -823,178 +1018,123 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("keeps the thread container without carrying resolved history or submission state across threads", async () => {
+  it("reuses the thread container without carrying resolved history across threads", async () => {
     const user = userEvent.setup({ delay: null });
-    const sendGate = context.mocks.deferred<void>();
-    const otherThreadMessagesGate = context.mocks.deferred<void>();
-    const threadId = "b0000000-0000-4000-a000-000000000901";
-    const otherThreadId = "b0000000-0000-4000-a000-000000000902";
+    const destinationInitialGate = context.mocks.deferred<void>();
+    const sourceEvents = threadIsolationSourceEvents();
+    const destinationEvents = threadIsolationDestinationEvents();
     const lifecycle = mockChatLifecycle(context, {
-      threadId,
+      threadId: THREAD_ISOLATION_SOURCE_ID,
       threadTitle: "Long thread",
-      sendGate: sendGate.promise,
-      chatEvents: [
-        {
-          id: "msg-existing-user",
-          role: "user",
-          runId: "run-existing",
-          content: "Existing context before follow-up",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-        {
-          id: "msg-existing-assistant",
-          role: "assistant",
-          runId: "run-existing",
-          content: "Existing assistant answer",
-          createdAt: "2026-03-10T00:00:01Z",
-        },
-      ],
+      chatEvents: sourceEvents,
     });
-    lifecycle.setThreadList([
-      {
-        id: threadId,
-        title: "Long thread",
-        agent: { id: AGENT_ID, avatarUrl: null },
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:01Z",
-      },
-      {
-        id: otherThreadId,
-        title: "Other thread",
-        agent: { id: AGENT_ID, avatarUrl: null },
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
-      },
-    ]);
-    context.mocks.api(
-      chatThreadEventsContract.rows,
-      async ({ params, query, respond }) => {
-        let events;
-        if (params.threadId === otherThreadId) {
-          if (query.sinceSeqId === 0) {
-            await otherThreadMessagesGate.promise;
-          }
-          events = normalizeMockChatEvents([
-            {
-              id: "msg-other-user",
-              threadId: params.threadId,
-              seqId: 1,
-              role: "user",
-              runId: "run-other",
-              content: "Other thread context",
-              createdAt: "2026-03-10T00:00:00Z",
-            },
-            {
-              id: "msg-other-assistant",
-              threadId: params.threadId,
-              seqId: 2,
-              role: "assistant",
-              runId: "run-other",
-              content: "Other thread answer",
-              createdAt: "2026-03-10T00:00:01Z",
-            },
-          ]);
-        } else {
-          events = normalizeMockChatEvents([
-            {
-              id: "msg-existing-user",
-              threadId: params.threadId,
-              seqId: 1,
-              role: "user",
-              runId: "run-existing",
-              content: "Existing context before follow-up",
-              createdAt: "2026-03-10T00:00:00Z",
-            },
-            {
-              id: "msg-existing-assistant",
-              threadId: params.threadId,
-              seqId: 2,
-              role: "assistant",
-              runId: "run-existing",
-              content: "Existing assistant answer",
-              createdAt: "2026-03-10T00:00:01Z",
-            },
-          ]);
-        }
-        return respond(
-          200,
-          chatEventRowsResponse(
-            mockChatEventRows(events).filter((row) => {
-              return row.seqId > query.sinceSeqId;
-            }),
-            query,
-          ),
-        );
-      },
-    );
+    lifecycle.setThreadList(threadIsolationList());
+    mockThreadEventRows({
+      destinationThreadId: THREAD_ISOLATION_DESTINATION_ID,
+      sourceEvents,
+      destinationEvents,
+      destinationInitialGate: destinationInitialGate.promise,
+    });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ISOLATION_SOURCE_ID}`,
+    });
 
     await expect(
-      screen.findByText("Existing context before follow-up"),
+      screen.findByText("Existing context"),
     ).resolves.toBeInTheDocument();
     const threadContainer = document.querySelector(
-      `[data-chat-thread-container-id="${threadId}"]`,
+      `[data-chat-thread-container-id="${THREAD_ISOLATION_SOURCE_ID}"]`,
     );
     if (!(threadContainer instanceof HTMLElement)) {
       throw new Error("Chat thread container not found");
     }
-
-    const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-    });
-    await sendMessageInUI(user, textarea, "Pending follow-up");
-
-    await waitFor(() => {
-      expect(screen.getByText("Pending follow-up")).toBeInTheDocument();
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-    });
-    expectTextBefore(
-      document.body,
-      "Existing assistant answer",
-      "Pending follow-up",
-    );
 
     await user.click(linkByText("Other thread"));
     await waitFor(() => {
       expect(document.title).toBe("Other thread | VM0");
       expect(
         document.querySelector(
-          `[data-chat-thread-container-id="${otherThreadId}"]`,
+          `[data-chat-thread-container-id="${THREAD_ISOLATION_DESTINATION_ID}"]`,
         ),
       ).toBe(threadContainer);
-      expect(
-        screen.queryByText("Existing context before follow-up"),
-      ).not.toBeInTheDocument();
-      expect(screen.queryByText("Pending follow-up")).not.toBeInTheDocument();
+      expect(screen.queryByText("Existing context")).not.toBeInTheDocument();
       expect(
         screen.queryByText("Send a message to start the conversation"),
       ).not.toBeInTheDocument();
       expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
     });
 
-    otherThreadMessagesGate.resolve(undefined);
+    destinationInitialGate.resolve(undefined);
     await waitFor(() => {
       expect(screen.getByText("Other thread context")).toBeInTheDocument();
+      expect(screen.queryByText("Existing context")).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps active submission state scoped to its thread", async () => {
+    const { threadContainer, releaseDestinationEvents } =
+      await setupCrossThreadPendingSubmission();
+    click(linkByText("Other thread"));
+    await waitFor(() => {
+      expect(document.title).toBe("Other thread | VM0");
+      expect(screen.queryByText("Pending follow-up")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(
+        document.querySelector(
+          `[data-chat-thread-container-id="${THREAD_ISOLATION_DESTINATION_ID}"]`,
+        ),
+      ).toBe(threadContainer);
+      expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
+    });
+
+    releaseDestinationEvents();
+    await waitFor(() => {
+      expect(screen.getByText("Other thread context")).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeDisabled();
     });
     const otherTextarea = screen.getByPlaceholderText(
       PLACEHOLDER,
     ) as HTMLTextAreaElement;
-    await user.type(otherTextarea, "Fresh draft for other thread");
-    expect(screen.getByLabelText("Send")).toBeEnabled();
+    await fillComposer(otherTextarea, "Fresh draft for other thread");
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeEnabled();
+    });
+  });
 
-    await user.click(linkByText("Long thread"));
+  it("restores pending submission state when returning to its thread", async () => {
+    const { threadContainer, releaseDestinationEvents } =
+      await setupCrossThreadPendingSubmission();
+    click(linkByText("Other thread"));
+    await waitFor(() => {
+      expect(document.title).toBe("Other thread | VM0");
+      expect(screen.queryByText("Pending follow-up")).not.toBeInTheDocument();
+      expect(
+        document.querySelector(
+          `[data-chat-thread-container-id="${THREAD_ISOLATION_DESTINATION_ID}"]`,
+        ),
+      ).toBe(threadContainer);
+      expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
+    });
+    releaseDestinationEvents();
+    await expect(
+      screen.findByText("Other thread context"),
+    ).resolves.toBeInTheDocument();
+
+    click(linkByText("Long thread"));
     await waitFor(() => {
       expect(document.title).toBe("Long thread | VM0");
       expect(screen.getByText("Pending follow-up")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
       expect(
         screen.queryByText("Other thread context"),
       ).not.toBeInTheDocument();
+      expect(screen.getByText("Existing context")).toBeInTheDocument();
       expect(
-        screen.getByText("Existing context before follow-up"),
-      ).toBeInTheDocument();
-      expect(
-        document.querySelector(`[data-chat-thread-container-id="${threadId}"]`),
+        document.querySelector(
+          `[data-chat-thread-container-id="${THREAD_ISOLATION_SOURCE_ID}"]`,
+        ),
       ).toBe(threadContainer);
     });
     expectTextBefore(

@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.83.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.2...guest-agent-v0.83.3) (2026-09-01)
+
+## [0.83.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.1...guest-agent-v0.83.2) (2026-09-01)
+
+## [0.83.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.0...guest-agent-v0.83.1) (2026-09-01)
+
+
+### Performance Improvements
+
+* **runner:** launch reuse identity verifier without shell ([#30644](https://github.com/vm0-ai/vm0/issues/30644)) ([3ea790e](https://github.com/vm0-ai/vm0/commit/3ea790e5a8bca85854debfe537a89a66c4520445))
+
+## [0.83.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.27...guest-agent-v0.83.0) (2026-08-31)
+
+
+### Features
+
+* **codex:** preserve thread item semantics ([#30579](https://github.com/vm0-ai/vm0/issues/30579)) ([31b1be9](https://github.com/vm0-ai/vm0/commit/31b1be9fd870504252b4277e3480442170963426))
+* **pi:** add versioned sandbox ownership transfers ([#30607](https://github.com/vm0-ai/vm0/issues/30607)) ([dbc4e02](https://github.com/vm0-ai/vm0/commit/dbc4e02e9360749162d2bcf3fd1726f12a8e521f))
+
+## [0.82.27](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.26...guest-agent-v0.82.27) (2026-08-31)
+
+
+### Documentation
+
+* **guest-agent:** explain artifact checkpoint pipeline invariants ([#30497](https://github.com/vm0-ai/vm0/issues/30497)) ([b0a5845](https://github.com/vm0-ai/vm0/commit/b0a5845751afbf1e9a548b7baecb0e6df83cabe2))
+
+
+### Refactoring
+
+* **guest-agent:** remove retired bootstrap alias carrier ([#30517](https://github.com/vm0-ai/vm0/issues/30517)) ([c6df725](https://github.com/vm0-ai/vm0/commit/c6df725f46661ae72db0f4c9ef1d7703b43cc239))
+
+## [0.82.26](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.25...guest-agent-v0.82.26) (2026-08-31)
+
+## [0.82.25](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.24...guest-agent-v0.82.25) (2026-08-31)
+
+
+### Bug Fixes
+
+* **guest-agent:** atomically persist checkpoint completion ([#30384](https://github.com/vm0-ai/vm0/issues/30384)) ([f54e213](https://github.com/vm0-ai/vm0/commit/f54e213e05c57ae39beecc27fa706b98fc96b791))
+
 ## [0.82.24](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.82.23...guest-agent-v0.82.24) (2026-08-31)
 
 

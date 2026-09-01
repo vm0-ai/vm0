@@ -167,20 +167,6 @@ export {
   type RegistryResourceDownloadContract,
 } from "./registry-resources";
 export {
-  presentationImageAssetSchema,
-  presentationImageOrientationSchema,
-  presentationImageResolveErrorSchema,
-  presentationImageResolveItemSchema,
-  presentationImageResolveRequestSchema,
-  presentationImageResolveResponseSchema,
-  presentationImagesContract,
-  type PresentationImageAsset,
-  type PresentationImageResolveItem,
-  type PresentationImageResolveRequest,
-  type PresentationImageResolveResponse,
-  type PresentationImagesContract,
-} from "./presentation-images";
-export {
   testTeamsDispatchProbeBodySchema,
   testTeamsDispatchProbeContract,
   testTeamsDispatchProbeErrorSchema,
@@ -193,8 +179,6 @@ export {
 } from "./test-teams-dispatch-probe";
 export { emailInboundContract } from "./email";
 export {
-  sandboxReuseResultSchema,
-  workspaceReuseResultSchema,
   webhookClerkContract,
   webhookEventsContract,
   webhookFirewallAuthContract,
@@ -217,8 +201,6 @@ export {
   // Direct upload contracts (Webhook endpoints for sandbox)
   webhookStoragesPrepareContract,
   webhookStoragesCommitContract,
-  type SandboxReuseResult,
-  type WorkspaceReuseResult,
   type WebhookWorkflowAutomationContract,
   type WebhookEventsContract,
   type WebhookFirewallAuthContract,
@@ -267,10 +249,6 @@ export {
   type EmailUnsubscribeQuery,
   type EmailUnsubscribeResponse,
 } from "./email-unsubscribe";
-export {
-  emailMorningBriefUnsubscribeContract,
-  type EmailMorningBriefUnsubscribeContract,
-} from "./email-morning-brief-unsubscribe";
 export {
   connectorsSlugCallbackContract,
   type ConnectorsSlugCallbackContract,
@@ -626,6 +604,12 @@ export {
   type ChatThreadArtifactGoogleDriveSync,
   type ChatThreadArtifactRun,
 } from "./chat-threads";
+export {
+  sandboxReuseResultSchema,
+  workspaceReuseResultSchema,
+  type SandboxReuseResult,
+  type WorkspaceReuseResult,
+} from "./runner-primitives";
 export {
   runnersPollContract,
   runnersJobClaimContract,
@@ -1453,6 +1437,7 @@ export {
   MANAGED_SOCIALKIT_TOOLS,
   SOCIALKIT_MAX_INPUT_VALUE_CHARS,
   socialContract,
+  socialKitCollectionProviderLimitedReasonSchema,
   socialKitRequestSchema,
   socialKitResponseSchema,
   type ManagedSocialKitCollection,
@@ -1462,7 +1447,9 @@ export {
   type ManagedSocialKitToolDefinition,
   type ManagedSocialKitToolCatalogEntry,
   type ManagedSocialKitToolName,
+  type ManagedSocialKitReportedTotalField,
   type SocialContract,
+  type SocialKitCollectionProviderLimitedReason,
   type SocialKitInput,
   type SocialKitRequest,
   type SocialKitResult,

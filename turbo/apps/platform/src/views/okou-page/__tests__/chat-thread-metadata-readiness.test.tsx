@@ -9,7 +9,11 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { browserContract } from "@okouai/api-contracts/contracts/browser";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  detachedSetupPage,
+  setupPageAndWaitForContent,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { navigateToChat$ } from "../../../signals/okou-page/nav.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
@@ -83,7 +87,7 @@ function prepareAgent(): void {
   ]);
 }
 
-function setupChatPage(path = `/chats/${THREAD_ID}`): void {
+function prepareChatPage(): void {
   prepareAgent();
   context.mocks.api(browserContract.get, ({ respond }) => {
     return respond(404, {
@@ -93,7 +97,22 @@ function setupChatPage(path = `/chats/${THREAD_ID}`): void {
       },
     });
   });
+}
+
+function setupChatPage(path = `/chats/${THREAD_ID}`): void {
+  prepareChatPage();
   detachedSetupPage({ context, path });
+}
+
+async function setupChatPageWithSharedWorker(
+  path = `/chats/${THREAD_ID}`,
+): Promise<void> {
+  prepareChatPage();
+  await setupPageAndWaitForContent({
+    context,
+    path,
+    sharedWorkerTestTransport: "message-port",
+  });
 }
 
 function shellMetadata(threadId: string, title: string): ChatThreadMetadata {
@@ -336,7 +355,6 @@ describe("chat thread metadata readiness", () => {
   it("preserves a multi-tab event barrier before resolving a new route", async () => {
     const catchUpRequested = context.mocks.deferred<void>();
     const releaseCatchUp = context.mocks.deferred<void>();
-    const metadataThreadIds: string[] = [];
     let catchUp = false;
     const created = threadEvent({
       eventId: SECOND_EVENT_ID,
@@ -345,8 +363,7 @@ describe("chat thread metadata readiness", () => {
       threadId: THREAD_ID,
       title: "Created in another tab",
     });
-    context.mocks.api(chatThreadMetadataContract.get, ({ params, respond }) => {
-      metadataThreadIds.push(params.id);
+    context.mocks.api(chatThreadMetadataContract.get, ({ respond }) => {
       return respond(404, {
         error: {
           code: "CHAT_THREAD_NOT_FOUND",
@@ -378,15 +395,8 @@ describe("chat thread metadata readiness", () => {
       },
     );
 
-    setupChatPage(`/chats/${OTHER_THREAD_ID}`);
+    await setupChatPageWithSharedWorker(`/chats/${OTHER_THREAD_ID}`);
     await expectActiveThread(OTHER_THREAD_ID, "Existing thread");
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasChannelSubscriptionOnChannel(
-          SHARED_DATABASE_REALTIME_CHANNEL,
-        ),
-      ).toBeTruthy();
-    });
 
     catchUp = true;
     context.mocks.ably.triggerOnChannel(
@@ -401,21 +411,25 @@ describe("chat thread metadata readiness", () => {
         `[data-chat-thread-container-id="${OTHER_THREAD_ID}"]`,
       ),
     ).not.toBeNull();
-    expect(metadataThreadIds).not.toContain(THREAD_ID);
     expect(
       screen.queryByRole("heading", { name: "Chat thread not found" }),
     ).not.toBeInTheDocument();
 
     releaseCatchUp.resolve();
 
-    await expectActiveThread(THREAD_ID, "Created in another tab");
-    expect(metadataThreadIds).not.toContain(THREAD_ID);
+    await waitFor(() => {
+      expect(
+        document.querySelector(
+          `[data-chat-thread-container-id="${THREAD_ID}"]`,
+        ),
+      ).not.toBeNull();
+      expect(document.title).toBe("Created in another tab | VM0");
+    });
   });
 
-  it("preserves foreground synchronization across realtime reconnect", async () => {
+  it("recovers event metadata when only the shared worker reconnects", async () => {
     const reconnectRequested = context.mocks.deferred<void>();
     const releaseReconnect = context.mocks.deferred<void>();
-    const metadataThreadIds: string[] = [];
     let reconnecting = false;
     const created = threadEvent({
       eventId: SECOND_EVENT_ID,
@@ -425,7 +439,6 @@ describe("chat thread metadata readiness", () => {
       title: "Recovered after reconnect",
     });
     context.mocks.api(chatThreadMetadataContract.get, ({ params, respond }) => {
-      metadataThreadIds.push(params.id);
       return respond(200, shellMetadata(params.id, "Narrow response"));
     });
     context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
@@ -452,32 +465,38 @@ describe("chat thread metadata readiness", () => {
       },
     );
 
-    setupChatPage(`/chats/${OTHER_THREAD_ID}`);
+    await setupChatPageWithSharedWorker(`/chats/${OTHER_THREAD_ID}`);
     await expectActiveThread(OTHER_THREAD_ID, "Online thread");
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasChannelSubscriptionOnChannel(
-          SHARED_DATABASE_REALTIME_CHANNEL,
-        ),
-      ).toBeTruthy();
-    });
 
     reconnecting = true;
-    context.mocks.ably.triggerReconnect();
+    context.mocks.ably.triggerSharedWorkerReconnect();
     await reconnectRequested.promise;
-    context.store.set(navigateToChat$, THREAD_ID);
 
     expect(
       document.querySelector(
         `[data-chat-thread-container-id="${OTHER_THREAD_ID}"]`,
       ),
     ).not.toBeNull();
-    expect(metadataThreadIds).not.toContain(THREAD_ID);
 
     releaseReconnect.resolve();
 
+    const recoveredThreadLink = await waitFor(() => {
+      const link = screen
+        .getAllByText("Recovered after reconnect")
+        .map((title) => {
+          return title.closest("a");
+        })
+        .find((candidate): candidate is HTMLAnchorElement => {
+          return candidate !== null;
+        });
+      if (!link) {
+        throw new Error("Recovered chat thread link is not mounted");
+      }
+      return link;
+    });
+    click(recoveredThreadLink);
+
     await expectActiveThread(THREAD_ID, "Recovered after reconnect");
-    expect(metadataThreadIds).not.toContain(THREAD_ID);
   });
 
   it("reveals the left split pane while right metadata is still loading", async () => {

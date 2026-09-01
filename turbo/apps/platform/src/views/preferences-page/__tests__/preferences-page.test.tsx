@@ -36,8 +36,6 @@ function createMockPreferences(
     sendMode: "enter",
     theme: "system",
     colorTheme: "blue-horizon",
-    morningBriefEnabled: false,
-    morningBriefNextRunAt: null,
     captureNetworkBodiesRemaining: 0,
     ...overrides,
   };
@@ -168,8 +166,6 @@ describe("preferences page", () => {
       storedPreferences = {
         ...storedPreferences,
         ...body,
-        morningBriefEnabled: false,
-        morningBriefNextRunAt: null,
       };
       return respond(200, storedPreferences);
     });
@@ -222,8 +218,6 @@ describe("preferences page", () => {
       storedPreferences = {
         ...storedPreferences,
         ...body,
-        morningBriefEnabled: false,
-        morningBriefNextRunAt: null,
       };
       return respond(200, storedPreferences);
     });

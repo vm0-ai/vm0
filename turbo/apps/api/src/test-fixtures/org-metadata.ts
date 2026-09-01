@@ -16,6 +16,7 @@
  */
 import { orgTierSchema } from "@okouai/api-contracts/contracts/orgs";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
+import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-canonical-write";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { createStore } from "ccstate";
 import { eq, sql } from "drizzle-orm";
@@ -33,10 +34,10 @@ export async function upsertOrgMetadataFixture(values: {
     .set(writeDb$)
     .transaction(async (tx) => {
       await tx
-        .insert(orgMetadata)
+        .insert(orgMetadataCanonicalWrites)
         .values(values)
         .onConflictDoUpdate({
-          target: orgMetadata.orgId,
+          target: orgMetadataCanonicalWrites.orgId,
           set: {
             tier: values.tier,
             credits: values.credits,
@@ -71,7 +72,7 @@ export async function expireAtomGrantFixture(values: {
 
 interface OrgAcquisitionAttributionRow {
   readonly acquisitionSourceType: string | null;
-  readonly acquisitionVm0Source: string | null;
+  readonly acquisitionFirstPartySource: string | null;
   readonly acquisitionCampaignId: string | null;
   readonly acquisitionAdGroupId: string | null;
   readonly acquisitionCampaign: string | null;
@@ -90,7 +91,7 @@ export async function readOrgAcquisitionAttributionFixture(
     .set(writeDb$)
     .select({
       acquisitionSourceType: orgMetadata.acquisitionSourceType,
-      acquisitionVm0Source: orgMetadata.acquisitionVm0Source,
+      acquisitionFirstPartySource: orgMetadata.acquisitionFirstPartySource,
       acquisitionCampaignId: orgMetadata.acquisitionCampaignId,
       acquisitionAdGroupId: orgMetadata.acquisitionAdGroupId,
       acquisitionCampaign: orgMetadata.acquisitionCampaign,

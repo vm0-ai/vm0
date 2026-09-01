@@ -271,7 +271,6 @@ jobs:
             .github/scripts/run-semgrep.sh \
             .github/scripts/runner-behavior-*.sh \
             .github/scripts/smoke-okou-cli-artifact.sh \
-            .github/scripts/validate-desktop-migration-policy.sh \
             .github/scripts/verify-okou-cli-artifact.sh \
             .github/scripts/verify-okou-desktop-artifact.sh \
             .github/scripts/with-runner-lifecycle-lock.sh \
@@ -314,7 +313,6 @@ jobs:
             .github/scripts/tests/semgrep-results-test.sh \
             .github/scripts/tests/runner-behavior-agent-ready-benchmark-test.sh \
             .github/scripts/tests/runner-behavior-durable-test.sh \
-            .github/scripts/tests/validate-desktop-migration-policy-test.sh \
             e2e/scripts/ensure-stripe-cli.sh \
             e2e/helpers/browser.bash \
             e2e/helpers/trace-cli.sh \

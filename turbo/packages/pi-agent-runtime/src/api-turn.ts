@@ -2,6 +2,7 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
 import { piAgentStream } from "./model";
+import { assertPiApiFirstTurnCompactionSafe } from "./compaction-preflight";
 import { MemoryPiSession, runPiFirstModelTurn } from "./session-memory";
 import { createPiAgentSessionForRuntime } from "./session-runtime";
 import type {
@@ -92,6 +93,11 @@ export async function runPiApiFirstTurn(
     );
   }
   try {
+    assertPiApiFirstTurnCompactionSafe({
+      model: shell.model,
+      session: memorySession,
+      settings: shell.services.settingsManager.getCompactionSettings(),
+    });
     const turn = await runPiFirstModelTurn({
       model: shell.model,
       session: memorySession,
@@ -99,10 +105,16 @@ export async function runPiApiFirstTurn(
       systemPrompt: shell.session.systemPrompt,
       tools: shell.session.agent.state.tools,
       prompt: args.prompt,
+      thinkingLevel: args.model.thinkingLevel,
       streamOptions: {
         apiKey: args.model.apiKey,
         signal,
+        ...(args.model.serviceTier === undefined
+          ? {}
+          : { serviceTier: args.model.serviceTier }),
       },
+      ownership: args.ownership,
+      providerRequestBoundary: args.providerRequestBoundary,
     });
     return {
       assistantMessage: projectPiApiAssistantMessage(turn.assistantMessage),

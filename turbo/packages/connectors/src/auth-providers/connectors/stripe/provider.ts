@@ -37,6 +37,9 @@ export const stripeProvider: AuthCodeConnectorAuthProvider<"stripe"> = {
           livemode: result.livemode ? "true" : "false",
           refreshToken: result.refreshToken,
         },
+        ...(result.expiresIn === undefined
+          ? {}
+          : { expiresIn: result.expiresIn }),
         scopes: result.scopes,
         userInfo: {
           id: result.userInfo.id,

@@ -9,16 +9,14 @@ mod common;
 
 use std::fs::File;
 use std::io::{self, Write};
-use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd};
+use std::os::fd::FromRawFd;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
 use shell_quote::quote_shell_arg;
-use tokio::io::unix::AsyncFd;
 use vsock_host::{ExecOwnedCapturedOutput, SupervisedExecControl, SupervisedExecRequest};
 use vsock_proto::{ExecOutputPolicy, ExecOutputStream, ExecTermination, ExecTimeoutPolicy};
 
@@ -404,7 +402,7 @@ async fn start_host_and_guest(dir: &Path, guest_agent: PathBuf) -> TestResult<Co
     });
 
     let listener_ready: io::Result<()> = tokio::select! {
-        ready = wait_for_path(&listener, Duration::from_secs(5)) => ready,
+        ready = common::wait_for_path(&listener, Duration::from_secs(5)) => ready,
         completed = &mut host_task => {
             match completed {
                 Ok(Ok(host)) => {
@@ -458,67 +456,6 @@ fn captured_output_lossy(output: &ExecOwnedCapturedOutput) -> String {
     match output {
         ExecOwnedCapturedOutput::Discarded => String::new(),
         ExecOwnedCapturedOutput::Captured { bytes, .. } => String::from_utf8_lossy(bytes).into(),
-    }
-}
-
-async fn wait_for_path(path: &Path, timeout: Duration) -> io::Result<()> {
-    tokio::time::timeout(timeout, wait_for_path_event(path))
-        .await
-        .map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::TimedOut,
-                format!("timed out waiting for {}", path.display()),
-            )
-        })?
-}
-
-async fn wait_for_path_event(path: &Path) -> io::Result<()> {
-    if tokio::fs::try_exists(path).await? {
-        return Ok(());
-    }
-
-    let dir = path.parent().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("path has no parent directory: {}", path.display()),
-        )
-    })?;
-    let inotify = Inotify::init(InitFlags::IN_NONBLOCK)
-        .map_err(|error| io::Error::other(format!("inotify init: {error}")))?;
-    inotify
-        .add_watch(dir, AddWatchFlags::IN_CREATE | AddWatchFlags::IN_MOVED_TO)
-        .map_err(|error| io::Error::other(format!("inotify watch: {error}")))?;
-
-    if tokio::fs::try_exists(path).await? {
-        return Ok(());
-    }
-
-    let async_fd = async_inotify_fd(inotify)?;
-    loop {
-        let mut guard = async_fd.readable().await?;
-        drain_inotify_fd(async_fd.get_ref().as_fd());
-        guard.clear_ready();
-
-        if tokio::fs::try_exists(path).await? {
-            return Ok(());
-        }
-    }
-}
-
-fn async_inotify_fd(inotify: Inotify) -> io::Result<AsyncFd<OwnedFd>> {
-    let fd: OwnedFd = inotify.into();
-    AsyncFd::new(fd).map_err(|error| io::Error::other(format!("AsyncFd: {error}")))
-}
-
-fn drain_inotify_fd(fd: std::os::fd::BorrowedFd<'_>) {
-    let mut buf = [0u8; 4096];
-    loop {
-        // SAFETY: fd is a valid non-blocking inotify descriptor borrowed from
-        // AsyncFd. The stack buffer is valid for the requested byte length.
-        let result = unsafe { libc::read(fd.as_raw_fd(), buf.as_mut_ptr().cast(), buf.len()) };
-        if result <= 0 {
-            break;
-        }
     }
 }
 

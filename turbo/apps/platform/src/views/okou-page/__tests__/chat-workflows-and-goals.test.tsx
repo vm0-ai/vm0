@@ -8,6 +8,7 @@ import {
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
 } from "@okouai/core";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import type {
   ChatThreadWorkflowAutomation,
@@ -22,10 +23,7 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import {
-  expectQueuedMessages,
-  mockChatLifecycle,
-} from "./chat-test-helpers.ts";
+import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import { canonicalUserMessageFileUrl } from "../../../signals/chat-page/user-message-files.ts";
 import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../../signals/chat-page/workflow-prompt-action";
 import {
@@ -776,7 +774,7 @@ describe("chat lifecycle", () => {
     expect(screen.getAllByText("Reopened objective")).toHaveLength(1);
   });
 
-  it("folds goal-state markers into the goal row beneath the queued messages", async () => {
+  it("folds goal-state markers into the goal row beneath queued work", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000723";
     mockChatLifecycle(context, {
@@ -807,15 +805,18 @@ describe("chat lifecycle", () => {
           createdAt: "2026-06-09T10:00:02Z",
         },
         {
-          id: "msg-goal-morning-brief",
-          eventType: "input.prompt",
+          id: "msg-goal-automation",
+          eventType: "input.automation",
           role: "user",
           content: null,
           userMessage: {
             version: 1,
             parts: [
-              { type: "text", text: "First queued follow-up" },
-              { type: "morning_brief", briefDate: "2026-06-09" },
+              {
+                type: "automation",
+                workflowName: "release-follow-up",
+                automationBrief: "First queued follow-up",
+              },
             ],
           },
           runId: undefined,
@@ -852,15 +853,17 @@ describe("chat lifecycle", () => {
     // The marker is a control row — it must not also render as a chat bubble.
     expect(screen.getAllByText("Drive the release to merge")).toHaveLength(1);
 
-    // The goal is the lowest-priority row: it sits after every queued message.
-    await expectQueuedMessages(["First queued follow-up"]);
+    // The goal is the lowest-priority row: it sits after every queued item.
+    await expect(
+      screen.findByLabelText("Pending automation event"),
+    ).resolves.toHaveTextContent("First queued follow-up");
     const goalRow = screen.getByLabelText("Active goal");
     const strip = goalRow.closest('[role="list"]');
     expect(strip).not.toBeNull();
     const rows = within(strip as HTMLElement).getAllByRole("listitem");
     const goalIndex = rows.indexOf(goalRow);
     const queuedIndex = rows.findIndex((row) => {
-      return row.getAttribute("aria-label") === "Queued message";
+      return row.getAttribute("aria-label") === "Pending automation event";
     });
     expect(queuedIndex).toBeGreaterThanOrEqual(0);
     expect(goalIndex).toBeGreaterThan(queuedIndex);
@@ -1133,6 +1136,79 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       expect(screen.queryByText(goalPrompt)).not.toBeInTheDocument();
       expect(screen.getAllByText("Worked for 30s").length).toBeGreaterThan(0);
     });
+  });
+
+  it("expands archived goal history for an event hash", async () => {
+    const threadId = "e9000000-0000-4000-a000-000000000016";
+    const runGroupId = "f0000001-0000-4000-a000-00000000092b";
+    const goalBrief = "Open the archived goal event";
+    const goalPrompt = `${goalBrief}\n\nFull autonomous goal prompt`;
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Goal event deep link",
+      chatEvents: [
+        {
+          id: "msg-goal-deep-link-user-1",
+          role: "user",
+          content: goalPrompt,
+          userMessage: {
+            version: 1,
+            parts: [{ type: "goal", goalBrief }],
+          },
+          runId: "f0000001-0000-4000-a000-00000000092c",
+          runGroupId,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-goal-deep-link-assistant-1",
+          role: "assistant",
+          content: "Archived goal result",
+          runId: "f0000001-0000-4000-a000-00000000092c",
+          runGroupId,
+          createdAt: "2026-06-09T10:00:30Z",
+        },
+        {
+          id: "msg-goal-deep-link-user-2",
+          role: "user",
+          content: goalPrompt,
+          userMessage: {
+            version: 1,
+            parts: [{ type: "goal", goalBrief }],
+          },
+          runId: "f0000001-0000-4000-a000-00000000092d",
+          runGroupId,
+          createdAt: "2026-06-09T10:02:00Z",
+        },
+        {
+          id: "msg-goal-deep-link-assistant-2",
+          role: "assistant",
+          content: "Latest goal result",
+          runId: "f0000001-0000-4000-a000-00000000092d",
+          runGroupId,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:02:30Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}#event-msg-goal-deep-link-assistant-1`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatConversationLocator]: true,
+      },
+    });
+
+    await expect(
+      screen.findByText("Archived goal result"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("Latest goal result")).toBeInTheDocument();
+    expect(
+      document.querySelector(
+        '[data-chat-scroll-anchor-event-id="msg-goal-deep-link-assistant-1"]',
+      ),
+    ).not.toBeNull();
   });
 
   it("keeps archived goal history below a running goal without assistant text", async () => {

@@ -51,6 +51,14 @@ describe("managed SocialKit contract", () => {
         },
       },
     });
+    expect(
+      MANAGED_SOCIALKIT_TOOLS.find((tool) => {
+        return tool.name === "tiktok_comments";
+      })?.collection,
+    ).toMatchObject({
+      resultField: "comments",
+      reportedTotalField: "commentCount",
+    });
   });
 
   it.each([
@@ -174,6 +182,70 @@ describe("managed SocialKit contract", () => {
         collection: { state: "provider_limited", itemsReturned: 1 },
         result: {
           results: [{ title: "Typed result", views: "ten" }],
+        },
+      }).success,
+    ).toBeFalsy();
+  });
+
+  it("validates additive collection evidence and rejects unsafe relationships", () => {
+    const base = {
+      provider: "socialkit",
+      tool: "tiktok_comments",
+      billingCategory: "request",
+      billingQuantity: 1,
+      creditsCharged: 3,
+      result: { comments: [{ id: "comment-1" }], commentCount: 100 },
+    } as const;
+
+    expect(
+      socialKitResponseSchema.safeParse({
+        ...base,
+        collection: {
+          state: "more",
+          itemsReturned: 1,
+          reportedTotal: 100,
+          nextInput: { cursor: "next" },
+        },
+      }).success,
+    ).toBeTruthy();
+    expect(
+      socialKitResponseSchema.safeParse({
+        ...base,
+        collection: {
+          state: "provider_limited",
+          itemsReturned: 1,
+          reason: "reported_total_exceeds_page",
+          reportedTotal: 100,
+        },
+      }).success,
+    ).toBeTruthy();
+    expect(
+      socialKitResponseSchema.safeParse({
+        ...base,
+        collection: {
+          state: "provider_limited",
+          itemsReturned: 1,
+          reason: "not-a-reason",
+        },
+      }).success,
+    ).toBeFalsy();
+    expect(
+      socialKitResponseSchema.safeParse({
+        ...base,
+        collection: {
+          state: "complete",
+          itemsReturned: 1,
+          reportedTotal: -1,
+        },
+      }).success,
+    ).toBeFalsy();
+    expect(
+      socialKitResponseSchema.safeParse({
+        ...base,
+        collection: {
+          state: "complete",
+          itemsReturned: 1,
+          reportedTotal: Number.MAX_SAFE_INTEGER + 1,
         },
       }).success,
     ).toBeFalsy();

@@ -39,7 +39,7 @@ import { logger } from "../../lib/log";
 import type { Tx } from "../../lib/db-types";
 import { nowDate } from "../../lib/time";
 import { db$, type Db, type ReadonlyDb, writeDb$ } from "../external/db";
-import { bestEffort, settle } from "../utils";
+import { bestEffort, settle, settleIncludingAbort } from "../utils";
 import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
@@ -77,10 +77,16 @@ import {
   type ConnectorRuntimeMethod,
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
-import { cleanupGmailWatchesForConnector } from "./gmail-automation-event.service";
+import {
+  prepareGmailWatchStopForConnector,
+  reconcileGmailWatchesForUser,
+  stopPreparedGmailWatch,
+  type PendingGmailWatchStop,
+} from "./gmail-automation-event.service";
 import { cleanupGoogleCalendarWatchesForConnector } from "./google-calendar-automation-event.service";
 import { cleanupGoogleFormsWatchesForConnector } from "./google-forms-automation-event.service";
 import { reconcileConnectorAccountState } from "./connector-account-state.service";
+import { reprojectGmailAutomationsForOwner } from "./gmail-automation-account.service";
 import { prepareConnectorAccountDeletion } from "./connector-account-lifecycle.service";
 import { resolveConnectorAccount } from "./connector-account-resolution.service";
 import {
@@ -830,9 +836,7 @@ async function cleanupConnectorWatchesForDisconnect(
   signal: AbortSignal,
 ): Promise<void> {
   const args = { db, connectorId };
-  if (connectorSlug === "gmail") {
-    await bestEffort(cleanupGmailWatchesForConnector(args, signal));
-  } else if (connectorSlug === "google-calendar") {
+  if (connectorSlug === "google-calendar") {
     await bestEffort(cleanupGoogleCalendarWatchesForConnector(args, signal));
   } else if (connectorSlug === "google-forms") {
     await bestEffort(cleanupGoogleFormsWatchesForConnector(args, signal));
@@ -931,16 +935,118 @@ type DeleteConnectorLocalStateResult =
       readonly promotedDefaultConnectionId: string | null;
     };
 
+interface DeleteConnectorLocalStateArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly connectorSlug: string;
+  readonly sourceId?: string;
+  readonly snapshot?: ConnectorRuntimeSnapshot | null;
+}
+
+async function deleteConnectorAccountLocalState(
+  tx: Tx,
+  args: DeleteConnectorLocalStateArgs,
+  snapshot: ConnectorRuntimeSnapshot | null,
+  featureSwitchContext: FeatureSwitchContext | null,
+  signal: AbortSignal,
+) {
+  await lockConnectorState(tx, {
+    orgId: args.orgId,
+    userId: args.userId,
+    connectorSlug: args.connectorSlug,
+  });
+  signal.throwIfAborted();
+
+  const account = await loadConnectorAccountForDeletion(tx, args, signal);
+  if (account.kind !== "resolved") {
+    return {
+      kind: account.kind,
+      pendingTokenRevoke: null,
+      pendingGmailWatchStop: null,
+    };
+  }
+  const existing = account.connector;
+  const deletion = await prepareBuiltinConnectorAccountDeletion(tx, {
+    ...args,
+    connectionId: existing.id,
+  });
+  signal.throwIfAborted();
+  if (deletion.kind !== "ready") {
+    return {
+      kind: deletion.kind,
+      pendingTokenRevoke: null,
+      pendingGmailWatchStop: null,
+    };
+  }
+
+  let pendingTokenRevoke: PendingConnectorTokenRevoke | null = null;
+  if (snapshot !== null && featureSwitchContext !== null) {
+    const accessResult = resolveConnectorCredentialAccess({
+      snapshot,
+      stored: {
+        authMethodId: existing.authMethod,
+        connectorId: existing.id,
+        connectorSlug: args.connectorSlug,
+        orgId: args.orgId,
+        storageVersion: existing.storageVersion,
+        userId: args.userId,
+      },
+    });
+    if (
+      accessResult.kind === "ok" &&
+      accessResult.access.runtimeMethod.method.revoke.kind === "token-revoke"
+    ) {
+      pendingTokenRevoke = await loadPendingConnectorTokenRevoke(
+        {
+          access: accessResult.access,
+          db: tx,
+          featureSwitchContext,
+        },
+        signal,
+      );
+    }
+  }
+  signal.throwIfAborted();
+
+  const pendingGmailWatchStop: PendingGmailWatchStop | null =
+    args.connectorSlug === "gmail"
+      ? await prepareGmailWatchStopForConnector(
+          {
+            db: tx,
+            orgId: args.orgId,
+            userId: args.userId,
+            connectorId: existing.id,
+          },
+          signal,
+        )
+      : null;
+  if (args.connectorSlug !== "gmail") {
+    await cleanupConnectorWatchesForDisconnect(
+      tx,
+      args.connectorSlug,
+      existing.id,
+      signal,
+    );
+  }
+  signal.throwIfAborted();
+
+  await deleteConnectorCredentialStorageConnection(
+    tx,
+    { connectorId: existing.id },
+    signal,
+  );
+  return {
+    kind: "deleted" as const,
+    pendingTokenRevoke,
+    pendingGmailWatchStop,
+    deletion,
+  };
+}
+
 export const deleteConnectorLocalState$ = command(
   async (
     { get, set },
-    args: {
-      readonly orgId: string;
-      readonly userId: string;
-      readonly connectorSlug: string;
-      readonly sourceId?: string;
-      readonly snapshot?: ConnectorRuntimeSnapshot | null;
-    },
+    args: DeleteConnectorLocalStateArgs,
     signal: AbortSignal,
   ): Promise<DeleteConnectorLocalStateResult> => {
     const writeDb = set(writeDb$);
@@ -964,75 +1070,13 @@ export const deleteConnectorLocalState$ = command(
 
     let postCommitAbort: unknown = null;
     const deleteResult = await writeDb.transaction(async (tx) => {
-      await lockConnectorState(tx, {
-        orgId: args.orgId,
-        userId: args.userId,
-        connectorSlug: args.connectorSlug,
-      });
-      signal.throwIfAborted();
-
-      const account = await loadConnectorAccountForDeletion(tx, args, signal);
-      if (account.kind !== "resolved") {
-        return { kind: account.kind, pendingTokenRevoke: null };
-      }
-      const existing = account.connector;
-
-      const deletion = await prepareBuiltinConnectorAccountDeletion(tx, {
-        ...args,
-        connectionId: existing.id,
-      });
-      signal.throwIfAborted();
-      if (deletion.kind !== "ready") {
-        return { kind: deletion.kind, pendingTokenRevoke: null };
-      }
-
-      let pendingTokenRevoke: PendingConnectorTokenRevoke | null = null;
-      if (snapshot !== null && featureSwitchContext !== null) {
-        const accessResult = resolveConnectorCredentialAccess({
-          snapshot,
-          stored: {
-            authMethodId: existing.authMethod,
-            connectorId: existing.id,
-            connectorSlug: args.connectorSlug,
-            orgId: args.orgId,
-            storageVersion: existing.storageVersion,
-            userId: args.userId,
-          },
-        });
-        if (
-          accessResult.kind === "ok" &&
-          accessResult.access.runtimeMethod.method.revoke.kind ===
-            "token-revoke"
-        ) {
-          pendingTokenRevoke = await loadPendingConnectorTokenRevoke(
-            {
-              access: accessResult.access,
-              db: tx,
-              featureSwitchContext,
-            },
-            signal,
-          );
-        }
-      }
-      signal.throwIfAborted();
-
-      await cleanupConnectorWatchesForDisconnect(
+      return await deleteConnectorAccountLocalState(
         tx,
-        args.connectorSlug,
-        existing.id,
+        args,
+        snapshot,
+        featureSwitchContext,
         signal,
       );
-      signal.throwIfAborted();
-
-      await deleteConnectorCredentialStorageConnection(
-        tx,
-        {
-          connectorId: existing.id,
-        },
-        signal,
-      );
-
-      return { kind: "deleted" as const, pendingTokenRevoke, deletion };
     });
     if (signal.aborted) {
       postCommitAbort ??= signal.reason;
@@ -1043,6 +1087,23 @@ export const deleteConnectorLocalState$ = command(
       return deleteResult.kind;
     }
 
+    if (deleteResult.pendingGmailWatchStop !== null) {
+      const stopped = await settleIncludingAbort(
+        bestEffort(
+          stopPreparedGmailWatch(
+            { db: writeDb, pending: deleteResult.pendingGmailWatchStop },
+            signal,
+          ),
+          signal,
+        ),
+      );
+      if (signal.aborted) {
+        postCommitAbort ??= signal.reason;
+      }
+      if (!stopped.ok) {
+        postCommitAbort ??= stopped.error;
+      }
+    }
     await finalizeConnectorStateChangeAfterCommit(
       {
         userId: args.userId,
@@ -1052,6 +1113,15 @@ export const deleteConnectorLocalState$ = command(
       },
       signal,
     );
+    if (args.connectorSlug === "gmail") {
+      await bestEffort(
+        reconcileGmailWatchesForUser(
+          { db: writeDb, orgId: args.orgId, userId: args.userId },
+          signal,
+        ),
+        signal,
+      );
+    }
     signal.throwIfAborted();
 
     return completedConnectorDeletionResult(
@@ -2085,6 +2155,12 @@ async function commitConnectorTokenConnection(
     },
     signal,
   );
+  if (args.runtimeMethod.connectorSlug === "gmail") {
+    await reprojectGmailAutomationsForOwner(args.db, {
+      orgId: args.orgId,
+      userId: args.userId,
+    });
+  }
 
   return {
     status: "connected",
@@ -2198,6 +2274,15 @@ export const upsertConnectorTokenConnection$ = command(
       },
       signal,
     );
+    if (args.runtimeMethod.connectorSlug === "gmail") {
+      await bestEffort(
+        reconcileGmailWatchesForUser(
+          { db: writeDb, orgId: args.orgId, userId: args.userId },
+          signal,
+        ),
+        signal,
+      );
+    }
     signal.throwIfAborted();
 
     return {

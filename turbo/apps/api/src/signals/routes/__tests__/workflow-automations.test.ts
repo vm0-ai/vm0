@@ -174,11 +174,27 @@ async function enableNotionWorkflowAutomations(
   });
 }
 
+async function disableNotionWorkflowAutomations(
+  fixture: WorkflowsFixture,
+): Promise<void> {
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.NotionWorkflowAutomations]: false,
+  });
+}
+
 async function enableGoogleFormsWorkflowAutomations(
   fixture: WorkflowsFixture,
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
     [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
+  });
+}
+
+async function disableGoogleFormsWorkflowAutomations(
+  fixture: WorkflowsFixture,
+): Promise<void> {
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: false,
   });
 }
 
@@ -1510,7 +1526,8 @@ describe("okou workflow automations", () => {
   });
 
   it("rejects Google Forms response automation creation when the feature is disabled", async () => {
-    const { workflowId } = await setupFixture();
+    const { fixture, workflowId } = await setupFixture();
+    await disableGoogleFormsWorkflowAutomations(fixture);
     const rejected = await accept(
       automationsClient().create({
         headers: authHeaders(),
@@ -1973,7 +1990,8 @@ describe("okou workflow automations", () => {
   });
 
   it("rejects Notion child page automations when Notion automation creation is disabled", async () => {
-    const { workflowId } = await setupFixture();
+    const { fixture, workflowId } = await setupFixture();
+    await disableNotionWorkflowAutomations(fixture);
     const rejected = await accept(
       automationsClient().create({
         headers: authHeaders(),
@@ -1997,7 +2015,8 @@ describe("okou workflow automations", () => {
   });
 
   it("rejects Notion database item automations when Notion automation creation is disabled", async () => {
-    const { workflowId } = await setupFixture();
+    const { fixture, workflowId } = await setupFixture();
+    await disableNotionWorkflowAutomations(fixture);
     const rejected = await accept(
       automationsClient().create({
         headers: authHeaders(),
@@ -2021,7 +2040,8 @@ describe("okou workflow automations", () => {
   });
 
   it("rejects Notion page content updated automations when Notion automation creation is disabled", async () => {
-    const { workflowId } = await setupFixture();
+    const { fixture, workflowId } = await setupFixture();
+    await disableNotionWorkflowAutomations(fixture);
     const rejected = await accept(
       automationsClient().create({
         headers: authHeaders(),
