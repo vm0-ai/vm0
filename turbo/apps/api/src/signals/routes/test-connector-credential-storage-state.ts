@@ -740,6 +740,7 @@ async function setBuiltinOAuthScopeFacts(
         eq(connectors.orgId, body.org_id),
         eq(connectors.userId, body.user_id),
         eq(connectors.connectorSlug, body.connector_slug),
+        eq(connectors.id, body.connector_id),
       ),
     )
     .returning({ id: connectors.id });

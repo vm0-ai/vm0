@@ -7,7 +7,7 @@
 use guest_contracts::diagnostics::{
     CliObservedExitDiagnostic, CliObservedExitKind, CliTerminationDiagnostic,
     EventDeliveryDiagnostic, FailureClass, FailureDiagnostic, FailureReason,
-    WorkloadResourceLimitDiagnostic,
+    HeartbeatFailureDiagnostic, WorkloadResourceLimitDiagnostic,
 };
 use tracing::info;
 
@@ -48,6 +48,9 @@ fn log_job_execution_failed(
     );
     let event_delivery_fields = JobEventDeliveryLogFields::from(
         diagnostic.and_then(|diagnostic| diagnostic.event_delivery.as_ref()),
+    );
+    let heartbeat_fields = JobHeartbeatLogFields::from(
+        diagnostic.and_then(|diagnostic| diagnostic.heartbeat.as_ref()),
     );
     let workload_resource_fields = JobWorkloadResourceLogFields::from(
         diagnostic.and_then(|diagnostic| diagnostic.workload_resource_limit.as_ref()),
@@ -159,6 +162,18 @@ fn log_job_execution_failed(
                     event_delivery_fields.drain_active_attempt_elapsed_ms,
                 event_delivery_drain_active_outcome =
                     event_delivery_fields.drain_active_outcome,
+                heartbeat_failed_cycle_count = heartbeat_fields.failed_cycle_count,
+                heartbeat_attempt_count = heartbeat_fields.attempt_count,
+                heartbeat_final_scheduled_lag_ms = heartbeat_fields.final_scheduled_lag_ms,
+                heartbeat_final_attempt_number = heartbeat_fields.final_attempt_number,
+                heartbeat_final_attempt_kind = heartbeat_fields.final_attempt_kind,
+                heartbeat_final_attempt_timeout_observed =
+                    heartbeat_fields.final_attempt_timeout_observed,
+                heartbeat_final_attempt_connect_observed =
+                    heartbeat_fields.final_attempt_connect_observed,
+                heartbeat_final_attempt_http_status = heartbeat_fields.final_attempt_http_status,
+                heartbeat_final_attempt_request_id = heartbeat_fields.final_attempt_request_id,
+                heartbeat_final_attempt_elapsed_ms = heartbeat_fields.final_attempt_elapsed_ms,
                 workload_memory_max_events = workload_resource_fields.memory_max_events,
                 workload_memory_oom_events = workload_resource_fields.memory_oom_events,
                 workload_memory_oom_kill_events =
@@ -265,6 +280,19 @@ struct JobEventDeliveryLogFields<'a> {
     drain_active_outcome: Option<&'static str>,
 }
 
+struct JobHeartbeatLogFields<'a> {
+    failed_cycle_count: Option<u64>,
+    attempt_count: Option<u64>,
+    final_scheduled_lag_ms: Option<u64>,
+    final_attempt_number: Option<u32>,
+    final_attempt_kind: Option<&'static str>,
+    final_attempt_timeout_observed: Option<bool>,
+    final_attempt_connect_observed: Option<bool>,
+    final_attempt_http_status: Option<u16>,
+    final_attempt_request_id: Option<&'a str>,
+    final_attempt_elapsed_ms: Option<u64>,
+}
+
 impl From<Option<&CliTerminationDiagnostic>> for JobCliTerminationLogFields {
     fn from(diagnostic: Option<&CliTerminationDiagnostic>) -> Self {
         Self {
@@ -359,6 +387,36 @@ impl<'a> From<Option<&'a EventDeliveryDiagnostic>> for JobEventDeliveryLogFields
     }
 }
 
+impl<'a> From<Option<&'a HeartbeatFailureDiagnostic>> for JobHeartbeatLogFields<'a> {
+    fn from(diagnostic: Option<&'a HeartbeatFailureDiagnostic>) -> Self {
+        let final_cycle = diagnostic.and_then(|diagnostic| diagnostic.failed_cycles.last());
+        let final_attempt = final_cycle.and_then(|cycle| cycle.attempts.last());
+        Self {
+            failed_cycle_count: diagnostic.map(|diagnostic| {
+                u64::try_from(diagnostic.failed_cycles.len()).unwrap_or(u64::MAX)
+            }),
+            attempt_count: diagnostic.map(|diagnostic| {
+                diagnostic
+                    .failed_cycles
+                    .iter()
+                    .map(|cycle| u64::try_from(cycle.attempts.len()).unwrap_or(u64::MAX))
+                    .fold(0_u64, u64::saturating_add)
+            }),
+            final_scheduled_lag_ms: final_cycle.map(|cycle| cycle.scheduled_lag_ms),
+            final_attempt_number: final_attempt.map(|attempt| attempt.attempt),
+            final_attempt_kind: final_attempt.map(|attempt| attempt.failure_kind.as_str()),
+            final_attempt_timeout_observed: final_attempt
+                .and_then(|attempt| attempt.timeout_observed),
+            final_attempt_connect_observed: final_attempt
+                .and_then(|attempt| attempt.connect_observed),
+            final_attempt_http_status: final_attempt.and_then(|attempt| attempt.http_status),
+            final_attempt_request_id: final_attempt
+                .map(|attempt| attempt.client_request_id.as_str()),
+            final_attempt_elapsed_ms: final_attempt.map(|attempt| attempt.elapsed_ms),
+        }
+    }
+}
+
 impl From<Option<executor::ResourceFailureDiagnostics>> for JobResourceLogFields {
     fn from(diagnostics: Option<executor::ResourceFailureDiagnostics>) -> Self {
         Self {
@@ -432,7 +490,9 @@ mod tests {
         EventDeliveryActiveBatchDiagnostic, EventDeliveryAttemptFailureKind,
         EventDeliveryCompletedAttemptDiagnostic, EventDeliveryDiagnostic,
         EventDeliveryDrainTimeoutDiagnostic, EventDeliveryFailedBatchDiagnostic, FailureClass,
-        FailureDetailSource, PromptMetadata, SessionHistoryStatus, WorkloadResourceLimitDiagnostic,
+        FailureDetailSource, HeartbeatAttemptFailureKind, HeartbeatCompletedAttemptDiagnostic,
+        HeartbeatFailedCycleDiagnostic, HeartbeatFailureDiagnostic, PromptMetadata,
+        SessionHistoryStatus, WorkloadResourceLimitDiagnostic,
     };
     use tracing::Level;
     use tracing_subscriber::prelude::*;
@@ -1042,6 +1102,72 @@ mod tests {
         }
         assert!(!event.fields.contains_key("event_delivery_attempts"));
         assert!(!event.fields.contains_key("event_delivery_body"));
+    }
+
+    #[test]
+    fn diagnostic_failure_logs_bounded_heartbeat_fields() {
+        let diagnostic = job_failure_diagnostic(None).with_heartbeat(HeartbeatFailureDiagnostic {
+            failed_cycles: vec![
+                HeartbeatFailedCycleDiagnostic {
+                    scheduled_lag_ms: 11,
+                    attempts: vec![HeartbeatCompletedAttemptDiagnostic {
+                        attempt: 1,
+                        client_request_id: "11111111-1111-4111-8111-111111111111".to_string(),
+                        elapsed_ms: 100,
+                        failure_kind: HeartbeatAttemptFailureKind::HttpStatus,
+                        http_status: Some(503),
+                        timeout_observed: None,
+                        connect_observed: None,
+                    }],
+                },
+                HeartbeatFailedCycleDiagnostic {
+                    scheduled_lag_ms: 27,
+                    attempts: vec![
+                        HeartbeatCompletedAttemptDiagnostic {
+                            attempt: 1,
+                            client_request_id: "22222222-2222-4222-8222-222222222222".to_string(),
+                            elapsed_ms: 30_000,
+                            failure_kind: HeartbeatAttemptFailureKind::Timeout,
+                            http_status: None,
+                            timeout_observed: Some(true),
+                            connect_observed: Some(false),
+                        },
+                        HeartbeatCompletedAttemptDiagnostic {
+                            attempt: 2,
+                            client_request_id: "33333333-3333-4333-8333-333333333333".to_string(),
+                            elapsed_ms: 30_001,
+                            failure_kind: HeartbeatAttemptFailureKind::Timeout,
+                            http_status: None,
+                            timeout_observed: Some(true),
+                            connect_observed: Some(false),
+                        },
+                    ],
+                },
+            ],
+        });
+        let failure = executor::ExecutionFailure::new(1, "heartbeat failed", Some(diagnostic));
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_field_eq(&event, "heartbeat_failed_cycle_count", "2");
+        assert_field_eq(&event, "heartbeat_attempt_count", "3");
+        assert_field_eq(&event, "heartbeat_final_scheduled_lag_ms", "27");
+        assert_field_eq(&event, "heartbeat_final_attempt_number", "2");
+        assert_field_eq(&event, "heartbeat_final_attempt_kind", "timeout");
+        assert_field_eq(&event, "heartbeat_final_attempt_timeout_observed", "true");
+        assert_field_eq(&event, "heartbeat_final_attempt_connect_observed", "false");
+        assert!(
+            !event
+                .fields
+                .contains_key("heartbeat_final_attempt_http_status")
+        );
+        assert_field_eq(
+            &event,
+            "heartbeat_final_attempt_request_id",
+            "33333333-3333-4333-8333-333333333333",
+        );
+        assert_field_eq(&event, "heartbeat_final_attempt_elapsed_ms", "30001");
+        assert!(!event.fields.contains_key("heartbeat_failed_cycles"));
     }
 
     #[test]

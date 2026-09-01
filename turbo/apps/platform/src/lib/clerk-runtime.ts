@@ -88,15 +88,17 @@ function adoptEarlyClerkRuntime(
     throw new Error("Early Clerk bootstrap configuration mismatch");
   }
 
+  const loaded = bootstrap.loaded;
+  bootstrap.loaded = undefined;
+
   return {
     clerk,
-    loaded: bootstrap.loaded,
+    loaded,
   };
 }
 
 export function startClerkBrowserRuntime(
   options: ClerkRuntimeOptions,
-  signal: AbortSignal,
 ): Promise<ClerkBrowserRuntime> {
   return (async () => {
     await loadClerkJSScript({
@@ -104,7 +106,6 @@ export function startClerkBrowserRuntime(
       domain: options.domain,
       publishableKey: options.publishableKey,
     });
-    signal.throwIfAborted();
     const clerk = globalProperty("Clerk");
     if (!isBrowserClerk(clerk)) {
       throw new Error("Clerk browser script did not expose a valid runtime");

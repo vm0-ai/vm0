@@ -1,8 +1,5 @@
 import { command, computed, state } from "ccstate";
-import {
-  startClerkBrowserRuntime,
-  type ClerkBrowserRuntime,
-} from "../lib/clerk-runtime.ts";
+import { startClerkBrowserRuntime } from "../lib/clerk-runtime.ts";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 import {
   clearPostHogUser,
@@ -27,8 +24,8 @@ import {
 } from "../lib/clerk-production-topology.ts";
 import { resolveBrandNameForHostname, type BrandName } from "./branding.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
-import { createAuthRecovery, setupForegroundCatchUp$ } from "./auth-retry.ts";
-import { authRecovery$, setAuthRecovery$ } from "./auth-context.ts";
+import { setupForegroundCatchUp$ } from "./foreground-catch-up.ts";
+import { readClerkToken } from "./clerk-token.ts";
 import { writeConnectionDiagnostic$ } from "./connection-diagnostics.ts";
 import { sessionStorageSignals } from "./external/session-storage.ts";
 
@@ -408,76 +405,37 @@ export function buildSignInRedirectUrl(
   return redirectUrl?.toString() ?? resolveAppUrl();
 }
 
-const internalClerkRuntime$ = state<Promise<ClerkBrowserRuntime> | undefined>(
-  undefined,
-);
-export const initClerkRuntime$ = command(
-  ({ set }, signal: AbortSignal): void => {
-    signal.throwIfAborted();
-    const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
-    const satelliteConfig = resolveClerkSatelliteConfig();
-    set(
-      internalClerkRuntime$,
-      startClerkBrowserRuntime(
-        {
-          domain: satelliteConfig?.domain,
-          loadOptions: {
-            ...(satelliteConfig
-              ? {
-                  isSatellite: true,
-                  satelliteAutoSync: satelliteConfig.satelliteAutoSync,
-                }
-              : {}),
-            afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
-            signInUrl: resolveAppAuthUrl("/sign-in"),
-            signUpUrl: resolveAppAuthUrl("/sign-up"),
-          },
-          publishableKey,
-        },
-        signal,
-      ),
-    );
-  },
-);
-
-const clerkRuntime$ = computed((get) => {
-  const runtime = get(internalClerkRuntime$);
-  if (!runtime) {
-    throw new Error("Clerk runtime was not initialized during bootstrap");
-  }
-  return runtime;
-});
-
-/** Clerk core is available once its browser script has initialized. */
-export const clerkInstance$ = computed(async (get) => {
-  const runtime = await get(clerkRuntime$);
-  return runtime.clerk;
-});
-
 /** Loaded Clerk instance for consumers that need authentication state. */
-export const clerk$ = computed(async (get) => {
-  const runtime = await get(clerkRuntime$);
+export const clerk$ = computed(async () => {
+  const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
+  const satelliteConfig = resolveClerkSatelliteConfig();
+  const runtime = await startClerkBrowserRuntime({
+    domain: satelliteConfig?.domain,
+    loadOptions: {
+      ...(satelliteConfig
+        ? {
+            isSatellite: true,
+            satelliteAutoSync: satelliteConfig.satelliteAutoSync,
+          }
+        : {}),
+      afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
+      signInUrl: resolveAppAuthUrl("/sign-in"),
+      signUpUrl: resolveAppAuthUrl("/sign-up"),
+    },
+    publishableKey,
+  });
   await runtime.loaded;
 
   return runtime.clerk;
 });
 
-export const initAuthRecovery$ = command(
-  ({ get, set }, signal: AbortSignal): void => {
+export const reloadToken$ = command(
+  async ({ get }, signal: AbortSignal): Promise<string | null> => {
+    const clerk = await get(clerk$);
     signal.throwIfAborted();
-    const clerkPromise = get(clerk$);
-    set(
-      setAuthRecovery$,
-      (async () => {
-        const clerk = await clerkPromise;
-        signal.throwIfAborted();
-        return createAuthRecovery(clerk, signal);
-      })(),
-    );
+    return await readClerkToken(clerk, signal, { skipCache: true });
   },
 );
-
-export { authRecovery$ };
 
 /**
  * Command to setup Clerk authentication listeners.

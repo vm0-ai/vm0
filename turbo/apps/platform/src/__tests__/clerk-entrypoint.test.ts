@@ -474,6 +474,7 @@ describe("platform Clerk entrypoint", () => {
     }
     expect(mockedClerkLoad).toHaveBeenCalledOnce();
     expect(bootstrap.loaded).toBe(loadCanFinish.promise);
+    const loaded = bootstrap.loaded;
     script.dispatchEvent(new Event("load"));
     expect(mockedClerkLoad).toHaveBeenCalledOnce();
 
@@ -485,8 +486,9 @@ describe("platform Clerk entrypoint", () => {
     expect(mockedClerkLoad).toHaveBeenCalledOnce();
 
     loadCanFinish.resolve(undefined);
-    await Promise.all([setup, bootstrap.loaded]);
+    await Promise.all([setup, loaded]);
 
+    expect(bootstrap.loaded).toBeUndefined();
     expect(mockedClerkLoad).toHaveBeenCalledOnce();
   });
 

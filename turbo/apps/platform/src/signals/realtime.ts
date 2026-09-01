@@ -16,7 +16,7 @@ import { runtimeAuthenticatedIdentity$ } from "./auth-context.ts";
 import {
   requestForegroundCatchUp$,
   subscribeForegroundCatchUp$,
-} from "./auth-retry.ts";
+} from "./foreground-catch-up.ts";
 import { createAblyAuthCallback } from "../lib/ably-auth.ts";
 import {
   connectionDiagnosticError,

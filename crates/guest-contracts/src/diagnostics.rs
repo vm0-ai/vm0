@@ -45,6 +45,9 @@ pub struct FailureDiagnostic {
     /// Bounded event-delivery failure details, when delivery was terminally incomplete.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub event_delivery: Option<EventDeliveryDiagnostic>,
+    /// Bounded heartbeat failure details, when the control path stopped making progress.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heartbeat: Option<HeartbeatFailureDiagnostic>,
     /// Workload-local hard-limit counters observed for the failed CLI process.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workload_resource_limit: Option<WorkloadResourceLimitDiagnostic>,
@@ -72,6 +75,7 @@ impl FailureDiagnostic {
             prompt_bytes: prompt.prompt_bytes,
             first_line_bytes: prompt.first_line_bytes,
             event_delivery: None,
+            heartbeat: None,
             workload_resource_limit: None,
         }
     }
@@ -138,6 +142,13 @@ impl FailureDiagnostic {
         self
     }
 
+    /// Attach bounded heartbeat failure details.
+    #[must_use]
+    pub fn with_heartbeat(mut self, heartbeat: HeartbeatFailureDiagnostic) -> Self {
+        self.heartbeat = Some(heartbeat);
+        self
+    }
+
     /// Attach workload-local hard-limit counters.
     #[must_use]
     pub fn with_workload_resource_limit(
@@ -146,6 +157,74 @@ impl FailureDiagnostic {
     ) -> Self {
         self.workload_resource_limit = Some(workload_resource_limit);
         self
+    }
+}
+
+/// Bounded structured details for terminal heartbeat failure.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeartbeatFailureDiagnostic {
+    /// Consecutive failed heartbeat cycles since the last successful cycle.
+    pub failed_cycles: Vec<HeartbeatFailedCycleDiagnostic>,
+}
+
+/// One failed heartbeat cycle and its completed HTTP attempts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeartbeatFailedCycleDiagnostic {
+    /// Delay between the scheduled interval tick and the start of this cycle.
+    pub scheduled_lag_ms: u64,
+    /// Completed failed attempts, bounded by the heartbeat retry budget.
+    pub attempts: Vec<HeartbeatCompletedAttemptDiagnostic>,
+}
+
+/// One completed failed HTTP attempt for a heartbeat cycle.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeartbeatCompletedAttemptDiagnostic {
+    /// One-based attempt number.
+    pub attempt: u32,
+    /// Exact `x-client-request-id` value sent on the request.
+    pub client_request_id: String,
+    /// Monotonic elapsed request time in milliseconds.
+    pub elapsed_ms: u64,
+    /// Stable content-safe failure classification.
+    pub failure_kind: HeartbeatAttemptFailureKind,
+    /// HTTP response status, when a response was received.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub http_status: Option<u16>,
+    /// Whether Reqwest identified the response-less failure as timeout-related.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_observed: Option<bool>,
+    /// Whether Reqwest identified the response-less failure as connection-related.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connect_observed: Option<bool>,
+}
+
+/// Content-safe failure classification for a completed heartbeat HTTP attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HeartbeatAttemptFailureKind {
+    /// The request exceeded its transport timeout.
+    Timeout,
+    /// A connection could not be established.
+    Connect,
+    /// The API returned a non-success HTTP response.
+    HttpStatus,
+    /// Another transport failure occurred without an HTTP response.
+    Transport,
+}
+
+impl HeartbeatAttemptFailureKind {
+    /// Return the stable snake_case string representation.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Timeout => "timeout",
+            Self::Connect => "connect",
+            Self::HttpStatus => "http_status",
+            Self::Transport => "transport",
+        }
     }
 }
 
@@ -1581,6 +1660,57 @@ mod tests {
     }
 
     #[test]
+    fn failure_diagnostic_round_trips_bounded_heartbeat_details() {
+        let heartbeat = HeartbeatFailureDiagnostic {
+            failed_cycles: vec![HeartbeatFailedCycleDiagnostic {
+                scheduled_lag_ms: 25,
+                attempts: vec![
+                    HeartbeatCompletedAttemptDiagnostic {
+                        attempt: 1,
+                        client_request_id: "11111111-1111-4111-8111-111111111111".to_string(),
+                        elapsed_ms: 10_000,
+                        failure_kind: HeartbeatAttemptFailureKind::Timeout,
+                        http_status: None,
+                        timeout_observed: Some(true),
+                        connect_observed: Some(false),
+                    },
+                    HeartbeatCompletedAttemptDiagnostic {
+                        attempt: 2,
+                        client_request_id: "22222222-2222-4222-8222-222222222222".to_string(),
+                        elapsed_ms: 3,
+                        failure_kind: HeartbeatAttemptFailureKind::HttpStatus,
+                        http_status: Some(503),
+                        timeout_observed: None,
+                        connect_observed: None,
+                    },
+                ],
+            }],
+        };
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliExecutionError,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("continue"),
+        )
+        .with_cli_exit_code(1)
+        .with_heartbeat(heartbeat);
+
+        let json = serde_json::to_value(&diagnostic).unwrap();
+        assert_eq!(json["heartbeat"]["failedCycles"][0]["scheduledLagMs"], 25);
+        assert_eq!(
+            json["heartbeat"]["failedCycles"][0]["attempts"][0]["failureKind"],
+            "timeout"
+        );
+        assert_eq!(
+            json["heartbeat"]["failedCycles"][0]["attempts"][1]["httpStatus"],
+            503
+        );
+        assert_eq!(HeartbeatAttemptFailureKind::Transport.as_str(), "transport");
+
+        let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
+        assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
     fn failure_diagnostic_deserializes_without_optional_fields() {
         let json = serde_json::json!({
             "failureClass": "cli_nonzero",
@@ -1599,6 +1729,7 @@ mod tests {
         assert_eq!(diagnostic.failure_reason, None);
         assert_eq!(diagnostic.cli_termination, None);
         assert_eq!(diagnostic.event_delivery, None);
+        assert_eq!(diagnostic.heartbeat, None);
         assert_eq!(diagnostic.workload_resource_limit, None);
     }
 }

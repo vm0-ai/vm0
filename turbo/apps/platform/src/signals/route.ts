@@ -6,7 +6,7 @@ import { hash, pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { clearPage$ } from "./react-router.ts";
 import { rootSignal$ } from "./root-signal.ts";
-import { waitForAuthenticatedServices$ } from "./auth-context.ts";
+import { bridgeConnected$ } from "./shared-database-bridge-state.ts";
 import {
   bestEffort,
   detach,
@@ -171,7 +171,7 @@ const loadRoute$ = command(async ({ get, set }, signal: AbortSignal) => {
   // signal mirrors the `signal.throwIfAborted()` gate above, so supersession
   // completes cleanly. The command early-returns when there is nothing to
   // record, so this only performs network work on the first qualifying load.
-  // Attribution is best-effort so a final failure after auth recovery cannot
+  // Attribution is best-effort so a final API failure cannot
   // reject the route load; the command only persists its dedupe marker after a
   // successful record, allowing a later route to retry.
   if (currentRoute.analytics !== false) {
@@ -372,7 +372,7 @@ export const setupAuthPageWrapper = (
       return;
     }
 
-    await set(waitForAuthenticatedServices$, signal);
+    await get(bridgeConnected$);
     signal.throwIfAborted();
     await set(setupPageWrapper(fn), signal);
   });

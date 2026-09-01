@@ -4,8 +4,22 @@ import type {
   SharedDatabaseBridge,
   SharedDatabaseHeartbeat,
 } from "../shared-database/bridge.ts";
+import { NEVER_RESOLVED_PROMISE } from "./utils.ts";
 
 const sharedDatabaseBridgeState$ = state<SharedDatabaseBridge | null>(null);
+const internalBridgeConnected$ = state<Promise<unknown>>(
+  NEVER_RESOLVED_PROMISE,
+);
+
+export const bridgeConnected$ = computed((get): Promise<unknown> => {
+  return get(internalBridgeConnected$);
+});
+
+export const setBridgeConnected$ = command(
+  ({ set }, connected: Promise<unknown>): void => {
+    set(internalBridgeConnected$, connected);
+  },
+);
 
 export const sharedDatabaseBridgeInstalled$ = computed((get): boolean => {
   return get(sharedDatabaseBridgeState$) !== null;

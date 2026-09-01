@@ -5,8 +5,6 @@ import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/mode
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { workflowAutomations } from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { eq } from "drizzle-orm";
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../../lib/time";
@@ -30,7 +28,6 @@ import {
 } from "./api-dispatch-timing.service";
 import { createQueueFirstAgentRun$ } from "./agent-runs-create.service";
 import { workflowAutomationCanFire } from "./workflow-automation-access.service";
-import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { loadComputerUseHostGrantForAutoSend } from "./chat-computer-use-host.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import type { ChatAgentRunSourceAnnotation } from "./chat-user-message.service";
@@ -315,19 +312,9 @@ async function resolveModelContext(
 
   const effectiveModelProvider = providerAdmission.effectiveModelProvider;
   const selectedModel = pin.selectedModel;
-  const fallbackEnabled = isBuiltInModelProviderType(effectiveModelProvider)
-    ? isFeatureEnabled(
-        FeatureSwitchKey.BuiltInModelProviderFallback,
-        await loadUserFeatureSwitchContext(args.db, args.orgId, args.userId),
-      )
-    : false;
   const builtInModelRuntimeRoute =
     isBuiltInModelProviderType(effectiveModelProvider) && selectedModel
-      ? await resolveBuiltInModelRuntimeRoute(
-          args.db,
-          selectedModel,
-          fallbackEnabled,
-        )
+      ? await resolveBuiltInModelRuntimeRoute(args.db, selectedModel)
       : undefined;
   signal.throwIfAborted();
   if (
@@ -342,12 +329,9 @@ async function resolveModelContext(
           status: 503,
           body: {
             error: {
-              code: fallbackEnabled
-                ? "MODEL_PROVIDER_UNAVAILABLE"
-                : "PROVIDER_UNAVAILABLE",
-              message: fallbackEnabled
-                ? "Every built-in model route for this model is temporarily unavailable"
-                : "No model provider configured: no built-in model key is configured",
+              code: "MODEL_PROVIDER_UNAVAILABLE",
+              message:
+                "Every built-in model route for this model is temporarily unavailable",
             },
           },
         },
