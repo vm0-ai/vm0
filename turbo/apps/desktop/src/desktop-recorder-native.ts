@@ -408,6 +408,15 @@ export function createRecorderNativeBackend(
     start: async (sessionId: string, outputPath: string) => {
       await client.request("recorder.start", { sessionId, outputPath });
     },
+    pause: async (sessionId: string) => {
+      await client.request("recorder.pause", { sessionId });
+    },
+    resume: async (sessionId: string) => {
+      await client.request("recorder.resume", { sessionId });
+    },
+    discard: async (sessionId: string) => {
+      await client.request("recorder.discard", { sessionId });
+    },
     stop: async (sessionId: string) =>
       toRecording(await client.request("recorder.stop", { sessionId })),
     getStatus: async (sessionId: string) =>

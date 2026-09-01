@@ -9,6 +9,7 @@ export type DesktopRecorderStatus =
   | "delivering"
   | "finalizing"
   | "idle"
+  | "paused"
   | "preparing"
   | "ready"
   | "recording"
@@ -132,6 +133,10 @@ export interface RecorderNativeBackend {
     request: DesktopRecorderPrepareRequest,
   ) => Promise<DesktopRecorderPrepareResult>;
   readonly start: (sessionId: string, outputPath: string) => Promise<void>;
+  readonly pause: (sessionId: string) => Promise<void>;
+  readonly resume: (sessionId: string) => Promise<void>;
+  /** Ends the capture and deletes what was written. */
+  readonly discard: (sessionId: string) => Promise<void>;
   readonly stop: (sessionId: string) => Promise<DesktopRecorderRecording>;
   readonly getStatus: (
     sessionId: string,

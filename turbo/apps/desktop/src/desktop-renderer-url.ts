@@ -15,7 +15,9 @@ export function desktopRendererUrl(): string {
  * separate document so both share one bundle, and `desktopRendererFilePath`
  * resolves on the pathname alone.
  */
-export function desktopRecorderUrl(mode: "area" | "bar"): string {
+export function desktopRecorderUrl(
+  mode: "area" | "bar" | "controller",
+): string {
   return `${DESKTOP_RENDERER_PROTOCOL}://${DESKTOP_RENDERER_HOST}/recorder.html?mode=${mode}`;
 }
 

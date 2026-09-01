@@ -2,8 +2,10 @@ import { BrowserWindow, screen } from "electron";
 import { desktopRecorderUrl } from "./desktop-renderer-url";
 import {
   RECORDER_BAR_SIZE,
+  RECORDER_CONTROLLER_SIZE,
   areaToGlobal,
   recorderBarBounds,
+  recorderControllerBounds,
   type OverlayDisplayBounds,
 } from "./desktop-recorder-overlay-geometry";
 import type { DesktopRecorderArea } from "./desktop-recorder-types";
@@ -33,6 +35,7 @@ export class DesktopRecorderWindows {
    * display it was drawn on is what closes that gap.
    */
   private areaSelectorDisplay: OverlayDisplayBounds | null = null;
+  private controller: BrowserWindow | null = null;
   private pendingAreaSelection:
     | ((area: DesktopRecorderArea | null) => void)
     | null = null;
@@ -143,7 +146,77 @@ export class DesktopRecorderWindows {
     this.closeAreaSelector();
   }
 
+  /**
+   * Shows the controls used while recording.
+   *
+   * For an area capture the controller is placed outside the captured region,
+   * which is what keeps it out of the video without asking the system to
+   * exclude a window. A whole-display capture has no outside, so the controller
+   * is in frame; that is the known limit of this approach.
+   */
+  showController(captured: DesktopRecorderArea | null): void {
+    this.closeController();
+    const display = screen.getPrimaryDisplay();
+    const position = captured
+      ? recorderControllerBounds(captured, display.bounds)
+      : {
+          x: Math.round(
+            display.workArea.x +
+              (display.workArea.width - RECORDER_CONTROLLER_SIZE.width) / 2,
+          ),
+          y: Math.round(
+            display.workArea.y +
+              display.workArea.height -
+              RECORDER_CONTROLLER_SIZE.height -
+              24,
+          ),
+        };
+
+    const window = new BrowserWindow({
+      ...position,
+      ...RECORDER_CONTROLLER_SIZE,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      movable: true,
+      skipTaskbar: true,
+      hasShadow: false,
+      alwaysOnTop: true,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+        preload: this.options.preloadPath,
+        partition: this.options.sessionPartition,
+      },
+    });
+    window.setAlwaysOnTop(true, "screen-saver");
+    window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    this.controller = window;
+    window.on("closed", () => {
+      if (this.controller === window) {
+        this.controller = null;
+      }
+    });
+    void window
+      .loadURL(desktopRecorderUrl("controller"))
+      .catch(this.options.logError);
+  }
+
+  hideController(): void {
+    this.closeController();
+  }
+
+  private closeController(): void {
+    const window = this.controller;
+    this.controller = null;
+    if (window && !window.isDestroyed()) {
+      window.close();
+    }
+  }
+
   closeAll(): void {
+    this.closeController();
     this.closeAreaSelector();
     if (this.bar && !this.bar.isDestroyed()) {
       this.bar.close();

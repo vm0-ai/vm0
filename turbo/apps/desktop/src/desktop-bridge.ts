@@ -113,6 +113,10 @@ export interface DesktopRecorderApi {
   readonly completeAreaSelection: (
     area: DesktopRecorderArea | null,
   ) => Promise<void>;
+  readonly pause: () => Promise<void>;
+  readonly resume: () => Promise<void>;
+  readonly discard: () => Promise<void>;
+  readonly stop: () => Promise<void>;
   readonly cancel: () => Promise<void>;
 }
 

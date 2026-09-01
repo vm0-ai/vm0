@@ -142,6 +142,7 @@ final class ClickTrackRecorder: @unchecked Sendable {
     /// JSON.
     func track(
         timeline: ClickTimeline,
+        pauses: PauseTimeline,
         geometry: CaptureGeometry,
         outputSize: OutputSize
     ) -> (clicks: [[String: Any]], droppedOutOfFrame: Int, warnings: [String]) {
@@ -156,9 +157,19 @@ final class ClickTrackRecorder: @unchecked Sendable {
             geometry: geometry,
             outputSize: outputSize
         )
-        let described: [[String: Any]] = projection.clicks.map { click in
+        // Clicks travel the same timeline as the frames: one made during a
+        // pause is at a moment the video does not contain, and one made after a
+        // pause would otherwise point past where it actually happened.
+        let described: [[String: Any]] = projection.clicks.compactMap { click in
+            guard
+                let mediaSeconds = pauses.mediaTime(
+                    forCaptureTime: Double(click.offsetMs) / 1000
+                )
+            else {
+                return nil
+            }
             return [
-                "tMs": click.offsetMs,
+                "tMs": Int((mediaSeconds * 1000).rounded()),
                 "button": click.button,
                 "clickCount": click.clickCount,
                 "modifiers": click.modifiers,

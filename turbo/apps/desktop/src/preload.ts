@@ -180,6 +180,18 @@ const desktopRecorderApi: DesktopRecorderApi = {
       area,
     );
   },
+  pause() {
+    return ipcRenderer.invoke(DESKTOP_RECORDER_CHANNELS.pause);
+  },
+  resume() {
+    return ipcRenderer.invoke(DESKTOP_RECORDER_CHANNELS.resume);
+  },
+  discard() {
+    return ipcRenderer.invoke(DESKTOP_RECORDER_CHANNELS.discard);
+  },
+  stop() {
+    return ipcRenderer.invoke(DESKTOP_RECORDER_CHANNELS.stop);
+  },
   cancel() {
     return ipcRenderer.invoke(DESKTOP_RECORDER_CHANNELS.cancel);
   },

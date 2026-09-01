@@ -47,6 +47,9 @@ function createBackendFake(
     })),
     prepare: vi.fn(async () => PREPARED),
     start: vi.fn(async () => {}),
+    pause: vi.fn(async () => {}),
+    resume: vi.fn(async () => {}),
+    discard: vi.fn(async () => {}),
     stop: vi.fn(async () => RECORDING),
     getStatus: vi.fn(
       async (): Promise<DesktopRecorderNativeStatus> => ({
@@ -232,6 +235,50 @@ describe("DesktopRecorderController", () => {
     const { controller } = createController();
     controller.setFeatureEnabled(true);
 
+    await expect(controller.retryDelivery()).rejects.toThrow(
+      "There is no recording to deliver",
+    );
+  });
+
+  it("pauses and resumes a running capture", async () => {
+    const { controller, backend } = createController();
+    await enableAndPrepare(controller);
+    await controller.start();
+
+    await controller.pause();
+    expect(backend.pause).toHaveBeenCalledWith("session-1");
+    expect(controller.getState().status).toBe("paused");
+
+    await controller.resume();
+    expect(backend.resume).toHaveBeenCalledWith("session-1");
+    expect(controller.getState().status).toBe("recording");
+  });
+
+  it("stops a paused capture without resuming it first", async () => {
+    const { controller } = createController();
+    await enableAndPrepare(controller);
+    await controller.start();
+    await controller.pause();
+
+    await expect(controller.stop()).resolves.toEqual(RECORDING);
+    expect(controller.getState().status).toBe("idle");
+  });
+
+  it("keeps nothing to deliver after a discard", async () => {
+    const { controller, backend, deliver } = createController();
+    await enableAndPrepare(controller);
+    await controller.start();
+
+    await controller.discard();
+
+    expect(backend.discard).toHaveBeenCalledWith("session-1");
+    expect(deliver).not.toHaveBeenCalled();
+    // A discarded recording must not be reachable through a later retry.
+    expect(controller.getState()).toMatchObject({
+      status: "idle",
+      sessionId: null,
+      lastRecording: null,
+    });
     await expect(controller.retryDelivery()).rejects.toThrow(
       "There is no recording to deliver",
     );

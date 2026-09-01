@@ -34,6 +34,10 @@ interface DesktopRecorderNativeApi {
   readonly selectArea: () => Promise<DesktopRecorderArea | null>;
   /** Reports the region the user drew, or `null` when they cancelled. */
   readonly completeAreaSelection: (area: DesktopRecorderArea | null) => void;
+  readonly pause: () => Promise<void>;
+  readonly resume: () => Promise<void>;
+  readonly discard: () => Promise<void>;
+  readonly stop: () => Promise<void>;
   readonly cancel: () => void;
 }
 
@@ -134,6 +138,18 @@ export function installDesktopRecorderIpc(
       api.completeAreaSelection(area);
     },
   );
+  for (const [channel, run] of [
+    [DESKTOP_RECORDER_CHANNELS.pause, api.pause],
+    [DESKTOP_RECORDER_CHANNELS.resume, api.resume],
+    [DESKTOP_RECORDER_CHANNELS.discard, api.discard],
+    [DESKTOP_RECORDER_CHANNELS.stop, api.stop],
+  ] as const) {
+    ipcMain.handle(channel, async (event) => {
+      assertRecorderPage(event);
+      await run();
+    });
+  }
+
   ipcMain.handle(DESKTOP_RECORDER_CHANNELS.cancel, (event) => {
     assertRecorderPage(event);
     api.cancel();

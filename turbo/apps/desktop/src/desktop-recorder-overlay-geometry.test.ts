@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   RECORDER_BAR_SIZE,
+  RECORDER_CONTROLLER_SIZE,
+  recorderControllerBounds,
   areaFromDrag,
   areaToGlobal,
   recorderBarBounds,
@@ -93,5 +95,81 @@ describe("areaToGlobal", () => {
     expect(
       areaToGlobal(drawn, { x: 0, y: 0, width: 1512, height: 982 }),
     ).toEqual(drawn);
+  });
+});
+
+describe("recorderControllerBounds", () => {
+  const display = { x: 0, y: 0, width: 1512, height: 982 };
+  const { width, height } = RECORDER_CONTROLLER_SIZE;
+
+  function overlaps(
+    controller: { readonly x: number; readonly y: number },
+    captured: { x: number; y: number; width: number; height: number },
+  ): boolean {
+    return (
+      controller.x < captured.x + captured.width &&
+      controller.x + width > captured.x &&
+      controller.y < captured.y + captured.height &&
+      controller.y + height > captured.y
+    );
+  }
+
+  it("sits below the region when there is room", () => {
+    const captured = { x: 200, y: 100, width: 600, height: 400 };
+
+    const bounds = recorderControllerBounds(captured, display);
+
+    expect(bounds.y).toBeGreaterThan(captured.y + captured.height);
+    expect(overlaps(bounds, captured)).toBeFalsy();
+  });
+
+  it("moves above the region when the bottom is taken", () => {
+    const captured = { x: 200, y: 300, width: 600, height: 660 };
+
+    const bounds = recorderControllerBounds(captured, display);
+
+    expect(bounds.y + height).toBeLessThan(captured.y);
+    expect(overlaps(bounds, captured)).toBeFalsy();
+  });
+
+  it("moves beside the region when neither above nor below fits", () => {
+    // A tall strip down the left of the screen.
+    const captured = { x: 0, y: 0, width: 400, height: 982 };
+
+    const bounds = recorderControllerBounds(captured, display);
+
+    expect(overlaps(bounds, captured)).toBeFalsy();
+    expect(bounds.x).toBeGreaterThanOrEqual(captured.width);
+  });
+
+  it("keeps the controller on the display", () => {
+    // Region hugging the right edge would centre the controller off-screen.
+    const captured = { x: 1400, y: 100, width: 112, height: 200 };
+
+    const bounds = recorderControllerBounds(captured, display);
+
+    expect(bounds.x).toBeGreaterThanOrEqual(display.x);
+    expect(bounds.x + width).toBeLessThanOrEqual(display.x + display.width);
+  });
+
+  it("places the controller on the right display for a secondary screen", () => {
+    const secondary = { x: 1512, y: -200, width: 1000, height: 500 };
+    const captured = { x: 1600, y: -100, width: 400, height: 200 };
+
+    const bounds = recorderControllerBounds(captured, secondary);
+
+    expect(bounds.x).toBeGreaterThanOrEqual(secondary.x);
+    expect(bounds.x + width).toBeLessThanOrEqual(secondary.x + secondary.width);
+    expect(overlaps(bounds, captured)).toBeFalsy();
+  });
+
+  it("still shows the controls when the region covers the whole display", () => {
+    const captured = { x: 0, y: 0, width: 1512, height: 982 };
+
+    const bounds = recorderControllerBounds(captured, display);
+
+    // Nowhere is outside the region, so overlapping is accepted rather than
+    // leaving the user with no way to stop.
+    expect(bounds.y + height).toBeLessThanOrEqual(display.y + display.height);
   });
 });

@@ -77,3 +77,76 @@ export function areaToGlobal(
     height: area.height,
   };
 }
+
+/** Size of the controller shown while a recording is running, in points. */
+export const RECORDER_CONTROLLER_SIZE = Object.freeze({
+  width: 268,
+  height: 60,
+});
+
+/** Clearance kept between the controller and the region being recorded. */
+const CONTROLLER_CLEARANCE = 16;
+
+/**
+ * Places the recording controller so it stays out of the captured region.
+ *
+ * An area capture is the one case where the controller can be kept out of the
+ * video without asking the system to exclude a window: the region is known, so
+ * the controller is simply put beside it. Below the region is preferred, then
+ * above; if neither fits, it goes to whichever side has room, and only when the
+ * region leaves no room anywhere does it fall back to overlapping.
+ */
+export function recorderControllerBounds(
+  captured: DesktopRecorderArea,
+  display: OverlayDisplayBounds,
+): { readonly x: number; readonly y: number } {
+  const { width, height } = RECORDER_CONTROLLER_SIZE;
+  const centredX = Math.round(captured.x + (captured.width - width) / 2);
+  const x = Math.min(
+    Math.max(centredX, display.x),
+    display.x + display.width - width,
+  );
+
+  const below = captured.y + captured.height + CONTROLLER_CLEARANCE;
+  if (below + height <= display.y + display.height) {
+    return { x, y: Math.round(below) };
+  }
+
+  const above = captured.y - CONTROLLER_CLEARANCE - height;
+  if (above >= display.y) {
+    return { x, y: Math.round(above) };
+  }
+
+  const rightOf = captured.x + captured.width + CONTROLLER_CLEARANCE;
+  if (rightOf + width <= display.x + display.width) {
+    return {
+      x: Math.round(rightOf),
+      y: Math.round(
+        Math.min(
+          Math.max(captured.y, display.y),
+          display.y + display.height - height,
+        ),
+      ),
+    };
+  }
+
+  const leftOf = captured.x - CONTROLLER_CLEARANCE - width;
+  if (leftOf >= display.x) {
+    return {
+      x: Math.round(leftOf),
+      y: Math.round(
+        Math.min(
+          Math.max(captured.y, display.y),
+          display.y + display.height - height,
+        ),
+      ),
+    };
+  }
+
+  // The region covers the display: nowhere is outside it, so sit at the bottom
+  // and accept being in frame rather than hiding the controls entirely.
+  return {
+    x,
+    y: Math.round(display.y + display.height - height - CONTROLLER_CLEARANCE),
+  };
+}

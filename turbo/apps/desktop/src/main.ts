@@ -757,6 +757,17 @@ function installDesktopRecorder(): void {
         await screenRecorder.start();
         // The bar has done its job; leaving it up would put it in the capture.
         getRecorderWindows().hideBar();
+        getRecorderWindows().showController(request.area ?? null);
+      },
+      pause: () => screenRecorder.pause(),
+      resume: () => screenRecorder.resume(),
+      discard: async () => {
+        await screenRecorder.discard();
+        getRecorderWindows().hideController();
+      },
+      stop: async () => {
+        await screenRecorder.stop();
+        getRecorderWindows().hideController();
       },
       selectArea: () => getRecorderWindows().selectArea(),
       completeAreaSelection: (area) => {

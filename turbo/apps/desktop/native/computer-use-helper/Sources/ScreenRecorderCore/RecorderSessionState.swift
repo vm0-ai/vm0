@@ -6,6 +6,7 @@ public enum RecorderSessionState: String, Equatable, Sendable {
     case recording
     case paused
     case stopped
+    case discarded
     case failed
 }
 
@@ -14,6 +15,8 @@ public enum RecorderCommand: String, Equatable, Sendable {
     case pause
     case resume
     case stop
+    /// Ends the capture and throws the recording away.
+    case discard
 }
 
 /// Conforms to `Error` because it is the failure type of the `Result` returned
@@ -46,6 +49,10 @@ public enum RecorderTransitionPolicy {
             return .success(.recording)
         case (.recording, .stop), (.paused, .stop):
             return .success(.stopped)
+        // Discarding is allowed from every live state, including before the
+        // first frame: changing your mind must never be refused.
+        case (.ready, .discard), (.recording, .discard), (.paused, .discard):
+            return .success(.discarded)
         default:
             return .failure(
                 RecorderTransitionFailure(
@@ -60,6 +67,6 @@ public enum RecorderTransitionPolicy {
     /// A stopped or failed session holds no capture resources, so its state is
     /// terminal and the helper may release it.
     public static func isTerminal(_ state: RecorderSessionState) -> Bool {
-        return state == .stopped || state == .failed
+        return state == .stopped || state == .discarded || state == .failed
     }
 }

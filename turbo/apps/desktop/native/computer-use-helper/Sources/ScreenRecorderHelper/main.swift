@@ -231,6 +231,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     private var sessionStartedAt: CMTime?
     private var latestSampleAt: CMTime?
     private var clickTimeline: ClickTimeline?
+    private var pauseTimeline = PauseTimeline()
     private var startedAtUnixMs = 0
 
     init(
@@ -398,6 +399,61 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         clickTracker.start()
     }
 
+    func pause() throws {
+        try transition(.pause)
+        lock.lock()
+        if let start = sessionStartedAt, let latest = latestSampleAt {
+            pauseTimeline.pause(
+                at: max(0, CMTimeGetSeconds(CMTimeSubtract(latest, start)))
+            )
+        }
+        lock.unlock()
+    }
+
+    func resume() throws {
+        try transition(.resume)
+        lock.lock()
+        if let start = sessionStartedAt, let latest = latestSampleAt {
+            pauseTimeline.resume(
+                at: max(0, CMTimeGetSeconds(CMTimeSubtract(latest, start)))
+            )
+        }
+        lock.unlock()
+    }
+
+    /// Ends the capture and removes what was written. Nothing is handed back,
+    /// so a discarded recording cannot be delivered by mistake.
+    func discard() throws {
+        try transition(.discard)
+        clickTracker.stop()
+
+        lock.lock()
+        let captureStream = stream
+        let assetWriter = writer
+        let url = outputURL
+        stream = nil
+        writer = nil
+        videoInput = nil
+        systemAudioInput = nil
+        microphoneInput = nil
+        lock.unlock()
+
+        if let captureStream {
+            let semaphore = DispatchSemaphore(value: 0)
+            captureStream.stopCapture { _ in
+                semaphore.signal()
+            }
+            _ = semaphore.wait(timeout: .now() + 10)
+        }
+        assetWriter?.cancelWriting()
+        if let url {
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(
+                at: url.deletingPathExtension().appendingPathExtension("clicks.json")
+            )
+        }
+    }
+
     func stop() throws -> [String: Any] {
         try transition(.stop)
         clickTracker.stop()
@@ -487,6 +543,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             timeline.map {
                 clickTracker.track(
                     timeline: $0,
+                    pauses: pauseTimeline,
                     geometry: geometry,
                     outputSize: outputSize
                 )
@@ -562,11 +619,35 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         return systemAudioInput
     }
 
+    /// Rewrites a sample's presentation time without touching its payload.
+    private func retimedSampleBuffer(
+        _ sampleBuffer: CMSampleBuffer,
+        to presentationTime: CMTime
+    ) -> CMSampleBuffer? {
+        var timing = CMSampleTimingInfo(
+            duration: CMSampleBufferGetDuration(sampleBuffer),
+            presentationTimeStamp: presentationTime,
+            decodeTimeStamp: .invalid
+        )
+        var copy: CMSampleBuffer?
+        let status = CMSampleBufferCreateCopyWithNewTiming(
+            allocator: kCFAllocatorDefault,
+            sampleBuffer: sampleBuffer,
+            sampleTimingEntryCount: 1,
+            sampleTimingArray: &timing,
+            sampleBufferOut: &copy
+        )
+        return status == noErr ? copy : nil
+    }
+
     private func elapsedSecondsLocked() -> Double {
         guard let start = sessionStartedAt, let latest = latestSampleAt else {
             return 0
         }
-        return max(0, CMTimeGetSeconds(CMTimeSubtract(latest, start)))
+        let captureSeconds = max(0, CMTimeGetSeconds(CMTimeSubtract(latest, start)))
+        // Report how long the recording is, not how long ago it started, so a
+        // paused capture stops advancing its clock.
+        return max(0, captureSeconds - pauseTimeline.pausedSecondsBefore(captureSeconds))
     }
 
     private func markFailed(code: String, message: String) {
@@ -629,12 +710,32 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         }
         latestSampleAt = timestamp
         let input = writerInputLocked(for: type)
+        let start = sessionStartedAt
+        let timeline = pauseTimeline
         lock.unlock()
 
-        guard let input, input.isReadyForMoreMediaData else {
+        guard let input, input.isReadyForMoreMediaData, let start else {
             return
         }
-        input.append(sampleBuffer)
+        // Frames keep arriving while paused; they are dropped, and everything
+        // after a pause is shifted back so the movie has no frozen stretch.
+        let captureSeconds = CMTimeGetSeconds(CMTimeSubtract(timestamp, start))
+        guard let mediaSeconds = timeline.mediaTime(forCaptureTime: captureSeconds)
+        else {
+            return
+        }
+        guard
+            let retimed = retimedSampleBuffer(
+                sampleBuffer,
+                to: CMTimeAdd(
+                    start,
+                    CMTime(seconds: mediaSeconds, preferredTimescale: 600)
+                )
+            )
+        else {
+            return
+        }
+        input.append(retimed)
     }
 }
 
@@ -821,6 +922,26 @@ private func handleStop(_ request: [String: Any]) throws -> [String: Any] {
     return result
 }
 
+private func handlePause(_ request: [String: Any]) throws -> [String: Any] {
+    let session = try sessionStore.session(try requiredString(request, "sessionId"))
+    try session.pause()
+    return [:]
+}
+
+private func handleResume(_ request: [String: Any]) throws -> [String: Any] {
+    let session = try sessionStore.session(try requiredString(request, "sessionId"))
+    try session.resume()
+    return [:]
+}
+
+private func handleDiscard(_ request: [String: Any]) throws -> [String: Any] {
+    let sessionId = try requiredString(request, "sessionId")
+    let session = try sessionStore.session(sessionId)
+    try session.discard()
+    sessionStore.remove(sessionId)
+    return [:]
+}
+
 private func handleState(_ request: [String: Any]) throws -> [String: Any] {
     let sessionId = try requiredString(request, "sessionId")
     let session = try sessionStore.session(sessionId)
@@ -848,6 +969,12 @@ private func handle(_ request: [String: Any]) throws -> [String: Any] {
         return try handlePrepare(payload)
     case "recorder.start":
         return try handleStart(payload)
+    case "recorder.pause":
+        return try handlePause(payload)
+    case "recorder.resume":
+        return try handleResume(payload)
+    case "recorder.discard":
+        return try handleDiscard(payload)
     case "recorder.stop":
         return try handleStop(payload)
     case "recorder.state":

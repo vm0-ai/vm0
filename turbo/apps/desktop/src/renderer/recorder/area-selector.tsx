@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Circle } from "lucide-react";
 import { areaFromDrag } from "../../desktop-recorder-overlay-geometry";
 import type { DesktopRecorderArea } from "../../desktop-recorder-types";
 
@@ -8,16 +9,19 @@ interface DragPoint {
 }
 
 const recorder = window.vm0DesktopRecorder;
+const START_BUTTON_HEIGHT = 52;
 
 /**
- * Full-screen overlay for dragging out the region to record.
+ * Full-screen overlay for choosing the region to record.
  *
- * The window covers one display and is dismissed the moment a region is drawn,
- * so it is never part of a capture.
+ * The region stays adjustable: every new drag replaces it, and nothing is
+ * committed until Start is pressed. The overlay is dismissed as recording
+ * begins, so it is never part of a capture.
  */
 export function AreaSelector(): React.ReactElement {
   const [start, setStart] = useState<DragPoint | null>(null);
   const [current, setCurrent] = useState<DragPoint | null>(null);
+  const [dragging, setDragging] = useState(false);
 
   const cancel = useCallback(() => {
     void recorder?.completeAreaSelection(null);
@@ -37,6 +41,15 @@ export function AreaSelector(): React.ReactElement {
 
   const selection: DesktopRecorderArea | null =
     start && current ? areaFromDrag(start, current) : null;
+  const committable =
+    selection !== null && selection.width >= 2 && selection.height >= 2;
+
+  // Above the region when there is room, otherwise just inside its top edge, so
+  // the button is never off-screen for a selection drawn at the very top.
+  const buttonTop =
+    selection && selection.y >= START_BUTTON_HEIGHT + 12
+      ? selection.y - START_BUTTON_HEIGHT - 12
+      : (selection?.y ?? 0) + 12;
 
   return (
     <div
@@ -46,19 +59,15 @@ export function AreaSelector(): React.ReactElement {
         const point = { x: event.clientX, y: event.clientY };
         setStart(point);
         setCurrent(point);
+        setDragging(true);
       }}
       onMouseMove={(event) => {
-        if (start) {
+        if (dragging) {
           setCurrent({ x: event.clientX, y: event.clientY });
         }
       }}
       onMouseUp={() => {
-        // A click without a drag is a miss, not a zero-sized region.
-        if (!selection || selection.width < 2 || selection.height < 2) {
-          cancel();
-          return;
-        }
-        void recorder?.completeAreaSelection(selection);
+        setDragging(false);
       }}
     >
       {selection ? (
@@ -80,6 +89,28 @@ export function AreaSelector(): React.ReactElement {
           Drag to choose what to record · Esc to cancel
         </p>
       )}
+
+      {committable && !dragging ? (
+        <button
+          type="button"
+          className="area-selector__start"
+          style={{
+            left: `${(selection.x + selection.width / 2).toString()}px`,
+            top: `${buttonTop.toString()}px`,
+          }}
+          onMouseDown={(event) => {
+            // The overlay starts a new drag on mousedown; this button must not.
+            event.stopPropagation();
+          }}
+          onClick={(event) => {
+            event.stopPropagation();
+            void recorder?.completeAreaSelection(selection);
+          }}
+        >
+          <Circle size={15} fill="currentColor" />
+          Start recording
+        </button>
+      ) : null}
     </div>
   );
 }
