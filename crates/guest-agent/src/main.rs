@@ -322,10 +322,17 @@ async fn run(runtime: GuestRuntime) -> i32 {
     record_sandbox_op("heartbeat_start", t.elapsed(), true, None);
 
     let t = Instant::now();
+    let metrics_sources = metrics::MetricsSources::new(
+        std::path::PathBuf::from("/proc/stat"),
+        runtime
+            .workload_containment
+            .as_ref()
+            .map(guest_agent::workload_containment::WorkloadContainment::cpu_stat_paths),
+    );
     let metrics_handle = tokio::spawn({
         let shutdown = shutdown.clone();
         let metrics_log_file = runtime.paths.metrics_log_file().to_string();
-        async move { metrics::metrics_loop_for_path(shutdown, metrics_log_file).await }
+        async move { metrics::metrics_loop_for_path(shutdown, metrics_log_file, metrics_sources).await }
     });
     log_info!(LOG_TAG, "Metrics collector started");
     record_sandbox_op("metrics_collector_start", t.elapsed(), true, None);

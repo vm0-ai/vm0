@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import { SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT } from "../runners";
 import {
@@ -268,6 +269,69 @@ describe("agent completion active input receipts", () => {
 });
 
 describe("webhook telemetry contract", () => {
+  it("preserves metric payload compatibility across Guest and API rollout", () => {
+    const runId = "00000000-0000-4000-8000-000000000000";
+    const oldMetric = {
+      ts: "2026-09-01T00:00:00.000Z",
+      cpu: 91.25,
+      mem_used: 1024,
+      mem_total: 2048,
+      disk_used: 4096,
+      disk_total: 8192,
+    };
+    const fullMetric = {
+      ...oldMetric,
+      cpu_steal_percent: 12.5,
+      scheduled_lag_ms: 17,
+      control_cpu_usage_usec: 101,
+      control_cpu_nr_throttled: 2,
+      control_cpu_throttled_usec: 3,
+      workload_cpu_usage_usec: 201,
+      workload_cpu_nr_throttled: 4,
+      workload_cpu_throttled_usec: 5,
+    };
+    const partialMetric = {
+      ...oldMetric,
+      scheduled_lag_ms: 29,
+      workload_cpu_usage_usec: 301,
+    };
+
+    expect(
+      webhookTelemetryContract.send.body.parse({
+        runId,
+        metrics: [oldMetric],
+      }).metrics,
+    ).toStrictEqual([oldMetric]);
+    expect(
+      webhookTelemetryContract.send.body.parse({
+        runId,
+        metrics: [fullMetric],
+      }).metrics,
+    ).toStrictEqual([fullMetric]);
+    expect(
+      webhookTelemetryContract.send.body.parse({
+        runId,
+        metrics: [partialMetric],
+      }).metrics,
+    ).toStrictEqual([partialMetric]);
+
+    const legacyMetricSchema = z.object({
+      ts: z.string(),
+      cpu: z.number(),
+      mem_used: z.number(),
+      mem_total: z.number(),
+      disk_used: z.number(),
+      disk_total: z.number(),
+    });
+    expect(legacyMetricSchema.parse(fullMetric)).toStrictEqual(oldMetric);
+    expect(
+      webhookTelemetryContract.send.body.parse({
+        runId,
+        metrics: [{ ...fullMetric, future_scheduler_queue_depth: 7 }],
+      }).metrics,
+    ).toStrictEqual([fullMetric]);
+  });
+
   it("accepts optional bounded canonical runner dimensions", () => {
     const runId = "00000000-0000-4000-8000-000000000000";
     const minimalPayload = webhookTelemetryContract.send.body.parse({ runId });

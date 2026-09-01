@@ -27,6 +27,7 @@ use guest_contracts::process_containment::{
 };
 
 const CGROUP_PROCS_FILE: &str = "cgroup.procs";
+const CPU_STAT_FILE: &str = "cpu.stat";
 const PROC_SELF_CGROUP: &str = "/proc/self/cgroup";
 const CGROUP2_SUPER_MAGIC: u64 = 0x6367_7270;
 const WORKLOAD_BOOTSTRAP_IO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
@@ -39,6 +40,28 @@ pub struct WorkloadContainment {
     placement: Arc<OwnedFd>,
     workload_path: Arc<PathBuf>,
     tool_placement_endpoint: Arc<str>,
+}
+
+/// Read-only paths used to sample control and workload CPU accounting.
+#[derive(Clone, Debug)]
+pub struct CgroupCpuStatPaths {
+    control: PathBuf,
+    workload: PathBuf,
+}
+
+impl CgroupCpuStatPaths {
+    /// Build a sampler description from explicit `cpu.stat` paths.
+    pub fn new(control: PathBuf, workload: PathBuf) -> Self {
+        Self { control, workload }
+    }
+
+    pub(crate) fn control(&self) -> &Path {
+        &self.control
+    }
+
+    pub(crate) fn workload(&self) -> &Path {
+        &self.workload
+    }
 }
 
 /// Resource enforcement observed for a completed workload.
@@ -139,6 +162,16 @@ impl WorkloadContainment {
             hard_limit,
             pressure,
         })
+    }
+
+    /// Describe the validated cgroups without transferring placement access.
+    pub fn cpu_stat_paths(&self) -> CgroupCpuStatPaths {
+        CgroupCpuStatPaths::new(
+            self.workload_path
+                .with_file_name(CONTROL_CGROUP_NAME)
+                .join(CPU_STAT_FILE),
+            self.workload_path.join(CPU_STAT_FILE),
+        )
     }
 
     /// Runner-owned endpoint injected into managed CLI environments.
