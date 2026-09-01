@@ -5,50 +5,36 @@ import zlib
 from mitmproxy import http
 
 from body_limits import REQUEST_BODY_BILLING_INSPECTION_LIMIT
-from zlib_input import ZlibInputCursor
+from zlib_decoding import decode_zlib_bounded
 
 
 def _decode_gzip_request_body_for_billing(data: bytes, max_output: int) -> bytes | None:
     """Decode every gzip member under one output cap."""
-    input_cursor = ZlibInputCursor(data)
-    decoded = bytearray()
-    wbits = 16 + zlib.MAX_WBITS
-    obj = zlib.decompressobj(wbits)
-    while input_cursor:
-        input_chunk = input_cursor.take()
-        try:
-            decoded.extend(
-                obj.decompress(
-                    input_chunk,
-                    max_length=max_output - len(decoded) + 1,
-                )
-            )
-        except zlib.error:
-            return None
-        if len(decoded) > max_output:
-            return None
-        if obj.eof:
-            input_cursor.carry(obj.unused_data)
-            if not input_cursor:
-                return bytes(decoded)
-            obj = zlib.decompressobj(wbits)
-        elif obj.unconsumed_tail:
-            input_cursor.carry(obj.unconsumed_tail)
-    return None
+    if not data or max_output < 0:
+        return None
+    result = decode_zlib_bounded(
+        data,
+        wbits=16 + zlib.MAX_WBITS,
+        max_output=max_output,
+    )
+    return result.body if result.status == "complete" else None
 
 
 def _decode_deflate_request_body_for_billing(data: bytes, max_output: int) -> bytes | None:
     """Decode one zlib-wrapped or raw deflate stream under one output cap."""
+    if not data or max_output < 0:
+        return None
     for wbits in (zlib.MAX_WBITS, -zlib.MAX_WBITS):
-        obj = zlib.decompressobj(wbits)
-        try:
-            decoded = obj.decompress(data, max_length=max_output + 1)
-        except zlib.error:
-            continue
-        if len(decoded) > max_output:
+        result = decode_zlib_bounded(
+            data,
+            wbits=wbits,
+            max_output=max_output,
+            max_members=1,
+        )
+        if result.status == "complete":
+            return result.body
+        if result.status == "output_limit_exceeded":
             return None
-        if obj.eof and not obj.unused_data:
-            return decoded
     return None
 
 

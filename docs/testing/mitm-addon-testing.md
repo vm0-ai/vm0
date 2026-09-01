@@ -349,6 +349,7 @@ suites before committing the upgrade.
 | `test_body_capture_headers.py`                          | Captured network-log header sanitization                                                                             |
 | `test_body_capture_stream_buffer.py`                    | Body capture stream-buffer contracts                                                                                 |
 | `test_body_decoding.py`                                 | Shared body decoding, streaming decode, codec limits, and decompression errors                                       |
+| `test_zlib_decoding.py`                                 | Bounded complete-stream zlib traversal, member, tail, and output-limit contracts                                     |
 | `test_anthropic_messages.py`                            | Anthropic Messages SSE and JSON usage extraction                                                                     |
 | `test_openai_responses_event_json.py`                   | OpenAI Responses event JSON usage extraction and merge behavior                                                      |
 | `test_openai_responses_json.py`                         | OpenAI Responses non-SSE JSON usage extraction                                                                       |
