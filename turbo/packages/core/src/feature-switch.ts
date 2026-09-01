@@ -305,6 +305,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the conversation locator rail beside long chat threads, with hover preview and click-to-jump.",
     enabled: false,
   },
+  [FeatureSwitchKey.ChatTranslation]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Translate selected assistant text into a remembered target language.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:

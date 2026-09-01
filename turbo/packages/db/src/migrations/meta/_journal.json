@@ -1639,6 +1639,20 @@
       "when": 1788246932464,
       "tag": "1041_contract_legacy_org_plan_entitlement_restriction",
       "breakpoints": true
+    },
+    {
+      "idx": 1042,
+      "version": "7",
+      "when": 1788253102258,
+      "tag": "1042_amused_lilandra",
+      "breakpoints": true
+    },
+    {
+      "idx": 1043,
+      "version": "7",
+      "when": 1788253114804,
+      "tag": "1043_add_chat_translation_pricing",
+      "breakpoints": true
     }
   ]
 }
