@@ -1,5 +1,6 @@
 import type {
   ChangeEvent as ReactChangeEvent,
+  CSSProperties,
   DragEvent as ReactDragEvent,
   ReactNode,
 } from "react";
@@ -41,6 +42,7 @@ import type { ComposerSignals } from "../../signals/okou-page/composer-signals.t
 import {
   classifyIntroVideoSource,
   introVideoWizardSignals,
+  type IntroVideoPlacement,
   type IntroVideoSource,
   type IntroVideoVisualBalance,
   type IntroVideoVoiceSelection,
@@ -766,6 +768,154 @@ function VisualBalanceOption({
   );
 }
 
+/**
+ * Preview geometry for each placement, as percentages of the 16:9 output frame.
+ *
+ * These mirror the composition rule the generator follows: the deck is
+ * letterboxed inside its rectangle and the presenter cutout is scaled
+ * proportionally to a fixed share of the frame width, with its bottom edge on
+ * the deck's bottom edge. The cutout is never cropped to a box or a circle, so
+ * only its width is pinned here and the height follows the artwork. A very tall
+ * cutout therefore runs past the top of the preview and is clipped there, which
+ * is what the rendered video does too.
+ */
+const PLACEMENT_PREVIEW: Record<
+  IntroVideoPlacement,
+  { readonly avatar: CSSProperties; readonly slide: CSSProperties }
+> = {
+  left: {
+    avatar: { bottom: "11.5%", left: "3%", width: "14%" },
+    slide: { height: "77%", left: "20%", top: "11.5%", width: "77%" },
+  },
+  overlay: {
+    avatar: { bottom: "6%", left: "75%", width: "14%" },
+    slide: { height: "88%", left: "6%", top: "6%", width: "88%" },
+  },
+  right: {
+    avatar: { bottom: "11.5%", left: "83%", width: "14%" },
+    slide: { height: "77%", left: "3%", top: "11.5%", width: "77%" },
+  },
+};
+
+function PlacementOption({
+  cutoutUrl,
+  label,
+  placement,
+  selected,
+  onSelect,
+}: {
+  readonly cutoutUrl: string | undefined;
+  readonly label: string;
+  readonly placement: IntroVideoPlacement;
+  readonly selected: boolean;
+  readonly onSelect: () => void;
+}) {
+  const preview = PLACEMENT_PREVIEW[placement];
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      data-intro-video-placement={placement}
+      onClick={onSelect}
+      className={cn(
+        "group flex min-w-0 flex-col overflow-hidden rounded-xl border bg-card text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        selected ? "border-primary" : "border-border",
+      )}
+    >
+      <div className="relative aspect-video w-full overflow-hidden bg-gray-50">
+        <span
+          aria-hidden="true"
+          className="absolute rounded-[3px] border border-border bg-card"
+          style={preview.slide}
+        />
+        {cutoutUrl ? (
+          <img
+            src={cutoutUrl}
+            alt=""
+            aria-hidden="true"
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+            className="absolute"
+            style={preview.avatar}
+          />
+        ) : null}
+      </div>
+      <div className="flex min-h-11 items-center justify-between gap-2 px-3 py-2.5">
+        <p className="min-w-0 truncate text-sm font-semibold text-foreground">
+          {label}
+        </p>
+        {selected ? (
+          <span
+            className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
+            aria-hidden="true"
+          >
+            <Check size={13} />
+          </span>
+        ) : null}
+      </div>
+    </button>
+  );
+}
+
+function PlacementSelector({
+  cutoutUrl,
+}: {
+  readonly cutoutUrl: string | undefined;
+}) {
+  const { t } = useTranslation();
+  const placement = useGet(introVideoWizardSignals.placement$);
+  const setPlacement = useSet(introVideoWizardSignals.setPlacement$);
+  const options: readonly {
+    readonly label: string;
+    readonly value: IntroVideoPlacement;
+  }[] = [
+    {
+      label: t(($) => {
+        return $.chat.introVideo.avatar.placementLeft;
+      }),
+      value: "left",
+    },
+    {
+      label: t(($) => {
+        return $.chat.introVideo.avatar.placementRight;
+      }),
+      value: "right",
+    },
+    {
+      label: t(($) => {
+        return $.chat.introVideo.avatar.placementOverlay;
+      }),
+      value: "overlay",
+    },
+  ];
+  return (
+    <section className="mb-5 rounded-xl border border-border bg-background p-4">
+      <h4 className="text-sm font-medium text-foreground">
+        {t(($) => {
+          return $.chat.introVideo.avatar.placementHeading;
+        })}
+      </h4>
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {options.map((option) => {
+          return (
+            <PlacementOption
+              key={option.value}
+              cutoutUrl={cutoutUrl}
+              label={option.label}
+              placement={option.value}
+              selected={placement === option.value}
+              onSelect={() => {
+                setPlacement(option.value);
+              }}
+            />
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function VisualBalanceSelector() {
   const { t } = useTranslation();
   const visualBalance = useGet(introVideoWizardSignals.visualBalance$);
@@ -822,6 +972,7 @@ function VisualBalanceSelector() {
 function AvatarPage({ composer }: { readonly composer: ComposerSignals }) {
   const { t } = useTranslation();
   const avatar = useGet(introVideoWizardSignals.avatar$);
+  const source = useGet(introVideoWizardSignals.source$);
   const setAvatar = useSet(introVideoWizardSignals.setAvatar$);
   const selectAvatarForVoice = useSet(
     composer.template.selectAvatarTemplateForVoice$,
@@ -840,6 +991,9 @@ function AvatarPage({ composer }: { readonly composer: ComposerSignals }) {
           })}
         </p>
       </div>
+      {avatar && source?.kind === "document" ? (
+        <PlacementSelector cutoutUrl={avatar.coverUrl} />
+      ) : null}
       {avatar ? <VisualBalanceSelector /> : null}
       <AvatarLibraryContent
         selectedAvatarId={avatar?.id}

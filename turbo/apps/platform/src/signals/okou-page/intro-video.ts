@@ -60,6 +60,8 @@ export type IntroVideoVoiceSelection =
   | { readonly kind: "none" }
   | { readonly kind: "original" };
 
+export type IntroVideoPlacement = "left" | "overlay" | "right";
+
 export type IntroVideoVisualBalance = "avatar-led" | "b-roll-led" | "balanced";
 
 interface RecordingRuntime {
@@ -302,6 +304,7 @@ function voiceSelectionLabel(selection: IntroVideoVoiceSelection | null) {
 function buildIntroVideoPrompt(args: {
   readonly avatar: AvatarVideoAvatar | null;
   readonly instructions: string;
+  readonly placement: IntroVideoPlacement;
   readonly source: IntroVideoSource;
   readonly visualBalance: IntroVideoVisualBalance;
   readonly voice: IntroVideoVoiceSelection | null;
@@ -309,6 +312,11 @@ function buildIntroVideoPrompt(args: {
   const avatar = args.avatar
     ? `${args.avatar.name} (${args.avatar.id})`
     : "No avatar";
+  const placementDescription: Record<IntroVideoPlacement, string> = {
+    left: "Presenter on the left, slide on the right",
+    overlay: "Presenter over the slide, anchored to the bottom right",
+    right: "Presenter on the right, slide on the left",
+  };
   const visualBalanceDescription: Record<IntroVideoVisualBalance, string> = {
     "avatar-led": "Avatar-led (presenter on screen most of the time)",
     "b-roll-led": "B-roll-led (focus on slides and source visuals)",
@@ -331,6 +339,12 @@ function buildIntroVideoPrompt(args: {
       ? [
           "- Avatar background: transparent WebM (JoggAI screen_style 3, which requires captions off)",
           `- Visual balance: ${visualBalanceDescription[args.visualBalance]}`,
+          ...(args.source.kind === "document"
+            ? [
+                `- Presenter placement: ${placementDescription[args.placement]}`,
+                "- Presenter scale: scale the cutout proportionally to 14% of the frame width and align its bottom edge with the slide's bottom edge, for every presenter and every page",
+              ]
+            : []),
         ]
       : []),
     "",
@@ -347,6 +361,7 @@ interface IntroVideoInternalState {
   readonly instructions$: State<string>;
   readonly microphone$: State<boolean>;
   readonly open$: State<boolean>;
+  readonly placement$: State<IntroVideoPlacement>;
   readonly recordingSeconds$: State<number>;
   readonly source$: State<IntroVideoSource | null>;
   readonly sourcePersisted$: State<boolean>;
@@ -366,6 +381,7 @@ function createIntroVideoInternalState(): IntroVideoInternalState {
     instructions$: state(DEFAULT_INSTRUCTIONS),
     microphone$: state(false),
     open$: state(false),
+    placement$: state<IntroVideoPlacement>("left"),
     recordingSeconds$: state(0),
     source$: state<IntroVideoSource | null>(null),
     sourcePersisted$: state(false),
@@ -392,6 +408,7 @@ function createIntroVideoSelectors(internal: IntroVideoInternalState) {
     instructions$: exposeState(internal.instructions$),
     microphone$: exposeState(internal.microphone$),
     open$: exposeState(internal.open$),
+    placement$: exposeState(internal.placement$),
     recordingSeconds$: exposeState(internal.recordingSeconds$),
     source$: exposeState(internal.source$),
     sourcePersisted$: exposeState(internal.sourcePersisted$),
@@ -509,6 +526,11 @@ function createSelectionCommands(internal: IntroVideoInternalState) {
   const setInstructions$ = command(({ set }, instructions: string): void => {
     set(internal.instructions$, instructions);
   });
+  const setPlacement$ = command(
+    ({ set }, placement: IntroVideoPlacement): void => {
+      set(internal.placement$, placement);
+    },
+  );
   const setVisualBalance$ = command(
     ({ set }, visualBalance: IntroVideoVisualBalance): void => {
       set(internal.visualBalance$, visualBalance);
@@ -518,6 +540,7 @@ function createSelectionCommands(internal: IntroVideoInternalState) {
     setAvatar$,
     setInstructions$,
     setMicrophone$,
+    setPlacement$,
     setSystemAudio$,
     setVisualBalance$,
     setVoice$,
@@ -937,6 +960,7 @@ function createClearCompletedDraftCommand(internal: IntroVideoInternalState) {
       set(internal.avatar$, null);
       set(internal.voice$, null);
       set(internal.instructions$, DEFAULT_INSTRUCTIONS);
+      set(internal.placement$, "left");
       set(internal.visualBalance$, "balanced");
       set(internal.step$, "source");
       set(internal.busy$, false);
@@ -1035,6 +1059,7 @@ function createSubmissionCommands(
         buildIntroVideoPrompt({
           avatar: get(internal.avatar$),
           instructions: get(internal.instructions$),
+          placement: get(internal.placement$),
           source,
           visualBalance: get(internal.visualBalance$),
           voice: get(internal.voice$),
