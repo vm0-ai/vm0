@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.17](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.16...guest-contracts-v0.12.17) (2026-09-01)
+
+
+### Refactoring
+
+* **rust:** share environment-key diagnostic sanitizer ([#30750](https://github.com/vm0-ai/vm0/issues/30750)) ([d7d08f2](https://github.com/vm0-ai/vm0/commit/d7d08f2b128021bf9ee3a6d352fffc1c344c5f5d))
+
 ## [0.12.16](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.15...guest-contracts-v0.12.16) (2026-09-01)
 
 

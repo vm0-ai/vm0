@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.83.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.3...guest-agent-v0.83.4) (2026-09-01)
+
+
+### Documentation
+
+* **guest-agent:** document GuestPaths accessors ([#30739](https://github.com/vm0-ai/vm0/issues/30739)) ([38f621d](https://github.com/vm0-ai/vm0/commit/38f621d5d176432080af367c5d3958ed4555ce69))
+
+
+### Refactoring
+
+* **rust:** share environment-key diagnostic sanitizer ([#30750](https://github.com/vm0-ai/vm0/issues/30750)) ([d7d08f2](https://github.com/vm0-ai/vm0/commit/d7d08f2b128021bf9ee3a6d352fffc1c344c5f5d))
+
 ## [0.83.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.2...guest-agent-v0.83.3) (2026-09-01)
 
 ## [0.83.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.1...guest-agent-v0.83.2) (2026-09-01)
