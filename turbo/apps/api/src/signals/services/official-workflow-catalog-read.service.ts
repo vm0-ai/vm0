@@ -34,7 +34,7 @@ interface OfficialWorkflowRevisionRow {
   readonly storageVersion: string;
 }
 
-function catalogSchemaVersion(payload: unknown): number {
+function officialWorkflowPayloadSchemaVersion(payload: unknown): number {
   if (
     typeof payload !== "object" ||
     payload === null ||
@@ -44,7 +44,7 @@ function catalogSchemaVersion(payload: unknown): number {
     !Number.isSafeInteger(payload.schemaVersion) ||
     payload.schemaVersion < 1
   ) {
-    throw new Error("Official Workflow catalog payload version is invalid");
+    throw new Error("Official Workflow payload version is invalid");
   }
   return payload.schemaVersion;
 }
@@ -100,7 +100,8 @@ export async function readAcceptedOfficialWorkflowCatalog(
     return null;
   }
   if (
-    catalogSchemaVersion(row.payload) < OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION
+    officialWorkflowPayloadSchemaVersion(row.payload) <
+    OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION
   ) {
     return null;
   }
@@ -174,7 +175,7 @@ export async function readAcceptedOfficialWorkflowRevision(
   return acceptedRevisionFromRow(row);
 }
 
-export async function readAllAcceptedOfficialWorkflowRevisions(
+export async function readAllCurrentSchemaOfficialWorkflowRevisions(
   db: ReadonlyDb,
   signal?: AbortSignal,
 ): Promise<readonly OfficialWorkflowAcceptedRevision[]> {
@@ -217,7 +218,13 @@ export async function readAllAcceptedOfficialWorkflowRevisions(
       asc(officialWorkflowDefinitionRevisions.revision),
     );
   signal?.throwIfAborted();
-  return rows.map((row) => {
+  return rows.flatMap((row) => {
+    if (
+      officialWorkflowPayloadSchemaVersion(row.payload) !==
+      OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION
+    ) {
+      return [];
+    }
     if (
       row.verifiedStorageId !== row.storageId ||
       row.verifiedStorageVersion !== row.storageVersion
@@ -226,6 +233,6 @@ export async function readAllAcceptedOfficialWorkflowRevisions(
         "Official Workflow revision artifact registration is inconsistent",
       );
     }
-    return acceptedRevisionFromRow(row);
+    return [acceptedRevisionFromRow(row)];
   });
 }

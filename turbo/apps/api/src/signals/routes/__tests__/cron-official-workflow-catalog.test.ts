@@ -345,13 +345,18 @@ beforeEach(async () => {
 });
 
 describe.sequential("Official Workflow catalog release boundary", () => {
-  it("replaces a previous schema release through the current source boundary", async () => {
+  it("replaces a previous schema release with retained historical revisions", async () => {
     const seeded = await stateAction({
       action: "seed-previous-schema-release",
     });
     expect(seeded.body).toMatchObject({
       catalog: null,
-      counts: { releases: 1 },
+      counts: {
+        releases: 1,
+        revisions: 1,
+        storages: 1,
+        storageVersions: 1,
+      },
     });
 
     const synced = await syncCatalog(catalog([]));
@@ -367,6 +372,12 @@ describe.sequential("Official Workflow catalog release boundary", () => {
         schemaVersion: OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION,
         definitions: [],
       },
+    });
+    expect(state.body.counts).toMatchObject({
+      releases: 2,
+      revisions: 1,
+      storages: 1,
+      storageVersions: 1,
     });
   });
 

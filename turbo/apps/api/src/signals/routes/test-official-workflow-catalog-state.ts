@@ -59,6 +59,10 @@ const DEPLOYED_TEST_STORAGE_NAMES = [
   getOfficialWorkflowDefinitionStorageName("morning-brief"),
 ] as const;
 const PREVIOUS_SCHEMA_RELEASE_ID = "f".repeat(64);
+const PREVIOUS_SCHEMA_DEFINITION_NAME = "api-test-legacy";
+const PREVIOUS_SCHEMA_REVISION = "e".repeat(64);
+const PREVIOUS_SCHEMA_STORAGE_VERSION = "d".repeat(64);
+const PREVIOUS_SCHEMA_BLUEPRINT_FINGERPRINT = "c".repeat(64);
 
 interface DormantMaterializationPause {
   readonly reached: ReturnType<typeof createDeferredPromise<void>>;
@@ -183,14 +187,107 @@ async function seedPreviousSchemaRelease(
   if (previousSchemaVersion < 1) {
     throw new Error("Official Workflow catalog has no previous schema version");
   }
-  const payload = JSON.stringify({
+  const storageName = getOfficialWorkflowDefinitionStorageName(
+    PREVIOUS_SCHEMA_DEFINITION_NAME,
+  );
+  const storageId = randomUUID();
+  const storagePrefix = `api-test/${storageId}`;
+  const blueprint = {
+    key: "daily-delivery",
+    parameters: [
+      {
+        key: "timezone",
+        type: "string",
+        format: "timezone",
+        required: true,
+        derivation: { kind: "user-timezone" },
+      },
+    ],
+    desiredState: {
+      kind: "schedule",
+      schedule: {
+        type: "cron",
+        cronExpression: "0 7 * * *",
+        timezone: { parameter: "timezone" },
+      },
+    },
+    runtime: { resultEmail: true },
+    fingerprint: PREVIOUS_SCHEMA_BLUEPRINT_FINGERPRINT,
+  };
+  const revisionPayload = JSON.stringify({
     schemaVersion: previousSchemaVersion,
-    definitions: [],
+    name: PREVIOUS_SCHEMA_DEFINITION_NAME,
+    revision: PREVIOUS_SCHEMA_REVISION,
+    workflow: {
+      displayName: "Legacy test workflow",
+      description: "Exercises a previous-schema catalog revision.",
+      instruction: "Use the legacy test workflow.",
+      files: [],
+    },
+    blueprints: [blueprint],
+  });
+  const releasePayload = JSON.stringify({
+    schemaVersion: previousSchemaVersion,
+    definitions: [
+      {
+        name: PREVIOUS_SCHEMA_DEFINITION_NAME,
+        lifecycle: "active",
+        revision: PREVIOUS_SCHEMA_REVISION,
+        artifact: {
+          storageName,
+          storageId,
+          storageVersion: PREVIOUS_SCHEMA_STORAGE_VERSION,
+        },
+        blueprints: [blueprint],
+        releasedBlueprintKeys: [blueprint.key],
+        presentation: { category: "productivity" },
+      },
+    ],
   });
   await db.transaction(async (tx) => {
+    await tx.insert(storages).values({
+      id: storageId,
+      orgId: SYSTEM_ORG_ID,
+      userId: VOLUME_ORG_USER_ID,
+      name: storageName,
+      s3Prefix: storagePrefix,
+      size: 0,
+      fileCount: 0,
+    });
+    await tx.insert(storageVersions).values({
+      id: PREVIOUS_SCHEMA_STORAGE_VERSION,
+      storageId,
+      s3Key: `${storagePrefix}/${PREVIOUS_SCHEMA_STORAGE_VERSION}`,
+      size: 0,
+      archiveSize: 0,
+      fileCount: 0,
+      message: "Previous-schema Official Workflow test revision",
+      createdBy: "system",
+    });
+    await tx
+      .update(storages)
+      .set({ headVersionId: PREVIOUS_SCHEMA_STORAGE_VERSION })
+      .where(eq(storages.id, storageId));
+    await tx.execute(sql`
+      INSERT INTO ${officialWorkflowDefinitionRevisions} (
+        definition_name,
+        revision,
+        payload,
+        storage_name,
+        storage_id,
+        storage_version
+      ) VALUES (
+        ${PREVIOUS_SCHEMA_DEFINITION_NAME},
+        ${PREVIOUS_SCHEMA_REVISION},
+        ${revisionPayload}::jsonb,
+        ${storageName},
+        ${storageId},
+        ${PREVIOUS_SCHEMA_STORAGE_VERSION}
+      )
+    `);
     await tx.execute(sql`
       INSERT INTO ${officialWorkflowCatalogReleases} (id, payload)
-      VALUES (${PREVIOUS_SCHEMA_RELEASE_ID}, ${payload}::jsonb)
+      VALUES (${PREVIOUS_SCHEMA_RELEASE_ID}, ${releasePayload}::jsonb)
     `);
     await tx.insert(officialWorkflowCatalogState).values({
       authority: "official",
