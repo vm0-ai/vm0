@@ -123,9 +123,10 @@ impl Drop for BudgetLease {
 }
 
 impl ResourceBudget {
-    /// Create a new resource budget from physical resources and config.
+    /// Create a new resource budget from host resources and config.
     ///
-    /// `concurrency_factor` is applied to both CPU and memory budgets.
+    /// CPU admission reserves fixed host headroom before applying
+    /// `concurrency_factor`; memory applies the factor directly.
     /// The balloon controller reclaims unused guest memory at runtime,
     /// so memory overcommit is safe for typical workloads.
     pub fn new(
@@ -307,12 +308,12 @@ impl ResourceBudget {
     }
 
     /// Returns the host CPU capacity reserved before applying the concurrency factor.
-    pub fn host_cpu_reservation(&self) -> f64 {
+    pub fn host_cpu_admission_reservation(&self) -> f64 {
         self.cpu_capacity.host_reservation
     }
 
     /// Returns the host CPU capacity available for Guest admission before overcommit.
-    pub fn guest_cpu_capacity(&self) -> f64 {
+    pub fn guest_cpu_admission_capacity(&self) -> f64 {
         self.cpu_capacity.guest_capacity
     }
 
@@ -405,8 +406,14 @@ mod tests {
 
         for (host_cpus, expected_reservation, expected_guest_capacity) in cases {
             let budget = ResourceBudget::new(host_cpus, 1, 1.0, 0);
-            assert_f64_close(budget.host_cpu_reservation(), expected_reservation);
-            assert_f64_close(budget.guest_cpu_capacity(), expected_guest_capacity);
+            assert_f64_close(
+                budget.host_cpu_admission_reservation(),
+                expected_reservation,
+            );
+            assert_f64_close(
+                budget.guest_cpu_admission_capacity(),
+                expected_guest_capacity,
+            );
             assert_f64_close(budget.vcpu_admission_limit(), expected_guest_capacity);
         }
     }
