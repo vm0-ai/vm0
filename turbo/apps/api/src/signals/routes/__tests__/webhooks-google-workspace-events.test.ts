@@ -454,6 +454,14 @@ describe("Google Workspace Events subscription lifecycle", () => {
       [200],
     );
     expect(selections.body.selections).toStrictEqual([]);
+
+    await accept(
+      automationsClient().delete({
+        headers: authHeaders(fixture.actor),
+        params: { id: created.body.id },
+      }),
+      [204],
+    );
   });
 
   it("does not create provider state for a disabled automation", async () => {
