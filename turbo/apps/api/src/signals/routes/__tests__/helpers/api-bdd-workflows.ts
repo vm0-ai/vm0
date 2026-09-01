@@ -76,6 +76,8 @@ export function mockGoogleCalendarConnectorOAuth(
 
 interface NotionConnectorOAuthOptions {
   readonly accessToken?: string;
+  readonly ownerId?: string;
+  readonly ownerName?: string;
 }
 
 /**
@@ -97,7 +99,10 @@ export function mockNotionConnectorOAuth(
         refresh_token: "notion-refresh-token",
         expires_in: 3600,
         owner: {
-          user: { id: "notion-user-1", name: "Notion User" },
+          user: {
+            id: options.ownerId ?? "notion-user-1",
+            name: options.ownerName ?? "Notion User",
+          },
         },
       });
     }),
