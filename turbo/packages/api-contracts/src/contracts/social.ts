@@ -44,6 +44,27 @@ export const socialKitErrorSchema = apiErrorSchema.extend({
 
 export type SocialKitErrorResponse = z.infer<typeof socialKitErrorSchema>;
 
+/**
+ * Keep upstream implementation details out of agent-visible diagnostics.
+ *
+ * The API still accepts and stores the internal provider codes for server-side
+ * accounting and backwards-compatible handling. Callers that render data to
+ * an agent should pass codes and messages through these projections first.
+ */
+export function publicSocialErrorCode(code: string): string {
+  return code.replace(/socialkit/giu, "SOCIAL");
+}
+
+export function publicSocialErrorMessage(message: string): string {
+  return message
+    .replace(
+      /\b(?:https?:\/\/)?(?:api\.)?socialkit\.dev\b/giu,
+      "the social data service",
+    )
+    .replace(/\bokou\s+socialkit\b/giu, "Okou Social")
+    .replace(/\bsocialkit\b/giu, "Okou Social");
+}
+
 export const socialKitDownloadPlatformSchema = z.enum([
   "youtube",
   "tiktok",
@@ -198,7 +219,11 @@ export type SocialKitResult<Name extends ManagedSocialKitToolName> = z.infer<
 type SocialKitResponseFor<Tool extends ManagedSocialKitTool> =
   Tool extends ManagedSocialKitTool
     ? {
-        readonly provider: "socialkit";
+        /**
+         * The provider discriminator is retained for session/API compatibility.
+         * Agent-facing routes project it out before serialization.
+         */
+        readonly provider?: "socialkit";
         readonly tool: Tool["name"];
         readonly billingCategory: typeof MANAGED_SOCIALKIT_BILLING_CATEGORY;
         readonly billingQuantity: number;
@@ -212,7 +237,9 @@ export type SocialKitResponse = SocialKitResponseFor<ManagedSocialKitTool>;
 
 function responseVariant<Tool extends ManagedSocialKitTool>(tool: Tool) {
   return z.object({
-    provider: z.literal("socialkit"),
+    // Optional so the agent boundary can remove the internal discriminator
+    // while older session clients may continue sending/receiving it.
+    provider: z.literal("socialkit").optional(),
     tool: z.literal(tool.name),
     billingCategory: z.literal(MANAGED_SOCIALKIT_BILLING_CATEGORY),
     billingQuantity: z.number().int().positive(),

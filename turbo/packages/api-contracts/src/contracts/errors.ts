@@ -162,6 +162,23 @@ export const RUN_ERROR_GUIDANCE: Record<
     guidance:
       "Wait for your current run to complete before starting a new one.",
   },
+  SOCIAL_TRANSCRIPT_UNAVAILABLE: {
+    title: "Transcript unavailable",
+    guidance:
+      "The provider did not return transcript data for this social video. A missing transcript is not evidence that the video contains no speech.",
+  },
+  SOCIAL_TRANSCRIPT_AVAILABILITY_UNKNOWN: {
+    title: "Transcript availability unknown",
+    guidance:
+      "The provider did not establish whether the source or its transcript is unavailable. No transcript was returned, and this is not evidence that the video contains no speech.",
+  },
+  SOCIAL_TRANSCRIPT_ACCESS_DENIED: {
+    title: "Transcript access denied",
+    guidance:
+      "The social data service denied transcript access, possibly because transcripts are disabled. This is not a vm0 authentication failure.",
+  },
+  // Keep guidance for responses from an older API deployment while the CLI
+  // maps those codes to the provider-neutral values above.
   SOCIALKIT_TRANSCRIPT_UNAVAILABLE: {
     title: "Transcript unavailable",
     guidance:
@@ -175,7 +192,7 @@ export const RUN_ERROR_GUIDANCE: Record<
   SOCIALKIT_TRANSCRIPT_ACCESS_DENIED: {
     title: "Transcript access denied",
     guidance:
-      "The SocialKit provider denied transcript access, possibly because transcripts are disabled. This is not a vm0 authentication failure.",
+      "The social data service denied transcript access, possibly because transcripts are disabled. This is not a vm0 authentication failure.",
   },
 };
 

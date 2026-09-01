@@ -114,6 +114,7 @@ interface AuthHeaders {
 }
 
 interface RawRequestOptions {
+  readonly authorization?: string;
   readonly requestSignal?: AbortSignal;
   readonly usagePricingResolution?: UsagePricingFixture["resolution"];
 }
@@ -155,10 +156,11 @@ async function rawSocialRequest(
     routes: socialTestRoutes,
     usagePricingResolution: options.usagePricingResolution,
   });
+  const authorization = options.authorization;
   const request = new Request("http://api.test/api/social/request", {
     method: "POST",
     headers: {
-      ...authenticate(actor),
+      ...(authorization ? { authorization } : authenticate(actor)),
       "content-type": "application/json",
     },
     body: JSON.stringify(body),
@@ -428,7 +430,21 @@ describe("managed SocialKit route", () => {
     const token = api.okouTokenForRunWithCapabilities(actor, run.runId, [
       "social:read",
     ]);
-    server.use(providerHandler("GET", "/youtube/transcript"));
+    server.use(
+      providerHandler("GET", "/youtube/transcript", () => {
+        return HttpResponse.json(
+          providerResponse({
+            provider: "socialkit",
+            providerName: "SocialKit",
+            nested: {
+              providerCode: "socialkit",
+              items: [{ upstreamProvider: "socialkit" }],
+            },
+            source: { provider: "youtube" },
+          }),
+        );
+      }),
+    );
 
     const response = await accept(
       client(pricing.resolution)(socialContract).request({
@@ -437,6 +453,33 @@ describe("managed SocialKit route", () => {
       }),
       [200],
     );
+    expect(response.body).not.toHaveProperty("provider");
+    expect(response.body.result).toMatchObject({
+      source: { provider: "youtube" },
+    });
+    expect(JSON.stringify(response.body)).not.toMatch(/socialkit/iu);
+
+    server.use(
+      providerHandler("GET", "/youtube/transcript", () => {
+        return HttpResponse.json(
+          { message: "Video not found or transcript not available" },
+          { status: 404 },
+        );
+      }),
+    );
+    const agentError = await rawSocialRequest(null, DEFAULT_SOCIAL_REQUEST, {
+      authorization: `Bearer ${token}`,
+      usagePricingResolution: pricing.resolution,
+    });
+    const agentErrorBody = (await agentError.json()) as {
+      readonly error: { readonly code: string; readonly message: string };
+    };
+    expect(agentError.status).toBe(404);
+    expect(agentErrorBody.error.code).toBe(
+      "SOCIAL_TRANSCRIPT_AVAILABILITY_UNKNOWN",
+    );
+    expect(agentErrorBody.error.message).not.toMatch(/socialkit/iu);
+
     context.mocks.clerk.users.getUserList.mockResolvedValue({
       data: [
         {

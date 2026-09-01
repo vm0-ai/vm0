@@ -330,6 +330,7 @@ describe("okou social command", () => {
     expect(mockConsoleLog).toHaveBeenCalledWith(
       JSON.stringify(publicSocialResponseFixture(response)),
     );
+    expect(output()).not.toMatch(/socialkit/iu);
   });
 
   it("keeps custom response objects typed in the request", async () => {
@@ -945,6 +946,7 @@ describe("okou social command", () => {
 
     expect(errorOutput()).toContain(testCase.title);
     expect(errorOutput()).toContain(testCase.guidance);
+    expect(errorOutput()).not.toMatch(/socialkit/iu);
     expect(errorOutput()).not.toContain("404:");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
@@ -1254,11 +1256,19 @@ describe("okou social command", () => {
     ).rejects.toThrow("process.exit called");
 
     expect(mockConsoleLog).toHaveBeenCalledTimes(1);
-    expect(output()).toBe(JSON.stringify(response));
-    expect(JSON.parse(output()) as unknown).toStrictEqual(response);
+    const publicResponse = {
+      ...response,
+      error: {
+        ...response.error,
+        code: "SOCIAL_PROVIDER_duration_limit_exceeded",
+      },
+    };
+    expect(output()).toBe(JSON.stringify(publicResponse));
+    expect(JSON.parse(output()) as unknown).toStrictEqual(publicResponse);
     expect(errorOutput()).toContain(
-      "Error code: SOCIALKIT_PROVIDER_duration_limit_exceeded",
+      "Error code: SOCIAL_PROVIDER_duration_limit_exceeded",
     );
+    expect(errorOutput()).not.toMatch(/socialkit/iu);
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 

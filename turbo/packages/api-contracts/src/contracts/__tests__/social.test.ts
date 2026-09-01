@@ -3,6 +3,8 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   managedSocialKitToolCatalog,
   MANAGED_SOCIALKIT_TOOLS,
+  publicSocialErrorCode,
+  publicSocialErrorMessage,
   socialKitErrorSchema,
   socialKitRequestSchema,
   socialKitResponseSchema,
@@ -112,6 +114,24 @@ describe("managed SocialKit contract", () => {
     ).toBe(false);
   });
 
+  it("projects provider diagnostics to provider-neutral values", () => {
+    expect(publicSocialErrorCode("SOCIALKIT_TRANSCRIPT_UNAVAILABLE")).toBe(
+      "SOCIAL_TRANSCRIPT_UNAVAILABLE",
+    );
+    expect(publicSocialErrorCode("SOCIALKIT_PROVIDER_timeout")).toBe(
+      "SOCIAL_PROVIDER_timeout",
+    );
+    expect(publicSocialErrorMessage("SocialKit request failed")).toBe(
+      "Okou Social request failed",
+    );
+    expect(
+      publicSocialErrorMessage("Okou SocialKit provider is not configured"),
+    ).toBe("Okou Social provider is not configured");
+    expect(
+      publicSocialErrorMessage("request failed at https://api.socialkit.dev"),
+    ).toBe("request failed at the social data service");
+  });
+
   it.each([
     {
       tool: "linkedin_profile",
@@ -162,6 +182,29 @@ describe("managed SocialKit contract", () => {
       ).toBeTruthy();
     },
   );
+
+  it("keeps the provider discriminator optional for boundary projection", () => {
+    const responseWithProvider = socialKitResponseSchema.parse({
+      provider: "socialkit",
+      tool: "youtube_transcript",
+      billingCategory: "request",
+      billingQuantity: 1,
+      creditsCharged: 3,
+      collection: null,
+      result: { transcript: "A transcript" },
+    });
+    expect(responseWithProvider.provider).toBe("socialkit");
+
+    const responseWithoutProvider = socialKitResponseSchema.parse({
+      tool: "youtube_transcript",
+      billingCategory: "request",
+      billingQuantity: 1,
+      creditsCharged: 3,
+      collection: null,
+      result: { transcript: "A transcript" },
+    });
+    expect(responseWithoutProvider).not.toHaveProperty("provider");
+  });
 
   it("validates real JSON scalar and enum input types", () => {
     const input: SocialKitInput<"youtube_search"> = {

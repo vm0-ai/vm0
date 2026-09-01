@@ -1440,6 +1440,8 @@ export {
   socialContract,
   socialKitCollectionProviderLimitedReasonSchema,
   socialKitErrorSchema,
+  publicSocialErrorCode,
+  publicSocialErrorMessage,
   socialKitRequestSchema,
   socialKitResponseSchema,
   socialKitTranscriptErrorReasonSchema,

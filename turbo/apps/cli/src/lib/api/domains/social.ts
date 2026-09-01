@@ -1,6 +1,8 @@
 import {
   socialContract,
   socialKitErrorSchema,
+  publicSocialErrorCode,
+  publicSocialErrorMessage,
   type SocialKitDownloadRequest,
   type SocialKitDownloadResponse,
   type SocialKitRequest,
@@ -12,24 +14,52 @@ import { getClientConfig, handleError } from "../core/client-factory";
 
 const SOCIALKIT_API_TIMEOUT_MS = 280_000;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function publicSocialDownloadResponse(
+  response: SocialKitDownloadResponse,
+): SocialKitDownloadResponse {
+  if (!response.error) {
+    return response;
+  }
+  return {
+    ...response,
+    error: {
+      ...response.error,
+      code: publicSocialErrorCode(response.error.code),
+      message: publicSocialErrorMessage(response.error.message),
+    },
+  };
+}
+
 function handlePublicSocialError(
   result: { readonly status: number; readonly body: unknown },
   defaultMessage: string,
 ): never {
   const parsed = socialKitErrorSchema.safeParse(result.body);
-  if (!parsed.success) {
-    handleError(result, defaultMessage);
-  }
+  const rawError = isRecord(result.body) ? result.body.error : undefined;
+  const rawErrorRecord = isRecord(rawError) ? rawError : undefined;
+  const code = parsed.success
+    ? parsed.data.error.code
+    : typeof rawErrorRecord?.code === "string"
+      ? rawErrorRecord.code
+      : "UNKNOWN";
+  const message = parsed.success
+    ? parsed.data.error.message
+    : typeof rawErrorRecord?.message === "string"
+      ? rawErrorRecord.message
+      : defaultMessage;
+  const reason = parsed.success ? parsed.data.error.reason : undefined;
   handleError(
     {
       status: result.status,
       body: {
         error: {
-          ...parsed.data.error,
-          message: parsed.data.error.message.replace(
-            /socialkit/giu,
-            "Okou Social",
-          ),
+          ...(reason ? { reason } : {}),
+          code: publicSocialErrorCode(code),
+          message: publicSocialErrorMessage(message),
         },
       },
     },
@@ -64,7 +94,7 @@ export async function createSocialKitDownload(
     fetchOptions: { signal: AbortSignal.timeout(SOCIALKIT_API_TIMEOUT_MS) },
   });
   if (result.status === 202) {
-    return result.body;
+    return publicSocialDownloadResponse(result.body);
   }
   handlePublicSocialError(result, "Okou Social download failed to start");
 }
@@ -86,7 +116,7 @@ export async function getSocialKitDownload(
     },
   });
   if (result.status === 200) {
-    return result.body;
+    return publicSocialDownloadResponse(result.body);
   }
   handlePublicSocialError(result, "Okou Social download status failed");
 }
