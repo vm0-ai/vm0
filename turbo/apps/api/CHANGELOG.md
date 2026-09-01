@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.520.1](https://github.com/vm0-ai/vm0/compare/api-v1.520.0...api-v1.520.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **social:** make transcript errors truthful and provider-neutral ([#30732](https://github.com/vm0-ai/vm0/issues/30732)) ([f3c3e3d](https://github.com/vm0-ai/vm0/commit/f3c3e3daa7e4ccbb215a769fa5fb37489c325993))
+
+
+### Performance Improvements
+
+* **api:** attribute goal model-context latency ([#30773](https://github.com/vm0-ai/vm0/issues/30773)) ([d61595f](https://github.com/vm0-ai/vm0/commit/d61595f4cc014f96421f24f17b4e461bb5be1859))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.385.1
+    * @okouai/core bumped to 8.605.8
+    * @okouai/db bumped to 1.229.1
+
 ## [1.520.0](https://github.com/vm0-ai/vm0/compare/api-v1.519.4...api-v1.520.0) (2026-09-01)
 
 

@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.817.0](https://github.com/vm0-ai/vm0/compare/app-v0.816.0...app-v0.817.0) (2026-09-01)
+
+
+### Features
+
+* **platform:** log shared worker bridge messages ([#30749](https://github.com/vm0-ai/vm0/issues/30749)) ([e053b72](https://github.com/vm0-ai/vm0/commit/e053b7255641238380928a414d8276c0426d556c))
+
+
+### Bug Fixes
+
+* tidy emoji picker spacing onto one rail ([#30755](https://github.com/vm0-ai/vm0/issues/30755)) ([c349d96](https://github.com/vm0-ai/vm0/commit/c349d963726e900ef92a4500224372c13aeed355))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.385.1
+    * @okouai/core bumped to 8.605.8
+
 ## [0.816.0](https://github.com/vm0-ai/vm0/compare/app-v0.815.4...app-v0.816.0) (2026-09-01)
 
 
