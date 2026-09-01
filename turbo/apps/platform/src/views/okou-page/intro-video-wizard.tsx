@@ -769,33 +769,41 @@ function VisualBalanceOption({
 }
 
 /**
- * Preview geometry for each placement, as percentages of the 16:9 output frame.
+ * Preview geometry for one placement, as percentages of the 16:9 output frame.
  *
  * These mirror the composition rule the generator follows: the deck is
  * letterboxed inside its rectangle and the presenter cutout is scaled
  * proportionally to a fixed share of the frame width, with its bottom edge on
  * the deck's bottom edge. The cutout is never cropped to a box or a circle, so
- * only its width is pinned here and the height follows the artwork. A very tall
- * cutout therefore runs past the top of the preview and is clipped there, which
- * is what the rendered video does too.
+ * only its width is pinned here and the height follows the artwork. A very
+ * tall cutout therefore runs past the top of the preview and is clipped there,
+ * which is what the rendered video does too.
  */
-const PLACEMENT_PREVIEW: Record<
-  IntroVideoPlacement,
-  { readonly avatar: CSSProperties; readonly slide: CSSProperties }
-> = {
-  left: {
-    avatar: { bottom: "11.5%", left: "3%", width: "14%" },
-    slide: { height: "77%", left: "20%", top: "11.5%", width: "77%" },
-  },
-  overlay: {
-    avatar: { bottom: "6%", left: "75%", width: "14%" },
-    slide: { height: "88%", left: "6%", top: "6%", width: "88%" },
-  },
-  right: {
-    avatar: { bottom: "11.5%", left: "83%", width: "14%" },
-    slide: { height: "77%", left: "3%", top: "11.5%", width: "77%" },
-  },
-};
+function placementPreview(placement: IntroVideoPlacement): {
+  readonly avatar: CSSProperties;
+  readonly slide: CSSProperties;
+} {
+  switch (placement) {
+    case "overlay": {
+      return {
+        avatar: { bottom: "6%", left: "75%", width: "14%" },
+        slide: { height: "88%", left: "6%", top: "6%", width: "88%" },
+      };
+    }
+    case "right": {
+      return {
+        avatar: { bottom: "11.5%", left: "83%", width: "14%" },
+        slide: { height: "77%", left: "3%", top: "11.5%", width: "77%" },
+      };
+    }
+    default: {
+      return {
+        avatar: { bottom: "11.5%", left: "3%", width: "14%" },
+        slide: { height: "77%", left: "20%", top: "11.5%", width: "77%" },
+      };
+    }
+  }
+}
 
 function PlacementOption({
   cutoutUrl,
@@ -810,7 +818,7 @@ function PlacementOption({
   readonly selected: boolean;
   readonly onSelect: () => void;
 }) {
-  const preview = PLACEMENT_PREVIEW[placement];
+  const preview = placementPreview(placement);
   return (
     <button
       type="button"
