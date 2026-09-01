@@ -4,10 +4,18 @@ import { startPlatformEntrypoint } from "../lib/platform-entrypoint.ts";
 import { testContext } from "../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+const INSTATUS_WIDGET_HOSTNAME = "api.dashboard.instatus.com";
 
 function instatusScripts(): HTMLScriptElement[] {
   return Array.from(document.scripts).filter((script) => {
-    return script.src.includes("instatus.com");
+    const source = script.getAttribute("src");
+    if (!source) {
+      return false;
+    }
+    return (
+      new URL(source, window.location.href).hostname ===
+      INSTATUS_WIDGET_HOSTNAME
+    );
   });
 }
 
