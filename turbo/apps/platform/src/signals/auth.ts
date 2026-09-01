@@ -6,8 +6,6 @@ import {
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 import {
   clearPostHogUser,
-  markBootstrapClerkLoadCompleted,
-  markBootstrapClerkLoadStarted,
   setPostHogOrganization,
   setPostHogUser,
 } from "../lib/posthog.ts";
@@ -418,7 +416,6 @@ export const initClerkRuntime$ = command(
     signal.throwIfAborted();
     const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
     const satelliteConfig = resolveClerkSatelliteConfig();
-    markBootstrapClerkLoadStarted();
     set(
       internalClerkRuntime$,
       startClerkBrowserRuntime(
@@ -461,7 +458,6 @@ export const clerkInstance$ = computed(async (get) => {
 export const clerk$ = computed(async (get) => {
   const runtime = await get(clerkRuntime$);
   await runtime.loaded;
-  markBootstrapClerkLoadCompleted();
 
   return runtime.clerk;
 });

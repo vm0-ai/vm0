@@ -5,7 +5,6 @@ import {
   appSkeletonOverlayMounted$,
   appSkeletonVisible$,
   bootstrapSkeletonActive$,
-  firstAppContentVisibleEventRef$,
   unmountAppSkeletonOverlay$,
 } from "../signals/app-skeleton.ts";
 import { AppSkeleton } from "./okou-page/app-skeleton.tsx";
@@ -14,17 +13,7 @@ import { MinimalSidebarLayout } from "./okou-page/directed-shared.tsx";
 
 function PageSlot() {
   const page = useGet(page$);
-  const skeletonVisible = useGet(appSkeletonVisible$);
-  const firstContentVisibleEventRef = useSet(firstAppContentVisibleEventRef$);
-
-  return (
-    <>
-      {page ?? null}
-      {page !== undefined && !skeletonVisible ? (
-        <span ref={firstContentVisibleEventRef} hidden />
-      ) : null}
-    </>
-  );
+  return page ?? null;
 }
 
 function LayoutHost({ children }: { children: ReactNode }) {
