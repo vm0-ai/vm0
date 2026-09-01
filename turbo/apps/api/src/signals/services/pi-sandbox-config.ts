@@ -18,6 +18,7 @@ import {
   type PiOpenAICompatibleProvider,
 } from "@okouai/pi-agent-runtime";
 
+import type { BuiltInModelRuntimeRoute } from "./built-in-model-runtime-route.service";
 import { isWebChatTriggerSource } from "./chat-trigger-source.service";
 
 /**
@@ -90,6 +91,7 @@ export function shouldUsePiExecution(args: {
   readonly modelProviderType: string | null | undefined;
   readonly selectedModel: string | null | undefined;
   readonly codexServiceTier: "fast" | undefined;
+  readonly builtInModelRuntimeRoute: BuiltInModelRuntimeRoute | undefined;
   readonly triggerSource: TriggerSource;
   readonly featureSwitchContext: FeatureSwitchContext;
 }): boolean {
@@ -99,11 +101,16 @@ export function shouldUsePiExecution(args: {
   const isStandardTerra =
     args.selectedModel === "gpt-5.6-terra" &&
     args.codexServiceTier === undefined;
+  const isFastTerra =
+    args.selectedModel === "gpt-5.6-terra" &&
+    args.codexServiceTier === "fast" &&
+    args.builtInModelRuntimeRoute?.providerType === "openai-api-key" &&
+    isFeatureEnabled(FeatureSwitchKey.CodexFastMode, args.featureSwitchContext);
   return (
     args.chatThreadId !== undefined &&
     isWebChatTriggerSource(args.triggerSource) &&
     isBuiltInModelProviderType(args.modelProviderType) &&
-    (isExistingPiModel || isStandardTerra) &&
+    (isExistingPiModel || isStandardTerra || isFastTerra) &&
     isFeatureEnabled(FeatureSwitchKey.PiLoop, args.featureSwitchContext)
   );
 }
