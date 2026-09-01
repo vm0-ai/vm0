@@ -27,10 +27,10 @@ import {
   type SharedDatabaseConnectionBinding,
 } from "./worker-host-context.ts";
 import {
+  getComputedStoreMessage$,
   heartbeatStoreMessage$,
-  indicatorsStoreMessage$,
   queryStoreMessage$,
-  reloadIndicatorsStoreMessage$,
+  reloadComputedStoreMessage$,
 } from "./worker-signals.ts";
 
 type RequestMessage = Extract<
@@ -206,17 +206,17 @@ export class SharedDatabaseMessagePortServer {
           signal,
         );
       }
-      case "get-indicators": {
+      case "get-computed": {
         return store.set(
-          indicatorsStoreMessage$,
+          getComputedStoreMessage$,
           this.connectionId,
           message,
           signal,
         );
       }
-      case "reload-indicators": {
+      case "reload-computed": {
         return store.set(
-          reloadIndicatorsStoreMessage$,
+          reloadComputedStoreMessage$,
           this.connectionId,
           message,
         );
@@ -397,7 +397,7 @@ export class SharedDatabaseMessagePortServer {
         }
         return;
       }
-      if (message.type === "reload-indicators") {
+      if (message.type === "reload-computed") {
         this.routeStoreMessage(message, credentialConnectionSignal);
         return;
       }

@@ -7,8 +7,12 @@ import type {
   SharedDatabaseBridge,
   SharedDatabaseHeartbeat,
 } from "../bridge.ts";
+import {
+  parseComputedValue,
+  type ComputedKey,
+  type ComputedValue,
+} from "../computed-key.ts";
 import type {
-  ChatThreadIndicators,
   SharedDatabaseDataKey,
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
@@ -23,11 +27,17 @@ class FakeBridge implements SharedDatabaseBridge {
   readonly queryErrors: Error[] = [];
   queryCalls = 0;
 
-  indicators(_signal: AbortSignal): Promise<ChatThreadIndicators> {
-    return Promise.resolve({ agents: {}, threads: {} });
+  getComputed<TKey extends ComputedKey>(
+    computedKey: TKey,
+  ): Promise<ComputedValue<TKey>> {
+    const value =
+      computedKey === "chat-thread-indicators"
+        ? { agents: {}, threads: {} }
+        : [];
+    return Promise.resolve(parseComputedValue(computedKey, value));
   }
 
-  reloadIndicators(): void {}
+  reloadComputed(_computedKey: ComputedKey): void {}
 
   heartbeat(
     heartbeat: SharedDatabaseHeartbeat,

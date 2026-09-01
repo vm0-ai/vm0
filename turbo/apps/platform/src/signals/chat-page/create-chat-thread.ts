@@ -182,11 +182,8 @@ import {
   previousRunGroupVisualWindowStartIndex,
   runGroupVisualWindowStartIndex,
 } from "./run-group-folding.ts";
-import {
-  computerUseHosts$,
-  selectedComputerUseHostId,
-  subscribeComputerUseHostsChanged$,
-} from "../okou-page/computer-use-hosts.ts";
+import { selectedComputerUseHostId } from "../okou-page/computer-use-hosts.ts";
+import { computerUseHostsFromWorker$ } from "../shared-database.ts";
 import { isCodexFastModeAvailableForSelection } from "../okou-page/model-default-selection.ts";
 import { personalModelProvider$ } from "../okou-page/model-first-personal-oauth.ts";
 import { openClaudeCodeDeviceAuthDialogPersonal$ } from "../okou-page/settings/claude-code-device-auth.ts";
@@ -3066,7 +3063,6 @@ function createRunTracking({
     );
 
     await Promise.all([
-      set(subscribeComputerUseHostsChanged$, signal),
       set(subscribeBrowserSessions$, signal),
       set(
         subscribeChatThreadRealtime$,
@@ -4112,7 +4108,7 @@ function createThreadSubmitMessageSignal(
     ): Promise<boolean> => {
       const explicit = get(computerUseHostSelection.computerUseHostIdExplicit$);
       const storedHostId = get(computerUseHostSelection.computerUseHostId$);
-      const hosts = await get(computerUseHosts$);
+      const hosts = await get(computerUseHostsFromWorker$);
       signal.throwIfAborted();
       const computerUseHostId = selectedComputerUseHostId(hosts, storedHostId);
       const cloudBrowserEnabled = get(

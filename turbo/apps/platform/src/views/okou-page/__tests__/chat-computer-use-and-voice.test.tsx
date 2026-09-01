@@ -658,6 +658,7 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
+      sharedWorkerTestTransport: "message-port",
     });
 
     await waitFor(() => {

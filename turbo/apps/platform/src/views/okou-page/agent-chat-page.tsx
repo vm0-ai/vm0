@@ -27,7 +27,6 @@ import { StartCards } from "./start-cards.tsx";
 import { GrowthEntryHeader } from "./growth-entry.tsx";
 import { chatPageTaglineIndex$ } from "../../signals/okou-page/chat-page.ts";
 import { agentChatComposerSignals$ } from "../../signals/okou-page/agent-composer-signals.ts";
-import { subscribeComputerUseHostsChangedRef$ } from "../../signals/okou-page/computer-use-hosts.ts";
 import { AgentAvatarImg } from "./sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { assistantName$ } from "../../signals/branding.ts";
@@ -336,9 +335,6 @@ export function AgentChatPage() {
   );
 
   const pageSignal = useGet(pageSignal$);
-  const subscribeComputerUseHostsChangedRef = useSet(
-    subscribeComputerUseHostsChangedRef$,
-  );
   const userFirstName = useLastResolved(user$)?.firstName ?? null;
 
   const composerSignals = useGet(agentChatComposerSignals$);
@@ -358,7 +354,6 @@ export function AgentChatPage() {
 
   return (
     <div className="relative flex flex-1 flex-col min-h-0">
-      <span ref={subscribeComputerUseHostsChangedRef} hidden />
       <GrowthEntryHeader />
 
       <main className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6">

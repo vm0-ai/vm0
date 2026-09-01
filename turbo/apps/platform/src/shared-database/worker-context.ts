@@ -5,6 +5,7 @@ import { logger } from "../signals/log.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
 import { createDeferredPromise, withCleanup } from "../signals/utils.ts";
 import type { SharedDatabasePortLike } from "./bridge.ts";
+import type { ComputedKey } from "./computed-key.ts";
 import type { SharedDatabaseIdentity } from "./data-key.ts";
 import type {
   SharedDatabaseConnectionStatus,
@@ -20,9 +21,10 @@ export type WorkerBroadcastMessage = Extract<
   {
     readonly type:
       | "authentication-required"
-      | "indicators-invalidated"
+      | "chat-thread-read-cursor-updated"
       | "invalidate"
       | "reconnect"
+      | "reload-computed"
       | "reload-required"
       | "status";
   }
@@ -275,10 +277,19 @@ export const requireConnectionSignal$ = command(
   },
 );
 
-export const invalidateConnectionIndicators$ = command(
+export const reloadComputedForConnections$ = command(
+  ({ set }, computedKey: ComputedKey): void => {
+    set(broadcastSharedDatabaseWorkerMessage$, {
+      type: "reload-computed",
+      computedKey,
+    });
+  },
+);
+
+export const forwardChatThreadReadCursorUpdated$ = command(
   ({ set }, payload: unknown): void => {
     set(broadcastSharedDatabaseWorkerMessage$, {
-      type: "indicators-invalidated",
+      type: "chat-thread-read-cursor-updated",
       payload,
     });
   },
