@@ -232,8 +232,9 @@ export function parseAvatarVideoOptions(
   }
   const inputType = parsed.data.script ? "script" : "audio";
   const screenStyle = parsed.data.screenStyle ?? 1;
-  // JoggAI only emits the alpha-channel WebM when captions are off, so a
-  // transparent request defaults to no captions instead of the usual default.
+  // JoggAI documents that the alpha-channel WebM is only produced with captions
+  // off, so a transparent request defaults to no captions. An explicit caption
+  // choice still wins; the provider owns the rule.
   const captionDefault = screenStyle !== AVATAR_VIDEO_TRANSPARENT_SCREEN_STYLE;
   return {
     avatarId: parsed.data.avatarId,
