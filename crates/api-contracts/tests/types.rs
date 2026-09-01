@@ -5,7 +5,8 @@ use api_contracts::generated::types::{
         runs::{
             CodexRuntimeConfig, PiLaunchConfig, PiLaunchConfigApiFirstTurn,
             PiLaunchConfigApiFirstTurnBaseSession, PiLaunchConfigApiFirstTurnOwnershipTransfer,
-            PiModelConfig, PiModelConfigApiKeyEnv, PiModelConfigProvider, model_provider_failures,
+            PiModelConfig, PiModelConfigApiKeyEnv, PiModelConfigProvider, PiModelConfigServiceTier,
+            model_provider_failures,
         },
         storage as runner_storage,
     },
@@ -152,6 +153,7 @@ fn generated_pi_runtime_configs_round_trip_full_wire_shapes() {
         model: "deepseek-v4-flash".to_string(),
         api: None,
         thinking_level: None,
+        service_tier: None,
         api_key_env: PiModelConfigApiKeyEnv::OPENAIAPIKEY,
         credential_secret_name: "DEEPSEEK_API_KEY".to_string(),
     };
@@ -196,6 +198,27 @@ fn generated_pi_runtime_configs_round_trip_full_wire_shapes() {
         serde_json::from_value::<PiModelConfig>(model_value).unwrap(),
         model
     );
+
+    let priority_model_value = json!({
+        "provider": "openai",
+        "baseUrl": "https://api.openai.com/v1",
+        "model": "gpt-5.6-terra",
+        "api": "openai-responses",
+        "thinkingLevel": "low",
+        "serviceTier": "priority",
+        "apiKeyEnv": "OPENAI_API_KEY",
+        "credentialSecretName": "OPENAI_API_KEY",
+    });
+    let priority_model: PiModelConfig =
+        serde_json::from_value(priority_model_value.clone()).unwrap();
+    assert_eq!(
+        priority_model.service_tier,
+        Some(PiModelConfigServiceTier::Priority)
+    );
+    assert_eq!(
+        serde_json::to_value(priority_model).unwrap(),
+        priority_model_value
+    );
 }
 
 #[test]
@@ -227,6 +250,7 @@ fn generated_pi_model_config_rejects_unknown_enums() {
     for (field, value) in [
         ("provider", "future-provider"),
         ("apiKeyEnv", "FUTURE_API_KEY"),
+        ("serviceTier", "fast"),
     ] {
         let mut config = json!({
             "provider": "deepseek",

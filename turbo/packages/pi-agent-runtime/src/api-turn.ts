@@ -109,6 +109,9 @@ export async function runPiApiFirstTurn(
       streamOptions: {
         apiKey: args.model.apiKey,
         signal,
+        ...(args.model.serviceTier === undefined
+          ? {}
+          : { serviceTier: args.model.serviceTier }),
       },
       ownership: args.ownership,
       providerRequestBoundary: args.providerRequestBoundary,

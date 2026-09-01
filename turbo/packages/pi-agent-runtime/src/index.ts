@@ -26,6 +26,7 @@ export {
 export type {
   PiAgentApi,
   PiAgentModelConfig,
+  PiAgentServiceTier,
   PiAgentThinkingLevel,
   PiOpenAICompatibleProvider,
 } from "./types";

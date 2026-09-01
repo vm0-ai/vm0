@@ -8,7 +8,6 @@ import type {
   Message,
   Model,
   ModelThinkingLevel,
-  SimpleStreamOptions,
   StreamFunction,
   Tool,
 } from "@earendil-works/pi-ai";
@@ -27,6 +26,7 @@ import {
 
 import { UnsupportedPiSessionVersionError } from "./errors";
 import type { PiApiFirstTurnOwnership } from "./provider-ownership";
+import type { PiAgentStreamOptions } from "./stream-options";
 
 interface CreateMemoryPiSessionOptions {
   readonly cwd: string;
@@ -38,13 +38,13 @@ interface CreateMemoryPiSessionOptions {
 interface RunPiFirstModelTurnOptions<TApi extends Api = Api> {
   readonly model: Model<TApi>;
   readonly session: MemoryPiSession;
-  readonly stream: StreamFunction<TApi, SimpleStreamOptions>;
+  readonly stream: StreamFunction<TApi, PiAgentStreamOptions>;
   readonly systemPrompt: string;
   readonly tools: readonly Tool[];
   readonly prompt: string;
   readonly thinkingLevel?: ModelThinkingLevel;
   readonly timestamp?: number;
-  readonly streamOptions?: Omit<SimpleStreamOptions, "sessionId">;
+  readonly streamOptions?: Omit<PiAgentStreamOptions, "sessionId">;
   readonly ownership: PiApiFirstTurnOwnership;
   readonly providerRequestBoundary?: (
     markProviderRequestMayHaveStarted: () => void,
@@ -273,7 +273,7 @@ export class MemoryPiSession {
 
 function piReasoningLevel(
   context: SessionContext,
-): SimpleStreamOptions["reasoning"] {
+): PiAgentStreamOptions["reasoning"] {
   switch (context.thinkingLevel) {
     case "minimal":
     case "low":

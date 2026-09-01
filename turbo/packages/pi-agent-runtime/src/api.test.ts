@@ -120,20 +120,21 @@ describe("Pi API facade", () => {
     });
   });
 
-  it("uses Terra Responses with low thinking for an API-first turn", async () => {
-    let providerRequest:
-      | { readonly url: string | undefined; readonly body: unknown }
-      | undefined;
+  it("applies Terra request policy to API-first turns", async () => {
+    const providerRequests: Array<{
+      readonly url: string | undefined;
+      readonly body: unknown;
+    }> = [];
     const server = createServer((request, response) => {
       void (async () => {
         const chunks: Buffer[] = [];
         for await (const chunk of request) {
           chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
         }
-        providerRequest = {
+        providerRequests.push({
           url: request.url,
           body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown,
-        };
+        });
         responsesTextSse(response, "Terra API-first answer");
       })().catch((error: unknown) => {
         response.destroy(
@@ -154,37 +155,58 @@ describe("Pi API facade", () => {
     }
 
     try {
-      const result = await runPiApiFirstTurn({
-        cwd: "/home/user/workspace",
-        agentDir: "/home/user/.pi/agent",
-        sessionId: SESSION_ID,
-        prompt: "answer through Terra",
-        appendSystemPrompt: null,
-        model: {
-          provider: "openai",
-          baseUrl: `http://127.0.0.1:${address.port}/v1`,
-          apiKey: "test-key",
-          model: "gpt-5.6-terra",
-          api: "openai-responses",
-          thinkingLevel: "low",
-        },
-        resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
-        ownership: createPiApiFirstTurnOwnership(),
-      });
+      const runTurn = async (serviceTier?: "priority") => {
+        return runPiApiFirstTurn({
+          cwd: "/home/user/workspace",
+          agentDir: "/home/user/.pi/agent",
+          sessionId: SESSION_ID,
+          prompt: "answer through Terra",
+          appendSystemPrompt: null,
+          model: {
+            provider: "openai",
+            baseUrl: `http://127.0.0.1:${address.port}/v1`,
+            apiKey: "test-key",
+            model: "gpt-5.6-terra",
+            api: "openai-responses",
+            thinkingLevel: "low",
+            ...(serviceTier ? { serviceTier } : {}),
+          },
+          resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
+          ownership: createPiApiFirstTurnOwnership(),
+        });
+      };
+      const standardResult = await runTurn();
+      const priorityResult = await runTurn("priority");
 
-      expect(providerRequest).toMatchObject({
+      expect(providerRequests).toHaveLength(2);
+      expect(providerRequests[0]).toMatchObject({
         url: "/v1/responses",
         body: {
           model: "gpt-5.6-terra",
           reasoning: { effort: "low" },
         },
       });
-      expect(result.assistantMessage.content).toStrictEqual([
+      expect(providerRequests[0]?.body).not.toHaveProperty("service_tier");
+      expect(providerRequests[1]).toMatchObject({
+        url: "/v1/responses",
+        body: {
+          model: "gpt-5.6-terra",
+          reasoning: { effort: "low" },
+          service_tier: "priority",
+        },
+      });
+      expect(standardResult.assistantMessage.content).toStrictEqual([
         { type: "text", text: "Terra API-first answer" },
       ]);
+      expect(priorityResult.assistantMessage.content).toStrictEqual([
+        { type: "text", text: "Terra API-first answer" },
+      ]);
+      expect(priorityResult.sessionJsonl).not.toContain("serviceTier");
+      expect(priorityResult.sessionJsonl).not.toContain("service_tier");
       expect(
-        MemoryPiSession.fromJsonl(result.sessionJsonl).buildSessionContext()
-          .thinkingLevel,
+        MemoryPiSession.fromJsonl(
+          priorityResult.sessionJsonl,
+        ).buildSessionContext().thinkingLevel,
       ).toBe("low");
     } finally {
       await new Promise<void>((resolve, reject) => {

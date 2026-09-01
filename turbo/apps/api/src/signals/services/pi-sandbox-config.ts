@@ -34,12 +34,19 @@ function piRuntimeContract(args: {
   readonly providerType: string;
   readonly selectedModel: string;
   readonly api: NonNullable<PiModelConfig["api"]>;
-}): Pick<PiModelConfig, "api" | "thinkingLevel"> {
+  readonly codexServiceTier: "fast" | undefined;
+}): Pick<PiModelConfig, "api" | "thinkingLevel" | "serviceTier"> {
   if (
     isBuiltInModelProviderType(args.providerType) &&
     args.selectedModel === "gpt-5.6-terra"
   ) {
-    return { api: args.api, thinkingLevel: "low" };
+    return {
+      api: args.api,
+      thinkingLevel: "low",
+      ...(args.codexServiceTier === "fast"
+        ? { serviceTier: "priority" as const }
+        : {}),
+    };
   }
   return {};
 }
@@ -109,6 +116,7 @@ export function resolvePiSandboxModelConfig(
     readonly selectedModel: string | null;
     readonly inlineFirewall?: boolean;
   } | null,
+  codexServiceTier: "fast" | undefined = undefined,
 ): PiModelConfig | null {
   if (!provider || !provider.selectedModel || provider.inlineFirewall) {
     return null;
@@ -156,6 +164,7 @@ export function resolvePiSandboxModelConfig(
     providerType: provider.type,
     selectedModel: provider.selectedModel,
     api,
+    codexServiceTier,
   });
   const config = {
     provider: providerId,

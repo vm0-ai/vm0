@@ -31,6 +31,8 @@ export const PI_AGENT_THINKING_LEVELS = [
 
 export type PiAgentThinkingLevel = (typeof PI_AGENT_THINKING_LEVELS)[number];
 
+export type PiAgentServiceTier = "priority";
+
 /** Model endpoint and credential resolved inside the Pi sandbox process. */
 export interface PiAgentModelConfig {
   readonly provider: PiOpenAICompatibleProvider;
@@ -41,4 +43,9 @@ export interface PiAgentModelConfig {
   readonly api?: PiAgentApi;
   /** Omitted by legacy launch payloads, which retain Pi's medium default. */
   readonly thinkingLevel?: PiAgentThinkingLevel;
+  /**
+   * Omitted by legacy and standard launches. Applied to every request in this
+   * run.
+   */
+  readonly serviceTier?: PiAgentServiceTier;
 }
