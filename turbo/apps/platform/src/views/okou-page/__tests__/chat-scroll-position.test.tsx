@@ -690,7 +690,7 @@ describe("chat scroll position", () => {
   it("opens an event hash instead of following the thread tail", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000817";
     const events = simpleUserEvents(threadId, "deep-link", 20);
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Event deep link",
       chatEvents: events,
@@ -747,7 +747,7 @@ describe("chat scroll position", () => {
     "ignores a $label event hash and follows the thread tail",
     async ({ hash, threadId }) => {
       const events = simpleUserEvents(threadId, "invalid-deep-link", 20);
-      mockChatLifecycle(context, {
+      mockChatLifecycleWithoutBrowserSession({
         threadId,
         threadTitle: "Invalid event deep link",
         chatEvents: events,
@@ -796,7 +796,7 @@ describe("chat scroll position", () => {
     const prefix = 'quoted-"event';
     const events = simpleUserEvents(threadId, prefix, 20);
     const targetEventId = `${prefix}-2`;
-    mockChatLifecycle(context, {
+    mockChatLifecycleWithoutBrowserSession({
       threadId,
       threadTitle: "Encoded event deep link",
       chatEvents: events,
