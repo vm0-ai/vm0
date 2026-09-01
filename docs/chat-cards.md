@@ -291,7 +291,8 @@ server-derived agent ID, and a callback bound to the current thread. These URL
 values are untrusted claims. Before reading the account, the card resolves the
 current agent's connector authorization and rejects an unauthorized target.
 It then reads the exact account from the API and uses only the live account
-metadata for presentation; a missing, cross-owner, wrong-target, or
+metadata plus the current catalog or custom-connector metadata for presentation,
+including the connector's own icon. A missing, cross-owner, wrong-target, or
 unauthorized account renders an inert unavailable card.
 
 Confirmation writes the exact account selection to the current thread before

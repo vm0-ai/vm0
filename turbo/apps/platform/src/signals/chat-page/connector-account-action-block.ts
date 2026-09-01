@@ -6,15 +6,18 @@ import {
   type ConnectorAccountSelection,
   type ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
+import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/connector-catalog";
 import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { command, computed, state, type Command, type Computed } from "ccstate";
 
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
+import { connectorCatalogStatusBySlug$ } from "../external/connectors.ts";
 import type {
   ComposerConnectorAuthorizationState,
   ComposerConnectorSignals,
 } from "../okou-page/connectors.ts";
+import { customConnectors$ } from "../okou-page/settings/custom-connectors.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import { withCleanup } from "../utils.ts";
 import {
@@ -40,11 +43,23 @@ export interface ConnectorAccountActionDescriptor {
   readonly threadId: string;
 }
 
+type ConnectorAccountActionConnector =
+  | {
+      readonly kind: "builtin";
+      readonly icon: PublicConnectorCatalogIcon | undefined;
+    }
+  | {
+      readonly kind: "custom";
+      readonly id: string;
+      readonly displayName: string | null;
+    };
+
 export type ConnectorAccountActionStatus =
   | { readonly kind: "unavailable" }
   | {
       readonly kind: "ready";
       readonly account: ConnectorAccountConnection;
+      readonly connector: ConnectorAccountActionConnector;
       readonly selected: boolean;
     };
 
@@ -208,10 +223,32 @@ function createConnectorAccountActionSignals(
       if (result.status === 404) {
         return { kind: "unavailable" };
       }
-      const preference = await get(connector.accounts.preferenceState$);
+      const preferencePromise = get(connector.accounts.preferenceState$);
+      const target = descriptor.selection.target;
+      let presentation: ConnectorAccountActionConnector;
+      if (target.kind === "builtin") {
+        presentation = {
+          kind: "builtin",
+          icon: (await get(connectorCatalogStatusBySlug$)).get(
+            target.connectorSlug,
+          )?.icon,
+        };
+      } else {
+        const customConnectorId = target.customConnectorId;
+        presentation = {
+          kind: "custom",
+          id: customConnectorId,
+          displayName:
+            (await get(customConnectors$)).find((candidate) => {
+              return candidate.id === customConnectorId;
+            })?.displayName ?? null,
+        };
+      }
+      const preference = await preferencePromise;
       return {
         kind: "ready",
         account: result.body,
+        connector: presentation,
         selected: selectionIsCurrent(
           preference.selections,
           descriptor.selection,

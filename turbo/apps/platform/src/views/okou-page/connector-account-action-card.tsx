@@ -6,7 +6,7 @@ import {
 import { Button } from "@okouai/ui";
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { AlertCircle, Check, CircleUserRound, Loader2 } from "lucide-react";
+import { AlertCircle, Check, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type {
@@ -15,6 +15,8 @@ import type {
 } from "../../signals/chat-page/connector-account-action-block.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import { CustomConnectorIcon } from "./components/settings/custom-connector-icon.tsx";
 
 export function ConnectorAccountActionCard({
   signals,
@@ -151,6 +153,16 @@ function ReadyConnectorAccountActionCard({
     return $.chat.connectorAccountSwitch.customConnector;
   });
   const target = accountTargetLabel(status.account, customConnectorLabel);
+  const connectorIcon =
+    status.connector.kind === "builtin" ? (
+      <ConnectorIcon icon={status.connector.icon} size={22} />
+    ) : (
+      <CustomConnectorIcon
+        id={status.connector.id}
+        displayName={status.connector.displayName ?? customConnectorLabel}
+        size={22}
+      />
+    );
 
   return (
     <div
@@ -159,7 +171,7 @@ function ReadyConnectorAccountActionCard({
     >
       <div className="flex items-start gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40 text-muted-foreground">
-          <CircleUserRound size={22} />
+          {connectorIcon}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 truncate text-[0.9375rem] font-medium text-foreground">

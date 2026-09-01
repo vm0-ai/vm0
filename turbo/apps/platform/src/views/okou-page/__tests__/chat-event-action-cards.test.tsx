@@ -537,6 +537,14 @@ describe("chat event action cards", () => {
       expect(card).toHaveTextContent("Switch to Work?");
       expect(card).toHaveTextContent("github · work@example.com");
       expect(card).not.toHaveTextContent("The current run will not change.");
+      const icon = card.querySelector("img");
+      if (!(icon instanceof HTMLImageElement)) {
+        throw new Error("GitHub connector icon not found");
+      }
+      expect(icon).toHaveAttribute(
+        "src",
+        "https://icons.example.test/github.svg",
+      );
     }
 
     const firstCard = cards[0];
@@ -587,6 +595,17 @@ describe("chat event action cards", () => {
     let updateCount = 0;
     const sentPrompts: string[] = [];
 
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          customConnector({
+            id: customConnectorId,
+            slug: "_acme-search",
+            displayName: "Acme Search",
+          }),
+        ],
+      });
+    });
     context.mocks.api(
       connectorAccountsContract.connection,
       ({ query, respond }) => {
@@ -642,6 +661,8 @@ describe("chat event action cards", () => {
     expect(card).toHaveTextContent(
       `Custom connector · ${customConnectorId.slice(0, 8)} · work@example.com`,
     );
+    const icon = card.querySelector('[aria-label="Acme Search"]');
+    expect(icon).toHaveTextContent("A");
     expect(queryAllByRoleFast("button", card)).toStrictEqual([]);
     expect(updateCount).toBe(0);
     expect(sentPrompts).toStrictEqual([]);
