@@ -152,6 +152,85 @@ describe("prompt query parameter injection", () => {
     expect(fileUrlRequests).toBe(2);
   });
 
+  it("reports a desktop recording owned by another account as unavailable", async () => {
+    // The file API answers 404 for an artifact owned by a different user, which
+    // is what happens when the desktop was signed in as another account.
+    context.mocks.http.get("/api/web/file-url", () => {
+      return HttpResponse.json(
+        { error: { code: "NOT_FOUND", message: "File not found" } },
+        { status: 404 },
+      );
+    });
+    const params = new URLSearchParams({
+      "intro-video-recording": "video-upload-id",
+      "intro-video-recording-name": "demo.mp4",
+      "intro-video-recording-size": "1024",
+      "intro-video-clicks": "events-upload-id",
+      "intro-video-clicks-name": "demo.clicks.json",
+      "intro-video-clicks-size": "512",
+      "intro-video-user": "another-user-456",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/?${params.toString()}`,
+      featureSwitches: {
+        [FeatureSwitchKey.IntroVideo]: true,
+        [FeatureSwitchKey.DesktopScreenRecording]: true,
+      },
+    });
+
+    await expect(
+      screen.findByText(
+        "2 attachments are no longer available. Upload them again to send.",
+      ),
+    ).resolves.toBeInTheDocument();
+    const textarea = screen.getByPlaceholderText(
+      PLACEHOLDER,
+    ) as HTMLTextAreaElement;
+    const draft = context.store.get(talkDraft$);
+
+    expect(textarea).not.toHaveTextContent(
+      "Create a polished intro video from this desktop screen recording.",
+    );
+    expect(context.store.get(draft.attachments$)).toHaveLength(0);
+    expect(context.store.get(draft.agentInstructions$)).toBeNull();
+    expect(
+      context.store.get(searchParams$).has("intro-video-recording"),
+    ).toBeFalsy();
+  });
+
+  it("ignores a desktop recording handoff that omits the file metadata", async () => {
+    const params = new URLSearchParams({
+      "intro-video-recording": "video-upload-id",
+      "intro-video-recording-name": "demo.mp4",
+      "intro-video-clicks": "events-upload-id",
+      "intro-video-clicks-name": "demo.clicks.json",
+      "intro-video-clicks-size": "512",
+      "intro-video-user": "test-user-123",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/c0000000-0000-4000-a000-000000000001/chat?${params.toString()}`,
+      featureSwitches: {
+        [FeatureSwitchKey.IntroVideo]: true,
+        [FeatureSwitchKey.DesktopScreenRecording]: true,
+      },
+    });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    const draft = context.store.get(talkDraft$);
+
+    expect(textarea).not.toHaveTextContent(
+      "Create a polished intro video from this desktop screen recording.",
+    );
+    expect(context.store.get(draft.attachments$)).toHaveLength(0);
+    expect(context.store.get(draft.agentInstructions$)).toBeNull();
+  });
+
   it.each([
     {
       disabledSwitch: "intro video",

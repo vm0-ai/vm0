@@ -70,6 +70,12 @@ function frameRate(value: string): number | null {
   return result > 0 ? result : null;
 }
 
+/**
+ * `ffprobe` genuinely omits `format.duration` for some containers and reports
+ * an unusable frame rate for variable-rate captures, so those two fields fall
+ * back to the values the recording sidecar or plan declares. Width and height
+ * always come from the probe, because a mismatch there means the wrong file.
+ */
 function probeVideo(path: string, fallback: VideoSource): VideoSource {
   const raw = execFileSync(
     "ffprobe",

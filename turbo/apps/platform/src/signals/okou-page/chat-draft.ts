@@ -440,7 +440,7 @@ export interface DraftSignals {
    */
   restoreAttachments$: Command<
     Promise<boolean>,
-    [PersistedAttachment[], AbortSignal]
+    [RestorableAttachment[], AbortSignal]
   >;
   removeAttachment$: Command<void, [ChatAttachment]>;
   dragOver$: Computed<boolean>;
@@ -468,6 +468,19 @@ export interface DraftInputSyncTarget {
 }
 
 /**
+ * Attachment metadata a caller can restore into a draft.
+ *
+ * `url` is optional because a caller can legitimately hold only an artifact id:
+ * the desktop recording handoff arrives as upload ids in a URL and has no
+ * stored URL to pass. `fileInfo$` signs one against the owning API in that
+ * case. A caller that does carry the persisted URL keeps it, so re-saving the
+ * draft persists the canonical artifact URL instead of a short-lived signed one.
+ */
+export type RestorableAttachment = Omit<PersistedAttachment, "url"> & {
+  readonly url?: string;
+};
+
+/**
  * Reconstructs a ChatAttachment from persisted attachment metadata.
  *
  * The persisted id is an externally managed reference: the artifact is stored
@@ -478,7 +491,7 @@ export interface DraftInputSyncTarget {
  *
  */
 export function createRestoredAttachment(
-  persisted: PersistedAttachment,
+  persisted: RestorableAttachment,
 ): ChatAttachment {
   const internalAnnotation$ = state<ImageAnnotation | null>(
     persisted.annotation ?? null,
@@ -491,11 +504,6 @@ export function createRestoredAttachment(
       set(internalAnnotation$, annotation);
     },
   );
-  const persistedInfo: FileInfo = {
-    id: persisted.id,
-    url: persisted.url,
-    contentType: persisted.contentType,
-  };
   const fileInfo$ = computed(async (get): Promise<FileInfo | null> => {
     const signal = get(rootSignal$);
     const client = get(apiClient$)(webFilesContract);
@@ -509,7 +517,11 @@ export function createRestoredAttachment(
     );
     return resolved.status === 404
       ? null
-      : { ...persistedInfo, url: persistedInfo.url || resolved.body.url };
+      : {
+          id: persisted.id,
+          url: persisted.url ?? resolved.body.url,
+          contentType: persisted.contentType,
+        };
   });
 
   const cancel$ = command(() => {
@@ -820,7 +832,7 @@ export function createDraftSignals(): DraftSignals {
   const restoreAttachments$ = command(
     async (
       { set },
-      persisted: PersistedAttachment[],
+      persisted: RestorableAttachment[],
       signal: AbortSignal,
     ): Promise<boolean> => {
       if (persisted.length === 0) {

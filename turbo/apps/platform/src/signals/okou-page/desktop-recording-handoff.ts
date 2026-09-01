@@ -1,9 +1,7 @@
-import type { PersistedAttachment } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { command } from "ccstate";
-import { authenticatedIdentity$ } from "../auth.ts";
 import { updateSearchParams$ } from "../route.ts";
-import type { DraftSignals } from "./chat-draft.ts";
+import type { DraftSignals, RestorableAttachment } from "./chat-draft.ts";
 import { INTRO_VIDEO_AGENT_INSTRUCTIONS } from "./intro-video-agent-instructions.ts";
 
 const RECORDING_ID_PARAM = "intro-video-recording";
@@ -25,51 +23,60 @@ export const desktopRecordingHandoffParamNames = [
 ] as const;
 
 interface DesktopRecordingHandoff {
-  readonly userId: string;
-  readonly recording: PersistedAttachment;
-  readonly clicks: PersistedAttachment;
+  readonly recording: RestorableAttachment;
+  readonly clicks: RestorableAttachment;
 }
 
-function filename(value: string | null, fallback: string): string {
+/**
+ * The desktop sends the on-disk name, so strip any directory part before it
+ * reaches the composer. A value that carries no basename is malformed input and
+ * makes the whole handoff unusable rather than getting a made-up name.
+ */
+function filename(value: string | null): string | null {
   const basename = value?.split(/[/\\]/u).at(-1)?.trim();
-  return basename || fallback;
+  return basename || null;
 }
 
-function fileSize(value: string | null): number {
+function fileSize(value: string | null): number | null {
+  if (!value) {
+    return null;
+  }
   const parsed = Number(value);
-  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function handoffFromParams(
   params: URLSearchParams,
 ): DesktopRecordingHandoff | null {
   const recordingId = params.get(RECORDING_ID_PARAM);
+  const recordingName = filename(params.get(RECORDING_NAME_PARAM));
+  const recordingSize = fileSize(params.get(RECORDING_SIZE_PARAM));
   const clicksId = params.get(CLICKS_ID_PARAM);
-  const userId = params.get(USER_PARAM);
-  if (!recordingId || !clicksId || !userId) {
+  const clicksName = filename(params.get(CLICKS_NAME_PARAM));
+  const clicksSize = fileSize(params.get(CLICKS_SIZE_PARAM));
+  if (
+    !recordingId ||
+    !recordingName ||
+    recordingSize === null ||
+    !clicksId ||
+    !clicksName ||
+    clicksSize === null ||
+    !params.get(USER_PARAM)
+  ) {
     return null;
   }
   return {
-    userId,
     recording: {
       id: recordingId,
-      url: "",
-      filename: filename(
-        params.get(RECORDING_NAME_PARAM),
-        "Desktop screen recording.mp4",
-      ),
+      filename: recordingName,
       contentType: "video/mp4",
-      size: fileSize(params.get(RECORDING_SIZE_PARAM)),
+      size: recordingSize,
     },
     clicks: {
       id: clicksId,
-      url: "",
-      filename: filename(
-        params.get(CLICKS_NAME_PARAM),
-        "Desktop screen recording.clicks.json",
-      ),
+      filename: clicksName,
       contentType: "application/json",
-      size: fileSize(params.get(CLICKS_SIZE_PARAM)),
+      size: clicksSize,
     },
   };
 }
@@ -97,7 +104,7 @@ function withoutHandoffParams(params: URLSearchParams): URLSearchParams {
 
 export const applyDesktopRecordingHandoff$ = command(
   async (
-    { get, set },
+    { set },
     draft: DraftSignals,
     params: URLSearchParams,
     signal: AbortSignal,
@@ -107,15 +114,11 @@ export const applyDesktopRecordingHandoff$ = command(
       return false;
     }
 
-    const identity = await get(authenticatedIdentity$);
-    signal.throwIfAborted();
-    if (identity.userId !== handoff.userId) {
-      throw new Error(
-        "The desktop recording belongs to a different signed-in account",
-      );
-    }
-
     set(draft.clear$);
+    // The uploads belong to the account the desktop was signed in as. That
+    // ownership is enforced by the file API, which answers 404 for another
+    // account's artifact, so restoring reports the mismatch as an unavailable
+    // attachment instead of a second client-side identity check.
     const removedUnavailable = await set(
       draft.restoreAttachments$,
       [handoff.recording, handoff.clicks],
