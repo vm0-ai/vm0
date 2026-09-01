@@ -136,7 +136,9 @@ function isExactRetiredMorningBriefRejection(
     target.contextType === RETIRED_MORNING_BRIEF_CONTEXT &&
     target.contextId === root.id &&
     target.runEventSequenceNumber === 0 &&
-    target.runEventId === null
+    target.runEventId === null &&
+    root.seqId < target.seqId &&
+    target.seqId < row.seqId
   );
 }
 
