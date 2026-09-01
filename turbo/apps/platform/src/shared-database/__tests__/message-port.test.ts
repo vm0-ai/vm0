@@ -18,6 +18,7 @@ import type {
   SharedDatabaseHeartbeat,
   SharedDatabasePortLike,
 } from "../bridge.ts";
+import type { ComputedKey } from "../computed-key.ts";
 import type {
   ChatEventDataKey,
   SharedDatabaseDataKey,
@@ -155,7 +156,8 @@ function bridgeEvents(): SharedDatabaseBridgeEvents {
     authenticationRequired: vi.fn<(recoveryId: string) => void>(),
     databaseInvalidated: vi.fn<(dataKey: SharedDatabaseDataKey) => void>(),
     databaseReconnected: vi.fn<() => void>(),
-    indicatorsInvalidated: vi.fn<(payload: unknown) => void>(),
+    computedReloaded: vi.fn<(computedKey: ComputedKey) => void>(),
+    chatThreadReadCursorUpdated: vi.fn<(payload: unknown) => void>(),
     reloadRequired: vi.fn<() => void>(),
     statusChanged: vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
   };
@@ -621,7 +623,8 @@ describe("shared database MessagePort protocol", () => {
     const invalidations: SharedDatabaseDataKey[] = [];
     let reconnects = 0;
     const authenticationRequests: string[] = [];
-    const indicatorInvalidations: unknown[] = [];
+    const computedReloads: ComputedKey[] = [];
+    const readCursorUpdates: unknown[] = [];
     let reloads = 0;
     let observedHeartbeat: SharedDatabaseClientMessage | null = null;
     const key = dataKey(crypto.randomUUID());
@@ -638,8 +641,11 @@ describe("shared database MessagePort protocol", () => {
         databaseReconnected: () => {
           reconnects += 1;
         },
-        indicatorsInvalidated: (payload) => {
-          indicatorInvalidations.push(payload);
+        computedReloaded: (computedKey) => {
+          computedReloads.push(computedKey);
+        },
+        chatThreadReadCursorUpdated: (payload) => {
+          readCursorUpdates.push(payload);
         },
         reloadRequired: () => {
           reloads += 1;
@@ -661,6 +667,14 @@ describe("shared database MessagePort protocol", () => {
         return;
       }
       if (message.type === "query") {
+        serverPort.postMessage({
+          type: "result",
+          requestId: message.requestId,
+          value: [{ malformed: true }],
+        });
+        return;
+      }
+      if (message.type === "get-computed") {
         serverPort.postMessage({
           type: "result",
           requestId: message.requestId,
@@ -688,8 +702,12 @@ describe("shared database MessagePort protocol", () => {
       lastReadAt: null,
     };
     serverPort.postMessage({
-      type: "indicators-invalidated",
+      type: "chat-thread-read-cursor-updated",
       payload: indicatorPayload,
+    });
+    serverPort.postMessage({
+      type: "reload-computed",
+      computedKey: "chat-thread-indicators",
     });
     serverPort.postMessage({ type: "status", status: "disconnected" });
     serverPort.postMessage({ type: "reload-required" });
@@ -698,7 +716,8 @@ describe("shared database MessagePort protocol", () => {
       expect(reconnects).toBe(1);
       expect(statuses).toStrictEqual(["disconnected"]);
       expect(authenticationRequests).toStrictEqual([recoveryId]);
-      expect(indicatorInvalidations).toStrictEqual([indicatorPayload]);
+      expect(readCursorUpdates).toStrictEqual([indicatorPayload]);
+      expect(computedReloads).toStrictEqual(["chat-thread-indicators"]);
       expect(reloads).toBe(1);
     });
 
@@ -707,6 +726,9 @@ describe("shared database MessagePort protocol", () => {
         { dataKey: key, afterSeqId: null, consistency: "cache-only" },
         owner.signal,
       ),
+    ).rejects.toMatchObject({ name: "ZodError" });
+    await expect(
+      bridge.getComputed("computer-use-hosts"),
     ).rejects.toMatchObject({ name: "ZodError" });
     owner.abort();
   });

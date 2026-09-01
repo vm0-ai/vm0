@@ -4,6 +4,7 @@ import type {
   SharedDatabaseBridge,
   SharedDatabaseHeartbeat,
 } from "../shared-database/bridge.ts";
+import type { ComputedKey } from "../shared-database/computed-key.ts";
 import { NEVER_RESOLVED_PROMISE } from "./utils.ts";
 
 const sharedDatabaseBridgeState$ = state<SharedDatabaseBridge | null>(null);
@@ -58,6 +59,8 @@ export const heartbeatSharedDatabase$ = command(
   },
 );
 
-export const reloadSharedDatabaseIndicators$ = command(({ get }): void => {
-  get(installedSharedDatabaseBridge$).reloadIndicators();
-});
+export const reloadSharedDatabaseComputed$ = command(
+  ({ get }, computedKey: ComputedKey): void => {
+    get(installedSharedDatabaseBridge$).reloadComputed(computedKey);
+  },
+);

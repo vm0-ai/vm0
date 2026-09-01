@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import { subscribeRealtimeReadyCatchUp$ } from "./realtime.ts";
 import { clearOptimisticReadMark$ } from "./chat-page/optimistic-chat-thread-read-marks.ts";
 import { apiClientRuntime$ } from "./api-client-runtime.ts";
-import { reloadSharedDatabaseIndicators$ } from "./shared-database-bridge-state.ts";
+import { reloadSharedDatabaseComputed$ } from "./shared-database-bridge-state.ts";
 
 const internalReloadChatIndicators$ = state(0);
 
@@ -18,12 +18,12 @@ export const reloadChatIndicatorsLocally$ = command(({ set }) => {
 
 export const reloadChatIndicators$ = command(({ get, set }) => {
   if (get(apiClientRuntime$).environment === "app") {
-    set(reloadSharedDatabaseIndicators$);
+    set(reloadSharedDatabaseComputed$, "chat-thread-indicators");
   }
   set(reloadChatIndicatorsLocally$);
 });
 
-export const invalidateChatIndicatorsFromRealtime$ = command(
+export const applyChatThreadReadCursorUpdated$ = command(
   ({ set }, payload: unknown) => {
     if (
       typeof payload === "object" &&
@@ -35,7 +35,6 @@ export const invalidateChatIndicatorsFromRealtime$ = command(
     ) {
       set(clearOptimisticReadMark$, payload.threadId);
     }
-    set(reloadChatIndicatorsLocally$);
   },
 );
 

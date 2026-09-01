@@ -5149,17 +5149,14 @@
       "debug": {
         "builtInModelCooldown": {
           "cancelAction": "Cancelar cooldown",
-          "cancelDescription": "Cancelar este cooldown global torna a rota imediatamente disponível para todos os workspaces com fallback de modelos integrados ativado.",
+          "cancelDescription": "Cancelar este cooldown global torna a rota imediatamente disponível para todos os workspaces.",
           "cancelling": "Cancelando...",
           "cancelTitle": "Cancelar o cooldown global?",
           "cancelWarning": "Uma falha posterior qualificada pode colocar esta rota novamente em cooldown.",
           "description": "Inspecione as rotas de modelos integrados temporariamente excluídas da seleção de fallback.",
-          "disabled": "desativado",
-          "disabledExplanation": "O fallback de modelos integrados está desativado neste workspace, então estes cooldowns globais são ignorados aqui no momento.",
           "empty": "Nenhuma rota de modelo integrado está em cooldown global no momento.",
-          "enabled": "ativado",
           "globalActive": "cooldowns globais ativos",
-          "globalExplanation": "Cooldowns são um estado operacional global. Eles só podem afetar este workspace enquanto o fallback de modelos integrados estiver ativado aqui.",
+          "globalExplanation": "Cooldowns são um estado operacional global e afetam todos os workspaces que usam modelos integrados.",
           "keepCooldown": "Manter cooldown",
           "loading": "Carregando diagnósticos de cooldown de modelos integrados...",
           "providerType": "Tipo de provedor",
@@ -5168,8 +5165,7 @@
           "title": "Fallback de modelos integrados",
           "unavailable": "Os diagnósticos de cooldown de modelos integrados estão indisponíveis.",
           "unavailableUntil": "Indisponível até",
-          "upstreamModel": "Modelo upstream",
-          "workspaceFallback": "fallback do workspace"
+          "upstreamModel": "Modelo upstream"
         },
         "capture": {
           "description": "Capture nomes de cabeçalhos HTTP, valores seguros selecionados e corpos nos logs de rede para depuração.",

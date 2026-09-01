@@ -786,8 +786,12 @@ describe("shared database worker runtime", () => {
     await vi.waitFor(() => {
       for (const port of [firstPort, secondPort]) {
         expect(port.messages).toContainEqual({
-          type: "indicators-invalidated",
+          type: "chat-thread-read-cursor-updated",
           payload: readCursorPayload,
+        });
+        expect(port.messages).toContainEqual({
+          type: "reload-computed",
+          computedKey: "chat-thread-indicators",
         });
       }
     });

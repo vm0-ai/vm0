@@ -10,8 +10,12 @@ import type {
   SharedDatabaseBridgeEvents,
   SharedDatabaseHeartbeat,
 } from "../bridge.ts";
+import {
+  parseComputedValue,
+  type ComputedKey,
+  type ComputedValue,
+} from "../computed-key.ts";
 import type {
-  ChatThreadIndicators,
   SharedDatabaseDataKey,
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
@@ -32,11 +36,17 @@ class FakeBridge implements SharedDatabaseBridge {
   pendingQuery = false;
   timeoutHeartbeatCall: number | null = null;
 
-  indicators(_signal: AbortSignal): Promise<ChatThreadIndicators> {
-    return Promise.resolve({ agents: {}, threads: {} });
+  getComputed<TKey extends ComputedKey>(
+    computedKey: TKey,
+  ): Promise<ComputedValue<TKey>> {
+    const value =
+      computedKey === "chat-thread-indicators"
+        ? { agents: {}, threads: {} }
+        : [];
+    return Promise.resolve(parseComputedValue(computedKey, value));
   }
 
-  reloadIndicators(): void {}
+  reloadComputed(_computedKey: ComputedKey): void {}
 
   setToken(
     _recoveryId: string,
@@ -110,7 +120,8 @@ function createEvents(
     authenticationRequired: vi.fn<(recoveryId: string) => void>(),
     databaseInvalidated: vi.fn<(dataKey: SharedDatabaseDataKey) => void>(),
     databaseReconnected: vi.fn<() => void>(),
-    indicatorsInvalidated: vi.fn<(payload: unknown) => void>(),
+    computedReloaded: vi.fn<(computedKey: ComputedKey) => void>(),
+    chatThreadReadCursorUpdated: vi.fn<(payload: unknown) => void>(),
     reloadRequired: vi.fn<() => void>(),
     statusChanged: (status) => {
       statuses.push(status);

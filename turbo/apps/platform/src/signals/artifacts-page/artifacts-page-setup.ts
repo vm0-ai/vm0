@@ -7,7 +7,6 @@ import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { closeLightboxImmediately$ } from "../okou-page/attachment-chips.ts";
-import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 import { historyState$, searchParams$ } from "../route.ts";
 import {
   artifactCatalogKindFromSearchParams,
@@ -50,7 +49,6 @@ export const setupArtifactsPage$ = command(
     );
     await set(hideAppSkeleton$, signal);
 
-    await set(onboardGuard$, signal);
     if (artifactId) {
       await set(openArtifact$, artifactId, signal);
     }

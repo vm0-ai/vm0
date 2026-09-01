@@ -77,6 +77,8 @@ import {
 } from "../services/autonomy-budget.service";
 import { bestEffort, onRejection, settle } from "../utils";
 import { reconcileGmailWatchesForUser } from "../services/gmail-automation-event.service";
+import { lockConnectorAccountTarget } from "../services/auth-state-lock.service";
+import { reprojectWorkflowAutomationsForOwner } from "../services/workflow-automation-account-projection.service";
 import {
   loadVisibleWorkflowById,
   requireWorkflowPermission,
@@ -1043,7 +1045,10 @@ async function copyWorkflowAutomationRow(
 async function copyWorkflowUserAutomations(
   tx: WorkflowCopyTransaction,
   args: CopyWorkflowAutomationRowsArgs,
-): Promise<boolean> {
+): Promise<{
+  readonly hasGmailAutomations: boolean;
+  readonly hasStripeAutomations: boolean;
+}> {
   const rows =
     args.sourceAutomations ??
     (await tx
@@ -1057,7 +1062,17 @@ async function copyWorkflowUserAutomations(
         ),
       ));
   if (rows.length === 0) {
-    return false;
+    return { hasGmailAutomations: false, hasStripeAutomations: false };
+  }
+  const hasStripeAutomations = rows.some((automation) => {
+    return automation.eventType === "stripe-invoice-paid";
+  });
+  if (hasStripeAutomations) {
+    await lockConnectorAccountTarget(tx, {
+      orgId: args.orgId,
+      userId: args.userId,
+      target: { kind: "builtin", connectorSlug: "stripe" },
+    });
   }
 
   await ensureWorkflowUserAutomationThread(tx, {
@@ -1071,12 +1086,15 @@ async function copyWorkflowUserAutomations(
   for (const automation of rows) {
     await copyWorkflowAutomationRow(tx, { ...args, automation });
   }
-  return rows.some((automation) => {
-    return (
-      automation.eventType === "gmail-new-message" ||
-      automation.eventType === "gmail-label-applied"
-    );
-  });
+  return {
+    hasGmailAutomations: rows.some((automation) => {
+      return (
+        automation.eventType === "gmail-new-message" ||
+        automation.eventType === "gmail-label-applied"
+      );
+    }),
+    hasStripeAutomations,
+  };
 }
 
 async function copyWorkflowRuntimeConfiguration(
@@ -1086,6 +1104,7 @@ async function copyWorkflowRuntimeConfiguration(
   | {
       readonly workflow: { readonly id: string };
       readonly hasGmailAutomations: boolean;
+      readonly hasStripeAutomations: boolean;
     }
   | undefined
 > {
@@ -1104,7 +1123,7 @@ async function copyWorkflowRuntimeConfiguration(
       ? {}
       : { inheritedAutonomyBudget: args.inheritedAutonomyBudget }),
   };
-  const hasGmailAutomations = await copyWorkflowUserAutomations(tx, {
+  const automationProviders = await copyWorkflowUserAutomations(tx, {
     ...scopedRowsArgs,
     targetAgentId: args.targetAgentId,
     workflowTitle: args.sourceWorkflow.displayName ?? args.sourceWorkflow.name,
@@ -1112,7 +1131,7 @@ async function copyWorkflowRuntimeConfiguration(
       ? { sourceAutomations: args.sourceAutomations }
       : {}),
   });
-  return { workflow, hasGmailAutomations };
+  return { workflow, ...automationProviders };
 }
 
 type CopyWorkflowDatabaseResult =
@@ -1121,6 +1140,7 @@ type CopyWorkflowDatabaseResult =
       readonly kind: "ok";
       readonly inserted: { readonly id: string };
       readonly hasGmailAutomations: boolean;
+      readonly hasStripeAutomations: boolean;
     };
 
 async function copyWorkflowDatabaseRows(
@@ -1150,6 +1170,7 @@ async function copyWorkflowDatabaseRows(
         | null,
     ) => Promise<void>;
   },
+  signal: AbortSignal,
 ): Promise<CopyWorkflowDatabaseResult> {
   return await db.transaction(async (tx) => {
     const officialResolution = args.sourceWorkflow.officialDefinitionName
@@ -1182,6 +1203,17 @@ async function copyWorkflowDatabaseRows(
     if (!inserted) {
       throw new Error("Failed to copy workflow");
     }
+    if (inserted.hasStripeAutomations) {
+      await reprojectWorkflowAutomationsForOwner(
+        tx,
+        {
+          orgId: args.orgId,
+          userId: args.userId,
+          target: { kind: "builtin", connectorSlug: "stripe" },
+        },
+        signal,
+      );
+    }
     await args.publishVolume(
       tx,
       sourceWorkflow,
@@ -1191,6 +1223,7 @@ async function copyWorkflowDatabaseRows(
       kind: "ok",
       inserted: inserted.workflow,
       hasGmailAutomations: inserted.hasGmailAutomations,
+      hasStripeAutomations: inserted.hasStripeAutomations,
     };
   });
 }
@@ -1252,39 +1285,43 @@ const publishCopiedWorkflow$ = command(
         );
         signal.throwIfAborted();
 
-        const copied = await copyWorkflowDatabaseRows(args.db, {
-          orgId: args.orgId,
-          userId: args.userId,
-          sourceWorkflow: args.sourceWorkflow,
-          sourceFiles: args.sourceFiles,
-          targetAgentId: args.targetAgentId,
-          targetWorkflowId,
-          currentTime: args.currentTime,
-          inheritedAutonomyBudget: args.inheritedAutonomyBudget,
-          publishVolume: async (
-            tx,
-            copiedSourceWorkflow,
-            copiedSourceFiles,
-          ) => {
-            const volume = await set(
-              prepareVolumeServerSideWithDb$,
-              {
-                db: tx,
-                input: {
-                  orgId: args.orgId,
-                  storageName: getCustomSkillStorageName(targetWorkflowId),
-                  files: copiedWorkflowVolumeFiles(
-                    copiedSourceWorkflow,
-                    copiedSourceFiles,
-                  ),
+        const copied = await copyWorkflowDatabaseRows(
+          args.db,
+          {
+            orgId: args.orgId,
+            userId: args.userId,
+            sourceWorkflow: args.sourceWorkflow,
+            sourceFiles: args.sourceFiles,
+            targetAgentId: args.targetAgentId,
+            targetWorkflowId,
+            currentTime: args.currentTime,
+            inheritedAutonomyBudget: args.inheritedAutonomyBudget,
+            publishVolume: async (
+              tx,
+              copiedSourceWorkflow,
+              copiedSourceFiles,
+            ) => {
+              const volume = await set(
+                prepareVolumeServerSideWithDb$,
+                {
+                  db: tx,
+                  input: {
+                    orgId: args.orgId,
+                    storageName: getCustomSkillStorageName(targetWorkflowId),
+                    files: copiedWorkflowVolumeFiles(
+                      copiedSourceWorkflow,
+                      copiedSourceFiles,
+                    ),
+                  },
                 },
-              },
-              signal,
-            );
-            await commitPreparedVolumeServerSide({ db: tx, volume }, signal);
-            signal.throwIfAborted();
+                signal,
+              );
+              await commitPreparedVolumeServerSide({ db: tx, volume }, signal);
+              signal.throwIfAborted();
+            },
           },
-        });
+          signal,
+        );
         signal.throwIfAborted();
         if (copied.kind === "conflict") {
           await set(

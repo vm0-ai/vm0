@@ -1,11 +1,14 @@
 import {
-  chatThreadIndicatorsSchema,
   parseSharedDatabaseQueryResult,
-  type ChatThreadIndicators,
   type SharedDatabaseDataKey,
   type SharedDatabaseQuery,
   type SharedDatabaseQueryResult,
 } from "./data-key.ts";
+import {
+  parseComputedValue,
+  type ComputedKey,
+  type ComputedValue,
+} from "./computed-key.ts";
 import type {
   SharedDatabaseBridge,
   SharedDatabaseBridgeEvents,
@@ -60,8 +63,12 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
         await this.events.authenticationRequired(message.recoveryId);
         return;
       }
-      if (message.type === "indicators-invalidated") {
-        this.events.indicatorsInvalidated(message.payload);
+      if (message.type === "reload-computed") {
+        this.events.computedReloaded(message.computedKey);
+        return;
+      }
+      if (message.type === "chat-thread-read-cursor-updated") {
+        this.events.chatThreadReadCursorUpdated(message.payload);
         return;
       }
       if (message.type === "status") {
@@ -109,22 +116,25 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     this.close(reason, false);
   }
 
-  async indicators(signal: AbortSignal): Promise<ChatThreadIndicators> {
+  async getComputed<TKey extends ComputedKey>(
+    computedKey: TKey,
+  ): Promise<ComputedValue<TKey>> {
     const value = await this.request(
       {
-        type: "get-indicators",
+        type: "get-computed",
         requestId: crypto.randomUUID(),
+        computedKey,
       },
-      signal,
+      this.requireOwnerSignal(),
     );
-    return chatThreadIndicatorsSchema.parse(value);
+    return parseComputedValue(computedKey, value);
   }
 
-  reloadIndicators(): void {
+  reloadComputed(computedKey: ComputedKey): void {
     if (this.closed) {
       throw this.closeReason;
     }
-    this.emit({ type: "reload-indicators" });
+    this.emit({ type: "reload-computed", computedKey });
   }
 
   async setToken(
@@ -180,7 +190,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     message: Extract<
       SharedDatabaseClientMessage,
       {
-        readonly type: "heartbeat" | "query" | "get-indicators" | "set-token";
+        readonly type: "heartbeat" | "query" | "get-computed" | "set-token";
       }
     >,
     signal: AbortSignal,
@@ -209,6 +219,13 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     signal.addEventListener("abort", abort, { once: true });
     this.emit(message);
     return deferred.promise;
+  }
+
+  private requireOwnerSignal(): AbortSignal {
+    if (!this.ownerSignal) {
+      throw new Error("Shared database heartbeat is required first");
+    }
+    return this.ownerSignal;
   }
 
   private emit(message: SharedDatabaseClientMessage): void {

@@ -8,7 +8,7 @@ import { i18n } from "../i18n/index.ts";
 import { resolveApiBaseForTarget } from "./api-base.ts";
 import { clerk$, reloadToken$ } from "./auth.ts";
 import { readClerkToken } from "./clerk-token.ts";
-import { invalidateChatIndicatorsFromRealtime$ } from "./chat-thread-list-reload.ts";
+import { applyChatThreadReadCursorUpdated$ } from "./chat-thread-list-reload.ts";
 import {
   syncActiveChatEvents$,
   syncAllActiveChatEvents$,
@@ -35,7 +35,10 @@ import {
   setBridgeConnected$,
   sharedDatabaseBridgeInstalled$,
 } from "./shared-database-bridge-state.ts";
-import { setSharedDatabaseConnectionStatus$ } from "./shared-database.ts";
+import {
+  reloadComputedFromWorker$,
+  setSharedDatabaseConnectionStatus$,
+} from "./shared-database.ts";
 import type { SharedDatabaseDataKey } from "../shared-database/data-key.ts";
 
 const MAX_HEARTBEAT_INTERVAL_MS = 60_000;
@@ -241,8 +244,11 @@ export const prepareSharedDatabaseBridge$ = command(
         reloadRequired: () => {
           handleSharedDatabaseReloadRequired();
         },
-        indicatorsInvalidated: (payload) => {
-          set(invalidateChatIndicatorsFromRealtime$, payload);
+        computedReloaded: (computedKey) => {
+          set(reloadComputedFromWorker$, computedKey);
+        },
+        chatThreadReadCursorUpdated: (payload) => {
+          set(applyChatThreadReadCursorUpdated$, payload);
         },
         statusChanged: (status) => {
           set(setSharedDatabaseConnectionStatus$, status);

@@ -1,6 +1,6 @@
 import { z } from "zod";
+import { computedKeySchema } from "./computed-key.ts";
 import {
-  chatThreadIndicatorsSchema,
   sharedDatabaseDataKeySchema,
   sharedDatabaseQuerySchema,
 } from "./data-key.ts";
@@ -36,15 +36,19 @@ const queryRequestSchema = z
   })
   .strict();
 
-const indicatorsRequestSchema = z
+const getComputedRequestSchema = z
   .object({
-    type: z.literal("get-indicators"),
+    type: z.literal("get-computed"),
     requestId: requestIdSchema,
+    computedKey: computedKeySchema,
   })
   .strict();
 
-const reloadIndicatorsRequestSchema = z
-  .object({ type: z.literal("reload-indicators") })
+const reloadComputedMessageSchema = z
+  .object({
+    type: z.literal("reload-computed"),
+    computedKey: computedKeySchema,
+  })
   .strict();
 
 const setTokenRequestSchema = z
@@ -63,8 +67,8 @@ const disconnectRequestSchema = z
 export const sharedDatabaseClientMessageSchema = z.discriminatedUnion("type", [
   heartbeatRequestSchema,
   queryRequestSchema,
-  indicatorsRequestSchema,
-  reloadIndicatorsRequestSchema,
+  getComputedRequestSchema,
+  reloadComputedMessageSchema,
   setTokenRequestSchema,
   disconnectRequestSchema,
 ]);
@@ -137,9 +141,9 @@ const authenticationRequiredMessageSchema = z
   })
   .strict();
 
-const indicatorsInvalidatedMessageSchema = z
+const chatThreadReadCursorUpdatedMessageSchema = z
   .object({
-    type: z.literal("indicators-invalidated"),
+    type: z.literal("chat-thread-read-cursor-updated"),
     payload: z.unknown(),
   })
   .strict();
@@ -168,11 +172,10 @@ export const sharedDatabaseWorkerMessageSchema = z.discriminatedUnion("type", [
   reconnectMessageSchema,
   reloadRequiredMessageSchema,
   authenticationRequiredMessageSchema,
-  indicatorsInvalidatedMessageSchema,
+  reloadComputedMessageSchema,
+  chatThreadReadCursorUpdatedMessageSchema,
   statusMessageSchema,
 ]);
-
-export { chatThreadIndicatorsSchema };
 
 export type SharedDatabaseWorkerMessage = z.infer<
   typeof sharedDatabaseWorkerMessageSchema

@@ -9,7 +9,6 @@ import { featureSwitch$ } from "../external/feature-switch.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { updatePage$ } from "../react-router.ts";
-import { onboardGuard$ } from "./onboard-guard.ts";
 import { resetStrapiSettings$ } from "./strapi.ts";
 import { i18n } from "../../i18n/index.ts";
 
@@ -17,9 +16,6 @@ export const setupStrapiSettingsPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!get(featureSwitch$)[FeatureSwitchKey.StrapiIntegration]) {
       set(detachedNavigateTo$, ROUTES.home, { replace: true });
-      return;
-    }
-    if (await set(onboardGuard$, signal)) {
       return;
     }
     set(resetStrapiSettings$);

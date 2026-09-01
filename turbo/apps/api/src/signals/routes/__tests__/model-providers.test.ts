@@ -532,7 +532,7 @@ describe("GET /api/model-providers/cooldown-diagnostics", () => {
     });
   });
 
-  it("returns active global cooldowns with fallback enabled", async () => {
+  it("returns active global cooldowns", async () => {
     const fixture = uniqueOrgUser("cooldown-active");
     const selectedModelPrefix = `diagnostic-${randomUUID()}`;
     const startedAt = Date.UTC(2026, 7, 23, 12, 0, 0);
@@ -601,7 +601,6 @@ describe("GET /api/model-providers/cooldown-diagnostics", () => {
       return cooldown.selectedModel.startsWith(selectedModelPrefix);
     });
 
-    expect(response.body.fallbackEnabled).toBeTruthy();
     expect(response.body.canCancelCooldowns).toBeFalsy();
     expect(ownedCooldowns).toStrictEqual([
       {

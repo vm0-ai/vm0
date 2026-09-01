@@ -65,12 +65,16 @@ const updateSelectionInner$ = command(
       return body.response;
     }
     const writeDb = set(writeDb$);
-    const result = await updateChatThreadConnectorSelection(writeDb, {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      chatThreadId: params.id,
-      selection: body.data,
-    });
+    const result = await updateChatThreadConnectorSelection(
+      writeDb,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        chatThreadId: params.id,
+        selection: body.data,
+      },
+      signal,
+    );
     signal.throwIfAborted();
     if (result.kind === "not_found") {
       return notFound("Chat thread not found");
@@ -113,12 +117,16 @@ const clearSelectionInner$ = command(
       return body.response;
     }
     const writeDb = set(writeDb$);
-    const result = await clearChatThreadConnectorSelection(writeDb, {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      chatThreadId: params.id,
-      target: body.data,
-    });
+    const result = await clearChatThreadConnectorSelection(
+      writeDb,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        chatThreadId: params.id,
+        target: body.data,
+      },
+      signal,
+    );
     signal.throwIfAborted();
     if (result.kind === "not_found") {
       return notFound("Chat thread not found");

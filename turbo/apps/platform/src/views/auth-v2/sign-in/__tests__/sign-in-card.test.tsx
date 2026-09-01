@@ -2207,7 +2207,7 @@ describe("auth v2 sign-in flow", () => {
     const signUp = await waitForRoleElement("link", "Sign up");
     expect(signUp).toHaveAttribute(
       "href",
-      "/sign-up?redirect_url=https%3A%2F%2Fapp.vm0.ai",
+      "/sign-up?redirect_url=https%3A%2F%2Fapp.vm0.ai%2Fonboarding",
     );
 
     fireEvent.click(await waitForRoleElement("button", "Use another method"));

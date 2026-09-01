@@ -17,6 +17,7 @@ const DIRECT_OKOU_READY_CONNECTORS = [
   "dropbox",
   "figma",
   "garmin-connect",
+  "github",
   "gmail",
   "google-ads",
   "google-analytics",
@@ -77,7 +78,7 @@ describe("direct Okou OAuth callback readiness", () => {
     },
   );
 
-  it.each(["github", "quickbooks", "test-oauth"])(
+  it.each(["quickbooks", "test-oauth"])(
     "keeps %s on its existing callback",
     (connectorSlug) => {
       expect(isConnectorDirectOkouOauthCallbackReady(connectorSlug)).toBe(

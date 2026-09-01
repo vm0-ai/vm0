@@ -43,7 +43,7 @@ import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
 import { safeJsonParse, settle } from "../utils";
 import { lockConnectorAccountTarget } from "./auth-state-lock.service";
-import { reprojectGmailAutomationsForOwner } from "./gmail-automation-account.service";
+import { reprojectWorkflowAutomationsForOwner } from "./workflow-automation-account-projection.service";
 import { isConnectorCatalogUnavailableError } from "./connector-catalog-reader.service";
 import {
   connectorCredentialStorageIsCompatible,
@@ -783,6 +783,7 @@ export async function setDefaultConnectorAccount(
     readonly target: ConnectorAccountTarget;
     readonly connectionId: string;
   },
+  signal: AbortSignal,
 ): Promise<Date | null> {
   return await db.transaction(async (tx) => {
     await lockConnectorAccountTarget(tx, args);
@@ -813,12 +814,7 @@ export async function setDefaultConnectorAccount(
       .set({ isDefault: true, updatedAt: sql`clock_timestamp()` })
       .where(eq(connectors.id, args.connectionId))
       .returning({ updatedAt: connectors.updatedAt });
-    if (
-      args.target.kind === "builtin" &&
-      args.target.connectorSlug === "gmail"
-    ) {
-      await reprojectGmailAutomationsForOwner(tx, args);
-    }
+    await reprojectWorkflowAutomationsForOwner(tx, args, signal);
     return updated?.updatedAt ?? null;
   });
 }
@@ -916,6 +912,7 @@ export async function prepareConnectorAccountDeletion(
     readonly target: ConnectorAccountTarget;
     readonly connectionId: string;
   },
+  signal: AbortSignal,
 ): Promise<PreparedConnectorAccountDeletion> {
   await lockConnectorAccountTarget(db, args);
   const [account] = await db
@@ -959,9 +956,7 @@ export async function prepareConnectorAccountDeletion(
     promotedDefaultConnectionId = sibling.id;
   }
 
-  if (args.target.kind === "builtin" && args.target.connectorSlug === "gmail") {
-    await reprojectGmailAutomationsForOwner(db, args);
-  }
+  await reprojectWorkflowAutomationsForOwner(db, args, signal);
 
   return {
     kind: "ready",

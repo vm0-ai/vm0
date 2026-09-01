@@ -24,7 +24,7 @@ workspace_device_mounted_elsewhere() {
     if [ "$mount_dev" = "$workspace_dev" ]; then
       return 0
     fi
-  done < /proc/self/mountinfo
+  done < "$workspace_mountinfo_path"
   return 1
 }
 

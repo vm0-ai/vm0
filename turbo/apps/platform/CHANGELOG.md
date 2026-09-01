@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.820.1](https://github.com/vm0-ai/vm0/compare/app-v0.820.0...app-v0.820.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **auth:** send default sign-ups directly to onboarding ([#30811](https://github.com/vm0-ai/vm0/issues/30811)) ([44c8160](https://github.com/vm0-ai/vm0/commit/44c8160fc5d123c83b3ca4194b480bbee2ac68f7))
+* **platform:** update favicon artwork ([#30865](https://github.com/vm0-ai/vm0/issues/30865)) ([24dae57](https://github.com/vm0-ai/vm0/commit/24dae571be202452dac203d3c2f835e34fd1bcd3))
+
+
+### Refactoring
+
+* **platform:** move onboarding guard into bootstrap ([#30841](https://github.com/vm0-ai/vm0/issues/30841)) ([588fec9](https://github.com/vm0-ai/vm0/commit/588fec9d20aee8a075adeec4d72c4355b1c60723))
+* remove built-in fallback rollout state ([#30876](https://github.com/vm0-ai/vm0/issues/30876)) ([ddab7f4](https://github.com/vm0-ai/vm0/commit/ddab7f4cf55cead3540347247d2ea0b0f156c01b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.388.0
+    * @okouai/connectors bumped to 3.2.0
+    * @okouai/core bumped to 8.606.1
+
 ## [0.820.0](https://github.com/vm0-ai/vm0/compare/app-v0.819.1...app-v0.820.0) (2026-09-01)
 
 

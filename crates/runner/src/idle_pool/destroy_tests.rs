@@ -119,7 +119,11 @@ async fn idle_destroy_job_destroy_panic_preserves_workspace_cache_and_releases_b
     assert!(result.workspace_cache_promoted);
     let exec_calls = overrides.exec_calls();
     assert_eq!(exec_calls.len(), 1);
-    assert!(exec_calls[0].cmd.contains("fsfreeze --freeze"));
+    assert!(
+        exec_calls[0]
+            .cmd
+            .contains("\"$workspace_fsfreeze_path\" --freeze")
+    );
     assert_eq!(overrides.destroy_call_count(), 1);
     assert_eq!(budget.allocated(), (2, 4096, 1));
     drop(result.budget_lease);
@@ -163,7 +167,11 @@ async fn idle_destroy_job_stop_panic_still_attempts_destroy_and_releases_budget_
     assert!(!promoted);
     let exec_calls = overrides.exec_calls();
     assert_eq!(exec_calls.len(), 1);
-    assert!(exec_calls[0].cmd.contains("fsfreeze --freeze"));
+    assert!(
+        exec_calls[0]
+            .cmd
+            .contains("\"$workspace_fsfreeze_path\" --freeze")
+    );
     assert_eq!(overrides.destroy_call_count(), 1);
     assert_eq!(budget.allocated(), (0, 0, 0));
     assert!(fixture.cache.held_workspace_states().await.is_empty());
@@ -204,7 +212,11 @@ async fn idle_destroy_job_publishes_frozen_workspace_only_after_successful_stop(
     assert!(promoted);
     let exec_calls = overrides.exec_calls();
     assert_eq!(exec_calls.len(), 1);
-    assert!(exec_calls[0].cmd.contains("fsfreeze --freeze"));
+    assert!(
+        exec_calls[0]
+            .cmd
+            .contains("\"$workspace_fsfreeze_path\" --freeze")
+    );
     assert_eq!(overrides.destroy_call_count(), 1);
     assert_eq!(budget.allocated(), (0, 0, 0));
     let states = fixture.cache.held_workspace_states().await;
@@ -248,7 +260,11 @@ async fn idle_destroy_job_stop_error_abandons_frozen_workspace_and_still_destroy
     assert!(!promoted);
     let exec_calls = overrides.exec_calls();
     assert_eq!(exec_calls.len(), 1);
-    assert!(exec_calls[0].cmd.contains("fsfreeze --freeze"));
+    assert!(
+        exec_calls[0]
+            .cmd
+            .contains("\"$workspace_fsfreeze_path\" --freeze")
+    );
     assert_eq!(overrides.destroy_call_count(), 1);
     assert_eq!(budget.allocated(), (0, 0, 0));
     assert!(fixture.cache.held_workspace_states().await.is_empty());
@@ -279,7 +295,11 @@ async fn idle_destroy_job_publication_failure_after_stop_still_destroys() {
     assert_eq!(overrides.unpark_call_count(), 1);
     let exec_calls = overrides.exec_calls();
     assert_eq!(exec_calls.len(), 1);
-    assert!(exec_calls[0].cmd.contains("fsfreeze --freeze"));
+    assert!(
+        exec_calls[0]
+            .cmd
+            .contains("\"$workspace_fsfreeze_path\" --freeze")
+    );
     assert_eq!(overrides.destroy_call_count(), 1);
     assert_eq!(budget.allocated(), (0, 0, 0));
     assert!(fixture.cache.held_workspace_states().await.is_empty());

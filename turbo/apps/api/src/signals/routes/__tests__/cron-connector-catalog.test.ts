@@ -7,7 +7,6 @@ import { cronConnectorCatalogContract } from "@okouai/api-contracts/contracts/cr
 import { connectorsSlugCallbackContract } from "@okouai/api-contracts/contracts/connectors-slug-callback";
 import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@okouai/api-contracts/contracts/model-provider-firewalls";
 import { runnersBuiltinFirewallsResolveContract } from "@okouai/api-contracts/contracts/runners";
-import { steamPlayerContract } from "@okouai/api-contracts/contracts/steam-player";
 import {
   testSystemStoragePresignedUrlCacheStateContract,
   type TestSystemStoragePresignedUrlCacheStateActionBody,
@@ -112,7 +111,6 @@ import { connectorCatalogRoutes } from "../connector-catalog";
 import { connectorCheckRoutes } from "../connector-check";
 import { connectorsRoutes } from "../connectors";
 import { featureSwitchesRoutes } from "../feature-switches";
-import { steamPlayerRoutes } from "../steam-player";
 import { userPermissionGrantsRoutes } from "../user-permission-grants";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 import { workflowsRoutes } from "../workflows";
@@ -126,7 +124,6 @@ const TEST_APP_ROUTES = Object.freeze([
   ...connectorCheckRoutes,
   ...connectorsRoutes,
   ...featureSwitchesRoutes,
-  ...steamPlayerRoutes,
   ...userPermissionGrantsRoutes,
   ...workflowAutomationsRoutes,
   ...workflowsRoutes,
@@ -1319,67 +1316,6 @@ function mockSteamOpenIdVerification(): void {
         );
       },
     ),
-  );
-}
-
-function mockSteamPlayerApisForCatalog(): void {
-  server.use(
-    http.get(/https:\/\/api\.steampowered\.com\/.*/u, ({ request }) => {
-      const url = new URL(request.url);
-      expect(url.searchParams.get("key")).toBe("catalog-steam-api-key");
-      expect(
-        url.searchParams.get("steamid") ?? url.searchParams.get("steamids"),
-      ).toBe(STEAM_TEST_ID);
-      switch (url.pathname) {
-        case "/ISteamUser/GetPlayerSummaries/v0002/": {
-          return HttpResponse.json({
-            response: {
-              players: [
-                {
-                  steamid: STEAM_TEST_ID,
-                  personaname: "catalog-player",
-                },
-              ],
-            },
-          });
-        }
-        case "/IPlayerService/GetOwnedGames/v0001/": {
-          return HttpResponse.json({
-            response: { game_count: 0, games: [] },
-          });
-        }
-        case "/IPlayerService/GetRecentlyPlayedGames/v0001/": {
-          return HttpResponse.json({
-            response: { total_count: 0, games: [] },
-          });
-        }
-        case "/IPlayerService/GetSteamLevel/v1/": {
-          return HttpResponse.json({ response: { player_level: 1 } });
-        }
-        case "/IPlayerService/GetBadges/v1/": {
-          return HttpResponse.json({ response: { badges: [] } });
-        }
-        case "/IWishlistService/GetWishlist/v1/": {
-          return HttpResponse.json({ response: { items: [] } });
-        }
-        case "/IWishlistService/GetWishlistItemCount/v1/": {
-          return HttpResponse.json({ response: { count: 0 } });
-        }
-        case "/IStoreService/GetGamesFollowed/v1/": {
-          return HttpResponse.json({ response: { appids: [] } });
-        }
-        case "/IStoreService/GetGamesFollowedCount/v1/": {
-          return HttpResponse.json({
-            response: { followed_game_count: 0 },
-          });
-        }
-        default: {
-          return HttpResponse.text("Unexpected Steam API path", {
-            status: 404,
-          });
-        }
-      }
-    }),
   );
 }
 
@@ -3959,7 +3895,6 @@ describe("connector catalog valid lifecycle", () => {
   it("executes an external OpenID grant with catalog-owned storage", async () => {
     mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
     mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("STEAM_WEB_API_KEY", "catalog-steam-api-key");
     mockOptionalEnv("STEAM_WEB_API_KEY", "catalog-steam-api-key");
     configureSource();
     const release = buildRelease({
@@ -4009,17 +3944,6 @@ describe("connector catalog valid lifecycle", () => {
       }),
       [307],
     );
-    mockSteamPlayerApisForCatalog();
-    const player = await accept(
-      setupApp({ context, routes: steamPlayerRoutes })(
-        steamPlayerContract,
-      ).getPlayer({ headers }),
-      [200],
-    );
-    expect(player.body).toMatchObject({
-      steamId: STEAM_TEST_ID,
-      profile: { personaName: "catalog-player" },
-    });
     const storageState = await readConnectorCredentialStorageState(context, {
       orgId: actor.orgId ?? "",
       userId: actor.userId,

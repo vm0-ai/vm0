@@ -12,11 +12,11 @@ import type {
   SharedDatabaseHeartbeat,
 } from "./bridge.ts";
 import type {
-  ChatThreadIndicators,
   SharedDatabaseDataKey,
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
 } from "./data-key.ts";
+import type { ComputedKey, ComputedValue } from "./computed-key.ts";
 import {
   SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME,
   type SharedDatabaseHeartbeatResult,
@@ -127,15 +127,17 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
     }, signal);
   }
 
-  async indicators(signal: AbortSignal): Promise<ChatThreadIndicators> {
+  async getComputed<TKey extends ComputedKey>(
+    computedKey: TKey,
+  ): Promise<ComputedValue<TKey>> {
     const bridge = this.requireBridge();
     return await this.runWithReload(() => {
-      return bridge.indicators(signal);
-    }, signal);
+      return bridge.getComputed(computedKey);
+    }, this.requireOwnerSignal());
   }
 
-  reloadIndicators(): void {
-    this.requireBridge().reloadIndicators();
+  reloadComputed(computedKey: ComputedKey): void {
+    this.requireBridge().reloadComputed(computedKey);
   }
 
   async setToken(

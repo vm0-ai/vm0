@@ -13,7 +13,6 @@ import {
   setRedeemResponse$,
   setRedeemStripeSuccess$,
 } from "./redeem-campaign-signals.ts";
-import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 
 /**
  * Setup command for the unified `/redeem/:campaign` route.
@@ -27,10 +26,6 @@ import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
  */
 export const setupRedeemCampaignPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (await set(onboardGuard$, signal)) {
-      return;
-    }
-
     set(updatePage$, createElement(RedeemCampaignPage), "minimal");
     set(
       updateDocumentTitle$,

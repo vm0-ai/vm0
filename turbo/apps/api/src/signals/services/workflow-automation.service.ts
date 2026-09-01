@@ -112,10 +112,7 @@ import {
 } from "./notion-automation-event.service";
 import { notionWorkflowAutomationCreationEnabledForOwner } from "./notion-workflow-automation-feature-switch.service";
 import { googleFormsWorkflowAutomationCreationEnabledForOwner } from "./google-forms-workflow-automation-feature-switch.service";
-import {
-  resolveStripeInvoicePaidAutomationBinding,
-  validateStripeInvoicePaidAutomationBinding,
-} from "./stripe-invoice-paid-workflow-automation.service";
+import { resolveStripeInvoicePaidAutomationBinding } from "./stripe-invoice-paid-workflow-automation.service";
 import { stripeInvoicePaidWorkflowAutomationEnabledForOwner } from "./stripe-invoice-paid-workflow-automation-feature-switch.service";
 import { lockConnectorAccountTarget } from "./auth-state-lock.service";
 import { lockWorkflowWebhookAutomationTierEligibleForOrg } from "./workflow-webhook-automation-entitlement.service";
@@ -2606,32 +2603,70 @@ async function createStripeInvoicePaidEventAutomationForWorkflow(
   },
   signal: AbortSignal,
 ): Promise<AutomationResult> {
-  const readiness = await resolveStripeInvoicePaidAutomationBinding(
-    {
-      db: args.context.db,
+  const currentTime = nowDate();
+  const result = await args.context.db.transaction(async (tx) => {
+    await lockConnectorAccountTarget(tx, {
       orgId: args.input.orgId,
       userId: args.input.member.userId,
-    },
-    signal,
-  );
-  signal.throwIfAborted();
-  if (readiness.kind === "bad_request") {
-    return { kind: "bad-request", message: readiness.message };
-  }
-  const eventConfig = stripeInvoicePaidEventConfigSchema.parse({
-    ...args.input.eventConfig,
-    ...readiness.binding,
+      target: { kind: "builtin", connectorSlug: "stripe" },
+    });
+    const chatThreadId = await ensureWorkflowUserAutomationThread(tx, {
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      workflowId: args.context.workflowId,
+      agentId: args.context.agentId,
+      workflowTitle: args.context.workflowTitle,
+      currentTime,
+    });
+    const readiness = await resolveStripeInvoicePaidAutomationBinding(
+      {
+        db: tx,
+        orgId: args.input.orgId,
+        userId: args.input.member.userId,
+        workflowId: args.context.workflowId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (readiness.kind === "bad_request") {
+      return { kind: "bad-request" as const, message: readiness.message };
+    }
+    const eventConfig = stripeInvoicePaidEventConfigSchema.parse({
+      ...args.input.eventConfig,
+      ...readiness.binding,
+    });
+    const row = await insertWorkflowAutomation(tx, {
+      id: args.context.automationId,
+      orgId: args.input.orgId,
+      workflowId: args.context.workflowId,
+      ownerUserId: args.input.member.userId,
+      kind: "event",
+      eventType: args.input.eventType,
+      eventConfig,
+      eventConnectorId: readiness.binding.connectorId,
+      scheduleType: null,
+      cronExpression: null,
+      intervalSeconds: null,
+      atTime: null,
+      timezone: "UTC",
+      enabled: args.input.enabled,
+      nextRunAt: null,
+      ...(args.input.autonomyBudget === undefined
+        ? {}
+        : { autonomyBudget: args.input.autonomyBudget }),
+      createdAt: currentTime,
+      updatedAt: currentTime,
+    });
+    if (!row) {
+      throw new Error("Failed to create Stripe workflow automation");
+    }
+    return {
+      kind: "ok" as const,
+      summary: await rowToSummary(tx, row, { chatThreadId }),
+    };
   });
-  const summary = await insertEventAutomation(args.context.db, {
-    input: { ...args.input, eventConfig },
-    workflowId: args.context.workflowId,
-    agentId: args.context.agentId,
-    workflowTitle: args.context.workflowTitle,
-    automationId: args.context.automationId,
-    currentTime: nowDate(),
-  });
   signal.throwIfAborted();
-  return { kind: "ok", summary };
+  return result;
 }
 
 const createStripeInvoicePaidEventAutomation$ = command(
@@ -3644,6 +3679,7 @@ async function prepareOfficialStripeEvent(
       db,
       orgId: input.orgId,
       userId: input.member.userId,
+      workflowId: input.workflowId,
     },
     signal,
   );
@@ -3656,6 +3692,7 @@ async function prepareOfficialStripeEvent(
       ...input.eventConfig,
       ...readiness.binding,
     }),
+    { eventConnectorId: readiness.binding.connectorId },
   );
 }
 
@@ -4780,10 +4817,12 @@ async function persistEnabledWorkflowAutomation(
   | { readonly status: "team-required" }
   | { readonly status: "conflict" }
   | { readonly status: "gmail-unavailable" }
+  | { readonly status: "stripe-unavailable"; readonly message: string }
   | { readonly status: "ok"; readonly row: AutomationRow | undefined }
 > {
   return await db.transaction(async (tx) => {
     let eventConnectorId = args.automation.eventConnectorId;
+    let eventConfig = args.automation.eventConfig;
     if (supportedGmailEventType(args.automation.eventType)) {
       await lockConnectorAccountTarget(tx, {
         orgId: args.automation.orgId,
@@ -4798,6 +4837,34 @@ async function persistEnabledWorkflowAutomation(
       if (eventConnectorId === null) {
         return { status: "gmail-unavailable" };
       }
+    } else if (args.automation.eventType === "stripe-invoice-paid") {
+      await lockConnectorAccountTarget(tx, {
+        orgId: args.automation.orgId,
+        userId: args.automation.ownerUserId,
+        target: { kind: "builtin", connectorSlug: "stripe" },
+      });
+      const readiness = await resolveStripeInvoicePaidAutomationBinding(
+        {
+          db: tx,
+          orgId: args.automation.orgId,
+          userId: args.automation.ownerUserId,
+          workflowId: args.automation.workflowId,
+        },
+        signal,
+      );
+      if (readiness.kind === "bad_request") {
+        return {
+          status: "stripe-unavailable",
+          message: readiness.message,
+        };
+      }
+      eventConnectorId = readiness.binding.connectorId;
+      eventConfig = {
+        ...stripeInvoicePaidEventConfigSchema.parse(
+          args.automation.eventConfig,
+        ),
+        ...readiness.binding,
+      };
     }
     if (
       args.automation.kind === "event" &&
@@ -4822,7 +4889,9 @@ async function persistEnabledWorkflowAutomation(
         enabled: true,
         ...(supportedGmailEventType(args.automation.eventType)
           ? { eventConnectorId }
-          : {}),
+          : args.automation.eventType === "stripe-invoice-paid"
+            ? { eventConnectorId, eventConfig }
+            : {}),
         nextRunAt: args.nextRunAt,
         consecutiveFailures: 0,
         updatedAt: args.now,
@@ -4918,6 +4987,10 @@ async function persistAndReconcileEnabledWorkflowAutomation(
       message: "Connect Gmail before using Gmail event automations",
     };
   }
+  if (enabled.status === "stripe-unavailable") {
+    signal.throwIfAborted();
+    return { kind: "bad-request", message: enabled.message };
+  }
   if (!enabled.row) {
     throw new Error("Failed to enable workflow automation");
   }
@@ -4955,33 +5028,12 @@ async function persistAndReconcileEnabledWorkflowAutomation(
   return { kind: "ok", summary };
 }
 
-async function validateEventAutomationEnableReadiness(
-  args: {
-    readonly automation: AutomationRow;
-    readonly db: Db;
-  },
-  signal: AbortSignal,
-): Promise<AutomationResult | null> {
-  if (args.automation.eventType === "stripe-invoice-paid") {
-    const readiness = await validateStripeInvoicePaidAutomationBinding(
-      {
-        db: args.db,
-        orgId: args.automation.orgId,
-        userId: args.automation.ownerUserId,
-        eventConfig: stripeInvoicePaidEventConfigSchema.parse(
-          args.automation.eventConfig,
-        ),
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    return readiness.kind === "bad_request"
-      ? { kind: "bad-request", message: readiness.message }
-      : null;
-  }
-  return args.automation.eventType === "strapi-entry-published" &&
+function validateEventAutomationEnableReadiness(
+  automation: AutomationRow,
+): AutomationResult | null {
+  return automation.eventType === "strapi-entry-published" &&
     !isFeatureEnabled(FeatureSwitchKey.StrapiIntegration, {
-      orgId: args.automation.orgId,
+      orgId: automation.orgId,
     })
     ? {
         kind: "bad-request",
@@ -5042,13 +5094,8 @@ export const enableWorkflowAutomation$ = command(
     if (stripeFailure) {
       return stripeFailure;
     }
-    const eventEnableFailure = await validateEventAutomationEnableReadiness(
-      {
-        automation,
-        db: writeDb,
-      },
-      signal,
-    );
+    const eventEnableFailure =
+      validateEventAutomationEnableReadiness(automation);
     signal.throwIfAborted();
     if (eventEnableFailure) {
       return eventEnableFailure;

@@ -29,10 +29,14 @@ import { now, nowDate } from "../../lib/time";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { settle } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import { lockConnectorAccountTarget } from "./auth-state-lock.service";
 import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { ORG_SENTINEL_USER_ID } from "./feature-switches.service";
 import { stripeInvoicePaidWorkflowAutomationEnabledForOwnerInDb } from "./stripe-invoice-paid-workflow-automation-feature-switch.service";
-import { validateStripeInvoicePaidAutomationBinding } from "./stripe-invoice-paid-workflow-automation.service";
+import {
+  repairMissingStripeInvoicePaidAutomationProjection,
+  validateStripeInvoicePaidAutomationBinding,
+} from "./stripe-invoice-paid-workflow-automation.service";
 import { workflowAutomationCanFire } from "./workflow-automation-access.service";
 import { storedWorkflowAutomationContext } from "./workflow-automation-context.service";
 import type { WorkflowQueueAdmissionTransaction } from "./workflow-chat-event-queue.service";
@@ -279,6 +283,12 @@ interface StripeInvoiceFanoutResult {
 interface StripeInvoiceFanoutCandidate {
   readonly automation: AutomationRow;
   readonly connectorId: string;
+}
+
+interface StripeAutomationOwner {
+  readonly automationId: string;
+  readonly orgId: string;
+  readonly userId: string;
 }
 
 function identifier(value: unknown): string | null {
@@ -628,6 +638,67 @@ async function loadStripeInvoiceFanoutCandidates(
   return rows;
 }
 
+async function loadMissingStripeProjectionOwners(
+  db: ReadonlyDb,
+  accountId: string,
+  signal: AbortSignal,
+): Promise<readonly StripeAutomationOwner[]> {
+  const owners = await db
+    .selectDistinct({
+      automationId: workflowAutomations.id,
+      orgId: workflowAutomations.orgId,
+      userId: workflowAutomations.ownerUserId,
+    })
+    .from(connectors)
+    .innerJoin(
+      workflowAutomations,
+      and(
+        eq(workflowAutomations.orgId, connectors.orgId),
+        eq(workflowAutomations.ownerUserId, connectors.userId),
+      ),
+    )
+    .where(
+      and(
+        eq(connectors.connectorSlug, "stripe"),
+        eq(connectors.authMethod, "oauth"),
+        eq(connectors.externalId, accountId),
+        eq(workflowAutomations.kind, "event"),
+        eq(workflowAutomations.eventType, "stripe-invoice-paid"),
+        eq(workflowAutomations.enabled, true),
+        isNull(workflowAutomations.eventConnectorId),
+      ),
+    )
+    .orderBy(
+      asc(workflowAutomations.orgId),
+      asc(workflowAutomations.ownerUserId),
+      asc(workflowAutomations.id),
+    );
+  signal.throwIfAborted();
+  return owners;
+}
+
+async function repairMissingStripeIngressProjections(
+  db: Db,
+  accountId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const owners = await loadMissingStripeProjectionOwners(db, accountId, signal);
+  for (const owner of owners) {
+    await db.transaction(async (tx) => {
+      await lockConnectorAccountTarget(tx, {
+        ...owner,
+        target: { kind: "builtin", connectorSlug: "stripe" },
+      });
+      await repairMissingStripeInvoicePaidAutomationProjection(
+        tx,
+        owner,
+        signal,
+      );
+    });
+    signal.throwIfAborted();
+  }
+}
+
 async function recordInvoiceFanout(
   args: {
     readonly tx: StripeWorkflowTransaction;
@@ -673,6 +744,7 @@ async function recordInvoiceFanout(
     );
     if (
       !config.success ||
+      row.automation.eventConnectorId !== row.connectorId ||
       config.data.connectorId !== row.connectorId ||
       config.data.stripeAccountId !== args.snapshot.event.connectedAccountId ||
       !(await stripeInvoicePaidWorkflowAutomationEnabledForOwnerInDb(
@@ -830,6 +902,8 @@ async function dispatchStripeInvoice(
     });
     return { kind: "bad_request" };
   }
+  await repairMissingStripeIngressProjections(db, parsed.data.account, signal);
+  signal.throwIfAborted();
   const fanout = await db.transaction(async (tx) => {
     return await recordInvoiceFanout(
       {
@@ -1007,6 +1081,8 @@ async function loadDeliveryTarget(
     row.automation.kind !== "event" ||
     row.automation.eventType !== "stripe-invoice-paid" ||
     !row.automation.enabled ||
+    !delivery.livemode ||
+    row.automation.eventConnectorId !== delivery.connectorId ||
     config.data.connectorId !== delivery.connectorId ||
     config.data.stripeAccountId !== delivery.stripeAccountId ||
     row.connectorExternalId !== delivery.stripeAccountId ||
@@ -1058,6 +1134,48 @@ async function loadDeliveryTarget(
       chatThreadId: row.chatThreadId,
     },
   };
+}
+
+async function repairMissingStripeDeliveryProjection(
+  db: Db,
+  delivery: StripeWorkflowDeliveryRow,
+  signal: AbortSignal,
+): Promise<void> {
+  const [owner] = await db
+    .select({
+      orgId: workflowAutomations.orgId,
+      userId: workflowAutomations.ownerUserId,
+      eventConnectorId: workflowAutomations.eventConnectorId,
+      eventType: workflowAutomations.eventType,
+    })
+    .from(workflowAutomations)
+    .where(eq(workflowAutomations.id, delivery.automationId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (
+    !owner ||
+    owner.eventType !== "stripe-invoice-paid" ||
+    owner.eventConnectorId !== null
+  ) {
+    return;
+  }
+  await db.transaction(async (tx) => {
+    await lockConnectorAccountTarget(tx, {
+      orgId: owner.orgId,
+      userId: owner.userId,
+      target: { kind: "builtin", connectorSlug: "stripe" },
+    });
+    await repairMissingStripeInvoicePaidAutomationProjection(
+      tx,
+      {
+        automationId: delivery.automationId,
+        orgId: owner.orgId,
+        userId: owner.userId,
+      },
+      signal,
+    );
+  });
+  signal.throwIfAborted();
 }
 
 async function updateLatestHealth(args: {
@@ -1322,6 +1440,7 @@ async function processClaimedDelivery(
   },
   signal: AbortSignal,
 ): Promise<"executed" | "skipped" | "failed" | "retried" | "lost"> {
+  await repairMissingStripeDeliveryProjection(args.db, args.delivery, signal);
   const validation = await loadDeliveryTarget(args.db, args.delivery, signal);
   if (validation.kind === "skip") {
     const skipped = await finishDelivery(

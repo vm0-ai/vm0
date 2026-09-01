@@ -15,7 +15,6 @@ import {
   isMorningBriefWorkflow,
   resetWorkflowDetailUiState$,
 } from "./workflows-signals.ts";
-import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 import { setOfficialWorkflowConfigurationForm$ } from "./official-workflows-signals.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
@@ -45,7 +44,5 @@ export const setupWorkflowDetailPage$ = command(
       }),
     );
     await set(hideAppSkeleton$, signal);
-
-    await set(onboardGuard$, signal);
   },
 );

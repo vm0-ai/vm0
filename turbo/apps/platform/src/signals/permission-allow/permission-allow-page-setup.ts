@@ -5,7 +5,6 @@ import { PermissionAllowPage } from "../../views/permission-allow/permission-all
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { currentAgentId$, rememberLastUsedAgentId$ } from "../agent.ts";
-import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupPermissionAllowPage$ = command(
@@ -24,9 +23,5 @@ export const setupPermissionAllowPage$ = command(
     }
 
     await set(hideAppSkeleton$, signal);
-
-    if (await set(onboardGuard$, signal)) {
-      return;
-    }
   },
 );

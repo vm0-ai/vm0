@@ -96,7 +96,7 @@ describe("Auth v2 navigation", () => {
       expectedBrandName: "Okou",
     },
   ])(
-    "replaces a $name redirect with the current app origin",
+    "uses the current app origin for completion and removes a $name redirect from nested navigation",
     ({ expectedBrandName, pageOrigin, redirectUrl, source }) => {
       const encodedRedirectUrl = encodeURIComponent(redirectUrl);
       const query =
@@ -117,10 +117,8 @@ describe("Auth v2 navigation", () => {
         brandName: expectedBrandName,
         homeUrl: "/",
       });
-      expect(nestedUrl.searchParams.get("redirect_url")).toBe(pageOrigin);
-      expect(hashSearchParams(nestedUrl.hash).get("redirect_url")).toBe(
-        source === "hash" ? pageOrigin : null,
-      );
+      expect(nestedUrl.searchParams.get("redirect_url")).toBeNull();
+      expect(hashSearchParams(nestedUrl.hash).get("redirect_url")).toBeNull();
     },
   );
 });
