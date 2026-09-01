@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.606.0](https://github.com/vm0-ai/vm0/compare/core-v8.605.10...core-v8.606.0) (2026-09-01)
+
+
+### Features
+
+* graduate built-in model provider fallback ([#30861](https://github.com/vm0-ai/vm0/issues/30861)) ([be446a6](https://github.com/vm0-ai/vm0/commit/be446a6678a6fe32d6df9788b2b17550ebddd8b4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.387.0
+
 ## [8.605.10](https://github.com/vm0-ai/vm0/compare/core-v8.605.9...core-v8.605.10) (2026-09-01)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.4](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.10.3...guest-mock-codex-v0.10.4) (2026-09-01)
+
+
+### Bug Fixes
+
+* retain heartbeat control-path diagnostics ([#30849](https://github.com/vm0-ai/vm0/issues/30849)) ([8ee4d2d](https://github.com/vm0-ai/vm0/commit/8ee4d2d6043a5e15173ace032347366645c254b1))
+
 ## [0.10.3](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.10.2...guest-mock-codex-v0.10.3) (2026-09-01)
 
 ## [0.10.2](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.10.1...guest-mock-codex-v0.10.2) (2026-09-01)

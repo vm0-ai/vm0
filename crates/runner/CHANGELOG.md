@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.182.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.10...runner-rs-v0.182.11) (2026-09-01)
+
+
+### Bug Fixes
+
+* retain heartbeat control-path diagnostics ([#30849](https://github.com/vm0-ai/vm0/issues/30849)) ([8ee4d2d](https://github.com/vm0-ai/vm0/commit/8ee4d2d6043a5e15173ace032347366645c254b1))
+
+
+### Refactoring
+
+* **python:** share bounded zlib member decoding ([#30859](https://github.com/vm0-ai/vm0/issues/30859)) ([77c59e3](https://github.com/vm0-ai/vm0/commit/77c59e30ff45033fbc7e537a55dc491ca3f25d6d))
+
 ## [0.182.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.9...runner-rs-v0.182.10) (2026-09-01)
 
 
