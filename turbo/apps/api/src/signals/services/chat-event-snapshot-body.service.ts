@@ -163,15 +163,18 @@ function hasExactContextlessMorningBriefModelClaimPayload(
   }
   const modelPart = claimUserMessage.parts.at(-1);
   // The #25467 queue-claim writer copied every original part, then appended
-  // exactly one server-owned Run model annotation. The archived Morning Brief
-  // fixture predates service-tier annotations, so every wider shape stays
+  // exactly one server-owned Run model annotation. Migration 0893 later made
+  // one additional exact transition for fast Runs: it retained that model part
+  // and added only serviceTier=priority. Every other wider shape stays
   // fail-closed.
   return (
     isRecord(modelPart) &&
-    Object.keys(modelPart).length === 2 &&
     modelPart.type === "model" &&
     typeof modelPart.selectedModel === "string" &&
     modelPart.selectedModel.length > 0 &&
+    (Object.keys(modelPart).length === 2 ||
+      (Object.keys(modelPart).length === 3 &&
+        modelPart.serviceTier === "priority")) &&
     isDeepStrictEqual(
       claimUserMessage.parts.slice(0, -1),
       rootUserMessage.parts,
@@ -485,9 +488,11 @@ function repairMorningBriefRow(
   // Before Morning Brief context rows existed, queue claim wrote an ordered,
   // run-owned replacement prompt. One revision copied the document byte-for-
   // byte; #25467 copied its original parts and appended the authoritative Run
-  // model annotation. The Phase A drain fallback also wrote an ordered run-less
-  // rejection plus its adjacent error companion. Migration 0836 classified the
-  // affected inputs while intentionally preserving their null context IDs.
+  // model annotation, and migration 0893 added only serviceTier=priority to
+  // that annotation for historical fast Runs. The Phase A drain fallback also
+  // wrote an ordered run-less rejection plus its adjacent error companion.
+  // Migration 0836 classified the affected inputs while intentionally
+  // preserving their null context IDs.
   // Accept only those complete archive-local relationships; never derive or
   // synthesize an ID. This persisted-state compatibility is limited to
   // immutable legacy V7 Snapshots. Remove it after all surviving V7 heads
