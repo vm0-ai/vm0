@@ -330,9 +330,10 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   // now that the Microsoft consoles hold the final URL. #28917 removed the
   // slice's other row, the Teams bot ingress, whose branded forms nothing holds
   // once the Azure Bot messaging endpoint moved. `/api/zero/teams/oauth/callback`
-  // is still emitted on purpose by the VM0 brand, so it is a producer target
-  // rather than drain-window compatibility; `route-entry.ts` records why on the
-  // row, and it is why #28917 kept this row against its own inventory.
+  // was emitted on purpose by the VM0 brand, which made it a producer target
+  // rather than drain-window compatibility and is why #28917 kept the row
+  // against its own inventory; #30667 unified that producer onto the canonical
+  // path, and `route-entry.ts` records what the row holds open now.
   "/api/integrations/teams/oauth/callback": [
     "/api/okou/teams/oauth/callback",
     "/api/zero/teams/oauth/callback",
@@ -791,9 +792,9 @@ describe("branded paths for migrated neutral routes", () => {
   // The #28545 twin, and the one slice where the branded forms are held by a
   // provider console rather than by a released client: the Microsoft app
   // registration still lists both callback URLs, so a dropped row 404s
-  // Microsoft itself with no drain window to wait out. The `zero` form is also
-  // what `callbackRedirectUri` emits for the VM0 brand, so this row has a live
-  // producer as well as a console holder. #28917 removed the slice's bot row —
+  // Microsoft itself with no drain window to wait out. The `zero` form was also
+  // what `callbackRedirectUri` emitted for the VM0 brand until #30667 unified
+  // it onto the canonical path. #28917 removed the slice's bot row —
   // the Azure Bot messaging endpoint had already been repointed at the neutral
   // path — which is why only the callback is exercised here now. Requests carry
   // no credentials, so the status is whatever the handler returns before it has

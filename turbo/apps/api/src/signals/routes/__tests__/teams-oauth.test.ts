@@ -24,7 +24,7 @@ const context = testContext();
 const mocks = createRouteMocks(context);
 const store = createStore();
 const API_ORIGIN = "https://api.vm0.ai";
-const CALLBACK_REDIRECT_URI = `${API_ORIGIN}/api/zero/teams/oauth/callback`;
+const CALLBACK_REDIRECT_URI = `${API_ORIGIN}/api/integrations/teams/oauth/callback`;
 const OKOU_API_ORIGIN = "https://api.okou.ai";
 const OKOU_APP_ORIGIN = "https://app.okou.ai";
 const WEB_ORIGIN = "https://www.vm0.ai";
@@ -69,7 +69,7 @@ function callbackPath(args: {
     params.set("code", args.code);
   }
   params.set("state", JSON.stringify(args.state));
-  return `/api/zero/teams/oauth/callback?${params.toString()}`;
+  return `/api/integrations/teams/oauth/callback?${params.toString()}`;
 }
 
 function teamsInstallUrl(tenantId: string): string {
@@ -94,7 +94,7 @@ function mockMicrosoftOAuth(args: {
       expect(body.get("client_secret")).toBe("test-microsoft-client-secret");
       expect(body.get("redirect_uri")).toBe(
         args.expectedRedirectUri ??
-          `${API_ORIGIN}/api/zero/teams/oauth/callback`,
+          `${API_ORIGIN}/api/integrations/teams/oauth/callback`,
       );
       expect(body.get("grant_type")).toBe("authorization_code");
       return HttpResponse.json({
@@ -171,7 +171,7 @@ describe("Teams OAuth API routes", () => {
       "test-microsoft-client-id",
     );
     expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-      `${API_ORIGIN}/api/zero/teams/oauth/callback`,
+      `${API_ORIGIN}/api/integrations/teams/oauth/callback`,
     );
     expect(redirectUrl.searchParams.get("scope")).toBe(
       "openid profile email User.Read",
@@ -185,7 +185,7 @@ describe("Teams OAuth API routes", () => {
     expect(state).toStrictEqual({
       orgId: "org_1",
       publicBrand: "vm0",
-      redirectUri: `${API_ORIGIN}/api/zero/teams/oauth/callback`,
+      redirectUri: `${API_ORIGIN}/api/integrations/teams/oauth/callback`,
       userId: "user_1",
     });
   });
@@ -202,7 +202,7 @@ describe("Teams OAuth API routes", () => {
       "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
     );
     expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-      `${API_ORIGIN}/api/zero/teams/oauth/callback`,
+      `${API_ORIGIN}/api/integrations/teams/oauth/callback`,
     );
   });
 
@@ -227,10 +227,10 @@ describe("Teams OAuth API routes", () => {
     });
   });
 
-  // api.vm0.ai and /api/zero/** retire together, so the VM0 brand never moves
-  // to the canonical namespace. Pin the exact registered value as a literal:
-  // a refactor that moves it off this string breaks Microsoft's allowlist.
-  it("leaves the VM0 brand authorization URI on the registered legacy value", async () => {
+  // The VM0 brand keeps its own API host and sends the same canonical path the
+  // Okou brand does. Pin the exact registered value as a literal: a refactor
+  // that moves it off this string breaks Microsoft's allowlist.
+  it("sends the VM0 brand authorization URI on the VM0 API host", async () => {
     const response = await appRequest(
       "/api/teams/oauth/connect?orgId=org_1&userId=user_1",
       { origin: API_ORIGIN },
@@ -243,11 +243,11 @@ describe("Teams OAuth API routes", () => {
       readonly redirectUri: string;
     };
     expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-      "https://api.vm0.ai/api/zero/teams/oauth/callback",
+      "https://api.vm0.ai/api/integrations/teams/oauth/callback",
     );
     expect(state).toMatchObject({
       publicBrand: "vm0",
-      redirectUri: "https://api.vm0.ai/api/zero/teams/oauth/callback",
+      redirectUri: "https://api.vm0.ai/api/integrations/teams/oauth/callback",
     });
   });
 
@@ -286,7 +286,7 @@ describe("Teams OAuth API routes", () => {
       mockEnv("APP_URL", "https://app.vm0.ai");
 
       const response = await appRequest(
-        `/api/zero/teams/oauth/callback?code=valid-code${stateQuery}`,
+        `/api/integrations/teams/oauth/callback?code=valid-code${stateQuery}`,
         { origin: OKOU_API_ORIGIN },
       );
 
@@ -302,7 +302,7 @@ describe("Teams OAuth API routes", () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
 
     const response = await appRequest(
-      `/api/zero/teams/oauth/callback?error=access_denied&state=${encodeURIComponent("not-json")}`,
+      `/api/integrations/teams/oauth/callback?error=access_denied&state=${encodeURIComponent("not-json")}`,
       { origin: OKOU_API_ORIGIN },
     );
 
@@ -368,7 +368,7 @@ describe("Teams OAuth API routes", () => {
     await seedMembership(fixture.orgId, fixture.userId, "admin");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const recordedRedirectUri =
-      "https://pr-1-api.vm7.ai/api/zero/teams/oauth/callback";
+      "https://pr-1-api.vm7.ai/api/integrations/teams/oauth/callback";
     mockMicrosoftOAuth({
       tenantId: fixture.teamsTenantId,
       aadObjectId: fixture.teamsAadObjectId,
