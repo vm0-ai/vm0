@@ -1,12 +1,18 @@
-import type { StripeInvoicePaidEventConfig } from "@okouai/api-contracts/contracts/workflows";
+import {
+  stripeInvoicePaidEventConfigSchema,
+  type StripeInvoicePaidEventConfig,
+} from "@okouai/api-contracts/contracts/workflows";
+import { workflowAutomations } from "@okouai/db/schema/workflow";
+import { and, eq, isNull } from "drizzle-orm";
 
-import type { ReadonlyDb } from "../external/db";
+import type { Db, ReadonlyDb } from "../external/db";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import {
   loadConnectorCredentialConnection,
   loadConnectorCredentialValues,
   type ConnectorCredentialConnection,
 } from "./connector-credential-runtime.service";
+import { resolveWorkflowAutomationConnectorId } from "./workflow-automation-account.service";
 
 const STRIPE_CONNECTOR_SLUG = "stripe";
 const STRIPE_LIVEMODE_VALUE_REF = "$vars.STRIPE_LIVEMODE";
@@ -21,7 +27,9 @@ const STRIPE_OAUTH_REQUIRED_MESSAGE =
 const STRIPE_LIVE_MODE_REQUIRED_MESSAGE =
   "Stripe invoice-paid automations require Live mode; reconnect Stripe in Live mode";
 const STRIPE_BINDING_MISMATCH_MESSAGE =
-  "The Stripe connection no longer matches this automation; delete and recreate the automation to bind the current Live-mode Stripe account";
+  "The Stripe connection no longer matches this automation";
+const STRIPE_SELECTION_CHANGED_MESSAGE =
+  "The selected Stripe account changed; retry the operation";
 
 interface StripeInvoicePaidAutomationBinding {
   readonly connectorId: string;
@@ -50,8 +58,9 @@ function badRequest(message: string): ReadyStripeConnectionResult {
 
 async function loadReadyStripeConnection(
   args: {
-    readonly connectorId?: string;
+    readonly connectorId: string;
     readonly db: ReadonlyDb;
+    readonly missingMessage: string;
     readonly orgId: string;
     readonly userId: string;
   },
@@ -65,17 +74,11 @@ async function loadReadyStripeConnection(
     orgId: args.orgId,
     userId: args.userId,
     connectorSlug: STRIPE_CONNECTOR_SLUG,
-    ...(args.connectorId === undefined
-      ? {}
-      : { connectorId: args.connectorId }),
+    connectorId: args.connectorId,
   });
   signal.throwIfAborted();
   if (loaded.kind === "missing") {
-    return badRequest(
-      args.connectorId === undefined
-        ? CONNECT_STRIPE_OAUTH_MESSAGE
-        : STRIPE_BINDING_MISMATCH_MESSAGE,
-    );
+    return badRequest(args.missingMessage);
   }
   if (loaded.kind === "unavailable") {
     return badRequest(RECONNECT_STRIPE_OAUTH_MESSAGE);
@@ -122,10 +125,30 @@ export async function resolveStripeInvoicePaidAutomationBinding(
     readonly db: ReadonlyDb;
     readonly orgId: string;
     readonly userId: string;
+    readonly workflowId: string;
   },
   signal: AbortSignal,
 ): Promise<StripeInvoicePaidAutomationReadinessResult> {
-  const ready = await loadReadyStripeConnection(args, signal);
+  const connectorId = await resolveWorkflowAutomationConnectorId(args.db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    workflowId: args.workflowId,
+    connectorSlug: STRIPE_CONNECTOR_SLUG,
+  });
+  signal.throwIfAborted();
+  if (connectorId === null) {
+    return { kind: "bad_request", message: CONNECT_STRIPE_OAUTH_MESSAGE };
+  }
+  const ready = await loadReadyStripeConnection(
+    {
+      db: args.db,
+      orgId: args.orgId,
+      userId: args.userId,
+      connectorId,
+      missingMessage: STRIPE_SELECTION_CHANGED_MESSAGE,
+    },
+    signal,
+  );
   if (ready.kind === "bad_request") {
     return ready;
   }
@@ -154,6 +177,7 @@ export async function validateStripeInvoicePaidAutomationBinding(
       orgId: args.orgId,
       userId: args.userId,
       connectorId: args.eventConfig.connectorId,
+      missingMessage: STRIPE_BINDING_MISMATCH_MESSAGE,
     },
     signal,
   );
@@ -171,4 +195,182 @@ export async function validateStripeInvoicePaidAutomationBinding(
       mode: "live",
     },
   };
+}
+
+interface StripeAutomationProjectionRow {
+  readonly id: string;
+  readonly workflowId: string;
+  readonly eventConfig: unknown;
+  readonly eventConnectorId: string | null;
+}
+
+async function reprojectStripeAutomation(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly automation: StripeAutomationProjectionRow;
+    readonly readinessByConnectorId: Map<
+      string,
+      StripeInvoicePaidAutomationReadinessResult
+    >;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  const connectorId = await resolveWorkflowAutomationConnectorId(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    workflowId: args.automation.workflowId,
+    connectorSlug: STRIPE_CONNECTOR_SLUG,
+  });
+  signal.throwIfAborted();
+
+  if (connectorId === null) {
+    if (args.automation.eventConnectorId !== null) {
+      await db
+        .update(workflowAutomations)
+        .set({ eventConnectorId: null })
+        .where(eq(workflowAutomations.id, args.automation.id));
+    }
+    return;
+  }
+
+  let readiness = args.readinessByConnectorId.get(connectorId);
+  if (readiness === undefined) {
+    const ready = await loadReadyStripeConnection(
+      {
+        db,
+        orgId: args.orgId,
+        userId: args.userId,
+        connectorId,
+        missingMessage: STRIPE_SELECTION_CHANGED_MESSAGE,
+      },
+      signal,
+    );
+    readiness =
+      ready.kind === "ok"
+        ? {
+            kind: "ok",
+            binding: {
+              connectorId: ready.connection.connectorId,
+              stripeAccountId: ready.stripeAccountId,
+              mode: "live",
+            },
+          }
+        : ready;
+    args.readinessByConnectorId.set(connectorId, readiness);
+  }
+
+  if (readiness.kind !== "ok") {
+    if (args.automation.eventConnectorId !== connectorId) {
+      await db
+        .update(workflowAutomations)
+        .set({ eventConnectorId: connectorId })
+        .where(eq(workflowAutomations.id, args.automation.id));
+    }
+    return;
+  }
+
+  const config = stripeInvoicePaidEventConfigSchema.parse(
+    args.automation.eventConfig,
+  );
+  const binding = readiness.binding;
+  if (
+    args.automation.eventConnectorId === connectorId &&
+    config.connectorId === binding.connectorId &&
+    config.stripeAccountId === binding.stripeAccountId &&
+    config.mode === binding.mode
+  ) {
+    return;
+  }
+  await db
+    .update(workflowAutomations)
+    .set({
+      eventConnectorId: connectorId,
+      eventConfig: { ...config, ...binding },
+    })
+    .where(eq(workflowAutomations.id, args.automation.id));
+}
+
+export async function reprojectStripeInvoicePaidAutomationsForOwner(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  const automations = await db
+    .select({
+      id: workflowAutomations.id,
+      workflowId: workflowAutomations.workflowId,
+      eventConfig: workflowAutomations.eventConfig,
+      eventConnectorId: workflowAutomations.eventConnectorId,
+    })
+    .from(workflowAutomations)
+    .where(
+      and(
+        eq(workflowAutomations.orgId, args.orgId),
+        eq(workflowAutomations.ownerUserId, args.userId),
+        eq(workflowAutomations.kind, "event"),
+        eq(workflowAutomations.eventType, "stripe-invoice-paid"),
+      ),
+    );
+  signal.throwIfAborted();
+  const readinessByConnectorId = new Map<
+    string,
+    StripeInvoicePaidAutomationReadinessResult
+  >();
+  for (const automation of automations) {
+    await reprojectStripeAutomation(
+      db,
+      { ...args, automation, readinessByConnectorId },
+      signal,
+    );
+    signal.throwIfAborted();
+  }
+}
+
+export async function repairMissingStripeInvoicePaidAutomationProjection(
+  db: Db,
+  args: {
+    readonly automationId: string;
+    readonly orgId: string;
+    readonly userId: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  const [automation] = await db
+    .select({
+      id: workflowAutomations.id,
+      workflowId: workflowAutomations.workflowId,
+      eventConfig: workflowAutomations.eventConfig,
+      eventConnectorId: workflowAutomations.eventConnectorId,
+    })
+    .from(workflowAutomations)
+    .where(
+      and(
+        eq(workflowAutomations.id, args.automationId),
+        eq(workflowAutomations.orgId, args.orgId),
+        eq(workflowAutomations.ownerUserId, args.userId),
+        eq(workflowAutomations.kind, "event"),
+        eq(workflowAutomations.eventType, "stripe-invoice-paid"),
+        isNull(workflowAutomations.eventConnectorId),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  if (!automation) {
+    return;
+  }
+  await reprojectStripeAutomation(
+    db,
+    {
+      orgId: args.orgId,
+      userId: args.userId,
+      automation,
+      readinessByConnectorId: new Map(),
+    },
+    signal,
+  );
 }

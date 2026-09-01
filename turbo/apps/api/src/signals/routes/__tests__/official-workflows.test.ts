@@ -49,7 +49,11 @@ import { flushWaitUntilForTest } from "../../context/wait-until";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
-import { mockGmailConnectorOAuth } from "./helpers/api-bdd-connectors";
+import {
+  createConnectorBddApi,
+  mockGmailConnectorOAuth,
+  mockStripeConnectorOAuth,
+} from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
@@ -94,6 +98,7 @@ import {
 
 const context = testContext();
 const bdd = createBddApi(context);
+const connectors = createConnectorBddApi(context);
 const workflowBdd = createWorkflowsBddApi(context);
 const runs = createRunsApi(context);
 const webhooks = createWebhookCallbackApi(context);
@@ -306,6 +311,19 @@ function structureTransitionGmailBlueprint(
               labelName: "Follow Up",
             },
           },
+    runtime: { resultEmail: false },
+  };
+}
+
+function structureTransitionStripeBlueprint(): OfficialWorkflowBlueprint {
+  return {
+    key: "lifecycle-transition",
+    parameters: [],
+    desiredState: {
+      kind: "event",
+      eventType: "stripe-invoice-paid",
+      eventConfig: { provider: "stripe", event: "invoice_paid" },
+    },
     runtime: { resultEmail: false },
   };
 }
@@ -1034,6 +1052,23 @@ async function setOfficialWorkflowsEnabled(
     { orgId: actor.orgId, userId: actor.userId },
     { [FeatureSwitchKey.OfficialWorkflows]: enabled },
   );
+}
+
+async function connectStripeOAuthForOfficialWorkflow(
+  actor: ApiTestUser,
+  args: { readonly accountId: string; readonly code: string },
+): Promise<string> {
+  mockStripeConnectorOAuth({ accountId: args.accountId, livemode: true });
+  const started = await connectors.startOauth(actor, "stripe", "oauth");
+  const state = new URL(started.authorizationUrl).searchParams.get("state");
+  if (!state) {
+    throw new Error("Expected Stripe OAuth state");
+  }
+  await connectors.completeOauthCallback("stripe", {
+    code: args.code,
+    state,
+  });
+  return (await connectors.readConnectorBySlug(actor, "stripe")).id;
 }
 
 function configureResultEmailRecipient(actor: ApiTestUser): void {
@@ -5539,6 +5574,121 @@ describe.sequential("Official Workflow installations", () => {
         automationId: automation.id,
         blueprintKey: "lifecycle-transition",
         state: "active",
+      }),
+    ]);
+  });
+
+  it("revalidates a prepared Stripe transition after the same connector changes accounts", async () => {
+    installCatalogStorageFixture();
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+    const definitionName = `api-test-stripe-binding-race-${suffix}`;
+    await syncCatalog(
+      catalog([
+        activeDefinition(definitionName, [
+          structureTransitionScheduleBlueprint(),
+        ]),
+      ]),
+    );
+    const setup = await workflowBdd.setupWorkflowOrg();
+    const { actor } = setup;
+    if (!actor.orgId) {
+      throw new Error("Expected organization-scoped actor");
+    }
+    const { agentId } = await workflowBdd.createAgent(actor);
+    onTestFinished(async () => {
+      await resumeStructureTransitionPromotion();
+      installCatalogStorageFixture();
+      await bdd.deleteAgent(actor, agentId);
+      await cleanupCatalog();
+    });
+    await setOfficialWorkflowsEnabled(actor, true);
+    await updateFeatureSwitchesForUser(
+      context,
+      { orgId: actor.orgId, userId: actor.userId },
+      { [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: true },
+    );
+    const connectorId = await connectStripeOAuthForOfficialWorkflow(actor, {
+      accountId: "acct_official_before",
+      code: `stripe-before-${suffix}`,
+    });
+    const headers = authHeaders(actor);
+    const installed = await accept(
+      officialClient().install({
+        headers,
+        params: { definitionName },
+        body: {
+          agentId,
+          blueprints: [{ blueprintKey: "lifecycle-transition", bindings: [] }],
+        },
+      }),
+      [201],
+    );
+    const workflowId = installed.body.workflow.id;
+    const automation = installed.body.workflow.automations[0];
+    if (!automation) {
+      throw new Error("Expected Stripe structure-transition Automation");
+    }
+
+    await syncCatalog(
+      catalog([
+        activeDefinition(definitionName, [
+          structureTransitionStripeBlueprint(),
+        ]),
+      ]),
+    );
+    await pauseNextStructureTransitionPromotion();
+    const olderWorker = runOfficialWorkflowReconciliationWorker();
+    await waitForStructureTransitionPromotionPause();
+    const reconnectedId = await connectStripeOAuthForOfficialWorkflow(actor, {
+      accountId: "acct_official_after",
+      code: `stripe-after-${suffix}`,
+    });
+    expect(reconnectedId).toBe(connectorId);
+    await resumeStructureTransitionPromotion();
+    await olderWorker;
+
+    const rejected = await accept(
+      installationClient().get({ headers, params: { workflowId } }),
+      [200],
+    );
+    expect(rejected.body.workflow.automations).toStrictEqual([
+      expect.objectContaining({
+        id: automation.id,
+        kind: "schedule",
+        schedule: { type: "loop", intervalSeconds: 3600 },
+        enabled: false,
+        official: expect.objectContaining({
+          intendedEnabled: true,
+          reconciliationStatus: "reconciling",
+        }),
+      }),
+    ]);
+
+    await makeOfficialWorkflowReconciliationWorkDue(definitionName);
+    await expect(
+      runOfficialWorkflowReconciliationWorker(),
+    ).resolves.toStrictEqual(
+      expect.objectContaining({ claimed: 1, completed: 1, installations: 1 }),
+    );
+    const converged = await accept(
+      installationClient().get({ headers, params: { workflowId } }),
+      [200],
+    );
+    expect(converged.body.workflow.automations).toStrictEqual([
+      expect.objectContaining({
+        id: automation.id,
+        kind: "event",
+        eventType: "stripe-invoice-paid",
+        eventConfig: expect.objectContaining({
+          connectorId,
+          stripeAccountId: "acct_official_after",
+          mode: "live",
+        }),
+        enabled: true,
+        official: expect.objectContaining({
+          intendedEnabled: true,
+          reconciliationStatus: "current",
+        }),
       }),
     ]);
   });

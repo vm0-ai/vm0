@@ -1,5 +1,6 @@
 import { testStripeAutomationEventFixtureContract } from "@okouai/api-contracts/contracts/test-stripe-automation-events";
 import { stripeWorkflowDeliveries } from "@okouai/db/schema/stripe-automation-event";
+import { workflowAutomations } from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
 import { desc, eq, sql } from "drizzle-orm";
 
@@ -107,6 +108,18 @@ const applyStripeAutomationEventFixture$ = command(
       return bodyResult.response;
     }
     const db = set(writeDb$);
+    if (bodyResult.data.action === "clear-automation-account-projection") {
+      const [automation] = await db
+        .update(workflowAutomations)
+        .set({ eventConnectorId: null })
+        .where(eq(workflowAutomations.id, bodyResult.data.automation_id))
+        .returning({ id: workflowAutomations.id });
+      signal.throwIfAborted();
+      if (!automation) {
+        return testEndpointNotFoundResponse();
+      }
+      return { status: 200 as const, body: { ok: true as const } };
+    }
     const [delivery] = await db
       .select({ id: stripeWorkflowDeliveries.id })
       .from(stripeWorkflowDeliveries)

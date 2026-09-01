@@ -43,6 +43,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import {
   createConnectorBddApi,
   mockGmailConnectorOAuth,
+  mockStripeConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
@@ -2051,6 +2052,147 @@ describe("workflows", () => {
       "Bearer gmail-copy-second-token",
       "Bearer gmail-copy-first-token",
     ]);
+  });
+
+  it("rebinds copied Stripe automations to the target thread default account", async () => {
+    const actor = user();
+    if (!actor.orgId) {
+      throw new Error(
+        "Expected Stripe workflow copy actor to belong to an org",
+      );
+    }
+    await api.grantProEntitlement(actor, { tier: "team" });
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      {
+        [FeatureSwitchKey.ConnectorAccounts]: true,
+        [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: true,
+      },
+    );
+    const sourceAgent = await createAgent(actor, {
+      displayName: "Stripe Copy Source Agent",
+      visibility: "private",
+    });
+    const targetAgent = await createAgent(actor, {
+      displayName: "Stripe Copy Target Agent",
+      visibility: "private",
+    });
+    const workflow = await createWorkflow(actor, {
+      agentId: sourceAgent.agentId,
+      name: `stripe-copy-${randomUUID().slice(0, 8)}`,
+      instruction: "# Stripe copy source",
+    });
+
+    const defaultAccountId = `acct_stripe_copy_default_${randomUUID()}`;
+    mockStripeConnectorOAuth({ accountId: defaultAccountId, livemode: true });
+    const defaultStart = await connectorApi.startOauth(
+      actor,
+      "stripe",
+      "oauth",
+      sourceAgent.agentId,
+    );
+    const defaultState = new URL(
+      defaultStart.authorizationUrl,
+    ).searchParams.get("state");
+    if (!defaultState) {
+      throw new Error("Expected default Stripe OAuth state");
+    }
+    await connectorApi.completeOauthCallback("stripe", {
+      code: "stripe-copy-default-code",
+      state: defaultState,
+    });
+    const defaultAccount = await connectorApi.readConnectorBySlug(
+      actor,
+      "stripe",
+    );
+
+    const selectedAccountId = `acct_stripe_copy_selected_${randomUUID()}`;
+    mockStripeConnectorOAuth({ accountId: selectedAccountId, livemode: true });
+    const selectedStart = await connectorApi.startOauth(
+      actor,
+      "stripe",
+      "oauth",
+      sourceAgent.agentId,
+      { intent: "add", displayName: "Stripe Copy Selected" },
+    );
+    const selectedState = new URL(
+      selectedStart.authorizationUrl,
+    ).searchParams.get("state");
+    if (!selectedState) {
+      throw new Error("Expected selected Stripe OAuth state");
+    }
+    await connectorApi.completeOauthCallback("stripe", {
+      code: "stripe-copy-selected-code",
+      state: selectedState,
+    });
+    const accounts = await connectorApi.listBuiltinConnectorAccounts(
+      actor,
+      "stripe",
+    );
+    const selectedAccount = accounts.find((account) => {
+      return account.externalId === selectedAccountId;
+    });
+    if (!selectedAccount) {
+      throw new Error("Expected selected Stripe account");
+    }
+
+    const sourceAutomation = await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: {
+          kind: "event",
+          eventType: "stripe-invoice-paid",
+          eventConfig: { provider: "stripe", event: "invoice_paid" },
+        },
+      }),
+      [201],
+    );
+    if (
+      sourceAutomation.body.kind !== "event" ||
+      sourceAutomation.body.eventType !== "stripe-invoice-paid" ||
+      !sourceAutomation.body.chatThreadId
+    ) {
+      throw new Error("Expected source Stripe automation thread");
+    }
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(actor),
+        params: { id: sourceAutomation.body.chatThreadId },
+        body: {
+          connectionId: selectedAccount.id,
+          target: { kind: "builtin", connectorSlug: "stripe" },
+        },
+      }),
+      [200],
+    );
+
+    const copied = await accept(
+      detailClient().copy({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: { toAgentId: targetAgent.agentId },
+      }),
+      [201],
+    );
+    const copiedAutomations = await accept(
+      automationsClient().list({
+        headers: authHeaders(actor),
+        params: { workflowId: copied.body.id },
+      }),
+      [200],
+    );
+    expect(copiedAutomations.body).toContainEqual(
+      expect.objectContaining({
+        eventType: "stripe-invoice-paid",
+        eventConfig: expect.objectContaining({
+          connectorId: defaultAccount.id,
+          stripeAccountId: defaultAccountId,
+          mode: "live",
+        }),
+      }),
+    );
   });
 
   it("inherits copied automation budgets from agent callers and rejects exhausted runs", async () => {

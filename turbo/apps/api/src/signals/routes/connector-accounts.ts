@@ -224,7 +224,7 @@ const setDefaultInner$ = command(
     }
     const writeDb = set(writeDb$);
     const updatedAt = await commitConnectorRuntimeMutation(
-      setDefaultConnectorAccount(writeDb, request),
+      setDefaultConnectorAccount(writeDb, request, signal),
       (changed) => {
         return changed
           ? {
