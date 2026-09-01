@@ -3,7 +3,10 @@ import { useTranslation } from "react-i18next";
 import { cn } from "@okouai/ui";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
-import type { LocatorRole } from "../../signals/chat-page/chat-conversation-locator.ts";
+import {
+  BAND_BASE_WIDTH_PX,
+  type LocatorRole,
+} from "../../signals/chat-page/chat-conversation-locator.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { AgentAvatarImg } from "./sidebar-shared.tsx";
 import { formatChatTimestamp } from "../../i18n/format.ts";
@@ -51,9 +54,6 @@ function LocatorPreviewCard({ thread }: { thread: ChatPanelSignals }) {
         <span className="tabular-nums">
           {preview?.createdAt ? formatChatTimestamp(preview.createdAt) : null}
         </span>
-        <span className="ml-auto tabular-nums">
-          {preview ? `${preview.position}/${preview.total}` : null}
-        </span>
       </div>
       <p className="line-clamp-2 text-sm leading-[1.62] text-muted-foreground [overflow-wrap:anywhere]">
         {preview?.text}
@@ -87,8 +87,14 @@ function ConversationLocatorRail({ thread }: { thread: ChatPanelSignals }) {
         {layout.visible && layout.bandHeight > 0 ? (
           <div
             data-conversation-locator-band
-            className="pointer-events-none absolute left-[7px] w-8 rounded-[5px] bg-primary opacity-[0.05]"
-            style={{ top: layout.bandTop, height: layout.bandHeight }}
+            // Width tracks the magnified ticks and is written per pointer
+            // frame by the locator signals, like the ticks themselves.
+            className="pointer-events-none absolute left-[7px] rounded-[5px] bg-primary opacity-[0.05]"
+            style={{
+              top: layout.bandTop,
+              height: layout.bandHeight,
+              width: BAND_BASE_WIDTH_PX,
+            }}
           />
         ) : null}
         {layout.ticks.map((tick) => {
