@@ -69,10 +69,8 @@ if [[ ! "$lease_timeout" =~ ^[1-9][0-9]*$ ]] || [ "$lease_timeout" -lt 5 ] ||
   exit 2
 fi
 # Five heartbeats per lease keep a busy CI host from expiring a live holder.
+# The validated five-second floor above keeps this interval at one second or more.
 heartbeat_interval=$((lease_timeout / 5))
-if [ "$heartbeat_interval" -lt 1 ]; then
-  heartbeat_interval=1
-fi
 
 normalized_hosts=$(
   printf '%s\n' "$METAL_HOSTS" |
