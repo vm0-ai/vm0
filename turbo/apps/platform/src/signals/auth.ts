@@ -386,7 +386,7 @@ export function buildSignupRedirectUrl(
   }
 
   if (!hasAdTraffic(params)) {
-    return appUrl;
+    return new URL(VM0_ONBOARDING_PATH, appUrl).toString();
   }
 
   const redirectParams = new URLSearchParams();
