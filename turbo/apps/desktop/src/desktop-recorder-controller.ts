@@ -256,6 +256,8 @@ export class DesktopRecorderController {
    * window closing, the display being unplugged — only surfaces here.
    */
   async refreshRecordingStatus(): Promise<void> {
+    // A paused capture is still open, but its own status is what the poll would
+    // be reading, so leave it alone until it resumes.
     if (this.status !== "recording" || !this.sessionId || !this.backend) {
       return;
     }

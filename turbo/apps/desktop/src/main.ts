@@ -296,12 +296,24 @@ function refreshDesktopTray(): void {
 function notifyScreenRecorderChanged(): void {
   refreshDesktopTray();
 
-  const isRecording = screenRecorder.getState().status === "recording";
-  if (isRecording === (screenRecordingPollTimer !== null)) {
+  const status = screenRecorder.getState().status;
+  // Paused still holds the capture open, so the poll, the stop shortcut and the
+  // on-screen controls all stay alive for it.
+  const isCapturing = status === "recording" || status === "paused";
+
+  // The controller belongs to a live capture and nothing else. Deciding that
+  // here rather than at each call site is what dismisses it when a recording
+  // ends from the tray, the shortcut, the system indicator, or a failure — and
+  // what takes it off screen the moment a finish starts uploading.
+  if (!isCapturing) {
+    recorderWindows?.hideController();
+  }
+
+  if (isCapturing === (screenRecordingPollTimer !== null)) {
     return;
   }
 
-  if (isRecording) {
+  if (isCapturing) {
     screenRecordingPollTimer = setInterval(() => {
       void screenRecorder.refreshRecordingStatus().catch((error: unknown) => {
         console.warn("Desktop screen recording status refresh failed", error);
@@ -761,13 +773,9 @@ function installDesktopRecorder(): void {
       },
       pause: () => screenRecorder.pause(),
       resume: () => screenRecorder.resume(),
-      discard: async () => {
-        await screenRecorder.discard();
-        getRecorderWindows().hideController();
-      },
+      discard: () => screenRecorder.discard(),
       stop: async () => {
         await screenRecorder.stop();
-        getRecorderWindows().hideController();
       },
       selectArea: () => getRecorderWindows().selectArea(),
       completeAreaSelection: (area) => {

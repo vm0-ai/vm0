@@ -692,6 +692,25 @@ describe("desktop tray screen recording section", () => {
     ).toBeFalsy();
   });
 
+  it("can still stop a paused capture from the menu bar", () => {
+    const actions = trayActions();
+    const menu = menuFor(
+      recorderState({
+        status: "paused",
+        sessionId: "recorder-session-1",
+        elapsedMs: 125_400,
+      }),
+      actions,
+    );
+
+    // Paused is still a live capture; the menu bar is the only stop control for
+    // a whole-display recording, where the controller is inside the frame.
+    const section = findItem(menu, "Screen Recording: 02:05 paused");
+    click(findItem(submenu(section), "Stop Recording (⌃⇧R)"));
+
+    expect(actions.stopScreenRecording).toHaveBeenCalledOnce();
+  });
+
   it("pads the elapsed clock below one minute", () => {
     const menu = menuFor(
       recorderState({ status: "recording", elapsedMs: 7_200 }),
