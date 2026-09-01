@@ -25,6 +25,10 @@ use uuid::Uuid;
 
 const HANG_ON_TURN_START_READY_FILE: &str = ".vm0-mock-codex-turn-start-ready";
 const HANG_ON_TURN_START_READY_EVENT: &str = "vm0_mock_codex_turn_start_ready";
+const TURN_COMPLETE_BEFORE_HEARTBEAT_READY_FILE: &str =
+    ".vm0-mock-codex-turn-complete-before-heartbeat-ready";
+const TURN_COMPLETE_BEFORE_HEARTBEAT_READY_EVENT: &str =
+    "vm0_mock_codex_turn_complete_before_heartbeat_ready";
 const SESSION_HISTORY_READY_FILE: &str = ".vm0-mock-codex-session-history-ready";
 const SESSION_HISTORY_READY_EVENT: &str = "vm0_mock_codex_session_history_ready";
 const WAIT_ON_TURN_STEER_READY_FILE: &str = ".vm0-mock-codex-turn-steer-ready";
@@ -187,7 +191,9 @@ impl AppServerState {
                 )?;
                 write_success(output, id, result)?;
             }
-            Scenario::RuntimeTurnComplete | Scenario::SecondaryThreadNotifications => {
+            Scenario::RuntimeTurnComplete
+            | Scenario::RuntimeTurnCompleteBeforeHeartbeat
+            | Scenario::SecondaryThreadNotifications => {
                 write_json_line(output, &thread_started_notification(&thread_id))?;
                 write_success(output, id, result)?;
             }
@@ -400,6 +406,7 @@ impl AppServerState {
         if matches!(
             self.scenario,
             Scenario::RuntimeTurnComplete
+                | Scenario::RuntimeTurnCompleteBeforeHeartbeat
                 | Scenario::RuntimeTurnCompleteWithoutThreadStarted
                 | Scenario::RuntimeTurnUsageResumeNoReplay
                 | Scenario::RuntimeTurnUsageResumeReplay
@@ -419,6 +426,15 @@ impl AppServerState {
                         )?;
                     } else {
                         write_turn_notifications(output, &thread_id, &turn_id, &response_text)?;
+                        if self.scenario == Scenario::RuntimeTurnCompleteBeforeHeartbeat {
+                            let home = std::env::var_os("HOME").ok_or_else(|| {
+                                io::Error::new(io::ErrorKind::NotFound, "HOME is not set")
+                            })?;
+                            std::fs::write(
+                                PathBuf::from(home).join(TURN_COMPLETE_BEFORE_HEARTBEAT_READY_FILE),
+                                TURN_COMPLETE_BEFORE_HEARTBEAT_READY_EVENT,
+                            )?;
+                        }
                     }
                 }
                 MockTurnOutput::Checkpoint {
