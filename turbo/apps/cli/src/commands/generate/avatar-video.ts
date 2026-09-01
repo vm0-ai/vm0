@@ -430,7 +430,7 @@ export const avatarVideoCommand = new Command()
   )
   .option(
     "--screen-style <style>",
-    "Background: 1 scene, 2 green screen, or 3 transparent WebM (disables captions)",
+    "Background: 1 scene, 2 green screen, or 3 transparent WebM (alpha)",
     parseScreenStyle,
     1,
   )

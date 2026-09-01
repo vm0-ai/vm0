@@ -689,37 +689,4 @@ describe("JoggAI built-in avatar video routes", () => {
       caption: false,
     });
   });
-
-  it("rejects captions requested alongside a transparent background", async () => {
-    const fixture = await seedAvatarVideoFixture();
-    let providerCalled = false;
-    server.use(
-      http.post(JOGGAI_CREATE_URL, () => {
-        providerCalled = true;
-        return HttpResponse.json({
-          code: 0,
-          msg: "Success",
-          data: { video_id: "jogg-should-not-be-called" },
-        });
-      }),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await createAvatarVideoTestApp(
-      fixture.usagePricingResolution,
-    ).request("/api/avatar-video/generate", {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({
-        avatarId: 1790,
-        voiceId: "en-US-AvaNeural",
-        script: "Welcome to vm0",
-        screenStyle: 3,
-        caption: true,
-      }),
-    });
-
-    expect(response.status).toBe(400);
-    expect(providerCalled).toBeFalsy();
-  });
 });
