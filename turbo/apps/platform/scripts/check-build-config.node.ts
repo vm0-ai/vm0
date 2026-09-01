@@ -378,7 +378,10 @@ function assertApplicationResourcePriority(htmlSource: string): void {
   const criticalStyleIndex = htmlSource.indexOf(
     '<style id="app-bootstrap-critical-styles">',
   );
-  const stylesheetIndex = htmlSource.indexOf('rel="stylesheet"');
+  const stylesheetIndex = htmlSource.indexOf('id="vm0-main-stylesheet"');
+  const stylesheetLoaderIndex = htmlSource.indexOf(
+    'id="vm0-main-stylesheet-loader"',
+  );
   const runtimePreloadIndex = htmlSource.indexOf("assets/rolldown-runtime-");
   const vendorPreloadIndex = htmlSource.indexOf("assets/vendor-");
   const clerkCoreIndex = htmlSource.indexOf('id="vm0-clerk-core-script"');
@@ -388,14 +391,29 @@ function assertApplicationResourcePriority(htmlSource: string): void {
 
   assert.ok(criticalStyleIndex !== -1);
   assert.ok(stylesheetIndex > criticalStyleIndex);
-  assert.ok(runtimePreloadIndex > stylesheetIndex);
+  assert.ok(stylesheetLoaderIndex > stylesheetIndex);
+  assert.ok(runtimePreloadIndex > stylesheetLoaderIndex);
   assert.ok(vendorPreloadIndex > runtimePreloadIndex);
   assert.ok(clerkCoreIndex > vendorPreloadIndex);
   assert.ok(appModuleIndex > skeletonIndex);
   assert.ok(bodyEndIndex > appModuleIndex);
   assert.match(
     htmlSource,
-    /<link rel="stylesheet"[^>]*fetchpriority="high"[^>]*>/u,
+    /<link id="vm0-main-stylesheet" rel="preload" as="style"[^>]*fetchpriority="high"[^>]*>/u,
+  );
+  assert.equal((htmlSource.match(/<link rel="stylesheet"/gu) ?? []).length, 0);
+  assert.match(
+    htmlSource,
+    /window\.__mainStylesheetLoaded = new Promise\(function \(resolve\)/u,
+  );
+  assert.match(htmlSource, /stylesheet\.rel = "stylesheet"/u);
+  assert.match(
+    htmlSource,
+    /requestAnimationFrame\(function \(\) \{\s*requestAnimationFrame\(function \(\) \{\s*resolve\(\);/u,
+  );
+  assert.match(
+    htmlSource,
+    /"error",\s*function \(\) \{\s*console\.error\("Failed to load the main application stylesheet"\);\s*resolve\(\);/u,
   );
   assert.equal(
     (

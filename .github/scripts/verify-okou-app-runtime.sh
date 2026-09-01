@@ -32,13 +32,15 @@ probe_evidence="$(mktemp)"
 trap 'rm -f "$layout_files" "$document_body" "$curl_error" "$probe_evidence"' EXIT
 
 declare -a app_files=()
+declare -a stylesheet_files=()
 declare -a vendor_files=()
 declare -a runtime_files=()
 declare -a worker_files=()
-find "$assets_directory" -type f -name '*.js' -print0 > "$layout_files"
+find "$assets_directory" -type f \( -name '*.js' -o -name '*.css' \) -print0 > "$layout_files"
 while IFS= read -r -d '' source_path; do
   relative_path="${source_path#"$assets_directory"/}"
   case "$relative_path" in
+    index-*.css) stylesheet_files+=("$relative_path") ;;
     vendor-*.js) vendor_files+=("$relative_path") ;;
     rolldown-runtime-*.js) runtime_files+=("$relative_path") ;;
     shared-database-worker-*.js) worker_files+=("$relative_path") ;;
@@ -48,15 +50,17 @@ done < "$layout_files"
 
 if ((
   ${#app_files[@]} != 1 ||
+  ${#stylesheet_files[@]} != 1 ||
   ${#vendor_files[@]} != 1 ||
   ${#runtime_files[@]} != 1 ||
   ${#worker_files[@]} != 1
 )); then
-  echo "Expected exactly one app, vendor, Rolldown runtime, and SharedWorker JavaScript asset" >&2
+  echo "Expected exactly one app stylesheet plus one app, vendor, Rolldown runtime, and SharedWorker JavaScript asset" >&2
   exit 1
 fi
 
 app_asset_url="${public_assets_url}/${app_files[0]}"
+stylesheet_asset_url="${public_assets_url}/${stylesheet_files[0]}"
 vendor_asset_url="${public_assets_url}/${vendor_files[0]}"
 runtime_asset_url="${public_assets_url}/${runtime_files[0]}"
 worker_asset_url="${app_url}/okou-app/assets/${worker_files[0]}"
@@ -86,7 +90,8 @@ for ((attempt = 1; attempt <= document_max_attempts; attempt++)); do
       "$canonical_document" \
       "$app_asset_url" \
       "$runtime_asset_url" \
-      "$vendor_asset_url" 2>"$probe_evidence" <<'PY'
+      "$vendor_asset_url" \
+      "$stylesheet_asset_url" 2>"$probe_evidence" <<'PY'
 from html.parser import HTMLParser
 from pathlib import Path
 import re
@@ -96,6 +101,8 @@ COMMIT_SHA_META_NAME = "okou-app-git-commit-sha"
 VERSION_META_NAME = "okou-app-version"
 RUNTIME_META_NAMES = {COMMIT_SHA_META_NAME, VERSION_META_NAME}
 COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+MAIN_STYLESHEET_ID = "vm0-main-stylesheet"
+MAIN_STYLESHEET_LOADER_SCRIPT_ID = "vm0-main-stylesheet-loader"
 
 
 class AppDocumentParser(HTMLParser):
@@ -103,6 +110,8 @@ class AppDocumentParser(HTMLParser):
         super().__init__()
         self.module_scripts: list[str] = []
         self.module_preloads: list[str] = []
+        self.main_stylesheets: list[dict[str, str | None]] = []
+        self.main_stylesheet_loader_count = 0
         self.runtime_metadata: dict[str, list[str | None]] = {
             name: [] for name in RUNTIME_META_NAMES
         }
@@ -111,6 +120,13 @@ class AppDocumentParser(HTMLParser):
         self, tag: str, attrs: list[tuple[str, str | None]]
     ) -> None:
         attributes = dict(attrs)
+        if tag == "link" and attributes.get("id") == MAIN_STYLESHEET_ID:
+            self.main_stylesheets.append(attributes)
+        if (
+            tag == "script"
+            and attributes.get("id") == MAIN_STYLESHEET_LOADER_SCRIPT_ID
+        ):
+            self.main_stylesheet_loader_count += 1
         if tag == "script" and attributes.get("type") == "module":
             source = attributes.get("src")
             if source:
@@ -160,6 +176,7 @@ if observed_metadata != expected_metadata:
 
 expected_script = [sys.argv[3]]
 expected_preloads = {sys.argv[4], sys.argv[5]}
+expected_stylesheet = sys.argv[6]
 if parser.module_scripts != expected_script:
     raise RuntimeError(
         f"Expected one CDN app module script {expected_script}, got {parser.module_scripts}"
@@ -168,6 +185,30 @@ if len(parser.module_preloads) != 2 or set(parser.module_preloads) != expected_p
     raise RuntimeError(
         f"Expected CDN runtime/vendor modulepreloads {sorted(expected_preloads)}, "
         f"got {parser.module_preloads}"
+    )
+if len(parser.main_stylesheets) != 1:
+    raise RuntimeError(
+        f"Expected one main stylesheet preload, got {parser.main_stylesheets}"
+    )
+main_stylesheet = parser.main_stylesheets[0]
+expected_stylesheet_attributes = {
+    "as": "style",
+    "fetchpriority": "high",
+    "href": expected_stylesheet,
+    "rel": "preload",
+}
+observed_stylesheet_attributes = {
+    name: main_stylesheet.get(name) for name in expected_stylesheet_attributes
+}
+if observed_stylesheet_attributes != expected_stylesheet_attributes:
+    raise RuntimeError(
+        f"Expected main stylesheet preload {expected_stylesheet_attributes}, "
+        f"got {observed_stylesheet_attributes}"
+    )
+if parser.main_stylesheet_loader_count != 1:
+    raise RuntimeError(
+        "Expected exactly one main stylesheet loader, "
+        f"got {parser.main_stylesheet_loader_count}"
     )
 PY
     then
@@ -211,6 +252,7 @@ PY
 done
 
 for asset_url in \
+  "$stylesheet_asset_url" \
   "$app_asset_url" \
   "$vendor_asset_url" \
   "$runtime_asset_url"; do
@@ -249,7 +291,8 @@ if [[ "$worker_status" != "206" ]]; then
   exit 1
 fi
 
-printf 'Verified app runtime: app=%s vendor=%s runtime=%s worker=%s\n' \
+printf 'Verified app runtime: stylesheet=%s app=%s vendor=%s runtime=%s worker=%s\n' \
+  "$stylesheet_asset_url" \
   "$app_asset_url" \
   "$vendor_asset_url" \
   "$runtime_asset_url" \

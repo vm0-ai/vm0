@@ -1,7 +1,10 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -22,6 +25,30 @@ describe("app skeleton", () => {
 
     bootstrapSkeleton.dispatchEvent(new Event("transitionend"));
 
+    expect(document.getElementById("app-bootstrap-skeleton")).toBeNull();
+  });
+
+  it("keeps the inline loading surface until the main stylesheet is ready", async () => {
+    const stylesheetLoaded = context.mocks.deferred<void>();
+    vi.stubGlobal("__mainStylesheetLoaded", stylesheetLoaded.promise);
+    const bootstrapSkeleton = document.createElement("div");
+    bootstrapSkeleton.id = "app-bootstrap-skeleton";
+    document.body.append(bootstrapSkeleton);
+
+    detachedSetupPage({ context, path: "/_/error" });
+
+    await waitFor(() => {
+      expect(queryAllByRoleFast("link")).not.toHaveLength(0);
+    });
+    expect(bootstrapSkeleton).not.toHaveClass("app-bootstrap-skeleton--hidden");
+
+    stylesheetLoaded.resolve(undefined);
+
+    await waitFor(() => {
+      expect(bootstrapSkeleton).toHaveClass("app-bootstrap-skeleton--hidden");
+    });
+
+    bootstrapSkeleton.dispatchEvent(new Event("transitionend"));
     expect(document.getElementById("app-bootstrap-skeleton")).toBeNull();
   });
 

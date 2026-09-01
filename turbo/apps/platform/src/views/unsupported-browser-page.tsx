@@ -6,6 +6,7 @@ import type {
 } from "../lib/browser-support.ts";
 import { hideBootstrapSkeleton } from "../signals/app-skeleton.ts";
 import type { AssistantName } from "../signals/branding.ts";
+import { detach, Reason } from "../signals/utils.ts";
 
 const UPGRADE_COPY = {
   browser: {
@@ -95,10 +96,14 @@ export function renderUnsupportedBrowserPage(
   assistantName: AssistantName,
   upgrade: BrowserUpgrade,
 ): void {
-  hideBootstrapSkeleton();
   const root = createRoot(rootElement);
   root.render(
     <UnsupportedBrowserPage assistantName={assistantName} upgrade={upgrade} />,
+  );
+  detach(
+    hideBootstrapSkeleton(),
+    Reason.Entrance,
+    "unsupported browser bootstrap skeleton",
   );
   function unmountOnFinalPageHide(event: PageTransitionEvent): void {
     if (event.persisted) {
