@@ -1070,14 +1070,28 @@ async function copyWorkflowUserAutomations(
       hasStripeAutomations: false,
     };
   }
+  const hasGmailAutomations = rows.some((automation) => {
+    return (
+      automation.eventType === "gmail-new-message" ||
+      automation.eventType === "gmail-label-applied"
+    );
+  });
+  const hasGoogleFormsAutomations = rows.some((automation) => {
+    return automation.eventType === "google-forms-response-submitted";
+  });
   const hasStripeAutomations = rows.some((automation) => {
     return automation.eventType === "stripe-invoice-paid";
   });
-  if (hasStripeAutomations) {
+  const accountTargets = [
+    ...(hasGmailAutomations ? (["gmail"] as const) : []),
+    ...(hasGoogleFormsAutomations ? (["google-forms"] as const) : []),
+    ...(hasStripeAutomations ? (["stripe"] as const) : []),
+  ].sort();
+  for (const connectorSlug of accountTargets) {
     await lockConnectorAccountTarget(tx, {
       orgId: args.orgId,
       userId: args.userId,
-      target: { kind: "builtin", connectorSlug: "stripe" },
+      target: { kind: "builtin", connectorSlug },
     });
   }
 
@@ -1092,15 +1106,6 @@ async function copyWorkflowUserAutomations(
   for (const automation of rows) {
     await copyWorkflowAutomationRow(tx, { ...args, automation });
   }
-  const hasGmailAutomations = rows.some((automation) => {
-    return (
-      automation.eventType === "gmail-new-message" ||
-      automation.eventType === "gmail-label-applied"
-    );
-  });
-  const hasGoogleFormsAutomations = rows.some((automation) => {
-    return automation.eventType === "google-forms-response-submitted";
-  });
   return {
     hasGmailAutomations,
     hasGoogleFormsAutomations,
