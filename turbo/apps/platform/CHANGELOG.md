@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.817.1](https://github.com/vm0-ai/vm0/compare/app-v0.817.0...app-v0.817.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **platform:** scope chat scroll preload to locator jumps ([#30782](https://github.com/vm0-ai/vm0/issues/30782)) ([0f8218d](https://github.com/vm0-ai/vm0/commit/0f8218d6e76c536356f01859baa51ffca39ade93))
+
 ## [0.817.0](https://github.com/vm0-ai/vm0/compare/app-v0.816.0...app-v0.817.0) (2026-09-01)
 
 
