@@ -18,6 +18,7 @@ type ChatDatabaseEventListener = (message: {
   readonly name: string;
   readonly data: unknown;
 }) => void;
+type UserRealtimeEventListener = ChatDatabaseEventListener;
 type ChatDatabaseRecoveryListener = () => void;
 
 type AuthCallbackError = string | { message?: string } | null;
@@ -83,6 +84,7 @@ let nextSubscribeGate: {
 } | null = null;
 const realtimeInstances = new Set<Realtime>();
 const chatDatabaseEventListeners = new Set<ChatDatabaseEventListener>();
+const userRealtimeEventListeners = new Set<UserRealtimeEventListener>();
 const chatDatabaseRecoveryListeners = new Set<ChatDatabaseRecoveryListener>();
 const subscribeErrors = new Map<
   string,
@@ -477,6 +479,10 @@ function isSharedDatabaseRealtimeTopic(topic: string): boolean {
 
 /** Fire a server-side publish using the production topic-to-channel routing. */
 export function triggerAblyEvent(topic: string, data?: unknown): void {
+  const message = { name: topic, data };
+  for (const listener of userRealtimeEventListeners) {
+    listener(message);
+  }
   const channelPrefix = isSharedDatabaseRealtimeTopic(topic)
     ? "user-org:"
     : "user:";
@@ -519,6 +525,22 @@ export function subscribeChatDatabaseEvents(
     "abort",
     () => {
       chatDatabaseEventListeners.delete(listener);
+    },
+    { once: true },
+  );
+}
+
+/** Forward mock user-channel publishes to a direct worker test host. */
+export function subscribeUserRealtimeEvents(
+  listener: UserRealtimeEventListener,
+  signal: AbortSignal,
+): void {
+  signal.throwIfAborted();
+  userRealtimeEventListeners.add(listener);
+  signal.addEventListener(
+    "abort",
+    () => {
+      userRealtimeEventListeners.delete(listener);
     },
     { once: true },
   );
@@ -770,6 +792,7 @@ export function hasChannelSubscriptionOnChannel(channelName: string): boolean {
 export function resetAblySubscriptions(): void {
   triggerAblyConnectionClosed();
   chatDatabaseEventListeners.clear();
+  userRealtimeEventListeners.clear();
   chatDatabaseRecoveryListeners.clear();
   capturedAuthCallback = null;
   tokenBodies = [];

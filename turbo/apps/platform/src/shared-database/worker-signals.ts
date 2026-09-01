@@ -6,6 +6,10 @@ import { appVersion$, initializeAppVersion$ } from "../signals/app-version.ts";
 import { setAuthenticatedIdentity$ } from "../signals/auth-context.ts";
 import { reloadChatIndicators$ } from "../signals/chat-thread-list-reload.ts";
 import {
+  computerUseHosts$,
+  reloadComputerUseHosts$,
+} from "../signals/external/computer-use-hosts.ts";
+import {
   setAblyLoop$,
   setAblyPayloadLoop$,
   setupRealtime$,
@@ -15,6 +19,7 @@ import {
 import { rootSignal$, setRootSignal$ } from "../signals/root-signal.ts";
 import { createChildAbortController, settle } from "../signals/utils.ts";
 import { chatThreadIndicators$ } from "../signals/chat-page/chat-thread-indicators.ts";
+import type { ComputedKey, ComputedValue } from "./computed-key.ts";
 import type {
   ChatThreadIndicators,
   SharedDatabaseDataKey,
@@ -28,9 +33,10 @@ import type {
 } from "./protocol.ts";
 import {
   broadcastSharedDatabaseWorkerMessage$,
+  forwardChatThreadReadCursorUpdated$,
   heartbeatConnection$,
   initializeWorkerCredentialContext$,
-  invalidateConnectionIndicators$,
+  reloadComputedForConnections$,
   reloadConnections$,
   requireConnectionSignal$,
   updateRealtimeStatusForConnections$,
@@ -274,24 +280,48 @@ export const handleSharedDatabaseRealtimeMessage$ = command(
   },
 );
 
-const reloadWorkerChatIndicators$ = command(
-  async (
-    { get, set },
-    payload: unknown,
-    signal: AbortSignal,
-  ): Promise<boolean> => {
+const reloadWorkerComputed$ = command(
+  ({ set }, computedKey: ComputedKey): void => {
+    if (computedKey === "chat-thread-indicators") {
+      set(reloadChatIndicators$);
+      return;
+    }
+    set(reloadComputerUseHosts$);
+  },
+);
+
+const refreshWorkerChatIndicators$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
     signal.throwIfAborted();
-    set(reloadChatIndicators$);
+    set(reloadWorkerComputed$, "chat-thread-indicators");
     await get(workerChatThreadIndicators$);
     signal.throwIfAborted();
-    set(invalidateConnectionIndicators$, payload);
+  },
+);
+
+export const reloadWorkerChatIndicatorsFromRealtime$ = command(
+  async ({ set }, signal: AbortSignal): Promise<boolean> => {
+    await set(refreshWorkerChatIndicators$, signal);
+    set(reloadComputedForConnections$, "chat-thread-indicators");
     return false;
   },
 );
 
-const reloadWorkerChatIndicatorsFromRealtime$ = command(
-  async ({ set }, signal: AbortSignal): Promise<boolean> => {
-    return await set(reloadWorkerChatIndicators$, null, signal);
+export const reloadWorkerChatIndicatorsFromReadCursor$ = command(
+  async ({ set }, payload: unknown, signal: AbortSignal): Promise<boolean> => {
+    await set(refreshWorkerChatIndicators$, signal);
+    set(forwardChatThreadReadCursorUpdated$, payload);
+    set(reloadComputedForConnections$, "chat-thread-indicators");
+    return false;
+  },
+);
+
+export const reloadWorkerComputerUseHostsFromRealtime$ = command(
+  ({ set }, signal: AbortSignal): boolean => {
+    signal.throwIfAborted();
+    set(reloadWorkerComputed$, "computer-use-hosts");
+    set(reloadComputedForConnections$, "computer-use-hosts");
+    return false;
   },
 );
 
@@ -299,8 +329,10 @@ export const recoverCredentialStoreAfterRealtimeReconnect$ = command(
   ({ set }, signal: AbortSignal): void => {
     signal.throwIfAborted();
     set(broadcastSharedDatabaseReconnect$);
-    set(reloadChatIndicators$);
-    set(invalidateConnectionIndicators$, null);
+    set(reloadWorkerComputed$, "chat-thread-indicators");
+    set(reloadWorkerComputed$, "computer-use-hosts");
+    set(reloadComputedForConnections$, "chat-thread-indicators");
+    set(reloadComputedForConnections$, "computer-use-hosts");
   },
 );
 
@@ -361,8 +393,21 @@ const runCredentialStoreDaemons$ = command(
           {
             scope: "credential",
             topic: "chatThreadReadCursorUpdated",
-            loopCommand$: reloadWorkerChatIndicators$,
+            loopCommand$: reloadWorkerChatIndicatorsFromReadCursor$,
             options: { runOnForegroundCatchUp: false },
+          },
+          signal,
+        ),
+        set(
+          setAblyLoop$,
+          {
+            scope: "user",
+            topic: "computerUseHostsChanged",
+            loopCommand$: reloadWorkerComputerUseHostsFromRealtime$,
+            options: {
+              runOnForegroundCatchUp: false,
+              runOnSubscribe: true,
+            },
           },
           signal,
         ),
@@ -417,14 +462,6 @@ export const querySharedDatabaseWorker$ = command(
   },
 );
 
-export const readWorkerChatThreadIndicators$ = command(
-  async ({ get }, signal: AbortSignal): Promise<ChatThreadIndicators> => {
-    const indicators = await get(workerChatThreadIndicators$);
-    signal.throwIfAborted();
-    return indicators;
-  },
-);
-
 type HeartbeatMessage = Extract<
   SharedDatabaseClientMessage,
   { readonly type: "heartbeat" }
@@ -433,13 +470,13 @@ type QueryMessage = Extract<
   SharedDatabaseClientMessage,
   { readonly type: "query" }
 >;
-type IndicatorsMessage = Extract<
+type GetComputedMessage = Extract<
   SharedDatabaseClientMessage,
-  { readonly type: "get-indicators" }
+  { readonly type: "get-computed" }
 >;
-type ReloadIndicatorsMessage = Extract<
+type ReloadComputedMessage = Extract<
   SharedDatabaseClientMessage,
-  { readonly type: "reload-indicators" }
+  { readonly type: "reload-computed" }
 >;
 
 export const heartbeatStoreMessage$ = command(
@@ -481,26 +518,31 @@ export const queryStoreMessage$ = command(
   },
 );
 
-export const indicatorsStoreMessage$ = command(
+export const getComputedStoreMessage$ = command(
   async (
-    { set },
+    { get, set },
     connectionId: ConnectionId,
-    _message: IndicatorsMessage,
+    message: GetComputedMessage,
     signal: AbortSignal,
-  ): Promise<ChatThreadIndicators> => {
+  ): Promise<ComputedValue<ComputedKey>> => {
     set(requireConnectionSignal$, connectionId, signal);
-    return await set(readWorkerChatThreadIndicators$, signal);
+    const value =
+      message.computedKey === "chat-thread-indicators"
+        ? await get(workerChatThreadIndicators$)
+        : await get(computerUseHosts$);
+    signal.throwIfAborted();
+    return value;
   },
 );
 
-export const reloadIndicatorsStoreMessage$ = command(
+export const reloadComputedStoreMessage$ = command(
   (
     { set },
     _connectionId: ConnectionId,
-    _message: ReloadIndicatorsMessage,
+    message: ReloadComputedMessage,
   ): void => {
-    set(reloadChatIndicators$);
-    set(invalidateConnectionIndicators$, null);
+    set(reloadWorkerComputed$, message.computedKey);
+    set(reloadComputedForConnections$, message.computedKey);
   },
 );
 

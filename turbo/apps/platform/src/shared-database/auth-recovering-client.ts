@@ -10,11 +10,11 @@ import type {
   SharedDatabaseHeartbeat,
 } from "./bridge.ts";
 import type {
-  ChatThreadIndicators,
   SharedDatabaseDataKey,
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
 } from "./data-key.ts";
+import type { ComputedKey, ComputedValue } from "./computed-key.ts";
 import {
   SHARED_DATABASE_AUTH_BLOCKED_ERROR_NAME,
   type SharedDatabaseHeartbeatResult,
@@ -105,12 +105,14 @@ export class AuthRecoveringSharedDatabaseBridge implements SharedDatabaseBridge 
     throw retry.error;
   }
 
-  async indicators(signal: AbortSignal): Promise<ChatThreadIndicators> {
-    return await this.bridge.indicators(signal);
+  async getComputed<TKey extends ComputedKey>(
+    computedKey: TKey,
+  ): Promise<ComputedValue<TKey>> {
+    return await this.bridge.getComputed(computedKey);
   }
 
-  reloadIndicators(): void {
-    this.bridge.reloadIndicators();
+  reloadComputed(computedKey: ComputedKey): void {
+    this.bridge.reloadComputed(computedKey);
   }
 
   async authenticationRequired(): Promise<void> {

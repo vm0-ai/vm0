@@ -3,13 +3,13 @@ import { command, type Store } from "ccstate";
 import {
   subscribeChatDatabaseEvents,
   subscribeChatDatabaseRecovery,
+  subscribeUserRealtimeEvents,
 } from "../mocks/ably.ts";
 import {
   setSharedDatabaseBridgeHostForTest$,
   type SharedDatabaseBridgeHost,
 } from "../signals/shared-database-browser.ts";
 import { initializeAppVersion$ } from "../signals/app-version.ts";
-import { reloadChatIndicators$ } from "../signals/chat-thread-list-reload.ts";
 import {
   createChildAbortController,
   createDeferredPromise,
@@ -23,8 +23,12 @@ import type {
   SharedDatabasePortLike,
 } from "./bridge.ts";
 import {
+  parseComputedValue,
+  type ComputedKey,
+  type ComputedValue,
+} from "./computed-key.ts";
+import {
   parseSharedDatabaseQueryResult,
-  type ChatThreadIndicators,
   type SharedDatabaseDataKey,
   type SharedDatabaseIdentity,
   type SharedDatabaseQuery,
@@ -36,7 +40,7 @@ import type { SharedDatabaseHeartbeatResult } from "./protocol.ts";
 import { SharedDatabaseWorkerContext } from "./worker-host-context.ts";
 import {
   broadcastSharedDatabaseWorkerMessage$,
-  invalidateConnectionIndicators$,
+  forwardChatThreadReadCursorUpdated$,
   registerConnection$,
   reloadConnections$,
   type WorkerBroadcastMessage,
@@ -44,11 +48,11 @@ import {
 import {
   handleSharedDatabaseRealtimeMessage$,
   heartbeatSharedDatabaseWorker$,
+  getComputedStoreMessage$,
   initializeCredentialStore$,
   querySharedDatabaseWorker$,
-  readWorkerChatThreadIndicators$,
   recoverCredentialStoreAfterRealtimeReconnect$,
-  reloadIndicatorsStoreMessage$,
+  reloadComputedStoreMessage$,
 } from "./worker-signals.ts";
 
 /**
@@ -135,8 +139,12 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
         this.events.authenticationRequired();
         return;
       }
-      if (event.type === "indicators-invalidated") {
-        this.events.indicatorsInvalidated(event.payload);
+      if (event.type === "reload-computed") {
+        this.events.computedReloaded(event.computedKey);
+        return;
+      }
+      if (event.type === "chat-thread-read-cursor-updated") {
+        this.events.chatThreadReadCursorUpdated(event.payload);
         return;
       }
       if (event.type === "reload-required") {
@@ -153,16 +161,23 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
       message,
       this.workerSignal,
     );
-    if (
-      message.name !== "threadListChanged" &&
-      message.name !== "chatThreadReadCursorUpdated"
-    ) {
+    const computedKey: ComputedKey | null =
+      message.name === "threadListChanged" ||
+      message.name === "chatThreadReadCursorUpdated"
+        ? "chat-thread-indicators"
+        : message.name === "computerUseHostsChanged"
+          ? "computer-use-hosts"
+          : null;
+    if (!computedKey) {
       return;
     }
-    const payload =
-      message.name === "chatThreadReadCursorUpdated" ? message.data : null;
-    this.workerStore.set(reloadChatIndicators$);
-    this.workerStore.set(invalidateConnectionIndicators$, payload);
+    if (message.name === "chatThreadReadCursorUpdated") {
+      this.workerStore.set(forwardChatThreadReadCursorUpdated$, message.data);
+    }
+    this.workerStore.set(reloadComputedStoreMessage$, this.connectionId, {
+      type: "reload-computed",
+      computedKey,
+    });
   }
 
   handleRealtimeRecovery(): void {
@@ -249,19 +264,31 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
     );
   }
 
-  async indicators(signal: AbortSignal): Promise<ChatThreadIndicators> {
-    return await waitForWorkerOperation(
+  async getComputed<TKey extends ComputedKey>(
+    computedKey: TKey,
+  ): Promise<ComputedValue<TKey>> {
+    const signal = this.requireConnectionSignal();
+    const value = await waitForWorkerOperation(
       this.workerStore.set(
-        readWorkerChatThreadIndicators$,
-        this.requireConnectionSignal(),
+        getComputedStoreMessage$,
+        this.connectionId,
+        {
+          type: "get-computed",
+          requestId: "direct-test-bridge",
+          computedKey,
+        },
+        signal,
       ),
       signal,
     );
+    const cloned: unknown = structuredClone(value);
+    return parseComputedValue(computedKey, cloned);
   }
 
-  reloadIndicators(): void {
-    this.workerStore.set(reloadIndicatorsStoreMessage$, this.connectionId, {
-      type: "reload-indicators",
+  reloadComputed(computedKey: ComputedKey): void {
+    this.workerStore.set(reloadComputedStoreMessage$, this.connectionId, {
+      type: "reload-computed",
+      computedKey,
     });
   }
 
@@ -303,12 +330,14 @@ class TestSharedDatabaseBridge implements SharedDatabaseBridge {
     return result;
   }
 
-  indicators(signal: AbortSignal): Promise<ChatThreadIndicators> {
-    return this.bridge.indicators(signal);
+  getComputed<TKey extends ComputedKey>(
+    computedKey: TKey,
+  ): Promise<ComputedValue<TKey>> {
+    return this.bridge.getComputed(computedKey);
   }
 
-  reloadIndicators(): void {
-    this.bridge.reloadIndicators();
+  reloadComputed(computedKey: ComputedKey): void {
+    this.bridge.reloadComputed(computedKey);
   }
 
   query<TKey extends SharedDatabaseDataKey>(
@@ -345,6 +374,9 @@ export const setupSharedWorkerTestBootstrap$ = command(
         } else {
           if (!directRealtimeForwardingInstalled) {
             subscribeChatDatabaseEvents((message) => {
+              directBridge?.handleRealtimeMessage(message);
+            }, signal);
+            subscribeUserRealtimeEvents((message) => {
               directBridge?.handleRealtimeMessage(message);
             }, signal);
             subscribeChatDatabaseRecovery(() => {
