@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.182.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.3...runner-rs-v0.182.4) (2026-09-01)
+
+
+### Bug Fixes
+
+* **python:** reject malformed platform api urls ([#30691](https://github.com/vm0-ai/vm0/issues/30691)) ([2e41afd](https://github.com/vm0-ai/vm0/commit/2e41afd6a2d32bc03d526a602840c624f7ff295a))
+
 ## [0.182.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.2...runner-rs-v0.182.3) (2026-09-01)
 
 

@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.519.3](https://github.com/vm0-ai/vm0/compare/api-v1.519.2...api-v1.519.3) (2026-09-01)
+
+
+### Bug Fixes
+
+* **email:** enforce Okou branding for product mail ([#30427](https://github.com/vm0-ai/vm0/issues/30427)) ([50b5a80](https://github.com/vm0-ai/vm0/commit/50b5a80ebefbb1c525ecdb12a0bdbf3bc481bfa4))
+* repair stale Morning Brief chat snapshots ([#30716](https://github.com/vm0-ai/vm0/issues/30716)) ([d458669](https://github.com/vm0-ai/vm0/commit/d458669d7f3ba92c746947fe28787cc498a64100))
+* **social:** report provider-limited collection pages ([#30704](https://github.com/vm0-ai/vm0/issues/30704)) ([2ad3efe](https://github.com/vm0-ai/vm0/commit/2ad3efe0a379aa42375041a971213c408c496c5b))
+
+
+### Refactoring
+
+* **api:** drop the console-driven slack compatibility rows ([#30688](https://github.com/vm0-ai/vm0/issues/30688)) ([085ed59](https://github.com/vm0-ai/vm0/commit/085ed5907f9c30867b4506cd1065e89f39000677))
+* **db:** contract legacy vm0 provider compatibility ([#30708](https://github.com/vm0-ai/vm0/issues/30708)) ([7ab758f](https://github.com/vm0-ai/vm0/commit/7ab758fea24f304dd1bdd25ca7a24457e20419e8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.384.2
+    * @okouai/core bumped to 8.605.5
+    * @okouai/db bumped to 1.228.30
+
 ## [1.519.2](https://github.com/vm0-ai/vm0/compare/api-v1.519.1...api-v1.519.2) (2026-09-01)
 
 

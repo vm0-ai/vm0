@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.815.3](https://github.com/vm0-ai/vm0/compare/app-v0.815.2...app-v0.815.3) (2026-09-01)
+
+
+### Bug Fixes
+
+* **platform:** silently handle one tap load failures ([#30695](https://github.com/vm0-ai/vm0/issues/30695)) ([006ca53](https://github.com/vm0-ai/vm0/commit/006ca53a42c799154227daf2975967892e3d5f68))
+* repair stale Morning Brief chat snapshots ([#30716](https://github.com/vm0-ai/vm0/issues/30716)) ([d458669](https://github.com/vm0-ai/vm0/commit/d458669d7f3ba92c746947fe28787cc498a64100))
+
+
+### Refactoring
+
+* **db:** contract legacy vm0 provider compatibility ([#30708](https://github.com/vm0-ai/vm0/issues/30708)) ([7ab758f](https://github.com/vm0-ai/vm0/commit/7ab758fea24f304dd1bdd25ca7a24457e20419e8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.384.2
+    * @okouai/core bumped to 8.605.5
+
 ## [0.815.2](https://github.com/vm0-ai/vm0/compare/app-v0.815.1...app-v0.815.2) (2026-09-01)
 
 
