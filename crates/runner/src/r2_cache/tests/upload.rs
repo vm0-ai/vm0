@@ -116,8 +116,25 @@ async fn upload_template_uses_template_prefix() {
                 .build()
         });
     let upload_part = mock!(Client::upload_part)
+        .match_requests(|req| {
+            req.bucket() == Some("test-bucket")
+                && req.key() == Some("runner-templates/abc.tar.zst")
+                && req.upload_id() == Some("test-upload-id")
+                && req.part_number() == Some(1)
+        })
         .then_output(|| UploadPartOutput::builder().e_tag("\"etag-123\"").build());
     let complete = mock!(Client::complete_multipart_upload)
+        .match_requests(|req| {
+            req.bucket() == Some("test-bucket")
+                && req.key() == Some("runner-templates/abc.tar.zst")
+                && req.upload_id() == Some("test-upload-id")
+                && req.multipart_upload().is_some_and(|multipart| {
+                    let parts = multipart.parts();
+                    parts.len() == 1
+                        && parts[0].part_number() == Some(1)
+                        && parts[0].e_tag() == Some("\"etag-123\"")
+                })
+        })
         .then_output(|| CompleteMultipartUploadOutput::builder().build());
     let cache = mock_cache("test-bucket", &[&create, &upload_part, &complete]);
 
