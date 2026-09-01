@@ -605,6 +605,7 @@ async function seedRunnerJobForAction(
     executionContext: {
       storageMounts: [],
       environment: null,
+      platformEnvironment: {},
       resumeSession: null,
       encryptedSecrets: null,
       cliAgentType: "claude-code",
@@ -650,6 +651,7 @@ async function seedQueueEntryForAction(
         executionContext: {
           storageMounts: [],
           environment: null,
+          platformEnvironment: {},
           secretValueEnvironmentKeys: null,
           resumeSession: null,
           encryptedSecrets: null,

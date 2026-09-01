@@ -645,7 +645,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
         throw new Error(`Expected a ${testCase.name} automation run`);
       }
       const claim = await runsApi.claimRunnerJob(runId);
-      const okouToken = claim.environment?.OKOU_TOKEN;
+      const okouToken = claim.platformEnvironment.OKOU_TOKEN;
       if (!okouToken) {
         throw new Error("Expected the webhook run to expose OKOU_TOKEN");
       }
@@ -730,7 +730,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       throw new Error("Expected the queued Okou automation run to drain");
     }
     const promotedClaim = await runsApi.claimRunnerJob(promotedRunId);
-    const okouToken = promotedClaim.environment?.OKOU_TOKEN;
+    const okouToken = promotedClaim.platformEnvironment.OKOU_TOKEN;
     if (!okouToken) {
       throw new Error("Expected the drained run to expose OKOU_TOKEN");
     }
@@ -860,7 +860,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       expect(promotedClaim.appendSystemPrompt).not.toContain(
         `Bot username: ${testCase.excludedBotUsername}`,
       );
-      const okouToken = promotedClaim.environment?.OKOU_TOKEN;
+      const okouToken = promotedClaim.platformEnvironment.OKOU_TOKEN;
       if (!okouToken) {
         throw new Error("Expected the GitHub chat run to expose OKOU_TOKEN");
       }
@@ -1292,7 +1292,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     });
     expect(chatEventDisplayText(claimedEvent)).toBe(displayMessage);
     const claim = await runsApi.claimRunnerJob(runId);
-    const okouToken = claim.environment?.OKOU_TOKEN;
+    const okouToken = claim.platformEnvironment.OKOU_TOKEN;
     if (!okouToken) {
       throw new Error("Expected the automation event run to expose OKOU_TOKEN");
     }

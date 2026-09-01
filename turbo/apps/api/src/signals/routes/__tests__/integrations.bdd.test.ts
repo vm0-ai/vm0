@@ -4368,9 +4368,9 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const fastRunId = await pollSlackRun(runnerGroup);
     const fastClaim = await runs.claimRunnerJob(fastRunId);
     expect(fastClaim.cliAgentType).toBe("codex");
-    expect(fastClaim.environment?.OKOU_CODEX_SERVICE_TIER).toBe("fast");
+    expect(fastClaim.platformEnvironment.OKOU_CODEX_SERVICE_TIER).toBe("fast");
     expect(fastClaim.environment?.VM0_CODEX_SERVICE_TIER).toBeUndefined();
-    const fastOkouToken = fastClaim.environment?.OKOU_TOKEN;
+    const fastOkouToken = fastClaim.platformEnvironment.OKOU_TOKEN;
     if (!fastOkouToken) {
       throw new Error("Expected the Slack Fast run to expose OKOU_TOKEN");
     }
@@ -5488,9 +5488,9 @@ describe("INT-02: Telegram integration", () => {
     );
     const claim = await runs.claimRunnerJob(runId);
     expect(claim.cliAgentType).toBe("codex");
-    expect(claim.environment?.OKOU_CODEX_SERVICE_TIER).toBe("fast");
+    expect(claim.platformEnvironment.OKOU_CODEX_SERVICE_TIER).toBe("fast");
     expect(claim.environment?.VM0_CODEX_SERVICE_TIER).toBeUndefined();
-    const okouToken = claim.environment?.OKOU_TOKEN;
+    const okouToken = claim.platformEnvironment.OKOU_TOKEN;
     if (!okouToken) {
       throw new Error("Expected the Telegram Fast run to expose OKOU_TOKEN");
     }

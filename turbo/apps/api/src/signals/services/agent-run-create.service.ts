@@ -6374,6 +6374,18 @@ function buildStoredPlatformEnvironment(args: {
     : platformEnvironment;
 }
 
+function buildStoredUntrustedEnvironment(args: {
+  readonly expandedEnvironment: Record<string, string> | null;
+  readonly canonicalOkouRuntime: boolean;
+}): Record<string, string> | null {
+  if (!args.canonicalOkouRuntime) {
+    return args.expandedEnvironment;
+  }
+  return (
+    withoutLegacyZeroEntries(args.expandedEnvironment ?? undefined) ?? null
+  );
+}
+
 async function buildStoredExecutionContextDraft(args: {
   readonly runId: string;
   readonly userId: string;
@@ -6431,17 +6443,16 @@ async function buildStoredExecutionContextDraft(args: {
     okouTokenPublicBrand: args.okouTokenPublicBrand,
     canonicalOkouRuntime: args.includeOkouTokenSecret === true,
   });
-  // New API -> old runner: keep trusted entries in legacy environment until
-  // prior API rollback targets retire and old runners/sandboxes finish their
-  // up-to-two-hour drain. #28914 tracks removal after both gates are proven.
-  const environment = {
-    ...(args.includeOkouTokenSecret
-      ? withoutLegacyZeroEntries(expandedEnvironment ?? undefined)
-      : expandedEnvironment),
+  const environment = buildStoredUntrustedEnvironment({
+    expandedEnvironment,
+    canonicalOkouRuntime: args.includeOkouTokenSecret === true,
+  });
+  const effectiveEnvironment = {
+    ...environment,
     ...platformEnvironment,
   };
   const environmentKeyByValue = new Map<string, string>();
-  for (const [key, value] of Object.entries(environment)) {
+  for (const [key, value] of Object.entries(effectiveEnvironment)) {
     if (!environmentKeyByValue.has(value)) {
       environmentKeyByValue.set(value, key);
     }
@@ -6535,7 +6546,10 @@ function buildRunContextSnapshot(args: {
 }): RunContextAxiomSnapshot {
   const storedContext = args.builtContext.context;
   const sanitizedEnvironment = sanitizeEnvironment(
-    storedContext.environment,
+    {
+      ...storedContext.environment,
+      ...storedContext.platformEnvironment,
+    },
     args.builtContext.secretValues,
   );
   const cliAgentSessionId =

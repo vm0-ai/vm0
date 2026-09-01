@@ -1005,12 +1005,9 @@ const storedExecutionContextObjectSchema = z.object({
     .array(storedStorageMountEntrySchema)
     .superRefine(uniqueStorageMountPaths),
   environment: z.record(z.string(), z.string()).nullable(),
-  // Old API/stored payload -> new API: previous contexts omit this field. Keep
-  // it optional until prior API rollback targets retire and no supported
-  // resumable context predates it; #28914 tracks that gate.
-  platformEnvironment: z.record(z.string(), z.string()).optional(),
+  platformEnvironment: z.record(z.string(), z.string()),
   // API-only references used to reconstruct runner masking values from the
-  // stored environment. Null means no persistent secret map, and array
+  // effective stored agent environment. Null means no persistent secret map, and array
   // order/repetition follows secret-map values.
   // This field must not be included in the runner-facing ExecutionContext.
   secretValueEnvironmentKeys: z.array(z.string()).nullable(),
@@ -1111,10 +1108,7 @@ const executionContextObjectSchema = z.object({
   sandboxToken: z.string(),
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),
-  // Old API -> new runner: previous claims omit this field. Keep it optional
-  // until prior API rollback targets and supported pre-field claims are gone;
-  // #28914 tracks that gate. Old runners ignore it and use legacy environment.
-  platformEnvironment: z.record(z.string(), z.string()).optional(),
+  platformEnvironment: z.record(z.string(), z.string()),
   resumeSession: resumeSessionSchema.nullable(),
   // Plain secret values used by the runner for redaction. These are values, not
   // names, and are base64-encoded only when exported through VM0_SECRET_VALUES.

@@ -686,7 +686,7 @@ fn platform_environment_claim_filters_untrusted_namespaces_and_applies_trusted_l
             "untrusted-bypass".into(),
         ),
     ]));
-    ctx.platform_environment = Some(HashMap::from([
+    ctx.platform_environment = HashMap::from([
         ("DUPLICATE".into(), "trusted".into()),
         ("OKOU_TOKEN".into(), "trusted-token".into()),
         ("OKOU_PLATFORM_ONLY".into(), "trusted-platform".into()),
@@ -695,7 +695,7 @@ fn platform_environment_claim_filters_untrusted_namespaces_and_applies_trusted_l
             guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV.into(),
             "trusted-bypass".into(),
         ),
-    ]));
+    ]);
 
     assert_eq!(
         build_user_env_json(&ctx),
@@ -711,153 +711,6 @@ fn platform_environment_claim_filters_untrusted_namespaces_and_applies_trusted_l
             ),
         ])
     );
-}
-
-#[test]
-fn platform_environment_overlays_legacy_environment() {
-    let mut ctx = minimal_context();
-    ctx.environment = Some(HashMap::from([
-        ("DUPLICATE".into(), "legacy".into()),
-        ("LEGACY_ONLY".into(), "legacy-only".into()),
-    ]));
-    ctx.platform_environment = Some(HashMap::from([
-        ("DUPLICATE".into(), "trusted".into()),
-        ("PLATFORM_ONLY".into(), "platform-only".into()),
-    ]));
-
-    let environment = build_user_env_json(&ctx);
-
-    assert_eq!(environment["DUPLICATE"], "trusted");
-    assert_eq!(environment["LEGACY_ONLY"], "legacy-only");
-    assert_eq!(environment["PLATFORM_ONLY"], "platform-only");
-}
-
-#[test]
-fn fieldless_context_preserves_pre_platform_environment_filtering() {
-    let mut ctx = minimal_context();
-    ctx.cli_agent_type = "codex".into();
-    ctx.environment = Some(HashMap::from([
-        ("CUSTOM_ENV".into(), "kept".into()),
-        ("OKOU_TOKEN".into(), "legitimate-okou-token".into()),
-        ("OKOU_UNRELATED".into(), "legacy-okou-value".into()),
-        (
-            guest_contracts::env::RUN_ID_ENV.into(),
-            "user-controlled-run-id".into(),
-        ),
-        (
-            guest_contracts::env::PI_SESSION_ID_ENV.into(),
-            "user-controlled-pi-session".into(),
-        ),
-        (
-            guest_contracts::env::PI_LAUNCH_CONFIG_ENV.into(),
-            "user-controlled-pi-prompt".into(),
-        ),
-        (
-            guest_contracts::env::PI_MODEL_CONFIG_ENV.into(),
-            "user-controlled-pi-model".into(),
-        ),
-        (
-            guest_contracts::env::PROMPT_ENV.into(),
-            "user prompt".into(),
-        ),
-        ("VM0_API_TOKEN".into(), "stolen".into()),
-        (
-            guest_contracts::env::WORKING_DIR_ENV.into(),
-            "/legacy".into(),
-        ),
-        (
-            "VM0_GUEST_RUNTIME_DIR".into(),
-            "/user/controlled/runtime".into(),
-        ),
-        (
-            guest_contracts::env::FEATURE_FLAGS_ENV.into(),
-            r#"{"bad":true}"#.into(),
-        ),
-        ("VM0_FUTURE_RUNNER_KEY".into(), "future".into()),
-        (
-            guest_contracts::env::CLI_AGENT_TYPE_ENV.into(),
-            "claude-code".into(),
-        ),
-        (
-            guest_contracts::env::USE_MOCK_CLAUDE_ENV.into(),
-            "true".into(),
-        ),
-        (guest_contracts::env::USE_MOCK_CODEX_ENV.into(), "1".into()),
-        (
-            guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV.into(),
-            "user-bypass".into(),
-        ),
-        (
-            guest_contracts::env::DISALLOWED_TOOLS_ENV.into(),
-            "CronCreate".into(),
-        ),
-        (guest_contracts::env::TOOLS_ENV.into(), "Bash".into()),
-        (
-            guest_contracts::env::SETTINGS_ENV.into(),
-            r#"{"hooks":{}}"#.into(),
-        ),
-        ("VM0_MOCK_CLAUDE_PATH".into(), "/tmp/mock-claude".into()),
-        ("VM0_MOCK_CODEX_PATH".into(), "/tmp/mock-codex".into()),
-        ("VM0_USER_ENV_FILE".into(), "/tmp/user-env".into()),
-        ("VM0_RUN_PAYLOAD_FILE".into(), "/tmp/run-payload".into()),
-    ]));
-
-    let bootstrap_env = build_env_for_test(&ctx, "http://localhost");
-    let user_env = build_user_env_json(&ctx);
-
-    assert!(!bootstrap_env.contains_key("CUSTOM_ENV"));
-    assert!(!bootstrap_env.contains_key("VM0_PROMPT"));
-    assert_eq!(
-        build_run_payload_for_run(&ctx).unwrap().prompt,
-        "test prompt"
-    );
-    assert_eq!(
-        bootstrap_env
-            .get(guest_contracts::env::CANONICAL_API_TOKEN_ENV)
-            .unwrap(),
-        "tok"
-    );
-    assert!(!bootstrap_env.contains_key("VM0_API_TOKEN"));
-    assert_eq!(
-        bootstrap_env.get(guest_contracts::env::RUN_ID_ENV).unwrap(),
-        &ctx.run_id.to_string()
-    );
-    assert_eq!(
-        bootstrap_env
-            .get(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV)
-            .unwrap(),
-        &guest_runtime_dir(ctx.run_id).unwrap()
-    );
-    assert!(!bootstrap_env.contains_key("VM0_GUEST_RUNTIME_DIR"));
-    assert_eq!(bootstrap_env.get("CLI_AGENT_TYPE").unwrap(), "codex");
-    assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");
-    assert_eq!(user_env.get("OKOU_TOKEN").unwrap(), "legitimate-okou-token");
-    assert_eq!(user_env.get("OKOU_UNRELATED").unwrap(), "legacy-okou-value");
-    for key in [
-        guest_contracts::env::RUN_ID_ENV,
-        guest_contracts::env::PI_SESSION_ID_ENV,
-        guest_contracts::env::PI_LAUNCH_CONFIG_ENV,
-        guest_contracts::env::PI_MODEL_CONFIG_ENV,
-        guest_contracts::env::PROMPT_ENV,
-        "VM0_API_TOKEN",
-        guest_contracts::env::WORKING_DIR_ENV,
-        "VM0_GUEST_RUNTIME_DIR",
-        guest_contracts::env::FEATURE_FLAGS_ENV,
-        "VM0_FUTURE_RUNNER_KEY",
-        guest_contracts::env::CLI_AGENT_TYPE_ENV,
-        guest_contracts::env::USE_MOCK_CLAUDE_ENV,
-        guest_contracts::env::USE_MOCK_CODEX_ENV,
-        guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
-        guest_contracts::env::DISALLOWED_TOOLS_ENV,
-        guest_contracts::env::TOOLS_ENV,
-        guest_contracts::env::SETTINGS_ENV,
-        "VM0_MOCK_CLAUDE_PATH",
-        "VM0_MOCK_CODEX_PATH",
-        "VM0_USER_ENV_FILE",
-        "VM0_RUN_PAYLOAD_FILE",
-    ] {
-        assert!(!user_env.contains_key(key), "{key} should be scrubbed");
-    }
 }
 
 #[test]
@@ -1817,6 +1670,7 @@ fn execution_context_deserializes_with_firewalls() {
         "sandboxToken": "tok",
         "cliAgentType": "claude-code",
         "billableFirewalls": [],
+        "platformEnvironment": {},
         "connectorRuntimeTargets": [],
         "firewalls": [{
             "kind": "inline",
@@ -1866,6 +1720,7 @@ fn execution_context_deserializes_without_firewalls() {
         "sandboxToken": "tok",
         "cliAgentType": "claude-code",
         "billableFirewalls": [],
+        "platformEnvironment": {},
         "connectorRuntimeTargets": []
     });
     let ctx: ExecutionContext = serde_json::from_value(json).unwrap();

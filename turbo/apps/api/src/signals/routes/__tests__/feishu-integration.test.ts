@@ -4378,7 +4378,7 @@ describe("Feishu integration", () => {
     await runsApi.heartbeatRunner(runnerGroup);
     const claim = await runsApi.claimRunnerJob(run.id);
     expect(claim.prompt).toBe("do the Feishu task");
-    expect(claim.environment?.OKOU_AGENT_ID).toBe(alternateAgentId);
+    expect(claim.platformEnvironment.OKOU_AGENT_ID).toBe(alternateAgentId);
     expect(claim.environment ?? {}).not.toHaveProperty("ZERO_AGENT_ID");
     expect(claim.appendSystemPrompt).toContain(
       "You are currently running inside: Feishu",
@@ -4638,7 +4638,7 @@ describe("Feishu integration", () => {
     const switchedAgentClaim = await runsApi.claimRunnerJob(
       switchedAgentRun.id,
     );
-    expect(switchedAgentClaim.environment?.OKOU_AGENT_ID).toBe(
+    expect(switchedAgentClaim.platformEnvironment.OKOU_AGENT_ID).toBe(
       alternateAgentId,
     );
     expect(switchedAgentClaim.environment ?? {}).not.toHaveProperty(
