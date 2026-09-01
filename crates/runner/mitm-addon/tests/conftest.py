@@ -557,6 +557,19 @@ def fresh_usage_executor():
         yield executor
 
 
+@pytest.fixture(
+    params=[
+        pytest.param("https://[::1", id="unmatched-ipv6-bracket"),
+        pytest.param("https://api.vm0.ai:not-a-port", id="non-numeric-port"),
+        pytest.param("https://api.vm0.ai:65536", id="out-of-range-port"),
+    ]
+)
+def malformed_platform_api_url(request: pytest.FixtureRequest) -> str:
+    value = request.param
+    assert isinstance(value, str)
+    return value
+
+
 @pytest.fixture
 def registry_file(tmp_path):
     """Create a sample proxy registry JSON file and return its path."""
