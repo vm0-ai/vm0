@@ -452,7 +452,7 @@ describe("thread-owned utility sidebar", () => {
     expect(requestedThreadIds).toContain(THREAD_ID);
   });
 
-  it("opens an assistant generic file card in the thread artifact sidebar", async () => {
+  it("opens an assistant generic file card in the preview dialog", async () => {
     const filename = "revised-manuscript.docx";
     const url = `https://cdn.vm7.io/artifacts/test/run-sidebar/${filename}`;
     setupChatThread({
@@ -491,10 +491,20 @@ describe("thread-owned utility sidebar", () => {
     ).not.toBeInTheDocument();
     click(card);
 
-    const sidebar = await screen.findByTestId("artifact-sidebar");
+    const dialog = await screen.findByTestId("attachment-lightbox");
     expect(
-      within(sidebar).getByText("No inline preview available for this file."),
+      within(dialog).getByText("No inline preview available for this file."),
     ).toBeInTheDocument();
+    expect(within(dialog).getAllByText(filename).length).toBeGreaterThan(0);
+
+    click(within(dialog).getByLabelText("Open in split view"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+    const sidebar = await screen.findByTestId("artifact-sidebar");
     expect(within(sidebar).getAllByText(filename).length).toBeGreaterThan(0);
   });
 

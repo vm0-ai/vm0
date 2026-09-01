@@ -17,7 +17,6 @@ import type {
   PlatformUserPermissionGrant,
 } from "../../signals/connector-domain.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { openThreadArtifact$ } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
 import {
   applyUserPermissionGrant$,
   findPermissionInMetadata,
@@ -67,6 +66,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 
 import type { MarkdownCardRef } from "../../signals/chat-page/markdown-card-ref.ts";
 import {
+  openFileLightbox$ as openAttachmentFileLightbox$,
   openImageLightbox$ as openAttachmentImageLightbox$,
   openVideoLightbox$ as openAttachmentVideoLightbox$,
 } from "../../signals/okou-page/attachment-chips.ts";
@@ -323,9 +323,9 @@ function ArtifactCardView({
   threadId: string;
 }) {
   const { t } = useTranslation();
+  const openFileLightbox = useSet(openAttachmentFileLightbox$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
-  const openThreadArtifact = useSet(openThreadArtifact$);
   const openLightbox = (url: string): void => {
     openImageLightbox({ threadId, url });
   };
@@ -398,7 +398,7 @@ function ArtifactCardView({
         ...(previewImageUrl ? { previewImageUrl } : {}),
       }}
       onPreviewFile={() => {
-        openThreadArtifact(threadId, {
+        openFileLightbox({
           filename: signals.filename,
           url: signals.url,
         });

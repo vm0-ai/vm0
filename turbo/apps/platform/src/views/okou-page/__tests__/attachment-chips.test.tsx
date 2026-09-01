@@ -3284,8 +3284,8 @@ describe("zero attachment chips", () => {
 
     click(screen.getByLabelText("Preview archive.bin"));
 
-    await screen.findByTestId("artifact-sidebar");
-    click(screen.getByLabelText("Download artifact"));
+    await screen.findByTestId("attachment-lightbox");
+    click(screen.getByLabelText("Download options"));
     await waitFor(() => {
       expect(
         queryAllByRoleFast("menuitem").some((element) => {
