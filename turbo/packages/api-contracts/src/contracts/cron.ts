@@ -93,6 +93,7 @@ export const cronProjectChatEventSearchResponseSchema = z.object({
   threads: z.number(),
   indexedEvents: z.number(),
   deletedDocs: z.number(),
+  orphanedThreads: z.number(),
   convergence: z.object({
     eligibleThreads: z.number(),
     durableCaughtUpThreads: z.number(),

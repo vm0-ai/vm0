@@ -23,7 +23,7 @@ import {
 } from "@okouai/db/schema/workflow";
 import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { command } from "ccstate";
-import { and, asc, count, eq, like, or } from "drizzle-orm";
+import { and, asc, count, eq, inArray, like, or } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import { testOverride } from "../../lib/singleton";
@@ -53,8 +53,10 @@ const actionBody$ = bodyResultOf(
   testOfficialWorkflowCatalogStateContract.action,
 );
 const TEST_STORAGE_NAME_PATTERN = "official-workflow@api-test-%";
-const DEPLOYED_TEST_STORAGE_NAME =
-  getOfficialWorkflowDefinitionStorageName("morning-brief");
+const DEPLOYED_TEST_STORAGE_NAMES = [
+  getOfficialWorkflowDefinitionStorageName("connector-doctor"),
+  getOfficialWorkflowDefinitionStorageName("morning-brief"),
+] as const;
 
 interface DormantMaterializationPause {
   readonly reached: ReturnType<typeof createDeferredPromise<void>>;
@@ -164,7 +166,7 @@ async function cleanupTestState(db: Db, signal: AbortSignal): Promise<void> {
         eq(storages.userId, VOLUME_ORG_USER_ID),
         or(
           like(storages.name, TEST_STORAGE_NAME_PATTERN),
-          eq(storages.name, DEPLOYED_TEST_STORAGE_NAME),
+          inArray(storages.name, DEPLOYED_TEST_STORAGE_NAMES),
         ),
       ),
     );
@@ -185,7 +187,7 @@ async function catalogCounts(db: Db, signal: AbortSignal) {
             eq(storages.userId, VOLUME_ORG_USER_ID),
             or(
               like(storages.name, TEST_STORAGE_NAME_PATTERN),
-              eq(storages.name, DEPLOYED_TEST_STORAGE_NAME),
+              inArray(storages.name, DEPLOYED_TEST_STORAGE_NAMES),
             ),
           ),
         ),
@@ -199,7 +201,7 @@ async function catalogCounts(db: Db, signal: AbortSignal) {
             eq(storages.userId, VOLUME_ORG_USER_ID),
             or(
               like(storages.name, TEST_STORAGE_NAME_PATTERN),
-              eq(storages.name, DEPLOYED_TEST_STORAGE_NAME),
+              inArray(storages.name, DEPLOYED_TEST_STORAGE_NAMES),
             ),
           ),
         ),

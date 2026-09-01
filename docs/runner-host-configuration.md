@@ -4,9 +4,8 @@
 
 `runner.yaml` may contain an optional `hostname` used only to identify the
 physical runner in claims, sandbox telemetry, Runner Axiom warning/error
-events, and the dedicated operator-environment alias-state event. Production
-automation writes the exact Ansible `inventory_hostname`; it does not derive
-the value from DNS or the operating system at runtime.
+events. Production automation writes the exact Ansible `inventory_hostname`;
+it does not derive the value from DNS or the operating system at runtime.
 
 The value must be non-empty and no longer than 255 JavaScript string units
 (UTF-16 code units). `runner config --hostname <value>` validates and preserves
@@ -48,37 +47,19 @@ telemetry/Axiom dimensions, and distinct hostnames on two hosts running one
 version. Remove any historical query fallback only after its bounded
 observation window expires.
 
-## Runner Start Operator-Environment Alias Telemetry
+## Runner Operator Server Configuration
 
-After `runner start` has normalized its effective server URL successfully and
-proved its effective token is non-empty, it emits exactly one informational
-`runner operator environment alias states` event. Its dedicated tracing target,
-serialized to the Axiom `context` field, is
-`runner::operator_env::alias_states`. The Runner Axiom filter admits this exact
-informational target in addition to its existing warning-and-error traffic;
-unrelated informational, debug, and trace events remain local.
+`runner config` requires the control-plane URL and Runner token through the
+explicit `--api-url` and `--token` flags or the canonical
+`OKOU_API_BACKEND_URL` and `OKOU_RUNNER_TOKEN` environment variables.
+`runner start` accepts the same flags and canonical environment variables as
+overrides, then falls back to the `server` values in `runner.yaml`.
 
-The event classifies only the live `runner start` process environment. It
-contains two fixed, value-free fields:
-
-| Field                      | Classifications                                                                |
-| -------------------------- | ------------------------------------------------------------------------------ |
-| `api_url_alias_state`      | `absent`, `canonical_only`, `legacy_only`, `equal_dual`, or `conflicting_dual` |
-| `runner_token_alias_state` | `absent`, `canonical_only`, `legacy_only`, or `dual_present`                   |
-
-For the API URL pair, a dual state distinguishes equal values from
-conflicting values. Token classification inspects presence only; it never
-compares the two token values. The event never includes URL or token values,
-lengths, hashes, prefixes, suffixes, command arguments, environment dumps,
-configuration contents, or error representations. `runner_hostname` and
-`runner_version` are added automatically by the Axiom layer.
-
-This event does not prove that arbitrary external `runner config` invocations
-have stopped using a legacy alias. Removing either legacy reader still requires
-a current source and configuration inventory, evidence from every intended
-Runner host, supported rollback ancestry, and an explicit compatibility
-decision. A failed URL or token validation emits no event, so missing expected
-host coverage is not legacy-drain evidence.
+The API URL must be an absolute HTTP(S) URL without credentials, a query
+string, or a fragment. The Runner normalizes the accepted URL before storing or
+using it. Clap help and diagnostics identify the supported environment names
+without displaying their values, and the token is preserved without trimming
+or logging it.
 
 The runner reads host-local overrides from `/etc/vm0-runner/host.env` once
 during startup. A missing file is equivalent to an empty file: the runner uses

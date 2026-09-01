@@ -20,11 +20,12 @@ client-side filtering or thread-to-organization inference.
 
 ## Consequences
 
-The permanent App path consumes `chatThreadMessageCreated` and
-`threadListChanged` exclusively from the `user-org:<userId>:<orgId>` channel
-through the SharedWorker. During rollout, the API also publishes those two
-topics to the existing `user:<userId>` channel so already-loaded App clients
-compiled against the disabled switch continue receiving invalidations.
-Follow-up #30334 removes that duplicate publication after the two-day stale-App
-window has drained and the client-version floor excludes pre-cutover builds;
-the user channel otherwise remains reserved for unrelated user-scoped signals.
+The App consumes `chatThreadMessageCreated`, `threadListChanged`, and
+`chatThreadReadCursorUpdated` exclusively from the
+`user-org:<userId>:<orgId>` channel through the SharedWorker. The worker fans
+indicator invalidations out to every matching tab and preserves the read-cursor
+payload needed to reconcile optimistic read marks. The user channel remains
+reserved for unrelated user-scoped signals. The canonical web-client floor is
+`0.812.3`, the first released App build containing the unconditional
+SharedWorker consumer, so the API rejects older user-channel-only clients
+before serving application routes.

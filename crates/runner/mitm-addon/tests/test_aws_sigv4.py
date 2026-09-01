@@ -358,6 +358,55 @@ def test_sign_request_reuses_matching_inspection_without_changing_output() -> No
 
 
 @pytest.mark.parametrize(
+    "path",
+    [
+        pytest.param("/../x", id="leading-parent"),
+        pytest.param("/../../x", id="multiple-leading-parents"),
+        pytest.param("/a/../../x", id="over-traversal"),
+    ],
+)
+def test_header_auth_leading_dot_segments_use_normalized_canonical_path(path: str) -> None:
+    url = f"https://{STS_HOST}{path}"
+
+    signed_url, signed_headers = sign_request(
+        method="GET",
+        url=url,
+        headers=_header_auth_headers(),
+        body=None,
+        credentials=_credentials(),
+    )
+
+    authorization = {name.lower(): value for name, value in signed_headers}["authorization"]
+    assert signed_url == url
+    assert authorization == (
+        "AWS4-HMAC-SHA256 "
+        "Credential=AKIDEXAMPLE/20260101/us-east-1/sts/aws4_request, "
+        "SignedHeaders=host;x-amz-date, "
+        "Signature=df6768fccf76887a9d31a01e2d0d48ae57ecdce506e745b20b6ad1960411066b"
+    )
+
+
+def test_header_auth_s3_keeps_dot_segments_in_canonical_path() -> None:
+    authorizations: list[str] = []
+    for path in ("/../x", "/x"):
+        url = f"https://{_AWS_S3_EXAMPLE_HOST}{path}"
+        signed_url, signed_headers = sign_request(
+            method="GET",
+            url=url,
+            headers=_aws_s3_header_auth_headers(_AWS_S3_EMPTY_PAYLOAD_HASH),
+            body=None,
+            credentials=_aws_s3_example_credentials(),
+        )
+
+        assert signed_url == url
+        authorizations.append(
+            {name.lower(): value for name, value in signed_headers}["authorization"]
+        )
+
+    assert authorizations[0] != authorizations[1]
+
+
+@pytest.mark.parametrize(
     ("changed_url", "changed_headers"),
     [
         pytest.param(

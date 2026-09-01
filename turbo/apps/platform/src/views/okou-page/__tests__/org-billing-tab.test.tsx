@@ -3594,12 +3594,12 @@ describe("organization billing settings", () => {
     });
   });
 
-  it("falls back to Checkout with an older billing API", async () => {
+  it("uses an amount-free Checkout action when the concurrency price is unavailable", async () => {
     let requestedQuantity: number | null = null;
 
     context.mocks.data.org({
       id: "org_1",
-      name: "Team Concurrency Compatibility Org",
+      name: "Team Concurrency Price Unavailable Org",
       role: "admin",
     });
     context.mocks.api(billingStatusContract.get, ({ respond }) => {

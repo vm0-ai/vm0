@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.19.134](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.133...vsock-guest-v0.19.134) (2026-09-01)
+
+## [0.19.133](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.132...vsock-guest-v0.19.133) (2026-09-01)
+
+## [0.19.132](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.131...vsock-guest-v0.19.132) (2026-09-01)
+
+
+### Performance Improvements
+
+* **runner:** launch reuse identity verifier without shell ([#30644](https://github.com/vm0-ai/vm0/issues/30644)) ([3ea790e](https://github.com/vm0-ai/vm0/commit/3ea790e5a8bca85854debfe537a89a66c4520445))
+
+## [0.19.131](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.130...vsock-guest-v0.19.131) (2026-08-31)
+
 ## [0.19.130](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.129...vsock-guest-v0.19.130) (2026-08-31)
 
 ## [0.19.129](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.128...vsock-guest-v0.19.129) (2026-08-30)

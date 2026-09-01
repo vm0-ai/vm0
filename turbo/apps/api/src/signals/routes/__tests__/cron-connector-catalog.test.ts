@@ -150,7 +150,7 @@ const DEFAULT_API_VERSION = apiPackage.version;
 const ZERO_DIGEST = `sha256:${"0".repeat(64)}`;
 const LEGACY_CONNECTOR_CATALOG_MAX_RAW_BYTES = 16 * 1024 * 1024;
 const EXPECTED_CAPABILITY_DIGEST =
-  "sha256:1bf96aab55b264a18add3139029db3f6502883ac97b16982d1fa4d668444bae7";
+  "sha256:d93687a2d56312f36c56e3232f93bc928cebbeb626c1de6fa51f0bbf09cb4c97";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SLACK_OAUTH_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
@@ -4715,6 +4715,7 @@ describe("connector catalog valid lifecycle", () => {
 
     const refreshEntered = deferredGate();
     const watchAuthorizations: string[] = [];
+    const stopAuthorizations: string[] = [];
     server.use(
       http.post(GOOGLE_OAUTH_TOKEN_URL, async ({ request }) => {
         const body = new URLSearchParams(await request.text());
@@ -4745,6 +4746,13 @@ describe("connector catalog valid lifecycle", () => {
             historyId: "100",
             expiration: String(now() + 7 * 24 * 60 * 60 * 1000),
           });
+        },
+      ),
+      http.post(
+        "https://gmail.googleapis.com/gmail/v1/users/me/stop",
+        ({ request }) => {
+          stopAuthorizations.push(request.headers.get("authorization") ?? "");
+          return new HttpResponse(null, { status: 204 });
         },
       ),
     );
@@ -4808,6 +4816,10 @@ describe("connector catalog valid lifecycle", () => {
       [201],
     );
     expect(watchAuthorizations).toStrictEqual([
+      "Bearer replacement-gmail-token",
+      "Bearer replacement-gmail-token",
+    ]);
+    expect(stopAuthorizations).toStrictEqual([
       "Bearer replacement-gmail-token",
     ]);
   });

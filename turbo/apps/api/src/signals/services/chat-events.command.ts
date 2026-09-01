@@ -2683,7 +2683,10 @@ function usesPi(
 ): boolean {
   return shouldUsePiExecution({
     chatThreadId: thread.threadId,
+    modelProviderType:
+      runConfiguration.providerAdmission.effectiveModelProvider,
     selectedModel: runConfiguration.modelPin.selectedModel ?? undefined,
+    codexServiceTier: runConfiguration.codexServiceTier,
     triggerSource: normalSendTriggerSource(args.auth),
     featureSwitchContext: featureSwitches.featureSwitchContext,
   });
@@ -3386,6 +3389,7 @@ function buildCreateAgentRunArgs(params: {
       modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
       selectedModel: modelPin.selectedModel,
     },
+    piExecution: prepared.piExecution,
     threadSessionRoute: {
       selectedModel: modelPin.selectedModel,
       modelProvider: providerAdmission.effectiveModelProvider ?? null,

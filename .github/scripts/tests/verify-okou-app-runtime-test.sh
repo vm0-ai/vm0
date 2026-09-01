@@ -28,6 +28,8 @@ done
 
 cat > "$html_source" <<'HTML'
 <!doctype html>
+<meta name="okou-app-git-commit-sha" content="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">
+<meta name="okou-app-version" content="0.812.5">
 <script type="module" crossorigin src="https://static.test/okou-app/assets/app-AbCd1234.js"></script>
 <link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/rolldown-runtime-IjKl9012.js">
 <link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/vendor-EfGh5678.js">
@@ -35,6 +37,8 @@ HTML
 
 cat > "$old_html_source" <<'HTML'
 <!doctype html>
+<meta name="okou-app-git-commit-sha" content="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb">
+<meta name="okou-app-version" content="0.812.4">
 <script type="module" crossorigin src="https://static.test/okou-app/assets/app-Old12345.js"></script>
 <link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/rolldown-runtime-Old12345.js">
 <link rel="modulepreload" crossorigin href="https://static.test/okou-app/assets/vendor-Old12345.js">
@@ -167,10 +171,15 @@ fi
 grep -Fq 'App runtime document did not converge for https://app.test after probe 3/3' \
   "${test_root}/semantic-failure.log" ||
   fail "semantic exhaustion did not identify the origin and bound"
-grep -Fq 'app-AbCd1234.js' "${test_root}/semantic-failure.log" ||
-  fail "semantic exhaustion did not report the expected module"
-grep -Fq 'app-Old12345.js' "${test_root}/semantic-failure.log" ||
-  fail "semantic exhaustion did not report the observed module"
+grep -Fq 'Expected runtime build metadata' \
+  "${test_root}/semantic-failure.log" ||
+  fail "semantic exhaustion did not identify the metadata mismatch"
+grep -Fq 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
+  "${test_root}/semantic-failure.log" ||
+  fail "semantic exhaustion did not report the expected commit"
+grep -Fq 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' \
+  "${test_root}/semantic-failure.log" ||
+  fail "semantic exhaustion did not report the observed commit"
 
 : > "$curl_log"
 : > "$sleep_log"

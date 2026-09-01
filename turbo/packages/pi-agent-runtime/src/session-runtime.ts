@@ -1,4 +1,7 @@
-import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
+import {
+  InMemoryCredentialStore,
+  type ModelThinkingLevel,
+} from "@earendil-works/pi-ai";
 import {
   createAgentSessionFromServices,
   createAgentSessionServices,
@@ -12,18 +15,30 @@ import {
 import type { PiPreheatedResourceSnapshot } from "./api-types";
 import { piAgentStream, resolvePiAgentModel } from "./model";
 import { piPreheatedResourceLoaderOptions } from "./resources";
-import type { PiAgentModelConfig } from "./types";
+import type { PiAgentModelConfig, PiAgentServiceTier } from "./types";
+
+function requestScopedPiAgentStream(
+  serviceTier: PiAgentServiceTier | undefined,
+): typeof piAgentStream {
+  if (serviceTier === undefined) {
+    return piAgentStream;
+  }
+  return (model, context, options) => {
+    return piAgentStream(model, context, { ...options, serviceTier });
+  };
+}
 
 function registeredModelConfig(
   model: NonNullable<ReturnType<typeof resolvePiAgentModel>>,
   apiKey: string,
+  serviceTier: PiAgentServiceTier | undefined,
 ) {
   return {
     name: model.provider,
     baseUrl: model.baseUrl,
     apiKey,
     api: model.api,
-    streamSimple: piAgentStream,
+    streamSimple: requestScopedPiAgentStream(serviceTier),
     models: [
       {
         id: model.id,
@@ -36,11 +51,39 @@ function registeredModelConfig(
         cost: model.cost,
         contextWindow: model.contextWindow,
         maxTokens: model.maxTokens,
+        samplingParams: model.samplingParams,
         headers: model.headers,
         compat: model.compat,
       },
     ],
   };
+}
+
+function configuredThinkingLevel(
+  sessionManager: SessionManager,
+  configured: ModelThinkingLevel | undefined,
+): ModelThinkingLevel | undefined {
+  const hasThinkingEntry = sessionManager.getBranch().some((entry) => {
+    return entry.type === "thinking_level_change";
+  });
+  if (!hasThinkingEntry) {
+    return configured;
+  }
+  const existing = sessionManager.buildSessionContext().thinkingLevel;
+  switch (existing) {
+    case "off":
+    case "minimal":
+    case "low":
+    case "medium":
+    case "high":
+    case "xhigh":
+    case "max": {
+      return existing;
+    }
+    default: {
+      throw new Error(`Unsupported Pi session thinking level: ${existing}`);
+    }
+  }
 }
 
 export async function createPiAgentSessionForRuntime(args: {
@@ -69,7 +112,7 @@ export async function createPiAgentSessionForRuntime(args: {
   });
   modelRuntime.registerProvider(
     args.model.provider,
-    registeredModelConfig(model, args.model.apiKey),
+    registeredModelConfig(model, args.model.apiKey, args.model.serviceTier),
   );
   const services = await createAgentSessionServices({
     cwd: args.cwd,
@@ -97,6 +140,10 @@ export async function createPiAgentSessionForRuntime(args: {
     sessionManager: args.sessionManager,
     sessionStartEvent: args.sessionStartEvent,
     model,
+    thinkingLevel: configuredThinkingLevel(
+      args.sessionManager,
+      args.model.thinkingLevel,
+    ),
     customTools: [
       createBashTool(args.cwd, {
         shellPath: "/usr/local/bin/guest-tool-exec",

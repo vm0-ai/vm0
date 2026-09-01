@@ -12,6 +12,7 @@ import {
   click,
   detachedSetupPage,
   queryAllByRoleFast,
+  setupPageAndWaitForContent,
 } from "../../../__tests__/page-helper.ts";
 import {
   chatEventRowsResponse,
@@ -204,7 +205,7 @@ describe("assistant markdown", () => {
   it("renders syntax-free assistant text without a rich loading state", async () => {
     mockThread("Plain response with punctuation: ready (now).");
 
-    detachedSetupPage({
+    await setupPageAndWaitForContent({
       context,
       path: `/chats/${THREAD_ID}`,
     });
@@ -596,9 +597,20 @@ describe("assistant markdown", () => {
         "```mermaid\nflowchart TD\n  C --> D\n```",
     );
 
-    detachedSetupPage({
+    await setupPageAndWaitForContent({
       context,
       path: `/chats/${THREAD_ID}`,
+    });
+
+    const expandButtons = await waitFor(() => {
+      const buttons = screen.getAllByLabelText("Expand diagram");
+      for (const expand of buttons) {
+        expect(expand).toBeEnabled();
+      }
+      return buttons;
+    });
+    const inlineUrls = screen.getAllByAltText("Diagram").map((diagram) => {
+      return diagram.getAttribute("src") ?? "";
     });
 
     const artifactsButton = await waitFor(() => {
@@ -617,15 +629,6 @@ describe("assistant markdown", () => {
       ).toBeInTheDocument();
     });
 
-    const expandButtons = await screen.findAllByLabelText("Expand diagram");
-    const inlineUrls = screen.getAllByAltText("Diagram").map((diagram) => {
-      return diagram.getAttribute("src") ?? "";
-    });
-    await waitFor(() => {
-      for (const expand of expandButtons) {
-        expect(expand).toBeEnabled();
-      }
-    });
     const [firstExpand, secondExpand] = expandButtons;
     if (!firstExpand || !secondExpand) {
       throw new Error("Expected both diagram expand buttons");
@@ -671,9 +674,15 @@ describe("assistant markdown", () => {
     mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
     mockAgentsPage();
 
-    detachedSetupPage({
+    await setupPageAndWaitForContent({
       context,
       path: `/chats/${THREAD_ID}`,
+    });
+
+    const expand = await waitFor(() => {
+      const button = screen.getByLabelText("Expand diagram");
+      expect(button).toBeEnabled();
+      return button;
     });
 
     const artifactsButton = await waitFor(() => {
@@ -688,10 +697,6 @@ describe("assistant markdown", () => {
     click(artifactsButton);
     await screen.findByTestId("thread-sidebar-artifacts");
 
-    const expand = await screen.findByLabelText("Expand diagram");
-    await waitFor(() => {
-      expect(expand).toBeEnabled();
-    });
     click(expand);
 
     const sidebarUrl = await waitFor(() => {

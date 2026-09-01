@@ -1,7 +1,8 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { animationFrame } from "signal-timers";
 import { logger } from "../log.ts";
-import { onDomEventFn, onRef } from "../utils.ts";
+import { onDomEventFn, onRef, setLoop } from "../utils.ts";
+import type { ChatEvent } from "./chat-event-types.ts";
 
 const L = logger("AutoScroll");
 const AT_BOTTOM_THRESHOLD_PX = 10;
@@ -14,9 +15,15 @@ export interface ThreadScrollPosition {
   readonly viewportOffsetTop: number;
 }
 
+export interface ScrollToEventOptions {
+  readonly behavior: ScrollBehavior;
+  readonly viewportOffsetTop: number;
+}
+
 export interface ScrollAfterRenderRequest {
   readonly revision: number;
   readonly position: ThreadScrollPosition | null;
+  readonly behavior: ScrollBehavior;
 }
 
 export interface ReadyScrollAfterRenderRequest {
@@ -49,6 +56,10 @@ export interface ChatThreadScrollSignals {
   readonly autoScroll$: Command<
     Promise<void>,
     [ThreadScrollPosition | null, AbortSignal]
+  >;
+  readonly scrollToEvent$: Command<
+    Promise<void>,
+    [string, ScrollToEventOptions, AbortSignal]
   >;
   readonly scrollTo$: Command<void, [ThreadScrollPosition]>;
   readonly scrollToTop$: Command<Promise<void>, [AbortSignal]>;
@@ -97,12 +108,10 @@ function scrollAnchorForEvent(
   container: HTMLElement,
   eventId: string,
 ): HTMLElement | null {
-  // Selected by attribute rather than scanned out of `scrollAnchors`: a reader
-  // holding an anchor restores on every frame the thread grows, and collecting
-  // every anchor in the thread first would walk the whole history before each
-  // paint.
-  return container.querySelector<HTMLElement>(
-    `[${SCROLL_ANCHOR_ATTRIBUTE}="${eventId}"]`,
+  return (
+    scrollAnchors(container).find((anchor) => {
+      return anchor.getAttribute(SCROLL_ANCHOR_ATTRIBUTE) === eventId;
+    }) ?? null
   );
 }
 
@@ -127,7 +136,22 @@ function applyScrollTop(
   runtime: ScrollRuntime,
   container: HTMLElement,
   scrollTop: number,
+  behavior: ScrollBehavior = "instant",
 ): void {
+  if (behavior === "smooth") {
+    const targetScrollTop = Math.max(
+      0,
+      Math.min(scrollTop, container.scrollHeight - container.clientHeight),
+    );
+    if (runtime.programmaticSmoothScrollTop === targetScrollTop) {
+      return;
+    }
+    runtime.programmaticScrollTop = null;
+    runtime.programmaticSmoothScrollTop = targetScrollTop;
+    container.scrollTo({ top: targetScrollTop, behavior });
+    return;
+  }
+  runtime.programmaticSmoothScrollTop = null;
   container.scrollTop = scrollTop;
   // Remember where this module left the container. The browser clamps the
   // assignment, so read the offset back instead of trusting the requested one.
@@ -139,6 +163,7 @@ function scrollToPosition(
   runtime: ScrollRuntime,
   container: HTMLElement,
   position: ThreadScrollPosition,
+  behavior: ScrollBehavior = "instant",
 ): boolean {
   const target = scrollAnchorForEvent(container, position.targetEventId);
   if (!target) {
@@ -150,6 +175,7 @@ function scrollToPosition(
     runtime,
     container,
     container.scrollTop + currentViewportOffsetTop - position.viewportOffsetTop,
+    behavior,
   );
   return true;
 }
@@ -203,6 +229,10 @@ interface ScrollRuntime {
   // event measure as "not at the bottom" and park the thread on an anchor
   // nobody chose.
   programmaticScrollTop: number | null;
+  // Smooth scrolling spans several browser scroll events. Keep its target so
+  // those events do not rewrite the held event position, and so a resize
+  // restore during the animation preserves the requested behavior.
+  programmaticSmoothScrollTop: number | null;
 }
 
 function createInternalScrollSignals(
@@ -313,6 +343,7 @@ function createInternalScrollSignals(
     awayFromBottom$,
     readRenderedThreadScrollPosition$,
     syncThreadScrollPosition$,
+    setThreadScrollPosition$,
     clearThreadScrollPosition$,
     bindScrollContainer$,
     clearScrollContainer$,
@@ -386,7 +417,14 @@ function createScrollNavigationSignals(
         throw new Error("Chat scroll container is not mounted");
       }
       if (position) {
-        if (scrollToPosition(runtime, container, position)) {
+        if (
+          scrollToPosition(
+            runtime,
+            container,
+            position,
+            runtime.programmaticSmoothScrollTop === null ? "instant" : "smooth",
+          )
+        ) {
           runtime.initialized = true;
           return;
         }
@@ -505,10 +543,20 @@ function createRenderScrollSignals(
           SCROLL_COMMIT_TO_TAIL_ATTRIBUTE,
         );
         if (commitToTail) {
-          applyScrollTop(runtime, container, container.scrollHeight);
+          applyScrollTop(
+            runtime,
+            container,
+            container.scrollHeight,
+            request.behavior,
+          );
         } else if (
           !request.position ||
-          !scrollToPosition(runtime, container, request.position)
+          !scrollToPosition(
+            runtime,
+            container,
+            request.position,
+            request.behavior,
+          )
         ) {
           throw new Error(
             `Chat scroll target is not rendered: ${request.position?.targetEventId ?? "none"}`,
@@ -521,6 +569,7 @@ function createRenderScrollSignals(
           revision,
           targetEventId: request.position?.targetEventId ?? null,
           viewportOffsetTop: request.position?.viewportOffsetTop ?? null,
+          behavior: request.behavior,
           scrollTop: container.scrollTop,
         });
         if (commitToTail) {
@@ -531,10 +580,11 @@ function createRenderScrollSignals(
       },
     ),
   );
-  const autoScroll$ = command(
+  const requestScrollAfterRender$ = command(
     async (
       { set },
       position: ThreadScrollPosition | null,
+      behavior: ScrollBehavior,
       signal: AbortSignal,
     ): Promise<void> => {
       signal.throwIfAborted();
@@ -542,12 +592,14 @@ function createRenderScrollSignals(
       const request: ScrollAfterRenderRequest = {
         revision: runtime.latestRenderRequestRevision,
         position,
+        behavior,
       };
       L.debug("render scroll requested", {
         threadId,
         revision: request.revision,
         targetEventId: position?.targetEventId ?? null,
         viewportOffsetTop: position?.viewportOffsetTop ?? null,
+        behavior,
       });
       set(internalPendingRequest$, request);
       if (position === null) {
@@ -555,9 +607,19 @@ function createRenderScrollSignals(
       }
     },
   );
+  const autoScroll$ = command(
+    (
+      { set },
+      position: ThreadScrollPosition | null,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      return set(requestScrollAfterRender$, position, "instant", signal);
+    },
+  );
 
   return {
     autoScroll$,
+    requestScrollAfterRender$,
     pendingScrollAfterRenderRequest$,
     scrollCommitOnRef$,
   };
@@ -590,7 +652,9 @@ function createScrollContainerOnRef(
           // too. Where they sit says nothing about where the thread sits.
           return;
         }
+        const smoothScrollTarget = runtime.programmaticSmoothScrollTop;
         const programmatic =
+          smoothScrollTarget !== null ||
           runtime.programmaticScrollTop === container.scrollTop;
         if (!programmatic) {
           // The container has left the offset this module wrote, so the reader
@@ -609,10 +673,26 @@ function createScrollContainerOnRef(
       const scheduleRestoreAfterResize = () => {
         set(navigation.scheduleRestoreAfterResize$, signal);
       };
+      const handleScrollEnd = (event: Event) => {
+        if (
+          event.target === container &&
+          runtime.programmaticSmoothScrollTop !== null
+        ) {
+          // A fractional target can produce one near-terminal integer scroll
+          // offset before the browser reports its final rounded offset. Keep
+          // the whole animation programmatic until scrollend, then carry the
+          // actual terminal offset into the ordinary duplicate-event guard.
+          runtime.programmaticScrollTop = container.scrollTop;
+          runtime.programmaticSmoothScrollTop = null;
+        }
+      };
       const resizeObserver = new ResizeObserver(scheduleRestoreAfterResize);
 
       container.addEventListener("scroll", handleScroll, {
         capture: true,
+        passive: true,
+      });
+      container.addEventListener("scrollend", handleScrollEnd, {
         passive: true,
       });
       resizeObserver.observe(container);
@@ -629,6 +709,7 @@ function createScrollContainerOnRef(
           container.removeEventListener("scroll", handleScroll, {
             capture: true,
           });
+          container.removeEventListener("scrollend", handleScrollEnd);
           resizeObserver.disconnect();
           container.ownerDocument.defaultView?.visualViewport?.removeEventListener(
             "resize",
@@ -637,6 +718,7 @@ function createScrollContainerOnRef(
           set(scroll.clearScrollContainer$, container);
           runtime.initialized = false;
           runtime.programmaticScrollTop = null;
+          runtime.programmaticSmoothScrollTop = null;
           L.debug("container unbound", { threadId });
         },
         { once: true },
@@ -686,12 +768,15 @@ export function createChatThreadScrollSignals(
   threadId: string,
   position: ThreadScrollPositionSignals,
   afterThreadScrollPositionChanged$: Command<Promise<void>, [AbortSignal]>,
+  chatEvents$: Computed<readonly ChatEvent[]>,
+  initialEventsReady$: Computed<boolean>,
 ): ChatThreadScrollSignals {
   const runtime: ScrollRuntime = {
     initialized: false,
     resizeScheduled: false,
     latestRenderRequestRevision: 0,
     programmaticScrollTop: null,
+    programmaticSmoothScrollTop: null,
   };
   const scroll = createInternalScrollSignals(
     threadId,
@@ -712,6 +797,43 @@ export function createChatThreadScrollSignals(
     runtime,
   );
   const scrollContentOnRef$ = createScrollContentOnRef(threadId, navigation);
+  const scrollToEvent$ = command(
+    async (
+      { get, set },
+      eventId: string,
+      options: ScrollToEventOptions,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      await setLoop(
+        () => {
+          return get(initialEventsReady$);
+        },
+        16,
+        signal,
+        { retryTransientErrors: false },
+      );
+      signal.throwIfAborted();
+      const eventExists = get(chatEvents$).some((event) => {
+        return event.id === eventId;
+      });
+      if (!eventExists) {
+        L.debug("scroll target event not found", { threadId, eventId });
+        return;
+      }
+      const position: ThreadScrollPosition = {
+        targetEventId: eventId,
+        viewportOffsetTop: options.viewportOffsetTop,
+      };
+      await set(scroll.setThreadScrollPosition$, position, signal);
+      signal.throwIfAborted();
+      await set(
+        render.requestScrollAfterRender$,
+        position,
+        options.behavior,
+        signal,
+      );
+    },
+  );
 
   return {
     scrollContainerOnRef$,
@@ -723,6 +845,7 @@ export function createChatThreadScrollSignals(
     awayFromBottom$: scroll.awayFromBottom$,
     readRenderedThreadScrollPosition$: scroll.readRenderedThreadScrollPosition$,
     autoScroll$: render.autoScroll$,
+    scrollToEvent$,
     scrollTo$: navigation.scrollTo$,
     scrollToTop$: navigation.scrollToTop$,
     scrollToBottom$: navigation.scrollToBottom$,

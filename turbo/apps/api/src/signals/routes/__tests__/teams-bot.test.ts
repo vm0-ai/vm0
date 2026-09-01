@@ -3220,7 +3220,7 @@ describe("POST /api/webhooks/teams/bot", () => {
     const firstRunId = await runIdForPrompt(actor, "authorize the browser");
     await runsApi.heartbeatRunner(runnerGroup);
     const firstClaim = await runsApi.claimRunnerJob(firstRunId);
-    const firstOkouToken = firstClaim.environment?.OKOU_TOKEN;
+    const firstOkouToken = firstClaim.platformEnvironment.OKOU_TOKEN;
     if (!firstOkouToken) {
       throw new Error("Claimed Teams runner job did not include OKOU_TOKEN");
     }
@@ -3252,7 +3252,7 @@ describe("POST /api/webhooks/teams/bot", () => {
     const secondRunId = await runIdForPrompt(actor, "use the browser");
     await runsApi.heartbeatRunner(runnerGroup);
     const secondClaim = await runsApi.claimRunnerJob(secondRunId);
-    const secondOkouToken = secondClaim.environment?.OKOU_TOKEN;
+    const secondOkouToken = secondClaim.platformEnvironment.OKOU_TOKEN;
     if (!secondOkouToken) {
       throw new Error("Claimed Teams runner job did not include OKOU_TOKEN");
     }

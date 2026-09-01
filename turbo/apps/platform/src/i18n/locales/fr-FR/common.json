@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Erreur Codex",
       "commandStatus": "Commande {{status}}",
+      "contextCompaction": "Contexte compacté",
       "error": "Erreur : {{error}}",
       "fileChangeKind": "changer",
       "fileOperationCompleted": "Opération de fichier terminée",
@@ -29,6 +30,12 @@
       },
       "status": "Statut : {{status}}",
       "statusDetail": "statut : {{status}}",
+      "subAgentActivity": {
+        "completed": "Sous-agent terminé",
+        "interacted": "Interaction avec le sous-agent",
+        "interrupted": "Sous-agent interrompu",
+        "started": "Sous-agent démarré"
+      },
       "turnFailed": "Tour échoué",
       "turnStatus": "Tour {{status}}",
       "warning": "[avertissement] {{message}}",
@@ -377,51 +384,6 @@
     }
   },
   "appShell": {
-    "browserUpgrade": {
-      "browser": {
-        "action": "Mettre à jour le navigateur",
-        "description": "{{assistantName}} ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour votre navigateur pour continuer.",
-        "title": "Mettez à jour votre navigateur pour continuer"
-      },
-      "chrome": {
-        "action": "Mettre à jour Chrome",
-        "description": "{{assistantName}} ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour Chrome pour continuer.",
-        "title": "Mettez à jour Chrome pour continuer"
-      },
-      "chromium": {
-        "action": "Mettre à jour Chromium",
-        "description": "{{assistantName}} ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour Chromium pour continuer.",
-        "title": "Mettez à jour Chromium pour continuer"
-      },
-      "ios": {
-        "action": "Mettre à jour iOS",
-        "description": "{{assistantName}} ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour iOS pour continuer.",
-        "title": "Mettez à jour iOS pour continuer"
-      },
-      "safari": {
-        "action": "Mettre à jour Safari",
-        "description": "{{assistantName}} ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour Safari pour continuer.",
-        "title": "Mettez à jour Safari pour continuer"
-      }
-    },
-    "loading": {
-      "ariaLabel": "Chargement de votre espace de travail",
-      "messages": {
-        "almostThere": "Presque prêt...",
-        "brewingIdeas": "Quelques idées sont en préparation...",
-        "connectingDots": "Connexion des idées...",
-        "gettingReady": "Préparation en cours...",
-        "loadingWorkspace": "Chargement de votre espace de travail...",
-        "spinningTeam": "Mise en place de l’équipe...",
-        "tuningInstruments": "Accordage des instruments...",
-        "warmingNeurons": "Initialisation des neurones..."
-      }
-    },
-    "logoAlt": "{{brandName}}",
-    "metadata": {
-      "description": "{{assistantName}} est votre coéquipier IA créé par {{brandName}}. Envoyez un message à {{assistantName}} ou discutez sur le web — recherche, e-mails, documents, Slack, GitHub, Notion et plus de 100 outils.",
-      "title": "{{assistantName}} — Votre coéquipier IA créé par {{brandName}}"
-    },
     "shortcutHelp": {
       "close": "Fermer les raccourcis clavier",
       "description": "Raccourcis disponibles sur cette page",
@@ -674,6 +636,7 @@
       "importedSlides_many": "{{count}} diapositives",
       "importedSlides_other": "{{count}} diapositives",
       "multiAccent": "Multi-accents",
+      "needPro": "Pro requis",
       "nextSlide": "Aperçu de la diapositive suivante",
       "noMatches": "Aucun résultat",
       "placeholder": "Espace réservé pour l'aperçu du site {{title}}",
@@ -726,6 +689,7 @@
       "tryDifferentSearch": "Essayez une recherche différente.",
       "use": "Utiliser",
       "useThisTemplate": "Utilisez ce modèle",
+      "viewVideoPlans": "Voir les offres pour le modèle vidéo {{title}}",
       "visibility": {
         "change": "Modifier",
         "changeLabel": "Modifier la visibilité du modèle",
@@ -1964,6 +1928,20 @@
       "unsupportedIntelMac": "Nécessite un Mac Apple silicon",
       "yourComputer": "Votre ordinateur"
     },
+    "connectorAccountSwitch": {
+      "accountFallback": "Compte du connecteur",
+      "actionFailed": "Impossible de changer de compte. Réessayez.",
+      "customConnector": "Connecteur personnalisé",
+      "loadFailed": "Impossible de charger ce compte de connecteur.",
+      "reconnectRequired": "Reconnexion requise. Les exécutions ultérieures peuvent utiliser la solution de secours existante.",
+      "retry": "Réessayer",
+      "selected": "Passé à {{account}}",
+      "switch": "Changer",
+      "switching": "Changement...",
+      "title": "Passer à {{account}} ?",
+      "unavailableDescription": "Ce compte n’existe pas ou n’est pas disponible pour ce connecteur.",
+      "unavailableTitle": "Compte indisponible"
+    },
     "connectors": {
       "accountForThread": "Compte pour ce fil",
       "add": "Ajouter {{connectorName}}",
@@ -2001,6 +1979,7 @@
         "capacityTitle": "Le modèle {{framework}} est occupé",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "Continuer",
         "resetAndTryAgain": "Réinitialiser et réessayer",
         "resetsAt": "Réinitialisation à {{time}}",
         "selectModel": "Changer de modèle",
@@ -2234,7 +2213,6 @@
       "message_one": "{{count}} message",
       "message_many": "{{count}} messages",
       "message_other": "{{count}} messages",
-      "morningBrief": "Résumé du matin",
       "openGoalDetails": "Ouvrir les détails de l'objectif",
       "pendingAutomationEvent": "Événement d'automatisation en attente",
       "queuedMessage": "Message en file d'attente",
@@ -3358,7 +3336,8 @@
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "La requête a échoué"
+      "requestFailed": "La requête a échoué",
+      "sharedDatabaseUnavailable": "L’application a rencontré un problème. Veuillez patienter un moment, puis actualiser la page pour réessayer."
     },
     "realtime": {
       "degraded": "Les mises à jour en direct ont rencontré un problème. Veuillez actualiser la page.",
@@ -6224,7 +6203,7 @@
       "browse": "Parcourir les workflows officiels",
       "chooseValue": "Choisir une valeur",
       "copySucceededUninstallFailed": "La copie est prête, mais le workflow officiel d’origine n’a pas pu être désinstallé.",
-      "description": "Installez des workflows gérés et maintenus par vm0.",
+      "description": "Installez des workflows gérés et maintenus par l’Okou Official Team.",
       "empty": "Aucun workflow officiel n’est disponible.",
       "includedAutomations": "Automatisations incluses",
       "install": "Installer",

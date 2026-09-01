@@ -240,6 +240,20 @@ class TestStreamDecodeSession:
         assert chunks == [b"hello"]
         assert session.finish_error() is None
 
+    @pytest.mark.parametrize("encoding", ["identity", "gzip", "br"])
+    @pytest.mark.parametrize("max_decoded_chunk", [0, -1])
+    def test_non_positive_max_decoded_chunk_is_rejected(self, headers, encoding, max_decoded_chunk):
+        chunks: list[bytes] = []
+
+        with pytest.raises(ValueError, match=r"^max_decoded_chunk must be positive$"):
+            create_stream_decode_session(
+                headers(("Content-Encoding", encoding)),
+                chunks.append,
+                max_decoded_chunk=max_decoded_chunk,
+            )
+
+        assert chunks == []
+
     def test_identity_document_parser_termination_stops_callbacks(self, headers):
         extractor = JsonSelectiveExtractor(max_work_units=1)
         decoded_callbacks = 0

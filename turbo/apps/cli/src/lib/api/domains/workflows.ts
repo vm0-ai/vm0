@@ -7,11 +7,14 @@ import {
   workflowsCollectionContract,
   workflowsDetailContract,
   workflowAutomationsContract,
+  type WorkflowConnectorReadinessResponse,
   type WorkflowFileEntry,
   type WorkflowDetailResponse,
   type WorkflowSummary,
 } from "@okouai/api-contracts/contracts/workflows";
 import { getClientConfig, handleError } from "../core/client-factory";
+
+const CONNECTOR_READINESS_REQUEST_TIMEOUT_MS = 35_000;
 
 export type WorkflowAutomationCreateRequest = ServerInferRequest<
   typeof workflowAutomationsContract.create
@@ -63,6 +66,24 @@ export async function getWorkflow(
   const result = await client.get({ params: { workflowId } });
   if (result.status === 200) return result.body;
   handleError(result, `Workflow "${workflowId}" not found`);
+}
+
+export async function getWorkflowConnectorReadiness(
+  workflowId: string,
+): Promise<WorkflowConnectorReadinessResponse> {
+  const config = await getClientConfig();
+  const client = initClient(workflowsDetailContract, config);
+  const result = await client.connectorReadiness({
+    params: { workflowId },
+    fetchOptions: {
+      signal: AbortSignal.timeout(CONNECTOR_READINESS_REQUEST_TIMEOUT_MS),
+    },
+  });
+  if (result.status === 200) return result.body;
+  handleError(
+    result,
+    `Failed to check connector readiness for workflow "${workflowId}"`,
+  );
 }
 
 export async function updateWorkflow(

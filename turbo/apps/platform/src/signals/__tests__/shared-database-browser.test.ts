@@ -1,13 +1,12 @@
-import { HttpResponse } from "msw";
+import { toast } from "@okouai/ui/components/ui/sonner";
 import { describe, expect, it, vi } from "vitest";
 
-import type {
-  SharedDatabaseHeartbeat,
-  SharedDatabasePortLike,
-} from "../../shared-database/bridge.ts";
+import type { SharedDatabasePortLike } from "../../shared-database/bridge.ts";
 import type { AuthRecovery } from "../auth-retry.ts";
-import { heartbeatSharedDatabase$ } from "../shared-database.ts";
-import { setupSharedDatabaseBridge$ } from "../shared-database-browser.ts";
+import {
+  prepareSharedDatabaseBridge$,
+  setupSharedDatabaseBridge$,
+} from "../shared-database-browser.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
@@ -27,14 +26,8 @@ class TestSharedWorkerPort implements SharedDatabasePortLike {
     ) {
       return;
     }
-    if (
-      "identity" in value &&
-      typeof value.identity === "object" &&
-      value.identity !== null &&
-      "token" in value.identity &&
-      typeof value.identity.token === "string"
-    ) {
-      this.heartbeatTokens.push(value.identity.token);
+    if ("token" in value && typeof value.token === "string") {
+      this.heartbeatTokens.push(value.token);
     }
     const requestId = value.requestId;
     queueMicrotask(() => {
@@ -69,8 +62,19 @@ class TestSharedWorkerPort implements SharedDatabasePortLike {
   addEventListener(
     _type: "message",
     listener: (event: MessageEvent<unknown>) => void,
+    options?: AddEventListenerOptions | boolean,
   ): void {
     this.listener = listener;
+    const signal = typeof options === "object" ? options.signal : undefined;
+    signal?.addEventListener(
+      "abort",
+      () => {
+        if (this.listener === listener) {
+          this.listener = null;
+        }
+      },
+      { once: true },
+    );
   }
 
   removeEventListener(
@@ -149,16 +153,6 @@ function installSharedWorkerMock(): {
   return { constructorCalls, workers };
 }
 
-function sharedDatabaseHeartbeat(): SharedDatabaseHeartbeat {
-  return {
-    identity: {
-      userId: "shared-worker-user",
-      orgId: "shared-worker-org",
-      token: "shared-worker-token",
-    },
-  };
-}
-
 function authRecovery(replacementToken = "replacement-token"): AuthRecovery {
   return {
     getToken: () => {
@@ -171,15 +165,19 @@ function authRecovery(replacementToken = "replacement-token"): AuthRecovery {
 }
 
 async function setupBridge(recovery = authRecovery()): Promise<void> {
-  context.store.set(setupSharedDatabaseBridge$, recovery, context.signal);
-  await context.store.set(
-    heartbeatSharedDatabase$,
-    sharedDatabaseHeartbeat(),
-    context.signal,
-  );
+  await context.store.set(setupSharedDatabaseBridge$, recovery, context.signal);
 }
 
 describe("shared database browser bridge", () => {
+  it("starts the shared worker before the authentication handshake", async () => {
+    const { constructorCalls, workers } = installSharedWorkerMock();
+
+    await context.store.set(prepareSharedDatabaseBridge$, context.signal);
+
+    expect(constructorCalls).toHaveLength(1);
+    expect(workers[0]!.port.heartbeatTokens).toStrictEqual([]);
+  });
+
   it("forces an auth refresh when the worker rejects its credential", async () => {
     const { workers } = installSharedWorkerMock();
     await setupBridge();
@@ -208,106 +206,81 @@ describe("shared database browser bridge", () => {
       new URL(String(constructorCalls[0]?.scriptURL), window.location.href)
         .origin,
     ).toBe(window.location.origin);
+    expect(
+      new URL(
+        String(constructorCalls[0]?.scriptURL),
+        window.location.href,
+      ).searchParams.has("okou-app-version"),
+    ).toBeFalsy();
   });
 
-  it("recreates the shared worker when the module asset is still available", async () => {
+  it("reloads once with a recovery marker after a worker load failure", async () => {
+    const replace = vi.fn<(url: string) => void>();
     const { constructorCalls, workers } = installSharedWorkerMock();
     await setupBridge();
-    const workerUrl = String(constructorCalls[0]!.scriptURL);
-    context.mocks.http.get(workerUrl, () => {
-      return new HttpResponse("export {};", {
-        headers: { "content-type": "application/javascript" },
-      });
-    });
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
-
-    workers[0]!.fail();
-    await context.store.set(
-      heartbeatSharedDatabase$,
-      sharedDatabaseHeartbeat(),
-      context.signal,
+    const currentUrl = new URL(
+      "/chat?threadId=thread-1#latest",
+      window.location.href,
     );
-
-    expect(constructorCalls).toHaveLength(2);
-    expect(consoleError).toHaveBeenCalledOnce();
-  });
-
-  it.each([
-    {
-      label: "missing",
-      response: () => {
-        return new HttpResponse("Not found", { status: 404 });
-      },
-    },
-    {
-      label: "replaced by HTML",
-      response: () => {
-        return new HttpResponse("<!doctype html>", {
-          headers: { "content-type": "text/html" },
-        });
-      },
-    },
-  ])("reloads when the worker asset is $label", async ({ response }) => {
-    const reload = vi.fn<() => void>();
-    const { constructorCalls, workers } = installSharedWorkerMock();
-    await setupBridge();
     vi.stubGlobal("location", {
-      href: window.location.href,
-      origin: window.location.origin,
-      reload,
+      href: currentUrl.toString(),
+      origin: currentUrl.origin,
+      replace,
     });
-    const workerUrl = String(constructorCalls[0]!.scriptURL);
-    context.mocks.http.get(workerUrl, response);
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
 
     workers[0]!.fail();
-    const heartbeat = context.store.set(
-      heartbeatSharedDatabase$,
-      sharedDatabaseHeartbeat(),
-      context.signal,
-    );
-    context.track(heartbeat);
 
     await vi.waitFor(() => {
-      expect(reload).toHaveBeenCalledOnce();
+      expect(replace).toHaveBeenCalledOnce();
     });
+    const recoveryUrl = new URL(replace.mock.calls[0]![0]);
+    expect(recoveryUrl.searchParams.get("okou-shared-database-reload")).toBe(
+      "1",
+    );
+    expect(recoveryUrl.searchParams.get("threadId")).toBe("thread-1");
+    expect(recoveryUrl.hash).toBe("#latest");
     expect(constructorCalls).toHaveLength(1);
     expect(consoleError).toHaveBeenCalledOnce();
   });
 
-  it("waits for connectivity before recreating the shared worker", async () => {
+  it("stops the reload loop and removes the recovery marker", async () => {
+    const replace = vi.fn<(url: string) => void>();
+    const replaceState = vi
+      .spyOn(history, "replaceState")
+      .mockImplementation(() => {});
+    const toastError = vi.spyOn(toast, "error").mockReturnValue("toast-id");
     const { constructorCalls, workers } = installSharedWorkerMock();
     await setupBridge();
-    const workerUrl = String(constructorCalls[0]!.scriptURL);
-    let probeRequests = 0;
-    context.mocks.http.get(workerUrl, () => {
-      probeRequests += 1;
-      return HttpResponse.error();
+    const currentUrl = new URL(
+      "/chat?threadId=thread-1&okou-shared-database-reload=1#latest",
+      window.location.href,
+    );
+    vi.stubGlobal("location", {
+      href: currentUrl.toString(),
+      origin: currentUrl.origin,
+      replace,
     });
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
 
     workers[0]!.fail();
-    const heartbeat = context.store.set(
-      heartbeatSharedDatabase$,
-      sharedDatabaseHeartbeat(),
-      context.signal,
-    );
+
     await vi.waitFor(() => {
-      expect(probeRequests).toBe(1);
+      expect(toastError).toHaveBeenCalledOnce();
     });
+    expect(replace).not.toHaveBeenCalled();
+    expect(replaceState).toHaveBeenCalledOnce();
+    const retryUrl = new URL(String(replaceState.mock.calls[0]![2]));
+    expect(
+      retryUrl.searchParams.has("okou-shared-database-reload"),
+    ).toBeFalsy();
+    expect(retryUrl.searchParams.get("threadId")).toBe("thread-1");
+    expect(retryUrl.hash).toBe("#latest");
     expect(constructorCalls).toHaveLength(1);
-
-    await Promise.resolve();
-    window.dispatchEvent(new Event("online"));
-    await heartbeat;
-
-    expect(constructorCalls).toHaveLength(2);
     expect(consoleError).toHaveBeenCalledOnce();
   });
 });

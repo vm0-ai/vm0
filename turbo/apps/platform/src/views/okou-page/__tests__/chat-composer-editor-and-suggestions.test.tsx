@@ -714,6 +714,15 @@ describe("chat composer models", () => {
     mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
+    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+      return respond(200, {
+        draftUserMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "/new-chat-workflow" }],
+        },
+        draftAttachments: null,
+      });
+    });
     context.mocks.api(workflowsCollectionContract.list, async ({ respond }) => {
       if (workflowPhase === "initial") {
         return respond(200, []);
@@ -745,6 +754,12 @@ describe("chat composer models", () => {
     const initialEditor = await within(thread).findByRole("textbox", {
       name: "Message",
     });
+    await waitFor(() => {
+      expect(initialEditor).toHaveTextContent("/new-chat-workflow");
+      expect(
+        initialEditor.querySelector("span.text-primary"),
+      ).not.toBeInTheDocument();
+    });
 
     workflowPhase = "reloaded";
     act(() => {
@@ -756,9 +771,14 @@ describe("chat composer models", () => {
     await reloadWorkflowsRequested.promise;
     releaseReloadWorkflows.resolve();
 
+    await waitFor(() => {
+      expect(within(initialEditor).getByText("/new-chat-workflow")).toHaveClass(
+        "text-primary",
+      );
+    });
     await expect(findComposerEditor()).resolves.toBe(initialEditor);
     await user.click(initialEditor);
-    await user.keyboard("/");
+    await user.keyboard("{Control>}a{/Control}{Backspace}/");
     await expect(
       screen.findByText("new-chat-workflow"),
     ).resolves.toBeInTheDocument();

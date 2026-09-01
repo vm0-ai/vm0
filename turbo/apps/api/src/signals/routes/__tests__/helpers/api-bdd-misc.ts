@@ -451,7 +451,7 @@ export function createMiscRoutesApi(context: TestContext) {
       );
     },
 
-    async upsertVm0Provider(
+    async upsertBuiltInProvider(
       actor: ApiTestUser,
       statuses: readonly (200 | 201 | 400 | 401 | 403 | 404 | 500)[],
     ) {
@@ -460,7 +460,7 @@ export function createMiscRoutesApi(context: TestContext) {
           modelProvidersMainContract,
         ).upsert({
           headers: authenticate(context, actor),
-          body: { type: "vm0" },
+          body: { type: "built-in" },
         }),
         statuses,
       );
@@ -482,7 +482,7 @@ export function createMiscRoutesApi(context: TestContext) {
       );
     },
 
-    async deleteVm0Provider(
+    async deleteBuiltInProvider(
       actor: ApiTestUser,
       statuses: readonly (204 | 401 | 403 | 404 | 500)[],
     ) {
@@ -491,7 +491,7 @@ export function createMiscRoutesApi(context: TestContext) {
           modelProvidersByTypeContract,
         ).delete({
           headers: authenticate(context, actor),
-          params: { type: "vm0" },
+          params: { type: "built-in" },
         }),
         statuses,
       );
@@ -592,7 +592,7 @@ export function createMiscRoutesApi(context: TestContext) {
                 defaultProviderType: isBuiltInModelProviderType(
                   policy.defaultProviderType,
                 )
-                  ? "vm0"
+                  ? "built-in"
                   : policy.defaultProviderType,
                 credentialScope: policy.credentialScope,
                 modelProviderId: policy.modelProviderId,

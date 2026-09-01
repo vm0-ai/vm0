@@ -1583,6 +1583,48 @@
       "when": 1788145500398,
       "tag": "1033_org_metadata_acquisition_first_party_source_expand",
       "breakpoints": true
+    },
+    {
+      "idx": 1034,
+      "version": "7",
+      "when": 1788171558837,
+      "tag": "1034_org_metadata_acquisition_first_party_source_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 1035,
+      "version": "7",
+      "when": 1788178386625,
+      "tag": "1035_chat_search_delete_compatibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 1036,
+      "version": "7",
+      "when": 1788178421588,
+      "tag": "1036_damp_star_brand",
+      "breakpoints": true
+    },
+    {
+      "idx": 1037,
+      "version": "7",
+      "when": 1788189025684,
+      "tag": "1037_morning_brief_phase_b_cleanup",
+      "breakpoints": true
+    },
+    {
+      "idx": 1038,
+      "version": "7",
+      "when": 1788231052832,
+      "tag": "1038_contract_legacy_vm0_provider",
+      "breakpoints": true
+    },
+    {
+      "idx": 1039,
+      "version": "7",
+      "when": 1788237410573,
+      "tag": "1039_shocking_lady_deathstrike",
+      "breakpoints": true
     }
   ]
 }

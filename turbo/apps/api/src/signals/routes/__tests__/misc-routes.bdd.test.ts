@@ -86,8 +86,6 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
       sendMode: "enter",
       theme: null,
       colorTheme: null,
-      morningBriefEnabled: false,
-      morningBriefNextRunAt: null,
     });
 
     const firstPinnedAgentId = "00000000-0000-0000-0000-000000000001";
@@ -105,8 +103,6 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
           firstPinnedAgentId,
           secondPinnedAgentId,
         ],
-        // Simulate an old loaded App bundle during the rolling cutover.
-        morningBriefEnabled: true,
         captureNetworkBodiesRemaining: 3,
       },
       [200],
@@ -118,8 +114,6 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
       sendMode: "cmd-enter",
       theme: "dark",
       colorTheme: "golden-hour",
-      morningBriefEnabled: false,
-      morningBriefNextRunAt: null,
       captureNetworkBodiesRemaining: 3,
     });
     const rereadPreferences = await api.readPreferences(admin);
@@ -351,10 +345,10 @@ describe("MISC-04: model providers, policies, and logs visible state", () => {
     const initialProviders = await api.listModelProviders(admin);
     expect(initialProviders.body.modelProviders).toStrictEqual([]);
 
-    const deniedProvider = await api.upsertVm0Provider(member, [403]);
+    const deniedProvider = await api.upsertBuiltInProvider(member, [403]);
     expectApiError(deniedProvider.body);
 
-    const createdProvider = await api.upsertVm0Provider(admin, [201]);
+    const createdProvider = await api.upsertBuiltInProvider(admin, [201]);
     expect(createdProvider.body).toMatchObject({
       created: true,
       provider: { type: "built-in" },
@@ -383,7 +377,7 @@ describe("MISC-04: model providers, policies, and logs visible state", () => {
       policies.policies.length,
     );
 
-    await api.deleteVm0Provider(admin, [204]);
+    await api.deleteBuiltInProvider(admin, [204]);
     const afterDelete = await api.listModelProviders(admin);
     expect(
       afterDelete.body.modelProviders.some((provider) => {

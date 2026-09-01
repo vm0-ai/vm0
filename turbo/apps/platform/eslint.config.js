@@ -1,14 +1,56 @@
+import { createHash } from "node:crypto";
+import { globSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { config as baseConfig, oxlint } from "@okouai/eslint-config/base";
 import ccstatePlugin from "@okouai/eslint-rules/ccstate";
 import pluginReactHooks from "eslint-plugin-react-hooks";
 import pluginReact from "eslint-plugin-react";
+
+const eslintCacheInputPaths = globSync(
+  [
+    "eslint.config.js",
+    "package.json",
+    "../../package.json",
+    "../../pnpm-lock.yaml",
+    "../../pnpm-workspace.yaml",
+    "../../turbo.json",
+    "../../{apps,packages}/*/turbo.{json,jsonc}",
+    "../../packages/eslint-config/**/*.{js,cjs,mjs,json}",
+    "../../packages/eslint-rules/package.json",
+    "../../packages/eslint-rules/src/ccstate/**/*.ts",
+  ],
+  {
+    cwd: import.meta.dirname,
+    exclude: [
+      "../../packages/eslint-config/**/*.node.js",
+      "../../packages/eslint-rules/src/ccstate/__tests__/**",
+    ],
+  },
+).sort();
+const eslintCacheHash = createHash("sha256");
+
+// Cached results must only depend on the linted file, its calculated config,
+// and the inputs above. Add new external inputs here before enabling a rule
+// that reads them; type-aware or other cross-file rules need broader invalidation.
+for (const inputPath of eslintCacheInputPaths) {
+  eslintCacheHash.update(inputPath).update("\0");
+  eslintCacheHash
+    .update(readFileSync(resolve(import.meta.dirname, inputPath)))
+    .update("\0");
+}
+
+const eslintCacheFingerprint = eslintCacheHash.digest("hex");
 
 /** @type {import("eslint").Linter.Config[]} */
 export default [
   ...baseConfig,
   {
     ...pluginReact.configs.flat.recommended,
-    settings: { react: { version: "detect" } },
+    settings: {
+      react: { version: "detect" },
+      "vm0/eslint-cache-fingerprint": eslintCacheFingerprint,
+    },
   },
   {
     plugins: {
@@ -37,7 +79,6 @@ export default [
       "ccstate/test-context-in-hooks": "error",
       "ccstate/setup-page-render": "error",
       "ccstate/no-side-effect-in-render": "error",
-      "ccstate/no-non-zero-api": "error",
       "ccstate/no-new-abort-controller": "error",
       "ccstate/no-new-promise": "error",
       "ccstate/no-direct-local-storage": "error",
@@ -366,7 +407,7 @@ export default [
             {
               name: "@clerk/ui",
               message:
-                "Use ensureClerkUiLoaded() so hosted Clerk UI stays route-scoped.",
+                "Hosted Clerk UI is not part of platform auth; use the app-owned Auth v2 components.",
             },
             {
               name: "@solana/web3.js",

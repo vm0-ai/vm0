@@ -114,9 +114,11 @@ async function claimChatRun(
 }
 
 function okouTokenFromClaim(claim: RunnerClaim): string {
-  const token = claim.environment?.OKOU_TOKEN;
+  const token = claim.platformEnvironment.OKOU_TOKEN;
   if (!token || !token.startsWith("vm0_sandbox_")) {
-    throw new Error("Expected the claim environment to carry an OKOU_TOKEN");
+    throw new Error(
+      "Expected the claim platform environment to carry an OKOU_TOKEN",
+    );
   }
   return token;
 }
@@ -129,20 +131,15 @@ async function completeChatRunOk(
   const historyHash = createHash("sha256")
     .update(`bdd artifact catalog history ${runId}`)
     .digest("hex");
-  await webhooks.requestAgentCheckpoint(
-    {
-      runId,
-      cliAgentType: "claude-code",
-      cliAgentSessionId: `bdd-cli-${runId}`,
-      cliAgentSessionHistoryHash: historyHash,
-    },
-    sandboxHeaders,
-    [200],
-  );
   await webhooks.requestAgentComplete(
     {
       runId,
       exitCode: 0,
+      checkpoint: {
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cli-${runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
       ...(lastEventSequence === undefined ? {} : { lastEventSequence }),
     },
     sandboxHeaders,

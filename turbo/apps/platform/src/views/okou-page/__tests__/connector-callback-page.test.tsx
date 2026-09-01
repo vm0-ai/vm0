@@ -150,8 +150,7 @@ describe("connector callback page", () => {
     expect(search()).toBe("?message=Provider+denied+access");
   });
 
-  it("localizes connection failures in Portuguese while preserving provider errors", async () => {
-    document.documentElement.lang = "pt-BR";
+  it("keeps unauthenticated failures in English while preserving provider errors", async () => {
     context.mocks.api(
       connectorsSlugCallbackContract.callback,
       ({ respond }) => {
@@ -171,12 +170,12 @@ describe("connector callback page", () => {
 
     await expect(
       screen.findByRole("heading", {
-        name: "Não foi possível conectar NOTION",
+        name: "Couldn’t connect NOTION",
       }),
     ).resolves.toBeInTheDocument();
     expect(screen.getByText(/Provider denied access/)).toBeInTheDocument();
     expect(
-      screen.getByText(/Feche esta janela e tente novamente\./),
+      screen.getByText(/Close this window and try again\./),
     ).toBeInTheDocument();
   });
 

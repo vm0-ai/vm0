@@ -101,7 +101,8 @@ beforeEach(() => {
   resendMocks.send.mockResolvedValue({ data: { id: "resend-test-id" } });
   mockEnv("RESEND_API_KEY", "test-resend-key");
   mockEnv("RESEND_WEBHOOK_SECRET", INBOUND_SECRET);
-  mockEnv("RESEND_FROM_DOMAIN", "mail.example.com");
+  mockEnv("RESEND_FROM_DOMAIN", "vm0.bot");
+  mockEnv("APP_URL", "https://app.vm0.ai");
   mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
   // Resend pacing is not part of these transactional delivery assertions.
   mockOptionalEnv("EMAIL_OUTBOX_DRAIN_DELAY_MS", "0");
@@ -178,15 +179,42 @@ describe("low-credit email delivery", () => {
       to: actor.email,
       subject: "Your credit balance is running low",
     });
+    expect(item).toMatchObject({
+      from_address: "Okou Team <support@okou.io>",
+      public_brand: "okou",
+      headers: {
+        "List-Unsubscribe": expect.stringContaining(
+          "<https://api.okou.ai/api/email/unsubscribe?token=",
+        ),
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      },
+      template: {
+        template: "credit-low-balance",
+        props: {
+          billingUrl:
+            "https://app.okou.ai/?settings=billing&billingView=credits",
+          unsubscribeUrl: expect.stringContaining(
+            "https://app.okou.ai/email/unsubscribe?token=",
+          ),
+        },
+      },
+    });
     const drained = await email.drainEmailOutboxItems([item.id]);
 
     expect(drained).toBe(1);
     expect(resendMocks.send).toHaveBeenCalledTimes(1);
     expect(context.mocks.resend.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        from: "VM0 Team <support@mail.example.com>",
+        from: "Okou Team <support@okou.io>",
         to: actor.email,
         subject: "Your credit balance is running low",
+        html: expect.stringContaining("https://app.okou.ai/"),
+        headers: {
+          "List-Unsubscribe": expect.stringContaining(
+            "<https://api.okou.ai/api/email/unsubscribe?token=",
+          ),
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
       }),
     );
   });
@@ -222,6 +250,24 @@ describe("POST /api/email/inbound", () => {
 
     const locator = await email.enqueueDataExportEmail(controlActor);
     const item = await email.findEmailOutboxItem(locator);
+    expect(item).toMatchObject({
+      from_address: "Okou <okou@okou.io>",
+      public_brand: "okou",
+      headers: {
+        "List-Unsubscribe": expect.stringContaining(
+          "<https://api.okou.ai/api/email/unsubscribe?token=",
+        ),
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      },
+      template: {
+        template: "data-export-ready",
+        props: {
+          unsubscribeUrl: expect.stringContaining(
+            "https://app.okou.ai/email/unsubscribe?token=",
+          ),
+        },
+      },
+    });
     const drained = await email.drainEmailOutboxItems([item.id]);
 
     expect(drained).toBe(1);
@@ -233,6 +279,10 @@ describe("POST /api/email/inbound", () => {
     if (!sent) {
       throw new Error("Expected a data-export email");
     }
+    expect(sent).toMatchObject({
+      from: "Okou <okou@okou.io>",
+      html: expect.stringContaining("https://app.okou.ai/email/unsubscribe"),
+    });
     if (
       typeof sent !== "object" ||
       sent === null ||
@@ -247,7 +297,7 @@ describe("POST /api/email/inbound", () => {
       throw new Error("Expected a one-click unsubscribe header");
     }
     const oneClickUrl = new URL(oneClickHeader.slice(1, -1));
-    expect(oneClickUrl.origin).toBe("https://api.vm0.ai");
+    expect(oneClickUrl.origin).toBe("https://api.okou.ai");
     expect(oneClickUrl.pathname).toBe("/api/email/unsubscribe");
     expect(oneClickUrl.searchParams.get("token")).toBeTruthy();
   });

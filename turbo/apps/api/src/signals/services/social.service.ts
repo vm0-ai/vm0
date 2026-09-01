@@ -3,7 +3,9 @@ import {
   MANAGED_SOCIALKIT_BILLING_CATEGORY,
   SOCIALKIT_MAX_INPUT_VALUE_CHARS,
   type ManagedSocialKitPagination,
+  type ManagedSocialKitReportedTotalField,
   type ManagedSocialKitTool,
+  type SocialKitCollectionProviderLimitedReason,
   type SocialKitRequest,
   type SocialKitResponse,
   socialKitResponseSchema,
@@ -364,37 +366,117 @@ function paginationCursorValue(value: unknown): string | undefined {
 
 type ValidatedCollection = NonNullable<SocialKitResponse["collection"]>;
 
+type ReportedTotalValidation =
+  | { readonly ok: true; readonly reportedTotal?: number }
+  | { readonly ok: false };
+
+function validatedReportedTotal(
+  result: Record<string, unknown>,
+  field: ManagedSocialKitReportedTotalField | undefined,
+  itemsReturned: number,
+): ReportedTotalValidation {
+  if (
+    field === undefined ||
+    !Object.prototype.hasOwnProperty.call(result, field)
+  ) {
+    return { ok: true };
+  }
+  const value = result[field];
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= itemsReturned
+    ? { ok: true, reportedTotal: value }
+    : { ok: false };
+}
+
+function reportedTotalFields(reportedTotal: number | undefined): {
+  readonly reportedTotal?: number;
+} {
+  return reportedTotal === undefined ? {} : { reportedTotal };
+}
+
+function providerLimitedCollection(
+  itemsReturned: number,
+  reason: SocialKitCollectionProviderLimitedReason,
+  reportedTotal?: number,
+): ValidatedCollection {
+  return {
+    state: "provider_limited",
+    itemsReturned,
+    reason,
+    ...reportedTotalFields(reportedTotal),
+  };
+}
+
 function validatedCursorPagination(
   result: Record<string, unknown>,
   itemsReturned: number,
+  reportedTotal?: number,
 ): ValidatedCollection | undefined {
   if (typeof result.hasMore !== "boolean") {
     return undefined;
   }
   if (!result.hasMore) {
-    return { state: "complete", itemsReturned };
+    return reportedTotal !== undefined && reportedTotal > itemsReturned
+      ? providerLimitedCollection(
+          itemsReturned,
+          "reported_total_exceeds_page",
+          reportedTotal,
+        )
+      : {
+          state: "complete",
+          itemsReturned,
+          ...reportedTotalFields(reportedTotal),
+        };
+  }
+  if (reportedTotal === itemsReturned) {
+    return undefined;
   }
   const cursor = paginationCursorValue(result.cursor);
   return cursor === undefined
     ? undefined
-    : { state: "more", itemsReturned, nextInput: { cursor } };
+    : {
+        state: "more",
+        itemsReturned,
+        ...reportedTotalFields(reportedTotal),
+        nextInput: { cursor },
+      };
 }
 
 function validatedNextCursorPagination(
   result: Record<string, unknown>,
   itemsReturned: number,
+  reportedTotal?: number,
 ): ValidatedCollection | undefined {
   if (
     result.nextCursor === undefined ||
     result.nextCursor === null ||
     result.nextCursor === ""
   ) {
-    return { state: "complete", itemsReturned };
+    return reportedTotal !== undefined && reportedTotal > itemsReturned
+      ? providerLimitedCollection(
+          itemsReturned,
+          "reported_total_exceeds_page",
+          reportedTotal,
+        )
+      : {
+          state: "complete",
+          itemsReturned,
+          ...reportedTotalFields(reportedTotal),
+        };
+  }
+  if (reportedTotal === itemsReturned) {
+    return undefined;
   }
   const cursor = paginationCursorValue(result.nextCursor);
   return cursor === undefined
     ? undefined
-    : { state: "more", itemsReturned, nextInput: { cursor } };
+    : {
+        state: "more",
+        itemsReturned,
+        ...reportedTotalFields(reportedTotal),
+        nextInput: { cursor },
+      };
 }
 
 function validatedPagePagination(
@@ -402,18 +484,37 @@ function validatedPagePagination(
   itemsReturned: number,
   currentPage: number,
   maxPage: number,
+  reportedTotal?: number,
 ): ValidatedCollection | undefined {
   if (typeof result.hasMore !== "boolean") {
     return undefined;
   }
   if (!result.hasMore) {
-    return { state: "complete", itemsReturned };
+    return reportedTotal !== undefined && reportedTotal > itemsReturned
+      ? providerLimitedCollection(
+          itemsReturned,
+          "reported_total_exceeds_page",
+          reportedTotal,
+        )
+      : {
+          state: "complete",
+          itemsReturned,
+          ...reportedTotalFields(reportedTotal),
+        };
+  }
+  if (reportedTotal === itemsReturned) {
+    return undefined;
   }
   return currentPage >= maxPage
-    ? { state: "provider_limited", itemsReturned }
+    ? providerLimitedCollection(
+        itemsReturned,
+        "provider_ceiling",
+        reportedTotal,
+      )
     : {
         state: "more",
         itemsReturned,
+        ...reportedTotalFields(reportedTotal),
         nextInput: { page: currentPage + 1 },
       };
 }
@@ -423,13 +524,18 @@ function validatedPagination(
   itemsReturned: number,
   request: SocialKitRequest,
   pagination: ManagedSocialKitPagination,
+  reportedTotal?: number,
 ): ValidatedCollection | undefined {
   switch (pagination.kind) {
     case "cursor": {
-      return validatedCursorPagination(result, itemsReturned);
+      return validatedCursorPagination(result, itemsReturned, reportedTotal);
     }
     case "next_cursor": {
-      return validatedNextCursorPagination(result, itemsReturned);
+      return validatedNextCursorPagination(
+        result,
+        itemsReturned,
+        reportedTotal,
+      );
     }
     case "page": {
       const page = requestInputValue(request, "page");
@@ -438,10 +544,17 @@ function validatedPagination(
         itemsReturned,
         typeof page === "number" ? page : 1,
         pagination.maxPage,
+        reportedTotal,
       );
     }
     case "none": {
-      return { state: "provider_limited", itemsReturned };
+      return providerLimitedCollection(
+        itemsReturned,
+        reportedTotal !== undefined && reportedTotal > itemsReturned
+          ? "reported_total_exceeds_page"
+          : "no_pagination",
+        reportedTotal,
+      );
     }
   }
 }
@@ -466,11 +579,20 @@ function validatedCollection(
   if (effectiveLimit !== undefined && items.length > effectiveLimit) {
     return undefined;
   }
+  const reportedTotal = validatedReportedTotal(
+    result,
+    collection.reportedTotalField,
+    items.length,
+  );
+  if (!reportedTotal.ok) {
+    return undefined;
+  }
   return validatedPagination(
     result,
     items.length,
     request,
     collection.pagination,
+    reportedTotal.reportedTotal,
   );
 }
 

@@ -3,12 +3,15 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { orgMetadataLegacyWrites } from "@okouai/db/operations/org-metadata-legacy-write";
-import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-canonical-write";
+import {
+  orgMetadata,
+  orgMetadataLegacyColumns,
+} from "@okouai/db/schema/org-metadata";
 import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { getTableConfig } from "drizzle-orm/pg-core";
+import { getTableConfig, pgTable } from "drizzle-orm/pg-core";
 import { Client } from "pg";
 
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
@@ -30,6 +33,11 @@ const applicationRuntimePathspecs = [
   "crates",
   "e2e",
 ] as const;
+// Test-only previous-release shape for immediate API rollback proof.
+const orgMetadataPreviousReleaseWrites = pgTable(
+  "org_metadata",
+  orgMetadataLegacyColumns(),
+);
 
 interface HistoricalRowSnapshot {
   readonly canonical: string | null;
@@ -107,24 +115,25 @@ function trackedFilesWithPattern(
     .sort();
 }
 
-async function validateApplicationStatementInventory(): Promise<void> {
+function validateApplicationCallerInventory(): void {
   assert.deepEqual(
     trackedFilesWithPattern(
       "acquisitionFirstPartySource|acquisition_first_party_source",
       applicationRuntimePathspecs,
     ),
-    [],
-  );
-  assert.deepEqual(
-    trackedFilesWithPattern(
-      "acquisitionVm0Source",
-      applicationRuntimePathspecs,
-    ),
     [
+      "turbo/apps/api/src/signals/routes/__tests__/acquisition-attribution.test.ts",
       "turbo/apps/api/src/signals/routes/__tests__/billing-checkout.test.ts",
       "turbo/apps/api/src/signals/services/acquisition-attribution.service.ts",
       "turbo/apps/api/src/test-fixtures/org-metadata.ts",
     ],
+  );
+  assert.deepEqual(
+    trackedFilesWithPattern(
+      "acquisitionVm0Source|acquisition_vm0_source",
+      applicationRuntimePathspecs,
+    ),
+    [],
   );
   assert.deepEqual(
     trackedFilesWithPattern("vm0_source", applicationRuntimePathspecs),
@@ -137,7 +146,6 @@ async function validateApplicationStatementInventory(): Promise<void> {
       "turbo/apps/platform/src/signals/auth-v2/platform-context.test.ts",
       "turbo/apps/platform/src/signals/auth.ts",
       "turbo/apps/platform/src/signals/bootstrap/ad-attribution.ts",
-      "turbo/apps/platform/src/views/auth/__tests__/auth-page.test.tsx",
       "turbo/apps/platform/src/views/okou-page/__tests__/onboarding.test.tsx",
       "turbo/apps/platform/src/views/onboarding/__tests__/onboarding-flow.test.tsx",
       "turbo/packages/api-contracts/src/contracts/acquisition-attribution.ts",
@@ -153,7 +161,7 @@ async function validateApplicationStatementInventory(): Promise<void> {
   );
   assert.deepEqual(
     trackedFilesWithPattern(
-      "insert\\(orgMetadataLegacyWrites\\)",
+      "insert\\(orgMetadataCanonicalWrites\\)",
       applicationRuntimePathspecs,
     ),
     [
@@ -178,7 +186,16 @@ async function validateApplicationStatementInventory(): Promise<void> {
       "turbo/apps/api/src/test-fixtures/org-plan-entitlement.ts",
     ],
   );
+  assert.deepEqual(
+    trackedFilesWithPattern(
+      "orgMetadataLegacyWrites|org-metadata-legacy-write",
+      applicationRuntimePathspecs,
+    ),
+    [],
+  );
+}
 
+async function validateCompatibilitySourceInventory(): Promise<void> {
   const serviceSource = await fs.readFile(
     path.join(
       repositoryDirectory,
@@ -186,12 +203,15 @@ async function validateApplicationStatementInventory(): Promise<void> {
     ),
     "utf8",
   );
-  assert.match(serviceSource, /\["vm0_source", "acquisitionVm0Source"\]/u);
-  assert.match(serviceSource, /insert\(orgMetadataLegacyWrites\)/u);
+  assert.match(
+    serviceSource,
+    /\["vm0_source", "acquisitionFirstPartySource"\]/u,
+  );
+  assert.match(serviceSource, /insert\(orgMetadataCanonicalWrites\)/u);
   assert.match(serviceSource, /isNull\(orgMetadata\.acquisitionRecordedAt\)/u);
   assert.doesNotMatch(
     serviceSource,
-    /acquisitionFirstPartySource|acquisition_first_party_source/u,
+    /acquisitionVm0Source|acquisition_vm0_source/u,
   );
 
   const contractSource = await fs.readFile(
@@ -226,23 +246,39 @@ async function validateApplicationStatementInventory(): Promise<void> {
     historicalBackfillSource,
     /acquisitionFirstPartySource|acquisition_first_party_source/u,
   );
+}
 
+function validateApplicationWriteProjections(): void {
   const currentColumns = getTableConfig(orgMetadata).columns.map((column) => {
     return column.name;
   });
   assert.ok(currentColumns.includes("acquisition_vm0_source"));
   assert.ok(currentColumns.includes("acquisition_first_party_source"));
 
-  const legacyWriteColumns = getTableConfig(
-    orgMetadataLegacyWrites,
+  const canonicalWriteColumns = getTableConfig(
+    orgMetadataCanonicalWrites,
   ).columns.map((column) => {
     return column.name;
   });
-  assert.ok(legacyWriteColumns.includes("acquisition_vm0_source"));
+  assert.ok(canonicalWriteColumns.includes("acquisition_first_party_source"));
+  assert.equal(canonicalWriteColumns.includes("acquisition_vm0_source"), false);
+
+  const previousReleaseWriteColumns = getTableConfig(
+    orgMetadataPreviousReleaseWrites,
+  ).columns.map((column) => {
+    return column.name;
+  });
+  assert.ok(previousReleaseWriteColumns.includes("acquisition_vm0_source"));
   assert.equal(
-    legacyWriteColumns.includes("acquisition_first_party_source"),
+    previousReleaseWriteColumns.includes("acquisition_first_party_source"),
     false,
   );
+}
+
+async function validateApplicationStatementInventory(): Promise<void> {
+  validateApplicationCallerInventory();
+  await validateCompatibilitySourceInventory();
+  validateApplicationWriteProjections();
 }
 
 async function readMigrationStatements(): Promise<readonly string[]> {
@@ -393,17 +429,14 @@ async function readHistoricalRows(
   return result.rows;
 }
 
-async function exerciseCurrentApplicationStatements(
-  client: Client,
+async function executePreviousReleaseWrites(
   database: NodePgDatabase<Record<string, never>>,
-  prefix: string,
-  expanded: boolean,
-): Promise<readonly string[]> {
-  const insertOrgId = `${prefix}-insert`;
-  const updateOrgId = `${prefix}-update`;
-  const recordedAt = new Date("2030-01-02T03:04:05.000Z");
+  insertOrgId: string,
+  updateOrgId: string,
+  recordedAt: Date,
+): Promise<void> {
   const [inserted] = await database
-    .insert(orgMetadataLegacyWrites)
+    .insert(orgMetadataPreviousReleaseWrites)
     .values({
       orgId: insertOrgId,
       credits: 0,
@@ -411,26 +444,26 @@ async function exerciseCurrentApplicationStatements(
       acquisitionRecordedAt: recordedAt,
       updatedAt: recordedAt,
     })
-    .onConflictDoNothing({ target: orgMetadataLegacyWrites.orgId })
-    .returning({ orgId: orgMetadataLegacyWrites.orgId });
+    .onConflictDoNothing({ target: orgMetadataPreviousReleaseWrites.orgId })
+    .returning({ orgId: orgMetadataPreviousReleaseWrites.orgId });
   assert.equal(inserted?.orgId, insertOrgId);
 
   const [conflictInsert] = await database
-    .insert(orgMetadataLegacyWrites)
+    .insert(orgMetadataPreviousReleaseWrites)
     .values({
       orgId: insertOrgId,
       credits: 0,
       acquisitionVm0Source: "marketing",
       acquisitionRecordedAt: new Date("2031-01-02T03:04:05.000Z"),
     })
-    .onConflictDoNothing({ target: orgMetadataLegacyWrites.orgId })
-    .returning({ orgId: orgMetadataLegacyWrites.orgId });
+    .onConflictDoNothing({ target: orgMetadataPreviousReleaseWrites.orgId })
+    .returning({ orgId: orgMetadataPreviousReleaseWrites.orgId });
   assert.equal(conflictInsert, undefined);
 
   await database
-    .insert(orgMetadataLegacyWrites)
+    .insert(orgMetadataPreviousReleaseWrites)
     .values({ orgId: updateOrgId, credits: 0 })
-    .onConflictDoNothing({ target: orgMetadataLegacyWrites.orgId });
+    .onConflictDoNothing({ target: orgMetadataPreviousReleaseWrites.orgId });
   const [updated] = await database
     .update(orgMetadata)
     .set({
@@ -461,15 +494,24 @@ async function exerciseCurrentApplicationStatements(
     )
     .returning({ orgId: orgMetadata.orgId });
   assert.equal(blockedOverwrite, undefined);
+}
 
+async function verifyPreviousReleaseReads(
+  client: Client,
+  database: NodePgDatabase<Record<string, never>>,
+  insertOrgId: string,
+  updateOrgId: string,
+  expanded: boolean,
+): Promise<void> {
   await database.transaction(async (tx) => {
     const [locked] = await tx
       .select({
-        acquisitionVm0Source: orgMetadataLegacyWrites.acquisitionVm0Source,
-        orgId: orgMetadataLegacyWrites.orgId,
+        acquisitionVm0Source:
+          orgMetadataPreviousReleaseWrites.acquisitionVm0Source,
+        orgId: orgMetadataPreviousReleaseWrites.orgId,
       })
-      .from(orgMetadataLegacyWrites)
-      .where(eq(orgMetadataLegacyWrites.orgId, updateOrgId))
+      .from(orgMetadataPreviousReleaseWrites)
+      .where(eq(orgMetadataPreviousReleaseWrites.orgId, updateOrgId))
       .limit(1)
       .for("update");
     assert.deepEqual(locked, {
@@ -509,8 +551,281 @@ async function exerciseCurrentApplicationStatements(
       orgId: updateOrgId,
     },
   ]);
+}
+
+async function exercisePreviousReleaseApplicationStatements(
+  client: Client,
+  database: NodePgDatabase<Record<string, never>>,
+  prefix: string,
+  expanded: boolean,
+): Promise<readonly string[]> {
+  const insertOrgId = `${prefix}-insert`;
+  const updateOrgId = `${prefix}-update`;
+  await executePreviousReleaseWrites(
+    database,
+    insertOrgId,
+    updateOrgId,
+    new Date("2030-01-02T03:04:05.000Z"),
+  );
+  await verifyPreviousReleaseReads(
+    client,
+    database,
+    insertOrgId,
+    updateOrgId,
+    expanded,
+  );
 
   return [insertOrgId, updateOrgId];
+}
+
+async function executeCurrentApplicationWrites(
+  database: NodePgDatabase<Record<string, never>>,
+  insertOrgId: string,
+  unattributedOrgId: string,
+  updateOrgId: string,
+  recordedAt: Date,
+): Promise<void> {
+  const [inserted] = await database
+    .insert(orgMetadataCanonicalWrites)
+    .values({
+      orgId: insertOrgId,
+      credits: 0,
+      acquisitionFirstPartySource: "homepage",
+      acquisitionRecordedAt: recordedAt,
+      updatedAt: recordedAt,
+    })
+    .onConflictDoNothing({ target: orgMetadataCanonicalWrites.orgId })
+    .returning({ orgId: orgMetadataCanonicalWrites.orgId });
+  assert.equal(inserted?.orgId, insertOrgId);
+
+  const [conflictInsert] = await database
+    .insert(orgMetadataCanonicalWrites)
+    .values({
+      orgId: insertOrgId,
+      credits: 0,
+      acquisitionFirstPartySource: "marketing",
+      acquisitionRecordedAt: new Date("2033-01-02T03:04:05.000Z"),
+    })
+    .onConflictDoNothing({ target: orgMetadataCanonicalWrites.orgId })
+    .returning({ orgId: orgMetadataCanonicalWrites.orgId });
+  assert.equal(conflictInsert, undefined);
+
+  await database
+    .insert(orgMetadataCanonicalWrites)
+    .values({ orgId: unattributedOrgId, credits: 0 })
+    .onConflictDoNothing({ target: orgMetadataCanonicalWrites.orgId });
+  await database
+    .insert(orgMetadataCanonicalWrites)
+    .values({ orgId: updateOrgId, credits: 0 })
+    .onConflictDoNothing({ target: orgMetadataCanonicalWrites.orgId });
+
+  const [updated] = await database
+    .update(orgMetadata)
+    .set({
+      acquisitionFirstPartySource: "presentation",
+      acquisitionRecordedAt: recordedAt,
+      updatedAt: recordedAt,
+    })
+    .where(
+      and(
+        eq(orgMetadata.orgId, updateOrgId),
+        isNull(orgMetadata.acquisitionRecordedAt),
+      ),
+    )
+    .returning({ orgId: orgMetadata.orgId });
+  assert.equal(updated?.orgId, updateOrgId);
+
+  const [blockedOverwrite] = await database
+    .update(orgMetadata)
+    .set({
+      acquisitionFirstPartySource: "marketing",
+      acquisitionRecordedAt: new Date("2033-01-02T03:04:05.000Z"),
+    })
+    .where(
+      and(
+        eq(orgMetadata.orgId, updateOrgId),
+        isNull(orgMetadata.acquisitionRecordedAt),
+      ),
+    )
+    .returning({ orgId: orgMetadata.orgId });
+  assert.equal(blockedOverwrite, undefined);
+}
+
+async function verifyCurrentApplicationReads(
+  client: Client,
+  database: NodePgDatabase<Record<string, never>>,
+  insertOrgId: string,
+  unattributedOrgId: string,
+  updateOrgId: string,
+): Promise<void> {
+  await database.transaction(async (tx) => {
+    const [locked] = await tx
+      .select({
+        acquisitionFirstPartySource: orgMetadata.acquisitionFirstPartySource,
+        orgId: orgMetadata.orgId,
+      })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, updateOrgId))
+      .limit(1)
+      .for("update");
+    assert.deepEqual(locked, {
+      acquisitionFirstPartySource: "presentation",
+      orgId: updateOrgId,
+    });
+  });
+
+  const rows = await client.query<{
+    canonical: string | null;
+    legacy: string | null;
+    orgId: string;
+  }>(
+    `
+      SELECT
+        "org_id" AS "orgId",
+        "acquisition_vm0_source" AS "legacy",
+        "acquisition_first_party_source" AS "canonical"
+      FROM "org_metadata"
+      WHERE "org_id" = ANY($1::text[])
+      ORDER BY "org_id"
+    `,
+    [[insertOrgId, unattributedOrgId, updateOrgId]],
+  );
+  assert.deepEqual(rows.rows, [
+    {
+      canonical: "homepage",
+      legacy: "homepage",
+      orgId: insertOrgId,
+    },
+    {
+      canonical: null,
+      legacy: null,
+      orgId: unattributedOrgId,
+    },
+    {
+      canonical: "presentation",
+      legacy: "presentation",
+      orgId: updateOrgId,
+    },
+  ]);
+}
+
+async function exerciseCurrentApplicationStatements(
+  client: Client,
+  database: NodePgDatabase<Record<string, never>>,
+  prefix: string,
+): Promise<readonly string[]> {
+  const insertOrgId = `${prefix}-insert`;
+  const unattributedOrgId = `${prefix}-unattributed`;
+  const updateOrgId = `${prefix}-update`;
+  await executeCurrentApplicationWrites(
+    database,
+    insertOrgId,
+    unattributedOrgId,
+    updateOrgId,
+    new Date("2032-01-02T03:04:05.000Z"),
+  );
+  await verifyCurrentApplicationReads(
+    client,
+    database,
+    insertOrgId,
+    unattributedOrgId,
+    updateOrgId,
+  );
+
+  return [insertOrgId, unattributedOrgId, updateOrgId];
+}
+
+async function exerciseExpandedDatabase(
+  client: Client,
+  preflightStatement: string,
+): Promise<void> {
+  await applyMigrationsFromDirectoryUpToTag(
+    client,
+    migrationsDirectory,
+    previousMigration,
+  );
+  await validateFailClosedPreflight(client, preflightStatement);
+
+  const database = drizzle(client);
+  const historicalLegacyOrgId =
+    "org-metadata-acquisition-30379-historical-legacy";
+  const historicalNullOrgId = "org-metadata-acquisition-30379-historical-null";
+  await client.query(
+    `
+          INSERT INTO "org_metadata" (
+            "org_id", "credits", "acquisition_vm0_source"
+          ) VALUES ($1, 0, 'calendar'), ($2, 0, NULL)
+        `,
+    [historicalLegacyOrgId, historicalNullOrgId],
+  );
+  const preExpandApplicationOrgIds =
+    await exercisePreviousReleaseApplicationStatements(
+      client,
+      database,
+      "org-metadata-acquisition-30379-app-before-expand",
+      false,
+    );
+  const historicalOrgIds = [
+    historicalLegacyOrgId,
+    historicalNullOrgId,
+    ...preExpandApplicationOrgIds,
+  ].sort();
+  const before = await readHistoricalRows(client, historicalOrgIds, false);
+  const beforeCount = await client.query<{ count: number }>(
+    `SELECT count(*)::integer AS "count" FROM "org_metadata"`,
+  );
+
+  await applyMigrationsFromDirectoryUpToTag(
+    client,
+    migrationsDirectory,
+    ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_MIGRATION,
+  );
+
+  const after = await readHistoricalRows(client, historicalOrgIds, true);
+  assert.deepEqual(
+    after.map(({ canonical: _, ...row }) => {
+      return row;
+    }),
+    before.map(({ canonical: _, ...row }) => {
+      return row;
+    }),
+  );
+  assert.deepEqual(
+    after.map((row) => {
+      return row.canonical;
+    }),
+    historicalOrgIds.map(() => {
+      return null;
+    }),
+  );
+  const afterCount = await client.query<{ count: number }>(
+    `SELECT count(*)::integer AS "count" FROM "org_metadata"`,
+  );
+  assert.deepEqual(afterCount.rows, beforeCount.rows);
+
+  await exerciseCurrentApplicationStatements(
+    client,
+    database,
+    "org-metadata-acquisition-30379-app-after-expand",
+  );
+  await exercisePreviousReleaseApplicationStatements(
+    client,
+    database,
+    "org-metadata-acquisition-30605-rollback-after-switch",
+    true,
+  );
+  console.log(
+    "   ✅ previous-release SQL runs before expansion and after the switch",
+  );
+  console.log(
+    "   ✅ canonical-only writes/read locks mirror and both-null inserts remain valid",
+  );
+  console.log(
+    "   ✅ historical rows retain ctid, xmin, values, and legacy-only state",
+  );
+  console.log(
+    "   ✅ migration preflight rejects canonical, legacy-shape, and bridge drift\n",
+  );
 }
 
 export async function validateOrgMetadataAcquisitionFirstPartySourceExpansion(
@@ -527,86 +842,7 @@ export async function validateOrgMetadataAcquisitionFirstPartySourceExpansion(
     const client = new Client({ connectionString: dbUrl });
     await client.connect();
     try {
-      await applyMigrationsFromDirectoryUpToTag(
-        client,
-        migrationsDirectory,
-        previousMigration,
-      );
-      await validateFailClosedPreflight(client, migrationStatements[0] ?? "");
-
-      const database = drizzle(client);
-      const historicalLegacyOrgId =
-        "org-metadata-acquisition-30379-historical-legacy";
-      const historicalNullOrgId =
-        "org-metadata-acquisition-30379-historical-null";
-      await client.query(
-        `
-          INSERT INTO "org_metadata" (
-            "org_id", "credits", "acquisition_vm0_source"
-          ) VALUES ($1, 0, 'calendar'), ($2, 0, NULL)
-        `,
-        [historicalLegacyOrgId, historicalNullOrgId],
-      );
-      const preExpandApplicationOrgIds =
-        await exerciseCurrentApplicationStatements(
-          client,
-          database,
-          "org-metadata-acquisition-30379-app-before-expand",
-          false,
-        );
-      const historicalOrgIds = [
-        historicalLegacyOrgId,
-        historicalNullOrgId,
-        ...preExpandApplicationOrgIds,
-      ].sort();
-      const before = await readHistoricalRows(client, historicalOrgIds, false);
-      const beforeCount = await client.query<{ count: number }>(
-        `SELECT count(*)::integer AS "count" FROM "org_metadata"`,
-      );
-
-      await applyMigrationsFromDirectoryUpToTag(
-        client,
-        migrationsDirectory,
-        ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_MIGRATION,
-      );
-
-      const after = await readHistoricalRows(client, historicalOrgIds, true);
-      assert.deepEqual(
-        after.map(({ canonical: _, ...row }) => {
-          return row;
-        }),
-        before.map(({ canonical: _, ...row }) => {
-          return row;
-        }),
-      );
-      assert.deepEqual(
-        after.map((row) => {
-          return row.canonical;
-        }),
-        historicalOrgIds.map(() => {
-          return null;
-        }),
-      );
-      const afterCount = await client.query<{ count: number }>(
-        `SELECT count(*)::integer AS "count" FROM "org_metadata"`,
-      );
-      assert.deepEqual(afterCount.rows, beforeCount.rows);
-
-      await exerciseCurrentApplicationStatements(
-        client,
-        database,
-        "org-metadata-acquisition-30379-app-after-expand",
-        true,
-      );
-      console.log(
-        "   ✅ pre-expand application SQL runs before and after expand",
-      );
-      console.log(
-        "   ✅ historical rows retain ctid, xmin, values, and legacy-only state",
-      );
-      console.log(
-        "   ✅ migration preflight rejects canonical, legacy-shape, and bridge drift\n",
-      );
+      await exerciseExpandedDatabase(client, migrationStatements[0] ?? "");
     } finally {
       await client.end();
     }

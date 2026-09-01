@@ -131,6 +131,7 @@ describe("AUTH-02: CLI device authorization", () => {
     expect(me.body).toStrictEqual({
       userId: actor.userId,
       email: actor.email,
+      orgId: actor.orgId,
     });
 
     const reused = await authDevice.requestCliToken(started.device_code, [400]);

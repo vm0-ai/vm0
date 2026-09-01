@@ -65,7 +65,10 @@ use vsock_proto::{
 #[cfg(test)]
 use vsock_proto::MSG_EXEC_RESULT;
 
-use crate::agent_command::{GuestAgentProgram, spawn_agent_command_with_pipes};
+use crate::agent_command::{
+    GuestAgentProgram, spawn_agent_command_with_pipes,
+    spawn_session_history_identity_verifier_with_pipes,
+};
 use crate::drain::{
     BoundedDrainResult, BoundedStreamConfig, DrainCancellation, drain_bounded_cancellable,
 };
@@ -247,6 +250,8 @@ pub(crate) struct ExecOperationWorkerRequest {
     exec_control_guard: Option<ExecControlGuard>,
     exec_control_bootstrap_endpoint: Option<String>,
     guest_agent_program: GuestAgentProgram,
+    session_history_identity_verify_request:
+        Option<guest_contracts::session_history_identity::SessionHistoryIdentityVerifyRequest>,
     process_containment_mode: ProcessContainmentMode,
     drain_deadline: Duration,
 }
@@ -256,6 +261,7 @@ impl ExecOperationWorkerRequest {
         match self.role {
             ExecProcessRole::Workload => "contained_workload",
             ExecProcessRole::Agent => "controlled_agent",
+            ExecProcessRole::SessionHistoryIdentityVerifier => "session_history_identity_verifier",
         }
     }
 
@@ -265,6 +271,13 @@ impl ExecOperationWorkerRequest {
             (ExecProcessRole::Workload, ExecOperationLifecycle::Supervised) => "start_process",
             (ExecProcessRole::Agent, ExecOperationLifecycle::Supervised) => "start_agent_process",
             (ExecProcessRole::Agent, ExecOperationLifecycle::OneShot) => "invalid",
+            (ExecProcessRole::SessionHistoryIdentityVerifier, ExecOperationLifecycle::OneShot) => {
+                "verify_session_history_identity"
+            }
+            (
+                ExecProcessRole::SessionHistoryIdentityVerifier,
+                ExecOperationLifecycle::Supervised,
+            ) => "invalid",
         }
     }
 
@@ -313,26 +326,49 @@ impl ExecOperationWorkerRequest {
                 "exec control policy requires supervised lifecycle",
             ));
         }
-        if decoded.role == ExecProcessRole::Agent {
-            if !decoded.command.is_empty() {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "Agent process cannot select a command",
-                ));
+        let session_history_identity_verify_request = match decoded.role {
+            ExecProcessRole::Agent => {
+                if !decoded.command.is_empty() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Agent process cannot select a command",
+                    ));
+                }
+                if decoded.sudo {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Agent process cannot select sudo execution",
+                    ));
+                }
+                if decoded.stdin_bytes.is_some() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Agent process cannot provide stdin",
+                    ));
+                }
+                None
             }
-            if decoded.sudo {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "Agent process cannot select sudo execution",
-                ));
+            ExecProcessRole::SessionHistoryIdentityVerifier => {
+                validate_session_history_identity_verifier_contract(&decoded)?;
+                let request = serde_json::from_str::<
+                    guest_contracts::session_history_identity::SessionHistoryIdentityVerifyRequest,
+                >(decoded.command)
+                .map_err(|_| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "session history identity verifier payload is invalid",
+                    )
+                })?;
+                request.validate().map_err(|_| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "session history identity verifier payload is invalid",
+                    )
+                })?;
+                Some(request)
             }
-            if decoded.stdin_bytes.is_some() {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "Agent process cannot provide stdin",
-                ));
-            }
-        }
+            ExecProcessRole::Workload => None,
+        };
 
         Ok(Self {
             seq,
@@ -355,6 +391,7 @@ impl ExecOperationWorkerRequest {
             exec_control_guard: None,
             exec_control_bootstrap_endpoint: None,
             guest_agent_program,
+            session_history_identity_verify_request,
             process_containment_mode,
             drain_deadline,
         })
@@ -382,7 +419,9 @@ impl ExecOperationWorkerRequest {
 
     pub(crate) fn validate_control_attachment(&self) -> io::Result<()> {
         match (self.role, self.exec_control_bootstrap_endpoint.is_some()) {
-            (ExecProcessRole::Workload, false) | (ExecProcessRole::Agent, true) => Ok(()),
+            (ExecProcessRole::Workload, false)
+            | (ExecProcessRole::Agent, true)
+            | (ExecProcessRole::SessionHistoryIdentityVerifier, false) => Ok(()),
             (ExecProcessRole::Workload, true) => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "workload process received an Agent control bootstrap endpoint",
@@ -391,7 +430,42 @@ impl ExecOperationWorkerRequest {
                 io::ErrorKind::InvalidInput,
                 "Agent process did not receive a control bootstrap endpoint",
             )),
+            (ExecProcessRole::SessionHistoryIdentityVerifier, true) => Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "session history identity verifier received a control bootstrap endpoint",
+            )),
         }
+    }
+}
+
+fn validate_session_history_identity_verifier_contract(
+    decoded: &vsock_proto::DecodedExecStart<'_>,
+) -> io::Result<()> {
+    use guest_contracts::session_history_identity::{
+        SESSION_HISTORY_IDENTITY_VERIFY_DIAGNOSTIC_LABEL,
+        SESSION_HISTORY_IDENTITY_VERIFY_OUTPUT_LIMIT_BYTES,
+    };
+
+    let fixed_capture = ExecOutputPolicy::Capture {
+        limit_bytes: SESSION_HISTORY_IDENTITY_VERIFY_OUTPUT_LIMIT_BYTES,
+    };
+    let valid = decoded.lifecycle == ExecLifecyclePolicy::OneShot
+        && decoded.control == ExecControlPolicy::Disabled
+        && !decoded.command.is_empty()
+        && decoded.env.is_empty()
+        && !decoded.sudo
+        && decoded.label == SESSION_HISTORY_IDENTITY_VERIFY_DIAGNOSTIC_LABEL
+        && decoded.stdout == fixed_capture
+        && decoded.stderr == fixed_capture
+        && decoded.expected_exit_codes.is_empty()
+        && decoded.stdin_bytes.is_none();
+    if valid {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "session history identity verifier process contract is invalid",
+        ))
     }
 }
 
@@ -1348,6 +1422,19 @@ fn run_exec_operation_worker<S>(
             process_containment,
             &request.guest_agent_program,
         ),
+        ExecProcessRole::SessionHistoryIdentityVerifier => {
+            let Some(verify_request) = request.session_history_identity_verify_request.as_ref()
+            else {
+                let _ = process_containment.cleanup(ProcessContainmentCleanupMode::Forced);
+                completion.start_failed("session history identity verifier payload is missing");
+                return;
+            };
+            spawn_session_history_identity_verifier_with_pipes(
+                verify_request,
+                process_containment,
+                &request.guest_agent_program,
+            )
+        }
     };
     let spawned = match spawn_result {
         Ok(spawned) => spawned,
@@ -1358,6 +1445,9 @@ fn run_exec_operation_worker<S>(
                     format_env_diagnostics(&request.command, &env_refs)
                 ),
                 ExecProcessRole::Agent => format!("Failed to execute controlled Agent: {e}"),
+                ExecProcessRole::SessionHistoryIdentityVerifier => {
+                    format!("Failed to execute session history identity verifier: {e}")
+                }
             };
             completion.start_failed(&diagnostic);
             return;
@@ -2235,6 +2325,7 @@ mod tests {
             exec_control_guard: None,
             exec_control_bootstrap_endpoint: None,
             guest_agent_program: GuestAgentProgram::production(),
+            session_history_identity_verify_request: None,
             process_containment_mode: ProcessContainmentMode::BuildConfigured,
             drain_deadline: EXEC_OUTPUT_DRAIN_DEADLINE,
         }

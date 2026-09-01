@@ -83,7 +83,10 @@ function mergeConnectorAccountPages(
         return page.connections;
       }),
     ],
-    nextCursor: pages.at(-1)?.nextCursor ?? firstPage.nextCursor,
+    // The newest loaded page owns the cursor, including when it ends the list
+    // with a null cursor. Falling back to the first page's cursor there would
+    // keep "Load more" alive and re-request the page after the first one.
+    nextCursor: (pages.at(-1) ?? firstPage).nextCursor,
     available: firstPage.available,
   };
 }

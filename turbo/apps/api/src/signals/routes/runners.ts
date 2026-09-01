@@ -1304,15 +1304,16 @@ function preparedSecretValuesForRunner(
     return { status: "resolved", secretValues: null };
   }
 
+  const environment = {
+    ...storedContext.environment,
+    ...storedContext.platformEnvironment,
+  };
   const secretValues: string[] = [];
   for (const key of keys) {
-    if (
-      !storedContext.environment ||
-      !Object.hasOwn(storedContext.environment, key)
-    ) {
+    if (!Object.hasOwn(environment, key)) {
       return { status: "invalid-keys" };
     }
-    const value = storedContext.environment[key];
+    const value = environment[key];
     if (typeof value !== "string") {
       return { status: "invalid-keys" };
     }
@@ -1339,9 +1340,12 @@ async function secretValuesForRunner(
       return null;
     }
 
-    const envValues = storedContext.environment
-      ? new Set(Object.values(storedContext.environment))
-      : new Set<string>();
+    const envValues = new Set(
+      Object.values({
+        ...storedContext.environment,
+        ...storedContext.platformEnvironment,
+      }),
+    );
     return Object.values(secretsMap).filter((value) => {
       return envValues.has(value);
     });

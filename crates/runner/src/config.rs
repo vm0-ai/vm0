@@ -55,6 +55,7 @@ use guest_contracts::process_containment::{
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::{HomePaths, RootfsPaths, SnapshotPaths};
 use crate::profile;
+use crate::rootfs_lock::{self, RootfsLockGuard};
 
 /// 0 means auto-detect from host CPU and memory at startup.
 pub(crate) const DEFAULT_MAX_CONCURRENT: usize = 0;
@@ -98,8 +99,8 @@ pub struct RunnerConfig {
     /// least one entry; each profile name is also checked for format.
     pub profiles: BTreeMap<String, ProfileConfig>,
     /// Control-plane endpoint and auth token. May be omitted in the YAML if
-    /// `--api-url` / `--token` (or the corresponding canonical or legacy
-    /// environment aliases) are supplied at `start` time.
+    /// `--api-url` / `--token` (or the corresponding canonical environment
+    /// variables) are supplied at `start` time.
     pub server: Option<ServerConfig>,
 }
 
@@ -167,10 +168,9 @@ impl Default for SandboxConfig {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct ServerConfig {
     /// Base URL of the vm0 API (e.g. `https://api.example.com`). Overridable
-    /// via `--api-url` / `OKOU_API_BACKEND_URL` / `VM0_API_BACKEND_URL`.
+    /// via `--api-url` / `OKOU_API_BACKEND_URL`.
     pub url: String,
-    /// Runner auth token. Overridable via `--token` / `OKOU_RUNNER_TOKEN`, with
-    /// `VM0_RUNNER_TOKEN` retained as a temporary legacy alias.
+    /// Runner auth token. Overridable via `--token` / `OKOU_RUNNER_TOKEN`.
     pub token: String,
 }
 
@@ -428,7 +428,7 @@ async fn validate_profile_snapshot_artifacts(
 }
 
 pub(crate) struct LockedProfileImageArtifacts {
-    _rootfs_locks: Vec<Flock<File>>,
+    _rootfs_locks: Vec<RootfsLockGuard>,
     _snapshot_locks: Vec<Flock<File>>,
     snapshot_paths: SnapshotPaths,
 }
@@ -455,7 +455,7 @@ impl LockedProfileImageArtifactPaths {
 }
 
 pub(crate) struct LockedRunnerImageArtifacts {
-    _rootfs_locks: Vec<Flock<File>>,
+    _rootfs_locks: Vec<RootfsLockGuard>,
     _snapshot_locks: Vec<Flock<File>>,
     profile_paths: BTreeMap<String, LockedProfileImageArtifactPaths>,
 }
@@ -514,7 +514,7 @@ pub(crate) async fn lock_and_validate_runner_image_artifacts(
 
     let mut rootfs_locks = Vec::with_capacity(rootfs_hashes.len());
     for hash in rootfs_hashes {
-        rootfs_locks.push(crate::lock::acquire_shared(home.rootfs_lock(hash)).await?);
+        rootfs_locks.push(rootfs_lock::acquire_shared(home, hash).await?);
     }
 
     let mut rootfs_paths = BTreeMap::new();

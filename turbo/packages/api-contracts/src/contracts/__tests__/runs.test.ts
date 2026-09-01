@@ -87,13 +87,13 @@ describe("unified run request contract", () => {
     },
   );
 
-  it("normalizes both internal Zero run request aliases to built-in", () => {
+  it("accepts only the canonical provider on internal Zero run requests", () => {
     expect(
-      runCreateBodySchema.parse({
+      runCreateBodySchema.safeParse({
         prompt: "run through Zero",
         modelProvider: "vm0",
-      }).modelProvider,
-    ).toBe("built-in");
+      }).success,
+    ).toBe(false);
     expect(
       runCreateBodySchema.parse({
         prompt: "run through Zero",

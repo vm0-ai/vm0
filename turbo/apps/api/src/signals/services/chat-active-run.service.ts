@@ -13,6 +13,7 @@ import {
   isNotNull,
   lte,
   ne,
+  not,
   notExists,
   or,
   sql,
@@ -24,6 +25,12 @@ import { pendingChatQueueEventCondition } from "./chat-event-queue.service";
 import { chatEventTypeIn } from "./chat-event-type.service";
 
 const ACTIVE_CHAT_RUN_STATUSES = ["queued", "pending", "running"] as const;
+
+interface ChatThreadAdmissionConditionArgs {
+  readonly threadId: string;
+  readonly excludeRunId?: string;
+  readonly apiStartTime?: number;
+}
 
 function activeChatRunCondition(db: Pick<Db, "select">) {
   return and(
@@ -119,13 +126,59 @@ export async function cancellationRecoveryPendingForThread(
   return run !== undefined;
 }
 
+function chatThreadRunAdmissionBlockerExists(
+  db: Pick<Db, "select">,
+  args: ChatThreadAdmissionConditionArgs,
+): SQL {
+  return exists(
+    db
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(
+        and(
+          eq(agentRuns.chatThreadId, args.threadId),
+          args.excludeRunId === undefined
+            ? undefined
+            : ne(agentRuns.id, args.excludeRunId),
+          or(
+            activeChatRunCondition(db),
+            freshUnresolvedCancellationRecoveryCondition(db, args.apiStartTime),
+          ),
+        ),
+      ),
+  );
+}
+
+function chatThreadOpenDeliveryExists(
+  db: Pick<Db, "select">,
+  threadId: string,
+): SQL {
+  return exists(
+    db
+      .select({ id: activeInputDeliveries.id })
+      .from(activeInputDeliveries)
+      .where(
+        and(
+          eq(activeInputDeliveries.chatThreadId, threadId),
+          eq(activeInputDeliveries.status, "open"),
+        ),
+      ),
+  );
+}
+
+export function chatThreadAdmissionAllowedCondition(
+  db: Pick<Db, "select">,
+  args: ChatThreadAdmissionConditionArgs,
+): SQL | undefined {
+  return and(
+    not(chatThreadRunAdmissionBlockerExists(db, args)),
+    not(chatThreadOpenDeliveryExists(db, args.threadId)),
+  );
+}
+
 async function chatThreadAdmissionBlockerExists(
   db: Pick<Db, "select">,
-  args: {
-    readonly threadId: string;
-    readonly excludeRunId?: string;
-    readonly apiStartTime?: number;
-  },
+  args: ChatThreadAdmissionConditionArgs,
 ): Promise<boolean> {
   const [thread] = await db
     .select({ id: chatThreads.id })
@@ -134,37 +187,8 @@ async function chatThreadAdmissionBlockerExists(
       and(
         eq(chatThreads.id, args.threadId),
         or(
-          exists(
-            db
-              .select({ id: agentRuns.id })
-              .from(agentRuns)
-              .where(
-                and(
-                  eq(agentRuns.chatThreadId, args.threadId),
-                  args.excludeRunId === undefined
-                    ? undefined
-                    : ne(agentRuns.id, args.excludeRunId),
-                  or(
-                    activeChatRunCondition(db),
-                    freshUnresolvedCancellationRecoveryCondition(
-                      db,
-                      args.apiStartTime,
-                    ),
-                  ),
-                ),
-              ),
-          ),
-          exists(
-            db
-              .select({ id: activeInputDeliveries.id })
-              .from(activeInputDeliveries)
-              .where(
-                and(
-                  eq(activeInputDeliveries.chatThreadId, args.threadId),
-                  eq(activeInputDeliveries.status, "open"),
-                ),
-              ),
-          ),
+          chatThreadRunAdmissionBlockerExists(db, args),
+          chatThreadOpenDeliveryExists(db, args.threadId),
         ),
       ),
     )

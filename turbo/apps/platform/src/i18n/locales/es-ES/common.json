@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Error de Codex",
       "commandStatus": "Comando {{status}}",
+      "contextCompaction": "Contexto compactado",
       "error": "Error: {{error}}",
       "fileChangeKind": "Cambio",
       "fileOperationCompleted": "Operación de archivo completada",
@@ -29,6 +30,12 @@
       },
       "status": "Estado: {{status}}",
       "statusDetail": "Estado: {{status}}",
+      "subAgentActivity": {
+        "completed": "Subagente completado",
+        "interacted": "Interacción con el subagente",
+        "interrupted": "Subagente interrumpido",
+        "started": "Subagente iniciado"
+      },
       "turnFailed": "Turno fallido",
       "turnStatus": "Turno {{status}}",
       "warning": "[advertencia] {{message}}",
@@ -377,51 +384,6 @@
     }
   },
   "appShell": {
-    "browserUpgrade": {
-      "browser": {
-        "action": "Actualizar navegador",
-        "description": "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza el navegador para continuar.",
-        "title": "Actualiza tu navegador para continuar"
-      },
-      "chrome": {
-        "action": "Actualizar Chrome",
-        "description": "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza Chrome para continuar.",
-        "title": "Actualiza Chrome para continuar"
-      },
-      "chromium": {
-        "action": "Actualizar Chromium",
-        "description": "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza Chromium para continuar.",
-        "title": "Actualiza Chromium para continuar"
-      },
-      "ios": {
-        "action": "Actualizar iOS",
-        "description": "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza iOS para continuar.",
-        "title": "Actualiza iOS para continuar"
-      },
-      "safari": {
-        "action": "Actualizar Safari",
-        "description": "{{assistantName}} no es compatible con la versión actual de tu navegador. Actualiza Safari para continuar.",
-        "title": "Actualiza Safari para continuar"
-      }
-    },
-    "loading": {
-      "ariaLabel": "Cargando tu espacio de trabajo",
-      "messages": {
-        "almostThere": "Ya casi está...",
-        "brewingIdeas": "Preparando algunas ideas...",
-        "connectingDots": "Conectando los puntos...",
-        "gettingReady": "Dejándolo todo listo...",
-        "loadingWorkspace": "Cargando tu espacio de trabajo...",
-        "spinningTeam": "Reuniendo al equipo...",
-        "tuningInstruments": "Afinando los instrumentos...",
-        "warmingNeurons": "Activando las neuronas..."
-      }
-    },
-    "logoAlt": "{{brandName}}",
-    "metadata": {
-      "description": "{{assistantName}} es tu compañero de IA de {{brandName}}. Escríbele a {{assistantName}} o chatea en la web: investiga, envía correos, crea documentos y usa Slack, GitHub, Notion y más de 100 herramientas.",
-      "title": "{{assistantName}} — Tu compañero de IA de {{brandName}}"
-    },
     "shortcutHelp": {
       "close": "Cerrar atajos de teclado",
       "description": "Atajos disponibles en esta página",
@@ -674,6 +636,7 @@
       "importedSlides_many": "{{count}} diapositivas",
       "importedSlides_other": "{{count}} diapositivas",
       "multiAccent": "Multiacentos",
+      "needPro": "Necesitas Pro",
       "nextSlide": "Vista previa de la diapositiva siguiente",
       "noMatches": "Sin coincidencias",
       "placeholder": "Vista previa del sitio web {{title}}",
@@ -726,6 +689,7 @@
       "tryDifferentSearch": "Prueba con otra búsqueda.",
       "use": "Usar",
       "useThisTemplate": "Usa esta plantilla",
+      "viewVideoPlans": "Ver planes para la plantilla de vídeo {{title}}",
       "visibility": {
         "change": "Cambiar",
         "changeLabel": "Cambiar la visibilidad de la plantilla",
@@ -1964,6 +1928,20 @@
       "unsupportedIntelMac": "Requiere un Mac Apple Silicon",
       "yourComputer": "Tu ordenador"
     },
+    "connectorAccountSwitch": {
+      "accountFallback": "Cuenta del conector",
+      "actionFailed": "No se pudo cambiar de cuenta. Inténtalo de nuevo.",
+      "customConnector": "Conector personalizado",
+      "loadFailed": "No se pudo cargar esta cuenta del conector.",
+      "reconnectRequired": "Es necesario volver a conectar. Es posible que las ejecuciones posteriores usen la alternativa existente.",
+      "retry": "Reintentar",
+      "selected": "Se cambió a {{account}}",
+      "switch": "Cambiar",
+      "switching": "Cambiando...",
+      "title": "¿Cambiar a {{account}}?",
+      "unavailableDescription": "Esta cuenta no existe o no está disponible para este conector.",
+      "unavailableTitle": "Cuenta no disponible"
+    },
     "connectors": {
       "accountForThread": "Cuenta para este hilo",
       "add": "Añadir {{connectorName}}",
@@ -2001,6 +1979,7 @@
         "capacityTitle": "El modelo de {{framework}} está ocupado",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "Continuar",
         "resetAndTryAgain": "Restablecer e intentar de nuevo",
         "resetsAt": "Se restablece {{time}}",
         "selectModel": "Cambiar de modelo",
@@ -2234,7 +2213,6 @@
       "message_one": "{{count}} mensaje",
       "message_many": "{{count}} mensajes",
       "message_other": "{{count}} mensajes",
-      "morningBrief": "Resumen matutino",
       "openGoalDetails": "Abrir detalles del objetivo",
       "pendingAutomationEvent": "Evento de automatización pendiente",
       "queuedMessage": "Mensaje en cola",
@@ -3358,7 +3336,8 @@
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "Solicitud fallida"
+      "requestFailed": "Solicitud fallida",
+      "sharedDatabaseUnavailable": "Se produjo un problema en la aplicación. Espera un momento y, a continuación, actualiza la página para volver a intentarlo."
     },
     "realtime": {
       "degraded": "Se produjo un problema con las actualizaciones en directo. Actualiza la página.",
@@ -6224,7 +6203,7 @@
       "browse": "Explorar oficiales",
       "chooseValue": "Elige un valor",
       "copySucceededUninstallFailed": "La copia está lista, pero no se pudo desinstalar el flujo de trabajo oficial original.",
-      "description": "Instala flujos de trabajo administrados y mantenidos por vm0.",
+      "description": "Instala flujos de trabajo administrados y mantenidos por el Okou Official Team.",
       "empty": "No hay flujos de trabajo oficiales disponibles.",
       "includedAutomations": "Automatizaciones incluidas",
       "install": "Instalar",

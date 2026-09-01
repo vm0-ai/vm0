@@ -247,6 +247,13 @@ export const setSettingsDialogOpen$ = command(
   },
 );
 
+export const openSettingsBillingPlansDialog$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    set(openSettingsBillingPlans$);
+    await set(setSettingsDialogOpen$, true, signal);
+  },
+);
+
 /**
  * Open the dialog directly on a target section. Used by entry-point components
  * (account dropdown, org switcher) to deep-link into a specific area.

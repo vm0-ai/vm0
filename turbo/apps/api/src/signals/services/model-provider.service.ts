@@ -3,7 +3,6 @@ import {
   getAuthMethodsForType,
   getFrameworkForType,
   getModelProviderPresentationLabel,
-  normalizeModelProviderWriteType,
   getSecretNameForType,
   getSecretNamesForAuthMethod,
   getSecretsForAuthMethod,
@@ -61,7 +60,7 @@ function modelProviderResponse(row: {
   }
 
   const authMethod = row.authMethod ?? null;
-  const type = normalizeModelProviderWriteType(parsed.data);
+  const type = parsed.data;
   return {
     id: row.id,
     type,
@@ -314,7 +313,7 @@ function toModelProviderInfo(params: {
   createdAt: Date;
   updatedAt: Date;
 }): ModelProviderInfo {
-  const type = normalizeModelProviderWriteType(params.type);
+  const type = params.type;
   const authMethod = params.authMethod ?? null;
   const secretNames =
     params.secretNames !== undefined

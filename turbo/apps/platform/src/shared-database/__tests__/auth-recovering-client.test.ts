@@ -6,9 +6,9 @@ import { AuthRecoveringSharedDatabaseBridge } from "../auth-recovering-client.ts
 import type {
   SharedDatabaseBridge,
   SharedDatabaseHeartbeat,
-  SharedDatabaseSubscriptionCallback,
 } from "../bridge.ts";
 import type {
+  ChatThreadIndicators,
   SharedDatabaseDataKey,
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
@@ -22,6 +22,12 @@ class FakeBridge implements SharedDatabaseBridge {
   readonly heartbeats: SharedDatabaseHeartbeat[] = [];
   readonly queryErrors: Error[] = [];
   queryCalls = 0;
+
+  indicators(_signal: AbortSignal): Promise<ChatThreadIndicators> {
+    return Promise.resolve({ agents: {}, threads: {} });
+  }
+
+  reloadIndicators(): void {}
 
   heartbeat(
     heartbeat: SharedDatabaseHeartbeat,
@@ -42,33 +48,17 @@ class FakeBridge implements SharedDatabaseBridge {
     }
     return Promise.resolve([] as SharedDatabaseQueryResult<TKey>);
   }
-
-  on(
-    _dataKey: SharedDatabaseDataKey,
-    _callback: SharedDatabaseSubscriptionCallback,
-    _signal: AbortSignal,
-  ): Promise<void> {
-    return Promise.resolve();
-  }
 }
 
 const context = testContext();
 
 function heartbeat(token = "initial-token"): SharedDatabaseHeartbeat {
-  return {
-    identity: {
-      userId: "auth-recovery-user",
-      orgId: "auth-recovery-org",
-      token,
-    },
-  };
+  return { token };
 }
 
 function dataKey(): SharedDatabaseDataKey {
   return {
     kind: "chat-event",
-    userId: "auth-recovery-user",
-    orgId: "auth-recovery-org",
     threadId: "auth-recovery-thread",
   };
 }
@@ -116,7 +106,7 @@ describe("auth recovering shared database bridge", () => {
     expect(inner.queryCalls).toBe(2);
     expect(
       inner.heartbeats.map((value) => {
-        return value.identity.token;
+        return value.token;
       }),
     ).toStrictEqual(["initial-token", "replacement-token"]);
   });
@@ -143,7 +133,7 @@ describe("auth recovering shared database bridge", () => {
 
     expect(
       inner.heartbeats.map((value) => {
-        return value.identity.token;
+        return value.token;
       }),
     ).toStrictEqual(["initial-token", "replacement-token"]);
   });
@@ -194,7 +184,7 @@ describe("auth recovering shared database bridge", () => {
     expect(inner.queryCalls).toBe(3);
     expect(
       inner.heartbeats.map((value) => {
-        return value.identity.token;
+        return value.token;
       }),
     ).toStrictEqual(["initial-token", "replacement-token"]);
   });
@@ -259,7 +249,7 @@ describe("auth recovering shared database bridge", () => {
     expect(inner.queryCalls).toBe(1);
     expect(
       inner.heartbeats.map((value) => {
-        return value.identity.token;
+        return value.token;
       }),
     ).toStrictEqual(["initial-token", "replacement-token"]);
   });

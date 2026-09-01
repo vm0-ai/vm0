@@ -13,7 +13,10 @@ import {
 import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 import { modelUsageObservationEventsSchema } from "./model-usage-observations";
-import { modelProviderCodexRuntimeConfigSchema } from "./model-providers";
+import {
+  MODEL_PROVIDER_PI_APIS,
+  modelProviderCodexRuntimeConfigSchema,
+} from "./model-providers";
 import {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
@@ -824,10 +827,65 @@ export const piApiFirstTurnManifestV2Schema = z
   .strict()
   .readonly();
 
-export const piApiFirstTurnManifestSchema = z.discriminatedUnion(
-  "schemaVersion",
-  [piApiFirstTurnManifestV1Schema, piApiFirstTurnManifestV2Schema],
-);
+const piApiFirstTurnOwnershipTransferManifestShape = {
+  schemaVersion: z.literal(3),
+  outcome: z.literal("ownership-transfer"),
+  baseSession: piSessionCheckpointSchema,
+  session: piApiFirstTurnSessionSchema,
+  sandboxEventSequenceStart: piSandboxEventSequenceStartSchema,
+};
+
+export const piApiFirstTurnOwnershipTransferModeSchema = z.enum([
+  "sandbox-first",
+  "pending-tool-continuation",
+  "settled-session-continuation",
+]);
+
+export const piApiFirstTurnManifestV3Schema = z.discriminatedUnion("mode", [
+  z
+    .object({
+      ...piApiFirstTurnOwnershipTransferManifestShape,
+      mode: z.literal("sandbox-first"),
+    })
+    .strict()
+    .readonly(),
+  z
+    .object({
+      ...piApiFirstTurnOwnershipTransferManifestShape,
+      mode: z.literal("pending-tool-continuation"),
+    })
+    .strict()
+    .readonly(),
+  z
+    .object({
+      ...piApiFirstTurnOwnershipTransferManifestShape,
+      mode: z.literal("settled-session-continuation"),
+    })
+    .strict()
+    .readonly(),
+]);
+
+export const piApiFirstTurnManifestSchema = z.union([
+  piApiFirstTurnManifestV1Schema,
+  piApiFirstTurnManifestV2Schema,
+  piApiFirstTurnManifestV3Schema,
+]);
+
+const piApiFirstTurnOwnershipTransferCapabilitySchema = z
+  .object({
+    schemaVersion: z.literal(1),
+  })
+  .strict()
+  .readonly();
+
+/**
+ * Optional consumer capability for the ownership-transfer manifest. The API
+ * keeps this absent while it writes legacy V1/V2 pending-tool handoffs. A
+ * future writer may publish manifest V3 only after the selected Sandbox has
+ * proven support and this marker is present in its immutable launch slot.
+ */
+const piApiFirstTurnOwnershipTransferSchema =
+  piApiFirstTurnOwnershipTransferCapabilitySchema.optional();
 
 export const piApiFirstTurnConfigSchema = z
   .object({
@@ -838,6 +896,7 @@ export const piApiFirstTurnConfigSchema = z
     deadlineAt: z.number().int().positive(),
     baseSession: piSessionCheckpointSchema,
     sandboxEventSequenceStart: piSandboxEventSequenceStartSchema,
+    ownershipTransfer: piApiFirstTurnOwnershipTransferSchema,
   })
   .strict()
   .readonly();
@@ -859,6 +918,16 @@ export const piModelConfigSchema = z
     ]),
     baseUrl: z.url(),
     model: z.string().min(1),
+    // Optional additions keep stored legacy launch contexts readable. When
+    // absent, readers preserve the previous adapter transport and Pi's medium
+    // thinking default.
+    api: z.enum(MODEL_PROVIDER_PI_APIS).optional(),
+    thinkingLevel: z
+      .enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"])
+      .optional(),
+    // Per-run provider request policy. This is not Pi session identity or
+    // persisted Pi JSONL metadata.
+    serviceTier: z.enum(["priority"]).optional(),
     apiKeyEnv: z.enum([
       "ANTHROPIC_AUTH_TOKEN",
       "OPENAI_API_KEY",
@@ -939,12 +1008,9 @@ const storedExecutionContextObjectSchema = z.object({
     .array(storedStorageMountEntrySchema)
     .superRefine(uniqueStorageMountPaths),
   environment: z.record(z.string(), z.string()).nullable(),
-  // Old API/stored payload -> new API: previous contexts omit this field. Keep
-  // it optional until prior API rollback targets retire and no supported
-  // resumable context predates it; #28914 tracks that gate.
-  platformEnvironment: z.record(z.string(), z.string()).optional(),
+  platformEnvironment: z.record(z.string(), z.string()),
   // API-only references used to reconstruct runner masking values from the
-  // stored environment. Null means no persistent secret map, and array
+  // effective stored agent environment. Null means no persistent secret map, and array
   // order/repetition follows secret-map values.
   // This field must not be included in the runner-facing ExecutionContext.
   secretValueEnvironmentKeys: z.array(z.string()).nullable(),
@@ -1045,10 +1111,7 @@ const executionContextObjectSchema = z.object({
   sandboxToken: z.string(),
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),
-  // Old API -> new runner: previous claims omit this field. Keep it optional
-  // until prior API rollback targets and supported pre-field claims are gone;
-  // #28914 tracks that gate. Old runners ignore it and use legacy environment.
-  platformEnvironment: z.record(z.string(), z.string()).optional(),
+  platformEnvironment: z.record(z.string(), z.string()),
   resumeSession: resumeSessionSchema.nullable(),
   // Plain secret values used by the runner for redaction. These are values, not
   // names, and are base64-encoded only when exported through VM0_SECRET_VALUES.
@@ -1454,6 +1517,9 @@ export type StoredExecutionContext = z.infer<
 export type PiModelConfig = z.infer<typeof piModelConfigSchema>;
 export type PiLaunchConfig = z.infer<typeof piLaunchConfigSchema>;
 export type PiApiFirstTurnConfig = z.infer<typeof piApiFirstTurnConfigSchema>;
+export type PiApiFirstTurnOwnershipTransferMode = z.infer<
+  typeof piApiFirstTurnOwnershipTransferModeSchema
+>;
 export type PiApiFirstTurnManifest = z.infer<
   typeof piApiFirstTurnManifestSchema
 >;

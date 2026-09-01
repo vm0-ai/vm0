@@ -319,6 +319,149 @@ function codexInspectFile(): File {
   );
 }
 
+function codexThreadItemsInspectFile(): File {
+  const meta: Partial<LogDetail> = {
+    id: "b0000000-0000-4000-a000-000000000779",
+    sessionId: "codex-thread-items-session",
+    agentId: "c0000000-0000-4000-a000-000000000003",
+    displayName: "Imported Codex Thread Items",
+    framework: "codex",
+    modelProvider: null,
+    selectedModel: null,
+    triggerSource: "test",
+    status: "completed",
+    prompt: "Inspect Codex thread items",
+    appendSystemPrompt: null,
+    error: null,
+    createdAt: "2026-03-10T18:00:00Z",
+    startedAt: "2026-03-10T18:00:01Z",
+    completedAt: "2026-03-10T18:00:12Z",
+  };
+  const events: AgentEvent[] = [
+    {
+      sequenceNumber: 0,
+      eventType: "item.started",
+      eventData: {
+        type: "item.started",
+        item: {
+          id: "collab-new-shape",
+          type: "collab_agent_tool_call",
+          tool: "spawn_agent",
+          status: "in_progress",
+          receiver_thread_ids: ["subagent-new"],
+          prompt: "inspect the new guest shape",
+          model: "gpt-5",
+          reasoning_effort: "high",
+          agents_states: {
+            "subagent-new": { status: "running", message: null },
+          },
+        },
+      },
+      createdAt: "2026-03-10T18:00:02Z",
+    },
+    {
+      sequenceNumber: 1,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        item: {
+          id: "collab-new-shape",
+          type: "collab_agent_tool_call",
+          tool: "spawn_agent",
+          status: "completed",
+          receiver_thread_ids: ["subagent-new"],
+          prompt: "inspect the new guest shape",
+          model: "gpt-5",
+          reasoning_effort: "high",
+          agents_states: {
+            "subagent-new": {
+              status: "completed",
+              message: "new shape inspected",
+            },
+          },
+        },
+      },
+      createdAt: "2026-03-10T18:00:03Z",
+    },
+    {
+      sequenceNumber: 2,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        item: {
+          id: "collab-old-shape",
+          type: "collab_agent_tool_call",
+          tool: "spawn_agent",
+          status: "completed",
+          receiver_thread_ids: ["subagent-old"],
+          prompt: "inspect the old guest shape",
+          model: "gpt-5",
+          reasoning_effort: "medium",
+          agents_states: {},
+        },
+      },
+      createdAt: "2026-03-10T18:00:04Z",
+    },
+    ...["started", "interacted", "interrupted", "completed"].map(
+      (kind, index): AgentEvent => {
+        return {
+          sequenceNumber: index + 3,
+          eventType: "item.completed",
+          eventData: {
+            type: "item.completed",
+            item: {
+              id: `subagent-activity-${kind}`,
+              type: "sub_agent_activity",
+              kind,
+              agent_thread_id: "subagent-new",
+              agent_path: "/root/researcher",
+            },
+          },
+          createdAt: `2026-03-10T18:00:0${index + 5}Z`,
+        };
+      },
+    ),
+    {
+      sequenceNumber: 7,
+      eventType: "item.started",
+      eventData: {
+        type: "item.started",
+        item: { id: "context-compaction", type: "context_compaction" },
+      },
+      createdAt: "2026-03-10T18:00:09Z",
+    },
+    {
+      sequenceNumber: 8,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        item: { id: "context-compaction", type: "context_compaction" },
+      },
+      createdAt: "2026-03-10T18:00:10Z",
+    },
+    {
+      sequenceNumber: 9,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        item: {
+          id: "future-item",
+          type: "future_operation",
+          status: "completed",
+          label: "future item remains generic",
+        },
+      },
+      createdAt: "2026-03-10T18:00:11Z",
+    },
+  ];
+
+  return new File(
+    [JSON.stringify({ meta, events, networkLogs: [] })],
+    "codex-thread-items-log.json",
+    { type: "application/json" },
+  );
+}
+
 function malformedInspectFile(): File {
   return new File(
     [
@@ -703,6 +846,46 @@ describe("activity inspect page", () => {
           element.textContent?.includes("Inspect normalized plan") === true
         );
       }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders reachable Codex thread item semantics", async () => {
+    detachedSetupPage({
+      context,
+      path: "/activities/inspect",
+      featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("No log loaded")).toBeInTheDocument();
+    });
+
+    await user.upload(getFileInput(), codexThreadItemsInspectFile());
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Imported Codex Thread Items" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(screen.getAllByTestId("tool-summary")).toHaveLength(2);
+    expect(screen.getAllByText("SpawnAgent")).toHaveLength(2);
+    expect(screen.getByText("Started subagent")).toBeInTheDocument();
+    expect(screen.getByText("Interacted with subagent")).toBeInTheDocument();
+    expect(screen.getByText("Interrupted subagent")).toBeInTheDocument();
+    expect(screen.getByText("Completed subagent")).toBeInTheDocument();
+    expect(screen.getAllByText("/root/researcher")).toHaveLength(4);
+    expect(screen.getAllByText("Compacted context")).toHaveLength(1);
+    expect(screen.getByText(/Codex future_operation/u)).toBeInTheDocument();
+    expect(screen.queryByText("Unknown")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Codex collab_agent_tool_call/u),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Codex sub_agent_activity/u),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Codex context_compaction/u),
     ).not.toBeInTheDocument();
   });
 

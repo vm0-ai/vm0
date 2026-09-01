@@ -103,6 +103,10 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     mode: z.enum(["remove", "invalid"]),
   }),
   z.object({
+    action: z.literal("enable-queued-pi-ownership-transfer"),
+    run_id: z.uuid(),
+  }),
+  z.object({
     action: z.literal("mutate-runner-job-connector-permission-baseline"),
     run_id: z.uuid(),
     mode: z.enum([
@@ -285,6 +289,12 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     action: z.literal("set-runner-job-context-profile-as-previous-api"),
     run_id: z.uuid(),
     profile: z.string(),
+  }),
+  z.object({
+    action: z.literal(
+      "clear-workflow-automation-event-connector-as-previous-api",
+    ),
+    automation_id: z.uuid(),
   }),
   z.object({
     action: z.literal("set-custom-connector-auth-template-fixture"),

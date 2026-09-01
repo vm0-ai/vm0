@@ -12,10 +12,8 @@ import {
   type ChatThreadMetadataShortcutOutcome,
 } from "../../lib/posthog.ts";
 import { activeRoute$ } from "../active-route.ts";
-import { authenticatedIdentity$ } from "../auth.ts";
 import { apiClient$ } from "../api-client.ts";
 import { foregroundReady$ } from "../auth-retry.ts";
-import { reloadChatIndicators$ } from "../chat-thread-list-reload.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { subscribeRealtimeReadyCatchUp$ } from "../realtime.ts";
 import { rootSignal$ } from "../root-signal.ts";
@@ -31,11 +29,7 @@ import type {
   ChatThreadEventDataKey,
   ChatThreadEventQueryResult,
 } from "../../shared-database/data-key.ts";
-import {
-  onSharedDatabase$,
-  queryChatThreadEventSharedDatabase$,
-} from "../shared-database.ts";
-import { enqueueSharedDatabaseInvalidation$ } from "../shared-database-invalidation-queue.ts";
+import { queryChatThreadEventSharedDatabase$ } from "../shared-database.ts";
 import type {
   ChatThreadEventView,
   OptimisticChatThreadEvent,
@@ -216,12 +210,9 @@ function filterUnsettledOptimisticChatThreadEvents(
   });
 }
 
-const sharedChatThreadEventDataKey$ = computed(
-  async (get): Promise<ChatThreadEventDataKey> => {
-    const { userId, orgId } = await get(authenticatedIdentity$);
-    return { kind: "chat-thread-event", userId, orgId };
-  },
-);
+const sharedChatThreadEventDataKey$ = computed((): ChatThreadEventDataKey => {
+  return { kind: "chat-thread-event" };
+});
 
 const applySharedChatThreadEventResult$ = command(
   (
@@ -310,19 +301,6 @@ const subscribeSharedEventDrivenChatThreads$ = command(
       signal,
     );
     const dataKey = await get(sharedChatThreadEventDataKey$);
-    signal.throwIfAborted();
-    await set(
-      onSharedDatabase$,
-      dataKey,
-      (kind) => {
-        if (kind === "invalidate") {
-          set(reloadChatIndicators$);
-        }
-        set(markChatThreadEventSyncPending$);
-        set(enqueueSharedDatabaseInvalidation$, dataKey);
-      },
-      signal,
-    );
     signal.throwIfAborted();
     const cached = await set(
       queryChatThreadEventSharedDatabase$,
@@ -421,16 +399,7 @@ export function threadMeta(threadId: string) {
   });
 }
 
-function remoteThreadMeta(metadata: ChatThreadMetadata): ThreadMeta | null {
-  if (
-    metadata.pinnedAt === undefined ||
-    metadata.computerUseHostId === undefined ||
-    metadata.cloudBrowserEnabled === undefined ||
-    metadata.selectedVideoModel === undefined ||
-    metadata.selectedImageModel === undefined
-  ) {
-    return null;
-  }
+function remoteThreadMeta(metadata: ChatThreadMetadata): ThreadMeta {
   return {
     id: metadata.id,
     agentId: metadata.agentId,
@@ -464,10 +433,7 @@ const fetchRemoteThreadMeta$ = command(
     if (result.status === 404) {
       return { meta: null, outcome: "not-found" };
     }
-    const meta = remoteThreadMeta(result.body);
-    return meta?.id === threadId
-      ? { meta, outcome: "hit" }
-      : { meta: null, outcome: "older-payload" };
+    return { meta: remoteThreadMeta(result.body), outcome: "hit" };
   },
 );
 

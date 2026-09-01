@@ -4,13 +4,11 @@ import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatAutomationContext } from "@okouai/db/schema/chat-automation-context";
-import { chatMorningBriefContext } from "@okouai/db/schema/chat-morning-brief-context";
 import {
   chatEvents,
   type ChatEventUserMessage,
 } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { morningBriefDeliveries } from "@okouai/db/schema/morning-brief";
 import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { workflowAutomations } from "@okouai/db/schema/workflow";
 import {
@@ -18,7 +16,6 @@ import {
   asc,
   eq,
   exists,
-  inArray,
   isNull,
   notExists,
   sql,
@@ -112,9 +109,6 @@ export function queuedUserMessageTriggerSource(
     }
     case "agent_run": {
       return "agent";
-    }
-    case "morning_brief": {
-      return "automation-schedule";
     }
     case "automation":
     case "goal": {
@@ -908,68 +902,5 @@ export async function failQueuedUserMessage(
 ): Promise<{ readonly assistantEventId: string } | null> {
   return await db.transaction(async (tx) => {
     return await failQueuedUserMessageInTransaction(tx, args);
-  });
-}
-
-/**
- * Deployment fallback for a legacy queue head persisted before phase A. It
- * appends terminal history and never creates a Run. Phase B removes it after
- * #30264's released zero-traffic gate proves no legacy queue context remains.
- */
-export async function retireQueuedMorningBriefMessage(
-  db: Db,
-  args: {
-    readonly threadId: string;
-    readonly eventId: string;
-    readonly contextId: string | null;
-    readonly currentTime: Date;
-  },
-): Promise<boolean> {
-  return await db.transaction(async (tx) => {
-    const failed = await failQueuedUserMessageInTransaction(tx, {
-      threadId: args.threadId,
-      eventId: args.eventId,
-      assistantContent:
-        "This legacy Morning Brief was stopped during the Official Workflow cutover.",
-      errorMarker: "legacy_morning_brief_cutover",
-      currentTime: args.currentTime,
-    });
-    if (!failed) {
-      return false;
-    }
-
-    const [context] = args.contextId
-      ? await tx
-          .select({ deliveryId: chatMorningBriefContext.deliveryId })
-          .from(chatMorningBriefContext)
-          .where(
-            and(
-              eq(chatMorningBriefContext.id, args.contextId),
-              eq(chatMorningBriefContext.chatThreadId, args.threadId),
-            ),
-          )
-          .limit(1)
-      : [];
-    if (context) {
-      await tx
-        .update(morningBriefDeliveries)
-        .set({
-          status: "failed",
-          error:
-            "Legacy Morning Brief stopped during the Official Workflow cutover",
-          updatedAt: args.currentTime,
-        })
-        .where(
-          and(
-            eq(morningBriefDeliveries.id, context.deliveryId),
-            inArray(morningBriefDeliveries.status, [
-              "collecting",
-              "queued",
-              "running",
-            ]),
-          ),
-        );
-    }
-    return true;
   });
 }

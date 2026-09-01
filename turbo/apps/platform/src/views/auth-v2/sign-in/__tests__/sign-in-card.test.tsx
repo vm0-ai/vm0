@@ -119,14 +119,6 @@ function setupSignInPage(
   });
 }
 
-function useGermanLocale(): void {
-  document.documentElement.lang = "de-DE";
-  context.mocks.data.userPreferences({
-    locale: "de-DE",
-    supportedLocales: ["de-DE", "en-US"],
-  });
-}
-
 function containingForm(element: HTMLElement): HTMLFormElement {
   const form = element.closest("form");
   if (!(form instanceof HTMLFormElement)) {
@@ -1045,60 +1037,77 @@ describe("auth v2 sign-in flow", () => {
     expect(mockedClerk.clientSignInCreate).not.toHaveBeenCalled();
   });
 
-  it("retries Google One Tap after a script failure and back navigation", async () => {
-    context.mocks.browser.fedCm();
-    mockAuthV2Capabilities({
-      googleOAuth: true,
-      googleOneTapClientId: "google-client-id",
-    });
-    const failedScript = createStalledGoogleOneTapScript();
-    setupSignInPage({ status: "needs_identifier" });
-
-    // Script loading is a browser resource boundary and cannot be triggered
-    // through a rendered control, so dispatch its terminal event directly.
-    await screen.findByLabelText("Email address");
-    fireEvent.error(failedScript);
-
-    await waitFor(() => {
-      expect(failedScript).not.toBeInTheDocument();
-    });
-    await expect(screen.findByRole("alert")).resolves.toBeVisible();
-
-    navigateToSignUp();
-    await expect(
-      screen.findByRole("region", { name: "Create your account" }),
-    ).resolves.toBeVisible();
-
-    const retryScript = createStalledGoogleOneTapScript();
-    act(() => {
-      window.history.back();
-    });
-    await screen.findByLabelText("Email address");
-    expect(retryScript).not.toBe(failedScript);
-
-    mockGoogleOneTapCredential("retry-google-one-tap-token");
-    mockedClerk.clientSignInCreate.mockImplementation((params) => {
-      if (params.strategy === "google_one_tap") {
-        return Promise.resolve(
-          moveSignInTo({
-            createdSessionId: "session_one_tap_retry",
-            status: "complete",
-          }),
-        );
-      }
-      return Promise.resolve(currentSignInResource());
-    });
-    fireEvent.load(retryScript);
-
-    await waitFor(() => {
-      expect(mockedClerk.clientSignInCreate).toHaveBeenCalledWith({
-        signUpIfMissing: false,
-        strategy: "google_one_tap",
-        token: "retry-google-one-tap-token",
+  it.each([
+    { event: "error" as const, name: "script load failure" },
+    { event: "load" as const, name: "script initialization failure" },
+  ])(
+    "silently falls back after a Google One Tap $name and retries after back navigation",
+    async ({ event }) => {
+      context.mocks.browser.fedCm();
+      mockAuthV2Capabilities({
+        googleOAuth: true,
+        googleOneTapClientId: "google-client-id",
       });
-      expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
-    });
-  });
+      const failedScript = createStalledGoogleOneTapScript();
+      setupSignInPage({ status: "needs_identifier" });
+
+      // Script loading is a browser resource boundary and cannot be triggered
+      // through a rendered control, so dispatch its terminal event directly.
+      await screen.findByLabelText("Email address");
+      await act(async () => {
+        if (event === "error") {
+          fireEvent.error(failedScript);
+        } else {
+          fireEvent.load(failedScript);
+        }
+        await Promise.resolve();
+      });
+
+      expect(failedScript).not.toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      await expect(
+        screen.findByLabelText("Email address"),
+      ).resolves.toBeEnabled();
+      await expect(
+        waitForRoleElement("button", "Continue with Google"),
+      ).resolves.toBeEnabled();
+
+      navigateToSignUp();
+      await expect(
+        screen.findByRole("region", { name: "Create your account" }),
+      ).resolves.toBeVisible();
+
+      const retryScript = createStalledGoogleOneTapScript();
+      act(() => {
+        window.history.back();
+      });
+      await screen.findByLabelText("Email address");
+      expect(retryScript).not.toBe(failedScript);
+
+      mockGoogleOneTapCredential("retry-google-one-tap-token");
+      mockedClerk.clientSignInCreate.mockImplementation((params) => {
+        if (params.strategy === "google_one_tap") {
+          return Promise.resolve(
+            moveSignInTo({
+              createdSessionId: "session_one_tap_retry",
+              status: "complete",
+            }),
+          );
+        }
+        return Promise.resolve(currentSignInResource());
+      });
+      fireEvent.load(retryScript);
+
+      await waitFor(() => {
+        expect(mockedClerk.clientSignInCreate).toHaveBeenCalledWith({
+          signUpIfMissing: false,
+          strategy: "google_one_tap",
+          token: "retry-google-one-tap-token",
+        });
+        expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
+      });
+    },
+  );
 
   it.each([
     {
@@ -2157,17 +2166,16 @@ describe("auth v2 sign-in flow", () => {
     );
   });
 
-  it("substitutes the Okou brand in German entry and password subtitles", async () => {
-    useGermanLocale();
+  it("substitutes the Okou brand during English startup and password flow", async () => {
     setupSignInPage(
       { status: "needs_identifier" },
       { url: "https://app.okou.ai/sign-in" },
     );
 
-    const identifierInput = await screen.findByLabelText("E-Mail-Adresse");
+    const identifierInput = await screen.findByLabelText("Email address");
     expect(
-      screen.getByRole("region", { name: "Bei Okou anmelden" }),
-    ).toHaveAccessibleDescription("weiter zu Okou");
+      screen.getByRole("region", { name: "Sign in to Okou" }),
+    ).toHaveAccessibleDescription("Welcome back! Please sign in to continue");
 
     const nextResource = moveSignInTo({
       status: "needs_first_factor",
@@ -2179,10 +2187,12 @@ describe("auth v2 sign-in flow", () => {
     });
     fireEvent.submit(containingForm(identifierInput));
 
-    await screen.findByLabelText("Passwort");
+    await screen.findByLabelText("Password");
     expect(
-      screen.getByRole("region", { name: "Geben Sie Ihr Passwort ein" }),
-    ).toHaveAccessibleDescription("weiter zu Okou");
+      screen.getByRole("region", { name: "Enter your password" }),
+    ).toHaveAccessibleDescription(
+      "Enter the password associated with your account",
+    );
     expect(document.body).not.toHaveTextContent("{{brandName}}");
   });
 

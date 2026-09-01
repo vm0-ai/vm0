@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Erro do Codex",
       "commandStatus": "Comando {{status}}",
+      "contextCompaction": "Contexto compactado",
       "error": "Erro: {{error}}",
       "fileChangeKind": "alteração",
       "fileOperationCompleted": "Operação de arquivo concluída",
@@ -29,6 +30,12 @@
       },
       "status": "Status: {{status}}",
       "statusDetail": "status: {{status}}",
+      "subAgentActivity": {
+        "completed": "Subagente concluído",
+        "interacted": "Interação com o subagente",
+        "interrupted": "Subagente interrompido",
+        "started": "Subagente iniciado"
+      },
       "turnFailed": "A interação falhou",
       "turnStatus": "Interação {{status}}",
       "warning": "[aviso] {{message}}",
@@ -377,51 +384,6 @@
     }
   },
   "appShell": {
-    "browserUpgrade": {
-      "browser": {
-        "action": "Atualizar navegador",
-        "description": "O {{assistantName}} não oferece suporte à versão atual do seu navegador. Atualize o navegador para continuar.",
-        "title": "Atualize seu navegador para continuar"
-      },
-      "chrome": {
-        "action": "Atualizar Chrome",
-        "description": "O {{assistantName}} não oferece suporte à versão atual do seu navegador. Atualize o Chrome para continuar.",
-        "title": "Atualize o Chrome para continuar"
-      },
-      "chromium": {
-        "action": "Atualizar Chromium",
-        "description": "O {{assistantName}} não oferece suporte à versão atual do seu navegador. Atualize o Chromium para continuar.",
-        "title": "Atualize o Chromium para continuar"
-      },
-      "ios": {
-        "action": "Atualizar iOS",
-        "description": "O {{assistantName}} não oferece suporte à versão atual do seu navegador. Atualize o iOS para continuar.",
-        "title": "Atualize o iOS para continuar"
-      },
-      "safari": {
-        "action": "Atualizar Safari",
-        "description": "O {{assistantName}} não oferece suporte à versão atual do seu navegador. Atualize o Safari para continuar.",
-        "title": "Atualize o Safari para continuar"
-      }
-    },
-    "loading": {
-      "ariaLabel": "Carregando seu espaço de trabalho",
-      "messages": {
-        "almostThere": "Quase lá...",
-        "brewingIdeas": "Preparando algumas ideias...",
-        "connectingDots": "Ligando os pontos...",
-        "gettingReady": "Preparando tudo...",
-        "loadingWorkspace": "Carregando seu espaço de trabalho...",
-        "spinningTeam": "Reunindo a equipe...",
-        "tuningInstruments": "Ajustando os instrumentos...",
-        "warmingNeurons": "Aquecendo os neurônios..."
-      }
-    },
-    "logoAlt": "{{brandName}}",
-    "metadata": {
-      "description": "{{assistantName}} é seu colega de IA da {{brandName}}. Envie uma mensagem para o {{assistantName}} ou converse pela web — pesquise, envie e-mails, crie documentos e use Slack, GitHub, Notion e mais de 100 ferramentas.",
-      "title": "{{assistantName}} — Seu colega de IA da {{brandName}}"
-    },
     "shortcutHelp": {
       "close": "Fechar atalhos de teclado",
       "description": "Atalhos disponíveis nesta página",
@@ -674,6 +636,7 @@
       "importedSlides_many": "{{count}} slides",
       "importedSlides_other": "{{count}} slides",
       "multiAccent": "Várias cores de destaque",
+      "needPro": "Requer Pro",
       "nextSlide": "Visualizar próximo slide",
       "noMatches": "Nenhum resultado",
       "placeholder": "Espaço reservado para visualização do site {{title}}",
@@ -726,6 +689,7 @@
       "tryDifferentSearch": "Tente outra busca.",
       "use": "Usar",
       "useThisTemplate": "Usar este modelo",
+      "viewVideoPlans": "Ver planos para o modelo de vídeo {{title}}",
       "visibility": {
         "change": "Alterar",
         "changeLabel": "Alterar a visibilidade do modelo",
@@ -1964,6 +1928,20 @@
       "unsupportedIntelMac": "O {{assistantName}} Computer Use não é compatível com Macs com processador Intel.",
       "yourComputer": "Seu computador"
     },
+    "connectorAccountSwitch": {
+      "accountFallback": "Conta do conector",
+      "actionFailed": "Não foi possível mudar de conta. Tente novamente.",
+      "customConnector": "Conector personalizado",
+      "loadFailed": "Não foi possível carregar esta conta do conector.",
+      "reconnectRequired": "É necessário reconectar. Execuções posteriores podem usar a alternativa existente.",
+      "retry": "Tentar novamente",
+      "selected": "Conta alterada para {{account}}",
+      "switch": "Mudar",
+      "switching": "Mudando...",
+      "title": "Mudar para {{account}}?",
+      "unavailableDescription": "Esta conta não existe ou não está disponível para este conector.",
+      "unavailableTitle": "Conta indisponível"
+    },
     "connectors": {
       "accountForThread": "Conta para esta conversa",
       "add": "Adicionar {{connectorName}}",
@@ -2001,6 +1979,7 @@
         "capacityTitle": "O modelo {{framework}} está ocupado",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "Continuar",
         "resetAndTryAgain": "Redefinir e tentar novamente",
         "resetsAt": "Redefine {{time}}",
         "selectModel": "Trocar modelo",
@@ -2234,7 +2213,6 @@
       "message_one": "{{count}} mensagem",
       "message_many": "{{count}} mensagens",
       "message_other": "{{count}} mensagens",
-      "morningBrief": "Resumo matinal",
       "openGoalDetails": "Abrir detalhes do objetivo",
       "pendingAutomationEvent": "Evento de automação pendente",
       "queuedMessage": "Mensagem na fila",
@@ -3358,7 +3336,8 @@
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "Falha na solicitação"
+      "requestFailed": "Falha na solicitação",
+      "sharedDatabaseUnavailable": "O app encontrou um problema. Aguarde um momento e atualize a página para tentar novamente."
     },
     "realtime": {
       "degraded": "As atualizações em tempo real encontraram um problema. Atualize a página.",
@@ -6224,7 +6203,7 @@
       "browse": "Explorar oficiais",
       "chooseValue": "Escolha um valor",
       "copySucceededUninstallFailed": "A cópia está pronta, mas não foi possível desinstalar o fluxo de trabalho oficial original.",
-      "description": "Instale fluxos de trabalho gerenciados e mantidos pela vm0.",
+      "description": "Instale fluxos de trabalho gerenciados e mantidos pela Okou Official Team.",
       "empty": "Nenhum fluxo de trabalho oficial está disponível.",
       "includedAutomations": "Automações incluídas",
       "install": "Instalar",

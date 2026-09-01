@@ -1,8 +1,11 @@
-import { randomUUID } from "node:crypto";
-import { gunzipSync } from "node:zlib";
+import { createHash, randomUUID } from "node:crypto";
+import { gunzipSync, gzipSync } from "node:zlib";
 
 import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
-import { chatEventRowSchema } from "@okouai/api-contracts/contracts/chat-event-rows";
+import {
+  chatEventRowSchema,
+  type ChatEventRow,
+} from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
@@ -32,7 +35,11 @@ import {
   readFakeChatEventObject,
   writeFakeChatEventObject,
 } from "./helpers/fake-chat-event-r2";
-import { readChatEventSnapshotHead } from "./helpers/runtime-state";
+import {
+  readChatEventRowsAsPreviousApiFixture,
+  readChatEventSnapshotHead,
+  updateChatEventSnapshotHead,
+} from "./helpers/runtime-state";
 import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 
 const context = testContext();
@@ -244,6 +251,380 @@ describe("chat event snapshot read endpoints", () => {
     expect(strangerResponse.body).toStrictEqual({
       error: { code: "NOT_FOUND", message: "Chat thread not found" },
     });
+  }, 60_000);
+
+  it("repairs all five retired Morning Brief archive shapes before cold download", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Morning Brief archive repair agent",
+    });
+    const markers = Array.from({ length: 5 }, (_, index) => {
+      return `morning-brief-history-${(index + 1).toString()}-${randomUUID()}`;
+    });
+    let threadId: string | undefined;
+    for (const marker of markers) {
+      threadId = await sendNoCreditMessage(owner, {
+        agentId: agent.agentId,
+        ...(threadId === undefined ? {} : { threadId }),
+        prompt: marker,
+      });
+    }
+    if (threadId === undefined) {
+      throw new Error("Expected a historical Morning Brief thread");
+    }
+
+    await projectChatEventSearch(threadId);
+    await runSnapshotCron([threadId]);
+    const originalHead = await readChatEventSnapshotHead(context, threadId);
+    const originalObject = readFakeChatEventObject(originalHead.object_key);
+    if (originalObject === undefined) {
+      throw new Error("Expected an original Chat Event Snapshot object");
+    }
+    const originalRows = gunzipSync(originalObject)
+      .toString("utf8")
+      .trimEnd()
+      .split("\n")
+      .map((line) => {
+        return chatEventRowSchema.parse(JSON.parse(line));
+      });
+    const promptRows = originalRows.filter((row) => {
+      return row.eventType === "input.prompt";
+    });
+    expect(promptRows).toHaveLength(5);
+
+    const runIds = markers.map(() => {
+      return randomUUID();
+    });
+    const historicalDocuments: readonly UserMessageDocument[] = [
+      {
+        version: 1,
+        parts: [
+          {
+            type: "source",
+            kind: "github",
+            href: "https://github.com/vm0-ai/vm0/issues/30675",
+          },
+          { type: "text", text: "Summarize today's priorities." },
+        ],
+      },
+      {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId: "historical-file",
+            filenameSnapshot: "priorities.pdf",
+            contentType: "application/pdf",
+          },
+          { type: "text", text: "Include the attached priorities." },
+        ],
+      },
+      {
+        version: 1,
+        parts: [
+          {
+            type: "chat_thread",
+            threadId,
+            titleSnapshot: "Launch planning",
+          },
+          { type: "text", text: "Carry forward the launch decisions." },
+        ],
+      },
+      {
+        version: 1,
+        parts: [
+          {
+            type: "template",
+            titleSnapshot: "Editorial illustration",
+            template: {
+              type: "illustration",
+              selection: { illustrationStyleId: "editorial" },
+            },
+          },
+          {
+            type: "text",
+            text: "Illustrate the highest-priority update.",
+          },
+        ],
+      },
+      {
+        version: 1,
+        parts: [
+          {
+            type: "feedback",
+            quote: "The owner is still unclear.",
+            note: [{ type: "text", text: "Name the owner." }],
+          },
+          { type: "text", text: "Finish the ownership summary." },
+        ],
+      },
+    ];
+    const promptIndexById = new Map(
+      promptRows.map((row, index) => {
+        return [row.id, index] as const;
+      }),
+    );
+    const contextOnlyRow = originalRows.find((row) => {
+      return row.eventType === "input.rejected";
+    });
+    if (contextOnlyRow === undefined) {
+      throw new Error("Expected a context-only historical rejection row");
+    }
+    const expectedRows = originalRows.map((row): ChatEventRow => {
+      const promptIndex = promptIndexById.get(row.id);
+      if (promptIndex === undefined) {
+        return row.id === contextOnlyRow.id
+          ? chatEventRowSchema.parse({
+              ...row,
+              contextType: "web",
+              contextId: null,
+            })
+          : row;
+      }
+      const historicalDocument = historicalDocuments[promptIndex];
+      const runId = runIds[promptIndex];
+      if (historicalDocument === undefined || runId === undefined) {
+        throw new Error("Expected a complete historical shape fixture");
+      }
+      return chatEventRowSchema.parse({
+        ...row,
+        runId,
+        revokesEventId:
+          promptIndex === 1 ? (promptRows[0]?.id ?? null) : row.revokesEventId,
+        contextType: "web",
+        contextId: null,
+        payload: {
+          ...row.payload,
+          userMessage: historicalDocument,
+        },
+      });
+    });
+    for (const row of expectedRows) {
+      chatEventFromRow(row);
+    }
+
+    const staleRows = expectedRows.map((row): ChatEventRow => {
+      const promptIndex = promptIndexById.get(row.id);
+      if (promptIndex !== undefined) {
+        const userMessage = historicalDocuments[promptIndex];
+        if (userMessage === undefined) {
+          throw new Error("Expected a historical document fixture");
+        }
+        return chatEventRowSchema.parse({
+          ...row,
+          contextType: "morning_brief",
+          contextId: row.id,
+          payload: {
+            ...row.payload,
+            userMessage: {
+              ...userMessage,
+              parts: [
+                ...userMessage.parts,
+                {
+                  type: "morning_brief",
+                  briefDate: `2026-08-${(20 + promptIndex).toString()}`,
+                },
+              ],
+            },
+          },
+        });
+      }
+      return row.id === contextOnlyRow.id
+        ? chatEventRowSchema.parse({
+            ...row,
+            contextType: "morning_brief",
+            contextId: row.id,
+          })
+        : row;
+    });
+    const staleBody = gzipSync(
+      Buffer.from(
+        staleRows
+          .map((row) => {
+            return `${JSON.stringify(row)}\n`;
+          })
+          .join(""),
+      ),
+    );
+    const staleObjectKey = `chat-events/${threadId}/${originalHead.last_seq_id.toString()}-${createHash("sha256").update(staleBody).digest("hex")}.ndjson.gz`;
+    writeFakeChatEventObject(staleObjectKey, staleBody);
+    await trackFakeChatEventObject(Promise.resolve(staleObjectKey));
+    await updateChatEventSnapshotHead(context, threadId, staleObjectKey);
+
+    const hotMarker = `hot-after-snapshot-${randomUUID()}`;
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      threadId,
+      prompt: hotMarker,
+    });
+    const canonicalRowsBeforeRepair =
+      await readChatEventRowsAsPreviousApiFixture(context, threadId);
+
+    const download = await accept(
+      eventsClient().snapshot({
+        headers: authenticate(owner),
+        params: { threadId },
+      }),
+      [200],
+    );
+    const repairedHead = await readChatEventSnapshotHead(context, threadId);
+    expect(repairedHead.object_key).toMatch(
+      new RegExp(
+        `^chat-events/${threadId}/${originalHead.last_seq_id.toString()}-r1-[0-9a-f]{64}\\.ndjson\\.gz$`,
+        "u",
+      ),
+    );
+    expect(repairedHead.object_key).not.toBe(staleObjectKey);
+    expect(readFakeChatEventObject(staleObjectKey)).toStrictEqual(staleBody);
+
+    const repairedObject = readFakeChatEventObject(repairedHead.object_key);
+    if (repairedObject === undefined) {
+      throw new Error("Expected a repaired Chat Event Snapshot object");
+    }
+    const repairedRows = gunzipSync(repairedObject)
+      .toString("utf8")
+      .trimEnd()
+      .split("\n")
+      .map((line) => {
+        return chatEventRowSchema.parse(JSON.parse(line));
+      });
+    expect(repairedRows).toStrictEqual(expectedRows);
+    expect(JSON.stringify(repairedRows)).not.toContain("morning_brief");
+    expect(
+      repairedRows.map((row) => {
+        return {
+          id: row.id,
+          seqId: row.seqId,
+          runId: row.runId,
+          revokesEventId: row.revokesEventId,
+        };
+      }),
+    ).toStrictEqual(
+      expectedRows.map((row) => {
+        return {
+          id: row.id,
+          seqId: row.seqId,
+          runId: row.runId,
+          revokesEventId: row.revokesEventId,
+        };
+      }),
+    );
+
+    const projectedSnapshot = repairedRows.map(chatEventFromRow);
+    const projectedPrompts = projectedSnapshot.filter((event) => {
+      return event.eventType === "input.prompt";
+    });
+    expect(
+      projectedPrompts.map((event) => {
+        return event.runId;
+      }),
+    ).toStrictEqual(runIds);
+    expect(
+      projectedPrompts.map((event) => {
+        return event.userMessage;
+      }),
+    ).toStrictEqual(historicalDocuments);
+
+    if (download.body.lastEventId === null) {
+      throw new Error("Expected a non-empty repaired Snapshot cursor");
+    }
+    const hot = await accept(
+      eventsClient().rows({
+        headers: authenticate(owner),
+        params: { threadId },
+        query: {
+          sinceEventId: download.body.lastEventId,
+          sinceSeqId: download.body.lastSeqId,
+        },
+      }),
+      [200],
+    );
+    const projectedColdHistory = [
+      ...projectedSnapshot,
+      ...hot.body.rows.map(chatEventFromRow),
+    ];
+    expect(JSON.stringify(projectedColdHistory)).toContain(hotMarker);
+    await expect(
+      readChatEventRowsAsPreviousApiFixture(context, threadId),
+    ).resolves.toStrictEqual(canonicalRowsBeforeRepair);
+  }, 90_000);
+
+  it("fails closed without moving the pointer for an unexpected retired archive part", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Malformed Morning Brief archive agent",
+    });
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `malformed-morning-brief-${randomUUID()}`,
+    });
+    await projectChatEventSearch(threadId);
+    await runSnapshotCron([threadId]);
+    const originalHead = await readChatEventSnapshotHead(context, threadId);
+    const originalObject = readFakeChatEventObject(originalHead.object_key);
+    if (originalObject === undefined) {
+      throw new Error("Expected a Snapshot object for the malformed fixture");
+    }
+    const rows = gunzipSync(originalObject)
+      .toString("utf8")
+      .trimEnd()
+      .split("\n")
+      .map((line) => {
+        return chatEventRowSchema.parse(JSON.parse(line));
+      });
+    const prompt = rows.find((row) => {
+      return row.eventType === "input.prompt";
+    });
+    if (prompt === undefined) {
+      throw new Error("Expected a malformed historical prompt fixture");
+    }
+    const staleRows = rows.map((row) => {
+      return row.id === prompt.id
+        ? chatEventRowSchema.parse({
+            ...row,
+            contextType: "morning_brief",
+            contextId: row.id,
+            payload: {
+              ...row.payload,
+              userMessage: {
+                version: 1,
+                parts: [
+                  { type: "text", text: "Preserve this visible prompt." },
+                  {
+                    type: "morning_brief",
+                    briefDate: "2026-08-24",
+                    unexpected: true,
+                  },
+                ],
+              },
+            },
+          })
+        : row;
+    });
+    const staleBody = gzipSync(
+      Buffer.from(
+        staleRows
+          .map((row) => {
+            return `${JSON.stringify(row)}\n`;
+          })
+          .join(""),
+      ),
+    );
+    const staleObjectKey = `chat-events/${threadId}/${originalHead.last_seq_id.toString()}-${createHash("sha256").update(staleBody).digest("hex")}.ndjson.gz`;
+    writeFakeChatEventObject(staleObjectKey, staleBody);
+    await trackFakeChatEventObject(Promise.resolve(staleObjectKey));
+    await updateChatEventSnapshotHead(context, threadId, staleObjectKey);
+    const staleHead = await readChatEventSnapshotHead(context, threadId);
+
+    await expect(
+      eventsClient().snapshot({
+        headers: authenticate(owner),
+        params: { threadId },
+      }),
+    ).rejects.toThrow("Unknown response status 500");
+    await expect(
+      readChatEventSnapshotHead(context, threadId),
+    ).resolves.toStrictEqual(staleHead);
   }, 60_000);
 
   it("applies the same schema-version errors to Snapshot and Raw Event reads", async () => {

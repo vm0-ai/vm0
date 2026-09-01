@@ -2,8 +2,9 @@ import { randomUUID } from "node:crypto";
 
 import type { ConnectorAuthMethodId } from "@okouai/api-contracts/contracts/connector-identity";
 import { connectorOauthStartResponseSchema } from "@okouai/api-contracts/contracts/connector-schemas";
-import { http, HttpResponse } from "msw";
+import { http, HttpResponse, type JsonBodyType } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-context";
@@ -76,7 +77,539 @@ function mockAuthenticatedSession(): void {
   );
 }
 
+// #30570 pre-stages twenty launch-gated OAuth connectors on the direct Okou App
+// callback. Each case pins the provider-specific authorization and token
+// exchange contract that must survive the callback change.
+interface LaunchGatedDirectOkouCase {
+  readonly connectorSlug: string;
+  readonly label: string;
+  readonly clientEnvPrefix: string;
+  readonly authorizationEndpoint: string;
+  readonly tokenUrl: string;
+  readonly tokenResponse: JsonBodyType;
+  // The authorization URL carries a PKCE challenge and the token exchange
+  // replays the verifier.
+  readonly pkce?: true;
+  // The provider rejects a redirect URI on the token request.
+  readonly omitsTokenRedirectUri?: true;
+  // Webflow posts a JSON token request instead of a form body.
+  readonly jsonTokenRequest?: true;
+  // Datadog resolves its token host from a callback query parameter.
+  readonly callbackQuery?: Readonly<Record<string, string>>;
+  readonly mockUserInfo?: () => void;
+}
+
+const LAUNCH_GATED_DIRECT_OKOU_CASES: readonly LaunchGatedDirectOkouCase[] = [
+  {
+    connectorSlug: "ahrefs",
+    label: "Ahrefs",
+    clientEnvPrefix: "AHREFS",
+    authorizationEndpoint: "https://app.ahrefs.com/api/auth",
+    tokenUrl: "https://app.ahrefs.com/api/token",
+    tokenResponse: {
+      access_token: "ahrefs-test-token",
+      refresh_token: "ahrefs-refresh-token",
+      expires_in: 3600,
+    },
+    mockUserInfo: () => {
+      server.use(
+        http.get(
+          "https://api.ahrefs.com/v3/subscription-info/limits-and-usage",
+          () => {
+            return HttpResponse.json({
+              subscription: { usage_type: "Enterprise" },
+              rows_limit: 1000,
+              rows_left: 900,
+            });
+          },
+        ),
+      );
+    },
+  },
+  {
+    connectorSlug: "cal-com",
+    label: "Cal.com",
+    clientEnvPrefix: "CALCOM",
+    authorizationEndpoint: "https://app.cal.com/auth/oauth2/authorize",
+    tokenUrl: "https://api.cal.com/v2/auth/oauth2/token",
+    tokenResponse: {
+      access_token: "cal-com-test-token",
+      refresh_token: "cal-com-refresh-token",
+      expires_in: 3600,
+    },
+    mockUserInfo: () => {
+      server.use(
+        http.get("https://api.cal.com/v2/me", () => {
+          return HttpResponse.json({
+            data: {
+              id: "cal-com-user-123",
+              username: "cal-com-test-user",
+              email: "cal-com@example.test",
+            },
+          });
+        }),
+      );
+    },
+  },
+  {
+    connectorSlug: "canva",
+    label: "Canva",
+    clientEnvPrefix: "CANVA",
+    authorizationEndpoint: "https://www.canva.com/api/oauth/authorize",
+    tokenUrl: "https://api.canva.com/rest/v1/oauth/token",
+    pkce: true,
+    tokenResponse: {
+      access_token: "canva-test-token",
+      refresh_token: "canva-refresh-token",
+      expires_in: 14_400,
+    },
+    mockUserInfo: () => {
+      server.use(
+        http.get("https://api.canva.com/rest/v1/users/me", () => {
+          return HttpResponse.json({
+            team_user: { user_id: "canva-user-123", team_id: "canva-team-123" },
+          });
+        }),
+        http.get("https://api.canva.com/rest/v1/users/me/profile", () => {
+          return HttpResponse.json({
+            profile: { display_name: "Canva Test User" },
+          });
+        }),
+      );
+    },
+  },
+  {
+    connectorSlug: "close",
+    label: "Close",
+    clientEnvPrefix: "CLOSE",
+    authorizationEndpoint: "https://app.close.com/oauth2/authorize/",
+    tokenUrl: "https://api.close.com/oauth2/token/",
+    tokenResponse: {
+      access_token: "close-test-token",
+      refresh_token: "close-refresh-token",
+      expires_in: 3600,
+      organization_id: "close-org-123",
+    },
+    mockUserInfo: () => {
+      server.use(
+        http.get("https://api.close.com/api/v1/me/", () => {
+          return HttpResponse.json({
+            id: "close-user-123",
+            email: "close@example.test",
+          });
+        }),
+      );
+    },
+  },
+  {
+    connectorSlug: "copper",
+    label: "Copper",
+    clientEnvPrefix: "COPPER",
+    authorizationEndpoint: "https://app.copper.com/oauth/authorize",
+    tokenUrl: "https://app.copper.com/oauth/token",
+    tokenResponse: { access_token: "copper-test-token" },
+    mockUserInfo: () => {
+      server.use(
+        http.get("https://api.copper.com/developer_api/v1/account", () => {
+          return HttpResponse.json({
+            id: "copper-account-123",
+            name: "Copper Test Account",
+          });
+        }),
+      );
+    },
+  },
+  {
+    connectorSlug: "datadog",
+    label: "Datadog",
+    clientEnvPrefix: "DATADOG",
+    authorizationEndpoint: "https://app.datadoghq.com/oauth2/v1/authorize",
+    // Datadog resolves the token host from the domain it returns on the
+    // callback, so the exchange never reaches a fixed provider host.
+    tokenUrl: "https://api.datadoghq.com/oauth2/v1/token",
+    pkce: true,
+    callbackQuery: { domain: "datadoghq.com" },
+    tokenResponse: {
+      access_token: "datadog-test-token",
+      refresh_token: "datadog-refresh-token",
+      expires_in: 3600,
+    },
+  },
+  {
+    connectorSlug: "deel",
+    label: "Deel",
+    clientEnvPrefix: "DEEL",
+    authorizationEndpoint: "https://app.deel.com/oauth2/authorize",
+    tokenUrl: "https://app.deel.com/oauth2/tokens",
+    pkce: true,
+    tokenResponse: {
+      access_token: "deel-test-token",
+      refresh_token: "deel-refresh-token",
+      expires_in: 2_592_000,
+    },
+    mockUserInfo: () => {
+      server.use(
+        http.get("https://api.letsdeel.com/rest/people/me", () => {
+          return HttpResponse.json({
+            id: "deel-user-123",
+            full_name: "Deel Test User",
+            email: "deel@example.test",
+          });
+        }),
+      );
+    },
+  },
+  {
+    connectorSlug: "docusign",
+    label: "DocuSign",
+    clientEnvPrefix: "DOCUSIGN",
+    authorizationEndpoint: "https://account-d.docusign.com/oauth/auth",
+    tokenUrl: "https://account-d.docusign.com/oauth/token",
+    pkce: true,
+    tokenResponse: {
+      access_token: "docusign-test-token",
+      refresh_token: "docusign-refresh-token",
+      expires_in: 28_800,
+    },
+    mockUserInfo: () => {
+      server.use(
+        http.get("https://account-d.docusign.com/oauth/userinfo", () => {
+          return HttpResponse.json({
+            sub: "docusign-user-123",
+            name: "DocuSign Test User",
+            email: "docusign@example.test",
+          });
+        }),
+      );
+    },
+  },
+  {
+    connectorSlug: "dropbox",
+    label: "Dropbox",
+    clientEnvPrefix: "DROPBOX",
+    authorizationEndpoint: "https://www.dropbox.com/oauth2/authorize",
+    tokenUrl: "https://api.dropboxapi.com/oauth2/token",
+    tokenResponse: {
+      access_token: "dropbox-test-token",
+      refresh_token: "dropbox-refresh-token",
+      expires_in: 14_400,
+    },
+    mockUserInfo: () => {
+      server.use(
+        http.post(
+          "https://api.dropboxapi.com/2/users/get_current_account",
+          () => {
+            return HttpResponse.json({
+              account_id: "dbid:dropbox-user-123",
+              name: { display_name: "Dropbox Test User" },
+              email: "dropbox@example.test",
+            });
+          },
+        ),
+      );
+    },
+  },
+  {
+    connectorSlug: "figma",
+    label: "Figma",
+    clientEnvPrefix: "FIGMA",
+    authorizationEndpoint: "https://www.figma.com/oauth",
+    tokenUrl: "https://api.figma.com/v1/oauth/token",
+    tokenResponse: {
+      access_token: "figma-test-token",
+      refresh_token: "figma-refresh-token",
+      expires_in: 7_776_000,
+    },
+    mockUserInfo: () => {
+      server.use(
+        http.get("https://api.figma.com/v1/me", () => {
+          return HttpResponse.json({
+            id: "figma-user-123",
+            email: "figma@example.test",
+            handle: "figma-test-user",
+          });
+        }),
+      );
+    },
+  },
+  {
+    connectorSlug: "garmin-connect",
+    label: "Garmin Connect",
+    clientEnvPrefix: "GARMIN_CONNECT",
+    authorizationEndpoint: "https://connect.garmin.com/oauth2Confirm",
+    tokenUrl: "https://diauth.garmin.com/di-oauth2-service/oauth/token",
+    pkce: true,
+    // Garmin Connect authenticates the exchange with the PKCE verifier and
+    // state instead of replaying the redirect URI.
+    omitsTokenRedirectUri: true,
+    tokenResponse: {
+      access_token: "garmin-connect-test-token",
+      refresh_token: "garmin-connect-refresh-token",
+      expires_in: 86_400,
+    },
+    mockUserInfo: () => {
+      server.use(
+        http.get("https://apis.garmin.com/wellness-api/rest/user/id", () => {
+          return HttpResponse.json({
+            userId: "garmin-user-123",
+            displayName: "Garmin Test User",
+          });
+        }),
+      );
+    },
+  },
+  {
+    connectorSlug: "mailchimp",
+    label: "Mailchimp",
+    clientEnvPrefix: "MAILCHIMP",
+    authorizationEndpoint: "https://login.mailchimp.com/oauth2/authorize",
+    tokenUrl: "https://login.mailchimp.com/oauth2/token",
+    tokenResponse: { access_token: "mailchimp-test-token" },
+    mockUserInfo: () => {
+      server.use(
+        http.get("https://login.mailchimp.com/oauth2/metadata", () => {
+          return HttpResponse.json({
+            dc: "us1",
+            user_id: 123,
+            accountname: "Mailchimp Test Account",
+            login: {
+              login_name: "Mailchimp Test User",
+              login_email: "mailchimp@example.test",
+            },
+            api_endpoint: "https://us1.api.mailchimp.com",
+          });
+        }),
+      );
+    },
+  },
+  {
+    connectorSlug: "mercury",
+    label: "Mercury",
+    clientEnvPrefix: "MERCURY",
+    authorizationEndpoint: "https://oauth2.mercury.com/oauth2/auth",
+    tokenUrl: "https://oauth2.mercury.com/oauth2/token",
+    tokenResponse: {
+      access_token: "mercury-test-token",
+      refresh_token: "mercury-refresh-token",
+      expires_in: 3600,
+    },
+    mockUserInfo: () => {
+      server.use(
+        http.get("https://api.mercury.com/api/v1/organization", () => {
+          return HttpResponse.json({
+            organization: {
+              id: "mercury-org-123",
+              legalBusinessName: "Mercury Test Org",
+            },
+          });
+        }),
+      );
+    },
+  },
+  {
+    connectorSlug: "neon",
+    label: "Neon",
+    clientEnvPrefix: "NEON",
+    authorizationEndpoint: "https://oauth2.neon.tech/oauth2/auth",
+    tokenUrl: "https://oauth2.neon.tech/oauth2/token",
+    tokenResponse: {
+      access_token: "neon-test-token",
+      refresh_token: "neon-refresh-token",
+      expires_in: 3600,
+    },
+    mockUserInfo: () => {
+      server.use(
+        http.get("https://console.neon.tech/api/v2/users/me", () => {
+          return HttpResponse.json({
+            id: "neon-user-123",
+            name: "Neon Test User",
+            email: "neon@example.test",
+          });
+        }),
+      );
+    },
+  },
+  {
+    connectorSlug: "posthog",
+    label: "PostHog",
+    clientEnvPrefix: "POSTHOG",
+    authorizationEndpoint: "https://us.posthog.com/oauth/authorize",
+    tokenUrl: "https://us.posthog.com/oauth/token",
+    tokenResponse: {
+      access_token: "posthog-test-token",
+      refresh_token: "posthog-refresh-token",
+      expires_in: 3600,
+    },
+    mockUserInfo: () => {
+      server.use(
+        http.get("https://us.posthog.com/api/users/@me/", () => {
+          return HttpResponse.json({
+            id: 123,
+            first_name: "PostHog",
+            last_name: "Test User",
+            email: "posthog@example.test",
+          });
+        }),
+      );
+    },
+  },
+  {
+    connectorSlug: "reddit",
+    label: "Reddit",
+    clientEnvPrefix: "REDDIT",
+    authorizationEndpoint: "https://www.reddit.com/api/v1/authorize",
+    tokenUrl: "https://www.reddit.com/api/v1/access_token",
+    tokenResponse: {
+      access_token: "reddit-test-token",
+      refresh_token: "reddit-refresh-token",
+      expires_in: 86_400,
+    },
+    mockUserInfo: () => {
+      server.use(
+        http.get("https://oauth.reddit.com/api/v1/me", () => {
+          return HttpResponse.json({
+            id: "reddit-user-123",
+            name: "reddit-test-user",
+          });
+        }),
+      );
+    },
+  },
+  {
+    connectorSlug: "spotify",
+    label: "Spotify",
+    clientEnvPrefix: "SPOTIFY",
+    authorizationEndpoint: "https://accounts.spotify.com/authorize",
+    tokenUrl: "https://accounts.spotify.com/api/token",
+    tokenResponse: {
+      access_token: "spotify-test-token",
+      refresh_token: "spotify-refresh-token",
+      expires_in: 3600,
+    },
+    mockUserInfo: () => {
+      server.use(
+        http.get("https://api.spotify.com/v1/me", () => {
+          return HttpResponse.json({
+            account_id: "spotify-user-123",
+            display_name: "Spotify Test User",
+            email: "spotify@example.test",
+          });
+        }),
+      );
+    },
+  },
+  {
+    connectorSlug: "supabase",
+    label: "Supabase",
+    clientEnvPrefix: "SUPABASE",
+    authorizationEndpoint: "https://api.supabase.com/v1/oauth/authorize",
+    tokenUrl: "https://api.supabase.com/v1/oauth/token",
+    pkce: true,
+    tokenResponse: {
+      access_token: "supabase-test-token",
+      refresh_token: "supabase-refresh-token",
+      expires_in: 3600,
+    },
+    mockUserInfo: () => {
+      server.use(
+        http.get("https://api.supabase.com/v1/profile", () => {
+          return HttpResponse.json({
+            gotrue_id: "supabase-user-123",
+            primary_email: "supabase@example.test",
+            username: "supabase-test-user",
+          });
+        }),
+      );
+    },
+  },
+  {
+    connectorSlug: "webflow",
+    label: "Webflow",
+    clientEnvPrefix: "WEBFLOW",
+    authorizationEndpoint: "https://webflow.com/oauth/authorize",
+    tokenUrl: "https://api.webflow.com/oauth/access_token",
+    jsonTokenRequest: true,
+    tokenResponse: {
+      access_token: "webflow-test-token",
+      token_type: "bearer",
+    },
+    mockUserInfo: () => {
+      server.use(
+        http.get("https://api.webflow.com/v2/token/authorized_by", () => {
+          return HttpResponse.json({
+            id: "webflow-user-123",
+            email: "webflow@example.test",
+            firstName: "Webflow",
+            lastName: "Test User",
+          });
+        }),
+      );
+    },
+  },
+  {
+    connectorSlug: "zoom",
+    label: "Zoom",
+    clientEnvPrefix: "ZOOM",
+    authorizationEndpoint: "https://zoom.us/oauth/authorize",
+    tokenUrl: "https://zoom.us/oauth/token",
+    tokenResponse: {
+      access_token: "zoom-test-token",
+      refresh_token: "zoom-refresh-token",
+      expires_in: 3600,
+    },
+    mockUserInfo: () => {
+      server.use(
+        http.get("https://api.zoom.us/v2/users/me", () => {
+          return HttpResponse.json({
+            id: "zoom-user-123",
+            email: "zoom@example.test",
+            display_name: "Zoom Test User",
+          });
+        }),
+      );
+    },
+  },
+];
+
+const LAUNCH_GATED_DIRECT_OKOU_CONNECTOR_SLUGS =
+  LAUNCH_GATED_DIRECT_OKOU_CASES.map((providerCase) => {
+    return providerCase.connectorSlug;
+  });
+
+const jsonTokenRequestSchema = z.record(z.string(), z.string());
+
+function launchGatedTokenRequestParams(
+  providerCase: LaunchGatedDirectOkouCase,
+  body: string,
+): URLSearchParams {
+  if (providerCase.jsonTokenRequest !== true) {
+    return new URLSearchParams(body);
+  }
+  const parsed: unknown = JSON.parse(body);
+  return new URLSearchParams(
+    Object.entries(jsonTokenRequestSchema.parse(parsed)),
+  );
+}
+
+function launchGatedClientId(connectorSlug: string): string {
+  return `${connectorSlug}-test-client-id`;
+}
+
+function mockLaunchGatedOAuthEnv(): void {
+  for (const providerCase of LAUNCH_GATED_DIRECT_OKOU_CASES) {
+    mockOptionalEnv(
+      `${providerCase.clientEnvPrefix}_OAUTH_CLIENT_ID`,
+      launchGatedClientId(providerCase.connectorSlug),
+    );
+    mockOptionalEnv(
+      `${providerCase.clientEnvPrefix}_OAUTH_CLIENT_SECRET`,
+      `${providerCase.connectorSlug}-test-client-secret`,
+    );
+  }
+}
+
 function mockOAuthEnv(): void {
+  mockLaunchGatedOAuthEnv();
   mockOptionalEnv("BOX_OAUTH_CLIENT_ID", "box-test-client-id");
   mockOptionalEnv("BOX_OAUTH_CLIENT_SECRET", "box-test-client-secret");
   mockOptionalEnv("GH_OAUTH_CLIENT_ID", "test-client-id");
@@ -180,6 +713,26 @@ function expectOkouOauthState(authorizationUrl: URL): string {
   const state = authorizationUrl.searchParams.get("state");
   expect(state).toMatch(/^okou\.[0-9a-f]{64}$/u);
   return state!;
+}
+
+async function completeLaunchGatedOauthCallback(
+  providerCase: LaunchGatedDirectOkouCase,
+  state: string,
+): Promise<URL> {
+  const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
+  const callback = await app.request(
+    `${OKOU_API_ORIGIN}/api/connectors/${providerCase.connectorSlug}/callback?${new URLSearchParams(
+      {
+        code: `${providerCase.connectorSlug}-authorization-code`,
+        state,
+        ...providerCase.callbackQuery,
+      },
+    )}`,
+    { headers: { "x-vm0-web-origin": "https://okou.ai" } },
+  );
+
+  expect(callback.status).toBe(307);
+  return new URL(callback.headers.get("location") ?? "");
 }
 
 async function rejectProviderAuthorization(
@@ -356,8 +909,8 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
       expect(response.status).toBe(200);
       const authorizationUrl = await authorizationUrlFromResponse(response);
       expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-        connectorSlug === "slack"
-          ? `${WEB_ORIGIN}/api/connectors/slack/callback`
+        connectorSlug === "github"
+          ? "https://app.vm0.ai/connectors/github/callback"
           : `https://app.${publicBrand === "okou" ? "okou" : "vm0"}.ai/connectors/google-maps/callback`,
       );
       const state = authorizationUrl.searchParams.get("state") ?? "";
@@ -387,9 +940,9 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
     expect(okou.location.origin).toBe("https://app.okou.ai");
     expect(okou.location.pathname).toBe("/connector/error");
 
-    const legacyCallback = await callbackLocation("okou", "slack");
-    expect(legacyCallback.state).toMatch(/^okou\.[0-9a-f]{64}$/u);
-    expect(legacyCallback.location.origin).toBe("https://app.okou.ai");
+    const notDirectReady = await callbackLocation("okou", "github");
+    expect(notDirectReady.state).toMatch(/^okou\.[0-9a-f]{64}$/u);
+    expect(notDirectReady.location.origin).toBe("https://app.okou.ai");
 
     const vm0 = await callbackLocation("vm0");
     expect(vm0.state).toMatch(/^[0-9a-f]{64}$/u);
@@ -913,6 +1466,120 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
     await rejectProviderAuthorization(authorizationUrl);
   });
 
+  it.each(LAUNCH_GATED_DIRECT_OKOU_CASES)(
+    "uses the direct Okou App callback for $label and reuses its exact redirect URI",
+    async (providerCase) => {
+      const tokenBodies: URLSearchParams[] = [];
+      server.use(
+        http.post(providerCase.tokenUrl, async ({ request }) => {
+          tokenBodies.push(
+            launchGatedTokenRequestParams(providerCase, await request.text()),
+          );
+          return HttpResponse.json(providerCase.tokenResponse);
+        }),
+      );
+      providerCase.mockUserInfo?.();
+      mockEnv("APP_URL", "https://app.vm0.ai");
+      mockAuthenticatedSession();
+
+      const response = await requestOauthStart(providerCase.connectorSlug, {
+        callbackTarget: "app",
+        headers: authHeaders(),
+        origin: OKOU_API_ORIGIN,
+      });
+
+      expect(response.status).toBe(200);
+      const authorizationUrl = await authorizationUrlFromResponse(response);
+      expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
+        providerCase.authorizationEndpoint,
+      );
+      expect(authorizationUrl.searchParams.get("client_id")).toBe(
+        launchGatedClientId(providerCase.connectorSlug),
+      );
+      const redirectUri = authorizationUrl.searchParams.get("redirect_uri");
+      expect(redirectUri).toBe(
+        `https://app.okou.ai/connectors/${providerCase.connectorSlug}/callback`,
+      );
+      // A `null` expectation proves the non-PKCE providers still send no
+      // challenge and no verifier.
+      const pkceValue = expect.stringMatching(/^[A-Za-z0-9_-]+$/u);
+      const expectedCodeChallenge =
+        providerCase.pkce === true ? pkceValue : null;
+      const expectedCodeChallengeMethod =
+        providerCase.pkce === true ? "S256" : null;
+      expect(authorizationUrl.searchParams.get("code_challenge")).toStrictEqual(
+        expectedCodeChallenge,
+      );
+      expect(authorizationUrl.searchParams.get("code_challenge_method")).toBe(
+        expectedCodeChallengeMethod,
+      );
+      const state = expectOkouOauthState(authorizationUrl);
+
+      const location = await completeLaunchGatedOauthCallback(
+        providerCase,
+        state,
+      );
+
+      expect(location.origin).toBe("https://app.okou.ai");
+      expect(location.pathname).toBe("/connector/success");
+      // A `null` expectation also proves Garmin Connect still replays no
+      // redirect URI on its token request.
+      const expectedTokenRedirectUri =
+        providerCase.omitsTokenRedirectUri === true ? null : redirectUri;
+      const expectedCodeVerifier =
+        providerCase.pkce === true ? pkceValue : null;
+      expect(tokenBodies).toHaveLength(1);
+      expect(tokenBodies[0]?.get("redirect_uri")).toBe(
+        expectedTokenRedirectUri,
+      );
+      expect(tokenBodies[0]?.get("code_verifier")).toStrictEqual(
+        expectedCodeVerifier,
+      );
+    },
+  );
+
+  it.each(LAUNCH_GATED_DIRECT_OKOU_CONNECTOR_SLUGS)(
+    "keeps the VM0 App callback for %s",
+    async (connectorSlug) => {
+      mockEnv("APP_URL", "https://app.vm0.ai");
+      mockAuthenticatedSession();
+
+      const response = await requestOauthStart(connectorSlug, {
+        callbackTarget: "app",
+        headers: authHeaders(),
+        origin: API_ORIGIN,
+      });
+
+      expect(response.status).toBe(200);
+      const authorizationUrl = await authorizationUrlFromResponse(response);
+      expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+        `https://app.vm0.ai/connectors/${connectorSlug}/callback`,
+      );
+      expectOauthState(authorizationUrl);
+      await rejectProviderAuthorization(authorizationUrl);
+    },
+  );
+
+  it.each(LAUNCH_GATED_DIRECT_OKOU_CONNECTOR_SLUGS)(
+    "keeps an omitted %s callback target on the existing Web callback",
+    async (connectorSlug) => {
+      mockAuthenticatedSession();
+
+      const response = await requestOauthStart(connectorSlug, {
+        headers: authHeaders(),
+        origin: OKOU_API_ORIGIN,
+      });
+
+      expect(response.status).toBe(200);
+      const authorizationUrl = await authorizationUrlFromResponse(response);
+      expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+        `${WEB_ORIGIN}/api/connectors/${connectorSlug}/callback`,
+      );
+      expectOkouOauthState(authorizationUrl);
+      await rejectProviderAuthorization(authorizationUrl);
+    },
+  );
+
   it("keeps an Okou start on the VM0 App callback when the provider is not ready", async () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
     mockAuthenticatedSession();
@@ -1039,7 +1706,7 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
     await rejectProviderAuthorization(authorizationUrl);
   });
 
-  it("keeps denylisted callbacks on the legacy path", async () => {
+  it("uses the direct Okou App callback for Slack", async () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
     mockAuthenticatedSession();
 
@@ -1052,9 +1719,28 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
     expect(response.status).toBe(200);
     const authorizationUrl = await authorizationUrlFromResponse(response);
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-      `${WEB_ORIGIN}/api/connectors/slack/callback`,
+      "https://app.okou.ai/connectors/slack/callback",
     );
     expectOkouOauthState(authorizationUrl);
+    await rejectProviderAuthorization(authorizationUrl);
+  });
+
+  it("keeps the VM0 App callback for Slack", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockAuthenticatedSession();
+
+    const response = await requestOauthStart("slack", {
+      headers: authHeaders(),
+      origin: API_ORIGIN,
+      callbackTarget: "app",
+    });
+
+    expect(response.status).toBe(200);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      "https://app.vm0.ai/connectors/slack/callback",
+    );
+    expectOauthState(authorizationUrl);
     await rejectProviderAuthorization(authorizationUrl);
   });
 

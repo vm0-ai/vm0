@@ -196,9 +196,9 @@ const SLACK_APP_INTERNAL_API_URL = "https://api.vm0.test";
 
 type SlackSignatureHeaders = Record<string, string>;
 type SlackIngressPath =
-  | "/api/zero/slack/commands"
-  | "/api/zero/slack/events"
-  | "/api/zero/slack/interactive";
+  | "/api/webhooks/slack/commands"
+  | "/api/webhooks/slack/events"
+  | "/api/webhooks/slack/interactive";
 type SlackIngressStatus = 200 | 400 | 401 | 500 | 503;
 type SlackDownloadStatus = 200 | 400 | 401 | 404 | 413 | 502;
 type AgentPhoneWebhookStatus = 200 | 400 | 401 | 404;
@@ -252,7 +252,6 @@ interface SlackCommandRequest {
   readonly teamId: string;
   readonly userId: string;
   readonly text: string;
-  readonly command?: "/okou" | "/zero";
   readonly channelId?: string;
   readonly triggerId?: string;
   readonly publicBrand?: PublicBrand;
@@ -287,7 +286,7 @@ function slackCommandRequestBody(args: SlackCommandRequest): string {
     channel_name: "general",
     user_id: args.userId,
     user_name: "bdduser",
-    command: args.command ?? "/okou",
+    command: "/okou",
     text: args.text,
     response_url: "https://hooks.slack.com/commands/bdd/response",
     trigger_id: args.triggerId ?? "trigger-bdd",
@@ -1119,7 +1118,7 @@ export function createBddIntegrationApi(context: TestContext) {
       const response = await accept(
         requestRawSlackIngress(
           context,
-          "/api/zero/slack/events",
+          "/api/webhooks/slack/events",
           body,
           signedSlackHeaders(body),
           publicBrand,
@@ -1134,7 +1133,7 @@ export function createBddIntegrationApi(context: TestContext) {
       const response = await accept(
         requestRawSlackIngress(
           context,
-          "/api/zero/slack/commands",
+          "/api/webhooks/slack/commands",
           body,
           signedSlackHeaders(body),
           args.publicBrand ?? "okou",
@@ -1154,7 +1153,7 @@ export function createBddIntegrationApi(context: TestContext) {
       const response = await accept(
         requestRawSlackIngress(
           context,
-          "/api/zero/slack/interactive",
+          "/api/webhooks/slack/interactive",
           body,
           signedSlackHeaders(body),
           publicBrand,
@@ -1301,7 +1300,7 @@ export function createBddIntegrationApi(context: TestContext) {
       return await accept(
         requestRawSlackIngress(
           context,
-          "/api/zero/slack/events",
+          "/api/webhooks/slack/events",
           body,
           headers,
           publicBrand,
@@ -1319,7 +1318,7 @@ export function createBddIntegrationApi(context: TestContext) {
       return await accept(
         requestRawSlackIngress(
           context,
-          "/api/zero/slack/commands",
+          "/api/webhooks/slack/commands",
           body,
           headers,
           publicBrand,
@@ -1337,7 +1336,7 @@ export function createBddIntegrationApi(context: TestContext) {
       return await accept(
         requestRawSlackIngress(
           context,
-          "/api/zero/slack/interactive",
+          "/api/webhooks/slack/interactive",
           body,
           headers,
           publicBrand,

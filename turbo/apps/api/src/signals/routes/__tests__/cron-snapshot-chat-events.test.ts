@@ -43,7 +43,7 @@ const DUPLICATE_EVENT_ID_WARNING =
 const SNAPSHOT_COMPLETED_MESSAGE = "Completed chat event snapshot";
 const SNAPSHOT_COMPLETED_TYPE = "chat_event_snapshot_completed";
 const OBJECT_KEY_PATTERN =
-  /^chat-events\/([0-9a-f-]{36})\/(\d+)-([0-9a-f]{64})\.ndjson\.gz$/;
+  /^chat-events\/([0-9a-f-]{36})\/(\d+)-r1-([0-9a-f]{64})\.ndjson\.gz$/;
 
 type RecordedPut = RecordedChatEventPut;
 

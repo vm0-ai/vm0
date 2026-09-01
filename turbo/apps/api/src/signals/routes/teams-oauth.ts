@@ -166,19 +166,18 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
 }
 
 /**
- * `api.vm0.ai` and `/api/zero/**` retire together, so the VM0 brand keeps the
- * legacy path. Only the Okou brand moves to the canonical namespace. Both
- * values are already registered in the Microsoft app registration, so this
- * ships with no provider-console change.
+ * Both brands send Microsoft the canonical path; the brand decides the host
+ * only. The VM0 brand used to keep `/api/zero/teams/oauth/callback` so that
+ * `api.vm0.ai` and `/api/zero/**` would retire together, and #30667 unpicked
+ * that coupling: the Microsoft app registration already holds the canonical
+ * path on both brand hosts, so unifying it needs no provider-console change.
  *
  * Project here rather than in `getOAuthApiOrigin`, whose other caller builds
  * the built-in connector callback that is already registered with every
  * provider.
  */
 function callbackRedirectUri(origin: string, publicBrand: PublicBrand): string {
-  return publicBrand === "okou"
-    ? `${apiUrlForPublicBrand(origin, "okou")}/api/integrations/teams/oauth/callback`
-    : `${apiUrlForPublicBrand(origin, "vm0")}/api/zero/teams/oauth/callback`;
+  return `${apiUrlForPublicBrand(origin, publicBrand)}/api/integrations/teams/oauth/callback`;
 }
 
 function microsoftCredentials(): {

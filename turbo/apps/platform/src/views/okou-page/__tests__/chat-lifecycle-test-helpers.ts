@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { expect, vi, type Mock } from "vitest";
+import { browserContract } from "@okouai/api-contracts/contracts/browser";
 import {
   chatThreadByIdContract,
   chatThreadArtifactsContract,
@@ -307,6 +308,24 @@ export function makeEvent(
   };
 }
 
+function mockNoBrowserSession(): void {
+  context.mocks.api(browserContract.get, ({ respond }) => {
+    return respond(404, {
+      error: {
+        code: "BROWSER_NOT_FOUND",
+        message: "Managed browser not found",
+      },
+    });
+  });
+}
+
+export function mockChatLifecycleWithoutBrowserSession(
+  options?: Parameters<typeof mockChatLifecycle>[1],
+): ReturnType<typeof mockChatLifecycle> {
+  mockNoBrowserSession();
+  return mockChatLifecycle(context, options);
+}
+
 export function mockKeyboardNavigationThreads({
   currentTitle = "Current keyboard thread",
   currentDetailTitle = currentTitle,
@@ -314,6 +333,7 @@ export function mockKeyboardNavigationThreads({
   currentTitle?: string;
   currentDetailTitle?: string | null;
 } = {}): void {
+  mockNoBrowserSession();
   const threadFixtures = [
     {
       id: KEYBOARD_PREV_THREAD_ID,

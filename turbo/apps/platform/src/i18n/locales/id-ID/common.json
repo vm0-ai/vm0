@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Galat Codex",
       "commandStatus": "Perintah {{status}}",
+      "contextCompaction": "Konteks dipadatkan",
       "error": "Galat: {{error}}",
       "fileChangeKind": "ubah",
       "fileOperationCompleted": "Operasi file selesai",
@@ -27,6 +28,12 @@
       },
       "status": "Status: {{status}}",
       "statusDetail": "status: {{status}}",
+      "subAgentActivity": {
+        "completed": "Subagen selesai",
+        "interacted": "Berinteraksi dengan subagen",
+        "interrupted": "Subagen dihentikan",
+        "started": "Subagen dimulai"
+      },
       "turnFailed": "Giliran gagal",
       "turnStatus": "Giliran {{status}}",
       "warning": "[warning] {{message}}",
@@ -363,51 +370,6 @@
     }
   },
   "appShell": {
-    "browserUpgrade": {
-      "browser": {
-        "action": "Perbarui browser",
-        "description": "{{assistantName}} tidak mendukung versi browser Anda saat ini. Perbarui browser Anda untuk melanjutkan.",
-        "title": "Perbarui browser Anda untuk melanjutkan"
-      },
-      "chrome": {
-        "action": "Perbarui Chrome",
-        "description": "{{assistantName}} tidak mendukung versi Chrome Anda saat ini. Perbarui Chrome untuk melanjutkan.",
-        "title": "Perbarui Chrome untuk melanjutkan"
-      },
-      "chromium": {
-        "action": "Perbarui Chromium",
-        "description": "{{assistantName}} tidak mendukung versi Chromium Anda saat ini. Perbarui Chromium untuk melanjutkan.",
-        "title": "Perbarui Chromium untuk melanjutkan"
-      },
-      "ios": {
-        "action": "Perbarui iOS",
-        "description": "{{assistantName}} tidak mendukung versi iOS Anda saat ini. Perbarui iOS untuk melanjutkan.",
-        "title": "Perbarui iOS untuk melanjutkan"
-      },
-      "safari": {
-        "action": "Perbarui Safari",
-        "description": "{{assistantName}} tidak mendukung versi Safari Anda saat ini. Perbarui Safari untuk melanjutkan.",
-        "title": "Perbarui Safari untuk melanjutkan"
-      }
-    },
-    "loading": {
-      "ariaLabel": "Memuat ruang kerja Anda",
-      "messages": {
-        "almostThere": "Hampir sampai...",
-        "brewingIdeas": "Sedang meracik ide...",
-        "connectingDots": "Sedang menghubungkan titik-titik...",
-        "gettingReady": "Sedang menyiapkan semuanya...",
-        "loadingWorkspace": "Memuat ruang kerja Anda...",
-        "spinningTeam": "Sedang menyiapkan tim...",
-        "tuningInstruments": "Sedang menyetel instrumen...",
-        "warmingNeurons": "Sedang memanaskan neuron..."
-      }
-    },
-    "logoAlt": "{{brandName}}",
-    "metadata": {
-      "description": "{{assistantName}} adalah rekan kerja AI Anda dari {{brandName}}. Kirim pesan ke {{assistantName}} atau chat di web — riset, email, dokumen, Slack, GitHub, Notion, dan 100+ alat.",
-      "title": "{{assistantName}} — Rekan kerja AI Anda dari {{brandName}}"
-    },
     "shortcutHelp": {
       "close": "Tutup pintasan keyboard",
       "description": "Pintasan yang tersedia di halaman ini",
@@ -654,6 +616,7 @@
       "importedSlides_one": "{{count}} slide",
       "importedSlides_other": "{{count}} slide",
       "multiAccent": "Multi-aksen",
+      "needPro": "Perlu Pro",
       "nextSlide": "Pratinjau slide berikutnya",
       "noMatches": "Tidak ada hasil",
       "placeholder": "placeholder pratinjau website {{title}}",
@@ -706,6 +669,7 @@
       "tryDifferentSearch": "Coba pencarian lain.",
       "use": "Gunakan",
       "useThisTemplate": "Gunakan template ini",
+      "viewVideoPlans": "Lihat paket untuk template video {{title}}",
       "visibility": {
         "change": "Ubah",
         "changeLabel": "Ubah visibilitas templat",
@@ -1931,6 +1895,20 @@
       "unsupportedIntelMac": "Memerlukan Mac Apple silicon",
       "yourComputer": "Komputer Anda"
     },
+    "connectorAccountSwitch": {
+      "accountFallback": "Akun konektor",
+      "actionFailed": "Tidak dapat beralih akun. Coba lagi.",
+      "customConnector": "Konektor khusus",
+      "loadFailed": "Akun konektor ini tidak dapat dimuat.",
+      "reconnectRequired": "Perlu menghubungkan kembali. Proses berikutnya mungkin menggunakan cadangan yang ada.",
+      "retry": "Coba lagi",
+      "selected": "Beralih ke {{account}}",
+      "switch": "Beralih",
+      "switching": "Beralih...",
+      "title": "Beralih ke {{account}}?",
+      "unavailableDescription": "Akun ini tidak ada atau tidak tersedia untuk konektor ini.",
+      "unavailableTitle": "Akun tidak tersedia"
+    },
     "connectors": {
       "accountForThread": "Akun untuk utas ini",
       "add": "Tambahkan {{connectorName}}",
@@ -1967,6 +1945,7 @@
         "capacityTitle": "Model {{framework}} sedang sibuk",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "Lanjutkan",
         "resetAndTryAgain": "Atur ulang dan coba lagi",
         "resetsAt": "Direset pada {{time}}",
         "selectModel": "Ganti model",
@@ -2194,7 +2173,6 @@
       "loadingGoal": "Memuat tujuan...",
       "message_one": "{{count}} pesan",
       "message_other": "{{count}} pesan",
-      "morningBrief": "Brief Pagi",
       "openGoalDetails": "Buka detail tujuan",
       "pendingAutomationEvent": "Peristiwa otomatisasi tertunda",
       "queuedMessage": "Pesan dalam antrean",
@@ -3299,7 +3277,8 @@
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "Permintaan gagal"
+      "requestFailed": "Permintaan gagal",
+      "sharedDatabaseUnavailable": "Aplikasi mengalami masalah. Tunggu sebentar, lalu segarkan halaman untuk mencoba lagi."
     },
     "realtime": {
       "degraded": "Pembaruan langsung mengalami masalah. Segarkan halaman.",
@@ -6150,7 +6129,7 @@
       "browse": "Jelajahi yang Resmi",
       "chooseValue": "Pilih nilai",
       "copySucceededUninstallFailed": "Salinan sudah siap, tetapi Workflow Resmi asli tidak dapat dihapus instalasinya.",
-      "description": "Instal workflow terkelola yang dipelihara oleh vm0.",
+      "description": "Instal workflow terkelola yang dipelihara oleh Okou Official Team.",
       "empty": "Tidak ada Workflow Resmi yang tersedia.",
       "includedAutomations": "Automasi yang disertakan",
       "install": "Instal",

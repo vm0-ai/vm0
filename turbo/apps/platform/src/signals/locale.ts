@@ -10,28 +10,13 @@ import {
   loadInitialLocaleResources,
 } from "../i18n/index.ts";
 import { DEFAULT_LOCALE, type SupportedLocale } from "../i18n/resources.ts";
-import {
-  localeStorageKey,
-  resolveDocumentLocale,
-} from "../i18n/locale-storage.ts";
-import { applyDocumentLocaleCopy } from "../i18n/document-copy.ts";
 import { clerk$ } from "./auth.ts";
-import { localStorageSignals } from "./external/local-storage.ts";
 import {
   updateUserPreference$,
   userPreferences$,
 } from "./okou-page/settings/user-preferences.ts";
 
 const internalLocale$ = state<SupportedLocale>(DEFAULT_LOCALE);
-
-const writeCachedLocale$ = command(
-  ({ set }, orgId: string, locale: SupportedLocale) => {
-    const { set$: setCachedLocale$ } = localStorageSignals(
-      localeStorageKey(orgId),
-    );
-    set(setCachedLocale$, locale);
-  },
-);
 
 export const locale$ = computed((get) => {
   return get(internalLocale$);
@@ -43,8 +28,8 @@ export const availableLocalePreferences$ = computed(async (get) => {
 });
 
 export const initLocale$ = command(
-  async ({ set }, signal: AbortSignal): Promise<SupportedLocale | null> => {
-    const requestedLocale = resolveDocumentLocale();
+  async ({ set }, signal: AbortSignal): Promise<void> => {
+    const requestedLocale = DEFAULT_LOCALE;
     const [initial, clerkLocalization] = await Promise.all([
       loadInitialLocaleResources(requestedLocale, signal),
       set(loadClerkLocalization$, requestedLocale, signal),
@@ -53,10 +38,8 @@ export const initLocale$ = command(
     const locale = await initializeI18nWithResources(initial, signal);
     signal.throwIfAborted();
     set(cacheClerkLocalization$, requestedLocale, clerkLocalization);
-    applyDocumentLocaleCopy();
     set(internalLocale$, locale);
     document.documentElement.lang = locale;
-    return locale === requestedLocale ? null : requestedLocale;
   },
 );
 
@@ -70,32 +53,21 @@ export const setLocale$ = command(
     await changeI18nLanguageWithResources(locale, resources, signal);
     signal.throwIfAborted();
     set(cacheClerkLocalization$, locale, clerkLocalization);
-    applyDocumentLocaleCopy();
     set(internalLocale$, locale);
     document.documentElement.lang = locale;
   },
 );
 
 const applyLocalePreference$ = command(
-  async (
-    { get, set },
-    orgId: string,
-    locale: SupportedLocale,
-    signal: AbortSignal,
-  ) => {
+  async ({ get, set }, locale: SupportedLocale, signal: AbortSignal) => {
     if (get(internalLocale$) !== locale) {
       await set(setLocale$, locale, signal);
     }
-    set(writeCachedLocale$, orgId, locale);
   },
 );
 
 export const syncLocalePreference$ = command(
-  async (
-    { get, set },
-    initialLocaleLoadFailure: SupportedLocale | null,
-    signal: AbortSignal,
-  ) => {
+  async ({ get, set }, signal: AbortSignal) => {
     const clerk = await get(clerk$);
     signal.throwIfAborted();
     if (!clerk.user || !clerk.organization) {
@@ -105,21 +77,12 @@ export const syncLocalePreference$ = command(
     const preferences = await get(userPreferences$);
     signal.throwIfAborted();
     const supportedLocales = preferences.supportedLocales;
-    const preferredLocale =
-      preferences.locale ?? initialLocaleLoadFailure ?? resolveDocumentLocale();
+    const preferredLocale = preferences.locale ?? DEFAULT_LOCALE;
     const locale = supportedLocales.includes(preferredLocale)
       ? preferredLocale
       : DEFAULT_LOCALE;
 
-    // This completes the cold-start presentation fallback in
-    // loadInitialLocaleResources. Retrying the same failed asset pair here
-    // would reject bootstrap after English was already selected. Keep the
-    // preference intact so a later entrance or explicit switch can retry.
-    // Remove with vm0-ai/vm0#29610 after its zero-error Sentry gate is met.
-    if (locale === initialLocaleLoadFailure) {
-      return;
-    }
-    await set(applyLocalePreference$, clerk.organization.id, locale, signal);
+    await set(applyLocalePreference$, locale, signal);
 
     if (preferences.locale === null) {
       await set(updateUserPreference$, { locale }, signal);
@@ -141,7 +104,7 @@ export const updateLocalePreference$ = command(
       throw new Error(`Unsupported locale: ${locale}`);
     }
 
-    await set(applyLocalePreference$, clerk.organization.id, locale, signal);
+    await set(applyLocalePreference$, locale, signal);
     await set(updateUserPreference$, { locale }, signal);
   },
 );

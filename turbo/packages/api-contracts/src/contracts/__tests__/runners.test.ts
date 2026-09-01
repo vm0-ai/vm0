@@ -18,6 +18,7 @@ import {
   jobSchema,
   piApiFirstTurnConfigSchema,
   piApiFirstTurnManifestSchema,
+  piModelConfigSchema,
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
@@ -269,6 +270,7 @@ describe("runner claim response contract", () => {
       modelUsageProvider: "fixture-model",
       platformEnvironment: { OKOU_AGENT_ID: "fixture-agent-id" },
     });
+    expect(context.environment).not.toHaveProperty("OKOU_AGENT_ID");
     expect(context).not.toHaveProperty("experimentalProfile");
   });
 
@@ -284,30 +286,11 @@ describe("runner claim response contract", () => {
     expect(context).not.toHaveProperty("connectorPermissionBaseline");
   });
 
-  it("keeps old API and old runner claim shapes compatible", () => {
-    const current = executionContextSchema.parse(
-      loadRunnerClaimResponseFixture(),
-    );
-    const previousApiResponse: Record<string, unknown> = { ...current };
-    Reflect.deleteProperty(previousApiResponse, "platformEnvironment");
-    expect(
-      executionContextSchema.parse(previousApiResponse),
-    ).not.toHaveProperty("platformEnvironment");
-
-    const previousRunnerSchema = z
-      .object(executionContextSchema.shape)
-      .omit({ platformEnvironment: true });
-    expect(previousRunnerSchema.parse(current)).not.toHaveProperty(
-      "platformEnvironment",
-    );
-  });
-
-  it("round-trips the optional trusted environment through stored contexts", () => {
+  it("round-trips canonical trusted environments through stored contexts", () => {
     const storedContext = storedExecutionContextSchema.parse({
       storageMounts: [],
       connectorRuntimeTargets: [],
       environment: {
-        OKOU_AGENT_ID: "stored-agent-id",
         USER_VALUE: "user-value",
       },
       platformEnvironment: { OKOU_AGENT_ID: "stored-agent-id" },
@@ -323,16 +306,15 @@ describe("runner claim response contract", () => {
     expect(roundTripped.platformEnvironment).toStrictEqual({
       OKOU_AGENT_ID: "stored-agent-id",
     });
-    expect(roundTripped.environment).toMatchObject({
-      OKOU_AGENT_ID: "stored-agent-id",
+    expect(roundTripped.environment).toStrictEqual({
+      USER_VALUE: "user-value",
     });
 
-    const previousStoredContextSchema = z
-      .object(storedExecutionContextSchema.shape)
-      .omit({ platformEnvironment: true });
-    expect(previousStoredContextSchema.parse(storedContext)).not.toHaveProperty(
-      "platformEnvironment",
-    );
+    const emptyTrustedContext = compatibleStoredExecutionContextSchema.parse({
+      ...storedContext,
+      platformEnvironment: {},
+    });
+    expect(emptyTrustedContext.platformEnvironment).toStrictEqual({});
   });
 });
 
@@ -342,6 +324,7 @@ describe("Pi sandbox execution contract", () => {
     storageMounts: [],
     connectorRuntimeTargets: [],
     environment: null,
+    platformEnvironment: {},
     secretValueEnvironmentKeys: null,
     resumeSession: null,
     encryptedSecrets: null,
@@ -395,6 +378,40 @@ describe("Pi sandbox execution contract", () => {
     rawSize: 1024,
   };
 
+  it("accepts optional Terra runtime policy while preserving legacy configs", () => {
+    expect(piModelConfigSchema.parse(piStoredContext.piModelConfig)).toEqual(
+      piStoredContext.piModelConfig,
+    );
+    expect(
+      piModelConfigSchema.parse({
+        provider: "openai",
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-5.6-terra",
+        api: "openai-responses",
+        thinkingLevel: "low",
+        serviceTier: "priority",
+        apiKeyEnv: "OPENAI_API_KEY",
+        credentialSecretName: "OPENAI_API_KEY",
+      }),
+    ).toMatchObject({
+      api: "openai-responses",
+      thinkingLevel: "low",
+      serviceTier: "priority",
+    });
+    expect(
+      piModelConfigSchema.safeParse({
+        provider: "openai",
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-5.6-terra",
+        api: "openai-responses",
+        thinkingLevel: "low",
+        serviceTier: "fast",
+        apiKeyEnv: "OPENAI_API_KEY",
+        credentialSecretName: "OPENAI_API_KEY",
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts manifest v1 as the implicit start-at-1 contract", () => {
     const manifest = piApiFirstTurnManifestSchema.parse({
       schemaVersion: 1,
@@ -431,6 +448,81 @@ describe("Pi sandbox execution contract", () => {
       sandboxEventSequenceStart,
     });
     expect(config.sandboxEventSequenceStart).toBe(1);
+    expect(config).not.toHaveProperty("ownershipTransfer");
+  });
+
+  it.each([
+    "sandbox-first",
+    "pending-tool-continuation",
+    "settled-session-continuation",
+  ] as const)("represents %s as one strict ownership-transfer mode", (mode) => {
+    const manifest = piApiFirstTurnManifestSchema.parse({
+      schemaVersion: 3,
+      outcome: "ownership-transfer",
+      mode,
+      baseSession: { sessionId: piSessionId, sha256: null },
+      session: handoffSession,
+      sandboxEventSequenceStart: 4,
+    });
+
+    expect(manifest).toMatchObject({
+      schemaVersion: 3,
+      outcome: "ownership-transfer",
+      mode,
+      sandboxEventSequenceStart: 4,
+    });
+  });
+
+  it("keeps V3 capability additive and fail-closed", () => {
+    const configured = piApiFirstTurnConfigSchema.parse({
+      ...piStoredContext.piLaunchConfig.apiFirstTurn,
+      ownershipTransfer: { schemaVersion: 1 },
+    });
+
+    expect(configured.ownershipTransfer).toStrictEqual({ schemaVersion: 1 });
+    expect(
+      piApiFirstTurnConfigSchema.safeParse({
+        ...piStoredContext.piLaunchConfig.apiFirstTurn,
+        ownershipTransfer: { schemaVersion: 2 },
+      }).success,
+    ).toBe(false);
+    expect(
+      piApiFirstTurnConfigSchema.safeParse({
+        ...piStoredContext.piLaunchConfig.apiFirstTurn,
+        ownershipTransfer: { schemaVersion: 1, futureField: true },
+      }).success,
+    ).toBe(false);
+  });
+
+  it.each([
+    {
+      name: "legacy outcome",
+      overrides: { outcome: "handoff" },
+    },
+    {
+      name: "unknown mode",
+      overrides: { mode: "ambiguous-continuation" },
+    },
+    {
+      name: "mode-specific prompt replay field",
+      overrides: { prompt: "must not be encoded in the transfer" },
+    },
+    {
+      name: "future manifest version",
+      overrides: { schemaVersion: 4 },
+    },
+  ])("rejects a V3 manifest with $name", ({ overrides }) => {
+    expect(
+      piApiFirstTurnManifestSchema.safeParse({
+        schemaVersion: 3,
+        outcome: "ownership-transfer",
+        mode: "sandbox-first",
+        baseSession: { sessionId: piSessionId, sha256: null },
+        session: handoffSession,
+        sandboxEventSequenceStart: 1,
+        ...overrides,
+      }).success,
+    ).toBe(false);
   });
 
   it.each([0, -1, 1.5, MAX_EVENT_SEQUENCE_NUMBER + 1])(
@@ -440,6 +532,16 @@ describe("Pi sandbox execution contract", () => {
         piApiFirstTurnManifestSchema.safeParse({
           schemaVersion: 2,
           outcome: "handoff",
+          baseSession: { sessionId: piSessionId, sha256: null },
+          session: handoffSession,
+          sandboxEventSequenceStart,
+        }).success,
+      ).toBe(false);
+      expect(
+        piApiFirstTurnManifestSchema.safeParse({
+          schemaVersion: 3,
+          outcome: "ownership-transfer",
+          mode: "settled-session-continuation",
           baseSession: { sessionId: piSessionId, sha256: null },
           session: handoffSession,
           sandboxEventSequenceStart,
@@ -823,6 +925,7 @@ describe("stored connector permission baseline contract", () => {
     storageMounts: [],
     connectorRuntimeTargets: [],
     environment: null,
+    platformEnvironment: {},
     secretValueEnvironmentKeys: null,
     resumeSession: null,
     encryptedSecrets: null,
@@ -968,6 +1071,7 @@ describe("runner storage manifest contract", () => {
     storageMounts: [],
     connectorRuntimeTargets: [],
     environment: null,
+    platformEnvironment: {},
     secretValueEnvironmentKeys: null,
     resumeSession: null,
     encryptedSecrets: null,

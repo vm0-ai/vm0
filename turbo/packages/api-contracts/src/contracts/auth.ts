@@ -20,6 +20,7 @@ export const authContract = c.router({
       200: z.object({
         userId: z.string(),
         email: z.string(),
+        orgId: z.string().nullable(),
       }),
       401: apiErrorSchema,
       403: apiErrorSchema,

@@ -15,6 +15,7 @@ import {
 import { sql } from "drizzle-orm";
 import { agents } from "./agent";
 import { chatThreads } from "./chat-thread";
+import { connectors } from "./connector";
 import type {
   OfficialWorkflowParameterBindings,
   WorkflowAutomationEventConfig,
@@ -237,6 +238,12 @@ export const workflowAutomations = pgTable(
       length: 64,
     }).$type<WorkflowAutomationEventType>(),
     eventConfig: jsonb("event_config").$type<WorkflowAutomationEventConfig>(),
+    eventConnectorId: uuid("event_connector_id").references(
+      () => {
+        return connectors.id;
+      },
+      { onDelete: "set null" },
+    ),
     scheduleType: varchar("schedule_type", {
       length: 16,
     }).$type<WorkflowScheduleType>(),
@@ -269,6 +276,9 @@ export const workflowAutomations = pgTable(
     return [
       index("idx_workflow_automations_workflow").on(table.workflowId),
       index("idx_workflow_automations_org").on(table.orgId),
+      index("idx_workflow_automations_event_connector").on(
+        table.eventConnectorId,
+      ),
       // Partial index for the time poller: enabled automations with a due run.
       index("idx_workflow_automations_next_run")
         .on(table.nextRunAt)

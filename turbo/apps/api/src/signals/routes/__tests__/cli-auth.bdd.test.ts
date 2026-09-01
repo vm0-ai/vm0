@@ -314,6 +314,7 @@ describe("CLI-TEST: test-token provisioning", () => {
     expect(me.body).toStrictEqual({
       userId: actor.userId,
       email: actor.email,
+      orgId: actor.orgId,
     });
 
     const billing = await authDevice.readBillingStatus(actor);

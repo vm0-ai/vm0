@@ -563,15 +563,6 @@ const userMessageInputPartSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
-      // Phase-A historical-read fallback for stored Chat documents. Phase B
-      // may remove it only after #30264's released zero-traffic gate and a
-      // controller-approved historical readability contraction.
-      type: z.literal("morning_brief"),
-      briefDate: z.string(),
-    })
-    .strict(),
-  z
-    .object({
       type: z.literal("file"),
       fileId: z.string().min(1),
       filenameSnapshot: z.string().min(1),
@@ -634,8 +625,7 @@ const userMessageDocumentSchema = z
               return (
                 part.type === "source" ||
                 part.type === "automation" ||
-                part.type === "goal" ||
-                part.type === "morning_brief"
+                part.type === "goal"
               );
             }).length <= 1
           );
@@ -668,8 +658,7 @@ const userMessageInputDocumentSchema = z
               return (
                 part.type === "source" ||
                 part.type === "automation" ||
-                part.type === "goal" ||
-                part.type === "morning_brief"
+                part.type === "goal"
               );
             }).length <= 1
           );
@@ -986,18 +975,11 @@ const chatThreadMetadataSchema = z.object({
   title: z.string().nullable(),
   selectedModel: z.string().nullable(),
   serviceTier: chatThreadServiceTierSchema.nullable(),
-  /**
-   * Rolling new app -> old API compatibility for the metadata shortcut. Keep
-   * these fields optional while the older API is serving or remains a rollback
-   * target; remove the optionality only after that rollback window closes. The
-   * app falls back to the event-sourced projection until then. Follow-up:
-   * #29576.
-   */
-  pinnedAt: z.string().nullable().optional(),
-  computerUseHostId: z.string().uuid().nullable().optional(),
-  cloudBrowserEnabled: z.boolean().optional(),
-  selectedVideoModel: z.string().nullable().optional(),
-  selectedImageModel: z.string().nullable().optional(),
+  pinnedAt: z.string().nullable(),
+  computerUseHostId: z.string().uuid().nullable(),
+  cloudBrowserEnabled: z.boolean(),
+  selectedVideoModel: z.string().nullable(),
+  selectedImageModel: z.string().nullable(),
 });
 
 const chatThreadDraftSchema = z
@@ -1740,7 +1722,14 @@ const chatSearchResultSchema = z.object({
   agentName: z.string(),
   matchedMessage: chatSearchMessageSchema,
   matchedRanges: z.array(chatSearchMatchRangeSchema),
+  /**
+   * Deprecated rollout compatibility; always empty. Remove with #30468 after
+   * old web/app builds (up to two days) and pre-change commit-addressed CLI
+   * contexts (up to two hours queued plus two hours executing and bounded
+   * finalization) have drained.
+   */
   contextBefore: z.array(chatSearchMessageSchema),
+  /** @see contextBefore */
   contextAfter: z.array(chatSearchMessageSchema),
 });
 
@@ -1750,8 +1739,7 @@ const chatSearchResultSchema = z.object({
  * query schema below) and chat-message search is a lookup tool, not a bulk
  * export. Callers that hit `hasMore=true` should narrow the query (add
  * `agentId`, `since`, or a more specific `keyword`) rather than paginate. If
- * genuine pagination is ever needed, introduce `nextCursor` here — the
- * contract has no external consumers yet, so adding it later is safe.
+ * genuine pagination is ever needed, introduce `nextCursor` here.
  */
 const chatSearchResponseSchema = z.object({
   results: z.array(chatSearchResultSchema),
@@ -1773,8 +1761,6 @@ export const chatSearchContract = c.router({
       agentId: z.string().uuid().optional(),
       since: z.coerce.number().optional(),
       limit: z.coerce.number().min(1).max(50).default(20),
-      before: z.coerce.number().min(0).max(10).default(0),
-      after: z.coerce.number().min(0).max(10).default(0),
     }),
     responses: {
       200: chatSearchResponseSchema,

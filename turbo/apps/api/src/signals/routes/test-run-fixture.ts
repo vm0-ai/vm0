@@ -64,6 +64,7 @@ const createAgentRunFixture$ = command(
           body: body.data,
           apiStartTime,
           publicBrand: get(publicBrand$),
+          piExecution: false,
           timing,
         };
       },

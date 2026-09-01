@@ -6,9 +6,10 @@ use super::messages::{
     server_request, thread_response, thread_started_notification, turn,
     turn_completed_notification, turn_failed_notification, turn_interrupted_notification,
     turn_started_notification, warning_notification, write_error, write_json_line,
-    write_oversized_delivery_notifications, write_resumed_turn_notifications,
-    write_split_json_line_prefix, write_success, write_turn_completion_notifications,
-    write_turn_notifications, write_turn_start_notifications, write_turn_usage_notifications,
+    write_malformed_thread_item_notification, write_oversized_delivery_notifications,
+    write_resumed_turn_notifications, write_split_json_line_prefix, write_success,
+    write_thread_item_notifications, write_turn_completion_notifications, write_turn_notifications,
+    write_turn_start_notifications, write_turn_usage_notifications,
 };
 use super::persistence::{InputEventContext, persist_input_events, session_rollout_timestamp};
 use super::scenario::Scenario;
@@ -366,6 +367,14 @@ impl AppServerState {
         }
         if self.scenario == Scenario::SecondaryThreadNotifications {
             write_secondary_thread_notifications(output, &thread_id, &turn_id, response_text)?;
+            return Ok(ServerAction::Continue);
+        }
+        if self.scenario == Scenario::RuntimeThreadItems {
+            write_thread_item_notifications(output, &thread_id, &turn_id)?;
+            return Ok(ServerAction::Continue);
+        }
+        if self.scenario == Scenario::RuntimeMalformedThreadItem {
+            write_malformed_thread_item_notification(output, &thread_id, &turn_id)?;
             return Ok(ServerAction::Continue);
         }
         if self.scenario.writes_turn_started_before_control() {

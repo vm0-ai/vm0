@@ -1,16 +1,26 @@
 import { command, type Command } from "ccstate";
 import { createElement } from "react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import type { SupportedLocale } from "../i18n/resources.ts";
 import {
   initAuthRecovery$,
   initClerkRuntime$,
-  setupClerk$,
   watchOrgSwitch$,
 } from "./auth.ts";
+import {
+  type AuthenticatedDaemonOwner,
+  runAuthenticatedDaemons$,
+  setupAuthenticatedBootstrapData$,
+  setupAuthenticatedDaemons$,
+} from "./authenticated-daemons.ts";
 import { initTheme$, syncThemePreferences$ } from "./theme.ts";
+import { initializeAppVersion$ } from "./app-version.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
 import { setRootSignal$ } from "./root-signal.ts";
+import { setApiClientRuntime$ } from "./api-client-runtime.ts";
+import { setAuthenticatedServicesReady$ } from "./auth-context.ts";
+import { prepareSharedDatabaseBridge$ } from "./shared-database-browser.ts";
+import { resolveApiBaseForTarget, resolveOAuthApiBase } from "./api-base.ts";
+import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import {
   initRoutes$,
   detachedNavigateTo$,
@@ -82,11 +92,7 @@ import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupExportPage$ } from "./export-page/export-page-setup.ts";
 import { initSlackOrg$ as handleSlackRedirect$ } from "./okou-page/slack.ts";
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
-import {
-  hideAppSkeleton$,
-  initBootstrapSkeleton$,
-  startSkeletonCycling$,
-} from "./app-skeleton.ts";
+import { hideAppSkeleton$, initBootstrapSkeleton$ } from "./app-skeleton.ts";
 import { setupRedeemCampaignPage$ } from "./redeem-campaign/redeem-campaign-page-setup.ts";
 import { updatePage$ } from "./react-router.ts";
 import { NotFoundPage } from "../views/not-found-page.tsx";
@@ -450,17 +456,27 @@ const setupRoutes$ = command(async ({ set }, signal: AbortSignal) => {
   await set(initRoutes$, ROUTE_CONFIG, signal);
 });
 
-const setupFeatureSwitches$ = command(
+const setupAuthenticatedBootstrap$ = command(
   async (
     { set },
-    initialLocaleLoadFailure: SupportedLocale | null,
+    ownDaemon: AuthenticatedDaemonOwner,
     signal: AbortSignal,
-  ) => {
-    await set(reloadFeatureSwitch$, signal);
-    await set(syncLocalePreference$, initialLocaleLoadFailure, signal);
-    await set(syncThemePreferences$, signal);
+  ): Promise<void> => {
+    const servicesReady = set(setupAuthenticatedDaemons$, ownDaemon, signal);
+    set(setAuthenticatedServicesReady$, servicesReady);
+    await servicesReady;
+    signal.throwIfAborted();
+    ownDaemon(set(runAuthenticatedDaemons$, signal));
+    await set(setupAuthenticatedBootstrapData$, signal);
+    signal.throwIfAborted();
   },
 );
+
+const setupFeatureSwitches$ = command(async ({ set }, signal: AbortSignal) => {
+  await set(reloadFeatureSwitch$, signal);
+  await set(syncLocalePreference$, signal);
+  await set(syncThemePreferences$, signal);
+});
 
 function notificationChatThreadId(data: unknown): string | null {
   if (
@@ -501,15 +517,32 @@ const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
 });
 
 export const bootstrap$ = command(
-  async ({ get, set }, render: () => void, signal: AbortSignal) => {
+  async (
+    { get, set },
+    appVersion: string,
+    render: () => void,
+    ownDaemon: AuthenticatedDaemonOwner,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    set(initializeAppVersion$, appVersion);
     set(initBootstrapPhaseTiming$, signal);
     set(captureInvitationRedirect$);
     set(markBootstrapLocaleInitStarted$);
-    const initialLocaleLoadFailure = await set(initLocale$, signal);
+    await set(initLocale$, signal);
     signal.throwIfAborted();
     set(markBootstrapLocaleInitCompleted$);
     set(initTheme$);
     set(setRootSignal$, signal);
+    const apiBaseUrl = resolveApiBaseForTarget("api");
+    const vercelProtectionBypass =
+      getCapturedPreviewBypassForTarget(apiBaseUrl);
+    set(setApiClientRuntime$, {
+      environment: "app",
+      apiBaseUrl,
+      oauthApiBaseUrl: resolveOAuthApiBase(),
+      ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
+    });
+    ownDaemon(set(prepareSharedDatabaseBridge$, signal));
     set(initClerkRuntime$, signal);
     set(initAuthRecovery$, signal);
     set(initBootstrapSkeleton$);
@@ -517,8 +550,8 @@ export const bootstrap$ = command(
     set(setupLoggers$);
 
     // The cached effective switches already drive the first rendered frame.
-    // Install capture from that same snapshot before setupRouter starts the
-    // authenticated daemons, so their initial Clerk and Ably waits are kept
+    // Install capture from that same snapshot before bootstrap starts the
+    // authenticated services, so their initial Clerk and Ably waits are kept
     // even while remote feature-switch hydration is still pending.
     set(setupConnectionDiagnostics$, signal);
     set(writeConnectionDiagnostic$, {
@@ -531,16 +564,15 @@ export const bootstrap$ = command(
     set(handleSlackRedirect$);
 
     await Promise.all([
+      set(setupAuthenticatedBootstrap$, ownDaemon, signal),
       set(setupRoutes$, signal),
-      set(startSkeletonCycling$, signal),
       set(setupGlobalMethod$, signal),
       set(registerServiceWorker$, signal),
       set(setupNotificationListener$, signal),
 
       set(setupGlobalKeyboardShortcuts$, signal),
-      set(setupClerk$, signal),
       set(watchOrgSwitch$, signal),
-      set(setupFeatureSwitches$, initialLocaleLoadFailure, signal),
+      set(setupFeatureSwitches$, signal),
     ]);
 
     signal.throwIfAborted();

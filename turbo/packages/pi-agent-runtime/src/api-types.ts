@@ -1,4 +1,5 @@
 import type { PiAgentModelConfig } from "./types";
+import type { PiApiFirstTurnOwnership } from "./provider-ownership";
 
 export interface PiPreheatedAgentsFile {
   readonly path: string;
@@ -68,6 +69,14 @@ export interface PiApiFirstTurnArgs {
   readonly appendSystemPrompt: string | null;
   readonly model: PiAgentModelConfig;
   readonly resourceSnapshot: PiPreheatedResourceSnapshot;
+  readonly ownership: PiApiFirstTurnOwnership;
+  /**
+   * Optional durable gate run immediately before the provider transport.
+   * The gate must invoke the marker while it owns its commit boundary.
+   */
+  readonly providerRequestBoundary?: (
+    markProviderRequestMayHaveStarted: () => void,
+  ) => Promise<void>;
 }
 
 export interface PiApiFirstTurnResult {
@@ -78,6 +87,7 @@ export interface PiApiFirstTurnResult {
 
 export interface PiSessionInspection {
   readonly sessionId: string;
+  readonly messageCount: number;
   readonly hasPendingToolCalls: boolean;
   readonly isSettledCheckpoint: boolean;
 }

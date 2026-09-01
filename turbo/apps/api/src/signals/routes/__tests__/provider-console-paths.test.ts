@@ -35,14 +35,18 @@ interface ResponseSnapshot {
 //
 // Every endpoint using this helper declares its neutral path and gains both
 // branded forms from `MIGRATED_BRANDED_PATHS` — the Teams OAuth callback in
-// #28545 and the four Slack routes in #28600, which emptied and deleted
-// `FINAL_PROVIDER_CONSOLE_PATHS`. Which mechanism produces which registration
-// is deliberately not asserted; what a caller can reach is the same either way,
-// and that is the property this file exists to pin. A dropped row on either
-// side shows up here as one of the three forms answering differently.
+// #28545. Which mechanism produces which registration is deliberately not
+// asserted; what a caller can reach is the same either way, and that is the
+// property this file exists to pin. A dropped row on either side shows up here
+// as one of the three forms answering differently.
 //
-// The Feishu OAuth callback is the exception below: #28709 retired its row, so
-// only the neutral path it declares is exercised.
+// The Slack blocks below are narrowed to the path that serves them, because the
+// consoles and producers that held their branded forms have moved. #28600 put
+// the Slack OAuth callback and the three inbound webhooks on neutral paths with
+// rows for both branded forms; #30668 retired those four rows once the Slack app
+// console was repointed at `/api/webhooks/slack/*` and `routes/slack-oauth.ts`
+// began emitting the neutral `redirect_uri`. The Feishu OAuth callback was
+// narrowed the same way by #28709.
 function namespacePaths(
   brandedSuffix: string,
   finalPath: string,
@@ -133,10 +137,7 @@ describe("provider console paths", () => {
   });
 
   describe("GET /api/integrations/slack/oauth/callback", () => {
-    const paths = namespacePaths(
-      "/slack/oauth/callback",
-      "/api/integrations/slack/oauth/callback",
-    );
+    const paths = ["/api/integrations/slack/oauth/callback"];
 
     it("rejects a callback without an authorization code identically", async () => {
       const snapshots = await snapshotEachPath(
@@ -246,7 +247,7 @@ describe("provider console paths", () => {
   });
 
   describe("POST /api/webhooks/slack/events", () => {
-    const paths = namespacePaths("/slack/events", "/api/webhooks/slack/events");
+    const paths = ["/api/webhooks/slack/events"];
     const body = jsonBody({
       type: "url_verification",
       challenge: "provider-console-challenge",
@@ -300,10 +301,7 @@ describe("provider console paths", () => {
   });
 
   describe("POST /api/webhooks/slack/commands", () => {
-    const paths = namespacePaths(
-      "/slack/commands",
-      "/api/webhooks/slack/commands",
-    );
+    const paths = ["/api/webhooks/slack/commands"];
     const body = "command=%2Fzero&text=help";
 
     it("verifies the Slack signature before parsing the command", async () => {
@@ -354,10 +352,7 @@ describe("provider console paths", () => {
   });
 
   describe("POST /api/webhooks/slack/interactive", () => {
-    const paths = namespacePaths(
-      "/slack/interactive",
-      "/api/webhooks/slack/interactive",
-    );
+    const paths = ["/api/webhooks/slack/interactive"];
     const body = "not_a_payload=1";
 
     it("verifies the Slack signature before parsing the payload", async () => {

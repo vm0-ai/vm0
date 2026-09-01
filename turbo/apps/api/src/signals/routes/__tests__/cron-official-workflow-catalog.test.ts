@@ -246,6 +246,13 @@ function s3BodyBuffer(body: unknown): Buffer {
   throw new Error("Expected an S3 object body");
 }
 
+function requireValue<T>(value: T | null | undefined, message: string): T {
+  if (value === null || value === undefined) {
+    throw new Error(message);
+  }
+  return value;
+}
+
 function missingS3Object(key: string): Error {
   return Object.assign(new Error(`Missing S3 object ${key}`), {
     name: "NotFound",
@@ -378,7 +385,7 @@ describe.sequential("Official Workflow catalog release boundary", () => {
     });
   });
 
-  it("releases the deployed Morning Brief catalog with stable executable identity", async () => {
+  it("releases the deployed catalog with stable unique executable identities", async () => {
     const s3 = installVolumeS3Fixture();
     const first = await syncDeployedCatalog();
     expect(first.body).toMatchObject({
@@ -386,10 +393,29 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       diagnostics: [],
     });
 
-    const firstState = await readState("morning-brief");
-    const definition = firstState.body.definition;
-    expect(firstState.body.catalog?.payload.definitions).toHaveLength(1);
-    expect(definition).toMatchObject({
+    const morningBriefState = await readState("morning-brief");
+    const connectorDoctorState = await readState("connector-doctor");
+    const deployedCatalog = requireValue(
+      morningBriefState.body.catalog,
+      "Expected the deployed catalog release",
+    );
+    const morningBriefDefinition = requireValue(
+      morningBriefState.body.definition,
+      "Expected the Morning Brief Definition",
+    );
+    const connectorDoctorDefinition = requireValue(
+      connectorDoctorState.body.definition,
+      "Expected the Connector Doctor Definition",
+    );
+    expect(
+      deployedCatalog.payload.definitions.map(({ name, lifecycle }) => {
+        return { name, lifecycle };
+      }),
+    ).toStrictEqual([
+      { name: "connector-doctor", lifecycle: "active" },
+      { name: "morning-brief", lifecycle: "active" },
+    ]);
+    expect(morningBriefDefinition).toMatchObject({
       name: "morning-brief",
       lifecycle: "active",
       blueprints: [
@@ -416,48 +442,179 @@ describe.sequential("Official Workflow catalog release boundary", () => {
         },
       ],
     });
-    expect(firstState.body.storage).toMatchObject({
+    expect(connectorDoctorDefinition).toMatchObject({
+      name: "connector-doctor",
+      lifecycle: "active",
+      blueprints: [
+        {
+          key: "weekly-check",
+          parameters: [
+            {
+              key: "timezone",
+              type: "string",
+              format: "timezone",
+              required: true,
+              derivation: { kind: "user-timezone" },
+            },
+          ],
+          desiredState: {
+            kind: "schedule",
+            schedule: {
+              type: "cron",
+              cronExpression: "0 9 * * 1",
+              timezone: { parameter: "timezone" },
+            },
+          },
+          runtime: { resultEmail: false },
+        },
+      ],
+    });
+    expect(morningBriefState.body.storage).toMatchObject({
       storageName: "official-workflow@morning-brief",
       orgId: SYSTEM_ORG_ID,
       userId: VOLUME_ORG_USER_ID,
-      headVersionId: definition?.artifact.storageVersion,
+      headVersionId: morningBriefDefinition.artifact.storageVersion,
       versionCount: 1,
     });
-    expect(firstState.body.counts).toStrictEqual({
-      releases: 1,
-      revisions: 1,
-      storages: 1,
-      storageVersions: 1,
+    expect(connectorDoctorState.body.storage).toMatchObject({
+      storageName: "official-workflow@connector-doctor",
+      orgId: SYSTEM_ORG_ID,
+      userId: VOLUME_ORG_USER_ID,
+      headVersionId: connectorDoctorDefinition.artifact.storageVersion,
+      versionCount: 1,
     });
-    expect(s3.objects.size).toBe(2);
+    expect(morningBriefState.body.counts).toStrictEqual({
+      releases: 1,
+      revisions: 2,
+      storages: 2,
+      storageVersions: 2,
+    });
+    expect(s3.objects.size).toBe(4);
 
-    const revision = definition?.revision;
-    expect(revision).toBeDefined();
-    if (!revision) {
-      throw new Error("Expected the Morning Brief Definition revision");
-    }
-    const exact = await readState("morning-brief", revision);
-    const instruction = exact.body.revision?.definition.workflow.instruction;
-    expect(exact.body.revision?.definition.workflow).toMatchObject({
+    const morningBriefRevision = morningBriefDefinition.revision;
+    const connectorDoctorRevision = connectorDoctorDefinition.revision;
+    const exactMorningBrief = await readState(
+      "morning-brief",
+      morningBriefRevision,
+    );
+    const exactMorningBriefRevision = requireValue(
+      exactMorningBrief.body.revision,
+      "Expected the exact Morning Brief revision",
+    );
+    const morningBriefInstruction =
+      exactMorningBriefRevision.definition.workflow.instruction;
+    expect(exactMorningBriefRevision.definition.workflow).toMatchObject({
       displayName: "Morning Brief",
       description:
         "Summarize today's email, GitHub, calendar, and unread Chat priorities.",
       files: [],
     });
-    expect(instruction).toContain("Gmail connector skill");
-    expect(instruction).toContain("GitHub connector skill");
-    expect(instruction).toContain("Google Calendar connector skill");
-    expect(instruction).toContain("okou chat list --unread --all-agents");
-    expect(instruction).toContain("Never invent, infer, or claim source data");
-    expect(instruction).toContain("Do not send email");
-    expect(instruction).not.toMatch(
+    expect(morningBriefInstruction).toContain("Gmail connector skill");
+    expect(morningBriefInstruction).toContain("GitHub connector skill");
+    expect(morningBriefInstruction).toContain(
+      "Google Calendar connector skill",
+    );
+    expect(morningBriefInstruction).toContain(
+      "okou chat list --unread --all-agents",
+    );
+    expect(morningBriefInstruction).toContain(
+      "Never invent, infer, or claim source data",
+    );
+    expect(morningBriefInstruction).toContain("Do not send email");
+    expect(morningBriefInstruction).not.toMatch(
       /morning-brief-(?:collect|run)|morning_brief|chat_morning_brief_context/,
     );
 
-    const firstIdentity = {
-      revision: definition?.revision,
-      blueprintFingerprint: definition?.blueprints[0]?.fingerprint,
-      artifact: definition?.artifact,
+    const exactConnectorDoctor = await readState(
+      "connector-doctor",
+      connectorDoctorRevision,
+    );
+    const exactConnectorDoctorRevision = requireValue(
+      exactConnectorDoctor.body.revision,
+      "Expected the exact Connector Doctor revision",
+    );
+    const connectorDoctorInstruction =
+      exactConnectorDoctorRevision.definition.workflow.instruction;
+    expect(exactConnectorDoctorRevision.definition.workflow).toMatchObject({
+      displayName: "Connector Doctor",
+      description:
+        "Diagnose connector readiness across your workflows and group exact repair actions.",
+      files: [],
+    });
+    expect(
+      connectorDoctorInstruction.match(/okou doctor connectors --json/gu),
+    ).toHaveLength(1);
+    expect(connectorDoctorInstruction).toContain(
+      "sole source of diagnostic facts",
+    );
+    expect(connectorDoctorInstruction).toContain("schemaVersion` is `1");
+    expect(connectorDoctorInstruction).toContain(
+      "identical `action.kind` and exact `action.url`",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "list every affected workflow with the connector's returned readiness status and reason",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "Never merge entries whose exact URLs differ",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "every connector whose status is `unavailable` and every workflow with a non-null `error`",
+    );
+    expect(connectorDoctorInstruction).toContain("Unknown is never healthy");
+    expect(connectorDoctorInstruction).toContain("summary.checked === 0");
+    expect(connectorDoctorInstruction).toContain(
+      "no effective visible workflows were available to check",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "not an all-clear over diagnosed workflows",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "summary.attention === 0`, and `summary.unknown === 0",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "aggregate covered effective visible workflows",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "compact inventory of every checked entry in `workflows`, grouped by its returned Agent identity",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "command fails, its output is not valid JSON, or its schema version is unsupported",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "Do not invoke connector or provider skills, third-party provider APIs",
+    );
+    expect(connectorDoctorInstruction).toContain("okou connector list");
+    expect(connectorDoctorInstruction).toContain("okou connector status");
+    expect(connectorDoctorInstruction).toContain("okou connector check");
+    expect(connectorDoctorInstruction).toContain(
+      "Do not write to or mutate application or provider state",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "Do not connect, reconnect, authorize, start OAuth flows, request permissions, create callbacks, mutate connectors",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "Do not send email or directly send any chat or other message",
+    );
+
+    expect(morningBriefRevision).not.toBe(connectorDoctorRevision);
+    expect(morningBriefDefinition.blueprints[0]?.fingerprint).not.toBe(
+      connectorDoctorDefinition.blueprints[0]?.fingerprint,
+    );
+    expect(morningBriefDefinition.artifact.storageVersion).not.toBe(
+      connectorDoctorDefinition.artifact.storageVersion,
+    );
+    const firstIdentities = {
+      morningBrief: {
+        revision: morningBriefDefinition.revision,
+        blueprintFingerprint: morningBriefDefinition.blueprints[0]?.fingerprint,
+        artifact: morningBriefDefinition.artifact,
+      },
+      connectorDoctor: {
+        revision: connectorDoctorDefinition.revision,
+        blueprintFingerprint:
+          connectorDoctorDefinition.blueprints[0]?.fingerprint,
+        artifact: connectorDoctorDefinition.artifact,
+      },
     };
     s3.clearWrites();
     const second = await syncDeployedCatalog();
@@ -466,12 +623,26 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       releaseId: first.body.releaseId,
       diagnostics: [],
     });
-    const secondDefinition = (await readState("morning-brief")).body.definition;
+    const secondMorningBrief = requireValue(
+      (await readState("morning-brief")).body.definition,
+      "Expected the unchanged Morning Brief Definition",
+    );
+    const secondConnectorDoctor = requireValue(
+      (await readState("connector-doctor")).body.definition,
+      "Expected the unchanged Connector Doctor Definition",
+    );
     expect({
-      revision: secondDefinition?.revision,
-      blueprintFingerprint: secondDefinition?.blueprints[0]?.fingerprint,
-      artifact: secondDefinition?.artifact,
-    }).toStrictEqual(firstIdentity);
+      morningBrief: {
+        revision: secondMorningBrief.revision,
+        blueprintFingerprint: secondMorningBrief.blueprints[0]?.fingerprint,
+        artifact: secondMorningBrief.artifact,
+      },
+      connectorDoctor: {
+        revision: secondConnectorDoctor.revision,
+        blueprintFingerprint: secondConnectorDoctor.blueprints[0]?.fingerprint,
+        artifact: secondConnectorDoctor.artifact,
+      },
+    }).toStrictEqual(firstIdentities);
     expect(s3.writes).toStrictEqual([]);
   });
 

@@ -201,8 +201,12 @@ def _derive_api_destination(
 ) -> _ApiDestination | None:
     if not api_url:
         return None
-    parsed_api = urllib.parse.urlparse(api_url)
-    if not parsed_api.hostname:
+    try:
+        parsed_api = urllib.parse.urlparse(api_url)
+        api_hostname_raw = parsed_api.hostname
+    except ValueError:
+        return None
+    if not api_hostname_raw:
         return None
     api_scheme = parsed_api.scheme.lower()
     if api_scheme == "http":
@@ -212,10 +216,14 @@ def _derive_api_destination(
     else:
         return None
     try:
-        api_hostname = normalize_hostname(parsed_api.hostname)
+        api_hostname = normalize_hostname(api_hostname_raw)
     except (UnicodeError, ValueError):
         return None
-    api_port = parsed_api.port if parsed_api.port is not None else default_port
+    try:
+        explicit_port = parsed_api.port
+    except ValueError:
+        return None
+    api_port = explicit_port if explicit_port is not None else default_port
     return _ApiDestination(
         scheme=api_scheme,
         host=api_hostname,

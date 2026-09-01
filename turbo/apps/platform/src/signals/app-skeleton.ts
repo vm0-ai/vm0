@@ -1,12 +1,9 @@
 import { command, computed, state } from "ccstate";
-import { completeOnLocalAbort, onRef, resetSignal, setLoop } from "./utils.ts";
-import { getAvatarPresets } from "../views/okou-page/avatars.ts";
+import { onRef } from "./utils.ts";
 import {
   captureBootstrapPhaseTiming$,
   captureFirstSkeletonHide$,
 } from "../lib/posthog.ts";
-import { i18n } from "../i18n/index.ts";
-import { locale$ } from "./locale.ts";
 
 // ---------------------------------------------------------------------------
 // Visibility
@@ -75,7 +72,7 @@ export const firstAppContentVisibleEventRef$ = onRef(
   }),
 );
 
-function hideBootstrapSkeleton(): void {
+export function hideBootstrapSkeleton(): void {
   const skeleton = document.getElementById(APP_BOOTSTRAP_SKELETON_ID);
   if (!skeleton) {
     return;
@@ -91,107 +88,6 @@ function hideBootstrapSkeleton(): void {
   skeleton.classList.add(APP_BOOTSTRAP_SKELETON_HIDDEN_CLASS);
 }
 
-// ---------------------------------------------------------------------------
-// Avatar – picked once at module load so remounts don't flicker
-// ---------------------------------------------------------------------------
-
-const internalSkeletonAvatar$ = state(
-  (() => {
-    const presets = getAvatarPresets();
-    return presets[Math.floor(Math.random() * presets.length)];
-  })(),
-);
-
-export const skeletonAvatarConfig$ = computed((get) => {
-  return get(internalSkeletonAvatar$);
-});
-
-// ---------------------------------------------------------------------------
-// Message cycling
-// ---------------------------------------------------------------------------
-
-const LOADING_COPY_COUNT = 8;
-
-const skeletonCopyIndex$ = state(
-  Math.floor(Math.random() * LOADING_COPY_COUNT),
-);
-
-const skeletonFirstCycle$ = state(true);
-
-const resetSkeletonCycling$ = resetSignal();
-
-export const skeletonCopy$ = computed((get) => {
-  get(locale$);
-  const loadingCopy = [
-    i18n.t(($) => {
-      return $.appShell.loading.messages.warmingNeurons;
-    }),
-    i18n.t(($) => {
-      return $.appShell.loading.messages.brewingIdeas;
-    }),
-    i18n.t(($) => {
-      return $.appShell.loading.messages.gettingReady;
-    }),
-    i18n.t(($) => {
-      return $.appShell.loading.messages.almostThere;
-    }),
-    i18n.t(($) => {
-      return $.appShell.loading.messages.loadingWorkspace;
-    }),
-    i18n.t(($) => {
-      return $.appShell.loading.messages.tuningInstruments;
-    }),
-    i18n.t(($) => {
-      return $.appShell.loading.messages.connectingDots;
-    }),
-    i18n.t(($) => {
-      return $.appShell.loading.messages.spinningTeam;
-    }),
-  ];
-  const i = get(skeletonCopyIndex$);
-  const len = loadingCopy.length;
-  return {
-    ariaLabel: i18n.t(($) => {
-      return $.appShell.loading.ariaLabel;
-    }),
-    staticCopy: loadingCopy[i % len],
-    typewriterCopy: loadingCopy[(i + 1) % len],
-    isFirst: get(skeletonFirstCycle$),
-    cycle: i,
-  };
-});
-
-const cycleSkeletonCopy$ = command(({ set }) => {
-  set(skeletonFirstCycle$, false);
-  set(skeletonCopyIndex$, (prev) => {
-    return prev + 1;
-  });
-});
-
-const MAX_SKELETON_CYCLES = 3;
-
-export const startSkeletonCycling$ = command(
-  async ({ set }, parentSignal: AbortSignal) => {
-    let cycles = 0;
-    const loopSignal = set(resetSkeletonCycling$, parentSignal);
-    // The local reset is the normal completion path when the page becomes
-    // ready. Parent cancellation still belongs to the command caller and must
-    // propagate through bootstrap.
-    await completeOnLocalAbort(
-      setLoop(
-        () => {
-          set(cycleSkeletonCopy$);
-          return ++cycles >= MAX_SKELETON_CYCLES;
-        },
-        4000,
-        loopSignal,
-      ),
-      loopSignal,
-      parentSignal,
-    );
-  },
-);
-
 export const appSkeletonVisible$ = computed((get) => {
   return get(internalVisible$);
 });
@@ -206,23 +102,12 @@ export const unmountAppSkeletonOverlay$ = command(({ get, set }) => {
   }
 });
 
-/**
- * Reveal the skeleton and reset the typewriter intro. `hideAppSkeleton$`
- * aborts the cycling loop via `resetSkeletonCycling$`; if the caller needs
- * the typewriter animation to play after a re-show (e.g. the brief
- * skeleton between onboarding completion and the chat page), it must
- * restart the cycling itself by awaiting `startSkeletonCycling$` in its
- * own async context.
- */
 export const showAppSkeleton$ = command(({ get, set }) => {
   set(internalVisible$, true);
   set(internalOverlayMounted$, !get(internalBootstrapSkeletonActive$));
-  set(skeletonFirstCycle$, true);
 });
 
 export const hideAppSkeleton$ = command(({ set }, _signal: AbortSignal) => {
-  set(resetSkeletonCycling$);
-
   set(internalBootstrapSkeletonActive$, false);
   set(internalVisible$, false);
   hideBootstrapSkeleton();

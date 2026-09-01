@@ -98,7 +98,9 @@ function executeMarketingEntrypoint(hostname: string): MarketingHarness {
   });
 
   return {
-    fallbackDelay: fallback?.delay,
+    get fallbackDelay() {
+      return fallback?.delay;
+    },
     flushIdleCallbacks: () => {
       for (const callback of idleCallbacks.splice(0)) {
         callback({

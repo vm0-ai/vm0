@@ -2,6 +2,11 @@ import {
   parseConnectorAuthorizeUrl,
   type ConnectorActionDescriptor,
 } from "./connector-action-block.ts";
+import {
+  connectorAccountActionResourceKey,
+  parseConnectorAccountActionUrl,
+  type ConnectorAccountActionDescriptor,
+} from "./connector-account-action-block.ts";
 import type { ChatActionContext } from "./chat-action-context.ts";
 import {
   parsePermissionActionUrl,
@@ -60,6 +65,11 @@ export type ParsedBodyBlock =
       type: "connector-action";
       resourceKey: string;
       descriptor: ConnectorActionDescriptor;
+    }
+  | {
+      type: "connector-account-action";
+      resourceKey: string;
+      descriptor: ConnectorAccountActionDescriptor;
     }
   | {
       type: "permission-action";
@@ -135,7 +145,7 @@ const PLATFORM_FILE_CDN_HOSTS = [
   "cdn.vm7.io",
 ] as const;
 const HOSTED_SITE_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u;
-const URL_TOKEN_PATTERN = String.raw`(?:https?:\/\/|\/(?:f|artifacts|browsers)\/|\/mail\/drafts\/|\/\?settings=billing&billingView=)[^\s<>"'()（）【】《》「」『』“”‘’，。；：！？、]+`;
+const URL_TOKEN_PATTERN = String.raw`(?:https?:\/\/|\/(?:agents|f|artifacts|browsers)\/|\/mail\/drafts\/|\/\?settings=billing&billingView=)[^\s<>"'()（）【】《》「」『』“”‘’，。；：！？、]+`;
 const URL_TOKEN_OPENING_PREFIX_PATTERN = /^[({<"'“‘（【《「『[]*$/u;
 const MARKDOWN_LINK_TOKEN_PREFIX_PATTERN = /\[[^\]\n]+\]\($/u;
 
@@ -804,6 +814,7 @@ function createActionBlockFromLine(
   {
     type:
       | "connector-action"
+      | "connector-account-action"
       | "permission-action"
       | "banking-action"
       | "unavailable-action"
@@ -831,6 +842,27 @@ function createActionBlockFromLine(
       type: "unavailable-action",
       resourceKey: connectorAction.originalUrl,
       descriptor: { originalUrl: connectorAction.originalUrl },
+    };
+  }
+
+  const connectorAccountAction = parseConnectorAccountActionUrl(
+    url,
+    chatActionContext,
+  );
+  if (connectorAccountAction.status === "valid") {
+    return {
+      type: "connector-account-action",
+      resourceKey: connectorAccountActionResourceKey(
+        connectorAccountAction.descriptor,
+      ),
+      descriptor: connectorAccountAction.descriptor,
+    };
+  }
+  if (connectorAccountAction.status === "invalid") {
+    return {
+      type: "unavailable-action",
+      resourceKey: connectorAccountAction.originalUrl,
+      descriptor: { originalUrl: connectorAccountAction.originalUrl },
     };
   }
 
@@ -1154,6 +1186,9 @@ export function cardSlotUrl(block: CardDescriptorBlock): string {
       return block.descriptor.url;
     }
     case "connector-action": {
+      return block.descriptor.originalUrl;
+    }
+    case "connector-account-action": {
       return block.descriptor.originalUrl;
     }
     case "permission-action": {

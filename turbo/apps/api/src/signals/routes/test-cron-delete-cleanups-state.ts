@@ -10,13 +10,13 @@ import { bodyResultOf } from "../context/request";
 import { type Db, writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import { cleanupConnectorOauthStatesForTest$ } from "../services/cron-connector-oauth-state-cleanup.service";
+import { cleanupTelegramMessagesForTest$ } from "../services/cron-telegram-cleanup.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
 } from "./test-endpoint-helpers";
 
-const FIXTURE_INSERT_BATCH_SIZE = 5000;
-const MAX_EXPIRED_COUNT = 10_001;
+const MAX_EXPIRED_COUNT = 100;
 
 const markerSchema = z.string().min(1);
 const actionBodySchema = z.discriminatedUnion("action", [
@@ -50,6 +50,10 @@ const actionBodySchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("delete-telegram"),
+    marker: markerSchema,
+  }),
+  z.object({
+    action: z.literal("cleanup-telegram"),
     marker: markerSchema,
   }),
 ]);
@@ -121,14 +125,8 @@ async function seedConnectorStates(
       };
     },
   );
-  for (
-    let offset = 0;
-    offset < expiredStates.length;
-    offset += FIXTURE_INSERT_BATCH_SIZE
-  ) {
-    await db
-      .insert(connectorOauthStates)
-      .values(expiredStates.slice(offset, offset + FIXTURE_INSERT_BATCH_SIZE));
+  if (expiredStates.length > 0) {
+    await db.insert(connectorOauthStates).values(expiredStates);
     signal.throwIfAborted();
   }
   await db.insert(connectorOauthStates).values([
@@ -214,16 +212,8 @@ async function seedTelegramMessages(
       };
     },
   );
-  for (
-    let offset = 0;
-    offset < expiredMessages.length;
-    offset += FIXTURE_INSERT_BATCH_SIZE
-  ) {
-    await db
-      .insert(telegramMessages)
-      .values(
-        expiredMessages.slice(offset, offset + FIXTURE_INSERT_BATCH_SIZE),
-      );
+  if (expiredMessages.length > 0) {
+    await db.insert(telegramMessages).values(expiredMessages);
     signal.throwIfAborted();
   }
   await db.insert(telegramMessages).values([
@@ -326,6 +316,11 @@ const mutateTestCronDeleteCleanupsState$ = command(
       case "delete-telegram": {
         await deleteTelegramMessages(db, body.marker, signal);
         return actionOk();
+      }
+      case "cleanup-telegram": {
+        return cleanupActionOk(
+          await set(cleanupTelegramMessagesForTest$, body.marker, signal),
+        );
       }
     }
   },

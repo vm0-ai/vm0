@@ -30,7 +30,7 @@ import {
 } from "./agent-run-callback.service";
 import { drainChatThreadQueueForRun$ } from "./chat-thread-queue-drain.service";
 import {
-  finalizeActiveInputDeliveryForCompletion,
+  finalizeActiveInputDelivery,
   type FinalizeActiveInputDeliveryResult,
 } from "./active-input-delivery.service";
 import { lockChatQueueThread } from "./chat-event-queue.service";
@@ -63,6 +63,11 @@ export interface TerminalSideEffectsInput {
   readonly orgId: string;
   readonly status: TerminalStatus;
   readonly error?: string;
+  readonly deliveryNotification?: {
+    readonly userId: string;
+    readonly chatThreadId: string;
+    readonly chatEventsAppended: boolean;
+  };
 }
 
 export interface CancellationRecoverySideEffectsInput {
@@ -376,7 +381,7 @@ async function applyTerminalCompletion(
       and(
         eq(agentRuns.id, input.body.runId),
         eq(agentRuns.userId, input.auth.userId),
-        inArray(agentRuns.status, ["pending", "running", "timeout"]),
+        inArray(agentRuns.status, ["pending", "running"]),
       ),
     )
     .returning({ id: agentRuns.id });
@@ -396,7 +401,6 @@ interface CompletionTransitionContext {
   readonly checkpointInput: AgentCheckpointInput | null;
   readonly checkpointPreparation: PreparedAgentCheckpoint | null;
   readonly expectedChatThreadId: string | null;
-  readonly legacyPrepared: PreparedCompletion | null;
 }
 
 async function completeAgentRunTransition(
@@ -405,12 +409,8 @@ async function completeAgentRunTransition(
   context: CompletionTransitionContext,
   signal: AbortSignal,
 ): Promise<CompletionTransactionResult> {
-  const {
-    checkpointInput,
-    checkpointPreparation,
-    expectedChatThreadId,
-    legacyPrepared,
-  } = context;
+  const { checkpointInput, checkpointPreparation, expectedChatThreadId } =
+    context;
   const threadLocked =
     expectedChatThreadId === null
       ? false
@@ -425,6 +425,17 @@ async function completeAgentRunTransition(
   if (expectedChatThreadId !== null && !threadLocked) {
     throw new Error("Agent run retained a missing chat thread");
   }
+  if (run.status === "timeout") {
+    return {
+      kind: "committed",
+      commit: {
+        run,
+        transitioned: false,
+        responseStatus: "failed",
+        finalization: noActiveInputFinalization(),
+      },
+    };
+  }
   if (checkpointInput) {
     if (!checkpointPreparation) {
       throw new Error("Included agent checkpoint was not prepared");
@@ -434,20 +445,16 @@ async function completeAgentRunTransition(
       checkpointInput,
       checkpointPreparation,
       signal,
-      { combinedCompletion: true },
+      { source: "combined-completion" },
     );
     if (checkpointResult.status !== 200) {
       return { kind: "response", response: checkpointResult };
     }
   }
-  const canTransition =
-    run.status === "pending" ||
-    run.status === "running" ||
-    run.status === "timeout";
-  const prepared =
-    checkpointInput && canTransition
-      ? await prepareCompletion(tx, input, run.sessionId, signal)
-      : legacyPrepared;
+  const canTransition = run.status === "pending" || run.status === "running";
+  const prepared = canTransition
+    ? await prepareCompletion(tx, input, run.sessionId, signal)
+    : null;
   signal.throwIfAborted();
   if (input.body.lastEventSequence !== undefined) {
     await persistLastEventSequence(
@@ -460,7 +467,7 @@ async function completeAgentRunTransition(
   const finalization =
     run.chatThreadId === null
       ? noActiveInputFinalization()
-      : await finalizeActiveInputDeliveryForCompletion(tx, {
+      : await finalizeActiveInputDelivery(tx, {
           runId: input.body.runId,
           chatThreadId: run.chatThreadId,
           deliveredDeliveryIds: new Set(
@@ -516,6 +523,15 @@ function completionResponse(
       ...(commit.transitionError !== undefined
         ? { error: commit.transitionError }
         : {}),
+      ...(commit.run.chatThreadId !== null
+        ? {
+            deliveryNotification: {
+              userId: commit.run.userId,
+              chatThreadId: commit.run.chatThreadId,
+              chatEventsAppended: commit.finalization.chatEventsAppended,
+            },
+          }
+        : {}),
       ...piCleanup,
     };
   } else if (
@@ -553,7 +569,7 @@ function completionResponse(
   };
 }
 
-function deletedRunCompletionResponse(run: RunRecord): CompletionResponse {
+function settledRunCompletionResponse(run: RunRecord): CompletionResponse {
   return {
     status: 200,
     body: {
@@ -570,6 +586,14 @@ const dispatchTerminalCompleteSideEffects$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const db = set(writeDb$);
+    if (input.deliveryNotification?.chatEventsAppended) {
+      await publishChatThreadMessageCreatedSafely({
+        userId: input.deliveryNotification.userId,
+        orgId: input.orgId,
+        threadId: input.deliveryNotification.chatThreadId,
+      });
+      signal.throwIfAborted();
+    }
     const callbackStatus =
       input.status === "completed" ? "completed" : "failed";
     const chatCallbackId = await chatCallbackIdForRun(db, input.runId);
@@ -728,12 +752,16 @@ export const completeAgentRun$ = command(
     if (!initialRun) {
       return notFound("Agent run not found");
     }
+    if (initialRun.status === "timeout") {
+      return settledRunCompletionResponse(initialRun);
+    }
     const checkpointInput = checkpointInputForCompletion(input);
     let checkpointPreparation: PreparedAgentCheckpoint | null = null;
     if (checkpointInput) {
       const preparation = await set(
         prepareAgentCheckpointPersistence$,
         checkpointInput,
+        { source: "combined-completion" },
         signal,
       );
       if (!preparation.ok) {
@@ -741,20 +769,11 @@ export const completeAgentRun$ = command(
       }
       checkpointPreparation = preparation.prepared;
     }
-    const shouldPrepareLegacyCompletion =
-      !checkpointInput &&
-      (initialRun.status === "pending" ||
-        initialRun.status === "running" ||
-        initialRun.status === "timeout");
     let expectedChatThreadId = initialRun.chatThreadId;
     let commit: CompletionCommit;
     while (true) {
       const result = await db.transaction(async (tx) => {
         await lockAgentRunCheckpointLifecycle(tx, input.body.runId);
-        signal.throwIfAborted();
-        const legacyPrepared = shouldPrepareLegacyCompletion
-          ? await prepareCompletion(tx, input, initialRun.sessionId, signal)
-          : null;
         signal.throwIfAborted();
         return await completeAgentRunTransition(
           tx,
@@ -763,7 +782,6 @@ export const completeAgentRun$ = command(
             checkpointInput,
             checkpointPreparation,
             expectedChatThreadId,
-            legacyPrepared,
           },
           signal,
         );
@@ -774,7 +792,7 @@ export const completeAgentRun$ = command(
         continue;
       }
       if (result.kind === "not-found") {
-        return deletedRunCompletionResponse(initialRun);
+        return settledRunCompletionResponse(initialRun);
       }
       if (result.kind === "response") {
         return result.response;

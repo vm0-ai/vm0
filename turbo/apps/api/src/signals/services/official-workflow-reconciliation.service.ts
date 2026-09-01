@@ -26,6 +26,8 @@ import {
   reconcileAutomationEventWatches,
   reconcileAutomationEventWatchReconfiguration,
 } from "./automation-event-watch-lifecycle.service";
+import { lockConnectorAccountTarget } from "./auth-state-lock.service";
+import { resolveGmailAutomationConnectorId } from "./gmail-automation-account.service";
 import { OFFICIAL_WORKFLOW_CATALOG_ACTIVATION_LOCK } from "./official-workflow-constants";
 import {
   readAcceptedOfficialWorkflowCatalog,
@@ -139,6 +141,43 @@ function eventWatchFailureMessage(result: {
   return result.kind === "bad-request" && result.message
     ? result.message
     : "Official Workflow event-watch reconciliation failed";
+}
+
+function isGmailAutomationEventType(eventType: string | null): boolean {
+  return (
+    eventType === "gmail-new-message" || eventType === "gmail-label-applied"
+  );
+}
+
+async function lockOfficialAutomationAccountProjection(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly workflowId: string;
+    readonly currentEventType: string | null;
+    readonly nextEventType: string | null;
+  },
+): Promise<
+  | { readonly kind: "not-required" }
+  | { readonly kind: "locked"; readonly eventConnectorId: string | null }
+> {
+  const currentUsesGmail = isGmailAutomationEventType(args.currentEventType);
+  const nextUsesGmail = isGmailAutomationEventType(args.nextEventType);
+  if (!currentUsesGmail && !nextUsesGmail) {
+    return { kind: "not-required" };
+  }
+  await lockConnectorAccountTarget(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    target: { kind: "builtin", connectorSlug: "gmail" },
+  });
+  return {
+    kind: "locked",
+    eventConnectorId: nextUsesGmail
+      ? await resolveGmailAutomationConnectorId(db, args)
+      : null,
+  };
 }
 
 async function acquireReconciliationLocks(
@@ -418,7 +457,21 @@ async function persistReconfigurationPatch(
           activeDefinitionOnly: args.activeDefinitionOnly,
         },
         signal,
-      )) ||
+      ))
+    ) {
+      return null;
+    }
+    const accountProjection = await lockOfficialAutomationAccountProjection(
+      tx,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        workflowId: args.expected.workflowId,
+        currentEventType: args.expected.eventType,
+        nextEventType: args.patch.eventType,
+      },
+    );
+    if (
       !(await lockInstalledWorkflow(tx, {
         orgId: args.orgId,
         userId: args.userId,
@@ -437,6 +490,12 @@ async function persistReconfigurationPatch(
     if (
       !current ||
       !sameAutomationConfigurationBaseline(args.expected, current)
+    ) {
+      return null;
+    }
+    if (
+      accountProjection.kind === "locked" &&
+      accountProjection.eventConnectorId !== args.patch.eventConnectorId
     ) {
       return null;
     }
@@ -507,6 +566,16 @@ async function restoreFailedReconfiguration(
 ): Promise<void> {
   const restored = await db.transaction(async (tx) => {
     await acquireReconciliationLocks(tx, args.orgId);
+    const accountProjection = await lockOfficialAutomationAccountProjection(
+      tx,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        workflowId: args.persisted.previous.workflowId,
+        currentEventType: args.persisted.current.eventType,
+        nextEventType: args.persisted.previous.eventType,
+      },
+    );
     if (
       !(await lockInstalledWorkflow(tx, {
         orgId: args.orgId,
@@ -538,6 +607,9 @@ async function restoreFailedReconfiguration(
           args.persisted.previous.nextRunAt,
           currentTime,
         ),
+        ...(accountProjection.kind === "locked"
+          ? { eventConnectorId: accountProjection.eventConnectorId }
+          : {}),
         enabled: args.persisted.previous.enabled,
         officialIntendedEnabled:
           args.persisted.previous.officialIntendedEnabled,
@@ -1123,6 +1195,16 @@ async function finalizeAutomationStructureTransition(
         { orgId: args.orgId },
         signal,
       ));
+    const accountProjection = await lockOfficialAutomationAccountProjection(
+      tx,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        workflowId: args.persisted.current.workflowId,
+        currentEventType: args.persisted.current.eventType,
+        nextEventType: args.patch.eventType,
+      },
+    );
     if (
       !(await lockInstalledWorkflow(tx, {
         orgId: args.orgId,
@@ -1145,6 +1227,12 @@ async function finalizeAutomationStructureTransition(
         args.persisted.current.updatedAt.getTime() ||
       current.officialReconciliationStatus !== "reconciling" ||
       !(await lockActiveIdentityOwnership(tx, current))
+    ) {
+      return { kind: "superseded" };
+    }
+    if (
+      accountProjection.kind === "locked" &&
+      accountProjection.eventConnectorId !== args.patch.eventConnectorId
     ) {
       return { kind: "superseded" };
     }

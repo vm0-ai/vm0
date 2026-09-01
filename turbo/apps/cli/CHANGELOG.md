@@ -1,5 +1,127 @@
 # Changelog
 
+## [9.301.3](https://github.com/vm0-ai/vm0/compare/cli-v9.301.2...cli-v9.301.3) (2026-09-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.384.3
+    * @okouai/core bumped to 8.605.6
+    * @okouai/pi-agent-runtime bumped to 1.10.0
+
+## [9.301.2](https://github.com/vm0-ai/vm0/compare/cli-v9.301.1...cli-v9.301.2) (2026-09-01)
+
+
+### Bug Fixes
+
+* **social:** report provider-limited collection pages ([#30704](https://github.com/vm0-ai/vm0/issues/30704)) ([2ad3efe](https://github.com/vm0-ai/vm0/commit/2ad3efe0a379aa42375041a971213c408c496c5b))
+
+
+### Refactoring
+
+* **db:** contract legacy vm0 provider compatibility ([#30708](https://github.com/vm0-ai/vm0/issues/30708)) ([7ab758f](https://github.com/vm0-ai/vm0/commit/7ab758fea24f304dd1bdd25ca7a24457e20419e8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.384.2
+    * @okouai/core bumped to 8.605.5
+
+## [9.301.1](https://github.com/vm0-ai/vm0/compare/cli-v9.301.0...cli-v9.301.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **cli:** diagnose effective visible workflows ([#30696](https://github.com/vm0-ai/vm0/issues/30696)) ([af34735](https://github.com/vm0-ai/vm0/commit/af3473581a3c7a7eed432684f2c2ac206e6f0dda))
+
+## [9.301.0](https://github.com/vm0-ai/vm0/compare/cli-v9.300.1...cli-v9.301.0) (2026-08-31)
+
+
+### Features
+
+* **pi:** activate built-in terra routing ([#30653](https://github.com/vm0-ai/vm0/issues/30653)) ([14a89ec](https://github.com/vm0-ai/vm0/commit/14a89eca1599b6940cb48f9b5f81fd45dc1e1533))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/pi-agent-runtime bumped to 1.9.0
+
+## [9.300.1](https://github.com/vm0-ai/vm0/compare/cli-v9.300.0...cli-v9.300.1) (2026-08-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.384.1
+    * @okouai/core bumped to 8.605.4
+
+## [9.300.0](https://github.com/vm0-ai/vm0/compare/cli-v9.299.0...cli-v9.300.0) (2026-08-31)
+
+
+### Features
+
+* **pi:** gate api-first on official compaction preflight ([#30646](https://github.com/vm0-ai/vm0/issues/30646)) ([eec5b6f](https://github.com/vm0-ai/vm0/commit/eec5b6f0f87098efe771444573bc0dade9cc6642))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.384.0
+    * @okouai/core bumped to 8.605.3
+    * @okouai/pi-agent-runtime bumped to 1.8.0
+
+## [9.299.0](https://github.com/vm0-ai/vm0/compare/cli-v9.298.6...cli-v9.299.0) (2026-08-31)
+
+
+### Features
+
+* **pi:** add versioned sandbox ownership transfers ([#30607](https://github.com/vm0-ai/vm0/issues/30607)) ([dbc4e02](https://github.com/vm0-ai/vm0/commit/dbc4e02e9360749162d2bcf3fd1726f12a8e521f))
+* **pi:** support terra runtime contract ([#30606](https://github.com/vm0-ai/vm0/issues/30606)) ([c92fe87](https://github.com/vm0-ai/vm0/commit/c92fe8706d66dd88f28f253010008d158e6893a0))
+
+
+### Bug Fixes
+
+* **chat-search:** avoid thread deletion lock contention ([#30453](https://github.com/vm0-ai/vm0/issues/30453)) ([b5676e7](https://github.com/vm0-ai/vm0/commit/b5676e768129c4bc63bdbba59c05e434a771b336))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.383.0
+    * @okouai/core bumped to 8.605.2
+    * @okouai/pi-agent-runtime bumped to 1.7.0
+
+## [9.298.6](https://github.com/vm0-ai/vm0/compare/cli-v9.298.5...cli-v9.298.6) (2026-08-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.382.0
+    * @okouai/connectors bumped to 3.1.0
+    * @okouai/core bumped to 8.605.1
+
+## [9.298.5](https://github.com/vm0-ai/vm0/compare/cli-v9.298.4...cli-v9.298.5) (2026-08-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.381.16
+    * @okouai/connectors bumped to 3.0.2
+    * @okouai/core bumped to 8.605.0
+
 ## [9.298.4](https://github.com/vm0-ai/vm0/compare/cli-v9.298.3...cli-v9.298.4) (2026-08-31)
 
 

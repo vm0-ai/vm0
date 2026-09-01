@@ -153,14 +153,13 @@ describe("cron monitor chat event queue", () => {
     ).toMatchObject({
       name: "OrphanedQueuedChatEventsError",
       code: "ORPHANED_QUEUED_CHAT_MESSAGES",
-      orphanedMessages: 9,
+      orphanedMessages: 8,
       orphanedMessagesBySource: {
         agentphone: 1,
         automation: 1,
         feishu: 1,
         github: 1,
         goal: 1,
-        morning_brief: 1,
         slack: 1,
         teams: 1,
         telegram: 1,
@@ -175,14 +174,13 @@ describe("cron monitor chat event queue", () => {
       error: {
         name: "OrphanedQueuedChatEventsError",
         code: "ORPHANED_QUEUED_CHAT_MESSAGES",
-        orphanedMessages: 9,
+        orphanedMessages: 8,
         orphanedMessagesBySource: {
           agentphone: 1,
           automation: 1,
           feishu: 1,
           github: 1,
           goal: 1,
-          morning_brief: 1,
           slack: 1,
           teams: 1,
           telegram: 1,

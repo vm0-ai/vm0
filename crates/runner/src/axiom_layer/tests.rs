@@ -13,9 +13,9 @@ use std::time::Duration;
 
 use super::{
     ADDON_LOG_TARGET, AxiomGuard, AxiomLayer, BATCH_INTERVAL, BATCH_SIZE, CHANNEL_CAP,
-    ERROR_SOURCE_MAX_DEPTH, FLUSH_DEADLINE, INTERNAL_TARGET, Msg, OPERATOR_ENV_ALIAS_STATES_TARGET,
-    TEXT_FIELD_MAX_BYTES, TRUNCATION_MARKER, init_from_env_values, init_with_base_url,
-    init_with_base_url_and_hostname, with_ingest_filter,
+    ERROR_SOURCE_MAX_DEPTH, FLUSH_DEADLINE, INTERNAL_TARGET, Msg, TEXT_FIELD_MAX_BYTES,
+    TRUNCATION_MARKER, init_from_env_values, init_with_base_url, init_with_base_url_and_hostname,
+    with_ingest_filter,
 };
 use httpmock::Method::POST;
 use httpmock::MockServer;
@@ -346,76 +346,6 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
         !has_event_with_message(&events, "info is below threshold, should not be ingested"),
         "INFO event should not be ingested: {events:#?}",
     );
-}
-
-#[tokio::test]
-async fn only_dedicated_operator_environment_info_target_is_ingested() {
-    let server = MockServer::start_async().await;
-    let (ingest, captured) = capture_axiom_ingest(&server).await;
-    let (layer, guard) = init_with_base_url_and_hostname(
-        &server.base_url(),
-        "test-token",
-        "test",
-        Some("runner-host-1".to_string()),
-    )
-    .expect("init must succeed");
-    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
-
-    {
-        let _sub = tracing::subscriber::set_default(subscriber);
-        tracing::info!(
-            target: OPERATOR_ENV_ALIAS_STATES_TARGET,
-            api_url_alias_state = "equal_dual",
-            runner_token_alias_state = "canonical_only",
-            "runner operator environment alias states"
-        );
-        tracing::info!(target: "runner::operator_env", "unrelated operator info");
-        tracing::info!(
-            target: "runner::operator_env::alias_states::other",
-            "nearby target info"
-        );
-        tracing::event!(
-            target: OPERATOR_ENV_ALIAS_STATES_TARGET,
-            tracing::Level::DEBUG,
-            "dedicated target debug"
-        );
-        tracing::warn!("ordinary warning");
-        tracing::warn!(target: INTERNAL_TARGET, "internal warning");
-    }
-    guard.shutdown().await;
-
-    ingest.assert_calls_async(1).await;
-    let events = captured.events();
-    assert_eq!(events.len(), 2, "unexpected ingested events: {events:#?}");
-
-    let alias_states = event_with_message(&events, "runner operator environment alias states");
-    assert_eq!(alias_states["level"], json!("info"));
-    assert_eq!(
-        alias_states["context"],
-        json!(OPERATOR_ENV_ALIAS_STATES_TARGET)
-    );
-    assert_eq!(alias_states["runner_hostname"], json!("runner-host-1"));
-    assert_eq!(
-        alias_states["runner_version"],
-        json!(env!("CARGO_PKG_VERSION"))
-    );
-    assert_eq!(alias_states["api_url_alias_state"], json!("equal_dual"));
-    assert_eq!(
-        alias_states["runner_token_alias_state"],
-        json!("canonical_only")
-    );
-    event_with_message(&events, "ordinary warning");
-    for message in [
-        "unrelated operator info",
-        "nearby target info",
-        "dedicated target debug",
-        "internal warning",
-    ] {
-        assert!(
-            !has_event_with_message(&events, message),
-            "filtered event {message:?} reached ingest: {events:#?}",
-        );
-    }
 }
 
 #[tokio::test]

@@ -44,6 +44,9 @@ const MAX_ATTEMPTS = 3;
 const BACKOFF_BASE_MS = 1000;
 const MAX_OUTBOX_BATCH_SIZE = 120;
 const OUTBOX_DRAIN_DELAY_MS = 500;
+// Email is single-branded even while the rest of the product retains the
+// dual PublicBrand compatibility contract.
+export const EMAIL_PUBLIC_BRAND = "okou" satisfies PublicBrand;
 
 // Inter-send pacing for Resend rate limits. Overridable so environments
 // without a real provider (tests drain a shared outbox backlog) can disable
@@ -93,31 +96,6 @@ const emailTemplateSchema = z.discriminatedUnion("template", [
       unsubscribeUrl: z.string().optional(),
     }),
   }),
-  // Phase-A drain fallback for Morning Brief outbox rows persisted before the
-  // cutover. Phase B removes this template and renderer after #30264's released
-  // zero-traffic gate also proves no pending or retryable legacy email remains.
-  z.object({
-    template: z.literal("morning-brief"),
-    props: z.object({
-      dateLabel: z.string(),
-      preheader: z.string(),
-      headline: z.string().optional(),
-      sections: z.array(
-        z.object({
-          title: z.string(),
-          items: z.array(
-            z.object({
-              title: z.string(),
-              detail: z.string().optional(),
-              url: z.string().optional(),
-            }),
-          ),
-        }),
-      ),
-      continueUrl: z.string(),
-      manageUrl: z.string(),
-    }),
-  }),
   z.object({
     template: z.literal("credit-low-balance"),
     props: z.object({
@@ -152,13 +130,11 @@ export type EmailTemplate = z.output<typeof emailTemplateSchema>;
 const emailAddressesSchema = z.union([z.string(), z.array(z.string())]);
 const outboxRowSchema = z.object({
   id: z.string(),
-  from_address: z.string(),
   to_addresses: emailAddressesSchema,
   cc_addresses: emailAddressesSchema.nullable(),
   subject: z.string(),
   reply_to: z.string().nullable(),
   headers: z.record(z.string(), z.string()).nullable(),
-  public_brand: z.enum(["vm0", "okou"]),
   template: emailTemplateSchema,
   attempts: z.int(),
 });
@@ -167,13 +143,11 @@ type OutboxRow = z.output<typeof outboxRowSchema>;
 function outboxRowSelection() {
   return {
     id: emailOutbox.id,
-    from_address: emailOutbox.fromAddress,
     to_addresses: emailOutbox.toAddresses,
     cc_addresses: emailOutbox.ccAddresses,
     subject: emailOutbox.subject,
     reply_to: emailOutbox.replyTo,
     headers: emailOutbox.headers,
-    public_brand: emailOutbox.publicBrand,
     template: emailOutbox.template,
     attempts: emailOutbox.attempts,
   };
@@ -187,34 +161,62 @@ function getResendClient(): Resend {
   return new Resend(apiKey);
 }
 
-function apiUrl(publicBrand: PublicBrand): string {
-  return apiUrlForPublicBrand(apiBackendUrl() ?? webUrl(), publicBrand);
+function apiUrl(): string {
+  return apiUrlForPublicBrand(apiBackendUrl() ?? webUrl(), EMAIL_PUBLIC_BRAND);
 }
 
-function appUrl(publicBrand: PublicBrand): string {
-  return appUrlForPublicBrand(env("APP_URL"), publicBrand);
+function appUrl(): string {
+  return appUrlForPublicBrand(env("APP_URL"), EMAIL_PUBLIC_BRAND);
 }
 
-function getFromDomain(publicBrand: PublicBrand): string {
+function officialAutomationResultUnsubscribeUrl(
+  headers: Readonly<Record<string, string>> | undefined,
+): string {
+  const listUnsubscribe = headers?.["List-Unsubscribe"];
+  if (
+    !listUnsubscribe ||
+    !listUnsubscribe.startsWith("<") ||
+    !listUnsubscribe.endsWith(">")
+  ) {
+    throw new Error(
+      "Official Automation result email is missing its List-Unsubscribe URL",
+    );
+  }
+  const oneClickUrl = new URL(listUnsubscribe.slice(1, -1));
+  if (
+    oneClickUrl.protocol !== "https:" ||
+    !oneClickUrl.pathname.endsWith("/api/email/unsubscribe")
+  ) {
+    throw new Error(
+      "Official Automation result email has an invalid List-Unsubscribe URL",
+    );
+  }
+  const token = oneClickUrl.searchParams.get("token");
+  if (!token) {
+    throw new Error(
+      "Official Automation result email is missing its unsubscribe token",
+    );
+  }
+
+  const unsubscribeUrl = new URL(`${appUrl()}/email/unsubscribe`);
+  unsubscribeUrl.searchParams.set("token", token);
+  return unsubscribeUrl.toString();
+}
+
+function getFromDomain(): string {
   const domain = env("RESEND_FROM_DOMAIN");
   if (!domain) {
     throw new Error("RESEND_FROM_DOMAIN is not configured");
   }
-  return fromDomainForPublicBrand(domain, publicBrand);
+  return fromDomainForPublicBrand(domain, EMAIL_PUBLIC_BRAND);
 }
 
-export function buildFromAddress(
-  localPart: string,
-  publicBrand: PublicBrand = "vm0",
-): string {
-  return `${publicBrandPresentation(publicBrand).assistantName} <${localPart}@${getFromDomain(publicBrand)}>`;
+export function buildFromAddress(): string {
+  return `${publicBrandPresentation(EMAIL_PUBLIC_BRAND).assistantName} <okou@${getFromDomain()}>`;
 }
 
-export function buildTeamFromAddress(
-  localPart: string,
-  publicBrand: PublicBrand = "vm0",
-): string {
-  return `${publicBrandPresentation(publicBrand).brandName} Team <${localPart}@${getFromDomain(publicBrand)}>`;
+export function buildTeamFromAddress(): string {
+  return `${publicBrandPresentation(EMAIL_PUBLIC_BRAND).brandName} Team <support@${getFromDomain()}>`;
 }
 
 function generateUnsubscribeToken(userId: string): string {
@@ -226,20 +228,14 @@ function generateUnsubscribeToken(userId: string): string {
   return `${userId}.${hmac}`;
 }
 
-export function buildUnsubscribeUrl(
-  userId: string,
-  publicBrand: PublicBrand = "vm0",
-): string {
-  return `${appUrl(publicBrand)}/email/unsubscribe?token=${generateUnsubscribeToken(
+export function buildUnsubscribeUrl(userId: string): string {
+  return `${appUrl()}/email/unsubscribe?token=${generateUnsubscribeToken(
     userId,
   )}`;
 }
 
-export function buildOneClickUnsubscribeUrl(
-  userId: string,
-  publicBrand: PublicBrand = "vm0",
-): string {
-  return `${apiUrl(publicBrand)}/api/email/unsubscribe?token=${generateUnsubscribeToken(
+export function buildOneClickUnsubscribeUrl(userId: string): string {
+  return `${apiUrl()}/api/email/unsubscribe?token=${generateUnsubscribeToken(
     userId,
   )}`;
 }
@@ -279,55 +275,6 @@ function escapeHtml(value: string): string {
   return escaped;
 }
 
-type MorningBriefEmailTemplate = Extract<
-  EmailTemplate,
-  { readonly template: "morning-brief" }
->;
-
-const MORNING_BRIEF_LINK_STYLE = "color:#d94801;text-decoration:underline";
-const MORNING_BRIEF_FALLBACK_HEADLINE =
-  "Good morning. Here's your brief for today.";
-
-function renderMorningBriefTemplate(
-  template: MorningBriefEmailTemplate,
-  publicBrand: PublicBrand,
-): string {
-  const assistantName = publicBrandPresentation(publicBrand).assistantName;
-  const assistantMark = publicBrand === "okou" ? "O" : "0";
-  const sections = template.props.sections
-    .map((section) => {
-      const items = section.items
-        .map((item, index) => {
-          const link = item.url
-            ? ` (<a href="${escapeHtml(item.url)}" style="${MORNING_BRIEF_LINK_STYLE}">view</a>)`
-            : "";
-          const detail = item.detail ? ` — ${escapeHtml(item.detail)}` : "";
-          const margin = index === section.items.length - 1 ? "0" : "0 0 9px";
-          return `<li style="margin:${margin}"><strong>${escapeHtml(
-            item.title,
-          )}</strong>${link}${detail}</li>`;
-        })
-        .join("");
-      return `<p style="margin:0 0 10px"><strong>${escapeHtml(
-        section.title,
-      )}</strong> (${section.items.length})</p><ul style="margin:0 0 22px;padding-left:22px">${items}</ul>`;
-    })
-    .join("");
-  const headline = template.props.headline ?? MORNING_BRIEF_FALLBACK_HEADLINE;
-
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"></head><body style="margin:0;padding:0;background-color:#ffffff;color:#202124;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.55;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%"><div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px;mso-hide:all">${escapeHtml(
-    template.props.preheader,
-  )}</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;border-collapse:collapse;background-color:#ffffff"><tr><td align="left" style="padding:24px 20px 40px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;text-align:left"><tr><td><p style="margin:0 0 1em">${escapeHtml(
-    headline,
-  )}</p><hr style="height:1px;margin:28px 0;border:0;background-color:#e4e6e8">${sections}<p style="margin:0 0 1em">Continue in ${assistantName} if you&rsquo;d like to ask a follow-up or turn any item into a task.</p><p style="margin:0"><a href="${escapeHtml(
-    template.props.continueUrl,
-  )}" style="${MORNING_BRIEF_LINK_STYLE};font-weight:600">Continue in ${assistantName} &rarr;</a></p><hr style="height:1px;margin:32px 0 24px;border:0;background-color:#e4e6e8"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse"><tr><td width="40" height="40" align="center" valign="middle" bgcolor="#ed4e01" style="width:40px;height:40px;border-radius:10px;color:#ffffff;font-size:17px;font-weight:700;line-height:40px;mso-line-height-rule:exactly">${assistantMark}</td><td valign="middle" style="padding-left:12px;line-height:1.4"><div><strong>${assistantName}</strong></div><div style="margin-top:3px;font-size:12px"><a href="${escapeHtml(
-    template.props.continueUrl,
-  )}" style="${MORNING_BRIEF_LINK_STYLE}">Open this brief</a> &middot; <a href="${escapeHtml(
-    template.props.manageUrl,
-  )}" style="${MORNING_BRIEF_LINK_STYLE}">Turn off Morning Brief</a></div></td></tr></table><div style="margin-top:16px;color:#737373;font-size:12px;line-height:1.45">From your &ldquo;Morning Brief&rdquo; routine</div></td></tr></table></td></tr></table></body></html>`;
-}
-
 interface RenderedEmailTemplate {
   readonly html: string;
   readonly text?: string;
@@ -335,7 +282,7 @@ interface RenderedEmailTemplate {
 
 function renderTemplate(
   template: EmailTemplate,
-  publicBrand: PublicBrand,
+  headers: Readonly<Record<string, string>> | undefined,
 ): RenderedEmailTemplate {
   switch (template.template) {
     case "data-export-ready": {
@@ -351,9 +298,6 @@ function renderTemplate(
           template.props.downloadUrl,
         )}">Download export</a></p>${unsubscribe}</main>`,
       };
-    }
-    case "morning-brief": {
-      return { html: renderMorningBriefTemplate(template, publicBrand) };
     }
     case "credit-low-balance": {
       const remainingCredits =
@@ -380,7 +324,8 @@ function renderTemplate(
     case "official-automation-result": {
       const rendered = renderOfficialAutomationResultEmail(
         template.props,
-        publicBrand,
+        EMAIL_PUBLIC_BRAND,
+        officialAutomationResultUnsubscribeUrl(headers),
       );
       if (rendered.fallback) {
         log.warn("Official Automation result email used fallback renderer", {
@@ -394,23 +339,35 @@ function renderTemplate(
   }
 }
 
+function fromAddressForTemplate(template: EmailTemplate): string {
+  // Resolve the sender at delivery so legacy or malformed outbox snapshots
+  // cannot bypass the user-facing email brand policy.
+  switch (template.template) {
+    case "credit-low-balance": {
+      return buildTeamFromAddress();
+    }
+    case "data-export-ready":
+    case "official-automation-result": {
+      return buildFromAddress();
+    }
+  }
+}
+
 async function sendEmailDirect(options: {
-  readonly from: string;
   readonly to: string | readonly string[];
   readonly subject: string;
   readonly template: EmailTemplate;
   readonly cc?: string | readonly string[];
   readonly replyTo?: string;
   readonly headers?: Record<string, string>;
-  readonly publicBrand: PublicBrand;
 }): Promise<
   | { readonly ok: true; readonly resendId: string }
   | { readonly ok: false; readonly error: string }
 > {
   const resend = getResendClient();
-  const rendered = renderTemplate(options.template, options.publicBrand);
+  const rendered = renderTemplate(options.template, options.headers);
   const { data, error } = await resend.emails.send({
-    from: options.from,
+    from: fromAddressForTemplate(options.template),
     to: typeof options.to === "string" ? options.to : [...options.to],
     subject: options.subject,
     ...rendered,
@@ -488,14 +445,12 @@ async function processOutboxItem(
   }
 
   const result = await sendEmailDirect({
-    from: row.from_address,
     to: row.to_addresses,
     subject: row.subject,
     template: row.template,
     cc: row.cc_addresses ?? undefined,
     replyTo: row.reply_to ?? undefined,
     headers: row.headers ?? undefined,
-    publicBrand: row.public_brand,
   });
 
   if (!result.ok) {

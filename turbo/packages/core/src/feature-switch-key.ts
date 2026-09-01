@@ -31,6 +31,7 @@ export enum FeatureSwitchKey {
   MailchimpConnector = "mailchimpConnector",
   ResendConnector = "resendConnector",
   SpotifyConnector = "spotifyConnector",
+  StripeMarketplaceOAuthConnector = "stripeMarketplaceOAuthConnector",
   OkouDebug = "okouDebug",
   Banking = "banking",
   Lab = "lab",
@@ -68,4 +69,5 @@ export enum FeatureSwitchKey {
   ChatConversationLocator = "chatConversationLocator",
   ComposerImageAnnotation = "composerImageAnnotation",
   GradientColorThemes = "gradientColorThemes",
+  DesktopScreenRecording = "desktopScreenRecording",
 }

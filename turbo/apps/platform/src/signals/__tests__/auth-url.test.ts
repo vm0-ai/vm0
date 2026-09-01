@@ -1,5 +1,5 @@
 import { waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { detachedSetupPage, setupPage } from "../../__tests__/page-helper.ts";
 import {
@@ -153,6 +153,29 @@ describe("platform auth URLs", () => {
     });
   });
 
+  it("uses Okou auth and the VM0 root satellite after the cutover", () => {
+    vi.stubEnv(
+      "VITE_CLERK_PUBLISHABLE_KEY_PROD",
+      "pk_live_Y2xlcmsuYXBwLm9rb3UuYWkk",
+    );
+    try {
+      setBrowserUrl("https://app.okou.ai/agents");
+      expect(resolveAppAuthUrl("/sign-in")).toBe("https://app.okou.ai/sign-in");
+      expect(resolveWebOrigin()).toBe("https://www.okou.ai");
+      expect(resolveClerkSatelliteConfig()).toBeNull();
+
+      setBrowserUrl("https://app.vm0.ai/agents");
+      expect(resolveAppAuthUrl("/sign-in")).toBe("https://app.okou.ai/sign-in");
+      expect(resolveClerkSatelliteConfig()).toStrictEqual({
+        domain: "vm0.ai",
+        isSatellite: true,
+        satelliteAutoSync: true,
+      });
+    } finally {
+      vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PROD", "test_production_key");
+    }
+  });
+
   it("does not enable satellite mode on an unregistered okou.ai sibling", () => {
     setBrowserUrl("https://console.okou.ai/agents");
 
@@ -264,9 +287,6 @@ describe("platform auth redirects", () => {
       afterSignOutUrl: "https://app.vm0.ai/sign-in",
       signInUrl: "https://app.vm0.ai/sign-in",
       signUpUrl: "https://app.vm0.ai/sign-up",
-      ui: expect.objectContaining({
-        ClerkUI: expect.any(Promise),
-      }),
     });
   });
 
@@ -298,9 +318,6 @@ describe("platform auth redirects", () => {
       satelliteAutoSync: true,
       signInUrl: "https://app.vm0.ai/sign-in",
       signUpUrl: "https://app.vm0.ai/sign-up",
-      ui: expect.objectContaining({
-        ClerkUI: expect.any(Promise),
-      }),
     });
   });
 });

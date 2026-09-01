@@ -4,7 +4,6 @@ import {
   DESKTOP_PRODUCTS,
   type DesktopProduct,
 } from "@okouai/api-contracts/contracts/client-headers";
-import { MODEL_PROVIDER_WRITE_INPUT_TYPE_IDS } from "@okouai/api-contracts/contracts/model-provider-types";
 import {
   PUBLIC_BRANDS,
   type PublicBrand,
@@ -1018,34 +1017,6 @@ export function discoverPersistedSemanticLegacyIdentities(
 ): readonly DiscoveredLegacyDatabaseIdentity[] {
   const surfaces = snapshotColumnSurfaces(snapshot);
   const candidates: LegacyCatalogCandidate[] = [];
-
-  const legacyProvider =
-    "vm0" satisfies (typeof MODEL_PROVIDER_WRITE_INPUT_TYPE_IDS)[number];
-  if (!contractIncludes(MODEL_PROVIDER_WRITE_INPUT_TYPE_IDS, legacyProvider)) {
-    throw new Error(
-      "Model provider write-input contract no longer accepts vm0",
-    );
-  }
-  const providerMembers = surfaces
-    .filter((surface) => {
-      return (
-        surface.columnName === "model_provider" ||
-        surface.columnName === "model_provider_type" ||
-        surface.columnName === "default_provider_type" ||
-        (surface.tableName === "model_providers" &&
-          surface.columnName === "type")
-      );
-    })
-    .map((surface) => {
-      return semanticMember(surface, legacyProvider);
-    });
-  candidates.push({
-    evidence: "semantic-contract:model-provider",
-    key: "enum-discriminator-value:contract.model-provider = 'vm0'",
-    kind: "enum-discriminator-value",
-    matchTexts: [legacyProvider],
-    members: providerMembers,
-  });
 
   const legacyPublicBrand = "vm0" satisfies PublicBrand;
   if (!contractIncludes(PUBLIC_BRANDS, legacyPublicBrand)) {

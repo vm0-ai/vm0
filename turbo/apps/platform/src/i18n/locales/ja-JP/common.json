@@ -3,6 +3,7 @@
     "codex": {
       "codexError": "Codex エラー",
       "commandStatus": "コマンド {{status}}",
+      "contextCompaction": "コンテキストを圧縮しました",
       "error": "エラー: {{error}}",
       "fileChangeKind": "変更",
       "fileOperationCompleted": "ファイル操作が完了しました",
@@ -27,6 +28,12 @@
       },
       "status": "ステータス: {{status}}",
       "statusDetail": "ステータス: {{status}}",
+      "subAgentActivity": {
+        "completed": "サブエージェントが完了しました",
+        "interacted": "サブエージェントと対話しました",
+        "interrupted": "サブエージェントを中断しました",
+        "started": "サブエージェントを開始しました"
+      },
       "turnFailed": "ターンに失敗しました",
       "turnStatus": "ターン: {{status}}",
       "warning": "[警告] {{message}}",
@@ -363,51 +370,6 @@
     }
   },
   "appShell": {
-    "browserUpgrade": {
-      "browser": {
-        "action": "ブラウザを更新する",
-        "description": "{{assistantName}} は、現在のブラウザのバージョンをサポートしていません。続行するにはブラウザを更新してください。",
-        "title": "続行するにはブラウザを更新してください"
-      },
-      "chrome": {
-        "action": "Chrome を更新します",
-        "description": "{{assistantName}} は、現在のブラウザのバージョンをサポートしていません。続行するには、Chrome を更新してください。",
-        "title": "続行するには Chrome を更新してください"
-      },
-      "chromium": {
-        "action": "Chromium を更新します",
-        "description": "{{assistantName}} は、現在のブラウザのバージョンをサポートしていません。続行するには、Chromium を更新してください。",
-        "title": "続行するには Chromium を更新してください"
-      },
-      "ios": {
-        "action": "iOS を更新します",
-        "description": "{{assistantName}} は、現在のブラウザのバージョンをサポートしていません。続行するには、iOS を更新してください。",
-        "title": "続行するには iOS を更新してください"
-      },
-      "safari": {
-        "action": "Safari を更新します",
-        "description": "{{assistantName}} は、現在のブラウザのバージョンをサポートしていません。続行するには、Safari を更新してください。",
-        "title": "続行するには Safari を更新してください"
-      }
-    },
-    "loading": {
-      "ariaLabel": "ワークスペースを読み込み中",
-      "messages": {
-        "almostThere": "もうすぐです...",
-        "brewingIdeas": "アイデアを練っています...",
-        "connectingDots": "点と点をつないでいます...",
-        "gettingReady": "準備しています...",
-        "loadingWorkspace": "ワークスペースを読み込んでいます...",
-        "spinningTeam": "チームを立ち上げています...",
-        "tuningInstruments": "楽器を調整しています...",
-        "warmingNeurons": "ニューラルネットワークを準備しています..."
-      }
-    },
-    "logoAlt": "{{brandName}}",
-    "metadata": {
-      "description": "{{assistantName}}は{{brandName}}のAIコワーカーです。{{assistantName}}にメッセージを送るか、Webでチャットできます。リサーチ、メール、ドキュメント、Slack、GitHub、Notionなど、100以上のツールを利用できます。",
-      "title": "{{assistantName}} — {{brandName}}のAIコワーカー"
-    },
     "shortcutHelp": {
       "close": "キーボードショートカットを閉じる",
       "description": "このページで利用可能なショートカット",
@@ -654,6 +616,7 @@
       "importedSlides_one": "{{count}} 枚",
       "importedSlides_other": "{{count}} 枚",
       "multiAccent": "マルチアクセント",
+      "needPro": "Pro が必要",
       "nextSlide": "次のスライドをプレビューする",
       "noMatches": "一致しません",
       "placeholder": "{{title}} Web サイトのプレビュー プレースホルダー",
@@ -706,6 +669,7 @@
       "tryDifferentSearch": "別の検索を試してください。",
       "use": "使用する",
       "useThisTemplate": "このテンプレートを使用してください",
+      "viewVideoPlans": "動画テンプレート {{title}} のプランを表示",
       "visibility": {
         "change": "変更",
         "changeLabel": "テンプレートの公開範囲を変更",
@@ -1931,6 +1895,20 @@
       "unsupportedIntelMac": "AppleシリコンMacが必要です",
       "yourComputer": "あなたのコンピュータ"
     },
+    "connectorAccountSwitch": {
+      "accountFallback": "コネクターアカウント",
+      "actionFailed": "アカウントを切り替えられませんでした。もう一度お試しください。",
+      "customConnector": "カスタムコネクター",
+      "loadFailed": "このコネクターアカウントを読み込めませんでした。",
+      "reconnectRequired": "再接続が必要です。以降の実行では既存のフォールバックが使用される場合があります。",
+      "retry": "再試行",
+      "selected": "{{account}}に切り替えました",
+      "switch": "切り替える",
+      "switching": "切り替え中...",
+      "title": "{{account}}に切り替えますか？",
+      "unavailableDescription": "このアカウントは存在しないか、このコネクターでは利用できません。",
+      "unavailableTitle": "アカウントを利用できません"
+    },
     "connectors": {
       "accountForThread": "このスレッドのアカウント",
       "add": "{{connectorName}} を追加",
@@ -1967,6 +1945,7 @@
         "capacityTitle": "{{framework}} モデルは混雑しています",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "続ける",
         "resetAndTryAgain": "リセットして再試行",
         "resetsAt": "{{time}} にリセット",
         "selectModel": "モデルを切り替える",
@@ -2194,7 +2173,6 @@
       "loadingGoal": "目標を読み込んでいます...",
       "message_one": "{{count}} メッセージ",
       "message_other": "{{count}} メッセージ",
-      "morningBrief": "モーニングブリーフ",
       "openGoalDetails": "目標の詳細を開く",
       "pendingAutomationEvent": "保留中のオートメーションイベント",
       "queuedMessage": "キューに入れられたメッセージ",
@@ -3299,7 +3277,8 @@
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "リクエストが失敗しました"
+      "requestFailed": "リクエストが失敗しました",
+      "sharedDatabaseUnavailable": "アプリで問題が発生しました。少し待ってから、ページを更新してもう一度お試しください。"
     },
     "realtime": {
       "degraded": "ライブアップデートで問題が発生しました。ページを更新してください。",
@@ -6150,7 +6129,7 @@
       "browse": "公式を探す",
       "chooseValue": "値を選択",
       "copySucceededUninstallFailed": "コピーは準備できましたが、元の公式ワークフローをアンインストールできませんでした。",
-      "description": "vm0 が管理・保守するワークフローをインストールします。",
+      "description": "Okou Official Team が管理・保守するワークフローをインストールします。",
       "empty": "利用可能な公式ワークフローはありません。",
       "includedAutomations": "含まれる自動化",
       "install": "インストール",

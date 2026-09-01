@@ -245,11 +245,11 @@ describe("Stripe invoice-paid workflow automation readiness", () => {
     expect(rejected.body.error.message).toMatch(/require OAuth/u);
   });
 
-  it("persists a storage-v2 Live OAuth binding and supports the full lifecycle", async () => {
+  it("persists a storage-v3 Live Marketplace OAuth binding and supports the full lifecycle", async () => {
     const scenario = await setupScenario();
     const connected = await connectStripeOAuth(scenario.actor, {
-      accessToken: "stripe-live-storage-v2-token",
-      code: "stripe-live-storage-v2-code",
+      accessToken: "stripe-live-storage-v3-token",
+      code: "stripe-live-storage-v3-code",
     });
     expect(connected.connector).toMatchObject({
       slug: "stripe",
@@ -258,12 +258,13 @@ describe("Stripe invoice-paid workflow automation readiness", () => {
       connectionStatus: "connected",
     });
     expect(connected.provider.tokenBodies).toHaveLength(1);
-    expect(connected.provider.tokenBodies[0]?.get("client_secret")).toBe(
-      "stripe-client-secret",
-    );
+    expect(connected.provider.tokenBodies[0]?.get("client_secret")).toBeNull();
+    expect(connected.provider.tokenAuthorizationHeaders).toStrictEqual([
+      `Basic ${btoa("sk_test_marketplace_secret:")}`,
+    ]);
     expect(connected.provider.tokenBodies[0]?.get("code")).toBe(connected.code);
     expect(connected.provider.accountAuthorizationHeaders).toStrictEqual([
-      "Bearer stripe-live-storage-v2-token",
+      "Bearer stripe-live-storage-v3-token",
     ]);
 
     const listedConnectors = await connectors.listConnectors(scenario.actor);
@@ -303,7 +304,7 @@ describe("Stripe invoice-paid workflow automation readiness", () => {
       },
     });
     expect(JSON.stringify(created.body)).not.toContain(
-      "stripe-live-storage-v2-token",
+      "stripe-live-storage-v3-token",
     );
 
     authenticate(scenario);

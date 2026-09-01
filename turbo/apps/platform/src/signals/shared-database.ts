@@ -1,28 +1,22 @@
 import { command, computed, state, type Command } from "ccstate";
 import type {
+  ChatThreadIndicators,
   ChatEventDataKey,
   ChatThreadEventDataKey,
   SharedDatabaseDataKey,
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
 } from "../shared-database/data-key.ts";
-import type {
-  SharedDatabaseBridge,
-  SharedDatabaseHeartbeat,
-  SharedDatabaseSubscriptionCallback,
-} from "../shared-database/bridge.ts";
 import type { SharedDatabaseConnectionStatus } from "../shared-database/protocol.ts";
+import { reloadChatIndicatorsCounter$ } from "./chat-thread-list-reload.ts";
+import { rootSignal$ } from "./root-signal.ts";
+import { installedSharedDatabaseBridge$ } from "./shared-database-bridge-state.ts";
 
-const sharedDatabaseBridgeState$ = state<SharedDatabaseBridge | null>(null);
 const sharedDatabaseConnectionStatusState$ =
   state<SharedDatabaseConnectionStatus>("disconnected");
 
 export const sharedDatabaseConnectionStatus$ = computed((get) => {
   return get(sharedDatabaseConnectionStatusState$);
-});
-
-export const sharedDatabaseBridgeInstalled$ = computed((get): boolean => {
-  return get(sharedDatabaseBridgeState$) !== null;
 });
 
 export const setSharedDatabaseConnectionStatus$ = command(
@@ -31,31 +25,11 @@ export const setSharedDatabaseConnectionStatus$ = command(
   },
 );
 
-export const installSharedDatabaseBridge$ = command(
-  ({ set }, bridge: SharedDatabaseBridge): void => {
-    set(sharedDatabaseBridgeState$, bridge);
-    set(sharedDatabaseConnectionStatusState$, "connecting");
-  },
-);
-
-function requireBridge(
-  bridge: SharedDatabaseBridge | null,
-): SharedDatabaseBridge {
-  if (!bridge) {
-    throw new Error("Shared database bridge is not installed");
-  }
-  return bridge;
-}
-
-export const heartbeatSharedDatabase$ = command(
-  async (
-    { get },
-    heartbeat: SharedDatabaseHeartbeat,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    await requireBridge(get(sharedDatabaseBridgeState$)).heartbeat(
-      heartbeat,
-      signal,
+export const sharedDatabaseChatThreadIndicators$ = computed(
+  async (get): Promise<ChatThreadIndicators> => {
+    get(reloadChatIndicatorsCounter$);
+    return await get(installedSharedDatabaseBridge$).indicators(
+      get(rootSignal$),
     );
   },
 );
@@ -76,10 +50,7 @@ const querySharedDatabaseCommand$ = command(
     query: SharedDatabaseQuery<SharedDatabaseDataKey>,
     signal: AbortSignal,
   ): Promise<SharedDatabaseQueryResult<SharedDatabaseDataKey>> => {
-    return await requireBridge(get(sharedDatabaseBridgeState$)).query(
-      query,
-      signal,
-    );
+    return await get(installedSharedDatabaseBridge$).query(query, signal);
   },
 );
 
@@ -89,18 +60,3 @@ export const queryChatEventSharedDatabase$ =
   querySharedDatabaseCommand$ as QueryChatEventSharedDatabaseCommand;
 export const queryChatThreadEventSharedDatabase$ =
   querySharedDatabaseCommand$ as QueryChatThreadEventSharedDatabaseCommand;
-
-export const onSharedDatabase$ = command(
-  async (
-    { get },
-    dataKey: SharedDatabaseDataKey,
-    callback: SharedDatabaseSubscriptionCallback,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    await requireBridge(get(sharedDatabaseBridgeState$)).on(
-      dataKey,
-      callback,
-      signal,
-    );
-  },
-);

@@ -1,5 +1,9 @@
 import type { DesktopAuthState } from "./desktop-bridge";
 import {
+  STOP_SCREEN_RECORDING_ACCELERATOR_LABEL,
+  type DesktopRecorderState,
+} from "./desktop-recorder-types";
+import {
   hasRequiredComputerUsePermissions,
   type ComputerUseHostRuntimeStatus,
   type ComputerUseLocalCommandLogEntry,
@@ -48,6 +52,9 @@ export interface DesktopTrayMenuActions {
   readonly openAccessibilitySettings: () => void;
   readonly openScreenRecordingSettings: () => void;
   readonly setKeepAwakeEnabled: (enabled: boolean) => void;
+  readonly startScreenRecording: () => void;
+  readonly stopScreenRecording: () => void;
+  readonly retryScreenRecordingDelivery: () => void;
   readonly quit: () => void;
 }
 
@@ -57,6 +64,8 @@ interface DesktopTrayMenuState {
   readonly auth: DesktopAuthState | null;
   readonly authLoading?: boolean;
   readonly authError: string | null;
+  /** Absent while the `desktopScreenRecording` switch is off. */
+  readonly recorder?: DesktopRecorderState;
 }
 
 function desktopBrandName(state: DesktopTrayMenuState): "Zero" | "Okou" {
@@ -370,6 +379,91 @@ function buildRecentCommandSection(
   return [disabledLabel("Recent Commands"), ...commands];
 }
 
+function formatRecordingElapsed(elapsedMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function screenRecordingStatusLabel(recorder: DesktopRecorderState): string {
+  switch (recorder.status) {
+    case "recording":
+      return formatRecordingElapsed(recorder.elapsedMs);
+    case "preparing":
+      return "Starting...";
+    case "finalizing":
+      return "Saving...";
+    case "delivering":
+      return "Uploading...";
+    case "ready":
+      return "Ready";
+    default:
+      return recorder.error ? "Failed" : "Ready";
+  }
+}
+
+function buildScreenRecordingSubmenu(
+  recorder: DesktopRecorderState,
+  actions: DesktopTrayMenuActions,
+): readonly DesktopTrayMenuItem[] {
+  const items: DesktopTrayMenuItem[] = [];
+
+  if (recorder.status === "recording") {
+    items.push({
+      label: `Stop Recording (${STOP_SCREEN_RECORDING_ACCELERATOR_LABEL})`,
+      click: actions.stopScreenRecording,
+    });
+  } else if (recorder.status === "idle") {
+    items.push({
+      label: "Record Main Display",
+      click: actions.startScreenRecording,
+    });
+  } else {
+    items.push(disabledLabel(screenRecordingStatusLabel(recorder)));
+  }
+
+  if (recorder.error) {
+    items.push(
+      separator(),
+      disabledLabel(truncateMenuLabel(recorder.error.message)),
+    );
+    // The capture succeeded and both files are still on disk, so a failed
+    // upload is worth retrying rather than re-recording.
+    if (recorder.error.code === "delivery_failed" && recorder.lastRecording) {
+      items.push({
+        label: "Retry Delivery",
+        click: actions.retryScreenRecordingDelivery,
+      });
+    }
+  }
+  if (recorder.lastRecording) {
+    items.push(
+      separator(),
+      disabledLabel(
+        truncateMenuLabel(`Saved to ${recorder.lastRecording.videoPath}`),
+      ),
+    );
+  }
+  return items;
+}
+
+function buildScreenRecordingSection(
+  state: DesktopTrayMenuState,
+  actions: DesktopTrayMenuActions,
+): readonly DesktopTrayMenuItem[] {
+  const recorder = state.recorder;
+  if (!recorder?.available) {
+    return [];
+  }
+  return [
+    {
+      label: `Screen Recording: ${screenRecordingStatusLabel(recorder)}`,
+      submenu: buildScreenRecordingSubmenu(recorder, actions),
+    },
+  ];
+}
+
 export function buildDesktopTrayMenuItems(
   state: DesktopTrayMenuState,
   actions: DesktopTrayMenuActions,
@@ -396,6 +490,7 @@ export function buildDesktopTrayMenuItems(
         actions.setKeepAwakeEnabled(!state.computerUse.keepAwake.enabled);
       },
     },
+    ...buildScreenRecordingSection(state, actions),
     separator(),
     ...buildRecentCommandSection(state, actions),
     separator(),

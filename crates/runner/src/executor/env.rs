@@ -188,6 +188,12 @@ fn validate_pi_launch_config(value: &serde_json::Value, session_id: &str) -> Res
     if !(1..=i32::MAX as u64).contains(&slot.sandbox_event_sequence_start) {
         return Err("Pi Sandbox event sequence start must be between 1 and 2147483647".to_string());
     }
+    if slot
+        .ownership_transfer
+        .is_some_and(|capability| capability.schema_version != 1)
+    {
+        return Err("Pi ownership-transfer capability schemaVersion must be 1".to_string());
+    }
     if slot.base_session.session_id != session_id {
         return Err("Pi H0 session id does not match pi_session_id".to_string());
     }
@@ -377,18 +383,9 @@ fn for_each_guest_user_env_entry<'a>(
     context: &'a ExecutionContext,
     mut visit: impl FnMut(&'a str, &'a str),
 ) {
-    let is_untrusted_runner_owned: fn(&str) -> bool = if context.platform_environment.is_some() {
-        is_runner_owned_env_key
-    } else {
-        // Old API/stored context -> new runner: preserve the exact
-        // pre-platformEnvironment filter until prior API rollback targets,
-        // supported pre-field contexts, and old runners/sandboxes pass the
-        // #28914 drain gates.
-        guest_contracts::env::is_pre_platform_environment_runner_owned_env_key
-    };
     for_each_filtered_environment_entry(
         context.environment.as_ref(),
-        is_untrusted_runner_owned,
+        is_runner_owned_env_key,
         &mut visit,
     );
 
@@ -402,10 +399,8 @@ fn for_each_guest_user_env_entry<'a>(
         }
     }
 
-    if let Some(platform_environment) = &context.platform_environment {
-        for (key, value) in platform_environment {
-            visit(key, value);
-        }
+    for (key, value) in &context.platform_environment {
+        visit(key, value);
     }
 }
 

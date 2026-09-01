@@ -2,6 +2,7 @@ class LocationOverrides {
   ownerSignal: AbortSignal | undefined = undefined;
   pathname: string | undefined = undefined;
   search: string | undefined = undefined;
+  hash: string | undefined = undefined;
   pushState: typeof window.history.pushState | undefined = undefined;
   replaceState: typeof window.history.replaceState | undefined = undefined;
 }
@@ -11,6 +12,7 @@ const overrides = new LocationOverrides();
 function clearOverrideValues(): void {
   overrides.pathname = undefined;
   overrides.search = undefined;
+  overrides.hash = undefined;
   overrides.pushState = undefined;
   overrides.replaceState = undefined;
 }
@@ -45,12 +47,21 @@ export const setSearch = (search: string, signal: AbortSignal) => {
   overrides.search = search;
 };
 
+export const setHash = (hash: string, signal: AbortSignal) => {
+  ownOverrides(signal);
+  overrides.hash = hash;
+};
+
 export const pathname = () => {
   return overrides.pathname ?? location.pathname;
 };
 
 export const search = () => {
   return overrides.search ?? location.search;
+};
+
+export const hash = () => {
+  return overrides.hash ?? location.hash;
 };
 
 export const pushState = (

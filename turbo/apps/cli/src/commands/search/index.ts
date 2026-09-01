@@ -52,8 +52,8 @@ To verify the token and network policy end-to-end:
 
 Slack API docs: https://api.slack.com/methods/search.messages
 
-Note: CLI-local flags (--limit, --since, -A/-B/-C) are ignored for the
-slack source. Pass equivalents to Slack's API via count= / highlight=
+Note: CLI-local flags (--limit, --since) are ignored for the slack source.
+Pass equivalents to Slack's API via count= / highlight=
 query parameters instead.`;
 }
 
@@ -62,33 +62,10 @@ interface SearchOptions {
   agent?: string;
   since?: string;
   limit?: string;
-  afterContext?: string;
-  beforeContext?: string;
-  context?: string;
 }
 
 function collectSource(value: string, previous: string[]): string[] {
   return [...previous, value];
-}
-
-function parseContextOptions(options: SearchOptions): {
-  before: number;
-  after: number;
-} {
-  const contextN =
-    options.context !== undefined
-      ? parseBoundedLogCount(options.context, "--context", 0, 10)
-      : 0;
-  const before =
-    options.beforeContext !== undefined
-      ? parseBoundedLogCount(options.beforeContext, "--before-context", 0, 10)
-      : contextN;
-  const after =
-    options.afterContext !== undefined
-      ? parseBoundedLogCount(options.afterContext, "--after-context", 0, 10)
-      : contextN;
-
-  return { before, after };
 }
 
 function parseLimit(value: string | undefined): number | undefined {
@@ -100,11 +77,10 @@ function formatTimestamp(iso: string): string {
   return formatIsoTimestamp(iso);
 }
 
-function renderChatMessage(msg: ChatSearchMessage, isMatch: boolean): void {
-  const marker = isMatch ? chalk.yellow("▸") : chalk.dim("·");
-  const header = `${marker} ${chalk.dim(msg.role)} ${chalk.dim(formatTimestamp(msg.createdAt))}`;
+function renderChatMessage(msg: ChatSearchMessage): void {
+  const header = `${chalk.yellow("▸")} ${chalk.dim(msg.role)} ${chalk.dim(formatTimestamp(msg.createdAt))}`;
   console.log(header);
-  console.log(isMatch ? msg.content : chalk.dim(msg.content));
+  console.log(msg.content);
 }
 
 function renderChatResults(response: ChatSearchResponse): void {
@@ -118,13 +94,7 @@ function renderChatResults(response: ChatSearchResponse): void {
         `── Thread ${result.chatThreadId} (${result.agentName}) ──────────`,
       ),
     );
-    for (const msg of result.contextBefore) {
-      renderChatMessage(msg, false);
-    }
-    renderChatMessage(result.matchedMessage, true);
-    for (const msg of result.contextAfter) {
-      renderChatMessage(msg, false);
-    }
+    renderChatMessage(result.matchedMessage);
   }
 
   if (response.hasMore) {
@@ -148,7 +118,6 @@ async function runChatSource(
     process.exit(1);
   }
 
-  const { before, after } = parseContextOptions(options);
   const limit = parseLimit(options.limit);
   const since =
     options.since !== undefined
@@ -160,8 +129,6 @@ async function runChatSource(
     agentId: options.agent,
     since,
     limit,
-    before,
-    after,
   });
 
   if (response.results.length === 0) {
@@ -204,9 +171,6 @@ export const searchCommand = new Command()
   .option("--agent <id>", "Filter by agent ID")
   .option("--since <time>", "Time window (e.g., 7d, 2h)")
   .option("--limit <n>", "Maximum number of matches")
-  .option("-A, --after-context <n>", "Show n items after each match")
-  .option("-B, --before-context <n>", "Show n items before each match")
-  .option("-C, --context <n>", "Show n items before and after each match")
   .addHelpText("after", SEARCH_EXPLAINER)
   .action(
     withErrorHandler(async (query: string, options: SearchOptions) => {

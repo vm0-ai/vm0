@@ -1,5 +1,5 @@
 import { captureDesktopNativeHelperError } from "./sentry-main";
-import { writeSync } from "node:fs";
+import { openAsBlob, writeSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -7,6 +7,7 @@ import {
   app,
   BrowserWindow,
   dialog,
+  globalShortcut,
   ipcMain,
   Menu,
   net,
@@ -46,6 +47,10 @@ import {
 import { isComputerUseSetupRequired } from "./computer-use-startup-gate";
 import { ComputerUseRuntimeController } from "./computer-use-runtime-controller";
 import { DeveloperToolsController } from "./desktop-developer-tools-controller";
+import { DesktopRecorderController } from "./desktop-recorder-controller";
+import { createRecorderNativeBackend } from "./desktop-recorder-native";
+import { deliverRecording } from "./desktop-recorder-delivery";
+import { STOP_SCREEN_RECORDING_ACCELERATOR } from "./desktop-recorder-types";
 import {
   getComputerUsePermissionState,
   probeComputerUseAutomationPermission,
@@ -143,6 +148,7 @@ const DESKTOP_SIGN_OUT_STORAGES = [
   "serviceworkers",
   "cachestorage",
 ] as const;
+const SCREEN_RECORDING_POLL_INTERVAL_MS = 1000;
 const MAC_ACCESSIBILITY_SETTINGS_URL =
   "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
 const MAC_SCREEN_RECORDING_SETTINGS_URL =
@@ -204,6 +210,43 @@ const quitConfirmation = new DesktopQuitConfirmationController({
     app.quit();
   },
 });
+const screenRecorder = new DesktopRecorderController({
+  createBackend: () => createRecorderNativeBackend(),
+  createOutputPath: () =>
+    path.join(
+      app.getPath("userData"),
+      "recordings",
+      `screen-recording-${Date.now().toString()}.mp4`,
+    ),
+  canDeliver: async () => {
+    const auth = await getAuthSession().getAuthState();
+    return auth.status === "signed_in" && auth.organization !== null;
+  },
+  deliver: async (recording) => {
+    const auth = await getAuthSession().getAuthState();
+    if (auth.status !== "signed_in") {
+      throw new Error("Sign in to Okou to upload the recording");
+    }
+    return await deliverRecording(recording, {
+      apiBaseUrl: desktopApiBaseUrl,
+      appUrl: config.platformUrl.toString(),
+      userId: auth.user.userId,
+      fetchWithSessionAuth: (url, init) =>
+        getAuthSession().fetchWithSessionAuth(url, init),
+      fetchUpload: (url, init) => fetch(url, init),
+      // Streams from disk rather than buffering a whole video in memory.
+      readFile: (filePath) => openAsBlob(filePath),
+    });
+  },
+  openReview: (reviewUrl) => {
+    openExternal(reviewUrl);
+  },
+  onChange: notifyScreenRecorderChanged,
+  logError: (error) => {
+    console.warn("Desktop screen recording teardown failed", error);
+  },
+});
+let screenRecordingPollTimer: NodeJS.Timeout | null = null;
 const developerTools = new DeveloperToolsController({
   fetchFeatureSwitches: () =>
     getAuthSession().fetchWithSessionAuth(
@@ -212,6 +255,9 @@ const developerTools = new DeveloperToolsController({
   setFilesystemPluginFeatureEnabled: (enabled) => {
     filesystemPluginManager?.setFeatureEnabled(enabled);
     mcpPluginManager?.setFeatureEnabled(enabled);
+  },
+  setScreenRecordingFeatureEnabled: (enabled) => {
+    screenRecorder.setFeatureEnabled(enabled);
   },
   onChange: notifyDeveloperToolsChanged,
   logRefreshError: (error) => {
@@ -231,6 +277,55 @@ const computerUseController = new ComputerUseRuntimeController({
 
 function refreshDesktopTray(): void {
   desktopTray?.refresh();
+}
+
+/**
+ * Keeps the poll timer and the global stop shortcut alive exactly while a
+ * capture is running.
+ *
+ * The helper protocol has no push channel, so a source disappearing — the
+ * display being unplugged — only surfaces through polling. The shortcut is
+ * registered just for the duration so it is not held hostage the rest of the
+ * time, and it exists because the recording controls live in the menu bar
+ * rather than in an overlay that the capture would record.
+ */
+function notifyScreenRecorderChanged(): void {
+  refreshDesktopTray();
+
+  const isRecording = screenRecorder.getState().status === "recording";
+  if (isRecording === (screenRecordingPollTimer !== null)) {
+    return;
+  }
+
+  if (isRecording) {
+    screenRecordingPollTimer = setInterval(() => {
+      void screenRecorder.refreshRecordingStatus().catch((error: unknown) => {
+        console.warn("Desktop screen recording status refresh failed", error);
+      });
+    }, SCREEN_RECORDING_POLL_INTERVAL_MS);
+    if (
+      !globalShortcut.register(
+        STOP_SCREEN_RECORDING_ACCELERATOR,
+        stopScreenRecordingFromShortcut,
+      )
+    ) {
+      console.warn(
+        "Unable to register the screen recording stop shortcut",
+        STOP_SCREEN_RECORDING_ACCELERATOR,
+      );
+    }
+    return;
+  }
+
+  clearInterval(screenRecordingPollTimer ?? undefined);
+  screenRecordingPollTimer = null;
+  globalShortcut.unregister(STOP_SCREEN_RECORDING_ACCELERATOR);
+}
+
+function stopScreenRecordingFromShortcut(): void {
+  void screenRecorder.stop().catch((error: unknown) => {
+    console.error("Desktop screen recording stop failed", error);
+  });
 }
 
 function refreshDesktopTrayAuth(): void {
@@ -756,6 +851,16 @@ function installTray(): void {
     },
     setKeepAwakeEnabled: async (enabled) => {
       setKeepAwakeEnabled(enabled);
+    },
+    getRecorderState: () => screenRecorder.getState(),
+    startScreenRecording: async () => {
+      await screenRecorder.startMainDisplayRecording();
+    },
+    stopScreenRecording: async () => {
+      await screenRecorder.stop();
+    },
+    retryScreenRecordingDelivery: async () => {
+      await screenRecorder.retryDelivery();
     },
     quit: () => {
       requestDesktopQuit();
@@ -1315,6 +1420,7 @@ if (!hasSingleInstanceLock) {
 
     appIsQuitting = true;
     releaseKeepAwake();
+    globalShortcut.unregisterAll();
     if (!computerUseController.quitStopRequired()) {
       disposeComputerUseNativeBackend();
       return;

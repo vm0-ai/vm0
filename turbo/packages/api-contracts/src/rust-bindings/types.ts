@@ -184,6 +184,18 @@ export const rustTypeBindings = [
           sandboxEventSequenceStart: [
             "First sandbox event sequence number for the resumed session.",
           ],
+          ownershipTransfer: [
+            "Optional proof that the selected Sandbox supports ownership-transfer manifests.",
+          ],
+        },
+      },
+      {
+        rustTypeName: "PiLaunchConfigApiFirstTurnOwnershipTransfer",
+        rustDoc: [
+          "Sandbox capability for the versioned Pi ownership-transfer manifest.",
+        ],
+        fields: {
+          schemaVersion: ["Pi ownership-transfer capability version."],
         },
       },
       {
@@ -209,6 +221,15 @@ export const rustTypeBindings = [
           provider: ["Model provider selected for the Pi runtime."],
           baseUrl: ["Base URL used for model requests."],
           model: ["Provider model identifier."],
+          api: [
+            "Explicit Pi transport. Legacy payloads omit this field and retain the previous adapter behavior.",
+          ],
+          thinkingLevel: [
+            "Explicit Pi thinking level. Legacy payloads omit this field and retain Pi's medium default.",
+          ],
+          serviceTier: [
+            "Per-run provider request service tier. Legacy and standard payloads omit this field.",
+          ],
           apiKeyEnv: ["Environment variable containing the provider key."],
           credentialSecretName: [
             "API-owned credential secret backing the environment entry.",
@@ -225,6 +246,37 @@ export const rustTypeBindings = [
           openrouter: ["OpenRouter provider."],
           "vercel-ai-gateway": ["Vercel AI Gateway provider."],
           codex: ["Codex provider."],
+        },
+      },
+      {
+        rustTypeName: "PiModelConfigApi",
+        rustDoc: ["OpenAI-compatible transports supported by Pi."],
+        variants: {
+          "openai-completions": ["OpenAI Chat Completions transport."],
+          "openai-responses": ["OpenAI Responses transport."],
+          "openai-codex-responses": ["ChatGPT Codex Responses transport."],
+        },
+      },
+      {
+        rustTypeName: "PiModelConfigThinkingLevel",
+        rustDoc: ["Thinking levels supported by Pi sessions."],
+        variants: {
+          off: ["Disable model thinking."],
+          minimal: ["Minimal thinking."],
+          low: ["Low thinking."],
+          medium: ["Medium thinking."],
+          high: ["High thinking."],
+          xhigh: ["Extra-high thinking."],
+          max: ["Maximum thinking."],
+        },
+      },
+      {
+        rustTypeName: "PiModelConfigServiceTier",
+        rustDoc: [
+          "Provider request service tiers supported by the Pi runtime.",
+        ],
+        variants: {
+          priority: ["OpenAI priority service tier."],
         },
       },
       {

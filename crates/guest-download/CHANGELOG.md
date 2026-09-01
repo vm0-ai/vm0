@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.23.45](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.44...guest-download-v0.23.45) (2026-09-01)
+
+## [0.23.44](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.43...guest-download-v0.23.44) (2026-09-01)
+
+## [0.23.43](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.42...guest-download-v0.23.43) (2026-08-31)
+
+
+### Documentation
+
+* **rust:** document the guest-download telemetry contract ([#30481](https://github.com/vm0-ai/vm0/issues/30481)) ([0a9560d](https://github.com/vm0-ai/vm0/commit/0a9560dad60937e80378c0090012f3d8821ae891))
+
 ## [0.23.42](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.41...guest-download-v0.23.42) (2026-08-30)
 
 ## [0.23.41](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.40...guest-download-v0.23.41) (2026-08-30)
