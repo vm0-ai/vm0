@@ -14,6 +14,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { db$, writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
+import { bestEffort } from "../utils";
 import {
   connectorAccountDeletionImpact,
   getConnectorAccount,
@@ -31,6 +32,7 @@ import {
   integrationManagedCustomConnectorMutationForbidden,
 } from "../services/custom-connector.service";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
+import { reconcileGmailWatchesForUser } from "../services/gmail-automation-event.service";
 
 const log = logger("api:connector-account-mutation");
 
@@ -236,6 +238,18 @@ const setDefaultInner$ = command(
     signal.throwIfAborted();
     if (!updatedAt) {
       return notFound("Connector account not found");
+    }
+    if (
+      body.data.target.kind === "builtin" &&
+      body.data.target.connectorSlug === "gmail"
+    ) {
+      await bestEffort(
+        reconcileGmailWatchesForUser(
+          { db: writeDb, orgId: auth.orgId, userId: auth.userId },
+          signal,
+        ),
+        signal,
+      );
     }
     return {
       status: 200 as const,

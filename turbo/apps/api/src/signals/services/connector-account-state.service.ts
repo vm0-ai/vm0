@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 
 import type { Tx } from "../../lib/db-types";
 import { nowDate } from "../../lib/time";
+import { invalidateGmailAutomationResolvedLabelIds } from "./gmail-automation-account.service";
 
 /**
  * Reconciles account-bound state while keeping the logical connector row and
@@ -34,6 +35,8 @@ export async function reconcileConnectorAccountState(
     return;
   }
 
+  await invalidateGmailAutomationResolvedLabelIds(db, args.connectorId);
+  signal.throwIfAborted();
   await db
     .delete(gmailWatchStates)
     .where(eq(gmailWatchStates.connectorId, args.connectorId));

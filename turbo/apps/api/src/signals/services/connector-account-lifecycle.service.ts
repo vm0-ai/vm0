@@ -43,6 +43,7 @@ import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
 import { safeJsonParse, settle } from "../utils";
 import { lockConnectorAccountTarget } from "./auth-state-lock.service";
+import { reprojectGmailAutomationsForOwner } from "./gmail-automation-account.service";
 import { isConnectorCatalogUnavailableError } from "./connector-catalog-reader.service";
 import {
   connectorCredentialStorageIsCompatible,
@@ -812,6 +813,12 @@ export async function setDefaultConnectorAccount(
       .set({ isDefault: true, updatedAt: sql`clock_timestamp()` })
       .where(eq(connectors.id, args.connectionId))
       .returning({ updatedAt: connectors.updatedAt });
+    if (
+      args.target.kind === "builtin" &&
+      args.target.connectorSlug === "gmail"
+    ) {
+      await reprojectGmailAutomationsForOwner(tx, args);
+    }
     return updated?.updatedAt ?? null;
   });
 }
@@ -950,6 +957,10 @@ export async function prepareConnectorAccountDeletion(
       .set({ isDefault: true, updatedAt: sql`clock_timestamp()` })
       .where(eq(connectors.id, sibling.id));
     promotedDefaultConnectionId = sibling.id;
+  }
+
+  if (args.target.kind === "builtin" && args.target.connectorSlug === "gmail") {
+    await reprojectGmailAutomationsForOwner(db, args);
   }
 
   return {

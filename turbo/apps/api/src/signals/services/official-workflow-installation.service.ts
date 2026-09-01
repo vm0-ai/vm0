@@ -1051,6 +1051,7 @@ export interface OfficialAutomationPatch {
   readonly kind: "schedule" | "event";
   readonly eventType: OfficialAutomationRow["eventType"];
   readonly eventConfig: OfficialAutomationRow["eventConfig"];
+  readonly eventConnectorId: OfficialAutomationRow["eventConnectorId"];
   readonly scheduleType: OfficialAutomationRow["scheduleType"];
   readonly cronExpression: string | null;
   readonly intervalSeconds: number | null;
@@ -1100,6 +1101,7 @@ function eventAutomationPatch(
       kind: "event",
       eventType: request.eventType,
       eventConfig: preparation.eventConfig,
+      eventConnectorId: preparation.eventConnectorId ?? null,
       scheduleType: null,
       cronExpression: null,
       intervalSeconds: null,
@@ -1144,6 +1146,7 @@ function cronAutomationPatch(
       kind: "schedule",
       eventType: null,
       eventConfig: null,
+      eventConnectorId: null,
       scheduleType: "cron",
       cronExpression: schedule.cronExpression,
       intervalSeconds: null,
@@ -1183,6 +1186,7 @@ function onceAutomationPatch(
       kind: "schedule",
       eventType: null,
       eventConfig: null,
+      eventConnectorId: null,
       scheduleType: "once",
       cronExpression: null,
       intervalSeconds: null,
@@ -1218,6 +1222,7 @@ function loopAutomationPatch(
       kind: "schedule",
       eventType: null,
       eventConfig: null,
+      eventConnectorId: null,
       scheduleType: "loop",
       cronExpression: null,
       intervalSeconds: schedule.intervalSeconds,
@@ -1277,6 +1282,7 @@ export function officialAutomationRestorePatch(
     kind: row.kind,
     eventType: row.eventType,
     eventConfig: row.eventConfig,
+    eventConnectorId: row.eventConnectorId,
     scheduleType: row.scheduleType,
     cronExpression: row.cronExpression,
     intervalSeconds: row.intervalSeconds,

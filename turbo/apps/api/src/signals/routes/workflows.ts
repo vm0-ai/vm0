@@ -75,7 +75,8 @@ import {
   childAutonomyBudget,
   loadOwnedRunAutonomyBudget,
 } from "../services/autonomy-budget.service";
-import { onRejection, settle } from "../utils";
+import { bestEffort, onRejection, settle } from "../utils";
+import { reconcileGmailWatchesForUser } from "../services/gmail-automation-event.service";
 import {
   loadVisibleWorkflowById,
   requireWorkflowPermission,
@@ -1042,7 +1043,7 @@ async function copyWorkflowAutomationRow(
 async function copyWorkflowUserAutomations(
   tx: WorkflowCopyTransaction,
   args: CopyWorkflowAutomationRowsArgs,
-): Promise<void> {
+): Promise<boolean> {
   const rows =
     args.sourceAutomations ??
     (await tx
@@ -1056,7 +1057,7 @@ async function copyWorkflowUserAutomations(
         ),
       ));
   if (rows.length === 0) {
-    return;
+    return false;
   }
 
   await ensureWorkflowUserAutomationThread(tx, {
@@ -1070,12 +1071,24 @@ async function copyWorkflowUserAutomations(
   for (const automation of rows) {
     await copyWorkflowAutomationRow(tx, { ...args, automation });
   }
+  return rows.some((automation) => {
+    return (
+      automation.eventType === "gmail-new-message" ||
+      automation.eventType === "gmail-label-applied"
+    );
+  });
 }
 
 async function copyWorkflowRuntimeConfiguration(
   tx: WorkflowCopyTransaction,
   args: CopyWorkflowRuntimeArgs,
-): Promise<{ readonly id: string } | undefined> {
+): Promise<
+  | {
+      readonly workflow: { readonly id: string };
+      readonly hasGmailAutomations: boolean;
+    }
+  | undefined
+> {
   const workflow = await insertCopiedWorkflowRow(tx, args);
   if (!workflow) {
     return undefined;
@@ -1091,7 +1104,7 @@ async function copyWorkflowRuntimeConfiguration(
       ? {}
       : { inheritedAutonomyBudget: args.inheritedAutonomyBudget }),
   };
-  await copyWorkflowUserAutomations(tx, {
+  const hasGmailAutomations = await copyWorkflowUserAutomations(tx, {
     ...scopedRowsArgs,
     targetAgentId: args.targetAgentId,
     workflowTitle: args.sourceWorkflow.displayName ?? args.sourceWorkflow.name,
@@ -1099,7 +1112,7 @@ async function copyWorkflowRuntimeConfiguration(
       ? { sourceAutomations: args.sourceAutomations }
       : {}),
   });
-  return workflow;
+  return { workflow, hasGmailAutomations };
 }
 
 type CopyWorkflowDatabaseResult =
@@ -1107,6 +1120,7 @@ type CopyWorkflowDatabaseResult =
   | {
       readonly kind: "ok";
       readonly inserted: { readonly id: string };
+      readonly hasGmailAutomations: boolean;
     };
 
 async function copyWorkflowDatabaseRows(
@@ -1173,7 +1187,11 @@ async function copyWorkflowDatabaseRows(
       sourceWorkflow,
       materialization?.files ?? args.sourceFiles,
     );
-    return { kind: "ok", inserted };
+    return {
+      kind: "ok",
+      inserted: inserted.workflow,
+      hasGmailAutomations: inserted.hasGmailAutomations,
+    };
   });
 }
 
@@ -1275,6 +1293,15 @@ const publishCopiedWorkflow$ = command(
             cleanupSignal,
           );
           return conflict(copied.message);
+        }
+        if (copied.hasGmailAutomations) {
+          await bestEffort(
+            reconcileGmailWatchesForUser(
+              { db: args.db, orgId: args.orgId, userId: args.userId },
+              signal,
+            ),
+            signal,
+          );
         }
 
         const visible = await loadVisibleWorkflowById(args.db, {

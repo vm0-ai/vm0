@@ -25,7 +25,7 @@ import { logger } from "../../lib/log";
 import { testOverride } from "../../lib/singleton";
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../../lib/time";
-import { safeJsonParse, tapError } from "../utils";
+import { safeJsonParse, settle, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
@@ -41,9 +41,12 @@ import {
 } from "./automation-event-source-timing.service";
 import { runWorkflowAutomationNow$ } from "./workflow-automation-run.service";
 import type { AutomationRow } from "./workflow-automation-launch.service";
+import type { WorkflowQueueAdmissionTransaction } from "./workflow-chat-event-queue.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { workflowAutomationCanFire } from "./workflow-automation-access.service";
 import { ensureWorkflowUserAutomationThread } from "./workflow-user-automation-thread.service";
+import { reprojectGmailAutomationsForOwner } from "./gmail-automation-account.service";
+import { lockConnectorAccountTarget } from "./auth-state-lock.service";
 
 const log = logger("api:gmail-automation-event");
 
@@ -170,6 +173,14 @@ interface GmailAccess {
   readonly accessToken: string;
 }
 
+export interface PendingGmailWatchStop {
+  readonly accessToken: string;
+  readonly scopes: readonly {
+    readonly emailAddress: string;
+    readonly topicName: string;
+  }[];
+}
+
 type GmailAccessResult =
   | { readonly kind: "ok"; readonly access: GmailAccess }
   | { readonly kind: "bad_request"; readonly message: string };
@@ -271,6 +282,7 @@ async function resolveGmailAccess(
     readonly orgId: string;
     readonly userId: string;
     readonly connectorId?: string;
+    readonly refreshExpiredToken?: boolean;
   },
   signal: AbortSignal,
 ): Promise<GmailAccessResult> {
@@ -324,7 +336,10 @@ async function resolveGmailAccess(
       message: "Reconnect Gmail before using Gmail event automations",
     };
   }
-  if (!tokenNeedsRefresh(connection.tokenExpiresAt, currentTime)) {
+  if (
+    !tokenNeedsRefresh(connection.tokenExpiresAt, currentTime) ||
+    args.refreshExpiredToken === false
+  ) {
     return {
       kind: "ok",
       access: {
@@ -509,6 +524,7 @@ export async function resolveGmailLabelForUser(
     readonly db: Db;
     readonly orgId: string;
     readonly userId: string;
+    readonly connectorId: string;
     readonly labelName: string;
   },
   signal: AbortSignal,
@@ -591,6 +607,7 @@ export async function hasEnabledGmailConsumer(
     readonly db: Db;
     readonly orgId: string;
     readonly userId: string;
+    readonly connectorId: string;
   },
   signal: AbortSignal,
 ): Promise<boolean> {
@@ -603,6 +620,7 @@ export async function hasEnabledGmailConsumer(
         eq(workflowAutomations.ownerUserId, args.userId),
         eq(workflowAutomations.enabled, true),
         eq(workflowAutomations.kind, "event"),
+        eq(workflowAutomations.eventConnectorId, args.connectorId),
         inArray(workflowAutomations.eventType, [...GMAIL_EVENT_TYPES]),
       ),
     )
@@ -657,6 +675,7 @@ async function partitionGmailStatesByConsumer(
           db: args.db,
           orgId: state.orgId,
           userId: state.userId,
+          connectorId: state.connectorId,
         },
         signal,
       ));
@@ -776,6 +795,7 @@ async function ensureGmailWatchWithResolvedAccess(
           db: tx,
           orgId: args.orgId,
           userId: args.userId,
+          connectorId: args.access.connectorId,
         },
         signal,
       ))
@@ -855,6 +875,7 @@ export async function ensureGmailWatchForUser(
     readonly db: Db;
     readonly orgId: string;
     readonly userId: string;
+    readonly connectorId: string;
     readonly forceRefresh?: boolean;
     readonly allowStagedOfficialTarget?: boolean;
   },
@@ -1225,6 +1246,40 @@ async function renewGmailPhysicalScopes(
   return { renewed, failed };
 }
 
+async function loadEnabledGmailConnectorIds(
+  db: Db,
+  args: { readonly orgId: string; readonly userId: string },
+): Promise<readonly string[]> {
+  const consumers = await db
+    .selectDistinct({ connectorId: workflowAutomations.eventConnectorId })
+    .from(workflowAutomations)
+    .where(
+      and(
+        eq(workflowAutomations.orgId, args.orgId),
+        eq(workflowAutomations.ownerUserId, args.userId),
+        eq(workflowAutomations.enabled, true),
+        eq(workflowAutomations.kind, "event"),
+        inArray(workflowAutomations.eventType, [...GMAIL_EVENT_TYPES]),
+      ),
+    );
+  return consumers.flatMap((consumer) => {
+    return consumer.connectorId === null ? [] : [consumer.connectorId];
+  });
+}
+
+async function repairGmailAutomationProjections(
+  db: Db,
+  args: { readonly orgId: string; readonly userId: string },
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await lockConnectorAccountTarget(tx, {
+      ...args,
+      target: { kind: "builtin", connectorSlug: "gmail" },
+    });
+    await reprojectGmailAutomationsForOwner(tx, args);
+  });
+}
+
 export async function reconcileGmailWatchesForUser(
   args: {
     readonly db: Db;
@@ -1233,6 +1288,25 @@ export async function reconcileGmailWatchesForUser(
   },
   signal: AbortSignal,
 ): Promise<boolean> {
+  await repairGmailAutomationProjections(args.db, args);
+  signal.throwIfAborted();
+  const connectorIds = await loadEnabledGmailConnectorIds(args.db, args);
+  signal.throwIfAborted();
+  let succeeded = true;
+  for (const connectorId of connectorIds) {
+    const ensured = await ensureGmailWatchForUser(
+      {
+        db: args.db,
+        orgId: args.orgId,
+        userId: args.userId,
+        connectorId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    succeeded &&= ensured.kind === "ok";
+  }
+
   const states = await args.db
     .select()
     .from(gmailWatchStates)
@@ -1243,7 +1317,6 @@ export async function reconcileGmailWatchesForUser(
       ),
     );
   signal.throwIfAborted();
-  let succeeded = true;
   for (const scope of gmailPhysicalScopes(states)) {
     const preferredConnectorId = states.find((state) => {
       return (
@@ -1265,29 +1338,112 @@ export async function reconcileGmailWatchesForUser(
   return succeeded;
 }
 
-export async function cleanupGmailWatchesForConnector(
+export async function prepareGmailWatchStopForConnector(
   args: {
     readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
     readonly connectorId: string;
   },
   signal: AbortSignal,
-): Promise<void> {
+): Promise<PendingGmailWatchStop | null> {
   const states = await args.db
     .select()
     .from(gmailWatchStates)
-    .where(eq(gmailWatchStates.connectorId, args.connectorId));
+    .where(
+      and(
+        eq(gmailWatchStates.orgId, args.orgId),
+        eq(gmailWatchStates.userId, args.userId),
+        eq(gmailWatchStates.connectorId, args.connectorId),
+      ),
+    );
   signal.throwIfAborted();
-  for (const scope of gmailPhysicalScopes(states)) {
-    await reconcileGmailPhysicalScope(
+  const scopes = gmailPhysicalScopes(states);
+  let shouldStop = states.length > 0;
+  for (const scope of scopes) {
+    const physicalStates = await loadGmailPhysicalWatchStates(
+      { db: args.db, ...scope },
+      signal,
+    );
+    const { active } = await partitionGmailStatesByConsumer(
       {
         db: args.db,
-        ...scope,
+        states: physicalStates,
         excludedConnectorId: args.connectorId,
-        preferredConnectorId: args.connectorId,
       },
       signal,
     );
+    if (active.length > 0) {
+      shouldStop = false;
+      break;
+    }
   }
+  if (!shouldStop) {
+    return null;
+  }
+  const access = await resolveGmailAccess(
+    { ...args, refreshExpiredToken: false },
+    signal,
+  );
+  signal.throwIfAborted();
+  return access.kind === "ok"
+    ? { accessToken: access.access.accessToken, scopes }
+    : null;
+}
+
+export async function stopPreparedGmailWatch(
+  args: { readonly db: Db; readonly pending: PendingGmailWatchStop },
+  signal: AbortSignal,
+): Promise<void> {
+  await args.db.transaction(async (tx) => {
+    const scopes = [...args.pending.scopes].sort((left, right) => {
+      return `${normalizeGmailAddress(left.emailAddress)}\n${left.topicName}`.localeCompare(
+        `${normalizeGmailAddress(right.emailAddress)}\n${right.topicName}`,
+      );
+    });
+    for (const scope of scopes) {
+      await lockGmailLifecycle(tx, scope.emailAddress, scope.topicName);
+    }
+    signal.throwIfAborted();
+
+    const states: GmailWatchStateRow[] = [];
+    for (const scope of scopes) {
+      states.push(
+        ...(await loadGmailPhysicalWatchStates({ db: tx, ...scope }, signal)),
+      );
+    }
+    const { active } = await partitionGmailStatesByConsumer(
+      { db: tx, states },
+      signal,
+    );
+    if (active.length > 0) {
+      return;
+    }
+
+    const stopped = await stopGmailMailbox(
+      { accessToken: args.pending.accessToken },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (stopped.kind !== "ok") {
+      if (states.length > 0) {
+        await markGmailStatesForRetry(tx, states);
+      }
+      log.warn("Workflow watch lifecycle reconciliation failed", {
+        provider: "gmail",
+        action: "stop_after_disconnect",
+        result: "provider_error",
+        status: stopped.status,
+      });
+      return;
+    }
+    await deleteGmailWatchStates(tx, states);
+    log.debug("Workflow watch lifecycle reconciled", {
+      provider: "gmail",
+      action: "stop_after_disconnect",
+      result: "ok",
+    });
+  });
 }
 
 async function listGmailHistory(
@@ -1649,10 +1805,11 @@ interface GmailEventAutomationRow {
 type GmailRunStarter = (args: {
   readonly automation: GmailEventAutomationRow;
   readonly connectorSourceId: string;
+  readonly watchStateId: string;
   readonly decoded: DecodedGmailPubSubPush;
   readonly message: GmailMessageContext;
   readonly timing: AutomationEventRunTiming;
-}) => Promise<"ok" | "error">;
+}) => Promise<"ok" | "error" | "superseded">;
 
 interface GmailWorkflowRunStartTestInput {
   readonly automationId: string;
@@ -1673,6 +1830,58 @@ const gmailRunStarterOverride = testOverride<
 >(() => {
   return undefined;
 });
+
+class GmailAutomationSourceChangedError extends Error {
+  constructor() {
+    super("Gmail automation source changed before durable queue admission");
+    this.name = "GmailAutomationSourceChangedError";
+  }
+}
+
+async function persistCurrentGmailAutomationSource(
+  tx: WorkflowQueueAdmissionTransaction,
+  args: {
+    readonly automationId: string;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorSourceId: string;
+    readonly watchStateId: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  await lockConnectorAccountTarget(tx, {
+    orgId: args.orgId,
+    userId: args.userId,
+    target: { kind: "builtin", connectorSlug: "gmail" },
+  });
+  const [currentState] = await tx
+    .select({ id: gmailWatchStates.id })
+    .from(gmailWatchStates)
+    .where(
+      and(
+        eq(gmailWatchStates.id, args.watchStateId),
+        eq(gmailWatchStates.connectorId, args.connectorSourceId),
+      ),
+    )
+    .for("key share")
+    .limit(1);
+  const [current] = await tx
+    .select({ id: workflowAutomations.id })
+    .from(workflowAutomations)
+    .where(
+      and(
+        eq(workflowAutomations.id, args.automationId),
+        eq(workflowAutomations.enabled, true),
+        eq(workflowAutomations.eventConnectorId, args.connectorSourceId),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  signal.throwIfAborted();
+  if (!currentState || !current) {
+    throw new GmailAutomationSourceChangedError();
+  }
+}
 
 type GmailDispatchStateResult =
   | {
@@ -1744,6 +1953,7 @@ async function loadGmailEventAutomations(
         eq(workflowAutomations.ownerUserId, args.state.userId),
         eq(workflowAutomations.enabled, true),
         eq(workflowAutomations.kind, "event"),
+        eq(workflowAutomations.eventConnectorId, args.state.connectorId),
         inArray(workflowAutomations.eventType, [
           "gmail-new-message",
           "gmail-label-applied",
@@ -1838,23 +2048,46 @@ async function insertGmailProcessedEvent(
     readonly message: GmailMessageContext;
   },
   signal: AbortSignal,
-): Promise<string | null> {
-  const [processed] = await args.db
-    .insert(gmailProcessedEvents)
-    .values({
-      watchStateId: args.state.id,
-      automationId: args.automation.automation.id,
-      pubsubMessageId: args.decoded.messageId,
-      historyId: args.event.historyId,
-      messageId: args.event.messageId,
-      threadId: args.message.threadId,
-      createdAt: nowDate(),
-    })
-    .onConflictDoNothing()
-    .returning({ id: gmailProcessedEvents.id });
-  signal.throwIfAborted();
+): Promise<
+  | { readonly kind: "inserted"; readonly id: string }
+  | { readonly kind: "duplicate" }
+  | { readonly kind: "stale_source" }
+> {
+  return await args.db.transaction(async (tx) => {
+    const [currentState] = await tx
+      .select({ id: gmailWatchStates.id })
+      .from(gmailWatchStates)
+      .where(
+        and(
+          eq(gmailWatchStates.id, args.state.id),
+          eq(gmailWatchStates.connectorId, args.state.connectorId),
+        ),
+      )
+      .for("key share")
+      .limit(1);
+    signal.throwIfAborted();
+    if (!currentState) {
+      return { kind: "stale_source" };
+    }
 
-  return processed?.id ?? null;
+    const [processed] = await tx
+      .insert(gmailProcessedEvents)
+      .values({
+        watchStateId: args.state.id,
+        automationId: args.automation.automation.id,
+        pubsubMessageId: args.decoded.messageId,
+        historyId: args.event.historyId,
+        messageId: args.event.messageId,
+        threadId: args.message.threadId,
+        createdAt: nowDate(),
+      })
+      .onConflictDoNothing()
+      .returning({ id: gmailProcessedEvents.id });
+    signal.throwIfAborted();
+    return processed
+      ? { kind: "inserted", id: processed.id }
+      : { kind: "duplicate" };
+  });
 }
 
 function gmailTriggerContext(args: {
@@ -1929,25 +2162,39 @@ async function dispatchGmailAutomationEvent(
     readonly startRun: GmailRunStarter;
   },
   signal: AbortSignal,
-): Promise<"dispatched" | "duplicate" | { readonly kind: "run_error" }> {
-  const processedId = await args.timing.measure(
+): Promise<
+  "dispatched" | "duplicate" | "skipped" | { readonly kind: "run_error" }
+> {
+  const processed = await args.timing.measure(
     "api_dispatch_pre_create_zero_automation_event_record_processed_event",
     async () => {
       return await insertGmailProcessedEvent(args, signal);
     },
   );
-  if (!processedId) {
+  if (processed.kind === "stale_source") {
+    return "skipped";
+  }
+  if (processed.kind === "duplicate") {
     return "duplicate";
   }
+  const processedId = processed.id;
 
   const result = await args.startRun({
     automation: args.automation,
     connectorSourceId: args.state.connectorId,
+    watchStateId: args.state.id,
     decoded: args.decoded,
     message: args.message,
     timing: args.timing,
   });
   signal.throwIfAborted();
+  if (result === "superseded") {
+    await args.db
+      .delete(gmailProcessedEvents)
+      .where(eq(gmailProcessedEvents.id, processedId));
+    signal.throwIfAborted();
+    return "skipped";
+  }
   if (result !== "ok") {
     await args.db
       .delete(gmailProcessedEvents)
@@ -1981,6 +2228,8 @@ async function updateResolvedGmailLabelId(
     readonly automation: GmailEventAutomationRow & {
       readonly config: GmailLabelAppliedEventConfig;
     };
+    readonly connectorId: string;
+    readonly watchStateId: string;
     readonly labelId: string;
   },
   signal: AbortSignal,
@@ -1989,16 +2238,42 @@ async function updateResolvedGmailLabelId(
     return;
   }
 
-  await args.db
-    .update(workflowAutomations)
-    .set({
-      eventConfig: {
-        ...args.automation.config,
-        resolvedLabelId: args.labelId,
-      },
-      updatedAt: nowDate(),
-    })
-    .where(eq(workflowAutomations.id, args.automation.automation.id));
+  await args.db.transaction(async (tx) => {
+    await lockConnectorAccountTarget(tx, {
+      orgId: args.automation.automation.orgId,
+      userId: args.automation.automation.ownerUserId,
+      target: { kind: "builtin", connectorSlug: "gmail" },
+    });
+    const [currentState] = await tx
+      .select({ id: gmailWatchStates.id })
+      .from(gmailWatchStates)
+      .where(
+        and(
+          eq(gmailWatchStates.id, args.watchStateId),
+          eq(gmailWatchStates.connectorId, args.connectorId),
+        ),
+      )
+      .for("key share")
+      .limit(1);
+    if (!currentState) {
+      return;
+    }
+    await tx
+      .update(workflowAutomations)
+      .set({
+        eventConfig: {
+          ...args.automation.config,
+          resolvedLabelId: args.labelId,
+        },
+        updatedAt: nowDate(),
+      })
+      .where(
+        and(
+          eq(workflowAutomations.id, args.automation.automation.id),
+          eq(workflowAutomations.eventConnectorId, args.connectorId),
+        ),
+      );
+  });
   signal.throwIfAborted();
 }
 
@@ -2006,6 +2281,8 @@ async function labelAppliedAutomationMatchesEvent(
   args: {
     readonly db: Db;
     readonly accessToken: string;
+    readonly connectorId: string;
+    readonly watchStateId: string;
     readonly automation: GmailEventAutomationRow & {
       readonly config: GmailLabelAppliedEventConfig;
     };
@@ -2051,6 +2328,8 @@ async function labelAppliedAutomationMatchesEvent(
     {
       db: args.db,
       automation: args.automation,
+      connectorId: args.connectorId,
+      watchStateId: args.watchStateId,
       labelId: label.labelId,
     },
     signal,
@@ -2167,6 +2446,8 @@ async function dispatchGmailLabelAppliedHistoryEvent(
           {
             db: args.db,
             accessToken: args.accessToken,
+            connectorId: args.state.connectorId,
+            watchStateId: args.state.id,
             automation,
             event: args.event,
             labelCache: args.labelCache,
@@ -2303,6 +2584,47 @@ async function dispatchGmailHistoryEvents(
   return { kind: "ok", dispatched, duplicates };
 }
 
+async function hasCurrentGmailWatchConsumer(
+  args: {
+    readonly db: Db;
+    readonly state: GmailWatchStateRow;
+    readonly sourceTiming: AutomationEventSourceTiming;
+  },
+  signal: AbortSignal,
+): Promise<boolean> {
+  const hasConsumer = await args.sourceTiming.measure(
+    "api_dispatch_pre_create_zero_automation_event_load_automations",
+    async () => {
+      return await hasEnabledGmailConsumer(
+        {
+          db: args.db,
+          orgId: args.state.orgId,
+          userId: args.state.userId,
+          connectorId: args.state.connectorId,
+        },
+        signal,
+      );
+    },
+  );
+  if (hasConsumer) {
+    return true;
+  }
+  await repairGmailAutomationProjections(args.db, {
+    orgId: args.state.orgId,
+    userId: args.state.userId,
+  });
+  signal.throwIfAborted();
+  return await hasEnabledGmailConsumer(
+    {
+      db: args.db,
+      orgId: args.state.orgId,
+      userId: args.state.userId,
+      connectorId: args.state.connectorId,
+    },
+    signal,
+  );
+}
+
 async function dispatchGmailWatchState(
   args: {
     readonly db: Db;
@@ -2313,19 +2635,7 @@ async function dispatchGmailWatchState(
   },
   signal: AbortSignal,
 ): Promise<GmailDispatchStateResult> {
-  const hasConsumer = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_automation_event_load_automations",
-    async () => {
-      return await hasEnabledGmailConsumer(
-        {
-          db: args.db,
-          orgId: args.state.orgId,
-          userId: args.state.userId,
-        },
-        signal,
-      );
-    },
-  );
+  const hasConsumer = await hasCurrentGmailWatchConsumer(args, signal);
   if (!hasConsumer) {
     log.debug("Workflow watch dispatch skipped", {
       provider: "gmail",
@@ -2377,6 +2687,7 @@ async function dispatchGmailWatchState(
         db: args.db,
         orgId: args.state.orgId,
         userId: args.state.userId,
+        connectorId: args.state.connectorId,
         forceRefresh: true,
       },
       signal,
@@ -2433,13 +2744,14 @@ const startGmailWorkflowRun$ = command(
     args: {
       readonly automation: GmailEventAutomationRow;
       readonly connectorSourceId: string;
+      readonly watchStateId: string;
       readonly decoded: DecodedGmailPubSubPush;
       readonly message: GmailMessageContext;
       readonly timing: AutomationEventRunTiming;
       readonly apiStartTime: number;
     },
     signal: AbortSignal,
-  ): Promise<"ok" | "error"> => {
+  ): Promise<"ok" | "error" | "superseded"> => {
     const runInput = await args.timing.measure(
       "api_dispatch_pre_create_zero_automation_event_build_run_input",
       () => {
@@ -2460,26 +2772,49 @@ const startGmailWorkflowRun$ = command(
       },
     );
     signal.throwIfAborted();
-    const result = await set(
-      runWorkflowAutomationNow$,
-      {
-        due: {
-          automation: args.automation.automation,
-          agentId: args.automation.agentId,
-          chatThreadId: args.automation.chatThreadId,
+    const started = await settle(
+      set(
+        runWorkflowAutomationNow$,
+        {
+          due: {
+            automation: args.automation.automation,
+            agentId: args.automation.agentId,
+            chatThreadId: args.automation.chatThreadId,
+          },
+          automationContext: runInput.context,
+          connectorSourceId: args.connectorSourceId,
+          apiStartTime: args.apiStartTime,
+          triggerSource: "automation-event",
+          triggerBrief: runInput.triggerBrief,
+          persistSourceTransition: async (tx) => {
+            await persistCurrentGmailAutomationSource(
+              tx,
+              {
+                automationId: args.automation.automation.id,
+                orgId: args.automation.automation.orgId,
+                userId: args.automation.automation.ownerUserId,
+                connectorSourceId: args.connectorSourceId,
+                watchStateId: args.watchStateId,
+              },
+              signal,
+            );
+          },
+          dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+          timing: args.timing.collectorForRunStart(),
         },
-        automationContext: runInput.context,
-        connectorSourceId: args.connectorSourceId,
-        apiStartTime: args.apiStartTime,
-        triggerSource: "automation-event",
-        triggerBrief: runInput.triggerBrief,
-        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
-        timing: args.timing.collectorForRunStart(),
-      },
+        signal,
+      ),
       signal,
     );
-    signal.throwIfAborted();
-    return result.kind === "ok" || result.kind === "enqueued" ? "ok" : "error";
+    if (!started.ok) {
+      if (started.error instanceof GmailAutomationSourceChangedError) {
+        return "superseded";
+      }
+      throw started.error;
+    }
+    return started.value.kind === "ok" || started.value.kind === "enqueued"
+      ? "ok"
+      : "error";
   },
 );
 
@@ -2552,12 +2887,20 @@ export const dispatchGmailPubSubPush$ = command(
             }),
           });
         }
-      : async ({ automation, connectorSourceId, decoded, message, timing }) => {
+      : async ({
+          automation,
+          connectorSourceId,
+          watchStateId,
+          decoded,
+          message,
+          timing,
+        }) => {
           return await set(
             startGmailWorkflowRun$,
             {
               automation,
               connectorSourceId,
+              watchStateId,
               decoded,
               message,
               timing,
@@ -2600,16 +2943,85 @@ export const dispatchGmailPubSubPush$ = command(
 export const renewGmailWatches$ = command(
   async ({ set }, signal: AbortSignal) => {
     const db = set(writeDb$);
+    const [automationOwners, stateOwners] = await Promise.all([
+      db
+        .selectDistinct({
+          orgId: workflowAutomations.orgId,
+          userId: workflowAutomations.ownerUserId,
+        })
+        .from(workflowAutomations)
+        .where(
+          and(
+            eq(workflowAutomations.kind, "event"),
+            eq(workflowAutomations.enabled, true),
+            inArray(workflowAutomations.eventType, [...GMAIL_EVENT_TYPES]),
+          ),
+        ),
+      db
+        .selectDistinct({
+          orgId: gmailWatchStates.orgId,
+          userId: gmailWatchStates.userId,
+        })
+        .from(gmailWatchStates),
+    ]);
+    signal.throwIfAborted();
+    const owners = new Map<
+      string,
+      { readonly orgId: string; readonly userId: string }
+    >();
+    for (const owner of [...automationOwners, ...stateOwners]) {
+      owners.set(`${owner.orgId}\n${owner.userId}`, owner);
+    }
+
+    let repairFailures = 0;
+    for (const owner of owners.values()) {
+      await repairGmailAutomationProjections(db, owner);
+      signal.throwIfAborted();
+      const [connectorIds, states] = await Promise.all([
+        loadEnabledGmailConnectorIds(db, owner),
+        db
+          .select({ connectorId: gmailWatchStates.connectorId })
+          .from(gmailWatchStates)
+          .where(
+            and(
+              eq(gmailWatchStates.orgId, owner.orgId),
+              eq(gmailWatchStates.userId, owner.userId),
+            ),
+          ),
+      ]);
+      signal.throwIfAborted();
+      const watchedConnectorIds = new Set(
+        states.map((state) => {
+          return state.connectorId;
+        }),
+      );
+      for (const connectorId of connectorIds) {
+        if (watchedConnectorIds.has(connectorId)) {
+          continue;
+        }
+        const result = await ensureGmailWatchForUser(
+          { db, ...owner, connectorId },
+          signal,
+        );
+        signal.throwIfAborted();
+        repairFailures += result.kind === "ok" ? 0 : 1;
+      }
+    }
+
     const currentTime = nowDate();
     const renewBefore = new Date(
       currentTime.getTime() + WATCH_RENEWAL_WINDOW_MS,
     );
     const states = await db.select().from(gmailWatchStates);
     signal.throwIfAborted();
-    return await renewGmailPhysicalScopes(
+    const renewed = await renewGmailPhysicalScopes(
       { db, scopes: gmailPhysicalScopes(states), renewBefore },
       signal,
     );
+    return {
+      renewed: renewed.renewed,
+      failed: renewed.failed + repairFailures,
+    };
   },
 );
 
