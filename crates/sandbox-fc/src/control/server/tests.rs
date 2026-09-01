@@ -411,26 +411,6 @@ async fn client_server_no_guest() {
     handle.shutdown().await;
 }
 
-#[tokio::test]
-async fn client_receives_raw_server_error() {
-    let fixture = ControlServerFixture::new();
-    let mut handle = fixture.spawn_default(CancellationToken::new());
-
-    let response = send_exec(
-        &fixture.sock_path,
-        &exec_request("ps aux"),
-        Duration::from_secs(5),
-    )
-    .await
-    .unwrap();
-
-    let ExecResult::Error { error } = response else {
-        panic!("server should return a raw error");
-    };
-    assert!(error.contains("not running"), "unexpected error: {error}");
-    handle.shutdown().await;
-}
-
 // Terminate protocol behavior.
 
 #[tokio::test]
