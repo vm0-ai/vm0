@@ -1,8 +1,9 @@
 import { computed } from "ccstate";
 import { addCapturedPreviewBypassHeader } from "../lib/preview-bypass-cookie.ts";
 import { appVersion$ } from "./app-version.ts";
-import { authRecovery$ } from "./auth.ts";
+import { clerk$ } from "./auth.ts";
 import { resolveApiBase, resolveOAuthApiBase } from "./api-base.ts";
+import { readClerkToken } from "./clerk-token.ts";
 import { addClientHeaders } from "./client-headers.ts";
 import { reportForceUpgradeResponse } from "./force-upgrade.ts";
 import { rootSignal$ } from "./root-signal.ts";
@@ -99,18 +100,21 @@ function rewriteRequestUrl(
 
 export const fetch$ = computed((get) => {
   const clientVersion = get(appVersion$);
+  const clerkPromise = get(clerk$);
+  const rootSignal = get(rootSignal$);
   return async (url: string | URL | Request, options?: RequestInit) => {
-    const authRecovery = await get(authRecovery$);
     const inputSignal =
       options?.signal ?? (url instanceof Request ? url.signal : undefined);
-    const signal = inputSignal ?? get(rootSignal$);
-    const initialToken = await authRecovery.getToken(signal);
+    const signal = inputSignal ?? rootSignal;
+    const clerk = await clerkPromise;
+    signal.throwIfAborted();
+    const token = await readClerkToken(clerk, signal);
 
     const performFetch = async (
       token: string | null,
       requestSignal: AbortSignal,
     ): Promise<Response> => {
-      // Clone Request inputs so the body stream is available for retry.
+      // Clone Request inputs before rebuilding their URL and headers.
       const requestInput = url instanceof Request ? url.clone() : url;
 
       let finalUrl: string | URL | Request = requestInput;
@@ -178,14 +182,7 @@ export const fetch$ = computed((get) => {
       return await fetch(finalUrl, finalInit);
     };
 
-    let response = await performFetch(initialToken, signal);
-
-    if (response.status === 401) {
-      const freshToken = await authRecovery.forceRefreshToken(signal);
-      if (freshToken) {
-        response = await performFetch(freshToken, signal);
-      }
-    }
+    const response = await performFetch(token, signal);
 
     reportForceUpgradeResponse(response);
 

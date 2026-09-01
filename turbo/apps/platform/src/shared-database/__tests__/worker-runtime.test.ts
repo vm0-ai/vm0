@@ -731,9 +731,10 @@ describe("shared database worker runtime", () => {
       { identity: identity(), apiBaseUrl: location.origin },
       firstSignal,
     );
-    store.set(startCredentialStoreDaemons$, (daemon) => {
+    const daemon = store.set(startCredentialStoreDaemons$);
+    if (daemon) {
       context.track(daemon);
-    });
+    }
     await initialAttachment.started;
     for (const port of [firstPort, secondPort]) {
       expect(

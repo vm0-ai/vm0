@@ -1,8 +1,14 @@
 import { toast } from "@okouai/ui/components/ui/sonner";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  clearMockedAuthOnAbort,
+  mockedClerk,
+  mockOrganization,
+  mockUser,
+} from "../../__tests__/mock-auth.ts";
 import type { SharedDatabasePortLike } from "../../shared-database/bridge.ts";
-import type { AuthRecovery } from "../auth-retry.ts";
+import { bridgeConnected$ } from "../shared-database-bridge-state.ts";
 import {
   prepareSharedDatabaseBridge$,
   setupSharedDatabaseBridge$,
@@ -153,22 +159,30 @@ function installSharedWorkerMock(): {
   return { constructorCalls, workers };
 }
 
-function authRecovery(replacementToken = "replacement-token"): AuthRecovery {
-  return {
-    getToken: () => {
-      return Promise.resolve("shared-worker-token");
-    },
-    forceRefreshToken: () => {
-      return Promise.resolve(replacementToken);
-    },
-  };
-}
-
-async function setupBridge(recovery = authRecovery()): Promise<void> {
-  await context.store.set(setupSharedDatabaseBridge$, recovery, context.signal);
+async function setupBridge(): Promise<void> {
+  const daemon = context.store.set(setupSharedDatabaseBridge$, context.signal);
+  context.track(daemon);
+  await context.store.get(bridgeConnected$);
 }
 
 describe("shared database browser bridge", () => {
+  beforeEach(() => {
+    mockUser(
+      { id: "test-user-123", fullName: "Test User" },
+      { token: "shared-worker-token" },
+    );
+    mockOrganization({
+      activeOrg: { id: "test-org-123", name: "Test Organization" },
+      memberships: [{ id: "test-org-123" }],
+    });
+    mockedClerk.sessionGetToken.mockImplementation((options) => {
+      return Promise.resolve(
+        options?.skipCache ? "replacement-token" : "shared-worker-token",
+      );
+    });
+    clearMockedAuthOnAbort(context.signal);
+  });
+
   it("starts the shared worker before the authentication handshake", async () => {
     const { constructorCalls, workers } = installSharedWorkerMock();
 
@@ -189,6 +203,9 @@ describe("shared database browser bridge", () => {
         "shared-worker-token",
         "replacement-token",
       ]);
+    });
+    expect(mockedClerk.sessionGetToken).toHaveBeenCalledWith({
+      skipCache: true,
     });
   });
 

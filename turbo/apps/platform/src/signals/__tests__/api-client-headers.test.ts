@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { waitFor } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { CLIENT_FORCE_UPGRADE_STATUS } from "@okouai/api-contracts/contracts/client-headers";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
@@ -20,7 +19,7 @@ import { apiClient$ } from "../api-client.ts";
 import { initializeAppVersion$ } from "../app-version.ts";
 import { setApiClientRuntime$ } from "../api-client-runtime.ts";
 import { resolveApiBaseForTarget, resolveOAuthApiBase } from "../api-base.ts";
-import { initAuthRecovery$, initClerkRuntime$ } from "../auth.ts";
+import { clerk$ } from "../auth.ts";
 import { fetch$ } from "../fetch.ts";
 import {
   forceUpgradeDialogOpen$,
@@ -31,15 +30,13 @@ import { resetSignal } from "../utils.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
-const resetAuthRecoverySignal$ = resetSignal();
+const resetTokenReadSignal$ = resetSignal();
 const EXPECTED_CLIENT_VERSION = "platform-store-version";
 
 beforeEach(() => {
   context.store.set(initializeAppVersion$, EXPECTED_CLIENT_VERSION);
   context.store.set(setRootSignal$, context.signal);
   setApiClientRuntimeForTest();
-  context.store.set(initClerkRuntime$, context.signal);
-  context.store.set(initAuthRecovery$, context.signal);
 });
 
 const UUID_REGEX =
@@ -81,6 +78,7 @@ function setApiClientRuntimeForTest(): void {
   const apiBaseUrl = resolveApiBaseForTarget("api");
   const vercelProtectionBypass = getCapturedPreviewBypassForTarget(apiBaseUrl);
   context.store.set(setApiClientRuntime$, {
+    clerk: context.store.get(clerk$),
     environment: "app",
     apiBaseUrl,
     oauthApiBaseUrl: resolveOAuthApiBase(),
@@ -168,7 +166,7 @@ describe("api client headers", () => {
     expect(second.requestId).not.toBe(first.requestId);
   });
 
-  it("does not retry ClerkOfflineError after a 401", async () => {
+  it("returns a browser 401 without forcing a Clerk token refresh", async () => {
     mockSignedInUser();
     let requests = 0;
     let forcedTokenRefreshes = 0;
@@ -187,80 +185,56 @@ describe("api client headers", () => {
     mockedClerk.sessionGetToken.mockImplementation((options) => {
       if (options?.skipCache) {
         forcedTokenRefreshes += 1;
-        return Promise.reject(
-          Object.assign(new Error("Clerk is offline"), {
-            code: "clerk_offline",
-          }),
-        );
       }
       return Promise.resolve("test-token");
     });
 
-    await expect(
-      getFetchForTest()("/api/okou/auth-recovery-test"),
-    ).rejects.toMatchObject({ code: "clerk_offline" });
+    const response = await getFetchForTest()("/api/okou/auth-recovery-test");
 
+    expect(response.status).toBe(401);
     expect(requests).toBe(1);
-    expect(forcedTokenRefreshes).toBe(1);
+    expect(forcedTokenRefreshes).toBe(0);
     expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
 
-  it("singleflights concurrent 401 token refreshes", async () => {
-    mockSignedInUser();
-    const initialRequestsReady = context.mocks.deferred<void>();
-    const freshTokenCanFinish = context.mocks.deferred<string>();
+  it("reloads and retries a 401 only in the worker runtime", async () => {
+    const authorizationHeaders: (string | null)[] = [];
+    const agentId = "c0000000-0000-4000-a000-000000000001";
     let requests = 0;
-    let forcedTokenRefreshes = 0;
-    context.mocks.http.get(
-      "*/api/okou/concurrent-auth-recovery-test",
-      async () => {
-        requests += 1;
-        if (requests <= 2) {
-          if (requests === 2) {
-            initialRequestsReady.resolve();
-          }
-          await initialRequestsReady.promise;
-          return HttpResponse.json(
-            {
-              error: {
-                code: "UNAUTHORIZED",
-                message: "Unauthorized",
-              },
-            },
-            { status: 401 },
-          );
-        }
-        return HttpResponse.json({ recovered: true });
+    let reloads = 0;
+    context.store.set(setApiClientRuntime$, {
+      environment: "worker",
+      apiBaseUrl: resolveApiBaseForTarget("api"),
+      getToken: () => {
+        return Promise.resolve("worker-token");
       },
-    );
-    mockedClerk.sessionGetToken.mockImplementation((options) => {
-      if (options?.skipCache) {
-        forcedTokenRefreshes += 1;
-        return freshTokenCanFinish.promise;
+      oauthApiBaseUrl: resolveOAuthApiBase(),
+      reloadToken: () => {
+        reloads += 1;
+        return Promise.resolve("reloaded-worker-token");
+      },
+    });
+    context.mocks.api(userConnectorsContract.get, ({ request, respond }) => {
+      requests += 1;
+      authorizationHeaders.push(request.headers.get("authorization"));
+      if (requests === 1) {
+        return respond(401, {
+          error: { code: "UNAUTHORIZED", message: "Unauthorized" },
+        });
       }
-      return Promise.resolve("test-token");
+      return respond(200, { enabledConnectorSlugs: [] });
     });
 
-    const fetcher = getFetchForTest();
-    const first = fetcher("/api/okou/concurrent-auth-recovery-test");
-    const second = fetcher("/api/okou/concurrent-auth-recovery-test");
+    const client = context.store.get(apiClient$)(userConnectorsContract);
+    const response = await client.get({ params: { id: agentId } });
 
-    await waitFor(() => {
-      expect(requests).toBe(2);
-      expect(forcedTokenRefreshes).toBe(1);
-    });
-    freshTokenCanFinish.resolve("fresh-token");
-
-    const responses = await Promise.all([first, second]);
-    expect(
-      responses.map((response) => {
-        return response.status;
-      }),
-    ).toStrictEqual([200, 200]);
-    expect(requests).toBe(4);
-    expect(forcedTokenRefreshes).toBe(1);
-    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(authorizationHeaders).toStrictEqual([
+      "Bearer worker-token",
+      "Bearer reloaded-worker-token",
+    ]);
+    expect(reloads).toBe(1);
   });
 
   it("waits for Clerk to settle before the initial request", async () => {
@@ -311,12 +285,8 @@ describe("api client headers", () => {
 
     const response = await responsePromise;
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({ recovered: true });
-    expect(authorizationHeaders).toStrictEqual([
-      "Bearer test-token",
-      "Bearer fresh-token",
-    ]);
+    expect(response.status).toBe(401);
+    expect(authorizationHeaders).toStrictEqual(["Bearer test-token"]);
     expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
@@ -352,7 +322,7 @@ describe("api client headers", () => {
     });
 
     const requestSignal = context.store.set(
-      resetAuthRecoverySignal$,
+      resetTokenReadSignal$,
       context.signal,
     );
     const responsePromise = getFetchForTest()(
@@ -361,7 +331,7 @@ describe("api client headers", () => {
     );
     await listenerRegistered.promise;
 
-    context.store.set(resetAuthRecoverySignal$, context.signal);
+    context.store.set(resetTokenReadSignal$, context.signal);
 
     await expect(responsePromise).rejects.toMatchObject({ name: "AbortError" });
     mockClerkSessionTransitioning(false);
@@ -369,7 +339,7 @@ describe("api client headers", () => {
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
 
-  it("does not redirect an active session when the replay remains unauthorized", async () => {
+  it("does not retry or redirect an active session after a 401", async () => {
     mockSignedInUser();
     let requests = 0;
     context.mocks.http.get("*/api/okou/auth-recovery-test", () => {
@@ -391,7 +361,7 @@ describe("api client headers", () => {
     const response = await getFetchForTest()("/api/okou/auth-recovery-test");
 
     expect(response.status).toBe(401);
-    expect(requests).toBe(2);
+    expect(requests).toBe(1);
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
 
