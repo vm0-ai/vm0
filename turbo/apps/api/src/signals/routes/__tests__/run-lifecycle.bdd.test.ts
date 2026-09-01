@@ -10129,6 +10129,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       httpConnector.id,
       mcpConnector.id,
     ]);
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.CustomConnectorNoAuth]: false,
+    });
 
     const run = await api.createRun(actor, {
       agentId,

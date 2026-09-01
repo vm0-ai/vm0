@@ -2262,6 +2262,37 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expectApiError(blockedReconnect.body);
     expect(blockedReconnect.body.error.code).toBe("FORBIDDEN");
 
+    const manualHttp = await connectorsApi.updateCustomConnector(
+      admin,
+      http.id,
+      {
+        displayName: httpDefinition.displayName,
+        prefixTemplates: httpDefinition.prefixTemplates,
+        fields: [
+          ...httpDefinition.fields,
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [],
+        authMode: "manual",
+      },
+    );
+    expect(manualHttp).toMatchObject({
+      authMode: "manual",
+      connected: false,
+      storageVersion: 2,
+    });
+
     await connectorsApi.disconnectSingleCustomConnectorAccount(admin, http.id);
     await connectorsApi.disconnectSingleCustomConnectorAccount(admin, mcp.id);
     await connectorsApi.deleteCustomConnector(admin, http.id);
