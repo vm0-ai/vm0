@@ -613,6 +613,14 @@ describe("Google Workspace Events subscription lifecycle", () => {
       },
     });
     await createMeetAutomation(fixture);
+    const subscriptionName = fixture.provider.createdNames[0];
+    if (!subscriptionName) {
+      throw new Error("Expected a Workspace Events subscription");
+    }
+    mockOptionalEnv(
+      "GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME",
+      `${fixture.provider.topicName}-replacement`,
+    );
 
     const deletion = connectorAccountsClient().delete({
       headers: authHeaders(fixture.actor),
@@ -635,6 +643,9 @@ describe("Google Workspace Events subscription lifecycle", () => {
       promotedDefaultConnectionId: null,
     });
     expect(fixture.provider.deletedUrls).toHaveLength(1);
+    expect(fixture.provider.deletedUrls[0]).toContain(
+      `/${subscriptionName}?allowMissing=true`,
+    );
     const automations = await accept(
       automationsClient().list({
         headers: authHeaders(fixture.actor),

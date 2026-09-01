@@ -231,6 +231,17 @@ function googleWorkspaceEventsTopicName():
       };
 }
 
+function googleMeetSubscriptionStateForCleanup(
+  states: readonly GoogleWorkspaceSubscriptionStateRow[],
+): GoogleWorkspaceSubscriptionStateRow | undefined {
+  const topic = googleWorkspaceEventsTopicName();
+  return topic.kind === "ok"
+    ? (states.find((candidate) => {
+        return candidate.pubsubTopic === topic.topicName;
+      }) ?? states[0])
+    : states[0];
+}
+
 async function resolveGoogleMeetAccess(
   args: {
     readonly db: Db;
@@ -1058,13 +1069,7 @@ export async function prepareGoogleMeetSubscriptionDeleteForConnector(
       ),
     );
   signal.throwIfAborted();
-  const topic = googleWorkspaceEventsTopicName();
-  const state =
-    topic.kind === "ok"
-      ? states.find((candidate) => {
-          return candidate.pubsubTopic === topic.topicName;
-        })
-      : states[0];
+  const state = googleMeetSubscriptionStateForCleanup(states);
   return state
     ? await pendingGoogleMeetSubscriptionDeleteForState(
         { db: args.db, state },
@@ -1116,13 +1121,7 @@ async function reconcileGoogleMeetSubscriptionLifecycle(
       { db: tx, orgId: args.orgId, userId: args.userId },
       signal,
     );
-    const topic = googleWorkspaceEventsTopicName();
-    const state =
-      topic.kind === "ok"
-        ? states.find((candidate) => {
-            return candidate.pubsubTopic === topic.topicName;
-          })
-        : states[0];
+    const state = googleMeetSubscriptionStateForCleanup(states);
     const pendingDelete = state
       ? await pendingGoogleMeetSubscriptionDeleteForState(
           { db: tx, state },
