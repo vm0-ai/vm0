@@ -3,6 +3,7 @@ import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/mode
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
+import { badRequestMessage } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { writeDb$, type Db } from "../external/db";
@@ -25,7 +26,7 @@ import {
   type PendingGoalQueueEvent,
 } from "./chat-goal-queue.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
-import { resolveRunChatThreadModelContext } from "./chat-run-event.service";
+import { resolvePersistedChatThreadModel } from "./chat-thread-model.service";
 import { normalizeGoalObjectiveBrief } from "./goal-objective-brief-normalization.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import {
@@ -93,6 +94,17 @@ type ModelContext =
       readonly ok: false;
       readonly failure: Extract<RunGoalResult, { readonly kind: "run_error" }>;
     };
+
+interface ResolveGoalModelContextArgs {
+  readonly db: Db;
+  readonly goal: GoalQueueTarget;
+  readonly timing: ApiDispatchTimingCollector;
+  readonly timingDimensions: ApiDispatchTimingDimensions;
+}
+
+type GoalThreadModelContext = NonNullable<
+  Awaited<ReturnType<typeof resolvePersistedChatThreadModel>>
+>;
 
 function buildGoalAppendSystemPrompt(goal: {
   readonly objective: string;
@@ -232,19 +244,47 @@ function buildQueueFirstGoalRunInput(args: {
   };
 }
 
+async function resolveGoalThreadModelContext(
+  args: ResolveGoalModelContextArgs,
+): Promise<GoalThreadModelContext> {
+  const featureSwitchContext = await args.timing.measure(
+    "api_dispatch_pre_create_zero_goal_drain_model_context_load_initial_feature_switches",
+    "nested",
+    () => {
+      return loadUserFeatureSwitchContext(
+        args.db,
+        args.goal.orgId,
+        args.goal.userId,
+      );
+    },
+    args.timingDimensions,
+  );
+  return await args.timing.measure(
+    "api_dispatch_pre_create_zero_goal_drain_model_context_resolve_persisted_model_policy",
+    "nested",
+    async () => {
+      const resolved = await resolvePersistedChatThreadModel({
+        db: args.db,
+        orgId: args.goal.orgId,
+        userId: args.goal.userId,
+        threadId: args.goal.threadId,
+        persistRequestedCodexServiceTier: false,
+        codexFastModeEnabled: isFeatureEnabled(
+          FeatureSwitchKey.CodexFastMode,
+          featureSwitchContext,
+        ),
+      });
+      return resolved ?? badRequestMessage("Chat thread not found");
+    },
+    args.timingDimensions,
+  );
+}
+
 async function resolveModelContext(
-  args: {
-    readonly db: Db;
-    readonly goal: GoalQueueTarget;
-  },
+  args: ResolveGoalModelContextArgs,
   signal: AbortSignal,
 ): Promise<ModelContext> {
-  const threadModelContext = await resolveRunChatThreadModelContext({
-    db: args.db,
-    orgId: args.goal.orgId,
-    userId: args.goal.userId,
-    threadId: args.goal.threadId,
-  });
+  const threadModelContext = await resolveGoalThreadModelContext(args);
   signal.throwIfAborted();
   if ("status" in threadModelContext) {
     return {
@@ -273,19 +313,33 @@ async function resolveModelContext(
   const fallbackEnabled = isBuiltInModelProviderType(effectiveModelProvider)
     ? isFeatureEnabled(
         FeatureSwitchKey.BuiltInModelProviderFallback,
-        await loadUserFeatureSwitchContext(
-          args.db,
-          args.goal.orgId,
-          args.goal.userId,
+        await args.timing.measure(
+          "api_dispatch_pre_create_zero_goal_drain_model_context_reload_fallback_feature_switches",
+          "nested",
+          () => {
+            return loadUserFeatureSwitchContext(
+              args.db,
+              args.goal.orgId,
+              args.goal.userId,
+            );
+          },
+          args.timingDimensions,
         ),
       )
     : false;
   const builtInModelRuntimeRoute =
     isBuiltInModelProviderType(effectiveModelProvider) && selectedModel
-      ? await resolveBuiltInModelRuntimeRoute(
-          args.db,
-          selectedModel,
-          fallbackEnabled,
+      ? await args.timing.measure(
+          "api_dispatch_pre_create_zero_goal_drain_model_context_resolve_built_in_route",
+          "nested",
+          () => {
+            return resolveBuiltInModelRuntimeRoute(
+              args.db,
+              selectedModel,
+              fallbackEnabled,
+            );
+          },
+          args.timingDimensions,
         )
       : undefined;
   signal.throwIfAborted();
@@ -378,6 +432,8 @@ const launchQueuedGoal$ = command(
           {
             db,
             goal: args.goal,
+            timing: args.timing,
+            timingDimensions: phaseDimensions,
           },
           signal,
         );
