@@ -50,6 +50,7 @@ interface GoogleMeetProviderOptions {
   readonly createStatus?: number;
   readonly deleteStatus?: number;
   readonly expireTime?: string;
+  readonly tokenExpiresInSeconds?: number;
   readonly onDelete?: () => Promise<void>;
 }
 
@@ -165,7 +166,7 @@ function configureGoogleMeetBoundaries(
       return HttpResponse.json({
         access_token: accessToken,
         refresh_token: `google-meet-refresh-${testId}`,
-        expires_in: 3600,
+        expires_in: options.tokenExpiresInSeconds ?? 3600,
         token_type: "Bearer",
         scope:
           "https://www.googleapis.com/auth/meetings.space.readonly https://www.googleapis.com/auth/userinfo.email",
@@ -607,6 +608,7 @@ describe("Google Workspace Events subscription lifecycle", () => {
     });
     const fixture = await setupFixture({
       deleteStatus: 503,
+      tokenExpiresInSeconds: 60,
       onDelete: async () => {
         deleteStarted.resolve();
         await deleteRelease.promise;

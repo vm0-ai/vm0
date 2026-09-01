@@ -306,7 +306,10 @@ async function resolveGoogleMeetAccess(
         "Reconnect Google Meet before using Google Meet event automations",
     };
   }
-  if (!tokenNeedsRefresh(connection.tokenExpiresAt, currentTime)) {
+  if (
+    !tokenNeedsRefresh(connection.tokenExpiresAt, currentTime) ||
+    args.refreshExpiredToken === false
+  ) {
     return {
       kind: "ok",
       access: {
@@ -315,13 +318,6 @@ async function resolveGoogleMeetAccess(
         emailAddress: connection.externalEmail,
         accessToken,
       },
-    };
-  }
-  if (args.refreshExpiredToken === false) {
-    return {
-      kind: "bad_request",
-      message:
-        "Reconnect Google Meet before using Google Meet event automations",
     };
   }
   const refreshed = await refreshConnectorCredentialAccess(
