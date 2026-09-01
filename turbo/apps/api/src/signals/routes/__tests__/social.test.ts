@@ -822,6 +822,7 @@ describe("managed SocialKit route", () => {
     expect(response.body.collection).toStrictEqual({
       state: "provider_limited",
       itemsReturned: 10,
+      reason: "no_pagination",
     });
     await expect(credits(actor)).resolves.toBe(0);
   });
@@ -866,13 +867,21 @@ describe("managed SocialKit route", () => {
         path: "/instagram/reels-search",
         query: { query: "cats", page: "2" },
         data: { items: [{ id: "2" }], hasMore: true },
-        expected: { state: "provider_limited", itemsReturned: 1 },
+        expected: {
+          state: "provider_limited",
+          itemsReturned: 1,
+          reason: "provider_ceiling",
+        },
       },
       {
         path: "/linkedin/company-posts",
         query: { url: "https://linkedin.com/company/example", limit: "50" },
         data: { posts: [{ id: "1" }] },
-        expected: { state: "provider_limited", itemsReturned: 1 },
+        expected: {
+          state: "provider_limited",
+          itemsReturned: 1,
+          reason: "no_pagination",
+        },
       },
     ] as const;
 
@@ -892,6 +901,125 @@ describe("managed SocialKit route", () => {
 
       expect(response.body.collection).toStrictEqual(testCase.expected);
     }
+  });
+
+  it("uses reported comment totals to prevent false completion", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    await fundActor(actor);
+    const pricing = await setupConfiguredPricing();
+    const beforeCredits = await credits(actor);
+    const request = requestForPath("/tiktok/comments", {
+      url: "https://tiktok.com/@example/video/123",
+      limit: 10,
+    });
+
+    server.use(
+      providerHandler("GET", "/tiktok/comments", () => {
+        return HttpResponse.json(
+          providerResponse({
+            videoId: "123",
+            comments: [{ id: "1" }, { id: "2" }],
+            commentCount: 100,
+            hasMore: false,
+            cursor: null,
+          }),
+        );
+      }),
+    );
+    const limited = await accept(
+      client(pricing.resolution)(socialContract).request({
+        headers: authenticate(actor),
+        body: request,
+      }),
+      [200],
+    );
+    expect(limited.body.collection).toStrictEqual({
+      state: "provider_limited",
+      itemsReturned: 2,
+      reason: "reported_total_exceeds_page",
+      reportedTotal: 100,
+    });
+
+    server.use(
+      providerHandler("GET", "/tiktok/comments", () => {
+        return HttpResponse.json(
+          providerResponse({
+            videoId: "123",
+            comments: [{ id: "1" }, { id: "2" }],
+            commentCount: 2,
+            hasMore: false,
+            cursor: null,
+          }),
+        );
+      }),
+    );
+    const complete = await accept(
+      client(pricing.resolution)(socialContract).request({
+        headers: authenticate(actor),
+        body: request,
+      }),
+      [200],
+    );
+    expect(complete.body.collection).toStrictEqual({
+      state: "complete",
+      itemsReturned: 2,
+      reportedTotal: 2,
+    });
+
+    server.use(
+      providerHandler("GET", "/tiktok/comments", () => {
+        return HttpResponse.json(
+          providerResponse({
+            videoId: "123",
+            comments: [{ id: "1" }, { id: "2" }],
+            commentCount: 1,
+            hasMore: false,
+            cursor: null,
+          }),
+        );
+      }),
+    );
+    const malformed = await accept(
+      client(pricing.resolution)(socialContract).request({
+        headers: authenticate(actor),
+        body: request,
+      }),
+      [502],
+    );
+    expectApiError(malformed.body);
+    expect(malformed.body.error.code).toBe("SOCIALKIT_INVALID_RESPONSE");
+
+    server.use(
+      providerHandler("GET", "/tiktok/comments", () => {
+        return HttpResponse.json(
+          providerResponse({
+            videoId: "123",
+            comments: [{ id: "1" }],
+            commentCount: 100,
+            hasMore: true,
+            cursor: "next-page",
+          }),
+        );
+      }),
+    );
+    const continued = await accept(
+      client(pricing.resolution)(socialContract).request({
+        headers: authenticate(actor),
+        body: request,
+      }),
+      [200],
+    );
+    expect(continued.body.collection).toStrictEqual({
+      state: "more",
+      itemsReturned: 1,
+      reportedTotal: 100,
+      nextInput: { cursor: "next-page" },
+    });
+
+    expect(beforeCredits - (await credits(actor))).toBe(
+      3 * SOCIALKIT_REQUEST_CREDITS,
+    );
   });
 
   it("preflights the maximum result-metered quantity before provider work", async () => {
