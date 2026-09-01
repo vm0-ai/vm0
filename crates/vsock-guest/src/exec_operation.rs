@@ -941,7 +941,7 @@ impl RunningExec {
 
         let cleanup_process_group_before_reap =
             process_containment.requires_pre_reap_process_group_cleanup();
-        let prepare_stdin_writer_for_pre_reap = || {
+        let prepare_for_pre_reap = || {
             let stdin_writer_cancelled = stdin_writer.as_ref().is_some_and(|writer| {
                 if matches!(writer.done_rx.try_recv(), Err(mpsc::TryRecvError::Empty)) {
                     request_stdin_writer_cancel(writer);
@@ -957,7 +957,7 @@ impl RunningExec {
             request.timeout.wait_timeout_ms(),
             connection_cancel,
             exec_cancel,
-            prepare_stdin_writer_for_pre_reap,
+            prepare_for_pre_reap,
         );
         if let Some(writer) = stdin_writer.as_ref()
             && matches!(writer.done_rx.try_recv(), Err(mpsc::TryRecvError::Empty))
