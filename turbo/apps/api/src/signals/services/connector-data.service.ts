@@ -85,7 +85,12 @@ import {
   stopPreparedGmailWatch,
   type PendingGmailWatchStop,
 } from "./gmail-automation-event.service";
-import { cleanupGoogleCalendarWatchesForConnector } from "./google-calendar-automation-event.service";
+import {
+  prepareGoogleCalendarWatchStopForConnector,
+  reconcileGoogleCalendarWatchesForUser,
+  stopPreparedGoogleCalendarWatches,
+  type PendingGoogleCalendarWatchStop,
+} from "./google-calendar-automation-event.service";
 import {
   prepareGoogleFormsWatchStopForConnector,
   reconcileGoogleFormsWatchesForUser,
@@ -969,18 +974,6 @@ async function revokePendingConnectorToken(
   );
 }
 
-async function cleanupConnectorWatchesForDisconnect(
-  db: Db,
-  connectorSlug: string,
-  connectorId: string,
-  signal: AbortSignal,
-): Promise<void> {
-  const args = { db, connectorId };
-  if (connectorSlug === "google-calendar") {
-    await bestEffort(cleanupGoogleCalendarWatchesForConnector(args, signal));
-  }
-}
-
 async function reconcileAccountBoundAutomationWatches(
   db: Db,
   args: {
@@ -993,6 +986,11 @@ async function reconcileAccountBoundAutomationWatches(
   if (args.connectorSlug === "gmail") {
     await bestEffort(
       reconcileGmailWatchesForUser({ db, ...args }, signal),
+      signal,
+    );
+  } else if (args.connectorSlug === "google-calendar") {
+    await bestEffort(
+      reconcileGoogleCalendarWatchesForUser({ db, ...args }, signal),
       signal,
     );
   } else if (args.connectorSlug === "google-forms") {
@@ -1115,6 +1113,7 @@ interface DeleteConnectorLocalStateArgs {
 
 interface PendingConnectorAutomationCleanup {
   readonly pendingGmailWatchStop: PendingGmailWatchStop | null;
+  readonly pendingGoogleCalendarWatchStop: PendingGoogleCalendarWatchStop | null;
   readonly pendingGoogleFormsWatchStop: PendingGoogleFormsWatchStop | null;
   readonly pendingGoogleMeetSubscriptionDelete: PendingGoogleMeetSubscriptionDelete | null;
 }
@@ -1135,6 +1134,10 @@ async function prepareConnectorAutomationCleanup(
     args.connectorSlug === "gmail"
       ? await prepareGmailWatchStopForConnector(cleanupArgs, signal)
       : null;
+  const pendingGoogleCalendarWatchStop =
+    args.connectorSlug === "google-calendar"
+      ? await prepareGoogleCalendarWatchStopForConnector(cleanupArgs, signal)
+      : null;
   const pendingGoogleFormsWatchStop =
     args.connectorSlug === "google-forms"
       ? await prepareGoogleFormsWatchStopForConnector(cleanupArgs, signal)
@@ -1148,6 +1151,7 @@ async function prepareConnectorAutomationCleanup(
       : null;
   return {
     pendingGmailWatchStop,
+    pendingGoogleCalendarWatchStop,
     pendingGoogleFormsWatchStop,
     pendingGoogleMeetSubscriptionDelete,
   };
@@ -1173,6 +1177,7 @@ async function deleteConnectorAccountLocalState(
       kind: account.kind,
       pendingTokenRevoke: null,
       pendingGmailWatchStop: null,
+      pendingGoogleCalendarWatchStop: null,
       pendingGoogleMeetSubscriptionDelete: null,
       pendingGoogleFormsWatchStop: null,
     };
@@ -1192,6 +1197,7 @@ async function deleteConnectorAccountLocalState(
       kind: deletion.kind,
       pendingTokenRevoke: null,
       pendingGmailWatchStop: null,
+      pendingGoogleCalendarWatchStop: null,
       pendingGoogleMeetSubscriptionDelete: null,
       pendingGoogleFormsWatchStop: null,
     };
@@ -1232,16 +1238,6 @@ async function deleteConnectorAccountLocalState(
     existing.id,
     signal,
   );
-  if (args.connectorSlug !== "gmail" && args.connectorSlug !== "google-forms") {
-    await cleanupConnectorWatchesForDisconnect(
-      tx,
-      args.connectorSlug,
-      existing.id,
-      signal,
-    );
-  }
-  signal.throwIfAborted();
-
   await deleteConnectorCredentialStorageConnection(
     tx,
     { connectorId: existing.id },
@@ -1278,6 +1274,10 @@ async function stopPendingConnectorAutomationCleanup(
       capturedAbort ??= stopped.error;
     }
   }
+  capturedAbort ??= await stopPendingGoogleCalendarAutomationCleanup(
+    pending.pendingGoogleCalendarWatchStop,
+    signal,
+  );
   if (pending.pendingGoogleMeetSubscriptionDelete !== null) {
     const deleted = await settleIncludingAbort(
       bestEffort(
@@ -1316,6 +1316,22 @@ async function stopPendingConnectorAutomationCleanup(
     }
   }
   return capturedAbort;
+}
+
+async function stopPendingGoogleCalendarAutomationCleanup(
+  pending: PendingGoogleCalendarWatchStop | null,
+  signal: AbortSignal,
+): Promise<unknown> {
+  if (pending === null) {
+    return null;
+  }
+  const stopped = await settleIncludingAbort(
+    bestEffort(stopPreparedGoogleCalendarWatches(pending, signal), signal),
+  );
+  if (signal.aborted) {
+    return signal.reason;
+  }
+  return stopped.ok ? null : stopped.error;
 }
 
 export const deleteConnectorLocalState$ = command(
@@ -1380,6 +1396,15 @@ export const deleteConnectorLocalState$ = command(
     if (args.connectorSlug === "gmail") {
       await bestEffort(
         reconcileGmailWatchesForUser(
+          { db: writeDb, orgId: args.orgId, userId: args.userId },
+          signal,
+        ),
+        signal,
+      );
+    }
+    if (args.connectorSlug === "google-calendar") {
+      await bestEffort(
+        reconcileGoogleCalendarWatchesForUser(
           { db: writeDb, orgId: args.orgId, userId: args.userId },
           signal,
         ),
@@ -2345,6 +2370,71 @@ async function reprojectConnectedWorkflowAutomations(
   );
 }
 
+async function prepareGoogleCalendarPrincipalReplacementWatchStop(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorSlug: string;
+    readonly existing: StoredConnectorRow | null;
+    readonly nextPrincipalId: string;
+  },
+  signal: AbortSignal,
+): Promise<PendingGoogleCalendarWatchStop | null> {
+  if (
+    args.existing === null ||
+    args.connectorSlug !== "google-calendar" ||
+    args.existing.externalId === args.nextPrincipalId
+  ) {
+    return null;
+  }
+  return await prepareGoogleCalendarWatchStopForConnector(
+    {
+      db,
+      orgId: args.orgId,
+      userId: args.userId,
+      connectorId: args.existing.id,
+    },
+    signal,
+  );
+}
+
+async function prepareConnectorTokenConnectionCleanup(
+  args: CommitConnectorTokenConnectionArgs,
+  existing: StoredConnectorRow | null,
+  signal: AbortSignal,
+): Promise<{
+  readonly pendingTokenRevoke: PendingConnectorTokenRevoke | null;
+  readonly pendingGoogleCalendarWatchStop: PendingGoogleCalendarWatchStop | null;
+}> {
+  const pendingTokenRevoke =
+    await loadPendingConnectorTokenRevokeForTokenConnect(
+      args.db,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        connectorSlug: args.runtimeMethod.connectorSlug,
+        snapshot: args.snapshot,
+        featureSwitchContext: args.featureSwitchContext,
+        existing,
+      },
+      signal,
+    );
+  const pendingGoogleCalendarWatchStop =
+    await prepareGoogleCalendarPrincipalReplacementWatchStop(
+      args.db,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        connectorSlug: args.runtimeMethod.connectorSlug,
+        existing,
+        nextPrincipalId: args.userInfo.id,
+      },
+      signal,
+    );
+  return { pendingTokenRevoke, pendingGoogleCalendarWatchStop };
+}
+
 async function commitConnectorTokenConnection(
   args: CommitConnectorTokenConnectionArgs,
   signal: AbortSignal,
@@ -2354,6 +2444,7 @@ async function commitConnectorTokenConnection(
       readonly connectorRow: StoredConnectorRow;
       readonly created: boolean;
       readonly pendingTokenRevoke: PendingConnectorTokenRevoke | null;
+      readonly pendingGoogleCalendarWatchStop: PendingGoogleCalendarWatchStop | null;
     }
   | ConnectorConnectionMutationFailure
   | { readonly status: "identityMismatch" }
@@ -2392,17 +2483,10 @@ async function commitConnectorTokenConnection(
   ) {
     return { status: "identityMismatch" };
   }
-  const pendingTokenRevoke =
-    await loadPendingConnectorTokenRevokeForTokenConnect(
-      args.db,
-      {
-        orgId: args.orgId,
-        userId: args.userId,
-        connectorSlug: args.runtimeMethod.connectorSlug,
-        snapshot: args.snapshot,
-        featureSwitchContext: args.featureSwitchContext,
-        existing: existingConnector,
-      },
+  const { pendingTokenRevoke, pendingGoogleCalendarWatchStop } =
+    await prepareConnectorTokenConnectionCleanup(
+      args,
+      existingConnector,
       signal,
     );
 
@@ -2467,6 +2551,7 @@ async function commitConnectorTokenConnection(
     connectorRow,
     created: existingConnector === null,
     pendingTokenRevoke,
+    pendingGoogleCalendarWatchStop,
   };
 }
 
@@ -2564,6 +2649,13 @@ export const upsertConnectorTokenConnection$ = command(
     if (connectionResult.status !== "connected") {
       return connectionResult;
     }
+
+    const automationCleanupAbort =
+      await stopPendingGoogleCalendarAutomationCleanup(
+        connectionResult.pendingGoogleCalendarWatchStop,
+        signal,
+      );
+    postCommitAbort ??= automationCleanupAbort;
 
     await finalizeConnectorStateChangeAfterCommit(
       {

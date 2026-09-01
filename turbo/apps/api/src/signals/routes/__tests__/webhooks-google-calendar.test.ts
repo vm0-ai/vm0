@@ -14,6 +14,7 @@ import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import type { ApiTestUser } from "./helpers/api-bdd";
+import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
@@ -22,6 +23,7 @@ import {
 } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
+import { clearWorkflowAutomationEventConnectorAsPreviousApi } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
 import { chatThreadRoutes } from "../chat-threads";
 import { workflowAutomationsRoutes } from "../workflow-automations";
@@ -35,6 +37,7 @@ const TEST_APP_ROUTES = Object.freeze([
 const context = testContext();
 const mocks = createRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
+const connectorsApi = createConnectorBddApi(context);
 const runsApi = createRunsApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 
@@ -208,6 +211,7 @@ function configureGoogleCalendarApiMock(args: {
 
 interface CalendarScenario {
   readonly actor: ApiTestUser & { readonly orgId: string };
+  readonly agentId: string;
   readonly runnerGroup: string;
   readonly workflowId: string;
 }
@@ -231,6 +235,7 @@ async function setupFixture(): Promise<CalendarScenario> {
   context.mocks.s3.send.mockResolvedValue({});
   return {
     actor: { ...actor, orgId: actor.orgId },
+    agentId: agent.agentId,
     runnerGroup,
     workflowId,
   };
@@ -266,6 +271,43 @@ async function connectGoogleCalendar(
     scenario.actor.orgId,
     "org:member",
   );
+}
+
+async function addGoogleCalendarAccount(
+  scenario: CalendarScenario,
+  args: {
+    readonly accessToken: string;
+    readonly email: string;
+    readonly subject: string;
+  },
+): Promise<string> {
+  mockGoogleCalendarConnectorOAuth(args);
+  const start = await connectorsApi.startOauth(
+    scenario.actor,
+    "google-calendar",
+    "oauth",
+    scenario.agentId,
+    { intent: "add", displayName: args.email },
+  );
+  const state = new URL(start.authorizationUrl).searchParams.get("state");
+  if (!state) {
+    throw new Error("Expected Google Calendar OAuth state");
+  }
+  await connectorsApi.completeOauthCallback("google-calendar", {
+    code: "google-calendar-second-code",
+    state,
+  });
+  const accounts = await connectorsApi.listBuiltinConnectorAccounts(
+    scenario.actor,
+    "google-calendar",
+  );
+  const account = accounts.find((candidate) => {
+    return candidate.externalEmail === args.email;
+  });
+  if (!account) {
+    throw new Error("Expected the added Google Calendar account");
+  }
+  return account.id;
 }
 
 async function postGoogleCalendarWebhook(
@@ -485,6 +527,177 @@ describe("POST /api/webhooks/google-calendar", () => {
     });
     const idleAfterDuplicate = await runsApi.pollRunner(runnerGroup);
     expect(idleAfterDuplicate.body.job).toBeNull();
+  });
+
+  it("repairs a legacy projection and dispatches only from the selected Calendar account", async () => {
+    const firstAccessToken = "calendar-first-access-token";
+    const secondAccessToken = "calendar-second-access-token";
+    const channels: (GoogleCalendarWatchChannel & {
+      readonly accessToken: string;
+    })[] = [];
+    const incrementalAccessTokens: string[] = [];
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    server.use(
+      http.post(
+        "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events/watch",
+        async ({ request }) => {
+          const accessToken =
+            request.headers.get("authorization")?.replace("Bearer ", "") ?? "";
+          const body = (await request.json()) as {
+            readonly id?: string;
+            readonly token?: string;
+          };
+          if (!body.id || !body.token) {
+            throw new Error("Expected Calendar watch channel identity");
+          }
+          const resourceId = `calendar-resource-${accessToken}`;
+          channels.push({
+            channelId: body.id,
+            channelToken: body.token,
+            resourceId,
+            accessToken,
+          });
+          return HttpResponse.json({
+            id: body.id,
+            resourceId,
+            resourceUri:
+              "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+            expiration: String(now() + 7 * 24 * 60 * 60 * 1000),
+          });
+        },
+      ),
+      http.get(
+        "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events",
+        ({ request }) => {
+          const accessToken =
+            request.headers.get("authorization")?.replace("Bearer ", "") ?? "";
+          const syncToken = new URL(request.url).searchParams.get("syncToken");
+          if (!syncToken) {
+            return HttpResponse.json({
+              items: [],
+              nextSyncToken: `baseline-${accessToken}`,
+            });
+          }
+          incrementalAccessTokens.push(accessToken);
+          return HttpResponse.json({
+            items:
+              accessToken === secondAccessToken
+                ? [
+                    {
+                      id: "selected-account-event",
+                      etag: '"selected-account-version"',
+                      status: "confirmed",
+                      summary: "Selected account event",
+                      created: "2026-08-01T09:00:00.000Z",
+                      updated: "2026-08-01T09:00:00.000Z",
+                    },
+                  ]
+                : [],
+            nextSyncToken: `next-${accessToken}`,
+          });
+        },
+      ),
+      http.post("https://www.googleapis.com/calendar/v3/channels/stop", () => {
+        return HttpResponse.json(
+          { error: "retain old channel" },
+          { status: 500 },
+        );
+      }),
+    );
+
+    const scenario = await setupFixture();
+    await updateFeatureSwitchesForUser(context, scenario.actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    mockGoogleCalendarConnectorOAuth({
+      accessToken: firstAccessToken,
+      email: "calendar-first@example.com",
+      subject: "calendar-first-subject",
+    });
+    await wf.connectConnector(scenario.actor, "google-calendar");
+    const secondConnectorId = await addGoogleCalendarAccount(scenario, {
+      accessToken: secondAccessToken,
+      email: "calendar-second@example.com",
+      subject: "calendar-second-subject",
+    });
+
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+        },
+      }),
+      [201],
+    );
+    if (!created.body.chatThreadId) {
+      throw new Error("Expected the Calendar automation thread");
+    }
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(),
+        params: { id: created.body.chatThreadId },
+        body: {
+          connectionId: secondConnectorId,
+          target: { kind: "builtin", connectorSlug: "google-calendar" },
+        },
+      }),
+      [200],
+    );
+    await clearWorkflowAutomationEventConnectorAsPreviousApi(
+      context,
+      created.body.id,
+    );
+
+    const firstWatch = channels.find((channel) => {
+      return channel.accessToken === firstAccessToken;
+    });
+    const secondWatch = channels.find((channel) => {
+      return channel.accessToken === secondAccessToken;
+    });
+    if (!firstWatch || !secondWatch) {
+      throw new Error("Expected one watch for each Calendar account");
+    }
+
+    const oldSource = await postGoogleCalendarWebhook(
+      webhookHeaders(firstWatch),
+    );
+    expect(oldSource).toStrictEqual({
+      status: 200,
+      body: {
+        success: true,
+        watchStates: 1,
+        dispatched: 0,
+        duplicates: 0,
+      },
+    });
+    expect(incrementalAccessTokens).toStrictEqual([]);
+
+    const selectedSource = await postGoogleCalendarWebhook(
+      webhookHeaders(secondWatch),
+    );
+    expect(selectedSource).toStrictEqual({
+      status: 200,
+      body: {
+        success: true,
+        watchStates: 1,
+        dispatched: 1,
+        duplicates: 0,
+      },
+    });
+    expect(incrementalAccessTokens).toStrictEqual([secondAccessToken]);
+
+    await runsApi.heartbeatRunner(scenario.runnerGroup);
+    const job = await runsApi.pollRunner(scenario.runnerGroup);
+    if (!job.body.job) {
+      throw new Error("Expected a selected-account Calendar run");
+    }
+    const claim = await runsApi.claimRunnerJob(job.body.job.runId);
+    expect(
+      Object.values(claim.secretConnectorMetadataMap ?? {}),
+    ).toContainEqual(expect.objectContaining({ sourceId: secondConnectorId }));
   });
 
   it("ignores updated and cancelled calendar events", async () => {
