@@ -17,6 +17,7 @@ import {
 } from "../services/chat-thread-connector-selection.service";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { reconcileGmailWatchesForUser } from "../services/gmail-automation-event.service";
+import { reconcileGoogleFormsWatchesForUser } from "../services/google-forms-automation-event.service";
 import type { RouteEntry } from "../route-entry";
 
 const connectorAccountsEnabled$ = computed(async (get) => {
@@ -84,13 +85,19 @@ const updateSelectionInner$ = command(
     }
     if (
       body.data.target.kind === "builtin" &&
-      body.data.target.connectorSlug === "gmail"
+      (body.data.target.connectorSlug === "gmail" ||
+        body.data.target.connectorSlug === "google-forms")
     ) {
       await bestEffort(
-        reconcileGmailWatchesForUser(
-          { db: writeDb, orgId: auth.orgId, userId: auth.userId },
-          signal,
-        ),
+        body.data.target.connectorSlug === "gmail"
+          ? reconcileGmailWatchesForUser(
+              { db: writeDb, orgId: auth.orgId, userId: auth.userId },
+              signal,
+            )
+          : reconcileGoogleFormsWatchesForUser(
+              { db: writeDb, orgId: auth.orgId, userId: auth.userId },
+              signal,
+            ),
         signal,
       );
     }
@@ -131,12 +138,21 @@ const clearSelectionInner$ = command(
     if (result.kind === "not_found") {
       return notFound("Chat thread not found");
     }
-    if (body.data.kind === "builtin" && body.data.connectorSlug === "gmail") {
+    if (
+      body.data.kind === "builtin" &&
+      (body.data.connectorSlug === "gmail" ||
+        body.data.connectorSlug === "google-forms")
+    ) {
       await bestEffort(
-        reconcileGmailWatchesForUser(
-          { db: writeDb, orgId: auth.orgId, userId: auth.userId },
-          signal,
-        ),
+        body.data.connectorSlug === "gmail"
+          ? reconcileGmailWatchesForUser(
+              { db: writeDb, orgId: auth.orgId, userId: auth.userId },
+              signal,
+            )
+          : reconcileGoogleFormsWatchesForUser(
+              { db: writeDb, orgId: auth.orgId, userId: auth.userId },
+              signal,
+            ),
         signal,
       );
     }

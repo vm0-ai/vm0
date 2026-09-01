@@ -43,6 +43,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import {
   createConnectorBddApi,
   mockGmailConnectorOAuth,
+  mockGoogleFormsConnectorOAuth,
   mockStripeConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -2193,6 +2194,227 @@ describe("workflows", () => {
         }),
       }),
     );
+  });
+
+  it("rebinds copied Google Forms automations to the target thread default account", async () => {
+    const actor = user();
+    if (!actor.orgId) {
+      throw new Error(
+        "Expected Google Forms workflow copy actor to belong to an org",
+      );
+    }
+    await api.grantProEntitlement(actor, { tier: "team" });
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      {
+        [FeatureSwitchKey.ConnectorAccounts]: true,
+        [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
+      },
+    );
+    const sourceAgent = await createAgent(actor, {
+      displayName: "Google Forms Copy Source Agent",
+      visibility: "private",
+    });
+    const targetAgent = await createAgent(actor, {
+      displayName: "Google Forms Copy Target Agent",
+      visibility: "private",
+    });
+    const workflow = await createWorkflow(actor, {
+      agentId: sourceAgent.agentId,
+      name: `google-forms-copy-${randomUUID().slice(0, 8)}`,
+      instruction: "# Google Forms copy source",
+    });
+    const formId = `googleFormsCopy${randomUUID().replaceAll("-", "")}`;
+    const topicName = "projects/vm0-ai-488909/topics/forms-copy-events";
+    mockOptionalEnv("GOOGLE_FORMS_PUBSUB_TOPIC_NAME", topicName);
+    mockOptionalEnv(
+      "GOOGLE_FORMS_PUBSUB_PUSH_AUDIENCE",
+      "https://api.vm0.ai/api/webhooks/google-forms",
+    );
+    mockOptionalEnv(
+      "GOOGLE_FORMS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL",
+      "gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com",
+    );
+    const watchedTokens: string[] = [];
+    server.use(
+      http.get(
+        "https://forms.googleapis.com/v1/forms/:formId",
+        ({ params }) => {
+          expect(params.formId).toBe(formId);
+          return HttpResponse.json({
+            formId,
+            info: { title: "Copy form" },
+            publishSettings: {
+              publishState: {
+                isPublished: true,
+                isAcceptingResponses: true,
+              },
+            },
+          });
+        },
+      ),
+      http.get(
+        "https://forms.googleapis.com/v1/forms/:formId/responses",
+        ({ params }) => {
+          expect(params.formId).toBe(formId);
+          return HttpResponse.json({ responses: [] });
+        },
+      ),
+      http.post(
+        "https://forms.googleapis.com/v1/forms/:formId/watches",
+        ({ request, params }) => {
+          expect(params.formId).toBe(formId);
+          const authorization = request.headers.get("authorization");
+          if (!authorization) {
+            throw new Error("Expected Google Forms watch authorization");
+          }
+          watchedTokens.push(authorization);
+          return HttpResponse.json({
+            id: `forms-copy-watch-${randomUUID()}`,
+            createTime: "2026-09-01T10:00:00Z",
+            expireTime: "2099-09-01T10:00:00Z",
+            eventType: "RESPONSES",
+            target: { topic: { topicName } },
+          });
+        },
+      ),
+      http.delete(
+        "https://forms.googleapis.com/v1/forms/:formId/watches/:watchId",
+        () => {
+          return new HttpResponse(null, { status: 204 });
+        },
+      ),
+    );
+
+    mockGoogleFormsConnectorOAuth({
+      accessToken: "google-forms-copy-first-token",
+      email: "google-forms-copy-first@example.test",
+      subject: `google-forms-copy-first-${randomUUID()}`,
+    });
+    const firstStart = await connectorApi.startOauth(
+      actor,
+      "google-forms",
+      "oauth",
+      sourceAgent.agentId,
+    );
+    const firstState = new URL(firstStart.authorizationUrl).searchParams.get(
+      "state",
+    );
+    if (!firstState) {
+      throw new Error("Expected first Google Forms OAuth state");
+    }
+    await connectorApi.completeOauthCallback("google-forms", {
+      code: "google-forms-copy-first-code",
+      state: firstState,
+    });
+    const firstAccount = await connectorApi.readConnectorBySlug(
+      actor,
+      "google-forms",
+    );
+
+    mockGoogleFormsConnectorOAuth({
+      accessToken: "google-forms-copy-second-token",
+      email: "google-forms-copy-second@example.test",
+      subject: `google-forms-copy-second-${randomUUID()}`,
+    });
+    const secondStart = await connectorApi.startOauth(
+      actor,
+      "google-forms",
+      "oauth",
+      sourceAgent.agentId,
+      { intent: "add", displayName: "Google Forms Copy Second" },
+    );
+    const secondState = new URL(secondStart.authorizationUrl).searchParams.get(
+      "state",
+    );
+    if (!secondState) {
+      throw new Error("Expected second Google Forms OAuth state");
+    }
+    await connectorApi.completeOauthCallback("google-forms", {
+      code: "google-forms-copy-second-code",
+      state: secondState,
+    });
+    const accounts = await connectorApi.listBuiltinConnectorAccounts(
+      actor,
+      "google-forms",
+    );
+    const secondAccount = accounts.find((account) => {
+      return account.externalEmail === "google-forms-copy-second@example.test";
+    });
+    if (!secondAccount) {
+      throw new Error("Expected second Google Forms account");
+    }
+
+    const automation = await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: {
+          kind: "event",
+          eventType: "google-forms-response-submitted",
+          eventConfig: {
+            provider: "google-forms",
+            event: "response_submitted",
+            formUrl: `https://docs.google.com/forms/d/${formId}/edit`,
+          },
+        },
+      }),
+      [201],
+    );
+    if (automation.body.kind !== "event" || !automation.body.chatThreadId) {
+      throw new Error("Expected Google Forms automation thread");
+    }
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(actor),
+        params: { id: automation.body.chatThreadId },
+        body: {
+          connectionId: secondAccount.id,
+          target: { kind: "builtin", connectorSlug: "google-forms" },
+        },
+      }),
+      [200],
+    );
+    expect(watchedTokens).toStrictEqual([
+      "Bearer google-forms-copy-first-token",
+      "Bearer google-forms-copy-second-token",
+    ]);
+
+    const copied = await accept(
+      detailClient().copy({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: { toAgentId: targetAgent.agentId },
+      }),
+      [201],
+    );
+    expect(watchedTokens).toStrictEqual([
+      "Bearer google-forms-copy-first-token",
+      "Bearer google-forms-copy-second-token",
+      "Bearer google-forms-copy-first-token",
+    ]);
+    const copiedAutomations = await accept(
+      automationsClient().list({
+        headers: authHeaders(actor),
+        params: { workflowId: copied.body.id },
+      }),
+      [200],
+    );
+    const copiedAutomation = copiedAutomations.body.find((candidate) => {
+      return (
+        candidate.kind === "event" &&
+        candidate.eventType === "google-forms-response-submitted"
+      );
+    });
+    if (
+      !copiedAutomation ||
+      copiedAutomation.kind !== "event" ||
+      copiedAutomation.eventType !== "google-forms-response-submitted"
+    ) {
+      throw new Error("Expected copied Google Forms automation");
+    }
+    expect(copiedAutomation.eventConfig.connectorId).toBe(firstAccount.id);
   });
 
   it("inherits copied automation budgets from agent callers and rejects exhausted runs", async () => {

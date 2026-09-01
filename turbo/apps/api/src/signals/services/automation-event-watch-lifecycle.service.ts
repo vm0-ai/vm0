@@ -4,7 +4,6 @@ import {
   googleCalendarEventUpdatedEventConfigSchema,
   googleFormsResponseSubmittedEventConfigSchema,
 } from "@okouai/api-contracts/contracts/workflows";
-import { googleFormsWatchStates } from "@okouai/db/schema/google-forms-event";
 import { workflowAutomations } from "@okouai/db/schema/workflow";
 import { and, eq, isNotNull } from "drizzle-orm";
 
@@ -102,7 +101,11 @@ function automationEventWatchTarget(
     const config = googleFormsResponseSubmittedEventConfigSchema.safeParse(
       automation.eventConfig,
     );
-    if (!config.success) {
+    if (
+      !config.success ||
+      automation.eventConnectorId === null ||
+      config.data.connectorId !== automation.eventConnectorId
+    ) {
       return null;
     }
     return {
@@ -110,7 +113,7 @@ function automationEventWatchTarget(
       orgId: automation.orgId,
       userId: automation.ownerUserId,
       formId: config.data.form.id,
-      connectorId: config.data.connectorId,
+      connectorId: automation.eventConnectorId,
     };
   }
   if (automation.eventType === "google-meet-transcript-generated") {
@@ -137,7 +140,7 @@ function targetKey(target: AutomationEventWatchTarget): string {
     return `gmail:${target.orgId}:${target.userId}:${target.connectorId ?? "unavailable"}`;
   }
   if (target.provider === "google_forms") {
-    return `google_forms:${target.userId}:${target.formId}`;
+    return `google_forms:${target.orgId}:${target.userId}`;
   }
   if (target.provider === "google_meet") {
     return `google_meet:${target.orgId}:${target.userId}`;
@@ -180,7 +183,6 @@ export async function reconcileAutomationEventWatches(
           db: args.db,
           orgId: target.orgId,
           userId: target.userId,
-          formId: target.formId,
         },
         signal,
       );
@@ -242,31 +244,12 @@ export async function reconcileAutomationEventWatchInventoryForOwner(
     signal,
   );
   signal.throwIfAborted();
-  const forms = await db
-    .selectDistinct({ formId: googleFormsWatchStates.formId })
-    .from(googleFormsWatchStates)
-    .where(
-      and(
-        eq(googleFormsWatchStates.orgId, args.orgId),
-        eq(googleFormsWatchStates.userId, args.userId),
-      ),
-    );
+  const forms = await reconcileGoogleFormsWatchesForUser(
+    { db, orgId: args.orgId, userId: args.userId },
+    signal,
+  );
   signal.throwIfAborted();
-  let succeeded = gmail && calendar && meet;
-  for (const form of forms) {
-    const reconciled = await reconcileGoogleFormsWatchesForUser(
-      {
-        db,
-        orgId: args.orgId,
-        userId: args.userId,
-        formId: form.formId,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    succeeded &&= reconciled;
-  }
-  return succeeded;
+  return gmail && calendar && forms && meet;
 }
 
 interface CurrentAutomationEventWatchAutomation extends AutomationEventWatchAutomation {

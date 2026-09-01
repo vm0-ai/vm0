@@ -877,7 +877,14 @@ export function mockGmailConnectorOAuth(
   );
 }
 
-export function mockGoogleFormsConnectorOAuth(): void {
+export function mockGoogleFormsConnectorOAuth(
+  options: {
+    readonly accessToken?: string;
+    readonly refreshToken?: string;
+    readonly subject?: string;
+    readonly email?: string;
+  } = {},
+): void {
   mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
@@ -895,8 +902,8 @@ export function mockGoogleFormsConnectorOAuth(): void {
         );
       }
       return HttpResponse.json({
-        access_token: "google-forms-access-token",
-        refresh_token: "google-forms-refresh-token",
+        access_token: options.accessToken ?? "google-forms-access-token",
+        refresh_token: options.refreshToken ?? "google-forms-refresh-token",
         expires_in: 3600,
         token_type: "Bearer",
         scope:
@@ -905,8 +912,8 @@ export function mockGoogleFormsConnectorOAuth(): void {
     }),
     http.get(GOOGLE_USERINFO_URL, () => {
       return HttpResponse.json({
-        id: "bdd-google-forms-user-id",
-        email: "bdd-google-forms@example.test",
+        id: options.subject ?? "bdd-google-forms-user-id",
+        email: options.email ?? "bdd-google-forms@example.test",
         name: "BDD Google Forms User",
       });
     }),

@@ -54,6 +54,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { parseScheduledAtTime } from "@okouai/core/timezone";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { googleFormsAutomationCursors } from "@okouai/db/schema/google-forms-event";
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { stripeWorkflowAutomationHealth } from "@okouai/db/schema/stripe-automation-event";
 import { agents } from "@okouai/db/schema/agent";
@@ -75,7 +76,13 @@ import { and, asc, eq, isNotNull, isNull, or } from "drizzle-orm";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { publishChatThreadAutomationsChangedSafely } from "../external/realtime";
 import { nowDate } from "../../lib/time";
-import { bestEffort, isValidTimeZone, onRejection, safeSync } from "../utils";
+import {
+  bestEffort,
+  isValidTimeZone,
+  onRejection,
+  safeSync,
+  settle,
+} from "../utils";
 import { calculateNextRun } from "./time-automation";
 import {
   insertWorkflowAutomation,
@@ -107,6 +114,7 @@ import {
   hasEnabledGoogleFormsConsumer,
   prepareGoogleFormsResponseEventConfigForPersist,
 } from "./google-forms-automation-event.service";
+import { resolveGoogleFormsAutomationConnectorId } from "./google-forms-automation-account.service";
 import {
   ensureGoogleMeetTranscriptGeneratedSubscriptionForUser,
   hasEnabledGoogleMeetConsumer,
@@ -154,6 +162,13 @@ import {
 
 type AutomationRow = typeof workflowAutomations.$inferSelect;
 type WorkflowRow = typeof workflows.$inferSelect;
+
+class GoogleFormsAccountSelectionChangedError extends Error {
+  constructor() {
+    super("Google Forms account selection changed during persistence");
+    this.name = "GoogleFormsAccountSelectionChangedError";
+  }
+}
 
 type ChatRunFinishedAutomationEventType = Extract<
   WorkflowAutomationEventType,
@@ -1667,7 +1682,9 @@ async function insertEventAutomation(
       ? "gmail"
       : automationCreateInputIsNotion(args.input)
         ? "notion"
-        : null;
+        : automationCreateInputIsGoogleForms(args.input)
+          ? "google-forms"
+          : null;
     if (connectorSlug !== null) {
       await lockConnectorAccountTarget(tx, {
         orgId: args.input.orgId,
@@ -1684,7 +1701,9 @@ async function insertEventAutomation(
       ? await resolveGmailAutomationConnectorId(tx, connectorArgs)
       : automationCreateInputIsNotion(args.input)
         ? await resolveNotionAutomationConnectorId(tx, connectorArgs)
-        : null;
+        : automationCreateInputIsGoogleForms(args.input)
+          ? await resolveGoogleFormsAutomationConnectorId(tx, connectorArgs)
+          : null;
     if (
       args.expectedEventConnectorId !== undefined &&
       eventConnectorId !== args.expectedEventConnectorId
@@ -1699,6 +1718,12 @@ async function insertEventAutomation(
       workflowTitle: args.workflowTitle,
       currentTime: args.currentTime,
     });
+    if (
+      automationCreateInputIsGoogleForms(args.input) &&
+      eventConnectorId !== args.input.eventConfig.connectorId
+    ) {
+      throw new GoogleFormsAccountSelectionChangedError();
+    }
 
     const row = await insertWorkflowAutomation(tx, {
       id: args.automationId,
@@ -2312,11 +2337,28 @@ async function createGoogleFormsEventAutomationForWorkflow(
       message: "formUrl is required for Google Forms response automations",
     };
   }
+  const connectorId = await resolveGoogleFormsAutomationConnectorId(
+    args.context.db,
+    {
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      workflowId: args.context.workflowId,
+    },
+  );
+  signal.throwIfAborted();
+  if (connectorId === null) {
+    return {
+      kind: "bad-request",
+      message:
+        "Connect Google Forms before adding a Google Forms response automation",
+    };
+  }
   const prepared = await prepareGoogleFormsResponseEventConfigForPersist(
     args.context.db,
     {
       orgId: args.input.orgId,
       userId: args.input.member.userId,
+      connectorId,
       eventConfig: args.input.eventConfig,
     },
     signal,
@@ -2329,20 +2371,35 @@ async function createGoogleFormsEventAutomationForWorkflow(
     ? await hasEnabledGoogleFormsConsumer(
         {
           db: args.context.db,
+          orgId: args.input.orgId,
           userId: args.input.member.userId,
+          connectorId: prepared.eventConfig.connectorId,
           formId: prepared.eventConfig.form.id,
         },
         signal,
       )
     : false;
-  const summary = await insertEventAutomation(args.context.db, {
-    input: { ...args.input, eventConfig: prepared.eventConfig },
-    workflowId: args.context.workflowId,
-    agentId: args.context.agentId,
-    workflowTitle: args.context.workflowTitle,
-    automationId: args.context.automationId,
-    currentTime: nowDate(),
-  });
+  const inserted = await settle(
+    insertEventAutomation(args.context.db, {
+      input: { ...args.input, eventConfig: prepared.eventConfig },
+      workflowId: args.context.workflowId,
+      agentId: args.context.agentId,
+      workflowTitle: args.context.workflowTitle,
+      automationId: args.context.automationId,
+      currentTime: nowDate(),
+    }),
+    signal,
+  );
+  if (!inserted.ok) {
+    if (inserted.error instanceof GoogleFormsAccountSelectionChangedError) {
+      return {
+        kind: "bad-request",
+        message: "Google Forms account selection changed; retry the request",
+      };
+    }
+    throw inserted.error;
+  }
+  const summary = inserted.value;
   const resultSummary = googleFormsSummaryWithWarning(
     summary,
     prepared.warning,
@@ -2386,7 +2443,7 @@ async function createGoogleFormsEventAutomationForWorkflow(
             ownerUserId: args.input.member.userId,
             eventType: args.input.eventType,
             eventConfig: prepared.eventConfig,
-            eventConnectorId: null,
+            eventConnectorId: prepared.eventConfig.connectorId,
           },
         ],
       },
@@ -3733,11 +3790,25 @@ async function prepareOfficialGoogleFormsEvent(
       message: "formUrl is required for Google Forms response automations",
     };
   }
+  const connectorId = await resolveGoogleFormsAutomationConnectorId(db, {
+    orgId: input.orgId,
+    userId: input.member.userId,
+    workflowId: input.workflowId,
+  });
+  signal.throwIfAborted();
+  if (connectorId === null) {
+    return {
+      kind: "bad-request",
+      message:
+        "Connect Google Forms before using Google Forms response automations",
+    };
+  }
   const prepared = await prepareGoogleFormsResponseEventConfigForPersist(
     db,
     {
       orgId: input.orgId,
       userId: input.member.userId,
+      connectorId,
       eventConfig: input.eventConfig,
     },
     signal,
@@ -3745,6 +3816,7 @@ async function prepareOfficialGoogleFormsEvent(
   signal.throwIfAborted();
   return prepared.kind === "ok"
     ? preparedOfficialEvent(prepared.eventConfig, {
+        eventConnectorId: connectorId,
         googleFormsSeedCursor: prepared.seedCursor,
       })
     : prepared;
@@ -3765,11 +3837,17 @@ function preserveGoogleFormsCursorForSameTarget(
   if (
     !current.success ||
     !next.success ||
+    current.data.connectorId !== next.data.connectorId ||
     current.data.form.id !== next.data.form.id
   ) {
     return result;
   }
-  return preparedOfficialEvent(result.preparation.eventConfig);
+  const eventConnectorId = result.preparation.eventConnectorId;
+  return eventConnectorId === undefined
+    ? preparedOfficialEvent(result.preparation.eventConfig)
+    : preparedOfficialEvent(result.preparation.eventConfig, {
+        eventConnectorId,
+      });
 }
 
 async function prepareOfficialGoogleFormsReconfiguration(
@@ -4623,7 +4701,9 @@ async function enabledWatchHadConsumer(
     return await hasEnabledGoogleFormsConsumer(
       {
         db: args.db,
+        orgId: args.automation.orgId,
         userId: args.automation.ownerUserId,
+        connectorId: config.connectorId,
         formId: config.form.id,
       },
       signal,
@@ -4940,6 +5020,7 @@ async function ensureEnabledAutomationEventWatchWithRollback(
 
 type EnabledAutomationAccountProjection =
   | { readonly status: "gmail-unavailable" }
+  | { readonly status: "google-forms-unavailable" }
   | { readonly status: "notion-unavailable" }
   | { readonly status: "notion-account-changed" }
   | { readonly status: "stripe-unavailable"; readonly message: string }
@@ -4951,15 +5032,36 @@ type EnabledAutomationAccountProjection =
       readonly eventConfig: WorkflowAutomationEventConfig;
     };
 
+async function projectGoogleFormsEnabledEventConfig(
+  db: Db,
+  automation: AutomationRow,
+  eventConnectorId: string,
+): Promise<GoogleFormsResponseSubmittedEventConfig> {
+  const config = googleFormsResponseSubmittedEventConfigSchema.parse(
+    automation.eventConfig,
+  );
+  if (
+    config.connectorId !== eventConnectorId ||
+    (automation.eventConnectorId !== null &&
+      automation.eventConnectorId !== eventConnectorId)
+  ) {
+    await db
+      .delete(googleFormsAutomationCursors)
+      .where(eq(googleFormsAutomationCursors.automationId, automation.id));
+  }
+  return { ...config, connectorId: eventConnectorId };
+}
+
 async function lockEnabledAutomationAccountProjection(
   db: Db,
   automation: AutomationRow,
   signal: AbortSignal,
 ): Promise<EnabledAutomationAccountProjection> {
   const usesGmail = supportedGmailEventType(automation.eventType);
+  const usesGoogleForms = supportedGoogleFormsEventType(automation.eventType);
   const usesNotion = supportedNotionEventType(automation.eventType);
   const usesStripe = automation.eventType === "stripe-invoice-paid";
-  if (!usesGmail && !usesNotion && !usesStripe) {
+  if (!usesGmail && !usesGoogleForms && !usesNotion && !usesStripe) {
     return { status: "ok", required: false };
   }
   await lockConnectorAccountTarget(db, {
@@ -4967,7 +5069,13 @@ async function lockEnabledAutomationAccountProjection(
     userId: automation.ownerUserId,
     target: {
       kind: "builtin",
-      connectorSlug: usesGmail ? "gmail" : usesNotion ? "notion" : "stripe",
+      connectorSlug: usesGmail
+        ? "gmail"
+        : usesGoogleForms
+          ? "google-forms"
+          : usesNotion
+            ? "notion"
+            : "stripe",
     },
   });
   const connectorArgs = {
@@ -4998,22 +5106,36 @@ async function lockEnabledAutomationAccountProjection(
   }
   const eventConnectorId = usesGmail
     ? await resolveGmailAutomationConnectorId(db, connectorArgs)
-    : await resolveNotionAutomationConnectorId(db, connectorArgs);
+    : usesGoogleForms
+      ? await resolveGoogleFormsAutomationConnectorId(db, connectorArgs)
+      : await resolveNotionAutomationConnectorId(db, connectorArgs);
   if (eventConnectorId === null) {
     return {
-      status: usesGmail ? "gmail-unavailable" : "notion-unavailable",
+      status: usesGmail
+        ? "gmail-unavailable"
+        : usesGoogleForms
+          ? "google-forms-unavailable"
+          : "notion-unavailable",
     };
   }
   if (usesNotion && automation.eventConnectorId !== eventConnectorId) {
     return { status: "notion-account-changed" };
   }
-  const eventConfig = usesNotion
-    ? notionConfigWithConnectorId(
-        automation.eventType,
-        automation.eventConfig,
-        eventConnectorId,
-      )
-    : automation.eventConfig;
+  let eventConfig: WorkflowAutomationEventConfig | null =
+    automation.eventConfig;
+  if (usesNotion) {
+    eventConfig = notionConfigWithConnectorId(
+      automation.eventType,
+      automation.eventConfig,
+      eventConnectorId,
+    );
+  } else if (usesGoogleForms) {
+    eventConfig = await projectGoogleFormsEnabledEventConfig(
+      db,
+      automation,
+      eventConnectorId,
+    );
+  }
   if (eventConfig === null) {
     throw new Error("Enabled connector automation config is incomplete");
   }
@@ -5042,6 +5164,7 @@ async function persistEnabledWorkflowAutomation(
   | { readonly status: "notion-unavailable" }
   | { readonly status: "notion-account-changed" }
   | { readonly status: "stripe-unavailable"; readonly message: string }
+  | { readonly status: "google-forms-unavailable" }
   | { readonly status: "ok"; readonly row: AutomationRow | undefined }
 > {
   return await db.transaction(async (tx) => {
@@ -5121,8 +5244,9 @@ async function prepareEnabledAutomationAccountProjection(
   | AutomationActionFailure
 > {
   const usesGmail = supportedGmailEventType(automation.eventType);
+  const usesGoogleForms = supportedGoogleFormsEventType(automation.eventType);
   const usesNotion = supportedNotionEventType(automation.eventType);
-  if (!usesGmail && !usesNotion) {
+  if (!usesGmail && !usesGoogleForms && !usesNotion) {
     return { kind: "ok", eventConnectorId: automation.eventConnectorId };
   }
   const connectorArgs = {
@@ -5132,14 +5256,18 @@ async function prepareEnabledAutomationAccountProjection(
   };
   const eventConnectorId = usesGmail
     ? await resolveGmailAutomationConnectorId(db, connectorArgs)
-    : await resolveNotionAutomationConnectorId(db, connectorArgs);
+    : usesGoogleForms
+      ? await resolveGoogleFormsAutomationConnectorId(db, connectorArgs)
+      : await resolveNotionAutomationConnectorId(db, connectorArgs);
   signal.throwIfAborted();
   if (eventConnectorId === null) {
     return {
       kind: "bad-request",
       message: usesGmail
         ? "Connect Gmail before using Gmail event automations"
-        : "Connect Notion before using Notion event automations",
+        : usesGoogleForms
+          ? "Connect Google Forms before using Google Forms response automations"
+          : "Connect Notion before using Notion event automations",
     };
   }
   if (!supportedNotionEventType(automation.eventType)) {
@@ -5167,6 +5295,28 @@ async function prepareEnabledAutomationAccountProjection(
     : validation;
 }
 
+function enabledAutomationWithAccountProjection(
+  automation: AutomationRow,
+  eventConnectorId: string | null,
+): AutomationRow {
+  if (!supportedGoogleFormsEventType(automation.eventType)) {
+    return { ...automation, eventConnectorId };
+  }
+  if (eventConnectorId === null) {
+    throw new Error("Google Forms account projection is unavailable");
+  }
+  return {
+    ...automation,
+    eventConnectorId,
+    eventConfig: {
+      ...googleFormsResponseSubmittedEventConfigSchema.parse(
+        automation.eventConfig,
+      ),
+      connectorId: eventConnectorId,
+    },
+  };
+}
+
 async function persistAndReconcileEnabledWorkflowAutomation(
   db: Db,
   args: {
@@ -5187,10 +5337,10 @@ async function persistAndReconcileEnabledWorkflowAutomation(
   if (accountProjection.kind !== "ok") {
     return accountProjection;
   }
-  const automation = {
-    ...args.automation,
-    eventConnectorId: accountProjection.eventConnectorId,
-  };
+  const automation = enabledAutomationWithAccountProjection(
+    args.automation,
+    accountProjection.eventConnectorId,
+  );
   const watchHadConsumer = await enabledWatchHadConsumer(
     { db, automation },
     signal,
@@ -5242,6 +5392,14 @@ async function persistAndReconcileEnabledWorkflowAutomation(
   if (enabled.status === "stripe-unavailable") {
     signal.throwIfAborted();
     return { kind: "bad-request", message: enabled.message };
+  }
+  if (enabled.status === "google-forms-unavailable") {
+    signal.throwIfAborted();
+    return {
+      kind: "bad-request",
+      message:
+        "Connect Google Forms before using Google Forms response automations",
+    };
   }
   if (!enabled.row) {
     throw new Error("Failed to enable workflow automation");

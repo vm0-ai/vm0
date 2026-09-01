@@ -1,0 +1,1 @@
+DROP INDEX "idx_google_forms_watch_states_form_user";

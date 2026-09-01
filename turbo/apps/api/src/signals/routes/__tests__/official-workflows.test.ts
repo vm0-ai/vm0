@@ -52,6 +52,7 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import {
   createConnectorBddApi,
   mockGmailConnectorOAuth,
+  mockGoogleFormsConnectorOAuth,
   mockStripeConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
@@ -108,6 +109,15 @@ const outbox = createEmailOutboxStateApi(context);
 const CRON_SECRET = "official-workflow-installation-cron-secret";
 const GMAIL_TOPIC_NAME =
   "projects/vm0-ai-488909/topics/official-workflow-gmail-events";
+const GOOGLE_FORMS_TOPIC_NAME =
+  "projects/vm0-ai-488909/topics/official-workflow-google-forms-events";
+const GOOGLE_FORMS_PUSH_AUDIENCE =
+  "https://api.vm0.ai/api/webhooks/google-forms";
+const GOOGLE_FORMS_PUSH_SERVICE_ACCOUNT =
+  "gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com";
+const GOOGLE_FORM_ID = "1FAIpQLScOfficialWorkflowGoogleFormsTest";
+const GOOGLE_FORM_URL = `https://docs.google.com/forms/d/${GOOGLE_FORM_ID}/edit`;
+const GOOGLE_FORM_SEED_CURSOR = "2026-09-01T08:15:00.123456Z";
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 type ActiveDefinition = Extract<
@@ -273,6 +283,92 @@ function gmailLabelBlueprint(): OfficialWorkflowBlueprint {
     },
     runtime: { resultEmail: false },
   };
+}
+
+function googleFormsBlueprint(
+  autonomyBudget: number,
+): OfficialWorkflowBlueprint {
+  return {
+    key: "google-forms-trigger",
+    parameters: [],
+    desiredState: {
+      kind: "event",
+      eventType: "google-forms-response-submitted",
+      eventConfig: {
+        provider: "google-forms",
+        event: "response_submitted",
+        formUrl: GOOGLE_FORM_URL,
+      },
+      autonomyBudget,
+    },
+    runtime: { resultEmail: false },
+  };
+}
+
+function configureOfficialGoogleFormsMock() {
+  const recorder = { watchCalls: 0 };
+  mockOptionalEnv("GOOGLE_FORMS_PUBSUB_TOPIC_NAME", GOOGLE_FORMS_TOPIC_NAME);
+  mockOptionalEnv(
+    "GOOGLE_FORMS_PUBSUB_PUSH_AUDIENCE",
+    GOOGLE_FORMS_PUSH_AUDIENCE,
+  );
+  mockOptionalEnv(
+    "GOOGLE_FORMS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL",
+    GOOGLE_FORMS_PUSH_SERVICE_ACCOUNT,
+  );
+  server.use(
+    http.get("https://forms.googleapis.com/v1/forms/:formId", ({ params }) => {
+      expect(params.formId).toBe(GOOGLE_FORM_ID);
+      return HttpResponse.json({
+        formId: GOOGLE_FORM_ID,
+        info: { title: "Official workflow survey" },
+        publishSettings: {
+          publishState: {
+            isPublished: true,
+            isAcceptingResponses: true,
+          },
+        },
+      });
+    }),
+    http.get(
+      "https://forms.googleapis.com/v1/forms/:formId/responses",
+      ({ request, params }) => {
+        expect(params.formId).toBe(GOOGLE_FORM_ID);
+        expect(new URL(request.url).searchParams.get("pageSize")).toBeNull();
+        return HttpResponse.json({
+          responses: [
+            {
+              responseId: "official-google-forms-seed",
+              createTime: GOOGLE_FORM_SEED_CURSOR,
+              lastSubmittedTime: GOOGLE_FORM_SEED_CURSOR,
+            },
+          ],
+        });
+      },
+    ),
+    http.post(
+      "https://forms.googleapis.com/v1/forms/:formId/watches",
+      ({ params }) => {
+        expect(params.formId).toBe(GOOGLE_FORM_ID);
+        recorder.watchCalls += 1;
+        return HttpResponse.json({
+          id: `official-google-forms-watch-${randomUUID()}`,
+          target: { topic: { topicName: GOOGLE_FORMS_TOPIC_NAME } },
+          eventType: "RESPONSES",
+          createTime: "2026-09-01T08:00:00Z",
+          expireTime: "2026-09-08T08:00:00Z",
+          state: "ACTIVE",
+        });
+      },
+    ),
+    http.delete(
+      "https://forms.googleapis.com/v1/forms/:formId/watches/:watchId",
+      () => {
+        return HttpResponse.json({});
+      },
+    ),
+  );
+  return recorder;
 }
 
 function structureTransitionScheduleBlueprint(
@@ -3688,6 +3784,89 @@ describe.sequential("Official Workflow installations", () => {
       [404],
     );
     expect(stopCalls).toBeGreaterThan(stopCallsBeforeAgentDeletion);
+  });
+
+  it("preserves the Google Forms account projection across same-target reconfiguration", async () => {
+    installCatalogStorageFixture();
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+    const definitionName = `api-test-google-forms-${suffix}`;
+    await syncCatalog(
+      catalog([activeDefinition(definitionName, [googleFormsBlueprint(4)])]),
+    );
+
+    const { actor } = await workflowBdd.setupWorkflowOrg({
+      timezone: "Asia/Shanghai",
+    });
+    if (!actor.orgId) {
+      throw new Error("Expected organization-scoped actor");
+    }
+    const { agentId } = await workflowBdd.createAgent(actor);
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await bdd.deleteAgent(actor, agentId);
+      await cleanupCatalog();
+    });
+    mockGoogleFormsConnectorOAuth();
+    await workflowBdd.connectConnector(actor, "google-forms");
+    const forms = configureOfficialGoogleFormsMock();
+    await updateFeatureSwitchesForUser(
+      context,
+      { orgId: actor.orgId, userId: actor.userId },
+      {
+        [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
+        [FeatureSwitchKey.OfficialWorkflows]: true,
+      },
+    );
+    const headers = authHeaders(actor);
+    const installed = await accept(
+      officialClient().install({
+        headers,
+        params: { definitionName },
+        body: {
+          agentId,
+          blueprints: [{ blueprintKey: "google-forms-trigger", bindings: [] }],
+        },
+      }),
+      [201],
+    );
+    const initial = installed.body.workflow.automations.find((automation) => {
+      return automation.official?.blueprintKey === "google-forms-trigger";
+    });
+    if (
+      !initial ||
+      initial.kind !== "event" ||
+      initial.eventType !== "google-forms-response-submitted" ||
+      !initial.official
+    ) {
+      throw new Error("Expected an Official Google Forms automation");
+    }
+    const connectorId = initial.eventConfig.connectorId;
+    const initialFingerprint = initial.official.appliedFingerprint;
+    expect(forms.watchCalls).toBe(1);
+
+    await syncCatalog(
+      catalog([activeDefinition(definitionName, [googleFormsBlueprint(7)])]),
+    );
+    await expect(
+      runOfficialWorkflowReconciliationWorker(),
+    ).resolves.toMatchObject({ completed: 1, installations: 1, retried: 0 });
+
+    const reconciled = await accept(
+      installationClient().get({
+        headers,
+        params: { workflowId: installed.body.workflow.id },
+      }),
+      [200],
+    );
+    const current = reconciled.body.workflow.automations.find((automation) => {
+      return automation.id === initial.id;
+    });
+    expect(current).toMatchObject({
+      eventConfig: { connectorId },
+      official: { reconciliationStatus: "current" },
+    });
+    expect(current?.official?.appliedFingerprint).not.toBe(initialFingerprint);
+    expect(forms.watchCalls).toBe(1);
   });
 
   it("records selective non-blocking work and converges schema changes per Blueprint", async () => {
