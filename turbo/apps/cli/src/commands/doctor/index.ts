@@ -12,13 +12,15 @@ export const doctorCommand = new Command()
     `
 Examples:
   Check credits? okou doctor credit
-  Check workflow connectors? okou doctor connectors
+  Check workflow connectors across Agents? okou doctor connectors
+  Check workflow connectors on one Agent? okou doctor connectors --agent <agent-id>
   Check one workflow? okou doctor connectors <workflow> --agent <agent-id>
-  Print a structured report? okou doctor connectors --json
+  Print an Agent-scoped structured report? okou doctor connectors --agent <agent-id> --json
 
 Notes:
   - Use okou doctor credit when a run or generation fails because the org has insufficient credits, when a user asks how to recharge, or before trying to buy credits
   - Use okou generate <type> (no --prompt) to see every provider available for a given generation type
-  - Use okou doctor connectors for stored connector readiness across effective visible workflows on every visible Agent
+  - Use okou doctor connectors without --agent for stored connector readiness across effective visible workflows on every visible Agent
+  - Use okou doctor connectors --agent <agent-id> for every effective public or private workflow hosted by one Agent
   - Use okou connector check for one current-run URL, environment name, firewall decision, or permission failure`,
   );
