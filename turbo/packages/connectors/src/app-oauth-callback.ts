@@ -34,6 +34,7 @@ const DIRECT_OKOU_OAUTH_CALLBACK_READY_CONNECTOR_SLUGS: ReadonlySet<string> =
     "dropbox",
     "figma",
     "garmin-connect",
+    "github",
     "gmail",
     "google-ads",
     "google-analytics",
