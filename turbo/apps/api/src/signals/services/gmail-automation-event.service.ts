@@ -1805,6 +1805,7 @@ interface GmailEventAutomationRow {
 type GmailRunStarter = (args: {
   readonly automation: GmailEventAutomationRow;
   readonly connectorSourceId: string;
+  readonly watchStateId: string;
   readonly decoded: DecodedGmailPubSubPush;
   readonly message: GmailMessageContext;
   readonly timing: AutomationEventRunTiming;
@@ -1844,6 +1845,7 @@ async function persistCurrentGmailAutomationSource(
     readonly orgId: string;
     readonly userId: string;
     readonly connectorSourceId: string;
+    readonly watchStateId: string;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -1852,6 +1854,17 @@ async function persistCurrentGmailAutomationSource(
     userId: args.userId,
     target: { kind: "builtin", connectorSlug: "gmail" },
   });
+  const [currentState] = await tx
+    .select({ id: gmailWatchStates.id })
+    .from(gmailWatchStates)
+    .where(
+      and(
+        eq(gmailWatchStates.id, args.watchStateId),
+        eq(gmailWatchStates.connectorId, args.connectorSourceId),
+      ),
+    )
+    .for("key share")
+    .limit(1);
   const [current] = await tx
     .select({ id: workflowAutomations.id })
     .from(workflowAutomations)
@@ -1865,7 +1878,7 @@ async function persistCurrentGmailAutomationSource(
     .for("update")
     .limit(1);
   signal.throwIfAborted();
-  if (!current) {
+  if (!currentState || !current) {
     throw new GmailAutomationSourceChangedError();
   }
 }
@@ -2035,23 +2048,46 @@ async function insertGmailProcessedEvent(
     readonly message: GmailMessageContext;
   },
   signal: AbortSignal,
-): Promise<string | null> {
-  const [processed] = await args.db
-    .insert(gmailProcessedEvents)
-    .values({
-      watchStateId: args.state.id,
-      automationId: args.automation.automation.id,
-      pubsubMessageId: args.decoded.messageId,
-      historyId: args.event.historyId,
-      messageId: args.event.messageId,
-      threadId: args.message.threadId,
-      createdAt: nowDate(),
-    })
-    .onConflictDoNothing()
-    .returning({ id: gmailProcessedEvents.id });
-  signal.throwIfAborted();
+): Promise<
+  | { readonly kind: "inserted"; readonly id: string }
+  | { readonly kind: "duplicate" }
+  | { readonly kind: "stale_source" }
+> {
+  return await args.db.transaction(async (tx) => {
+    const [currentState] = await tx
+      .select({ id: gmailWatchStates.id })
+      .from(gmailWatchStates)
+      .where(
+        and(
+          eq(gmailWatchStates.id, args.state.id),
+          eq(gmailWatchStates.connectorId, args.state.connectorId),
+        ),
+      )
+      .for("key share")
+      .limit(1);
+    signal.throwIfAborted();
+    if (!currentState) {
+      return { kind: "stale_source" };
+    }
 
-  return processed?.id ?? null;
+    const [processed] = await tx
+      .insert(gmailProcessedEvents)
+      .values({
+        watchStateId: args.state.id,
+        automationId: args.automation.automation.id,
+        pubsubMessageId: args.decoded.messageId,
+        historyId: args.event.historyId,
+        messageId: args.event.messageId,
+        threadId: args.message.threadId,
+        createdAt: nowDate(),
+      })
+      .onConflictDoNothing()
+      .returning({ id: gmailProcessedEvents.id });
+    signal.throwIfAborted();
+    return processed
+      ? { kind: "inserted", id: processed.id }
+      : { kind: "duplicate" };
+  });
 }
 
 function gmailTriggerContext(args: {
@@ -2129,19 +2165,24 @@ async function dispatchGmailAutomationEvent(
 ): Promise<
   "dispatched" | "duplicate" | "skipped" | { readonly kind: "run_error" }
 > {
-  const processedId = await args.timing.measure(
+  const processed = await args.timing.measure(
     "api_dispatch_pre_create_zero_automation_event_record_processed_event",
     async () => {
       return await insertGmailProcessedEvent(args, signal);
     },
   );
-  if (!processedId) {
+  if (processed.kind === "stale_source") {
+    return "skipped";
+  }
+  if (processed.kind === "duplicate") {
     return "duplicate";
   }
+  const processedId = processed.id;
 
   const result = await args.startRun({
     automation: args.automation,
     connectorSourceId: args.state.connectorId,
+    watchStateId: args.state.id,
     decoded: args.decoded,
     message: args.message,
     timing: args.timing,
@@ -2188,6 +2229,7 @@ async function updateResolvedGmailLabelId(
       readonly config: GmailLabelAppliedEventConfig;
     };
     readonly connectorId: string;
+    readonly watchStateId: string;
     readonly labelId: string;
   },
   signal: AbortSignal,
@@ -2196,21 +2238,42 @@ async function updateResolvedGmailLabelId(
     return;
   }
 
-  await args.db
-    .update(workflowAutomations)
-    .set({
-      eventConfig: {
-        ...args.automation.config,
-        resolvedLabelId: args.labelId,
-      },
-      updatedAt: nowDate(),
-    })
-    .where(
-      and(
-        eq(workflowAutomations.id, args.automation.automation.id),
-        eq(workflowAutomations.eventConnectorId, args.connectorId),
-      ),
-    );
+  await args.db.transaction(async (tx) => {
+    await lockConnectorAccountTarget(tx, {
+      orgId: args.automation.automation.orgId,
+      userId: args.automation.automation.ownerUserId,
+      target: { kind: "builtin", connectorSlug: "gmail" },
+    });
+    const [currentState] = await tx
+      .select({ id: gmailWatchStates.id })
+      .from(gmailWatchStates)
+      .where(
+        and(
+          eq(gmailWatchStates.id, args.watchStateId),
+          eq(gmailWatchStates.connectorId, args.connectorId),
+        ),
+      )
+      .for("key share")
+      .limit(1);
+    if (!currentState) {
+      return;
+    }
+    await tx
+      .update(workflowAutomations)
+      .set({
+        eventConfig: {
+          ...args.automation.config,
+          resolvedLabelId: args.labelId,
+        },
+        updatedAt: nowDate(),
+      })
+      .where(
+        and(
+          eq(workflowAutomations.id, args.automation.automation.id),
+          eq(workflowAutomations.eventConnectorId, args.connectorId),
+        ),
+      );
+  });
   signal.throwIfAborted();
 }
 
@@ -2219,6 +2282,7 @@ async function labelAppliedAutomationMatchesEvent(
     readonly db: Db;
     readonly accessToken: string;
     readonly connectorId: string;
+    readonly watchStateId: string;
     readonly automation: GmailEventAutomationRow & {
       readonly config: GmailLabelAppliedEventConfig;
     };
@@ -2265,6 +2329,7 @@ async function labelAppliedAutomationMatchesEvent(
       db: args.db,
       automation: args.automation,
       connectorId: args.connectorId,
+      watchStateId: args.watchStateId,
       labelId: label.labelId,
     },
     signal,
@@ -2382,6 +2447,7 @@ async function dispatchGmailLabelAppliedHistoryEvent(
             db: args.db,
             accessToken: args.accessToken,
             connectorId: args.state.connectorId,
+            watchStateId: args.state.id,
             automation,
             event: args.event,
             labelCache: args.labelCache,
@@ -2678,6 +2744,7 @@ const startGmailWorkflowRun$ = command(
     args: {
       readonly automation: GmailEventAutomationRow;
       readonly connectorSourceId: string;
+      readonly watchStateId: string;
       readonly decoded: DecodedGmailPubSubPush;
       readonly message: GmailMessageContext;
       readonly timing: AutomationEventRunTiming;
@@ -2727,6 +2794,7 @@ const startGmailWorkflowRun$ = command(
                 orgId: args.automation.automation.orgId,
                 userId: args.automation.automation.ownerUserId,
                 connectorSourceId: args.connectorSourceId,
+                watchStateId: args.watchStateId,
               },
               signal,
             );
@@ -2819,12 +2887,20 @@ export const dispatchGmailPubSubPush$ = command(
             }),
           });
         }
-      : async ({ automation, connectorSourceId, decoded, message, timing }) => {
+      : async ({
+          automation,
+          connectorSourceId,
+          watchStateId,
+          decoded,
+          message,
+          timing,
+        }) => {
           return await set(
             startGmailWorkflowRun$,
             {
               automation,
               connectorSourceId,
+              watchStateId,
               decoded,
               message,
               timing,

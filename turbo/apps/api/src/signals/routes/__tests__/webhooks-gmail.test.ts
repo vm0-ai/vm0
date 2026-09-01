@@ -844,6 +844,93 @@ describe("POST /api/webhooks/gmail", () => {
     expect(updated.eventConfig).not.toHaveProperty("resolvedLabelId");
   });
 
+  it("rejects an in-flight Gmail event after the connector identity changes", async () => {
+    const oldEmail = uniqueGmailEmail();
+    const newEmail = uniqueGmailEmail();
+    configureGmailEnv();
+    configureGmailWatchMock();
+    configureGmailLabelAppliedMocks("Label_new_account", oldEmail);
+    const labelLookupStarted = createDeferredPromise<void>(context.signal);
+    const releaseLabelLookup = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      if (!releaseLabelLookup.settled()) {
+        releaseLabelLookup.resolve();
+      }
+    });
+    let labelLookupCount = 0;
+    server.use(
+      http.get(
+        "https://gmail.googleapis.com/gmail/v1/users/me/labels",
+        async () => {
+          labelLookupCount += 1;
+          if (labelLookupCount === 1) {
+            return HttpResponse.json({
+              labels: [{ id: "Label_old_account", name: "Support" }],
+            });
+          }
+          labelLookupStarted.resolve();
+          await releaseLabelLookup.promise;
+          return HttpResponse.json({
+            labels: [{ id: "Label_new_account", name: "Support" }],
+          });
+        },
+      ),
+    );
+
+    const { actor, workflowId } = await setupFixture();
+    await connectGmail(actor, oldEmail, "gmail-race-account-one");
+    await configureWorkspaceModelProvider(actor);
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-label-applied",
+          eventConfig: {
+            provider: "gmail",
+            event: "label_applied",
+            labelName: "Support",
+          },
+        },
+      }),
+      [201],
+    );
+    const chatThreadId = requireAutomationChatThreadId(created.body);
+    await configureAutomationThreadModel(actor, chatThreadId);
+
+    const webhookRequest = postGmailWebhook(
+      gmailPushBody({
+        emailAddress: oldEmail,
+        historyId: 102,
+        messageId: "pubsub-replaced-account-race",
+      }),
+    );
+    await labelLookupStarted.promise;
+    await connectGmail(actor, newEmail, "gmail-race-account-two");
+    releaseLabelLookup.resolve();
+
+    const response = await webhookRequest;
+    expectResponseStatus(response, 200);
+    expect(response.body).toStrictEqual({
+      success: true,
+      watchStates: 1,
+      dispatched: 0,
+      duplicates: 0,
+    });
+    const updated = await readAutomation(actor, created.body.id);
+    if (
+      updated.kind !== "event" ||
+      updated.eventType !== "gmail-label-applied"
+    ) {
+      throw new Error("Expected a Gmail label automation");
+    }
+    expect(updated.eventConfig).not.toHaveProperty("resolvedLabelId");
+    await expect(workflowRunIds(actor, chatThreadId)).resolves.toStrictEqual(
+      [],
+    );
+  });
+
   it("keeps same-account watch state and drops it when reconnect changes accounts", async () => {
     const gmailEmail = uniqueGmailEmail();
     configureGmailEnv();
