@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.521.0](https://github.com/vm0-ai/vm0/compare/api-v1.520.1...api-v1.521.0) (2026-09-01)
+
+
+### Features
+
+* **pi:** activate fast terra with exact billing ([#30781](https://github.com/vm0-ai/vm0/issues/30781)) ([f02a413](https://github.com/vm0-ai/vm0/commit/f02a4136c89233e98797f64e57455b7d3ae13bf4))
+
 ## [1.520.1](https://github.com/vm0-ai/vm0/compare/api-v1.520.0...api-v1.520.1) (2026-09-01)
 
 

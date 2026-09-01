@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.182.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.6...runner-rs-v0.182.7) (2026-09-01)
+
+
+### Bug Fixes
+
+* **python:** report zstd model json failures ([#30780](https://github.com/vm0-ai/vm0/issues/30780)) ([75ca6c4](https://github.com/vm0-ai/vm0/commit/75ca6c4ad4c99e112ba77d9fc3c2578f25bde72f))
+
 ## [0.182.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.5...runner-rs-v0.182.6) (2026-09-01)
 
 
