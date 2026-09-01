@@ -5,11 +5,28 @@ import {
   workflowAutomations,
   workflowUserAutomationThreads,
 } from "@okouai/db/schema/workflow";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import type { Db, ReadonlyDb } from "../external/db";
 
 const GMAIL_EVENT_TYPES = ["gmail-new-message", "gmail-label-applied"] as const;
+
+export async function invalidateGmailAutomationResolvedLabelIds(
+  db: Db,
+  connectorId: string,
+): Promise<void> {
+  await db
+    .update(workflowAutomations)
+    .set({
+      eventConfig: sql`${workflowAutomations.eventConfig} - 'resolvedLabelId'`,
+    })
+    .where(
+      and(
+        eq(workflowAutomations.eventConnectorId, connectorId),
+        eq(workflowAutomations.eventType, "gmail-label-applied"),
+      ),
+    );
+}
 
 export async function resolveGmailAutomationConnectorId(
   db: ReadonlyDb,

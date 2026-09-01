@@ -792,6 +792,58 @@ async function completeRunThroughSandbox(
 }
 
 describe("POST /api/webhooks/gmail", () => {
+  it("invalidates Gmail label ids when OAuth replaces the connector identity", async () => {
+    configureGmailEnv();
+    configureGmailWatchMock();
+    configureGmailLabelsMockSequence([
+      [{ id: "Label_old_account", name: "Support" }],
+    ]);
+
+    const { actor, workflowId } = await setupFixture();
+    await connectGmail(actor, uniqueGmailEmail(), "gmail-label-account-one");
+    const initialConnection = await connectorsApi.readConnectorBySlug(
+      actor,
+      "gmail",
+    );
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-label-applied",
+          eventConfig: {
+            provider: "gmail",
+            event: "label_applied",
+            labelName: "Support",
+          },
+        },
+      }),
+      [201],
+    );
+    expect(created.body).toMatchObject({
+      eventConfig: { resolvedLabelId: "Label_old_account" },
+    });
+
+    await connectGmail(actor, uniqueGmailEmail(), "gmail-label-account-two");
+    const replacementConnection = await connectorsApi.readConnectorBySlug(
+      actor,
+      "gmail",
+    );
+    expect(replacementConnection).toMatchObject({
+      id: initialConnection.id,
+      externalId: "gmail-label-account-two",
+    });
+    const updated = await readAutomation(actor, created.body.id);
+    if (
+      updated.kind !== "event" ||
+      updated.eventType !== "gmail-label-applied"
+    ) {
+      throw new Error("Expected a Gmail label automation");
+    }
+    expect(updated.eventConfig).not.toHaveProperty("resolvedLabelId");
+  });
+
   it("keeps same-account watch state and drops it when reconnect changes accounts", async () => {
     const gmailEmail = uniqueGmailEmail();
     configureGmailEnv();
