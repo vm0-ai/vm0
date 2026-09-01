@@ -6,7 +6,7 @@ import type { DesktopIdentity } from "./config";
 import type {
   DesktopRecorderArea,
   DesktopRecorderCaptureKind,
-  DesktopRecorderSource,
+  DesktopRecorderSourceList,
   DesktopRecorderState,
 } from "./desktop-recorder-types";
 
@@ -101,11 +101,12 @@ export interface DesktopDeveloperToolsApi {
 
 export interface DesktopRecorderApi {
   readonly getState: () => Promise<DesktopRecorderState>;
-  readonly listSources: () => Promise<readonly DesktopRecorderSource[]>;
+  readonly listSources: () => Promise<DesktopRecorderSourceList>;
   readonly startCapture: (request: {
     readonly sourceId: string;
     readonly sourceKind: DesktopRecorderCaptureKind;
     readonly systemAudio: boolean;
+    readonly microphone: boolean;
     readonly area?: DesktopRecorderArea;
   }) => Promise<void>;
   readonly selectArea: () => Promise<DesktopRecorderArea | null>;

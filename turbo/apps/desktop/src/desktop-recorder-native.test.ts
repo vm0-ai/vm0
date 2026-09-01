@@ -179,6 +179,7 @@ describe("area capture", () => {
       sourceId: "display:1",
       sourceKind: "area",
       systemAudio: false,
+      microphone: false,
       area: { x: 1600, y: -100, width: 400, height: 200 },
     });
 
@@ -187,6 +188,7 @@ describe("area capture", () => {
       sourceId: "display:1",
       sourceKind: "area",
       systemAudio: false,
+      microphone: false,
       area: { x: 1600, y: -100, width: 400, height: 200 },
     });
     // The geometry describes the crop, not the display, so a click track built
@@ -210,6 +212,7 @@ describe("area capture", () => {
       sourceId: "display:1",
       sourceKind: "display",
       systemAudio: true,
+      microphone: false,
     });
 
     const requests = await readRequests(requestLogPath);
@@ -236,22 +239,25 @@ describe("createRecorderNativeBackend", () => {
     });
     const backend = createBackend(helperPath);
 
-    await expect(backend.listSources()).resolves.toEqual([
-      { id: "display:1", kind: "display", title: "Built-in Display" },
-      {
-        id: "window:42",
-        kind: "window",
-        title: "Okou",
-        appName: "Okou",
-        bundleId: "ai.vm0.okou",
-      },
-    ]);
+    await expect(backend.listSources()).resolves.toMatchObject({
+      sources: [
+        { id: "display:1", kind: "display", title: "Built-in Display" },
+        {
+          id: "window:42",
+          kind: "window",
+          title: "Okou",
+          appName: "Okou",
+          bundleId: "ai.vm0.okou",
+        },
+      ],
+    });
 
     await expect(
       backend.prepare({
         sourceId: "display:1",
         sourceKind: "display",
         systemAudio: true,
+        microphone: false,
       }),
     ).resolves.toEqual({
       sessionId: "session-1",
@@ -287,6 +293,7 @@ describe("createRecorderNativeBackend", () => {
       sourceId: "display:1",
       sourceKind: "display",
       systemAudio: true,
+      microphone: false,
     });
     expect(requests[2]?.payload).toEqual({
       sessionId: "session-1",
@@ -310,6 +317,7 @@ describe("createRecorderNativeBackend", () => {
         sourceId: "display:1",
         sourceKind: "display",
         systemAudio: false,
+        microphone: false,
       }),
     );
 
@@ -342,7 +350,9 @@ describe("createRecorderNativeBackend", () => {
     });
     const backend = createBackend(helperPath);
 
-    await expect(backend.listSources()).resolves.toHaveLength(2);
+    await expect(
+      backend.listSources().then((listed) => listed.sources),
+    ).resolves.toHaveLength(2);
   });
 
   it("rejects a response that is missing a required field", async () => {

@@ -7,8 +7,8 @@ import type {
   DesktopRecorderPrepareRequest,
   DesktopRecorderPrepareResult,
   DesktopRecorderRecording,
-  DesktopRecorderSource,
   DesktopRecorderSourceKind,
+  DesktopRecorderSourceList,
   RecorderNativeBackend,
 } from "./desktop-recorder-types";
 
@@ -282,9 +282,7 @@ class RecorderHelperClient {
   }
 }
 
-function toSources(
-  result: Record<string, unknown>,
-): readonly DesktopRecorderSource[] {
+function toSources(result: Record<string, unknown>): DesktopRecorderSourceList {
   const value = result.sources;
   if (!Array.isArray(value)) {
     throw new DesktopRecorderHelperError(
@@ -292,7 +290,7 @@ function toSources(
       "Screen recorder helper returned invalid sources",
     );
   }
-  return value.map((entry) => {
+  const sources = value.map((entry) => {
     if (!isRecord(entry)) {
       throw new DesktopRecorderHelperError(
         "capture_failed",
@@ -309,6 +307,11 @@ function toSources(
       ...(bundleId ? { bundleId } : {}),
     };
   });
+  return {
+    sources,
+    // Absent means unsupported: an older helper cannot record a microphone.
+    supportsMicrophone: result.supportsMicrophone === true,
+  };
 }
 
 function toRecording(
@@ -382,11 +385,15 @@ export function createRecorderNativeBackend(
         sourceId: request.sourceId,
         sourceKind: request.sourceKind,
         systemAudio: request.systemAudio,
+        microphone: request.microphone,
         ...(request.area ? { area: request.area } : {}),
       });
       const geometry = isRecord(result.geometry) ? result.geometry : {};
       return {
         sessionId: requiredString(result, "sessionId"),
+        ...(optionalString(result, "warning")
+          ? { warning: optionalString(result, "warning") }
+          : {}),
         width: requiredNumber(result, "width"),
         height: requiredNumber(result, "height"),
         geometry: {

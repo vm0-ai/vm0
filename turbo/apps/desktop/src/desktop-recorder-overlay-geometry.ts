@@ -13,7 +13,7 @@ export interface OverlayDisplayBounds {
  * The width matches what the controls actually occupy. A wider window would
  * leave the row padded out with dead space, since nothing in the bar stretches.
  */
-export const RECORDER_BAR_SIZE = Object.freeze({ width: 704, height: 116 });
+export const RECORDER_BAR_SIZE = Object.freeze({ width: 866, height: 116 });
 
 /** Gap between the bar and the bottom edge of the screen, in points. */
 const RECORDER_BAR_BOTTOM_MARGIN = 72;

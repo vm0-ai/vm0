@@ -102,6 +102,9 @@ module.exports = {
     extendInfo: {
       CFBundleIconFile: "icon.icns",
       LSMinimumSystemVersion: MINIMUM_MACOS_VERSION,
+      // macOS refuses to hand over the microphone without a stated purpose.
+      NSMicrophoneUsageDescription:
+        "Okou records your microphone so a screen recording can carry your narration.",
     },
     asar: false,
     extraResource: [

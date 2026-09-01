@@ -156,6 +156,16 @@ private func backingScaleFactor(forDisplayID displayID: CGDirectDisplayID) -> Do
     return 1
 }
 
+/// ScreenCaptureKit only gained microphone capture in macOS 15. On 14 the
+/// recorder has no way to reach the microphone that shares the video's clock,
+/// so the option is reported as unsupported rather than half-implemented.
+private func microphoneSupported() -> Bool {
+    if #available(macOS 15.0, *) {
+        return true
+    }
+    return false
+}
+
 private func handleSources() throws -> [String: Any] {
     let content = try shareableContent()
     var sources: [[String: Any]] = []
@@ -184,7 +194,10 @@ private func handleSources() throws -> [String: Any] {
         sources.append(source)
     }
 
-    return ["sources": sources]
+    return [
+        "sources": sources,
+        "supportsMicrophone": microphoneSupported(),
+    ]
 }
 
 /// Capture rate for the stream, and the rate the click track reports so a
@@ -201,7 +214,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     private let configuration: SCStreamConfiguration
     private let geometry: CaptureGeometry
     private let outputSize: OutputSize
-    private let capturesAudio: Bool
+    private let audioPlan: AudioTrackPlan
     private let sampleQueue = DispatchQueue(label: "ai.okou.recorder.samples")
 
     private let clickTracker = ClickTrackRecorder()
@@ -212,7 +225,8 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     private var stream: SCStream?
     private var writer: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
-    private var audioInput: AVAssetWriterInput?
+    private var systemAudioInput: AVAssetWriterInput?
+    private var microphoneInput: AVAssetWriterInput?
     private var outputURL: URL?
     private var sessionStartedAt: CMTime?
     private var latestSampleAt: CMTime?
@@ -225,14 +239,14 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         configuration: SCStreamConfiguration,
         geometry: CaptureGeometry,
         outputSize: OutputSize,
-        capturesAudio: Bool
+        audioPlan: AudioTrackPlan
     ) {
         self.id = id
         self.filter = filter
         self.configuration = configuration
         self.geometry = geometry
         self.outputSize = outputSize
-        self.capturesAudio = capturesAudio
+        self.audioPlan = audioPlan
         super.init()
         mach_timebase_info(&timebase)
     }
@@ -261,6 +275,23 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             "heightPoints": geometry.heightPoints,
             "scale": geometry.scale,
         ]
+    }
+
+    private func addAudioTrack(to assetWriter: AVAssetWriter) -> AVAssetWriterInput? {
+        let input = AVAssetWriterInput(
+            mediaType: .audio,
+            outputSettings: [
+                AVFormatIDKey: kAudioFormatMPEG4AAC,
+                AVNumberOfChannelsKey: 2,
+                AVSampleRateKey: 48000,
+            ]
+        )
+        input.expectsMediaDataInRealTime = true
+        guard assetWriter.canAdd(input) else {
+            return nil
+        }
+        assetWriter.add(input)
+        return input
     }
 
     func start(outputPath: String) throws {
@@ -295,22 +326,10 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         }
         assetWriter.add(video)
 
-        var audio: AVAssetWriterInput?
-        if capturesAudio {
-            let input = AVAssetWriterInput(
-                mediaType: .audio,
-                outputSettings: [
-                    AVFormatIDKey: kAudioFormatMPEG4AAC,
-                    AVNumberOfChannelsKey: 2,
-                    AVSampleRateKey: 48000,
-                ]
-            )
-            input.expectsMediaDataInRealTime = true
-            if assetWriter.canAdd(input) {
-                assetWriter.add(input)
-                audio = input
-            }
-        }
+        // One writer input per requested track, so system audio and narration
+        // stay separable in the finished file.
+        let systemAudio = audioPlan.systemAudio ? addAudioTrack(to: assetWriter) : nil
+        let microphone = audioPlan.microphone ? addAudioTrack(to: assetWriter) : nil
 
         let captureStream = SCStream(
             filter: filter,
@@ -322,10 +341,17 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             type: .screen,
             sampleHandlerQueue: sampleQueue
         )
-        if capturesAudio {
+        if audioPlan.systemAudio {
             try captureStream.addStreamOutput(
                 self,
                 type: .audio,
+                sampleHandlerQueue: sampleQueue
+            )
+        }
+        if audioPlan.microphone, #available(macOS 15.0, *) {
+            try captureStream.addStreamOutput(
+                self,
+                type: .microphone,
                 sampleHandlerQueue: sampleQueue
             )
         }
@@ -341,7 +367,8 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         lock.lock()
         writer = assetWriter
         videoInput = video
-        audioInput = audio
+        systemAudioInput = systemAudio
+        microphoneInput = microphone
         stream = captureStream
         outputURL = url
         lock.unlock()
@@ -391,18 +418,21 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         lock.lock()
         let assetWriter = writer
         let video = videoInput
-        let audio = audioInput
+        let systemAudio = systemAudioInput
+        let microphone = microphoneInput
         let url = outputURL
         let duration = elapsedSecondsLocked()
         let timeline = clickTimeline
         let startedAt = startedAtUnixMs
         writer = nil
         videoInput = nil
-        audioInput = nil
+        systemAudioInput = nil
+        microphoneInput = nil
         lock.unlock()
 
         video?.markAsFinished()
-        audio?.markAsFinished()
+        systemAudio?.markAsFinished()
+        microphone?.markAsFinished()
 
         if let assetWriter {
             let semaphore = DispatchSemaphore(value: 0)
@@ -519,6 +549,19 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         }
     }
 
+    /// Routes a sample to the track it belongs to. Microphone samples arrive on
+    /// their own output type, so they must not be appended to the system audio
+    /// track or the two would be interleaved into one.
+    private func writerInputLocked(for type: SCStreamOutputType) -> AVAssetWriterInput? {
+        if type == .screen {
+            return videoInput
+        }
+        if #available(macOS 15.0, *), type == .microphone {
+            return microphoneInput
+        }
+        return systemAudioInput
+    }
+
     private func elapsedSecondsLocked() -> Double {
         guard let start = sessionStartedAt, let latest = latestSampleAt else {
             return 0
@@ -585,7 +628,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             }
         }
         latestSampleAt = timestamp
-        let input = type == .screen ? videoInput : audioInput
+        let input = writerInputLocked(for: type)
         lock.unlock()
 
         guard let input, input.isReadyForMoreMediaData else {
@@ -642,6 +685,12 @@ private func handlePrepare(_ request: [String: Any]) throws -> [String: Any] {
     let sourceId = try requiredString(request, "sourceId")
     let sourceKind = try requiredString(request, "sourceKind")
     let systemAudio = optionalBool(request, "systemAudio")
+    let microphone = optionalBool(request, "microphone")
+    let audioPlan = AudioTrackPolicy.plan(
+        systemAudio: systemAudio,
+        microphone: microphone,
+        microphoneSupported: microphoneSupported()
+    )
     let content = try shareableContent()
 
     let filter: SCContentFilter
@@ -716,7 +765,10 @@ private func handlePrepare(_ request: [String: Any]) throws -> [String: Any] {
     configuration.minimumFrameInterval = CMTime(value: 1, timescale: captureFrameRate)
     configuration.showsCursor = true
     configuration.queueDepth = 6
-    configuration.capturesAudio = systemAudio
+    configuration.capturesAudio = audioPlan.systemAudio
+    if audioPlan.microphone, #available(macOS 15.0, *) {
+        configuration.captureMicrophone = true
+    }
     if let croppedArea {
         let display = try resolveDisplay(content, sourceId: sourceId)
         let relative = CaptureAreaPolicy.relativeToDisplay(
@@ -737,16 +789,20 @@ private func handlePrepare(_ request: [String: Any]) throws -> [String: Any] {
         configuration: configuration,
         geometry: geometry,
         outputSize: outputSize,
-        capturesAudio: systemAudio
+        audioPlan: audioPlan
     )
     sessionStore.insert(session)
 
-    return [
+    var prepared: [String: Any] = [
         "sessionId": session.id,
         "width": outputSize.width,
         "height": outputSize.height,
         "geometry": session.describedGeometry,
     ]
+    if let reason = audioPlan.microphoneUnavailableReason {
+        prepared["warning"] = reason
+    }
+    return prepared
 }
 
 private func handleStart(_ request: [String: Any]) throws -> [String: Any] {

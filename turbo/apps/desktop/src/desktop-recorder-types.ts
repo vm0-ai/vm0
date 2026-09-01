@@ -41,6 +41,12 @@ export interface DesktopRecorderArea {
   readonly height: number;
 }
 
+export interface DesktopRecorderSourceList {
+  readonly sources: readonly DesktopRecorderSource[];
+  /** ScreenCaptureKit only reaches the microphone on macOS 15 and later. */
+  readonly supportsMicrophone: boolean;
+}
+
 export interface DesktopRecorderSource {
   readonly id: string;
   readonly kind: DesktopRecorderSourceKind;
@@ -88,6 +94,8 @@ export interface DesktopRecorderPrepareRequest {
   readonly sourceId: string;
   readonly sourceKind: DesktopRecorderCaptureKind;
   readonly systemAudio: boolean;
+  /** Narration, on its own track. Needs macOS 15 or later. */
+  readonly microphone: boolean;
   /**
    * Required when `sourceKind` is `"area"`, and `sourceId` then names the
    * display the region was drawn on. ScreenCaptureKit has no region filter, so
@@ -98,6 +106,8 @@ export interface DesktopRecorderPrepareRequest {
 
 export interface DesktopRecorderPrepareResult {
   readonly sessionId: string;
+  /** Set when part of the request could not be honoured, such as a microphone. */
+  readonly warning?: string;
   readonly geometry: DesktopRecorderCaptureGeometry;
   readonly width: number;
   readonly height: number;
@@ -117,7 +127,7 @@ export interface DesktopRecorderNativeStatus {
  */
 export interface RecorderNativeBackend {
   readonly dispose: () => void;
-  readonly listSources: () => Promise<readonly DesktopRecorderSource[]>;
+  readonly listSources: () => Promise<DesktopRecorderSourceList>;
   readonly prepare: (
     request: DesktopRecorderPrepareRequest,
   ) => Promise<DesktopRecorderPrepareResult>;

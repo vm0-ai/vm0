@@ -198,7 +198,10 @@ describe("Desktop IPC boundary", () => {
       await import("./desktop-recorder-electron");
     const api = {
       getState: vi.fn(),
-      listSources: vi.fn(async () => []),
+      listSources: vi.fn(async () => ({
+        sources: [],
+        supportsMicrophone: true,
+      })),
       startCapture: vi.fn(async () => {}),
       selectArea: vi.fn(async () => null),
       completeAreaSelection: vi.fn(),
@@ -213,7 +216,12 @@ describe("Desktop IPC boundary", () => {
       {
         channel: DESKTOP_RECORDER_CHANNELS.startCapture,
         args: [
-          { sourceId: "display:1", sourceKind: "display", systemAudio: true },
+          {
+            sourceId: "display:1",
+            sourceKind: "display",
+            systemAudio: true,
+            microphone: false,
+          },
         ],
       },
       { channel: DESKTOP_RECORDER_CHANNELS.selectArea, args: [] },
@@ -242,7 +250,10 @@ describe("Desktop IPC boundary", () => {
       await import("./desktop-recorder-electron");
     const api = {
       getState: vi.fn(),
-      listSources: vi.fn(async () => []),
+      listSources: vi.fn(async () => ({
+        sources: [],
+        supportsMicrophone: true,
+      })),
       startCapture: vi.fn(async () => {}),
       selectArea: vi.fn(async () => null),
       completeAreaSelection: vi.fn(),
@@ -256,6 +267,7 @@ describe("Desktop IPC boundary", () => {
         sourceId: "display:1",
         sourceKind: "everything",
         systemAudio: true,
+        microphone: false,
       }),
     ).rejects.toThrow("Unsupported screen recording source kind: everything");
     // An area capture without a region would silently record the whole display.
@@ -264,6 +276,7 @@ describe("Desktop IPC boundary", () => {
         sourceId: "display:1",
         sourceKind: "area",
         systemAudio: true,
+        microphone: false,
       }),
     ).rejects.toThrow("Recording an area needs the selected region");
     await expect(
@@ -277,12 +290,14 @@ describe("Desktop IPC boundary", () => {
       sourceId: "display:1",
       sourceKind: "area",
       systemAudio: false,
+      microphone: false,
       area: { x: 10, y: 20, width: 300, height: 200 },
     });
     expect(api.startCapture).toHaveBeenCalledWith({
       sourceId: "display:1",
       sourceKind: "area",
       systemAudio: false,
+      microphone: false,
       area: { x: 10, y: 20, width: 300, height: 200 },
     });
   });

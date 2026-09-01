@@ -5,7 +5,7 @@ import { isDesktopRecorderPageUrl } from "./desktop-recorder-page-url";
 import type {
   DesktopRecorderArea,
   DesktopRecorderCaptureKind,
-  DesktopRecorderSource,
+  DesktopRecorderSourceList,
   DesktopRecorderState,
 } from "./desktop-recorder-types";
 
@@ -17,12 +17,13 @@ interface DesktopRecorderStartRequest {
   readonly sourceId: string;
   readonly sourceKind: DesktopRecorderCaptureKind;
   readonly systemAudio: boolean;
+  readonly microphone: boolean;
   readonly area?: DesktopRecorderArea;
 }
 
 interface DesktopRecorderNativeApi {
   readonly getState: () => DesktopRecorderState;
-  readonly listSources: () => Promise<readonly DesktopRecorderSource[]>;
+  readonly listSources: () => Promise<DesktopRecorderSourceList>;
   readonly startCapture: (
     request: DesktopRecorderStartRequest,
   ) => Promise<void>;
@@ -54,10 +55,11 @@ function parseStartRequest(value: unknown): DesktopRecorderStartRequest {
   if (
     !isRecord(value) ||
     typeof value.sourceId !== "string" ||
-    typeof value.systemAudio !== "boolean"
+    typeof value.systemAudio !== "boolean" ||
+    typeof value.microphone !== "boolean"
   ) {
     throw new Error(
-      "A screen recording request needs a source and audio choice",
+      "A screen recording request needs a source and both audio choices",
     );
   }
   const kind = value.sourceKind;
@@ -71,6 +73,7 @@ function parseStartRequest(value: unknown): DesktopRecorderStartRequest {
       sourceId: value.sourceId,
       sourceKind: kind,
       systemAudio: value.systemAudio,
+      microphone: value.microphone,
     };
   }
   if (!isArea(value.area)) {
@@ -80,6 +83,7 @@ function parseStartRequest(value: unknown): DesktopRecorderStartRequest {
     sourceId: value.sourceId,
     sourceKind: kind,
     systemAudio: value.systemAudio,
+    microphone: value.microphone,
     area: value.area,
   };
 }

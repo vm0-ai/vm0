@@ -130,6 +130,11 @@
   cursor: pointer;
 }
 
+.recorder-bar__audio:disabled {
+  opacity: 45%;
+  cursor: default;
+}
+
 .recorder-bar__audio[aria-pressed="true"] {
   border-color: rgb(255 255 255 / 18%);
   background: rgb(255 255 255 / 10%);

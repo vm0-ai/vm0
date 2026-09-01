@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   AppWindow,
+  Mic,
+  MicOff,
   Monitor,
   SquareDashed,
   Volume2,
@@ -30,6 +32,8 @@ export function RecorderBar(): React.ReactElement {
     sourceId: null,
   });
   const [systemAudio, setSystemAudio] = useState(true);
+  const [microphone, setMicrophone] = useState(false);
+  const [microphoneSupported, setMicrophoneSupported] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,12 +44,13 @@ export function RecorderBar(): React.ReactElement {
     void recorder
       .listSources()
       .then((listed) => {
-        setSources(listed);
+        setSources(listed.sources);
+        setMicrophoneSupported(listed.supportsMicrophone);
         setChoice((current) => {
           if (current.kind !== "display" || current.sourceId) {
             return current;
           }
-          const display = listed.find((source) => {
+          const display = listed.sources.find((source) => {
             return source.kind === "display";
           });
           return { kind: "display", sourceId: display?.id ?? null };
@@ -99,6 +104,7 @@ export function RecorderBar(): React.ReactElement {
           sourceId: displayId,
           sourceKind: "area",
           systemAudio,
+          microphone,
           area: choice.area,
         })
         .catch(reportStartFailure);
@@ -116,6 +122,7 @@ export function RecorderBar(): React.ReactElement {
         sourceId: choice.sourceId,
         sourceKind: choice.kind,
         systemAudio,
+        microphone,
       })
       .catch(reportStartFailure);
 
@@ -127,7 +134,7 @@ export function RecorderBar(): React.ReactElement {
           : "Could not start recording",
       );
     }
-  }, [choice, sources, systemAudio]);
+  }, [choice, microphone, sources, systemAudio]);
 
   const windows = sources.filter((source) => {
     return source.kind === "window";
@@ -230,6 +237,22 @@ export function RecorderBar(): React.ReactElement {
       >
         {systemAudio ? <Volume2 size={18} /> : <VolumeX size={18} />}
         <span>{systemAudio ? "System audio" : "No system audio"}</span>
+      </button>
+
+      <button
+        type="button"
+        className="recorder-bar__audio"
+        aria-pressed={microphone}
+        disabled={!microphoneSupported}
+        title={microphoneSupported ? undefined : "Needs macOS 15 or later"}
+        onClick={() => {
+          setMicrophone((enabled) => {
+            return !enabled;
+          });
+        }}
+      >
+        {microphone ? <Mic size={18} /> : <MicOff size={18} />}
+        <span>{microphone ? "Microphone" : "No microphone"}</span>
       </button>
 
       <button

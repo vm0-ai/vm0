@@ -35,9 +35,16 @@ function createBackendFake(
 ): RecorderNativeBackend {
   return {
     dispose: vi.fn(),
-    listSources: vi.fn(async () => [
-      { id: "display:1", kind: "display" as const, title: "Built-in Display" },
-    ]),
+    listSources: vi.fn(async () => ({
+      sources: [
+        {
+          id: "display:1",
+          kind: "display" as const,
+          title: "Built-in Display",
+        },
+      ],
+      supportsMicrophone: true,
+    })),
     prepare: vi.fn(async () => PREPARED),
     start: vi.fn(async () => {}),
     stop: vi.fn(async () => RECORDING),
@@ -97,6 +104,7 @@ async function enableAndPrepare(controller: DesktopRecorderController) {
     sourceId: "display:1",
     sourceKind: "display",
     systemAudio: true,
+    microphone: false,
   });
 }
 
@@ -166,6 +174,7 @@ describe("DesktopRecorderController", () => {
         sourceId: "display:1",
         sourceKind: "display",
         systemAudio: true,
+        microphone: false,
       }),
     ).rejects.toThrow("Cannot record while signed out of Okou");
     expect(backend.prepare).not.toHaveBeenCalled();
@@ -250,6 +259,7 @@ describe("DesktopRecorderController", () => {
         sourceId: "display:1",
         sourceKind: "display",
         systemAudio: true,
+        microphone: false,
       }),
     ).rejects.toThrow("Screen Recording permission required");
     expect(controller.getState().status).toBe("idle");
@@ -258,6 +268,7 @@ describe("DesktopRecorderController", () => {
       sourceId: "display:1",
       sourceKind: "display",
       systemAudio: true,
+      microphone: false,
     });
     expect(controller.getState().status).toBe("ready");
   });
