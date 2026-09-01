@@ -59,7 +59,7 @@ function removeTag(htmlSource: string, tag: string): string {
 
 function prioritizeApplicationResources(htmlSource: string): string {
   const linkTagPattern = /<link\b[^>]*>/gu;
-  const scriptTagPattern = /<script\b[^>]*><\/script>/gu;
+  const scriptTagPattern = /<script\b[^>]*><\/script\s*>/giu;
   const stylesheet = singleAssetTag(
     htmlSource,
     "application stylesheet",
