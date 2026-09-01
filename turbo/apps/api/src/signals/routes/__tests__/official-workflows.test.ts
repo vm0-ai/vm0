@@ -544,6 +544,8 @@ function configureOfficialCalendarWatchMock() {
     watchCalls: 0,
     stopCalls: 0,
     watchShouldFail: false,
+    watchAccessTokens: [] as string[],
+    stopAccessTokens: [] as string[],
   };
   mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
   server.use(
@@ -561,6 +563,9 @@ function configureOfficialCalendarWatchMock() {
       "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events/watch",
       async ({ request, params }) => {
         recorder.watchCalls++;
+        recorder.watchAccessTokens.push(
+          request.headers.get("authorization") ?? "",
+        );
         expect(params.calendarId).toBe("primary");
         if (recorder.watchShouldFail) {
           return HttpResponse.json({ error: "watch failed" }, { status: 500 });
@@ -578,10 +583,16 @@ function configureOfficialCalendarWatchMock() {
         });
       },
     ),
-    http.post("https://www.googleapis.com/calendar/v3/channels/stop", () => {
-      recorder.stopCalls++;
-      return new HttpResponse(null, { status: 204 });
-    }),
+    http.post(
+      "https://www.googleapis.com/calendar/v3/channels/stop",
+      ({ request }) => {
+        recorder.stopCalls++;
+        recorder.stopAccessTokens.push(
+          request.headers.get("authorization") ?? "",
+        );
+        return new HttpResponse(null, { status: 204 });
+      },
+    ),
   );
   return recorder;
 }
@@ -5188,6 +5199,9 @@ describe.sequential("Official Workflow installations", () => {
     );
     const setup = await workflowBdd.setupWorkflowOrg();
     const { actor } = setup;
+    if (!actor.orgId) {
+      throw new Error("Expected Calendar transition actor to belong to an org");
+    }
     const { agentId } = await workflowBdd.createAgent(actor);
     onTestFinished(async () => {
       installCatalogStorageFixture();
@@ -5202,10 +5216,61 @@ describe.sequential("Official Workflow installations", () => {
       await bdd.deleteAgent(actor, agentId);
       await cleanupCatalog();
     });
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      {
+        [FeatureSwitchKey.ConnectorAccounts]: true,
+      },
+    );
+    const firstAccessToken = `calendar-transition-first-${suffix}`;
+    const secondAccessToken = `calendar-transition-second-${suffix}`;
     mockGoogleCalendarConnectorOAuth({
-      email: `calendar-transition-${suffix}@example.test`,
+      accessToken: firstAccessToken,
+      email: `calendar-transition-first-${suffix}@example.test`,
+      subject: `calendar-transition-first-${suffix}`,
     });
     await workflowBdd.connectConnector(actor, "google-calendar");
+    mockGoogleCalendarConnectorOAuth({
+      accessToken: secondAccessToken,
+      email: `calendar-transition-second-${suffix}@example.test`,
+      subject: `calendar-transition-second-${suffix}`,
+    });
+    const secondOauth = await connectors.startOauth(
+      actor,
+      "google-calendar",
+      "oauth",
+      agentId,
+      { intent: "add", displayName: "Official Calendar Second" },
+    );
+    const secondOauthState = new URL(
+      secondOauth.authorizationUrl,
+    ).searchParams.get("state");
+    if (!secondOauthState) {
+      throw new Error("Expected second Calendar OAuth state");
+    }
+    await connectors.completeOauthCallback("google-calendar", {
+      code: `calendar-transition-second-${suffix}`,
+      state: secondOauthState,
+    });
+    const calendarAccounts = await connectors.listBuiltinConnectorAccounts(
+      actor,
+      "google-calendar",
+    );
+    const secondAccount = calendarAccounts.find((account) => {
+      return (
+        account.externalEmail ===
+        `calendar-transition-second-${suffix}@example.test`
+      );
+    });
+    if (!secondAccount) {
+      throw new Error("Expected second Calendar account");
+    }
+    await connectors.setDefaultBuiltinConnectorAccount(
+      actor,
+      "google-calendar",
+      secondAccount.id,
+    );
     const watch = configureOfficialCalendarWatchMock();
     await setOfficialWorkflowsEnabled(actor, true);
     const headers = authHeaders(actor);
@@ -5283,6 +5348,10 @@ describe.sequential("Official Workflow installations", () => {
       }),
     ]);
     expect(watch.watchCalls).toBe(2);
+    expect(watch.watchAccessTokens).toStrictEqual([
+      `Bearer ${secondAccessToken}`,
+      `Bearer ${secondAccessToken}`,
+    ]);
     expect(watch.stopCalls).toBe(0);
     const identity = await readOfficialWorkflowReconciliationState({
       workflowId,
@@ -5298,6 +5367,53 @@ describe.sequential("Official Workflow installations", () => {
     await expect(
       readAgentRunFamilyCountsFixture(context, agentId),
     ).resolves.toStrictEqual(beforeRuns);
+
+    await syncCatalog(
+      catalog([
+        activeDefinition(definitionName, [
+          {
+            ...structureTransitionCalendarBlueprint(),
+            desiredState: {
+              kind: "event",
+              eventType: "google-calendar-event-updated",
+              eventConfig: {
+                provider: "google-calendar",
+                event: "event_updated",
+                calendarId: "primary",
+              },
+            },
+          },
+        ]),
+      ]),
+    );
+    await expect(
+      runOfficialWorkflowReconciliationWorker(),
+    ).resolves.toStrictEqual(
+      expect.objectContaining({ claimed: 1, completed: 1, installations: 1 }),
+    );
+    const reconfigured = await accept(
+      installationClient().get({ headers, params: { workflowId } }),
+      [200],
+    );
+    expect(reconfigured.body.workflow.automations).toStrictEqual([
+      expect.objectContaining({
+        id: original.id,
+        kind: "event",
+        eventType: "google-calendar-event-updated",
+        enabled: true,
+        official: expect.objectContaining({ reconciliationStatus: "current" }),
+      }),
+    ]);
+    expect(watch.watchCalls).toBe(3);
+    expect(watch.watchAccessTokens).toStrictEqual([
+      `Bearer ${secondAccessToken}`,
+      `Bearer ${secondAccessToken}`,
+      `Bearer ${secondAccessToken}`,
+    ]);
+    expect(watch.stopCalls).toBe(1);
+    expect(watch.stopAccessTokens).toStrictEqual([
+      `Bearer ${secondAccessToken}`,
+    ]);
   });
 
   it("restores a dormant Calendar identity without another enabled consumer", async () => {

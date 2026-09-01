@@ -238,15 +238,25 @@ interface GoogleCalendarWorkflowRunStartTestInput {
   readonly summary: string | null;
 }
 
-type GoogleCalendarRunStarterTestOverride = (
+type GoogleCalendarBeforeRunStartTestHook = (
   args: GoogleCalendarWorkflowRunStartTestInput,
-) => Promise<"ok" | "error">;
+) => Promise<void>;
 
-const googleCalendarRunStarterOverride = testOverride<
-  GoogleCalendarRunStarterTestOverride | undefined
+const googleCalendarBeforeRunStartHook = testOverride<
+  GoogleCalendarBeforeRunStartTestHook | undefined
 >(() => {
   return undefined;
 });
+
+export function setGoogleCalendarBeforeRunStartHookForTest(
+  hook: GoogleCalendarBeforeRunStartTestHook,
+): void {
+  googleCalendarBeforeRunStartHook.set(hook);
+}
+
+export function clearGoogleCalendarBeforeRunStartHookForTest(): void {
+  googleCalendarBeforeRunStartHook.clear();
+}
 
 class GoogleCalendarAutomationSourceChangedError extends Error {
   constructor() {
@@ -2818,7 +2828,9 @@ async function dispatchGoogleCalendarAutomationEvent(
     readonly startRun: GoogleCalendarRunStarter;
   },
   signal: AbortSignal,
-): Promise<"dispatched" | "duplicate" | { readonly kind: "run_error" }> {
+): Promise<
+  "dispatched" | "duplicate" | "superseded" | { readonly kind: "run_error" }
+> {
   const processedId = await args.timing.measure(
     "api_dispatch_pre_create_zero_automation_event_record_processed_event",
     async () => {
@@ -2843,7 +2855,7 @@ async function dispatchGoogleCalendarAutomationEvent(
       .delete(googleCalendarProcessedEvents)
       .where(eq(googleCalendarProcessedEvents.id, processedId));
     signal.throwIfAborted();
-    return "duplicate";
+    return "superseded";
   }
   if (result !== "ok") {
     await args.db
@@ -3215,32 +3227,38 @@ export const dispatchGoogleCalendarWebhook$ = command(
       return { kind: "unauthorized" };
     }
 
-    const runStarterOverride = googleCalendarRunStarterOverride.get();
-    const startRun: GoogleCalendarRunStarter = runStarterOverride
-      ? async ({ automation, state, event }) => {
-          return await runStarterOverride({
-            automationId: automation.automation.id,
-            workflowName: automation.workflowName,
-            changeType: event.changeType,
-            calendarId: state.calendarId,
-            eventId: event.eventId,
-            summary: event.summary,
-          });
-        }
-      : async ({ automation, state, event, eventChangeKey, timing }) => {
-          return await set(
-            startGoogleCalendarAutomationRun$,
-            {
-              automation,
-              state,
-              event,
-              eventChangeKey,
-              timing,
-              apiStartTime: args.apiStartTime,
-            },
-            signal,
-          );
-        };
+    const startRun: GoogleCalendarRunStarter = async ({
+      automation,
+      state,
+      event,
+      eventChangeKey,
+      timing,
+    }) => {
+      const beforeRunStart = googleCalendarBeforeRunStartHook.get();
+      if (beforeRunStart) {
+        await beforeRunStart({
+          automationId: automation.automation.id,
+          workflowName: automation.workflowName,
+          changeType: event.changeType,
+          calendarId: state.calendarId,
+          eventId: event.eventId,
+          summary: event.summary,
+        });
+        signal.throwIfAborted();
+      }
+      return await set(
+        startGoogleCalendarAutomationRun$,
+        {
+          automation,
+          state,
+          event,
+          eventChangeKey,
+          timing,
+          apiStartTime: args.apiStartTime,
+        },
+        signal,
+      );
+    };
 
     const result = await dispatchGoogleCalendarWatchState(
       {
