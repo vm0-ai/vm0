@@ -363,6 +363,33 @@ async def test_vm0_api_auto_allow_respects_authority_boundary(
         assert "x-vercel-protection-bypass" not in flow.request.headers
 
 
+async def test_malformed_vm0_api_url_is_cached_as_non_match(
+    registry_file,
+    real_flow,
+    mitm_ctx,
+    monkeypatch,
+    malformed_platform_api_url,
+):
+    flows = [
+        real_flow(with_response=False, host="api.vm0.ai"),
+        real_flow(with_response=False, host="api.vm0.ai"),
+    ]
+    monkeypatch.setattr(platform_api, "VERCEL_BYPASS", "preview-secret")
+
+    with mitm_ctx(
+        registry_path=str(registry_file),
+        api_url=malformed_platform_api_url,
+    ):
+        for flow in flows:
+            await mitm_addon.request(flow)
+
+    for flow in flows:
+        assert flow.response is None
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert "x-vercel-protection-bypass" not in flow.request.headers
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+
 async def test_vm0_api_wrong_port_uses_matching_firewall_deny_policy(
     tmp_path,
     real_flow,
