@@ -3,7 +3,7 @@
 Lifecycle:
 - ``mitm_addon.responseheaders()`` calls ``configure_response_stream()`` to
   install the streaming callback, exact byte accounting, optional capped body
-  buffer, and incremental usage parsers.
+  buffer, and incremental or bounded terminal response inspectors.
 - ``mitm_addon.response()`` finalizes HTTP model and connector usage before
   reporting it.
 - ``mitm_addon.error()`` may finalize partial SSE or opted-in connector usage
@@ -31,7 +31,7 @@ import model_websocket_usage
 import runtime_url_parsing
 import stream_capture
 import usage
-from body_limits import STREAM_BUFFER_LIMIT
+from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT, STREAM_BUFFER_LIMIT
 from logging_utils import log_proxy_entry
 from usage.underbilling import log_usage_underbilling
 
@@ -342,27 +342,29 @@ def _configure_response_inspection_stream(
             response.headers,
             should_continue=extractor.accepts_more_input,
         )
+        needs_buffered_fallback = False
         if decode_session is None:
-            if failure_observer is not None:
-                model_provider_failure.register_response_finish(
-                    flow,
-                    failure_observer.finish,
+            needs_buffered_fallback = body_decoding.can_decode_json_usage_body(
+                response.headers
+            ) and (
+                failure_observer is not None
+                or (is_observable_model_provider and uses_model_json_fallback(flow))
+            )
+            if not needs_buffered_fallback:
+                if failure_observer is not None:
+                    model_provider_failure.register_response_finish(
+                        flow,
+                        failure_observer.finish,
+                    )
+                return _ResponseStreamSetup(
+                    None,
+                    False,
+                    reject_uninspectable=(
+                        is_billable_flow
+                        and is_observable_model_provider
+                        and _HTTP_STATUS_OK_MIN <= response.status_code < _HTTP_STATUS_REDIRECT_MIN
+                    ),
                 )
-            needs_buffered_fallback = (
-                is_observable_model_provider
-                and uses_model_json_fallback(flow)
-                and body_decoding.can_decode_json_usage_body(response.headers)
-            )
-            return _ResponseStreamSetup(
-                None,
-                needs_buffered_fallback,
-                reject_uninspectable=(
-                    is_billable_flow
-                    and is_observable_model_provider
-                    and _HTTP_STATUS_OK_MIN <= response.status_code < _HTTP_STATUS_REDIRECT_MIN
-                    and not needs_buffered_fallback
-                ),
-            )
 
         inspection: usage.ModelJsonResponseInspection | None = None
         decode_error: str | None = None
@@ -371,8 +373,27 @@ def _configure_response_inspection_stream(
         def finish_json_response() -> object:
             nonlocal decode_error, finished, inspection
             if not finished:
-                decode_error = decode_session.finish_error()
-                if decode_error is None:
+                if decode_session is not None:
+                    decode_error = decode_session.finish_error()
+                else:
+                    stream_body = captured_response_stream_body(flow)
+                    if stream_body is None:
+                        raise RuntimeError(
+                            "buffered model JSON finalizer requires a response stream buffer"
+                        )
+                    if stream_body.truncated:
+                        decode_error = body_decoding.INCOMPLETE_COMPRESSED_BODY
+                    elif stream_body.buffer:
+                        decoded_body, decode_error = body_decoding.decompress_json_usage_body(
+                            bytes(stream_body.buffer),
+                            response.headers,
+                            max_output=LARGE_RESPONSE_DECOMPRESS_LIMIT,
+                        )
+                        if decode_error is None:
+                            extractor.feed(decoded_body)
+                    else:
+                        finished = True
+                if not finished and decode_error is None:
                     inspection = extractor.finish()
                     if failure_observer is not None:
                         failure_observer.observe_json(inspection.failure)
@@ -396,8 +417,8 @@ def _configure_response_inspection_stream(
         if failure_observer is not None:
             model_provider_failure.register_response_finish(flow, finish_json_response)
         return _ResponseStreamSetup(
-            decode_session.feed,
-            False,
+            decode_session.feed if decode_session is not None else None,
+            needs_buffered_fallback,
             finish_json_stream if failure_observer is not None else None,
         )
 
@@ -512,8 +533,8 @@ def configure_response_stream(flow: http.HTTPFlow) -> None:
     """Enable pass-through response streaming and body consumers.
 
     Every configured response records exact streamed bytes. A capped raw-wire
-    body prefix is retained only for network capture or a terminal usage
-    fallback that cannot use incremental decoding.
+    body prefix is retained only for network capture or bounded terminal
+    inspection that cannot use incremental decoding.
     """
     if not flow.response:
         return

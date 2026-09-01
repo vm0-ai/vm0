@@ -138,12 +138,13 @@ Response streaming
   general response stream callback. Read for exact response-size logging and
   removed by stream cleanup.
 - ``STREAM_BUFFER``: capped ``bytearray`` written by ``responseheaders()`` via
-  response streaming setup only when body capture or usage fallback needs raw
-  response bytes. Read by body capture, model JSON fallback extraction, and
-  connector fallback parsing. Removed by stream cleanup after terminal hooks.
+  response streaming setup only when body capture or bounded terminal
+  inspection needs raw response bytes. Read by body capture, model JSON usage
+  and failure inspection, and connector fallback parsing. Removed by stream
+  cleanup after terminal hooks.
 - ``STREAM_BUFFER_STATE``: ``dict`` containing ``truncated``. Written only
-  with ``STREAM_BUFFER`` and read for capture truncation and connector fallback
-  parsing. Removed by stream cleanup.
+  with ``STREAM_BUFFER`` and read for capture truncation, model JSON terminal
+  inspection, and connector fallback parsing. Removed by stream cleanup.
 
 Request streaming
 -----------------
