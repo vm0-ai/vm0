@@ -158,7 +158,7 @@ describe("static asset object keys", () => {
     expect(renamedKeys).toStrictEqual([]);
   });
 
-  it("keeps all 34 published string-literal keys under zero-page", () => {
+  it("keeps all 32 published string-literal keys under zero-page", () => {
     const objectKeys = Object.entries(sources).flatMap(([file, source]) => {
       if (file.endsWith("/static-assets.test.ts")) {
         return [];
@@ -170,6 +170,6 @@ describe("static asset object keys", () => {
     const pageKeys = objectKeys.filter((key) => {
       return key.startsWith("views/zero-page/");
     });
-    expect(pageKeys).toHaveLength(34);
+    expect(pageKeys).toHaveLength(32);
   });
 });
