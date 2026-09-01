@@ -25,6 +25,10 @@ function isDomainOrSubdomain(hostname: string, domain: string): boolean {
 export function normalizeClerkProductionPrimaryAppDomain(
   value: unknown,
 ): ClerkProductionPrimaryAppDomain {
+  // Web/app rollout fallback: production clients and retained rollback builds
+  // can straddle the Clerk primary/satellite cutover for about two days.
+  // Remove the VM0-primary branch only after #27750 records that replacement
+  // builds are live, auth verification passed, and the rollback gate closed.
   return value === CUTOVER_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN
     ? CUTOVER_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN
     : CURRENT_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN;
