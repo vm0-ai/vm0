@@ -563,10 +563,19 @@ describe.sequential("Official Workflow catalog release boundary", () => {
     expect(connectorDoctorInstruction).toContain("Unknown is never healthy");
     expect(connectorDoctorInstruction).toContain("summary.checked === 0");
     expect(connectorDoctorInstruction).toContain(
+      "no effective visible workflows were available to check",
+    );
+    expect(connectorDoctorInstruction).toContain(
       "not an all-clear over diagnosed workflows",
     );
     expect(connectorDoctorInstruction).toContain(
       "summary.attention === 0`, and `summary.unknown === 0",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "aggregate covered effective visible workflows",
+    );
+    expect(connectorDoctorInstruction).toContain(
+      "compact inventory of every checked entry in `workflows`, grouped by its returned Agent identity",
     );
     expect(connectorDoctorInstruction).toContain(
       "command fails, its output is not valid JSON, or its schema version is unsupported",
