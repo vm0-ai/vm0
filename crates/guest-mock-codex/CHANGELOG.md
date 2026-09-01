@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.10.1](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.10.0...guest-mock-codex-v0.10.1) (2026-09-01)
+
 ## [0.10.0](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.9.20...guest-mock-codex-v0.10.0) (2026-08-31)
 
 

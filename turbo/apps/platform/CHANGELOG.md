@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.815.2](https://github.com/vm0-ai/vm0/compare/app-v0.815.1...app-v0.815.2) (2026-09-01)
+
+
+### Bug Fixes
+
+* **email:** link official workflow result footer to automation ([#30591](https://github.com/vm0-ai/vm0/issues/30591)) ([0e556c4](https://github.com/vm0-ai/vm0/commit/0e556c4e81749a8e4718f4ccbe1a2f151068c9f5))
+* **platform:** restore smooth conversation locator jumps ([#30657](https://github.com/vm0-ai/vm0/issues/30657)) ([bc2c5d7](https://github.com/vm0-ai/vm0/commit/bc2c5d72c0cb0a130bb9cf1dfbe5067d7a41a004))
+
 ## [0.815.1](https://github.com/vm0-ai/vm0/compare/app-v0.815.0...app-v0.815.1) (2026-09-01)
 
 

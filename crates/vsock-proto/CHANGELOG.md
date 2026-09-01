@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.44](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.43...vsock-proto-v0.18.44) (2026-09-01)
+
+
+### Performance Improvements
+
+* **runner:** launch reuse identity verifier without shell ([#30644](https://github.com/vm0-ai/vm0/issues/30644)) ([3ea790e](https://github.com/vm0-ai/vm0/commit/3ea790e5a8bca85854debfe537a89a66c4520445))
+
 ## [0.18.43](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.42...vsock-proto-v0.18.43) (2026-08-31)
 
 

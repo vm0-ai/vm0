@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.182.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.2...runner-rs-v0.182.3) (2026-09-01)
+
+
+### Performance Improvements
+
+* **runner:** launch reuse identity verifier without shell ([#30644](https://github.com/vm0-ai/vm0/issues/30644)) ([3ea790e](https://github.com/vm0-ai/vm0/commit/3ea790e5a8bca85854debfe537a89a66c4520445))
+
 ## [0.182.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.1...runner-rs-v0.182.2) (2026-09-01)
 
 

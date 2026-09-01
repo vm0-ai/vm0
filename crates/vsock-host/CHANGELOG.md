@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.117](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.116...vsock-host-v0.17.117) (2026-09-01)
+
+
+### Performance Improvements
+
+* **runner:** launch reuse identity verifier without shell ([#30644](https://github.com/vm0-ai/vm0/issues/30644)) ([3ea790e](https://github.com/vm0-ai/vm0/commit/3ea790e5a8bca85854debfe537a89a66c4520445))
+
 ## [0.17.116](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.115...vsock-host-v0.17.116) (2026-08-31)
 
 ## [0.17.115](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.114...vsock-host-v0.17.115) (2026-08-31)
