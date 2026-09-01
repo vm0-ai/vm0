@@ -1009,7 +1009,7 @@ mod tests {
 
     #[test]
     fn heartbeat_admittable_profiles_match_current_budget() {
-        let budget = Arc::new(ResourceBudget::new(4, 8192, 1.0, 2));
+        let budget = Arc::new(ResourceBudget::new(5, 8192, 1.0, 2));
         let _lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
         let mut profiles = test_profiles();
         profiles.insert(

@@ -327,7 +327,7 @@ async fn smaller_fresh_profile_releases_only_net_idle_capacity() {
     overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
     overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
     let (config, env) =
-        mock_run_config_with_overrides(two_profiles(), 4, 8192, 2, Arc::clone(&overrides));
+        mock_run_config_with_overrides(two_profiles(), 5, 8192, 2, Arc::clone(&overrides));
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
     seed_idle_pool_with_overrides(
@@ -378,7 +378,7 @@ async fn smaller_fresh_profile_releases_only_net_idle_capacity() {
 
 #[tokio::test(start_paused = true)]
 async fn budget_pressure_evicts_oldest_idle_regardless_of_age() {
-    let (config, env) = mock_run_config(two_profiles(), 6, 12288, 3);
+    let (config, env) = mock_run_config(two_profiles(), 7, 12288, 3);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
     let status_path = env._temp_dir.path().join("status.json");
@@ -449,7 +449,7 @@ async fn budget_pressure_evicts_oldest_idle_regardless_of_age() {
 
 #[tokio::test(start_paused = true)]
 async fn larger_profile_retires_only_the_required_oldest_idle_entries() {
-    let (config, env) = mock_run_config(two_profiles(), 6, 12288, 4);
+    let (config, env) = mock_run_config(two_profiles(), 7, 12288, 4);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
     let status_path = env._temp_dir.path().join("status.json");

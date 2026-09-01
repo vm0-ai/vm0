@@ -1118,7 +1118,7 @@ async fn closed_parking_gate_destroys_lost_speculation_after_repark() {
 
 #[tokio::test]
 async fn duplicate_repark_keeps_newer_idle_sandbox_and_destroys_speculation() {
-    let (config, env) = mock_run_config(test_profiles(), 4, 8192, 2);
+    let (config, env) = mock_run_config(test_profiles(), 5, 8192, 2);
     let budget = Arc::clone(&config.capacity.budget);
     let original_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     add_healthy_reuse_preparation_matcher(&original_overrides);

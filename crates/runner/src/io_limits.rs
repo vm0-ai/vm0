@@ -454,7 +454,7 @@ mod tests {
         };
         assert!(reason.contains(host_env::RUNNER_DISK_IOPS_ENV));
         assert!(reason.contains("too small"));
-        assert!(reason.contains("denominator: 64"));
+        assert!(reason.contains("denominator: 63"));
     }
 
     #[test]
@@ -549,11 +549,11 @@ mod tests {
         else {
             panic!("expected configured resolution");
         };
-        assert_eq!(denominator, 4);
-        assert_eq!(limits.block.bandwidth_bytes_per_sec, 400 * 1024 * 1024);
-        assert_eq!(limits.block.ops_per_sec, 40_000);
-        assert_eq!(limits.network.rx_bytes_per_sec, 250 * 1024 * 1024);
-        assert_eq!(limits.network.tx_bytes_per_sec, 200 * 1024 * 1024);
+        assert_eq!(denominator, 3);
+        assert_eq!(limits.block.bandwidth_bytes_per_sec, 559_240_533);
+        assert_eq!(limits.block.ops_per_sec, 53_333);
+        assert_eq!(limits.network.rx_bytes_per_sec, 349_525_333);
+        assert_eq!(limits.network.tx_bytes_per_sec, 279_620_266);
     }
 
     #[test]
@@ -566,7 +566,7 @@ mod tests {
         let IoLimitResolution::Configured { denominator, .. } = resolution else {
             panic!("expected configured resolution");
         };
-        assert_eq!(denominator, 6);
+        assert_eq!(denominator, 5);
     }
 
     #[test]
@@ -579,7 +579,7 @@ mod tests {
         let IoLimitResolution::Configured { denominator, .. } = resolution else {
             panic!("expected configured resolution");
         };
-        assert_eq!(denominator, 8);
+        assert_eq!(denominator, 7);
     }
 
     #[test]
@@ -605,7 +605,7 @@ mod tests {
         let IoLimitResolution::Configured { denominator, .. } = resolution else {
             panic!("expected configured resolution");
         };
-        assert_eq!(denominator, 10_000);
+        assert_eq!(denominator, 9_974);
     }
 
     #[test]
@@ -626,7 +626,7 @@ mod tests {
         let IoLimitResolution::Configured { denominator, .. } = resolution else {
             panic!("expected configured resolution");
         };
-        assert_eq!(denominator, 500);
+        assert_eq!(denominator, 498);
     }
 
     #[test]
