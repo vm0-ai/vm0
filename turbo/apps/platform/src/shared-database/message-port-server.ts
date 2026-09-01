@@ -43,6 +43,7 @@ type RoutedMessage = Exclude<
 >;
 
 const L = logger("SharedDatabaseWorker");
+const BridgeL = logger("SharedWorkerBridge");
 
 function serializedError(error: unknown): { name: string; message: string } {
   if (error instanceof Error || error instanceof DOMException) {
@@ -145,6 +146,7 @@ export class SharedDatabaseMessagePortServer {
 
   private emit(message: SharedDatabaseWorkerMessage): void {
     if (!this.disconnected) {
+      BridgeL.debug("send message to app", this.connectionId, message);
       this.port.postMessage(message);
     }
   }
@@ -383,6 +385,7 @@ export class SharedDatabaseMessagePortServer {
         return;
       }
       const message = parsed.data;
+      BridgeL.debug("got message from app", this.connectionId, message);
       if (message.type === "disconnect") {
         this.disconnect("client-request");
         return;

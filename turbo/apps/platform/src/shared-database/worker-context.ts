@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 
 import { now } from "../lib/time.ts";
+import { logger } from "../signals/log.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
 import type { AuthRecovery } from "../signals/auth-retry.ts";
 import { createDeferredPromise, withCleanup } from "../signals/utils.ts";
@@ -10,6 +11,8 @@ import type {
   SharedDatabaseConnectionStatus,
   SharedDatabaseWorkerMessage,
 } from "./protocol.ts";
+
+const L = logger("SharedWorkerBridge");
 
 export type ConnectionId = string;
 
@@ -159,7 +162,8 @@ export const updateWorkerCredentialIdentity$ = command(
 
 export const broadcastSharedDatabaseWorkerMessage$ = command(
   ({ get }, message: WorkerBroadcastMessage): void => {
-    for (const port of get(connectionPortsState$).values()) {
+    for (const [connectionId, port] of get(connectionPortsState$)) {
+      L.debug("send message to app", connectionId, message);
       port.postMessage(message);
     }
   },
