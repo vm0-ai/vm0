@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
+use guest_contracts::env::sanitize_env_key_for_diagnostic;
+
 use super::super::env::is_runner_owned_env_key;
-use super::super::{
-    AGENT_ENV_KEY_DIAGNOSTIC_LIMIT, AGENT_ENV_KEY_MAX_CHARS, BOOTSTRAP_SENSITIVE_ENV_KEYS,
-};
+use super::super::{AGENT_ENV_KEY_DIAGNOSTIC_LIMIT, BOOTSTRAP_SENSITIVE_ENV_KEYS};
 
 const AGENT_ENV_VALUE_SIZE_DIAGNOSTIC_LIMIT: usize = 5;
 
@@ -111,19 +111,4 @@ pub(in crate::executor) fn build_agent_env_key_diagnostics(
         logged_keys,
         omitted_key_count,
     }
-}
-
-fn sanitize_env_key_for_diagnostic(key: &str) -> String {
-    let mut chars = key.escape_debug();
-    let mut truncated = String::new();
-    for _ in 0..AGENT_ENV_KEY_MAX_CHARS {
-        let Some(ch) = chars.next() else {
-            return truncated;
-        };
-        truncated.push(ch);
-    }
-    if chars.next().is_some() {
-        truncated.push_str("...");
-    }
-    truncated
 }

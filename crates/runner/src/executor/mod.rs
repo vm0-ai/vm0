@@ -119,7 +119,6 @@ const EXIT_SIGNAL_KILL: i32 = 9;
 const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 const AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT: Duration = Duration::from_secs(5);
 const AGENT_ENV_KEY_DIAGNOSTIC_LIMIT: usize = 128;
-const AGENT_ENV_KEY_MAX_CHARS: usize = 128;
 const SMALL_GUEST_FILE_MAX_BYTES: u64 = 64 * 1024;
 const GUEST_LOG_COPY_MAX_BYTES: u64 = 64 * 1024 * 1024;
 const STDOUT_STREAM_LIMIT_MARKER: &[u8] =

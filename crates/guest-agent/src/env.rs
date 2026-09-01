@@ -796,13 +796,13 @@ fn validate_user_env(user_env: &HashMap<String, String>) -> Result<(), String> {
         if !guest_contracts::env::is_shell_identifier_env_key(key) {
             return Err(format!(
                 "{USER_ENV_FILE_ENV_KEY} contains invalid env key {:?}",
-                guest_contracts::env::sanitize_user_env_key_for_diagnostic(key)
+                guest_contracts::env::sanitize_env_key_for_diagnostic(key)
             ));
         }
         if value.contains('\0') {
             return Err(format!(
                 "{USER_ENV_FILE_ENV_KEY} contains NUL byte for env key {:?}",
-                guest_contracts::env::sanitize_user_env_key_for_diagnostic(key)
+                guest_contracts::env::sanitize_env_key_for_diagnostic(key)
             ));
         }
     }
