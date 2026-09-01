@@ -1217,7 +1217,17 @@ async function loadGoogleMeetConnectorInventory(
         and(
           eq(workflowAutomations.orgId, args.orgId),
           eq(workflowAutomations.ownerUserId, args.userId),
-          eq(workflowAutomations.enabled, true),
+          or(
+            eq(workflowAutomations.enabled, true),
+            and(
+              eq(workflowAutomations.enabled, false),
+              eq(
+                workflowAutomations.officialReconciliationStatus,
+                "reconciling",
+              ),
+              isNotNull(workflowAutomations.officialBlueprintKey),
+            ),
+          ),
           eq(workflowAutomations.kind, "event"),
           eq(
             workflowAutomations.eventType,
@@ -1279,7 +1289,7 @@ async function reconcileGoogleMeetSubscriptionInventory(
   for (const connectorId of connectorIds) {
     results.push(
       await reconcileGoogleMeetSubscriptionLifecycle(
-        { ...args, connectorId },
+        { ...args, connectorId, allowStagedOfficialTarget: true },
         signal,
       ),
     );

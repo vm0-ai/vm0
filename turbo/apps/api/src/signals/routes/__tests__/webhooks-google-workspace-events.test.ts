@@ -33,6 +33,7 @@ import {
   holdOrgAdmissionLock,
   readOrgAdmissionLockState,
   releaseOrgAdmissionLock,
+  stageOfficialWorkflowAutomationFixture,
 } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
 import { chatThreadRoutes } from "../chat-threads";
@@ -861,6 +862,38 @@ describe("Google Workspace Events subscription lifecycle", () => {
     );
     expect(fixture.provider.accounts.primary.deletedUrls).toHaveLength(2);
     expect(fixture.provider.accounts.secondary.createdNames).toHaveLength(2);
+  });
+
+  it("retains staged official subscriptions across default account changes", async () => {
+    const fixture = await setupFixture();
+    const staged = await createMeetAutomation(fixture, false);
+    await stageOfficialWorkflowAutomationFixture(
+      context,
+      staged.body.id,
+      "meet-transcript",
+    );
+    expect(fixture.provider.createdNames).toStrictEqual([]);
+
+    const secondaryConnectorId = await connectGoogleMeet(
+      fixture.actor,
+      fixture.provider,
+      "secondary",
+      fixture.agentId,
+      { intent: "add", displayName: "Secondary Google Meet" },
+    );
+    expect(fixture.provider.accounts.primary.createdNames).toHaveLength(1);
+    expect(fixture.provider.accounts.secondary.createdNames).toStrictEqual([]);
+
+    await accept(
+      connectorAccountsClient().setDefault({
+        headers: authHeaders(fixture.actor),
+        params: { connectionId: secondaryConnectorId },
+        body: { target: { kind: "builtin", connectorSlug: "google-meet" } },
+      }),
+      [200],
+    );
+    expect(fixture.provider.accounts.primary.deletedUrls).toHaveLength(1);
+    expect(fixture.provider.accounts.secondary.createdNames).toHaveLength(1);
   });
 
   it("supersedes an old source that changes before queue admission", async () => {
