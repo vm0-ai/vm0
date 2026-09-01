@@ -253,7 +253,7 @@ function configureGoogleFormsCreationMock(args?: {
       "https://forms.googleapis.com/v1/forms/:formId/responses",
       ({ request }) => {
         const url = new URL(request.url);
-        expect(url.searchParams.get("pageSize")).toBe("1");
+        expect(url.searchParams.get("pageSize")).toBeNull();
         expect(url.searchParams.get("fields")).toBe(
           "responses(responseId,createTime,lastSubmittedTime,respondentEmail),nextPageToken",
         );

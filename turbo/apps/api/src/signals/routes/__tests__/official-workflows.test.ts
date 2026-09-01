@@ -334,7 +334,7 @@ function configureOfficialGoogleFormsMock() {
       "https://forms.googleapis.com/v1/forms/:formId/responses",
       ({ request, params }) => {
         expect(params.formId).toBe(GOOGLE_FORM_ID);
-        expect(new URL(request.url).searchParams.get("pageSize")).toBe("1");
+        expect(new URL(request.url).searchParams.get("pageSize")).toBeNull();
         return HttpResponse.json({
           responses: [
             {

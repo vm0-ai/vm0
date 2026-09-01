@@ -428,23 +428,37 @@ async function newestGoogleFormResponseTime(
   },
   signal: AbortSignal,
 ): Promise<GoogleFormsFetchResult<string>> {
-  const result = await googleFormsFetchJson(
-    {
-      schema: googleFormResponsesSchema,
-      accessToken: args.accessToken,
-      url: responsesListUrl({ formId: args.formId, pageSize: 1 }),
-      init: { method: "GET" },
-    },
-    signal,
-  );
-  if (result.kind !== "ok") {
-    return result;
-  }
-  return {
-    kind: "ok",
-    value:
-      result.value.responses?.[0]?.lastSubmittedTime ?? nowDate().toISOString(),
-  };
+  let pageToken: string | undefined;
+  let newest: string | undefined;
+  do {
+    const page = await googleFormsFetchJson(
+      {
+        schema: googleFormResponsesSchema,
+        accessToken: args.accessToken,
+        url: responsesListUrl({
+          formId: args.formId,
+          ...(pageToken === undefined ? {} : { pageToken }),
+        }),
+        init: { method: "GET" },
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (page.kind !== "ok") {
+      return page;
+    }
+    for (const response of page.value.responses ?? []) {
+      if (
+        newest === undefined ||
+        googleFormsTimestampMicros(response.lastSubmittedTime) >
+          googleFormsTimestampMicros(newest)
+      ) {
+        newest = response.lastSubmittedTime;
+      }
+    }
+    pageToken = page.value.nextPageToken;
+  } while (pageToken !== undefined);
+  return { kind: "ok", value: newest ?? nowDate().toISOString() };
 }
 
 function formIsNotAcceptingResponses(

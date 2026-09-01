@@ -171,15 +171,36 @@ function configureFormsApi(
         recorder.responseFields.push(fields);
         const filter = url.searchParams.get("filter");
         if (filter === null) {
-          if (url.searchParams.get("pageSize") !== "1") {
-            throw new Error("Expected a one-response cursor seed request");
+          if (url.searchParams.has("pageSize")) {
+            throw new Error("Expected an unbounded cursor seed request");
+          }
+          const pageToken = url.searchParams.get("pageToken");
+          if (pageToken === null) {
+            return HttpResponse.json({
+              responses: [
+                {
+                  responseId: "older-seed-response",
+                  createTime: "2026-08-05T09:15:00.123456Z",
+                  lastSubmittedTime: "2026-08-05T09:15:00.123456Z",
+                },
+                {
+                  responseId: "newest-seed-response",
+                  createTime: SEED_CURSOR,
+                  lastSubmittedTime: SEED_CURSOR,
+                },
+              ],
+              nextPageToken: "older-cursor-page",
+            });
+          }
+          if (pageToken !== "older-cursor-page") {
+            throw new Error(`Unexpected cursor seed page: ${pageToken}`);
           }
           return HttpResponse.json({
             responses: [
               {
-                responseId: "seed-response",
-                createTime: SEED_CURSOR,
-                lastSubmittedTime: SEED_CURSOR,
+                responseId: "oldest-seed-response",
+                createTime: "2026-08-05T09:00:00.123456Z",
+                lastSubmittedTime: "2026-08-05T09:00:00.123456Z",
               },
             ],
           });
