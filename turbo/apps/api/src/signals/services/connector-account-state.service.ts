@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import type { Tx } from "../../lib/db-types";
 import { nowDate } from "../../lib/time";
 import { invalidateGmailAutomationResolvedLabelIds } from "./gmail-automation-account.service";
+import { invalidateNotionPendingEventsForConnector } from "./notion-automation-account.service";
 
 /**
  * Reconciles account-bound state while keeping the logical connector row and
@@ -36,6 +37,8 @@ export async function reconcileConnectorAccountState(
   }
 
   await invalidateGmailAutomationResolvedLabelIds(db, args.connectorId);
+  signal.throwIfAborted();
+  await invalidateNotionPendingEventsForConnector(db, args.connectorId);
   signal.throwIfAborted();
   await db
     .delete(gmailWatchStates)

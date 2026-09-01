@@ -14,6 +14,7 @@ import { server } from "../../../mocks/server";
 import { resetNotionWebhookVerification } from "../../../test-fixtures/workflow-notion";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import {
   createWorkflowsBddApi,
   mockNotionConnectorOAuth,
@@ -39,6 +40,7 @@ const context = testContext();
 const mocks = createRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 const runsApi = createRunsApi(context);
+const connectorsApi = createConnectorBddApi(context);
 const WORKFLOW_NAME = "notion-webhook-workflow";
 const NOTION_WEBHOOK_TOKEN = "notion-webhook-verification-token";
 const NOTION_WORKSPACE_ID = "33333333-3333-4333-8333-333333333333";
@@ -119,14 +121,16 @@ async function enableNotionWorkflowAutomations(
   });
 }
 
-function configureNotionParentPageMock(entities: NotionEntities): void {
+function configureNotionParentPageMock(
+  entities: NotionEntities,
+  accessToken = "notion-access-token",
+): void {
   server.use(
     http.get(
-      "https://api.notion.com/v1/pages/:pageId",
-      ({ request, params }) => {
-        expect(params.pageId).toBe(entities.parentPageId);
+      `https://api.notion.com/v1/pages/${entities.parentPageId}`,
+      ({ request }) => {
         expect(request.headers.get("authorization")).toBe(
-          "Bearer notion-access-token",
+          `Bearer ${accessToken}`,
         );
         expect(request.headers.get("notion-version")).toBe("2026-03-11");
         return HttpResponse.json({
@@ -161,6 +165,7 @@ function configureNotionChildPageMock(
         readonly database_id?: string;
       },
   options: {
+    readonly accessToken?: string;
     readonly title?: string;
     readonly lastEditedTime?: string;
     readonly extraProperties?: Record<string, unknown>;
@@ -173,11 +178,10 @@ function configureNotionChildPageMock(
   };
   server.use(
     http.get(
-      "https://api.notion.com/v1/pages/:pageId",
-      ({ request, params }) => {
-        expect(params.pageId).toBe(entities.childPageId);
+      `https://api.notion.com/v1/pages/${entities.childPageId}`,
+      ({ request }) => {
         expect(request.headers.get("authorization")).toBe(
-          "Bearer notion-access-token",
+          `Bearer ${options.accessToken ?? "notion-access-token"}`,
         );
         expect(request.headers.get("notion-version")).toBe("2026-03-11");
         return HttpResponse.json({
@@ -409,6 +413,7 @@ describe("POST /api/webhooks/notion", () => {
   async function setupFixture(): Promise<{
     readonly fixture: WorkflowsFixture;
     readonly actor: ApiTestUser;
+    readonly agentId: string;
     readonly workflowId: string;
     readonly entities: NotionEntities;
   }> {
@@ -426,7 +431,13 @@ describe("POST /api/webhooks/notion", () => {
     const fixture = { orgId: actor.orgId, userId: actor.userId };
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     context.mocks.s3.send.mockResolvedValue({});
-    return { fixture, actor, workflowId, entities: newNotionEntities() };
+    return {
+      fixture,
+      actor,
+      agentId: agent.agentId,
+      workflowId,
+      entities: newNotionEntities(),
+    };
   }
 
   async function connectNotion(scenario: {
@@ -1209,5 +1220,190 @@ describe("POST /api/webhooks/notion", () => {
         duplicates: 0,
       },
     });
+  });
+
+  it("follows the workflow thread Notion account and skips stale pending events", async () => {
+    const runnerGroup = runsApi.configureRunnerGroup();
+    const scenario = await setupFixture();
+    const { actor, agentId, fixture, workflowId, entities } = scenario;
+    await enableNotionWorkflowAutomations(fixture);
+    await connectNotion(scenario);
+    const [firstAccount] = await connectorsApi.listBuiltinConnectorAccounts(
+      actor,
+      "notion",
+    );
+    if (!firstAccount) {
+      throw new Error("Expected the default Notion account");
+    }
+
+    mockNotionConnectorOAuth({
+      accessToken: "notion-second-access-token",
+      ownerId: "notion-user-2",
+      ownerName: "Second Notion User",
+    });
+    const oauth = await connectorsApi.startOauth(
+      actor,
+      "notion",
+      "oauth",
+      agentId,
+      { intent: "add", displayName: "Second Notion" },
+    );
+    const state = new URL(oauth.authorizationUrl).searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected the Notion OAuth start URL to include state");
+    }
+    await connectorsApi.completeOauthCallback("notion", {
+      code: "notion-code",
+      state,
+    });
+    const accounts = await connectorsApi.listBuiltinConnectorAccounts(
+      actor,
+      "notion",
+    );
+    const secondAccount = accounts.find((account) => {
+      return account.externalId === "notion-user-2";
+    });
+    if (!secondAccount) {
+      throw new Error("Expected the second Notion account");
+    }
+
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    configureNotionParentPageMock(entities);
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "notion-child-page-created",
+          eventConfig: {
+            provider: "notion",
+            event: "child_page_created",
+            parentPageUrl: entities.parentPageUrl,
+          },
+        },
+      }),
+      [201],
+    );
+    if (
+      created.body.kind !== "event" ||
+      created.body.eventType !== "notion-child-page-created" ||
+      !created.body.chatThreadId
+    ) {
+      throw new Error("Expected a thread-bound Notion automation");
+    }
+    expect(created.body.eventConfig.connectorId).toBe(firstAccount.id);
+
+    await verifyNotionWebhook();
+    const staleEvent = notionPageEvent({
+      entities,
+      type: "page.created",
+      timestamp: "2026-07-06T12:00:00.000Z",
+    });
+    await expect(
+      postNotionWebhook({
+        rawBody: staleEvent.rawBody,
+        signature: notionSignature(staleEvent.rawBody),
+      }),
+    ).resolves.toMatchObject({ body: { pending: 1 } });
+
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(),
+        params: { id: created.body.chatThreadId },
+        body: {
+          connectionId: secondAccount.id,
+          target: { kind: "builtin", connectorSlug: "notion" },
+        },
+      }),
+      [200],
+    );
+    const reprojected = await wf.readAutomation(created.body.id);
+    if (
+      reprojected.kind !== "event" ||
+      reprojected.eventType !== "notion-child-page-created"
+    ) {
+      throw new Error("Expected the reprojected Notion automation");
+    }
+    expect(reprojected.eventConfig).toMatchObject({
+      connectorId: secondAccount.id,
+    });
+
+    const selectedEntities = newNotionEntities();
+    configureNotionParentPageMock(
+      selectedEntities,
+      "notion-second-access-token",
+    );
+    const selectedCreation = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "notion-child-page-created",
+          eventConfig: {
+            provider: "notion",
+            event: "child_page_created",
+            parentPageUrl: selectedEntities.parentPageUrl,
+          },
+          enabled: false,
+        },
+      }),
+      [201],
+    );
+    if (
+      selectedCreation.body.kind !== "event" ||
+      selectedCreation.body.eventType !== "notion-child-page-created"
+    ) {
+      throw new Error("Expected the selected-account Notion automation");
+    }
+    expect(selectedCreation.body.eventConfig).toMatchObject({
+      connectorId: secondAccount.id,
+    });
+
+    mockNow(new Date("2026-07-06T12:20:00.000Z"));
+    const staleExecution = await executeDueWorkflowAutomations(created.body.id);
+    expect(staleExecution.body).toStrictEqual({
+      success: true,
+      executed: 0,
+      skipped: 0,
+    });
+
+    const currentEvent = notionPageEvent({
+      entities,
+      type: "page.created",
+      timestamp: "2026-07-06T12:21:00.000Z",
+    });
+    await expect(
+      postNotionWebhook({
+        rawBody: currentEvent.rawBody,
+        signature: notionSignature(currentEvent.rawBody),
+      }),
+    ).resolves.toMatchObject({ body: { pending: 1 } });
+    configureNotionChildPageMock(entities, undefined, {
+      accessToken: "notion-second-access-token",
+    });
+    mockNow(new Date("2026-07-06T12:40:00.000Z"));
+    const currentExecution = await executeDueWorkflowAutomations(
+      created.body.id,
+    );
+    expect(currentExecution.body).toStrictEqual({
+      success: true,
+      executed: 1,
+      skipped: 0,
+    });
+
+    const messages = await wf.readThreadEvents(created.body.chatThreadId);
+    const workflowMessage = messages.find((message) => {
+      return message.eventType === "input.prompt";
+    });
+    if (!workflowMessage?.runId) {
+      throw new Error("Expected the current Notion account event to run");
+    }
+    await runsApi.heartbeatRunner(runnerGroup);
+    const claim = await runsApi.claimRunnerJob(workflowMessage.runId);
+    expect(
+      Object.values(claim.secretConnectorMetadataMap ?? {}),
+    ).toContainEqual(expect.objectContaining({ sourceId: secondAccount.id }));
   });
 });
