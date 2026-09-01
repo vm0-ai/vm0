@@ -491,7 +491,7 @@ const EXPLICIT_RUNNER_OWNED_ENV_KEYS: &[&str] = &[
     VERCEL_PROTECTION_BYPASS_ENV,
 ];
 
-const USER_ENV_KEY_DIAGNOSTIC_MAX_CHARS: usize = 128;
+const ENV_KEY_DIAGNOSTIC_MAX_CHARS: usize = 128;
 
 /// Returns whether `key` is supported by vm0 guest shell exec env injection.
 ///
@@ -538,7 +538,7 @@ pub fn is_runner_owned_env_key(key: &str) -> bool {
 pub fn sanitize_env_key_for_diagnostic(key: &str) -> String {
     let mut chars = key.escape_debug();
     let mut truncated = String::new();
-    for _ in 0..USER_ENV_KEY_DIAGNOSTIC_MAX_CHARS {
+    for _ in 0..ENV_KEY_DIAGNOSTIC_MAX_CHARS {
         let Some(ch) = chars.next() else {
             return truncated;
         };
