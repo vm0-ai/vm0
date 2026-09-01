@@ -8,7 +8,7 @@ export interface OverlayDisplayBounds {
 }
 
 /** Size of the floating recorder bar, in points. */
-export const RECORDER_BAR_SIZE = Object.freeze({ width: 620, height: 96 });
+export const RECORDER_BAR_SIZE = Object.freeze({ width: 760, height: 116 });
 
 /** Gap between the bar and the bottom edge of the screen, in points. */
 const RECORDER_BAR_BOTTOM_MARGIN = 72;
