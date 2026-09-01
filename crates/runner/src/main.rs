@@ -313,54 +313,19 @@ mod tests {
         "tests::runner_api_url_environment_normalization_child";
     const API_URL_ENV: &str = "OKOU_API_BACKEND_URL";
     const TOKEN_ENV: &str = "OKOU_RUNNER_TOKEN";
-    const LEGACY_API_URL_ENV: &str = "VM0_API_BACKEND_URL";
-    const LEGACY_TOKEN_ENV: &str = "VM0_RUNNER_TOKEN";
     const CANONICAL_TOKEN_SENTINEL: &str = "  canonical-sentinel-runner-token  ";
-    const LEGACY_TOKEN_SENTINEL: &str = "  legacy-sentinel-runner-token  ";
     const FLAG_TOKEN_SENTINEL: &str = "  flag-sentinel-runner-token  ";
     const CANONICAL_API_URL_SENTINEL: &str =
         "https://canonical-api-url-sentinel.example.test/canonical/";
-    const LEGACY_API_URL_SENTINEL: &str = "https://legacy-api-url-sentinel.example.test/legacy/";
     const FLAG_API_URL_SENTINEL: &str = "https://flag-api-url-sentinel.example.test/flag/";
 
     fn operator_child_env(case: &str) -> Vec<(&'static str, Option<&'static str>)> {
         match case {
-            "canonical" => vec![
+            "canonical" | "flags-with-canonical" => vec![
                 (API_URL_ENV, Some(CANONICAL_API_URL_SENTINEL)),
                 (TOKEN_ENV, Some(CANONICAL_TOKEN_SENTINEL)),
-                (LEGACY_API_URL_ENV, None),
-                (LEGACY_TOKEN_ENV, None),
             ],
-            "canonical-with-legacy" | "flags-with-canonical-and-legacy" => vec![
-                (API_URL_ENV, Some(CANONICAL_API_URL_SENTINEL)),
-                (TOKEN_ENV, Some(CANONICAL_TOKEN_SENTINEL)),
-                (LEGACY_API_URL_ENV, Some(LEGACY_API_URL_SENTINEL)),
-                (LEGACY_TOKEN_ENV, Some(LEGACY_TOKEN_SENTINEL)),
-            ],
-            "legacy-only" | "flags-with-legacy" => vec![
-                (API_URL_ENV, None),
-                (TOKEN_ENV, None),
-                (LEGACY_API_URL_ENV, Some(LEGACY_API_URL_SENTINEL)),
-                (LEGACY_TOKEN_ENV, Some(LEGACY_TOKEN_SENTINEL)),
-            ],
-            "legacy-api-only" => vec![
-                (API_URL_ENV, None),
-                (TOKEN_ENV, Some(CANONICAL_TOKEN_SENTINEL)),
-                (LEGACY_API_URL_ENV, Some(LEGACY_API_URL_SENTINEL)),
-                (LEGACY_TOKEN_ENV, None),
-            ],
-            "legacy-token-only" => vec![
-                (API_URL_ENV, Some(CANONICAL_API_URL_SENTINEL)),
-                (TOKEN_ENV, None),
-                (LEGACY_API_URL_ENV, None),
-                (LEGACY_TOKEN_ENV, Some(LEGACY_TOKEN_SENTINEL)),
-            ],
-            "none" => vec![
-                (API_URL_ENV, None),
-                (TOKEN_ENV, None),
-                (LEGACY_API_URL_ENV, None),
-                (LEGACY_TOKEN_ENV, None),
-            ],
+            "none" => vec![(API_URL_ENV, None), (TOKEN_ENV, None)],
             unexpected => panic!("unexpected Runner operator environment case: {unexpected}"),
         }
     }
@@ -371,8 +336,6 @@ mod tests {
         vec![
             (API_URL_ENV, Some(value)),
             (TOKEN_ENV, Some(CANONICAL_TOKEN_SENTINEL)),
-            (LEGACY_API_URL_ENV, Some(LEGACY_API_URL_SENTINEL)),
-            (LEGACY_TOKEN_ENV, Some(LEGACY_TOKEN_SENTINEL)),
         ]
     }
 
@@ -391,10 +354,8 @@ mod tests {
     fn assert_operator_values_hidden(output: &str) {
         for sentinel in [
             CANONICAL_API_URL_SENTINEL,
-            LEGACY_API_URL_SENTINEL,
             FLAG_API_URL_SENTINEL,
             CANONICAL_TOKEN_SENTINEL,
-            LEGACY_TOKEN_SENTINEL,
             FLAG_TOKEN_SENTINEL,
         ] {
             assert!(
@@ -520,9 +481,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn runner_help_advertises_only_canonical_operator_environment() {
+    async fn runner_help_advertises_canonical_operator_environment() {
         for subcommand in ["config", "start"] {
-            let child_env = operator_child_env("canonical-with-legacy");
+            let child_env = operator_child_env("canonical");
             run_ignored_child_test(
                 HELP_OPERATOR_ENV_CHILD_TEST,
                 (HELP_OPERATOR_ENV_CHILD_SCENARIO_ENV, subcommand),
@@ -534,7 +495,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "spawned by runner_help_advertises_only_canonical_operator_environment"]
+    #[ignore = "spawned by runner_help_advertises_canonical_operator_environment"]
     fn runner_help_hides_operator_environment_values_child() {
         let Ok(subcommand) = std::env::var(HELP_OPERATOR_ENV_CHILD_SCENARIO_ENV) else {
             return;
@@ -554,24 +515,13 @@ mod tests {
         let help = error.to_string();
         assert!(help.contains(API_URL_ENV));
         assert!(help.contains(TOKEN_ENV));
-        assert!(!help.contains(LEGACY_API_URL_ENV));
-        assert!(!help.contains(LEGACY_TOKEN_ENV));
         assert_operator_values_hidden(&help);
     }
 
     #[tokio::test]
     async fn runner_config_and_start_use_canonical_operator_sources() {
         for subcommand in ["config", "start"] {
-            for case in [
-                "canonical",
-                "canonical-with-legacy",
-                "flags-with-legacy",
-                "flags-with-canonical-and-legacy",
-                "legacy-api-only",
-                "legacy-token-only",
-                "legacy-only",
-                "none",
-            ] {
+            for case in ["canonical", "flags-with-canonical", "none"] {
                 let scenario = format!("{subcommand}:{case}");
                 let child_env = operator_child_env(case);
                 run_ignored_child_test(
@@ -602,10 +552,7 @@ mod tests {
             case.starts_with("flags-"),
         ));
 
-        let canonical_source_missing = matches!(
-            case,
-            "legacy-api-only" | "legacy-token-only" | "legacy-only" | "none"
-        );
+        let canonical_source_missing = case == "none";
         if subcommand == "config" && canonical_source_missing {
             let error = parsed
                 .err()
@@ -621,16 +568,12 @@ mod tests {
         let cli = parsed.unwrap_or_else(|error| panic!("parse runner {scenario}: {error}"));
         let actual = parsed_operator_sources(&cli);
         let expected = match case {
-            "canonical" | "canonical-with-legacy" => (
+            "canonical" => (
                 Some(CANONICAL_API_URL_SENTINEL),
                 Some(CANONICAL_TOKEN_SENTINEL),
             ),
-            "flags-with-legacy" | "flags-with-canonical-and-legacy" => {
-                (Some(FLAG_API_URL_SENTINEL), Some(FLAG_TOKEN_SENTINEL))
-            }
-            "legacy-api-only" => (None, Some(CANONICAL_TOKEN_SENTINEL)),
-            "legacy-token-only" => (Some(CANONICAL_API_URL_SENTINEL), None),
-            "legacy-only" | "none" => (None, None),
+            "flags-with-canonical" => (Some(FLAG_API_URL_SENTINEL), Some(FLAG_TOKEN_SENTINEL)),
+            "none" => (None, None),
             unexpected => panic!("unexpected Runner operator case: {unexpected}"),
         };
         assert_eq!(actual, expected, "unexpected sources for {scenario}");
