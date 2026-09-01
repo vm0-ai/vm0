@@ -1,6 +1,7 @@
 """Integration tests for trusted model-provider failure reduction."""
 
 import gzip
+import hashlib
 import json
 import threading
 import zlib
@@ -10,6 +11,7 @@ from typing import Literal
 from unittest.mock import patch
 
 import pytest
+import zstandard
 from mitmproxy import http
 from mitmproxy.connection import ConnectionState
 from mitmproxy.flow import Error
@@ -23,6 +25,7 @@ import platform_api
 import usage.anthropic_messages as anthropic_messages
 import usage.model_json as model_json
 import usage.openai_responses as openai_responses
+from body_limits import STREAM_BUFFER_LIMIT
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import jsonl_exists_after_flush, read_jsonl_entries_after_flush
 from tests.model_provider_flow_helpers import make_openai_responses_websocket_flow
@@ -1148,10 +1151,12 @@ def test_combined_sse_response_uses_one_decoder_and_one_dense_event_parse(
     ]
 
 
+@pytest.mark.parametrize("content_encoding", ["", "zstd"])
 def test_combined_json_response_uses_one_decoder_and_one_parse(
     tmp_path,
     real_flow,
     mitm_ctx,
+    content_encoding: str,
     model_provider_failure_api,
 ):
     body = (
@@ -1159,12 +1164,16 @@ def test_combined_json_response_uses_one_decoder_and_one_parse(
         b'"usage":{"input_tokens":9,"output_tokens":4},'
         b'"error":{"code":"server_error"}}'
     )
+    wire_body = zstandard.ZstdCompressor().compress(body) if content_encoding else body
+    response_headers = {"content-type": "application/json"}
+    if content_encoding:
+        response_headers["content-encoding"] = content_encoding
     flow = _make_flow(
         real_flow,
         tmp_path / "proxy.jsonl",
         request_path="/v1/responses",
-        response_body=body,
-        response_headers=header_map({"content-type": "application/json"}),
+        response_body=wire_body,
+        response_headers=header_map(response_headers),
     )
     flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
     model_provider_failure.admit_flow(flow)
@@ -1185,10 +1194,20 @@ def test_combined_json_response_uses_one_decoder_and_one_parse(
             "JsonSelectiveExtractor",
             wraps=model_provider_failure.JsonSelectiveExtractor,
         ) as create_legacy_extractor,
+        patch.object(
+            openai_responses,
+            "JsonSelectiveExtractor",
+            wraps=openai_responses.JsonSelectiveExtractor,
+        ) as create_legacy_usage_extractor,
+        patch.object(
+            body_decoding,
+            "decompress_json_usage_body",
+            wraps=body_decoding.decompress_json_usage_body,
+        ) as decompress_body,
     ):
         mitm_addon.responseheaders(flow)
         stream = response_stream(flow)
-        stream(body)
+        stream(wire_body)
         stream(b"")
         with mitm_ctx():
             mitm_addon.response(flow)
@@ -1196,6 +1215,8 @@ def test_combined_json_response_uses_one_decoder_and_one_parse(
         assert create_decoder.call_count == 1
         assert create_extractor.call_count == 1
         assert create_legacy_extractor.call_count == 0
+        assert create_legacy_usage_extractor.call_count == 0
+        assert decompress_body.call_count == (1 if content_encoding else 0)
 
     assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {
         "message_id": "resp-json",
@@ -1206,6 +1227,76 @@ def test_combined_json_response_uses_one_decoder_and_one_parse(
     assert _reported_payloads(model_provider_failure_api) == [
         {"failureKind": "provider_unavailable"}
     ]
+
+
+def test_failure_only_zstd_json_response_uses_bounded_buffer(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
+    body = b'{"type":"response.failed","error":{"code":"server_error"}}'
+    wire_body = zstandard.ZstdCompressor().compress(body)
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        request_path="/v1/responses",
+        response_body=wire_body,
+        response_headers=header_map(
+            {"content-type": "application/json", "content-encoding": "zstd"}
+        ),
+    )
+    model_provider_failure.admit_flow(flow)
+
+    mitm_addon.responseheaders(flow)
+
+    assert metadata_keys.MODEL_USAGE_PROVIDER not in flow.metadata
+    assert metadata_keys.STREAM_BUFFER in flow.metadata
+    stream = response_stream(flow)
+    stream(wire_body)
+    stream(b"")
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+    assert _reported_payloads(model_provider_failure_api) == [
+        {"failureKind": "provider_unavailable"}
+    ]
+
+
+def test_truncated_zstd_json_buffer_does_not_report_failure(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
+    padding = hashlib.shake_256(b"vm0-zstd-failure-buffer").hexdigest(STREAM_BUFFER_LIMIT * 2)
+    body = (
+        b'{"type":"response.failed","error":{"code":"server_error"},"padding":"'
+        + padding.encode()
+        + b'"}'
+    )
+    wire_body = zstandard.ZstdCompressor().compress(body)
+    assert len(wire_body) > STREAM_BUFFER_LIMIT
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        request_path="/v1/responses",
+        response_body=wire_body,
+        response_headers=header_map(
+            {"content-type": "application/json", "content-encoding": "zstd"}
+        ),
+    )
+    model_provider_failure.admit_flow(flow)
+
+    mitm_addon.responseheaders(flow)
+    stream = response_stream(flow)
+    stream(wire_body)
+    assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
+    stream(b"")
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+    assert _reported_payloads(model_provider_failure_api) == []
 
 
 def test_combined_sse_known_ordinary_deltas_skip_full_json_parse(

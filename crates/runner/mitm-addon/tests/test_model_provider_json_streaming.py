@@ -396,7 +396,7 @@ class TestModelProviderJsonStreaming:
         )
 
         mitm_addon.responseheaders(flow)
-        assert "model_json_usage_finish" not in flow.metadata
+        assert "model_json_usage_finish" in flow.metadata
         response_stream(flow)(compressed)
         assert metadata_keys.STREAM_BUFFER in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE in flow.metadata
@@ -441,7 +441,7 @@ class TestModelProviderJsonStreaming:
         )
 
         mitm_addon.responseheaders(flow)
-        assert "model_json_usage_finish" not in flow.metadata
+        assert "model_json_usage_finish" in flow.metadata
         response_stream(flow)(compressed)
         assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
         assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
