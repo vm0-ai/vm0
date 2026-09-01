@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.821.1](https://github.com/vm0-ai/vm0/compare/app-v0.821.0...app-v0.821.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **platform:** open chat file cards in preview dialog ([#30889](https://github.com/vm0-ai/vm0/issues/30889)) ([4d9b0aa](https://github.com/vm0-ai/vm0/commit/4d9b0aa53a9d9032bef3f66a6e17457854780424))
+
 ## [0.821.0](https://github.com/vm0-ai/vm0/compare/app-v0.820.1...app-v0.821.0) (2026-09-01)
 
 
