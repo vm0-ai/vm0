@@ -3842,7 +3842,12 @@ function preserveGoogleFormsCursorForSameTarget(
   ) {
     return result;
   }
-  return preparedOfficialEvent(result.preparation.eventConfig);
+  const eventConnectorId = result.preparation.eventConnectorId;
+  return eventConnectorId === undefined
+    ? preparedOfficialEvent(result.preparation.eventConfig)
+    : preparedOfficialEvent(result.preparation.eventConfig, {
+        eventConnectorId,
+      });
 }
 
 async function prepareOfficialGoogleFormsReconfiguration(
