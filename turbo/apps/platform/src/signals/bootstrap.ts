@@ -92,6 +92,7 @@ import { NotFoundPage } from "../views/not-found-page.tsx";
 import { setupSharedThreadPage$ } from "./shared-thread-page/shared-thread-page-setup.ts";
 
 import { setupGlobalKeyboardShortcuts$ } from "./okou-page/nav.ts";
+import { bootstrapOnboardingGuard$ } from "./okou-page/onboard-guard.ts";
 import {
   featureSwitch$,
   reloadFeatureSwitch$,
@@ -507,6 +508,7 @@ const completeBootstrap$ = command(
     await Promise.all([
       set(setupAuthenticatedBootstrapData$, signal),
       set(setupRoutes$, signal),
+      set(bootstrapOnboardingGuard$, signal),
       set(setupGlobalMethod$, signal),
       set(registerServiceWorker$, signal),
       set(setupNotificationListener$, signal),

@@ -20,7 +20,6 @@ import {
   connectFeishuAccount$,
   hasFeishuConnectParams$,
 } from "./feishu-connect-signals.ts";
-import { onboardGuard$ } from "./onboard-guard.ts";
 
 export const setupFeishuSettingsPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -31,10 +30,6 @@ export const setupFeishuSettingsPage$ = command(
         set(detachedNavigateTo$, ROUTES.home, { replace: true });
         return;
       }
-    }
-
-    if (await set(onboardGuard$, signal)) {
-      return;
     }
 
     if (isAccountConnect) {
