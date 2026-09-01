@@ -308,7 +308,7 @@ case "$1" in
         /proc/[0-9]*/fd/3) ;;
         *) exit 97 ;;
       esac
-      [ "$(readlink -- "$3")" = "$workspace_dir" ] || exit 97
+      [ "$(/usr/bin/readlink -- "$3")" = "$workspace_dir" ] || exit 97
     fi
     [ -n "$target_dev" ] || exit 1
     printf '%s\n' "$target_dev"
@@ -385,7 +385,7 @@ case "$2" in
   /proc/[0-9]*/fd/3) ;;
   *) exit 97 ;;
 esac
-[ "$(readlink -- "$2")" = "$workspace_dir" ] || exit 97
+[ "$(/usr/bin/readlink -- "$2")" = "$workspace_dir" ] || exit 97
 if [ -n "$error" ]; then
   printf '%s\n' "$error" >&2
 fi
@@ -414,12 +414,12 @@ exit {exit_code}
             }
 
             fn run(&self, command: String) -> Output {
-                Command::new("sh")
+                Command::new("/bin/sh")
                     .arg("-c")
                     .arg(command)
                     .current_dir(self.temp.path())
                     .env_clear()
-                    .env("PATH", format!("{}:/usr/bin:/bin", self.fake_bin.display()))
+                    .env("PATH", &self.fake_bin)
                     .output()
                     .unwrap()
             }
