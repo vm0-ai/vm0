@@ -85,6 +85,104 @@ export async function readCustomConnectorOAuthStorageState(
   });
 }
 
+export async function seedCustomConnectorOAuthStateContext(
+  context: TestContext,
+  args: {
+    readonly state: string;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly customConnectorId: string;
+    readonly storageVersion: number;
+    readonly redirectUri: string;
+    readonly oauthContext: Readonly<Record<string, unknown>>;
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "seed-custom-oauth-state-context",
+    state: args.state,
+    org_id: args.orgId,
+    user_id: args.userId,
+    custom_connector_id: args.customConnectorId,
+    storage_version: args.storageVersion,
+    redirect_uri: args.redirectUri,
+    oauth_context: { ...args.oauthContext },
+  });
+}
+
+export async function seedAutomaticOAuthBindingState(
+  context: TestContext,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly customConnectorId: string;
+    readonly connectorAccountId: string;
+    readonly issuer: string;
+    readonly resource: string;
+    readonly resourceMetadataUrl: string | null;
+    readonly tokenEndpoint: string;
+    readonly clientId: string;
+    readonly registration:
+      | {
+          readonly method: "cimd";
+          readonly tokenEndpointAuthMethod: "none";
+        }
+      | {
+          readonly method: "dcr";
+          readonly registrationId: string;
+          readonly tokenEndpointAuthMethod:
+            | "none"
+            | "client_secret_basic"
+            | "client_secret_post";
+          readonly encryptedClientSecret: string | null;
+        };
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "seed-automatic-oauth-binding",
+    org_id: args.orgId,
+    user_id: args.userId,
+    custom_connector_id: args.customConnectorId,
+    connector_account_id: args.connectorAccountId,
+    issuer: args.issuer,
+    resource: args.resource,
+    resource_metadata_url: args.resourceMetadataUrl,
+    token_endpoint: args.tokenEndpoint,
+    client_id: args.clientId,
+    registration:
+      args.registration.method === "cimd"
+        ? {
+            method: "cimd",
+            token_endpoint_auth_method:
+              args.registration.tokenEndpointAuthMethod,
+          }
+        : {
+            method: "dcr",
+            registration_id: args.registration.registrationId,
+            token_endpoint_auth_method:
+              args.registration.tokenEndpointAuthMethod,
+            encrypted_client_secret: args.registration.encryptedClientSecret,
+          },
+  });
+}
+
+export async function readAutomaticOAuthBindingState(
+  context: TestContext,
+  connectorAccountId: string,
+): Promise<
+  NonNullable<
+    TestConnectorCredentialStorageStateActionResponse["automatic_oauth_binding"]
+  >
+> {
+  const response = await postAction(context, {
+    action: "read-automatic-oauth-binding",
+    connector_account_id: connectorAccountId,
+  });
+  if (!response.automatic_oauth_binding) {
+    throw new Error("Automatic OAuth binding state was not returned");
+  }
+  return response.automatic_oauth_binding;
+}
+
 export async function readConnectorOAuthAccountMutation(
   context: TestContext,
   state: string,

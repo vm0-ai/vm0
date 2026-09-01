@@ -54,6 +54,11 @@ export type CustomConnectorAuthMode = z.infer<
   typeof customConnectorAuthModeSchema
 >;
 
+export const customConnectorOAuthSetupSchema = z.enum(["custom", "automatic"]);
+export type CustomConnectorOAuthSetup = z.infer<
+  typeof customConnectorOAuthSetupSchema
+>;
+
 export const customConnectorOAuthProviderAdapterSchema = z.enum([
   "standard",
   "feishu",
@@ -148,8 +153,6 @@ const customConnectorResponseBaseSchema = z.object({
   fields: z.array(customConnectorFieldSchema),
   headerInjections: z.array(customConnectorHeaderInjectionSchema),
   queryInjections: z.array(customConnectorQueryInjectionSchema),
-  authMode: customConnectorAuthModeSchema,
-  oauthConfig: customConnectorOAuthConfigSchema.optional(),
   permissionBundleRef: customConnectorPermissionBundleRefSchema
     .nullable()
     .optional(),
@@ -164,16 +167,60 @@ const customConnectorResponseBaseSchema = z.object({
   updatedAt: z.string(),
 });
 
-export const customConnectorHttpResponseSchema =
+const customConnectorManualAuthResponseSchema = z.object({
+  authMode: z.literal("manual"),
+  oauthSetup: z.never().optional(),
+  oauthConfig: z.never().optional(),
+});
+
+const customConnectorCustomOAuthResponseSchema = z.object({
+  authMode: z.literal("oauth"),
+  oauthSetup: z.literal("custom"),
+  oauthConfig: customConnectorOAuthConfigSchema,
+});
+
+const customConnectorLegacyOAuthResponseSchema = z
+  .object({
+    authMode: z.literal("oauth"),
+    oauthSetup: z.undefined().optional(),
+    oauthConfig: customConnectorOAuthConfigSchema,
+  })
+  .transform((value) => {
+    return { ...value, oauthSetup: "custom" as const };
+  });
+
+const customConnectorAutomaticOAuthResponseSchema = z.object({
+  authMode: z.literal("oauth"),
+  oauthSetup: z.literal("automatic"),
+  oauthConfig: z.never().optional(),
+});
+
+const customConnectorOAuthResponseSchema = z.union([
+  customConnectorCustomOAuthResponseSchema,
+  customConnectorLegacyOAuthResponseSchema,
+  customConnectorAutomaticOAuthResponseSchema,
+]);
+
+const customConnectorHttpAuthResponseSchema = z.union([
+  customConnectorManualAuthResponseSchema,
+  customConnectorCustomOAuthResponseSchema,
+  customConnectorLegacyOAuthResponseSchema,
+]);
+
+export const customConnectorHttpResponseCoreSchema =
   customConnectorResponseBaseSchema.extend({
     kind: z.literal("http"),
     prefixTemplates: z.array(z.string()),
   });
+export const customConnectorHttpResponseSchema = z.intersection(
+  customConnectorHttpResponseCoreSchema,
+  customConnectorHttpAuthResponseSchema,
+);
 export type CustomConnectorHttpResponse = z.infer<
   typeof customConnectorHttpResponseSchema
 >;
 
-export const customConnectorMcpResponseSchema =
+export const customConnectorMcpResponseCoreSchema =
   customConnectorResponseBaseSchema.extend({
     kind: z.literal("mcp"),
     endpoint: z.string().min(1),
@@ -181,11 +228,18 @@ export const customConnectorMcpResponseSchema =
     prefixTemplates: z.tuple([]),
     permissionBundleRef: z.null().optional(),
   });
+export const customConnectorMcpResponseSchema = z.intersection(
+  customConnectorMcpResponseCoreSchema,
+  z.union([
+    customConnectorManualAuthResponseSchema,
+    customConnectorOAuthResponseSchema,
+  ]),
+);
 export type CustomConnectorMcpResponse = z.infer<
   typeof customConnectorMcpResponseSchema
 >;
 
-export const customConnectorResponseSchema = z.discriminatedUnion("kind", [
+export const customConnectorResponseSchema = z.union([
   customConnectorHttpResponseSchema,
   customConnectorMcpResponseSchema,
 ]);
@@ -219,12 +273,58 @@ const customConnectorDefinitionWriteBaseSchema = z.object({
   headerInjections: z.array(customConnectorHeaderInjectionSchema),
   queryInjections: z.array(customConnectorQueryInjectionSchema),
   authMode: customConnectorAuthModeSchema.optional(),
+  oauthSetup: customConnectorOAuthSetupSchema.optional(),
   oauthConfig: customConnectorOAuthConfigInputSchema.optional(),
   skillMarkdown: customConnectorSkillMarkdownSchema.nullable().optional(),
   storageVersion: z.number().int().positive().optional(),
 });
 
-const customConnectorHttpDefinitionWriteSchema =
+function validateCustomConnectorAuthWrite(
+  value: {
+    readonly authMode?: CustomConnectorAuthMode;
+    readonly oauthSetup?: CustomConnectorOAuthSetup;
+    readonly oauthConfig?: CustomConnectorOAuthConfigInput;
+  },
+  context: z.RefinementCtx,
+  allowAutomatic: boolean,
+): void {
+  if ((value.authMode ?? "manual") === "manual") {
+    if (value.oauthSetup !== undefined || value.oauthConfig !== undefined) {
+      context.addIssue({
+        code: "custom",
+        message: "Manual authentication cannot include OAuth setup",
+        path: ["authMode"],
+      });
+    }
+    return;
+  }
+  if (value.oauthSetup === "automatic") {
+    if (!allowAutomatic) {
+      context.addIssue({
+        code: "custom",
+        message: "Automatic OAuth requires an MCP connector",
+        path: ["oauthSetup"],
+      });
+    }
+    if (value.oauthConfig !== undefined) {
+      context.addIssue({
+        code: "custom",
+        message: "Automatic OAuth cannot include static OAuth configuration",
+        path: ["oauthConfig"],
+      });
+    }
+    return;
+  }
+  if (value.oauthConfig === undefined) {
+    context.addIssue({
+      code: "custom",
+      message: "Custom OAuth requires static OAuth configuration",
+      path: ["oauthConfig"],
+    });
+  }
+}
+
+const customConnectorHttpDefinitionWriteCoreSchema =
   customConnectorDefinitionWriteBaseSchema.extend({
     kind: z.literal("http").optional(),
     prefixTemplates: z.array(z.string().min(1)).min(1),
@@ -235,20 +335,33 @@ const customConnectorHttpDefinitionWriteSchema =
     transport: z.never().optional(),
   });
 
-export const customConnectorHttpCreateBodySchema =
-  customConnectorHttpDefinitionWriteSchema.extend({
-    slug: z.string().optional(),
+const customConnectorHttpDefinitionWriteSchema =
+  customConnectorHttpDefinitionWriteCoreSchema.superRefine((value, context) => {
+    validateCustomConnectorAuthWrite(value, context, false);
   });
 
+export const customConnectorHttpCreateBodySchema =
+  customConnectorHttpDefinitionWriteCoreSchema
+    .extend({
+      slug: z.string().optional(),
+    })
+    .superRefine((value, context) => {
+      validateCustomConnectorAuthWrite(value, context, false);
+    });
+
 export const customConnectorMcpCreateBodySchema =
-  customConnectorDefinitionWriteBaseSchema.extend({
-    kind: z.literal("mcp"),
-    endpoint: z.string().min(1).max(2048),
-    transport: customConnectorMcpTransportSchema,
-    permissionBundleRef: z.null().optional(),
-    slug: z.string().optional(),
-    prefixTemplates: z.never().optional(),
-  });
+  customConnectorDefinitionWriteBaseSchema
+    .extend({
+      kind: z.literal("mcp"),
+      endpoint: z.string().min(1).max(2048),
+      transport: customConnectorMcpTransportSchema,
+      permissionBundleRef: z.null().optional(),
+      slug: z.string().optional(),
+      prefixTemplates: z.never().optional(),
+    })
+    .superRefine((value, context) => {
+      validateCustomConnectorAuthWrite(value, context, true);
+    });
 
 export const createCustomConnectorBodySchema = z.union([
   customConnectorMcpCreateBodySchema,
@@ -262,13 +375,17 @@ export const customConnectorHttpUpdateBodySchema =
   customConnectorHttpDefinitionWriteSchema;
 
 export const customConnectorMcpUpdateBodySchema =
-  customConnectorDefinitionWriteBaseSchema.extend({
-    kind: z.literal("mcp"),
-    endpoint: z.string().min(1).max(2048),
-    transport: customConnectorMcpTransportSchema,
-    permissionBundleRef: z.null().optional(),
-    prefixTemplates: z.never().optional(),
-  });
+  customConnectorDefinitionWriteBaseSchema
+    .extend({
+      kind: z.literal("mcp"),
+      endpoint: z.string().min(1).max(2048),
+      transport: customConnectorMcpTransportSchema,
+      permissionBundleRef: z.null().optional(),
+      prefixTemplates: z.never().optional(),
+    })
+    .superRefine((value, context) => {
+      validateCustomConnectorAuthWrite(value, context, true);
+    });
 
 export const updateCustomConnectorBodySchema = z.union([
   customConnectorMcpUpdateBodySchema,
@@ -316,13 +433,8 @@ const connectedAccountResponseShape = {
   connectedAccountId: z.uuid().optional(),
 };
 
-export const setCustomConnectorValuesResponseSchema = z.discriminatedUnion(
-  "kind",
-  [
-    customConnectorHttpResponseSchema.extend(connectedAccountResponseShape),
-    customConnectorMcpResponseSchema.extend(connectedAccountResponseShape),
-  ],
-);
+export const setCustomConnectorValuesResponseSchema =
+  customConnectorResponseSchema.and(z.object(connectedAccountResponseShape));
 
 export const customConnectorProposalSchema = z.object({
   operation: z.enum(["create", "update"]),

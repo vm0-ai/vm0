@@ -1625,6 +1625,13 @@
       "when": 1788237410573,
       "tag": "1039_shocking_lady_deathstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 1040,
+      "version": "7",
+      "when": 1788240847406,
+      "tag": "1040_custom_connector_automatic_oauth",
+      "breakpoints": true
     }
   ]
 }

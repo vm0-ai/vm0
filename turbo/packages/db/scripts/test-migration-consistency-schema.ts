@@ -2512,7 +2512,7 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     schemaName: "public",
   },
   {
-    bodyHash: "4886a7314cbaa815a4f8290a16a2f528",
+    bodyHash: "3d78e7fdc88339a81ea83a1dff647a4b",
     functionName: "assert_org_custom_connector_oauth_mode",
     identityArguments: "target_connector_id uuid, target_org_id text",
     kind: "f",
@@ -3637,6 +3637,13 @@ async function validateCustomConnectorOauthModeConstraints(
     manualConnectorId: "72000000-0000-4000-8000-000000000001",
     oauthConnectorId: "72000000-0000-4000-8000-000000000002",
     invalidOauthConnectorId: "72000000-0000-4000-8000-000000000003",
+    invalidCustomConnectorId: "72000000-0000-4000-8000-000000000004",
+    automaticConnectorId: "72000000-0000-4000-8000-000000000005",
+    automaticAccountId: "72000000-0000-4000-8000-000000000006",
+    dcrRegistrationId: "72000000-0000-4000-8000-000000000007",
+    otherAutomaticConnectorId: "72000000-0000-4000-8000-000000000008",
+    otherAutomaticAccountId: "72000000-0000-4000-8000-000000000009",
+    legacyOauthConnectorId: "72000000-0000-4000-8000-000000000010",
   } as const;
   const insertConnector = `
     INSERT INTO "org_custom_connectors" (
@@ -3694,6 +3701,64 @@ async function validateCustomConnectorOauthModeConstraints(
       'none'
     )
   `;
+  const insertAutomaticConnector = `
+    INSERT INTO "org_custom_connectors" (
+      "id",
+      "org_id",
+      "slug",
+      "display_name",
+      "fields",
+      "header_injections",
+      "query_injections",
+      "auth_mode",
+      "oauth_setup",
+      "mcp_endpoint",
+      "mcp_transport",
+      "created_by"
+    )
+    VALUES (
+      $1,
+      $2,
+      $3,
+      $4,
+      '[]'::jsonb,
+      '[{"name":"Authorization","valueTemplate":"Bearer {{oauth.access_token}}"}]'::jsonb,
+      '[]'::jsonb,
+      'oauth',
+      'automatic',
+      'https://mcp.example.test',
+      'streamable-http',
+      $5
+    )
+  `;
+  const insertCustomConnectorWithoutConfig = `
+    INSERT INTO "org_custom_connectors" (
+      "id",
+      "org_id",
+      "slug",
+      "display_name",
+      "prefix_templates",
+      "fields",
+      "header_injections",
+      "query_injections",
+      "auth_mode",
+      "oauth_setup",
+      "created_by"
+    )
+    VALUES (
+      $1,
+      $2,
+      $3,
+      $4,
+      '["https://api.example.test/"]'::jsonb,
+      '[]'::jsonb,
+      '[{"name":"Authorization","valueTemplate":"Bearer {{oauth.access_token}}"}]'::jsonb,
+      '[]'::jsonb,
+      'oauth',
+      'custom',
+      $5
+    )
+  `;
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
 
@@ -3721,11 +3786,48 @@ async function validateCustomConnectorOauthModeConstraints(
       fixture.orgId,
     ]);
     await client.query("COMMIT");
+    await client.query(
+      `
+        UPDATE "org_custom_connectors"
+        SET "oauth_setup" = 'custom'
+        WHERE "id" = $1
+      `,
+      [fixture.oauthConnectorId],
+    );
+
+    await client.query("BEGIN");
+    await client.query(insertConnector, [
+      fixture.legacyOauthConnectorId,
+      fixture.orgId,
+      "_migration_legacy_oauth",
+      "Migration Legacy OAuth Connector",
+      "oauth",
+      fixture.createdBy,
+    ]);
+    await client.query(insertOauthConfig, [
+      fixture.legacyOauthConnectorId,
+      fixture.orgId,
+    ]);
+    await client.query("COMMIT");
+
+    await client.query(insertAutomaticConnector, [
+      fixture.automaticConnectorId,
+      fixture.orgId,
+      "_migration_automatic_oauth",
+      "Migration Automatic OAuth Connector",
+      fixture.createdBy,
+    ]);
+    await client.query(insertAutomaticConnector, [
+      fixture.otherAutomaticConnectorId,
+      fixture.orgId,
+      "_migration_other_automatic_oauth",
+      "Migration Other Automatic OAuth Connector",
+      fixture.createdBy,
+    ]);
 
     await expectDeferredDatabaseError(client, {
       code: "23514",
-      messageIncludes:
-        "custom connector auth mode and OAuth config do not match",
+      messageIncludes: "custom connector OAuth setup and config do not match",
       statements: [
         {
           query: insertConnector,
@@ -3742,8 +3844,7 @@ async function validateCustomConnectorOauthModeConstraints(
     });
     await expectDeferredDatabaseError(client, {
       code: "23514",
-      messageIncludes:
-        "custom connector auth mode and OAuth config do not match",
+      messageIncludes: "custom connector OAuth setup and config do not match",
       statements: [
         {
           query: insertOauthConfig,
@@ -3753,13 +3854,12 @@ async function validateCustomConnectorOauthModeConstraints(
     });
     await expectDeferredDatabaseError(client, {
       code: "23514",
-      messageIncludes:
-        "custom connector auth mode and OAuth config do not match",
+      messageIncludes: "custom connector OAuth setup and config do not match",
       statements: [
         {
           query: `
             UPDATE "org_custom_connectors"
-            SET "auth_mode" = 'manual'
+            SET "auth_mode" = 'manual', "oauth_setup" = NULL
             WHERE "id" = $1
           `,
           values: [fixture.oauthConnectorId],
@@ -3768,8 +3868,7 @@ async function validateCustomConnectorOauthModeConstraints(
     });
     await expectDeferredDatabaseError(client, {
       code: "23514",
-      messageIncludes:
-        "custom connector auth mode and OAuth config do not match",
+      messageIncludes: "custom connector OAuth setup and config do not match",
       statements: [
         {
           query: `
@@ -3781,19 +3880,275 @@ async function validateCustomConnectorOauthModeConstraints(
       ],
     });
 
+    // The API version preceding #30487 does not include oauth_setup in this
+    // update. Its exact statement sequence must remain legal after migration.
+    await client.query("BEGIN");
+    await client.query(
+      `
+        UPDATE "org_custom_connectors"
+        SET "auth_mode" = 'manual'
+        WHERE "id" = $1
+      `,
+      [fixture.legacyOauthConnectorId],
+    );
+    await client.query(
+      `
+        DELETE FROM "org_custom_connector_oauth_configs"
+        WHERE "connector_id" = $1
+      `,
+      [fixture.legacyOauthConnectorId],
+    );
+    await client.query("COMMIT");
+    const legacyTransition = await client.query<{
+      authMode: string;
+      oauthSetup: string | null;
+    }>(
+      `
+        SELECT
+          "auth_mode" AS "authMode",
+          "oauth_setup" AS "oauthSetup"
+        FROM "org_custom_connectors"
+        WHERE "id" = $1
+      `,
+      [fixture.legacyOauthConnectorId],
+    );
+    assert.deepEqual(legacyTransition.rows, [
+      { authMode: "manual", oauthSetup: null },
+    ]);
+
+    await expectDeferredDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "custom connector OAuth setup and config do not match",
+      statements: [
+        {
+          query: insertCustomConnectorWithoutConfig,
+          values: [
+            fixture.invalidCustomConnectorId,
+            fixture.orgId,
+            "_migration_invalid_custom_oauth",
+            "Migration Invalid Custom OAuth Connector",
+            fixture.createdBy,
+          ],
+        },
+      ],
+    });
+    await expectDeferredDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "custom connector OAuth setup and config do not match",
+      statements: [
+        {
+          query: insertOauthConfig,
+          values: [fixture.automaticConnectorId, fixture.orgId],
+        },
+      ],
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      query: `
+        UPDATE "org_custom_connectors"
+        SET "oauth_setup" = 'custom'
+        WHERE "id" = $1
+      `,
+      values: [fixture.manualConnectorId],
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      query: `
+        UPDATE "org_custom_connectors"
+        SET "mcp_endpoint" = NULL, "mcp_transport" = NULL
+        WHERE "id" = $1
+      `,
+      values: [fixture.automaticConnectorId],
+    });
+
+    await client.query(
+      `
+        INSERT INTO "connectors" (
+          "id", "custom_connector_id", "auth_method", "storage_version",
+          "user_id", "org_id"
+        )
+        VALUES ($1, $2, 'oauth', 1, $3, $4)
+      `,
+      [
+        fixture.automaticAccountId,
+        fixture.automaticConnectorId,
+        fixture.createdBy,
+        fixture.orgId,
+      ],
+    );
+    await client.query(
+      `
+        INSERT INTO "connectors" (
+          "id", "custom_connector_id", "auth_method", "storage_version",
+          "user_id", "org_id"
+        )
+        VALUES ($1, $2, 'oauth', 1, $3, $4)
+      `,
+      [
+        fixture.otherAutomaticAccountId,
+        fixture.otherAutomaticConnectorId,
+        fixture.createdBy,
+        fixture.orgId,
+      ],
+    );
+    await client.query(
+      `
+        INSERT INTO "org_custom_connector_dcr_registrations" (
+          "id", "org_id", "custom_connector_id", "issuer", "client_id",
+          "encrypted_client_secret", "token_endpoint_auth_method",
+          "registered_scopes", "redirect_uri", "issued_at", "expires_at"
+        )
+        VALUES (
+          $1, $2, $3, 'https://issuer.example.test', 'dcr-client',
+          'encrypted-dcr-secret', 'client_secret_basic', ARRAY['read'],
+          'https://app.example.test/api/custom-connectors/oauth2/callback',
+          '2026-08-31T00:00:00Z', '2026-09-01T00:00:00Z'
+        )
+      `,
+      [fixture.dcrRegistrationId, fixture.orgId, fixture.automaticConnectorId],
+    );
+    await expectDatabaseError(client, {
+      code: "23505",
+      query: `
+        INSERT INTO "org_custom_connector_dcr_registrations" (
+          "org_id", "custom_connector_id", "issuer", "client_id",
+          "token_endpoint_auth_method", "registered_scopes", "redirect_uri",
+          "issued_at"
+        )
+        VALUES (
+          $1, $2, 'https://issuer.example.test', 'duplicate-client', 'none',
+          ARRAY[]::text[],
+          'https://app.example.test/api/custom-connectors/oauth2/callback',
+          '2026-08-31T00:00:00Z'
+        )
+      `,
+      values: [fixture.orgId, fixture.automaticConnectorId],
+    });
+    await expectDatabaseError(client, {
+      code: "23503",
+      query: `
+        INSERT INTO "custom_connector_account_oauth_bindings" (
+          "connector_account_id", "custom_connector_id", "issuer", "resource",
+          "token_endpoint", "client_id", "token_endpoint_auth_method",
+          "registration_method", "dcr_registration_id"
+        )
+        VALUES (
+          $1, $2, 'https://issuer.example.test', 'https://mcp.example.test',
+          'https://issuer.example.test/token', 'dcr-client',
+          'client_secret_basic', 'dcr', $3
+        )
+      `,
+      values: [
+        fixture.otherAutomaticAccountId,
+        fixture.otherAutomaticConnectorId,
+        fixture.dcrRegistrationId,
+      ],
+    });
+    await client.query(
+      `
+        INSERT INTO "custom_connector_account_oauth_bindings" (
+          "connector_account_id", "custom_connector_id", "issuer", "resource",
+          "token_endpoint", "client_id", "token_endpoint_auth_method",
+          "registration_method"
+        )
+        VALUES (
+          $1, $2, 'https://cimd.example.test', 'https://other-mcp.example.test',
+          'https://cimd.example.test/token', 'cimd-client', 'none', 'cimd'
+        )
+      `,
+      [fixture.otherAutomaticAccountId, fixture.otherAutomaticConnectorId],
+    );
+    await expectDatabaseError(client, {
+      code: "23514",
+      query: `
+        UPDATE "custom_connector_account_oauth_bindings"
+        SET "token_endpoint_auth_method" = 'client_secret_post'
+        WHERE "connector_account_id" = $1
+      `,
+      values: [fixture.otherAutomaticAccountId],
+    });
+    await client.query(
+      `
+        INSERT INTO "custom_connector_account_oauth_bindings" (
+          "connector_account_id", "custom_connector_id", "issuer", "resource",
+          "resource_metadata_url", "token_endpoint", "client_id",
+          "token_endpoint_auth_method", "registration_method", "dcr_registration_id"
+        )
+        VALUES (
+          $1, $2, 'https://issuer.example.test', 'https://mcp.example.test',
+          'https://mcp.example.test/.well-known/oauth-protected-resource',
+          'https://issuer.example.test/token', 'dcr-client',
+          'client_secret_basic', 'dcr', $3
+        )
+      `,
+      [
+        fixture.automaticAccountId,
+        fixture.automaticConnectorId,
+        fixture.dcrRegistrationId,
+      ],
+    );
+    const account = await client.query<{ auth_method: string }>(
+      `SELECT "auth_method" FROM "connectors" WHERE "id" = $1`,
+      [fixture.automaticAccountId],
+    );
+    assert.equal(account.rows[0]?.auth_method, "oauth");
+    await expectDatabaseError(client, {
+      code: "23514",
+      query: `
+        UPDATE "org_custom_connector_dcr_registrations"
+        SET "expires_at" = "issued_at"
+        WHERE "id" = $1
+      `,
+      values: [fixture.dcrRegistrationId],
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      query: `
+        UPDATE "custom_connector_account_oauth_bindings"
+        SET "registration_method" = 'cimd'
+        WHERE "connector_account_id" = $1
+      `,
+      values: [fixture.automaticAccountId],
+    });
+    await client.query(`DELETE FROM "connectors" WHERE "id" = $1`, [
+      fixture.automaticAccountId,
+    ]);
+    const deletedBinding = await client.query(
+      `
+        SELECT 1 FROM "custom_connector_account_oauth_bindings"
+        WHERE "connector_account_id" = $1
+      `,
+      [fixture.automaticAccountId],
+    );
+    assert.equal(deletedBinding.rowCount, 0);
+
     await client.query(
       `
         DELETE FROM "org_custom_connectors"
-        WHERE "id" IN ($1, $2)
+        WHERE "id" IN ($1, $2, $3, $4, $5)
       `,
-      [fixture.manualConnectorId, fixture.oauthConnectorId],
+      [
+        fixture.manualConnectorId,
+        fixture.oauthConnectorId,
+        fixture.automaticConnectorId,
+        fixture.otherAutomaticConnectorId,
+        fixture.legacyOauthConnectorId,
+      ],
     );
+    const deletedRegistration = await client.query(
+      `
+        SELECT 1 FROM "org_custom_connector_dcr_registrations"
+        WHERE "id" = $1
+      `,
+      [fixture.dcrRegistrationId],
+    );
+    assert.equal(deletedRegistration.rowCount, 0);
   } finally {
     await client.end();
   }
 
   console.log(
-    "   ✅ Deferred constraints accept complete modes and reject mismatched OAuth configuration\n",
+    "   ✅ OAuth setup variants, old-writer transitions, bindings, and cascades preserve strict ownership\n",
   );
 }
 

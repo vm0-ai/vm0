@@ -107,6 +107,8 @@ import * as chatThreadSnapshotSchema from "./schema/chat-thread-snapshot";
 import * as runOutputMaterializationSchema from "./schema/run-output-materialization";
 import * as orgCustomConnectorSchema from "./schema/org-custom-connector";
 import * as orgCustomConnectorOauthConfigSchema from "./schema/org-custom-connector-oauth-config";
+import * as orgCustomConnectorDcrRegistrationSchema from "./schema/org-custom-connector-dcr-registration";
+import * as customConnectorAccountOauthBindingSchema from "./schema/custom-connector-account-oauth-binding";
 import * as hostedSiteSchema from "./schema/hosted-site";
 import * as artifactSchema from "./schema/artifact";
 import * as sharedThreadSchema from "./schema/shared-thread";
@@ -238,6 +240,8 @@ export const schema = {
   ...runOutputMaterializationSchema,
   ...orgCustomConnectorSchema,
   ...orgCustomConnectorOauthConfigSchema,
+  ...orgCustomConnectorDcrRegistrationSchema,
+  ...customConnectorAccountOauthBindingSchema,
   ...hostedSiteSchema,
   ...artifactSchema,
   ...sharedThreadSchema,

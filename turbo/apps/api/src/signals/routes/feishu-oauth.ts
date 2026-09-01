@@ -27,13 +27,14 @@ import {
 } from "../services/connector-oauth-state.service";
 import {
   customConnectorOAuthStateMatchesDefinition,
+  isCustomConnectorCustomOAuthStateContext,
   decryptCustomConnectorOAuth2Credentials,
   exchangeCustomConnectorOAuth2Code,
   lockCustomConnectorOAuth2CredentialContract,
   parseValidCustomConnectorOAuthState,
   startCustomConnectorOAuth2$,
   storeCustomConnectorOAuth2Connection,
-  type CustomConnectorOAuthStateContext,
+  type CustomConnectorCustomOAuthStateContext,
   type OAuthTokenResult,
 } from "../services/custom-connector-oauth2.service";
 import {
@@ -60,6 +61,7 @@ import { publishCustomConnectorUserInvalidationAfterCommit } from "../services/c
 import {
   getCustomConnectorById,
   type CustomConnectorHttpRow,
+  type CustomConnectorRow,
 } from "../services/custom-connector.service";
 import { publishFeishuOrgChanged } from "../services/feishu-realtime.service";
 import { notifyFeishuConnect } from "../services/feishu-welcome.service";
@@ -93,11 +95,11 @@ interface FeishuInstallationOAuthRow {
 }
 
 type FeishuCustomConnectorOAuthContext = Omit<
-  CustomConnectorOAuthStateContext,
+  CustomConnectorCustomOAuthStateContext,
   "providerContext"
 > & {
   readonly providerContext: Omit<
-    NonNullable<CustomConnectorOAuthStateContext["providerContext"]>,
+    NonNullable<CustomConnectorCustomOAuthStateContext["providerContext"]>,
     "completionTarget"
   > & {
     readonly completionTarget: "feishu";
@@ -199,7 +201,9 @@ function validCustomFeishuState(
 ): FeishuCustomConnectorOAuthContext | null {
   const context = parseValidCustomConnectorOAuthState(storedState);
   if (
-    !context?.providerContext ||
+    !context ||
+    !isCustomConnectorCustomOAuthStateContext(context) ||
+    !context.providerContext ||
     context.providerContext.provider !== "feishu" ||
     context.providerContext.completionTarget !== "feishu"
   ) {
@@ -212,6 +216,19 @@ function validCustomFeishuState(
       completionTarget: "feishu",
     },
   };
+}
+
+function isFeishuCustomOAuthConnector(
+  connector: CustomConnectorRow | null,
+): connector is CustomConnectorHttpRow & {
+  readonly oauthSetup: "custom";
+  readonly oauthConfig: NonNullable<CustomConnectorHttpRow["oauthConfig"]>;
+} {
+  return (
+    connector?.kind === "http" &&
+    connector.oauthSetup === "custom" &&
+    connector.oauthConfig?.providerAdapter === "feishu"
+  );
 }
 
 async function exchangeOAuthTokenAndUserInfo(
@@ -742,11 +759,7 @@ const completeLegacyFeishuOAuth$ = command(
       }),
     );
     signal.throwIfAborted();
-    if (
-      connector?.kind !== "http" ||
-      !connector.oauthConfig ||
-      connector.oauthConfig.providerAdapter !== "feishu"
-    ) {
+    if (!isFeishuCustomOAuthConnector(connector)) {
       return completionErrorResponse(
         "Feishu connector is unavailable.",
         state.publicBrand,

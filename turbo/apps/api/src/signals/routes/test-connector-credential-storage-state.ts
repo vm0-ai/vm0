@@ -6,9 +6,11 @@ import {
 import { chatThreadConnectorSelections } from "@okouai/db/schema/chat-thread-connector-selection";
 import { connectors } from "@okouai/db/schema/connector";
 import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
+import { customConnectorAccountOauthBindings } from "@okouai/db/schema/custom-connector-account-oauth-binding";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
+import { orgCustomConnectorDcrRegistrations } from "@okouai/db/schema/org-custom-connector-dcr-registration";
 import { secrets } from "@okouai/db/schema/secret";
 import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
 import { variables } from "@okouai/db/schema/variable";
@@ -20,6 +22,7 @@ import { writeDb$, type Db } from "../external/db";
 import { connectorOAuthStateExpiresAt } from "../../lib/connector-oauth-state";
 import type { RouteEntry } from "../route-entry";
 import { parseCustomConnectorOAuthStateContext } from "../services/custom-connector-oauth2.service";
+import { readCustomConnectorAutomaticOAuthBinding } from "../services/custom-connector-automatic-oauth.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -140,20 +143,32 @@ async function readCustomParent(
   body: ConnectorCredentialStorageAction<"read-custom-parent">,
   signal: AbortSignal,
 ) {
-  const [connector] = await db
-    .select({
-      id: connectors.id,
-      storageVersion: connectors.storageVersion,
-    })
-    .from(connectors)
-    .where(
-      and(
-        eq(connectors.orgId, body.org_id),
-        eq(connectors.userId, body.user_id),
-        eq(connectors.customConnectorId, body.custom_connector_id),
-      ),
-    )
-    .limit(1);
+  const [[connector], [definition]] = await Promise.all([
+    db
+      .select({
+        id: connectors.id,
+        storageVersion: connectors.storageVersion,
+      })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.orgId, body.org_id),
+          eq(connectors.userId, body.user_id),
+          eq(connectors.customConnectorId, body.custom_connector_id),
+        ),
+      )
+      .limit(1),
+    db
+      .select({ oauthSetup: orgCustomConnectors.oauthSetup })
+      .from(orgCustomConnectors)
+      .where(
+        and(
+          eq(orgCustomConnectors.id, body.custom_connector_id),
+          eq(orgCustomConnectors.orgId, body.org_id),
+        ),
+      )
+      .limit(1),
+  ]);
   signal.throwIfAborted();
   const secretRows = connector
     ? await db
@@ -181,6 +196,7 @@ async function readCustomParent(
     : [];
   signal.throwIfAborted();
   return actionOk({
+    definition_oauth_setup: definition?.oauthSetup ?? null,
     connector: connector
       ? {
           id: connector.id,
@@ -223,13 +239,118 @@ async function readCustomOAuthState(
     return actionOk({ custom_oauth_state: null });
   }
   const context = parseCustomConnectorOAuthStateContext(state.oauthContext);
-  if (!context) {
-    throw new Error("Expected custom connector OAuth state context");
-  }
   return actionOk({
     custom_oauth_state: {
       storage_version: state.storageVersion,
-      context_storage_version: context.storageVersion ?? null,
+      context_storage_version: context?.storageVersion ?? null,
+      context_valid: context !== null,
+      ...(context
+        ? { oauth_setup: context.oauthSetup ?? ("custom" as const) }
+        : {}),
+    },
+  });
+}
+
+async function seedAutomaticOAuthBinding(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"seed-automatic-oauth-binding">,
+  signal: AbortSignal,
+) {
+  await db.transaction(async (tx) => {
+    await tx.insert(orgCustomConnectors).values({
+      id: body.custom_connector_id,
+      orgId: body.org_id,
+      slug: `_${body.custom_connector_id.replaceAll("-", "").slice(0, 24)}`,
+      displayName: "Automatic OAuth test connector",
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth",
+      oauthSetup: "automatic",
+      mcpEndpoint: "https://mcp.example.test",
+      mcpTransport: "streamable-http",
+      createdBy: body.user_id,
+    });
+    await tx.insert(connectors).values({
+      id: body.connector_account_id,
+      customConnectorId: body.custom_connector_id,
+      authMethod: "oauth",
+      storageVersion: 1,
+      userId: body.user_id,
+      orgId: body.org_id,
+    });
+    const registration = body.registration;
+    if (registration.method === "dcr") {
+      await tx.insert(orgCustomConnectorDcrRegistrations).values({
+        id: registration.registration_id,
+        orgId: body.org_id,
+        customConnectorId: body.custom_connector_id,
+        issuer: body.issuer,
+        clientId: body.client_id,
+        encryptedClientSecret: registration.encrypted_client_secret,
+        tokenEndpointAuthMethod: registration.token_endpoint_auth_method,
+        registeredScopes: ["read"],
+        redirectUri:
+          "https://app.example.test/api/custom-connectors/oauth2/callback",
+        issuedAt: new Date("2026-08-31T00:00:00.000Z"),
+      });
+    }
+    await tx.insert(customConnectorAccountOauthBindings).values({
+      connectorAccountId: body.connector_account_id,
+      customConnectorId: body.custom_connector_id,
+      issuer: body.issuer,
+      resource: body.resource,
+      resourceMetadataUrl: body.resource_metadata_url,
+      tokenEndpoint: body.token_endpoint,
+      clientId: body.client_id,
+      tokenEndpointAuthMethod: registration.token_endpoint_auth_method,
+      registrationMethod: registration.method,
+      dcrRegistrationId:
+        registration.method === "dcr" ? registration.registration_id : null,
+    });
+  });
+  signal.throwIfAborted();
+  return actionOk({ connector_id: body.connector_account_id });
+}
+
+async function readAutomaticOAuthBinding(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"read-automatic-oauth-binding">,
+  signal: AbortSignal,
+) {
+  const [stored] = await db
+    .select({
+      registrationMethod:
+        customConnectorAccountOauthBindings.registrationMethod,
+    })
+    .from(customConnectorAccountOauthBindings)
+    .where(
+      eq(
+        customConnectorAccountOauthBindings.connectorAccountId,
+        body.connector_account_id,
+      ),
+    )
+    .limit(1);
+  const binding = await readCustomConnectorAutomaticOAuthBinding(
+    db,
+    body.connector_account_id,
+  );
+  signal.throwIfAborted();
+  return actionOk({
+    automatic_oauth_binding: {
+      exists: stored !== undefined,
+      valid: binding !== null,
+      registration_method: stored?.registrationMethod ?? null,
+      ...(binding?.registrationMethod === "dcr"
+        ? {
+            dcr_client_secret_present: binding.dcrRegistration.hasClientSecret,
+          }
+        : {}),
     },
   });
 }
@@ -416,6 +537,27 @@ async function seedLegacyCustomFeishuOAuthState(
             }),
       },
     }),
+    accountMutation: { intent: "single-account" },
+    expiresAt: connectorOAuthStateExpiresAt(),
+  });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function seedCustomOAuthStateContext(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"seed-custom-oauth-state-context">,
+  signal: AbortSignal,
+) {
+  await db.insert(connectorOauthStates).values({
+    state: body.state,
+    customConnectorId: body.custom_connector_id,
+    storageVersion: body.storage_version,
+    authMethod: "oauth",
+    userId: body.user_id,
+    orgId: body.org_id,
+    redirectUri: body.redirect_uri,
+    oauthContext: JSON.stringify(body.oauth_context),
     accountMutation: { intent: "single-account" },
     expiresAt: connectorOAuthStateExpiresAt(),
   });
@@ -859,6 +1001,27 @@ async function mutateConnectorAccountCompatibilityState(
   }
 }
 
+async function mutateCustomOAuthFoundationState(
+  db: Db,
+  body: TestConnectorCredentialStorageStateActionBody,
+  signal: AbortSignal,
+) {
+  switch (body.action) {
+    case "seed-automatic-oauth-binding": {
+      return await seedAutomaticOAuthBinding(db, body, signal);
+    }
+    case "read-automatic-oauth-binding": {
+      return await readAutomaticOAuthBinding(db, body, signal);
+    }
+    case "seed-custom-oauth-state-context": {
+      return await seedCustomOAuthStateContext(db, body, signal);
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
 const mutateConnectorCredentialStorageState$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -873,6 +1036,14 @@ const mutateConnectorCredentialStorageState$ = command(
 
     const db = set(writeDb$);
     const body = bodyResult.data;
+    const customOAuthResult = await mutateCustomOAuthFoundationState(
+      db,
+      body,
+      signal,
+    );
+    if (customOAuthResult) {
+      return customOAuthResult;
+    }
     const compatibilityResult = await mutateConnectorAccountCompatibilityState(
       db,
       body,

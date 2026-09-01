@@ -201,6 +201,9 @@ function desiredConnectorDefinition(installation: FeishuConnectorInstallation) {
     ],
     queryInjections: [],
     authMode: "oauth" as const,
+    // Preserve the pre-#30487 persisted shape until the outgoing API and its
+    // rollback window have drained. Readers still normalize this to Custom.
+    oauthSetup: null,
     enabled: true,
     permissionBundleRef: null,
     skillMarkdown: FEISHU_SKILL_MARKDOWN,
@@ -235,6 +238,8 @@ function connectorDefinitionMatches(
     isDeepStrictEqual(connector.headerInjections, desired.headerInjections) &&
     isDeepStrictEqual(connector.queryInjections, desired.queryInjections) &&
     connector.authMode === desired.authMode &&
+    (connector.oauthSetup === null ||
+      connector.oauthSetup === desired.oauthSetup) &&
     connector.enabled === desired.enabled &&
     connector.permissionBundleRef === desired.permissionBundleRef &&
     connector.skillMarkdown === desired.skillMarkdown &&
@@ -306,6 +311,7 @@ async function repairFeishuCustomConnector(
 ): Promise<ReconciledFeishuCustomConnector> {
   const credentialContractChanged =
     existing.connector.authMode !== "oauth" ||
+    existing.connector.oauthSetup === "automatic" ||
     !isDeepStrictEqual(existing.connector.fields, []) ||
     !oauthConfigMatches(existing.oauthConfig, installation);
   await tx

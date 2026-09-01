@@ -67,22 +67,82 @@ import { mcpOAuthSafeFetch } from "./mcp-oauth-safe-fetch.service";
 
 const TOKEN_REFRESH_LEEWAY_MS = 60 * 1000;
 
-const customConnectorOAuthStateContextSchema = z.object({
+const oauthHttpsUrlSchema = z
+  .string()
+  .url()
+  .refine((value) => {
+    return new URL(value).protocol === "https:";
+  });
+
+const customConnectorCustomOAuthStateContextSchema = z
+  .object({
+    version: z.never().optional(),
+    oauthSetup: z.literal("custom").optional(),
+    connectorId: z.string().uuid(),
+    storageVersion: z.number().int().positive(),
+    providerContext: z
+      .object({
+        provider: z.literal("feishu"),
+        completionTarget: z.enum(["custom", "feishu"]),
+        installationId: z.string().uuid().optional(),
+        expectedOpenId: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+const customConnectorAutomaticOAuthStateContextBaseSchema = z.object({
+  version: z.literal(1),
+  oauthSetup: z.literal("automatic"),
   connectorId: z.string().uuid(),
   storageVersion: z.number().int().positive(),
-  providerContext: z
-    .object({
-      provider: z.literal("feishu"),
-      completionTarget: z.enum(["custom", "feishu"]),
-      installationId: z.string().uuid().optional(),
-      expectedOpenId: z.string().min(1).optional(),
-    })
-    .optional(),
+  issuer: oauthHttpsUrlSchema,
+  resource: oauthHttpsUrlSchema,
+  resourceMetadataUrl: oauthHttpsUrlSchema.nullable(),
+  tokenEndpoint: oauthHttpsUrlSchema,
+  clientId: z.string().min(1),
+  tokenEndpointAuthMethod: z.enum([
+    "none",
+    "client_secret_basic",
+    "client_secret_post",
+  ]),
+  providerContext: z.never().optional(),
 });
 
-export type CustomConnectorOAuthStateContext = z.infer<
+const customConnectorAutomaticOAuthStateContextSchema = z.union([
+  customConnectorAutomaticOAuthStateContextBaseSchema
+    .extend({
+      registrationMethod: z.literal("cimd"),
+      dcrRegistrationId: z.never().optional(),
+    })
+    .strict(),
+  customConnectorAutomaticOAuthStateContextBaseSchema
+    .extend({
+      registrationMethod: z.literal("dcr"),
+      dcrRegistrationId: z.string().uuid(),
+    })
+    .strict(),
+]);
+
+const customConnectorOAuthStateContextSchema = z.union([
+  customConnectorCustomOAuthStateContextSchema,
+  customConnectorAutomaticOAuthStateContextSchema,
+]);
+
+type CustomConnectorOAuthStateContext = z.infer<
   typeof customConnectorOAuthStateContextSchema
 >;
+
+export type CustomConnectorCustomOAuthStateContext = z.infer<
+  typeof customConnectorCustomOAuthStateContextSchema
+>;
+
+export function isCustomConnectorCustomOAuthStateContext(
+  context: CustomConnectorOAuthStateContext,
+): context is CustomConnectorCustomOAuthStateContext {
+  return context.oauthSetup !== "automatic";
+}
 
 const oauthTokenResponseSchema = z.object({
   access_token: z.string().min(1),
@@ -417,6 +477,20 @@ function customConnectorOAuthMcpIsDisabled(
   );
 }
 
+function isCustomOAuthConnector(
+  connector: CustomConnectorRow,
+): connector is CustomConnectorRow & {
+  readonly authMode: "oauth";
+  readonly oauthSetup: "custom";
+  readonly oauthConfig: CustomConnectorOAuthConfigRow;
+} {
+  return (
+    connector.authMode === "oauth" &&
+    connector.oauthSetup === "custom" &&
+    connector.oauthConfig !== null
+  );
+}
+
 export const startCustomConnectorOAuth2$ = command(
   async (
     { get, set },
@@ -445,7 +519,7 @@ export const startCustomConnectorOAuth2$ = command(
     if (!connector) {
       return notFound("Custom connector not found");
     }
-    if (connector.authMode !== "oauth" || !connector.oauthConfig) {
+    if (!isCustomOAuthConnector(connector)) {
       return badRequestMessage(
         "Custom connector does not support OAuth 2.0 authentication",
       );
@@ -472,6 +546,7 @@ export const startCustomConnectorOAuth2$ = command(
       codeVerifier,
     });
     const context: CustomConnectorOAuthStateContext = {
+      oauthSetup: "custom",
       connectorId: connector.id,
       storageVersion: connector.storageVersion,
       ...(providerAdapter === "feishu" && args.feishuContext
@@ -722,6 +797,7 @@ export async function lockCustomConnectorOAuth2CredentialContract(args: {
   const [definition] = await args.db
     .select({
       authMode: orgCustomConnectors.authMode,
+      oauthSetup: orgCustomConnectors.oauthSetup,
       storageVersion: orgCustomConnectors.storageVersion,
       providerAdapter: orgCustomConnectorOauthConfigs.providerAdapter,
     })
@@ -744,6 +820,7 @@ export async function lockCustomConnectorOAuth2CredentialContract(args: {
   if (
     !definition ||
     definition.authMode !== "oauth" ||
+    (definition.oauthSetup !== null && definition.oauthSetup !== "custom") ||
     definition.storageVersion !== args.storageVersion
   ) {
     throw new Error(

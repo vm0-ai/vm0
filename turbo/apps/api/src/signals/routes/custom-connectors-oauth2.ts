@@ -20,6 +20,7 @@ import { validateConnectorAuthorizationTarget$ } from "../services/connected-con
 import {
   customConnectorOAuth2EffectiveInitialToken as effectiveInitialToken,
   customConnectorOAuthStateMatchesDefinition,
+  isCustomConnectorCustomOAuthStateContext,
   decryptCustomConnectorOAuth2Credentials,
   exchangeCustomConnectorOAuth2Code,
   parseValidCustomConnectorOAuthState,
@@ -164,7 +165,9 @@ function isCurrentOAuthCustomConnector(
 } {
   return Boolean(
     connector &&
+    isCustomConnectorCustomOAuthStateContext(context) &&
     connector.authMode === "oauth" &&
+    connector.oauthSetup === "custom" &&
     connector.oauthConfig &&
     customConnectorOAuthStateMatchesDefinition(context, connector),
   );
