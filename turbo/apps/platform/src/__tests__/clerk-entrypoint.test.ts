@@ -552,6 +552,7 @@ describe("platform Clerk entrypoint", () => {
 
     const completedAt = bootstrap.clerkLoadCompletedAt;
     expect(completedAt).toStrictEqual(expect.any(Number));
+    expect(bootstrap.loaded).toBeUndefined();
     expect(mockedClerkLoad).toHaveBeenCalledOnce();
     expect(
       performance.getEntriesByName(CLERK_LOAD_STARTED_MARK, "mark")[0]
@@ -762,7 +763,7 @@ describe("platform Clerk entrypoint", () => {
     expect(requests).toBe(0);
   });
 
-  it("falls through to existing auth recovery after an early request failure", async () => {
+  it("returns an API 401 after early prefetch failure without forcing a refresh", async () => {
     const authorizations: (string | null)[] = [];
     context.mocks.http.get("*/api/onboarding/status", ({ request }) => {
       authorizations.push(request.headers.get("authorization"));
@@ -791,20 +792,19 @@ describe("platform Clerk entrypoint", () => {
       mockedClerk.sessionGetToken.mock.calls.filter(([options]) => {
         return options?.skipCache === true;
       }).length;
-    await expect(context.store.get(onboardingStatus$)).resolves.toStrictEqual(
-      RETRIED_ONBOARDING_STATUS,
+    await expect(context.store.get(onboardingStatus$)).rejects.toThrow(
+      "Unauthorized",
     );
 
     expect(authorizations).toStrictEqual([
       "Bearer stale-test-token",
       "Bearer stale-test-token",
-      "Bearer fresh-test-token",
     ]);
     expect(
       mockedClerk.sessionGetToken.mock.calls.filter(([options]) => {
         return options?.skipCache === true;
       }),
-    ).toHaveLength(forcedTokenReadsBeforeRetry + 1);
+    ).toHaveLength(forcedTokenReadsBeforeRetry);
   });
 
   it.each([

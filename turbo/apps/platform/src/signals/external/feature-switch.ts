@@ -3,13 +3,14 @@ import type { BrowserClerk as Clerk } from "@clerk/shared/types";
 import { getAllFeatureStates } from "@okouai/core/feature-switch";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { authRecovery$, clerk$ } from "../auth";
+import { clerk$ } from "../auth";
 import { appVersion$ } from "../app-version.ts";
 import { accept } from "../../lib/accept.ts";
 import { resolveApiBaseForTarget } from "../api-base.ts";
 import { getCapturedPreviewBypassForTarget } from "../../lib/preview-bypass-cookie.ts";
 import { createAuthedContractClient } from "../api-client-base.ts";
 import { rootSignal$ } from "../root-signal.ts";
+import { readClerkToken } from "../clerk-token.ts";
 import { writeConnectionDiagnostic$ } from "../connection-diagnostics.ts";
 import {
   featureSwitchCacheState$,
@@ -67,14 +68,18 @@ function isSameFeatureSwitchIdentity(
 // client is available.
 const apiFeatureSwitchClient$ = computed((get) => {
   const apiBaseUrl = resolveApiBaseForTarget("api");
+  const clerkPromise = get(clerk$);
+  const rootSignal = get(rootSignal$);
   return createAuthedContractClient(featureSwitchesContract, {
     baseUrl: apiBaseUrl,
     clientVersion: get(appVersion$),
-    getAuthRecovery: () => {
-      return get(authRecovery$);
+    getToken: async (signal) => {
+      const clerk = await clerkPromise;
+      signal.throwIfAborted();
+      return await readClerkToken(clerk, signal);
     },
     getRootSignal: () => {
-      return get(rootSignal$);
+      return rootSignal;
     },
     getVercelProtectionBypass: () => {
       return getCapturedPreviewBypassForTarget(apiBaseUrl) ?? undefined;

@@ -32,7 +32,7 @@ import {
 } from "../../../__tests__/mock-auth.ts";
 import { mockNow } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { foregroundReady$ } from "../../../signals/auth-retry.ts";
+import { foregroundReady$ } from "../../../signals/foreground-catch-up.ts";
 import { subscribeRealtimeReadyCatchUp$ } from "../../../signals/realtime.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
@@ -1636,7 +1636,7 @@ describe("zero sidebar account menu", () => {
     });
   });
 
-  it("keeps an active session open when the replay remains unauthorized", async () => {
+  it("keeps an active session open when a browser request returns unauthorized", async () => {
     mockAdminAccountSidebar();
     context.mocks.data.personalModelProviders([
       connectedPersonalCodexProvider(),
@@ -1671,13 +1671,13 @@ describe("zero sidebar account menu", () => {
     });
 
     await waitFor(() => {
-      expect(modelProviderRequests).toBe(2);
+      expect(modelProviderRequests).toBe(1);
     });
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
     expect(screen.queryByText("Unauthorized")).not.toBeInTheDocument();
   });
 
-  it("keeps the app open when auth recovery remains unauthorized in the background", async () => {
+  it("keeps the app open when a background request returns unauthorized", async () => {
     mockAdminAccountSidebar();
     context.mocks.data.personalModelProviders([
       connectedPersonalCodexProvider(),
@@ -1713,7 +1713,7 @@ describe("zero sidebar account menu", () => {
     });
 
     await waitFor(() => {
-      expect(modelProviderRequests).toBe(2);
+      expect(modelProviderRequests).toBe(1);
     });
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
     expect(screen.queryByText("Unauthorized")).not.toBeInTheDocument();

@@ -3,7 +3,6 @@ import { command, computed, state } from "ccstate";
 import { now } from "../lib/time.ts";
 import { logger } from "../signals/log.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
-import type { AuthRecovery } from "../signals/auth-retry.ts";
 import { createDeferredPromise, withCleanup } from "../signals/utils.ts";
 import type { SharedDatabasePortLike } from "./bridge.ts";
 import type { SharedDatabaseIdentity } from "./data-key.ts";
@@ -34,7 +33,7 @@ interface TokenWaiter {
   readonly deferred: ReturnType<typeof createDeferredPromise<string | null>>;
 }
 
-export class WorkerAuthRecovery implements AuthRecovery {
+export class WorkerTokenRecovery {
   private readonly waiters = new Set<TokenWaiter>();
 
   constructor(
@@ -47,7 +46,7 @@ export class WorkerAuthRecovery implements AuthRecovery {
     return Promise.resolve(this.token);
   }
 
-  forceRefreshToken(signal: AbortSignal): Promise<string | null> {
+  reloadToken(signal: AbortSignal): Promise<string | null> {
     signal.throwIfAborted();
     this.broadcast({ type: "authentication-required" });
     const waiter: TokenWaiter = {
@@ -72,7 +71,7 @@ export class WorkerAuthRecovery implements AuthRecovery {
 
 interface WorkerCredentialContext {
   readonly identity: SharedDatabaseIdentity;
-  readonly authRecovery: WorkerAuthRecovery;
+  readonly tokenRecovery: WorkerTokenRecovery;
 }
 
 const internalWorkerCredentialContext$ = state<WorkerCredentialContext | null>(
@@ -111,9 +110,9 @@ export const workerCredentialIdentity$ = computed((get) => {
     .identity;
 });
 
-export const workerAuthRecovery$ = computed((get) => {
+export const workerTokenRecovery$ = computed((get) => {
   return requireWorkerCredentialContext(get(internalWorkerCredentialContext$))
-    .authRecovery;
+    .tokenRecovery;
 });
 
 export const connectionControllers$ = computed((get) => {
@@ -132,12 +131,12 @@ export const initializeWorkerCredentialContext$ = command(
   (
     { get, set },
     identity: SharedDatabaseIdentity,
-    authRecovery: WorkerAuthRecovery,
+    tokenRecovery: WorkerTokenRecovery,
   ): void => {
     if (get(internalWorkerCredentialContext$) !== null) {
       throw new Error("Worker credential context is already initialized");
     }
-    set(internalWorkerCredentialContext$, { identity, authRecovery });
+    set(internalWorkerCredentialContext$, { identity, tokenRecovery });
   },
 );
 
@@ -152,10 +151,10 @@ export const updateWorkerCredentialIdentity$ = command(
     ) {
       throw new Error("Worker credential Store identity cannot change");
     }
-    context.authRecovery.updateToken(identity.token);
+    context.tokenRecovery.updateToken(identity.token);
     set(internalWorkerCredentialContext$, {
       identity,
-      authRecovery: context.authRecovery,
+      tokenRecovery: context.tokenRecovery,
     });
   },
 );

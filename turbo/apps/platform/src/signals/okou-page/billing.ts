@@ -33,7 +33,7 @@ import { replaceSearchParams$, searchParams$ } from "../route.ts";
 import { reloadUsageRecords$ } from "./settings/personal-usage-record.ts";
 import { reloadQueueData$ } from "../queue-page/queue-signals.ts";
 import { setAblyLoop$, subscribeRealtimeReadyCatchUp$ } from "../realtime.ts";
-import { foregroundReady$ } from "../auth-retry.ts";
+import { foregroundReady$ } from "../foreground-catch-up.ts";
 import { isOrgAdmin$ } from "../org.ts";
 import { settle, tapError, withCleanup } from "../utils.ts";
 import { accept } from "../../lib/accept.ts";
