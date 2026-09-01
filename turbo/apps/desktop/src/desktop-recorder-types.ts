@@ -6,6 +6,7 @@
  */
 
 export type DesktopRecorderStatus =
+  | "delivering"
   | "finalizing"
   | "idle"
   | "preparing"
@@ -15,8 +16,10 @@ export type DesktopRecorderStatus =
 
 export type DesktopRecorderErrorCode =
   | "capture_failed"
+  | "delivery_failed"
   | "helper_unavailable"
   | "permission_denied"
+  | "signed_out"
   | "source_lost";
 
 export interface DesktopRecorderError {
@@ -106,6 +109,17 @@ export interface RecorderNativeBackend {
     sessionId: string,
   ) => Promise<DesktopRecorderNativeStatus>;
 }
+
+/**
+ * Stops an in-flight recording from any application.
+ *
+ * Registered only while recording, so the shortcut is not held hostage the rest
+ * of the time. It exists because the recording controls deliberately live in
+ * the menu bar rather than in an on-screen overlay, which would otherwise be
+ * captured into the user's own video.
+ */
+export const STOP_SCREEN_RECORDING_ACCELERATOR = "Control+Shift+R";
+export const STOP_SCREEN_RECORDING_ACCELERATOR_LABEL = "⌃⇧R";
 
 export const UNAVAILABLE_RECORDER_STATE: DesktopRecorderState = Object.freeze({
   available: false,

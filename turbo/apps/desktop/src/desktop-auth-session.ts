@@ -129,9 +129,18 @@ export class DesktopAuthSession {
     return await this.refresh();
   }
 
-  async fetchWithSessionAuth(requestUrl: URL): Promise<Response> {
+  /**
+   * `init` carries the method and body for non-GET calls. Its `headers` are
+   * merged under the session headers, which always win, so a caller cannot
+   * accidentally drop the cookie or bearer token.
+   */
+  async fetchWithSessionAuth(
+    requestUrl: URL,
+    init?: RequestInit,
+  ): Promise<Response> {
     const response = await fetch(requestUrl, {
-      headers: await this.headersFor(requestUrl),
+      ...init,
+      headers: await this.headersFor(requestUrl, init?.headers),
     });
     if (response.status !== 401 || !this.token) {
       return response;
@@ -139,7 +148,8 @@ export class DesktopAuthSession {
 
     this.token = null;
     return await fetch(requestUrl, {
-      headers: await this.headersFor(requestUrl),
+      ...init,
+      headers: await this.headersFor(requestUrl, init?.headers),
     });
   }
 
@@ -298,11 +308,15 @@ export class DesktopAuthSession {
     this.onChange();
   }
 
-  private async headersFor(requestUrl: URL): Promise<Headers> {
-    const headers = await headersWithSessionCookies(this.cookieSource, [
-      ...this.cookieUrls,
-      requestUrl,
-    ]);
+  private async headersFor(
+    requestUrl: URL,
+    extraHeaders?: HeadersInit,
+  ): Promise<Headers> {
+    const headers = await headersWithSessionCookies(
+      this.cookieSource,
+      [...this.cookieUrls, requestUrl],
+      extraHeaders,
+    );
     if (this.token) {
       headers.set("authorization", `Bearer ${this.token}`);
     }

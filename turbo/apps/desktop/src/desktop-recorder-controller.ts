@@ -1,3 +1,4 @@
+import type { DeliveredRecording } from "./desktop-recorder-delivery";
 import {
   UNAVAILABLE_RECORDER_STATE,
   type DesktopRecorderError,
@@ -14,6 +15,18 @@ interface DesktopRecorderControllerOptions {
   readonly createBackend: () => RecorderNativeBackend;
   /** Absolute path the next recording is written to. */
   readonly createOutputPath: () => string;
+  /**
+   * Whether delivery back to Okou is currently possible. Checked before the
+   * capture starts rather than after, so a signed-out user is told before
+   * spending minutes recording something that cannot be handed over.
+   */
+  readonly canDeliver: () => Promise<boolean>;
+  /** Uploads the finished recording and returns the review link to open. */
+  readonly deliver: (
+    recording: DesktopRecorderRecording,
+  ) => Promise<DeliveredRecording>;
+  /** Opens the review link in the user's browser. */
+  readonly openReview: (reviewUrl: string) => void;
   /** Zero-arg "something changed" signal; defaults to a no-op. */
   readonly onChange?: () => void;
   /** Called for failures on paths that cannot propagate to a caller. */
@@ -33,6 +46,11 @@ interface DesktopRecorderControllerOptions {
 export class DesktopRecorderController {
   private readonly createBackend: () => RecorderNativeBackend;
   private readonly createOutputPath: () => string;
+  private readonly canDeliver: () => Promise<boolean>;
+  private readonly deliver: (
+    recording: DesktopRecorderRecording,
+  ) => Promise<DeliveredRecording>;
+  private readonly openReview: (reviewUrl: string) => void;
   private readonly onChange: () => void;
   private readonly logError: (error: unknown) => void;
 
@@ -47,6 +65,9 @@ export class DesktopRecorderController {
   constructor(options: DesktopRecorderControllerOptions) {
     this.createBackend = options.createBackend;
     this.createOutputPath = options.createOutputPath;
+    this.canDeliver = options.canDeliver;
+    this.deliver = options.deliver;
+    this.openReview = options.openReview;
     this.onChange = options.onChange ?? (() => {});
     this.logError = options.logError ?? (() => {});
   }
@@ -89,9 +110,40 @@ export class DesktopRecorderController {
     return await this.requireBackend().listSources();
   }
 
+  /**
+   * Prepares and starts a recording of the primary display in one step.
+   *
+   * The menu bar offers this because it cannot host a source picker; choosing a
+   * specific window arrives with the picker UI.
+   */
+  async startMainDisplayRecording(): Promise<void> {
+    const sources = await this.listSources();
+    const display = sources.find((source) => {
+      return source.kind === "display";
+    });
+    if (!display) {
+      throw new Error("No display is available to record");
+    }
+    await this.prepare({
+      sourceId: display.id,
+      sourceKind: "display",
+      systemAudio: true,
+    });
+    await this.start();
+  }
+
   async prepare(request: DesktopRecorderPrepareRequest): Promise<void> {
     const backend = this.requireBackend();
     this.requireStatus("idle");
+    if (!(await this.canDeliver())) {
+      this.error = {
+        code: "signed_out",
+        message:
+          "Sign in to Okou before recording so the result can be delivered",
+      };
+      this.onChange();
+      throw new Error("Cannot record while signed out of Okou");
+    }
     this.setStatus("preparing");
     // A rejected prepare — a denied Screen Recording permission is the common
     // one — must return the machine to `idle`, otherwise every later attempt
@@ -133,12 +185,51 @@ export class DesktopRecorderController {
         return await backend.stop(sessionId);
       },
     );
-    if (this.featureEnabled) {
-      this.lastRecording = recording;
-      this.sessionId = null;
+    if (!this.featureEnabled) {
+      return recording;
+    }
+    this.lastRecording = recording;
+    this.sessionId = null;
+    await this.runDelivery(recording);
+    return recording;
+  }
+
+  /**
+   * Uploads the last recording again after a failed delivery.
+   *
+   * The capture itself already succeeded and the files are still on disk, so a
+   * network failure must not cost the user the recording.
+   */
+  async retryDelivery(): Promise<void> {
+    const recording = this.lastRecording;
+    if (!recording) {
+      throw new Error("There is no recording to deliver");
+    }
+    this.requireStatus("idle");
+    await this.runDelivery(recording);
+  }
+
+  /**
+   * Delivery failures are captured into state rather than propagated: the
+   * recording on disk is intact and retryable, so losing the upload is not a
+   * reason to fail the stop the user just asked for.
+   */
+  private async runDelivery(
+    recording: DesktopRecorderRecording,
+  ): Promise<void> {
+    this.setStatus("delivering");
+    try {
+      const delivered = await this.deliver(recording);
+      this.error = null;
+      this.setStatus("idle");
+      this.openReview(delivered.reviewUrl);
+    } catch (error) {
+      this.error = {
+        code: "delivery_failed",
+        message: error instanceof Error ? error.message : String(error),
+      };
       this.setStatus("idle");
     }
-    return recording;
   }
 
   /**
