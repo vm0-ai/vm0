@@ -6,6 +6,10 @@ import type {
   OfficialWorkflowParameterBinding,
 } from "@okouai/api-contracts/contracts/official-workflow-catalog";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import {
+  stripeInvoicePaidEventConfigSchema,
+  type StripeInvoicePaidEventConfig,
+} from "@okouai/api-contracts/contracts/workflows";
 import { googleFormsAutomationCursors } from "@okouai/db/schema/google-forms-event";
 import { strapiWorkflowAutomations } from "@okouai/db/schema/strapi-integration";
 import {
@@ -59,8 +63,14 @@ import {
 import { lockWorkflowWebhookAutomationTierEligibleForOrg } from "./workflow-webhook-automation-entitlement.service";
 import type { WorkflowMember } from "./workflow-data.service";
 import { resolveWorkflowAutomationConnectorId } from "./workflow-automation-account.service";
+import { resolveStripeInvoicePaidAutomationBinding } from "./stripe-invoice-paid-workflow-automation.service";
 
 const DORMANT_CREATION_LEASE_MS = 5 * 60 * 1000;
+
+type StripeAutomationBinding = Pick<
+  StripeInvoicePaidEventConfig,
+  "connectorId" | "stripeAccountId" | "mode"
+>;
 
 type DormantMaterializationReservedHook = (args: {
   readonly definitionName: string;
@@ -164,9 +174,15 @@ async function lockOfficialAutomationAccountProjection(
     readonly currentEventType: string | null;
     readonly nextEventType: string | null;
   },
+  signal: AbortSignal,
 ): Promise<
   | { readonly kind: "not-required" }
-  | { readonly kind: "locked"; readonly eventConnectorId: string | null }
+  | {
+      readonly kind: "locked";
+      readonly connectorSlug: "gmail" | "stripe" | null;
+      readonly eventConnectorId: string | null;
+      readonly stripeBinding: StripeAutomationBinding | null;
+    }
 > {
   const currentConnectorSlug = accountConnectorSlug(args.currentEventType);
   const nextConnectorSlug = accountConnectorSlug(args.nextEventType);
@@ -188,18 +204,66 @@ async function lockOfficialAutomationAccountProjection(
       target: { kind: "builtin", connectorSlug },
     });
   }
-  return {
-    kind: "locked",
-    eventConnectorId:
-      nextConnectorSlug === null
-        ? null
-        : await resolveWorkflowAutomationConnectorId(db, {
+  const stripeReadiness =
+    nextConnectorSlug === "stripe"
+      ? await resolveStripeInvoicePaidAutomationBinding(
+          {
+            db,
             orgId: args.orgId,
             userId: args.userId,
             workflowId: args.workflowId,
-            connectorSlug: nextConnectorSlug,
-          }),
+          },
+          signal,
+        )
+      : null;
+  signal.throwIfAborted();
+  const stripeBinding =
+    stripeReadiness?.kind === "ok" ? stripeReadiness.binding : null;
+  return {
+    kind: "locked",
+    connectorSlug: nextConnectorSlug,
+    eventConnectorId:
+      nextConnectorSlug === null
+        ? null
+        : stripeBinding
+          ? stripeBinding.connectorId
+          : await resolveWorkflowAutomationConnectorId(db, {
+              orgId: args.orgId,
+              userId: args.userId,
+              workflowId: args.workflowId,
+              connectorSlug: nextConnectorSlug,
+            }),
+    stripeBinding,
   };
+}
+
+function accountProjectionMatchesPatch(
+  projection: Awaited<
+    ReturnType<typeof lockOfficialAutomationAccountProjection>
+  >,
+  patch: OfficialAutomationPatch,
+): boolean {
+  if (projection.kind === "not-required") {
+    return true;
+  }
+  if (projection.eventConnectorId !== patch.eventConnectorId) {
+    return false;
+  }
+  if (projection.connectorSlug !== "stripe") {
+    return true;
+  }
+  if (projection.stripeBinding === null) {
+    return false;
+  }
+  const config = stripeInvoicePaidEventConfigSchema.safeParse(
+    patch.eventConfig,
+  );
+  return (
+    config.success &&
+    config.data.connectorId === projection.stripeBinding.connectorId &&
+    config.data.stripeAccountId === projection.stripeBinding.stripeAccountId &&
+    config.data.mode === projection.stripeBinding.mode
+  );
 }
 
 async function acquireReconciliationLocks(
@@ -492,6 +556,7 @@ async function persistReconfigurationPatch(
         currentEventType: args.expected.eventType,
         nextEventType: args.patch.eventType,
       },
+      signal,
     );
     if (
       !(await lockInstalledWorkflow(tx, {
@@ -515,10 +580,7 @@ async function persistReconfigurationPatch(
     ) {
       return null;
     }
-    if (
-      accountProjection.kind === "locked" &&
-      accountProjection.eventConnectorId !== args.patch.eventConnectorId
-    ) {
+    if (!accountProjectionMatchesPatch(accountProjection, args.patch)) {
       return null;
     }
     const [formsCursor] = await tx
@@ -586,6 +648,7 @@ async function restoreFailedReconfiguration(
     readonly persisted: PersistedReconfiguration;
   },
 ): Promise<void> {
+  const cleanupSignal = new AbortController().signal;
   const restored = await db.transaction(async (tx) => {
     await acquireReconciliationLocks(tx, args.orgId);
     const accountProjection = await lockOfficialAutomationAccountProjection(
@@ -597,6 +660,7 @@ async function restoreFailedReconfiguration(
         currentEventType: args.persisted.current.eventType,
         nextEventType: args.persisted.previous.eventType,
       },
+      cleanupSignal,
     );
     if (
       !(await lockInstalledWorkflow(tx, {
@@ -621,16 +685,31 @@ async function restoreFailedReconfiguration(
       return null;
     }
     const currentTime = nowDate();
+    const restorePatch = officialAutomationRestorePatch(
+      args.persisted.previous,
+      args.persisted.previous.nextRunAt,
+      currentTime,
+    );
+    const stripeBinding =
+      accountProjection.kind === "locked"
+        ? accountProjection.stripeBinding
+        : null;
     const [row] = await tx
       .update(workflowAutomations)
       .set({
-        ...officialAutomationRestorePatch(
-          args.persisted.previous,
-          args.persisted.previous.nextRunAt,
-          currentTime,
-        ),
+        ...restorePatch,
         ...(accountProjection.kind === "locked"
           ? { eventConnectorId: accountProjection.eventConnectorId }
+          : {}),
+        ...(stripeBinding
+          ? {
+              eventConfig: {
+                ...stripeInvoicePaidEventConfigSchema.parse(
+                  restorePatch.eventConfig,
+                ),
+                ...stripeBinding,
+              },
+            }
           : {}),
         enabled: args.persisted.previous.enabled,
         officialIntendedEnabled:
@@ -655,7 +734,6 @@ async function restoreFailedReconfiguration(
   if (!restored) {
     return;
   }
-  const cleanupSignal = new AbortController().signal;
   await reconcileAutomationEventWatchReconfiguration(
     db,
     {
@@ -1226,6 +1304,7 @@ async function finalizeAutomationStructureTransition(
         currentEventType: args.persisted.current.eventType,
         nextEventType: args.patch.eventType,
       },
+      signal,
     );
     if (
       !(await lockInstalledWorkflow(tx, {
@@ -1252,10 +1331,7 @@ async function finalizeAutomationStructureTransition(
     ) {
       return { kind: "superseded" };
     }
-    if (
-      accountProjection.kind === "locked" &&
-      accountProjection.eventConnectorId !== args.patch.eventConnectorId
-    ) {
+    if (!accountProjectionMatchesPatch(accountProjection, args.patch)) {
       return { kind: "superseded" };
     }
     const currentTime = nowDate();
