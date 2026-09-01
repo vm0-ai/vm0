@@ -26,6 +26,103 @@ nested fields map. Runner-owned Axiom metadata (`_time`, `context`, `service`,
 `runner_hostname`, and `runner_version`) remains authoritative. Callers remain
 responsible for redaction and bounded values.
 
+## WebSocket Framing Contract
+
+[`websocket_framing.py`](../../crates/runner/mitm-addon/src/websocket_framing.py)
+is a version-pinned private replacement for mitmproxy's WebSocket connection
+class. It bounds decoded data before a complete message reaches mitmproxy's
+WebSocket addon hooks. The [real-layer integration
+tests](../../crates/runner/mitm-addon/tests/test_mitmproxy_websocket_framing.py)
+are the executable contract for the behavior described here.
+
+### Limits and allocation boundary
+
+The limits apply to decoded logical messages, not to raw network reads:
+
+| Constant | Value | Scope |
+| --- | --- | --- |
+| `MAX_DECODED_MESSAGE_BYTES` | 256 MiB | One logical message in one WebSocket direction |
+| `MAX_MESSAGE_DATA_FRAMES` | 8,192 | Data frames in one logical message in one direction |
+| `MAX_AGGREGATE_DECODED_BYTES` | 1 GiB | All active WebSocket directions in one mitmproxy process |
+
+Each bounded connection has a message budget for one direction. Decoded bytes
+are charged as payload data is processed, and the process-wide aggregate budget
+reserves the same bytes across all active directions. The limit extension is
+appended after negotiated inbound extensions, so permessage-deflate output is
+bounded before wsproto delivers decoded content to mitmproxy. A message that
+exceeds a byte or frame limit emits no message hook or forwarded data and closes
+with WebSocket code 1009 (`MESSAGE_TOO_BIG`).
+
+### Frames, reads, and fragmentation
+
+One network read can contain part of a frame, multiple frames, or a partial
+message. The data-frame counter increments once when the first payload for each
+data frame arrives, including continuation frames, rather than once per read.
+Control frames are passed through and do not consume the data-frame budget. The
+decoded-byte and data-frame counters reset only after a complete logical message
+has been dispatched, or immediately when the connection closes. Partial frame
+state is kept in a mutable `frame_buf` so repeated reads do not repeatedly copy
+an immutable prefix.
+
+### Bounded permessage-deflate
+
+When permessage-deflate is negotiated, the framing adapter replaces the
+mitmproxy extension while preserving its negotiated takeover and window
+parameters. It asks zlib for at most one byte beyond the remaining message and
+aggregate budgets. Extra output or a non-empty zlib unconsumed tail is treated as
+an overflow lower bound, clears the decompressor and message budget, and closes
+the flow with code 1009. A zlib decoding error clears the same state and closes
+with `INVALID_FRAME_PAYLOAD_DATA` (1007).
+
+RFC 7692 messages omit the final deflate block on the wire. The adapter restores
+the empty-deflate trailer (`00 00 ff ff`) at the end of a compressed message and
+runs that output through the same bound before dispatch. Uncompressed messages
+after a compressed message, context takeover, and negotiated no-context-takeover
+are connection-local states covered by the real-layer tests. Any rejected or
+terminally closed compressed flow clears its decompressor and partial framing
+state before the flow can release its connection resources.
+
+### Aggregate ownership and terminal cleanup
+
+The aggregate budget is process-global to the mitmproxy event-loop process. A
+completed message keeps its decoded-byte reservation through addon hook
+dispatch and forwarding: completion clears the per-message counters but defers
+aggregate release until the next event-loop turn. This prevents another active
+direction from using those bytes while the completed message is still held by
+the hook. Rejection and either-direction connection close release the reservation
+immediately. Partial frame, budget, and decompressor state are cleared for both
+inbound and outbound close paths.
+
+The first limit violation on each connection is stored as content-free
+diagnostic state. At terminal flow cleanup,
+`mitm_addon.py`'s
+[`_release_terminal_flow_state()`](../../crates/runner/mitm-addon/src/mitm_addon.py#L1674-L1701)
+calls `log_limit_violation()` to consume that state and write a
+`websocket_framing_limit` warning for each stored direction. Its structured
+fields are `reason`,
+`direction`, `limit_unit`, `limit_value`, `observed_value`,
+`observed_is_lower_bound`, `close_code`, `run_id`, `flow_id`, and
+`firewall_name`; payload contents are not logged. The separate
+`release_flow_state()` entry point removes any remaining connection-scoped
+diagnostic state without emitting a record.
+
+### Installation and version re-audit
+
+`install_websocket_framing()` is idempotent: it returns when the marked bounded
+connection class is already installed, and rejects an unexpected unmarked
+mitmproxy connection class. `mitm_addon.load()` installs the adaptation through
+the [exact-version compatibility gate](../../crates/runner/mitm-addon/src/mitmproxy_compat.py)
+before registering addon options. The gate requires mitmproxy `12.2.3` and
+wsproto `1.3.2`; the [runner dependency contract](../../crates/runner/src/deps.rs)
+and the addon `pyproject.toml`/`uv.lock` keep those pins aligned.
+
+Before either dependency is upgraded, re-audit the private mitmproxy
+connection, extension, frame-buffer, and generator behavior described above and
+update the compatibility gate, runner artifact metadata, Python dependency
+metadata, and this contract together. The
+[`test_mitmproxy_websocket_framing.py`](../../crates/runner/mitm-addon/tests/test_mitmproxy_websocket_framing.py)
+suite must continue to pass as the executable framing contract.
+
 ## Environment Setup
 
 The addon uses uv for dependency management. The supported devcontainer installs
