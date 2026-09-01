@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { gunzipSync, gzipSync } from "node:zlib";
 
 import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
@@ -157,6 +158,72 @@ function sanitizedLegacyChainedControlRevokeLine(
   })}\n`;
 }
 
+function isSanitizedContextlessMorningBriefRoot(row: ChatEventRow): boolean {
+  return (
+    row.eventType === "input.prompt" &&
+    row.runId === null &&
+    row.revokesEventId === null &&
+    row.contextType === "morning_brief" &&
+    row.contextId === null &&
+    row.runEventSequenceNumber === null &&
+    row.runEventId === null &&
+    row.payload !== null &&
+    Object.keys(row.payload).length === 1 &&
+    row.payload.userMessage !== undefined
+  );
+}
+
+function isSanitizedContextlessMorningBriefClaim(
+  row: ChatEventRow,
+  root: ChatEventRow,
+): boolean {
+  return (
+    row.id !== root.id &&
+    row.chatThreadId === root.chatThreadId &&
+    row.eventType === "input.prompt" &&
+    row.runId !== null &&
+    row.revokesEventId === root.id &&
+    row.contextType === "morning_brief" &&
+    row.contextId === null &&
+    row.runEventSequenceNumber === null &&
+    row.runEventId === null &&
+    row.seqId > root.seqId &&
+    row.createdAt > root.createdAt &&
+    isDeepStrictEqual(row.payload, root.payload)
+  );
+}
+
+function sanitizedLegacyContextlessMorningBriefClaimLines(
+  root: ChatEventRow,
+  claim: ChatEventRow,
+): { readonly root: string; readonly claim: string } {
+  if (
+    !isSanitizedContextlessMorningBriefRoot(root) ||
+    !isSanitizedContextlessMorningBriefClaim(claim, root)
+  ) {
+    throw new Error("Expected an exact historical contextless claim pair");
+  }
+  chatEventFromRow(root);
+  chatEventFromRow(claim);
+  const encode = (row: ChatEventRow): string => {
+    return `${JSON.stringify({
+      id: row.id,
+      chatThreadId: row.chatThreadId,
+      runId: row.runId,
+      revokesEventId: row.revokesEventId,
+      eventType: "input.prompt",
+      payload: row.payload,
+      contextType: "morning_brief",
+      contextId: null,
+      runEventSequenceNumber: null,
+      runEventId: null,
+      seqId: row.seqId,
+      createdAt: row.createdAt,
+    })}\n`;
+  };
+  return { root: encode(root), claim: encode(claim) };
+}
+
 function mockR2GcWindowForKey(key: string, after: Date): Date {
   const prefixStart = "chat-events/".length;
   const shardGroup = Number.parseInt(
@@ -241,6 +308,51 @@ async function sendNoCreditMessage(
     throw new Error("Expected a no-credit send without a run");
   }
   return sent.body.threadId;
+}
+
+function requiredValue<T>(value: T | undefined, message: string): T {
+  if (value === undefined) {
+    throw new Error(message);
+  }
+  return value;
+}
+
+type RevokingChatEventRow = ChatEventRow & {
+  readonly revokesEventId: string;
+};
+
+function isRevokingChatEventRow(
+  row: ChatEventRow,
+): row is RevokingChatEventRow {
+  return row.revokesEventId !== null;
+}
+
+function requiredRevokingRow(
+  row: ChatEventRow | undefined,
+  message: string,
+): RevokingChatEventRow {
+  if (row === undefined || !isRevokingChatEventRow(row)) {
+    throw new Error(message);
+  }
+  return row;
+}
+
+type PromptChatEventRow = ChatEventRow & {
+  readonly eventType: "input.prompt";
+};
+
+function isPromptChatEventRow(row: ChatEventRow): row is PromptChatEventRow {
+  return row.eventType === "input.prompt";
+}
+
+function requiredPromptRow(
+  row: ChatEventRow | undefined,
+  message: string,
+): PromptChatEventRow {
+  if (row === undefined || !isPromptChatEventRow(row)) {
+    throw new Error(message);
+  }
+  return row;
 }
 
 describe("chat event snapshot read endpoints", () => {
@@ -398,6 +510,7 @@ describe("chat event snapshot read endpoints", () => {
     const runIds = markers.map(() => {
       return randomUUID();
     });
+    const contextlessClaimRunId = randomUUID();
     const historicalDocuments: readonly UserMessageDocument[] = [
       {
         version: 1,
@@ -470,27 +583,62 @@ describe("chat event snapshot read endpoints", () => {
     const rejectionRows = originalRows.filter((row) => {
       return row.eventType === "input.rejected";
     });
-    const contextOnlyRow = rejectionRows[0];
-    const directControlRevokeRow = rejectionRows[1];
-    const chainedRejectionRow = rejectionRows[2];
-    const chainedControlRevokeRow = rejectionRows[3];
-    if (
-      contextOnlyRow === undefined ||
-      directControlRevokeRow === undefined ||
-      directControlRevokeRow.revokesEventId === null ||
-      chainedRejectionRow === undefined ||
-      chainedRejectionRow.revokesEventId === null ||
-      chainedControlRevokeRow === undefined
-    ) {
-      throw new Error("Expected complete historical revocation source rows");
-    }
-    const chainedRootRow = originalRows.find((row) => {
-      return row.id === chainedRejectionRow.revokesEventId;
-    });
-    if (chainedRootRow?.eventType !== "input.prompt") {
-      throw new Error("Expected the chained rejection root prompt");
-    }
+    const revocationFixtureMessage =
+      "Expected complete historical revocation source rows";
+    const contextlessClaimRow = requiredRevokingRow(
+      rejectionRows[0],
+      revocationFixtureMessage,
+    );
+    const directControlRevokeRow = requiredRevokingRow(
+      rejectionRows[1],
+      revocationFixtureMessage,
+    );
+    const chainedRejectionRow = requiredRevokingRow(
+      rejectionRows[2],
+      revocationFixtureMessage,
+    );
+    const chainedControlRevokeRow = requiredValue(
+      rejectionRows[3],
+      revocationFixtureMessage,
+    );
+    const contextOnlyRow = requiredValue(
+      rejectionRows[4],
+      revocationFixtureMessage,
+    );
+    const contextlessRootRow = requiredPromptRow(
+      originalRows.find((row) => {
+        return row.id === contextlessClaimRow.revokesEventId;
+      }),
+      "Expected the historical contextless root prompt",
+    );
+    const chainedRootRow = requiredPromptRow(
+      originalRows.find((row) => {
+        return row.id === chainedRejectionRow.revokesEventId;
+      }),
+      "Expected the historical chained root prompt",
+    );
+    const contextlessRootPromptIndex = promptIndexById.get(
+      contextlessRootRow.id,
+    );
+    const contextlessDocument = requiredValue(
+      contextlessRootPromptIndex === undefined
+        ? undefined
+        : historicalDocuments[contextlessRootPromptIndex],
+      "Expected the contextless root document",
+    );
     const expectedRows = originalRows.map((row): ChatEventRow => {
+      if (row.id === contextlessClaimRow.id) {
+        return chatEventRowSchema.parse({
+          ...row,
+          eventType: "input.prompt",
+          runId: contextlessClaimRunId,
+          contextType: "web",
+          contextId: null,
+          payload: { userMessage: contextlessDocument },
+          runEventSequenceNumber: null,
+          runEventId: null,
+        });
+      }
       if (row.id === directControlRevokeRow.id) {
         return chatEventRowSchema.parse({
           ...row,
@@ -523,11 +671,10 @@ describe("chat event snapshot read endpoints", () => {
         }
         return chatEventRowSchema.parse({
           ...row,
-          runId: row.id === chainedRootRow.id ? null : runId,
-          revokesEventId:
-            promptIndex === 1
-              ? (promptRows[0]?.id ?? null)
-              : row.revokesEventId,
+          runId:
+            row.id === contextlessRootRow.id || row.id === chainedRootRow.id
+              ? null
+              : runId,
           contextType: "web",
           contextId: null,
           payload: {
@@ -568,6 +715,16 @@ describe("chat event snapshot read endpoints", () => {
     }
 
     const staleRows = expectedRows.map((row): ChatEventRow => {
+      if (
+        row.id === contextlessRootRow.id ||
+        row.id === contextlessClaimRow.id
+      ) {
+        return chatEventRowSchema.parse({
+          ...row,
+          contextType: "morning_brief",
+          contextId: null,
+        });
+      }
       if (row.id === directControlRevokeRow.id) {
         return chatEventRowSchema.parse({
           ...row,
@@ -646,6 +803,12 @@ describe("chat event snapshot read endpoints", () => {
     const staleDirectControlRevoke = staleRows.find((row) => {
       return row.id === directControlRevokeRow.id;
     });
+    const staleContextlessRoot = staleRows.find((row) => {
+      return row.id === contextlessRootRow.id;
+    });
+    const staleContextlessClaim = staleRows.find((row) => {
+      return row.id === contextlessClaimRow.id;
+    });
     const staleChainedRejection = staleRows.find((row) => {
       return row.id === chainedRejectionRow.id;
     });
@@ -657,6 +820,8 @@ describe("chat event snapshot read endpoints", () => {
     });
     if (
       staleDirectControlRevoke === undefined ||
+      staleContextlessRoot === undefined ||
+      staleContextlessClaim === undefined ||
       staleChainedRejection === undefined ||
       staleChainedControlRevoke === undefined ||
       staleChainedRoot === undefined
@@ -671,9 +836,20 @@ describe("chat event snapshot read endpoints", () => {
       staleChainedRejection,
       staleChainedRoot,
     );
+    const byteExactContextlessClaimLines =
+      sanitizedLegacyContextlessMorningBriefClaimLines(
+        staleContextlessRoot,
+        staleContextlessClaim,
+      );
     const staleArchive = Buffer.from(
       staleRows
         .map((row) => {
+          if (row.id === contextlessRootRow.id) {
+            return byteExactContextlessClaimLines.root;
+          }
+          if (row.id === contextlessClaimRow.id) {
+            return byteExactContextlessClaimLines.claim;
+          }
           if (row.id === directControlRevokeRow.id) {
             return byteExactDirectRevokeLine;
           }
@@ -688,6 +864,13 @@ describe("chat event snapshot read endpoints", () => {
     ).toBeTruthy();
     expect(
       staleArchive.includes(Buffer.from(byteExactChainedRevokeLine)),
+    ).toBeTruthy();
+    expect(
+      staleArchive.includes(
+        Buffer.from(
+          `${byteExactContextlessClaimLines.root}${byteExactContextlessClaimLines.claim}`,
+        ),
+      ),
     ).toBeTruthy();
     const staleBody = gzipSync(staleArchive);
     const staleObjectKey = `chat-events/${threadId}/${originalHead.last_seq_id.toString()}-${createHash("sha256").update(staleBody).digest("hex")}.ndjson.gz`;
@@ -742,6 +925,8 @@ describe("chat event snapshot read endpoints", () => {
           seqId: row.seqId,
           runId: row.runId,
           revokesEventId: row.revokesEventId,
+          runEventSequenceNumber: row.runEventSequenceNumber,
+          runEventId: row.runEventId,
           payload: row.payload,
         };
       }),
@@ -753,6 +938,8 @@ describe("chat event snapshot read endpoints", () => {
           seqId: row.seqId,
           runId: row.runId,
           revokesEventId: row.revokesEventId,
+          runEventSequenceNumber: row.runEventSequenceNumber,
+          runEventId: row.runEventId,
           payload: row.payload,
         };
       }),
@@ -779,25 +966,58 @@ describe("chat event snapshot read endpoints", () => {
       contextId: null,
       revokesEventId: chainedRejectionRow.id,
     });
+    expect(
+      repairedRows.find((row) => {
+        return row.id === contextlessRootRow.id;
+      }),
+    ).toMatchObject({
+      eventType: "input.prompt",
+      runId: null,
+      revokesEventId: null,
+      contextType: "web",
+      contextId: null,
+      payload: { userMessage: contextlessDocument },
+    });
+    expect(
+      repairedRows.find((row) => {
+        return row.id === contextlessClaimRow.id;
+      }),
+    ).toMatchObject({
+      eventType: "input.prompt",
+      runId: contextlessClaimRunId,
+      revokesEventId: contextlessRootRow.id,
+      contextType: "web",
+      contextId: null,
+      payload: { userMessage: contextlessDocument },
+    });
 
     const projectedSnapshot = repairedRows.map(chatEventFromRow);
     const projectedPrompts = projectedSnapshot.filter((event) => {
       return event.eventType === "input.prompt";
     });
+    const expectedPromptRows = expectedRows.filter((row) => {
+      return row.eventType === "input.prompt";
+    });
+    expect(expectedPromptRows).toHaveLength(6);
     expect(
       projectedPrompts.map((event) => {
-        return event.runId;
+        return {
+          id: event.id,
+          runId: event.runId,
+          revokesEventId: event.revokesEventId,
+          userMessage: event.userMessage,
+        };
       }),
     ).toStrictEqual(
-      promptRows.map((row, index) => {
-        return row.id === chainedRootRow.id ? undefined : runIds[index];
+      expectedPromptRows.map((row) => {
+        return {
+          id: row.id,
+          runId: row.runId ?? undefined,
+          revokesEventId: row.revokesEventId ?? undefined,
+          userMessage: row.payload?.userMessage,
+        };
       }),
     );
-    expect(
-      projectedPrompts.map((event) => {
-        return event.userMessage;
-      }),
-    ).toStrictEqual(historicalDocuments);
 
     if (download.body.lastEventId === null) {
       throw new Error("Expected a non-empty repaired Snapshot cursor");
@@ -1039,6 +1259,127 @@ describe("chat event snapshot read endpoints", () => {
         return row.id === inputRow.id ? { ...row, payload: null } : row;
       }),
     );
+    const contextlessDocument: UserMessageDocument = {
+      version: 1,
+      parts: [
+        {
+          type: "text",
+          text: "Sanitized historical queued Morning Brief prompt.",
+        },
+      ],
+    };
+    const contextlessRoot = chatEventRowSchema.parse({
+      ...inputRow,
+      runId: null,
+      revokesEventId: null,
+      eventType: "input.prompt",
+      payload: { userMessage: contextlessDocument },
+      contextType: "morning_brief",
+      contextId: null,
+      runEventSequenceNumber: null,
+      runEventId: null,
+    });
+    const contextlessClaim = chatEventRowSchema.parse({
+      ...rejectedRow,
+      runId: randomUUID(),
+      revokesEventId: contextlessRoot.id,
+      eventType: "input.prompt",
+      payload: { userMessage: contextlessDocument },
+      contextType: "morning_brief",
+      contextId: null,
+      runEventSequenceNumber: null,
+      runEventId: null,
+    });
+    if (
+      contextlessRoot.seqId >= contextlessClaim.seqId ||
+      contextlessRoot.createdAt >= contextlessClaim.createdAt
+    ) {
+      throw new Error("Expected an ordered contextless claim fixture");
+    }
+    const contextlessRows = (
+      root: ChatEventRow,
+      claim: ChatEventRow,
+      additionalRevoker?: ChatEventRow,
+    ): readonly ChatEventRow[] => {
+      return originalRows.map((row) => {
+        if (row.id === root.id) {
+          return root;
+        }
+        if (row.id === claim.id) {
+          return claim;
+        }
+        return row.id === additionalRevoker?.id ? additionalRevoker : row;
+      });
+    };
+    const missingPredecessorBody = encodeRows(
+      contextlessRows(
+        contextlessRoot,
+        chatEventRowSchema.parse({
+          ...contextlessClaim,
+          revokesEventId: randomUUID(),
+        }),
+      ),
+    );
+    const mismatchedDocumentBody = encodeRows(
+      contextlessRows(
+        contextlessRoot,
+        chatEventRowSchema.parse({
+          ...contextlessClaim,
+          payload: {
+            userMessage: {
+              version: 1,
+              parts: [
+                {
+                  type: "text",
+                  text: "Sanitized mismatched historical prompt.",
+                },
+              ],
+            },
+          },
+        }),
+      ),
+    );
+    const unownedClaimBody = encodeRows(
+      contextlessRows(
+        contextlessRoot,
+        chatEventRowSchema.parse({ ...contextlessClaim, runId: null }),
+      ),
+    );
+    const invalidClaimOrderBody = encodeRows(
+      contextlessRows(
+        contextlessRoot,
+        chatEventRowSchema.parse({
+          ...contextlessClaim,
+          createdAt: contextlessRoot.createdAt,
+        }),
+      ),
+    );
+    const multipleRevokersBody = encodeRows(
+      contextlessRows(
+        contextlessRoot,
+        contextlessClaim,
+        chatEventRowSchema.parse({
+          ...semanticRootRow,
+          revokesEventId: contextlessRoot.id,
+        }),
+      ),
+    );
+    const duplicateContextlessIdBody = encodeRows(
+      originalRows.map((row) => {
+        if (row.id === contextlessRoot.id) {
+          return contextlessRoot;
+        }
+        if (row.id === contextlessClaim.id) {
+          return contextlessClaim;
+        }
+        return row.id === semanticRootRow.id
+          ? chatEventRowSchema.parse({
+              ...semanticRootRow,
+              id: contextlessRoot.id,
+            })
+          : row;
+      }),
+    );
     const unresolvedRevokeBody = encodeRows(
       originalRows.map((row) => {
         return row.id === rejectedRow.id
@@ -1133,6 +1474,42 @@ describe("chat event snapshot read endpoints", () => {
         object: gzipSync(projectionBody),
         projectionSubstage: "current_contract",
         projectionVariant: "invalid_event_shape",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(missingPredecessorBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(mismatchedDocumentBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(unownedClaimBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(invalidClaimOrderBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(multipleRevokersBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(duplicateContextlessIdBody),
+        projectionSubstage: "retired_context",
+        projectionVariant: "missing_context_id",
       },
       {
         failureClass: "projection",

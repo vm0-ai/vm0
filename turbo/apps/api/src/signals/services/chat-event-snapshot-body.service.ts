@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 import {
   chatEventRowSchema,
   type ChatEventRow,
@@ -103,6 +105,100 @@ function isPayloadFreeControlRevoke(row: ChatEventRow): boolean {
   );
 }
 
+function hasExactContextlessMorningBriefPromptPayload(
+  row: ChatEventRow,
+): boolean {
+  const payload = row.payload;
+  if (
+    payload === null ||
+    Object.keys(payload).length !== 1 ||
+    payload.userMessage === undefined
+  ) {
+    return false;
+  }
+  const userMessage = payload.userMessage;
+  return (
+    isRecord(userMessage) &&
+    Object.keys(userMessage).length === 2 &&
+    userMessage.version === 1 &&
+    Array.isArray(userMessage.parts) &&
+    userMessage.parts.length > 0 &&
+    !userMessage.parts.some(retiredMorningBriefPart)
+  );
+}
+
+function isExactContextlessMorningBriefRoot(row: ChatEventRow): boolean {
+  return (
+    row.eventType === "input.prompt" &&
+    row.runId === null &&
+    row.revokesEventId === null &&
+    row.contextType === RETIRED_MORNING_BRIEF_CONTEXT &&
+    row.contextId === null &&
+    row.runEventSequenceNumber === null &&
+    row.runEventId === null &&
+    hasExactContextlessMorningBriefPromptPayload(row)
+  );
+}
+
+function isExactContextlessMorningBriefClaim(
+  row: ChatEventRow,
+  root: ChatEventRow,
+): boolean {
+  return (
+    row.id !== root.id &&
+    row.chatThreadId === root.chatThreadId &&
+    row.eventType === "input.prompt" &&
+    row.runId !== null &&
+    row.revokesEventId === root.id &&
+    row.contextType === RETIRED_MORNING_BRIEF_CONTEXT &&
+    row.contextId === null &&
+    row.runEventSequenceNumber === null &&
+    row.runEventId === null &&
+    root.seqId < row.seqId &&
+    root.createdAt < row.createdAt &&
+    hasExactContextlessMorningBriefPromptPayload(row) &&
+    isDeepStrictEqual(row.payload, root.payload)
+  );
+}
+
+function contextlessMorningBriefClaimIds(
+  rows: readonly ChatEventRow[],
+): ReadonlySet<string> {
+  const uniqueRowsById = new Map<string, ChatEventRow | null>();
+  const soleRevokerByTargetId = new Map<string, ChatEventRow | null>();
+  for (const row of rows) {
+    uniqueRowsById.set(row.id, uniqueRowsById.has(row.id) ? null : row);
+    if (row.revokesEventId !== null) {
+      soleRevokerByTargetId.set(
+        row.revokesEventId,
+        soleRevokerByTargetId.has(row.revokesEventId) ? null : row,
+      );
+    }
+  }
+
+  const acceptedIds = new Set<string>();
+  for (const root of rows) {
+    if (
+      !isExactContextlessMorningBriefRoot(root) ||
+      uniqueRowsById.get(root.id) !== root
+    ) {
+      continue;
+    }
+    const claim = soleRevokerByTargetId.get(root.id);
+    if (
+      claim === undefined ||
+      claim === null ||
+      uniqueRowsById.get(claim.id) !== claim ||
+      !isExactContextlessMorningBriefClaim(claim, root)
+    ) {
+      continue;
+    }
+    acceptedIds.add(root.id);
+    acceptedIds.add(claim.id);
+  }
+  return acceptedIds;
+}
+
 function isExactRetiredMorningBriefRoot(
   row: ChatEventRow,
   root: ChatEventRow | null | undefined,
@@ -204,6 +300,7 @@ function assertCurrentProjection(row: ChatEventRow): void {
 function repairMorningBriefRow(
   row: ChatEventRow,
   priorRowsById: ReadonlyMap<string, ChatEventRow | null>,
+  contextlessClaimIds: ReadonlySet<string>,
 ): {
   readonly row: ChatEventRow;
   readonly removedDocumentParts: number;
@@ -235,7 +332,15 @@ function repairMorningBriefRow(
     assertCurrentProjection(row);
     return { row, removedDocumentParts: 0 };
   }
-  if (row.contextId === null) {
+  // Before Morning Brief context rows existed, queue claim wrote an ordered,
+  // run-owned replacement prompt that revoked a run-less root and copied its
+  // exact document. Migration 0836 later classified both prompts while
+  // intentionally preserving their null context IDs. Accept only that complete
+  // archive-local pair; never derive or synthesize an ID. This persisted-state
+  // compatibility is limited to immutable legacy V7 Snapshots. Remove it after
+  // all surviving V7 heads converge to r1 and the retired writer rollback
+  // window closes; removal is tracked by #30369 and #28905.
+  if (row.contextId === null && !contextlessClaimIds.has(row.id)) {
     failProjection("retired_context", "missing_context_id");
   }
   if (legacyParts.length > 1) {
@@ -302,12 +407,17 @@ export function repairMorningBriefPhaseBSnapshot(
   }
   const rows: ChatEventRow[] = [];
   const priorRowsById = new Map<string, ChatEventRow | null>();
+  const contextlessClaimIds = contextlessMorningBriefClaimIds(decodedRows);
   const repairedLines = rawLines.map((raw, index) => {
     const row = decodedRows[index];
     if (row === undefined) {
       throw new Error("Chat Event snapshot decoded row is missing");
     }
-    const repaired = repairMorningBriefRow(row, priorRowsById);
+    const repaired = repairMorningBriefRow(
+      row,
+      priorRowsById,
+      contextlessClaimIds,
+    );
     rows.push(repaired.row);
     priorRowsById.set(row.id, priorRowsById.has(row.id) ? null : row);
     if (repaired.row === row) {
