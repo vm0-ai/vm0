@@ -20,10 +20,11 @@
 //!
 //! ## Message Types
 //!
-//! Non-error message types currently occupy the contiguous range `0x00..=0x1C`
-//! in allocation order. Existing values are stable wire assignments: do not
-//! renumber or reuse them. Allocate new non-error messages at the next unused
-//! value below `0xFF`, even when related operations are not adjacent. `0xFF` is
+//! Non-error message types currently occupy the contiguous range `0x00..=0x1D`
+//! in allocation order; `0x1E` is the next available non-error assignment.
+//! Existing values are stable wire assignments: do not renumber or reuse them.
+//! Allocate new non-error messages at the next unused value below `0xFF`, even
+//! when related operations are not adjacent. `0xFF` is
 //! reserved for generic protocol errors. Changing an existing assignment
 //! requires an explicit, versioned host/guest protocol migration.
 //!
