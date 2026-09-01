@@ -2154,16 +2154,24 @@ describe("CHAT-01 chat thread read state", () => {
       content: firstContent,
       signal: context.signal,
     });
-    const secondInsert = insertChatEventTransactionFixture({
+    const secondInsert = await insertChatEventTransactionFixture({
       threadId,
       content: secondContent,
+      signal: context.signal,
     });
     onTestFinished(async () => {
       held.release();
-      await Promise.allSettled([held.done, secondInsert]);
+      await Promise.allSettled([held.done, secondInsert.inserted]);
     });
 
-    await expect.poll(held.blockedWaiterCount).toBe(1);
+    // Every API test file in a shard shares one database, so a total waiter
+    // count is not owned by this test. Assert that this test's own writer is
+    // the backend the uncommitted holder blocks.
+    await expect
+      .poll(() => {
+        return held.blocksBackend(secondInsert.backendPid);
+      })
+      .toBe(true);
     const beforeCommit = await chat.listThreadEvents(owner, threadId);
     expect(
       beforeCommit.events.some((message) => {
@@ -2176,7 +2184,7 @@ describe("CHAT-01 chat thread read state", () => {
 
     held.release();
     await held.done;
-    const second = await secondInsert;
+    const second = await secondInsert.inserted;
     const committed = await chat.listThreadEvents(owner, threadId);
     const concurrentRows = committed.events.filter((message) => {
       return message.id === held.event.id || message.id === second.id;

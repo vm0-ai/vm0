@@ -1593,6 +1593,25 @@ async function directBlockedWaiterCount(holderPid: number): Promise<number> {
   return rows[0]?.waiterCount ?? 0;
 }
 
+/**
+ * Whether one caller-owned backend is waiting on a lock the holder owns. Waiter
+ * counts span every backend in the shared test database, so a test that owns
+ * exactly one concurrent writer asserts on that writer instead of on a total.
+ */
+async function backendBlockedByHolder(
+  holderPid: number,
+  waiterPid: number,
+): Promise<boolean> {
+  const rows = await executeRawRows(
+    db(),
+    sql`
+      SELECT ${holderPid} = ANY(pg_blocking_pids(${waiterPid}::int)) AS "blocked"
+    `,
+    blockedByPidRowSchema,
+  );
+  return rows[0]?.blocked ?? false;
+}
+
 async function databaseOwnerHasBlockedWaiter(
   applicationName: string,
 ): Promise<boolean> {
@@ -2570,6 +2589,7 @@ export async function holdChatEventInsertTransactionFixture(args: {
   readonly release: () => void;
   readonly done: Promise<void>;
   readonly blockedWaiterCount: () => Promise<number>;
+  readonly blocksBackend: (waiterPid: number) => Promise<boolean>;
 }> {
   const started = createDeferredPromise<{
     readonly pid: number;
@@ -2612,6 +2632,9 @@ export async function holdChatEventInsertTransactionFixture(args: {
     done,
     blockedWaiterCount: async () => {
       return await transitiveBlockedWaiterCount(pid);
+    },
+    blocksBackend: async (waiterPid: number) => {
+      return await backendBlockedByHolder(pid, waiterPid);
     },
   };
 }
@@ -2666,23 +2689,45 @@ export async function holdRunOutputMaterializationRowFixture(args: {
   };
 }
 
-/** Inserts one event with reservation and persistence in one transaction. */
+/**
+ * Inserts one event with reservation and persistence in one transaction. The
+ * backend pid resolves before the sequence reservation runs, so a concurrent
+ * holder can observe that this writer is the backend waiting on it.
+ */
 export async function insertChatEventTransactionFixture(args: {
   readonly threadId: string;
   readonly content: string;
-}): Promise<{ readonly id: string; readonly seqId: number }> {
-  const event = await db().transaction(async (tx) => {
-    return await insertChatEvent(tx, {
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly backendPid: number;
+  readonly inserted: Promise<{ readonly id: string; readonly seqId: number }>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const inserted = db().transaction(async (tx) => {
+    const pidRows = await executeRawRows(
+      tx,
+      sql`
+        SELECT pg_backend_pid() AS "pid"
+      `,
+      databasePidRowSchema,
+    );
+    const writerPid = pidRows[0]?.pid;
+    if (!writerPid) {
+      throw new Error("Expected the chat-message insert writer pid");
+    }
+    started.resolve(writerPid);
+    const event = await insertChatEvent(tx, {
       chatThreadId: args.threadId,
       eventType: "output.message",
       content: args.content,
       runId: null,
     });
+    if (!event) {
+      throw new Error("Expected the chat-message insert");
+    }
+    return event;
   });
-  if (!event) {
-    throw new Error("Expected the chat-message insert");
-  }
-  return event;
+  return { backendPid: await started.promise, inserted };
 }
 
 /**
