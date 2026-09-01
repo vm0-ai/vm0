@@ -247,8 +247,15 @@ export class DesktopRecorderController {
     if (this.status !== "recording" || this.sessionId !== sessionId) {
       return;
     }
+    if (native.status === "stopped") {
+      // Ending the share from the system indicator is an ordinary finish, so it
+      // takes the same path an explicit stop would: finalize, then deliver.
+      await this.collectAfterExternalStop(sessionId, null);
+      return;
+    }
     if (native.status === "failed") {
-      this.failSession(
+      await this.collectAfterExternalStop(
+        sessionId,
         native.error ?? {
           code: "capture_failed",
           message: "Screen recording stopped unexpectedly",
@@ -260,6 +267,48 @@ export class DesktopRecorderController {
       this.elapsedMs = native.elapsedMs;
       this.onChange();
     }
+  }
+
+  /**
+   * Finalizes a capture that ended without `stop` being called.
+   *
+   * The frames already written are the recording the user made, so the file and
+   * its click track are collected either way. A capture that ended cleanly is
+   * then delivered; one that broke is kept with its reason so the tray can offer
+   * a retry, rather than silently shipping a recording that failed.
+   */
+  private async collectAfterExternalStop(
+    sessionId: string,
+    failure: DesktopRecorderError | null,
+  ): Promise<void> {
+    const backend = this.backend;
+    if (!backend) {
+      return;
+    }
+    this.setStatus("finalizing");
+
+    let recording: DesktopRecorderRecording;
+    try {
+      recording = await backend.stop(sessionId);
+    } catch (error) {
+      this.logError(error);
+      this.failSession(
+        failure ?? {
+          code: "capture_failed",
+          message: "Screen recording could not be finalized",
+        },
+      );
+      return;
+    }
+
+    this.lastRecording = recording;
+    this.sessionId = null;
+    this.elapsedMs = 0;
+    if (failure) {
+      this.failSession(failure);
+      return;
+    }
+    await this.runDelivery(recording);
   }
 
   /**

@@ -167,7 +167,10 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     private var timebase = mach_timebase_info_data_t()
 
     private var state: RecorderSessionState = .ready
-    private var failure: HelperFailure?
+    /// Set when the stream ended without `stop` being called. The session stays
+    /// finalizable so the partial recording and its click track are still
+    /// written; only the reported status changes.
+    private var externalStop: (reason: StreamStopReason, message: String)?
     private var stream: SCStream?
     private var writer: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
@@ -449,16 +452,26 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         lock.lock()
         defer { lock.unlock() }
         var described: [String: Any] = [
-            "status": state.rawValue,
+            "status": reportedStatusLocked(),
             "elapsedMs": Int(elapsedSecondsLocked() * 1000),
         ]
-        if let failure {
+        if let externalStop, externalStop.reason == .failed {
             described["error"] = [
-                "code": failure.code,
-                "message": failure.message,
+                "code": "source_lost",
+                "message": externalStop.message,
             ]
         }
         return described
+    }
+
+    /// The status the caller sees. An externally ended stream is reported as
+    /// finished or failed straight away, while `state` stays `.recording` so
+    /// the caller can still run `stop` to finalize the file it already has.
+    private func reportedStatusLocked() -> String {
+        guard let externalStop, state == .recording else {
+            return state.rawValue
+        }
+        return externalStop.reason == .userStopped ? "stopped" : "failed"
     }
 
     var isTerminal: Bool {
@@ -485,23 +498,39 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         return max(0, CMTimeGetSeconds(CMTimeSubtract(latest, start)))
     }
 
-    private func markFailed(code: String, message: String) {
+    /// Records that the stream ended on its own.
+    ///
+    /// Deliberately does not move to a terminal state: the writer still holds
+    /// frames that were captured before the stream ended, and discarding them
+    /// would throw away the recording the user just made. `stop` finalizes as
+    /// usual, and the reported status tells the caller to run it.
+    private func noteExternalStop(reason: StreamStopReason, message: String) {
         lock.lock()
-        state = .failed
-        failure = HelperFailure(code: code, message: message)
+        if externalStop == nil {
+            externalStop = (reason, message)
+        }
         let captureStream = stream
         stream = nil
         lock.unlock()
         captureStream?.stopCapture { _ in }
-        // The tap outlives the stream unless it is torn down here: a failed
-        // session is never stopped by the caller.
+        // The tap outlives the stream unless it is torn down here.
         clickTracker.stop()
     }
 
     // MARK: SCStreamDelegate
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
-        markFailed(code: "source_lost", message: error.localizedDescription)
+        // Ending the share from the system indicator arrives here as an error
+        // like any other, so the code decides whether this is a finish or a
+        // fault. Reporting a deliberate stop as a failure was wrong.
+        let nsError = error as NSError
+        noteExternalStop(
+            reason: StreamStopClassifier.classify(
+                domain: nsError.domain,
+                code: nsError.code
+            ),
+            message: error.localizedDescription
+        )
     }
 
     // MARK: SCStreamOutput
@@ -687,21 +716,25 @@ private func handleStart(_ request: [String: Any]) throws -> [String: Any] {
 private func handleStop(_ request: [String: Any]) throws -> [String: Any] {
     let sessionId = try requiredString(request, "sessionId")
     let session = try sessionStore.session(sessionId)
-    let result = try session.stop()
-    sessionStore.remove(sessionId)
-    return result
+    // `stop` reaches its terminal state before any of the work that can throw,
+    // so a finalize that fails partway leaves a session that can never be
+    // stopped again. Releasing on the way out either way is what keeps the
+    // store bounded; the caller gives up on a rejected stop and never retries.
+    defer {
+        if session.isTerminal {
+            sessionStore.remove(sessionId)
+        }
+    }
+    return try session.stop()
 }
 
 private func handleState(_ request: [String: Any]) throws -> [String: Any] {
     let sessionId = try requiredString(request, "sessionId")
     let session = try sessionStore.session(sessionId)
-    let described = session.describedState()
-    if session.isTerminal {
-        // A session that failed on the delegate queue is never stopped by the
-        // caller, so releasing it here is what keeps the store bounded.
-        sessionStore.remove(sessionId)
-    }
-    return described
+    // A stream that ended on its own is reported here but deliberately left in
+    // the store: it still holds the frames the user captured, and only `stop`
+    // can finalize them. `handleStop` is what releases it.
+    return session.describedState()
 }
 
 private func handle(_ request: [String: Any]) throws -> [String: Any] {

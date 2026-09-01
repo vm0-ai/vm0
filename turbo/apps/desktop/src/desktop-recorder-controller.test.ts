@@ -337,7 +337,35 @@ describe("DesktopRecorderController", () => {
     expect(onChange).toHaveBeenCalledOnce();
   });
 
-  it("ends the session when the capture source disappears", async () => {
+  it("finishes and delivers when the user ends the share from the system indicator", async () => {
+    const backend = createBackendFake({
+      getStatus: vi.fn(
+        async (): Promise<DesktopRecorderNativeStatus> => ({
+          status: "stopped",
+          elapsedMs: 4200,
+        }),
+      ),
+    });
+    const { controller, deliver, openReview } = createController(backend);
+    await enableAndPrepare(controller);
+    await controller.start();
+
+    await controller.refreshRecordingStatus();
+
+    // The capture is finalized through the same path an explicit stop uses, so
+    // the click track is written and the recording is handed over.
+    expect(backend.stop).toHaveBeenCalledWith("session-1");
+    expect(deliver).toHaveBeenCalledWith(RECORDING);
+    expect(openReview).toHaveBeenCalledWith(DELIVERED.reviewUrl);
+    expect(controller.getState()).toMatchObject({
+      status: "idle",
+      sessionId: null,
+      error: null,
+      lastRecording: RECORDING,
+    });
+  });
+
+  it("keeps the partial recording when the capture breaks", async () => {
     const backend = createBackendFake({
       getStatus: vi.fn(
         async (): Promise<DesktopRecorderNativeStatus> => ({
@@ -347,16 +375,69 @@ describe("DesktopRecorderController", () => {
         }),
       ),
     });
-    const { controller } = createController(backend);
+    const { controller, deliver } = createController(backend);
     await enableAndPrepare(controller);
     await controller.start();
 
     await controller.refreshRecordingStatus();
 
+    // Finalized so the frames already captured and their click track survive,
+    // but not shipped on its own: a broken capture is the user's call.
+    expect(backend.stop).toHaveBeenCalledWith("session-1");
+    expect(deliver).not.toHaveBeenCalled();
     expect(controller.getState()).toMatchObject({
       status: "idle",
       sessionId: null,
+      lastRecording: RECORDING,
       error: { code: "source_lost", message: "Display disconnected" },
+    });
+  });
+
+  it("can deliver a salvaged recording on request", async () => {
+    const backend = createBackendFake({
+      getStatus: vi.fn(
+        async (): Promise<DesktopRecorderNativeStatus> => ({
+          status: "failed",
+          elapsedMs: 2000,
+          error: { code: "source_lost", message: "Display disconnected" },
+        }),
+      ),
+    });
+    const { controller, openReview } = createController(backend);
+    await enableAndPrepare(controller);
+    await controller.start();
+    await controller.refreshRecordingStatus();
+
+    await controller.retryDelivery();
+
+    expect(openReview).toHaveBeenCalledWith(DELIVERED.reviewUrl);
+  });
+
+  it("reports the capture reason when the salvage itself fails", async () => {
+    const backend = createBackendFake({
+      getStatus: vi.fn(
+        async (): Promise<DesktopRecorderNativeStatus> => ({
+          status: "failed",
+          elapsedMs: 2000,
+          error: { code: "source_lost", message: "Display disconnected" },
+        }),
+      ),
+      stop: vi.fn(async () => {
+        throw new Error("helper is gone");
+      }),
+    });
+    const { controller, logError } = createController(backend);
+    await enableAndPrepare(controller);
+    await controller.start();
+
+    await controller.refreshRecordingStatus();
+
+    expect(logError).toHaveBeenCalledOnce();
+    expect(controller.getState()).toMatchObject({
+      status: "idle",
+      sessionId: null,
+      lastRecording: null,
+      error: { code: "source_lost" },
     });
   });
 

@@ -1,6 +1,7 @@
 import type { DesktopAuthState } from "./desktop-bridge";
 import {
   STOP_SCREEN_RECORDING_ACCELERATOR_LABEL,
+  type DesktopRecorderErrorCode,
   type DesktopRecorderState,
 } from "./desktop-recorder-types";
 import {
@@ -28,6 +29,20 @@ const COMMAND_STATUS_LABELS = {
 } as const satisfies Record<ComputerUseLocalCommandLogEntry["status"], string>;
 
 const MAX_RECENT_COMMANDS = 5;
+
+/**
+ * Errors that leave an undelivered capture on disk, so offering it again is
+ * worth more than re-recording.
+ *
+ * The set matters because `lastRecording` outlives a successful delivery.
+ * `signed_out` is raised by `prepare` before anything is captured, so retrying
+ * on it would re-upload an unrelated recording that was already handed over.
+ */
+const UNDELIVERED_RECORDING_ERROR_CODES = new Set<DesktopRecorderErrorCode>([
+  "capture_failed",
+  "delivery_failed",
+  "source_lost",
+]);
 const MAX_COMMAND_LABEL_LENGTH = 90;
 
 export interface DesktopTrayMenuItem {
@@ -428,9 +443,13 @@ function buildScreenRecordingSubmenu(
       separator(),
       disabledLabel(truncateMenuLabel(recorder.error.message)),
     );
-    // The capture succeeded and both files are still on disk, so a failed
-    // upload is worth retrying rather than re-recording.
-    if (recorder.error.code === "delivery_failed" && recorder.lastRecording) {
+    // The capture already produced files on disk, so delivering them is worth
+    // another try rather than re-recording. This covers a capture that broke
+    // partway as well as a failed upload.
+    if (
+      UNDELIVERED_RECORDING_ERROR_CODES.has(recorder.error.code) &&
+      recorder.lastRecording
+    ) {
       items.push({
         label: "Retry Delivery",
         click: actions.retryScreenRecordingDelivery,
