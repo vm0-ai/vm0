@@ -14,7 +14,7 @@ const eslintCacheInputPaths = globSync(
     "../../package.json",
     "../../pnpm-lock.yaml",
     "../../pnpm-workspace.yaml",
-    "../../turbo.json",
+    "../../turbo.{json,jsonc}",
     "../../{apps,packages}/*/turbo.{json,jsonc}",
     "../../packages/eslint-config/**/*.{js,cjs,mjs,json}",
     "../../packages/eslint-rules/package.json",
