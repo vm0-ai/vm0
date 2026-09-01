@@ -29,10 +29,11 @@ use vsock_host::{
     ExecOwnedCapturedOutput, FencedExecError, FrameWriteObserver, GuestStateRestoreResult,
     GuestStorageManifestResult, NormalOperationFence, NormalOperationFenceRejection,
     SupervisedExecControl, SupervisedExecRequest, SupervisedExecStartTiming, VsockHost,
+    WorkspaceDriveMountResult,
 };
 use vsock_proto::{
     ExecOutputPolicy, ExecProcessRole, ExecTimeoutPolicy,
-    GuestStateRestoreTimezone as VsockGuestStateRestoreTimezone,
+    GuestStateRestoreTimezone as VsockGuestStateRestoreTimezone, WORKSPACE_DRIVE_MOUNT_TIMEOUT_MS,
 };
 
 use crate::api::BalloonStatistics;
@@ -2491,6 +2492,20 @@ impl Sandbox for FirecrackerSandbox {
         .await
     }
 
+    async fn mount_workspace_drive(&self) -> sandbox::Result<ExecResult> {
+        let operation = SandboxOperation::MountWorkspaceDrive;
+        let request_timeout =
+            Duration::from_millis(u64::from(WORKSPACE_DRIVE_MOUNT_TIMEOUT_MS) + 5_000);
+
+        self.run_bounded_guest_operation(operation, |guest| async move {
+            guest
+                .mount_workspace_drive(request_timeout)
+                .await
+                .map(workspace_drive_mount_exec_result)
+        })
+        .await
+    }
+
     async fn verify_session_history_identity(
         &self,
         request: &SessionHistoryIdentityVerifyRequest<'_>,
@@ -2766,6 +2781,18 @@ impl Sandbox for FirecrackerSandbox {
 }
 
 fn storage_manifest_exec_result(result: GuestStorageManifestResult) -> ExecResult {
+    ExecResult {
+        termination: exec_termination_from_vsock_termination(result.termination),
+        guest_duration_ms: Some(result.duration_ms),
+        stdout: result.stdout,
+        stderr: result.stderr,
+        diagnostic: result.diagnostic,
+        stdout_truncated: result.stdout_truncated,
+        stderr_truncated: result.stderr_truncated,
+    }
+}
+
+fn workspace_drive_mount_exec_result(result: WorkspaceDriveMountResult) -> ExecResult {
     ExecResult {
         termination: exec_termination_from_vsock_termination(result.termination),
         guest_duration_ms: Some(result.duration_ms),

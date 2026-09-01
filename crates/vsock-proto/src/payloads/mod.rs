@@ -6,6 +6,7 @@ pub(crate) mod guest_state_restore;
 pub(crate) mod guest_storage_manifest;
 pub(crate) mod memory_snapshot;
 pub(crate) mod process_termination;
+pub(crate) mod workspace_drive_mount;
 pub(crate) mod write_file;
 
 fn truncate_utf8_to_u16_bytes(value: &str) -> (&[u8], u16) {
