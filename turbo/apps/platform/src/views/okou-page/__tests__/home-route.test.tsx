@@ -17,6 +17,7 @@ import { pathname } from "../../../signals/location.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { isAbortError } from "../../../signals/utils.ts";
+import { onboardingStatus$ } from "../../../signals/okou-page/onboarding.ts";
 
 const context = testContext();
 const LAST_USED_AGENT_STORAGE_KEY = "zero.lastUsedAgentId";
@@ -270,24 +271,41 @@ describe("home route", () => {
     },
   );
 
-  it("keeps onboarding ahead of persisted-agent navigation", async () => {
+  it("runs onboarding concurrently with persisted-agent navigation", async () => {
     context.store.set(setLastUsedAgentId$, RETURNING_AGENT_ID);
-    context.mocks.data.onboardingStatus({
-      needsOnboarding: true,
-      onboardingComplete: false,
-      hasDefaultAgent: false,
-      defaultAgentId: null,
-      defaultAgentMetadata: null,
-    });
-    const teamRequestCount = blockUnexpectedTeamRequests();
+    const onboardingRequestStarted = context.mocks.deferred<void>();
+    const releaseOnboardingRequest = context.mocks.deferred<void>();
+    context.mocks.api(
+      onboardingStatusContract.getStatus,
+      async ({ respond }) => {
+        onboardingRequestStarted.resolve(undefined);
+        await releaseOnboardingRequest.promise;
+        return respond(200, {
+          needsOnboarding: true,
+          onboardingComplete: false,
+          isAdmin: true,
+          hasOrg: true,
+          hasDefaultAgent: false,
+          defaultAgentId: null,
+          defaultAgentMetadata: null,
+        });
+      },
+    );
+    const team = deferAgentsResponse([
+      agentResponse(RETURNING_AGENT_ID, "Returning agent"),
+    ]);
 
     detachedSetupPage({ context, path: "/" });
 
+    await Promise.all([onboardingRequestStarted.promise, team.started.promise]);
+    expect(pathname()).toBe(`/agents/${RETURNING_AGENT_ID}/chat`);
+
+    team.release.resolve(undefined);
+    releaseOnboardingRequest.resolve(undefined);
     await expect(
       screen.findByRole("heading", { name: "What do you want to make first" }),
     ).resolves.toBeInTheDocument();
     expect(pathname()).toBe(ROUTES.onboarding);
-    expect(teamRequestCount()).toBe(0);
   });
 
   it("keeps organization selection ahead of persisted-agent navigation", async () => {
@@ -373,17 +391,16 @@ describe("home route", () => {
         onboardingRequestStarted.resolve(undefined);
         await releaseOnboardingRequest.promise;
         return respond(200, {
-          needsOnboarding: false,
-          onboardingComplete: true,
+          needsOnboarding: true,
+          onboardingComplete: false,
           isAdmin: true,
           hasOrg: true,
-          hasDefaultAgent: true,
-          defaultAgentId: DEFAULT_AGENT_ID,
-          defaultAgentMetadata: { displayName: "Default agent" },
+          hasDefaultAgent: false,
+          defaultAgentId: null,
+          defaultAgentMetadata: null,
         });
       },
     );
-    const teamRequestCount = blockUnexpectedTeamRequests();
 
     const setupPromise = setupPage({
       context,
@@ -398,6 +415,9 @@ describe("home route", () => {
     });
 
     releaseOnboardingRequest.resolve(undefined);
+    await expect(context.store.get(onboardingStatus$)).resolves.toMatchObject({
+      needsOnboarding: true,
+    });
     let setupError: unknown;
     try {
       await setupPromise;
@@ -406,6 +426,5 @@ describe("home route", () => {
     }
     expect(isAbortError(setupError)).toBeTruthy();
     expect(pathname()).toBe(ROUTES.skeleton);
-    expect(teamRequestCount()).toBe(0);
   });
 });

@@ -8,14 +8,9 @@ import { updatePage$ } from "../react-router.ts";
 import { searchParams$ } from "../route.ts";
 import { GithubConnectPage } from "../../views/okou-page/github-connect-page.tsx";
 import { parseGithubConnectParams } from "./github-connect-params.ts";
-import { onboardGuard$ } from "./onboard-guard.ts";
 
 export const setupGithubConnectPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (await set(onboardGuard$, signal)) {
-      return;
-    }
-
     const parsed = parseGithubConnectParams(get(searchParams$));
     capturePlausibleEvent("github_connect_visit", {
       props: {

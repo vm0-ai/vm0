@@ -4,7 +4,6 @@ import { i18n } from "../../i18n/index.ts";
 import { PreferencesPage } from "../../views/okou-page/preferences-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupPreferencesPage$ = command(
@@ -17,9 +16,5 @@ export const setupPreferencesPage$ = command(
       }),
     );
     await set(hideAppSkeleton$, signal);
-
-    if (await set(onboardGuard$, signal)) {
-      return;
-    }
   },
 );

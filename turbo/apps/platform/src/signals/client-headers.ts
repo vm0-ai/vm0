@@ -5,9 +5,7 @@ import {
   CLIENT_TYPE_HEADER,
   CLIENT_VERSION_HEADER,
 } from "@okouai/api-contracts/contracts/client-headers";
-const clientSessionId =
-  globalThis.window?.__vm0ClerkBootstrap?.clientSessionId ??
-  crypto.randomUUID();
+const clientSessionId = crypto.randomUUID();
 
 function createClientHeaders(clientVersion: string): Record<string, string> {
   return {

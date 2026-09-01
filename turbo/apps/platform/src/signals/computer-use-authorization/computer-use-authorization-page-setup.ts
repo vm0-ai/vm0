@@ -5,7 +5,6 @@ import { ComputerUseAuthorizationPage } from "../../views/computer-use-authoriza
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 
 export const setupComputerUseAuthorizationPage$ = command(
   async ({ set }, signal: AbortSignal) => {
@@ -17,9 +16,5 @@ export const setupComputerUseAuthorizationPage$ = command(
       }),
     );
     await set(hideAppSkeleton$, signal);
-
-    if (await set(onboardGuard$, signal)) {
-      return;
-    }
   },
 );

@@ -14,10 +14,7 @@ import { defaultAgentId$ } from "../agent.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { showAppSkeleton$ } from "../app-skeleton.ts";
-import {
-  onboardGuard$,
-  redirectToConfiguredOnboarding$,
-} from "../okou-page/onboard-guard.ts";
+import { redirectToConfiguredOnboarding$ } from "../okou-page/onboard-guard.ts";
 import {
   resetChatPageModelSelection$,
   setChatPageModelSelection$,
@@ -178,10 +175,6 @@ export const setupPromptPage$ = command(
       generationTemplateFromSearchParam(template);
     if (!prompt) {
       set(detachedNavigateTo$, "/", { replace: true });
-      return;
-    }
-
-    if (await set(onboardGuard$, signal)) {
       return;
     }
 

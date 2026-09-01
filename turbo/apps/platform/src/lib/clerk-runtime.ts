@@ -75,7 +75,6 @@ function matchesEarlyLoadOptions(
 function adoptEarlyClerkRuntime(
   clerk: PlatformClerk,
   options: ClerkRuntimeOptions,
-  signal: AbortSignal,
 ): ClerkBrowserRuntime | null {
   const bootstrap = window.__vm0ClerkBootstrap;
   if (!bootstrap?.loaded || bootstrap.clerk !== clerk) {
@@ -89,27 +88,10 @@ function adoptEarlyClerkRuntime(
     throw new Error("Early Clerk bootstrap configuration mismatch");
   }
 
-  const abort = (): void => {
-    bootstrap.abortOnboarding();
-  };
-  signal.addEventListener("abort", abort, { once: true });
-
   return {
     clerk,
     loaded: bootstrap.loaded,
   };
-}
-
-export function takeClerkBootstrapOnboardingStatus(
-  clerk: PlatformClerk,
-): EarlyClerkBootstrap["onboardingStatusPromise"] {
-  const bootstrap = window.__vm0ClerkBootstrap;
-  if (!bootstrap || bootstrap.clerk !== clerk) {
-    return undefined;
-  }
-  const promise = bootstrap.onboardingStatusPromise;
-  bootstrap.onboardingStatusPromise = undefined;
-  return promise;
 }
 
 export function startClerkBrowserRuntime(
@@ -127,7 +109,7 @@ export function startClerkBrowserRuntime(
     if (!isBrowserClerk(clerk)) {
       throw new Error("Clerk browser script did not expose a valid runtime");
     }
-    const earlyRuntime = adoptEarlyClerkRuntime(clerk, options, signal);
+    const earlyRuntime = adoptEarlyClerkRuntime(clerk, options);
     if (earlyRuntime) {
       return earlyRuntime;
     }

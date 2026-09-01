@@ -3,7 +3,6 @@ import { createElement } from "react";
 import { ActivityDetailPage } from "../../views/okou-page/activity-detail-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { i18n } from "../../i18n/index.ts";
 import { currentRunId$, setupActivityEvents$ } from "./activity-signals.ts";
@@ -24,9 +23,6 @@ export const setupActivityDetailPage$ = command(
     );
 
     await set(hideAppSkeleton$, signal);
-    if (await set(onboardGuard$, signal)) {
-      return;
-    }
 
     await set(setupActivityEvents$, signal);
     signal.throwIfAborted();

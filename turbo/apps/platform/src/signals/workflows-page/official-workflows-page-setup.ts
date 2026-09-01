@@ -5,7 +5,6 @@ import { i18n } from "../../i18n/index.ts";
 import { OfficialWorkflowsPage } from "../../views/workflows-page/official-workflows-page.tsx";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
-import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 import { updatePage$ } from "../react-router.ts";
 import {
   reloadOfficialWorkflows$,
@@ -24,6 +23,5 @@ export const setupOfficialWorkflowsPage$ = command(
       }),
     );
     await set(hideAppSkeleton$, signal);
-    await set(onboardGuard$, signal);
   },
 );
