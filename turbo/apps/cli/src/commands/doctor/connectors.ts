@@ -161,21 +161,7 @@ function workflowIdentity(
   };
 }
 
-function apiRequestError(
-  error: ApiRequestError,
-  workflow: WorkflowSummary,
-): ConnectorDoctorError {
-  // A commit-addressed CLI can reach an API version from before #30491.
-  // Remove this branch after #30491 is deployed and those API rollback targets
-  // are retired; cleanup is tracked by the parent Connector Doctor EPIC #30469.
-  if (workflow.official && error.status === 409) {
-    return {
-      code: "OFFICIAL_WORKFLOW_UNSUPPORTED",
-      message:
-        "Connector readiness is unavailable for this Official Workflow during rollout.",
-      status: 409,
-    };
-  }
+function apiRequestError(error: ApiRequestError): ConnectorDoctorError {
   switch (error.status) {
     case 400: {
       return {
@@ -232,15 +218,12 @@ function apiRequestError(
   }
 }
 
-function sanitizedRequestError(
-  error: unknown,
-  workflow: WorkflowSummary,
-): ConnectorDoctorError {
+function sanitizedRequestError(error: unknown): ConnectorDoctorError {
   if (error instanceof ApiRequestError) {
     if (error.status === 401 || error.code === "UNAUTHORIZED") {
       throw error;
     }
-    return apiRequestError(error, workflow);
+    return apiRequestError(error);
   }
   if (
     (error instanceof Error || error instanceof DOMException) &&
@@ -294,7 +277,7 @@ async function diagnoseWorkflow(
       ...workflowIdentity(workflow),
       outcome: "unknown",
       connectors: [],
-      error: sanitizedRequestError(error, workflow),
+      error: sanitizedRequestError(error),
     };
   }
   const connectors = response.connectors.map((entry) => {
