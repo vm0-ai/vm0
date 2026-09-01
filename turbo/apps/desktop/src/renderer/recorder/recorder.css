@@ -10,6 +10,13 @@ body,
   background: transparent;
 }
 
+/* The selection rectangle takes its width and height from the drag and draws a
+   border on top of them, so under the default `content-box` it would paint
+   wider than the region that gets recorded. */
+* {
+  box-sizing: border-box;
+}
+
 .recorder-body {
   margin: 0;
   overflow: hidden;
