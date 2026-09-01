@@ -846,6 +846,26 @@ describe("okou chat thread IndexedDB fallback", () => {
         error: "Historical Morning Brief rejection",
       },
     });
+    const discardedSourceMarker = "Superseded Morning Brief source 6";
+    revokedSourceMarkers.push(discardedSourceMarker);
+    const discardedSource = appendRow({
+      eventType: "input.prompt",
+      runId: null,
+      contextType: "web",
+      payload: {
+        userMessage: {
+          version: 1,
+          parts: [{ type: "text", text: discardedSourceMarker }],
+        },
+      },
+    });
+    appendRow({
+      eventType: "control.revoke",
+      runId: null,
+      revokesEventId: discardedSource.id,
+      contextType: "web",
+      payload: null,
+    });
     const terminalSnapshotRow = snapshotRows.at(-1);
     if (terminalSnapshotRow === undefined) {
       throw new Error("Expected repaired historical Snapshot rows");

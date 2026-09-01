@@ -10,11 +10,6 @@ const RETIRED_MORNING_BRIEF_CONTEXT = "morning_brief";
 const RETIRED_MORNING_BRIEF_PART = "morning_brief";
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 
-interface SnapshotLine {
-  readonly raw: string;
-  readonly row: ChatEventRow;
-}
-
 interface MorningBriefSnapshotRepair {
   readonly body: Buffer;
   readonly rows: readonly ChatEventRow[];
@@ -26,7 +21,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function snapshotLines(body: Buffer): readonly SnapshotLine[] {
+function snapshotRawLines(body: Buffer): readonly string[] {
   const text = body.toString("utf8");
   if (text.length === 0) {
     return [];
@@ -34,16 +29,7 @@ function snapshotLines(body: Buffer): readonly SnapshotLine[] {
   if (!text.endsWith("\n")) {
     throw new Error("Chat Event snapshot must be newline-delimited JSON");
   }
-  return text
-    .slice(0, -1)
-    .split("\n")
-    .map((raw) => {
-      const parsed = safeJsonParse(raw);
-      if (parsed === undefined) {
-        throw new Error("Chat Event snapshot contains invalid JSON");
-      }
-      return { raw, row: chatEventRowSchema.parse(parsed) };
-    });
+  return text.slice(0, -1).split("\n");
 }
 
 function retiredMorningBriefPart(part: unknown): boolean {
@@ -64,6 +50,23 @@ function assertExactRetiredMorningBriefPart(part: unknown): void {
   }
 }
 
+function isRepairableRetiredMorningBriefEvent(row: ChatEventRow): boolean {
+  if (row.eventType === "input.prompt" || row.eventType === "input.rejected") {
+    return true;
+  }
+  // The historical queue-discard path copied its target context onto this
+  // payload-free tombstone. Keep the one-way exception exact to that shape.
+  return (
+    row.eventType === "control.revoke" &&
+    row.runId === null &&
+    row.revokesEventId !== null &&
+    row.revokesEventId === row.contextId &&
+    row.payload === null &&
+    row.runEventSequenceNumber === null &&
+    row.runEventId === null
+  );
+}
+
 function repairMorningBriefRow(row: ChatEventRow): {
   readonly row: ChatEventRow;
   readonly removedDocumentParts: number;
@@ -73,11 +76,7 @@ function repairMorningBriefRow(row: ChatEventRow): {
   let legacyParts: readonly unknown[] = [];
   let parts: readonly unknown[] | undefined;
 
-  if (
-    hasRetiredContext &&
-    row.eventType !== "input.prompt" &&
-    row.eventType !== "input.rejected"
-  ) {
+  if (hasRetiredContext && !isRepairableRetiredMorningBriefEvent(row)) {
     throw new Error(
       "Chat Event snapshot has an unexpected retired Morning Brief event",
     );
@@ -153,8 +152,12 @@ function repairMorningBriefRow(row: ChatEventRow): {
 export function decodeChatEventSnapshotBody(
   body: Buffer,
 ): readonly ChatEventRow[] {
-  return snapshotLines(body).map(({ row }) => {
-    return row;
+  return snapshotRawLines(body).map((raw) => {
+    const parsed = safeJsonParse(raw);
+    if (parsed === undefined) {
+      throw new Error("Chat Event snapshot contains invalid JSON");
+    }
+    return chatEventRowSchema.parse(parsed);
   });
 }
 
@@ -165,17 +168,25 @@ export function decodeChatEventSnapshotBody(
  */
 export function repairMorningBriefPhaseBSnapshot(
   body: Buffer,
+  decodedRows: readonly ChatEventRow[],
 ): MorningBriefSnapshotRepair {
   let repairedContextRows = 0;
   let removedDocumentParts = 0;
   let changed = false;
-  const lines = snapshotLines(body);
+  const rawLines = snapshotRawLines(body);
+  if (rawLines.length !== decodedRows.length) {
+    throw new Error("Chat Event snapshot decoded row count changed");
+  }
   const rows: ChatEventRow[] = [];
-  const repairedLines = lines.map((line) => {
-    const repaired = repairMorningBriefRow(line.row);
+  const repairedLines = rawLines.map((raw, index) => {
+    const row = decodedRows[index];
+    if (row === undefined) {
+      throw new Error("Chat Event snapshot decoded row is missing");
+    }
+    const repaired = repairMorningBriefRow(row);
     rows.push(repaired.row);
-    if (repaired.row === line.row) {
-      return Buffer.from(`${line.raw}\n`);
+    if (repaired.row === row) {
+      return Buffer.from(`${raw}\n`);
     }
     changed = true;
     repairedContextRows += 1;

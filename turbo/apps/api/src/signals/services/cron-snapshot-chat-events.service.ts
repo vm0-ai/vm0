@@ -296,11 +296,39 @@ interface SnapshotSource {
 }
 
 type SnapshotSkipReason = "unreadable" | "undecodable" | "incomplete";
+type SnapshotDecodeFailureClass =
+  | "checksum"
+  | "gzip"
+  | "raw_row"
+  | "projection"
+  | "prefix"
+  | "terminal";
+
+class SnapshotDecodeFailure extends Error {
+  readonly failureClass: SnapshotDecodeFailureClass;
+
+  constructor(failureClass: SnapshotDecodeFailureClass) {
+    super("Chat Event Snapshot decode failed");
+    this.name = "SnapshotDecodeFailure";
+    this.failureClass = failureClass;
+  }
+}
+
+type SnapshotSkippedResolution =
+  | {
+      readonly kind: "skipped";
+      readonly reason: "unreadable" | "incomplete";
+    }
+  | {
+      readonly kind: "skipped";
+      readonly reason: "undecodable";
+      readonly failureClass: SnapshotDecodeFailureClass;
+    };
 
 type SnapshotSourceResolution =
   | { readonly kind: "initial" }
   | { readonly kind: "reusable"; readonly source: SnapshotSource }
-  | { readonly kind: "skipped"; readonly reason: SnapshotSkipReason };
+  | SnapshotSkippedResolution;
 
 interface SnapshotSourceMetadata {
   readonly id: string;
@@ -391,10 +419,7 @@ type SnapshotPrefixResolution =
       readonly terminalSeqId: number;
       readonly terminalEventId: string | null;
     }
-  | {
-      readonly kind: "skipped";
-      readonly reason: "unreadable" | "undecodable";
-    };
+  | SnapshotSkippedResolution;
 
 interface SnapshotPrefixArgs {
   readonly bucket: string;
@@ -432,6 +457,21 @@ function validateSnapshotPrefixTerminal(
   }
 }
 
+async function decodeSnapshotStage<T>(
+  failureClass: SnapshotDecodeFailureClass,
+  decode: () => T | Promise<T>,
+): Promise<T> {
+  const decoded = await settle(
+    (async () => {
+      return await decode();
+    })(),
+  );
+  if (!decoded.ok) {
+    throw new SnapshotDecodeFailure(failureClass);
+  }
+  return decoded.value;
+}
+
 async function decodeSnapshotPrefix(
   compressed: Buffer,
   args: SnapshotPrefixArgs,
@@ -444,18 +484,27 @@ async function decodeSnapshotPrefix(
     args.source.objectKey,
   )?.[1];
   if (digest === undefined || sha256Hex(compressed) !== digest) {
-    throw new Error(
-      "Chat Event Snapshot object checksum does not match its key",
-    );
+    throw new SnapshotDecodeFailure("checksum");
   }
-  const decompressed = await gunzipAsync(compressed);
-  const repaired = repairMorningBriefPhaseBSnapshot(decompressed);
+  const decompressed = await decodeSnapshotStage("gzip", async () => {
+    return await gunzipAsync(compressed);
+  });
+  const decodedRows = await decodeSnapshotStage("raw_row", () => {
+    return decodeChatEventSnapshotBody(decompressed);
+  });
+  const repaired = await decodeSnapshotStage("projection", () => {
+    return repairMorningBriefPhaseBSnapshot(decompressed, decodedRows);
+  });
   const rows = repaired.rows;
-  validateSnapshotPrefixRows(rows, args);
+  await decodeSnapshotStage("prefix", () => {
+    validateSnapshotPrefixRows(rows, args);
+  });
   const terminal = rows.at(-1);
   const terminalSeqId = terminal?.seqId ?? 0;
   const terminalEventId = terminal?.id ?? null;
-  validateSnapshotPrefixTerminal(args, terminalSeqId, terminalEventId);
+  await decodeSnapshotStage("terminal", () => {
+    validateSnapshotPrefixTerminal(args, terminalSeqId, terminalEventId);
+  });
   if (repaired.repairedContextRows > 0) {
     log.debug("Repaired retired Morning Brief Chat Event Snapshot rows", {
       type: "chat_event_snapshot_morning_brief_rows_repaired",
@@ -487,9 +536,17 @@ function readSnapshotPrefix(
       decodeSnapshotPrefix(downloaded.value, args),
       signal,
     );
-    return decoded.ok
-      ? { kind: "reusable", ...decoded.value }
-      : { kind: "skipped", reason: "undecodable" };
+    if (decoded.ok) {
+      return { kind: "reusable", ...decoded.value };
+    }
+    if (!(decoded.error instanceof SnapshotDecodeFailure)) {
+      throw decoded.error;
+    }
+    return {
+      kind: "skipped",
+      reason: "undecodable",
+      failureClass: decoded.error.failureClass,
+    };
   });
 }
 
@@ -583,16 +640,19 @@ interface ArchivedThread {
 
 function skippedArchivedThread(
   candidate: SnapshotCandidate,
-  reason: SnapshotSkipReason,
+  resolution: SnapshotSkippedResolution,
 ): ArchivedThread {
   log.warn("Skipped Chat Event Snapshot pointer", {
     type: "chat_event_snapshot_head_skipped",
     chatThreadId: candidate.chatThreadId,
-    reason,
+    reason: resolution.reason,
+    ...(resolution.reason === "undecodable"
+      ? { failureClass: resolution.failureClass }
+      : {}),
   });
   return {
     archivedEvents: null,
-    skippedHead: reason,
+    skippedHead: resolution.reason,
     normalization: NO_DUPLICATE_EVENT_ID_NORMALIZATION,
   };
 }
@@ -605,7 +665,7 @@ type ArchivePrefixResolution =
       readonly terminalSeqId: number;
       readonly terminalEventId: string | null;
     }
-  | { readonly kind: "skipped"; readonly reason: SnapshotSkipReason };
+  | SnapshotSkippedResolution;
 
 function resolveArchivePrefix(
   args: {
@@ -805,7 +865,7 @@ const archiveThread$ = command(async function archiveThread(
   );
   signal.throwIfAborted();
   if (resolved.kind === "skipped") {
-    return skippedArchivedThread(candidate, resolved.reason);
+    return skippedArchivedThread(candidate, resolved);
   }
   const { source, prefix, terminalSeqId, terminalEventId } = resolved;
   const targetSeqId = Math.max(candidate.indexedSeqId, source?.lastSeqId ?? 0);
