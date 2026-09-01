@@ -105,27 +105,15 @@ open_browser_page() {
 }
 
 # ---------------------------------------------------------------------------
-# resolve_e2e_api_backend_url — Resolve the staged E2E API URL contract
-# Repository E2E writers are canonical-only during this compatibility stage.
-# Keep VM0_API_BACKEND_URL as a development, preview, and operational rollback
-# input until its documented support cutoff is approved and no supported
-# rollback or invocation contract needs it. The removal gate is tracked by
-# #28914. The resolved value is preserved byte-for-byte and never logged.
+# resolve_e2e_api_backend_url — Resolve the canonical E2E API URL contract
+# The resolved value is preserved byte-for-byte and never logged.
 # ---------------------------------------------------------------------------
 resolve_e2e_api_backend_url() {
-  local canonical_value="${OKOU_API_BACKEND_URL:-}"
-  local legacy_value="${VM0_API_BACKEND_URL:-}"
-
-  if [[ -n "$canonical_value" && -n "$legacy_value" && "$canonical_value" != "$legacy_value" ]]; then
-    echo "E2E API backend URL aliases conflict: canonical_key=OKOU_API_BACKEND_URL legacy_key=VM0_API_BACKEND_URL state=conflict" >&2
+  if [[ -z "${OKOU_API_BACKEND_URL:-}" ]]; then
+    echo "E2E API backend URL is required: canonical_key=OKOU_API_BACKEND_URL state=missing" >&2
     return 1
   fi
-
-  E2E_API_BACKEND_URL="${canonical_value:-$legacy_value}"
-  if [[ -z "$E2E_API_BACKEND_URL" ]]; then
-    echo "E2E API backend URL is required: canonical_key=OKOU_API_BACKEND_URL legacy_key=VM0_API_BACKEND_URL state=missing" >&2
-    return 1
-  fi
+  E2E_API_BACKEND_URL="$OKOU_API_BACKEND_URL"
   export E2E_API_BACKEND_URL
 }
 

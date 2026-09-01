@@ -22,16 +22,14 @@ fail() {
   exit 1
 }
 
-for api_backend_url_key in OKOU_API_BACKEND_URL VM0_API_BACKEND_URL; do
-  api_backend_url_key_count="$(
-    jq --arg key "$api_backend_url_key" \
-      '[.globalEnv[] | select(. == $key)] | length' \
-      "$TURBO_CONFIG"
-  )"
-  if [[ "$api_backend_url_key_count" -ne 1 ]]; then
-    fail "Turbo must pass through each E2E API backend URL alias exactly once"
-  fi
-done
+api_backend_url_key_count="$(
+  jq \
+    '[.globalEnv[] | select(. == "OKOU_API_BACKEND_URL")] | length' \
+    "$TURBO_CONFIG"
+)"
+if [[ "$api_backend_url_key_count" -ne 1 ]]; then
+  fail "Turbo must pass through the E2E API backend URL exactly once"
+fi
 
 grep -Fq ".github/scripts/reconcile-and-start-runner-groups.sh" "$WORKFLOW" ||
   fail "runner deployment must invoke the lifecycle-locked start helper"
