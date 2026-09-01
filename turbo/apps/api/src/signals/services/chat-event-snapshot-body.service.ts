@@ -4,7 +4,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
 
-import { safeJsonParse } from "../utils";
+import { safeJsonParse, safeSync } from "../utils";
 
 const RETIRED_MORNING_BRIEF_CONTEXT = "morning_brief";
 const RETIRED_MORNING_BRIEF_PART = "morning_brief";
@@ -15,6 +15,50 @@ interface MorningBriefSnapshotRepair {
   readonly rows: readonly ChatEventRow[];
   readonly repairedContextRows: number;
   readonly removedDocumentParts: number;
+}
+
+export type ChatEventSnapshotProjectionSubstage =
+  | "retired_event"
+  | "retired_document"
+  | "retired_context"
+  | "retired_part"
+  | "current_contract";
+
+export type ChatEventSnapshotProjectionVariant =
+  | "unsupported_event"
+  | "invalid_control_revoke"
+  | "unresolved_revoke_chain"
+  | "unexpected_document"
+  | "unscoped_part"
+  | "missing_context_id"
+  | "duplicate_part"
+  | "unexpected_part"
+  | "empty_message"
+  | "invalid_event_shape";
+
+export class ChatEventSnapshotProjectionError extends Error {
+  readonly projectionSubstage: ChatEventSnapshotProjectionSubstage;
+  readonly projectionVariant: ChatEventSnapshotProjectionVariant;
+
+  constructor(
+    projectionSubstage: ChatEventSnapshotProjectionSubstage,
+    projectionVariant: ChatEventSnapshotProjectionVariant,
+  ) {
+    super("Chat Event Snapshot projection failed");
+    this.name = "ChatEventSnapshotProjectionError";
+    this.projectionSubstage = projectionSubstage;
+    this.projectionVariant = projectionVariant;
+  }
+}
+
+function failProjection(
+  projectionSubstage: ChatEventSnapshotProjectionSubstage,
+  projectionVariant: ChatEventSnapshotProjectionVariant,
+): never {
+  throw new ChatEventSnapshotProjectionError(
+    projectionSubstage,
+    projectionVariant,
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -44,30 +88,121 @@ function assertExactRetiredMorningBriefPart(part: unknown): void {
     typeof part.briefDate !== "string" ||
     !ISO_DATE_PATTERN.test(part.briefDate)
   ) {
-    throw new Error(
-      "Chat Event snapshot has an unexpected retired Morning Brief part",
-    );
+    failProjection("retired_part", "unexpected_part");
   }
 }
 
-function isRepairableRetiredMorningBriefEvent(row: ChatEventRow): boolean {
-  if (row.eventType === "input.prompt" || row.eventType === "input.rejected") {
-    return true;
-  }
-  // The historical queue-discard path copied its target context onto this
-  // payload-free tombstone. Keep the one-way exception exact to that shape.
+function isPayloadFreeControlRevoke(row: ChatEventRow): boolean {
   return (
     row.eventType === "control.revoke" &&
     row.runId === null &&
     row.revokesEventId !== null &&
-    row.revokesEventId === row.contextId &&
     row.payload === null &&
     row.runEventSequenceNumber === null &&
     row.runEventId === null
   );
 }
 
-function repairMorningBriefRow(row: ChatEventRow): {
+function isExactRetiredMorningBriefRoot(
+  row: ChatEventRow,
+  root: ChatEventRow | null | undefined,
+): root is ChatEventRow {
+  return (
+    root !== undefined &&
+    root !== null &&
+    root.chatThreadId === row.chatThreadId &&
+    root.eventType === "input.prompt" &&
+    root.runId === null &&
+    root.revokesEventId === null &&
+    root.contextType === RETIRED_MORNING_BRIEF_CONTEXT &&
+    root.contextId === root.id &&
+    root.runEventSequenceNumber === null &&
+    root.runEventId === null
+  );
+}
+
+function isExactRetiredMorningBriefRejection(
+  row: ChatEventRow,
+  target: ChatEventRow | null | undefined,
+  root: ChatEventRow,
+): boolean {
+  return (
+    target !== undefined &&
+    target !== null &&
+    target.chatThreadId === row.chatThreadId &&
+    target.eventType === "input.rejected" &&
+    target.runId === null &&
+    target.revokesEventId === root.id &&
+    target.contextType === RETIRED_MORNING_BRIEF_CONTEXT &&
+    target.contextId === root.id &&
+    target.runEventSequenceNumber === 0 &&
+    target.runEventId === null
+  );
+}
+
+function isExactRetiredMorningBriefRevokeChain(
+  row: ChatEventRow,
+  priorRowsById: ReadonlyMap<string, ChatEventRow | null>,
+): boolean {
+  if (
+    row.contextId === null ||
+    row.revokesEventId === null ||
+    row.contextId === row.revokesEventId
+  ) {
+    return false;
+  }
+  const target = priorRowsById.get(row.revokesEventId);
+  const root = priorRowsById.get(row.contextId);
+  return (
+    isExactRetiredMorningBriefRoot(row, root) &&
+    isExactRetiredMorningBriefRejection(row, target, root)
+  );
+}
+
+function assertRepairableRetiredMorningBriefEvent(
+  row: ChatEventRow,
+  priorRowsById: ReadonlyMap<string, ChatEventRow | null>,
+): void {
+  if (row.eventType === "input.prompt" || row.eventType === "input.rejected") {
+    return;
+  }
+  if (!isPayloadFreeControlRevoke(row)) {
+    failProjection(
+      "retired_event",
+      row.eventType === "control.revoke"
+        ? "invalid_control_revoke"
+        : "unsupported_event",
+    );
+  }
+  // Queue discard copied the prompt context directly. Recall after the
+  // insufficient-credit replacement copied the same root context while its
+  // revoke edge targeted the intermediate rejection. Require that complete
+  // ordered archive-local chain before accepting the second legacy shape.
+  // This is limited to immutable legacy V7 Snapshot state. Remove it after all
+  // surviving V7 heads have converged to r1 and the retired writer's rollback
+  // window has closed; removal is tracked by #30369 and #28905.
+  if (
+    row.contextId === row.revokesEventId ||
+    isExactRetiredMorningBriefRevokeChain(row, priorRowsById)
+  ) {
+    return;
+  }
+  failProjection("retired_event", "unresolved_revoke_chain");
+}
+
+function assertCurrentProjection(row: ChatEventRow): void {
+  const projected = safeSync(() => {
+    chatEventFromRow(row);
+  });
+  if ("error" in projected) {
+    failProjection("current_contract", "invalid_event_shape");
+  }
+}
+
+function repairMorningBriefRow(
+  row: ChatEventRow,
+  priorRowsById: ReadonlyMap<string, ChatEventRow | null>,
+): {
   readonly row: ChatEventRow;
   readonly removedDocumentParts: number;
 } {
@@ -76,18 +211,14 @@ function repairMorningBriefRow(row: ChatEventRow): {
   let legacyParts: readonly unknown[] = [];
   let parts: readonly unknown[] | undefined;
 
-  if (hasRetiredContext && !isRepairableRetiredMorningBriefEvent(row)) {
-    throw new Error(
-      "Chat Event snapshot has an unexpected retired Morning Brief event",
-    );
+  if (hasRetiredContext) {
+    assertRepairableRetiredMorningBriefEvent(row, priorRowsById);
   }
 
   if (userMessage !== undefined) {
     if (!isRecord(userMessage) || !Array.isArray(userMessage.parts)) {
       if (hasRetiredContext) {
-        throw new Error(
-          "Chat Event snapshot has an unexpected retired Morning Brief document",
-        );
+        failProjection("retired_document", "unexpected_document");
       }
     } else {
       parts = userMessage.parts;
@@ -97,22 +228,16 @@ function repairMorningBriefRow(row: ChatEventRow): {
 
   if (!hasRetiredContext) {
     if (legacyParts.length > 0) {
-      throw new Error(
-        "Chat Event snapshot has an unscoped retired Morning Brief part",
-      );
+      failProjection("retired_document", "unscoped_part");
     }
-    chatEventFromRow(row);
+    assertCurrentProjection(row);
     return { row, removedDocumentParts: 0 };
   }
   if (row.contextId === null) {
-    throw new Error(
-      "Chat Event snapshot has an incomplete retired Morning Brief context",
-    );
+    failProjection("retired_context", "missing_context_id");
   }
   if (legacyParts.length > 1) {
-    throw new Error(
-      "Chat Event snapshot has duplicate retired Morning Brief parts",
-    );
+    failProjection("retired_part", "duplicate_part");
   }
 
   const removedDocumentParts = legacyParts.length;
@@ -121,17 +246,13 @@ function repairMorningBriefRow(row: ChatEventRow): {
     const retiredPart = legacyParts[0];
     assertExactRetiredMorningBriefPart(retiredPart);
     if (!isRecord(userMessage) || userMessage.version !== 1 || !parts) {
-      throw new Error(
-        "Chat Event snapshot has an unexpected retired Morning Brief document",
-      );
+      failProjection("retired_document", "unexpected_document");
     }
     const currentParts = parts.filter((part) => {
       return part !== retiredPart;
     });
     if (currentParts.length === 0) {
-      throw new Error(
-        "Chat Event snapshot Morning Brief repair would empty a message",
-      );
+      failProjection("retired_part", "empty_message");
     }
     payload = {
       ...row.payload,
@@ -145,7 +266,7 @@ function repairMorningBriefRow(row: ChatEventRow): {
     contextId: null,
     payload,
   });
-  chatEventFromRow(repaired);
+  assertCurrentProjection(repaired);
   return { row: repaired, removedDocumentParts };
 }
 
@@ -178,13 +299,15 @@ export function repairMorningBriefPhaseBSnapshot(
     throw new Error("Chat Event snapshot decoded row count changed");
   }
   const rows: ChatEventRow[] = [];
+  const priorRowsById = new Map<string, ChatEventRow | null>();
   const repairedLines = rawLines.map((raw, index) => {
     const row = decodedRows[index];
     if (row === undefined) {
       throw new Error("Chat Event snapshot decoded row is missing");
     }
-    const repaired = repairMorningBriefRow(row);
+    const repaired = repairMorningBriefRow(row, priorRowsById);
     rows.push(repaired.row);
+    priorRowsById.set(row.id, priorRowsById.has(row.id) ? null : row);
     if (repaired.row === row) {
       return Buffer.from(`${raw}\n`);
     }

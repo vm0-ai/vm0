@@ -33,6 +33,7 @@ use crate::active_input::{ActiveInputController, ActiveInputFrame, ActiveInputWr
 use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{
     AGENT_EXECUTION_TIMEOUT_EXIT_CODE, CliTerminationDiagnostic, CliTerminationReason,
+    HeartbeatFailureDiagnostic,
 };
 
 const TURN_NOTIFICATION_LABEL: &str = "turn notification";
@@ -119,9 +120,45 @@ enum CodexRunEvent {
 }
 
 enum AppServerRunOutcome {
-    Completed(Box<Result<CliExecutionResult, AgentError>>),
+    Completed(Box<Result<CliExecutionResult, CodexRunError>>),
     ExecutionTimedOut { timeout_secs: u64 },
     UserCancelled,
+}
+
+enum CodexRunError {
+    Execution(AgentError),
+    Heartbeat(CodexHeartbeatFailure),
+}
+
+struct CodexHeartbeatFailure {
+    error: AgentError,
+    diagnostic: Option<HeartbeatFailureDiagnostic>,
+    termination_reason: CliTerminationReason,
+}
+
+impl From<AgentError> for CodexRunError {
+    fn from(error: AgentError) -> Self {
+        Self::Execution(error)
+    }
+}
+
+impl std::fmt::Display for CodexRunError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Execution(error) => error.fmt(formatter),
+            Self::Heartbeat(failure) => failure.error.fmt(formatter),
+        }
+    }
+}
+
+impl AppServerRunOutcome {
+    fn is_heartbeat_failure(&self) -> bool {
+        matches!(
+            self,
+            Self::Completed(result)
+                if matches!(result.as_ref(), Err(CodexRunError::Heartbeat(_)))
+        )
+    }
 }
 
 async fn settle_active_input_before_stop<Run>(
@@ -130,7 +167,7 @@ async fn settle_active_input_before_stop<Run>(
     stopped: AppServerRunOutcome,
 ) -> AppServerRunOutcome
 where
-    Run: Future<Output = Result<CliExecutionResult, AgentError>>,
+    Run: Future<Output = Result<CliExecutionResult, CodexRunError>>,
 {
     active_input.close_terminal();
     if !active_input.sink_in_flight() {
@@ -153,7 +190,7 @@ where
 }
 
 async fn run_with_execution_deadline(
-    run: impl Future<Output = Result<CliExecutionResult, AgentError>>,
+    run: impl Future<Output = Result<CliExecutionResult, CodexRunError>>,
     deadline: Option<AgentExecutionDeadline>,
     user_cancellation: &CancellationToken,
     active_input: &ActiveInputController,
@@ -486,7 +523,7 @@ async fn run_codex_app_server(
             }
         };
 
-        Ok::<CliExecutionResult, AgentError>(CliExecutionResult {
+        Ok::<CliExecutionResult, CodexRunError>(CliExecutionResult {
             exit_code,
             // App-server terminal events report a protocol-level turn status,
             // not the child process wait status.
@@ -494,6 +531,7 @@ async fn run_codex_app_server(
             stderr_lines: Vec::new(),
             last_event_sequence: None,
             event_delivery: None,
+            heartbeat: None,
             jsonl_result: None,
             post_result_cleanup_jsonl_result: None,
             failure_diagnostic: ingestor.failure_diagnostic(),
@@ -594,6 +632,14 @@ async fn run_codex_app_server(
     agent_log.flush().await;
     let active_input_delivery_ids = match active_input_delivery_ids {
         Ok(delivery_ids) => delivery_ids,
+        Err(active_input_error) if run_outcome.is_heartbeat_failure() => {
+            log_warn!(
+                LOG_TAG,
+                "Codex active-input cleanup failed after heartbeat failure: {}",
+                masker.mask_string(&active_input_error.to_string())
+            );
+            Vec::new()
+        }
         Err(active_input_error) => {
             if let Err(shutdown_error) = &shutdown_result {
                 return Err(AgentError::Execution(format!(
@@ -616,14 +662,39 @@ async fn run_codex_app_server(
                 "codex app-server shutdown failed: {}",
                 masker.mask_string(&error.to_string())
             ))),
-            (Err(error), Ok(())) => Err(error),
-            (Err(error), Err(shutdown_error)) => {
+            (Err(CodexRunError::Execution(error)), Ok(())) => Err(error),
+            (Err(CodexRunError::Execution(error)), Err(shutdown_error)) => {
                 let shutdown_error = masker.mask_string(&shutdown_error.to_string());
                 log_warn!(
                     LOG_TAG,
                     "codex app-server shutdown failed after run error: {shutdown_error}"
                 );
                 Err(error)
+            }
+            (Err(CodexRunError::Heartbeat(failure)), shutdown_result) => {
+                if let Err(shutdown_error) = shutdown_result {
+                    let shutdown_error = masker.mask_string(&shutdown_error.to_string());
+                    log_warn!(
+                        LOG_TAG,
+                        "codex app-server termination failed after heartbeat failure: {shutdown_error}"
+                    );
+                }
+                Ok(CliExecutionResult {
+                    exit_code: 1,
+                    cli_observed_exit: None,
+                    stderr_lines,
+                    last_event_sequence: None,
+                    event_delivery: None,
+                    heartbeat: failure.diagnostic,
+                    jsonl_result: None,
+                    post_result_cleanup_jsonl_result: None,
+                    failure_diagnostic: ingestor.failure_diagnostic(),
+                    control_error: Some(failure.error),
+                    cli_termination: Some(CliTerminationDiagnostic::new(
+                        failure.termination_reason,
+                    )),
+                    active_input_delivery_ids,
+                })
             }
         },
         AppServerRunOutcome::ExecutionTimedOut { timeout_secs } => {
@@ -640,6 +711,7 @@ async fn run_codex_app_server(
                 stderr_lines,
                 last_event_sequence: None,
                 event_delivery: None,
+                heartbeat: None,
                 jsonl_result: None,
                 post_result_cleanup_jsonl_result: None,
                 failure_diagnostic: ingestor.failure_diagnostic(),
@@ -666,6 +738,7 @@ async fn run_codex_app_server(
                 stderr_lines,
                 last_event_sequence: None,
                 event_delivery: None,
+                heartbeat: None,
                 jsonl_result: None,
                 post_result_cleanup_jsonl_result: None,
                 failure_diagnostic: ingestor.failure_diagnostic(),
@@ -839,7 +912,7 @@ async fn next_codex_run_event(
     heartbeat_monitor: &mut HeartbeatMonitor,
     heartbeat_done: &mut bool,
     masker: &SecretMasker,
-) -> Result<CodexRunEvent, AgentError> {
+) -> Result<CodexRunEvent, CodexRunError> {
     let active_input_can_be_read = can_read_active_input(active_input_open, active_input_ready);
     // Do not let buffered terminal notifications overtake input the control
     // path already accepted.
@@ -858,7 +931,7 @@ async fn next_codex_run_event(
         notification = client.next_notification(TURN_NOTIFICATION_LABEL) => {
             notification
                 .map(CodexRunEvent::Notification)
-                .map_err(|error| app_server_error(masker, error))
+                .map_err(|error| CodexRunError::Execution(app_server_error(masker, error)))
         }
         heartbeat_result = wait_for_heartbeat(heartbeat_monitor), if !*heartbeat_done => {
             *heartbeat_done = true;
@@ -879,7 +952,7 @@ async fn steer_active_input(
     heartbeat_monitor: &mut HeartbeatMonitor,
     heartbeat_done: &mut bool,
     masker: &SecretMasker,
-) -> Result<(), AgentError> {
+) -> Result<(), CodexRunError> {
     let thread_id = target.thread_id;
     let turn_id = target.turn_id;
     let params = turn_steer_params(thread_id, turn_id, &frame);
@@ -914,10 +987,15 @@ async fn steer_active_input(
                 "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} input_uuid={} outcome=failed error={error}",
                 frame.uuid
             );
-            Err(AgentError::Execution(format!(
-                "codex app-server active input steer failed for input {}: {error}",
-                frame.uuid
-            )))
+            match error {
+                CodexRunError::Execution(error) => {
+                    Err(CodexRunError::Execution(AgentError::Execution(format!(
+                        "codex app-server active input steer failed for input {}: {error}",
+                        frame.uuid
+                    ))))
+                }
+                CodexRunError::Heartbeat(failure) => Err(CodexRunError::Heartbeat(failure)),
+            }
         }
     }
 }
@@ -940,12 +1018,14 @@ async fn race_with_heartbeat<T>(
     heartbeat_monitor: &mut HeartbeatMonitor,
     heartbeat_done: &mut bool,
     masker: &SecretMasker,
-) -> Result<T, AgentError> {
+) -> Result<T, CodexRunError> {
     // If heartbeat wins, the caller exits the run and shuts the app-server
     // down. We intentionally do not try to reuse a possibly half-read JSON-RPC
     // stream after cancelling `app_server_wait`.
     tokio::select! {
-        result = app_server_wait => result.map_err(|error| app_server_error(masker, error)),
+        biased;
+        result = app_server_wait => result
+            .map_err(|error| CodexRunError::Execution(app_server_error(masker, error))),
         heartbeat_result = wait_for_heartbeat(heartbeat_monitor), if !*heartbeat_done => {
             *heartbeat_done = true;
             Err(heartbeat_error(heartbeat_result))
@@ -1039,18 +1119,30 @@ async fn wait_for_heartbeat(
     }
 }
 
-fn heartbeat_error(result: Result<HeartbeatStatus, oneshot::error::RecvError>) -> AgentError {
+fn heartbeat_error(result: Result<HeartbeatStatus, oneshot::error::RecvError>) -> CodexRunError {
     match result {
-        Ok(HeartbeatStatus::Failed(error)) => error,
-        Ok(HeartbeatStatus::Stopped) => {
-            AgentError::Execution("heartbeat stopped before codex app-server completed".to_string())
-        }
-        Ok(HeartbeatStatus::TaskFailed(message)) => {
-            AgentError::Execution(format!("heartbeat task panicked: {message}"))
-        }
-        Err(error) => AgentError::Execution(format!(
-            "heartbeat task stopped before reporting status: {error}"
+        Ok(HeartbeatStatus::Failed(failure)) => CodexRunError::Heartbeat(CodexHeartbeatFailure {
+            error: failure.error,
+            diagnostic: Some(failure.diagnostic),
+            termination_reason: CliTerminationReason::HeartbeatError,
+        }),
+        Ok(HeartbeatStatus::Stopped) => CodexRunError::Execution(AgentError::Execution(
+            "heartbeat stopped before codex app-server completed".to_string(),
         )),
+        Ok(HeartbeatStatus::TaskFailed(message)) => {
+            CodexRunError::Heartbeat(CodexHeartbeatFailure {
+                error: AgentError::Execution(format!("heartbeat task panicked: {message}")),
+                diagnostic: None,
+                termination_reason: CliTerminationReason::HeartbeatPanic,
+            })
+        }
+        Err(error) => CodexRunError::Heartbeat(CodexHeartbeatFailure {
+            error: AgentError::Execution(format!(
+                "heartbeat task stopped before reporting status: {error}"
+            )),
+            diagnostic: None,
+            termination_reason: CliTerminationReason::HeartbeatPanic,
+        }),
     }
 }
 

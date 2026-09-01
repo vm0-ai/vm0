@@ -8,7 +8,6 @@ import {
   updateSearchParams$,
   detachedNavigateTo$,
 } from "../route.ts";
-import { onboardGuard$ } from "./onboard-guard.ts";
 import {
   currentAgentId$,
   defaultAgentId$,
@@ -33,14 +32,16 @@ import { checkUnifiedSettingsParam$ } from "./settings/settings-dialog.ts";
 import { setupAgentChatKeyboardShortcuts$ } from "./agent-chat-keyboard.ts";
 import { parseTemplatePickerEntryCategory } from "./template-picker-entry.ts";
 import { i18n } from "../../i18n/index.ts";
+import {
+  applyDesktopRecordingHandoff$,
+  desktopRecordingHandoffFeatureEnabled,
+  hasDesktopRecordingHandoff,
+} from "./desktop-recording-handoff.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 
 export const setupAgentChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const agentId = get(currentAgentId$);
-
-    if (await set(onboardGuard$, signal)) {
-      return;
-    }
 
     if (!agentId) {
       throw new Error("Chat page requires an active agent, but none found");
@@ -94,7 +95,11 @@ export const setupAgentChatPage$ = command(
     const templatePicker = parseTemplatePickerEntryCategory(
       params.get("templatePicker"),
     );
-    if (agentDraft && !prompt) {
+    const featureSwitches = get(featureSwitch$);
+    const desktopRecordingHandoff =
+      desktopRecordingHandoffFeatureEnabled(featureSwitches) &&
+      hasDesktopRecordingHandoff(params);
+    if (agentDraft && !prompt && !desktopRecordingHandoff) {
       await set(loadAgentDraft$, agentId, agentDraft, signal);
     }
     if (prompt) {
@@ -104,6 +109,15 @@ export const setupAgentChatPage$ = command(
       const next = new URLSearchParams(params);
       next.delete("prompt");
       set(updateSearchParams$, next);
+    }
+    if (desktopRecordingHandoff) {
+      const targetDraft = agentDraft?.draft ?? get(talkDraft$);
+      await set(
+        applyDesktopRecordingHandoff$,
+        targetDraft,
+        get(searchParams$),
+        signal,
+      );
     }
     if (templatePicker) {
       const composerSignals = get(agentChatComposerSignals$);

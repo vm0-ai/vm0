@@ -105,8 +105,6 @@ const getBuiltInModelCooldownDiagnosticsInner$ = command(
     return {
       status: 200 as const,
       body: {
-        fallbackEnabled:
-          featureStates[FeatureSwitchKey.BuiltInModelProviderFallback],
         canCancelCooldowns: isStaffOrg(auth.orgId),
         activeCooldowns: activeCooldowns.map((cooldown) => {
           return {

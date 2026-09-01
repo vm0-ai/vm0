@@ -1,5 +1,79 @@
 # Changelog
 
+## [1.523.0](https://github.com/vm0-ai/vm0/compare/api-v1.522.2...api-v1.523.0) (2026-09-01)
+
+
+### Features
+
+* graduate built-in model provider fallback ([#30861](https://github.com/vm0-ai/vm0/issues/30861)) ([be446a6](https://github.com/vm0-ai/vm0/commit/be446a6678a6fe32d6df9788b2b17550ebddd8b4))
+
+
+### Bug Fixes
+
+* **api:** keep a committed delete successful when storage cleanup fails ([#30863](https://github.com/vm0-ai/vm0/issues/30863)) ([c256e81](https://github.com/vm0-ai/vm0/commit/c256e81be0509cab6a42872b5be44958cf6f0e91))
+* **mail:** use thread gmail account for draft handoff ([#30846](https://github.com/vm0-ai/vm0/issues/30846)) ([99e2b42](https://github.com/vm0-ai/vm0/commit/99e2b42770617c62b57787973131d1002f0ebbbf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.387.0
+    * @okouai/core bumped to 8.606.0
+    * @okouai/db bumped to 1.229.4
+
+## [1.522.2](https://github.com/vm0-ai/vm0/compare/api-v1.522.1...api-v1.522.2) (2026-09-01)
+
+
+### Bug Fixes
+
+* **official-workflows:** restore catalog schema cutovers ([#30834](https://github.com/vm0-ai/vm0/issues/30834)) ([4dc5580](https://github.com/vm0-ai/vm0/commit/4dc55802b7a9941a34515d48e81965f9975c6663))
+* **social:** normalize TikTok collection semantics ([#30838](https://github.com/vm0-ai/vm0/issues/30838)) ([5720a7a](https://github.com/vm0-ai/vm0/commit/5720a7a38766172840802151fef77e73111d5d14))
+
+
+### Refactoring
+
+* **api:** drop the web and cli driven compatibility rows ([#30817](https://github.com/vm0-ai/vm0/issues/30817)) ([aa1276f](https://github.com/vm0-ai/vm0/commit/aa1276f5951bb83449286bbc83381355aa3ba692))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.386.1
+    * @okouai/core bumped to 8.605.10
+    * @okouai/db bumped to 1.229.3
+
+## [1.522.1](https://github.com/vm0-ai/vm0/compare/api-v1.522.0...api-v1.522.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **api:** repair chained legacy snapshot revocations ([#30808](https://github.com/vm0-ai/vm0/issues/30808)) ([5458a54](https://github.com/vm0-ai/vm0/commit/5458a54c86bbb10b16db73cdd91d76585b6cc7ec))
+* scope connector doctor to its host agent ([#30809](https://github.com/vm0-ai/vm0/issues/30809)) ([61495a2](https://github.com/vm0-ai/vm0/commit/61495a251cd71be80dc05d4438f24f85ae3bda15))
+
+
+### Refactoring
+
+* **api:** drop the computer-use and feature-switch compatibility rows ([#30814](https://github.com/vm0-ai/vm0/issues/30814)) ([07296e0](https://github.com/vm0-ai/vm0/commit/07296e0bf4bcc1d68f6695f3210440f346658df5)), closes [#30804](https://github.com/vm0-ai/vm0/issues/30804)
+* **api:** drop the teams callback and slack connect compatibility rows ([#30821](https://github.com/vm0-ai/vm0/issues/30821)) ([60bad02](https://github.com/vm0-ai/vm0/commit/60bad025e87ad5fc048e3a579f13277d44a38e74)), closes [#30812](https://github.com/vm0-ai/vm0/issues/30812)
+
+## [1.522.0](https://github.com/vm0-ai/vm0/compare/api-v1.521.0...api-v1.522.0) (2026-09-01)
+
+
+### Features
+
+* manage morning brief from preferences ([#30805](https://github.com/vm0-ai/vm0/issues/30805)) ([a95ce9e](https://github.com/vm0-ai/vm0/commit/a95ce9ec44cb77f06e05cd99c28f052ddcd6cff5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.386.0
+    * @okouai/core bumped to 8.605.9
+    * @okouai/db bumped to 1.229.2
+
 ## [1.521.0](https://github.com/vm0-ai/vm0/compare/api-v1.520.1...api-v1.521.0) (2026-09-01)
 
 

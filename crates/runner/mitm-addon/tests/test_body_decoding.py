@@ -48,7 +48,10 @@ def _many_empty_zlib_members(encoding: str) -> bytes:
     return member * (STREAM_BUFFER_LIMIT // len(member))
 
 
-def _track_zlib_decompressor(monkeypatch):
+def _track_zlib_decompressor(
+    monkeypatch,
+    target: str = "body_decoding.zlib.decompressobj",
+):
     real_factory = zlib.decompressobj
     stats = {
         "calls": 0,
@@ -90,7 +93,7 @@ def _track_zlib_decompressor(monkeypatch):
         stats["objects"] += 1
         return TrackingDecompressionObj(real_factory(*args, **kwargs))
 
-    monkeypatch.setattr("body_decoding.zlib.decompressobj", factory)
+    monkeypatch.setattr(target, factory)
     return stats
 
 
@@ -773,6 +776,13 @@ class TestDecodeRequestBodyForNetworkLogCapture:
         hdrs = headers(("Content-Encoding", encoding))
         assert decode_request_body_for_network_log_capture(compressed, hdrs) == b""
 
+    def test_raw_deflate_remains_unsupported(self, headers):
+        body = b'{"hello":"world"}'
+        compressed = zlib.compress(body, wbits=-zlib.MAX_WBITS)
+        hdrs = headers(("Content-Encoding", "deflate"))
+
+        assert decode_request_body_for_network_log_capture(compressed, hdrs) is None
+
     def test_unsupported_encoding_returns_none(self, headers):
         hdrs = headers(("Content-Encoding", "x-custom"))
         assert decode_request_body_for_network_log_capture(b"opaque", hdrs) is None
@@ -810,7 +820,10 @@ class TestDecompressJsonUsageBody:
     @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
     def test_many_empty_zlib_members_use_bounded_input(self, headers, monkeypatch, encoding):
         compressed = _many_empty_zlib_members(encoding)
-        stats = _track_zlib_decompressor(monkeypatch)
+        stats = _track_zlib_decompressor(
+            monkeypatch,
+            "zlib_decoding.zlib.decompressobj",
+        )
         hdrs = headers(("Content-Encoding", encoding))
 
         decoded, error = decompress_json_usage_body(compressed, hdrs, max_output=1)
@@ -818,6 +831,20 @@ class TestDecompressJsonUsageBody:
         assert decoded == b""
         assert error is None
         _assert_zlib_input_is_bounded(stats)
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_concatenated_zlib_members_return_complete_body(self, headers, encoding):
+        first = b'{"usage":'
+        second = b'{"input_tokens":1}}'
+        compressed = _compress_one_shot_body(encoding, first) + _compress_one_shot_body(
+            encoding, second
+        )
+        hdrs = headers(("Content-Encoding", encoding))
+
+        decoded, error = decompress_json_usage_body(compressed, hdrs, max_output=1024)
+
+        assert decoded == first + second
+        assert error is None
 
     def test_brotli_exact_limit_consumes_later_frame_trailer(self, headers, monkeypatch):
         body = pseudo_random_ascii(13)

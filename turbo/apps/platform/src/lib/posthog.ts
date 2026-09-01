@@ -496,32 +496,8 @@ const bootstrapPhaseTimingState$ = state<BootstrapPhaseTimingState | null>(
 );
 const bootstrapPhaseTimingReported$ = state(false);
 
-const BOOTSTRAP_CLERK_LOAD_STARTED_MARK = "vm0:bootstrap:clerk-load-started";
-const BOOTSTRAP_CLERK_LOAD_COMPLETED_MARK =
-  "vm0:bootstrap:clerk-load-completed";
-
-function resetBootstrapClerkLoadMarks(): void {
-  performance.clearMarks(BOOTSTRAP_CLERK_LOAD_STARTED_MARK);
-  performance.clearMarks(BOOTSTRAP_CLERK_LOAD_COMPLETED_MARK);
-
-  const bootstrap = window.__vm0ClerkBootstrap;
-  const startedAt = bootstrap?.clerkLoadStartedAt;
-  if (typeof startedAt === "number" && Number.isFinite(startedAt)) {
-    performance.mark(BOOTSTRAP_CLERK_LOAD_STARTED_MARK, {
-      startTime: startedAt,
-    });
-  }
-  const completedAt = bootstrap?.clerkLoadCompletedAt;
-  if (typeof completedAt === "number" && Number.isFinite(completedAt)) {
-    performance.mark(BOOTSTRAP_CLERK_LOAD_COMPLETED_MARK, {
-      startTime: completedAt,
-    });
-  }
-}
-
 export const initBootstrapPhaseTiming$ = command(
   ({ set }, signal: AbortSignal) => {
-    resetBootstrapClerkLoadMarks();
     set(bootstrapPhaseTimingState$, {
       initialVisibilityState: document.visibilityState,
       wasHidden: document.visibilityState !== "visible",
@@ -567,27 +543,6 @@ export const markBootstrapLocaleInitCompleted$ = command(({ get, set }) => {
     ),
   });
 });
-
-export function markBootstrapClerkLoadStarted(): void {
-  if (
-    performance.getEntriesByName(BOOTSTRAP_CLERK_LOAD_STARTED_MARK, "mark")
-      .length === 0
-  ) {
-    performance.mark(BOOTSTRAP_CLERK_LOAD_STARTED_MARK);
-  }
-}
-
-export function markBootstrapClerkLoadCompleted(): void {
-  if (
-    performance.getEntriesByName(BOOTSTRAP_CLERK_LOAD_STARTED_MARK, "mark")
-      .length === 0 ||
-    performance.getEntriesByName(BOOTSTRAP_CLERK_LOAD_COMPLETED_MARK, "mark")
-      .length > 0
-  ) {
-    return;
-  }
-  performance.mark(BOOTSTRAP_CLERK_LOAD_COMPLETED_MARK);
-}
 
 export const markBootstrapRouteSetup$ = command(
   ({ get, set }, route: string) => {
@@ -645,10 +600,6 @@ function elapsedDuration(
   return Math.round(completedAt - startedAt);
 }
 
-function markStartTime(markName: string): number | undefined {
-  return performance.getEntriesByName(markName, "mark").at(-1)?.startTime;
-}
-
 function setDurationProperty(
   properties: Record<string, string | number | boolean>,
   name: string,
@@ -671,10 +622,6 @@ export const captureBootstrapPhaseTiming$ = command(({ get, set }) => {
     const entryModuleReadyDurationMs = elapsedDuration(
       window.__appBootstrapStart,
       window.__appBootstrapModuleReady,
-    );
-    const clerkLoadDurationMs = elapsedDuration(
-      markStartTime(BOOTSTRAP_CLERK_LOAD_STARTED_MARK),
-      markStartTime(BOOTSTRAP_CLERK_LOAD_COMPLETED_MARK),
     );
     const routeSetupDurationMs = elapsedDuration(
       current?.routeSetupStartedAt,
@@ -704,7 +651,6 @@ export const captureBootstrapPhaseTiming$ = command(({ get, set }) => {
       "locale_init_ms",
       current?.localeInitDurationMs,
     );
-    setDurationProperty(properties, "clerk_load_ms", clerkLoadDurationMs);
     setDurationProperty(properties, "route_setup_ms", routeSetupDurationMs);
     setDurationProperty(
       properties,

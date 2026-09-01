@@ -2671,11 +2671,10 @@ jobs:
 
           curl -fsS "${headers[@]}" \
             -X POST \
-            -d '{"switches":{"realAgentInPreview":true,"builtInModelProviderFallback":true}}' \
+            -d '{"switches":{"realAgentInPreview":true}}' \
             "${api_url}/api/feature-switches" \
             | jq -e '
-                .effectiveSwitches.realAgentInPreview == true and
-                .effectiveSwitches.builtInModelProviderFallback == true
+                .effectiveSwitches.realAgentInPreview == true
               ' \
             >/dev/null
         env:

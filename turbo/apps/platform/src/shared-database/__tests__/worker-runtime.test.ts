@@ -413,6 +413,79 @@ describe("shared database worker runtime", () => {
     expect(networkRequests).toBe(0);
   });
 
+  it.each(["UnknownError", "TransactionInactiveError", "InvalidStateError"])(
+    "reopens IndexedDB and retries a %s transaction once",
+    async (errorName) => {
+      const { runtime } = startRuntime();
+      const dataKey = chatEventKey(crypto.randomUUID());
+      const cachedRow = chatEventRow(dataKey.threadId, 1);
+      context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+        return respond(404, {
+          error: {
+            code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+            message: "Chat event snapshot not found",
+          },
+        });
+      });
+      context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+        return respond(
+          200,
+          chatEventRowsResponse(
+            query.sinceSeqId === 0 ? [cachedRow] : [],
+            query,
+          ),
+        );
+      });
+      await queryRuntime(runtime, {
+        dataKey,
+        afterSeqId: null,
+        consistency: "catch-up",
+      });
+      const close = vi.spyOn(IDBDatabase.prototype, "close");
+      const transaction = vi.spyOn(IDBDatabase.prototype, "transaction");
+      transaction.mockImplementationOnce(() => {
+        throw new DOMException("Injected transaction failure", errorName);
+      });
+
+      await expect(
+        queryRuntime(runtime, {
+          dataKey,
+          afterSeqId: null,
+          consistency: "cache-only",
+        }),
+      ).resolves.toStrictEqual([cachedRow]);
+      expect(transaction).toHaveBeenCalledTimes(2);
+      expect(close).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("does not retry a failing IndexedDB transaction more than once", async () => {
+    const { runtime } = startRuntime();
+    const dataKey = chatEventKey(crypto.randomUUID());
+    await queryRuntime(runtime, {
+      dataKey,
+      afterSeqId: null,
+      consistency: "cache-only",
+    });
+    const close = vi.spyOn(IDBDatabase.prototype, "close");
+    const transaction = vi.spyOn(IDBDatabase.prototype, "transaction");
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      transaction.mockImplementationOnce(() => {
+        throw new DOMException("Injected transaction failure", "UnknownError");
+      });
+    }
+
+    await expect(
+      queryRuntime(runtime, {
+        dataKey,
+        afterSeqId: null,
+        consistency: "cache-only",
+      }),
+    ).resolves.toStrictEqual([]);
+    expect(transaction).toHaveBeenCalledTimes(2);
+    expect(close).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects missing and mismatched ChatEvent response schema versions", async () => {
     const missing = startRuntime().runtime;
     const missingKey = chatEventKey(crypto.randomUUID());
@@ -658,9 +731,10 @@ describe("shared database worker runtime", () => {
       { identity: identity(), apiBaseUrl: location.origin },
       firstSignal,
     );
-    store.set(startCredentialStoreDaemons$, (daemon) => {
+    const daemon = store.set(startCredentialStoreDaemons$);
+    if (daemon) {
       context.track(daemon);
-    });
+    }
     await initialAttachment.started;
     for (const port of [firstPort, secondPort]) {
       expect(

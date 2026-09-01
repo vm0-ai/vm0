@@ -79,7 +79,7 @@ interface DesktopTrayMenuState {
   readonly auth: DesktopAuthState | null;
   readonly authLoading?: boolean;
   readonly authError: string | null;
-  /** Absent while the `desktopScreenRecording` switch is off. */
+  /** Absent unless intro video and native screen recording are both enabled. */
   readonly recorder?: DesktopRecorderState;
 }
 
@@ -405,6 +405,8 @@ function screenRecordingStatusLabel(recorder: DesktopRecorderState): string {
   switch (recorder.status) {
     case "recording":
       return formatRecordingElapsed(recorder.elapsedMs);
+    case "paused":
+      return `${formatRecordingElapsed(recorder.elapsedMs)} paused`;
     case "preparing":
       return "Starting...";
     case "finalizing":
@@ -424,14 +426,16 @@ function buildScreenRecordingSubmenu(
 ): readonly DesktopTrayMenuItem[] {
   const items: DesktopTrayMenuItem[] = [];
 
-  if (recorder.status === "recording") {
+  if (recorder.status === "recording" || recorder.status === "paused") {
+    // Stopping must stay reachable while paused; the menu bar is the only stop
+    // control for a whole-display capture, where the controller is in frame.
     items.push({
       label: `Stop Recording (${STOP_SCREEN_RECORDING_ACCELERATOR_LABEL})`,
       click: actions.stopScreenRecording,
     });
   } else if (recorder.status === "idle") {
     items.push({
-      label: "Record Main Display",
+      label: "New Recording...",
       click: actions.startScreenRecording,
     });
   } else {

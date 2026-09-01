@@ -156,6 +156,7 @@ type CallbackQuery = {
   readonly domain?: string;
   readonly error?: string;
   readonly error_description?: string;
+  readonly iss?: string;
 };
 
 const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
@@ -270,6 +271,244 @@ export function mockCustomConnectorOAuth2Provider(
     tokenUrl: CUSTOM_CONNECTOR_OAUTH2_TOKEN_URL,
     tokenBodies,
     authorizationHeaders,
+  };
+}
+
+interface AutomaticMcpOAuthProviderOptions {
+  readonly registration: "cimd" | "dcr";
+  readonly issuerParameterSupported?: boolean;
+  readonly dcrTokenEndpointAuthMethod?:
+    | "none"
+    | "client_secret_basic"
+    | "client_secret_post";
+  readonly synchronizeAuthorizationServerDiscovery?: boolean;
+  readonly dcrFailureStatus?: number;
+  readonly discovery?: "challenge" | "well-known-oidc";
+  readonly resourceMetadataStatus?: number;
+  readonly challengeScope?: string | null;
+  readonly metadataScopes?: readonly string[];
+  readonly refreshError?:
+    | "invalid_client"
+    | "invalid_grant"
+    | "temporarily_unavailable";
+  readonly refreshErrors?: readonly (
+    | "invalid_client"
+    | "invalid_grant"
+    | "temporarily_unavailable"
+  )[];
+  readonly initialExpiresIn?: number;
+  readonly resource?: string;
+  readonly authorizationEndpoint?: string;
+  readonly metadataIssuer?: string;
+}
+
+interface AutomaticMcpOAuthProviderRecorder {
+  readonly endpoint: string;
+  readonly issuer: string;
+  readonly registrationBodies: readonly Record<string, unknown>[];
+  authorizationServerDiscoveryCalls(): number;
+  readonly tokenBodies: readonly URLSearchParams[];
+  readonly tokenAuthorizationHeaders: readonly (string | null)[];
+}
+
+const automaticDcrRequestSchema = z.object({
+  redirect_uris: z.array(z.string()).min(1),
+  scope: z.string().optional(),
+});
+
+export function mockAutomaticMcpOAuthProvider(
+  context: TestContext,
+  options: AutomaticMcpOAuthProviderOptions,
+): AutomaticMcpOAuthProviderRecorder {
+  const endpoint = "https://automatic-mcp.example.test/server";
+  const resourceMetadataUrl =
+    "https://automatic-mcp.example.test/oauth-resource";
+  const issuer = "https://automatic-issuer.example.test";
+  const authorizationUrl = `${issuer}/authorize`;
+  const tokenUrl = `${issuer}/token`;
+  const registrationUrl = `${issuer}/register`;
+  const resourceMetadata = {
+    resource: options.resource ?? endpoint,
+    authorization_servers: [issuer],
+    scopes_supported: [...(options.metadataScopes ?? ["metadata-fallback"])],
+  };
+  const tokenEndpointAuthMethod =
+    options.dcrTokenEndpointAuthMethod ?? "client_secret_basic";
+  const authorizationServerMetadata = {
+    issuer: options.metadataIssuer ?? issuer,
+    authorization_endpoint: options.authorizationEndpoint ?? authorizationUrl,
+    token_endpoint: tokenUrl,
+    response_types_supported: ["code"],
+    grant_types_supported: ["authorization_code", "refresh_token"],
+    code_challenge_methods_supported: ["S256"],
+    token_endpoint_auth_methods_supported:
+      options.registration === "cimd" ? ["none"] : [tokenEndpointAuthMethod],
+    authorization_response_iss_parameter_supported:
+      options.issuerParameterSupported ?? true,
+    client_id_metadata_document_supported: options.registration === "cimd",
+    ...(options.registration === "dcr"
+      ? { registration_endpoint: registrationUrl }
+      : {}),
+  };
+  for (const hostname of [
+    "automatic-mcp.example.test",
+    "automatic-issuer.example.test",
+  ]) {
+    context.mocks.dns.lookupOverrides.set(hostname, [
+      { address: "93.184.216.34", family: 4 },
+    ]);
+  }
+  const registrationBodies: Record<string, unknown>[] = [];
+  const tokenBodies: URLSearchParams[] = [];
+  const tokenAuthorizationHeaders: (string | null)[] = [];
+  let authorizationServerDiscoveryCallCount = 0;
+  let refreshAttempts = 0;
+  const authorizationServerDiscoveryBarrier =
+    options.synchronizeAuthorizationServerDiscovery
+      ? createDeferredPromise<void>(AbortSignal.any([]))
+      : null;
+  if (authorizationServerDiscoveryBarrier) {
+    onTestFinished(() => {
+      if (!authorizationServerDiscoveryBarrier.settled()) {
+        authorizationServerDiscoveryBarrier.resolve(undefined);
+      }
+    });
+  }
+  const recordAuthorizationServerDiscovery = async (): Promise<void> => {
+    authorizationServerDiscoveryCallCount += 1;
+    if (
+      authorizationServerDiscoveryBarrier &&
+      authorizationServerDiscoveryCallCount >= 2 &&
+      !authorizationServerDiscoveryBarrier.settled()
+    ) {
+      authorizationServerDiscoveryBarrier.resolve(undefined);
+    }
+    if (authorizationServerDiscoveryBarrier) {
+      await authorizationServerDiscoveryBarrier.promise;
+    }
+  };
+  server.use(
+    http.post(endpoint, () => {
+      const challengeScope =
+        options.challengeScope === undefined
+          ? "read write"
+          : options.challengeScope;
+      const resourceMetadataParameter =
+        options.discovery === "well-known-oidc"
+          ? ""
+          : ` resource_metadata="${resourceMetadataUrl}",`;
+      return new HttpResponse(null, {
+        status: 401,
+        headers: {
+          "www-authenticate": `Bearer${resourceMetadataParameter}${
+            challengeScope === null ? "" : ` scope="${challengeScope}"`
+          }`,
+        },
+      });
+    }),
+    http.get(resourceMetadataUrl, () => {
+      return options.resourceMetadataStatus
+        ? HttpResponse.json(
+            { error: "resource_metadata_unavailable" },
+            { status: options.resourceMetadataStatus },
+          )
+        : HttpResponse.json(resourceMetadata);
+    }),
+    http.get(
+      "https://automatic-mcp.example.test/.well-known/oauth-protected-resource/server",
+      () => {
+        return new HttpResponse(null, { status: 404 });
+      },
+    ),
+    http.get(
+      "https://automatic-mcp.example.test/.well-known/oauth-protected-resource",
+      () => {
+        return options.resourceMetadataStatus
+          ? HttpResponse.json(
+              { error: "resource_metadata_unavailable" },
+              { status: options.resourceMetadataStatus },
+            )
+          : HttpResponse.json(resourceMetadata);
+      },
+    ),
+    http.get(`${issuer}/.well-known/oauth-authorization-server`, async () => {
+      await recordAuthorizationServerDiscovery();
+      return options.discovery === "well-known-oidc"
+        ? new HttpResponse(null, { status: 404 })
+        : HttpResponse.json(authorizationServerMetadata);
+    }),
+    http.get(`${issuer}/.well-known/openid-configuration`, async () => {
+      await recordAuthorizationServerDiscovery();
+      return HttpResponse.json({
+        ...authorizationServerMetadata,
+        jwks_uri: `${issuer}/jwks.json`,
+        subject_types_supported: ["public"],
+        id_token_signing_alg_values_supported: ["RS256"],
+      });
+    }),
+    http.post(registrationUrl, async ({ request }) => {
+      const body = automaticDcrRequestSchema.parse(await request.json());
+      registrationBodies.push(body);
+      if (options.dcrFailureStatus) {
+        return HttpResponse.json(
+          {
+            error:
+              options.dcrFailureStatus >= 500
+                ? "temporarily_unavailable"
+                : "invalid_client_metadata",
+          },
+          { status: options.dcrFailureStatus },
+        );
+      }
+      return HttpResponse.json({
+        ...body,
+        client_id: "automatic-dcr-client",
+        ...(tokenEndpointAuthMethod === "none"
+          ? {}
+          : { client_secret: "automatic-dcr-secret" }),
+        client_id_issued_at: Math.floor(now() / 1000),
+        token_endpoint_auth_method: tokenEndpointAuthMethod,
+      });
+    }),
+    http.post(tokenUrl, async ({ request }) => {
+      const body = new URLSearchParams(await request.text());
+      tokenBodies.push(body);
+      tokenAuthorizationHeaders.push(request.headers.get("authorization"));
+      const refresh = body.get("grant_type") === "refresh_token";
+      if (refresh) {
+        refreshAttempts += 1;
+      }
+      const refreshError = refresh
+        ? (options.refreshErrors?.[refreshAttempts - 1] ?? options.refreshError)
+        : undefined;
+      if (refreshError) {
+        return HttpResponse.json(
+          { error: refreshError },
+          {
+            status: refreshError === "temporarily_unavailable" ? 503 : 400,
+          },
+        );
+      }
+      return HttpResponse.json({
+        access_token: refresh
+          ? "automatic-refreshed-access-token"
+          : "automatic-initial-access-token",
+        ...(!refresh ? { refresh_token: "automatic-refresh-token" } : {}),
+        token_type: "Bearer",
+        expires_in: refresh ? 3600 : (options.initialExpiresIn ?? 0),
+        scope: "read write",
+      });
+    }),
+  );
+  return {
+    endpoint,
+    issuer,
+    registrationBodies,
+    authorizationServerDiscoveryCalls: () => {
+      return authorizationServerDiscoveryCallCount;
+    },
+    tokenBodies,
+    tokenAuthorizationHeaders,
   };
 }
 
@@ -501,6 +740,11 @@ interface GoogleDriveConnectorOAuthOptions {
    * connector has no refresh path (Drive 401s then resolve to "unknown").
    */
   readonly omitRefreshToken?: boolean;
+  readonly userInfo?: {
+    readonly id: string;
+    readonly email: string;
+    readonly name: string;
+  };
   readonly refreshOutcome?:
     | { readonly type: "ok"; readonly accessToken: string }
     | { readonly type: "server-error" }
@@ -575,11 +819,13 @@ export function mockGoogleDriveConnectorOAuth(
       });
     }),
     http.get(GOOGLE_USERINFO_URL, () => {
-      return HttpResponse.json({
-        id: "bdd-drive-user-id",
-        email: "bdd-drive@example.test",
-        name: "BDD Drive User",
-      });
+      return HttpResponse.json(
+        options.userInfo ?? {
+          id: "bdd-drive-user-id",
+          email: "bdd-drive@example.test",
+          name: "BDD Drive User",
+        },
+      );
     }),
   );
   return recorded;
@@ -716,6 +962,7 @@ interface GoogleDriveArtifactUploadRecorder {
   readonly authorizationHeaders: (string | null)[];
   readonly contentLengthHeaders: (string | null)[];
   readonly contentTypeHeaders: (string | null)[];
+  readonly folderAuthorizationHeaders: (string | null)[];
   readonly folderQueries: string[];
 }
 
@@ -731,12 +978,16 @@ export function mockGoogleDriveArtifactUpload(
     authorizationHeaders: [],
     contentLengthHeaders: [],
     contentTypeHeaders: [],
+    folderAuthorizationHeaders: [],
     folderQueries: [],
   };
 
   server.use(
     http.get(GOOGLE_DRIVE_FILES_URL, ({ request }) => {
       const query = new URL(request.url).searchParams.get("q") ?? "";
+      recorded.folderAuthorizationHeaders.push(
+        request.headers.get("authorization"),
+      );
       recorded.folderQueries.push(query);
       const rootFolder = query.includes("'root' in parents");
       return HttpResponse.json({
@@ -2315,7 +2566,7 @@ export function createConnectorBddApi(context: TestContext) {
     async requestStartCustomConnectorOAuth2(
       actor: ApiTestUser | null,
       connectorId: string,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500 | 502)[],
       agentId?: string,
       account: ConnectorAccountMutationIntent = { intent: "single-account" },
     ) {

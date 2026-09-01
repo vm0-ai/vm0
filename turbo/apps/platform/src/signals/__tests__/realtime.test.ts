@@ -20,9 +20,9 @@ import {
   setRealtimeDegradedNotifier$,
   subscribeRealtimeReadyCatchUp$,
 } from "../realtime.ts";
-import { initAuthRecovery$, initClerkRuntime$, setupClerk$ } from "../auth.ts";
+import { clerk$, setupClerk$ } from "../auth.ts";
 import { initializeAppVersion$ } from "../app-version.ts";
-import { foregroundReady$ } from "../auth-retry.ts";
+import { foregroundReady$ } from "../foreground-catch-up.ts";
 import { setRootSignal$ } from "../root-signal.ts";
 import { setApiClientRuntime$ } from "../api-client-runtime.ts";
 import { setAuthenticatedIdentity$ } from "../auth-context.ts";
@@ -38,12 +38,11 @@ beforeEach(() => {
   context.store.set(initializeAppVersion$, __OKOU_APP_VERSION__);
   context.store.set(setRootSignal$, context.signal);
   context.store.set(setApiClientRuntime$, {
+    clerk: context.store.get(clerk$),
     environment: "app",
     apiBaseUrl: location.origin,
     oauthApiBaseUrl: location.origin,
   });
-  context.store.set(initClerkRuntime$, context.signal);
-  context.store.set(initAuthRecovery$, context.signal);
   context.store.set(setRealtimeDegradedNotifier$, () => {
     toast.error("Realtime connection degraded");
   });
@@ -940,11 +939,10 @@ describe("realtime signals", () => {
     expect(toastError).not.toHaveBeenCalled();
   });
 
-  it("does not block foreground catch-up on an in-flight 401 refresh", async () => {
+  it("does not block foreground catch-up when a browser request returns 401", async () => {
     mockSignedInUser();
     const topic = "test:foreground-during-401";
     const subscriber = testSubscriber();
-    const freshTokenCanFinish = context.mocks.deferred<string>();
     let requests = 0;
     let forcedTokenRefreshes = 0;
     let runs = 0;
@@ -954,20 +952,16 @@ describe("realtime signals", () => {
     });
     context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
       requests += 1;
-      if (requests === 1) {
-        return respond(401, {
-          error: {
-            code: "UNAUTHORIZED",
-            message: "Unauthorized",
-          },
-        });
-      }
-      return respond(200, { switches: {}, effectiveSwitches: {} });
+      return respond(401, {
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Unauthorized",
+        },
+      });
     });
     mockedClerk.sessionGetToken.mockImplementation((options) => {
       if (options?.skipCache) {
         forcedTokenRefreshes += 1;
-        return freshTokenCanFinish.promise;
       }
       return Promise.resolve("test-token");
     });
@@ -987,12 +981,12 @@ describe("realtime signals", () => {
       expect(runs).toBe(1);
     });
 
-    const responsePromise = context.store.set(
-      reloadFeatureSwitch$,
-      context.signal,
-    );
+    const responseResult = Promise.allSettled([
+      context.store.set(reloadFeatureSwitch$, context.signal),
+    ]);
     await waitFor(() => {
-      expect(forcedTokenRefreshes).toBe(1);
+      expect(requests).toBe(1);
+      expect(forcedTokenRefreshes).toBe(0);
     });
 
     window.dispatchEvent(new Event("focus"));
@@ -1003,10 +997,14 @@ describe("realtime signals", () => {
     await foregroundReady.promise;
     expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
 
-    freshTokenCanFinish.resolve("fresh-token");
-    await responsePromise;
-    expect(requests).toBe(2);
-    expect(forcedTokenRefreshes).toBe(1);
+    await expect(responseResult).resolves.toMatchObject([
+      {
+        status: "rejected",
+        reason: { code: "UNAUTHORIZED", status: 401 },
+      },
+    ]);
+    expect(requests).toBe(1);
+    expect(forcedTokenRefreshes).toBe(0);
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
 

@@ -1,6 +1,6 @@
-import { command, state } from "ccstate";
+import { command } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import { authRecovery$, clerk$, setupClerk$ } from "./auth.ts";
+import { clerk$, setupClerk$ } from "./auth.ts";
 import { setAuthenticatedIdentity$ } from "./auth-context.ts";
 import { setupChatIndicatorForegroundCatchUp$ } from "./chat-thread-list-reload.ts";
 import { subscribeEventDrivenChatThreads$ } from "./chat-page/chat-thread-event-sourcing.ts";
@@ -11,14 +11,7 @@ import { i18n } from "../i18n/index.ts";
 import { setupBillingRealtime$ } from "./okou-page/billing.ts";
 import { subscribePresentationTemplatesChanged$ } from "./okou-page/presentation-template-library.ts";
 import { subscribeCustomConnectorListChanged$ } from "./okou-page/settings/custom-connectors.ts";
-import {
-  runSharedDatabaseHeartbeatLoop$,
-  setupSharedDatabaseBridge$,
-} from "./shared-database-browser.ts";
-
-const authenticatedServicesInstalled$ = state(false);
-
-export type AuthenticatedDaemonOwner = (daemon: Promise<void>) => void;
+import { bridgeConnected$ } from "./shared-database-bridge-state.ts";
 
 const runAppRealtimeDaemons$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
@@ -34,13 +27,9 @@ const runAppRealtimeDaemons$ = command(
   },
 );
 
-/** Install user-scoped application services during bootstrap. */
-export const setupAuthenticatedDaemons$ = command(
-  async (
-    { get, set },
-    ownDaemon: AuthenticatedDaemonOwner,
-    signal: AbortSignal,
-  ): Promise<void> => {
+/** Run user-scoped application realtime services for the root lifecycle. */
+export const runAuthenticatedRealtime$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
     await set(setupClerk$, signal);
     const clerk = await get(clerk$);
     signal.throwIfAborted();
@@ -63,35 +52,23 @@ export const setupAuthenticatedDaemons$ = command(
       );
     });
 
-    const authRecovery = await get(authRecovery$);
-    signal.throwIfAborted();
-    await set(setupSharedDatabaseBridge$, authRecovery, signal);
-    signal.throwIfAborted();
-    const appRealtimeDaemons = set(runAppRealtimeDaemons$, signal);
-    ownDaemon(appRealtimeDaemons);
-    set(authenticatedServicesInstalled$, true);
+    await set(runAppRealtimeDaemons$, signal);
   },
 );
 
 /** Complete finite authenticated data setup while the initial route loads. */
 export const setupAuthenticatedBootstrapData$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    if (!get(authenticatedServicesInstalled$)) {
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    if (!clerk.user || !clerk.organization) {
       return;
     }
+    await get(bridgeConnected$);
+    signal.throwIfAborted();
     await Promise.all([
       set(setupChatIndicatorForegroundCatchUp$, signal),
       set(subscribeEventDrivenChatThreads$, signal),
     ]);
-  },
-);
-
-/** Run SharedWorker-backed authenticated root-lifecycle loops. */
-export const runAuthenticatedDaemons$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    if (!get(authenticatedServicesInstalled$)) {
-      return;
-    }
-    await set(runSharedDatabaseHeartbeatLoop$, signal);
   },
 );

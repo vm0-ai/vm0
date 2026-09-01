@@ -10,7 +10,6 @@ import { TelegramSettingsPage } from "../../views/okou-page/telegram-settings-pa
 
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import { onboardGuard$ } from "./onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupTelegramSettingsPage$ = command(
@@ -27,7 +26,6 @@ export const setupTelegramSettingsPage$ = command(
 
     await Promise.all([
       set(hideAppSkeleton$, signal),
-      set(onboardGuard$, signal),
       set(startTelegramSettingsRealtime$, signal),
     ]);
   },

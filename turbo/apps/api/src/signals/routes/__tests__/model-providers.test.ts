@@ -532,7 +532,7 @@ describe("GET /api/model-providers/cooldown-diagnostics", () => {
     });
   });
 
-  it("returns active global cooldowns and the effective org fallback state", async () => {
+  it("returns active global cooldowns", async () => {
     const fixture = uniqueOrgUser("cooldown-active");
     const selectedModelPrefix = `diagnostic-${randomUUID()}`;
     const startedAt = Date.UTC(2026, 7, 23, 12, 0, 0);
@@ -580,7 +580,6 @@ describe("GET /api/model-providers/cooldown-diagnostics", () => {
     );
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.OkouDebug]: true,
-      [FeatureSwitchKey.BuiltInModelProviderFallback]: false,
     });
     onTestFinished(async () => {
       await deleteFeatureSwitchesForUser(context, fixture);
@@ -590,7 +589,7 @@ describe("GET /api/model-providers/cooldown-diagnostics", () => {
       modelProviderCooldownDiagnosticsContract,
     );
 
-    const disabledResponse = await withMockNowForTest(startedAt, async () => {
+    const response = await withMockNowForTest(startedAt, async () => {
       return await accept(
         client.get({
           headers: { authorization: "Bearer clerk-session" },
@@ -598,14 +597,11 @@ describe("GET /api/model-providers/cooldown-diagnostics", () => {
         [200],
       );
     });
-    const ownedCooldowns = disabledResponse.body.activeCooldowns.filter(
-      (cooldown) => {
-        return cooldown.selectedModel.startsWith(selectedModelPrefix);
-      },
-    );
+    const ownedCooldowns = response.body.activeCooldowns.filter((cooldown) => {
+      return cooldown.selectedModel.startsWith(selectedModelPrefix);
+    });
 
-    expect(disabledResponse.body.fallbackEnabled).toBeFalsy();
-    expect(disabledResponse.body.canCancelCooldowns).toBeFalsy();
+    expect(response.body.canCancelCooldowns).toBeFalsy();
     expect(ownedCooldowns).toStrictEqual([
       {
         selectedModel: `${selectedModelPrefix}-a`,
@@ -620,23 +616,6 @@ describe("GET /api/model-providers/cooldown-diagnostics", () => {
         unavailableUntil: laterDeadline.toISOString(),
       },
     ]);
-
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.OkouDebug]: true,
-      [FeatureSwitchKey.BuiltInModelProviderFallback]: true,
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const enabledResponse = await withMockNowForTest(startedAt, async () => {
-      return await accept(
-        client.get({
-          headers: { authorization: "Bearer clerk-session" },
-        }),
-        [200],
-      );
-    });
-
-    expect(enabledResponse.body.fallbackEnabled).toBeTruthy();
   });
 });
 

@@ -11,9 +11,9 @@ import type {
   InitClientReturn,
 } from "@okouai/api-contracts/contracts/trpc-contract";
 import { appVersion$ } from "./app-version.ts";
-import { authRecovery$ } from "./auth-context.ts";
 import { createAuthedContractClient } from "./api-client-base.ts";
 import { apiClientRuntime$ } from "./api-client-runtime.ts";
+import { readClerkToken } from "./clerk-token.ts";
 import { rootSignal$ } from "./root-signal.ts";
 
 /**
@@ -72,15 +72,27 @@ function rebaseApiPath(
 export const apiClient$ = computed((get) => {
   const runtime = get(apiClientRuntime$);
   const clientVersion = get(appVersion$);
+  const rootSignal = get(rootSignal$);
+  const tokenOptions =
+    runtime.environment === "worker"
+      ? {
+          getToken: runtime.getToken,
+          reloadToken: runtime.reloadToken,
+        }
+      : {
+          getToken: async (signal: AbortSignal) => {
+            const clerk = await runtime.clerk;
+            signal.throwIfAborted();
+            return await readClerkToken(clerk, signal);
+          },
+        };
   return <T extends AppRouter>(contract: T, options?: ApiClientOptions) => {
     return createAuthedContractClient(contract, {
+      ...tokenOptions,
       baseUrl: runtime.apiBaseUrl,
       clientVersion,
-      getAuthRecovery: () => {
-        return get(authRecovery$);
-      },
       getRootSignal: () => {
-        return get(rootSignal$);
+        return rootSignal;
       },
       resolvePath: (path) => {
         if (options?.apiBase === "api") {

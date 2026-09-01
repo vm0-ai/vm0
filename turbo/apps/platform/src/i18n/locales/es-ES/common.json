@@ -5170,17 +5170,14 @@
       "debug": {
         "builtInModelCooldown": {
           "cancelAction": "Cancelar tiempo de espera",
-          "cancelDescription": "Cancelar este tiempo de espera global hace que la ruta vuelva a estar disponible de inmediato para todos los espacios de trabajo que tengan activado el respaldo de modelos integrados.",
+          "cancelDescription": "Cancelar este tiempo de espera global hace que la ruta vuelva a estar disponible de inmediato para todos los espacios de trabajo.",
           "cancelling": "Cancelando...",
           "cancelTitle": "¿Cancelar el tiempo de espera global?",
           "cancelWarning": "Un fallo posterior que cumpla los requisitos puede volver a poner esta ruta en tiempo de espera.",
           "description": "Inspecciona las rutas de modelos integrados excluidas temporalmente de la selección de respaldo.",
-          "disabled": "desactivado",
-          "disabledExplanation": "El respaldo de modelos integrados está desactivado en este espacio de trabajo, por lo que estos tiempos de espera globales se ignoran aquí actualmente.",
           "empty": "Actualmente no hay rutas de modelos integrados en tiempo de espera global.",
-          "enabled": "activado",
           "globalActive": "tiempos de espera globales activos",
-          "globalExplanation": "Los tiempos de espera son un estado operativo global. Solo pueden afectar a este espacio de trabajo mientras el respaldo de modelos integrados esté activado aquí.",
+          "globalExplanation": "Los tiempos de espera son un estado operativo global y afectan a todos los espacios de trabajo que usan modelos integrados.",
           "keepCooldown": "Mantener tiempo de espera",
           "loading": "Cargando diagnósticos de tiempo de espera de modelos integrados...",
           "providerType": "Tipo de proveedor",
@@ -5189,8 +5186,7 @@
           "title": "Respaldo de modelos integrados",
           "unavailable": "Los diagnósticos de tiempo de espera de modelos integrados no están disponibles.",
           "unavailableUntil": "No disponible hasta",
-          "upstreamModel": "Modelo de origen",
-          "workspaceFallback": "respaldo del espacio de trabajo"
+          "upstreamModel": "Modelo de origen"
         },
         "capture": {
           "description": "Captura los nombres de cabeceras HTTP, los valores de cabecera seguros seleccionados y los cuerpos en los registros de red para la depuración.",

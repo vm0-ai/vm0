@@ -10,7 +10,6 @@ import {
   defaultAgentId$,
   rememberLastUsedAgentId$,
 } from "../agent.ts";
-import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { setActiveAgent$ } from "../okou-page/job-detail";
 import { setChatAgentId$ } from "../agent-chat.ts";
@@ -63,9 +62,6 @@ export const setupAgentDetailPage$ = command(
       );
     set(updateDocumentTitle$, displayName);
 
-    if (await set(onboardGuard$, signal)) {
-      return;
-    }
     signal.throwIfAborted();
 
     await set(hideAppSkeleton$, signal);

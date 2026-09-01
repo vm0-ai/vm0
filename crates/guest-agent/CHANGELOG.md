@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.83.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.4...guest-agent-v0.83.5) (2026-09-01)
+
+
+### Bug Fixes
+
+* retain heartbeat control-path diagnostics ([#30849](https://github.com/vm0-ai/vm0/issues/30849)) ([8ee4d2d](https://github.com/vm0-ai/vm0/commit/8ee4d2d6043a5e15173ace032347366645c254b1))
+
 ## [0.83.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.3...guest-agent-v0.83.4) (2026-09-01)
 
 

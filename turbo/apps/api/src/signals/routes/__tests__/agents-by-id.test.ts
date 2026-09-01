@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
-import type { BrandedApiNamespace } from "@okouai/api-contracts/contracts/api-namespaces";
 import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 
 import { createApp } from "../../../app-factory";
@@ -36,38 +35,21 @@ function bearerHeaders(token: string): { readonly authorization: string } {
   return { authorization: `Bearer ${token}` };
 }
 
-async function requestAgentThroughNamespace(
-  namespace: BrandedApiNamespace,
+// Raw rather than through the typed client, because each case supplies its own
+// credential — a Clerk session, a PAT, and a run-scoped capability token — and
+// the point is that all three reach the same handler and read back the same
+// agent.
+async function readAgentAs(
   agentId: string,
   headers: { readonly authorization?: string },
-): Promise<{
-  readonly status: number;
-  readonly body: unknown;
-  readonly contentType: string | null;
-}> {
+): Promise<unknown> {
   const app = createApp({
     signal: context.signal,
     routes: agentsRoutes,
   });
-  const response = await app.request(`/api/${namespace}/agents/${agentId}`, {
-    headers,
-  });
-  return {
-    status: response.status,
-    body: await response.json(),
-    contentType: response.headers.get("content-type"),
-  };
-}
-
-async function expectNamespaceParity(
-  agentId: string,
-  headers: { readonly authorization?: string },
-): Promise<unknown> {
-  const zero = await requestAgentThroughNamespace("zero", agentId, headers);
-  const okou = await requestAgentThroughNamespace("okou", agentId, headers);
-  expect(okou).toStrictEqual(zero);
-  expect(zero.status).toBe(200);
-  return zero.body;
+  const response = await app.request(`/api/agents/${agentId}`, { headers });
+  expect(response.status).toBe(200);
+  return await response.json();
 }
 
 function commandInput(command: unknown): Record<string, unknown> {
@@ -146,37 +128,35 @@ function okouTokenFor(
 }
 
 describe("GET /api/agents/:id", () => {
-  it("keeps session, PAT, and run-capability auth in parity across namespaces", async () => {
+  // Until #30807 this pair also read each credential through `/api/okou` and
+  // `/api/zero` and asserted the three forms agreed. That row is gone, so what
+  // is left is the part that was never about the namespace: three different
+  // credentials reading back the same agent. The branded path validation case
+  // went with the row too — `returns 400 for invalid path params` below already
+  // covers that response on the path the contract declares.
+  it("reads back the same agent for session, PAT, and run-capability auth", async () => {
     const actor = bdd.user({ orgRole: "org:member" });
     const agent = await createAgent(actor, {
       displayName: "Namespace Parity Agent",
       visibility: "private",
     });
 
-    const sessionBody = await expectNamespaceParity(agent.agentId, {
+    const sessionBody = await readAgentAs(agent.agentId, {
       authorization: "Bearer clerk-session",
     });
 
-    const patBody = await expectNamespaceParity(
+    const patBody = await readAgentAs(
       agent.agentId,
       await apiKeyHeaders(actor, "org:member"),
     );
 
-    const capabilityBody = await expectNamespaceParity(
+    const capabilityBody = await readAgentAs(
       agent.agentId,
       bearerHeaders(okouTokenFor(actor, ["agent:read"])),
     );
 
     expect(patBody).toStrictEqual(sessionBody);
     expect(capabilityBody).toStrictEqual(sessionBody);
-  });
-
-  it("keeps path validation responses in parity across namespaces", async () => {
-    const zero = await requestAgentThroughNamespace("zero", "not-a-uuid", {});
-    const okou = await requestAgentThroughNamespace("okou", "not-a-uuid", {});
-
-    expect(okou).toStrictEqual(zero);
-    expect(zero.status).toBe(400);
   });
 
   it("returns 401 when the request is unauthenticated", async () => {

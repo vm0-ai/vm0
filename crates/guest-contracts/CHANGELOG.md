@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.18](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.17...guest-contracts-v0.12.18) (2026-09-01)
+
+
+### Bug Fixes
+
+* retain heartbeat control-path diagnostics ([#30849](https://github.com/vm0-ai/vm0/issues/30849)) ([8ee4d2d](https://github.com/vm0-ai/vm0/commit/8ee4d2d6043a5e15173ace032347366645c254b1))
+
 ## [0.12.17](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.16...guest-contracts-v0.12.17) (2026-09-01)
 
 

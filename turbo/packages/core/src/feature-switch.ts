@@ -331,12 +331,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.BuiltInModelProviderFallback]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Select healthy fallback routes for built-in platform models.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ComposerImageAnnotation]: {
     maintainer: "tongx@vm0.ai",
     description:

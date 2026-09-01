@@ -42,11 +42,30 @@ const catalogSchema = z.object({
         .object({
           resultField: z.string(),
           retrieval: z.object({ kind: z.string() }).loose(),
+          defaultLimit: z.number().optional(),
+          requestMaxLimit: z.number().optional(),
+          effectiveLimit: z.number().optional(),
           reportedTotalField: z.string().optional(),
           providerLimit: z.object({ kind: z.string() }).loose().optional(),
+          emptyResult: z.object({ reliability: z.string() }).loose().optional(),
+          pageSize: z.object({ kind: z.string() }).loose().optional(),
+          itemContract: z.string().optional(),
         })
         .nullable(),
       billing: z.object({ kind: z.string() }).loose(),
+    }),
+  ),
+  unsupportedCapabilities: z.array(
+    z.object({
+      platform: z.string(),
+      capability: z.string(),
+      status: z.literal("unsupported"),
+      availablePaths: z.object({
+        managedApi: z.literal(false),
+        scrape: z.literal(false),
+        browser: z.literal(false),
+      }),
+      guidance: z.string(),
     }),
   ),
 });
@@ -62,6 +81,7 @@ type Collection =
       readonly state: "provider_limited";
       readonly itemsReturned: number;
       readonly reason?: string;
+      readonly uncertainty?: { readonly reason: "unreliable_empty_result" };
       readonly reportedTotal?: number;
     }
   | {
@@ -242,9 +262,11 @@ describe("okou social command", () => {
         results: { type: "array" },
       },
     });
-    expect(search?.collection).toStrictEqual({
+    expect(search?.collection).toMatchObject({
       resultField: "results",
       retrieval: { kind: "provider_limited" },
+      defaultLimit: 10,
+      requestMaxLimit: 100,
       providerLimit: { kind: "no_pagination" },
     });
     const transcript = catalog.tools.find((tool) => {
@@ -276,6 +298,61 @@ describe("okou social command", () => {
         keyPoints: { type: "array" },
       },
     });
+    const tiktokSearch = catalog.tools.find((tool) => {
+      return tool.name === "tiktok_search";
+    });
+    expect(tiktokSearch).toMatchObject({
+      collection: {
+        defaultLimit: 10,
+        requestMaxLimit: 100,
+        effectiveLimit: 10,
+        itemContract: "tiktok_video",
+        pageSize: {
+          kind: "provider_controlled",
+          mayDifferFromRequestLimit: true,
+        },
+        emptyResult: {
+          reliability: "unreliable",
+          outcome: "provider_limited",
+          retry: "none",
+          billing: "successful_request",
+        },
+      },
+      billing: {
+        kind: "items",
+        itemsPerUnit: 50,
+        quantityBasis: "effective_request_limit",
+      },
+      outputSchema: {
+        properties: {
+          results: {
+            items: {
+              properties: {
+                videoId: { type: "string" },
+                description: { type: "string" },
+                views: { type: "integer", minimum: 0 },
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(
+      catalog.tools.find((tool) => {
+        return tool.name === "tiktok_hashtag_search";
+      })?.collection,
+    ).toMatchObject({ defaultLimit: 20, effectiveLimit: 20 });
+    expect(
+      catalog.tools.find((tool) => {
+        return tool.name === "tiktok_channel_videos";
+      })?.collection,
+    ).toMatchObject({ defaultLimit: 30, effectiveLimit: 30 });
+    expect(
+      catalog.unsupportedCapabilities.map((capability) => {
+        return capability.capability;
+      }),
+    ).toStrictEqual(["follower_list", "following_list", "comment_replies"]);
+    expect(output()).not.toMatch(/socialkit/iu);
   });
 
   it("prints readable input and output schemas", async () => {
@@ -288,9 +365,25 @@ describe("okou social command", () => {
     expect(output()).toContain("Collection: comments (cursor)");
     expect(output()).toContain("Reported total: commentCount");
     expect(output()).toContain("Provider limit: no pagination");
+    expect(output()).toContain("Effective request limit: 10");
+    expect(output()).toContain(
+      "Page size: provider-controlled and may differ from the request limit",
+    );
+    expect(output()).toContain(
+      "Empty result: unreliable; returns provider_limited uncertainty",
+    );
+    expect(output()).toContain(
+      "Billing: 1 quantity per 50 items in the effective request limit",
+    );
+    expect(output()).toContain("Unsupported capabilities");
+    expect(output()).toContain("tiktok.follower_list");
+    expect(output()).toContain(
+      "No reviewed managed API, scrape, or browser path is available",
+    );
     expect(output()).toContain(
       "Availability: transcript (provider evidence required; unknown remains explicit)",
     );
+    expect(output()).not.toMatch(/socialkit/iu);
   });
 
   it("calls a tool with typed JSON input", async () => {
@@ -341,6 +434,220 @@ describe("okou social command", () => {
         nested: { items: [{}] },
         source: { provider: "youtube" },
       },
+    });
+    expect(output()).not.toMatch(/socialkit/iu);
+  });
+
+  it("normalizes an old-shaped TikTok response and clamps a single-page request", async () => {
+    let requestBody: unknown;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/social/request",
+        async ({ request }) => {
+          requestBody = (await request.json()) as unknown;
+          return HttpResponse.json(
+            socialResponse(
+              "tiktok_search",
+              { state: "complete", itemsReturned: 1 },
+              {
+                query: "launch",
+                results: [
+                  {
+                    id: "video-1",
+                    desc: "Launch result",
+                    url: "https://www.tiktok.com/@example/video/1",
+                    author: {
+                      uniqueId: "example",
+                      nickname: "Example",
+                    },
+                    stats: {
+                      views: 100,
+                      likes: 20,
+                      comments: 3,
+                      shares: 4,
+                      saves: 5,
+                    },
+                    video: {
+                      cover: "https://example.com/cover.jpg",
+                      duration: 12,
+                    },
+                    providerName: "SocialKit",
+                  },
+                ],
+                hasMore: false,
+                cursor: null,
+              },
+            ),
+          );
+        },
+      ),
+    );
+
+    await socialCommand.parseAsync([
+      "node",
+      "cli",
+      "call",
+      "tiktok_search",
+      "--input",
+      '{"query":"launch","limit":100}',
+      "--json",
+    ]);
+
+    expect(requestBody).toStrictEqual({
+      tool: "tiktok_search",
+      input: { query: "launch", limit: 10 },
+    });
+    expect(JSON.parse(output()) as unknown).toMatchObject({
+      tool: "tiktok_search",
+      collection: { state: "complete", itemsReturned: 1 },
+      result: {
+        results: [
+          {
+            videoId: "video-1",
+            description: "Launch result",
+            thumbnail: "https://example.com/cover.jpg",
+            duration: 12,
+            views: 100,
+            collects: 5,
+            author: { username: "example", displayName: "Example" },
+          },
+        ],
+      },
+    });
+    expect(output()).not.toMatch(/socialkit/iu);
+  });
+
+  it.each([
+    {
+      tool: "tiktok_search",
+      input: '{"query":"launch","limit":100}',
+      expectedInput: { query: "launch", limit: 10 },
+      result: {
+        results: [{ id: "search-video", desc: "Search result" }],
+        hasMore: false,
+        cursor: null,
+      },
+    },
+    {
+      tool: "tiktok_hashtag_search",
+      input: '{"hashtag":"launch"}',
+      expectedInput: { hashtag: "launch", limit: 20 },
+      result: {
+        results: [{ id: "hashtag-video", desc: "Hashtag result" }],
+        hasMore: false,
+        cursor: null,
+      },
+    },
+    {
+      tool: "tiktok_channel_videos",
+      input: '{"url":"https://www.tiktok.com/@example","limit":100}',
+      expectedInput: {
+        url: "https://www.tiktok.com/@example",
+        limit: 30,
+      },
+      result: {
+        results: [{ videoId: "channel-video", description: "Channel result" }],
+        hasMore: false,
+        cursor: null,
+      },
+    },
+  ])(
+    "uses the reviewed effective page limit for $tool full retrieval",
+    async ({ tool, input, expectedInput, result }) => {
+      const requests: unknown[] = [];
+      server.use(
+        http.post(
+          "http://localhost:3000/api/social/request",
+          async ({ request }) => {
+            requests.push((await request.json()) as unknown);
+            return HttpResponse.json(
+              socialResponse(
+                tool,
+                { state: "complete", itemsReturned: 1 },
+                result,
+              ),
+            );
+          },
+        ),
+      );
+
+      await socialCommand.parseAsync([
+        "node",
+        "cli",
+        "call",
+        tool,
+        "--input",
+        input,
+        "--all",
+        "--json",
+      ]);
+
+      expect(requests).toStrictEqual([{ tool, input: expectedInput }]);
+      expect(
+        JSON.parse(String(mockConsoleLog.mock.calls.at(-1)?.[0])),
+      ).toMatchObject({
+        kind: "summary",
+        completion: "complete",
+        pages: 1,
+        itemsReturned: 1,
+      });
+      expect(output()).not.toMatch(/socialkit/iu);
+    },
+  );
+
+  it("stops on old-API unreliable empty uncertainty without a hidden retry", async () => {
+    const requests: unknown[] = [];
+    server.use(
+      http.post(
+        "http://localhost:3000/api/social/request",
+        async ({ request }) => {
+          requests.push((await request.json()) as unknown);
+          return HttpResponse.json(
+            socialResponse(
+              "tiktok_search",
+              { state: "complete", itemsReturned: 0 },
+              { query: "empty", results: [], hasMore: false, cursor: null },
+            ),
+          );
+        },
+      ),
+    );
+
+    await socialCommand.parseAsync([
+      "node",
+      "cli",
+      "call",
+      "tiktok_search",
+      "--input",
+      '{"query":"empty"}',
+      "--all",
+      "--json",
+    ]);
+
+    expect(requests).toStrictEqual([
+      { tool: "tiktok_search", input: { query: "empty", limit: 10 } },
+    ]);
+    const records = mockConsoleLog.mock.calls.map(([value]) => {
+      return JSON.parse(String(value)) as unknown;
+    });
+    expect(records[0]).toMatchObject({
+      kind: "page",
+      response: {
+        collection: {
+          state: "provider_limited",
+          itemsReturned: 0,
+          uncertainty: { reason: "unreliable_empty_result" },
+        },
+      },
+    });
+    expect(records[1]).toStrictEqual({
+      kind: "summary",
+      completion: "provider_limited",
+      pages: 1,
+      itemsReturned: 0,
+      billingQuantity: 1,
+      creditsCharged: 3,
+      uncertaintyReason: "unreliable_empty_result",
     });
     expect(output()).not.toMatch(/socialkit/iu);
   });
@@ -640,6 +947,63 @@ describe("okou social command", () => {
       completion: "caller_limited",
       pages: 1,
       itemsReturned: 3,
+      billingQuantity: 1,
+      creditsCharged: 3,
+    });
+  });
+
+  it("stops at the first page that exceeds a caller item limit", async () => {
+    const requests: unknown[] = [];
+    server.use(
+      http.post(
+        "http://localhost:3000/api/social/request",
+        async ({ request }) => {
+          requests.push((await request.json()) as unknown);
+          return HttpResponse.json(
+            socialResponse(
+              "tiktok_search",
+              {
+                state: "more",
+                itemsReturned: 16,
+                nextInput: { cursor: "next-page" },
+              },
+              {
+                results: Array.from({ length: 16 }, (_, index) => {
+                  return { id: `video-${index}`, desc: "Result" };
+                }),
+                hasMore: true,
+                cursor: "next-page",
+              },
+            ),
+          );
+        },
+      ),
+    );
+
+    await socialCommand.parseAsync([
+      "node",
+      "cli",
+      "call",
+      "tiktok_search",
+      "--input",
+      '{"query":"launch"}',
+      "--all",
+      "--max-items",
+      "3",
+      "--json",
+    ]);
+
+    expect(requests).toStrictEqual([
+      {
+        tool: "tiktok_search",
+        input: { query: "launch", limit: 3 },
+      },
+    ]);
+    expect(JSON.parse(String(mockConsoleLog.mock.calls.at(-1)?.[0]))).toEqual({
+      kind: "summary",
+      completion: "caller_limited",
+      pages: 1,
+      itemsReturned: 16,
       billingQuantity: 1,
       creditsCharged: 3,
     });
@@ -1419,7 +1783,20 @@ describe("okou social command", () => {
       "Full retrieval bills and emits each successful provider page independently",
     );
     expect(socialHelp).toContain(
+      "TikTok keyword, hashtag, and channel-video pages use reviewed effective limits of 10, 20, and 30",
+    );
+    expect(socialHelp).toContain(
+      "TikTok page sizes are provider-controlled and may differ from the requested limit",
+    );
+    expect(socialHelp).toContain(
+      "Unreliable empty TikTok search pages return explicit uncertainty without a hidden retry",
+    );
+    expect(socialHelp).toContain(
+      "TikTok follower lists, following lists, and comment replies have no managed API, scrape, or browser fallback",
+    );
+    expect(socialHelp).toContain(
       "Missing transcript data is not evidence that a video contains no speech",
     );
+    expect(socialHelp).not.toMatch(/socialkit/iu);
   });
 });

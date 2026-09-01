@@ -408,12 +408,20 @@ describe("chat start cards", () => {
       expect(sentPrompt).toContain(
         "- Visual balance: Avatar-led (presenter on screen most of the time)",
       );
+      expect(sentPrompt).toContain("<intro_video_workflow>");
+      expect(sentPrompt).toContain("okou video camera");
       expect(sentUserMessage?.parts).toContainEqual({
         type: "file",
         fileId: "intro-video-source",
         filenameSnapshot: "launch.pdf",
         contentType: "application/pdf",
       });
+      expect(JSON.stringify(sentUserMessage)).not.toContain(
+        "<intro_video_workflow>",
+      );
+      expect(JSON.stringify(sentUserMessage)).not.toContain(
+        "okou video camera",
+      );
     });
   });
 
@@ -596,7 +604,18 @@ describe("chat start cards", () => {
   });
 
   it("starts the intro video workflow directly in chat", async () => {
-    mockChatLifecycle(context);
+    let sentPrompt: string | undefined;
+    let sentUserMessage: UserMessageDocument | undefined;
+    mockChatLifecycle(context, {
+      onSendRequest: ({ prompt, userMessage }) => {
+        sentPrompt = prompt;
+        sentUserMessage = userMessage;
+      },
+      onRunCreate: ({ prompt, userMessage }) => {
+        sentPrompt = prompt;
+        sentUserMessage = userMessage;
+      },
+    });
     setupChatStartCards();
 
     await expect(
@@ -615,6 +634,11 @@ describe("chat start cards", () => {
       ).not.toBeInTheDocument();
     });
     await expect(screen.findByLabelText("Stop")).resolves.toBeInTheDocument();
+    expect(sentPrompt).toContain("<intro_video_workflow>");
+    expect(sentPrompt).toContain("okou video camera");
+    expect(JSON.stringify(sentUserMessage)).not.toContain(
+      "<intro_video_workflow>",
+    );
   });
 
   it("starts screen recording only after the three-second countdown", async () => {

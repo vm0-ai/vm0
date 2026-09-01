@@ -256,7 +256,7 @@ def test_tweet_create_many_gzip_members_use_bounded_input(x_usage, tmp_path, rea
     def factory(*args, **kwargs):
         return TrackingDecompressionObj(real_factory(*args, **kwargs))
 
-    with patch("billing_body.zlib.decompressobj", factory):
+    with patch("zlib_decoding.zlib.decompressobj", factory):
         p = x_usage.call_and_get_single_billing(flow)
 
     assert p["category"] == "content.create"
@@ -385,10 +385,14 @@ def test_tweet_create_deflate_enforces_decoded_cap(
         def unused_data(self):
             return self._wrapped.unused_data
 
+        @property
+        def unconsumed_tail(self):
+            return self._wrapped.unconsumed_tail
+
     def factory(*args, **kwargs):
         return TrackingDecompressionObj(real_factory(*args, **kwargs))
 
-    with patch("billing_body.zlib.decompressobj", factory):
+    with patch("zlib_decoding.zlib.decompressobj", factory):
         p = x_usage.call_and_get_single_billing(flow)
 
     assert p["category"] == expected_category

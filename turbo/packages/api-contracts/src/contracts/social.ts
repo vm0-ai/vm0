@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  findManagedSocialKitTool,
   MANAGED_SOCIALKIT_BILLING_CATEGORY,
   MANAGED_SOCIALKIT_TOOLS,
   socialKitTranscriptErrorReasonSchema,
@@ -15,20 +16,28 @@ export {
   findManagedSocialKitTool,
   managedSocialKitToolCatalog,
   MANAGED_SOCIALKIT_BILLING_CATEGORY,
+  MANAGED_SOCIAL_UNSUPPORTED_CAPABILITIES,
   MANAGED_SOCIALKIT_TOOLS,
   SOCIALKIT_MAX_INPUT_VALUE_CHARS,
   SOCIALKIT_TRANSCRIPT_ERROR_CODES,
   socialKitTranscriptErrorReasonSchema,
   socialKitRequestSchema,
   type ManagedSocialKitCollection,
+  type ManagedSocialKitCatalogBilling,
+  type ManagedSocialKitCatalogProviderLimit,
+  type ManagedSocialKitCatalogRetrieval,
   type ManagedSocialKitPagination,
+  type ManagedSocialKitProviderControlledPageSize,
+  type ManagedSocialKitPublicResult,
   type ManagedSocialKitReportedTotalField,
   type ManagedSocialKitResultField,
+  type ManagedSocialKitUnreliableEmptyResult,
   type ManagedSocialKitTool,
   type ManagedSocialKitToolAvailability,
   type ManagedSocialKitToolDefinition,
   type ManagedSocialKitToolCatalogEntry,
   type ManagedSocialKitToolName,
+  type ManagedSocialUnsupportedCapability,
   type SocialKitTranscriptErrorCode,
   type SocialKitTranscriptErrorReason,
   type SocialKitRequest,
@@ -215,6 +224,14 @@ export type SocialKitCollectionProviderLimitedReason = z.infer<
   typeof socialKitCollectionProviderLimitedReasonSchema
 >;
 
+export const socialKitCollectionUncertaintySchema = z
+  .object({ reason: z.literal("unreliable_empty_result") })
+  .strict();
+
+export type SocialKitCollectionUncertainty = z.infer<
+  typeof socialKitCollectionUncertaintySchema
+>;
+
 const reportedTotalSchema = z
   .number()
   .int()
@@ -241,6 +258,7 @@ const socialKitCollectionSchema = z
       state: z.literal("provider_limited"),
       itemsReturned: z.number().int().nonnegative(),
       reason: socialKitCollectionProviderLimitedReasonSchema.optional(),
+      uncertainty: socialKitCollectionUncertaintySchema.optional(),
       reportedTotal: reportedTotalSchema.optional(),
     }),
   ])
@@ -314,6 +332,164 @@ function responseSchemas<
 export const socialKitResponseSchema = z.union(
   responseSchemas(MANAGED_SOCIALKIT_TOOLS),
 );
+
+export type PublicSocialResponseProjection =
+  | { readonly ok: true; readonly response: SocialKitResponse }
+  | { readonly ok: false };
+
+function jsonValuesEqual(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function addCanonicalAlias(
+  target: Record<string, unknown>,
+  key: string,
+  value: unknown,
+): boolean {
+  if (value === undefined) {
+    return true;
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(target, key) &&
+    !jsonValuesEqual(target[key], value)
+  ) {
+    return false;
+  }
+  target[key] = value;
+  return true;
+}
+
+function publicTikTokPublishedAt(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    return undefined;
+  }
+  const milliseconds = value < 10_000_000_000 ? value * 1_000 : value;
+  const date = new Date(milliseconds);
+  return Number.isNaN(date.valueOf()) ? undefined : date.toISOString();
+}
+
+function projectPublicTikTokAuthor(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const author = { ...value };
+  if (
+    !addCanonicalAlias(author, "username", value.uniqueId) ||
+    !addCanonicalAlias(author, "displayName", value.nickname)
+  ) {
+    return undefined;
+  }
+  return author;
+}
+
+function projectPublicTikTokVideoItem(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const item = { ...value };
+  const stats = isRecord(value.stats) ? value.stats : undefined;
+  const video = isRecord(value.video) ? value.video : undefined;
+  const aliases: readonly (readonly [string, unknown])[] = [
+    ["videoId", value.id],
+    ["description", value.desc],
+    ["thumbnail", video?.cover],
+    ["duration", video?.duration],
+    ["publishedAt", publicTikTokPublishedAt(value.createTime)],
+    ["views", stats?.views],
+    ["likes", stats?.likes],
+    ["comments", stats?.comments],
+    ["shares", stats?.shares],
+    ["collects", stats?.saves],
+    ["language", value.textLanguage],
+    ["subtitles", value.subtitleInfos],
+  ];
+  for (const [key, alias] of aliases) {
+    if (!addCanonicalAlias(item, key, alias)) {
+      return undefined;
+    }
+  }
+  if (value.author !== undefined) {
+    const author = projectPublicTikTokAuthor(value.author);
+    if (!author) {
+      return undefined;
+    }
+    item.author = author;
+  }
+  return item;
+}
+
+function projectPublicTikTokVideoCollection(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  if (!isRecord(value) || !Array.isArray(value.results)) {
+    return undefined;
+  }
+  const results: Record<string, unknown>[] = [];
+  for (const item of value.results) {
+    const projected = projectPublicTikTokVideoItem(item);
+    if (!projected) {
+      return undefined;
+    }
+    results.push(projected);
+  }
+  return { ...value, results };
+}
+
+/**
+ * Build the permanent provider-neutral response used by agent, sandbox, and
+ * CLI callers. Raw session/PAT responses remain unchanged.
+ */
+export function projectPublicSocialResponse(
+  response: SocialKitResponse,
+): PublicSocialResponseProjection {
+  const tool = findManagedSocialKitTool(response.tool);
+  if (!tool) {
+    return { ok: false };
+  }
+  let result: unknown = response.result;
+  if (tool.publicResult?.kind === "tiktok_video_collection") {
+    result = projectPublicTikTokVideoCollection(result);
+    if (!result) {
+      return { ok: false };
+    }
+  }
+
+  let collection = response.collection;
+  if (
+    tool.collection?.emptyResult?.reliability === "unreliable" &&
+    collection?.state === "complete" &&
+    collection.itemsReturned === 0
+  ) {
+    collection = {
+      state: "provider_limited",
+      itemsReturned: 0,
+      ...(collection.reportedTotal === undefined
+        ? {}
+        : { reportedTotal: collection.reportedTotal }),
+      uncertainty: { reason: "unreliable_empty_result" },
+    };
+  }
+
+  const publicValue = redactSocialProviderIdentity({
+    tool: response.tool,
+    billingCategory: response.billingCategory,
+    billingQuantity: response.billingQuantity,
+    creditsCharged: response.creditsCharged,
+    collection,
+    result,
+  });
+  const parsed = socialKitResponseSchema.safeParse(publicValue);
+  return parsed.success
+    ? { ok: true, response: parsed.data as SocialKitResponse }
+    : { ok: false };
+}
 
 export const socialContract = c.router({
   request: {

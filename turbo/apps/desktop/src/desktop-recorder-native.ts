@@ -7,8 +7,8 @@ import type {
   DesktopRecorderPrepareRequest,
   DesktopRecorderPrepareResult,
   DesktopRecorderRecording,
-  DesktopRecorderSource,
   DesktopRecorderSourceKind,
+  DesktopRecorderSourceList,
   RecorderNativeBackend,
 } from "./desktop-recorder-types";
 
@@ -43,6 +43,20 @@ function requiredString(result: Record<string, unknown>, key: string): string {
 function requiredNumber(result: Record<string, unknown>, key: string): number {
   const value = result[key];
   if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  throw new DesktopRecorderHelperError(
+    "capture_failed",
+    `Screen recorder helper returned an invalid ${key}`,
+  );
+}
+
+function requiredBoolean(
+  result: Record<string, unknown>,
+  key: string,
+): boolean {
+  const value = result[key];
+  if (typeof value === "boolean") {
     return value;
   }
   throw new DesktopRecorderHelperError(
@@ -282,9 +296,7 @@ class RecorderHelperClient {
   }
 }
 
-function toSources(
-  result: Record<string, unknown>,
-): readonly DesktopRecorderSource[] {
+function toSources(result: Record<string, unknown>): DesktopRecorderSourceList {
   const value = result.sources;
   if (!Array.isArray(value)) {
     throw new DesktopRecorderHelperError(
@@ -292,7 +304,7 @@ function toSources(
       "Screen recorder helper returned invalid sources",
     );
   }
-  return value.map((entry) => {
+  const sources = value.map((entry) => {
     if (!isRecord(entry)) {
       throw new DesktopRecorderHelperError(
         "capture_failed",
@@ -309,6 +321,10 @@ function toSources(
       ...(bundleId ? { bundleId } : {}),
     };
   });
+  return {
+    sources,
+    supportsMicrophone: requiredBoolean(result, "supportsMicrophone"),
+  };
 }
 
 function toRecording(
@@ -382,6 +398,8 @@ export function createRecorderNativeBackend(
         sourceId: request.sourceId,
         sourceKind: request.sourceKind,
         systemAudio: request.systemAudio,
+        microphone: request.microphone,
+        ...(request.area ? { area: request.area } : {}),
       });
       const geometry = isRecord(result.geometry) ? result.geometry : {};
       return {
@@ -399,6 +417,15 @@ export function createRecorderNativeBackend(
     },
     start: async (sessionId: string, outputPath: string) => {
       await client.request("recorder.start", { sessionId, outputPath });
+    },
+    pause: async (sessionId: string) => {
+      await client.request("recorder.pause", { sessionId });
+    },
+    resume: async (sessionId: string) => {
+      await client.request("recorder.resume", { sessionId });
+    },
+    discard: async (sessionId: string) => {
+      await client.request("recorder.discard", { sessionId });
     },
     stop: async (sessionId: string) =>
       toRecording(await client.request("recorder.stop", { sessionId })),

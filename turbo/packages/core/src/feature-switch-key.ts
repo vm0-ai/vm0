@@ -50,7 +50,6 @@ export enum FeatureSwitchKey {
   ZapierConnector = "zapierConnector",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   ChatErrorRecovery = "chatErrorRecovery",
-  BuiltInModelProviderFallback = "builtInModelProviderFallback",
   ResponsiveFollowupCards = "responsiveFollowupCards",
   ConnectorCatalogCount = "connectorCatalogCount",
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",

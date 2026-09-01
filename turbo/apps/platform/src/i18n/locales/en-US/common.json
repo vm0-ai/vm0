@@ -5104,17 +5104,14 @@
       "debug": {
         "builtInModelCooldown": {
           "cancelAction": "Cancel cooldown",
-          "cancelDescription": "Cancelling this global cooldown makes the route immediately eligible for every workspace with built-in model fallback enabled.",
+          "cancelDescription": "Cancelling this global cooldown makes the route immediately eligible for every workspace.",
           "cancelling": "Cancelling...",
           "cancelTitle": "Cancel global cooldown?",
           "cancelWarning": "A later qualifying failure can place this route back in cooldown.",
           "description": "Inspect the built-in model routes temporarily excluded from fallback selection.",
-          "disabled": "disabled",
-          "disabledExplanation": "Built-in model fallback is disabled for this workspace, so these global cooldowns are currently ignored here.",
           "empty": "No built-in model routes are currently in global cooldown.",
-          "enabled": "enabled",
           "globalActive": "global active cooldowns",
-          "globalExplanation": "Cooldowns are global operational state. They can affect this workspace only while built-in model fallback is enabled here.",
+          "globalExplanation": "Cooldowns are global operational state and affect every workspace using built-in models.",
           "keepCooldown": "Keep cooldown",
           "loading": "Loading built-in model cooldown diagnostics...",
           "providerType": "Provider type",
@@ -5123,8 +5120,7 @@
           "title": "Built-in model fallback",
           "unavailable": "Built-in model cooldown diagnostics are unavailable.",
           "unavailableUntil": "Unavailable until",
-          "upstreamModel": "Upstream model",
-          "workspaceFallback": "workspace fallback"
+          "upstreamModel": "Upstream model"
         },
         "capture": {
           "description": "Capture HTTP header names, selected safe header values, and bodies in network logs for debugging.",

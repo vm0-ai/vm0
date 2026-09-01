@@ -96,7 +96,6 @@ import { goalsRoutes } from "./routes/goals";
 import { hostRoutes } from "./routes/host";
 import { builtInGenerationRoutes } from "./routes/built-in-generation";
 import { imageIoGenerateRoutes } from "./routes/image-io-generate";
-import { imageShareXRoutes } from "./routes/image-share-x";
 import { logsRoutes } from "./routes/logs";
 import { mailRoutes } from "./routes/mail";
 import { mapsRoutes } from "./routes/maps";
@@ -172,7 +171,6 @@ import { feishuBrowserConnectRoutes } from "./routes/feishu-browser-connect";
 import { feishuConnectRoutes } from "./routes/feishu-connect";
 import { feishuEventsRoutes } from "./routes/feishu-events";
 import { feishuOauthRoutes } from "./routes/feishu-oauth";
-import { steamPlayerRoutes } from "./routes/steam-player";
 import { teamsBrowserConnectRoutes } from "./routes/teams-browser-connect";
 import { teamsBotRoutes } from "./routes/teams-bot";
 import { teamsConnectRoutes } from "./routes/teams-connect";
@@ -291,7 +289,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...hostRoutes,
   ...builtInGenerationRoutes,
   ...imageIoGenerateRoutes,
-  ...imageShareXRoutes,
   ...avatarVideoRoutes,
   ...videoIoGenerateRoutes,
   ...logsRoutes,
@@ -376,7 +373,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...integrationsTeamsUploadCompleteRoutes,
   ...integrationsTeamsUploadInitRoutes,
   ...slackChannelsRoutes,
-  ...steamPlayerRoutes,
   ...integrationsTelegramRoutes,
   ...integrationsTelegramMessageRoutes,
   ...integrationsTelegramUploadCompleteRoutes,

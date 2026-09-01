@@ -5,7 +5,6 @@ import { ChatThreadPage } from "../../views/okou-page/chat-thread-page.tsx";
 import { updatePage$ } from "../react-router.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
-import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 import { hash$, searchParams$ } from "../route.ts";
 import {
   SIDEBAR_PARAM,
@@ -104,9 +103,6 @@ const internalSetupChatPage$ = command(
 );
 
 export const setupChatPage$ = command(async ({ set }, signal: AbortSignal) => {
-  await Promise.all([
-    set(onboardGuard$, signal),
-    set(internalSetupChatPage$, signal),
-  ]);
+  await set(internalSetupChatPage$, signal);
   signal.throwIfAborted();
 });

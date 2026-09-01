@@ -28,7 +28,7 @@ import { settle } from "../utils";
 import { OFFICIAL_WORKFLOW_CATALOG_ACTIVATION_LOCK } from "./official-workflow-constants";
 import {
   OFFICIAL_WORKFLOW_CATALOG_AUTHORITY,
-  readAllAcceptedOfficialWorkflowRevisions,
+  readAllCurrentSchemaOfficialWorkflowRevisions,
   readAcceptedOfficialWorkflowCatalog,
   type AcceptedOfficialWorkflowCatalog,
 } from "./official-workflow-catalog-read.service";
@@ -402,7 +402,7 @@ const prepareDefinitions$ = command(
       }
   > => {
     const historicalResult = await settle(
-      readAllAcceptedOfficialWorkflowRevisions(db, signal),
+      readAllCurrentSchemaOfficialWorkflowRevisions(db, signal),
       signal,
     );
     if (!historicalResult.ok) {

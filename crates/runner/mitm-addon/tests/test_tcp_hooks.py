@@ -282,38 +282,58 @@ class TestTcpLog:
         assert scheduled == []
         assert flow.messages == messages
 
-    def test_tcp_size_counter_saturates_at_network_log_max(
-        self, tmp_path, monkeypatch, mitm_ctx, real_tcp_flow
+    @pytest.mark.parametrize(
+        "drain_before_end",
+        [
+            pytest.param(False, id="one-shot"),
+            pytest.param(True, id="deferred"),
+        ],
+    )
+    def test_tcp_size_accumulation_matches_across_drain_paths(
+        self,
+        tmp_path,
+        monkeypatch,
+        mitm_ctx,
+        real_tcp_flow,
+        drain_before_end: bool,
     ):
         max_log_size = 8
-        first_client = tcp.TCPMessage(True, b"first")
-        second_client = tcp.TCPMessage(True, b"later")
-        flow = real_tcp_flow(messages=[first_client])
+        first_messages = [
+            tcp.TCPMessage(True, b"first"),
+            tcp.TCPMessage(False, b"reply"),
+        ]
+        second_messages = [
+            tcp.TCPMessage(True, b"later"),
+            tcp.TCPMessage(False, b"again"),
+        ]
+        flow = real_tcp_flow(messages=first_messages)
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-abc-123"
         flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
         monkeypatch.setattr(logging_utils, "NETWORK_LOG_MAX_SAFE_SIZE", max_log_size)
         scheduled = capture_deferred_callbacks(monkeypatch)
 
-        with mitm_ctx():
-            mitm_addon.tcp_message(flow)
+        if drain_before_end:
+            with mitm_ctx():
+                mitm_addon.tcp_message(flow)
 
-        assert len(scheduled) == 1
-
-        run_deferred_callbacks(scheduled)
-        assert flow.messages == []
-
-        flow.messages.append(second_client)
-
-        with mitm_ctx():
-            mitm_addon.tcp_message(flow)
             assert len(scheduled) == 1
-            assert flow.messages == [second_client]
+
+            run_deferred_callbacks(scheduled)
+            assert flow.messages == []
+
+        flow.messages.extend(second_messages)
+
+        with mitm_ctx():
+            if drain_before_end:
+                mitm_addon.tcp_message(flow)
+                assert len(scheduled) == 1
+                assert flow.messages == second_messages
             mitm_addon.tcp_end(flow)
 
         [entry] = read_jsonl_entries_after_flush(Path(log_path))
         assert entry["request_size"] == max_log_size
-        assert entry["response_size"] == 0
+        assert entry["response_size"] == max_log_size
         assert flow.messages == []
 
         run_deferred_callbacks(scheduled)

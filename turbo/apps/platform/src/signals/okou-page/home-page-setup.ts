@@ -1,16 +1,16 @@
 import { command } from "ccstate";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { homeAgentId$ } from "../agent.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import { setupAgentsPage$ } from "../agents-page/agents-page-setup.ts";
-import { onboardGuard$ } from "./onboard-guard.ts";
 import { parseTemplatePickerEntryCategory } from "./template-picker-entry.ts";
+import {
+  desktopRecordingHandoffFeatureEnabled,
+  desktopRecordingHandoffParamNames,
+} from "./desktop-recording-handoff.ts";
 
 export const setupHomePage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (await set(onboardGuard$, signal)) {
-      return;
-    }
-
     // Redirect bare / to /agents/:id/chat. Keep prompt deep links intact so
     // paid-onboarding handoffs can prefill the chat composer on arrival.
     // ?queue= is also forwarded so the queue drawer opens on arrival.
@@ -43,6 +43,14 @@ export const setupHomePage$ = command(
     }
     if (templatePicker) {
       forwardParams.set("templatePicker", templatePicker);
+    }
+    if (desktopRecordingHandoffFeatureEnabled(get(featureSwitch$))) {
+      for (const name of desktopRecordingHandoffParamNames) {
+        const value = params.get(name);
+        if (value) {
+          forwardParams.set(name, value);
+        }
+      }
     }
     set(detachedNavigateTo$, "/agents/:agentId/chat", {
       pathParams: { agentId: homeAgentId },

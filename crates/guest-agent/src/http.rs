@@ -43,7 +43,7 @@ enum ResponseBodyCollectionError {
     Transport(reqwest::Error),
 }
 
-/// Content-safe facts published before one event request is awaited.
+/// Content-safe facts published before one observed request is awaited.
 #[derive(Debug, Clone)]
 pub(crate) struct HttpAttemptStarted {
     pub attempt: u32,
@@ -51,7 +51,7 @@ pub(crate) struct HttpAttemptStarted {
     pub started_at: Instant,
 }
 
-/// Content-safe facts published after one event request completes.
+/// Content-safe facts published after one observed request completes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HttpAttemptFinished {
     pub attempt: u32,
@@ -60,7 +60,7 @@ pub(crate) struct HttpAttemptFinished {
     pub outcome: HttpAttemptOutcome,
 }
 
-/// Transport outcome for an observed event request.
+/// Transport outcome for an observed request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HttpAttemptOutcome {
     Success,
@@ -81,7 +81,7 @@ pub(crate) enum HttpAttemptFailureKind {
     Transport,
 }
 
-/// Synchronous observer for the event delivery request path.
+/// Synchronous observer for selected control and event request paths.
 pub(crate) trait HttpAttemptObserver: Send + Sync {
     fn attempt_started(&self, attempt: HttpAttemptStarted) -> Result<(), AgentError>;
     fn attempt_finished(&self, attempt: HttpAttemptFinished) -> Result<(), AgentError>;
@@ -580,6 +580,26 @@ impl HttpClient {
     ) -> Result<Option<Value>, AgentError> {
         let body = Bytes::from(serde_json::to_vec(body)?);
         self.post_json_bytes(url, body, max_attempts).await
+    }
+
+    pub(crate) async fn post_json_observed(
+        &self,
+        url: &str,
+        body: &impl Serialize,
+        max_attempts: u32,
+        observer: &dyn HttpAttemptObserver,
+    ) -> Result<Option<Value>, AgentError> {
+        let body = Bytes::from(serde_json::to_vec(body)?);
+        let resp = self
+            .post_json_response(url, body, max_attempts, Some(observer), None)
+            .await?;
+        let body = collect_api_success_body(resp).await?;
+        if body.is_empty() {
+            return Ok(None);
+        }
+        let value =
+            serde_json::from_slice(&body).map_err(|error| AgentError::Http(error.to_string()))?;
+        Ok(Some(value))
     }
 
     pub(crate) async fn post_json_bytes(

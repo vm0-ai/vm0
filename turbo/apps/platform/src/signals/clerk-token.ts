@@ -1,0 +1,65 @@
+import type { BrowserClerk as Clerk } from "@clerk/shared/types";
+
+import { createDeferredPromise, withCleanup } from "./utils.ts";
+
+export type ClerkTokenSource = Pick<Clerk, "addListener" | "session">;
+type SettledClerkSession = Exclude<Clerk["session"], undefined>;
+
+function waitForSettledClerkSession(
+  clerk: ClerkTokenSource,
+  signal: AbortSignal,
+): Promise<SettledClerkSession> {
+  signal.throwIfAborted();
+
+  if (clerk.session !== undefined) {
+    return Promise.resolve(clerk.session);
+  }
+
+  const deferred = createDeferredPromise<SettledClerkSession>(signal);
+  const resolveIfSettled = (session: Clerk["session"]): void => {
+    if (session === undefined) {
+      return;
+    }
+    signal.removeEventListener("abort", unsubscribe);
+    unsubscribe();
+    deferred.resolve(session);
+  };
+  const unsubscribe = clerk.addListener(
+    ({ session }) => {
+      resolveIfSettled(session);
+    },
+    { skipInitialEmit: true },
+  );
+  signal.addEventListener("abort", unsubscribe, { once: true });
+
+  // Close the race between the initial read and listener registration.
+  resolveIfSettled(clerk.session);
+
+  return deferred.promise;
+}
+
+function waitForToken<T>(token: Promise<T>, signal: AbortSignal): Promise<T> {
+  signal.throwIfAborted();
+  const aborted = createDeferredPromise<never>(signal);
+  return withCleanup(Promise.race([token, aborted.promise]), () => {
+    if (!aborted.settled()) {
+      aborted.reject(new DOMException("Token read settled", "AbortError"));
+    }
+  });
+}
+
+export async function readClerkToken(
+  clerk: ClerkTokenSource,
+  signal: AbortSignal,
+  options: { readonly skipCache?: true } = {},
+): Promise<string | null> {
+  const session = await waitForSettledClerkSession(clerk, signal);
+  signal.throwIfAborted();
+  if (session === null) {
+    return null;
+  }
+  return await waitForToken(
+    session.getToken(options.skipCache ? { skipCache: true } : undefined),
+    signal,
+  );
+}

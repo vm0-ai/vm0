@@ -1117,7 +1117,7 @@ describe("createApp", () => {
         signal: context.signal,
         routes: TEST_APP_ROUTES,
       });
-      const response = await app.request("/api/zero/custom-connectors", {
+      const response = await app.request("/api/custom-connectors", {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,

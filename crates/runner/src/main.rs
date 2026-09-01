@@ -50,7 +50,6 @@ mod r2_cache;
 mod resource_budget;
 mod restored_session_identity;
 mod retry;
-mod rootfs_lock;
 mod run_cancellation;
 mod run_resolution;
 mod runner_dirname;

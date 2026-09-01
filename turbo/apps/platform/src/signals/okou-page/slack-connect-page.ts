@@ -6,14 +6,9 @@ import { updatePage$ } from "../react-router.ts";
 import { SlackConnectPage } from "../../views/okou-page/slack-connect-page.tsx";
 import { initSlackConnectPage$ } from "./slack-connect-signals.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
-import { onboardGuard$ } from "./onboard-guard.ts";
 
 export const setupSlackConnectPage$ = command(
   async ({ set }, signal: AbortSignal) => {
-    if (await set(onboardGuard$, signal)) {
-      return;
-    }
-
     set(updatePage$, createElement(SlackConnectPage));
     set(
       updateDocumentTitle$,

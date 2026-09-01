@@ -4,7 +4,6 @@ import { i18n } from "../../i18n/index.ts";
 import { ConnectorsPage } from "../../views/okou-page/connectors-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { resetConnectorAccountDialogs$ } from "../okou-page/settings/connector-account-dialogs.ts";
 
@@ -19,7 +18,5 @@ export const setupConnectorsPage$ = command(
       }),
     );
     await set(hideAppSkeleton$, signal);
-
-    await set(onboardGuard$, signal);
   },
 );

@@ -90,7 +90,6 @@ const GOAL_SCHEDULER_TIMING_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_goal_drain_scheduler_goal_handoff",
 ] as const;
 const GOAL_DRAIN_BUILT_IN_MODEL_CONTEXT_TIMING_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_goal_drain_model_context_reload_fallback_feature_switches",
   "api_dispatch_pre_create_zero_goal_drain_model_context_resolve_built_in_route",
 ] as const;
 const GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES = [
@@ -4406,7 +4405,7 @@ describe("CHAT-02: drain-time admission failure", () => {
     90_000,
   );
 
-  it("terminalizes a queued Web message with neutral built-in model copy when the key is unavailable", async () => {
+  it("terminalizes a queued Web message with neutral copy when every built-in route is unavailable", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -4454,13 +4453,13 @@ describe("CHAT-02: drain-time admission failure", () => {
             return (
               event.eventType === "input.rejected" &&
               event.revokesEventId === queuedEventId &&
-              event.error === "provider_unavailable"
+              event.error === "model_provider_unavailable"
             );
           }) &&
           assistantMessages(events).some((event) => {
             return (
               event.eventType === "output.error" &&
-              event.error === "provider_unavailable"
+              event.error === "model_provider_unavailable"
             );
           })
         );
@@ -4475,16 +4474,16 @@ describe("CHAT-02: drain-time admission failure", () => {
     if (rejected?.eventType !== "input.rejected") {
       throw new Error("Expected the queued Web message to be rejected");
     }
-    expect(rejected.error).toBe("provider_unavailable");
+    expect(rejected.error).toBe("model_provider_unavailable");
     const errors = assistantMessages(terminal.events).filter((event) => {
       return (
         event.eventType === "output.error" &&
-        event.error === "provider_unavailable"
+        event.error === "model_provider_unavailable"
       );
     });
     expect(errors).toHaveLength(1);
     expect(errors[0]?.content).toBe(
-      "No model provider configured: no built-in model key is configured",
+      "Oops, something went wrong. Please try again later.",
     );
     expect(errors[0]?.content).not.toContain("VM0");
     expect(

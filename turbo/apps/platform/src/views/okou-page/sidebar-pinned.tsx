@@ -294,6 +294,13 @@ function PinnedAgentDragHandle() {
   );
 }
 
+/**
+ * A grid tile is only a fifth of the sidebar wide, so almost every agent name
+ * is truncated down to a few characters. The tile carries a hover tooltip with
+ * the full name — a native `title` is too slow and too easy to miss for a label
+ * that is unreadable by default. The tooltip is disabled while a reorder drag
+ * is in flight so it never floats over the drop carets.
+ */
 function PinnedAgentGridCard({
   agent,
   isPrimarySelected,
@@ -323,12 +330,11 @@ function PinnedAgentGridCard({
     draggingAgentId !== null &&
     draggingAgentId !== agent.agentId;
 
-  return (
+  const card = (
     <Link
       pathname="/agents/:agentId/chat"
       options={{ pathParams: { agentId: agent.agentId } }}
       data-testid="pinned-agent-card"
-      title={displayName}
       draggable={isReorderable}
       onDragStart={(e) => {
         e.dataTransfer.clearData();
@@ -419,6 +425,17 @@ function PinnedAgentGridCard({
         {displayName}
       </span>
     </Link>
+  );
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip disabled={isDragInFlight}>
+        <TooltipTrigger asChild>{card}</TooltipTrigger>
+        <TooltipContent side="top">
+          <p className="text-xs">{displayName}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
