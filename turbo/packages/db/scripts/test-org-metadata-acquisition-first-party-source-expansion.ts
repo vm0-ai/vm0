@@ -146,6 +146,7 @@ function validateApplicationCallerInventory(): void {
       "turbo/apps/platform/src/signals/auth-v2/platform-context.test.ts",
       "turbo/apps/platform/src/signals/auth.ts",
       "turbo/apps/platform/src/signals/bootstrap/ad-attribution.ts",
+      "turbo/apps/platform/src/views/okou-page/__tests__/home-route.test.tsx",
       "turbo/apps/platform/src/views/okou-page/__tests__/onboarding.test.tsx",
       "turbo/apps/platform/src/views/onboarding/__tests__/onboarding-flow.test.tsx",
       "turbo/packages/api-contracts/src/contracts/acquisition-attribution.ts",
