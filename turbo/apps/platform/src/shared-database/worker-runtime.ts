@@ -38,12 +38,9 @@ import {
   assertChatEventSchemaVersion,
   CHAT_EVENT_SCHEMA_VERSION_HEADERS,
 } from "./chat-event-schema-version.ts";
-import {
-  SHARED_DATABASE_AUTH_BLOCKED_ERROR_NAME,
-  type SharedDatabaseHeartbeatResult,
-  type SharedDatabaseWorkerMessage,
-} from "./protocol.ts";
+import type { SharedDatabaseWorkerMessage } from "./protocol.ts";
 import type {
+  SharedDatabaseAuthRecovery,
   SharedDatabaseContractClient,
   SharedDatabaseContractClientFactory,
 } from "./worker-client.ts";
@@ -67,19 +64,14 @@ function chatEventRowsQuery(cursor: ChatEventCursor) {
 
 type WorkerRuntimeEvent = Extract<
   SharedDatabaseWorkerMessage,
-  {
-    readonly type: "authentication-required" | "reload-required" | "status";
-  }
+  { readonly type: "reload-required" }
 >;
 
 interface CredentialState {
   readonly userId: string;
   readonly orgId: string;
-  token: string;
-  apiBaseUrl: string;
-  vercelProtectionBypass: string | undefined;
-  authBlocked: boolean;
-  rejectedToken: string | null;
+  readonly apiBaseUrl: string;
+  readonly vercelProtectionBypass: string | undefined;
 }
 
 type ChatEventContractClient = SharedDatabaseContractClient<
@@ -97,7 +89,6 @@ interface ChatEventRemoteState {
 interface ChatEventRemoteContext {
   readonly client: ChatEventContractClient;
   readonly dataKey: ScopedChatEventDataKey;
-  readonly requestToken: string;
 }
 
 interface ChatThreadEventRemoteState {
@@ -110,7 +101,6 @@ interface ChatThreadEventRemoteState {
 
 interface ChatThreadEventRemoteContext {
   readonly client: SharedDatabaseContractClient<typeof chatThreadsContract>;
-  readonly requestToken: string;
 }
 
 interface ChatDatabaseEntry {
@@ -128,17 +118,9 @@ interface SharedDatabaseWorkerRuntimeOptions {
   readonly identity: SharedDatabaseIdentity;
   readonly apiBaseUrl: string;
   readonly vercelProtectionBypass: string | undefined;
+  readonly authRecovery: SharedDatabaseAuthRecovery;
   readonly emit: (message: WorkerRuntimeEvent) => void;
   readonly createContractClient: SharedDatabaseContractClientFactory;
-}
-
-class SharedDatabaseAuthBlockedError extends Error {
-  constructor() {
-    super(
-      "Shared database remote synchronization is blocked by authentication",
-    );
-    this.name = SHARED_DATABASE_AUTH_BLOCKED_ERROR_NAME;
-  }
 }
 
 class SharedDatabaseHttpError extends Error {
@@ -174,7 +156,7 @@ function reportDataKeyError(
   operation: string,
   error: unknown,
 ): void {
-  if (isAbortError(error) || error instanceof SharedDatabaseAuthBlockedError) {
+  if (isAbortError(error)) {
     L.debug(operation, { ...dataKeyDiagnosticDetails(dataKey), error });
     return;
   }
@@ -240,6 +222,7 @@ export class SharedDatabaseWorkerRuntime {
   private readonly credential: CredentialState;
   private databaseEntry: ChatDatabaseEntry | null = null;
   private readonly rootSignal: AbortSignal;
+  private readonly authRecovery: SharedDatabaseAuthRecovery;
   private readonly emit: (message: WorkerRuntimeEvent) => void;
   private readonly createContractClient: SharedDatabaseContractClientFactory;
 
@@ -251,20 +234,19 @@ export class SharedDatabaseWorkerRuntime {
       identity,
       apiBaseUrl,
       vercelProtectionBypass,
+      authRecovery,
       emit,
       createContractClient,
     } = options;
     this.rootSignal = rootSignal;
+    this.authRecovery = authRecovery;
     this.emit = emit;
     this.createContractClient = createContractClient;
     this.credential = {
       userId: identity.userId,
       orgId: identity.orgId,
-      token: identity.token,
       apiBaseUrl,
       vercelProtectionBypass,
-      authBlocked: false,
-      rejectedToken: null,
     };
     rootSignal.addEventListener(
       "abort",
@@ -278,38 +260,6 @@ export class SharedDatabaseWorkerRuntime {
       },
       { once: true },
     );
-  }
-
-  heartbeat(
-    identity: SharedDatabaseIdentity,
-    apiBaseUrl: string,
-    vercelProtectionBypass: string | undefined,
-  ): SharedDatabaseHeartbeatResult {
-    this.rootSignal.throwIfAborted();
-    if (
-      identity.userId !== this.credential.userId ||
-      identity.orgId !== this.credential.orgId
-    ) {
-      throw new Error("Shared database heartbeat changed credential Store");
-    }
-
-    const resumesAuthentication =
-      this.credential.authBlocked &&
-      identity.token !== this.credential.rejectedToken;
-    this.credential.apiBaseUrl = apiBaseUrl;
-    this.credential.vercelProtectionBypass = vercelProtectionBypass;
-    if (!this.credential.authBlocked || resumesAuthentication) {
-      this.credential.token = identity.token;
-    }
-    if (resumesAuthentication) {
-      L.debug("auth.resume", {
-        orgId: identity.orgId,
-        userId: identity.userId,
-      });
-      this.credential.authBlocked = false;
-      this.credential.rejectedToken = null;
-    }
-    return { clientReconnected: false };
   }
 
   async query<TKey extends SharedDatabaseDataKey>(
@@ -365,7 +315,6 @@ export class SharedDatabaseWorkerRuntime {
     if (consistency === "cache-only") {
       return await this.readChatEventCache(dataKey, afterSeqId, signal);
     }
-    this.requireRemoteSynchronization();
     const remoteRows = await this.syncChatEvents(dataKey, signal);
     signal.throwIfAborted();
     const cached = await this.readChatEventCache(dataKey, afterSeqId, signal);
@@ -383,7 +332,6 @@ export class SharedDatabaseWorkerRuntime {
     if (consistency === "cache-only") {
       return (await this.readChatThreadEventCache(dataKey, signal)).result;
     }
-    this.requireRemoteSynchronization();
     return await this.syncChatThreadEvents(dataKey, signal);
   }
 
@@ -412,13 +360,11 @@ export class SharedDatabaseWorkerRuntime {
       );
     }
 
-    const requestToken = this.credential.token;
     const client = this.createContractClient(
       chatThreadEventsContract,
       this.credential.apiBaseUrl,
-      () => {
-        return requestToken;
-      },
+      this.authRecovery,
+      this.rootSignal,
       () => {
         return this.credential.vercelProtectionBypass;
       },
@@ -439,7 +385,6 @@ export class SharedDatabaseWorkerRuntime {
       const snapshot = await this.fetchChatEventSnapshot(
         client,
         dataKey,
-        requestToken,
         signal,
       );
       state = {
@@ -450,11 +395,7 @@ export class SharedDatabaseWorkerRuntime {
         replacedCache: true,
       };
     }
-    state = await this.fetchChatEventRows(
-      { client, dataKey, requestToken },
-      state,
-      signal,
-    );
+    state = await this.fetchChatEventRows({ client, dataKey }, state, signal);
     await this.persistChatEventRows(dataKey, state, signal);
     return state.remoteRows;
   }
@@ -503,7 +444,7 @@ export class SharedDatabaseWorkerRuntime {
     initialState: ChatEventRemoteState,
     signal: AbortSignal,
   ): Promise<ChatEventRemoteState> {
-    const { client, dataKey, requestToken } = context;
+    const { client, dataKey } = context;
     let remoteRows = [...initialState.remoteRows];
     let cursor = initialState.cursor;
     let cursorFromServer = initialState.cursorFromServer;
@@ -520,8 +461,7 @@ export class SharedDatabaseWorkerRuntime {
       });
       signal.throwIfAborted();
       if (page.status === 401) {
-        this.blockCredential(requestToken);
-        throw new SharedDatabaseAuthBlockedError();
+        throw new SharedDatabaseHttpError(page.status);
       }
       assertChatEventSchemaVersion(page.headers);
       if (page.status === 410) {
@@ -533,7 +473,6 @@ export class SharedDatabaseWorkerRuntime {
         const snapshot = await this.fetchChatEventSnapshot(
           client,
           dataKey,
-          requestToken,
           signal,
         );
         remoteRows = [...snapshot.rows];
@@ -564,7 +503,6 @@ export class SharedDatabaseWorkerRuntime {
   private async fetchChatEventSnapshot(
     client: ChatEventContractClient,
     dataKey: ScopedChatEventDataKey,
-    requestToken: string,
     signal: AbortSignal,
   ): Promise<{
     readonly rows: readonly ChatEventRow[];
@@ -577,8 +515,7 @@ export class SharedDatabaseWorkerRuntime {
     });
     signal.throwIfAborted();
     if (snapshot.status === 401) {
-      this.blockCredential(requestToken);
-      throw new SharedDatabaseAuthBlockedError();
+      throw new SharedDatabaseHttpError(snapshot.status);
     }
     assertChatEventSchemaVersion(snapshot.headers);
     if (snapshot.status === 404) {
@@ -626,13 +563,11 @@ export class SharedDatabaseWorkerRuntime {
     signal: AbortSignal,
   ): Promise<ChatThreadEventQueryResult> {
     const cached = await this.readChatThreadEventCache(dataKey, signal);
-    const requestToken = this.credential.token;
     const client = this.createContractClient(
       chatThreadsContract,
       this.credential.apiBaseUrl,
-      () => {
-        return requestToken;
-      },
+      this.authRecovery,
+      this.rootSignal,
       () => {
         return this.credential.vercelProtectionBypass;
       },
@@ -652,11 +587,7 @@ export class SharedDatabaseWorkerRuntime {
       cached.degraded
     ) {
       const result = {
-        snapshot: await this.fetchChatThreadSnapshot(
-          client,
-          requestToken,
-          signal,
-        ),
+        snapshot: await this.fetchChatThreadSnapshot(client, signal),
         events: [],
       };
       state = {
@@ -668,7 +599,7 @@ export class SharedDatabaseWorkerRuntime {
       };
     }
 
-    const remoteContext = { client, requestToken };
+    const remoteContext = { client };
     state = await this.loadChatThreadEventTail(remoteContext, state, signal);
     state = await this.maybeRebaseChatThreadEventSnapshot(
       dataKey,
@@ -719,7 +650,7 @@ export class SharedDatabaseWorkerRuntime {
     initialState: ChatThreadEventRemoteState,
     signal: AbortSignal,
   ): Promise<ChatThreadEventRemoteState> {
-    const { client, requestToken } = context;
+    const { client } = context;
     let state = initialState;
     let hasMore = true;
     while (hasMore) {
@@ -728,10 +659,6 @@ export class SharedDatabaseWorkerRuntime {
         fetchOptions: { signal },
       });
       signal.throwIfAborted();
-      if (page.status === 401) {
-        this.blockCredential(requestToken);
-        throw new SharedDatabaseAuthBlockedError();
-      }
       if (page.status === 410) {
         if (state.cursorFromServerSnapshot) {
           throw new Error(
@@ -739,11 +666,7 @@ export class SharedDatabaseWorkerRuntime {
           );
         }
         const result = {
-          snapshot: await this.fetchChatThreadSnapshot(
-            client,
-            requestToken,
-            signal,
-          ),
+          snapshot: await this.fetchChatThreadSnapshot(client, signal),
           events: [],
         };
         state = {
@@ -793,15 +716,14 @@ export class SharedDatabaseWorkerRuntime {
       return state;
     }
     const rebasedSnapshot = await settle(
-      this.fetchChatThreadSnapshot(
-        context.client,
-        context.requestToken,
-        signal,
-      ),
+      this.fetchChatThreadSnapshot(context.client, signal),
       signal,
     );
     if (!rebasedSnapshot.ok) {
-      if (this.credential.authBlocked) {
+      if (
+        rebasedSnapshot.error instanceof SharedDatabaseHttpError &&
+        rebasedSnapshot.error.status === 401
+      ) {
         throw rebasedSnapshot.error;
       }
       L.debug("snapshot-rebase.skip", {
@@ -826,15 +748,10 @@ export class SharedDatabaseWorkerRuntime {
 
   private async fetchChatThreadSnapshot(
     client: SharedDatabaseContractClient<typeof chatThreadsContract>,
-    requestToken: string,
     signal: AbortSignal,
   ): Promise<NonNullable<ChatThreadEventQueryResult["snapshot"]>> {
     const snapshot = await client.snapshot({ fetchOptions: { signal } });
     signal.throwIfAborted();
-    if (snapshot.status === 401) {
-      this.blockCredential(requestToken);
-      throw new SharedDatabaseAuthBlockedError();
-    }
     if (snapshot.status !== 200) {
       throw new SharedDatabaseHttpError(snapshot.status);
     }
@@ -991,28 +908,5 @@ export class SharedDatabaseWorkerRuntime {
       throw new Error("Chat IndexedDB version changed; reload is required");
     }
     return { entry, database };
-  }
-
-  private blockCredential(rejectedToken: string): void {
-    if (
-      this.credential.token !== rejectedToken ||
-      this.credential.authBlocked
-    ) {
-      return;
-    }
-    L.debug("auth.block", {
-      orgId: this.credential.orgId,
-      userId: this.credential.userId,
-    });
-    this.credential.authBlocked = true;
-    this.credential.rejectedToken = rejectedToken;
-    this.emit({ type: "authentication-required" });
-    this.emit({ type: "status", status: "disconnected" });
-  }
-
-  private requireRemoteSynchronization(): void {
-    if (this.credential.authBlocked) {
-      throw new SharedDatabaseAuthBlockedError();
-    }
   }
 }

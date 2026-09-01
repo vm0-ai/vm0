@@ -264,7 +264,10 @@ impl ExecProcessContainment {
         // The exec request parser admits this role only after validating its
         // fixed Runner-owned helper contract. Workload and Agent roles retain
         // workload cgroup containment.
-        if role == ExecProcessRole::SessionHistoryIdentityVerifier {
+        if matches!(
+            role,
+            ExecProcessRole::SessionHistoryIdentityVerifier | ExecProcessRole::CodexSessionCleanup
+        ) {
             return Ok(Self {
                 backend: ContainmentBackend::ProcessGroup,
             });

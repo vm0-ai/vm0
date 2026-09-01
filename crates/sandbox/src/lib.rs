@@ -55,9 +55,9 @@ pub use snapshot::{
     PendingSnapshotPublish, SnapshotCreateConfig, SnapshotError, SnapshotOutput, SnapshotProvider,
 };
 pub use types::{
-    CopyFileOptions, CopyFileResult, EXEC_OUTPUT_LIMIT_1_MIB, EXEC_OUTPUT_LIMIT_7_MIB,
-    EXEC_OUTPUT_LIMIT_64_KIB, ExecOutputLimits, ExecRequest, ExecResult, ExecTermination,
-    GuestAgentProcessHandle, GuestAgentStartTiming, GuestProcessCancelHandle,
+    CodexSessionCleanupRequest, CopyFileOptions, CopyFileResult, EXEC_OUTPUT_LIMIT_1_MIB,
+    EXEC_OUTPUT_LIMIT_7_MIB, EXEC_OUTPUT_LIMIT_64_KIB, ExecOutputLimits, ExecRequest, ExecResult,
+    ExecTermination, GuestAgentProcessHandle, GuestAgentStartTiming, GuestProcessCancelHandle,
     GuestProcessControlHandle, GuestProcessControlOutcomeFuture, GuestProcessHandle,
     GuestProcessWaiter, GuestStateRestoreRequest, GuestStateRestoreTimezone, ProcessControlAck,
     ProcessControlFailureKind, ProcessControlGuestStatus, ProcessControlOutcome,

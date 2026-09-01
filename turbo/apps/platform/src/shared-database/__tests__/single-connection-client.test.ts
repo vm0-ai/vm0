@@ -48,6 +48,14 @@ class FakeBridge implements SharedDatabaseBridge {
 
   reloadComputed(_computedKey: ComputedKey): void {}
 
+  setToken(
+    _recoveryId: string,
+    _token: string | null,
+    _signal: AbortSignal,
+  ): Promise<void> {
+    return Promise.resolve();
+  }
+
   async heartbeat(
     heartbeat: SharedDatabaseHeartbeat,
     signal: AbortSignal,
@@ -109,7 +117,7 @@ function createEvents(
   statuses: SharedDatabaseConnectionStatus[] = [],
 ): SharedDatabaseBridgeEvents {
   return {
-    authenticationRequired: vi.fn<() => void>(),
+    authenticationRequired: vi.fn<(recoveryId: string) => void>(),
     databaseInvalidated: vi.fn<(dataKey: SharedDatabaseDataKey) => void>(),
     databaseReconnected: vi.fn<() => void>(),
     computedReloaded: vi.fn<(computedKey: ComputedKey) => void>(),

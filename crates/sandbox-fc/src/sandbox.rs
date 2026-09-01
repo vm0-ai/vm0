@@ -7,8 +7,8 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use sandbox::{
-    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestAgentProcessHandle,
-    GuestAgentStartTiming, GuestMemorySnapshot, GuestProcessCancelHandle,
+    CodexSessionCleanupRequest, CopyFileOptions, CopyFileResult, ExecRequest, ExecResult,
+    GuestAgentProcessHandle, GuestAgentStartTiming, GuestMemorySnapshot, GuestProcessCancelHandle,
     GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter, GuestStateRestoreRequest,
     GuestStateRestoreTimezone, ProcessControlAck, ProcessControlFailureKind,
     ProcessControlGuestStatus, ProcessControlOutcome, ProcessControlWriteState, ProcessExit,
@@ -2509,6 +2509,28 @@ impl Sandbox for FirecrackerSandbox {
                     history_ref_kind: request.history_ref_kind,
                     history_hash: request.history_hash,
                     history_size_bytes: request.history_size_bytes,
+                    timeout_ms,
+                    wait_timeout: Duration::from_millis(u64::from(timeout_ms) + 5_000),
+                })
+                .await
+                .and_then(exec_result_from_operation_result)
+        })
+        .await
+    }
+
+    async fn cleanup_codex_session(
+        &self,
+        request: &CodexSessionCleanupRequest<'_>,
+    ) -> sandbox::Result<ExecResult> {
+        let operation = SandboxOperation::CleanupCodexSession;
+        let timeout_ms = request.timeout_ms();
+
+        self.run_bounded_guest_operation(operation, |guest| async move {
+            validate_exec_capture_timeout(timeout_ms)?;
+            guest
+                .cleanup_codex_session(vsock_host::CodexSessionCleanupRequest {
+                    session_id: request.session_id,
+                    fallback_relative_path: request.fallback_relative_path,
                     timeout_ms,
                     wait_timeout: Duration::from_millis(u64::from(timeout_ms) + 5_000),
                 })
