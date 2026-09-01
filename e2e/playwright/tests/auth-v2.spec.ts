@@ -193,4 +193,27 @@ test.describe("unsupported browser", () => {
       "https://www.google.com/chrome/",
     );
   });
+
+  test("preserves the upgrade page for browser history restoration", async ({
+    page,
+  }) => {
+    await page.goto("/sign-up", { waitUntil: "domcontentloaded" });
+    const heading = page.getByRole("heading", {
+      name: "Update Chrome to continue",
+    });
+    await expect(heading).toBeVisible();
+
+    // Exercise the persisted lifecycle explicitly so coverage does not depend
+    // on the test browser accepting this page into BFCache.
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new PageTransitionEvent("pagehide", { persisted: true }),
+      );
+      window.dispatchEvent(
+        new PageTransitionEvent("pageshow", { persisted: true }),
+      );
+    });
+
+    await expect(heading).toBeVisible();
+  });
 });

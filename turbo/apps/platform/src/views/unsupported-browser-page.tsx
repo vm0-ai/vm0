@@ -100,11 +100,12 @@ export function renderUnsupportedBrowserPage(
   root.render(
     <UnsupportedBrowserPage assistantName={assistantName} upgrade={upgrade} />,
   );
-  window.addEventListener(
-    "pagehide",
-    () => {
-      root.unmount();
-    },
-    { once: true },
-  );
+  function unmountOnFinalPageHide(event: PageTransitionEvent): void {
+    if (event.persisted) {
+      return;
+    }
+    root.unmount();
+    window.removeEventListener("pagehide", unmountOnFinalPageHide);
+  }
+  window.addEventListener("pagehide", unmountOnFinalPageHide);
 }
