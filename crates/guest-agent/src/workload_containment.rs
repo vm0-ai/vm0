@@ -43,7 +43,7 @@ pub struct WorkloadContainment {
 }
 
 /// Read-only paths used to sample control and workload CPU accounting.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct CgroupCpuStatPaths {
     control: PathBuf,
     workload: PathBuf,

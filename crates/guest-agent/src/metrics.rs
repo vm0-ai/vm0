@@ -38,7 +38,7 @@ struct MetricsEntry {
 }
 
 /// Fixed metric sources for one Guest metrics task.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct MetricsSources {
     proc_stat: PathBuf,
     cgroup_cpu_stat: Option<CgroupCpuStatPaths>,
