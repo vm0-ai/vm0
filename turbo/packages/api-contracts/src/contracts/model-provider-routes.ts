@@ -19,7 +19,6 @@ const builtInModelCooldownIdentitySchema = z.object({
 });
 
 export const builtInModelCooldownDiagnosticsSchema = z.object({
-  fallbackEnabled: z.boolean(),
   canCancelCooldowns: z.boolean().optional(),
   activeCooldowns: z.array(
     builtInModelCooldownIdentitySchema.extend({
