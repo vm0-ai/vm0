@@ -16,7 +16,7 @@ import type {
 
 type CaptureChoice =
   | { readonly kind: "area"; readonly area: DesktopRecorderArea | null }
-  | { readonly kind: "display"; readonly sourceId: string | null }
+  | { readonly kind: "display" }
   | { readonly kind: "window"; readonly sourceId: string | null };
 
 const recorder = window.vm0DesktopRecorder;
@@ -27,10 +27,7 @@ function sourceLabel(source: DesktopRecorderSource): string {
 
 export function RecorderBar(): React.ReactElement {
   const [sources, setSources] = useState<readonly DesktopRecorderSource[]>([]);
-  const [choice, setChoice] = useState<CaptureChoice>({
-    kind: "display",
-    sourceId: null,
-  });
+  const [choice, setChoice] = useState<CaptureChoice>({ kind: "display" });
   const [systemAudio, setSystemAudio] = useState(true);
   const [microphone, setMicrophone] = useState(false);
   const [microphoneSupported, setMicrophoneSupported] = useState(false);
@@ -46,15 +43,6 @@ export function RecorderBar(): React.ReactElement {
       .then((listed) => {
         setSources(listed.sources);
         setMicrophoneSupported(listed.supportsMicrophone);
-        setChoice((current) => {
-          if (current.kind !== "display" || current.sourceId) {
-            return current;
-          }
-          const display = listed.sources.find((source) => {
-            return source.kind === "display";
-          });
-          return { kind: "display", sourceId: display?.id ?? null };
-        });
       })
       .catch((listError: unknown) => {
         setError(
@@ -90,18 +78,14 @@ export function RecorderBar(): React.ReactElement {
     if (!recorder) {
       return;
     }
-    const displayId = sources.find((source) => {
-      return source.kind === "display";
-    })?.id;
     if (choice.kind === "area") {
-      if (!choice.area || !displayId) {
+      if (!choice.area) {
         setError("Select a region first");
         return;
       }
       setBusy(true);
       void recorder
         .startCapture({
-          sourceId: displayId,
           sourceKind: "area",
           systemAudio,
           microphone,
@@ -110,20 +94,25 @@ export function RecorderBar(): React.ReactElement {
         .catch(reportStartFailure);
       return;
     }
-    if (!choice.sourceId) {
-      setError(
-        choice.kind === "display" ? "No display to record" : "Choose a window",
-      );
+    if (choice.kind === "window") {
+      if (!choice.sourceId) {
+        setError("Choose a window");
+        return;
+      }
+      setBusy(true);
+      void recorder
+        .startCapture({
+          sourceKind: "window",
+          sourceId: choice.sourceId,
+          systemAudio,
+          microphone,
+        })
+        .catch(reportStartFailure);
       return;
     }
     setBusy(true);
     void recorder
-      .startCapture({
-        sourceId: choice.sourceId,
-        sourceKind: choice.kind,
-        systemAudio,
-        microphone,
-      })
+      .startCapture({ sourceKind: "display", systemAudio, microphone })
       .catch(reportStartFailure);
 
     function reportStartFailure(startError: unknown): void {
@@ -134,7 +123,7 @@ export function RecorderBar(): React.ReactElement {
           : "Could not start recording",
       );
     }
-  }, [choice, microphone, sources, systemAudio]);
+  }, [choice, microphone, systemAudio]);
 
   const windows = sources.filter((source) => {
     return source.kind === "window";
@@ -165,10 +154,7 @@ export function RecorderBar(): React.ReactElement {
           className="recorder-bar__source"
           aria-pressed={choice.kind === "display"}
           onClick={() => {
-            const display = sources.find((source) => {
-              return source.kind === "display";
-            });
-            setChoice({ kind: "display", sourceId: display?.id ?? null });
+            setChoice({ kind: "display" });
           }}
         >
           <Monitor size={22} />

@@ -404,9 +404,6 @@ export function createRecorderNativeBackend(
       const geometry = isRecord(result.geometry) ? result.geometry : {};
       return {
         sessionId: requiredString(result, "sessionId"),
-        ...(optionalString(result, "warning")
-          ? { warning: optionalString(result, "warning") }
-          : {}),
         width: requiredNumber(result, "width"),
         height: requiredNumber(result, "height"),
         geometry: {

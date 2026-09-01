@@ -8,18 +8,10 @@ import Foundation
 public struct AudioTrackPlan: Equatable, Sendable {
     public let systemAudio: Bool
     public let microphone: Bool
-    /// Set when the microphone was asked for but cannot be recorded, so the
-    /// caller can say why instead of silently producing a silent track.
-    public let microphoneUnavailableReason: String?
 
-    public init(
-        systemAudio: Bool,
-        microphone: Bool,
-        microphoneUnavailableReason: String?
-    ) {
+    public init(systemAudio: Bool, microphone: Bool) {
         self.systemAudio = systemAudio
         self.microphone = microphone
-        self.microphoneUnavailableReason = microphoneUnavailableReason
     }
 
     public var trackCount: Int {
@@ -28,37 +20,20 @@ public struct AudioTrackPlan: Equatable, Sendable {
 }
 
 public enum AudioTrackPolicy {
-    public static let microphoneRequiresNewerSystem =
-        "Recording the microphone needs macOS 15 or later"
-
     /// Decides the tracks for a request.
     ///
-    /// A microphone asked for on a system that cannot capture it is reported
-    /// rather than quietly dropped: a recording that was supposed to carry
-    /// narration and does not is worse than being told up front.
+    /// A system that cannot reach the microphone records without it. The app
+    /// only offers the microphone where ScreenCaptureKit can capture it, so
+    /// this is the helper refusing to open a track it could never fill rather
+    /// than quietly overriding a choice the user was able to make.
     public static func plan(
         systemAudio: Bool,
         microphone: Bool,
         microphoneSupported: Bool
     ) -> AudioTrackPlan {
-        guard microphone else {
-            return AudioTrackPlan(
-                systemAudio: systemAudio,
-                microphone: false,
-                microphoneUnavailableReason: nil
-            )
-        }
-        guard microphoneSupported else {
-            return AudioTrackPlan(
-                systemAudio: systemAudio,
-                microphone: false,
-                microphoneUnavailableReason: microphoneRequiresNewerSystem
-            )
-        }
         return AudioTrackPlan(
             systemAudio: systemAudio,
-            microphone: true,
-            microphoneUnavailableReason: nil
+            microphone: microphone && microphoneSupported
         )
     }
 }

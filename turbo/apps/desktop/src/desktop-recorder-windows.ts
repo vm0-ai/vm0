@@ -44,6 +44,19 @@ export class DesktopRecorderWindows {
     this.options = options;
   }
 
+  /**
+   * The display every non-window capture is aimed at.
+   *
+   * The overlays open on the primary display, so a region is drawn in its
+   * coordinates. The helper names a display source after its CoreGraphics
+   * display id, which is the id Electron reports for the same screen, so the
+   * source is derived from the display the overlay used rather than picked out
+   * of the helper's list, whose order is not the user's choice.
+   */
+  captureDisplaySourceId(): string {
+    return `display:${screen.getPrimaryDisplay().id.toString()}`;
+  }
+
   showBar(): void {
     if (this.bar && !this.bar.isDestroyed()) {
       this.bar.show();

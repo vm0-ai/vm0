@@ -4,7 +4,7 @@ import { DESKTOP_RECORDER_CHANNELS } from "./desktop-recorder-ipc-channels";
 import { isDesktopRecorderPageUrl } from "./desktop-recorder-page-url";
 import type {
   DesktopRecorderArea,
-  DesktopRecorderCaptureKind,
+  DesktopRecorderCaptureRequest,
   DesktopRecorderSourceList,
   DesktopRecorderState,
 } from "./desktop-recorder-types";
@@ -13,19 +13,11 @@ interface DesktopRecorderIpcOptions {
   readonly recorderUrl: string;
 }
 
-interface DesktopRecorderStartRequest {
-  readonly sourceId: string;
-  readonly sourceKind: DesktopRecorderCaptureKind;
-  readonly systemAudio: boolean;
-  readonly microphone: boolean;
-  readonly area?: DesktopRecorderArea;
-}
-
 interface DesktopRecorderNativeApi {
   readonly getState: () => DesktopRecorderState;
   readonly listSources: () => Promise<DesktopRecorderSourceList>;
   readonly startCapture: (
-    request: DesktopRecorderStartRequest,
+    request: DesktopRecorderCaptureRequest,
   ) => Promise<void>;
   /**
    * Opens the drag-to-select overlay and resolves with the region the user
@@ -55,10 +47,9 @@ function isArea(value: unknown): value is DesktopRecorderArea {
   );
 }
 
-function parseStartRequest(value: unknown): DesktopRecorderStartRequest {
+function parseStartRequest(value: unknown): DesktopRecorderCaptureRequest {
   if (
     !isRecord(value) ||
-    typeof value.sourceId !== "string" ||
     typeof value.systemAudio !== "boolean" ||
     typeof value.microphone !== "boolean"
   ) {
@@ -66,30 +57,27 @@ function parseStartRequest(value: unknown): DesktopRecorderStartRequest {
       "A screen recording request needs a source and both audio choices",
     );
   }
-  const kind = value.sourceKind;
-  if (kind !== "display" && kind !== "window" && kind !== "area") {
-    throw new Error(
-      `Unsupported screen recording source kind: ${String(kind)}`,
-    );
-  }
-  if (kind !== "area") {
-    return {
-      sourceId: value.sourceId,
-      sourceKind: kind,
-      systemAudio: value.systemAudio,
-      microphone: value.microphone,
-    };
-  }
-  if (!isArea(value.area)) {
-    throw new Error("Recording an area needs the selected region");
-  }
-  return {
-    sourceId: value.sourceId,
-    sourceKind: kind,
+  const audio = {
     systemAudio: value.systemAudio,
     microphone: value.microphone,
-    area: value.area,
   };
+  const kind = value.sourceKind;
+  if (kind === "display") {
+    return { ...audio, sourceKind: kind };
+  }
+  if (kind === "window") {
+    if (typeof value.sourceId !== "string") {
+      throw new Error("Recording a window needs the window to record");
+    }
+    return { ...audio, sourceKind: kind, sourceId: value.sourceId };
+  }
+  if (kind === "area") {
+    if (!isArea(value.area)) {
+      throw new Error("Recording an area needs the selected region");
+    }
+    return { ...audio, sourceKind: kind, area: value.area };
+  }
+  throw new Error(`Unsupported screen recording source kind: ${String(kind)}`);
 }
 
 export function installDesktopRecorderIpc(

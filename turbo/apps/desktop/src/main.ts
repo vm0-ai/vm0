@@ -765,11 +765,22 @@ function installDesktopRecorder(): void {
       getState: () => screenRecorder.getState(),
       listSources: () => screenRecorder.listSources(),
       startCapture: async (request) => {
-        await screenRecorder.prepare(request);
+        const windows = getRecorderWindows();
+        const area = request.sourceKind === "area" ? request.area : null;
+        await screenRecorder.prepare({
+          sourceId:
+            request.sourceKind === "window"
+              ? request.sourceId
+              : windows.captureDisplaySourceId(),
+          sourceKind: request.sourceKind,
+          systemAudio: request.systemAudio,
+          microphone: request.microphone,
+          ...(area ? { area } : {}),
+        });
         await screenRecorder.start();
         // The bar has done its job; leaving it up would put it in the capture.
-        getRecorderWindows().hideBar();
-        getRecorderWindows().showController(request.area ?? null);
+        windows.hideBar();
+        windows.showController(area);
       },
       pause: () => screenRecorder.pause(),
       resume: () => screenRecorder.resume(),

@@ -48,11 +48,19 @@ export function RecordingController(): React.ReactElement {
     };
   }, []);
 
-  function run(action: () => Promise<void>): void {
+  function run(action: () => Promise<void>, failure: string): void {
     setBusy(true);
-    void action().finally(() => {
-      setBusy(false);
-    });
+    setError(null);
+    void action()
+      .catch((actionError: unknown) => {
+        // Finishing uploads the recording, so this is a reachable path with
+        // nothing else to show it: without a message the button would just
+        // come back and the user would try again.
+        setError(actionError instanceof Error ? actionError.message : failure);
+      })
+      .finally(() => {
+        setBusy(false);
+      });
   }
 
   return (
@@ -75,7 +83,10 @@ export function RecordingController(): React.ReactElement {
         disabled={busy || !bridge}
         onClick={() => {
           if (bridge) {
-            run(() => (paused ? bridge.resume() : bridge.pause()));
+            run(
+              () => (paused ? bridge.resume() : bridge.pause()),
+              paused ? "Could not resume" : "Could not pause",
+            );
           }
         }}
       >
@@ -89,7 +100,7 @@ export function RecordingController(): React.ReactElement {
         disabled={busy || !bridge}
         onClick={() => {
           if (bridge) {
-            run(() => bridge.stop());
+            run(() => bridge.stop(), "Could not finish the recording");
           }
         }}
       >
@@ -103,7 +114,7 @@ export function RecordingController(): React.ReactElement {
         disabled={busy || !bridge}
         onClick={() => {
           if (bridge) {
-            run(() => bridge.discard());
+            run(() => bridge.discard(), "Could not delete the recording");
           }
         }}
       >

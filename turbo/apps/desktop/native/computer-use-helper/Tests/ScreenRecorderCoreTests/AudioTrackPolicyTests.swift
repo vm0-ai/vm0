@@ -15,7 +15,6 @@ struct AudioTrackPolicyTests {
         #expect(plan.systemAudio)
         #expect(plan.microphone)
         #expect(plan.trackCount == 2)
-        #expect(plan.microphoneUnavailableReason == nil)
     }
 
     @Test
@@ -40,13 +39,12 @@ struct AudioTrackPolicyTests {
         )
 
         #expect(plan.trackCount == 0)
-        #expect(plan.microphoneUnavailableReason == nil)
     }
 
-    /// Silently dropping the microphone would hand back a recording that was
-    /// meant to carry narration and does not.
+    /// Opening a microphone track the system cannot fill would leave the
+    /// recording carrying a silent second track.
     @Test
-    func saysWhyWhenTheSystemCannotRecordTheMicrophone() {
+    func writesNoMicrophoneTrackOnAnOlderSystem() {
         let plan = AudioTrackPolicy.plan(
             systemAudio: true,
             microphone: true,
@@ -55,20 +53,6 @@ struct AudioTrackPolicyTests {
 
         #expect(!plan.microphone)
         #expect(plan.systemAudio)
-        #expect(
-            plan.microphoneUnavailableReason
-                == AudioTrackPolicy.microphoneRequiresNewerSystem
-        )
-    }
-
-    @Test
-    func staysQuietWhenNoMicrophoneWasAskedFor() {
-        let plan = AudioTrackPolicy.plan(
-            systemAudio: true,
-            microphone: false,
-            microphoneSupported: false
-        )
-
-        #expect(plan.microphoneUnavailableReason == nil)
+        #expect(plan.trackCount == 1)
     }
 }

@@ -894,16 +894,12 @@ private func handlePrepare(_ request: [String: Any]) throws -> [String: Any] {
     )
     sessionStore.insert(session)
 
-    var prepared: [String: Any] = [
+    return [
         "sessionId": session.id,
         "width": outputSize.width,
         "height": outputSize.height,
         "geometry": session.describedGeometry,
     ]
-    if let reason = audioPlan.microphoneUnavailableReason {
-        prepared["warning"] = reason
-    }
-    return prepared
 }
 
 private func handleStart(_ request: [String: Any]) throws -> [String: Any] {

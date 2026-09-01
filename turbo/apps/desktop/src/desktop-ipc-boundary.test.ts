@@ -219,20 +219,19 @@ describe("Desktop IPC boundary", () => {
       { channel: DESKTOP_RECORDER_CHANNELS.listSources, args: [] },
       {
         channel: DESKTOP_RECORDER_CHANNELS.startCapture,
-        args: [
-          {
-            sourceId: "display:1",
-            sourceKind: "display",
-            systemAudio: true,
-            microphone: false,
-          },
-        ],
+        args: [{ sourceKind: "display", systemAudio: true, microphone: false }],
       },
       { channel: DESKTOP_RECORDER_CHANNELS.selectArea, args: [] },
       {
         channel: DESKTOP_RECORDER_CHANNELS.completeAreaSelection,
         args: [null],
       },
+      // Ending a capture is as sensitive as starting one: an untrusted page
+      // reaching discard would throw away someone's recording.
+      { channel: DESKTOP_RECORDER_CHANNELS.pause, args: [] },
+      { channel: DESKTOP_RECORDER_CHANNELS.resume, args: [] },
+      { channel: DESKTOP_RECORDER_CHANNELS.discard, args: [] },
+      { channel: DESKTOP_RECORDER_CHANNELS.stop, args: [] },
       { channel: DESKTOP_RECORDER_CHANNELS.cancel, args: [] },
     ]) {
       await expect(invokeIpc(channel, blockedAppUrl, ...args)).rejects.toThrow(
@@ -247,6 +246,10 @@ describe("Desktop IPC boundary", () => {
     expect(api.startCapture).not.toHaveBeenCalled();
     expect(api.selectArea).not.toHaveBeenCalled();
     expect(api.cancel).not.toHaveBeenCalled();
+    expect(api.pause).not.toHaveBeenCalled();
+    expect(api.resume).not.toHaveBeenCalled();
+    expect(api.discard).not.toHaveBeenCalled();
+    expect(api.stop).not.toHaveBeenCalled();
   });
 
   it("validates capture requests before they reach the recorder", async () => {
@@ -272,7 +275,6 @@ describe("Desktop IPC boundary", () => {
 
     await expect(
       invokeIpc(DESKTOP_RECORDER_CHANNELS.startCapture, recorderUrl, {
-        sourceId: "display:1",
         sourceKind: "everything",
         systemAudio: true,
         microphone: false,
@@ -281,12 +283,18 @@ describe("Desktop IPC boundary", () => {
     // An area capture without a region would silently record the whole display.
     await expect(
       invokeIpc(DESKTOP_RECORDER_CHANNELS.startCapture, recorderUrl, {
-        sourceId: "display:1",
         sourceKind: "area",
         systemAudio: true,
         microphone: false,
       }),
     ).rejects.toThrow("Recording an area needs the selected region");
+    await expect(
+      invokeIpc(DESKTOP_RECORDER_CHANNELS.startCapture, recorderUrl, {
+        sourceKind: "window",
+        systemAudio: true,
+        microphone: false,
+      }),
+    ).rejects.toThrow("Recording a window needs the window to record");
     await expect(
       invokeIpc(DESKTOP_RECORDER_CHANNELS.completeAreaSelection, recorderUrl, {
         x: 1,
@@ -294,15 +302,15 @@ describe("Desktop IPC boundary", () => {
     ).rejects.toThrow("A selected region must be a rectangle or null");
     expect(api.startCapture).not.toHaveBeenCalled();
 
+    // The display an area belongs to is resolved in the main process, so the
+    // request carries the region and nothing else.
     await invokeIpc(DESKTOP_RECORDER_CHANNELS.startCapture, recorderUrl, {
-      sourceId: "display:1",
       sourceKind: "area",
       systemAudio: false,
       microphone: false,
       area: { x: 10, y: 20, width: 300, height: 200 },
     });
     expect(api.startCapture).toHaveBeenCalledWith({
-      sourceId: "display:1",
       sourceKind: "area",
       systemAudio: false,
       microphone: false,

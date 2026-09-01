@@ -42,6 +42,23 @@ export interface DesktopRecorderArea {
   readonly height: number;
 }
 
+/**
+ * What the recorder overlays ask to capture.
+ *
+ * Only a window names its source. A display or area capture is aimed at the
+ * screen the overlays themselves were opened on, and the main process is what
+ * knows which one that is, so the renderer cannot pair a region drawn on one
+ * screen with another screen's id.
+ */
+export type DesktopRecorderCaptureRequest = {
+  readonly systemAudio: boolean;
+  readonly microphone: boolean;
+} & (
+  | { readonly sourceKind: "area"; readonly area: DesktopRecorderArea }
+  | { readonly sourceKind: "display" }
+  | { readonly sourceKind: "window"; readonly sourceId: string }
+);
+
 export interface DesktopRecorderSourceList {
   readonly sources: readonly DesktopRecorderSource[];
   /** ScreenCaptureKit only reaches the microphone on macOS 15 and later. */
@@ -107,8 +124,6 @@ export interface DesktopRecorderPrepareRequest {
 
 export interface DesktopRecorderPrepareResult {
   readonly sessionId: string;
-  /** Set when part of the request could not be honoured, such as a microphone. */
-  readonly warning?: string;
   readonly geometry: DesktopRecorderCaptureGeometry;
   readonly width: number;
   readonly height: number;
