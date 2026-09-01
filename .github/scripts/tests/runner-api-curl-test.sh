@@ -180,8 +180,8 @@ export E2E_API_URL="https://pr-27981-api.vm6.ai/"
 export E2E_API_TOKEN="sensitive-api-token"
 export VERCEL_AUTOMATION_BYPASS_SECRET="sensitive-bypass-secret"
 payload='{"secret":"sensitive-request-payload"}'
-MOCK_CURL_EXPECTED_VERCEL_URL='https://vercel.com/vm0/vm0-api/logs?search=requestHost%3Apr-27981-api.vm6.ai+requestPath%3A%2Fapi%2Fchat%2Fevents+status%3A429&timeline=past12Hours'
-MOCK_CURL_EXPECTED_VERCEL_WRITE_OUT='%{onerror}%{stderr}Vercel logs: https://vercel.com/vm0/vm0-api/logs?search=requestHost%%3Apr-27981-api.vm6.ai+requestPath%%3A%%2Fapi%%2Fchat%%2Fevents+status%%3A%{http_code}&timeline=past12Hours\n'
+MOCK_CURL_EXPECTED_VERCEL_URL='https://vercel.com/okou/vm0-api/logs?search=requestHost%3Apr-27981-api.vm6.ai+requestPath%3A%2Fapi%2Fchat%2Fevents+status%3A429&timeline=past12Hours'
+MOCK_CURL_EXPECTED_VERCEL_WRITE_OUT='%{onerror}%{stderr}Vercel logs: https://vercel.com/okou/vm0-api/logs?search=requestHost%%3Apr-27981-api.vm6.ai+requestPath%%3A%%2Fapi%%2Fchat%%2Fevents+status%%3A%{http_code}&timeline=past12Hours\n'
 
 MOCK_CURL_MODE=success
 MOCK_CURL_EXPECTED_URL="https://pr-27981-api.vm6.ai/api/chat/events"
@@ -205,7 +205,7 @@ assert_file_excludes "$stderr_file" "sensitive-query-value"
 
 MOCK_CURL_MODE=no-fail-with-body
 MOCK_CURL_EXPECTED_URL="https://pr-27981-api.vm6.ai/api/agents/agent-1"
-MOCK_CURL_EXPECTED_VERCEL_WRITE_OUT='%{onerror}%{stderr}Vercel logs: https://vercel.com/vm0/vm0-api/logs?search=requestHost%%3Apr-27981-api.vm6.ai+requestPath%%3A%%2Fapi%%2Fagents%%2Fagent-1+status%%3A%{http_code}&timeline=past12Hours\n'
+MOCK_CURL_EXPECTED_VERCEL_WRITE_OUT='%{onerror}%{stderr}Vercel logs: https://vercel.com/okou/vm0-api/logs?search=requestHost%%3Apr-27981-api.vm6.ai+requestPath%%3A%%2Fapi%%2Fagents%%2Fagent-1+status%%3A%{http_code}&timeline=past12Hours\n'
 run_agent_teardown "agent-1"
 assert_status 0
 assert_file_equals '' "$stdout_file"
@@ -216,7 +216,7 @@ run_agent_teardown "agent-1"
 assert_status 1
 assert_file_equals '' "$stdout_file"
 assert_file_equals \
-    $'Stage 0 Runner E2E agent teardown failed with HTTP 500: {"error":"Internal server error"}\nVercel logs: https://vercel.com/vm0/vm0-api/logs?search=requestHost%3Apr-27981-api.vm6.ai+requestPath%3A%2Fapi%2Fagents%2Fagent-1+status%3A500&timeline=past12Hours\n' \
+    $'Stage 0 Runner E2E agent teardown failed with HTTP 500: {"error":"Internal server error"}\nVercel logs: https://vercel.com/okou/vm0-api/logs?search=requestHost%3Apr-27981-api.vm6.ai+requestPath%3A%2Fapi%2Fagents%2Fagent-1+status%3A500&timeline=past12Hours\n' \
     "$stderr_file"
 assert_file_excludes "$stderr_file" "$E2E_API_TOKEN"
 assert_file_excludes "$stderr_file" "$VERCEL_AUTOMATION_BYPASS_SECRET"
@@ -225,10 +225,10 @@ assert_file_excludes "$stderr_file" "sensitive-request-payload"
 # A stalled request produces no response at all, so a plain GET is sent again.
 # See the merge-group Turbo run 33464652878, where four runner shards gave up
 # on GET /api/runs/:id/context after 30s while the API answered 200 in 30-44s.
-context_vercel_logs_search='https://vercel.com/vm0/vm0-api/logs?search=requestHost%3Apr-27981-api.vm6.ai+requestPath%3A%2Fapi%2Fruns%2Frun-1%2Fcontext'
+context_vercel_logs_search='https://vercel.com/okou/vm0-api/logs?search=requestHost%3Apr-27981-api.vm6.ai+requestPath%3A%2Fapi%2Fruns%2Frun-1%2Fcontext'
 MOCK_CURL_EXPECTED_URL="https://pr-27981-api.vm6.ai/api/runs/run-1/context"
 MOCK_CURL_EXPECTED_VERCEL_URL="${context_vercel_logs_search}+status%3A000&timeline=past12Hours"
-MOCK_CURL_EXPECTED_VERCEL_WRITE_OUT='%{onerror}%{stderr}Vercel logs: https://vercel.com/vm0/vm0-api/logs?search=requestHost%%3Apr-27981-api.vm6.ai+requestPath%%3A%%2Fapi%%2Fruns%%2Frun-1%%2Fcontext+status%%3A%{http_code}&timeline=past12Hours\n'
+MOCK_CURL_EXPECTED_VERCEL_WRITE_OUT='%{onerror}%{stderr}Vercel logs: https://vercel.com/okou/vm0-api/logs?search=requestHost%%3Apr-27981-api.vm6.ai+requestPath%%3A%%2Fapi%%2Fruns%%2Frun-1%%2Fcontext+status%%3A%{http_code}&timeline=past12Hours\n'
 stall_stderr=$'curl: (28) Operation timed out after 30002 milliseconds with 0 bytes received\nVercel logs: '"$MOCK_CURL_EXPECTED_VERCEL_URL"$'\n'
 retry_stderr=$'runner_api_curl retrying https://pr-27981-api.vm6.ai/api/runs/run-1/context after no response (attempt 1 of 2)\n'
 
@@ -254,8 +254,8 @@ assert_file_excludes "$stderr_file" "$VERCEL_AUTOMATION_BYPASS_SECRET"
 
 # A write may already have been applied by the API, so it is never repeated.
 MOCK_CURL_EXPECTED_URL="https://pr-27981-api.vm6.ai/api/chat/events"
-MOCK_CURL_EXPECTED_VERCEL_URL='https://vercel.com/vm0/vm0-api/logs?search=requestHost%3Apr-27981-api.vm6.ai+requestPath%3A%2Fapi%2Fchat%2Fevents+status%3A000&timeline=past12Hours'
-MOCK_CURL_EXPECTED_VERCEL_WRITE_OUT='%{onerror}%{stderr}Vercel logs: https://vercel.com/vm0/vm0-api/logs?search=requestHost%%3Apr-27981-api.vm6.ai+requestPath%%3A%%2Fapi%%2Fchat%%2Fevents+status%%3A%{http_code}&timeline=past12Hours\n'
+MOCK_CURL_EXPECTED_VERCEL_URL='https://vercel.com/okou/vm0-api/logs?search=requestHost%3Apr-27981-api.vm6.ai+requestPath%3A%2Fapi%2Fchat%2Fevents+status%3A000&timeline=past12Hours'
+MOCK_CURL_EXPECTED_VERCEL_WRITE_OUT='%{onerror}%{stderr}Vercel logs: https://vercel.com/okou/vm0-api/logs?search=requestHost%%3Apr-27981-api.vm6.ai+requestPath%%3A%%2Fapi%%2Fchat%%2Fevents+status%%3A%{http_code}&timeline=past12Hours\n'
 
 MOCK_CURL_MODE=no-response
 reset_curl_attempts
