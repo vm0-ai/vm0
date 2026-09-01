@@ -390,17 +390,24 @@ mod tests {
 
     #[test]
     fn pre_exec_places_child_without_inheriting_descriptor() {
-        let mut placement = tempfile::tempfile().unwrap();
+        let mut placement = tempfile::NamedTempFile::new().unwrap();
         let containment = WorkloadContainment {
-            placement: Arc::new(placement.try_clone().unwrap().into()),
+            placement: Arc::new(placement.as_file().try_clone().unwrap().into()),
             workload_path: Arc::new(PathBuf::from("/unused")),
             tool_placement_endpoint: Arc::from("test-tool-endpoint"),
         };
-        let placement_fd = containment.placement.as_raw_fd();
         let mut command = tokio::process::Command::new("/bin/sh");
         command
             .arg("-c")
-            .arg(format!("test ! -e /proc/self/fd/{placement_fd}"))
+            .arg(
+                r#"for descriptor in /proc/self/fd/*; do
+  if [ "$descriptor" -ef "$1" ]; then
+    exit 1
+  fi
+done"#,
+            )
+            .arg("sh")
+            .arg(placement.path())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
         containment.configure_command(&mut command).unwrap();
@@ -414,9 +421,12 @@ mod tests {
             .unwrap();
 
         assert!(status.success());
-        placement.seek(SeekFrom::Start(0)).unwrap();
+        placement.as_file_mut().seek(SeekFrom::Start(0)).unwrap();
         let mut content = String::new();
-        placement.read_to_string(&mut content).unwrap();
+        placement
+            .as_file_mut()
+            .read_to_string(&mut content)
+            .unwrap();
         assert_eq!(content, "0");
     }
 
