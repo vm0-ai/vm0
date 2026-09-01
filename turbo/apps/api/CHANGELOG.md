@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.525.2](https://github.com/vm0-ai/vm0/compare/api-v1.525.1...api-v1.525.2) (2026-09-01)
+
+
+### Bug Fixes
+
+* **api:** repair retired morning brief snapshots ([#30909](https://github.com/vm0-ai/vm0/issues/30909)) ([8eb32b3](https://github.com/vm0-ai/vm0/commit/8eb32b3f050777150905808ecdde70aca45c7404))
+
 ## [1.525.1](https://github.com/vm0-ai/vm0/compare/api-v1.525.0...api-v1.525.1) (2026-09-01)
 
 
