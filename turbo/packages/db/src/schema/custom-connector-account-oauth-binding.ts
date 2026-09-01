@@ -60,6 +60,9 @@ export const customConnectorAccountOauthBindings = pgTable(
           orgCustomConnectorDcrRegistrations.customConnectorId,
         ],
       }),
+      index("idx_custom_connector_account_oauth_bindings_connector").on(
+        table.customConnectorId,
+      ),
       index("idx_custom_connector_account_oauth_bindings_dcr").on(
         table.dcrRegistrationId,
       ),

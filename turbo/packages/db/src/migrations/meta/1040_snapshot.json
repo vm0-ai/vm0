@@ -10201,6 +10201,21 @@
         }
       },
       "indexes": {
+        "idx_custom_connector_account_oauth_bindings_connector": {
+          "name": "idx_custom_connector_account_oauth_bindings_connector",
+          "columns": [
+            {
+              "expression": "custom_connector_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "idx_custom_connector_account_oauth_bindings_dcr": {
           "name": "idx_custom_connector_account_oauth_bindings_dcr",
           "columns": [
