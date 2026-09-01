@@ -86,6 +86,77 @@ function sanitizedLegacyControlRevokeLine(row: ChatEventRow): string {
   })}\n`;
 }
 
+function isSanitizedLegacyChainedRoot(
+  row: ChatEventRow,
+  root: ChatEventRow,
+): boolean {
+  return (
+    root.chatThreadId === row.chatThreadId &&
+    root.eventType === "input.prompt" &&
+    root.runId === null &&
+    root.revokesEventId === null &&
+    root.contextType === "morning_brief" &&
+    root.contextId === root.id &&
+    root.runEventSequenceNumber === null &&
+    root.runEventId === null
+  );
+}
+
+function isSanitizedLegacyChainedTarget(
+  row: ChatEventRow,
+  target: ChatEventRow,
+  root: ChatEventRow,
+): boolean {
+  return (
+    target.chatThreadId === row.chatThreadId &&
+    target.eventType === "input.rejected" &&
+    target.runId === null &&
+    target.revokesEventId === root.id &&
+    target.contextType === "morning_brief" &&
+    target.contextId === root.id &&
+    target.runEventSequenceNumber === 0 &&
+    target.runEventId === null &&
+    target.seqId < row.seqId
+  );
+}
+
+function sanitizedLegacyChainedControlRevokeLine(
+  row: ChatEventRow,
+  target: ChatEventRow,
+  root: ChatEventRow,
+): string {
+  if (
+    row.eventType !== "control.revoke" ||
+    row.runId !== null ||
+    row.revokesEventId !== target.id ||
+    row.contextType !== "morning_brief" ||
+    row.contextId !== root.id ||
+    row.contextId === row.revokesEventId ||
+    row.payload !== null ||
+    row.runEventSequenceNumber !== null ||
+    row.runEventId !== null ||
+    !isSanitizedLegacyChainedTarget(row, target, root) ||
+    !isSanitizedLegacyChainedRoot(row, root) ||
+    root.seqId >= target.seqId
+  ) {
+    throw new Error("Expected an exact historical chained recall row");
+  }
+  return `${JSON.stringify({
+    id: row.id,
+    chatThreadId: row.chatThreadId,
+    runId: null,
+    revokesEventId: target.id,
+    eventType: "control.revoke",
+    payload: null,
+    contextType: "morning_brief",
+    contextId: root.id,
+    runEventSequenceNumber: null,
+    runEventId: null,
+    seqId: row.seqId,
+    createdAt: row.createdAt,
+  })}\n`;
+}
+
 function mockR2GcWindowForKey(key: string, after: Date): Date {
   const prefixStart = "chat-events/".length;
   const shardGroup = Number.parseInt(
@@ -396,23 +467,31 @@ describe("chat event snapshot read endpoints", () => {
         return [row.id, index] as const;
       }),
     );
-    const contextOnlyRow = originalRows.find((row) => {
+    const rejectionRows = originalRows.filter((row) => {
       return row.eventType === "input.rejected";
     });
-    if (contextOnlyRow === undefined) {
-      throw new Error("Expected a context-only historical rejection row");
-    }
-    const contextCarryingRevokeRow = originalRows.find((row) => {
-      return row.eventType === "input.rejected" && row.id !== contextOnlyRow.id;
-    });
+    const contextOnlyRow = rejectionRows[0];
+    const directControlRevokeRow = rejectionRows[1];
+    const chainedRejectionRow = rejectionRows[2];
+    const chainedControlRevokeRow = rejectionRows[3];
     if (
-      contextCarryingRevokeRow === undefined ||
-      contextCarryingRevokeRow.revokesEventId === null
+      contextOnlyRow === undefined ||
+      directControlRevokeRow === undefined ||
+      directControlRevokeRow.revokesEventId === null ||
+      chainedRejectionRow === undefined ||
+      chainedRejectionRow.revokesEventId === null ||
+      chainedControlRevokeRow === undefined
     ) {
-      throw new Error("Expected a historical revocation source row");
+      throw new Error("Expected complete historical revocation source rows");
+    }
+    const chainedRootRow = originalRows.find((row) => {
+      return row.id === chainedRejectionRow.revokesEventId;
+    });
+    if (chainedRootRow?.eventType !== "input.prompt") {
+      throw new Error("Expected the chained rejection root prompt");
     }
     const expectedRows = originalRows.map((row): ChatEventRow => {
-      if (row.id === contextCarryingRevokeRow.id) {
+      if (row.id === directControlRevokeRow.id) {
         return chatEventRowSchema.parse({
           ...row,
           eventType: "control.revoke",
@@ -423,44 +502,84 @@ describe("chat event snapshot read endpoints", () => {
           runEventId: null,
         });
       }
+      if (row.id === chainedControlRevokeRow.id) {
+        return chatEventRowSchema.parse({
+          ...row,
+          eventType: "control.revoke",
+          payload: null,
+          revokesEventId: chainedRejectionRow.id,
+          contextType: "web",
+          contextId: null,
+          runEventSequenceNumber: null,
+          runEventId: null,
+        });
+      }
       const promptIndex = promptIndexById.get(row.id);
-      if (promptIndex === undefined) {
-        return row.id === contextOnlyRow.id
-          ? chatEventRowSchema.parse({
-              ...row,
-              contextType: "web",
-              contextId: null,
-            })
-          : row;
+      if (promptIndex !== undefined) {
+        const historicalDocument = historicalDocuments[promptIndex];
+        const runId = runIds[promptIndex];
+        if (historicalDocument === undefined || runId === undefined) {
+          throw new Error("Expected a complete historical shape fixture");
+        }
+        return chatEventRowSchema.parse({
+          ...row,
+          runId: row.id === chainedRootRow.id ? null : runId,
+          revokesEventId:
+            promptIndex === 1
+              ? (promptRows[0]?.id ?? null)
+              : row.revokesEventId,
+          contextType: "web",
+          contextId: null,
+          payload: {
+            ...row.payload,
+            userMessage: historicalDocument,
+          },
+        });
       }
-      const historicalDocument = historicalDocuments[promptIndex];
-      const runId = runIds[promptIndex];
-      if (historicalDocument === undefined || runId === undefined) {
-        throw new Error("Expected a complete historical shape fixture");
+      if (row.id === chainedRejectionRow.id) {
+        const rootPromptIndex = promptIndexById.get(chainedRootRow.id);
+        const historicalDocument =
+          rootPromptIndex === undefined
+            ? undefined
+            : historicalDocuments[rootPromptIndex];
+        if (historicalDocument === undefined) {
+          throw new Error("Expected the chained rejection root document");
+        }
+        return chatEventRowSchema.parse({
+          ...row,
+          contextType: "web",
+          contextId: null,
+          payload: {
+            ...row.payload,
+            userMessage: historicalDocument,
+          },
+        });
       }
-      return chatEventRowSchema.parse({
-        ...row,
-        runId,
-        revokesEventId:
-          promptIndex === 1 ? (promptRows[0]?.id ?? null) : row.revokesEventId,
-        contextType: "web",
-        contextId: null,
-        payload: {
-          ...row.payload,
-          userMessage: historicalDocument,
-        },
-      });
+      return row.id === contextOnlyRow.id
+        ? chatEventRowSchema.parse({
+            ...row,
+            contextType: "web",
+            contextId: null,
+          })
+        : row;
     });
     for (const row of expectedRows) {
       chatEventFromRow(row);
     }
 
     const staleRows = expectedRows.map((row): ChatEventRow => {
-      if (row.id === contextCarryingRevokeRow.id) {
+      if (row.id === directControlRevokeRow.id) {
         return chatEventRowSchema.parse({
           ...row,
           contextType: "morning_brief",
           contextId: row.revokesEventId,
+        });
+      }
+      if (row.id === chainedControlRevokeRow.id) {
+        return chatEventRowSchema.parse({
+          ...row,
+          contextType: "morning_brief",
+          contextId: chainedRootRow.id,
         });
       }
       const promptIndex = promptIndexById.get(row.id);
@@ -488,6 +607,34 @@ describe("chat event snapshot read endpoints", () => {
           },
         });
       }
+      if (row.id === chainedRejectionRow.id) {
+        const rootPromptIndex = promptIndexById.get(chainedRootRow.id);
+        const userMessage =
+          rootPromptIndex === undefined
+            ? undefined
+            : historicalDocuments[rootPromptIndex];
+        if (userMessage === undefined || rootPromptIndex === undefined) {
+          throw new Error("Expected a chained rejection document fixture");
+        }
+        return chatEventRowSchema.parse({
+          ...row,
+          contextType: "morning_brief",
+          contextId: chainedRootRow.id,
+          payload: {
+            ...row.payload,
+            userMessage: {
+              ...userMessage,
+              parts: [
+                ...userMessage.parts,
+                {
+                  type: "morning_brief",
+                  briefDate: `2026-08-${(20 + rootPromptIndex).toString()}`,
+                },
+              ],
+            },
+          },
+        });
+      }
       return row.id === contextOnlyRow.id
         ? chatEventRowSchema.parse({
             ...row,
@@ -496,26 +643,51 @@ describe("chat event snapshot read endpoints", () => {
           })
         : row;
     });
+    const staleDirectControlRevoke = staleRows.find((row) => {
+      return row.id === directControlRevokeRow.id;
+    });
+    const staleChainedRejection = staleRows.find((row) => {
+      return row.id === chainedRejectionRow.id;
+    });
+    const staleChainedControlRevoke = staleRows.find((row) => {
+      return row.id === chainedControlRevokeRow.id;
+    });
+    const staleChainedRoot = staleRows.find((row) => {
+      return row.id === chainedRootRow.id;
+    });
+    if (
+      staleDirectControlRevoke === undefined ||
+      staleChainedRejection === undefined ||
+      staleChainedControlRevoke === undefined ||
+      staleChainedRoot === undefined
+    ) {
+      throw new Error("Expected byte-exact historical revocation rows");
+    }
+    const byteExactDirectRevokeLine = sanitizedLegacyControlRevokeLine(
+      staleDirectControlRevoke,
+    );
+    const byteExactChainedRevokeLine = sanitizedLegacyChainedControlRevokeLine(
+      staleChainedControlRevoke,
+      staleChainedRejection,
+      staleChainedRoot,
+    );
     const staleArchive = Buffer.from(
       staleRows
         .map((row) => {
-          return row.id === contextCarryingRevokeRow.id
-            ? sanitizedLegacyControlRevokeLine(row)
+          if (row.id === directControlRevokeRow.id) {
+            return byteExactDirectRevokeLine;
+          }
+          return row.id === chainedControlRevokeRow.id
+            ? byteExactChainedRevokeLine
             : `${JSON.stringify(row)}\n`;
         })
         .join(""),
     );
-    const staleContextCarryingRevoke = staleRows.find((row) => {
-      return row.id === contextCarryingRevokeRow.id;
-    });
-    if (staleContextCarryingRevoke === undefined) {
-      throw new Error("Expected the byte-exact historical queue-discard row");
-    }
-    const byteExactRevokeLine = sanitizedLegacyControlRevokeLine(
-      staleContextCarryingRevoke,
-    );
     expect(
-      staleArchive.includes(Buffer.from(byteExactRevokeLine)),
+      staleArchive.includes(Buffer.from(byteExactDirectRevokeLine)),
+    ).toBeTruthy();
+    expect(
+      staleArchive.includes(Buffer.from(byteExactChainedRevokeLine)),
     ).toBeTruthy();
     const staleBody = gzipSync(staleArchive);
     const staleObjectKey = `chat-events/${threadId}/${originalHead.last_seq_id.toString()}-${createHash("sha256").update(staleBody).digest("hex")}.ndjson.gz`;
@@ -587,14 +759,25 @@ describe("chat event snapshot read endpoints", () => {
     );
     expect(
       repairedRows.find((row) => {
-        return row.id === contextCarryingRevokeRow.id;
+        return row.id === directControlRevokeRow.id;
       }),
     ).toMatchObject({
       eventType: "control.revoke",
       payload: null,
       contextType: "web",
       contextId: null,
-      revokesEventId: contextCarryingRevokeRow.revokesEventId,
+      revokesEventId: directControlRevokeRow.revokesEventId,
+    });
+    expect(
+      repairedRows.find((row) => {
+        return row.id === chainedControlRevokeRow.id;
+      }),
+    ).toMatchObject({
+      eventType: "control.revoke",
+      payload: null,
+      contextType: "web",
+      contextId: null,
+      revokesEventId: chainedRejectionRow.id,
     });
 
     const projectedSnapshot = repairedRows.map(chatEventFromRow);
@@ -605,7 +788,11 @@ describe("chat event snapshot read endpoints", () => {
       projectedPrompts.map((event) => {
         return event.runId;
       }),
-    ).toStrictEqual(runIds);
+    ).toStrictEqual(
+      promptRows.map((row, index) => {
+        return row.id === chainedRootRow.id ? undefined : runIds[index];
+      }),
+    );
     expect(
       projectedPrompts.map((event) => {
         return event.userMessage;
@@ -811,8 +998,15 @@ describe("chat event snapshot read endpoints", () => {
     const inputRow = originalRows.find((row) => {
       return row.eventType === "input.prompt";
     });
+    const rejectedRow = originalRows.find((row) => {
+      return row.eventType === "input.rejected";
+    });
     const firstRow = originalRows[0];
-    if (inputRow === undefined || firstRow === undefined) {
+    if (
+      inputRow === undefined ||
+      rejectedRow === undefined ||
+      firstRow === undefined
+    ) {
       throw new Error("Expected complete Snapshot decode fixtures");
     }
     const encodeRows = (rows: readonly unknown[]): Buffer => {
@@ -830,6 +1024,23 @@ describe("chat event snapshot read endpoints", () => {
     const projectionBody = encodeRows(
       originalRows.map((row) => {
         return row.id === inputRow.id ? { ...row, payload: null } : row;
+      }),
+    );
+    const unresolvedRevokeBody = encodeRows(
+      originalRows.map((row) => {
+        return row.id === rejectedRow.id
+          ? {
+              ...row,
+              eventType: "control.revoke",
+              runId: null,
+              revokesEventId: randomUUID(),
+              contextType: "morning_brief",
+              contextId: inputRow.id,
+              payload: null,
+              runEventSequenceNumber: null,
+              runEventId: null,
+            }
+          : row;
       }),
     );
     const prefixBody = encodeRows(
@@ -861,6 +1072,14 @@ describe("chat event snapshot read endpoints", () => {
       {
         failureClass: "projection",
         object: gzipSync(projectionBody),
+        projectionSubstage: "current_contract",
+        projectionVariant: "invalid_event_shape",
+      },
+      {
+        failureClass: "projection",
+        object: gzipSync(unresolvedRevokeBody),
+        projectionSubstage: "retired_event",
+        projectionVariant: "unresolved_revoke_chain",
       },
       {
         failureClass: "prefix",
@@ -914,9 +1133,24 @@ describe("chat event snapshot read endpoints", () => {
         reason: "undecodable",
         failureClass: testCase.failureClass,
         context: "api:cron:snapshot-chat-events",
+        ...("projectionSubstage" in testCase
+          ? {
+              projectionSubstage: testCase.projectionSubstage,
+              projectionVariant: testCase.projectionVariant,
+            }
+          : {}),
       });
       expect(Object.keys(fields).sort()).toStrictEqual(
-        ["chatThreadId", "context", "failureClass", "reason", "type"].sort(),
+        [
+          "chatThreadId",
+          "context",
+          "failureClass",
+          "reason",
+          "type",
+          ...("projectionSubstage" in testCase
+            ? ["projectionSubstage", "projectionVariant"]
+            : []),
+        ].sort(),
       );
     }
   }, 90_000);
@@ -936,8 +1170,8 @@ describe("chat event snapshot read endpoints", () => {
       routes: chatThreadRoutes,
     });
     const missingVersionPaths = [
-      `/api/okou/chat-threads/${threadId}/event-snapshot`,
-      `/api/okou/chat-threads/${threadId}/event-rows?sinceSeqId=0`,
+      `/api/chat-threads/${threadId}/event-snapshot`,
+      `/api/chat-threads/${threadId}/event-rows?sinceSeqId=0`,
     ];
     for (const path of missingVersionPaths) {
       const response = await rawRequest(path, {

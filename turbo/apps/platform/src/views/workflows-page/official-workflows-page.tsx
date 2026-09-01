@@ -48,7 +48,6 @@ import {
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
-import { userPreferences$ } from "../../signals/okou-page/settings/user-preferences.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import {
@@ -403,15 +402,10 @@ function InstallDialog({
 function OfficialWorkflowDefinitionPage() {
   const definitionLoadable = useLoadable(currentOfficialWorkflowDefinition$);
   const defaultAgentId = useLastResolved(defaultAgentId$) ?? "";
-  const preferences = useLastResolved(userPreferences$);
   const setForm = useSet(setOfficialWorkflowConfigurationForm$);
   const reload = useSet(reloadOfficialWorkflows$);
   const definition =
     definitionLoadable.state === "hasData" ? definitionLoadable.data : null;
-  const userTimezone =
-    preferences?.timezone ??
-    new Intl.DateTimeFormat().resolvedOptions().timeZone;
-
   return (
     <DetailPageShell>
       <DetailPageBreadcrumbBar>
@@ -449,7 +443,6 @@ function OfficialWorkflowDefinitionPage() {
                       definitionName: definition.name,
                       agentId: defaultAgentId,
                       blueprints: definition.blueprints,
-                      userTimezone,
                     }),
                   );
                 }}

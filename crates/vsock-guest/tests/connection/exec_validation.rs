@@ -34,10 +34,17 @@ fn session_history_identity_verify_payload(metadata_path: &str, runtime_dir: &st
 }
 
 fn verifier_exec_request<'a>(command: &'a str) -> vsock_proto::ExecStartEncodeRequest<'a> {
+    verifier_exec_request_with_timeout(command, 5000)
+}
+
+fn verifier_exec_request_with_timeout(
+    command: &str,
+    timeout_ms: u32,
+) -> vsock_proto::ExecStartEncodeRequest<'_> {
     vsock_proto::ExecStartEncodeRequest {
         lifecycle: ExecLifecyclePolicy::OneShot,
         role: vsock_proto::ExecProcessRole::SessionHistoryIdentityVerifier,
-        timeout: ExecTimeoutPolicy::Duration { timeout_ms: 5000 },
+        timeout: ExecTimeoutPolicy::Duration { timeout_ms },
         command,
         env: &[],
         sudo: false,
@@ -52,6 +59,13 @@ fn verifier_exec_request<'a>(command: &'a str) -> vsock_proto::ExecStartEncodeRe
         control: ExecControlPolicy::Disabled,
         stdin_bytes: None,
     }
+}
+
+fn write_executable_script(path: &str, contents: &str) {
+    fs::write(path, contents).unwrap();
+    let mut permissions = fs::metadata(path).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions).unwrap();
 }
 
 #[test]
@@ -227,7 +241,7 @@ fn controlled_agent_rejects_command_sudo_and_stdin_authority() {
 #[test]
 fn session_history_identity_verifier_directly_launches_fixed_helper_arguments() {
     let agent_path = unique_tmp_path("session-history-identity-verifier", ".sh");
-    fs::write(
+    write_executable_script(
         agent_path.as_str(),
         r#"#!/bin/sh
 printf 'runtime=%s\n' "$OKOU_GUEST_RUNTIME_DIR"
@@ -235,11 +249,7 @@ printf 'args'
 for arg in "$@"; do printf ' <%s>' "$arg"; done
 printf '\n'
 "#,
-    )
-    .unwrap();
-    let mut permissions = fs::metadata(agent_path.as_str()).unwrap().permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(agent_path.as_str(), permissions).unwrap();
+    );
     let metadata_path = "/tmp/final identity;printf should-not-run";
     let runtime_dir = "/tmp/runtime $(printf should-not-run)";
     let payload = session_history_identity_verify_payload(metadata_path, runtime_dir);
@@ -263,6 +273,93 @@ printf '\n'
     assert_eq!(result.stderr, Some(Vec::new()));
 
     finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn session_history_identity_verifier_natural_exit_cleans_descendants() {
+    let agent_path = unique_tmp_path("session-history-verifier-descendant", ".sh");
+    let pid_path = unique_pid_path("session-history-verifier-descendant");
+    let mut group_guard = ProcessGroupFileGuard::new(pid_path.as_str());
+    write_executable_script(
+        agent_path.as_str(),
+        &format!(
+            "#!/bin/sh\nprintf '%s' \"$$\" > '{}'\nsleep 30 >/dev/null 2>&1 &\nexit 0\n",
+            pid_path.as_str(),
+        ),
+    );
+    let payload = session_history_identity_verify_payload("/tmp/metadata", "/tmp/runtime");
+    let (handle, mut host_stream) =
+        start_guest_connection_with_guest_agent_program(PathBuf::from(agent_path.as_str()));
+
+    send_exec_start_request(&mut host_stream, 146, verifier_exec_request(&payload));
+    let (chunks, result) = read_exec_result(&mut host_stream, 146);
+    let pid = group_guard.read_pid();
+
+    assert!(chunks.is_empty());
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    wait_for_pid_exit(pid, "session history verifier natural exit");
+    group_guard.disarm();
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn session_history_identity_verifier_timeout_cleans_process_group() {
+    let agent_path = unique_tmp_path("session-history-verifier-timeout", ".sh");
+    let pid_path = unique_pid_path("session-history-verifier-timeout");
+    let mut group_guard = ProcessGroupFileGuard::new(pid_path.as_str());
+    write_executable_script(
+        agent_path.as_str(),
+        &format!(
+            "#!/bin/sh\nprintf '%s' \"$$\" > '{}'\nsleep 30\n",
+            pid_path.as_str(),
+        ),
+    );
+    let payload = session_history_identity_verify_payload("/tmp/metadata", "/tmp/runtime");
+    let (handle, mut host_stream) =
+        start_guest_connection_with_guest_agent_program(PathBuf::from(agent_path.as_str()));
+
+    send_exec_start_request(
+        &mut host_stream,
+        147,
+        verifier_exec_request_with_timeout(&payload, 200),
+    );
+    let (chunks, result) = read_exec_result(&mut host_stream, 147);
+    let pid = group_guard.read_pid();
+
+    assert!(chunks.is_empty());
+    assert_eq!(result.termination, ExecTermination::TimedOut);
+    wait_for_pid_exit(pid, "session history verifier timeout");
+    group_guard.disarm();
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn session_history_identity_verifier_disconnect_cleans_process_group() {
+    let agent_path = unique_tmp_path("session-history-verifier-disconnect", ".sh");
+    let pid_path = unique_pid_path("session-history-verifier-disconnect");
+    let mut group_guard = ProcessGroupFileGuard::new(pid_path.as_str());
+    write_executable_script(
+        agent_path.as_str(),
+        &format!(
+            "#!/bin/sh\nprintf '%s' \"$$\" > '{}'\nsleep 30\n",
+            pid_path.as_str(),
+        ),
+    );
+    let payload = session_history_identity_verify_payload("/tmp/metadata", "/tmp/runtime");
+    let (handle, mut host_stream) =
+        start_guest_connection_with_guest_agent_program(PathBuf::from(agent_path.as_str()));
+
+    send_exec_start_request(
+        &mut host_stream,
+        148,
+        verifier_exec_request_with_timeout(&payload, 60_000),
+    );
+    let pid = group_guard.read_pid();
+
+    drop(host_stream);
+    join_guest_connection(handle);
+    wait_for_pid_exit(pid, "session history verifier disconnect");
+    group_guard.disarm();
 }
 
 #[test]

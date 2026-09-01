@@ -86,6 +86,69 @@ class TestResponseHeadersModelJsonParser:
         assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
 
 
+class TestBodyBearingConnectModelResponseParserAdmission:
+    """Tests body-bearing CONNECT responses at the shared model parser gate."""
+
+    @pytest.mark.parametrize(
+        ("response_status", "content_encoding"),
+        [
+            pytest.param(300, "", id="redirect-boundary"),
+            pytest.param(500, "gzip", id="provider-failure"),
+        ],
+    )
+    def test_non_success_response_uses_json_parser(
+        self,
+        real_flow,
+        tmp_path,
+        mitm_ctx,
+        response_status: int,
+        content_encoding: str,
+    ) -> None:
+        flow = real_flow(
+            with_response=False,
+            host="api.openai.com",
+            path="/v1/chat/completions",
+            method="CONNECT",
+        )
+        response_headers = {"content-type": "application/json"}
+        if content_encoding:
+            response_headers["content-encoding"] = content_encoding
+        flow.response = tutils.tresp(
+            status_code=response_status,
+            headers=header_map(response_headers),
+        )
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow.metadata.update(
+            {
+                metadata_keys.SANDBOX_PROXY_LOG_PATH: str(proxy_log_path),
+                metadata_keys.FIREWALL_NAME: "model-provider:openai-api-key",
+                metadata_keys.FIREWALL_BILLABLE: True,
+                metadata_keys.MODEL_USAGE_PROVIDER: "gpt-5.5",
+            }
+        )
+        body = b'{"model":"gpt-5.5","usage":{"prompt_tokens":12,"completion_tokens":7}}'
+        wire_body = gzip.compress(body) if content_encoding else body
+
+        with mitm_ctx():
+            mitm_addon.responseheaders(flow)
+
+            assert "model_json_usage_finish" in flow.metadata
+            assert "model_sse_usage_finish" not in flow.metadata
+            assert "model_websocket_usage_enabled" not in flow.metadata
+            assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
+            assert response_stream(flow)(wire_body) == wire_body
+
+            response_streaming.finalize_model_json_usage(flow, str(proxy_log_path))
+
+        assert flow.metadata[metadata_keys.MODEL_JSON_USAGE_FINALIZED] is True
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {
+            "model": "gpt-5.5",
+            "tokens.input": 12,
+            "tokens.output": 7,
+        }
+        assert not jsonl_exists_after_flush(proxy_log_path)
+
+
 class TestBodylessModelResponseParserAdmission:
     """Tests HTTP body semantics at the shared model response parser gate."""
 

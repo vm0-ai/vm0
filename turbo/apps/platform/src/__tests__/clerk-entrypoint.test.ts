@@ -21,14 +21,12 @@ vi.unmock("@clerk/shared/loadClerkJsScript");
 
 const PREVIEW_FRONTEND_API_HOST = "informed-calf-6.clerk.accounts.dev";
 const PRODUCTION_FRONTEND_API_HOST = "clerk.vm0.ai";
-const OKOU_PRODUCTION_FRONTEND_API_HOST = "clerk.app.okou.ai";
-const PRODUCTION_SATELLITE_DOMAIN = "app.okou.ai";
+const CURRENT_PRIMARY_APP_DOMAIN = "app.vm0.ai";
+const CUTOVER_PRIMARY_APP_DOMAIN = "app.okou.ai";
 const CLERK_BOOTSTRAP_SELECTOR = "script[data-vm0-clerk-bootstrap]";
 const CLERK_CORE_SCRIPT_ID = "vm0-clerk-core-script";
 const CLERK_SCRIPT_SELECTOR = "script[data-clerk-js-script]";
 const TEST_APP_VERSION = "0.812.5-test";
-const CLERK_LOAD_COMPLETED_MARK = "vm0:bootstrap:clerk-load-completed";
-const CLERK_LOAD_STARTED_MARK = "vm0:bootstrap:clerk-load-started";
 
 const PREFETCHED_ONBOARDING_STATUS: OnboardingStatusResponse = {
   defaultAgentId: "c0000000-0000-4000-a000-000000000101",
@@ -70,6 +68,9 @@ interface ClerkPageOptions {
   readonly cookie?: string;
   readonly path?: string;
   readonly productionPublishableKey?: string;
+  readonly productionPrimaryAppDomain?:
+    | typeof CURRENT_PRIMARY_APP_DOMAIN
+    | typeof CUTOVER_PRIMARY_APP_DOMAIN;
   readonly url?: string;
 }
 
@@ -87,11 +88,6 @@ const PRODUCTION_PUBLISHABLE_KEY = publishableKey(
   "live",
   PRODUCTION_FRONTEND_API_HOST,
 );
-const OKOU_PRODUCTION_PUBLISHABLE_KEY = publishableKey(
-  "live",
-  OKOU_PRODUCTION_FRONTEND_API_HOST,
-);
-
 function expectedClerkScriptUrl(): string {
   return `https://cdn.jsdelivr.net/npm/@clerk/clerk-js@${CLERK_JS_VERSION}/dist/clerk.browser.js`;
 }
@@ -110,6 +106,7 @@ function stubClerkBuildEnvironment(
 function builtIndexHtml(
   appVersion = TEST_APP_VERSION,
   productionPublishableKey = PRODUCTION_PUBLISHABLE_KEY,
+  productionPrimaryAppDomain = CURRENT_PRIMARY_APP_DOMAIN,
 ): string {
   return transformClerkCoreScriptUrls(
     indexHtml
@@ -117,9 +114,10 @@ function builtIndexHtml(
         "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%",
         PREVIEW_PUBLISHABLE_KEY,
       )
+      .replaceAll("%VITE_CLERK_PUBLISHABLE_KEY_PROD%", productionPublishableKey)
       .replaceAll(
-        "%VITE_CLERK_PUBLISHABLE_KEY_PROD%",
-        productionPublishableKey,
+        "__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__",
+        productionPrimaryAppDomain,
       ),
     {
       appVersion,
@@ -163,7 +161,10 @@ function captureClerkBootstrapScript(
   url: string,
   options: Pick<
     ClerkPageOptions,
-    "apiOriginMarker" | "cookie" | "productionPublishableKey"
+    | "apiOriginMarker"
+    | "cookie"
+    | "productionPublishableKey"
+    | "productionPrimaryAppDomain"
   > = {},
 ): HTMLScriptElement {
   stubClerkBuildEnvironment(options.productionPublishableKey);
@@ -179,14 +180,13 @@ function captureClerkBootstrapScript(
       window.dispatchEvent(new Event("pagehide"));
       Reflect.deleteProperty(globalThis, "Clerk");
       Reflect.deleteProperty(window, "__vm0ClerkBootstrap");
-      performance.clearMarks(CLERK_LOAD_STARTED_MARK);
-      performance.clearMarks(CLERK_LOAD_COMPLETED_MARK);
     },
     { once: true },
   );
   const html = builtIndexHtml(
     TEST_APP_VERSION,
     options.productionPublishableKey,
+    options.productionPrimaryAppDomain,
   );
   const clerkScript = createClerkCoreScript(html);
   const scriptUrl = clerkScript.src;
@@ -254,6 +254,7 @@ function startClerkPage(
       const html = builtIndexHtml(
         TEST_APP_VERSION,
         options.productionPublishableKey,
+        options.productionPrimaryAppDomain,
       );
       const staticClerkScript = createClerkCoreScript(html);
       document.head.appendChild(staticClerkScript);
@@ -280,8 +281,6 @@ function startClerkPage(
           }
           Reflect.deleteProperty(globalThis, "Clerk");
           Reflect.deleteProperty(window, "__vm0ClerkBootstrap");
-          performance.clearMarks(CLERK_LOAD_STARTED_MARK);
-          performance.clearMarks(CLERK_LOAD_COMPLETED_MARK);
         },
         { once: true },
       );
@@ -366,10 +365,10 @@ describe("platform Clerk entrypoint", () => {
     expect(bootstrap.compareDocumentPosition(mainScript)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
-    expect(mainScript.compareDocumentPosition(skeleton)).toBe(
+    expect(skeleton.compareDocumentPosition(fontStylesheet)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
-    expect(skeleton.compareDocumentPosition(fontStylesheet)).toBe(
+    expect(fontStylesheet.compareDocumentPosition(mainScript)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
     expect(html).not.toContain("__VM0_");
@@ -385,6 +384,7 @@ describe("platform Clerk entrypoint", () => {
     expect(criticalStyles.textContent).toContain(
       "@keyframes app-bootstrap-skeleton-avatar-pulse",
     );
+    expect(criticalStyles.id).toBe("app-bootstrap-critical-styles");
     expect(externalSkeletonImages).toHaveLength(0);
     expect(inlineAvatar).toBeInstanceOf(SVGSVGElement);
     expect(inlineAvatar?.querySelectorAll("path").length).toBeGreaterThan(0);
@@ -392,6 +392,14 @@ describe("platform Clerk entrypoint", () => {
     expect(skeleton).toHaveTextContent("");
     expect(fontStylesheet.rel).toBe("stylesheet");
     expect(fontStylesheet.hasAttribute("as")).toBeFalsy();
+    expect(fontStylesheet.media).toBe("print");
+    expect(fontStylesheet.getAttribute("fetchpriority")).toBe("low");
+    expect(fontStylesheet.getAttribute("onload")).toBe("this.media = 'all'");
+    expect(
+      parsedDocument.querySelector(
+        'link[rel="preconnect"][href*="fonts.googleapis.com"], link[rel="preconnect"][href*="fonts.gstatic.com"]',
+      ),
+    ).toBeNull();
     expect(html.indexOf("data-vm0-clerk-bootstrap")).toBeLessThan(
       html.indexOf('type="module" src="/src/main.ts"'),
     );
@@ -425,7 +433,6 @@ describe("platform Clerk entrypoint", () => {
     {
       authOrigin: "https://pr-30199-app.omby.ai",
       domain: null,
-      productionPublishableKey: PRODUCTION_PUBLISHABLE_KEY,
       publishableKey: PREVIEW_PUBLISHABLE_KEY,
       scriptUrl: expectedClerkScriptUrl(),
       url: "https://pr-30199-app.omby.ai/",
@@ -433,15 +440,13 @@ describe("platform Clerk entrypoint", () => {
     {
       authOrigin: "https://app.vm0.ai",
       domain: null,
-      productionPublishableKey: PRODUCTION_PUBLISHABLE_KEY,
       publishableKey: PRODUCTION_PUBLISHABLE_KEY,
       scriptUrl: expectedClerkScriptUrl(),
       url: "https://app.vm0.ai/",
     },
     {
       authOrigin: "https://app.vm0.ai",
-      domain: PRODUCTION_SATELLITE_DOMAIN,
-      productionPublishableKey: PRODUCTION_PUBLISHABLE_KEY,
+      domain: "app.okou.ai",
       publishableKey: PRODUCTION_PUBLISHABLE_KEY,
       scriptUrl: expectedClerkScriptUrl(),
       url: "https://app.okou.ai/",
@@ -449,23 +454,22 @@ describe("platform Clerk entrypoint", () => {
     {
       authOrigin: "https://app.okou.ai",
       domain: null,
-      productionPublishableKey: OKOU_PRODUCTION_PUBLISHABLE_KEY,
-      publishableKey: OKOU_PRODUCTION_PUBLISHABLE_KEY,
+      productionPrimaryAppDomain: CUTOVER_PRIMARY_APP_DOMAIN,
+      publishableKey: PRODUCTION_PUBLISHABLE_KEY,
       scriptUrl: expectedClerkScriptUrl(),
       url: "https://app.okou.ai/",
     },
     {
       authOrigin: "https://app.okou.ai",
       domain: "vm0.ai",
-      productionPublishableKey: OKOU_PRODUCTION_PUBLISHABLE_KEY,
-      publishableKey: OKOU_PRODUCTION_PUBLISHABLE_KEY,
+      productionPrimaryAppDomain: CUTOVER_PRIMARY_APP_DOMAIN,
+      publishableKey: PRODUCTION_PUBLISHABLE_KEY,
       scriptUrl: expectedClerkScriptUrl(),
       url: "https://app.vm0.ai/",
     },
     {
       authOrigin: "https://okou.ai.evil.example",
       domain: null,
-      productionPublishableKey: PRODUCTION_PUBLISHABLE_KEY,
       publishableKey: PREVIEW_PUBLISHABLE_KEY,
       scriptUrl: expectedClerkScriptUrl(),
       url: "https://okou.ai.evil.example/",
@@ -475,13 +479,14 @@ describe("platform Clerk entrypoint", () => {
     ({
       authOrigin,
       domain,
-      productionPublishableKey,
+      productionPrimaryAppDomain,
       publishableKey,
       scriptUrl,
       url,
     }) => {
       const script = captureClerkBootstrapScript(url, {
-        productionPublishableKey,
+        productionPrimaryAppDomain:
+          productionPrimaryAppDomain as ClerkPageOptions["productionPrimaryAppDomain"],
       });
       const bootstrap = window.__vm0ClerkBootstrap;
       if (!bootstrap) {
@@ -504,6 +509,9 @@ describe("platform Clerk entrypoint", () => {
       expect(script.onload).toStrictEqual(expect.any(Function));
       expect(script.type).toBe("text/javascript");
       expect(bootstrap.publishableKey).toBe(publishableKey);
+      expect(bootstrap.productionPrimaryAppDomain).toBe(
+        productionPrimaryAppDomain ?? CURRENT_PRIMARY_APP_DOMAIN,
+      );
       expect(bootstrap.domain ?? null).toBe(domain);
       expect(bootstrap.loadOptions).toStrictEqual({
         afterSignOutUrl: `${authOrigin}/sign-in`,
@@ -526,8 +534,6 @@ describe("platform Clerk entrypoint", () => {
     if (!bootstrap?.loaded || !bootstrap.onboardingStatusPromise) {
       throw new Error("Clerk bootstrap did not start its shared promises");
     }
-    const startedAt = bootstrap.clerkLoadStartedAt;
-    expect(startedAt).toStrictEqual(expect.any(Number));
     expect(mockedClerkLoad).toHaveBeenCalledOnce();
     expect(bootstrap.loaded).toBe(loadCanFinish.promise);
     const onboardingStatusPromise = bootstrap.onboardingStatusPromise;
@@ -545,17 +551,8 @@ describe("platform Clerk entrypoint", () => {
     loadCanFinish.resolve(undefined);
     await Promise.all([setup, bootstrap.onboardingStatusPromise]);
 
-    const completedAt = bootstrap.clerkLoadCompletedAt;
-    expect(completedAt).toStrictEqual(expect.any(Number));
+    expect(bootstrap.loaded).toBeUndefined();
     expect(mockedClerkLoad).toHaveBeenCalledOnce();
-    expect(
-      performance.getEntriesByName(CLERK_LOAD_STARTED_MARK, "mark")[0]
-        ?.startTime,
-    ).toBe(startedAt);
-    expect(
-      performance.getEntriesByName(CLERK_LOAD_COMPLETED_MARK, "mark")[0]
-        ?.startTime,
-    ).toBe(completedAt);
   });
 
   it("does not start onboarding after a final pagehide during Clerk.load", async () => {
@@ -624,7 +621,7 @@ describe("platform Clerk entrypoint", () => {
       authOrigin: "https://app.vm0.ai",
       bypass: null,
       cookie: undefined,
-      domain: PRODUCTION_SATELLITE_DOMAIN,
+      domain: "app.okou.ai",
       expectedRequestUrl: "https://api.okou.ai/api/onboarding/status",
       expectedScriptUrl: expectedClerkScriptUrl(),
       url: "https://app.okou.ai/",
@@ -757,7 +754,7 @@ describe("platform Clerk entrypoint", () => {
     expect(requests).toBe(0);
   });
 
-  it("falls through to existing auth recovery after an early request failure", async () => {
+  it("returns an API 401 after early prefetch failure without forcing a refresh", async () => {
     const authorizations: (string | null)[] = [];
     context.mocks.http.get("*/api/onboarding/status", ({ request }) => {
       authorizations.push(request.headers.get("authorization"));
@@ -786,20 +783,19 @@ describe("platform Clerk entrypoint", () => {
       mockedClerk.sessionGetToken.mock.calls.filter(([options]) => {
         return options?.skipCache === true;
       }).length;
-    await expect(context.store.get(onboardingStatus$)).resolves.toStrictEqual(
-      RETRIED_ONBOARDING_STATUS,
+    await expect(context.store.get(onboardingStatus$)).rejects.toThrow(
+      "Unauthorized",
     );
 
     expect(authorizations).toStrictEqual([
       "Bearer stale-test-token",
       "Bearer stale-test-token",
-      "Bearer fresh-test-token",
     ]);
     expect(
       mockedClerk.sessionGetToken.mock.calls.filter(([options]) => {
         return options?.skipCache === true;
       }),
-    ).toHaveLength(forcedTokenReadsBeforeRetry + 1);
+    ).toHaveLength(forcedTokenReadsBeforeRetry);
   });
 
   it.each([

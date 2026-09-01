@@ -1,10 +1,14 @@
 import { publicBrandSchema } from "@okouai/api-contracts/contracts/public-brand";
+import {
+  MORNING_BRIEF_OFFICIAL_DEFINITION_NAME,
+  MORNING_BRIEF_PREFERENCES_PATH,
+} from "@okouai/api-contracts/contracts/morning-brief-preference";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { emailOutbox } from "@okouai/db/schema/email-outbox";
 import { officialAutomationResultEmailClaims } from "@okouai/db/schema/official-automation-result-email-claim";
 import { users } from "@okouai/db/schema/user";
-import { workflowAutomations } from "@okouai/db/schema/workflow";
+import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
 import { command, createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -107,8 +111,12 @@ async function workflowAutomationManageUrl(
   signal: AbortSignal,
 ): Promise<string> {
   const [automation] = await db
-    .select({ workflowId: workflowAutomations.workflowId })
+    .select({
+      workflowId: workflowAutomations.workflowId,
+      officialDefinitionName: workflows.officialDefinitionName,
+    })
     .from(workflowAutomations)
+    .innerJoin(workflows, eq(workflows.id, workflowAutomations.workflowId))
     .where(
       and(
         eq(workflowAutomations.id, args.automationId),
@@ -117,6 +125,12 @@ async function workflowAutomationManageUrl(
     )
     .limit(1);
   signal.throwIfAborted();
+  if (
+    automation?.officialDefinitionName ===
+    MORNING_BRIEF_OFFICIAL_DEFINITION_NAME
+  ) {
+    return `${args.productUrl}${MORNING_BRIEF_PREFERENCES_PATH}`;
+  }
   return automation
     ? `${args.productUrl}/workflows/${encodeURIComponent(
         automation.workflowId,

@@ -310,34 +310,13 @@ async function resolveModelContext(
 
   const effectiveModelProvider = providerAdmission.effectiveModelProvider;
   const selectedModel = pin.selectedModel;
-  const fallbackEnabled = isBuiltInModelProviderType(effectiveModelProvider)
-    ? isFeatureEnabled(
-        FeatureSwitchKey.BuiltInModelProviderFallback,
-        await args.timing.measure(
-          "api_dispatch_pre_create_zero_goal_drain_model_context_reload_fallback_feature_switches",
-          "nested",
-          () => {
-            return loadUserFeatureSwitchContext(
-              args.db,
-              args.goal.orgId,
-              args.goal.userId,
-            );
-          },
-          args.timingDimensions,
-        ),
-      )
-    : false;
   const builtInModelRuntimeRoute =
     isBuiltInModelProviderType(effectiveModelProvider) && selectedModel
       ? await args.timing.measure(
           "api_dispatch_pre_create_zero_goal_drain_model_context_resolve_built_in_route",
           "nested",
           () => {
-            return resolveBuiltInModelRuntimeRoute(
-              args.db,
-              selectedModel,
-              fallbackEnabled,
-            );
+            return resolveBuiltInModelRuntimeRoute(args.db, selectedModel);
           },
           args.timingDimensions,
         )
@@ -355,12 +334,9 @@ async function resolveModelContext(
           status: 503,
           body: {
             error: {
-              code: fallbackEnabled
-                ? "MODEL_PROVIDER_UNAVAILABLE"
-                : "PROVIDER_UNAVAILABLE",
-              message: fallbackEnabled
-                ? "Every built-in model route for this model is temporarily unavailable"
-                : "No model provider configured: no built-in model key is configured",
+              code: "MODEL_PROVIDER_UNAVAILABLE",
+              message:
+                "Every built-in model route for this model is temporarily unavailable",
             },
           },
         },

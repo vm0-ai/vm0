@@ -1,6 +1,7 @@
 import "./lib/preview-bypass-cookie-bootstrap.ts";
 import "./lib/accept-browser.ts";
 import { browserUpgradeForUserAgent } from "./lib/browser-support.ts";
+import { initInstatusWidget } from "./lib/instatus-widget.ts";
 import { initSentry } from "./lib/sentry.ts";
 import { captureFirstSkeletonPaint, initPostHog } from "./lib/posthog.ts";
 import { initPlausible } from "./lib/plausible.ts";
@@ -42,7 +43,7 @@ function startApplication(): void {
       return store.set(resetViewportSettleSignal$, rootSignal);
     });
 
-    await store.set(
+    const runtime = store.set(
       bootstrap$,
       __OKOU_APP_VERSION__,
       () => {
@@ -58,17 +59,26 @@ function startApplication(): void {
           });
         });
       },
-      (daemon) => {
-        detach(daemon, Reason.Daemon, "app realtime subscriptions");
-      },
       rootSignal,
     );
+    detach(
+      runtime.sharedDatabaseDaemon,
+      Reason.Daemon,
+      "shared database bridge",
+    );
+    detach(
+      runtime.authenticatedRealtimeDaemon,
+      Reason.Daemon,
+      "app realtime subscriptions",
+    );
+    await runtime.ready;
   }
 
   detach(main(), Reason.Entrance, "main");
 }
 
 window.__appBootstrapModuleReady = performance.now();
+initInstatusWidget();
 const browserUpgrade = browserUpgradeForUserAgent(navigator.userAgent);
 if (browserUpgrade) {
   const rootElement = document.getElementById("root");

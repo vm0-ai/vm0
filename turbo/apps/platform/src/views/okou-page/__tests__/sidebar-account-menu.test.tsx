@@ -32,7 +32,7 @@ import {
 } from "../../../__tests__/mock-auth.ts";
 import { mockNow } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { foregroundReady$ } from "../../../signals/auth-retry.ts";
+import { foregroundReady$ } from "../../../signals/foreground-catch-up.ts";
 import { subscribeRealtimeReadyCatchUp$ } from "../../../signals/realtime.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
@@ -1297,11 +1297,10 @@ describe("zero sidebar account menu", () => {
     );
   });
 
-  it("links the VM0 satellite to the Okou hosted user profile after cutover", async () => {
-    vi.stubEnv(
-      "VITE_CLERK_PUBLISHABLE_KEY_PROD",
-      "pk_live_Y2xlcmsuYXBwLm9rb3UuYWkk",
-    );
+  it("keeps the VM0 satellite on the existing hosted profile after cutover", async () => {
+    Reflect.set(window, "__vm0ClerkBootstrap", {
+      productionPrimaryAppDomain: "app.okou.ai",
+    });
     try {
       context.mocks.browser.url("https://app.vm0.ai/");
       prepareDefaultAgent();
@@ -1322,10 +1321,10 @@ describe("zero sidebar account menu", () => {
       await screen.findByRole("dialog", { name: "Settings" });
       expect(linkByText("Manage")).toHaveAttribute(
         "href",
-        "https://accounts.app.okou.ai/user",
+        "https://accounts.vm0.ai/user",
       );
     } finally {
-      vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PROD", "test_production_key");
+      Reflect.deleteProperty(window, "__vm0ClerkBootstrap");
     }
   });
 
@@ -1637,7 +1636,7 @@ describe("zero sidebar account menu", () => {
     });
   });
 
-  it("keeps an active session open when the replay remains unauthorized", async () => {
+  it("keeps an active session open when a browser request returns unauthorized", async () => {
     mockAdminAccountSidebar();
     context.mocks.data.personalModelProviders([
       connectedPersonalCodexProvider(),
@@ -1672,13 +1671,13 @@ describe("zero sidebar account menu", () => {
     });
 
     await waitFor(() => {
-      expect(modelProviderRequests).toBe(2);
+      expect(modelProviderRequests).toBe(1);
     });
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
     expect(screen.queryByText("Unauthorized")).not.toBeInTheDocument();
   });
 
-  it("keeps the app open when auth recovery remains unauthorized in the background", async () => {
+  it("keeps the app open when a background request returns unauthorized", async () => {
     mockAdminAccountSidebar();
     context.mocks.data.personalModelProviders([
       connectedPersonalCodexProvider(),
@@ -1714,7 +1713,7 @@ describe("zero sidebar account menu", () => {
     });
 
     await waitFor(() => {
-      expect(modelProviderRequests).toBe(2);
+      expect(modelProviderRequests).toBe(1);
     });
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
     expect(screen.queryByText("Unauthorized")).not.toBeInTheDocument();

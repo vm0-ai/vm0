@@ -18,7 +18,6 @@ import { now } from "../lib/time.ts";
 import { createChatIdbOpener } from "../signals/external/chat-idb-opener.ts";
 import { createIdbEventRowStores } from "../signals/external/idb-event-row-store.ts";
 import { createStrictIdbChatThreadEventStores } from "../signals/external/idb-chat-thread-event-store.ts";
-import type { AuthRecovery } from "../signals/auth-retry.ts";
 import { logger } from "../signals/log.ts";
 import { isAbortError, settle } from "../signals/utils.ts";
 import {
@@ -41,6 +40,7 @@ import {
 } from "./chat-event-schema-version.ts";
 import type { SharedDatabaseWorkerMessage } from "./protocol.ts";
 import type {
+  SharedDatabaseAuthRecovery,
   SharedDatabaseContractClient,
   SharedDatabaseContractClientFactory,
 } from "./worker-client.ts";
@@ -118,7 +118,7 @@ interface SharedDatabaseWorkerRuntimeOptions {
   readonly identity: SharedDatabaseIdentity;
   readonly apiBaseUrl: string;
   readonly vercelProtectionBypass: string | undefined;
-  readonly authRecovery: AuthRecovery;
+  readonly authRecovery: SharedDatabaseAuthRecovery;
   readonly emit: (message: WorkerRuntimeEvent) => void;
   readonly createContractClient: SharedDatabaseContractClientFactory;
 }
@@ -140,6 +140,15 @@ function dataKeyDiagnosticDetails(dataKey: ScopedSharedDatabaseDataKey): {
     orgId: dataKey.orgId,
     userId: dataKey.userId,
   };
+}
+
+function isRecoverableChatIdbTransactionError(error: unknown): boolean {
+  return (
+    error instanceof DOMException &&
+    (error.name === "UnknownError" ||
+      error.name === "TransactionInactiveError" ||
+      error.name === "InvalidStateError")
+  );
 }
 
 function reportDataKeyError(
@@ -213,7 +222,7 @@ export class SharedDatabaseWorkerRuntime {
   private readonly credential: CredentialState;
   private databaseEntry: ChatDatabaseEntry | null = null;
   private readonly rootSignal: AbortSignal;
-  private readonly authRecovery: AuthRecovery;
+  private readonly authRecovery: SharedDatabaseAuthRecovery;
   private readonly emit: (message: WorkerRuntimeEvent) => void;
   private readonly createContractClient: SharedDatabaseContractClientFactory;
 
@@ -330,11 +339,14 @@ export class SharedDatabaseWorkerRuntime {
     dataKey: ScopedChatEventDataKey,
     signal: AbortSignal,
   ): Promise<readonly ChatEventRow[]> {
-    const stores = createIdbEventRowStores(() => {
-      return this.getDatabase(signal);
-    });
     const cachedCursorResult = await settle(
-      stores.readStore.readCursor(dataKey.threadId, signal),
+      this.runChatIdbOperation(
+        createIdbEventRowStores,
+        (stores) => {
+          return stores.readStore.readCursor(dataKey.threadId, signal);
+        },
+        signal,
+      ),
       signal,
     );
     const cachedCursor = cachedCursorResult.ok
@@ -384,12 +396,11 @@ export class SharedDatabaseWorkerRuntime {
       };
     }
     state = await this.fetchChatEventRows({ client, dataKey }, state, signal);
-    await this.persistChatEventRows(stores, dataKey, state, signal);
+    await this.persistChatEventRows(dataKey, state, signal);
     return state.remoteRows;
   }
 
   private async persistChatEventRows(
-    stores: ReturnType<typeof createIdbEventRowStores>,
     dataKey: ScopedChatEventDataKey,
     state: ChatEventRemoteState,
     signal: AbortSignal,
@@ -397,20 +408,28 @@ export class SharedDatabaseWorkerRuntime {
     if (!state.replacedCache && state.remoteRows.length === 0) {
       return;
     }
-    const write = state.replacedCache
-      ? stores.writeStore.replaceRowsAndCursor(
-          dataKey.threadId,
-          state.remoteRows,
-          state.cursor,
-          signal,
-        )
-      : stores.writeStore.upsertRowsAndCursor(
-          dataKey.threadId,
-          state.remoteRows,
-          state.cursor,
-          signal,
-        );
-    const written = await settle(write, signal);
+    const written = await settle(
+      this.runChatIdbOperation(
+        createIdbEventRowStores,
+        (stores) => {
+          return state.replacedCache
+            ? stores.writeStore.replaceRowsAndCursor(
+                dataKey.threadId,
+                state.remoteRows,
+                state.cursor,
+                signal,
+              )
+            : stores.writeStore.upsertRowsAndCursor(
+                dataKey.threadId,
+                state.remoteRows,
+                state.cursor,
+                signal,
+              );
+        },
+        signal,
+      ),
+      signal,
+    );
     if (!written.ok) {
       reportDataKeyError(
         dataKey,
@@ -591,25 +610,30 @@ export class SharedDatabaseWorkerRuntime {
 
     const shouldWrite = state.replacement || state.newEvents.length > 0;
     if (shouldWrite) {
-      const stores = createStrictIdbChatThreadEventStores(() => {
-        return this.getDatabase(signal);
-      });
       const snapshot = state.result.snapshot;
       if (!snapshot) {
         throw new Error("ChatThreadEvent synchronization requires a snapshot");
       }
-      const write = state.replacement
-        ? stores.writeStore.replaceFromSnapshot(
-            {
-              chatThreads: snapshot.chatThreads,
-              latestEventId: snapshot.latestEventId,
-              latestSeqId: snapshot.latestSeqId,
-            },
-            state.result.events,
-            signal,
-          )
-        : stores.writeStore.upsertEvents(state.newEvents, signal);
-      const written = await settle(write, signal);
+      const written = await settle(
+        this.runChatIdbOperation(
+          createStrictIdbChatThreadEventStores,
+          (stores) => {
+            return state.replacement
+              ? stores.writeStore.replaceFromSnapshot(
+                  {
+                    chatThreads: snapshot.chatThreads,
+                    latestEventId: snapshot.latestEventId,
+                    latestSeqId: snapshot.latestSeqId,
+                  },
+                  state.result.events,
+                  signal,
+                )
+              : stores.writeStore.upsertEvents(state.newEvents, signal);
+          },
+          signal,
+        ),
+        signal,
+      );
       if (!written.ok) {
         reportDataKeyError(
           dataKey,
@@ -739,11 +763,18 @@ export class SharedDatabaseWorkerRuntime {
     afterSeqId: number | null,
     signal: AbortSignal,
   ): Promise<ChatEventRow[]> {
-    const stores = createIdbEventRowStores(() => {
-      return this.getDatabase(signal);
-    });
     const result = await settle(
-      stores.readStore.readRowsAfter(dataKey.threadId, afterSeqId, signal),
+      this.runChatIdbOperation(
+        createIdbEventRowStores,
+        (stores) => {
+          return stores.readStore.readRowsAfter(
+            dataKey.threadId,
+            afterSeqId,
+            signal,
+          );
+        },
+        signal,
+      ),
       signal,
     );
     if (!result.ok) {
@@ -761,14 +792,17 @@ export class SharedDatabaseWorkerRuntime {
     dataKey: ScopedChatThreadEventDataKey,
     signal: AbortSignal,
   ): Promise<ChatThreadEventCache> {
-    const stores = createStrictIdbChatThreadEventStores(() => {
-      return this.getDatabase(signal);
-    });
     const result = await settle(
-      Promise.all([
-        stores.readStore.readSnapshot(signal),
-        stores.readStore.readEventLog(signal),
-      ]),
+      this.runChatIdbOperation(
+        createStrictIdbChatThreadEventStores,
+        (stores) => {
+          return Promise.all([
+            stores.readStore.readSnapshot(signal),
+            stores.readStore.readEventLog(signal),
+          ]);
+        },
+        signal,
+      ),
       signal,
     );
     if (!result.ok) {
@@ -799,7 +833,50 @@ export class SharedDatabaseWorkerRuntime {
     };
   }
 
-  private async getDatabase(signal: AbortSignal): Promise<IDBPDatabase> {
+  private async runChatIdbOperation<TStores, TResult>(
+    createStores: (getDatabase: () => Promise<IDBPDatabase>) => TStores,
+    operation: (stores: TStores) => Promise<TResult>,
+    signal: AbortSignal,
+  ): Promise<TResult> {
+    const run = (database: IDBPDatabase): Promise<TResult> => {
+      return operation(
+        createStores(() => {
+          return Promise.resolve(database);
+        }),
+      );
+    };
+    const firstConnection = await this.getDatabaseConnection(signal);
+    const firstResult = await settle(run(firstConnection.database), signal);
+    if (firstResult.ok) {
+      return firstResult.value;
+    }
+    if (!isRecoverableChatIdbTransactionError(firstResult.error)) {
+      throw firstResult.error;
+    }
+    this.discardDatabase(firstConnection.entry);
+    const retryConnection = await this.getDatabaseConnection(signal);
+    const retryResult = await settle(run(retryConnection.database), signal);
+    if (retryResult.ok) {
+      return retryResult.value;
+    }
+    if (isRecoverableChatIdbTransactionError(retryResult.error)) {
+      this.discardDatabase(retryConnection.entry);
+    }
+    throw retryResult.error;
+  }
+
+  private discardDatabase(entry: ChatDatabaseEntry): void {
+    if (this.databaseEntry !== entry) {
+      return;
+    }
+    entry.database?.close();
+    this.databaseEntry = null;
+  }
+
+  private async getDatabaseConnection(signal: AbortSignal): Promise<{
+    readonly entry: ChatDatabaseEntry;
+    readonly database: IDBPDatabase;
+  }> {
     let entry = this.databaseEntry;
     if (!entry) {
       const opener = createChatIdbOpener({
@@ -830,6 +907,6 @@ export class SharedDatabaseWorkerRuntime {
     if (entry.invalidated) {
       throw new Error("Chat IndexedDB version changed; reload is required");
     }
-    return database;
+    return { entry, database };
   }
 }

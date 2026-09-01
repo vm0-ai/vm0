@@ -8,6 +8,7 @@ import {
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
 import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import {
+  chatThreadConnectorSelectionContract,
   chatThreadsContract,
   type ChatEvent,
   type UserMessageInputDocument,
@@ -18,6 +19,7 @@ import {
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
 import { goalsContract } from "@okouai/api-contracts/contracts/goals";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { createApp } from "../../../app-factory";
 import { stubTestTimezone } from "../../../__tests__/env-stub";
@@ -68,6 +70,8 @@ import {
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { chatEventDisplayText } from "./helpers/chat-event";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
+import { createRouteMocks } from "./helpers/route-test";
 import { seedVm0BuiltInDefaultModelKey } from "./helpers/runtime-state";
 import {
   generatedStripeCustomerId,
@@ -113,12 +117,24 @@ const chatCallbacks = createChatCallbacksApi(context);
 const cu = createComputerUseBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const authOrg = createAuthOrgAgentsBddApi(context);
+const routeMocks = createRouteMocks(context);
 const store = createStore();
 const CHAT_THREAD_SNAPSHOT_CRON_SECRET = "chat-thread-snapshot-cron-secret";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FORWARD_CLEANUP_CUTOFF_MS = Date.parse("2026-08-03T05:40:26.000Z");
 const FORWARD_CLEANUP_TEST_CREATED_AT = "2026-08-03T05:40:26.001Z";
 const PRE_FORWARD_CLEANUP_TEST_CREATED_AT = "2026-08-03T05:40:25.999Z";
+
+function chatThreadConnectorSelectionsClient() {
+  return setupApp({ context, routes: chatThreadRoutes })(
+    chatThreadConnectorSelectionContract,
+  );
+}
+
+function authHeaders(actor: ApiTestUser) {
+  routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+  return { authorization: "Bearer clerk-session" };
+}
 
 type UserMessage = Extract<
   ChatEvent,
@@ -386,7 +402,7 @@ type ThreadArtifacts = Awaited<ReturnType<typeof chat.listThreadArtifacts>>;
 
 function expectDriveStatuses(
   artifacts: ThreadArtifacts,
-  status: "disconnected" | "unknown",
+  status: "disconnected" | "not_synced" | "unknown",
 ): void {
   const files = artifacts.runs.flatMap((run) => {
     return run.files;
@@ -549,13 +565,17 @@ async function completeThreadGoal(
   );
 }
 
+// Neutral throughout since #30807 retired the branded forms of every
+// chat-thread row; the earlier per-row notes below record which removal took
+// each of the others. A branded request would 404 before reaching the parameter
+// check these cases exist to exercise.
 const malformedChatThreadIdRequests = [
-  { method: "GET", path: "/api/zero/chat-threads/:id", paramName: "id" },
-  { method: "PATCH", path: "/api/zero/chat-threads/:id", paramName: "id" },
-  { method: "DELETE", path: "/api/zero/chat-threads/:id", paramName: "id" },
+  { method: "GET", path: "/api/chat-threads/:id", paramName: "id" },
+  { method: "PATCH", path: "/api/chat-threads/:id", paramName: "id" },
+  { method: "DELETE", path: "/api/chat-threads/:id", paramName: "id" },
   {
     method: "POST",
-    path: "/api/zero/chat-threads/:id/mark-read",
+    path: "/api/chat-threads/:id/mark-read",
     paramName: "id",
   },
   {
@@ -578,7 +598,7 @@ const malformedChatThreadIdRequests = [
     path: "/api/chat-threads/:id/computer-use-host",
     paramName: "id",
   },
-  { method: "POST", path: "/api/zero/chat-threads/:id/pin", paramName: "id" },
+  { method: "POST", path: "/api/chat-threads/:id/pin", paramName: "id" },
   // Neutral for the same reason as `computer-use-host` above.
   {
     method: "POST",
@@ -595,12 +615,12 @@ const malformedChatThreadIdRequests = [
   },
   {
     method: "GET",
-    path: "/api/zero/chat-threads/:id/artifacts",
+    path: "/api/chat-threads/:id/artifacts",
     paramName: "threadId",
   },
   {
     method: "POST",
-    path: "/api/zero/chat-threads/:id/artifacts",
+    path: "/api/chat-threads/:id/artifacts",
     paramName: "threadId",
   },
 ] as const;
@@ -626,12 +646,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
     });
-    const unauthenticated = await app.request(
-      "/api/zero/chat-threads/snapshot",
-      {
-        headers: { authorization: "Bearer clerk-session" },
-      },
-    );
+    const unauthenticated = await app.request("/api/chat-threads/snapshot", {
+      headers: { authorization: "Bearer clerk-session" },
+    });
     expect(unauthenticated.status).toBe(401);
     const unauthenticatedBody = (await unauthenticated.json()) as {
       readonly error: { readonly code: string };
@@ -3587,6 +3604,206 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       connectionStatus: "reconnect-required",
       reconnectReason: null,
     });
+
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(run.runId, sandboxHeaders);
+  }, 120_000);
+
+  it("uses the selected google drive account for artifact status and sync", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor(
+      "Artifacts selected drive account agent",
+    );
+    if (!actor.orgId) {
+      throw new Error("Expected an entitled chat actor with an organization");
+    }
+    const actorWithOrg = { ...actor, orgId: actor.orgId };
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const objectStore = chatCallbacks.acceptChatObjectStorage();
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "produce an account-bound artifact",
+    });
+    const { claim, sandboxHeaders } = await claimChatRun(
+      runnerGroup,
+      run.runId,
+    );
+    const runBearer = `Bearer ${okouTokenFromClaim(claim)}`;
+    const fileId = randomUUID();
+    objectStore.addObject({
+      bucket: "test-user-artifacts",
+      key: `artifacts/${actor.userId}/${fileId}/account.txt`,
+      size: 64,
+    });
+    await chat.completeUploadWithBearer(runBearer, { id: fileId }, [200]);
+
+    mockGoogleDriveConnectorOAuth({
+      userInfo: {
+        id: "bdd-drive-default-user-id",
+        email: "bdd-drive-default@example.test",
+        name: "BDD Drive Default",
+      },
+    });
+    const defaultStart = await connectorsApi.startOauth(
+      actor,
+      "google-drive",
+      "oauth",
+      undefined,
+      { intent: "add", displayName: "Default Drive" },
+    );
+    await connectorsApi.completeOauthCallback("google-drive", {
+      code: "drive-default",
+      state: stateFromAuthorizationUrl(defaultStart.authorizationUrl),
+    });
+
+    mockGoogleDriveConnectorOAuth({
+      userInfo: {
+        id: "bdd-drive-selected-user-id",
+        email: "bdd-drive-selected@example.test",
+        name: "BDD Drive Selected",
+      },
+    });
+    const selectedStart = await connectorsApi.startOauth(
+      actor,
+      "google-drive",
+      "oauth",
+      undefined,
+      { intent: "add", displayName: "Selected Drive" },
+    );
+    await connectorsApi.completeOauthCallback("google-drive", {
+      code: "drive-selected",
+      state: stateFromAuthorizationUrl(selectedStart.authorizationUrl),
+    });
+
+    const accounts = await connectorsApi.listBuiltinConnectorAccounts(
+      actor,
+      "google-drive",
+    );
+    expect(accounts).toHaveLength(2);
+    const defaultAccount = accounts.find((account) => {
+      return account.externalEmail === "bdd-drive-default@example.test";
+    });
+    const selectedAccount = accounts.find((account) => {
+      return account.externalEmail === "bdd-drive-selected@example.test";
+    });
+    if (!defaultAccount || !selectedAccount) {
+      throw new Error("Expected two distinct Google Drive accounts");
+    }
+    expect(defaultAccount).toMatchObject({
+      isDefault: true,
+      connectionStatus: "connected",
+    });
+    expect(selectedAccount).toMatchObject({
+      isDefault: false,
+      connectionStatus: "connected",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["google-drive"]);
+
+    const defaultStatusRecorder = mockGoogleDriveFilesList(() => {
+      return { status: 200, files: [] };
+    });
+    let artifacts = await chat.listThreadArtifacts(actor, run.threadId);
+    expectDriveStatuses(artifacts, "not_synced");
+    expect(defaultStatusRecorder.authorizationHeaders).toStrictEqual([
+      "Bearer drive-access-drive-default",
+    ]);
+
+    const selected = await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(actor),
+        params: { id: run.threadId },
+        body: {
+          connectionId: selectedAccount.id,
+          target: { kind: "builtin", connectorSlug: "google-drive" },
+        },
+      }),
+      [200],
+    );
+    expect(selected.body.connectionId).toBe(selectedAccount.id);
+
+    const selectedStatusRecorder = mockGoogleDriveFilesList(() => {
+      return { status: 200, files: [] };
+    });
+    artifacts = await chat.listThreadArtifacts(actor, run.threadId);
+    expectDriveStatuses(artifacts, "not_synced");
+    expect(selectedStatusRecorder.authorizationHeaders).toStrictEqual([
+      "Bearer drive-access-drive-selected",
+    ]);
+
+    const uploadRecorder = mockGoogleDriveArtifactUpload({
+      id: "drive-selected-upload",
+      name: "account.txt",
+      webViewLink: "https://drive.google.com/file/d/drive-selected-upload/view",
+    });
+    const synced = await chat.requestSyncThreadArtifact(
+      actor,
+      run.threadId,
+      { runId: run.runId, fileId },
+      [200],
+    );
+    expect(synced.body).toMatchObject({
+      id: "drive-selected-upload",
+      name: "account.txt",
+    });
+    expect(uploadRecorder.folderAuthorizationHeaders).toStrictEqual([
+      "Bearer drive-access-drive-selected",
+      "Bearer drive-access-drive-selected",
+    ]);
+    expect(uploadRecorder.authorizationHeaders).toStrictEqual([
+      "Bearer drive-access-drive-selected",
+    ]);
+
+    const terminalRefresh = mockGoogleDriveConnectorOAuth();
+    const terminalStatusRecorder = mockGoogleDriveFilesList(() => {
+      return { status: 401 };
+    });
+    artifacts = await chat.listThreadArtifacts(actor, run.threadId);
+    expectDriveStatuses(artifacts, "disconnected");
+    expect(terminalStatusRecorder.authorizationHeaders).toStrictEqual([
+      "Bearer drive-access-drive-selected",
+    ]);
+    expect(terminalRefresh.refreshBodies).toHaveLength(1);
+    expect(terminalRefresh.refreshBodies[0]?.get("refresh_token")).toBe(
+      "drive-refresh-drive-selected",
+    );
+
+    const refreshedAccounts = await connectorsApi.listBuiltinConnectorAccounts(
+      actor,
+      "google-drive",
+    );
+    expect(
+      refreshedAccounts.find((account) => {
+        return account.id === defaultAccount.id;
+      }),
+    ).toMatchObject({
+      connectionStatus: "connected",
+      reconnectReason: null,
+    });
+    expect(
+      refreshedAccounts.find((account) => {
+        return account.id === selectedAccount.id;
+      }),
+    ).toMatchObject({
+      connectionStatus: "reconnect-required",
+      reconnectReason: "authorization_expired_or_revoked",
+    });
+
+    const unavailable = await chat.requestSyncThreadArtifact(
+      actor,
+      run.threadId,
+      { runId: run.runId, fileId },
+      [400],
+    );
+    expectApiError(unavailable.body);
+    expect(unavailable.body.error.message).toBe(
+      "Connect Google Drive before syncing artifacts",
+    );
+    expect(terminalStatusRecorder.authorizationHeaders).toHaveLength(1);
+    expect(uploadRecorder.folderAuthorizationHeaders).toHaveLength(2);
+    expect(uploadRecorder.authorizationHeaders).toHaveLength(1);
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(run.runId, sandboxHeaders);

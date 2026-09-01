@@ -59,6 +59,8 @@ const OPS_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000202";
 const OTHER_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000203";
 const CHECKLIST_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000204";
 const COPIED_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000205";
+const MORNING_BRIEF_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000206";
+const CONNECTOR_DOCTOR_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000207";
 const GMAIL_AUTOMATION_ID = "workflow-automation-gmail-new-message";
 const GMAIL_LABEL_AUTOMATION_ID = "workflow-automation-gmail-label-applied";
 const GITHUB_PULL_REQUEST_AUTOMATION_ID =
@@ -634,13 +636,6 @@ function officialCatalogDetail(
         fingerprint: OFFICIAL_BLUEPRINT_FINGERPRINT,
         parameters: [
           {
-            key: "time-zone",
-            type: "string",
-            format: "timezone",
-            required: true,
-            derivation: { kind: "user-timezone" },
-          },
-          {
             key: "interval-seconds",
             type: "integer",
             required: true,
@@ -705,13 +700,45 @@ function officialSalesResearch(
           reconciliationStatus,
           intendedEnabled: true,
           parameterBindings: [
-            { key: "time-zone", value: "UTC" },
             { key: "interval-seconds", value: 3600 },
             { key: "include-weekends", value: false },
           ],
         },
       },
     ],
+  };
+}
+
+function namedOfficialWorkflow(
+  definitionName: "morning-brief" | "connector-doctor",
+): WorkflowDetailResponse {
+  const base = officialSalesResearch();
+  if (!base.official) {
+    throw new Error("Expected an Official Workflow fixture");
+  }
+  const morningBrief = definitionName === "morning-brief";
+  const displayName = morningBrief ? "Morning Brief" : "Connector Doctor";
+  return {
+    ...base,
+    id: morningBrief ? MORNING_BRIEF_WORKFLOW_ID : CONNECTOR_DOCTOR_WORKFLOW_ID,
+    name: definitionName,
+    displayName,
+    official: {
+      ...base.official,
+      definitionName,
+    },
+    automations: base.automations.map((automation) => {
+      return {
+        ...automation,
+        id: `workflow-automation-${definitionName}`,
+        official: automation.official
+          ? {
+              ...automation.official,
+              blueprintKey: morningBrief ? "daily-delivery" : "weekly-check",
+            }
+          : undefined,
+      };
+    }),
   };
 }
 
@@ -1518,6 +1545,40 @@ describe("workflows routes", () => {
     await expect(screen.findByText("TU")).resolves.toBeInTheDocument();
   });
 
+  it("hides Morning Brief from App workflow lists and counts without hiding other Official Workflows", async () => {
+    mockWorkflowApis([
+      salesResearch(),
+      namedOfficialWorkflow("morning-brief"),
+      namedOfficialWorkflow("connector-doctor"),
+    ]);
+
+    detachedSetupPage({ context, path: "/workflows" });
+
+    await screen.findByRole("heading", { name: "Workflows" });
+    expect(screen.getByText("Sales Research")).toBeInTheDocument();
+    expect(screen.getByText("Connector Doctor")).toBeInTheDocument();
+    expect(screen.queryByText("Morning Brief")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Open Morning Brief"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("redirects a cold Morning Brief workflow detail URL to the stable Preferences deep link", async () => {
+    mockWorkflowApis([namedOfficialWorkflow("morning-brief")]);
+
+    detachedSetupWorkflowDetailPage(
+      `/workflows/${MORNING_BRIEF_WORKFLOW_ID}/automations`,
+    );
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/settings");
+      expect(search()).toBe("?tab=timezone&focus=morning-brief");
+    });
+    const preference = await screen.findByTestId("morning-brief-preference");
+    expect(preference).toHaveFocus();
+    expect(screen.queryByText("Instructions")).not.toBeInTheDocument();
+  });
+
   it("hides Official discovery when the feature switch is disabled", async () => {
     mockWorkflowApis([officialSalesResearch()]);
     detachedSetupPage({ context, path: "/workflows" });
@@ -1575,7 +1636,6 @@ describe("workflows routes", () => {
     const installBodies: unknown[] = [];
     mockAgentPageApis();
     context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
-    context.mocks.data.userPreferences({ timezone: "UTC" });
     mockWorkflowApis([officialSalesResearch()]);
     context.mocks.api(officialWorkflowsContract.get, ({ respond }) => {
       return respond(200, definition);
@@ -1608,9 +1668,6 @@ describe("workflows routes", () => {
     );
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Research Bot")).toBeInTheDocument();
-    expect(within(dialog).getByLabelText("time-zone (required)")).toHaveValue(
-      "UTC",
-    );
     expect(
       within(dialog).getByLabelText("interval-seconds (required)"),
     ).toHaveValue(3600);
@@ -1639,7 +1696,6 @@ describe("workflows routes", () => {
             {
               blueprintKey: "daily",
               bindings: [
-                { key: "time-zone", value: "UTC" },
                 { key: "interval-seconds", value: 7200 },
                 { key: "include-weekends", value: true },
               ],
@@ -2638,6 +2694,49 @@ describe("workflow detail page", () => {
     expect(buttonByText("Uninstall")).toBeEnabled();
   });
 
+  it("omits reconfiguration when the Definition has no configurable parameters", async () => {
+    const workflow = officialSalesResearch();
+    const definition = officialCatalogDetail();
+    const parameterlessBlueprints = definition.blueprints.map((blueprint) => {
+      return {
+        ...blueprint,
+        parameters: [],
+        desiredState: {
+          kind: "schedule" as const,
+          schedule: {
+            type: "cron" as const,
+            cronExpression: "0 8 * * *",
+          },
+        },
+      };
+    });
+    let installationRead = false;
+    mockWorkflowApis([workflow]);
+    context.mocks.api(
+      officialWorkflowInstallationsContract.get,
+      ({ respond }) => {
+        installationRead = true;
+        return respond(200, {
+          workflow,
+          definition: {
+            name: definition.name,
+            revision: definition.revision,
+            lifecycle: "active",
+            blueprints: parameterlessBlueprints,
+          },
+        });
+      },
+    );
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("info"));
+
+    await waitFor(() => {
+      expect(installationRead).toBeTruthy();
+      expect(queryButtonByText("Reconfigure")).toBeNull();
+    });
+    expect(buttonByText("Uninstall")).toBeEnabled();
+  });
+
   it.each([
     ["current", "Current · intended on"],
     ["reconciling", "Reconciling · intended on"],
@@ -2710,9 +2809,6 @@ describe("workflow detail page", () => {
     expect(
       within(dialog).getByLabelText("interval-seconds (required)"),
     ).toHaveValue(3600);
-    fireEvent.change(within(dialog).getByLabelText("time-zone (required)"), {
-      target: { value: "Asia/Shanghai" },
-    });
     fireEvent.change(
       within(dialog).getByLabelText("interval-seconds (required)"),
       { target: { value: "1800" } },
@@ -2731,7 +2827,6 @@ describe("workflow detail page", () => {
             {
               blueprintKey: "daily",
               bindings: [
-                { key: "time-zone", value: "Asia/Shanghai" },
                 { key: "interval-seconds", value: 1800 },
                 { key: "include-weekends", value: true },
               ],
@@ -2778,7 +2873,6 @@ describe("workflow detail page", () => {
           official: {
             ...secondAutomation.official,
             parameterBindings: [
-              { key: "time-zone", value: "America/New_York" },
               { key: "interval-seconds", value: 7200 },
               { key: "include-weekends", value: true },
             ],
@@ -2790,7 +2884,6 @@ describe("workflow detail page", () => {
     const installationReads: string[] = [];
     const reconfigureRequests: unknown[] = [];
     mockAgentPageApis();
-    context.mocks.data.userPreferences({ timezone: "UTC" });
     mockWorkflowApis(workflows);
     context.mocks.api(
       officialWorkflowInstallationsContract.get,
@@ -2849,10 +2942,6 @@ describe("workflow detail page", () => {
     );
     const firstDialog = await screen.findByRole("dialog");
     fireEvent.change(
-      within(firstDialog).getByLabelText("time-zone (required)"),
-      { target: { value: "Asia/Shanghai" } },
-    );
-    fireEvent.change(
       within(firstDialog).getByLabelText("interval-seconds (required)"),
       { target: { value: "1800" } },
     );
@@ -2878,9 +2967,6 @@ describe("workflow detail page", () => {
     click(buttonByText("Reconfigure"));
     const secondDialog = await screen.findByRole("dialog");
     expect(
-      within(secondDialog).getByLabelText("time-zone (required)"),
-    ).toHaveValue("America/New_York");
-    expect(
       within(secondDialog).getByLabelText("interval-seconds (required)"),
     ).toHaveValue(7200);
     expect(
@@ -2888,10 +2974,6 @@ describe("workflow detail page", () => {
         name: "include-weekends (required)",
       }),
     ).toHaveTextContent("Yes");
-    fireEvent.change(
-      within(secondDialog).getByLabelText("time-zone (required)"),
-      { target: { value: "Europe/London" } },
-    );
     click(buttonByText("Reconfigure", secondDialog));
 
     await waitFor(() => {
@@ -2905,7 +2987,6 @@ describe("workflow detail page", () => {
                 bindings: [
                   { key: "interval-seconds", value: 7200 },
                   { key: "include-weekends", value: true },
-                  { key: "time-zone", value: "Europe/London" },
                 ],
               },
             ],

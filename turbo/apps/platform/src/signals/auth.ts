@@ -1,13 +1,8 @@
 import { command, computed, state } from "ccstate";
-import {
-  startClerkBrowserRuntime,
-  type ClerkBrowserRuntime,
-} from "../lib/clerk-runtime.ts";
+import { startClerkBrowserRuntime } from "../lib/clerk-runtime.ts";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 import {
   clearPostHogUser,
-  markBootstrapClerkLoadCompleted,
-  markBootstrapClerkLoadStarted,
   setPostHogOrganization,
   setPostHogUser,
 } from "../lib/posthog.ts";
@@ -20,15 +15,17 @@ import {
   resolvePlatformRuntimeConfig,
 } from "../lib/platform-host.ts";
 import {
+  CURRENT_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN,
   resolveClerkProductionSatelliteDomain,
   resolveClerkProductionTopology,
   type ClerkProductionDomain,
+  type ClerkProductionPrimaryAppDomain,
   VM0_CLERK_PRIMARY_APP_ORIGIN,
 } from "../lib/clerk-production-topology.ts";
 import { resolveBrandNameForHostname, type BrandName } from "./branding.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
-import { createAuthRecovery, setupForegroundCatchUp$ } from "./auth-retry.ts";
-import { authRecovery$, setAuthRecovery$ } from "./auth-context.ts";
+import { setupForegroundCatchUp$ } from "./foreground-catch-up.ts";
+import { readClerkToken } from "./clerk-token.ts";
 import { writeConnectionDiagnostic$ } from "./connection-diagnostics.ts";
 import { sessionStorageSignals } from "./external/session-storage.ts";
 
@@ -97,17 +94,27 @@ const MAX_URL_PORT = 65_535;
 export function deriveServiceOrigin(
   currentOrigin: string,
   service: Extract<PlatformService, "www" | "app" | "api">,
-  publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey,
+  primaryAppDomain = resolveConfiguredProductionPrimaryAppDomain(),
 ): string {
   const currentUrl = new URL(currentOrigin);
   if (
     isOkouProductionHostname(currentUrl.hostname) &&
-    resolveClerkProductionTopology(publishableKey).primaryBrand === "okou"
+    resolveClerkProductionTopology(primaryAppDomain).primaryBrand === "okou"
   ) {
     currentUrl.hostname = `${service}.okou.ai`;
     return currentUrl.origin;
   }
   return derivePlatformServiceOrigin(currentOrigin, service);
+}
+
+function resolveConfiguredProductionPrimaryAppDomain(): ClerkProductionPrimaryAppDomain {
+  if (typeof window === "undefined") {
+    return CURRENT_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN;
+  }
+  return (
+    window.__vm0ClerkBootstrap?.productionPrimaryAppDomain ??
+    CURRENT_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN
+  );
 }
 
 // The WWW origin sibling of the current host.
@@ -129,10 +136,9 @@ export function resolveClerkSatelliteConfig(): ClerkSatelliteConfig | null {
     return null;
   }
 
-  const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
   const domain = resolveClerkProductionSatelliteDomain(
     location.hostname,
-    publishableKey,
+    resolveConfiguredProductionPrimaryAppDomain(),
   );
   if (!domain) {
     return null;
@@ -146,18 +152,18 @@ export function resolveClerkSatelliteConfig(): ClerkSatelliteConfig | null {
 }
 
 function resolveAuthOrigin(): string {
-  const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
+  const primaryAppDomain = resolveConfiguredProductionPrimaryAppDomain();
   return resolveClerkProductionSatelliteDomain(
     location.hostname,
-    publishableKey,
+    primaryAppDomain,
   )
-    ? resolveClerkProductionTopology(publishableKey).primaryAppOrigin
+    ? resolveClerkProductionTopology(primaryAppDomain).primaryAppOrigin
     : resolveAppOrigin();
 }
 
 export function resolvePrimaryClerkUserProfileUrl(): string {
   return resolveClerkProductionTopology(
-    resolvePlatformRuntimeConfig().clerkPublishableKey,
+    resolveConfiguredProductionPrimaryAppDomain(),
   ).primaryUserProfileUrl;
 }
 
@@ -399,78 +405,37 @@ export function buildSignInRedirectUrl(
   return redirectUrl?.toString() ?? resolveAppUrl();
 }
 
-const internalClerkRuntime$ = state<Promise<ClerkBrowserRuntime> | undefined>(
-  undefined,
-);
-export const initClerkRuntime$ = command(
-  ({ set }, signal: AbortSignal): void => {
-    signal.throwIfAborted();
-    const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
-    const satelliteConfig = resolveClerkSatelliteConfig();
-    markBootstrapClerkLoadStarted();
-    set(
-      internalClerkRuntime$,
-      startClerkBrowserRuntime(
-        {
-          domain: satelliteConfig?.domain,
-          loadOptions: {
-            ...(satelliteConfig
-              ? {
-                  isSatellite: true,
-                  satelliteAutoSync: satelliteConfig.satelliteAutoSync,
-                }
-              : {}),
-            afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
-            signInUrl: resolveAppAuthUrl("/sign-in"),
-            signUpUrl: resolveAppAuthUrl("/sign-up"),
-          },
-          publishableKey,
-        },
-        signal,
-      ),
-    );
-  },
-);
-
-const clerkRuntime$ = computed((get) => {
-  const runtime = get(internalClerkRuntime$);
-  if (!runtime) {
-    throw new Error("Clerk runtime was not initialized during bootstrap");
-  }
-  return runtime;
-});
-
-/** Clerk core is available once its browser script has initialized. */
-export const clerkInstance$ = computed(async (get) => {
-  const runtime = await get(clerkRuntime$);
-  return runtime.clerk;
-});
-
 /** Loaded Clerk instance for consumers that need authentication state. */
-export const clerk$ = computed(async (get) => {
-  const runtime = await get(clerkRuntime$);
+export const clerk$ = computed(async () => {
+  const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
+  const satelliteConfig = resolveClerkSatelliteConfig();
+  const runtime = await startClerkBrowserRuntime({
+    domain: satelliteConfig?.domain,
+    loadOptions: {
+      ...(satelliteConfig
+        ? {
+            isSatellite: true,
+            satelliteAutoSync: satelliteConfig.satelliteAutoSync,
+          }
+        : {}),
+      afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
+      signInUrl: resolveAppAuthUrl("/sign-in"),
+      signUpUrl: resolveAppAuthUrl("/sign-up"),
+    },
+    publishableKey,
+  });
   await runtime.loaded;
-  markBootstrapClerkLoadCompleted();
 
   return runtime.clerk;
 });
 
-export const initAuthRecovery$ = command(
-  ({ get, set }, signal: AbortSignal): void => {
+export const reloadToken$ = command(
+  async ({ get }, signal: AbortSignal): Promise<string | null> => {
+    const clerk = await get(clerk$);
     signal.throwIfAborted();
-    const clerkPromise = get(clerk$);
-    set(
-      setAuthRecovery$,
-      (async () => {
-        const clerk = await clerkPromise;
-        signal.throwIfAborted();
-        return createAuthRecovery(clerk, signal);
-      })(),
-    );
+    return await readClerkToken(clerk, signal, { skipCache: true });
   },
 );
-
-export { authRecovery$ };
 
 /**
  * Command to setup Clerk authentication listeners.

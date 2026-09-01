@@ -21,8 +21,7 @@ setup() {
     local feature_switches
     feature_switches="$(runner_api_curl "/api/feature-switches")"
     jq -e '
-        .effectiveSwitches.realAgentInPreview == true and
-        .effectiveSwitches.builtInModelProviderFallback == true
+        .effectiveSwitches.realAgentInPreview == true
     ' <<<"$feature_switches" >/dev/null
 }
 

@@ -1,12 +1,5 @@
-/**
- * Token access and 401 recovery for authenticated requests.
- *
- * Forced refreshes are root-owned and shared. Request cancellation stops only
- * that request from waiting; it does not interrupt a refresh used by the rest
- * of the app.
- */
+/** Foreground catch-up coordination for realtime-backed data. */
 import { command, computed, state, type Command } from "ccstate";
-import type { BrowserClerk as Clerk } from "@clerk/shared/types";
 import { now } from "../lib/time.ts";
 import {
   connectionDiagnosticError,
@@ -21,17 +14,10 @@ import {
   withCleanup,
 } from "./utils";
 
-type ClerkLike = Pick<Clerk, "session" | "addListener">;
-
 function runtimeVisibilityState(): DocumentVisibilityState {
   return typeof document === "undefined"
     ? "visible"
     : globalThis.document.visibilityState;
-}
-
-export interface AuthRecovery {
-  readonly getToken: (signal: AbortSignal) => Promise<string | null>;
-  readonly forceRefreshToken: (signal: AbortSignal) => Promise<string | null>;
 }
 
 const FOREGROUND_CATCH_UP_REQUEST_EVENT = "request-catch-up";
@@ -203,62 +189,6 @@ export const requestForegroundCatchUp$ = command(({ get }) => {
     new Event(FOREGROUND_CATCH_UP_REQUEST_EVENT),
   );
 });
-
-/**
- * Create the single auth-recovery owner for the current Clerk/root lifecycle.
- */
-export function createAuthRecovery(
-  clerk: ClerkLike,
-  rootSignal: AbortSignal,
-): AuthRecovery {
-  let forceRefreshPromise: Promise<string | null> | null = null;
-  let forceRefreshSpanId: string | null = null;
-
-  const forceRefreshToken = (signal: AbortSignal): Promise<string | null> => {
-    if (!forceRefreshPromise) {
-      const spanId = createConnectionDiagnosticSpanId();
-      const startedAtMs = now();
-      publishConnectionDiagnostic({
-        event: "auth.refresh",
-        phase: "start",
-        spanId,
-      });
-      const refresh = withCleanup(
-        runTrackedForceRefresh(clerk, rootSignal, spanId, startedAtMs),
-        () => {
-          if (forceRefreshPromise === refresh) {
-            forceRefreshPromise = null;
-            forceRefreshSpanId = null;
-          }
-        },
-      );
-      forceRefreshPromise = refresh;
-      forceRefreshSpanId = spanId;
-    } else if (forceRefreshSpanId !== null) {
-      publishConnectionDiagnostic({
-        event: "auth.refresh",
-        phase: "join",
-        spanId: forceRefreshSpanId,
-      });
-    }
-    return waitForAuthRecovery(forceRefreshPromise, signal);
-  };
-
-  return {
-    getToken: (signal: AbortSignal) => {
-      if (forceRefreshPromise) {
-        return waitForAuthRecovery(forceRefreshPromise, signal);
-      }
-      const session = clerk.session;
-      if (session !== undefined) {
-        return readSettledClerkToken(session, signal);
-      }
-      const tokenSignal = AbortSignal.any([rootSignal, signal]);
-      return readToken(clerk, tokenSignal);
-    },
-    forceRefreshToken,
-  };
-}
 
 function setupForegroundRequestListeners(
   catchUpTarget: EventTarget,
@@ -442,110 +372,3 @@ export const setupForegroundCatchUp$ = command(
     );
   },
 );
-
-type SettledClerkSession = Exclude<Clerk["session"], undefined>;
-async function runTrackedForceRefresh(
-  clerk: ClerkLike,
-  signal: AbortSignal,
-  spanId: string,
-  startedAtMs: number,
-): Promise<string | null> {
-  const result = await settle(forceRefreshClerkToken(clerk, signal), signal);
-  if (!result.ok) {
-    publishConnectionDiagnostic({
-      details: connectionDiagnosticError(result.error),
-      durationMs: now() - startedAtMs,
-      event: "auth.refresh",
-      phase: "error",
-      spanId,
-    });
-    throw result.error;
-  }
-  publishConnectionDiagnostic({
-    details: { tokenAvailable: result.value !== null },
-    durationMs: now() - startedAtMs,
-    event: "auth.refresh",
-    phase: "finish",
-    spanId,
-  });
-  return result.value;
-}
-
-function waitForSettledClerkSession(
-  clerk: ClerkLike,
-  signal: AbortSignal,
-): Promise<SettledClerkSession> {
-  signal.throwIfAborted();
-
-  if (clerk.session !== undefined) {
-    return Promise.resolve(clerk.session);
-  }
-
-  const deferred = createDeferredPromise<SettledClerkSession>(signal);
-  const resolveIfSettled = (session: Clerk["session"]): void => {
-    if (session === undefined) {
-      return;
-    }
-    signal.removeEventListener("abort", unsubscribe);
-    unsubscribe();
-    deferred.resolve(session);
-  };
-  const unsubscribe = clerk.addListener(
-    ({ session }) => {
-      resolveIfSettled(session);
-    },
-    { skipInitialEmit: true },
-  );
-  signal.addEventListener("abort", unsubscribe, { once: true });
-
-  // Close the race between the initial read and listener registration.
-  resolveIfSettled(clerk.session);
-
-  return deferred.promise;
-}
-
-async function forceRefreshClerkToken(
-  clerk: ClerkLike,
-  signal: AbortSignal,
-): Promise<string | null> {
-  const session = await waitForSettledClerkSession(clerk, signal);
-  if (session === null) {
-    return null;
-  }
-  return await waitForAuthRecovery(
-    session.getToken({ skipCache: true }),
-    signal,
-  );
-}
-
-async function readToken(
-  clerk: ClerkLike,
-  signal: AbortSignal,
-): Promise<string | null> {
-  const session = await waitForSettledClerkSession(clerk, signal);
-  return await readSettledClerkToken(session, signal);
-}
-
-async function readSettledClerkToken(
-  session: SettledClerkSession,
-  signal: AbortSignal,
-): Promise<string | null> {
-  signal.throwIfAborted();
-  if (session === null) {
-    return null;
-  }
-  return await waitForAuthRecovery(session.getToken(), signal);
-}
-
-function waitForAuthRecovery<T>(
-  recovery: Promise<T>,
-  signal: AbortSignal,
-): Promise<T> {
-  signal.throwIfAborted();
-  const aborted = createDeferredPromise<never>(signal);
-  return withCleanup(Promise.race([recovery, aborted.promise]), () => {
-    if (!aborted.settled()) {
-      aborted.reject(new DOMException("Auth recovery settled", "AbortError"));
-    }
-  });
-}

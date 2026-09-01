@@ -664,7 +664,7 @@ describe("desktop tray screen recording section", () => {
     const menu = menuFor(recorderState(), actions);
 
     const section = findItem(menu, "Screen Recording: Ready");
-    click(findItem(submenu(section), "Record Main Display"));
+    click(findItem(submenu(section), "New Recording..."));
 
     expect(actions.startScreenRecording).toHaveBeenCalledOnce();
   });
@@ -687,9 +687,28 @@ describe("desktop tray screen recording section", () => {
     // Starting again mid-recording must not be reachable.
     expect(
       submenu(section).some((item) => {
-        return item.label === "Record Main Display";
+        return item.label === "New Recording...";
       }),
     ).toBeFalsy();
+  });
+
+  it("can still stop a paused capture from the menu bar", () => {
+    const actions = trayActions();
+    const menu = menuFor(
+      recorderState({
+        status: "paused",
+        sessionId: "recorder-session-1",
+        elapsedMs: 125_400,
+      }),
+      actions,
+    );
+
+    // Paused is still a live capture; the menu bar is the only stop control for
+    // a whole-display recording, where the controller is inside the frame.
+    const section = findItem(menu, "Screen Recording: 02:05 paused");
+    click(findItem(submenu(section), "Stop Recording (⌃⇧R)"));
+
+    expect(actions.stopScreenRecording).toHaveBeenCalledOnce();
   });
 
   it("pads the elapsed clock below one minute", () => {
@@ -721,7 +740,7 @@ describe("desktop tray screen recording section", () => {
 
     const section = findItem(menu, "Screen Recording: Failed");
     expect(findItem(submenu(section), "Display disconnected")).toBeDefined();
-    click(findItem(submenu(section), "Record Main Display"));
+    click(findItem(submenu(section), "New Recording..."));
     expect(actions.startScreenRecording).toHaveBeenCalledOnce();
   });
 

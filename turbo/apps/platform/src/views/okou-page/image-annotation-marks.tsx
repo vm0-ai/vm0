@@ -6,6 +6,8 @@ import type {
 import {
   HIGHLIGHT_FILL,
   markOrdinal,
+  NOTE_GROUND,
+  noteOnImage,
   REDACT_FILL,
   STROKE_HALO_INNER,
 } from "../../signals/okou-page/image-annotation.ts";
@@ -138,24 +140,25 @@ function boxedFill(
   };
 }
 
+/**
+ * Selection is carried entirely by the resize handles. An outline on top of the
+ * mark's own border reads as two strokes around one shape, which looks like a
+ * rendering fault rather than a state, so nothing here changes when a mark is
+ * picked.
+ */
 export function MarkShape({
   mark,
   ordinal,
-  selected = false,
   aspect = 1,
   onSelect,
   onGrab,
 }: {
   mark: ImageAnnotationMark;
   ordinal: number;
-  selected?: boolean;
   aspect?: number;
   onSelect?: () => void;
   onGrab?: (event: ReactPointerEvent<HTMLElement>) => void;
 }) {
-  const ring = selected
-    ? { outline: `2px solid ${markInk(mark)}`, outlineOffset: "3px" }
-    : {};
   // Without a handler the mark is decoration, so it must not eat pointer events
   // from the surface underneath — that surface is where new marks get drawn.
   const interaction = onSelect
@@ -180,7 +183,6 @@ export function MarkShape({
           top: percent(mark.at.y),
           color: mark.ink,
           textShadow: `0 0 3px ${STROKE_HALO_INNER}, 0 0 3px ${STROKE_HALO_INNER}`,
-          ...ring,
         }}
       >
         <span className="whitespace-pre text-sm font-bold">{mark.text}</span>
@@ -198,7 +200,6 @@ export function MarkShape({
         height: percent(mark.rect.height),
         borderRadius: mark.shape === "box" ? 4 : 3,
         ...boxedFill(mark),
-        ...ring,
       }}
     >
       {mark.shape === "box" && (
@@ -209,6 +210,58 @@ export function MarkShape({
           {ordinal}
         </span>
       )}
+    </span>
+  );
+}
+
+/**
+ * A mark's note, drawn on the image itself rather than only travelling as text.
+ *
+ * The flattened copy is what the vision model actually looks at, so a sentence
+ * that only exists in the prompt makes the model match words to regions by
+ * position alone. Printed next to its mark, the instruction and the thing it is
+ * about arrive together.
+ */
+export function MarkNoteLabel({
+  mark,
+  onSelect,
+  onGrab,
+}: {
+  mark: ImageAnnotationMark;
+  onSelect?: () => void;
+  onGrab?: (event: ReactPointerEvent<HTMLElement>) => void;
+}) {
+  const note = noteOnImage(mark);
+  if (!note) {
+    return null;
+  }
+
+  const interaction = onSelect
+    ? {
+        onClick: onSelect,
+        ...(onGrab ? { onPointerDown: onGrab } : {}),
+        className: "absolute cursor-move",
+        "data-testid": `annotation-note-label-${mark.id}`,
+      }
+    : { className: "pointer-events-none absolute" };
+
+  return (
+    <span
+      {...interaction}
+      style={{
+        left: percent(note.box.x),
+        top: percent(note.box.y),
+        width: percent(note.box.width),
+        color: note.ink,
+        // An image can be any colour under the text, so the label carries its
+        // own ground rather than relying on a halo to separate it.
+        background: NOTE_GROUND,
+        borderColor: note.ink,
+      }}
+    >
+      <span className="block whitespace-pre-wrap break-words rounded-md border px-1.5 py-1 text-[11px] font-semibold leading-snug">
+        {note.text}
+      </span>
     </span>
   );
 }
@@ -238,6 +291,9 @@ export function AnnotationMarkLayer({
             aspect={aspect}
           />
         );
+      })}
+      {annotation.marks.map((mark) => {
+        return <MarkNoteLabel key={`${mark.id}-note`} mark={mark} />;
       })}
     </span>
   );

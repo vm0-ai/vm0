@@ -5150,6 +5150,18 @@
         },
         "title": "언어"
       },
+      "morningBrief": {
+        "conflict": "설치 상태가 일관되지 않아 Morning Brief를 일시적으로 사용할 수 없습니다. 조정이 완료되면 다시 시도하세요.",
+        "description": "매일 오전 7시에 현재 시간대를 기준으로 Gmail, GitHub, Calendar 및 읽지 않은 Chats의 우선순위를 이메일로 받아보세요.",
+        "loading": "Morning Brief 설정을 불러오는 중...",
+        "missingDefaultAgent": "Morning Brief를 활성화하기 전에 사용 가능한 기본 Agent를 선택하세요.",
+        "missingTimezone": "Morning Brief를 활성화하기 전에 유효한 시간대를 설정하세요.",
+        "multipleInstallations": "Morning Brief 설치가 여러 개 있습니다. 이 환경설정을 변경하기 전에 충돌을 해결하세요.",
+        "nextEmail": "다음 이메일: {{date}} ({{timezone}})",
+        "retry": "다시 시도",
+        "retryMessage": "Morning Brief 설정을 불러오거나 업데이트할 수 없습니다. 계속하려면 다시 시도하세요.",
+        "title": "모닝 브리프"
+      },
       "pageDescription": "외관 및 에이전트 실행 환경설정을 관리하세요",
       "pageTitle": "환경설정",
       "send": {

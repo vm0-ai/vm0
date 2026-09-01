@@ -27,14 +27,19 @@ const LEGACY_PREFIX = "/api/zero";
 // with `Slackbot 1.0` observed delivering to each, and `routes/slack-oauth.ts`
 // emits the neutral `redirect_uri` since #30551.
 //
-// The two that remain have no producer left to move, so no deploy can drain
-// them. The Teams callback is registered in the Microsoft app registration, and
-// the Slack install link was handed to people rather than computed per request
-// — its `zero` form was still answering browser and crawler requests ten hours
-// after the deploy that was supposed to have drained it.
+// #30812 then took the Teams callback, leaving one. #30667 had unified
+// `callbackRedirectUri` onto the canonical path, and a `redirect_uri` is
+// computed per request rather than handed to a person, so that deploy bounded
+// the branded form to authorizations already in flight — minutes, long past by
+// the time the row went.
+//
+// The one that remains has no producer left to move and no deploy that can
+// drain it either: the Slack install link was handed to people rather than
+// computed per request, and its `zero` form was still answering browser and
+// crawler requests ten hours after the deploy that was supposed to have drained
+// it.
 const SERVED_LEGACY_PATHS: Readonly<Record<string, string>> = {
   "/api/okou/slack/oauth/install": "/api/zero/slack/oauth/install",
-  "/api/okou/teams/oauth/callback": "/api/zero/teams/oauth/callback",
 };
 
 // A row #28701 removed from `LEGACY_ZERO_PATHS` whose path did not retire with

@@ -5,7 +5,11 @@ import type {
 } from "@okouai/api-contracts/contracts/trpc-contract";
 
 import { createAuthedContractClient } from "../signals/api-client-base.ts";
-import type { AuthRecovery } from "../signals/auth-retry.ts";
+
+export interface SharedDatabaseAuthRecovery {
+  readonly getToken: (signal: AbortSignal) => Promise<string | null>;
+  readonly forceRefreshToken: (signal: AbortSignal) => Promise<string | null>;
+}
 
 export type SharedDatabaseContractClient<TContract extends AppRouter> =
   InitClientReturn<TContract, InitClientArgs>;
@@ -13,7 +17,7 @@ export type SharedDatabaseContractClient<TContract extends AppRouter> =
 export type SharedDatabaseContractClientFactory = <TContract extends AppRouter>(
   contract: TContract,
   baseUrl: string,
-  authRecovery: AuthRecovery,
+  authRecovery: SharedDatabaseAuthRecovery,
   rootSignal: AbortSignal,
   getVercelProtectionBypass: () => string | undefined,
 ) => SharedDatabaseContractClient<TContract>;
@@ -24,20 +28,23 @@ export function createSharedDatabaseContractClientFactory(
   return <TContract extends AppRouter>(
     contract: TContract,
     baseUrl: string,
-    authRecovery: AuthRecovery,
+    authRecovery: SharedDatabaseAuthRecovery,
     rootSignal: AbortSignal,
     getVercelProtectionBypass: () => string | undefined,
   ): SharedDatabaseContractClient<TContract> => {
     return createAuthedContractClient(contract, {
       baseUrl,
       clientVersion,
-      getAuthRecovery: () => {
-        return Promise.resolve(authRecovery);
+      getToken: (signal) => {
+        return authRecovery.getToken(signal);
       },
       getRootSignal: () => {
         return rootSignal;
       },
       getVercelProtectionBypass,
+      reloadToken: (signal) => {
+        return authRecovery.forceRefreshToken(signal);
+      },
       validateResponse: true,
     });
   };

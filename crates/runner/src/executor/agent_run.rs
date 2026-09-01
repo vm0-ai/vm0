@@ -978,6 +978,17 @@ fn diagnostic_is_agent_execution_timeout(diagnostic: Option<&FailureDiagnostic>)
         .is_some_and(|termination| termination.reason == CliTerminationReason::ExecutionTimeout)
 }
 
+fn diagnostic_is_control_path_failure(diagnostic: Option<&FailureDiagnostic>) -> bool {
+    diagnostic
+        .and_then(|diagnostic| diagnostic.cli_termination.as_ref())
+        .is_some_and(|termination| {
+            matches!(
+                termination.reason,
+                CliTerminationReason::HeartbeatError | CliTerminationReason::HeartbeatPanic
+            )
+        })
+}
+
 fn sandbox_reuse_disposition_for_process_exit(
     exit: &sandbox::ProcessExit,
     cancellation: CancellationDisposition,
@@ -1005,6 +1016,11 @@ fn sandbox_reuse_disposition_for_process_exit(
             return SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ExecutionUncertain);
         }
     };
+    if failure
+        .is_some_and(|failure| diagnostic_is_control_path_failure(failure.diagnostic.as_ref()))
+    {
+        return SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ControlPathFailure);
+    }
     if cancellation == CancellationDisposition::Cooperative {
         SandboxReuseDisposition::Eligible(SandboxReuseTerminal::CooperativeCancellation)
     } else if failure.is_some_and(|failure| {
@@ -2669,6 +2685,89 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use guest_contracts::diagnostics::{
+        AgentFramework, CliTerminationDiagnostic, FailureClass, PromptMetadata,
+    };
+
+    fn control_path_failure(reason: CliTerminationReason) -> ExecutionFailure {
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliExecutionError,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("continue"),
+        )
+        .with_cli_exit_code(1)
+        .with_cli_termination(CliTerminationDiagnostic::new(reason));
+        ExecutionFailure::new(1, "heartbeat failed", Some(diagnostic))
+    }
+
+    fn nonzero_process_exit() -> sandbox::ProcessExit {
+        sandbox::ProcessExit::new(42, 1, Vec::new(), Vec::new())
+    }
+
+    #[test]
+    fn heartbeat_control_failures_reject_sandbox_reuse() {
+        for reason in [
+            CliTerminationReason::HeartbeatError,
+            CliTerminationReason::HeartbeatPanic,
+        ] {
+            let failure = control_path_failure(reason);
+            let disposition = sandbox_reuse_disposition_for_process_exit(
+                &nonzero_process_exit(),
+                CancellationDisposition::None,
+                Some(&failure),
+            );
+
+            assert_eq!(
+                disposition,
+                SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ControlPathFailure)
+            );
+            assert_eq!(disposition.as_str(), "control_path_failure");
+            assert_eq!(
+                disposition.telemetry_action(),
+                "runner_terminal_sandbox_reuse_rejected_control_path_failure"
+            );
+        }
+    }
+
+    #[test]
+    fn ordinary_nonzero_exit_remains_reusable() {
+        let failure = ExecutionFailure::new(1, "ordinary failure", None);
+
+        assert_eq!(
+            sandbox_reuse_disposition_for_process_exit(
+                &nonzero_process_exit(),
+                CancellationDisposition::None,
+                Some(&failure),
+            ),
+            SandboxReuseDisposition::Eligible(SandboxReuseTerminal::NonzeroExit)
+        );
+    }
+
+    #[test]
+    fn hard_cancellation_and_resource_failure_precede_control_path_rejection() {
+        let failure = control_path_failure(CliTerminationReason::HeartbeatError);
+        assert_eq!(
+            sandbox_reuse_disposition_for_process_exit(
+                &nonzero_process_exit(),
+                CancellationDisposition::HardFallback,
+                Some(&failure),
+            ),
+            SandboxReuseDisposition::Ineligible(SandboxReuseRejection::HardCancellation)
+        );
+
+        let failure =
+            failure.with_resource_diagnostics(Some(ResourceFailureDiagnostics::from_failure_kind(
+                ResourceFailureKind::GuestMemoryOomKilled,
+            )));
+        assert_eq!(
+            sandbox_reuse_disposition_for_process_exit(
+                &nonzero_process_exit(),
+                CancellationDisposition::None,
+                Some(&failure),
+            ),
+            SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ResourceFailure)
+        );
+    }
 
     fn exec_arg_aggregate_bytes(value: &str) -> usize {
         value.len() + 1

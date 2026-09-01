@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.42.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.42.0...desktop-v0.42.1) (2026-09-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.387.0
+
+## [0.42.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.41.0...desktop-v0.42.0) (2026-09-01)
+
+
+### Features
+
+* **desktop:** choose, record, pause and discard from floating controls ([#30743](https://github.com/vm0-ai/vm0/issues/30743)) ([341b39d](https://github.com/vm0-ai/vm0/commit/341b39dbd5bf870f5c853d4459fbb71fac6ae48b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.386.1
+
+## [0.41.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.40.5...desktop-v0.41.0) (2026-09-01)
+
+
+### Features
+
+* **video:** add click-driven desktop camera workflow ([#30801](https://github.com/vm0-ai/vm0/issues/30801)) ([89d135a](https://github.com/vm0-ai/vm0/commit/89d135aaac7429a70dd77680af4adf6c9c60897a))
+
+## [0.40.5](https://github.com/vm0-ai/vm0/compare/desktop-v0.40.4...desktop-v0.40.5) (2026-09-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.386.0
+
 ## [0.40.4](https://github.com/vm0-ai/vm0/compare/desktop-v0.40.3...desktop-v0.40.4) (2026-09-01)
 
 

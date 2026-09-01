@@ -28,6 +28,7 @@ pub(super) enum Scenario {
     NoActiveTurn,
     ExitOnTurnSteer,
     RuntimeTurnComplete,
+    RuntimeTurnCompleteBeforeHeartbeat,
     RuntimeTurnFailed,
     RuntimeTurnFailedContextWindowExceeded,
     RuntimeTurnFailedInternalServerError,
@@ -95,6 +96,9 @@ impl Scenario {
                 "no-active-turn" => Ok(Self::NoActiveTurn),
                 "exit-on-turn-steer" => Ok(Self::ExitOnTurnSteer),
                 "runtime-turn-complete" => Ok(Self::RuntimeTurnComplete),
+                "runtime-turn-complete-before-heartbeat" => {
+                    Ok(Self::RuntimeTurnCompleteBeforeHeartbeat)
+                }
                 "runtime-turn-failed" => Ok(Self::RuntimeTurnFailed),
                 "runtime-turn-failed-context-window-exceeded" => {
                     Ok(Self::RuntimeTurnFailedContextWindowExceeded)

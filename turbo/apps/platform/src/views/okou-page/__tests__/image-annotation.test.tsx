@@ -151,6 +151,28 @@ interface DragBox {
   readonly toY: number;
 }
 
+/** jsdom reports a zero-sized box for every element, so the surface is given
+ * one explicitly — the editor divides by it to normalize each point. */
+async function sizedSurface(): Promise<HTMLElement> {
+  const surface = await screen.findByTestId("image-annotation-surface");
+  surface.getBoundingClientRect = () => {
+    return {
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 400,
+      bottom: 300,
+      width: 400,
+      height: 300,
+      toJSON: () => {
+        return {};
+      },
+    };
+  };
+  return surface;
+}
+
 /** Drags a rectangle across the drawing surface. */
 async function dragOnSurface(
   box: DragBox = { fromX: 40, fromY: 30, toX: 200, toY: 180 },
@@ -422,6 +444,134 @@ describe("composer image annotation", () => {
     });
   });
 
+  /**
+   * The note is the instruction; the flattened image is what the model looks
+   * at. A sentence that only exists in the prompt leaves the model matching
+   * words to regions by position, so it has to be printed on the image too.
+   */
+  it("prints a mark's note on the image and lets it be placed", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context);
+    mockAgentChatPage();
+    mockDraftWithImage(null);
+
+    setup(true);
+
+    await user.click(
+      await screen.findByLabelText("Open image preview for billing-page.png"),
+    );
+    await user.click(await screen.findByTestId("artifact-dialog-annotate"));
+    await screen.findByTestId("image-annotation-editor");
+    await dragOnSurface({ fromX: 40, fromY: 30, toX: 200, toY: 120 });
+
+    // Nothing is printed until there is something to print.
+    expect(screen.queryByTestId(/^annotation-note-label-/u)).toBeNull();
+
+    await user.click(await screen.findByTestId("annotation-mark-1"));
+    await user.type(
+      await screen.findByPlaceholderText("Say what should change here"),
+      "Tighten this spacing",
+    );
+
+    const label = await waitFor(() => {
+      const found = document.querySelector(
+        '[data-testid^="annotation-note-label-"]',
+      );
+      if (!(found instanceof HTMLElement)) {
+        throw new Error("Note label not drawn on the image");
+      }
+      return found;
+    });
+    expect(label).toHaveTextContent("Tighten this spacing");
+
+    // Selecting the note hands over its own grip, not the mark's.
+    fireEvent.pointerDown(label, { clientX: 60, clientY: 140, pointerId: 2 });
+    const widthHandle = await screen.findByTestId(
+      "annotation-note-width-handle",
+    );
+    expect(widthHandle).toBeInTheDocument();
+    expect(screen.queryByTestId("annotation-handle-tl")).toBeNull();
+  });
+
+  /**
+   * A note printed past the bottom edge is cropped out of the flattened image
+   * and nobody finds out, because the text still travels in the prompt. A mark
+   * with no room under it has to put its note above itself instead.
+   */
+  it("keeps the note of a bottom-edge mark inside the image", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context);
+    mockAgentChatPage();
+    mockDraftWithImage(null);
+
+    setup(true);
+
+    await user.click(
+      await screen.findByLabelText("Open image preview for billing-page.png"),
+    );
+    await user.click(await screen.findByTestId("artifact-dialog-annotate"));
+    await screen.findByTestId("image-annotation-editor");
+
+    // A box hugging the bottom of a 400x300 surface.
+    await dragOnSurface({ fromX: 40, fromY: 250, toX: 200, toY: 296 });
+    await user.click(await screen.findByTestId("annotation-mark-1"));
+    await user.type(
+      await screen.findByPlaceholderText("Say what should change here"),
+      "This row is cut off",
+    );
+
+    const label = await waitFor(() => {
+      const found = screen.getByTestId(/^annotation-note-label-/u);
+      return found;
+    });
+    const top = Number.parseFloat(label.style.top);
+    const left = Number.parseFloat(label.style.left);
+    const width = Number.parseFloat(label.style.width);
+    expect(top).toBeLessThan(100);
+    expect(top).toBeGreaterThanOrEqual(0);
+    // Placed above the mark rather than under it, and still on the image.
+    expect(top).toBeLessThan(83);
+    expect(left + width).toBeLessThanOrEqual(100);
+  });
+
+  /**
+   * A corner grip changes both dimensions; an edge grip changes one. Dragging
+   * the top edge sideways must not slide the box across the image.
+   */
+  it("resizes height alone from the top edge", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context);
+    mockAgentChatPage();
+    mockDraftWithImage([boxMark()]);
+
+    setup(true);
+
+    await user.click(
+      await screen.findByLabelText("Open image preview for billing-page.png"),
+    );
+    await user.click(await screen.findByTestId("artifact-dialog-annotate"));
+    await screen.findByTestId("image-annotation-editor");
+    await user.click(await screen.findByTestId("annotation-mark-1"));
+
+    const surface = await sizedSurface();
+    const mark = screen.getByTestId("annotation-mark-1");
+    const before = mark.style.left;
+
+    fireEvent.pointerDown(screen.getByTestId("annotation-handle-t"), {
+      clientX: 100,
+      clientY: 30,
+      pointerId: 3,
+    });
+    fireEvent.pointerMove(surface, { clientX: 160, clientY: 60, pointerId: 3 });
+    fireEvent.pointerUp(surface, { clientX: 160, clientY: 60, pointerId: 3 });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("annotation-mark-1").style.top).not.toBe("10%");
+    });
+    // The horizontal drag went nowhere, which is the whole point of an edge.
+    expect(screen.getByTestId("annotation-mark-1").style.left).toBe(before);
+  });
+
   it("deletes the selected mark", async () => {
     const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context);
@@ -500,6 +650,10 @@ describe("composer image annotation", () => {
     });
   });
 
+  /**
+   * Opening the editor is not an edit. Attaching has to stay unavailable until
+   * there is something to attach, and it has to come back once there is.
+   */
   it("keeps an opened-but-untouched image unannotated", async () => {
     const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context);
@@ -514,8 +668,21 @@ describe("composer image annotation", () => {
     await user.click(chip);
     await user.click(await screen.findByTestId("artifact-dialog-annotate"));
     await screen.findByTestId("image-annotation-editor");
-    await user.click(attachMarksButton());
 
+    expect(attachMarksButton()).toBeDisabled();
+
+    await dragOnSurface();
+    await waitFor(() => {
+      expect(attachMarksButton()).toBeEnabled();
+    });
+
+    // Undoing back to the start leaves nothing to attach again.
+    await user.click(screen.getByLabelText("Undo"));
+    await waitFor(() => {
+      expect(attachMarksButton()).toBeDisabled();
+    });
+
+    await user.click(screen.getByText("Cancel"));
     await waitFor(() => {
       expect(screen.queryByTestId("image-annotation-editor")).toBeNull();
     });

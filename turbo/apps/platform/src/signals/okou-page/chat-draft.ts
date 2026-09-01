@@ -420,6 +420,8 @@ export interface DraftSignals {
   readInput$: Command<string, []>;
   setInput$: Command<void, [string]>;
   appendInput$: Command<void, [string]>;
+  agentInstructions$: Computed<string | null>;
+  setAgentInstructions$: Command<void, [string | null]>;
   setInputSyncTarget$: Command<void, [DraftInputSyncTarget | null]>;
   takeRestoredUserMessage$: Command<UserMessageDocument | null, []>;
   readEditorDocument$: Command<EditorDocumentSnapshot | null, []>;
@@ -438,7 +440,7 @@ export interface DraftSignals {
    */
   restoreAttachments$: Command<
     Promise<boolean>,
-    [PersistedAttachment[], AbortSignal]
+    [RestorableAttachment[], AbortSignal]
   >;
   removeAttachment$: Command<void, [ChatAttachment]>;
   dragOver$: Computed<boolean>;
@@ -466,6 +468,19 @@ export interface DraftInputSyncTarget {
 }
 
 /**
+ * Attachment metadata a caller can restore into a draft.
+ *
+ * `url` is optional because a caller can legitimately hold only an artifact id:
+ * the desktop recording handoff arrives as upload ids in a URL and has no
+ * stored URL to pass. `fileInfo$` signs one against the owning API in that
+ * case. A caller that does carry the persisted URL keeps it, so re-saving the
+ * draft persists the canonical artifact URL instead of a short-lived signed one.
+ */
+export type RestorableAttachment = Omit<PersistedAttachment, "url"> & {
+  readonly url?: string;
+};
+
+/**
  * Reconstructs a ChatAttachment from persisted attachment metadata.
  *
  * The persisted id is an externally managed reference: the artifact is stored
@@ -476,7 +491,7 @@ export interface DraftInputSyncTarget {
  *
  */
 export function createRestoredAttachment(
-  persisted: PersistedAttachment,
+  persisted: RestorableAttachment,
 ): ChatAttachment {
   const internalAnnotation$ = state<ImageAnnotation | null>(
     persisted.annotation ?? null,
@@ -489,11 +504,6 @@ export function createRestoredAttachment(
       set(internalAnnotation$, annotation);
     },
   );
-  const persistedInfo: FileInfo = {
-    id: persisted.id,
-    url: persisted.url,
-    contentType: persisted.contentType,
-  };
   const fileInfo$ = computed(async (get): Promise<FileInfo | null> => {
     const signal = get(rootSignal$);
     const client = get(apiClient$)(webFilesContract);
@@ -505,7 +515,13 @@ export function createRestoredAttachment(
       [200, 404],
       signal,
     );
-    return resolved.status === 404 ? null : persistedInfo;
+    return resolved.status === 404
+      ? null
+      : {
+          id: persisted.id,
+          url: persisted.url ?? resolved.body.url,
+          contentType: persisted.contentType,
+        };
   });
 
   const cancel$ = command(() => {
@@ -688,6 +704,7 @@ function createPruneUnavailableAttachments(
 function createDraftLifecycleSignals({
   draftInput,
   draftDocument,
+  internalAgentInstructions$,
   internalGenerationTemplate$,
   internalAttachments$,
   internalDragOver$,
@@ -695,6 +712,7 @@ function createDraftLifecycleSignals({
 }: {
   draftInput: ReturnType<typeof createDraftInputSignals>;
   draftDocument: ReturnType<typeof createDraftDocumentSignals>;
+  internalAgentInstructions$: State<string | null>;
   internalGenerationTemplate$: State<GenerationTemplateRequest | undefined>;
   internalAttachments$: State<ChatAttachment[]>;
   internalDragOver$: State<boolean>;
@@ -707,6 +725,7 @@ function createDraftLifecycleSignals({
     set(draftInput.setInput$, "");
     set(draftDocument.setRestoredUserMessage$, null);
     set(draftDocument.setEditorDocument$, null);
+    set(internalAgentInstructions$, null);
     set(internalGenerationTemplate$, undefined);
     const attachments = get(internalAttachments$);
     for (const attachment of attachments) {
@@ -726,6 +745,7 @@ function createDraftLifecycleSignals({
     ): Promise<boolean> => {
       set(draftDocument.setEditorDocument$, null);
       set(draftDocument.setRestoredUserMessage$, value.userMessage);
+      set(internalAgentInstructions$, null);
       set(internalGenerationTemplate$, value.generationTemplate);
       set(internalAttachments$, value.attachments);
       set(draftInput.setInput$, value.content);
@@ -745,11 +765,21 @@ function createDraftLifecycleSignals({
 export function createDraftSignals(): DraftSignals {
   const draftInput = createDraftInputSignals();
   const draftDocument = createDraftDocumentSignals();
+  const internalAgentInstructions$ = state<string | null>(null);
   const internalGenerationTemplate$ = state<
     GenerationTemplateRequest | undefined
   >(undefined);
   const internalAttachments$ = state<ChatAttachment[]>([]);
   const internalDragOver$ = state(false);
+
+  const agentInstructions$ = computed((get) => {
+    return get(internalAgentInstructions$);
+  });
+  const setAgentInstructions$ = command(
+    ({ set }, value: string | null): void => {
+      set(internalAgentInstructions$, value);
+    },
+  );
 
   const generationTemplate$ = computed((get) => {
     return get(internalGenerationTemplate$);
@@ -802,7 +832,7 @@ export function createDraftSignals(): DraftSignals {
   const restoreAttachments$ = command(
     async (
       { set },
-      persisted: PersistedAttachment[],
+      persisted: RestorableAttachment[],
       signal: AbortSignal,
     ): Promise<boolean> => {
       if (persisted.length === 0) {
@@ -835,6 +865,7 @@ export function createDraftSignals(): DraftSignals {
   const { clear$, seed$ } = createDraftLifecycleSignals({
     draftInput,
     draftDocument,
+    internalAgentInstructions$,
     internalGenerationTemplate$,
     internalAttachments$,
     internalDragOver$,
@@ -843,6 +874,8 @@ export function createDraftSignals(): DraftSignals {
 
   return {
     ...draftInput,
+    agentInstructions$,
+    setAgentInstructions$,
     takeRestoredUserMessage$: draftDocument.takeRestoredUserMessage$,
     readEditorDocument$: draftDocument.readEditorDocument$,
     setEditorDocument$: draftDocument.setEditorDocument$,

@@ -560,7 +560,6 @@ claude_script = claude_step.fetch("run")
   /api/model-policies
   /api/feature-switches
   realAgentInPreview
-  builtInModelProviderFallback
 ].each do |required_fragment|
   unless claude_script.include?(required_fragment)
     raise "real Claude bootstrap must include #{required_fragment}"

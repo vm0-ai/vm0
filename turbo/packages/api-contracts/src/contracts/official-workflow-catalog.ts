@@ -19,16 +19,12 @@ export type {
   OfficialWorkflowBlueprintBindings,
 } from "./official-workflow-bindings";
 
-export const OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION = 1 as const;
+export const OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION = 2 as const;
 
 export const officialWorkflowLifecycleSchema = z.enum(["active", "retired"]);
 export type OfficialWorkflowLifecycle = z.infer<
   typeof officialWorkflowLifecycleSchema
 >;
-
-const officialWorkflowUserTimezoneDerivationSchema = z
-  .object({ kind: z.literal("user-timezone") })
-  .strict();
 
 const officialWorkflowParameterBaseShape = {
   key: officialWorkflowParameterKeySchema,
@@ -43,7 +39,6 @@ const officialWorkflowStringParameterSchema = z
       .enum(["text", "uuid", "timezone", "date-time", "url"])
       .default("text"),
     default: z.string().optional(),
-    derivation: officialWorkflowUserTimezoneDerivationSchema.optional(),
   })
   .strict();
 
@@ -120,7 +115,7 @@ export const officialWorkflowScheduleTemplateSchema = z.discriminatedUnion(
       .object({
         type: z.literal("cron"),
         cronExpression: templatedStringSchema,
-        timezone: templatedStringSchema,
+        timezone: templatedStringSchema.optional(),
       })
       .strict(),
     z
@@ -133,7 +128,7 @@ export const officialWorkflowScheduleTemplateSchema = z.discriminatedUnion(
       .object({
         type: z.literal("once"),
         atTime: templatedStringSchema,
-        timezone: templatedStringSchema,
+        timezone: templatedStringSchema.optional(),
       })
       .strict(),
   ],

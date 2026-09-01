@@ -1,6 +1,6 @@
 {
   "name": "@okouai/app",
-  "version": "0.817.0",
+  "version": "0.820.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -96,7 +96,7 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
     "fake-indexeddb": "^6.2.5",
-    "happy-dom": "^20.11.1",
+    "happy-dom": "^20.11.6",
     "i18next-cli": "^1.67.7",
     "msw": "^2.13.2",
     "oxlint": "^1.75.0",

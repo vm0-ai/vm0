@@ -810,15 +810,96 @@ describe("okou doctor connectors command", () => {
     );
   });
 
-  it("fails when --agent is passed without a workflow argument", async () => {
-    await expect(run(["--agent", AGENT_ID])).rejects.toThrow(
-      "process.exit called",
+  it("checks only effective public and private workflows on an aggregate Agent scope", async () => {
+    const privateWinner = workflow(
+      PRIVATE_WINNER_WORKFLOW_ID,
+      "shared-workflow",
+      { displayName: "Private Winner" },
+    );
+    const publicWorkflow = workflow(FOREIGN_WORKFLOW_ID, "public-workflow", {
+      visibility: "public",
+      ownerUserId: OTHER_USER_ID,
+    });
+    const shadowedPublic = workflow(SHADOWED_WORKFLOW_ID, "shared-workflow", {
+      visibility: "public",
+      ownerUserId: OTHER_USER_ID,
+      shadowedBy: {
+        id: privateWinner.id,
+        name: privateWinner.name,
+        displayName: privateWinner.displayName,
+      },
+    });
+    const otherAgentWorkflow = workflow(
+      UNKNOWN_WORKFLOW_ID,
+      "other-agent-workflow",
+      {
+        agentId: SECOND_AGENT_ID,
+        agentName: "other-agent",
+        agentDisplayName: "Other Agent",
+      },
+    );
+    let requestedAgentId: string | null = null;
+    server.use(
+      http.get(`${API_ORIGIN}/api/workflows`, ({ request }) => {
+        requestedAgentId = new URL(request.url).searchParams.get("agentId");
+        return HttpResponse.json([
+          shadowedPublic,
+          privateWinner,
+          publicWorkflow,
+          otherAgentWorkflow,
+        ]);
+      }),
+    );
+    const checkedWorkflowIds = new Set<string>();
+    server.use(
+      http.post(
+        `${API_ORIGIN}/api/workflows/:workflowId/connector-readiness`,
+        ({ params }) => {
+          const workflowId = String(params.workflowId);
+          checkedWorkflowIds.add(workflowId);
+          return HttpResponse.json({
+            connectors: [
+              {
+                connectorSlug:
+                  workflowId === privateWinner.id ? "gmail" : "slack",
+                label: workflowId === privateWinner.id ? "Gmail" : "Slack",
+                reason: "The workflow uses an external connector.",
+                status: "not-connected",
+              },
+            ] satisfies WorkflowConnectorReadinessEntry[],
+          });
+        },
+      ),
     );
 
-    expect(mockExit).toHaveBeenCalledWith(1);
-    expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
-      "--agent requires a workflow argument",
+    await run(["--agent", AGENT_ID, "--json"]);
+
+    const printed = output();
+    const report = reportFromOutput(printed);
+    expect(requestedAgentId).toBe(AGENT_ID);
+    expect(checkedWorkflowIds).toStrictEqual(
+      new Set([PRIVATE_WINNER_WORKFLOW_ID, FOREIGN_WORKFLOW_ID]),
     );
+    expect(report.summary).toStrictEqual({
+      checked: 2,
+      attention: 2,
+      unknown: 0,
+      ready: 0,
+      noConnectors: 0,
+    });
+    expect(
+      report.workflows.map((item) => {
+        return item.id;
+      }),
+    ).toStrictEqual([PRIVATE_WINNER_WORKFLOW_ID, FOREIGN_WORKFLOW_ID]);
+    for (const item of report.workflows) {
+      expect(item.agent.id).toBe(AGENT_ID);
+      expect(item.connectors[0]?.action?.url).toMatch(
+        new RegExp(`\\?agentId=${AGENT_ID}$`, "u"),
+      );
+    }
+    expect(printed).not.toContain(SECOND_AGENT_ID);
+    expect(mockExit).not.toHaveBeenCalled();
   });
 
   it("documents the effective visible aggregate scope", () => {
@@ -832,10 +913,13 @@ describe("okou doctor connectors command", () => {
     help = help.replace(/\s+/gu, " ");
 
     expect(help).toContain(
-      "every effective visible workflow across all visible Agents is checked; shadowed workflows are skipped",
+      "Without a workflow argument or --agent, every effective visible workflow across all visible Agents is checked; shadowed workflows are skipped",
     );
     expect(help).toContain(
-      "Aggregate mode is not limited by OKOU_AGENT_ID; each workflow's Agent is used for connector authorization",
+      "With --agent and no workflow argument, every effective workflow hosted by that Agent is checked; public and private workflows are included; shadowed workflows are skipped",
+    );
+    expect(help).toContain(
+      "With a workflow argument, --agent scopes workflow slug resolution; slugs otherwise use OKOU_AGENT_ID, while workflow IDs retain their existing direct lookup behavior",
     );
   });
 });

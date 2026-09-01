@@ -183,6 +183,7 @@ const builtIndexTemplate = indexTemplate
     "%VITE_CLERK_PUBLISHABLE_KEY_PROD%",
     productionClerkPublishableKey,
   )
+  .replaceAll("__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__", "app.vm0.ai")
   .replaceAll("__VM0_CLERK_BROWSER_SCRIPT_URL__", clerkBrowserScriptUrl);
 const expectedClerkCoreScript = clerkCoreScript(builtIndexTemplate);
 const expectedClerkBootstrap = clerkBootstrap(builtIndexTemplate);
@@ -376,7 +377,7 @@ assert.equal(
 );
 assert.ok(
   tagAttributeValues(vm0Page.html, "link", "href").includes(
-    "https://static.vm0.io/platform/icon.svg",
+    "https://static.vm0.io/public/okou-transparent.svg",
   ),
 );
 assertBootstrapAvatar(vm0Page.html);
@@ -417,7 +418,7 @@ assert.equal(
 );
 assert.ok(
   tagAttributeValues(okouPage.html, "link", "href").includes(
-    "https://static.okou.io/platform/icon.svg",
+    "https://static.okou.io/public/okou-transparent.svg",
   ),
 );
 assert.ok(

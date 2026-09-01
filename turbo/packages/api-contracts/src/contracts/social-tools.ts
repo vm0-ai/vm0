@@ -39,12 +39,32 @@ export type ManagedSocialKitPagination =
   | { readonly kind: "none" }
   | { readonly kind: "page"; readonly maxPage: number };
 
+export interface ManagedSocialKitUnreliableEmptyResult {
+  readonly reliability: "unreliable";
+  readonly outcome: "provider_limited";
+  readonly retry: "none";
+  readonly billing: "successful_request";
+}
+
+export interface ManagedSocialKitProviderControlledPageSize {
+  readonly kind: "provider_controlled";
+  readonly mayDifferFromRequestLimit: true;
+}
+
+export interface ManagedSocialKitPublicResult {
+  readonly kind: "tiktok_video_collection";
+  readonly schema: z.ZodType;
+}
+
 export interface ManagedSocialKitCollection {
   readonly resultField: ManagedSocialKitResultField;
   readonly defaultLimit?: number;
+  readonly effectiveLimit?: number;
   readonly itemsPerBillingUnit?: number;
   readonly reportedTotalField?: ManagedSocialKitReportedTotalField;
   readonly pagination: ManagedSocialKitPagination;
+  readonly emptyResult?: ManagedSocialKitUnreliableEmptyResult;
+  readonly pageSize?: ManagedSocialKitProviderControlledPageSize;
 }
 
 export interface ManagedSocialKitToolDefinition<
@@ -60,6 +80,7 @@ export interface ManagedSocialKitToolDefinition<
   readonly maxLimit?: number;
   readonly collection?: ManagedSocialKitCollection;
   readonly availability?: ManagedSocialKitToolAvailability;
+  readonly publicResult?: ManagedSocialKitPublicResult;
 }
 
 function defineTool<
@@ -599,6 +620,53 @@ const tiktokHashtagSearchResultSchema = providerObject({
   cursor: paginationCursorResultSchema.nullable(),
 });
 
+const tiktokPublicAuthorSchema = providerObject({
+  id: z.string(),
+  username: z.string(),
+  displayName: z.string(),
+  avatar: z.string(),
+  verified: z.boolean(),
+});
+
+const tiktokPublicVideoItemSchema = providerObject({
+  videoId: z.string(),
+  description: z.string(),
+  url: z.string(),
+  thumbnail: z.string(),
+  duration: metricSchema,
+  publishedAt: z.string(),
+  views: countSchema,
+  likes: countSchema,
+  comments: countSchema,
+  shares: countSchema,
+  collects: countSchema,
+  author: tiktokPublicAuthorSchema,
+  language: z.string(),
+  subtitles: z.array(z.json()),
+});
+
+const tiktokPublicChannelVideosResultSchema = providerObject({
+  profileUrl: z.string(),
+  channelName: z.string(),
+  results: z.array(tiktokPublicVideoItemSchema),
+  hasMore: z.boolean(),
+  cursor: paginationCursorResultSchema.nullable(),
+});
+
+const tiktokPublicSearchResultSchema = providerObject({
+  query: z.string(),
+  results: z.array(tiktokPublicVideoItemSchema),
+  hasMore: z.boolean(),
+  cursor: paginationCursorResultSchema.nullable(),
+});
+
+const tiktokPublicHashtagSearchResultSchema = providerObject({
+  hashtag: z.string(),
+  results: z.array(tiktokPublicVideoItemSchema),
+  hasMore: z.boolean(),
+  cursor: paginationCursorResultSchema.nullable(),
+});
+
 const youtubeStatsResultSchema = providerObject({
   url: z.string(),
   videoId: z.string(),
@@ -959,11 +1027,20 @@ export const MANAGED_SOCIALKIT_TOOLS = [
     path: "/tiktok/channel-videos",
     inputSchema: cachedUrlCollectionInput(100),
     resultSchema: tiktokChannelVideosResultSchema,
+    publicResult: {
+      kind: "tiktok_video_collection",
+      schema: tiktokPublicChannelVideosResultSchema,
+    },
     maxLimit: 100,
     collection: {
       resultField: "results",
       defaultLimit: 30,
+      effectiveLimit: 30,
       pagination: { kind: "cursor" },
+      pageSize: {
+        kind: "provider_controlled",
+        mayDifferFromRequestLimit: true,
+      },
     },
   }),
   defineTool({
@@ -983,12 +1060,27 @@ export const MANAGED_SOCIALKIT_TOOLS = [
       })
       .strict(),
     resultSchema: tiktokSearchResultSchema,
+    publicResult: {
+      kind: "tiktok_video_collection",
+      schema: tiktokPublicSearchResultSchema,
+    },
     maxLimit: 100,
     collection: {
       resultField: "results",
       defaultLimit: 10,
+      effectiveLimit: 10,
       itemsPerBillingUnit: 50,
       pagination: { kind: "cursor" },
+      emptyResult: {
+        reliability: "unreliable",
+        outcome: "provider_limited",
+        retry: "none",
+        billing: "successful_request",
+      },
+      pageSize: {
+        kind: "provider_controlled",
+        mayDifferFromRequestLimit: true,
+      },
     },
   }),
   defineTool({
@@ -1011,12 +1103,27 @@ export const MANAGED_SOCIALKIT_TOOLS = [
       })
       .strict(),
     resultSchema: tiktokHashtagSearchResultSchema,
+    publicResult: {
+      kind: "tiktok_video_collection",
+      schema: tiktokPublicHashtagSearchResultSchema,
+    },
     maxLimit: 100,
     collection: {
       resultField: "results",
-      defaultLimit: 10,
+      defaultLimit: 20,
+      effectiveLimit: 20,
       itemsPerBillingUnit: 50,
       pagination: { kind: "cursor" },
+      emptyResult: {
+        reliability: "unreliable",
+        outcome: "provider_limited",
+        retry: "none",
+        billing: "successful_request",
+      },
+      pageSize: {
+        kind: "provider_controlled",
+        mayDifferFromRequestLimit: true,
+      },
     },
   }),
   defineTool({
@@ -1177,22 +1284,168 @@ export const socialKitRequestSchema = z.union(
   requestSchemas(MANAGED_SOCIALKIT_TOOLS),
 );
 
+export type ManagedSocialKitCatalogRetrieval =
+  | { readonly kind: "cursor" }
+  | { readonly kind: "page"; readonly maxPage: number }
+  | { readonly kind: "provider_limited" };
+
+export type ManagedSocialKitCatalogProviderLimit =
+  | { readonly kind: "no_pagination" }
+  | { readonly kind: "max_page"; readonly maxPage: number };
+
+export type ManagedSocialKitCatalogBilling =
+  | { readonly kind: "request" }
+  | {
+      readonly kind: "items";
+      readonly itemsPerUnit: number;
+      readonly quantityBasis: "effective_request_limit" | "items_returned";
+    };
+
 export interface ManagedSocialKitToolCatalogEntry {
   readonly name: ManagedSocialKitToolName;
   readonly description: string;
   readonly inputSchema: z.core.JSONSchema.BaseSchema;
   readonly outputSchema: z.core.JSONSchema.BaseSchema;
   readonly availability?: ManagedSocialKitToolAvailability;
+  readonly collection: {
+    readonly resultField: ManagedSocialKitResultField;
+    readonly retrieval: ManagedSocialKitCatalogRetrieval;
+    readonly defaultLimit?: number;
+    readonly requestMaxLimit?: number;
+    readonly effectiveLimit?: number;
+    readonly reportedTotalField?: ManagedSocialKitReportedTotalField;
+    readonly providerLimit?: ManagedSocialKitCatalogProviderLimit;
+    readonly emptyResult?: ManagedSocialKitUnreliableEmptyResult;
+    readonly pageSize?: ManagedSocialKitProviderControlledPageSize;
+    readonly itemContract?: "tiktok_video";
+  } | null;
+  readonly billing: ManagedSocialKitCatalogBilling;
+}
+
+export interface ManagedSocialUnsupportedCapability {
+  readonly platform: "tiktok";
+  readonly capability: "comment_replies" | "follower_list" | "following_list";
+  readonly status: "unsupported";
+  readonly availablePaths: {
+    readonly managedApi: false;
+    readonly scrape: false;
+    readonly browser: false;
+  };
+  readonly guidance: string;
+}
+
+export const MANAGED_SOCIAL_UNSUPPORTED_CAPABILITIES = [
+  {
+    platform: "tiktok",
+    capability: "follower_list",
+    status: "unsupported",
+    availablePaths: { managedApi: false, scrape: false, browser: false },
+    guidance:
+      "No reviewed managed API, scrape, or browser path is available. Do not retry these paths.",
+  },
+  {
+    platform: "tiktok",
+    capability: "following_list",
+    status: "unsupported",
+    availablePaths: { managedApi: false, scrape: false, browser: false },
+    guidance:
+      "No reviewed managed API, scrape, or browser path is available. Do not retry these paths.",
+  },
+  {
+    platform: "tiktok",
+    capability: "comment_replies",
+    status: "unsupported",
+    availablePaths: { managedApi: false, scrape: false, browser: false },
+    guidance:
+      "No reviewed managed API, scrape, or browser path is available. Do not retry these paths.",
+  },
+] as const satisfies readonly ManagedSocialUnsupportedCapability[];
+
+function catalogRetrieval(
+  pagination: ManagedSocialKitPagination,
+): ManagedSocialKitCatalogRetrieval {
+  switch (pagination.kind) {
+    case "cursor":
+    case "next_cursor": {
+      return { kind: "cursor" };
+    }
+    case "page": {
+      return { kind: "page", maxPage: pagination.maxPage };
+    }
+    case "none": {
+      return { kind: "provider_limited" };
+    }
+  }
+}
+
+function catalogProviderLimit(
+  pagination: ManagedSocialKitPagination,
+): ManagedSocialKitCatalogProviderLimit | undefined {
+  switch (pagination.kind) {
+    case "none": {
+      return { kind: "no_pagination" };
+    }
+    case "page": {
+      return { kind: "max_page", maxPage: pagination.maxPage };
+    }
+    case "cursor":
+    case "next_cursor": {
+      return undefined;
+    }
+  }
 }
 
 export function managedSocialKitToolCatalog(): readonly ManagedSocialKitToolCatalogEntry[] {
   return MANAGED_SOCIALKIT_TOOLS.map((tool) => {
+    const collection = tool.collection;
+    const providerLimit = collection
+      ? catalogProviderLimit(collection.pagination)
+      : undefined;
     return {
       name: tool.name,
       description: tool.description,
       inputSchema: z.toJSONSchema(tool.inputSchema),
-      outputSchema: z.toJSONSchema(tool.resultSchema),
+      outputSchema: z.toJSONSchema(
+        tool.publicResult?.schema ?? tool.resultSchema,
+      ),
       ...(tool.availability ? { availability: tool.availability } : {}),
+      collection: collection
+        ? {
+            resultField: collection.resultField,
+            retrieval: catalogRetrieval(collection.pagination),
+            ...(collection.defaultLimit === undefined
+              ? {}
+              : { defaultLimit: collection.defaultLimit }),
+            ...(tool.maxLimit === undefined
+              ? {}
+              : { requestMaxLimit: tool.maxLimit }),
+            ...(collection.effectiveLimit === undefined
+              ? {}
+              : { effectiveLimit: collection.effectiveLimit }),
+            ...(collection.reportedTotalField
+              ? { reportedTotalField: collection.reportedTotalField }
+              : {}),
+            ...(providerLimit ? { providerLimit } : {}),
+            ...(collection.emptyResult
+              ? { emptyResult: collection.emptyResult }
+              : {}),
+            ...(collection.pageSize ? { pageSize: collection.pageSize } : {}),
+            ...(tool.publicResult?.kind === "tiktok_video_collection"
+              ? { itemContract: "tiktok_video" as const }
+              : {}),
+          }
+        : null,
+      billing:
+        collection?.itemsPerBillingUnit === undefined
+          ? { kind: "request" }
+          : {
+              kind: "items",
+              itemsPerUnit: collection.itemsPerBillingUnit,
+              quantityBasis:
+                collection.pageSize?.kind === "provider_controlled"
+                  ? "effective_request_limit"
+                  : "items_returned",
+            },
     };
   });
 }

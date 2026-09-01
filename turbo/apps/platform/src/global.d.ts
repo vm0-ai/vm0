@@ -25,12 +25,11 @@ interface VM0ClerkBootstrap {
   readonly abortOnboarding: () => void;
   readonly clientSessionId?: string;
   clerk?: PlatformClerk;
-  clerkLoadCompletedAt?: number;
-  clerkLoadStartedAt?: number;
   readonly domain?: string;
   readonly loadOptions: VM0ClerkBootstrapLoadOptions;
   loaded?: Promise<void>;
   onboardingStatusPromise?: Promise<VM0ClerkBootstrapOnboardingStatus | null>;
+  readonly productionPrimaryAppDomain: "app.okou.ai" | "app.vm0.ai";
   readonly publishableKey: string;
 }
 

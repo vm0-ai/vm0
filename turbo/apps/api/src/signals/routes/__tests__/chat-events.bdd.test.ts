@@ -1892,7 +1892,7 @@ async function requestSendEventRaw(
 ): Promise<{ readonly status: number; readonly body: unknown }> {
   const headers = sessionHeaders(actor);
   const app = createApp({ signal, routes: TEST_APP_ROUTES });
-  const response = await app.request("/api/zero/chat/events", {
+  const response = await app.request("/api/chat/events", {
     method: "POST",
     headers: { ...headers, "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -5074,7 +5074,7 @@ describe("CHAT-02: model-first provider policies", () => {
     if (vm0Send.status === 503) {
       expectApiError(vm0Send.body);
       expect(vm0Send.body.error.message).toBe(
-        "No model provider configured: no built-in model key is configured",
+        "Every built-in model route for this model is temporarily unavailable",
       );
     } else {
       const vm0Body = vm0Send.body as { readonly runId: string | null };

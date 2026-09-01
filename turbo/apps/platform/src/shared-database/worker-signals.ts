@@ -3,10 +3,7 @@ import { command, computed, createStore, state, type Store } from "ccstate";
 
 import { setApiClientRuntime$ } from "../signals/api-client-runtime.ts";
 import { appVersion$, initializeAppVersion$ } from "../signals/app-version.ts";
-import {
-  setAuthenticatedIdentity$,
-  setAuthRecovery$,
-} from "../signals/auth-context.ts";
+import { setAuthenticatedIdentity$ } from "../signals/auth-context.ts";
 import { reloadChatIndicators$ } from "../signals/chat-thread-list-reload.ts";
 import {
   setAblyLoop$,
@@ -16,7 +13,6 @@ import {
   type RealtimeConnectionState,
 } from "../signals/realtime.ts";
 import { rootSignal$, setRootSignal$ } from "../signals/root-signal.ts";
-import type { AuthRecovery } from "../signals/auth-retry.ts";
 import { createChildAbortController, settle } from "../signals/utils.ts";
 import { chatThreadIndicators$ } from "../signals/chat-page/chat-thread-indicators.ts";
 import type {
@@ -45,7 +41,10 @@ import {
   type WorkerBroadcastMessage,
 } from "./worker-context.ts";
 import { SharedDatabaseWorkerRuntime } from "./worker-runtime.ts";
-import { createSharedDatabaseContractClientFactory } from "./worker-client.ts";
+import {
+  createSharedDatabaseContractClientFactory,
+  type SharedDatabaseAuthRecovery,
+} from "./worker-client.ts";
 
 const STALE_CONNECTION_AFTER_MS = 3 * 60 * 1000;
 
@@ -73,16 +72,14 @@ export interface InitializeCredentialStoreOptions {
 interface CredentialStoreResources {
   readonly controller: AbortController;
   readonly runtime: SharedDatabaseWorkerRuntime;
-  readonly authRecovery: AuthRecovery;
+  readonly authRecovery: SharedDatabaseAuthRecovery;
 }
 
 interface InitializeCredentialStoreResources {
   readonly controller: AbortController;
-  readonly authRecovery: AuthRecovery;
+  readonly authRecovery: SharedDatabaseAuthRecovery;
   readonly broadcast: (message: WorkerBroadcastMessage) => void;
 }
-
-export type CredentialStoreDaemonOwner = (daemon: Promise<void>) => void;
 
 function requireRuntime(
   runtime: SharedDatabaseWorkerRuntime | null,
@@ -156,13 +153,18 @@ const installCredentialStore$ = command(
     set(setApiClientRuntime$, {
       environment: "worker",
       apiBaseUrl: options.apiBaseUrl,
+      getToken: (tokenSignal) => {
+        return resources.authRecovery.getToken(tokenSignal);
+      },
       oauthApiBaseUrl: options.apiBaseUrl,
+      reloadToken: (tokenSignal) => {
+        return resources.authRecovery.forceRefreshToken(tokenSignal);
+      },
       ...(options.vercelProtectionBypass
         ? { vercelProtectionBypass: options.vercelProtectionBypass }
         : {}),
       onForceUpgrade: options.onForceUpgrade,
     });
-    set(setAuthRecovery$, Promise.resolve(resources.authRecovery));
     set(setAuthenticatedIdentity$, Promise.resolve(options.identity));
   },
 );
@@ -208,7 +210,7 @@ export function createSharedDatabaseCredentialStore(
   store.set(initializeAppVersion$, options.appVersion);
   const credentialController = createChildAbortController(workerSignal);
   const credentialSignal = credentialController.signal;
-  const authRecovery: AuthRecovery = {
+  const authRecovery: SharedDatabaseAuthRecovery = {
     getToken: (signal) => {
       return store.set(getWorkerToken$, signal);
     },
@@ -382,13 +384,13 @@ const runCredentialStoreDaemons$ = command(
 );
 
 export const startCredentialStoreDaemons$ = command(
-  ({ get, set }, ownDaemon: CredentialStoreDaemonOwner): void => {
+  ({ get, set }): Promise<void> | null => {
     if (get(credentialStoreDaemonsStartedState$)) {
-      return;
+      return null;
     }
     const signal = get(rootSignal$);
     set(credentialStoreDaemonsStartedState$, true);
-    ownDaemon(set(runCredentialStoreDaemons$, signal));
+    return set(runCredentialStoreDaemons$, signal);
   },
 );
 

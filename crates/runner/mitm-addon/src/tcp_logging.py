@@ -92,11 +92,24 @@ def _has_tcp_size_counters(flow: tcp.TCPFlow) -> bool:
     )
 
 
-def _add_tcp_size(flow: tcp.TCPFlow, key: str, delta: int) -> None:
-    flow.metadata[key] = min(
-        logging_utils.NETWORK_LOG_MAX_SAFE_SIZE,
-        _tcp_counter_value(flow, key) + delta,
-    )
+def _accumulate_tcp_message_sizes(
+    messages: list[tcp.TCPMessage],
+    *,
+    request_size: int = 0,
+    response_size: int = 0,
+) -> tuple[int, int]:
+    for message in messages:
+        if message.from_client:
+            request_size = min(
+                logging_utils.NETWORK_LOG_MAX_SAFE_SIZE,
+                request_size + len(message.content),
+            )
+        else:
+            response_size = min(
+                logging_utils.NETWORK_LOG_MAX_SAFE_SIZE,
+                response_size + len(message.content),
+            )
+    return request_size, response_size
 
 
 def _schedule_tcp_message_drain(flow: tcp.TCPFlow) -> None:
@@ -115,27 +128,14 @@ def _drain_tcp_messages(flow: tcp.TCPFlow) -> None:
     if not flow.messages:
         return
 
-    for message in flow.messages:
-        key = _TCP_REQUEST_SIZE if message.from_client else _TCP_RESPONSE_SIZE
-        _add_tcp_size(flow, key, len(message.content))
+    request_size, response_size = _accumulate_tcp_message_sizes(
+        flow.messages,
+        request_size=_tcp_counter_value(flow, _TCP_REQUEST_SIZE),
+        response_size=_tcp_counter_value(flow, _TCP_RESPONSE_SIZE),
+    )
+    flow.metadata[_TCP_REQUEST_SIZE] = request_size
+    flow.metadata[_TCP_RESPONSE_SIZE] = response_size
     flow.messages.clear()
-
-
-def _sum_tcp_messages(flow: tcp.TCPFlow) -> tuple[int, int]:
-    request_size = 0
-    response_size = 0
-    for message in flow.messages:
-        if message.from_client:
-            request_size = min(
-                logging_utils.NETWORK_LOG_MAX_SAFE_SIZE,
-                request_size + len(message.content),
-            )
-        else:
-            response_size = min(
-                logging_utils.NETWORK_LOG_MAX_SAFE_SIZE,
-                response_size + len(message.content),
-            )
-    return request_size, response_size
 
 
 def _tcp_log_sizes(flow: tcp.TCPFlow) -> tuple[int, int]:
@@ -146,7 +146,7 @@ def _tcp_log_sizes(flow: tcp.TCPFlow) -> tuple[int, int]:
             _tcp_counter_value(flow, _TCP_RESPONSE_SIZE),
         )
 
-    request_size, response_size = _sum_tcp_messages(flow)
+    request_size, response_size = _accumulate_tcp_message_sizes(flow.messages)
     flow.messages.clear()
     return request_size, response_size
 
