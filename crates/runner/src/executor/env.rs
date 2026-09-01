@@ -263,13 +263,13 @@ fn validate_user_environment_for_guest(context: &ExecutionContext) -> Result<(),
         if !guest_contracts::env::is_shell_identifier_env_key(key) {
             return Err(format!(
                 "user environment contains invalid env key {:?}",
-                guest_contracts::env::sanitize_user_env_key_for_diagnostic(key)
+                guest_contracts::env::sanitize_env_key_for_diagnostic(key)
             ));
         }
         if value.contains('\0') {
             return Err(format!(
                 "user environment contains NUL byte for env key {:?}",
-                guest_contracts::env::sanitize_user_env_key_for_diagnostic(key)
+                guest_contracts::env::sanitize_env_key_for_diagnostic(key)
             ));
         }
     }
@@ -330,13 +330,13 @@ fn validate_bootstrap_environment_for_guest(
         if !guest_contracts::env::is_shell_identifier_env_key(key) {
             return Err(format!(
                 "bootstrap environment contains invalid env key {:?}",
-                guest_contracts::env::sanitize_user_env_key_for_diagnostic(key)
+                guest_contracts::env::sanitize_env_key_for_diagnostic(key)
             ));
         }
         if value.contains('\0') {
             return Err(format!(
                 "bootstrap environment contains NUL byte for env key {:?}",
-                guest_contracts::env::sanitize_user_env_key_for_diagnostic(key)
+                guest_contracts::env::sanitize_env_key_for_diagnostic(key)
             ));
         }
     }
