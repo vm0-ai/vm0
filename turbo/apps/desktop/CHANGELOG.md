@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.42.3](https://github.com/vm0-ai/vm0/compare/desktop-v0.42.2...desktop-v0.42.3) (2026-09-01)
+
+
+### Bug Fixes
+
+* **desktop:** stop the recorder overlays covering the screen and hiding errors ([#30868](https://github.com/vm0-ai/vm0/issues/30868)) ([d95010f](https://github.com/vm0-ai/vm0/commit/d95010fd4f330449b451bc0676a67409570989b4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.389.0
+
 ## [0.42.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.42.1...desktop-v0.42.2) (2026-09-01)
 
 

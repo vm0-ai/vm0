@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.182.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.12...runner-rs-v0.182.13) (2026-09-01)
+
+
+### Performance Improvements
+
+* **runner:** specialize reused codex cleanup lifecycle ([#30888](https://github.com/vm0-ai/vm0/issues/30888)) ([5941c94](https://github.com/vm0-ai/vm0/commit/5941c9474fb6f1389a6ca9d3c92e99a3af59b98a))
+
 ## [0.182.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.11...runner-rs-v0.182.12) (2026-09-01)
 
 

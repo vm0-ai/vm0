@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.821.0](https://github.com/vm0-ai/vm0/compare/app-v0.820.1...app-v0.821.0) (2026-09-01)
+
+
+### Features
+
+* **platform:** translate selected chat text ([#30818](https://github.com/vm0-ai/vm0/issues/30818)) ([37c2265](https://github.com/vm0-ai/vm0/commit/37c2265c1c600cbcc22b32224e376c5ae26cead3))
+* use transparent avatar cutouts in the intro video picker ([#30873](https://github.com/vm0-ai/vm0/issues/30873)) ([b176b5b](https://github.com/vm0-ai/vm0/commit/b176b5b46f223dd26d44e976e2299ed3f5bbfa8c))
+
+
+### Bug Fixes
+
+* **app:** remove instatus widget ([#30886](https://github.com/vm0-ai/vm0/issues/30886)) ([e9f7d38](https://github.com/vm0-ai/vm0/commit/e9f7d387d8a42f8eac1fd0b720f7d27fdea38bfe))
+* **platform:** recover shared worker authentication ([#30797](https://github.com/vm0-ai/vm0/issues/30797)) ([d684395](https://github.com/vm0-ai/vm0/commit/d684395ce4ab6af0e25b72a20f0c68cc36cb31ec))
+
+
+### Refactoring
+
+* **platform:** load google ads from app entry ([#30881](https://github.com/vm0-ai/vm0/issues/30881)) ([d2fe263](https://github.com/vm0-ai/vm0/commit/d2fe263990f92b5c45517d2deb34e0f17c130854))
+
+
+### Performance Improvements
+
+* **platform:** preload main stylesheet without blocking paint ([#30883](https://github.com/vm0-ai/vm0/issues/30883)) ([280bf3e](https://github.com/vm0-ai/vm0/commit/280bf3e5d3523c759bd5116bf5be01dcedd0a5f7))
+* **platform:** prune unused global styles ([#30887](https://github.com/vm0-ai/vm0/issues/30887)) ([ae07bec](https://github.com/vm0-ai/vm0/commit/ae07becadf08eaf208add28b7503e8d192252fef))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.389.0
+    * @okouai/core bumped to 8.607.0
+
 ## [0.820.1](https://github.com/vm0-ai/vm0/compare/app-v0.820.0...app-v0.820.1) (2026-09-01)
 
 

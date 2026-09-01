@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.19](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.18...guest-contracts-v0.12.19) (2026-09-01)
+
+
+### Performance Improvements
+
+* **runner:** specialize reused codex cleanup lifecycle ([#30888](https://github.com/vm0-ai/vm0/issues/30888)) ([5941c94](https://github.com/vm0-ai/vm0/commit/5941c9474fb6f1389a6ca9d3c92e99a3af59b98a))
+
 ## [0.12.18](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.17...guest-contracts-v0.12.18) (2026-09-01)
 
 

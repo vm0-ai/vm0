@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.83.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.5...guest-agent-v0.83.6) (2026-09-01)
+
+
+### Performance Improvements
+
+* **guest-agent:** expose control-path scheduling metrics ([#30890](https://github.com/vm0-ai/vm0/issues/30890)) ([1e7a196](https://github.com/vm0-ai/vm0/commit/1e7a1966f15351fb5f8019ebd29c2ee5ad2b4f96))
+* **runner:** specialize reused codex cleanup lifecycle ([#30888](https://github.com/vm0-ai/vm0/issues/30888)) ([5941c94](https://github.com/vm0-ai/vm0/commit/5941c9474fb6f1389a6ca9d3c92e99a3af59b98a))
+
 ## [0.83.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.4...guest-agent-v0.83.5) (2026-09-01)
 
 
