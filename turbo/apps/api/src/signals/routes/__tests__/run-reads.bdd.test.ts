@@ -3414,7 +3414,7 @@ describe("RUN-04/OPS-01: agent run logs", () => {
       modelProvider: "anthropic-api-key",
     });
     const tokenClaim = await api.claimRunnerJob(tokenRun.runId);
-    const okouToken = tokenClaim.environment?.OKOU_TOKEN;
+    const okouToken = tokenClaim.platformEnvironment.OKOU_TOKEN;
     if (!okouToken) {
       throw new Error("Expected the claimed run to expose an OKOU_TOKEN");
     }

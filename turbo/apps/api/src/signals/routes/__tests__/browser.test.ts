@@ -208,7 +208,7 @@ async function claimChatRun(
 ) {
   await flushWaitUntilForTest();
   const claim = await runs.claimRunnerJob(runId);
-  const okouToken = claim.environment?.OKOU_TOKEN;
+  const okouToken = claim.platformEnvironment.OKOU_TOKEN;
   if (!okouToken) {
     throw new Error("Expected the runner claim to include OKOU_TOKEN");
   }

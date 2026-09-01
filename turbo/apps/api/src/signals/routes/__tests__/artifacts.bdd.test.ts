@@ -164,9 +164,11 @@ async function claimChatRun(
 }
 
 function okouTokenFromClaim(claim: RunnerClaim): string {
-  const token = claim.environment?.OKOU_TOKEN;
+  const token = claim.platformEnvironment.OKOU_TOKEN;
   if (!token || !token.startsWith("vm0_sandbox_")) {
-    throw new Error("Expected the claim environment to carry an OKOU_TOKEN");
+    throw new Error(
+      "Expected the claim platform environment to carry an OKOU_TOKEN",
+    );
   }
   return token;
 }

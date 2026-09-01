@@ -107,7 +107,7 @@ async function claimDispatchedRun(runnerGroup: string): Promise<{
     sandboxToken: claim.sandboxToken,
     prompt: claim.prompt,
     appendSystemPrompt: claim.appendSystemPrompt ?? "",
-    okouToken: claim.environment?.OKOU_TOKEN,
+    okouToken: claim.platformEnvironment.OKOU_TOKEN,
   };
 }
 
@@ -1286,7 +1286,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     });
     await runs.heartbeatRunner(runnerGroup);
     const claim = await runs.claimRunnerJob(run.runId);
-    const okouToken = claim.environment?.OKOU_TOKEN;
+    const okouToken = claim.platformEnvironment.OKOU_TOKEN;
     if (!okouToken) {
       throw new Error("Expected the claimed run to expose OKOU_TOKEN");
     }

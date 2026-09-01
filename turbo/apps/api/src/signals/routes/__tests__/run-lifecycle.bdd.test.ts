@@ -858,6 +858,7 @@ function sandboxTokenPayload(token: string): Record<string, unknown> {
 
 function expectCanonicalOkouRunEnvironment(args: {
   readonly environment: Readonly<Record<string, string>> | null | undefined;
+  readonly platformEnvironment: Readonly<Record<string, string>>;
   readonly secretValues: readonly string[] | null | undefined;
   readonly appUrl: string;
   readonly agentId: string;
@@ -867,17 +868,19 @@ function expectCanonicalOkouRunEnvironment(args: {
   readonly publicBrand?: PublicBrand;
   readonly chatThreadId?: string;
 }): void {
-  expect(args.environment?.OKOU_APP_URL).toBe(args.appUrl);
-  expect(args.environment?.OKOU_AGENT_ID).toBe(args.agentId);
+  expect(args.platformEnvironment.OKOU_APP_URL).toBe(args.appUrl);
+  expect(args.platformEnvironment.OKOU_AGENT_ID).toBe(args.agentId);
   if (args.chatThreadId) {
-    expect(args.environment?.OKOU_CHAT_THREAD_ID).toBe(args.chatThreadId);
+    expect(args.platformEnvironment.OKOU_CHAT_THREAD_ID).toBe(
+      args.chatThreadId,
+    );
   }
   expect(
     Object.keys(args.environment ?? {}).filter((key) => {
       return key.startsWith("ZERO_");
     }),
   ).toStrictEqual([]);
-  const okouToken = args.environment?.OKOU_TOKEN;
+  const okouToken = args.platformEnvironment.OKOU_TOKEN;
   if (!okouToken) {
     throw new Error(
       "Expected the claim to expose the canonical Okou run token",
@@ -1512,7 +1515,9 @@ async function setupSameThreadReuseScenario(sourceRunnerIdentity?: {
     first.runId,
     sourceRunnerIdentity ? { runnerIdentity: sourceRunnerIdentity } : {},
   );
-  expect(firstClaim.environment?.OKOU_CHAT_THREAD_ID).toBe(first.threadId);
+  expect(firstClaim.platformEnvironment.OKOU_CHAT_THREAD_ID).toBe(
+    first.threadId,
+  );
   expect(
     Object.keys(firstClaim.environment ?? {}).filter((key) => {
       return key.startsWith("ZERO_");
@@ -7320,7 +7325,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     await api.heartbeatRunner(runnerGroup);
     const thirdClaim = await api.claimRunnerJob(third.runId);
     expect(thirdClaim.prompt).toBe("queued run three");
-    const okouToken = thirdClaim.environment?.OKOU_TOKEN;
+    const okouToken = thirdClaim.platformEnvironment.OKOU_TOKEN;
     if (!okouToken) {
       throw new Error("Expected the promoted claim to expose the Okou token");
     }
@@ -8256,7 +8261,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     }
 
     const unsupported = await claimModel(unsupportedModel);
-    const unsupportedToken = unsupported.claim.environment?.OKOU_TOKEN;
+    const unsupportedToken = unsupported.claim.platformEnvironment.OKOU_TOKEN;
     if (!unsupportedToken) {
       throw new Error(
         "Expected the unsupported-model run to expose OKOU_TOKEN",
@@ -8271,7 +8276,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.requestCancelRun(actor, unsupported.runId, [200]);
 
     const supported = await claimModel(supportedModel);
-    const supportedToken = supported.claim.environment?.OKOU_TOKEN;
+    const supportedToken = supported.claim.platformEnvironment.OKOU_TOKEN;
     if (!supportedToken) {
       throw new Error("Expected the supported-model run to expose OKOU_TOKEN");
     }
@@ -8284,7 +8289,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.requestCancelRun(actor, supported.runId, [200]);
 
     const unknown = await claimModel(unknownModel);
-    const unknownToken = unknown.claim.environment?.OKOU_TOKEN;
+    const unknownToken = unknown.claim.platformEnvironment.OKOU_TOKEN;
     if (!unknownToken) {
       throw new Error("Expected the unknown-model run to expose OKOU_TOKEN");
     }
@@ -14264,7 +14269,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       expect(r2Claim.appendSystemPrompt ?? "").toContain(
         `Run commands with: \`npx --yes --package="\${CLI_PKG_URL}" okou <command>\``,
       );
-      expect(r2Claim.environment?.CLI_PKG_URL).toBe(
+      expect(r2Claim.platformEnvironment.CLI_PKG_URL).toBe(
         `https://${staticDomain}/okou-cli/test-commit/package.tgz`,
       );
       await api.requestCancelRun(actor, r2Run.runId, [200]);
@@ -14328,6 +14333,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     const currentClaim = await api.claimRunnerJob(current.runId);
     expectCanonicalOkouRunEnvironment({
       environment: currentClaim.environment,
+      platformEnvironment: currentClaim.platformEnvironment,
       secretValues: currentClaim.secretValues,
       appUrl,
       agentId,
@@ -14596,6 +14602,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     expect(claim.disallowedTools).not.toContain("WebFetch");
     expectCanonicalOkouRunEnvironment({
       environment: claim.environment,
+      platformEnvironment: claim.platformEnvironment,
       secretValues: claim.secretValues,
       appUrl,
       agentId: agent.agentId,
@@ -14606,13 +14613,11 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     expect(claim.platformEnvironment).toMatchObject({
       OKOU_APP_URL: appUrl,
       OKOU_AGENT_ID: agent.agentId,
-      OKOU_TOKEN: claim.environment?.OKOU_TOKEN,
+      OKOU_TOKEN: claim.platformEnvironment.OKOU_TOKEN,
       CLI_PKG_URL: "https://static.vm0.io/okou-cli/test-commit/package.tgz",
     });
-    for (const [key, value] of Object.entries(
-      claim.platformEnvironment ?? {},
-    )) {
-      expect(claim.environment?.[key]).toBe(value);
+    for (const key of Object.keys(claim.platformEnvironment)) {
+      expect(claim.environment).not.toHaveProperty(key);
     }
     const runContextSnapshot = runContextSnapshotForRun(run.runId);
     expect(runContextSnapshot.secretNames).toContain("OKOU_TOKEN");
@@ -14621,9 +14626,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       name: "OKOU_TOKEN",
       value: "***",
     });
-    expect(claim.environment?.CLI_PKG_URL).toBe(
-      "https://static.vm0.io/okou-cli/test-commit/package.tgz",
-    );
     expect(claim.environment?.VM0_APP_URL).toBeUndefined();
     expect(claim.environment?.APP_URL).toBeUndefined();
     expect(claim.environment ?? {}).not.toHaveProperty(
@@ -15002,7 +15004,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
 
     // A run-scoped Okou token issued without a host binding cannot reach
     // computer-use write routes.
-    const okouToken = claim.environment?.OKOU_TOKEN;
+    const okouToken = claim.platformEnvironment.OKOU_TOKEN;
     if (!okouToken) {
       throw new Error("Expected the promoted claim to expose the Okou token");
     }
@@ -15194,9 +15196,12 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         throw new Error("Expected preview run creation to succeed");
       }
       const claim = await api.claimRunnerJob(created.body.runId);
-      expect(claim.environment).toMatchObject({
+      expect(claim.platformEnvironment).toMatchObject({
         VERCEL_AUTOMATION_BYPASS_SECRET: previewBypass,
       });
+      expect(claim.environment).not.toHaveProperty(
+        "VERCEL_AUTOMATION_BYPASS_SECRET",
+      );
       await api.requestCancelRun(actor, created.body.runId, [200]);
     }
   });

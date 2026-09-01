@@ -3512,6 +3512,7 @@ mod tests {
                         "name": "github"
                     }],
                     "billableFirewalls": [],
+                    "platformEnvironment": {},
                     "connectorRuntimeTargets": []
                 }));
             })
@@ -3562,6 +3563,7 @@ mod tests {
                         "name": "github"
                     }],
                     "billableFirewalls": [],
+                    "platformEnvironment": {},
                     "connectorRuntimeTargets": []
                 }));
             })
@@ -3612,6 +3614,7 @@ mod tests {
                         "apis": []
                     }],
                     "billableFirewalls": [],
+                    "platformEnvironment": {},
                     "connectorRuntimeTargets": []
                 }));
             })
@@ -3672,6 +3675,7 @@ mod tests {
                         }
                     },
                     "billableFirewalls": [],
+                    "platformEnvironment": {},
                     "connectorRuntimeTargets": []
                 }));
             })
@@ -3721,6 +3725,7 @@ mod tests {
                         "OPENAI_API_KEY": 123
                     },
                     "billableFirewalls": [],
+                    "platformEnvironment": {},
                     "connectorRuntimeTargets": []
                 }));
             })
@@ -3765,6 +3770,7 @@ mod tests {
                 "prompt": "hello",
                 "sandboxToken": "claim-sandbox-token",
                 "cliAgentType": "claude_code",
+                "platformEnvironment": {},
                 "connectorRuntimeTargets": [],
                 "codexRuntimeConfig": {
                     "providerId": 123,
@@ -3796,6 +3802,7 @@ mod tests {
                 "prompt": "hello",
                 "sandboxToken": "claim-sandbox-token",
                 "cliAgentType": "claude_code",
+                "platformEnvironment": {},
                 "connectorRuntimeTargets": [],
                 "networkPolicyRefreshes": {
                     "secret-connector-name": {
@@ -3826,6 +3833,7 @@ mod tests {
                 "prompt": "hello",
                 "sandboxToken": "claim-sandbox-token",
                 "cliAgentType": "claude_code",
+                "platformEnvironment": {},
                 "connectorRuntimeTargets": [],
                 "environment": {"prompt": 123}
             }),
@@ -3852,6 +3860,7 @@ mod tests {
                 "prompt": "hello",
                 "sandboxToken": "claim-sandbox-token",
                 "cliAgentType": "claude_code",
+                "platformEnvironment": {},
                 "connectorRuntimeTargets": [],
                 "codexRuntimeConfig": {
                     "providerId": "provider",
@@ -4106,7 +4115,7 @@ mod tests {
             "fixture-model"
         );
         assert_eq!(
-            context.platform_environment.as_ref().unwrap()["OKOU_AGENT_ID"],
+            context.platform_environment["OKOU_AGENT_ID"],
             "fixture-agent-id"
         );
         assert_eq!(
@@ -4227,6 +4236,7 @@ mod tests {
                     "prompt": "minimal response",
                     "sandboxToken": "minimal-sandbox-token",
                     "cliAgentType": "claude_code",
+                    "platformEnvironment": {},
                     "connectorRuntimeTargets": []
                 }));
             })
@@ -4268,6 +4278,7 @@ mod tests {
                     "prompt": "response with additive field",
                     "sandboxToken": "additive-sandbox-token",
                     "cliAgentType": "claude_code",
+                    "platformEnvironment": {},
                     "connectorRuntimeTargets": [],
                     "futureClaimMetadata": {"version": 2}
                 }));
@@ -4304,6 +4315,7 @@ mod tests {
                     "prompt": "attempt local secret trust",
                     "sandboxToken": "local-secret-sandbox-token",
                     "cliAgentType": "claude_code",
+                    "platformEnvironment": {},
                     "connectorRuntimeTargets": [],
                     "localSecretEnvKeys": ["ANTHROPIC_API_KEY"]
                 }));
@@ -4342,6 +4354,7 @@ mod tests {
                     "sandboxToken": "claim-sandbox-token",
                     "cliAgentType": "claude_code",
                     "billableFirewalls": [],
+                    "platformEnvironment": {},
                     "connectorRuntimeTargets": []
                 }));
             })
@@ -4380,6 +4393,7 @@ mod tests {
                     "sandboxToken": "claim-sandbox-token",
                     "cliAgentType": "claude_code",
                     "billableFirewalls": [],
+                    "platformEnvironment": {},
                     "connectorRuntimeTargets": []
                 }));
             })
@@ -4435,6 +4449,7 @@ mod tests {
                     "sandboxToken": "sandbox-token-a",
                     "cliAgentType": "claude_code",
                     "billableFirewalls": [],
+                    "platformEnvironment": {},
                     "connectorRuntimeTargets": []
                 }));
             })
@@ -4448,6 +4463,7 @@ mod tests {
                     "sandboxToken": "sandbox-token-b",
                     "cliAgentType": "claude_code",
                     "billableFirewalls": [],
+                    "platformEnvironment": {},
                     "connectorRuntimeTargets": []
                 }));
             })

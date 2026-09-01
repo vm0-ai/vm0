@@ -383,18 +383,9 @@ fn for_each_guest_user_env_entry<'a>(
     context: &'a ExecutionContext,
     mut visit: impl FnMut(&'a str, &'a str),
 ) {
-    let is_untrusted_runner_owned: fn(&str) -> bool = if context.platform_environment.is_some() {
-        is_runner_owned_env_key
-    } else {
-        // Old API/stored context -> new runner: preserve the exact
-        // pre-platformEnvironment filter until prior API rollback targets,
-        // supported pre-field contexts, and old runners/sandboxes pass the
-        // #28914 drain gates.
-        guest_contracts::env::is_pre_platform_environment_runner_owned_env_key
-    };
     for_each_filtered_environment_entry(
         context.environment.as_ref(),
-        is_untrusted_runner_owned,
+        is_runner_owned_env_key,
         &mut visit,
     );
 
@@ -408,10 +399,8 @@ fn for_each_guest_user_env_entry<'a>(
         }
     }
 
-    if let Some(platform_environment) = &context.platform_environment {
-        for (key, value) in platform_environment {
-            visit(key, value);
-        }
+    for (key, value) in &context.platform_environment {
+        visit(key, value);
     }
 }
 

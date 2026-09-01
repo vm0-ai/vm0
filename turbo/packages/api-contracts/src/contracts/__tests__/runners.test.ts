@@ -270,6 +270,7 @@ describe("runner claim response contract", () => {
       modelUsageProvider: "fixture-model",
       platformEnvironment: { OKOU_AGENT_ID: "fixture-agent-id" },
     });
+    expect(context.environment).not.toHaveProperty("OKOU_AGENT_ID");
     expect(context).not.toHaveProperty("experimentalProfile");
   });
 
@@ -285,30 +286,11 @@ describe("runner claim response contract", () => {
     expect(context).not.toHaveProperty("connectorPermissionBaseline");
   });
 
-  it("keeps old API and old runner claim shapes compatible", () => {
-    const current = executionContextSchema.parse(
-      loadRunnerClaimResponseFixture(),
-    );
-    const previousApiResponse: Record<string, unknown> = { ...current };
-    Reflect.deleteProperty(previousApiResponse, "platformEnvironment");
-    expect(
-      executionContextSchema.parse(previousApiResponse),
-    ).not.toHaveProperty("platformEnvironment");
-
-    const previousRunnerSchema = z
-      .object(executionContextSchema.shape)
-      .omit({ platformEnvironment: true });
-    expect(previousRunnerSchema.parse(current)).not.toHaveProperty(
-      "platformEnvironment",
-    );
-  });
-
-  it("round-trips the optional trusted environment through stored contexts", () => {
+  it("round-trips canonical trusted environments through stored contexts", () => {
     const storedContext = storedExecutionContextSchema.parse({
       storageMounts: [],
       connectorRuntimeTargets: [],
       environment: {
-        OKOU_AGENT_ID: "stored-agent-id",
         USER_VALUE: "user-value",
       },
       platformEnvironment: { OKOU_AGENT_ID: "stored-agent-id" },
@@ -324,16 +306,15 @@ describe("runner claim response contract", () => {
     expect(roundTripped.platformEnvironment).toStrictEqual({
       OKOU_AGENT_ID: "stored-agent-id",
     });
-    expect(roundTripped.environment).toMatchObject({
-      OKOU_AGENT_ID: "stored-agent-id",
+    expect(roundTripped.environment).toStrictEqual({
+      USER_VALUE: "user-value",
     });
 
-    const previousStoredContextSchema = z
-      .object(storedExecutionContextSchema.shape)
-      .omit({ platformEnvironment: true });
-    expect(previousStoredContextSchema.parse(storedContext)).not.toHaveProperty(
-      "platformEnvironment",
-    );
+    const emptyTrustedContext = compatibleStoredExecutionContextSchema.parse({
+      ...storedContext,
+      platformEnvironment: {},
+    });
+    expect(emptyTrustedContext.platformEnvironment).toStrictEqual({});
   });
 });
 
@@ -343,6 +324,7 @@ describe("Pi sandbox execution contract", () => {
     storageMounts: [],
     connectorRuntimeTargets: [],
     environment: null,
+    platformEnvironment: {},
     secretValueEnvironmentKeys: null,
     resumeSession: null,
     encryptedSecrets: null,
@@ -943,6 +925,7 @@ describe("stored connector permission baseline contract", () => {
     storageMounts: [],
     connectorRuntimeTargets: [],
     environment: null,
+    platformEnvironment: {},
     secretValueEnvironmentKeys: null,
     resumeSession: null,
     encryptedSecrets: null,
@@ -1088,6 +1071,7 @@ describe("runner storage manifest contract", () => {
     storageMounts: [],
     connectorRuntimeTargets: [],
     environment: null,
+    platformEnvironment: {},
     secretValueEnvironmentKeys: null,
     resumeSession: null,
     encryptedSecrets: null,

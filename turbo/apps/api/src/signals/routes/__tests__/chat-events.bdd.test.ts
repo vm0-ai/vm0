@@ -741,8 +741,8 @@ async function expectRunPublicBrandTransport(args: {
   if (!args.actor.orgId) {
     throw new Error("Expected an organization-scoped chat actor");
   }
-  expect(args.claim.environment?.OKOU_APP_URL).toBe(args.appUrl);
-  const token = args.claim.environment?.OKOU_TOKEN;
+  expect(args.claim.platformEnvironment.OKOU_APP_URL).toBe(args.appUrl);
+  const token = args.claim.platformEnvironment.OKOU_TOKEN;
   if (!token) {
     throw new Error("Expected the run context to contain an Okou token");
   }
@@ -777,10 +777,10 @@ async function steerOwnedRunAtElapsedTime(
 }
 
 function claimEnvironment(claim: RunnerClaim): Record<string, string> {
-  if (!claim.environment) {
-    throw new Error("Expected the runner claim to carry an environment");
-  }
-  return claim.environment;
+  return {
+    ...claim.environment,
+    ...claim.platformEnvironment,
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -937,11 +937,13 @@ function expectPiLaunchResourceTiming(
   );
 }
 
-/** Sandbox-scoped Okou token issued to the run, exposed via the claim env. */
+/** Sandbox-scoped Okou token issued through the trusted claim environment. */
 function okouTokenFromClaim(claim: RunnerClaim): string {
   const token = claimEnvironment(claim).OKOU_TOKEN;
   if (!token || !token.startsWith("vm0_sandbox_")) {
-    throw new Error("Expected the claim environment to carry an OKOU_TOKEN");
+    throw new Error(
+      "Expected the claim platform environment to carry an OKOU_TOKEN",
+    );
   }
   return token;
 }
