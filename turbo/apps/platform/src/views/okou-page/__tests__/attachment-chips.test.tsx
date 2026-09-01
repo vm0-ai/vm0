@@ -366,7 +366,7 @@ async function setupBodyLinkPreviews(): Promise<void> {
     expect(
       screen.getByLabelText("Open html preview for Launch site"),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Download archive.bin")).toBeInTheDocument();
+    expect(screen.getByLabelText("Preview archive.bin")).toBeInTheDocument();
   });
 }
 
@@ -3203,9 +3203,7 @@ describe("zero attachment chips", () => {
     expect(
       screen.getByLabelText("Open html preview for Short site"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Download 0000000008.bin"),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Preview 0000000008.bin")).toBeInTheDocument();
     expect(screen.getByAltText("0000000009.png")).toBeInTheDocument();
   });
 
@@ -3284,11 +3282,34 @@ describe("zero attachment chips", () => {
       ).not.toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Download archive.bin"));
+    click(screen.getByLabelText("Preview archive.bin"));
+
+    await screen.findByTestId("artifact-sidebar");
+    click(screen.getByLabelText("Download artifact"));
+    await waitFor(() => {
+      expect(
+        queryAllByRoleFast("menuitem").some((element) => {
+          return element.textContent?.trim() === "Download";
+        }),
+      ).toBeTruthy();
+    });
+    const downloadItem = queryAllByRoleFast("menuitem").find((element) => {
+      return element.textContent?.trim() === "Download";
+    });
+    if (!downloadItem) {
+      throw new Error("Download menu item not found");
+    }
+    click(downloadItem);
 
     await waitFor(() => {
-      expect(screen.getByText("Download failed")).toBeInTheDocument();
+      expect(objectUrls.downloads).toHaveLength(1);
     });
+    expect(objectUrls.downloads[0]).toMatchObject({
+      url: BODY_LINK_PREVIEWS.archive,
+      filename: "archive.bin",
+      blob: null,
+    });
+    expect(screen.queryByText("Download failed")).not.toBeInTheDocument();
   });
 
   it("renders bare image URLs through markdown image preview", async () => {

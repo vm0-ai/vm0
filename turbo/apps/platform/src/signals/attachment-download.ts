@@ -3,6 +3,7 @@ import {
   downloadAttachmentUrl,
   publicAttachmentUrl,
 } from "../views/okou-page/attachment-url.ts";
+import { classifyChatAttachment } from "./chat-page/parse-body-blocks.ts";
 import { pageAttachmentResourceUrlResolver$ } from "./attachment-resource-url.ts";
 
 type AttachmentDownload = {
@@ -25,6 +26,14 @@ export const downloadAttachment$ = command(
       resolveResourceUrl(publicAttachmentUrl(attachment.url)),
     );
     signal.throwIfAborted();
-    await downloadAttachmentUrl(resourceUrl, signal, attachment.filename);
+    await downloadAttachmentUrl(
+      resourceUrl,
+      signal,
+      attachment.filename,
+      classifyChatAttachment({
+        filename: attachment.filename,
+        url: resourceUrl,
+      }) === "file",
+    );
   },
 );
