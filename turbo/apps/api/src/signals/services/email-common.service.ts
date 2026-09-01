@@ -44,6 +44,9 @@ const MAX_ATTEMPTS = 3;
 const BACKOFF_BASE_MS = 1000;
 const MAX_OUTBOX_BATCH_SIZE = 120;
 const OUTBOX_DRAIN_DELAY_MS = 500;
+// Email is single-branded even while the rest of the product retains the
+// dual PublicBrand compatibility contract.
+export const EMAIL_PUBLIC_BRAND = "okou" satisfies PublicBrand;
 
 // Inter-send pacing for Resend rate limits. Overridable so environments
 // without a real provider (tests drain a shared outbox backlog) can disable
@@ -127,13 +130,11 @@ export type EmailTemplate = z.output<typeof emailTemplateSchema>;
 const emailAddressesSchema = z.union([z.string(), z.array(z.string())]);
 const outboxRowSchema = z.object({
   id: z.string(),
-  from_address: z.string(),
   to_addresses: emailAddressesSchema,
   cc_addresses: emailAddressesSchema.nullable(),
   subject: z.string(),
   reply_to: z.string().nullable(),
   headers: z.record(z.string(), z.string()).nullable(),
-  public_brand: z.enum(["vm0", "okou"]),
   template: emailTemplateSchema,
   attempts: z.int(),
 });
@@ -142,13 +143,11 @@ type OutboxRow = z.output<typeof outboxRowSchema>;
 function outboxRowSelection() {
   return {
     id: emailOutbox.id,
-    from_address: emailOutbox.fromAddress,
     to_addresses: emailOutbox.toAddresses,
     cc_addresses: emailOutbox.ccAddresses,
     subject: emailOutbox.subject,
     reply_to: emailOutbox.replyTo,
     headers: emailOutbox.headers,
-    public_brand: emailOutbox.publicBrand,
     template: emailOutbox.template,
     attempts: emailOutbox.attempts,
   };
@@ -162,17 +161,16 @@ function getResendClient(): Resend {
   return new Resend(apiKey);
 }
 
-function apiUrl(publicBrand: PublicBrand): string {
-  return apiUrlForPublicBrand(apiBackendUrl() ?? webUrl(), publicBrand);
+function apiUrl(): string {
+  return apiUrlForPublicBrand(apiBackendUrl() ?? webUrl(), EMAIL_PUBLIC_BRAND);
 }
 
-function appUrl(publicBrand: PublicBrand): string {
-  return appUrlForPublicBrand(env("APP_URL"), publicBrand);
+function appUrl(): string {
+  return appUrlForPublicBrand(env("APP_URL"), EMAIL_PUBLIC_BRAND);
 }
 
 function officialAutomationResultUnsubscribeUrl(
   headers: Readonly<Record<string, string>> | undefined,
-  publicBrand: PublicBrand,
 ): string {
   const listUnsubscribe = headers?.["List-Unsubscribe"];
   if (
@@ -200,31 +198,25 @@ function officialAutomationResultUnsubscribeUrl(
     );
   }
 
-  const unsubscribeUrl = new URL(`${appUrl(publicBrand)}/email/unsubscribe`);
+  const unsubscribeUrl = new URL(`${appUrl()}/email/unsubscribe`);
   unsubscribeUrl.searchParams.set("token", token);
   return unsubscribeUrl.toString();
 }
 
-function getFromDomain(publicBrand: PublicBrand): string {
+function getFromDomain(): string {
   const domain = env("RESEND_FROM_DOMAIN");
   if (!domain) {
     throw new Error("RESEND_FROM_DOMAIN is not configured");
   }
-  return fromDomainForPublicBrand(domain, publicBrand);
+  return fromDomainForPublicBrand(domain, EMAIL_PUBLIC_BRAND);
 }
 
-export function buildFromAddress(
-  localPart: string,
-  publicBrand: PublicBrand = "vm0",
-): string {
-  return `${publicBrandPresentation(publicBrand).assistantName} <${localPart}@${getFromDomain(publicBrand)}>`;
+export function buildFromAddress(): string {
+  return `${publicBrandPresentation(EMAIL_PUBLIC_BRAND).assistantName} <okou@${getFromDomain()}>`;
 }
 
-export function buildTeamFromAddress(
-  localPart: string,
-  publicBrand: PublicBrand = "vm0",
-): string {
-  return `${publicBrandPresentation(publicBrand).brandName} Team <${localPart}@${getFromDomain(publicBrand)}>`;
+export function buildTeamFromAddress(): string {
+  return `${publicBrandPresentation(EMAIL_PUBLIC_BRAND).brandName} Team <support@${getFromDomain()}>`;
 }
 
 function generateUnsubscribeToken(userId: string): string {
@@ -236,20 +228,14 @@ function generateUnsubscribeToken(userId: string): string {
   return `${userId}.${hmac}`;
 }
 
-export function buildUnsubscribeUrl(
-  userId: string,
-  publicBrand: PublicBrand = "vm0",
-): string {
-  return `${appUrl(publicBrand)}/email/unsubscribe?token=${generateUnsubscribeToken(
+export function buildUnsubscribeUrl(userId: string): string {
+  return `${appUrl()}/email/unsubscribe?token=${generateUnsubscribeToken(
     userId,
   )}`;
 }
 
-export function buildOneClickUnsubscribeUrl(
-  userId: string,
-  publicBrand: PublicBrand = "vm0",
-): string {
-  return `${apiUrl(publicBrand)}/api/email/unsubscribe?token=${generateUnsubscribeToken(
+export function buildOneClickUnsubscribeUrl(userId: string): string {
+  return `${apiUrl()}/api/email/unsubscribe?token=${generateUnsubscribeToken(
     userId,
   )}`;
 }
@@ -296,7 +282,6 @@ interface RenderedEmailTemplate {
 
 function renderTemplate(
   template: EmailTemplate,
-  publicBrand: PublicBrand,
   headers: Readonly<Record<string, string>> | undefined,
 ): RenderedEmailTemplate {
   switch (template.template) {
@@ -339,8 +324,8 @@ function renderTemplate(
     case "official-automation-result": {
       const rendered = renderOfficialAutomationResultEmail(
         template.props,
-        publicBrand,
-        officialAutomationResultUnsubscribeUrl(headers, publicBrand),
+        EMAIL_PUBLIC_BRAND,
+        officialAutomationResultUnsubscribeUrl(headers),
       );
       if (rendered.fallback) {
         log.warn("Official Automation result email used fallback renderer", {
@@ -354,27 +339,35 @@ function renderTemplate(
   }
 }
 
+function fromAddressForTemplate(template: EmailTemplate): string {
+  // Resolve the sender at delivery so legacy or malformed outbox snapshots
+  // cannot bypass the user-facing email brand policy.
+  switch (template.template) {
+    case "credit-low-balance": {
+      return buildTeamFromAddress();
+    }
+    case "data-export-ready":
+    case "official-automation-result": {
+      return buildFromAddress();
+    }
+  }
+}
+
 async function sendEmailDirect(options: {
-  readonly from: string;
   readonly to: string | readonly string[];
   readonly subject: string;
   readonly template: EmailTemplate;
   readonly cc?: string | readonly string[];
   readonly replyTo?: string;
   readonly headers?: Record<string, string>;
-  readonly publicBrand: PublicBrand;
 }): Promise<
   | { readonly ok: true; readonly resendId: string }
   | { readonly ok: false; readonly error: string }
 > {
   const resend = getResendClient();
-  const rendered = renderTemplate(
-    options.template,
-    options.publicBrand,
-    options.headers,
-  );
+  const rendered = renderTemplate(options.template, options.headers);
   const { data, error } = await resend.emails.send({
-    from: options.from,
+    from: fromAddressForTemplate(options.template),
     to: typeof options.to === "string" ? options.to : [...options.to],
     subject: options.subject,
     ...rendered,
@@ -452,14 +445,12 @@ async function processOutboxItem(
   }
 
   const result = await sendEmailDirect({
-    from: row.from_address,
     to: row.to_addresses,
     subject: row.subject,
     template: row.template,
     cc: row.cc_addresses ?? undefined,
     replyTo: row.reply_to ?? undefined,
     headers: row.headers ?? undefined,
-    publicBrand: row.public_brand,
   });
 
   if (!result.ok) {

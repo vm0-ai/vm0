@@ -5871,12 +5871,10 @@ describe.sequential("Official Workflow Run admission", () => {
     const producerRuns: {
       readonly runId: string;
       readonly automationId: string;
-      readonly publicBrand: "vm0" | "okou";
     }[] = [
       {
         runId: explicit.body.runId,
         automationId: loopAutomation.id,
-        publicBrand: "okou",
       },
     ];
     await completeSuccessfulRun(
@@ -5904,7 +5902,6 @@ describe.sequential("Official Workflow Run admission", () => {
     producerRuns.push({
       runId: scheduledRun.runId,
       automationId: loopAutomation.id,
-      publicBrand: "vm0",
     });
     await completeSuccessfulRun(
       runnerGroup,
@@ -5931,7 +5928,6 @@ describe.sequential("Official Workflow Run admission", () => {
     producerRuns.push({
       runId: onceRun.runId,
       automationId: onceAutomation.id,
-      publicBrand: "vm0",
     });
     await completeSuccessfulRun(
       runnerGroup,
@@ -5982,7 +5978,6 @@ describe.sequential("Official Workflow Run admission", () => {
     producerRuns.push({
       runId: webhookRun.runId,
       automationId: webhookAutomation.id,
-      publicBrand: "vm0",
     });
     await completeSuccessfulRun(
       runnerGroup,
@@ -6020,7 +6015,7 @@ describe.sequential("Official Workflow Run admission", () => {
       expect(source.claim).not.toBeNull();
       expect(source.items).toStrictEqual([
         expect.objectContaining({
-          public_brand: producer.publicBrand,
+          public_brand: "okou",
           source_run_id: producer.runId,
           source_workflow_automation_id: producer.automationId,
           status: "pending",
@@ -6032,7 +6027,7 @@ describe.sequential("Official Workflow Run admission", () => {
     }
   });
 
-  it("preserves session and agent-token brands across Official result callback retry", async () => {
+  it("uses Okou email brand for session and agent-token launches across Official result callback retry", async () => {
     const scenario = await installResultEmailLoopScenario(
       "api-test-result-brand",
       true,
@@ -6116,7 +6111,7 @@ describe.sequential("Official Workflow Run admission", () => {
     expect(source.claim).not.toBeNull();
     expect(source.items).toStrictEqual([
       expect.objectContaining({
-        public_brand: "vm0",
+        public_brand: "okou",
         source_run_id: agentRun.body.runId,
         source_workflow_automation_id: scenario.automation.id,
       }),

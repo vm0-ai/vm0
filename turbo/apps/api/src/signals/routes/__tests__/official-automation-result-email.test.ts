@@ -345,7 +345,7 @@ describe.sequential("Official Automation result email callbacks", () => {
     await flushWaitUntilForTest();
   });
 
-  it("retries independently of Run success, preserves brand, and sends bounded Markdown multipart output", async () => {
+  it("retries independently of Run success and renders bounded Okou Markdown multipart output for a VM0 snapshot", async () => {
     const scenario = await setupScenario();
     const runId = await startRun(scenario, "https://app.okou.ai");
     const longPlainText = `LONG_PLAIN_TEXT_${"x".repeat(160)}`;
@@ -398,7 +398,7 @@ describe.sequential("Official Automation result email callbacks", () => {
     const resultCallbackId = await seedResultCallback({
       runId,
       automationId: scenario.automationId,
-      publicBrand: "okou",
+      publicBrand: "vm0",
       workflowName: 'Official <script> & " result',
     });
 
@@ -428,7 +428,7 @@ describe.sequential("Official Automation result email callbacks", () => {
       }),
     ).resolves.toStrictEqual({ items: [], claim: null });
 
-    mockEnv("RESEND_FROM_DOMAIN", "mail.example.com");
+    mockEnv("RESEND_FROM_DOMAIN", "vm0.bot");
     const redrive = await accept(
       executionClient().dispatchCallbacks({
         body: { run_id: runId, status: "completed", dispatch_count: 8 },
@@ -454,13 +454,14 @@ describe.sequential("Official Automation result email callbacks", () => {
     const item = source.items[0]!;
     expect(source.claim?.email_outbox_id).toBe(item.id);
     expect(item).toMatchObject({
-      from_address: "Okou <okou@mail.example.com>",
+      from_address: "Okou <okou@okou.io>",
       to_addresses: scenario.actor.email,
       public_brand: "okou",
       status: "pending",
       source_run_id: runId,
       source_workflow_automation_id: scenario.automationId,
       headers: {
+        "List-Unsubscribe": `<https://api.okou.ai/api/email/unsubscribe?token=${unsubscribeToken(scenario.actor.userId)}>`,
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
       },
     });
@@ -489,9 +490,13 @@ describe.sequential("Official Automation result email callbacks", () => {
     expect(context.mocks.resend.send).toHaveBeenCalledTimes(1);
     const send = context.mocks.resend.send.mock.calls[0]?.[0];
     expect(send).toMatchObject({
-      from: "Okou <okou@mail.example.com>",
+      from: "Okou <okou@okou.io>",
       to: scenario.actor.email,
       subject: 'Official <script> & " result completed',
+      headers: {
+        "List-Unsubscribe": `<https://api.okou.ai/api/email/unsubscribe?token=${unsubscribeToken(scenario.actor.userId)}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      },
     });
     const html =
       typeof send === "object" &&
@@ -542,6 +547,9 @@ describe.sequential("Official Automation result email callbacks", () => {
       expect(html).not.toContain(`href="${unsafeDestination}`);
     }
     expect(html).toContain("[Result truncated]");
+    expect(html).toContain("Okou");
+    expect(html).not.toContain("Zero");
+    expect(html).not.toContain("VM0");
     expect(html).toContain(`https://app.okou.ai/activities/${runId}`);
     expect(html).toContain(
       "This result was sent by an Official Workflow automation.<br>",
