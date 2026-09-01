@@ -110,28 +110,6 @@ export class DesktopRecorderController {
     return await this.requireBackend().listSources();
   }
 
-  /**
-   * Prepares and starts a recording of the primary display in one step.
-   *
-   * The menu bar offers this because it cannot host a source picker; choosing a
-   * specific window arrives with the picker UI.
-   */
-  async startMainDisplayRecording(): Promise<void> {
-    const sources = await this.listSources();
-    const display = sources.find((source) => {
-      return source.kind === "display";
-    });
-    if (!display) {
-      throw new Error("No display is available to record");
-    }
-    await this.prepare({
-      sourceId: display.id,
-      sourceKind: "display",
-      systemAudio: true,
-    });
-    await this.start();
-  }
-
   async prepare(request: DesktopRecorderPrepareRequest): Promise<void> {
     const backend = this.requireBackend();
     this.requireStatus("idle");

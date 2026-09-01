@@ -4,8 +4,10 @@ import type {
   DesktopComputerUseApi,
   DesktopDeveloperToolsApi,
   DesktopIdentityInfo,
+  DesktopRecorderApi,
 } from "./desktop-bridge";
 import { COMPUTER_USE_CHANNELS } from "./computer-use-ipc-channels";
+import { DESKTOP_RECORDER_CHANNELS } from "./desktop-recorder-ipc-channels";
 import { DESKTOP_AUTH_CHANNELS } from "./desktop-auth-ipc-channels";
 import { DESKTOP_DEVELOPER_TOOLS_CHANNELS } from "./desktop-developer-tools-ipc-channels";
 import { DESKTOP_IDENTITY_CHANNEL } from "./desktop-identity-ipc-channels";
@@ -159,6 +161,30 @@ const desktopDeveloperToolsApi: DesktopDeveloperToolsApi = {
   },
 };
 
+const desktopRecorderApi: DesktopRecorderApi = {
+  getState() {
+    return ipcRenderer.invoke(DESKTOP_RECORDER_CHANNELS.getState);
+  },
+  listSources() {
+    return ipcRenderer.invoke(DESKTOP_RECORDER_CHANNELS.listSources);
+  },
+  startCapture(request) {
+    return ipcRenderer.invoke(DESKTOP_RECORDER_CHANNELS.startCapture, request);
+  },
+  selectArea() {
+    return ipcRenderer.invoke(DESKTOP_RECORDER_CHANNELS.selectArea);
+  },
+  completeAreaSelection(area) {
+    return ipcRenderer.invoke(
+      DESKTOP_RECORDER_CHANNELS.completeAreaSelection,
+      area,
+    );
+  },
+  cancel() {
+    return ipcRenderer.invoke(DESKTOP_RECORDER_CHANNELS.cancel);
+  },
+};
+
 const desktopIdentity = ipcRenderer.sendSync(
   DESKTOP_IDENTITY_CHANNEL,
 ) as DesktopIdentityInfo;
@@ -170,3 +196,4 @@ contextBridge.exposeInMainWorld(
   desktopDeveloperToolsApi,
 );
 contextBridge.exposeInMainWorld("vm0DesktopIdentity", desktopIdentity);
+contextBridge.exposeInMainWorld("vm0DesktopRecorder", desktopRecorderApi);

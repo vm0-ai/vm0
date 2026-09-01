@@ -664,7 +664,7 @@ describe("desktop tray screen recording section", () => {
     const menu = menuFor(recorderState(), actions);
 
     const section = findItem(menu, "Screen Recording: Ready");
-    click(findItem(submenu(section), "Record Main Display"));
+    click(findItem(submenu(section), "New Recording..."));
 
     expect(actions.startScreenRecording).toHaveBeenCalledOnce();
   });
@@ -687,7 +687,7 @@ describe("desktop tray screen recording section", () => {
     // Starting again mid-recording must not be reachable.
     expect(
       submenu(section).some((item) => {
-        return item.label === "Record Main Display";
+        return item.label === "New Recording...";
       }),
     ).toBeFalsy();
   });
@@ -721,7 +721,7 @@ describe("desktop tray screen recording section", () => {
 
     const section = findItem(menu, "Screen Recording: Failed");
     expect(findItem(submenu(section), "Display disconnected")).toBeDefined();
-    click(findItem(submenu(section), "Record Main Display"));
+    click(findItem(submenu(section), "New Recording..."));
     expect(actions.startScreenRecording).toHaveBeenCalledOnce();
   });
 

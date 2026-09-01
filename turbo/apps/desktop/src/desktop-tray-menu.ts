@@ -416,7 +416,7 @@ function buildScreenRecordingSubmenu(
     });
   } else if (recorder.status === "idle") {
     items.push({
-      label: "Record Main Display",
+      label: "New Recording...",
       click: actions.startScreenRecording,
     });
   } else {

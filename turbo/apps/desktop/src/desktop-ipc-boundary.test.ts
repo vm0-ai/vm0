@@ -7,6 +7,7 @@ import type {
 import type { DesktopAuthState } from "./desktop-bridge";
 import { DESKTOP_AUTH_CHANNELS } from "./desktop-auth-ipc-channels";
 import { DESKTOP_DEVELOPER_TOOLS_CHANNELS } from "./desktop-developer-tools-ipc-channels";
+import { DESKTOP_RECORDER_CHANNELS } from "./desktop-recorder-ipc-channels";
 
 type IpcEvent = {
   readonly senderFrame?: {
@@ -60,6 +61,7 @@ interface MockBrowserWindow {
 }
 
 const rendererUrl = "vm0-desktop://renderer/index.html";
+const recorderUrl = "vm0-desktop://renderer/recorder.html?mode=bar";
 const allowedAppUrl = "https://app.vm0.ai/desktop-auth/callback";
 const blockedAppUrl = "https://evil.example/desktop-auth/callback";
 
@@ -189,6 +191,100 @@ describe("Desktop IPC boundary", () => {
     expect(api.start).toHaveBeenCalledWith({ userInitiated: true });
     expect(api.setKeepAwakeEnabled).toHaveBeenCalledWith(true);
     expect(api.probeAutomationPermission).toHaveBeenCalledWith("chrome");
+  });
+
+  it("rejects recorder handlers from every frame but the recorder overlays", async () => {
+    const { installDesktopRecorderIpc } =
+      await import("./desktop-recorder-electron");
+    const api = {
+      getState: vi.fn(),
+      listSources: vi.fn(async () => []),
+      startCapture: vi.fn(async () => {}),
+      selectArea: vi.fn(async () => null),
+      completeAreaSelection: vi.fn(),
+      cancel: vi.fn(),
+    };
+
+    installDesktopRecorderIpc(api, { recorderUrl });
+
+    for (const { channel, args } of [
+      { channel: DESKTOP_RECORDER_CHANNELS.getState, args: [] },
+      { channel: DESKTOP_RECORDER_CHANNELS.listSources, args: [] },
+      {
+        channel: DESKTOP_RECORDER_CHANNELS.startCapture,
+        args: [
+          { sourceId: "display:1", sourceKind: "display", systemAudio: true },
+        ],
+      },
+      { channel: DESKTOP_RECORDER_CHANNELS.selectArea, args: [] },
+      {
+        channel: DESKTOP_RECORDER_CHANNELS.completeAreaSelection,
+        args: [null],
+      },
+      { channel: DESKTOP_RECORDER_CHANNELS.cancel, args: [] },
+    ]) {
+      await expect(invokeIpc(channel, blockedAppUrl, ...args)).rejects.toThrow(
+        "Screen recording is unavailable on this page",
+      );
+      // The main window is not a recorder overlay either.
+      await expect(invokeIpc(channel, rendererUrl, ...args)).rejects.toThrow(
+        "Screen recording is unavailable on this page",
+      );
+    }
+
+    expect(api.startCapture).not.toHaveBeenCalled();
+    expect(api.selectArea).not.toHaveBeenCalled();
+    expect(api.cancel).not.toHaveBeenCalled();
+  });
+
+  it("validates capture requests before they reach the recorder", async () => {
+    const { installDesktopRecorderIpc } =
+      await import("./desktop-recorder-electron");
+    const api = {
+      getState: vi.fn(),
+      listSources: vi.fn(async () => []),
+      startCapture: vi.fn(async () => {}),
+      selectArea: vi.fn(async () => null),
+      completeAreaSelection: vi.fn(),
+      cancel: vi.fn(),
+    };
+
+    installDesktopRecorderIpc(api, { recorderUrl });
+
+    await expect(
+      invokeIpc(DESKTOP_RECORDER_CHANNELS.startCapture, recorderUrl, {
+        sourceId: "display:1",
+        sourceKind: "everything",
+        systemAudio: true,
+      }),
+    ).rejects.toThrow("Unsupported screen recording source kind: everything");
+    // An area capture without a region would silently record the whole display.
+    await expect(
+      invokeIpc(DESKTOP_RECORDER_CHANNELS.startCapture, recorderUrl, {
+        sourceId: "display:1",
+        sourceKind: "area",
+        systemAudio: true,
+      }),
+    ).rejects.toThrow("Recording an area needs the selected region");
+    await expect(
+      invokeIpc(DESKTOP_RECORDER_CHANNELS.completeAreaSelection, recorderUrl, {
+        x: 1,
+      }),
+    ).rejects.toThrow("A selected region must be a rectangle or null");
+    expect(api.startCapture).not.toHaveBeenCalled();
+
+    await invokeIpc(DESKTOP_RECORDER_CHANNELS.startCapture, recorderUrl, {
+      sourceId: "display:1",
+      sourceKind: "area",
+      systemAudio: false,
+      area: { x: 10, y: 20, width: 300, height: 200 },
+    });
+    expect(api.startCapture).toHaveBeenCalledWith({
+      sourceId: "display:1",
+      sourceKind: "area",
+      systemAudio: false,
+      area: { x: 10, y: 20, width: 300, height: 200 },
+    });
   });
 
   it("rejects desktop auth renderer handlers from untrusted sender frames", async () => {

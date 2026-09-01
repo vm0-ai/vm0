@@ -50,6 +50,8 @@ import { DeveloperToolsController } from "./desktop-developer-tools-controller";
 import { DesktopRecorderController } from "./desktop-recorder-controller";
 import { createRecorderNativeBackend } from "./desktop-recorder-native";
 import { deliverRecording } from "./desktop-recorder-delivery";
+import { installDesktopRecorderIpc } from "./desktop-recorder-electron";
+import { DesktopRecorderWindows } from "./desktop-recorder-windows";
 import { STOP_SCREEN_RECORDING_ACCELERATOR } from "./desktop-recorder-types";
 import {
   getComputerUsePermissionState,
@@ -116,6 +118,7 @@ import {
 } from "./desktop-window-lifecycle";
 import { buildDesktopWindowChromeOptions } from "./desktop-window-chrome";
 import {
+  desktopRecorderUrl,
   desktopRendererFilePath,
   desktopRendererUrl,
   isDesktopRendererUrl,
@@ -138,6 +141,7 @@ const desktopAuthSelectOrgUrl = buildDesktopAuthSelectOrgUrl(
 );
 const desktopAuthTokenUrl = buildDesktopAuthTokenUrl(config.webUrl);
 const localRendererUrl = desktopRendererUrl();
+const localRecorderUrl = desktopRecorderUrl("bar");
 const ZERO_FEATURE_SWITCHES_PATH = "/api/feature-switches";
 const noAllowedAppOrigins: ReadonlySet<string> = new Set();
 const ELECTRON_ERR_ABORTED = -3;
@@ -730,6 +734,42 @@ function installComputerUse(): void {
   );
 }
 
+let recorderWindows: DesktopRecorderWindows | null = null;
+
+function getRecorderWindows(): DesktopRecorderWindows {
+  recorderWindows ??= new DesktopRecorderWindows({
+    preloadPath: preloadPath(),
+    sessionPartition: config.sessionPartition,
+    logError: (error) => {
+      console.error("Desktop recorder overlay failed", error);
+    },
+  });
+  return recorderWindows;
+}
+
+function installDesktopRecorder(): void {
+  installDesktopRecorderIpc(
+    {
+      getState: () => screenRecorder.getState(),
+      listSources: () => screenRecorder.listSources(),
+      startCapture: async (request) => {
+        await screenRecorder.prepare(request);
+        await screenRecorder.start();
+        // The bar has done its job; leaving it up would put it in the capture.
+        getRecorderWindows().hideBar();
+      },
+      selectArea: () => getRecorderWindows().selectArea(),
+      completeAreaSelection: (area) => {
+        getRecorderWindows().completeAreaSelection(area);
+      },
+      cancel: () => {
+        getRecorderWindows().hideBar();
+      },
+    },
+    { recorderUrl: localRecorderUrl },
+  );
+}
+
 function installDesktopDeveloperTools(): void {
   installDesktopDeveloperToolsIpc(
     {
@@ -854,7 +894,7 @@ function installTray(): void {
     },
     getRecorderState: () => screenRecorder.getState(),
     startScreenRecording: async () => {
-      await screenRecorder.startMainDisplayRecording();
+      getRecorderWindows().showBar();
     },
     stopScreenRecording: async () => {
       await screenRecorder.stop();
@@ -1441,6 +1481,7 @@ if (!hasSingleInstanceLock) {
     installKeepAwake();
     installComputerUse();
     installDesktopDeveloperTools();
+    installDesktopRecorder();
     const desktopAuthSession = getAuthSession();
     installDesktopAuth();
     refreshComputerUsePermissionsForState();
