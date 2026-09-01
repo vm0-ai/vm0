@@ -66,12 +66,13 @@ describe("DeveloperToolsController", () => {
     expect(setFilesystemPluginFeatureEnabled).toHaveBeenCalledWith(true);
   });
 
-  it("propagates the screen recording switch independently of developer tools", async () => {
+  it("enables native screen recording when both required switches are on", async () => {
     const { controller, setScreenRecordingFeatureEnabled } = createController(
       async () =>
         jsonResponse({
           effectiveSwitches: {
             okouDebug: false,
+            introVideo: true,
             desktopScreenRecording: true,
           },
         }),
@@ -85,10 +86,31 @@ describe("DeveloperToolsController", () => {
     expect(controller.getState().available).toBeFalsy();
   });
 
+  it.each([
+    { introVideo: false, desktopScreenRecording: true },
+    { introVideo: true, desktopScreenRecording: false },
+  ])(
+    "keeps native screen recording off when a required switch is off",
+    async (effectiveSwitches) => {
+      const { controller, setScreenRecordingFeatureEnabled } = createController(
+        async () => jsonResponse({ effectiveSwitches }),
+      );
+
+      controller.requestRefresh();
+      await vi.waitFor(() => {
+        expect(setScreenRecordingFeatureEnabled).toHaveBeenCalledWith(false);
+      });
+    },
+  );
+
   it("releases screen recording when the session is unauthorized", async () => {
     const responses = [
       jsonResponse({
-        effectiveSwitches: { okouDebug: true, desktopScreenRecording: true },
+        effectiveSwitches: {
+          okouDebug: true,
+          introVideo: true,
+          desktopScreenRecording: true,
+        },
       }),
       new Response(null, { status: 401 }),
     ];
@@ -146,9 +168,28 @@ describe("DeveloperToolsController", () => {
     expect(setFilesystemPluginFeatureEnabled).toHaveBeenLastCalledWith(false);
   });
 
-  it("logs and resets availability when the refresh fails", async () => {
-    const { controller, logRefreshError } = createController(async () => {
-      return new Response(null, { status: 500 });
+  it("logs and releases feature-gated resources when a refresh fails", async () => {
+    const responses = [
+      jsonResponse({
+        effectiveSwitches: {
+          okouDebug: true,
+          computerUseDesktopPlugins: true,
+          introVideo: true,
+          desktopScreenRecording: true,
+        },
+      }),
+      new Response(null, { status: 500 }),
+    ];
+    const {
+      controller,
+      logRefreshError,
+      setFilesystemPluginFeatureEnabled,
+      setScreenRecordingFeatureEnabled,
+    } = createController(async () => responses.shift() ?? jsonResponse({}));
+
+    controller.requestRefresh();
+    await vi.waitFor(() => {
+      expect(setScreenRecordingFeatureEnabled).toHaveBeenLastCalledWith(true);
     });
 
     controller.requestRefresh();
@@ -156,6 +197,8 @@ describe("DeveloperToolsController", () => {
       expect(logRefreshError).toHaveBeenCalledOnce();
     });
     expect(controller.getState()).toEqual({ available: false, enabled: false });
+    expect(setFilesystemPluginFeatureEnabled).toHaveBeenLastCalledWith(false);
+    expect(setScreenRecordingFeatureEnabled).toHaveBeenLastCalledWith(false);
   });
 
   it("coalesces refreshes requested while one is in flight", async () => {

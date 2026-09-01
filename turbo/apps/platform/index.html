@@ -139,13 +139,8 @@
       #app-bootstrap-skeleton {
         position: fixed;
         inset: 0;
-        /* Fixed insets follow WebKit's reachable layout viewport. Avoid the
-           standalone viewport unit, which can resolve after first paint. */
         z-index: 60;
         box-sizing: border-box;
-        display: flex;
-        align-items: center;
-        justify-content: center;
         background: #fdfdfe;
         opacity: 1;
         transition: opacity 300ms ease;
@@ -162,7 +157,8 @@
 
       .app-bootstrap-skeleton__content {
         position: fixed;
-        top: var(--app-bootstrap-skeleton-center-y, 50dvh);
+        /* Small viewport units stay stable during iOS standalone launch. */
+        top: 50svh;
         left: 50%;
         transform: translate(-50%, -50%);
       }
@@ -208,8 +204,6 @@
         var CLIENT_SESSION_ID_HEADER = "X-Client-Session-Id";
         var CLIENT_TYPE_HEADER = "X-Client-Type";
         var CLIENT_VERSION_HEADER = "X-Client-Version";
-        var CLERK_LOAD_COMPLETED_MARK = "vm0:bootstrap:clerk-load-completed";
-        var CLERK_LOAD_STARTED_MARK = "vm0:bootstrap:clerk-load-started";
         var OKOU_PAGES_PREVIEW_HOST_SUFFIX = ".okou-app.pages.dev";
         var OKOU_PREVIEW_ROOT_DOMAIN = "omby.ai";
         var PREVIEW_API_HOSTNAME_PATTERN =
@@ -536,18 +530,6 @@
           );
         }
 
-        function markClerkLoadCompleted() {
-          bootstrap.clerkLoadCompletedAt = performance.now();
-          if (
-            performance.getEntriesByName(CLERK_LOAD_COMPLETED_MARK, "mark")
-              .length === 0
-          ) {
-            performance.mark(CLERK_LOAD_COMPLETED_MARK, {
-              startTime: bootstrap.clerkLoadCompletedAt,
-            });
-          }
-        }
-
         function startClerk() {
           var clerk = window.Clerk;
           if (
@@ -576,19 +558,9 @@
           };
 
           bootstrap.clerk = clerk;
-          bootstrap.clerkLoadStartedAt = performance.now();
-          if (
-            performance.getEntriesByName(CLERK_LOAD_STARTED_MARK, "mark")
-              .length === 0
-          ) {
-            performance.mark(CLERK_LOAD_STARTED_MARK, {
-              startTime: bootstrap.clerkLoadStartedAt,
-            });
-          }
           bootstrap.loaded = clerk.load(loadOptions);
           bootstrap.onboardingStatusPromise = bootstrap.loaded
             .then(function () {
-              markClerkLoadCompleted();
               return startOnboardingStatus(clerk);
             })
             .catch(function () {
@@ -720,72 +692,11 @@
         window.gtag("config", "AW-18144854014");
         window.gtag("config", "AW-18407336975");
 
-        var initialized = false;
-
-        function loadMarketingScripts() {
-          var gtagScript = document.createElement("script");
-          gtagScript.async = true;
-          gtagScript.src =
-            "https://www.googletagmanager.com/gtag/js?id=AW-18144854014";
-          document.head.appendChild(gtagScript);
-        }
-
-        function scheduleMarketingScripts() {
-          if (initialized) return;
-          initialized = true;
-
-          if (typeof window.requestIdleCallback === "function") {
-            window.requestIdleCallback(loadMarketingScripts, {
-              timeout: 1500,
-            });
-            return;
-          }
-
-          window.setTimeout(loadMarketingScripts, 0);
-        }
-
-        // Keep vendor work outside the first-content critical path. The
-        // 30-second guard exceeds the observed mobile P90 startup window and
-        // still bounds bootstraps that never reach real app content.
-        window.addEventListener(
-          "vm0:app-first-content-visible",
-          scheduleMarketingScripts,
-          { once: true },
-        );
-        window.setTimeout(scheduleMarketingScripts, 30000);
-      })();
-    </script>
-    <script>
-      (function () {
-        var skeleton = document.getElementById("app-bootstrap-skeleton");
-        // iOS standalone can expand the fixed containing viewport one frame
-        // after launch. Pin the content to the initially reachable viewport
-        // so that later geometry resolution cannot visibly recenter it.
-        var viewportHeight =
-          window.visualViewport && window.visualViewport.height > 0
-            ? window.visualViewport.height
-            : window.innerHeight;
-        if (viewportHeight > 0) {
-          skeleton.style.setProperty(
-            "--app-bootstrap-skeleton-center-y",
-            viewportHeight / 2 + "px",
-          );
-        }
-      })();
-    </script>
-    <script>
-      (function () {
-        var hostname = window.location.hostname.toLowerCase();
-        if (hostname !== "app.vm0.ai" && hostname !== "app.okou.ai") return;
-
-        var instatusScript = document.createElement("script");
-        instatusScript.src =
-          "https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en";
-        instatusScript.integrity =
-          "sha384-ZW3eZwADOMdlg2fdvESPD7jguK16IC/edxNFakKs81D2lkNdi3BXRmx/g331lkD3";
-        instatusScript.crossOrigin = "anonymous";
-        instatusScript.defer = true;
-        document.body.appendChild(instatusScript);
+        var gtagScript = document.createElement("script");
+        gtagScript.async = true;
+        gtagScript.src =
+          "https://www.googletagmanager.com/gtag/js?id=AW-18144854014";
+        document.head.appendChild(gtagScript);
       })();
     </script>
   </body>

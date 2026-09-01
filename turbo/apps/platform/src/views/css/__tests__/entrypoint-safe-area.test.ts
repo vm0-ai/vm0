@@ -33,7 +33,7 @@ describe("platform entrypoint safe area behavior", () => {
     ).toBeFalsy();
   });
 
-  it("pins the bootstrap skeleton to the initial reachable viewport", () => {
+  it("centers the bootstrap skeleton in the stable small viewport", () => {
     const rule = /#app-bootstrap-skeleton\s*{([^}]*)}/.exec(indexHtml)?.[1];
     const contentRule = /\.app-bootstrap-skeleton__content\s*{([^}]*)}/.exec(
       indexHtml,
@@ -47,13 +47,9 @@ describe("platform entrypoint safe area behavior", () => {
     expect(rule).not.toMatch(/(?:^|[;\s])(?:min-)?height\s*:/);
     expect(contentRule).toBeDefined();
     expect(contentRule).toMatch(/position:\s*fixed;/);
-    expect(contentRule).toMatch(
-      /top:\s*var\(--app-bootstrap-skeleton-center-y,\s*50dvh\);/,
-    );
+    expect(contentRule).toMatch(/top:\s*50svh;/);
     expect(contentRule).toMatch(/left:\s*50%;/);
     expect(contentRule).toMatch(/transform:\s*translate\(-50%,\s*-50%\);/);
-    expect(indexHtml).toContain("window.visualViewport.height");
-    expect(indexHtml).toContain('viewportHeight / 2 + "px"');
   });
 
   it("suppresses the bottom safe-area inset only while the keyboard is open", () => {

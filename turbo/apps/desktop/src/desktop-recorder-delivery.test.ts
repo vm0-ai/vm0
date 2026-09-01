@@ -100,7 +100,17 @@ describe("deliverRecording", () => {
 
     expect(url.origin).toBe("https://app.okou.ai");
     expect(url.searchParams.get("intro-video-recording")).toBe("upload-1");
+    expect(url.searchParams.has("intro-video-recording-url")).toBeFalsy();
+    expect(url.searchParams.get("intro-video-recording-name")).toBe(
+      "screen-recording-1.mp4",
+    );
+    expect(url.searchParams.get("intro-video-recording-size")).toBe("4");
     expect(url.searchParams.get("intro-video-clicks")).toBe("upload-2");
+    expect(url.searchParams.has("intro-video-clicks-url")).toBeFalsy();
+    expect(url.searchParams.get("intro-video-clicks-name")).toBe(
+      "screen-recording-1.clicks.json",
+    );
+    expect(url.searchParams.get("intro-video-clicks-size")).toBe("4");
     // Uploads are owned by the account that created them, so the browser needs
     // to know which account the desktop was signed in as.
     expect(url.searchParams.get("intro-video-user")).toBe("user_1");

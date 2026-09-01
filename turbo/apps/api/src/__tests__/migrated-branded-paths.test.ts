@@ -6,7 +6,6 @@ import { createAppWithRoutes } from "../app-factory-core";
 import { ROUTES } from "../signals/route";
 import { orgReadRoutes } from "../signals/routes/org-read";
 import { slackOauthRoutes } from "../signals/routes/slack-oauth";
-import { teamsOauthRoutes } from "../signals/routes/teams-oauth";
 import {
   assertUniqueRouteRegistrations,
   type RouteEntry,
@@ -109,13 +108,9 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   "/api/logs/:id": ["/api/okou/logs/:id", "/api/zero/logs/:id"],
   // #28464: the Slack, Teams, and Feishu connect and OAuth-start routes. The
   // paths a provider console holds are not in this slice and stay branded;
-  // they are covered by `provider-console-paths.test.ts`. #30807 removed
-  // `slack/channels`, leaving the two OAuth-start paths whose links a user
-  // still holds.
-  "/api/slack/oauth/connect": [
-    "/api/okou/slack/oauth/connect",
-    "/api/zero/slack/oauth/connect",
-  ],
+  // they are covered by `provider-console-paths.test.ts`. #30812 removed
+  // `slack/oauth/connect` and #30807 removed `slack/channels`, leaving the one
+  // OAuth-start path a marketing landing page published.
   "/api/slack/oauth/install": [
     "/api/okou/slack/oauth/install",
     "/api/zero/slack/oauth/install",
@@ -137,23 +132,11 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   "/api/org": ["/api/okou/org", "/api/zero/org"],
   // #28461. #30807 removed the four per-agent rows.
   "/api/workflows": ["/api/okou/workflows", "/api/zero/workflows"],
-  // #28545: the Teams OAuth callback, moved off `FINAL_PROVIDER_CONSOLE_PATHS`
-  // now that the Microsoft consoles hold the final URL. #28917 removed the
-  // slice's other row, the Teams bot ingress, whose branded forms nothing holds
-  // once the Azure Bot messaging endpoint moved. `/api/zero/teams/oauth/callback`
-  // was emitted on purpose by the VM0 brand, which made it a producer target
-  // rather than drain-window compatibility and is why #28917 kept the row
-  // against its own inventory; #30667 unified that producer onto the canonical
-  // path, and `route-entry.ts` records what the row holds open now.
-  "/api/integrations/teams/oauth/callback": [
-    "/api/okou/teams/oauth/callback",
-    "/api/zero/teams/oauth/callback",
-  ],
   // #28544: the two Feishu routes that left `FINAL_PROVIDER_CONSOLE_PATHS`.
-  // Both branded forms used to be the declared paths, so these rows are the
-  // only thing registering them now — the events one is what keeps the two
-  // production Feishu installations delivering to the URL each of them holds in
-  // its own Feishu app console.
+  // Both branded forms used to be the declared paths, so this row is the only
+  // thing registering them now — it is what keeps the two production Feishu
+  // installations delivering to the URL each of them holds in its own Feishu
+  // app console.
   "/api/webhooks/feishu/events/:installationId": [
     "/api/okou/feishu/events/:installationId",
     "/api/zero/feishu/events/:installationId",
@@ -167,9 +150,8 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   // neutral webhook URLs, and `routes/slack-oauth.ts` emits the neutral
   // callback as its `redirect_uri`.
   // #30807 then removed forty-four rows as a class: no source in `turbo/`
-  // emits a branded literal outside tests, and the Computer Use family that
-  // an installed Desktop build does hardcode had already been settled by
-  // #30804.
+  // emits a branded literal outside tests, and the Computer Use family that an
+  // installed Desktop build does hardcode had already been settled by #30804.
 };
 
 function missingBrandedPaths(
@@ -349,11 +331,13 @@ describe("branded paths for migrated neutral routes", () => {
   // kept when it took 53 more and left 89, #28974 kept when it took
   // `uploads/prepare` and left 88, #28916 kept when it took the 26 cut-over
   // rows that left 62, #30668 kept when it took the four Slack rows whose
-  // producer moved and left 58, #30804 kept when it took the four Computer
-  // Use host rows and `feature-switches` and left 53, and #30807 kept when it
-  // took forty-four rows as a class and left 9. None of them left a case
-  // asserting the removed rows now 404: `docs/fallback.md` section 1 rules that
-  // class out, and the route table already proves the registration is gone.
+  // producer moved and left 58, #30804 kept when it took the four Computer Use
+  // host rows and `feature-switches` and left 53, #30812 kept when it took
+  // the Teams OAuth callback and the Slack connect start and left 51, and
+  // #30807 kept when it took forty-four rows as a class and left 7. None of
+  // them left a case asserting the removed rows now 404: `docs/fallback.md`
+  // section 1 rules that class out, and the route table already proves the
+  // registration is gone.
   // What needs a test is the opposite direction — a row disappearing without
   // the request-log evidence #26701 requires — which is what this count and the
   // per-family cases catch.
@@ -365,7 +349,7 @@ describe("branded paths for migrated neutral routes", () => {
   // whole table. Raise the number only with that evidence; an unexplained edit
   // here is the failure this is for.
   it("holds the branded rows this suite has evidence for and no others", () => {
-    const MIGRATED_BRANDED_ROW_COUNT = 9;
+    const MIGRATED_BRANDED_ROW_COUNT = 7;
 
     expect(Object.keys(MIGRATED_ROUTE_PATHS)).toHaveLength(
       MIGRATED_BRANDED_ROW_COUNT,
@@ -373,20 +357,20 @@ describe("branded paths for migrated neutral routes", () => {
   });
 
   // The #28464 twin of the two assertions above, driven through the app factory
-  // production uses rather than over the route table. Both paths are an
-  // OAuth-start link already sitting in a Slack message, a bookmark or a search
-  // index, which is the holder no deploy bounds; #30807 removed the slice's
-  // `slack/channels` row, the one a released web build derived from a contract.
-  // The status is whatever the handler returns without credentials or provider
-  // configuration; the point is that all three forms reach the same handler
-  // instead of falling through to 404.
+  // production uses rather than over the route table. The one path left is an
+  // install link already sitting in a Slack message, a bookmark or a search
+  // index, which is the holder no deploy bounds. The status is whatever the
+  // handler returns without credentials or provider configuration; the point is
+  // that all three forms reach the same handler instead of falling through to
+  // 404. #30812 dropped `slack/oauth/connect` from the list, because no page
+  // publishes a connect link for anyone to be holding, and #30807 dropped
+  // `slack/channels`, the one a released web build derived from a contract.
   it("serves the migrated IM connect paths through the production app factory", async () => {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
     });
 
     const families = [
-      { routes: slackOauthRoutes, suffix: "slack/oauth/connect" },
       { routes: slackOauthRoutes, suffix: "slack/oauth/install" },
     ];
 
@@ -454,54 +438,14 @@ describe("branded paths for migrated neutral routes", () => {
     }
   });
 
-  // The #28545 twin, and the one slice where the branded forms are held by a
-  // provider console rather than by a released client: the Microsoft app
-  // registration still lists both callback URLs, so a dropped row 404s
-  // Microsoft itself with no drain window to wait out. The `zero` form was also
-  // what `callbackRedirectUri` emitted for the VM0 brand until #30667 unified
-  // it onto the canonical path. #28917 removed the slice's bot row —
-  // the Azure Bot messaging endpoint had already been repointed at the neutral
-  // path — which is why only the callback is exercised here now. Requests carry
-  // no credentials, so the status is whatever the handler returns before it has
-  // any; the point is that the neutral path and both branded forms reach the
-  // same handler.
-  it("serves the migrated Teams console paths through the production app factory", async () => {
-    context.mocks.clerk.authenticateRequest.mockResolvedValue({
-      isAuthenticated: false,
-    });
-
-    const families = [
-      {
-        routes: teamsOauthRoutes,
-        neutralSuffix: "integrations/teams/oauth/callback",
-        brandedSuffix: "teams/oauth/callback",
-      },
-    ] as const;
-
-    for (const { routes, neutralSuffix, brandedSuffix } of families) {
-      const app = createAppWithRoutes({ signal: context.signal, routes });
-
-      async function statusFor(path: string): Promise<number> {
-        const response = await app.request(`${REQUEST_ORIGIN}${path}`, {
-          method: "GET",
-          headers: { "content-type": "application/json" },
-        });
-        return response.status;
-      }
-
-      const neutral = await statusFor(`/api/${neutralSuffix}`);
-      const okou = await statusFor(`/api/okou/${brandedSuffix}`);
-      const zero = await statusFor(`/api/zero/${brandedSuffix}`);
-
-      expect({ neutralSuffix, neutral, okou, zero }).toStrictEqual({
-        neutralSuffix,
-        neutral,
-        okou: neutral,
-        zero: neutral,
-      });
-      expect(neutral).not.toBe(404);
-    }
-  });
+  // #28545's twin used to sit here, the one slice whose branded forms a
+  // provider console held rather than a released client. #28917 removed the
+  // slice's bot row once the Azure Bot messaging endpoint had been repointed at
+  // the neutral path, and #30812 removed the callback once #30667 had unified
+  // `callbackRedirectUri` onto the canonical path — a `redirect_uri` is
+  // computed per request, so the deploy bounded the branded form to
+  // authorizations already in flight. The slice has no rows left, so there is
+  // nothing for this case to drive.
 
   // The synthetic routes are not in the production `MIGRATED_BRANDED_PATHS`, so
   // this app registers only what the two contracts declare and what the
