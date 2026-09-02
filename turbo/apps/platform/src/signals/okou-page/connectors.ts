@@ -29,6 +29,7 @@ import {
   createComposerConnectorAccountSignals,
   type ComposerConnectorAccountSignals,
 } from "./composer-connector-accounts.ts";
+import { resetManualGrantForm$ } from "./settings/connectors.ts";
 
 export interface ComposerConnectorAuthorizationState {
   readonly agentId: string;
@@ -338,6 +339,9 @@ function createConnectorUiSignals(): Pick<
   });
   const updateConnectorUiState$ = command(
     ({ set }, patch: Partial<ComposerConnectorUiState>): void => {
+      if (patch.selectedConnectorSlug) {
+        set(resetManualGrantForm$, patch.selectedConnectorSlug);
+      }
       set(internalUiState$, (current) => {
         return { ...current, ...patch };
       });
