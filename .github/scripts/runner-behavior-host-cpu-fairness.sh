@@ -128,9 +128,12 @@ run_test() {
 echo "=== Unmanaged host CPU baseline ==="
 BASELINE_OUTPUT=$(run_test baseline "$BASELINE_UNIT" "$BASE_DIR/baseline")
 printf '%s\n' "$BASELINE_OUTPUT"
+# libtest writes the first nocapture record after its `test ...` prefix, so
+# extract the marker suffix while retaining strict numeric validation below.
 BASELINE_RATIO=$(printf '%s\n' "$BASELINE_OUTPUT" \
-  | sed -n 's/^HOST_CPU_NORMALIZED_RATIO=//p' | tail -1)
-if ! awk -v value="$BASELINE_RATIO" 'BEGIN { exit !(value + 0 > 0) }'; then
+  | sed -n 's/.*HOST_CPU_NORMALIZED_RATIO=//p' | tail -1)
+if ! awk -v value="$BASELINE_RATIO" \
+  'BEGIN { exit !(value ~ /^[0-9]+([.][0-9]+)?$/ && value + 0 > 0) }'; then
   echo "baseline did not publish a valid normalized ratio: $BASELINE_RATIO" >&2
   exit 1
 fi
