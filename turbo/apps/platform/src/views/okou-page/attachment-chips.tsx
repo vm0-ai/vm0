@@ -1544,7 +1544,7 @@ export function FileAttachmentChip({
   const pageSignal = useGet(pageSignal$);
   const officeDocumentPreviewEnabled = useGet(officeDocumentPreviewEnabled$);
   const previewOfficeDocument =
-    officeDocumentPreviewEnabled && isOfficeDocumentPreview(filename);
+    officeDocumentPreviewEnabled && isOfficeFilePreview(filename);
   return (
     <button
       type="button"
