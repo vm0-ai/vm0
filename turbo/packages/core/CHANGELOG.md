@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.608.1](https://github.com/vm0-ai/vm0/compare/core-v8.608.0...core-v8.608.1) (2026-09-02)
+
+
+### Refactoring
+
+* remove connectorCatalogCount feature switch ([#30935](https://github.com/vm0-ai/vm0/issues/30935)) ([531a1cc](https://github.com/vm0-ai/vm0/commit/531a1ccf20b2f4c5e33adf143ec0284a8911e3f2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.1
+
 ## [8.608.0](https://github.com/vm0-ai/vm0/compare/core-v8.607.1...core-v8.608.0) (2026-09-02)
 
 
