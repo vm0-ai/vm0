@@ -800,6 +800,24 @@ async function syncCatalog(candidate: unknown) {
 }
 
 async function syncDeployedCatalog() {
+  await syncCatalog(
+    catalog([
+      activeDefinition("connector-doctor", [
+        {
+          key: "weekly-check",
+          parameters: [],
+          desiredState: {
+            kind: "schedule",
+            schedule: {
+              type: "cron",
+              cronExpression: "0 9 * * 1",
+            },
+          },
+          runtime: { resultEmail: false },
+        },
+      ]),
+    ]),
+  );
   return await accept(
     setupApp({ context, routes: cronOfficialWorkflowCatalogRoutes })(
       cronOfficialWorkflowCatalogContract,
@@ -1782,7 +1800,7 @@ describe.sequential("Morning Brief preference", () => {
 });
 
 describe.sequential("Official Workflow installations", () => {
-  it("materializes the deployed Official Workflows through generic installation state", async () => {
+  it("materializes active deployed Official Workflows and rejects retired installations", async () => {
     installCatalogStorageFixture();
     const synced = await syncDeployedCatalog();
     expect(synced.body).toMatchObject({ outcome: "accepted", diagnostics: [] });
@@ -1808,10 +1826,6 @@ describe.sequential("Official Workflow installations", () => {
         return { name, displayName };
       }),
     ).toStrictEqual([
-      {
-        name: "connector-doctor",
-        displayName: "Connector Doctor",
-      },
       {
         name: "morning-brief",
         displayName: "Morning Brief",
@@ -1876,83 +1890,17 @@ describe.sequential("Official Workflow installations", () => {
       officialResultEmailEnabled: true,
     });
 
-    const installedConnectorDoctor = await accept(
+    const retiredConnectorDoctor = await accept(
       officialClient().install({
         headers,
         params: { definitionName: "connector-doctor" },
-        body: {
-          agentId,
-          blueprints: [{ blueprintKey: "weekly-check", bindings: [] }],
-        },
+        body: { agentId, blueprints: [] },
       }),
-      [201],
+      [409],
     );
-    expect(installedConnectorDoctor.body.definition).toMatchObject({
-      name: "connector-doctor",
-      lifecycle: "active",
-      blueprints: [{ key: "weekly-check" }],
-    });
-    expect(installedConnectorDoctor.body.workflow).toMatchObject({
-      name: "connector-doctor",
-      displayName: "Connector Doctor",
-      agentId,
-      official: {
-        definitionName: "connector-doctor",
-        installationState: "installed",
-        definitionLifecycle: "active",
-        readOnly: true,
-      },
-    });
-    expect(installedConnectorDoctor.body.workflow.automations).toHaveLength(1);
-    const connectorDoctorAutomation =
-      installedConnectorDoctor.body.workflow.automations[0];
-    expect(connectorDoctorAutomation).toMatchObject({
-      kind: "schedule",
-      enabled: true,
-      chatThreadId: expect.any(String),
-      schedule: {
-        type: "cron",
-        cronExpression: "0 9 * * 1",
-        timezone: "Asia/Shanghai",
-      },
-      official: {
-        blueprintKey: "weekly-check",
-        reconciliationStatus: "current",
-        intendedEnabled: true,
-        parameterBindings: [],
-      },
-    });
-    if (!connectorDoctorAutomation?.chatThreadId) {
-      throw new Error("Expected the Connector Doctor shared automation thread");
-    }
-    expect(connectorDoctorAutomation.chatThreadId).not.toBe(
-      morningBriefAutomation.chatThreadId,
+    expect(retiredConnectorDoctor.body.error.message).toBe(
+      "Official Workflow is retired: connector-doctor",
     );
-    const persistedConnectorDoctor = await accept(
-      installationClient().get({
-        headers,
-        params: { workflowId: installedConnectorDoctor.body.workflow.id },
-      }),
-      [200],
-    );
-    expect(persistedConnectorDoctor.body.workflow.automations).toHaveLength(1);
-    expect(persistedConnectorDoctor.body.workflow.automations).toMatchObject([
-      {
-        id: connectorDoctorAutomation.id,
-        chatThreadId: connectorDoctorAutomation.chatThreadId,
-      },
-    ]);
-    await expect(
-      readWorkflowAutomationAutonomyFixture(
-        context,
-        connectorDoctorAutomation.id,
-      ),
-    ).resolves.toMatchObject({
-      autonomyBudget: 10,
-      enabled: true,
-      officialBlueprintKey: "weekly-check",
-      officialResultEmailEnabled: false,
-    });
   });
 
   it("requires a Preference timezone only when a schedule Blueprint omits one", async () => {
