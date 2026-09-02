@@ -2,6 +2,9 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { describe, expect, it, vi } from "vitest";
+import { FeatureSwitchKey } from "@okouai/core";
+import { chatThreadDraftContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { voiceIoPolishContract } from "@okouai/api-contracts/contracts/voice-io-polish";
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
 import { computerUseHostsContract } from "@okouai/api-contracts/contracts/computer-use";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
@@ -971,6 +974,143 @@ describe("chat lifecycle", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(toastError).not.toHaveBeenCalledWith("HTTP 200");
+  });
+
+  it("keeps a voice draft hidden and unsendable until cleanup fails", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e2000000-0000-4000-a000-000000000022";
+    const rawTranscript = "um ship Friday no Monday";
+    const polishedTranscript = "Ship on Monday.";
+    const draftPatches: unknown[] = [];
+    let polishCalls = 0;
+    context.mocks.browser.voiceInput({ rms: 0.1 });
+    mockChatLifecycle(context, { threadId });
+    context.mocks.http.patch("*/api/chat-threads/:id", async ({ request }) => {
+      draftPatches.push(await request.json());
+      return new Response(null, { status: 200 });
+    });
+    context.mocks.http.post("*/api/voice-io/stt", () => {
+      return new Response(JSON.stringify({ text: rawTranscript }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    context.mocks.api(voiceIoPolishContract.post, ({ body, respond }) => {
+      expect(body).toStrictEqual({ text: rawTranscript });
+      polishCalls += 1;
+      if (polishCalls === 1) {
+        return respond(503, {
+          error: {
+            code: "PROVIDER_UNAVAILABLE",
+            message: "Voice draft cleanup is temporarily unavailable",
+          },
+        });
+      }
+      return respond(200, { text: polishedTranscript });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    });
+
+    const composer = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER);
+    });
+    await user.click(await screen.findByLabelText("Voice input"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+    const hiddenDraft = document.querySelector("[data-voice-draft]");
+    expect(hiddenDraft).not.toBeNull();
+    expect(hiddenDraft).toHaveClass("hidden");
+    expect(screen.getByLabelText("Send")).toBeDisabled();
+
+    await user.click(screen.getByLabelText("Stop recording"));
+
+    const failedDraft = await screen.findByLabelText("Voice draft");
+    expect(failedDraft).toBeVisible();
+    expect(failedDraft).toHaveTextContent(rawTranscript);
+    expect(screen.getByLabelText("Send")).toBeDisabled();
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftUserMessage: {
+          version: 1,
+          parts: [
+            expect.objectContaining({
+              type: "voice",
+              transcript: rawTranscript,
+            }),
+          ],
+        },
+        draftAttachments: null,
+      });
+    });
+
+    await user.click(buttonByText("Finish"));
+
+    await waitFor(() => {
+      expect(composer).toHaveTextContent(polishedTranscript);
+      expect(screen.queryByLabelText("Voice draft")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeEnabled();
+    });
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftUserMessage: {
+          version: 1,
+          parts: [{ type: "text", text: polishedTranscript }],
+        },
+        draftAttachments: null,
+      });
+    });
+    expect(polishCalls).toBe(2);
+  });
+
+  it("restores a persisted voice draft as an actionable blocked item", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e2000000-0000-4000-a000-000000000023";
+    const rawTranscript = "uh email Alex tomorrow no Tuesday";
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+      return respond(200, {
+        draftUserMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "voice",
+              id: "15874914-6ca6-41eb-ad09-ac64bf0784ea",
+              transcript: rawTranscript,
+            },
+          ],
+        },
+        draftAttachments: null,
+      });
+    });
+    context.mocks.api(voiceIoPolishContract.post, ({ body, respond }) => {
+      expect(body).toStrictEqual({ text: rawTranscript });
+      return respond(200, { text: "Email Alex on Tuesday." });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    });
+
+    const restoredDraft = await screen.findByLabelText("Voice draft");
+    expect(restoredDraft).toBeVisible();
+    expect(restoredDraft).toHaveTextContent(rawTranscript);
+    expect(screen.getByLabelText("Send")).toBeDisabled();
+
+    await user.click(buttonByText("Finish"));
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Voice draft")).not.toBeInTheDocument();
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toHaveTextContent(
+        "Email Alex on Tuesday.",
+      );
+      expect(screen.getByLabelText("Send")).toBeEnabled();
+    });
   });
 
   it("waits for active voice input before sending", async () => {

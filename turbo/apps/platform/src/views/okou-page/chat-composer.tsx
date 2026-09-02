@@ -208,6 +208,7 @@ import {
   codexFastModeEnabled$,
   customConnectorMcpEnabled$,
   imageRecognitionAvailable$,
+  voiceDraftEnabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
   selectedComputerUseHostId,
@@ -9062,11 +9063,17 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
   const starting = useGet(sttStarting$);
   const transcribing = useGet(sttTranscribing$);
   const voiceLevel = useGet(sttVoiceLevel$);
+  const voiceDraftEnabled = useGet(voiceDraftEnabled$);
   const voiceLevelFill = `${Math.round((voiceLevel / 3) * 100)}%`;
   const startRec = useSet(startRecording$);
   const stopAndTranscribe = useSet(stopAndTranscribe$);
   const openQuotaRecovery = useSet(openAudioInputQuotaRecovery$);
   const appendText = useSet(signals.editor.appendText$);
+  const startVoiceDraft = useSet(signals.voiceDraft.start$);
+  const appendVoiceDraftTranscript = useSet(
+    signals.voiceDraft.appendTranscript$,
+  );
+  const finishVoiceDraft = useSet(signals.voiceDraft.finish$);
   const saveDraft = useSet(signals.draft.save$);
   const signal = useGet(pageSignal$);
   const disabled = starting || transcribing || (!recording && !quotaResolved);
@@ -9101,8 +9108,28 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
       detach(openQuotaRecovery(signal), Reason.DomCallback);
       return;
     }
+    if (voiceDraftEnabled) {
+      const id = startVoiceDraft();
+      detach(
+        startRec(
+          (text) => {
+            appendVoiceDraftTranscript(id, text);
+            detach(saveDraft(signal), Reason.DomCallback);
+          },
+          quota.limit === null,
+          async () => {
+            await finishVoiceDraft(id, false, signal);
+            signal.throwIfAborted();
+            await saveDraft(signal);
+          },
+          signal,
+        ),
+        Reason.DomCallback,
+      );
+      return;
+    }
     detach(
-      startRec(onTranscribed, quota.limit === null, signal),
+      startRec(onTranscribed, quota.limit === null, undefined, signal),
       Reason.DomCallback,
     );
   };

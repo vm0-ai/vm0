@@ -1,5 +1,15 @@
 # Domain glossary
 
+## Voice draft
+
+A composer-owned, durable block containing raw speech transcription that is
+not yet ready to send. It remains hidden while recording and during the first
+automatic cleanup attempt, becomes visible if cleanup fails, and turns into
+ordinary composer text only after cleanup succeeds. A composer containing a
+voice draft cannot be sent.
+
+_Avoid_: Voice loading state, live transcript
+
 ## Archived chat history
 
 The durable portion of a chat thread's complete event history that no longer

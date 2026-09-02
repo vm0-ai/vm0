@@ -24,6 +24,7 @@ import {
   avatarVideoAspectRatioSchema,
   avatarVideoVoiceIdSchema,
 } from "./avatar-video";
+import { VOICE_IO_POLISH_MAX_TEXT_CHARS } from "./voice-io-polish";
 
 const c = initContract();
 const chatEventReadHeadersSchema = authHeadersSchema.extend({
@@ -502,6 +503,14 @@ const userMessageTemplatePartSchema = z
   })
   .strict();
 
+const userMessageVoicePartSchema = z
+  .object({
+    type: z.literal("voice"),
+    id: z.string().uuid(),
+    transcript: z.string().max(VOICE_IO_POLISH_MAX_TEXT_CHARS),
+  })
+  .strict();
+
 const feedbackNotePartSchema = z.discriminatedUnion("type", [
   userMessageTextPartSchema,
   userMessageChatThreadPartSchema,
@@ -558,6 +567,7 @@ const userMessageSourcePartSchema = z.discriminatedUnion("kind", [
 
 const userMessageInputPartSchema = z.discriminatedUnion("type", [
   userMessageTextPartSchema,
+  userMessageVoicePartSchema,
   userMessageChatThreadPartSchema,
   userMessageAgentPartSchema,
   userMessageTemplatePartSchema,
