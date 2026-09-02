@@ -463,51 +463,57 @@ async fn budget_pressure_evicts_oldest_idle_regardless_of_age() {
     shutdown(&env, run_handle).await;
 }
 
-#[tokio::test(start_paused = true)]
-async fn larger_profile_retires_only_the_required_oldest_idle_entries() {
-    let (config, env) = mock_run_config(two_profiles(), 7, 12288, 4);
+#[tokio::test]
+async fn larger_profile_batches_required_oldest_idle_entries_before_status_write() {
+    let destroy_gate = sandbox_mock::MockLifecycleGate::new();
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let idle_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    idle_overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+    let fresh_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    fresh_overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    let (mut config, env) =
+        mock_run_config_with_overrides(two_profiles(), 7, 12288, 4, fresh_overrides);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
     let status_path = env._temp_dir.path().join("status.json");
-    let now = std::time::Instant::now();
+    let status_write_started = Arc::new(tokio::sync::Notify::new());
+    let status_write_release = Arc::new(tokio::sync::Semaphore::new(0));
+    let status = Arc::new(StatusTracker::new_with_write_gate(
+        status_path.clone(),
+        3,
+        Arc::clone(&status_write_started),
+        Arc::clone(&status_write_release),
+    ));
+    config.shared.status = Arc::clone(&status);
 
-    seed_idle_pool_with_timing(
+    seed_idle_pool_with_overrides(
         &idle_pool,
         &budget,
-        TestParkedIdleCandidateSpec {
-            reuse_key: "sess-oldest",
-            profile_name: "vm0/default",
-            vcpu: 2,
-            memory_mb: 4096,
-            history_generation_run_id: None,
-            parked_at: now - Duration::from_secs(100),
-        },
+        &idle_overrides,
+        "sess-a-oldest",
+        "vm0/default",
+        2,
+        4096,
     )
     .await;
-    seed_idle_pool_with_timing(
+    seed_idle_pool_with_overrides(
         &idle_pool,
         &budget,
-        TestParkedIdleCandidateSpec {
-            reuse_key: "sess-middle",
-            profile_name: "vm0/default",
-            vcpu: 2,
-            memory_mb: 4096,
-            history_generation_run_id: None,
-            parked_at: now - Duration::from_secs(50),
-        },
+        &idle_overrides,
+        "sess-b-middle",
+        "vm0/default",
+        2,
+        4096,
     )
     .await;
-    seed_idle_pool_with_timing(
+    seed_idle_pool_with_overrides(
         &idle_pool,
         &budget,
-        TestParkedIdleCandidateSpec {
-            reuse_key: "sess-newest",
-            profile_name: "vm0/default",
-            vcpu: 2,
-            memory_mb: 4096,
-            history_generation_run_id: None,
-            parked_at: now - Duration::from_secs(10),
-        },
+        &idle_overrides,
+        "sess-c-newest",
+        "vm0/default",
+        2,
+        4096,
     )
     .await;
     assert!(
@@ -516,34 +522,57 @@ async fn larger_profile_retires_only_the_required_oldest_idle_entries() {
     );
 
     let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
 
     let run_id = RunId::new_v4();
+    let idle_write_started = status_write_started.notified();
     push_job(&env, run_id, "vm0/large", Some(minimal_context(run_id)));
+    tokio::select! {
+        () = idle_write_started => {}
+        completion = env.handle.wait_completion(run_id, Duration::from_secs(5)) => {
+            panic!("large run completed before batched idle status write: {completion:?}");
+        }
+    }
 
-    let completion = env
-        .handle
-        .wait_completion(run_id, Duration::from_secs(5))
-        .await;
-    assert!(
-        completion.is_some(),
-        "large job should complete after two oldest idle entries retire"
-    );
-    assert_eq!(completion.unwrap().exit_code, 0);
-
-    wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
+    destroy_gate
+        .wait_entered(2, Duration::from_secs(5))
+        .await
+        .expect("both required idle destroys should be tracker-owned before status persistence");
+    assert_eq!(wait_gate.entered_count(), 0);
+    assert_eq!(status.idle_info_update_request_count(), 1);
+    assert_eq!(budget.allocated(), (6, 12288, 2));
 
     let reuse_keys = idle_pool.lock().await.held_reuse_keys();
     assert_eq!(
         reuse_keys,
-        vec!["sess-newest".to_string()],
+        vec!["sess-c-newest".to_string()],
         "only the newest unneeded idle entry should remain"
     );
+
+    status_write_release.add_permits(1);
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("large fresh sandbox should activate after one idle status write");
+    assert_eq!(status.idle_info_update_request_count(), 1);
     assert_eq!(
         status_idle_reuse_keys(&status_path).await,
-        vec!["sess-newest".to_string()],
+        vec!["sess-c-newest".to_string()],
         "status.json should reflect only the remaining idle sandbox"
     );
 
+    wait_gate.release_one();
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("large job should complete while retired cleanup remains blocked");
+    assert_eq!(completion.exit_code, 0);
+    wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
+
+    destroy_gate.release_one();
+    destroy_gate.release_one();
+    destroy_gate.release_one();
     shutdown(&env, run_handle).await;
 }
 
