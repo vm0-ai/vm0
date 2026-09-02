@@ -3,7 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { FeatureSwitchKey } from "@okouai/core";
 import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
-import type { ImageAnnotationMark } from "@okouai/api-contracts/contracts/chat-threads";
+import type {
+  ImageAnnotationMark,
+  UserMessageDocument,
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   agentsByIdContract,
   agentsMainContract,
@@ -21,6 +24,7 @@ import { createMockAgentResponse } from "../../../mocks/handlers/api-agents.ts";
 const context = testContext();
 const AGENT_ID = "c0000000-0000-4000-a000-000000000901";
 const FILE_ID = "annotated-screenshot";
+const ANNOTATED_FILE_ID = "annotated-screenshot-rendered";
 const FILE_URL = "https://cdn.vm7.io/artifacts/test/drafts/billing-page.png";
 
 function mockAgentChatPage(): void {
@@ -72,19 +76,23 @@ function mockAgentChatPage(): void {
  * draft, not off a rendered copy, and the file itself is untouched.
  */
 interface SavedDraft {
-  readonly annotation?: unknown;
+  readonly userMessage: unknown;
+  readonly attachments: unknown;
 }
 
 function mockDraftWithImage(
   marks: ImageAnnotationMark[] | null,
-  savedDraftAttachments: (readonly SavedDraft[] | null)[] = [],
+  savedDrafts: SavedDraft[] = [],
 ): void {
   // A restored attachment revalidates its file before a send can use it.
   context.mocks.api(webFilesContract.fileUrl, ({ respond }) => {
     return respond(200, { url: FILE_URL });
   });
   context.mocks.api(agentDraftContract.patch, ({ body, respond }) => {
-    savedDraftAttachments.push(body.draftAttachments ?? null);
+    savedDrafts.push({
+      userMessage: body.draftUserMessage,
+      attachments: body.draftAttachments,
+    });
     return respond(200, { ok: true });
   });
   context.mocks.api(agentDraftContract.get, ({ respond }) => {
@@ -97,6 +105,12 @@ function mockDraftWithImage(
             fileId: FILE_ID,
             filenameSnapshot: "billing-page.png",
             contentType: "image/png",
+            ...(marks
+              ? {
+                  annotatedFileId: ANNOTATED_FILE_ID,
+                  annotations: { marks },
+                }
+              : {}),
           },
         ],
       },
@@ -107,7 +121,6 @@ function mockDraftWithImage(
           contentType: "image/png",
           size: 4096,
           url: FILE_URL,
-          ...(marks ? { annotation: { marks } } : {}),
         },
       ],
     });
@@ -212,28 +225,50 @@ async function dragOnSurface(
   });
 }
 
-/**
- * jsdom fetches nothing, so a real `Image` neither loads nor errors and the
- * flatten waits out its whole deadline. Failing the decode immediately is the
- * same branch a broken CDN takes in the browser, and it is the branch the send
- * has to survive.
- */
-function failImageDecodes(): void {
-  vi.stubGlobal(
-    "Image",
-    class {
-      crossOrigin = "";
-      #onError: (() => void) | null = null;
-      addEventListener(type: string, handler: () => void) {
-        if (type === "error") {
-          this.#onError = handler;
-        }
-      }
-      set src(_value: string) {
-        this.#onError?.();
-      }
+function mockAnnotationRendering(): void {
+  context.mocks.browser.imageDimensions({ width: 800, height: 600 });
+  const noop = () => {};
+  const canvasContext = {
+    arc: noop,
+    arcTo: noop,
+    beginPath: noop,
+    closePath: noop,
+    drawImage: noop,
+    fill: noop,
+    fillRect: noop,
+    fillText: noop,
+    lineTo: noop,
+    measureText: () => {
+      return { width: 80 } as TextMetrics;
+    },
+    moveTo: noop,
+    restore: noop,
+    roundRect: noop,
+    save: noop,
+    stroke: noop,
+    strokeText: noop,
+  } as unknown as CanvasRenderingContext2D;
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(((
+    contextId: string,
+  ) => {
+    return contextId === "2d" ? canvasContext : null;
+  }) as typeof HTMLCanvasElement.prototype.getContext);
+  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(
+    (callback) => {
+      callback(new Blob(["annotated"], { type: "image/png" }));
     },
   );
+}
+
+function mockSuccessfulAnnotationUpload(): void {
+  mockAnnotationRendering();
+  context.mocks.upload.success({
+    id: ANNOTATED_FILE_ID,
+    filename: "billing-page.annotated.png",
+    contentType: "image/png",
+    size: 9,
+    url: "https://cdn.vm7.io/artifacts/test/drafts/billing-page.annotated.png",
+  });
 }
 
 async function composerEditor(): Promise<HTMLElement> {
@@ -249,22 +284,18 @@ async function composerEditor(): Promise<HTMLElement> {
 }
 
 describe("composer image annotation", () => {
-  /**
-   * The mark notes only pay off if the agent receives them, and every other
-   * test here stops at the moment the marks are attached. This one crosses the
-   * send boundary: whatever the user wrote on the image has to arrive in the
-   * outgoing prompt, anchored to the file it was drawn on.
-   */
-  it("sends the mark notes to the agent alongside the message", async () => {
+  it("sends one structured annotated file part", async () => {
     const user = userEvent.setup({ delay: null });
-    const sentPrompts: string[] = [];
+    const requests: {
+      readonly prompt: string;
+      readonly userMessage?: UserMessageDocument;
+    }[] = [];
     mockChatLifecycle(context, {
-      onSendRequest: ({ prompt }) => {
-        sentPrompts.push(prompt);
+      onSendRequest: ({ prompt, userMessage }) => {
+        requests.push({ prompt, ...(userMessage ? { userMessage } : {}) });
       },
     });
     mockAgentChatPage();
-    failImageDecodes();
     mockDraftWithImage([boxMark()]);
 
     setup(true);
@@ -272,14 +303,18 @@ describe("composer image annotation", () => {
     await fillComposer(await composerEditor(), "Fix the billing page");
     await user.click(screen.getByLabelText("Send"));
 
-    // The image stub fails the flattened copy immediately. The send falls back
-    // to the original image, but the notes still have to arrive.
     await waitFor(() => {
-      expect(sentPrompts.length).toBeGreaterThan(0);
+      expect(requests.length).toBeGreaterThan(0);
     });
-    expect(sentPrompts[0]).toContain("Fix the billing page");
-    expect(sentPrompts[0]).toContain("Marks on billing-page.png");
-    expect(sentPrompts[0]).toContain("Tighten this spacing");
+    expect(requests[0]?.prompt).toBe("Fix the billing page");
+    expect(requests[0]?.userMessage?.parts).toContainEqual({
+      type: "file",
+      fileId: FILE_ID,
+      filenameSnapshot: "billing-page.png",
+      contentType: "image/png",
+      annotatedFileId: ANNOTATED_FILE_ID,
+      annotations: { marks: [boxMark()] },
+    });
   });
 
   it("restores marks stored on the draft and shows the count on the chip", async () => {
@@ -317,8 +352,9 @@ describe("composer image annotation", () => {
     const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context);
     mockAgentChatPage();
-    const savedDraftAttachments: (readonly SavedDraft[] | null)[] = [];
-    mockDraftWithImage(null, savedDraftAttachments);
+    const savedDrafts: SavedDraft[] = [];
+    mockSuccessfulAnnotationUpload();
+    mockDraftWithImage(null, savedDrafts);
 
     setup(true);
 
@@ -360,16 +396,48 @@ describe("composer image annotation", () => {
       screen.getAllByLabelText("Open image preview for billing-page.png"),
     ).toHaveLength(1);
 
-    // Attaching has to reach the stored draft. It used to write the signal and
-    // stop, so anything that reloaded the draft took the marks with it.
     await waitFor(() => {
       expect(
-        savedDraftAttachments.some((saved) => {
-          return saved?.some((attachment) => {
-            return attachment.annotation !== undefined;
-          });
+        savedDrafts.some((saved) => {
+          return JSON.stringify(saved.userMessage).includes(ANNOTATED_FILE_ID);
         }),
       ).toBeTruthy();
+    });
+    expect(savedDrafts).not.toContainEqual(
+      expect.objectContaining({
+        attachments: expect.arrayContaining([
+          expect.objectContaining({ annotations: expect.anything() }),
+        ]),
+      }),
+    );
+  });
+
+  it("blocks send while the confirmed derivative is uploading", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context);
+    mockAgentChatPage();
+    mockAnnotationRendering();
+    context.mocks.upload.pending({
+      id: ANNOTATED_FILE_ID,
+      filename: "billing-page.annotated.png",
+      contentType: "image/png",
+      size: 9,
+      url: "https://cdn.vm7.io/artifacts/test/drafts/billing-page.annotated.png",
+    });
+    mockDraftWithImage(null);
+
+    setup(true);
+    await fillComposer(await composerEditor(), "Fix the billing page");
+    await user.click(
+      await screen.findByLabelText("Open image preview for billing-page.png"),
+    );
+    await user.click(await screen.findByTestId("artifact-dialog-annotate"));
+    await dragOnSurface();
+    await user.click(attachMarksButton());
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("image-annotation-editor")).toBeNull();
+      expect(screen.getByLabelText("Send")).toBeDisabled();
     });
   });
 

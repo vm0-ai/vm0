@@ -565,11 +565,12 @@ export const drainGoalQueueForThread$ = command(
         "api_dispatch_pre_create_zero_goal_drain_load_event",
         "nested",
         async () => {
-          return await loadNextGoalQueueEvent(
-            db,
-            args.chatThreadId,
-            args.queueItemCreatedBefore,
-          );
+          return await loadNextGoalQueueEvent(db, {
+            chatThreadId: args.chatThreadId,
+            queueItemCreatedBefore: args.queueItemCreatedBefore,
+            timing,
+            timingDimensions: phaseDimensions,
+          });
         },
         phaseDimensions,
       );

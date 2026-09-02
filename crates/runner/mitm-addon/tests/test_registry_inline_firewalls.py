@@ -115,6 +115,31 @@ class TestRegistryInlineFirewalls:
             "run-inline:1",
         ]
 
+    def test_missing_inline_apis_rejects_only_affected_sandbox(self, tmp_path, mitm_ctx):
+        path = tmp_path / "registry.json"
+        malformed_sandbox = inline_sandbox("run-malformed")
+        del malformed_sandbox["firewalls"][0]["firewall"]["apis"]
+        write_multi_sandbox_registry(
+            path,
+            {
+                "10.200.0.1": malformed_sandbox,
+                "10.200.0.2": inline_sandbox("run-valid"),
+            },
+        )
+
+        with mitm_ctx():
+            state = registry.load_registry_state(str(path))
+            valid_context = registry.get_sandbox_context("10.200.0.2", str(path))
+
+        assert not isinstance(state, registry.RegistryUnavailable)
+        assert set(state.sandboxes) == {"10.200.0.2"}
+        invalid_sandbox = state.invalid_sandboxes["10.200.0.1"]
+        assert invalid_sandbox.reason == "invalid_firewalls"
+        assert invalid_sandbox.message == "inline firewall apis must be a list"
+        assert valid_context is not None
+        _, compiled_firewalls, _ = valid_context
+        assert compiled_firewalls is not None
+
     def test_malformed_custom_connector_apis_reject_only_affected_sandbox(self, tmp_path, mitm_ctx):
         path = tmp_path / "registry.json"
         malformed_sandbox = inline_sandbox("run-malformed")

@@ -14554,6 +14554,86 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, run.runId);
   }, 60_000);
 
+  it("projects one structured annotated file through its rendered derivative", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const fileId = randomUUID();
+    const annotatedFileId = randomUUID();
+    const filename = "billing-page.png";
+    chat.mockCompletedUploadObjects(actor, [
+      { id: fileId, filename, size: 42 },
+      { id: annotatedFileId, filename: "billing-page.annotated.png", size: 54 },
+    ]);
+    const filePart = {
+      type: "file" as const,
+      fileId,
+      filenameSnapshot: filename,
+      contentType: "image/png",
+      annotatedFileId,
+      annotations: {
+        marks: [
+          {
+            id: "spacing-mark",
+            ordinal: 1,
+            shape: "box" as const,
+            rect: { x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
+            ink: "#5E6AD2",
+            note: "Tighten this spacing",
+          },
+        ],
+      },
+    };
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "fix this",
+      userMessage: {
+        version: 1,
+        parts: [filePart, { type: "text", text: "fix this" }],
+      },
+    });
+
+    const created = await api.readRun(actor, run.runId);
+    expect(created.prompt).toContain(
+      `[Web file] billing-page.annotated.png (image/png)\n   [ID] ${annotatedFileId}`,
+    );
+    expect(created.prompt).toContain(
+      `[Image annotations]\n${JSON.stringify(filePart)}`,
+    );
+    expect(created.prompt).not.toContain(
+      `[Web file] ${filename} (image/png)\n   [ID] ${fileId}`,
+    );
+
+    const messages = await waitForThreadMessages(
+      actor,
+      run.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.eventType === "input.prompt" &&
+            message.userMessage.parts.some((part) => {
+              return part.type === "file" && part.fileId === fileId;
+            })
+          );
+        });
+      },
+    );
+    const attached = userMessages(messages.events)
+      .filter((message) => {
+        return message.eventType === "input.prompt";
+      })
+      .flatMap((message) => {
+        return message.eventType === "input.prompt"
+          ? message.userMessage.parts
+          : [];
+      })
+      .find((part) => {
+        return part.type === "file";
+      });
+    expect(attached).toStrictEqual(filePart);
+    await cancelChatRun(actor, run.runId);
+  }, 60_000);
+
   it("keeps a legacy VM0 attachment on the VM0 CDN for an Okou send", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
