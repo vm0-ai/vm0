@@ -637,25 +637,56 @@ def test_flush_keeps_runs_categories_providers_and_destinations_separate(tmp_pat
     )
 
     assert usage.flush_usage_events(trigger="test") == 3
-
-    payloads = enqueue.payloads
-    assert {(payload["runId"], len(payload["events"])) for payload in payloads} == {
-        ("run-1", 2),
-        ("run-2", 1),
-        ("run-1", 1),
-    }
-    all_events = [flushed_event for payload in payloads for flushed_event in payload["events"]]
-    assert {
+    assert enqueue.call_count == 3
+    routed_batches = {
         (
-            flushed_event["kind"],
-            flushed_event["provider"],
-            flushed_event["category"],
+            call.url,
+            call.sandbox_token,
+            call.proxy_log_path,
+            call.log_type,
+            call.payload["runId"],
+            frozenset(
+                (
+                    flushed_event["kind"],
+                    flushed_event["provider"],
+                    flushed_event["category"],
+                    flushed_event["quantity"],
+                )
+                for flushed_event in call.payload["events"]
+            ),
         )
-        for flushed_event in all_events
-    } == {
-        ("model", "claude-sonnet-4-6", "tokens.input"),
-        ("model", "claude-sonnet-4-6", "tokens.output"),
-        ("connector", "x", "posts.read"),
+        for call in enqueue.calls
+    }
+    assert routed_batches == {
+        (
+            "https://api-a.test/api/webhooks/agent/usage-event",
+            "token-a",
+            proxy_a_log_path,
+            "usage_event",
+            "run-1",
+            frozenset(
+                {
+                    ("model", "claude-sonnet-4-6", "tokens.input", 10),
+                    ("model", "claude-sonnet-4-6", "tokens.output", 5),
+                }
+            ),
+        ),
+        (
+            "https://api-a.test/api/webhooks/agent/usage-event",
+            "token-a",
+            proxy_a_log_path,
+            "usage_event",
+            "run-2",
+            frozenset({("model", "claude-sonnet-4-6", "tokens.input", 7)}),
+        ),
+        (
+            "https://api-b.test/api/webhooks/agent/usage-event",
+            "token-b",
+            proxy_b_log_path,
+            "usage_event",
+            "run-1",
+            frozenset({("connector", "x", "posts.read", 3)}),
+        ),
     }
 
 

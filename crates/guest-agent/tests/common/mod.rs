@@ -87,17 +87,6 @@ pub const MOCK_POST_RESULT_LIVENESS_EVENT: &str = "vm0_mock_post_result_stale_de
 pub const MOCK_POST_RESULT_RELEASE_ONE_SOCKET: &str = ".vm0-post-result-release-1.sock";
 pub const MOCK_POST_RESULT_RELEASE_TWO_SOCKET: &str = ".vm0-post-result-release-2.sock";
 
-/// Documented maximum number of stderr lines returned in
-/// `guest_agent::cli::CliExecutionResult`.
-pub const CLI_STDERR_RESULT_MAX_LINES: usize = 200;
-
-/// Documented maximum byte length for one returned stderr line after CRLF normalization.
-pub const CLI_STDERR_RESULT_MAX_LINE_BYTES: usize = 16 * 1024;
-
-/// Documented replacement for a stderr line that exceeds the diagnostic limit.
-pub const CLI_STDERR_OMITTED_LONG_LINE: &str =
-    "[stderr line omitted: exceeded diagnostic size limit]";
-
 pub fn unique_temp_path(prefix: &str) -> PathBuf {
     let timestamp_nanos = match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(duration) => duration.as_nanos(),

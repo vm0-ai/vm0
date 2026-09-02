@@ -15,6 +15,7 @@ import {
   connectConnectorOAuthAuthCode$,
   connectorCurrentConnectionStatus,
   getConnectorStatusDirectConnectMethod,
+  resetManualGrantForm$,
 } from "../okou-page/settings/connectors.ts";
 import {
   customConnectorAuthorizedAgentsById$,
@@ -236,6 +237,7 @@ function createCatalogConnectorActivation(
     const directConnectMethod =
       getConnectorStatusDirectConnectMethod(connector);
     if (!directConnectMethod) {
+      set(resetManualGrantForm$, connector.slug);
       set(activeChatConnectorActionState$, {
         ...descriptor,
         catalogItem: connector,

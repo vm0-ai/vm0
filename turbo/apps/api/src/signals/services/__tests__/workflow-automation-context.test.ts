@@ -280,21 +280,6 @@ const cases: readonly WorkflowAutomationContextCase[] = [
     policy: eventPolicy,
   },
   {
-    eventType: "strapi-entry-published",
-    payload: {
-      uid: "api::article.article",
-      documentId: "article-123",
-      integration: { name: "Publishing" },
-      latestEventAt: "2026-08-01T12:00:03.000Z",
-    },
-    trigger:
-      "Strapi published entry api::article.article article-123 on Publishing (latest change 2026-08-01T12:00:03.000Z).",
-    notes: [
-      "Not included below: the Strapi entry content fields. The configured Strapi connector returns them for the document metadata below.",
-    ],
-    policy: eventPolicy,
-  },
-  {
     eventType: "stripe-invoice-paid",
     payload: {
       deliveryId: "delivery-stripe",

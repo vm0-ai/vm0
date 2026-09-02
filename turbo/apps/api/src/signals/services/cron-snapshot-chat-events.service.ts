@@ -24,13 +24,16 @@ import {
 import { alias } from "drizzle-orm/pg-core";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatEventSearchMessageWatermarks } from "@okouai/db/schema/chat-event-search";
-import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
+import {
+  chatEventSnapshotScanState,
+  chatEventSnapshots,
+} from "@okouai/db/schema/chat-event-snapshot";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { isForeignKeyViolation, isUniqueViolation } from "../../lib/pg-errors";
-import { nowDate } from "../../lib/time";
+import { now, nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import {
   deleteS3Objects,
@@ -39,7 +42,7 @@ import {
   putImmutableS3Object,
   type S3Object,
 } from "../external/s3";
-import { settle } from "../utils";
+import { awaitWithSignal, settle, settleIncludingAbort } from "../utils";
 import {
   NO_DUPLICATE_EVENT_ID_NORMALIZATION,
   prepareChatEventArchiveWithNormalizedIds,
@@ -58,10 +61,17 @@ const log = logger("api:cron:snapshot-chat-events");
 interface ChatEventSnapshotStats {
   readonly snapshots: number;
   readonly archivedEvents: number;
+  readonly selectedCandidates: number;
+  readonly processedCandidates: number;
+  readonly deferredCandidates: number;
   readonly unreadableParents: number;
   readonly skippedUnreadableHeads: number;
   readonly skippedUndecodableHeads: number;
   readonly skippedIncompleteHeads: number;
+  readonly skippedFailedHeads: number;
+  readonly skippedTimedOutHeads: number;
+  readonly scanCursorAdvanced: boolean;
+  readonly scanWrapped: boolean;
   readonly duplicateEventIdConflictThreads: number;
   readonly duplicateEventIdConflicts: number;
   readonly duplicateEventIdsRemapped: number;
@@ -115,6 +125,16 @@ const gunzipAsync = promisify(gunzip);
  * leaves ample room for bursts while keeping each invocation bounded.
  */
 const DEFAULT_THREAD_BATCH_SIZE = 1000;
+const SNAPSHOT_THREAD_CONCURRENCY = 8;
+const SNAPSHOT_THREAD_TIMEOUT_MS = 30 * 1000;
+/**
+ * Stop starting new thread work after two minutes. A final per-thread timeout
+ * can extend the worker phase to 2.5 minutes, leaving half of the platform's
+ * five-minute request window for candidate reads, GC, cursor CAS, and terminal
+ * completion accounting.
+ */
+const SNAPSHOT_THREAD_START_BUDGET_MS = 2 * 60 * 1000;
+const GLOBAL_SNAPSHOT_SCAN_SCOPE = "global";
 const EVENT_PAGE_SIZE = 1000;
 const R2_GC_GRACE_HOURS = 24 * 7;
 const R2_GC_SHARDS_PER_RUN = 16;
@@ -543,7 +563,7 @@ function readSnapshotPrefix(
 ): Computed<Promise<SnapshotPrefixResolution>> {
   return computed(async (get): Promise<SnapshotPrefixResolution> => {
     const downloaded = await settle(
-      get(downloadS3Buffer(args.bucket, args.source.objectKey)),
+      get(downloadS3Buffer(args.bucket, args.source.objectKey, signal)),
       signal,
     );
     if (!downloaded.ok) {
@@ -990,7 +1010,13 @@ export const refreshChatEventSnapshotThread$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const db = set(writeDb$);
-    const [candidate] = await loadSnapshotCandidates(db, [chatThreadId]);
+    const [candidate] = await loadSnapshotCandidates(
+      db,
+      [chatThreadId],
+      null,
+      null,
+      1,
+    );
     signal.throwIfAborted();
     if (candidate === undefined) {
       return false;
@@ -1173,9 +1199,92 @@ const collectR2SnapshotGarbage$ = command(
   },
 );
 
+interface SnapshotScanState {
+  readonly cursorChatThreadId: string | null;
+  readonly cycleUpperBoundLastMessageAt: Date;
+}
+
+interface SnapshotCandidatePage {
+  readonly candidates: readonly SnapshotCandidate[];
+  readonly expectedState: SnapshotScanState;
+  readonly scanStartCursorChatThreadId: string | null;
+  readonly cycleUpperBoundLastMessageAt: Date;
+  readonly wrapped: boolean;
+}
+
+function snapshotCandidateAfterCursor(cursorChatThreadId: string | null) {
+  return cursorChatThreadId === null
+    ? undefined
+    : gt(chatThreads.id, cursorChatThreadId);
+}
+
+function exactSnapshotScanCursor(cursorChatThreadId: string | null) {
+  return cursorChatThreadId === null
+    ? isNull(chatEventSnapshotScanState.cursorChatThreadId)
+    : eq(chatEventSnapshotScanState.cursorChatThreadId, cursorChatThreadId);
+}
+
+async function loadSnapshotScanState(db: Db): Promise<SnapshotScanState> {
+  const [state] = await db
+    .select({
+      cursorChatThreadId: chatEventSnapshotScanState.cursorChatThreadId,
+      cycleUpperBoundLastMessageAt:
+        chatEventSnapshotScanState.cycleUpperBoundLastMessageAt,
+    })
+    .from(chatEventSnapshotScanState)
+    .where(eq(chatEventSnapshotScanState.scope, GLOBAL_SNAPSHOT_SCAN_SCOPE))
+    .limit(1);
+  if (state === undefined) {
+    throw new Error("Global Chat Event Snapshot scan state is missing");
+  }
+  return state;
+}
+
+function sameSnapshotScanState(
+  left: SnapshotScanState,
+  right: SnapshotScanState,
+): boolean {
+  return (
+    left.cursorChatThreadId === right.cursorChatThreadId &&
+    left.cycleUpperBoundLastMessageAt.getTime() ===
+      right.cycleUpperBoundLastMessageAt.getTime()
+  );
+}
+
+async function advanceSnapshotScanState(
+  db: Db,
+  expected: SnapshotScanState,
+  next: SnapshotScanState,
+): Promise<boolean> {
+  if (sameSnapshotScanState(expected, next)) {
+    return false;
+  }
+  const [updated] = await db
+    .update(chatEventSnapshotScanState)
+    .set({
+      cursorChatThreadId: next.cursorChatThreadId,
+      cycleUpperBoundLastMessageAt: next.cycleUpperBoundLastMessageAt,
+    })
+    .where(
+      and(
+        eq(chatEventSnapshotScanState.scope, GLOBAL_SNAPSHOT_SCAN_SCOPE),
+        exactSnapshotScanCursor(expected.cursorChatThreadId),
+        eq(
+          chatEventSnapshotScanState.cycleUpperBoundLastMessageAt,
+          expected.cycleUpperBoundLastMessageAt,
+        ),
+      ),
+    )
+    .returning({ scope: chatEventSnapshotScanState.scope });
+  return updated !== undefined;
+}
+
 async function loadSnapshotCandidates(
   db: Db,
   chatThreadIds: readonly string[] | null,
+  cursorChatThreadId: string | null,
+  cycleUpperBoundLastMessageAt: Date | null,
+  limit: number,
 ): Promise<readonly SnapshotCandidate[]> {
   const rows = await db
     .select({
@@ -1209,6 +1318,10 @@ async function loadSnapshotCandidates(
         chatThreadIds === null
           ? undefined
           : inArray(chatThreads.id, chatThreadIds),
+        snapshotCandidateAfterCursor(cursorChatThreadId),
+        cycleUpperBoundLastMessageAt === null
+          ? undefined
+          : lte(chatThreads.lastMessageAt, cycleUpperBoundLastMessageAt),
         gt(chatEventSearchMessageWatermarks.indexedSeqId, 0),
         or(
           isNull(currentSnapshot.id),
@@ -1226,8 +1339,12 @@ async function loadSnapshotCandidates(
         ),
       ),
     )
-    .orderBy(asc(chatThreads.lastMessageAt), asc(chatThreads.id))
-    .limit(chatEventSnapshotThreadBatchSize());
+    .orderBy(
+      ...(chatThreadIds === null
+        ? [asc(chatThreads.id)]
+        : [asc(chatThreads.lastMessageAt), asc(chatThreads.id)]),
+    )
+    .limit(limit);
 
   return rows.map((row): SnapshotCandidate => {
     return {
@@ -1242,6 +1359,233 @@ async function loadSnapshotCandidates(
       headArchiveSchemaVersion: row.headArchiveSchemaVersion,
     };
   });
+}
+
+async function loadGlobalSnapshotCandidatePage(
+  db: Db,
+): Promise<SnapshotCandidatePage> {
+  const state = await loadSnapshotScanState(db);
+  const limit = chatEventSnapshotThreadBatchSize();
+  const candidates = await loadSnapshotCandidates(
+    db,
+    null,
+    state.cursorChatThreadId,
+    state.cycleUpperBoundLastMessageAt,
+    limit,
+  );
+  if (candidates.length > 0) {
+    return {
+      candidates,
+      expectedState: state,
+      scanStartCursorChatThreadId: state.cursorChatThreadId,
+      cycleUpperBoundLastMessageAt: state.cycleUpperBoundLastMessageAt,
+      wrapped: false,
+    };
+  }
+  const cycleUpperBoundLastMessageAt = nowDate();
+  return {
+    candidates: await loadSnapshotCandidates(
+      db,
+      null,
+      null,
+      cycleUpperBoundLastMessageAt,
+      limit,
+    ),
+    expectedState: state,
+    scanStartCursorChatThreadId: null,
+    cycleUpperBoundLastMessageAt,
+    wrapped: true,
+  };
+}
+
+type SnapshotCandidateOutcome =
+  | { readonly kind: "completed"; readonly archived: ArchivedThread }
+  | { readonly kind: "failed" }
+  | { readonly kind: "timed_out" };
+
+interface SnapshotCandidateBatch {
+  readonly outcomes: readonly SnapshotCandidateOutcome[];
+  readonly attemptedCandidates: number;
+  readonly deferredCandidates: number;
+}
+
+interface SnapshotCandidateOutcomeStats {
+  readonly snapshots: number;
+  readonly archivedEvents: number;
+  readonly unreadableParents: number;
+  readonly skippedUnreadableHeads: number;
+  readonly skippedUndecodableHeads: number;
+  readonly skippedIncompleteHeads: number;
+  readonly skippedFailedHeads: number;
+  readonly skippedTimedOutHeads: number;
+  readonly duplicateEventIdConflictThreads: number;
+  readonly duplicateEventIdConflicts: number;
+  readonly duplicateEventIdsRemapped: number;
+  readonly duplicateEventReferencesRemapped: number;
+}
+
+async function processSnapshotCandidate(
+  candidate: SnapshotCandidate,
+  archive: (
+    candidate: SnapshotCandidate,
+    signal: AbortSignal,
+  ) => Promise<ArchivedThread>,
+  signal: AbortSignal,
+): Promise<SnapshotCandidateOutcome> {
+  const timeoutSignal = AbortSignal.timeout(SNAPSHOT_THREAD_TIMEOUT_MS);
+  const candidateSignal = AbortSignal.any([signal, timeoutSignal]);
+  const archived = await settleIncludingAbort(
+    awaitWithSignal(archive(candidate, candidateSignal), candidateSignal),
+  );
+  signal.throwIfAborted();
+  if (archived.ok) {
+    return { kind: "completed", archived: archived.value };
+  }
+  if (timeoutSignal.aborted) {
+    log.warn("Timed out Chat Event Snapshot candidate", {
+      type: "chat_event_snapshot_candidate_timed_out",
+      chatThreadId: candidate.chatThreadId,
+    });
+    return { kind: "timed_out" };
+  }
+  log.error("Failed Chat Event Snapshot candidate", {
+    type: "chat_event_snapshot_candidate_failed",
+    chatThreadId: candidate.chatThreadId,
+    error: archived.error,
+  });
+  return { kind: "failed" };
+}
+
+async function processSnapshotCandidates(
+  candidates: readonly SnapshotCandidate[],
+  archive: (
+    candidate: SnapshotCandidate,
+    signal: AbortSignal,
+  ) => Promise<ArchivedThread>,
+  signal: AbortSignal,
+): Promise<SnapshotCandidateBatch> {
+  const startDeadline = now() + SNAPSHOT_THREAD_START_BUDGET_MS;
+  const outcomes: (SnapshotCandidateOutcome | undefined)[] = Array.from({
+    length: candidates.length,
+  });
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    for (;;) {
+      signal.throwIfAborted();
+      if (now() >= startDeadline) {
+        return;
+      }
+      const index = nextIndex;
+      const candidate = candidates[index];
+      if (candidate === undefined) {
+        return;
+      }
+      nextIndex += 1;
+      outcomes[index] = await processSnapshotCandidate(
+        candidate,
+        archive,
+        signal,
+      );
+    }
+  }
+
+  const workerCount = Math.min(SNAPSHOT_THREAD_CONCURRENCY, candidates.length);
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      await worker();
+    }),
+  );
+  signal.throwIfAborted();
+
+  const attemptedCandidates = nextIndex;
+  return {
+    outcomes: outcomes.slice(0, attemptedCandidates).map((outcome) => {
+      if (outcome === undefined) {
+        throw new Error("Missing Chat Event Snapshot candidate outcome");
+      }
+      return outcome;
+    }),
+    attemptedCandidates,
+    deferredCandidates: candidates.length - attemptedCandidates,
+  };
+}
+
+function summarizeSnapshotCandidateOutcomes(
+  outcomes: readonly SnapshotCandidateOutcome[],
+): SnapshotCandidateOutcomeStats {
+  const stats = {
+    snapshots: 0,
+    archivedEvents: 0,
+    unreadableParents: 0,
+    skippedUnreadableHeads: 0,
+    skippedUndecodableHeads: 0,
+    skippedIncompleteHeads: 0,
+    skippedFailedHeads: 0,
+    skippedTimedOutHeads: 0,
+    duplicateEventIdConflictThreads: 0,
+    duplicateEventIdConflicts: 0,
+    duplicateEventIdsRemapped: 0,
+    duplicateEventReferencesRemapped: 0,
+  };
+  for (const outcome of outcomes) {
+    if (outcome.kind === "failed") {
+      stats.skippedFailedHeads += 1;
+      continue;
+    }
+    if (outcome.kind === "timed_out") {
+      stats.skippedTimedOutHeads += 1;
+      continue;
+    }
+    const archived = outcome.archived;
+    if (archived.skippedHead === "unreadable") {
+      stats.skippedUnreadableHeads += 1;
+      stats.unreadableParents += 1;
+    } else if (archived.skippedHead === "undecodable") {
+      stats.skippedUndecodableHeads += 1;
+      stats.unreadableParents += 1;
+    } else if (archived.skippedHead === "incomplete") {
+      stats.skippedIncompleteHeads += 1;
+    }
+    if (archived.archivedEvents !== null) {
+      stats.snapshots += 1;
+      stats.archivedEvents += archived.archivedEvents;
+    }
+    if (archived.normalization.conflictingEventIds > 0) {
+      stats.duplicateEventIdConflictThreads += 1;
+    }
+    stats.duplicateEventIdConflicts +=
+      archived.normalization.conflictingEventIds;
+    stats.duplicateEventIdsRemapped += archived.normalization.remappedEventIds;
+    stats.duplicateEventReferencesRemapped +=
+      archived.normalization.remappedEventReferences;
+  }
+  return stats;
+}
+
+async function finalizeGlobalSnapshotScanState(
+  db: Db,
+  candidatePage: SnapshotCandidatePage,
+  attemptedCandidates: number,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const lastAttempted = candidatePage.candidates[attemptedCandidates - 1];
+  const nextCursorChatThreadId =
+    lastAttempted === undefined
+      ? candidatePage.candidates.length === 0
+        ? null
+        : candidatePage.scanStartCursorChatThreadId
+      : lastAttempted.chatThreadId;
+  const advanced = await advanceSnapshotScanState(
+    db,
+    candidatePage.expectedState,
+    {
+      cursorChatThreadId: nextCursorChatThreadId,
+      cycleUpperBoundLastMessageAt: candidatePage.cycleUpperBoundLastMessageAt,
+    },
+  );
+  signal.throwIfAborted();
+  return advanced;
 }
 
 /**
@@ -1260,61 +1604,38 @@ export const snapshotChatEvents$ = command(
     signal: AbortSignal,
   ): Promise<ChatEventSnapshotStats> => {
     const db = set(writeDb$);
-    const chatThreadIds = scope.kind === "global" ? null : scope.chatThreadIds;
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
     const ownedObjectKeys =
       scope.kind === "global" ? null : new Set(scope.r2ObjectKeys);
-    const candidates = await loadSnapshotCandidates(db, chatThreadIds);
+    const globalCandidatePage =
+      scope.kind === "global"
+        ? await loadGlobalSnapshotCandidatePage(db)
+        : null;
+    const candidates =
+      globalCandidatePage?.candidates ??
+      (await loadSnapshotCandidates(
+        db,
+        scope.kind === "fixtures" ? scope.chatThreadIds : null,
+        null,
+        null,
+        chatEventSnapshotThreadBatchSize(),
+      ));
     signal.throwIfAborted();
 
-    let snapshots = 0;
-    let archivedEvents = 0;
-    let unreadableParents = 0;
-    let skippedUnreadableHeads = 0;
-    let skippedUndecodableHeads = 0;
-    let skippedIncompleteHeads = 0;
-    let duplicateEventIdConflictThreads = 0;
-    let duplicateEventIdConflicts = 0;
-    let duplicateEventIdsRemapped = 0;
-    let duplicateEventReferencesRemapped = 0;
-    for (const candidate of candidates) {
-      const archived = await set(
-        archiveThread$,
-        { db, bucket, candidate },
-        signal,
-      );
-      signal.throwIfAborted();
-      switch (archived.skippedHead) {
-        case "unreadable": {
-          skippedUnreadableHeads += 1;
-          unreadableParents += 1;
-          break;
-        }
-        case "undecodable": {
-          skippedUndecodableHeads += 1;
-          unreadableParents += 1;
-          break;
-        }
-        case "incomplete": {
-          skippedIncompleteHeads += 1;
-          break;
-        }
-        case null: {
-          break;
-        }
-      }
-      if (archived.archivedEvents !== null) {
-        snapshots += 1;
-        archivedEvents += archived.archivedEvents;
-      }
-      if (archived.normalization.conflictingEventIds > 0) {
-        duplicateEventIdConflictThreads += 1;
-      }
-      duplicateEventIdConflicts += archived.normalization.conflictingEventIds;
-      duplicateEventIdsRemapped += archived.normalization.remappedEventIds;
-      duplicateEventReferencesRemapped +=
-        archived.normalization.remappedEventReferences;
-    }
+    const processed = await processSnapshotCandidates(
+      candidates,
+      async (candidate, candidateSignal) => {
+        return await set(
+          archiveThread$,
+          { db, bucket, candidate },
+          candidateSignal,
+        );
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    const outcomeStats = summarizeSnapshotCandidateOutcomes(processed.outcomes);
     const r2Gc = await set(
       collectR2SnapshotGarbage$,
       {
@@ -1328,17 +1649,22 @@ export const snapshotChatEvents$ = command(
       signal,
     );
     signal.throwIfAborted();
+    const scanCursorAdvanced =
+      globalCandidatePage === null
+        ? false
+        : await finalizeGlobalSnapshotScanState(
+            db,
+            globalCandidatePage,
+            processed.attemptedCandidates,
+            signal,
+          );
     return {
-      snapshots,
-      archivedEvents,
-      unreadableParents,
-      skippedUnreadableHeads,
-      skippedUndecodableHeads,
-      skippedIncompleteHeads,
-      duplicateEventIdConflictThreads,
-      duplicateEventIdConflicts,
-      duplicateEventIdsRemapped,
-      duplicateEventReferencesRemapped,
+      ...outcomeStats,
+      selectedCandidates: candidates.length,
+      processedCandidates: processed.attemptedCandidates,
+      deferredCandidates: processed.deferredCandidates,
+      scanCursorAdvanced,
+      scanWrapped: globalCandidatePage?.wrapped ?? false,
       r2ObjectsScanned: r2Gc.scanned,
       r2ObjectsMeasured: r2Gc.measured,
       r2ObjectsDeleted: r2Gc.deleted,

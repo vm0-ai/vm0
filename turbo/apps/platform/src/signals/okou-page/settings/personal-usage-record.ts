@@ -7,7 +7,7 @@ import {
 import { usageMembersContract } from "@okouai/api-contracts/contracts/usage";
 import { accept } from "../../../lib/accept.ts";
 import { apiClient$ } from "../../api-client.ts";
-import { onRejection } from "../../utils.ts";
+import { onRejection, resetSignal } from "../../utils.ts";
 
 export type CreditBalanceTab = "mine" | "team";
 
@@ -16,6 +16,7 @@ const usagePackMembersDialogOpenState$ = state(false);
 const usagePackMemberAdditionsExpandedMemberIdState$ = state<string | null>(
   null,
 );
+const resetUsagePackMembersDialogSignal$ = resetSignal();
 
 export const creditBalanceTab$ = computed((get) => {
   return get(creditBalanceTabState$);
@@ -35,14 +36,40 @@ export const usagePackMemberAdditionsExpandedMemberId$ = computed((get) => {
   return get(usagePackMemberAdditionsExpandedMemberIdState$);
 });
 
-export const setUsagePackMembersDialogOpen$ = command(
-  ({ set }, open: boolean) => {
-    if (open) {
-      set(usagePackMemberAdditionsExpandedMemberIdState$, null);
-    }
-    set(usagePackMembersDialogOpenState$, open);
+const resetUsagePackMembersDialogState$ = command(({ set }) => {
+  set(usagePackMembersDialogOpenState$, false);
+  set(usagePackMemberAdditionsExpandedMemberIdState$, null);
+});
+
+export const openUsagePackMembersDialog$ = command(
+  ({ set }, settingsDialogSignal: AbortSignal) => {
+    settingsDialogSignal.throwIfAborted();
+    const signal = set(
+      resetUsagePackMembersDialogSignal$,
+      settingsDialogSignal,
+    );
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(resetUsagePackMembersDialogState$);
+      },
+      { once: true },
+    );
+    set(usagePackMemberAdditionsExpandedMemberIdState$, null);
+    set(usagePackMembersDialogOpenState$, true);
   },
 );
+
+export const closeUsagePackMembersDialog$ = command(({ set }) => {
+  set(usagePackMembersDialogOpenState$, false);
+});
+
+export const completeUsagePackMembersDialogClose$ = command(({ get, set }) => {
+  if (get(usagePackMembersDialogOpenState$)) {
+    return;
+  }
+  set(resetUsagePackMembersDialogSignal$);
+});
 
 export const toggleUsagePackMemberAdditions$ = command(
   ({ get, set }, memberId: string) => {

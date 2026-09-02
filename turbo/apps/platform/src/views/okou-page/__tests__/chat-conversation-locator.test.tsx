@@ -1,6 +1,5 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
@@ -410,9 +409,6 @@ async function renderMeasuredThread({
   detachedSetupPage({
     context,
     path: `/chats/${threadId}`,
-    featureSwitches: {
-      [FeatureSwitchKey.ChatConversationLocator]: true,
-    },
   });
 
   await screen.findByText(renderedText);
@@ -471,7 +467,7 @@ function conversation(): MockChatEventInput[] {
   return events;
 }
 
-function renderThread(enabled: boolean): void {
+function renderThread(): void {
   mockChatLifecycle(context, {
     threadId: THREAD_ID,
     threadTitle: "Conversation locator",
@@ -480,25 +476,12 @@ function renderThread(enabled: boolean): void {
   detachedSetupPage({
     context,
     path: `/chats/${THREAD_ID}`,
-    featureSwitches: {
-      [FeatureSwitchKey.ChatConversationLocator]: enabled,
-    },
   });
 }
 
 describe("chat conversation locator", () => {
-  it("stays out of the thread while the feature switch is off", async () => {
-    renderThread(false);
-
-    await screen.findByText("Answer 4", {}, { timeout: 3000 });
-    expect(document.querySelector("[data-conversation-locator]")).toBeNull();
-    expect(
-      document.querySelector("[data-conversation-locator-preview]"),
-    ).toBeNull();
-  });
-
-  it("mounts the rail and its preview card once the switch is on", async () => {
-    renderThread(true);
+  it("mounts the rail and its preview card", async () => {
+    renderThread();
 
     await screen.findByText("Answer 4");
     const rail = await waitFor(() => {
@@ -515,7 +498,7 @@ describe("chat conversation locator", () => {
   });
 
   it("draws no ticks until the thread outgrows the viewport", async () => {
-    renderThread(true);
+    renderThread();
 
     await screen.findByText("Answer 4");
     const rail = await waitFor(() => {
@@ -530,7 +513,7 @@ describe("chat conversation locator", () => {
   });
 
   it("stamps every turn with the timestamp the preview card reads", async () => {
-    renderThread(true);
+    renderThread();
 
     await screen.findByText("Answer 4");
     const turns = [

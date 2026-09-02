@@ -26,7 +26,6 @@ import {
   type OfficialWorkflowCatalogDetail,
 } from "@okouai/api-contracts/contracts/official-workflows";
 import { integrationsGithubContract } from "@okouai/api-contracts/contracts/integrations-github";
-import { strapiIntegrationsContract } from "@okouai/api-contracts/contracts/strapi-integrations";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, vi, type Mock } from "vitest";
 
@@ -238,6 +237,7 @@ function weekdayWorkflowAutomation(): WorkflowScheduleAutomationSummary {
     chatThreadId: "thread_weekday_brief",
     nextRunAt: "2026-06-19T01:00:00.000Z",
     lastRunAt: "2026-06-18T01:00:00.000Z",
+    official: null,
   };
 }
 
@@ -261,6 +261,7 @@ function gmailWorkflowAutomation(): WorkflowGmailNewMessageAutomationSummary {
     chatThreadId: "thread_gmail_new_message",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
   };
 }
 
@@ -282,6 +283,7 @@ function gmailLabelWorkflowAutomation(): WorkflowGmailLabelAppliedAutomationSumm
     chatThreadId: "thread_gmail_label_applied",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
   };
 }
 
@@ -305,6 +307,7 @@ function githubPullRequestWorkflowAutomation(): WorkflowGithubPullRequestAutomat
     chatThreadId: "thread_github_pull_request",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
   };
 }
 
@@ -325,6 +328,7 @@ function googleCalendarWorkflowAutomation(): WorkflowGoogleCalendarEventCreatedA
     chatThreadId: "thread_google_calendar_event_created",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
   };
 }
 
@@ -345,6 +349,7 @@ function googleCalendarUpdatedWorkflowAutomation(): WorkflowGoogleCalendarEventU
     chatThreadId: "thread_google_calendar_event_updated",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
   };
 }
 
@@ -365,6 +370,7 @@ function googleCalendarCancelledWorkflowAutomation(): WorkflowGoogleCalendarEven
     chatThreadId: "thread_google_calendar_event_cancelled",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
   };
 }
 
@@ -385,6 +391,7 @@ function googleMeetTranscriptGeneratedWorkflowAutomation(): WorkflowGoogleMeetTr
     chatThreadId: "thread_google_meet_transcript_generated",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
   };
 }
 
@@ -412,6 +419,7 @@ function googleFormsResponseSubmittedWorkflowAutomation(
     chatThreadId: "thread_google_forms_response_submitted",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
     ...(warning ? { warning } : {}),
   };
 }
@@ -438,6 +446,7 @@ function notionChildPageWorkflowAutomation(): WorkflowNotionChildPageCreatedAuto
     chatThreadId: "thread_notion_child_page",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
   };
 }
 
@@ -463,6 +472,7 @@ function notionDatabaseItemWorkflowAutomation(): WorkflowNotionDatabaseItemCreat
     chatThreadId: "thread_notion_database_item",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
   };
 }
 
@@ -491,6 +501,7 @@ function notionPageContentUpdatedWorkflowAutomation(): WorkflowNotionPageContent
     chatThreadId: "thread_notion_page_content_updated",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
   };
 }
 
@@ -511,6 +522,7 @@ function webhookWorkflowAutomation(): WorkflowWebhookAutomationSummary {
     chatThreadId: "thread_webhook",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
     webhookUrl:
       "https://api.vm0.test/api/webhooks/workflow-automations/whk_test",
     secretLastFour: "abcd",
@@ -539,6 +551,7 @@ function stripeInvoicePaidWorkflowAutomation(
     chatThreadId: "thread_stripe_invoice_paid",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
     health: {
       lastMatchingEventReceivedAt: null,
       lastDeliveryStatus: null,
@@ -588,6 +601,7 @@ function salesResearch(): WorkflowDetailResponse {
     ownerUserId: CURRENT_USER_ID,
     canManage: true,
     canPublish: false,
+    official: null,
     createdByUserId: CURRENT_USER_ID,
     updatedByUserId: UPDATED_USER_ID,
     createdAt: "2026-06-17T13:52:00.000Z",
@@ -736,7 +750,7 @@ function namedOfficialWorkflow(
               ...automation.official,
               blueprintKey: morningBrief ? "daily-delivery" : "weekly-check",
             }
-          : undefined,
+          : null,
       };
     }),
   };
@@ -755,6 +769,7 @@ function opsPlaybook(): WorkflowDetailResponse {
     ownerUserId: CURRENT_USER_ID,
     canManage: true,
     canPublish: true,
+    official: null,
     createdByUserId: CURRENT_USER_ID,
     updatedByUserId: CURRENT_USER_ID,
     createdAt: "2026-06-15T12:00:00.000Z",
@@ -779,6 +794,7 @@ function launchChecklistWorkflow(): WorkflowDetailResponse {
     ownerUserId: CURRENT_USER_ID,
     canManage: true,
     canPublish: true,
+    official: null,
     createdByUserId: CURRENT_USER_ID,
     updatedByUserId: CURRENT_USER_ID,
     createdAt: "2026-06-18T12:00:00.000Z",
@@ -803,6 +819,7 @@ function otherAgentWorkflow(): WorkflowDetailResponse {
     ownerUserId: CURRENT_USER_ID,
     canManage: true,
     canPublish: false,
+    official: null,
     createdByUserId: CURRENT_USER_ID,
     updatedByUserId: CURRENT_USER_ID,
     createdAt: "2026-06-16T12:00:00.000Z",
@@ -845,7 +862,7 @@ function summary(workflow: WorkflowDetailResponse): WorkflowSummary {
     createdAt: workflow.createdAt,
     canManage: workflow.canManage,
     canPublish: workflow.canPublish,
-    ...(workflow.official === undefined ? {} : { official: workflow.official }),
+    official: workflow.official,
   };
 }
 
@@ -1250,7 +1267,6 @@ function mockCreateWorkflowAutomation(
       body.eventConfig.provider === "github" ||
       body.eventConfig.provider === "google-forms" ||
       body.eventConfig.provider === "stripe" ||
-      body.eventConfig.provider === "strapi" ||
       body.eventConfig.provider === "chat"
     ) {
       return respond(201, mockConfiguredEventAutomation(body));
@@ -4130,73 +4146,6 @@ describe("workflow detail page", () => {
       "href",
       "/connectors",
     );
-  });
-
-  it("hides Strapi automation creation when the feature is disabled", async () => {
-    mockWorkflowApis([salesResearch()]);
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.StrapiIntegration]: false,
-    });
-
-    click(await screen.findByText("Add automation"));
-    const picker = await screen.findByRole("dialog");
-    click(buttonByText("Integrations", picker));
-    expect(
-      screen.queryByText("Strapi entry published"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("creates a Strapi entry-published automation behind the feature switch", async () => {
-    const integrationId = "00000000-0000-4000-8000-000000000092";
-    const createBodies: WorkflowAutomationCreateRequest[] = [];
-    mockWorkflowApis([salesResearch()]);
-    mockCreateWorkflowAutomation((body) => {
-      createBodies.push(body);
-    });
-    context.mocks.api(strapiIntegrationsContract.list, ({ respond }) => {
-      return respond(200, [
-        {
-          id: integrationId,
-          name: "Marketing CMS",
-          baseUrl: "https://cms.example.com",
-          webhookUrl: `https://www.vm0.test/api/strapi/events/${integrationId}`,
-          secretLastFour: "abcd",
-          lastTestedAt: "2026-07-28T04:00:00.000Z",
-          lastReceivedAt: null,
-          createdAt: "2026-07-28T03:00:00.000Z",
-        },
-      ]);
-    });
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.StrapiIntegration]: true,
-    });
-
-    click(await screen.findByText("Add automation"));
-    await screen.findByRole("dialog");
-    pickAutomation("Integrations", /^Strapi entry published/);
-    const form = await screen.findByRole("form", {
-      name: "Add Strapi entry published automation",
-    });
-    await fill(
-      within(form).getByLabelText("Content type UID (optional)"),
-      "api::article.article",
-    );
-    await fill(within(form).getByLabelText("Locale (optional)"), "en");
-    fireEvent.submit(form);
-
-    await waitFor(() => {
-      expect(createBodies.at(-1)).toStrictEqual({
-        kind: "event",
-        eventType: "strapi-entry-published",
-        eventConfig: {
-          provider: "strapi",
-          event: "entry_published",
-          integrationId,
-          contentTypeUid: "api::article.article",
-          locale: "en",
-        },
-      });
-    });
   });
 
   it("creates a webhook automation and shows one-time signing details", async () => {

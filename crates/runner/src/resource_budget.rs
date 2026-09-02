@@ -10,7 +10,7 @@ use tracing::error;
 /// ordinary admission plus claimed fallback tasks may reserve concurrently.
 ///
 /// Three conditions must hold for admission:
-/// 1. `running_vcpu + vcpu <= effective_vcpu`
+/// 1. `running_vcpu + vcpu <= vcpu_admission_limit`
 /// 2. `running_memory_mb + memory_mb <= effective_memory_mb`
 /// 3. `max_concurrent == 0 || running_count < max_concurrent`
 ///
@@ -18,11 +18,53 @@ use tracing::error;
 /// regardless of resource limits (ensures at least 1 job can run on
 /// under-provisioned hosts — matches old `.max(1)` behaviour).
 pub struct ResourceBudget {
-    effective_vcpu: u32,
+    cpu_capacity: CpuAdmissionCapacity,
     effective_memory_mb: u32,
     max_concurrent: usize,
     state: Mutex<BudgetState>,
     availability: Notify,
+}
+
+#[derive(Clone, Copy)]
+struct CpuAdmissionCapacity {
+    host_reservation: f64,
+    guest_capacity: f64,
+    admission_limit: f64,
+}
+
+impl CpuAdmissionCapacity {
+    fn new(host_cpus: u32, concurrency_factor: f64) -> Self {
+        let host_cpus = f64::from(host_cpus);
+
+        // R(P) follows GKE's node CPU reservation curve:
+        // https://cloud.google.com/kubernetes-engine/docs/concepts/plan-node-sizes#cpu_reservations
+        //
+        // P is the logical CPU capacity visible to Runner; F is concurrency_factor.
+        // R(P) = 0.06 * min(P, 1)
+        //      + 0.01 * clamp(P - 1, 0, 1)
+        //      + 0.005 * clamp(P - 2, 0, 2)
+        //      + 0.0025 * max(P - 4, 0)
+        // C(P) = P - R(P)
+        // B(P, F) = C(P) * F
+        //
+        // vm0 uses B(P, F) as the fractional declared-vCPU admission limit;
+        // the GKE source defines R(P), not vm0's overcommit factor F.
+        let host_reservation = 0.06 * host_cpus.min(1.0)
+            + 0.01 * (host_cpus - 1.0).clamp(0.0, 1.0)
+            + 0.005 * (host_cpus - 2.0).clamp(0.0, 2.0)
+            + 0.0025 * (host_cpus - 4.0).max(0.0);
+        let guest_capacity = host_cpus - host_reservation;
+        let admission_limit = guest_capacity * concurrency_factor;
+        Self {
+            host_reservation,
+            guest_capacity,
+            admission_limit,
+        }
+    }
+
+    fn effective_vcpu(self) -> u32 {
+        self.admission_limit.floor() as u32
+    }
 }
 
 /// Owned reservation against a [`ResourceBudget`].
@@ -95,9 +137,10 @@ impl Drop for BudgetLease {
 }
 
 impl ResourceBudget {
-    /// Create a new resource budget from physical resources and config.
+    /// Create a new resource budget from host resources and config.
     ///
-    /// `concurrency_factor` is applied to both CPU and memory budgets.
+    /// CPU admission reserves fixed host headroom before applying
+    /// `concurrency_factor`; memory applies the factor directly.
     /// The balloon controller reclaims unused guest memory at runtime,
     /// so memory overcommit is safe for typical workloads.
     pub fn new(
@@ -106,10 +149,10 @@ impl ResourceBudget {
         concurrency_factor: f64,
         max_concurrent: usize,
     ) -> Self {
-        let effective_vcpu = (host_cpus as f64 * concurrency_factor).floor() as u32;
+        let cpu_capacity = CpuAdmissionCapacity::new(host_cpus, concurrency_factor);
         let effective_memory_mb = (host_memory_mb as f64 * concurrency_factor).floor() as u32;
         Self {
-            effective_vcpu,
+            cpu_capacity,
             effective_memory_mb,
             max_concurrent,
             state: Mutex::new(BudgetState {
@@ -266,7 +309,7 @@ impl ResourceBudget {
             return false;
         };
 
-        let vcpu_ok = next_vcpu <= self.effective_vcpu;
+        let vcpu_ok = f64::from(next_vcpu) <= self.cpu_capacity.admission_limit;
         let mem_ok = next_memory_mb <= self.effective_memory_mb;
         let count_ok = self.max_concurrent == 0 || state.running_count < self.max_concurrent;
         vcpu_ok && mem_ok && count_ok
@@ -278,9 +321,24 @@ impl ResourceBudget {
         state.running_count += 1;
     }
 
-    /// Returns the vCPU admission budget after applying the concurrency factor.
+    /// Returns the host CPU capacity reserved before applying the concurrency factor.
+    pub fn host_cpu_admission_reservation(&self) -> f64 {
+        self.cpu_capacity.host_reservation
+    }
+
+    /// Returns the host CPU capacity available for Guest admission before overcommit.
+    pub fn guest_cpu_admission_capacity(&self) -> f64 {
+        self.cpu_capacity.guest_capacity
+    }
+
+    /// Returns the fractional declared-vCPU admission limit after overcommit.
+    pub fn vcpu_admission_limit(&self) -> f64 {
+        self.cpu_capacity.admission_limit
+    }
+
+    /// Returns the final discrete declared-vCPU capacity used by integer consumers.
     pub fn effective_vcpu(&self) -> u32 {
-        self.effective_vcpu
+        self.cpu_capacity.effective_vcpu()
     }
 
     /// Returns the memory admission budget, in MiB, after applying the concurrency factor.
@@ -339,6 +397,71 @@ impl ResourceBudget {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn assert_f64_close(actual: f64, expected: f64) {
+        assert!(
+            (actual - expected).abs() < 1e-12,
+            "expected {expected}, got {actual}"
+        );
+    }
+
+    #[test]
+    fn fixed_host_cpu_reservation_curve() {
+        let cases = [
+            (1, 0.060, 0.940),
+            (2, 0.070, 1.930),
+            (4, 0.080, 3.920),
+            (8, 0.090, 7.910),
+            (16, 0.110, 15.890),
+            (32, 0.150, 31.850),
+            (64, 0.230, 63.770),
+            (128, 0.390, 127.610),
+        ];
+
+        for (host_cpus, expected_reservation, expected_guest_capacity) in cases {
+            let budget = ResourceBudget::new(host_cpus, 1, 1.0, 0);
+            assert_f64_close(
+                budget.host_cpu_admission_reservation(),
+                expected_reservation,
+            );
+            assert_f64_close(
+                budget.guest_cpu_admission_capacity(),
+                expected_guest_capacity,
+            );
+            assert_f64_close(budget.vcpu_admission_limit(), expected_guest_capacity);
+        }
+    }
+
+    #[test]
+    fn concurrency_factor_applies_after_host_cpu_reservation() {
+        let cases = [
+            (1, 0.5, 0.470, 0, 1),
+            (8, 0.5, 3.955, 3, 1),
+            (16, 1.0, 15.890, 15, 7),
+            (4, 1.5, 5.880, 5, 2),
+            (4, 2.0, 7.840, 7, 3),
+        ];
+
+        for (host_cpus, factor, expected_limit, expected_effective, admitted_pairs) in cases {
+            let budget = ResourceBudget::new(host_cpus, u32::MAX, factor, 0);
+            assert_f64_close(budget.vcpu_admission_limit(), expected_limit);
+            assert_eq!(budget.effective_vcpu(), expected_effective);
+
+            for _ in 0..admitted_pairs {
+                assert!(budget.try_reserve_inner(2, 1));
+            }
+            assert!(!budget.try_reserve_inner(2, 1));
+        }
+    }
+
+    #[test]
+    fn fractional_cpu_admission_limit_accepts_floor_and_rejects_ceiling() {
+        let budget = ResourceBudget::new(16, u32::MAX, 1.0, 0);
+
+        assert!(budget.try_reserve_inner(14, 1));
+        assert!(budget.try_reserve_inner(1, 1)); // 15 <= 15.89
+        assert!(!budget.try_reserve_inner(1, 1)); // 16 > 15.89
+    }
 
     struct AdmissionParityCase<'a> {
         name: &'a str,
@@ -426,10 +549,10 @@ mod tests {
 
     #[test]
     fn reserve_fails_on_vcpu_exhaustion() {
-        let budget = ResourceBudget::new(4, 16384, 1.0, 0);
+        let budget = ResourceBudget::new(5, 16384, 1.0, 0);
         assert!(budget.try_reserve_inner(2, 2048));
         assert!(budget.try_reserve_inner(2, 2048));
-        assert!(!budget.try_reserve_inner(2, 2048)); // 6 > 4
+        assert!(!budget.try_reserve_inner(2, 2048)); // 6 > 4.9175
         assert_eq!(budget.lock().running_count, 2);
     }
 
@@ -456,7 +579,7 @@ mod tests {
 
     #[test]
     fn release_frees_resources() {
-        let budget = ResourceBudget::new(4, 4096, 1.0, 0);
+        let budget = ResourceBudget::new(5, 4096, 1.0, 0);
         assert!(budget.try_reserve_inner(2, 2048));
         assert!(budget.try_reserve_inner(2, 2048));
         assert!(!budget.try_reserve_inner(2, 2048));
@@ -521,7 +644,7 @@ mod tests {
             },
             AdmissionParityCase {
                 name: "within budget",
-                host_vcpu: 4,
+                host_vcpu: 5,
                 host_memory_mb: 4096,
                 max_concurrent: 0,
                 existing_reservations: &[(2, 2048)],
@@ -530,7 +653,7 @@ mod tests {
             },
             AdmissionParityCase {
                 name: "vcpu exhausted",
-                host_vcpu: 4,
+                host_vcpu: 5,
                 host_memory_mb: 8192,
                 max_concurrent: 0,
                 existing_reservations: &[(2, 2048), (2, 2048)],
@@ -557,7 +680,7 @@ mod tests {
             },
             AdmissionParityCase {
                 name: "max concurrent zero has no count cap",
-                host_vcpu: 16,
+                host_vcpu: 17,
                 host_memory_mb: 32768,
                 max_concurrent: 0,
                 existing_reservations: &[
@@ -606,19 +729,19 @@ mod tests {
 
     #[test]
     fn concurrency_factor_increases_budget() {
-        // 4 CPUs * 2.0 = 8 effective vcpu, 8 GB * 2.0 = 16 GB effective mem
+        // (4 CPUs - 0.08 reserved) * 2.0 = 7.84 declared vCPU admission.
         let budget = ResourceBudget::new(4, 8192, 2.0, 0);
-        assert_eq!(budget.effective_vcpu(), 8);
+        assert_eq!(budget.effective_vcpu(), 7);
         assert_eq!(budget.effective_memory_mb(), 16384);
-        for _ in 0..4 {
+        for _ in 0..3 {
             assert!(budget.try_reserve_inner(2, 2048));
         }
-        assert!(!budget.try_reserve_inner(2, 2048)); // vcpu: 10 > 8
+        assert!(!budget.try_reserve_inner(2, 2048)); // vCPU: 8 > 7.84
     }
 
     #[test]
     fn max_concurrent_zero_means_no_cap() {
-        let budget = ResourceBudget::new(16, 65536, 1.0, 0);
+        let budget = ResourceBudget::new(17, 65536, 1.0, 0);
         for _ in 0..8 {
             assert!(budget.try_reserve_inner(2, 2048));
         }
@@ -627,8 +750,8 @@ mod tests {
 
     #[test]
     fn mixed_resource_jobs() {
-        // 8 vcpu, 8GB — can fit 1 browser (4vcpu/4GB) + 2 default (2vcpu/2GB)
-        let budget = ResourceBudget::new(8, 8192, 1.0, 0);
+        // 8.9075 declared vCPU admission and 8GB memory fit this mixed shape.
+        let budget = ResourceBudget::new(9, 8192, 1.0, 0);
         assert!(budget.try_reserve_inner(4, 4096)); // browser
         assert!(budget.try_reserve_inner(2, 2048)); // default
         assert!(budget.try_reserve_inner(2, 2048)); // default — exactly 8/8
@@ -670,11 +793,11 @@ mod tests {
     fn concurrent_reserves_no_overcommit() {
         use std::sync::Arc;
 
-        let budget = Arc::new(ResourceBudget::new(4, 8192, 1.0, 0));
+        let budget = Arc::new(ResourceBudget::new(5, 8192, 1.0, 0));
         let mut handles = vec![];
 
         // Spawn 10 threads each trying to reserve 2 vcpu / 2048 MB
-        // Only 2 should succeed (4 vcpu total — first-job bypass doesn't
+        // Only 2 should succeed (4.9175 declared vCPU admission — first-job bypass doesn't
         // help the second thread because count > 0 after the first).
         for _ in 0..10 {
             let b = Arc::clone(&budget);
@@ -715,7 +838,7 @@ mod tests {
 
     #[test]
     fn allocated_fully_used() {
-        let budget = ResourceBudget::new(4, 4096, 1.0, 2);
+        let budget = ResourceBudget::new(5, 4096, 1.0, 2);
         budget.try_reserve_inner(2, 2048);
         budget.try_reserve_inner(2, 2048);
         let (vcpu, mem, count) = budget.allocated();
