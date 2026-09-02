@@ -1939,8 +1939,8 @@
       "providerIncompatibleAction": "새 세션 시작",
       "providerIncompatiblePrefix": "이 세션은 다른 모델 공급자로 시작되어 현재 공급자로 계속할 수 없습니다.",
       "recovery": {
-        "capacityDescription": "이 모델은 일시적으로 사용량이 많습니다. 몇 분 후 다시 시도하거나 지금 다른 모델로 전환하세요.",
-        "capacityTitle": "{{framework}} 모델이 혼잡합니다",
+        "capacityDescription": "잠시 후 다시 시도하거나 다른 모델로 전환하세요.",
+        "capacityTitle": "이 모델은 지금 혼잡합니다",
         "claudeCode": "Claude Code",
         "codex": "Codex",
         "continue": "계속",
