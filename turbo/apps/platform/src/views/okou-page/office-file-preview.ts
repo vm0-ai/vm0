@@ -31,7 +31,6 @@ function isOfficeSpreadsheetExtension(extension: string): boolean {
     case "ods":
     case "xls":
     case "xlsb":
-    case "xlm":
     case "xlsm":
     case "xlsx": {
       return true;
