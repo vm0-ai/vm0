@@ -53,7 +53,7 @@ import {
   initializeSharedDatabaseWorker$,
   querySharedDatabaseWorker$,
   recoverSharedDatabaseWorkerAfterRealtimeReconnect$,
-  reloadComputedStoreMessage$,
+  refreshWorkerComputed$,
   startSharedDatabaseWorkerDaemons$,
 } from "./worker-signals.ts";
 
@@ -163,10 +163,7 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
     if (message.name === "chatThreadReadCursorUpdated") {
       this.workerStore.set(forwardChatThreadReadCursorUpdated$, message.data);
     }
-    this.workerStore.set(reloadComputedStoreMessage$, this.connectionId, {
-      type: "reload-computed",
-      computedKey,
-    });
+    this.workerStore.set(refreshWorkerComputed$, computedKey);
   }
 
   handleRealtimeRecovery(): void {
@@ -213,13 +210,6 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
     return parseComputedValue(computedKey, cloned);
   }
 
-  reloadComputed(computedKey: ComputedKey): void {
-    this.workerStore.set(reloadComputedStoreMessage$, this.connectionId, {
-      type: "reload-computed",
-      computedKey,
-    });
-  }
-
   async query<TKey extends SharedDatabaseDataKey>(
     query: SharedDatabaseQuery<TKey>,
     signal: AbortSignal,
@@ -258,10 +248,6 @@ class TestSharedDatabaseBridge implements SharedDatabaseBridge {
     computedKey: TKey,
   ): Promise<ComputedValue<TKey>> {
     return this.bridge.getComputed(computedKey);
-  }
-
-  reloadComputed(computedKey: ComputedKey): void {
-    this.bridge.reloadComputed(computedKey);
   }
 
   query<TKey extends SharedDatabaseDataKey>(

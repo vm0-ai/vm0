@@ -125,10 +125,6 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
     }, this.requireOwnerSignal());
   }
 
-  reloadComputed(computedKey: ComputedKey): void {
-    this.requireBridge().reloadComputed(computedKey);
-  }
-
   private bindOwner(signal: AbortSignal): void {
     if (this.ownerSignal === signal) {
       return;

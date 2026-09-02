@@ -1,3 +1,4 @@
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,6 +9,8 @@ import {
   mockUser,
 } from "../../__tests__/mock-auth.ts";
 import type { SharedDatabasePortLike } from "../../shared-database/bridge.ts";
+import { getAllFeatureStates } from "@okouai/core/feature-switch";
+import { FEATURE_SWITCH_CACHE_KEY } from "../external/feature-switch-state.ts";
 import { bridgeConnected$ } from "../shared-database-bridge-state.ts";
 import { setupSharedDatabaseBridge$ } from "../shared-database-browser.ts";
 import { testContext } from "./test-helpers.ts";
@@ -169,6 +172,28 @@ describe("shared database browser bridge", () => {
     expect(workerUrl.searchParams.get("__clerk_db_jwt")).toBe(
       "dev-browser-jwt",
     );
+  });
+
+  it("marks the Worker for diagnostics capture when debug is on", async () => {
+    globalThis.localStorage.setItem(
+      FEATURE_SWITCH_CACHE_KEY,
+      JSON.stringify(
+        getAllFeatureStates({
+          orgId: "test-org-123",
+          overrides: { [FeatureSwitchKey.OkouDebug]: true },
+        }),
+      ),
+    );
+    const { constructorCalls } = installSharedWorkerMock();
+
+    await setupBridge();
+
+    const workerUrl = new URL(String(constructorCalls[0]?.scriptURL));
+    expect(workerUrl.searchParams.get("diagnostics")).toBe("1");
+    expect(constructorCalls[0]?.options).toStrictEqual({
+      name: "okou_test-user-123_test-org-123_diagnostics",
+      type: "module",
+    });
   });
 
   it("does not create a Worker without a settled signed-in session", async () => {

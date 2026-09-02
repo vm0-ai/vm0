@@ -1,7 +1,6 @@
 import { command, computed, state } from "ccstate";
 
 import type { SharedDatabaseBridge } from "../shared-database/bridge.ts";
-import type { ComputedKey } from "../shared-database/computed-key.ts";
 import { NEVER_RESOLVED_PROMISE } from "./utils.ts";
 
 const sharedDatabaseBridgeState$ = state<SharedDatabaseBridge | null>(null);
@@ -42,11 +41,5 @@ export const installSharedDatabaseBridge$ = command(
     await bridge.registerTab(signal);
     signal.throwIfAborted();
     set(sharedDatabaseBridgeState$, bridge);
-  },
-);
-
-export const reloadSharedDatabaseComputed$ = command(
-  ({ get }, computedKey: ComputedKey): void => {
-    get(installedSharedDatabaseBridge$).reloadComputed(computedKey);
   },
 );

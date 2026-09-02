@@ -1,3 +1,4 @@
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { command, state } from "ccstate";
 import sharedDatabaseWorkerAssetUrl from "virtual:shared-database-worker";
@@ -7,6 +8,7 @@ import {
   CLERK_DEV_BROWSER_NAME,
   readClerkDevBrowserJwt,
 } from "../lib/clerk-dev-browser.ts";
+import { CONNECTION_DIAGNOSTICS_PARAM } from "../lib/connection-diagnostics-param.ts";
 import { derivePlatformServiceOrigin } from "../lib/platform-host.ts";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import { VERCEL_PROTECTION_BYPASS_NAME } from "../lib/preview-bypass-name.ts";
@@ -22,6 +24,7 @@ import type {
 import { MessagePortSharedDatabaseBridge } from "../shared-database/message-port-client.ts";
 import { SingleConnectionSharedDatabaseBridge } from "../shared-database/single-connection-client.ts";
 import { clerk$ } from "./auth.ts";
+import { featureSwitch$ } from "./external/feature-switch.ts";
 import { waitForClerkSession } from "./clerk-token.ts";
 import { applyChatThreadReadCursorUpdated$ } from "./chat-thread-list-reload.ts";
 import {
@@ -49,6 +52,7 @@ export interface SharedDatabaseBridgeHost {
     identity: SharedDatabaseIdentity,
     events: SharedDatabaseBridgeEvents,
     signal: AbortSignal,
+    diagnosticsEnabled: boolean,
   ): SharedDatabaseBridge;
 }
 
@@ -73,6 +77,7 @@ function createBrowserSharedDatabaseBridge(
   identity: SharedDatabaseIdentity,
   events: SharedDatabaseBridgeEvents,
   signal: AbortSignal,
+  diagnosticsEnabled: boolean,
 ): SharedDatabaseBridge {
   const workerUrl = new URL(sharedDatabaseWorkerAssetUrl, location.href);
   workerUrl.search = "";
@@ -90,8 +95,14 @@ function createBrowserSharedDatabaseBridge(
   if (devBrowserJwt) {
     workerUrl.searchParams.set(CLERK_DEV_BROWSER_NAME, devBrowserJwt);
   }
+  if (diagnosticsEnabled) {
+    workerUrl.searchParams.set(CONNECTION_DIAGNOSTICS_PARAM, "1");
+  }
   const worker = new SharedWorker(workerUrl, {
-    name: `okou_${identity.userId}_${identity.orgId}`,
+    // The capture decision is part of the URL, so it has to be part of the
+    // name too: a tab that disagrees gets its own Worker instead of a
+    // URLMismatchError against the running one.
+    name: `okou_${identity.userId}_${identity.orgId}${diagnosticsEnabled ? "_diagnostics" : ""}`,
     type: "module",
   });
   const portBridge = new MessagePortSharedDatabaseBridge(worker.port, events);
@@ -184,10 +195,17 @@ export const prepareSharedDatabaseBridge$ = command(
       userId: clerk.user.id,
       orgId: clerk.organization.id,
     };
+    const diagnosticsEnabled =
+      get(featureSwitch$)[FeatureSwitchKey.OkouDebug] ?? false;
     const bridgeHost = get(sharedDatabaseBridgeHostState$);
     const bridge = new SingleConnectionSharedDatabaseBridge({
       createBridge: (events, connectionSignal) => {
-        return bridgeHost.createBridge(identity, events, connectionSignal);
+        return bridgeHost.createBridge(
+          identity,
+          events,
+          connectionSignal,
+          diagnosticsEnabled,
+        );
       },
       events: {
         databaseInvalidated: async (dataKey) => {

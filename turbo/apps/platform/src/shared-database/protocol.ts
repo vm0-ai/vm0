@@ -45,7 +45,6 @@ export const sharedDatabaseClientMessageSchema = z.discriminatedUnion("type", [
   registerTabMessageSchema,
   queryRequestSchema,
   getComputedRequestSchema,
-  reloadComputedMessageSchema,
   disconnectRequestSchema,
 ]);
 

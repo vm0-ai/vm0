@@ -5,11 +5,16 @@ import {
   derivePlatformServiceOrigin,
   resolvePlatformEnvironment,
 } from "../lib/platform-host.ts";
+import { CONNECTION_DIAGNOSTICS_PARAM } from "../lib/connection-diagnostics-param.ts";
 import { VERCEL_PROTECTION_BYPASS_NAME } from "../lib/preview-bypass-name.ts";
 import { apiClient$ } from "../signals/api-client.ts";
 import { setApiClientRuntime$ } from "../signals/api-client-runtime.ts";
 import { initializeAppVersion$ } from "../signals/app-version.ts";
 import { setAuthenticatedIdentity$ } from "../signals/auth-context.ts";
+import {
+  setupConnectionDiagnostics$,
+  writeConnectionDiagnostic$,
+} from "../signals/connection-diagnostics.ts";
 import type { ClerkTokenSource } from "../signals/clerk-token.ts";
 import {
   computerUseHosts$,
@@ -174,10 +179,16 @@ function resolveWorkerIdentity(): SharedDatabaseIdentity {
 
 export const bootstrapWorker$ = command(
   ({ get, set }, signal: AbortSignal): Promise<void> | null => {
+    const params = new URL(location.href).searchParams;
     const apiBaseUrl = derivePlatformServiceOrigin(location.origin, "api");
-    const vercelProtectionBypass = new URL(location.href).searchParams.get(
-      VERCEL_PROTECTION_BYPASS_NAME,
-    );
+    const vercelProtectionBypass = params.get(VERCEL_PROTECTION_BYPASS_NAME);
+    set(setupConnectionDiagnostics$, signal);
+    // The tab bakes the capture decision into the Worker URL, so a Worker
+    // started for a debugging tab records from its very first event.
+    set(writeConnectionDiagnostic$, {
+      action: "set-enabled",
+      enabled: params.has(CONNECTION_DIAGNOSTICS_PARAM),
+    });
     const oauthApiBaseUrl =
       resolvePlatformEnvironment() === "production"
         ? derivePlatformServiceOrigin(location.origin, "www")
@@ -251,6 +262,14 @@ const reloadWorkerComputed$ = command(
       return;
     }
     set(reloadQueueData$);
+  },
+);
+
+/** Recompute one Worker computed and tell every tab to re-read it. */
+export const refreshWorkerComputed$ = command(
+  ({ set }, computedKey: ComputedKey): void => {
+    set(reloadWorkerComputed$, computedKey);
+    set(reloadComputedForConnections$, computedKey);
   },
 );
 
@@ -440,10 +459,6 @@ type GetComputedMessage = Extract<
   SharedDatabaseClientMessage,
   { readonly type: "get-computed" }
 >;
-type ReloadComputedMessage = Extract<
-  SharedDatabaseClientMessage,
-  { readonly type: "reload-computed" }
->;
 
 export const queryStoreMessage$ = command(
   async (
@@ -477,16 +492,5 @@ export const getComputedStoreMessage$ = command(
           : await get(queueData$);
     signal.throwIfAborted();
     return value;
-  },
-);
-
-export const reloadComputedStoreMessage$ = command(
-  (
-    { set },
-    _connectionId: ConnectionId,
-    message: ReloadComputedMessage,
-  ): void => {
-    set(reloadWorkerComputed$, message.computedKey);
-    set(reloadComputedForConnections$, message.computedKey);
   },
 );

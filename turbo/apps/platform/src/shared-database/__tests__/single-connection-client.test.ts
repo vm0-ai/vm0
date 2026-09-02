@@ -46,8 +46,6 @@ class FakeBridge implements SharedDatabaseBridge {
     return Promise.resolve(parseComputedValue(computedKey, value));
   }
 
-  reloadComputed(_computedKey: ComputedKey): void {}
-
   query<TKey extends SharedDatabaseDataKey>(
     _query: SharedDatabaseQuery<TKey>,
     signal: AbortSignal,
