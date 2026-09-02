@@ -94,8 +94,10 @@ CREATE TABLE IF NOT EXISTS "pi_memory_stage1_candidates" (
 ALTER TABLE "pi_memory_stage1_candidates" DROP CONSTRAINT IF EXISTS "pi_memory_stage1_candidates_source_history_hash_blobs_hash_fk";--> statement-breakpoint
 ALTER TABLE "pi_memory_stage1_candidates" ADD CONSTRAINT "pi_memory_stage1_candidates_source_history_hash_blobs_hash_fk" FOREIGN KEY ("source_history_hash") REFERENCES "public"."blobs"("hash") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "pi_memory_stage1_candidates" DROP CONSTRAINT IF EXISTS "pi_memory_stage1_candidates_storage_owner_fk";--> statement-breakpoint
+ALTER TABLE "storages" DROP CONSTRAINT IF EXISTS "idx_storages_id_org_user";--> statement-breakpoint
 DROP INDEX CONCURRENTLY IF EXISTS "idx_storages_id_org_user";--> statement-breakpoint
 CREATE UNIQUE INDEX CONCURRENTLY "idx_storages_id_org_user" ON "storages" USING btree ("id","org_id","user_id");--> statement-breakpoint
+ALTER TABLE "storages" ADD CONSTRAINT "idx_storages_id_org_user" UNIQUE USING INDEX "idx_storages_id_org_user";--> statement-breakpoint
 ALTER TABLE "pi_memory_stage1_candidates" ADD CONSTRAINT "pi_memory_stage1_candidates_storage_owner_fk" FOREIGN KEY ("memory_storage_id","org_id","user_id") REFERENCES "public"."storages"("id","org_id","user_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_pi_memory_stage1_candidates_eligible" ON "pi_memory_stage1_candidates" USING btree ("eligible_at","retry_at") WHERE "pi_memory_stage1_candidates"."status" IN ('pending', 'retryable_failure');--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_pi_memory_stage1_candidates_expired_lease" ON "pi_memory_stage1_candidates" USING btree ("lease_expires_at") WHERE "pi_memory_stage1_candidates"."status" = 'leased';--> statement-breakpoint
