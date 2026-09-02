@@ -64,10 +64,16 @@ const getDesktopMigrationPolicy$ = command(({ set }) => {
  * path, which makes the neutral path the successor of the `okou` form rather
  * than a new one: the platform download button and the Zero migration bridge
  * both point at it and both expect an Okou artifact. So neutral resolves to the
- * Okou line, and only the `/api/zero/**` compatibility alias still resolves to
- * the Zero line, which is what its callers reached before the move. Keying the
- * default on `zero` rather than on `okou` is what keeps every caller on the
- * product it had.
+ * Okou line, and the `/api/zero/**` compatibility alias resolved to the Zero
+ * line, which is what its callers reached before the move. Keying the default
+ * on `zero` rather than on `okou` is what kept every caller on the product it
+ * had.
+ *
+ * #31088 removed the `MIGRATED_BRANDED_PATHS` rows that registered that alias,
+ * and nothing else registers a branded path, so no request can arrive on one
+ * and every caller resolves to the Okou line. The `zero` branch has no
+ * reachable input left and is kept here only so that #31088 stays a change to
+ * what is registered; retiring it is a separate change.
  */
 function desktopUpdateLineFromRequestUrl(
   requestUrl: string,
