@@ -743,6 +743,7 @@ const loadApiFirstTurnResource$ = command(
           {
             db: args.db,
             mounts: executionContext.storageMounts,
+            memoryRecall: executionContext.piLaunchConfig.memoryRecall,
           },
           signal,
         ),
@@ -941,6 +942,12 @@ async function executeApiModelTurn(
       ),
       resourceSnapshot: args.resourceSnapshot,
       ownership: args.ownership,
+      onMemoryRecallOutcome(outcome) {
+        L.debug("Pi memory recall outcome", {
+          runId: args.activation.runId,
+          ...outcome,
+        });
+      },
       providerRequestBoundary: async (markProviderRequestMayHaveStarted) => {
         await withApiFirstTurnLifecycle(args.context, async (tx) => {
           modelSignal.throwIfAborted();

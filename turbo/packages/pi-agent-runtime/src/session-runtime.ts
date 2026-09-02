@@ -13,7 +13,15 @@ import {
   type SessionManager,
 } from "@earendil-works/pi-coding-agent";
 
-import type { PiPreheatedResourceSnapshot } from "./api-types";
+import type {
+  PiMemoryRecallOutcome,
+  PiMemoryRecallSelection,
+  PiPreheatedResourceSnapshot,
+} from "./api-types";
+import {
+  loadPiSandboxMemoryRecall,
+  resolvePiApiMemoryRecall,
+} from "./memory-recall-node";
 import { piAgentStreamForConfig, resolvePiAgentModel } from "./model";
 import { piPreheatedResourceLoaderOptions } from "./resources";
 import type { PiAgentModelConfig } from "./types";
@@ -93,9 +101,20 @@ export async function createPiAgentSessionForRuntime(args: {
   readonly model: PiAgentModelConfig;
   readonly appendSystemPrompt: string | null;
   readonly resourceSnapshot?: PiPreheatedResourceSnapshot;
+  readonly memoryRecall?: PiMemoryRecallSelection;
+  readonly memoryRoot?: string;
+  readonly onMemoryRecallOutcome?: (outcome: PiMemoryRecallOutcome) => void;
   readonly sessionStartEvent?: CreateAgentSessionFromServicesOptions["sessionStartEvent"];
 }) {
   initializePiSessionResourceRegistry();
+  const memoryRecall = args.resourceSnapshot
+    ? resolvePiApiMemoryRecall(args.resourceSnapshot)
+    : await loadPiSandboxMemoryRecall(args.memoryRecall, args.memoryRoot);
+  args.onMemoryRecallOutcome?.(memoryRecall.outcome);
+  const appendSystemPrompt = [
+    ...(args.appendSystemPrompt === null ? [] : [args.appendSystemPrompt]),
+    ...(memoryRecall.block === null ? [] : [memoryRecall.block]),
+  ];
   const model = resolvePiAgentModel(args.model);
   if (!model) {
     throw new Error(
@@ -130,11 +149,11 @@ export async function createPiAgentSessionForRuntime(args: {
     resourceLoaderOptions: args.resourceSnapshot
       ? piPreheatedResourceLoaderOptions({
           snapshot: args.resourceSnapshot,
-          appendSystemPrompt: args.appendSystemPrompt,
+          appendSystemPrompt,
         })
-      : args.appendSystemPrompt === null
+      : appendSystemPrompt.length === 0
         ? undefined
-        : { appendSystemPrompt: [args.appendSystemPrompt] },
+        : { appendSystemPrompt },
   });
   const created = await createAgentSessionFromServices({
     services,

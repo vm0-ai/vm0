@@ -30,7 +30,7 @@ function officialSkill(skill: PiPreheatedSkill): Skill {
  */
 export function piPreheatedResourceLoaderOptions(args: {
   readonly snapshot: PiPreheatedResourceSnapshot;
-  readonly appendSystemPrompt: string | null;
+  readonly appendSystemPrompt: readonly string[];
 }) {
   return {
     noExtensions: true,
@@ -38,8 +38,7 @@ export function piPreheatedResourceLoaderOptions(args: {
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: true,
-    appendSystemPrompt:
-      args.appendSystemPrompt === null ? [] : [args.appendSystemPrompt],
+    appendSystemPrompt: [...args.appendSystemPrompt],
     agentsFilesOverride() {
       return {
         agentsFiles: args.snapshot.agentsFiles.map((file) => {

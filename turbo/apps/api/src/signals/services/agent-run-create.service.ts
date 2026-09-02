@@ -6,11 +6,13 @@ import {
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
+  type PiMemoryRecallSelection,
   type PiLaunchConfig,
   type PiApiFirstTurnConfig,
   type PiModelConfig,
   type ConnectorRuntimeTargetRegistration,
   PI_MEMORY_ROOT,
+  piMemoryRecallSelectionSchema,
   PI_SKILLS_ROOT,
   type SecretConnectorMetadata,
   type StorageMountEntry,
@@ -244,6 +246,7 @@ import {
   piResourceDiscoveryMounts,
   piResourceSnapshotDigest,
 } from "./pi-resource-snapshot.service";
+import { readMemorySummaryProjection } from "./memory-summary-projection.service";
 import {
   PI_API_FIRST_TURN_TIMEOUT_MS,
   PI_API_FIRST_TURN_URL_TTL_SECONDS,
@@ -7013,7 +7016,154 @@ interface BuildRunnerJobPayloadInput {
 interface PreparedPiLaunchResources {
   readonly modelConfig: PiModelConfig;
   readonly launchConfig: PiLaunchConfig;
+  readonly memoryRecall?: PiMemoryRecallSelection;
   readonly resumeSession: StoredExecutionContext["resumeSession"] | undefined;
+}
+
+function canonicalPiMemoryMount<
+  T extends { readonly name: string; readonly mountPath: string },
+>(mounts: readonly T[] | undefined): T | undefined {
+  return mounts?.find((mount) => {
+    return (
+      mount.name === AUTO_MEMORY_ARTIFACT_NAME &&
+      mount.mountPath === PI_MEMORY_ROOT
+    );
+  });
+}
+
+function noContentPiMemoryRecall(args: {
+  readonly memoryStorageId: string;
+  readonly storageVersionId: string;
+}): PiMemoryRecallSelection {
+  return { ...args, status: "no-content" };
+}
+
+function priorPiMemoryRecall(args: {
+  readonly currentMemoryMount: StoredExecutionContext["storageMounts"][number];
+  readonly previousRunStorageMounts:
+    | readonly PersistedStorageMount[]
+    | undefined;
+  readonly persistedStorageMounts: readonly PersistedStorageMount[] | undefined;
+}): PiMemoryRecallSelection | undefined {
+  const priorMount =
+    canonicalPiMemoryMount(args.previousRunStorageMounts) ??
+    canonicalPiMemoryMount(args.persistedStorageMounts);
+  if (priorMount?.piMemoryRecall === undefined) {
+    return undefined;
+  }
+  const parsed = piMemoryRecallSelectionSchema.safeParse(
+    priorMount.piMemoryRecall,
+  );
+  if (
+    parsed.success &&
+    parsed.data.memoryStorageId === args.currentMemoryMount.storageId &&
+    parsed.data.storageVersionId === args.currentMemoryMount.versionId
+  ) {
+    return parsed.data;
+  }
+  L.warn("Pi memory recall epoch did not match the pinned mount", {
+    memoryStorageId: args.currentMemoryMount.storageId,
+    storageVersionId: args.currentMemoryMount.versionId,
+    reason: parsed.success ? "identity_mismatch" : "invalid_epoch",
+  });
+  return noContentPiMemoryRecall({
+    memoryStorageId: args.currentMemoryMount.storageId,
+    storageVersionId: args.currentMemoryMount.versionId,
+  });
+}
+
+async function resolvePiMemoryRecall(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly storageMounts: StoredExecutionContext["storageMounts"];
+    readonly persistedStorageMounts:
+      | readonly PersistedStorageMount[]
+      | undefined;
+    readonly previousRunStorageMounts:
+      | readonly PersistedStorageMount[]
+      | undefined;
+  },
+  signal: AbortSignal,
+): Promise<PiMemoryRecallSelection | undefined> {
+  const currentMemoryMount = canonicalPiMemoryMount(args.storageMounts);
+  const persistedMemoryMount = canonicalPiMemoryMount(
+    args.persistedStorageMounts,
+  );
+  if (
+    currentMemoryMount === undefined ||
+    persistedMemoryMount === undefined ||
+    persistedMemoryMount.storageId !== currentMemoryMount.storageId ||
+    persistedMemoryMount.version !== currentMemoryMount.versionId
+  ) {
+    return undefined;
+  }
+
+  const prior = priorPiMemoryRecall({
+    currentMemoryMount,
+    previousRunStorageMounts: args.previousRunStorageMounts,
+    persistedStorageMounts: args.persistedStorageMounts,
+  });
+  if (prior !== undefined) {
+    return prior;
+  }
+
+  const projection = await settle(
+    readMemorySummaryProjection(
+      args.db,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        memoryStorageId: currentMemoryMount.storageId,
+        storageVersionId: currentMemoryMount.versionId,
+      },
+      signal,
+    ),
+    signal,
+  );
+  if (!projection.ok) {
+    L.warn("Pi memory summary projection read failed", {
+      memoryStorageId: currentMemoryMount.storageId,
+      storageVersionId: currentMemoryMount.versionId,
+      errorClass:
+        projection.error instanceof Error
+          ? projection.error.name
+          : "NonErrorThrown",
+    });
+  }
+  if (!projection.ok || projection.value === null) {
+    return noContentPiMemoryRecall({
+      memoryStorageId: currentMemoryMount.storageId,
+      storageVersionId: currentMemoryMount.versionId,
+    });
+  }
+  return piMemoryRecallSelectionSchema.parse({
+    status: "ready",
+    memoryStorageId: currentMemoryMount.storageId,
+    storageVersionId: currentMemoryMount.versionId,
+    ...projection.value,
+  });
+}
+
+function withPiMemoryRecallEpoch(
+  mounts: readonly PersistedStorageMount[],
+  memoryRecall: PiMemoryRecallSelection | undefined,
+): readonly PersistedStorageMount[] {
+  if (memoryRecall === undefined) {
+    return mounts;
+  }
+  return mounts.map((mount) => {
+    if (
+      mount.name !== AUTO_MEMORY_ARTIFACT_NAME ||
+      mount.mountPath !== PI_MEMORY_ROOT ||
+      mount.storageId !== memoryRecall.memoryStorageId ||
+      mount.version !== memoryRecall.storageVersionId
+    ) {
+      return mount;
+    }
+    return { ...mount, piMemoryRecall: memoryRecall };
+  });
 }
 
 function piBaseSession(
@@ -7059,16 +7209,27 @@ function storedExecutionContextWithPiResources(
   };
 }
 
-function preparePiLaunchResources(args: {
-  readonly db: Db;
-  readonly runId: string;
-  readonly agentSessionId: string;
-  readonly apiStartTime: number;
-  readonly storageMounts: StoredExecutionContext["storageMounts"];
-  readonly piSandbox: PiModelConfig | undefined;
-  readonly chatThreadId: string | undefined;
-  readonly timing: ApiDispatchTimingCollector;
-}): Computed<Promise<PreparedPiLaunchResources | undefined>> {
+function preparePiLaunchResources(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly runId: string;
+    readonly agentSessionId: string;
+    readonly apiStartTime: number;
+    readonly storageMounts: StoredExecutionContext["storageMounts"];
+    readonly persistedStorageMounts:
+      | readonly PersistedStorageMount[]
+      | undefined;
+    readonly previousRunStorageMounts:
+      | readonly PersistedStorageMount[]
+      | undefined;
+    readonly piSandbox: PiModelConfig | undefined;
+    readonly chatThreadId: string | undefined;
+    readonly timing: ApiDispatchTimingCollector;
+  },
+  signal: AbortSignal,
+): Computed<Promise<PreparedPiLaunchResources | undefined>> {
   return computed(async (get) => {
     if (args.piSandbox === undefined) {
       return undefined;
@@ -7094,6 +7255,17 @@ function preparePiLaunchResources(args: {
               args.agentSessionId,
             );
           },
+        );
+        const memoryRecall = await resolvePiMemoryRecall(
+          {
+            db: args.db,
+            orgId: args.orgId,
+            userId: args.userId,
+            storageMounts: args.storageMounts,
+            persistedStorageMounts: args.persistedStorageMounts,
+            previousRunStorageMounts: args.previousRunStorageMounts,
+          },
+          signal,
         );
         const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
         const [manifestUrl, sessionUrl] = await Promise.all([
@@ -7124,6 +7296,7 @@ function preparePiLaunchResources(args: {
               schemaVersion: 1,
               resourceSnapshotDigest: piResourceSnapshotDigest(
                 piResourceDiscoveryMounts(args.storageMounts),
+                memoryRecall,
               ),
               manifestUrl,
               sessionUrl,
@@ -7131,7 +7304,9 @@ function preparePiLaunchResources(args: {
               baseSession: piBaseSession(resumeSession, chatThreadId),
               sandboxEventSequenceStart: 1,
             },
+            ...(memoryRecall === undefined ? {} : { memoryRecall }),
           },
+          ...(memoryRecall === undefined ? {} : { memoryRecall }),
           resumeSession,
         };
       },
@@ -7184,6 +7359,7 @@ function okouTokenEnvironment(body: CreateRunBody): Record<string, string> {
 function buildRunnerJobPayload(
   db: Db,
   args: BuildRunnerJobPayloadInput,
+  signal: AbortSignal,
 ): Computed<Promise<PreparedRunnerLaunch>> {
   return computed(async (get): Promise<PreparedRunnerLaunch> => {
     const group = preparedRunnerGroup(args.resolved.content);
@@ -7238,22 +7414,33 @@ function buildRunnerJobPayload(
       builtContextDraftPromise,
     );
     const piResources = await get(
-      preparePiLaunchResources({
-        db,
-        runId: args.run.id,
-        agentSessionId: args.run.sessionId,
-        apiStartTime: args.apiStartTime,
-        storageMounts: builtContext.context.storageMounts,
-        piSandbox: args.piSandbox,
-        chatThreadId: args.chatThreadId,
-        timing: args.timing,
-      }),
+      preparePiLaunchResources(
+        {
+          db,
+          orgId: args.orgId,
+          userId: args.userId,
+          runId: args.run.id,
+          agentSessionId: args.run.sessionId,
+          apiStartTime: args.apiStartTime,
+          storageMounts: builtContext.context.storageMounts,
+          persistedStorageMounts: builtContext.persistedStorageMounts,
+          previousRunStorageMounts: args.resolved.previousRunStorageMounts,
+          piSandbox: args.piSandbox,
+          chatThreadId: args.chatThreadId,
+          timing: args.timing,
+        },
+        signal,
+      ),
     );
     const storedContext = storedExecutionContextWithPiResources(
       builtContext.context,
       piResources,
       args.chatThreadId,
       args.launchSnapshot.framework,
+    );
+    const persistedStorageMounts = withPiMemoryRecallEpoch(
+      builtContext.persistedStorageMounts,
+      piResources?.memoryRecall,
     );
     const runContextSnapshot = buildRunContextSnapshot({
       runId: args.run.id,
@@ -7274,9 +7461,9 @@ function buildRunnerJobPayload(
         executionContext: storedContext,
       }),
       runContextSnapshot,
-      runStorageMounts: builtContext.persistedStorageMounts,
+      runStorageMounts: persistedStorageMounts,
       sessionStorageMounts: sessionStorageMountsForPersistence({
-        resolvedMounts: builtContext.persistedStorageMounts,
+        resolvedMounts: persistedStorageMounts,
         artifacts: args.artifacts,
       }),
     };
@@ -8264,40 +8451,46 @@ function buildAtomicLaunchPayload(
     readonly run: Pick<RunRecord, "id" | "sessionId" | "shouldCreateSession">;
     readonly timing: ApiDispatchTimingCollector;
   },
+  signal: AbortSignal,
 ): Computed<Promise<PreparedRunnerLaunch>> {
-  return buildRunnerJobPayload(db, {
-    run: args.run,
-    userId: args.createArgs.userId,
-    orgId: args.createArgs.orgId,
-    resolved: args.context.resolved,
-    body: args.context.body,
-    artifacts: args.context.artifacts,
-    framework: args.context.framework,
-    launchSnapshot: args.context.launchSnapshot,
-    piSandbox: args.context.piSandbox,
-    modelProvider: args.context.modelProvider,
-    connectorContext: args.context.connectorContext,
-    customConnectorContext: args.context.customConnectorContext,
-    permissionManifest: args.context.permissionManifest,
-    billableFirewalls: args.context.billableFirewalls,
-    modelUsageProvider: args.context.modelUsageProvider,
-    apiStartTime: args.createArgs.apiStartTime,
-    additionalVolumes: args.context.additionalVolumes,
-    additionalVolumeSources: args.context.additionalVolumeSources,
-    includeOkouTokenSecret: args.createArgs.includeOkouTokenSecret,
-    okouTokenPublicBrand: args.createArgs.okouTokenPublicBrand,
-    okouTokenComputerUseHostId: args.createArgs.okouTokenComputerUseHostId,
-    okouTokenCloudBrowserEnabled: args.createArgs.okouTokenCloudBrowserEnabled,
-    imageRecognitionAvailable: args.context.imageRecognitionAvailable,
-    chatThreadId: args.createArgs.chatThreadId,
-    platformEnvironment: withDefaultImageModelPlatformEnvironment(
-      args.createArgs.platformEnvironment,
-      args.context.selectedImageModel,
-    ),
-    userTimezone: args.context.userTimezone,
-    featureSwitchContext: args.context.featureSwitchContext,
-    timing: args.timing,
-  });
+  return buildRunnerJobPayload(
+    db,
+    {
+      run: args.run,
+      userId: args.createArgs.userId,
+      orgId: args.createArgs.orgId,
+      resolved: args.context.resolved,
+      body: args.context.body,
+      artifacts: args.context.artifacts,
+      framework: args.context.framework,
+      launchSnapshot: args.context.launchSnapshot,
+      piSandbox: args.context.piSandbox,
+      modelProvider: args.context.modelProvider,
+      connectorContext: args.context.connectorContext,
+      customConnectorContext: args.context.customConnectorContext,
+      permissionManifest: args.context.permissionManifest,
+      billableFirewalls: args.context.billableFirewalls,
+      modelUsageProvider: args.context.modelUsageProvider,
+      apiStartTime: args.createArgs.apiStartTime,
+      additionalVolumes: args.context.additionalVolumes,
+      additionalVolumeSources: args.context.additionalVolumeSources,
+      includeOkouTokenSecret: args.createArgs.includeOkouTokenSecret,
+      okouTokenPublicBrand: args.createArgs.okouTokenPublicBrand,
+      okouTokenComputerUseHostId: args.createArgs.okouTokenComputerUseHostId,
+      okouTokenCloudBrowserEnabled:
+        args.createArgs.okouTokenCloudBrowserEnabled,
+      imageRecognitionAvailable: args.context.imageRecognitionAvailable,
+      chatThreadId: args.createArgs.chatThreadId,
+      platformEnvironment: withDefaultImageModelPlatformEnvironment(
+        args.createArgs.platformEnvironment,
+        args.context.selectedImageModel,
+      ),
+      userTimezone: args.context.userTimezone,
+      featureSwitchContext: args.context.featureSwitchContext,
+      timing: args.timing,
+    },
+    signal,
+  );
 }
 
 function createdRunResponse(
@@ -9924,16 +10117,20 @@ function createAtomicLaunchRun(
         "top_level",
         async () => {
           return await get(
-            buildAtomicLaunchPayload(input.db, {
-              createArgs: input.args,
-              context: input.context,
-              run: {
-                id: identity.runId,
-                sessionId: identity.sessionId,
-                shouldCreateSession: identity.shouldCreateSession,
+            buildAtomicLaunchPayload(
+              input.db,
+              {
+                createArgs: input.args,
+                context: input.context,
+                run: {
+                  id: identity.runId,
+                  sessionId: identity.sessionId,
+                  shouldCreateSession: identity.shouldCreateSession,
+                },
+                timing: input.timing,
               },
-              timing: input.timing,
-            }),
+              signal,
+            ),
           );
         },
         {

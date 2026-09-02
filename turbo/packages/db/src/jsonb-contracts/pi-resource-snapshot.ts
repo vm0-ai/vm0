@@ -12,8 +12,33 @@ export interface PiResourceSnapshotSkill {
   readonly disableModelInvocation: boolean;
 }
 
-export interface PiResourceSnapshot {
+export interface PiResourceSnapshotV1 {
   readonly schemaVersion: 1;
   readonly agentsFiles: readonly PiResourceSnapshotAgentsFile[];
   readonly skills: readonly PiResourceSnapshotSkill[];
 }
+
+export type PiMemoryRecallSelection =
+  | {
+      readonly status: "no-content";
+      readonly memoryStorageId: string;
+      readonly storageVersionId: string;
+    }
+  | {
+      readonly status: "ready";
+      readonly memoryStorageId: string;
+      readonly storageVersionId: string;
+      readonly content: string;
+      readonly sourceHash: string;
+      readonly sourceSize: number;
+      readonly tokenCount: number;
+    };
+
+export interface PiResourceSnapshotV2 {
+  readonly schemaVersion: 2;
+  readonly agentsFiles: readonly PiResourceSnapshotAgentsFile[];
+  readonly skills: readonly PiResourceSnapshotSkill[];
+  readonly memoryRecall: PiMemoryRecallSelection;
+}
+
+export type PiResourceSnapshot = PiResourceSnapshotV1 | PiResourceSnapshotV2;

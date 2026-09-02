@@ -11,6 +11,7 @@ import {
   resolvePiAgentCredential,
   runPiOfficialRpcMode,
   type PiAgentModelConfig,
+  type PiMemoryRecallOutcome,
 } from "@okouai/pi-agent-runtime/node";
 
 import {
@@ -24,6 +25,15 @@ const PI_LAUNCH_PAYLOAD_FILE_ENV = "OKOU_PI_LAUNCH_PAYLOAD_FILE";
 const PI_MODEL_CONFIG_ENV = "OKOU_PI_MODEL_CONFIG";
 const PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE =
   "vm0_pi_api_first_turn_boundary";
+
+function recordPiMemoryRecallOutcome(
+  runId: string,
+  outcome: PiMemoryRecallOutcome,
+): void {
+  process.stderr.write(
+    `${JSON.stringify({ type: "pi_memory_recall_outcome", runId, ...outcome })}\n`,
+  );
+}
 
 export interface PiSandboxAgentConfig {
   readonly runId: string;
@@ -155,6 +165,10 @@ export async function runPiSandboxAgentLoop(args: {
     agentDir: args.agentDir ?? PI_AGENT_DIR,
     model: args.config.model,
     appendSystemPrompt: args.config.launchPayload.appendSystemPrompt,
+    memoryRecall: args.config.launchPayload.launchConfig.memoryRecall,
+    onMemoryRecallOutcome(outcome) {
+      recordPiMemoryRecallOutcome(args.config.runId, outcome);
+    },
     sessionFile: handoff.sessionFile,
     ownershipTransferMode: handoff.ownershipTransferMode,
   });

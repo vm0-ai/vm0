@@ -1,9 +1,14 @@
+import { createHash } from "node:crypto";
 import { createServer, type ServerResponse } from "node:http";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 
+import { piMemorySummaryTokenCount } from "./memory-recall";
 import { createPiAgentSessionForRuntime } from "./session-runtime";
 import type { PiAgentRequestHeaders } from "./types";
 
@@ -280,6 +285,111 @@ describe("official Pi AgentSession runtime", () => {
       }
     },
   );
+
+  it("appends one lower-priority memory block after caller instructions", async () => {
+    const sessionManager = SessionManager.inMemory("/home/user/workspace", {
+      id: "00000000-0000-4000-8000-000000000123",
+    });
+    const content = "# Frozen memory\n\nPrefer targeted verification.";
+    const outcomes: unknown[] = [];
+    const created = await createPiAgentSessionForRuntime({
+      cwd: "/home/user/workspace",
+      agentDir: "/home/user/.pi/agent",
+      sessionManager,
+      model: TERRA_MODEL,
+      appendSystemPrompt: "Caller instructions stay authoritative.",
+      resourceSnapshot: {
+        schemaVersion: 2,
+        agentsFiles: [],
+        skills: [],
+        memoryRecall: {
+          status: "ready",
+          memoryStorageId: "memory-storage",
+          storageVersionId: "memory-version-a",
+          content,
+          sourceHash: createHash("sha256").update(content).digest("hex"),
+          sourceSize: Buffer.byteLength(content),
+          tokenCount: piMemorySummaryTokenCount(content),
+        },
+      },
+      onMemoryRecallOutcome(outcome) {
+        outcomes.push(outcome);
+      },
+    });
+
+    try {
+      const callerIndex = created.session.systemPrompt.indexOf(
+        "Caller instructions stay authoritative.",
+      );
+      const memoryIndex = created.session.systemPrompt.indexOf("## Memory");
+      expect(callerIndex).toBeGreaterThanOrEqual(0);
+      expect(memoryIndex).toBeGreaterThan(callerIndex);
+      expect(created.session.systemPrompt.match(/## Memory/gu)).toHaveLength(1);
+      expect(created.session.systemPrompt).toContain(content);
+      expect(outcomes).toEqual([
+        expect.objectContaining({
+          mode: "api-first",
+          status: "hit",
+          parity: "frozen-match",
+        }),
+      ]);
+      expect(JSON.stringify(sessionManager.getBranch())).not.toContain(content);
+    } finally {
+      created.session.dispose();
+    }
+  });
+
+  it("authenticates and appends the frozen sandbox memory exactly once", async () => {
+    const memoryRoot = await mkdtemp(join(tmpdir(), "pi-memory-recall-"));
+    const content = "# Frozen memory\n\nKeep the sandbox epoch pinned.";
+    await writeFile(join(memoryRoot, "memory_summary.md"), content);
+    const sessionManager = SessionManager.inMemory("/home/user/workspace", {
+      id: "00000000-0000-4000-8000-000000000127",
+    });
+    const outcomes: unknown[] = [];
+    const created = await createPiAgentSessionForRuntime({
+      cwd: "/home/user/workspace",
+      agentDir: "/home/user/.pi/agent",
+      sessionManager,
+      model: TERRA_MODEL,
+      appendSystemPrompt: "Caller instructions stay authoritative.",
+      memoryRoot,
+      memoryRecall: {
+        status: "ready",
+        memoryStorageId: "memory-storage",
+        storageVersionId: "memory-version-a",
+        content,
+        sourceHash: createHash("sha256").update(content).digest("hex"),
+        sourceSize: Buffer.byteLength(content),
+        tokenCount: piMemorySummaryTokenCount(content),
+      },
+      onMemoryRecallOutcome(outcome) {
+        outcomes.push(outcome);
+      },
+    });
+
+    try {
+      const callerIndex = created.session.systemPrompt.indexOf(
+        "Caller instructions stay authoritative.",
+      );
+      const memoryIndex = created.session.systemPrompt.indexOf("## Memory");
+      expect(callerIndex).toBeGreaterThanOrEqual(0);
+      expect(memoryIndex).toBeGreaterThan(callerIndex);
+      expect(created.session.systemPrompt.match(/## Memory/gu)).toHaveLength(1);
+      expect(created.session.systemPrompt).toContain(content);
+      expect(outcomes).toEqual([
+        expect.objectContaining({
+          mode: "sandbox",
+          status: "hit",
+          parity: "frozen-match",
+        }),
+      ]);
+      expect(JSON.stringify(sessionManager.getBranch())).not.toContain(content);
+    } finally {
+      created.session.dispose();
+      await rm(memoryRoot, { recursive: true });
+    }
+  });
 
   it("uses Terra low thinking for a fresh session", async () => {
     const sessionManager = SessionManager.inMemory("/home/user/workspace", {
