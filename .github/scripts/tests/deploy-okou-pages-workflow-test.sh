@@ -47,8 +47,10 @@ rollback, rollback_source = load_workflow(sys.argv[3])
 production_verifier_source = Path(sys.argv[4]).read_text()
 
 turbo_job = turbo["jobs"]["deploy-app"]
+release_controller_job = release["jobs"]["release-please"]
 release_job = release["jobs"]["promote-app-production"]
 release_api_job = release["jobs"]["promote-api-production"]
+release_dashboard_job = release["jobs"]["update-rollback-dashboard"]
 rollback_job = rollback["jobs"]["rollback-app"]
 rollback_verification_job = rollback["jobs"]["verify-production-domains"]
 
@@ -64,6 +66,15 @@ preview_readiness_step = find_step(
 )
 preview_gateway_step = find_step(turbo_job, "Smoke test standalone app Worker")
 app_preview_url_step = find_step(turbo_job, "Resolve app Worker preview URL")
+resolve_app_release_step = find_step(
+    release_controller_job, "Resolve App deployment release"
+)
+resolve_release_target_step = find_step(
+    release_controller_job, "Resolve release target"
+)
+resolve_release_tags_step = find_step(
+    release_controller_job, "Resolve current release tags"
+)
 prepare_release_step = find_step(
     release_job, "Prepare Cloudflare Pages production deployment"
 )
@@ -88,6 +99,65 @@ shared_script = "bash .github/scripts/deploy-okou-pages.sh"
 primary_app_domain_expression = (
     "${{ vars.CLERK_PRODUCTION_PRIMARY_APP_DOMAIN || 'app.vm0.ai' }}"
 )
+
+release_outputs = release_controller_job["outputs"]
+expected_release_outputs = {
+    "app_worker_release_created": "${{ steps.release.outputs['turbo/apps/app-worker--release_created'] }}",
+    "app_worker_version": "${{ steps.release.outputs['turbo/apps/app-worker--version'] }}",
+    "app_deploy_required": "${{ steps.app-release.outputs.required }}",
+    "app_deploy_tag": "${{ steps.app-release.outputs.tag }}",
+    "app_deploy_version": "${{ steps.app-release.outputs.version }}",
+}
+for output_name, expression in expected_release_outputs.items():
+    if release_outputs.get(output_name) != expression:
+        raise RuntimeError(
+            f"Release Please output {output_name} must be {expression}"
+        )
+
+resolve_app_release_source = require_fragments(
+    resolve_app_release_step,
+    [
+        'if [[ "$APP_RELEASE_CREATED" == "true" ]]',
+        'elif [[ "$APP_WORKER_RELEASE_CREATED" == "true" ]]',
+        'echo "required=$required"',
+        'echo "tag=$release_tag"',
+        'echo "version=$version"',
+    ],
+)
+if resolve_app_release_step.get("id") != "app-release":
+    raise RuntimeError("App deployment release resolver id must remain app-release")
+for env_name, expression in {
+    "APP_WORKER_RELEASE_CREATED": "${{ steps.release.outputs['turbo/apps/app-worker--release_created'] }}",
+    "APP_WORKER_RELEASE_TAG": "${{ steps.release.outputs['turbo/apps/app-worker--tag_name'] }}",
+    "APP_WORKER_VERSION": "${{ steps.release.outputs['turbo/apps/app-worker--version'] }}",
+}.items():
+    if resolve_app_release_step.get("env", {}).get(env_name) != expression:
+        raise RuntimeError(f"App release resolver must receive {env_name}")
+if not resolve_app_release_source.index("APP_RELEASE_CREATED") < resolve_app_release_source.index("APP_WORKER_RELEASE_CREATED"):
+    raise RuntimeError("platform release metadata must take display precedence")
+
+release_target_values = resolve_release_target_step.get("env", {}).get(
+    "RELEASE_SHAS", ""
+)
+if "steps.release.outputs['turbo/apps/app-worker--sha']" not in release_target_values:
+    raise RuntimeError("release target resolution must include the App Worker SHA")
+release_tag_values = resolve_release_tags_step.get("env", {}).get(
+    "RELEASE_TAGS", ""
+)
+if "steps.release.outputs['turbo/apps/app-worker--tag_name']" not in release_tag_values:
+    raise RuntimeError("release tag resolution must include the App Worker tag")
+
+if "needs.release-please.outputs.app_deploy_required == 'true'" not in str(
+    release_job.get("if", "")
+):
+    raise RuntimeError("App promotion must run for platform or App Worker releases")
+if "needs.release-please.outputs.app_deploy_required != 'true'" not in str(
+    release_dashboard_job.get("if", "")
+):
+    raise RuntimeError(
+        "rollback dashboard must wait for every applicable App deployment"
+    )
+
 for step in (prepare_preview_step, prepare_release_step, rollback_prepare_step):
     if step.get("env", {}).get("CLERK_PRODUCTION_PRIMARY_APP_DOMAIN") != primary_app_domain_expression:
         raise RuntimeError(

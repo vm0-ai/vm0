@@ -83,6 +83,10 @@ jobs:
       connectors_release_created: ${{ steps.release.outputs['turbo/packages/connectors--release_created'] }}
       db_release_created: ${{ steps.release.outputs['turbo/packages/db--release_created'] }}
       app_release_created: ${{ steps.release.outputs['turbo/apps/platform--release_created'] }}
+      app_worker_release_created: ${{ steps.release.outputs['turbo/apps/app-worker--release_created'] }}
+      app_deploy_required: ${{ steps.app-release.outputs.required }}
+      app_deploy_tag: ${{ steps.app-release.outputs.tag }}
+      app_deploy_version: ${{ steps.app-release.outputs.version }}
       desktop_release_created: ${{ steps.release.outputs['turbo/apps/desktop--release_created'] }}
       host_worker_release_created: ${{ steps.release.outputs['turbo/apps/host-worker--release_created'] }}
       runner_rs_release_created: ${{ steps.release.outputs['crates/runner--release_created'] }}
@@ -91,6 +95,7 @@ jobs:
       runner_rs_version: ${{ steps.release.outputs['crates/runner--version'] }}
       api_version: ${{ steps.release.outputs['turbo/apps/api--version'] }}
       app_version: ${{ steps.release.outputs['turbo/apps/platform--version'] }}
+      app_worker_version: ${{ steps.release.outputs['turbo/apps/app-worker--version'] }}
       desktop_version: ${{ steps.release.outputs['turbo/apps/desktop--version'] }}
     steps:
       - uses: vm0-ai/release-please-action@3971df459631cdcf704dcbf86231cb26b790a7c8 # vm0
@@ -100,6 +105,43 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           skip-github-pull-request: true
+
+      - name: Resolve App deployment release
+        id: app-release
+        if: ${{ steps.release.outputs.releases_created == 'true' }}
+        env:
+          APP_RELEASE_CREATED: ${{ steps.release.outputs['turbo/apps/platform--release_created'] }}
+          APP_RELEASE_TAG: ${{ steps.release.outputs['turbo/apps/platform--tag_name'] }}
+          APP_VERSION: ${{ steps.release.outputs['turbo/apps/platform--version'] }}
+          APP_WORKER_RELEASE_CREATED: ${{ steps.release.outputs['turbo/apps/app-worker--release_created'] }}
+          APP_WORKER_RELEASE_TAG: ${{ steps.release.outputs['turbo/apps/app-worker--tag_name'] }}
+          APP_WORKER_VERSION: ${{ steps.release.outputs['turbo/apps/app-worker--version'] }}
+        run: |
+          set -euo pipefail
+
+          required=false
+          release_tag=""
+          version=""
+          if [[ "$APP_RELEASE_CREATED" == "true" ]]; then
+            required=true
+            release_tag="$APP_RELEASE_TAG"
+            version="$APP_VERSION"
+          elif [[ "$APP_WORKER_RELEASE_CREATED" == "true" ]]; then
+            required=true
+            release_tag="$APP_WORKER_RELEASE_TAG"
+            version="$APP_WORKER_VERSION"
+          fi
+
+          if [[ "$required" == "true" && ( -z "$release_tag" || -z "$version" ) ]]; then
+            echo "App deployment release is missing its tag or version" >&2
+            exit 1
+          fi
+
+          {
+            echo "required=$required"
+            echo "tag=$release_tag"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Resolve release target
         id: release-target
@@ -137,6 +179,7 @@ jobs:
               ${{ toJSON(steps.release.outputs['turbo/apps/desktop--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/host-worker--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/platform--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/app-worker--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/packages/api-contracts--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/packages/connectors--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/packages/core--sha']) }},
@@ -211,6 +254,7 @@ jobs:
               ${{ toJSON(steps.release.outputs['turbo/apps/desktop--tag_name']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/host-worker--tag_name']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/platform--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/app-worker--tag_name']) }},
               ${{ toJSON(steps.release.outputs['turbo/packages/api-contracts--tag_name']) }},
               ${{ toJSON(steps.release.outputs['turbo/packages/connectors--tag_name']) }},
               ${{ toJSON(steps.release.outputs['turbo/packages/core--tag_name']) }},
@@ -1446,7 +1490,7 @@ jobs:
     needs: [release-please, builds-complete, promote-api-production]
     if: >-
       always() &&
-      needs.release-please.outputs.app_release_created == 'true' &&
+      needs.release-please.outputs.app_deploy_required == 'true' &&
       needs.builds-complete.result == 'success' &&
       needs.promote-api-production.result == 'success'
     runs-on: ubuntu-latest
@@ -1492,7 +1536,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*App* deploying to Cloudflare Pages production...\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>"
+                  text: "*App* deploying to Cloudflare Pages production...\n📦 Version: `${{ needs.release-please.outputs.app_deploy_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.release-please.outputs.app_deploy_tag }}|View Release>"
 
       - name: Record start time
         id: timer
@@ -1686,7 +1730,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*App* ✅ Deployed to Cloudflare Pages\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🌐 <https://app.vm0.ai|VM0 App> · <https://app.okou.ai|Okou App>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
+                  text: "*App* ✅ Deployed to Cloudflare Pages\n📦 Version: `${{ needs.release-please.outputs.app_deploy_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🌐 <https://app.vm0.ai|VM0 App> · <https://app.okou.ai|Okou App>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -1702,7 +1746,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*App* ❌ Cloudflare Pages deploy failed\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*App* ❌ Cloudflare Pages deploy failed\n📦 Version: `${{ needs.release-please.outputs.app_deploy_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Record a complete production release target after all applicable
   # production promotions succeed.
@@ -1719,7 +1763,7 @@ jobs:
       always() &&
       needs.release-please.outputs.releases_created == 'true' &&
       needs.promote-api-production.result == 'success' &&
-      (needs.release-please.outputs.app_release_created != 'true' ||
+      (needs.release-please.outputs.app_deploy_required != 'true' ||
        needs.promote-app-production.result == 'success') &&
       (needs.release-please.outputs.desktop_release_created != 'true' ||
        needs.promote-desktop-release.result == 'success') &&
