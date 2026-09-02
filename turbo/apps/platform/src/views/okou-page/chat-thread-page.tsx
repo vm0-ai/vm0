@@ -5311,9 +5311,14 @@ function AssistantRecoveryActions({
           }}
         >
           <AssistantRecoveryActionSpinner loading={retrying} />
-          {t(($) => {
-            return $.chat.errors.recovery.tryAgain;
-          })}
+          {/* A timed-out run is resumed, not retried, and its copy says so. */}
+          {recovery.kind === "execution-timeout"
+            ? t(($) => {
+                return $.chat.errors.recovery.continue;
+              })
+            : t(($) => {
+                return $.chat.errors.recovery.tryAgain;
+              })}
         </Button>
       )}
     </div>

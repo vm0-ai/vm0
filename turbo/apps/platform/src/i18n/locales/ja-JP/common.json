@@ -1945,6 +1945,7 @@
         "capacityTitle": "このモデルは現在混雑しています",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "続ける",
         "resetAndTryAgain": "リセットして再試行",
         "resetsAt": "{{time}} にリセット",
         "selectModel": "モデルを切り替える",

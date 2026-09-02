@@ -1979,6 +1979,7 @@
         "capacityTitle": "Este modelo está ocupado ahora mismo",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "Continuar",
         "resetAndTryAgain": "Restablecer e intentar de nuevo",
         "resetsAt": "Se restablece {{time}}",
         "selectModel": "Cambiar de modelo",

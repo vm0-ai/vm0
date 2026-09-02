@@ -1945,6 +1945,7 @@
         "capacityTitle": "Model ini sedang sibuk",
         "claudeCode": "Claude Code",
         "codex": "Codex",
+        "continue": "Lanjutkan",
         "resetAndTryAgain": "Atur ulang dan coba lagi",
         "resetsAt": "Direset pada {{time}}",
         "selectModel": "Ganti model",
