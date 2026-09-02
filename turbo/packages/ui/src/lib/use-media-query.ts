@@ -1,35 +1,12 @@
-import { useEffect, useLayoutEffect, useState } from "react";
-
-interface UseMediaQueryOptions {
-  /** Value returned during server rendering. */
-  readonly defaultValue?: boolean;
-  /** Read the media query for the initial client render. */
-  readonly initializeWithValue?: boolean;
-}
-
-const IS_SERVER = typeof window === "undefined";
-const useIsomorphicLayoutEffect = IS_SERVER ? useEffect : useLayoutEffect;
+import { useLayoutEffect, useState } from "react";
 
 /** Track whether a CSS media query currently matches. */
-export function useMediaQuery(
-  query: string,
-  {
-    defaultValue = false,
-    initializeWithValue = true,
-  }: UseMediaQueryOptions = {},
-): boolean {
-  const getMatches = (): boolean => {
-    if (IS_SERVER) {
-      return defaultValue;
-    }
-    return window.matchMedia(query).matches;
-  };
-
+export function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState<boolean>(() => {
-    return initializeWithValue ? getMatches() : defaultValue;
+    return window.matchMedia(query).matches;
   });
 
-  useIsomorphicLayoutEffect(() => {
+  useLayoutEffect(() => {
     const mediaQueryList = window.matchMedia(query);
     const handleChange = (): void => {
       setMatches(mediaQueryList.matches);
