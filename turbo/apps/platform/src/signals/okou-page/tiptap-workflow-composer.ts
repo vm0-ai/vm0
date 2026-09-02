@@ -33,6 +33,8 @@ import {
   voiceIoPolishContract,
 } from "@okouai/api-contracts/contracts/voice-io-polish";
 import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
+import { accept } from "../../lib/accept.ts";
+import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import { agents$ } from "../agent.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { onRef, resetSignal, settle } from "../utils.ts";
@@ -44,7 +46,6 @@ import {
   type ComposerFeedbackSignals,
   type FeedbackItem,
 } from "./chat-feedback.ts";
-import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import {
   findActiveChatThreadSuggestionRange,
   serializeChatThreadMention,
@@ -655,10 +656,10 @@ function createVoiceDraftNodeView(
     const attributes = voiceDraftNodeAttributes(nextNode);
     dom.dataset.voiceDraft = attributes.id;
     dom.dataset.voiceDraftStatus = attributes.status;
-    dom.className = attributes.visible
-      ? "my-1.5 rounded-lg border border-border/70 bg-muted/65 px-3 py-2.5 " +
-        "text-muted-foreground"
-      : "hidden";
+    dom.hidden = !attributes.visible;
+    dom.className =
+      "my-1.5 rounded-lg border border-border/70 bg-muted/65 px-3 py-2.5 " +
+      "text-muted-foreground";
     transcript.textContent = attributes.transcript;
     finishButton.disabled = attributes.status === "processing";
     removeButton.disabled = attributes.status === "processing";
@@ -1545,15 +1546,6 @@ function replaceVoiceDraftWithText(
   );
 }
 
-function reportVoiceDraftPolishFailure(): void {
-  toast.error(
-    i18n.t(($) => {
-      return $.chat.voice.polishFailed;
-    }),
-    { id: "voice-draft-polish-failed" },
-  );
-}
-
 function createVoiceDraftSignals(
   editor: Editor,
   hasDraftState$: State<boolean>,
@@ -1598,16 +1590,19 @@ function createVoiceDraftSignals(
       });
       const client = get(apiClient$)(voiceIoPolishContract);
       const result = await settle(
-        client.post({ body: { text }, fetchOptions: { signal } }),
+        accept(
+          client.post({ body: { text }, fetchOptions: { signal } }),
+          [200],
+          signal,
+        ),
         signal,
       );
       signal.throwIfAborted();
-      if (!result.ok || result.value.status !== 200) {
+      if (!result.ok) {
         setVoiceDraftAttributes(editor, id, {
           status: "failed",
           visible: true,
         });
-        reportVoiceDraftPolishFailure();
         return false;
       }
       replaceVoiceDraftWithText(editor, id, result.value.body.text);

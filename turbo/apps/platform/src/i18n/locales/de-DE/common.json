@@ -2409,7 +2409,6 @@
       "inputLimitReachedReset": "Das Limit für die Spracheingabe wurde erreicht. Bitte warten Sie, bis Ihr Limit zurückgesetzt wird.",
       "microphoneAccessDenied": "Der Zugriff auf das Mikrofon wurde verweigert. Erlauben Sie den Mikrofonzugriff und versuchen Sie es erneut.",
       "openingMicrophone": "Mikrofon öffnen...",
-      "polishFailed": "Der Sprachentwurf konnte nicht fertiggestellt werden. Versuche es erneut.",
       "removeDraft": "Sprachentwurf entfernen",
       "starting": "Spracheingabe starten",
       "stopRecording": "Aufnahme stoppen",

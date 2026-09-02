@@ -2453,7 +2453,6 @@
       "inputLimitReachedReset": "Límite de entrada de voz alcanzado. Espera a que se restablezca tu límite.",
       "microphoneAccessDenied": "Se ha denegado el acceso al micrófono. Permite el acceso al micrófono e inténtalo de nuevo.",
       "openingMicrophone": "Abriendo el micrófono...",
-      "polishFailed": "No se pudo finalizar el borrador de voz. Inténtalo de nuevo.",
       "removeDraft": "Eliminar borrador de voz",
       "starting": "Iniciando entrada de voz",
       "stopRecording": "Detener la grabación",

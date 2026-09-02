@@ -23,7 +23,6 @@ import {
   resetSignal,
   settle,
   tapError,
-  withAsyncCleanup,
   withCleanup,
 } from "../utils.ts";
 import { toast } from "@okouai/ui/components/ui/sonner";
@@ -1209,7 +1208,7 @@ export const stopAndTranscribe$ = command(
     }
 
     const recordingCompletion = get(internalRecordingCompletion$);
-    const completion = withAsyncCleanup(
+    const completion = withCleanup(
       withCleanup(
         (async () => {
           const recorder = get(internalRecorder$);

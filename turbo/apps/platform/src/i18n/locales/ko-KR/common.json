@@ -2405,7 +2405,6 @@
       "inputLimitReachedReset": "음성 입력 한도에 도달했습니다. 한도가 재설정될 때까지 기다려 주세요.",
       "microphoneAccessDenied": "마이크 접근이 거부되었습니다. 마이크 접근을 허용하고 다시 시도하세요.",
       "openingMicrophone": "마이크 열기 중...",
-      "polishFailed": "음성 초안을 완료하지 못했습니다. 다시 시도하세요.",
       "removeDraft": "음성 초안 삭제",
       "starting": "음성 입력 시작",
       "stopRecording": "녹음 중지",

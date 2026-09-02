@@ -2409,7 +2409,6 @@
       "inputLimitReachedReset": "Voice input limit reached. Please wait for your limit to reset.",
       "microphoneAccessDenied": "Microphone access was denied. Allow microphone access and try again.",
       "openingMicrophone": "Opening microphone...",
-      "polishFailed": "Couldn't finish the voice draft. Try again.",
       "removeDraft": "Remove voice draft",
       "starting": "Starting voice input",
       "stopRecording": "Stop recording",

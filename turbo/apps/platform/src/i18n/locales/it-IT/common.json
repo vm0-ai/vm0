@@ -2453,7 +2453,6 @@
       "inputLimitReachedReset": "Limite di input vocale raggiunto. Attendi che il limite venga reimpostato.",
       "microphoneAccessDenied": "L'accesso al microfono è stato negato. Consenti l'accesso al microfono e riprova.",
       "openingMicrophone": "Apertura del microfono...",
-      "polishFailed": "Impossibile completare la bozza vocale. Riprova.",
       "removeDraft": "Rimuovi bozza vocale",
       "starting": "Avvio dell'input vocale",
       "stopRecording": "Interrompi la registrazione",

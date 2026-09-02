@@ -1023,7 +1023,7 @@ describe("chat lifecycle", () => {
     });
     const hiddenDraft = document.querySelector("[data-voice-draft]");
     expect(hiddenDraft).not.toBeNull();
-    expect(hiddenDraft).toHaveClass("hidden");
+    expect(hiddenDraft).not.toBeVisible();
     expect(screen.getByLabelText("Send")).toBeDisabled();
 
     await user.click(screen.getByLabelText("Stop recording"));

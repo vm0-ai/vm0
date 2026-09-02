@@ -2405,7 +2405,6 @@
       "inputLimitReachedReset": "音声入力の制限に達しました。制限がリセットされるまでお待ちください。",
       "microphoneAccessDenied": "マイクへのアクセスが拒否されました。マイクへのアクセスを許可して、再試行してください。",
       "openingMicrophone": "マイクを開いて...",
-      "polishFailed": "音声ドラフトを仕上げられませんでした。もう一度お試しください。",
       "removeDraft": "音声ドラフトを削除",
       "starting": "音声入力を開始する",
       "stopRecording": "録音を停止する",
