@@ -910,12 +910,16 @@ function createDraftSync(threadId: string, draft: DraftSignals) {
         attachments,
         infos,
       ).map((r) => {
+        const annotations = get(r.attachment.annotations$);
+        const annotatedFileId = get(r.attachment.annotatedFileId$);
         return {
           id: r.info.id,
           url: r.info.url,
           filename: r.attachment.filename,
           contentType: r.info.contentType,
           size: r.attachment.size,
+          ...(annotatedFileId ? { annotatedFileId } : {}),
+          ...(annotations ? { annotations } : {}),
         };
       });
       const payload = buildDraftPersistencePayload({
@@ -1257,7 +1261,11 @@ const registerUserMessageRenderPart$ = command(
           : { type: part.type, kind: "external", part };
       }
       case "file": {
-        const url = canonicalUserMessageFileUrl(part.fileId);
+        const renderFileId = part.annotatedFileId ?? part.fileId;
+        const url = canonicalUserMessageFileUrl(renderFileId);
+        const renderContentType = part.annotatedFileId
+          ? "image/png"
+          : part.contentType;
         return {
           type: part.type,
           part,
@@ -1267,7 +1275,7 @@ const registerUserMessageRenderPart$ = command(
             kind: classifyChatAttachment({
               filename: part.filenameSnapshot,
               url,
-              contentType: part.contentType,
+              contentType: renderContentType,
             }),
           }),
         };

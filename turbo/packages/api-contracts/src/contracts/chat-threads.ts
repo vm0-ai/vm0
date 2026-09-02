@@ -170,24 +170,14 @@ const imageAnnotationSchema = z.object({
   crop: annotationRectSchema.optional(),
 });
 
-/**
- * File attachment metadata stored alongside user messages.
- * The `id` is the attachment id — URLs are resolved at query time.
- *
- * When a user annotates an image, the message carries both files: the flattened
- * copy (which is what the vision model sees) and the untouched original. The
- * flattened one points back with `annotatedFromFileId`, which is what lets the
- * bubble render a single card with a "view original" affordance instead of two
- * unrelated chips. `annotation` rides along so the marks can be re-opened later
- * without re-deriving them from pixels.
- */
+/** File attachment metadata stored alongside user messages. */
 const attachFileSchema = z.object({
   id: z.string(),
   filename: z.string(),
   contentType: z.string(),
   size: z.number(),
-  annotatedFromFileId: z.string().optional(),
-  annotation: imageAnnotationSchema.optional(),
+  annotatedFileId: z.string().optional(),
+  annotations: imageAnnotationSchema.optional(),
 });
 
 const assetMaterializationSchema = z.discriminatedUnion("status", [
@@ -264,12 +254,6 @@ const persistedAttachmentSchema = z.object({
   filename: z.string(),
   contentType: z.string(),
   size: z.number(),
-  /**
-   * Marks the user drew but has not sent yet. They live on the draft rather
-   * than on a rendered copy so the original bytes are never rewritten and the
-   * editor can reopen in a fully editable state after a reload.
-   */
-  annotation: imageAnnotationSchema.optional(),
 });
 
 /**
@@ -583,6 +567,10 @@ const userMessageInputPartSchema = z.discriminatedUnion("type", [
       fileId: z.string().min(1),
       filenameSnapshot: z.string().min(1),
       contentType: z.string().min(1),
+      /** Rendered derivative produced from the original file and annotations. */
+      annotatedFileId: z.string().min(1).optional(),
+      /** Editable marks sufficient to reconstruct the confirmed result. */
+      annotations: imageAnnotationSchema.optional(),
     })
     .strict(),
   z
@@ -1129,6 +1117,22 @@ const chatEventNormalSendBodySchema = z
     {
       message: "Cloud browser and Computer Use cannot both be enabled",
       path: ["cloudBrowserEnabled"],
+    },
+  )
+  .refine(
+    (body) => {
+      return body.userMessage.parts.every((part) => {
+        return (
+          part.type !== "file" ||
+          (part.annotatedFileId === undefined) ===
+            (part.annotations === undefined)
+        );
+      });
+    },
+    {
+      message:
+        "Annotated user-message files require annotatedFileId and annotations together",
+      path: ["userMessage"],
     },
   );
 

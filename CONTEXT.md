@@ -123,3 +123,31 @@ _Avoid_: Backfill, initial conversion batch
 A server-side upload to the same conversion action using the same transaction
 ID when browser delivery may be missed.
 _Avoid_: Separate conversion, duplicate conversion
+
+# Chat Image Annotation Context
+
+This context separates an uploaded image, its editable annotation structure,
+the rendered derivative shown to agents, and the transient composer session.
+
+## Language
+
+**Original image attachment**:
+The immutable user-uploaded image identified by a file part's `fileId`. It
+remains the canonical source even when annotations exist.
+_Avoid_: Unannotated copy, source screenshot
+
+**Image annotations**:
+Structured editable marks attached to an image file part and sufficient to
+reconstruct the confirmed editing result.
+_Avoid_: Annotation prompt, mark text
+
+**Annotated image**:
+The rendered derivative identified by `annotatedFileId` and produced from an
+original image attachment plus image annotations. It is not a second logical
+attachment.
+_Avoid_: Second attachment, rewritten original
+
+**Annotation editing session**:
+Composer-owned transient working state initialized from image annotations and
+discarded with its owning composer.
+_Avoid_: Global annotation session, saved annotation

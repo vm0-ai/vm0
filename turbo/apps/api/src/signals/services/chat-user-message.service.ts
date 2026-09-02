@@ -235,6 +235,53 @@ function webFilePrompt(part: {
   return `[Web file] ${part.filenameSnapshot} (${part.contentType})\n   [ID] ${part.fileId}`;
 }
 
+export function annotatedImageFilenameSnapshot(filename: string): string {
+  const dot = filename.lastIndexOf(".");
+  const stem = dot > 0 ? filename.slice(0, dot) : filename;
+  return `${stem}.annotated.png`;
+}
+
+interface UserMessagePhysicalFile {
+  readonly fileId: string;
+  readonly filenameSnapshot: string;
+  readonly contentType: string;
+}
+
+export function userMessagePhysicalFiles(
+  document: UserMessageDocument,
+): readonly UserMessagePhysicalFile[] {
+  return userMessageFileParts(document).flatMap((part) => {
+    const original: UserMessagePhysicalFile = {
+      fileId: part.fileId,
+      filenameSnapshot: part.filenameSnapshot,
+      contentType: part.contentType,
+    };
+    if (!part.annotatedFileId || !part.annotations) {
+      return [original];
+    }
+    return [
+      {
+        fileId: part.annotatedFileId,
+        filenameSnapshot: annotatedImageFilenameSnapshot(part.filenameSnapshot),
+        contentType: "image/png",
+      },
+      original,
+    ];
+  });
+}
+
+function userMessageFilePrompt(part: UserMessageFilePart): string {
+  if (!part.annotatedFileId || !part.annotations) {
+    return webFilePrompt(part);
+  }
+  const annotatedFile = webFilePrompt({
+    fileId: part.annotatedFileId,
+    filenameSnapshot: annotatedImageFilenameSnapshot(part.filenameSnapshot),
+    contentType: "image/png",
+  });
+  return `${annotatedFile}\n\n[Image annotations]\n${JSON.stringify(part)}`;
+}
+
 function generationTemplateTypeLabel(
   template: GenerationTemplateRequest,
 ): string {
@@ -408,7 +455,7 @@ export function projectUserMessage(
     }
     if (part.type === "file") {
       flushInlinePrompt();
-      promptBlocks.push(webFilePrompt(part));
+      promptBlocks.push(userMessageFilePrompt(part));
       displayBlocks.push(`[File: ${part.filenameSnapshot}]`);
       continue;
     }

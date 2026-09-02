@@ -5842,7 +5842,17 @@ function clipboardAttachmentsFromUserMessage(
       return [];
     }
     const attachment = attachmentById.get(part.fileId);
-    return attachment ? [attachment] : [];
+    return attachment
+      ? [
+          {
+            id: attachment.id,
+            url: attachment.url,
+            filename: attachment.filename,
+            contentType: attachment.contentType,
+            size: attachment.size,
+          },
+        ]
+      : [];
   });
 }
 

@@ -19,7 +19,7 @@ import {
   type ObjectUrlResource,
 } from "../object-url-resource.ts";
 import { rootSignal$ } from "../root-signal.ts";
-import type { AnnotationTarget } from "./image-annotation.ts";
+import type { ImageAnnotation } from "@okouai/api-contracts/contracts/chat-threads";
 
 // ---------------------------------------------------------------------------
 // Lightbox state — tracks which attachment is open in the global preview UI
@@ -76,7 +76,10 @@ type AttachmentImageLightboxInput = {
    * draft. Artifacts and sent messages open the same lightbox without it, so
    * the annotate affordance simply is not there for something immutable.
    */
-  readonly annotationTarget?: AnnotationTarget;
+  readonly annotationTarget?: {
+    readonly annotations: ImageAnnotation | null;
+    readonly open: () => void;
+  };
   readonly filename?: string;
   readonly threadId?: string;
   readonly artifact?: AttachmentArtifactMetadata;
