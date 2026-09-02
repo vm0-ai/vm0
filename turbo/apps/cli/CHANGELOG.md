@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.304.5](https://github.com/vm0-ai/vm0/compare/cli-v9.304.4...cli-v9.304.5) (2026-09-02)
+
+
+### Refactoring
+
+* remove Strapi integration feature switch ([#30965](https://github.com/vm0-ai/vm0/issues/30965)) ([603bbb7](https://github.com/vm0-ai/vm0/commit/603bbb7dafa7caa3619261d9b81047f96c763e38))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.390.2
+    * @okouai/core bumped to 8.608.2
+
 ## [9.304.4](https://github.com/vm0-ai/vm0/compare/cli-v9.304.3...cli-v9.304.4) (2026-09-02)
 
 

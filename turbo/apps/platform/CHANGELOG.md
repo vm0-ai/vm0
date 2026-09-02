@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.822.2](https://github.com/vm0-ai/vm0/compare/app-v0.822.1...app-v0.822.2) (2026-09-02)
+
+
+### Bug Fixes
+
+* **platform:** close member balances with settings session ([#30986](https://github.com/vm0-ai/vm0/issues/30986)) ([cbfdd38](https://github.com/vm0-ai/vm0/commit/cbfdd38d4a58155c1ceb8201d743577299816b53))
+* **platform:** keep translation menu open while scrolling ([#30971](https://github.com/vm0-ai/vm0/issues/30971)) ([ed5762e](https://github.com/vm0-ai/vm0/commit/ed5762e96b913ba74fd606103b8a43290dc4c5b6))
+* **platform:** reset connector credential forms on open ([#30967](https://github.com/vm0-ai/vm0/issues/30967)) ([6a2ae64](https://github.com/vm0-ai/vm0/commit/6a2ae642d770457f2896641354055c63875858e6))
+* **platform:** reset intro video wizard on open ([#30978](https://github.com/vm0-ai/vm0/issues/30978)) ([ed484bf](https://github.com/vm0-ai/vm0/commit/ed484bfa97e01a5365ecbb51bc7a56e462e6c7d6))
+* **platform:** show translation loading for shortcuts ([#30968](https://github.com/vm0-ai/vm0/issues/30968)) ([e4a668d](https://github.com/vm0-ai/vm0/commit/e4a668d0dfdd2cf55ebee65dad77a3c688b4b3ef))
+
+
+### Refactoring
+
+* remove emoji rail and conversation locator feature switches ([#30981](https://github.com/vm0-ai/vm0/issues/30981)) ([fc04a10](https://github.com/vm0-ai/vm0/commit/fc04a10dd9147a16cc883414704bc3e11458627d))
+* remove expired official metadata rollout fallbacks ([#30976](https://github.com/vm0-ai/vm0/issues/30976)) ([f013dbf](https://github.com/vm0-ai/vm0/commit/f013dbf1f850128cefdc96798aea400ed4681366)), closes [#29991](https://github.com/vm0-ai/vm0/issues/29991)
+* remove Strapi integration feature switch ([#30965](https://github.com/vm0-ai/vm0/issues/30965)) ([603bbb7](https://github.com/vm0-ai/vm0/commit/603bbb7dafa7caa3619261d9b81047f96c763e38))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.2
+    * @okouai/core bumped to 8.608.2
+
 ## [0.822.1](https://github.com/vm0-ai/vm0/compare/app-v0.822.0...app-v0.822.1) (2026-09-02)
 
 
