@@ -341,6 +341,29 @@ describe("video Artifact previews", () => {
     );
   }, 180_000);
 
+  it("skips the poster request for a container the transformer cannot decode", async () => {
+    const owner = await artifactActor("Artifacts API webm preview agent");
+    if (!owner.actor.orgId) {
+      throw new Error("Expected webm preview test actor to have an org");
+    }
+    const frameRequests = mockCloudflareVideoFrame(owner.actor.userId);
+
+    await createRunUploadedFile({
+      owner,
+      prompt: "upload a webm recording",
+      filename: "session-recording.webm",
+      contentType: "video/webm",
+    });
+    await flushWaitUntilForTest();
+
+    expect(frameRequests).toHaveLength(0);
+    const previewedArtifact = await findCatalogArtifact(
+      owner.actor,
+      "session-recording.webm",
+    );
+    expect(previewedArtifact?.thumbnail).toBeNull();
+  }, 180_000);
+
   it("reuses an existing write-once poster after a concurrent upload", async () => {
     const owner = await artifactActor(
       "Artifacts API concurrent video preview agent",
