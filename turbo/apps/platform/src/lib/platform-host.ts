@@ -27,6 +27,8 @@ const PRODUCTION_DOMAIN = "vm0.ai";
 const OKOU_PRODUCTION_DOMAIN = "okou.ai";
 const OKOU_PREVIEW_DOMAIN = "omby.ai";
 const OKOU_PAGES_DOMAIN = "okou-app.pages.dev";
+const OKOU_APP_WORKER_PREVIEW_HOST_PATTERN =
+  /^((?:staging|pr-[0-9]+))-app-okou-app-preview\.vm0\.workers\.dev$/u;
 const OKOU_ROOT_DOMAINS = [
   OKOU_PRODUCTION_DOMAIN,
   OKOU_PREVIEW_DOMAIN,
@@ -52,9 +54,18 @@ function isDomainOrSubdomain(hostname: string, domain: string): boolean {
 
 export function isOkouHostname(hostname: string): boolean {
   const normalizedHostname = hostname.toLowerCase().replace(/:\d+$/u, "");
-  return OKOU_ROOT_DOMAINS.some((domain) => {
-    return isDomainOrSubdomain(normalizedHostname, domain);
-  });
+  return (
+    OKOU_ROOT_DOMAINS.some((domain) => {
+      return isDomainOrSubdomain(normalizedHostname, domain);
+    }) || okouAppWorkerPreviewJobRef(normalizedHostname) !== null
+  );
+}
+
+export function okouAppWorkerPreviewJobRef(hostname: string): string | null {
+  return (
+    OKOU_APP_WORKER_PREVIEW_HOST_PATTERN.exec(hostname.toLowerCase())?.[1] ??
+    null
+  );
 }
 
 function resolvePlatformPublicBrand(
@@ -115,6 +126,16 @@ function rewritePreviewServiceHostname(
   hostname: string,
   target: PlatformService,
 ): string {
+  const workerPreviewJobRef = okouAppWorkerPreviewJobRef(hostname);
+  if (workerPreviewJobRef) {
+    if (target === "app") {
+      return hostname;
+    }
+    const targetDomain =
+      target === "api" ? PREVIEW_API_DOMAIN : OKOU_PREVIEW_DOMAIN;
+    return `${workerPreviewJobRef}-${target}.${targetDomain}`;
+  }
+
   const rewrittenHostname = rewritePlatformHostname(hostname, target);
   const okouPreviewSuffix = `.${OKOU_PREVIEW_DOMAIN}`;
   if (target !== "api" || !rewrittenHostname.endsWith(okouPreviewSuffix)) {
