@@ -329,15 +329,13 @@ function ToolPill({ signals }: { readonly signals: ImageAnnotationSignals }) {
 function MarkNotePopover({
   mark,
   signals,
-  focusNote = false,
 }: {
   readonly mark: ImageAnnotationMark;
   readonly signals: ImageAnnotationSignals;
-  /** The printed label was clicked, so the caret belongs in the field. */
-  readonly focusNote?: boolean;
 }) {
   const { t } = useTranslation();
   const setNote = useSet(signals.setAnnotationMarkNote$);
+  const bindNoteField = useSet(signals.bindAnnotationNoteField$);
   const removeMark = useSet(signals.removeAnnotationMark$);
   const deselect = useSet(signals.selectAnnotationMark$);
   const anchor = markAnchor(mark);
@@ -363,11 +361,16 @@ function MarkNotePopover({
           className="h-2.5 w-2.5 shrink-0 rounded-full"
         />
         <Input
-          // Only text marks take the caret when a MARK is picked: focusing the
-          // field for every mark is what made Delete land in the input instead
-          // of removing the mark. Clicking the printed note is different — the
-          // click asked to edit those words, so it brings its own caret.
-          autoFocus={focusNote || mark.shape === "text"}
+          // The element is owned by `bindAnnotationNoteField$`, which is what
+          // `selectAnnotationNote$` focuses when a printed note is clicked. It
+          // stays a ref rather than an `autoFocus` because the field is already
+          // mounted when the popover is open, and a mount-time attribute cannot
+          // fire twice.
+          ref={bindNoteField}
+          // Only text marks take the caret on open: focusing the field for
+          // every mark is what made Delete land in the input instead of
+          // removing the mark.
+          autoFocus={mark.shape === "text"}
           value={noteOf(mark)}
           onChange={(event) => {
             setNote(mark.id, event.target.value);
@@ -947,7 +950,7 @@ function EditorStage({
   const zoom = useGet(signals.annotationZoom$);
   const surface = useGet(signals.annotationSurface$);
   const selectedId = useGet(signals.annotationSelectedMarkId$);
-  const openNoteId = useGet(signals.annotationSelectedNoteId$);
+  const openMarkId = useGet(signals.annotationOpenMarkId$);
   const selectMark = useSet(signals.selectAnnotationMark$);
   const bindSurface = useSet(signals.bindAnnotationSurface$);
   const moveRect = useSet(signals.moveAnnotationMarkRect$);
@@ -963,12 +966,11 @@ function EditorStage({
     return mark.id === selectedId;
   });
   // Clicking a printed note opens the same popover the mark opens, with the
-  // caret already in the field. The grips stay off: the note was clicked to be
-  // rewritten, not to reshape the region it describes.
-  const openNoteMark = annotation.marks.find((mark) => {
-    return mark.id === openNoteId;
+  // caret already in the field. Only the grips stay off: the note was clicked
+  // to be rewritten, not to reshape the region it describes.
+  const openMark = annotation.marks.find((mark) => {
+    return mark.id === openMarkId;
   });
-  const noteTarget = selectedMark ?? openNoteMark;
   const grabHandle = useGrabHandle(signals, selectedMark);
 
   // A drag only ever moves or resizes a MARK now; a note follows the mark it
@@ -1048,20 +1050,7 @@ function EditorStage({
           {selectedMark && (
             <ResizeHandles mark={selectedMark} onGrab={grabHandle} />
           )}
-          {noteTarget && (
-            <MarkNotePopover
-              // The key carries WHICH selection opened this, because
-              // `autoFocus` only fires on mount: without it, clicking the
-              // printed note while the mark's popover was already open left
-              // the caret outside the field — the one thing the click asked
-              // for. Remounting on a changing key is how this app re-fires
-              // anything that happens on mount (it has no hooks).
-              key={`${noteTarget.id}-${noteTarget === openNoteMark ? "note" : "mark"}`}
-              mark={noteTarget}
-              signals={signals}
-              focusNote={noteTarget === openNoteMark}
-            />
-          )}
+          {openMark && <MarkNotePopover mark={openMark} signals={signals} />}
           {preview && (
             <MarkShape
               mark={preview}

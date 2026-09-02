@@ -562,10 +562,18 @@ describe("composer image annotation", () => {
     expect(field).toHaveFocus();
     expect(field).toHaveValue("Tighten this spacing");
 
-    // Nothing on a note is draggable any more: no width grip of its own, and
-    // no resize grips borrowed from the mark it explains.
-    expect(screen.queryByTestId("annotation-note-width-handle")).toBeNull();
+    // Opening the note does not hand over the mark's resize grips: it was
+    // clicked to be rewritten, not to reshape the region it describes.
     expect(screen.queryByTestId("annotation-handle-tl")).toBeNull();
+
+    // The swatches still recolour the mark the popover has open, whichever way
+    // it was opened — the popover is one control, not two.
+    await user.click(await screen.findByLabelText("Ink #EC70A5"));
+    await waitFor(() => {
+      expect(screen.getByTestId("annotation-mark-1").style.border).toContain(
+        "#EC70A5",
+      );
+    });
 
     // And a press on the label leaves it exactly where the placement put it.
     const before = { top: label.style.top, left: label.style.left };
