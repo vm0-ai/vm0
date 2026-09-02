@@ -86,7 +86,18 @@ import {
   type PendingGmailWatchStop,
 } from "./gmail-automation-event.service";
 import { cleanupGoogleCalendarWatchesForConnector } from "./google-calendar-automation-event.service";
-import { cleanupGoogleFormsWatchesForConnector } from "./google-forms-automation-event.service";
+import {
+  prepareGoogleFormsWatchStopForConnector,
+  reconcileGoogleFormsWatchesForUser,
+  stopPreparedGoogleFormsWatches,
+  type PendingGoogleFormsWatchStop,
+} from "./google-forms-automation-event.service";
+import {
+  deletePreparedGoogleMeetSubscriptionWithLifecycleLock,
+  prepareGoogleMeetSubscriptionDeleteForConnector,
+  reconcileGoogleMeetSubscriptionsForUser,
+  type PendingGoogleMeetSubscriptionDelete,
+} from "./google-meet-automation-event.service";
 import { reconcileConnectorAccountState } from "./connector-account-state.service";
 import { prepareConnectorAccountDeletion } from "./connector-account-lifecycle.service";
 import { resolveConnectorAccount } from "./connector-account-resolution.service";
@@ -967,8 +978,33 @@ async function cleanupConnectorWatchesForDisconnect(
   const args = { db, connectorId };
   if (connectorSlug === "google-calendar") {
     await bestEffort(cleanupGoogleCalendarWatchesForConnector(args, signal));
-  } else if (connectorSlug === "google-forms") {
-    await bestEffort(cleanupGoogleFormsWatchesForConnector(args, signal));
+  }
+}
+
+async function reconcileAccountBoundAutomationWatches(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorSlug: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  if (args.connectorSlug === "gmail") {
+    await bestEffort(
+      reconcileGmailWatchesForUser({ db, ...args }, signal),
+      signal,
+    );
+  } else if (args.connectorSlug === "google-forms") {
+    await bestEffort(
+      reconcileGoogleFormsWatchesForUser({ db, ...args }, signal),
+      signal,
+    );
+  } else if (args.connectorSlug === "google-meet") {
+    await bestEffort(
+      reconcileGoogleMeetSubscriptionsForUser({ db, ...args }, signal),
+      signal,
+    );
   }
 }
 
@@ -1077,6 +1113,46 @@ interface DeleteConnectorLocalStateArgs {
   readonly snapshot?: ConnectorRuntimeSnapshot | null;
 }
 
+interface PendingConnectorAutomationCleanup {
+  readonly pendingGmailWatchStop: PendingGmailWatchStop | null;
+  readonly pendingGoogleFormsWatchStop: PendingGoogleFormsWatchStop | null;
+  readonly pendingGoogleMeetSubscriptionDelete: PendingGoogleMeetSubscriptionDelete | null;
+}
+
+async function prepareConnectorAutomationCleanup(
+  tx: Tx,
+  args: DeleteConnectorLocalStateArgs,
+  connectorId: string,
+  signal: AbortSignal,
+): Promise<PendingConnectorAutomationCleanup> {
+  const cleanupArgs = {
+    db: tx,
+    orgId: args.orgId,
+    userId: args.userId,
+    connectorId,
+  };
+  const pendingGmailWatchStop =
+    args.connectorSlug === "gmail"
+      ? await prepareGmailWatchStopForConnector(cleanupArgs, signal)
+      : null;
+  const pendingGoogleFormsWatchStop =
+    args.connectorSlug === "google-forms"
+      ? await prepareGoogleFormsWatchStopForConnector(cleanupArgs, signal)
+      : null;
+  const pendingGoogleMeetSubscriptionDelete =
+    args.connectorSlug === "google-meet"
+      ? await prepareGoogleMeetSubscriptionDeleteForConnector(
+          cleanupArgs,
+          signal,
+        )
+      : null;
+  return {
+    pendingGmailWatchStop,
+    pendingGoogleFormsWatchStop,
+    pendingGoogleMeetSubscriptionDelete,
+  };
+}
+
 async function deleteConnectorAccountLocalState(
   tx: Tx,
   args: DeleteConnectorLocalStateArgs,
@@ -1097,6 +1173,8 @@ async function deleteConnectorAccountLocalState(
       kind: account.kind,
       pendingTokenRevoke: null,
       pendingGmailWatchStop: null,
+      pendingGoogleMeetSubscriptionDelete: null,
+      pendingGoogleFormsWatchStop: null,
     };
   }
   const existing = account.connector;
@@ -1114,6 +1192,8 @@ async function deleteConnectorAccountLocalState(
       kind: deletion.kind,
       pendingTokenRevoke: null,
       pendingGmailWatchStop: null,
+      pendingGoogleMeetSubscriptionDelete: null,
+      pendingGoogleFormsWatchStop: null,
     };
   }
 
@@ -1146,19 +1226,13 @@ async function deleteConnectorAccountLocalState(
   }
   signal.throwIfAborted();
 
-  const pendingGmailWatchStop: PendingGmailWatchStop | null =
-    args.connectorSlug === "gmail"
-      ? await prepareGmailWatchStopForConnector(
-          {
-            db: tx,
-            orgId: args.orgId,
-            userId: args.userId,
-            connectorId: existing.id,
-          },
-          signal,
-        )
-      : null;
-  if (args.connectorSlug !== "gmail") {
+  const pendingAutomationCleanup = await prepareConnectorAutomationCleanup(
+    tx,
+    args,
+    existing.id,
+    signal,
+  );
+  if (args.connectorSlug !== "gmail" && args.connectorSlug !== "google-forms") {
     await cleanupConnectorWatchesForDisconnect(
       tx,
       args.connectorSlug,
@@ -1176,9 +1250,72 @@ async function deleteConnectorAccountLocalState(
   return {
     kind: "deleted" as const,
     pendingTokenRevoke,
-    pendingGmailWatchStop,
+    ...pendingAutomationCleanup,
     deletion,
   };
+}
+
+async function stopPendingConnectorAutomationCleanup(
+  db: Db,
+  pending: PendingConnectorAutomationCleanup,
+  signal: AbortSignal,
+): Promise<unknown> {
+  let capturedAbort: unknown = null;
+  if (pending.pendingGmailWatchStop !== null) {
+    const stopped = await settleIncludingAbort(
+      bestEffort(
+        stopPreparedGmailWatch(
+          { db, pending: pending.pendingGmailWatchStop },
+          signal,
+        ),
+        signal,
+      ),
+    );
+    if (signal.aborted) {
+      capturedAbort ??= signal.reason;
+    }
+    if (!stopped.ok) {
+      capturedAbort ??= stopped.error;
+    }
+  }
+  if (pending.pendingGoogleMeetSubscriptionDelete !== null) {
+    const deleted = await settleIncludingAbort(
+      bestEffort(
+        deletePreparedGoogleMeetSubscriptionWithLifecycleLock(
+          {
+            db,
+            pending: pending.pendingGoogleMeetSubscriptionDelete,
+          },
+          signal,
+        ),
+        signal,
+      ),
+    );
+    if (signal.aborted) {
+      capturedAbort ??= signal.reason;
+    }
+    if (!deleted.ok) {
+      capturedAbort ??= deleted.error;
+    }
+  }
+  if (pending.pendingGoogleFormsWatchStop !== null) {
+    const stopped = await settleIncludingAbort(
+      bestEffort(
+        stopPreparedGoogleFormsWatches(
+          pending.pendingGoogleFormsWatchStop,
+          signal,
+        ),
+        signal,
+      ),
+    );
+    if (signal.aborted) {
+      capturedAbort ??= signal.reason;
+    }
+    if (!stopped.ok) {
+      capturedAbort ??= stopped.error;
+    }
+  }
+  return capturedAbort;
 }
 
 export const deleteConnectorLocalState$ = command(
@@ -1225,23 +1362,12 @@ export const deleteConnectorLocalState$ = command(
       return deleteResult.kind;
     }
 
-    if (deleteResult.pendingGmailWatchStop !== null) {
-      const stopped = await settleIncludingAbort(
-        bestEffort(
-          stopPreparedGmailWatch(
-            { db: writeDb, pending: deleteResult.pendingGmailWatchStop },
-            signal,
-          ),
-          signal,
-        ),
-      );
-      if (signal.aborted) {
-        postCommitAbort ??= signal.reason;
-      }
-      if (!stopped.ok) {
-        postCommitAbort ??= stopped.error;
-      }
-    }
+    const automationCleanupAbort = await stopPendingConnectorAutomationCleanup(
+      writeDb,
+      deleteResult,
+      signal,
+    );
+    postCommitAbort ??= automationCleanupAbort;
     await finalizeConnectorStateChangeAfterCommit(
       {
         userId: args.userId,
@@ -1254,6 +1380,24 @@ export const deleteConnectorLocalState$ = command(
     if (args.connectorSlug === "gmail") {
       await bestEffort(
         reconcileGmailWatchesForUser(
+          { db: writeDb, orgId: args.orgId, userId: args.userId },
+          signal,
+        ),
+        signal,
+      );
+    }
+    if (args.connectorSlug === "google-forms") {
+      await bestEffort(
+        reconcileGoogleFormsWatchesForUser(
+          { db: writeDb, orgId: args.orgId, userId: args.userId },
+          signal,
+        ),
+        signal,
+      );
+    }
+    if (args.connectorSlug === "google-meet") {
+      await bestEffort(
+        reconcileGoogleMeetSubscriptionsForUser(
           { db: writeDb, orgId: args.orgId, userId: args.userId },
           signal,
         ),
@@ -2430,15 +2574,15 @@ export const upsertConnectorTokenConnection$ = command(
       },
       signal,
     );
-    if (args.runtimeMethod.connectorSlug === "gmail") {
-      await bestEffort(
-        reconcileGmailWatchesForUser(
-          { db: writeDb, orgId: args.orgId, userId: args.userId },
-          signal,
-        ),
-        signal,
-      );
-    }
+    await reconcileAccountBoundAutomationWatches(
+      writeDb,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        connectorSlug: args.runtimeMethod.connectorSlug,
+      },
+      signal,
+    );
     signal.throwIfAborted();
 
     return {

@@ -9,9 +9,10 @@ use tokio::sync::Notify;
 
 use crate::error::{Result, SandboxError, SandboxIdleTransition};
 use crate::types::{
-    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestAgentProcessHandle,
-    GuestProcessHandle, GuestStateRestoreRequest, ProcessExit, SessionHistoryIdentityVerifyRequest,
-    StartAgentProcessRequest, StartProcessRequest, StorageManifestRequest, WriteFileEntry,
+    CodexSessionCleanupRequest, CopyFileOptions, CopyFileResult, ExecRequest, ExecResult,
+    GuestAgentProcessHandle, GuestProcessHandle, GuestStateRestoreRequest, ProcessExit,
+    SessionHistoryIdentityVerifyRequest, StartAgentProcessRequest, StartProcessRequest,
+    StorageManifestRequest, WriteFileEntry,
 };
 
 /// Eligibility result after a sandbox successfully reaches the parked state.
@@ -751,6 +752,23 @@ pub trait Sandbox: Send + Sync + Any {
             operation: crate::SandboxOperation::VerifySessionHistoryIdentity,
             reason: crate::SandboxOperationReason::Other,
             message: "fixed session history identity verifier is unsupported".to_string(),
+        })
+    }
+
+    /// Clean retained Codex rollout files through the provider's fixed helper.
+    ///
+    /// Implementations select the executable and fixed subcommand and must not
+    /// expose arbitrary command, environment, sudo, stdin, output, or lifecycle
+    /// authority. The result stdout remains untrusted and must be validated by
+    /// the session-restore owner before it becomes a write destination.
+    async fn cleanup_codex_session(
+        &self,
+        _request: &CodexSessionCleanupRequest<'_>,
+    ) -> Result<ExecResult> {
+        Err(SandboxError::Operation {
+            operation: crate::SandboxOperation::CleanupCodexSession,
+            reason: crate::SandboxOperationReason::Other,
+            message: "fixed Codex session cleanup is unsupported".to_string(),
         })
     }
 

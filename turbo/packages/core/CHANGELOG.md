@@ -1,5 +1,57 @@
 # Changelog
 
+## [8.608.1](https://github.com/vm0-ai/vm0/compare/core-v8.608.0...core-v8.608.1) (2026-09-02)
+
+
+### Refactoring
+
+* remove connectorCatalogCount feature switch ([#30935](https://github.com/vm0-ai/vm0/issues/30935)) ([531a1cc](https://github.com/vm0-ai/vm0/commit/531a1ccf20b2f4c5e33adf143ec0284a8911e3f2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.1
+
+## [8.608.0](https://github.com/vm0-ai/vm0/compare/core-v8.607.1...core-v8.608.0) (2026-09-02)
+
+
+### Features
+
+* support no-auth custom connectors ([#30897](https://github.com/vm0-ai/vm0/issues/30897)) ([f6a4e7a](https://github.com/vm0-ai/vm0/commit/f6a4e7af74566f31c53c59035554aaf5f0c1076c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.0
+
+## [8.607.1](https://github.com/vm0-ai/vm0/compare/core-v8.607.0...core-v8.607.1) (2026-09-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.389.1
+
+## [8.607.0](https://github.com/vm0-ai/vm0/compare/core-v8.606.1...core-v8.607.0) (2026-09-01)
+
+
+### Features
+
+* **platform:** translate selected chat text ([#30818](https://github.com/vm0-ai/vm0/issues/30818)) ([37c2265](https://github.com/vm0-ai/vm0/commit/37c2265c1c600cbcc22b32224e376c5ae26cead3))
+* use transparent avatar cutouts in the intro video picker ([#30873](https://github.com/vm0-ai/vm0/issues/30873)) ([b176b5b](https://github.com/vm0-ai/vm0/commit/b176b5b46f223dd26d44e976e2299ed3f5bbfa8c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.389.0
+
 ## [8.606.1](https://github.com/vm0-ai/vm0/compare/core-v8.606.0...core-v8.606.1) (2026-09-01)
 
 

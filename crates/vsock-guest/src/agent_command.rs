@@ -12,6 +12,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{ChildStderr, ChildStdout, Command, Stdio};
 
+use guest_contracts::codex_session_cleanup::CodexSessionCleanupRequest;
 use guest_contracts::session_history_identity::SessionHistoryIdentityVerifyRequest;
 
 use crate::process_containment::{ExecProcessContainment, ProcessContainmentCleanupMode};
@@ -75,6 +76,41 @@ pub(crate) fn spawn_session_history_identity_verifier_with_pipes(
                 guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
                 &request.runtime_dir,
             )
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        crate::user::configure_guest_agent_command_environment(&mut command)?;
+        spawn_command_in_containment(&mut command, false, &process_containment)
+    })();
+
+    match spawn_result {
+        Ok(child) => Ok(SpawnedCommand {
+            child,
+            env_script: None,
+            process_containment,
+        }),
+        Err(error) => {
+            let _ = process_containment.cleanup(ProcessContainmentCleanupMode::Forced);
+            Err(error)
+        }
+    }
+}
+
+pub(crate) fn spawn_codex_session_cleanup_with_pipes(
+    request: &CodexSessionCleanupRequest,
+    process_containment: ExecProcessContainment,
+    program: &GuestAgentProgram,
+) -> io::Result<SpawnedCommand> {
+    request
+        .validate()
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error.to_string()))?;
+    let spawn_result = (|| {
+        validate_agent_executable(program.executable())?;
+        let mut command = Command::new(program.executable());
+        command
+            .arg("cleanup-codex-session")
+            .arg(&request.session_id)
+            .arg(&request.fallback_relative_path)
+            .env_clear()
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         crate::user::configure_guest_agent_command_environment(&mut command)?;

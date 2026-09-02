@@ -1,4 +1,4 @@
-import { getTableConfig } from "drizzle-orm/pg-core";
+import { getTableConfig, PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
 import { connectorOauthStates } from "../schema/connector-oauth-state";
@@ -37,6 +37,27 @@ describe("custom connector auth storage schema", () => {
         "chk_org_custom_connectors_skill_version_pair",
       ]),
     );
+    const authModeCheck = connectorConfig.checks.find((check) => {
+      return check.name === "chk_org_custom_connectors_auth_mode";
+    });
+    const definitionCheck = connectorConfig.checks.find((check) => {
+      return check.name === "chk_org_custom_connectors_mcp";
+    });
+    expect(authModeCheck).toBeDefined();
+    expect(definitionCheck).toBeDefined();
+    if (!authModeCheck || !definitionCheck) {
+      throw new Error("Missing Custom connector authentication checks");
+    }
+    const dialect = new PgDialect();
+    expect(dialect.sqlToQuery(authModeCheck.value).sql).toContain(
+      "IN ('none', 'manual', 'oauth')",
+    );
+    const definitionSql = dialect.sqlToQuery(definitionCheck.value).sql;
+    expect(definitionSql).toContain("\"auth_mode\" = 'none'");
+    expect(definitionSql).toContain("jsonb_path_exists");
+    expect(definitionSql).toContain("\"header_injections\" = '[]'::jsonb");
+    expect(definitionSql).toContain("\"query_injections\" = '[]'::jsonb");
+    expect(definitionSql).toContain("\"fields\" = '[]'::jsonb");
 
     expect(orgCustomConnectorOauthConfigs.connectorId.primary).toBe(true);
     expect(oauthConfig.foreignKeys).toHaveLength(1);

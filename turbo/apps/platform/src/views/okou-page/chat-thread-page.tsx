@@ -1173,8 +1173,6 @@ function ChatThreadEmojiPicker({
   const setQuery = useSet(setChatThreadEmojiQuery$);
   const groups = useLastResolved(chatThreadEmojiGroups$) ?? null;
   const frequentlyUsedEmoji = useFrequentlyUsedEmoji();
-  const railEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.EmojiPickerCategoryRail] ?? false;
   const setActiveCategory = useSet(setChatThreadEmojiActiveCategory$);
   const setPendingJump = useSet(setChatThreadEmojiPendingJump$);
 
@@ -1205,21 +1203,16 @@ function ChatThreadEmojiPicker({
 
   return (
     <div className="flex flex-col">
-      {railEnabled && (
-        <ChatThreadEmojiCategoryRail
-          categories={categories}
-          onSelect={jumpToCategory}
-        />
-      )}
+      <ChatThreadEmojiCategoryRail
+        categories={categories}
+        onSelect={jumpToCategory}
+      />
       <div
-        className={cn(
-          "flex items-center gap-2 px-2 pt-2",
-          // The gap below the field belongs to this row, because a search hides
-          // the sections and puts a bare result grid under it. 12px here plus
-          // the title's own pt-1 puts the first title the same 16px below the
-          // field as every later title sits below the grid above it.
-          railEnabled ? "pb-3" : "pb-2",
-        )}
+        // The gap below the field belongs to this row, because a search hides
+        // the sections and puts a bare result grid under it. 12px here plus
+        // the title's own pt-1 puts the first title the same 16px below the
+        // field as every later title sits below the grid above it.
+        className="flex items-center gap-2 px-2 pb-3 pt-2"
       >
         <div className="relative flex-1">
           <Search
@@ -1258,9 +1251,8 @@ function ChatThreadEmojiPicker({
         categories={categories}
         searchResults={isSearching ? searchResults : null}
         onSelect={onSelect}
-        railEnabled={railEnabled}
       />
-      {railEnabled && <ChatThreadEmojiPreview />}
+      <ChatThreadEmojiPreview />
     </div>
   );
 }
@@ -1297,12 +1289,10 @@ function ChatThreadEmojiFeed({
   categories,
   searchResults,
   onSelect,
-  railEnabled,
 }: {
   categories: ChatThreadEmojiCategory[];
   searchResults: ChatThreadEmojiItem[] | null;
   onSelect: (emoji: string) => void;
-  railEnabled: boolean;
 }) {
   const { t } = useTranslation();
   const setActiveCategory = useSet(setChatThreadEmojiActiveCategory$);
@@ -1355,31 +1345,19 @@ function ChatThreadEmojiFeed({
       data-chat-thread-emoji-feed=""
       // relative so each section's offsetTop is measured against the feed.
       className="relative max-h-72 overflow-y-auto px-2 pb-2"
-      onScroll={railEnabled ? handleScroll : undefined}
-      onWheel={railEnabled ? releasePendingJump : undefined}
-      onTouchStart={railEnabled ? releasePendingJump : undefined}
-      onPointerDown={railEnabled ? releasePendingJump : undefined}
-      onMouseOver={
-        railEnabled
-          ? (event) => {
-              previewEmojiUnder(event.target);
-            }
-          : undefined
-      }
-      onFocus={
-        railEnabled
-          ? (event) => {
-              previewEmojiUnder(event.target);
-            }
-          : undefined
-      }
-      onMouseLeave={
-        railEnabled
-          ? () => {
-              setPreview(null);
-            }
-          : undefined
-      }
+      onScroll={handleScroll}
+      onWheel={releasePendingJump}
+      onTouchStart={releasePendingJump}
+      onPointerDown={releasePendingJump}
+      onMouseOver={(event) => {
+        previewEmojiUnder(event.target);
+      }}
+      onFocus={(event) => {
+        previewEmojiUnder(event.target);
+      }}
+      onMouseLeave={() => {
+        setPreview(null);
+      }}
     >
       {searchResults !== null ? (
         searchResults.length > 0 ? (
@@ -1402,7 +1380,6 @@ function ChatThreadEmojiFeed({
               onSelect={onSelect}
               showShortcutDigits={category.showShortcutDigits}
               shortcodeNames={category.shortcodeNames}
-              pinnedTitle={railEnabled}
             />
           );
         })
@@ -1418,7 +1395,6 @@ function ChatThreadEmojiSection({
   onSelect,
   showShortcutDigits = false,
   shortcodeNames = true,
-  pinnedTitle = false,
 }: {
   categoryKey: string;
   label: string;
@@ -1426,7 +1402,6 @@ function ChatThreadEmojiSection({
   onSelect: (emoji: string) => void;
   showShortcutDigits?: boolean;
   shortcodeNames?: boolean;
-  pinnedTitle?: boolean;
 }) {
   const { t } = useTranslation();
   // Ctrl+Shift is a shared prefix for every digit shortcut, so surface it once
@@ -1447,19 +1422,15 @@ function ChatThreadEmojiSection({
       // so the title reads as a heading for its own grid and not as a caption
       // for the one above it. The first section has no grid above it — the
       // search row already spaces it off the field.
-      className={cn(pinnedTitle && "mt-3 first:mt-0")}
+      className="mt-3 first:mt-0"
     >
       <div
-        className={cn(
-          "flex items-baseline justify-between gap-2 pb-1 pt-2",
-          // Fade to transparent at the lower edge so emoji dissolve as they
-          // scroll under the pinned title instead of colliding with it. The
-          // fade has to live below the text, so pb-2 doubles as the gap to the
-          // grid; from-75% keeps the whole label — descenders included — on the
-          // solid part of that 28px box rather than over the fading part.
-          pinnedTitle &&
-            "sticky top-0 z-10 bg-gradient-to-b from-popover from-75% to-transparent pb-2 pt-1",
-        )}
+        // Fade to transparent at the lower edge so emoji dissolve as they
+        // scroll under the pinned title instead of colliding with it. The
+        // fade has to live below the text, so pb-2 doubles as the gap to the
+        // grid; from-75% keeps the whole label — descenders included — on the
+        // solid part of that 28px box rather than over the fading part.
+        className="sticky top-0 z-10 flex items-baseline justify-between gap-2 bg-gradient-to-b from-popover from-75% to-transparent pb-2 pt-1"
       >
         <span className="text-xs font-medium text-muted-foreground">
           {label}

@@ -779,10 +779,18 @@ export const webhookHeartbeatContract = c.router({
 const metricDataSchema = z.object({
   ts: z.string(),
   cpu: z.number(),
+  cpu_steal_percent: z.number().optional(),
+  scheduled_lag_ms: z.number().optional(),
   mem_used: z.number(),
   mem_total: z.number(),
   disk_used: z.number(),
   disk_total: z.number(),
+  control_cpu_usage_usec: z.number().optional(),
+  control_cpu_nr_throttled: z.number().optional(),
+  control_cpu_throttled_usec: z.number().optional(),
+  workload_cpu_usage_usec: z.number().optional(),
+  workload_cpu_nr_throttled: z.number().optional(),
+  workload_cpu_throttled_usec: z.number().optional(),
 });
 
 const sessionHistoryCompressionRatioBucketSchema = z.enum([

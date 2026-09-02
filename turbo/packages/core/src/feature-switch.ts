@@ -299,12 +299,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // unproven outside CI; widen once it has run on real hardware.
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
-  [FeatureSwitchKey.ChatConversationLocator]: {
-    maintainer: "tongx@vm0.ai",
-    description:
-      "Show the conversation locator rail beside long chat threads, with hover preview and click-to-jump.",
-    enabled: false,
-  },
   [FeatureSwitchKey.ChatTranslation]: {
     maintainer: "yuma@vm0.ai",
     description:
@@ -340,13 +334,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // flatten and two-file send are still unexercised outside tests.
     enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
   },
-  [FeatureSwitchKey.EmojiPickerCategoryRail]: {
-    maintainer: "tongx@vm0.ai",
-    description:
-      "Add a category icon rail, pinned section titles, jump-to-category scrolling, and a hovered-emoji name bar to the thread emoji picker.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -361,12 +348,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     // Ming only for the first pass; widen once the system mapping settles.
     enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
-  },
-  [FeatureSwitchKey.ConnectorCatalogCount]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Show the exact effective connector catalog size.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.SharedThreadSharing]: {
     maintainer: "ethan@vm0.ai",
@@ -410,13 +391,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.StrapiIntegration]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable Strapi integration settings and Strapi entry-published workflow automations.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.WorkflowConnectorReadiness]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -430,6 +404,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable remote Streamable HTTP MCP definitions for organization Custom Connectors.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.CustomConnectorNoAuth]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Enable credential-free authentication for organization Custom Connectors.",
+    enabled: false,
   },
 };
 

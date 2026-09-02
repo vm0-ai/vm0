@@ -40,9 +40,12 @@ import type { SharedDatabaseHeartbeatResult } from "./protocol.ts";
 import { SharedDatabaseWorkerContext } from "./worker-host-context.ts";
 import {
   broadcastSharedDatabaseWorkerMessage$,
+  forceRefreshWorkerToken$,
   forwardChatThreadReadCursorUpdated$,
+  getWorkerToken$,
   registerConnection$,
   reloadConnections$,
+  setWorkerToken$,
   type WorkerBroadcastMessage,
 } from "./worker-context.ts";
 import {
@@ -136,7 +139,7 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
         return;
       }
       if (event.type === "authentication-required") {
-        this.events.authenticationRequired();
+        await this.events.authenticationRequired(event.recoveryId);
         return;
       }
       if (event.type === "reload-computed") {
@@ -167,7 +170,9 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
         ? "chat-thread-indicators"
         : message.name === "computerUseHostsChanged"
           ? "computer-use-hosts"
-          : null;
+          : message.name === "billing:changed"
+            ? "queue-data"
+            : null;
     if (!computedKey) {
       return;
     }
@@ -206,7 +211,18 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
       };
       this.workerStore.set(
         initializeCredentialStore$,
-        credentialController,
+        {
+          controller: credentialController,
+          authRecovery: {
+            getToken: (signal) => {
+              return this.workerStore.set(getWorkerToken$, signal);
+            },
+            forceRefreshToken: (signal) => {
+              return this.workerStore.set(forceRefreshWorkerToken$, signal);
+            },
+          },
+          broadcast,
+        },
         {
           identity,
           apiBaseUrl: this.options.apiBaseUrl,
@@ -221,7 +237,6 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
             );
           },
         },
-        broadcast,
         credentialSignal,
       );
     }
@@ -248,15 +263,6 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
         this.workerStore.set(
           heartbeatSharedDatabaseWorker$,
           this.connectionId,
-          {
-            identity,
-            apiBaseUrl: this.options.apiBaseUrl,
-            ...(heartbeat.vercelProtectionBypass
-              ? {
-                  vercelProtectionBypass: heartbeat.vercelProtectionBypass,
-                }
-              : {}),
-          },
           connectionSignal,
         ),
       ),
@@ -290,6 +296,16 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
       type: "reload-computed",
       computedKey,
     });
+  }
+
+  setToken(
+    recoveryId: string,
+    token: string | null,
+    signal: AbortSignal,
+  ): Promise<void> {
+    signal.throwIfAborted();
+    this.workerStore.set(setWorkerToken$, this.connectionId, recoveryId, token);
+    return Promise.resolve();
   }
 
   async query<TKey extends SharedDatabaseDataKey>(
@@ -338,6 +354,14 @@ class TestSharedDatabaseBridge implements SharedDatabaseBridge {
 
   reloadComputed(computedKey: ComputedKey): void {
     this.bridge.reloadComputed(computedKey);
+  }
+
+  setToken(
+    recoveryId: string,
+    token: string | null,
+    signal: AbortSignal,
+  ): Promise<void> {
+    return this.bridge.setToken(recoveryId, token, signal);
   }
 
   query<TKey extends SharedDatabaseDataKey>(

@@ -79,6 +79,8 @@ import { bestEffort, onRejection, settle } from "../utils";
 import { reconcileGmailWatchesForUser } from "../services/gmail-automation-event.service";
 import { lockConnectorAccountTarget } from "../services/auth-state-lock.service";
 import { reprojectWorkflowAutomationsForOwner } from "../services/workflow-automation-account-projection.service";
+import { reconcileGoogleFormsWatchesForUser } from "../services/google-forms-automation-event.service";
+import { reconcileGoogleMeetSubscriptionsForUser } from "../services/google-meet-automation-event.service";
 import {
   loadVisibleWorkflowById,
   requireWorkflowPermission,
@@ -1047,6 +1049,8 @@ async function copyWorkflowUserAutomations(
   args: CopyWorkflowAutomationRowsArgs,
 ): Promise<{
   readonly hasGmailAutomations: boolean;
+  readonly hasGoogleFormsAutomations: boolean;
+  readonly hasGoogleMeetAutomations: boolean;
   readonly hasStripeAutomations: boolean;
 }> {
   const rows =
@@ -1062,16 +1066,39 @@ async function copyWorkflowUserAutomations(
         ),
       ));
   if (rows.length === 0) {
-    return { hasGmailAutomations: false, hasStripeAutomations: false };
+    return {
+      hasGmailAutomations: false,
+      hasGoogleFormsAutomations: false,
+      hasGoogleMeetAutomations: false,
+      hasStripeAutomations: false,
+    };
   }
+  const hasGmailAutomations = rows.some((automation) => {
+    return (
+      automation.eventType === "gmail-new-message" ||
+      automation.eventType === "gmail-label-applied"
+    );
+  });
+  const hasGoogleFormsAutomations = rows.some((automation) => {
+    return automation.eventType === "google-forms-response-submitted";
+  });
+  const hasGoogleMeetAutomations = rows.some((automation) => {
+    return automation.eventType === "google-meet-transcript-generated";
+  });
   const hasStripeAutomations = rows.some((automation) => {
     return automation.eventType === "stripe-invoice-paid";
   });
-  if (hasStripeAutomations) {
+  const accountTargets = [
+    ...(hasGmailAutomations ? (["gmail"] as const) : []),
+    ...(hasGoogleFormsAutomations ? (["google-forms"] as const) : []),
+    ...(hasGoogleMeetAutomations ? (["google-meet"] as const) : []),
+    ...(hasStripeAutomations ? (["stripe"] as const) : []),
+  ].sort();
+  for (const connectorSlug of accountTargets) {
     await lockConnectorAccountTarget(tx, {
       orgId: args.orgId,
       userId: args.userId,
-      target: { kind: "builtin", connectorSlug: "stripe" },
+      target: { kind: "builtin", connectorSlug },
     });
   }
 
@@ -1087,12 +1114,9 @@ async function copyWorkflowUserAutomations(
     await copyWorkflowAutomationRow(tx, { ...args, automation });
   }
   return {
-    hasGmailAutomations: rows.some((automation) => {
-      return (
-        automation.eventType === "gmail-new-message" ||
-        automation.eventType === "gmail-label-applied"
-      );
-    }),
+    hasGmailAutomations,
+    hasGoogleFormsAutomations,
+    hasGoogleMeetAutomations,
     hasStripeAutomations,
   };
 }
@@ -1104,6 +1128,8 @@ async function copyWorkflowRuntimeConfiguration(
   | {
       readonly workflow: { readonly id: string };
       readonly hasGmailAutomations: boolean;
+      readonly hasGoogleFormsAutomations: boolean;
+      readonly hasGoogleMeetAutomations: boolean;
       readonly hasStripeAutomations: boolean;
     }
   | undefined
@@ -1140,6 +1166,8 @@ type CopyWorkflowDatabaseResult =
       readonly kind: "ok";
       readonly inserted: { readonly id: string };
       readonly hasGmailAutomations: boolean;
+      readonly hasGoogleFormsAutomations: boolean;
+      readonly hasGoogleMeetAutomations: boolean;
       readonly hasStripeAutomations: boolean;
     };
 
@@ -1203,13 +1231,21 @@ async function copyWorkflowDatabaseRows(
     if (!inserted) {
       throw new Error("Failed to copy workflow");
     }
-    if (inserted.hasStripeAutomations) {
+    const accountTargets = [
+      ...(inserted.hasGmailAutomations ? (["gmail"] as const) : []),
+      ...(inserted.hasGoogleFormsAutomations
+        ? (["google-forms"] as const)
+        : []),
+      ...(inserted.hasGoogleMeetAutomations ? (["google-meet"] as const) : []),
+      ...(inserted.hasStripeAutomations ? (["stripe"] as const) : []),
+    ].sort();
+    for (const connectorSlug of accountTargets) {
       await reprojectWorkflowAutomationsForOwner(
         tx,
         {
           orgId: args.orgId,
           userId: args.userId,
-          target: { kind: "builtin", connectorSlug: "stripe" },
+          target: { kind: "builtin", connectorSlug },
         },
         signal,
       );
@@ -1223,6 +1259,8 @@ async function copyWorkflowDatabaseRows(
       kind: "ok",
       inserted: inserted.workflow,
       hasGmailAutomations: inserted.hasGmailAutomations,
+      hasGoogleFormsAutomations: inserted.hasGoogleFormsAutomations,
+      hasGoogleMeetAutomations: inserted.hasGoogleMeetAutomations,
       hasStripeAutomations: inserted.hasStripeAutomations,
     };
   });
@@ -1247,6 +1285,30 @@ function copiedWorkflowVolumeFiles(
       return { path: file.path, content: file.content };
     });
   return [{ path: "SKILL.md", content: skillMd }, ...attachedFiles];
+}
+
+async function reconcileCopiedWorkflowAutomationWatches(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly copied: Extract<CopyWorkflowDatabaseResult, { kind: "ok" }>;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  const owner = { db: args.db, orgId: args.orgId, userId: args.userId };
+  if (args.copied.hasGmailAutomations) {
+    await bestEffort(reconcileGmailWatchesForUser(owner, signal), signal);
+  }
+  if (args.copied.hasGoogleFormsAutomations) {
+    await bestEffort(reconcileGoogleFormsWatchesForUser(owner, signal), signal);
+  }
+  if (args.copied.hasGoogleMeetAutomations) {
+    await bestEffort(
+      reconcileGoogleMeetSubscriptionsForUser(owner, signal),
+      signal,
+    );
+  }
 }
 
 const publishCopiedWorkflow$ = command(
@@ -1331,15 +1393,15 @@ const publishCopiedWorkflow$ = command(
           );
           return conflict(copied.message);
         }
-        if (copied.hasGmailAutomations) {
-          await bestEffort(
-            reconcileGmailWatchesForUser(
-              { db: args.db, orgId: args.orgId, userId: args.userId },
-              signal,
-            ),
-            signal,
-          );
-        }
+        await reconcileCopiedWorkflowAutomationWatches(
+          {
+            db: args.db,
+            orgId: args.orgId,
+            userId: args.userId,
+            copied,
+          },
+          signal,
+        );
 
         const visible = await loadVisibleWorkflowById(args.db, {
           orgId: args.orgId,

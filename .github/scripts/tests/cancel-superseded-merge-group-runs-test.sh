@@ -247,6 +247,32 @@ grep -q "Waiting for superseded CI runs" <<<"$output" ||
 : >"${tmp_dir}/cancel.log"
 : >"${tmp_dir}/sleep.log"
 rm -f "${tmp_dir}/runs-released"
+output=$(run_cancel MOCK_DELAY_COMPLETION=1 SUPERSEDED_RUN_TIMEOUT_SECONDS=0)
+grep -q "All superseded CI runs completed" <<<"$output" ||
+  fail "superseded barrier must not inherit the discovery-stabilization budget"
+[ "$(wc -l <"${tmp_dir}/sleep.log")" -eq 1 ] ||
+  fail "expected one poll before superseded runs completed"
+
+: >"${tmp_dir}/gh.log"
+: >"${tmp_dir}/cancel.log"
+: >"${tmp_dir}/sleep.log"
+rm -f "${tmp_dir}/runs-released"
+if run_cancel \
+  MOCK_DELAY_COMPLETION=1 \
+  SUPERSEDED_RUN_COMPLETION_TIMEOUT_SECONDS=0 \
+  >"${tmp_dir}/superseded-timeout.out" 2>"${tmp_dir}/superseded-timeout.err"; then
+  fail "superseded barrier must fail closed when its own budget expires"
+fi
+grep -q "Timed out after 0s waiting for superseded CI runs to complete" \
+  "${tmp_dir}/superseded-timeout.err" ||
+  fail "superseded barrier timeout must report the exhausted budget"
+[ ! -s "${tmp_dir}/sleep.log" ] ||
+  fail "zero-budget superseded barrier must fail before polling"
+
+: >"${tmp_dir}/gh.log"
+: >"${tmp_dir}/cancel.log"
+: >"${tmp_dir}/sleep.log"
+rm -f "${tmp_dir}/runs-released"
 output=$(
   run_cancel \
     MOCK_DELAY_COMPLETION=1 \

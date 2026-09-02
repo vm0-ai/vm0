@@ -41,6 +41,11 @@ function presignedFileUrl(fileId: string): string {
 /** Matches presignedFileUrl so a preview body can be served from that URL. */
 const PRESIGNED_FILE_PATTERN = "https://r2.example.com/artifacts/:fileId";
 
+/** Mirrors the public artifacts URL the API reports for the same object. */
+function publicFileUrl(fileId: string): string {
+  return `https://cdn.vm7.io/artifacts/${fileId}.bin`;
+}
+
 function artifactFile(
   url: string,
   overrides: Partial<ChatThreadArtifactFile> = {},
@@ -145,7 +150,10 @@ beforeEach(() => {
   });
   context.mocks.http.get("/api/web/file-url", ({ request }) => {
     const fileId = new URL(request.url).searchParams.get("file_id") ?? "";
-    return HttpResponse.json({ url: presignedFileUrl(fileId) });
+    return HttpResponse.json({
+      url: presignedFileUrl(fileId),
+      publicUrl: publicFileUrl(fileId),
+    });
   });
 });
 
@@ -366,7 +374,7 @@ async function setupBodyLinkPreviews(): Promise<void> {
     expect(
       screen.getByLabelText("Open html preview for Launch site"),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Download archive.bin")).toBeInTheDocument();
+    expect(screen.getByLabelText("Preview archive.bin")).toBeInTheDocument();
   });
 }
 
@@ -3203,9 +3211,7 @@ describe("zero attachment chips", () => {
     expect(
       screen.getByLabelText("Open html preview for Short site"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Download 0000000008.bin"),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Preview 0000000008.bin")).toBeInTheDocument();
     expect(screen.getByAltText("0000000009.png")).toBeInTheDocument();
   });
 
@@ -3284,11 +3290,34 @@ describe("zero attachment chips", () => {
       ).not.toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Download archive.bin"));
+    click(screen.getByLabelText("Preview archive.bin"));
+
+    await screen.findByTestId("attachment-lightbox");
+    click(screen.getByLabelText("Download options"));
+    await waitFor(() => {
+      expect(
+        queryAllByRoleFast("menuitem").some((element) => {
+          return element.textContent?.trim() === "Download";
+        }),
+      ).toBeTruthy();
+    });
+    const downloadItem = queryAllByRoleFast("menuitem").find((element) => {
+      return element.textContent?.trim() === "Download";
+    });
+    if (!downloadItem) {
+      throw new Error("Download menu item not found");
+    }
+    click(downloadItem);
 
     await waitFor(() => {
-      expect(screen.getByText("Download failed")).toBeInTheDocument();
+      expect(objectUrls.downloads).toHaveLength(1);
     });
+    expect(objectUrls.downloads[0]).toMatchObject({
+      url: BODY_LINK_PREVIEWS.archive,
+      filename: "archive.bin",
+      blob: null,
+    });
+    expect(screen.queryByText("Download failed")).not.toBeInTheDocument();
   });
 
   it("renders bare image URLs through markdown image preview", async () => {
@@ -3356,10 +3385,80 @@ describe("zero attachment chips", () => {
     expect(screen.queryByAltText("1280x720")).toBeNull();
   });
 
+  it("hides the share action when the api reports no public attachment url", async () => {
+    context.mocks.http.get("/api/web/file-url", ({ request }) => {
+      const fileId = new URL(request.url).searchParams.get("file_id") ?? "";
+      return HttpResponse.json({ url: presignedFileUrl(fileId) });
+    });
+    context.mocks.http.get(PRESIGNED_FILE_PATTERN, () => {
+      return new Response("# Release notes\n\nThe rollout is ready.", {
+        headers: { "Content-Type": "text/markdown" },
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-no-public-url",
+          role: "user",
+          content: "Review this attachment",
+          fileParts: [
+            {
+              type: "file",
+              fileId: "attachment-markdown",
+              filenameSnapshot: "release-notes.md",
+              contentType: "text/markdown",
+            },
+          ],
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    click(
+      await screen.findByLabelText(
+        "Open markdown preview for release-notes.md",
+      ),
+    );
+
+    // The body renders from the same resolution that would have carried a
+    // share URL, so its arrival means "no share URL" is settled, not pending.
+    await waitFor(() => {
+      expect(screen.getByText("The rollout is ready.")).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText("Share")).toBeNull();
+  });
+
+  it("shares a public artifact by its cdn url", async () => {
+    const clipboard = context.mocks.browser.clipboardWriteText();
+    context.mocks.browser.blobDownload();
+    await setupBodyLinkPreviews();
+
+    click(screen.getByLabelText("Open markdown preview for release-notes.md"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
+    });
+
+    // An artifact that already carries a public address shares that address
+    // directly, without waiting on the private-attachment resolution.
+    const shareLink = screen.getByLabelText("Share");
+    expect(shareLink).toHaveAttribute("href", BODY_LINK_PREVIEWS.markdown);
+
+    click(shareLink);
+
+    await waitFor(() => {
+      expect(screen.getByText("Link copied")).toBeInTheDocument();
+    });
+    expect(clipboard.writes).toStrictEqual([BODY_LINK_PREVIEWS.markdown]);
+  });
+
   it("opens canonical text previews and downloads a private presentation from its presigned url", async () => {
     const releaseNotesUrl = canonicalUserMessageFileUrl("attachment-markdown");
     const browser = context.mocks.browser.blobDownload();
-    context.mocks.browser.clipboardWriteText();
+    const clipboard = context.mocks.browser.clipboardWriteText();
     context.mocks.http.get(PRESIGNED_FILE_PATTERN, ({ params }) => {
       const fileId = params.fileId;
       if (fileId === "attachment-markdown") {
@@ -3446,13 +3545,22 @@ describe("zero attachment chips", () => {
 
     const shareLink = screen.getByLabelText("Share");
     expect(shareLink.tagName).toBe("A");
-    expect(shareLink).toHaveAttribute("href", releaseNotesUrl);
+    // The canonical URL answers only to the owner's credentials, so sharing it
+    // hands the recipient a 401 instead of the file.
+    expect(shareLink).not.toHaveAttribute("href", releaseNotesUrl);
+    expect(shareLink).toHaveAttribute(
+      "href",
+      publicFileUrl("attachment-markdown"),
+    );
 
     click(shareLink);
 
     await waitFor(() => {
       expect(screen.getByText("Link copied")).toBeInTheDocument();
     });
+    expect(clipboard.writes).toStrictEqual([
+      publicFileUrl("attachment-markdown"),
+    ]);
 
     click(screen.getByLabelText("Close"));
 
@@ -3483,8 +3591,9 @@ describe("zero attachment chips", () => {
       expect(browser.downloads).toHaveLength(1);
     });
     expect(browser.downloads[0]).toMatchObject({
+      url: presignedFileUrl("attachment-presentation"),
       filename: "quarterly-plan.pptx",
-      blob: expect.any(Blob),
+      blob: null,
     });
     expect(screen.queryByText("Download failed")).not.toBeInTheDocument();
   });

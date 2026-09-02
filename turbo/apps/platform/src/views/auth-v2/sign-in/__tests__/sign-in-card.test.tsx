@@ -338,10 +338,16 @@ async function editRestoredIdentifier(): Promise<void> {
 }
 
 describe("auth v2 sign-in flow", () => {
-  it("shows the loading state until the low-level Clerk resource is ready", async () => {
+  it("keeps the bootstrap skeleton until the low-level Clerk resource is ready", async () => {
     const clerkLoad = createDeferredPromise<void>(context.signal);
     mockedClerk.load.mockImplementation(() => {
       return clerkLoad.promise;
+    });
+    const bootstrapSkeleton = document.createElement("div");
+    bootstrapSkeleton.id = "app-bootstrap-skeleton";
+    document.body.append(bootstrapSkeleton);
+    context.signal.addEventListener("abort", () => {
+      bootstrapSkeleton.remove();
     });
 
     setupSignInPage({ status: "needs_identifier" });
@@ -352,6 +358,7 @@ describe("auth v2 sign-in flow", () => {
       "Checking what your account needs next.",
     );
     expect(roleElement("link", "Sign up")).toBeUndefined();
+    expect(bootstrapSkeleton).not.toHaveAttribute("aria-hidden");
 
     await act(async () => {
       clerkLoad.resolve(undefined);
@@ -361,6 +368,9 @@ describe("auth v2 sign-in flow", () => {
     await expect(
       screen.findByLabelText("Email address"),
     ).resolves.toBeVisible();
+    await waitFor(() => {
+      expect(bootstrapSkeleton).toHaveAttribute("aria-hidden", "true");
+    });
   });
 
   it("starts a fresh identifier request with an empty draft", async () => {

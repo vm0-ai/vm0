@@ -37,9 +37,9 @@ export const googleFormsWatchStates = pgTable(
   },
   (table) => {
     return [
-      uniqueIndex("idx_google_forms_watch_states_form_user").on(
+      uniqueIndex("idx_google_forms_watch_states_connector_form").on(
+        table.connectorId,
         table.formId,
-        table.userId,
       ),
       uniqueIndex("idx_google_forms_watch_states_watch").on(table.watchId),
       index("idx_google_forms_watch_states_renewal").on(table.expireTime),

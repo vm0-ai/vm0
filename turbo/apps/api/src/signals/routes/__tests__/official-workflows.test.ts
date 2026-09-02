@@ -52,6 +52,7 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import {
   createConnectorBddApi,
   mockGmailConnectorOAuth,
+  mockGoogleFormsConnectorOAuth,
   mockStripeConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
@@ -108,6 +109,15 @@ const outbox = createEmailOutboxStateApi(context);
 const CRON_SECRET = "official-workflow-installation-cron-secret";
 const GMAIL_TOPIC_NAME =
   "projects/vm0-ai-488909/topics/official-workflow-gmail-events";
+const GOOGLE_FORMS_TOPIC_NAME =
+  "projects/vm0-ai-488909/topics/official-workflow-google-forms-events";
+const GOOGLE_FORMS_PUSH_AUDIENCE =
+  "https://api.vm0.ai/api/webhooks/google-forms";
+const GOOGLE_FORMS_PUSH_SERVICE_ACCOUNT =
+  "gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com";
+const GOOGLE_FORM_ID = "1FAIpQLScOfficialWorkflowGoogleFormsTest";
+const GOOGLE_FORM_URL = `https://docs.google.com/forms/d/${GOOGLE_FORM_ID}/edit`;
+const GOOGLE_FORM_SEED_CURSOR = "2026-09-01T08:15:00.123456Z";
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 type ActiveDefinition = Extract<
@@ -273,6 +283,188 @@ function gmailLabelBlueprint(): OfficialWorkflowBlueprint {
     },
     runtime: { resultEmail: false },
   };
+}
+
+function googleFormsBlueprint(
+  autonomyBudget: number,
+): OfficialWorkflowBlueprint {
+  return {
+    key: "google-forms-trigger",
+    parameters: [],
+    desiredState: {
+      kind: "event",
+      eventType: "google-forms-response-submitted",
+      eventConfig: {
+        provider: "google-forms",
+        event: "response_submitted",
+        formUrl: GOOGLE_FORM_URL,
+      },
+      autonomyBudget,
+    },
+    runtime: { resultEmail: false },
+  };
+}
+
+function googleMeetBlueprint(
+  autonomyBudget: number,
+): OfficialWorkflowBlueprint {
+  return {
+    key: "google-meet-trigger",
+    parameters: [],
+    desiredState: {
+      kind: "event",
+      eventType: "google-meet-transcript-generated",
+      eventConfig: {
+        provider: "google-meet",
+        event: "transcript_generated",
+        scope: { type: "organizer_user" },
+      },
+      autonomyBudget,
+    },
+    runtime: { resultEmail: false },
+  };
+}
+
+function configureOfficialGoogleFormsMock() {
+  const recorder = { watchCalls: 0 };
+  mockOptionalEnv("GOOGLE_FORMS_PUBSUB_TOPIC_NAME", GOOGLE_FORMS_TOPIC_NAME);
+  mockOptionalEnv(
+    "GOOGLE_FORMS_PUBSUB_PUSH_AUDIENCE",
+    GOOGLE_FORMS_PUSH_AUDIENCE,
+  );
+  mockOptionalEnv(
+    "GOOGLE_FORMS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL",
+    GOOGLE_FORMS_PUSH_SERVICE_ACCOUNT,
+  );
+  server.use(
+    http.get("https://forms.googleapis.com/v1/forms/:formId", ({ params }) => {
+      expect(params.formId).toBe(GOOGLE_FORM_ID);
+      return HttpResponse.json({
+        formId: GOOGLE_FORM_ID,
+        info: { title: "Official workflow survey" },
+        publishSettings: {
+          publishState: {
+            isPublished: true,
+            isAcceptingResponses: true,
+          },
+        },
+      });
+    }),
+    http.get(
+      "https://forms.googleapis.com/v1/forms/:formId/responses",
+      ({ request, params }) => {
+        expect(params.formId).toBe(GOOGLE_FORM_ID);
+        expect(new URL(request.url).searchParams.get("pageSize")).toBeNull();
+        return HttpResponse.json({
+          responses: [
+            {
+              responseId: "official-google-forms-seed",
+              createTime: GOOGLE_FORM_SEED_CURSOR,
+              lastSubmittedTime: GOOGLE_FORM_SEED_CURSOR,
+            },
+          ],
+        });
+      },
+    ),
+    http.post(
+      "https://forms.googleapis.com/v1/forms/:formId/watches",
+      ({ params }) => {
+        expect(params.formId).toBe(GOOGLE_FORM_ID);
+        recorder.watchCalls += 1;
+        return HttpResponse.json({
+          id: `official-google-forms-watch-${randomUUID()}`,
+          target: { topic: { topicName: GOOGLE_FORMS_TOPIC_NAME } },
+          eventType: "RESPONSES",
+          createTime: "2026-09-01T08:00:00Z",
+          expireTime: "2026-09-08T08:00:00Z",
+          state: "ACTIVE",
+        });
+      },
+    ),
+    http.delete(
+      "https://forms.googleapis.com/v1/forms/:formId/watches/:watchId",
+      () => {
+        return HttpResponse.json({});
+      },
+    ),
+  );
+  return recorder;
+}
+
+function configureOfficialGoogleMeetMock() {
+  const testId = randomUUID();
+  const accessToken = `official-google-meet-access-${testId}`;
+  const externalId = `official-google-meet-user-${testId}`;
+  const topicName = `projects/vm0-ai-488909/topics/official-google-meet-${testId}`;
+  const recorder = { createCalls: 0 };
+  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
+  mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
+  mockOptionalEnv("GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME", topicName);
+
+  server.use(
+    http.post("https://oauth2.googleapis.com/token", () => {
+      return HttpResponse.json({
+        access_token: accessToken,
+        refresh_token: `official-google-meet-refresh-${testId}`,
+        expires_in: 3600,
+        token_type: "Bearer",
+        scope:
+          "https://www.googleapis.com/auth/meetings.space.readonly https://www.googleapis.com/auth/userinfo.email",
+      });
+    }),
+    http.get("https://www.googleapis.com/oauth2/v2/userinfo", ({ request }) => {
+      expect(request.headers.get("authorization")).toBe(
+        `Bearer ${accessToken}`,
+      );
+      return HttpResponse.json({
+        id: externalId,
+        email: `official-google-meet-${testId}@example.test`,
+        name: "Official Google Meet User",
+      });
+    }),
+    http.post(
+      "https://workspaceevents.googleapis.com/v1/subscriptions",
+      async ({ request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          `Bearer ${accessToken}`,
+        );
+        await expect(request.json()).resolves.toStrictEqual({
+          targetResource: `//cloudidentity.googleapis.com/users/${externalId}`,
+          eventTypes: ["google.workspace.meet.transcript.v2.fileGenerated"],
+          notificationEndpoint: { pubsubTopic: topicName },
+          ttl: "604800s",
+        });
+        recorder.createCalls += 1;
+        return HttpResponse.json({
+          response: {
+            name: `subscriptions/official-google-meet-${testId}`,
+            targetResource: `//cloudidentity.googleapis.com/users/${externalId}`,
+            eventTypes: ["google.workspace.meet.transcript.v2.fileGenerated"],
+            notificationEndpoint: { pubsubTopic: topicName },
+            state: "ACTIVE",
+            expireTime: "2099-09-01T00:00:00.000Z",
+          },
+        });
+      },
+    ),
+    http.delete(
+      /^https:\/\/workspaceevents\.googleapis\.com\/v1\/subscriptions\/[^/]+$/,
+      ({ request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          `Bearer ${accessToken}`,
+        );
+        expect(new URL(request.url).searchParams.get("allowMissing")).toBe(
+          "true",
+        );
+        return HttpResponse.json({
+          name: `operations/delete-official-google-meet-${testId}`,
+          done: true,
+        });
+      },
+    ),
+  );
+  return recorder;
 }
 
 function structureTransitionScheduleBlueprint(
@@ -1052,6 +1244,28 @@ async function setOfficialWorkflowsEnabled(
     { orgId: actor.orgId, userId: actor.userId },
     { [FeatureSwitchKey.OfficialWorkflows]: enabled },
   );
+}
+
+async function connectGoogleMeetForOfficialWorkflow(
+  actor: ApiTestUser,
+): Promise<void> {
+  const started = await connectors.startOauth(actor, "google-meet", "oauth");
+  const state = new URL(started.authorizationUrl).searchParams.get("state");
+  if (!state) {
+    throw new Error("Expected Google Meet OAuth state");
+  }
+  await connectors.completeOauthCallback("google-meet", {
+    code: "official-google-meet-code",
+    state,
+  });
+  const accounts = await connectors.listBuiltinConnectorAccounts(
+    actor,
+    "google-meet",
+  );
+  const account = accounts[0];
+  if (!account) {
+    throw new Error("Expected an Official Workflow Google Meet account");
+  }
 }
 
 async function connectStripeOAuthForOfficialWorkflow(
@@ -3688,6 +3902,174 @@ describe.sequential("Official Workflow installations", () => {
       [404],
     );
     expect(stopCalls).toBeGreaterThan(stopCallsBeforeAgentDeletion);
+  });
+
+  it("preserves the Google Forms account projection across same-target reconfiguration", async () => {
+    installCatalogStorageFixture();
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+    const definitionName = `api-test-google-forms-${suffix}`;
+    await syncCatalog(
+      catalog([activeDefinition(definitionName, [googleFormsBlueprint(4)])]),
+    );
+
+    const { actor } = await workflowBdd.setupWorkflowOrg({
+      timezone: "Asia/Shanghai",
+    });
+    if (!actor.orgId) {
+      throw new Error("Expected organization-scoped actor");
+    }
+    const { agentId } = await workflowBdd.createAgent(actor);
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await bdd.deleteAgent(actor, agentId);
+      await cleanupCatalog();
+    });
+    mockGoogleFormsConnectorOAuth();
+    await workflowBdd.connectConnector(actor, "google-forms");
+    const forms = configureOfficialGoogleFormsMock();
+    await updateFeatureSwitchesForUser(
+      context,
+      { orgId: actor.orgId, userId: actor.userId },
+      {
+        [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
+        [FeatureSwitchKey.OfficialWorkflows]: true,
+      },
+    );
+    const headers = authHeaders(actor);
+    const installed = await accept(
+      officialClient().install({
+        headers,
+        params: { definitionName },
+        body: {
+          agentId,
+          blueprints: [{ blueprintKey: "google-forms-trigger", bindings: [] }],
+        },
+      }),
+      [201],
+    );
+    const initial = installed.body.workflow.automations.find((automation) => {
+      return automation.official?.blueprintKey === "google-forms-trigger";
+    });
+    if (
+      !initial ||
+      initial.kind !== "event" ||
+      initial.eventType !== "google-forms-response-submitted" ||
+      !initial.official
+    ) {
+      throw new Error("Expected an Official Google Forms automation");
+    }
+    const connectorId = initial.eventConfig.connectorId;
+    const initialFingerprint = initial.official.appliedFingerprint;
+    expect(forms.watchCalls).toBe(1);
+
+    await syncCatalog(
+      catalog([activeDefinition(definitionName, [googleFormsBlueprint(7)])]),
+    );
+    await expect(
+      runOfficialWorkflowReconciliationWorker(),
+    ).resolves.toMatchObject({ completed: 1, installations: 1, retried: 0 });
+
+    const reconciled = await accept(
+      installationClient().get({
+        headers,
+        params: { workflowId: installed.body.workflow.id },
+      }),
+      [200],
+    );
+    const current = reconciled.body.workflow.automations.find((automation) => {
+      return automation.id === initial.id;
+    });
+    expect(current).toMatchObject({
+      eventConfig: { connectorId },
+      official: { reconciliationStatus: "current" },
+    });
+    expect(current?.official?.appliedFingerprint).not.toBe(initialFingerprint);
+    expect(forms.watchCalls).toBe(1);
+  });
+
+  it("projects the Google Meet account during installation and reconfiguration", async () => {
+    installCatalogStorageFixture();
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+    const definitionName = `api-test-google-meet-${suffix}`;
+    await syncCatalog(
+      catalog([activeDefinition(definitionName, [googleMeetBlueprint(4)])]),
+    );
+
+    const { actor } = await workflowBdd.setupWorkflowOrg({
+      timezone: "Asia/Shanghai",
+    });
+    if (!actor.orgId) {
+      throw new Error("Expected organization-scoped actor");
+    }
+    const { agentId } = await workflowBdd.createAgent(actor);
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await bdd.deleteAgent(actor, agentId);
+      await cleanupCatalog();
+    });
+    const meet = configureOfficialGoogleMeetMock();
+    await updateFeatureSwitchesForUser(
+      context,
+      { orgId: actor.orgId, userId: actor.userId },
+      {
+        [FeatureSwitchKey.ConnectorAccounts]: true,
+        [FeatureSwitchKey.OfficialWorkflows]: true,
+      },
+    );
+    await connectGoogleMeetForOfficialWorkflow(actor);
+    const headers = authHeaders(actor);
+    const installed = await accept(
+      officialClient().install({
+        headers,
+        params: { definitionName },
+        body: {
+          agentId,
+          blueprints: [{ blueprintKey: "google-meet-trigger", bindings: [] }],
+        },
+      }),
+      [201],
+    );
+    const initial = installed.body.workflow.automations.find((automation) => {
+      return automation.official?.blueprintKey === "google-meet-trigger";
+    });
+    if (!initial?.official) {
+      throw new Error("Expected an Official Google Meet automation");
+    }
+    const initialFingerprint = initial.official.appliedFingerprint;
+    expect(initial).toMatchObject({
+      kind: "event",
+      eventType: "google-meet-transcript-generated",
+      enabled: true,
+      official: { reconciliationStatus: "current" },
+    });
+    expect(meet.createCalls).toBe(1);
+
+    await syncCatalog(
+      catalog([activeDefinition(definitionName, [googleMeetBlueprint(7)])]),
+    );
+    await expect(
+      runOfficialWorkflowReconciliationWorker(),
+    ).resolves.toMatchObject({ completed: 1, installations: 1, retried: 0 });
+
+    const reconciled = await accept(
+      installationClient().get({
+        headers,
+        params: { workflowId: installed.body.workflow.id },
+      }),
+      [200],
+    );
+    const current = reconciled.body.workflow.automations.find((automation) => {
+      return automation.id === initial.id;
+    });
+    expect(current).toMatchObject({
+      enabled: true,
+      official: { reconciliationStatus: "current" },
+    });
+    expect(current?.official?.appliedFingerprint).not.toBe(initialFingerprint);
+    await expect(
+      readWorkflowAutomationAutonomyFixture(context, initial.id),
+    ).resolves.toMatchObject({ autonomyBudget: 7, enabled: true });
+    expect(meet.createCalls).toBe(1);
   });
 
   it("records selective non-blocking work and converges schema changes per Blueprint", async () => {

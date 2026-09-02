@@ -299,8 +299,15 @@ export function deleteS3Objects(
 export function downloadS3Buffer(
   bucket: string,
   key: string,
+  signal?: AbortSignal,
 ): Computed<Promise<Buffer>> {
-  return downloadS3BufferWithClient(s3ClientForBucket(bucket), bucket, key);
+  return downloadS3BufferWithClient(
+    s3ClientForBucket(bucket),
+    bucket,
+    key,
+    {},
+    signal,
+  );
 }
 
 export function downloadS3BufferWithMaxBytes(

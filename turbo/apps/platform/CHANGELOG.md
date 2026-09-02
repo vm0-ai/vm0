@@ -1,5 +1,107 @@
 # Changelog
 
+## [0.822.1](https://github.com/vm0-ai/vm0/compare/app-v0.822.0...app-v0.822.1) (2026-09-02)
+
+
+### Refactoring
+
+* **platform:** move queue data into shared worker ([#30933](https://github.com/vm0-ai/vm0/issues/30933)) ([2584031](https://github.com/vm0-ai/vm0/commit/2584031276636c504f534f93c330c01e2cb8ac61))
+* remove connectorCatalogCount feature switch ([#30935](https://github.com/vm0-ai/vm0/issues/30935)) ([531a1cc](https://github.com/vm0-ai/vm0/commit/531a1ccf20b2f4c5e33adf143ec0284a8911e3f2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.1
+    * @okouai/core bumped to 8.608.1
+
+## [0.822.0](https://github.com/vm0-ai/vm0/compare/app-v0.821.2...app-v0.822.0) (2026-09-02)
+
+
+### Features
+
+* support no-auth custom connectors ([#30897](https://github.com/vm0-ai/vm0/issues/30897)) ([f6a4e7a](https://github.com/vm0-ai/vm0/commit/f6a4e7af74566f31c53c59035554aaf5f0c1076c))
+
+
+### Bug Fixes
+
+* **platform:** catch up active threads after indicator reload ([#30927](https://github.com/vm0-ai/vm0/issues/30927)) ([8342677](https://github.com/vm0-ai/vm0/commit/83426770cd04e75d78a77f34cea9feb6414a3888))
+
+
+### Performance Improvements
+
+* **platform:** simplify index resource loading ([#30921](https://github.com/vm0-ai/vm0/issues/30921)) ([0dee441](https://github.com/vm0-ai/vm0/commit/0dee441cddfa3e523d2846127674972f788eb11b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.0
+    * @okouai/core bumped to 8.608.0
+
+## [0.821.2](https://github.com/vm0-ai/vm0/compare/app-v0.821.1...app-v0.821.2) (2026-09-02)
+
+
+### Bug Fixes
+
+* share attachments by their public artifacts url ([#30835](https://github.com/vm0-ai/vm0/issues/30835)) ([7aa3ac3](https://github.com/vm0-ai/vm0/commit/7aa3ac3843232909951bd81d1ee60bacf852a078))
+
+
+### Performance Improvements
+
+* **app:** start application before Google Ads ([#30924](https://github.com/vm0-ai/vm0/issues/30924)) ([4e77d33](https://github.com/vm0-ai/vm0/commit/4e77d33443d862020727b3cb709d942f2d44b718))
+* **platform:** keep auth skeleton until auth is ready ([#30922](https://github.com/vm0-ai/vm0/issues/30922)) ([ecbf4cc](https://github.com/vm0-ai/vm0/commit/ecbf4cc91c5f112470cb1222e8dd5152efcbeac2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.389.1
+    * @okouai/core bumped to 8.607.1
+
+## [0.821.1](https://github.com/vm0-ai/vm0/compare/app-v0.821.0...app-v0.821.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **platform:** open chat file cards in preview dialog ([#30889](https://github.com/vm0-ai/vm0/issues/30889)) ([4d9b0aa](https://github.com/vm0-ai/vm0/commit/4d9b0aa53a9d9032bef3f66a6e17457854780424))
+
+## [0.821.0](https://github.com/vm0-ai/vm0/compare/app-v0.820.1...app-v0.821.0) (2026-09-01)
+
+
+### Features
+
+* **platform:** translate selected chat text ([#30818](https://github.com/vm0-ai/vm0/issues/30818)) ([37c2265](https://github.com/vm0-ai/vm0/commit/37c2265c1c600cbcc22b32224e376c5ae26cead3))
+* use transparent avatar cutouts in the intro video picker ([#30873](https://github.com/vm0-ai/vm0/issues/30873)) ([b176b5b](https://github.com/vm0-ai/vm0/commit/b176b5b46f223dd26d44e976e2299ed3f5bbfa8c))
+
+
+### Bug Fixes
+
+* **app:** remove instatus widget ([#30886](https://github.com/vm0-ai/vm0/issues/30886)) ([e9f7d38](https://github.com/vm0-ai/vm0/commit/e9f7d387d8a42f8eac1fd0b720f7d27fdea38bfe))
+* **platform:** recover shared worker authentication ([#30797](https://github.com/vm0-ai/vm0/issues/30797)) ([d684395](https://github.com/vm0-ai/vm0/commit/d684395ce4ab6af0e25b72a20f0c68cc36cb31ec))
+
+
+### Refactoring
+
+* **platform:** load google ads from app entry ([#30881](https://github.com/vm0-ai/vm0/issues/30881)) ([d2fe263](https://github.com/vm0-ai/vm0/commit/d2fe263990f92b5c45517d2deb34e0f17c130854))
+
+
+### Performance Improvements
+
+* **platform:** preload main stylesheet without blocking paint ([#30883](https://github.com/vm0-ai/vm0/issues/30883)) ([280bf3e](https://github.com/vm0-ai/vm0/commit/280bf3e5d3523c759bd5116bf5be01dcedd0a5f7))
+* **platform:** prune unused global styles ([#30887](https://github.com/vm0-ai/vm0/issues/30887)) ([ae07bec](https://github.com/vm0-ai/vm0/commit/ae07becadf08eaf208add28b7503e8d192252fef))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.389.0
+    * @okouai/core bumped to 8.607.0
+
 ## [0.820.1](https://github.com/vm0-ai/vm0/compare/app-v0.820.0...app-v0.820.1) (2026-09-01)
 
 

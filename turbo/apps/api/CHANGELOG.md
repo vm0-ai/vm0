@@ -1,5 +1,126 @@
 # Changelog
 
+## [1.526.1](https://github.com/vm0-ai/vm0/compare/api-v1.526.0...api-v1.526.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **api:** bind google meet triggers to selected account ([#30906](https://github.com/vm0-ai/vm0/issues/30906)) ([d567690](https://github.com/vm0-ai/vm0/commit/d567690ee7612f31b86e26657d1270d6ac099196))
+* **api:** bound snapshot convergence ([#30929](https://github.com/vm0-ai/vm0/issues/30929)) ([8850bca](https://github.com/vm0-ai/vm0/commit/8850bca232d7c8f65ee29fc4e424c35116a348e8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.1
+    * @okouai/core bumped to 8.608.1
+    * @okouai/db bumped to 1.231.1
+
+## [1.526.0](https://github.com/vm0-ai/vm0/compare/api-v1.525.6...api-v1.526.0) (2026-09-02)
+
+
+### Features
+
+* support no-auth custom connectors ([#30897](https://github.com/vm0-ai/vm0/issues/30897)) ([f6a4e7a](https://github.com/vm0-ai/vm0/commit/f6a4e7af74566f31c53c59035554aaf5f0c1076c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.0
+    * @okouai/core bumped to 8.608.0
+    * @okouai/db bumped to 1.231.0
+
+## [1.525.6](https://github.com/vm0-ai/vm0/compare/api-v1.525.5...api-v1.525.6) (2026-09-02)
+
+
+### Bug Fixes
+
+* share attachments by their public artifacts url ([#30835](https://github.com/vm0-ai/vm0/issues/30835)) ([7aa3ac3](https://github.com/vm0-ai/vm0/commit/7aa3ac3843232909951bd81d1ee60bacf852a078))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.389.1
+    * @okouai/core bumped to 8.607.1
+    * @okouai/db bumped to 1.230.2
+
+## [1.525.5](https://github.com/vm0-ai/vm0/compare/api-v1.525.4...api-v1.525.5) (2026-09-01)
+
+
+### Bug Fixes
+
+* **api:** repair direct morning brief snapshots ([#30919](https://github.com/vm0-ai/vm0/issues/30919)) ([0a202a6](https://github.com/vm0-ai/vm0/commit/0a202a6eb3f30ced777c942cbc785a3db87b7ff3))
+
+## [1.525.4](https://github.com/vm0-ai/vm0/compare/api-v1.525.3...api-v1.525.4) (2026-09-01)
+
+
+### Bug Fixes
+
+* **api:** repair priority morning brief snapshot claims ([#30917](https://github.com/vm0-ai/vm0/issues/30917)) ([b21b3c6](https://github.com/vm0-ai/vm0/commit/b21b3c6571ca1d9a2d9b5f646257acd51da871d0))
+
+## [1.525.3](https://github.com/vm0-ai/vm0/compare/api-v1.525.2...api-v1.525.3) (2026-09-01)
+
+
+### Bug Fixes
+
+* **api:** repair model-annotated legacy snapshots ([#30912](https://github.com/vm0-ai/vm0/issues/30912)) ([40e8aea](https://github.com/vm0-ai/vm0/commit/40e8aea0009937c60146f7caa7698cefcde95b43))
+
+## [1.525.2](https://github.com/vm0-ai/vm0/compare/api-v1.525.1...api-v1.525.2) (2026-09-01)
+
+
+### Bug Fixes
+
+* **api:** repair retired morning brief snapshots ([#30909](https://github.com/vm0-ai/vm0/issues/30909)) ([8eb32b3](https://github.com/vm0-ai/vm0/commit/8eb32b3f050777150905808ecdde70aca45c7404))
+
+## [1.525.1](https://github.com/vm0-ai/vm0/compare/api-v1.525.0...api-v1.525.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **api:** repair contextless legacy snapshots ([#30903](https://github.com/vm0-ai/vm0/issues/30903)) ([aa814d7](https://github.com/vm0-ai/vm0/commit/aa814d72263aa816bfdd43bce80508ea52540131))
+* isolate google forms triggers by account ([#30798](https://github.com/vm0-ai/vm0/issues/30798)) ([2b74ba7](https://github.com/vm0-ai/vm0/commit/2b74ba7a6775fad0d8133165ee6e3e017d7ea770))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.230.1
+
+## [1.525.0](https://github.com/vm0-ai/vm0/compare/api-v1.524.0...api-v1.525.0) (2026-09-01)
+
+
+### Features
+
+* **platform:** translate selected chat text ([#30818](https://github.com/vm0-ai/vm0/issues/30818)) ([37c2265](https://github.com/vm0-ai/vm0/commit/37c2265c1c600cbcc22b32224e376c5ae26cead3))
+* use transparent avatar cutouts in the intro video picker ([#30873](https://github.com/vm0-ai/vm0/issues/30873)) ([b176b5b](https://github.com/vm0-ai/vm0/commit/b176b5b46f223dd26d44e976e2299ed3f5bbfa8c))
+
+
+### Bug Fixes
+
+* **api:** bind notion automations to workflow accounts ([#30854](https://github.com/vm0-ai/vm0/issues/30854)) ([93b2fb7](https://github.com/vm0-ai/vm0/commit/93b2fb776be6b6e4dedb18ee98f6bd2351ab0b4c))
+* **api:** clean up unused google meet subscriptions ([#30874](https://github.com/vm0-ai/vm0/issues/30874)) ([c51ab2b](https://github.com/vm0-ai/vm0/commit/c51ab2b08ed8f2515bd6d77e93bcc98821f84b6d))
+* **api:** reject reordered legacy snapshot chains ([#30895](https://github.com/vm0-ai/vm0/issues/30895)) ([5f1496c](https://github.com/vm0-ai/vm0/commit/5f1496c724382c7979070c31b9fc8624c609f178))
+
+
+### Performance Improvements
+
+* **guest-agent:** expose control-path scheduling metrics ([#30890](https://github.com/vm0-ai/vm0/issues/30890)) ([1e7a196](https://github.com/vm0-ai/vm0/commit/1e7a1966f15351fb5f8019ebd29c2ee5ad2b4f96))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.389.0
+    * @okouai/core bumped to 8.607.0
+    * @okouai/db bumped to 1.230.0
+
 ## [1.524.0](https://github.com/vm0-ai/vm0/compare/api-v1.523.0...api-v1.524.0) (2026-09-01)
 
 

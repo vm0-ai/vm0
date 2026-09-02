@@ -44,7 +44,7 @@ async fn nonzero_job_parks_and_successor_reuses_sandbox() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.push_wait_process_exit(sandbox::ProcessExit::new(1, 1, Vec::new(), Vec::new()));
     let (config, env) =
-        mock_run_config_with_overrides(test_profiles(), 4, 8192, 4, Arc::clone(&overrides));
+        mock_run_config_with_overrides(test_profiles(), 5, 8192, 4, Arc::clone(&overrides));
     let budget = Arc::clone(&config.capacity.budget);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let run_handle = tokio::spawn(run(config));
@@ -126,7 +126,7 @@ async fn confirmed_execution_timeout_parks_and_successor_reuses_sandbox() {
     overrides.push_read_file_result(Ok(Some(serde_json::to_vec(&diagnostic).unwrap())));
     overrides.push_read_file_result(Ok(Some(b"Agent execution timed out".to_vec())));
     let (config, env) =
-        mock_run_config_with_overrides(test_profiles(), 4, 8192, 4, Arc::clone(&overrides));
+        mock_run_config_with_overrides(test_profiles(), 5, 8192, 4, Arc::clone(&overrides));
     let budget = Arc::clone(&config.capacity.budget);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let run_handle = tokio::spawn(run(config));
@@ -195,7 +195,7 @@ async fn cooperative_cancellation_parks_and_successor_reuses_sandbox() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
     let (config, env) =
-        mock_run_config_with_overrides(test_profiles(), 4, 8192, 4, Arc::clone(&overrides));
+        mock_run_config_with_overrides(test_profiles(), 5, 8192, 4, Arc::clone(&overrides));
     let budget = Arc::clone(&config.capacity.budget);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let cancel_tokens = config.provider.cancel_tokens.clone();

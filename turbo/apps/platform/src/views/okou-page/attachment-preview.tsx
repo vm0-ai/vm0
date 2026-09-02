@@ -1,10 +1,7 @@
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import { Download, Eye, FileMusic, Play, Video } from "lucide-react";
+import { Eye, FileMusic, Play, Video } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { downloadAttachment$ } from "../../signals/attachment-download.ts";
-import { pageSignal$ } from "../../signals/page-signal.ts";
-import { detach, Reason } from "../../signals/utils.ts";
 import type { TextPreviewComputed } from "../../signals/text-preview.ts";
 import type { ImageLoadSignals } from "../../signals/image-load.ts";
 import {
@@ -54,10 +51,6 @@ function contentTypeForDocumentPreviewKind(kind: DocumentPreviewKind): string {
     return "application/pdf";
   }
   return "text/html";
-}
-
-function normalizePlatformFileUrl(url: string): string {
-  return url;
 }
 
 function shouldUseNativeAnchorNavigation(
@@ -406,37 +399,29 @@ function DocumentThumbnailPreview({
 }
 
 function FileThumbnailPreview({
+  onPreview,
   filename,
-  url,
   contentType,
 }: {
+  onPreview: () => void;
   filename: string;
-  url: string;
   contentType?: string;
 }) {
   const { t } = useTranslation();
   const accentClass = getFilePreviewAccentClass(filename, contentType);
-  const downloadAttachment = useSet(downloadAttachment$);
-  const pageSignal = useGet(pageSignal$);
 
   return (
     <button
       type="button"
-      onClick={() => {
-        detach(
-          downloadAttachment(
-            { filename, url: normalizePlatformFileUrl(url) },
-            pageSignal,
-          ),
-          Reason.DomCallback,
-          "attachment download",
-        );
+      onClick={(event) => {
+        event.currentTarget.blur();
+        onPreview();
       }}
       title={filename}
       data-testid="attachment-preview-file"
       aria-label={t(
         ($) => {
-          return $.artifacts.attachments.download;
+          return $.chat.attachments.previewFile;
         },
         { filename },
       )}
@@ -455,9 +440,9 @@ function FileThumbnailPreview({
           />
         </div>
         <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
-          <Download size={10} />
+          <Eye size={10} />
           {t(($) => {
-            return $.artifacts.actions.download;
+            return $.artifacts.preview.badge;
           })}
         </div>
         <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-black/55 via-black/15 to-transparent px-2.5 py-2.5 text-white opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
@@ -621,10 +606,12 @@ function VideoThumbnailPreview({
 
 export function AttachmentPreview({
   attachment,
+  onPreviewFile,
   previewImageLoad,
   text$,
 }: {
   attachment: ChatAttachmentDescriptor;
+  onPreviewFile: () => void;
   previewImageLoad?: ImageLoadSignals;
   text$?: TextPreviewComputed;
 }) {
@@ -714,8 +701,8 @@ export function AttachmentPreview({
       return (
         <FileThumbnailPreview
           filename={attachment.filename}
-          url={attachment.url}
           contentType={attachment.contentType}
+          onPreview={onPreviewFile}
         />
       );
     }

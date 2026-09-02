@@ -21,9 +21,9 @@ import {
   onRejection,
   onDomEventFn,
   setLoop,
+  settle,
 } from "./utils.ts";
 import { MessagePortSharedDatabaseBridge } from "../shared-database/message-port-client.ts";
-import { AuthRecoveringSharedDatabaseBridge } from "../shared-database/auth-recovering-client.ts";
 import type {
   SharedDatabaseBridge,
   SharedDatabaseBridgeEvents,
@@ -45,6 +45,12 @@ const MAX_HEARTBEAT_INTERVAL_MS = 60_000;
 const AUTHENTICATION_REQUIRED_EVENT = "authentication-required";
 const SHARED_DATABASE_RELOAD_MARKER = "okou-shared-database-reload";
 const L = logger("SharedDatabaseBrowser");
+
+class SharedDatabaseAuthenticationRequiredEvent extends Event {
+  constructor(readonly recoveryId: string) {
+    super(AUTHENTICATION_REQUIRED_EVENT);
+  }
+}
 
 export interface SharedDatabaseBridgeHost {
   createBridge(
@@ -224,9 +230,9 @@ export const prepareSharedDatabaseBridge$ = command(
         return bridgeHost.createBridge(apiBaseUrl, events, connectionSignal);
       },
       events: {
-        authenticationRequired: () => {
+        authenticationRequired: (recoveryId) => {
           authenticationRequiredTarget.dispatchEvent(
-            new Event(AUTHENTICATION_REQUIRED_EVENT),
+            new SharedDatabaseAuthenticationRequiredEvent(recoveryId),
           );
         },
         databaseInvalidated: async (dataKey) => {
@@ -291,17 +297,19 @@ const connectSharedDatabaseBridge$ = command(
     if (!prepared) {
       throw new Error("Shared database bridge was not prepared");
     }
-    const bridge = new AuthRecoveringSharedDatabaseBridge(
-      prepared.bridge,
-      async (recoverySignal) => {
-        return await set(reloadToken$, recoverySignal);
-      },
-      signal,
-    );
     prepared.authenticationRequiredTarget.addEventListener(
       AUTHENTICATION_REQUIRED_EVENT,
-      onDomEventFn(async () => {
-        await bridge.authenticationRequired();
+      onDomEventFn(async (event) => {
+        if (!(event instanceof SharedDatabaseAuthenticationRequiredEvent)) {
+          throw new Error("Shared database authentication event is invalid");
+        }
+        const refreshed = await settle(set(reloadToken$, signal), signal);
+        signal.throwIfAborted();
+        await prepared.bridge.setToken(
+          event.recoveryId,
+          refreshed.ok ? refreshed.value : null,
+          signal,
+        );
       }),
       { signal },
     );
@@ -310,7 +318,7 @@ const connectSharedDatabaseBridge$ = command(
     );
     await set(
       installSharedDatabaseBridge$,
-      bridge,
+      prepared.bridge,
       {
         token,
         ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),

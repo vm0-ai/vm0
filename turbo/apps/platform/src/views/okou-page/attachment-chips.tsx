@@ -953,6 +953,22 @@ function ArtifactDialogDocumentFrameBody({
   );
 }
 
+function ArtifactDialogGenericFileBody({ filename }: { filename: string }) {
+  const { t } = useTranslation();
+  return (
+    <ArtifactDialogStage centered>
+      <div className="flex w-full max-w-md flex-col items-center justify-center gap-3 rounded-xl border border-border/70 bg-background p-6 text-center text-muted-foreground shadow-sm">
+        <p className="text-sm">
+          {t(($) => {
+            return $.artifacts.preview.noInline;
+          })}
+        </p>
+        <p className="text-xs">{filename}</p>
+      </div>
+    </ArtifactDialogStage>
+  );
+}
+
 function ArtifactDialogBody({
   artifact,
   imageNavigation,
@@ -980,6 +996,10 @@ function ArtifactDialogBody({
 
   if (preview.kind === "audio") {
     return <ArtifactDialogAudioBody filename={filename} preview={preview} />;
+  }
+
+  if (preview.kind === "file") {
+    return <ArtifactDialogGenericFileBody filename={filename} />;
   }
 
   if (preview.kind === "markdown") {

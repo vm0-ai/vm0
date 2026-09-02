@@ -26,7 +26,7 @@ async fn telemetry_flush_includes_start_loop_claim_phase_spans() {
                 .body_includes("runner_claim_spawn_job_setup")
                 .body_includes("runner_claim_task_schedule_wait")
                 .body_includes(r#""runner_pre_spawn_concurrency_bucket":"1""#)
-                .body_includes(r#""runner_resource_budget_vcpu_utilization_bucket":"0_25""#)
+                .body_includes(r#""runner_resource_budget_vcpu_utilization_bucket":"26_50""#)
                 .body_includes(r#""runner_resource_budget_memory_utilization_bucket":"0_25""#)
                 .body_includes(r#""runner_resource_budget_lease_count_bucket":"1""#)
                 .body_includes("runner_host_finalization_started")

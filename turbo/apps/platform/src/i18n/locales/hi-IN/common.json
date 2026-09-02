@@ -2679,6 +2679,7 @@
     "custom": {
       "connect": {
         "configured": "कॉन्फ़िगर किया गया",
+        "connect": "कनेक्ट करें",
         "connecting": "कनेक्ट हो रहा है...",
         "continue": "जारी रखना",
         "continueToProvider": "पहुंच को अधिकृत करने के लिए प्रोवाइडर के पास जाना जारी रखें।",
@@ -2711,6 +2712,8 @@
         "mcpEndpointHint": "(Streamable HTTP, केवल HTTPS)",
         "mcpEndpointPlaceholder": "https://mcp.acme.com/server",
         "newClientSecret": "नए ग्राहक का रहस्य",
+        "noAuthentication": "कोई प्रमाणीकरण नहीं",
+        "noAuthenticationDescription": "क्रेडेंशियल या प्रमाणीकरण डेटा भेजे बिना कनेक्ट करें।",
         "none": "कोई नहीं",
         "oauthChangesDisconnect": "OAuth सेटिंग्स या क्लाइंट क्रेडेंशियल बदलने से मौजूदा OAuth कनेक्शन डिस्कनेक्ट हो जाते हैं।",
         "oauthDescription": "सदस्यों को अधिकृत करने के लिए एक OAuth ऐप कॉन्फ़िगर करें।",
@@ -2727,6 +2730,7 @@
         "redirectHint": "(इस URL को प्रोवाइडर के OAuth एप्लिकेशन में पंजीकृत करें।)",
         "redirectUrl": "URL को पुनर्निर्देशित करें",
         "removeApiAuthentication": "API प्रमाणीकरण हटाएँ",
+        "removeNoAuthentication": "“कोई प्रमाणीकरण नहीं” हटाएँ",
         "removeOauth": "OAuth 2.0 हटाएँ",
         "scopes": "स्कोप्स",
         "scopesHint": "(प्रति पंक्ति एक)",
@@ -3142,45 +3146,6 @@
         "uninstallDescription": "यह वर्कस्पेस से {{bot}} को अनइंस्टॉल करता है और इसका उपयोग करने वाले प्रत्येक {{brandName}} खाते को डिस्कनेक्ट कर देता है। इस एक्शन को वापस नहीं किया जा सकता।",
         "uninstallTargetFallback": "यह बॉट",
         "uninstallTitle": "Feishu बॉट अनइंस्टॉल करें?"
-      },
-      "strapi": {
-        "actions": {
-          "cancel": "रद्द करना",
-          "checkTest": "जाँच परीक्षण",
-          "copy": "प्रतिलिपि",
-          "create": "एकीकरण बनाएँ",
-          "remove": "निकालना",
-          "revealAuthorization": "प्राधिकरण शीर्षलेख प्रकट करें"
-        },
-        "addDescription": "एक एकीकरण अनेक वर्कफ़्लो ऑटोमेशन की सेवा प्रदान कर सकता है।",
-        "addTitle": "Strapi उदाहरण जोड़ें",
-        "adminRequired": "किसी संगठन व्यवस्थापक से Strapi एकीकरण जोड़ने या अपडेट करने के लिए कहें।",
-        "authorizationHeader": "प्राधिकरण शीर्षलेख",
-        "copied": "{{label}} कॉपी किया गया",
-        "description": "{{assistantName}} को प्रकाशित Strapi प्रविष्टियों पर प्रतिक्रिया करने दें और डाउनस्ट्रीम कार्य को स्वचालित करने दें।",
-        "documentTitle": "Strapi",
-        "empty": "अभी तक कोई Strapi इंस्टेंस कनेक्ट नहीं है।",
-        "form": {
-          "name": "नाम",
-          "namePlaceholder": "कंपनी CMS",
-          "url": "Strapi URL"
-        },
-        "instructions": "Strapi में, सेटिंग्स → वेबहुक खोलें, इस URL और प्राधिकरण हेडर को जोड़ें, एंट्री.प्रकाशित करें का चयन करें, फिर Strapi परीक्षण वेबहुक भेजने के लिए ट्रिगर पर क्लिक करें।",
-        "lastPublish": "अंतिम प्रकाशन: {{date}}",
-        "lastTest": "अंतिम परीक्षण: {{date}}",
-        "notReceived": "नहीं पाना",
-        "removeDescription": "पहले इसके वर्कफ़्लो ऑटोमेशन को हटाएँ। इस URL के लिए Strapi वेबहुक अनुरोध काम करना बंद कर देगा।",
-        "removeTitle": "Strapi एकीकरण हटाएँ?",
-        "tested": "वेबहुक का परीक्षण किया गया",
-        "title": "Strapi",
-        "toasts": {
-          "created": "Strapi एकीकरण बनाया गया",
-          "noTestReceived": "अभी तक कोई Strapi परीक्षण वेबहुक प्राप्त नहीं हुआ",
-          "removed": "Strapi एकीकरण हटा दिया गया",
-          "testReceived": "Strapi परीक्षण वेबहुक प्राप्त हुआ"
-        },
-        "webhookUrl": "वेबहुक URL",
-        "whereAssistantWorks": "जहां {{assistantName}} काम करता है"
       },
       "telegram": {
         "addBot": "बॉट जोड़ें",
@@ -5866,26 +5831,6 @@
         "time": "समय ({{timezone}})",
         "updateScheduleAria": "शेड्यूल ऑटोमेशन अपडेट करें"
       },
-      "strapi": {
-        "addAction": "Strapi ऑटोमेशन जोड़ें",
-        "addAria": "Strapi प्रविष्टि प्रकाशित ऑटोमेशन जोड़ें",
-        "addDescription": "स्थानीयकृत प्रकाशन ईवेंट के मिलान के बाद इस वर्कफ़्लो को चलाएँ।",
-        "addTitle": "Strapi ऑटोमेशन जोड़ें",
-        "configure": "Strapi कॉन्फ़िगर करें",
-        "connectFirst": "इस ऑटोमेशन को बनाने से पहले एक Strapi इंस्टेंस कनेक्ट करें।",
-        "contentType": "सामग्री प्रकार UID (वैकल्पिक)",
-        "contentTypeAny": "कोई भी सामग्री प्रकार",
-        "contentTypePlaceholder": "एपीआई::आर्टिकल.आर्टिकल",
-        "entryPublishedDescription": "मिलान वाली Strapi प्रविष्टि प्रकाशित होने के बाद चलाएँ।",
-        "entryPublishedTitle": "Strapi प्रविष्टि प्रकाशित",
-        "instance": "Strapi उदाहरण",
-        "locale": "स्थान (वैकल्पिक)",
-        "localeAny": "कोई भी स्थान",
-        "localeHint": "एक ही दस्तावेज़ के लिए सभी स्थानीयकृत प्रकाशन ईवेंट को एक वर्कफ़्लो रन में संयोजित करने के लिए लोकेल को खाली छोड़ दें।",
-        "localePlaceholder": "एन",
-        "localeSummary": "स्थान {{locale}}",
-        "rule": "जब एक मिलान Strapi प्रविष्टि प्रकाशित की जाती है"
-      },
       "stripe": {
         "addAction": "Stripe ऑटोमेशन जोड़ें",
         "addAria": "Stripe इनवॉइस भुगतान ऑटोमेशन जोड़ें",
@@ -5931,7 +5876,6 @@
         "googleForms": "Google Forms",
         "googleMeet": "Google मिलें",
         "notion": "Notion",
-        "strapi": "Strapi",
         "stripe": "Stripe",
         "webhook": "वेबहुक"
       },
@@ -6252,10 +6196,6 @@
       "title": "Slack",
       "uninstallDescription": "यह आपके पूरे वर्कस्पेस के लिए Slack एकीकरण को हटा देगा। सभी कनेक्टेड उपयोगकर्ता डिस्कनेक्ट हो जाएंगे और {{displayName}} अब Slack में संदेशों या उल्लेखों का जवाब नहीं देगा। इस क्रिया को वापस नहीं किया जा सकता।",
       "uninstallTitle": "Slack एकीकरण अनइंस्टॉल करें?"
-    },
-    "strapi": {
-      "description": "प्रविष्टियाँ प्रकाशित होने पर कार्य स्वचालित करें",
-      "title": "Strapi"
     },
     "teams": {
       "adminInstall": "अपने व्यवस्थापक से Microsoft Teams एकीकरण स्थापित करने के लिए कहें",

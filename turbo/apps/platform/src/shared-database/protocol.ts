@@ -7,8 +7,6 @@ import {
 
 export const SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME =
   "SharedDatabaseClientNotConnectedError";
-export const SHARED_DATABASE_AUTH_BLOCKED_ERROR_NAME =
-  "SharedDatabaseAuthBlockedError";
 
 export const sharedDatabaseHeartbeatResultSchema = z
   .object({ clientReconnected: z.boolean() })
@@ -53,6 +51,15 @@ const reloadComputedMessageSchema = z
   })
   .strict();
 
+const setTokenRequestSchema = z
+  .object({
+    type: z.literal("set-token"),
+    requestId: requestIdSchema,
+    recoveryId: requestIdSchema,
+    token: z.string().min(1).nullable(),
+  })
+  .strict();
+
 const disconnectRequestSchema = z
   .object({ type: z.literal("disconnect") })
   .strict();
@@ -62,6 +69,7 @@ export const sharedDatabaseClientMessageSchema = z.discriminatedUnion("type", [
   queryRequestSchema,
   getComputedRequestSchema,
   reloadComputedMessageSchema,
+  setTokenRequestSchema,
   disconnectRequestSchema,
 ]);
 
@@ -72,6 +80,12 @@ export type SharedDatabaseClientMessage = z.infer<
 export function redactSharedDatabaseClientMessageForLog(
   message: SharedDatabaseClientMessage,
 ): SharedDatabaseClientMessage {
+  if (message.type === "set-token") {
+    return {
+      ...message,
+      token: message.token === null ? null : "[redacted]",
+    };
+  }
   if (message.type !== "heartbeat") {
     return message;
   }
@@ -121,7 +135,10 @@ const reloadRequiredMessageSchema = z
   .strict();
 
 const authenticationRequiredMessageSchema = z
-  .object({ type: z.literal("authentication-required") })
+  .object({
+    type: z.literal("authentication-required"),
+    recoveryId: requestIdSchema,
+  })
   .strict();
 
 const chatThreadReadCursorUpdatedMessageSchema = z

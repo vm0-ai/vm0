@@ -1,13 +1,19 @@
+import { isDeepStrictEqual } from "node:util";
+
 import {
   chatEventRowSchema,
   type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
+import { isChatRunTerminalEventType } from "@okouai/api-contracts/contracts/chat-events";
 
 import { safeJsonParse, safeSync } from "../utils";
 
 const RETIRED_MORNING_BRIEF_CONTEXT = "morning_brief";
 const RETIRED_MORNING_BRIEF_PART = "morning_brief";
+const RETIRED_MORNING_BRIEF_CUTOVER_ERROR = "legacy_morning_brief_cutover";
+const RETIRED_MORNING_BRIEF_CUTOVER_MESSAGE =
+  "This legacy Morning Brief was stopped during the Official Workflow cutover.";
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 
 interface MorningBriefSnapshotRepair {
@@ -103,6 +109,360 @@ function isPayloadFreeControlRevoke(row: ChatEventRow): boolean {
   );
 }
 
+function hasExactContextlessMorningBriefPromptPayload(
+  row: ChatEventRow,
+): boolean {
+  const payload = row.payload;
+  if (
+    payload === null ||
+    Object.keys(payload).length !== 1 ||
+    payload.userMessage === undefined
+  ) {
+    return false;
+  }
+  const userMessage = payload.userMessage;
+  return (
+    isRecord(userMessage) &&
+    Object.keys(userMessage).length === 2 &&
+    userMessage.version === 1 &&
+    Array.isArray(userMessage.parts) &&
+    userMessage.parts.length > 0 &&
+    !userMessage.parts.some(retiredMorningBriefPart)
+  );
+}
+
+function isExactContextlessMorningBriefRoot(row: ChatEventRow): boolean {
+  return (
+    row.eventType === "input.prompt" &&
+    row.runId === null &&
+    row.revokesEventId === null &&
+    row.contextType === RETIRED_MORNING_BRIEF_CONTEXT &&
+    row.contextId === null &&
+    row.runEventSequenceNumber === null &&
+    row.runEventId === null &&
+    hasExactContextlessMorningBriefPromptPayload(row)
+  );
+}
+
+function hasExactContextlessMorningBriefDirectRunPayload(
+  row: ChatEventRow,
+): boolean {
+  if (!hasExactContextlessMorningBriefPromptPayload(row)) {
+    return false;
+  }
+  const userMessage = row.payload?.userMessage;
+  if (!isRecord(userMessage) || !Array.isArray(userMessage.parts)) {
+    return false;
+  }
+  const modelPart = userMessage.parts.at(-1);
+  return (
+    userMessage.parts.length > 1 &&
+    userMessage.parts.slice(0, -1).every((part) => {
+      return !isRecord(part) || part.type !== "model";
+    }) &&
+    isRecord(modelPart) &&
+    Object.keys(modelPart).length === 2 &&
+    modelPart.type === "model" &&
+    typeof modelPart.selectedModel === "string" &&
+    modelPart.selectedModel.length > 0
+  );
+}
+
+function isExactContextlessMorningBriefDirectRunPrompt(
+  row: ChatEventRow,
+): boolean {
+  return (
+    row.eventType === "input.prompt" &&
+    row.runId !== null &&
+    row.revokesEventId === null &&
+    row.contextType === RETIRED_MORNING_BRIEF_CONTEXT &&
+    row.contextId === null &&
+    row.runEventSequenceNumber === null &&
+    row.runEventId === null &&
+    hasExactContextlessMorningBriefDirectRunPayload(row)
+  );
+}
+
+function isExactContextlessMorningBriefDirectRunTerminal(
+  row: ChatEventRow,
+  prompt: ChatEventRow,
+): boolean {
+  return (
+    row.id !== prompt.id &&
+    row.chatThreadId === prompt.chatThreadId &&
+    row.runId === prompt.runId &&
+    isChatRunTerminalEventType(row.eventType) &&
+    row.revokesEventId === null &&
+    row.contextType === null &&
+    row.contextId === null &&
+    row.runEventSequenceNumber === null &&
+    row.runEventId === null &&
+    prompt.seqId < row.seqId &&
+    prompt.createdAt < row.createdAt
+  );
+}
+
+function contextlessMorningBriefDirectRunIds(
+  rows: readonly ChatEventRow[],
+): ReadonlySet<string> {
+  const uniqueRowsById = new Map<string, ChatEventRow | null>();
+  const uniquePromptByRunId = new Map<string, ChatEventRow | null>();
+  const uniqueTerminalByRunId = new Map<string, ChatEventRow | null>();
+  const revokedIds = new Set<string>();
+  for (const row of rows) {
+    uniqueRowsById.set(row.id, uniqueRowsById.has(row.id) ? null : row);
+    if (row.eventType === "input.prompt" && row.runId !== null) {
+      uniquePromptByRunId.set(
+        row.runId,
+        uniquePromptByRunId.has(row.runId) ? null : row,
+      );
+    }
+    if (isChatRunTerminalEventType(row.eventType) && row.runId !== null) {
+      uniqueTerminalByRunId.set(
+        row.runId,
+        uniqueTerminalByRunId.has(row.runId) ? null : row,
+      );
+    }
+    if (row.revokesEventId !== null) {
+      revokedIds.add(row.revokesEventId);
+    }
+  }
+
+  const acceptedIds = new Set<string>();
+  for (const prompt of rows) {
+    const runId = prompt.runId;
+    if (
+      runId === null ||
+      !isExactContextlessMorningBriefDirectRunPrompt(prompt) ||
+      uniqueRowsById.get(prompt.id) !== prompt ||
+      uniquePromptByRunId.get(runId) !== prompt ||
+      revokedIds.has(prompt.id)
+    ) {
+      continue;
+    }
+    const terminal = uniqueTerminalByRunId.get(runId);
+    if (
+      terminal === undefined ||
+      terminal === null ||
+      uniqueRowsById.get(terminal.id) !== terminal ||
+      !isExactContextlessMorningBriefDirectRunTerminal(terminal, prompt)
+    ) {
+      continue;
+    }
+    acceptedIds.add(prompt.id);
+  }
+  return acceptedIds;
+}
+
+function hasExactContextlessMorningBriefModelClaimPayload(
+  row: ChatEventRow,
+  root: ChatEventRow,
+): boolean {
+  const rootUserMessage = root.payload?.userMessage;
+  const claimUserMessage = row.payload?.userMessage;
+  if (
+    !isRecord(rootUserMessage) ||
+    !Array.isArray(rootUserMessage.parts) ||
+    !isRecord(claimUserMessage) ||
+    !Array.isArray(claimUserMessage.parts) ||
+    rootUserMessage.parts.some((part) => {
+      return isRecord(part) && part.type === "model";
+    }) ||
+    claimUserMessage.parts.length !== rootUserMessage.parts.length + 1
+  ) {
+    return false;
+  }
+  const modelPart = claimUserMessage.parts.at(-1);
+  // The #25467 queue-claim writer copied every original part, then appended
+  // exactly one server-owned Run model annotation. Migration 0893 later made
+  // one additional exact transition for fast Runs: it retained that model part
+  // and added only serviceTier=priority. Every other wider shape stays
+  // fail-closed.
+  return (
+    isRecord(modelPart) &&
+    modelPart.type === "model" &&
+    typeof modelPart.selectedModel === "string" &&
+    modelPart.selectedModel.length > 0 &&
+    (Object.keys(modelPart).length === 2 ||
+      (Object.keys(modelPart).length === 3 &&
+        modelPart.serviceTier === "priority")) &&
+    isDeepStrictEqual(
+      claimUserMessage.parts.slice(0, -1),
+      rootUserMessage.parts,
+    )
+  );
+}
+
+function isExactContextlessMorningBriefClaim(
+  row: ChatEventRow,
+  root: ChatEventRow,
+): boolean {
+  return (
+    row.id !== root.id &&
+    row.chatThreadId === root.chatThreadId &&
+    row.eventType === "input.prompt" &&
+    row.runId !== null &&
+    row.revokesEventId === root.id &&
+    row.contextType === RETIRED_MORNING_BRIEF_CONTEXT &&
+    row.contextId === null &&
+    row.runEventSequenceNumber === null &&
+    row.runEventId === null &&
+    root.seqId < row.seqId &&
+    root.createdAt < row.createdAt &&
+    hasExactContextlessMorningBriefPromptPayload(row) &&
+    (isDeepStrictEqual(row.payload, root.payload) ||
+      hasExactContextlessMorningBriefModelClaimPayload(row, root))
+  );
+}
+
+function contextlessMorningBriefClaimIds(
+  rows: readonly ChatEventRow[],
+): ReadonlySet<string> {
+  const uniqueRowsById = new Map<string, ChatEventRow | null>();
+  const soleRevokerByTargetId = new Map<string, ChatEventRow | null>();
+  for (const row of rows) {
+    uniqueRowsById.set(row.id, uniqueRowsById.has(row.id) ? null : row);
+    if (row.revokesEventId !== null) {
+      soleRevokerByTargetId.set(
+        row.revokesEventId,
+        soleRevokerByTargetId.has(row.revokesEventId) ? null : row,
+      );
+    }
+  }
+
+  const acceptedIds = new Set<string>();
+  for (const root of rows) {
+    if (
+      !isExactContextlessMorningBriefRoot(root) ||
+      uniqueRowsById.get(root.id) !== root
+    ) {
+      continue;
+    }
+    const claim = soleRevokerByTargetId.get(root.id);
+    if (
+      claim === undefined ||
+      claim === null ||
+      uniqueRowsById.get(claim.id) !== claim ||
+      !isExactContextlessMorningBriefClaim(claim, root)
+    ) {
+      continue;
+    }
+    acceptedIds.add(root.id);
+    acceptedIds.add(claim.id);
+  }
+  return acceptedIds;
+}
+
+function hasExactContextlessMorningBriefRetirementPayload(
+  row: ChatEventRow,
+  root: ChatEventRow,
+): boolean {
+  const payload = row.payload;
+  return (
+    payload !== null &&
+    Object.keys(payload).length === 2 &&
+    payload.error === RETIRED_MORNING_BRIEF_CUTOVER_ERROR &&
+    payload.userMessage !== undefined &&
+    isDeepStrictEqual(payload.userMessage, root.payload?.userMessage)
+  );
+}
+
+function isExactContextlessMorningBriefRetirement(
+  row: ChatEventRow,
+  root: ChatEventRow,
+): boolean {
+  return (
+    row.id !== root.id &&
+    row.chatThreadId === root.chatThreadId &&
+    row.eventType === "input.rejected" &&
+    row.runId === null &&
+    row.revokesEventId === root.id &&
+    row.contextType === RETIRED_MORNING_BRIEF_CONTEXT &&
+    row.contextId === null &&
+    row.runEventSequenceNumber === null &&
+    row.runEventId === null &&
+    root.seqId < row.seqId &&
+    root.createdAt < row.createdAt &&
+    hasExactContextlessMorningBriefRetirementPayload(row, root)
+  );
+}
+
+function isExactContextlessMorningBriefRetirementCompanion(
+  row: ChatEventRow,
+  retirement: ChatEventRow,
+): boolean {
+  const payload = row.payload;
+  return (
+    row.id !== retirement.id &&
+    row.chatThreadId === retirement.chatThreadId &&
+    row.eventType === "output.error" &&
+    row.runId === null &&
+    row.revokesEventId === null &&
+    row.contextType === null &&
+    row.contextId === null &&
+    row.runEventSequenceNumber === null &&
+    row.runEventId === null &&
+    row.seqId === retirement.seqId + 1 &&
+    Date.parse(row.createdAt) === Date.parse(retirement.createdAt) + 1 &&
+    payload !== null &&
+    Object.keys(payload).length === 2 &&
+    payload.content === RETIRED_MORNING_BRIEF_CUTOVER_MESSAGE &&
+    payload.error === RETIRED_MORNING_BRIEF_CUTOVER_ERROR
+  );
+}
+
+function contextlessMorningBriefRetirementIds(
+  rows: readonly ChatEventRow[],
+): ReadonlySet<string> {
+  const uniqueRowsById = new Map<string, ChatEventRow | null>();
+  const uniqueRowsBySeqId = new Map<number, ChatEventRow | null>();
+  const soleRevokerByTargetId = new Map<string, ChatEventRow | null>();
+  for (const row of rows) {
+    uniqueRowsById.set(row.id, uniqueRowsById.has(row.id) ? null : row);
+    uniqueRowsBySeqId.set(
+      row.seqId,
+      uniqueRowsBySeqId.has(row.seqId) ? null : row,
+    );
+    if (row.revokesEventId !== null) {
+      soleRevokerByTargetId.set(
+        row.revokesEventId,
+        soleRevokerByTargetId.has(row.revokesEventId) ? null : row,
+      );
+    }
+  }
+
+  const acceptedIds = new Set<string>();
+  for (const root of rows) {
+    if (
+      !isExactContextlessMorningBriefRoot(root) ||
+      uniqueRowsById.get(root.id) !== root
+    ) {
+      continue;
+    }
+    const retirement = soleRevokerByTargetId.get(root.id);
+    if (
+      retirement === undefined ||
+      retirement === null ||
+      uniqueRowsById.get(retirement.id) !== retirement ||
+      !isExactContextlessMorningBriefRetirement(retirement, root)
+    ) {
+      continue;
+    }
+    const companion = uniqueRowsBySeqId.get(retirement.seqId + 1);
+    if (
+      companion === undefined ||
+      companion === null ||
+      uniqueRowsById.get(companion.id) !== companion ||
+      !isExactContextlessMorningBriefRetirementCompanion(companion, retirement)
+    ) {
+      continue;
+    }
+    acceptedIds.add(root.id);
+    acceptedIds.add(retirement.id);
+  }
+  return acceptedIds;
+}
+
 function isExactRetiredMorningBriefRoot(
   row: ChatEventRow,
   root: ChatEventRow | null | undefined,
@@ -136,7 +496,9 @@ function isExactRetiredMorningBriefRejection(
     target.contextType === RETIRED_MORNING_BRIEF_CONTEXT &&
     target.contextId === root.id &&
     target.runEventSequenceNumber === 0 &&
-    target.runEventId === null
+    target.runEventId === null &&
+    root.seqId < target.seqId &&
+    target.seqId < row.seqId
   );
 }
 
@@ -202,6 +564,7 @@ function assertCurrentProjection(row: ChatEventRow): void {
 function repairMorningBriefRow(
   row: ChatEventRow,
   priorRowsById: ReadonlyMap<string, ChatEventRow | null>,
+  contextlessRepairIds: ReadonlySet<string>,
 ): {
   readonly row: ChatEventRow;
   readonly removedDocumentParts: number;
@@ -233,7 +596,20 @@ function repairMorningBriefRow(
     assertCurrentProjection(row);
     return { row, removedDocumentParts: 0 };
   }
-  if (row.contextId === null) {
+  // Before #23713 moved Morning Brief onto the queue, the runtime wrote one
+  // direct Run-owned prompt and a later terminal Run event. Migration 0836
+  // classified that prompt while preserving its null context ID, then 0846
+  // appended exactly one two-key model annotation. Queue-era revisions wrote
+  // an ordered Run-owned replacement prompt: one copied the document byte-for-
+  // byte; #25467 appended the authoritative Run model annotation; and 0893
+  // added only serviceTier=priority for fast Runs. The Phase A drain fallback
+  // also wrote an ordered run-less rejection plus its adjacent error companion.
+  // Accept only those complete archive-local relationships; never derive or
+  // synthesize an ID. This persisted-state compatibility is limited to
+  // immutable legacy V7 Snapshots. Remove it after all surviving V7 heads
+  // converge to r1 and the retired writer rollback window closes; removal is
+  // tracked by #30369 and #28905.
+  if (row.contextId === null && !contextlessRepairIds.has(row.id)) {
     failProjection("retired_context", "missing_context_id");
   }
   if (legacyParts.length > 1) {
@@ -300,12 +676,21 @@ export function repairMorningBriefPhaseBSnapshot(
   }
   const rows: ChatEventRow[] = [];
   const priorRowsById = new Map<string, ChatEventRow | null>();
+  const contextlessRepairIds = new Set([
+    ...contextlessMorningBriefDirectRunIds(decodedRows),
+    ...contextlessMorningBriefClaimIds(decodedRows),
+    ...contextlessMorningBriefRetirementIds(decodedRows),
+  ]);
   const repairedLines = rawLines.map((raw, index) => {
     const row = decodedRows[index];
     if (row === undefined) {
       throw new Error("Chat Event snapshot decoded row is missing");
     }
-    const repaired = repairMorningBriefRow(row, priorRowsById);
+    const repaired = repairMorningBriefRow(
+      row,
+      priorRowsById,
+      contextlessRepairIds,
+    );
     rows.push(repaired.row);
     priorRowsById.set(row.id, priorRowsById.has(row.id) ? null : row);
     if (repaired.row === row) {

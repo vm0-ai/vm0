@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.46](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.45...vsock-proto-v0.18.46) (2026-09-01)
+
+
+### Performance Improvements
+
+* **runner:** specialize reused codex cleanup lifecycle ([#30888](https://github.com/vm0-ai/vm0/issues/30888)) ([5941c94](https://github.com/vm0-ai/vm0/commit/5941c9474fb6f1389a6ca9d3c92e99a3af59b98a))
+
 ## [0.18.45](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.44...vsock-proto-v0.18.45) (2026-09-01)
 
 

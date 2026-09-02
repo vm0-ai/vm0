@@ -95,9 +95,9 @@ use connection::{RequestWriteGuard, write_request_frame_with_builder};
 use operation_tracker::NormalOperationFenceRejection as TrackerNormalOperationFenceRejection;
 
 pub use exec_operation::{
-    ExecCaptureRequest, ExecControlAck, ExecControlGuestStatus, ExecControlHandle,
-    ExecControlOutcome, ExecOperationHandle, ExecOperationRequest, ExecOperationResult,
-    ExecOutputEvent, ExecOwnedCapturedOutput, ExecStreamRequest,
+    CodexSessionCleanupRequest, ExecCaptureRequest, ExecControlAck, ExecControlGuestStatus,
+    ExecControlHandle, ExecControlOutcome, ExecOperationHandle, ExecOperationRequest,
+    ExecOperationResult, ExecOutputEvent, ExecOwnedCapturedOutput, ExecStreamRequest,
     SessionHistoryIdentityVerifyRequest, SupervisedExecCancelHandle, SupervisedExecControl,
     SupervisedExecHandle, SupervisedExecRequest, SupervisedExecStartTiming,
 };
@@ -421,6 +421,14 @@ impl VsockHost {
         request: SessionHistoryIdentityVerifyRequest<'_>,
     ) -> io::Result<ExecOperationResult> {
         exec_operation::session_history_identity_verify_on_shared(&self.shared, request).await
+    }
+
+    /// Run the fixed reused-Codex session cleanup helper.
+    pub async fn cleanup_codex_session(
+        &self,
+        request: CodexSessionCleanupRequest<'_>,
+    ) -> io::Result<ExecOperationResult> {
+        exec_operation::codex_session_cleanup_on_shared(&self.shared, request).await
     }
 
     /// Run a capture-only exec operation with a synchronous admission check at

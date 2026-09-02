@@ -287,7 +287,7 @@ async fn uncertain_post_claim_pool_reuse_keeps_active_status_without_starting_re
         message: "simulated late pool unpark failure".into(),
     }));
     overrides.push_destroy_panic("simulated late pool destroy panic");
-    let (config, env) = mock_run_config_with_overrides(test_profiles(), 4, 8192, 2, overrides);
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 5, 8192, 2, overrides);
     let budget = Arc::clone(&config.capacity.budget);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let status = Arc::clone(&config.shared.status);

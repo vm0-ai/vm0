@@ -1653,6 +1653,48 @@
       "when": 1788253114804,
       "tag": "1043_add_chat_translation_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 1044,
+      "version": "7",
+      "when": 1788270255725,
+      "tag": "1044_salty_vindicator",
+      "breakpoints": true
+    },
+    {
+      "idx": 1045,
+      "version": "7",
+      "when": 1788276269016,
+      "tag": "1045_isolate_google_forms_watches_by_account",
+      "breakpoints": true
+    },
+    {
+      "idx": 1046,
+      "version": "7",
+      "when": 1788276313289,
+      "tag": "1046_sync_google_forms_watch_account_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 1047,
+      "version": "7",
+      "when": 1788285274066,
+      "tag": "1047_careless_prima",
+      "breakpoints": true
+    },
+    {
+      "idx": 1048,
+      "version": "7",
+      "when": 1788315128901,
+      "tag": "1048_shocking_unus",
+      "breakpoints": true
+    },
+    {
+      "idx": 1049,
+      "version": "7",
+      "when": 1788317979906,
+      "tag": "1049_mushy_deadpool",
+      "breakpoints": true
     }
   ]
 }

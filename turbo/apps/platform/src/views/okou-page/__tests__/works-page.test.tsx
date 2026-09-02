@@ -11,7 +11,6 @@ import {
   feishuConnectContract,
   type FeishuConnectStatus,
 } from "@okouai/api-contracts/contracts/feishu-connect";
-import { strapiIntegrationsContract } from "@okouai/api-contracts/contracts/strapi-integrations";
 import { integrationsGithubContract } from "@okouai/api-contracts/contracts/integrations-github";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
@@ -118,7 +117,6 @@ function mockFeishuAPI(overrides: Partial<FeishuConnectStatus> = {}): void {
 function setupWorksPage(
   options: {
     feishuEnabled?: boolean;
-    strapiEnabled?: boolean;
   } = {},
 ): void {
   detachedSetupPage({
@@ -126,7 +124,6 @@ function setupWorksPage(
     path: "/works",
     featureSwitches: {
       [FeatureSwitchKey.FeishuIntegration]: options.feishuEnabled ?? false,
-      [FeatureSwitchKey.StrapiIntegration]: options.strapiEnabled ?? false,
     },
   });
 }
@@ -283,7 +280,6 @@ describe("works page", () => {
       expect(screen.getByText("Slack")).toBeInTheDocument();
       expect(screen.getByText("Microsoft Teams")).toBeInTheDocument();
       expect(screen.queryByText("Feishu")).not.toBeInTheDocument();
-      expect(screen.queryByText("Strapi")).not.toBeInTheDocument();
       expect(screen.getByText("GitHub")).toBeInTheDocument();
       expect(screen.getByText("Telegram")).toBeInTheDocument();
       expect(screen.getByText("Phone")).toBeInTheDocument();
@@ -531,128 +527,6 @@ describe("works page", () => {
     click(getRole("button", "More options for Okou Feishu"));
     expect(queryRole("button", "Manage")).toBeNull();
     expect(getRole("button", "Uninstall")).toBeInTheDocument();
-  });
-
-  it("shows Strapi only when its integration switch is enabled", async () => {
-    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
-
-    setupWorksPage({ strapiEnabled: true });
-
-    await waitFor(() => {
-      expect(screen.getByText("Strapi")).toBeInTheDocument();
-      expect(
-        screen.getByText("Automate work when entries are published"),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("redirects direct Strapi settings navigation when the switch is disabled", async () => {
-    detachedSetupPage({
-      context,
-      path: "/settings/strapi",
-      featureSwitches: {
-        [FeatureSwitchKey.StrapiIntegration]: false,
-      },
-    });
-
-    await waitFor(() => {
-      expect(window.location.pathname).toBe("/");
-    });
-    expect(screen.queryByText("Add Strapi instance")).not.toBeInTheDocument();
-  });
-
-  it("checks whether Strapi delivered its external test webhook", async () => {
-    const integrationId = "00000000-0000-4000-8000-000000000091";
-    let tested = false;
-    context.mocks.api(strapiIntegrationsContract.list, ({ respond }) => {
-      return respond(200, [
-        {
-          id: integrationId,
-          name: "Marketing CMS",
-          baseUrl: "https://cms.example.com",
-          webhookUrl: `https://www.vm0.test/api/strapi/events/${integrationId}`,
-          secretLastFour: "abcd",
-          lastTestedAt: tested ? "2026-07-28T04:00:00.000Z" : null,
-          lastReceivedAt: null,
-          createdAt: "2026-07-28T03:00:00.000Z",
-        },
-      ]);
-    });
-    context.mocks.api(strapiIntegrationsContract.checkTest, ({ respond }) => {
-      tested = true;
-      return respond(200, {
-        received: true,
-        lastTestedAt: "2026-07-28T04:00:00.000Z",
-      });
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/settings/strapi",
-      featureSwitches: {
-        [FeatureSwitchKey.StrapiIntegration]: true,
-      },
-    });
-
-    await expect(
-      screen.findByText("Marketing CMS"),
-    ).resolves.toBeInTheDocument();
-    expect(screen.queryByText("Webhook tested")).not.toBeInTheDocument();
-    click(getRole("button", "Check test"));
-    await expect(
-      screen.findByText("Webhook tested"),
-    ).resolves.toBeInTheDocument();
-  });
-
-  it("localizes Strapi settings in Portuguese while preserving integration data", async () => {
-    const integrationId = "00000000-0000-4000-8000-000000000092";
-    context.mocks.data.userPreferences({ locale: "pt-BR" });
-    context.mocks.api(strapiIntegrationsContract.list, ({ respond }) => {
-      return respond(200, [
-        {
-          id: integrationId,
-          name: "Marketing CMS",
-          baseUrl: "https://cms.example.com",
-          webhookUrl: `https://www.vm0.test/api/strapi/events/${integrationId}`,
-          secretLastFour: "abcd",
-          lastTestedAt: "2026-07-28T04:00:00.000Z",
-          lastReceivedAt: null,
-          createdAt: "2026-07-28T03:00:00.000Z",
-        },
-      ]);
-    });
-    context.mocks.api(strapiIntegrationsContract.checkTest, ({ respond }) => {
-      return respond(200, {
-        received: true,
-        lastTestedAt: "2026-07-28T04:00:00.000Z",
-      });
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/settings/strapi",
-      featureSwitches: {
-        [FeatureSwitchKey.StrapiIntegration]: true,
-      },
-    });
-
-    await expect(
-      screen.findByText("Marketing CMS"),
-    ).resolves.toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Permita que o Zero reaja a entradas publicadas no Strapi e automatize o trabalho subsequente.",
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Webhook testado")).toBeInTheDocument();
-    expect(getRole("button", "Verificar teste")).toBeInTheDocument();
-    expect(screen.getByText(/^Último teste:/u)).toBeInTheDocument();
-    expect(screen.getByText("https://cms.example.com")).toBeInTheDocument();
-    click(getRole("button", "Verificar teste"));
-    await expect(
-      screen.findByText("Webhook de teste do Strapi recebido"),
-    ).resolves.toBeInTheDocument();
-    expect(document.documentElement.lang).toBe("pt-BR");
   });
 
   it("redirects direct Feishu settings navigation when the switch is disabled", async () => {

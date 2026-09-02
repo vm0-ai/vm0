@@ -889,7 +889,7 @@ mod tests {
                 "runner_startup_path": "workspace",
                 "sandbox_reuse_result": "poolMiss",
                 "runner_pre_spawn_concurrency_bucket": "3_4",
-                "runner_resource_budget_vcpu_utilization_bucket": "26_50",
+                "runner_resource_budget_vcpu_utilization_bucket": "51_75",
                 "runner_resource_budget_memory_utilization_bucket": "51_75",
                 "runner_resource_budget_lease_count_bucket": "1",
             })
@@ -904,7 +904,7 @@ mod tests {
                 "runner_startup_path": "workspace",
                 "sandbox_reuse_result": "poolMiss",
                 "runner_pre_spawn_concurrency_bucket": "3_4",
-                "runner_resource_budget_vcpu_utilization_bucket": "26_50",
+                "runner_resource_budget_vcpu_utilization_bucket": "51_75",
                 "runner_resource_budget_memory_utilization_bucket": "51_75",
                 "runner_resource_budget_lease_count_bucket": "1",
             })

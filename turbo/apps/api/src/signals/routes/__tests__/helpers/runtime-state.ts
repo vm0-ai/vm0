@@ -464,6 +464,19 @@ export async function setOfficialWorkflowAutomationAdmissionStateFixture(
   });
 }
 
+export async function stageOfficialWorkflowAutomationFixture(
+  context: TestContext,
+  automationId: string,
+  blueprintKey: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-official-workflow-automation-admission-state",
+    automation_id: automationId,
+    blueprint_key: blueprintKey,
+    reconciliation_status: "reconciling",
+  });
+}
+
 export async function retargetWorkflowAutomationFixture(
   context: TestContext,
   automationId: string,

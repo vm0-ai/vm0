@@ -7,11 +7,11 @@ import type {
 } from "@okouai/api-contracts/contracts/official-workflow-catalog";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
+  googleFormsResponseSubmittedEventConfigSchema,
   stripeInvoicePaidEventConfigSchema,
   type StripeInvoicePaidEventConfig,
 } from "@okouai/api-contracts/contracts/workflows";
 import { googleFormsAutomationCursors } from "@okouai/db/schema/google-forms-event";
-import { strapiWorkflowAutomations } from "@okouai/db/schema/strapi-integration";
 import {
   officialWorkflowAutomationIdentities,
   workflowAutomations,
@@ -31,6 +31,7 @@ import {
   reconcileAutomationEventWatchReconfiguration,
 } from "./automation-event-watch-lifecycle.service";
 import { lockConnectorAccountTarget } from "./auth-state-lock.service";
+import { notionConfigWithConnectorId } from "./notion-automation-account.service";
 import { OFFICIAL_WORKFLOW_CATALOG_ACTIVATION_LOCK } from "./official-workflow-constants";
 import {
   readAcceptedOfficialWorkflowCatalog,
@@ -155,12 +156,22 @@ function eventWatchFailureMessage(result: {
 
 function accountConnectorSlug(
   eventType: string | null,
-): "gmail" | "stripe" | null {
+): "gmail" | "google-forms" | "notion" | "stripe" | null {
   if (
     eventType === "gmail-new-message" ||
     eventType === "gmail-label-applied"
   ) {
     return "gmail";
+  }
+  if (
+    eventType === "notion-child-page-created" ||
+    eventType === "notion-database-item-created" ||
+    eventType === "notion-page-content-updated"
+  ) {
+    return "notion";
+  }
+  if (eventType === "google-forms-response-submitted") {
+    return "google-forms";
   }
   return eventType === "stripe-invoice-paid" ? "stripe" : null;
 }
@@ -179,7 +190,12 @@ async function lockOfficialAutomationAccountProjection(
   | { readonly kind: "not-required" }
   | {
       readonly kind: "locked";
-      readonly connectorSlug: "gmail" | "stripe" | null;
+      readonly connectorSlug:
+        | "gmail"
+        | "google-forms"
+        | "notion"
+        | "stripe"
+        | null;
       readonly eventConnectorId: string | null;
       readonly stripeBinding: StripeAutomationBinding | null;
     }
@@ -187,7 +203,7 @@ async function lockOfficialAutomationAccountProjection(
   const currentConnectorSlug = accountConnectorSlug(args.currentEventType);
   const nextConnectorSlug = accountConnectorSlug(args.nextEventType);
   const connectorSlugs = [currentConnectorSlug, nextConnectorSlug]
-    .filter((slug): slug is "gmail" | "stripe" => {
+    .filter((slug): slug is "gmail" | "google-forms" | "notion" | "stripe" => {
       return slug !== null;
     })
     .filter((slug, index, values) => {
@@ -248,6 +264,14 @@ function accountProjectionMatchesPatch(
   }
   if (projection.eventConnectorId !== patch.eventConnectorId) {
     return false;
+  }
+  if (projection.connectorSlug === "google-forms") {
+    const config = googleFormsResponseSubmittedEventConfigSchema.safeParse(
+      patch.eventConfig,
+    );
+    return (
+      config.success && config.data.connectorId === projection.eventConnectorId
+    );
   }
   if (projection.connectorSlug !== "stripe") {
     return true;
@@ -604,17 +628,6 @@ async function persistReconfigurationPatch(
     if (!updated) {
       throw new Error("Official Workflow automation disappeared");
     }
-    const strapiIntegrationId = args.preparation?.strapiIntegrationId;
-    if (strapiIntegrationId !== undefined) {
-      const [binding] = await tx
-        .update(strapiWorkflowAutomations)
-        .set({ integrationId: strapiIntegrationId })
-        .where(eq(strapiWorkflowAutomations.automationId, current.id))
-        .returning({ automationId: strapiWorkflowAutomations.automationId });
-      if (!binding) {
-        throw new Error("Official Strapi automation binding disappeared");
-      }
-    }
     await upsertActiveIdentity(tx, updated, currentTime);
     return {
       previous: current,
@@ -622,21 +635,6 @@ async function persistReconfigurationPatch(
       googleFormsCursor: formsCursor?.cursor,
     };
   });
-}
-
-function strapiIntegrationId(
-  automation: OfficialAutomationRow,
-): string | undefined {
-  if (
-    automation.eventType !== "strapi-entry-published" ||
-    typeof automation.eventConfig !== "object" ||
-    automation.eventConfig === null ||
-    Array.isArray(automation.eventConfig)
-  ) {
-    return undefined;
-  }
-  const integrationId = automation.eventConfig["integrationId"];
-  return typeof integrationId === "string" ? integrationId : undefined;
 }
 
 async function restoreFailedReconfiguration(
@@ -684,6 +682,16 @@ async function restoreFailedReconfiguration(
     ) {
       return null;
     }
+    const restoredNotionConfig =
+      accountProjection.kind === "locked" &&
+      accountProjection.eventConnectorId !== null &&
+      accountConnectorSlug(args.persisted.previous.eventType) === "notion"
+        ? notionConfigWithConnectorId(
+            args.persisted.previous.eventType,
+            args.persisted.previous.eventConfig,
+            accountProjection.eventConnectorId,
+          )
+        : null;
     const currentTime = nowDate();
     const restorePatch = officialAutomationRestorePatch(
       args.persisted.previous,
@@ -699,7 +707,12 @@ async function restoreFailedReconfiguration(
       .set({
         ...restorePatch,
         ...(accountProjection.kind === "locked"
-          ? { eventConnectorId: accountProjection.eventConnectorId }
+          ? {
+              eventConnectorId: accountProjection.eventConnectorId,
+              ...(restoredNotionConfig === null
+                ? {}
+                : { eventConfig: restoredNotionConfig }),
+            }
           : {}),
         ...(stripeBinding
           ? {
@@ -720,13 +733,6 @@ async function restoreFailedReconfiguration(
       .returning();
     if (!row) {
       return null;
-    }
-    const integrationId = strapiIntegrationId(args.persisted.previous);
-    if (integrationId !== undefined) {
-      await tx
-        .update(strapiWorkflowAutomations)
-        .set({ integrationId })
-        .where(eq(strapiWorkflowAutomations.automationId, row.id));
     }
     await upsertActiveIdentity(tx, row, currentTime);
     return row;

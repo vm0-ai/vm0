@@ -7,6 +7,7 @@
 pub(crate) mod support;
 
 mod checkpoint;
+mod codex_session_cleanup;
 mod complete;
 mod events;
 mod guest_config;

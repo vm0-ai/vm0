@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.183.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.13...runner-rs-v0.183.0) (2026-09-02)
+
+
+### Features
+
+* **runner:** reserve cpu admission headroom ([#30905](https://github.com/vm0-ai/vm0/issues/30905)) ([59a9cd5](https://github.com/vm0-ai/vm0/commit/59a9cd534c1ab122b6c6332c8db9f4e0462a76a2))
+
+
+### Bug Fixes
+
+* **runner:** fail closed on unavailable mountinfo ([#30904](https://github.com/vm0-ai/vm0/issues/30904)) ([0296ae5](https://github.com/vm0-ai/vm0/commit/0296ae5067276d4c37d1a4c0076c403a576f338d))
+
+## [0.182.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.12...runner-rs-v0.182.13) (2026-09-01)
+
+
+### Performance Improvements
+
+* **runner:** specialize reused codex cleanup lifecycle ([#30888](https://github.com/vm0-ai/vm0/issues/30888)) ([5941c94](https://github.com/vm0-ai/vm0/commit/5941c9474fb6f1389a6ca9d3c92e99a3af59b98a))
+
 ## [0.182.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.11...runner-rs-v0.182.12) (2026-09-01)
 
 

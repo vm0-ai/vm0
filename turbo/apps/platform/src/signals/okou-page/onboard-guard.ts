@@ -34,7 +34,6 @@ const ONBOARDING_GUARDED_PATHS = [
   ROUTES.settings,
   ROUTES.settingsFeishu,
   ROUTES.settingsSlack,
-  ROUTES.settingsStrapi,
   ROUTES.settingsTeams,
   ROUTES.settingsTelegram,
   ROUTES.telegramConnect,

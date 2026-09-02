@@ -1,5 +1,57 @@
 # Changelog
 
+## [9.304.4](https://github.com/vm0-ai/vm0/compare/cli-v9.304.3...cli-v9.304.4) (2026-09-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.390.1
+    * @okouai/core bumped to 8.608.1
+
+## [9.304.3](https://github.com/vm0-ai/vm0/compare/cli-v9.304.2...cli-v9.304.3) (2026-09-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.390.0
+    * @okouai/core bumped to 8.608.0
+
+## [9.304.2](https://github.com/vm0-ai/vm0/compare/cli-v9.304.1...cli-v9.304.2) (2026-09-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.389.1
+    * @okouai/core bumped to 8.607.1
+
+## [9.304.1](https://github.com/vm0-ai/vm0/compare/cli-v9.304.0...cli-v9.304.1) (2026-09-01)
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#30915](https://github.com/vm0-ai/vm0/issues/30915)) ([c81a649](https://github.com/vm0-ai/vm0/commit/c81a649369a47cfd3daf0735f93980f0ec43e64d))
+
+## [9.304.0](https://github.com/vm0-ai/vm0/compare/cli-v9.303.3...cli-v9.304.0) (2026-09-01)
+
+
+### Features
+
+* use transparent avatar cutouts in the intro video picker ([#30873](https://github.com/vm0-ai/vm0/issues/30873)) ([b176b5b](https://github.com/vm0-ai/vm0/commit/b176b5b46f223dd26d44e976e2299ed3f5bbfa8c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.389.0
+    * @okouai/core bumped to 8.607.0
+
 ## [9.303.3](https://github.com/vm0-ai/vm0/compare/cli-v9.303.2...cli-v9.303.3) (2026-09-01)
 
 

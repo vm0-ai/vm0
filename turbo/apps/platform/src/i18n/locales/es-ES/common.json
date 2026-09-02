@@ -2727,6 +2727,7 @@
     "custom": {
       "connect": {
         "configured": "Configurado",
+        "connect": "Conectar",
         "connecting": "Conectando…",
         "continue": "Continuar",
         "continueToProvider": "Continúa con el proveedor para autorizar el acceso.",
@@ -2759,6 +2760,8 @@
         "mcpEndpointHint": "(Streamable HTTP, solo HTTPS)",
         "mcpEndpointPlaceholder": "https://mcp.acme.com/server",
         "newClientSecret": "Nuevo secreto de cliente",
+        "noAuthentication": "Sin autenticación",
+        "noAuthenticationDescription": "Conéctate sin enviar credenciales ni datos de autenticación.",
         "none": "Ninguno",
         "oauthChangesDisconnect": "Cambiar la configuración de OAuth o las credenciales del cliente desconecta las conexiones OAuth existentes.",
         "oauthDescription": "Configura una app OAuth para que los miembros la autoricen.",
@@ -2775,6 +2778,7 @@
         "redirectHint": "(Registra esta URL en la aplicación OAuth del proveedor.)",
         "redirectUrl": "URL de redirección",
         "removeApiAuthentication": "Eliminar la autenticación por API",
+        "removeNoAuthentication": "Quitar «Sin autenticación»",
         "removeOauth": "Eliminar OAuth 2.0",
         "scopes": "Alcances",
         "scopesHint": "(uno por línea)",
@@ -3193,45 +3197,6 @@
         "uninstallDescription": "Esto desinstala {{bot}} del espacio de trabajo y desconecta todas las cuentas {{brandName}} que lo usan. Esta acción no puede deshacerse.",
         "uninstallTargetFallback": "Este bot",
         "uninstallTitle": "¿Desinstalar el bot de Feishu?"
-      },
-      "strapi": {
-        "actions": {
-          "cancel": "Cancelar",
-          "checkTest": "Prueba de comprobación",
-          "copy": "Copiar",
-          "create": "Crear integración",
-          "remove": "Eliminar",
-          "revealAuthorization": "Mostrar cabecera de autorización"
-        },
-        "addDescription": "Una integración puede servir para múltiples automatizaciones de flujo de trabajo.",
-        "addTitle": "Añadir instancia de Strapi",
-        "adminRequired": "Pide a un administrador de la organización que añada o actualice integraciones con Strapi.",
-        "authorizationHeader": "Cabecera de autorización",
-        "copied": "{{label}} copiado",
-        "description": "Deja {{assistantName}} reaccionar a las entradas publicadas de Strapi y automatizar el trabajo posterior.",
-        "documentTitle": "Strapi",
-        "empty": "Todavía no hay instancias de Strapi conectadas.",
-        "form": {
-          "name": "Nombre",
-          "namePlaceholder": "CMS de la empresa",
-          "url": "URL de Strapi"
-        },
-        "instructions": "En Strapi, abre Configuración → Webhooks, añade esta URL y el encabezado de Autorización, selecciona entry.publish y luego haz clic en Trigger para enviar un webhook de prueba de Strapi.",
-        "lastPublish": "Última publicación: {{date}}",
-        "lastTest": "Última prueba: {{date}}",
-        "notReceived": "No recibido",
-        "removeDescription": "Elimina primero sus automatizaciones de flujo de trabajo. Las peticiones de webhook de Strapi a esta URL dejarán de funcionar.",
-        "removeTitle": "¿Eliminar la integración con Strapi?",
-        "tested": "Webhook probado",
-        "title": "Strapi",
-        "toasts": {
-          "created": "Integración de Strapi creada",
-          "noTestReceived": "Aún no se ha recibido ningún webhook de prueba de Strapi",
-          "removed": "Integración de Strapi eliminada",
-          "testReceived": "Webhook de prueba de Strapi recibido"
-        },
-        "webhookUrl": "URL del webhook",
-        "whereAssistantWorks": "Dónde trabaja {{assistantName}}"
       },
       "telegram": {
         "addBot": "Añadir bot",
@@ -5930,26 +5895,6 @@
         "time": "Hora ({{timezone}})",
         "updateScheduleAria": "Actualizar automatización programada"
       },
-      "strapi": {
-        "addAction": "Añadir automatización de Strapi",
-        "addAria": "Añadir automatización de publicación de entradas de Strapi",
-        "addDescription": "Ejecuta este flujo de trabajo después de que los eventos de publicación localizados coincidan.",
-        "addTitle": "Añadir automatización de Strapi",
-        "configure": "Configurar Strapi",
-        "connectFirst": "Conecta una instancia de Strapi antes de crear esta automatización.",
-        "contentType": "Tipo de contenido UID (opcional)",
-        "contentTypeAny": "Cualquier tipo de contenido",
-        "contentTypePlaceholder": "api::article.article",
-        "entryPublishedDescription": "Ejecutar después de que se publique una entrada coincidente de Strapi.",
-        "entryPublishedTitle": "Entrada de Strapi publicada",
-        "instance": "Instancia de Strapi",
-        "locale": "Configuración regional (opcional)",
-        "localeAny": "Cualquier configuración regional",
-        "localeHint": "Deja la configuración regional en blanco para combinar todos los eventos de publicación localizados del mismo documento en una única ejecución del flujo de trabajo.",
-        "localePlaceholder": "en",
-        "localeSummary": "Configuración regional {{locale}}",
-        "rule": "Cuando se publica una entrada coincidente de Strapi"
-      },
       "stripe": {
         "addAction": "Añadir automatización de Stripe",
         "addAria": "Añadir automatización de factura pagada de Stripe",
@@ -5995,7 +5940,6 @@
         "googleForms": "Google Forms",
         "googleMeet": "Google Meet",
         "notion": "Notion",
-        "strapi": "Strapi",
         "stripe": "Stripe",
         "webhook": "Webhook"
       },
@@ -6319,10 +6263,6 @@
       "title": "Slack",
       "uninstallDescription": "Esto eliminará la integración de Slack de todo tu espacio de trabajo. Todos los usuarios conectados quedarán desconectados y {{displayName}} ya no responderá a mensajes ni menciones en Slack. Esta acción no puede deshacerse.",
       "uninstallTitle": "¿Desinstalar la integración de Slack?"
-    },
-    "strapi": {
-      "description": "Automatiza el trabajo cuando se publican entradas",
-      "title": "Strapi"
     },
     "teams": {
       "adminInstall": "Pide a tu administrador que instale la integración de Microsoft Teams",

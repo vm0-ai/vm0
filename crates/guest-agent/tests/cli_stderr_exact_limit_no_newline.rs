@@ -6,6 +6,7 @@
 mod common;
 
 use guest_agent::masker::SecretMasker;
+use guest_contracts::cli_stderr_diagnostics::CLI_STDERR_RESULT_MAX_LINE_BYTES;
 use std::time::Duration;
 
 #[tokio::test]
@@ -13,7 +14,7 @@ async fn cli_failure_keeps_exact_limit_stderr_without_newline()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
-    let exact_limit_line = "x".repeat(common::CLI_STDERR_RESULT_MAX_LINE_BYTES);
+    let exact_limit_line = "x".repeat(CLI_STDERR_RESULT_MAX_LINE_BYTES);
 
     unsafe {
         common::setup_env(

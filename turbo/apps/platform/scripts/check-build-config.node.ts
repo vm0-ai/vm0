@@ -358,9 +358,9 @@ function clerkDiscoveryFixture(): string {
     '<style id="app-bootstrap-critical-styles">body { color: black; }</style>',
     '<script id="vm0-clerk-core-script" src="https://cdn.example.test/clerk.js" defer></script>',
     '<script data-vm0-clerk-bootstrap="">window.__clerkConfigured = true;</script>',
+    '<script type="module" src="/src/main.js"></script>',
     "</head><body>",
     '<div id="app-bootstrap-skeleton"></div>',
-    '<script type="module" src="/src/main.js"></script>',
     "</body></html>",
   ].join("");
 }
@@ -374,40 +374,46 @@ function assertClerkDiscoveryOrder(htmlSource: string): void {
   assert.ok(appModuleIndex > clerkBootstrapIndex);
 }
 
-function assertApplicationResourcePriority(htmlSource: string): void {
+function assertApplicationStylesheetPreload(htmlSource: string): void {
   const criticalStyleIndex = htmlSource.indexOf(
     '<style id="app-bootstrap-critical-styles">',
   );
-  const stylesheetIndex = htmlSource.indexOf('rel="stylesheet"');
-  const runtimePreloadIndex = htmlSource.indexOf("assets/rolldown-runtime-");
-  const vendorPreloadIndex = htmlSource.indexOf("assets/vendor-");
+  const stylesheetIndex = htmlSource.indexOf('id="vm0-main-stylesheet"');
+  const stylesheetLoaderIndex = htmlSource.indexOf(
+    'id="vm0-main-stylesheet-loader"',
+  );
   const clerkCoreIndex = htmlSource.indexOf('id="vm0-clerk-core-script"');
+  const clerkBootstrapIndex = htmlSource.indexOf('data-vm0-clerk-bootstrap=""');
+  const headEndIndex = htmlSource.indexOf("</head>");
   const skeletonIndex = htmlSource.indexOf('id="app-bootstrap-skeleton"');
   const appModuleIndex = htmlSource.indexOf('<script type="module"');
-  const bodyEndIndex = htmlSource.indexOf("</body>");
 
   assert.ok(criticalStyleIndex !== -1);
-  assert.ok(stylesheetIndex > criticalStyleIndex);
-  assert.ok(runtimePreloadIndex > stylesheetIndex);
-  assert.ok(vendorPreloadIndex > runtimePreloadIndex);
-  assert.ok(clerkCoreIndex > vendorPreloadIndex);
-  assert.ok(appModuleIndex > skeletonIndex);
-  assert.ok(bodyEndIndex > appModuleIndex);
+  assert.ok(clerkCoreIndex > criticalStyleIndex);
+  assert.ok(clerkBootstrapIndex > clerkCoreIndex);
+  assert.ok(appModuleIndex > clerkBootstrapIndex);
+  assert.ok(stylesheetIndex > appModuleIndex);
+  assert.ok(stylesheetLoaderIndex > stylesheetIndex);
+  assert.ok(headEndIndex > stylesheetLoaderIndex);
+  assert.ok(skeletonIndex > headEndIndex);
   assert.match(
     htmlSource,
-    /<link rel="stylesheet"[^>]*fetchpriority="high"[^>]*>/u,
+    /<link id="vm0-main-stylesheet" rel="preload" as="style"[^>]*>/u,
   );
-  assert.equal(
-    (
-      htmlSource.match(
-        /<link rel="modulepreload"[^>]*fetchpriority="low"[^>]*>/gu,
-      ) ?? []
-    ).length,
-    2,
+  assert.equal((htmlSource.match(/<link rel="stylesheet"/gu) ?? []).length, 0);
+  assert.doesNotMatch(htmlSource, /\sfetchpriority=/u);
+  assert.match(
+    htmlSource,
+    /window\.__mainStylesheetLoaded = new Promise\(function \(resolve\)/u,
+  );
+  assert.match(htmlSource, /stylesheet\.rel = "stylesheet"/u);
+  assert.match(
+    htmlSource,
+    /requestAnimationFrame\(function \(\) \{\s*requestAnimationFrame\(function \(\) \{\s*resolve\("loaded"\);/u,
   );
   assert.match(
     htmlSource,
-    /<script type="module"[^>]*fetchpriority="low"[^>]*><\/script>/u,
+    /"error",\s*function \(\) \{\s*resolve\("failed"\);/u,
   );
 }
 
@@ -530,7 +536,7 @@ await test("emits the fixed page topology and one external worker", async () => 
     assertClerkDiscoveryOrder(htmlSource);
     assert.equal((htmlSource.match(/<script type="module"/gu) ?? []).length, 1);
     assert.equal((htmlSource.match(/rel="modulepreload"/gu) ?? []).length, 2);
-    assertApplicationResourcePriority(htmlSource);
+    assertApplicationStylesheetPreload(htmlSource);
     assert.ok(
       result.output.some((item) => {
         return item.type === "asset" && item.fileName.endsWith(".json");

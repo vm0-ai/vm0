@@ -33,7 +33,6 @@ import {
   submitManualGrant$,
   manualGrantFormSubmitting$,
   setManualGrantFormValue$,
-  clearManualGrantForm$,
   manualGrantFormValuesFor$,
   setManualGrantFormSubmitting$,
   getOnlyManualConnectorStatusAuthMethod,
@@ -227,7 +226,6 @@ function ManualGrantForm({
   const { t } = useTranslation();
   const submit = useSet(submitManualGrant$);
   const setFormValue = useSet(setManualGrantFormValue$);
-  const clearForm = useSet(clearManualGrantForm$);
   const pageSignal = useGet(pageSignal$);
   const manualGrantFormValuesFor = useGet(manualGrantFormValuesFor$);
   const fieldValues = manualGrantFormValuesFor(connectorSlug);
@@ -269,7 +267,6 @@ function ManualGrantForm({
               return;
             }
             await onSuccess();
-            clearForm(connectorSlug);
           })(),
         ),
         () => {
