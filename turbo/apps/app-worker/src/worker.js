@@ -14,7 +14,9 @@ const APP_ASSET_REQUEST_HEADER_NAMES = [
 const OKOU_ROOT_DOMAINS = ["okou.ai", "omby.ai", "okou-app.pages.dev"];
 const PRODUCTION_API_ORIGINS = new Map([
   ["app.okou.ai", "https://api.okou.ai"],
+  ["app-worker.okou.ai", "https://api.okou.ai"],
   ["app.vm0.ai", "https://api.vm0.ai"],
+  ["app-worker.vm0.ai", "https://api.vm0.ai"],
 ]);
 const VERCEL_PROTECTION_BYPASS = "x-vercel-protection-bypass";
 const SECURITY_HEADERS = {

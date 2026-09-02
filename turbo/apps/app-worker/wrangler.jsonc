@@ -22,6 +22,16 @@
       "name": "okou-app-production",
       "workers_dev": false,
       "preview_urls": false,
+      "routes": [
+        {
+          "pattern": "app-worker.okou.ai",
+          "custom_domain": true,
+        },
+        {
+          "pattern": "app-worker.vm0.ai",
+          "custom_domain": true,
+        },
+      ],
     },
   },
 }

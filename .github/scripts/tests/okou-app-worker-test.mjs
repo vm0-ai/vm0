@@ -512,6 +512,23 @@ assertBootstrapAvatar(okouPage.html);
 assert.equal(clerkCoreScript(okouPage.html), expectedClerkCoreScript);
 assert.equal(clerkBootstrap(okouPage.html), expectedClerkBootstrap);
 
+for (const [origin, brandName, expectedApiOrigin] of [
+  ["https://app-worker.vm0.ai", "VM0", "https://api.vm0.ai"],
+  ["https://app-worker.okou.ai", "Okou", "https://api.okou.ai"],
+]) {
+  const canaryPage = await requestAppPage(origin);
+  assert.equal(canaryPage.response.status, 200);
+  assert.equal(
+    htmlAttribute(canaryPage.html, "data-app-brand-name"),
+    brandName,
+  );
+  assert.equal(
+    metaContent(canaryPage.html, "name", "vm0-api-origin"),
+    expectedApiOrigin,
+  );
+  assert.equal(clerkBootstrap(canaryPage.html), expectedClerkBootstrap);
+}
+
 const okouPreview = await requestAppPage(
   "https://pr-25304-app-okou-app-preview.vm0.workers.dev",
   previewOrigin,
@@ -787,6 +804,21 @@ const productionHtml = await production.response.text();
 assert.equal(
   metaContent(productionHtml, "name", "vm0-api-origin"),
   "https://api.okou.ai",
+);
+
+const canaryProduction = await requestSharedPage({
+  appOrigin: "https://app-worker.okou.ai",
+  metaResponse() {
+    return Response.json({
+      title: "Canary production conversation",
+      publicBrand: "okou",
+    });
+  },
+});
+assert.equal(canaryProduction.response.status, 200);
+assert.equal(
+  canaryProduction.observedUrl,
+  `https://api.okou.ai/api/shared-threads/${sharedThreadId}/meta`,
 );
 
 const vm0SharedOnOkouHost = await requestSharedPage({

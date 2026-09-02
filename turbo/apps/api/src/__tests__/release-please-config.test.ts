@@ -133,6 +133,10 @@ describe("release-please API deployment graph", () => {
       releaseWorkflow,
       "promote-app-production",
     );
+    const promoteAppWorkerProductionJob = workflowJobBlock(
+      releaseWorkflow,
+      "promote-app-worker-production",
+    );
     const updateRollbackDashboardJob = workflowJobBlock(
       releaseWorkflow,
       "update-rollback-dashboard",
@@ -162,8 +166,17 @@ describe("release-please API deployment graph", () => {
     expect(promoteAppProductionJob).toContain(
       "needs.release-please.outputs.app_deploy_required == 'true'",
     );
+    expect(promoteAppWorkerProductionJob).toContain(
+      "needs.release-please.outputs.app_deploy_required == 'true'",
+    );
+    expect(promoteAppWorkerProductionJob).toContain("continue-on-error: true");
+    expect(promoteAppWorkerProductionJob).toContain("app-worker.okou.ai");
+    expect(promoteAppWorkerProductionJob).toContain("app-worker.vm0.ai");
     expect(updateRollbackDashboardJob).toContain(
       "needs.release-please.outputs.app_deploy_required != 'true'",
+    );
+    expect(updateRollbackDashboardJob).not.toContain(
+      "promote-app-worker-production",
     );
   });
 

@@ -7,7 +7,8 @@ python3 - \
   "${repo_root}/.github/workflows/turbo.yml" \
   "${repo_root}/.github/workflows/release-please.yml" \
   "${repo_root}/.github/workflows/rollback-production.yml" \
-  "${repo_root}/.github/scripts/verify-okou-production-domains.sh" <<'PY'
+  "${repo_root}/.github/scripts/verify-okou-production-domains.sh" \
+  "${repo_root}/turbo/apps/app-worker/wrangler.jsonc" <<'PY'
 from pathlib import Path
 import sys
 
@@ -45,10 +46,12 @@ turbo, turbo_source = load_workflow(sys.argv[1])
 release, release_source = load_workflow(sys.argv[2])
 rollback, rollback_source = load_workflow(sys.argv[3])
 production_verifier_source = Path(sys.argv[4]).read_text()
+worker_config_source = Path(sys.argv[5]).read_text()
 
 turbo_job = turbo["jobs"]["deploy-app"]
 release_controller_job = release["jobs"]["release-please"]
 release_job = release["jobs"]["promote-app-production"]
+worker_release_job = release["jobs"]["promote-app-worker-production"]
 release_api_job = release["jobs"]["promote-api-production"]
 release_dashboard_job = release["jobs"]["update-rollback-dashboard"]
 rollback_job = rollback["jobs"]["rollback-app"]
@@ -78,13 +81,25 @@ resolve_release_tags_step = find_step(
 prepare_release_step = find_step(
     release_job, "Prepare Cloudflare Pages production deployment"
 )
+prepare_worker_release_step = find_step(
+    worker_release_job, "Prepare standalone App Worker production deployment"
+)
 verify_release_assets_step = find_step(
     release_job, "Verify immutable app assets on CDN"
+)
+verify_worker_release_assets_step = find_step(
+    worker_release_job, "Verify immutable App assets for Worker canaries"
 )
 release_sentry_step = find_step(
     release_job, "Upload Cloudflare Pages source maps to Sentry"
 )
 release_step = find_step(release_job, "Deploy Cloudflare Pages production")
+worker_release_step = find_step(
+    worker_release_job, "Deploy standalone App Worker production canaries"
+)
+worker_release_finish_step = find_step(
+    worker_release_job, "Finish GitHub Deployment"
+)
 release_finish_step = find_step(release_job, "Finish GitHub Deployment")
 release_api_verification_step = find_step(
     release_api_job, "Verify production App and API domains"
@@ -151,6 +166,18 @@ if "needs.release-please.outputs.app_deploy_required == 'true'" not in str(
     release_job.get("if", "")
 ):
     raise RuntimeError("App promotion must run for platform or App Worker releases")
+if "needs.release-please.outputs.app_deploy_required == 'true'" not in str(
+    worker_release_job.get("if", "")
+):
+    raise RuntimeError("standalone Worker promotion must follow every App deployment")
+if worker_release_job.get("continue-on-error") is not True:
+    raise RuntimeError("standalone Worker promotion must not block the live Pages path")
+if worker_release_job.get("timeout-minutes") != 45:
+    raise RuntimeError("standalone Worker promotion must have a bounded runtime")
+if worker_release_job.get("environment") != "production":
+    raise RuntimeError("standalone Worker promotion must use production credentials")
+if "promote-app-worker-production" in release_dashboard_job.get("needs", []):
+    raise RuntimeError("shadow Worker promotion must not gate the rollback dashboard")
 if "needs.release-please.outputs.app_deploy_required != 'true'" not in str(
     release_dashboard_job.get("if", "")
 ):
@@ -158,7 +185,12 @@ if "needs.release-please.outputs.app_deploy_required != 'true'" not in str(
         "rollback dashboard must wait for every applicable App deployment"
     )
 
-for step in (prepare_preview_step, prepare_release_step, rollback_prepare_step):
+for step in (
+    prepare_preview_step,
+    prepare_worker_release_step,
+    prepare_release_step,
+    rollback_prepare_step,
+):
     if step.get("env", {}).get("CLERK_PRODUCTION_PRIMARY_APP_DOMAIN") != primary_app_domain_expression:
         raise RuntimeError(
             f"step {step.get('name')} must inject the Clerk production primary app domain"
@@ -210,6 +242,10 @@ for step, canonical_assets in (
         "${{ steps.worker-preview.outputs.canonical-dist }}/assets",
     ),
     (
+        verify_worker_release_assets_step,
+        "${{ steps.worker-production.outputs.canonical-dist }}/assets",
+    ),
+    (
         verify_release_assets_step,
         "${{ steps.pages-production.outputs.canonical-dist }}/assets",
     ),
@@ -248,6 +284,59 @@ if not (
     raise RuntimeError("CDN assets must be verified before production Pages deployment")
 if "publish-okou-app-assets.sh" in str(release_job):
     raise RuntimeError("production promotion must not publish immutable app assets")
+if "publish-okou-app-assets.sh" in str(worker_release_job):
+    raise RuntimeError("standalone Worker promotion must not republish immutable assets")
+
+worker_release_steps = worker_release_job["steps"]
+if not (
+    worker_release_steps.index(prepare_worker_release_step)
+    < worker_release_steps.index(verify_worker_release_assets_step)
+    < worker_release_steps.index(worker_release_step)
+    < worker_release_steps.index(worker_release_finish_step)
+):
+    raise RuntimeError(
+        "standalone Worker must prepare and verify its artifact before deployment"
+    )
+require_fragments(
+    prepare_worker_release_step,
+    [
+        "bash .github/scripts/fetch-okou-app-artifact.sh",
+        "bash .github/scripts/verify-okou-app-artifact.sh",
+        "bash .github/scripts/prepare-okou-app-worker-shell.sh",
+        'echo "canonical-dist=$canonical_dist"',
+    ],
+)
+worker_release_source = require_fragments(
+    worker_release_step,
+    [
+        "wrangler deploy",
+        "--env production",
+        '--message "app artifact ${ARTIFACT_SHA}"',
+        "bash .github/scripts/verify-okou-app-runtime.sh",
+        '"https://app-worker.vm0.ai|https://api.vm0.ai"',
+        '"https://app-worker.okou.ai|https://api.okou.ai"',
+        "Access-Control-Request-Method: GET",
+        "%header{access-control-allow-origin}",
+        "%header{access-control-allow-credentials}",
+    ],
+)
+if worker_release_step.get("env", {}).get("CLOUDFLARE_API_TOKEN") != (
+    "${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}"
+):
+    raise RuntimeError("production Worker deployment must use the Worker token")
+if worker_release_step.get("env", {}).get("OKOU_APP_RUNTIME_MAX_ATTEMPTS") != "60":
+    raise RuntimeError("production Worker canaries must use bounded convergence probes")
+if worker_release_source.count("wrangler deploy") != 1:
+    raise RuntimeError("standalone Worker production must deploy exactly once")
+if worker_release_finish_step.get("with", {}).get("status") != "${{ job.status }}":
+    raise RuntimeError("standalone Worker deployment must report failed verification")
+for fragment in (
+    '"pattern": "app-worker.okou.ai"',
+    '"pattern": "app-worker.vm0.ai"',
+    '"custom_domain": true',
+):
+    if fragment not in worker_config_source:
+        raise RuntimeError(f"production Worker config is missing: {fragment}")
 
 readiness_source = require_fragments(
     preview_readiness_step,
