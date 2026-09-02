@@ -152,7 +152,6 @@ import {
   seedVm0BuiltInModelKey as seedVm0BuiltInModelKeyState,
   setVm0BuiltInCandidateCooldownFixture,
   setRunAutonomyBudgetFixture,
-  setRunnerJobPiOwnershipTransferAsPreviousApi,
   steerRunTimeBudgetFixture,
 } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
@@ -5092,6 +5091,9 @@ describe("CHAT-02: model-first provider policies", () => {
   it("routes model policy providers into the runner claim", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const orgId = requireOrgId(actor);
+    // External model admission depends on plan capabilities, not VM0 credits.
+    await seedOrgMetadata({ orgId, tier: "pro", credits: 0 });
     const { providerId: deepseekId } = await upsertOrgModelProvider(actor, {
       type: "deepseek",
       secret: "selected-deepseek-key",
@@ -5172,6 +5174,9 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(followUpEnvironment.OPENAI_MODEL).toBe("deepseek-v4-flash");
     await cancelChatRun(actor, followUp.runId);
 
+    // Restore spendable credits before exercising the built-in branch.
+    await seedOrgMetadata({ orgId, tier: "pro", credits: 1_000_000 });
+
     // A vm0 provider pin in an entitled org passes the spendable-credits
     // admission. The outcome past admission is race-dependent on the shared
     // database: 503 when no vm0 execution key exists (no public provisioning
@@ -5186,11 +5191,8 @@ describe("CHAT-02: model-first provider policies", () => {
         modelProviderId: null,
       },
     ]);
-    if (!actor.orgId) {
-      throw new Error("Expected the built-in admission actor to have an org");
-    }
     await setOrgModelPolicyProviderTypeFixture({
-      orgId: actor.orgId,
+      orgId,
       model: "claude-sonnet-5",
       defaultProviderType: "built-in",
     });
@@ -6255,6 +6257,131 @@ describe("CHAT-02: model-first provider policies", () => {
         agentId,
         firstSessionHash,
       ]);
+    },
+    90_000,
+  );
+
+  it.each([
+    {
+      selectedModel: "deepseek-v4-flash",
+      upstreamModel: "company-deepseek-flash-production",
+    },
+    {
+      selectedModel: "deepseek-v4-pro",
+      upstreamModel: "company-deepseek-pro-production",
+    },
+    {
+      selectedModel: "gpt-5.6-terra",
+      upstreamModel: "company-terra-production",
+    },
+  ] as const)(
+    "runs custom Responses gateway $selectedModel through Pi without vm0 model billing",
+    async ({ selectedModel, upstreamModel }) => {
+      const { actor, agentId } = await entitledChatActor();
+      const orgId = requireOrgId(actor);
+      const usagePricingResolution = await createTerraUsagePricingResolution();
+      const created = await accept(
+        modelProviderConnectionsClient().create({
+          headers: sessionHeaders(actor),
+          body: {
+            displayName: `Pi custom gateway for ${selectedModel}`,
+            secret: "custom-pi-gateway-secret",
+            surfaces: [
+              {
+                protocol: "openai-responses",
+                apiBaseUrl: "https://pi-custom-gateway.example.com/openai/v1",
+                authHeaderName: "x-api-key",
+                authHeaderTemplate: "Key {{secret}}",
+                modelMappings: { [selectedModel]: upstreamModel },
+              },
+            ],
+          },
+        }),
+        [201],
+      );
+      const surfaceId = created.body.surfaces[0]?.id;
+      if (!surfaceId) {
+        throw new Error("Expected the custom Pi gateway to have a surface");
+      }
+      await api.updateOrgModelPolicies(actor, [
+        {
+          model: selectedModel,
+          isDefault: true,
+          defaultProviderType: "custom-openai-responses",
+          credentialScope: "org",
+          modelProviderId: null,
+          modelProviderSurfaceId: surfaceId,
+        },
+      ]);
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        { [FeatureSwitchKey.PiLoop]: true },
+      );
+      mockPiResourceArchiveDownloads();
+      mockPiCheckpointObjectStore();
+      const modelRequests: {
+        readonly body: unknown;
+        readonly authorization: string | null;
+        readonly apiKey: string | null;
+      }[] = [];
+      server.use(
+        http.post(
+          "https://pi-custom-gateway.example.com/openai/v1/responses",
+          async ({ request }) => {
+            modelRequests.push({
+              body: await request.json(),
+              authorization: request.headers.get("authorization"),
+              apiKey: request.headers.get("x-api-key"),
+            });
+            return new HttpResponse(
+              piResponsesTextSse(
+                `custom gateway answer for ${selectedModel}`,
+                0,
+                {
+                  input_tokens: 10,
+                  output_tokens: 3,
+                  total_tokens: 13,
+                  input_tokens_details: {
+                    cached_tokens: 3,
+                    cache_write_tokens: 2,
+                  },
+                },
+              ),
+              { headers: { "content-type": "text/event-stream" } },
+            );
+          },
+        ),
+      );
+
+      const run = await sendChatRun(
+        actor,
+        {
+          agentId,
+          prompt: `route ${selectedModel} through the custom Pi gateway`,
+          model: selectedModel,
+        },
+        "vm0",
+        usagePricingResolution,
+      );
+      await waitForRunStatus(actor, run.runId, "completed");
+      await flushWaitUntilForTest();
+
+      await expect(
+        readRunLaunchSnapshotFixture(context, run.runId),
+      ).resolves.toMatchObject({
+        launch_snapshot: { framework: "pi" },
+      });
+      expect(modelRequests).toStrictEqual([
+        {
+          body: expect.objectContaining({ model: upstreamModel }),
+          authorization: null,
+          apiKey: "Key custom-pi-gateway-secret",
+        },
+      ]);
+      await expect(readRunUsageEventsFixture(run.runId)).resolves.toStrictEqual(
+        [],
+      );
     },
     90_000,
   );
@@ -8552,12 +8679,6 @@ describe("CHAT-02: model-first provider policies", () => {
         },
       },
     });
-    const fallbackFirstTurnConfig =
-      fallbackClaim.claim.piLaunchConfig?.apiFirstTurn;
-    if (!fallbackFirstTurnConfig) {
-      throw new Error("Expected Pi API first-turn launch config");
-    }
-    expect(fallbackFirstTurnConfig).not.toHaveProperty("ownershipTransfer");
     const postProviderPrompt = "must fail after one provider request";
     const postProvider = await sendChatRun(actor, {
       agentId,
@@ -9113,7 +9234,6 @@ describe("CHAT-02: model-first provider policies", () => {
       { content: "before parallel tools", sequenceNumber: 0 },
       { content: "after parallel tools", sequenceNumber: 3 },
     ]);
-    await setRunnerJobPiOwnershipTransferAsPreviousApi(context, run.runId);
     const claimed = await claimChatRun(runnerGroup, run.runId);
     expect(claimed.claim.cliAgentType).toBe("pi");
     expect(claimed.claim.piSessionId).toBe(run.threadId);
@@ -9126,7 +9246,6 @@ describe("CHAT-02: model-first provider policies", () => {
       schemaVersion: 2,
       apiFirstTurn: {
         schemaVersion: 1,
-        ownershipTransfer: { schemaVersion: 1 },
         baseSession: { sessionId: run.threadId, sha256: null },
         sandboxEventSequenceStart: 1,
       },

@@ -18,11 +18,11 @@ type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 const CHILD_TIMEOUT: Duration = Duration::from_secs(30);
 const ENDPOINT_MARKER: &str = "must-not-leak";
-const SCRUB_CHILD_TEST: &str = "canonical_pair_ignores_and_scrubs_retired_aliases_isolated";
-const SCRUB_CHILD_GUARD: &str = "OKOU_CGROUP_PLACEMENT_SCRUB_CHILD";
-const SCRUB_CHILD_GUARD_VALUE: &str = "1";
-const SCRUB_CHILD_MARKER: &str = "cgroup placement scrub child active";
-const BROKER_CHILD_TEST: &str = "canonical_pair_scrub_broker_isolated";
+const CAPTURE_CHILD_TEST: &str = "canonical_pair_is_removed_after_capture_isolated";
+const CAPTURE_CHILD_GUARD: &str = "OKOU_CGROUP_PLACEMENT_CAPTURE_CHILD";
+const CAPTURE_CHILD_GUARD_VALUE: &str = "1";
+const CAPTURE_CHILD_MARKER: &str = "cgroup placement capture child active";
+const BROKER_CHILD_TEST: &str = "canonical_pair_capture_broker_isolated";
 const BROKER_CHILD_GUARD: &str = "OKOU_CGROUP_PLACEMENT_BROKER_CHILD";
 const BROKER_CHILD_GUARD_VALUE: &str = "1";
 const BROKER_ENDPOINT_ENV: &str = "OKOU_CGROUP_PLACEMENT_BROKER_ENDPOINT";
@@ -40,9 +40,7 @@ fn guest_agent_command() -> Command {
     for key in [
         process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
         guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
-        guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
         guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
-        guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
         "OKOU_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL",
     ] {
         command.env_remove(key);
@@ -63,9 +61,7 @@ fn assert_value_free(stderr: &str, endpoint: &str, context: &str) {
         endpoint,
         "process-control-endpoint-must-not-leak",
         "canonical-workload-must-not-leak",
-        "legacy-workload-must-not-leak",
         "canonical-tool-must-not-leak",
-        "legacy-tool-must-not-leak",
     ] {
         assert!(
             !stderr.contains(value),
@@ -102,7 +98,7 @@ where
         Err(error) => error,
         Ok(_) => {
             return Err(format!(
-                "{name} connected to the workload capability before rejecting invalid aliases"
+                "{name} connected to the workload capability before rejecting invalid input"
             )
             .into());
         }
@@ -112,16 +108,6 @@ where
         std::io::ErrorKind::WouldBlock,
         "{name}"
     );
-    Ok(())
-}
-
-fn assert_listener_idle(listener: &std::os::unix::net::UnixListener, context: &str) -> TestResult {
-    listener.set_nonblocking(true)?;
-    let error = match listener.accept() {
-        Err(error) => error,
-        Ok(_) => return Err(format!("{context} accepted an unexpected connection").into()),
-    };
-    assert_eq!(error.kind(), std::io::ErrorKind::WouldBlock, "{context}");
     Ok(())
 }
 
@@ -169,9 +155,7 @@ async fn guest_agent_accepts_the_canonical_pair_and_preserves_endpoint_bytes() -
 async fn guest_agent_rejects_invalid_canonical_input_before_capability_consumption() -> TestResult {
     let workload_canonical =
         guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV;
-    let workload_retired = guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV;
     let tool_canonical = guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV;
-    let tool_retired = guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV;
     let pair_required = format!("{workload_canonical} and {tool_canonical} are required with");
     let workload_empty =
         format!("invalid cgroup placement environment: key={workload_canonical} state=empty");
@@ -191,36 +175,6 @@ async fn guest_agent_rejects_invalid_canonical_input_before_capability_consumpti
         &pair_required,
         |command, _endpoint| {
             command.env(tool_canonical, "canonical-tool-must-not-leak");
-        },
-    )
-    .await?;
-    assert_rejected_before_workload_connection(
-        "retired-only",
-        &pair_required,
-        |command, endpoint| {
-            command
-                .env(workload_retired, endpoint)
-                .env(tool_retired, "legacy-tool-must-not-leak");
-        },
-    )
-    .await?;
-    assert_rejected_before_workload_connection(
-        "canonical-workload-with-retired-tool",
-        &pair_required,
-        |command, endpoint| {
-            command
-                .env(workload_canonical, endpoint)
-                .env(tool_retired, "legacy-tool-must-not-leak");
-        },
-    )
-    .await?;
-    assert_rejected_before_workload_connection(
-        "retired-workload-with-canonical-tool",
-        &pair_required,
-        |command, endpoint| {
-            command
-                .env(workload_retired, endpoint)
-                .env(tool_canonical, "canonical-tool-must-not-leak");
         },
     )
     .await?;
@@ -276,60 +230,54 @@ async fn guest_agent_rejects_invalid_canonical_input_before_capability_consumpti
 }
 
 #[tokio::test]
-async fn guest_agent_ignores_and_scrubs_retired_aliases_after_canonical_capture() -> TestResult {
+async fn guest_agent_removes_canonical_endpoints_after_capture() -> TestResult {
     let mut command = Command::new(std::env::current_exe()?);
     command
         .arg("--exact")
-        .arg(SCRUB_CHILD_TEST)
+        .arg(CAPTURE_CHILD_TEST)
         .arg("--ignored")
         .arg("--nocapture")
         .arg("--test-threads=1")
         .env_clear()
         .env("PATH", ISOLATED_CHILD_PATH)
-        .env(SCRUB_CHILD_GUARD, SCRUB_CHILD_GUARD_VALUE);
+        .env(CAPTURE_CHILD_GUARD, CAPTURE_CHILD_GUARD_VALUE);
     if let Some(llvm_profile_file) = std::env::var_os("LLVM_PROFILE_FILE") {
         command.env("LLVM_PROFILE_FILE", llvm_profile_file);
     }
 
     let output = command_output(
         &mut command,
-        "isolated cgroup placement scrub test did not finish",
+        "isolated cgroup placement capture test did not finish",
     )
     .await?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         output.status.success(),
-        "isolated scrub test failed with {}; stdout:\n{stdout}\nstderr:\n{stderr}",
+        "isolated capture test failed with {}; stdout:\n{stdout}\nstderr:\n{stderr}",
         output.status
     );
-    assert!(stdout.contains(SCRUB_CHILD_MARKER), "stdout:\n{stdout}");
+    assert!(stdout.contains(CAPTURE_CHILD_MARKER), "stdout:\n{stdout}");
     Ok(())
 }
 
 #[test]
-#[ignore = "spawned exactly by the cgroup placement scrub parent test"]
-fn canonical_pair_ignores_and_scrubs_retired_aliases_isolated() -> TestResult {
-    if std::env::var(SCRUB_CHILD_GUARD).ok().as_deref() != Some(SCRUB_CHILD_GUARD_VALUE) {
+#[ignore = "spawned exactly by the cgroup placement capture parent test"]
+fn canonical_pair_is_removed_after_capture_isolated() -> TestResult {
+    if std::env::var(CAPTURE_CHILD_GUARD).ok().as_deref() != Some(CAPTURE_CHILD_GUARD_VALUE) {
         return Ok(());
     }
 
     let canonical_endpoint = unique_endpoint();
-    let retired_endpoint = unique_endpoint();
-    let retired_listener = process_control_ipc::bind_abstract_listener(&retired_endpoint)?;
     let workload_canonical =
         guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV;
-    let workload_retired = guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV;
     let tool_canonical = guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV;
-    let tool_retired = guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV;
 
     // SAFETY: this exact ignored test is the only active test in its process,
-    // and no thread exists while the environment is configured or scrubbed.
+    // and no thread exists while the environment is configured or captured.
     unsafe {
         std::env::set_var(workload_canonical, &canonical_endpoint);
-        std::env::set_var(workload_retired, &retired_endpoint);
         std::env::set_var(tool_canonical, "canonical-tool-must-not-leak");
-        std::env::set_var(tool_retired, OsString::from_vec(vec![0xff]));
     }
 
     let mut broker_command = std::process::Command::new(std::env::current_exe()?);
@@ -371,31 +319,24 @@ fn canonical_pair_ignores_and_scrubs_retired_aliases_isolated() -> TestResult {
         error.contains("workload placement fd is not on cgroup v2"),
         "unexpected canonical bootstrap error: {error}"
     );
-    assert_value_free(&error, &canonical_endpoint, "canonical scrub child");
-    assert_value_free(&error, &retired_endpoint, "retired scrub child");
+    assert_value_free(&error, &canonical_endpoint, "canonical capture child");
 
     let broker_status = broker.wait()?;
     assert!(broker_status.success(), "broker status: {broker_status}");
-    assert_listener_idle(&retired_listener, "retired workload endpoint")?;
-    for key in [
-        workload_canonical,
-        workload_retired,
-        tool_canonical,
-        tool_retired,
-    ] {
+    for key in [workload_canonical, tool_canonical] {
         assert!(
             std::env::var_os(key).is_none(),
             "Guest Agent retained {key} after canonical capture"
         );
     }
 
-    println!("{SCRUB_CHILD_MARKER}");
+    println!("{CAPTURE_CHILD_MARKER}");
     Ok(())
 }
 
 #[test]
-#[ignore = "spawned exactly by the cgroup placement scrub child test"]
-fn canonical_pair_scrub_broker_isolated() -> TestResult {
+#[ignore = "spawned exactly by the cgroup placement capture child test"]
+fn canonical_pair_capture_broker_isolated() -> TestResult {
     if std::env::var(BROKER_CHILD_GUARD).ok().as_deref() != Some(BROKER_CHILD_GUARD_VALUE) {
         return Ok(());
     }

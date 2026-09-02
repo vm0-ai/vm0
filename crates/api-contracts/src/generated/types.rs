@@ -47,14 +47,6 @@ pub mod runners {
             pub sha256: Option<String>,
         }
 
-        /// Sandbox capability for the versioned Pi ownership-transfer manifest.
-        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        pub struct PiLaunchConfigApiFirstTurnOwnershipTransfer {
-            /// Pi ownership-transfer capability version.
-            pub schema_version: i64,
-        }
-
         /// API-mediated first-turn configuration for Pi.
         #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -73,9 +65,6 @@ pub mod runners {
             pub base_session: PiLaunchConfigApiFirstTurnBaseSession,
             /// First sandbox event sequence number for the resumed session.
             pub sandbox_event_sequence_start: u64,
-            /// Optional proof that the selected Sandbox supports ownership-transfer manifests.
-            #[serde(default, skip_serializing_if = "Option::is_none")]
-            pub ownership_transfer: Option<PiLaunchConfigApiFirstTurnOwnershipTransfer>,
         }
 
         /// Frozen exact-version Pi memory recall selection.
@@ -206,6 +195,16 @@ pub mod runners {
             CHATGPTACCESSTOKEN,
         }
 
+        /// Non-secret custom gateway credential header policy.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct PiModelConfigCredentialHeader {
+            /// Request header name.
+            pub name: String,
+            /// Header value template containing the credential placeholder exactly once.
+            pub value_template: String,
+        }
+
         /// API-owned non-secret Pi model configuration.
         #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -214,8 +213,11 @@ pub mod runners {
             pub provider: PiModelConfigProvider,
             /// Base URL used for model requests.
             pub base_url: String,
-            /// Provider model identifier.
+            /// Provider model identifier sent with requests.
             pub model: String,
+            /// Optional native Pi catalog model used only for trusted capabilities and limits.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub catalog_model: Option<String>,
             /// Cross-version transport input. Current writers emit OpenAI Responses; readers normalize absent or legacy values until the previous API rollback, runner/Sandbox drain, and pre-cutover context gates in #31085 pass.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub api: Option<PiModelConfigApi>,
@@ -229,6 +231,9 @@ pub mod runners {
             pub api_key_env: PiModelConfigApiKeyEnv,
             /// API-owned credential secret backing the environment entry.
             pub credential_secret_name: String,
+            /// Optional non-secret custom gateway credential header policy.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub credential_header: Option<PiModelConfigCredentialHeader>,
         }
 
         /// DTOs for durable active-input delivery.

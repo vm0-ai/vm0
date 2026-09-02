@@ -1,7 +1,7 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
-import { piAgentStream } from "./model";
+import { piAgentStreamForConfig } from "./model";
 import { assertPiApiFirstTurnCompactionSafe } from "./compaction-preflight";
 import { MemoryPiSession, runPiFirstModelTurn } from "./session-memory";
 import { createPiAgentSessionForRuntime } from "./session-runtime";
@@ -104,7 +104,7 @@ export async function runPiApiFirstTurn(
     const turn = await runPiFirstModelTurn({
       model: shell.model,
       session: memorySession,
-      stream: piAgentStream,
+      stream: piAgentStreamForConfig(args.model),
       systemPrompt: shell.session.systemPrompt,
       tools: shell.session.agent.state.tools,
       prompt: args.prompt,

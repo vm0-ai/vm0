@@ -892,21 +892,6 @@ export const piApiFirstTurnManifestSchema = z.discriminatedUnion("mode", [
     .readonly(),
 ]);
 
-const piApiFirstTurnOwnershipTransferCapabilitySchema = z
-  .object({
-    schemaVersion: z.literal(1),
-  })
-  .strict()
-  .readonly();
-
-/**
- * Ignored compatibility field for stored contexts written before #31020.
- * Keep accepting this exact shape until parent #31007 records the
- * marker-omitting deployment and its queued/claimed context window drains.
- */
-const piApiFirstTurnOwnershipTransferSchema =
-  piApiFirstTurnOwnershipTransferCapabilitySchema.optional();
-
 export const piApiFirstTurnConfigSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -916,7 +901,6 @@ export const piApiFirstTurnConfigSchema = z
     deadlineAt: z.number().int().positive(),
     baseSession: piSessionCheckpointSchema,
     sandboxEventSequenceStart: piSandboxEventSequenceStartSchema,
-    ownershipTransfer: piApiFirstTurnOwnershipTransferSchema,
   })
   .strict()
   .readonly();
@@ -926,6 +910,31 @@ export const piApiFirstTurnConfigSchema = z
  * runtime environment entry used by the Sandbox, while `credentialSecretName`
  * names the API-owned encrypted secret that backs that entry.
  */
+const piCredentialHeaderSchema = z
+  .object({
+    name: z
+      .string()
+      .min(1)
+      .max(128)
+      .regex(/^[A-Za-z][A-Za-z0-9-]*$/),
+    valueTemplate: z
+      .string()
+      .min(1)
+      .max(1024)
+      .refine((value) => {
+        const staticTemplate = value.replace("{{secret}}", "");
+        return (
+          !value.includes("\r") &&
+          !value.includes("\n") &&
+          value.split("{{secret}}").length === 2 &&
+          !staticTemplate.includes("{{") &&
+          !staticTemplate.includes("}}")
+        );
+      }, "Credential header template must contain {{secret}} exactly once, no other template references, and no line breaks"),
+  })
+  .strict()
+  .readonly();
+
 export const piModelConfigSchema = z
   .object({
     provider: z.enum([
@@ -937,7 +946,10 @@ export const piModelConfigSchema = z
       "codex",
     ]),
     baseUrl: z.url(),
+    // Request identity can differ from the trusted Pi catalog entry for an
+    // organization-configured model provider gateway.
     model: z.string().min(1),
+    catalogModel: z.string().min(1).optional(),
     // Current writers emit openai-responses; readers normalize absent or legacy
     // values while the previous API can be rolled back, old runner/Sandbox
     // instances complete their two-hour drain plus finalization, and executable
@@ -956,6 +968,9 @@ export const piModelConfigSchema = z
       "CHATGPT_ACCESS_TOKEN",
     ]),
     credentialSecretName: z.string().regex(/^[A-Z_][A-Z0-9_]*$/),
+    // Non-secret gateway request policy. The credential itself remains in the
+    // encrypted secret named above and is resolved only at an execution edge.
+    credentialHeader: piCredentialHeaderSchema.optional(),
   })
   .strict()
   .readonly();

@@ -1041,7 +1041,6 @@ pub struct CodexAppServerEnvConfig<'a> {
 /// Call before any other test thread reads process environment.
 pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
     for key in [
-        guest_contracts::env::API_URL_ENV,
         guest_contracts::env::CANONICAL_API_URL_ENV,
         guest_contracts::env::RUN_ID_ENV,
         "VM0_API_TOKEN",
@@ -1087,9 +1086,7 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
         guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
         process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
         guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
-        guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
         guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
-        guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
         "OKOU_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL",
         "OKOU_TEST_CLAUDE_CONFIG_DIR",
         "OKOU_TEST_CODEX_HOME_DIR",

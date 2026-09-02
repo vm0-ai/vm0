@@ -16,23 +16,19 @@ const ISOLATED_CHILD_MOCK_PATH: &str = "OKOU_PROCESS_CONTROL_ENV_ISOLATED_MOCK_P
 const ISOLATED_CHILD_MARKER: &str = "vm0 process-control env isolated child active";
 const ISOLATED_CHILD_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
 const PROCESS_CONTROL_CHILD_TIMEOUT: Duration = Duration::from_secs(30);
-const RETIRED_PROCESS_CONTROL_BOOTSTRAP_ENV: &str = "VM0_PROCESS_CONTROL_ENDPOINT";
 
 #[tokio::test]
 async fn canonical_process_control_without_workload_capability_fails_closed()
 -> Result<(), Box<dyn std::error::Error>> {
     let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
     command
-        .env_remove(RETIRED_PROCESS_CONTROL_BOOTSTRAP_ENV)
         .env_remove(process_control_ipc::CANONICAL_BOOTSTRAP_ENV)
         .env(
             process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
             "missing-capability",
         )
         .env_remove(guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV)
-        .env_remove(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV)
         .env_remove(guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV)
-        .env_remove(guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV)
         .env_remove("OKOU_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL");
     let output = common::command_output_with_timeout(
         &mut command,
@@ -50,10 +46,6 @@ async fn canonical_process_control_without_workload_capability_fails_closed()
     assert!(
         stderr.contains("are required with OKOU_PROCESS_CONTROL_ENDPOINT"),
         "stderr: {stderr}"
-    );
-    assert!(
-        !stderr.contains(RETIRED_PROCESS_CONTROL_BOOTSTRAP_ENV),
-        "stderr retained the retired process-control prerequisite"
     );
     assert!(
         !stderr.contains("missing-capability"),
@@ -85,10 +77,7 @@ async fn workload_capability_is_received_over_scm_rights_and_validated()
 
     let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
     command
-        .env_remove(RETIRED_PROCESS_CONTROL_BOOTSTRAP_ENV)
         .env_remove(process_control_ipc::CANONICAL_BOOTSTRAP_ENV)
-        .env_remove(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV)
-        .env_remove(guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV)
         .env(
             process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
             "process-control-present",
@@ -176,7 +165,7 @@ async fn process_control_endpoint_is_not_inherited_by_cli_child_isolated()
         common::setup_env(
             &mock,
             tmp.path(),
-            r#"if [ -n "${VM0_PROCESS_CONTROL_ENDPOINT:-}" ] || [ -n "${OKOU_PROCESS_CONTROL_ENDPOINT:-}" ]; then echo "process control endpoint leaked" >&2; exit 42; fi"#,
+            r#"if [ -n "${OKOU_PROCESS_CONTROL_ENDPOINT:-}" ]; then echo "process control endpoint leaked" >&2; exit 42; fi"#,
             3,
             1,
         )?;
@@ -184,10 +173,6 @@ async fn process_control_endpoint_is_not_inherited_by_cli_child_isolated()
 
     let runtime = common::guest_runtime_from_process_env()?;
     unsafe {
-        std::env::set_var(
-            RETIRED_PROCESS_CONTROL_BOOTSTRAP_ENV,
-            "stale-legacy-process-control-endpoint",
-        );
         std::env::set_var(
             process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
             "stale-canonical-process-control-endpoint",
@@ -208,7 +193,7 @@ async fn process_control_endpoint_is_not_inherited_by_cli_child_isolated()
     assert_eq!(
         result.exit_code,
         common::CLEAN_EXIT,
-        "CLI child inherited a process-control endpoint alias"
+        "CLI child inherited the process-control endpoint"
     );
     Ok(())
 }

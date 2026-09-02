@@ -423,6 +423,46 @@ describe("Pi sandbox execution contract", () => {
         credentialSecretName: "OPENAI_API_KEY",
       }).success,
     ).toBe(false);
+    expect(
+      piModelConfigSchema.parse({
+        provider: "deepseek",
+        baseUrl: "https://gateway.example.com/v1",
+        model: "company-deepseek-production",
+        catalogModel: "deepseek-v4-flash",
+        api: "openai-responses",
+        apiKeyEnv: "OPENAI_API_KEY",
+        credentialSecretName: "VM0_MODEL_PROVIDER_API_KEY",
+        credentialHeader: {
+          name: "x-api-key",
+          valueTemplate: "Key {{secret}}",
+        },
+      }),
+    ).toMatchObject({
+      catalogModel: "deepseek-v4-flash",
+      credentialHeader: {
+        name: "x-api-key",
+        valueTemplate: "Key {{secret}}",
+      },
+    });
+    for (const valueTemplate of [
+      "missing-placeholder",
+      "{{secret}} twice {{secret}}",
+      "Bearer {{secret}} {{other}}",
+      "{{secret}}\r\nInjected: value",
+    ]) {
+      expect(
+        piModelConfigSchema.safeParse({
+          provider: "deepseek",
+          baseUrl: "https://gateway.example.com/v1",
+          model: "company-deepseek-production",
+          catalogModel: "deepseek-v4-flash",
+          api: "openai-responses",
+          apiKeyEnv: "OPENAI_API_KEY",
+          credentialSecretName: "VM0_MODEL_PROVIDER_API_KEY",
+          credentialHeader: { name: "x-api-key", valueTemplate },
+        }).success,
+      ).toBe(false);
+    }
   });
 
   it.each([
@@ -465,31 +505,6 @@ describe("Pi sandbox execution contract", () => {
       mode,
       sandboxEventSequenceStart: 4,
     });
-  });
-
-  it("keeps the ignored stored-context marker exact and optional", () => {
-    const canonical = piApiFirstTurnConfigSchema.parse(
-      piStoredContext.piLaunchConfig.apiFirstTurn,
-    );
-    const configured = piApiFirstTurnConfigSchema.parse({
-      ...piStoredContext.piLaunchConfig.apiFirstTurn,
-      ownershipTransfer: { schemaVersion: 1 },
-    });
-
-    expect(canonical).not.toHaveProperty("ownershipTransfer");
-    expect(configured.ownershipTransfer).toStrictEqual({ schemaVersion: 1 });
-    expect(
-      piApiFirstTurnConfigSchema.safeParse({
-        ...piStoredContext.piLaunchConfig.apiFirstTurn,
-        ownershipTransfer: { schemaVersion: 2 },
-      }).success,
-    ).toBe(false);
-    expect(
-      piApiFirstTurnConfigSchema.safeParse({
-        ...piStoredContext.piLaunchConfig.apiFirstTurn,
-        ownershipTransfer: { schemaVersion: 1, futureField: true },
-      }).success,
-    ).toBe(false);
   });
 
   it.each([

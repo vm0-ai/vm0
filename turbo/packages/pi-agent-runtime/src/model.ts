@@ -180,7 +180,7 @@ function observeResponsesServiceTier(
   };
 }
 
-export const piAgentStream = (
+const piAgentStream = (
   model: Model<"openai-responses">,
   context: Context,
   options?: PiAgentStreamOptions,
@@ -206,16 +206,54 @@ export const piAgentRegisteredStream = (
   return piAgentStream(model, context, options);
 };
 
+/** Apply API-owned per-request policy to both API-first and Sandbox turns. */
+export function piAgentStreamForConfig(
+  config: Pick<PiAgentModelConfig, "requestHeaders" | "serviceTier">,
+): typeof piAgentRegisteredStream {
+  if (config.serviceTier === undefined && config.requestHeaders === undefined) {
+    return piAgentRegisteredStream;
+  }
+  return (model, context, options) => {
+    const configuredHeaderNames = new Set(
+      Object.keys(config.requestHeaders ?? {}).map((name) => {
+        return name.toLowerCase();
+      }),
+    );
+    const inheritedHeaders = Object.fromEntries(
+      Object.entries(options?.headers ?? {}).filter(([name]) => {
+        return !configuredHeaderNames.has(name.toLowerCase());
+      }),
+    );
+    return piAgentRegisteredStream(model, context, {
+      ...options,
+      ...(config.requestHeaders === undefined
+        ? {}
+        : {
+            headers: {
+              ...inheritedHeaders,
+              ...config.requestHeaders,
+            },
+          }),
+      ...(config.serviceTier === undefined
+        ? {}
+        : { serviceTier: config.serviceTier }),
+    });
+  };
+}
+
 /** Resolve model metadata from Pi's native provider catalog. */
 export function resolvePiAgentModel(
   config: PiAgentModelConfig,
 ): Model<"openai-responses"> | null {
-  const source = sourceModel(config.provider, config.model);
+  const source = sourceModel(
+    config.provider,
+    config.catalogModel ?? config.model,
+  );
   if (!source) {
     return null;
   }
   const base = {
-    id: source.id,
+    id: config.model,
     name: source.name,
     provider: config.provider,
     baseUrl: config.baseUrl,

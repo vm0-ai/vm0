@@ -47,9 +47,7 @@ pub(super) fn values_with_inputs(
         values.push((key.to_string(), value));
     }
     for (key, value) in user_env {
-        if key == guest_contracts::env::API_URL_ENV
-            || key == guest_contracts::env::CANONICAL_API_URL_ENV
-        {
+        if key == guest_contracts::env::CANONICAL_API_URL_ENV {
             continue;
         }
         values.push((key.clone(), value.clone()));
@@ -159,17 +157,13 @@ mod tests {
     }
 
     #[test]
-    fn values_with_inputs_emits_only_captured_canonical_api_url() {
+    fn values_with_inputs_uses_captured_canonical_api_url() {
         let mut user_env = HashMap::new();
         let oversized_user_api_url =
             "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
         user_env.insert(
             guest_contracts::env::CANONICAL_API_URL_ENV.to_string(),
             oversized_user_api_url,
-        );
-        user_env.insert(
-            guest_contracts::env::API_URL_ENV.to_string(),
-            "https://legacy-user.example.invalid".to_string(),
         );
         let captured_api_url = "https://runner.example/%2F?raw=%20#fragment/";
 
@@ -188,12 +182,6 @@ mod tests {
                 .filter(|(key, _)| key == guest_contracts::env::CANONICAL_API_URL_ENV)
                 .count(),
             1
-        );
-        assert!(
-            !values
-                .iter()
-                .any(|(key, _)| key == guest_contracts::env::API_URL_ENV),
-            "managed child environment retained the legacy API URL alias"
         );
     }
 

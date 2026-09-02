@@ -7,8 +7,8 @@ use crate::constants;
 use crate::env::{Framework, GuestConfig};
 use crate::error::AgentError;
 use crate::failure_patterns::{
-    has_exact_codex_oauth_connector, is_codex_context_window_exceeded_message,
-    is_codex_model_capacity_message,
+    has_exact_codex_oauth_connector, is_codex_chatgpt_account_unsupported_model_message,
+    is_codex_context_window_exceeded_message, is_codex_model_capacity_message,
 };
 use crate::http::{HttpAttemptObserver, HttpClient};
 use crate::masker::SecretMasker;
@@ -279,13 +279,20 @@ fn codex_error_failure_reason(error: Option<&Value>) -> Option<FailureReason> {
     {
         return Some(FailureReason::ContextWindowExceeded);
     }
+    if codex_error_message(Some(error))
+        .as_deref()
+        .is_some_and(is_codex_chatgpt_account_unsupported_model_message)
+    {
+        return Some(FailureReason::UnsupportedModel);
+    }
     None
 }
 
 fn codex_error_info_failure_reason(error: &Value) -> Option<FailureReason> {
     match codex_error_info_variant(error)? {
         "contextWindowExceeded" => Some(FailureReason::ContextWindowExceeded),
-        "rateLimitExceeded" | "serverOverloaded" => Some(FailureReason::ProviderOverloaded),
+        "rateLimitExceeded" => Some(FailureReason::ProviderRateLimited),
+        "serverOverloaded" => Some(FailureReason::ProviderOverloaded),
         "responseStreamConnectionFailed" | "responseStreamDisconnected" => {
             Some(FailureReason::ResponseConnectionLost)
         }
@@ -764,6 +771,46 @@ mod tests {
                 event_type: "error",
                 message: "Codex ran out of room in the model's context window. Start a new thread or clear earlier history before retrying.".to_string(),
                 failure_reason: Some(FailureReason::ContextWindowExceeded),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_error_event_unsupported_model_yields_failure_reason() {
+        let message =
+            "The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account.";
+        let event = serde_json::json!({
+            "type": "error",
+            "message": message,
+            "error": {"message": message}
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: message.to_string(),
+                failure_reason: Some(FailureReason::UnsupportedModel),
+            })
+        );
+    }
+
+    #[test]
+    fn codex_error_event_unsupported_model_near_miss_remains_unclassified() {
+        let message =
+            "The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account";
+        let event = serde_json::json!({
+            "type": "error",
+            "message": message,
+            "error": {"message": message}
+        });
+
+        assert_eq!(
+            masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(CodexFailureDiagnostic {
+                event_type: "error",
+                message: message.to_string(),
+                failure_reason: None,
             })
         );
     }
