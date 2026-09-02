@@ -3,12 +3,13 @@ import userEvent from "@testing-library/user-event";
 import type { NetworkLogEntry } from "@okouai/api-contracts/contracts/runs";
 import type { RunContextResponse } from "@okouai/api-contracts/contracts/run-routes";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { describe, expect, it } from "vitest";
+import { expect, test } from "vitest";
 
 import {
   click,
-  detachedSetupPage,
+  fill,
   queryAllByRoleFast,
+  setupPage,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
@@ -571,474 +572,425 @@ function getTabByText(text: string): HTMLElement {
   return tab;
 }
 
-describe("activity inspect page", () => {
-  it("loads an exported log and lets the user inspect steps, context, and network data", async () => {
-    detachedSetupPage({
-      context,
-      path: "/activities/inspect",
-      featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("No log loaded")).toBeInTheDocument();
-    });
-    expect(
-      screen.getByText("Upload an activity log JSON file to inspect it."),
-    ).toBeInTheDocument();
-
-    await user.upload(getFileInput(), inspectFile());
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Imported Analysis" }),
-      ).toBeInTheDocument();
-    });
-    expect(screen.getByText("Done")).toBeInTheDocument();
-    expect(screen.getByText("5.0s")).toBeInTheDocument();
-    expect(screen.getByText(/^\d{2}:\d{2}:\d{2}\.000$/)).toBeInTheDocument();
-    expect(
-      screen.getAllByText(/^\d{2}:\d{2}:\d{2}\.000 \(\+00:01\.000\)$/),
-    ).toHaveLength(2);
-    expect(
-      screen.getAllByText(/^\d{2}:\d{2}:\d{2}\.000 \(\+00:03\.000\)$/),
-    ).toHaveLength(2);
-    expect(
-      screen.getByText("Collected OAuth evidence from network logs."),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Summarized billing status for the workspace."),
-    ).toBeInTheDocument();
-
-    await user.type(screen.getByPlaceholderText("Search steps"), "OAuth");
-
-    await waitFor(() => {
-      expect(screen.getByText("(1/2 matched)")).toBeInTheDocument();
-    });
-    expect(
-      screen.getByText("Collected OAuth evidence from network logs."),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText("Summarized billing status for the workspace."),
-    ).not.toBeInTheDocument();
-
-    click(getTabByText("Context"));
-
-    await waitFor(() => {
-      expect(screen.getByText("github-token")).toBeInTheDocument();
-    });
-    expect(screen.getByText("ACCOUNT_ID")).toBeInTheDocument();
-    expect(screen.getByText("acct_123")).toBeInTheDocument();
-    expect(screen.getByText("storage-workspace")).toBeInTheDocument();
-
-    click(getTabByText("Network"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("https://api.github.com/repos/vm0-ai/vm0"),
-      ).toBeInTheDocument();
-    });
-    const networkTable = screen.getByRole("table");
-    expect(within(networkTable).getByText("GET")).toBeInTheDocument();
-    expect(within(networkTable).getByText("200")).toBeInTheDocument();
-    expect(within(networkTable).getByText("123ms")).toBeInTheDocument();
-    expect(within(networkTable).getByText("github")).toBeInTheDocument();
-
-    const networkRows = within(networkTable).getAllByRole("row");
-    const networkRow = networkRows[1];
-    if (!networkRow) {
-      throw new Error("Expected a network log row");
-    }
-    await user.click(networkRow);
-    await waitFor(() => {
-      expect(screen.getByText("github-connector")).toBeInTheDocument();
-    });
-    expect(screen.getAllByText("Connector Diagnostic")).toHaveLength(1);
-    expect(screen.getByText("Request Headers (1)")).toBeInTheDocument();
-    expect(screen.getByText("Response Headers (0)")).toBeInTheDocument();
-    expect(screen.getAllByText("truncated")).toHaveLength(2);
-
-    await user.click(networkRow);
-    await waitFor(() => {
-      expect(screen.queryByText("github-connector")).not.toBeInTheDocument();
-    });
-
-    const secondNetworkRow = networkRows[2];
-    if (!secondNetworkRow) {
-      throw new Error("Expected a second network log row");
-    }
-    await user.click(secondNetworkRow);
-    await waitFor(() => {
-      expect(screen.getByText("slack-connector")).toBeInTheDocument();
-    });
-    expect(screen.getAllByText("Connector Diagnostic")).toHaveLength(1);
+test("A user can inspect steps, context, and network details from an exported log", async () => {
+  await setupPage({
+    context,
+    path: "/activities/inspect",
+    featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
   });
 
-  it("ignores debug tab query params when debug tabs are disabled", async () => {
-    detachedSetupPage({
-      context,
-      path: "/activities/inspect?tab=context",
-    });
+  await waitFor(() => {
+    expect(screen.getByText("No log loaded")).toBeInTheDocument();
+  });
+  expect(
+    screen.getByText("Upload an activity log JSON file to inspect it."),
+  ).toBeInTheDocument();
 
-    await waitFor(() => {
-      expect(screen.getByText("No log loaded")).toBeInTheDocument();
-    });
+  await user.upload(getFileInput(), inspectFile());
 
-    await user.upload(getFileInput(), inspectFile());
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Imported Analysis" }),
-      ).toBeInTheDocument();
-    });
-
+  await waitFor(() => {
     expect(
-      screen.getByText("Collected OAuth evidence from network logs."),
+      screen.getByRole("heading", { name: "Imported Analysis" }),
     ).toBeInTheDocument();
+  });
+  expect(screen.getByText("Done")).toBeInTheDocument();
+  expect(screen.getByText("5.0s")).toBeInTheDocument();
+  expect(screen.getByText(/^\d{2}:\d{2}:\d{2}\.000$/)).toBeInTheDocument();
+  expect(
+    screen.getAllByText(/^\d{2}:\d{2}:\d{2}\.000 \(\+00:01\.000\)$/),
+  ).toHaveLength(2);
+  expect(
+    screen.getAllByText(/^\d{2}:\d{2}:\d{2}\.000 \(\+00:03\.000\)$/),
+  ).toHaveLength(2);
+  expect(
+    screen.getByText("Collected OAuth evidence from network logs."),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText("Summarized billing status for the workspace."),
+  ).toBeInTheDocument();
+
+  await fill(screen.getByPlaceholderText("Search steps"), "OAuth");
+
+  await waitFor(() => {
+    expect(screen.getByText("(1/2 matched)")).toBeInTheDocument();
+  });
+  expect(
+    screen.getByText("Collected OAuth evidence from network logs."),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByText("Summarized billing status for the workspace."),
+  ).not.toBeInTheDocument();
+
+  click(getTabByText("Context"));
+
+  await waitFor(() => {
+    expect(screen.getByText("github-token")).toBeInTheDocument();
+  });
+  expect(screen.getByText("ACCOUNT_ID")).toBeInTheDocument();
+  expect(screen.getByText("acct_123")).toBeInTheDocument();
+  expect(screen.getByText("storage-workspace")).toBeInTheDocument();
+
+  click(getTabByText("Network"));
+
+  await waitFor(() => {
     expect(
-      queryAllByRoleFast("tab").some((element) => {
-        return element.textContent === "Context";
-      }),
-    ).toBeFalsy();
-    expect(screen.queryByText("github-token")).not.toBeInTheDocument();
+      screen.getByText("https://api.github.com/repos/vm0-ai/vm0"),
+    ).toBeInTheDocument();
+  });
+  const networkTable = screen.getByRole("table");
+  expect(within(networkTable).getByText("GET")).toBeInTheDocument();
+  expect(within(networkTable).getByText("200")).toBeInTheDocument();
+  expect(within(networkTable).getByText("123ms")).toBeInTheDocument();
+  expect(within(networkTable).getByText("github")).toBeInTheDocument();
+
+  const networkRows = within(networkTable).getAllByRole("row");
+  const networkRow = networkRows[1];
+  if (!networkRow) {
+    throw new Error("Expected a network log row");
+  }
+  click(networkRow);
+  await waitFor(() => {
+    expect(screen.getByText("github-connector")).toBeInTheDocument();
+  });
+  expect(screen.getAllByText("Connector Diagnostic")).toHaveLength(1);
+  expect(screen.getByText("Request Headers (1)")).toBeInTheDocument();
+  expect(screen.getByText("Response Headers (0)")).toBeInTheDocument();
+  expect(screen.getAllByText("truncated")).toHaveLength(2);
+
+  click(networkRow);
+  await waitFor(() => {
+    expect(screen.queryByText("github-connector")).not.toBeInTheDocument();
   });
 
-  it.each([
-    { triggerSource: "teams", sourceLabel: "Teams" },
-    { triggerSource: "feishu", sourceLabel: "Feishu" },
-    { triggerSource: "automation-event", sourceLabel: "Automation event" },
-    {
-      triggerSource: "automation-schedule",
-      sourceLabel: "Automation schedule",
-    },
-    { triggerSource: "goal", sourceLabel: "Goal" },
-  ] as const)(
-    "preserves the $triggerSource source from an exported log",
-    async ({ triggerSource, sourceLabel }) => {
-      detachedSetupPage({
-        context,
-        path: "/activities/inspect",
-      });
+  const secondNetworkRow = networkRows[2];
+  if (!secondNetworkRow) {
+    throw new Error("Expected a second network log row");
+  }
+  click(secondNetworkRow);
+  await waitFor(() => {
+    expect(screen.getByText("slack-connector")).toBeInTheDocument();
+  });
+  expect(screen.getAllByText("Connector Diagnostic")).toHaveLength(1);
+});
 
-      await waitFor(() => {
-        expect(screen.getByText("No log loaded")).toBeInTheDocument();
-      });
+test("An imported log does not expose debug diagnostics when debug access is disabled", async () => {
+  await setupPage({
+    context,
+    path: "/activities/inspect?tab=context",
+  });
 
-      await user.upload(getFileInput(), inspectFile(triggerSource));
+  await waitFor(() => {
+    expect(screen.getByText("No log loaded")).toBeInTheDocument();
+  });
 
-      await waitFor(() => {
-        expect(
-          screen.getByRole("heading", { name: "Imported Analysis" }),
-        ).toBeInTheDocument();
-      });
-      expect(screen.getByText("Source")).toBeInTheDocument();
-      expect(screen.getByText(sourceLabel)).toBeInTheDocument();
-    },
+  await user.upload(getFileInput(), inspectFile());
+
+  await waitFor(() => {
+    expect(
+      screen.getByRole("heading", { name: "Imported Analysis" }),
+    ).toBeInTheDocument();
+  });
+
+  expect(
+    screen.getByText("Collected OAuth evidence from network logs."),
+  ).toBeInTheDocument();
+  expect(
+    queryAllByRoleFast("tab").some((element) => {
+      return element.textContent === "Context";
+    }),
+  ).toBeFalsy();
+  expect(screen.queryByText("github-token")).not.toBeInTheDocument();
+});
+
+test("Imported activities preserve their original trigger source", async () => {
+  await setupPage({
+    context,
+    path: "/activities/inspect",
+  });
+
+  await expect(screen.findByText("No log loaded")).resolves.toBeInTheDocument();
+
+  await user.upload(getFileInput(), inspectFile("automation-schedule"));
+
+  await expect(
+    screen.findByRole("heading", { name: "Imported Analysis" }),
+  ).resolves.toBeInTheDocument();
+  expect(screen.getByText("Source")).toBeInTheDocument();
+  expect(screen.getByText("Automation schedule")).toBeInTheDocument();
+});
+
+test("The most recently selected activity log remains authoritative", async () => {
+  await setupPage({
+    context,
+    path: "/activities/inspect",
+  });
+
+  await waitFor(() => {
+    expect(screen.getByText("No log loaded")).toBeInTheDocument();
+  });
+
+  const staleRead = createDeferredPromise<string>(AbortSignal.any([]));
+  const latestRead = createDeferredPromise<string>(AbortSignal.any([]));
+
+  await user.upload(
+    getFileInput(),
+    inspectFileWithDeferredText("stale-log.json", staleRead.promise),
+  );
+  await user.upload(
+    getFileInput(),
+    inspectFileWithDeferredText("latest-log.json", latestRead.promise),
   );
 
-  it("keeps the newest uploaded log when file reads resolve out of order", async () => {
-    detachedSetupPage({
-      context,
-      path: "/activities/inspect",
-    });
+  latestRead.resolve(
+    JSON.stringify(inspectPayload("Latest Imported Log", "latest log text")),
+  );
 
-    await waitFor(() => {
-      expect(screen.getByText("No log loaded")).toBeInTheDocument();
-    });
-
-    const staleRead = createDeferredPromise<string>(AbortSignal.any([]));
-    const latestRead = createDeferredPromise<string>(AbortSignal.any([]));
-
-    await user.upload(
-      getFileInput(),
-      inspectFileWithDeferredText("stale-log.json", staleRead.promise),
-    );
-    await user.upload(
-      getFileInput(),
-      inspectFileWithDeferredText("latest-log.json", latestRead.promise),
-    );
-
-    latestRead.resolve(
-      JSON.stringify(inspectPayload("Latest Imported Log", "latest log text")),
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Latest Imported Log" }),
-      ).toBeInTheDocument();
-    });
-    expect(screen.getByText("latest log text")).toBeInTheDocument();
-
-    staleRead.resolve(
-      JSON.stringify(inspectPayload("Stale Imported Log", "stale log text")),
-    );
-    await staleRead.promise;
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Latest Imported Log" }),
-      ).toBeInTheDocument();
-    });
+  await waitFor(() => {
     expect(
-      screen.queryByRole("heading", { name: "Stale Imported Log" }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText("stale log text")).not.toBeInTheDocument();
+      screen.getByRole("heading", { name: "Latest Imported Log" }),
+    ).toBeInTheDocument();
+  });
+  expect(screen.getByText("latest log text")).toBeInTheDocument();
+
+  staleRead.resolve(
+    JSON.stringify(inspectPayload("Stale Imported Log", "stale log text")),
+  );
+  await staleRead.promise;
+
+  await waitFor(() => {
+    expect(
+      screen.getByRole("heading", { name: "Latest Imported Log" }),
+    ).toBeInTheDocument();
+  });
+  expect(
+    screen.queryByRole("heading", { name: "Stale Imported Log" }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText("stale log text")).not.toBeInTheDocument();
+});
+
+test("The inspector presents exported Codex events as readable activity steps", async () => {
+  await setupPage({
+    context,
+    path: "/activities/inspect",
+    featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
   });
 
-  it("normalizes imported codex adapter events", async () => {
-    detachedSetupPage({
-      context,
-      path: "/activities/inspect",
-      featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
-    });
+  await waitFor(() => {
+    expect(screen.getByText("No log loaded")).toBeInTheDocument();
+  });
 
-    await waitFor(() => {
-      expect(screen.getByText("No log loaded")).toBeInTheDocument();
-    });
+  await user.upload(getFileInput(), codexInspectFile());
 
-    await user.upload(getFileInput(), codexInspectFile());
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Imported Codex Adapter Log" }),
-      ).toBeInTheDocument();
-    });
-
-    expect(screen.getByText("Failed")).toBeInTheDocument();
+  await waitFor(() => {
     expect(
-      screen.getByText("Codex inspect assistant output remains visible."),
+      screen.getByRole("heading", { name: "Imported Codex Adapter Log" }),
     ).toBeInTheDocument();
-    await expect(
-      screen.findByText("[warning] Inspect adapter warning"),
-    ).resolves.toBeInTheDocument();
+  });
+
+  expect(screen.getByText("Failed")).toBeInTheDocument();
+  expect(
+    screen.getByText("Codex inspect assistant output remains visible."),
+  ).toBeInTheDocument();
+  await expect(
+    screen.findByText("[warning] Inspect adapter warning"),
+  ).resolves.toBeInTheDocument();
+  expect(
+    screen.getByText((_, element) => {
+      return (
+        element?.tagName === "P" &&
+        element.textContent?.includes("Inspect normalized plan") === true
+      );
+    }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getAllByText(/Inspect transport failed \(inspect socket closed\)/u),
+  ).toHaveLength(1);
+  expect(
+    screen.getByText(/Inspect turn failed \(inspect model stopped\)/u),
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/\[object Object\]/u)).not.toBeInTheDocument();
+
+  await fill(
+    screen.getByPlaceholderText("Search steps"),
+    "Inspect adapter warning",
+  );
+
+  await waitFor(() => {
+    expect(screen.getByText("(1/4 matched)")).toBeInTheDocument();
+  });
+  expect(
+    screen.getByText("[warning] Inspect adapter warning"),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByText((_, element) => {
+      return (
+        element?.tagName === "P" &&
+        element.textContent?.includes("Inspect normalized plan") === true
+      );
+    }),
+  ).not.toBeInTheDocument();
+});
+
+test("The activity inspector explains Codex collaboration events", async () => {
+  await setupPage({
+    context,
+    path: "/activities/inspect",
+    featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
+  });
+
+  await waitFor(() => {
+    expect(screen.getByText("No log loaded")).toBeInTheDocument();
+  });
+
+  await user.upload(getFileInput(), codexThreadItemsInspectFile());
+
+  await waitFor(() => {
     expect(
-      screen.getByText((_, element) => {
-        return (
-          element?.tagName === "P" &&
-          element.textContent?.includes("Inspect normalized plan") === true
-        );
-      }),
+      screen.getByRole("heading", { name: "Imported Codex Thread Items" }),
     ).toBeInTheDocument();
+  });
+
+  expect(screen.getAllByTestId("tool-summary")).toHaveLength(2);
+  expect(screen.getAllByText("SpawnAgent")).toHaveLength(2);
+  expect(screen.getByText("Started subagent")).toBeInTheDocument();
+  expect(screen.getByText("Interacted with subagent")).toBeInTheDocument();
+  expect(screen.getByText("Interrupted subagent")).toBeInTheDocument();
+  expect(screen.getByText("Completed subagent")).toBeInTheDocument();
+  expect(screen.getAllByText("/root/researcher")).toHaveLength(4);
+  expect(screen.getAllByText("Compacted context")).toHaveLength(1);
+  expect(screen.getByText(/Codex future_operation/u)).toBeInTheDocument();
+  expect(screen.queryByText("Unknown")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText(/Codex collab_agent_tool_call/u),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByText(/Codex sub_agent_activity/u),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByText(/Codex context_compaction/u),
+  ).not.toBeInTheDocument();
+});
+
+test("The inspector salvages valid diagnostics from a partially malformed log", async () => {
+  await setupPage({
+    context,
+    path: "/activities/inspect",
+    featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
+  });
+
+  await waitFor(() => {
+    expect(screen.getByText("No log loaded")).toBeInTheDocument();
+  });
+
+  await user.upload(getFileInput(), malformedInspectFile());
+
+  await waitFor(() => {
     expect(
-      screen.getAllByText(
-        /Inspect transport failed \(inspect socket closed\)/u,
+      screen.getByRole("heading", { name: "Imported Log" }),
+    ).toBeInTheDocument();
+  });
+  expect(screen.getByText("Done")).toBeInTheDocument();
+  expect(
+    screen.getByText("Valid imported event survives."),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText("Negative duration result survives."),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByText("Invalid event is dropped."),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText(/\[object Object\]/u)).not.toBeInTheDocument();
+  expect(screen.getByText("bad-log-created-at")).toBeInTheDocument();
+  expect(screen.getAllByText("bad-created-at").length).toBeGreaterThan(0);
+  expect(screen.queryByText("Invalid Date")).not.toBeInTheDocument();
+  expect(screen.queryByText(/NaN/u)).not.toBeInTheDocument();
+  expect(screen.queryByText("-100ms")).not.toBeInTheDocument();
+
+  click(getTabByText("Context"));
+
+  await waitFor(() => {
+    expect(
+      screen.getByRole("heading", { name: "Context not available" }),
+    ).toBeInTheDocument();
+  });
+
+  click(getTabByText("Network"));
+
+  await waitFor(() => {
+    expect(
+      screen.getByText("https://example.com/imported-valid-network-log"),
+    ).toBeInTheDocument();
+  });
+  expect(screen.getByText("not-a-date")).toBeInTheDocument();
+  expect(screen.queryByText("-5ms")).not.toBeInTheDocument();
+  expect(screen.queryByText(/NaN/u)).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("https://example.com/invalid-network-log"),
+  ).not.toBeInTheDocument();
+});
+
+test("The inspector rejects activity logs larger than 25 MB", async () => {
+  await setupPage({
+    context,
+    path: "/activities/inspect",
+  });
+
+  await waitFor(() => {
+    expect(screen.getByText("No log loaded")).toBeInTheDocument();
+  });
+
+  await user.upload(getFileInput(), oversizedInspectFile());
+
+  await waitFor(() => {
+    expect(
+      screen.getByText(
+        "JSON file is too large. Upload an exported activity log JSON file under 25 MB.",
       ),
-    ).toHaveLength(1);
-    expect(
-      screen.getByText(/Inspect turn failed \(inspect model stopped\)/u),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/\[object Object\]/u)).not.toBeInTheDocument();
+  });
+  expect(
+    screen.queryByRole("heading", { name: "Imported Log" }),
+  ).not.toBeInTheDocument();
+});
 
-    await user.type(
-      screen.getByPlaceholderText("Search steps"),
-      "Inspect adapter warning",
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("(1/4 matched)")).toBeInTheDocument();
-    });
-    expect(
-      screen.getByText("[warning] Inspect adapter warning"),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText((_, element) => {
-        return (
-          element?.tagName === "P" &&
-          element.textContent?.includes("Inspect normalized plan") === true
-        );
-      }),
-    ).not.toBeInTheDocument();
+test("The inspector recovers after an invalid JSON upload", async () => {
+  await setupPage({
+    context,
+    path: "/activities/inspect",
   });
 
-  it("renders reachable Codex thread item semantics", async () => {
-    detachedSetupPage({
-      context,
-      path: "/activities/inspect",
-      featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("No log loaded")).toBeInTheDocument();
-    });
-
-    await user.upload(getFileInput(), codexThreadItemsInspectFile());
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Imported Codex Thread Items" }),
-      ).toBeInTheDocument();
-    });
-
-    expect(screen.getAllByTestId("tool-summary")).toHaveLength(2);
-    expect(screen.getAllByText("SpawnAgent")).toHaveLength(2);
-    expect(screen.getByText("Started subagent")).toBeInTheDocument();
-    expect(screen.getByText("Interacted with subagent")).toBeInTheDocument();
-    expect(screen.getByText("Interrupted subagent")).toBeInTheDocument();
-    expect(screen.getByText("Completed subagent")).toBeInTheDocument();
-    expect(screen.getAllByText("/root/researcher")).toHaveLength(4);
-    expect(screen.getAllByText("Compacted context")).toHaveLength(1);
-    expect(screen.getByText(/Codex future_operation/u)).toBeInTheDocument();
-    expect(screen.queryByText("Unknown")).not.toBeInTheDocument();
-    expect(
-      screen.queryByText(/Codex collab_agent_tool_call/u),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText(/Codex sub_agent_activity/u),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText(/Codex context_compaction/u),
-    ).not.toBeInTheDocument();
+  await waitFor(() => {
+    expect(screen.getByText("No log loaded")).toBeInTheDocument();
   });
 
-  it("loads malformed imported logs without crashing", async () => {
-    detachedSetupPage({
-      context,
-      path: "/activities/inspect",
-      featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
-    });
+  await user.upload(
+    getFileInput(),
+    new File(["{ invalid json"], "invalid-log.json", {
+      type: "application/json",
+    }),
+  );
 
-    await waitFor(() => {
-      expect(screen.getByText("No log loaded")).toBeInTheDocument();
-    });
-
-    await user.upload(getFileInput(), malformedInspectFile());
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Imported Log" }),
-      ).toBeInTheDocument();
-    });
-    expect(screen.getByText("Done")).toBeInTheDocument();
+  await waitFor(() => {
     expect(
-      screen.getByText("Valid imported event survives."),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Negative duration result survives."),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText("Invalid event is dropped."),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText(/\[object Object\]/u)).not.toBeInTheDocument();
-    expect(screen.getByText("bad-log-created-at")).toBeInTheDocument();
-    expect(screen.getAllByText("bad-created-at").length).toBeGreaterThan(0);
-    expect(screen.queryByText("Invalid Date")).not.toBeInTheDocument();
-    expect(screen.queryByText(/NaN/u)).not.toBeInTheDocument();
-    expect(screen.queryByText("-100ms")).not.toBeInTheDocument();
-
-    click(getTabByText("Context"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Context not available" }),
-      ).toBeInTheDocument();
-    });
-
-    click(getTabByText("Network"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("https://example.com/imported-valid-network-log"),
-      ).toBeInTheDocument();
-    });
-    expect(screen.getByText("not-a-date")).toBeInTheDocument();
-    expect(screen.queryByText("-5ms")).not.toBeInTheDocument();
-    expect(screen.queryByText(/NaN/u)).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("https://example.com/invalid-network-log"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("rejects oversized imported logs before reading them", async () => {
-    detachedSetupPage({
-      context,
-      path: "/activities/inspect",
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("No log loaded")).toBeInTheDocument();
-    });
-
-    await user.upload(getFileInput(), oversizedInspectFile());
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(
-          "JSON file is too large. Upload an exported activity log JSON file under 25 MB.",
-        ),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.queryByRole("heading", { name: "Imported Log" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("shows an upload error for invalid JSON and recovers on the next file", async () => {
-    detachedSetupPage({
-      context,
-      path: "/activities/inspect",
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("No log loaded")).toBeInTheDocument();
-    });
-
-    await user.upload(
-      getFileInput(),
-      new File(["{ invalid json"], "invalid-log.json", {
-        type: "application/json",
-      }),
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(
-          "Invalid JSON file. Upload an exported activity log JSON file.",
-        ),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.queryByRole("heading", { name: "Imported Analysis" }),
-    ).not.toBeInTheDocument();
-
-    await user.upload(getFileInput(), inspectFile());
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Imported Analysis" }),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.queryByText(
+      screen.getByText(
         "Invalid JSON file. Upload an exported activity log JSON file.",
       ),
-    ).not.toBeInTheDocument();
+    ).toBeInTheDocument();
   });
+  expect(
+    screen.queryByRole("heading", { name: "Imported Analysis" }),
+  ).not.toBeInTheDocument();
 
-  it("shows an upload error for non-object JSON files", async () => {
-    detachedSetupPage({
-      context,
-      path: "/activities/inspect",
-    });
+  await user.upload(getFileInput(), inspectFile());
 
-    await waitFor(() => {
-      expect(screen.getByText("No log loaded")).toBeInTheDocument();
-    });
-
-    await user.upload(
-      getFileInput(),
-      new File(["[]"], "array-log.json", {
-        type: "application/json",
-      }),
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(
-          "Invalid JSON file. Upload an exported activity log JSON file.",
-        ),
-      ).toBeInTheDocument();
-    });
+  await waitFor(() => {
     expect(
-      screen.queryByRole("heading", { name: "Imported Log" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("heading", { name: "Imported Analysis" }),
+    ).toBeInTheDocument();
   });
+  expect(
+    screen.queryByText(
+      "Invalid JSON file. Upload an exported activity log JSON file.",
+    ),
+  ).not.toBeInTheDocument();
 });

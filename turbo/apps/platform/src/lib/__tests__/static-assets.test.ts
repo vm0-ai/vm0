@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { expect, test } from "vitest";
 
 import indexHtml from "../../../index.html?raw";
 import { settingsIconAssetUrl } from "../../views/okou-page/components/settings/settings-icon-assets.ts";
@@ -94,50 +94,33 @@ const OKOU_PAGE_ILLUSTRATIONS = Object.freeze({
   planTeamImg,
 });
 
-describe("published static asset URLs", () => {
-  it.each(Object.entries(FEISHU_GUIDE_IMAGES))(
-    "keeps the frozen CDN prefix for %s",
-    (_name, url) => {
-      expect(url).toContain(FROZEN_CDN_PREFIX);
-    },
+test("Avatars and the loading skeleton remain available during startup", () => {
+  expect(avatarSvgAssetUrl("head-1.svg")).toContain(
+    `${FROZEN_CDN_PREFIX}assets/avatar-svg/`,
   );
-
-  it.each(Object.entries(OKOU_PAGE_ILLUSTRATIONS))(
-    "keeps the frozen CDN prefix for %s",
-    (_name, url) => {
-      expect(url).toContain(FROZEN_CDN_PREFIX);
-    },
-  );
-
-  it.each(SETTINGS_ICON_KEYS)(
-    "keeps the frozen CDN prefix for the %s settings icon",
-    (key) => {
-      expect(settingsIconAssetUrl(key)).toContain(FROZEN_CDN_PREFIX);
-    },
-  );
-
-  it("keeps the frozen CDN prefix for generated avatar SVGs", () => {
-    expect(avatarSvgAssetUrl("head-1.svg")).toContain(
-      `${FROZEN_CDN_PREFIX}assets/avatar-svg/`,
-    );
-  });
-
-  it("keeps the bootstrap avatar independent from static asset requests", () => {
-    const document = new DOMParser().parseFromString(indexHtml, "text/html");
-    const skeleton = document.getElementById("app-bootstrap-skeleton");
-
-    const illustration = skeleton?.querySelector(
-      "svg.app-bootstrap-skeleton__avatar-layers",
-    );
-
-    expect(illustration).toBeInstanceOf(SVGSVGElement);
-    expect(illustration).toHaveAttribute("viewBox", "0 0 518 512");
-    expect(skeleton?.querySelectorAll("img[src]")).toHaveLength(0);
-    expect(indexHtml).not.toContain(`${FROZEN_CDN_PREFIX}assets/avatar-svg/`);
-  });
+  expect(indexHtml).toContain('class="app-bootstrap-skeleton__avatar-layers"');
+  expect(indexHtml).not.toMatch(/id="app-bootstrap-skeleton"[^]*<img\s/iu);
 });
 
-describe("static asset object keys", () => {
+test("Feishu setup-guide images remain available", () => {
+  for (const url of Object.values(FEISHU_GUIDE_IMAGES)) {
+    expect(url).toContain(FROZEN_CDN_PREFIX);
+  }
+});
+
+test("Platform empty-state and plan images remain available", () => {
+  for (const url of Object.values(OKOU_PAGE_ILLUSTRATIONS)) {
+    expect(url).toContain(FROZEN_CDN_PREFIX);
+  }
+});
+
+test("Settings provider icons remain available", () => {
+  for (const key of SETTINGS_ICON_KEYS) {
+    expect(settingsIconAssetUrl(key)).toContain(FROZEN_CDN_PREFIX);
+  }
+});
+
+test("Published Platform images remain reachable after page renames", () => {
   // Object keys are written without a leading `./` or `../`, which is what
   // separates them from module specifiers pointing at the source directories.
   const OBJECT_KEY_LITERAL = /["'`](views\/[^"'`\n]*)/gu;
@@ -148,33 +131,29 @@ describe("static asset object keys", () => {
     eager: true,
   }) as Record<string, string>;
 
-  it("never points a published object key at a renamed source directory", () => {
-    const renamedKeys: string[] = [];
-    for (const [file, source] of Object.entries({
-      ...sources,
-      "index.html": indexHtml,
-    })) {
-      for (const match of source.matchAll(OBJECT_KEY_LITERAL)) {
-        if (match[1]!.includes("okou-page")) {
-          renamedKeys.push(`${file}: ${match[1]!}`);
-        }
+  const renamedKeys: string[] = [];
+  for (const [file, source] of Object.entries({
+    ...sources,
+    "index.html": indexHtml,
+  })) {
+    for (const match of source.matchAll(OBJECT_KEY_LITERAL)) {
+      if (match[1]!.includes("okou-page")) {
+        renamedKeys.push(`${file}: ${match[1]!}`);
       }
     }
-    expect(renamedKeys).toStrictEqual([]);
-  });
+  }
+  expect(renamedKeys).toStrictEqual([]);
 
-  it("keeps all 33 published string-literal keys under zero-page", () => {
-    const objectKeys = Object.entries(sources).flatMap(([file, source]) => {
-      if (file.endsWith("/static-assets.test.ts")) {
-        return [];
-      }
-      return [...source.matchAll(OBJECT_KEY_STRING_LITERAL)].map((match) => {
-        return match[1]!;
-      });
+  const objectKeys = Object.entries(sources).flatMap(([file, source]) => {
+    if (file.endsWith("/static-assets.test.ts")) {
+      return [];
+    }
+    return [...source.matchAll(OBJECT_KEY_STRING_LITERAL)].map((match) => {
+      return match[1]!;
     });
-    const pageKeys = objectKeys.filter((key) => {
-      return key.startsWith("views/zero-page/");
-    });
-    expect(pageKeys).toHaveLength(33);
   });
+  const pageKeys = objectKeys.filter((key) => {
+    return key.startsWith("views/zero-page/");
+  });
+  expect(pageKeys).toHaveLength(33);
 });

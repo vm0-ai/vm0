@@ -6,21 +6,22 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      "@clerk/react/experimental": path.resolve(
+      "@clerk/shared/loadClerkJsScript": path.resolve(
         __dirname,
-        "./src/test/mocks/clerk-react-experimental.ts",
+        "./src/test/mocks/clerk-resource.ts",
       ),
-      "@clerk/react": path.resolve(
+      "@sentry/browser": path.resolve(
         __dirname,
-        "./src/test/mocks/clerk-react.ts",
+        "./src/test/mocks/sentry-browser.ts",
+      ),
+      "@sentry/react": path.resolve(
+        __dirname,
+        "./src/test/mocks/sentry-react.ts",
       ),
       // Mock ably in tests so setupRealtime$ creates a fake channel and
       // setAblyLoop$ uses the real subscribe/deferred code path.
       "ably/modular": path.resolve(__dirname, "./src/mocks/ably.ts"),
       ably: path.resolve(__dirname, "./src/mocks/ably.ts"),
-      // Mock idb in tests so IndexedDB operations fall through to the
-      // remote (MSW-mocked) path on openDB rejection in happy-dom.
-      idb: path.resolve(__dirname, "./src/mocks/idb.ts"),
       // Stub Mermaid rendering in tests: the real renderer needs the SVG
       // measurement APIs of a browser layout engine, which happy-dom does not
       // implement. Parsing has no such needs, so the stub delegates it to the
@@ -34,7 +35,6 @@ export default defineConfig({
         __dirname,
         "./src/shared-database-worker.ts",
       )}?sharedworker&url`,
-      "idb-real": path.resolve(__dirname, "./node_modules/idb/build/index.js"),
     },
   },
   define: {

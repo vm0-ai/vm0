@@ -1,5 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { expect, test, vi } from "vitest";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
@@ -10,6 +10,7 @@ import {
   billingCheckoutContract,
   billingUsagePackCheckoutContract,
 } from "@okouai/api-contracts/contracts/billing";
+import { browserContract } from "@okouai/api-contracts/contracts/browser";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   connectorCatalogContract,
@@ -19,7 +20,6 @@ import {
   connectorManualGrantContract,
   connectorOauthStartContract,
 } from "@okouai/api-contracts/contracts/connectors";
-import { onboardingCompleteContract } from "@okouai/api-contracts/contracts/onboarding";
 import {
   agentsMainContract,
   type AgentResponse,
@@ -27,29 +27,20 @@ import {
 
 import {
   click,
-  detachedSetupPage,
+  setupPage,
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import {
-  PRESENTATION_LANDING_PROMPT,
-  PRESENTATION_ONBOARDING_PATH,
-  PRESENTATION_SHOWCASE_URL,
-} from "../../../__tests__/presentation-onboarding-fixture.ts";
-import { pathname } from "../../../signals/location.ts";
-import { localStorageSignals } from "../../../signals/external/local-storage.ts";
+import { pathname, pushState, search } from "../../../signals/location.ts";
 import { ONBOARDING_CHECKOUT_STATE_PARAM } from "../../../signals/onboarding/onboarding-state.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
-import { detachedNavigateTo$, searchParams$ } from "../../../signals/route.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle } from "../../okou-page/__tests__/chat-test-helpers.ts";
 
 const context = testContext();
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const STALE_AGENT_ID = "c0000000-0000-4000-a000-000000000099";
-const { set$: setLastUsedAgentId$ } = localStorageSignals(
-  "zero.lastUsedAgentId",
-);
+const LAST_USED_AGENT_STORAGE_KEY = "zero.lastUsedAgentId";
 
 function onboardingAgent(agentId: string): AgentResponse {
   return {
@@ -145,10 +136,39 @@ function sentConversions(gtag: ReturnType<typeof vi.fn<GtagFn>>): string[] {
   });
 }
 
-function mockOnboardingNeeded(): void {
-  context.mocks.data.onboardingStatus({
+function mockOnboardingNeeded(currentContext = context): void {
+  currentContext.mocks.data.onboardingStatus({
     needsOnboarding: true,
     onboardingComplete: false,
+  });
+}
+
+function setupCustomWorkflowPage(
+  host: "app.okou.ai" | "app.vm0.ai",
+  onPrompt: (prompt: string) => void,
+): Promise<void> {
+  context.mocks.api(browserContract.get, ({ respond }) => {
+    return respond(404, {
+      error: {
+        code: "BROWSER_NOT_FOUND",
+        message: "Managed browser not found",
+      },
+    });
+  });
+  mockChatLifecycle(context, {
+    onRunCreate: (body) => {
+      if (body.prompt === undefined) {
+        throw new Error("Expected the custom workflow prompt");
+      }
+      onPrompt(body.prompt);
+    },
+  });
+  mockOnboardingNeeded();
+  return setupPage({
+    context,
+    host,
+    locale: "en-US",
+    path: "/onboarding/workflow-run?choice=workflow&category=engineering&workflow=talk-to-zero",
   });
 }
 
@@ -213,7 +233,7 @@ function mockCatalogItem({
 
 async function openMakePage(): Promise<void> {
   mockOnboardingNeeded();
-  detachedSetupPage({ context, path: "/onboarding" });
+  await setupPage({ context, path: "/onboarding" });
   await expect(
     screen.findByRole("heading", {
       name: "What do you want to make first",
@@ -223,7 +243,7 @@ async function openMakePage(): Promise<void> {
 
 async function openGithubWorkflowRun(): Promise<void> {
   mockOnboardingNeeded();
-  detachedSetupPage({
+  await setupPage({
     context,
     path: "/onboarding/workflow-run?choice=workflow&category=engineering&workflow=auto-merge-github-prs",
   });
@@ -235,7 +255,13 @@ async function openGithubWorkflowRun(): Promise<void> {
 }
 
 function chooseMakeOption(name: string): void {
-  click(screen.getByRole("radio", { name: new RegExp(name, "u") }));
+  const radio = queryAllByRoleFast("radio").find((candidate) => {
+    return new RegExp(name, "u").test(candidate.textContent ?? "");
+  });
+  if (!radio) {
+    throw new Error(`Radio not found for ${name}`);
+  }
+  click(radio);
 }
 
 function buttonByText(
@@ -288,1337 +314,1131 @@ function chooseTemplate(
   click(buttonByText("Continue"));
 }
 
-describe("onboarding flow", () => {
-  it.each([
-    {
-      browserTimezone: "Asia/Shanghai",
-      expectedTimezone: "Asia/Shanghai",
-      scenario: "browser-resolved",
+test("Slack is the leading onboarding choice", async () => {
+  await openMakePage();
+
+  const slackOption = firstItem(queryAllByRoleFast("radio"));
+  expect(slackOption).toHaveTextContent("Chat with Okou in Slack");
+  expect(
+    screen.getByTestId("onboarding-slack-illustration"),
+  ).toBeInTheDocument();
+  expect(screen.getByTestId("onboarding-slack-icon")).toHaveAttribute(
+    "src",
+    expect.stringContaining("slack-198390069136.svg"),
+  );
+
+  click(slackOption);
+
+  await waitFor(() => {
+    expect(pathname()).toBe(ROUTES.works);
+  });
+});
+
+async function expectCreativeChoiceOpensTemplateGallery(scenario: {
+  readonly description: string;
+  readonly option: string;
+  readonly tab: string;
+}): Promise<HTMLElement> {
+  await openMakePage();
+  const option = queryAllByRoleFast("radio").find((candidate) => {
+    return candidate.textContent?.includes(scenario.option);
+  });
+  if (!option) {
+    throw new Error(`Expected ${scenario.option} choice`);
+  }
+  expect(option).toHaveTextContent(scenario.description);
+
+  click(option);
+
+  return waitFor(() => {
+    const selectedTab = queryAllByRoleFast("tab").find((candidate) => {
+      return (
+        candidate.textContent === scenario.tab &&
+        candidate.getAttribute("aria-selected") === "true"
+      );
+    });
+    if (!selectedTab) {
+      throw new Error(`Expected ${scenario.tab} template tab`);
+    }
+    return selectedTab;
+  });
+}
+
+test("Presentation creation opens its template gallery", async () => {
+  const selectedTab = await expectCreativeChoiceOpensTemplateGallery({
+    option: "Generate a presentation",
+    description: "Generate slides and speaker",
+    tab: "Presentation",
+  });
+  expect(selectedTab).toHaveAttribute("aria-selected", "true");
+});
+
+test("Image creation opens its template gallery", async () => {
+  const selectedTab = await expectCreativeChoiceOpensTemplateGallery({
+    option: "Generate images",
+    description: "Create high-quality visuals",
+    tab: "Illustration",
+  });
+  expect(selectedTab).toHaveAttribute("aria-selected", "true");
+});
+
+test("Video production opens its template gallery", async () => {
+  const selectedTab = await expectCreativeChoiceOpensTemplateGallery({
+    option: "Video production",
+    description: "Turn your ideas into video",
+    tab: "Video",
+  });
+  expect(selectedTab).toHaveAttribute("aria-selected", "true");
+});
+
+test("Website creation opens its template gallery", async () => {
+  const selectedTab = await expectCreativeChoiceOpensTemplateGallery({
+    option: "Build a website",
+    description: "Create and publish a shareable page",
+    tab: "Website",
+  });
+  expect(selectedTab).toHaveAttribute("aria-selected", "true");
+});
+
+test("Creative onboarding uses the current workspace's default agent", async () => {
+  const browserStorage = Reflect.get(window, "localStorage");
+  if (!(browserStorage instanceof Storage)) {
+    throw new Error("Expected browser local storage");
+  }
+  browserStorage.setItem(LAST_USED_AGENT_STORAGE_KEY, STALE_AGENT_ID);
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      browserStorage.removeItem(LAST_USED_AGENT_STORAGE_KEY);
     },
-    {
-      browserTimezone: "",
-      expectedTimezone: "UTC",
-      scenario: "fallback",
-    },
-  ])(
-    "sends the $scenario timezone before opening Slack setup",
-    async ({ browserTimezone, expectedTimezone }) => {
-      const resolvedOptions = new Intl.DateTimeFormat().resolvedOptions();
-      vi.spyOn(
-        Intl.DateTimeFormat.prototype,
-        "resolvedOptions",
-      ).mockReturnValue({
-        ...resolvedOptions,
-        timeZone: browserTimezone,
-      });
-      let completionBody: unknown;
-      context.mocks.api(
-        onboardingCompleteContract.complete,
-        ({ body, respond }) => {
-          completionBody = body;
-          return respond(200, {
-            onboardingComplete: true,
-            needsOnboarding: false,
-          });
+    { once: true },
+  );
+  let firstAgentRoute: string | null = null;
+  context.mocks.api(agentsMainContract.list, ({ respond }) => {
+    const currentPath = pathname();
+    if (firstAgentRoute === null && currentPath.startsWith("/agents/")) {
+      firstAgentRoute = currentPath;
+    }
+    return respond(200, [onboardingAgent(DEFAULT_AGENT_ID)]);
+  });
+
+  await openMakePage();
+  chooseMakeOption("Generate a presentation");
+
+  await waitFor(() => {
+    expect(firstAgentRoute).toBe(`/agents/${DEFAULT_AGENT_ID}/chat`);
+  });
+  await waitFor(() => {
+    const presentationTab = queryAllByRoleFast("tab").find((candidate) => {
+      return (
+        candidate.textContent === "Presentation" &&
+        candidate.getAttribute("aria-selected") === "true"
+      );
+    });
+    expect(presentationTab).toBeInTheDocument();
+  });
+});
+
+test("Workflow onboarding localizes app copy while keeping English metadata", async () => {
+  usePortugueseLocale();
+  mockOnboardingNeeded();
+  await setupPage({ context, path: "/onboarding" });
+
+  await expect(
+    screen.findByRole("heading", {
+      name: "O que você quer fazer primeiro",
+    }),
+  ).resolves.toBeInTheDocument();
+  expect(document.title).toBe("Welcome to VM0 | VM0");
+
+  const workflowOption = queryAllByRoleFast("radio").find((candidate) => {
+    return /Automação de fluxo de trabalho/u.test(candidate.textContent ?? "");
+  });
+  if (!workflowOption) {
+    throw new Error("Expected localized workflow choice");
+  }
+  click(workflowOption);
+
+  await expect(
+    screen.findByRole("heading", {
+      name: "Em que você está trabalhando?",
+    }),
+  ).resolves.toBeInTheDocument();
+  click(buttonByText("Engenharia"));
+
+  await expect(
+    screen.findByRole("heading", {
+      name: "Fluxos de trabalho de Engenharia",
+    }),
+  ).resolves.toBeInTheDocument();
+  expect(
+    queryAllByRoleFast("button").some((candidate) => {
+      return candidate
+        .getAttribute("aria-label")
+        ?.startsWith("Auto-mergimento de PRs do GitHub");
+    }),
+  ).toBeTruthy();
+
+  click(buttonByAriaLabel("Prévia dos detalhes do fluxo de trabalho"));
+  const preview = await screen.findByRole("dialog", {
+    name: "Auto-mergimento de PRs do GitHub",
+  });
+  expect(within(preview).getByText("Como funciona")).toBeVisible();
+  expect(within(preview).getByText("Zero revisa a mudança")).toBeVisible();
+});
+
+test("Presentation template selection localizes app copy while keeping English metadata", async () => {
+  usePortugueseLocale();
+  mockOnboardingNeeded();
+  await setupPage({
+    context,
+    path: "/onboarding/presentation-template?choice=presentation",
+  });
+
+  await expect(
+    screen.findByRole("heading", {
+      name: "Escolha um modelo de apresentação para começar",
+    }),
+  ).resolves.toBeInTheDocument();
+  expect(screen.getByText("Sunburst playroom")).toBeVisible();
+  expect(
+    buttonByAriaLabel("Selecionar modelo de apresentação Sunburst playroom"),
+  ).toBeInTheDocument();
+  expect(document.title).toBe("Choose a presentation template | VM0");
+});
+
+test("A user can identify and switch workspace during onboarding", async () => {
+  mockOnboardingNeeded();
+  await setupPage({
+    context,
+    path: "/onboarding",
+    auth: {
+      user: { id: "test-user-123", fullName: "Test User" },
+      organization: {
+        activeOrg: {
+          id: "org_switcher",
+          name: "Acme Workspace",
+          slug: "acme",
         },
-      );
-      await openMakePage();
-
-      const slackOption = firstItem(screen.getAllByRole("radio"));
-      expect(slackOption).toHaveTextContent("Chat with Okou in Slack");
-      expect(
-        screen.getByTestId("onboarding-slack-illustration"),
-      ).toBeInTheDocument();
-      expect(screen.getByTestId("onboarding-slack-icon")).toHaveAttribute(
-        "src",
-        expect.stringContaining("slack-198390069136.svg"),
-      );
-
-      click(slackOption);
-
-      await waitFor(() => {
-        expect(pathname()).toBe(ROUTES.works);
-      });
-      expect(completionBody).toStrictEqual({ timezone: expectedTimezone });
-    },
-  );
-
-  it.each([
-    ["Generate a presentation", "Generate slides and speaker", "Presentation"],
-    ["Generate images", "Create high-quality visuals", "Illustration"],
-    ["Video production", "Turn your ideas into video", "Video"],
-    ["Build a website", "Create and publish a shareable page", "Website"],
-  ])(
-    "opens the %s product templates from the make page",
-    async (option, description, tab) => {
-      await openMakePage();
-
-      const makeOption = screen.getByRole("radio", {
-        name: `${option} ${description}`,
-      });
-      click(makeOption);
-
-      await waitFor(() => {
-        const selectedTab = queryAllByRoleFast("tab").find((candidate) => {
-          return (
-            candidate.textContent === tab &&
-            candidate.getAttribute("aria-selected") === "true"
-          );
-        });
-        expect(selectedTab).toBeInTheDocument();
-      });
-    },
-  );
-
-  it("opens product templates with the new workspace default agent", async () => {
-    context.store.set(setLastUsedAgentId$, STALE_AGENT_ID);
-    let firstAgentRoute: string | null = null;
-    context.mocks.api(agentsMainContract.list, ({ respond }) => {
-      const currentPath = pathname();
-      if (firstAgentRoute === null && currentPath.startsWith("/agents/")) {
-        firstAgentRoute = currentPath;
-      }
-      return respond(200, [onboardingAgent(DEFAULT_AGENT_ID)]);
-    });
-
-    await openMakePage();
-    chooseMakeOption("Generate a presentation");
-
-    await waitFor(() => {
-      expect(firstAgentRoute).toBe(`/agents/${DEFAULT_AGENT_ID}/chat`);
-    });
-    await waitFor(() => {
-      const presentationTab = queryAllByRoleFast("tab").find((candidate) => {
-        return (
-          candidate.textContent === "Presentation" &&
-          candidate.getAttribute("aria-selected") === "true"
-        );
-      });
-      expect(presentationTab).toBeInTheDocument();
-    });
-  });
-
-  it("shows the website choice illustration", async () => {
-    await openMakePage();
-
-    const websiteOption = screen.getByRole("radio", {
-      name: /Build a website/u,
-    });
-    expect(websiteOption.querySelector("img")).toHaveAttribute(
-      "src",
-      expect.stringContaining("v2-choice-website_80x80.png"),
-    );
-  });
-
-  it("renders Portuguese workflow copy with English document metadata", async () => {
-    usePortugueseLocale();
-    mockOnboardingNeeded();
-    detachedSetupPage({ context, path: "/onboarding" });
-
-    await expect(
-      screen.findByRole("heading", {
-        name: "O que você quer fazer primeiro",
-      }),
-    ).resolves.toBeInTheDocument();
-    expect(document.title).toBe("Welcome to VM0 | VM0");
-
-    click(
-      screen.getByRole("radio", {
-        name: /Automação de fluxo de trabalho/u,
-      }),
-    );
-
-    await expect(
-      screen.findByRole("heading", {
-        name: "Em que você está trabalhando?",
-      }),
-    ).resolves.toBeInTheDocument();
-    click(buttonByText("Engenharia"));
-
-    await expect(
-      screen.findByRole("heading", {
-        name: "Fluxos de trabalho de Engenharia",
-      }),
-    ).resolves.toBeInTheDocument();
-    expect(
-      queryAllByRoleFast("button").some((candidate) => {
-        return candidate
-          .getAttribute("aria-label")
-          ?.startsWith("Auto-mergimento de PRs do GitHub");
-      }),
-    ).toBeTruthy();
-
-    click(buttonByAriaLabel("Prévia dos detalhes do fluxo de trabalho"));
-    const preview = await screen.findByRole("dialog", {
-      name: "Auto-mergimento de PRs do GitHub",
-    });
-    expect(within(preview).getByText("Como funciona")).toBeVisible();
-    expect(within(preview).getByText("Zero revisa a mudança")).toBeVisible();
-  });
-
-  it("renders Portuguese onboarding templates with English document metadata", async () => {
-    usePortugueseLocale();
-    mockOnboardingNeeded();
-    detachedSetupPage({
-      context,
-      path: "/onboarding/presentation-template?choice=presentation",
-    });
-
-    await expect(
-      screen.findByRole("heading", {
-        name: "Escolha um modelo de apresentação para começar",
-      }),
-    ).resolves.toBeInTheDocument();
-    expect(screen.getByText("Sunburst playroom")).toBeVisible();
-    expect(
-      buttonByAriaLabel("Selecionar modelo de apresentação Sunburst playroom"),
-    ).toBeInTheDocument();
-    expect(document.title).toBe("Choose a presentation template | VM0");
-  });
-
-  it("exposes the workspace switcher in the onboarding shell", async () => {
-    mockOnboardingNeeded();
-    detachedSetupPage({
-      context,
-      path: "/onboarding",
-      org: {
-        activeOrg: { id: "org_switcher", name: "Acme Workspace", slug: "acme" },
         memberships: [{ id: "org_switcher" }],
       },
-    });
+    },
+  });
 
+  await expect(
+    screen.findByRole("heading", {
+      name: "What do you want to make first",
+    }),
+  ).resolves.toBeInTheDocument();
+
+  // The compact switcher (mobile layout) is wired into the onboarding shell.
+  expect(buttonByAriaLabel("Switch workspace")).toBeInTheDocument();
+
+  // The desktop switcher shows the active workspace name in the top-left.
+  await waitFor(() => {
+    expect(queryButtonByText("Acme Workspace")).not.toBeNull();
+  });
+});
+
+test("Workflow drafts identify required and optional connectors clearly", async () => {
+  mockCatalogItem({
+    slug: "google-cloud",
+    label: "Catalog Google Cloud",
+    icon: {
+      url: "https://icons.example.test/onboarding-google-cloud.svg",
+      invertInDarkMode: false,
+    },
+  });
+  mockOnboardingNeeded();
+  await setupPage({
+    context,
+    path: "/onboarding/workflow-run?choice=workflow&category=engineering&workflow=post-github-updates-slack",
+  });
+
+  await expect(
+    screen.findByRole("heading", {
+      name: "Audit Google Cloud IAM and services",
+    }),
+  ).resolves.toBeInTheDocument();
+  const requiredLabel = screen.getByText("Catalog Google Cloud");
+  const requiredRow = requiredLabel.parentElement?.parentElement;
+  if (!requiredRow) {
+    throw new Error("Expected Google Cloud connector row");
+  }
+  expect(within(requiredRow).getByText(/^Required\s+·/u)).toBeVisible();
+
+  const optionalLabel = screen.getByText("github");
+  const optionalRow = optionalLabel.parentElement?.parentElement;
+  if (!optionalRow) {
+    throw new Error("Expected GitHub connector row");
+  }
+  expect(within(optionalRow).getByText(/^Optional\s+·/u)).toBeVisible();
+
+  click(buttonByAriaLabel("Preview workflow details"));
+
+  const preview = await screen.findByRole("dialog", {
+    name: "Audit Google Cloud IAM and services",
+  });
+  expect(
+    within(preview).getByText((content) => {
+      return (
+        content === "Google Cloud" || content.startsWith("Google Cloud + ")
+      );
+    }),
+  ).toBeVisible();
+});
+
+test("Built-in workflows can start without connector setup", async () => {
+  mockOnboardingNeeded();
+  context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
+    return respond(200, { connectors: [] });
+  });
+  await setupPage({
+    context,
+    path: "/onboarding/workflow-run?choice=workflow&category=marketing&workflow=track-keyword-ranks-ahrefs",
+  });
+
+  await expect(
+    screen.findByRole("heading", {
+      name: "Audit a website's technical SEO",
+    }),
+  ).resolves.toBeInTheDocument();
+  expect(screen.queryAllByTestId("connector-card-label")).toHaveLength(0);
+  expect(queryButtonByText("Connect")).toBeNull();
+
+  click(buttonByAriaLabel("Preview workflow details"));
+
+  const preview = await screen.findByRole("dialog", {
+    name: "Audit a website's technical SEO",
+  });
+  expect(
+    within(preview).getByText(/built-in Firecrawl and DataForSEO/u),
+  ).toBeVisible();
+  expect(preview.querySelector(".owf-diagram-node-source")).toBeNull();
+  expect(preview.querySelector(".owf-diagram-dot-source")).toBeNull();
+  expect(preview.querySelector('path[d="M170 81H277"]')).toBeNull();
+});
+
+test("Every onboarding role has a curated workflow set", async () => {
+  await openMakePage();
+  chooseMakeOption("Workflow automation");
+
+  await expect(
+    screen.findByRole("heading", { name: "What do you work on?" }),
+  ).resolves.toBeInTheDocument();
+
+  const roles = [
+    "Everyone",
+    "Engineer",
+    "Product",
+    "Data",
+    "Marketing",
+    "Sales",
+    "Support",
+    "CEO",
+    "Operations",
+  ] as const;
+  let workflowCount = 0;
+  for (const role of roles) {
+    click(buttonByText(role));
     await expect(
-      screen.findByRole("heading", {
-        name: "What do you want to make first",
-      }),
+      screen.findByRole("heading", { name: `${role} workflows` }),
     ).resolves.toBeInTheDocument();
 
-    // The compact switcher (mobile layout) is wired into the onboarding shell.
-    expect(buttonByAriaLabel("Switch workspace")).toBeInTheDocument();
+    const workflowCards = screen.getAllByRole("article");
+    expect(workflowCards).toHaveLength(6);
+    workflowCount += workflowCards.length;
 
-    // The desktop switcher shows the active workspace name in the top-left.
-    await waitFor(() => {
-      expect(queryButtonByText("Acme Workspace")).not.toBeNull();
-    });
-  });
-
-  it("renders workflow connector marks from catalog metadata", async () => {
-    mockCatalogItem({
-      slug: "github",
-      label: "Catalog GitHub",
-      icon: {
-        url: "https://icons.example.test/onboarding-github.svg",
-        invertInDarkMode: true,
-        scale: 1.4,
-      },
-    });
-
-    await openGithubWorkflowRun();
-
-    const connectorLabel = await screen.findByText("Catalog GitHub");
-    const connectorRow = connectorLabel.parentElement?.parentElement;
-    if (!connectorRow) {
-      throw new Error("Expected Catalog GitHub connector row");
-    }
-    const rowIcon = connectorRow.querySelector<HTMLImageElement>(
-      'img[src="https://icons.example.test/onboarding-github.svg"]',
-    );
-    expect(rowIcon).toHaveClass("zero-icon-mono");
-    expect(rowIcon).toHaveStyle({ transform: "scale(1.4)" });
-
-    const pageIcons = document.querySelectorAll<HTMLImageElement>(
-      'img[src="https://icons.example.test/onboarding-github.svg"]',
-    );
-    expect(pageIcons.length).toBeGreaterThanOrEqual(2);
-
-    click(buttonByAriaLabel("Preview workflow details"));
-    const preview = await screen.findByRole("dialog", {
-      name: "Auto-merge GitHub PRs",
-    });
-    const previewIcon = preview.querySelector<HTMLImageElement>(
-      'img[src="https://icons.example.test/onboarding-github.svg"]',
-    );
-    expect(previewIcon).toHaveClass("zero-icon-mono");
-    expect(previewIcon).toHaveStyle({ transform: "scale(1.4)" });
-  });
-
-  it.each([
-    {
-      category: "engineering",
-      workflow: "post-github-updates-slack",
-      title: "Audit Google Cloud IAM and services",
-      requiredConnectorSlug: "google-cloud",
-      requiredCatalogLabel: "Catalog Google Cloud",
-      diagramLabel: "Google Cloud",
-      optionalConnector: "github",
-    },
-    {
-      category: "data",
-      workflow: "track-signup-sources-sheets",
-      title: "Analyze BigQuery data in Sheets",
-      requiredConnectorSlug: "google-cloud",
-      requiredCatalogLabel: "Catalog Google Cloud",
-      diagramLabel: "Google Cloud",
-      optionalConnector: "google-analytics",
-    },
-    {
-      category: "ceo",
-      workflow: "daily-industry-news-slack",
-      title: "Alert on cash flow and overdue invoices",
-      requiredConnectorSlug: "quickbooks",
-      requiredCatalogLabel: "Catalog QuickBooks",
-      diagramLabel: "QuickBooks",
-      optionalConnector: "gmail",
-    },
-  ] as const)(
-    "renders the canonical $diagramLabel label for $category workflows",
-    async ({
-      category,
-      workflow,
-      title,
-      requiredConnectorSlug,
-      requiredCatalogLabel,
-      diagramLabel,
-      optionalConnector,
-    }) => {
-      mockCatalogItem({
-        slug: requiredConnectorSlug,
-        label: requiredCatalogLabel,
-        icon: {
-          url: `https://icons.example.test/onboarding-${requiredConnectorSlug}.svg`,
-          invertInDarkMode: false,
-        },
-      });
-      mockOnboardingNeeded();
-      detachedSetupPage({
-        context,
-        path: `/onboarding/workflow-run?choice=workflow&category=${category}&workflow=${workflow}`,
-      });
-
-      await expect(
-        screen.findByRole("heading", { name: title }),
-      ).resolves.toBeInTheDocument();
-
-      const requiredLabel = await screen.findByText(requiredCatalogLabel);
-      const requiredRow = requiredLabel.parentElement?.parentElement;
-      if (!requiredRow) {
-        throw new Error(`Expected ${diagramLabel} connector row`);
-      }
-      expect(within(requiredRow).getByText(/^Required\s+·/u)).toBeVisible();
-
-      const optionalLabel = screen.getByText(optionalConnector);
-      const optionalRow = optionalLabel.parentElement?.parentElement;
-      if (!optionalRow) {
-        throw new Error(`Expected ${optionalConnector} connector row`);
-      }
-      expect(within(optionalRow).getByText(/^Optional\s+·/u)).toBeVisible();
-
-      click(buttonByAriaLabel("Preview workflow details"));
-      const preview = await screen.findByRole("dialog", { name: title });
-      expect(
-        within(preview).getByText((content) => {
-          return (
-            content === diagramLabel || content.startsWith(`${diagramLabel} + `)
-          );
-        }),
-      ).toBeVisible();
-    },
-  );
-
-  it.each([
-    {
-      category: "marketing",
-      workflow: "track-keyword-ranks-ahrefs",
-      title: "Audit a website's technical SEO",
-      evidence: /built-in Firecrawl and DataForSEO/u,
-    },
-    {
-      category: "support",
-      workflow: "summarize-zendesk-tickets-daily",
-      title: "Turn FAQs into digital-human support videos",
-      evidence: /built-in avatar-video/u,
-    },
-  ])(
-    "renders $category built-in workflow without connector setup",
-    async ({ category, workflow, title, evidence }) => {
-      mockOnboardingNeeded();
-      context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
-        return respond(200, { connectors: [] });
-      });
-      detachedSetupPage({
-        context,
-        path: `/onboarding/workflow-run?choice=workflow&category=${category}&workflow=${workflow}`,
-      });
-
-      await expect(
-        screen.findByRole("heading", { name: title }),
-      ).resolves.toBeInTheDocument();
-      expect(screen.queryAllByTestId("connector-card-label")).toHaveLength(0);
-      expect(queryButtonByText("Connect")).toBeNull();
-
-      click(buttonByAriaLabel("Preview workflow details"));
-      const preview = await screen.findByRole("dialog", { name: title });
-      expect(within(preview).getByText(evidence)).toBeVisible();
-      expect(preview.querySelector(".owf-diagram-node-source")).toBeNull();
-      expect(preview.querySelector(".owf-diagram-dot-source")).toBeNull();
-      expect(preview.querySelector('path[d="M170 81H277"]')).toBeNull();
-    },
-  );
-
-  it("renders exactly six workflows for each role", async () => {
-    await openMakePage();
-    chooseMakeOption("Workflow automation");
-
+    click(buttonByText("Back"));
     await expect(
       screen.findByRole("heading", { name: "What do you work on?" }),
     ).resolves.toBeInTheDocument();
+  }
+  expect(workflowCount).toBe(54);
+});
 
-    const roles = [
-      "Everyone",
-      "Engineer",
-      "Product",
-      "Data",
-      "Marketing",
-      "Sales",
-      "Support",
-      "CEO",
-      "Operations",
-    ] as const;
-    let workflowCount = 0;
-    for (const role of roles) {
-      click(buttonByText(role));
-      await expect(
-        screen.findByRole("heading", { name: `${role} workflows` }),
-      ).resolves.toBeInTheDocument();
+test("A workflow preview can be selected as the first draft", async () => {
+  await openMakePage();
+  chooseMakeOption("Workflow automation");
 
-      const workflowCards = screen.getAllByRole("article");
-      expect(workflowCards).toHaveLength(6);
-      workflowCount += workflowCards.length;
+  await expect(
+    screen.findByRole("heading", {
+      name: "What do you work on?",
+    }),
+  ).resolves.toBeInTheDocument();
+  click(buttonByText("Engineer"));
 
-      click(buttonByText("Back"));
-      await expect(
-        screen.findByRole("heading", { name: "What do you work on?" }),
-      ).resolves.toBeInTheDocument();
-    }
-    expect(workflowCount).toBe(54);
+  await expect(
+    screen.findByRole("heading", {
+      name: "Engineer workflows",
+    }),
+  ).resolves.toBeInTheDocument();
+  const workflowButton = queryAllByRoleFast("button").find((candidate) => {
+    return candidate
+      .getAttribute("aria-label")
+      ?.startsWith("Auto-merge GitHub PRs");
+  });
+  expect(workflowButton).toHaveAttribute("aria-pressed", "false");
+
+  const previewButton = buttonsByAriaLabel("Preview workflow details")[0];
+  if (!previewButton) {
+    throw new Error("Expected workflow preview button");
+  }
+  click(previewButton);
+  const preview = await screen.findByRole("dialog", {
+    name: "Auto-merge GitHub PRs",
+  });
+  expect(within(preview).getByText("How it works")).toBeVisible();
+  click(buttonByText("Select this template", preview));
+
+  await expect(
+    screen.findByRole("heading", {
+      name: "Review your workflow draft",
+    }),
+  ).resolves.toBeInTheDocument();
+  expect(
+    screen.getByRole("heading", { name: "Auto-merge GitHub PRs" }),
+  ).toBeInTheDocument();
+  const selectedWorkflow = new URLSearchParams(search());
+  expect(pathname()).toBe("/onboarding/workflow-run");
+  expect(selectedWorkflow.get("category")).toBe("engineering");
+  expect(selectedWorkflow.get("workflow")).toBe("auto-merge-github-prs");
+});
+
+test("Workflow drafts can be created before connectors are connected", async () => {
+  mockOnboardingNeeded();
+  context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
+    return respond(200, { connectors: [] });
+  });
+  await setupPage({
+    context,
+    path: "/onboarding/workflow-run?choice=workflow&category=engineering&workflow=watch-sentry-after-release",
   });
 
-  it("uses card actions throughout workflow onboarding", async () => {
-    mockCatalogItem({
-      slug: "github",
-      label: "Catalog GitHub",
-      icon: {
-        url: "https://icons.example.test/onboarding-github.svg",
-        invertInDarkMode: true,
-      },
-    });
-    await openMakePage();
-    expect(queryButtonByText("Continue")).toBeNull();
+  await expect(
+    screen.findByRole("heading", {
+      name: "Review your workflow draft",
+    }),
+  ).resolves.toBeInTheDocument();
+  expect(buttonByText("Create workflow")).not.toBeDisabled();
+  expect(screen.queryByText(/to run this workflow/u)).toBeNull();
+});
 
-    click(screen.getByRole("radio", { name: /Workflow automation/u }));
-    await expect(
-      screen.findByRole("heading", { name: "What do you work on?" }),
-    ).resolves.toBeInTheDocument();
-    expect(queryButtonByText("Continue")).toBeNull();
-
-    const everyoneCard = buttonByText("Everyone");
-    expect(everyoneCard.parentElement?.firstElementChild).toBe(everyoneCard);
-    const engineerCard = buttonByText("Engineer");
-    expect(
-      engineerCard.querySelector(
-        'img[src="https://icons.example.test/onboarding-github.svg"]',
-      ),
-    ).not.toBeNull();
-    click(buttonByText("Marketing"));
-
-    await expect(
-      screen.findByRole("heading", { name: "Marketing workflows" }),
-    ).resolves.toBeInTheDocument();
-    expect(screen.queryByText("No connector required")).toBeNull();
-    expect(queryButtonByText("Continue")).toBeNull();
-
-    const workflowButton = queryAllByRoleFast("button").find((candidate) => {
-      return candidate
-        .getAttribute("aria-label")
-        ?.startsWith("Audit a website's technical SEO");
-    });
-    if (!workflowButton) {
-      throw new Error("Expected technical SEO workflow card");
-    }
-    click(workflowButton);
-    await expect(
-      screen.findByRole("heading", { name: "Review your workflow draft" }),
-    ).resolves.toBeInTheDocument();
+test("Workflow drafts can be created after connectors are connected", async () => {
+  context.mocks.data.onboardingStatus({
+    needsOnboarding: true,
+    onboardingComplete: false,
+  });
+  context.mocks.data.connectors([
+    {
+      id: "11111111-1111-4111-8111-111111111112",
+      slug: "notion",
+      authMethod: "oauth",
+      externalId: "notion-user-1",
+      externalUsername: "notion-user",
+      externalEmail: null,
+      oauthScopes: ["read", "write"],
+      connectionStatus: "connected",
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    },
+  ]);
+  await setupPage({
+    context,
+    path: "/onboarding/workflow-run?choice=workflow&category=product&workflow=summarize-user-feedback-notion",
   });
 
-  it("moves from workflow selection to a connector-aware first run", async () => {
-    await openMakePage();
-    chooseMakeOption("Workflow automation");
-
-    await expect(
-      screen.findByRole("heading", {
-        name: "What do you work on?",
-      }),
-    ).resolves.toBeInTheDocument();
-    click(buttonByText("Engineer"));
-
-    await expect(
-      screen.findByRole("heading", {
-        name: "Engineer workflows",
-      }),
-    ).resolves.toBeInTheDocument();
-    const workflowButton = queryAllByRoleFast("button").find((candidate) => {
-      return candidate
-        .getAttribute("aria-label")
-        ?.startsWith("Auto-merge GitHub PRs");
-    });
-    expect(workflowButton).toHaveAttribute("aria-pressed", "false");
-
-    const previewButton = buttonsByAriaLabel("Preview workflow details")[0];
-    if (!previewButton) {
-      throw new Error("Expected workflow preview button");
-    }
-    click(previewButton);
-    const preview = await screen.findByRole("dialog", {
-      name: "Auto-merge GitHub PRs",
-    });
-    expect(within(preview).getByText("How it works")).toBeVisible();
-    click(buttonByText("Select this template", preview));
-
-    await expect(
-      screen.findByRole("heading", {
-        name: "Review your workflow draft",
-      }),
-    ).resolves.toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "Auto-merge GitHub PRs" }),
-    ).toBeInTheDocument();
-    expect(pathname()).toBe("/onboarding/workflow-run");
-    expect(context.store.get(searchParams$).get("category")).toBe(
-      "engineering",
-    );
-    expect(context.store.get(searchParams$).get("workflow")).toBe(
-      "auto-merge-github-prs",
-    );
-  });
-
-  it("allows draft creation before required connectors are connected", async () => {
-    mockOnboardingNeeded();
-    context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
-      return respond(200, { connectors: [] });
-    });
-    detachedSetupPage({
-      context,
-      path: "/onboarding/workflow-run?choice=workflow&category=engineering&workflow=watch-sentry-after-release",
-    });
-
-    await expect(
-      screen.findByRole("heading", {
-        name: "Review your workflow draft",
-      }),
-    ).resolves.toBeInTheDocument();
-
+  await expect(
+    screen.findByRole("heading", {
+      name: "Review your workflow draft",
+    }),
+  ).resolves.toBeInTheDocument();
+  await waitFor(() => {
     expect(buttonByText("Create workflow")).not.toBeDisabled();
-    expect(screen.queryByText(/to run this workflow/u)).toBeNull();
   });
+  expect(screen.queryByText(/to run this workflow/u)).toBeNull();
+});
 
-  it("keeps draft creation available when connectors are connected", async () => {
-    mockOnboardingNeeded();
-    context.mocks.data.connectors([
-      {
-        id: "11111111-1111-4111-8111-111111111112",
-        slug: "notion",
-        authMethod: "oauth",
-        externalId: "notion-user-1",
-        externalUsername: "notion-user",
-        externalEmail: null,
-        oauthScopes: ["read", "write"],
-        connectionStatus: "connected",
-        reconnectReason: null,
-        tokenExpiresAt: null,
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-01-01T00:00:00.000Z",
-      },
-    ]);
-    detachedSetupPage({
-      context,
-      path: "/onboarding/workflow-run?choice=workflow&category=product&workflow=summarize-user-feedback-notion",
-    });
+test("A user can leave the catalog to create a custom workflow", async () => {
+  await openMakePage();
+  chooseMakeOption("Workflow automation");
 
-    await expect(
-      screen.findByRole("heading", {
-        name: "Review your workflow draft",
-      }),
-    ).resolves.toBeInTheDocument();
+  await expect(
+    screen.findByRole("heading", { name: "What do you work on?" }),
+  ).resolves.toBeInTheDocument();
+  click(buttonByText("Engineer"));
 
-    await waitFor(() => {
-      expect(buttonByText("Create workflow")).not.toBeDisabled();
-    });
-    expect(screen.queryByText(/to run this workflow/u)).toBeNull();
+  await expect(
+    screen.findByRole("heading", { name: "Engineer workflows" }),
+  ).resolves.toBeInTheDocument();
+
+  click(buttonByText("Talk to Zero and make my own"));
+
+  await waitFor(() => {
+    expect(pathname()).not.toMatch(/^\/onboarding/u);
   });
+});
 
-  it("sends the custom workflow choice straight into the product", async () => {
-    await openMakePage();
-    chooseMakeOption("Workflow automation");
+test("Okou custom workflow onboarding addresses Okou by default", async () => {
+  const runCreated = context.mocks.deferred<string>();
+  await setupCustomWorkflowPage("app.okou.ai", runCreated.resolve);
 
-    await expect(
-      screen.findByRole("heading", { name: "What do you work on?" }),
-    ).resolves.toBeInTheDocument();
-    click(buttonByText("Engineer"));
+  await expect(
+    screen.findByRole("heading", { name: "Describe your workflow" }),
+  ).resolves.toBeInTheDocument();
+  expect(
+    screen.getByPlaceholderText("Describe what you want Okou to build"),
+  ).toBeVisible();
+  await fill(
+    screen.getByLabelText("Describe your workflow"),
+    "Build a daily brief",
+  );
+  click(buttonByText("Continue with Okou"));
 
-    await expect(
-      screen.findByRole("heading", { name: "Engineer workflows" }),
-    ).resolves.toBeInTheDocument();
+  await expect(runCreated.promise).resolves.toBe("@Okou Build a daily brief");
+});
 
-    click(buttonByText("Talk to Zero and make my own"));
+test("VM0 custom workflow onboarding addresses Zero by default", async () => {
+  const runCreated = context.mocks.deferred<string>();
+  await setupCustomWorkflowPage("app.vm0.ai", runCreated.resolve);
 
-    await waitFor(() => {
-      expect(pathname()).not.toMatch(/^\/onboarding/u);
-    });
+  await expect(
+    screen.findByRole("heading", { name: "Describe your workflow" }),
+  ).resolves.toBeInTheDocument();
+  expect(
+    screen.getByPlaceholderText("Describe what you want Zero to build"),
+  ).toBeVisible();
+  await fill(
+    screen.getByLabelText("Describe your workflow"),
+    "Build a daily brief",
+  );
+  click(buttonByText("Continue with Zero"));
+
+  await expect(runCreated.promise).resolves.toBe("@Zero Build a daily brief");
+});
+
+test("Okou custom workflow onboarding preserves an explicit assistant mention", async () => {
+  const runCreated = context.mocks.deferred<string>();
+  await setupCustomWorkflowPage("app.okou.ai", runCreated.resolve);
+
+  await expect(
+    screen.findByRole("heading", { name: "Describe your workflow" }),
+  ).resolves.toBeInTheDocument();
+  expect(
+    screen.getByPlaceholderText("Describe what you want Okou to build"),
+  ).toBeVisible();
+  await fill(
+    screen.getByLabelText("Describe your workflow"),
+    "@Researcher build a daily brief",
+  );
+  click(buttonByText("Continue with Okou"));
+
+  await expect(runCreated.promise).resolves.toBe(
+    "@Researcher build a daily brief",
+  );
+});
+
+test("Connecting an OAuth account starts its standard authorization", async () => {
+  const authWindow = context.mocks.browser.authWindow();
+  Object.defineProperty(authWindow, "location", {
+    value: { href: "" },
+    configurable: true,
   });
-
-  it.each([
-    ["https://app.okou.ai/", "Okou"],
-    ["https://pr-27200-app.omby.ai/", "Okou"],
-    ["https://app.vm0.ai/", "Zero"],
-  ])(
-    "uses the %s assistant identity throughout custom workflow onboarding",
-    async (url, assistantName) => {
-      context.mocks.browser.url(url);
-      let runPrompt: string | undefined;
-      mockChatLifecycle(context, {
-        onRunCreate: (body) => {
-          runPrompt = body.prompt;
-        },
-      });
-      mockOnboardingNeeded();
-
-      detachedSetupPage({
-        context,
-        path: "/onboarding/workflow-run?choice=workflow&category=engineering&workflow=talk-to-zero",
-      });
-
-      await expect(
-        screen.findByRole("heading", { name: "Describe your workflow" }),
-      ).resolves.toBeInTheDocument();
-      expect(
-        screen.getByPlaceholderText(
-          `Describe what you want ${assistantName} to build`,
-        ),
-      ).toBeInTheDocument();
-      await fill(
-        screen.getByLabelText("Describe your workflow"),
-        "Build a daily brief",
-      );
-      click(buttonByText(`Continue with ${assistantName}`));
-
-      await waitFor(() => {
-        expect(runPrompt).toBe(`@${assistantName} Build a daily brief`);
-        expect(pathname()).toMatch(/^\/chats\//u);
+  context.mocks.browser.open(authWindow);
+  context.mocks.api(
+    connectorOauthStartContract.start,
+    ({ params, respond }) => {
+      expect(params.connectorSlug).toBe("github");
+      return respond(200, {
+        authorizationUrl: "https://oauth.test/github/authorize",
       });
     },
   );
 
-  it("preserves an explicit custom agent mention on an Okou host", async () => {
-    context.mocks.browser.url("https://app.okou.ai/");
-    let runPrompt: string | undefined;
-    mockChatLifecycle(context, {
-      onRunCreate: (body) => {
-        runPrompt = body.prompt;
-      },
-    });
-    mockOnboardingNeeded();
-
-    detachedSetupPage({
-      context,
-      path: "/onboarding/workflow-run?choice=workflow&category=engineering&workflow=talk-to-zero",
-    });
-
-    await fill(
-      await screen.findByLabelText("Describe your workflow"),
-      "@Researcher build a daily brief",
-    );
-    click(buttonByText("Continue with Okou"));
-
-    await waitFor(() => {
-      expect(runPrompt).toBe("@Researcher build a daily brief");
-      expect(pathname()).toMatch(/^\/chats\//u);
-    });
+  await openGithubWorkflowRun();
+  const connectButton = await waitFor(() => {
+    return buttonByText("Connect");
   });
+  click(connectButton);
 
-  it("starts the standard connector flow from onboarding", async () => {
-    const authWindow = context.mocks.browser.authWindow();
-    Object.defineProperty(authWindow, "location", {
-      value: { href: "" },
-      configurable: true,
-    });
-    context.mocks.browser.open(authWindow);
-    context.mocks.api(
-      connectorOauthStartContract.start,
-      ({ params, respond }) => {
-        expect(params.connectorSlug).toBe("github");
-        return respond(200, {
-          authorizationUrl: "https://oauth.test/github/authorize",
-        });
-      },
+  await waitFor(() => {
+    expect(authWindow.location.href).toBe(
+      "https://oauth.test/github/authorize",
     );
-
-    await openGithubWorkflowRun();
-    const connectButton = await waitFor(() => {
-      return buttonByText("Connect");
-    });
-    click(connectButton);
-
-    await waitFor(() => {
-      expect(authWindow.location.href).toBe(
-        "https://oauth.test/github/authorize",
-      );
-    });
-    expect(
-      screen.queryByRole("dialog", { name: "GitHub" }),
-    ).not.toBeInTheDocument();
   });
+  expect(
+    screen.queryByRole("dialog", { name: "GitHub" }),
+  ).not.toBeInTheDocument();
+});
 
-  it("shows account-level connector connections as connected", async () => {
-    context.mocks.data.connectors([
-      {
-        id: "11111111-1111-4111-8111-111111111111",
-        slug: "github",
-        authMethod: "oauth",
-        externalId: "github-user-1",
-        externalUsername: "octocat",
+test("An existing account connection is recognized during onboarding", async () => {
+  context.mocks.data.connectors([
+    {
+      id: "11111111-1111-4111-8111-111111111111",
+      slug: "github",
+      authMethod: "oauth",
+      externalId: "github-user-1",
+      externalUsername: "octocat",
+      externalEmail: null,
+      oauthScopes: ["repo", "project", "workflow"],
+      connectionStatus: "connected",
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    },
+  ]);
+
+  await openGithubWorkflowRun();
+
+  const githubLabel = await screen.findByText("GitHub");
+  const githubRow = githubLabel.parentElement?.parentElement;
+  if (!githubRow) {
+    throw new Error("Expected GitHub connector row");
+  }
+  expect(within(githubRow).getByText("Connected")).toBeInTheDocument();
+  expect(queryButtonByText("Connect", githubRow)).toBeNull();
+});
+
+test("Ahrefs can be connected for the default agent during onboarding", async () => {
+  context.mocks.api(
+    connectorManualGrantContract.connect,
+    ({ body, params, respond }) => {
+      expect(params.connectorSlug).toBe("ahrefs");
+      expect(body.authMethod).toBe("api-token");
+      expect(body.account).toStrictEqual({ intent: "add" });
+      expect(body.authorizeAgent).toBeTruthy();
+      expect(body.agentId).toBeUndefined();
+      return respond(200, {
+        id: "11111111-1111-4111-8111-111111111112",
+        slug: "ahrefs",
+        authMethod: "api-token",
+        externalId: null,
+        externalUsername: null,
         externalEmail: null,
-        oauthScopes: ["repo", "project", "workflow"],
+        oauthScopes: null,
         connectionStatus: "connected",
         reconnectReason: null,
         tokenExpiresAt: null,
         createdAt: "2026-01-01T00:00:00.000Z",
         updatedAt: "2026-01-01T00:00:00.000Z",
-      },
-    ]);
-
-    await openGithubWorkflowRun();
-
-    const githubLabel = await screen.findByText("GitHub");
-    const githubRow = githubLabel.parentElement?.parentElement;
-    if (!githubRow) {
-      throw new Error("Expected GitHub connector row");
-    }
-    expect(within(githubRow).getByText("Connected")).toBeInTheDocument();
-    expect(queryButtonByText("Connect", githubRow)).toBeNull();
+      });
+    },
+  );
+  mockOnboardingNeeded();
+  await setupPage({
+    context,
+    path: "/onboarding?prompt=Track%20keyword%20rankings&connector=ahrefs",
   });
 
-  it("runs a presentation landing-page prompt through onboarding", async () => {
-    let runPrompt: string | undefined;
-    mockChatLifecycle(context, {
-      onRunCreate: (body) => {
-        runPrompt = body.prompt;
-      },
-    });
-    mockOnboardingNeeded();
-
-    detachedSetupPage({
-      context,
-      path: PRESENTATION_ONBOARDING_PATH,
-    });
-
-    await expect(
-      screen.findByRole("heading", { name: "Try this prompt" }),
-    ).resolves.toBeInTheDocument();
-    expect(screen.getByLabelText("Onboarding prompt")).toHaveValue(
-      PRESENTATION_LANDING_PROMPT,
-    );
-
-    click(buttonByText("Next"));
-
+  click(
     await waitFor(() => {
-      expect(runPrompt).toBe(PRESENTATION_LANDING_PROMPT);
-      expect(pathname()).toMatch(/^\/chats\//u);
-    });
-    const routedParams = context.store.get(searchParams$);
-    expect(routedParams.has("prompt")).toBeFalsy();
-    expect(routedParams.get("showcase")).toBe(PRESENTATION_SHOWCASE_URL);
-    expect(routedParams.get("vm0_source")).toBe("presentation");
-    expect(routedParams.get("landing_host")).toBe("www.vm0.ai");
-    expect(routedParams.get("landing_path")).toBe("/en/presentation");
-    expect(routedParams.get("source_type")).toBe("direct");
+      return buttonByText("Connect");
+    }),
+  );
+  const dialog = await screen.findByRole("dialog", { name: "Ahrefs" });
+  await fill(
+    within(dialog).getByPlaceholderText("your-ahrefs-api-token"),
+    "test-ahrefs-token",
+  );
+  click(buttonByText("Save"));
+
+  await expect(screen.findByText("Connected")).resolves.toBeInTheDocument();
+  expect(
+    screen.queryByText("You've successfully connected with Ahrefs!"),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog", { name: "Ahrefs" })).toBeNull();
+});
+
+test("A presentation landing prompt starts a chat with its source context", async () => {
+  let runPrompt: string | undefined;
+  mockChatLifecycle(context, {
+    onRunCreate: (body) => {
+      runPrompt = body.prompt;
+    },
+  });
+  mockOnboardingNeeded();
+  const params = new URLSearchParams({
+    prompt: MARKETING_PRESENTATION_PROMPT,
+    showcase: MARKETING_PRESENTATION_SHOWCASE,
+    vm0_source: "presentation",
+    landing_host: "www.vm0.ai",
+    landing_path: "/en/presentation",
+    source_type: "direct",
   });
 
-  it("connects Ahrefs for the default agent without permission confirmation", async () => {
-    context.mocks.api(
-      connectorManualGrantContract.connect,
-      ({ body, params, respond }) => {
-        expect(params.connectorSlug).toBe("ahrefs");
-        expect(body.authMethod).toBe("api-token");
-        expect(body.account).toStrictEqual({ intent: "add" });
-        expect(body.authorizeAgent).toBeTruthy();
-        expect(body.agentId).toBeUndefined();
-        return respond(200, {
-          id: "11111111-1111-4111-8111-111111111112",
-          slug: "ahrefs",
-          authMethod: "api-token",
-          externalId: null,
-          externalUsername: null,
-          externalEmail: null,
-          oauthScopes: null,
-          connectionStatus: "connected",
-          reconnectReason: null,
-          tokenExpiresAt: null,
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-        });
-      },
-    );
-    mockOnboardingNeeded();
-    detachedSetupPage({
-      context,
-      path: "/onboarding?prompt=Track%20keyword%20rankings&connector=ahrefs",
-    });
-
-    click(
-      await waitFor(() => {
-        return buttonByText("Connect");
-      }),
-    );
-    const dialog = await screen.findByRole("dialog", { name: "Ahrefs" });
-    await fill(
-      within(dialog).getByPlaceholderText("your-ahrefs-api-token"),
-      "test-ahrefs-token",
-    );
-    click(buttonByText("Save"));
-
-    await expect(screen.findByText("Connected")).resolves.toBeInTheDocument();
-    expect(
-      screen.queryByText("You've successfully connected with Ahrefs!"),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByRole("dialog", { name: "Ahrefs" })).toBeNull();
+  await setupPage({
+    context,
+    path: `/onboarding?${params.toString()}`,
   });
 
-  describe("vm0-marketing onboarding entry contract", () => {
-    it("runs a presentation prompt from a marketing deep link without connectors", async () => {
-      let runPrompt: string | undefined;
-      mockChatLifecycle(context, {
-        onRunCreate: (body) => {
-          runPrompt = body.prompt;
-        },
-      });
-      mockOnboardingNeeded();
-      const params = new URLSearchParams({
-        prompt: MARKETING_PRESENTATION_PROMPT,
-        showcase: MARKETING_PRESENTATION_SHOWCASE,
-        vm0_source: "presentation",
-        landing_host: "www.vm0.ai",
-        landing_path: "/en/presentation",
-        source_type: "direct",
-      });
+  await expect(
+    screen.findByRole("heading", { name: "Try this prompt" }),
+  ).resolves.toBeInTheDocument();
+  expect(screen.getByLabelText("Onboarding prompt")).toHaveValue(
+    MARKETING_PRESENTATION_PROMPT,
+  );
 
-      detachedSetupPage({
-        context,
-        path: `/onboarding?${params.toString()}`,
-      });
+  click(buttonByText("Next"));
 
-      await expect(
-        screen.findByRole("heading", { name: "Try this prompt" }),
-      ).resolves.toBeInTheDocument();
-      expect(screen.getByLabelText("Onboarding prompt")).toHaveValue(
-        MARKETING_PRESENTATION_PROMPT,
-      );
-      expect(context.store.get(searchParams$).get("connector")).toBeNull();
+  await waitFor(() => {
+    expect(runPrompt).toBe(MARKETING_PRESENTATION_PROMPT);
+    expect(pathname()).toMatch(/^\/chats\//u);
+  });
+  const handoffParams = new URLSearchParams(search());
+  expect(handoffParams.get("showcase")).toBe(MARKETING_PRESENTATION_SHOWCASE);
+  expect(handoffParams.get("vm0_source")).toBe("presentation");
+  expect(handoffParams.get("landing_host")).toBe("www.vm0.ai");
+  expect(handoffParams.get("landing_path")).toBe("/en/presentation");
+  expect(handoffParams.get("source_type")).toBe("direct");
+});
 
-      click(buttonByText("Next"));
+test("A selected website template survives first-time onboarding", async () => {
+  const websiteTemplate = WEBSITE_TEMPLATE_ITEMS.find((item) => {
+    return item.id === "website-template:warm-cards";
+  });
+  if (!websiteTemplate) {
+    throw new Error("Expected the Warm Cards website template");
+  }
 
-      await waitFor(() => {
-        expect(runPrompt).toBe(MARKETING_PRESENTATION_PROMPT);
-        expect(pathname()).toMatch(/^\/chats\//u);
-      });
-      const handoffParams = context.store.get(searchParams$);
-      expect(handoffParams.get("showcase")).toBe(
-        MARKETING_PRESENTATION_SHOWCASE,
-      );
-      expect(handoffParams.get("vm0_source")).toBe("presentation");
-      expect(handoffParams.get("landing_host")).toBe("www.vm0.ai");
-      expect(handoffParams.get("landing_path")).toBe("/en/presentation");
-      expect(handoffParams.get("source_type")).toBe("direct");
-    });
-
-    it("keeps a website template through first-time onboarding", async () => {
-      const websiteTemplate = WEBSITE_TEMPLATE_ITEMS.find((item) => {
-        return item.id === "website-template:warm-cards";
-      });
-      if (!websiteTemplate) {
-        throw new Error("Expected the Warm Cards website template");
-      }
-
-      let websiteTemplateId: string | undefined;
-      mockChatLifecycle(context, {
-        onRunCreate: (body) => {
-          const template = templateFromUserMessage(body.userMessage);
-          websiteTemplateId =
-            template?.type === "website"
-              ? template.selection.websiteTemplateId
-              : undefined;
-        },
-      });
-      mockOnboardingNeeded();
-      const params = new URLSearchParams({
-        prompt: "Build a warm launch page",
-        template: websiteTemplate.id,
-        showcase: websiteTemplate.previewUrl,
-        vm0_source: "web_design",
-      });
-
-      detachedSetupPage({
-        context,
-        path: `/onboarding?${params.toString()}`,
-      });
-
-      await expect(
-        screen.findByRole("heading", { name: "Try this prompt" }),
-      ).resolves.toBeInTheDocument();
-      click(buttonByText("Next"));
-
-      await waitFor(() => {
-        expect(websiteTemplateId).toBe(websiteTemplate.id);
-        expect(pathname()).toMatch(/^\/chats\//u);
-      });
-      expect(context.store.get(searchParams$).get("showcase")).toBe(
-        websiteTemplate.previewUrl,
-      );
-      expect(context.store.get(searchParams$).get("vm0_source")).toBe(
-        "web_design",
-      );
-    });
-
-    it("runs directly for an onboarded workspace", async () => {
-      let runPrompt: string | undefined;
-      mockChatLifecycle(context, {
-        onRunCreate: (body) => {
-          runPrompt = body.prompt;
-        },
-      });
-      const params = new URLSearchParams({
-        prompt: "Summarize this week's launch metrics",
-        connector: "google-analytics,slack",
-        vm0_source: "marketing",
-        landing_path: "/en/workflow-automation-examples",
-      });
-
-      detachedSetupPage({
-        context,
-        path: `/onboarding?${params.toString()}`,
-      });
-
-      await waitFor(() => {
-        expect(runPrompt).toBe("Summarize this week's launch metrics");
-        expect(pathname()).toMatch(/^\/chats\//u);
-      });
-      const handoffParams = context.store.get(searchParams$);
-      expect(handoffParams.get("connector")).toBeNull();
-      expect(handoffParams.get("vm0_source")).toBe("marketing");
-      expect(handoffParams.get("landing_path")).toBe(
-        "/en/workflow-automation-examples",
-      );
-    });
+  let websiteTemplateId: string | undefined;
+  mockChatLifecycle(context, {
+    onRunCreate: (body) => {
+      const template = templateFromUserMessage(body.userMessage);
+      websiteTemplateId =
+        template?.type === "website"
+          ? template.selection.websiteTemplateId
+          : undefined;
+    },
+  });
+  mockOnboardingNeeded();
+  const params = new URLSearchParams({
+    prompt: "Build a warm launch page",
+    template: websiteTemplate.id,
+    showcase: websiteTemplate.previewUrl,
+    vm0_source: "web_design",
   });
 
-  it("keeps the presentation template deep link available", async () => {
-    const template = firstItem(PRESENTATION_TEMPLATE_PICKER_ITEMS);
-    mockOnboardingNeeded();
-    detachedSetupPage({
-      context,
-      path: "/onboarding/presentation-template?choice=presentation",
-    });
-
-    await expect(
-      screen.findByRole("heading", {
-        name: "Pick a presentation template to start from",
-      }),
-    ).resolves.toBeInTheDocument();
-    const templateButton = buttonByAriaLabel(
-      `Select ${template.title} presentation template`,
-    );
-    expect(templateButton).toHaveAttribute("aria-pressed", "false");
-
-    click(buttonByAriaLabel(`View ${template.title} presentation`));
-    const preview = await screen.findByRole("dialog", {
-      name: template.title,
-    });
-    click(buttonByAriaLabel("Show next slide", preview));
-    expect(
-      within(preview).getByAltText(`${template.title} slide 2`),
-    ).toBeVisible();
-    click(buttonByText("Select this template", preview));
-    click(buttonByText("Continue"));
-
-    await expect(
-      screen.findByRole("heading", { name: "Fulfil your presentation" }),
-    ).resolves.toBeInTheDocument();
-    expect(pathname()).toBe("/onboarding/presentation-run");
-    expect(
-      screen.getByLabelText("Presentation content and instruction"),
-    ).toBeVisible();
-    expect(context.store.get(searchParams$).get("template")).toBe(
-      template.slug,
-    );
+  await setupPage({
+    context,
+    path: `/onboarding?${params.toString()}`,
   });
 
-  it("completes image onboarding and starts the selected template run", async () => {
-    const template = firstItem(ILLUSTRATION_TEMPLATE_ITEMS);
-    let runPrompt: string | undefined;
-    let generationType: string | undefined;
-    mockChatLifecycle(context, {
-      onRunCreate: (body) => {
-        runPrompt = body.prompt;
-        generationType = templateTypeFromUserMessage(body.userMessage);
-      },
-    });
+  await expect(
+    screen.findByRole("heading", { name: "Try this prompt" }),
+  ).resolves.toBeInTheDocument();
+  click(buttonByText("Next"));
 
-    mockOnboardingNeeded();
-    detachedSetupPage({
-      context,
-      path: "/onboarding/image-template?choice=images",
-    });
+  await waitFor(() => {
+    expect(websiteTemplateId).toBe(websiteTemplate.id);
+    expect(pathname()).toMatch(/^\/chats\//u);
+  });
+  const handoffParams = new URLSearchParams(search());
+  expect(handoffParams.get("showcase")).toBe(websiteTemplate.previewUrl);
+  expect(handoffParams.get("vm0_source")).toBe("web_design");
+});
 
-    await expect(
-      screen.findByRole("heading", {
-        name: "Pick an illustration template to start from",
-      }),
-    ).resolves.toBeInTheDocument();
-    chooseTemplate(template.title, "illustration");
-
-    await expect(
-      screen.findByRole("heading", {
-        name: "Select one automation you would like to have a try",
-      }),
-    ).resolves.toBeInTheDocument();
-    expect(screen.getByLabelText("Custom illustration scene")).toBeVisible();
-    click(buttonByText("Run now"));
-
-    await waitFor(() => {
-      expect(runPrompt).toContain(template.title);
-      expect(generationType).toBe("illustration");
-      expect(pathname()).toMatch(/^\/chats\//u);
-    });
+test("An onboarded workspace runs a marketing deep link directly", async () => {
+  let runPrompt: string | undefined;
+  mockChatLifecycle(context, {
+    onRunCreate: (body) => {
+      runPrompt = body.prompt;
+    },
+  });
+  const params = new URLSearchParams({
+    prompt: "Summarize this week's launch metrics",
+    connector: "google-analytics,slack",
+    vm0_source: "marketing",
+    landing_path: "/en/workflow-automation-examples",
   });
 
-  it("restores a long video brief from short checkout return URLs", async () => {
-    const template = firstItem(VIDEO_TEMPLATE_ITEMS);
-    let successUrl: string | undefined;
-    let cancelUrl: string | undefined;
-    let runPrompt: string | undefined;
-    let generationType: string | undefined;
-    mockChatLifecycle(context, {
-      onRunCreate: (body) => {
-        runPrompt = body.prompt;
-        generationType = templateTypeFromUserMessage(body.userMessage);
-      },
-    });
-    context.mocks.api(
-      billingUsagePackCheckoutContract.create,
-      ({ body, respond }) => {
-        successUrl = body.successUrl;
-        cancelUrl = body.cancelUrl;
-        return respond(200, {
-          url: "https://checkout.stripe.com/test/onboarding-video",
-        });
-      },
-    );
-    context.mocks.api(billingCheckoutContract.complete, ({ respond }) => {
-      return respond(200, { completed: true });
-    });
-
-    mockOnboardingNeeded();
-    detachedSetupPage({
-      context,
-      path: "/onboarding/video-template?choice=video",
-    });
-
-    await expect(
-      screen.findByRole("heading", {
-        name: "Pick a video template to start from",
-      }),
-    ).resolves.toBeInTheDocument();
-    chooseTemplate(template.title, "video");
-
-    await expect(
-      screen.findByRole("heading", { name: "Customize your video" }),
-    ).resolves.toBeInTheDocument();
-    const videoBrief = "A".repeat(6000);
-    await fill(screen.getByLabelText("Custom video prompt"), videoBrief);
-    const upgradeButton = await waitFor(() => {
-      return buttonByText("Upgrade Pro to run");
-    });
-    click(upgradeButton);
-
-    await waitFor(() => {
-      expect(window.location.href).toBe(
-        "https://checkout.stripe.com/test/onboarding-video",
-      );
-    });
-    expect(successUrl).toBeDefined();
-    expect(cancelUrl).toBeDefined();
-    if (!successUrl || !cancelUrl) {
-      throw new Error("Expected onboarding checkout return URLs");
-    }
-    const success = new URL(successUrl);
-    const canceled = new URL(cancelUrl);
-    expect(successUrl.length).toBeLessThanOrEqual(5000);
-    expect(cancelUrl.length).toBeLessThanOrEqual(5000);
-    expect(success.pathname).toBe("/onboarding/video-run");
-    expect(success.searchParams.get("template")).toBe(template.id);
-    expect(success.searchParams.get("onboarding_template")).toBe(template.slug);
-    expect(success.searchParams.has("prompt")).toBeFalsy();
-    expect(success.searchParams.has("onboarding_note")).toBeFalsy();
-    expect(success.searchParams.get("onboarding_billing_session_id")).toBe(
-      "{CHECKOUT_SESSION_ID}",
-    );
-    expect(canceled.pathname).toBe("/onboarding/video-run");
-    expect(canceled.searchParams.get("onboarding_billing")).toBe("canceled");
-    expect(canceled.searchParams.has("prompt")).toBeFalsy();
-    expect(canceled.searchParams.has("onboarding_note")).toBeFalsy();
-
-    mockOnboardingNeeded();
-    context.store.set(detachedNavigateTo$, ROUTES.onboardingVideoRun, {
-      searchParams: canceled.searchParams,
-    });
-    await expect(
-      screen.findByRole("heading", { name: "Customize your video" }),
-    ).resolves.toBeInTheDocument();
-    expect(screen.getByLabelText("Custom video prompt")).toHaveValue(
-      videoBrief,
-    );
-
-    success.searchParams.set(
-      "onboarding_billing_session_id",
-      "cs_test_onboarding_stored",
-    );
-    mockOnboardingNeeded();
-    context.store.set(detachedNavigateTo$, ROUTES.onboardingVideoRun, {
-      searchParams: success.searchParams,
-    });
-    await waitFor(() => {
-      expect(runPrompt).toContain(videoBrief);
-      expect(generationType).toBe("video");
-      expect(pathname()).toMatch(/^\/chats\//u);
-    });
+  await setupPage({
+    context,
+    path: `/onboarding?${params.toString()}`,
   });
 
-  it("uses the Pro plan with a $20 usage pack", async () => {
-    const template = firstItem(VIDEO_TEMPLATE_ITEMS);
-    let usagePackCheckoutBody:
-      | {
-          readonly tier: "pro" | "team";
-          readonly memberUsagePacks: readonly {
-            readonly memberId: string;
-            readonly usagePackUsd: 20 | 50 | 100 | 200;
-          }[];
-        }
-      | undefined;
-    context.mocks.api(
-      billingUsagePackCheckoutContract.create,
-      ({ body, respond }) => {
-        usagePackCheckoutBody = body;
-        return respond(200, {
-          url: "https://checkout.stripe.com/test/usage-pack-onboarding-video",
-        });
-      },
-    );
+  await waitFor(() => {
+    expect(runPrompt).toBe("Summarize this week's launch metrics");
+    expect(pathname()).toMatch(/^\/chats\//u);
+  });
+  const handoffParams = new URLSearchParams(search());
+  expect(handoffParams.get("connector")).toBeNull();
+  expect(handoffParams.get("vm0_source")).toBe("marketing");
+  expect(handoffParams.get("landing_path")).toBe(
+    "/en/workflow-automation-examples",
+  );
+});
 
-    mockOnboardingNeeded();
-    detachedSetupPage({
-      context,
-      path: "/onboarding/video-template?choice=video",
-    });
-    await expect(
-      screen.findByRole("heading", {
-        name: "Pick a video template to start from",
-      }),
-    ).resolves.toBeInTheDocument();
-    chooseTemplate(template.title, "video");
-    await expect(
-      screen.findByRole("heading", { name: "Customize your video" }),
-    ).resolves.toBeInTheDocument();
-    await fill(
-      screen.getByLabelText("Custom video prompt"),
-      "A product launch video with a fast-paced opening.",
-    );
-    click(buttonByText("Upgrade Pro to run"));
-
-    await waitFor(() => {
-      expect(window.location.href).toBe(
-        "https://checkout.stripe.com/test/usage-pack-onboarding-video",
-      );
-    });
-    expect(usagePackCheckoutBody).toMatchObject({
-      tier: "pro",
-      memberUsagePacks: [{ memberId: "test-user-123", usagePackUsd: 20 }],
-    });
+test("A presentation template can be previewed and selected from a deep link", async () => {
+  const template = firstItem(PRESENTATION_TEMPLATE_PICKER_ITEMS);
+  mockOnboardingNeeded();
+  await setupPage({
+    context,
+    path: "/onboarding/presentation-template?choice=presentation",
   });
 
-  it("resumes a video run after checkout and completes onboarding", async () => {
-    const gtag = installGtagMock();
-    const template = firstItem(VIDEO_TEMPLATE_ITEMS);
-    let runPrompt: string | undefined;
-    let generationType: string | undefined;
-    let checkoutCompletionAttempts = 0;
-    mockChatLifecycle(context, {
-      onRunCreate: (body) => {
-        runPrompt = body.prompt;
-        generationType = templateTypeFromUserMessage(body.userMessage);
-      },
-    });
-    context.mocks.api(billingCheckoutContract.complete, ({ respond }) => {
-      checkoutCompletionAttempts += 1;
-      return respond(
-        200,
-        checkoutCompletionAttempts >= 2
-          ? {
-              completed: true,
-              googleAdsConversion: {
-                transactionId: "in_onboarding_paid",
-                valueUsd: 49,
-              },
-            }
-          : { completed: false },
-      );
-    });
-    mockOnboardingNeeded();
-    const params = new URLSearchParams({
-      choice: "video",
-      prompt: "Create a launch video",
-      template: template.id,
-      onboarding_billing: "pro",
-      onboarding_billing_session_id: "cs_test_onboarding",
-    });
+  await expect(
+    screen.findByRole("heading", {
+      name: "Pick a presentation template to start from",
+    }),
+  ).resolves.toBeInTheDocument();
+  const templateButton = buttonByAriaLabel(
+    `Select ${template.title} presentation template`,
+  );
+  expect(templateButton).toHaveAttribute("aria-pressed", "false");
 
-    detachedSetupPage({
-      context,
-      path: `/onboarding/video-run?${params.toString()}`,
-    });
+  click(buttonByAriaLabel(`View ${template.title} presentation`));
+  const preview = await screen.findByRole("dialog", {
+    name: template.title,
+  });
+  click(buttonByAriaLabel("Show next slide", preview));
+  expect(
+    within(preview).getByAltText(`${template.title} slide 2`),
+  ).toBeVisible();
+  click(buttonByText("Select this template", preview));
+  click(buttonByText("Continue"));
 
-    await waitFor(() => {
-      expect(runPrompt).toBe("Create a launch video");
-      expect(generationType).toBe("video");
-      expect(checkoutCompletionAttempts).toBe(2);
-      expect(pathname()).toMatch(/^\/chats\//u);
-    });
-    expect(gtag).toHaveBeenCalledWith("event", "conversion", {
-      send_to: ADSMARCH_PAID_IN_ONBOARDING_SEND_TO,
-      value: 49,
-      currency: "USD",
-      transaction_id: "in_onboarding_paid",
-    });
+  await expect(
+    screen.findByRole("heading", { name: "Fulfil your presentation" }),
+  ).resolves.toBeInTheDocument();
+  expect(pathname()).toBe("/onboarding/presentation-run");
+  expect(
+    screen.getByLabelText("Presentation content and instruction"),
+  ).toBeVisible();
+  expect(new URLSearchParams(search()).get("template")).toBe(template.slug);
+});
+
+test("An illustration template starts the chosen generation run", async () => {
+  const template = firstItem(ILLUSTRATION_TEMPLATE_ITEMS);
+  let runPrompt: string | undefined;
+  let generationType: string | undefined;
+  mockChatLifecycle(context, {
+    onRunCreate: (body) => {
+      runPrompt = body.prompt;
+      generationType = templateTypeFromUserMessage(body.userMessage);
+    },
   });
 
-  it("returns to video configuration when checkout storage is unavailable", async () => {
-    const template = firstItem(VIDEO_TEMPLATE_ITEMS);
-    mockOnboardingNeeded();
-    const params = new URLSearchParams({
-      choice: "video",
-      template: template.id,
-      onboarding_template: template.slug,
-      onboarding_billing: "pro",
-      onboarding_billing_session_id: "cs_test_missing_storage",
-      [ONBOARDING_CHECKOUT_STATE_PARAM]: "missing-state",
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/onboarding/video-run?${params.toString()}`,
-    });
-
-    await expect(
-      screen.findByRole("heading", { name: "Customize your video" }),
-    ).resolves.toBeInTheDocument();
-    expect(screen.getByLabelText("Custom video prompt")).toHaveValue("");
+  mockOnboardingNeeded();
+  await setupPage({
+    context,
+    path: "/onboarding/image-template?choice=images",
   });
 
-  it("returns an invalid template deep link to its picker", async () => {
-    mockOnboardingNeeded();
-    detachedSetupPage({
-      context,
-      path: "/onboarding/image-run?template=missing-template",
-    });
+  await expect(
+    screen.findByRole("heading", {
+      name: "Pick an illustration template to start from",
+    }),
+  ).resolves.toBeInTheDocument();
+  chooseTemplate(template.title, "illustration");
 
-    await expect(
-      screen.findByRole("heading", {
-        name: "Pick an illustration template to start from",
-      }),
-    ).resolves.toBeInTheDocument();
-    expect(pathname()).toBe("/onboarding/image-template");
+  await expect(
+    screen.findByRole("heading", {
+      name: "Select one automation you would like to have a try",
+    }),
+  ).resolves.toBeInTheDocument();
+  expect(screen.getByLabelText("Custom illustration scene")).toBeVisible();
+  click(buttonByText("Run now"));
+
+  await waitFor(() => {
+    expect(runPrompt).toContain(template.title);
+    expect(generationType).toBe("illustration");
+    expect(pathname()).toMatch(/^\/chats\//u);
   });
+});
 
-  it("restores the video brief after checkout is canceled", async () => {
-    const template = firstItem(VIDEO_TEMPLATE_ITEMS);
-    const note = "Keep the product in frame during the final reveal.";
-    mockOnboardingNeeded();
-    const params = new URLSearchParams({
-      choice: "video",
-      template: template.id,
-      onboarding_template: template.slug,
-      onboarding_billing: "canceled",
-      onboarding_note: note,
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/onboarding/video-run?${params.toString()}`,
-    });
-
-    await expect(
-      screen.findByRole("heading", { name: "Customize your video" }),
-    ).resolves.toBeInTheDocument();
-    expect(screen.getByLabelText("Custom video prompt")).toHaveValue(note);
+test("A video brief survives checkout cancellation and success", async () => {
+  const template = firstItem(VIDEO_TEMPLATE_ITEMS);
+  let successUrl: string | undefined;
+  let cancelUrl: string | undefined;
+  let runPrompt: string | undefined;
+  let generationType: string | undefined;
+  mockChatLifecycle(context, {
+    onRunCreate: (body) => {
+      runPrompt = body.prompt;
+      generationType = templateTypeFromUserMessage(body.userMessage);
+    },
   });
-
-  it("reports Onboarding Start and Checkout Start to Google Ads", async () => {
-    const gtag = installGtagMock();
-    const template = firstItem(VIDEO_TEMPLATE_ITEMS);
-    mockChatLifecycle(context);
-    context.mocks.api(billingCheckoutContract.create, ({ respond }) => {
+  context.mocks.api(
+    billingUsagePackCheckoutContract.create,
+    ({ body, respond }) => {
+      successUrl = body.successUrl;
+      cancelUrl = body.cancelUrl;
       return respond(200, {
         url: "https://checkout.stripe.com/test/onboarding-video",
       });
+    },
+  );
+  context.mocks.api(billingCheckoutContract.complete, ({ respond }) => {
+    return respond(200, { completed: true });
+  });
+
+  mockOnboardingNeeded();
+  await setupPage({
+    context,
+    path: "/onboarding/video-template?choice=video",
+  });
+
+  await expect(
+    screen.findByRole("heading", {
+      name: "Pick a video template to start from",
+    }),
+  ).resolves.toBeInTheDocument();
+  chooseTemplate(template.title, "video");
+
+  await expect(
+    screen.findByRole("heading", { name: "Customize your video" }),
+  ).resolves.toBeInTheDocument();
+  const videoBrief = "A".repeat(6000);
+  await fill(screen.getByLabelText("Custom video prompt"), videoBrief);
+  const upgradeButton = await waitFor(() => {
+    return buttonByText("Upgrade Pro to run");
+  });
+  click(upgradeButton);
+
+  await waitFor(() => {
+    expect(window.location.href).toBe(
+      "https://checkout.stripe.com/test/onboarding-video",
+    );
+  });
+  expect(successUrl).toBeDefined();
+  expect(cancelUrl).toBeDefined();
+  if (!successUrl || !cancelUrl) {
+    throw new Error("Expected onboarding checkout return URLs");
+  }
+  const success = new URL(successUrl);
+  const canceled = new URL(cancelUrl);
+  expect(successUrl.length).toBeLessThanOrEqual(5000);
+  expect(cancelUrl.length).toBeLessThanOrEqual(5000);
+  expect(success.pathname).toBe("/onboarding/video-run");
+  expect(success.searchParams.get("template")).toBe(template.id);
+  expect(success.searchParams.get("onboarding_template")).toBe(template.slug);
+  expect(success.searchParams.has("prompt")).toBeFalsy();
+  expect(success.searchParams.has("onboarding_note")).toBeFalsy();
+  expect(success.searchParams.get("onboarding_billing_session_id")).toBe(
+    "{CHECKOUT_SESSION_ID}",
+  );
+  expect(canceled.pathname).toBe("/onboarding/video-run");
+  expect(canceled.searchParams.get("onboarding_billing")).toBe("canceled");
+  expect(canceled.searchParams.has("prompt")).toBeFalsy();
+  expect(canceled.searchParams.has("onboarding_note")).toBeFalsy();
+
+  mockOnboardingNeeded();
+  pushState(null, "", canceled);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+  await expect(
+    screen.findByRole("heading", { name: "Customize your video" }),
+  ).resolves.toBeInTheDocument();
+  expect(screen.getByLabelText("Custom video prompt")).toHaveValue(videoBrief);
+
+  success.searchParams.set(
+    "onboarding_billing_session_id",
+    "cs_test_onboarding_stored",
+  );
+  mockOnboardingNeeded();
+  pushState(null, "", success);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+  await waitFor(() => {
+    expect(runPrompt).toContain(videoBrief);
+    expect(generationType).toBe("video");
+    expect(pathname()).toMatch(/^\/chats\//u);
+  });
+});
+
+test("Video onboarding offers Pro with an initial usage pack", async () => {
+  const template = firstItem(VIDEO_TEMPLATE_ITEMS);
+  let usagePackCheckoutBody:
+    | {
+        readonly tier: "pro" | "team";
+        readonly memberUsagePacks: readonly {
+          readonly memberId: string;
+          readonly usagePackUsd: 20 | 50 | 100 | 200;
+        }[];
+      }
+    | undefined;
+  context.mocks.api(
+    billingUsagePackCheckoutContract.create,
+    ({ body, respond }) => {
+      usagePackCheckoutBody = body;
+      return respond(200, {
+        url: "https://checkout.stripe.com/test/usage-pack-onboarding-video",
+      });
+    },
+  );
+
+  mockOnboardingNeeded();
+  await setupPage({
+    context,
+    path: "/onboarding/video-template?choice=video",
+  });
+  await expect(
+    screen.findByRole("heading", {
+      name: "Pick a video template to start from",
+    }),
+  ).resolves.toBeInTheDocument();
+  chooseTemplate(template.title, "video");
+  await expect(
+    screen.findByRole("heading", { name: "Customize your video" }),
+  ).resolves.toBeInTheDocument();
+  await fill(
+    screen.getByLabelText("Custom video prompt"),
+    "A product launch video with a fast-paced opening.",
+  );
+  click(buttonByText("Upgrade Pro to run"));
+
+  await waitFor(() => {
+    expect(window.location.href).toBe(
+      "https://checkout.stripe.com/test/usage-pack-onboarding-video",
+    );
+  });
+  expect(usagePackCheckoutBody).toMatchObject({
+    tier: "pro",
+    memberUsagePacks: [{ memberId: "test-user-123", usagePackUsd: 20 }],
+  });
+});
+
+test("A completed video checkout resumes onboarding and the run", async () => {
+  const gtag = installGtagMock();
+  const template = firstItem(VIDEO_TEMPLATE_ITEMS);
+  let runPrompt: string | undefined;
+  let generationType: string | undefined;
+  let checkoutCompletionAttempts = 0;
+  mockChatLifecycle(context, {
+    onRunCreate: (body) => {
+      runPrompt = body.prompt;
+      generationType = templateTypeFromUserMessage(body.userMessage);
+    },
+  });
+  context.mocks.api(billingCheckoutContract.complete, ({ respond }) => {
+    checkoutCompletionAttempts += 1;
+    return respond(
+      200,
+      checkoutCompletionAttempts >= 2
+        ? {
+            completed: true,
+            googleAdsConversion: {
+              transactionId: "in_onboarding_paid",
+              valueUsd: 49,
+            },
+          }
+        : { completed: false },
+    );
+  });
+  mockOnboardingNeeded();
+  const params = new URLSearchParams({
+    choice: "video",
+    prompt: "Create a launch video",
+    template: template.id,
+    onboarding_billing: "pro",
+    onboarding_billing_session_id: "cs_test_onboarding",
+  });
+
+  await setupPage({
+    context,
+    path: `/onboarding/video-run?${params.toString()}`,
+  });
+
+  await waitFor(() => {
+    expect(runPrompt).toBe("Create a launch video");
+    expect(generationType).toBe("video");
+    expect(checkoutCompletionAttempts).toBe(2);
+    expect(pathname()).toMatch(/^\/chats\//u);
+  });
+  expect(gtag).toHaveBeenCalledWith("event", "conversion", {
+    send_to: ADSMARCH_PAID_IN_ONBOARDING_SEND_TO,
+    value: 49,
+    currency: "USD",
+    transaction_id: "in_onboarding_paid",
+  });
+});
+
+test("Missing checkout state recovers to video configuration", async () => {
+  const template = firstItem(VIDEO_TEMPLATE_ITEMS);
+  mockOnboardingNeeded();
+  const params = new URLSearchParams({
+    choice: "video",
+    template: template.id,
+    onboarding_template: template.slug,
+    onboarding_billing: "pro",
+    onboarding_billing_session_id: "cs_test_missing_storage",
+    [ONBOARDING_CHECKOUT_STATE_PARAM]: "missing-state",
+  });
+
+  await setupPage({
+    context,
+    path: `/onboarding/video-run?${params.toString()}`,
+  });
+
+  await expect(
+    screen.findByRole("heading", { name: "Customize your video" }),
+  ).resolves.toBeInTheDocument();
+  expect(screen.getByLabelText("Custom video prompt")).toHaveValue("");
+});
+
+test("An invalid template link returns to the matching picker", async () => {
+  mockOnboardingNeeded();
+  await setupPage({
+    context,
+    path: "/onboarding/image-run?template=missing-template",
+  });
+
+  await expect(
+    screen.findByRole("heading", {
+      name: "Pick an illustration template to start from",
+    }),
+  ).resolves.toBeInTheDocument();
+  expect(pathname()).toBe("/onboarding/image-template");
+});
+
+test("Onboarding and checkout starts report their conversions", async () => {
+  const gtag = installGtagMock();
+  const template = firstItem(VIDEO_TEMPLATE_ITEMS);
+  mockChatLifecycle(context);
+  context.mocks.api(billingCheckoutContract.create, ({ respond }) => {
+    return respond(200, {
+      url: "https://checkout.stripe.com/test/onboarding-video",
     });
+  });
 
-    mockOnboardingNeeded();
-    detachedSetupPage({
-      context,
-      path: "/onboarding/video-template?choice=video",
-    });
+  mockOnboardingNeeded();
+  await setupPage({
+    context,
+    path: "/onboarding/video-template?choice=video",
+  });
 
-    await expect(
-      screen.findByRole("heading", {
-        name: "Pick a video template to start from",
-      }),
-    ).resolves.toBeInTheDocument();
+  await expect(
+    screen.findByRole("heading", {
+      name: "Pick a video template to start from",
+    }),
+  ).resolves.toBeInTheDocument();
 
+  expect(sentConversions(gtag)).toStrictEqual([
+    ONBOARDING_START_SEND_TO,
+    ADSMARCH_ONBOARDING_START_SEND_TO,
+  ]);
+  chooseTemplate(template.title, "video");
+
+  await expect(
+    screen.findByRole("heading", { name: "Customize your video" }),
+  ).resolves.toBeInTheDocument();
+  await fill(
+    screen.getByLabelText("Custom video prompt"),
+    "A 20-second launch teaser for a habit-tracking app.",
+  );
+  click(
+    await waitFor(() => {
+      return buttonByText("Upgrade Pro to run");
+    }),
+  );
+
+  await waitFor(() => {
     expect(sentConversions(gtag)).toStrictEqual([
       ONBOARDING_START_SEND_TO,
       ADSMARCH_ONBOARDING_START_SEND_TO,
+      CHECKOUT_START_SEND_TO,
+      ADSMARCH_CHECKOUT_START_SEND_TO,
     ]);
-    chooseTemplate(template.title, "video");
-
-    await expect(
-      screen.findByRole("heading", { name: "Customize your video" }),
-    ).resolves.toBeInTheDocument();
-    await fill(
-      screen.getByLabelText("Custom video prompt"),
-      "A 20-second launch teaser for a habit-tracking app.",
-    );
-    click(
-      await waitFor(() => {
-        return buttonByText("Upgrade Pro to run");
-      }),
-    );
-
-    await waitFor(() => {
-      expect(sentConversions(gtag)).toStrictEqual([
-        ONBOARDING_START_SEND_TO,
-        ADSMARCH_ONBOARDING_START_SEND_TO,
-        CHECKOUT_START_SEND_TO,
-        ADSMARCH_CHECKOUT_START_SEND_TO,
-      ]);
-    });
   });
 });

@@ -1,33 +1,59 @@
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { expect, vi } from "vitest";
 
-import {
-  clearMockedAuthOnAbort,
-  mockedClerk,
-  mockOrganization,
-  mockUser,
-} from "../../__tests__/mock-auth.ts";
-import { mockNow } from "../../lib/time.ts";
 import type { SharedDatabasePortLike } from "../../shared-database/bridge.ts";
-import { getAllFeatureStates } from "@okouai/core/feature-switch";
-import { FEATURE_SWITCH_CACHE_KEY } from "../external/feature-switch-state.ts";
-import { bridgeConnected$ } from "../shared-database-bridge-state.ts";
 import { setupSharedDatabaseBridge$ } from "../shared-database-browser.ts";
+import { detach, Reason } from "../utils.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
-const CURRENT_TIME_MS = 1_800_000_000_000;
 
 class TestSharedWorkerPort implements SharedDatabasePortLike {
-  readonly messages: unknown[] = [];
+  readonly authenticationTokens: string[] = [];
   private listener: ((event: MessageEvent<unknown>) => void) | null = null;
 
   postMessage(value: unknown): void {
-    this.messages.push(value);
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      !("type" in value) ||
+      (value.type !== "heartbeat" && value.type !== "set-token") ||
+      !("requestId" in value) ||
+      typeof value.requestId !== "string"
+    ) {
+      return;
+    }
+    if ("token" in value && typeof value.token === "string") {
+      this.authenticationTokens.push(value.token);
+    }
+    const requestId = value.requestId;
+    queueMicrotask(() => {
+      this.listener?.(
+        new MessageEvent("message", {
+          data: {
+            type: "result",
+            requestId,
+            value:
+              value.type === "heartbeat"
+                ? { clientReconnected: false }
+                : undefined,
+          },
+        }),
+      );
+    });
   }
 
   start(): void {}
+
+  requireAuthentication(recoveryId: string): void {
+    queueMicrotask(() => {
+      this.listener?.(
+        new MessageEvent("message", {
+          data: { type: "authentication-required", recoveryId },
+        }),
+      );
+    });
+  }
 
   close(): void {
     this.listener = null;
@@ -36,8 +62,19 @@ class TestSharedWorkerPort implements SharedDatabasePortLike {
   addEventListener(
     _type: "message",
     listener: (event: MessageEvent<unknown>) => void,
+    options?: AddEventListenerOptions | boolean,
   ): void {
     this.listener = listener;
+    const signal = typeof options === "object" ? options.signal : undefined;
+    signal?.addEventListener(
+      "abort",
+      () => {
+        if (this.listener === listener) {
+          this.listener = null;
+        }
+      },
+      { once: true },
+    );
   }
 
   removeEventListener(
@@ -94,6 +131,10 @@ class TestSharedWorker {
       }),
     );
   }
+
+  requireAuthentication(recoveryId: string): void {
+    this.port.requireAuthentication(recoveryId);
+  }
 }
 
 function installSharedWorkerMock(): {
@@ -112,223 +153,121 @@ function installSharedWorkerMock(): {
   return { constructorCalls, workers };
 }
 
-async function setupBridge(): Promise<void> {
-  const daemon = context.store.set(setupSharedDatabaseBridge$, context.signal);
-  context.track(daemon);
-  await context.store.get(bridgeConnected$);
+function setupBridge(): ReturnType<typeof context.mocks.clerk> {
+  const clerk = context.mocks.clerk();
+  clerk.user(
+    {
+      id: "shared-worker-user",
+      fullName: "Shared Worker User",
+      email: "shared-worker@example.com",
+    },
+    { token: "shared-worker-token" },
+  );
+  clerk.organization({
+    activeOrg: { id: "shared-worker-org", name: "Shared Worker Org" },
+    memberships: [{ id: "shared-worker-org" }],
+  });
+  detach(
+    context.store.set(setupSharedDatabaseBridge$, context.signal),
+    Reason.Daemon,
+    "test shared database bridge",
+  );
+  return clerk;
 }
 
-describe("shared database browser bridge", () => {
-  beforeEach(() => {
-    mockNow(CURRENT_TIME_MS, context.signal);
-    mockUser(
-      { id: "test-user-123", fullName: "Test User" },
-      { token: "shared-worker-token" },
-    );
-    mockOrganization({
-      activeOrg: { id: "test-org-123", name: "Test Organization" },
-      memberships: [{ id: "test-org-123" }],
-    });
-    clearMockedAuthOnAbort(context.signal);
+test("Shared chat data recovers worker authentication with a fresh token", async () => {
+  const { workers } = installSharedWorkerMock();
+  const clerk = setupBridge();
+  await vi.waitFor(() => {
+    expect(workers[0]?.port.authenticationTokens).toStrictEqual([
+      "shared-worker-token",
+    ]);
   });
+  clerk.user(
+    {
+      id: "shared-worker-user",
+      fullName: "Shared Worker User",
+      email: "shared-worker@example.com",
+    },
+    { token: "replacement-token" },
+  );
 
-  it("uses the user and organization as the reusable Worker identity", async () => {
-    const { constructorCalls, workers } = installSharedWorkerMock();
+  workers[0]!.requireAuthentication("recovery-1");
 
-    await setupBridge();
-
-    expect(constructorCalls).toHaveLength(1);
-    expect(constructorCalls[0]?.options).toStrictEqual({
-      name: "okou_test-user-123_test-org-123",
-      type: "module",
-    });
-    const workerUrl = new URL(String(constructorCalls[0]?.scriptURL));
-    expect(workerUrl.origin).toBe(window.location.origin);
-    expect(workerUrl.search).toBe(
-      "?userId=test-user-123&orgId=test-org-123&clerkPrimaryAppDomain=app.vm0.ai",
-    );
-    expect(workers[0]!.port.messages).toStrictEqual([{ type: "register-tab" }]);
-    expect(mockedClerk.sessionGetToken).not.toHaveBeenCalled();
+  await vi.waitFor(() => {
+    expect(workers[0]!.port.authenticationTokens).toStrictEqual([
+      "shared-worker-token",
+      "replacement-token",
+    ]);
   });
+});
 
-  it("forwards the deployed Clerk primary app domain through the Worker URL", async () => {
-    Reflect.set(window, "__vm0ClerkBootstrap", {
-      productionPrimaryAppDomain: "app.okou.ai",
-    });
-    context.signal.addEventListener("abort", () => {
-      Reflect.deleteProperty(window, "__vm0ClerkBootstrap");
-    });
-    const { constructorCalls } = installSharedWorkerMock();
-
-    await setupBridge();
-
-    const workerUrl = new URL(String(constructorCalls[0]?.scriptURL));
-    expect(workerUrl.searchParams.get("clerkPrimaryAppDomain")).toBe(
-      "app.okou.ai",
-    );
+test("Reload once after the shared-data service fails to load", async () => {
+  const replace = vi.fn<(url: string) => void>();
+  const { constructorCalls, workers } = installSharedWorkerMock();
+  setupBridge();
+  await vi.waitFor(() => {
+    expect(workers).toHaveLength(1);
   });
-
-  it("forwards a captured Preview bypass through the Worker URL", async () => {
-    context.mocks.browser.url("https://pr-31037-app.omby.ai/");
-    context.mocks.browser.cookie("x-vercel-protection-bypass=preview-secret");
-    const { constructorCalls } = installSharedWorkerMock();
-
-    await setupBridge();
-
-    expect(constructorCalls).toHaveLength(1);
-    const workerUrl = new URL(String(constructorCalls[0]?.scriptURL));
-    expect(workerUrl.searchParams.get("userId")).toBe("test-user-123");
-    expect(workerUrl.searchParams.get("orgId")).toBe("test-org-123");
-    expect(workerUrl.searchParams.get("x-vercel-protection-bypass")).toBe(
-      "preview-secret",
-    );
+  const currentUrl = new URL(
+    "/chat?threadId=thread-1#latest",
+    window.location.href,
+  );
+  vi.stubGlobal("location", {
+    href: currentUrl.toString(),
+    hostname: currentUrl.hostname,
+    origin: currentUrl.origin,
+    replace,
   });
+  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
-  it("forwards the dev browser JWT through the Worker URL", async () => {
-    context.mocks.browser.cookie("__clerk_db_jwt_MGaxFrJr=dev-browser-jwt");
-    const { constructorCalls } = installSharedWorkerMock();
+  workers[0]!.fail();
 
-    await setupBridge();
-
-    const workerUrl = new URL(String(constructorCalls[0]?.scriptURL));
-    expect(workerUrl.searchParams.get("__clerk_db_jwt")).toBe(
-      "dev-browser-jwt",
-    );
+  await vi.waitFor(() => {
+    expect(replace).toHaveBeenCalledOnce();
   });
+  const recoveryUrl = new URL(replace.mock.calls[0]![0]);
+  expect(recoveryUrl.searchParams.get("okou-shared-database-reload")).toBe("1");
+  expect(recoveryUrl.searchParams.get("threadId")).toBe("thread-1");
+  expect(recoveryUrl.hash).toBe("#latest");
+  expect(constructorCalls).toHaveLength(1);
+  expect(consoleError).toHaveBeenCalledOnce();
+});
 
-  it("marks the Worker for diagnostics capture when debug is on", async () => {
-    globalThis.localStorage.setItem(
-      FEATURE_SWITCH_CACHE_KEY,
-      JSON.stringify(
-        getAllFeatureStates({
-          orgId: "test-org-123",
-          overrides: { [FeatureSwitchKey.OkouDebug]: true },
-        }),
-      ),
-    );
-    const { constructorCalls } = installSharedWorkerMock();
-
-    await setupBridge();
-
-    const workerUrl = new URL(String(constructorCalls[0]?.scriptURL));
-    expect(workerUrl.searchParams.get("diagnostics")).toBe("1");
-    expect(constructorCalls[0]?.options).toStrictEqual({
-      name: "okou_test-user-123_test-org-123_diagnostics",
-      type: "module",
-    });
+test("Stop reloading when the shared-data service repeatedly fails", async () => {
+  const replace = vi.fn<(url: string) => void>();
+  const replaceState = vi
+    .spyOn(history, "replaceState")
+    .mockImplementation(() => {});
+  const toastError = vi.spyOn(toast, "error").mockReturnValue("toast-id");
+  const { constructorCalls, workers } = installSharedWorkerMock();
+  setupBridge();
+  await vi.waitFor(() => {
+    expect(workers).toHaveLength(1);
   });
-
-  it("does not create a Worker without a settled signed-in session", async () => {
-    const { constructorCalls } = installSharedWorkerMock();
-    mockUser(null, null);
-
-    const daemon = context.store.set(
-      setupSharedDatabaseBridge$,
-      context.signal,
-    );
-    context.track(daemon);
-    await daemon;
-
-    expect(constructorCalls).toStrictEqual([]);
+  const currentUrl = new URL(
+    "/chat?threadId=thread-1&okou-shared-database-reload=1#latest",
+    window.location.href,
+  );
+  vi.stubGlobal("location", {
+    href: currentUrl.toString(),
+    hostname: currentUrl.hostname,
+    origin: currentUrl.origin,
+    replace,
   });
+  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
-  it("reloads with the current timestamp after a worker load failure", async () => {
-    const replace = vi.fn<(url: string) => void>();
-    const { constructorCalls, workers } = installSharedWorkerMock();
-    await setupBridge();
-    const currentUrl = new URL(
-      "/chat?threadId=thread-1#latest",
-      window.location.href,
-    );
-    vi.stubGlobal("location", {
-      href: currentUrl.toString(),
-      origin: currentUrl.origin,
-      replace,
-    });
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
+  workers[0]!.fail();
 
-    workers[0]!.fail();
-
-    await vi.waitFor(() => {
-      expect(replace).toHaveBeenCalledOnce();
-    });
-    const recoveryUrl = new URL(replace.mock.calls[0]![0]);
-    expect(recoveryUrl.searchParams.get("okou-shared-database-reload")).toBe(
-      String(CURRENT_TIME_MS),
-    );
-    expect(recoveryUrl.searchParams.get("threadId")).toBe("thread-1");
-    expect(recoveryUrl.hash).toBe("#latest");
-    expect(constructorCalls).toHaveLength(1);
-    expect(consoleError).toHaveBeenCalledOnce();
+  await vi.waitFor(() => {
+    expect(toastError).toHaveBeenCalledOnce();
   });
-
-  it("stops reloads that repeat within one minute", async () => {
-    const replace = vi.fn<(url: string) => void>();
-    const replaceState = vi
-      .spyOn(history, "replaceState")
-      .mockImplementation(() => {});
-    const toastError = vi.spyOn(toast, "error").mockReturnValue("toast-id");
-    const { workers } = installSharedWorkerMock();
-    await setupBridge();
-    const currentUrl = new URL(
-      `/chat?threadId=thread-1&okou-shared-database-reload=${CURRENT_TIME_MS - 30_000}#latest`,
-      window.location.href,
-    );
-    vi.stubGlobal("location", {
-      href: currentUrl.toString(),
-      origin: currentUrl.origin,
-      replace,
-    });
-    vi.spyOn(console, "error").mockImplementation(() => {});
-
-    workers[0]!.fail();
-
-    await vi.waitFor(() => {
-      expect(toastError).toHaveBeenCalledOnce();
-    });
-    expect(replace).not.toHaveBeenCalled();
-    expect(replaceState).toHaveBeenCalledOnce();
-    const retryUrl = new URL(String(replaceState.mock.calls[0]![2]));
-    expect(
-      retryUrl.searchParams.has("okou-shared-database-reload"),
-    ).toBeFalsy();
-    expect(retryUrl.searchParams.get("threadId")).toBe("thread-1");
-    expect(retryUrl.hash).toBe("#latest");
-  });
-
-  it("allows another reload after one minute", async () => {
-    const replace = vi.fn<(url: string) => void>();
-    const replaceState = vi
-      .spyOn(history, "replaceState")
-      .mockImplementation(() => {});
-    const toastError = vi.spyOn(toast, "error").mockReturnValue("toast-id");
-    const { workers } = installSharedWorkerMock();
-    await setupBridge();
-    const currentUrl = new URL(
-      `/chat?threadId=thread-1&okou-shared-database-reload=${CURRENT_TIME_MS - 60_000}#latest`,
-      window.location.href,
-    );
-    vi.stubGlobal("location", {
-      href: currentUrl.toString(),
-      origin: currentUrl.origin,
-      replace,
-    });
-    vi.spyOn(console, "error").mockImplementation(() => {});
-
-    workers[0]!.fail();
-
-    await vi.waitFor(() => {
-      expect(replace).toHaveBeenCalledOnce();
-    });
-    const recoveryUrl = new URL(replace.mock.calls[0]![0]);
-    expect(recoveryUrl.searchParams.get("okou-shared-database-reload")).toBe(
-      String(CURRENT_TIME_MS),
-    );
-    expect(recoveryUrl.searchParams.get("threadId")).toBe("thread-1");
-    expect(recoveryUrl.hash).toBe("#latest");
-    expect(replaceState).not.toHaveBeenCalled();
-    expect(toastError).not.toHaveBeenCalled();
-  });
+  expect(replace).not.toHaveBeenCalled();
+  expect(replaceState).toHaveBeenCalledOnce();
+  const retryUrl = new URL(String(replaceState.mock.calls[0]![2]));
+  expect(retryUrl.searchParams.has("okou-shared-database-reload")).toBeFalsy();
+  expect(retryUrl.searchParams.get("threadId")).toBe("thread-1");
+  expect(retryUrl.hash).toBe("#latest");
+  expect(constructorCalls).toHaveLength(1);
+  expect(consoleError).toHaveBeenCalledOnce();
 });

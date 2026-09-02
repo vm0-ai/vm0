@@ -1,6 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { BrowserOptions } from "@sentry/browser";
-import type { PostHog, PostHogConfig } from "posthog-js/dist/module.slim";
+import { expect, test, vi } from "vitest";
+
 import { isOkouProductionHostname } from "../lib/platform-host.ts";
 import { sentryLogContext } from "../lib/sentry-config.ts";
 import { initSharedDatabaseWorkerSentry } from "../shared-database/worker-sentry.ts";
@@ -17,71 +16,9 @@ const PRODUCTION_CLERK_KEY = "pk_live_production";
 const PREVIEW_VAPID_KEY = "preview_vapid_key";
 const PRODUCTION_VAPID_KEY = "production_vapid_key";
 
-const {
-  browserSentryCaptureException,
-  browserSentryCaptureMessage,
-  browserSentryInit,
-  posthogInit,
-  sentryInit,
-} = vi.hoisted(() => {
-  return {
-    browserSentryCaptureException:
-      vi.fn<typeof import("@sentry/browser").captureException>(),
-    browserSentryCaptureMessage:
-      vi.fn<typeof import("@sentry/browser").captureMessage>(),
-    browserSentryInit: vi.fn<(options: BrowserOptions) => void>(),
-    posthogInit:
-      vi.fn<(key: string, config?: Partial<PostHogConfig>) => void>(),
-    sentryInit: vi.fn<(options: BrowserOptions) => void>(),
-  };
-});
-
-vi.mock("posthog-js/dist/module.slim", () => {
-  return {
-    posthog: {
-      capture: vi.fn<PostHog["capture"]>(),
-      identify: vi.fn<PostHog["identify"]>(),
-      init: posthogInit,
-      reset: vi.fn<PostHog["reset"]>(),
-    },
-  };
-});
-
-vi.mock("@sentry/react", () => {
-  return {
-    init: sentryInit,
-    setUser: vi.fn<typeof import("@sentry/react").setUser>(),
-  };
-});
-
-vi.mock("@sentry/browser", () => {
-  return {
-    captureException: browserSentryCaptureException,
-    captureMessage: browserSentryCaptureMessage,
-    init: browserSentryInit,
-  };
-});
-
 const originalHeadAppendChild = document.head.appendChild.bind(document.head);
 const appendedPlausibleScripts: HTMLScriptElement[] = [];
 const context = testContext();
-
-function setBrowserUrl(url: string): void {
-  context.mocks.browser.url(url);
-}
-
-function installImmediateIdleCallback(): void {
-  vi.stubGlobal(
-    "requestIdleCallback",
-    (callback: IdleRequestCallback): number => {
-      callback({
-        didTimeout: false,
-        timeRemaining: () => 50,
-      });
-      return 1;
-    },
-  );
-}
 
 function stubPortableBuildInputs(): void {
   vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PREVIEW", PREVIEW_CLERK_KEY);
@@ -102,371 +39,235 @@ function appendWithoutLoadingExternalScripts<T extends Node>(node: T): T {
   return originalHeadAppendChild(node);
 }
 
-async function loadRuntimeSurfaces() {
+function prepareRuntime(url: string, apiOriginMarker?: string | null): void {
+  appendedPlausibleScripts.length = 0;
+  stubPortableBuildInputs();
+  context.mocks.browser.url(url, { apiOriginMarker });
+  context.mocks.posthog();
+  context.mocks.sentry();
   vi.stubGlobal("plausible", undefined);
   vi.stubGlobal("__vm0PlausibleLoadScheduled", undefined);
-  const [
-    apiBase,
-    auth,
-    attachmentUrl,
-    userMessageFiles,
-    platformHost,
-    plausible,
-    posthog,
-    sentry,
-  ] = await Promise.all([
-    import("../signals/api-base.ts"),
-    import("../signals/auth.ts"),
-    import("../views/okou-page/attachment-url.ts"),
-    import("../signals/chat-page/user-message-files.ts"),
-    import("../lib/platform-host.ts"),
-    import("../lib/plausible.ts"),
-    import("../lib/posthog.ts"),
-    import("../lib/sentry.ts"),
-  ]);
+  vi.stubGlobal(
+    "requestIdleCallback",
+    (callback: IdleRequestCallback): number => {
+      callback({
+        didTimeout: false,
+        timeRemaining: () => {
+          return 50;
+        },
+      });
+      return 1;
+    },
+  );
+  vi.spyOn(document.head, "appendChild").mockImplementation(
+    appendWithoutLoadingExternalScripts,
+  );
+}
 
+async function loadRuntimeSurfaces() {
+  const [apiBase, auth, attachmentUrl, userMessageFiles, platformHost] =
+    await Promise.all([
+      import("../signals/api-base.ts"),
+      import("../signals/auth.ts"),
+      import("../views/okou-page/attachment-url.ts"),
+      import("../signals/chat-page/user-message-files.ts"),
+      import("../lib/platform-host.ts"),
+    ]);
   return {
     apiBase,
     attachmentUrl,
     auth,
-    userMessageFiles,
     platformHost,
-    plausible,
-    posthog,
-    sentry,
+    userMessageFiles,
   };
 }
 
-function plausibleScriptSources(): string[] {
-  return appendedPlausibleScripts.map((script) => script.src);
+async function loadTelemetrySurfaces() {
+  const [plausible, posthog, sentry] = await Promise.all([
+    import("../lib/plausible.ts"),
+    import("../lib/posthog.ts"),
+    import("../lib/sentry.ts"),
+  ]);
+  return { plausible, posthog, sentry };
 }
 
-beforeEach(() => {
-  vi.resetModules();
-  appendedPlausibleScripts.length = 0;
-  stubPortableBuildInputs();
-  installImmediateIdleCallback();
-  vi.spyOn(document.head, "appendChild").mockImplementation(
-    appendWithoutLoadingExternalScripts,
-  );
+async function initializeTelemetry(): Promise<void> {
+  const telemetry = await loadTelemetrySurfaces();
+  const plausibleController = new AbortController();
+  await telemetry.plausible.initPlausible(plausibleController.signal);
+  plausibleController.abort();
+  telemetry.plausible.capturePlausibleEvent("runtime_environment_test");
+  telemetry.posthog.initPostHog();
+  telemetry.sentry.initSentry();
+}
+
+test("Okou production uses Okou services and branding", async () => {
+  prepareRuntime("https://app.okou.ai/agents");
+  const runtime = await loadRuntimeSurfaces();
+
+  expect(runtime.apiBase.resolveApiBase()).toBe("https://api.okou.ai");
+  expect(
+    runtime.userMessageFiles.canonicalUserMessageFileUrl("attachment-photo"),
+  ).toBe("https://api.okou.ai/api/web/download-file?file_id=attachment-photo");
+  expect(runtime.apiBase.resolveOAuthApiBase()).toBe("https://www.vm0.ai");
+  expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");
+  expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
+    environment: "production",
+    publicBrand: "okou",
+    publicStaticAssetsBaseUrl: "https://static.okou.io",
+    sentryDsn: SENTRY_DSN,
+  });
+  expect(isOkouProductionHostname("okou.ai.evil.example")).toBeFalsy();
+
+  await initializeTelemetry();
+
+  expect(window.plausible?.q).toStrictEqual([
+    ["runtime_environment_test", { props: { public_brand: "okou" } }],
+  ]);
+  const posthogConfig = context.mocks.posthog().initializations.at(-1)?.config;
+  expect(posthogConfig?.sanitize_properties?.({}, "$pageview")).toStrictEqual({
+    public_brand: "okou",
+  });
+  expect(context.mocks.sentry().initializations).toContainEqual({
+    options: expect.objectContaining({
+      initialScope: {
+        tags: { app: "platform", public_brand: "okou" },
+      },
+    }),
+    runtime: "page",
+  });
 });
 
-describe("portable platform runtime environment", () => {
-  it("selects Okou API services and public config on app.okou.ai", async () => {
-    setBrowserUrl("https://app.okou.ai/agents");
-    const runtime = await loadRuntimeSurfaces();
+test("VM0 production uses VM0 services and branding", async () => {
+  prepareRuntime("https://app.vm0.ai/agents");
+  const runtime = await loadRuntimeSurfaces();
 
-    expect(runtime.apiBase.resolveApiBase()).toBe("https://api.okou.ai");
-    expect(
-      runtime.userMessageFiles.canonicalUserMessageFileUrl("attachment-photo"),
-    ).toBe(
-      "https://api.okou.ai/api/web/download-file?file_id=attachment-photo",
-    );
-    expect(runtime.apiBase.resolveOAuthApiBase()).toBe("https://www.vm0.ai");
-    expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");
-    expect(isOkouProductionHostname("okou.ai.evil.example")).toBeFalsy();
-    expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
-      environment: "production",
-      publicBrand: "okou",
-      publicStaticAssetsBaseUrl: "https://static.okou.io",
-      sentryDsn: SENTRY_DSN,
-      vapidPublicKey: PRODUCTION_VAPID_KEY,
-      clerkPublishableKey: PRODUCTION_CLERK_KEY,
-    });
-    const plausibleController = new AbortController();
-    await runtime.plausible.initPlausible(plausibleController.signal);
-    plausibleController.abort();
-    runtime.plausible.capturePlausibleEvent("runtime_environment_test");
-    runtime.posthog.initPostHog();
-    runtime.sentry.initSentry();
-
-    expect(window.plausible?.q).toStrictEqual([
-      ["runtime_environment_test", { props: { public_brand: "okou" } }],
-    ]);
-    const [, posthogConfig] = posthogInit.mock.lastCall ?? [];
-    expect(posthogConfig?.sanitize_properties?.({}, "$pageview")).toStrictEqual(
-      { public_brand: "okou" },
-    );
-    expect(sentryInit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        initialScope: {
-          tags: { app: "platform", public_brand: "okou" },
-        },
-      }),
-    );
+  expect(runtime.apiBase.resolveApiBase()).toBe("https://api.vm0.ai");
+  expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");
+  expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
+    environment: "production",
+    publicBrand: "vm0",
+    publicStaticAssetsBaseUrl: "https://static.vm0.io",
+    clerkPublishableKey: PRODUCTION_CLERK_KEY,
   });
+});
 
-  it("selects the VM0 API service on app.vm0.ai", async () => {
-    setBrowserUrl("https://app.vm0.ai/agents");
-    const runtime = await loadRuntimeSurfaces();
+test("Production startup fails closed without a trusted service origin", async () => {
+  prepareRuntime("https://app.okou.ai/agents", null);
+  const runtime = await loadRuntimeSurfaces();
 
-    expect(runtime.apiBase.resolveApiBase()).toBe("https://api.vm0.ai");
-    expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
-      environment: "production",
-      publicBrand: "vm0",
-      publicStaticAssetsBaseUrl: "https://static.vm0.io",
-      clerkPublishableKey: PRODUCTION_CLERK_KEY,
-    });
+  expect(() => {
+    return runtime.apiBase.resolveApiBase();
+  }).toThrow("Missing production API origin marker for app.okou.ai");
+});
+
+test("Production startup rejects a brand-mismatched service origin", async () => {
+  prepareRuntime("https://app.okou.ai/agents", "https://api.vm0.ai");
+  const runtime = await loadRuntimeSurfaces();
+
+  expect(() => {
+    return runtime.apiBase.resolveApiBase();
+  }).toThrow("Production API origin marker mismatch for app.okou.ai");
+});
+
+test("Immutable Preview pages use only an approved Platform service", async () => {
+  prepareRuntime(
+    "https://3508a2f5.okou-app.pages.dev/agents",
+    "https://pr-23364-api.vm6.ai",
+  );
+  const runtime = await loadRuntimeSurfaces();
+
+  expect(runtime.apiBase.resolveApiBase()).toBe("https://pr-23364-api.vm6.ai");
+  expect(runtime.apiBase.resolveOAuthApiBase()).toBe(
+    "https://pr-23364-api.vm6.ai",
+  );
+  expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
+    publicBrand: "okou",
+    clerkPublishableKey: PREVIEW_CLERK_KEY,
   });
+});
 
-  it("selects canonical services and production telemetry on an alternate production host", async () => {
-    setBrowserUrl("https://cf-app.vm0.ai/agents");
-    const runtime = await loadRuntimeSurfaces();
+test("Immutable Preview pages reject unapproved service origins", async () => {
+  prepareRuntime(
+    "https://3508a2f5.okou-app.pages.dev/agents",
+    "https://example.com",
+  );
+  const runtime = await loadRuntimeSurfaces();
 
-    expect(runtime.apiBase.resolveApiBase()).toBe("https://api.vm0.ai");
-    expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");
-    expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
-      publicBrand: "vm0",
-      postHogHost: "https://j.okou.io",
-      vapidPublicKey: PRODUCTION_VAPID_KEY,
-      clerkPublishableKey: PRODUCTION_CLERK_KEY,
-    });
-    expect(
-      runtime.attachmentUrl.publicAttachmentUrl(
-        "/artifacts/user_1/artifact_1/report.html",
-      ),
-    ).toBe("https://cdn.vm0.io/artifacts/user_1/artifact_1/report.html");
+  expect(() => {
+    return runtime.apiBase.resolveApiBase();
+  }).toThrow("Invalid Cloudflare Pages preview API origin");
+});
 
-    const plausibleController = new AbortController();
-    await runtime.plausible.initPlausible(plausibleController.signal);
-    plausibleController.abort();
-    runtime.plausible.capturePlausibleEvent("runtime_environment_test");
-    runtime.posthog.initPostHog();
-    runtime.sentry.initSentry();
+test("Unknown page providers stay on their own origin", async () => {
+  prepareRuntime(
+    "https://deployment.pages.dev/agents",
+    "https://pr-23364-api.vm6.ai",
+  );
+  const runtime = await loadRuntimeSurfaces();
 
-    expect(plausibleScriptSources()).toStrictEqual([PRODUCTION_PLAUSIBLE_URL]);
-    expect(window.plausible?.q).toStrictEqual([
-      ["runtime_environment_test", { props: { public_brand: "vm0" } }],
-    ]);
-    expect(posthogInit).toHaveBeenCalledWith(
-      POSTHOG_KEY,
-      expect.objectContaining({ api_host: "https://j.okou.io" }),
-    );
-    const [, posthogConfig] = posthogInit.mock.lastCall ?? [];
-    expect(
-      posthogConfig?.sanitize_properties?.(
-        {
-          $current_url:
-            "https://app.vm0.ai/agents/00000000-0000-0000-0000-000000000000",
-        },
-        "$pageview",
-      ),
-    ).toStrictEqual({
-      $current_url: "https://app.vm0.ai/agents/:id",
-      public_brand: "vm0",
-    });
-    expect(sentryInit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        dsn: SENTRY_DSN,
-        enabled: true,
-        enhanceFetchErrorMessages: false,
-        environment: "production",
-        initialScope: {
-          tags: { app: "platform", public_brand: "vm0" },
-        },
-      }),
-    );
-    const [pageSentryOptions] = sentryInit.mock.lastCall ?? [];
-    expect(pageSentryOptions).not.toHaveProperty("beforeBreadcrumb");
+  expect(runtime.apiBase.resolveApiBase()).toBe("https://deployment.pages.dev");
+  expect(runtime.auth.resolveWebOrigin()).toBe("https://deployment.pages.dev");
+});
+
+test("Conversation synchronization reports terminal errors without reporting recoverable warnings", () => {
+  prepareRuntime("https://app.okou.ai/agents");
+  initSharedDatabaseWorkerSentry();
+  context.signal.addEventListener("abort", resetLoggerForTest, {
+    once: true,
   });
+  const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  const workerLogger = logger("SharedDatabaseWorkerTest");
 
-  it("preserves preview services and suppresses production telemetry", async () => {
-    setBrowserUrl("https://pr-21537-app.omby.ai/agents");
-    const runtime = await loadRuntimeSurfaces();
+  const warning = new Error("recoverable worker warning");
+  workerLogger.warn(warning);
 
-    expect(runtime.apiBase.resolveApiBase()).toBe(
-      "https://pr-21537-api.vm6.ai",
-    );
-    expect(runtime.apiBase.resolveOAuthApiBase()).toBe(
-      "https://pr-21537-api.vm6.ai",
-    );
-    expect(runtime.auth.resolveWebOrigin()).toBe(
-      "https://pr-21537-www.omby.ai",
-    );
-    expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
-      environment: "preview",
-      publicBrand: "okou",
-      publicStaticAssetsBaseUrl: "https://static.okou.io",
-      vapidPublicKey: PREVIEW_VAPID_KEY,
-      clerkPublishableKey: PREVIEW_CLERK_KEY,
-    });
-    expect(
-      runtime.attachmentUrl.publicAttachmentUrl(
-        "/artifacts/user_1/artifact_1/report.html",
-      ),
-    ).toBe("https://cdn.vm7.io/artifacts/user_1/artifact_1/report.html");
+  expect(consoleWarn).toHaveBeenCalledWith(
+    "[W][SharedDatabaseWorkerTest]",
+    warning,
+  );
+  expect(context.mocks.sentry().reports).toStrictEqual([]);
 
-    const plausibleController = new AbortController();
-    await runtime.plausible.initPlausible(plausibleController.signal);
-    plausibleController.abort();
-    runtime.plausible.capturePlausibleEvent("runtime_environment_test", {
-      props: { surface: "preview" },
-    });
-    runtime.posthog.initPostHog();
-    runtime.sentry.initSentry();
-
-    expect(plausibleScriptSources()).toStrictEqual([PREVIEW_PLAUSIBLE_URL]);
-    expect(window.plausible?.q).toStrictEqual([
-      [
-        "runtime_environment_test",
-        { props: { public_brand: "okou", surface: "preview" } },
-      ],
-    ]);
-    expect(posthogInit).not.toHaveBeenCalled();
-    expect(sentryInit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        dsn: undefined,
-        enabled: false,
-        environment: "preview",
-        initialScope: {
-          tags: { app: "platform", public_brand: "okou" },
-        },
-      }),
-    );
+  const error = new Error("terminal worker error");
+  const reportContext = sentryLogContext({
+    contexts: { shared_database: { org_id: "org_test" } },
+    tags: { "shared_database.operation": "sync.error" },
+    user: { id: "user_test" },
   });
+  workerLogger.error(error, reportContext);
 
-  it("initializes shared worker Sentry and only reports error logs", () => {
-    setBrowserUrl("https://app.okou.ai/agents");
-    initSharedDatabaseWorkerSentry();
-    context.signal.addEventListener("abort", resetLoggerForTest, {
-      once: true,
-    });
-
-    expect(browserSentryInit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        dsn: SENTRY_DSN,
-        enabled: true,
-        initialScope: {
-          tags: {
-            app: "platform",
-            public_brand: "okou",
-            runtime: "shared-worker",
-            worker: "shared-database",
-          },
+  expect(consoleError).toHaveBeenCalledWith(
+    "[E][SharedDatabaseWorkerTest]",
+    error,
+    reportContext,
+  );
+  expect(context.mocks.sentry().reports).toStrictEqual([
+    {
+      context: {
+        contexts: { shared_database: { org_id: "org_test" } },
+        tags: {
+          logger: "SharedDatabaseWorkerTest",
+          "shared_database.operation": "sync.error",
         },
-      }),
-    );
-
-    const [workerSentryOptions] = browserSentryInit.mock.lastCall ?? [];
-    const warningBreadcrumb = {
-      category: "console",
-      message: "recoverable worker warning",
-    };
-    expect(
-      workerSentryOptions?.beforeBreadcrumb?.(warningBreadcrumb),
-    ).toBeNull();
-    const fetchBreadcrumb = {
-      category: "fetch",
-      message: "GET /api/zero/shared-database",
-    };
-    expect(workerSentryOptions?.beforeBreadcrumb?.(fetchBreadcrumb)).toBe(
-      fetchBreadcrumb,
-    );
-
-    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
-    const workerLogger = logger("SharedDatabaseWorkerTest");
-    const warning = new Error("recoverable worker warning");
-    workerLogger.warn(warning);
-
-    expect(consoleWarn).toHaveBeenCalledWith(
-      "[W][SharedDatabaseWorkerTest]",
-      warning,
-    );
-    expect(browserSentryCaptureException).not.toHaveBeenCalled();
-    expect(browserSentryCaptureMessage).not.toHaveBeenCalled();
-
-    const error = new Error("terminal worker error");
-    const sentryContext = sentryLogContext({
-      contexts: { shared_database: { org_id: "org_test" } },
-      tags: { "shared_database.operation": "sync.error" },
-      user: { id: "user_test" },
-    });
-    workerLogger.error(error, sentryContext);
-
-    expect(consoleError).toHaveBeenCalledWith(
-      "[E][SharedDatabaseWorkerTest]",
-      error,
-      sentryContext,
-    );
-    expect(browserSentryCaptureException).toHaveBeenCalledWith(error, {
-      contexts: { shared_database: { org_id: "org_test" } },
-      tags: {
-        logger: "SharedDatabaseWorkerTest",
-        "shared_database.operation": "sync.error",
+        user: { id: "user_test" },
       },
-      user: { id: "user_test" },
-    });
-    expect(browserSentryCaptureMessage).not.toHaveBeenCalled();
-  });
-
-  it("keeps preview WWW on omby.ai while routing API through vm6.ai", async () => {
-    setBrowserUrl("https://pr-22085-app.omby.ai/agents");
-    const runtime = await loadRuntimeSurfaces();
-
-    expect(runtime.apiBase.resolveApiBase()).toBe(
-      "https://pr-22085-api.vm6.ai",
-    );
-    expect(runtime.apiBase.resolveOAuthApiBase()).toBe(
-      "https://pr-22085-api.vm6.ai",
-    );
-    expect(runtime.auth.resolveWebOrigin()).toBe(
-      "https://pr-22085-www.omby.ai",
-    );
-    expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
-      environment: "preview",
-      vapidPublicKey: PREVIEW_VAPID_KEY,
-      clerkPublishableKey: PREVIEW_CLERK_KEY,
-    });
-  });
-
-  it("uses the configured API and preview siblings for an app Worker version", async () => {
-    setBrowserUrl(
-      "https://pr-23364-app-okou-app-preview.vm0.workers.dev/agents",
-    );
-    const runtime = await loadRuntimeSurfaces();
-
-    expect(runtime.apiBase.resolveApiBase()).toBe(
-      "https://pr-23364-api.vm6.ai",
-    );
-    expect(runtime.apiBase.resolveOAuthApiBase()).toBe(
-      "https://pr-23364-api.vm6.ai",
-    );
-    expect(runtime.auth.resolveWebOrigin()).toBe(
-      "https://pr-23364-www.omby.ai",
-    );
-    expect(runtime.apiBase.resolvePlatformOriginForTarget("app")).toBe(
-      "https://pr-23364-app-okou-app-preview.vm0.workers.dev",
-    );
-    expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
-      environment: "preview",
-      publicBrand: "okou",
-      publicStaticAssetsBaseUrl: "https://static.okou.io",
-      clerkPublishableKey: PREVIEW_CLERK_KEY,
-    });
-    expect(
-      runtime.platformHost.isOkouHostname(
-        "pr-23364-app-okou-app-preview.vm0.workers.dev.evil.example",
-      ),
-    ).toBeFalsy();
-    expect(
-      runtime.platformHost.isOkouHostname(
-        "pr-23364-app-okou-app-preview.attacker.workers.dev",
-      ),
-    ).toBeFalsy();
-  });
-
-  it("keeps unrecognized provider hosts on the same origin", async () => {
-    setBrowserUrl("https://deployment.pages.dev/agents");
-    const runtime = await loadRuntimeSurfaces();
-
-    expect(runtime.apiBase.resolveApiBase()).toBe(
-      "https://deployment.pages.dev",
-    );
-    expect(runtime.auth.resolveWebOrigin()).toBe(
-      "https://deployment.pages.dev",
-    );
+      error,
+      runtime: "shared-worker",
+      type: "exception",
+    },
+  ]);
+  expect(context.mocks.sentry().initializations).toContainEqual({
+    options: expect.objectContaining({
+      initialScope: {
+        tags: {
+          app: "platform",
+          public_brand: "okou",
+          runtime: "shared-worker",
+          worker: "shared-database",
+        },
+      },
+    }),
+    runtime: "shared-worker",
   });
 });

@@ -1,0 +1,337 @@
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import {
+  createEvent,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { expect, test } from "vitest";
+
+import { click, setupPage } from "../../../__tests__/page-helper.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  ATTACHMENT_THREAD_ID,
+  boxAnnotation,
+  draftAttachment,
+  draftForAttachment,
+  findNamedButton,
+  getNamedButton,
+  mockAttachmentChat,
+  queryNamedButton,
+} from "./chat-attachment-test-helpers.ts";
+import { fillComposer } from "./chat-test-helpers.ts";
+
+const context = testContext();
+
+function composerFileInput(): HTMLInputElement {
+  const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+  if (!input) {
+    throw new Error("Expected the composer file input");
+  }
+  return input;
+}
+
+function composerRoot(): HTMLElement {
+  const composer = document.querySelector<HTMLElement>(".zero-composer");
+  if (!composer) {
+    throw new Error("Expected the chat composer");
+  }
+  return composer;
+}
+
+test("A user can add files by pasting or dropping them", async () => {
+  mockAttachmentChat(context);
+  context.mocks.upload.success({
+    id: "a0000000-0000-4000-a000-000000000081",
+    filename: "notes.txt",
+    contentType: "text/plain",
+    size: 11,
+    url: "https://cdn.vm7.io/artifacts/tests/chat-attachments/notes.txt",
+  });
+
+  await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
+
+  const editor = await screen.findByRole("textbox", { name: "Message" });
+  const textFile = new File(["file notes"], "notes.txt", {
+    type: "text/plain",
+  });
+  fireEvent.paste(editor, {
+    clipboardData: {
+      getData: (type: string) => {
+        return type === "text/plain" ? "Pasted planning notes" : "";
+      },
+      items: [
+        {
+          kind: "file",
+          type: "text/plain",
+          getAsFile: () => {
+            return textFile;
+          },
+        },
+      ],
+    },
+  });
+
+  await expect(screen.findByText("notes.txt")).resolves.toBeVisible();
+  await expect(findNamedButton("Remove notes.txt")).resolves.toBeVisible();
+  await waitFor(() => {
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveTextContent(
+      "Pasted planning notes",
+    );
+  });
+
+  context.mocks.upload.success({
+    id: "a0000000-0000-4000-a000-000000000082",
+    filename: "brief.pdf",
+    contentType: "application/pdf",
+    size: 12,
+    url: "https://cdn.vm7.io/artifacts/tests/chat-attachments/brief.pdf",
+  });
+  const pdf = new File(["pdf contents"], "brief.pdf", {
+    type: "application/pdf",
+  });
+  fireEvent.drop(composerRoot(), {
+    dataTransfer: { files: [pdf] },
+  });
+
+  await expect(screen.findByText("brief.pdf")).resolves.toBeVisible();
+  await expect(findNamedButton("Remove brief.pdf")).resolves.toBeVisible();
+});
+
+test("Image annotation is offered only when the feature is available", async () => {
+  const image = draftAttachment("billing-page.png");
+  mockAttachmentChat(context, {
+    draft: draftForAttachment(image, ""),
+  });
+
+  await setupPage({
+    context,
+    path: `/chats/${ATTACHMENT_THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerImageAnnotation]: false },
+  });
+
+  click(await findNamedButton("Open image preview for billing-page.png"));
+
+  await expect(
+    screen.findByRole("dialog", { name: "billing-page.png preview" }),
+  ).resolves.toBeVisible();
+  expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+    "alt",
+    "billing-page.png",
+  );
+  expect(queryNamedButton("Annotate")).toBeNull();
+});
+
+test("An image preview starts at its default zoom every time it opens", async () => {
+  const image = draftAttachment("photo.png");
+  mockAttachmentChat(context, {
+    draft: draftForAttachment(image, ""),
+  });
+
+  await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
+
+  click(await findNamedButton("Open image preview for photo.png"));
+  await expect(
+    screen.findByTestId("artifact-dialog-image-zoom-controls"),
+  ).resolves.toBeVisible();
+  click(getNamedButton("Zoom in"));
+  await expect(screen.findByText("115%")).resolves.toBeVisible();
+
+  click(getNamedButton("Close"));
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+  click(getNamedButton("Open image preview for photo.png"));
+
+  await expect(screen.findByText("100%")).resolves.toBeVisible();
+  expect(screen.getByTestId("attachment-lightbox-image")).toHaveStyle({
+    width: "100%",
+  });
+});
+
+test("Viewport pinch is blocked outside an image preview canvas", async () => {
+  const image = draftAttachment("photo.png");
+  mockAttachmentChat(context, {
+    draft: draftForAttachment(image, ""),
+  });
+
+  await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
+
+  const composer = await screen.findByRole("textbox", { name: "Message" });
+  const wheelPinch = createEvent.wheel(composer);
+  Object.defineProperties(wheelPinch, {
+    ctrlKey: { value: true },
+    deltaY: { value: -20 },
+  });
+  fireEvent(composer, wheelPinch);
+  expect(wheelPinch.defaultPrevented).toBeTruthy();
+
+  const ordinaryScroll = createEvent.wheel(composer, { deltaY: 20 });
+  fireEvent(composer, ordinaryScroll);
+  expect(ordinaryScroll.defaultPrevented).toBeFalsy();
+
+  for (const eventName of ["gesturestart", "gesturechange"]) {
+    const viewportPinch = new Event(eventName, {
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(composer, viewportPinch);
+    expect(viewportPinch.defaultPrevented).toBeTruthy();
+  }
+
+  click(await findNamedButton("Open image preview for photo.png"));
+  const imageCanvas = await screen.findByTestId("artifact-dialog-image-stage");
+  const imagePinch = new Event("gesturestart", {
+    bubbles: true,
+    cancelable: true,
+  });
+  fireEvent(imageCanvas, imagePinch);
+  expect(imagePinch.defaultPrevented).toBeFalsy();
+});
+
+test("A confirmed image annotation reaches the agent as structured data", async () => {
+  const annotation = boxAnnotation([
+    {
+      id: "billing-mark",
+      ordinal: 1,
+      note: "Tighten this spacing",
+    },
+  ]);
+  const image = draftAttachment("billing-page.png", {
+    annotatedFileId: "draft-billing-page-annotated",
+    annotations: annotation,
+  });
+  let sentRequest:
+    | Parameters<
+        NonNullable<
+          NonNullable<Parameters<typeof mockAttachmentChat>[1]>["onSendRequest"]
+        >
+      >[0]
+    | undefined;
+  context.mocks.browser.imageDimensions(null);
+  mockAttachmentChat(context, {
+    draft: draftForAttachment(image, ""),
+    threadTitle: "Annotation Agent",
+    onSendRequest: (body) => {
+      sentRequest = body;
+    },
+  });
+
+  await setupPage({
+    context,
+    path: `/chats/${ATTACHMENT_THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerImageAnnotation]: true },
+  });
+
+  const editor = await screen.findByRole("textbox", { name: "Message" });
+  await expect(
+    screen.findByTestId("composer-attachment-mark-count"),
+  ).resolves.toHaveTextContent("1");
+  await fillComposer(editor, "Fix the billing page");
+  await userEvent.setup().keyboard("{Enter}");
+
+  await waitFor(() => {
+    expect(sentRequest).toBeDefined();
+  });
+  expect(sentRequest?.prompt).toBe("Fix the billing page");
+  expect(sentRequest?.userMessage?.parts).toContainEqual({
+    type: "file",
+    fileId: image.id,
+    filenameSnapshot: "billing-page.png",
+    contentType: "image/png",
+    annotatedFileId: image.annotatedFileId,
+    annotations: annotation,
+  });
+});
+
+test("Composer attachments show a clear upload lifecycle", async () => {
+  mockAttachmentChat(context);
+  context.mocks.upload.pending({
+    id: "a0000000-0000-4000-a000-000000000083",
+    filename: "proposal.docx",
+    contentType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    size: 8,
+    url: "https://cdn.vm7.io/artifacts/tests/chat-attachments/proposal.docx",
+  });
+
+  await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
+
+  await screen.findByRole("textbox", { name: "Message" });
+  const documentFile = new File(["document"], "proposal.docx", {
+    type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  });
+  fireEvent.change(composerFileInput(), {
+    target: { files: [documentFile] },
+  });
+
+  await expect(screen.findByText("proposal.docx")).resolves.toBeVisible();
+  await expect(
+    findNamedButton("Cancel upload proposal.docx"),
+  ).resolves.toBeVisible();
+
+  context.mocks.upload.success({
+    id: "a0000000-0000-4000-a000-000000000084",
+    filename: "dashboard.png",
+    contentType: "image/png",
+    size: 8,
+    url: "https://cdn.vm7.io/artifacts/tests/chat-attachments/dashboard.png",
+  });
+  const imageFile = new File(["image"], "dashboard.png", {
+    type: "image/png",
+  });
+  fireEvent.change(composerFileInput(), { target: { files: [imageFile] } });
+
+  const openPreview = await findNamedButton(
+    "Open image preview for dashboard.png",
+  );
+  await expect(findNamedButton("Remove dashboard.png")).resolves.toBeVisible();
+  await screen.findByTestId("composer-image-preview-loading");
+  const previewImage = openPreview.querySelector("img");
+  if (!previewImage) {
+    throw new Error("Expected the completed image thumbnail");
+  }
+  fireEvent.load(previewImage);
+  await waitFor(() => {
+    expect(screen.queryByTestId("composer-image-preview-loading")).toBeNull();
+  });
+  fireEvent.error(previewImage);
+  await expect(
+    screen.findByTestId("composer-image-preview-loading"),
+  ).resolves.toBeVisible();
+
+  click(getNamedButton("Remove dashboard.png"));
+  await waitFor(() => {
+    expect(queryNamedButton("Remove dashboard.png")).toBeNull();
+  });
+});
+
+test("Saved image annotations return with the draft", async () => {
+  const annotation = boxAnnotation([
+    { id: "saved-mark", ordinal: 1, note: "Align this edge" },
+  ]);
+  const image = draftAttachment("saved-layout.png", {
+    annotatedFileId: "draft-saved-layout-annotated",
+    annotations: annotation,
+  });
+  mockAttachmentChat(context, {
+    draft: draftForAttachment(image, ""),
+  });
+
+  await setupPage({
+    context,
+    path: `/chats/${ATTACHMENT_THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerImageAnnotation]: true },
+  });
+
+  await expect(
+    screen.findByTestId("composer-attachment-mark-count"),
+  ).resolves.toHaveTextContent("1");
+  click(await findNamedButton("Open image preview for saved-layout.png"));
+
+  const markLayer = await screen.findByTestId("annotation-mark-layer");
+  expect(markLayer).toBeVisible();
+  expect(within(markLayer).getByText("1")).toBeVisible();
+});

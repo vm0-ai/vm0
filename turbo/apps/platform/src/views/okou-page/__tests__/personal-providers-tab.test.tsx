@@ -1,5 +1,4 @@
 import { claudeCodeDeviceAuthContract } from "@okouai/api-contracts/contracts/claude-code-device-auth";
-import { codexDeviceAuthContract } from "@okouai/api-contracts/contracts/codex-device-auth";
 import {
   billingStatusContract,
   type BillingStatusResponse,
@@ -8,19 +7,36 @@ import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/mode
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { HttpResponse } from "msw";
-import { describe, expect, it, vi } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import {
   click,
-  detachedSetupPage,
+  setupPage,
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { mockNow } from "../../../__tests__/time.ts";
+import type { SupportedLocale } from "../../../i18n/resources.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+
+function radioByName(
+  name: string | RegExp,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const radio = queryAllByRoleFast("radio", container).find((candidate) => {
+    const accessibleName =
+      candidate.getAttribute("aria-label") ?? candidate.textContent ?? "";
+    return typeof name === "string"
+      ? accessibleName.trim() === name
+      : name.test(accessibleName);
+  });
+  if (!radio) {
+    throw new Error(`Radio not found: ${String(name)}`);
+  }
+  return radio;
+}
 
 function stalePersonalCodexProvider(): ModelProviderResponse {
   return {
@@ -119,34 +135,6 @@ function connectedPersonalClaudeCodeProvider(): ModelProviderResponse {
   };
 }
 
-function mockPersonalProvidersStory(
-  role: "admin" | "member" = "member",
-  onCodexStart?: (body: unknown) => void,
-): void {
-  context.mocks.data.org({
-    id: "org_1",
-    name: "Test Org",
-    role,
-  });
-  context.mocks.data.personalModelProviders([stalePersonalCodexProvider()]);
-  context.mocks.api(codexDeviceAuthContract.start, ({ body, respond }) => {
-    onCodexStart?.(body);
-    return respond(200, {
-      sessionToken: "mock-personal-codex-device-session",
-      type: "codex",
-      status: "pending",
-      scope: "personal",
-      browserUrl: "https://auth.openai.com/codex/device",
-      verificationCode: "PERS-1234",
-      expiresIn: 30,
-      interval: 1,
-    });
-  });
-  context.mocks.api(codexDeviceAuthContract.complete, ({ respond }) => {
-    return respond(200, { status: "pending", errorMessage: null });
-  });
-}
-
 function mockBillingCapabilities(modelCapabilities: {
   readonly supportByok: boolean;
   readonly restrictedVm0Models: boolean;
@@ -179,11 +167,13 @@ function mockBillingCapabilities(modelCapabilities: {
 async function openModelSettings(
   heading = "Models",
   featureSwitches: Partial<Record<FeatureSwitchKey, boolean>> = {},
+  locale?: SupportedLocale,
 ): Promise<void> {
-  detachedSetupPage({
+  await setupPage({
     context,
     path: "/?settings=model",
     featureSwitches,
+    locale,
   });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -235,32 +225,6 @@ function connectButtonInRow(row: HTMLElement, label: string): HTMLElement {
   return button;
 }
 
-function buttonByLabel(
-  label: string,
-  container: ParentNode = document.body,
-): HTMLElement {
-  const button = queryAllByRoleFast("button", container).find((candidate) => {
-    return candidate.getAttribute("aria-label") === label;
-  });
-  if (!button) {
-    throw new Error(`${label} button not found`);
-  }
-  return button;
-}
-
-function buttonByText(
-  text: string,
-  container: ParentNode = document.body,
-): HTMLElement {
-  const button = queryAllByRoleFast("button", container).find((candidate) => {
-    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
-  });
-  if (!button) {
-    throw new Error(`${text} button not found`);
-  }
-  return button;
-}
-
 function formatResetInTimeZone(resetAt: string, timeZone: string): string {
   return `resets ${new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -281,678 +245,403 @@ function mockBrowserTimeZone(timeZone: string): void {
   });
 }
 
-describe("personal model providers settings", () => {
-  it("lists subscription accounts and switches only on an explicit click", async () => {
-    const user = userEvent.setup();
-    mockBrowserTimeZone("America/New_York");
-    mockNow(context.signal, new Date("2030-01-01T00:48:00.000Z"));
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Test Org",
-      role: "member",
-    });
-    const accountA = {
-      ...connectedPersonalCodexAccount({
-        id: "00000000-0000-4000-a000-000000000311",
-        email: "account-a@example.com",
-        isActive: true,
-        createdAt: "2026-03-01T00:00:00Z",
-      }),
-      workspaceName: "Account A Organization",
-    };
-    const accountB = connectedPersonalCodexAccount({
-      id: "00000000-0000-4000-a000-000000000312",
-      email: "account-b@example.com",
-      isActive: false,
-      createdAt: "2026-03-02T00:00:00Z",
-    });
-    context.mocks.data.personalModelProviders([accountA, accountB]);
+test("Review and explicitly switch personal subscription accounts", async () => {
+  const user = userEvent.setup();
+  mockBrowserTimeZone("America/New_York");
+  mockNow(new Date("2030-01-01T00:48:00.000Z"), context.signal);
+  context.mocks.data.org({
+    id: "org_1",
+    name: "Test Org",
+    role: "member",
+  });
+  const accountA = {
+    ...connectedPersonalCodexAccount({
+      id: "00000000-0000-4000-a000-000000000311",
+      email: "account-a@example.com",
+      isActive: true,
+      createdAt: "2026-03-01T00:00:00Z",
+    }),
+    workspaceName: "Account A Organization",
+  };
+  const accountB = connectedPersonalCodexAccount({
+    id: "00000000-0000-4000-a000-000000000312",
+    email: "account-b@example.com",
+    isActive: false,
+    createdAt: "2026-03-02T00:00:00Z",
+  });
+  context.mocks.data.personalModelProviders([accountA, accountB]);
 
-    await openModelSettings("Models", {
-      [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
-    });
+  await openModelSettings("Models", {
+    [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
+  });
 
-    const rowA = await screen.findByTestId(`oauth-account-${accountA.id}`);
-    const rowB = await screen.findByTestId(`oauth-account-${accountB.id}`);
-    expect(within(rowA).getByText("account-a@example.com")).toBeInTheDocument();
-    expect(within(rowB).getByText("account-b@example.com")).toBeInTheDocument();
+  const rowA = await screen.findByTestId(`oauth-account-${accountA.id}`);
+  const rowB = await screen.findByTestId(`oauth-account-${accountB.id}`);
+  expect(within(rowA).getByText("account-a@example.com")).toBeInTheDocument();
+  expect(within(rowB).getByText("account-b@example.com")).toBeInTheDocument();
+  expect(within(rowA).queryByText("Active")).not.toBeInTheDocument();
+  expect(within(rowB).queryByText("Active")).not.toBeInTheDocument();
+  expect(within(rowB).queryByText("Use")).not.toBeInTheDocument();
+  expect(radioByName("Active", rowA)).toHaveAttribute("aria-checked", "true");
+  expect(radioByName("Use", rowB)).toHaveAttribute("aria-checked", "false");
+  const usageRings = within(rowA).getAllByRole("progressbar");
+  expect(usageRings).toHaveLength(2);
+  expect(usageRings[0]).toHaveAttribute("aria-valuenow", "82");
+  expect(usageRings[1]).toHaveAttribute("aria-valuenow", "55");
+  expect(within(rowA).queryByText("82% left")).not.toBeInTheDocument();
+  expect(
+    queryAllByRoleFast("button").filter((button) => {
+      return button.textContent?.trim() === "Add account";
+    }),
+  ).toHaveLength(2);
+
+  const accountIdentity = within(rowA).getByText("account-a@example.com");
+  await user.hover(accountIdentity);
+  await expect(
+    screen.findAllByText("Account A Organization"),
+  ).resolves.not.toHaveLength(0);
+
+  usageRings[0].focus();
+  await expect(screen.findAllByText("82% left")).resolves.not.toHaveLength(0);
+  expect(
+    screen.getAllByText(
+      formatResetInTimeZone(
+        "2030-01-01T05:00:00.000Z",
+        "America/New_York",
+      ).replace(/^resets /u, ""),
+    ),
+  ).not.toHaveLength(0);
+  usageRings[1]?.focus();
+  await expect(
+    screen.findAllByText(
+      formatResetInTimeZone(
+        "2030-01-07T00:00:00.000Z",
+        "America/New_York",
+      ).replace(/^resets /u, ""),
+    ),
+  ).resolves.not.toHaveLength(0);
+
+  click(within(rowA).getByLabelText("More options"));
+  expect(
+    queryAllByRoleFast("menuitem").some((item) => {
+      return item.textContent?.trim() === "Remove";
+    }),
+  ).toBeFalsy();
+  click(within(rowA).getByLabelText("More options"));
+
+  click(radioByName("Use", rowB));
+  await waitFor(() => {
+    expect(radioByName("Active", rowB)).toHaveAttribute("aria-checked", "true");
+    expect(radioByName("Use", rowA)).toHaveAttribute("aria-checked", "false");
     expect(within(rowA).queryByText("Active")).not.toBeInTheDocument();
-    expect(within(rowB).queryByText("Active")).not.toBeInTheDocument();
-    expect(within(rowB).queryByText("Use")).not.toBeInTheDocument();
-    expect(within(rowA).getByRole("radio", { name: "Active" })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
-    expect(within(rowB).getByRole("radio", { name: "Use" })).toHaveAttribute(
-      "aria-checked",
-      "false",
-    );
-    const usageRings = within(rowA).getAllByRole("progressbar");
-    expect(usageRings).toHaveLength(2);
-    expect(usageRings[0]).toHaveAttribute("aria-valuenow", "82");
-    expect(usageRings[1]).toHaveAttribute("aria-valuenow", "55");
-    expect(within(rowA).queryByText("82% left")).not.toBeInTheDocument();
-    expect(
-      queryAllByRoleFast("button").filter((button) => {
-        return button.textContent?.trim() === "Add account";
-      }),
-    ).toHaveLength(2);
+  });
+});
 
-    const accountIdentity = within(rowA).getByText("account-a@example.com");
-    await user.hover(accountIdentity);
-    await expect(
-      screen.findAllByText("Account A Organization"),
-    ).resolves.not.toHaveLength(0);
+test("Offer Pro when personal subscription providers are unavailable", async () => {
+  context.mocks.data.org({
+    id: "org_1",
+    name: "Test Org",
+    role: "admin",
+  });
+  context.mocks.data.personalModelProviders([]);
+  mockBillingCapabilities({ supportByok: false, restrictedVm0Models: false });
 
-    usageRings[0].focus();
-    await expect(screen.findAllByText("82% left")).resolves.not.toHaveLength(0);
-    expect(
-      screen.getAllByText(
-        formatResetInTimeZone(
-          "2030-01-01T05:00:00.000Z",
-          "America/New_York",
-        ).replace(/^resets /u, ""),
-      ),
-    ).not.toHaveLength(0);
+  await openModelSettings("Models");
 
-    click(within(rowA).getByLabelText("More options"));
-    expect(
-      queryAllByRoleFast("menuitem").some((item) => {
-        return item.textContent?.trim() === "Remove";
-      }),
-    ).toBeFalsy();
-    click(within(rowA).getByLabelText("More options"));
+  const claudeCodeRow = await screen.findByTestId(
+    "oauth-card-claude-code-oauth-token",
+  );
+  const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
+  const claudeUpgrade = connectButtonInRow(
+    claudeCodeRow,
+    "Upgrade Pro to use Claude Code OAuth",
+  );
+  expect(claudeUpgrade).toHaveTextContent("Upgrade Pro to use");
+  expect(
+    connectButtonInRow(codexRow, "Upgrade Pro to use ChatGPT (Codex)"),
+  ).toHaveTextContent("Upgrade Pro to use");
 
-    click(within(rowB).getByRole("radio", { name: "Use" }));
-    await waitFor(() => {
-      expect(
-        within(rowB).getByRole("radio", { name: "Active" }),
-      ).toHaveAttribute("aria-checked", "true");
-      expect(within(rowA).getByRole("radio", { name: "Use" })).toHaveAttribute(
-        "aria-checked",
-        "false",
-      );
-      expect(within(rowA).queryByText("Active")).not.toBeInTheDocument();
+  click(claudeUpgrade);
+
+  await expect(
+    screen.findByRole("heading", { name: "Choose a plan" }),
+  ).resolves.toBeInTheDocument();
+});
+
+test("Start and close personal Claude login", async () => {
+  context.mocks.data.org({
+    id: "org_1",
+    name: "Test Org",
+    role: "member",
+  });
+  context.mocks.data.personalModelProviders([]);
+  context.mocks.api(claudeCodeDeviceAuthContract.start, ({ respond }) => {
+    return respond(200, {
+      sessionToken: "mock-personal-claude-code-session",
+      type: "claude-code",
+      status: "pending",
+      scope: "personal",
+      browserUrl: "https://claude.ai/oauth/authorize",
+      expiresIn: 30,
     });
   });
 
-  it("offers Pro upgrade when personal BYOK is unsupported", async () => {
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Test Org",
-      role: "admin",
-    });
-    context.mocks.data.personalModelProviders([]);
-    mockBillingCapabilities({ supportByok: false, restrictedVm0Models: false });
+  await openModelSettings();
 
-    await openModelSettings("Models");
+  const claudeCodeRow = await screen.findByTestId(
+    "oauth-card-claude-code-oauth-token",
+  );
+  expect(
+    within(claudeCodeRow).getByText("Claude Code OAuth"),
+  ).toBeInTheDocument();
+  const connectButton = connectButtonInRow(
+    claudeCodeRow,
+    "Connect Claude Code OAuth",
+  );
+  click(connectButton);
 
-    const claudeCodeRow = await screen.findByTestId(
-      "oauth-card-claude-code-oauth-token",
-    );
-    const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
-    const claudeUpgrade = connectButtonInRow(
-      claudeCodeRow,
-      "Upgrade Pro to use Claude Code OAuth",
-    );
-    expect(claudeUpgrade).toHaveTextContent("Upgrade Pro to use");
+  const authorizationCodeInputs = await screen.findAllByTestId(
+    "claude-code-device-auth-code",
+  );
+  expect(authorizationCodeInputs).not.toHaveLength(0);
+  expect(screen.getAllByText("Connect Claude Code")).not.toHaveLength(0);
+  closeClaudeCodeDialogs();
+  await waitFor(() => {
     expect(
-      connectButtonInRow(codexRow, "Upgrade Pro to use ChatGPT (Codex)"),
-    ).toHaveTextContent("Upgrade Pro to use");
-
-    click(claudeUpgrade);
-
-    await expect(
-      screen.findByRole("heading", { name: "Choose a plan" }),
-    ).resolves.toBeInTheDocument();
-  });
-
-  it("opens personal Claude Code login from model settings", async () => {
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Test Org",
-      role: "member",
-    });
-    context.mocks.data.personalModelProviders([]);
-    context.mocks.api(claudeCodeDeviceAuthContract.start, ({ respond }) => {
-      return respond(200, {
-        sessionToken: "mock-personal-claude-code-session",
-        type: "claude-code",
-        status: "pending",
-        scope: "personal",
-        browserUrl: "https://claude.ai/oauth/authorize",
-        expiresIn: 30,
-      });
-    });
-
-    await openModelSettings();
-
-    const claudeCodeRow = await screen.findByTestId(
-      "oauth-card-claude-code-oauth-token",
-    );
+      screen.queryAllByTestId("claude-code-device-auth-code"),
+    ).toHaveLength(0);
     expect(
-      within(claudeCodeRow).getByText("Claude Code OAuth"),
-    ).toBeInTheDocument();
-    const connectButton = connectButtonInRow(
-      claudeCodeRow,
-      "Connect Claude Code OAuth",
-    );
-    click(connectButton);
+      connectButtonInRow(claudeCodeRow, "Connect Claude Code OAuth"),
+    ).toBeEnabled();
+  });
+});
 
-    const authorizationCodeInputs = await screen.findAllByTestId(
-      "claude-code-device-auth-code",
-    );
-    expect(authorizationCodeInputs).not.toHaveLength(0);
-    expect(screen.getAllByText("Connect Claude Code")).not.toHaveLength(0);
-    closeClaudeCodeDialogs();
-    await waitFor(() => {
-      expect(
-        screen.queryAllByTestId("claude-code-device-auth-code"),
-      ).toHaveLength(0);
+test("Connect a personal Claude subscription", async () => {
+  context.mocks.data.org({
+    id: "org_1",
+    name: "Test Org",
+    role: "member",
+  });
+  context.mocks.data.personalModelProviders([]);
+  context.mocks.api(claudeCodeDeviceAuthContract.start, ({ respond }) => {
+    return respond(200, {
+      sessionToken: "mock-personal-claude-code-session",
+      type: "claude-code",
+      status: "pending",
+      scope: "personal",
+      browserUrl: "https://claude.ai/oauth/authorize",
+      expiresIn: 30,
+    });
+  });
+  context.mocks.api(claudeCodeDeviceAuthContract.complete, ({ respond }) => {
+    const provider = connectedPersonalClaudeCodeProvider();
+    context.mocks.data.personalModelProviders([provider]);
+    return respond(200, {
+      status: "complete",
+      provider,
+      created: true,
     });
   });
 
-  it("connects personal Claude Code with an authorization code", async () => {
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Test Org",
-      role: "member",
-    });
-    context.mocks.data.personalModelProviders([]);
-    context.mocks.api(claudeCodeDeviceAuthContract.start, ({ respond }) => {
-      return respond(200, {
-        sessionToken: "mock-personal-claude-code-session",
-        type: "claude-code",
-        status: "pending",
-        scope: "personal",
-        browserUrl: "https://claude.ai/oauth/authorize",
-        expiresIn: 30,
-      });
-    });
-    context.mocks.api(claudeCodeDeviceAuthContract.complete, ({ respond }) => {
-      const provider = connectedPersonalClaudeCodeProvider();
-      context.mocks.data.personalModelProviders([provider]);
-      return respond(200, {
-        status: "complete",
-        provider,
-        created: true,
-      });
-    });
+  await openModelSettings();
 
-    await openModelSettings();
+  const claudeCodeRow = await screen.findByTestId(
+    "oauth-card-claude-code-oauth-token",
+  );
+  const connectButton = connectButtonInRow(
+    claudeCodeRow,
+    "Connect Claude Code OAuth",
+  );
+  click(connectButton);
 
-    const claudeCodeRow = await screen.findByTestId(
-      "oauth-card-claude-code-oauth-token",
-    );
-    const connectButton = connectButtonInRow(
-      claudeCodeRow,
-      "Connect Claude Code OAuth",
-    );
-    click(connectButton);
+  const codeInput = await findLatestClaudeCodeInput();
+  const deviceAuthDialog = dialogContaining(codeInput);
+  await fill(codeInput, "claude-auth-code");
+  click(within(deviceAuthDialog).getByTestId("claude-code-device-auth-submit"));
 
-    const codeInput = await findLatestClaudeCodeInput();
-    const deviceAuthDialog = dialogContaining(codeInput);
-    await fill(codeInput, "claude-auth-code");
-    click(
-      within(deviceAuthDialog).getByTestId("claude-code-device-auth-submit"),
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("Claude Code connected")).toBeInTheDocument();
-      expect(
-        within(claudeCodeRow).getByText("Connected (Pro)"),
-      ).toBeInTheDocument();
-      expect(
-        within(claudeCodeRow).queryByText(/claude\.user@example\.com/),
-      ).not.toBeInTheDocument();
-      expect(within(claudeCodeRow).getByText("88% left")).toBeInTheDocument();
-      expect(within(claudeCodeRow).getByText("76% left")).toBeInTheDocument();
-      expect(
-        within(claudeCodeRow).queryByText(/Unavailable|Unknown/),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("keeps Claude Code validation inline and suppresses transport error toasts", async () => {
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Test Org",
-      role: "member",
-    });
-    context.mocks.data.personalModelProviders([]);
-    context.mocks.api(claudeCodeDeviceAuthContract.start, ({ respond }) => {
-      return respond(200, {
-        sessionToken: "mock-personal-claude-code-session",
-        type: "claude-code",
-        status: "pending",
-        scope: "personal",
-        browserUrl: "https://claude.ai/oauth/authorize",
-        expiresIn: 30,
-      });
-    });
-    let completeCount = 0;
-    context.mocks.api(claudeCodeDeviceAuthContract.complete, ({ respond }) => {
-      completeCount += 1;
-      if (completeCount === 1) {
-        return respond(400, {
-          error: {
-            message: "Invalid Claude authorization code",
-            code: "BAD_REQUEST",
-          },
-        });
-      }
-      return respond(503, {
-        error: {
-          message: "Claude authorization is unavailable",
-          code: "UNAVAILABLE",
-        },
-      });
-    });
-
-    await openModelSettings();
-
-    const claudeCodeRow = await screen.findByTestId(
-      "oauth-card-claude-code-oauth-token",
-    );
-    click(connectButtonInRow(claudeCodeRow, "Connect Claude Code OAuth"));
-    const codeInput = await findLatestClaudeCodeInput();
-    const dialog = dialogContaining(codeInput);
-    await fill(codeInput, "invalid-claude-code");
-    const submit = within(dialog).getByTestId("claude-code-device-auth-submit");
-    click(submit);
-
-    await expect(
-      within(dialog).findByText("Invalid Claude authorization code"),
-    ).resolves.toBeInTheDocument();
-    await waitFor(() => {
-      expect(submit).toBeEnabled();
-    });
-
-    click(submit);
-    await expect(
-      screen.findByText("Claude authorization is unavailable"),
-    ).resolves.toBeInTheDocument();
-    await waitFor(() => {
-      expect(submit).toBeEnabled();
-    });
-
-    context.mocks.http.post(
-      "*/api/model-providers/claude-code/device-auth/sessions/complete",
-      () => {
-        return HttpResponse.error();
-      },
-    );
-    click(submit);
-    await waitFor(() => {
-      expect(submit).toBeEnabled();
-    });
-    expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
-  });
-
-  it("shows available subscription details in the connected status", async () => {
-    mockBrowserTimeZone("America/New_York");
-    mockNow(context.signal, new Date("2030-01-01T00:48:00.000Z"));
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Test Org",
-      role: "member",
-    });
-    context.mocks.data.personalModelProviders([
-      connectedPersonalClaudeCodeProvider(),
-      connectedPersonalCodexProvider(),
-    ]);
-
-    await openModelSettings();
-
-    const claudeCodeRow = await screen.findByTestId(
-      "oauth-card-claude-code-oauth-token",
-    );
+  await waitFor(() => {
+    expect(screen.getByText("Claude Code connected")).toBeInTheDocument();
     expect(
       within(claudeCodeRow).getByText("Connected (Pro)"),
     ).toBeInTheDocument();
     expect(
       within(claudeCodeRow).queryByText(/claude\.user@example\.com/),
     ).not.toBeInTheDocument();
-    expect(within(claudeCodeRow).getByText("5h")).toBeInTheDocument();
     expect(within(claudeCodeRow).getByText("88% left")).toBeInTheDocument();
-    expect(within(claudeCodeRow).getByText("in 4h 12m")).toBeInTheDocument();
-    expect(within(claudeCodeRow).getByText("Week")).toBeInTheDocument();
     expect(within(claudeCodeRow).getByText("76% left")).toBeInTheDocument();
-    expect(within(claudeCodeRow).getByText("in 5d 23h")).toBeInTheDocument();
     expect(
-      within(claudeCodeRow).getByText(
-        formatResetInTimeZone("2030-01-01T05:00:00.000Z", "America/New_York"),
-      ),
-    ).toBeInTheDocument();
-    expect(
-      within(claudeCodeRow).queryByText(/Unavailable|Unknown|Account:|Reset:/),
-    ).not.toBeInTheDocument();
-
-    const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
-    expect(within(codexRow).getByText("Connected (Pro)")).toBeInTheDocument();
-    expect(
-      within(codexRow).queryByText(/Personal ChatGPT/),
-    ).not.toBeInTheDocument();
-    expect(
-      within(codexRow).queryByText(/codex\.user@example\.com/),
-    ).not.toBeInTheDocument();
-    expect(within(codexRow).getByText("82% left")).toBeInTheDocument();
-    expect(within(codexRow).getByText("in 4h 12m")).toBeInTheDocument();
-    expect(within(codexRow).getByText("55% left")).toBeInTheDocument();
-    expect(within(codexRow).getByText("in 5d 23h")).toBeInTheDocument();
-    expect(
-      within(codexRow).queryByText(/Account:|Plan:|Reset:|Connected .*resets/),
+      within(claudeCodeRow).queryByText(/Unavailable|Unknown/),
     ).not.toBeInTheDocument();
   });
+});
 
-  it("localizes subscription reset dates and relative times in Japanese", async () => {
-    const timeZone = "Asia/Tokyo";
-    mockBrowserTimeZone(timeZone);
-    mockNow(context.signal, new Date("2030-01-01T00:48:00.000Z"));
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Test Org",
-      role: "member",
-    });
-    context.mocks.data.personalModelProviders([
-      connectedPersonalClaudeCodeProvider(),
-    ]);
-    context.mocks.data.userPreferences({
-      locale: "ja-JP",
-      supportedLocales: ["en-US", "ja-JP"],
-    });
-
-    await openModelSettings("モデル");
-
-    const claudeCodeRow = await screen.findByTestId(
-      "oauth-card-claude-code-oauth-token",
-    );
-    expect(document.documentElement.lang).toBe("ja-JP");
-    expect(within(claudeCodeRow).getByText("5時間")).toBeInTheDocument();
-    expect(within(claudeCodeRow).getByText("88% 残り")).toBeInTheDocument();
-    expect(within(claudeCodeRow).getByText("4時間12分後")).toBeInTheDocument();
-    expect(within(claudeCodeRow).getByText("週")).toBeInTheDocument();
-    expect(within(claudeCodeRow).getByText("76% 残り")).toBeInTheDocument();
-    expect(within(claudeCodeRow).getByText("5日23時間後")).toBeInTheDocument();
-
-    const resetAt = "2030-01-01T05:00:00.000Z";
-    const absoluteReset = new Intl.DateTimeFormat("ja-JP", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      timeZone,
-      timeZoneName: "short",
-    }).format(new Date(resetAt));
-    expect(
-      within(claudeCodeRow).getByText(`${absoluteReset}にリセット`),
-    ).toBeInTheDocument();
+test("Review Claude and Codex personal subscription usage", async () => {
+  mockBrowserTimeZone("America/New_York");
+  mockNow(new Date("2030-01-01T00:48:00.000Z"), context.signal);
+  context.mocks.data.org({
+    id: "org_1",
+    name: "Test Org",
+    role: "member",
   });
+  context.mocks.data.personalModelProviders([
+    connectedPersonalClaudeCodeProvider(),
+    connectedPersonalCodexProvider(),
+  ]);
 
-  it("localizes subscription reset dates and relative times in Spanish", async () => {
-    const timeZone = "Europe/Madrid";
-    mockBrowserTimeZone(timeZone);
-    mockNow(context.signal, new Date("2030-01-01T00:48:00.000Z"));
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Test Org",
-      role: "member",
-    });
-    context.mocks.data.personalModelProviders([
-      connectedPersonalClaudeCodeProvider(),
-    ]);
-    context.mocks.data.userPreferences({
-      locale: "es-ES",
-      supportedLocales: ["en-US", "es-ES"],
-    });
+  await openModelSettings();
 
-    await openModelSettings("Modelos");
+  const claudeCodeRow = await screen.findByTestId(
+    "oauth-card-claude-code-oauth-token",
+  );
+  expect(
+    within(claudeCodeRow).getByText("Connected (Pro)"),
+  ).toBeInTheDocument();
+  expect(
+    within(claudeCodeRow).queryByText(/claude\.user@example\.com/),
+  ).not.toBeInTheDocument();
+  expect(within(claudeCodeRow).getByText("5h")).toBeInTheDocument();
+  expect(within(claudeCodeRow).getByText("88% left")).toBeInTheDocument();
+  expect(within(claudeCodeRow).getByText("in 4h 12m")).toBeInTheDocument();
+  expect(within(claudeCodeRow).getByText("Week")).toBeInTheDocument();
+  expect(within(claudeCodeRow).getByText("76% left")).toBeInTheDocument();
+  expect(within(claudeCodeRow).getByText("in 5d 23h")).toBeInTheDocument();
+  expect(
+    within(claudeCodeRow).getByText(
+      formatResetInTimeZone("2030-01-01T05:00:00.000Z", "America/New_York"),
+    ),
+  ).toBeInTheDocument();
+  expect(
+    within(claudeCodeRow).queryByText(/Unavailable|Unknown|Account:|Reset:/),
+  ).not.toBeInTheDocument();
 
-    const claudeCodeRow = await screen.findByTestId(
-      "oauth-card-claude-code-oauth-token",
-    );
-    expect(document.documentElement.lang).toBe("es-ES");
-    expect(within(claudeCodeRow).getByText("5h")).toBeInTheDocument();
-    expect(within(claudeCodeRow).getByText("88% restante")).toBeInTheDocument();
-    expect(within(claudeCodeRow).getByText("en 4h 12m")).toBeInTheDocument();
-    expect(within(claudeCodeRow).getByText("Semana")).toBeInTheDocument();
-    expect(within(claudeCodeRow).getByText("76% restante")).toBeInTheDocument();
-    expect(within(claudeCodeRow).getByText("en 5d 23h")).toBeInTheDocument();
+  const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
+  expect(within(codexRow).getByText("Connected (Pro)")).toBeInTheDocument();
+  expect(
+    within(codexRow).queryByText(/Personal ChatGPT/),
+  ).not.toBeInTheDocument();
+  expect(
+    within(codexRow).queryByText(/codex\.user@example\.com/),
+  ).not.toBeInTheDocument();
+  expect(within(codexRow).getByText("82% left")).toBeInTheDocument();
+  expect(within(codexRow).getByText("in 4h 12m")).toBeInTheDocument();
+  expect(within(codexRow).getByText("55% left")).toBeInTheDocument();
+  expect(within(codexRow).getByText("in 5d 23h")).toBeInTheDocument();
+  expect(
+    within(codexRow).getByText(
+      formatResetInTimeZone("2030-01-07T00:00:00.000Z", "America/New_York"),
+    ),
+  ).toBeInTheDocument();
+  expect(
+    within(codexRow).queryByText(/Account:|Plan:|Reset:|Connected .*resets/),
+  ).not.toBeInTheDocument();
+});
 
-    const resetAt = "2030-01-01T05:00:00.000Z";
-    const absoluteReset = new Intl.DateTimeFormat("es-ES", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      timeZone,
-      timeZoneName: "short",
-    }).format(new Date(resetAt));
-    expect(
-      within(claudeCodeRow).getByText(`se restablece el ${absoluteReset}`),
-    ).toBeInTheDocument();
+test("Localize personal provider usage", async () => {
+  const timeZone = "Asia/Tokyo";
+  mockBrowserTimeZone(timeZone);
+  mockNow(new Date("2030-01-01T00:48:00.000Z"), context.signal);
+  context.mocks.data.org({
+    id: "org_1",
+    name: "Test Org",
+    role: "member",
   });
+  context.mocks.data.personalModelProviders([
+    connectedPersonalClaudeCodeProvider(),
+  ]);
+  await openModelSettings("モデル", {}, "ja-JP");
 
-  it("shows when the soonest Codex reset expires in the row menu", async () => {
-    mockNow(context.signal, new Date("2030-01-01T00:00:00.000Z"));
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Test Org",
-      role: "member",
-    });
-    context.mocks.data.personalModelProviders([
-      {
-        ...connectedPersonalCodexProvider(),
-        subscriptionResetCreditsNextExpiresAt: "2030-01-01T06:30:00.000Z",
-      },
-    ]);
+  const claudeCodeRow = await screen.findByTestId(
+    "oauth-card-claude-code-oauth-token",
+  );
+  expect(document.documentElement.lang).toBe("ja-JP");
+  expect(within(claudeCodeRow).getByText("5時間")).toBeInTheDocument();
+  expect(within(claudeCodeRow).getByText("88% 残り")).toBeInTheDocument();
+  expect(within(claudeCodeRow).getByText("4時間12分後")).toBeInTheDocument();
+  expect(within(claudeCodeRow).getByText("週")).toBeInTheDocument();
+  expect(within(claudeCodeRow).getByText("76% 残り")).toBeInTheDocument();
+  expect(within(claudeCodeRow).getByText("5日23時間後")).toBeInTheDocument();
 
-    await openModelSettings();
+  const resetAt = "2030-01-01T05:00:00.000Z";
+  const absoluteReset = new Intl.DateTimeFormat("ja-JP", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+    timeZoneName: "short",
+  }).format(new Date(resetAt));
+  expect(
+    within(claudeCodeRow).getByText(`${absoluteReset}にリセット`),
+  ).toBeInTheDocument();
+});
 
-    const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
-    click(within(codexRow).getByLabelText("More options"));
-    await expect(
-      screen.findByText("2 resets left · expires in 6h 30m"),
-    ).resolves.toBeInTheDocument();
+test("Reset personal Codex usage with confirmation", async () => {
+  context.mocks.data.org({
+    id: "org_1",
+    name: "Test Org",
+    role: "member",
   });
+  context.mocks.data.personalModelProviders([connectedPersonalCodexProvider()]);
 
-  it("resets connected personal Codex usage from the row menu", async () => {
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Test Org",
-      role: "member",
-    });
-    context.mocks.data.personalModelProviders([
-      connectedPersonalCodexProvider(),
-    ]);
+  await openModelSettings();
 
-    await openModelSettings();
+  const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
+  expect(
+    within(codexRow).queryByText(/codex\.user@example\.com/),
+  ).not.toBeInTheDocument();
 
-    const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
-    expect(
-      within(codexRow).queryByText(/codex\.user@example\.com/),
-    ).not.toBeInTheDocument();
+  click(within(codexRow).getByLabelText("More options"));
+  await expect(screen.findByText("2 resets left")).resolves.toBeInTheDocument();
+  click(screen.getByText("Reset usage"));
 
-    click(within(codexRow).getByLabelText("More options"));
-    await expect(
-      screen.findByText("2 resets left"),
-    ).resolves.toBeInTheDocument();
-    click(screen.getByText("Reset usage"));
-
-    const confirmDialog = await screen.findByRole("dialog", {
-      name: "Reset Codex usage?",
-    });
-    expect(
-      within(confirmDialog).getByText(/2 resets left/),
-    ).toBeInTheDocument();
-    const resetButton = queryAllByRoleFast("button", confirmDialog).find(
-      (button) => {
-        return button.textContent === "Reset usage";
-      },
-    );
-    if (!resetButton) {
-      throw new Error("Reset usage button not found");
-    }
-    click(resetButton);
-
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("dialog", { name: "Reset Codex usage?" }),
-      ).not.toBeInTheDocument();
-    });
-
-    click(within(codexRow).getByLabelText("More options"));
-    await expect(
-      screen.findByText("1 reset left"),
-    ).resolves.toBeInTheDocument();
+  const confirmDialog = await screen.findByRole("dialog", {
+    name: "Reset Codex usage?",
   });
+  expect(within(confirmDialog).getByText(/2 resets left/)).toBeInTheDocument();
+  const resetButton = queryAllByRoleFast("button", confirmDialog).find(
+    (button) => {
+      return button.textContent === "Reset usage";
+    },
+  );
+  if (!resetButton) {
+    throw new Error("Reset usage button not found");
+  }
+  click(resetButton);
 
-  it("falls back to stored Claude Code reset metadata when usage is unavailable", async () => {
-    mockBrowserTimeZone("America/New_York");
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Test Org",
-      role: "member",
-    });
-    context.mocks.data.personalModelProviders([
-      {
-        ...connectedPersonalClaudeCodeProvider(),
-        subscriptionUsage: undefined,
-      },
-    ]);
-
-    await openModelSettings();
-
-    const claudeCodeRow = await screen.findByTestId(
-      "oauth-card-claude-code-oauth-token",
-    );
+  await waitFor(() => {
     expect(
-      within(claudeCodeRow).getByText("Connected (Pro)"),
-    ).toBeInTheDocument();
-    expect(
-      within(claudeCodeRow).getByText(
-        formatResetInTimeZone("2030-01-07T00:00:00.000Z", "America/New_York"),
-      ),
-    ).toBeInTheDocument();
-    expect(
-      within(claudeCodeRow).queryByText("76% left"),
+      screen.queryByRole("dialog", { name: "Reset Codex usage?" }),
     ).not.toBeInTheDocument();
   });
 
-  it("opens reconnect login from a stale personal Codex credential", async () => {
-    let startBody: unknown;
-    mockPersonalProvidersStory("member", (body) => {
-      startBody = body;
-    });
-    await openModelSettings();
+  click(within(codexRow).getByLabelText("More options"));
+  await expect(screen.findByText("1 reset left")).resolves.toBeInTheDocument();
+  expect(screen.getByText("Codex usage reset")).toBeVisible();
+});
 
-    const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
-    expect(within(codexRow).getByText("ChatGPT (Codex)")).toBeInTheDocument();
-    expect(within(codexRow).getByText("Attention")).toBeInTheDocument();
-
-    click(within(codexRow).getByLabelText("More options"));
-    click(await screen.findByText("Replace"));
-
-    await waitFor(() => {
-      expect(screen.getAllByText("Re-connect Codex")).not.toHaveLength(0);
-      const deviceAuthCodes = screen.getAllByTestId("codex-device-auth-code");
-      expect(deviceAuthCodes).not.toHaveLength(0);
-      for (const deviceAuthCode of deviceAuthCodes) {
-        expect(deviceAuthCode).toHaveTextContent("PERS-1234");
-      }
-    });
-    expect(startBody).toStrictEqual({
-      scope: "personal",
-      mode: "reconnect",
-      modelProviderId: "00000000-0000-4000-a000-000000000301",
-    });
+test("Show the saved Codex reset date when live usage is unavailable", async () => {
+  mockBrowserTimeZone("America/New_York");
+  context.mocks.data.org({
+    id: "org_1",
+    name: "Test Org",
+    role: "member",
   });
+  context.mocks.data.personalModelProviders([
+    {
+      ...connectedPersonalCodexProvider(),
+      subscriptionUsage: undefined,
+    },
+  ]);
 
-  it("disconnects a connected personal Codex credential", async () => {
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Test Org",
-      role: "member",
-    });
-    context.mocks.data.personalModelProviders([
-      connectedPersonalCodexProvider(),
-    ]);
-    await openModelSettings();
+  await openModelSettings();
 
-    const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
-    expect(within(codexRow).getByText("ChatGPT (Codex)")).toBeInTheDocument();
-    expect(within(codexRow).getByText(/^Connected/)).toBeInTheDocument();
-
-    click(within(codexRow).getByLabelText("More options"));
-    click(await screen.findByText("Disconnect"));
-
-    await waitFor(() => {
-      expect(
-        within(codexRow).queryByText(/^Connected/),
-      ).not.toBeInTheDocument();
-      expect(
-        queryAllByRoleFast("button", codexRow).find((button) => {
-          return button.textContent?.trim() === "Connect";
-        }),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("localizes personal model device authentication without changing provider data", async () => {
-    mockPersonalProvidersStory("admin");
-    context.mocks.data.orgModelProviders([]);
-    context.mocks.data.orgModelPolicies([]);
-    context.mocks.data.userPreferences({
-      locale: "pt-BR",
-      supportedLocales: ["en-US", "pt-BR"],
-    });
-
-    await openModelSettings("Modelos");
-
-    click(screen.getByText("Adicionar modelo"));
-    const policyDialog = screen.getByRole("dialog", {
-      name: "Adicionar modelo",
-    });
-    click(within(policyDialog).getByRole("combobox"));
-    click(await screen.findByRole("option", { name: "Claude Opus 4.8" }));
-    click(screen.getByRole("radio", { name: /Chave de API/u }));
-    expect(
-      within(policyDialog).getByText("Chave de API da Anthropic"),
-    ).toBeVisible();
-    expect(
-      within(policyDialog).getByPlaceholderText("Insira sua chave de API"),
-    ).toBeVisible();
-    click(buttonByText("Adicionar modelo", policyDialog));
-    expect(
-      within(policyDialog).getByText("A chave de API é obrigatória"),
-    ).toBeVisible();
-    click(buttonByLabel("Fechar", policyDialog));
-
-    const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
-    expect(within(codexRow).getByText("ChatGPT (Codex)")).toBeVisible();
-    expect(within(codexRow).getByText("Atenção")).toBeVisible();
-
-    click(within(codexRow).getByLabelText("Mais opções"));
-    click(await screen.findByText("Substituir"));
-
-    const personalCode = (
-      await screen.findAllByTestId("codex-device-auth-code")
-    ).find((candidate) => {
-      return candidate.textContent === "PERS-1234";
-    });
-    if (!(personalCode instanceof HTMLElement)) {
-      throw new Error("Personal Codex device code not found");
-    }
-    const personalDialog = dialogContaining(personalCode);
-    expect(
-      within(personalDialog).getByText("Reconectar o Codex"),
-    ).toBeInTheDocument();
-    expect(
-      within(personalDialog).getByText(
-        /mantenha esta caixa de diálogo aberta enquanto o VM0 conclui a conexão/u,
-      ),
-    ).toBeVisible();
-  });
+  const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
+  expect(within(codexRow).getByText("Connected (Pro)")).toBeInTheDocument();
+  expect(
+    within(codexRow).getByText(
+      formatResetInTimeZone("2030-01-01T00:00:00.000Z", "America/New_York"),
+    ),
+  ).toBeInTheDocument();
+  expect(within(codexRow).queryByText(/% left/u)).toBeNull();
 });

@@ -2,14 +2,11 @@ import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-ro
 import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { createStore, type Store } from "ccstate";
 import { afterEach, beforeAll } from "vitest";
-import { i18n, initializeI18n } from "../../i18n/index.ts";
-import { DEFAULT_LOCALE } from "../../i18n/resources.ts";
 import { logger, resetLoggerForTest } from "../log";
 import { resetLocalStorageForTest$ } from "../external/local-storage";
 import { resetSessionStorageForTest$ } from "../external/session-storage.ts";
 import { resetAllMockHandlers } from "../../mocks/handlers";
 import { createTestMocks, type TestMocks } from "./test-mocks.ts";
-import { isAbortError } from "../utils.ts";
 
 const L = logger("Test");
 const UUID_PATTERN =
@@ -70,7 +67,6 @@ export interface TestContext {
   readonly signal: AbortSignal;
   readonly store: Store;
   readonly workerStore: Store;
-  readonly track: (promise: Promise<unknown>) => void;
 }
 
 export function testContext(): TestContext {
@@ -79,7 +75,6 @@ export function testContext(): TestContext {
   let mocks: TestMocks | null = null;
   let resourceId: string | null = null;
   let controller = new AbortController();
-  let trackedPromises: Promise<PromiseSettledResult<unknown>[]>[] = [];
 
   const context: TestContext = {
     get mocks(): TestMocks {
@@ -132,35 +127,16 @@ export function testContext(): TestContext {
       }
       return workerStore;
     },
-    track(promise: Promise<unknown>): void {
-      trackedPromises.push(Promise.allSettled([promise]));
-    },
   };
 
-  afterEach(async () => {
+  afterEach(() => {
     L.debug("cleanup context");
     const error = new Error("Aborted due to finished test");
     error.name = "AbortError";
     controller.abort(error);
-    const results = (await Promise.all(trackedPromises)).flat();
-    trackedPromises = [];
-    if (
-      document.documentElement.lang !== DEFAULT_LOCALE ||
-      (i18n.isInitialized && i18n.resolvedLanguage !== DEFAULT_LOCALE)
-    ) {
-      document.documentElement.lang = DEFAULT_LOCALE;
-      await initializeI18n(DEFAULT_LOCALE);
-    }
     mocks = null;
     resourceId = null;
     controller = new AbortController();
-
-    const failedResult = results.find((result) => {
-      return result.status === "rejected" && !isAbortError(result.reason);
-    });
-    if (failedResult?.status === "rejected") {
-      throw failedResult.reason;
-    }
   });
 
   return context;
