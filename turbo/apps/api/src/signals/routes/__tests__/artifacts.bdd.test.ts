@@ -395,8 +395,8 @@ describe("video Artifact previews", () => {
     await createRunUploadedFile({
       owner,
       prompt: "create unsupported video artifact",
-      filename: "unsupported-video.webm",
-      contentType: "video/webm",
+      filename: "unsupported-video.mp4",
+      contentType: "video/mp4",
     });
     await flushWaitUntilForTest();
 
@@ -409,7 +409,7 @@ describe("video Artifact previews", () => {
 
     const failedArtifact = await findCatalogArtifact(
       owner.actor,
-      "unsupported-video.webm",
+      "unsupported-video.mp4",
     );
     expect(failedArtifact).toMatchObject({ kind: "file" });
     expect(failedArtifact?.thumbnail).toBeNull();
