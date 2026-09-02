@@ -18,6 +18,7 @@ import {
   workflows,
 } from "@okouai/db/schema/workflow";
 import { apiBackendUrl } from "../../lib/api-backend-url";
+import type { Tx } from "../../lib/db-types";
 import { logger } from "../../lib/log";
 import { testOverride } from "../../lib/singleton";
 import { webUrl } from "../../lib/web-url";
@@ -1666,9 +1667,23 @@ export async function ensureGoogleCalendarWatchForUser(
   }
 
   const prepared = await args.db.transaction(async (tx) => {
+    // Principal replacement owns the account lock before it snapshots and
+    // removes watches, so every new watch target must follow the same order.
+    await lockConnectorAccountTarget(tx, {
+      orgId: args.orgId,
+      userId: args.userId,
+      target: { kind: "builtin", connectorSlug: "google-calendar" },
+    });
+    const lockedAccessResult = await resolveGoogleCalendarAccess(
+      { ...args, db: tx, refreshExpiredToken: false },
+      signal,
+    );
+    if (lockedAccessResult.kind !== "ok") {
+      return lockedAccessResult;
+    }
     await lockGoogleCalendarLifecycle(
       tx,
-      accessResult.access.connectorId,
+      lockedAccessResult.access.connectorId,
       calendarId,
     );
     signal.throwIfAborted();
@@ -1690,7 +1705,7 @@ export async function ensureGoogleCalendarWatchForUser(
     const existing = await loadCalendarWatchState(
       {
         db: tx,
-        connectorId: accessResult.access.connectorId,
+        connectorId: lockedAccessResult.access.connectorId,
         calendarId,
       },
       signal,
@@ -1704,12 +1719,12 @@ export async function ensureGoogleCalendarWatchForUser(
       return { kind: "unchanged" } as const;
     }
 
-    return await prepareCalendarWatch(
+    const watch = await prepareCalendarWatch(
       {
         db: tx,
         orgId: args.orgId,
         userId: args.userId,
-        access: accessResult.access,
+        access: lockedAccessResult.access,
         calendarId,
         previousState: existing,
         resetBaseline:
@@ -1719,6 +1734,9 @@ export async function ensureGoogleCalendarWatchForUser(
       },
       signal,
     );
+    return watch.kind === "prepared"
+      ? { ...watch, access: lockedAccessResult.access }
+      : watch;
   });
   if (prepared.kind === "unchanged") {
     return { kind: "ok" };
@@ -1729,7 +1747,7 @@ export async function ensureGoogleCalendarWatchForUser(
 
   const registered = await activatePreparedCalendarWatch({
     db: args.db,
-    access: accessResult.access,
+    access: prepared.access,
     calendarId,
     prepared: prepared.prepared,
     allowStagedOfficialTarget: args.allowStagedOfficialTarget,
@@ -1896,6 +1914,24 @@ async function decideGoogleCalendarWatchReconciliation(
   },
   signal: AbortSignal,
 ): Promise<GoogleCalendarWatchReconcileDecision> {
+  const observedState = await loadCalendarWatchState(
+    {
+      db: args.db,
+      connectorId: args.connectorId,
+      calendarId: args.calendarId,
+    },
+    signal,
+  );
+  if (!observedState) {
+    return { kind: "unchanged" };
+  }
+  // Keep the account -> lifecycle lock order consistent with connector
+  // replacement and deletion cleanup.
+  await lockConnectorAccountTarget(args.db, {
+    orgId: observedState.orgId,
+    userId: observedState.userId,
+    target: { kind: "builtin", connectorSlug: "google-calendar" },
+  });
   await lockGoogleCalendarLifecycle(args.db, args.connectorId, args.calendarId);
   signal.throwIfAborted();
   const state = await loadCalendarWatchState(
@@ -2296,13 +2332,39 @@ async function loadMissingGoogleCalendarWatchTargets(db: Db): Promise<
 
 export async function prepareGoogleCalendarWatchStopForConnector(
   args: {
-    readonly db: Db;
+    readonly db: Tx;
     readonly orgId: string;
     readonly userId: string;
     readonly connectorId: string;
   },
   signal: AbortSignal,
 ): Promise<PendingGoogleCalendarWatchStop | null> {
+  // Hold both ownership levels until the caller's deletion/replacement
+  // transaction commits, then stop the exact captured channels post-commit.
+  await lockConnectorAccountTarget(args.db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    target: { kind: "builtin", connectorSlug: "google-calendar" },
+  });
+  const targets = await args.db
+    .select({ calendarId: googleCalendarWatchStates.calendarId })
+    .from(googleCalendarWatchStates)
+    .where(
+      and(
+        eq(googleCalendarWatchStates.orgId, args.orgId),
+        eq(googleCalendarWatchStates.userId, args.userId),
+        eq(googleCalendarWatchStates.connectorId, args.connectorId),
+      ),
+    )
+    .orderBy(googleCalendarWatchStates.calendarId);
+  for (const target of targets) {
+    await lockGoogleCalendarLifecycle(
+      args.db,
+      args.connectorId,
+      target.calendarId,
+    );
+  }
+  signal.throwIfAborted();
   const states = await args.db
     .select()
     .from(googleCalendarWatchStates)

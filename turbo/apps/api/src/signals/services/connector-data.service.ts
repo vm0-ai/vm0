@@ -2371,7 +2371,7 @@ async function reprojectConnectedWorkflowAutomations(
 }
 
 async function prepareGoogleCalendarPrincipalReplacementWatchStop(
-  db: Db,
+  db: Tx,
   args: {
     readonly orgId: string;
     readonly userId: string;
