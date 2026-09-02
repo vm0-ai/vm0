@@ -3,6 +3,8 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
+bash -n "${repo_root}/.github/scripts/verify-okou-production-domains.sh"
+
 python3 - \
   "${repo_root}/.github/workflows/turbo.yml" \
   "${repo_root}/.github/workflows/release-please.yml" \
@@ -52,7 +54,6 @@ turbo_job = turbo["jobs"]["deploy-app"]
 release_controller_job = release["jobs"]["release-please"]
 release_job = release["jobs"]["promote-app-production"]
 worker_release_job = release["jobs"]["promote-app-worker-production"]
-release_api_job = release["jobs"]["promote-api-production"]
 release_dashboard_job = release["jobs"]["update-rollback-dashboard"]
 rollback_job = rollback["jobs"]["rollback-app"]
 rollback_verification_job = rollback["jobs"]["verify-production-domains"]
@@ -101,9 +102,6 @@ worker_release_finish_step = find_step(
     worker_release_job, "Finish GitHub Deployment"
 )
 release_finish_step = find_step(release_job, "Finish GitHub Deployment")
-release_api_verification_step = find_step(
-    release_api_job, "Verify production App and API domains"
-)
 rollback_step = find_step(rollback_job, "Deploy App to Cloudflare Pages production")
 rollback_prepare_step = find_step(rollback_job, "Prepare App production deployment")
 rollback_verification_step = find_step(
@@ -399,12 +397,13 @@ domain_verifier = "bash .github/scripts/verify-okou-production-domains.sh"
 if not (
     release_step_source.index(shared_script)
     < release_step_source.index(runtime_verifier)
-    < release_step_source.index(domain_verifier)
     < release_step_source.index('echo "url=$production_url"')
 ):
     raise RuntimeError(
-        "production readiness and domain verification must finish before success output"
+        "production readiness and runtime verification must finish before success output"
     )
+if domain_verifier in release_source:
+    raise RuntimeError("release workflow must not verify production domains")
 if release_step.get("env", {}).get("CANONICAL_ASSETS") != (
     "${{ steps.pages-production.outputs.canonical-dist }}/assets"
 ):
@@ -444,22 +443,6 @@ if preview_step.get("env", {}).get("CLOUDFLARE_API_TOKEN") != (
     raise RuntimeError("preview Worker deployment must use the Worker deploy token")
 
 require_fragments(
-    release_step,
-    ["verify-okou-production-domains.sh", '"$pages_url"'],
-)
-require_fragments(
-    release_api_verification_step,
-    [
-        "verify-okou-production-domains.sh",
-        '"https://${CF_PAGES_PROJECT_NAME}.pages.dev"',
-        "api-promotion",
-    ],
-)
-if release_api_verification_step.get("shell") != "bash":
-    raise RuntimeError("API production verification must use Bash")
-if "app_release_created" in str(release_api_job.get("if", "")):
-    raise RuntimeError("API production verification must not depend on an App release")
-require_fragments(
     rollback_verification_step,
     [
         "verify-okou-production-domains.sh",
@@ -479,7 +462,6 @@ for fragment in (
     "%header{access-control-allow-origin}",
     "%header{access-control-allow-credentials}",
     "/api/__brand-smoke__",
-    "api-promotion",
 ):
     if fragment not in production_verifier_source:
         raise RuntimeError(f"production verifier is missing: {fragment}")

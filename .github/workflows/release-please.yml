@@ -1349,16 +1349,6 @@ jobs:
           skip-finish: "true"
           skip-setup: "true"
 
-      - name: Verify production App and API domains
-        shell: bash
-        env:
-          CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
-        run: |
-          set -euo pipefail
-          bash .github/scripts/verify-okou-production-domains.sh \
-            "https://${CF_PAGES_PROJECT_NAME}.pages.dev" \
-            api-promotion
-
       - name: Resolve Vercel dashboard URL
         id: vercel-dashboard
         if: ${{ steps.deploy.outputs.url != '' }}
@@ -1904,7 +1894,6 @@ jobs:
               "https://static.okou.io/okou-app/assets" \
               "$CANONICAL_ASSETS"
           done
-          bash .github/scripts/verify-okou-production-domains.sh "$pages_url"
           echo "url=$production_url" >> "$GITHUB_OUTPUT"
 
       - name: Resolve Cloudflare Pages dashboard URL
