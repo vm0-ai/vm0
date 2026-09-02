@@ -98,6 +98,7 @@ describe("isFeatureEnabled", () => {
 
   it("should keep Morning Brief default-off with an independent staff rollout and user override", () => {
     const staffOrgId = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+    expect(FeatureSwitchKey.MorningBrief).toBe("morningBrief");
     expect(isFeatureEnabled(FeatureSwitchKey.MorningBrief, {})).toBe(false);
     expect(
       isFeatureEnabled(FeatureSwitchKey.MorningBrief, {
