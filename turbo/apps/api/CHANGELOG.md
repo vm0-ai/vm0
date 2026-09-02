@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.525.6](https://github.com/vm0-ai/vm0/compare/api-v1.525.5...api-v1.525.6) (2026-09-02)
+
+
+### Bug Fixes
+
+* share attachments by their public artifacts url ([#30835](https://github.com/vm0-ai/vm0/issues/30835)) ([7aa3ac3](https://github.com/vm0-ai/vm0/commit/7aa3ac3843232909951bd81d1ee60bacf852a078))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.389.1
+    * @okouai/core bumped to 8.607.1
+    * @okouai/db bumped to 1.230.2
+
 ## [1.525.5](https://github.com/vm0-ai/vm0/compare/api-v1.525.4...api-v1.525.5) (2026-09-01)
 
 
