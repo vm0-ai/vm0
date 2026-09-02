@@ -22,8 +22,6 @@
       integrity="sha384-7sRGMm24rKKTHtMbyppyRU6B5l19DDUT9SODgfPRocth+7AB5N8rXNAMwmvR5RQ1"
     />
     <link vite-ignore rel="manifest" href="/manifest.webmanifest" />
-    <link rel="preconnect" href="https://cdn.vm0.io" crossorigin />
-    <link rel="preconnect" href="https://static.vm0.io" crossorigin />
     <link
       rel="apple-touch-icon"
       sizes="180x180"
@@ -294,6 +292,13 @@
         script.onload = startClerk;
       })();
     </script>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      media="print"
+      onload="this.media = 'all'"
+    />
+    <script type="module" src="/src/main.ts"></script>
   </head>
   <body>
     <div id="root"></div>
@@ -375,13 +380,5 @@
         </div>
       </div>
     </div>
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
-      media="print"
-      fetchpriority="low"
-      onload="this.media = 'all'"
-    />
-    <script type="module" src="/src/main.ts" fetchpriority="low"></script>
   </body>
 </html>
