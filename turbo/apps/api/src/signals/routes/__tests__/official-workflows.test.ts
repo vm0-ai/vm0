@@ -804,6 +804,18 @@ async function syncDeployedCatalog() {
   );
 }
 
+async function syncLegacyConnectorDoctorRelease() {
+  return await syncCatalog(
+    catalog([
+      activeDefinition(
+        "connector-doctor",
+        [scheduledBlueprint()],
+        "Legacy retired Definition instruction.",
+      ),
+    ]),
+  );
+}
+
 function stateClient() {
   return setupApp({
     context,
@@ -1494,6 +1506,7 @@ beforeEach(async () => {
 describe.sequential("Morning Brief preference", () => {
   it("installs idempotently without the Official Workflows feature and preserves identities across disable and re-enable", async () => {
     installCatalogStorageFixture();
+    await syncLegacyConnectorDoctorRelease();
     const synced = await syncDeployedCatalog();
     expect(synced.body).toMatchObject({ outcome: "accepted", diagnostics: [] });
 
@@ -1707,6 +1720,7 @@ describe.sequential("Morning Brief preference", () => {
 
   it("fails closed when generic installations already exist across Agents", async () => {
     installCatalogStorageFixture();
+    await syncLegacyConnectorDoctorRelease();
     await syncDeployedCatalog();
     const { actor } = await workflowBdd.setupWorkflowOrg({
       timezone: "Asia/Shanghai",
@@ -1774,15 +1788,7 @@ describe.sequential("Morning Brief preference", () => {
 describe.sequential("Official Workflow installations", () => {
   it("materializes the deployed Morning Brief while hiding retired Definitions", async () => {
     installCatalogStorageFixture();
-    await syncCatalog(
-      catalog([
-        activeDefinition(
-          "connector-doctor",
-          [scheduledBlueprint()],
-          "Legacy retired Definition instruction.",
-        ),
-      ]),
-    );
+    await syncLegacyConnectorDoctorRelease();
     const synced = await syncDeployedCatalog();
     expect(synced.body).toMatchObject({ outcome: "accepted", diagnostics: [] });
 
