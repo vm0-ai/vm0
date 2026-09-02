@@ -96,6 +96,16 @@ beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
 });
 
+function buttonByLabel(label: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
+  }
+  return button;
+}
+
 async function navigateToChatThread(threadId: string): Promise<void> {
   const link = await waitFor(() => {
     const candidate = document.querySelector<HTMLAnchorElement>(
@@ -2435,11 +2445,9 @@ describe("chat composer models", () => {
     expect(screen.queryByText("Configure model")).not.toBeInTheDocument();
 
     holdProviderReload = true;
-    const accountName = await screen.findByText("Alex Rivera");
-    const accountButton = accountName.closest("button");
-    if (!accountButton) {
-      throw new Error("Account menu trigger not found");
-    }
+    const accountButton = await waitFor(() => {
+      return buttonByLabel("Alex Rivera");
+    });
     await user.click(accountButton);
     const accountMenu = await screen.findByRole("menu");
     await user.click(within(accountMenu).getByText("Settings"));

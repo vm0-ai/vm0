@@ -129,6 +129,18 @@ function getButtonByText(container: ParentNode, text: string): HTMLElement {
   return button;
 }
 
+function getButtonByLabel(container: ParentNode, label: string): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((el) => {
+    return el.getAttribute("aria-label") === label;
+  });
+
+  if (!button) {
+    throw new Error(`Could not find button: ${label}`);
+  }
+
+  return button;
+}
+
 function getLinkByText(container: ParentNode, text: string): HTMLElement {
   const link = queryAllByRoleFast("link", container).find((el) => {
     return el.textContent?.trim() === text;
@@ -163,8 +175,13 @@ async function navigateToAgents(): Promise<void> {
 }
 
 async function openSettingsDialog(): Promise<HTMLElement> {
-  click(await screen.findByText("Test User"));
-  click(await screen.findByText("Settings"));
+  click(
+    await waitFor(() => {
+      return getButtonByLabel(document, "Test User");
+    }),
+  );
+  const menu = await screen.findByRole("menu");
+  click(within(menu).getByText("Settings"));
   return waitFor(() => {
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText("Theme")).toBeInTheDocument();
