@@ -440,6 +440,15 @@ mod tests {
         }
     }
 
+    #[test]
+    fn fractional_cpu_admission_limit_accepts_floor_and_rejects_ceiling() {
+        let budget = ResourceBudget::new(16, u32::MAX, 1.0, 0);
+
+        assert!(budget.try_reserve_inner(14, 1));
+        assert!(budget.try_reserve_inner(1, 1)); // 15 <= 15.89
+        assert!(!budget.try_reserve_inner(1, 1)); // 16 > 15.89
+    }
+
     struct AdmissionParityCase<'a> {
         name: &'a str,
         host_vcpu: u32,
