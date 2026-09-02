@@ -548,7 +548,6 @@ function passthroughEventAutomationSummaryForRequest(
         | "google-calendar-event-updated"
         | "google-calendar-event-cancelled"
         | "google-meet-transcript-generated"
-        | "strapi-entry-published"
         | "chat-run-finished";
     }
   >,
