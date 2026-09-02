@@ -233,10 +233,11 @@ function parseOAuthState(state: string | undefined): ParsedOAuthState | null {
     return { state: signedState, redirectUri: signedState.redirectUri };
   }
 
-  // API versions before this slice emitted unsigned JSON state. Keep reading
-  // it while those API targets remain rollback-capable and their OAuth starts
-  // can still be in flight; #26720 owns the removal gate. A legacy state never
-  // supplies its own redirect URI.
+  // Surface: an old or rollback API can emit unsigned state that returns to a
+  // new API after the Slack browser round trip. The window is that API's
+  // rollback lifetime plus in-flight authorizations. Remove under #26720 once
+  // those API targets are retired and the authorizations drain. A legacy state
+  // never supplies its own redirect URI.
   const legacyState = parseOAuthStateValue(safeJsonParse(state));
   return legacyState ? { state: legacyState, redirectUri: null } : null;
 }
@@ -254,9 +255,10 @@ function oauthStartPublicBrand(
   queryBrand: PublicBrand | undefined,
   trustedBrand: PublicBrand,
 ): PublicBrand {
-  // Before API-domain links shipped, the shared VM0 web origin carried Okou in
-  // this bounded query field. Keep those already-published links working, but
-  // never let the field override the brand established by an API hostname.
+  // Surface: old web/app clients can retain shared-origin start links for
+  // about two days, while a retained old API can still emit them. Remove under
+  // #26720 once the pre-domain client is below the version floor and that API
+  // is no longer serving or rollback-capable. An API hostname always wins.
   return new URL(request.url).origin === getOAuthWebOrigin(request)
     ? (queryBrand ?? trustedBrand)
     : trustedBrand;

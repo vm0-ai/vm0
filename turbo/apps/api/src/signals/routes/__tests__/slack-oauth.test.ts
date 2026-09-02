@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-context";
-import { now } from "../../../lib/time";
+import { mockNow, now, withMockNowForTest } from "../../../lib/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { slackOauthRoutes } from "../slack-oauth";
 import {
@@ -710,6 +710,31 @@ describe("Slack OAuth API routes", () => {
         "/slack/failed",
       );
       expect(context.mocks.slack.oauth.v2.access).not.toHaveBeenCalled();
+    });
+
+    it("rejects an expired signed OAuth state", async () => {
+      const startedAt = Date.parse("2026-09-02T00:00:00.000Z");
+
+      await withMockNowForTest(startedAt, async () => {
+        const start = await appRequest("/api/slack/oauth/install", {
+          origin: API_ORIGIN,
+        });
+        const state = signedOAuthState(
+          new URL(start.headers.get("location")!),
+        ).encoded;
+        mockNow(startedAt + 15 * 60 * 1000 + 1000);
+
+        const response = await appRequest(
+          `/api/integrations/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+          { origin: API_ORIGIN },
+        );
+
+        expect(response.status).toBe(307);
+        const location = new URL(response.headers.get("location")!);
+        expect(location.pathname).toBe("/slack/failed");
+        expect(location.searchParams.get("error")).toBe("Invalid OAuth state.");
+        expect(context.mocks.slack.oauth.v2.access).not.toHaveBeenCalled();
+      });
     });
 
     it.each([
