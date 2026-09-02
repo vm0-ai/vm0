@@ -1111,7 +1111,6 @@ describe("connector account lifecycle routes", () => {
             switches: {
               [FeatureSwitchKey.ConnectorAccounts]: true,
               [FeatureSwitchKey.CustomConnectorMcp]: true,
-              [FeatureSwitchKey.CustomConnectorNoAuth]: true,
             },
           },
         }),
