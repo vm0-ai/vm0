@@ -4652,6 +4652,20 @@
       "teamDescription": "10개 병렬 실행과 더 많은 크레딧으로 팀을 확장하세요."
     }
   },
+  "serviceStatus": {
+    "dismiss": "서비스 업데이트 닫기",
+    "label": "서비스 상태 업데이트",
+    "statuses": {
+      "identified": "문제 확인됨",
+      "incident": "서비스 장애",
+      "investigating": "조사 중",
+      "maintenance": "유지보수",
+      "maintenanceInProgress": "유지보수 진행 중",
+      "maintenanceScheduled": "유지보수 예정",
+      "monitoring": "복구 모니터링 중"
+    },
+    "viewUpdates": "최신 업데이트 보기"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "계정 추가",

@@ -4714,6 +4714,20 @@
       "teamDescription": "Para equipes que executam o {{assistantName}} em escala."
     }
   },
+  "serviceStatus": {
+    "dismiss": "Dispensar atualização de serviço",
+    "label": "Atualizações de status do serviço",
+    "statuses": {
+      "identified": "Problema identificado",
+      "incident": "Incidente de serviço",
+      "investigating": "Investigando",
+      "maintenance": "Manutenção",
+      "maintenanceInProgress": "Manutenção em andamento",
+      "maintenanceScheduled": "Manutenção programada",
+      "monitoring": "Monitorando a recuperação"
+    },
+    "viewUpdates": "Ver atualizações mais recentes"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "Adicionar conta",

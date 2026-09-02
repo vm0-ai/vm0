@@ -4660,6 +4660,20 @@
       "teamDescription": "Skalieren Sie Ihr Team mit 10 parallelen Ausführungen und mehr Credits."
     }
   },
+  "serviceStatus": {
+    "dismiss": "Service-Update schließen",
+    "label": "Service-Statusupdates",
+    "statuses": {
+      "identified": "Problem identifiziert",
+      "incident": "Service-Störung",
+      "investigating": "Wird untersucht",
+      "maintenance": "Wartung",
+      "maintenanceInProgress": "Wartung läuft",
+      "maintenanceScheduled": "Wartung geplant",
+      "monitoring": "Wiederherstellung wird überwacht"
+    },
+    "viewUpdates": "Neueste Updates ansehen"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "Konto hinzufügen",
