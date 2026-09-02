@@ -257,21 +257,18 @@ function SourceChoice({
   icon,
   title,
   onClick,
-  disabled = false,
 }: {
   readonly description: string;
-  readonly detail: string;
+  readonly detail?: string;
   readonly icon: ReactNode;
   readonly title: string;
   readonly onClick: () => void;
-  readonly disabled?: boolean;
 }) {
   return (
     <button
       type="button"
-      disabled={disabled}
       onClick={onClick}
-      className="group flex min-h-32 min-w-0 items-start gap-4 rounded-xl border border-border bg-card p-4 text-left transition-all hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+      className="group flex min-h-32 min-w-0 items-start gap-4 rounded-xl border border-border bg-card p-4 text-left transition-all hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
         {icon}
@@ -283,9 +280,11 @@ function SourceChoice({
         <span className="mt-1 block text-sm leading-5 text-muted-foreground">
           {description}
         </span>
-        <span className="mt-2 block text-xs text-muted-foreground/80">
-          {detail}
-        </span>
+        {detail ? (
+          <span className="mt-2 block text-xs text-muted-foreground/80">
+            {detail}
+          </span>
+        ) : null}
       </span>
     </button>
   );
@@ -336,37 +335,19 @@ function SourceOptions({
         icon={<MonitorUp size={21} />}
         onClick={onRecord}
       />
+      <SourceChoice
+        title={t(($) => {
+          return $.chat.introVideo.source.uploadTitle;
+        })}
+        description={t(($) => {
+          return $.chat.introVideo.source.uploadDescription;
+        })}
+        icon={<Upload size={21} />}
+        onClick={() => {
+          clickFileInput(DOCUMENT_INPUT_SELECTOR);
+        }}
+      />
     </div>
-  );
-}
-
-function SourceUploadButton() {
-  const { t } = useTranslation();
-  return (
-    <button
-      type="button"
-      data-intro-video-upload-source=""
-      onClick={() => {
-        clickFileInput(DOCUMENT_INPUT_SELECTOR);
-      }}
-      className="group mt-3 flex min-h-20 items-center justify-center gap-3 rounded-xl border border-border bg-card px-6 py-4 text-left transition-colors hover:border-foreground/20 hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <span className="grid size-10 place-items-center rounded-full bg-muted text-muted-foreground group-hover:text-primary">
-        <Upload size={19} />
-      </span>
-      <span>
-        <strong className="block text-sm font-semibold text-foreground">
-          {t(($) => {
-            return $.chat.introVideo.source.uploadTitle;
-          })}
-        </strong>
-        <span className="mt-0.5 block text-xs text-muted-foreground">
-          {t(($) => {
-            return $.chat.introVideo.source.uploadDescription;
-          })}
-        </span>
-      </span>
-    </button>
   );
 }
 
@@ -411,7 +392,6 @@ function SourcePage() {
           setStep("desktop-record");
         }}
       />
-      <SourceUploadButton />
       <input
         hidden
         data-intro-video-document-input=""
