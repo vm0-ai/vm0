@@ -197,7 +197,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.Lab]: {
     maintainer: "ethan@vm0.ai",
-    description: "Show the Lab page for toggling experimental features",
+    description: "Show the Lab page for viewing feature rollout stages",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
