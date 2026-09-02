@@ -1567,6 +1567,10 @@ describe("workflows routes", () => {
 
     detachedSetupWorkflowDetailPage(
       `/workflows/${MORNING_BRIEF_WORKFLOW_ID}/automations`,
+      {
+        [FeatureSwitchKey.MorningBrief]: true,
+        [FeatureSwitchKey.OfficialWorkflows]: false,
+      },
     );
 
     await waitFor(() => {
@@ -1578,12 +1582,27 @@ describe("workflows routes", () => {
     expect(screen.queryByText("Instructions")).not.toBeInTheDocument();
   });
 
-  it("hides Official discovery when the feature switch is disabled", async () => {
-    mockWorkflowApis([officialSalesResearch()]);
-    detachedSetupPage({ context, path: "/workflows" });
-    await screen.findByRole("heading", { name: "Workflows" });
-    expect(screen.queryByText("Browse Official")).not.toBeInTheDocument();
-  });
+  it.each([
+    { morningBrief: false, officialWorkflows: false, visible: false },
+    { morningBrief: true, officialWorkflows: false, visible: false },
+    { morningBrief: false, officialWorkflows: true, visible: true },
+    { morningBrief: true, officialWorkflows: true, visible: true },
+  ])(
+    "gates Browse Official with officialWorkflows=$officialWorkflows independently from morningBrief=$morningBrief",
+    async ({ morningBrief, officialWorkflows, visible }) => {
+      mockWorkflowApis([officialSalesResearch()]);
+      detachedSetupPage({
+        context,
+        path: "/workflows",
+        featureSwitches: {
+          [FeatureSwitchKey.MorningBrief]: morningBrief,
+          [FeatureSwitchKey.OfficialWorkflows]: officialWorkflows,
+        },
+      });
+      await screen.findByRole("heading", { name: "Workflows" });
+      expect(screen.queryByText("Browse Official") !== null).toBe(visible);
+    },
+  );
 
   it("keeps active catalog browse and retired direct detail truthful", async () => {
     const active = officialCatalogDetail("active");
