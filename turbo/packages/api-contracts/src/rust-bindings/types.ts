@@ -167,6 +167,25 @@ export const rustTypeBindings = [
         fields: {
           schemaVersion: ["Pi launch contract version."],
           apiFirstTurn: ["Configuration for the API-mediated first turn."],
+          memoryRecall: [
+            "Optional frozen memory-summary selection for API and Sandbox parity.",
+          ],
+        },
+      },
+      {
+        rustTypeName: "PiLaunchConfigMemoryRecall",
+        rustDoc: ["Frozen exact-version Pi memory recall selection."],
+        fields: {
+          memoryStorageId: ["Canonical memory Storage identity."],
+          storageVersionId: ["Exact pinned Storage version identity."],
+          content: ["Authenticated frozen root summary content."],
+          sourceHash: ["Lowercase SHA-256 of the frozen summary bytes."],
+          sourceSize: ["Exact frozen summary byte size."],
+          tokenCount: ["Exact o200k token count of the frozen summary."],
+        },
+        variants: {
+          "no-content": ["The launch epoch intentionally contains no memory."],
+          ready: ["The launch epoch contains an authenticated summary."],
         },
       },
       {

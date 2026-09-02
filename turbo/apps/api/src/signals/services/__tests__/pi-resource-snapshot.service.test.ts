@@ -11,6 +11,8 @@ import { join } from "node:path";
 import {
   CANONICAL_WORKING_DIR,
   PI_AGENT_DIR,
+  PI_MEMORY_ROOT,
+  type PiMemoryRecallSelection,
   type StoredStorageMountEntry,
 } from "@okouai/api-contracts/contracts/runners";
 import { create as createTar } from "tar";
@@ -225,6 +227,50 @@ describe("Pi resource snapshot", () => {
     expect(piResourceSnapshotDigest([first])).not.toBe(
       piResourceSnapshotDigest([{ ...first, versionId: "workspace-v2" }]),
     );
+    expect(piResourceSnapshotDigest([first])).toBe(
+      "6ad98abb45acd479f74a513c58af0940616b1272b043aecf61ec0afb7758b7fa",
+    );
+
+    const noContentA: PiMemoryRecallSelection = {
+      status: "no-content",
+      memoryStorageId: "memory-storage",
+      storageVersionId: "memory-version-a",
+    };
+    const noContentB: PiMemoryRecallSelection = {
+      ...noContentA,
+      storageVersionId: "memory-version-b",
+    };
+    const readyA: PiMemoryRecallSelection = {
+      ...noContentA,
+      status: "ready",
+      content: "frozen memory",
+      sourceHash: "a".repeat(64),
+      sourceSize: 13,
+      tokenCount: 2,
+    };
+    expect(piResourceSnapshotDigest([first], noContentA)).not.toBe(
+      piResourceSnapshotDigest([first]),
+    );
+    expect(piResourceSnapshotDigest([first], noContentA)).not.toBe(
+      piResourceSnapshotDigest([first], noContentB),
+    );
+    expect(piResourceSnapshotDigest([first], noContentA)).not.toBe(
+      piResourceSnapshotDigest([first], readyA),
+    );
+    expect(
+      piResourceSnapshotDigest([first], {
+        ...readyA,
+        content: "changed memory",
+        sourceHash: "b".repeat(64),
+        sourceSize: 14,
+      }),
+    ).not.toBe(piResourceSnapshotDigest([first], readyA));
+    expect(
+      buildPiResourceSnapshot([first], [emptyArchive], readyA),
+    ).toMatchObject({
+      schemaVersion: 2,
+      memoryRecall: readyA,
+    });
 
     const artifact = mount({
       name: "artifact",
@@ -232,7 +278,15 @@ describe("Pi resource snapshot", () => {
       mountPath: `${CANONICAL_WORKING_DIR}/artifacts`,
       archive: emptyArchive,
     });
-    expect(piResourceDiscoveryMounts([first, artifact])).toStrictEqual([first]);
+    const memory = mount({
+      name: "memory",
+      versionId: "memory-version-a",
+      mountPath: PI_MEMORY_ROOT,
+      archive: emptyArchive,
+    });
+    expect(piResourceDiscoveryMounts([first, artifact, memory])).toStrictEqual([
+      first,
+    ]);
   });
 
   it("fails with an unsupported resource error for settings", () => {

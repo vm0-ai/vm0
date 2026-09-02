@@ -86,6 +86,7 @@ export async function runPiApiFirstTurn(
       model: args.model,
       appendSystemPrompt: args.appendSystemPrompt,
       resourceSnapshot: args.resourceSnapshot,
+      onMemoryRecallOutcome: args.onMemoryRecallOutcome,
     });
   } catch (error) {
     throw new UnsupportedPiResourceSnapshotError(
