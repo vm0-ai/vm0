@@ -721,6 +721,8 @@ pub enum FailureReason {
     ContextWindowExceeded,
     /// The provider stopped because an output-token limit was reached.
     OutputTokenLimit,
+    /// The provider rejected the request because of a rate limit.
+    ProviderRateLimited,
     /// The provider reported overload.
     ProviderOverloaded,
     /// The provider stream timed out.
@@ -749,6 +751,7 @@ impl FailureReason {
             Self::TermsAcceptanceRequired => "terms_acceptance_required",
             Self::ContextWindowExceeded => "context_window_exceeded",
             Self::OutputTokenLimit => "output_token_limit",
+            Self::ProviderRateLimited => "provider_rate_limited",
             Self::ProviderOverloaded => "provider_overloaded",
             Self::ProviderStreamTimeout => "provider_stream_timeout",
             Self::ProviderServerError => "provider_server_error",
@@ -1438,6 +1441,28 @@ mod tests {
 
         let json = serde_json::to_value(&diagnostic).unwrap();
         assert_eq!(json["failureReason"], "provider_overloaded");
+
+        let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
+        assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
+    fn failure_diagnostic_serializes_provider_rate_limited_reason() {
+        assert_eq!(
+            FailureReason::ProviderRateLimited.as_str(),
+            "provider_rate_limited"
+        );
+
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("debug failure"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_reason(FailureReason::ProviderRateLimited);
+
+        let json = serde_json::to_value(&diagnostic).unwrap();
+        assert_eq!(json["failureReason"], "provider_rate_limited");
 
         let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
         assert_eq!(round_trip, diagnostic);

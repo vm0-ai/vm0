@@ -1010,6 +1010,68 @@ fn cli_failure_reason_ignores_codex_provider_overloaded_text() {
 }
 
 #[test]
+fn cli_failure_reason_classifies_trusted_codex_rate_limit_retry_exhaustion() {
+    for message in [
+        "exceeded retry limit, last status: 429 Too Many Requests",
+        "Codex failed: exceeded retry limit, last status: 429 Too Many Requests, request id: req_123",
+    ] {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::Codex,
+            FailureDetailSource::CodexJsonl,
+            message,
+        );
+
+        assert_eq!(
+            reason,
+            Some(FailureReason::ProviderRateLimited),
+            "message: {message}"
+        );
+    }
+}
+
+#[test]
+fn cli_failure_reason_rejects_untrusted_codex_rate_limit_retry_exhaustion() {
+    let signature = "exceeded retry limit, last status: 429 Too Many Requests";
+
+    for (framework, source) in [
+        (AgentFramework::Codex, FailureDetailSource::Stderr),
+        (AgentFramework::ClaudeCode, FailureDetailSource::CodexJsonl),
+    ] {
+        let reason = super::classify_cli_failure_reason(framework, source, signature);
+
+        assert_eq!(reason, None, "framework: {framework:?}, source: {source:?}");
+    }
+}
+
+#[test]
+fn codex_rate_limit_reason_is_attached_without_changing_failure_class() {
+    let diagnostic = FailureDiagnostic::new(
+        FailureClass::CliNonzero,
+        AgentFramework::Codex,
+        PromptMetadata::from_prompt("plain prompt"),
+    )
+    .with_cli_exit_code(1)
+    .with_failure_detail_source(FailureDetailSource::CodexJsonl);
+    let failure_message = selected_failure_message(
+        "exceeded retry limit, last status: 429 Too Many Requests, request id: req_123",
+        FailureDetailSource::CodexJsonl,
+        None,
+    );
+
+    let diagnostic = with_cli_failure_reason(diagnostic, &failure_message);
+
+    assert_eq!(diagnostic.failure_class, FailureClass::CliNonzero);
+    assert_eq!(
+        diagnostic.failure_reason,
+        Some(FailureReason::ProviderRateLimited)
+    );
+    assert_eq!(
+        diagnostic.failure_detail_source,
+        Some(FailureDetailSource::CodexJsonl)
+    );
+}
+
+#[test]
 fn cli_failure_reason_classifies_codex_model_capacity() {
     let reason = classify_cli_failure_reason(
         AgentFramework::Codex,

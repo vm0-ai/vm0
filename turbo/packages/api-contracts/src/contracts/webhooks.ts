@@ -473,6 +473,12 @@ const webhookCompleteBodySchema = z
     runId: z.string().min(1, "runId is required"),
     exitCode: z.number(),
     error: z.string().optional(),
+    /** Stable guest-classified reason for a failed execution, when available. */
+    failureReason: z
+      .string()
+      .max(64)
+      .regex(/^[a-z][a-z0-9_]*$/)
+      .optional(),
     lastEventSequence: eventSequenceNumberSchema.optional(),
     // Sandbox id the run executed against. Optional because a run that fails
     // before sandbox creation has no sandbox. Persisted to agent_runs.sandbox_id;

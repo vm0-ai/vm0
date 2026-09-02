@@ -735,10 +735,17 @@ pub(super) async fn run_job(
             cancelled_for_log,
             executor_result.outcome.failure.as_ref(),
         );
+        let failure_reason = executor_result
+            .outcome
+            .failure
+            .as_ref()
+            .and_then(|failure| failure.diagnostic.as_ref())
+            .and_then(|diagnostic| diagnostic.failure_reason);
 
         let completion_payload = CompletionPayload::new(
             run_id,
             executor_result.exit_code,
+            failure_reason,
             executor_result.err.take(),
             sandbox_id,
             reuse_result,

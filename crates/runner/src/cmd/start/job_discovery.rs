@@ -897,6 +897,7 @@ async fn recover_claimed_activation_failure(
             CompleteRequest {
                 run_id,
                 exit_code: execution_failure.exit_code,
+                failure_reason: None,
                 error: Some(execution_failure.error),
                 sandbox_id: None,
                 sandbox_reuse_result: Some(reuse_result),
@@ -2393,6 +2394,7 @@ async fn complete_claimed_failure(
             CompleteRequest {
                 run_id,
                 exit_code: failure.exit_code,
+                failure_reason: None,
                 error: Some(failure.error),
                 sandbox_id: None,
                 sandbox_reuse_result: reuse_result,

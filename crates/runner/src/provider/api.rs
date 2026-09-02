@@ -2063,6 +2063,7 @@ mod tests {
         CompleteRequest {
             run_id,
             exit_code: 0,
+            failure_reason: None,
             error: None,
             sandbox_id: None,
             sandbox_reuse_result: None,
@@ -4000,6 +4001,7 @@ mod tests {
                 &CompleteRequest {
                     run_id: RunId::nil(),
                     exit_code: 1,
+                    failure_reason: None,
                     error: Some("boom".to_string()),
                     sandbox_id: None,
                     sandbox_reuse_result: None,
@@ -4020,7 +4022,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn api_client_complete_serializes_no_reuse_key() {
+    async fn api_client_complete_serializes_failure_reason_and_no_reuse_key() {
         let server = MockServer::start_async().await;
         let run_id = RunId::nil();
         let mock = server
@@ -4030,7 +4032,9 @@ mod tests {
                     .header("authorization", "Bearer sandbox-token")
                     .json_body(serde_json::json!({
                         "runId": run_id,
-                        "exitCode": 0,
+                        "exitCode": 1,
+                        "error": "rate limited",
+                        "failureReason": "provider_rate_limited",
                         "sandboxReuseResult": "noReuseKey",
                         "workspaceReuseResult": "noReuseKey",
                     }));
@@ -4043,8 +4047,11 @@ mod tests {
             "sandbox-token",
             &CompleteRequest {
                 run_id,
-                exit_code: 0,
-                error: None,
+                exit_code: 1,
+                failure_reason: Some(
+                    guest_contracts::diagnostics::FailureReason::ProviderRateLimited,
+                ),
+                error: Some("rate limited".to_string()),
                 sandbox_id: None,
                 sandbox_reuse_result: Some(SandboxReuseResult::NoReuseKey),
                 workspace_reuse_result: Some(WorkspaceReuseResult::NoReuseKey),

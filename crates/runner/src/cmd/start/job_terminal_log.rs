@@ -466,9 +466,11 @@ fn is_info_level_job_failure(diagnostic: &FailureDiagnostic) -> bool {
                     | FailureReason::TermsAcceptanceRequired
                     | FailureReason::ContextWindowExceeded
                     | FailureReason::OutputTokenLimit
+                    | FailureReason::ProviderRateLimited
                     | FailureReason::ProviderOverloaded
                     | FailureReason::ProviderStreamTimeout
                     | FailureReason::ProviderServerError
+                    | FailureReason::ResponseConnectionLost
                     | FailureReason::SafetyPolicyRefusal
                     | FailureReason::ReconnectRequired
                     | FailureReason::UsageLimit
@@ -617,9 +619,11 @@ mod tests {
             FailureReason::TermsAcceptanceRequired,
             FailureReason::ContextWindowExceeded,
             FailureReason::OutputTokenLimit,
+            FailureReason::ProviderRateLimited,
             FailureReason::ProviderOverloaded,
             FailureReason::ProviderStreamTimeout,
             FailureReason::ProviderServerError,
+            FailureReason::ResponseConnectionLost,
             FailureReason::SafetyPolicyRefusal,
             FailureReason::ReconnectRequired,
             FailureReason::UsageLimit,
@@ -743,7 +747,7 @@ mod tests {
             (
                 FailureReason::ResponseConnectionLost,
                 "API Error: Connection lost mid-response. The response above may be incomplete.",
-                Level::ERROR,
+                Level::INFO,
             ),
         ] {
             let diagnostic = FailureDiagnostic::new(
@@ -816,9 +820,11 @@ mod tests {
             FailureReason::TermsAcceptanceRequired,
             FailureReason::ContextWindowExceeded,
             FailureReason::OutputTokenLimit,
+            FailureReason::ProviderRateLimited,
             FailureReason::ProviderOverloaded,
             FailureReason::ProviderStreamTimeout,
             FailureReason::ProviderServerError,
+            FailureReason::ResponseConnectionLost,
             FailureReason::SafetyPolicyRefusal,
             FailureReason::ReconnectRequired,
             FailureReason::UsageLimit,

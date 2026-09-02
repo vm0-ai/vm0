@@ -6,6 +6,10 @@ import {
   type RunResult,
   type RunStatus,
 } from "@okouai/api-contracts/contracts/runs";
+import {
+  isBuiltInModelProviderType,
+  modelProviderTypeSchema,
+} from "@okouai/api-contracts/contracts/model-providers";
 import { webhookCompleteContract } from "@okouai/api-contracts/contracts/webhooks";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
@@ -119,6 +123,7 @@ interface RunRecord {
   readonly userId: string;
   readonly chatThreadId: string | null;
   readonly launchSnapshot: (typeof agentRuns.$inferSelect)["launchSnapshot"];
+  readonly modelProvider: string | null;
 }
 
 interface PreparedCompletion {
@@ -147,6 +152,34 @@ type CompletionTransactionResult =
   | { readonly kind: "committed"; readonly commit: CompletionCommit };
 
 const L = logger("webhook:complete");
+
+function isProviderUpstreamFailureReason(
+  failureReason: string | undefined,
+): boolean {
+  switch (failureReason) {
+    case "provider_rate_limited":
+    case "provider_overloaded":
+    case "provider_stream_timeout":
+    case "provider_server_error":
+    case "response_connection_lost": {
+      return true;
+    }
+    default: {
+      return false;
+    }
+  }
+}
+
+function shouldSuppressNonBuiltInProviderFailureLog(
+  run: RunRecord,
+  failureReason: string | undefined,
+): boolean {
+  if (!isProviderUpstreamFailureReason(failureReason)) {
+    return false;
+  }
+  const providerType = modelProviderTypeSchema.safeParse(run.modelProvider);
+  return providerType.success && !isBuiltInModelProviderType(providerType.data);
+}
 
 function checkpointInputForCompletion(
   input: CompleteAgentRunInput,
@@ -218,6 +251,7 @@ async function loadCompletionRun(
       cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
       chatThreadId: agentRuns.chatThreadId,
       launchSnapshot: agentRuns.launchSnapshot,
+      modelProvider: agentRuns.modelProvider,
     })
     .from(agentRuns)
     .where(
@@ -285,6 +319,7 @@ async function lockCompletionRun(
       cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
       chatThreadId: agentRuns.chatThreadId,
       launchSnapshot: agentRuns.launchSnapshot,
+      modelProvider: agentRuns.modelProvider,
     })
     .from(agentRuns)
     .where(
@@ -816,11 +851,17 @@ export const completeAgentRun$ = command(
           runId: input.body.runId,
           error: commit.transitionError,
         });
-      } else {
+      } else if (
+        !shouldSuppressNonBuiltInProviderFailureLog(
+          commit.run,
+          input.body.failureReason,
+        )
+      ) {
         L.warn("Run failed", {
           runId: input.body.runId,
           exitCode: input.body.exitCode,
           error: commit.transitionError,
+          failureReason: input.body.failureReason,
         });
       }
     } else if (

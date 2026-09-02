@@ -8,6 +8,8 @@ const CODEX_MODEL_CAPACITY_MESSAGE: &str =
     "selected model is at capacity. please try a different model.";
 const CODEX_CONTEXT_WINDOW_EXHAUSTED_PREFIX: &str =
     "codex ran out of room in the model's context window.";
+const CODEX_RATE_LIMIT_RETRY_EXHAUSTED_MESSAGE: &str =
+    "exceeded retry limit, last status: 429 too many requests";
 
 pub(crate) fn is_generic_codex_failure_diagnostic(message: &str) -> bool {
     let message = message.trim().to_ascii_lowercase();
@@ -30,6 +32,26 @@ pub(crate) fn is_codex_context_window_exceeded_message(message: &str) -> bool {
         && (message.contains("start a new thread") || message.contains("start a new conversation"))
         && message.contains("clear earlier history")
         && message.contains("before retrying")
+}
+
+pub(crate) fn is_codex_rate_limit_retry_exhausted_message(message: &str) -> bool {
+    let normalized = message.trim().to_ascii_lowercase();
+    let normalized = normalized
+        .strip_prefix("codex failed:")
+        .unwrap_or(&normalized)
+        .trim();
+    let Some(suffix) = normalized.strip_prefix(CODEX_RATE_LIMIT_RETRY_EXHAUSTED_MESSAGE) else {
+        return false;
+    };
+    suffix.is_empty()
+        || suffix
+            .strip_prefix(", request id: ")
+            .is_some_and(|request_id| {
+                !request_id.is_empty()
+                    && request_id
+                        .chars()
+                        .all(|character| !character.is_ascii_whitespace())
+            })
 }
 
 pub(crate) fn has_exact_codex_oauth_connector(value: &Value) -> bool {
@@ -104,5 +126,35 @@ mod tests {
         assert!(!is_codex_context_window_exceeded_message(
             "The prompt mentions the model context window but did not fail."
         ));
+    }
+
+    #[test]
+    fn codex_rate_limit_retry_exhausted_matcher_accepts_known_shapes() {
+        for message in [
+            "exceeded retry limit, last status: 429 Too Many Requests",
+            "exceeded retry limit, last status: 429 Too Many Requests, request id: req_123-abc",
+            " Codex failed: EXCEEDED RETRY LIMIT, LAST STATUS: 429 TOO MANY REQUESTS, REQUEST ID: req_123 ",
+        ] {
+            assert!(
+                is_codex_rate_limit_retry_exhausted_message(message),
+                "message: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn codex_rate_limit_retry_exhausted_matcher_rejects_near_misses() {
+        for message in [
+            "429 Too Many Requests",
+            "exceeded retry limit, last status: 503 Service Unavailable",
+            "exceeded retry limit, last status: 429 Too Many Requests; try later",
+            "exceeded retry limit, last status: 429 Too Many Requests, request id: ",
+            "the log says exceeded retry limit, last status: 429 Too Many Requests",
+        ] {
+            assert!(
+                !is_codex_rate_limit_retry_exhausted_message(message),
+                "message: {message}"
+            );
+        }
     }
 }

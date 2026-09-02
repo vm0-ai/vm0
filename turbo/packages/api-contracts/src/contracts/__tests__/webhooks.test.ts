@@ -268,6 +268,41 @@ describe("agent completion active input receipts", () => {
   });
 });
 
+describe("agent completion failure reasons", () => {
+  const baseBody = {
+    runId: "00000000-0000-4000-8000-000000000000",
+    exitCode: 1,
+  };
+
+  it("accepts an optional bounded snake-case failure reason", () => {
+    expect(
+      webhookCompleteContract.complete.body.parse({
+        ...baseBody,
+        failureReason: "provider_rate_limited",
+      }),
+    ).toMatchObject({ failureReason: "provider_rate_limited" });
+    expect(
+      webhookCompleteContract.complete.body.safeParse(baseBody).success,
+    ).toBe(true);
+  });
+
+  it("rejects malformed and overlong failure reasons", () => {
+    for (const failureReason of [
+      "ProviderRateLimited",
+      "provider-rate-limited",
+      "_provider_rate_limited",
+      "a".repeat(65),
+    ]) {
+      expect(
+        webhookCompleteContract.complete.body.safeParse({
+          ...baseBody,
+          failureReason,
+        }).success,
+      ).toBe(false);
+    }
+  });
+});
+
 describe("webhook telemetry contract", () => {
   it("preserves metric payload compatibility across Guest and API rollout", () => {
     const runId = "00000000-0000-4000-8000-000000000000";

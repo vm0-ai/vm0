@@ -671,6 +671,9 @@ export const rustTypeBindings = [
           runId: ["Agent run identifier bound to the sandbox token."],
           exitCode: ["Process exit code reported by the caller."],
           error: ["Optional process failure description."],
+          failureReason: [
+            "Optional stable guest-classified execution failure reason.",
+          ],
           lastEventSequence: [
             "Highest contiguous agent event sequence delivered before completion.",
           ],

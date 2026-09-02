@@ -666,6 +666,9 @@ pub mod webhooks {
                 /// Optional process failure description.
                 #[serde(default, skip_serializing_if = "Option::is_none")]
                 pub error: Option<String>,
+                /// Optional stable guest-classified execution failure reason.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub failure_reason: Option<String>,
                 /// Highest contiguous agent event sequence delivered before completion.
                 #[serde(default, skip_serializing_if = "Option::is_none")]
                 pub last_event_sequence: Option<u32>,

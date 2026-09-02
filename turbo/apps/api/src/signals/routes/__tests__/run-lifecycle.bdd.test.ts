@@ -15796,6 +15796,117 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     expect(context.mocks.ably.createTokenRequest).not.toHaveBeenCalled();
   });
 
+  it("suppresses recognized non-built-in provider failures from generic completion logs", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    await seedVm0BuiltInDefaultModelKey();
+    const { actor, agentId } = await entitledRunActor();
+    const upstreamFailureReasons = [
+      "provider_rate_limited",
+      "provider_overloaded",
+      "provider_stream_timeout",
+      "provider_server_error",
+      "response_connection_lost",
+    ] as const;
+    const axiomLevels = [
+      context.mocks.axiomLogging.debug,
+      context.mocks.axiomLogging.info,
+      context.mocks.axiomLogging.warn,
+      context.mocks.axiomLogging.error,
+    ];
+
+    function matchingRunFailedCalls(
+      log: (typeof axiomLevels)[number],
+      runId: string,
+    ) {
+      return log.mock.calls.filter(([message, fields]) => {
+        return (
+          message === "Run failed" &&
+          typeof fields === "object" &&
+          fields !== null &&
+          "runId" in fields &&
+          fields.runId === runId
+        );
+      });
+    }
+
+    async function completeFailure(
+      modelProvider: ModelProviderType,
+      failureReason?: string,
+    ): Promise<{ readonly runId: string; readonly error: string }> {
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt: `fail ${modelProvider} with ${failureReason ?? "no reason"}`,
+        modelProvider,
+      });
+      const error = `provider failure for ${run.runId}`;
+      await webhooks.requestAgentComplete(
+        {
+          runId: run.runId,
+          exitCode: 1,
+          error,
+          ...(failureReason === undefined ? {} : { failureReason }),
+        },
+        {
+          authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
+        },
+        [200],
+      );
+      const failed = await api.readRun(actor, run.runId);
+      expect(failed.status).toBe("failed");
+      expect(failed.error).toBe(error);
+      return { runId: run.runId, error };
+    }
+
+    for (const failureReason of upstreamFailureReasons) {
+      const { runId } = await completeFailure(
+        "anthropic-api-key",
+        failureReason,
+      );
+      for (const level of axiomLevels) {
+        expect(matchingRunFailedCalls(level, runId)).toHaveLength(0);
+      }
+    }
+
+    const builtInFailure = await completeFailure(
+      "built-in",
+      "provider_rate_limited",
+    );
+    const builtInWarnings = matchingRunFailedCalls(
+      context.mocks.axiomLogging.warn,
+      builtInFailure.runId,
+    );
+    expect(builtInWarnings).toHaveLength(1);
+    expect(builtInWarnings[0]?.[1]).toStrictEqual(
+      expect.objectContaining({
+        runId: builtInFailure.runId,
+        exitCode: 1,
+        error: builtInFailure.error,
+        failureReason: "provider_rate_limited",
+        context: "webhook:complete",
+      }),
+    );
+
+    const missingReasonFailure = await completeFailure("anthropic-api-key");
+    expect(
+      matchingRunFailedCalls(
+        context.mocks.axiomLogging.warn,
+        missingReasonFailure.runId,
+      ),
+    ).toHaveLength(1);
+
+    const unrecognizedReasonFailure = await completeFailure(
+      "anthropic-api-key",
+      "provider_future_failure",
+    );
+    expect(
+      matchingRunFailedCalls(
+        context.mocks.axiomLogging.warn,
+        unrecognizedReasonFailure.runId,
+      ),
+    ).toHaveLength(1);
+  });
+
   it("drops queued jobs whose runs reached a terminal state before the claim", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);

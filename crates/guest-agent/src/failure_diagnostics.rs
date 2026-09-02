@@ -269,6 +269,12 @@ fn classify_cli_failure_reason(
     {
         return Some(FailureReason::SafetyPolicyRefusal);
     }
+    if matches!(framework, AgentFramework::Codex)
+        && source == FailureDetailSource::CodexJsonl
+        && failure_patterns::is_codex_rate_limit_retry_exhausted_message(failure_message)
+    {
+        return Some(FailureReason::ProviderRateLimited);
+    }
 
     let normalized = failure_message.to_ascii_lowercase();
     if is_insufficient_credits_error(&normalized) {
