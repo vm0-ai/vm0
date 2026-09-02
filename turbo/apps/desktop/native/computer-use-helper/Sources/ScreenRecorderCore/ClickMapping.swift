@@ -75,7 +75,7 @@ extension CaptureGeometry {
 /// Kept free of CoreGraphics types so the projection below can be exercised
 /// without a capture device or an event tap.
 public struct CapturedClick: Equatable, Sendable {
-    public let ticks: UInt64
+    public let timestampNanoseconds: UInt64
     public let screenX: Double
     public let screenY: Double
     public let button: String
@@ -83,14 +83,14 @@ public struct CapturedClick: Equatable, Sendable {
     public let modifiers: [String]
 
     public init(
-        ticks: UInt64,
+        timestampNanoseconds: UInt64,
         screenX: Double,
         screenY: Double,
         button: String,
         clickCount: Int,
         modifiers: [String]
     ) {
-        self.ticks = ticks
+        self.timestampNanoseconds = timestampNanoseconds
         self.screenX = screenX
         self.screenY = screenY
         self.button = button
@@ -130,7 +130,11 @@ public func projectClicks(
     var droppedOutOfFrame = 0
 
     for click in clicks {
-        guard let offsetMs = timeline.offsetMilliseconds(atTicks: click.ticks) else {
+        guard
+            let offsetMs = timeline.offsetMilliseconds(
+                atNanoseconds: click.timestampNanoseconds
+            )
+        else {
             continue
         }
         guard
@@ -159,33 +163,28 @@ public func projectClicks(
 
 /// Converts `CGEvent` timestamps onto the recording's timeline.
 ///
-/// `CGEvent.timestamp` is mach absolute time in raw tick units, which are not
-/// nanoseconds on every machine; the timebase ratio has to be applied or every
-/// click lands at the wrong moment in the video.
+/// `CGEvent.timestamp` is nanoseconds since startup, the same clock the first
+/// video frame's presentation timestamp is anchored on, so placing a click is a
+/// plain subtraction.
+///
+/// An earlier version declared it "mach absolute time in raw tick units" and
+/// applied the mach timebase ratio on top, which multiplied every offset by
+/// `numer/denom`. That ratio is 1/1 on Intel, so the mistake was invisible
+/// there and only corrupted Apple silicon captures, by ~41.7x.
 public struct ClickTimeline: Equatable, Sendable {
-    public let startTicks: UInt64
-    public let timebaseNumerator: UInt32
-    public let timebaseDenominator: UInt32
+    public let startNanoseconds: UInt64
 
-    public init(
-        startTicks: UInt64,
-        timebaseNumerator: UInt32,
-        timebaseDenominator: UInt32
-    ) {
-        self.startTicks = startTicks
-        self.timebaseNumerator = timebaseNumerator
-        self.timebaseDenominator = max(1, timebaseDenominator)
+    public init(startNanoseconds: UInt64) {
+        self.startNanoseconds = startNanoseconds
     }
 
     /// Milliseconds from the start of the recording, or `nil` for an event that
     /// predates it.
-    public func offsetMilliseconds(atTicks ticks: UInt64) -> Int? {
-        guard ticks >= startTicks else {
+    public func offsetMilliseconds(atNanoseconds nanoseconds: UInt64) -> Int? {
+        guard nanoseconds >= startNanoseconds else {
             return nil
         }
-        let elapsedTicks = Double(ticks - startTicks)
-        let nanoseconds =
-            elapsedTicks * Double(timebaseNumerator) / Double(timebaseDenominator)
-        return Int((nanoseconds / 1_000_000).rounded())
+        let elapsed = Double(nanoseconds - startNanoseconds)
+        return Int((elapsed / 1_000_000).rounded())
     }
 }

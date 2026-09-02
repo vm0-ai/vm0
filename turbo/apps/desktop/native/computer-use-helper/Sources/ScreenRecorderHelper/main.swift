@@ -345,7 +345,6 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     private let sampleQueue = DispatchQueue(label: "ai.okou.recorder.samples")
 
     private let clickTracker = ClickTrackRecorder()
-    private var timebase = mach_timebase_info_data_t()
 
     private var state: RecorderSessionState = .ready
     /// Set when the stream ended without `stop` being called. The session stays
@@ -379,23 +378,22 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         self.outputSize = outputSize
         self.audioPlan = audioPlan
         super.init()
-        mach_timebase_info(&timebase)
     }
 
-    /// Converts a host-clock presentation timestamp back into the raw mach tick
-    /// units `CGEvent.timestamp` reports, so clicks and frames share one origin.
+    /// The host-clock presentation timestamp in nanoseconds, the unit
+    /// `CGEvent.timestamp` reports, so clicks and frames share one origin.
     ///
     /// Returns `nil` rather than a zero anchor when the timestamp cannot be
     /// converted: anchoring at tick 0 would place every click at its offset from
     /// system boot instead of from the recording, which is a confidently wrong
     /// answer. The caller leaves the timeline unset and the track comes out
     /// empty.
-    private func hostTicks(from time: CMTime) -> UInt64? {
+    private func hostNanoseconds(from time: CMTime) -> UInt64? {
         let nanoseconds = CMTimeGetSeconds(time) * 1_000_000_000
-        guard nanoseconds > 0, timebase.numer > 0 else {
+        guard nanoseconds > 0 else {
             return nil
         }
-        return UInt64(nanoseconds * Double(timebase.denom) / Double(timebase.numer))
+        return UInt64(nanoseconds)
     }
 
     var describedGeometry: [String: Any] {
@@ -856,12 +854,8 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             sessionStartedAt = timestamp
             // Anchor clicks on the very same frame the video starts on rather
             // than on when `start` was called, so the two timelines cannot drift.
-            if let startTicks = hostTicks(from: timestamp) {
-                clickTimeline = ClickTimeline(
-                    startTicks: startTicks,
-                    timebaseNumerator: timebase.numer,
-                    timebaseDenominator: timebase.denom
-                )
+            if let startNanoseconds = hostNanoseconds(from: timestamp) {
+                clickTimeline = ClickTimeline(startNanoseconds: startNanoseconds)
             }
         }
         latestSampleAt = timestamp

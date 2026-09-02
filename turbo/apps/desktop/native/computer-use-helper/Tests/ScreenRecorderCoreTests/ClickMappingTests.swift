@@ -101,51 +101,40 @@ struct ClickMappingTests {
 }
 
 struct ClickTimelineTests {
-    /// Apple silicon reports 125/3 nanoseconds per tick rather than 1/1, so a
-    /// timeline that ignores the ratio is wrong by ~40x on those machines.
-    private let appleSilicon = ClickTimeline(
-        startTicks: 1_000,
-        timebaseNumerator: 125,
-        timebaseDenominator: 3
-    )
+    /// A recording that started a little over two days into an uptime, the
+    /// magnitudes a real capture actually produces.
+    private let timeline = ClickTimeline(startNanoseconds: 196_584_887_536_968)
 
+    /// `CGEvent.timestamp` is nanoseconds since startup, not raw mach ticks.
+    /// Applying the mach timebase ratio on top of it scaled every offset by
+    /// `numer/denom`, which is 1/1 on Intel and 125/3 on Apple silicon — so the
+    /// mistake only ever corrupted Apple silicon captures, and by enough that a
+    /// 21 second recording reported click offsets spanning 12 minutes.
     @Test
-    func convertsTicksToMillisecondsUsingTheTimebaseRatio() {
-        // 24_000 ticks * 125/3 = 1_000_000ns = 1ms
-        #expect(appleSilicon.offsetMilliseconds(atTicks: 25_000) == 1)
+    func placesAnEventOnTheRecordingTimeline() {
+        #expect(
+            timeline.offsetMilliseconds(
+                atNanoseconds: 196_584_890_536_968
+            ) == 3_000
+        )
     }
 
     @Test
     func reportsZeroAtTheStartOfTheRecording() {
-        #expect(appleSilicon.offsetMilliseconds(atTicks: 1_000) == 0)
+        #expect(
+            timeline.offsetMilliseconds(
+                atNanoseconds: 196_584_887_536_968
+            ) == 0
+        )
     }
 
     @Test
     func dropsEventsThatPredateTheRecording() {
-        #expect(appleSilicon.offsetMilliseconds(atTicks: 999) == nil)
-    }
-
-    @Test
-    func handlesTheOneToOneTimebase() {
-        let intel = ClickTimeline(
-            startTicks: 0,
-            timebaseNumerator: 1,
-            timebaseDenominator: 1
+        #expect(
+            timeline.offsetMilliseconds(
+                atNanoseconds: 196_584_887_536_967
+            ) == nil
         )
-
-        #expect(intel.offsetMilliseconds(atTicks: 2_000_000) == 2)
-    }
-
-    @Test
-    func neverDividesByAZeroDenominator() {
-        let degenerate = ClickTimeline(
-            startTicks: 0,
-            timebaseNumerator: 1,
-            timebaseDenominator: 0
-        )
-
-        #expect(degenerate.timebaseDenominator == 1)
-        #expect(degenerate.offsetMilliseconds(atTicks: 1_000_000) == 1)
     }
 }
 
@@ -158,15 +147,15 @@ struct ClickProjectionTests {
         scale: 2
     )
     private let outputSize = OutputSize(width: 1920, height: 960)
-    private let timeline = ClickTimeline(
-        startTicks: 24_000,
-        timebaseNumerator: 1,
-        timebaseDenominator: 1
-    )
+    private let timeline = ClickTimeline(startNanoseconds: 24_000)
 
-    private func click(ticks: UInt64, x: Double, y: Double) -> CapturedClick {
+    private func click(
+        atNanoseconds nanoseconds: UInt64,
+        x: Double,
+        y: Double
+    ) -> CapturedClick {
         return CapturedClick(
-            ticks: ticks,
+            timestampNanoseconds: nanoseconds,
             screenX: x,
             screenY: y,
             button: "left",
@@ -178,7 +167,7 @@ struct ClickProjectionTests {
     @Test
     func projectsAClickThatLandedInsideTheRecording() {
         let projection = projectClicks(
-            [click(ticks: 2_024_000, x: 500, y: 250)],
+            [click(atNanoseconds: 2_024_000, x: 500, y: 250)],
             timeline: timeline,
             geometry: display,
             outputSize: outputSize
@@ -201,7 +190,7 @@ struct ClickProjectionTests {
     @Test
     func dropsClicksFromBeforeTheFirstFrameWithoutCountingThemOutOfFrame() {
         let projection = projectClicks(
-            [click(ticks: 1_000, x: 500, y: 250)],
+            [click(atNanoseconds: 1_000, x: 500, y: 250)],
             timeline: timeline,
             geometry: display,
             outputSize: outputSize
@@ -214,7 +203,7 @@ struct ClickProjectionTests {
     @Test
     func countsClicksThatLandedOutsideTheCapturedRegion() {
         let projection = projectClicks(
-            [click(ticks: 2_024_000, x: 1_500, y: 250)],
+            [click(atNanoseconds: 2_024_000, x: 1_500, y: 250)],
             timeline: timeline,
             geometry: display,
             outputSize: outputSize
@@ -228,9 +217,9 @@ struct ClickProjectionTests {
     func separatesTheTwoDropReasonsInOneRecording() {
         let projection = projectClicks(
             [
-                click(ticks: 1_000, x: 500, y: 250),
-                click(ticks: 2_024_000, x: 1_500, y: 250),
-                click(ticks: 3_024_000, x: 500, y: 250),
+                click(atNanoseconds: 1_000, x: 500, y: 250),
+                click(atNanoseconds: 2_024_000, x: 1_500, y: 250),
+                click(atNanoseconds: 3_024_000, x: 500, y: 250),
             ],
             timeline: timeline,
             geometry: display,

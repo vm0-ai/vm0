@@ -124,7 +124,7 @@ final class ClickTrackRecorder: @unchecked Sendable {
         }
         let location = event.location
         let click = CapturedClick(
-            ticks: event.timestamp,
+            timestampNanoseconds: event.timestamp,
             screenX: Double(location.x),
             screenY: Double(location.y),
             button: button,
