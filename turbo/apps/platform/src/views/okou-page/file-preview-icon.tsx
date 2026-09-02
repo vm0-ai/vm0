@@ -1,12 +1,13 @@
 import { i18n } from "../../i18n/index.ts";
 
 const SPREADSHEET_FILE_RE =
-  /\.(csv|tsv|xls|xlsx|xlsm|xlsb|xltx|xltm|ods|numbers|parquet)$/i;
+  /\.(csv|tsv|xls|xlsx|xlsm|xlsb|xlm|xltx|xltm|ods|numbers|parquet)$/i;
 const DATABASE_FILE_RE = /\.(sqlite|sqlite3|db)$/i;
-const PRESENTATION_FILE_RE = /\.(ppt|pptx|pptm|potx|potm|ppsx|ppsm|odp|key)$/i;
+const PRESENTATION_FILE_RE =
+  /\.(ppt|pptx|pptm|pot|potx|potm|pps|ppsx|ppsm|odp|key)$/i;
 const ARCHIVE_FILE_RE = /\.(zip|rar|7z|tar|gz|tgz|bz2|xz)$/i;
 const ARTWORK_FILE_RE = /\.(psd|ai|eps)$/i;
-const DOCUMENT_FILE_RE = /\.(doc|docx|docm|dotx|dotm|odt|rtf|pages|epub)$/i;
+const DOCUMENT_FILE_RE = /\.(doc|docx|docm|dot|dotx|dotm|odt|rtf|pages|epub)$/i;
 const PDF_FILE_RE = /\.pdf$/i;
 const MARKDOWN_FILE_RE = /\.(md|markdown|mdx)$/i;
 const TEXT_FILE_RE = /\.(txt|log|xml|yaml|yml)$/i;
@@ -15,13 +16,14 @@ const HTML_FILE_RE = /\.(html|htm)$/i;
 const AUDIO_FILE_RE = /\.(mp3|mpga|wav|wave|m4a|aac|ogg|oga|opus|flac)$/i;
 const VIDEO_FILE_RE = /\.(mp4|webm|mov|ogv)$/i;
 const SPREADSHEET_EXTENSION_RE =
-  /^(CSV|TSV|XLS|XLSX|XLSM|XLSB|XLTX|XLTM|ODS|NUMBERS|PARQUET)$/;
+  /^(CSV|TSV|XLS|XLSX|XLSM|XLSB|XLM|XLTX|XLTM|ODS|NUMBERS|PARQUET)$/;
 const DATABASE_EXTENSION_RE = /^(SQLITE|SQLITE3|DB)$/;
 const PRESENTATION_EXTENSION_RE =
-  /^(PPT|PPTX|PPTM|POTX|POTM|PPSX|PPSM|ODP|KEY)$/;
+  /^(PPT|PPTX|PPTM|POT|POTX|POTM|PPS|PPSX|PPSM|ODP|KEY)$/;
 const ARCHIVE_EXTENSION_RE = /^(ZIP|RAR|7Z|TAR|GZ|TGZ|BZ2|XZ)$/;
 const ARTWORK_EXTENSION_RE = /^(PSD|AI|EPS)$/;
-const DOCUMENT_EXTENSION_RE = /^(DOC|DOCX|DOCM|DOTX|DOTM|ODT|RTF|PAGES|EPUB)$/;
+const DOCUMENT_EXTENSION_RE =
+  /^(DOC|DOCX|DOCM|DOT|DOTX|DOTM|ODT|RTF|PAGES|EPUB)$/;
 
 type FilePreviewIconMeta = {
   label: string;

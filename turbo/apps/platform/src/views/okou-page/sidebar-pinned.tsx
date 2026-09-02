@@ -54,7 +54,7 @@ import {
   movePinnedAgent$,
   pinnedAgents$,
 } from "../../signals/okou-page/pinned-agents.ts";
-import { unreadAgentIds$ } from "../../signals/chat-page/chat-thread-indicators.ts";
+import { unreadAgentIds$ } from "../../signals/chat-page/chat-thread-indicators-from-worker.ts";
 import { markAgentThreadsRead$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";

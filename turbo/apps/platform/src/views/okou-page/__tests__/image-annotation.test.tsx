@@ -517,7 +517,7 @@ describe("composer image annotation", () => {
    * at. A sentence that only exists in the prompt leaves the model matching
    * words to regions by position, so it has to be printed on the image too.
    */
-  it("prints a mark's note on the image and lets it be placed", async () => {
+  it("prints a mark's note and opens it for editing when clicked", async () => {
     const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context);
     mockAgentChatPage();
@@ -552,13 +552,75 @@ describe("composer image annotation", () => {
     });
     expect(label).toHaveTextContent("Tighten this spacing");
 
-    // Selecting the note hands over its own grip, not the mark's.
-    fireEvent.pointerDown(label, { clientX: 60, clientY: 140, pointerId: 2 });
-    const widthHandle = await screen.findByTestId(
-      "annotation-note-width-handle",
+    // The label is words, so clicking it edits those words. It used to start a
+    // drag instead, and a note could be moved anywhere on the image.
+    await user.click(await screen.findByTestId("annotation-mark-1"));
+    await user.click(label);
+    const field = await screen.findByPlaceholderText(
+      "Say what should change here",
     );
-    expect(widthHandle).toBeInTheDocument();
+    expect(field).toHaveFocus();
+    expect(field).toHaveValue("Tighten this spacing");
+
+    // Opening the note does not hand over the mark's resize grips: it was
+    // clicked to be rewritten, not to reshape the region it describes.
     expect(screen.queryByTestId("annotation-handle-tl")).toBeNull();
+
+    // The swatches still recolour the mark the popover has open, whichever way
+    // it was opened — the popover is one control, not two.
+    await user.click(await screen.findByLabelText("Ink #EC70A5"));
+    await waitFor(() => {
+      expect(screen.getByTestId("annotation-mark-1").style.border).toContain(
+        "#EC70A5",
+      );
+    });
+
+    // And a press on the label leaves it exactly where the placement put it.
+    const before = { top: label.style.top, left: label.style.left };
+    fireEvent.pointerDown(label, { clientX: 60, clientY: 140, pointerId: 2 });
+    fireEvent.pointerMove(
+      await screen.findByTestId("image-annotation-surface"),
+      { clientX: 320, clientY: 280, pointerId: 2 },
+    );
+    fireEvent.pointerUp(label, { clientX: 320, clientY: 280, pointerId: 2 });
+    expect(label.style.top).toBe(before.top);
+    expect(label.style.left).toBe(before.left);
+  });
+
+  /**
+   * Escape backs out one layer at a time. With a note open the shortcut read
+   * the MARK selection, which is null in that state, so Escape took the
+   * "nothing is selected" branch and closed the whole editor — discarding every
+   * mark drawn so far, from the path this feature makes the primary one.
+   */
+  it("keeps the editor open when Escape leaves a note being edited", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context);
+    mockAgentChatPage();
+    mockDraftWithImage([boxMark()]);
+
+    setup(true);
+
+    await user.click(
+      await screen.findByLabelText("Open image preview for billing-page.png"),
+    );
+    await user.click(await screen.findByTestId("artifact-dialog-annotate"));
+    await screen.findByTestId("image-annotation-editor");
+
+    await user.click(await screen.findByTestId("annotation-note-label-mark-1"));
+    const field = await screen.findByPlaceholderText(
+      "Say what should change here",
+    );
+    expect(field).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    // The note closes and the session survives with its marks.
+    await waitFor(() => {
+      expect(screen.queryByTestId("annotation-note-popover")).toBeNull();
+    });
+    expect(screen.getByTestId("image-annotation-editor")).toBeInTheDocument();
+    expect(screen.getByTestId("annotation-mark-1")).toBeInTheDocument();
   });
 
   /**

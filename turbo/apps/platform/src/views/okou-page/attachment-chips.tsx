@@ -104,10 +104,8 @@ import {
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 import { PresentationArtifactViewport } from "./presentation-artifact-viewport.tsx";
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
-import {
-  isOfficeDocumentPreview,
-  OfficeDocumentPreview,
-} from "./office-document-preview.tsx";
+import { OfficeDocumentPreview } from "./office-document-preview.tsx";
+import { isOfficeFilePreview } from "./office-file-preview.ts";
 
 type TextPreviewLoadState = {
   readonly status: "loading" | "loaded" | "error";
@@ -478,7 +476,7 @@ function ArtifactDialogCard({
       className={`flex w-full flex-1 flex-col overflow-hidden ${
         fillHeight
           ? "h-full min-h-0 bg-transparent"
-          : "min-h-[420px] rounded-xl border border-border/70 bg-background shadow-sm"
+          : "zero-chat-card min-h-[420px]"
       }`}
       data-testid="artifact-dialog-card"
     >
@@ -862,7 +860,7 @@ function ArtifactDialogVideoBody({
   return (
     <ArtifactDialogStage centered>
       <div
-        className="w-full overflow-hidden rounded-xl border border-border/70 bg-black shadow-sm"
+        className="zero-chat-frame w-full overflow-hidden bg-black"
         data-testid="artifact-dialog-video-stage"
       >
         {resourceUrl !== null && (
@@ -898,7 +896,7 @@ function ArtifactDialogAudioBody({
 
   return (
     <ArtifactDialogStage centered>
-      <div className="flex w-full max-w-[520px] flex-col items-center gap-4 rounded-xl border border-border/70 bg-background p-6 shadow-sm">
+      <div className="zero-chat-card flex w-full max-w-[520px] flex-col items-center gap-4 p-6">
         <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/70 bg-muted/50 text-muted-foreground">
           <FileMusic size={28} />
         </span>
@@ -945,7 +943,7 @@ function ArtifactDialogDocumentFrameBody({
   return (
     <ArtifactDialogStage scrollable={false}>
       <div
-        className="flex h-full min-h-0 w-full flex-1 overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm"
+        className="zero-chat-card flex h-full min-h-0 w-full flex-1 overflow-hidden"
         data-testid="artifact-dialog-document-frame"
       >
         {src !== null && (
@@ -970,7 +968,7 @@ function ArtifactDialogGenericFileBody({ filename }: { filename: string }) {
   const { t } = useTranslation();
   return (
     <ArtifactDialogStage centered>
-      <div className="flex w-full max-w-md flex-col items-center justify-center gap-3 rounded-xl border border-border/70 bg-background p-6 text-center text-muted-foreground shadow-sm">
+      <div className="zero-chat-card flex w-full max-w-md flex-col items-center justify-center gap-3 p-6 text-center text-muted-foreground">
         <p className="text-sm">
           {t(($) => {
             return $.artifacts.preview.noInline;
@@ -1035,7 +1033,7 @@ function ArtifactDialogBody({
   }
 
   if (preview.kind === "file") {
-    if (officeDocumentPreviewEnabled && isOfficeDocumentPreview(filename)) {
+    if (officeDocumentPreviewEnabled && isOfficeFilePreview(filename)) {
       return (
         <ArtifactDialogOfficeDocumentBody
           filename={filename}
@@ -1546,7 +1544,7 @@ export function FileAttachmentChip({
   const pageSignal = useGet(pageSignal$);
   const officeDocumentPreviewEnabled = useGet(officeDocumentPreviewEnabled$);
   const previewOfficeDocument =
-    officeDocumentPreviewEnabled && isOfficeDocumentPreview(filename);
+    officeDocumentPreviewEnabled && isOfficeFilePreview(filename);
   return (
     <button
       type="button"

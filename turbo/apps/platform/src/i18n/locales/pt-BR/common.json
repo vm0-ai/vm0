@@ -430,13 +430,11 @@
         "agents": "Agentes",
         "artifacts": "Artefatos",
         "connectors": "Conectores",
-        "newChat": "Novo chat",
         "settings": "Configurações",
         "workflows": "Fluxos de trabalho",
         "works": "Onde {{agentName}} trabalha"
       },
       "rail": {
-        "new": "Novo",
         "workflows": "Fluxos de trabalho",
         "works": "Trabalha"
       },
@@ -1852,7 +1850,7 @@
       "noAccounts": "Nenhuma conta ativa está disponível. Reconecte ou repare a instituição primeiro.",
       "oneDay": "24 horas",
       "oneHour": "1 hora",
-      "popupBlocked": "Permita pop-ups para o Zero e tente novamente.",
+      "popupBlocked": "Permita pop-ups para o {{assistantName}} e tente novamente.",
       "readOnly": "Contas, saldos e transações · somente leitura",
       "repair": "Reparar",
       "repairRequired": "{{institution}} precisa de reparo",
@@ -1975,8 +1973,8 @@
       "providerIncompatibleAction": "Iniciar uma nova sessão",
       "providerIncompatiblePrefix": "Esta sessão foi iniciada com um provedor de modelo diferente e não pode continuar com o atual.",
       "recovery": {
-        "capacityDescription": "Este modelo está temporariamente sem capacidade. Tente novamente em alguns minutos ou troque de modelo agora.",
-        "capacityTitle": "O modelo {{framework}} está ocupado",
+        "capacityDescription": "Tente novamente em instantes ou troque de modelo.",
+        "capacityTitle": "Este modelo está ocupado no momento",
         "claudeCode": "Claude Code",
         "codex": "Codex",
         "continue": "Continuar",
@@ -2060,7 +2058,7 @@
       "review": {
         "avatar": "Avatar",
         "heading": "Revise seu vídeo de introdução",
-        "help": "Confirme as escolhas que o Zero receberá na nova conversa",
+        "help": "Confirme as escolhas que o {{assistantName}} receberá na nova conversa",
         "instructions": "Instruções de edição",
         "source": "Fonte",
         "voice": "Voz"
@@ -4716,6 +4714,20 @@
       "teamDescription": "Para equipes que executam o {{assistantName}} em escala."
     }
   },
+  "serviceStatus": {
+    "dismiss": "Dispensar atualização de serviço",
+    "label": "Atualizações de status do serviço",
+    "statuses": {
+      "identified": "Problema identificado",
+      "incident": "Incidente de serviço",
+      "investigating": "Investigando",
+      "maintenance": "Manutenção",
+      "maintenanceInProgress": "Manutenção em andamento",
+      "maintenanceScheduled": "Manutenção programada",
+      "monitoring": "Monitorando a recuperação"
+    },
+    "viewUpdates": "Ver atualizações mais recentes"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "Adicionar conta",
@@ -4843,24 +4855,14 @@
       "title": "Exportar dados"
     },
     "lab": {
-      "actions": {
-        "resetAll": "Redefinir tudo",
-        "resetting": "Redefinindo…"
-      },
-      "description": "Ative ou desative recursos experimentais.",
+      "description": "Veja os recursos por estágio de lançamento.",
       "documentTitle": "Laboratório",
-      "empty": {
-        "description": "Não há recursos experimentais para este responsável.",
-        "title": "Nenhum recurso experimental"
-      },
-      "filters": {
-        "all": "Todos"
-      },
       "groups": {
-        "connectors": "Conectores",
-        "other": "Outros"
+        "alpha": "Alfa",
+        "beta": "Beta",
+        "internal": "Internos",
+        "released": "Lançados"
       },
-      "maintainer": "Responsável: {{maintainer}}",
       "title": "Laboratório"
     },
     "models": {

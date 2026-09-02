@@ -5166,7 +5166,7 @@ function InsufficientCreditsCard() {
   };
 
   return (
-    <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-3 max-w-md">
+    <div className="zero-chat-card max-w-md px-3 py-3">
       <p className="text-[0.9375rem] font-medium text-foreground">{headline}</p>
       <p className="mt-1 text-sm text-muted-foreground">{helper}</p>
       {!canShowBillingAction ? null : shouldStartProCheckout ? (
@@ -5247,6 +5247,13 @@ function AssistantRecoveryActions({
   const hasResetAction = recovery.actions.resetAndTryAgain !== null;
   const hasRetryAction = recovery.actions.tryAgain !== null;
   const hasModelSelectionAction = recovery.kind !== "execution-timeout";
+  // `excludedModel` drops the failed model from the menu, so showing it as the
+  // trigger label would offer a choice the user cannot make. Fall back to the
+  // "Switch model" placeholder until they pick something else.
+  const pickerValue =
+    modelSelection && modelSelection.selectedModel === recovery.failedModel
+      ? null
+      : modelSelection;
   const handleModelSelection = (
     selection: ModelProviderSelection | null,
   ): void => {
@@ -5257,11 +5264,13 @@ function AssistantRecoveryActions({
   };
 
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2">
+    <div className="flex shrink-0 flex-wrap items-center gap-2">
       {hasResetAction && (
         <Button
           type="button"
           size="sm"
+          variant="outline"
+          className="zero-btn-morandi"
           disabled={retrying || resetting}
           onClick={() => {
             detach(resetAndRetry(pageSignal), Reason.DomCallback);
@@ -5275,12 +5284,12 @@ function AssistantRecoveryActions({
       )}
       {hasModelSelectionAction && (
         <ModelProviderPicker
-          value={modelSelection}
+          value={pickerValue}
           onChange={handleModelSelection}
           placeholder={t(($) => {
             return $.chat.errors.recovery.selectModel;
           })}
-          triggerClassName="h-8 w-auto min-w-[9rem] bg-background text-sm"
+          triggerClassName="h-8 w-auto bg-background text-sm"
           compactTrigger
           resolveDefaultSelection={false}
           {...(recovery.failedModel
@@ -5292,16 +5301,24 @@ function AssistantRecoveryActions({
         <Button
           type="button"
           size="sm"
-          variant={hasResetAction ? "outline" : "default"}
+          variant="outline"
+          // Filled neutral leads; the plain outline reads as the secondary
+          // action when reset is also offered.
+          className={hasResetAction ? undefined : "zero-btn-morandi"}
           disabled={retrying || resetting}
           onClick={() => {
             detach(retry(pageSignal), Reason.DomCallback);
           }}
         >
           <AssistantRecoveryActionSpinner loading={retrying} />
-          {t(($) => {
-            return $.chat.errors.recovery.continue;
-          })}
+          {/* A timed-out run is resumed, not retried, and its copy says so. */}
+          {recovery.kind === "execution-timeout"
+            ? t(($) => {
+                return $.chat.errors.recovery.continue;
+              })
+            : t(($) => {
+                return $.chat.errors.recovery.tryAgain;
+              })}
         </Button>
       )}
     </div>
@@ -5328,6 +5345,11 @@ function AssistantErrorRecoveryCard({
         return $.chat.errors.recovery.unavailableTitle;
       });
     }
+    if (recovery.kind === "model-capacity") {
+      return t(($) => {
+        return $.chat.errors.recovery.capacityTitle;
+      });
+    }
     const framework =
       recovery.framework === "codex"
         ? t(($) => {
@@ -5336,19 +5358,12 @@ function AssistantErrorRecoveryCard({
         : t(($) => {
             return $.chat.errors.recovery.claudeCode;
           });
-    return recovery.kind === "usage-limit"
-      ? t(
-          ($) => {
-            return $.chat.errors.recovery.usageTitle;
-          },
-          { framework },
-        )
-      : t(
-          ($) => {
-            return $.chat.errors.recovery.capacityTitle;
-          },
-          { framework },
-        );
+    return t(
+      ($) => {
+        return $.chat.errors.recovery.usageTitle;
+      },
+      { framework },
+    );
   })();
   const description =
     recovery.kind === "execution-timeout"
@@ -5371,31 +5386,31 @@ function AssistantErrorRecoveryCard({
     <div
       role="status"
       data-testid="assistant-error-recovery"
-      className="rounded-xl border border-border/80 bg-muted/35 p-4 text-foreground"
+      className="zero-chat-card flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-2.5 text-foreground"
     >
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
-          {recovery.kind === "usage-limit" ||
-          recovery.kind === "execution-timeout" ? (
-            <Clock size={17} />
-          ) : (
-            <AlertCircle size={17} />
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="font-medium leading-6">{title}</div>
-          <p className="mt-0.5 text-sm leading-5 text-muted-foreground">
-            {description}
-          </p>
-          {resetText && (
-            <div className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
-              <Clock size={14} className="text-muted-foreground" />
-              {resetText}
-            </div>
-          )}
-          <AssistantRecoveryActions recovery={recovery} thread={thread} />
-        </div>
+      <div className="flex min-w-0 flex-[1_1_16rem] items-center gap-2.5">
+        {recovery.kind === "usage-limit" ||
+        recovery.kind === "execution-timeout" ? (
+          <Clock size={16} className="shrink-0 text-primary-950" />
+        ) : (
+          <Coffee size={16} className="shrink-0 text-primary-950" />
+        )}
+        <span className="shrink-0 text-[0.9375rem] font-medium leading-6">
+          {title}
+        </span>
+        {/* The row is the point on desktop; on a phone a half-truncated
+            sentence is worse than none, and the title already carries it. */}
+        <span className="hidden min-w-0 flex-1 truncate text-sm text-muted-foreground sm:block">
+          {description}
+        </span>
+        {resetText && (
+          <span className="hidden shrink-0 items-center gap-1.5 text-sm font-medium text-foreground sm:inline-flex">
+            <Clock size={14} className="text-muted-foreground" />
+            {resetText}
+          </span>
+        )}
       </div>
+      <AssistantRecoveryActions recovery={recovery} thread={thread} />
     </div>
   );
 }

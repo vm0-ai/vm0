@@ -5147,9 +5147,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(launchSnapshot).toStrictEqual({
       exists: true,
       launch_snapshot: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         framework: "claude-code",
         runnerProfile: compatiblePoll.body.job?.experimentalProfile,
+        piMemoryGenerationEnabled: false,
       },
     });
     const claim = await api.claimRunnerJob(created.runId);
@@ -5275,9 +5276,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ).resolves.toStrictEqual({
       exists: true,
       launch_snapshot: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         framework: resumedClaim.cliAgentType,
         runnerProfile: DEFAULT_PROFILE,
+        piMemoryGenerationEnabled: false,
       },
     });
 
@@ -8020,9 +8022,10 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     ).resolves.toStrictEqual({
       exists: true,
       launch_snapshot: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         framework: claim.cliAgentType,
         runnerProfile: poll.body.job?.experimentalProfile,
+        piMemoryGenerationEnabled: false,
       },
     });
     expect(claim.environment).toMatchObject({
@@ -15239,9 +15242,10 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     expect(queuedLaunchSnapshot).toStrictEqual({
       exists: true,
       launch_snapshot: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         framework: "claude-code",
         runnerProfile: DEFAULT_PROFILE,
+        piMemoryGenerationEnabled: false,
       },
     });
     await expect(
@@ -16037,9 +16041,10 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     ).resolves.toStrictEqual({
       exists: true,
       launch_snapshot: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         framework: "claude-code",
         runnerProfile: "vm0/large",
+        piMemoryGenerationEnabled: false,
       },
     });
     const storedFailedRun = await api.readRun(actor, failedRun.runId);

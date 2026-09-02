@@ -1,5 +1,6 @@
 import {
   InMemoryCredentialStore,
+  registerSessionResourceCleanup,
   type ModelThinkingLevel,
 } from "@earendil-works/pi-ai";
 import {
@@ -13,18 +14,32 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import type { PiPreheatedResourceSnapshot } from "./api-types";
-import { piAgentStream, resolvePiAgentModel } from "./model";
+import { piAgentRegisteredStream, resolvePiAgentModel } from "./model";
 import { piPreheatedResourceLoaderOptions } from "./resources";
 import type { PiAgentModelConfig, PiAgentServiceTier } from "./types";
 
+function initializePiSessionResourceRegistry(): void {
+  // Vite's SSR bundle otherwise keeps Pi's registry behind only the lazy
+  // Codex adapter initializer, while AgentSession.dispose() remains eager.
+  // Registering and immediately removing a no-op makes the shared registry's
+  // initialization explicit without changing its cleanup policy.
+  const unregister = registerSessionResourceCleanup(() => {
+    return undefined;
+  });
+  unregister();
+}
+
 function requestScopedPiAgentStream(
   serviceTier: PiAgentServiceTier | undefined,
-): typeof piAgentStream {
+): typeof piAgentRegisteredStream {
   if (serviceTier === undefined) {
-    return piAgentStream;
+    return piAgentRegisteredStream;
   }
   return (model, context, options) => {
-    return piAgentStream(model, context, { ...options, serviceTier });
+    return piAgentRegisteredStream(model, context, {
+      ...options,
+      serviceTier,
+    });
   };
 }
 
@@ -51,7 +66,6 @@ function registeredModelConfig(
         cost: model.cost,
         contextWindow: model.contextWindow,
         maxTokens: model.maxTokens,
-        samplingParams: model.samplingParams,
         headers: model.headers,
         compat: model.compat,
       },
@@ -95,6 +109,7 @@ export async function createPiAgentSessionForRuntime(args: {
   readonly resourceSnapshot?: PiPreheatedResourceSnapshot;
   readonly sessionStartEvent?: CreateAgentSessionFromServicesOptions["sessionStartEvent"];
 }) {
+  initializePiSessionResourceRegistry();
   const model = resolvePiAgentModel(args.model);
   if (!model) {
     throw new Error(

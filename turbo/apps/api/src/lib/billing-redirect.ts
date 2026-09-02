@@ -1,4 +1,5 @@
 import { env } from "./env";
+import { isOkouAppWorkerPreviewHostname } from "./cors";
 
 // Billing redirect URLs (Stripe checkout success/cancel and billing-portal
 // return URLs) are client-supplied and flow straight to Stripe, and the success
@@ -8,9 +9,9 @@ import { env } from "./env";
 //   - any first-party *.vm0.ai production domain (app.vm0.ai, www.vm0.ai, ...),
 //   - okou.ai and its production subdomains,
 //   - *.omby.ai staging and per-branch preview hosts.
-// Preview APIs also accept immutable okou-app.pages.dev deployment hosts used
-// by E2E. Production APIs do not, so checkout session ids cannot be redirected
-// to preview code.
+// Preview APIs also accept immutable okou-app.pages.dev deployment hosts and
+// exact standalone app Worker preview hosts used by E2E. Production APIs do
+// not, so checkout session ids cannot be redirected to preview code.
 // User-hosted content lives on a different registrable domain (sites.vm0.io),
 // so the *.vm0.ai wildcard stays first-party. hostname comes from URL parsing,
 // so the suffix checks cannot be spoofed by paths or userinfo.
@@ -28,6 +29,7 @@ export function billingRedirectAllowed(rawUrl: string): boolean {
     host.endsWith(".omby.ai") ||
     (env("ENV") === "preview" &&
       url.port === "" &&
-      host.endsWith(".okou-app.pages.dev"))
+      (host.endsWith(".okou-app.pages.dev") ||
+        isOkouAppWorkerPreviewHostname(host)))
   );
 }

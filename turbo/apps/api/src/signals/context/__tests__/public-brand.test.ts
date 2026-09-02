@@ -83,6 +83,24 @@ const PUBLIC_BRAND_REQUEST_CASES: readonly PublicBrandRequestCase[] = [
     expected: "okou",
   },
   {
+    name: "uses an Okou app Worker preview origin on the shared preview API domain",
+    environment: "preview",
+    url: "https://pr-22085-api.vm6.ai/__test/public-brand",
+    headers: {
+      origin: "https://pr-22085-app-okou-app-preview.vm0.workers.dev",
+    },
+    expected: "okou",
+  },
+  {
+    name: "ignores a same-named app Worker preview from another account",
+    environment: "preview",
+    url: "https://pr-22085-api.vm6.ai/__test/public-brand",
+    headers: {
+      origin: "https://pr-22085-app-okou-app-preview.attacker.workers.dev",
+    },
+    expected: "vm0",
+  },
+  {
     name: "prefers a trusted VM0 origin over the Desktop product header",
     environment: "production",
     url: "https://api.test/__test/public-brand",

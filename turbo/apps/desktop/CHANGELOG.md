@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.42.11](https://github.com/vm0-ai/vm0/compare/desktop-v0.42.10...desktop-v0.42.11) (2026-09-02)
+
+
+### Bug Fixes
+
+* **desktop:** surface a failed movie writer instead of delivering its first fragment ([#31112](https://github.com/vm0-ai/vm0/issues/31112)) ([27f59d7](https://github.com/vm0-ai/vm0/commit/27f59d77246725b2a39c7c8c9b1453348eaaafdd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.393.0
+
 ## [0.42.10](https://github.com/vm0-ai/vm0/compare/desktop-v0.42.9...desktop-v0.42.10) (2026-09-02)
 
 

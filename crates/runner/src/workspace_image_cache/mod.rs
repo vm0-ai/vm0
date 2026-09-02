@@ -66,6 +66,9 @@ use std::sync::Arc;
 #[cfg(test)]
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+
+use crate::error::{RunnerError, RunnerResult};
 use crate::paths::{HomePaths, RunnerPaths};
 
 mod entry;
@@ -106,6 +109,7 @@ const WORKSPACE_DRIVE_LAYOUT: &str = "workspace-drive-v1";
 const GIB: u64 = 1024 * 1024 * 1024;
 const MIN_FREE_BYTES_FLOOR: u64 = 50 * GIB;
 const MAX_ENTRY_BYTES_CAP: u64 = 32 * GIB;
+const MAX_SESSION_HISTORY_SIDECAR_EXPORT_CONCURRENCY: usize = 4;
 
 #[cfg(test)]
 const TEST_FS_TOTAL_BYTES: u64 = 2_000 * GIB;
@@ -115,6 +119,7 @@ const TEST_FS_AVAILABLE_BYTES: u64 = 1_000 * GIB;
 #[derive(Clone)]
 pub(crate) struct WorkspaceImageCache {
     inner: Arc<WorkspaceImageCacheInner>,
+    session_history_sidecar_export_permits: Arc<Semaphore>,
     #[cfg(test)]
     prepare_lock_test_gate: Option<WorkspaceImagePrepareLockTestGate>,
 }
@@ -220,6 +225,9 @@ impl WorkspaceImageCache {
                     lock_dir,
                     cache_scope: cache_scope.to_owned(),
                 }),
+                session_history_sidecar_export_permits: Arc::new(Semaphore::new(
+                    MAX_SESSION_HISTORY_SIDECAR_EXPORT_CONCURRENCY,
+                )),
             }
         }
     }
@@ -244,8 +252,43 @@ impl WorkspaceImageCache {
                 held_state_root_scan_notify: tokio::sync::Notify::new(),
                 fail_next_session_history_sidecar_metadata_commit: AtomicBool::new(false),
             }),
+            session_history_sidecar_export_permits: Arc::new(Semaphore::new(
+                MAX_SESSION_HISTORY_SIDECAR_EXPORT_CONCURRENCY,
+            )),
             prepare_lock_test_gate: None,
         }
+    }
+
+    fn with_session_history_sidecar_export_capacity(mut self, capacity: usize) -> Self {
+        self.session_history_sidecar_export_permits = Arc::new(Semaphore::new(capacity.max(1)));
+        self
+    }
+
+    pub(crate) fn with_session_history_sidecar_export_host_cpus(self, host_cpus: usize) -> Self {
+        self.with_session_history_sidecar_export_capacity(
+            (host_cpus / 2).clamp(1, MAX_SESSION_HISTORY_SIDECAR_EXPORT_CONCURRENCY),
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_session_history_sidecar_export_capacity_for_test(
+        self,
+        capacity: usize,
+    ) -> Self {
+        self.with_session_history_sidecar_export_capacity(capacity)
+    }
+
+    async fn acquire_session_history_sidecar_export_permit(
+        &self,
+    ) -> RunnerResult<OwnedSemaphorePermit> {
+        Arc::clone(&self.session_history_sidecar_export_permits)
+            .acquire_owned()
+            .await
+            .map_err(|error| {
+                RunnerError::Internal(format!(
+                    "session history sidecar export admission closed unexpectedly: {error}"
+                ))
+            })
     }
 
     pub(crate) fn paths(&self) -> &RunnerPaths {

@@ -258,11 +258,14 @@ export function createBddApi(context: TestContext) {
       );
     },
 
-    async completeOnboarding(nextUser: ApiTestUser) {
+    async completeOnboarding(
+      nextUser: ApiTestUser,
+      body: { readonly timezone?: string } = {},
+    ) {
       return await accept(
         onboardingCompleteClient().complete({
           headers: authenticate(nextUser),
-          body: {},
+          body,
         }),
         [200, 403],
       );

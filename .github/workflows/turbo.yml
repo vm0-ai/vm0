@@ -329,17 +329,17 @@ jobs:
         run: |
           JOB_REF="${{ steps.set-job-ref.outputs.job-ref }}"
           PREVIEW_DOMAIN="${{ vars.PREVIEW_DOMAIN }}"
-          CF_PAGES_PREVIEW_DOMAIN="${{ vars.CF_PAGES_PREVIEW_DOMAIN }}"
+          CF_WORKERS_SUBDOMAIN="${{ vars.CF_WORKERS_SUBDOMAIN }}"
 
-          if [ -n "$PREVIEW_DOMAIN" ] && [ -n "$CF_PAGES_PREVIEW_DOMAIN" ] && [ -n "$JOB_REF" ]; then
+          if [ -n "$PREVIEW_DOMAIN" ] && [ -n "$CF_WORKERS_SUBDOMAIN" ] && [ -n "$JOB_REF" ]; then
             APP_URL="$(bash .github/scripts/resolve-app-preview-url.sh \
               "$JOB_REF" \
-              "$CF_PAGES_PREVIEW_DOMAIN")"
+              "$CF_WORKERS_SUBDOMAIN")"
             {
               echo "app-url=${APP_URL}"
               echo "api-url=https://${JOB_REF}-api.${PREVIEW_DOMAIN}"
             } >> "$GITHUB_OUTPUT"
-            echo "App preview URL uses ${CF_PAGES_PREVIEW_DOMAIN}; API preview uses ${PREVIEW_DOMAIN}"
+            echo "App preview URL uses ${CF_WORKERS_SUBDOMAIN}.workers.dev; API preview uses ${PREVIEW_DOMAIN}"
           else
             {
               echo "app-url="
@@ -1211,14 +1211,14 @@ jobs:
           message: |
             API preview: ${{ steps.api-alias.outputs.url || steps.api-deploy.outputs.url }}
 
-  # Build the canonical Cloudflare app artifact independently of Vercel, then
-  # deploy the verified R2 artifact to a Pages preview branch. The shared
-  # gateway fronts that branch at the stable app preview URL.
+  # Build the canonical app artifact independently of Vercel, publish its
+  # immutable resources to R2, and upload the small application shell with a
+  # standalone Cloudflare Worker version.
   deploy-app:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
-      preview-url: ${{ steps.app-preview.outputs.url }}
+      preview-url: ${{ steps.worker-deploy.outputs.url }}
     concurrency:
       group: deploy-app-${{ github.sha }}
       cancel-in-progress: false
@@ -1238,8 +1238,7 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATIC_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: auto
-      CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
-      CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
+      CF_WORKERS_SUBDOMAIN: ${{ vars.CF_WORKERS_SUBDOMAIN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
       PREVIEW_DOMAIN: ${{ vars.PREVIEW_DOMAIN }}
       R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
@@ -1249,26 +1248,30 @@ jobs:
         with:
           ref: ${{ github.sha }}
 
-      - name: Resolve Cloudflare Pages preview branch
-        id: pages-branch
+      - name: Resolve app Worker preview alias
+        id: worker-alias
         env:
           EVENT_NAME: ${{ github.event_name }}
           MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref || '' }}
           PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number || '' }}
         run: |
-          branch="$(bash .github/scripts/resolve-okou-pages-branch.sh \
+          alias="$(bash .github/scripts/resolve-app-preview-alias.sh \
             "$EVENT_NAME" \
             "$PULL_REQUEST_NUMBER" \
             "$MERGE_GROUP_HEAD_REF")"
-          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "alias=$alias" >> "$GITHUB_OUTPUT"
 
-      - name: Resolve app preview gateway URL
+      - name: Resolve app Worker preview URL
         id: app-preview
         env:
-          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
+          WORKER_PREVIEW_ALIAS: ${{ steps.worker-alias.outputs.alias }}
         run: |
-          : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
-          echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
+          : "${CF_WORKERS_SUBDOMAIN:?CF_WORKERS_SUBDOMAIN variable is required}"
+          job_ref="${WORKER_PREVIEW_ALIAS%-app}"
+          url="$(bash .github/scripts/resolve-app-preview-url.sh \
+            "$job_ref" \
+            "$CF_WORKERS_SUBDOMAIN")"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/toolchain-init
 
@@ -1427,25 +1430,22 @@ jobs:
 
           echo "Artifact ready: ${artifact_uri}/"
 
-      - name: Prepare Cloudflare Pages preview
-        id: pages-preview
+      - name: Prepare standalone app Worker preview
+        id: worker-preview
         env:
           CLERK_PRODUCTION_PRIMARY_APP_DOMAIN: ${{ vars.CLERK_PRODUCTION_PRIMARY_APP_DOMAIN || 'app.vm0.ai' }}
           ARTIFACT_EXISTS: ${{ steps.existing.outputs.exists }}
           ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
-          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
+          WORKER_PREVIEW_ALIAS: ${{ steps.worker-alias.outputs.alias }}
         run: |
           set -euo pipefail
 
-          : "${CF_PAGES_PROJECT_NAME:?CF_PAGES_PROJECT_NAME variable is required}"
           : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
-          : "${PREVIEW_DOMAIN:?PREVIEW_DOMAIN variable is required}"
 
           r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
           artifact_uri="s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}"
-          pages_dist="$(mktemp -d)"
-          job_ref="${PAGES_BRANCH%-app}"
-          api_origin="https://${job_ref}-api.${PREVIEW_DOMAIN}"
+          worker_shell="turbo/apps/app-worker/shell"
+          mkdir "$worker_shell"
 
           if [[ "$ARTIFACT_EXISTS" == "true" ]]; then
             canonical_dist="$(mktemp -d)"
@@ -1460,20 +1460,18 @@ jobs:
             canonical_dist="turbo/apps/platform/dist"
           fi
 
-          bash .github/scripts/prepare-okou-pages-dist.sh \
+          bash .github/scripts/prepare-okou-app-worker-shell.sh \
             "$canonical_dist" \
-            "$pages_dist" \
-            "$api_origin"
+            "$worker_shell"
 
           {
             echo "canonical-dist=$canonical_dist"
-            echo "dist=$pages_dist"
-            echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PROJECT_NAME}.pages.dev"
+            echo "shell=$worker_shell"
           } >> "$GITHUB_OUTPUT"
 
       - name: Publish immutable app assets to R2
         env:
-          CANONICAL_ASSETS: ${{ steps.pages-preview.outputs.canonical-dist }}/assets
+          CANONICAL_ASSETS: ${{ steps.worker-preview.outputs.canonical-dist }}/assets
         run: |
           r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
           bash .github/scripts/publish-okou-app-assets.sh \
@@ -1483,71 +1481,83 @@ jobs:
 
       - name: Verify immutable app assets on CDN
         env:
-          CANONICAL_ASSETS: ${{ steps.pages-preview.outputs.canonical-dist }}/assets
+          CANONICAL_ASSETS: ${{ steps.worker-preview.outputs.canonical-dist }}/assets
         run: |
           bash .github/scripts/verify-okou-app-assets.sh \
             "https://static.okou.io/okou-app/assets" \
             "$CANONICAL_ASSETS"
 
-      - name: Deploy Cloudflare Pages preview
-        id: pages-deploy
+      - name: Deploy standalone app Worker preview
+        id: worker-deploy
         env:
           ARTIFACT_SHA: ${{ steps.artifact.outputs.sha }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
-          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
-          PAGES_DIST: ${{ steps.pages-preview.outputs.dist }}
-          WRANGLER_OUTPUT_FILE_PATH: /tmp/wrangler-pages-output.ndjson
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}
+          EXPECTED_PREVIEW_URL: ${{ steps.app-preview.outputs.url }}
+          WORKER_PREVIEW_ALIAS: ${{ steps.worker-alias.outputs.alias }}
         run: |
           set -euo pipefail
-          bash .github/scripts/deploy-okou-pages.sh \
-            "$PAGES_DIST" \
-            "$CF_PAGES_PROJECT_NAME" \
-            "$PAGES_BRANCH" \
-            "$ARTIFACT_SHA"
+          : "${CLOUDFLARE_API_TOKEN:?CF_API_WORKER_DEPLOY_API_TOKEN secret is required}"
+          : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
+          : "${EXPECTED_PREVIEW_URL:?app Worker preview URL is required}"
 
-          deployment="$(
-            jq --slurp --compact-output \
-              'map(select(.type == "pages-deploy-detailed")) | last' \
-              "$WRANGLER_OUTPUT_FILE_PATH"
-          )"
-          deployment_url="$(jq -r '.url // empty' <<< "$deployment")"
-          deployment_commit="$(jq -r \
-            '.deployment_trigger.metadata.commit_hash // empty' \
-            <<< "$deployment")"
+          # Preview URLs must already be enabled when Wrangler uploads the
+          # version, otherwise Cloudflare does not register --preview-alias.
+          subdomain_response="$(curl \
+            --silent \
+            --show-error \
+            --fail-with-body \
+            --request POST \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/okou-app-preview/subdomain" \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --header "Content-Type: application/json" \
+            --header "Cloudflare-Workers-Script-Api-Date: 2025-08-01" \
+            --data '{"enabled":true,"previews_enabled":true}')"
+          jq --exit-status \
+            '.success == true and .result.enabled == true and .result.previews_enabled == true' \
+            <<< "$subdomain_response" >/dev/null
 
-          if [[ -z "$deployment_url" ]]; then
-            echo "::error::Wrangler did not report a Pages deployment URL"
-            exit 1
+          cd turbo
+
+          # Cloudflare requires a newly-created Worker service to have one
+          # active deployment before version preview URLs can route traffic.
+          # Bootstrap the shared preview service once; subsequent PRs only
+          # upload isolated, alias-pinned versions below.
+          deployments_response="$(curl \
+            --silent \
+            --show-error \
+            --fail-with-body \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/okou-app-preview/deployments" \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --header "Cloudflare-Workers-Script-Api-Date: 2025-08-01")"
+          jq --exit-status \
+            '.success == true and (.result.deployments | type == "array")' \
+            <<< "$deployments_response" >/dev/null
+          if jq --exit-status \
+            '.result.deployments | length == 0' \
+            <<< "$deployments_response" >/dev/null; then
+            pnpm --filter @okouai/app-worker exec wrangler deploy \
+              --env preview \
+              --message "bootstrap app preview Worker (${ARTIFACT_SHA})"
           fi
-          deployment_host="${deployment_url#https://}"
-          deployment_hash="${deployment_host%%.*}"
-          if [[ \
-            ! "$deployment_hash" =~ ^[0-9a-f]{8}$ ||
-            "$deployment_url" != "https://${deployment_hash}.${CF_PAGES_PROJECT_NAME}.pages.dev" \
-          ]]; then
-            echo "::error::Wrangler did not report an immutable Pages deployment URL"
-            exit 1
-          fi
-          if [[ "$deployment_commit" != "$ARTIFACT_SHA" ]]; then
-            echo "::error::Pages deployment commit does not match the app artifact"
-            exit 1
-          fi
 
-          echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
+          pnpm --filter @okouai/app-worker exec wrangler versions upload \
+            --env preview \
+            --preview-alias "$WORKER_PREVIEW_ALIAS" \
+            --message "app artifact ${ARTIFACT_SHA}"
 
-      # A Pages deployment alias can serve the shell and then 404 again while
-      # the edge is still converging, so this step only waits for propagation.
-      # The runtime contract is verified once, by the gateway smoke test below,
-      # which retries to convergence instead of point sampling.
-      - name: Wait for Cloudflare Pages deployment readiness
+          echo "url=$EXPECTED_PREVIEW_URL" >> "$GITHUB_OUTPUT"
+
+      # A Worker version preview can briefly lag its upload at the edge. Wait
+      # for two consecutive shell responses before running the runtime probe.
+      - name: Wait for standalone app Worker readiness
         env:
-          PAGES_URL: ${{ steps.pages-deploy.outputs.url }}
+          WORKER_URL: ${{ steps.worker-deploy.outputs.url }}
         run: |
           set -euo pipefail
 
           document_body="$(mktemp)"
           trap 'rm -f "$document_body"' EXIT
-          application_url="${PAGES_URL%/}/sign-up"
+          application_url="${WORKER_URL%/}/sign-up"
           ready_passes=0
           for attempt in {1..60}; do
             probe_succeeded=false
@@ -1562,60 +1572,46 @@ jobs:
               ((ready_passes += 1))
             else
               ready_passes=0
-              echo "::warning::Cloudflare Pages shell is not ready (attempt ${attempt}/60)"
+              echo "::warning::Standalone app Worker shell is not ready (attempt ${attempt}/60)"
             fi
 
             if (( ready_passes >= 2 )); then
-              echo "Cloudflare Pages shell is ready"
+              echo "Standalone app Worker shell is ready"
               exit 0
             fi
             sleep 2
           done
 
-          echo "::error::Cloudflare Pages shell did not become ready"
+          echo "::error::Standalone app Worker shell did not become ready"
           exit 1
 
-      - name: Smoke test app preview gateway
-        if: steps.app-preview.outputs.url != ''
+      - name: Smoke test standalone app Worker
         env:
-          APP_PREVIEW_URL: ${{ steps.app-preview.outputs.url }}
-          CANONICAL_ASSETS: ${{ steps.pages-preview.outputs.canonical-dist }}/assets
+          APP_PREVIEW_URL: ${{ steps.worker-deploy.outputs.url }}
+          CANONICAL_ASSETS: ${{ steps.worker-preview.outputs.canonical-dist }}/assets
         run: |
           set -euo pipefail
-          response_headers="$(mktemp)"
-          trap 'rm -f "$response_headers"' EXIT
           for attempt in {1..12}; do
-            if curl --fail --silent --show-error \
-              --dump-header "$response_headers" \
-              --output /dev/null \
-              "${APP_PREVIEW_URL}/" && \
-              grep -Eiq '^x-vm0-preview-gateway:[[:space:]]*1[[:space:]]*$' \
-                "$response_headers"; then
-              if bash .github/scripts/verify-okou-app-runtime.sh \
-                "$APP_PREVIEW_URL" \
-                "https://static.okou.io/okou-app/assets" \
-                "$CANONICAL_ASSETS"; then
-                echo "App preview gateway and SharedWorker proxy are ready"
-                exit 0
-              fi
+            if bash .github/scripts/verify-okou-app-runtime.sh \
+              "$APP_PREVIEW_URL" \
+              "https://static.okou.io/okou-app/assets" \
+              "$CANONICAL_ASSETS"; then
+              echo "Standalone app Worker and SharedWorker proxy are ready"
+              exit 0
             fi
-            echo "::warning::App preview gateway or SharedWorker proxy is not ready (attempt ${attempt}/12)"
+            echo "::warning::Standalone app Worker or SharedWorker proxy is not ready (attempt ${attempt}/12)"
             sleep 5
           done
-          echo "::error::${APP_PREVIEW_URL} gateway or SharedWorker proxy did not become ready"
+          echo "::error::${APP_PREVIEW_URL} Worker or SharedWorker proxy did not become ready"
           exit 1
 
-      - name: Record Cloudflare Pages preview
+      - name: Record standalone app Worker preview
         env:
-          APP_PREVIEW_URL: ${{ steps.app-preview.outputs.url }}
-          PAGES_DEPLOYMENT_URL: ${{ steps.pages-deploy.outputs.url }}
-          PAGES_PREVIEW_URL: ${{ steps.pages-preview.outputs.url }}
+          APP_PREVIEW_URL: ${{ steps.worker-deploy.outputs.url }}
+          WORKER_PREVIEW_ALIAS: ${{ steps.worker-alias.outputs.alias }}
         run: |
-          echo "Cloudflare Pages deployment: ${PAGES_DEPLOYMENT_URL}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Cloudflare Pages preview: ${PAGES_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
-          if [[ -n "$APP_PREVIEW_URL" ]]; then
-            echo "App preview gateway: ${APP_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
-          fi
+          echo "App Worker preview alias: ${WORKER_PREVIEW_ALIAS}" >> "$GITHUB_STEP_SUMMARY"
+          echo "App Worker preview: ${APP_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
 
   deploy-stripe-listener:
     runs-on: ubuntu-latest

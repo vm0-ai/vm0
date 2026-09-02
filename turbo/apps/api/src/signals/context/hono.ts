@@ -11,7 +11,10 @@ import { command, computed, state } from "ccstate";
 import type { Context } from "hono";
 import { RedirectStatusCode } from "hono/utils/http-status";
 
-import { allowedCorsOrigin } from "../../lib/cors";
+import {
+  allowedCorsOrigin,
+  isOkouAppWorkerPreviewHostname,
+} from "../../lib/cors";
 import {
   previewAutomationBypassSecret,
   requestHasPreviewAutomationBypassHeaderOrCookie,
@@ -55,7 +58,7 @@ function publicBrandFromTrustedOrigin(
   const hostname = new URL(allowedOrigin).hostname.toLowerCase();
   return OKOU_ORIGIN_ROOT_DOMAINS.some((domain) => {
     return belongsToDomain(hostname, domain);
-  })
+  }) || isOkouAppWorkerPreviewHostname(hostname)
     ? "okou"
     : "vm0";
 }

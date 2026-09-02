@@ -416,13 +416,11 @@
         "agents": "एजेंटों",
         "artifacts": "आर्टिफ़ैक्ट्स",
         "connectors": "कनेक्टर्स",
-        "newChat": "नई चैट",
         "settings": "सेटिंग्स",
         "workflows": "वर्कफ़्लो",
         "works": "जहां {{agentName}} काम करता है"
       },
       "rail": {
-        "new": "नया",
         "workflows": "वर्कफ़्लो",
         "works": "काम करता है"
       },
@@ -1822,7 +1820,7 @@
       "noAccounts": "कोई सक्रिय खाता उपलब्ध नहीं है। पहले संस्थान को फिर से कनेक्ट या सुधारें।",
       "oneDay": "24 घंटे",
       "oneHour": "1 घंटा",
-      "popupBlocked": "Zero के लिए पॉप-अप की अनुमति दें, फिर दोबारा कोशिश करें।",
+      "popupBlocked": "{{assistantName}} के लिए पॉप-अप की अनुमति दें, फिर दोबारा कोशिश करें।",
       "readOnly": "खाते, बैलेंस और लेन-देन · केवल पढ़ने के लिए",
       "repair": "सुधारें",
       "repairRequired": "{{institution}} को सुधारने की आवश्यकता है",
@@ -1944,8 +1942,8 @@
       "providerIncompatibleAction": "नया सत्र प्रारंभ करें",
       "providerIncompatiblePrefix": "यह सत्र एक अलग मॉडल प्रोवाइडर के साथ शुरू किया गया था और इसे वर्तमान के साथ जारी नहीं रखा जा सकता है।",
       "recovery": {
-        "capacityDescription": "यह मॉडल अस्थायी रूप से व्यस्त है। कुछ मिनट बाद फिर कोशिश करें, या अभी मॉडल बदलें।",
-        "capacityTitle": "{{framework}} मॉडल व्यस्त है",
+        "capacityDescription": "थोड़ी देर बाद फिर कोशिश करें, या मॉडल बदलें।",
+        "capacityTitle": "यह मॉडल अभी व्यस्त है",
         "claudeCode": "Claude Code",
         "codex": "Codex",
         "continue": "जारी रखें",
@@ -2027,7 +2025,7 @@
       "review": {
         "avatar": "अवतार",
         "heading": "अपने इंट्रो वीडियो की समीक्षा करें",
-        "help": "नई चैट थ्रेड में Zero को मिलने वाले विकल्पों की पुष्टि करें",
+        "help": "नई चैट थ्रेड में {{assistantName}} को मिलने वाले विकल्पों की पुष्टि करें",
         "instructions": "संपादन निर्देश",
         "source": "स्रोत",
         "voice": "आवाज़"
@@ -4662,6 +4660,20 @@
       "teamDescription": "10 समानांतर रन और अधिक क्रेडिट के साथ अपनी टीम को स्केल करें।"
     }
   },
+  "serviceStatus": {
+    "dismiss": "सेवा अपडेट बंद करें",
+    "label": "सेवा स्थिति अपडेट",
+    "statuses": {
+      "identified": "समस्या की पहचान हो गई",
+      "incident": "सेवा घटना",
+      "investigating": "जांच जारी है",
+      "maintenance": "रखरखाव",
+      "maintenanceInProgress": "रखरखाव जारी है",
+      "maintenanceScheduled": "रखरखाव निर्धारित है",
+      "monitoring": "बहाली की निगरानी जारी है"
+    },
+    "viewUpdates": "नवीनतम अपडेट देखें"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "खाता जोड़ें",
@@ -4788,24 +4800,14 @@
       "title": "डेटा निर्यात करें"
     },
     "lab": {
-      "actions": {
-        "resetAll": "सभी को पुनः तैयार करना",
-        "resetting": "रीसेट किया जा रहा है..."
-      },
-      "description": "प्रयोगात्मक सुविधाओं को चालू या बंद टॉगल करें.",
+      "description": "रोलआउट चरण के अनुसार फ़ीचर स्विच देखें।",
       "documentTitle": "प्रयोगशाला",
-      "empty": {
-        "description": "इस अनुरक्षक के लिए कोई सुविधा स्विच नहीं।",
-        "title": "कोई सुविधा स्विच नहीं"
-      },
-      "filters": {
-        "all": "सभी"
-      },
       "groups": {
-        "connectors": "कनेक्टर्स",
-        "other": "अन्य"
+        "alpha": "अल्फ़ा",
+        "beta": "बीटा",
+        "internal": "आंतरिक",
+        "released": "रिलीज़ किया गया"
       },
-      "maintainer": "अनुरक्षक: {{maintainer}}",
       "title": "प्रयोगशाला"
     },
     "models": {

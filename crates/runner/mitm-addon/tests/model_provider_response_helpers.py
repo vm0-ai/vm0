@@ -329,7 +329,6 @@ def model_provider_flow(
     provider_case: ModelProviderJsonCase,
     *,
     billable: bool = True,
-    observable: bool = True,
     proxy_log_path: Path | None = None,
     run_id: str = "run-abc-123",
 ):
@@ -344,6 +343,6 @@ def model_provider_flow(
         run_id=run_id,
         firewall_billable=billable,
         cli_agent_type=provider_case.cli_agent_type,
-        model_usage_provider=provider_case.model if observable else None,
+        model_usage_provider=provider_case.model,
     )
     return flow

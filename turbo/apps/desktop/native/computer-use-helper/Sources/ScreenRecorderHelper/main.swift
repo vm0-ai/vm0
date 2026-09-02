@@ -86,7 +86,55 @@ private func resolveDisplay(
 
 // MARK: - Source discovery
 
-private func shareableContent(timeout: TimeInterval = 10) throws -> SCShareableContent {
+/// One screen read, kept briefly so the picker and the capture that follows it
+/// do not each pay for their own.
+private final class ShareableContentCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var content: SCShareableContent?
+    private var coversEverySpace = false
+    private var readAt = Date.distantPast
+
+    /// How long one read stays good for. Opening the picker reads the screen
+    /// twice in a row and preparing the capture reads it a third time; a
+    /// window that closes inside this span still fails cleanly as
+    /// `source_lost`, the same as one that closes a moment later.
+    private let lifetime: TimeInterval = 20
+
+    func reuse(onScreenWindowsOnly: Bool) -> SCShareableContent? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let content, Date().timeIntervalSince(readAt) < lifetime else {
+            return nil
+        }
+        // A read of every Space answers a request for the current one too.
+        guard coversEverySpace || onScreenWindowsOnly else {
+            return nil
+        }
+        return content
+    }
+
+    func store(_ content: SCShareableContent, coversEverySpace: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        self.content = content
+        self.coversEverySpace = coversEverySpace
+        readAt = Date()
+    }
+}
+
+private let shareableContentCache = ShareableContentCache()
+
+/// Reads what ScreenCaptureKit can share.
+///
+/// `onScreenWindowsOnly` is off by default because "on screen" means the active
+/// Space: a full-screen editor or browser on its own Space would otherwise be
+/// missing from the picker and unresolvable as a capture target. Callers that
+/// only need displays pass `true`, because the wide read walks every window on
+/// every Space and is the slowest part of starting a recording.
+private func shareableContent(
+    timeout: TimeInterval = 10,
+    onScreenWindowsOnly: Bool = false
+) throws -> SCShareableContent {
     // Asking ScreenCaptureKit without the grant makes the system put its own
     // prompt on screen, every single time. Once the answer is already no, say
     // so instead: the app can then offer Settings rather than the user being
@@ -97,15 +145,14 @@ private func shareableContent(timeout: TimeInterval = 10) throws -> SCShareableC
             message: "Okou needs Screen Recording permission in System Settings"
         )
     }
+    if let cached = shareableContentCache.reuse(onScreenWindowsOnly: onScreenWindowsOnly) {
+        return cached
+    }
     let semaphore = DispatchSemaphore(value: 0)
     let box = ResultBox<SCShareableContent>()
-    // `onScreenWindowsOnly` is off because "on screen" means the active Space.
-    // With it on, a full-screen editor or browser living on its own Space was
-    // missing from the picker, and picking it later could not be resolved
-    // either. `recordableWindows` drops the system chrome the wider list adds.
     SCShareableContent.getExcludingDesktopWindows(
         true,
-        onScreenWindowsOnly: false
+        onScreenWindowsOnly: onScreenWindowsOnly
     ) { content, error in
         box.set(value: content, error: error)
         semaphore.signal()
@@ -130,6 +177,7 @@ private func shareableContent(timeout: TimeInterval = 10) throws -> SCShareableC
             message: "Screen recording permission is not granted"
         )
     }
+    shareableContentCache.store(content, coversEverySpace: !onScreenWindowsOnly)
     return content
 }
 
@@ -332,6 +380,25 @@ private func handleWindowPreviews() throws -> [String: Any] {
 /// cannot drift.
 private let captureFrameRate: CMTimeScale = 30
 
+/// The writer's failure as a message worth reading.
+///
+/// AVFoundation wraps most writer failures as `-11800`, "The operation could
+/// not be completed", and keeps the status that actually says what happened
+/// one level down as the underlying error. Both are spelled out so the tray
+/// shows something that can be looked up rather than only the wrapper.
+private func writerFailureMessage(_ assetWriter: AVAssetWriter) -> String {
+    guard let error = assetWriter.error as NSError? else {
+        return "The screen recording could not be written"
+    }
+    var parts = ["\(error.domain) \(error.code)"]
+    var underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError
+    while let next = underlying {
+        parts.append("\(next.domain) \(next.code)")
+        underlying = next.userInfo[NSUnderlyingErrorKey] as? NSError
+    }
+    return "\(error.localizedDescription) (\(parts.joined(separator: " / ")))"
+}
+
 // MARK: - Capture session
 
 private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput, @unchecked Sendable {
@@ -345,13 +412,12 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     private let sampleQueue = DispatchQueue(label: "ai.okou.recorder.samples")
 
     private let clickTracker = ClickTrackRecorder()
-    private var timebase = mach_timebase_info_data_t()
 
     private var state: RecorderSessionState = .ready
     /// Set when the stream ended without `stop` being called. The session stays
     /// finalizable so the partial recording and its click track are still
     /// written; only the reported status changes.
-    private var externalStop: (reason: StreamStopReason, message: String)?
+    private var externalStop: (reason: StreamStopReason, code: String, message: String)?
     private var stream: SCStream?
     private var writer: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
@@ -360,9 +426,30 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     private var outputURL: URL?
     private var sessionStartedAt: CMTime?
     private var latestSampleAt: CMTime?
+    /// Media time of the last sample written to each track, keyed by the
+    /// writer input, so a sample that would not advance its track is refused
+    /// before the writer refuses it and fails.
+    private var lastWrittenSeconds: [ObjectIdentifier: Double] = [:]
+    /// Where the last sample written to each track ended: its start plus its
+    /// duration for audio, its start for video, which has no extent the
+    /// writer enforces.
+    private var lastWrittenEndSeconds: [ObjectIdentifier: Double] = [:]
+    /// The duration the last sample on each track was written with.
+    private var lastWrittenDurationSeconds: [ObjectIdentifier: Double] = [:]
+    /// The format description each track was started with, keyed by writer
+    /// input. A sample whose format differs from it is the leading way a
+    /// window capture can turn into a sample the writer refuses.
+    private var firstFormat: [ObjectIdentifier: CMFormatDescription] = [:]
     private var clickTimeline: ClickTimeline?
     private var pauseTimeline = PauseTimeline()
     private var startedAtUnixMs = 0
+    /// The window being recorded, when the capture follows one. Its bounds are
+    /// re-read while recording so a click is projected through where the
+    /// window is at that moment, not where it was when the capture was
+    /// prepared; a window capture follows the window wherever it is dragged.
+    private let windowID: CGWindowID?
+    private var currentGeometry: CaptureGeometry
+    private var windowBoundsTimer: DispatchSourceTimer?
 
     init(
         id: String,
@@ -370,32 +457,85 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         configuration: SCStreamConfiguration,
         geometry: CaptureGeometry,
         outputSize: OutputSize,
-        audioPlan: AudioTrackPlan
+        audioPlan: AudioTrackPlan,
+        windowID: CGWindowID? = nil
     ) {
         self.id = id
         self.filter = filter
         self.configuration = configuration
         self.geometry = geometry
+        self.currentGeometry = geometry
         self.outputSize = outputSize
         self.audioPlan = audioPlan
+        self.windowID = windowID
         super.init()
-        mach_timebase_info(&timebase)
     }
 
-    /// Converts a host-clock presentation timestamp back into the raw mach tick
-    /// units `CGEvent.timestamp` reports, so clicks and frames share one origin.
+    private func currentGeometryNow() -> CaptureGeometry {
+        lock.lock()
+        defer { lock.unlock() }
+        return currentGeometry
+    }
+
+    /// Follows the recorded window's bounds while recording. Four times a
+    /// second is well inside how fast a window can be dragged and clicked.
+    private func startWindowBoundsTracking() {
+        guard let windowID else {
+            return
+        }
+        let timer = DispatchSource.makeTimerSource(queue: sampleQueue)
+        timer.schedule(deadline: .now(), repeating: .milliseconds(250))
+        timer.setEventHandler { [weak self] in
+            self?.refreshWindowBounds(windowID)
+        }
+        timer.resume()
+        lock.lock()
+        windowBoundsTimer = timer
+        lock.unlock()
+    }
+
+    private func stopWindowBoundsTracking() {
+        lock.lock()
+        let timer = windowBoundsTimer
+        windowBoundsTimer = nil
+        lock.unlock()
+        timer?.cancel()
+    }
+
+    private func refreshWindowBounds(_ windowID: CGWindowID) {
+        guard
+            let list = CGWindowListCopyWindowInfo(.optionIncludingWindow, windowID)
+                as? [[String: Any]],
+            let info = list.first,
+            let boundsDictionary = info[kCGWindowBounds as String] as? NSDictionary,
+            let bounds = CGRect(dictionaryRepresentation: boundsDictionary as CFDictionary)
+        else {
+            return
+        }
+        lock.lock()
+        currentGeometry = CaptureGeometry(
+            originX: bounds.origin.x,
+            originY: bounds.origin.y,
+            widthPoints: bounds.width,
+            heightPoints: bounds.height,
+            scale: geometry.scale
+        )
+        lock.unlock()
+    }
+
+    /// A host-clock presentation timestamp in the nanoseconds `CGEvent.timestamp`
+    /// reports, so clicks and frames share one origin.
     ///
-    /// Returns `nil` rather than a zero anchor when the timestamp cannot be
-    /// converted: anchoring at tick 0 would place every click at its offset from
-    /// system boot instead of from the recording, which is a confidently wrong
-    /// answer. The caller leaves the timeline unset and the track comes out
-    /// empty.
-    private func hostTicks(from time: CMTime) -> UInt64? {
+    /// Returns `nil` rather than a zero anchor when the timestamp is unusable:
+    /// anchoring at 0 would place every click at its offset from system boot
+    /// instead of from the recording, which is a confidently wrong answer. The
+    /// caller leaves the timeline unset and the track comes out empty.
+    private func hostNanoseconds(from time: CMTime) -> UInt64? {
         let nanoseconds = CMTimeGetSeconds(time) * 1_000_000_000
-        guard nanoseconds > 0, timebase.numer > 0 else {
+        guard nanoseconds.isFinite, nanoseconds > 0 else {
             return nil
         }
-        return UInt64(nanoseconds * Double(timebase.denom) / Double(timebase.numer))
+        return UInt64(nanoseconds)
     }
 
     var describedGeometry: [String: Any] {
@@ -436,9 +576,14 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         try? FileManager.default.removeItem(at: url)
 
         let assetWriter = try AVAssetWriter(outputURL: url, fileType: .mp4)
-        // Fragmented output keeps the file playable if this process dies mid
-        // capture; an unfinalized plain MP4 would be unreadable.
-        assetWriter.movieFragmentInterval = CMTime(seconds: 2, preferredTimescale: 600)
+        // Written as one movie, finalized at stop, rather than in two-second
+        // fragments. Fragments were meant to keep the file playable if this
+        // process died mid-capture, but nothing recovers such a file, and
+        // closing a fragment failed whenever the video track had no frame in
+        // it: a window capture only produces a frame when the window changes,
+        // so a still window left every fragment after the first empty, and the
+        // writer failed at the boundary. Every recording of a still window
+        // ended a few seconds in.
 
         let video = AVAssetWriterInput(
             mediaType: .video,
@@ -526,16 +671,34 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         lock.lock()
         startedAtUnixMs = Int(Date().timeIntervalSince1970 * 1000)
         lock.unlock()
+        clickTracker.geometryProvider = { [weak self] in
+            self?.currentGeometryNow()
+        }
         clickTracker.start()
+        startWindowBoundsTracking()
+    }
+
+    /// Where the capture stands right now on the recording's clock.
+    ///
+    /// Read from the host clock, which is the clock ScreenCaptureKit stamps
+    /// frames with, rather than from the last written sample: nothing is
+    /// written while paused, so that sample's time froze at the moment of the
+    /// pause and made every pause span empty. The movie then kept a frozen
+    /// stretch the length of the pause, clicks made during it were kept, and
+    /// every click after it sat that much later than the picture.
+    private func captureSecondsNowLocked() -> Double? {
+        guard let start = sessionStartedAt else {
+            return nil
+        }
+        let now = CMClockGetTime(CMClockGetHostTimeClock())
+        return max(0, CMTimeGetSeconds(CMTimeSubtract(now, start)))
     }
 
     func pause() throws {
         try transition(.pause)
         lock.lock()
-        if let start = sessionStartedAt, let latest = latestSampleAt {
-            pauseTimeline.pause(
-                at: max(0, CMTimeGetSeconds(CMTimeSubtract(latest, start)))
-            )
+        if let seconds = captureSecondsNowLocked() {
+            pauseTimeline.pause(at: seconds)
         }
         lock.unlock()
     }
@@ -543,10 +706,8 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     func resume() throws {
         try transition(.resume)
         lock.lock()
-        if let start = sessionStartedAt, let latest = latestSampleAt {
-            pauseTimeline.resume(
-                at: max(0, CMTimeGetSeconds(CMTimeSubtract(latest, start)))
-            )
+        if let seconds = captureSecondsNowLocked() {
+            pauseTimeline.resume(at: seconds)
         }
         lock.unlock()
     }
@@ -556,6 +717,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     func discard() throws {
         try transition(.discard)
         clickTracker.stop()
+        stopWindowBoundsTracking()
 
         lock.lock()
         let captureStream = stream
@@ -587,6 +749,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     func stop() throws -> [String: Any] {
         try transition(.stop)
         clickTracker.stop()
+        stopWindowBoundsTracking()
 
         lock.lock()
         let captureStream = stream
@@ -620,12 +783,16 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         systemAudio?.markAsFinished()
         microphone?.markAsFinished()
 
+        var writerFailure: String?
         if let assetWriter {
             let semaphore = DispatchSemaphore(value: 0)
             assetWriter.finishWriting {
                 semaphore.signal()
             }
             _ = semaphore.wait(timeout: .now() + 30)
+            if assetWriter.status == .failed {
+                writerFailure = writerFailureMessage(assetWriter)
+            }
         }
 
         guard let url else {
@@ -651,7 +818,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             startedAtUnixMs: startedAt
         )
 
-        return [
+        var result: [String: Any] = [
             "videoPath": url.path,
             "clickTrackPath": clickTrackPath,
             "durationMs": Int(duration * 1000),
@@ -659,6 +826,19 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             "width": outputSize.width,
             "height": outputSize.height,
         ]
+        // The file is handed back either way — it holds whatever was written
+        // before the failure — but the caller must not deliver it as a finished
+        // recording. Reported here as well as through `recorder.state`, because
+        // a stop that races the poll would otherwise ship it.
+        lock.lock()
+        let failure = externalStop.flatMap { $0.reason == .failed ? $0 : nil }
+        lock.unlock()
+        if let writerFailure {
+            result["failure"] = ["code": "capture_failed", "message": writerFailure]
+        } else if let failure {
+            result["failure"] = ["code": failure.code, "message": failure.message]
+        }
+        return result
     }
 
     private func writeClickTrack(
@@ -677,7 +857,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
                     geometry: geometry,
                     outputSize: outputSize
                 )
-            } ?? (clicks: [], droppedOutOfFrame: 0, warnings: [])
+            } ?? (clicks: [], pointerEvents: [], droppedOutOfFrame: 0, warnings: [])
 
         let payload: [String: Any] = [
             "version": 1,
@@ -692,6 +872,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
                 "capture": describedGeometry,
             ],
             "clicks": projected.clicks,
+            "pointerEvents": projected.pointerEvents,
             "droppedOutOfFrameClicks": projected.droppedOutOfFrame,
             "warnings": projected.warnings,
         ]
@@ -712,7 +893,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         ]
         if let externalStop, externalStop.reason == .failed {
             described["error"] = [
-                "code": "source_lost",
+                "code": externalStop.code,
                 "message": externalStop.message,
             ]
         }
@@ -759,13 +940,14 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         return systemAudioInput
     }
 
-    /// Rewrites a sample's presentation time without touching its payload.
+    /// Rewrites a sample's timing without touching its payload.
     private func retimedSampleBuffer(
         _ sampleBuffer: CMSampleBuffer,
-        to presentationTime: CMTime
+        to presentationTime: CMTime,
+        duration: CMTime
     ) -> CMSampleBuffer? {
         var timing = CMSampleTimingInfo(
-            duration: CMSampleBufferGetDuration(sampleBuffer),
+            duration: duration,
             presentationTimeStamp: presentationTime,
             decodeTimeStamp: .invalid
         )
@@ -790,16 +972,52 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         return max(0, captureSeconds - pauseTimeline.pausedSecondsBefore(captureSeconds))
     }
 
+    /// Why the first frame cannot go on the video track, or `nil` when it can.
+    private func frameSizeMismatch(_ sampleBuffer: CMSampleBuffer) -> String? {
+        guard let image = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+            return "The screen capture delivered a frame with no image"
+        }
+        let width = CVPixelBufferGetWidth(image)
+        let height = CVPixelBufferGetHeight(image)
+        guard width == outputSize.width, height == outputSize.height else {
+            return
+                "The screen capture delivered \(width)×\(height) frames "
+                + "but the recording was prepared for \(outputSize.width)×\(outputSize.height)"
+        }
+        return nil
+    }
+
+    /// Whether a screen sample is a finished picture rather than a status
+    /// marker. A sample without the attachment at all is treated as complete:
+    /// that is how a frame arrives from a filter the system does not annotate.
+    private func isCompleteFrame(_ sampleBuffer: CMSampleBuffer) -> Bool {
+        guard
+            let attachments = CMSampleBufferGetSampleAttachmentsArray(
+                sampleBuffer,
+                createIfNecessary: false
+            ) as? [[SCStreamFrameInfo: Any]],
+            let rawStatus = attachments.first?[.status] as? Int,
+            let status = SCFrameStatus(rawValue: rawStatus)
+        else {
+            return true
+        }
+        return status == .complete
+    }
+
     /// Records that the stream ended on its own.
     ///
     /// Deliberately does not move to a terminal state: the writer still holds
     /// frames that were captured before the stream ended, and discarding them
     /// would throw away the recording the user just made. `stop` finalizes as
     /// usual, and the reported status tells the caller to run it.
-    private func noteExternalStop(reason: StreamStopReason, message: String) {
+    private func noteExternalStop(
+        reason: StreamStopReason,
+        code: String = "source_lost",
+        message: String
+    ) {
         lock.lock()
         if externalStop == nil {
-            externalStop = (reason, message)
+            externalStop = (reason, code, message)
         }
         let captureStream = stream
         stream = nil
@@ -807,6 +1025,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         captureStream?.stopCapture { _ in }
         // The tap outlives the stream unless it is torn down here.
         clickTracker.stop()
+        stopWindowBoundsTracking()
     }
 
     // MARK: SCStreamDelegate
@@ -838,6 +1057,13 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         else {
             return
         }
+        // ScreenCaptureKit also delivers frames that carry no new picture —
+        // idle, blank, and the bookkeeping frames around start and stop. They
+        // are not images the encoder can take, and handing one to the writer
+        // is a way to fail it. Only a complete frame goes on.
+        if type == .screen, !isCompleteFrame(sampleBuffer) {
+            return
+        }
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
 
         lock.lock()
@@ -852,46 +1078,200 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
                 lock.unlock()
                 return
             }
+            // A frame of the wrong size fails the writer with nothing but
+            // "the operation could not be completed". Refusing it here names
+            // both sizes instead, before the session is anchored on it.
+            if let mismatch = frameSizeMismatch(sampleBuffer) {
+                lock.unlock()
+                noteExternalStop(reason: .failed, code: "capture_failed", message: mismatch)
+                return
+            }
             assetWriter.startSession(atSourceTime: timestamp)
             sessionStartedAt = timestamp
             // Anchor clicks on the very same frame the video starts on rather
             // than on when `start` was called, so the two timelines cannot drift.
-            if let startTicks = hostTicks(from: timestamp) {
-                clickTimeline = ClickTimeline(
-                    startTicks: startTicks,
-                    timebaseNumerator: timebase.numer,
-                    timebaseDenominator: timebase.denom
-                )
+            if let startNanoseconds = hostNanoseconds(from: timestamp) {
+                clickTimeline = ClickTimeline(startNanoseconds: startNanoseconds)
             }
         }
-        latestSampleAt = timestamp
         let input = writerInputLocked(for: type)
         let start = sessionStartedAt
         let timeline = pauseTimeline
+        let lastWritten = input.map { lastWrittenSeconds[ObjectIdentifier($0)] } ?? nil
+        let lastWrittenEnd = input.map { lastWrittenEndSeconds[ObjectIdentifier($0)] } ?? nil
         lock.unlock()
 
+        // A writer that has failed answers `isReadyForMoreMediaData` with false
+        // for the rest of its life. Treating that like ordinary back-pressure
+        // dropped every later frame in silence while the clock kept running,
+        // and `stop` then delivered a recording holding its first fragment.
+        if assetWriter.status == .failed {
+            noteWriterFailure(assetWriter, sample: sampleBuffer, type: type, at: nil)
+            return
+        }
         guard let input, input.isReadyForMoreMediaData, let start else {
             return
         }
         // Frames keep arriving while paused; they are dropped, and everything
-        // after a pause is shifted back so the movie has no frozen stretch.
+        // after a pause is shifted back so the movie has no frozen stretch. A
+        // sample stamped before the anchor frame, or one that would not move
+        // its track forward, is dropped too: the writer would refuse it and
+        // then refuse everything after it. `SampleTimingPolicy` owns the rule.
         let captureSeconds = CMTimeGetSeconds(CMTimeSubtract(timestamp, start))
-        guard let mediaSeconds = timeline.mediaTime(forCaptureTime: captureSeconds)
+        guard
+            let mediaSeconds = SampleTimingPolicy.mediaTime(
+                captureSeconds: captureSeconds,
+                pauses: timeline,
+                lastWrittenSeconds: lastWritten,
+                lastWrittenEndSeconds: lastWrittenEnd
+            )
         else {
             return
         }
+        // A screen frame arrives without a duration; the writer infers one from
+        // the frame that follows. A whole-display capture always has a next
+        // frame within a frame interval, but a window capture only produces a
+        // frame when the window changes, so the last frame before a fragment
+        // boundary can have no successor by the time the fragment must be
+        // closed — and the fragment cannot be written. The frame is given the
+        // capture interval as its duration instead.
+        let sourceDuration = CMSampleBufferGetDuration(sampleBuffer)
+        let duration =
+            type == .screen && !(sourceDuration.isValid && sourceDuration.seconds > 0)
+            ? CMTime(value: 1, timescale: captureFrameRate)
+            : sourceDuration
+        // Retimed in the sample's own timebase, not a coarser one: rounding
+        // 48 kHz audio onto a 600 Hz grid could move neighbouring buffers onto
+        // each other.
         guard
             let retimed = retimedSampleBuffer(
                 sampleBuffer,
                 to: CMTimeAdd(
                     start,
-                    CMTime(seconds: mediaSeconds, preferredTimescale: 600)
-                )
+                    CMTime(seconds: mediaSeconds, preferredTimescale: timestamp.timescale)
+                ),
+                duration: duration
             )
         else {
             return
         }
-        input.append(retimed)
+        if input.append(retimed) {
+            let extent = type == .screen || !duration.isValid ? 0 : max(0, duration.seconds)
+            lock.lock()
+            latestSampleAt = timestamp
+            lastWrittenSeconds[ObjectIdentifier(input)] = mediaSeconds
+            lastWrittenEndSeconds[ObjectIdentifier(input)] = mediaSeconds + extent
+            lastWrittenDurationSeconds[ObjectIdentifier(input)] =
+                duration.isValid ? duration.seconds : 0
+            if firstFormat[ObjectIdentifier(input)] == nil,
+                let format = CMSampleBufferGetFormatDescription(sampleBuffer)
+            {
+                firstFormat[ObjectIdentifier(input)] = format
+            }
+            lock.unlock()
+        } else if assetWriter.status == .failed {
+            noteWriterFailure(assetWriter, sample: sampleBuffer, type: type, at: mediaSeconds)
+        }
+    }
+
+    /// Describes a sample the way the failure message needs it: which track,
+    /// what format, and whether that format is the one the track began with.
+    private func describeSample(
+        _ sampleBuffer: CMSampleBuffer,
+        type: SCStreamOutputType,
+        at mediaSeconds: Double?
+    ) -> String {
+        var parts: [String] = [type == .screen ? "screen" : "audio"]
+        if let format = CMSampleBufferGetFormatDescription(sampleBuffer) {
+            parts.append(describeFormat(format))
+            lock.lock()
+            let first = writerInputLocked(for: type).flatMap { firstFormat[ObjectIdentifier($0)] }
+            lock.unlock()
+            if let first, !CMFormatDescriptionEqual(first, otherFormatDescription: format) {
+                parts.append("format changed from \(describeFormat(first))")
+            }
+        } else {
+            parts.append("no format description")
+        }
+        let duration = CMSampleBufferGetDuration(sampleBuffer)
+        parts.append(
+            duration.isValid && duration.seconds > 0
+                ? String(format: "duration %.1fms", duration.seconds * 1000)
+                : "no duration"
+        )
+        if let mediaSeconds {
+            parts.append(String(format: "at %.3fs", mediaSeconds))
+        }
+        lock.lock()
+        let previousEnd = writerInputLocked(for: type).flatMap {
+            lastWrittenEndSeconds[ObjectIdentifier($0)]
+        }
+        lock.unlock()
+        if let previousEnd {
+            parts.append(String(format: "previous sample ended at %.3fs", previousEnd))
+        }
+        // An append that fails right after a fragment boundary is usually the
+        // first to notice a fragment that could not be closed, and what closes
+        // a fragment is the other track's last sample.
+        if type != .screen {
+            lock.lock()
+            let video = videoInput.map { ObjectIdentifier($0) }
+            let lastFrame = video.flatMap { lastWrittenSeconds[$0] }
+            let lastFrameDuration = video.flatMap { lastWrittenDurationSeconds[$0] }
+            lock.unlock()
+            if let lastFrame {
+                parts.append(
+                    String(
+                        format: "video track last frame at %.3fs lasting %.1fms",
+                        lastFrame,
+                        (lastFrameDuration ?? 0) * 1000
+                    )
+                )
+            } else {
+                parts.append("video track has no frames yet")
+            }
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    private func describeFormat(_ format: CMFormatDescription) -> String {
+        let subtype = CMFormatDescriptionGetMediaSubType(format)
+        let code = String(
+            [24, 16, 8, 0].map { Character(UnicodeScalar(UInt8((subtype >> $0) & 0xff))) }
+        )
+        switch CMFormatDescriptionGetMediaType(format) {
+        case kCMMediaType_Video:
+            let size = CMVideoFormatDescriptionGetDimensions(format)
+            return "\(size.width)×\(size.height) \(code)"
+        case kCMMediaType_Audio:
+            guard let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(format)?.pointee
+            else {
+                return code
+            }
+            return "\(Int(asbd.mSampleRate)) Hz \(asbd.mChannelsPerFrame) ch \(code)"
+        default:
+            return code
+        }
+    }
+
+    /// Ends the capture because the file can no longer be written to.
+    ///
+    /// Reported as `capture_failed` rather than `source_lost`: the source is
+    /// still there, it is the output that broke. What was written before the
+    /// failure is kept for `stop` to finalize, the same as any other external
+    /// end.
+    private func noteWriterFailure(
+        _ assetWriter: AVAssetWriter,
+        sample: CMSampleBuffer,
+        type: SCStreamOutputType,
+        at mediaSeconds: Double?
+    ) {
+        noteExternalStop(
+            reason: .failed,
+            code: "capture_failed",
+            message: writerFailureMessage(assetWriter)
+                + " while writing \(describeSample(sample, type: type, at: mediaSeconds))"
+        )
     }
 }
 
@@ -948,12 +1328,16 @@ private func handlePrepare(_ request: [String: Any]) throws -> [String: Any] {
         microphone: microphone,
         microphoneSupported: microphoneSupported()
     )
-    let content = try shareableContent()
+    // Only a window capture has to find its target among every Space's
+    // windows; a display or area capture is aimed at a display and pays for
+    // the wide read with nothing but a slower start.
+    let content = try shareableContent(onScreenWindowsOnly: sourceKind != "window")
 
     let filter: SCContentFilter
     let geometry: CaptureGeometry
 
     var croppedArea: AreaRect?
+    var windowID: CGWindowID?
 
     if sourceKind == "display" {
         let display = try resolveDisplay(content, sourceId: sourceId)
@@ -1001,6 +1385,7 @@ private func handlePrepare(_ request: [String: Any]) throws -> [String: Any] {
             )
         }
         filter = SCContentFilter(desktopIndependentWindow: window)
+        windowID = rawID
         geometry = CaptureGeometry(
             originX: window.frame.origin.x,
             originY: window.frame.origin.y,
@@ -1019,6 +1404,12 @@ private func handlePrepare(_ request: [String: Any]) throws -> [String: Any] {
     let configuration = SCStreamConfiguration()
     configuration.width = outputSize.width
     configuration.height = outputSize.height
+    // The video track is built for exactly `outputSize`, and the writer fails
+    // on the first frame of any other size. A whole display is always scaled
+    // into the configured size, but a window or a cropped region is delivered
+    // at its own pixel size unless the stream is told to scale it, which is
+    // why display captures worked while window and area captures did not.
+    configuration.scalesToFit = sourceKind != "display"
     configuration.minimumFrameInterval = CMTime(value: 1, timescale: captureFrameRate)
     configuration.showsCursor = true
     configuration.queueDepth = 6
@@ -1046,7 +1437,8 @@ private func handlePrepare(_ request: [String: Any]) throws -> [String: Any] {
         configuration: configuration,
         geometry: geometry,
         outputSize: outputSize,
-        audioPlan: audioPlan
+        audioPlan: audioPlan,
+        windowID: windowID
     )
     sessionStore.insert(session)
 
@@ -1178,7 +1570,23 @@ private func responseObject(for request: [String: Any]) -> [String: Any] {
     return response
 }
 
+/// Connects this process to the window server before any request is served.
+///
+/// CoreGraphics makes that connection lazily, on whichever thread first asks
+/// for it, and on current macOS it asserts (`CGS_REQUIRE_INIT`) rather than
+/// connecting when that first ask comes from a background thread. Every
+/// request here is served on one, so the picker's window enumeration and
+/// previews could abort the whole helper mid-session. The connection is made
+/// here, on the main thread, the way a non-AppKit process is expected to. The
+/// activation policy keeps the helper out of the Dock and off the app switcher.
+private func connectToWindowServer() {
+    let application = NSApplication.shared
+    application.setActivationPolicy(.prohibited)
+    _ = CGMainDisplayID()
+}
+
 private func runStdioSession() {
+    connectToWindowServer()
     let mainRunLoop = CFRunLoopGetCurrent()
     DispatchQueue.global(qos: .userInitiated).async {
         while let line = readLine(strippingNewline: true) {

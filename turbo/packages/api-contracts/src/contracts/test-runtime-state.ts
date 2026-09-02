@@ -380,12 +380,23 @@ export const testRuntimeStateActionResponseSchema = z.object({
     .object({
       exists: z.boolean(),
       launch_snapshot: z
-        .object({
-          schemaVersion: z.literal(1),
-          framework: z.enum(["claude-code", "codex", "pi"]),
-          runnerProfile: z.string().min(1).max(255),
-        })
-        .strict()
+        .discriminatedUnion("schemaVersion", [
+          z
+            .object({
+              schemaVersion: z.literal(1),
+              framework: z.enum(["claude-code", "codex", "pi"]),
+              runnerProfile: z.string().min(1).max(255),
+            })
+            .strict(),
+          z
+            .object({
+              schemaVersion: z.literal(2),
+              framework: z.enum(["claude-code", "codex", "pi"]),
+              runnerProfile: z.string().min(1).max(255),
+              piMemoryGenerationEnabled: z.boolean(),
+            })
+            .strict(),
+        ])
         .nullable(),
     })
     .optional(),

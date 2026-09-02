@@ -25,7 +25,14 @@ export interface FeatureSwitch {
 export interface FeatureSwitchMetadata {
   readonly maintainer: string;
   readonly description?: string;
+  readonly rolloutStage: FeatureSwitchRolloutStage;
 }
+
+export type FeatureSwitchRolloutStage =
+  | "released"
+  | "beta"
+  | "alpha"
+  | "internal";
 
 export interface FeatureSwitchContext {
   readonly userId?: string;
@@ -194,7 +201,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.Lab]: {
     maintainer: "ethan@vm0.ai",
-    description: "Show the Lab page for toggling experimental features",
+    description: "Show the Lab page for viewing feature rollout stages",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -289,6 +296,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Mount the canonical user memory Storage for Pi runs without enabling memory generation.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.PiMemoryGeneration]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Admit exact hash-backed Pi web histories into the Stage 1 memory generation queue.",
+    enabled: false,
   },
   [FeatureSwitchKey.PresentationTemplates]: {
     maintainer: "bingjie@vm0.ai",
@@ -518,6 +531,26 @@ export function getFeatureSwitchDescriptions(): Record<
   return result;
 }
 
+function getFeatureSwitchRolloutStage(
+  key: FeatureSwitchKey,
+  featureSwitch: FeatureSwitch,
+): FeatureSwitchRolloutStage {
+  if (key.startsWith("_")) {
+    return "internal";
+  }
+  if (featureSwitch.enabled) {
+    return "released";
+  }
+  if (
+    featureSwitch.enabledOrgIdHashes?.some((hash) => {
+      return STAFF_ORG_ID_HASHES.includes(hash);
+    })
+  ) {
+    return "beta";
+  }
+  return "alpha";
+}
+
 /**
  * Return display metadata for every feature switch.
  */
@@ -531,6 +564,7 @@ export function getFeatureSwitchMetadata(): Record<
     result[key] = {
       maintainer: featureSwitch.maintainer,
       description: featureSwitch.description,
+      rolloutStage: getFeatureSwitchRolloutStage(key, featureSwitch),
     };
   }
   return result;

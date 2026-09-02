@@ -16,7 +16,6 @@ from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.model_provider_flow_helpers import make_model_provider_flow
 from tests.stream_buffer_helpers import set_response_stream_buffer
-from tests.usage_helpers import compact_observation_quantities
 from usage.quantities import MAX_USAGE_QUANTITY
 
 
@@ -118,12 +117,6 @@ class TestOpenAIChatCompletionsUsage:
         by_category = {event["category"]: event["quantity"] for event in events}
         assert len(events) == len(by_category)
         assert by_category == {
-            "tokens.input": 25,
-            "tokens.output": 20,
-            "tokens.cache_read": 10,
-            "tokens.cache_creation": 15,
-        }
-        assert compact_observation_quantities(webhook.model_usage_observation_events()) == {
             "tokens.input": 25,
             "tokens.output": 20,
             "tokens.cache_read": 10,
@@ -289,9 +282,6 @@ class TestOpenAIChatCompletionsUsage:
         assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == (
             expected_quantities
         )
-        assert compact_observation_quantities(webhook.model_usage_observation_events()) == (
-            expected_quantities
-        )
         warnings = [
             entry
             for entry in read_jsonl_entries_after_flush(
@@ -399,7 +389,6 @@ class TestOpenAIChatCompletionsUsage:
 
         assert webhook.request_count == 0
         assert webhook.usage_events() == []
-        assert webhook.model_usage_observation_events() == []
         warnings = [
             entry
             for entry in read_jsonl_entries_after_flush(
@@ -478,33 +467,6 @@ class TestOpenAIChatCompletionsUsage:
         assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
             "tokens.input.fast": 30,
             "tokens.output.fast": 5,
-        }
-
-    def test_non_billable_sse_reports_observation_without_usage_event(
-        self,
-        tmp_path,
-        real_flow,
-    ):
-        flow = _chat_completions_flow(
-            tmp_path,
-            real_flow,
-            content_type="text/event-stream",
-            billable=False,
-        )
-
-        mitm_addon.responseheaders(flow)
-        response_stream(flow)(
-            b"data: "
-            + _chat_payload(usage_payload={"prompt_tokens": 30, "completion_tokens": 5})
-            + b"\n\n"
-        )
-
-        webhook = _run_response(flow, self._usage_webhook_api)
-
-        assert webhook.usage_events() == []
-        assert compact_observation_quantities(webhook.model_usage_observation_events()) == {
-            "tokens.input": 30,
-            "tokens.output": 5,
         }
 
     def test_brotli_json_uses_streaming_parser(

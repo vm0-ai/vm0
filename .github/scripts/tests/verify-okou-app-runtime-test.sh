@@ -12,6 +12,7 @@ sleep_log="${test_root}/sleep.log"
 html_source="${test_root}/index.html"
 old_html_source="${test_root}/old-index.html"
 prioritized_html_source="${test_root}/prioritized-index.html"
+worker_preview_html_source="${test_root}/worker-preview-index.html"
 mkdir -p "$assets_directory" "$fake_bin"
 
 fail() {
@@ -119,6 +120,36 @@ for expected_url in \
   https://app.test/okou-app/assets/shared-database-worker-MnOp3456.js; do
   grep -Fq "$expected_url" "$curl_log" ||
     fail "runtime verifier did not probe ${expected_url}"
+done
+
+worker_preview_url="https://pr-123-app-okou-app-preview.test.workers.dev"
+sed \
+  "s#https://static.test/okou-app/assets#${worker_preview_url}/okou-app/assets#g" \
+  "$html_source" > "$worker_preview_html_source"
+: > "$curl_log"
+: > "$sleep_log"
+worker_preview_output="$({
+  PATH="${fake_bin}:$PATH" \
+    MOCK_CURL_LOG="$curl_log" \
+    MOCK_HTML_SOURCE="$worker_preview_html_source" \
+    MOCK_SLEEP_LOG="$sleep_log" \
+    bash "$script" \
+      "$worker_preview_url" \
+      https://static.test/okou-app/assets \
+      "$assets_directory"
+} 2>&1)"
+grep -Fq \
+  "Verified app runtime: stylesheet=${worker_preview_url}/okou-app/assets/index-QrSt7890.css app=${worker_preview_url}/okou-app/assets/app-AbCd1234.js vendor=${worker_preview_url}/okou-app/assets/vendor-EfGh5678.js runtime=${worker_preview_url}/okou-app/assets/rolldown-runtime-IjKl9012.js worker=${worker_preview_url}/okou-app/assets/shared-database-worker-MnOp3456.js" \
+  <<< "$worker_preview_output" || fail "Worker preview runtime summary is incorrect"
+for expected_url in \
+  "${worker_preview_url}/sign-up" \
+  "${worker_preview_url}/okou-app/assets/index-QrSt7890.css" \
+  "${worker_preview_url}/okou-app/assets/app-AbCd1234.js" \
+  "${worker_preview_url}/okou-app/assets/vendor-EfGh5678.js" \
+  "${worker_preview_url}/okou-app/assets/rolldown-runtime-IjKl9012.js" \
+  "${worker_preview_url}/okou-app/assets/shared-database-worker-MnOp3456.js"; do
+  grep -Fq "$expected_url" "$curl_log" ||
+    fail "Worker preview runtime verifier did not probe ${expected_url}"
 done
 
 if OKOU_APP_RUNTIME_MAX_ATTEMPTS=0 \

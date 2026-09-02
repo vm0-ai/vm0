@@ -55,6 +55,7 @@ import { DesktopRecorderWindows } from "./desktop-recorder-windows";
 import { STOP_SCREEN_RECORDING_ACCELERATOR } from "./desktop-recorder-types";
 import type {
   DesktopRecorderArea,
+  DesktopRecorderError,
   DesktopRecorderAudioChoice,
   DesktopRecorderPrepareRequest,
 } from "./desktop-recorder-types";
@@ -221,6 +222,44 @@ const quitConfirmation = new DesktopQuitConfirmationController({
     app.quit();
   },
 });
+/**
+ * Whether a finished recording could be handed back to Okou.
+ *
+ * Answering means two round trips to the API, and it used to be asked only
+ * when Start was pressed, ahead of everything else on that path: on a slow
+ * link that alone was a second or more of "Starting…". The question is asked
+ * when the bar opens instead, and Start reuses that answer while the bar is
+ * up. A bar left open for a long time asks again.
+ */
+let deliverabilityCheck: {
+  readonly at: number;
+  readonly result: Promise<boolean>;
+} | null = null;
+const DELIVERABILITY_CHECK_LIFETIME_MS = 5 * 60 * 1000;
+
+function checkDeliverability(): Promise<boolean> {
+  const now = Date.now();
+  if (
+    deliverabilityCheck &&
+    now - deliverabilityCheck.at < DELIVERABILITY_CHECK_LIFETIME_MS
+  ) {
+    return deliverabilityCheck.result;
+  }
+  const result = getAuthSession()
+    .getAuthState()
+    .then((auth) => {
+      return auth.status === "signed_in" && auth.organization !== null;
+    });
+  // A failed check must not be served to the next Start; it asks afresh.
+  result.catch(() => {
+    if (deliverabilityCheck?.result === result) {
+      deliverabilityCheck = null;
+    }
+  });
+  deliverabilityCheck = { at: now, result };
+  return result;
+}
+
 const screenRecorder = new DesktopRecorderController({
   createBackend: () => createRecorderNativeBackend(),
   createOutputPath: () =>
@@ -229,10 +268,7 @@ const screenRecorder = new DesktopRecorderController({
       "recordings",
       `screen-recording-${Date.now().toString()}.mp4`,
     ),
-  canDeliver: async () => {
-    const auth = await getAuthSession().getAuthState();
-    return auth.status === "signed_in" && auth.organization !== null;
-  },
+  canDeliver: () => checkDeliverability(),
   deliver: async (recording) => {
     const auth = await getAuthSession().getAuthState();
     if (auth.status !== "signed_in") {
@@ -300,19 +336,33 @@ function refreshDesktopTray(): void {
  * time, and it exists because the recording controls live in the menu bar
  * rather than in an overlay that the capture would record.
  */
+let lastLoggedRecorderError: DesktopRecorderError | null = null;
+
 function notifyScreenRecorderChanged(): void {
   refreshDesktopTray();
 
-  const status = screenRecorder.getState().status;
+  const state = screenRecorder.getState();
+  // The tray truncates the message to a menu line; the terminal gets it whole.
+  if (state.error && state.error !== lastLoggedRecorderError) {
+    console.error(
+      `Desktop screen recording ${state.error.code}: ${state.error.message}`,
+    );
+  }
+  lastLoggedRecorderError = state.error;
+
+  const status = state.status;
   // Paused still holds the capture open, so the poll, the stop shortcut and the
   // on-screen controls all stay alive for it.
   const isCapturing = status === "recording" || status === "paused";
 
-  // The controller belongs to a live capture and nothing else. Deciding that
-  // here rather than at each call site is what dismisses it when a recording
-  // ends from the tray, the shortcut, the system indicator, or a failure — and
-  // what takes it off screen the moment a finish starts uploading.
-  if (!isCapturing) {
+  // The controller stays up through the finish as well as the capture: it
+  // vanishing the instant Stop was pressed, seconds before the finalize and
+  // upload were done, read as the recorder having quit. It is dismissed once
+  // the session is over, whether that came from the tray, the shortcut, the
+  // system indicator, a failure, or a successful delivery.
+  const showsController =
+    isCapturing || status === "finalizing" || status === "delivering";
+  if (!showsController) {
     recorderWindows?.hideController();
   }
 
@@ -780,12 +830,26 @@ async function startRecorderCapture(
   captured: DesktopRecorderArea | null,
 ): Promise<void> {
   const windows = getRecorderWindows();
-  await screenRecorder.ensureScreenRecordingPermission();
-  await screenRecorder.prepare(request);
-  await screenRecorder.start();
+  // Each phase is timed and logged: "Starting…" was reported as taking
+  // seconds, and where those seconds go is the only way to know what to cut.
+  const startedAt = Date.now();
+  const phases: string[] = [];
+  const timed = async (name: string, run: () => Promise<void>) => {
+    const phaseStartedAt = Date.now();
+    await run();
+    phases.push(`${name} ${String(Date.now() - phaseStartedAt)}ms`);
+  };
+  await timed("permission", () =>
+    screenRecorder.ensureScreenRecordingPermission(),
+  );
+  await timed("prepare", () => screenRecorder.prepare(request));
+  await timed("start", () => screenRecorder.start());
   // The bar has done its job; leaving it up would put it in the capture.
   windows.hideBar();
   windows.showController(captured);
+  console.info(
+    `Desktop screen recording started in ${String(Date.now() - startedAt)}ms (${phases.join(", ")})`,
+  );
 }
 
 function installDesktopRecorder(): void {
@@ -852,7 +916,14 @@ function installDesktopRecorder(): void {
       resume: () => screenRecorder.resume(),
       discard: () => screenRecorder.discard(),
       stop: async () => {
-        await screenRecorder.stop();
+        try {
+          await screenRecorder.stop();
+        } catch (error) {
+          // The window that asked may already be gone; the terminal running
+          // the app is the one place this is guaranteed to be seen.
+          console.error("Desktop screen recording stop failed", error);
+          throw error;
+        }
       },
       cancel: () => {
         getRecorderWindows().hideBar();
@@ -990,6 +1061,8 @@ function installTray(): void {
     getRecorderState: () => screenRecorder.getState(),
     startScreenRecording: async () => {
       getRecorderWindows().showBar();
+      // Asked now so Start does not have to wait for the answer.
+      checkDeliverability().catch(() => {});
     },
     stopScreenRecording: async () => {
       await screenRecorder.stop();

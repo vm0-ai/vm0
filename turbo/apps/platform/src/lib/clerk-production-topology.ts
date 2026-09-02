@@ -3,9 +3,13 @@ export const VM0_CLERK_PRIMARY_APP_ORIGIN = "https://app.vm0.ai";
 
 export const CURRENT_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN = "app.vm0.ai";
 export const CUTOVER_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN = "app.okou.ai";
+const OKOU_WORKER_CANARY_APP_DOMAIN = "app-worker.okou.ai";
 const CLERK_PRIMARY_USER_PROFILE_URL = "https://accounts.vm0.ai/user";
 
-export type ClerkProductionDomain = "app.okou.ai" | "vm0.ai";
+export type ClerkProductionDomain =
+  | "app.okou.ai"
+  | typeof OKOU_WORKER_CANARY_APP_DOMAIN
+  | "vm0.ai";
 export type ClerkProductionPrimaryAppDomain =
   | typeof CURRENT_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN
   | typeof CUTOVER_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN;
@@ -70,7 +74,10 @@ export function resolveClerkProductionSatelliteDomain(
     return isDomainOrSubdomain(normalizedHostname, "vm0.ai") ? "vm0.ai" : null;
   }
 
-  return isDomainOrSubdomain(normalizedHostname, "app.okou.ai")
-    ? "app.okou.ai"
+  if (isDomainOrSubdomain(normalizedHostname, "app.okou.ai")) {
+    return "app.okou.ai";
+  }
+  return isDomainOrSubdomain(normalizedHostname, OKOU_WORKER_CANARY_APP_DOMAIN)
+    ? OKOU_WORKER_CANARY_APP_DOMAIN
     : null;
 }
