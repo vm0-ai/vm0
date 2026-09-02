@@ -1269,9 +1269,7 @@ mod tests {
             guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
             guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
-            guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
             guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
-            guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
             "MOCK_CODEX_APP_SERVER_SCENARIO",
         ] {
             unsafe {
