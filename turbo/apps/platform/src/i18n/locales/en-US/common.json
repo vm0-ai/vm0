@@ -1952,6 +1952,8 @@
         "resetAndTryAgain": "Reset and try again",
         "resetsAt": "Resets {{time}}",
         "selectModel": "Switch model",
+        "timeoutDescription": "This run reached its time limit. Continue to keep working.",
+        "timeoutTitle": "Time limit reached",
         "tryAgain": "Try again",
         "unavailableDescription": "This model isn't supported by the connected ChatGPT account. Switch to another model to continue.",
         "unavailableTitle": "Selected model isn't available",

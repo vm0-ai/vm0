@@ -1949,6 +1949,8 @@
         "resetAndTryAgain": "재설정하고 다시 시도",
         "resetsAt": "{{time}}에 재설정",
         "selectModel": "모델 전환",
+        "timeoutDescription": "이 실행이 시간 제한에 도달했습니다. 계속해서 작업을 이어가세요.",
+        "timeoutTitle": "시간 제한에 도달했습니다",
         "tryAgain": "다시 시도",
         "unavailableDescription": "이 모델은 연결된 ChatGPT 계정에서 지원되지 않습니다. 계속하려면 다른 모델로 전환하세요.",
         "unavailableTitle": "선택한 모델을 사용할 수 없습니다",

@@ -1949,6 +1949,8 @@
         "resetAndTryAgain": "リセットして再試行",
         "resetsAt": "{{time}} にリセット",
         "selectModel": "モデルを切り替える",
+        "timeoutDescription": "この実行は時間制限に達しました。続行して作業を続けてください。",
+        "timeoutTitle": "時間制限に達しました",
         "tryAgain": "もう一度試す",
         "unavailableDescription": "このモデルは接続中の ChatGPT アカウントではサポートされていません。続行するには別のモデルに切り替えてください。",
         "unavailableTitle": "選択したモデルは利用できません",
