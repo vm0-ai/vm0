@@ -16,26 +16,26 @@ def _apply_retained_batch_counts(
     summaries: Iterable[_FlushSummary],
     retained_batches: Iterable[_PendingBatch],
 ) -> None:
-    retained_batch_counts: dict[tuple[str, str], int] = {}
-    retained_source_counts: dict[tuple[str, str], int] = {}
+    retained_batch_counts: dict[str, int] = {}
+    retained_source_counts: dict[str, int] = {}
     for pending_batch in retained_batches:
         batch = pending_batch.batch
-        key = (batch.proxy_log_path, batch.log_type)
+        key = batch.proxy_log_path
         retained_batch_counts[key] = retained_batch_counts.get(key, 0) + 1
         retained_source_counts[key] = retained_source_counts.get(key, 0) + batch.source_event_count
     for summary in summaries:
-        key = (summary.proxy_log_path, summary.log_type)
+        key = summary.proxy_log_path
         summary.retained_webhook_batch_count = retained_batch_counts.get(key, 0)
         summary.retained_source_event_count = retained_source_counts.get(key, 0)
 
 
 def _build_flush_summaries(batches: Iterable[_FlushBatch]) -> list[_FlushSummary]:
-    summaries: dict[tuple[str, str], _FlushSummary] = {}
+    summaries: dict[str, _FlushSummary] = {}
     for batch in batches:
-        key = (batch.proxy_log_path, batch.log_type)
+        key = batch.proxy_log_path
         summary = summaries.setdefault(
             key,
-            _FlushSummary(proxy_log_path=batch.proxy_log_path, log_type=batch.log_type),
+            _FlushSummary(proxy_log_path=batch.proxy_log_path),
         )
         summary.source_event_count += batch.source_event_count
         events = batch.payload.get("events")

@@ -1,5 +1,68 @@
 # Changelog
 
+## [0.44.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.43.0...desktop-v0.44.0) (2026-09-02)
+
+
+### Features
+
+* **desktop:** map clicks through each frame's content rect and record the element they hit ([#31199](https://github.com/vm0-ai/vm0/issues/31199)) ([914c1da](https://github.com/vm0-ai/vm0/commit/914c1dad0f02d86e1a13f70b0ce59daab5276c1e))
+* **desktop:** record when the user types, as bursts, in the recording sidecar ([#31186](https://github.com/vm0-ai/vm0/issues/31186)) ([4aa851e](https://github.com/vm0-ai/vm0/commit/4aa851e6707e65fad72c919cb0fc887dc5ef8a0d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.395.0
+
+## [0.43.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.42.11...desktop-v0.43.0) (2026-09-02)
+
+
+### Features
+
+* **desktop:** record the pointer trail alongside clicks in the recording sidecar ([#31179](https://github.com/vm0-ai/vm0/issues/31179)) ([81dedea](https://github.com/vm0-ai/vm0/commit/81dedea86941e4c7e85c842095169f3e0e1f1f98))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.394.0
+
+## [0.42.11](https://github.com/vm0-ai/vm0/compare/desktop-v0.42.10...desktop-v0.42.11) (2026-09-02)
+
+
+### Bug Fixes
+
+* **desktop:** surface a failed movie writer instead of delivering its first fragment ([#31112](https://github.com/vm0-ai/vm0/issues/31112)) ([27f59d7](https://github.com/vm0-ai/vm0/commit/27f59d77246725b2a39c7c8c9b1453348eaaafdd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.393.0
+
+## [0.42.10](https://github.com/vm0-ai/vm0/compare/desktop-v0.42.9...desktop-v0.42.10) (2026-09-02)
+
+
+### Bug Fixes
+
+* **desktop:** offer every space in the window picker and let it be dismissed ([#31065](https://github.com/vm0-ai/vm0/issues/31065)) ([d4bbd4d](https://github.com/vm0-ai/vm0/commit/d4bbd4d3448916f558fa125252818c7274a711b9))
+
+
+### Refactoring
+
+* **api:** empty the branded compatibility table ([#31106](https://github.com/vm0-ai/vm0/issues/31106)) ([26e0aa1](https://github.com/vm0-ai/vm0/commit/26e0aa1a2872bc0fafccd0c3089466ea3653f7c5))
+* rename internal feature switch keys ([#30955](https://github.com/vm0-ai/vm0/issues/30955)) ([b0670b4](https://github.com/vm0-ai/vm0/commit/b0670b464a105432aaa08b3bd340a07a5b32654e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.392.0
+
 ## [0.42.9](https://github.com/vm0-ai/vm0/compare/desktop-v0.42.8...desktop-v0.42.9) (2026-09-02)
 
 

@@ -280,6 +280,7 @@ export function mockCustomConnectorOAuth2Provider(
 
 interface AutomaticMcpOAuthProviderOptions {
   readonly registration: "cimd" | "dcr";
+  readonly authentication?: "none" | "oauth";
   readonly issuerParameterSupported?: boolean;
   readonly dcrTokenEndpointAuthMethod?:
     | "none"
@@ -392,7 +393,29 @@ export function mockAutomaticMcpOAuthProvider(
     }
   };
   server.use(
-    http.post(endpoint, () => {
+    http.post(endpoint, async ({ request }) => {
+      if (options.authentication === "none") {
+        const body = z
+          .object({
+            jsonrpc: z.literal("2.0"),
+            id: z.union([z.string(), z.number()]).optional(),
+            method: z.string(),
+          })
+          .passthrough()
+          .parse(await request.json());
+        if (body.method !== "initialize" || body.id === undefined) {
+          return new HttpResponse(null, { status: 202 });
+        }
+        return HttpResponse.json({
+          jsonrpc: "2.0",
+          id: body.id,
+          result: {
+            protocolVersion: "2025-06-18",
+            capabilities: {},
+            serverInfo: { name: "BDD no-auth MCP", version: "1.0.0" },
+          },
+        });
+      }
       const challengeScope =
         options.challengeScope === undefined
           ? "read write"
@@ -1966,8 +1989,13 @@ export function createConnectorBddApi(context: TestContext) {
       return response.body;
     },
 
-    async completeOauthCallback(connectorSlug: string, query: CallbackQuery) {
+    async completeOauthCallback(
+      connectorSlug: string,
+      query: CallbackQuery,
+      options: { readonly baseUrl?: string } = {},
+    ) {
       const client = setupApp({
+        baseUrl: options.baseUrl,
         context,
         routes: connectorsSlugCallbackRoutes,
       })(connectorsSlugCallbackContract);
@@ -2054,19 +2082,44 @@ export function createConnectorBddApi(context: TestContext) {
         throw new Error("Expected the GitHub install redirect to carry state");
       }
 
-      const callback = await accept(
-        client.setupCallback({
-          query: {
-            installation_id: installationId,
-            setup_action: "install",
-            state,
-          },
-        }),
-        [307],
+      const providerCallbackUri = installUrl.searchParams.get("redirect_uri");
+      if (!providerCallbackUri) {
+        throw new Error(
+          "Expected the GitHub install redirect to carry a callback URI",
+        );
+      }
+      const callbackQuery = {
+        installation_id: installationId,
+        setup_action: "install" as const,
+        state,
+      };
+      const requestSetupCallback = async (baseUrl: string) => {
+        const callbackClient = setupApp({
+          baseUrl,
+          context,
+          routes: githubOauthRoutes,
+        })(githubOauthContract);
+        return await accept(
+          callbackClient.setupCallback({ query: callbackQuery }),
+          [307],
+        );
+      };
+      let callback = await requestSetupCallback(
+        new URL(providerCallbackUri).origin,
       );
-      const callbackLocation = callback.headers.get("location");
+      let callbackLocation = callback.headers.get("location");
       if (!callbackLocation) {
         throw new Error("Expected a GitHub setup callback redirect location");
+      }
+      const firstCallbackLocation = new URL(callbackLocation);
+      if (firstCallbackLocation.pathname === "/api/github/app/setup/callback") {
+        callback = await requestSetupCallback(firstCallbackLocation.origin);
+        callbackLocation = callback.headers.get("location");
+        if (!callbackLocation) {
+          throw new Error(
+            "Expected the branded GitHub setup callback to redirect",
+          );
+        }
       }
       const callbackError = new URL(callbackLocation).searchParams.get("error");
       if (callbackError) {
@@ -2646,6 +2699,9 @@ export function createConnectorBddApi(context: TestContext) {
         account,
       );
       expectStatus(response, 200);
+      if (response.body.result !== "authorization") {
+        throw new Error("Expected Custom Connector OAuth authorization");
+      }
       return response.body.authorizationUrl;
     },
 
@@ -2668,6 +2724,9 @@ export function createConnectorBddApi(context: TestContext) {
         }),
         [200],
       );
+      if (response.body.result !== "authorization") {
+        throw new Error("Expected Custom Connector OAuth authorization");
+      }
       return response.body.authorizationUrl;
     },
 

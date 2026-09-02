@@ -63,7 +63,7 @@ Add an entry to the `FEATURE_SWITCHES` record:
 
 **Common default states:**
 
-- `enabled: false` — fully hidden until manually enabled via Lab page
+- `enabled: false` — fully hidden unless enabled by a per-user API override
 - `enabled: false` + `enabledOrgIdHashes: STAFF_ORG_ID_HASHES` — staff-only (most common for new features)
 - `enabled: true` — on for everyone (use when feature is ready for GA)
 
@@ -165,13 +165,13 @@ Evaluation has two layers (lowest to highest priority):
    org-scoped and stored under the org sentinel user id (`ORG_SENTINEL_USER_ID`,
    `"__org__"`); `ORG_SCOPED_FEATURE_SWITCH_KEYS` currently holds
    `ChatErrorRecovery`, `PiLoop`, and `PresentationTemplates`. Written
-   via the Lab page toggles or
-   `window._vm0.featureSwitches.myFeature = true` (both call
-   `POST /api/feature-switches`). Cleared via the Lab page "Reset all"
-   button (`DELETE /api/feature-switches`).
+   via `POST /api/feature-switches` and cleared via
+   `DELETE /api/feature-switches`. The Lab page is read-only and groups the
+   registry into Released, Beta, Alpha, and Internal categories. Switch keys
+   beginning with `_` are Internal regardless of their rollout audience.
 
 The same two-layer resolution applies on the server: route handlers that call
 `isFeatureEnabled(..., { userId, orgId, overrides })` pass a context built by
 `loadUserFeatureSwitchContext(db, orgId, userId)`.
 
-There is **no** client-only layer. `window._vm0.featureSwitches` requires auth and persists across refreshes; there is no device-local override.
+There is **no** client-only or device-local override layer.

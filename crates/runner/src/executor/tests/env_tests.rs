@@ -4,6 +4,7 @@ use api_contracts::generated::constants::model_provider_env::placeholders as mod
 use api_contracts::generated::types::runners::{
     runs::CodexRuntimeConfig, storage::ArtifactEntryMissingRootPolicy,
 };
+use guest_contracts::env::{RunArtifact, RunArtifactMissingRootPolicy};
 use sandbox::SandboxId;
 use sandbox_mock::MockSandbox;
 use serde_json::json;
@@ -446,7 +447,6 @@ fn build_env_json_required_keys() {
             .unwrap(),
         "https://api.example.com"
     );
-    assert!(!env.contains_key(guest_contracts::env::API_URL_ENV));
     assert_eq!(
         env.get(guest_contracts::env::RUN_ID_ENV).unwrap(),
         &RunId::nil().to_string()
@@ -505,22 +505,6 @@ fn build_env_json_required_keys() {
             "canonical writer emitted legacy key {legacy_key}"
         );
     }
-}
-
-#[test]
-fn build_env_json_keeps_api_url_writer_canonical_only() {
-    let ctx = minimal_context();
-    let env = build_env_for_test(&ctx, "https://api.example.com");
-
-    assert_eq!(
-        env.get(guest_contracts::env::CANONICAL_API_URL_ENV)
-            .map(String::as_str),
-        Some("https://api.example.com")
-    );
-    assert!(
-        !env.contains_key(guest_contracts::env::API_URL_ENV),
-        "canonical Runner bootstrap writer emitted the legacy API URL alias"
-    );
 }
 
 #[test]
@@ -909,13 +893,13 @@ fn build_env_json_with_single_artifact() {
     assert!(!env.contains_key("VM0_ARTIFACTS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let raw = &payload.artifacts;
-    let parsed: Vec<serde_json::Value> = serde_json::from_str(raw).unwrap();
+    let parsed: Vec<RunArtifact> = serde_json::from_str(raw).unwrap();
     assert_eq!(parsed.len(), 1);
-    assert_eq!(parsed[0]["name"], "my-vol");
-    assert_eq!(parsed[0]["mountPath"], "/artifacts");
-    assert_eq!(parsed[0]["storageId"], "sid-1");
-    assert_eq!(parsed[0]["versionId"], "v1");
-    assert!(parsed[0].get("missingRootPolicy").is_none());
+    assert_eq!(parsed[0].name, "my-vol");
+    assert_eq!(parsed[0].mount_path, "/artifacts");
+    assert_eq!(parsed[0].storage_id, "sid-1");
+    assert_eq!(parsed[0].version_id, "v1");
+    assert_eq!(parsed[0].missing_root_policy, None);
     // Legacy singleton env vars must no longer be emitted.
     assert!(!env.contains_key("VM0_ARTIFACT_DRIVER"));
     assert!(!env.contains_key("VM0_ARTIFACT_MOUNT_PATH"));
@@ -943,11 +927,14 @@ fn build_env_json_with_artifact_missing_root_policy() {
     assert!(!env.contains_key("VM0_ARTIFACTS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let raw = &payload.artifacts;
-    let parsed: Vec<serde_json::Value> = serde_json::from_str(raw).unwrap();
+    let parsed: Vec<RunArtifact> = serde_json::from_str(raw).unwrap();
 
     assert_eq!(parsed.len(), 1);
-    assert_eq!(parsed[0]["name"], "memory");
-    assert_eq!(parsed[0]["missingRootPolicy"], "preserveParentVersion");
+    assert_eq!(parsed[0].name, "memory");
+    assert_eq!(
+        parsed[0].missing_root_policy,
+        Some(RunArtifactMissingRootPolicy::PreserveParentVersion)
+    );
 }
 
 #[test]
@@ -977,14 +964,14 @@ fn build_env_json_with_two_artifacts() {
     assert!(!env.contains_key("VM0_ARTIFACTS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let raw = &payload.artifacts;
-    let parsed: Vec<serde_json::Value> = serde_json::from_str(raw).unwrap();
+    let parsed: Vec<RunArtifact> = serde_json::from_str(raw).unwrap();
     assert_eq!(parsed.len(), 2);
-    assert_eq!(parsed[0]["name"], "art-a");
-    assert_eq!(parsed[0]["mountPath"], "/workspace");
-    assert_eq!(parsed[0]["storageId"], "sid-a");
-    assert_eq!(parsed[1]["name"], "art-b");
-    assert_eq!(parsed[1]["mountPath"], "/data");
-    assert_eq!(parsed[1]["storageId"], "sid-b");
+    assert_eq!(parsed[0].name, "art-a");
+    assert_eq!(parsed[0].mount_path, "/workspace");
+    assert_eq!(parsed[0].storage_id, "sid-a");
+    assert_eq!(parsed[1].name, "art-b");
+    assert_eq!(parsed[1].mount_path, "/data");
+    assert_eq!(parsed[1].storage_id, "sid-b");
 }
 
 #[test]
@@ -1302,8 +1289,6 @@ fn pi_execution_context_preserves_additive_fields_in_run_payload() {
     ctx.pi_launch_config.as_mut().unwrap()["apiFirstTurn"]["futureFirstTurnField"] =
         json!("first-turn");
     ctx.pi_launch_config.as_mut().unwrap()["apiFirstTurn"]["sandboxEventSequenceStart"] = json!(4);
-    ctx.pi_launch_config.as_mut().unwrap()["apiFirstTurn"]["ownershipTransfer"] =
-        json!({ "schemaVersion": 1 });
     ctx.pi_model_config.as_mut().unwrap()["futureModelField"] = json!("model-root");
     let sandbox_id = SandboxId::new_v4().to_string();
     let payload = validate_execution_context_before_sandbox(
@@ -1325,10 +1310,6 @@ fn pi_execution_context_preserves_additive_fields_in_run_payload() {
     assert_eq!(launch["futureLaunchField"], "launch-root");
     assert_eq!(launch["apiFirstTurn"]["futureFirstTurnField"], "first-turn");
     assert_eq!(launch["apiFirstTurn"]["sandboxEventSequenceStart"], 4);
-    assert_eq!(
-        launch["apiFirstTurn"]["ownershipTransfer"]["schemaVersion"],
-        1
-    );
     let model: serde_json::Value = serde_json::from_str(&payload.pi_model_config).unwrap();
     assert_eq!(model["provider"], "deepseek");
     assert_eq!(model["apiKeyEnv"], "OPENAI_API_KEY");
@@ -1347,17 +1328,6 @@ fn pi_execution_context_rejects_missing_handoff_fields_before_sandbox() {
     let error = validate_context_for_test(&ctx).unwrap_err();
 
     assert!(error.contains("apiFirstTurn"));
-}
-
-#[test]
-fn pi_execution_context_rejects_future_ownership_transfer_capability() {
-    let mut context = pi_context_for_test();
-    context.pi_launch_config.as_mut().unwrap()["apiFirstTurn"]["ownershipTransfer"] =
-        json!({ "schemaVersion": 2 });
-
-    let error = validate_context_for_test(&context).unwrap_err();
-
-    assert!(error.contains("ownership-transfer capability schemaVersion must be 1"));
 }
 
 #[test]

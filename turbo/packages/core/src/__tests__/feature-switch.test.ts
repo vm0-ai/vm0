@@ -121,6 +121,7 @@ describe("isFeatureEnabled", () => {
       maintainer: "lancy@vm0.ai",
       description:
         "Enable the first-class Morning Brief experience in Preferences.",
+      rolloutStage: "beta",
     });
   });
 
@@ -168,6 +169,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiMemoryRecall]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.PiMemoryGeneration]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
     );
@@ -190,6 +192,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiMemoryRecall]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.PiMemoryGeneration]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,
     );
@@ -305,7 +308,35 @@ describe("getFeatureSwitchMetadata", () => {
     for (const key of Object.values(FeatureSwitchKey)) {
       expect(metadata[key]?.maintainer).toEqual(expect.any(String));
       expect(metadata[key]?.description).toEqual(expect.any(String));
+      expect(metadata[key]?.rolloutStage).toMatch(
+        /^(released|beta|alpha|internal)$/u,
+      );
     }
+  });
+
+  it("should classify only underscore-prefixed switches as internal", () => {
+    const metadata = getFeatureSwitchMetadata();
+
+    for (const key of Object.values(FeatureSwitchKey)) {
+      if (key.startsWith("_")) {
+        expect(metadata[key].rolloutStage).toBe("internal");
+      } else {
+        expect(metadata[key].rolloutStage).not.toBe("internal");
+      }
+    }
+  });
+
+  it("should classify non-internal switches by rollout audience", () => {
+    const metadata = getFeatureSwitchMetadata();
+
+    expect(
+      metadata[FeatureSwitchKey.NotionWorkflowAutomations].rolloutStage,
+    ).toBe("released");
+    expect(metadata[FeatureSwitchKey.Banking].rolloutStage).toBe("beta");
+    expect(metadata[FeatureSwitchKey.IntroVideo].rolloutStage).toBe("alpha");
+    expect(metadata[FeatureSwitchKey.AhrefsConnector].rolloutStage).toBe(
+      "alpha",
+    );
   });
 });
 

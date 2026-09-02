@@ -67,7 +67,7 @@ use httpmock::prelude::*;
 static MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(|| {
     let server = MockServer::start();
     unsafe {
-        std::env::set_var("VM0_API_BACKEND_URL", server.base_url());
+        std::env::set_var("OKOU_API_BACKEND_URL", server.base_url());
     }
     server
 });

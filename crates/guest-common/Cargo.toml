@@ -1,6 +1,6 @@
 [package]
 name = "guest-common"
-version = "0.3.45"
+version = "0.3.47"
 edition.workspace = true
 
 [dependencies]

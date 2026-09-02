@@ -54,7 +54,6 @@ use std::time::{Duration, Instant};
 use guest_contracts::exec_terminal::EXEC_OUTPUT_DRAIN_DEADLINE;
 use guest_contracts::process_containment::{
     CANONICAL_TOOL_CGROUP_PROCS_ENV, CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
-    TOOL_CGROUP_PROCS_ENDPOINT_ENV, WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
 };
 use vsock_proto::{
     self, ExecAgentReadyTiming, ExecCapturedOutput, ExecControlNonce, ExecControlPolicy,
@@ -104,7 +103,6 @@ const EXEC_CAPTURED_OUTPUT_OVERHEAD: usize = 1 + 1 + 4;
 const EXEC_DISCARDED_OUTPUT_LEN: usize = 1;
 const EXEC_OPERATION_STAGE_SLOW_THRESHOLD: Duration = Duration::from_secs(5);
 const AGENT_READY_OBSERVATION_INTERVAL: Duration = Duration::from_millis(10);
-const RETIRED_PROCESS_CONTROL_BOOTSTRAP_ENV: &str = "VM0_PROCESS_CONTROL_ENDPOINT";
 
 #[derive(Clone, Default)]
 pub(crate) struct ExecOperationRegistry {
@@ -2263,11 +2261,8 @@ fn append_exec_control_environment<'a>(
     workload_endpoints: Option<(&'a str, &'a str)>,
 ) {
     env.retain(|(key, _)| {
-        *key != RETIRED_PROCESS_CONTROL_BOOTSTRAP_ENV
-            && *key != process_control_ipc::CANONICAL_BOOTSTRAP_ENV
-            && *key != WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV
+        *key != process_control_ipc::CANONICAL_BOOTSTRAP_ENV
             && *key != CANONICAL_WORKLOAD_CGROUP_PROCS_ENV
-            && *key != TOOL_CGROUP_PROCS_ENDPOINT_ENV
             && *key != CANONICAL_TOOL_CGROUP_PROCS_ENV
     });
     env.push((
@@ -2511,31 +2506,34 @@ mod tests {
     }
 
     #[test]
-    fn control_bootstrap_environment_replaces_aliases_with_canonical() {
+    fn control_bootstrap_environment_uses_trusted_canonical_values_once() {
         let mut env = vec![
             ("FIRST_USER_KEY", "first-user-value"),
-            (
-                WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
-                "stale-legacy-workload-endpoint",
-            ),
-            (
-                RETIRED_PROCESS_CONTROL_BOOTSTRAP_ENV,
-                "stale-legacy-process-control-endpoint",
-            ),
             ("SECOND_USER_KEY", "second-user-value"),
             (
                 CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
                 "stale-canonical-workload-endpoint",
             ),
             (
+                CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
+                "duplicate-canonical-workload-endpoint",
+            ),
+            (
                 process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
                 "stale-canonical-process-control-endpoint",
             ),
-            (TOOL_CGROUP_PROCS_ENDPOINT_ENV, "stale-legacy-tool-endpoint"),
             ("THIRD_USER_KEY", "third-user-value"),
+            (
+                process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
+                "duplicate-canonical-process-control-endpoint",
+            ),
             (
                 CANONICAL_TOOL_CGROUP_PROCS_ENV,
                 "stale-canonical-tool-endpoint",
+            ),
+            (
+                CANONICAL_TOOL_CGROUP_PROCS_ENV,
+                "duplicate-canonical-tool-endpoint",
             ),
         ];
 
@@ -2568,13 +2566,6 @@ mod tests {
                 env.iter().filter(|(key, _)| *key == canonical_key).count(),
                 1
             );
-        }
-        for legacy_key in [
-            RETIRED_PROCESS_CONTROL_BOOTSTRAP_ENV,
-            WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
-            TOOL_CGROUP_PROCS_ENDPOINT_ENV,
-        ] {
-            assert!(env.iter().all(|(key, _)| *key != legacy_key));
         }
     }
 

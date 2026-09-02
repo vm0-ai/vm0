@@ -14,6 +14,11 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import { createPiAgentSessionForRuntime } from "./session-runtime";
+import type {
+  PiMemoryRecallOutcome,
+  PiMemoryRecallSelection,
+  PiMemoryToolSourceUse,
+} from "./api-types";
 import type { PiAgentModelConfig } from "./types";
 
 export type PiSandboxOwnershipTransferMode =
@@ -41,6 +46,9 @@ async function resolveSessionManager(args: {
 function createRuntimeFactory(args: {
   readonly model: PiAgentModelConfig;
   readonly appendSystemPrompt: string | null;
+  readonly memoryRecall?: PiMemoryRecallSelection;
+  readonly onMemoryRecallOutcome?: (outcome: PiMemoryRecallOutcome) => void;
+  readonly onMemoryToolSourceUse?: (sourceUse: PiMemoryToolSourceUse) => void;
 }): CreateAgentSessionRuntimeFactory {
   return async ({ cwd, agentDir, sessionManager, sessionStartEvent }) => {
     const created = await createPiAgentSessionForRuntime({
@@ -49,6 +57,9 @@ function createRuntimeFactory(args: {
       sessionManager,
       model: args.model,
       appendSystemPrompt: args.appendSystemPrompt,
+      memoryRecall: args.memoryRecall,
+      onMemoryRecallOutcome: args.onMemoryRecallOutcome,
+      onMemoryToolSourceUse: args.onMemoryToolSourceUse,
       sessionStartEvent,
     });
     return { ...created, diagnostics: created.services.diagnostics };
@@ -223,6 +234,9 @@ export async function runPiOfficialRpcMode(args: {
   readonly agentDir: string;
   readonly model: PiAgentModelConfig;
   readonly appendSystemPrompt: string | null;
+  readonly memoryRecall?: PiMemoryRecallSelection;
+  readonly onMemoryRecallOutcome?: (outcome: PiMemoryRecallOutcome) => void;
+  readonly onMemoryToolSourceUse?: (sourceUse: PiMemoryToolSourceUse) => void;
   readonly sessionFile: string;
   readonly ownershipTransferMode: PiSandboxOwnershipTransferMode;
 }): Promise<never> {

@@ -857,6 +857,7 @@ async fn complete_execution(
                     runtime,
                     0,
                     None,
+                    None,
                     state.last_event_sequence,
                     state.active_input_delivery_ids,
                     checkpoint,
@@ -927,6 +928,10 @@ async fn complete_execution(
                         match complete::report_checkpoint_for_run(
                             runtime,
                             exit_code,
+                            state
+                                .failure_diagnostic
+                                .as_ref()
+                                .and_then(|diagnostic| diagnostic.failure_reason),
                             state.failure_message,
                             state.last_event_sequence,
                             state.active_input_delivery_ids,
@@ -1222,7 +1227,6 @@ mod tests {
 
     unsafe fn clear_test_env() {
         for key in [
-            guest_contracts::env::API_URL_ENV,
             guest_contracts::env::RUN_ID_ENV,
             "VM0_API_TOKEN",
             guest_contracts::env::CANONICAL_API_TOKEN_ENV,
@@ -1265,9 +1269,7 @@ mod tests {
             guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
             guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
-            guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
             guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
-            guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
             "MOCK_CODEX_APP_SERVER_SCENARIO",
         ] {
             unsafe {
@@ -2029,7 +2031,7 @@ mod tests {
             when.method(POST)
                 .path("/api/webhooks/agent/complete")
                 .json_body_includes(
-                    r#"{"exitCode":1,"error":"You've hit your usage limit.","checkpoint":{"cliAgentSessionId":"recovery-session-from-main"}}"#,
+                    r#"{"exitCode":1,"failureReason":"usage_limit","error":"You've hit your usage limit.","checkpoint":{"cliAgentSessionId":"recovery-session-from-main"}}"#,
                 );
             then.status(completion_status)
                 .header("Content-Type", "application/json")
@@ -2055,6 +2057,7 @@ mod tests {
             PromptMetadata::from_prompt("plain prompt"),
         )
         .with_cli_exit_code(1)
+        .with_failure_reason(FailureReason::UsageLimit)
         .with_session_history_status(SessionHistoryStatus::Present);
         let exit_code = complete_execution(
             1,

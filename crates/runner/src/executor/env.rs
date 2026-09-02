@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
-use api_contracts::generated::types::runners::runs::{
-    CodexRuntimeConfig, PiLaunchConfig, PiModelConfig,
+use api_contracts::generated::types::runners::{
+    runs::{CodexRuntimeConfig, PiLaunchConfig, PiModelConfig},
+    storage::ArtifactEntryMissingRootPolicy,
 };
 use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
@@ -187,12 +188,6 @@ fn validate_pi_launch_config(value: &serde_json::Value, session_id: &str) -> Res
     }
     if !(1..=i32::MAX as u64).contains(&slot.sandbox_event_sequence_start) {
         return Err("Pi Sandbox event sequence start must be between 1 and 2147483647".to_string());
-    }
-    if slot
-        .ownership_transfer
-        .is_some_and(|capability| capability.schema_version != 1)
-    {
-        return Err("Pi ownership-transfer capability schemaVersion must be 1".to_string());
     }
     if slot.base_session.session_id != session_id {
         return Err("Pi H0 session id does not match pi_session_id".to_string());
@@ -753,27 +748,35 @@ fn serialize_artifacts_payload(context: &ExecutionContext) -> RunnerResult<Strin
         return Ok(String::new());
     }
 
-    let payload: Vec<serde_json::Value> = manifest
+    let payload: Vec<guest_contracts::env::RunArtifact> = manifest
         .artifacts
         .iter()
-        .map(|a| {
-            let mut entry = serde_json::json!({
-                "name": a.vas_storage_name,
-                "mountPath": a.mount_path,
-                "storageId": a.vas_storage_id,
-                "versionId": a.vas_version_id,
-            });
-            if let Some(policy) = a.missing_root_policy
-                && let Some(object) = entry.as_object_mut()
-            {
-                object.insert("missingRootPolicy".to_string(), serde_json::json!(policy));
-            }
-            entry
+        .map(|artifact| guest_contracts::env::RunArtifact {
+            name: artifact.vas_storage_name.clone(),
+            mount_path: artifact.mount_path.clone(),
+            storage_id: artifact.vas_storage_id.clone(),
+            version_id: artifact.vas_version_id.clone(),
+            missing_root_policy: artifact
+                .missing_root_policy
+                .map(run_artifact_missing_root_policy),
         })
         .collect();
 
     serde_json::to_string(&payload)
         .map_err(|e| RunnerError::Internal(format!("serialize artifact payload: {e}")))
+}
+
+fn run_artifact_missing_root_policy(
+    policy: ArtifactEntryMissingRootPolicy,
+) -> guest_contracts::env::RunArtifactMissingRootPolicy {
+    match policy {
+        ArtifactEntryMissingRootPolicy::Fail => {
+            guest_contracts::env::RunArtifactMissingRootPolicy::Fail
+        }
+        ArtifactEntryMissingRootPolicy::PreserveParentVersion => {
+            guest_contracts::env::RunArtifactMissingRootPolicy::PreserveParentVersion
+        }
+    }
 }
 
 fn serialize_feature_flags_payload(context: &ExecutionContext) -> RunnerResult<String> {

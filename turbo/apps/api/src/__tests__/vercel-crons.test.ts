@@ -13,6 +13,8 @@ import {
   cronDrainEmailOutboxContract,
   cronExecuteWorkflowAutomationsContract,
   cronMonitorChatEventQueueContract,
+  cronMaterializeMemorySummariesContract,
+  cronExtractPiMemoryStage1Contract,
   cronOfficialWorkflowCatalogContract,
   cronProcessUsageEventsContract,
   cronProjectChatEventSearchContract,
@@ -136,6 +138,14 @@ const expectedVercelCrons = [
   },
   {
     path: cronRefreshStoragePresignedUrlsContract.refresh.path,
+    schedule: "* * * * *",
+  },
+  {
+    path: cronMaterializeMemorySummariesContract.materialize.path,
+    schedule: "* * * * *",
+  },
+  {
+    path: cronExtractPiMemoryStage1Contract.extract.path,
     schedule: "* * * * *",
   },
   {

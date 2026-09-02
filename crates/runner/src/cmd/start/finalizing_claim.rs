@@ -52,7 +52,7 @@ use super::active_runs::{ActiveRunHandoffRequest, ActiveRunReuseState};
 use super::factory_lifecycle::SharedFactory;
 use super::idle_lifecycle::{
     IdlePressureRequest, IdlePressureSelection, ReservedIdleActivation,
-    select_idle_entry_for_pressure,
+    select_idle_entries_for_pressure,
 };
 use super::job_discovery::{
     ClaimedActivationGuard, ClaimedJobSetup, FinalizingAdmission, ReadyClaimedResource,
@@ -775,25 +775,30 @@ async fn acquire_fallback_resource(
     let cancel = cancellation.token();
     let mut retiring_leases = Vec::new();
     loop {
-        if let Some(reservation) = reserve_fallback_exact(
-            cancellation,
-            reuse_key,
-            profile_name,
-            device_rate_limits,
-            history_generation_run_id,
-            ctx,
-        )
-        .await?
-        {
-            return Ok(FinalizingResource::Exact(reservation));
-        }
-        match ResourceBudget::try_substitute_leases(
+        match select_idle_entries_for_pressure(
+            &ctx.idle_pool,
+            &ctx.status,
+            &ctx.idle_destroy_tracker,
             &ctx.budget,
             std::mem::take(&mut retiring_leases),
-            vcpu,
-            memory_mb,
-        ) {
-            Ok(lease) => {
+            IdlePressureRequest {
+                run_id,
+                reuse_key: Some(reuse_key),
+                profile_name,
+                device_rate_limits,
+                history_generation_run_id: Some(history_generation_run_id),
+                vcpu,
+                memory_mb,
+                context: "finalizing_fallback_oldest",
+            },
+        )
+        .await
+        {
+            IdlePressureSelection::Reusable(reservation) => {
+                let reservation = accept_fallback_exact(cancellation, reservation, ctx).await?;
+                return Ok(FinalizingResource::Exact(reservation));
+            }
+            IdlePressureSelection::Fresh(lease) => {
                 if let Some(reservation) = reserve_fallback_exact(
                     cancellation,
                     reuse_key,
@@ -809,37 +814,7 @@ async fn acquire_fallback_resource(
                 }
                 return Ok(FinalizingResource::Fresh(lease));
             }
-            Err(retained) => retiring_leases = retained,
-        }
-        match select_idle_entry_for_pressure(
-            &ctx.idle_pool,
-            &ctx.status,
-            &ctx.idle_destroy_tracker,
-            IdlePressureRequest {
-                reuse_key: Some(reuse_key),
-                profile_name,
-                device_rate_limits,
-                history_generation_run_id: Some(history_generation_run_id),
-                context: "finalizing_fallback_oldest",
-            },
-        )
-        .await
-        {
-            IdlePressureSelection::Reusable(reservation) => {
-                let reservation = accept_fallback_exact(cancellation, reservation, ctx).await?;
-                return Ok(FinalizingResource::Exact(reservation));
-            }
-            IdlePressureSelection::Retiring(retiring) => {
-                info!(
-                    run_id = %run_id,
-                    profile = %retiring.profile_name(),
-                    "evicting idle sandbox for finalizing fallback"
-                );
-                retiring_leases.push(retiring.into_budget_lease());
-                ctx.reuse_state_notify.notify_one();
-                continue;
-            }
-            IdlePressureSelection::Empty => {}
+            IdlePressureSelection::Exhausted(retained) => retiring_leases = retained,
         }
 
         info!(run_id = %run_id, "finalizing fallback waiting for fresh capacity");
@@ -943,6 +918,7 @@ async fn complete_claimed_without_sandbox(
             CompleteRequest {
                 run_id: context.run_id,
                 exit_code: failure.exit_code,
+                failure_reason: None,
                 error: Some(failure.error),
                 sandbox_id: None,
                 sandbox_reuse_result: reuse_result,

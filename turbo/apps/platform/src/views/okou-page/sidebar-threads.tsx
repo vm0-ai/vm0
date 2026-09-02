@@ -75,7 +75,7 @@ import {
   chatThreadOnlyUnread$,
   setChatThreadOnlyUnread$,
 } from "../../signals/chat-page/chat-thread-only-unread.ts";
-import { unreadAgentIds$ } from "../../signals/chat-page/chat-thread-indicators.ts";
+import { unreadAgentIds$ } from "../../signals/chat-page/chat-thread-indicators-from-worker.ts";
 import { markAgentThreadsRead$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import {
   closeRenameChatThreadDialog$,
@@ -904,7 +904,12 @@ function ChatThreadsListMenu({
 }
 
 function ChatThreadsTitle({ showMarkAllRead }: { showMarkAllRead: boolean }) {
+  const { t } = useTranslation();
   const { titleLabel } = useChatThreadsTitleLabels();
+  const newChatAction = useNewChatMenuAction();
+  const newChatLabel = t(($) => {
+    return $.chat.newChat;
+  });
   const setCollapsed = useSet(setSessionListCollapsed$);
   const collapsed = useGet(sessionListCollapsed$);
 
@@ -925,6 +930,30 @@ function ChatThreadsTitle({ showMarkAllRead }: { showMarkAllRead: boolean }) {
         </span>
       </span>
       <div className="flex items-center gap-0.5">
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  newChatAction.onSelect("main");
+                }}
+                disabled={newChatAction.disabled}
+                variant="quiet"
+                size="icon-sm"
+                iconSize="md"
+                className="relative z-10 shrink-0"
+                aria-label={newChatLabel}
+              >
+                <Plus size={18} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p className="text-xs">{newChatLabel}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <ChatThreadsListMenu showMarkAllRead={showMarkAllRead} />
       </div>
     </div>

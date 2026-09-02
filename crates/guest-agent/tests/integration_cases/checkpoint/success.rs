@@ -95,6 +95,7 @@ async fn pi_checkpoint_reports_full_combined_completion_payload() {
         &runtime,
         0,
         None,
+        None,
         Some(42),
         &active_input_delivery_ids,
         checkpoint,
@@ -264,6 +265,58 @@ async fn checkpoint_rejects_prepare_response_without_upload_url() {
     );
     prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(0).await;
+    complete_mock.assert_calls_async(0).await;
+}
+
+#[tokio::test]
+async fn checkpoint_reports_session_history_upload_stage_and_final_status() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let mut runtime = runtime_from_process_env().unwrap();
+    runtime.config.framework = guest_agent::env::Framework::Codex;
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "aeaeaeae-aeae-4eae-8eae-aeaeaeaeaeae";
+    let (history_dir, history_path, history) = write_prunable_codex_history(session_id).unwrap();
+    std::fs::write(&history_path, &history).unwrap();
+    use_test_codex_home(&mut runtime, history_dir.path());
+
+    let upload_path = "/test/failed-session-history-upload";
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({
+                "presignedUrl": server.url(upload_path),
+                "existing": false,
+                "encoding": "identity",
+            }));
+    });
+    let upload_mock = server.mock(|when, then| {
+        when.method(PUT).path(upload_path);
+        then.status(502);
+    });
+    let complete_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/complete");
+        then.status(200)
+            .json_body(json!({"success": true, "status": "completed"}));
+    });
+
+    let error = guest_agent::checkpoint::prepare_checkpoint_for_runtime(
+        &runtime,
+        &checkpoint_session_metadata(&runtime),
+    )
+    .await
+    .err()
+    .expect("failed history upload should fail checkpoint preparation");
+
+    assert_eq!(
+        error.to_string(),
+        "checkpoint: session history upload failed: http: PUT presigned failed after 3 attempts; last failure: HTTP 502"
+    );
+    prepare_mock.assert_calls_async(1).await;
+    upload_mock.assert_calls_async(3).await;
     complete_mock.assert_calls_async(0).await;
 }
 

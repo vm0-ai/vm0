@@ -1209,6 +1209,8 @@ describe("zero sidebar", () => {
       chatThreadMarkUnreadContract.markUnread,
       ({ params, respond }) => {
         markedUnreadThreadId = params.id;
+        // The API publishes the read-cursor signal before it responds.
+        changeChatThreadReadCursor();
         return respond(200, {
           lastReadAt: null,
           unreads: [
@@ -2091,6 +2093,29 @@ describe("zero sidebar", () => {
     expect(
       dialogAgentOrder(dialogList, ["Research Agent", "Support Agent"]),
     ).toStrictEqual(["Support Agent", "Research Agent"]);
+  });
+
+  it("marks the current thread agent as selected in the pinned agent grid", async () => {
+    prepareAgents();
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [RESEARCH_AGENT_ID],
+    });
+    mockSidebarThreadStory([
+      createThread(RESEARCH_THREAD_ID, "Research kickoff", {
+        agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+      }),
+    ]);
+
+    setupSidebarPage({ context, path: `/chats/${RESEARCH_THREAD_ID}` });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(pinnedAgentLink(grid, "Research Agent")).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+    });
+    expect(pinnedAgentLink(grid, "Zero")).not.toHaveAttribute("aria-current");
   });
 
   it("pins an agent from the conversation picker and opens that agent chat", async () => {
@@ -3061,6 +3086,7 @@ describe("zero sidebar", () => {
         unreadAgentIds = unreadAgentIds.filter((id) => {
           return id !== body.agentId;
         });
+        changeChatThreadReadCursor();
         return respond(204);
       },
     );
@@ -3114,6 +3140,7 @@ describe("zero sidebar", () => {
       ({ body, respond }) => {
         markedAgentIds.push(body.agentId);
         hasUnread = false;
+        changeChatThreadReadCursor();
         return respond(204);
       },
     );
@@ -3318,7 +3345,7 @@ describe("zero sidebar", () => {
     expect(within(nav).queryByText("Automations")).not.toBeInTheDocument();
   });
 
-  it("renders the three-column navigation", async () => {
+  it("renders the three-column chat navigation and actions", async () => {
     prepareDefaultAgent();
 
     setupSidebarPage({
@@ -3331,6 +3358,11 @@ describe("zero sidebar", () => {
     });
 
     // Labeled icon rail carries text captions for its nav destinations.
+    const chatLink = within(rail).getByLabelText("Chat");
+    expect(within(rail).getByText("Chat")).toBeInTheDocument();
+    expect(
+      chatLink.querySelector(".lucide-message-circle"),
+    ).toBeInTheDocument();
     expect(within(rail).getByText("Agents")).toBeInTheDocument();
     expect(within(rail).getByText("Connectors")).toBeInTheDocument();
 
@@ -3338,12 +3370,29 @@ describe("zero sidebar", () => {
     const list = screen.getByTestId("chat-list-column");
     expect(within(list).getByText("Chat")).toBeInTheDocument();
     const searchButton = within(list).getByLabelText("Search workspace");
-    const newChatButton = within(list).getByLabelText("New chat");
+    const chatThreadsTitle = within(list).getByText("Chats with Zero");
+    if (!searchButton.parentElement || !chatThreadsTitle.parentElement) {
+      throw new Error("Chat action headers not found");
+    }
+    const headerNewChatButton = within(
+      searchButton.parentElement,
+    ).getByLabelText("New chat");
+    const threadNewChatButton = within(
+      chatThreadsTitle.parentElement,
+    ).getByLabelText("New chat");
     expect(searchButton).toHaveAttribute(
       "aria-keyshortcuts",
       "Meta+K Control+K",
     );
-    expect(newChatButton).toBeInTheDocument();
+    expect(
+      headerNewChatButton.querySelector(".lucide-square-pen"),
+    ).toBeInTheDocument();
+    expect(chatThreadsTitle.parentElement).toContainElement(
+      threadNewChatButton,
+    );
+    expect(
+      threadNewChatButton.querySelector(".lucide-plus"),
+    ).toBeInTheDocument();
     expect(
       within(list).getByTestId("pinned-agents-horizontal"),
     ).toBeInTheDocument();
@@ -3381,32 +3430,51 @@ describe("zero sidebar", () => {
     expect(upgradeSlot).toHaveClass("empty:hidden");
   });
 
-  it("keeps the new-chat rail responsive across consecutive clicks", async () => {
-    prepareDefaultAgent();
+  it("routes new chat to the current agent and chat rail to the default agent", async () => {
+    prepareAgents();
     mockSidebarThreadStory([
-      createThread(EXISTING_THREAD_ID, "Existing conversation"),
+      createThread(RESEARCH_THREAD_ID, "Research conversation", {
+        agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+      }),
     ]);
 
     setupSidebarPage({
       context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
+      path: `/chats/${RESEARCH_THREAD_ID}`,
     });
 
     const rail = await screen.findByTestId("labeled-nav-rail");
     await screen.findByPlaceholderText(PLACEHOLDER);
     expect(
       within(screen.getByTestId("chat-list-column")).getByText(
-        "Existing conversation",
+        "Research conversation",
       ),
     ).toBeInTheDocument();
-    const newChatLink = within(rail).getByLabelText("New chat");
-    click(newChatLink);
+    await screen.findByText("Chats with Research Agent");
+
+    const list = screen.getByTestId("chat-list-column");
+    const searchButton = within(list).getByLabelText("Search workspace");
+    if (!searchButton.parentElement) {
+      throw new Error("Chat header not found");
+    }
+    const newChatButton = within(searchButton.parentElement).getByLabelText(
+      "New chat",
+    );
+    click(newChatButton);
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${RESEARCH_AGENT_ID}/chat`);
+    });
+
+    const chatLink = within(rail).getByLabelText("Chat");
+    expect(chatLink).toHaveAttribute("href", `/agents/${AGENT_ID}/chat`);
+    click(chatLink);
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
     });
     click(
-      within(screen.getByTestId("labeled-nav-rail")).getByLabelText("New chat"),
+      within(screen.getByTestId("labeled-nav-rail")).getByLabelText("Chat"),
     );
 
     await waitFor(() => {
@@ -4068,6 +4136,7 @@ describe("zero sidebar", () => {
       ({ body, respond }) => {
         markedAgentIds.push(body.agentId);
         hasUnread = false;
+        changeChatThreadReadCursor();
         return respond(204);
       },
     );
@@ -4142,7 +4211,13 @@ describe("zero sidebar", () => {
     });
 
     const list = await screen.findByTestId("chat-list-column");
-    const newChatButton = within(list).getByLabelText("New chat");
+    const chatThreadsTitle = await within(list).findByText("Chats with Zero");
+    if (!chatThreadsTitle.parentElement) {
+      throw new Error("Chat threads header not found");
+    }
+    const newChatButton = within(chatThreadsTitle.parentElement).getByLabelText(
+      "New chat",
+    );
     await waitFor(() => {
       expect(newChatButton).toBeEnabled();
     });
@@ -4202,7 +4277,13 @@ describe("zero sidebar", () => {
     context.store.set(setChatPageImageModelSelection$, "fal-ai/flux-pro/v1.1");
 
     const list = await screen.findByTestId("chat-list-column");
-    const newChatButton = within(list).getByLabelText("New chat");
+    const chatThreadsTitle = await within(list).findByText("Chats with Zero");
+    if (!chatThreadsTitle.parentElement) {
+      throw new Error("Chat threads header not found");
+    }
+    const newChatButton = within(chatThreadsTitle.parentElement).getByLabelText(
+      "New chat",
+    );
     await waitFor(() => {
       expect(newChatButton).toBeEnabled();
     });

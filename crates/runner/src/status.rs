@@ -342,6 +342,8 @@ pub struct StatusTracker {
     persistence: Arc<PersistenceCoordinator>,
     #[cfg(test)]
     write_gate: Option<StatusWriteGate>,
+    #[cfg(test)]
+    idle_info_update_requests: AtomicU64,
 }
 
 struct MutableState {
@@ -395,6 +397,8 @@ impl StatusTracker {
             persistence: Arc::new(PersistenceCoordinator::new()),
             #[cfg(test)]
             write_gate: None,
+            #[cfg(test)]
+            idle_info_update_requests: AtomicU64::new(0),
         }
     }
 
@@ -430,6 +434,11 @@ impl StatusTracker {
             release,
         });
         tracker
+    }
+
+    #[cfg(test)]
+    pub(crate) fn idle_info_update_request_count(&self) -> u64 {
+        self.idle_info_update_requests.load(Ordering::Relaxed)
     }
 
     /// Transition the reported lifecycle mode and flush the status file.
@@ -632,6 +641,9 @@ impl StatusTracker {
         revision: u64,
         idle_sandboxes: Vec<IdleSandbox>,
     ) -> StatusResult<bool> {
+        #[cfg(test)]
+        self.idle_info_update_requests
+            .fetch_add(1, Ordering::Relaxed);
         let snapshot = {
             let mut state = self.state.lock().await;
             let applied = apply_idle_info_at_revision(&mut state, revision, idle_sandboxes);

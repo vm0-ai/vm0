@@ -47,6 +47,10 @@ import { now, withMockNowForTest } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
+import {
+  readMorningBriefDefaultEligibilityFixture,
+  withMorningBriefDefaultActivationFixture,
+} from "../../../test-fixtures/morning-brief-default";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import {
@@ -321,6 +325,13 @@ function googleMeetBlueprint(
   };
 }
 
+function structureTransitionGoogleMeetBlueprint(): OfficialWorkflowBlueprint {
+  return {
+    ...googleMeetBlueprint(1),
+    key: "lifecycle-transition",
+  };
+}
+
 function configureOfficialGoogleFormsMock() {
   const recorder = { watchCalls: 0 };
   mockOptionalEnv("GOOGLE_FORMS_PUBSUB_TOPIC_NAME", GOOGLE_FORMS_TOPIC_NAME);
@@ -455,6 +466,113 @@ function configureOfficialGoogleMeetMock() {
         );
         return HttpResponse.json({
           name: `operations/delete-official-google-meet-${testId}`,
+          done: true,
+        });
+      },
+    ),
+  );
+  return recorder;
+}
+
+function configureOfficialGoogleMeetMultiAccountMock(
+  accounts: readonly {
+    readonly code: string;
+    readonly accessToken: string;
+    readonly externalId: string;
+    readonly email: string;
+  }[],
+) {
+  const testId = randomUUID();
+  const topicName = `projects/vm0-ai-488909/topics/official-google-meet-race-${testId}`;
+  const accountByCode = new Map(
+    accounts.map((account) => {
+      return [account.code, account] as const;
+    }),
+  );
+  const accountByAccessToken = new Map(
+    accounts.map((account) => {
+      return [account.accessToken, account] as const;
+    }),
+  );
+  const recorder = {
+    createAccessTokens: [] as string[],
+    deleteAccessTokens: [] as string[],
+  };
+  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
+  mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
+  mockOptionalEnv("GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME", topicName);
+
+  const accountFromRequest = (request: Request) => {
+    const authorization = request.headers.get("authorization");
+    const accessToken = authorization?.replace(/^Bearer /, "") ?? "";
+    const account = accountByAccessToken.get(accessToken);
+    if (!account) {
+      throw new Error(`Unexpected Google Meet token: ${authorization}`);
+    }
+    return { account, authorization: `Bearer ${account.accessToken}` };
+  };
+
+  server.use(
+    http.post("https://oauth2.googleapis.com/token", async ({ request }) => {
+      const form = new URLSearchParams(await request.text());
+      const account = accountByCode.get(form.get("code") ?? "");
+      if (!account) {
+        return HttpResponse.json(
+          { error: "invalid_grant", error_description: "Unknown test code" },
+          { status: 400 },
+        );
+      }
+      return HttpResponse.json({
+        access_token: account.accessToken,
+        refresh_token: `refresh-${account.externalId}`,
+        expires_in: 3600,
+        token_type: "Bearer",
+        scope:
+          "https://www.googleapis.com/auth/meetings.space.readonly https://www.googleapis.com/auth/userinfo.email",
+      });
+    }),
+    http.get("https://www.googleapis.com/oauth2/v2/userinfo", ({ request }) => {
+      const { account } = accountFromRequest(request);
+      return HttpResponse.json({
+        id: account.externalId,
+        email: account.email,
+        name: `Official Meet ${account.externalId}`,
+      });
+    }),
+    http.post(
+      "https://workspaceevents.googleapis.com/v1/subscriptions",
+      async ({ request }) => {
+        const { account, authorization } = accountFromRequest(request);
+        await expect(request.json()).resolves.toStrictEqual({
+          targetResource: `//cloudidentity.googleapis.com/users/${account.externalId}`,
+          eventTypes: ["google.workspace.meet.transcript.v2.fileGenerated"],
+          notificationEndpoint: { pubsubTopic: topicName },
+          ttl: "604800s",
+        });
+        recorder.createAccessTokens.push(authorization);
+        return HttpResponse.json({
+          response: {
+            name: `subscriptions/official-google-meet-race-${account.externalId}-${recorder.createAccessTokens.length}`,
+            targetResource: `//cloudidentity.googleapis.com/users/${account.externalId}`,
+            eventTypes: ["google.workspace.meet.transcript.v2.fileGenerated"],
+            notificationEndpoint: { pubsubTopic: topicName },
+            state: "ACTIVE",
+            expireTime: "2099-09-01T00:00:00.000Z",
+          },
+        });
+      },
+    ),
+    http.delete(
+      /^https:\/\/workspaceevents\.googleapis\.com\/v1\/subscriptions\/[^/]+$/,
+      ({ request }) => {
+        const { account, authorization } = accountFromRequest(request);
+        expect(new URL(request.url).searchParams.get("allowMissing")).toBe(
+          "true",
+        );
+        recorder.deleteAccessTokens.push(authorization);
+        return HttpResponse.json({
+          name: `operations/delete-official-google-meet-race-${account.externalId}`,
           done: true,
         });
       },
@@ -1285,6 +1403,39 @@ async function setMorningBriefEnabled(
   );
 }
 
+async function deliverClerkOrganizationCreated(
+  actor: ApiTestUser,
+  createdAt: Date,
+): Promise<void> {
+  if (!actor.orgId) {
+    throw new Error("Expected organization-scoped actor");
+  }
+  webhooks.configureClerkWebhookSecret();
+  webhooks.verifyNextClerkWebhook({
+    type: "organization.created",
+    data: {
+      id: actor.orgId,
+      created_by: actor.userId,
+      created_at: createdAt.getTime(),
+    },
+  });
+  await webhooks.requestClerkWebhook("{}", {}, [200]);
+  await flushWaitUntilForTest();
+}
+
+async function listMorningBriefInstallations(actor: ApiTestUser) {
+  const response = await accept(
+    workflowCollectionClient().list({
+      headers: authHeaders(actor),
+      query: {},
+    }),
+    [200],
+  );
+  return response.body.filter((workflow) => {
+    return workflow.official?.definitionName === "morning-brief";
+  });
+}
+
 async function connectGoogleMeetForOfficialWorkflow(
   actor: ApiTestUser,
 ): Promise<void> {
@@ -1922,6 +2073,367 @@ describe.sequential("Morning Brief preference", () => {
         { enabled: true },
       ]);
     }
+  });
+});
+
+describe.sequential("Morning Brief default onboarding", () => {
+  it("marks only post-activation organization creators and preserves the first source timestamp", async () => {
+    installCatalogStorageFixture();
+    await syncDeployedCatalog();
+    const activationAt = new Date("2026-09-02T08:00:00.000Z");
+    const beforeActivation = new Date(activationAt.getTime() - 1);
+    const laterDelivery = new Date(activationAt.getTime() + 60_000);
+    const unsetActor = bdd.user();
+    const preActivationActor = bdd.user();
+    const eligibleCreator = bdd.user();
+    const membershipActor = bdd.user();
+    const invitationActor = bdd.user();
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await cleanupCatalog();
+    });
+
+    for (const actor of [unsetActor, preActivationActor]) {
+      await setMorningBriefEnabled(actor, true);
+      await setOfficialWorkflowsEnabled(actor, false);
+    }
+
+    await deliverClerkOrganizationCreated(unsetActor, laterDelivery);
+    await withMorningBriefDefaultActivationFixture(activationAt, async () => {
+      await deliverClerkOrganizationCreated(
+        preActivationActor,
+        beforeActivation,
+      );
+      await deliverClerkOrganizationCreated(eligibleCreator, activationAt);
+      await deliverClerkOrganizationCreated(eligibleCreator, laterDelivery);
+
+      if (!membershipActor.orgId || !invitationActor.orgId) {
+        throw new Error("Expected organization-scoped Clerk actors");
+      }
+      webhooks.configureClerkWebhookSecret();
+      webhooks.verifyNextClerkWebhook({
+        type: "organizationMembership.created",
+        data: {
+          organization: { id: membershipActor.orgId },
+          public_user_data: { user_id: membershipActor.userId },
+          role: "org:admin",
+          created_at: laterDelivery.getTime(),
+        },
+      });
+      await webhooks.requestClerkWebhook("{}", {}, [200]);
+      await flushWaitUntilForTest();
+
+      webhooks.verifyNextClerkWebhook({
+        type: "organizationInvitation.accepted",
+        data: {
+          id: `invitation_${randomUUID()}`,
+          organization_id: invitationActor.orgId,
+          user_id: invitationActor.userId,
+          email_address: invitationActor.email,
+          updated_at: laterDelivery.getTime(),
+        },
+      });
+      await webhooks.requestClerkWebhook("{}", {}, [200]);
+      await flushWaitUntilForTest();
+    });
+
+    await expect(
+      readMorningBriefDefaultEligibilityFixture({
+        orgId: unsetActor.orgId ?? "",
+        userId: unsetActor.userId,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      readMorningBriefDefaultEligibilityFixture({
+        orgId: preActivationActor.orgId ?? "",
+        userId: preActivationActor.userId,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      readMorningBriefDefaultEligibilityFixture({
+        orgId: eligibleCreator.orgId ?? "",
+        userId: eligibleCreator.userId,
+      }),
+    ).resolves.toStrictEqual(activationAt);
+    await expect(
+      readMorningBriefDefaultEligibilityFixture({
+        orgId: membershipActor.orgId ?? "",
+        userId: membershipActor.userId,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      readMorningBriefDefaultEligibilityFixture({
+        orgId: invitationActor.orgId ?? "",
+        userId: invitationActor.userId,
+      }),
+    ).resolves.toBeNull();
+
+    for (const actor of [unsetActor, preActivationActor]) {
+      const completed = await bdd.completeOnboarding(actor, {
+        timezone: "Asia/Shanghai",
+      });
+      expect(completed.status).toBe(200);
+      await expect(listMorningBriefInstallations(actor)).resolves.toHaveLength(
+        0,
+      );
+    }
+  });
+
+  it("installs once on concurrent first completion with only MorningBrief enabled", async () => {
+    installCatalogStorageFixture();
+    await syncDeployedCatalog();
+    const actor = bdd.user();
+    const activationAt = new Date("2026-09-02T08:00:00.000Z");
+    if (!actor.orgId) {
+      throw new Error("Expected organization-scoped actor");
+    }
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await cleanupCatalog();
+    });
+    await setMorningBriefEnabled(actor, true);
+    await setOfficialWorkflowsEnabled(actor, false);
+    await withMorningBriefDefaultActivationFixture(activationAt, async () => {
+      await deliverClerkOrganizationCreated(actor, activationAt);
+    });
+
+    const completions = await Promise.all([
+      bdd.completeOnboarding(actor, { timezone: "Asia/Shanghai" }),
+      bdd.completeOnboarding(actor, { timezone: "Asia/Shanghai" }),
+    ]);
+    expect(
+      completions.map((response) => {
+        return response.status;
+      }),
+    ).toStrictEqual([200, 200]);
+
+    const installations = await listMorningBriefInstallations(actor);
+    expect(installations).toHaveLength(1);
+    const installation = installations[0];
+    if (!installation) {
+      throw new Error("Expected a default Morning Brief installation");
+    }
+    const detail = await accept(
+      installationClient().get({
+        headers: authHeaders(actor),
+        params: { workflowId: installation.id },
+      }),
+      [200],
+    );
+    const onboarding = await bdd.readOnboardingStatus(actor);
+    expect(detail.body.workflow.automations).toHaveLength(1);
+    expect(detail.body.workflow).toMatchObject({
+      id: installation.id,
+      agentId: onboarding.defaultAgentId,
+      official: {
+        definitionName: "morning-brief",
+        installationState: "installed",
+      },
+      automations: [
+        {
+          enabled: true,
+          kind: "schedule",
+          schedule: {
+            type: "cron",
+            cronExpression: "0 7 * * *",
+            timezone: "Asia/Shanghai",
+          },
+          official: {
+            blueprintKey: "daily-delivery",
+            reconciliationStatus: "current",
+          },
+        },
+      ],
+    });
+  });
+
+  it("keeps legacy and invalid-timezone completions additive without later installation retries", async () => {
+    installCatalogStorageFixture();
+    await syncDeployedCatalog();
+    const activationAt = new Date("2026-09-02T08:00:00.000Z");
+    const missingTimezone = bdd.user();
+    const invalidTimezone = bdd.user();
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await cleanupCatalog();
+    });
+
+    for (const actor of [missingTimezone, invalidTimezone]) {
+      await setMorningBriefEnabled(actor, true);
+      await setOfficialWorkflowsEnabled(actor, false);
+      await withMorningBriefDefaultActivationFixture(activationAt, async () => {
+        await deliverClerkOrganizationCreated(actor, activationAt);
+      });
+    }
+
+    expect((await bdd.completeOnboarding(missingTimezone)).status).toBe(200);
+    expect(
+      (
+        await bdd.completeOnboarding(invalidTimezone, {
+          timezone: "Mars/Olympus",
+        })
+      ).status,
+    ).toBe(200);
+    for (const actor of [missingTimezone, invalidTimezone]) {
+      await expect(listMorningBriefInstallations(actor)).resolves.toHaveLength(
+        0,
+      );
+    }
+
+    expect(
+      (
+        await bdd.completeOnboarding(invalidTimezone, {
+          timezone: "Asia/Shanghai",
+        })
+      ).status,
+    ).toBe(200);
+    await expect(
+      listMorningBriefInstallations(invalidTimezone),
+    ).resolves.toHaveLength(0);
+    const preference = await accept(
+      morningBriefPreferenceClient().get({
+        headers: authHeaders(invalidTimezone),
+      }),
+      [200],
+    );
+    expect(preference.body).toMatchObject({
+      enabled: false,
+      timezone: "Asia/Shanghai",
+      unavailableReason: null,
+    });
+  });
+
+  it("preserves existing enabled and disabled installations and stored timezones", async () => {
+    installCatalogStorageFixture();
+    await syncDeployedCatalog();
+    const activationAt = new Date("2026-09-02T08:00:00.000Z");
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await cleanupCatalog();
+    });
+
+    for (const initiallyEnabled of [true, false]) {
+      const actor = bdd.user();
+      await setMorningBriefEnabled(actor, true);
+      await setOfficialWorkflowsEnabled(actor, false);
+      await withMorningBriefDefaultActivationFixture(activationAt, async () => {
+        await deliverClerkOrganizationCreated(actor, activationAt);
+      });
+      await bdd.updateUserTimezone(actor, "Asia/Shanghai");
+      const headers = authHeaders(actor);
+      await accept(
+        morningBriefPreferenceClient().update({
+          headers,
+          body: { enabled: true },
+        }),
+        [200],
+      );
+      if (!initiallyEnabled) {
+        await accept(
+          morningBriefPreferenceClient().update({
+            headers,
+            body: { enabled: false },
+          }),
+          [200],
+        );
+      }
+
+      const [before] = await listMorningBriefInstallations(actor);
+      if (!before) {
+        throw new Error("Expected a pre-existing Morning Brief installation");
+      }
+      const beforeDetail = await accept(
+        installationClient().get({
+          headers,
+          params: { workflowId: before.id },
+        }),
+        [200],
+      );
+      const beforeAutomation = beforeDetail.body.workflow.automations[0];
+      if (!beforeAutomation) {
+        throw new Error("Expected a pre-existing Morning Brief automation");
+      }
+
+      expect(
+        (
+          await bdd.completeOnboarding(actor, {
+            timezone: "America/Los_Angeles",
+          })
+        ).status,
+      ).toBe(200);
+      const [after] = await listMorningBriefInstallations(actor);
+      expect(after?.id).toBe(before.id);
+      const afterDetail = await accept(
+        installationClient().get({
+          headers: authHeaders(actor),
+          params: { workflowId: before.id },
+        }),
+        [200],
+      );
+      expect(afterDetail.body.workflow.automations).toMatchObject([
+        {
+          id: beforeAutomation.id,
+          enabled: initiallyEnabled,
+          schedule: { timezone: "Asia/Shanghai" },
+        },
+      ]);
+    }
+  });
+
+  it("reports installer failure while committing onboarding and never retries it", async () => {
+    installCatalogStorageFixture();
+    const activationAt = new Date("2026-09-02T08:00:00.000Z");
+    const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Expected organization-scoped actor");
+    }
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await cleanupCatalog();
+    });
+    await setMorningBriefEnabled(actor, true);
+    await setOfficialWorkflowsEnabled(actor, false);
+    await withMorningBriefDefaultActivationFixture(activationAt, async () => {
+      await deliverClerkOrganizationCreated(actor, activationAt);
+    });
+    context.mocks.axiomLogging.warn.mockClear();
+
+    expect(
+      (
+        await bdd.completeOnboarding(actor, {
+          timezone: "Asia/Shanghai",
+        })
+      ).status,
+    ).toBe(200);
+    expect(context.mocks.axiomLogging.warn.mock.calls).toContainEqual([
+      "Morning Brief onboarding provisioning outcome",
+      expect.objectContaining({
+        context: "onboarding.service",
+        orgId: actor.orgId,
+        userId: actor.userId,
+        firstCompletion: true,
+        timezone: "stored",
+        provisioning: expect.objectContaining({
+          outcome: "failed",
+          reason: "installation-failed",
+          failureKind: "not-found",
+        }),
+      }),
+    ]);
+    await expect(listMorningBriefInstallations(actor)).resolves.toHaveLength(0);
+    expect(
+      (await bdd.readOnboardingStatus(actor)).onboardingComplete,
+    ).toBeTruthy();
+
+    await syncDeployedCatalog();
+    expect(
+      (
+        await bdd.completeOnboarding(actor, {
+          timezone: "Asia/Shanghai",
+        })
+      ).status,
+    ).toBe(200);
+    await expect(listMorningBriefInstallations(actor)).resolves.toHaveLength(0);
   });
 });
 
@@ -6114,6 +6626,195 @@ describe.sequential("Official Workflow installations", () => {
           reconciliationStatus: "current",
         }),
       }),
+    ]);
+  });
+
+  it("revalidates a prepared Google Meet transition after the default account changes", async () => {
+    installCatalogStorageFixture();
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+    const definitionName = `api-test-meet-binding-race-${suffix}`;
+    await syncCatalog(
+      catalog([
+        activeDefinition(definitionName, [
+          structureTransitionScheduleBlueprint(),
+        ]),
+      ]),
+    );
+    const setup = await workflowBdd.setupWorkflowOrg();
+    const { actor } = setup;
+    if (!actor.orgId) {
+      throw new Error("Expected organization-scoped actor");
+    }
+    const { agentId } = await workflowBdd.createAgent(actor);
+    onTestFinished(async () => {
+      await resumeStructureTransitionPromotion();
+      installCatalogStorageFixture();
+      await bdd.deleteAgent(actor, agentId);
+      await cleanupCatalog();
+    });
+    await setOfficialWorkflowsEnabled(actor, true);
+    await updateFeatureSwitchesForUser(
+      context,
+      { orgId: actor.orgId, userId: actor.userId },
+      { [FeatureSwitchKey.ConnectorAccounts]: true },
+    );
+
+    const firstAccountSpec = {
+      code: `meet-race-first-${suffix}`,
+      accessToken: `meet-race-first-token-${suffix}`,
+      externalId: `meet-race-first-user-${suffix}`,
+      email: `meet-race-first-${suffix}@example.test`,
+    } as const;
+    const secondAccountSpec = {
+      code: `meet-race-second-${suffix}`,
+      accessToken: `meet-race-second-token-${suffix}`,
+      externalId: `meet-race-second-user-${suffix}`,
+      email: `meet-race-second-${suffix}@example.test`,
+    } as const;
+    const meet = configureOfficialGoogleMeetMultiAccountMock([
+      firstAccountSpec,
+      secondAccountSpec,
+    ]);
+
+    const firstOauth = await connectors.startOauth(
+      actor,
+      "google-meet",
+      "oauth",
+      agentId,
+    );
+    const firstState = new URL(firstOauth.authorizationUrl).searchParams.get(
+      "state",
+    );
+    if (!firstState) {
+      throw new Error("Expected first Google Meet OAuth state");
+    }
+    await connectors.completeOauthCallback("google-meet", {
+      code: firstAccountSpec.code,
+      state: firstState,
+    });
+    const secondOauth = await connectors.startOauth(
+      actor,
+      "google-meet",
+      "oauth",
+      agentId,
+      { intent: "add", displayName: "Official Meet Second" },
+    );
+    const secondState = new URL(secondOauth.authorizationUrl).searchParams.get(
+      "state",
+    );
+    if (!secondState) {
+      throw new Error("Expected second Google Meet OAuth state");
+    }
+    await connectors.completeOauthCallback("google-meet", {
+      code: secondAccountSpec.code,
+      state: secondState,
+    });
+    const accounts = await connectors.listBuiltinConnectorAccounts(
+      actor,
+      "google-meet",
+    );
+    const firstAccount = accounts.find((account) => {
+      return account.externalId === firstAccountSpec.externalId;
+    });
+    const secondAccount = accounts.find((account) => {
+      return account.externalId === secondAccountSpec.externalId;
+    });
+    if (!firstAccount || !secondAccount) {
+      throw new Error("Expected both Google Meet accounts");
+    }
+    expect(firstAccount.isDefault).toBeTruthy();
+    expect(secondAccount.isDefault).toBeFalsy();
+
+    const headers = authHeaders(actor);
+    const installed = await accept(
+      officialClient().install({
+        headers,
+        params: { definitionName },
+        body: {
+          agentId,
+          blueprints: [{ blueprintKey: "lifecycle-transition", bindings: [] }],
+        },
+      }),
+      [201],
+    );
+    const workflowId = installed.body.workflow.id;
+    const automation = installed.body.workflow.automations[0];
+    if (!automation) {
+      throw new Error("Expected Google Meet structure-transition Automation");
+    }
+
+    await syncCatalog(
+      catalog([
+        activeDefinition(definitionName, [
+          structureTransitionGoogleMeetBlueprint(),
+        ]),
+      ]),
+    );
+    await pauseNextStructureTransitionPromotion();
+    const olderWorker = runOfficialWorkflowReconciliationWorker();
+    await waitForStructureTransitionPromotionPause();
+    await onRejection(
+      connectors.setDefaultBuiltinConnectorAccount(
+        actor,
+        "google-meet",
+        secondAccount.id,
+      ),
+      resumeStructureTransitionPromotion,
+    );
+    await resumeStructureTransitionPromotion();
+    await olderWorker;
+
+    const rejected = await accept(
+      installationClient().get({ headers, params: { workflowId } }),
+      [200],
+    );
+    expect(rejected.body.workflow.automations).toStrictEqual([
+      expect.objectContaining({
+        id: automation.id,
+        kind: "schedule",
+        schedule: { type: "loop", intervalSeconds: 3600 },
+        enabled: false,
+        official: expect.objectContaining({
+          intendedEnabled: true,
+          reconciliationStatus: "reconciling",
+        }),
+      }),
+    ]);
+
+    await makeOfficialWorkflowReconciliationWorkDue(definitionName);
+    await expect(
+      runOfficialWorkflowReconciliationWorker(),
+    ).resolves.toStrictEqual(
+      expect.objectContaining({ claimed: 1, completed: 1, installations: 1 }),
+    );
+    const converged = await accept(
+      installationClient().get({ headers, params: { workflowId } }),
+      [200],
+    );
+    expect(converged.body.workflow.automations).toStrictEqual([
+      expect.objectContaining({
+        id: automation.id,
+        kind: "event",
+        eventType: "google-meet-transcript-generated",
+        enabled: true,
+        official: expect.objectContaining({
+          intendedEnabled: true,
+          reconciliationStatus: "current",
+        }),
+      }),
+    ]);
+    await expect(
+      readWorkflowAutomationAutonomyFixture(context, automation.id),
+    ).resolves.toMatchObject({
+      enabled: true,
+      eventConnectorId: secondAccount.id,
+    });
+    expect(meet.createAccessTokens).toStrictEqual([
+      `Bearer ${firstAccountSpec.accessToken}`,
+      `Bearer ${secondAccountSpec.accessToken}`,
+    ]);
+    expect(meet.deleteAccessTokens).toStrictEqual([
+      `Bearer ${firstAccountSpec.accessToken}`,
     ]);
   });
 

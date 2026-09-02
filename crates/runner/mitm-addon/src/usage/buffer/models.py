@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from typing import Literal, TypedDict
 
 DEFAULT_FLUSH_INTERVAL_SECONDS = 30.0
-MODEL_USAGE_OBSERVATION_FLUSH_INTERVAL_SECONDS = 300.0
 DEFAULT_FLUSH_JITTER_RATIO = 0.2
 MAX_BUFFERED_SOURCE_EVENTS = 1_000
 MAX_AGGREGATE_BUCKETS = 100
@@ -24,37 +23,14 @@ class UsageEvent(TypedDict):
     quantity: int
 
 
-class ModelUsageObservation(TypedDict):
-    """Model-provider token observation accepted by the usage buffer.
-
-    ``idempotencyKey`` identifies the source observation and ``model`` identifies
-    the model resource. The buffer validates and independently accumulates the
-    four token quantities—``inputTokens``, ``outputTokens``,
-    ``cacheReadInputTokens``, and ``cacheCreationInputTokens``—within the exact
-    ``MAX_USAGE_QUANTITY`` bound. The source-preserving buffer keeps the original
-    vector and key instead of aggregating them.
-    """
-
-    idempotencyKey: str
-    model: str
-    inputTokens: int
-    outputTokens: int
-    cacheReadInputTokens: int
-    cacheCreationInputTokens: int
-
-
 UsageFlushTrigger = Literal["timer", "threshold", "runner", "shutdown", "test"]
-ResourceFieldName = Literal["provider", "model"]
 
 
 @dataclass(frozen=True)
 class _DestinationKey:
     url: str
-    bearer_credential: str
+    sandbox_token: str
     proxy_log_path: str
-    resource_field_name: ResourceFieldName
-    include_kind: bool
-    log_type: str
 
 
 @dataclass(frozen=True)
@@ -72,28 +48,9 @@ class _AggregateBucket:
 
 
 @dataclass(frozen=True)
-class _ObservationAggregateKey:
-    model: str
-
-
-@dataclass
-class _ObservationAggregateBucket:
-    input_tokens: int = 0
-    output_tokens: int = 0
-    cache_read_input_tokens: int = 0
-    cache_creation_input_tokens: int = 0
-    source_event_count: int = 0
-
-
-@dataclass(frozen=True)
 class _BufferedSourceEvent:
     run_id: str
     event: UsageEvent
-
-
-@dataclass(frozen=True)
-class _BufferedSourceObservation:
-    observation: ModelUsageObservation
 
 
 @dataclass(frozen=True)
@@ -105,10 +62,9 @@ class _FlushEvent:
 @dataclass(frozen=True)
 class _FlushBatch:
     url: str
-    bearer_credential: str
+    sandbox_token: str
     payload: dict
     proxy_log_path: str
-    log_type: str
     source_event_count: int
 
 
@@ -122,7 +78,6 @@ class _PendingBatch:
 @dataclass
 class _FlushSummary:
     proxy_log_path: str
-    log_type: str
     source_event_count: int = 0
     aggregate_event_count: int = 0
     webhook_batch_count: int = 0
@@ -179,23 +134,3 @@ class _BatchEnqueueError(Exception):
 class _RetainBatchesResult:
     retained_batches: list[_PendingBatch]
     dropped_batches: list[_PendingBatch]
-
-
-def _destination_priority(destination: _DestinationKey) -> int:
-    return _log_type_priority(destination.log_type)
-
-
-def _pending_flush_priority(pending_flush: _PendingFlush) -> int:
-    if not pending_flush.batches:
-        return 1
-    return min(_batch_priority(pending_batch.batch) for pending_batch in pending_flush.batches)
-
-
-def _batch_priority(batch: _FlushBatch) -> int:
-    return _log_type_priority(batch.log_type)
-
-
-def _log_type_priority(log_type: str) -> int:
-    if log_type == "usage_event":
-        return 0
-    return 1

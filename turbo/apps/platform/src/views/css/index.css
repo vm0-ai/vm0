@@ -381,9 +381,7 @@ body {
    swap with it. Both families ship in the stylesheet request in index.html;
    their woff2 files only download once an element actually resolves to them. */
 :root[data-typeface="geist"] {
-  --font-family-sans:
-    "Geist", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    sans-serif;
+  --font-family-sans: "Geist", system-ui, sans-serif;
   --font-family-mono:
     "Geist Mono", ui-monospace, "SF Mono", Monaco, Consolas, monospace;
 }
@@ -549,10 +547,16 @@ body {
 /* Zero app: inherits global cool gray tokens; only card-specific tokens defined here */
 .zero-app {
   --zero-card-radius: 1.25rem;
+  /* Cards rendered inside a chat message sit one level in from the page, so
+     they take one step down the radius scale. */
+  --zero-chat-card-radius: 0.75rem;
   /* The composer is the largest surface on the page and leads the radius scale. */
   --zero-composer-radius: 1.5rem;
   --zero-card-shadow:
     0 2px 12px hsl(220 12% 50% / 0.04), 0 0 0 0.5px hsl(220 12% 50% / 0.02);
+  /* A card inside a message is not elevated off the page the way a page-level
+     card is, so it gets contact rather than lift: a 2px blur instead of 12px. */
+  --zero-chat-card-shadow: 0 1px 2px hsl(220 12% 50% / 0.04);
   /* Static focus veil for the composer. Fading this layer through opacity lets
      the browser composite it without interpolating the wide blur every frame. */
   --zero-composer-focus-veil: 0 10px 48px -8px hsl(220 14% 50% / 0.08);
@@ -568,6 +572,7 @@ body {
   --zero-card-shadow:
     0 2px 12px hsl(var(--state-layer) / 0.035),
     0 0 0 0.5px hsl(var(--state-layer) / 0.018);
+  --zero-chat-card-shadow: 0 1px 2px hsl(var(--state-layer) / 0.035);
   --zero-composer-focus-veil: 0 10px 48px -8px hsl(var(--state-layer) / 0.07);
 }
 
@@ -728,6 +733,31 @@ body {
     var(--color-state-hover)
   );
   border-color: hsl(var(--gray-400));
+}
+
+/* Cards inside the chat transcript: notice cards, action cards, artifact and
+   media frames. One surface, one hairline, one shadow, one radius — before this
+   the transcript carried two radii, four border tokens and three fills.
+
+   `zero-chat-frame` is the same recipe without the fill, for the frames that
+   own their background (a video stage is black, not white).
+
+   These live in `@layer components` on purpose. Unlayered rules outrank every
+   Tailwind utility regardless of specificity, which would silently kill any
+   `border-*`, `bg-*`, or `hover:*` a caller composes onto the same element —
+   the selected and hover states of the browser session card, for instance.
+   Inside `components`, the utilities layer still wins, so this stays a base
+   that callers can override. */
+@layer components {
+  .zero-app .zero-chat-card,
+  .zero-app .zero-chat-frame {
+    border: 0.7px solid hsl(var(--gray-400));
+    border-radius: var(--zero-chat-card-radius);
+    box-shadow: var(--zero-chat-card-shadow);
+  }
+  .zero-app .zero-chat-card {
+    background-color: hsl(var(--card));
+  }
 }
 
 /* White card: shared border, radius (all white cards except chat bubbles) */

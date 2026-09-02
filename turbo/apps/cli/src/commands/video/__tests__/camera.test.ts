@@ -12,6 +12,11 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cameraCommand } from "../camera";
 
+/** What the fake ffprobe says about the video stream, adjustable per test. */
+const probedStream = vi.hoisted(() => {
+  return { avg_frame_rate: "30/1", r_frame_rate: "30/1" };
+});
+
 vi.mock("child_process", async () => {
   const { readFileSync, writeFileSync } =
     await vi.importActual<typeof import("node:fs")>("node:fs");
@@ -19,14 +24,7 @@ vi.mock("child_process", async () => {
     execFileSync: vi.fn((command: string, args: readonly string[]) => {
       if (command === "ffprobe") {
         return JSON.stringify({
-          streams: [
-            {
-              width: 1920,
-              height: 1080,
-              avg_frame_rate: "30/1",
-              r_frame_rate: "30/1",
-            },
-          ],
+          streams: [{ width: 1920, height: 1080, ...probedStream }],
           format: { duration: "10.000000" },
         });
       }
@@ -66,6 +64,8 @@ describe("okou video camera command", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    probedStream.avg_frame_rate = "30/1";
+    probedStream.r_frame_rate = "30/1";
     rmSync(directory, { recursive: true, force: true });
   });
 
@@ -106,30 +106,37 @@ describe("okou video camera command", () => {
       planPath: string;
       reviewPath: string;
       reviewFrames: number;
-      cameraRanges: number;
+      cameraShots: number;
+      cameraMoves: number;
     };
-    expect(result).toMatchObject({ outputPath, cameraRanges: 1 });
+    expect(result).toMatchObject({ outputPath, cameraShots: 1 });
+    expect(result.cameraMoves).toBeGreaterThanOrEqual(2);
     const plan = JSON.parse(readFileSync(result.planPath, "utf8")) as {
       algorithm: string;
-      ranges: {
+      content: { x: number; y: number; width: number; height: number };
+      shots: {
         startMs: number;
         endMs: number;
-        scale: number;
-        focuses: readonly unknown[];
+        baseZoom: number;
+        keys: { startMs: number; durationMs: number; clickMs?: number }[];
       }[];
     };
-    expect(plan.algorithm).toBe("screen-studio-compatible-v1");
-    expect(plan.ranges).toEqual([
-      expect.objectContaining({
-        startMs: 1_700,
-        endMs: 7_000,
-        scale: 2,
-        focuses: expect.arrayContaining([
-          expect.any(Object),
-          expect.any(Object),
-        ]),
+    expect(plan.algorithm).toBe("click-camera-v2");
+    // no letterbox detected through the mocked ffmpeg: the whole frame is content
+    expect(plan.content).toEqual({ x: 0, y: 0, width: 1920, height: 1080 });
+    expect(plan.shots).toHaveLength(1);
+    const shot = plan.shots[0];
+    // the pointer settled on the first click's spot 300 ms early, so the
+    // zoom-in lands 150 ms after that instead of on the click: it starts at
+    // 1700 + 150 - 800; the shot holds 2.2 s past the last click
+    expect(shot?.startMs).toBe(1_050);
+    expect(shot?.endMs).toBe(4_500 + 2_200);
+    expect(shot?.keys[0]).toMatchObject({ durationMs: 800, clickMs: 2_000 });
+    expect(
+      shot?.keys.some((key) => {
+        return key.clickMs === 4_500;
       }),
-    ]);
+    ).toBe(true);
     const review = JSON.parse(readFileSync(result.reviewPath, "utf8")) as {
       checkpoints: {
         timeMs: number;
@@ -149,9 +156,9 @@ describe("okou video camera command", () => {
         expect.objectContaining({ kind: "click" }),
         expect.objectContaining({ kind: "click-after", offsetMs: 500 }),
         expect.objectContaining({ kind: "click-after", offsetMs: 1_500 }),
-        expect.objectContaining({ kind: "pan-midpoint" }),
-        expect.objectContaining({ kind: "zoom-enter" }),
-        expect.objectContaining({ kind: "zoom-exit" }),
+        expect.objectContaining({ kind: "move-start" }),
+        expect.objectContaining({ kind: "move-end" }),
+        expect.objectContaining({ kind: "shot-end" }),
         expect.objectContaining({ kind: "maximum-camera-speed" }),
       ]),
     );
@@ -163,10 +170,12 @@ describe("okou video camera command", () => {
     );
 
     const generatedCommands = readFileSync(outputPath, "utf8");
+    // the wide shot before the first click, and the 2.2x focus on the click
     expect(generatedCommands).toContain("crop@camera w 1920.000000");
-    expect(generatedCommands).toContain("crop@camera w 960.000000");
+    // 1920 / 2.2, as the plan stores it (three decimals)
+    expect(generatedCommands).toContain("crop@camera w 872.727000");
     const ffmpegCall = vi.mocked(execFileSync).mock.calls.find((call) => {
-      return call[0] === "ffmpeg";
+      return call[0] === "ffmpeg" && call[1]?.includes("libx264");
     });
     expect(ffmpegCall?.[1]).toEqual(
       expect.arrayContaining([
@@ -178,6 +187,91 @@ describe("okou video camera command", () => {
         "libx264",
       ]),
     );
+  });
+
+  it("renders at the frame rate the recording declares, not the probed average", async () => {
+    // A screen capture only stores a frame when the picture changes, so
+    // ffprobe averages a mostly still recording to well under one frame per
+    // second. That figure is valid as far as ffprobe is concerned, and it
+    // used to become the output frame rate.
+    probedStream.avg_frame_rate = "150/241";
+    probedStream.r_frame_rate = "1/2";
+    const videoPath = join(directory, "recording.mp4");
+    const eventsPath = join(directory, "recording.clicks.json");
+    const outputPath = join(directory, "draft.mp4");
+    writeFileSync(videoPath, Buffer.from("source-video"));
+    writeFileSync(
+      eventsPath,
+      JSON.stringify({
+        version: 1,
+        recording: {
+          durationMs: 10_000,
+          video: { width: 1920, height: 1080, frameRate: 30 },
+        },
+        clicks: [{ tMs: 2_000, normalized: { x: 0.12, y: 0.22 } }],
+        pointerEvents: [
+          { tMs: 1_700, kind: "move", normalized: { x: 0.1, y: 0.2 } },
+          { tMs: 2_000, kind: "click", normalized: { x: 0.12, y: 0.22 } },
+        ],
+      }),
+    );
+
+    await cameraCommand.parseAsync(
+      ["--file", videoPath, "--events", eventsPath, "--output", outputPath],
+      { from: "user" },
+    );
+
+    const result = JSON.parse(stdout()) as {
+      planPath: string;
+      frameRate: number;
+    };
+    expect(result.frameRate).toBe(30);
+    const plan = JSON.parse(readFileSync(result.planPath, "utf8")) as {
+      source: { frameRate: number };
+    };
+    expect(plan.source.frameRate).toBe(30);
+    const ffmpegCall = vi.mocked(execFileSync).mock.calls.find((call) => {
+      return call[0] === "ffmpeg" && call[1]?.includes("libx264");
+    });
+    expect(ffmpegCall?.[1]).toEqual(
+      expect.arrayContaining(["-vf", expect.stringMatching(/^fps=30,/u)]),
+    );
+  });
+
+  it("keeps a pass-through stage between the moving crop and the scaler", async () => {
+    // Wired straight into `scale`, a crop whose size changes mid-stream never
+    // gets rescaled and the encoder segfaults on the first zoomed frame; the
+    // `null` stage in between is what makes `scale` notice the change.
+    const videoPath = join(directory, "recording.mp4");
+    const eventsPath = join(directory, "recording.clicks.json");
+    const outputPath = join(directory, "draft.mp4");
+    writeFileSync(videoPath, Buffer.from("source-video"));
+    writeFileSync(
+      eventsPath,
+      JSON.stringify({
+        version: 1,
+        recording: {
+          durationMs: 10_000,
+          video: { width: 1920, height: 1080, frameRate: 30 },
+        },
+        clicks: [{ tMs: 2_000, normalized: { x: 0.12, y: 0.22 } }],
+        pointerEvents: [
+          { tMs: 2_000, kind: "click", normalized: { x: 0.12, y: 0.22 } },
+        ],
+      }),
+    );
+
+    await cameraCommand.parseAsync(
+      ["--file", videoPath, "--events", eventsPath, "--output", outputPath],
+      { from: "user" },
+    );
+
+    const ffmpegCall = vi.mocked(execFileSync).mock.calls.find((call) => {
+      return call[0] === "ffmpeg" && call[1]?.includes("libx264");
+    });
+    const filterIndex = ffmpegCall?.[1]?.indexOf("-vf") ?? -1;
+    const filter = ffmpegCall?.[1]?.[filterIndex + 1];
+    expect(filter).toMatch(/crop@camera=[^,]*,null,scale=1920:1080:/u);
   });
 
   it("uses the existing VM0 demo capture event format", async () => {
@@ -219,28 +313,27 @@ describe("okou video camera command", () => {
 
     const result = JSON.parse(stdout()) as {
       planPath: string;
-      cameraRanges: number;
+      cameraShots: number;
     };
-    expect(result.cameraRanges).toBe(1);
+    expect(result.cameraShots).toBe(1);
     const plan = JSON.parse(readFileSync(result.planPath, "utf8")) as {
-      ranges: {
+      shots: {
         startMs: number;
         endMs: number;
-        focuses: { x: number; y: number }[];
+        keys: { clickMs?: number; rect: { width: number } }[];
       }[];
     };
-    expect(plan.ranges).toEqual([
+    // pointerdown at 2000 and 5000 ms (after the 500 ms go offset: 1500 and 4500)
+    expect(plan.shots).toEqual([
       expect.objectContaining({
-        startMs: 1_200,
-        endMs: 7_000,
-        focuses: expect.arrayContaining([
-          expect.objectContaining({
-            x: expect.any(Number),
-            y: expect.any(Number),
-          }),
+        endMs: 4_500 + 2_200,
+        keys: expect.arrayContaining([
+          expect.objectContaining({ clickMs: 1_500 }),
+          expect.objectContaining({ clickMs: 4_500 }),
         ]),
       }),
     ]);
+    expect(plan.shots[0]?.startMs).toBeLessThan(1_500);
   });
 
   it("renders an AI-edited camera plan without regenerating it", async () => {
@@ -251,26 +344,29 @@ describe("okou video camera command", () => {
     writeFileSync(
       planPath,
       JSON.stringify({
-        version: 1,
-        algorithm: "screen-studio-compatible-v1",
+        version: 2,
+        algorithm: "click-camera-v2",
         source: {
           durationMs: 10_000,
           width: 1920,
           height: 1080,
           frameRate: 30,
         },
-        ranges: [
+        content: { x: 0, y: 0, width: 1920, height: 1080 },
+        shots: [
           {
-            id: "camera-001",
+            id: "shot-001",
             startMs: 1_000,
             endMs: 4_000,
-            scale: 1.5,
-            focuses: [
+            baseZoom: 1.5,
+            keys: [
               {
-                id: "camera-001-focus-001",
+                id: "shot-001-key-001",
                 startMs: 1_000,
-                x: 0.5,
-                y: 0.5,
+                durationMs: 800,
+                rect: { x: 320, y: 180, width: 1280 },
+                reason: "zoom in on click at 1800 ms",
+                clickMs: 1_800,
               },
             ],
           },
@@ -289,8 +385,8 @@ describe("okou video camera command", () => {
       "crop@camera w 1280.000000",
     );
     const unchangedPlan = JSON.parse(readFileSync(planPath, "utf8")) as {
-      ranges: { scale: number }[];
+      shots: { baseZoom: number }[];
     };
-    expect(unchangedPlan.ranges[0]?.scale).toBe(1.5);
+    expect(unchangedPlan.shots[0]?.baseZoom).toBe(1.5);
   });
 });

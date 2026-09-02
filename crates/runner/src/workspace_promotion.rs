@@ -22,7 +22,7 @@ use crate::workspace_image_cache::{
 };
 use crate::workspace_mount::freeze_workspace_drive;
 
-const SESSION_HISTORY_SIDECAR_EXPORT_TIMEOUT: Duration = Duration::from_secs(10);
+const SESSION_HISTORY_SIDECAR_EXPORT_TIMEOUT: Duration = Duration::from_secs(30);
 const SESSION_HISTORY_SIDECAR_COPY_TIMEOUT: Duration = Duration::from_secs(30);
 const SESSION_HISTORY_SIDECAR_CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -254,10 +254,30 @@ async fn export_session_history_sidecar(
         stdin_bytes: None,
         output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
     };
-    let result = match sandbox
-        .exec_with_diagnostic_label(&request, "session-history-sidecar-export")
+    let export_permit = match promotion
+        .acquire_session_history_sidecar_export_permit()
         .await
     {
+        Ok(permit) => permit,
+        Err(e) => {
+            warn!(
+                run_id = %promotion.run_id(),
+                sandbox_id = %promotion.sandbox_id(),
+                profile_name = promotion.profile_name(),
+                reuse_key_fingerprint = %crate::paths::short_digest(promotion.reuse_key()),
+                reuse_key_kind = crate::types::reuse_key_kind(promotion.reuse_key()),
+                reason,
+                error = %e,
+                "workspace image cache session history sidecar export admission failed"
+            );
+            return None;
+        }
+    };
+    let result = sandbox
+        .exec_with_diagnostic_label(&request, "session-history-sidecar-export")
+        .await;
+    drop(export_permit);
+    let result = match result {
         Ok(result) => result,
         Err(e) => {
             warn!(

@@ -3,7 +3,7 @@
 import json
 import time
 import urllib.request
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -266,39 +266,6 @@ def test_does_not_admit_when_delivery_capacity_is_saturated(tmp_path):
     assert "secret-payload" not in json.dumps(saturated_entry)
 
 
-def test_model_observation_saturation_does_not_consume_billing_capacity(tmp_path):
-    observation_executor = QueuedUsageExecutor()
-    billing_executor = QueuedUsageExecutor()
-
-    with (
-        patch.object(
-            usage.webhook,
-            "model_usage_observation_executor",
-            observation_executor,
-        ),
-        patch.object(usage.webhook, "usage_executor", billing_executor),
-    ):
-        for _ in range(usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS):
-            assert usage.webhook.enqueue_model_usage_observation_delivery(
-                "https://api.vm0.ai/api/runners/model-usage-observations",
-                "runner-token",
-                {"events": []},
-                "",
-                "model_usage_observation",
-            )
-
-        assert usage.webhook.enqueue_webhook_delivery(
-            "https://api.vm0.ai/api/webhooks/agent/usage-event",
-            "sandbox-token",
-            {"runId": "run-1", "events": []},
-            str(tmp_path / "proxy.jsonl"),
-            "usage_event",
-        )
-
-    assert len(observation_executor.submissions) == usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS
-    assert len(billing_executor.submissions) == 1
-
-
 def test_delivery_capacity_released_after_success(
     mitm_ctx, tmp_path, sync_usage_executor, usage_webhook_server
 ):
@@ -360,98 +327,6 @@ def test_delivery_capacity_released_when_outcome_callback_fails(
         reports=0,
         flush_request_id="callback-failed",
     )
-
-
-def test_model_observation_capacity_released_when_outcome_callback_fails(
-    mitm_ctx, tmp_path, sync_usage_executor, usage_webhook_server
-):
-    pending_path = tmp_path / "usage-pending"
-    usage.set_pending_path(str(pending_path))
-    usage_webhook_server.queue_response(204)
-
-    def fail_callback(_outcome: usage.webhook.WebhookDeliveryOutcome) -> None:
-        raise RuntimeError("callback failed")
-
-    with mitm_ctx():
-        assert usage.webhook.enqueue_model_usage_observation_delivery(
-            usage_webhook_server.url("/api/runners/model-usage-observations"),
-            "runner-token",
-            {"events": []},
-            "",
-            "model_usage_observation",
-            delivery_outcome_callback=fail_callback,
-        )
-
-    with pytest.raises(RuntimeError, match="callback failed"):
-        sync_usage_executor.shutdown(wait=True)
-
-    assert usage_webhook_server.request_count == 1
-    assert usage.webhook.pending_model_observation_delivery_payload_count_for_tests() == 0
-    assert_current_pending(
-        pending_path,
-        flows=0,
-        buffered=0,
-        reports=0,
-        flush_request_id="observation-callback-failed",
-    )
-
-
-def test_model_observation_uses_sync_fallback_after_its_executor_shutdown(
-    mitm_ctx, tmp_path, usage_webhook_server
-):
-    pending_path = tmp_path / "usage-pending"
-    billing_executor = QueuedUsageExecutor()
-    usage.set_pending_path(str(pending_path))
-    usage_webhook_server.queue_response(204)
-
-    with (
-        mitm_ctx(),
-        patch.object(usage.webhook, "usage_executor", billing_executor),
-        patch.object(
-            usage.webhook.model_usage_observation_executor,
-            "submit",
-            side_effect=RuntimeError("shutdown"),
-        ),
-    ):
-        assert usage.webhook.enqueue_model_usage_observation_delivery(
-            usage_webhook_server.url("/api/runners/model-usage-observations"),
-            "runner-token",
-            {"events": []},
-            "",
-            "model_usage_observation",
-        )
-
-    assert usage_webhook_server.request_count == 1
-    assert not billing_executor.submissions
-    assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
-    assert usage.webhook.pending_model_observation_delivery_payload_count_for_tests() == 0
-    assert_current_pending(
-        pending_path,
-        flows=0,
-        buffered=0,
-        reports=0,
-        flush_request_id="observation-sync-fallback",
-    )
-
-
-def test_shutdown_delivery_executors_attempts_observation_after_billing_failure():
-    billing_executor = MagicMock()
-    observation_executor = MagicMock()
-    billing_executor.shutdown.side_effect = RuntimeError("billing shutdown failed")
-
-    with (
-        patch.object(usage.webhook, "usage_executor", billing_executor),
-        patch.object(
-            usage.webhook,
-            "model_usage_observation_executor",
-            observation_executor,
-        ),
-        pytest.raises(RuntimeError, match="billing shutdown failed"),
-    ):
-        usage.webhook.shutdown_delivery_executors(wait=True)
-
-    billing_executor.shutdown.assert_called_once_with(wait=True)
-    observation_executor.shutdown.assert_called_once_with(wait=True)
 
 
 def test_delivery_capacity_released_after_retry_exhaustion(

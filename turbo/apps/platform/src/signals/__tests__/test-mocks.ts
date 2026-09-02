@@ -63,10 +63,6 @@ interface BrowserOpenMock {
   openedWindow: Window | null;
 }
 
-interface BrowserUrlOptions {
-  readonly apiOriginMarker?: string | null;
-}
-
 interface BrowserScreenOptions {
   readonly height: number;
   readonly pixelRatio: number;
@@ -74,6 +70,15 @@ interface BrowserScreenOptions {
 }
 
 interface CanvasRender {
+  readonly avatar: {
+    readonly centerX: number;
+    readonly centerY: number;
+    readonly clipRadius: number;
+    readonly height: number;
+    readonly width: number;
+    readonly x: number;
+    readonly y: number;
+  };
   readonly background: string;
   readonly height: number;
   readonly width: number;
@@ -170,7 +175,6 @@ type OmitFirst<T extends readonly unknown[]> = T extends readonly [
 
 export function createTestMocks(getSignal: () => AbortSignal) {
   let originalBrowserUrl: string | null = null;
-  let ownedApiOriginMarker: HTMLMetaElement | null = null;
   const signalContext: SignalContextLike = {
     get signal() {
       return getSignal();
@@ -277,12 +281,10 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       },
     },
     browser: {
-      url: (url: string, options: BrowserUrlOptions = {}): void => {
+      url: (url: string): void => {
         if (originalBrowserUrl === null) {
           originalBrowserUrl = window.location.href;
           restoreOnAbort(getSignal(), () => {
-            ownedApiOriginMarker?.remove();
-            ownedApiOriginMarker = null;
             if (originalBrowserUrl !== null) {
               window.location.href = originalBrowserUrl;
               originalBrowserUrl = null;
@@ -290,19 +292,6 @@ export function createTestMocks(getSignal: () => AbortSignal) {
           });
         }
         window.location.href = url;
-        ownedApiOriginMarker?.remove();
-        ownedApiOriginMarker = null;
-
-        const markerContent =
-          options.apiOriginMarker === undefined
-            ? productionApiOriginForUrl(url)
-            : options.apiOriginMarker;
-        if (markerContent !== null) {
-          ownedApiOriginMarker = document.createElement("meta");
-          ownedApiOriginMarker.name = "vm0-api-origin";
-          ownedApiOriginMarker.content = markerContent;
-          document.head.append(ownedApiOriginMarker);
-        }
       },
       open: (openedWindow: Window | null = null): BrowserOpenMock => {
         return mockWindowOpen(openedWindow);
@@ -1079,14 +1068,36 @@ function mockScreen(signal: AbortSignal, options: BrowserScreenOptions): void {
 
 function mockCanvasRendering(signal: AbortSignal): CanvasRenderingMock {
   const renders: CanvasRender[] = [];
+  let avatarCenterX = 0;
+  let avatarCenterY = 0;
+  let avatarClipRadius = 0;
+  let avatarHeight = 0;
+  let avatarWidth = 0;
+  let avatarX = 0;
+  let avatarY = 0;
   const context = {
     fillStyle: "",
     imageSmoothingEnabled: false,
     imageSmoothingQuality: "low",
-    arc() {},
+    arc(centerX: number, centerY: number, radius: number) {
+      avatarCenterX = centerX;
+      avatarCenterY = centerY;
+      avatarClipRadius = radius;
+    },
     beginPath() {},
     clip() {},
-    drawImage() {},
+    drawImage(
+      _image: CanvasImageSource,
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+    ) {
+      avatarX = x;
+      avatarY = y;
+      avatarWidth = width;
+      avatarHeight = height;
+    },
     fillRect() {},
     restore() {},
     save() {},
@@ -1101,6 +1112,15 @@ function mockCanvasRendering(signal: AbortSignal): CanvasRenderingMock {
     .spyOn(HTMLCanvasElement.prototype, "toDataURL")
     .mockImplementation(function toDataURL(this: HTMLCanvasElement) {
       renders.push({
+        avatar: {
+          centerX: avatarCenterX,
+          centerY: avatarCenterY,
+          clipRadius: avatarClipRadius,
+          height: avatarHeight,
+          width: avatarWidth,
+          x: avatarX,
+          y: avatarY,
+        },
         background: String(context.fillStyle),
         height: this.height,
         width: this.width,
@@ -1145,15 +1165,4 @@ function restoreWindowProperty(
 
 function restoreOnAbort(signal: AbortSignal, restore: () => void): void {
   signal.addEventListener("abort", restore, { once: true });
-}
-
-function productionApiOriginForUrl(url: string): string | null {
-  const hostname = new URL(url, window.location.href).hostname;
-  if (hostname === "app.okou.ai") {
-    return "https://api.okou.ai";
-  }
-  if (hostname === "app.vm0.ai") {
-    return "https://api.vm0.ai";
-  }
-  return null;
 }

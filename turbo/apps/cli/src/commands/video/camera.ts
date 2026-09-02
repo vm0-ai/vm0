@@ -22,7 +22,12 @@ import {
   inputTrackSchema,
   inputTrackVideoSource,
 } from "./camera-plan";
-import type { CameraPlan, VideoSource } from "./camera-plan";
+import type {
+  CameraPlan,
+  PixelRect,
+  SourceAnalysis,
+  VideoSource,
+} from "./camera-plan";
 import {
   createCameraReviewCheckpoints,
   type CameraReviewCheckpoint,
@@ -34,8 +39,6 @@ const ffprobeSchema = z.object({
       z.object({
         width: z.number().int().positive(),
         height: z.number().int().positive(),
-        avg_frame_rate: z.string(),
-        r_frame_rate: z.string(),
       }),
     )
     .min(1),
@@ -55,28 +58,20 @@ function parseJsonFile(path: string): unknown {
   return JSON.parse(readFileSync(path, "utf8")) as unknown;
 }
 
-function frameRate(value: string): number | null {
-  const [numeratorText, denominatorText] = value.split("/");
-  const numerator = Number(numeratorText);
-  const denominator = Number(denominatorText);
-  if (
-    !Number.isFinite(numerator) ||
-    !Number.isFinite(denominator) ||
-    denominator === 0
-  ) {
-    return null;
-  }
-  const result = numerator / denominator;
-  return result > 0 ? result : null;
-}
-
 /**
- * `ffprobe` genuinely omits `format.duration` for some containers and reports
- * an unusable frame rate for variable-rate captures, so those two fields fall
- * back to the values the recording sidecar or plan declares. Width and height
- * always come from the probe, because a mismatch there means the wrong file.
+ * `ffprobe` genuinely omits `format.duration` for some containers, so the
+ * duration falls back to the value the recording sidecar or plan declares.
+ * Width and height always come from the probe, because a mismatch there means
+ * the wrong file.
+ *
+ * The frame rate is never probed. A screen capture only stores a frame when
+ * the picture changes, so for a recording with long still stretches `ffprobe`
+ * reports an average of well under one frame per second. That number looks
+ * valid, and rendering at it turned the cut into a slideshow and left the
+ * camera motion with almost no frames to move on. The recording declares the
+ * rate it was captured at, and that is the rate the cut plays back at.
  */
-function probeVideo(path: string, fallback: VideoSource): VideoSource {
+function probeVideo(path: string, declared: VideoSource): VideoSource {
   const raw = execFileSync(
     "ffprobe",
     [
@@ -85,7 +80,7 @@ function probeVideo(path: string, fallback: VideoSource): VideoSource {
       "-select_streams",
       "v:0",
       "-show_entries",
-      "stream=width,height,avg_frame_rate,r_frame_rate:format=duration",
+      "stream=width,height:format=duration",
       "-of",
       "json",
       path,
@@ -98,19 +93,135 @@ function probeVideo(path: string, fallback: VideoSource): VideoSource {
     throw new Error("Source file has no video stream");
   }
   const durationSeconds = Number(result.format.duration);
-  const detectedFrameRate =
-    frameRate(video.avg_frame_rate) ?? frameRate(video.r_frame_rate);
   return {
     durationMs:
       Number.isFinite(durationSeconds) && durationSeconds > 0
         ? Math.round(durationSeconds * 1_000)
-        : fallback.durationMs,
+        : declared.durationMs,
     width: video.width,
     height: video.height,
-    frameRate:
-      detectedFrameRate && detectedFrameRate <= 240
-        ? detectedFrameRate
-        : fallback.frameRate,
+    frameRate: declared.frameRate,
+  };
+}
+
+const REACTION_DELAY_MS = 400;
+const REACTION_PROBE_WIDTH = 160;
+const REACTION_PIXEL_DELTA = 40;
+
+/**
+ * Where the content sits in the frame. A window that was narrowed while it was
+ * recorded leaves a black band the camera must never zoom into; ffmpeg's crop
+ * detector finds the band from the first seconds of the video.
+ */
+function detectContentRect(
+  inputPath: string,
+  source: VideoSource,
+): PixelRect | null {
+  const raw = execFileSync(
+    "ffmpeg",
+    [
+      "-v",
+      "error",
+      "-t",
+      "5",
+      "-i",
+      inputPath,
+      "-vf",
+      "cropdetect=limit=24:round=2:reset=0,metadata=print:file=-",
+      "-f",
+      "null",
+      "-",
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  const values = new Map<string, number>();
+  for (const line of raw.toString("utf8").split("\n")) {
+    const match = /lavfi\.cropdetect\.(w|h|x|y)=(-?\d+)/u.exec(line);
+    if (match?.[1] && match[2]) {
+      values.set(match[1], Number(match[2]));
+    }
+  }
+  const width = values.get("w");
+  const height = values.get("h");
+  const x = values.get("x");
+  const y = values.get("y");
+  if (
+    width === undefined ||
+    height === undefined ||
+    x === undefined ||
+    y === undefined ||
+    width < source.width * 0.8 ||
+    height < source.height * 0.8
+  ) {
+    return null;
+  }
+  return { x, y, width, height };
+}
+
+function probeFrame(inputPath: string, timeMs: number): Buffer {
+  return execFileSync(
+    "ffmpeg",
+    [
+      "-v",
+      "error",
+      "-ss",
+      (timeMs / 1_000).toFixed(3),
+      "-i",
+      inputPath,
+      "-frames:v",
+      "1",
+      "-vf",
+      `scale=${String(REACTION_PROBE_WIDTH)}:-2,format=gray`,
+      "-f",
+      "rawvideo",
+      "-",
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+}
+
+/**
+ * How much of the picture changed right after each click. A click that
+ * closed a menu or navigated away leaves nothing to look at where it landed,
+ * so the camera pulls back early instead of dwelling on the spot.
+ */
+function measureClickReactions(
+  inputPath: string,
+  clickTimes: readonly number[],
+  source: VideoSource,
+): ReadonlyMap<number, number> {
+  const reactions = new Map<number, number>();
+  for (const clickMs of clickTimes) {
+    if (clickMs + REACTION_DELAY_MS > source.durationMs) {
+      continue;
+    }
+    const before = probeFrame(inputPath, clickMs);
+    const after = probeFrame(inputPath, clickMs + REACTION_DELAY_MS);
+    const length = Math.min(before.length, after.length);
+    if (length === 0) {
+      continue;
+    }
+    let changed = 0;
+    for (let index = 0; index < length; index += 1) {
+      const left = before[index] ?? 0;
+      const right = after[index] ?? 0;
+      if (Math.abs(left - right) > REACTION_PIXEL_DELTA) {
+        changed += 1;
+      }
+    }
+    reactions.set(clickMs, changed / length);
+  }
+  return reactions;
+}
+
+function analyzeSource(
+  inputPath: string,
+  clickTimes: readonly number[],
+  source: VideoSource,
+): SourceAnalysis {
+  return {
+    contentRect: detectContentRect(inputPath, source),
+    reactions: measureClickReactions(inputPath, clickTimes, source),
   };
 }
 
@@ -139,9 +250,6 @@ function assertPlanMatchesVideo(plan: CameraPlan, source: VideoSource): void {
   if (Math.abs(plan.source.durationMs - source.durationMs) > 1_000) {
     throw new Error("Camera plan does not match the source video duration");
   }
-  if (Math.abs(plan.source.frameRate - source.frameRate) > 0.01) {
-    throw new Error("Camera plan does not match the source video frame rate");
-  }
 }
 
 function assertWritableOutput(path: string, force: boolean): void {
@@ -162,10 +270,21 @@ function renderVideo(
   try {
     const commandsPath = join(temporaryDirectory, "camera.commands");
     writeFileSync(commandsPath, createFfmpegCameraCommands(plan));
+    // The `null` stage between the crop and the scaler is load-bearing. When
+    // a command changes the crop's w or h, `crop` rewrites the size of its
+    // own output link, and `scale` decides whether to reconfigure by comparing
+    // each frame with the link it reads from. Wired directly, that link is the
+    // one `crop` just rewrote, so `scale` never sees a change; and because the
+    // first frames are full size it never built a scaler at all, so it hands
+    // the shrunken frames straight to the encoder, which was opened for the
+    // full size, reads past the end of their buffer and dies with SIGSEGV.
+    // `null` keeps its own link size, so `scale` sees every size change and
+    // rescales the frame. Reproduced on ffmpeg 6.1 and 7.0 (#31169).
     const filter = [
       `fps=${plan.source.frameRate.toString()}`,
       `sendcmd=f='${commandsPath}'`,
       `crop@camera=w=${plan.source.width.toString()}:h=${plan.source.height.toString()}:x=0:y=0:exact=1`,
+      "null",
       `scale=${plan.source.width.toString()}:${plan.source.height.toString()}:flags=lanczos`,
       "setsar=1",
     ].join(",");
@@ -299,7 +418,7 @@ Output:
 
 Notes:
   - Exactly one of --events or --plan is required
-  - The generated camera plan is editable JSON; change ranges, scale, or focus points and render again
+  - The generated camera plan is editable JSON: each shot lists timed moves (keys) with the viewport they land on; edit and render again
   - Requires ffmpeg and ffprobe on PATH`,
   )
   .action(
@@ -342,7 +461,11 @@ Notes:
         const track = inputTrackSchema.parse(parseJsonFile(eventsPath));
         clickTimes = inputTrackClickTimes(track);
         const source = probeVideo(inputPath, inputTrackVideoSource(track));
-        plan = createCameraPlan(track, source);
+        plan = createCameraPlan(
+          track,
+          source,
+          analyzeSource(inputPath, clickTimes, source),
+        );
         planPath = resolve(options.planOutput ?? defaultPlanPath(outputPath));
         if (
           planPath === eventsPath ||
@@ -414,7 +537,10 @@ Notes:
           width: plan.source.width,
           height: plan.source.height,
           frameRate: plan.source.frameRate,
-          cameraRanges: plan.ranges.length,
+          cameraShots: plan.shots.length,
+          cameraMoves: plan.shots.reduce((count, shot) => {
+            return count + shot.keys.length;
+          }, 0),
           sizeBytes: statSync(outputPath).size,
           renderMs,
         })}\n`,

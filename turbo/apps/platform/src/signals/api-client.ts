@@ -73,19 +73,13 @@ export const apiClient$ = computed((get) => {
   const runtime = get(apiClientRuntime$);
   const clientVersion = get(appVersion$);
   const rootSignal = get(rootSignal$);
-  const tokenOptions =
-    runtime.environment === "worker"
-      ? {
-          getToken: runtime.getToken,
-          reloadToken: runtime.reloadToken,
-        }
-      : {
-          getToken: async (signal: AbortSignal) => {
-            const clerk = await runtime.clerk;
-            signal.throwIfAborted();
-            return await readClerkToken(clerk, signal);
-          },
-        };
+  const tokenOptions = {
+    getToken: async (signal: AbortSignal) => {
+      const clerk = await runtime.clerk;
+      signal.throwIfAborted();
+      return await readClerkToken(clerk, signal);
+    },
+  };
   return <T extends AppRouter>(contract: T, options?: ApiClientOptions) => {
     return createAuthedContractClient(contract, {
       ...tokenOptions,

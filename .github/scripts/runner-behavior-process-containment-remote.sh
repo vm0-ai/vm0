@@ -130,9 +130,7 @@ test "$(cat "$parent/workload/tools/memory.max")" = max
 test "$(cat "$parent/workload/tools/memory.oom.group")" = 0
 grep -qw memory "$parent/workload/tools/cgroup.subtree_control"
 test "$(cat "/sys/fs/cgroup$relative/memory.oom.group")" = 1
-test -z "${VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT+x}"
 test -z "${OKOU_WORKLOAD_CGROUP_PROCS_ENDPOINT+x}"
-test -z "${VM0_TOOL_CGROUP_PROCS_ENDPOINT+x}"
 test "${OKOU_TOOL_CGROUP_PROCS_ENDPOINT+x}" = x
 test -n "$OKOU_TOOL_CGROUP_PROCS_ENDPOINT"
 control_member_count=$(wc -l < "$parent/control/cgroup.procs")
@@ -619,14 +617,16 @@ echo "--- Pressure: group-kill only the high-memory Bash tool ---"
 MEMORY_CHAT_THREAD_ID=$(cat /proc/sys/kernel/random/uuid)
 MEMORY_SESSION_ID="e2e-process-containment-memory"
 SECONDS=0
-MEMORY_RESULT=$(sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+if ! MEMORY_RESULT=$(sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   --timeout 30 \
   --chat-thread-id "$MEMORY_CHAT_THREAD_ID" \
   --session-id "$MEMORY_SESSION_ID" \
   --feature-flag sandboxReuse=true \
   --prompt '@parallel-shell-tool-oom' \
-  --active-input 'after=1s,text=memory-pressure-control') \
-  || fail "memory-pressure run did not recover after the offender tool group was killed"
+  --active-input 'after=1s,text=memory-pressure-control'); then
+  printf '%s\n' "$MEMORY_RESULT"
+  fail "memory-pressure submit failed before tool OOM isolation completed"
+fi
 MEMORY_ELAPSED=$SECONDS
 printf '%s\n' "$MEMORY_RESULT"
 [ "$MEMORY_ELAPSED" -lt 20 ] \

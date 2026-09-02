@@ -2,14 +2,25 @@ import { command, computed, type Computed } from "ccstate";
 import type { OnboardingStatusResponse } from "@okouai/api-contracts/contracts/onboarding";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentDisplayNameForPublicBrand } from "@okouai/core/public-brand";
+import { isValidTimeZone } from "@okouai/core/timezone";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-canonical-write";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import type { AuthContext } from "../../types/auth";
+import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";
+import { settle } from "../utils";
+import {
+  ensureMorningBriefDefaultEnabled$,
+  type EnsureMorningBriefDefaultEnabledResult,
+} from "./morning-brief-preference.service";
+import type { WorkflowMember } from "./workflow-data.service";
+
+const L = logger("onboarding.service");
 
 interface DefaultAgentInfo {
   readonly composeId: string;
@@ -28,21 +39,76 @@ type CompleteOnboardingResponse = {
   };
 };
 
-async function markOnboardingComplete(db: Db, orgId: string): Promise<void> {
-  await db
+async function markOnboardingComplete(db: Db, orgId: string): Promise<boolean> {
+  const updatedAt = nowDate();
+  const rows = await db
     .insert(orgMetadataCanonicalWrites)
     .values({
       orgId,
       onboardingComplete: true,
-      updatedAt: nowDate(),
+      updatedAt,
     })
     .onConflictDoUpdate({
       target: orgMetadataCanonicalWrites.orgId,
       set: {
         onboardingComplete: true,
-        updatedAt: nowDate(),
+        updatedAt,
       },
-    });
+      setWhere: eq(orgMetadataCanonicalWrites.onboardingComplete, false),
+    })
+    .returning({ orgId: orgMetadataCanonicalWrites.orgId });
+  return rows.length > 0;
+}
+
+type TimezoneFallbackOutcome = "missing" | "invalid" | "stored" | "preserved";
+
+async function preserveOrStoreTimezoneFallback(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly timezone?: string;
+  },
+): Promise<TimezoneFallbackOutcome> {
+  if (args.timezone === undefined) {
+    return "missing";
+  }
+  if (!isValidTimeZone(args.timezone)) {
+    return "invalid";
+  }
+
+  const updatedAt = nowDate();
+  const rows = await db
+    .insert(orgMembersMetadata)
+    .values({
+      orgId: args.orgId,
+      userId: args.userId,
+      timezone: args.timezone,
+      createdAt: updatedAt,
+      updatedAt,
+    })
+    .onConflictDoUpdate({
+      target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
+      set: { timezone: args.timezone, updatedAt },
+      setWhere: isNull(orgMembersMetadata.timezone),
+    })
+    .returning({ timezone: orgMembersMetadata.timezone });
+  return rows.length > 0 ? "stored" : "preserved";
+}
+
+interface CompleteOnboardingArgs {
+  readonly orgId: string;
+  readonly member: WorkflowMember;
+  readonly publicBrand: PublicBrand;
+  readonly timezone?: string;
+}
+
+interface MorningBriefOnboardingOutcome {
+  readonly firstCompletion: boolean;
+  readonly timezone: TimezoneFallbackOutcome;
+  readonly provisioning:
+    | EnsureMorningBriefDefaultEnabledResult
+    | { readonly outcome: "skipped"; readonly reason: "already-complete" };
 }
 
 function defaultAgentId(orgId: string): Computed<Promise<string | null>> {
@@ -161,12 +227,59 @@ export function onboardingStatus(
 export const completeOnboarding$ = command(
   async (
     { set },
-    args: { readonly orgId: string },
+    args: CompleteOnboardingArgs,
     signal: AbortSignal,
   ): Promise<CompleteOnboardingResponse> => {
     const writeDb = set(writeDb$);
-    await markOnboardingComplete(writeDb, args.orgId);
+    const firstCompletion = await markOnboardingComplete(writeDb, args.orgId);
     signal.throwIfAborted();
+
+    const additiveOutcome = await settle(
+      (async (): Promise<MorningBriefOnboardingOutcome> => {
+        const timezone = await preserveOrStoreTimezoneFallback(writeDb, {
+          orgId: args.orgId,
+          userId: args.member.userId,
+          timezone: args.timezone,
+        });
+        signal.throwIfAborted();
+        const provisioning = firstCompletion
+          ? await set(
+              ensureMorningBriefDefaultEnabled$,
+              {
+                orgId: args.orgId,
+                member: args.member,
+                publicBrand: args.publicBrand,
+              },
+              signal,
+            )
+          : {
+              outcome: "skipped" as const,
+              reason: "already-complete" as const,
+            };
+        return { firstCompletion, timezone, provisioning };
+      })(),
+      signal,
+    );
+
+    if (
+      additiveOutcome.ok &&
+      additiveOutcome.value.provisioning.outcome !== "failed"
+    ) {
+      L.debug("Morning Brief onboarding provisioning outcome", {
+        orgId: args.orgId,
+        userId: args.member.userId,
+        ...additiveOutcome.value,
+      });
+    } else {
+      L.warn("Morning Brief onboarding provisioning outcome", {
+        orgId: args.orgId,
+        userId: args.member.userId,
+        firstCompletion,
+        ...(additiveOutcome.ok
+          ? additiveOutcome.value
+          : { outcome: "failed", error: additiveOutcome.error }),
+      });
+    }
 
     return {
       status: 200,

@@ -1,5 +1,65 @@
 # Changelog
 
+## [9.306.0](https://github.com/vm0-ai/vm0/compare/cli-v9.305.5...cli-v9.306.0) (2026-09-02)
+
+
+### Features
+
+* **cli:** replace the camera algorithm with a click-focused, trail-timed camera ([#31202](https://github.com/vm0-ai/vm0/issues/31202)) ([e1245be](https://github.com/vm0-ai/vm0/commit/e1245be1fea162731df26c109cac5cd5e3f36d66))
+* **pi:** inject bounded memory summary recall ([#31203](https://github.com/vm0-ai/vm0/issues/31203)) ([e44155e](https://github.com/vm0-ai/vm0/commit/e44155e6786b92ca0ae13852cdab1d5817656ecd))
+* **pi:** support custom responses gateways ([#31157](https://github.com/vm0-ai/vm0/issues/31157)) ([e8cd4db](https://github.com/vm0-ai/vm0/commit/e8cd4dba2e57c0258491859f2aedd66a7f5855e4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.395.0
+    * @okouai/core bumped to 8.611.2
+    * @okouai/pi-agent-runtime bumped to 1.12.0
+
+## [9.305.5](https://github.com/vm0-ai/vm0/compare/cli-v9.305.4...cli-v9.305.5) (2026-09-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.394.0
+    * @okouai/core bumped to 8.611.1
+    * @okouai/pi-agent-runtime bumped to 1.11.1
+
+## [9.305.4](https://github.com/vm0-ai/vm0/compare/cli-v9.305.3...cli-v9.305.4) (2026-09-02)
+
+
+### Bug Fixes
+
+* **cli:** render the camera cut at the frame rate the recording declares ([#31159](https://github.com/vm0-ai/vm0/issues/31159)) ([d9f8a7d](https://github.com/vm0-ai/vm0/commit/d9f8a7d6b97ede4a901cdf1f865f06be3630b24e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.393.0
+    * @okouai/core bumped to 8.611.0
+
+## [9.305.3](https://github.com/vm0-ai/vm0/compare/cli-v9.305.2...cli-v9.305.3) (2026-09-02)
+
+
+### Refactoring
+
+* **pi:** make ownership transfer v3-only ([#31045](https://github.com/vm0-ai/vm0/issues/31045)) ([1e99242](https://github.com/vm0-ai/vm0/commit/1e99242eabe418b4981216c0f6eb62e21edc015a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.392.0
+    * @okouai/connectors bumped to 3.3.0
+    * @okouai/core bumped to 8.610.0
+
 ## [9.305.2](https://github.com/vm0-ai/vm0/compare/cli-v9.305.1...cli-v9.305.2) (2026-09-02)
 
 

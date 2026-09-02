@@ -3,6 +3,7 @@ use std::net::IpAddr;
 use std::sync::Arc;
 
 use api_contracts::generated::types::runners::runs::CodexRuntimeConfig;
+use api_contracts::generated::types::webhooks::agent::complete::RequestFailureReason;
 use sandbox::SandboxId;
 use serde::{Deserialize, Serialize};
 use unicode_normalization::UnicodeNormalization;
@@ -1643,6 +1644,8 @@ pub struct CompleteRequest {
     pub run_id: RunId,
     pub exit_code: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<RequestFailureReason>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     /// Sandbox the run executed against. `None` when the run failed before
     /// sandbox allocation; otherwise set on every completion regardless of
@@ -2118,6 +2121,7 @@ mod tests {
                 .parse::<RunId>()
                 .unwrap(),
             exit_code: 0,
+            failure_reason: None,
             error: None,
             sandbox_id: None,
             sandbox_reuse_result: None,
@@ -2129,6 +2133,7 @@ mod tests {
         assert!(json.get("exitCode").is_some());
         // optionals omitted when None
         assert!(json.get("error").is_none());
+        assert!(json.get("failureReason").is_none());
         assert!(json.get("sandboxId").is_none());
         assert!(json.get("sandboxReuseResult").is_none());
         assert!(json.get("workspaceReuseResult").is_none());
@@ -2142,6 +2147,7 @@ mod tests {
                 .parse::<RunId>()
                 .unwrap(),
             exit_code: 1,
+            failure_reason: Some(RequestFailureReason::ProviderRateLimited),
             error: Some("timeout".into()),
             sandbox_id: None,
             sandbox_reuse_result: None,
@@ -2150,6 +2156,7 @@ mod tests {
         };
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["error"], "timeout");
+        assert_eq!(json["failureReason"], "provider_rate_limited");
         assert!(json.get("sandboxId").is_none());
         assert!(json.get("sandboxReuseResult").is_none());
         assert!(json.get("workspaceReuseResult").is_none());
@@ -2163,6 +2170,7 @@ mod tests {
                 .parse::<RunId>()
                 .unwrap(),
             exit_code: 0,
+            failure_reason: None,
             error: None,
             sandbox_id: Some(sid),
             sandbox_reuse_result: Some(SandboxReuseResult::Reused),

@@ -416,13 +416,11 @@
         "agents": "에이전트",
         "artifacts": "아티팩트",
         "connectors": "커넥터",
-        "newChat": "새 채팅",
         "settings": "설정",
         "workflows": "워크플로",
         "works": "{{agentName}}가(이) 작업하는 곳"
       },
       "rail": {
-        "new": "새로 만들기",
         "workflows": "워크플로",
         "works": "작업"
       },
@@ -1819,7 +1817,7 @@
       "noAccounts": "사용 가능한 정상 계좌가 없습니다. 먼저 금융 기관을 다시 연결하거나 복구하세요.",
       "oneDay": "24시간",
       "oneHour": "1시간",
-      "popupBlocked": "Zero의 팝업을 허용한 후 다시 시도해 주세요.",
+      "popupBlocked": "{{assistantName}}의 팝업을 허용한 후 다시 시도해 주세요.",
       "readOnly": "계좌, 잔액 및 거래 · 읽기 전용",
       "repair": "복구",
       "repairRequired": "{{institution}}에 복구가 필요합니다",
@@ -1941,8 +1939,8 @@
       "providerIncompatibleAction": "새 세션 시작",
       "providerIncompatiblePrefix": "이 세션은 다른 모델 공급자로 시작되어 현재 공급자로 계속할 수 없습니다.",
       "recovery": {
-        "capacityDescription": "이 모델은 일시적으로 사용량이 많습니다. 몇 분 후 다시 시도하거나 지금 다른 모델로 전환하세요.",
-        "capacityTitle": "{{framework}} 모델이 혼잡합니다",
+        "capacityDescription": "잠시 후 다시 시도하거나 다른 모델로 전환하세요.",
+        "capacityTitle": "이 모델은 지금 혼잡합니다",
         "claudeCode": "Claude Code",
         "codex": "Codex",
         "continue": "계속",
@@ -2024,7 +2022,7 @@
       "review": {
         "avatar": "아바타",
         "heading": "인트로 영상 검토",
-        "help": "새 채팅 스레드로 전달할 선택 사항을 확인하세요",
+        "help": "{{assistantName}}가 새 채팅 스레드에서 받을 선택 사항을 확인하세요",
         "instructions": "편집 지침",
         "source": "소스",
         "voice": "음성"
@@ -4654,6 +4652,20 @@
       "teamDescription": "10개 병렬 실행과 더 많은 크레딧으로 팀을 확장하세요."
     }
   },
+  "serviceStatus": {
+    "dismiss": "서비스 업데이트 닫기",
+    "label": "서비스 상태 업데이트",
+    "statuses": {
+      "identified": "문제 확인됨",
+      "incident": "서비스 장애",
+      "investigating": "조사 중",
+      "maintenance": "유지보수",
+      "maintenanceInProgress": "유지보수 진행 중",
+      "maintenanceScheduled": "유지보수 예정",
+      "monitoring": "복구 모니터링 중"
+    },
+    "viewUpdates": "최신 업데이트 보기"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "계정 추가",
@@ -4780,24 +4792,14 @@
       "title": "데이터 내보내기"
     },
     "lab": {
-      "actions": {
-        "resetAll": "모두 재설정",
-        "resetting": "재설정 중…"
-      },
-      "description": "실험 기능을 켜거나 끄세요.",
+      "description": "출시 단계별 기능 스위치를 확인하세요.",
       "documentTitle": "랩",
-      "empty": {
-        "description": "이 유지관리자에 대한 기능 전환이 없습니다.",
-        "title": "기능 전환 없음"
-      },
-      "filters": {
-        "all": "전체"
-      },
       "groups": {
-        "connectors": "커넥터",
-        "other": "기타"
+        "alpha": "알파",
+        "beta": "베타",
+        "internal": "내부",
+        "released": "출시됨"
       },
-      "maintainer": "유지관리자: {{maintainer}}",
       "title": "랩"
     },
     "models": {
@@ -5094,8 +5096,13 @@
           "offline": "오프라인",
           "online": "온라인",
           "recovery": "복구",
+          "refresh": "새로 고침",
           "title": "실시간 연결 진단",
-          "unavailable": "사용 불가"
+          "unavailable": "사용 불가",
+          "workerDescription": "실시간 연결을 담당하는 공유 워커가 기록한 진단을 확인합니다.",
+          "workerLoading": "로딩 중",
+          "workerTitle": "공유 워커 연결 진단",
+          "workerUnavailable": "사용 불가"
         }
       },
       "language": {

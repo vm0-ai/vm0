@@ -107,12 +107,6 @@ class TestUsageReportingIdempotency:
     def test_reports_usage_without_provider_message_id(
         self, tmp_path, real_flow, mitm_ctx, headers, usage_webhook_api
     ):
-        """Missing message_id in model_provider_usage still reports usage.
-
-        Without a stable per-flow source key, duplicate response/error
-        observations could be aggregated twice before the webhook payload is
-        built.
-        """
         log_path = str(tmp_path / "network.jsonl")
         flow = make_model_provider_flow(
             real_flow,
@@ -138,23 +132,13 @@ class TestUsageReportingIdempotency:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
 
-        assert webhook.request_count == 2
+        assert webhook.request_count == 1
         requests_by_path = {request.path: request for request in webhook.requests}
-        assert set(requests_by_path) == {
-            "/api/webhooks/agent/usage-event",
-            "/api/runners/model-usage-observations",
-        }
         body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
-        observation_body = requests_by_path["/api/runners/model-usage-observations"].json_body()
         assert body["events"][0]["quantity"] == 10
-        assert observation_body["events"][0]["inputTokens"] == 10
         assert body["events"][0]["provider"] == "claude-sonnet-4-6"
-        assert observation_body["events"][0]["model"] == "claude-sonnet-4-6"
         billing_key = body["events"][0]["idempotencyKey"]
-        observation_key = observation_body["events"][0]["idempotencyKey"]
         uuid.UUID(billing_key)
-        uuid.UUID(observation_key)
-        assert observation_key != billing_key
 
     def test_reports_usage_with_provider_message_id(
         self, tmp_path, real_flow, mitm_ctx, headers, usage_webhook_api
@@ -185,20 +169,10 @@ class TestUsageReportingIdempotency:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
 
-        assert webhook.request_count == 2
+        assert webhook.request_count == 1
         requests_by_path = {request.path: request for request in webhook.requests}
-        assert set(requests_by_path) == {
-            "/api/webhooks/agent/usage-event",
-            "/api/runners/model-usage-observations",
-        }
         body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
-        observation_body = requests_by_path["/api/runners/model-usage-observations"].json_body()
         assert body["events"][0]["quantity"] == 10
-        assert observation_body["events"][0]["inputTokens"] == 10
         assert body["events"][0]["provider"] == "claude-sonnet-4-6"
-        assert observation_body["events"][0]["model"] == "claude-sonnet-4-6"
         billing_key = body["events"][0]["idempotencyKey"]
-        observation_key = observation_body["events"][0]["idempotencyKey"]
         uuid.UUID(billing_key)
-        uuid.UUID(observation_key)
-        assert observation_key != billing_key

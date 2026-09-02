@@ -1,13 +1,31 @@
-import { command, state } from "ccstate";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import { delay } from "signal-timers";
+import { command, state } from "ccstate";
 import sharedDatabaseWorkerAssetUrl from "virtual:shared-database-worker";
-import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
-import { sentryLogContext } from "../lib/sentry-config.ts";
+
 import { i18n } from "../i18n/index.ts";
-import { resolveApiBaseForTarget } from "./api-base.ts";
-import { clerk$, reloadToken$ } from "./auth.ts";
-import { readClerkToken } from "./clerk-token.ts";
+import {
+  CLERK_DEV_BROWSER_NAME,
+  readClerkDevBrowserJwt,
+} from "../lib/clerk-dev-browser.ts";
+import { CONNECTION_DIAGNOSTICS_PARAM } from "../lib/connection-diagnostics-param.ts";
+import { derivePlatformServiceOrigin } from "../lib/platform-host.ts";
+import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
+import { VERCEL_PROTECTION_BYPASS_NAME } from "../lib/preview-bypass-name.ts";
+import { sentryLogContext } from "../lib/sentry-config.ts";
+import type {
+  SharedDatabaseBridge,
+  SharedDatabaseBridgeEvents,
+} from "../shared-database/bridge.ts";
+import type {
+  SharedDatabaseDataKey,
+  SharedDatabaseIdentity,
+} from "../shared-database/data-key.ts";
+import { MessagePortSharedDatabaseBridge } from "../shared-database/message-port-client.ts";
+import { SingleConnectionSharedDatabaseBridge } from "../shared-database/single-connection-client.ts";
+import { clerk$ } from "./auth.ts";
+import { featureSwitch$ } from "./external/feature-switch.ts";
+import { waitForClerkSession } from "./clerk-token.ts";
 import { applyChatThreadReadCursorUpdated$ } from "./chat-thread-list-reload.ts";
 import {
   syncActiveChatEvents$,
@@ -16,21 +34,6 @@ import {
 import { syncEventDrivenChatThreads$ } from "./chat-page/chat-thread-event-sourcing.ts";
 import { logger } from "./log.ts";
 import {
-  createDeferredPromise,
-  jsonParseOr,
-  onRejection,
-  onDomEventFn,
-  setLoop,
-  settle,
-} from "./utils.ts";
-import { MessagePortSharedDatabaseBridge } from "../shared-database/message-port-client.ts";
-import type {
-  SharedDatabaseBridge,
-  SharedDatabaseBridgeEvents,
-} from "../shared-database/bridge.ts";
-import { SingleConnectionSharedDatabaseBridge } from "../shared-database/single-connection-client.ts";
-import {
-  heartbeatSharedDatabase$,
   installSharedDatabaseBridge$,
   setBridgeConnected$,
   sharedDatabaseBridgeInstalled$,
@@ -39,72 +42,18 @@ import {
   reloadComputedFromWorker$,
   setSharedDatabaseConnectionStatus$,
 } from "./shared-database.ts";
-import type { SharedDatabaseDataKey } from "../shared-database/data-key.ts";
+import { createDeferredPromise, onRejection } from "./utils.ts";
 
-const MAX_HEARTBEAT_INTERVAL_MS = 60_000;
-const AUTHENTICATION_REQUIRED_EVENT = "authentication-required";
 const SHARED_DATABASE_RELOAD_MARKER = "okou-shared-database-reload";
 const L = logger("SharedDatabaseBrowser");
 
-class SharedDatabaseAuthenticationRequiredEvent extends Event {
-  constructor(readonly recoveryId: string) {
-    super(AUTHENTICATION_REQUIRED_EVENT);
-  }
-}
-
 export interface SharedDatabaseBridgeHost {
   createBridge(
-    apiBaseUrl: string,
+    identity: SharedDatabaseIdentity,
     events: SharedDatabaseBridgeEvents,
     signal: AbortSignal,
+    diagnosticsEnabled: boolean,
   ): SharedDatabaseBridge;
-}
-
-interface JwtLifetime {
-  readonly exp: number;
-  readonly iat: number;
-}
-
-function jwtLifetime(token: string): JwtLifetime | null {
-  const encodedPayload = token.split(".")[1];
-  if (!encodedPayload) {
-    return null;
-  }
-  if (
-    !/^[A-Za-z0-9_-]+$/u.test(encodedPayload) ||
-    encodedPayload.length % 4 === 1
-  ) {
-    return null;
-  }
-  const normalized = encodedPayload.replaceAll("-", "+").replaceAll("_", "/");
-  const padded = normalized.padEnd(
-    normalized.length + ((4 - (normalized.length % 4)) % 4),
-    "=",
-  );
-  const value = jsonParseOr<unknown>(atob(padded), null);
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !("exp" in value) ||
-    !("iat" in value) ||
-    typeof value.exp !== "number" ||
-    typeof value.iat !== "number" ||
-    value.exp <= value.iat
-  ) {
-    return null;
-  }
-  return { exp: value.exp, iat: value.iat };
-}
-
-function heartbeatInterval(token: string): number {
-  const lifetime = jwtLifetime(token);
-  if (!lifetime) {
-    return MAX_HEARTBEAT_INTERVAL_MS;
-  }
-  return Math.min(
-    MAX_HEARTBEAT_INTERVAL_MS,
-    ((lifetime.exp - lifetime.iat) * 1000) / 2,
-  );
 }
 
 function handleSharedDatabaseReloadRequired(): void {
@@ -125,22 +74,38 @@ function handleSharedDatabaseReloadRequired(): void {
 }
 
 function createBrowserSharedDatabaseBridge(
-  apiBaseUrl: string,
+  identity: SharedDatabaseIdentity,
   events: SharedDatabaseBridgeEvents,
   signal: AbortSignal,
+  diagnosticsEnabled: boolean,
 ): SharedDatabaseBridge {
-  const worker = new SharedWorker(
-    new URL(sharedDatabaseWorkerAssetUrl, location.href),
-    {
-      name: "okou core service",
-      type: "module",
-    },
-  );
-  const portBridge = new MessagePortSharedDatabaseBridge(
-    worker.port,
-    apiBaseUrl,
-    events,
-  );
+  const workerUrl = new URL(sharedDatabaseWorkerAssetUrl, location.href);
+  workerUrl.search = "";
+  workerUrl.searchParams.set("userId", identity.userId);
+  workerUrl.searchParams.set("orgId", identity.orgId);
+  const apiBaseUrl = derivePlatformServiceOrigin(location.origin, "api");
+  const vercelProtectionBypass = getCapturedPreviewBypassForTarget(apiBaseUrl);
+  if (vercelProtectionBypass) {
+    workerUrl.searchParams.set(
+      VERCEL_PROTECTION_BYPASS_NAME,
+      vercelProtectionBypass,
+    );
+  }
+  const devBrowserJwt = readClerkDevBrowserJwt(document.cookie);
+  if (devBrowserJwt) {
+    workerUrl.searchParams.set(CLERK_DEV_BROWSER_NAME, devBrowserJwt);
+  }
+  if (diagnosticsEnabled) {
+    workerUrl.searchParams.set(CONNECTION_DIAGNOSTICS_PARAM, "1");
+  }
+  const worker = new SharedWorker(workerUrl, {
+    // The capture decision is part of the URL, so it has to be part of the
+    // name too: a tab that disagrees gets its own Worker instead of a
+    // URLMismatchError against the running one.
+    name: `okou_${identity.userId}_${identity.orgId}${diagnosticsEnabled ? "_diagnostics" : ""}`,
+    type: "module",
+  });
+  const portBridge = new MessagePortSharedDatabaseBridge(worker.port, events);
   let failureHandled = false;
   worker.addEventListener(
     "error",
@@ -176,14 +141,8 @@ const sharedDatabaseBridgeHostState$ = state<SharedDatabaseBridgeHost>({
   createBridge: createBrowserSharedDatabaseBridge,
 });
 
-interface PreparedSharedDatabaseBridge {
-  readonly apiBaseUrl: string;
-  readonly authenticationRequiredTarget: EventTarget;
-  readonly bridge: SingleConnectionSharedDatabaseBridge;
-}
-
 const preparedSharedDatabaseBridgeState$ =
-  state<PreparedSharedDatabaseBridge | null>(null);
+  state<SingleConnectionSharedDatabaseBridge | null>(null);
 
 const syncSharedDatabaseInvalidation$ = command(
   async (
@@ -215,26 +174,40 @@ export const setSharedDatabaseBridgeHostForTest$ = command(
 );
 
 export const prepareSharedDatabaseBridge$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+  async (
+    { get, set },
+    signal: AbortSignal,
+  ): Promise<SingleConnectionSharedDatabaseBridge | null> => {
     signal.throwIfAborted();
     const existing = get(preparedSharedDatabaseBridgeState$);
     if (existing) {
-      await existing.bridge.prepare(signal);
-      return;
+      await existing.prepare(signal);
+      return existing;
     }
-    const apiBaseUrl = resolveApiBaseForTarget("api");
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    const session = await waitForClerkSession(clerk, signal);
+    signal.throwIfAborted();
+    if (!session || !clerk.user || !clerk.organization) {
+      return null;
+    }
+    const identity = {
+      userId: clerk.user.id,
+      orgId: clerk.organization.id,
+    };
+    const diagnosticsEnabled =
+      get(featureSwitch$)[FeatureSwitchKey.OkouDebug] ?? false;
     const bridgeHost = get(sharedDatabaseBridgeHostState$);
-    const authenticationRequiredTarget = new EventTarget();
     const bridge = new SingleConnectionSharedDatabaseBridge({
       createBridge: (events, connectionSignal) => {
-        return bridgeHost.createBridge(apiBaseUrl, events, connectionSignal);
+        return bridgeHost.createBridge(
+          identity,
+          events,
+          connectionSignal,
+          diagnosticsEnabled,
+        );
       },
       events: {
-        authenticationRequired: (recoveryId) => {
-          authenticationRequiredTarget.dispatchEvent(
-            new SharedDatabaseAuthenticationRequiredEvent(recoveryId),
-          );
-        },
         databaseInvalidated: async (dataKey) => {
           await set(syncSharedDatabaseInvalidation$, dataKey, signal);
         },
@@ -255,12 +228,9 @@ export const prepareSharedDatabaseBridge$ = command(
         },
       },
     });
-    set(preparedSharedDatabaseBridgeState$, {
-      apiBaseUrl,
-      authenticationRequiredTarget,
-      bridge,
-    });
+    set(preparedSharedDatabaseBridgeState$, bridge);
     await bridge.prepare(signal);
+    return bridge;
   },
 );
 
@@ -271,63 +241,19 @@ const connectSharedDatabaseBridge$ = command(
     { get, set },
     connected: BridgeConnection,
     signal: AbortSignal,
-  ): Promise<string | null> => {
+  ): Promise<void> => {
     if (get(sharedDatabaseBridgeInstalled$)) {
       connected.resolve(undefined);
-      return null;
+      return;
     }
-
-    const prepare = set(prepareSharedDatabaseBridge$, signal);
-    const clerk = await get(clerk$);
+    const bridge = await set(prepareSharedDatabaseBridge$, signal);
     signal.throwIfAborted();
-    if (!clerk.user || !clerk.organization) {
-      await prepare;
-      signal.throwIfAborted();
-      return null;
+    if (!bridge) {
+      return;
     }
-    const [, token] = await Promise.all([
-      prepare,
-      readClerkToken(clerk, signal),
-    ]);
-    signal.throwIfAborted();
-    if (!token) {
-      throw new Error("Clerk token is required for the shared database");
-    }
-    const prepared = get(preparedSharedDatabaseBridgeState$);
-    if (!prepared) {
-      throw new Error("Shared database bridge was not prepared");
-    }
-    prepared.authenticationRequiredTarget.addEventListener(
-      AUTHENTICATION_REQUIRED_EVENT,
-      onDomEventFn(async (event) => {
-        if (!(event instanceof SharedDatabaseAuthenticationRequiredEvent)) {
-          throw new Error("Shared database authentication event is invalid");
-        }
-        const refreshed = await settle(set(reloadToken$, signal), signal);
-        signal.throwIfAborted();
-        await prepared.bridge.setToken(
-          event.recoveryId,
-          refreshed.ok ? refreshed.value : null,
-          signal,
-        );
-      }),
-      { signal },
-    );
-    const vercelProtectionBypass = getCapturedPreviewBypassForTarget(
-      prepared.apiBaseUrl,
-    );
-    await set(
-      installSharedDatabaseBridge$,
-      prepared.bridge,
-      {
-        token,
-        ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
-      },
-      signal,
-    );
+    await set(installSharedDatabaseBridge$, bridge, signal);
     signal.throwIfAborted();
     connected.resolve(undefined);
-    return token;
   },
 );
 
@@ -336,7 +262,7 @@ export const setupSharedDatabaseBridge$ = command(
     signal.throwIfAborted();
     const connected = createDeferredPromise<void>(signal);
     set(setBridgeConnected$, connected.promise);
-    const token = await onRejection(
+    await onRejection(
       set(connectSharedDatabaseBridge$, connected, signal),
       (error) => {
         if (!connected.settled()) {
@@ -345,63 +271,5 @@ export const setupSharedDatabaseBridge$ = command(
       },
     );
     signal.throwIfAborted();
-    if (!token) {
-      return;
-    }
-    await set(runSharedDatabaseHeartbeatLoop$, token, signal);
-    signal.throwIfAborted();
-  },
-);
-
-export const heartbeatSharedDatabaseNow$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const clerk = await get(clerk$);
-    signal.throwIfAborted();
-
-    const token = await readClerkToken(clerk, signal);
-    signal.throwIfAborted();
-    if (!token) {
-      return;
-    }
-    const apiBaseUrl = resolveApiBaseForTarget("api");
-    const vercelProtectionBypass =
-      getCapturedPreviewBypassForTarget(apiBaseUrl);
-    await set(
-      heartbeatSharedDatabase$,
-      {
-        token,
-        ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
-      },
-      signal,
-    );
-  },
-);
-
-const runSharedDatabaseHeartbeatLoop$ = command(
-  async ({ set }, token: string, signal: AbortSignal): Promise<void> => {
-    const heartbeatNow = onDomEventFn(async () => {
-      await set(heartbeatSharedDatabaseNow$, signal);
-    });
-    const heartbeatWhenVisible = onDomEventFn(async () => {
-      if (document.visibilityState === "visible") {
-        await set(heartbeatSharedDatabaseNow$, signal);
-      }
-    });
-    document.addEventListener("visibilitychange", heartbeatWhenVisible, {
-      signal,
-    });
-    window.addEventListener("focus", heartbeatNow, { signal });
-
-    const interval = heartbeatInterval(token);
-    await delay(interval, { signal });
-    await setLoop(
-      async (loopSignal): Promise<boolean> => {
-        await set(heartbeatSharedDatabaseNow$, loopSignal);
-        await delay(interval, { signal: loopSignal });
-        return false;
-      },
-      0,
-      signal,
-    );
   },
 );

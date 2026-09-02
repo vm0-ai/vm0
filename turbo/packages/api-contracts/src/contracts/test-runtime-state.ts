@@ -75,6 +75,11 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     run_id: z.uuid(),
   }),
   z.object({
+    action: z.literal("set-run-model-provider"),
+    run_id: z.uuid(),
+    model_provider: z.string().nullable(),
+  }),
+  z.object({
     action: z.literal("save-run-summary"),
     run_id: z.uuid(),
     trigger_source: z.string(),
@@ -296,10 +301,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     profile: z.string(),
   }),
   z.object({
-    action: z.literal("set-runner-job-pi-ownership-transfer-as-previous-api"),
-    run_id: z.uuid(),
-  }),
-  z.object({
     action: z.literal(
       "clear-workflow-automation-event-connector-as-previous-api",
     ),
@@ -330,6 +331,7 @@ export const testRuntimeStateActionResponseSchema = z.object({
     .object({
       autonomy_budget: z.int().min(0).max(10),
       enabled: z.boolean(),
+      event_connector_id: z.uuid().nullable(),
       last_run_id: z.uuid().nullable(),
       official_blueprint_key: z.string().nullable(),
       official_result_email_enabled: z.boolean().nullable(),
@@ -379,12 +381,23 @@ export const testRuntimeStateActionResponseSchema = z.object({
     .object({
       exists: z.boolean(),
       launch_snapshot: z
-        .object({
-          schemaVersion: z.literal(1),
-          framework: z.enum(["claude-code", "codex", "pi"]),
-          runnerProfile: z.string().min(1).max(255),
-        })
-        .strict()
+        .discriminatedUnion("schemaVersion", [
+          z
+            .object({
+              schemaVersion: z.literal(1),
+              framework: z.enum(["claude-code", "codex", "pi"]),
+              runnerProfile: z.string().min(1).max(255),
+            })
+            .strict(),
+          z
+            .object({
+              schemaVersion: z.literal(2),
+              framework: z.enum(["claude-code", "codex", "pi"]),
+              runnerProfile: z.string().min(1).max(255),
+              piMemoryGenerationEnabled: z.boolean(),
+            })
+            .strict(),
+        ])
         .nullable(),
     })
     .optional(),

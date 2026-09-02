@@ -65,6 +65,10 @@ import { reconcileGmailWatchesForUser } from "../services/gmail-automation-event
 import { reconcileGoogleCalendarWatchesForUser } from "../services/google-calendar-automation-event.service";
 import { lockConnectorAccountTarget } from "../services/auth-state-lock.service";
 import { reprojectWorkflowAutomationsForOwner } from "../services/workflow-automation-account-projection.service";
+import {
+  workflowAutomationAccountConnectorSlug,
+  type WorkflowAutomationAccountConnectorSlug,
+} from "../services/workflow-automation-account-classification.service";
 import { reconcileGoogleFormsWatchesForUser } from "../services/google-forms-automation-event.service";
 import { reconcileGoogleMeetSubscriptionsForUser } from "../services/google-meet-automation-event.service";
 import {
@@ -914,11 +918,7 @@ async function copyWorkflowUserAutomations(
   tx: WorkflowCopyTransaction,
   args: CopyWorkflowAutomationRowsArgs,
 ): Promise<{
-  readonly hasGmailAutomations: boolean;
-  readonly hasGoogleCalendarAutomations: boolean;
-  readonly hasGoogleFormsAutomations: boolean;
-  readonly hasGoogleMeetAutomations: boolean;
-  readonly hasStripeAutomations: boolean;
+  readonly accountConnectorSlugs: readonly WorkflowAutomationAccountConnectorSlug[];
 }> {
   const rows =
     args.sourceAutomations ??
@@ -933,44 +933,24 @@ async function copyWorkflowUserAutomations(
         ),
       ));
   if (rows.length === 0) {
-    return {
-      hasGmailAutomations: false,
-      hasGoogleCalendarAutomations: false,
-      hasGoogleFormsAutomations: false,
-      hasGoogleMeetAutomations: false,
-      hasStripeAutomations: false,
-    };
+    return { accountConnectorSlugs: [] };
   }
-  const hasGmailAutomations = rows.some((automation) => {
-    return (
-      automation.eventType === "gmail-new-message" ||
-      automation.eventType === "gmail-label-applied"
-    );
-  });
-  const hasGoogleCalendarAutomations = rows.some((automation) => {
-    return (
-      automation.eventType === "google-calendar-event-created" ||
-      automation.eventType === "google-calendar-event-updated" ||
-      automation.eventType === "google-calendar-event-cancelled"
-    );
-  });
-  const hasGoogleFormsAutomations = rows.some((automation) => {
-    return automation.eventType === "google-forms-response-submitted";
-  });
-  const hasGoogleMeetAutomations = rows.some((automation) => {
-    return automation.eventType === "google-meet-transcript-generated";
-  });
-  const hasStripeAutomations = rows.some((automation) => {
-    return automation.eventType === "stripe-invoice-paid";
-  });
-  const accountTargets = [
-    ...(hasGmailAutomations ? (["gmail"] as const) : []),
-    ...(hasGoogleCalendarAutomations ? (["google-calendar"] as const) : []),
-    ...(hasGoogleFormsAutomations ? (["google-forms"] as const) : []),
-    ...(hasGoogleMeetAutomations ? (["google-meet"] as const) : []),
-    ...(hasStripeAutomations ? (["stripe"] as const) : []),
+  const accountConnectorSlugs = [
+    ...new Set(
+      rows
+        .map((automation) => {
+          return workflowAutomationAccountConnectorSlug(automation.eventType);
+        })
+        .filter(
+          (
+            connectorSlug,
+          ): connectorSlug is WorkflowAutomationAccountConnectorSlug => {
+            return connectorSlug !== null;
+          },
+        ),
+    ),
   ].sort();
-  for (const connectorSlug of accountTargets) {
+  for (const connectorSlug of accountConnectorSlugs) {
     await lockConnectorAccountTarget(tx, {
       orgId: args.orgId,
       userId: args.userId,
@@ -989,13 +969,7 @@ async function copyWorkflowUserAutomations(
   for (const automation of rows) {
     await copyWorkflowAutomationRow(tx, { ...args, automation });
   }
-  return {
-    hasGmailAutomations,
-    hasGoogleCalendarAutomations,
-    hasGoogleFormsAutomations,
-    hasGoogleMeetAutomations,
-    hasStripeAutomations,
-  };
+  return { accountConnectorSlugs };
 }
 
 async function copyWorkflowRuntimeConfiguration(
@@ -1004,11 +978,7 @@ async function copyWorkflowRuntimeConfiguration(
 ): Promise<
   | {
       readonly workflow: { readonly id: string };
-      readonly hasGmailAutomations: boolean;
-      readonly hasGoogleCalendarAutomations: boolean;
-      readonly hasGoogleFormsAutomations: boolean;
-      readonly hasGoogleMeetAutomations: boolean;
-      readonly hasStripeAutomations: boolean;
+      readonly accountConnectorSlugs: readonly WorkflowAutomationAccountConnectorSlug[];
     }
   | undefined
 > {
@@ -1043,11 +1013,7 @@ type CopyWorkflowDatabaseResult =
   | {
       readonly kind: "ok";
       readonly inserted: { readonly id: string };
-      readonly hasGmailAutomations: boolean;
-      readonly hasGoogleCalendarAutomations: boolean;
-      readonly hasGoogleFormsAutomations: boolean;
-      readonly hasGoogleMeetAutomations: boolean;
-      readonly hasStripeAutomations: boolean;
+      readonly accountConnectorSlugs: readonly WorkflowAutomationAccountConnectorSlug[];
     };
 
 async function copyWorkflowDatabaseRows(
@@ -1110,18 +1076,7 @@ async function copyWorkflowDatabaseRows(
     if (!inserted) {
       throw new Error("Failed to copy workflow");
     }
-    const accountTargets = [
-      ...(inserted.hasGmailAutomations ? (["gmail"] as const) : []),
-      ...(inserted.hasGoogleCalendarAutomations
-        ? (["google-calendar"] as const)
-        : []),
-      ...(inserted.hasGoogleFormsAutomations
-        ? (["google-forms"] as const)
-        : []),
-      ...(inserted.hasGoogleMeetAutomations ? (["google-meet"] as const) : []),
-      ...(inserted.hasStripeAutomations ? (["stripe"] as const) : []),
-    ].sort();
-    for (const connectorSlug of accountTargets) {
+    for (const connectorSlug of inserted.accountConnectorSlugs) {
       await reprojectWorkflowAutomationsForOwner(
         tx,
         {
@@ -1140,11 +1095,7 @@ async function copyWorkflowDatabaseRows(
     return {
       kind: "ok",
       inserted: inserted.workflow,
-      hasGmailAutomations: inserted.hasGmailAutomations,
-      hasGoogleCalendarAutomations: inserted.hasGoogleCalendarAutomations,
-      hasGoogleFormsAutomations: inserted.hasGoogleFormsAutomations,
-      hasGoogleMeetAutomations: inserted.hasGoogleMeetAutomations,
-      hasStripeAutomations: inserted.hasStripeAutomations,
+      accountConnectorSlugs: inserted.accountConnectorSlugs,
     };
   });
 }
@@ -1180,19 +1131,19 @@ async function reconcileCopiedWorkflowAutomationWatches(
   signal: AbortSignal,
 ): Promise<void> {
   const owner = { db: args.db, orgId: args.orgId, userId: args.userId };
-  if (args.copied.hasGmailAutomations) {
+  if (args.copied.accountConnectorSlugs.includes("gmail")) {
     await bestEffort(reconcileGmailWatchesForUser(owner, signal), signal);
   }
-  if (args.copied.hasGoogleCalendarAutomations) {
+  if (args.copied.accountConnectorSlugs.includes("google-calendar")) {
     await bestEffort(
       reconcileGoogleCalendarWatchesForUser(owner, signal),
       signal,
     );
   }
-  if (args.copied.hasGoogleFormsAutomations) {
+  if (args.copied.accountConnectorSlugs.includes("google-forms")) {
     await bestEffort(reconcileGoogleFormsWatchesForUser(owner, signal), signal);
   }
-  if (args.copied.hasGoogleMeetAutomations) {
+  if (args.copied.accountConnectorSlugs.includes("google-meet")) {
     await bestEffort(
       reconcileGoogleMeetSubscriptionsForUser(owner, signal),
       signal,

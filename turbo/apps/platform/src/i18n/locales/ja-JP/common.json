@@ -416,13 +416,11 @@
         "agents": "エージェント",
         "artifacts": "アーティファクト",
         "connectors": "コネクター",
-        "newChat": "新しいチャット",
         "settings": "設定",
         "workflows": "ワークフロー",
         "works": "{{agentName}}の連携先"
       },
       "rail": {
-        "new": "新しい",
         "workflows": "ワークフロー",
         "works": "連携先"
       },
@@ -1819,7 +1817,7 @@
       "noAccounts": "利用可能な正常な口座がありません。まず金融機関を再接続または修復してください。",
       "oneDay": "24時間",
       "oneHour": "1時間",
-      "popupBlocked": "Zeroのポップアップを許可してから、もう一度お試しください。",
+      "popupBlocked": "{{assistantName}}のポップアップを許可してから、もう一度お試しください。",
       "readOnly": "口座、残高、取引 · 読み取り専用",
       "repair": "修復",
       "repairRequired": "{{institution}}は修復が必要です",
@@ -1941,8 +1939,8 @@
       "providerIncompatibleAction": "新しいセッションを開始する",
       "providerIncompatiblePrefix": "このセッションは別のモデル プロバイダーで開始されたため、現在のモデル プロバイダーでは続行できません。",
       "recovery": {
-        "capacityDescription": "このモデルは一時的に混雑しています。数分後にもう一度試すか、今すぐ別のモデルに切り替えてください。",
-        "capacityTitle": "{{framework}} モデルは混雑しています",
+        "capacityDescription": "少ししてからもう一度試すか、別のモデルに切り替えてください。",
+        "capacityTitle": "このモデルは現在混雑しています",
         "claudeCode": "Claude Code",
         "codex": "Codex",
         "continue": "続ける",
@@ -2024,7 +2022,7 @@
       "review": {
         "avatar": "アバター",
         "heading": "イントロビデオを確認",
-        "help": "新しいチャットスレッドに送る設定を確認してください",
+        "help": "{{assistantName}} が新しいチャットスレッドで受け取る設定を確認してください",
         "instructions": "編集指示",
         "source": "素材",
         "voice": "音声"
@@ -4654,6 +4652,20 @@
       "teamDescription": "10 回の並列実行とより多くのクレジットでチームを拡張します。"
     }
   },
+  "serviceStatus": {
+    "dismiss": "サービス更新を閉じる",
+    "label": "サービスステータスの更新",
+    "statuses": {
+      "identified": "問題を特定しました",
+      "incident": "サービス障害",
+      "investigating": "調査中",
+      "maintenance": "メンテナンス",
+      "maintenanceInProgress": "メンテナンス中",
+      "maintenanceScheduled": "メンテナンス予定",
+      "monitoring": "復旧を監視中"
+    },
+    "viewUpdates": "最新情報を見る"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "アカウントを追加",
@@ -4780,24 +4792,14 @@
       "title": "データのエクスポート"
     },
     "lab": {
-      "actions": {
-        "resetAll": "すべてリセット",
-        "resetting": "リセット中…"
-      },
-      "description": "実験的機能のオンとオフを切り替えます。",
+      "description": "ロールアウト段階別に機能スイッチを確認できます。",
       "documentTitle": "研究室",
-      "empty": {
-        "description": "このメンテナには機能スイッチがありません。",
-        "title": "機能スイッチなし"
-      },
-      "filters": {
-        "all": "すべて"
-      },
       "groups": {
-        "connectors": "コネクター",
-        "other": "その他"
+        "alpha": "アルファ",
+        "beta": "ベータ",
+        "internal": "内部",
+        "released": "リリース済み"
       },
-      "maintainer": "メンテナ: {{maintainer}}",
       "title": "研究室"
     },
     "models": {
@@ -5094,8 +5096,13 @@
           "offline": "オフライン",
           "online": "オンライン",
           "recovery": "復旧",
+          "refresh": "更新",
           "title": "リアルタイム接続診断",
-          "unavailable": "利用不可"
+          "unavailable": "利用不可",
+          "workerDescription": "リアルタイム接続を保持する共有ワーカーが記録した診断を確認します。",
+          "workerLoading": "読み込み中",
+          "workerTitle": "共有ワーカーの接続診断",
+          "workerUnavailable": "利用不可"
         }
       },
       "language": {

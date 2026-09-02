@@ -1,19 +1,24 @@
 import { describe, expect, it } from "vitest";
 
-import { resolvePiAgentModel, resolvePiAgentModelApi } from "./model";
+import { resolvePiAgentModel } from "./model";
 
 const OPENAI_TERRA = {
-  provider: "openai" as const,
+  provider: "openai",
   baseUrl: "https://api.openai.com/v1",
   apiKey: "test-key",
   model: "gpt-5.6-terra",
-};
+} as const;
 
 describe("Pi agent model adapter", () => {
-  it("preserves OpenAI Terra's Responses transport and catalog metadata", () => {
+  it.each([
+    undefined,
+    "openai-completions",
+    "openai-responses",
+    "openai-codex-responses",
+  ] as const)("normalizes legacy api %s to Responses", (api) => {
     const model = resolvePiAgentModel({
       ...OPENAI_TERRA,
-      api: "openai-responses",
+      ...(api === undefined ? {} : { api }),
     });
 
     expect(model).toMatchObject({
@@ -47,51 +52,53 @@ describe("Pi agent model adapter", () => {
         supportsExplicitPromptCacheMode: true,
       },
     });
-  });
-
-  it("projects managed OpenRouter Terra onto Responses with neutral metadata", () => {
-    const model = resolvePiAgentModel({
-      provider: "openrouter",
-      baseUrl: "https://openrouter.ai/api/v1",
-      apiKey: "test-key",
-      model: "openai/gpt-5.6-terra",
-      api: "openai-responses",
-    });
-
-    expect(model).toMatchObject({
-      id: "openai/gpt-5.6-terra",
-      provider: "openrouter",
-      api: "openai-responses",
-      input: ["text", "image"],
-      cost: {
-        input: 1,
-        output: 6,
-        cacheRead: 0.1,
-        cacheWrite: 1.25,
-      },
-      contextWindow: 1_050_000,
-      maxTokens: 128_000,
-    });
-    expect(model).not.toHaveProperty("compat");
     expect(model).not.toHaveProperty("samplingParams");
   });
 
-  it.each(["deepseek/deepseek-v4-flash", "deepseek/deepseek-v4-pro"] as const)(
-    "projects managed OpenRouter %s onto Responses without Chat compat",
-    (modelId) => {
-      expect(
-        resolvePiAgentModelApi({ provider: "openrouter", model: modelId }),
-      ).toBe("openai-responses");
+  it.each([
+    {
+      name: "direct DeepSeek Flash",
+      provider: "deepseek",
+      baseUrl: "https://api.deepseek.com/",
+      model: "deepseek-v4-flash",
+    },
+    {
+      name: "direct DeepSeek Pro",
+      provider: "deepseek",
+      baseUrl: "https://api.deepseek.com/",
+      model: "deepseek-v4-pro",
+    },
+    {
+      name: "OpenRouter DeepSeek Flash",
+      provider: "openrouter",
+      baseUrl: "https://openrouter.ai/api/v1",
+      model: "deepseek/deepseek-v4-flash",
+    },
+    {
+      name: "OpenRouter DeepSeek Pro",
+      provider: "openrouter",
+      baseUrl: "https://openrouter.ai/api/v1",
+      model: "deepseek/deepseek-v4-pro",
+    },
+    {
+      name: "OpenRouter Terra",
+      provider: "openrouter",
+      baseUrl: "https://openrouter.ai/api/v1",
+      model: "openai/gpt-5.6-terra",
+    },
+  ])(
+    "projects $name catalog metadata onto Responses without Chat fields",
+    (config) => {
       const model = resolvePiAgentModel({
-        provider: "openrouter",
-        baseUrl: "https://openrouter.ai/api/v1",
+        ...config,
         apiKey: "test-key",
-        model: modelId,
-        api: "openai-responses",
+        api: "openai-completions",
       });
+
       expect(model).toMatchObject({
-        id: modelId,
-        provider: "openrouter",
+        id: config.model,
+        provider: config.provider,
+        baseUrl: config.baseUrl,
         api: "openai-responses",
       });
       expect(model).not.toHaveProperty("compat");
@@ -99,76 +106,66 @@ describe("Pi agent model adapter", () => {
     },
   );
 
-  it("rejects a route whose declared transport differs from the Pi catalog", () => {
-    expect(
-      resolvePiAgentModel({
-        ...OPENAI_TERRA,
-        api: "openai-completions",
-      }),
-    ).toBeNull();
-  });
-
-  it("limits priority requests to direct OpenAI and managed OpenRouter Terra Responses", () => {
-    expect(
-      resolvePiAgentModel({
-        ...OPENAI_TERRA,
-        api: "openai-responses",
-        serviceTier: "priority",
-      }),
-    ).not.toBeNull();
+  it("uses product admission instead of a second runtime model allowlist", () => {
     expect(
       resolvePiAgentModel({
         provider: "openrouter",
         baseUrl: "https://openrouter.ai/api/v1",
         apiKey: "test-key",
-        model: "openai/gpt-5.6-terra",
-        api: "openai-responses",
-        serviceTier: "priority",
+        model: "openai/gpt-5.6-sol",
       }),
-    ).not.toBeNull();
-    expect(
-      resolvePiAgentModel({
-        provider: "openrouter",
-        baseUrl: "https://openrouter.ai/api/v1",
-        apiKey: "test-key",
-        model: "deepseek/deepseek-v4-flash",
-        api: "openai-responses",
-        serviceTier: "priority",
-      }),
-    ).toBeNull();
+    ).toMatchObject({
+      id: "openai/gpt-5.6-sol",
+      api: "openai-responses",
+      provider: "openrouter",
+    });
   });
 
   it.each([
-    "openai/gpt-5.6-sol",
-    "openai/gpt-5.6-luna",
-    "openai/gpt-5.5",
-  ] as const)(
-    "does not expand the OpenRouter Responses contract to %s",
-    (modelId) => {
+    {
+      provider: "deepseek",
+      catalogModel: "deepseek-v4-flash",
+      model: "company-deepseek-production",
+    },
+    {
+      provider: "openai",
+      catalogModel: "gpt-5.6-terra",
+      model: "company-terra-production",
+    },
+  ])(
+    "uses $provider/$catalogModel metadata for gateway request model $model",
+    (config) => {
       expect(
         resolvePiAgentModel({
-          provider: "openrouter",
-          baseUrl: "https://openrouter.ai/api/v1",
-          apiKey: "test-key",
-          model: modelId,
-          api: "openai-responses",
+          ...config,
+          baseUrl: "https://gateway.example.com/v1",
+          apiKey: "unused",
         }),
-      ).toBeNull();
-      expect(
-        resolvePiAgentModelApi({ provider: "openrouter", model: modelId }),
-      ).not.toBe("openai-responses");
+      ).toMatchObject({
+        id: config.model,
+        provider: config.provider,
+        baseUrl: "https://gateway.example.com/v1",
+        api: "openai-responses",
+      });
     },
   );
 
-  it("keeps legacy transport defaults and the DeepSeek Responses adapter", () => {
-    expect(resolvePiAgentModel(OPENAI_TERRA)?.api).toBe("openai-completions");
+  it.each([
+    { provider: "unknown", model: "gpt-5.6-terra" },
+    { provider: "openai", model: "unknown-model" },
+    { provider: "openrouter", model: "unknown/model" },
+    {
+      provider: "deepseek",
+      model: "company-model",
+      catalogModel: "unknown-catalog-model",
+    },
+  ])("fails closed for unknown catalog pair $provider/$model", (config) => {
     expect(
       resolvePiAgentModel({
-        provider: "deepseek",
-        baseUrl: "https://api.deepseek.com/",
+        ...config,
+        baseUrl: "https://example.invalid/v1",
         apiKey: "test-key",
-        model: "deepseek-v4-flash",
-      })?.api,
-    ).toBe("openai-responses");
+      }),
+    ).toBeNull();
   });
 });

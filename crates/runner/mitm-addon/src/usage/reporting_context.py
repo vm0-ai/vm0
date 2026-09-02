@@ -8,7 +8,6 @@ from platform_api import get_api_url
 from .underbilling import log_usage_underbilling
 
 USAGE_EVENT_WEBHOOK_PATH = "/api/webhooks/agent/usage-event"
-MODEL_USAGE_OBSERVATION_RUNNER_PATH = "/api/runners/model-usage-observations"
 AGENT_TELEMETRY_WEBHOOK_PATH = "/api/webhooks/agent/telemetry"
 
 
@@ -42,53 +41,6 @@ class UsageReportingContext:
 
     def telemetry_url(self) -> str:
         return self._url_for(AGENT_TELEMETRY_WEBHOOK_PATH)
-
-
-class ModelUsageObservationReportingContext:
-    """Process-level runner context for non-billing model observations."""
-
-    __slots__ = ("api_url", "proxy_log_path", "runner_token")
-
-    def __init__(self, *, api_url: str, runner_token: str, proxy_log_path: str) -> None:
-        self.api_url = api_url
-        self.runner_token = runner_token
-        self.proxy_log_path = proxy_log_path
-
-    @property
-    def missing_runner_token(self) -> bool:
-        return not bool(self.runner_token)
-
-    @property
-    def missing_api_url(self) -> bool:
-        return not bool(self.api_url)
-
-    @property
-    def is_complete(self) -> bool:
-        return not self.missing_runner_token and not self.missing_api_url
-
-    def url(self) -> str:
-        return f"{self.api_url}{MODEL_USAGE_OBSERVATION_RUNNER_PATH}"
-
-
-_model_usage_observation_api_url = ""
-_model_usage_observation_runner_token = ""
-
-
-def configure_model_usage_observation_reporting(*, api_url: str, runner_token: str) -> None:
-    """Configure the process-level runner observation destination."""
-    global _model_usage_observation_api_url, _model_usage_observation_runner_token
-    _model_usage_observation_api_url = api_url
-    _model_usage_observation_runner_token = runner_token
-
-
-def model_usage_observation_reporting_context(
-    proxy_log_path: str,
-) -> ModelUsageObservationReportingContext:
-    return ModelUsageObservationReportingContext(
-        api_url=_model_usage_observation_api_url,
-        runner_token=_model_usage_observation_runner_token,
-        proxy_log_path=proxy_log_path,
-    )
 
 
 def log_usage_reporting_context_missing(

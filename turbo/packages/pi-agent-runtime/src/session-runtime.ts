@@ -1,5 +1,6 @@
 import {
   InMemoryCredentialStore,
+  registerSessionResourceCleanup,
   type ModelThinkingLevel,
 } from "@earendil-works/pi-ai";
 import {
@@ -12,33 +13,43 @@ import {
   type SessionManager,
 } from "@earendil-works/pi-coding-agent";
 
-import type { PiPreheatedResourceSnapshot } from "./api-types";
-import { piAgentStream, resolvePiAgentModel } from "./model";
+import type {
+  PiMemoryRecallOutcome,
+  PiMemoryRecallSelection,
+  PiMemoryToolSourceUse,
+  PiPreheatedResourceSnapshot,
+} from "./api-types";
+import {
+  loadPiSandboxMemoryRecall,
+  resolvePiApiMemoryRecall,
+} from "./memory-recall-node";
+import { createPiMemoryTools } from "./memory-tools-node";
+import { piAgentStreamForConfig, resolvePiAgentModel } from "./model";
 import { piPreheatedResourceLoaderOptions } from "./resources";
-import type { PiAgentModelConfig, PiAgentServiceTier } from "./types";
+import type { PiAgentModelConfig } from "./types";
 
-function requestScopedPiAgentStream(
-  serviceTier: PiAgentServiceTier | undefined,
-): typeof piAgentStream {
-  if (serviceTier === undefined) {
-    return piAgentStream;
-  }
-  return (model, context, options) => {
-    return piAgentStream(model, context, { ...options, serviceTier });
-  };
+function initializePiSessionResourceRegistry(): void {
+  // Vite's SSR bundle otherwise keeps Pi's registry behind only the lazy
+  // Codex adapter initializer, while AgentSession.dispose() remains eager.
+  // Registering and immediately removing a no-op makes the shared registry's
+  // initialization explicit without changing its cleanup policy.
+  const unregister = registerSessionResourceCleanup(() => {
+    return undefined;
+  });
+  unregister();
 }
 
 function registeredModelConfig(
   model: NonNullable<ReturnType<typeof resolvePiAgentModel>>,
   apiKey: string,
-  serviceTier: PiAgentServiceTier | undefined,
+  config: Pick<PiAgentModelConfig, "requestHeaders" | "serviceTier">,
 ) {
   return {
     name: model.provider,
     baseUrl: model.baseUrl,
     apiKey,
     api: model.api,
-    streamSimple: requestScopedPiAgentStream(serviceTier),
+    streamSimple: piAgentStreamForConfig(config),
     models: [
       {
         id: model.id,
@@ -51,7 +62,6 @@ function registeredModelConfig(
         cost: model.cost,
         contextWindow: model.contextWindow,
         maxTokens: model.maxTokens,
-        samplingParams: model.samplingParams,
         headers: model.headers,
         compat: model.compat,
       },
@@ -93,8 +103,41 @@ export async function createPiAgentSessionForRuntime(args: {
   readonly model: PiAgentModelConfig;
   readonly appendSystemPrompt: string | null;
   readonly resourceSnapshot?: PiPreheatedResourceSnapshot;
+  readonly memoryRecall?: PiMemoryRecallSelection;
+  readonly memoryRoot?: string;
+  readonly onMemoryRecallOutcome?: (outcome: PiMemoryRecallOutcome) => void;
+  readonly onMemoryToolSourceUse?: (sourceUse: PiMemoryToolSourceUse) => void;
   readonly sessionStartEvent?: CreateAgentSessionFromServicesOptions["sessionStartEvent"];
 }) {
+  initializePiSessionResourceRegistry();
+  const memoryRecall = args.resourceSnapshot
+    ? resolvePiApiMemoryRecall(args.resourceSnapshot)
+    : await loadPiSandboxMemoryRecall(args.memoryRecall, args.memoryRoot);
+  args.onMemoryRecallOutcome?.(memoryRecall.outcome);
+  const memorySelection = args.resourceSnapshot
+    ? args.resourceSnapshot.schemaVersion === 2
+      ? args.resourceSnapshot.memoryRecall
+      : undefined
+    : args.memoryRecall;
+  const memoryTools =
+    memorySelection !== undefined &&
+    (memoryRecall.outcome.parity === "frozen-match" ||
+      memoryRecall.outcome.parity === "frozen-no-content")
+      ? createPiMemoryTools({
+          mode: args.resourceSnapshot ? "api-first" : "sandbox",
+          selection: memorySelection,
+          ...(args.memoryRoot === undefined
+            ? {}
+            : { memoryRoot: args.memoryRoot }),
+          ...(args.onMemoryToolSourceUse === undefined
+            ? {}
+            : { onSourceUse: args.onMemoryToolSourceUse }),
+        })
+      : [];
+  const appendSystemPrompt = [
+    ...(args.appendSystemPrompt === null ? [] : [args.appendSystemPrompt]),
+    ...(memoryRecall.block === null ? [] : [memoryRecall.block]),
+  ];
   const model = resolvePiAgentModel(args.model);
   if (!model) {
     throw new Error(
@@ -112,7 +155,7 @@ export async function createPiAgentSessionForRuntime(args: {
   });
   modelRuntime.registerProvider(
     args.model.provider,
-    registeredModelConfig(model, args.model.apiKey, args.model.serviceTier),
+    registeredModelConfig(model, args.model.apiKey, args.model),
   );
   const services = await createAgentSessionServices({
     cwd: args.cwd,
@@ -129,11 +172,11 @@ export async function createPiAgentSessionForRuntime(args: {
     resourceLoaderOptions: args.resourceSnapshot
       ? piPreheatedResourceLoaderOptions({
           snapshot: args.resourceSnapshot,
-          appendSystemPrompt: args.appendSystemPrompt,
+          appendSystemPrompt,
         })
-      : args.appendSystemPrompt === null
+      : appendSystemPrompt.length === 0
         ? undefined
-        : { appendSystemPrompt: [args.appendSystemPrompt] },
+        : { appendSystemPrompt },
   });
   const created = await createAgentSessionFromServices({
     services,
@@ -148,6 +191,7 @@ export async function createPiAgentSessionForRuntime(args: {
       createBashTool(args.cwd, {
         shellPath: "/usr/local/bin/guest-tool-exec",
       }),
+      ...memoryTools,
     ],
   });
   return { ...created, services, model };

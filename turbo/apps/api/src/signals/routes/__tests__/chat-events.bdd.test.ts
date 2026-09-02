@@ -41,6 +41,7 @@ import {
   piApiFirstTurnManifestSchema,
 } from "@okouai/api-contracts/contracts/runners";
 import { mailContract } from "@okouai/api-contracts/contracts/mail";
+import { triggerSourceSchema } from "@okouai/api-contracts/contracts/logs";
 import {
   getModelProviderFirewall,
   type ModelProviderType,
@@ -65,15 +66,27 @@ import {
   clearMockNow,
   mockNow,
   now,
+  nowDate,
   withMockNowForTest,
 } from "../../../lib/time";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import {
+  readSessionHistoryBlobRefCountFixture,
   readRunModelRuntimeRouteFixture,
   setRunModelRuntimeRouteFixture,
 } from "../../../test-fixtures/agent-runs";
+import {
+  commitPiMemoryStage1CandidateFixture,
+  deletePiMemoryStorageFixture,
+  leasePiMemoryStage1CandidateFixture,
+  piMemoryStage1AdmissionPrerequisiteSkipReasonFixture,
+  readmitPiMemoryStage1CandidateFixture,
+  readPiConversationIdentityFixture,
+  readPiMemoryStage1CandidateFixture,
+  setSyntheticPiMemoryStage1SelectionFixture,
+} from "../../../test-fixtures/pi-memory-stage1-candidates";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { setOrgModelPolicyProviderTypeFixture } from "../../../test-fixtures/org-model-policies";
@@ -140,13 +153,15 @@ import {
   seedVm0BuiltInModelKey as seedVm0BuiltInModelKeyState,
   setVm0BuiltInCandidateCooldownFixture,
   setRunAutonomyBudgetFixture,
-  setRunnerJobPiOwnershipTransferAsPreviousApi,
   steerRunTimeBudgetFixture,
 } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
 import { formatUserPresentationTemplateId } from "@okouai/core/presentation-template-selection";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
-import { commitMemoryVersion } from "./helpers/memory";
+import {
+  commitMemoryVersion,
+  seedReadyMemorySummaryProjection,
+} from "./helpers/memory";
 import { overwriteModelProviderSecretForTests } from "./helpers/model-provider-state";
 import {
   readCustomConnectorCredentialStorageParent,
@@ -4952,6 +4967,38 @@ function occurrences(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1;
 }
 
+function piResponsesDeveloperPrompt(rawBody: string | undefined): string {
+  if (rawBody === undefined) {
+    throw new Error("Expected a Pi Responses request body");
+  }
+  const body = JSON.parse(rawBody) as unknown;
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("input" in body) ||
+    !Array.isArray(body.input)
+  ) {
+    throw new Error("Expected a Pi Responses input array");
+  }
+  const developer = body.input.find((item) => {
+    return (
+      typeof item === "object" &&
+      item !== null &&
+      "role" in item &&
+      item.role === "developer"
+    );
+  });
+  if (
+    typeof developer !== "object" ||
+    developer === null ||
+    !("content" in developer) ||
+    typeof developer.content !== "string"
+  ) {
+    throw new Error("Expected a Pi Responses developer prompt");
+  }
+  return developer.content;
+}
+
 describe("CHAT-02: model-first provider policies", () => {
   it("adds Codex image upload guidance for web chat Codex sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -5045,6 +5092,9 @@ describe("CHAT-02: model-first provider policies", () => {
   it("routes model policy providers into the runner claim", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const orgId = requireOrgId(actor);
+    // External model admission depends on plan capabilities, not VM0 credits.
+    await seedOrgMetadata({ orgId, tier: "pro", credits: 0 });
     const { providerId: deepseekId } = await upsertOrgModelProvider(actor, {
       type: "deepseek",
       secret: "selected-deepseek-key",
@@ -5125,6 +5175,9 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(followUpEnvironment.OPENAI_MODEL).toBe("deepseek-v4-flash");
     await cancelChatRun(actor, followUp.runId);
 
+    // Restore spendable credits before exercising the built-in branch.
+    await seedOrgMetadata({ orgId, tier: "pro", credits: 1_000_000 });
+
     // A vm0 provider pin in an entitled org passes the spendable-credits
     // admission. The outcome past admission is race-dependent on the shared
     // database: 503 when no vm0 execution key exists (no public provisioning
@@ -5139,11 +5192,8 @@ describe("CHAT-02: model-first provider policies", () => {
         modelProviderId: null,
       },
     ]);
-    if (!actor.orgId) {
-      throw new Error("Expected the built-in admission actor to have an org");
-    }
     await setOrgModelPolicyProviderTypeFixture({
-      orgId: actor.orgId,
+      orgId,
       model: "claude-sonnet-5",
       defaultProviderType: "built-in",
     });
@@ -5264,12 +5314,21 @@ describe("CHAT-02: model-first provider policies", () => {
   it("pins recall-enabled Pi memory through API completion and Sandbox handoff", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const orgId = requireOrgId(actor);
+    const frozenSummary =
+      "# Pi memory summary\n\nUse the exact pinned version for this session.";
     const initialMemory = await commitMemoryVersion(context, actor, [
       {
         path: "MEMORY.md",
         content: "Pi memory version pinned before the API-first completion.",
       },
+      { path: "memory_summary.md", content: frozenSummary },
     ]);
+    await seedReadyMemorySummaryProjection(
+      context,
+      actor,
+      initialMemory,
+      frozenSummary,
+    );
     const usagePricingResolution = await createTerraUsagePricingResolution();
     await configureBuiltInPiModel(actor, "gpt-5.6-terra");
     await updateFeatureSwitchesForUser(
@@ -5283,9 +5342,11 @@ describe("CHAT-02: model-first provider policies", () => {
     mockPiResourceArchiveDownloads();
     const checkpointObjects = mockPiCheckpointObjectStore();
     let modelCalls = 0;
+    const modelRequestBodies: string[] = [];
     server.use(
-      http.post("https://api.openai.com/v1/responses", () => {
+      http.post("https://api.openai.com/v1/responses", async ({ request }) => {
         modelCalls += 1;
+        modelRequestBodies.push(await request.text());
         return new HttpResponse(
           modelCalls === 1
             ? piResponsesTextSse("API-first memory checkpoint", modelCalls)
@@ -5313,6 +5374,19 @@ describe("CHAT-02: model-first provider policies", () => {
     await waitForRunStatus(actor, first.runId, "completed", 10_000);
     await flushWaitUntilForTest();
     expect(modelCalls).toBe(1);
+    await expect(
+      readPiMemoryStage1CandidateFixture({
+        orgId,
+        userId: actor.userId,
+      }),
+    ).resolves.toBeNull();
+    const firstDeveloperPrompt = piResponsesDeveloperPrompt(
+      modelRequestBodies[0],
+    );
+    expect(occurrences(firstDeveloperPrompt, frozenSummary)).toBe(1);
+    expect(firstDeveloperPrompt).toContain(
+      `${PI_MEMORY_ROOT}/memory_summary.md`,
+    );
 
     const newerMemory = await commitMemoryVersion(context, actor, [
       {
@@ -5340,6 +5414,12 @@ describe("CHAT-02: model-first provider policies", () => {
       })
       .toBe(true);
     expect(modelCalls).toBe(2);
+    expect(
+      occurrences(
+        piResponsesDeveloperPrompt(modelRequestBodies[1]),
+        frozenSummary,
+      ),
+    ).toBe(1);
     const manifestBytes = checkpointObjects.get(manifestKey);
     if (!manifestBytes) {
       throw new Error("Expected the Pi memory ownership-transfer manifest");
@@ -5361,6 +5441,16 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(claimed.claim.cliAgentType).toBe("pi");
     expect(claimed.claim.featureFlags).toMatchObject({
       [FeatureSwitchKey.PiMemoryRecall]: true,
+    });
+    expect(claimed.claim.piLaunchConfig).toMatchObject({
+      memoryRecall: {
+        status: "ready",
+        memoryStorageId: initialMemory.storageId,
+        storageVersionId: initialMemory.versionId,
+        content: frozenSummary,
+        sourceHash: createHash("sha256").update(frozenSummary).digest("hex"),
+        sourceSize: Buffer.byteLength(frozenSummary),
+      },
     });
     expect(claimed.claim.appendSystemPrompt).not.toMatch(/auto.?memory/iu);
     const storageManifest = expectCanonicalStorageManifest(
@@ -5431,10 +5521,116 @@ describe("CHAT-02: model-first provider policies", () => {
       writeback: true,
       empty: true,
     });
+    expect(claimed.claim.piLaunchConfig).toMatchObject({
+      memoryRecall: {
+        status: "no-content",
+        memoryStorageId: memorySlotMounts[0]?.storageId,
+        storageVersionId: memorySlotMounts[0]?.versionId,
+      },
+    });
     expect(memorySlotMounts[0]).not.toHaveProperty("archiveUrl");
     expect(memorySlotMounts[0]).not.toHaveProperty("generatedBy");
 
     await cancelChatRun(actor, run.runId, claimed.sandboxHeaders);
+  }, 90_000);
+
+  it("keeps a frozen projection miss no-content after the projection becomes ready", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const orgId = requireOrgId(actor);
+    const summary =
+      "# Delayed summary\n\nOnly a new Pi session may capture this.";
+    const memory = await commitMemoryVersion(context, actor, [
+      { path: "memory_summary.md", content: summary },
+    ]);
+    const usagePricingResolution = await createTerraUsagePricingResolution();
+    await configureBuiltInPiModel(actor, "gpt-5.6-terra");
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      {
+        [FeatureSwitchKey.PiLoop]: true,
+        [FeatureSwitchKey.PiMemoryRecall]: true,
+      },
+    );
+    mockPiResourceArchiveDownloads();
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    const requestBodies: string[] = [];
+    server.use(
+      http.post("https://api.openai.com/v1/responses", async ({ request }) => {
+        requestBodies.push(await request.text());
+        return new HttpResponse(
+          piResponsesToolSse({
+            callId: `call_projection_epoch_${requestBodies.length}`,
+            name: "read",
+            arguments: { path: "/home/user/workspace/AGENTS.md" },
+            sequence: requestBodies.length,
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }),
+    );
+
+    const frozenMiss = await sendChatRun(
+      actor,
+      {
+        agentId,
+        prompt: "freeze the projection miss",
+        model: "gpt-5.6-terra",
+      },
+      "vm0",
+      usagePricingResolution,
+    );
+    const frozenMissManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${frozenMiss.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.has(frozenMissManifestKey);
+      })
+      .toBe(true);
+    expect(piResponsesDeveloperPrompt(requestBodies[0])).not.toContain(summary);
+
+    await seedReadyMemorySummaryProjection(context, actor, memory, summary);
+    const frozenMissClaim = await claimChatRun(runnerGroup, frozenMiss.runId);
+    expect(frozenMissClaim.claim.piLaunchConfig).toMatchObject({
+      memoryRecall: {
+        status: "no-content",
+        memoryStorageId: memory.storageId,
+        storageVersionId: memory.versionId,
+      },
+    });
+
+    const newSession = await sendChatRun(
+      actor,
+      {
+        agentId,
+        prompt: "capture the now-ready projection in a new session",
+        model: "gpt-5.6-terra",
+      },
+      "vm0",
+      usagePricingResolution,
+    );
+    const newSessionManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${newSession.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.has(newSessionManifestKey);
+      })
+      .toBe(true);
+    expect(
+      occurrences(piResponsesDeveloperPrompt(requestBodies[1]), summary),
+    ).toBe(1);
+    const newSessionClaim = await claimChatRun(runnerGroup, newSession.runId);
+    expect(newSessionClaim.claim.piLaunchConfig).toMatchObject({
+      memoryRecall: {
+        status: "ready",
+        memoryStorageId: memory.storageId,
+        storageVersionId: memory.versionId,
+        content: summary,
+      },
+    });
+
+    await Promise.all([
+      cancelChatRun(actor, frozenMiss.runId, frozenMissClaim.sandboxHeaders),
+      cancelChatRun(actor, newSession.runId, newSessionClaim.sandboxHeaders),
+    ]);
   }, 90_000);
 
   it("keeps captured Codex admission after PiLoop turns on", async () => {
@@ -5539,6 +5735,444 @@ describe("CHAT-02: model-first provider policies", () => {
     await cancelChatRun(actor, disabled.runId, disabledClaim.sandboxHeaders);
   }, 90_000);
 
+  it("admits exact Pi web histories with immutable launch policy and stale-lease fencing", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const orgId = requireOrgId(actor);
+    expect(piMemoryStage1AdmissionPrerequisiteSkipReasonFixture()).toBeNull();
+    expect(
+      piMemoryStage1AdmissionPrerequisiteSkipReasonFixture({
+        status: "failed",
+      }),
+    ).toBe("not_completed");
+    expect(
+      piMemoryStage1AdmissionPrerequisiteSkipReasonFixture({
+        framework: "codex",
+      }),
+    ).toBe("not_pi");
+    expect(
+      piMemoryStage1AdmissionPrerequisiteSkipReasonFixture({
+        generationEnabled: false,
+      }),
+    ).toBe("generation_disabled");
+    expect(
+      piMemoryStage1AdmissionPrerequisiteSkipReasonFixture({
+        chatThreadId: null,
+      }),
+    ).toBe("missing_chat_thread");
+    for (const triggerSource of triggerSourceSchema.options) {
+      if (triggerSource === "web") {
+        continue;
+      }
+      expect(
+        piMemoryStage1AdmissionPrerequisiteSkipReasonFixture({ triggerSource }),
+      ).toBe("source_not_web");
+    }
+    const usagePricingResolution = await createTerraUsagePricingResolution();
+    mockEnv("PI_MEMORY_STAGE1_IDLE_DELAY_MS", 60_000);
+    await configureBuiltInPiModel(actor, "gpt-5.6-terra");
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      {
+        [FeatureSwitchKey.PiLoop]: true,
+        [FeatureSwitchKey.PiMemoryRecall]: false,
+        [FeatureSwitchKey.PiMemoryGeneration]: true,
+      },
+    );
+    mockPiResourceArchiveDownloads();
+    mockPiCheckpointObjectStore();
+    const answers = [
+      "first memory admission answer",
+      "replacement memory admission answer",
+      "selection watermark replacement answer",
+      "generation-disabled answer",
+    ] as const;
+    let modelCalls = 0;
+    const firstProviderEntered = createDeferredPromise<void>(context.signal);
+    const releaseFirstProvider = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      if (!releaseFirstProvider.settled()) {
+        releaseFirstProvider.resolve(undefined);
+      }
+    });
+    server.use(
+      http.post("https://api.openai.com/v1/responses", async () => {
+        const answer = answers[modelCalls];
+        if (!answer) {
+          return HttpResponse.json(
+            { error: "unexpected duplicate Pi memory model request" },
+            { status: 500 },
+          );
+        }
+        if (modelCalls === 0) {
+          firstProviderEntered.resolve(undefined);
+          await releaseFirstProvider.promise;
+        }
+        const response = new HttpResponse(
+          piResponsesTextSse(answer, modelCalls, {
+            input_tokens: 10,
+            output_tokens: 3,
+            total_tokens: 13,
+            input_tokens_details: {
+              cached_tokens: 3,
+              cache_write_tokens: 2,
+            },
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+        modelCalls += 1;
+        return response;
+      }),
+    );
+
+    const first = await sendChatRun(
+      actor,
+      {
+        agentId,
+        prompt: "capture memory generation at launch",
+        model: "gpt-5.6-terra",
+      },
+      "vm0",
+      usagePricingResolution,
+    );
+    await firstProviderEntered.promise;
+    await expect(
+      readRunLaunchSnapshotFixture(context, first.runId),
+    ).resolves.toMatchObject({
+      launch_snapshot: {
+        schemaVersion: 2,
+        framework: "pi",
+        piMemoryGenerationEnabled: true,
+      },
+    });
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      {
+        [FeatureSwitchKey.PiLoop]: true,
+        [FeatureSwitchKey.PiMemoryGeneration]: false,
+      },
+    );
+    releaseFirstProvider.resolve(undefined);
+    await waitForRunStatus(actor, first.runId, "completed", 10_000);
+    await flushWaitUntilForTest();
+    await expect(
+      readRunLaunchSnapshotFixture(context, first.runId),
+    ).resolves.toMatchObject({
+      launch_snapshot: {
+        schemaVersion: 2,
+        framework: "pi",
+        piMemoryGenerationEnabled: true,
+      },
+    });
+
+    const firstConversation = await readPiConversationIdentityFixture(
+      first.runId,
+    );
+    const firstCandidate = await readPiMemoryStage1CandidateFixture({
+      orgId,
+      userId: actor.userId,
+    });
+    if (!firstCandidate) {
+      throw new Error("Expected first Pi memory candidate");
+    }
+    expect(firstCandidate).toMatchObject({
+      memoryStorageName: "memory",
+      piSessionId: firstConversation.piSessionId,
+      sourceRunId: first.runId,
+      sourceHistoryHash: firstConversation.sourceHistoryHash,
+      status: "pending",
+      retryCount: 0,
+      usageCount: 0,
+    });
+    expect(firstCandidate.memoryStorageS3Prefix).toBe(
+      `${orgId}/${firstCandidate.memoryStorageId}`,
+    );
+    expect(
+      firstCandidate.eligibleAt.getTime() -
+        firstCandidate.sourceCompletedAt.getTime(),
+    ).toBe(60_000);
+    await expect(
+      readSessionHistoryBlobRefCountFixture(firstCandidate.sourceHistoryHash),
+    ).resolves.toBe(2);
+    expect(sandboxOperationEventsForRun(first.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type: "pi_memory_stage1_candidate_admission",
+        candidate_outcome: "created",
+        memory_storage_id: firstCandidate.memoryStorageId,
+        pi_session_id: firstCandidate.piSessionId,
+        source_history_hash: firstCandidate.sourceHistoryHash,
+      }),
+    );
+
+    const staleLeaseToken = randomUUID();
+    await leasePiMemoryStage1CandidateFixture({
+      memoryStorageId: firstCandidate.memoryStorageId,
+      piSessionId: firstCandidate.piSessionId,
+      sourceHistoryHash: firstCandidate.sourceHistoryHash,
+      leaseToken: staleLeaseToken,
+      leaseExpiresAt: new Date(now() + 60_000),
+    });
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      {
+        [FeatureSwitchKey.PiLoop]: true,
+        [FeatureSwitchKey.PiMemoryGeneration]: true,
+      },
+    );
+    const second = await sendChatRun(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt: "replace the leased candidate with a newer exact history",
+        model: "gpt-5.6-terra",
+      },
+      "vm0",
+      usagePricingResolution,
+    );
+    await waitForRunStatus(actor, second.runId, "completed", 10_000);
+    await flushWaitUntilForTest();
+
+    const secondConversation = await readPiConversationIdentityFixture(
+      second.runId,
+    );
+    const replacedCandidate = await readPiMemoryStage1CandidateFixture({
+      orgId,
+      userId: actor.userId,
+    });
+    if (!replacedCandidate) {
+      throw new Error("Expected replacement Pi memory candidate");
+    }
+    expect(replacedCandidate).toMatchObject({
+      memoryStorageId: firstCandidate.memoryStorageId,
+      piSessionId: firstCandidate.piSessionId,
+      sourceRunId: second.runId,
+      sourceHistoryHash: secondConversation.sourceHistoryHash,
+      status: "pending",
+      leaseToken: null,
+      leaseExpiresAt: null,
+      retryCount: 0,
+      rawMemory: null,
+      rolloutSummary: null,
+      generatedAt: null,
+      usageCount: 0,
+    });
+    expect(replacedCandidate.sourceHistoryHash).not.toBe(
+      firstCandidate.sourceHistoryHash,
+    );
+    await expect(
+      readSessionHistoryBlobRefCountFixture(firstCandidate.sourceHistoryHash),
+    ).resolves.toBe(1);
+    await expect(
+      readSessionHistoryBlobRefCountFixture(
+        replacedCandidate.sourceHistoryHash,
+      ),
+    ).resolves.toBe(2);
+    expect(sandboxOperationEventsForRun(second.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type: "pi_memory_stage1_candidate_admission",
+        candidate_outcome: "replaced",
+        source_history_hash: replacedCandidate.sourceHistoryHash,
+      }),
+    );
+
+    await expect(
+      commitPiMemoryStage1CandidateFixture({
+        memoryStorageId: firstCandidate.memoryStorageId,
+        piSessionId: firstCandidate.piSessionId,
+        sourceHistoryHash: firstCandidate.sourceHistoryHash,
+        leaseToken: staleLeaseToken,
+        committedAt: nowDate(),
+        result: { kind: "succeeded_no_output" },
+      }),
+    ).resolves.toBeFalsy();
+    await expect(
+      readmitPiMemoryStage1CandidateFixture(second.runId),
+    ).resolves.toMatchObject({ outcome: "exact_retry" });
+    const afterExactRetry = await readPiMemoryStage1CandidateFixture({
+      orgId,
+      userId: actor.userId,
+    });
+    expect(afterExactRetry?.updatedAt).toStrictEqual(
+      replacedCandidate.updatedAt,
+    );
+
+    const currentLeaseToken = randomUUID();
+    const currentLeaseExpiresAt = new Date(now() + 60_000);
+    await leasePiMemoryStage1CandidateFixture({
+      memoryStorageId: replacedCandidate.memoryStorageId,
+      piSessionId: replacedCandidate.piSessionId,
+      sourceHistoryHash: replacedCandidate.sourceHistoryHash,
+      leaseToken: currentLeaseToken,
+      leaseExpiresAt: currentLeaseExpiresAt,
+    });
+    await expect(
+      commitPiMemoryStage1CandidateFixture({
+        memoryStorageId: replacedCandidate.memoryStorageId,
+        piSessionId: replacedCandidate.piSessionId,
+        sourceHistoryHash: replacedCandidate.sourceHistoryHash,
+        leaseToken: currentLeaseToken,
+        committedAt: currentLeaseExpiresAt,
+        result: { kind: "succeeded_no_output" },
+      }),
+    ).resolves.toBeFalsy();
+    await expect(
+      commitPiMemoryStage1CandidateFixture({
+        memoryStorageId: replacedCandidate.memoryStorageId,
+        piSessionId: replacedCandidate.piSessionId,
+        sourceHistoryHash: replacedCandidate.sourceHistoryHash,
+        leaseToken: currentLeaseToken,
+        committedAt: nowDate(),
+        result: { kind: "succeeded_no_output" },
+      }),
+    ).resolves.toBeTruthy();
+    await expect(
+      readPiMemoryStage1CandidateFixture({ orgId, userId: actor.userId }),
+    ).resolves.toMatchObject({
+      status: "succeeded_no_output",
+      rawMemory: null,
+      rolloutSummary: null,
+      lastSelectedSourceHistoryHash: null,
+    });
+
+    await setSyntheticPiMemoryStage1SelectionFixture({
+      memoryStorageId: replacedCandidate.memoryStorageId,
+      piSessionId: replacedCandidate.piSessionId,
+      sourceHistoryHash: replacedCandidate.sourceHistoryHash,
+    });
+    await expect(
+      readPiMemoryStage1CandidateFixture({ orgId, userId: actor.userId }),
+    ).resolves.toMatchObject({
+      lastSelectedSourceHistoryHash: replacedCandidate.sourceHistoryHash,
+    });
+
+    const third = await sendChatRun(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt: "replace the synthetic Phase 2 selection watermark",
+        model: "gpt-5.6-terra",
+      },
+      "vm0",
+      usagePricingResolution,
+    );
+    await waitForRunStatus(actor, third.runId, "completed", 10_000);
+    await flushWaitUntilForTest();
+
+    const thirdConversation = await readPiConversationIdentityFixture(
+      third.runId,
+    );
+    const thirdCandidate = await readPiMemoryStage1CandidateFixture({
+      orgId,
+      userId: actor.userId,
+    });
+    if (!thirdCandidate) {
+      throw new Error("Expected third Pi memory candidate generation");
+    }
+    expect(thirdCandidate).toMatchObject({
+      memoryStorageId: replacedCandidate.memoryStorageId,
+      piSessionId: replacedCandidate.piSessionId,
+      sourceRunId: third.runId,
+      sourceHistoryHash: thirdConversation.sourceHistoryHash,
+      status: "pending",
+      rawMemory: null,
+      rolloutSummary: null,
+      generatedAt: null,
+      lastSelectedSourceHistoryHash: null,
+    });
+    expect(thirdCandidate.sourceHistoryHash).not.toBe(
+      replacedCandidate.sourceHistoryHash,
+    );
+    await expect(
+      readSessionHistoryBlobRefCountFixture(
+        replacedCandidate.sourceHistoryHash,
+      ),
+    ).resolves.toBe(1);
+    await expect(
+      readSessionHistoryBlobRefCountFixture(thirdCandidate.sourceHistoryHash),
+    ).resolves.toBe(2);
+
+    const thirdLeaseToken = randomUUID();
+    await leasePiMemoryStage1CandidateFixture({
+      memoryStorageId: thirdCandidate.memoryStorageId,
+      piSessionId: thirdCandidate.piSessionId,
+      sourceHistoryHash: thirdCandidate.sourceHistoryHash,
+      leaseToken: thirdLeaseToken,
+      leaseExpiresAt: new Date(now() + 60_000),
+    });
+    await expect(
+      commitPiMemoryStage1CandidateFixture({
+        memoryStorageId: thirdCandidate.memoryStorageId,
+        piSessionId: thirdCandidate.piSessionId,
+        sourceHistoryHash: thirdCandidate.sourceHistoryHash,
+        leaseToken: currentLeaseToken,
+        committedAt: nowDate(),
+        result: { kind: "succeeded_no_output" },
+      }),
+    ).resolves.toBeFalsy();
+    await expect(
+      commitPiMemoryStage1CandidateFixture({
+        memoryStorageId: thirdCandidate.memoryStorageId,
+        piSessionId: thirdCandidate.piSessionId,
+        sourceHistoryHash: thirdCandidate.sourceHistoryHash,
+        leaseToken: thirdLeaseToken,
+        committedAt: nowDate(),
+        result: {
+          kind: "succeeded",
+          rawMemory: "bounded raw memory",
+          rolloutSummary: "bounded rollout summary",
+        },
+      }),
+    ).resolves.toBeTruthy();
+    await expect(
+      readPiMemoryStage1CandidateFixture({ orgId, userId: actor.userId }),
+    ).resolves.toMatchObject({
+      status: "succeeded",
+      rawMemory: "bounded raw memory",
+      rolloutSummary: "bounded rollout summary",
+      lastSelectedSourceHistoryHash: null,
+    });
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      {
+        [FeatureSwitchKey.PiLoop]: true,
+        [FeatureSwitchKey.PiMemoryGeneration]: false,
+      },
+    );
+    const disabled = await sendChatRun(
+      actor,
+      {
+        agentId,
+        prompt: "do not admit when generation was disabled at launch",
+        model: "gpt-5.6-terra",
+      },
+      "vm0",
+      usagePricingResolution,
+    );
+    await waitForRunStatus(actor, disabled.runId, "completed", 10_000);
+    await flushWaitUntilForTest();
+    expect(sandboxOperationEventsForRun(disabled.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type: "pi_memory_stage1_candidate_admission",
+        candidate_outcome: "skipped",
+        candidate_skip_reason: "generation_disabled",
+      }),
+    );
+
+    await deletePiMemoryStorageFixture(thirdCandidate.memoryStorageId);
+    await expect(
+      readPiMemoryStage1CandidateFixture({ orgId, userId: actor.userId }),
+    ).resolves.toBeNull();
+    await expect(
+      readSessionHistoryBlobRefCountFixture(thirdCandidate.sourceHistoryHash),
+    ).resolves.toBe(1);
+  }, 90_000);
+
   it.each(["deepseek-v4-flash", "deepseek-v4-pro", "gpt-5.6-terra"] as const)(
     "runs the Pi API first turn once for %s and resumes canonical JSONL",
     async (selectedModel) => {
@@ -5620,9 +6254,10 @@ describe("CHAT-02: model-first provider policies", () => {
       ).resolves.toStrictEqual({
         exists: true,
         launch_snapshot: {
-          schemaVersion: 1,
+          schemaVersion: 2,
           framework: "pi",
           runnerProfile: DEFAULT_PROFILE,
+          piMemoryGenerationEnabled: false,
         },
       });
       expect(modelRequests).toHaveLength(1);
@@ -5717,6 +6352,131 @@ describe("CHAT-02: model-first provider policies", () => {
         agentId,
         firstSessionHash,
       ]);
+    },
+    90_000,
+  );
+
+  it.each([
+    {
+      selectedModel: "deepseek-v4-flash",
+      upstreamModel: "company-deepseek-flash-production",
+    },
+    {
+      selectedModel: "deepseek-v4-pro",
+      upstreamModel: "company-deepseek-pro-production",
+    },
+    {
+      selectedModel: "gpt-5.6-terra",
+      upstreamModel: "company-terra-production",
+    },
+  ] as const)(
+    "runs custom Responses gateway $selectedModel through Pi without vm0 model billing",
+    async ({ selectedModel, upstreamModel }) => {
+      const { actor, agentId } = await entitledChatActor();
+      const orgId = requireOrgId(actor);
+      const usagePricingResolution = await createTerraUsagePricingResolution();
+      const created = await accept(
+        modelProviderConnectionsClient().create({
+          headers: sessionHeaders(actor),
+          body: {
+            displayName: `Pi custom gateway for ${selectedModel}`,
+            secret: "custom-pi-gateway-secret",
+            surfaces: [
+              {
+                protocol: "openai-responses",
+                apiBaseUrl: "https://pi-custom-gateway.example.com/openai/v1",
+                authHeaderName: "x-api-key",
+                authHeaderTemplate: "Key {{secret}}",
+                modelMappings: { [selectedModel]: upstreamModel },
+              },
+            ],
+          },
+        }),
+        [201],
+      );
+      const surfaceId = created.body.surfaces[0]?.id;
+      if (!surfaceId) {
+        throw new Error("Expected the custom Pi gateway to have a surface");
+      }
+      await api.updateOrgModelPolicies(actor, [
+        {
+          model: selectedModel,
+          isDefault: true,
+          defaultProviderType: "custom-openai-responses",
+          credentialScope: "org",
+          modelProviderId: null,
+          modelProviderSurfaceId: surfaceId,
+        },
+      ]);
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        { [FeatureSwitchKey.PiLoop]: true },
+      );
+      mockPiResourceArchiveDownloads();
+      mockPiCheckpointObjectStore();
+      const modelRequests: {
+        readonly body: unknown;
+        readonly authorization: string | null;
+        readonly apiKey: string | null;
+      }[] = [];
+      server.use(
+        http.post(
+          "https://pi-custom-gateway.example.com/openai/v1/responses",
+          async ({ request }) => {
+            modelRequests.push({
+              body: await request.json(),
+              authorization: request.headers.get("authorization"),
+              apiKey: request.headers.get("x-api-key"),
+            });
+            return new HttpResponse(
+              piResponsesTextSse(
+                `custom gateway answer for ${selectedModel}`,
+                0,
+                {
+                  input_tokens: 10,
+                  output_tokens: 3,
+                  total_tokens: 13,
+                  input_tokens_details: {
+                    cached_tokens: 3,
+                    cache_write_tokens: 2,
+                  },
+                },
+              ),
+              { headers: { "content-type": "text/event-stream" } },
+            );
+          },
+        ),
+      );
+
+      const run = await sendChatRun(
+        actor,
+        {
+          agentId,
+          prompt: `route ${selectedModel} through the custom Pi gateway`,
+          model: selectedModel,
+        },
+        "vm0",
+        usagePricingResolution,
+      );
+      await waitForRunStatus(actor, run.runId, "completed");
+      await flushWaitUntilForTest();
+
+      await expect(
+        readRunLaunchSnapshotFixture(context, run.runId),
+      ).resolves.toMatchObject({
+        launch_snapshot: { framework: "pi" },
+      });
+      expect(modelRequests).toStrictEqual([
+        {
+          body: expect.objectContaining({ model: upstreamModel }),
+          authorization: null,
+          apiKey: "Key custom-pi-gateway-secret",
+        },
+      ]);
+      await expect(readRunUsageEventsFixture(run.runId)).resolves.toStrictEqual(
+        [],
+      );
     },
     90_000,
   );
@@ -8014,12 +8774,6 @@ describe("CHAT-02: model-first provider policies", () => {
         },
       },
     });
-    const fallbackFirstTurnConfig =
-      fallbackClaim.claim.piLaunchConfig?.apiFirstTurn;
-    if (!fallbackFirstTurnConfig) {
-      throw new Error("Expected Pi API first-turn launch config");
-    }
-    expect(fallbackFirstTurnConfig).not.toHaveProperty("ownershipTransfer");
     const postProviderPrompt = "must fail after one provider request";
     const postProvider = await sendChatRun(actor, {
       agentId,
@@ -8448,6 +9202,8 @@ describe("CHAT-02: model-first provider policies", () => {
       { ...actor, orgId },
       {
         [FeatureSwitchKey.PiLoop]: true,
+        [FeatureSwitchKey.PiMemoryRecall]: false,
+        [FeatureSwitchKey.PiMemoryGeneration]: true,
         [FeatureSwitchKey.CodexFastMode]: true,
       },
     );
@@ -8573,7 +9329,6 @@ describe("CHAT-02: model-first provider policies", () => {
       { content: "before parallel tools", sequenceNumber: 0 },
       { content: "after parallel tools", sequenceNumber: 3 },
     ]);
-    await setRunnerJobPiOwnershipTransferAsPreviousApi(context, run.runId);
     const claimed = await claimChatRun(runnerGroup, run.runId);
     expect(claimed.claim.cliAgentType).toBe("pi");
     expect(claimed.claim.piSessionId).toBe(run.threadId);
@@ -8586,7 +9341,6 @@ describe("CHAT-02: model-first provider policies", () => {
       schemaVersion: 2,
       apiFirstTurn: {
         schemaVersion: 1,
-        ownershipTransfer: { schemaVersion: 1 },
         baseSession: { sessionId: run.threadId, sha256: null },
         sandboxEventSequenceStart: 1,
       },
@@ -8913,6 +9667,20 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     expect(canonicalConversation).toMatchObject({
       conversation_run_id: run.runId,
+    });
+    const sandboxConversation = await readPiConversationIdentityFixture(
+      run.runId,
+    );
+    await expect(
+      readPiMemoryStage1CandidateFixture({
+        orgId,
+        userId: actor.userId,
+      }),
+    ).resolves.toMatchObject({
+      piSessionId: sandboxConversation.piSessionId,
+      sourceRunId: run.runId,
+      sourceHistoryHash: sandboxConversation.sourceHistoryHash,
+      status: "pending",
     });
 
     const idempotentH2 = await webhooks.requestAgentCheckpoint(
@@ -11468,9 +12236,10 @@ describe("CHAT-02: run-level model overrides", () => {
     ).resolves.toStrictEqual({
       exists: true,
       launch_snapshot: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         framework: secondClaim.claim.cliAgentType,
         runnerProfile: DEFAULT_PROFILE,
+        piMemoryGenerationEnabled: false,
       },
     });
     expect(secondClaim.claim.resumeSession?.sessionId).toBe(

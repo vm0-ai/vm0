@@ -21,6 +21,7 @@ import {
 } from "@okouai/api-contracts/contracts/runners";
 import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import type { RunFailureReason } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { testCustomConnectorSkillVersionAssociationContract } from "@okouai/api-contracts/contracts/test-custom-connector-skill-version-association";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { SEED_SKILLS } from "@okouai/core/seed-skills";
@@ -102,6 +103,7 @@ import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import {
   createConnectorBddApi,
   manualHttpCustomConnectorCreateBody,
+  mockAutomaticMcpOAuthProvider,
   mockCustomConnectorOAuth2Provider,
 } from "./helpers/api-bdd-connectors";
 import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
@@ -149,6 +151,7 @@ import {
   seedVm0BuiltInDefaultModelKey as seedVm0BuiltInDefaultModelKeyState,
   seedVm0BuiltInModelKey as seedVm0BuiltInModelKeyState,
   setCustomConnectorAuthTemplateFixture,
+  setRunModelProviderStateFixture,
   setRunnerJobConnectorRuntimeTargets,
   setRunnerJobContextProfileAsPreviousApi,
 } from "./helpers/runtime-state";
@@ -1672,6 +1675,36 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(appendSystemPrompt).toContain(
       "./generated/resources/reverse-template/SKILL.md",
     );
+  });
+
+  it("advertises presentation screenshots only while their rollout switch is on", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const toolHint =
+      "okou presentation screenshot --input <deck.ppt|deck.pptx|deck.pdf|page.html|layouts-dir|url> --out <dir>";
+
+    const gatedOff = await api.createRun(actor, {
+      agentId,
+      prompt: "render this deck to page images",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const gatedOffClaim = await api.claimRunnerJob(gatedOff.runId);
+    expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(toolHint);
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.PresentationScreenshot]: true,
+    });
+
+    const gatedOn = await api.createRun(actor, {
+      agentId,
+      prompt: "render this deck to page images",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
+    expect(gatedOnClaim.appendSystemPrompt ?? "").toContain(toolHint);
   });
 
   it("emits api dispatch timing for exact-empty direct dispatch runs", async () => {
@@ -5147,9 +5180,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(launchSnapshot).toStrictEqual({
       exists: true,
       launch_snapshot: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         framework: "claude-code",
         runnerProfile: compatiblePoll.body.job?.experimentalProfile,
+        piMemoryGenerationEnabled: false,
       },
     });
     const claim = await api.claimRunnerJob(created.runId);
@@ -5275,9 +5309,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ).resolves.toStrictEqual({
       exists: true,
       launch_snapshot: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         framework: resumedClaim.cliAgentType,
         runnerProfile: DEFAULT_PROFILE,
+        piMemoryGenerationEnabled: false,
       },
     });
 
@@ -8020,9 +8055,10 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     ).resolves.toStrictEqual({
       exists: true,
       launch_snapshot: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         framework: claim.cliAgentType,
         runnerProfile: poll.body.job?.experimentalProfile,
+        piMemoryGenerationEnabled: false,
       },
     });
     expect(claim.environment).toMatchObject({
@@ -10218,6 +10254,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     const rand = randomUUID().replaceAll("-", "").slice(0, 8);
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockAutomaticMcpOAuthProvider(context, {
+      registration: "cimd",
+      authentication: "none",
+    });
 
     await connectors.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.CustomConnectorMcp]: true,
@@ -10254,9 +10297,32 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       authMode: "none",
     });
     await connectors.setCustomConnectorValues(actor, mcpConnector.id, []);
+    const automaticConnector = await connectors.createCustomConnector(actor, {
+      kind: "mcp",
+      displayName: "BDD Automatic No Auth MCP Runtime",
+      endpoint: "https://automatic-mcp.example.test/server",
+      transport: "streamable-http",
+      fields: [],
+      headerInjections: [],
+      queryInjections: [],
+      authMode: "automatic",
+    });
+    const automaticConnection =
+      await connectors.requestStartCustomConnectorOAuth2(
+        actor,
+        automaticConnector.id,
+        [200],
+      );
+    if (
+      "error" in automaticConnection.body ||
+      automaticConnection.body.result !== "connected"
+    ) {
+      throw new Error("Expected Automatic MCP no-auth connection");
+    }
     await connectors.updateAgentCustomConnectors(actor, agentId, [
       httpConnector.id,
       mcpConnector.id,
+      automaticConnector.id,
     ]);
     const run = await api.createRun(actor, {
       agentId,
@@ -10267,6 +10333,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const claim = await api.claimRunnerJob(run.runId);
     const httpInternalName = `custom_connector_${httpConnector.id.replaceAll("-", "")}`;
     const mcpInternalName = `custom_connector_${mcpConnector.id.replaceAll("-", "")}`;
+    const automaticInternalName = `custom_connector_${automaticConnector.id.replaceAll("-", "")}`;
     expect(inlineFirewallApis(claim.firewalls, httpInternalName)).toMatchObject(
       [
         {
@@ -10282,16 +10349,31 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       },
     ]);
     expect(
+      inlineFirewallApis(claim.firewalls, automaticInternalName),
+    ).toMatchObject([
+      {
+        base: "https://automatic-mcp.example.test/server",
+        auth: { headers: {}, query: {} },
+      },
+    ]);
+    expect(
       customConnectorRuntimeRegistration(claim, httpConnector.id),
     ).toMatchObject({ baseUrlVars: { region: "us-east" } });
     expect(
       customConnectorRuntimeRegistration(claim, mcpConnector.id),
     ).toMatchObject({ baseUrlVars: {} });
+    expect(
+      customConnectorRuntimeRegistration(claim, automaticConnector.id),
+    ).toMatchObject({
+      baseUrlVars: {},
+      sourceId: automaticConnection.body.connectedAccountId,
+    });
 
     const runtimeResults = await api.syncConnectorRuntime(run.runId, {
       targets: [
         customConnectorRuntimeRegistration(claim, httpConnector.id),
         customConnectorRuntimeRegistration(claim, mcpConnector.id),
+        customConnectorRuntimeRegistration(claim, automaticConnector.id),
       ],
     });
     expect(
@@ -10305,6 +10387,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     ).toStrictEqual([
       { customConnectorId: httpConnector.id, auth: { headers: {}, query: {} } },
       { customConnectorId: mcpConnector.id, auth: { headers: {}, query: {} } },
+      {
+        customConnectorId: automaticConnector.id,
+        auth: { headers: {}, query: {} },
+      },
     ]);
 
     await api.requestCancelRun(actor, run.runId, [200]);
@@ -12565,6 +12651,104 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
 
     await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("synthesizes bearer auth for Automatic MCP accounts resolved to OAuth", async () => {
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    const provider = mockAutomaticMcpOAuthProvider(context, {
+      registration: "cimd",
+      initialExpiresIn: 3600,
+    });
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+    });
+    const mcp = await connectors.createCustomConnector(actor, {
+      kind: "mcp",
+      displayName: "BDD Automatic OAuth MCP Runtime",
+      endpoint: provider.endpoint,
+      transport: "streamable-http",
+      fields: [],
+      headerInjections: [],
+      queryInjections: [],
+      authMode: "automatic",
+    });
+    const authorizationUrl = await connectors.startCustomConnectorOAuth2(
+      actor,
+      mcp.id,
+    );
+    const state = new URL(authorizationUrl).searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected Automatic MCP OAuth state");
+    }
+    await connectors.completeCustomConnectorOAuth2Callback({
+      code: "automatic-mcp-runtime-code",
+      state,
+      iss: provider.issuer,
+    });
+    await connectors.updateAgentCustomConnectors(actor, agentId, [mcp.id]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the Automatic OAuth MCP connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const internalName = `custom_connector_${mcp.id.replaceAll("-", "")}`;
+    const secretKey = `CUSTOM_${mcp.id.replaceAll("-", "")}_S___OAUTH_ACCESS_TOKEN`;
+    expect(
+      inlineFirewallApis(claim.firewalls, internalName)[0]?.auth.headers
+        ?.Authorization,
+    ).toBe(`Bearer \${{ secrets.${secretKey} }}`);
+    const target = customConnectorRuntimeRegistration(claim, mcp.id);
+    const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    const runtime = availableCustomConnectorRuntime(runtimeResult);
+    const { body: authBody } = customConnectorRuntimeAuthBody(
+      runtime,
+      fw.encryptedSecretsBody({}),
+    );
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      authBody,
+      [200],
+    );
+    expect(resolved.body).toMatchObject({
+      headers: { Authorization: "Bearer automatic-initial-access-token" },
+    });
+
+    if (!actor.orgId) {
+      throw new Error("Expected an Automatic MCP actor with an organization");
+    }
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectorId: mcp.id,
+      authMethod: "none",
+      storageVersion: 1,
+    });
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const partialRun = await api.createRun(actor, {
+      agentId,
+      prompt: "reject a partial Automatic OAuth account",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const partialClaim = await api.claimRunnerJob(partialRun.runId);
+    expect(partialClaim.connectorRuntimeTargets).not.toContainEqual(
+      expect.objectContaining({
+        kind: "custom",
+        customConnectorId: mcp.id,
+      }),
+    );
+    await api.requestCancelRun(actor, partialRun.runId, [200]);
   });
 
   it("injects proposed custom connector fields into headers, query, and host templates", async () => {
@@ -15239,9 +15423,10 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     expect(queuedLaunchSnapshot).toStrictEqual({
       exists: true,
       launch_snapshot: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         framework: "claude-code",
         runnerProfile: DEFAULT_PROFILE,
+        piMemoryGenerationEnabled: false,
       },
     });
     await expect(
@@ -16037,9 +16222,10 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     ).resolves.toStrictEqual({
       exists: true,
       launch_snapshot: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         framework: "claude-code",
         runnerProfile: "vm0/large",
+        piMemoryGenerationEnabled: false,
       },
     });
     const storedFailedRun = await api.readRun(actor, failedRun.runId);
@@ -18263,6 +18449,221 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
 });
 
 describe("RUN-03: sandbox completion reports against missing checkpoints and settled runs", () => {
+  it("suppresses only reviewed non-built-in failures from generic completion logs", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    await seedVm0BuiltInDefaultModelKey();
+    const { actor, agentId } = await entitledRunActor();
+    const suppressedReasons = [
+      "insufficient_credits",
+      "invalid_api_key",
+      "invalid_credentials",
+      "terms_acceptance_required",
+      "context_window_exceeded",
+      "output_token_limit",
+      "provider_rate_limited",
+      "provider_overloaded",
+      "provider_stream_timeout",
+      "provider_server_error",
+      "response_connection_lost",
+      "safety_policy_refusal",
+      "reconnect_required",
+      "usage_limit",
+    ] as const satisfies readonly RunFailureReason[];
+    const axiomLevels = [
+      context.mocks.axiomLogging.debug,
+      context.mocks.axiomLogging.info,
+      context.mocks.axiomLogging.warn,
+      context.mocks.axiomLogging.error,
+    ];
+
+    function matchingLogCalls(
+      log: (typeof axiomLevels)[number],
+      message: string,
+      runId: string,
+    ) {
+      return log.mock.calls.filter(([candidateMessage, fields]) => {
+        return (
+          candidateMessage === message &&
+          typeof fields === "object" &&
+          fields !== null &&
+          "runId" in fields &&
+          fields.runId === runId
+        );
+      });
+    }
+
+    async function completeFailure(args: {
+      readonly failureReason?: RunFailureReason;
+      readonly modelProvider?: ModelProviderType;
+      readonly persistedModelProvider?: string | null;
+    }): Promise<{ readonly runId: string; readonly error: string }> {
+      const modelProvider = args.modelProvider ?? "anthropic-api-key";
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt: `fail ${modelProvider} with ${args.failureReason ?? "no reason"}`,
+        modelProvider,
+      });
+      if (args.persistedModelProvider !== undefined) {
+        await setRunModelProviderStateFixture(
+          context,
+          run.runId,
+          args.persistedModelProvider,
+        );
+      }
+      const error = `provider failure for ${run.runId}`;
+      await webhooks.requestAgentComplete(
+        {
+          runId: run.runId,
+          exitCode: 1,
+          error,
+          ...(args.failureReason === undefined
+            ? {}
+            : { failureReason: args.failureReason }),
+        },
+        {
+          authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
+        },
+        [200],
+      );
+      await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+        status: "failed",
+        error,
+      });
+      await expect(
+        readRunFailureReasonFixture(context, run.runId),
+      ).resolves.toBe(args.failureReason ?? null);
+      return { runId: run.runId, error };
+    }
+
+    for (const failureReason of suppressedReasons) {
+      const { runId } = await completeFailure({ failureReason });
+      for (const level of axiomLevels) {
+        expect(matchingLogCalls(level, "Run failed", runId)).toHaveLength(0);
+      }
+    }
+
+    const visibleControls = [
+      await completeFailure({
+        modelProvider: "built-in",
+        failureReason: "provider_rate_limited",
+      }),
+      await completeFailure({
+        failureReason: "provider_rate_limited",
+        persistedModelProvider: null,
+      }),
+      await completeFailure({
+        failureReason: "provider_rate_limited",
+        persistedModelProvider: "legacy-unknown-provider",
+      }),
+      await completeFailure({}),
+      await completeFailure({ failureReason: "session_history_limit" }),
+      await completeFailure({ failureReason: "unsupported_model" }),
+    ];
+    for (const control of visibleControls) {
+      const warnings = matchingLogCalls(
+        context.mocks.axiomLogging.warn,
+        "Run failed",
+        control.runId,
+      );
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]?.[1]).toStrictEqual(
+        expect.objectContaining({
+          runId: control.runId,
+          exitCode: 1,
+          error: control.error,
+          context: "webhook:complete",
+        }),
+      );
+    }
+
+    const missingCheckpoint = await api.createRun(actor, {
+      agentId,
+      prompt: "keep the missing-checkpoint warning visible",
+      modelProvider: "anthropic-api-key",
+    });
+    await webhooks.requestAgentComplete(
+      {
+        runId: missingCheckpoint.runId,
+        exitCode: 0,
+        failureReason: "provider_overloaded",
+      },
+      {
+        authorization: `Bearer ${api.sandboxTokenForRun(
+          actor,
+          missingCheckpoint.runId,
+        )}`,
+      },
+      [200],
+    );
+    expect(
+      matchingLogCalls(
+        context.mocks.axiomLogging.warn,
+        "Run failed because checkpoint was not found",
+        missingCheckpoint.runId,
+      ),
+    ).toHaveLength(1);
+    expect(
+      matchingLogCalls(
+        context.mocks.axiomLogging.warn,
+        "Run failed",
+        missingCheckpoint.runId,
+      ),
+    ).toHaveLength(0);
+
+    const suppressibleFirst = await completeFailure({
+      failureReason: "provider_overloaded",
+    });
+    await webhooks.requestAgentComplete(
+      {
+        runId: suppressibleFirst.runId,
+        exitCode: 1,
+        error: "late unsupported-model report",
+        failureReason: "unsupported_model",
+      },
+      {
+        authorization: `Bearer ${api.sandboxTokenForRun(
+          actor,
+          suppressibleFirst.runId,
+        )}`,
+      },
+      [200],
+    );
+    expect(
+      matchingLogCalls(
+        context.mocks.axiomLogging.warn,
+        "Run failed",
+        suppressibleFirst.runId,
+      ),
+    ).toHaveLength(0);
+
+    const visibleFirst = await completeFailure({
+      failureReason: "unsupported_model",
+    });
+    await webhooks.requestAgentComplete(
+      {
+        runId: visibleFirst.runId,
+        exitCode: 1,
+        error: "late overload report",
+        failureReason: "provider_overloaded",
+      },
+      {
+        authorization: `Bearer ${api.sandboxTokenForRun(
+          actor,
+          visibleFirst.runId,
+        )}`,
+      },
+      [200],
+    );
+    expect(
+      matchingLogCalls(
+        context.mocks.axiomLogging.warn,
+        "Run failed",
+        visibleFirst.runId,
+      ),
+    ).toHaveLength(1);
+  });
+
   it.each(["claude-code", "codex"] as const)(
     "atomically completes a run with a %s checkpoint",
     async (cliAgentType) => {

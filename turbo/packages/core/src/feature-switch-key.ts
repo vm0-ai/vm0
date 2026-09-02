@@ -60,6 +60,8 @@ export enum FeatureSwitchKey {
   SharedThreadSharing = "sharedThreadSharing",
   PiLoop = "piLoop",
   PiMemoryRecall = "piMemoryRecall",
+  PiMemoryGeneration = "piMemoryGeneration",
+  PresentationScreenshot = "presentationScreenshot",
   PresentationTemplates = "presentationTemplates",
   IntroVideo = "introVideo",
   ChatTranslation = "chatTranslation",
@@ -69,4 +71,5 @@ export enum FeatureSwitchKey {
   DesktopScreenRecording = "desktopScreenRecording",
   IosPwaStartupImages = "iosPwaStartupImages",
   GeistTypeface = "geistTypeface",
+  SocialDownloadDetectedMediaType = "socialDownloadDetectedMediaType",
 }

@@ -8,11 +8,12 @@ import { join } from "node:path";
 import { createInterface, type Interface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryPiSession } from "@okouai/pi-agent-runtime/node";
 
 import {
   piSandboxAgentConfigFromEnv,
+  recordPiMemoryToolSourceUse,
   type PiSandboxAgentConfig,
 } from "./pi-agent-loop";
 
@@ -45,6 +46,7 @@ const CONFIG: PiSandboxAgentConfig = {
     provider: "deepseek",
     baseUrl: "https://api.deepseek.com/",
     model: "deepseek-v4-flash",
+    api: "openai-responses",
     apiKey: "test-api-key",
   },
 };
@@ -564,34 +566,144 @@ async function closeServer(server: Server): Promise<void> {
 }
 
 describe("sandbox Pi agent loop", () => {
+  it("records content-free memory source use with run and session correlation", () => {
+    const writes: string[] = [];
+    const write = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((chunk) => {
+        writes.push(String(chunk));
+        return true;
+      });
+    try {
+      recordPiMemoryToolSourceUse(RUN_ID, SESSION_ID, {
+        operation: "read",
+        outcome: "success",
+        memoryStorageId: "memory-storage-a",
+        storageVersionId: "memory-version-a",
+        pathHash: "a".repeat(64),
+        visitedEntries: 0,
+        scannedFiles: 1,
+        scannedBytes: 42,
+        returnedEntries: 0,
+        returnedLines: 2,
+        returnedMatches: 0,
+        truncated: false,
+        durationMs: 3,
+      });
+    } finally {
+      write.mockRestore();
+    }
+
+    expect(writes).toHaveLength(1);
+    expect(JSON.parse(writes[0] ?? "{}") as unknown).toStrictEqual({
+      type: "pi_memory_tool_source_use",
+      runId: RUN_ID,
+      sessionId: SESSION_ID,
+      operation: "read",
+      outcome: "success",
+      memoryStorageId: "memory-storage-a",
+      storageVersionId: "memory-version-a",
+      pathHash: "a".repeat(64),
+      visitedEntries: 0,
+      scannedFiles: 1,
+      scannedBytes: 42,
+      returnedEntries: 0,
+      returnedLines: 2,
+      returnedMatches: 0,
+      truncated: false,
+      durationMs: 3,
+    });
+  });
+
   it("resolves the Pi session, launch payload file, and model credential", async () => {
     await expect(
       piSandboxAgentConfigFromEnv(piEnv({ OKOU_RUN_ID: RUN_ID })),
     ).resolves.toEqual(CONFIG);
   });
 
-  it("reads optional Terra transport and request policy from the launch config", async () => {
-    const env = piEnv({ OKOU_RUN_ID: RUN_ID });
-    env.OKOU_PI_MODEL_CONFIG = JSON.stringify({
-      provider: "openai",
-      baseUrl: "https://api.openai.com/v1",
-      model: "gpt-5.6-terra",
-      api: "openai-responses",
-      thinkingLevel: "low",
-      serviceTier: "priority",
-      apiKeyEnv: "OPENAI_API_KEY",
-      credentialSecretName: "OPENAI_API_KEY",
-    });
+  it("carries the frozen memory epoch through the private launch file", async () => {
+    const memoryRecall = {
+      status: "no-content" as const,
+      memoryStorageId: "memory-storage",
+      storageVersionId: "memory-version-a",
+    };
+    await writeFile(
+      launchPayloadFile,
+      JSON.stringify({
+        ...CONFIG.launchPayload,
+        launchConfig: { ...CONFIG.launchPayload.launchConfig, memoryRecall },
+      }),
+    );
 
-    await expect(piSandboxAgentConfigFromEnv(env)).resolves.toMatchObject({
-      model: {
+    await expect(
+      piSandboxAgentConfigFromEnv(piEnv({ OKOU_RUN_ID: RUN_ID })),
+    ).resolves.toMatchObject({
+      launchPayload: { launchConfig: { memoryRecall } },
+    });
+  });
+
+  it.each([
+    "openai-completions",
+    "openai-responses",
+    "openai-codex-responses",
+  ] as const)(
+    "normalizes legacy %s config while preserving request policy",
+    async (api) => {
+      const env = piEnv({ OKOU_RUN_ID: RUN_ID });
+      env.OKOU_PI_MODEL_CONFIG = JSON.stringify({
         provider: "openai",
         baseUrl: "https://api.openai.com/v1",
         model: "gpt-5.6-terra",
-        api: "openai-responses",
+        api,
         thinkingLevel: "low",
         serviceTier: "priority",
-        apiKey: "test-api-key",
+        apiKeyEnv: "OPENAI_API_KEY",
+        credentialSecretName: "OPENAI_API_KEY",
+      });
+
+      await expect(piSandboxAgentConfigFromEnv(env)).resolves.toMatchObject({
+        model: {
+          provider: "openai",
+          baseUrl: "https://api.openai.com/v1",
+          model: "gpt-5.6-terra",
+          api: "openai-responses",
+          thinkingLevel: "low",
+          serviceTier: "priority",
+          apiKey: "test-api-key",
+        },
+      });
+    },
+  );
+
+  it("resolves a custom gateway model without exposing its header template to Pi", async () => {
+    const env = piEnv({ OKOU_RUN_ID: RUN_ID });
+    env.OKOU_PI_MODEL_CONFIG = JSON.stringify({
+      provider: "deepseek",
+      baseUrl: "https://gateway.example.com/v1",
+      model: "company-deepseek-production",
+      catalogModel: "deepseek-v4-flash",
+      api: "openai-responses",
+      apiKeyEnv: "OPENAI_API_KEY",
+      credentialSecretName: "VM0_MODEL_PROVIDER_API_KEY",
+      credentialHeader: {
+        name: "x-api-key",
+        valueTemplate: "Key {{secret}}",
+      },
+    });
+    env.OPENAI_API_KEY = "safe-gateway-placeholder";
+
+    await expect(piSandboxAgentConfigFromEnv(env)).resolves.toMatchObject({
+      model: {
+        provider: "deepseek",
+        baseUrl: "https://gateway.example.com/v1",
+        model: "company-deepseek-production",
+        catalogModel: "deepseek-v4-flash",
+        api: "openai-responses",
+        apiKey: "unused",
+        requestHeaders: {
+          authorization: null,
+          "x-api-key": "safe-gateway-placeholder",
+        },
       },
     });
   });

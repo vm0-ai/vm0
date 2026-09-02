@@ -192,7 +192,7 @@ export type AnnotationResizeEdge = (typeof ANNOTATION_RESIZE_EDGES)[number];
  */
 export interface AnnotationDrag {
   readonly markId: string;
-  readonly mode: "move" | "resize" | "note-move" | "note-resize";
+  readonly mode: "move" | "resize";
   readonly corner?: AnnotationResizeEdge;
   readonly origin: AnnotationPoint;
   readonly startRect: {
@@ -300,13 +300,20 @@ export function noteOnImage(mark: ImageAnnotationMark): {
   if (!text) {
     return null;
   }
-  return { text, ink: mark.ink, box: mark.noteBox ?? defaultNoteBox(mark) };
+  return { text, ink: mark.ink, box: defaultNoteBox(mark) };
 }
 
 const ZOOM_STEP = 0.25;
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 4;
 
+/**
+ * What the editor currently has open. `note` is not a second draggable object:
+ * it means the mark's sentence is open for editing, which is what clicking the
+ * printed label does. Notes used to be moved and resized independently and are
+ * now placed by `defaultNoteBox` alone — Tong: *"mark 标注的文字还是不要让用户
+ * 随便拖动了 … 标注文字点击也可以进行文本编辑，现在是拖动"*.
+ */
 interface AnnotationSelection {
   readonly kind: "mark" | "note";
   readonly id: string;
@@ -344,6 +351,42 @@ function createAnnotationViewportSignals() {
       set(stroke$, stroke);
     },
   );
+  /**
+   * The note field, owned by the element that renders it.
+   *
+   * Focus belongs in `onRef` (docs/effect.md), and it cannot be an `autoFocus`
+   * attribute here: the field is already mounted when a printed note is clicked
+   * while the popover is open, and a mount-time attribute cannot fire twice.
+   * Forcing a remount to re-fire one throws the live input away mid-edit.
+   */
+  const noteField$ = state<HTMLElement | null>(null);
+  const noteFocusPending$ = state(false);
+  const bindAnnotationNoteField$ = onRef<HTMLElement>(
+    command(({ get, set }, element: HTMLElement, signal: AbortSignal) => {
+      set(noteField$, element);
+      // A click on a printed note asks for the caret before the popover it
+      // lives in has mounted, so the request waits here for its element.
+      if (get(noteFocusPending$)) {
+        set(noteFocusPending$, false);
+        element.focus();
+      }
+      signal.addEventListener(
+        "abort",
+        () => {
+          set(noteField$, null);
+        },
+        { once: true },
+      );
+    }),
+  );
+  const focusAnnotationNoteField$ = command(({ get, set }) => {
+    const element = get(noteField$);
+    if (element) {
+      element.focus();
+      return;
+    }
+    set(noteFocusPending$, true);
+  });
   const bindAnnotationSurface$ = onRef<HTMLElement>(
     command(({ set }, element: HTMLElement, signal: AbortSignal) => {
       set(surface$, element);
@@ -363,6 +406,8 @@ function createAnnotationViewportSignals() {
       annotationSurface$,
       annotationDrag$,
       annotationZoom$,
+      bindAnnotationNoteField$,
+      focusAnnotationNoteField$,
       setAnnotationDrag$,
       zoomAnnotation$,
       resetAnnotationZoom$,
@@ -398,9 +443,16 @@ function createAnnotationSessionSignals(viewport: AnnotationViewport) {
     const selection = get(selection$);
     return selection?.kind === "mark" ? selection.id : null;
   });
-  const annotationSelectedNoteId$ = computed((get) => {
-    const selection = get(selection$);
-    return selection?.kind === "note" ? selection.id : null;
+  /**
+   * The mark the editor has open, however it was opened.
+   *
+   * Ink and delete act on this rather than on `annotationSelectedMarkId$`:
+   * clicking a printed note opens the same popover, and a swatch that recolours
+   * or does nothing depending on which way the popover was opened is the same
+   * control behaving two ways.
+   */
+  const annotationOpenMarkId$ = computed((get) => {
+    return get(selection$)?.id ?? null;
   });
   const annotationDirty$ = computed((get) => {
     const session = get(session$);
@@ -414,6 +466,9 @@ function createAnnotationSessionSignals(viewport: AnnotationViewport) {
   });
   const selectAnnotationNote$ = command(({ set }, id: string | null) => {
     set(selection$, id === null ? null : { kind: "note", id });
+    if (id !== null) {
+      set(viewport.signals.focusAnnotationNoteField$);
+    }
   });
   const selectAnnotationMark$ = command(({ set }, id: string | null) => {
     set(selection$, id === null ? null : { kind: "mark", id });
@@ -452,7 +507,7 @@ function createAnnotationSessionSignals(viewport: AnnotationViewport) {
       annotationTool$,
       annotationInk$,
       annotationSelectedMarkId$,
-      annotationSelectedNoteId$,
+      annotationOpenMarkId$,
       annotationDirty$,
       annotationCanUndo$,
       annotationCanRedo$,
@@ -529,29 +584,9 @@ function createAnnotationContentSignals(
   session: AnnotationSessionSignals,
   history: AnnotationHistorySignals,
 ) {
-  const moveAnnotationNoteBox$ = command(
-    ({ set }, id: string, box: { x: number; y: number; width: number }) => {
-      set(history.pushAnnotation$, (current) => {
-        return {
-          ...current,
-          marks: current.marks.map((mark) => {
-            if (
-              mark.id !== id ||
-              mark.shape === "text" ||
-              mark.shape === "redact" ||
-              mark.shape === "highlight"
-            ) {
-              return mark;
-            }
-            return { ...mark, noteBox: clampNoteBox(box) };
-          }),
-        };
-      });
-    },
-  );
   const setAnnotationInk$ = command(({ get, set }, ink: AnnotationInk) => {
     set(session.internal.ink$, ink);
-    const selectedId = get(session.signals.annotationSelectedMarkId$);
+    const selectedId = get(session.signals.annotationOpenMarkId$);
     if (selectedId === null) {
       return;
     }
@@ -592,7 +627,7 @@ function createAnnotationContentSignals(
       });
     },
   );
-  return { moveAnnotationNoteBox$, setAnnotationInk$, setAnnotationMarkNote$ };
+  return { setAnnotationInk$, setAnnotationMarkNote$ };
 }
 
 function createAnnotationGeometrySignals(
@@ -625,7 +660,7 @@ function createAnnotationGeometrySignals(
     }
   });
   const removeSelectedAnnotationMark$ = command(({ get, set }) => {
-    const id = get(session.signals.annotationSelectedMarkId$);
+    const id = get(session.signals.annotationOpenMarkId$);
     if (id !== null) {
       set(removeAnnotationMark$, id);
     }

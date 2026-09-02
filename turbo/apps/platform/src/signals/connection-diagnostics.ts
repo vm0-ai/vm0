@@ -1,84 +1,120 @@
 import { command, computed, state } from "ccstate";
+import { z } from "zod";
 
 import { now } from "../lib/time.ts";
 
 const MAX_CONNECTION_DIAGNOSTIC_EVENTS = 500;
 const CONNECTION_DIAGNOSTIC_EVENT = "vm0:connection-diagnostic";
 
-export type ConnectionDiagnosticEventName =
-  | "foreground.catch-up"
-  | "foreground.request"
-  | "foreground.skipped"
-  | "foreground.subscriber-catch-up"
-  | "foreground.visibility-wait"
-  | "lifecycle.blur"
-  | "lifecycle.focus"
-  | "lifecycle.network"
-  | "lifecycle.snapshot"
-  | "lifecycle.visibility"
-  | "realtime.auth-callback"
-  | "realtime.channel"
-  | "realtime.channel-replace"
-  | "realtime.client"
-  | "realtime.client-rebuild"
-  | "realtime.connection"
-  | "realtime.initial-connection"
-  | "realtime.pending-subscribers"
-  | "realtime.subscriber-catch-up"
-  | "realtime.subscription";
+// The Worker publishes its own capture over the shared database bridge, so the
+// diagnostics shape is a wire format and Zod owns it.
+const connectionDiagnosticEventNameSchema = z.enum([
+  "foreground.catch-up",
+  "foreground.request",
+  "foreground.skipped",
+  "foreground.subscriber-catch-up",
+  "foreground.visibility-wait",
+  "lifecycle.blur",
+  "lifecycle.focus",
+  "lifecycle.network",
+  "lifecycle.snapshot",
+  "lifecycle.visibility",
+  "realtime.auth-callback",
+  "realtime.channel",
+  "realtime.channel-replace",
+  "realtime.client",
+  "realtime.client-rebuild",
+  "realtime.connection",
+  "realtime.initial-connection",
+  "realtime.pending-subscribers",
+  "realtime.subscriber-catch-up",
+  "realtime.subscription",
+]);
 
-type ConnectionDiagnosticPhase =
-  | "error"
-  | "finish"
-  | "instant"
-  | "join"
-  | "start";
+export type ConnectionDiagnosticEventName = z.infer<
+  typeof connectionDiagnosticEventNameSchema
+>;
 
-export type ConnectionDiagnosticConnectionState =
-  | "closed"
-  | "closing"
-  | "connected"
-  | "connecting"
-  | "disconnected"
-  | "failed"
-  | "initialized"
-  | "suspended";
+const connectionDiagnosticPhaseSchema = z.enum([
+  "error",
+  "finish",
+  "instant",
+  "join",
+  "start",
+]);
 
-export type ConnectionDiagnosticChannelState =
-  | "attached"
-  | "attaching"
-  | "detached"
-  | "detaching"
-  | "failed"
-  | "initialized"
-  | "suspended";
+type ConnectionDiagnosticPhase = z.infer<
+  typeof connectionDiagnosticPhaseSchema
+>;
 
-export interface ConnectionDiagnosticDetails {
-  readonly channelState?: ConnectionDiagnosticChannelState;
-  readonly connectionState?: ConnectionDiagnosticConnectionState;
-  readonly errorCode?: number | string;
-  readonly errorMessage?: string;
-  readonly focused?: boolean;
-  readonly online?: boolean;
-  readonly pendingSubscriberCount?: number;
-  readonly previousChannelState?: ConnectionDiagnosticChannelState;
-  readonly previousConnectionState?: ConnectionDiagnosticConnectionState;
-  readonly retryInMs?: number;
-  readonly skipReason?: "hidden" | "no-realtime-session";
-  readonly statusCode?: number;
-  readonly subscriberCount?: number;
-  readonly subscriptionKind?: "channel" | "payload" | "topic";
-  readonly tokenAvailable?: boolean;
-  readonly trigger?:
-    | "blur"
-    | "focus"
-    | "initial"
-    | "offline"
-    | "online"
-    | "realtime-connected"
-    | "visibilitychange";
-  readonly visibilityState?: DocumentVisibilityState;
-}
+const connectionDiagnosticConnectionStateSchema = z.enum([
+  "closed",
+  "closing",
+  "connected",
+  "connecting",
+  "disconnected",
+  "failed",
+  "initialized",
+  "suspended",
+]);
+
+export type ConnectionDiagnosticConnectionState = z.infer<
+  typeof connectionDiagnosticConnectionStateSchema
+>;
+
+const connectionDiagnosticChannelStateSchema = z.enum([
+  "attached",
+  "attaching",
+  "detached",
+  "detaching",
+  "failed",
+  "initialized",
+  "suspended",
+]);
+
+export type ConnectionDiagnosticChannelState = z.infer<
+  typeof connectionDiagnosticChannelStateSchema
+>;
+
+const visibilityStateSchema = z.enum(["hidden", "visible"]);
+
+const connectionDiagnosticDetailsSchema = z
+  .object({
+    channelState: connectionDiagnosticChannelStateSchema.optional(),
+    connectionState: connectionDiagnosticConnectionStateSchema.optional(),
+    errorCode: z.union([z.number(), z.string()]).optional(),
+    errorMessage: z.string().optional(),
+    focused: z.boolean().optional(),
+    online: z.boolean().optional(),
+    pendingSubscriberCount: z.number().optional(),
+    previousChannelState: connectionDiagnosticChannelStateSchema.optional(),
+    previousConnectionState:
+      connectionDiagnosticConnectionStateSchema.optional(),
+    retryInMs: z.number().optional(),
+    skipReason: z.enum(["hidden", "no-realtime-session"]).optional(),
+    statusCode: z.number().optional(),
+    subscriberCount: z.number().optional(),
+    subscriptionKind: z.enum(["channel", "payload", "topic"]).optional(),
+    tokenAvailable: z.boolean().optional(),
+    trigger: z
+      .enum([
+        "blur",
+        "focus",
+        "initial",
+        "offline",
+        "online",
+        "realtime-connected",
+        "visibilitychange",
+      ])
+      .optional(),
+    visibilityState: visibilityStateSchema.optional(),
+  })
+  .strict()
+  .readonly();
+
+export type ConnectionDiagnosticDetails = z.infer<
+  typeof connectionDiagnosticDetailsSchema
+>;
 
 interface ConnectionDiagnosticInput {
   readonly details?: ConnectionDiagnosticDetails;
@@ -88,12 +124,24 @@ interface ConnectionDiagnosticInput {
   readonly spanId?: string;
 }
 
-export interface ConnectionDiagnosticEvent extends ConnectionDiagnosticInput {
-  readonly elapsedMs: number;
-  readonly sequence: number;
-  readonly timestamp: string;
-  readonly timestampMs: number;
-}
+const connectionDiagnosticEventSchema = z
+  .object({
+    details: connectionDiagnosticDetailsSchema.optional(),
+    durationMs: z.number().optional(),
+    elapsedMs: z.number(),
+    event: connectionDiagnosticEventNameSchema,
+    phase: connectionDiagnosticPhaseSchema,
+    sequence: z.number(),
+    spanId: z.string().optional(),
+    timestamp: z.string(),
+    timestampMs: z.number(),
+  })
+  .strict()
+  .readonly();
+
+export type ConnectionDiagnosticEvent = z.infer<
+  typeof connectionDiagnosticEventSchema
+>;
 
 interface ConnectionDiagnosticState {
   readonly captureStartedAtMs: number | null;
@@ -102,27 +150,45 @@ interface ConnectionDiagnosticState {
   readonly nextSequence: number;
 }
 
-export interface ActiveConnectionDiagnosticWait {
-  readonly event: ConnectionDiagnosticEventName;
-  readonly spanId: string;
-  readonly startedAtMs: number;
-}
+const activeConnectionDiagnosticWaitSchema = z
+  .object({
+    event: connectionDiagnosticEventNameSchema,
+    spanId: z.string(),
+    startedAtMs: z.number(),
+  })
+  .strict()
+  .readonly();
 
-export interface ConnectionDiagnostics {
-  readonly activeWaits: readonly ActiveConnectionDiagnosticWait[];
-  readonly capacity: number;
-  readonly captureStartedAt: string | null;
-  readonly enabled: boolean;
-  readonly events: readonly ConnectionDiagnosticEvent[];
-  readonly snapshot: {
-    readonly channelState: ConnectionDiagnosticChannelState | null;
-    readonly connectionState: ConnectionDiagnosticConnectionState | null;
-    readonly focused: boolean;
-    readonly online: boolean;
-    readonly recoveryPhase: ConnectionDiagnosticEventName | "idle";
-    readonly visibilityState: DocumentVisibilityState;
-  };
-}
+export type ActiveConnectionDiagnosticWait = z.infer<
+  typeof activeConnectionDiagnosticWaitSchema
+>;
+
+export const connectionDiagnosticsSchema = z
+  .object({
+    activeWaits: activeConnectionDiagnosticWaitSchema.array().readonly(),
+    capacity: z.number(),
+    captureStartedAt: z.string().nullable(),
+    enabled: z.boolean(),
+    events: connectionDiagnosticEventSchema.array().readonly(),
+    snapshot: z
+      .object({
+        channelState: connectionDiagnosticChannelStateSchema.nullable(),
+        connectionState: connectionDiagnosticConnectionStateSchema.nullable(),
+        focused: z.boolean(),
+        online: z.boolean(),
+        recoveryPhase: z.union([
+          connectionDiagnosticEventNameSchema,
+          z.literal("idle"),
+        ]),
+        visibilityState: visibilityStateSchema,
+      })
+      .strict()
+      .readonly(),
+  })
+  .strict()
+  .readonly();
+
+export type ConnectionDiagnostics = z.infer<typeof connectionDiagnosticsSchema>;
 
 type ConnectionDiagnosticWrite =
   | { readonly action: "append"; readonly event: ConnectionDiagnosticInput }
@@ -349,10 +415,9 @@ export const connectionDiagnostics$ = computed((get): ConnectionDiagnostics => {
 export function publishConnectionDiagnostic(
   event: ConnectionDiagnosticInput,
 ): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-  globalThis.window.dispatchEvent(
+  // `globalThis` is an EventTarget in both the page and the SharedWorker, so
+  // the capture path needs no DOM global and no runtime branch.
+  globalThis.dispatchEvent(
     new CustomEvent<ConnectionDiagnosticInput>(CONNECTION_DIAGNOSTIC_EVENT, {
       detail: event,
     }),
@@ -400,9 +465,6 @@ export function connectionDiagnosticError(
 
 export const setupConnectionDiagnostics$ = command(
   ({ set }, signal: AbortSignal): void => {
-    if (typeof window === "undefined" || typeof document === "undefined") {
-      return;
-    }
     const handleDiagnosticEvent = (event: Event): void => {
       const diagnosticEvent = event as CustomEvent<ConnectionDiagnosticInput>;
       set(writeConnectionDiagnostic$, {
@@ -410,14 +472,17 @@ export const setupConnectionDiagnostics$ = command(
         event: diagnosticEvent.detail,
       });
     };
-    globalThis.window.addEventListener(
+    globalThis.addEventListener(
       CONNECTION_DIAGNOSTIC_EVENT,
       handleDiagnosticEvent,
-      {
-        signal,
-      },
+      { signal },
     );
+  },
+);
 
+/** Browser lifecycle signals that only a page can observe. */
+export const setupBrowserLifecycleDiagnostics$ = command(
+  (_ctx, signal: AbortSignal): void => {
     globalThis.document.addEventListener(
       "visibilitychange",
       () => {

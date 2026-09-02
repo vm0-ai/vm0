@@ -1,17 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if (( $# < 1 || $# > 2 )); then
-  echo "usage: $0 <cloudflare-pages-url> [api-promotion]" >&2
+if (( $# != 1 )); then
+  echo "usage: $0 <cloudflare-pages-url>" >&2
   exit 1
 fi
 
 pages_url="$1"
-verification_scope="${2:-full}"
-if [[ "$verification_scope" != "full" && "$verification_scope" != "api-promotion" ]]; then
-  echo "invalid verification scope: $verification_scope" >&2
-  exit 1
-fi
 curl_retry=(
   --retry 12
   --retry-delay 5
@@ -45,21 +40,6 @@ verify_auth_redirect() {
   done
 }
 
-verify_api_origin_marker() {
-  local app_origin="$1"
-  local api_origin="$2"
-  local expected_marker
-  local html
-
-  expected_marker="<meta name=\"vm0-api-origin\" content=\"${api_origin}\""
-  html="$(curl -fsSL "${curl_retry[@]}" "${app_origin}/")"
-  if [[ "$html" != *"$expected_marker"* ]]; then
-    echo "::error title=Production API origin marker mismatch::${app_origin} does not declare ${api_origin}" >&2
-    return 1
-  fi
-  echo "Production App API origin marker is correct: ${app_origin} -> ${api_origin}"
-}
-
 verify_api_cors() {
   local api_origin="$1"
   local app_origin="$2"
@@ -87,9 +67,5 @@ verify_api_cors() {
 
 verify_auth_redirect "https://api.vm0.ai" "https://app.vm0.ai"
 verify_auth_redirect "https://api.okou.ai" "https://app.okou.ai"
-if [[ "$verification_scope" == "full" ]]; then
-  verify_api_origin_marker "https://app.vm0.ai" "https://api.vm0.ai"
-  verify_api_origin_marker "https://app.okou.ai" "https://api.okou.ai"
-fi
 verify_api_cors "https://api.vm0.ai" "https://app.vm0.ai"
 verify_api_cors "https://api.okou.ai" "https://app.okou.ai"

@@ -1,5 +1,68 @@
 # Changelog
 
+## [8.611.2](https://github.com/vm0-ai/vm0/compare/core-v8.611.1...core-v8.611.2) (2026-09-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.395.0
+
+## [8.611.1](https://github.com/vm0-ai/vm0/compare/core-v8.611.0...core-v8.611.1) (2026-09-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.394.0
+
+## [8.611.0](https://github.com/vm0-ai/vm0/compare/core-v8.610.0...core-v8.611.0) (2026-09-02)
+
+
+### Features
+
+* **platform:** add internal Lab switch category ([#31177](https://github.com/vm0-ai/vm0/issues/31177)) ([996361b](https://github.com/vm0-ai/vm0/commit/996361bb352b5b94ec0852dbaa7ddc7086d7116e))
+* **platform:** group lab switches by rollout stage ([#31121](https://github.com/vm0-ai/vm0/issues/31121)) ([f23ecec](https://github.com/vm0-ai/vm0/commit/f23ecec9f8582cdd9a90281af7833266d7fb84ca))
+
+
+### Bug Fixes
+
+* **social:** file downloaded media by its actual container ([#30998](https://github.com/vm0-ai/vm0/issues/30998)) ([3752d3f](https://github.com/vm0-ai/vm0/commit/3752d3fea2e6f5dbd535693ad4346f58e943485a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.393.0
+
+## [8.610.0](https://github.com/vm0-ai/vm0/compare/core-v8.609.0...core-v8.610.0) (2026-09-02)
+
+
+### Features
+
+* **chat:** persist structured image annotations ([#31046](https://github.com/vm0-ai/vm0/issues/31046)) ([8e4b621](https://github.com/vm0-ai/vm0/commit/8e4b62131457161a5c9ceb7ec4003339a4b58eb5))
+* gate morning brief behind an independent switch ([#31110](https://github.com/vm0-ai/vm0/issues/31110)) ([2b69ef6](https://github.com/vm0-ai/vm0/commit/2b69ef6331471d09f88cae0548e6dd4ba15e4283))
+* graduate custom connector no-auth ([#31075](https://github.com/vm0-ai/vm0/issues/31075)) ([5756edf](https://github.com/vm0-ai/vm0/commit/5756edf51498b88c6f06b0a43d02c7e632d6238c))
+* **pi:** add feature-gated memory recall mount ([#31108](https://github.com/vm0-ai/vm0/issues/31108)) ([efe42ad](https://github.com/vm0-ai/vm0/commit/efe42ad75b466d70af92dc2db216435ac245c0f0))
+* **platform:** generate ios pwa startup images ([#30926](https://github.com/vm0-ai/vm0/issues/30926)) ([66d375b](https://github.com/vm0-ai/vm0/commit/66d375b2921b40761e9334eae46e8a5993f9b387))
+* **platform:** preview docx and pptx files ([#30937](https://github.com/vm0-ai/vm0/issues/30937)) ([70e4b60](https://github.com/vm0-ai/vm0/commit/70e4b60bc195f23592c952cff1e15472eed227a4))
+* **ui:** gate the geist typeface behind a feature switch ([#31050](https://github.com/vm0-ai/vm0/issues/31050)) ([6a4c38d](https://github.com/vm0-ai/vm0/commit/6a4c38dd1d1dbb86347541d203a3261405c0dcf3))
+
+
+### Refactoring
+
+* rename internal feature switch keys ([#30955](https://github.com/vm0-ai/vm0/issues/30955)) ([b0670b4](https://github.com/vm0-ai/vm0/commit/b0670b464a105432aaa08b3bd340a07a5b32654e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.392.0
+
 ## [8.609.0](https://github.com/vm0-ai/vm0/compare/core-v8.608.3...core-v8.609.0) (2026-09-02)
 
 

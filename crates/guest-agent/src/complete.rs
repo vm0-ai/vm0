@@ -24,6 +24,7 @@ use crate::http::HttpClient;
 use crate::run_context::GuestRuntime;
 use api_contracts::generated::types::webhooks::agent::complete;
 use guest_common::{log_info, log_warn};
+use guest_contracts::diagnostics::FailureReason;
 use serde::Serialize;
 use std::time::Instant;
 
@@ -34,6 +35,8 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 struct CompletePayload<'a> {
     run_id: &'a str,
     exit_code: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    failure_reason: Option<complete::RequestFailureReason>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -74,6 +77,7 @@ fn as_optional_slice(values: &[String]) -> Option<&[String]> {
 pub async fn report_checkpoint_for_run(
     runtime: &GuestRuntime,
     exit_code: i32,
+    failure_reason: Option<FailureReason>,
     error: Option<&str>,
     last_event_sequence: Option<u32>,
     active_input_delivery_ids: &[String],
@@ -85,6 +89,7 @@ pub async fn report_checkpoint_for_run(
         payload_for_runtime(
             runtime,
             exit_code,
+            failure_reason,
             error,
             last_event_sequence,
             active_input_delivery_ids,
@@ -151,6 +156,7 @@ pub async fn report_user_cancellation_for_run(
 fn payload_for_runtime<'a>(
     runtime: &'a GuestRuntime,
     exit_code: i32,
+    failure_reason: Option<FailureReason>,
     error: Option<&'a str>,
     last_event_sequence: Option<u32>,
     active_input_delivery_ids: &'a [String],
@@ -160,6 +166,7 @@ fn payload_for_runtime<'a>(
     CompletePayload {
         run_id: &config.run_id,
         exit_code,
+        failure_reason: failure_reason.map(Into::into),
         error,
         last_event_sequence,
         sandbox_id: as_optional(&config.sandbox_id),
@@ -182,6 +189,7 @@ fn checkpointless_payload_for_run<'a>(
     CompletePayload {
         run_id,
         exit_code,
+        failure_reason: None,
         error: None,
         last_event_sequence,
         sandbox_id: as_optional(sandbox_id),
@@ -211,6 +219,7 @@ mod tests {
         let payload = CompletePayload {
             run_id: "run-123",
             exit_code: 0,
+            failure_reason: None,
             error: None,
             last_event_sequence: None,
             sandbox_id: None,
@@ -228,6 +237,7 @@ mod tests {
         let payload = CompletePayload {
             run_id: "run-123",
             exit_code: 0,
+            failure_reason: None,
             error: None,
             last_event_sequence: None,
             sandbox_id: Some("abc"),
@@ -242,6 +252,25 @@ mod tests {
         assert!(json.contains(r#""workspaceReuseResult":"sandboxReused""#));
     }
 
+    #[test]
+    fn payload_uses_the_generated_failure_reason_contract() {
+        let payload = CompletePayload {
+            run_id: "run-123",
+            exit_code: 1,
+            failure_reason: Some(FailureReason::ProviderRateLimited.into()),
+            error: Some("rate limited"),
+            last_event_sequence: None,
+            sandbox_id: None,
+            sandbox_reuse_result: None,
+            workspace_reuse_result: None,
+            active_input_delivery_ids: None,
+            checkpoint: None,
+        };
+
+        let json = serde_json::to_value(&payload).unwrap();
+        assert_eq!(json["failureReason"], "provider_rate_limited");
+    }
+
     /// Completion metadata fields must be skipped independently so one absent
     /// runner value does not silently drop another useful value.
     #[test]
@@ -249,6 +278,7 @@ mod tests {
         let payload = CompletePayload {
             run_id: "run-123",
             exit_code: 0,
+            failure_reason: None,
             error: None,
             last_event_sequence: None,
             sandbox_id: None,
@@ -267,6 +297,7 @@ mod tests {
         let payload = CompletePayload {
             run_id: "run-123",
             exit_code: 0,
+            failure_reason: None,
             error: None,
             last_event_sequence: None,
             sandbox_id: Some("sid"),
@@ -292,6 +323,7 @@ mod tests {
         let payload = CompletePayload {
             run_id: "run-123",
             exit_code: 0,
+            failure_reason: None,
             error: None,
             last_event_sequence: Some(7),
             sandbox_id: None,

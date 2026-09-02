@@ -416,13 +416,11 @@
         "agents": "Agenten",
         "artifacts": "Artefakte",
         "connectors": "Integrationen",
-        "newChat": "Neuer Chat",
         "settings": "Einstellungen",
         "workflows": "Workflows",
         "works": "Einsatzorte von {{agentName}}"
       },
       "rail": {
-        "new": "Neu",
         "workflows": "Workflows",
         "works": "Kanäle"
       },
@@ -1822,7 +1820,7 @@
       "noAccounts": "Keine aktiven Konten verfügbar. Verbinden Sie das Institut erneut oder reparieren Sie die Verbindung.",
       "oneDay": "24 Stunden",
       "oneHour": "1 Stunde",
-      "popupBlocked": "Erlauben Sie Pop-ups für Zero und versuchen Sie es erneut.",
+      "popupBlocked": "Erlauben Sie Pop-ups für {{assistantName}} und versuchen Sie es erneut.",
       "readOnly": "Konten, Salden und Transaktionen · schreibgeschützt",
       "repair": "Reparieren",
       "repairRequired": "{{institution}} muss repariert werden",
@@ -1944,8 +1942,8 @@
       "providerIncompatibleAction": "Starten Sie eine neue Sitzung",
       "providerIncompatiblePrefix": "Diese Sitzung wurde bei einem anderen Modellanbieter gestartet und kann nicht mit dem aktuellen fortgesetzt werden.",
       "recovery": {
-        "capacityDescription": "Dieses Modell ist vorübergehend ausgelastet. Versuchen Sie es in einigen Minuten erneut oder wechseln Sie jetzt das Modell.",
-        "capacityTitle": "{{framework}}-Modell ist ausgelastet",
+        "capacityDescription": "Versuchen Sie es gleich erneut oder wechseln Sie das Modell.",
+        "capacityTitle": "Dieses Modell ist gerade ausgelastet",
         "claudeCode": "Claude Code",
         "codex": "Codex",
         "continue": "Fortfahren",
@@ -2027,7 +2025,7 @@
       "review": {
         "avatar": "Avatar",
         "heading": "Intro-Video prüfen",
-        "help": "Bestätige die Auswahl, die Zero im neuen Chat-Thread erhält",
+        "help": "Bestätige die Auswahl, die {{assistantName}} im neuen Chat-Thread erhält",
         "instructions": "Bearbeitungsanweisungen",
         "source": "Quelle",
         "voice": "Stimme"
@@ -4662,6 +4660,20 @@
       "teamDescription": "Skalieren Sie Ihr Team mit 10 parallelen Ausführungen und mehr Credits."
     }
   },
+  "serviceStatus": {
+    "dismiss": "Service-Update schließen",
+    "label": "Service-Statusupdates",
+    "statuses": {
+      "identified": "Problem identifiziert",
+      "incident": "Service-Störung",
+      "investigating": "Wird untersucht",
+      "maintenance": "Wartung",
+      "maintenanceInProgress": "Wartung läuft",
+      "maintenanceScheduled": "Wartung geplant",
+      "monitoring": "Wiederherstellung wird überwacht"
+    },
+    "viewUpdates": "Neueste Updates ansehen"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "Konto hinzufügen",
@@ -4788,24 +4800,14 @@
       "title": "Daten exportieren"
     },
     "lab": {
-      "actions": {
-        "resetAll": "Alles zurücksetzen",
-        "resetting": "Zurücksetzen…"
-      },
-      "description": "Schalten Sie experimentelle Funktionen ein oder aus.",
+      "description": "Feature-Schalter nach Einführungsphase anzeigen.",
       "documentTitle": "Labor",
-      "empty": {
-        "description": "Für diesen Betreuer gibt es keine Funktionsschalter.",
-        "title": "Keine Funktionsschalter"
-      },
-      "filters": {
-        "all": "Alle"
-      },
       "groups": {
-        "connectors": "Integrationen",
-        "other": "Andere"
+        "alpha": "Alpha",
+        "beta": "Beta",
+        "internal": "Intern",
+        "released": "Veröffentlicht"
       },
-      "maintainer": "Betreuer: {{maintainer}}",
       "title": "Labor"
     },
     "models": {
@@ -5102,8 +5104,13 @@
           "offline": "offline",
           "online": "online",
           "recovery": "Wiederherstellung",
+          "refresh": "Aktualisieren",
           "title": "Echtzeit-Verbindungsdiagnose",
-          "unavailable": "nicht verfügbar"
+          "unavailable": "nicht verfügbar",
+          "workerDescription": "Die Aufzeichnung des Shared Workers prüfen, der die Echtzeitverbindung hält.",
+          "workerLoading": "Laden",
+          "workerTitle": "Verbindungsdiagnose des Shared Workers",
+          "workerUnavailable": "Nicht verfügbar"
         }
       },
       "language": {

@@ -12,14 +12,11 @@ import {
   type FeatureSwitchContext,
 } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import {
-  isPiAgentModelSupported,
-  resolvePiAgentModelApi,
-  type PiOpenAICompatibleProvider,
-} from "@okouai/pi-agent-runtime";
+import { isPiAgentModelSupported } from "@okouai/pi-agent-runtime";
 
 import type { BuiltInModelRuntimeRoute } from "./built-in-model-runtime-route.service";
 import { isWebChatTriggerSource } from "./chat-trigger-source.service";
+import { GATEWAY_RUNTIME_SECRET_NAME } from "./model-provider-gateway-runtime";
 
 /**
  * Resolve non-secret model metadata shared by the sandbox Pi runtime and the
@@ -31,31 +28,52 @@ function normalizedBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
 }
 
+interface PiRuntimeContract {
+  readonly api: "openai-responses";
+  readonly thinkingLevel?: PiModelConfig["thinkingLevel"];
+  readonly serviceTier?: PiModelConfig["serviceTier"];
+}
+
+type PiCatalogProvider = "deepseek" | "openai";
+
+function piCatalogProvider(
+  selectedModel: string | null | undefined,
+): PiCatalogProvider | null {
+  switch (selectedModel) {
+    case "deepseek-v4-flash":
+    case "deepseek-v4-pro": {
+      return "deepseek";
+    }
+    case "gpt-5.6-terra": {
+      return "openai";
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
 function piRuntimeContract(args: {
   readonly providerType: string;
-  readonly concreteType: ModelProviderType;
   readonly selectedModel: string;
-  readonly api: NonNullable<PiModelConfig["api"]>;
   readonly codexServiceTier: "fast" | undefined;
-}): Pick<PiModelConfig, "api" | "thinkingLevel" | "serviceTier"> {
-  if (
-    isBuiltInModelProviderType(args.providerType) &&
-    args.selectedModel === "gpt-5.6-terra"
-  ) {
+}): PiRuntimeContract {
+  if (args.selectedModel === "gpt-5.6-terra") {
     return {
-      api: args.api,
+      api: "openai-responses",
       thinkingLevel: "low",
-      ...(args.codexServiceTier === "fast"
+      ...(isBuiltInModelProviderType(args.providerType) &&
+      args.codexServiceTier === "fast"
         ? { serviceTier: "priority" as const }
         : {}),
     };
   }
-  return args.concreteType === "openrouter-codex" ? { api: args.api } : {};
+  return { api: "openai-responses" };
 }
 
 function piProvider(
   concreteType: ModelProviderType,
-): PiOpenAICompatibleProvider | null {
+): "deepseek" | "openai" | "openrouter" | null {
   switch (concreteType) {
     case "deepseek": {
       return "deepseek";
@@ -66,25 +84,10 @@ function piProvider(
     case "openrouter-codex": {
       return "openrouter";
     }
-    case "vercel-ai-gateway-codex": {
-      return "vercel-ai-gateway";
-    }
-    case "codex-oauth-token": {
-      return "codex";
-    }
     default: {
       return null;
     }
   }
-}
-
-function piCredentialSecretName(
-  concreteType: ModelProviderType,
-): string | null {
-  if (concreteType === "codex-oauth-token") {
-    return "CHATGPT_ACCESS_TOKEN";
-  }
-  return getSecretNameForType(concreteType) ?? null;
 }
 
 export function shouldUsePiExecution(args: {
@@ -96,38 +99,94 @@ export function shouldUsePiExecution(args: {
   readonly triggerSource: TriggerSource;
   readonly featureSwitchContext: FeatureSwitchContext;
 }): boolean {
-  const isExistingPiModel =
-    args.selectedModel === "deepseek-v4-flash" ||
-    args.selectedModel === "deepseek-v4-pro";
+  const catalogProvider = piCatalogProvider(args.selectedModel);
+  const isExistingPiModel = catalogProvider === "deepseek";
   const isStandardTerra =
-    args.selectedModel === "gpt-5.6-terra" &&
-    args.codexServiceTier === undefined;
+    catalogProvider === "openai" && args.codexServiceTier === undefined;
   const isFastTerra =
-    args.selectedModel === "gpt-5.6-terra" &&
+    catalogProvider === "openai" &&
     args.codexServiceTier === "fast" &&
+    isBuiltInModelProviderType(args.modelProviderType) &&
     (args.builtInModelRuntimeRoute?.providerType === "openai-api-key" ||
       args.builtInModelRuntimeRoute?.providerType === "openrouter-codex") &&
     isFeatureEnabled(FeatureSwitchKey.CodexFastMode, args.featureSwitchContext);
+  const isPiModelProvider =
+    isBuiltInModelProviderType(args.modelProviderType) ||
+    args.modelProviderType === "custom-openai-responses";
   return (
     args.chatThreadId !== undefined &&
     isWebChatTriggerSource(args.triggerSource) &&
-    isBuiltInModelProviderType(args.modelProviderType) &&
+    isPiModelProvider &&
     (isExistingPiModel || isStandardTerra || isFastTerra) &&
     isFeatureEnabled(FeatureSwitchKey.PiLoop, args.featureSwitchContext)
   );
 }
 
+interface PiModelProviderConfigInput {
+  readonly type: string;
+  readonly concreteType?: string;
+  readonly environment: Record<string, string>;
+  readonly selectedModel: string | null;
+  readonly inlineFirewall?: boolean;
+  readonly credentialHeader?: PiModelConfig["credentialHeader"];
+}
+
+function resolveCustomGatewayPiModelConfig(
+  provider: PiModelProviderConfigInput,
+  codexServiceTier: "fast" | undefined,
+): PiModelConfig | null {
+  if (
+    provider.type !== "custom-openai-responses" ||
+    provider.inlineFirewall !== true ||
+    !provider.selectedModel ||
+    !provider.credentialHeader
+  ) {
+    return null;
+  }
+  const catalogProvider = piCatalogProvider(provider.selectedModel);
+  const baseUrl = provider.environment.OPENAI_BASE_URL;
+  const model = provider.environment.OPENAI_MODEL;
+  if (!catalogProvider || !baseUrl || !model) {
+    return null;
+  }
+  const runtimeContract = piRuntimeContract({
+    providerType: provider.type,
+    selectedModel: provider.selectedModel,
+    codexServiceTier,
+  });
+  const config = {
+    provider: catalogProvider,
+    baseUrl,
+    model,
+    catalogModel: provider.selectedModel,
+    apiKeyEnv: "OPENAI_API_KEY",
+    credentialSecretName: GATEWAY_RUNTIME_SECRET_NAME,
+    credentialHeader: provider.credentialHeader,
+    ...runtimeContract,
+  } as const;
+  return isPiAgentModelSupported({
+    provider: config.provider,
+    baseUrl: config.baseUrl,
+    model: config.model,
+    catalogModel: config.catalogModel,
+    apiKey: "sandbox-secret",
+    ...runtimeContract,
+  })
+    ? config
+    : null;
+}
+
 export function resolvePiSandboxModelConfig(
-  provider: {
-    readonly type: string;
-    readonly concreteType?: string;
-    readonly environment: Record<string, string>;
-    readonly selectedModel: string | null;
-    readonly inlineFirewall?: boolean;
-  } | null,
+  provider: PiModelProviderConfigInput | null,
   codexServiceTier: "fast" | undefined = undefined,
 ): PiModelConfig | null {
-  if (!provider || !provider.selectedModel || provider.inlineFirewall) {
+  if (!provider || !provider.selectedModel) {
+    return null;
+  }
+  if (provider.type === "custom-openai-responses") {
+    return resolveCustomGatewayPiModelConfig(provider, codexServiceTier);
+  }
+  if (provider.inlineFirewall) {
     return null;
   }
   const concreteType = modelProviderTypeSchema.safeParse(
@@ -137,22 +196,19 @@ export function resolvePiSandboxModelConfig(
     return null;
   }
   const providerId = piProvider(concreteType.data);
-  const credentialSecretName = piCredentialSecretName(concreteType.data);
+  const credentialSecretName = getSecretNameForType(concreteType.data);
   if (!providerId || !credentialSecretName) {
     return null;
   }
-  const model =
-    provider.environment.OPENAI_MODEL ??
-    provider.environment.ANTHROPIC_MODEL ??
-    provider.selectedModel;
+  const model = provider.environment.OPENAI_MODEL ?? provider.selectedModel;
   if (!model) {
     return null;
   }
-  const api = resolvePiAgentModelApi({ provider: providerId, model });
-  const endpoint = api
-    ? getModelProviderPiEndpoint(concreteType.data, api)
-    : undefined;
-  if (!api || !endpoint) {
+  const endpoint = getModelProviderPiEndpoint(
+    concreteType.data,
+    "openai-responses",
+  );
+  if (!endpoint) {
     return null;
   }
   const configuredBaseUrl = provider.environment.OPENAI_BASE_URL;
@@ -163,17 +219,10 @@ export function resolvePiSandboxModelConfig(
     return null;
   }
 
-  const apiKeyEnv =
-    providerId === "moonshotai"
-      ? "ANTHROPIC_AUTH_TOKEN"
-      : providerId === "codex"
-        ? "CHATGPT_ACCESS_TOKEN"
-        : "OPENAI_API_KEY";
+  const apiKeyEnv = "OPENAI_API_KEY";
   const runtimeContract = piRuntimeContract({
     providerType: provider.type,
-    concreteType: concreteType.data,
     selectedModel: provider.selectedModel,
-    api,
     codexServiceTier,
   });
   const config = {

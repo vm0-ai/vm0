@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.84.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.3...guest-agent-v0.84.4) (2026-09-02)
+
+
+### Bug Fixes
+
+* **runner:** report authoritative provider failure reasons ([#31163](https://github.com/vm0-ai/vm0/issues/31163)) ([b84e233](https://github.com/vm0-ai/vm0/commit/b84e2334f9e370b59a299b00250fc037d90538dd))
+
+
+### Refactoring
+
+* **runtime:** remove retired API URL alias tombstones ([#31209](https://github.com/vm0-ai/vm0/issues/31209)) ([e57170e](https://github.com/vm0-ai/vm0/commit/e57170e30c73c68188ce035caba4176874e716c2))
+
+## [0.84.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.2...guest-agent-v0.84.3) (2026-09-02)
+
+
+### Refactoring
+
+* **rust:** share run artifact payload contract ([#31153](https://github.com/vm0-ai/vm0/issues/31153)) ([16c79bb](https://github.com/vm0-ai/vm0/commit/16c79bb75648f4b2def7b28ae0b1aadff326941c))
+
+## [0.84.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.1...guest-agent-v0.84.2) (2026-09-02)
+
+
+### Bug Fixes
+
+* **guest-agent:** preserve checkpoint upload failure details ([#31113](https://github.com/vm0-ai/vm0/issues/31113)) ([6afd0e9](https://github.com/vm0-ai/vm0/commit/6afd0e9ba8bc4c9308b1523370f155a70a3720f6))
+
+## [0.84.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.0...guest-agent-v0.84.1) (2026-09-02)
+
+
+### Documentation
+
+* **rust:** include Codex cleanup helper protocol ([#31051](https://github.com/vm0-ai/vm0/issues/31051)) ([f1b8e23](https://github.com/vm0-ai/vm0/commit/f1b8e23419a459b8632d343c5faa60f2678f2b22))
+
+
+### Refactoring
+
+* **pi:** make ownership transfer v3-only ([#31045](https://github.com/vm0-ai/vm0/issues/31045)) ([1e99242](https://github.com/vm0-ai/vm0/commit/1e99242eabe418b4981216c0f6eb62e21edc015a))
+
 ## [0.84.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.8...guest-agent-v0.84.0) (2026-09-02)
 
 

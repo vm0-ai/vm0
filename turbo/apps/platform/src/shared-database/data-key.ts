@@ -12,7 +12,6 @@ export const sharedDatabaseIdentitySchema = z
   .object({
     userId: z.string().min(1),
     orgId: z.string().min(1),
-    token: z.string().min(1),
   })
   .strict();
 
@@ -167,11 +166,4 @@ export function unScopeSharedDatabaseDataKey(
     return { kind: dataKey.kind, threadId: dataKey.threadId };
   }
   return { kind: dataKey.kind };
-}
-
-export function sharedDatabaseCredentialId({
-  userId,
-  orgId,
-}: Pick<SharedDatabaseIdentity, "userId" | "orgId">): string {
-  return JSON.stringify([userId, orgId]);
 }

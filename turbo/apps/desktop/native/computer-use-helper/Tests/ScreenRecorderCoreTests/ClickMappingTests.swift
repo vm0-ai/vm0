@@ -101,51 +101,32 @@ struct ClickMappingTests {
 }
 
 struct ClickTimelineTests {
-    /// Apple silicon reports 125/3 nanoseconds per tick rather than 1/1, so a
-    /// timeline that ignores the ratio is wrong by ~40x on those machines.
-    private let appleSilicon = ClickTimeline(
-        startTicks: 1_000,
-        timebaseNumerator: 125,
-        timebaseDenominator: 3
-    )
+    /// A first frame stamped 57 hours after boot, which is what both
+    /// `CGEvent.timestamp` and the host clock count from.
+    private let timeline = ClickTimeline(startNanoseconds: 207_760_000_000_000)
 
+    /// `CGEvent.timestamp` is already nanoseconds. Treating it as raw mach ticks
+    /// and applying the 125/3 Apple silicon timebase multiplied every offset by
+    /// ~41.7, so this click 2.2 s into a 23 s recording came out 97 days in and
+    /// no downstream consumer could find a single click inside the video.
     @Test
-    func convertsTicksToMillisecondsUsingTheTimebaseRatio() {
-        // 24_000 ticks * 125/3 = 1_000_000ns = 1ms
-        #expect(appleSilicon.offsetMilliseconds(atTicks: 25_000) == 1)
+    func placesAClickAtItsOffsetInPlainNanoseconds() {
+        #expect(timeline.offsetMilliseconds(atNanoseconds: 207_762_200_000_000) == 2_200)
     }
 
     @Test
     func reportsZeroAtTheStartOfTheRecording() {
-        #expect(appleSilicon.offsetMilliseconds(atTicks: 1_000) == 0)
+        #expect(timeline.offsetMilliseconds(atNanoseconds: 207_760_000_000_000) == 0)
     }
 
     @Test
     func dropsEventsThatPredateTheRecording() {
-        #expect(appleSilicon.offsetMilliseconds(atTicks: 999) == nil)
+        #expect(timeline.offsetMilliseconds(atNanoseconds: 207_759_999_999_999) == nil)
     }
 
     @Test
-    func handlesTheOneToOneTimebase() {
-        let intel = ClickTimeline(
-            startTicks: 0,
-            timebaseNumerator: 1,
-            timebaseDenominator: 1
-        )
-
-        #expect(intel.offsetMilliseconds(atTicks: 2_000_000) == 2)
-    }
-
-    @Test
-    func neverDividesByAZeroDenominator() {
-        let degenerate = ClickTimeline(
-            startTicks: 0,
-            timebaseNumerator: 1,
-            timebaseDenominator: 0
-        )
-
-        #expect(degenerate.timebaseDenominator == 1)
-        #expect(degenerate.offsetMilliseconds(atTicks: 1_000_000) == 1)
+    func roundsToTheNearestMillisecond() {
+        #expect(timeline.offsetMilliseconds(atNanoseconds: 207_760_001_500_000) == 2)
     }
 }
 
@@ -158,15 +139,11 @@ struct ClickProjectionTests {
         scale: 2
     )
     private let outputSize = OutputSize(width: 1920, height: 960)
-    private let timeline = ClickTimeline(
-        startTicks: 24_000,
-        timebaseNumerator: 1,
-        timebaseDenominator: 1
-    )
+    private let timeline = ClickTimeline(startNanoseconds: 24_000)
 
-    private func click(ticks: UInt64, x: Double, y: Double) -> CapturedClick {
+    private func click(nanoseconds: UInt64, x: Double, y: Double) -> CapturedClick {
         return CapturedClick(
-            ticks: ticks,
+            nanoseconds: nanoseconds,
             screenX: x,
             screenY: y,
             button: "left",
@@ -178,7 +155,7 @@ struct ClickProjectionTests {
     @Test
     func projectsAClickThatLandedInsideTheRecording() {
         let projection = projectClicks(
-            [click(ticks: 2_024_000, x: 500, y: 250)],
+            [click(nanoseconds: 2_024_000, x: 500, y: 250)],
             timeline: timeline,
             geometry: display,
             outputSize: outputSize
@@ -201,7 +178,7 @@ struct ClickProjectionTests {
     @Test
     func dropsClicksFromBeforeTheFirstFrameWithoutCountingThemOutOfFrame() {
         let projection = projectClicks(
-            [click(ticks: 1_000, x: 500, y: 250)],
+            [click(nanoseconds: 1_000, x: 500, y: 250)],
             timeline: timeline,
             geometry: display,
             outputSize: outputSize
@@ -212,9 +189,47 @@ struct ClickProjectionTests {
     }
 
     @Test
+    func projectsAClickThroughTheGeometryOfItsOwnMoment() {
+        // The window was dragged 100 points right and down before this click.
+        // Projected through the recording's original geometry the click would
+        // land at (0.6, 0.7) — the wrong place in a video that followed the
+        // window; through the geometry captured with it, it lands where the
+        // user actually clicked.
+        let moved = CaptureGeometry(
+            originX: 100,
+            originY: 100,
+            widthPoints: 1000,
+            heightPoints: 500,
+            scale: 2
+        )
+        let projection = projectClicks(
+            [
+                CapturedClick(
+                    nanoseconds: 2_024_000,
+                    screenX: 600,
+                    screenY: 350,
+                    button: "left",
+                    clickCount: 1,
+                    modifiers: [],
+                    geometry: moved
+                )
+            ],
+            timeline: timeline,
+            geometry: display,
+            outputSize: outputSize
+        )
+
+        #expect(projection.droppedOutOfFrame == 0)
+        #expect(projection.clicks.first?.point.normalizedX == 0.5)
+        #expect(projection.clicks.first?.point.normalizedY == 0.5)
+        #expect(projection.clicks.first?.point.frameX == 960)
+        #expect(projection.clicks.first?.point.frameY == 480)
+    }
+
+    @Test
     func countsClicksThatLandedOutsideTheCapturedRegion() {
         let projection = projectClicks(
-            [click(ticks: 2_024_000, x: 1_500, y: 250)],
+            [click(nanoseconds: 2_024_000, x: 1_500, y: 250)],
             timeline: timeline,
             geometry: display,
             outputSize: outputSize
@@ -228,9 +243,9 @@ struct ClickProjectionTests {
     func separatesTheTwoDropReasonsInOneRecording() {
         let projection = projectClicks(
             [
-                click(ticks: 1_000, x: 500, y: 250),
-                click(ticks: 2_024_000, x: 1_500, y: 250),
-                click(ticks: 3_024_000, x: 500, y: 250),
+                click(nanoseconds: 1_000, x: 500, y: 250),
+                click(nanoseconds: 2_024_000, x: 1_500, y: 250),
+                click(nanoseconds: 3_024_000, x: 500, y: 250),
             ],
             timeline: timeline,
             geometry: display,
@@ -240,5 +255,246 @@ struct ClickProjectionTests {
         #expect(projection.clicks.count == 1)
         #expect(projection.clicks.first?.offsetMs == 3)
         #expect(projection.droppedOutOfFrame == 1)
+    }
+}
+
+struct PointerTrailPolicyTests {
+    private let policy = PointerTrailPolicy()
+
+    @Test
+    func keepsTheFirstSample() {
+        #expect(policy.shouldKeep(x: 10, y: 10, previous: nil))
+    }
+
+    /// The sampler runs thirty times a second whether or not the mouse moved;
+    /// a resting pointer would otherwise fill the track with copies.
+    @Test
+    func skipsAPointerThatHasNotMoved() {
+        let previous = CapturedPointerSample(nanoseconds: 1, screenX: 10, screenY: 10)
+
+        #expect(!policy.shouldKeep(x: 10.2, y: 9.9, previous: previous))
+    }
+
+    @Test
+    func keepsAPointerThatMoved() {
+        let previous = CapturedPointerSample(nanoseconds: 1, screenX: 10, screenY: 10)
+
+        #expect(policy.shouldKeep(x: 11, y: 10, previous: previous))
+        #expect(policy.shouldKeep(x: 10, y: 9, previous: previous))
+    }
+}
+
+struct PointerSampleProjectionTests {
+    private let display = CaptureGeometry(
+        originX: 0,
+        originY: 0,
+        widthPoints: 1000,
+        heightPoints: 500,
+        scale: 2
+    )
+    private let outputSize = OutputSize(width: 1920, height: 960)
+    private let timeline = ClickTimeline(startNanoseconds: 24_000)
+
+    @Test
+    func placesASampleAtItsOffsetAndPosition() {
+        let trail = projectPointerSamples(
+            [CapturedPointerSample(nanoseconds: 2_024_000, screenX: 500, screenY: 250)],
+            timeline: timeline,
+            geometry: display,
+            outputSize: outputSize
+        )
+
+        #expect(trail.count == 1)
+        #expect(trail.first?.offsetMs == 2)
+        #expect(trail.first?.point.frameX == 960)
+        #expect(trail.first?.point.frameY == 480)
+        #expect(trail.first?.point.normalizedX == 0.5)
+    }
+
+    /// The sampler starts with the tap, before `SCStream` delivers a frame.
+    @Test
+    func dropsSamplesFromBeforeTheFirstFrame() {
+        let trail = projectPointerSamples(
+            [CapturedPointerSample(nanoseconds: 1_000, screenX: 500, screenY: 250)],
+            timeline: timeline,
+            geometry: display,
+            outputSize: outputSize
+        )
+
+        #expect(trail.isEmpty)
+    }
+
+    @Test
+    func dropsSamplesOutsideTheCapturedRegion() {
+        let trail = projectPointerSamples(
+            [CapturedPointerSample(nanoseconds: 2_024_000, screenX: 1_500, screenY: 250)],
+            timeline: timeline,
+            geometry: display,
+            outputSize: outputSize
+        )
+
+        #expect(trail.isEmpty)
+    }
+
+    @Test
+    func projectsASampleThroughTheGeometryOfItsOwnMoment() {
+        let moved = CaptureGeometry(
+            originX: 100,
+            originY: 100,
+            widthPoints: 1000,
+            heightPoints: 500,
+            scale: 2
+        )
+        let trail = projectPointerSamples(
+            [
+                CapturedPointerSample(
+                    nanoseconds: 2_024_000,
+                    screenX: 600,
+                    screenY: 350,
+                    geometry: moved
+                )
+            ],
+            timeline: timeline,
+            geometry: display,
+            outputSize: outputSize
+        )
+
+        #expect(trail.first?.point.normalizedX == 0.5)
+        #expect(trail.first?.point.normalizedY == 0.5)
+    }
+}
+
+struct TypingBurstTests {
+    @Test
+    func groupsKeyDownsCloserThanTheGapIntoOneBurst() {
+        let bursts = typingBursts(fromKeyDownOffsetsMs: [1_000, 1_150, 1_400, 1_900])
+
+        #expect(bursts == [TypingBurst(startMs: 1_000, endMs: 1_900)])
+    }
+
+    @Test
+    func splitsAtAGapLongerThanTheLimit() {
+        let bursts = typingBursts(fromKeyDownOffsetsMs: [1_000, 1_200, 2_100, 2_300])
+
+        #expect(bursts == [
+            TypingBurst(startMs: 1_000, endMs: 1_200),
+            TypingBurst(startMs: 2_100, endMs: 2_300),
+        ])
+    }
+
+    /// A shortcut is one key-down: a burst of length zero, which a camera can
+    /// tell apart from typing without knowing which key it was.
+    @Test
+    func reportsALoneKeyDownAsAZeroLengthBurst() {
+        #expect(typingBursts(fromKeyDownOffsetsMs: [5_000]) == [TypingBurst(startMs: 5_000, endMs: 5_000)])
+    }
+
+    @Test
+    func ordersKeyDownsBeforeGrouping() {
+        let bursts = typingBursts(fromKeyDownOffsetsMs: [1_400, 1_000, 1_150])
+
+        #expect(bursts == [TypingBurst(startMs: 1_000, endMs: 1_400)])
+    }
+
+    @Test
+    func reportsNothingWithoutKeyDowns() {
+        #expect(typingBursts(fromKeyDownOffsetsMs: []).isEmpty)
+    }
+}
+
+struct ContentMappingTests {
+    /// A 1512-point window narrowed to 1435 points mid-recording: the frame
+    /// stayed 1920 wide, the content shrank to 1822 pixels with a black band
+    /// on the right. Mapping through the frame size put clicks in the band.
+    private let letterboxed = ContentMapping(
+        screenOriginX: 572,
+        screenOriginY: 1520,
+        screenWidth: 1435,
+        screenHeight: 902,
+        pixelOriginX: 0,
+        pixelOriginY: 0,
+        pixelWidth: 1822,
+        pixelHeight: 1144
+    )
+    private let outputSize = OutputSize(width: 1920, height: 1144)
+
+    @Test
+    func mapsThroughTheContentRectangleNotTheFrame() {
+        // the content's right edge is pixel 1822, not the frame's 1920
+        #expect(letterboxed.mapPoint(screenX: 572 + 1435, screenY: 1520 + 451, outputSize: outputSize) == nil)
+        let inside = letterboxed.mapPoint(screenX: 572 + 1434, screenY: 1520 + 451, outputSize: outputSize)
+        #expect(inside?.frameX == 1820)
+        #expect(inside?.frameY == 572)
+    }
+
+    @Test
+    func normalizesAgainstTheWholeFrame() {
+        let point = letterboxed.mapPoint(screenX: 572 + 717.5, screenY: 1520 + 451, outputSize: outputSize)
+
+        #expect(point?.frameX == 911)
+        #expect(abs((point?.normalizedX ?? 0) - 911 / 1920) < 0.001)
+        #expect(abs((point?.normalizedY ?? 0) - 0.5) < 0.001)
+    }
+
+    @Test
+    func rejectsPointsOutsideTheContent() {
+        #expect(letterboxed.mapPoint(screenX: 571, screenY: 1600, outputSize: outputSize) == nil)
+        #expect(letterboxed.mapPoint(screenX: 700, screenY: 1519, outputSize: outputSize) == nil)
+    }
+
+    @Test
+    func aClickPrefersItsMappingOverTheGeometry() {
+        let geometry = CaptureGeometry(originX: 572, originY: 1520, widthPoints: 1512, heightPoints: 902, scale: 2)
+        let projection = projectClicks(
+            [
+                CapturedClick(
+                    nanoseconds: 2_024_000,
+                    screenX: 572 + 717.5,
+                    screenY: 1520 + 451,
+                    button: "left",
+                    clickCount: 1,
+                    modifiers: [],
+                    mapping: letterboxed
+                )
+            ],
+            timeline: ClickTimeline(startNanoseconds: 24_000),
+            geometry: geometry,
+            outputSize: outputSize
+        )
+
+        // through the prepare-time geometry this click would have landed at pixel 911 * 1920 / 1822
+        #expect(projection.clicks.first?.point.frameX == 911)
+    }
+
+    @Test
+    func projectsAnElementFrameAndClipsItToTheFrame() {
+        let field = CapturedElement(
+            role: "AXTextArea",
+            subrole: nil,
+            screenX: 572 + 100,
+            screenY: 1520 + 300,
+            screenWidth: 1400,
+            screenHeight: 150
+        )
+        let projected = projectElement(
+            field,
+            mapping: letterboxed,
+            geometry: CaptureGeometry(originX: 0, originY: 0, widthPoints: 1, heightPoints: 1, scale: 1),
+            outputSize: outputSize
+        )
+
+        #expect(projected?.role == "AXTextArea")
+        #expect(projected?.frameX == 126)
+        #expect(projected?.frameY == 380)
+        // 100 + 1400 points reach pixel 1904: past the content's 1822 but inside the frame
+        #expect(projected?.frameWidth == 1778)
+        #expect(projected?.frameHeight == 190)
+    }
+
+    @Test
+    func dropsAnElementEntirelyOutsideTheFrame() {
+        let offscreen = CapturedElement(role: "AXButton", subrole: nil, screenX: 0, screenY: 0, screenWidth: 100, screenHeight: 40)
+
+        #expect(projectElement(offscreen, mapping: letterboxed, geometry: CaptureGeometry(originX: 572, originY: 1520, widthPoints: 1435, heightPoints: 902, scale: 2), outputSize: outputSize) == nil)
     }
 }

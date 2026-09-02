@@ -1,7 +1,7 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 
-import { piAgentStream } from "./model";
+import { piAgentStreamForConfig } from "./model";
 import { assertPiApiFirstTurnCompactionSafe } from "./compaction-preflight";
 import { MemoryPiSession, runPiFirstModelTurn } from "./session-memory";
 import { createPiAgentSessionForRuntime } from "./session-runtime";
@@ -86,6 +86,7 @@ export async function runPiApiFirstTurn(
       model: args.model,
       appendSystemPrompt: args.appendSystemPrompt,
       resourceSnapshot: args.resourceSnapshot,
+      onMemoryRecallOutcome: args.onMemoryRecallOutcome,
     });
   } catch (error) {
     throw new UnsupportedPiResourceSnapshotError(
@@ -103,7 +104,7 @@ export async function runPiApiFirstTurn(
     const turn = await runPiFirstModelTurn({
       model: shell.model,
       session: memorySession,
-      stream: piAgentStream,
+      stream: piAgentStreamForConfig(args.model),
       systemPrompt: shell.session.systemPrompt,
       tools: shell.session.agent.state.tools,
       prompt: args.prompt,
@@ -111,8 +112,7 @@ export async function runPiApiFirstTurn(
       streamOptions: {
         apiKey: args.model.apiKey,
         signal,
-        ...(args.model.provider === "openrouter" &&
-        args.model.api === "openai-responses"
+        ...(args.model.provider === "openrouter"
           ? {
               onObservedServiceTier: (serviceTier: PiObservedServiceTier) => {
                 observedServiceTier = serviceTier;

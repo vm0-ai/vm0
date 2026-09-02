@@ -31,15 +31,10 @@ type PostHogRegister = (properties: Record<string, unknown>) => void;
 type PostHogReset = () => void;
 type PostHogUnregister = (property: string) => void;
 
-const { apiOriginMarker, posthog } = vi.hoisted(() => {
+const { posthog } = vi.hoisted(() => {
   vi.stubEnv("VITE_POSTHOG_KEY", "phc_chat_thread_metadata_readiness_test");
   window.location.href = "https://app.vm0.ai/";
-  const apiOriginMarker = document.createElement("meta");
-  apiOriginMarker.name = "vm0-api-origin";
-  apiOriginMarker.content = "https://api.vm0.ai";
-  document.head.append(apiOriginMarker);
   return {
-    apiOriginMarker,
     posthog: {
       capture: vi.fn<PostHogCapture>(),
       identify: vi.fn<PostHogIdentify>(),
@@ -69,9 +64,7 @@ beforeEach(() => {
   posthog.capture.mockReset();
 });
 
-afterAll(() => {
-  apiOriginMarker.remove();
-});
+afterAll(() => {});
 
 function prepareAgent(): void {
   context.mocks.data.agents([

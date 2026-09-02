@@ -6,6 +6,7 @@ import {
   PI_AGENT_DIR,
   PI_SKILLS_ROOT,
   piResourceSnapshotSchema,
+  type PiMemoryRecallSelection,
   type StoredStorageMountEntry,
 } from "@okouai/api-contracts/contracts/runners";
 import { parseSkillFrontmatter } from "@okouai/core";
@@ -53,18 +54,26 @@ function resourcePreparationError(cause: unknown): Error {
   );
 }
 
-function snapshotIdentity(mounts: readonly StoredStorageMountEntry[]): string {
+function snapshotIdentity(
+  mounts: readonly StoredStorageMountEntry[],
+  memoryRecall?: PiMemoryRecallSelection,
+): string {
+  const mountIdentity = mounts.map((mount) => {
+    return {
+      versionId: mount.versionId,
+      mountPath: mount.mountPath,
+      instructionsTargetFilename: mount.instructionsTargetFilename ?? null,
+      writeback: mount.writeback ?? false,
+      empty: mount.empty ?? false,
+    };
+  });
+  if (memoryRecall === undefined) {
+    return JSON.stringify({ schemaVersion: 1, mounts: mountIdentity });
+  }
   return JSON.stringify({
-    schemaVersion: 1,
-    mounts: mounts.map((mount) => {
-      return {
-        versionId: mount.versionId,
-        mountPath: mount.mountPath,
-        instructionsTargetFilename: mount.instructionsTargetFilename ?? null,
-        writeback: mount.writeback ?? false,
-        empty: mount.empty ?? false,
-      };
-    }),
+    schemaVersion: 2,
+    mounts: mountIdentity,
+    memoryRecall,
   });
 }
 
@@ -112,8 +121,11 @@ export function piResourceDiscoveryMounts(
 
 export function piResourceSnapshotDigest(
   mounts: readonly StoredStorageMountEntry[],
+  memoryRecall?: PiMemoryRecallSelection,
 ): string {
-  return createHash("sha256").update(snapshotIdentity(mounts)).digest("hex");
+  return createHash("sha256")
+    .update(snapshotIdentity(mounts, memoryRecall))
+    .digest("hex");
 }
 
 async function downloadArchive(
@@ -534,6 +546,7 @@ function hasUnsupportedPiResources(files: VirtualFiles): boolean {
 export function buildPiResourceSnapshot(
   mounts: readonly StoredStorageMountEntry[],
   archives: readonly (Buffer | null)[],
+  memoryRecall?: PiMemoryRecallSelection,
 ): PiResourceSnapshot {
   const files = new Map<string, Buffer>();
   for (const [index, mount] of mounts.entries()) {
@@ -544,11 +557,12 @@ export function buildPiResourceSnapshot(
       "Pi resource snapshot does not support settings, extensions, or prompts",
     );
   }
-  const snapshot: PiResourceSnapshot = {
-    schemaVersion: 1,
-    agentsFiles: discoverAgentsFiles(files),
-    skills: discoverSkills(files),
-  };
+  const agentsFiles = discoverAgentsFiles(files);
+  const skills = discoverSkills(files);
+  const snapshot: PiResourceSnapshot =
+    memoryRecall === undefined
+      ? { schemaVersion: 1, agentsFiles, skills }
+      : { schemaVersion: 2, agentsFiles, skills, memoryRecall };
   if (
     Buffer.byteLength(JSON.stringify(snapshot), "utf8") >
     RESOURCE_SNAPSHOT_MAX_BYTES
@@ -562,6 +576,7 @@ export function preparePiResourceSnapshot(
   args: {
     readonly db: Db;
     readonly mounts: readonly StoredStorageMountEntry[];
+    readonly memoryRecall?: PiMemoryRecallSelection;
   },
   signal?: AbortSignal,
 ): Computed<
@@ -573,7 +588,7 @@ export function preparePiResourceSnapshot(
       readonly snapshot: PiResourceSnapshot;
     }> => {
       const mounts = piResourceDiscoveryMounts(args.mounts);
-      const digest = piResourceSnapshotDigest(mounts);
+      const digest = piResourceSnapshotDigest(mounts, args.memoryRecall);
       const [existing] = await args.db
         .select({ snapshot: piResourceSnapshots.snapshot })
         .from(piResourceSnapshots)
@@ -590,7 +605,11 @@ export function preparePiResourceSnapshot(
           return await downloadArchive(mount, signal);
         }),
       );
-      const snapshot = buildPiResourceSnapshot(mounts, archives);
+      const snapshot = buildPiResourceSnapshot(
+        mounts,
+        archives,
+        args.memoryRecall,
+      );
       await args.db
         .insert(piResourceSnapshots)
         .values({ digest, snapshot })

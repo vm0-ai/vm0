@@ -682,6 +682,7 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
       data: {
         id: orgOf(admin),
         created_by: admin.userId,
+        created_at: now(),
       },
     });
     const created = await api.requestClerkWebhook("{}", {}, [200]);
@@ -6540,7 +6541,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const actor = bdd.user();
     const granted = await runs.grantProEntitlement(actor);
     mockEnv("ENV", "preview");
-    mockOptionalEnv("VM0_PREVIEW_JOB_REF", "pr-bdd-123");
+    mockOptionalEnv("OKOU_PREVIEW_JOB_REF", "pr-bdd-123");
 
     const mismatchedMetadata = {
       vm0_environment: "preview",

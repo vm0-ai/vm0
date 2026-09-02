@@ -392,7 +392,7 @@ describe("custom model provider gateway routes", () => {
             hostPolicy: { kind: "publicDestination" },
             auth: {
               headers: {
-                Authorization: `Bearer \${{ secrets.VM0_MODEL_PROVIDER_API_KEY }}`,
+                Authorization: `Bearer \${{ secrets.OKOU_MODEL_PROVIDER_API_KEY }}`,
               },
             },
           },
@@ -411,7 +411,7 @@ describe("custom model provider gateway routes", () => {
             headerEntries: [
               {
                 name: "Authorization",
-                value: `Bearer \${{ secrets.VM0_MODEL_PROVIDER_API_KEY }}`,
+                value: `Bearer \${{ secrets.OKOU_MODEL_PROVIDER_API_KEY }}`,
               },
             ],
           },
@@ -496,7 +496,7 @@ describe("custom model provider gateway routes", () => {
             base: "https://gateway.example.com/openai/v1/responses",
             auth: {
               headers: {
-                "x-api-key": `\${{ secrets.VM0_MODEL_PROVIDER_API_KEY }}`,
+                "x-api-key": `\${{ secrets.OKOU_MODEL_PROVIDER_API_KEY }}`,
               },
             },
           },
@@ -585,7 +585,7 @@ describe("custom model provider gateway routes", () => {
     }
   });
 
-  it("keeps a DeepSeek custom gateway out of Pi execution", async () => {
+  it("admits an allowlisted DeepSeek custom gateway to Pi execution", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsApi(context);
     const actor = bdd.user();
@@ -651,7 +651,7 @@ describe("custom model provider gateway routes", () => {
       {
         clientEventId: randomUUID(),
         agentId: agent.agentId,
-        prompt: "keep the custom DeepSeek gateway on the standard runtime",
+        prompt: "run the custom DeepSeek gateway through Pi",
         model: "deepseek-v4-flash",
       },
       [201],
@@ -659,6 +659,19 @@ describe("custom model provider gateway routes", () => {
     if ("error" in sent.body || !sent.body.runId) {
       throw new Error("Expected the custom DeepSeek gateway run to start");
     }
+    expect(runContextSnapshotForRun(sent.body.runId)).toMatchObject({
+      cliAgentType: "pi",
+      environmentEntries: expect.arrayContaining([
+        {
+          name: "OPENAI_BASE_URL",
+          value: "https://gateway.example.com/openai/v1",
+        },
+        {
+          name: "OPENAI_MODEL",
+          value: "deepseek-v4-flash-0731",
+        },
+      ]),
+    });
     await runs.requestCancelRun(actor, sent.body.runId, [200]);
   }, 30_000);
 });

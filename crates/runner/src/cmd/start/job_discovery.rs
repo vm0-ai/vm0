@@ -112,7 +112,7 @@ use super::idle_lifecycle::{
     IdleDestroyTracker, IdlePressureRequest, IdlePressureSelection, ReservedIdleActivation,
     SharedIdlePool, add_preparing_run_with_idle_status_snapshot,
     add_running_run_with_idle_status_snapshot, destroy_idle_jobs_and_wait,
-    select_idle_entry_for_pressure, set_idle_status_snapshot, spawn_idle_destroy_job,
+    select_idle_entries_for_pressure, set_idle_status_snapshot, spawn_idle_destroy_job,
 };
 use super::job_spawn::{JobProfile, SpawnContext, SpawnJobRequest, spawn_job};
 use super::ownership::{OwnershipTransitions, RunSandbox};
@@ -986,6 +986,7 @@ async fn recover_claimed_activation_failure(
             CompleteRequest {
                 run_id,
                 exit_code: execution_failure.exit_code,
+                failure_reason: None,
                 error: Some(execution_failure.error),
                 sandbox_id: None,
                 sandbox_reuse_result: Some(reuse_result),
@@ -1522,63 +1523,43 @@ async fn acquire_local_admission_resource(
     device_rate_limits: &Option<sandbox::DeviceRateLimits>,
     ctx: &mut DiscoveredJobContext<'_>,
 ) -> Option<LocalAdmissionResource> {
-    let mut retiring_leases = Vec::new();
-    loop {
-        if let Some(reuse_key) = candidate.reuse_key()
-            && let Some(reservation) =
-                reserve_reusable_idle(reuse_key, profile_name, device_rate_limits, None, ctx).await
-        {
-            return Some(LocalAdmissionResource::Reusable(reservation));
+    match select_idle_entries_for_pressure(
+        ctx.idle_pool,
+        ctx.status,
+        &ctx.spawn_ctx.idle_destroy_tracker,
+        ctx.budget,
+        Vec::new(),
+        IdlePressureRequest {
+            run_id: candidate.run_id(),
+            reuse_key: candidate.reuse_key(),
+            profile_name,
+            device_rate_limits,
+            history_generation_run_id: None,
+            vcpu: job_vcpu,
+            memory_mb: job_memory,
+            context: "candidate_admission_oldest",
+        },
+    )
+    .await
+    {
+        IdlePressureSelection::Reusable(reservation) => {
+            Some(LocalAdmissionResource::Reusable(reservation))
         }
-
-        if retiring_leases.is_empty() {
-            if let Some(lease) = ResourceBudget::try_reserve_lease(ctx.budget, job_vcpu, job_memory)
+        IdlePressureSelection::Fresh(lease) => {
+            if let Some(reuse_key) = candidate.reuse_key()
+                && let Some(reservation) =
+                    reserve_reusable_idle(reuse_key, profile_name, device_rate_limits, None, ctx)
+                        .await
             {
-                return Some(LocalAdmissionResource::Fresh(lease));
-            }
-        } else {
-            match ResourceBudget::try_substitute_leases(
-                ctx.budget,
-                std::mem::take(&mut retiring_leases),
-                job_vcpu,
-                job_memory,
-            ) {
-                Ok(lease) => return Some(LocalAdmissionResource::Fresh(lease)),
-                Err(retained) => retiring_leases = retained,
-            }
-        }
-
-        let pressure_selection = select_idle_entry_for_pressure(
-            ctx.idle_pool,
-            ctx.status,
-            &ctx.spawn_ctx.idle_destroy_tracker,
-            IdlePressureRequest {
-                reuse_key: candidate.reuse_key(),
-                profile_name,
-                device_rate_limits,
-                history_generation_run_id: None,
-                context: "candidate_admission_oldest",
-            },
-        )
-        .await;
-        let retiring = match pressure_selection {
-            IdlePressureSelection::Reusable(reservation) => {
+                drop(lease);
                 return Some(LocalAdmissionResource::Reusable(reservation));
             }
-            IdlePressureSelection::Retiring(retiring) => retiring,
-            IdlePressureSelection::Empty => return None,
-        };
-        info!(
-            run_id = %candidate.run_id(),
-            reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(retiring.reuse_key()),
-            reuse_key_kind = reuse_key_kind(retiring.reuse_key()),
-            profile = %retiring.profile_name(),
-            vcpu = retiring.budget_vcpu(),
-            memory_mb = retiring.budget_memory_mb(),
-            "evicting idle sandbox for candidate admission"
-        );
-        retiring_leases.push(retiring.into_budget_lease());
-        ctx.spawn_ctx.reuse_state_notify.notify_one();
+            Some(LocalAdmissionResource::Fresh(lease))
+        }
+        IdlePressureSelection::Exhausted(retiring_leases) => {
+            drop(retiring_leases);
+            None
+        }
     }
 }
 
@@ -2482,6 +2463,7 @@ async fn complete_claimed_failure(
             CompleteRequest {
                 run_id,
                 exit_code: failure.exit_code,
+                failure_reason: None,
                 error: Some(failure.error),
                 sandbox_id: None,
                 sandbox_reuse_result: reuse_result,

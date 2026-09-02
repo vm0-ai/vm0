@@ -1,5 +1,115 @@
 # Changelog
 
+## [0.827.0](https://github.com/vm0-ai/vm0/compare/app-v0.826.0...app-v0.827.0) (2026-09-02)
+
+
+### Features
+
+* **platform:** expose shared worker connection diagnostics to the app ([#31194](https://github.com/vm0-ai/vm0/issues/31194)) ([79b72bd](https://github.com/vm0-ai/vm0/commit/79b72bd4fcc9bc7a3294397f3d2298380641cce0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.395.0
+    * @okouai/core bumped to 8.611.2
+
+## [0.826.0](https://github.com/vm0-ai/vm0/compare/app-v0.825.0...app-v0.826.0) (2026-09-02)
+
+
+### Features
+
+* **api:** resolve automatic mcp auth as none or oauth ([#31135](https://github.com/vm0-ai/vm0/issues/31135)) ([d84a7e0](https://github.com/vm0-ai/vm0/commit/d84a7e0cd556e91916858ea18cd5256efde6ed03))
+
+
+### Bug Fixes
+
+* **platform:** let clerk own shared worker authentication ([#31037](https://github.com/vm0-ai/vm0/issues/31037)) ([6ba1dbe](https://github.com/vm0-ai/vm0/commit/6ba1dbeb842c60a8b5c8f014bcfc7a624b2a7817))
+* **platform:** prevent custom credit amount layout shift ([#31175](https://github.com/vm0-ai/vm0/issues/31175)) ([a3a6300](https://github.com/vm0-ai/vm0/commit/a3a6300676d4fec516868f695d63d1de8d5650e1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.394.0
+    * @okouai/core bumped to 8.611.1
+
+## [0.825.0](https://github.com/vm0-ai/vm0/compare/app-v0.824.0...app-v0.825.0) (2026-09-02)
+
+
+### Features
+
+* **app:** add standalone worker previews ([#30987](https://github.com/vm0-ai/vm0/issues/30987)) ([7a4ce6a](https://github.com/vm0-ai/vm0/commit/7a4ce6ad45daa6c4cb823a9b7253340123dd98df))
+* **platform:** add internal Lab switch category ([#31177](https://github.com/vm0-ai/vm0/issues/31177)) ([996361b](https://github.com/vm0-ai/vm0/commit/996361bb352b5b94ec0852dbaa7ddc7086d7116e))
+* **platform:** group lab switches by rollout stage ([#31121](https://github.com/vm0-ai/vm0/issues/31121)) ([f23ecec](https://github.com/vm0-ai/vm0/commit/f23ecec9f8582cdd9a90281af7833266d7fb84ca))
+* **platform:** preview supported office file formats ([#31013](https://github.com/vm0-ai/vm0/issues/31013)) ([5f5cf9e](https://github.com/vm0-ai/vm0/commit/5f5cf9ebb7a737439660e274efc1d6f094f29773))
+
+
+### Bug Fixes
+
+* **platform:** align iOS startup image handoff ([#31174](https://github.com/vm0-ai/vm0/issues/31174)) ([4ca361b](https://github.com/vm0-ai/vm0/commit/4ca361bda768db6441d6ef3fbf00eb0fc21db202))
+* **platform:** align model recovery card with the app card and button language ([#31072](https://github.com/vm0-ai/vm0/issues/31072)) ([330236c](https://github.com/vm0-ai/vm0/commit/330236cf9046140c54b8398bc9c0321ef800597d))
+* **platform:** count share selections by message group ([#31126](https://github.com/vm0-ai/vm0/issues/31126)) ([74fb353](https://github.com/vm0-ai/vm0/commit/74fb35396e9c734e63a17d142f9345bd7c343ce7))
+* **platform:** highlight pinned agents for chat threads ([#31125](https://github.com/vm0-ai/vm0/issues/31125)) ([08255dc](https://github.com/vm0-ai/vm0/commit/08255dc889faf77224deaa4cbdc0fffed945a84c))
+* **platform:** prevent desktop viewport pinch zoom ([#31137](https://github.com/vm0-ai/vm0/issues/31137)) ([3cd64e6](https://github.com/vm0-ai/vm0/commit/3cd64e646ee868eca2f6329a2b331b1c057d223f))
+* **platform:** update chat sidebar navigation ([#31099](https://github.com/vm0-ai/vm0/issues/31099)) ([44a87b5](https://github.com/vm0-ai/vm0/commit/44a87b5c24314251273323c3f875e45fd12c4b51))
+* project remaining public brand surfaces ([#31151](https://github.com/vm0-ai/vm0/issues/31151)) ([769b53e](https://github.com/vm0-ai/vm0/commit/769b53e654a275477750026201f55207dc13d839))
+
+
+### Refactoring
+
+* **platform:** simplify Geist font stack ([#31158](https://github.com/vm0-ai/vm0/issues/31158)) ([4349067](https://github.com/vm0-ai/vm0/commit/43490673b124826f3cc7e0fafc241133bca8c0d0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.393.0
+    * @okouai/core bumped to 8.611.0
+
+## [0.824.0](https://github.com/vm0-ai/vm0/compare/app-v0.823.0...app-v0.824.0) (2026-09-02)
+
+
+### Features
+
+* **chat:** persist structured image annotations ([#31046](https://github.com/vm0-ai/vm0/issues/31046)) ([8e4b621](https://github.com/vm0-ai/vm0/commit/8e4b62131457161a5c9ceb7ec4003339a4b58eb5))
+* gate morning brief behind an independent switch ([#31110](https://github.com/vm0-ai/vm0/issues/31110)) ([2b69ef6](https://github.com/vm0-ai/vm0/commit/2b69ef6331471d09f88cae0548e6dd4ba15e4283))
+* graduate custom connector no-auth ([#31075](https://github.com/vm0-ai/vm0/issues/31075)) ([5756edf](https://github.com/vm0-ai/vm0/commit/5756edf51498b88c6f06b0a43d02c7e632d6238c))
+* **platform:** generate ios pwa startup images ([#30926](https://github.com/vm0-ai/vm0/issues/30926)) ([66d375b](https://github.com/vm0-ai/vm0/commit/66d375b2921b40761e9334eae46e8a5993f9b387))
+* **platform:** preview docx and pptx files ([#30937](https://github.com/vm0-ai/vm0/issues/30937)) ([70e4b60](https://github.com/vm0-ai/vm0/commit/70e4b60bc195f23592c952cff1e15472eed227a4))
+* **platform:** simplify the intro video source step around slides and desktop recording ([#31093](https://github.com/vm0-ai/vm0/issues/31093)) ([edd444e](https://github.com/vm0-ai/vm0/commit/edd444e6fb04a295f637d8580c2a6181b275d338))
+* **ui:** gate the geist typeface behind a feature switch ([#31050](https://github.com/vm0-ai/vm0/issues/31050)) ([6a4c38d](https://github.com/vm0-ai/vm0/commit/6a4c38dd1d1dbb86347541d203a3261405c0dcf3))
+
+
+### Bug Fixes
+
+* **api:** use branded custom connector OAuth callbacks ([#31028](https://github.com/vm0-ai/vm0/issues/31028)) ([4546240](https://github.com/vm0-ai/vm0/commit/4546240924ce7db453f0fff19054da81eb09a8e0))
+* **platform:** inject prod clerk key into local env template ([#31101](https://github.com/vm0-ai/vm0/issues/31101)) ([34c5a43](https://github.com/vm0-ai/vm0/commit/34c5a4357d5f4130a4713e3bd5e3793fb027c755))
+* **platform:** replace Feishu review guide icon ([#31019](https://github.com/vm0-ai/vm0/issues/31019)) ([b99140a](https://github.com/vm0-ai/vm0/commit/b99140a76559e1750ca0e62e9baf802b2e5259f7))
+
+
+### Refactoring
+
+* rename internal feature switch keys ([#30955](https://github.com/vm0-ai/vm0/issues/30955)) ([b0670b4](https://github.com/vm0-ai/vm0/commit/b0670b464a105432aaa08b3bd340a07a5b32654e))
+
+
+### Performance Improvements
+
+* **platform:** unmount inactive sidebar layout ([#30988](https://github.com/vm0-ai/vm0/issues/30988)) ([45f384a](https://github.com/vm0-ai/vm0/commit/45f384a543a1f12e161e8fcc042c4a2cc3840adf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.392.0
+    * @okouai/connectors bumped to 3.3.0
+    * @okouai/core bumped to 8.610.0
+    * @okouai/ui bumped to 1.1.0
+
 ## [0.823.0](https://github.com/vm0-ai/vm0/compare/app-v0.822.4...app-v0.823.0) (2026-09-02)
 
 

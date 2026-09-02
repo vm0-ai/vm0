@@ -273,6 +273,29 @@ const cronRefreshStoragePresignedUrlsResponseSchema = z.object({
   presentationTemplatePreview: storagePresignedUrlRefreshResultSchema,
 });
 
+const cronMaterializeMemorySummariesResponseSchema = z.object({
+  success: z.literal(true),
+  backfilled: z.number().int().nonnegative(),
+  claimed: z.number().int().nonnegative(),
+  ready: z.number().int().nonnegative(),
+  noContent: z.number().int().nonnegative(),
+  retried: z.number().int().nonnegative(),
+  stale: z.number().int().nonnegative(),
+});
+
+const cronExtractPiMemoryStage1ResponseSchema = z.object({
+  success: z.literal(true),
+  scanned: z.number().int().nonnegative(),
+  claimed: z.number().int().nonnegative(),
+  succeeded: z.number().int().nonnegative(),
+  succeededNoOutput: z.number().int().nonnegative(),
+  retryableFailure: z.number().int().nonnegative(),
+  terminalFailure: z.number().int().nonnegative(),
+  sourceExpired: z.number().int().nonnegative(),
+  sourceActive: z.number().int().nonnegative(),
+  staleDiscarded: z.number().int().nonnegative(),
+});
+
 const cronAggregateModelStatsResponseSchema = z.object({
   success: z.literal(true),
   cutoff: z.iso.datetime(),
@@ -611,6 +634,32 @@ export const cronRefreshStoragePresignedUrlsContract = c.router({
   },
 });
 
+export const cronMaterializeMemorySummariesContract = c.router({
+  materialize: {
+    method: "GET",
+    path: "/api/cron/materialize-memory-summaries",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronMaterializeMemorySummariesResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Materialize immutable memory summary projections",
+  },
+});
+
+export const cronExtractPiMemoryStage1Contract = c.router({
+  extract: {
+    method: "GET",
+    path: "/api/cron/extract-pi-memory-stage1",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronExtractPiMemoryStage1ResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Extract bounded Pi Stage 1 memory candidates",
+  },
+});
+
 export type CronProcessUsageEventsContract =
   typeof cronProcessUsageEventsContract;
 export type CronReconcileSocialKitDownloadsContract =
@@ -625,6 +674,10 @@ export type CronAggregateModelStatsContract =
   typeof cronAggregateModelStatsContract;
 export type CronRefreshStoragePresignedUrlsContract =
   typeof cronRefreshStoragePresignedUrlsContract;
+export type CronMaterializeMemorySummariesContract =
+  typeof cronMaterializeMemorySummariesContract;
+export type CronExtractPiMemoryStage1Contract =
+  typeof cronExtractPiMemoryStage1Contract;
 export type CronTelegramCleanupContract = typeof cronTelegramCleanupContract;
 export type CronConnectorOauthStateCleanupContract =
   typeof cronConnectorOauthStateCleanupContract;
@@ -669,4 +722,6 @@ export {
   cronRenewGoogleWorkspaceEventSubscriptionsResponseSchema,
   cronAggregateModelStatsResponseSchema,
   cronRefreshStoragePresignedUrlsResponseSchema,
+  cronMaterializeMemorySummariesResponseSchema,
+  cronExtractPiMemoryStage1ResponseSchema,
 };

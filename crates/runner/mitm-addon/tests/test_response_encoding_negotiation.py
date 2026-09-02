@@ -347,6 +347,7 @@ def _model_provider_registry(
     tmp_path: Path,
     *,
     model_usage_provider: object = "claude-sonnet-4-6",
+    billable: bool = True,
     capture_network_bodies: bool = False,
     rule_method: str = "POST",
 ) -> Path:
@@ -374,6 +375,7 @@ def _model_provider_registry(
                 "ask": [],
                 "unknownPolicy": "deny",
             },
+            billable_firewalls=[_MODEL_PROVIDER_FIREWALL_NAME] if billable else None,
             sandbox_fields=sandbox_fields,
         ),
     )
@@ -440,7 +442,7 @@ def _request_flow(
     )
 
 
-async def test_observable_model_provider_request_normalizes_accept_encoding_before_auth(
+async def test_billable_model_provider_request_normalizes_accept_encoding_before_auth(
     tmp_path: Path,
     real_flow: Callable[..., http.HTTPFlow],
     headers: Callable[..., http.Headers],
@@ -471,7 +473,7 @@ async def test_observable_model_provider_request_normalizes_accept_encoding_befo
     )
 
 
-async def test_observable_model_provider_without_accept_encoding_sets_identity(
+async def test_billable_model_provider_without_accept_encoding_sets_identity(
     tmp_path: Path,
     real_flow: Callable[..., http.HTTPFlow],
     headers: Callable[..., http.Headers],
@@ -568,14 +570,14 @@ async def test_billable_connector_without_response_parser_keeps_accept_encoding(
     assert metadata_keys.RESPONSE_ENCODING_NEGOTIATION not in flow.metadata
 
 
-async def test_non_observable_model_provider_keeps_accept_encoding(
+async def test_non_billable_model_provider_keeps_accept_encoding(
     tmp_path: Path,
     real_flow: Callable[..., http.HTTPFlow],
     headers: Callable[..., http.Headers],
     mitm_ctx,
     fake_firewall_headers,
 ) -> None:
-    reg_path = _model_provider_registry(tmp_path, model_usage_provider=None)
+    reg_path = _model_provider_registry(tmp_path, billable=False)
     flow = _request_flow(
         real_flow,
         headers,

@@ -768,16 +768,16 @@ describe("chat start cards", () => {
     await waitFor(() => {
       expect(downloads.downloads).toHaveLength(1);
     });
-    const newChatLink = queryAllByRoleFast("link").find((link) => {
+    const newChatButton = queryAllByRoleFast("button").find((button) => {
       return (
-        link.getAttribute("aria-label") === "New chat" &&
-        link.getAttribute("href") === "/"
+        button.getAttribute("aria-label") === "New chat" &&
+        button.querySelector(".lucide-square-pen") !== null
       );
     });
-    if (!newChatLink) {
-      throw new Error("Expected the new chat navigation link");
+    if (!newChatButton) {
+      throw new Error("Expected the new chat navigation button");
     }
-    click(newChatLink);
+    click(newChatButton);
     await waitFor(() => {
       expect(
         screen.queryByRole("dialog", { name: "Create an intro video" }),

@@ -666,10 +666,6 @@ def _assert_source_entries(
             [True],
             *([[False]] * (attempt_count - 1)),
         ], context
-        assert [_accepted_flags(entry, "model_usage_observations") for entry in attempts] == [
-            [True],
-            *([[False]] * (attempt_count - 1)),
-        ], context
 
 
 def _assert_diagnostics(
@@ -797,7 +793,6 @@ def test_generated_websocket_prewarm_trace_matches_reference_model(
         ("gpt-5.5", "tokens.input", quantity) for quantity in expected.accepted_input.values()
     ]
     assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-    assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
     _assert_source_entries(flow, expected, context=context)
     _assert_diagnostics(
         flow,
@@ -857,7 +852,6 @@ def test_generated_websocket_prewarm_state_isolated_across_terminated_flows(
 
     expected_rows = [("gpt-5.5", "tokens.input", 7)]
     assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-    assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
     _assert_source_entries(exact_flow, exact_expected, context=exact_case.describe())
     _assert_source_entries(
         ambiguous_flow,

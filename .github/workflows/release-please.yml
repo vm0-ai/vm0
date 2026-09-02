@@ -83,6 +83,10 @@ jobs:
       connectors_release_created: ${{ steps.release.outputs['turbo/packages/connectors--release_created'] }}
       db_release_created: ${{ steps.release.outputs['turbo/packages/db--release_created'] }}
       app_release_created: ${{ steps.release.outputs['turbo/apps/platform--release_created'] }}
+      app_worker_release_created: ${{ steps.release.outputs['turbo/apps/app-worker--release_created'] }}
+      app_deploy_required: ${{ steps.app-release.outputs.required }}
+      app_deploy_tag: ${{ steps.app-release.outputs.tag }}
+      app_deploy_version: ${{ steps.app-release.outputs.version }}
       desktop_release_created: ${{ steps.release.outputs['turbo/apps/desktop--release_created'] }}
       host_worker_release_created: ${{ steps.release.outputs['turbo/apps/host-worker--release_created'] }}
       runner_rs_release_created: ${{ steps.release.outputs['crates/runner--release_created'] }}
@@ -91,6 +95,7 @@ jobs:
       runner_rs_version: ${{ steps.release.outputs['crates/runner--version'] }}
       api_version: ${{ steps.release.outputs['turbo/apps/api--version'] }}
       app_version: ${{ steps.release.outputs['turbo/apps/platform--version'] }}
+      app_worker_version: ${{ steps.release.outputs['turbo/apps/app-worker--version'] }}
       desktop_version: ${{ steps.release.outputs['turbo/apps/desktop--version'] }}
     steps:
       - uses: vm0-ai/release-please-action@3971df459631cdcf704dcbf86231cb26b790a7c8 # vm0
@@ -100,6 +105,43 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           skip-github-pull-request: true
+
+      - name: Resolve App deployment release
+        id: app-release
+        if: ${{ steps.release.outputs.releases_created == 'true' }}
+        env:
+          APP_RELEASE_CREATED: ${{ steps.release.outputs['turbo/apps/platform--release_created'] }}
+          APP_RELEASE_TAG: ${{ steps.release.outputs['turbo/apps/platform--tag_name'] }}
+          APP_VERSION: ${{ steps.release.outputs['turbo/apps/platform--version'] }}
+          APP_WORKER_RELEASE_CREATED: ${{ steps.release.outputs['turbo/apps/app-worker--release_created'] }}
+          APP_WORKER_RELEASE_TAG: ${{ steps.release.outputs['turbo/apps/app-worker--tag_name'] }}
+          APP_WORKER_VERSION: ${{ steps.release.outputs['turbo/apps/app-worker--version'] }}
+        run: |
+          set -euo pipefail
+
+          required=false
+          release_tag=""
+          version=""
+          if [[ "$APP_RELEASE_CREATED" == "true" ]]; then
+            required=true
+            release_tag="$APP_RELEASE_TAG"
+            version="$APP_VERSION"
+          elif [[ "$APP_WORKER_RELEASE_CREATED" == "true" ]]; then
+            required=true
+            release_tag="$APP_WORKER_RELEASE_TAG"
+            version="$APP_WORKER_VERSION"
+          fi
+
+          if [[ "$required" == "true" && ( -z "$release_tag" || -z "$version" ) ]]; then
+            echo "App deployment release is missing its tag or version" >&2
+            exit 1
+          fi
+
+          {
+            echo "required=$required"
+            echo "tag=$release_tag"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Resolve release target
         id: release-target
@@ -137,6 +179,7 @@ jobs:
               ${{ toJSON(steps.release.outputs['turbo/apps/desktop--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/host-worker--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/platform--sha']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/app-worker--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/packages/api-contracts--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/packages/connectors--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/packages/core--sha']) }},
@@ -211,6 +254,7 @@ jobs:
               ${{ toJSON(steps.release.outputs['turbo/apps/desktop--tag_name']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/host-worker--tag_name']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/platform--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['turbo/apps/app-worker--tag_name']) }},
               ${{ toJSON(steps.release.outputs['turbo/packages/api-contracts--tag_name']) }},
               ${{ toJSON(steps.release.outputs['turbo/packages/connectors--tag_name']) }},
               ${{ toJSON(steps.release.outputs['turbo/packages/core--tag_name']) }},
@@ -1312,8 +1356,7 @@ jobs:
         run: |
           set -euo pipefail
           bash .github/scripts/verify-okou-production-domains.sh \
-            "https://${CF_PAGES_PROJECT_NAME}.pages.dev" \
-            api-promotion
+            "https://${CF_PAGES_PROJECT_NAME}.pages.dev"
 
       - name: Resolve Vercel dashboard URL
         id: vercel-dashboard
@@ -1440,13 +1483,298 @@ jobs:
 
           echo "Published runtime API schema for $RELEASE_SHA"
 
-  # Publish the immutable app artifact to Cloudflare Pages after the API
-  # production lifecycle, including any required migration and traffic promotion.
+  # Deploy the production Worker only after the synchronized Pages fallback is
+  # ready. The Worker owns the live App routes while retaining the direct canary
+  # domains for diagnosis. Keep Pages for at least 24 hours after cutover and
+  # until one post-cutover App production release succeeds and browser QA passes
+  # on both live domains. Remove it under vm0-ai/vm0#31133 after all gates pass.
+  promote-app-worker-production:
+    needs: [release-please, promote-app-production]
+    if: >-
+      always() &&
+      needs.release-please.outputs.app_deploy_required == 'true' &&
+      needs.promote-app-production.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260825
+    defaults:
+      run:
+        shell: bash
+    permissions:
+      contents: read
+      deployments: write
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.release-please.outputs.release_target }}
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Start GitHub Deployment
+        id: deployment
+        uses: bobheadxi/deployments@648679e8e4915b27893bd7dbc35cb504dc915bc8 # v1
+        with:
+          step: start
+          token: ${{ github.token }}
+          env: app/production
+          ref: ${{ github.ref }}
+          desc: Deploying App Worker production
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*App* deploying to Cloudflare Workers production..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*App* deploying to Cloudflare Workers production...\n📦 Version: `${{ needs.release-please.outputs.app_deploy_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.release-please.outputs.app_deploy_tag }}|View Release>"
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve App Build Commit SHA
+        id: build-commit
+        run: |
+          sha="$(bash .github/scripts/resolve-build-commit-sha.sh)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Install AWS CLI
+        run: |
+          architecture="$(dpkg --print-architecture)"
+          case "$architecture" in
+            amd64) aws_architecture="x86_64" ;;
+            arm64) aws_architecture="aarch64" ;;
+            *) echo "Unsupported architecture: $architecture" >&2; exit 1 ;;
+          esac
+
+          curl -fsSL --retry 3 \
+            "https://awscli.amazonaws.com/awscli-exe-linux-${aws_architecture}.zip" \
+            --output /tmp/awscliv2.zip
+          python3 -m zipfile -e /tmp/awscliv2.zip /tmp/awscli
+          chmod +x /tmp/awscli/aws/install /tmp/awscli/aws/dist/aws
+          /tmp/awscli/aws/install
+          aws --version
+
+      - name: Prepare standalone App Worker production deployment
+        id: worker-production
+        env:
+          ARTIFACT_SHA: ${{ steps.build-commit.outputs.sha }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATIC_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          CLERK_PRODUCTION_PRIMARY_APP_DOMAIN: ${{ vars.CLERK_PRODUCTION_PRIMARY_APP_DOMAIN || 'app.vm0.ai' }}
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
+        run: |
+          set -euo pipefail
+
+          : "${AWS_ACCESS_KEY_ID:?R2_STATIC_ACCESS_KEY_ID secret is required}"
+          : "${AWS_SECRET_ACCESS_KEY:?R2_STATIC_SECRET_ACCESS_KEY secret is required}"
+          : "${ARTIFACT_SHA:?resolved app build commit SHA is required}"
+          : "${R2_ACCOUNT_ID:?R2_ACCOUNT_ID variable is required}"
+          : "${R2_BUCKET_NAME:?R2_STATIC_BUCKET_NAME variable is required}"
+          if [[ ! "$ARTIFACT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Artifact commit must be a full lowercase SHA-1: $ARTIFACT_SHA" >&2
+            exit 1
+          fi
+
+          r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          artifact_uri="s3://${R2_BUCKET_NAME}/okou-app/${ARTIFACT_SHA}"
+          ready_key="okou-app/${ARTIFACT_SHA}/ready.json"
+          canonical_dist="$(mktemp -d)"
+          worker_shell="turbo/apps/app-worker/shell"
+          error_log="$(mktemp)"
+
+          for attempt in $(seq 1 60); do
+            set +e
+            aws s3api head-object \
+              --endpoint-url "$r2_endpoint" \
+              --bucket "$R2_BUCKET_NAME" \
+              --key "$ready_key" \
+              >/dev/null 2>"$error_log"
+            status=$?
+            set -e
+
+            if (( status == 0 )); then
+              break
+            fi
+            if ! grep -Eq '404|NotFound|Not Found|NoSuchKey' "$error_log"; then
+              cat "$error_log" >&2
+              exit "$status"
+            fi
+            if (( attempt == 60 )); then
+              echo "Artifact was not ready after 10 minutes: $artifact_uri" >&2
+              exit 1
+            fi
+            echo "Waiting for artifact: $artifact_uri (attempt $attempt/60)"
+            sleep 10
+          done
+
+          bash .github/scripts/fetch-okou-app-artifact.sh \
+            "$r2_endpoint" \
+            "$artifact_uri" \
+            "$canonical_dist"
+          bash .github/scripts/verify-okou-app-artifact.sh \
+            "$canonical_dist" \
+            "$ARTIFACT_SHA"
+          mkdir "$worker_shell"
+          bash .github/scripts/prepare-okou-app-worker-shell.sh \
+            "$canonical_dist" \
+            "$worker_shell"
+
+          echo "canonical-dist=$canonical_dist" >> "$GITHUB_OUTPUT"
+
+      - name: Verify immutable App assets for Worker production
+        env:
+          CANONICAL_ASSETS: ${{ steps.worker-production.outputs.canonical-dist }}/assets
+        run: |
+          bash .github/scripts/verify-okou-app-assets.sh \
+            "https://static.okou.io/okou-app/assets" \
+            "$CANONICAL_ASSETS"
+
+      - name: Deploy App Worker production
+        env:
+          ARTIFACT_SHA: ${{ steps.build-commit.outputs.sha }}
+          CANONICAL_ASSETS: ${{ steps.worker-production.outputs.canonical-dist }}/assets
+          CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}
+          OKOU_APP_RUNTIME_MAX_ATTEMPTS: "60"
+        run: |
+          set -euo pipefail
+
+          : "${ARTIFACT_SHA:?resolved app build commit SHA is required}"
+          : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
+          : "${CLOUDFLARE_API_TOKEN:?CF_API_WORKER_DEPLOY_API_TOKEN secret is required}"
+
+          cd turbo
+          pnpm --filter @okouai/app-worker exec wrangler deploy \
+            --env production \
+            --message "app artifact ${ARTIFACT_SHA}"
+          cd ..
+
+          for mapping in \
+            "https://app.vm0.ai|https://api.vm0.ai" \
+            "https://app.okou.ai|https://api.okou.ai" \
+            "https://app-worker.vm0.ai|https://api.vm0.ai" \
+            "https://app-worker.okou.ai|https://api.okou.ai"; do
+            IFS='|' read -r app_origin api_origin <<< "$mapping"
+            bash .github/scripts/verify-okou-app-runtime.sh \
+              "$app_origin" \
+              "https://static.okou.io/okou-app/assets" \
+              "$CANONICAL_ASSETS"
+
+            cors_result="$(
+              curl -fsS \
+                --connect-timeout 10 \
+                --max-time 30 \
+                --retry 12 \
+                --retry-delay 5 \
+                --retry-all-errors \
+                --request OPTIONS \
+                --header "Origin: ${app_origin}" \
+                --header "Access-Control-Request-Method: GET" \
+                --output /dev/null \
+                --write-out $'%{http_code}\n%header{access-control-allow-origin}\n%header{access-control-allow-credentials}' \
+                "${api_origin}/api/__brand-smoke__"
+            )"
+            mapfile -t cors_values <<< "$cors_result"
+            if [[ "${cors_values[0]:-}" != "204" ||
+                  "${cors_values[1]:-}" != "$app_origin" ||
+                  "${cors_values[2]:-}" != "true" ]]; then
+              echo "::error title=App Worker API CORS mismatch::${api_origin} rejected ${app_origin}" >&2
+              exit 1
+            fi
+          done
+
+          pages_url="https://${CF_PAGES_PROJECT_NAME}.pages.dev"
+          bash .github/scripts/verify-okou-production-domains.sh "$pages_url"
+
+      - name: Finish GitHub Deployment
+        if: always()
+        uses: bobheadxi/deployments@648679e8e4915b27893bd7dbc35cb504dc915bc8 # v1
+        with:
+          step: finish
+          token: ${{ github.token }}
+          status: ${{ job.status }}
+          env: ${{ steps.deployment.outputs.env }}
+          env_url: https://app.vm0.ai
+          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+
+      - name: Report App Worker URLs
+        if: success()
+        run: |
+          {
+            echo "## App Worker production"
+            echo
+            echo "### Live"
+            echo "- https://app.okou.ai"
+            echo "- https://app.vm0.ai"
+            echo
+            echo "### Direct canaries"
+            echo "- https://app-worker.okou.ai"
+            echo "- https://app-worker.vm0.ai"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*App* ✅ Deployed to Cloudflare Workers"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*App* ✅ Deployed to Cloudflare Workers\n📦 Version: `${{ needs.release-please.outputs.app_deploy_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🌐 <https://app.vm0.ai|VM0 App> · <https://app.okou.ai|Okou App>"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*App* ❌ Cloudflare Workers deploy failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*App* ❌ Cloudflare Workers deploy failed\n📦 Version: `${{ needs.release-please.outputs.app_deploy_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
+  # Keep Cloudflare Pages synchronized as the phase-one fallback. This job must
+  # complete before the Worker deployment can move the live routes forward.
   promote-app-production:
     needs: [release-please, builds-complete, promote-api-production]
     if: >-
       always() &&
-      needs.release-please.outputs.app_release_created == 'true' &&
+      needs.release-please.outputs.app_deploy_required == 'true' &&
       needs.builds-complete.result == 'success' &&
       needs.promote-api-production.result == 'success'
     runs-on: ubuntu-latest
@@ -1474,29 +1802,9 @@ jobs:
         with:
           step: start
           token: ${{ github.token }}
-          env: app/production
+          env: app-pages/production-shadow
           ref: ${{ github.ref }}
-          desc: Deploying app to Cloudflare Pages production
-
-      - name: Notify Slack - Starting
-        id: slack-start
-        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v4.0.0
-        with:
-          method: chat.postMessage
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: "*App* deploying to Cloudflare Pages production..."
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*App* deploying to Cloudflare Pages production...\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>"
-
-      - name: Record start time
-        id: timer
-        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+          desc: Synchronizing the App Cloudflare Pages production fallback
 
       - name: Resolve App Build Commit SHA
         id: build-commit
@@ -1598,7 +1906,7 @@ jobs:
             "https://static.okou.io/okou-app/assets" \
             "$CANONICAL_ASSETS"
 
-      - name: Upload Cloudflare Pages source maps to Sentry
+      - name: Upload App source maps to Sentry
         env:
           CANONICAL_DIST: ${{ steps.pages-production.outputs.canonical-dist }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -1608,7 +1916,7 @@ jobs:
         run: |
           pnpm --filter @okouai/app exec sentry-cli sourcemaps upload "$CANONICAL_DIST"
 
-      - name: Deploy Cloudflare Pages production
+      - name: Deploy Cloudflare Pages production fallback
         id: deploy-pages
         env:
           ARTIFACT_SHA: ${{ steps.build-commit.outputs.sha }}
@@ -1627,18 +1935,11 @@ jobs:
             "$ARTIFACT_SHA"
 
           pages_url="https://${CF_PAGES_PROJECT_NAME}.pages.dev"
-          production_url="https://app.vm0.ai"
-          for app_url in \
+          bash .github/scripts/verify-okou-app-runtime.sh \
             "$pages_url" \
-            "https://app.vm0.ai" \
-            "https://app.okou.ai"; do
-            bash .github/scripts/verify-okou-app-runtime.sh \
-              "$app_url" \
-              "https://static.okou.io/okou-app/assets" \
-              "$CANONICAL_ASSETS"
-          done
-          bash .github/scripts/verify-okou-production-domains.sh "$pages_url"
-          echo "url=$production_url" >> "$GITHUB_OUTPUT"
+            "https://static.okou.io/okou-app/assets" \
+            "$CANONICAL_ASSETS"
+          echo "url=$pages_url" >> "$GITHUB_OUTPUT"
 
       - name: Resolve Cloudflare Pages dashboard URL
         id: pages-dashboard
@@ -1658,51 +1959,32 @@ jobs:
           token: ${{ github.token }}
           status: ${{ job.status }}
           env: ${{ steps.deployment.outputs.env }}
-          env_url: https://app.vm0.ai
+          env_url: ${{ steps.deploy-pages.outputs.url }}
           deployment_id: ${{ steps.deployment.outputs.deployment_id }}
 
-      - name: Calculate duration
-        id: duration
-        if: ${{ always() && steps.timer.outputs.start }}
+      - name: Report Pages fallback URL
+        if: success()
         run: |
-          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
-          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
-          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
-          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
-          else text="${s}s"; fi
-          echo "text=$text" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Cloudflare Pages production fallback"
+            echo
+            echo "- ${{ steps.deploy-pages.outputs.url }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Notify Slack - Success
-        if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v4.0.0
+      - name: Notify Slack - Pages fallback failure
+        if: ${{ failure() && vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
-          method: chat.update
+          method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*App* ✅ Deployed to Cloudflare Pages"
+            text: "*App* ❌ Cloudflare Pages fallback deploy failed"
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*App* ✅ Deployed to Cloudflare Pages\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🌐 <https://app.vm0.ai|VM0 App> · <https://app.okou.ai|Okou App>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
-
-      - name: Notify Slack - Failure
-        if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v4.0.0
-        with:
-          method: chat.update
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*App* ❌ Cloudflare Pages deploy failed"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*App* ❌ Cloudflare Pages deploy failed\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*App* ❌ Cloudflare Pages fallback deploy failed; Worker production was not advanced.\n📦 Version: `${{ needs.release-please.outputs.app_deploy_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Record a complete production release target after all applicable
   # production promotions succeed.
@@ -1712,6 +1994,7 @@ jobs:
         release-please,
         promote-api-production,
         promote-app-production,
+        promote-app-worker-production,
         promote-desktop-release,
         promote-runner-production,
       ]
@@ -1719,8 +2002,9 @@ jobs:
       always() &&
       needs.release-please.outputs.releases_created == 'true' &&
       needs.promote-api-production.result == 'success' &&
-      (needs.release-please.outputs.app_release_created != 'true' ||
-       needs.promote-app-production.result == 'success') &&
+      (needs.release-please.outputs.app_deploy_required != 'true' ||
+       (needs.promote-app-production.result == 'success' &&
+        needs.promote-app-worker-production.result == 'success')) &&
       (needs.release-please.outputs.desktop_release_created != 'true' ||
        needs.promote-desktop-release.result == 'success') &&
       (needs.release-please.outputs.runner_rs_release_created != 'true' ||

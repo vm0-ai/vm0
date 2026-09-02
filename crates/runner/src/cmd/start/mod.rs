@@ -881,11 +881,10 @@ async fn run_start_with_home(
         pre_spawn_admission,
         storage_baseline_observer: Default::default(),
         home: home.clone(),
-        workspace_cache: Some(WorkspaceImageCache::shared(
-            paths.clone(),
-            &home,
-            &group_name,
-        )),
+        workspace_cache: Some(
+            WorkspaceImageCache::shared(paths.clone(), &home, &group_name)
+                .with_session_history_sidecar_export_host_cpus(host_cpus),
+        ),
     });
 
     let live_runner_instance_metadata = crate::live_runner_instances::LiveRunnerInstanceMetadata {
