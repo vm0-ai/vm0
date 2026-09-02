@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.84.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.5...guest-agent-v0.84.6) (2026-09-02)
+
+
+### Refactoring
+
+* **runtime:** reclassify run payload field identifiers ([#31244](https://github.com/vm0-ai/vm0/issues/31244)) ([3b475f2](https://github.com/vm0-ai/vm0/commit/3b475f25121716295b2edcfefe3d4c9143c6d671))
+
 ## [0.84.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.4...guest-agent-v0.84.5) (2026-09-02)
 
 
