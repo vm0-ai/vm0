@@ -51,6 +51,16 @@ function buttonByText(
   return button;
 }
 
+function buttonByLabel(label: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
+  }
+  return button;
+}
+
 function subscriptionComparisonTrigger(
   container: ParentNode = document.body,
 ): HTMLElement {
@@ -302,11 +312,9 @@ function installScrollIntoViewMock(): Mock<HTMLElement["scrollIntoView"]> {
 async function openSettingsFromAccountMenu(
   userName = "Test User",
 ): Promise<HTMLElement> {
-  const accountName = await screen.findByText(userName);
-  const accountButton = accountName.closest("button");
-  if (!accountButton) {
-    throw new Error("Account menu trigger not found");
-  }
+  const accountButton = await waitFor(() => {
+    return buttonByLabel(userName);
+  });
   click(accountButton);
   const menu = await screen.findByRole("menu");
   click(within(menu).getByText("Settings"));

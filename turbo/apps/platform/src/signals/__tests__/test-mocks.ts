@@ -122,6 +122,12 @@ interface BrowserServiceWorkerMock {
   readonly dispatchMessage: (data: unknown) => void;
 }
 
+interface BrowserMatchMediaMock {
+  readonly setMatches: (
+    matches: boolean | ((query: string) => boolean),
+  ) => void;
+}
+
 interface ImageDimensionsMockValue {
   width: number;
   height: number;
@@ -291,8 +297,10 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       authWindow: (): MockWindow => {
         return createMockWindow();
       },
-      matchMedia: (matches: boolean | ((query: string) => boolean)): void => {
-        mockMatchMedia(matches);
+      matchMedia: (
+        matches: boolean | ((query: string) => boolean),
+      ): BrowserMatchMediaMock => {
+        return mockMatchMedia(matches);
       },
       standaloneDisplayMode: (enabled: boolean): void => {
         mockMatchMedia((query) => {
@@ -538,20 +546,62 @@ function mockLocalStorageWrites(): StorageWriteMock {
   return { writes };
 }
 
-function mockMatchMedia(matches: boolean | ((query: string) => boolean)): void {
+function mockMatchMedia(
+  initialMatches: boolean | ((query: string) => boolean),
+): BrowserMatchMediaMock {
+  let resolveMatches = (query: string): boolean => {
+    return typeof initialMatches === "function"
+      ? initialMatches(query)
+      : initialMatches;
+  };
+  const entries = new Set<{
+    readonly query: string;
+    readonly update: (matches: boolean) => void;
+  }>();
+
   vi.spyOn(window, "matchMedia").mockImplementation((query) => {
+    let currentMatches = resolveMatches(query);
+    const eventTarget = new EventTarget();
     const mediaQueryList: MediaQueryList = {
-      matches: typeof matches === "function" ? matches(query) : matches,
+      get matches() {
+        return currentMatches;
+      },
       media: query,
       onchange: null,
       addListener: vi.fn<MediaQueryList["addListener"]>(),
       removeListener: vi.fn<MediaQueryList["removeListener"]>(),
-      addEventListener: vi.fn<MediaQueryList["addEventListener"]>(),
-      removeEventListener: vi.fn<MediaQueryList["removeEventListener"]>(),
-      dispatchEvent: vi.fn<MediaQueryList["dispatchEvent"]>(),
+      addEventListener: eventTarget.addEventListener.bind(eventTarget),
+      removeEventListener: eventTarget.removeEventListener.bind(eventTarget),
+      dispatchEvent: eventTarget.dispatchEvent.bind(eventTarget),
     };
+    entries.add({
+      query,
+      update(matches) {
+        if (matches === currentMatches) {
+          return;
+        }
+        currentMatches = matches;
+        const event = new MediaQueryListEvent("change", {
+          matches,
+          media: query,
+        });
+        mediaQueryList.dispatchEvent(event);
+        mediaQueryList.onchange?.call(mediaQueryList, event);
+      },
+    });
     return mediaQueryList;
   });
+
+  return {
+    setMatches(matches) {
+      resolveMatches = (query: string): boolean => {
+        return typeof matches === "function" ? matches(query) : matches;
+      };
+      for (const entry of entries) {
+        entry.update(resolveMatches(entry.query));
+      }
+    },
+  };
 }
 
 function mockServiceWorker(signal: AbortSignal): BrowserServiceWorkerMock {
