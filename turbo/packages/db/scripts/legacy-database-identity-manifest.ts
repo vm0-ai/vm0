@@ -51,7 +51,6 @@ type PhysicalIdentitySpec = Pick<
 >;
 
 const SNAPSHOT_AND_CATALOG = ["snapshot", "catalog"] as const;
-const CATALOG_ONLY = ["catalog"] as const;
 
 function physicalEntries(
   specs: readonly PhysicalIdentitySpec[],
@@ -65,19 +64,6 @@ function physicalEntries(
     };
   });
 }
-
-const acquisitionDisposition = {
-  classification: "migrate",
-  reason:
-    "The legacy acquisition column and temporary mirror bridge remain rollback compatibility after active application authority moved to the canonical first-party-source column.",
-  ownerIssue: "#28368",
-  writerStopCondition:
-    "#30605 makes acquisition_first_party_source the only active application writer and in-repository acquisition reader while the mirror bridge remains installed for rollback.",
-  drainEvidence:
-    "The production-accepted bounded backfill has exact MaskDB parity with valid both-null rows preserved; the 7-day legacy reader/writer audit and rollback drain remain open.",
-  removalGate:
-    "#28368 may remove the bridge or contract acquisition_vm0_source only after writer-stop, exact parity, the 7-day reporting-reader audit, rollback drain, and replayed/regenerated catalog-contract verification all pass.",
-} as const satisfies ManifestDisposition;
 
 const publicBrandDisposition = {
   classification: "retain",
@@ -119,26 +105,6 @@ const runnerProfileDisposition = {
 } as const satisfies ManifestDisposition;
 
 const nonWorkflowPhysicalEntries = [
-  ...physicalEntries(
-    [
-      {
-        key: "column:public.org_metadata.acquisition_vm0_source",
-        kind: "column",
-        sources: SNAPSHOT_AND_CATALOG,
-      },
-      {
-        key: "function:public.sync_org_metadata_acquisition_first_party_source_1033()",
-        kind: "function",
-        sources: CATALOG_ONLY,
-      },
-      {
-        key: "trigger:public.org_metadata.sync_org_metadata_acquisition_first_party_source_1033",
-        kind: "trigger",
-        sources: CATALOG_ONLY,
-      },
-    ],
-    acquisitionDisposition,
-  ),
   ...physicalEntries(
     [
       "agentphone_user_links",

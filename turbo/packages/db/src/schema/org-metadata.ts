@@ -41,10 +41,6 @@ function orgMetadataColumnsBeforeFirstPartySource() {
   };
 }
 
-function legacyFirstPartySourceColumn() {
-  return text("acquisition_vm0_source");
-}
-
 function canonicalFirstPartySourceColumn() {
   return text("acquisition_first_party_source");
 }
@@ -81,24 +77,10 @@ function orgMetadataColumnsAfterFirstPartySource() {
 }
 
 /**
- * Previous-release insert projection used by mixed-version statement tests.
- *
- * Active application writers use the canonical projection below. This legacy
- * shape remains available only to prove that rollback statements stay valid.
- */
-export function orgMetadataLegacyColumns() {
-  return {
-    ...orgMetadataColumnsBeforeFirstPartySource(),
-    acquisitionVm0Source: legacyFirstPartySourceColumn(),
-    ...orgMetadataColumnsAfterFirstPartySource(),
-  };
-}
-
-/**
  * Canonical insert projection for org metadata.
  *
- * Drizzle emits every mapped column in an INSERT target list, so active writes
- * use this projection to exclude the legacy compatibility column.
+ * Keeping active inserts on an explicit projection pins every generated target
+ * column to the canonical application contract.
  */
 export function orgMetadataCanonicalColumns() {
   return {
@@ -117,7 +99,6 @@ export const orgMetadata = pgTable(
   "org_metadata",
   {
     ...orgMetadataColumnsBeforeFirstPartySource(),
-    acquisitionVm0Source: legacyFirstPartySourceColumn(),
     ...orgMetadataColumnsAfterFirstPartySource(),
     acquisitionFirstPartySource: canonicalFirstPartySourceColumn(),
   },

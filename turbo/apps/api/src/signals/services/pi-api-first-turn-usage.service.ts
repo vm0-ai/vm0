@@ -48,7 +48,9 @@ interface RecordPiApiFirstTurnUsageArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly modelUsageProvider: string | undefined;
-  readonly serviceTier: PiModelConfig["serviceTier"];
+  readonly piApi: PiModelConfig["api"];
+  readonly piProvider: PiModelConfig["provider"];
+  readonly requestedServiceTier: PiModelConfig["serviceTier"];
   readonly turn: PiApiFirstTurnResult;
 }
 
@@ -72,7 +74,7 @@ function idempotencyKey(namespace: string, parts: readonly string[]): string {
 
 function piApiFirstTurnUsageEntries(
   turn: PiApiFirstTurnResult,
-  serviceTier: PiModelConfig["serviceTier"],
+  fast: boolean,
 ): readonly PiApiFirstTurnUsageEntry[] {
   const usage = turn.assistantMessage.usage;
   const input = usageQuantity(usage.input, "input");
@@ -82,7 +84,6 @@ function piApiFirstTurnUsageEntries(
   const longContext =
     input + cacheRead + cacheCreation >=
     TERRA_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS;
-  const fast = serviceTier === "priority";
   const category = (base: PiUsageCategoryBase): PiUsageCategory => {
     if (longContext) {
       return fast ? `${base}.long_context.fast` : `${base}.long_context`;
@@ -105,6 +106,18 @@ function piApiFirstTurnUsageEntries(
   ).filter((entry) => {
     return entry.quantity > 0;
   });
+}
+
+function isFastPiApiFirstTurn(args: RecordPiApiFirstTurnUsageArgs): boolean {
+  if (args.piProvider === "openrouter") {
+    return (
+      args.piApi === "openai-responses" &&
+      (args.turn.observedServiceTier === "priority" ||
+        args.turn.observedServiceTier === "fast")
+    );
+  }
+  // Preserve direct OpenAI's accepted requested-tier billing contract.
+  return args.requestedServiceTier === "priority";
 }
 
 function sameObservation(
@@ -134,7 +147,10 @@ export async function recordPiApiFirstTurnUsage(
     return;
   }
   const responseSourceId = sourceId(args.turn);
-  const entries = piApiFirstTurnUsageEntries(args.turn, args.serviceTier);
+  const entries = piApiFirstTurnUsageEntries(
+    args.turn,
+    isFastPiApiFirstTurn(args),
+  );
   const usageRows = entries.map((entry) => {
     return {
       runId: args.runId,
