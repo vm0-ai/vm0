@@ -130,6 +130,7 @@ import * as presentationTemplateSchema from "./schema/presentation-template";
 import * as piResourceSnapshotSchema from "./schema/pi-resource-snapshot";
 import * as memorySummaryProjectionSchema from "./schema/memory-summary-projection";
 import * as piMemoryStage1CandidateSchema from "./schema/pi-memory-stage1-candidate";
+import * as piMemoryPhase2JobSchema from "./schema/pi-memory-phase2-job";
 
 export const schema = {
   ...userSchema,
@@ -264,6 +265,7 @@ export const schema = {
   ...piResourceSnapshotSchema,
   ...memorySummaryProjectionSchema,
   ...piMemoryStage1CandidateSchema,
+  ...piMemoryPhase2JobSchema,
 };
 
 export type DatabaseSchema = typeof schema;

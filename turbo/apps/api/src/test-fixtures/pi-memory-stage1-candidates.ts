@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { conversations } from "@okouai/db/schema/conversation";
+import { piMemoryPhase2Jobs } from "@okouai/db/schema/pi-memory-phase2-job";
 import { piMemoryStage1Candidates } from "@okouai/db/schema/pi-memory-stage1-candidate";
 import { storages } from "@okouai/db/schema/storage";
 
@@ -40,6 +41,39 @@ export function piMemoryStage1AdmissionPrerequisiteSkipReasonFixture(
     idleDelayMs: 30 * 60 * 1000,
     ...overrides,
   });
+}
+
+export async function seedPiMemoryPhase2ExportJobFixture(args: {
+  readonly memoryStorageId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly currentTime: Date;
+}): Promise<{ readonly leaseToken: string; readonly selectionDigest: string }> {
+  const leaseToken = "00000000-0000-4000-8000-000000031237";
+  const selectionDigest = "a".repeat(64);
+  await db()
+    .insert(piMemoryPhase2Jobs)
+    .values({
+      memoryStorageId: args.memoryStorageId,
+      orgId: args.orgId,
+      userId: args.userId,
+      status: "leased",
+      inputRevision: 2,
+      completedRevision: 0,
+      claimedRevision: 1,
+      leaseToken,
+      leaseExpiresAt: new Date(args.currentTime.getTime() + 60 * 60 * 1000),
+      retryCount: 1,
+      lastSucceededAt: new Date(
+        args.currentTime.getTime() - 24 * 60 * 60 * 1000,
+      ),
+      claimedSelectionDigest: selectionDigest,
+      claimedSelectedCount: 1,
+      claimedSelectedUtf8Bytes: 42,
+      createdAt: new Date(args.currentTime.getTime() - 2 * 60 * 60 * 1000),
+      updatedAt: args.currentTime,
+    });
+  return { leaseToken, selectionDigest };
 }
 
 export async function readPiMemoryStage1CandidateFixture(args: {
@@ -131,6 +165,8 @@ export async function leasePiMemoryStage1CandidateFixture(args: {
 
 export async function commitPiMemoryStage1CandidateFixture(args: {
   readonly memoryStorageId: string;
+  readonly orgId: string;
+  readonly userId: string;
   readonly piSessionId: string;
   readonly sourceHistoryHash: string;
   readonly leaseToken: string;

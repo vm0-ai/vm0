@@ -8,6 +8,7 @@ import { storages } from "@okouai/db/schema/storage";
 
 import type { Tx } from "../../lib/db-types";
 import { nowDate } from "../../lib/time";
+import { advancePiMemoryPhase2InputRevision } from "./pi-memory-phase2-job.service";
 import { newStorageS3Location } from "./storage-s3-prefix.utils";
 
 export type PiMemoryStage1AdmissionSkipReason =
@@ -266,6 +267,8 @@ export type PiMemoryStage1CommitResult =
 
 interface CommitPiMemoryStage1CandidateArgs {
   readonly memoryStorageId: string;
+  readonly orgId: string;
+  readonly userId: string;
   readonly piSessionId: string;
   readonly sourceHistoryHash: string;
   readonly leaseToken: string;
@@ -333,6 +336,8 @@ export async function commitPiMemoryStage1Candidate(
     .where(
       and(
         eq(piMemoryStage1Candidates.memoryStorageId, args.memoryStorageId),
+        eq(piMemoryStage1Candidates.orgId, args.orgId),
+        eq(piMemoryStage1Candidates.userId, args.userId),
         eq(piMemoryStage1Candidates.piSessionId, args.piSessionId),
         eq(piMemoryStage1Candidates.sourceHistoryHash, args.sourceHistoryHash),
         eq(piMemoryStage1Candidates.status, "leased"),
@@ -341,5 +346,19 @@ export async function commitPiMemoryStage1Candidate(
       ),
     )
     .returning({ memoryStorageId: piMemoryStage1Candidates.memoryStorageId });
-  return committed !== undefined;
+  if (!committed) {
+    return false;
+  }
+  if (
+    args.result.kind === "succeeded" ||
+    args.result.kind === "succeeded_no_output"
+  ) {
+    await advancePiMemoryPhase2InputRevision(tx, {
+      memoryStorageId: args.memoryStorageId,
+      orgId: args.orgId,
+      userId: args.userId,
+      enqueuedAt: args.committedAt,
+    });
+  }
+  return true;
 }
