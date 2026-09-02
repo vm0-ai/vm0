@@ -6,10 +6,12 @@
 /// Maximum number of CLI stderr lines retained in the diagnostic tail.
 pub const CLI_STDERR_RESULT_MAX_LINES: usize = 200;
 
-/// Maximum raw byte length retained for one CLI stderr diagnostic line.
+/// Maximum byte length retained for one CLI stderr diagnostic line.
 ///
-/// LF is excluded. A preceding CR is stripped before measuring a CRLF-terminated
-/// line, while a lone CR in an EOF-terminated final line counts toward the limit.
+/// The collector bounds the raw record while reading and rechecks its lossy
+/// UTF-8 decoding. LF is excluded. A preceding CR is stripped from a
+/// CRLF-terminated line, while a lone CR in an EOF-terminated final line counts
+/// toward the limit.
 pub const CLI_STDERR_RESULT_MAX_LINE_BYTES: usize = 16 * 1024;
 
 /// Replacement for a CLI stderr line that exceeds the diagnostic byte limit.
