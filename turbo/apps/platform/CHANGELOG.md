@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.822.1](https://github.com/vm0-ai/vm0/compare/app-v0.822.0...app-v0.822.1) (2026-09-02)
+
+
+### Refactoring
+
+* **platform:** move queue data into shared worker ([#30933](https://github.com/vm0-ai/vm0/issues/30933)) ([2584031](https://github.com/vm0-ai/vm0/commit/2584031276636c504f534f93c330c01e2cb8ac61))
+* remove connectorCatalogCount feature switch ([#30935](https://github.com/vm0-ai/vm0/issues/30935)) ([531a1cc](https://github.com/vm0-ai/vm0/commit/531a1ccf20b2f4c5e33adf143ec0284a8911e3f2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.1
+    * @okouai/core bumped to 8.608.1
+
 ## [0.822.0](https://github.com/vm0-ai/vm0/compare/app-v0.821.2...app-v0.822.0) (2026-09-02)
 
 
