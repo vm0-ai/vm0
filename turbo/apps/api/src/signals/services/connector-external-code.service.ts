@@ -47,6 +47,7 @@ import {
   type ResolvedConnectorActionMethod,
 } from "./connector-action-resolver.service";
 import {
+  connectorById,
   connectorBySlug,
   connectorConnectionWriteRejection,
   upsertConnectorTokenConnection$,
@@ -85,6 +86,7 @@ const externalCodeSessionSelection = Object.freeze({
   accountMutation: storedConnectorAccountMutationSelection(
     connectorExternalCodeSessions.accountMutation,
   ),
+  completedConnectorId: connectorExternalCodeSessions.completedConnectorId,
   authorizationUrl: connectorExternalCodeSessions.authorizationUrl,
   oauthRequestedScopes: connectorExternalCodeSessions.oauthRequestedScopes,
   errorCode: connectorExternalCodeSessions.errorCode,
@@ -501,6 +503,7 @@ async function markClaimComplete(
     .update(connectorExternalCodeSessions)
     .set({
       status: "complete",
+      completedConnectorId: args.connector.id,
       errorCode: null,
       errorMessage: null,
       updatedAt: completedAt,
@@ -671,13 +674,25 @@ const completedExternalCodeSessionResponse$ = command(
     const response = await completeSessionResponse(
       {
         connectorLoader: () => {
+          // Previous API releases completed sessions without an exact
+          // connector ID. Preserve their single-account replay until the old
+          // API rollback targets and persisted sessions drain; remove with
+          // #29777 after its contraction gate passes.
           return get(
-            connectorBySlug({
-              orgId: args.orgId,
-              userId: args.userId,
-              connectorSlug: args.method.connectorSlug,
-              snapshot: args.method.snapshot,
-            }),
+            args.session.completedConnectorId
+              ? connectorById({
+                  orgId: args.orgId,
+                  userId: args.userId,
+                  connectorSlug: args.method.connectorSlug,
+                  connectorId: args.session.completedConnectorId,
+                  snapshot: args.method.snapshot,
+                })
+              : connectorBySlug({
+                  orgId: args.orgId,
+                  userId: args.userId,
+                  connectorSlug: args.method.connectorSlug,
+                  snapshot: args.method.snapshot,
+                }),
           );
         },
       },
