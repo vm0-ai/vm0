@@ -110,6 +110,9 @@ require_fragments(
         "--env preview",
         '--preview-alias "$WORKER_PREVIEW_ALIAS"',
         '--message "app artifact ${ARTIFACT_SHA}"',
+        "/workers/scripts/okou-app-preview/subdomain",
+        "previews_enabled",
+        ".result.previews_enabled == true",
     ],
 )
 require_fragments(prepare_preview_step, ['echo "canonical-dist=$canonical_dist"'])

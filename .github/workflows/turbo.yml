@@ -1511,6 +1511,19 @@ jobs:
             --preview-alias "$WORKER_PREVIEW_ALIAS" \
             --message "app artifact ${ARTIFACT_SHA}"
 
+          subdomain_response="$(curl \
+            --silent \
+            --show-error \
+            --fail-with-body \
+            --request POST \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/okou-app-preview/subdomain" \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --header "Content-Type: application/json" \
+            --data '{"enabled":true,"previews_enabled":true}')"
+          jq --exit-status \
+            '.success == true and .result.enabled == true and .result.previews_enabled == true' \
+            <<< "$subdomain_response" >/dev/null
+
           echo "url=$EXPECTED_PREVIEW_URL" >> "$GITHUB_OUTPUT"
 
       # A Worker version preview can briefly lag its upload at the edge. Wait
