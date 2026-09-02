@@ -5426,7 +5426,13 @@ function AssistantErrorFallback({ error }: { error: string }) {
 
   if (error.trim().toLowerCase() === "run cancelled") {
     return (
-      <div className="zero-chat-card inline-flex items-center gap-2 px-3 py-1.5 text-[0.9375rem] text-muted-foreground">
+      <div
+        className="inline-flex items-center gap-2 bg-muted/50 px-3 py-1.5 text-[0.9375rem] text-muted-foreground"
+        style={{
+          border: "0.7px solid hsl(var(--border))",
+          borderRadius: "12px",
+        }}
+      >
         <Hand size={14} className="shrink-0" />
         <span>
           {t(($) => {
