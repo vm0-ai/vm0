@@ -279,6 +279,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.PiMemoryRecall]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Mount the canonical user memory Storage for Pi runs without enabling memory generation.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.PresentationTemplates]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -348,6 +355,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Render recommended follow-ups as an equal-height centered card rail in narrow chat layouts.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.OfficeDocumentPreview]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Preview DOCX and PPTX attachments with the Microsoft Office viewer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
