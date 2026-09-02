@@ -1952,6 +1952,8 @@
         "resetAndTryAgain": "रीसेट करके फिर कोशिश करें",
         "resetsAt": "{{time}} पर रीसेट होगा",
         "selectModel": "मॉडल बदलें",
+        "timeoutDescription": "इस रन की समय सीमा पूरी हो गई है। काम जारी रखने के लिए आगे बढ़ें।",
+        "timeoutTitle": "समय सीमा पूरी हो गई",
         "tryAgain": "फिर कोशिश करें",
         "unavailableDescription": "यह मॉडल कनेक्ट किए गए ChatGPT खाते के साथ समर्थित नहीं है। जारी रखने के लिए कोई दूसरा मॉडल चुनें।",
         "unavailableTitle": "चुना गया मॉडल उपलब्ध नहीं है",

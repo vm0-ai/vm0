@@ -1983,6 +1983,8 @@
         "resetAndTryAgain": "Reimposta e riprova",
         "resetsAt": "Ripristino alle {{time}}",
         "selectModel": "Cambia modello",
+        "timeoutDescription": "Questa esecuzione ha raggiunto il limite di tempo. Continua per proseguire il lavoro.",
+        "timeoutTitle": "Limite di tempo raggiunto",
         "tryAgain": "Riprova",
         "unavailableDescription": "Questo modello non è supportato dall'account ChatGPT collegato. Passa a un altro modello per continuare.",
         "unavailableTitle": "Il modello selezionato non è disponibile",
