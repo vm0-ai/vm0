@@ -490,7 +490,7 @@ async fn larger_profile_batches_required_oldest_idle_entries_before_status_write
         &idle_pool,
         &budget,
         &idle_overrides,
-        "sess-oldest",
+        "sess-a-oldest",
         "vm0/default",
         2,
         4096,
@@ -500,7 +500,7 @@ async fn larger_profile_batches_required_oldest_idle_entries_before_status_write
         &idle_pool,
         &budget,
         &idle_overrides,
-        "sess-middle",
+        "sess-b-middle",
         "vm0/default",
         2,
         4096,
@@ -510,7 +510,7 @@ async fn larger_profile_batches_required_oldest_idle_entries_before_status_write
         &idle_pool,
         &budget,
         &idle_overrides,
-        "sess-newest",
+        "sess-c-newest",
         "vm0/default",
         2,
         4096,
@@ -545,7 +545,7 @@ async fn larger_profile_batches_required_oldest_idle_entries_before_status_write
     let reuse_keys = idle_pool.lock().await.held_reuse_keys();
     assert_eq!(
         reuse_keys,
-        vec!["sess-newest".to_string()],
+        vec!["sess-c-newest".to_string()],
         "only the newest unneeded idle entry should remain"
     );
 
@@ -557,7 +557,7 @@ async fn larger_profile_batches_required_oldest_idle_entries_before_status_write
     assert_eq!(status.idle_info_update_request_count(), 1);
     assert_eq!(
         status_idle_reuse_keys(&status_path).await,
-        vec!["sess-newest".to_string()],
+        vec!["sess-c-newest".to_string()],
         "status.json should reflect only the remaining idle sandbox"
     );
 

@@ -178,21 +178,15 @@ impl IdlePool {
         Some(ReservedIdleSandbox { entry })
     }
 
-    /// Reserve a matching idle entry or order all current entries for pressure
-    /// eviction in one pool transition.
-    ///
-    /// The caller must retain exclusive pool access while consuming the
-    /// returned keys. This prevents an entry parked between the match check and
-    /// eviction from being destroyed instead of reused, and avoids rescanning
-    /// the shrinking pool for every eviction.
-    pub(crate) fn reserve_reusable_or_order_oldest(
+    /// Reserve a matching idle entry before pressure eviction begins.
+    pub(crate) fn reserve_reusable_for_pressure(
         &mut self,
         reuse_key: Option<&str>,
         profile_name: &str,
         device_rate_limits: &Option<DeviceRateLimits>,
         history_generation_run_id: Option<RunId>,
-    ) -> IdlePoolPressureSelection {
-        let reservation = reuse_key.and_then(|reuse_key| match history_generation_run_id {
+    ) -> Option<ReservedIdleSandbox> {
+        reuse_key.and_then(|reuse_key| match history_generation_run_id {
             Some(history_generation_run_id) => self.reserve_reusable_generation(
                 reuse_key,
                 profile_name,
@@ -200,22 +194,21 @@ impl IdlePool {
                 history_generation_run_id,
             ),
             None => self.reserve_reusable(reuse_key, profile_name, device_rate_limits),
-        });
-        if let Some(reservation) = reservation {
-            return IdlePoolPressureSelection::Reusable(Box::new(reservation));
-        }
+        })
+    }
 
+    /// Order all current entries for pressure eviction without mutating them.
+    pub(crate) fn oldest_first_pressure_keys(&self) -> Vec<String> {
         let mut ordered_entries: Vec<(Instant, String)> = self
             .entries
             .iter()
             .map(|(reuse_key, entry)| (entry.parked_at, reuse_key.clone()))
             .collect();
         ordered_entries.sort_unstable();
-        let reuse_keys = ordered_entries
+        ordered_entries
             .into_iter()
             .map(|(_, reuse_key)| reuse_key)
-            .collect();
-        IdlePoolPressureSelection::OldestFirst(reuse_keys)
+            .collect()
     }
 
     pub fn restore_reserved(
@@ -372,12 +365,6 @@ pub enum ParkResult {
     Replaced(IdleDestroyJob),
     /// Parking is closed/soft-draining or at capacity; the entry could not be parked.
     Rejected(RejectedParkedIdleCandidate),
-}
-
-#[must_use = "pressure selection must reserve, track, or explicitly handle idle ownership"]
-pub(crate) enum IdlePoolPressureSelection {
-    Reusable(Box<ReservedIdleSandbox>),
-    OldestFirst(Vec<String>),
 }
 
 #[cfg(test)]

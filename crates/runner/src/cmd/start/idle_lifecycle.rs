@@ -13,7 +13,7 @@ use tracing::{info, warn};
 
 use crate::idle_pool::{
     DestroyOutcome, IdleDestroyJob, IdleDestroyPayload, IdleDestroyResult, IdlePool,
-    IdlePoolPressureSelection, IdlePoolSnapshot, ReservedIdleSandbox,
+    IdlePoolSnapshot, ReservedIdleSandbox,
 };
 use crate::ids::RunId;
 use crate::paths::short_digest;
@@ -192,35 +192,31 @@ pub(super) async fn select_idle_entries_for_pressure(
 ) -> IdlePressureSelection {
     let (selection, snapshot) = {
         let mut pool = idle_pool.lock().await;
-        match pool.reserve_reusable_or_order_oldest(
+        if let Some(reservation) = pool.reserve_reusable_for_pressure(
             request.reuse_key,
             request.profile_name,
             request.device_rate_limits,
             request.history_generation_run_id,
         ) {
-            IdlePoolPressureSelection::Reusable(reservation) => {
-                drop(retiring_leases);
-                let snapshot = pool.status_snapshot();
-                (
-                    IdlePressureSelection::Reusable(ReservedIdleActivation {
-                        reservation,
-                        idle_snapshot: snapshot,
-                    }),
-                    None,
-                )
-            }
-            IdlePoolPressureSelection::OldestFirst(reuse_keys) => {
-                let mut mutated = false;
-                let mut fresh_lease = try_substitute_retiring_leases(
-                    budget,
-                    &mut retiring_leases,
-                    request.vcpu,
-                    request.memory_mb,
-                );
-                for reuse_key in reuse_keys {
-                    if fresh_lease.is_some() {
-                        break;
-                    }
+            drop(retiring_leases);
+            let snapshot = pool.status_snapshot();
+            (
+                IdlePressureSelection::Reusable(ReservedIdleActivation {
+                    reservation: Box::new(reservation),
+                    idle_snapshot: snapshot,
+                }),
+                None,
+            )
+        } else {
+            let mut mutated = false;
+            let mut fresh_lease = try_substitute_retiring_leases(
+                budget,
+                &mut retiring_leases,
+                request.vcpu,
+                request.memory_mb,
+            );
+            if fresh_lease.is_none() {
+                for reuse_key in pool.oldest_first_pressure_keys() {
                     let Some(job) = pool.evict_for_pressure(&reuse_key) else {
                         continue;
                     };
@@ -243,14 +239,17 @@ pub(super) async fn select_idle_entries_for_pressure(
                         request.vcpu,
                         request.memory_mb,
                     );
+                    if fresh_lease.is_some() {
+                        break;
+                    }
                 }
-                let selection = match fresh_lease {
-                    Some(lease) => IdlePressureSelection::Fresh(lease),
-                    None => IdlePressureSelection::Exhausted(retiring_leases),
-                };
-                let snapshot = mutated.then(|| pool.status_snapshot());
-                (selection, snapshot)
             }
+            let selection = match fresh_lease {
+                Some(lease) => IdlePressureSelection::Fresh(lease),
+                None => IdlePressureSelection::Exhausted(retiring_leases),
+            };
+            let snapshot = mutated.then(|| pool.status_snapshot());
+            (selection, snapshot)
         }
     };
     if let Some(snapshot) = snapshot {
