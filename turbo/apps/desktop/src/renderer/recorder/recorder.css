@@ -41,8 +41,7 @@ select {
   gap: 18px;
   box-sizing: border-box;
   width: 100%;
-  /* Not the full window: the room below is where a failure message goes. */
-  height: 116px;
+  height: 100%;
   padding: 0 22px 0 64px;
   border-radius: 18px;
   background: rgb(38 38 42 / 96%);
@@ -176,17 +175,23 @@ select {
   cursor: default;
 }
 
+/* Inside the surface, not below it: the window is the size of the surface, so
+   anything drawn outside is clipped away and the failure goes unseen. */
 .recorder-bar__error {
   position: absolute;
-  right: 20px;
-  bottom: -24px;
+  right: 0;
+  bottom: 0;
+  left: 0;
   margin: 0;
-  padding: 4px 10px;
-  border-radius: 8px;
-  background: rgb(38 38 42 / 96%);
+  padding: 5px 22px;
+  border-radius: 0 0 18px 18px;
+  background: rgb(74 26 20 / 96%);
   color: #ffb4a2;
   font-size: 12px;
+  text-align: center;
+  overflow: hidden;
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .area-selector {
@@ -239,8 +244,7 @@ select {
   gap: 10px;
   box-sizing: border-box;
   width: 100%;
-  /* Not the full window: the room below is where a failure message goes. */
-  height: 60px;
+  height: 100%;
   padding: 0 14px;
   border-radius: 14px;
   background: rgb(38 38 42 / 96%);
@@ -335,15 +339,19 @@ select {
 
 .recording-controller__error {
   position: absolute;
-  right: 14px;
-  bottom: -24px;
+  right: 0;
+  bottom: 0;
+  left: 0;
   margin: 0;
-  padding: 4px 10px;
-  border-radius: 8px;
-  background: rgb(38 38 42 / 96%);
+  padding: 4px 14px;
+  border-radius: 0 0 14px 14px;
+  background: rgb(74 26 20 / 96%);
   color: #ffb4a2;
-  font-size: 12px;
+  font-size: 11px;
+  text-align: center;
+  overflow: hidden;
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .area-selector__error {

@@ -238,6 +238,9 @@ export class DesktopRecorderWindows {
       ...bounds,
       frame: false,
       transparent: true,
+      // Without this the window paints its own opaque backing wherever the
+      // page does not, which is how a grey strip appeared under the bar.
+      backgroundColor: "#00000000",
       resizable: false,
       skipTaskbar: true,
       hasShadow: false,
