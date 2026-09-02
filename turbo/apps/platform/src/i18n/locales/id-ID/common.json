@@ -5089,7 +5089,6 @@
           "upstreamModel": "Model upstream"
         },
         "capture": {
-          "description": "Tangkap nama header HTTP, nilai header aman yang dipilih, dan body dalam log jaringan untuk debugging.",
           "disabled": "Dinonaktifkan",
           "enabled_one": "Diaktifkan untuk {{count}} eksekusi berikutnya",
           "enabled_other": "Diaktifkan untuk {{count}} eksekusi berikutnya",
@@ -5112,10 +5111,8 @@
           "recovery": "pemulihan",
           "title": "Diagnostik koneksi waktu nyata",
           "unavailable": "tidak tersedia"
-        },
-        "tab": "Debug"
+        }
       },
-      "documentTitle": "Preferensi",
       "language": {
         "description": "Pilih bahasa pilihan Anda untuk antarmuka {{brandName}}",
         "label": "Bahasa",
@@ -5145,8 +5142,6 @@
         "retryMessage": "Pengaturan Morning Brief tidak dapat dimuat atau diperbarui. Coba lagi untuk melanjutkan.",
         "title": "Brief Pagi"
       },
-      "pageDescription": "Kelola tampilan dan preferensi runtime agen Anda",
-      "pageTitle": "Preferensi",
       "send": {
         "cmdEnter": "⌘ Enter",
         "cmdEnterDescription": "Tekan ⌘/Ctrl+Enter untuk mengirim, Enter untuk baris baru",
@@ -5155,11 +5150,6 @@
         "enterDescription": "Tekan Enter untuk mengirim, Shift+Enter untuk baris baru",
         "sectionTitle": "Enter",
         "title": "Kirim pesan dengan"
-      },
-      "tabs": {
-        "appearance": "Tampilan",
-        "models": "Model Pribadi",
-        "timezone": "Zona Waktu"
       },
       "timezone": {
         "description": "Waktu ditampilkan kepada Anda dan digunakan untuk eksekusi otomatis.",
