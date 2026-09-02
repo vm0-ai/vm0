@@ -1,7 +1,12 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+
 import { command, computed } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { slackOauthContract } from "@okouai/api-contracts/contracts/slack-oauth";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
+import {
+  apiUrlForPublicBrand,
+  appUrlForPublicBrand,
+} from "@okouai/core/public-brand";
 import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
 import { eq } from "drizzle-orm";
@@ -10,7 +15,7 @@ import { publicBrand$, request$ } from "../context/hono";
 import { queryOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { db$, writeDb$ } from "../external/db";
-import { nowDate } from "../../lib/time";
+import { now, nowDate } from "../../lib/time";
 import {
   exchangeSlackOAuthCode,
   exchangeSlackOAuthCodeForUser,
@@ -28,14 +33,13 @@ import {
 } from "../services/slack-connect.service";
 import { SLACK_BOT_SCOPES } from "../services/slack-data.service";
 import type { RouteEntry } from "../route-entry";
-import {
-  getOAuthCanonicalRedirectUrl,
-  getOAuthWebOrigin,
-} from "../../lib/oauth-origin";
+import { getOAuthApiOrigin, getOAuthWebOrigin } from "../../lib/oauth-origin";
 import { OFFICIAL_SLACK_PUBLIC_BRAND } from "../../lib/slack-official-app";
 
 const L = logger("SlackOAuth");
 const SLACK_OAUTH_URL = "https://slack.com/oauth/v2/authorize";
+const SLACK_OAUTH_CALLBACK_PATH = "/api/integrations/slack/oauth/callback";
+const SLACK_OAUTH_STATE_MAX_AGE_SECONDS = 15 * 60;
 const REDIRECT_STATUS = 307;
 const MAX_PROMPT_STATE_LENGTH = 500;
 
@@ -48,6 +52,16 @@ interface OAuthState {
   readonly reinstall: boolean;
   readonly prompt: string | null;
   readonly publicBrand: PublicBrand;
+}
+
+interface SignedOAuthState extends OAuthState {
+  readonly issuedAt: number;
+  readonly redirectUri: string;
+}
+
+interface ParsedOAuthState {
+  readonly redirectUri: string | null;
+  readonly state: OAuthState;
 }
 
 function redirectResponse(url: string): Response {
@@ -102,12 +116,7 @@ function optionalBoolean(value: unknown): boolean {
   return value === true;
 }
 
-function parseOAuthState(state: string | undefined): OAuthState | null {
-  if (!state) {
-    return null;
-  }
-
-  const parsed = safeJsonParse(state);
+function parseOAuthStateValue(parsed: unknown): OAuthState | null {
   if (typeof parsed !== "object" || parsed === null) {
     return null;
   }
@@ -127,8 +136,130 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
   };
 }
 
-function callbackRedirectUri(origin: string): string {
-  return `${origin}/api/integrations/slack/oauth/callback`;
+function signOAuthState(encodedPayload: string): string {
+  return createHmac("sha256", env("SECRETS_ENCRYPTION_KEY"))
+    .update(`slack-oauth-state-v1:${encodedPayload}`)
+    .digest("base64url");
+}
+
+function isSlackOAuthRedirectUri(
+  value: string,
+  publicBrand: PublicBrand,
+): boolean {
+  if (!URL.canParse(value)) {
+    return false;
+  }
+  const url = new URL(value);
+  const isLocalHttp =
+    url.protocol === "http:" &&
+    (url.hostname === "localhost" || url.hostname === "127.0.0.1");
+  if (
+    (url.protocol !== "https:" && !isLocalHttp) ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.pathname !== SLACK_OAUTH_CALLBACK_PATH ||
+    url.search !== "" ||
+    url.hash !== ""
+  ) {
+    return false;
+  }
+  if (url.hostname === "api.vm0.ai") {
+    return publicBrand === "vm0";
+  }
+  if (url.hostname === "api.okou.ai") {
+    return publicBrand === "okou";
+  }
+  return true;
+}
+
+function createOAuthState(state: OAuthState, redirectUri: string): string {
+  const payload: SignedOAuthState = {
+    ...state,
+    issuedAt: Math.floor(now() / 1000),
+    redirectUri,
+  };
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString(
+    "base64url",
+  );
+  return `${encodedPayload}.${signOAuthState(encodedPayload)}`;
+}
+
+function parseSignedOAuthState(state: string): SignedOAuthState | null {
+  const [encodedPayload, signature, extra] = state.split(".");
+  if (!encodedPayload || !signature || extra) {
+    return null;
+  }
+  const expected = Buffer.from(signOAuthState(encodedPayload), "utf8");
+  const actual = Buffer.from(signature, "utf8");
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+    return null;
+  }
+
+  const parsed = safeJsonParse(
+    Buffer.from(encodedPayload, "base64url").toString(),
+  );
+  const oauthState = parseOAuthStateValue(parsed);
+  if (!oauthState || typeof parsed !== "object" || parsed === null) {
+    return null;
+  }
+  const record = parsed as Record<string, unknown>;
+  const redirectUri = record.redirectUri;
+  const issuedAt = record.issuedAt;
+  if (
+    typeof redirectUri !== "string" ||
+    !isSlackOAuthRedirectUri(redirectUri, oauthState.publicBrand) ||
+    typeof issuedAt !== "number" ||
+    !Number.isInteger(issuedAt)
+  ) {
+    return null;
+  }
+  const currentTimestamp = Math.floor(now() / 1000);
+  if (
+    issuedAt > currentTimestamp + 60 ||
+    currentTimestamp - issuedAt > SLACK_OAUTH_STATE_MAX_AGE_SECONDS
+  ) {
+    return null;
+  }
+  return { ...oauthState, issuedAt, redirectUri };
+}
+
+function parseOAuthState(state: string | undefined): ParsedOAuthState | null {
+  if (!state) {
+    return null;
+  }
+
+  const signedState = parseSignedOAuthState(state);
+  if (signedState) {
+    return { state: signedState, redirectUri: signedState.redirectUri };
+  }
+
+  // API versions before this slice emitted unsigned JSON state. Keep reading
+  // it while those API targets remain rollback-capable and their OAuth starts
+  // can still be in flight; #26720 owns the removal gate. A legacy state never
+  // supplies its own redirect URI.
+  const legacyState = parseOAuthStateValue(safeJsonParse(state));
+  return legacyState ? { state: legacyState, redirectUri: null } : null;
+}
+
+function callbackRedirectUri(origin: string, publicBrand: PublicBrand): string {
+  return `${apiUrlForPublicBrand(origin, publicBrand)}${SLACK_OAUTH_CALLBACK_PATH}`;
+}
+
+function legacyCallbackRedirectUri(request: Request): string {
+  return `${getOAuthWebOrigin(request)}${SLACK_OAUTH_CALLBACK_PATH}`;
+}
+
+function oauthStartPublicBrand(
+  request: Request,
+  queryBrand: PublicBrand | undefined,
+  trustedBrand: PublicBrand,
+): PublicBrand {
+  // Before API-domain links shipped, the shared VM0 web origin carried Okou in
+  // this bounded query field. Keep those already-published links working, but
+  // never let the field override the brand established by an API hostname.
+  return new URL(request.url).origin === getOAuthWebOrigin(request)
+    ? (queryBrand ?? trustedBrand)
+    : trustedBrand;
 }
 
 function slackCredentials(): {
@@ -145,66 +276,55 @@ function slackCredentials(): {
 
 const installOauth$ = computed((get) => {
   const request = get(request$).raw;
-  const canonicalRedirectUrl = getOAuthCanonicalRedirectUrl(request);
-  if (canonicalRedirectUrl) {
-    return noStoreRedirect(canonicalRedirectUrl);
-  }
-  const origin = getOAuthWebOrigin(request);
+  const origin = getOAuthApiOrigin(request);
   const clientId = env("SLACK_OAUTH_CLIENT_ID");
   if (!clientId) {
     return jsonErrorResponse("Slack integration is not configured", 503);
   }
 
   const query = get(queryOf(slackOauthContract.install));
-  const publicBrand = query.publicBrand ?? get(publicBrand$);
+  const publicBrand = oauthStartPublicBrand(
+    request,
+    query.publicBrand,
+    get(publicBrand$),
+  );
   const userId = query.userId;
-  const stateObj: {
-    orgId?: string;
-    userId?: string;
-    reinstall?: boolean;
-    prompt?: string;
-    publicBrand: PublicBrand;
-  } = { publicBrand };
-  if (query.orgId) {
-    stateObj.orgId = query.orgId;
-  }
-  if (userId) {
-    stateObj.userId = userId;
-  }
-  if (query.reinstall === "1") {
-    stateObj.reinstall = true;
-  }
-  if (query.prompt) {
-    stateObj.prompt = truncatePrompt(query.prompt);
-  }
-  const state =
-    Object.keys(stateObj).length > 0 ? JSON.stringify(stateObj) : "";
+  const redirectUri = callbackRedirectUri(origin, publicBrand);
+  const state = createOAuthState(
+    {
+      orgId: query.orgId ?? null,
+      userId: userId ?? null,
+      flow: "install",
+      reinstall: query.reinstall === "1",
+      prompt: query.prompt ? truncatePrompt(query.prompt) : null,
+      publicBrand,
+    },
+    redirectUri,
+  );
 
   const authUrl = new URL(SLACK_OAUTH_URL);
   authUrl.searchParams.set("client_id", clientId);
   authUrl.searchParams.set("scope", SLACK_BOT_SCOPES.join(","));
-  authUrl.searchParams.set("redirect_uri", callbackRedirectUri(origin));
-  if (state) {
-    authUrl.searchParams.set("state", state);
-  }
+  authUrl.searchParams.set("redirect_uri", redirectUri);
+  authUrl.searchParams.set("state", state);
 
   return noStoreRedirect(authUrl.toString());
 });
 
 const connectOauth$ = command(async ({ get }, signal: AbortSignal) => {
   const request = get(request$).raw;
-  const canonicalRedirectUrl = getOAuthCanonicalRedirectUrl(request);
-  if (canonicalRedirectUrl) {
-    return noStoreRedirect(canonicalRedirectUrl);
-  }
-  const origin = getOAuthWebOrigin(request);
+  const origin = getOAuthApiOrigin(request);
   const clientId = env("SLACK_OAUTH_CLIENT_ID");
   if (!clientId) {
     return jsonErrorResponse("Slack integration is not configured", 503);
   }
 
   const query = get(queryOf(slackOauthContract.connect));
-  const publicBrand = query.publicBrand ?? get(publicBrand$);
+  const publicBrand = oauthStartPublicBrand(
+    request,
+    query.publicBrand,
+    get(publicBrand$),
+  );
   const userId = query.userId;
   if (!query.orgId || !userId) {
     return jsonErrorResponse("Missing orgId or userId", 400);
@@ -225,27 +345,24 @@ const connectOauth$ = command(async ({ get }, signal: AbortSignal) => {
     );
   }
 
-  const stateObj: {
-    orgId: string;
-    userId: string;
-    flow: "connect";
-    prompt?: string;
-    publicBrand: PublicBrand;
-  } = {
-    orgId: query.orgId,
-    userId,
-    flow: "connect",
-    publicBrand,
-  };
-  if (query.prompt) {
-    stateObj.prompt = truncatePrompt(query.prompt);
-  }
+  const redirectUri = callbackRedirectUri(origin, publicBrand);
+  const state = createOAuthState(
+    {
+      orgId: query.orgId,
+      userId,
+      flow: "connect",
+      reinstall: false,
+      prompt: query.prompt ? truncatePrompt(query.prompt) : null,
+      publicBrand,
+    },
+    redirectUri,
+  );
 
   const authUrl = new URL(SLACK_OAUTH_URL);
   authUrl.searchParams.set("client_id", clientId);
   authUrl.searchParams.set("user_scope", "identity.basic");
-  authUrl.searchParams.set("redirect_uri", callbackRedirectUri(origin));
-  authUrl.searchParams.set("state", JSON.stringify(stateObj));
+  authUrl.searchParams.set("redirect_uri", redirectUri);
+  authUrl.searchParams.set("state", state);
   authUrl.searchParams.set("team", installation.slackWorkspaceId);
 
   return noStoreRedirect(authUrl.toString());
@@ -379,7 +496,7 @@ const handleInstallCallback$ = command(
         readonly clientId: string;
         readonly clientSecret: string;
       };
-      readonly callbackOrigin: string;
+      readonly redirectUri: string;
     },
     signal: AbortSignal,
   ): Promise<Response> => {
@@ -388,7 +505,7 @@ const handleInstallCallback$ = command(
         args.credentials.clientId,
         args.credentials.clientSecret,
         args.code,
-        callbackRedirectUri(args.callbackOrigin),
+        args.redirectUri,
       ),
       (error) => {
         L.error("Slack OAuth exchange failed", { error });
@@ -517,7 +634,7 @@ const handleConnectCallback$ = command(
         readonly clientId: string;
         readonly clientSecret: string;
       };
-      readonly callbackOrigin: string;
+      readonly redirectUri: string;
     },
     signal: AbortSignal,
   ): Promise<Response> => {
@@ -533,7 +650,7 @@ const handleConnectCallback$ = command(
         args.credentials.clientId,
         args.credentials.clientSecret,
         args.code,
-        callbackRedirectUri(args.callbackOrigin),
+        args.redirectUri,
       ),
       (error) => {
         L.error("Slack OAuth exchange failed (connect flow)", { error });
@@ -633,18 +750,14 @@ const handleConnectCallback$ = command(
 
 const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
   const request = get(request$).raw;
-  const canonicalRedirectUrl = getOAuthCanonicalRedirectUrl(request);
-  if (canonicalRedirectUrl) {
-    return redirectResponse(canonicalRedirectUrl);
-  }
-  const origin = getOAuthWebOrigin(request);
   const credentials = slackCredentials();
   if (!credentials) {
     return jsonErrorResponse("Slack integration is not configured", 503);
   }
 
   const query = get(queryOf(slackOauthContract.callback));
-  const state = parseOAuthState(query.state);
+  const parsedState = parseOAuthState(query.state);
+  const state = parsedState?.state ?? null;
   const redirectBrand = state?.publicBrand ?? get(publicBrand$);
 
   if (query.error) {
@@ -658,6 +771,8 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!state) {
     return failedRedirect("Invalid OAuth state.", redirectBrand);
   }
+  const redirectUri =
+    parsedState?.redirectUri ?? legacyCallbackRedirectUri(request);
   if (state.flow === "connect") {
     return await set(
       handleConnectCallback$,
@@ -665,7 +780,7 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
         code: query.code,
         state,
         credentials,
-        callbackOrigin: origin,
+        redirectUri,
       },
       signal,
     );
@@ -677,7 +792,7 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
       code: query.code,
       state,
       credentials,
-      callbackOrigin: origin,
+      redirectUri,
     },
     signal,
   );
