@@ -443,19 +443,33 @@ function createSourceCommands(
       set(internal.step$, "source-review");
     },
   );
-  const closeWizard$ = command(({ get, set }) => {
-    runtime.generation += 1;
-    set(resetRecordingAttempt$);
-    releaseRecordingRuntime(runtime, true);
-    set(internal.busy$, false);
-    set(internal.countdown$, 3);
-    set(internal.recordingSeconds$, 0);
-    const step = get(internal.step$);
-    if (step === "countdown" || step === "recording") {
-      set(internal.step$, "record-setup");
-    }
-    set(internal.open$, false);
-  });
+  // Closing discards the wizard entirely: the next open starts from an empty
+  // source step. The persisted draft goes with it, because otherwise
+  // openWizard$ would restore the source and put the user back where they
+  // left off.
+  const closeWizard$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      runtime.generation += 1;
+      set(resetRecordingAttempt$);
+      releaseRecordingRuntime(runtime, true);
+      releasePreviewUrl(get(internal.source$));
+      set(internal.open$, false);
+      set(internal.busy$, false);
+      set(internal.countdown$, 3);
+      set(internal.recordingSeconds$, 0);
+      set(internal.error$, null);
+      set(internal.source$, null);
+      set(internal.sourcePersisted$, false);
+      set(internal.sourceUploaded$, false);
+      set(internal.avatar$, null);
+      set(internal.voice$, null);
+      set(internal.placement$, "left");
+      set(internal.instructions$, DEFAULT_INSTRUCTIONS);
+      set(internal.step$, "source");
+      // A stale local draft is harmless if this cleanup loses the race.
+      await settle(deleteIntroVideoDraft(), signal);
+    },
+  );
   const setStep$ = command(
     ({ get, set }, nextStep: IntroVideoWizardStep): void => {
       const sourceRequired =

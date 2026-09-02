@@ -584,6 +584,88 @@ describe("chat start cards", () => {
     });
   });
 
+  it("forgets everything when the wizard is closed", async () => {
+    const user = userEvent.setup({ delay: null });
+    setupChatStartCards();
+
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+    click(screen.getByTestId("intro-video-start-card"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Create an intro video",
+    });
+    const fileInput = dialog.querySelector<HTMLInputElement>(
+      '[data-intro-video-document-input=""]',
+    );
+    if (!fileInput) {
+      throw new Error("Expected intro video document input");
+    }
+    await user.upload(
+      fileInput,
+      new File(["deck"], "launch.pdf", { type: "application/pdf" }),
+    );
+    await expect(
+      screen.findByText("Your source is ready"),
+    ).resolves.toBeInTheDocument();
+    click(buttonWithText("Next", dialog));
+    await expect(
+      screen.findByText("Choose an avatar"),
+    ).resolves.toBeInTheDocument();
+    click(await screen.findByLabelText("Select template Amara"));
+    expect(
+      screen.getByText("Where should the presenter stand?"),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Create an intro video" }),
+      ).not.toBeInTheDocument();
+    });
+
+    click(screen.getByTestId("intro-video-start-card"));
+    const reopened = await screen.findByRole("dialog", {
+      name: "Create an intro video",
+    });
+    // Closing discards the draft, so the wizard reopens on an empty source
+    // step rather than resuming the deck and presenter from before.
+    await expect(
+      screen.findByText("How do you want to start?"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Your source is ready")).toBeNull();
+    expect(screen.queryByText("launch.pdf")).toBeNull();
+    // The later steps only unlock once a source exists, so a disabled Avatar
+    // step is direct evidence the previous deck was dropped rather than the
+    // wizard merely rewinding to step one.
+    expect(buttonWithText("Avatar", reopened, false)).toBeDisabled();
+    expect(buttonWithText("Voice", reopened, false)).toBeDisabled();
+
+    const reopenedInput = reopened.querySelector<HTMLInputElement>(
+      '[data-intro-video-document-input=""]',
+    );
+    if (!reopenedInput) {
+      throw new Error("Expected intro video document input");
+    }
+    await user.upload(
+      reopenedInput,
+      new File(["deck"], "second.pdf", { type: "application/pdf" }),
+    );
+    await expect(
+      screen.findByText("Your source is ready"),
+    ).resolves.toBeInTheDocument();
+    click(buttonWithText("Next", reopened));
+    await expect(
+      screen.findByText("Choose an avatar"),
+    ).resolves.toBeInTheDocument();
+    // And the presenter came back cleared, not still set to Amara.
+    expect(
+      reopened.querySelector('[data-intro-video-no-avatar=""]'),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByText("Where should the presenter stand?")).toBeNull();
+  });
+
   it("omits the presenter placement question for a video source", async () => {
     const user = userEvent.setup({ delay: null });
     setupChatStartCards();
@@ -804,12 +886,14 @@ describe("chat start cards", () => {
       ).not.toBeInTheDocument();
     });
     click(screen.getByTestId("intro-video-start-card"));
-    const reopenedDialog = await screen.findByRole("dialog", {
+    await screen.findByRole("dialog", {
       name: "Create an intro video",
     });
-    expect(
-      buttonWithText("Choose screen and start", reopenedDialog),
-    ).toBeInTheDocument();
+    // Closing discards the wizard, so reopening lands on the source step
+    // rather than resuming the recording setup.
+    await expect(
+      screen.findByText("How do you want to start?"),
+    ).resolves.toBeInTheDocument();
     click(screen.getByLabelText("Close"));
   });
 
@@ -919,12 +1003,14 @@ describe("chat start cards", () => {
       expect(microphoneTrackStop).toHaveBeenCalledWith();
     });
     click(screen.getByTestId("intro-video-start-card"));
-    const reopenedDialog = await screen.findByRole("dialog", {
+    await screen.findByRole("dialog", {
       name: "Create an intro video",
     });
-    expect(
-      buttonWithText("Choose screen and start", reopenedDialog),
-    ).toBeInTheDocument();
+    // Closing discards the wizard, so reopening lands on the source step
+    // rather than resuming the recording setup.
+    await expect(
+      screen.findByText("How do you want to start?"),
+    ).resolves.toBeInTheDocument();
     click(screen.getByLabelText("Close"));
   });
 
