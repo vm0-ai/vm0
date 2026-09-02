@@ -1250,6 +1250,57 @@ export function AvatarTemplatePickerToolbar({
   return <AvatarCatalogFilters signals={signals} />;
 }
 
+/**
+ * The opt-out card that opens the intro-video presenter grid.
+ *
+ * Selecting a presenter is optional, but the grid is a set of avatars with no
+ * empty state, so without this card a user who picks one can never get back to
+ * a deck with no presenter: the wizard deliberately keeps its draft across
+ * close and reopen, and the cards do not toggle off.
+ */
+function NoAvatarCard({
+  selected,
+  onSelect,
+}: {
+  readonly selected: boolean;
+  readonly onSelect: () => void;
+}) {
+  const { t } = useTranslation();
+  const label = t(($) => {
+    return $.chat.introVideo.avatar.none;
+  });
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      aria-label={label}
+      data-intro-video-no-avatar=""
+      onClick={onSelect}
+      className={cn(
+        avatarTemplateCardClass(selected),
+        "mb-4 w-full break-inside-avoid",
+      )}
+    >
+      <div className="flex aspect-[3/4] w-full items-center justify-center bg-gradient-to-b from-card to-muted">
+        <User size={40} className="text-muted-foreground" aria-hidden="true" />
+      </div>
+      <div className="flex min-h-11 items-center justify-between gap-2 px-3 py-2.5">
+        <p className="min-w-0 truncate text-sm font-semibold text-foreground">
+          {label}
+        </p>
+        {selected ? (
+          <span
+            className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
+            aria-hidden="true"
+          >
+            <Check size={13} />
+          </span>
+        ) : null}
+      </div>
+    </button>
+  );
+}
+
 function IntroVideoAvatarCard({
   avatar,
   selected,
@@ -1324,9 +1375,11 @@ function IntroVideoAvatarCard({
 export function AvatarLibraryContent({
   selectedAvatarId,
   onSelect,
+  onClear,
 }: {
   readonly selectedAvatarId: number | undefined;
   readonly onSelect: (avatar: AvatarVideoAvatar) => void;
+  readonly onClear: () => void;
 }) {
   return (
     <div
@@ -1339,6 +1392,10 @@ export function AvatarLibraryContent({
         inline direction, which would turn this into a horizontal scroller.
       */}
       <div className="columns-2 gap-4 sm:columns-3 lg:columns-4">
+        <NoAvatarCard
+          selected={selectedAvatarId === undefined}
+          onSelect={onClear}
+        />
         {INTRO_VIDEO_AVATARS.map((avatar) => {
           return (
             <IntroVideoAvatarCard

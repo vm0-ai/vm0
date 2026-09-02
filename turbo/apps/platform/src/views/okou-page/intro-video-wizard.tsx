@@ -895,6 +895,9 @@ function AvatarPage({ composer }: { readonly composer: ComposerSignals }) {
   const selectAvatarForVoice = useSet(
     composer.template.selectAvatarTemplateForVoice$,
   );
+  const clearAvatarForVoice = useSet(
+    composer.template.clearAvatarTemplateVoiceSelection$,
+  );
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-5">
@@ -917,6 +920,10 @@ function AvatarPage({ composer }: { readonly composer: ComposerSignals }) {
         onSelect={(nextAvatar) => {
           setAvatar(nextAvatar);
           selectAvatarForVoice(nextAvatar);
+        }}
+        onClear={() => {
+          setAvatar(null);
+          clearAvatarForVoice();
         }}
       />
     </div>

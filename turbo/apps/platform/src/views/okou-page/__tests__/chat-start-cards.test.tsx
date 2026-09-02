@@ -499,6 +499,91 @@ describe("chat start cards", () => {
     });
   });
 
+  it("can return to no presenter after picking one", async () => {
+    const user = userEvent.setup({ delay: null });
+    let sentPrompt: string | undefined;
+    mockChatLifecycle(context, {
+      onSendRequest: ({ prompt }) => {
+        sentPrompt = prompt;
+      },
+      onRunCreate: ({ prompt }) => {
+        sentPrompt = prompt;
+      },
+    });
+    context.mocks.upload.success({
+      id: "intro-video-source",
+      filename: "launch.pdf",
+      contentType: "application/pdf",
+      size: 4,
+      url: "https://example.com/launch.pdf",
+    });
+
+    setupChatStartCards();
+
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+    click(screen.getByTestId("intro-video-start-card"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Create an intro video",
+    });
+    const fileInput = dialog.querySelector<HTMLInputElement>(
+      '[data-intro-video-document-input=""]',
+    );
+    if (!fileInput) {
+      throw new Error("Expected intro video document input");
+    }
+    await user.upload(
+      fileInput,
+      new File(["deck"], "launch.pdf", { type: "application/pdf" }),
+    );
+    await expect(
+      screen.findByText("Your source is ready"),
+    ).resolves.toBeInTheDocument();
+    click(buttonWithText("Next", dialog));
+    await expect(
+      screen.findByText("Choose an avatar"),
+    ).resolves.toBeInTheDocument();
+
+    const noAvatar = dialog.querySelector<HTMLButtonElement>(
+      '[data-intro-video-no-avatar=""]',
+    );
+    if (!noAvatar) {
+      throw new Error("Expected a no-avatar card");
+    }
+    expect(noAvatar).toHaveAttribute("aria-pressed", "true");
+
+    click(await screen.findByLabelText("Select template Amara"));
+    expect(noAvatar).toHaveAttribute("aria-pressed", "false");
+    expect(
+      screen.getByText("Where should the presenter stand?"),
+    ).toBeInTheDocument();
+
+    // The wizard keeps its draft across close and reopen and the presenter
+    // cards do not toggle off, so without this card a picked presenter could
+    // never be undone.
+    click(noAvatar);
+    expect(noAvatar).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByText("Where should the presenter stand?")).toBeNull();
+
+    click(buttonWithText("Next", dialog));
+    await expect(
+      screen.findByText("Choose a voice"),
+    ).resolves.toBeInTheDocument();
+    click(buttonWithText("No voiceover", dialog, false));
+    click(buttonWithText("Next", dialog));
+    await expect(
+      screen.findByText("Review your intro video"),
+    ).resolves.toBeInTheDocument();
+    await user.click(buttonWithText("Create in chat", dialog));
+
+    await waitFor(() => {
+      expect(sentPrompt).toContain("- Avatar: No avatar");
+      expect(sentPrompt).not.toContain("- Presenter placement:");
+    });
+  });
+
   it("omits the presenter placement question for a video source", async () => {
     const user = userEvent.setup({ delay: null });
     setupChatStartCards();
