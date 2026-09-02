@@ -38,7 +38,7 @@ pub(crate) struct HostCpuCgroupManager {
 }
 
 pub(crate) struct GuestCpuCgroupLease {
-    leaf_path: PathBuf,
+    leaf_path: Option<PathBuf>,
     placement_file: Option<File>,
 }
 
@@ -93,14 +93,27 @@ impl HostCpuCgroupManager {
                 )));
             }
         };
-        let control_path = parse_control_membership(&membership)?;
-        let relative_control = control_path.strip_prefix("/").map_err(|_| {
+        let membership_path = parse_unified_membership(&membership)?;
+        let relative_membership = membership_path.strip_prefix("/").map_err(|_| {
             InitializationError::Invalid(format!(
                 "unified membership is not absolute: {}",
-                control_path.display()
+                membership_path.display()
             ))
         })?;
-        let control_path = cgroup_mount.join(relative_control);
+        let current_path = cgroup_mount.join(relative_membership);
+        if membership_path.file_name().and_then(|name| name.to_str()) != Some(CONTROL_GROUP) {
+            if read_delegate_marker(&current_path)?.is_some() {
+                return Err(InitializationError::Invalid(format!(
+                    "delegated cgroup does not use the required {CONTROL_GROUP} subgroup: {}",
+                    membership_path.display()
+                )));
+            }
+            return Err(InitializationError::Unavailable(format!(
+                "current cgroup is not the systemd {CONTROL_GROUP} subgroup: {}",
+                membership_path.display()
+            )));
+        }
+        let control_path = current_path;
         let root_path = control_path.parent().ok_or_else(|| {
             InitializationError::Invalid("control subgroup has no delegated parent".into())
         })?;
@@ -157,7 +170,7 @@ impl HostCpuCgroupManager {
         })?;
         match configure_guest_leaf(&leaf_path, vcpu) {
             Ok(placement_file) => Ok(GuestCpuCgroupLease {
-                leaf_path,
+                leaf_path: Some(leaf_path),
                 placement_file: Some(placement_file),
             }),
             Err(error) => {
@@ -189,13 +202,16 @@ impl GuestCpuCgroupLease {
 
     pub(crate) fn release(mut self) -> io::Result<()> {
         drop(self.placement_file.take());
-        fs::remove_dir(&self.leaf_path)
+        match self.leaf_path.take() {
+            Some(leaf_path) => fs::remove_dir(leaf_path),
+            None => Ok(()),
+        }
     }
 
     #[cfg(test)]
     pub(crate) fn from_test_file(leaf_path: PathBuf, placement_file: File) -> Self {
         Self {
-            leaf_path,
+            leaf_path: Some(leaf_path),
             placement_file: Some(placement_file),
         }
     }
@@ -204,11 +220,12 @@ impl GuestCpuCgroupLease {
 impl Drop for GuestCpuCgroupLease {
     fn drop(&mut self) {
         drop(self.placement_file.take());
-        if let Err(error) = fs::remove_dir(&self.leaf_path)
+        if let Some(leaf_path) = self.leaf_path.take()
+            && let Err(error) = fs::remove_dir(&leaf_path)
             && error.kind() != io::ErrorKind::NotFound
         {
             warn!(
-                path = %self.leaf_path.display(),
+                path = %leaf_path.display(),
                 %error,
                 "failed to remove Guest CPU cgroup during drop"
             );
@@ -216,7 +233,7 @@ impl Drop for GuestCpuCgroupLease {
     }
 }
 
-fn parse_control_membership(membership: &str) -> Result<PathBuf, InitializationError> {
+fn parse_unified_membership(membership: &str) -> Result<PathBuf, InitializationError> {
     let mut unified = membership.lines().filter_map(|line| {
         let mut fields = line.splitn(3, ':');
         match (fields.next(), fields.next(), fields.next()) {
@@ -235,12 +252,6 @@ fn parse_control_membership(membership: &str) -> Result<PathBuf, InitializationE
         ));
     }
     let path = PathBuf::from(path);
-    if path.file_name().and_then(|name| name.to_str()) != Some(CONTROL_GROUP) {
-        return Err(InitializationError::Unavailable(format!(
-            "current cgroup is not the systemd {CONTROL_GROUP} subgroup: {}",
-            path.display()
-        )));
-    }
     if !path.is_absolute()
         || path
             .components()
@@ -320,6 +331,16 @@ fn require_plain_directory(path: &Path, label: &str) -> Result<(), Initializatio
 }
 
 fn require_delegate_xattr(path: &Path) -> Result<(), InitializationError> {
+    if read_delegate_marker(path)?.is_none() {
+        return Err(InitializationError::Invalid(format!(
+            "delegated service root {} lacks systemd user.delegate marker",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+fn read_delegate_marker(path: &Path) -> Result<Option<()>, InitializationError> {
     let path_c = CString::new(path.as_os_str().as_bytes()).map_err(|_| {
         InitializationError::Invalid(format!("delegated root contains NUL: {}", path.display()))
     })?;
@@ -335,10 +356,17 @@ fn require_delegate_xattr(path: &Path) -> Result<(), InitializationError> {
         )
     };
     if size < 0 {
+        let error = io::Error::last_os_error();
+        if matches!(
+            error.raw_os_error(),
+            Some(code)
+                if code == libc::ENOENT || code == libc::ENODATA || code == libc::ENOTSUP
+        ) {
+            return Ok(None);
+        }
         return Err(InitializationError::Invalid(format!(
-            "delegated service root {} lacks systemd user.delegate marker: {}",
+            "read systemd user.delegate marker from {}: {error}",
             path.display(),
-            io::Error::last_os_error()
         )));
     }
     let size = usize::try_from(size)
@@ -349,7 +377,7 @@ fn require_delegate_xattr(path: &Path) -> Result<(), InitializationError> {
             path.display()
         )));
     }
-    Ok(())
+    Ok(Some(()))
 }
 
 fn require_controller(path: &Path, controller: &str) -> Result<(), InitializationError> {
@@ -605,6 +633,23 @@ mod tests {
             HostCpuCgroupManager::initialize_with_paths(preferred, &proc, temp.path())
                 .unwrap()
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn prefer_managed_rejects_delegation_without_control_subgroup() {
+        let (_temp, proc, mount) = fake_delegated_tree();
+        fs::write(&proc, "0::/system.slice/vm0-runner.service\n").unwrap();
+        let config =
+            HostCpuPlacementConfig::new(100, 9900, HostCpuPlacementMode::PreferManaged).unwrap();
+
+        assert!(HostCpuCgroupManager::initialize_with_paths(config, &proc, &mount).is_err());
+        assert_eq!(
+            fs::read_to_string(
+                mount.join("system.slice/vm0-runner.service/cgroup.subtree_control")
+            )
+            .unwrap(),
+            ""
         );
     }
 

@@ -23,8 +23,7 @@ const CONTROL_WEIGHT: u32 = 200;
 const GUESTS_WEIGHT: u32 = 9_800;
 const SAMPLE_WARMUP: Duration = Duration::from_secs(1);
 const SAMPLE_WINDOW: Duration = Duration::from_secs(5);
-const SATURATED_SAMPLES: usize = 3;
-const SATURATED_SAMPLES_U64: u64 = 3;
+const SATURATED_SAMPLES: u64 = 3;
 const TEST_VCPUS: [u32; 4] = [1, 1, 4, 4];
 const CPU_LOAD_COMMAND: &str = "sh -c 'for i in $(seq 1 $(nproc)); do timeout 8 sh -c \
     \"while :; do :; done\" & done; wait || true'";
@@ -186,7 +185,7 @@ async fn real_firecracker_guests_receive_weighted_host_cpu_service() -> TestResu
             .get(selected)
             .copied()
             .ok_or_else(|| io::Error::other("selected saturated sandbox is missing"))?
-            / SATURATED_SAMPLES_U64;
+            / SATURATED_SAMPLES;
         let borrowing_selected = borrowing
             .usage
             .get(selected)
