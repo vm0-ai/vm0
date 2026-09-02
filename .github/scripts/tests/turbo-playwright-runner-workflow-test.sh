@@ -103,6 +103,15 @@ account_prepare = jobs.fetch("cli-e2e-03-runner-prepare")
 bootstrap = jobs.fetch("cli-e2e-03-runner-bootstrap")
 runner = jobs.fetch("cli-e2e-03-runner")
 account_cleanup = jobs.fetch("cli-e2e-03-runner-cleanup")
+unless playwright_finalizer["continue-on-error"] == true
+  raise "Playwright finalization must not fail the workflow"
+end
+unless account_cleanup["continue-on-error"] == true
+  raise "runner E2E cleanup must not fail the workflow"
+end
+if playwright.key?("continue-on-error") || runner.key?("continue-on-error")
+  raise "actual Playwright and runner E2E jobs must remain blocking"
+end
 expected_api_backend_url = "${{ needs.deploy-api.outputs.preview-url }}"
 assert_canonical_api_backend_url = lambda do |step, name|
   environment = step.fetch("env")
@@ -187,6 +196,8 @@ playwright_run = playwright.fetch("steps").find do |step|
   step["name"] == "Run Playwright E2E tests"
 end
 unless playwright_run&.fetch("shell") == "bash" &&
+    playwright_run["continue-on-error"] ==
+      "${{ vars.CI_CHECK_BROWSER_E2E != '1' }}" &&
     playwright_run.fetch("run").include?('--project="$PLAYWRIGHT_PROJECT"') &&
     playwright_run.dig("env", "PLAYWRIGHT_PROJECT") ==
       "${{ matrix.project }}"
@@ -747,13 +758,17 @@ end
 gate_needs = Array(jobs.fetch("ci-gate-turbo")["needs"])
 %w[
   cli-e2e-02-playwright
-  cli-e2e-02-playwright-finalize
   cli-e2e-03-runner-prepare
   cli-e2e-03-runner-bootstrap
   cli-e2e-03-runner
-  cli-e2e-03-runner-cleanup
 ].each do |job_name|
   raise "CI gate must include #{job_name}" unless gate_needs.include?(job_name)
+end
+%w[
+  cli-e2e-02-playwright-finalize
+  cli-e2e-03-runner-cleanup
+].each do |job_name|
+  raise "CI gate must not wait for #{job_name}" if gate_needs.include?(job_name)
 end
 
 gate_step = jobs.fetch("ci-gate-turbo").fetch("steps").find do |step|
@@ -773,17 +788,23 @@ end
   cli-e2e-03-runner-prepare
   cli-e2e-03-runner-bootstrap
   cli-e2e-03-runner
-  cli-e2e-03-runner-cleanup
 ].each do |job_name|
   expected = "check_result \"#{job_name}\" \"${{ needs.#{job_name}.result }}\" \"$RUNNER_E2E_SKIP_ALLOWED\""
   raise "CI gate must check #{job_name} with RUNNER_E2E_SKIP_ALLOWED" unless gate_script.include?(expected)
 end
 %w[
   cli-e2e-02-playwright
-  cli-e2e-02-playwright-finalize
 ].each do |job_name|
   expected = "check_result \"#{job_name}\" \"${{ needs.#{job_name}.result }}\" \"${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}\""
   raise "CI gate must check #{job_name} with the browser E2E policy" unless gate_script.include?(expected)
+end
+%w[
+  cli-e2e-02-playwright-finalize
+  cli-e2e-03-runner-cleanup
+].each do |job_name|
+  if gate_script.include?("needs.#{job_name}.result")
+    raise "CI gate must not evaluate #{job_name}"
+  end
 end
 RUBY
 

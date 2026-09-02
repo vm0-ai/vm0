@@ -1916,6 +1916,7 @@ jobs:
   cli-e2e-02-playwright-finalize:
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    continue-on-error: true
     concurrency:
       group: cli-e2e-02-playwright-finalize-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
@@ -2829,6 +2830,7 @@ jobs:
   cli-e2e-03-runner-cleanup:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    continue-on-error: true
     needs:
       - prepare
       - cli-e2e-03-runner-prepare
@@ -2982,12 +2984,10 @@ jobs:
       - deploy-cli
       - cli-e2e-02-browser
       - cli-e2e-02-playwright
-      - cli-e2e-02-playwright-finalize
       - cli-e2e-01-serial
       - cli-e2e-03-runner-prepare
       - cli-e2e-03-runner-bootstrap
       - cli-e2e-03-runner
-      - cli-e2e-03-runner-cleanup
       - deploy-runner-prepare
       - deploy-runner-start
     # Always run so the gate reports an explicit result (not "skipped").
@@ -3090,12 +3090,10 @@ jobs:
           check_result "deploy-cli" "${{ needs.deploy-cli.result }}" "$CF_APP_SKIP_ALLOWED"
           check_result "cli-e2e-02-browser" "${{ needs.cli-e2e-02-browser.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
           check_result "cli-e2e-02-playwright" "${{ needs.cli-e2e-02-playwright.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
-          check_result "cli-e2e-02-playwright-finalize" "${{ needs.cli-e2e-02-playwright-finalize.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
           check_result "cli-e2e-01-serial" "${{ needs.cli-e2e-01-serial.result }}" "true"
           check_result "cli-e2e-03-runner-prepare" "${{ needs.cli-e2e-03-runner-prepare.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "cli-e2e-03-runner-bootstrap" "${{ needs.cli-e2e-03-runner-bootstrap.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "cli-e2e-03-runner" "${{ needs.cli-e2e-03-runner.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
-          check_result "cli-e2e-03-runner-cleanup" "${{ needs.cli-e2e-03-runner-cleanup.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "deploy-runner-prepare" "${{ needs.deploy-runner-prepare.result }}" "$RUNNER_DEPLOY_SKIP_ALLOWED"
           check_result "deploy-runner-start" "${{ needs.deploy-runner-start.result }}" "$RUNNER_DEPLOY_SKIP_ALLOWED"
 
