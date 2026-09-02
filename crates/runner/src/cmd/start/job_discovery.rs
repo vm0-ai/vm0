@@ -2,6 +2,93 @@
 //!
 //! `run()` owns the provider discovery future and reactor scheduling. This
 //! module owns the body that turns a discovered job into a claimed spawned job.
+//!
+//! ## Ownership lifecycle
+//!
+//! A discovered candidate is not provider-owned until `JobProvider::claim` returns a claim. The
+//! path before that boundary must remain reversible: local resources can be reserved, cancellation
+//! can be registered, and either step can still be rolled back without completing a provider job.
+//! After a successful claim, every exit either transfers the claimed setup to the executor or
+//! completes the claim through the provider before releasing or recovering its local ownership.
+//!
+//! The lifecycle is ordered as follows:
+//!
+//! 1. **Prepare the candidate.** Resolve the profile, factory, resource requirements, and runner
+//!    preference. Preference preparation may select a compatible idle sandbox, an exact
+//!    history-generation sandbox, a workspace-cache opportunity, or a finalizing predecessor. If
+//!    a required preference resource is not available, the candidate is deferred or retained for a
+//!    later poll rather than claimed.
+//! 2. **Reserve local admission.** Before ordinary claim, hold either a budget lease or a reserved
+//!    idle entry. Exact speculation holds a generation-matching reservation while it prepares the
+//!    sandbox in parallel with claim. A finalizing successor is the deliberate exception: a proof of
+//!    its predecessor's reuse identity allows claim before the predecessor publishes an exact
+//!    sandbox, so no fresh capacity is reserved for this admission.
+//! 3. **Register cancellation and recheck lifecycle mode.** The cancellation registration is made
+//!    before claim so provider-side cancellation can find the run, and duplicate registration is
+//!    rejected without overwriting the active executor handle. The mode is checked after local
+//!    admission: starting, draining, and stopped runners release the resource without claiming;
+//!    stopping runners still claim but request hard cancellation so the provider-owned job can be
+//!    completed deterministically.
+//! 4. **Cross the provider boundary.** `claim()` runs in the non-cancellable branch handler. A
+//!    rejected claim or a mismatched returned run ID unregisters cancellation and rolls back the
+//!    admitted resource. In ordinary control flow, a successful claim is paired with `complete()`
+//!    by either the pre-executor recovery path or the spawned job lifecycle; this pairing is why
+//!    claim must not be interrupted. A panic after ownership becomes active is handled by the
+//!    cleanup and orphan-reconciliation path rather than by fabricating a completion.
+//! 5. **Activate the claimed resource.** Validate the resume session and register an active-run
+//!    guard so the claimed reuse key is not advertised as available during activation. A fresh
+//!    admission first tries ordinary idle reuse and then fresh creation. A reserved idle entry
+//!    persists `preparing` active status before unpark. Exact speculation validates the claimed
+//!    identity and commits the prepared sandbox only under the cancellation transfer guard. A
+//!    finalizing admission is handed to the specialized finalizing-successor path described in
+//!    [`finalizing_claim.rs`](https://github.com/vm0-ai/vm0/blob/main/crates/runner/src/cmd/start/finalizing_claim.rs#L1-L72).
+//! 6. **Transfer to the executor.** `ClaimedActivationGuard` owns the claimed setup while active
+//!    status and the spawn request are prepared. It publishes the active status using the matching
+//!    idle snapshot, builds the session-history restore plan, and takes the setup only when the
+//!    executor request is complete. Dropping the guard before that transfer schedules recovery
+//!    instead of losing the provider claim or sandbox ownership.
+//! 7. **Complete and reconcile.** After handoff, `job_spawn` owns executor completion, provider
+//!    reporting, and the post-executor park-or-destroy decision. If cleanup proves destruction or
+//!    an idle-pool transfer, matching active status can be removed. If destruction is uncertain,
+//!    active status remains visible and `(run_id, sandbox_id)` is recorded for orphan reconciliation
+//!    by `ownership.rs` and `orphan_reap.rs`.
+//!
+//! ## Local admission ownership
+//!
+//! `LocalAdmissionResource` records who owns the resource while the provider claim is in flight:
+//!
+//! - **`Fresh(BudgetLease)`:** local admission owns a fresh capacity lease. A claim conflict,
+//!   lifecycle rejection, or pre-claim cancellation drops it. After a successful claim, the lease
+//!   remains the fresh fallback while ordinary idle reuse is attempted; it is either transferred to
+//!   the executor's fresh sandbox or released after no-sandbox completion. If idle reuse wins, the
+//!   idle sandbox's active lease replaces this speculative fresh lease.
+//! - **`Reusable(ReservedIdleActivation)`:** the reservation owns an idle-pool entry removed from
+//!   the pool. Before claim loss it is restored to the pool. After a claim, activation validates
+//!   profile, device limits, reuse key, and workspace-promotion identity, persists `preparing`,
+//!   and then unparks. A status or unpark failure completes the claim without a sandbox and either
+//!   restores or destroys the entry before any fresh fallback; the reservation is not silently
+//!   dropped.
+//! - **`ExactSpeculative(ExactSpeculationReservation)`:** a generation-matching reservation owns
+//!   the idle entry while unpark and guest-state preparation run alongside claim. The idle status
+//!   snapshot remains the visible pool state until the prepared sandbox is committed. A lost claim
+//!   reparks or destroys the prepared sandbox, while a successful claim checks cancellation under
+//!   the transfer guard before committing it. Preparation or identity failure destroys the
+//!   speculative sandbox before fresh fallback.
+//! - **`Finalizing(FinalizingAdmission)`:** the admission owns an active-run reuse proof, deadline,
+//!   reuse key, and history-generation identity rather than a local capacity lease. The
+//!   finalizing-successor task owns the next decision: receive a direct handoff, reserve the exact
+//!   published generation, or wait for fallback capacity. Cancellation, preparation failure, and
+//!   activation failure complete the claimed job without a sandbox while returning or destroying
+//!   any candidate it still owns.
+//!
+//! The cancellation registration remains owned from registration through claim rollback, no-sandbox
+//! completion, or executor-task cleanup. Its transfer gate serializes cancellation with transitions
+//! that move a sandbox from an idle reservation into active executor ownership. Active status is
+//! published before ordinary reserved-idle unpark and is removed only after the matching sandbox
+//! ownership transition is proved; exact speculation uses its persisted idle snapshot until its
+//! commit point. The representative admission, cancellation, panic, status-recovery, telemetry,
+//! and orphan tests are in `tests/main_loop/admission.rs`, `tests/main_loop/telemetry.rs`,
+//! `tests/failure_recovery/outer_panic.rs`, `ownership.rs`, and `orphan_reap.rs`.
 
 use std::collections::BTreeMap;
 use std::mem::ManuallyDrop;
