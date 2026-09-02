@@ -45,6 +45,7 @@ import {
   feishuBotOpenUrl,
   feishuOAuthAppCallbackUrl,
   feishuOAuthCallbackUrl,
+  legacyFeishuOAuthAppCallbackUrl,
   loadFeishuInstallationConfig,
 } from "../services/feishu-config";
 import {
@@ -149,10 +150,7 @@ function appCallbackUrl(
   query: FeishuOAuthCallbackQuery,
   publicBrand: PublicBrand,
 ): string {
-  const url = new URL(feishuOAuthAppCallbackUrl());
-  url.hostname = new URL(
-    appUrlForPublicBrand(env("APP_URL"), publicBrand),
-  ).hostname;
+  const url = new URL(feishuOAuthAppCallbackUrl(publicBrand));
   for (const [key, value] of Object.entries(query)) {
     if (value !== undefined) {
       url.searchParams.set(key, value);
@@ -161,10 +159,20 @@ function appCallbackUrl(
   return url.toString();
 }
 
-function oauthRedirectUri(target: "app" | undefined): string {
+function legacyOAuthRedirectUri(target: "app" | undefined): string {
   return target === "app"
-    ? feishuOAuthAppCallbackUrl()
+    ? legacyFeishuOAuthAppCallbackUrl()
     : feishuOAuthCallbackUrl();
+}
+
+function isFeishuAppCallbackRedirectUri(
+  redirectUri: string,
+  publicBrand: PublicBrand,
+): boolean {
+  return (
+    redirectUri === feishuOAuthAppCallbackUrl(publicBrand) ||
+    redirectUri === legacyFeishuOAuthAppCallbackUrl()
+  );
 }
 
 function callbackRedirectResponse(
@@ -676,7 +684,8 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
       orgId: state.orgId,
       userId: state.userId,
       connectorId,
-      redirectUri: oauthRedirectUri(query.callbackTarget),
+      redirectUri:
+        state.redirectUri ?? legacyOAuthRedirectUri(query.callbackTarget),
       publicBrand: state.publicBrand,
       account,
       feishuContext: {
@@ -774,7 +783,7 @@ const completeLegacyFeishuOAuth$ = command(
         clientSecret: config.appSecret,
         code: query.code,
         codeVerifier: null,
-        redirectUri: oauthRedirectUri(state.oauthRedirectTarget),
+        redirectUri: legacyOAuthRedirectUri(state.oauthRedirectTarget),
         installationId: state.installationId,
       },
       signal,
@@ -965,7 +974,10 @@ const completeCustomFeishuOAuth$ = command(
       return jsonErrorResponse("Invalid or expired connect state");
     }
     if (
-      preview.state.redirectUri === feishuOAuthAppCallbackUrl() &&
+      isFeishuAppCallbackRedirectUri(
+        preview.state.redirectUri,
+        preview.state.publicBrand,
+      ) &&
       query.responseMode !== "json"
     ) {
       return redirectResponse(appCallbackUrl(query, preview.state.publicBrand));

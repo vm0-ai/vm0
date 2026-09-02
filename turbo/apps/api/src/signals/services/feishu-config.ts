@@ -1,7 +1,10 @@
 import { eq } from "drizzle-orm";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { apiUrlForPublicBrand } from "@okouai/core/public-brand";
+import {
+  apiUrlForPublicBrand,
+  appUrlForPublicBrand,
+} from "@okouai/core/public-brand";
 
 import { apiBackendUrl } from "../../lib/api-backend-url";
 import { env } from "../../lib/env";
@@ -100,12 +103,30 @@ export function feishuOAuthCallbackUrl(): string {
   ).toString();
 }
 
-export function feishuOAuthAppCallbackUrl(): string {
+export function feishuOAuthAppCallbackUrl(publicBrand: PublicBrand): string {
+  return new URL(
+    "/connectors/feishu/callback",
+    appUrlForPublicBrand(env("APP_URL"), publicBrand),
+  ).toString();
+}
+
+/**
+ * Redirect URI emitted before Feishu OAuth became brand-aware. Keep this only
+ * for in-flight signed state and persisted connector state created by an older
+ * release, which must replay the byte-for-byte URI that the provider received.
+ */
+export function legacyFeishuOAuthAppCallbackUrl(): string {
   return new URL("/connectors/feishu/callback", env("APP_URL")).toString();
 }
 
-export function feishuOAuthConnectUrl(state: string): string {
-  const url = new URL("/api/feishu/oauth/connect", apiBackendUrl() ?? webUrl());
+export function feishuOAuthConnectUrl(
+  state: string,
+  publicBrand: PublicBrand,
+): string {
+  const url = new URL(
+    "/api/feishu/oauth/connect",
+    apiUrlForPublicBrand(apiBackendUrl() ?? webUrl(), publicBrand),
+  );
   url.searchParams.set("state", state);
   return url.toString();
 }
