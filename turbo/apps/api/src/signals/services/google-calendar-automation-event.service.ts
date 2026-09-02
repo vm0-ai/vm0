@@ -1982,11 +1982,6 @@ async function decideGoogleCalendarWatchReconciliation(
     if (!hasConsumer) {
       await markCalendarWatchNeedsRewatch(args.db, state.id);
     }
-    log.warn("Workflow watch lifecycle reconciliation failed", {
-      provider: "google_calendar",
-      action: hasConsumer ? "renew" : "stop",
-      result: "access_unavailable",
-    });
     return { kind: "failed" };
   }
 
@@ -3125,13 +3120,6 @@ async function dispatchGoogleCalendarWatchState(
   );
   signal.throwIfAborted();
   if (access.kind !== "ok") {
-    log.warn(
-      "Google Calendar event skipped because connector access is unavailable",
-      {
-        watchStateId: args.state.id,
-        message: access.message,
-      },
-    );
     return { kind: "ok", dispatched: 0, duplicates: 0 };
   }
   const baselineInput = {
