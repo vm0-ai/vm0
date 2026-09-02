@@ -98,6 +98,8 @@ const GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES = [
   ...GOAL_SCHEDULER_TIMING_ACTION_TYPES,
   "api_dispatch_pre_create_zero_goal_drain_event_queue_age",
   "api_dispatch_pre_create_zero_goal_drain_load_event",
+  "api_dispatch_pre_create_zero_goal_drain_load_event_lock_thread",
+  "api_dispatch_pre_create_zero_goal_drain_load_event_select_candidate",
   "api_dispatch_pre_create_zero_goal_drain_load_target",
   "api_dispatch_pre_create_zero_goal_drain_resolve_model_context",
   "api_dispatch_pre_create_zero_goal_drain_model_context_load_initial_feature_switches",
