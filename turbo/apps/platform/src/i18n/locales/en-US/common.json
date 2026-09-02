@@ -4780,24 +4780,13 @@
       "title": "Export data"
     },
     "lab": {
-      "actions": {
-        "resetAll": "Reset all",
-        "resetting": "Resetting…"
-      },
-      "description": "Toggle experimental features on or off.",
+      "description": "See feature switches by rollout stage.",
       "documentTitle": "Lab",
-      "empty": {
-        "description": "No feature switches for this maintainer.",
-        "title": "No feature switches"
-      },
-      "filters": {
-        "all": "All"
-      },
       "groups": {
-        "connectors": "Connectors",
-        "other": "Other"
+        "alpha": "Alpha",
+        "beta": "Beta",
+        "released": "Released"
       },
-      "maintainer": "Maintainer: {{maintainer}}",
       "title": "Lab"
     },
     "models": {

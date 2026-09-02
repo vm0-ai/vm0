@@ -121,6 +121,7 @@ describe("isFeatureEnabled", () => {
       maintainer: "lancy@vm0.ai",
       description:
         "Enable the first-class Morning Brief experience in Preferences.",
+      rolloutStage: "beta",
     });
   });
 
@@ -305,7 +306,19 @@ describe("getFeatureSwitchMetadata", () => {
     for (const key of Object.values(FeatureSwitchKey)) {
       expect(metadata[key]?.maintainer).toEqual(expect.any(String));
       expect(metadata[key]?.description).toEqual(expect.any(String));
+      expect(metadata[key]?.rolloutStage).toMatch(/^(released|beta|alpha)$/u);
     }
+  });
+
+  it("should classify switches by rollout audience", () => {
+    const metadata = getFeatureSwitchMetadata();
+
+    expect(metadata[FeatureSwitchKey.Dummy].rolloutStage).toBe("released");
+    expect(metadata[FeatureSwitchKey.Lab].rolloutStage).toBe("beta");
+    expect(metadata[FeatureSwitchKey.IntroVideo].rolloutStage).toBe("alpha");
+    expect(metadata[FeatureSwitchKey.AhrefsConnector].rolloutStage).toBe(
+      "alpha",
+    );
   });
 });
 

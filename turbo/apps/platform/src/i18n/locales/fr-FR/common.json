@@ -4843,24 +4843,13 @@
       "title": "Exporter les données"
     },
     "lab": {
-      "actions": {
-        "resetAll": "Tout réinitialiser",
-        "resetting": "Réinitialisation…"
-      },
-      "description": "Activer ou désactiver les fonctionnalités expérimentales.",
+      "description": "Consultez les fonctionnalités par phase de déploiement.",
       "documentTitle": "Laboratoire",
-      "empty": {
-        "description": "Aucun interrupteur de fonctionnalité pour ce mainteneur.",
-        "title": "Aucun interrupteur de fonctionnalité"
-      },
-      "filters": {
-        "all": "Tout"
-      },
       "groups": {
-        "connectors": "Connecteurs",
-        "other": "Autre"
+        "alpha": "Alpha",
+        "beta": "Bêta",
+        "released": "Publiées"
       },
-      "maintainer": "Mainteneur : {{maintainer}}",
       "title": "Laboratoire"
     },
     "models": {
