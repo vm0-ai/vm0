@@ -16,12 +16,14 @@ import {
 import type {
   PiMemoryRecallOutcome,
   PiMemoryRecallSelection,
+  PiMemoryToolSourceUse,
   PiPreheatedResourceSnapshot,
 } from "./api-types";
 import {
   loadPiSandboxMemoryRecall,
   resolvePiApiMemoryRecall,
 } from "./memory-recall-node";
+import { createPiMemoryTools } from "./memory-tools-node";
 import { piAgentStreamForConfig, resolvePiAgentModel } from "./model";
 import { piPreheatedResourceLoaderOptions } from "./resources";
 import type { PiAgentModelConfig } from "./types";
@@ -104,6 +106,7 @@ export async function createPiAgentSessionForRuntime(args: {
   readonly memoryRecall?: PiMemoryRecallSelection;
   readonly memoryRoot?: string;
   readonly onMemoryRecallOutcome?: (outcome: PiMemoryRecallOutcome) => void;
+  readonly onMemoryToolSourceUse?: (sourceUse: PiMemoryToolSourceUse) => void;
   readonly sessionStartEvent?: CreateAgentSessionFromServicesOptions["sessionStartEvent"];
 }) {
   initializePiSessionResourceRegistry();
@@ -111,6 +114,26 @@ export async function createPiAgentSessionForRuntime(args: {
     ? resolvePiApiMemoryRecall(args.resourceSnapshot)
     : await loadPiSandboxMemoryRecall(args.memoryRecall, args.memoryRoot);
   args.onMemoryRecallOutcome?.(memoryRecall.outcome);
+  const memorySelection = args.resourceSnapshot
+    ? args.resourceSnapshot.schemaVersion === 2
+      ? args.resourceSnapshot.memoryRecall
+      : undefined
+    : args.memoryRecall;
+  const memoryTools =
+    memorySelection !== undefined &&
+    (memoryRecall.outcome.parity === "frozen-match" ||
+      memoryRecall.outcome.parity === "frozen-no-content")
+      ? createPiMemoryTools({
+          mode: args.resourceSnapshot ? "api-first" : "sandbox",
+          selection: memorySelection,
+          ...(args.memoryRoot === undefined
+            ? {}
+            : { memoryRoot: args.memoryRoot }),
+          ...(args.onMemoryToolSourceUse === undefined
+            ? {}
+            : { onSourceUse: args.onMemoryToolSourceUse }),
+        })
+      : [];
   const appendSystemPrompt = [
     ...(args.appendSystemPrompt === null ? [] : [args.appendSystemPrompt]),
     ...(memoryRecall.block === null ? [] : [memoryRecall.block]),
@@ -168,6 +191,7 @@ export async function createPiAgentSessionForRuntime(args: {
       createBashTool(args.cwd, {
         shellPath: "/usr/local/bin/guest-tool-exec",
       }),
+      ...memoryTools,
     ],
   });
   return { ...created, services, model };
