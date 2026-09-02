@@ -8,6 +8,7 @@ import { IMAGE_MODEL_CONFIGS, resolveImageModel } from "./image-model-catalog";
  */
 const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   // Anthropic direct (claude-code-oauth-token, anthropic-api-key, vm0)
+  "claude-fable-5-1": "Claude Fable 5.1",
   "claude-fable-5": "Claude Fable 5",
   "claude-opus-5": "Claude Opus 5",
   "claude-sonnet-5": "Claude Sonnet 5",
@@ -15,6 +16,7 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   "claude-opus-4-8": "Claude Opus 4.8",
   "claude-haiku-4-5": "Claude Haiku 4.5",
   // Anthropic via OpenRouter / Vercel AI Gateway
+  "anthropic/claude-fable-5.1": "Claude Fable 5.1",
   "anthropic/claude-fable-5": "Claude Fable 5",
   "anthropic/claude-opus-5": "Claude Opus 5",
   "anthropic/claude-sonnet-5": "Claude Sonnet 5",

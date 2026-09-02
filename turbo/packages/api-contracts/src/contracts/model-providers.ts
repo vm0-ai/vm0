@@ -130,6 +130,7 @@ const MODEL_PROVIDER_CODEX_RUNTIME_CONFIGS: Partial<
 };
 
 export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
+  "claude-fable-5-1",
   "claude-fable-5",
   "gpt-5.6-sol",
   "gpt-5.6-luna",
@@ -159,6 +160,7 @@ export interface DefaultOrgModelPolicySeed {
 }
 
 const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
+  "claude-fable-5-1": "Claude Fable 5.1",
   "claude-fable-5": "Claude Fable 5",
   "claude-opus-5": "Claude Opus 5",
   "claude-opus-4-8": "Claude Opus 4.8",
@@ -265,6 +267,15 @@ interface ModelConfig {
 // `MODEL_PROVIDER_TYPES["built-in"].models` is derived from it, which in turn drives
 // the order models appear in the Built-in model dropdown.
 export const VM0_MODEL_TO_PROVIDER = {
+  "claude-fable-5-1": {
+    candidates: [
+      { concreteType: "anthropic-api-key" },
+      {
+        concreteType: "openrouter-api-key",
+        apiModel: "anthropic/claude-fable-5.1",
+      },
+    ],
+  },
   "claude-fable-5": {
     candidates: [
       { concreteType: "anthropic-api-key" },
@@ -414,6 +425,7 @@ export function getVm0BuiltInModelRouteVendors(): readonly string[] {
 }
 
 export const VM0_MODEL_ALIAS_TO_MODEL = {
+  "anthropic/claude-fable-5.1": "claude-fable-5-1",
   "anthropic/claude-fable-5": "claude-fable-5",
   "anthropic/claude-opus-5": "claude-opus-5",
   "anthropic/claude-opus-4.8": "claude-opus-4-8",
@@ -454,11 +466,13 @@ export function isLimitedFree1RestrictedRunModel(
 export type ModelImageInputSupport = "supported" | "unsupported" | "unknown";
 
 const IMAGE_INPUT_SUPPORTED_MODELS = new Set([
+  "claude-fable-5-1",
   "claude-fable-5",
   "claude-opus-5",
   "claude-opus-4-8",
   "claude-sonnet-5",
   "claude-sonnet-4-6",
+  "anthropic/claude-fable-5.1",
   "anthropic/claude-fable-5",
   "anthropic/claude-opus-5",
   "anthropic/claude-opus-4.8",
@@ -543,6 +557,7 @@ export const MODEL_PROVIDER_TYPES = {
       ANTHROPIC_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
     models: [
+      "claude-fable-5-1",
       "claude-fable-5",
       "claude-opus-5",
       "claude-sonnet-5",
@@ -563,6 +578,7 @@ export const MODEL_PROVIDER_TYPES = {
       ANTHROPIC_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
     models: [
+      "claude-fable-5-1",
       "claude-fable-5",
       "claude-opus-5",
       "claude-sonnet-5",
@@ -588,6 +604,7 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
     models: [
+      "anthropic/claude-fable-5.1",
       "anthropic/claude-fable-5",
       "anthropic/claude-opus-5",
       "anthropic/claude-opus-4.8",
@@ -629,6 +646,7 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
     models: [
+      "anthropic/claude-fable-5.1",
       "anthropic/claude-fable-5",
       "anthropic/claude-opus-5",
       "anthropic/claude-opus-4.8",
@@ -907,6 +925,13 @@ export function getModelProviderPresentationLabel(
 }
 
 const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
+  "claude-fable-5-1": [
+    "built-in",
+    "claude-code-oauth-token",
+    "anthropic-api-key",
+    "openrouter-api-key",
+    "vercel-ai-gateway",
+  ],
   "claude-fable-5": [
     "built-in",
     "claude-code-oauth-token",
@@ -978,6 +1003,7 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
   Record<ModelProviderType, Partial<Record<SupportedRunModel, string>>>
 > = {
   "openrouter-api-key": {
+    "claude-fable-5-1": "anthropic/claude-fable-5.1",
     "claude-fable-5": "anthropic/claude-fable-5",
     "claude-opus-5": "anthropic/claude-opus-5",
     "claude-opus-4-8": "anthropic/claude-opus-4.8",
@@ -985,6 +1011,7 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
     "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
   },
   "vercel-ai-gateway": {
+    "claude-fable-5-1": "anthropic/claude-fable-5.1",
     "claude-fable-5": "anthropic/claude-fable-5",
     "claude-opus-5": "anthropic/claude-opus-5",
     "claude-opus-4-8": "anthropic/claude-opus-4.8",
@@ -1007,6 +1034,7 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
 
 const CANONICAL_RUN_MODEL_ALIASES: Readonly<Record<string, SupportedRunModel>> =
   {
+    "anthropic/claude-fable-5.1": "claude-fable-5-1",
     "anthropic/claude-fable-5": "claude-fable-5",
     "anthropic/claude-opus-5": "claude-opus-5",
     "anthropic/claude-opus-4.8": "claude-opus-4-8",
