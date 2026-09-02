@@ -37,7 +37,7 @@ import {
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
   DEFAULT_PROFILE,
   PI_MEMORY_ROOT,
-  piApiFirstTurnManifestV3Schema,
+  piApiFirstTurnManifestSchema,
 } from "@okouai/api-contracts/contracts/runners";
 import { mailContract } from "@okouai/api-contracts/contracts/mail";
 import {
@@ -139,6 +139,7 @@ import {
   seedVm0BuiltInModelKey as seedVm0BuiltInModelKeyState,
   setVm0BuiltInCandidateCooldownFixture,
   setRunAutonomyBudgetFixture,
+  setRunnerJobPiOwnershipTransferAsPreviousApi,
   steerRunTimeBudgetFixture,
 } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
@@ -7003,7 +7004,7 @@ describe("CHAT-02: model-first provider policies", () => {
     await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
       status: "running",
     });
-    const manifest = piApiFirstTurnManifestV3Schema.parse(
+    const manifest = piApiFirstTurnManifestSchema.parse(
       JSON.parse(checkpointObjects.get(manifestKey)?.toString("utf8") ?? "{}"),
     );
     expect(manifest).toMatchObject({
@@ -7120,7 +7121,7 @@ describe("CHAT-02: model-first provider policies", () => {
     await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
       status: "running",
     });
-    const manifest = piApiFirstTurnManifestV3Schema.parse(
+    const manifest = piApiFirstTurnManifestSchema.parse(
       JSON.parse(checkpointObjects.get(manifestKey)?.toString("utf8") ?? "{}"),
     );
     expect(manifest).toMatchObject({
@@ -7303,7 +7304,7 @@ describe("CHAT-02: model-first provider policies", () => {
         return checkpointObjects.get(manifestKey);
       })
       .toBeInstanceOf(Buffer);
-    const manifest = piApiFirstTurnManifestV3Schema.parse(
+    const manifest = piApiFirstTurnManifestSchema.parse(
       JSON.parse(checkpointObjects.get(manifestKey)?.toString("utf8") ?? "{}"),
     );
     expect(manifest).toMatchObject({
@@ -7782,7 +7783,7 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(checkpointObjects.get(fallbackManifestKey)).toBeInstanceOf(Buffer);
     expect(modelCalls).toBe(0);
 
-    const fallbackManifest = piApiFirstTurnManifestV3Schema.parse(
+    const fallbackManifest = piApiFirstTurnManifestSchema.parse(
       JSON.parse(
         checkpointObjects.get(fallbackManifestKey)?.toString("utf8") ?? "{}",
       ),
@@ -7819,11 +7820,16 @@ describe("CHAT-02: model-first provider policies", () => {
       prompt: fallbackPrompt,
       piLaunchConfig: {
         apiFirstTurn: {
-          ownershipTransfer: { schemaVersion: 1 },
           sandboxEventSequenceStart: 1,
         },
       },
     });
+    const fallbackFirstTurnConfig =
+      fallbackClaim.claim.piLaunchConfig?.apiFirstTurn;
+    if (!fallbackFirstTurnConfig) {
+      throw new Error("Expected Pi API first-turn launch config");
+    }
+    expect(fallbackFirstTurnConfig).not.toHaveProperty("ownershipTransfer");
     const postProviderPrompt = "must fail after one provider request";
     const postProvider = await sendChatRun(actor, {
       agentId,
@@ -8113,7 +8119,7 @@ describe("CHAT-02: model-first provider policies", () => {
     if (!manifestBytes) {
       throw new Error("Expected compaction ownership-transfer manifest");
     }
-    const manifest = piApiFirstTurnManifestV3Schema.parse(
+    const manifest = piApiFirstTurnManifestSchema.parse(
       JSON.parse(manifestBytes.toString("utf8")),
     );
     expect(manifest).toMatchObject({
@@ -8344,7 +8350,7 @@ describe("CHAT-02: model-first provider policies", () => {
     if (!manifestBytes) {
       throw new Error("Expected pending-tool ownership-transfer manifest");
     }
-    const manifest = piApiFirstTurnManifestV3Schema.parse(
+    const manifest = piApiFirstTurnManifestSchema.parse(
       JSON.parse(manifestBytes.toString("utf8")),
     );
     expect(manifest).toMatchObject({
@@ -8377,6 +8383,7 @@ describe("CHAT-02: model-first provider policies", () => {
       { content: "before parallel tools", sequenceNumber: 0 },
       { content: "after parallel tools", sequenceNumber: 3 },
     ]);
+    await setRunnerJobPiOwnershipTransferAsPreviousApi(context, run.runId);
     const claimed = await claimChatRun(runnerGroup, run.runId);
     expect(claimed.claim.cliAgentType).toBe("pi");
     expect(claimed.claim.piSessionId).toBe(run.threadId);

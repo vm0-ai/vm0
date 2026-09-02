@@ -806,27 +806,6 @@ const piApiFirstTurnSessionSchema = z
 
 const piSandboxEventSequenceStartSchema = eventSequenceNumberSchema.min(1);
 
-export const piApiFirstTurnManifestV1Schema = z
-  .object({
-    schemaVersion: z.literal(1),
-    outcome: z.literal("handoff"),
-    baseSession: piSessionCheckpointSchema,
-    session: piApiFirstTurnSessionSchema,
-  })
-  .strict()
-  .readonly();
-
-export const piApiFirstTurnManifestV2Schema = z
-  .object({
-    schemaVersion: z.literal(2),
-    outcome: z.literal("handoff"),
-    baseSession: piSessionCheckpointSchema,
-    session: piApiFirstTurnSessionSchema,
-    sandboxEventSequenceStart: piSandboxEventSequenceStartSchema,
-  })
-  .strict()
-  .readonly();
-
 const piApiFirstTurnOwnershipTransferManifestShape = {
   schemaVersion: z.literal(3),
   outcome: z.literal("ownership-transfer"),
@@ -841,7 +820,7 @@ export const piApiFirstTurnOwnershipTransferModeSchema = z.enum([
   "settled-session-continuation",
 ]);
 
-export const piApiFirstTurnManifestV3Schema = z.discriminatedUnion("mode", [
+export const piApiFirstTurnManifestSchema = z.discriminatedUnion("mode", [
   z
     .object({
       ...piApiFirstTurnOwnershipTransferManifestShape,
@@ -865,12 +844,6 @@ export const piApiFirstTurnManifestV3Schema = z.discriminatedUnion("mode", [
     .readonly(),
 ]);
 
-export const piApiFirstTurnManifestSchema = z.union([
-  piApiFirstTurnManifestV1Schema,
-  piApiFirstTurnManifestV2Schema,
-  piApiFirstTurnManifestV3Schema,
-]);
-
 const piApiFirstTurnOwnershipTransferCapabilitySchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -879,10 +852,9 @@ const piApiFirstTurnOwnershipTransferCapabilitySchema = z
   .readonly();
 
 /**
- * Optional consumer capability for the ownership-transfer manifest. The API
- * keeps this absent while it writes legacy V1/V2 pending-tool handoffs. A
- * future writer may publish manifest V3 only after the selected Sandbox has
- * proven support and this marker is present in its immutable launch slot.
+ * Ignored compatibility field for stored contexts written before #31020.
+ * Keep accepting this exact shape until parent #31007 records the
+ * marker-omitting deployment and its queued/claimed context window drains.
  */
 const piApiFirstTurnOwnershipTransferSchema =
   piApiFirstTurnOwnershipTransferCapabilitySchema.optional();

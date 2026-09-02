@@ -291,6 +291,10 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     profile: z.string(),
   }),
   z.object({
+    action: z.literal("set-runner-job-pi-ownership-transfer-as-previous-api"),
+    run_id: z.uuid(),
+  }),
+  z.object({
     action: z.literal(
       "clear-workflow-automation-event-connector-as-previous-api",
     ),
