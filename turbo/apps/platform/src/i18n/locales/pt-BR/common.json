@@ -430,13 +430,11 @@
         "agents": "Agentes",
         "artifacts": "Artefatos",
         "connectors": "Conectores",
-        "newChat": "Novo chat",
         "settings": "Configurações",
         "workflows": "Fluxos de trabalho",
         "works": "Onde {{agentName}} trabalha"
       },
       "rail": {
-        "new": "Novo",
         "workflows": "Fluxos de trabalho",
         "works": "Trabalha"
       },

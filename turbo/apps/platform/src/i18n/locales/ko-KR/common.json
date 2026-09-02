@@ -416,13 +416,11 @@
         "agents": "에이전트",
         "artifacts": "아티팩트",
         "connectors": "커넥터",
-        "newChat": "새 채팅",
         "settings": "설정",
         "workflows": "워크플로",
         "works": "{{agentName}}가(이) 작업하는 곳"
       },
       "rail": {
-        "new": "새로 만들기",
         "workflows": "워크플로",
         "works": "작업"
       },

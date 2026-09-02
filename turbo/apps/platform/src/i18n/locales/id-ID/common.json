@@ -416,13 +416,11 @@
         "agents": "Agen",
         "artifacts": "Artifact",
         "connectors": "Konektor",
-        "newChat": "Chat baru",
         "settings": "Pengaturan",
         "workflows": "Alur kerja",
         "works": "Tempat {{agentName}} bekerja"
       },
       "rail": {
-        "new": "Baru",
         "workflows": "Alur kerja",
         "works": "Bekerja"
       },
