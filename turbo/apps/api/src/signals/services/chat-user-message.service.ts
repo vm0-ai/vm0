@@ -1,11 +1,12 @@
-import type {
-  ChatThreadServiceTier,
-  FeedbackNotePart,
-  GenerationTemplateRequest,
-  UserMessageDocument,
-  UserMessageInputDocument,
-  UserMessageInputPart,
-  UserMessagePart,
+import {
+  annotatedImageFilename,
+  type ChatThreadServiceTier,
+  type FeedbackNotePart,
+  type GenerationTemplateRequest,
+  type UserMessageDocument,
+  type UserMessageInputDocument,
+  type UserMessageInputPart,
+  type UserMessagePart,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   isChatUserMessageEventType,
@@ -235,12 +236,6 @@ function webFilePrompt(part: {
   return `[Web file] ${part.filenameSnapshot} (${part.contentType})\n   [ID] ${part.fileId}`;
 }
 
-function annotatedImageFilenameSnapshot(filename: string): string {
-  const dot = filename.lastIndexOf(".");
-  const stem = dot > 0 ? filename.slice(0, dot) : filename;
-  return `${stem}.annotated.png`;
-}
-
 interface UserMessagePhysicalFile {
   readonly fileId: string;
   readonly filenameSnapshot: string;
@@ -262,7 +257,7 @@ export function userMessagePhysicalFiles(
     return [
       {
         fileId: part.annotatedFileId,
-        filenameSnapshot: annotatedImageFilenameSnapshot(part.filenameSnapshot),
+        filenameSnapshot: annotatedImageFilename(part.filenameSnapshot),
         contentType: "image/png",
       },
       original,
@@ -276,7 +271,7 @@ function userMessageFilePrompt(part: UserMessageFilePart): string {
   }
   const annotatedFile = webFilePrompt({
     fileId: part.annotatedFileId,
-    filenameSnapshot: annotatedImageFilenameSnapshot(part.filenameSnapshot),
+    filenameSnapshot: annotatedImageFilename(part.filenameSnapshot),
     contentType: "image/png",
   });
   return `${annotatedFile}\n\n[Image annotations]\n${JSON.stringify(part)}`;

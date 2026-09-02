@@ -170,6 +170,21 @@ const imageAnnotationSchema = z.object({
   crop: annotationRectSchema.optional(),
 });
 
+/**
+ * Filename the rendered derivative is uploaded under, derived from the
+ * original so the pair reads together in any list that shows both.
+ *
+ * This lives on the contract because the app writes the name and the API
+ * reads it back as the artifact lookup hint. Two independently deployed copies
+ * would drift silently: the exact-key lookup would miss and degrade into a
+ * prefix listing while the agent prompt showed a name no artifact has.
+ */
+export function annotatedImageFilename(filename: string): string {
+  const dot = filename.lastIndexOf(".");
+  const stem = dot > 0 ? filename.slice(0, dot) : filename;
+  return `${stem}.annotated.png`;
+}
+
 /** File attachment metadata stored alongside user messages. */
 const attachFileSchema = z.object({
   id: z.string(),

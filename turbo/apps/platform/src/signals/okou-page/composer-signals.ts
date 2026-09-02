@@ -524,6 +524,19 @@ export function createComposerSignals(
     workflowComposer,
   );
   const imageAnnotation = createImageAnnotationSignals();
+  /**
+   * Teardown owner for the annotation session and its in-flight derivative
+   * uploads. The element itself is not part of the work, but its committed
+   * presence is: `ImageAnnotationEditor` renders inside this exact subtree, so
+   * the subtree leaving the tree is what makes an open session and a pending
+   * upload unreachable. An abandoned upload would otherwise leave the
+   * attachment stuck in `pending`, blocking every later send on the restored
+   * draft with no retry affordance.
+   *
+   * `createComposerSignals` takes no lifecycle signal today, so this is the
+   * narrowest available owner. Replace it with an injected `AbortSignal` if
+   * the composer factory ever gains one.
+   */
   const setImageAnnotationLifecycleRef$ = onRef<HTMLElement>(
     command(({ get, set }, _element: HTMLElement, signal: AbortSignal) => {
       signal.addEventListener(
