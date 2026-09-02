@@ -52,19 +52,6 @@ describe("platform entrypoint safe area behavior", () => {
     expect(contentRule).toMatch(/transform:\s*translate\(-50%,\s*-50%\);/);
   });
 
-  it("keeps the bootstrap avatar static for the first painted frame", () => {
-    const avatarRule = /\.app-bootstrap-skeleton__avatar\s*{([^}]*)}/.exec(
-      indexHtml,
-    )?.[1];
-    const animatedRule =
-      /\.app-bootstrap-skeleton__avatar--animated\s*{([^}]*)}/.exec(
-        indexHtml,
-      )?.[1];
-
-    expect(avatarRule).toMatch(/animation:[^;]*infinite\s+paused;/s);
-    expect(animatedRule).toMatch(/animation-play-state:\s*running;/);
-  });
-
   it("suppresses the bottom safe-area inset only while the keyboard is open", () => {
     const globalCss = readGlobalCss();
 

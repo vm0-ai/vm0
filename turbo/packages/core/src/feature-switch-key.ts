@@ -67,4 +67,5 @@ export enum FeatureSwitchKey {
   ComposerImageAnnotation = "composerImageAnnotation",
   GradientColorThemes = "gradientColorThemes",
   DesktopScreenRecording = "desktopScreenRecording",
+  IosPwaStartupImages = "iosPwaStartupImages",
 }

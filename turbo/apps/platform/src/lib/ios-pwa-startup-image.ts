@@ -139,7 +139,7 @@ function generateIOSPWAStartupImages(avatar: SVGSVGElement): void {
   image.src = avatarUrl;
 }
 
-export function scheduleIOSPWAStartupImages(): void {
+export function scheduleIOSPWAStartupImages(enabled: boolean): void {
   const avatar = document.querySelector(BOOTSTRAP_AVATAR_SELECTOR);
   const avatarSvg = document.querySelector(BOOTSTRAP_AVATAR_SVG_SELECTOR);
   if (
@@ -152,7 +152,7 @@ export function scheduleIOSPWAStartupImages(): void {
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => {
       avatar.classList.add(BOOTSTRAP_AVATAR_ANIMATED_CLASS);
-      if (isAppleTouchDevice()) {
+      if (enabled && isAppleTouchDevice()) {
         generateIOSPWAStartupImages(avatarSvg);
       }
     });
