@@ -100,6 +100,7 @@ import {
 import {
   ensureGoogleCalendarWatchForUser,
   hasEnabledGoogleCalendarConsumer,
+  normalizeGoogleCalendarIdForConnector,
 } from "./google-calendar-automation-event.service";
 import { resolveGoogleCalendarAutomationConnectorId } from "./google-calendar-automation-account.service";
 import {
@@ -2211,10 +2212,22 @@ async function createGoogleCalendarEventAutomationForWorkflow(
         "Connect Google Calendar before adding a Google Calendar event automation",
     };
   }
-  const preparedConfig = parseGoogleCalendarEventConfig(
+  const parsedConfig = parseGoogleCalendarEventConfig(
     args.input.eventType,
     args.input.eventConfig,
   );
+  const calendarId = await normalizeGoogleCalendarIdForConnector(
+    args.context.db,
+    {
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      connectorId: eventConnectorId,
+      calendarId: parsedConfig.calendarId,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  const preparedConfig = { ...parsedConfig, calendarId };
   const hadConsumer = args.input.enabled
     ? await hasEnabledGoogleCalendarConsumer(
         {
@@ -3639,8 +3652,23 @@ async function prepareOfficialGoogleCalendarEvent(
         "Connect Google Calendar before adding a Google Calendar event automation",
     };
   }
+  const parsedConfig = parseGoogleCalendarEventConfig(
+    input.eventType,
+    input.eventConfig,
+  );
+  const calendarId = await normalizeGoogleCalendarIdForConnector(
+    db,
+    {
+      orgId: input.orgId,
+      userId: input.member.userId,
+      connectorId: eventConnectorId,
+      calendarId: parsedConfig.calendarId,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
   return preparedOfficialEvent(
-    parseGoogleCalendarEventConfig(input.eventType, input.eventConfig),
+    { ...parsedConfig, calendarId },
     { eventConnectorId },
   );
 }
@@ -5123,6 +5151,26 @@ async function lockEnabledAutomationAccountProjection(
       automation.eventConfig,
       eventConnectorId,
     );
+  } else if (provider === "google-calendar") {
+    if (!supportedGoogleCalendarEventType(automation.eventType)) {
+      throw new Error("Expected a Google Calendar event automation");
+    }
+    const parsedConfig = parseGoogleCalendarEventConfig(
+      automation.eventType,
+      automation.eventConfig,
+    );
+    const calendarId = await normalizeGoogleCalendarIdForConnector(
+      db,
+      {
+        orgId: automation.orgId,
+        userId: automation.ownerUserId,
+        connectorId: eventConnectorId,
+        calendarId: parsedConfig.calendarId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    eventConfig = { ...parsedConfig, calendarId };
   } else if (provider === "google-forms") {
     eventConfig = await projectGoogleFormsEnabledEventConfig(
       db,
