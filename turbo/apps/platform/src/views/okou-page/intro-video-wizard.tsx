@@ -146,25 +146,6 @@ function sourceFormat(source: IntroVideoSource): string {
   return extension || source.contentType;
 }
 
-function sourceSavedLabel(
-  t: TFunction<"common">,
-  source: IntroVideoSource,
-  persisted: boolean,
-): string {
-  if (source.origin === "uploaded") {
-    return t(($) => {
-      return $.chat.introVideo.sourceReview.inAccount;
-    });
-  }
-  return persisted
-    ? t(($) => {
-        return $.chat.introVideo.sourceReview.inBrowser;
-      })
-    : t(($) => {
-        return $.chat.introVideo.sourceReview.inTab;
-      });
-}
-
 function sourceKindLabel(
   t: TFunction<"common">,
   source: IntroVideoSource,
@@ -548,13 +529,13 @@ function DesktopRecordPage() {
   );
 }
 
-function SourceReviewPage({
-  source,
-  persisted,
-}: {
-  readonly source: IntroVideoSource;
-  readonly persisted: boolean;
-}) {
+/**
+ * Confirmation page for a desktop take.
+ *
+ * A deck goes straight to the presenter, so the only source that reaches this
+ * page is one the desktop recorder already uploaded.
+ */
+function SourceReviewPage({ source }: { readonly source: IntroVideoSource }) {
   const { t } = useTranslation();
   const goToStep = useGoToStep();
   return (
@@ -639,7 +620,9 @@ function SourceReviewPage({
               })}
             </dt>
             <dd className="text-right font-medium text-foreground">
-              {sourceSavedLabel(t, source, persisted)}
+              {t(($) => {
+                return $.chat.introVideo.sourceReview.inAccount;
+              })}
             </dd>
           </div>
         </dl>
@@ -1267,12 +1250,10 @@ function WizardFooter({
 function WizardContent({
   composer,
   source,
-  sourcePersisted,
   step,
 }: {
   readonly composer: ComposerSignals;
   readonly source: IntroVideoSource | null;
-  readonly sourcePersisted: boolean;
   readonly step: IntroVideoWizardStep;
 }) {
   switch (step) {
@@ -1283,11 +1264,7 @@ function WizardContent({
       return <DesktopRecordPage />;
     }
     case "source-review": {
-      return source ? (
-        <SourceReviewPage source={source} persisted={sourcePersisted} />
-      ) : (
-        <SourcePage />
-      );
+      return source ? <SourceReviewPage source={source} /> : <SourcePage />;
     }
     case "avatar": {
       return <AvatarPage composer={composer} />;
@@ -1387,7 +1364,6 @@ export function IntroVideoWizard({
   const open = useGet(introVideoWizardSignals.open$);
   const step = useGet(introVideoWizardSignals.step$);
   const source = useGet(introVideoWizardSignals.source$);
-  const sourcePersisted = useGet(introVideoWizardSignals.sourcePersisted$);
   const voice = useGet(introVideoWizardSignals.voice$);
   const busy = useGet(introVideoWizardSignals.busy$);
   const error = useGet(introVideoWizardSignals.error$);
@@ -1408,12 +1384,7 @@ export function IntroVideoWizard({
       >
         <WizardHeader busy={busy} source={source} step={step} />
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background px-5 py-6 sm:px-6">
-          <WizardContent
-            composer={composer}
-            source={source}
-            sourcePersisted={sourcePersisted}
-            step={step}
-          />
+          <WizardContent composer={composer} source={source} step={step} />
         </div>
         <WizardFooter
           busy={busy}

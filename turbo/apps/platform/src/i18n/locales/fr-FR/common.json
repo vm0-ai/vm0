@@ -2082,8 +2082,6 @@
         "heading": "Votre source est prête",
         "help": "Vérifiez le fichier avant de continuer",
         "inAccount": "Dans votre compte",
-        "inBrowser": "Dans ce navigateur",
-        "inTab": "Jusqu'à la fermeture de cet onglet",
         "replace": "Remplacer la source",
         "saved": "Enregistrée",
         "source": "Source"

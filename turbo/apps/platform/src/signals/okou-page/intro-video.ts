@@ -224,7 +224,6 @@ interface IntroVideoInternalState {
   readonly open$: State<boolean>;
   readonly placement$: State<IntroVideoPlacement>;
   readonly source$: State<IntroVideoSource | null>;
-  readonly sourcePersisted$: State<boolean>;
   readonly sourceUploaded$: State<boolean>;
   readonly step$: State<IntroVideoWizardStep>;
   readonly voice$: State<IntroVideoVoiceSelection | null>;
@@ -241,7 +240,6 @@ function createIntroVideoInternalState(): IntroVideoInternalState {
     open$: state(false),
     placement$: state<IntroVideoPlacement>("left"),
     source$: state<IntroVideoSource | null>(null),
-    sourcePersisted$: state(false),
     sourceUploaded$: state(false),
     step$: state<IntroVideoWizardStep>("source"),
     voice$: state<IntroVideoVoiceSelection | null>(null),
@@ -263,7 +261,6 @@ function createIntroVideoSelectors(internal: IntroVideoInternalState) {
     open$: exposeState(internal.open$),
     placement$: exposeState(internal.placement$),
     source$: exposeState(internal.source$),
-    sourcePersisted$: exposeState(internal.sourcePersisted$),
     step$: exposeState(internal.step$),
     voice$: exposeState(internal.voice$),
   };
@@ -317,7 +314,6 @@ export function introVideoSourceStep(
 function createResetWizardDraftCommand(internal: IntroVideoInternalState) {
   return command(({ set }): void => {
     set(internal.source$, null);
-    set(internal.sourcePersisted$, false);
     set(internal.sourceUploaded$, false);
     set(internal.avatar$, null);
     set(internal.voice$, null);
@@ -409,7 +405,6 @@ function createOpenWizardCommand(internal: IntroVideoInternalState) {
     }
     const restoredSource = sourceFromDraft(restored.value);
     set(internal.source$, restoredSource);
-    set(internal.sourcePersisted$, true);
     set(internal.step$, stepAfterSource(restoredSource));
   });
 }
@@ -462,7 +457,6 @@ function createSourceCommands(
       }
       releasePreviewUrl(source);
       set(internal.source$, null);
-      set(internal.sourcePersisted$, false);
       set(internal.sourceUploaded$, false);
       set(internal.avatar$, null);
       set(internal.voice$, null);
@@ -486,7 +480,6 @@ function createSourceCommands(
       // The bytes are already stored under this account, so submit has nothing
       // to upload and the local draft store has nothing worth holding.
       set(internal.sourceUploaded$, true);
-      set(internal.sourcePersisted$, false);
       set(internal.error$, null);
       set(internal.step$, "source-review");
       set(internal.open$, true);
@@ -498,17 +491,14 @@ function createSourceCommands(
       releasePreviewUrl(get(internal.source$));
       set(internal.source$, source);
       set(internal.sourceUploaded$, false);
-      set(internal.sourcePersisted$, false);
       set(internal.error$, null);
       if (get(internal.voice$)?.kind === "original") {
         set(internal.voice$, null);
       }
       set(internal.step$, stepAfterSource(source));
-      const persisted = await settle(
-        saveIntroVideoDraft(draftFromSource(source)),
-        signal,
-      );
-      set(internal.sourcePersisted$, persisted.ok);
+      // A failed save only costs the reload-restore convenience, so the wizard
+      // carries on with the source it already holds in memory.
+      await settle(saveIntroVideoDraft(draftFromSource(source)), signal);
     },
   );
   return {
