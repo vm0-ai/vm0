@@ -433,6 +433,9 @@ async function completeActiveAgentRunTransition(
     userId: run.userId,
     status: prepared.status,
     framework: launchSnapshot?.framework ?? null,
+    // V1/null launch snapshots can finish under the V2 API during rollout.
+    // Keep generation disabled for them until #31067 confirms that pre-V2
+    // active runs have drained; historical snapshots remain readable.
     generationEnabled:
       launchSnapshot?.schemaVersion === 2
         ? launchSnapshot.piMemoryGenerationEnabled

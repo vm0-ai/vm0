@@ -51,14 +51,16 @@ CREATE TABLE IF NOT EXISTS "pi_memory_stage1_candidates" (
           "pi_memory_stage1_candidates"."raw_memory" IS NULL AND
           "pi_memory_stage1_candidates"."rollout_summary" IS NULL AND
           "pi_memory_stage1_candidates"."rollout_slug" IS NULL AND
-          "pi_memory_stage1_candidates"."generated_at" IS NULL
+          "pi_memory_stage1_candidates"."generated_at" IS NULL AND
+          "pi_memory_stage1_candidates"."last_selected_source_history_hash" IS NULL
         ) OR (
           "pi_memory_stage1_candidates"."status" = 'succeeded' AND
           "pi_memory_stage1_candidates"."retry_at" IS NULL AND
           "pi_memory_stage1_candidates"."last_error_class" IS NULL AND
           "pi_memory_stage1_candidates"."raw_memory" IS NOT NULL AND
           "pi_memory_stage1_candidates"."rollout_summary" IS NOT NULL AND
-          "pi_memory_stage1_candidates"."generated_at" IS NOT NULL
+          "pi_memory_stage1_candidates"."generated_at" IS NOT NULL AND
+          "pi_memory_stage1_candidates"."last_selected_source_history_hash" = "pi_memory_stage1_candidates"."source_history_hash"
         ) OR (
           "pi_memory_stage1_candidates"."status" = 'succeeded_no_output' AND
           "pi_memory_stage1_candidates"."retry_at" IS NULL AND
@@ -66,7 +68,8 @@ CREATE TABLE IF NOT EXISTS "pi_memory_stage1_candidates" (
           "pi_memory_stage1_candidates"."raw_memory" IS NULL AND
           "pi_memory_stage1_candidates"."rollout_summary" IS NULL AND
           "pi_memory_stage1_candidates"."rollout_slug" IS NULL AND
-          "pi_memory_stage1_candidates"."generated_at" IS NOT NULL
+          "pi_memory_stage1_candidates"."generated_at" IS NOT NULL AND
+          "pi_memory_stage1_candidates"."last_selected_source_history_hash" = "pi_memory_stage1_candidates"."source_history_hash"
         ) OR (
           "pi_memory_stage1_candidates"."status" = 'retryable_failure' AND
           "pi_memory_stage1_candidates"."retry_at" IS NOT NULL AND
@@ -74,7 +77,8 @@ CREATE TABLE IF NOT EXISTS "pi_memory_stage1_candidates" (
           "pi_memory_stage1_candidates"."raw_memory" IS NULL AND
           "pi_memory_stage1_candidates"."rollout_summary" IS NULL AND
           "pi_memory_stage1_candidates"."rollout_slug" IS NULL AND
-          "pi_memory_stage1_candidates"."generated_at" IS NULL
+          "pi_memory_stage1_candidates"."generated_at" IS NULL AND
+          "pi_memory_stage1_candidates"."last_selected_source_history_hash" IS NULL
         ) OR (
           "pi_memory_stage1_candidates"."status" = 'terminal_failure' AND
           "pi_memory_stage1_candidates"."retry_at" IS NULL AND
@@ -82,7 +86,8 @@ CREATE TABLE IF NOT EXISTS "pi_memory_stage1_candidates" (
           "pi_memory_stage1_candidates"."raw_memory" IS NULL AND
           "pi_memory_stage1_candidates"."rollout_summary" IS NULL AND
           "pi_memory_stage1_candidates"."rollout_slug" IS NULL AND
-          "pi_memory_stage1_candidates"."generated_at" IS NULL
+          "pi_memory_stage1_candidates"."generated_at" IS NULL AND
+          "pi_memory_stage1_candidates"."last_selected_source_history_hash" IS NULL
         ))
 );
 --> statement-breakpoint

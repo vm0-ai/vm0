@@ -81,5 +81,8 @@ describe("Pi memory Stage 1 candidate schema", () => {
     expect(checks.pi_memory_stage1_candidates_counts_check).toContain(
       "usage_count",
     );
+    expect(checks.pi_memory_stage1_candidates_state_check).toContain(
+      "last_selected_source_history_hash",
+    );
   });
 });

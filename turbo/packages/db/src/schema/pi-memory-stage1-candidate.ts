@@ -132,14 +132,16 @@ export const piMemoryStage1Candidates = pgTable(
           ${table.rawMemory} IS NULL AND
           ${table.rolloutSummary} IS NULL AND
           ${table.rolloutSlug} IS NULL AND
-          ${table.generatedAt} IS NULL
+          ${table.generatedAt} IS NULL AND
+          ${table.lastSelectedSourceHistoryHash} IS NULL
         ) OR (
           ${table.status} = 'succeeded' AND
           ${table.retryAt} IS NULL AND
           ${table.lastErrorClass} IS NULL AND
           ${table.rawMemory} IS NOT NULL AND
           ${table.rolloutSummary} IS NOT NULL AND
-          ${table.generatedAt} IS NOT NULL
+          ${table.generatedAt} IS NOT NULL AND
+          ${table.lastSelectedSourceHistoryHash} = ${table.sourceHistoryHash}
         ) OR (
           ${table.status} = 'succeeded_no_output' AND
           ${table.retryAt} IS NULL AND
@@ -147,7 +149,8 @@ export const piMemoryStage1Candidates = pgTable(
           ${table.rawMemory} IS NULL AND
           ${table.rolloutSummary} IS NULL AND
           ${table.rolloutSlug} IS NULL AND
-          ${table.generatedAt} IS NOT NULL
+          ${table.generatedAt} IS NOT NULL AND
+          ${table.lastSelectedSourceHistoryHash} = ${table.sourceHistoryHash}
         ) OR (
           ${table.status} = 'retryable_failure' AND
           ${table.retryAt} IS NOT NULL AND
@@ -155,7 +158,8 @@ export const piMemoryStage1Candidates = pgTable(
           ${table.rawMemory} IS NULL AND
           ${table.rolloutSummary} IS NULL AND
           ${table.rolloutSlug} IS NULL AND
-          ${table.generatedAt} IS NULL
+          ${table.generatedAt} IS NULL AND
+          ${table.lastSelectedSourceHistoryHash} IS NULL
         ) OR (
           ${table.status} = 'terminal_failure' AND
           ${table.retryAt} IS NULL AND
@@ -163,7 +167,8 @@ export const piMemoryStage1Candidates = pgTable(
           ${table.rawMemory} IS NULL AND
           ${table.rolloutSummary} IS NULL AND
           ${table.rolloutSlug} IS NULL AND
-          ${table.generatedAt} IS NULL
+          ${table.generatedAt} IS NULL AND
+          ${table.lastSelectedSourceHistoryHash} IS NULL
         )`,
       ),
     ];
