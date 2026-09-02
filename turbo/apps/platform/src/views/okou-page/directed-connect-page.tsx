@@ -6,7 +6,10 @@ import {
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogAuthMethodDetail } from "@okouai/api-contracts/contracts/connector-catalog";
-import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
+import type {
+  ConnectorAccountConnection,
+  ConnectorAccountMutationIntent,
+} from "@okouai/api-contracts/contracts/connector-accounts";
 import type {
   CustomConnectorResponse,
   CustomConnectorSlug,
@@ -52,6 +55,8 @@ import {
 import {
   directedConnectSlug$,
   directedConnectCustomSlug$,
+  directedConnectAccountTarget$,
+  directedConnectExactAccount$,
   directedConnectAgentId$,
   directedConnectAgentName$,
   manualGrantDialogKey$,
@@ -84,6 +89,7 @@ import { customConnectorMcpEnabled$ } from "../../signals/external/feature-switc
 import {
   defaultBuiltinConnectorAccountOptions,
   defaultCustomConnectorAccountOptions,
+  type ConnectorAccountMutationOptions,
   type DefaultConnectorAccountMutationOptions,
 } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 
@@ -92,6 +98,7 @@ function runDirectedConnect(
     item: PlatformConnectorCatalogStatusItem;
     connectorSlug: ConnectorSlug;
     agentId: string | null;
+    accountOptions: ConnectorAccountMutationOptions;
     connect: (
       connectorSlug: ConnectorSlug,
       method: PublicConnectorCatalogAuthMethodDetail,
@@ -125,10 +132,6 @@ function runDirectedConnect(
   },
   signal: AbortSignal,
 ): void {
-  const accountOptions = defaultBuiltinConnectorAccountOptions(params.item);
-  if (!accountOptions) {
-    return;
-  }
   const launchMode = getConnectorStatusConnectLaunchMode(params.item);
   if (
     launchMode === "modal" &&
@@ -172,7 +175,7 @@ function runDirectedConnect(
             ...(params.agentId
               ? { agentId: params.agentId }
               : { authorizeVisibleAgents: true }),
-            ...accountOptions,
+            ...params.accountOptions,
           },
           signal,
         );
@@ -194,7 +197,7 @@ function runDirectedConnect(
               ...(params.agentId
                 ? { agentId: params.agentId }
                 : { authorizeVisibleAgents: true }),
-              ...accountOptions,
+              ...params.accountOptions,
             },
           },
           signal,
@@ -220,7 +223,7 @@ function ManualGrantForm({
   agentId: string | null;
   connectorLabel: string;
   manualGrantMethod: PublicConnectorCatalogAuthMethodDetail;
-  accountOptions: DefaultConnectorAccountMutationOptions;
+  accountOptions: ConnectorAccountMutationOptions;
   onSuccess: () => void | Promise<void>;
 }) {
   const { t } = useTranslation();
@@ -339,7 +342,7 @@ function ManualGrantDialog({
   icon: PlatformConnectorCatalogStatusItem["icon"] | undefined;
   connectorLabel: string;
   manualGrantMethod: PublicConnectorCatalogAuthMethodDetail | null;
-  accountOptions: DefaultConnectorAccountMutationOptions | null;
+  accountOptions: ConnectorAccountMutationOptions | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void | Promise<void>;
@@ -435,27 +438,23 @@ function ConnectActions({
 function DirectedConnectModal({
   open,
   item,
+  accountOptions,
+  reconnectAuthMethod,
   agentId,
   onClose,
   onSuccess,
 }: {
   readonly open: boolean;
   readonly item: PlatformConnectorCatalogStatusItem | undefined;
+  readonly accountOptions: ConnectorAccountMutationOptions | null;
+  readonly reconnectAuthMethod: ConnectorAuthMethodId | undefined;
   readonly agentId: string | null;
   readonly onClose: () => void;
   readonly onSuccess: () => void | Promise<void>;
 }) {
-  if (!open || !item) {
+  if (!open || !item || !accountOptions) {
     return null;
   }
-  const accountOptions = defaultBuiltinConnectorAccountOptions(item);
-  if (!accountOptions) {
-    return null;
-  }
-  const reconnectAuthMethod =
-    accountOptions.account.intent === "reconnect"
-      ? item.connection?.authMethod
-      : undefined;
   return (
     <ConnectModal
       item={item}
@@ -472,6 +471,8 @@ function DirectedConnectModal({
 function DirectedConnectDialogs({
   connectorSlug,
   item,
+  accountOptions,
+  reconnectAuthMethod,
   icon,
   connectorLabel,
   manualGrantMethod,
@@ -484,6 +485,8 @@ function DirectedConnectDialogs({
 }: {
   readonly connectorSlug: ConnectorSlug;
   readonly item: PlatformConnectorCatalogStatusItem | undefined;
+  readonly accountOptions: ConnectorAccountMutationOptions | null;
+  readonly reconnectAuthMethod: ConnectorAuthMethodId | undefined;
   readonly icon: PlatformConnectorCatalogStatusItem["icon"] | undefined;
   readonly connectorLabel: string;
   readonly manualGrantMethod: PublicConnectorCatalogAuthMethodDetail | null;
@@ -494,9 +497,6 @@ function DirectedConnectDialogs({
   readonly setConnectModalOpen: (open: boolean) => void;
   readonly onSuccess: () => void | Promise<void>;
 }) {
-  const accountOptions = item
-    ? defaultBuiltinConnectorAccountOptions(item)
-    : null;
   return (
     <>
       <ManualGrantDialog
@@ -513,6 +513,8 @@ function DirectedConnectDialogs({
       <DirectedConnectModal
         open={connectModalOpen}
         item={item}
+        accountOptions={accountOptions}
+        reconnectAuthMethod={reconnectAuthMethod}
         agentId={agentId ?? null}
         onClose={() => {
           setConnectModalOpen(false);
@@ -532,12 +534,16 @@ function useDirectedConnectConnectorSlug(): ConnectorSlug | null {
   return parsed.success ? parsed.data : null;
 }
 
-function useDirectedConnectCatalogState(connectorSlug: ConnectorSlug | null): {
+interface DirectedConnectCatalogState {
   readonly item: PlatformConnectorCatalogStatusItem | undefined;
   readonly isConnected: boolean;
   readonly isLoading: boolean;
   readonly unavailable: boolean;
-} {
+}
+
+function useDirectedConnectCatalogState(
+  connectorSlug: ConnectorSlug | null,
+): DirectedConnectCatalogState {
   const justConnected = useGet(justConnectedSlugs$);
   const allLoadable = useLastLoadable(connectorCatalogStatus$);
   const catalogLoaded = allLoadable.state === "hasData";
@@ -562,6 +568,105 @@ function useDirectedConnectCatalogState(connectorSlug: ConnectorSlug | null): {
       catalogLoaded &&
       !item &&
       !optimisticallyConnected,
+  };
+}
+
+type DirectedConnectAccountState =
+  | { readonly kind: "default" }
+  | { readonly kind: "loading" }
+  | { readonly kind: "unavailable" }
+  | {
+      readonly kind: "exact";
+      readonly account: ConnectorAccountConnection;
+    };
+
+function useDirectedConnectAccountState(): DirectedConnectAccountState {
+  const target = useGet(directedConnectAccountTarget$);
+  const accountLoadable = useLastLoadable(directedConnectExactAccount$);
+  if (target.kind === "default") {
+    return target;
+  }
+  if (target.kind === "invalid") {
+    return { kind: "unavailable" };
+  }
+  if (accountLoadable.state === "loading") {
+    return { kind: "loading" };
+  }
+  if (accountLoadable.state === "hasData" && accountLoadable.data) {
+    return { kind: "exact", account: accountLoadable.data };
+  }
+  return { kind: "unavailable" };
+}
+
+interface DirectedConnectPresentation {
+  readonly accountOptions: ConnectorAccountMutationOptions | null;
+  readonly reconnectAuthMethod: ConnectorAuthMethodId | undefined;
+  readonly isConnected: boolean;
+  readonly isLoading: boolean;
+  readonly unavailable: boolean;
+}
+
+function directedConnectPresentation(args: {
+  readonly accountState: DirectedConnectAccountState;
+  readonly catalogState: DirectedConnectCatalogState;
+}): DirectedConnectPresentation {
+  const { accountState, catalogState } = args;
+  if (catalogState.unavailable || accountState.kind === "unavailable") {
+    return {
+      accountOptions: null,
+      reconnectAuthMethod: undefined,
+      isConnected: false,
+      isLoading: false,
+      unavailable: true,
+    };
+  }
+  if (accountState.kind === "loading") {
+    return {
+      accountOptions: null,
+      reconnectAuthMethod: undefined,
+      isConnected: catalogState.isConnected,
+      isLoading: true,
+      unavailable: false,
+    };
+  }
+  if (accountState.kind === "exact") {
+    return {
+      accountOptions: {
+        account: {
+          intent: "reconnect",
+          connectionId: accountState.account.id,
+        },
+      },
+      reconnectAuthMethod: accountState.account.authMethod,
+      isConnected: true,
+      isLoading: catalogState.isLoading,
+      unavailable: false,
+    };
+  }
+  const accountOptions = defaultBuiltinConnectorAccountOptions(
+    catalogState.item,
+  );
+  return {
+    accountOptions,
+    reconnectAuthMethod:
+      accountOptions?.account.intent === "reconnect"
+        ? catalogState.item?.connection?.authMethod
+        : undefined,
+    isConnected: catalogState.isConnected,
+    isLoading: catalogState.isLoading,
+    unavailable: false,
+  };
+}
+
+function useDirectedConnectPresentation(connectorSlug: ConnectorSlug | null): {
+  readonly item: PlatformConnectorCatalogStatusItem | undefined;
+  readonly presentation: DirectedConnectPresentation;
+} {
+  const accountState = useDirectedConnectAccountState();
+  const catalogState = useDirectedConnectCatalogState(connectorSlug);
+  return {
+    item: catalogState.item,
+    presentation: directedConnectPresentation({ accountState, catalogState }),
   };
 }
 
@@ -670,8 +775,7 @@ function DirectedConnectCard() {
   const connect = useSet(connectConnectorOAuthAuthCode$);
   const connectNoAuth = useSet(connectConnectorNoAuth$);
   const signal = useGet(pageSignal$);
-  const { item, isConnected, isLoading, unavailable } =
-    useDirectedConnectCatalogState(connectorSlug);
+  const { item, presentation } = useDirectedConnectPresentation(connectorSlug);
   const setManualGrantDialogKey = useSet(setManualGrantDialogKey$);
   const setDirectedConnectModalKey = useSet(setDirectedConnectModalKey$);
   const actionCallback = useGet(routeChatActionCallback$);
@@ -693,13 +797,12 @@ function DirectedConnectCard() {
     pollingAuthCodeSlug === connectorSlug ||
     pollingDeviceAuthSlug === connectorSlug ||
     connectFlowSlug === connectorSlug;
-  if (unavailable) {
+  if (presentation.unavailable) {
     return null;
   }
   const authMethods = item?.authMethods ?? [];
-  const accountOptions = item
-    ? defaultBuiltinConnectorAccountOptions(item)
-    : null;
+  const { accountOptions, reconnectAuthMethod, isConnected, isLoading } =
+    presentation;
   const manualGrantMethod = item
     ? getOnlyManualConnectorStatusAuthMethod(item)
     : null;
@@ -728,6 +831,7 @@ function DirectedConnectCard() {
         item,
         connectorSlug,
         agentId,
+        accountOptions,
         connect,
         connectNoAuth,
         openManualGrantDialog: () => {
@@ -766,6 +870,8 @@ function DirectedConnectCard() {
       <DirectedConnectDialogs
         connectorSlug={connectorSlug}
         item={item}
+        accountOptions={accountOptions}
+        reconnectAuthMethod={reconnectAuthMethod}
         icon={item?.icon}
         connectorLabel={connectorLabel}
         manualGrantMethod={manualGrantMethod}
@@ -937,6 +1043,10 @@ function CustomDirectedConnectCard({
 
 export function DirectedConnectPage() {
   const customConnectorSlug = useGet(directedConnectCustomSlug$);
+  const accountTarget = useGet(directedConnectAccountTarget$);
+  if (customConnectorSlug && accountTarget.kind !== "default") {
+    return null;
+  }
   return customConnectorSlug ? (
     <CustomDirectedConnectCard connectorSlug={customConnectorSlug} />
   ) : (

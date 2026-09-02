@@ -279,6 +279,12 @@ interface MailAccess {
   readonly connection: MailConnection;
 }
 
+interface MailAccessFailure {
+  readonly kind: "conflict";
+  readonly message: string;
+  readonly reconnectConnectionId?: string;
+}
+
 function linkResult(mailDraftId: string): MailDraftLinkResult {
   return {
     kind: "ok",
@@ -1012,6 +1018,7 @@ function responseDraft(args: {
   readonly details: MailDetails | null;
   readonly detailAvailable: boolean;
   readonly accessStatus?: "ready" | "reconnect";
+  readonly reconnectConnectionId?: string;
 }): MailDraft {
   const details = responseDetails(args.row, args.details);
   return mailDraftSchema.parse({
@@ -1027,6 +1034,7 @@ function responseDraft(args: {
     bodyHtml: details.bodyHtml,
     inlineImages: details.inlineImages,
     accessStatus: args.accessStatus ?? "ready",
+    reconnectConnectionId: args.reconnectConnectionId,
     replyTo: details.replyTo,
     inReplyTo: details.inReplyTo,
     references: details.references,
@@ -1081,7 +1089,10 @@ async function runGmailOperation<T>(
   return { kind: "reconnect" };
 }
 
-function reconnectDraftResult(row: MailDraftRow): MailDraftResult {
+function reconnectDraftResult(
+  row: MailDraftRow,
+  reconnectConnectionId?: string,
+): MailDraftResult {
   return okResult(
     row.id,
     responseDraft({
@@ -1089,7 +1100,18 @@ function reconnectDraftResult(row: MailDraftRow): MailDraftResult {
       details: null,
       detailAvailable: false,
       accessStatus: "reconnect",
+      reconnectConnectionId,
     }),
+  );
+}
+
+function accessReconnectDraftResult(
+  row: MailDraftRow,
+  access: MailAccessFailure,
+): MailDraftResult {
+  return reconnectDraftResult(
+    row,
+    access.reconnectConnectionId ?? row.connectorId ?? undefined,
   );
 }
 
@@ -1132,7 +1154,7 @@ async function accessForRow(
     readonly row: MailDraftRow;
   },
   signal: AbortSignal,
-): Promise<MailAccess | MailDraftErrorResult> {
+): Promise<MailAccess | MailAccessFailure> {
   const connection = await connectionForRow(args);
   if (!connection) {
     return { kind: "conflict", message: "Reconnect Gmail before continuing" };
@@ -1149,7 +1171,11 @@ async function accessForRow(
   );
   return access.kind === "ok"
     ? { ...access, connection }
-    : { kind: "conflict", message: access.message };
+    : {
+        kind: "conflict",
+        message: access.message,
+        reconnectConnectionId: connection.connectorId,
+      };
 }
 
 async function persistLinkedDraft(args: {
@@ -1276,7 +1302,9 @@ async function getMailDraft(
       responseDraft({ row: args.row, details: null, detailAvailable: false }),
     );
     if (access.kind !== "ok" || !sentGmailMessageId) {
-      return access.kind === "ok" ? stored : reconnectDraftResult(args.row);
+      return access.kind === "ok"
+        ? stored
+        : accessReconnectDraftResult(args.row, access);
     }
     let sent: GmailSentValue | null = null;
     const sentResult = await runGmailOperation(
@@ -1301,7 +1329,7 @@ async function getMailDraft(
     );
     signal.throwIfAborted();
     if (sentResult.kind === "reconnect") {
-      return reconnectDraftResult(args.row);
+      return reconnectDraftResult(args.row, access.connection.connectorId);
     }
     if (sentResult.kind === "error") {
       L.warn("Failed to enrich sent Gmail draft card", {
@@ -1324,7 +1352,7 @@ async function getMailDraft(
       : stored;
   }
   if (access.kind !== "ok") {
-    return reconnectDraftResult(args.row);
+    return accessReconnectDraftResult(args.row, access);
   }
   const gmailResult = await runGmailOperation(
     {
@@ -1348,7 +1376,7 @@ async function getMailDraft(
   );
   signal.throwIfAborted();
   if (gmailResult.kind === "reconnect") {
-    return reconnectDraftResult(args.row);
+    return reconnectDraftResult(args.row, access.connection.connectorId);
   }
   if (gmailResult.kind === "error") {
     throw gmailResult.error;
