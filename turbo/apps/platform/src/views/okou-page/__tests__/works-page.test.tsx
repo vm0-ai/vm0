@@ -1051,9 +1051,23 @@ describe("works page", () => {
     expect(createGuideImage).toHaveAttribute("width", "1234");
     expect(createGuideImage).toHaveAttribute("height", "998");
     expect(queryRole("button", "Show creating a Feishu app guide")).toBeNull();
+    const iconDownloadLink = screen
+      .getByText("Download the optional VM0 icon")
+      .closest("a");
+    expect(iconDownloadLink).toHaveAttribute(
+      "href",
+      "https://static.vm0.io/platform/views/zero-page/assets/feishu/app-icon-okou-fefdc683bf5c.png",
+    );
+    expect(iconDownloadLink).toHaveAttribute(
+      "download",
+      "vm0-feishu-app-icon.png",
+    );
     expect(
-      screen.getByText("Download the optional VM0 icon").closest("a"),
-    ).toHaveAttribute("download", "vm0-feishu-app-icon.png");
+      screen.getByRole("img", { name: "Optional VM0 app icon" }),
+    ).toHaveAttribute(
+      "src",
+      "https://static.vm0.io/platform/views/zero-page/assets/feishu/app-icon-okou-fefdc683bf5c.png",
+    );
 
     click(screen.getByText("Next"));
 

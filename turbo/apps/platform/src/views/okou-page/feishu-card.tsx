@@ -43,6 +43,7 @@ import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
 import {
   platformFeishuAppCreatedCredentialsImg,
+  platformFeishuAppIconImg,
   platformFeishuAvailabilitySettingsAllMembersImg,
   platformFeishuCreateEnterpriseCustomAppImg,
   platformFeishuEncryptionStrategyImg,
@@ -59,6 +60,7 @@ import {
   defaultAgentName$,
   sortedAgents$,
 } from "../../signals/agent.ts";
+import { downloadAttachment$ } from "../../signals/attachment-download.ts";
 import { brandName$ } from "../../signals/branding.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
@@ -468,7 +470,10 @@ function canSubmitFeishuSetup(
 
 function FeishuCreateStep() {
   const brandName = useGet(brandName$);
+  const downloadAttachment = useSet(downloadAttachment$);
+  const signal = useGet(pageSignal$);
   const { t } = useTranslation();
+  const iconFilename = `${brandName.toLowerCase()}-feishu-app-icon.png`;
 
   return (
     <div className="space-y-4">
@@ -524,8 +529,19 @@ function FeishuCreateStep() {
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             <a
-              href="/icons/icon-512.png"
-              download={`${brandName.toLowerCase()}-feishu-app-icon.png`}
+              href={platformFeishuAppIconImg}
+              download={iconFilename}
+              onClick={(event) => {
+                event.preventDefault();
+                detach(
+                  downloadAttachment(
+                    { filename: iconFilename, url: platformFeishuAppIconImg },
+                    signal,
+                  ),
+                  Reason.DomCallback,
+                  "Feishu app icon download",
+                );
+              }}
               className="font-medium text-foreground underline underline-offset-4"
             >
               {t(
@@ -542,7 +558,7 @@ function FeishuCreateStep() {
           </p>
         </div>
         <img
-          src="/icons/icon-512.png"
+          src={platformFeishuAppIconImg}
           alt={t(
             ($) => {
               return $.connectors.providerSettings.feishu.create.iconAlt;
