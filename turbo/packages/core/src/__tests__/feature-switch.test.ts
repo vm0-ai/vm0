@@ -6,7 +6,6 @@ import {
   filterFeatureSwitchOverrides,
   getFeatureSwitchDescriptions,
   getFeatureSwitchMetadata,
-  withLegacyFeatureSwitchAliases,
 } from "../feature-switch";
 
 describe("FeatureSwitchKey", () => {
@@ -259,42 +258,6 @@ describe("feature switch override filtering", () => {
         zeroPeopleSearch: false,
       }),
     ).toStrictEqual({});
-  });
-
-  it("normalizes legacy switch keys with canonical values taking precedence", () => {
-    expect(
-      filterFeatureSwitchOverrides({
-        dummy: true,
-        lab: false,
-        personalModelProviderAccounts: true,
-        codexFastMode: false,
-        okouDebug: false,
-        [FeatureSwitchKey.OkouDebug]: true,
-      }),
-    ).toStrictEqual({
-      [FeatureSwitchKey.Dummy]: true,
-      [FeatureSwitchKey.Lab]: false,
-      [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
-      [FeatureSwitchKey.CodexFastMode]: false,
-      [FeatureSwitchKey.OkouDebug]: true,
-    });
-  });
-
-  it("mirrors canonical overrides for pre-rename clients", () => {
-    expect(
-      withLegacyFeatureSwitchAliases({
-        [FeatureSwitchKey.Dummy]: false,
-        [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
-        [FeatureSwitchKey.CodexFastMode]: true,
-      }),
-    ).toStrictEqual({
-      [FeatureSwitchKey.Dummy]: false,
-      [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
-      [FeatureSwitchKey.CodexFastMode]: true,
-      dummy: false,
-      personalModelProviderAccounts: true,
-      codexFastMode: true,
-    });
   });
 });
 

@@ -72,16 +72,14 @@ describe("lab page", () => {
   });
 
   it("lets users toggle and reset feature switches", async () => {
-    let switches: Record<string, boolean> = {
+    let switches: Partial<Record<FeatureSwitchKey, boolean>> = {
       [FeatureSwitchKey.Lab]: true,
       [FeatureSwitchKey.TestOauthConnector]: false,
     };
-    let updateBody: Record<string, boolean> | undefined;
     context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
       return respond(200, { switches, effectiveSwitches: switches });
     });
     context.mocks.api(featureSwitchesContract.update, ({ body, respond }) => {
-      updateBody = body.switches;
       switches = { ...switches, ...body.switches };
       return respond(200, {
         switches: body.switches,
@@ -115,10 +113,6 @@ describe("lab page", () => {
       expect(
         featureSwitchControl(FeatureSwitchKey.TestOauthConnector),
       ).toHaveAttribute("aria-checked", "true");
-      expect(updateBody).toStrictEqual({
-        [FeatureSwitchKey.TestOauthConnector]: true,
-        testOauthConnector: true,
-      });
     });
 
     click(screen.getByText("Reset all"));

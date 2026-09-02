@@ -72,7 +72,6 @@ describe("DeveloperToolsController", () => {
         jsonResponse({
           effectiveSwitches: {
             _debug: false,
-            okouDebug: true,
             introVideo: true,
             desktopScreenRecording: true,
           },
@@ -132,7 +131,7 @@ describe("DeveloperToolsController", () => {
 
   it("reads the legacy switches shape", async () => {
     const { controller } = createController(async () =>
-      jsonResponse({ switches: { okouDebug: true } }),
+      jsonResponse({ switches: { _debug: true } }),
     );
 
     controller.requestRefresh();

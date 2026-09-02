@@ -2,7 +2,6 @@ import { command, computed, type Computed } from "ccstate";
 import {
   filterFeatureSwitchOverrides,
   type FeatureSwitchContext,
-  withLegacyFeatureSwitchAliases,
 } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { userFeatureSwitches } from "@okouai/db/schema/user-feature-switches";
@@ -212,10 +211,10 @@ async function upsertFeatureSwitches(
 
   const existing =
     (existingRow?.switches as Record<string, boolean> | undefined) ?? {};
-  const merged = withLegacyFeatureSwitchAliases({
+  const merged: Record<string, boolean> = {
     ...filterFeatureSwitchOverrides(existing),
     ...filterFeatureSwitchOverrides(switches),
-  });
+  };
   const now = nowDate();
 
   await writeDb
