@@ -5,6 +5,11 @@ type PlatformPublicBrand = "vm0" | "okou";
 
 export type PlatformService = "api" | "www" | "app" | "platform";
 
+export interface PlatformServiceStatusConfig {
+  readonly issuesUrl: string;
+  readonly pageBaseUrl: string;
+}
+
 // Resolved from `location` and build-time constants alone. The shared database
 // SharedWorker is a second entry point into this bundle and has no DOM, so
 // nothing here may read page state: every value must come from the hostname or
@@ -36,6 +41,9 @@ const PREVIEW_API_DOMAIN = "vm6.ai";
 const PRODUCTION_HOSTED_SITE_DOMAINS = ["sites.vm0.io", "okou.app"] as const;
 const PREVIEW_HOSTED_SITE_DOMAINS = ["sites.vm7.io"] as const;
 const PLATFORM_SERVICE_LABELS = ["platform", "app", "www", "api"] as const;
+const PRODUCTION_SERVICE_STATUS_ISSUES_URL =
+  "https://api.instatus.com/issues?locale=en&secretToBypassPrivacy=02c0ef5a&host=status.okou.ai";
+const PRODUCTION_SERVICE_STATUS_PAGE_BASE_URL = "https://status.okou.ai";
 
 function browserHostname(): string | null {
   if (typeof location === "undefined" || !location.hostname) {
@@ -53,6 +61,19 @@ export function isOkouHostname(hostname: string): boolean {
   return OKOU_ROOT_DOMAINS.some((domain) => {
     return isDomainOrSubdomain(normalizedHostname, domain);
   });
+}
+
+export function resolvePlatformServiceStatusConfig(
+  hostname: string,
+): PlatformServiceStatusConfig | null {
+  const normalizedHostname = hostname.toLowerCase();
+  return normalizedHostname === "app.vm0.ai" ||
+    normalizedHostname === "app.okou.ai"
+    ? {
+        issuesUrl: PRODUCTION_SERVICE_STATUS_ISSUES_URL,
+        pageBaseUrl: PRODUCTION_SERVICE_STATUS_PAGE_BASE_URL,
+      }
+    : null;
 }
 
 function resolvePlatformPublicBrand(

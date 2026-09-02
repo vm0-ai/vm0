@@ -4,9 +4,8 @@ import { delay } from "signal-timers";
 import { localStorageSignals } from "./external/local-storage.ts";
 import { rootSignal$ } from "./root-signal.ts";
 import { jsonParseOr } from "./utils.ts";
+import { resolvePlatformServiceStatusConfig } from "../lib/platform-host.ts";
 
-const INSTATUS_ISSUES_URL =
-  "https://api.instatus.com/issues?locale=en&secretToBypassPrivacy=02c0ef5a&host=status.okou.ai";
 const STATUS_REFRESH_INTERVAL_MS = 3 * 60 * 1000;
 
 const { get$: dismissedIssueIdsRaw$, set$: setDismissedIssueIdsRaw$ } =
@@ -26,17 +25,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function parseIssue(
-  value: unknown,
-  type: InstatusIssueType,
-): InstatusIssue | null {
+function parseIssue(value: unknown, type: InstatusIssueType): InstatusIssue {
   if (
     !isRecord(value) ||
     typeof value.id !== "string" ||
     typeof value.name !== "string" ||
     typeof value.status !== "string"
   ) {
-    return null;
+    throw new Error(`Invalid Instatus ${type} issue`);
   }
 
   return {
@@ -51,19 +47,23 @@ function parseIssueList(
   value: unknown,
   type: InstatusIssueType,
 ): InstatusIssue[] {
-  if (!Array.isArray(value)) {
+  // Instatus omits collections with no active entries. Remove this fallback
+  // only if the provider guarantees both collections are always present.
+  if (value === undefined) {
     return [];
   }
+  if (!Array.isArray(value)) {
+    throw new Error(`Invalid Instatus ${type} issue list`);
+  }
 
-  return value.flatMap((item) => {
-    const issue = parseIssue(item, type);
-    return issue ? [issue] : [];
+  return value.map((item) => {
+    return parseIssue(item, type);
   });
 }
 
 function parseIssues(value: unknown): InstatusIssue[] {
   if (!isRecord(value)) {
-    return [];
+    throw new Error("Invalid Instatus issues response");
   }
 
   return [
@@ -87,22 +87,16 @@ function parseDismissedIssueIds(value: string | null): Set<string> {
   );
 }
 
-function isProductionAppHostname(hostname: string): boolean {
-  const normalizedHostname = hostname.toLowerCase();
-  return (
-    normalizedHostname === "app.vm0.ai" || normalizedHostname === "app.okou.ai"
-  );
-}
-
 const activeInstatusIssues$ = computed(
   async (get): Promise<InstatusIssue[]> => {
     get(refreshVersion$);
-    if (!isProductionAppHostname(window.location.hostname)) {
+    const config = resolvePlatformServiceStatusConfig(window.location.hostname);
+    if (!config) {
       return [];
     }
 
     const signal = get(rootSignal$);
-    const response = await fetch(INSTATUS_ISSUES_URL, { signal });
+    const response = await fetch(config.issuesUrl, { signal });
     if (!response.ok) {
       throw new Error(`Instatus issues request failed with ${response.status}`);
     }
@@ -140,7 +134,7 @@ export const dismissInstatusIssue$ = command(
 
 export const pollInstatusIssues$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
-    if (!isProductionAppHostname(window.location.hostname)) {
+    if (!resolvePlatformServiceStatusConfig(window.location.hostname)) {
       return;
     }
 

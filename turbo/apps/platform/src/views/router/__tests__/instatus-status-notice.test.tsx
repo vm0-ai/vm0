@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
@@ -43,22 +43,16 @@ describe("instatus status notice", () => {
     async (hostname) => {
       const user = userEvent.setup();
       context.mocks.browser.url(`https://${hostname}/`);
+      context.mocks.browser.matchMedia(true);
       mockActiveIssues();
 
       detachedSetupPage({ context, path: "/" });
 
-      const incident = (
-        await screen.findAllByRole("status", {
-          name: "Investigating: Elevated API errors",
-        })
-      ).find((status) => {
-        return status.closest("aside.zero-pwa-fixed-cover") === null;
+      const incident = await screen.findByRole("status", {
+        name: "Investigating: Elevated API errors",
       });
-      if (!(incident instanceof HTMLElement)) {
-        throw new Error("Floating incident notice not found");
-      }
       const updatesLink = queryAllByRoleFast("link", incident).find((link) => {
-        return link.textContent?.includes("View latest updates");
+        return link.textContent?.trim() === "View latest updates";
       });
       expect(updatesLink).toHaveAttribute(
         "href",
@@ -75,10 +69,8 @@ describe("instatus status notice", () => {
           return button.getAttribute("aria-label") === "Dismiss service update";
         },
       );
-      if (!(dismissButton instanceof HTMLButtonElement)) {
-        throw new Error("Dismiss button not found");
-      }
-      await user.click(dismissButton);
+      expect(dismissButton).toBeDefined();
+      await user.click(dismissButton!);
 
       await waitFor(() => {
         expect(
@@ -93,51 +85,56 @@ describe("instatus status notice", () => {
   it("places the mobile status notice inside the expanded sidebar", async () => {
     const user = userEvent.setup();
     context.mocks.browser.url("https://app.okou.ai/");
+    context.mocks.browser.matchMedia(false);
     mockActiveIssues();
 
     detachedSetupPage({ context, path: "/" });
 
-    await screen.findAllByRole("status", {
+    const openMenuButton = await waitFor(() => {
+      const button = queryAllByRoleFast("button").find((candidate) => {
+        return candidate.getAttribute("aria-label") === "Open menu";
+      });
+      expect(button).toBeDefined();
+      return button;
+    });
+    await user.click(openMenuButton!);
+
+    const mobileSidebar = await screen.findByRole("complementary", {
+      name: "Sidebar",
+    });
+    const sidebarIncident = within(mobileSidebar).getByRole("status", {
       name: "Investigating: Elevated API errors",
     });
-    const openMenuButton = queryAllByRoleFast("button").find((button) => {
-      return button.getAttribute("aria-label") === "Open menu";
-    });
-    if (!(openMenuButton instanceof HTMLButtonElement)) {
-      throw new Error("Open menu button not found");
-    }
-    await user.click(openMenuButton);
+    expect(screen.getAllByRole("status")).toStrictEqual([
+      sidebarIncident,
+      within(mobileSidebar).getByRole("status", {
+        name: "Maintenance scheduled: Database maintenance",
+      }),
+    ]);
+  });
 
-    const mobileSidebar = document.querySelector(
-      "aside.zero-pwa-fixed-cover[data-sidebar-expanded]",
-    );
-    if (!(mobileSidebar instanceof HTMLElement)) {
-      throw new Error("Expanded mobile sidebar not found");
-    }
-    const sidebarIncident = await waitFor(() => {
-      const status = mobileSidebar.querySelector(
-        '[role="status"][aria-label="Investigating: Elevated API errors"]',
-      );
-      if (!(status instanceof HTMLElement)) {
-        throw new Error("Mobile sidebar incident notice not found");
-      }
-      return status;
+  it("renders maintenance when Instatus omits the inactive incident list", async () => {
+    context.mocks.browser.url("https://app.okou.ai/");
+    context.mocks.browser.matchMedia(true);
+    context.mocks.http.get(INSTATUS_ISSUES_ENDPOINT, () => {
+      return HttpResponse.json({
+        activeMaintenances: [
+          {
+            id: "maintenance-456",
+            name: "Database maintenance",
+            status: "NOTSTARTEDYET",
+          },
+        ],
+      });
     });
-    expect(sidebarIncident).toBeInTheDocument();
-    expect(
-      sidebarIncident.closest('[aria-label="Service status updates"]'),
-    ).not.toHaveClass("fixed");
 
-    const floatingIncident = Array.from(
-      document.querySelectorAll<HTMLElement>(
-        '[role="status"][aria-label="Investigating: Elevated API errors"]',
-      ),
-    ).find((status) => {
-      return !mobileSidebar.contains(status);
-    });
-    expect(
-      floatingIncident?.closest('[aria-label="Service status updates"]'),
-    ).toHaveClass("max-md:hidden");
+    detachedSetupPage({ context, path: "/" });
+
+    await expect(
+      screen.findByRole("status", {
+        name: "Maintenance scheduled: Database maintenance",
+      }),
+    ).resolves.toBeInTheDocument();
   });
 
   it("does not request or render status updates on preview hosts", async () => {

@@ -1,6 +1,7 @@
 import { ArrowUpRight, TriangleAlert, Wrench, X } from "lucide-react";
 import { useLastResolved, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
+import { useMediaQuery } from "@okouai/ui";
 import { Button } from "@okouai/ui/components/ui/button";
 import { Card, CardContent } from "@okouai/ui/components/ui/card";
 
@@ -9,15 +10,19 @@ import {
   type InstatusIssue,
   visibleInstatusIssues$,
 } from "../../signals/instatus-status.ts";
+import { resolvePlatformServiceStatusConfig } from "../../lib/platform-host.ts";
+import { SIDEBAR_DESKTOP_MEDIA_QUERY } from "../okou-page/sidebar-breakpoint.ts";
 
 function InstatusIssueNotice({
   issue,
   onDismiss,
   compact,
+  pageBaseUrl,
 }: {
   readonly issue: InstatusIssue;
   readonly onDismiss: (issueId: string) => void;
   readonly compact: boolean;
+  readonly pageBaseUrl: string;
 }) {
   const { t } = useTranslation();
   let statusLabel: string;
@@ -90,7 +95,7 @@ function InstatusIssueNotice({
               {issue.title}
             </p>
             <a
-              href={`https://status.okou.ai/${encodeURIComponent(issue.id)}`}
+              href={`${pageBaseUrl}/${encodeURIComponent(issue.id)}`}
               target="_blank"
               rel="noreferrer"
               className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary-900 transition-colors hover:text-primary-950"
@@ -130,8 +135,12 @@ export function InstatusStatusNotice({
   const { t } = useTranslation();
   const issues = useLastResolved(visibleInstatusIssues$) ?? [];
   const dismissIssue = useSet(dismissInstatusIssue$);
+  const isDesktop = useMediaQuery(SIDEBAR_DESKTOP_MEDIA_QUERY);
+  const config = resolvePlatformServiceStatusConfig(window.location.hostname);
+  const placementMatchesViewport =
+    placement === "floating" ? isDesktop : !isDesktop;
 
-  if (issues.length === 0) {
+  if (!config || !placementMatchesViewport || issues.length === 0) {
     return null;
   }
 
@@ -143,8 +152,8 @@ export function InstatusStatusNotice({
       })}
       className={
         placement === "sidebar"
-          ? "mx-2 mt-2 flex max-h-[min(40dvh,320px)] shrink-0 flex-col gap-2 overflow-y-auto overscroll-contain md:hidden"
-          : "zero-app pointer-events-none fixed inset-x-3 bottom-[calc(var(--sab,0px)+16px)] z-[2147483646] flex max-h-[calc(100dvh-32px)] flex-col gap-3 overflow-y-auto max-md:hidden sm:left-6 sm:right-auto sm:w-[390px]"
+          ? "mx-2 mt-2 flex max-h-[min(40dvh,320px)] shrink-0 flex-col gap-2 overflow-y-auto overscroll-contain"
+          : "zero-app pointer-events-none fixed inset-x-3 bottom-[calc(var(--sab,0px)+16px)] z-[2147483646] flex max-h-[calc(100dvh-32px)] flex-col gap-3 overflow-y-auto sm:left-6 sm:right-auto sm:w-[390px]"
       }
     >
       {issues.map((issue) => {
@@ -154,6 +163,7 @@ export function InstatusStatusNotice({
               issue={issue}
               onDismiss={dismissIssue}
               compact={placement === "sidebar"}
+              pageBaseUrl={config.pageBaseUrl}
             />
           </div>
         );
