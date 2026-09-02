@@ -442,25 +442,25 @@ body {
    stay unchanged for contrast and hierarchy. Because these variables live on
    the document root, portaled dialogs and popovers inherit the same system. */
 :root[data-gradient-color-themes][data-color-theme] {
-  --gray-0: var(--zero-color-theme-hue) 24% 98%;
-  --gray-50: var(--zero-color-theme-hue) 22% 96.5%;
-  --gray-100: var(--zero-color-theme-hue) 20% 93.5%;
-  --gray-200: var(--zero-color-theme-hue) 18% 91.5%;
-  --gray-300: var(--zero-color-theme-hue) 17% 88.5%;
-  --gray-400: var(--zero-color-theme-hue) 16% 84.5%;
-  --gray-500: var(--zero-color-theme-hue) 16% 76%;
+  --gray-0: var(--zero-color-theme-hue) 24% 98.3%;
+  --gray-50: var(--zero-color-theme-hue) 22% 97.7%;
+  --gray-100: var(--zero-color-theme-hue) 20% 96.7%;
+  --gray-200: var(--zero-color-theme-hue) 18% 86.9%;
+  --gray-300: var(--zero-color-theme-hue) 17% 79.4%;
+  --gray-400: var(--zero-color-theme-hue) 16% 71.2%;
+  --gray-500: var(--zero-color-theme-hue) 16% 62.2%;
 
   --divider: var(--gray-200);
   --background: var(--zero-color-theme-hue) 24% 98.8%;
   --card: var(--zero-color-theme-hue) 30% 99.4%;
   --popover: var(--card);
-  --secondary: var(--zero-color-theme-hue) 22% 96%;
+  --secondary: var(--zero-color-theme-hue) 22% 96.7%;
   --muted: var(--gray-100);
-  --accent: var(--zero-color-theme-hue) 24% 94.5%;
-  --border: var(--gray-400);
+  --accent: var(--zero-color-theme-hue) 24% 96.7%;
+  --border: var(--gray-200);
   --input: var(--card);
   --ring: var(--zero-color-theme-ring);
-  --sidebar: var(--zero-color-theme-hue) 30% 96%;
+  --sidebar: var(--zero-color-theme-hue) 30% 96.7%;
   --zero-nav-rail: var(--zero-color-theme-hue) 36% 93.5%;
   --zero-nav-foreground: var(--zero-color-theme-hue) 24% 18%;
   --zero-nav-muted-foreground: var(--zero-color-theme-hue) 18% 38%;
@@ -483,22 +483,22 @@ body {
     .dark,
     [data-theme="dark"]
   )[data-gradient-color-themes][data-color-theme] {
-  --gray-0: var(--zero-color-theme-hue) 5% 7%;
-  --gray-50: var(--zero-color-theme-hue) 6% 10%;
-  --gray-100: var(--zero-color-theme-hue) 8% 15%;
-  --gray-200: var(--zero-color-theme-hue) 9% 19%;
-  --gray-300: var(--zero-color-theme-hue) 10% 23%;
-  --gray-400: var(--zero-color-theme-hue) 11% 27%;
-  --gray-500: var(--zero-color-theme-hue) 12% 33%;
+  --gray-0: var(--zero-color-theme-hue) 5% 10.5%;
+  --gray-50: var(--zero-color-theme-hue) 6% 13.5%;
+  --gray-100: var(--zero-color-theme-hue) 8% 18.5%;
+  --gray-200: var(--zero-color-theme-hue) 9% 22.5%;
+  --gray-300: var(--zero-color-theme-hue) 10% 26.5%;
+  --gray-400: var(--zero-color-theme-hue) 11% 30.5%;
+  --gray-500: var(--zero-color-theme-hue) 12% 36.5%;
 
   --divider: var(--gray-200);
   --background: var(--gray-50);
-  --card: var(--zero-color-theme-hue) 8% 14%;
+  --card: var(--zero-color-theme-hue) 8% 16.5%;
   --popover: var(--gray-100);
-  --secondary: var(--zero-color-theme-hue) 9% 17%;
+  --secondary: var(--zero-color-theme-hue) 9% 20.5%;
   --muted: var(--gray-200);
-  --accent: var(--zero-color-theme-hue) 12% 23%;
-  --border: var(--gray-300);
+  --accent: var(--zero-color-theme-hue) 12% 26.5%;
+  --border: var(--gray-200);
   --input: var(--gray-200);
   --ring: var(--zero-color-theme-hue) 45% 62%;
   --sidebar: var(--zero-color-theme-hue) 14% 12%;
